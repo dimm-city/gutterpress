@@ -6,7 +6,7 @@ import {
   sampleSrcdoc,
   hoverPreviewSrcdoc,
 } from "../../src/lib/components/config/config-helpers";
-import type { ProjectExtensionEntry, ExtensionValidationResult } from "../../src/lib/api";
+import type { ProjectExtensionEntry, ExtensionValidationResult } from "../../src/lib/platform/dtos";
 
 const NONE = { markdown: false, styles: false, snippets: false, components: false };
 

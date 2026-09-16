@@ -166,56 +166,21 @@ describe("PreviewClient postMessage origin/source validation (M31)", () => {
 });
 
 /**
- * Bridge protocol v4 (docs/inline-editing-plan.md §3.4): getContextTargetAt()
- * command wrapper + the contextMenuRequested event round-trip through
- * PreviewClient, following the M31 origin/source-gated pattern above.
+ * Bridge protocol v4 (docs/inline-editing-plan.md §3.4): the
+ * contextMenuRequested event round-trip through PreviewClient, following the
+ * M31 origin/source-gated pattern above.
+ *
+ * SFE-P4: this describe block used to also cover `PreviewClient
+ * .getContextTargetAt()` — a command WRAPPER with no production caller
+ * (`ContextMenuController` reads its target from `contextMenuRequested`'s
+ * own event detail, assembled book-side; see
+ * docs/plans/source-first-editor/mutation-inventory.md §1.5). Deleted along
+ * with the rest of the block-edit/mutation surface; the book-side
+ * `getContextTargetAt` COMMAND itself is untouched and still produces
+ * `contextMenuRequested`'s payload — this file's remaining test proves that
+ * payload still reaches `PreviewClient.on()` listeners correctly.
  */
 describe("PreviewClient context-menu bridge (protocol v4)", () => {
-  test("getContextTargetAt() sends the command with its point argument", () => {
-    const c = new PreviewClient();
-    const frameWin = fakeFrameWindow();
-    c.setExpectedOrigin("http://127.0.0.1:3579/");
-    c.attach(frameWin as unknown as Window);
-
-    c.getContextTargetAt({ x: 12, y: 34 }).catch(() => {});
-    expect(frameWin.calls.length).toBe(1);
-    const sent = frameWin.calls[0]!.msg as { cmd: string; args: unknown[] };
-    expect(sent.cmd).toBe("getContextTargetAt");
-    expect(sent.args).toEqual([{ x: 12, y: 34 }]);
-
-    c.detach();
-  });
-
-  test("getContextTargetAt() resolves with the reply's ContextTarget payload", async () => {
-    const c = new PreviewClient();
-    const frameWin = fakeFrameWindow();
-    c.setExpectedOrigin("http://127.0.0.1:3579/");
-    c.attach(frameWin as unknown as Window);
-
-    const payload = {
-      kind: "block" as const,
-      chapter: "a.md",
-      range: [4, 5] as [number, number],
-      blockTag: "p",
-      split: false,
-      ref: "p-ref",
-      rect: { top: 1, left: 2, width: 3, height: 4 },
-      image: null,
-      link: null,
-      selection: null,
-    };
-    const p = c.getContextTargetAt({ x: 1, y: 1 });
-    const id = 1; // first call() in a fresh client always gets id 1
-    dispatchMessage(
-      { type: "gutterpress:reply", id, ok: true, result: payload },
-      "http://127.0.0.1:3579",
-      frameWin,
-    );
-
-    c.detach();
-    await expect(p).resolves.toEqual(payload);
-  });
-
   test("a genuine contextMenuRequested event round-trips through on() with its full detail", () => {
     const c = new PreviewClient();
     const frameWin = fakeFrameWindow();

@@ -139,41 +139,13 @@ test("friendlyPublishError maps a network-level failure to a friendly summary wi
   expect(result.details).toBe("Failed to fetch");
 });
 
-// ── HTTP JSON-envelope unwrapping ─────────────────────────────────────────
-//
-// `$lib/api.ts`'s post()/get() helpers read a non-OK response body with
-// `r.text()` and throw `new Error(text)` verbatim (see routes/api/_lib/
-// handler.ts's `jsonRoute`, which serializes a thrown route error as
-// `{"message": "…"}` JSON) — every publish `catch (e)` in ProjectConfigPanel
-// therefore sees this raw envelope as `e.message`, not the message itself.
-
-test("friendlyPublishError unwraps a JSON error envelope before classifying", () => {
-  const inner = "butler push failed (exit 1).\nerror: invalid API key";
-  const enveloped = JSON.stringify({ message: inner });
-  const result = friendlyPublishError(enveloped);
-  expect(result.summary).toBe(
-    "Uploading to itch.io failed. See the details for what butler reported.",
-  );
-  // The disclosure must show the real butler text, not the JSON wrapper.
-  expect(result.details).toBe(inner);
-  expect(result.details).not.toContain("{");
-});
-
-test("friendlyPublishError unwraps a JSON envelope around an already-friendly message", () => {
-  const inner = "No itch.io API key found. Connect itch.io (or set BUTLER_API_KEY) first.";
-  const enveloped = JSON.stringify({ message: inner });
-  expect(friendlyPublishError(enveloped)).toEqual({ summary: inner });
-});
-
-test("friendlyPublishError falls back to the raw text for malformed JSON-looking input", () => {
-  const raw = "{not actually json";
-  expect(friendlyPublishError(raw)).toEqual({ summary: raw });
-});
-
-test("friendlyPublishError falls back to the raw text when the JSON has no string message field", () => {
-  const raw = JSON.stringify({ status: 500 });
-  expect(friendlyPublishError(raw)).toEqual({ summary: raw });
-});
+// Through SFE-P5c3, friendlyPublishError also unwrapped a `{"message": "…"}`
+// JSON envelope SvelteKit's `error(status, message)` produced. SFE-P5c4
+// deleted the last publish route and its JSON-serializing handler; the
+// round-1 repair removed the now-dead `unwrapPublishErrorEnvelope` step and
+// the four tests that pinned it (AP-32 — an obsolete workaround must not
+// survive past the phase that deletes its cause). See `src/lib/errors.ts`'s
+// `friendlyPublishError` doc comment for the full account.
 
 // ── Misc ──────────────────────────────────────────────────────────────────
 

@@ -93,7 +93,9 @@ describe("+page.svelte — H2 sync-completion refresh wired to ProjectActivityVi
       src.indexOf("function onSnapshotRestored(") + 400,
     );
     expect(fn).toContain("buffer?.reconcileExternalChange()");
-    expect(fn).toContain("refreshProblems()");
+    // SFE-P6a: the lint-refresh call moved onto ProblemsController along
+    // with the findings state it refreshes — see problems-controller.test.ts.
+    expect(fn).toContain("problemsController.refresh()");
   });
 
   test("ProjectActivityView remounts on project switch (no stale snapshot/log list from a prior project)", () => {

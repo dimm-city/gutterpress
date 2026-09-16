@@ -12,10 +12,7 @@ export interface PreviewEvent {
     | "viewportChanged"
     | "sourceLineChanged"
     | "elementActivated"
-    | "contextMenuRequested"
-    | "blockEditRequested"
-    | "blockEditFinished"
-    | "blockEditStateChanged";
+    | "contextMenuRequested";
   detail: {
     currentPage?: number;
     totalPages?: number;
@@ -57,18 +54,12 @@ export interface PreviewEvent {
     link?: { href: string | null; text: string; source: InlineSourceToken | null } | null;
     /** contextMenuRequested: populated whenever a non-collapsed selection exists, regardless of `kind`. */
     selection?: ContextTargetSelection | null;
-    /** contextMenuRequested / blockEditRequested: viewport point the request was made at. */
+    /** contextMenuRequested: viewport point the request was made at. */
     x?: number;
-    /** contextMenuRequested / blockEditRequested: viewport point the request was made at. */
+    /** contextMenuRequested: viewport point the request was made at. */
     y?: number;
-    /** contextMenuRequested: how the menu was invoked. blockEditRequested: always "dblclick". */
-    via?: "mouse" | "keyboard" | "dblclick";
-    /** blockEditFinished: the block's edited markdown source, verbatim. */
-    text?: string | null;
-    /** blockEditFinished: true when the author committed (Cmd/Ctrl+Enter, blur) rather than cancelled. */
-    commit?: boolean;
-    /** blockEditStateChanged: whether an in-flow editor is now open. */
-    open?: boolean;
+    /** contextMenuRequested: how the menu was invoked. */
+    via?: "mouse" | "keyboard";
   };
 }
 
@@ -116,27 +107,6 @@ export interface ContextTarget {
   image: { src: string | null; alt: string | null; source: InlineSourceToken | null } | null;
   link: { href: string | null; text: string; source: InlineSourceToken | null } | null;
   selection: ContextTargetSelection | null;
-}
-
-/**
- * `beginBlockEdit()`'s result (protocol v8). `ok: false` with
- * `reason: "unresolved"` means the range no longer matches a live block — it
- * was deleted or moved since the target was captured — so the caller should
- * drop the request rather than wait.
- */
-export interface BlockEditStarted {
-  ok: boolean;
-  reason?: string;
-}
-
-/**
- * `endBlockEdit()`'s result (protocol v8). `ended: false` means nothing was
- * open (the call is idempotent). `text` is the block's edited markdown source,
- * verbatim — it is NOT a rendered projection, so no serializer is involved.
- */
-export interface BlockEditEnded {
-  ended: boolean;
-  text: string | null;
 }
 
 /** A heading from getOutline() — see ADR 0005. */
@@ -319,44 +289,6 @@ export class PreviewClient {
     page: number;
   } | null> {
     return this.call("getVisibleSource");
-  }
-
-  /** Resolve the annotated element/selection at a viewport point (protocol v4, context menu). */
-  getContextTargetAt(point: { x: number; y: number }): Promise<ContextTarget> {
-    return this.call<ContextTarget>("getContextTargetAt", [point]);
-  }
-
-  /**
-   * Open the in-flow editor on one block (protocol v8, inline-editing plan
-   * §3.1). `text` is that block's markdown SOURCE, read host-side from the
-   * authoritative buffer — the book document never sources its own text.
-   * `caret` seats the caret near a click point, in iframe viewport
-   * coordinates.
-   *
-   * Replaced `getRectsFor()`/`setEditMask()`, which existed only to place and
-   * de-clutter behind a floating edit panel. The editing surface is now the
-   * block's own element, so there is no geometry to fetch and nothing to mask.
-   */
-  beginBlockEdit(spec: {
-    chapter: string;
-    range: SourceRange;
-    text: string;
-    caret?: { x: number; y: number };
-  }): Promise<BlockEditStarted> {
-    return this.call<BlockEditStarted>("beginBlockEdit", [spec]);
-  }
-
-  /**
-   * Close the in-flow editor and read back its text (protocol v8). Idempotent.
-   *
-   * Use this only for an end the HOST initiated (a dialog opening over the
-   * workspace). Ends the author initiates inside the book — Escape,
-   * Cmd/Ctrl+Enter, blur — arrive as the `blockEditFinished` event carrying the
-   * same text, because a keystroke in a cross-origin document is invisible
-   * here.
-   */
-  endBlockEdit(spec: { commit: boolean }): Promise<BlockEditEnded> {
-    return this.call<BlockEditEnded>("endBlockEdit", [spec]);
   }
 
   /** Read-only DOM extraction (figures, links, footnotes, search candidates…). */

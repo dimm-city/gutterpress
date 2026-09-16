@@ -1036,11 +1036,16 @@ async function runNativeCoreRegression() {
   console.log("[desktop-test] PASS native-engine preview-shell double-buffer swap + anchor preservation");
 }
 
-// A hot-reload swap replaces the whole book iframe, so one arriving while an
-// in-flow block editor is open would destroy the caret AND the author's
-// uncommitted typing with it (docs/inline-editing-plan.md §3.2). The shell
-// holds the swap until preview-interface.js reports the edit closed.
-async function runBlockEditHoldRegression() {
+// SFE-P4 deleted in-flow block editing, and with it the shell's
+// `blockEditOpen` gate that used to hold a hot-reload swap open while a
+// caret was live (docs/inline-editing-plan.md §3.2, historical). This is the
+// post-deletion truth that replaces the old "swap deferred while edit open"
+// pin: a swap is never held on a `blockEditStateChanged` message any more —
+// the shell does not special-case that event name at all — because live
+// in-flow edits no longer exist for a swap to destroy. The swap MACHINERY
+// itself (armPendingSwap/beginPendingSwap/swap) is untouched; only the gate
+// is gone, which this proves by showing the message has no effect.
+async function runNoBlockEditGateRegression() {
   const outer = new Window({ url: "http://localhost/" });
   const document = outer.document;
   Object.defineProperty(outer, "parent", { configurable: true, value: outer });
@@ -1089,28 +1094,26 @@ async function runBlockEditHoldRegression() {
     outer.dispatchEvent(event);
   };
 
+  // A stray `blockEditStateChanged{open: true}` — the exact message name and
+  // shape the shell used to gate on — is sent first. It must have NO effect:
+  // the shell no longer recognizes this event name, so the swap proceeds
+  // immediately and synchronously (no viewport activity in this test means
+  // the scroll-idle gate never defers either — "nothing held it" is only a
+  // meaningful assertion because of that).
   fromBook("blockEditStateChanged", { open: true });
   onChange?.({ type: "content-update", instance: "cli", revision: 1, file: "chapter-1.md" });
+  const promoted = document.getElementById("gutterpress-active");
+  assert.notEqual(
+    promoted,
+    active,
+    "the swap promoted a freshly built replacement frame: never held open pending a second",
+  );
   assert.equal(
-    document.querySelectorAll("iframe").length,
+    promoted.__gutterpressRevision,
     1,
-    "an open in-flow edit holds the swap: no replacement frame is built",
+    "the revision applied immediately — no gate exists to hold it on blockEditStateChanged any more",
   );
-  assert.equal(
-    document.getElementById("gutterpress-active").__gutterpressRevision,
-    undefined,
-    "and nothing is applied while the caret is live",
-  );
-
-  // Closing releases the hold and the queued revision goes through — the
-  // author's edit is not silently dropped, it is merely deferred.
-  fromBook("blockEditStateChanged", { open: false });
-  assert.equal(
-    document.getElementById("gutterpress-active").__gutterpressRevision,
-    1,
-    "closing the edit applies the revision that arrived during it",
-  );
-  console.log("[desktop-test] PASS in-flow edit holds hot-reload swaps");
+  console.log("[desktop-test] PASS no blockEditOpen gate remains: swaps are never held on blockEditStateChanged");
 }
 
 main()
@@ -1120,7 +1123,7 @@ main()
   .then(runPartialHorizontalAnchorRegression)
   .then(runTopLevelScrollIdleRegression)
   .then(runReplacementTimeoutRegression)
-  .then(runBlockEditHoldRegression)
+  .then(runNoBlockEditGateRegression)
   .catch((error) => {
     console.error("[desktop-test] FAIL", error);
     process.exit(1);

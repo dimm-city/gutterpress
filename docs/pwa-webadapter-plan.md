@@ -1,9 +1,28 @@
 # PWA / WebAdapter Implementation Plan (Issue #33)
 
-> Status: **partially shipped, plan revised 2026-08-23.** The FSA folder-open
-> path, the service worker, and the manifest are implemented (Phases 1 and 4
-> below are marked accordingly). Three changes since the original spike are
-> folded in throughout:
+> Status: **CLOSED 2026-09-01 (0.11, SFE-P5a, plan D10) — the implementation
+> this plan describes was removed, not completed.** `WebAdapter` and
+> everything it depended on (`web-fs.ts`, `web-store.ts`, `fsa.d.ts`, the
+> service worker, `static/manifest.webmanifest`, their tests) were deleted
+> from `packages/desktop` outright — see the deletion ledger's SFE-P5a entry
+> (`docs/plans/source-first-editor/deletion-ledger.md`) for the measured
+> proof. `packages/desktop` ships the Electron product only; there is no
+> dormant browser host inside it. A future web product is not a revival of
+> this plan — it is a **separate package** consuming
+> `@dimm-city/gutterpress-editor` and `gutterpress/render` (source-first
+> editor plan, decision D10), built fresh against those public surfaces. This
+> document is kept below as **history**: it records why the phases below were
+> attempted and how far each got before removal, not a live implementation
+> plan. Do not resume work from these phases; do not cite this plan as
+> evidence that a web host exists or is in progress.
+>
+> Everything from here down predates the closure above and describes the
+> **pre-removal** state as of 2026-08-23:
+>
+> Status (historical): **partially shipped, plan revised 2026-08-23.** The FSA
+> folder-open path, the service worker, and the manifest were implemented
+> (Phases 1 and 4 below were marked accordingly) before removal. Three changes
+> since the original spike were folded in throughout:
 >
 > 1. **Desktop auto-update is now electron-updater** (full-app updates from the
 >    GitHub Releases feed; see the desktop app documentation "Auto-update"). The

@@ -1,5 +1,7 @@
 /**
- * Shared remote-operation hooks for remote:* server routes.
+ * Shared remote-operation hooks for the remote:* IPC handlers in
+ * `electron/api/remote.ts` (through SFE-P5c3, also the now-deleted
+ * `remote/*​/+server.ts` routes).
  *
  * Storage lives in the single collapsed host object (ARCH review #31,
  * `./host-services.ts`) — `getRemoteHooks()` is a thin derived selector over

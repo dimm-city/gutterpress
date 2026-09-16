@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { DetailsSectionController } from "../../src/lib/routes/details-section-controller.svelte";
-import type { ProjectConfigFields } from "../../src/lib/api";
+import type { ProjectConfigFields } from "../../src/lib/platform/dtos";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
 // these unit tests (same shim as design-section-controller.test.ts).

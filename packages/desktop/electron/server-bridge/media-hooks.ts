@@ -1,5 +1,6 @@
 /**
- * Shared media hooks for media:* server routes.
+ * Shared media hooks for the `media:*` typed IPC channels
+ * (`electron/api/media.ts`).
  *
  * Storage lives in the single collapsed host object (ARCH review #31,
  * `./host-services.ts`) — `getMediaHooks()` is a thin derived selector over it.

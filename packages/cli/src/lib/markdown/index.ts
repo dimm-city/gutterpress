@@ -50,8 +50,8 @@ export async function resolveActiveMarkdownFiles(
  * This is the thin **Node wrapper** around the pure `assembleBookHtml`
  * (`./assemble.ts`): it resolves the CSS list + the file list off disk and
  * supplies a `node:fs/promises`-backed `readText`. The pure assembler owns the
- * markdown→HTML→book.html work, so the browser/PWA WebAdapter can reuse the
- * exact same render path with a File System Access reader (#33).
+ * markdown→HTML→book.html work, so browser consumers of `gutterpress/render`
+ * can reuse the exact same render path with a host-supplied reader.
  */
 export async function renderChapters(
   inputDir: string,

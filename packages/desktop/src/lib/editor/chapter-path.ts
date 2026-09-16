@@ -6,9 +6,10 @@
  * (§2.2 of the plan); `EditorBuffer.filePath` / the open project directory are
  * absolute OS-native paths (backslash-separated on Windows). This is the
  * separator-aware join `EditorPreviewSyncController.followChapterInEditor`
- * already solved inline — extracted here so BOTH the sync controller and the
- * commit engine (`commit-engine.ts`) use exactly one implementation of the
- * join, instead of two copies that could drift.
+ * already solved inline — extracted here so every "go to source" caller
+ * (`+page.svelte`'s `revealInEditor`, formerly also the now-deleted
+ * `commit-engine.ts`) uses exactly one implementation of the join, instead
+ * of copies that could drift.
  *
  * Callers MUST compare the result with `===`, never `endsWith` — an
  * `endsWith` check is wrong on Windows (a `/`-joined chapter id never

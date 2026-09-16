@@ -9,14 +9,14 @@
    * This is the COMPOSITION ROOT for the per-domain section controllers
    * (UX review M14): it instantiates one `*SectionController` per domain and
    * renders the presentational sections under `./config/`, passing each ITS
-   * controller as a single prop. The children carry no state and no `api`
-   * value import — all `api.*` calls live in the controllers under
-   * `$lib/routes/*-section-controller.svelte.ts`.
+   * controller as a single prop. The children carry no state and no host
+   * call of their own - every typed-IPC call is handed to the controllers
+   * under `$lib/routes/*-section-controller.svelte.ts`.
    *
    * Four tabs, backed by FOUR controllers (no `$effect`: data loads on mount +
    * after mutations, mirroring SettingsView/History):
    *   1. Details     — title, authors, output filename, source files
-   *                    (`api.manifest.{read,setFields}`).
+   *                    (`manifestRead`/`manifestSetFields`).
    *   2. Look        — the extensions that carry styles (`LookSection`)
    *                    → design tokens (`DesignSection`) → the raw stylesheet
    *                    list (`StylesSection`) behind an "Advanced" disclosure
@@ -33,7 +33,8 @@
    *
    * #243/#265 — Look and Features are two VIEWS over ONE `extensions:` list
    * and one verb set, owned by the single `ExtensionsSectionController`
-   * instance (`extensions` below; `api.extension.*`). `afterLookChange`
+   * instance (`extensions` below; the `extension*` functions of
+   * `$lib/project-config/project-config-capability`). `afterLookChange`
    * (a styles-carrying extension was added/removed/toggled/moved → reload
    * Styles + Design) and `afterStyleChange` (a stylesheet was toggled →
    * reload Design) are the cross-section refresh hooks; every other refresh
@@ -44,10 +45,32 @@
    * every rule under that ancestor class.
    *
    * PWA-clean (§8): only `import type` from the lib; everything value-bearing
-   * goes through `api.*` HTTP routes inside the controllers.
+   * goes through `$lib/files/files-capability`'s / `$lib/project-config/
+   * project-config-capability`'s / `$lib/doctor/doctor-capability`'s typed
+   * IPC inside the controllers.
    */
   import { onMount } from "svelte";
-  import { api } from "$lib/api";
+  import { getDoctorDiagnostics } from "$lib/doctor/doctor-capability";
+  import { readFile, writeFile, listDir } from "$lib/files/files-capability";
+  import {
+    projectListStyles,
+    styleSetActive,
+    manifestRead,
+    manifestSetFields,
+    extensionList,
+    extensionRecommended,
+    extensionListBuiltIn,
+    extensionValidate,
+    extensionAdd,
+    extensionAddLocal,
+    extensionAddBuiltIn,
+    extensionRemove,
+    extensionSetEnabled,
+    extensionReorder,
+    extensionReadCss,
+    extensionImportFromFile,
+    extensionImportFromUrl,
+  } from "$lib/project-config/project-config-capability";
   import type { ToastController } from "$lib/components/Toast.svelte";
   import { DetailsSectionController } from "$lib/routes/details-section-controller.svelte";
   import { ExtensionsSectionController } from "$lib/routes/extensions-section-controller.svelte";
@@ -97,10 +120,10 @@
   //    so it's constructed first. ─────────────────────────────────────────
   const design = new DesignSectionController({
     projectDir: projectDirAccessor,
-    listStyles: (dir) => api.project.listStyles(dir, repoRoot),
-    listExtensions: (dir) => api.extension.list(dir),
-    readFile: (path) => api.fs.readFile(path),
-    writeFile: (path, content) => api.fs.writeFile(path, content),
+    listStyles: (dir) => projectListStyles(dir, repoRoot),
+    listExtensions: (dir) => extensionList(dir),
+    readFile: (path) => readFile(path),
+    writeFile: (path, content) => writeFile(path, content),
     onError: (msg) => toast?.error?.(msg),
     onEditRawCss: (path) => onEditRawCss?.(path),
   });
@@ -108,8 +131,8 @@
   // ── Styles — refreshes Design after a toggle. ──────────────────────────
   const styles = new StylesSectionController({
     projectDir: projectDirAccessor,
-    listStyles: (dir) => api.project.listStyles(dir, repoRoot),
-    setActive: (dir, paths) => api.style.setActive(dir, paths),
+    listStyles: (dir) => projectListStyles(dir, repoRoot),
+    setActive: (dir, paths) => styleSetActive(dir, paths),
     onToggled: (on) => toast?.success?.(on ? "Stylesheet enabled." : "Stylesheet disabled."),
     onEditRawCss: (path) => onEditRawCss?.(path),
     afterStyleChange: () => design.loadDesign(),
@@ -118,24 +141,22 @@
   // ── Details ─────────────────────────────────────────────────────────────
   const details = new DetailsSectionController({
     projectDir: projectDirAccessor,
-    readManifest: (dir) => api.manifest.read(dir),
-    writeManifest: (dir, updates) => api.manifest.setFields(dir, updates),
+    readManifest: (dir) => manifestRead(dir),
+    writeManifest: (dir, updates) => manifestSetFields(dir, updates),
     // The source-files list universe: top-level markdown files (the same set
     // the render pipeline includes when the manifest lists none).
     listMarkdownFiles: (dir) =>
-      api.fs
-        .listDir(dir)
-        .then((entries) => entries.filter((e) => !e.isDir && /\.md$/i.test(e.name)).map((e) => e.name)),
+      listDir(dir).then((entries) =>
+        entries.filter((e) => !e.isDir && /\.md$/i.test(e.name)).map((e) => e.name),
+      ),
     // Which print tools are absent, for the publish-targets note — the same
-    // /api/doctor data the Help tab shows.
+    // diagnostics data the Help tab shows.
     listMissingPrintTools: () =>
-      api
-        .doctor()
-        .then((d) =>
-          (d.tools ?? [])
-            .filter((t) => !t.found && PRINT_TOOL_IDS.includes(t.id))
-            .map((t) => t.id),
-        ),
+      getDoctorDiagnostics().then((d) =>
+        (d.tools ?? [])
+          .filter((t) => !t.found && PRINT_TOOL_IDS.includes(t.id))
+          .map((t) => t.id),
+      ),
     onSaved: () => toast?.success?.("Project details saved."),
     onError: (msg) => toast?.error?.(msg),
   });
@@ -144,19 +165,19 @@
   //    refreshes Styles + Design. ─────────────────────────────────────────
   const extensions = new ExtensionsSectionController({
     projectDir: projectDirAccessor,
-    list: (dir) => api.extension.list(dir),
-    recommended: () => api.extension.recommended(),
-    listBuiltIn: () => api.extension.listBuiltIn(),
-    validate: (dir) => api.extension.validate(dir),
-    add: (dir, specifier, exportName) => api.extension.add(dir, specifier, exportName),
-    addLocal: (dir) => api.extension.addLocal(dir),
-    addBuiltIn: (dir, id) => api.extension.addBuiltIn(dir, id),
-    remove: (dir, use) => api.extension.remove(dir, use),
-    setEnabled: (dir, use, enabled) => api.extension.setEnabled(dir, use, enabled),
-    reorder: (dir, order) => api.extension.reorder(dir, order),
-    readCss: (dir, use) => api.extension.readCss(dir, use),
-    importFromFile: (dir) => api.extension.importFromFile(dir),
-    importFromUrl: (dir, url) => api.extension.importFromUrl(dir, url),
+    list: (dir) => extensionList(dir),
+    recommended: () => extensionRecommended(),
+    listBuiltIn: () => extensionListBuiltIn(),
+    validate: (dir) => extensionValidate(dir),
+    add: (dir, specifier, exportName) => extensionAdd(dir, specifier, exportName),
+    addLocal: (dir) => extensionAddLocal(dir),
+    addBuiltIn: (dir, id) => extensionAddBuiltIn(dir, id),
+    remove: (dir, use) => extensionRemove(dir, use),
+    setEnabled: (dir, use, enabled) => extensionSetEnabled(dir, use, enabled),
+    reorder: (dir, order) => extensionReorder(dir, order),
+    readCss: (dir, use) => extensionReadCss(dir, use),
+    importFromFile: (dir) => extensionImportFromFile(dir),
+    importFromUrl: (dir, url) => extensionImportFromUrl(dir, url),
     onLookAdded: (label) => {
       toast?.success?.(`${label} added — close Project settings to see it in the preview. Use Design to fine-tune.`);
     },

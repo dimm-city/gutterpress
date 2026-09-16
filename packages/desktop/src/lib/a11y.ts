@@ -15,5 +15,8 @@ export function isEditableTarget(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
   const tag = el?.tagName ?? "";
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
-  return !!(el?.isContentEditable || el?.closest?.(".cm-editor"));
+  // The paged editor's root is an EditContext host: not contenteditable, but
+  // every key typed into it is text. Without this, the preview's bare
+  // navigation keys (End, -, f) took keystrokes out of the author's sentence.
+  return !!(el?.isContentEditable || el?.closest?.(".cm-editor, .md-editor"));
 }

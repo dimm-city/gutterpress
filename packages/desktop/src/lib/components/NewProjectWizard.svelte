@@ -1,8 +1,15 @@
 <script lang="ts">
   import Icon from "$lib/components/Icon.svelte";
   import { isDesktop } from "$lib/platform";
-  import { api } from "$lib/api";
-  import type { TemplateInfo } from "$lib/api";
+  import { getDoctorDiagnostics } from "$lib/doctor/doctor-capability";
+  import { tplListBuiltIn, tplListCustom, tplImportFromFolder } from "$lib/project-config/project-config-capability";
+  import type { TemplateInfo } from "$lib/platform/dtos";
+  import {
+    getDesktopPrefs,
+    setDesktopPrefs,
+    createProject,
+  } from "$lib/app-lifecycle/app-lifecycle-capability";
+  import { openDirectory } from "$lib/files/files-capability";
   import { dialogBehavior, guardedClose } from "$lib/dialog";
   import { useSettings } from "$lib/settings.svelte";
   import {
@@ -139,14 +146,14 @@
     checkedTargets = base.includes(id) ? base.filter((t) => t !== id) : [...base, id];
   }
 
-  // qpdf/Ghostscript availability on this computer (from the same /api/doctor
-  // data the Help tab shows), for the can't-build-compliant-PDFs note below.
-  // Best-effort: a failed probe just shows no note.
+  // qpdf/Ghostscript availability on this computer (from the same
+  // diagnostics data the Help tab shows), for the can't-build-compliant-PDFs
+  // note below. Best-effort: a failed probe just shows no note.
   let missingTools = $state<string[]>([]);
   async function loadToolStatus(): Promise<void> {
     if (!isDesktop()) return;
     try {
-      const doctor = await api.doctor();
+      const doctor = await getDoctorDiagnostics();
       missingTools = (doctor.tools ?? [])
         .filter((t) => !t.found && PRINT_TOOL_IDS.includes(t.id))
         .map((t) => t.id);
@@ -176,10 +183,10 @@
   async function loadTemplates() {
     templatesError = null;
     try {
-      const builtins = await api.tpl.listBuiltIn();
+      const builtins = await tplListBuiltIn();
       let customs: TemplateInfo[] = [];
       try {
-        customs = await api.tpl.listCustom();
+        customs = await tplListCustom();
       } catch {
         customs = [];
       }
@@ -217,7 +224,7 @@
     importing = true;
     error = null;
     try {
-      const imported = await api.tpl.importFromFolder();
+      const imported = await tplImportFromFolder();
       if (imported) {
         await loadTemplates();
         selectTemplate(templates.find((t) => t.id === imported.id) ?? imported);
@@ -307,7 +314,7 @@
    * leaving Create dead behind a mandatory native folder picker. Priority:
    *
    *   1. the parent folder the writer last chose HERE (persisted in desktop
-   *      prefs under `newProjectParentDir` — `api.app.set/getDesktopPrefs`
+   *      prefs under `newProjectParentDir` — `setDesktopPrefs`/`getDesktopPrefs`
    *      already exist and merge shallowly, so this needs no new route);
    *   2. the folder containing the most recently opened project
    *      (`lastProjectDir`, already returned — and existence-checked — by
@@ -317,14 +324,14 @@
    *
    * A true first-run default (an OS Documents folder via the host's
    * `defaultProjectSearchRoots()`, already used by discover-projects) needs
-   * a renderer-reachable route that does not exist yet — out of scope here
-   * (no new `src/routes/api/**` files in this change); (1)/(2) cover every
-   * returning writer, which is the common case.
+   * a renderer-reachable IPC channel that does not exist yet — out of scope
+   * here (no new `electron/api/*.ts` handlers in this change); (1)/(2) cover
+   * every returning writer, which is the common case.
    */
   async function loadDefaultParentDir() {
     if (!isDesktop()) return;
     try {
-      const prefs = await api.app.getDesktopPrefs();
+      const prefs = await getDesktopPrefs();
       // The writer may have already used "Choose folder…" while this was in
       // flight — never clobber a choice they already made.
       if (parentDir) return;
@@ -375,7 +382,7 @@
     }
     error = null;
     try {
-      const pathStr = await api.dialog.openDirectory();
+      const pathStr = await openDirectory();
       if (pathStr) parentDir = pathStr;
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
@@ -395,7 +402,7 @@
     error = null;
     try {
       const tpl = selectedTemplate;
-      const result = await api.app.createProject({
+      const result = await createProject({
         name: name.trim(),
         author: author.trim() || undefined,
         parentDir,
@@ -417,7 +424,7 @@
       });
       // Remember this location as the default next time (M21) — best-effort,
       // never blocks the create flow.
-      if (parentDir) void api.app.setDesktopPrefs({ newProjectParentDir: parentDir }).catch(() => {});
+      if (parentDir) void setDesktopPrefs({ newProjectParentDir: parentDir }).catch(() => {});
       // `close` is guarded on `creating` (M19) — clear it BEFORE calling
       // close() here, or the guard would treat this as still-in-flight and
       // no-op the close. Successful create goes through close() like every

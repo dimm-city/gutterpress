@@ -59,6 +59,14 @@ export interface LayoutOptions {
   root?: HTMLElement;
   /** reserve (and draw) repeated table headers on continuation pages; default true */
   compensateHeaders?: boolean;
+  /**
+   * The book's CSS, when the flow root is NOT the whole document — the
+   * desktop's paged editor paginates one editor document inside the app,
+   * where `document.styleSheets` is the APP's CSS, not the book's. Supplied,
+   * it replaces the `loadStyleSources()` read entirely: the GCPM model
+   * (`@page` geometry, margin boxes, `string-set`) comes from this string.
+   */
+  css?: string;
 }
 
 const pt = (v: number) => v * PX_PER_PT;
@@ -451,8 +459,10 @@ function explodeChildren(container: Element, model: GcpmModel): Run[] {
     }
     // Nothing precedes it: text with real content opens its own default-page
     // run (print puts it on the default page, then the named element breaks
-    // to its own). Whitespace generates no box, so it just rides along.
-    if (held.some((n) => (n.textContent ?? "").trim() !== "")) {
+    // to its own). Whitespace generates no box, so it just rides along — and
+    // so does an element node, which reaches `pending` only when it generates
+    // no boxes either (see the loop below).
+    if (held.some((n) => n.nodeType !== 1 && (n.textContent ?? "").trim() !== "")) {
       pushRun(runs, undefined, held);
       return [];
     }
@@ -473,6 +483,19 @@ function explodeChildren(container: Element, model: GcpmModel): Run[] {
       continue;
     }
     if (!hasDescendantPageAssignment(kid, model)) {
+      // A `display: none` element generates no boxes anywhere in its subtree,
+      // so print cannot start a page at it. It therefore rides along with a
+      // neighbouring run exactly as whitespace does, instead of opening a run
+      // — and a page — of its own. Read after the page checks above, so an
+      // element that DOES carry page context is never treated this way.
+      //
+      // The editor's locked view hides its marker chips like this, and a
+      // hidden chip sitting ahead of a chapter opener manufactured a whole
+      // blank leading page there.
+      if (getComputedStyle(kid).display === "none") {
+        pending.push(node);
+        continue;
+      }
       pushRun(runs, undefined, [...carry(), kid], flush);
       continue;
     }
@@ -543,9 +566,21 @@ const FORCED_BREAK = /^(column|page|left|right|recto|verso|always)$/;
  * Guarded by `spread-leading-break.test.ts`, which fails without this.
  */
 function clearLeadingForcedBreaks(strip: HTMLElement) {
-  for (let el = strip.firstElementChild; el; el = el.firstElementChild) {
+  let el: Element | null = strip.firstElementChild;
+  while (el) {
     const cs = getComputedStyle(el);
+    // An element that generates no box cannot be what a column starts with,
+    // so the leading chain continues at its next SIBLING. The rich editor
+    // mounts a marker's chip ahead of the container it opens and hides it in
+    // the reader's view, which put exactly such an element at the head of the
+    // strip: the run stopped there, the container's own forced break survived,
+    // and the chapter opened on a blank page.
+    if (cs.display === "none") {
+      el = el.nextElementSibling;
+      continue;
+    }
     if (FORCED_BREAK.test(cs.breakBefore)) (el as HTMLElement).style.breakBefore = "auto";
+    el = el.firstElementChild;
   }
 }
 
@@ -581,12 +616,18 @@ export function stabilizeFullHeightPageRoots(model: GcpmModel, strips: StripInfo
     // explodeChildren() may leave shallow author shells around the element
     // that directly owns `page:`. Only the leading chain can collapse a margin
     // through the run's block-start edge.
-    for (
-      let el = strip.el.firstElementChild as HTMLElement | null;
-      el;
-      el = el.firstElementChild as HTMLElement | null
-    ) {
-      if (directPageName(el, model) !== strip.page) continue;
+    let el = strip.el.firstElementChild as HTMLElement | null;
+    while (el) {
+      // Box-less shells are not part of the leading chain — see
+      // `clearLeadingForcedBreaks` for the same rule and why it is needed.
+      if (getComputedStyle(el).display === "none") {
+        el = el.nextElementSibling as HTMLElement | null;
+        continue;
+      }
+      if (directPageName(el, model) !== strip.page) {
+        el = el.firstElementChild as HTMLElement | null;
+        continue;
+      }
       const cs = getComputedStyle(el);
       const height = parseFloat(cs.height);
       const rootRects = el.getClientRects();
@@ -1442,26 +1483,20 @@ export function waitForLayoutReady(doc: Document = document): Promise<void> {
 }
 
 /** Fragment the current document. Decoration is a separate layer (decorate.ts). */
-export async function fragmentDocument(opts: LayoutOptions = {}): Promise<GutterpressViewerApi> {
-  // Kick off alongside the stylesheet fetches below so a cold cache's font/
-  // image load overlaps network time instead of adding to it.
-  const layoutReady = waitForLayoutReady();
-  const css = await loadStyleSources();
-  injectViewerCss();
-  // the preview renders the PRINT stylesheet: re-inject `@media print` bodies
-  // as screen rules, since the browser won't apply them outside print emulation
-  const printOnly = mediaPrintBodies(css).join("\n");
-  if (printOnly && !document.getElementById("gp-media-print")) {
-    const style = document.createElement("style");
-    style.id = "gp-media-print";
-    style.textContent = printOnly;
-    document.head.appendChild(style);
-  }
-  const model = extract(css);
-  injectBreakMapping(model);
+/**
+ * The SYNCHRONOUS half of {@link fragmentDocument}: everything from "I have a
+ * GCPM model and a flow root" to a measured {@link GutterpressViewerApi}.
+ *
+ * Split out for the desktop's paged editor, which paginates a flow root it
+ * owns (the live editor's document element) on every editor render: it has
+ * the model already (a book's CSS changes far less often than its text) and
+ * cannot await anything, because the editor measures caret geometry
+ * immediately after the synchronous render it calls this from.
+ * {@link fragmentDocument} is this function plus the async style/image reads.
+ */
+export function paginate(model: GcpmModel, opts: LayoutOptions = {}): GutterpressViewerApi {
   const authoring: string[] = [];
   const strips = buildStrips(model, opts, authoring);
-  await layoutReady;
   makeOverflowFragmentable(strips);
   stabilizeFullHeightPageRoots(model, strips);
   synthesizeColumnBreaks(model);
@@ -1516,4 +1551,25 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
     },
   };
   return api;
+}
+
+export async function fragmentDocument(opts: LayoutOptions = {}): Promise<GutterpressViewerApi> {
+  // Kick off alongside the stylesheet fetches below so a cold cache's font/
+  // image load overlaps network time instead of adding to it.
+  const layoutReady = waitForLayoutReady();
+  const css = opts.css ?? (await loadStyleSources());
+  injectViewerCss();
+  // the preview renders the PRINT stylesheet: re-inject `@media print` bodies
+  // as screen rules, since the browser won't apply them outside print emulation
+  const printOnly = mediaPrintBodies(css).join("\n");
+  if (printOnly && !document.getElementById("gp-media-print")) {
+    const style = document.createElement("style");
+    style.id = "gp-media-print";
+    style.textContent = printOnly;
+    document.head.appendChild(style);
+  }
+  const model = extract(css);
+  injectBreakMapping(model);
+  await layoutReady;
+  return paginate(model, opts);
 }

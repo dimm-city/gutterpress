@@ -7,7 +7,7 @@ import {
   collapseAutomaticRuns,
   autoRunSummary,
 } from "../../src/lib/routes/version-timeline";
-import type { SnapshotEntry } from "../../src/lib/api";
+import type { SnapshotEntry } from "../../src/lib/platform/contract";
 
 function snap(over: Partial<SnapshotEntry> & { timestamp: number }): SnapshotEntry {
   return { id: `id-${over.timestamp}`, message: "note", ...over };

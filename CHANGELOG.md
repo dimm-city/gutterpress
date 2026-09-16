@@ -5,6 +5,125 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.0-alpha.0] - 2026-09-02
+
+An alpha: the paged editor is new, and editor↔page agreement is still being
+worked on real books. The preview remains the print authority — where the two
+disagree, the preview is right.
+
+### Added
+
+- **A paginated, source-first editor in the desktop app, and an Experimental
+  VS Code extension.** Both are built on the same shared, framework-free
+  editor package (`@dimm-city/gutterpress-editor`), so a chapter edits the
+  same way wherever you open it. On desktop a Markdown chapter now edits ON
+  THE PAGE: the editor lays your document out with your book's own `@page`
+  geometry and your own stylesheets, paginated by the same engine that
+  paginates the preview, so you write inside the pages you are going to
+  print. Your layout markers (`@chapter`, `@page`, `@spread`, `@section`,
+  page and column breaks) show up as chips rather than raw `@` syntax, and
+  project-plugin regions render the way your plugin actually presents them,
+  with an "Edit source" fallback for any region the editor cannot map back
+  to your Markdown safely rather than guessing. An edit only ever changes
+  the exact text you touched — opening and closing a document, or switching
+  modes, changes zero bytes. A document over 2 MiB opens in the raw-Markdown
+  surface automatically rather than loading the paged one slowly or
+  unreliably.
+- **One mode control: Edit, Read, Focus.** Edit is the paged editor;
+  Read is the same editor locked, which paginates exactly like the printed
+  page; Focus is the raw-Markdown surface (CodeMirror) with the preview out
+  of the way, and is where a non-Markdown file always opens. There is no
+  second Rich/Source toggle beside the editor toolbar any more.
+- **The Gutterpress VS Code extension** (`@dimm-city/gutterpress-vscode`,
+  published separately, Experimental). It registers an optional
+  "Gutterpress Markdown Editor" — reachable via *Reopen With…*, never the
+  default for `.md` files — built on the same shared editor as the desktop
+  app, with its own **Gutterpress: Build**, **Gutterpress: Preview**, and
+  **Gutterpress: Open Source** commands. It works on a plain Markdown file
+  with no Gutterpress project nearby (ordinary rich editing only); open it
+  inside a Gutterpress project and layout markers and plugin regions come
+  alive the same way they do on desktop. In an untrusted VS Code workspace,
+  ordinary Markdown editing still works but project plugins do not execute
+  and unsafe raw HTML is not rendered. See `docs/vscode-extension.md`.
+- **`gutterpress/plugins`** — a new public subpath export exposing the same
+  plugin loader the CLI's own build and preview already use
+  (`loadPlugins`/`loadPluginsWithCss`), for hosts (the VS Code extension,
+  and now the desktop app itself) that need to load a project's plugins
+  without going through the CLI. `gutterpress` and `gutterpress/api` are
+  unchanged; `gutterpress/render` gained the projection surface the shared
+  editor consumes (`createEditorProjection`, `PROJECTION_SCHEMA_VERSION`,
+  `inlineSourceMetaOf`, `sourceTokenOccurrenceAt` and their types).
+
+### Changed
+
+- **Reconciled with 0.10.9's extension rail.** A book's `manifest.yaml`
+  lists its plugins and looks under `extensions:` now (0.10.9 replaced
+  `plugins:`, themes and `engineStyles`); the paged editor's host-side
+  projection and the VS Code extension load a project through that same
+  list. The desktop's Look and Features tabs, and extension-provided
+  snippets, run over typed IPC (`extension:*`, `snip:readExtension`) like
+  every other host capability - the `plugin:*`/`theme:*` channels they
+  replace are gone.
+- **A plugin's declared container (`markers` export, 0.10.7) edits on the
+  page.** The `@callout` line is a chip, its label shows with it, and the
+  element it declares wraps the blocks inside it in the editor exactly as
+  on the page - closing at `@end-callout` or the enclosing scope's boundary
+  - instead of the "unrecognized layout token" notice it used to raise.
+- **Breaking: the preview no longer edits your document.** Right-click →
+  "Edit this block", the click-to-edit overlay, and the image/link
+  properties dialogs reachable from the preview's context menu are gone —
+  edit in the paged or raw-Markdown editor instead, both of which now cover
+  everything those preview actions used to do (including changing an
+  *existing* image's or link's properties, which neither editor could do
+  before this release). Everything else about the preview is unchanged:
+  click a block to jump to it in the editor, click-to-source, text
+  selection and copy, opening a link or image, page navigation, and the
+  Problems panel. The preview remains the print/layout authority — what you
+  see there is still what `gutterpress build` prints.
+- **The desktop app is a single process again.** Earlier builds ran a small
+  local HTTP server inside Electron (with its own session token) alongside
+  the app's IPC bridge, to serve the app's own interface and handle some
+  requests. That server, its token, and the request-forwarding proxy in
+  front of it are gone: the packaged app now serves its interface directly
+  off disk and every host operation — files, dialogs, project data, build,
+  preview, plugins, sync, publishing, and the rest — goes through one typed,
+  validated channel. Nothing you do in the app changes; this removes a
+  local network listener from the packaged app entirely.
+
+### Removed
+
+- **The floating "future PWA" groundwork inside the desktop package is
+  gone.** It was never a shipped feature — an in-browser folder-open path,
+  in-browser preview, and browser-storage persistence, dormant since it was
+  first scaffolded — and has been deleted rather than finished. A future
+  web version of Gutterpress, if built, will be its own package built
+  against the same shared editor and rendering libraries this release
+  introduces, not a mode hiding inside the desktop app.
+
+### Fixed
+
+- **A marker's chip no longer stands between the block above it and the
+  scope it opens.** The page has no element for a marker line, so a book's
+  `h2 + .section` rule matched there and not in the paged editor, where the
+  `@section` chip sat between the heading and the section; the section lost
+  its top margin and chapter-01 of the field guide paginated a page short.
+  The chip now mounts after the group it opened (where the closer's chip
+  already stood), and its margin tag still hangs beside that group.
+- **A `@page`, `@section`, `@spread` or `@chapter` opened inside a plugin's
+  own wrapper (a `@specialty-intro`, say) now ends where that wrapper ends
+  in the paged editor.** It used to run on to the next marker of its kind,
+  a range crossing the wrapper's that the editor could not nest and dropped
+  whole - so the page break went with it and the chapter paginated a page
+  short of the book.
+- **A book rule that gives a tight list item's paragraph a box of its own
+  now wins in the paged editor.** The editor renders a tight item's paragraph
+  inline (the page has no paragraph element there), and that rule outranked
+  every book rule on the paragraph; the design guide's ability rows, which
+  lay the item out as a chip beside its text, kept their inline shape in the
+  editor and two field guide chapters paginated a page off the book. The
+  emulation now sits at zero specificity, above the user-agent default and
+  below any book rule.
+
 ## [0.10.9] - 2026-09-12
 
 ### Changed

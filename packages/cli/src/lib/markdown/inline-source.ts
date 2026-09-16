@@ -175,7 +175,21 @@ function stripReservedRawHtmlAttrs(
   return { html: out, protectedTag };
 }
 
-function occurrenceAt(source: string, token: string, target: number): number {
+/**
+ * How many earlier literal occurrences of `token` appear in `source` before
+ * `target` — the exact-text disambiguator {@link registerInlineSourceMetadata}
+ * stamps onto every real image/link token it recognizes (SFE-P3e: also
+ * consumed directly by the desktop's caret-driven commands,
+ * `caret-token-commands.ts`, to ask "is THIS candidate the SAME occurrence
+ * the real parser recognized" rather than merely "does some real occurrence
+ * of this destination exist somewhere in the block" — computing the
+ * candidate's own occurrence with this SAME function is what makes the two
+ * sides comparable; a second, differently-counting reimplementation would
+ * silently drift). Exported (not merely used internally) for exactly that
+ * reuse — see this function's callers outside this file before changing its
+ * counting rule.
+ */
+export function sourceTokenOccurrenceAt(source: string, token: string, target: number): number {
   let occurrence = 0;
   let from = 0;
   while (from < target) {
@@ -185,6 +199,23 @@ function occurrenceAt(source: string, token: string, target: number): number {
     from = found + token.length;
   }
   return occurrence;
+}
+
+/** The `{token, occurrence}` pair {@link registerInlineSourceMetadata} stamps
+ *  onto a real image/link token's `meta.gpInlineSource` — exported as a
+ *  named shape so consumers outside this file (`caret-token-commands.ts`)
+ *  never need to know the internal `gpInlineSource` meta key by name. */
+export interface InlineSourceMeta {
+  readonly token: string;
+  readonly occurrence: number;
+}
+
+/** Reads the {@link registerInlineSourceMetadata} stamp off an already-parsed
+ *  token, if present. `undefined` for any token type that rule does not
+ *  stamp, or a real image/link token whose source span crossed a line break
+ *  (that rule deliberately skips stamping those — see its own comment). */
+export function inlineSourceMetaOf(token: { readonly meta?: unknown }): InlineSourceMeta | undefined {
+  return (token.meta as { gpInlineSource?: InlineSourceMeta } | undefined)?.gpInlineSource;
 }
 
 /**
@@ -238,7 +269,7 @@ export function registerInlineSourceMetadata(md: MarkdownIt): void {
       token.meta ??= {};
       token.meta.gpInlineSource = {
         token: sourceToken,
-        occurrence: occurrenceAt(state.src, sourceToken, sourceStart),
+        occurrence: sourceTokenOccurrenceAt(state.src, sourceToken, sourceStart),
       };
       return matched;
     });
@@ -249,7 +280,7 @@ export function registerInlineSourceMetadata(md: MarkdownIt): void {
       if (token.attrs) {
         token.attrs = token.attrs.filter(([name]) => !RESERVED_ATTRS.has(name.toLowerCase()));
       }
-      const source = token.meta?.gpInlineSource as { token: string; occurrence: number } | undefined;
+      const source = inlineSourceMetaOf(token);
       if (source) {
         token.attrSet(SOURCE_TOKEN_ATTR, source.token);
         token.attrSet(SOURCE_OCCURRENCE_ATTR, String(source.occurrence));

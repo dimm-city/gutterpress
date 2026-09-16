@@ -1,5 +1,6 @@
 /**
- * Shared desktop/doctor hooks for server routes that need Electron host APIs.
+ * Shared desktop/doctor hooks for the typed IPC handlers that need Electron
+ * host APIs (`electron/api/app.ts`, `electron/api/doctor.ts`, and others).
  *
  * Storage lives in the single collapsed host object (ARCH review #31,
  * `./host-services.ts`) — `getDesktopHooks()`/`getDoctorHooks()` are thin

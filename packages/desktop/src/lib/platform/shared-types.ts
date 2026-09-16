@@ -108,7 +108,7 @@ export interface ProjectCapabilities {
  *
  *   viewMode       = mode === "viewer" && !isNarrow ? "two-column" : "single"
  *   previewVisible = mode !== "focus"
- *   editorVisible  = mode !== "viewer"
+ *   editorEditable = mode !== "viewer"   (the pane is mounted in every mode)
  *
  * `focus` is editor-only WITH the toolbar and standard chrome kept — it hides
  * the viewer, nothing else. It is transient: `AppSettings.preview.mode` cannot

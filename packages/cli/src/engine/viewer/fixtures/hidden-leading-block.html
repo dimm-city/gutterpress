@@ -1,0 +1,39 @@
+<!--
+  Regression fixture: an element that generates NO BOXES must not open a run.
+
+  A `display: none` element cannot start a page in print — it has no boxes for
+  the fragmenter to break before. Sitting ahead of a chapter opener
+  (`h1 { page: chapter }`) it used to open a default-page run of its own, so
+  the viewer drew a wholly blank leading page the PDF does not have.
+
+  Found in the desktop editor, whose locked view hides its marker chips this
+  way: a `@page` chip sitting ahead of the chapter's own h1 drew the blank
+  page. The rule itself is general — no book may gain a page from a box that
+  does not exist.
+
+  `#toggle` is the control: flipped to `display: block` it is real content
+  again and legitimately opens that leading page.
+-->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Hidden leading block</title>
+<style>
+@page { size: 5in 5in; margin: 0.5in; }
+@page chapter { margin-top: 2in; }
+body { font: 12pt/1.4 Georgia, serif; margin: 0; }
+h1 { font-size: 18pt; page: chapter; break-before: page; margin: 0 0 12pt; }
+p { margin: 0 0 10pt; }
+#toggle { display: none; }
+</style>
+</head>
+<body>
+<div class="chapter" id="c1">
+  <div id="toggle">hidden marker chip</div>
+  <h1 id="opener">One</h1>
+  <p id="p1">Body one. Body one. Body one.</p>
+</div>
+<script src="gutterpress-viewer.js"></script>
+</body>
+</html>

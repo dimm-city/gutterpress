@@ -1,5 +1,6 @@
 /**
- * Shared folder-watch hooks for watch-folder/unwatch-folder server routes.
+ * Shared folder-watch hooks for the `fs:watchFolder`/`fs:unwatchFolder`
+ * typed IPC channels (`electron/api/fs-watch.ts`).
  *
  * Storage lives in the single collapsed host object (ARCH review #31,
  * `./host-services.ts`) — `getWatchHooks()` is a thin derived selector over

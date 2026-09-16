@@ -6,9 +6,9 @@
  * component itself stays focused on wiring, per the Phase 5 decomposition.
  */
 
-import type { DoctorDiagnostics } from "$lib/api";
+import type { DoctorDiagnostics } from "$lib/platform/dtos";
 
-/** One diagnosed tool row, as returned by `api.doctor()` (ARCH review #40). */
+/** One diagnosed tool row, as returned by `getDoctorDiagnostics()` (ARCH review #40). */
 export type DiagnosticsTool = DoctorDiagnostics["tools"][number];
 
 export type UrlPreviewBlockedEvent = {

@@ -73,8 +73,9 @@ interface AutoSyncState {
 
 /**
  * Payload emitted on the `sync:status` channel. Must match the `SyncStatus`
- * shape in contract.ts EXACTLY — ElectronAdapter.onSyncStatus forwards the raw
- * push payload to the renderer typed as SyncStatus with no transform.
+ * shape in contract.ts EXACTLY — the preload bridge forwards the raw push
+ * payload to the renderer (subscribed via `$lib/remote/remote-capability.ts`)
+ * typed as SyncStatus with no transform.
  */
 export interface SyncStatusPayload {
   state:

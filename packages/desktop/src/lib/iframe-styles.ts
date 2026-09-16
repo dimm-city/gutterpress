@@ -1,8 +1,10 @@
 /**
  * CSS that must be injected INTO the cross-origin preview iframe.
  *
- * Because the SvelteKit toolbar (port A) and the Gutterpress preview server
- * (port B) are on different origins, stylesheet rules defined in the toolbar
+ * Because the desktop toolbar (the packaged app's `app://` origin, or a
+ * SvelteKit dev-server port in development) and the Gutterpress preview
+ * server (its own `http://localhost:PORT`) are on different origins,
+ * stylesheet rules defined in the toolbar
  * cannot reach the iframe's DOM. We push them in via the gutterpress:inject-styles
  * postMessage protocol added to preview-bridge.js.
  *

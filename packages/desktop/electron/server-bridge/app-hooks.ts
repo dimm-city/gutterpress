@@ -1,10 +1,11 @@
 /**
- * Shared app-lifecycle hooks for app:* server routes.
+ * Shared app-lifecycle hooks for the `app:*` typed IPC channels
+ * (`electron/api/app.ts`).
  *
  * Storage lives in the single collapsed host object (ARCH review #31,
  * `./host-services.ts`) — `getAppHooks()` is a thin derived selector over it.
  * main.ts builds the `AppHooks` object and passes it as the `app` field to
- * ONE `registerHostServices()` call; server routes call `getAppHooks()` to
+ * ONE `registerHostServices()` call; IPC handlers call `getAppHooks()` to
  * retrieve it.
  */
 

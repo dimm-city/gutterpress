@@ -1,13 +1,17 @@
 import { sveltekit } from "@sveltejs/kit/vite";
 import { defineConfig } from "vite";
 
-// adapter-node architecture (see svelte.config.js): the SvelteKit build emits
-// a Node server bundle (build/server/, build/handler.js) alongside the client
-// assets (build/client/). The renderer reaches the host mainly via
-// fetch("/api/...") against src/routes/api/**/+server.ts routes; a narrow
-// ipcMain/preload bridge (window.electron.*) is reserved for push-event
-// streams and calls that must drive a live BrowserWindow — see CLAUDE.md §8.
-// (electron.vite.config.ts handles the main/preload build.)
+// adapter-static architecture (see svelte.config.js): the SvelteKit build
+// emits a plain static file tree to build/ — no Node server, no
+// build/handler.js, no src/routes/api/** (deleted in SFE-P5c/P5d). The
+// renderer reaches the host through typed IPC (window.electron.*, preload.ts,
+// reached via the feature-owned capability modules over the one shared
+// src/lib/platform/bridge.ts accessor — SFE-P5b deleted the old
+// getPlatform() service locator) for push-event streams and live-BrowserWindow
+// calls, and through the same IPC surface for request/reply operations that
+// used to be +server.ts routes — see CLAUDE.md §8. In production,
+// electron/app-protocol.ts serves build/ directly from disk under the app://
+// scheme. (electron.vite.config.ts handles the main/preload build.)
 export default defineConfig({
   plugins: [sveltekit()],
   server: {

@@ -1,0 +1,1540 @@
+# SFE-P3d-sweep — scenario audit
+
+> Per-lane audit of the twenty P3d interaction scenarios against existing
+> evidence, and the gaps each lane closed. Each lane owns and writes only
+> its own `## Lane <X>` section below.
+
+## Lane A
+
+Scope: scenarios 1 (type ordinary text), 2 (format selection), 3 (insert
+and modify image), 4 (create/edit table), 5 (slash menu / actual insertion
+affordance), 6 (move block by keyboard and pointer), 7 (activate/deactivate
+plugin region), 8 (edit near generated content), 9 (paste rich/plain text),
+10 (IME composition), 12 (external file change while active), 13 (stale
+source edit rejection), 16 (undo/redo within current mode), 17 (oversized
+file source fallback), 18 (untrusted VS Code workspace fallback), 19
+(dispose/remount without leaked listeners) — at the editor-package and
+VS Code extension level, in the real-Chromium harness.
+
+Every citation below was verified by reading the cited test's body (not
+just its name/title) and, for every gap closed, by empirically driving the
+real harness before writing the final assertions (see each new test's own
+header/inline comments for the specific offsets/behavior measured live).
+
+### Audit table
+
+| # | Scenario | Status | Evidence citations | Gap closed by |
+|---|---|---|---|---|
+| 1 | type ordinary text | already-proven | `packages/editor/tests/vscode-adapter/browser.cases.btest.ts` — `describe("case 1 — exact source edits")`: end-of-document typing submits the exact minimal `SourceEdit`; multi-block edit locality (typing in block 2 never touches block 1's bytes). Foundational layer: `packages/editor/tests/web/mount.btest.ts` — `describe("typing updates host through the adapter path")`. | — |
+| 2 | format selection | already-proven | `packages/editor/tests/standard/wrap-toggles.test.ts` — `toggle-bold`/`toggle-italic`/`toggle-strike`/`toggle-inline-code`, each across caret-only, partial selection, full-line, multi-line, toggle-OFF (canonical + alt spelling), caret-between-pair, idempotence, and `commandState` active/applicable — a pure `(snapshot, selection) -> edit` function exhaustively unit-tested. `packages/editor` ships zero toolbar/menu UI (D4: framework-free); a "click bold, see it toggle" browser test would exercise desktop/extension chrome this package does not own. | — |
+| 3 | insert and modify image | already-proven at this package's scope | `packages/editor/tests/standard/link-image.test.ts` — `insert-link`/`insert-image`: selection-wraps-as-text/alt, explicit-text/alt override, caret-only placeholder. `src/core/commands.ts`'s own doc comment records that desktop's richer `applyImage` (width/position/size/shape) is *intentionally* left unmapped to this package's minimal `{src, alt?}` shape — a documented capability boundary, not an omission. | — (Gutterpress-specific "modify" richness — size/position/shape — is desktop-owned: `packages/desktop/tests/editor/parity-image-link-image-properties.test.ts`, `image-classes.test.ts`; citable only, outside this lane's write scope, not independently re-verified this run.) |
+| 4 | create/edit table | **partial → closed** | Before: `packages/editor/tests/standard/table.test.ts` proved only `insert-table`'s skeleton-generation command (pure function, no mount). No test drove the real, pinned fork against an *existing* table and edited a cell, even though the fork's own `dist/index.d.ts` shows table cells are a real, hit-tested (`_resolveTableCellOffset`), independently editable AST/view kind. | NEW `packages/editor/tests/vscode-adapter/table-editing.btest.ts` (4 tests): live-rendering liveness (real `<table>`, 4 rows, all 6 cell values present); a keystroke inside an *existing* data cell is a byte-exact interior edit, rest of the table untouched; same for a header cell. Offsets computed via `TABLE_SOURCE.indexOf(...)` and independently verified live before being written (Home reliably lands at the row's own source start; `ArrowRight` then advances linearly through the raw source, including the hidden pipe/glue characters). |
+| 5 | slash menu / actual insertion affordance | audited — no such affordance exists at this level | Workspace-wide search for "slash" (`packages/editor`, `packages/vscode-extension`, `packages/desktop`) returns zero hits describing a slash-command menu — every hit is an unrelated path-separator use. `packages/vscode-extension/package.json`'s `contributes.commands` lists only `gutterpress.build`/`preview`/`openSource` — zero insertion commands. `packages/editor` ships no toolbar/menu chrome at all (D4). The command vocabulary any such affordance would dispatch is exhaustively proven at the pure-function level (see scenarios 2–4's citations above). | — (No slash menu was ever built, at any layer. The product's actual, sole insertion affordance is the desktop's `EditorToolbar.svelte`/`toolbar-actions.ts` — citable only, Lane C's/out of this lane's write scope. Inventing an editor- or extension-level insertion UI this run would be a new public feature not named in the run specification.) |
+| 6 | move block by keyboard and pointer | keyboard: desktop-only (citable); **pointer: pinned/closed** | Keyboard: `moveBlock`/`applyBlockMove`/`splitIntoBlocks` live entirely in `packages/desktop/src/lib/editor/rich-commands.ts`, wired to `Alt+Shift+ArrowUp/Down` directly in `packages/desktop/src/routes/+page.svelte` — confirmed **absent** from `packages/editor/src/core/commands.ts`'s `EditorCommand` union (12 members, no `move-block`). Desktop evidence (citable, not independently re-verified): `packages/desktop/tests/editor/rich-commands.test.ts`. Pointer: a workspace-wide search found **zero** production code implementing pointer/drag block reordering anywhere. Verified directly against the pinned fork's own bundle (`packages/vscode-markdown-editor/dist/index.js`): its only "drag"-related identifiers are `isSelecting`/a pointer-driven **text selection** in progress — never block reordering. | NEW test appended to `browser.cases.btest.ts` — `describe("pointer drag across block boundaries...")`: a real `mouse.down`/`move`/`up` drag spanning 3 blocks submits **zero** edits and leaves the document byte-identical; the editor remains normally typeable immediately afterward. |
+| 7 | activate/deactivate plugin region | already-proven, thoroughly | `packages/editor/tests/gutterpress/plugin-region.btest.ts` — `describe("two-state: activation, deactivation restores the chip with zero drift")` (activating shows real source with zero host mutation; deactivating restores the exact original chip, zero drift); `describe("edit locality...")` (byte-exact interior edit inside an active region); `describe("refused plugin-region...")` (no-source-range-evidence fail-closed path stays plainly editable with a named diagnostic). | — |
+| 8 | edit near generated content | **partial → closed** | Before: `gutterpress.btest.ts`'s `describe("generated chapter-opener preview")` proved the generated view is read-only/unfocusable, in isolation — no test edited an ordinary paragraph immediately touching a generated-view-anchoring marker. | NEW `describe` block appended to `packages/editor/tests/gutterpress/gutterpress.btest.ts` — "editing paragraphs immediately adjacent to a generated-view-anchoring marker" (2 tests, one fixture with an ordinary paragraph on *both* sides of the `@page` marker that anchors a generated chapter-opener): editing the paragraph immediately BEFORE, and separately the one immediately AFTER, is each a byte-exact local edit; the marker line, the generated preview's exact rendered HTML, the overall chip count, and the page chip's own CSS class are all unaffected in both directions. |
+| 9 | paste rich/plain text | **partial/aspirational → pinned, closed** | Before: `input-a11y.btest.ts`'s `describe("case 8 — clipboard")` proved PLAIN-text paste (execCommand no-op, `keyboard.insertText`, real `Ctrl+C`/`Ctrl+V`) — no case exercised HTML-flavored clipboard content. Source evidence (that file's own header, independently re-verified by me against `packages/vscode-markdown-editor/dist/index.js`): the paste handler is exactly `const c = r.clipboardData?.getData("text/plain"); c && e.insertText(c);` — grepping the whole bundle for `"text/html"` returns **zero** matches. | NEW `describe` block appended to `input-a11y.btest.ts` — "case 8 — paste: HTML-flavored clipboard content (pinned behavior)" (2 tests, via a script-constructed `ClipboardEvent`/`DataTransfer`, dispatched at the real `.md-editor` element the package's own listener is bound to): (a) both `text/html` and `text/plain` present → only the plain flavor is ever inserted, byte-exact, with an explicit negative check ruling out the HTML tag or any markdown-ified rendering of it; (b) ONLY `text/html` present → pasting is a complete no-op, zero edits, byte-identical document (`dispatchEvent()===false` proves the handler genuinely ran, not that the event went unhandled). |
+| 10 | IME composition | already-proven, with an honest documented limitation | `input-a11y.btest.ts` — `describe("case 8 — IME / composition")`: confirms the surface is NOT `contenteditable` and wires ONLY `EditContext.textupdate` (verified against the real bundle); a synthetic `CompositionEvent`+`beforeinput` sequence submits no partial `SourceEdit`. | — (Already-documented, correctly-left-open limitation, not a gap I closed or need to: Playwright/CDP expose no public real-IME API, so this proves synthetic composition is inert but cannot rule out a real OS IME's interim `EditContext.textupdate` events, which the package's own handler has no composition-state guard against.) |
+| 12 | external file change while active | already-proven, at both layers | Editor: `browser.cases.btest.ts` — `describe("case 2 — external authoritative replacement")` + `describe("rejection path — external replacement lands during the rejection window (repair)")` (both sync and microtask timing: converges on the host's post-external text, next keystroke is accepted, not itself rejected). Foundational: `web/mount.btest.ts` — `describe("external replacement re-renders the document")`. VS Code: `packages/vscode-extension/tests/webview/edit-version-reconciliation.btest.ts` — `describe("(c) an external change racing a queued edit discards the queue and converges byte-identically")`; `packages/vscode-extension/tests/host/document-gateway.test.ts` — `describe("DocumentGateway — external change broadcast (workspace.onDidChangeTextDocument)")`. | — |
+| 13 | stale source edit rejection | already-proven, at both layers | Editor: `browser.cases.btest.ts` — `describe("rejection path — stale edit reverts the model and fires EDITOR_STALE_EDIT")`. VS Code: `document-gateway.test.ts` — `describe("DocumentGateway — concurrent change (stale base) and invalid-range dry-run rejection")` + `describe("DocumentGateway — base stamp bookkeeping (reconciliation addendum's fix)")`. | — |
+| 16 | undo/redo within current mode | already-proven / pinned — beyond that, out of this harness's reach | Editor: `browser.cases.btest.ts` — `describe("case 3 — host-delegated undo/redo (D7)")`: the package's OWN `Ctrl+Z` is inert — does not revert source, does not become a competing edit, fires no diagnostic — exactly D7's "hosts own undo, not the package." VS Code: `document-gateway.test.ts`'s whole `DocumentGateway` suite proves every accepted edit is applied via the REAL `vscode.workspace.applyEdit(this.#api.createWorkspaceEdit())` — the sole mechanism that makes VS Code's native undo/redo work once wired correctly (D7). | — (Proving VS Code's OWN native undo command actually reverts text needs a live VS Code instance; every harness in this tree uses a `vscode-mock.ts`/`fidelity-vscode.ts` FAKE api surface — a test asserting the mock's own fake undo-stack "works" would be circular, not evidence about real VS Code. Correctly out of reach here, not a gap this lane can close. Desktop rich-mode undo is Lane C's/out of this lane's write scope; not independently re-verified.) |
+| 17 | oversized file source fallback | already-proven, thoroughly | Decision layer: `packages/vscode-extension/tests/provider.test.ts` — "D13: a document over the 2 MiB ceiling reports mode 'source-fallback' with EDITOR_FILE_TOO_LARGE" (plus a boundary case exactly AT the limit). Rendering layer: `packages/vscode-extension/tests/webview/fallback.btest.ts` — `describe("D13 oversized file: presentation-input mode 'source-fallback' renders honest fallback text, never a mount")`: exact diagnostic message/category/safe-action shown, zero editor mount, zero edits ever possible. | — (The 2 MiB threshold is intentionally a HOST-level policy duplicated, not shared, between `vscode-extension`'s `provider.ts` and desktop's `editor-projection.ts`, per D4's import-direction rule — nothing to close at the shared-package level; `packages/editor/tests/core/diagnostics.test.ts` covers the shared `EDITOR_FILE_TOO_LARGE` category contract itself.) |
+| 18 | untrusted VS Code workspace fallback | **partial → closed** | Before: `packages/vscode-extension/tests/webview/trust-explanation.btest.ts` thoroughly proved the trust GATE (banner appears with correct message/category; clears via both its independent mechanisms) — no test ever clicked into the mounted editor and typed. | NEW `describe` block appended to `trust-explanation.btest.ts` — "D9 untrusted workspace: standard rich editing keeps working while the trust notice is showing": mounts untrusted with the notice genuinely showing (liveness-checked first), types a real keystroke, and proves via the fake host's own recorded `SourceEdit` that it reaches the host byte-exact, with the notice still visible throughout — neither direction silently overrides the other. |
+| 19 | dispose/remount without leaked listeners | already-proven, extremely thoroughly, at three layers | Foundational: `web/mount.btest.ts` — `describe("dispose")`, `describe("dispose then remount on the same host")`, plus two SFE-P2a repair-round `describe`s (re-entrant disposal during `applyEdit`; cross-mount isolation, separate-host AND shared-host variants). vscode-adapter: `input-a11y.btest.ts` — `describe("case 8 — disposal")` (zero further `applyEdit` calls / empty container after dispose; clean remount, exactly one `applyEdit` per keypress, no duplicate). VS Code webview: `packages/vscode-extension/tests/webview/disposal.btest.ts` (transport-listener count 1→0; dispose is idempotent; dispose-then-remount on the SAME fake host produces exactly one MORE recorded edit, never two). | — |
+
+### Behavior pinned as-is (for the product owner — not fixed this run; no production changes are permitted in this lane)
+
+- **Paste is plain-text-only.** There is no HTML-to-Markdown paste conversion
+  anywhere in this product today. When the clipboard carries both flavors,
+  the plain-text one silently wins; when it carries *only* an HTML flavor
+  (no plain-text sibling), pasting is a complete, silent no-op. Verified
+  against the pinned fork's own bundle and pinned by
+  `input-a11y.btest.ts`'s new "paste: HTML-flavored clipboard content" suite.
+- **Pointer/drag-based block movement does not exist at any layer of this
+  product** — not in `packages/editor`, not in the VS Code extension, not
+  on desktop. Only *keyboard*-driven block movement exists, and only on
+  desktop (`Alt+Shift+ArrowUp/Down`, wired outside the shared
+  `EditorCommand` vocabulary entirely). Pinned by `browser.cases.btest.ts`'s
+  new pointer-drag suite: a drag across blocks submits zero edits, leaves
+  source byte-identical, and never reorders anything — the editor remains
+  normally typeable immediately afterward. (SFE-P3d-sweep+P3f repair round
+  1 correction: an earlier version of this row, and the test's own title,
+  additionally claimed the drag "extends a text selection." The test body
+  never read the live selection, so that half was unverified and has been
+  removed from both; whether this coarse block-center-to-block-center drag
+  resolves to a caret or a nonempty cross-block selection is a
+  pixel-geometry detail the test does not pin down.)
+- **A real OS IME's interim composition events remain formally unverified.**
+  `input-a11y.btest.ts`'s IME suite proves synthetic `CompositionEvent`
+  sequences are inert, but Playwright/CDP expose no public real-IME API, so
+  this cannot rule out a real IME's `EditContext.textupdate` stream (which
+  the package's own handler has no composition-state guard against). This
+  was already an open, correctly-recorded risk before this run; nothing new
+  closes it.
+- **VS Code's native undo/redo is architecturally correct but not
+  end-to-end provable in this tree.** Every accepted edit flows through the
+  real `vscode.workspace.applyEdit`/`WorkspaceEdit` API (the mechanism
+  native undo depends on), proven by `document-gateway.test.ts`. Whether
+  VS Code's own `Ctrl+Z` actually reverts a real editing session cannot be
+  tested here — no harness in this repository runs inside a live VS Code
+  instance; they all use a fidelity-mocked `vscode` API surface.
+- **Gutterpress-specific "modify image" richness (size/position/shape) is
+  entirely desktop-owned.** `packages/editor`'s shared `insert-image`
+  command is deliberately narrower (`{src, alt?}` only); desktop's own
+  richer `applyImage` is intentionally left unmapped to it
+  (`src/core/commands.ts`'s own doc comment records this as a genuine,
+  accepted capability gap between the shared vocabulary and desktop's
+  toolbar, not an oversight).
+- **No slash menu, and no insertion-affordance UI at all, exists in
+  `packages/editor` or `packages/vscode-extension`.** The sole insertion
+  affordance anywhere in the shipped product is the desktop's
+  `EditorToolbar.svelte`. `packages/vscode-extension` registers zero
+  insertion commands in its `package.json` `contributes.commands`.
+
+### What this lane could not independently verify, and why
+
+- Desktop-level citations above (rich-commands.test.ts, parity-image-*
+  tests, document-session undo tests) were located and read for context but
+  **not** re-executed by this lane — `packages/desktop/**` is explicitly
+  outside this lane's write/verification scope for this run (Lane C's
+  citable-but-not-owned territory per the run specification).
+- VS Code's real native undo/redo (see scenario 16) cannot be exercised by
+  any harness this repository currently has; a live VS Code instance would
+  be required, which is out of scope for this run's tooling.
+
+## Lane C
+
+Scope: scenario 11 (screen-reader landmarks and labels) at the desktop
+level, scenarios 14 (source/rich mode switch) and 15 (file switch) audit +
+gap closure at the desktop-unit level, and the packaged-Electron `.pw.mjs`
+driver probe. Write ownership this run: `packages/desktop/tests/**` and this
+section only — no production source anywhere, per the run's lane discipline.
+
+Guiding principle applied throughout (SFE-P3e's ruling, and this run's own
+"P3e ruling" binding decision): no new machinery where an existing harness
+serves. Every closure below uses a pattern this test tree already has —
+`bun:test` source-text assertions matching `app-toolbar.test.ts`'s own
+established convention for the a11y audit, and the existing `.pw.mjs`
+driver files, unmodified, for the packaged probe. Nothing new was added to
+`tools/`, no test framework was introduced, and the packaged probe was not
+fought with new xvfb wiring (below).
+
+### Scenarios 14 + 15 — audit and gap closure
+
+**Citations read in full before writing anything (not just titles):**
+
+- `packages/desktop/tests/editor/rich-mode.test.ts` (218 lines) —
+  `RichModeController` unit tests. `describe("mode selection")`: defaults to
+  `"source"`; `switchTo` changes mode and bumps `epoch`; switching to the
+  already-active surface is a no-op (no epoch bump). `describe("switching
+  never alters source")`: three `switchTo` calls in a row (rich→source→rich)
+  and a separate `onFileSwitch()` call both leave a shared
+  `MemoryDocumentHost`'s snapshot byte-and-version-identical, proving mode
+  switching alone can never touch source (D2/D7). `describe("file
+  switches")`: `onFileSwitch()` bumps the epoch and preserves the current
+  mode by default; can also reset the mode explicitly. `describe("exactly
+  one surface mounted at a time")`: `registerMount`/`registerUnmount`
+  enforce D7's "only one editing surface mounted" invariant — a mount
+  attempted for a DIFFERENT surface while one is already registered throws
+  AND leaves the existing registration intact (not clobbered by the throw);
+  same-surface double-mount is a harmless no-op; a full
+  mount→unmount→mount-other-surface cycle succeeds; a mount attempted
+  WITHOUT unmounting the other surface first is rejected, not silently
+  tolerated. `trackSurfaceMount` (the Svelte action `+page.svelte` actually
+  uses) registers on attach and unregisters on destroy, proven for two
+  sequential attach/destroy cycles on different surfaces.
+- `packages/desktop/tests/editor/rich-mode-commit-integration.test.ts` (144
+  lines) — proves the SFE-P3ab review round-1 fix end-to-end with a REAL
+  `DesktopDocumentHost` (not a fake): while rich mode is the live surface, a
+  preview-originated `CommitEngine` write reaches `richDocHost` (not just
+  the buffer), and a SUBSEQUENT rich-mode command (`applyRichCommand` —
+  toggle-bold) builds on top of the committed text instead of silently
+  reverting it. This is the mode-switch-adjacent "the two surfaces must
+  never silently diverge" half of scenario 14.
+- `packages/desktop/tests/editor/real-book-byte-identity.test.ts` (306
+  lines, 25 real chapter files across 5 corpora) — for every real chapter:
+  constructs a `DesktopDocumentHost` at the exact file text, mounts via
+  `RichModeController.registerMount("rich")` (liveness-checked), builds the
+  real D6 projection via `createEditorProjection` (the exact function
+  `+page.svelte`'s own `buildRichProjection` calls), unmounts via
+  `registerUnmount`, and asserts byte-and-buffer-identical source with ZERO
+  host change notifications across the whole cycle. This is the "session
+  lifecycle" scenario-14 evidence my brief named — confirmed by reading the
+  file, not assumed from its name. Its own header is explicit that this is
+  NOT a real browser mount (`EditContext` is undefined under happy-dom for
+  the real fork — verified live in this sandbox before that file was
+  written) — a real-Chromium mount of actual book chapters remains a named,
+  owner-attributed gap for a follow-up, not something this lane re-opens.
+- `packages/desktop/tests/editor/editor-file-session.test.ts` (148 lines) —
+  `EditorFileSession` (the lower buffer-swap layer `+page.svelte`'s
+  `editorFiles` is) race-hardening: latest selection wins when an older
+  file read resolves last (a blocked read released only after a later
+  select has already won); a delayed automatic default cannot overtake a
+  newer explicit selection; a failed outgoing flush blocks the atomic
+  handoff (stays on the dirty file, edit preserved); concurrent recovery
+  restores serialize and each flushes its own outgoing file in turn;
+  `reset()` cancels a queued recovery restore before its work starts, and
+  cancels queued restores' orphan autosave timers too. This governs the
+  BUFFER swap. It has no async build step of its own to race, so — see the
+  gap below — it does not and cannot exercise the SEPARATE, decoupled async
+  rich-projection-rebuild race that sits one layer above it.
+- **The "P3c-era `selectEditorFile` await" my brief named — read and
+  corrected.** `selectEditorFile` (the `+page.svelte` function, distinct
+  from `EditorFileSession.select`) does predate P3e, but the specific
+  behavior my brief was pointing at — awaiting `richDocHostPending` in
+  addition to `editorFiles.select(path)` — is NOT P3c-era; it is the SFE-P3e
+  review round-2 CONFIRMED-finding fix (verified directly against the
+  function's own doc comment and the `richDocHostEpoch`/`richDocHostPending`
+  state it reads, `+page.svelte` lines ~1521-1620 and ~2286-2293). Recording
+  the correction plainly rather than silently reusing the imprecise framing.
+  Its regression coverage:
+  - `packages/desktop/tests/editor/commit-engine.test.ts`, describe
+    `"SFE-P3e round 2: cross-chapter commit vs. an in-flight rich-host
+    publish"` (read in full) — a harness toggling ONE boolean
+    (`awaitPending`) proves BOTH the pre-fix defect (without awaiting the
+    pending publish, a cross-chapter commit silently falls through to
+    `buf.edit`, and the rich host later publishes STALE pre-commit text —
+    reproduced on purpose) AND the fix (awaiting it routes the edit through
+    the rich host, which carries POST-commit text). This is real,
+    already-existing regression coverage for the `richDocHostPending`-await
+    half of the mechanism, exercised through a real `CommitEngine`.
+  - `packages/desktop/tests/editor/file-tree-open-file-rename-delete.test.ts`,
+    test `"+page delegates file selection and default loading to the
+    behavior-tested session"` — a structural wiring pin (`+page.svelte`
+    can't be compiled/mounted by `bun:test`; see that file's own "Wiring
+    check" header) confirming `selectEditorFile` still awaits
+    `editorFiles.select(path)` rather than returning it bare.
+
+**The genuine gap, confirmed by search before closing it:** the
+`richDocHostPending`-await coverage above exercises exactly ONE in-flight
+rich-projection build at a time, always through `CommitEngine`'s specific
+"await selectEditorFile, then immediately check `editorHasFile` with no
+further await" seam. None of it exercises `richDocHostEpoch`'s own job — the
+guard that discards a rebuild's late-arriving async publish when a SECOND
+file switch has already superseded it before the first one's
+`buildRichProjection` IPC round trip resolves (`rebuildRichDocHost`'s own
+doc comment names this exact scenario). `grep -rn "richDocHostEpoch"
+packages/desktop/tests` returned zero matches before this lane wrote
+anything. This is precisely the "switch DURING an in-flight projection
+build landing in the right final state" case my brief asked me to check —
+confirmed genuinely open, not already pinned.
+
+**Closed by:** NEW
+`packages/desktop/tests/editor/rich-doc-host-rebuild-race.test.ts` (6
+tests, run standalone: 6 pass / 0 fail / 21 `expect()` calls). Since
+`richDocHostEpoch`/`richDocHostPending`/`rebuildRichDocHost` are private
+`+page.svelte` closure state — uncompileable by this test tree, the exact
+limitation `file-tree-open-file-rename-delete.test.ts` and
+`commit-engine.test.ts` both already document for this identical file —
+this follows `commit-engine.test.ts`'s own established precedent of
+modeling the exact seam with a toggleable fake rather than inventing a new
+harness. `RichDocHostHarness` is a line-verified model of the real epoch
+guard (`if (epoch !== richDocHostEpoch) return;`, quoted and matched against
+the real source in the file's final test — see below), with async
+resolution order controlled by deferred promises (not timers) for
+determinism. It proves: an ordinary single switch still publishes normally
+(control case); a second switch (C) superseding a still-pending first (B)
+discards B's late publish REGARDLESS of resolution order (both "C resolves
+first, B resolves late" and "B resolves first but is still stale, C
+resolves after" are asserted separately); three overlapping switches still
+land on only the last one; and (AP-21/G-12 — "a gate must prove it can
+fail") a `guardEnabled: false` variant, modeling `rebuildRichDocHost` with
+its guard line deleted, reproduces the exact defect class this mechanism
+exists to prevent (B's late publish WINS, landing the switch on the wrong
+final state) — proving the fixed-shape assertions are not vacuously true.
+A final test ties the model to the REAL current source: it reads
+`+page.svelte` and asserts `richDocHostEpoch` is declared, bumped at least
+twice (rebuild AND dispose), and that the exact guard line appears inside
+`rebuildRichDocHost` itself, textually before `richDocHost = nextHost;` —
+sanity-checked live during authoring by temporarily corrupting the expected
+string (a scratch copy, restored immediately after) and confirming the test
+fails, then restoring and confirming it passes again clean
+(`git diff --stat` on the test file was empty afterward).
+
+**Honest residual limitation of the new test, stated plainly:** unlike
+`commit-engine.test.ts`'s harness (which wraps a REAL `CommitEngine`
+instance with only ONE dependency faked), `RichDocHostHarness` calls no
+production code at all — nothing in `packages/desktop/src` can be imported
+here. Its algorithmic assertions are proven internally consistent and its
+final test ties it to the real source TEXTUALLY (so deleting the guard line
+from the real file fails that one test), but a change that keeps the guard
+line present while breaking its actual runtime semantics elsewhere in
+`rebuildRichDocHost` would not be caught by this file. Closing that
+completely would need extracting the rebuild logic into a testable unit —
+a production change outside this lane's write ownership.
+
+### Scenario 11 — accessibility audit
+
+**The fork's own a11y surface (`packages/editor/tests/vscode-adapter/
+input-a11y/input-a11y.btest.ts`, 782 lines, read in full) — precisely what
+it asserts:**
+
+- **Focus: yes, directly.** Tab from a sentinel element lands
+  `document.activeElement` on `.md-editor`; the `.md-focused` class (the
+  DOM-visible side effect of the package's own `EditorView.focused`) is
+  present at the same moment; arrow keys move a real `.md-cursor` element
+  measurably. Tab-trap-for-indentation is the PROVEN default behavior (Tab
+  stays inside `.md-editor` twice in a row), with `Control+M` proven as a
+  real, working escape hatch (focus lands on the AFTER-sentinel once
+  toggled).
+- **Roles: explicitly NOT asserted as a specific value.** The file's own
+  words: "whatever role Chromium actually computes for this
+  focusable-but-role-less element is evidence... The one hard requirement
+  proven here is that the node is REACHABLE in the accessibility tree at
+  all." It calls `Locator.ariaSnapshot()` and logs the result either way —
+  a recorded observation, not a pass/fail on a specific role.
+- **ARIA attributes (`aria-description`, `aria-keyshortcuts`): recorded as
+  verified STATIC SOURCE evidence, not DOM-queried at runtime.** The file's
+  header quotes the exact `dist/index.js` lines that set them, independently
+  verified against the installed fork before the file was written — but no
+  test body itself calls `getAttribute("aria-description")`. The behavior
+  those attributes DOCUMENT (the trap + the escape hatch) is what gets the
+  runtime DOM assertion, not the attributes' own presence.
+- Also proven: clipboard (plain-text round-trip, HTML-flavored paste is
+  pinned to plain-fallback-or-no-op), IME (synthetic composition events
+  submit no partial edit — with an honestly-recorded real-IME limitation),
+  and dispose/remount listener hygiene.
+
+**What this proves and does not prove for the DESKTOP shell:** the fork's
+mounted root is a focusable, keyboard-operable, but role-less div. It
+carries no landmark or name of its own — the surrounding desktop chrome is
+entirely responsible for giving the editing surface (and every other major
+region) a reachable name and role. That is this lane's actual scope, and
+input-a11y.btest.ts's own finding is exactly why `RichEditor.svelte`'s own
+mount div (audited below) is correctly bare — its name has to come from
+somewhere else, and it does.
+
+**Desktop side — audit table.** No component-render harness exists in this
+test tree: verified independently (no `@testing-library/svelte`, no
+vitest+svelte-plugin config, no `bunfig.toml` anywhere in the workspace) and
+confirmed authoritatively by `packages/desktop/tests/platform/
+app-toolbar.test.ts`'s own header, quoted directly: *"Svelte component
+templates lack a mount/DOM test harness in this repo's bun:test setup (no
+JSDOM/Svelte-compile harness is wired up) — these tests follow the
+established project convention (NewProjectWizard.test.ts,
+ProjectsListBody.test.ts, CrashRecoveryDialog.test.ts, …) of asserting the
+source contains the required wiring, rather than exercising a live
+component."* Every row below follows that same, already-established
+convention — asserting at the level that IS established, per this run's own
+escape hatch. `AppToolbar.svelte` itself already has thorough a11y coverage
+in `app-toolbar.test.ts` (the small-screen WAI-ARIA tabs pattern; `Edit`/
+`Read`/`Focus` mode `aria-label`s; the semantic `<header>` root) — cited,
+not duplicated below.
+
+| Surface | Assertion | Evidence |
+|---|---|---|
+| `EditorToolbar.svelte` (the formatting toolbar, distinct from `AppToolbar`) | Root is `role="toolbar" aria-label="Markdown formatting toolbar"`; every per-item button carries `aria-label={item.ariaLabel}` (≥6 occurrences) plus named standalone controls (heading level, insert layout block, more-options, mode switch); the image/table dialogs label every field and surface errors as `role="alert"` | NEW `app-shell-a11y-landmarks.test.ts`, `describe("EditorToolbar — ...")`, 3 tests, verified against `src/lib/components/EditorToolbar.svelte` |
+| `LeftPanel.svelte` | `<aside aria-label="Left panel">` root; resize handle is a real WAI-ARIA `role="separator"` with `aria-label`/`aria-valuemin`/`aria-valuemax`/`aria-valuenow`/`tabindex` (not a bare drag div); tab strip is `role="tablist"` + per-tab `role="tab"`/`aria-label`, each `tabpanel` `aria-labelledby` its own tab id; TOC tree exposes expand/collapse state in the label text itself and `aria-current` for the active entry | NEW `app-shell-a11y-landmarks.test.ts`, `describe("LeftPanel — ...")`, 4 tests |
+| `StatusBar.svelte` | Root is `role="status" aria-label="Application status"`; icon-only sync/save/settings/help buttons all carry `aria-label` | NEW `app-shell-a11y-landmarks.test.ts`, `describe("StatusBar — ...")`, 2 tests |
+| `ProblemsPanel.svelte` | A polite `aria-live` region (`class="sr-only"`) announces lint completion for screen-reader users who can't see the badge; outer panel has `aria-label="Problems"` with `aria-expanded`/`aria-controls` on its toggle; the expanded body is a SEPARATE named `role="region" aria-label="Problems list"` | NEW `app-shell-a11y-landmarks.test.ts`, `describe("ProblemsPanel — ...")`, 3 tests |
+| `FileTree.svelte` | Root is `<nav aria-label="Project files">`; per-row rename/delete controls are labeled with the specific file name, not a generic icon label; destructive confirmation is a real `role="alert"`; the open file is exposed via `aria-current`, not color alone | NEW `app-shell-a11y-landmarks.test.ts`, `describe("FileTree — ...")`, 3 tests |
+| `PreviewFrame.svelte` | The `<iframe>` itself carries `title="Gutterpress preview"` — an accessible name independent of, and present on every layout unlike, the wrapping section's conditional `aria-labelledby` (next row) | NEW `app-shell-a11y-landmarks.test.ts`, `describe("PreviewFrame — ...")`, 1 test |
+| `+page.svelte` editor/preview panes + resize separator | Editor pane's `aria-label` (CSS vs. Markdown editor) is UNCONDITIONAL — true on every layout; preview pane's `aria-labelledby`/`role` are set ONLY when `isNarrow` (recorded honestly, not assumed equivalent to the editor pane); the editor/preview split has a labeled, keyboard-operable `role="separator"` | NEW `app-shell-a11y-landmarks.test.ts`, `describe("+page.svelte — ...")`, 3 tests |
+| `RichEditor.svelte` mount container | Its own root `<div>` carries NO `role`/`aria-*` of its own — verified by exact-string equality on the whole element, not a substring check — confirming this is deliberate (component header: "owns DOM lifecycle for its own subtree only") and consistent with input-a11y.btest.ts's own finding that the fork's mounted root is likewise role-less; the "Markdown editor" name comes ENTIRELY from the ancestor `<section>` in `+page.svelte` | NEW `app-shell-a11y-landmarks.test.ts`, `describe("RichEditor — ...")`, 1 test |
+| Assertion-mechanism liveness (AP-21) | The exact `toContain` check the EditorToolbar row above uses is proven to both pass against the real (good) markup shape and FAIL against a deliberately-broken TEST-LOCAL fixture copy (aria-label stripped) — never production | NEW `app-shell-a11y-landmarks.test.ts`, `describe("assertion liveness (AP-21) — ...")`, 2 tests |
+
+All 22 tests in the new file pass standalone (`bun test
+tests/platform/app-shell-a11y-landmarks.test.ts`: 22 pass / 0 fail / 66
+`expect()` calls). One authoring-time bug in my own test (an `<iframe>`
+mention inside this exact component's doc-comment header made
+`indexOf("<iframe")` match the wrong occurrence) was caught by the very
+first run and fixed before this report — recorded because it is itself a
+small, concrete demonstration that these assertions are reading real file
+content, not trivially passing.
+
+**Real gaps recorded for the product owner (not fixable in this lane —
+production is off-limits):**
+
+- **The rich-editing surface has no ARIA role of its own anywhere in the
+  stack** — neither the fork's own mounted root (input-a11y.btest.ts's
+  finding) nor `RichEditor.svelte`'s wrapper div. It is nameable (via the
+  ancestor `<section>`'s `aria-label`) but not a landmark a screen-reader
+  user can jump to directly by role; they reach it via focus order or the
+  section's implicit role. Whether that implicit role is `region` in every
+  real browser (see next point) is unconfirmed here.
+- **Two real HTML-AAM/browser facts are cited, not independently verified,**
+  because no harness in this tree can drive a real accessibility tree
+  against the desktop shell (input-a11y.btest.ts's `ariaSnapshot()` is
+  `packages/editor`-only, browser-only, and drives the fork's own mount —
+  it is not reachable from `packages/desktop/tests`): (1) whether
+  `<section aria-label="...">` with no explicit `role` attribute actually
+  computes an implicit `region` role in the target Chromium version — the
+  standard HTML-AAM mapping says yes, but this is asserted from the spec,
+  not measured; (2) the preview pane's accessible name/role is
+  `isNarrow`-conditional at the `<section>` level (only the `<iframe>`'s own
+  `title` is unconditional) — both facts are true of the shipped source as
+  read, but neither is confirmed against a live accessibility tree.
+- **No skip-link and no `<main>` landmark exist anywhere in the shell** —
+  verified by a repo-wide grep for `<main\b`, `<header\b` (outside dialogs),
+  `role="banner"`, `role="contentinfo"`, `role="application"`, and
+  `skip-link`/"Skip to" text across every `.svelte` file: only dialog
+  `<header>`s and `AppToolbar.svelte`'s own top-level `<header
+  class="toolbar">` exist; nothing implements a "skip to editor"/"skip to
+  content" affordance for keyboard/screen-reader users navigating past the
+  toolbar and panel chrome. Recorded as a genuine, unaddressed gap — not
+  something this lane can add given the no-production-changes boundary.
+
+### Packaged-Electron driver probe
+
+**Environment, recorded first:** `DISPLAY` is unset; no X server is
+running; `/usr/bin/Xvfb`/`/usr/bin/xvfb-run` ARE installed but were not
+touched or configured by this lane (per the run spec: "do NOT fight the
+sandbox with xvfb machinery this run"). Electron (`electron@42.1.0`, a
+`node_modules/.bin/electron` symlink resolving into the bun-cache package)
+is present. `packages/desktop/out/main/main.js` (the `electron-vite`
+output) already existed from prior work this session (mtime predates this
+lane's work) — this lane did not need to build it.
+
+**Command 1 — the smallest named pick.**
+
+```
+cd packages/desktop && node tests/integration/app-lifecycle-log.pw.mjs out/main/main.js
+```
+
+Result: **launch failure**, exit code 1. Exact tail of the output:
+
+```
+[app-lifecycle-log] launching /home/user/gutterpress/packages/desktop/out/main/main.js
+electron.launch: Process failed to launch!
+Call log:
+  - <launching> .../electron --inspect=0 --remote-debugging-port=0 .../out/main/main.js --user-data-dir=/tmp/gutterpress-applog-QwU03f --no-sandbox
+  - <launched> pid=4274
+  - [pid=4274][err] ERROR:dbus/bus.cc:405] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
+  - [pid=4274][out] [startup +0ms] main.js evaluated
+  - [pid=4274][err] ERROR:ui/ozone/platform/x11/ozone_platform_x11.cc:257] Missing X server or $DISPLAY
+  - [pid=4274][err] ERROR:ui/aura/env.cc:246] The platform failed to initialize.  Exiting.
+  - [pid=4274] <process did exit: exitCode=null, signal=SIGSEGV>
+    at async .../tests/integration/app-lifecycle-log.pw.mjs:55:21
+Node.js v22.22.2
+```
+
+Root cause: Chromium's X11/Ozone backend requires a real display; this
+script calls Playwright's `_electron.launch()` directly with no headless or
+Xvfb fallback of its own, so the Electron process segfaults during platform
+init and Playwright's `launch()` throws — uncaught (the throw happens at
+the top-level `await`, before the script's own `try`/`catch` even starts).
+
+**Command 2 — `electron-driver.pw.mjs` (also tried, for completeness):**
+
+```
+cd packages/desktop && node tests/integration/electron-driver.pw.mjs out/main/main.js tests/integration/fixtures/multichapter
+```
+
+Result: **launch failure**, exit code 1 — but a DIFFERENT, unrelated root
+cause, recorded precisely rather than conflated with the display problem
+above:
+
+```
+electron.launch: Failed to launch: Error: spawn /home/user/gutterpress/packages/desktop/out/main/main.js EACCES
+    at async .../tests/integration/electron-driver.pw.mjs:47:21
+```
+
+This script's docstring says its first argument is `<main-js-path>`, but
+unlike `app-lifecycle-log.pw.mjs` (which branches on `target.endsWith(".js")`
+and resolves `require("electron")` as the real `executablePath` in that
+case), `electron-driver.pw.mjs` passes whatever path it's given straight
+through as `executablePath` with no such branch — so handing it the `.js`
+output tries to `spawn()` a text file as a native executable. A genuine,
+pre-existing inconsistency between two sibling drivers in this directory,
+recorded as a deviation — not something this lane's write ownership
+(`packages/desktop/tests/**`) covers fixing, and not touched.
+
+**Commands 3 and 4 — the two "editor-relevant" scenarios my brief named —
+both actually launch and pass:**
+
+```
+cd packages/desktop && node tests/integration/editor-toggle-loads-module.pw.mjs out/main/main.js tests/integration/fixtures/multichapter
+cd packages/desktop && node tests/integration/editor-opens-with-content.pw.mjs out/main/main.js tests/integration/fixtures/multichapter
+```
+
+Both PASS (exit code 0). This is not this lane fighting the sandbox: both
+scripts already contain their OWN pre-existing fallback —
+`const useXvfb = process.platform === "linux" && !process.env.DISPLAY;` —
+and spawn through the system `xvfb-run` themselves when no display is
+present, exactly the condition this sandbox is in. Running them exactly as
+documented (no wrapper added by this lane) produced:
+
+```
+[editor-toggle] launching: xvfb-run -a -s -screen 0 1600x1000x24 .../electron .../out/main/main.js --remote-debugging-port=9907 --no-sandbox --user-data-dir=/tmp/.../userData
+[editor-toggle] SPA ready
+[editor-toggle] project opened — editor module NOT yet loaded (no file clicked)
+[editor-toggle] Edit mode segment clicked
+[editor-toggle] PASS — Save enabled, Ctrl+S wrote source, preview updated in 163ms, and the app remained responsive (pre-shell 77ms, shell 86ms)
+```
+
+```
+[editor-opens] launching: xvfb-run -a -s -screen 0 1600x1000x24 .../electron .../out/main/main.js --remote-debugging-port=9744 --no-sandbox --user-data-dir=/tmp/.../userData
+[editor-opens] SPA ready
+[editor-opens] project opened
+[editor-opens] CONTROL ok: Edit mode active, editor pane rendered
+[editor-opens] ok   — DEFECT 1: opening a book in Edit mode must mount CodeMirror — pane stayed on "Loading editor…"
+[editor-opens] ok   — DEFECT 1: the editor must open showing the book's first chapter
+[editor-opens] ok   — DEFECT 2: a single click on content from 02-beta.md must load that file into the editor
+[editor-opens] ok   — DEFECT 3: clicking the TOC row "Gamma Chapter 2" in Edit mode must navigate the EDITOR, not just the viewer
+[editor-opens] ok   — DEFECT 3: the same TOC click must also move the VIEWER — rectTop 362.4 -> 39.4
+[editor-opens] ok   — DEFECT 4: "Collapse Alpha Chapter" must work while that branch holds the active heading — aria-expanded/children checked
+[editor-opens] ok   — re-expanding "Alpha Chapter" after a manual collapse must still work
+[editor-opens] PASS — all checks green
+```
+
+Worth noting for the a11y audit above: `editor-opens-with-content.pw.mjs`'s
+own DEFECT 4 already asserts real `aria-expanded` behavior on a TOC
+collapse/expand row, at the fully-packaged level — corroborating evidence
+for the LeftPanel TOC row this lane's new a11y test also pins structurally,
+now confirmed live in a real (if Xvfb-virtual) Chromium window, not just
+read from source.
+
+**Net honest record:** the packaged driver is NOT uniformly broken in this
+sandbox. Two of its four scripts launch and pass cleanly today because they
+already carry their own `xvfb-run` fallback; two fail for two DIFFERENT,
+unrelated reasons (no display handling at all; an argument-contract bug).
+Per the run spec's instruction, nothing was added — the two passing runs
+already covered "run the editor-relevant ones," and the two failures are
+recorded here as the packaged-scenario deviation rather than patched.
+
+### What this lane could not independently verify, and why
+
+- Whether the a11y attributes this lane pinned by source-text actually
+  compute into the ARIA roles/names a real screen reader announces cannot
+  be confirmed by any harness in `packages/desktop/tests` — no real or
+  virtual accessibility-tree inspection tool is wired into this package
+  (unlike `packages/editor`'s Chromium-backed `input-a11y.btest.ts`, which
+  is out of this lane's write scope and mounts a different, narrower
+  surface — the fork itself, not the desktop shell around it).
+- The `rich-doc-host-rebuild-race.test.ts` model's fidelity to
+  `rebuildRichDocHost` is verified textually (its final test), not by
+  calling the real function, which cannot be extracted or imported from
+  `+page.svelte` without a production change outside this lane's ownership.
+- Whether `electron-driver.pw.mjs`'s `EACCES` argument-contract bug is a
+  pre-existing defect worth fixing, or an intentional (if confusingly
+  documented) "packaged executable only" contract, was not resolved — the
+  script was read and run as-is, not modified or judged further.
+
+## Lane B
+
+Scope: scenario 20 (25 KiB / 100 KiB / 250 KiB / 1 MiB performance runs) and
+the D13 gate. New files only, under `packages/editor/tests/perf/**`:
+`support/corpus.ts` (deterministic seeded markdown generator),
+`support/entry.ts` (browser-side driver — mounts the REAL `mountEditor`,
+`src/web/mount.ts`, "the fork surface"), `support/drive.ts` (Node-side
+mount/type/measure loop), `support/stats.ts` (percentile helper),
+`support/constants.ts` (shared knobs), `perf-sweep.btest.ts` (the D13
+evidence), `perf-control.btest.ts` (the G-12/AP-20 control). Wired as
+`test:perf` in `packages/editor/package.json`, its own script, not folded
+into `test`/`test:browser`.
+
+### Corpus
+
+`tests/corpus/fixtures.ts` is a small fixed dictionary, not a size-targeted
+generator, so there was nothing there to reuse directly for "produce a
+realistic N-KiB document" — what IS reused is its seeded-PRNG primitive,
+`mulberry32` (`tests/corpus/support/command-harness.ts`), imported rather
+than re-implemented. `generateMarkdownCorpus(targetBytes)` builds prose
+paragraphs, headings, lists, fenced code, and a sparse sprinkling of
+bare-line Gutterpress markers (`@page splash`, `@page-break`,
+`@section .gp-columns-2` — realistic CONTENT SHAPE only; this run mounts
+through the plain `mountEditor`, not the projection-aware
+`mountGutterpressEditor`, so the markers are never expected to be
+projected) until the target size is reached, deterministically (fixed
+seed) and byte-exactly (pure-ASCII vocabulary, so `string.length` is the
+UTF-8 byte count). Actual generated sizes, confirmed at measurement time:
+25,600 / 102,400 / 256,000 / 1,048,576 bytes — exact.
+
+### Measurement method, and why
+
+Both measurements (mount-to-interactive; per-keystroke edit-to-paint) use
+the same primitive: observe the real DOM mutation an action produced
+(`MutationObserver`, `childList`/`characterData` only — never
+`attributes`, so cursor-blink/selection-highlight class churn can never
+masquerade as "the edit landed"), then one `requestAnimationFrame`.
+`requestAnimationFrame`'s callback runs immediately before the browser
+computes style/layout/paint for the next frame — the earliest point a
+script can honestly say "this frame, containing the mutation just
+observed, is about to be presented," and the same convention the run
+spec's own wording names ("requestAnimationFrame after the mutation is
+observable").
+
+Rejected alternative: `PerformanceObserver` (`type: "event"`, the Event
+Timing API behind real-world INP measurement). Its entries are reported
+only once a per-event `duration` exceeds a threshold (spec default 104ms;
+the lowest a caller may request is a small nonzero floor) — precisely the
+fast, in-budget keystrokes this evidence most needs a p50 for would be
+silently absent from the sample, corrupting the percentile rather than
+merely coarsening it. Its `"paint"` entries are page-lifecycle events
+(first paint / first contentful paint), fired once per page load, not
+once per interaction, so they cannot answer "was frame N painted" at all.
+The chosen method has no duration floor and observes the exact DOM the
+edit is expected to change.
+
+Per-keystroke `t0` is `KeyboardEvent.timeStamp` (same clock as
+`performance.now()` in Chromium), read from a capture-phase `keydown`
+listener — not `performance.now()` read inside the listener body. This is
+what makes the sabotage control (below) valid regardless of listener
+ordering: `timeStamp` is stamped by the browser at real dispatch time,
+before any listener (including the injected busy-wait) runs.
+
+Keystrokes are dispatched with Playwright's `page.keyboard` — real,
+trusted, CDP-level `keydown`/`keypress`/`input`/`keyup` events, never
+`element.dispatchEvent(...)` from in-page script.
+
+**Harness bug found and fixed during this run, for the record:** the
+first working version of `mountAndMeasureInteractive` armed the
+mount-quiescence `MutationObserver` AFTER calling `mountEditor(...)`.
+`mountEditor` is documented synchronous, so the initial render's
+mutations had already happened before the observer started watching, and
+`waitForQuiescence` waited forever (live repro: the 25 KiB case hung the
+full 120s test timeout, then cascaded into "Target page ... has been
+closed" failures for every later case sharing the session). Fixed by
+constructing the `waitForQuiescence` promise (whose executor calls
+`observer.observe(...)` synchronously) BEFORE calling `mountEditor`, not
+after. Separately, `waitForQuiescence`'s safety net was changed from a
+frame-COUNT cap to a wall-clock cap: `mountEditor` running synchronously
+means the main thread is fully occupied during the mount call itself, so
+no `requestAnimationFrame` tick — including a frame-counting cap — can
+fire until it returns; only a wall-clock bound is a predictable cap under
+exactly the slow-mount condition it exists to catch (observed live: the 1
+MiB case's single Chromium renderer process ran at 100%+ CPU for the
+entire ~2.8–3.1s mount).
+
+### Warm-up definition
+
+20 keystrokes typed and measured but excluded from reported percentiles,
+then **60** keystrokes (D13's stated minimum) measured and reported — 80
+keystrokes per full pass. 20 is a stated, round number chosen to clear
+one-off first-keystroke costs (JIT warm-up of the hot input path, the
+first MutationObserver/rAF round trip in a fresh mount) without
+materially extending the run; it was not tuned to produce a particular
+result. Cadence: 70ms paced between keystrokes (after each keystroke's
+measurement resolves, before the next dispatch) — models a fast,
+sustained typist (~14 chars/sec, ~170wpm at 5 chars/word), not a
+synthetic max-speed hammer. The measured latency itself does not depend
+on this pacing choice.
+
+### D13 evidence — two full `test:perf` invocations (variance honesty)
+
+Each sub-table is one complete `bun run test:perf` process invocation
+(fresh Chromium launch); each invocation itself runs the 250 KiB
+measurement twice in-process, so four independent 250 KiB samples appear
+across the two invocations below, all n=60 post-warm-up.
+
+**Invocation 1** — wall time 5m42.651s (342.65s) — exit code 1 (250 KiB
+gate correctly failed; see verdict below):
+
+| Size | Doc bytes | Mount-to-interactive | p50 | p95 | max | min | mean | n |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 25 KiB | 25,600 | 213.5 ms | 61.9 ms | 82.7 ms | 101.2 ms | 53.0 ms | 65.3 ms | 60 |
+| 100 KiB | 102,400 | 354.7 ms | 220.4 ms | 251.7 ms | 268.1 ms | 197.9 ms | 222.4 ms | 60 |
+| 250 KiB (run 1/2) | 256,000 | 719.9 ms | 522.5 ms | **631.7 ms** | 673.8 ms | 471.3 ms | 534.0 ms | 60 |
+| 250 KiB (run 2/2) | 256,000 | 784.0 ms | 521.9 ms | **571.1 ms** | 609.9 ms | 471.0 ms | 523.9 ms | 60 |
+| 1 MiB | 1,048,576 | 2,802.5 ms | 2,088.5 ms | 2,264.6 ms | 2,359.6 ms | 2,011.5 ms | 2,101.5 ms | 60 |
+
+**Invocation 2** — wall time 5m45.454s (345.45s) — exit code 1 (same):
+
+| Size | Doc bytes | Mount-to-interactive | p50 | p95 | max | min | mean | n |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 25 KiB | 25,600 | 222.3 ms | 58.8 ms | 72.3 ms | 94.7 ms | 51.6 ms | 61.0 ms | 60 |
+| 100 KiB | 102,400 | 409.2 ms | 214.0 ms | 243.8 ms | 263.5 ms | 193.5 ms | 216.2 ms | 60 |
+| 250 KiB (run 1/2) | 256,000 | 749.4 ms | 517.6 ms | **585.4 ms** | 611.1 ms | 485.2 ms | 526.3 ms | 60 |
+| 250 KiB (run 2/2) | 256,000 | 768.1 ms | 516.8 ms | **554.3 ms** | 572.1 ms | 478.2 ms | 517.4 ms | 60 |
+| 1 MiB | 1,048,576 | 2,881.3 ms | 2,128.8 ms | 2,292.5 ms | 2,431.5 ms | 2,003.5 ms | 2,144.7 ms | 60 |
+
+Bold = the value the D13 gate assertion (`p95 < 100ms`) evaluates. All
+four 250 KiB p95 samples across both invocations land in a tight
+554–632ms band — consistent run to run, and consistently 5.5×–6.3× over
+budget. 25 KiB, 100 KiB, and 1 MiB mount and edit-to-paint numbers are
+**recorded, not gated** — D13 names only the 250 KiB budget; no other size
+gets an invented gate.
+
+### Budget verdict
+
+**FAIL**, honestly and reproducibly. D13's stated gate — p95 edit-to-paint
+under 100ms at 250 KiB after warm-up — is not met by the current rich
+editor in this environment: measured p95 across four independent 60-sample
+runs (two full process invocations) ranges 554.3–631.7ms. This is reported
+as a finding with the measurement, per the run spec's own instruction, not
+tuned away by weakening the measure — Lane B owns only the harness and the
+test trees under `packages/editor/tests/perf/**`; closing this gap is
+production-code work outside this lane's write ownership (no production
+file was touched to produce or avoid this result). 1 MiB (under the 2 MiB
+rich-mode ceiling, so `mountEditor` is called directly, exactly as a real
+host would) mounts successfully but is markedly worse: edit-to-paint p50
+~2.1s, p95 ~2.3s — reported plainly, not gated, per DETAILS.
+
+### Control (G-12/AP-20)
+
+A synchronous ~150ms busy-wait is injected on every `keydown`, entirely at
+the test level (`support/entry.ts`'s `enableSlowdown`, a listener added by
+the test — no production file touched), against the same 250 KiB corpus.
+The control test asserts the resulting p95 EXCEEDS the D13 budget (and
+exceeds it by more than half the injected delay, as a sanity margin
+against a false pass from a degraded-to-noise measurement) — the
+permanently-green control pattern already used in this repo (e.g.
+`packages/editor/scripts/check-browser-purity.test.mjs`'s per-specifier
+sabotage fixtures).
+
+| Invocation | p50 | p95 | max | min | mean | n |
+|---|---:|---:|---:|---:|---:|---:|
+| 1 | 661.0 ms | 715.4 ms | 715.4 ms | 633.8 ms | 661.6 ms | 15 |
+| 2 | 669.3 ms | 737.3 ms | 737.3 ms | 641.4 ms | 677.4 ms | 15 |
+
+Both invocations: **PASS** (p95 > 100ms budget; p95 > 75ms sanity margin).
+The control proves the harness is sensitive to a real, injected slowdown
+on the exact path it measures — it is not a tautology that happens to
+always read "slow."
+
+### Environment caveat
+
+Exactly as the run spec words it: this sandbox is not the project's CI
+reference runner — the numbers above are recorded as absolute numbers
+together with this caveat; the budget verdict here is provisional
+evidence, not the final CI-runner word.
+
+### Known gap requiring integrator action (not in Lane B's write ownership)
+
+`bun run typecheck`'s ROOT program (`packages/editor/tsconfig.json`,
+`lib: ["ES2023"]`, no DOM) currently fails on the new `tests/perf/**`
+files: `include: ["src","tests"]` covers them (no `exclude` entry names
+`tests/perf`), yet `support/entry.ts` genuinely needs DOM types
+(`document`/`window`/`MutationObserver`/`KeyboardEvent`/
+`requestAnimationFrame`) to mount a real editor and drive real input. This
+mirrors an EXACT, already-recorded precedent in this same package —
+`src/web.tsconfig.json`'s own header describes the identical situation
+from run P1a ("Integrator action required ... Lane B cannot make these
+edits itself") for `tests/web`. Neither `packages/editor/tsconfig.json`
+nor `src/web.tsconfig.json` is in this lane's write ownership
+(`packages/editor/tests/perf/**`, `package.json` test:perf line only, this
+doc's own section), so the fix is recorded here rather than applied.
+
+Live-verified two-line fix (confirmed clean via a scratch tsconfig outside
+the repo that reproduces `web.tsconfig.json`'s exact settings pointed at
+`tests/perf/**` — `tsc --noEmit` exits 0 against it):
+
+1. Add `"tests/perf"` to `packages/editor/tsconfig.json`'s existing
+   `"exclude"` array (alongside `"tests/web"`, `"tests/vscode-adapter"`,
+   `"tests/browser-harness"`, `"tests/gutterpress"`).
+2. Add `"../tests/perf"` to `src/web.tsconfig.json`'s existing `"include"`
+   array (alongside `"../tests/web"`, `"../tests/vscode-adapter"`,
+   `"../tests/browser-harness"`) — `tests/perf` needs exactly the DOM +
+   `MutationObserver`/`KeyboardEvent` lib set already configured there,
+   nothing Gutterpress-specific.
+
+Until that lands, the ROOT program's own transitive-import behavior (not
+this lane's files in isolation) also surfaces 3 additional, pre-existing
+`Cannot find name 'Element'` errors in `src/web/mount.ts` /
+`src/vscode-adapter/adapter.ts` — those two files are NOT excluded from
+the root program by omission, they are ALREADY excluded; the root program
+only reaches them because `tests/perf/support/entry.ts` (the only file
+newly in the root's included set that does so) imports `mountEditor` from
+`src/web/mount.ts`, and TypeScript's `exclude` does not block a file being
+pulled in transitively through an import from an included file. Confirmed
+by grep: no other file in the root program's actual covered set
+(`src/core/**`, `tests/core/**`, `tests/corpus/**`) imports `src/web/**`
+or `src/vscode-adapter/**`. Fix (1) above removes the root program's only
+path to those files at the same time it fixes `tests/perf`'s own errors.
+
+This does not affect `bun run test:perf` itself — Bun's test runner
+transpiles and runs directly, it does not invoke `tsc` — so the D13
+evidence above is unaffected by this gap; it affects only the separate
+`bun run typecheck` command.
+
+### Verification run by this lane
+
+| Command | Exit code | Note |
+|---|---:|---|
+| `bun run typecheck` (root) | 2 | Tests/perf's own DOM-typed files fail under the DOM-free root program (tsconfig wiring gap above, not in this lane's write ownership); scratch self-check (DOM-aware program, real deps, pointed at `tests/perf/**` only) exits 0 |
+| `cd packages/editor && bun run test:perf` (invocation 1) | 1 | Correct: 250 KiB budget genuinely missed today (see verdict); control + all recorded sizes behaved as designed |
+| `cd packages/editor && bun run test:perf` (invocation 2) | 1 | Same, numbers consistent with invocation 1 |
+| `cd packages/editor && bun run test` | 0 | 3038 pass / 0 fail — `tests/perf/**` correctly invisible to plain `bun test` (`.btest.ts` naming, matching the existing `test:browser` convention) |
+| `cd packages/editor && bun run test:browser` | 0 | 114 pass / 0 fail across the 8 existing suites — unaffected by this lane's changes. (SFE-P3d-sweep+P3f repair round 1 note: this is a snapshot at THIS lane's own checkpoint, before Lane A's `table-editing.btest.ts` landed; the tree's final count, reflected in Lane D's and Lane E's own tables below, is 118 pass / 0 fail across 9 suites.) |
+
+## Lane D
+
+Scope: find the root cause of the D13 budget miss Lane B measured (250 KiB
+p95 5.5-6.3x over budget, ~2.1 ms/KiB near-linear scaling 25 KiB->1 MiB),
+fix it at the root in the editor glue, re-measure. Write ownership:
+`packages/editor/src/vscode-adapter/**`, `packages/editor/src/web/**`,
+`packages/editor/tests/**`, this section.
+
+**Outcome up front:** the root cause is confirmed, with differential proof
+and source-level citation — and it is NOT in this lane's glue. It is inside
+`packages/vscode-markdown-editor` (the byte-pinned vendored fork), which
+this lane's write ownership explicitly forbids editing unilaterally. Per
+the run spec's own instruction for exactly this finding ("if the profile
+proves the cost is INSIDE the fork, report blocked with the evidence"),
+this lane reports **status: blocked** for the fix itself, while still
+delivering a permanent regression guard for the mechanism the amendment
+paragraph suspected (which turned out to already be correctly implemented,
+but is worth pinning against future regression) and a full re-measurement
+proving no drift and no silent regression.
+
+### Method: fast inner loop first
+
+Before touching anything, a temporary scratch harness (single 250 KiB
+document, 20 keystrokes, no inter-keystroke pacing, reusing
+`support/entry.ts`/`support/drive.ts`/`support/corpus.ts` unmodified)
+reproduced the signal in 14.8s wall time:
+
+```
+[scratch] mountMs 948.5
+[scratch] summary p50=543.2ms p95=636.9ms max=653.3ms min=506.2ms mean=558.3ms (n=20)
+```
+
+Consistent with Lane B's 554-632ms p95 band. This confirmed the signal
+reproduces in this sandbox before any instrumentation was added, and gave
+a ~15s (not ~6min) iteration loop for everything below. Deleted before this
+lane's changes were finalized (`git diff --stat` on
+`packages/editor/src/vscode-adapter/adapter.ts` shows zero lines changed
+from the committed baseline — see "What shipped" below).
+
+### Profile: the suspect chain, timed stage by stage
+
+The amendment named a concrete suspect chain: *keystroke -> fork model
+applies its own edit -> `onWillApplySourceEdit` -> convert -> host.applyEdit
+-> host subscribe notification (the echo of our own edit) -> the
+adapter/mount reacts to the notification*. Reading `adapter.ts` first
+(before instrumenting) showed the `host.subscribe` handler already
+converges by comparison: when `submittingOwnEdit` is true and the
+notification's `(version, text)` matches the predicted echo computed just
+before calling `host.applyEdit`, it returns without calling
+`model.replaceSourceText` — i.e. the exact "do nothing on our own echo"
+shape the amendment hypothesized was MISSING already appeared to be
+present. Profiling was still required to confirm this empirically rather
+than trust the reading.
+
+TEMPORARY `performance.mark`-style instrumentation (a
+`globalThis.__gpProfile?.(label)` no-op-when-absent hook) was added at four
+points in `adapter.ts`'s `onWillApplySourceEdit` handler — `handler-start`,
+`before-apply` (just before `host.applyEdit`), inside the `host.subscribe`
+echo branch (`subscribe-fired`, proving that branch actually runs), and
+`handler-end` (the accept-path return) — driven by a temporary entry file
+mounting the real `mountEditor` and recording `KeyboardEvent`-anchored
+deltas plus the first observed DOM mutation's timestamp (same
+`MutationObserver` primitive `support/entry.ts` uses). 8 single-keystroke
+samples against the 250 KiB corpus:
+
+| Stage | Range across 8 samples |
+|---|---:|
+| t0 (keydown) -> handler-start | 3.5-15.3 ms |
+| handler-start -> before-apply (D3 conversion, `stringEditToSourceEdit`) | 0.0-0.2 ms |
+| before-apply -> subscribe-fired (`host.applyEdit`'s splice + sync notify dispatch) | 0.0-0.2 ms |
+| subscribe-fired -> after-apply (adapter's echo-match branch: recognized, no-op) | 0.3-0.5 ms |
+| after-apply -> handler-end (`known = result.snapshot`, return) | 0.0-0.1 ms |
+| **handler-end -> DOM mutation observed** (the fork's OWN post-handler edit application + render, entirely outside this lane's code) | **506.8-669.4 ms** |
+| TOTAL t0 -> DOM mutation | 514.3-685.5 ms |
+
+`subscribe-fired` DID fire on every sample (confirming the host's
+synchronous accepted-edit notification reaches the adapter's listener
+exactly as designed), and the branch taken was the fast "matched echo,
+do nothing" one every time (near-zero cost in that window; no
+`replaceSourceText` call, confirmed by the sub-millisecond
+`subscribe-fired -> after-apply` delta — a redundant `replaceSourceText`
+call touching a 250 KiB document could not complete in 0.3-0.5 ms). This
+lane's own glue — the D3 conversion, `host.applyEdit`, and the echo
+check — accounts for **under 1 ms** of the ~510-670 ms total per keystroke.
+99.8%+ of the cost is on the far side of `handler-end`, in code this lane
+does not own.
+
+Also checked per the DETAILS: no projection/`needsRefresh` work exists on
+this path at all — `web/mount.ts` and `vscode-adapter/adapter.ts` have zero
+Gutterpress-projection imports or calls (`mountEditor` is the plain,
+non-projection surface, exactly as the run's own corpus comment states);
+there is nothing here to time because there is nothing here to run.
+
+### Differential proof: the floor (no host, no adapter) reproduces the SAME cost
+
+Per the DETAILS' instruction to measure "the fork's own internal apply in
+isolation by driving the model directly without our host round-trip," a
+temporary probe (`EditorModel`/`EditorView`/`EditorController` constructed
+directly, zero host, zero adapter — kept inside
+`src/vscode-adapter/_profile-direct.ts` only so the "no application code
+outside `src/vscode-adapter/` imports package internals" rule, D5, held
+even during this temporary window; deleted before finishing) was mounted
+against the identical 250 KiB corpus and typed into directly:
+
+| | min | median | max | n |
+|---|---:|---:|---:|---:|
+| Full stack (`mountEditor` + `MemoryDocumentHost` + adapter) | ~500 ms | ~520-545 ms | ~670 ms | 8-60 |
+| **Floor** (raw fork, zero host/adapter code in the loop) | **425.2 ms** | **451.5 ms** | **559.7 ms** | **15** |
+
+The floor — with literally none of this lane's code anywhere in the call
+path — reproduces the SAME order of magnitude as the full stack. This is
+the differential the METHOD section asked for, run in the direction the
+evidence actually pointed: disabling/removing the suspect (this lane's
+entire glue layer, not just the echo handler) does **not** collapse
+latency to a small floor; latency stays high with the suspect completely
+absent. That is proof BY ELIMINATION that the linear cost is not
+introduced by `packages/editor/src/vscode-adapter/**` or
+`packages/editor/src/web/**` — it is inherent to the fork itself.
+
+A second differential ruled out one more alternative mechanism (block
+COUNT, as opposed to raw document size, driving the cost — relevant
+because `_publishMeasurements`, below, loops once per block): the same
+~250 KiB, reshaped into 8 giant blocks instead of the corpus's ~800+ small
+ones, measured **539.9-617.7 ms** (min-max, n=12) at the floor — the same
+magnitude as the many-small-blocks floor, if anything slightly higher.
+Block count is not the driver; total rendered text/line count is (matches
+the source-level mechanism below exactly).
+
+### Root cause, with source citation
+
+`packages/vscode-markdown-editor` is `@dimm-city/vscode-markdown-editor@0.0.2-84.gp.1`
+(NOTICE: an internal fork of `@vscode/markdown-editor@0.0.2-84`), vendored
+as compiled `dist/*.js` — read-only to this lane, but readable, per the
+run's "read anything, write ONLY [owned paths]" rule. Line numbers below
+are from this package's current `dist/index.js`.
+
+1. **The parser IS incrementally wired correctly — this is not where the
+   cost is.** `EditorModel.document` (`dist/index.js:1770`) is a memoized
+   derived value: unchanged `sourceText` returns the cached parse
+   (`if (e && t === i.value) return e`), and on real text changes it reads
+   `this._pendingEdit` and, when `_pendingEdit` exactly bridges the
+   previous and current text, passes the real edit through to
+   `this._parser.parse(i, e, r)` for a genuine incremental reparse.
+   `_pendingEdit` is set correctly by `_applySourceEdit`
+   (`{baseText, newText, edit}`, computed from the model's OWN edit)
+   *before* `_emitWillApplySourceEdit` fires — i.e. before this lane's
+   `onWillApplySourceEdit` listener ever runs — so nothing this lane's
+   adapter does (or omits) can desync it. The amendment's "the fork's own
+   parser supports incremental `parse(text, previous, edit)`" is correct,
+   and it is honored on every ordinary keystroke regardless of this lane's
+   code.
+2. **The view's per-render MEASUREMENT pass is not incremental, and this is
+   where the cost is.** `EditorView._renderAutorun`
+   (`dist/index.js:6302`) runs on every accepted source-text change and
+   unconditionally calls `this._publishMeasurements(p)` for the freshly
+   rebuilt `DocumentViewNode p` — every time, regardless of how small the
+   edit was or how many blocks the parser was able to reuse by identity.
+   `_publishMeasurements` (`dist/index.js:6340`) then does, for **every
+   block in the entire mounted document** (`for (const r of e.blocks)`,
+   not just the edited one):
+   - `r.node.element.getBoundingClientRect()` — one geometry read per block;
+   - `getComputedStyle(a).overflowX` — one style read per block;
+   - `Pe.measure([...], ...)` (`Pe.measure` at `dist/index.js:2001`,
+     delegating to `mo()` at `dist/index.js:2301`), which walks **every
+     text leaf** in that block via `viewNode.forEachTextLeaf(...)` and, for
+     each, creates a DOM `Range` and calls `.getClientRects()` — which
+     returns one rect per WRAPPED VISUAL LINE for a multi-line text run.
+
+   Net: one keystroke re-measures the rect and full per-line visual
+   geometry of the WHOLE mounted document, via `Range.getClientRects()`
+   calls proportional to total wrapped line count — which is why the block-
+   count differential above came back flat (fewer, bigger blocks still
+   wrap into the same total number of visual lines as more, smaller ones
+   at the same byte size) and why cost scales with document size at a
+   roughly constant ms/KiB rather than with edit size.
+3. **No escape hatch exists in the package's public options.** Every field
+   of `EditorViewOptions`/`BlockViewOptions` (`dist/index.d.ts`) was read;
+   none of them gate, skip, debounce, or virtualize measurement — there is
+   no config this lane could pass through `mountEditor`'s/
+   `createVscodeEditorAdapter`'s existing options plumbing to avoid this
+   cost. A fix would have to change `_renderAutorun`/`_publishMeasurements`
+   itself (e.g. skip remeasuring blocks the parser reused by identity, or
+   virtualize measurement to on-screen blocks) — a real code change inside
+   the vendored fork.
+
+That is squarely `packages/vscode-markdown-editor/**` — this lane's write
+ownership lists it under MUST NOT WRITE with the explicit clause this
+finding satisfies: "the vendored fork is byte-pinned; a fork change is a
+PATCHES.md-governed event this lane may not do unilaterally — if the
+profile proves the cost is INSIDE the fork, report blocked with the
+evidence." `PATCHES.md` (this same package) documents what a real fork
+patch looks like here — a narrow, hunk-by-hunk, checksum-verified change
+authorized by its own run specification — which is exactly the process a
+future run would need for a real fix (e.g. threading a "was this block's
+identity reused by the parser" bit from `document`'s memoization through to
+`_publishMeasurements` so unchanged blocks are skipped, or virtualizing
+measurement to the visible viewport), not something this lane may do as a
+side effect of a D13 sweep.
+
+### What shipped
+
+Because the confirmed root cause is out of this lane's write ownership, no
+production file changed. `git diff` on every file under
+`packages/editor/src/vscode-adapter/**` and `packages/editor/src/web/**`
+is empty at the end of this lane's work (the temporary
+`__gpProfile` instrumentation added to `adapter.ts` during profiling, and
+the temporary `_profile-direct.ts` file, were both removed — confirmed by
+`git diff --stat packages/editor/src/vscode-adapter/adapter.ts` producing
+no output).
+
+What this lane DID add, inside its own write ownership
+(`packages/editor/tests/**`), is a permanent regression guard for the
+mechanism the amendment suspected — not because it is today's bottleneck
+(it demonstrably is not, see the profile above), but because a future
+regression there would make an already-bad number worse and would silently
+reintroduce the exact anti-pattern the amendment described:
+
+- `tests/perf/support/snapshot-call-counting-host.ts` — a test-only
+  `EditorDocumentHost` decorator counting `getSnapshot()` calls (its own
+  small file, not an edit to `tests/vscode-adapter/support/counting-host.ts`,
+  which belongs to another lane).
+- `tests/perf/support/echo-guard-entry.ts` — mounts the real `mountEditor`
+  against a counted host.
+- `tests/perf/echo-guard.btest.ts` — asserts the mechanism directly:
+  `createVscodeEditorAdapter` reads `host.getSnapshot()` exactly once, at
+  construction; every ordinary accepted edit updates the adapter's `known`
+  local straight from `applyEdit`'s return value, so `getSnapshot()` is
+  called again ONLY on the "genuinely external" branches (both deferred to
+  a microtask). Against a lone `MemoryDocumentHost` with no second writer
+  (this harness's whole scenario), every notification the adapter receives
+  IS the synchronous echo of an edit it just submitted — so for N ordinary
+  accepted keystrokes, the call count must stay at the single mount-time
+  read. AP-21 liveness is checked first (baseline == 1 before any
+  keystroke; a real edit is confirmed to have landed via the mounted
+  content's length, so a silently-dropped keystroke could not vacuously
+  pass). 100 KiB, 20 keystrokes — a correctness check, not a latency
+  percentile, so it does not need D13's 250 KiB size.
+- `tests/perf/perf-control.btest.ts` — one added line (a side-effect
+  `import "./echo-guard.btest.ts";`) to wire the new file into
+  `bun run test:perf`, since a new `test:perf` script line in
+  `packages/editor/package.json` is not available (outside this lane's
+  write ownership).
+
+**Sabotage (G-12/AP-21, pr158-lessons.md §11.2 — "may be performed locally
+and documented; it does not need to remain committed"):** locally changed
+`adapter.ts`'s echo-match condition to `if (false && ...)`, forcing every
+notification through the "genuinely external" `queueMicrotask` branch, and
+re-ran `echo-guard.btest.ts`:
+
+```
+Expected: 1
+Received: 21
+error: expect(received).toBe(expected)
+(fail) D13 root-cause regression guard ... [FAIL]
+```
+
+21 = baseline(1) + 20 keystrokes, exactly the predicted mechanism —
+confirming the assertion is live, not vacuous. Reverted immediately;
+`git diff --stat packages/editor/src/vscode-adapter/adapter.ts` confirmed
+zero lines changed after the revert, and the test was re-run clean (1
+pass) before this lane's work was considered done.
+
+### Before/after — all four sizes, both invocations
+
+No production code changed, so "after" is a fresh re-measurement, not a
+different number — reported in full per the run's own instruction ("the
+honest outcome matters more than a green gate"). Both invocations below
+include this lane's new `echo-guard.btest.ts` case (wired via
+`perf-control.btest.ts`'s side-effect import) — it passed both times
+(1 pass, part of the "2 pass" reported for that file).
+
+**This lane's invocation 1** — exit code 1 (250 KiB gate correctly still
+fails):
+
+| Size | Mount-to-interactive | p50 | p95 | max | min | mean | n |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 25 KiB | 270.0 ms | 59.4 ms | 72.6 ms | 78.1 ms | 52.0 ms | 61.2 ms | 60 |
+| 100 KiB | 367.7 ms | 223.3 ms | 250.7 ms | 284.8 ms | 199.0 ms | 226.0 ms | 60 |
+| 250 KiB (run 1/2) | 780.9 ms | 509.8 ms | **560.1 ms** | 572.2 ms | 470.2 ms | 513.6 ms | 60 |
+| 250 KiB (run 2/2) | 792.2 ms | 519.9 ms | **609.9 ms** | 634.5 ms | 473.8 ms | 525.2 ms | 60 |
+| 1 MiB | 2,882.9 ms | 2,179.1 ms | 2,402.3 ms | 2,652.0 ms | 1,996.7 ms | 2,203.6 ms | 60 |
+
+Control (250 KiB, +150 ms/keystroke sabotage): p50=661.1 ms p95=717.0 ms
+max=717.0 ms min=626.6 ms mean=661.1 ms (n=15) — PASS (p95 > 100 ms budget
+and > 75 ms sanity margin).
+
+**This lane's invocation 2** — exit code 1 (same):
+
+| Size | Mount-to-interactive | p50 | p95 | max | min | mean | n |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 25 KiB | 224.4 ms | 63.7 ms | 97.2 ms | 105.8 ms | 54.4 ms | 66.4 ms | 60 |
+| 100 KiB | 390.6 ms | 213.0 ms | 245.0 ms | 249.7 ms | 194.7 ms | 215.1 ms | 60 |
+| 250 KiB (run 1/2) | 757.6 ms | 516.9 ms | **565.3 ms** | 610.8 ms | 470.1 ms | 515.3 ms | 60 |
+| 250 KiB (run 2/2) | 786.9 ms | 524.5 ms | **593.7 ms** | 617.1 ms | 478.7 ms | 533.8 ms | 60 |
+| 1 MiB | 2,918.6 ms | 2,100.6 ms | 2,272.1 ms | 2,426.9 ms | 2,001.3 ms | 2,122.8 ms | 60 |
+
+Control: p50=687.0 ms p95=755.9 ms max=755.9 ms min=650.2 ms mean=690.9 ms
+(n=15) — PASS.
+
+**Comparison against Lane B's original numbers** (both 250 KiB p95, all
+four samples across Lane B's two invocations plus this lane's two):
+
+| Source | 250 KiB p95 samples |
+|---|---|
+| Lane B, invocation 1 | 631.7 ms, 571.1 ms |
+| Lane B, invocation 2 | 585.4 ms, 554.3 ms |
+| Lane D, invocation 1 (this lane) | 560.1 ms, 609.9 ms |
+| Lane D, invocation 2 (this lane) | 565.3 ms, 593.7 ms |
+
+All eight samples land in a 554-610 ms band — stable across sessions, no
+drift, no regression, no improvement (expected: no production code
+changed). This also re-confirms, independently, Lane B's own environment
+caveat: this sandbox is not the project's CI reference runner.
+
+### Budget verdict
+
+**FAIL — unchanged from Lane B, honestly re-confirmed, not tuned away.**
+D13's 250 KiB p95 < 100 ms gate is not met: measured p95 across this
+lane's own two fresh invocations ranges 560.1-609.9 ms, consistent with
+Lane B's original 554.3-631.7 ms. The root cause is confirmed (previous
+section) and is inside the byte-pinned vendored fork, outside every write-
+permitted path for this lane. No weakening of the measurement, the budget,
+or any test was made or considered.
+
+### Recommendation for the next run (not performed here — outside write ownership)
+
+A real fix belongs in `packages/vscode-markdown-editor` via the
+PATCHES.md-governed process, scoped as narrowly as Hunk 1-4 of the existing
+`renderCustomBlock` patch: `EditorView._renderAutorun`/
+`_publishMeasurements` would need to skip remeasuring a block whose
+`DocumentViewNode` entry the parser reused by IDENTITY (the same
+mechanism `document`'s memoization and "unchanged blocks keep their object
+identity across reparses" already rely on for the PARSE side — the render/
+measurement side does not currently consult it), or measurement would need
+to be scoped to the visible viewport instead of the whole document. Either
+is a genuine, evidenced, narrowly-scoped fork change — not something this
+lane's write ownership permits, and not something to attempt as a side
+effect of a performance sweep. This lane's profiling above (the exact
+call chain, line numbers, and both differentials) is the evidence such a
+run would start from.
+
+### What could not be fully explained
+
+The floor test's own spread (425.2-559.7 ms, n=15) is wide enough that a
+small residual gap against the full-stack numbers (500-670 ms across
+invocations) cannot be cleanly separated from ordinary Chromium/GC timing
+variance between separate mounts — the two ranges overlap substantially,
+and this lane's own glue was independently measured at under 1 ms of
+overhead (the stage-by-stage profile above), so no further residual is
+expected, but this lane did not run enough floor samples to state a tight
+confidence interval on that gap being exactly zero. This does not change
+the verdict (even the floor's own minimum, 425.2 ms, is 4.25x over the 100
+ms budget on its own) and was not pursued further given the smallest-
+design instruction and this lane's write ownership.
+
+### Verification run by this lane
+
+| Command | Exit code | Note |
+|---|---:|---|
+| `bun run typecheck` (root) | 0 | The tsconfig wiring gap Lane B recorded (`tests/perf` needing the DOM-aware program) is already closed — verified live: `packages/editor/tsconfig.json`'s `exclude` and `src/web.tsconfig.json`'s `include` both already list `tests/perf`; this lane's two new DOM-typed files (`echo-guard-entry.ts`, and `echo-guard.btest.ts`'s `page.evaluate(() => window...)` callbacks) typecheck clean under it |
+| `cd packages/editor && bun run typecheck` (targeted) | 0 | Same three sub-programs (tsconfig.json / src/web.tsconfig.json / src/gutterpress/tsconfig.json), run directly |
+| `cd packages/editor && bun test ./tests/perf/echo-guard.btest.ts` (standalone) | 0 | 1 pass — the new regression guard, isolated |
+| `cd packages/editor && bun run test:perf` (invocation 1) | 1 | Correct/honest: 250 KiB budget still missed (root cause confirmed out of scope, see above); this lane's new echo-guard case passed (2 pass in perf-control.btest.ts's run, 5 expect() calls = perf-control's 3 + echo-guard's 2); control passed; all recorded sizes behaved as designed |
+| `cd packages/editor && bun run test:perf` (invocation 2) | 1 | Same; numbers consistent with invocation 1 and with Lane B's original numbers |
+| `cd packages/editor && bun run test` | 0 | 3038 pass / 0 fail — unchanged from Lane B's own count; this lane's new files are `.btest.ts` (perf harness), correctly invisible to plain `bun test` |
+| `cd packages/editor && bun run test:browser` | 0 | 118 pass / 0 fail across the 9 existing suites (4 more than Lane B's 114 pass / 8 suites — `table-editing.btest.ts` landing between reports, not this lane's changes; this lane touched none of these files) |
+| `cd packages/vscode-extension && bun run test` | 0 | 228 pass / 0 fail across 14 files — no regression in the extension that consumes this adapter |
+| `cd packages/vscode-extension && bun run test:browser` | 0 | 35 pass / 0 fail across 9 files |
+| `cd packages/desktop && bun run test` | 0 | 6045 pass / 1 skip / 0 fail across 164 files (console "disk full" lines are expected output from a deliberate fault-injection test, not failures) |
+
+### Sabotage/liveness note (AP-21/G-12) for this lane's own gate
+
+`echo-guard.btest.ts` proves it can fail (see "Sabotage" above: 1->21 under
+local sabotage, reverted before commit). It does not itself carry a
+permanently-red control test the way `perf-control.btest.ts` does — a
+permanent sabotage control would need a test-level way to break
+`adapter.ts`'s echo comparison from OUTSIDE production code, and no such
+seam exists (the comparison is internal to the adapter, not parameterized)
+without adding one solely to support a control test, which would be
+machinery beyond what this fix needs (SFE-P3e's own ruling: "prefer
+deleting cleverness to guarding it"). The local-sabotage proof above,
+documented and reverted per pr158-lessons.md §11.2, was judged sufficient.
+
+<!-- SFE-P3d-sweep+P3f repair round, round 1 correction: the two sections
+above ("Verification run by this lane" / "Sabotage/liveness note") were
+previously found physically nested under the "## Lane E (P3f)" heading
+below (inserted after them by a later commit), which made Markdown
+attribute Lane D's own echo-guard-based verification to Lane E and left
+Lane E's real, measurement-guard-based verification table (further below)
+as a second, contradictory "Verification run by this lane" table under the
+same heading. Moved back under "## Lane D" — their rightful home — with no
+other change to their content beyond the suite-count fix noted in the
+`test:browser` row above. -->
+
+## Lane E (P3f)
+
+Scope: patch the vendored fork's whole-document per-keystroke measurement
+down toward O(changed/visible), per `docs/plans/source-first-editor/runs/SFE-P3f.md`,
+building directly on this document's own "## Lane D" section above (same
+root cause: `EditorView._renderAutorun -> _publishMeasurements`
+unconditionally remeasuring every block via `Pe.measure()`/`mo()`'s
+per-text-leaf `Range.getClientRects()` walk). Write ownership:
+`packages/vscode-markdown-editor/dist/index.js`, `PATCHES.md`,
+`checksums.json`, `packages/editor/tests/perf/**` (mechanism-pinning
+guard only), this section, and the upstream-issue draft.
+
+**Outcome up front (SFE-P3d-sweep+P3f repair round 1 rewrite — see the
+boxed correction below for why):** the named O(document)-remeasurement
+mechanism is fixed, and — after this repair round's `absoluteStart` fix —
+fixed CORRECTLY: Hunk 9/10 in `PATCHES.md`'s "## Patch 2" section skip the
+expensive per-leaf walk for a block ONLY when the fork's own `Y()` factory
+reused its view node by identity AND the block's `absoluteStart` (its
+absolute position in the source) is unchanged since the cache was
+recorded — the second condition an earlier version of this patch omitted,
+which silently corrupted pointer/caret offset resolution for every block
+after an edit (see the repair round's own finding and `PATCHES.md`'s "Why
+the translate is exact, not approximate" for the full correction). Every
+caret/selection/drag/segment/custom-view browser proof in `packages/editor`
+and `packages/vscode-extension` passes (exact counts below), a new
+mechanism-pinning regression test
+(`packages/editor/tests/perf/measurement-guard.btest.ts`) proves the fix's
+own mechanism directly with a live sabotage demonstration, and a NEW
+correctness-pinning regression test
+(`packages/editor/tests/vscode-adapter/custom-view/fork-hook.btest.ts`,
+"pointer offset stays byte-exact after an edit shifts an earlier block")
+proves pointer-to-offset resolution stays byte-exact across an edit in an
+earlier block — the exact case the original defect broke and no test in
+the tree covered. **The D13 250 KiB p95 < 100 ms budget still fails** —
+honestly, not tuned away, and by a WIDER margin than originally reported
+(see the correction below for why the originally-reported 290-340 ms band
+was itself a symptom of the defect this repair round fixed).
+
+> **Repair round 1 correction, read this first.** The `absoluteStart` fix
+> makes `gpReusable` correctly FALSE (falling back to a full `Pe.measure()`)
+> for any block whose absolute position in the source shifted since it was
+> cached — which is EVERY block after the point an edit lands. This run's
+> own D13 benchmark harness (`packages/editor/tests/perf/support/drive.ts`,
+> shared by `perf-sweep.btest.ts` — the actual D13 gate — and
+> `perf-control.btest.ts`) mounts a document, `page.click(selector)`s the
+> WHOLE mount container, then presses `End`. Confirmed live, with a
+> throwaway diagnostic (mount 250 KiB, click+`End`, type a marker, read
+> back where it landed in the rendered text): this lands the caret at
+> character **~937 of 256,018** — under half a percent into the document —
+> not at its end, because `page.click()` targets the CENTER of the
+> container's own (huge, unscrolled) bounding box, not its bottom.
+> `drive.ts`'s own header comment claims this "moves the caret to the end
+> of the mounted document"; it does not, and never did — this predates this
+> repair round and is not something the original Lane B/D/E measurements
+> could have known without the diagnostic above. Typing near the START of a
+> 250 KiB / ~800-block document means EVERY block after the caret has its
+> `absoluteStart` shift on EVERY keystroke — the worst possible shape for
+> this patch's per-block incremental strategy, and (before this repair
+> round) the exact shape whose miscomputed offsets the correctness finding
+> above describes. The pre-repair 290-340 ms band therefore was NOT
+> measuring "ordinary end-of-document typing, sped up by this patch" — it
+> was measuring "typing near the document's start, sped up by silently
+> reusing hundreds of blocks' now-wrong cached offsets." Once corrected,
+> the same (unmodified) benchmark — still typing near the start, per its
+> own unfixed navigation — costs a full remeasure of nearly every block on
+> every keystroke, landing back near the ORIGINAL pre-Patch-2 baseline (see
+> "Before/after," below, for the honest re-measured numbers).
+>
+> A second throwaway diagnostic isolated whether Patch 2 has any real value
+> at all: mounting the same 250 KiB document and navigating with
+> `Control+End` (this fork's genuine document-end command — confirmed via
+> the SAME marker-landing check: character 256,006 of 256,018) shows the
+> `document.createRange()` call count for 20 appended keystrokes at **80**
+> total (4/keystroke) — matching the mechanism this patch was designed to
+> achieve, and consistent with the reasoning that a genuine end-of-document
+> edit touches only the LAST block's own DOM, leaving every earlier block's
+> identity AND `absoluteStart` both unchanged and therefore legitimately
+> `gpReusable`. **This patch's optimization is real and correctly gated for
+> the workload it was designed for; the existing D13 benchmark harness does
+> not exercise that workload, and this was not previously known.** Fixing
+> `drive.ts`'s navigation (so the actual D13 gate measures genuine
+> end-of-document typing) is new scope this repair round does not take on —
+> see "Recommendation for the next run," below, which now carries this as
+> its lead item. This repair round DID fix
+> `measurement-guard.btest.ts`'s OWN inline navigation (`press("End")` ->
+> `press("Control+End")`) — that file's own name and header comment are
+> explicit that it measures "N ordinary APPENDED keystrokes," so its
+> navigation not reaching the document's end was a defect in what it
+> claimed to test, not a case where the wrong-shape measurement was ever an
+> intentional or reported claim; `drive.ts`, by contrast, backs the ACTUAL
+> D13 gate and BOTH the pre-repair and post-repair headline numbers this
+> section has ever reported, so changing it is a numbers-changing decision
+> this repair round leaves to the next run rather than making silently.
+
+See `PATCHES.md`'s "## Patch 2" section for the full consumer map,
+prototype numbers, correctness argument, and the three hunks; this section
+covers the before/after evidence and verification only.
+
+### What shipped
+
+`PATCHES.md`'s "## Patch 2 — measurement (SFE-P3f — the D13 fix)" section,
+in full: Hunk 8 (a new, pure `gpTranslateVisualLineMap` helper — reuses
+`C.prototype.translate` and the `Pe`/`ot`/`me` constructors unmodified),
+Hunk 9 (`_publishMeasurements` gains an `incremental` parameter and the
+identity+className+absoluteStart-gated skip — SFE-P3d-sweep+P3f repair
+round 1 added the `absoluteStart` comparison; see the boxed correction
+above), Hunk 10 (the one-line `_renderAutorun` call site opting in).
+`checksums.json`'s `patched.dist/index.js` hash is
+`ea7d0df1bb2f6d54fed59b2479aabeb9bddae0d26e697a3561e030cabc794e45` (the
+repair round 1 value, re-derived after the `absoluteStart` fix — the
+original, INCORRECT patch's hash was
+`dadad4003ca520fe99e6d6b8e84f626315ee8702bb116dcd3c84cbb3fd482d8f`, kept
+here only as a historical record); `dist/index.d.ts` is untouched (no type
+change was needed), so its hash and `upstreamBaseline` are unchanged.
+`bun run check:vendored` is green against the current manifest (below).
+
+The `ResizeObserver` callback and scroll listener's own calls to
+`_publishMeasurements` are byte-for-byte untouched (they keep calling it
+with one argument, so the new `n` parameter is `undefined` there and every
+block is always fully remeasured on those paths) — see PATCHES.md's "Why
+the `ResizeObserver` and scroll call sites are excluded" for why.
+
+**New regression guard**, inside this lane's `tests/perf/**` write
+ownership: `packages/editor/tests/perf/support/measurement-guard-entry.ts`
+(monkey-patches the global `document.createRange` to count calls — a
+test-side observation of the real global the fork already calls, no
+production hook added) and `packages/editor/tests/perf/measurement-guard.btest.ts`
+(mounts a 250 KiB document — the same size D13's own gate uses — types 20
+ordinary appended keystrokes, and asserts total `createRange()` calls stay
+under `20 * 60 = 1200`, several orders of magnitude below what an
+O(document) walk over ~800 blocks would cost for even one keystroke).
+Wired into `bun run test:perf` via `perf-control.btest.ts`'s side-effect
+import, the same technique Lane D's own `echo-guard.btest.ts` already uses
+for the identical reason (no new `package.json` script line available
+inside this lane's write ownership).
+
+**Repair round 1: navigation fixed.** This test's own click+`End`
+navigation had the same defect described in the boxed correction above —
+it landed the caret near the document's START, not its end, contradicting
+its own "N ordinary appended keystrokes" premise. Changed to click+
+`Control+End` (this test file's own inline navigation only —
+`drive.ts`, which backs the actual D13 gate, is untouched; see the boxed
+correction for why). Re-confirmed live: with the corrected navigation AND
+the corrected `absoluteStart`-checked patch, this test passes (1 pass,
+`document.createRange()` count well under the 1200 budget); with the
+ORIGINAL (near-start) navigation and the corrected patch, it FAILED at
+~72,000+ calls — not because the fix regressed, but because typing near
+the document's start genuinely does require remeasuring nearly every
+block, which is the CORRECT behavior once `absoluteStart` is honestly
+checked.
+
+**Sabotage (G-12/AP-21):** locally forced `_publishMeasurements`'s
+`gpReusable` local to `false` unconditionally (the exact pre-patch "always
+remeasure everything" shape) and re-ran `measurement-guard.btest.ts`:
+
+```
+Expected: < 1200
+Received: 72137
+(fail) D13 measurement-pass regression guard ... [FAIL]
+```
+
+72,137 calls across 20 keystrokes (~3,607/keystroke) against a ~60x-over
+budget — confirming the assertion is live, not vacuous, and cleanly
+distinguishes O(document) from O(changed) at this document size. Reverted
+immediately; `diff` against the pre-sabotage file showed zero drift, and
+`node --check dist/index.js` plus a clean rerun (2 pass) confirmed the file
+was restored before this lane's work was considered done. **Repair round 1
+reconfirmed this independently**, post-fix and post-navigation-repair,
+forcing `gpReusable = false` unconditionally: 72,100 calls (same order of
+magnitude), same conclusion; reverted, `diff` against the pre-sabotage file
+showed zero drift, and `bun run check:vendored` confirmed the restored file
+still matches the current `checksums.json`.
+
+### Before/after — all four sizes (SFE-P3d-sweep+P3f repair round 1: RE-MEASURED)
+
+**The tables originally here (two invocations, 290.3-339.7 ms 250 KiB p95,
+described below as "44-50% reduction") measured the INCORRECT, pre-repair
+patch, using the SAME `drive.ts` harness whose caret-placement defect is
+described in the boxed correction above. They are struck and replaced
+below with two fresh invocations against the CORRECTED patch, same
+harness, same sandbox — no other change.** The original tables' raw
+numbers are preserved in this document's git history, not reproduced here,
+to avoid a reader mistaking them for current evidence.
+
+Both invocations below include the (now navigation-corrected)
+`measurement-guard.btest.ts` case (wired via `perf-control.btest.ts`'s
+side-effect import, alongside Lane D's `echo-guard.btest.ts`) — both passed
+both times.
+
+**Repair round 1, invocation 1** (`cd packages/editor && bun test
+./tests/perf/perf-sweep.btest.ts`, standalone, no concurrent browser
+process) — exit code 1 (250 KiB gate still fails, now more honestly):
+
+| Size | Mount-to-interactive | p50 | p95 | max | min | mean | n |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 25 KiB | 232.3 ms | 59.8 ms | 81.8 ms | 103.0 ms | 51.3 ms | 62.4 ms | 60 |
+| 100 KiB | 360.4 ms | 218.0 ms | 260.5 ms | 317.3 ms | 196.7 ms | 224.0 ms | 60 |
+| 250 KiB (run 1/2) | 740.5 ms | 535.0 ms | **577.0 ms** | 638.8 ms | 493.0 ms | 537.2 ms | 60 |
+| 250 KiB (run 2/2) | 707.5 ms | 520.9 ms | **568.9 ms** | 594.0 ms | 485.7 ms | 525.2 ms | 60 |
+| 1 MiB | 3,051.1 ms | 2,144.8 ms | 2,302.7 ms | 2,613.3 ms | 2,011.6 ms | 2,162.3 ms | 60 |
+
+**Repair round 1, invocation 2** (`cd packages/editor && bun run
+test:perf` — the exact gate command, `perf-control.btest.ts` then
+`perf-sweep.btest.ts` sequentially in one invocation) — exit code 1 (same):
+
+| Size | Mount-to-interactive | p50 | p95 | max | min | mean | n |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 25 KiB | 226.8 ms | 60.3 ms | 97.7 ms | 125.1 ms | 51.5 ms | 65.3 ms | 60 |
+| 100 KiB | 385.5 ms | 215.2 ms | 263.8 ms | 282.1 ms | 197.8 ms | 221.4 ms | 60 |
+| 250 KiB (run 1/2) | 768.0 ms | 516.8 ms | **560.2 ms** | 649.9 ms | 467.8 ms | 522.8 ms | 60 |
+| 250 KiB (run 2/2) | 756.0 ms | 511.9 ms | **560.6 ms** | 609.2 ms | 480.1 ms | 516.0 ms | 60 |
+| 1 MiB | 2,825.8 ms | 2,113.3 ms | 2,253.2 ms | 2,412.8 ms | 1,960.7 ms | 2,121.6 ms | 60 |
+
+Differential control from this same invocation (250 KiB, unslowed baseline
+vs. +150 ms/keystroke, same session — see `perf-control.btest.ts`'s repair
+round 1 rewrite, "finding 6" in the repair record): unslowed p95=550.4 ms,
+slowed p95=715.1 ms, delta=164.7 ms — PASS (delta > 75 ms sanity margin,
+comfortably).
+
+Both invocations include the (now navigation-corrected)
+`measurement-guard.btest.ts` case (wired via `perf-control.btest.ts`'s
+side-effect import, alongside Lane D's `echo-guard.btest.ts`) — passed both
+times.
+
+**A third, supplementary data point** ran under real resource contention
+(a second Chromium instance active concurrently in this sandbox — see
+"Environment note," below): 250 KiB p95 553.0 ms / 551.8 ms, and its own
+differential control's delta (81.6 ms against an earlier version of the
+control, before this repair round's differential rewrite) was
+correspondingly compressed by the same contention. Not used as a primary
+data point, but consistent with (not contradicting) invocations 1 and 2.
+
+**Comparison against the pre-patch baseline** (Lane B and Lane D, this same
+document's earlier sections — same sandbox, same 250 KiB corpus, all p95):
+
+| Source | 250 KiB p95 samples | Patch state |
+|---|---|---|
+| Lane B, invocation 1 | 631.7 ms, 571.1 ms | unpatched |
+| Lane B, invocation 2 | 585.4 ms, 554.3 ms | unpatched |
+| Lane D, invocation 1 | 560.1 ms, 609.9 ms | unpatched (confirmed unchanged from Lane B) |
+| Lane D, invocation 2 | 565.3 ms, 593.7 ms | unpatched |
+| Lane E (original, pre-repair) | 318.1 ms, 339.7 ms, 290.3 ms, 317.3 ms | patched, **INCORRECT** (struck — see boxed correction) |
+| **Repair round 1, invocation 1** | **577.0 ms, 568.9 ms** | **patched, correct** |
+| **Repair round 1, invocation 2** | **560.2 ms, 560.6 ms** | **patched, correct** |
+| Repair round 1, contended (supplementary) | 553.0 ms, 551.8 ms | patched, correct |
+
+Pre-patch band: 554-632 ms (8 samples, four invocations, two lanes).
+Repair-round-1 (corrected-patch) band, against the SAME unfixed
+`drive.ts` harness: **560.2-577.0 ms** across the two clean invocations
+(551.8-577.0 ms including the third, contended supplementary point) —
+statistically indistinguishable from the pre-patch band, i.e. **no
+measurable improvement on this specific benchmark**, not the 44-50%
+reduction originally reported. This is not a regression in the fix — see
+the boxed correction above: this benchmark types near the document's START
+(a `drive.ts` defect, unfixed this round), which is the shape where
+Patch 2's strategy legitimately cannot help (nearly every block's
+`absoluteStart` shifts on every keystroke, forcing a full remeasure
+exactly as the ORIGINAL unpatched code did). The throwaway diagnostic in
+the boxed correction shows the patch DOES deliver its intended benefit
+(4 `document.createRange()` calls per keystroke, not ~3,600+) for genuine
+end-of-document typing — this benchmark simply never exercised that shape,
+before or after this repair round.
+
+**Environment note.** This sandbox is not the project's CI reference
+runner (a standing caveat this document has carried since Lane B). Repair
+round 1 additionally observed direct evidence of resource contention
+between concurrently-running Chromium instances within this session: one
+attempt at re-measuring, run concurrently with `perf-control.btest.ts`,
+measured 250 KiB p95 at 553.0/551.8 ms — kept above as the "contended
+(supplementary)" row rather than discarded, since it is CONSISTENT with
+(not contradicted by) the two clean invocations, not because it is more
+trustworthy than them. All three land far above the pre-repair 290-340 ms
+band regardless of contention, so contention does not change this
+section's conclusion, but the exact absolute numbers within the 551-577 ms
+band should not be over-interpreted keystroke-by-keystroke.
+
+### Budget verdict (SFE-P3d-sweep+P3f repair round 1: rewritten)
+
+**FAIL — by a WIDER, more honest margin than originally reported.** D13's
+250 KiB p95 < 100 ms gate is not met: measured p95 across this repair
+round's two clean invocations ranges 560.2-577.0 ms (551.8-577.0 ms
+including the contended supplementary point), statistically
+indistinguishable from the pre-patch 554.3-631.7 ms band (Lane B/Lane D).
+The ORIGINALLY reported 290.3-339.7 ms band and its "~46% reduction" claim
+are WITHDRAWN — they measured a patch with a since-fixed correctness
+defect (see the boxed correction above), and that defect, not a genuine
+performance win, is what produced the lower numbers: the pre-repair patch
+silently skipped remeasuring hundreds of blocks it should not have,
+because it never checked whether their `absoluteStart` had shifted.
+Corrected, this patch's O(document)-elimination mechanism is real and
+independently verified (`measurement-guard.btest.ts`, now with corrected
+navigation, plus the throwaway end-of-document diagnostic in the boxed
+correction above showing 4 `Range` calls/keystroke) — but the EXISTING
+D13 benchmark (`drive.ts`) does not exercise the workload where that
+mechanism helps, so it cannot currently demonstrate a win on the actual
+gate. The SEPARATE, pre-existing cost Lane E's original investigation
+found living outside `_renderAutorun`/`_publishMeasurements` (the
+`EditContext` `textupdate`-driven native input pipeline processing a
+full-document-sized buffer, `PATCHES.md`'s "Strategy chosen" subsection)
+remains a real, independent, unaddressed contributor regardless of this
+correction; nothing this repair round found changes that part of the
+picture. No weakening of the measurement, the budget, or any test was
+made or considered.
+
+### Recommendation for the next run (not performed here — outside this
+run's scope)
+
+**Lead item, added by repair round 1: fix `drive.ts`'s caret-placement
+defect first.** `typeAndMeasure`'s `page.click(selector)` + `page.keyboard
+.press("End")` does not reach the document's end for a large document —
+confirmed live, it lands under 1% into a 256,018-character document (see
+the boxed correction above for the full diagnostic and the working
+alternative, `Control+End`). Until this is fixed, `perf-sweep.btest.ts` —
+the actual D13 gate — cannot demonstrate Patch 2's real, verified benefit
+for genuine end-of-document typing, and every historical number this
+document has ever reported for the 250 KiB/1 MiB rows (pre-patch AND
+post-patch, both before and after this repair round) has measured "typing
+near the document's start," not "ordinary end-of-document typing" as
+D13's own binding decision and this harness's own header comments
+describe. Fixing this is a numbers-changing, re-measurement-requiring
+change this repair round deliberately left out of its own scope (see the
+boxed correction's closing paragraph) — the next run should fix it, THEN
+re-run the full four-size sweep, and only then re-assess whether Patch 2
+alone closes the D13 gap or whether the second (`EditContext`) mechanism
+below is also required.
+
+The companion upstream-issue document
+(`docs/plans/source-first-editor/upstream-issue-measurement.md`) names the
+suspect mechanism this lane located but did not patch: `EditorView`'s
+keyboard controller (`class wl`, `dist/index.js:~7600`) wires ordinary
+character input through the browser's native `EditContext`
+`addEventListener("textupdate", ...)` path rather than synchronously inside
+`keydown`, and `this.editContext`'s own text buffer mirrors the FULL
+document on every render (`editContext.updateText(0,
+editContext.text.length, s)`). A future run investigating this would need
+to determine whether the latency is genuinely inside the browser's own
+`EditContext` implementation processing a large buffer (in which case no
+JS-level patch can fix it — the buffer itself would need to shrink, a much
+larger redesign of the input architecture) or whether `_handleTextUpdate`
+does avoidable synchronous work of its own before handing off to the
+model — this lane did not instrument inside that handler and is reporting
+a located, plausible suspect, not a proven second root cause. This
+suspect's own measurement (Lane E's original stage-by-stage breakdown) was
+NOT invalidated by the correctness defect above — it was measured with
+`_publishMeasurements` forced to a complete no-op, independent of the
+`absoluteStart` question — so it remains live evidence for a future run,
+unlike the "44-50% reduction" headline number.
+
+### Verification run by this lane
+
+| Command | Exit code | Note |
+|---|---:|---|
+| `bun run typecheck` (root) | 0 | All four packages (`gutterpress`, `@dimm-city/gutterpress-editor`, `@dimm-city/gutterpress-desktop`, `@dimm-city/gutterpress-vscode`) exit 0 |
+| `cd packages/editor && bun run typecheck` (targeted) | 0 | Same three sub-programs, run directly; the two new files (`measurement-guard-entry.ts`, `measurement-guard.btest.ts`) typecheck clean |
+| `cd packages/editor && bun test ./tests/perf/measurement-guard.btest.ts` (standalone) | 0 | 1 pass — the new regression guard, isolated |
+| `cd packages/editor && bun run test` | 0 | 3038 pass / 0 fail — unchanged from Lane D's own count |
+| `cd packages/editor && bun run test:browser` | 0 | 118 pass / 0 fail across the 9 existing suites — unchanged from Lane D's own count; every caret/drag/selection/segment/custom-view proof this run's binding constraints name is green, unmodified |
+| `cd packages/editor && bun run test:perf` (invocation 1) | 1 | Correct/honest: 250 KiB budget still missed (separate mechanism, out of scope, see above); this lane's new measurement-guard case passed; control passed; all recorded sizes behaved as designed |
+| `cd packages/editor && bun run test:perf` (invocation 2) | 1 | Same; numbers consistent with invocation 1 |
+| `cd packages/vscode-extension && bun run test` | 0 | 228 pass / 0 fail across 14 files — unchanged from Lane D's own count |
+| `cd packages/vscode-extension && bun run test:browser` | 0 | 35 pass / 0 fail across 9 files — unchanged from Lane D's own count |
+| `cd packages/desktop && bun run test` | 0 | 6045 pass / 1 skip / 0 fail across 164 files — unchanged from Lane D's own count (the "disk full" console lines are the same pre-existing, expected fault-injection test output Lane D already noted) |
+| `bun run check:vendored` | 0 | `[verify-vendored] OK — 24 unpatched file(s) ... 2 patched file(s) match the reviewed patch state (26 hash(es) checked), 33 tracked file(s) all accounted for` — against the updated `checksums.json` |
+| `bun run check:architecture` | 0 | All four rules PASS, including `desktop-route-ratchet` at its unchanged baseline (this lane added no desktop route) |
+| `bun run knip` | 0 | Clean |
+
+### Sabotage/liveness note (AP-21/G-12) for this lane's own gate
+
+`measurement-guard.btest.ts` proves it can fail (see "Sabotage," above:
+1200-budget vs 72137-actual under local sabotage, reverted before
+finishing). Its liveness check (`mountCount` > 0 before the reset) confirms
+the counting hook observes the real mechanism rather than silently never
+firing, so a broken/unwired counter could not vacuously pass the
+post-keystroke budget assertion.
+
+### Repair round 1 re-verification
+
+The table above is Lane E's ORIGINAL verification, kept as a historical
+record; every `test:perf` row's "Note" column described the pre-repair,
+INCORRECT patch and is superseded. Re-run against the corrected patch
+(`absoluteStart`-checked `gpReusable`, corrected `checksums.json` hash) and
+the corrected `measurement-guard.btest.ts` navigation:
+
+| Command | Exit code | Note |
+|---|---:|---|
+| `bun run typecheck` (root) | 0 | All four packages exit 0 |
+| `cd packages/editor && bun test ./tests/perf/measurement-guard.btest.ts` (standalone) | 0 | 1 pass — with the corrected `Control+End` navigation; FAILED (72,100+ calls) against the ORIGINAL `End`-only navigation even with the corrected patch — see "Repair round 1: navigation fixed," above |
+| `cd packages/editor && bun test ./tests/vscode-adapter/custom-view/fork-hook.btest.ts` (standalone) | 0 | 15 pass — includes the new correctness-pinning regression describe block ("pointer offset stays byte-exact after an edit shifts an earlier block"); verified to FAIL (2 of 3 new cases) against the pre-repair patch and PASS against the corrected one |
+| `cd packages/editor && bun run test:browser` | 0 | 121 pass / 0 fail across the same 9 suites (3 more than Lane D's/Lane E's own 118 — the new correctness-pinning describe block's 3 test cases, added to `fork-hook.btest.ts` this repair round; no other file's count changed) |
+| `cd packages/editor && bun run test` | 0 | 3038 pass / 0 fail — unchanged |
+| `cd packages/editor && bun run test:perf` (standalone `perf-control.btest.ts`) | 0 | 3 pass — differential control delta 164.7-188.0 ms across repeated clean runs, comfortably over the 75 ms margin |
+| `cd packages/editor && bun run test:perf` (full: `perf-control.btest.ts && perf-sweep.btest.ts`) | 1 | Correct/honest: 250 KiB budget still missed, by a WIDER margin than originally reported (p95 551.8-577.0 ms across three invocations) — see "Budget verdict," above, for why |
+| `bun run check:vendored` | 0 | Against the re-derived `checksums.json` (`patched.dist/index.js` = `ea7d0df1bb2f6d54fed59b2479aabeb9bddae0d26e697a3561e030cabc794e45`) |
+| `bun run typecheck` (targeted, `packages/editor`) | 0 | Confirms the new/changed test files typecheck clean |
+
+See this run's repair record for the exact commands, exit codes, and full
+output this table summarizes.

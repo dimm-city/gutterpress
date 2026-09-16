@@ -1,22 +1,23 @@
-import adapter from "@sveltejs/adapter-node";
+import adapter from "@sveltejs/adapter-static";
 import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
   preprocess: vitePreprocess(),
   kit: {
-    // adapter-node emits a Node.js server to build/. In production the
-    // Electron main process starts a local HTTP server from build/handler.js
-    // and forwards app:// requests to it via fetch. In dev, VITE_DEV_SERVER_URL
-    // is used directly (unchanged). Host capabilities are exposed as +server.ts
-    // routes; the bridge surface is limited to push-events and build-pipeline IPC.
-    adapter: adapter({ out: "build" }),
+    // adapter-static emits a plain static file tree to build/ — no Node
+    // server, no build/handler.js. The app has zero server routes (every
+    // request/reply operation moved to typed IPC in SFE-P5c), so this is a
+    // pure client SPA: `fallback: "index.html"` writes build/index.html as
+    // the entry point for every client-side route, and `src/routes/+layout.ts`
+    // sets `export const ssr = false` so the whole tree renders client-only.
+    // In production, electron/app-protocol.ts serves build/ directly from
+    // disk under the app:// scheme (no local HTTP server, no proxy). In dev,
+    // VITE_DEV_SERVER_URL is used directly (unchanged).
+    adapter: adapter({ pages: "build", assets: "build", fallback: "index.html" }),
     // Emit relative asset URLs so app://-served pages don't request static
     // assets from the protocol root.
     paths: { relative: true },
-    // The same build serves both the web PWA and Electron's app:// origin.
-    // Register manually in +layout.svelte so app:// never attempts to use a SW.
-    serviceWorker: { register: false },
   },
 };
 

@@ -15,7 +15,7 @@
  * particular the folder-subtree prefix match, which is easy to get subtly
  * wrong — see the sibling-prefix bug class CLAUDE.md's fs-guard work fixed
  * for path containment) is unit-testable in isolation from rendering and
- * host `api.fs.*` calls.
+ * host `$lib/files/files-capability` calls.
  */
 
 import { isPathAtOrUnder } from "$lib/platform/paths";

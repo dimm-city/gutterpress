@@ -1,5 +1,6 @@
 import { afterAll, expect, spyOn, test } from "bun:test";
 import * as platformModule from "$lib/platform";
+import * as updaterCapability from "$lib/update/updater-capability";
 
 (globalThis as unknown as { $state?: <T>(value: T) => T }).$state ??= (value) => value;
 
@@ -14,21 +15,6 @@ let status = {
 };
 let applyResult: { applied: boolean; version?: string; error?: string } = { applied: false };
 
-const platform = {
-  updater: {
-    getStatus: async () => status,
-    check: async () => status,
-    download: async () => status,
-    applyNow: async () => applyResult,
-    onEvent: (cb: (event: Record<string, unknown>) => void) => {
-      eventHandler = cb;
-      return () => {
-        if (eventHandler === cb) eventHandler = null;
-      };
-    },
-  },
-};
-
 // WHY spyOn + mockRestore, NOT mock.module: `mock.module()` replaces the
 // module in Bun's SHARED, process-wide resolution registry, keyed by the
 // RESOLVED file path — "$lib/platform" here and the relative
@@ -38,10 +24,7 @@ const platform = {
 // substitution here was therefore visible to every later test file, not just
 // this one, and `bun test --isolate` does NOT sandbox it (same caveat already
 // called out for `mock.module("electron", …)` in tests/platform/
-// sveltekit-host.ts and friends). Its replacement object only had
-// `getPlatform`/`isDesktop`, so any later file statically importing
-// `DEFAULT_SETTINGS` or `__resetPlatform` from platform/index died with a
-// misleading "Export named 'X' not found" SyntaxError.
+// app-protocol.test.ts and friends).
 //
 // Wrapping the old `mock.module` in `afterAll(() => mock.restore())` was
 // tried first and does NOT fix this: verified by reproduction that the
@@ -55,11 +38,33 @@ const platform = {
 // `mockRestore()` in `afterAll` hands the real implementation back
 // deterministically. Same discipline
 // packages/cli/src/checks/pdf/structured-check-result.test.ts documents.
-spyOn(platformModule, "getPlatform").mockImplementation(() => platform as never);
+//
+// SFE-P5b: `update-controller.svelte.ts` no longer calls `getPlatform()` —
+// it imports the five updater-capability functions directly — so this test
+// now spies on THAT module instead, same spyOn/mockRestore discipline,
+// following the "capability modules or the bridge accessor" migration the
+// run specification calls for. `isDesktop()` is still spied on `$lib/platform`
+// (its real implementation, re-exported from `./bridge`, is unchanged).
+spyOn(updaterCapability, "getUpdaterStatus").mockImplementation(async () => status);
+spyOn(updaterCapability, "checkForUpdate").mockImplementation(async () => status);
+spyOn(updaterCapability, "downloadUpdate").mockImplementation(async () => status);
+spyOn(updaterCapability, "applyUpdateNow").mockImplementation(async () => applyResult);
+spyOn(updaterCapability, "onUpdaterEvent").mockImplementation(
+  (cb: (event: Record<string, unknown>) => void) => {
+    eventHandler = cb;
+    return () => {
+      if (eventHandler === cb) eventHandler = null;
+    };
+  },
+);
 spyOn(platformModule, "isDesktop").mockImplementation(() => true);
 
 afterAll(() => {
-  (platformModule.getPlatform as unknown as { mockRestore: () => void }).mockRestore();
+  (updaterCapability.getUpdaterStatus as unknown as { mockRestore: () => void }).mockRestore();
+  (updaterCapability.checkForUpdate as unknown as { mockRestore: () => void }).mockRestore();
+  (updaterCapability.downloadUpdate as unknown as { mockRestore: () => void }).mockRestore();
+  (updaterCapability.applyUpdateNow as unknown as { mockRestore: () => void }).mockRestore();
+  (updaterCapability.onUpdaterEvent as unknown as { mockRestore: () => void }).mockRestore();
   (platformModule.isDesktop as unknown as { mockRestore: () => void }).mockRestore();
 });
 

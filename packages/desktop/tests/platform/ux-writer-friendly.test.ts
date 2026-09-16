@@ -176,8 +176,7 @@ describe("Status bar — one calm state opening a 3-row protection summary", () 
     const pill = read("src/lib/components/SyncStatusPill.svelte");
     // "sync:status" is fire-and-forget; a subscription that lands after the
     // project-open emit used to strand the pill blank/stale forever.
-    expect(pill).toContain("api.sync");
-    expect(pill).toContain(".getStatus(projectDir)");
+    expect(pill).toContain("getSyncStatus(projectDir)");
     // A live push wins over the (older) seed.
     expect(pill).toContain("receivedLive");
   });

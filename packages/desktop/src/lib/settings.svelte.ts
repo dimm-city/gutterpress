@@ -2,8 +2,10 @@
  * useSettings() — the reactive, persisted user-settings store (#45).
  *
  * A Svelte 5 `$state`-backed module store (not a class, no legacy Svelte
- * stores). It loads `AppSettings` from the host (via `api.app.getSettings`) once
- * at first access and writes every change back through `api.app.setSettings()`.
+ * stores). It loads `AppSettings` from the host (via `getSettings`) once
+ * at first access and writes every change back through `setSettings()`
+ * (both from `$lib/app-lifecycle/app-lifecycle-capability` — SFE-P5c1: typed
+ * IPC, not `api.app.*`).
  *
  * Reads are reactive: components that reference `useSettings().current.<...>`
  * inside a `$derived`/`$effect`/template re-run when a setting changes.
@@ -24,20 +26,19 @@
  *
  * Distinct from `DesktopPrefs` (session/per-project state via setDesktopPrefs).
  * Settings are durable user preferences persisted to `userData/app-settings.json`
- * on desktop. `api.app.getSettings`/`setSettings` reach that file through the
- * `api/app/settings` server route, which requires Electron main to have
+ * on desktop. `getSettings`/`setSettings` reach that file over IPC
+ * (`app:getSettings`/`app:setSettings`), which requires Electron main to have
  * registered its prefs hooks (`getPrefsHooks()`); outside Electron (a plain
- * browser / `vite dev`) that route 503s, `_loadSettings()`'s `.catch()` keeps
+ * browser / `vite dev`) `bridge()` throws, `_loadSettings()`'s `.catch()` keeps
  * the in-memory defaults, and `set()`'s `.catch(() => {})` silently drops the
- * write — so today settings do NOT persist on web; they reset every session.
- * `WebAdapter` (web-adapter.ts) already has a real `localStorage`-backed
- * `getSettings`/`setSettings` implementation, but it is dormant (unreachable
- * from here) until the #33 PWA milestone wires this store onto
- * `getPlatform()` for the web target — see `CLAUDE.md` §8.
+ * write. SFE-P5a (D10): there is no other host to fall back to — a
+ * `localStorage`-backed browser settings store used to exist on the dormant
+ * `WebAdapter`, but that adapter was deleted; a future web product is a
+ * separate package, not a second host wired onto this store.
  */
 import { DEFAULT_SETTINGS } from "$lib/platform";
 import type { AppSettings, DeepPartial } from "$lib/platform";
-import { api } from "$lib/api";
+import { getSettings, setSettings } from "$lib/app-lifecycle/app-lifecycle-capability";
 import { deepMergeSettings } from "$lib/settings-merge";
 
 // The single reactive settings object. Seeded with defaults so reads are valid
@@ -89,8 +90,7 @@ function isAppSettings(value: unknown): value is AppSettings {
  */
 export function _loadSettings(): Promise<void> {
   if (loadPromise) return loadPromise;
-  loadPromise = api.app
-    .getSettings()
+  loadPromise = getSettings()
     .then((loaded) => {
       if (isAppSettings(loaded)) {
         replaceState(loaded);
@@ -110,7 +110,7 @@ export function _loadSettings(): Promise<void> {
  */
 function set(patch: DeepPartial<AppSettings>): void {
   replaceState(deepMergeSettings(state.current, patch));
-  api.app.setSettings(patch as Record<string, unknown>).catch(() => {});
+  setSettings(patch as Record<string, unknown>).catch(() => {});
 }
 
 /** Reset one section to its defaults and persist. */

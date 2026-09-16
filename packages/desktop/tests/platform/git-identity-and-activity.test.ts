@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { registerHostServices, getHostServices, type HostServices } from "../../electron/server-bridge/host-services";
+import { makeHostServices } from "../support/host-services-fake";
+import { gitIdentityArgs } from "../../electron/api/git-identity-args";
 
 const root = path.resolve(import.meta.dir, "../..");
 const read = (rel: string) => readFileSync(path.join(root, rel), "utf8");
@@ -31,16 +34,55 @@ test("settings schema and dialog expose git author name and email", () => {
   expect(read("src/lib/components/WelcomeLanding.svelte")).toContain("<SettingsView");
 });
 
-test("snapshot, history enable, and sync routes pass git identity from settings", () => {
-  const saveSnapshot = read("src/routes/api/vcs/save-snapshot/+server.ts");
-  const enableHistory = read("src/routes/api/vcs/enable-version-history/+server.ts");
-  const sync = read("src/routes/api/remote/sync/+server.ts");
-  expect(saveSnapshot).toContain("authorName");
-  expect(saveSnapshot).toContain("authorEmail");
-  expect(enableHistory).toContain("authorName");
-  expect(enableHistory).toContain("authorEmail");
-  expect(sync).toContain("authorName");
-  expect(sync).toContain("authorEmail");
+test("snapshot, history enable, and remote sync IPC handlers pass git identity from settings", () => {
+  // vcs:saveSnapshot / vcs:enableVersionHistory (SFE-P5c2) and remote:sync
+  // (SFE-P5c3) all migrated from HTTP routes to typed IPC —
+  // `gitIdentityArgs()` (electron/api/git-identity-args.ts, shared with
+  // fs:delete's safety-snapshot path) is the call each handler spreads into
+  // its lib call now.
+  const vcs = read("electron/api/vcs.ts");
+  const enableVersionHistoryBody = vcs.slice(
+    vcs.indexOf("export async function vcsEnableVersionHistory("),
+    vcs.indexOf("export async function vcsSaveSnapshot("),
+  );
+  const saveSnapshotBody = vcs.slice(
+    vcs.indexOf("export async function vcsSaveSnapshot("),
+    vcs.indexOf("export async function vcsRestoreSnapshot("),
+  );
+  expect(enableVersionHistoryBody).toContain("...(await gitIdentityArgs())");
+  expect(saveSnapshotBody).toContain("...(await gitIdentityArgs())");
+
+  const remote = read("electron/api/remote.ts");
+  const remoteSyncBody = remote.slice(
+    remote.indexOf("export async function remoteSync("),
+    remote.indexOf("export async function remoteCloneRepository("),
+  );
+  expect(remoteSyncBody).toContain("...(await gitIdentityArgs())");
+});
+
+test("gitIdentityArgs() falls back to the default identity when the settings read throws (EACCES/EIO)", async () => {
+  // Host services are process-global — save/restore so this fixture never
+  // leaks into a sibling test file.
+  const saved: HostServices | null = getHostServices();
+  try {
+    registerHostServices(
+      makeHostServices({
+        prefs: {
+          readSettings: async () => {
+            const err = new Error("permission denied") as NodeJS.ErrnoException;
+            err.code = "EACCES";
+            throw err;
+          },
+        },
+      }),
+    );
+    // A transient read failure must never reject the caller (fs:delete's
+    // safety snapshot, every vcs:* write) — it falls back to the default
+    // (empty) identity, same as the route-side helper's own catch.
+    await expect(gitIdentityArgs()).resolves.toEqual({});
+  } finally {
+    registerHostServices(saved as HostServices);
+  }
 });
 
 test("source provider supports author email and existing git config fallback", () => {
@@ -61,8 +103,8 @@ test("sync status details open an editor-side activity view, not the modal", () 
   // "Technical details" disclosure, and the surface is titled "Previous versions".
   expect(activity).toContain("Technical details");
   expect(activity).toContain("Previous versions");
-  expect(activity).toContain("api.vcs.listSnapshotsPage");
-  expect(activity).toContain("api.log.read");
+  expect(activity).toContain("vcsListSnapshotsPage");
+  expect(activity).toContain("readLog(");
 });
 
 test("taskbar icon path resolves packaged and dev app resources", () => {

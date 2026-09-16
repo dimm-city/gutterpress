@@ -1,24 +1,31 @@
 /**
  * Shared security/UX error filters for the version-history (vcs:*) and online
- * repository (remote:*) surfaces.
+ * repository (remote:*, publish:*) surfaces.
  *
  * These filters were previously copy-pasted across electron/main.ts,
- * routes/api/remote/_hooks.ts, and the four routes/api/vcs/*​/+server.ts
- * handlers. They live here so both the Electron main process and the SvelteKit
- * +server.ts routes (both host-side Node code) import one implementation.
+ * `routes/api/remote/_hooks.ts`, and the four `routes/api/vcs/*​/+server.ts`
+ * handlers — all deleted (SFE-P5c2 for vcs, SFE-P5c3 for remote/publish).
+ * They live here so every IPC handler that needs this classification
+ * (`electron/api/{remote,publish,vcs}.ts`) imports one implementation
+ * instead of re-deriving it.
  *
  * SECURITY / UX invariants preserved verbatim:
  *  - The lib's own author-friendly messages pass through to the renderer.
  *  - Any other (unexpected, internal) failure is logged in full here and
  *    replaced with a terse, author-safe message — no raw isomorphic-git
  *    internals, no full fs paths.
- *  - Credential-bearing URL userinfo ("https://user:token@host/…") is stripped
- *    from anything headed for the log.
+ *  - Credential-bearing URL userinfo ("https://user:token@host/…") is
+ *    stripped from anything headed for the log AND from the message
+ *    `handleRemoteErrors`/`handlePublishErrors` rethrow to the caller (D12
+ *    repair round 1 — see those functions below for why the rethrow copy
+ *    needed the same redaction as the logged one).
  *
- * This module is host-only (uses console) but intentionally has NO
- * @sveltejs/kit dependency: friendlyVcsError returns a { status, message }
- * classification and the route handlers throw the SvelteKit `error()` with it,
- * so main.ts can import this module without pulling SvelteKit into its bundle.
+ * This module is host-only (uses console) but has no framework dependency:
+ * `friendlyVcsError` returns a plain `{ status, message }` classification —
+ * `status` is a legacy field from the deleted routes' HTTP shape that
+ * `electron/api/vcs.ts` no longer reads (IPC has no status-code concept, see
+ * `electron/api/validation.ts`'s header); every caller uses only `.message`
+ * to build a plain `Error`.
  */
 import { getAppHooks } from "./app-hooks";
 
@@ -50,7 +57,9 @@ const VCS_FRIENDLY_ERROR =
  * Classify a version-history failure. Logs the full error under `logLabel`,
  * then returns the HTTP-shaped result: a lib author-friendly message becomes a
  * 422 passthrough; anything else becomes a terse 500 naming the operation.
- * Callers throw the SvelteKit `error(status, message)` with the return value.
+ * `status` is the legacy HTTP-shaped field described above; callers
+ * (`electron/api/vcs.ts`'s IPC handlers) throw a plain `Error(message)` with
+ * the return value's `.message` — IPC has no status-code concept to carry it.
  */
 export function friendlyVcsError(
   e: unknown,
@@ -107,7 +116,14 @@ export async function handleRemoteErrors<T>(
     if (e instanceof Error && (e as { cause?: unknown }).cause) {
       logFailure(`  cause: ${redactUrlCredentials(String((e as { cause?: unknown }).cause))}`);
     }
-    if (REMOTE_FRIENDLY_ERROR.test(msg)) throw new Error(msg);
+    // Repair round 1 (D12): redact on the rethrow, not only the log. A
+    // transport error matching the allowlist below can still carry a raw
+    // request URL (see redactUrlCredentials's own doc comment) — this is the
+    // only one of the two copies of `msg` that ever reaches the renderer.
+    // `redactUrlCredentials` only rewrites `//user:pass@` userinfo, so this
+    // is behaviour-preserving for every message without URL userinfo — which
+    // is every fixed author-facing string the lib emits by construction.
+    if (REMOTE_FRIENDLY_ERROR.test(msg)) throw new Error(redactUrlCredentials(msg));
     throw new Error(
       "The online repository operation could not be completed. See the app log for details.",
     );
@@ -159,7 +175,9 @@ export async function handlePublishErrors<T>(
     const msg = e instanceof Error ? e.message : String(e);
     logFailure(`[${channel}] failed: ${redactUrlCredentials(msg)}`);
     if (e instanceof Error && e.stack) logFailure(redactUrlCredentials(e.stack));
-    if (PUBLISH_FRIENDLY_ERROR.test(msg)) throw new Error(msg);
+    // Repair round 1 (D12): redact on the rethrow, not only the log — see the
+    // matching comment on handleRemoteErrors above.
+    if (PUBLISH_FRIENDLY_ERROR.test(msg)) throw new Error(redactUrlCredentials(msg));
     throw new Error(
       "Publishing could not be completed. See the app log for details.",
     );

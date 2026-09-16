@@ -10,10 +10,11 @@
    * rest of the project's settings. Credential management stays in
    * Settings → Accounts; the guidance copy points there.
    *
-   * PWA-clean (§8): api.* routes only.
+   * PWA-clean (§8): the remote capability module only (SFE-P5c3: remote
+   * moved off `api.*` HTTP routes to typed IPC).
    */
   import { onMount } from "svelte";
-  import { api } from "$lib/api";
+  import { diagnoseProjectRemote, testRemoteAccess } from "$lib/remote/remote-capability";
   import { friendlyHostError } from "$lib/errors";
   import type { ProjectRemoteDiagnosis, RemoteAccessResult } from "$lib/platform/contract";
   import { isDesktop } from "$lib/platform";
@@ -45,7 +46,7 @@
     }
     loading = true;
     try {
-      diag = await (api.remote.diagnoseProjectRemote(projectDir) as Promise<ProjectRemoteDiagnosis>);
+      diag = await diagnoseProjectRemote(projectDir);
     } catch {
       diag = null;
     } finally {
@@ -58,7 +59,7 @@
     testing = true;
     testResult = null;
     try {
-      testResult = (await api.remote.testRemoteAccess(diag.remoteUrl)) as RemoteAccessResult;
+      testResult = await testRemoteAccess(diag.remoteUrl);
     } catch (e) {
       testResult = {
         ok: false,

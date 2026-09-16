@@ -19,16 +19,20 @@
    *    collapse progressively by the toolbar's OWN width (not the viewport),
    *    with thresholds derived from the measured cluster widths so the middle
    *    track always has room for the page nav:
-   *      ≤1150px  Edit/Read/Focus segmented group → dropdown menu
+   *      <=1150px  Edit/Read segmented group -> dropdown menu
    *      ≤1000px  button text labels drop (icon-only), title/path trim
    *      ≤900px   page nav compacts (first/last jump buttons drop)
    *      ≤620px   title/path, mode/zoom menus, separators, hints drop
    *  - `(pointer: coarse)` keeps ≥44×44px touch targets on touch devices
    *    without fattening the desktop layout.
    *
-   * The workspace mode is ONE control with one segment per `WorkspaceMode`
-   * value — no icon button beside it duplicating a mode the segments already
-   * offer, and nothing reachable only from the keyboard.
+   * The workspace mode is ONE control: Edit (the source editor with the
+   * paginated preview beside it) and Read (the paged editor alone, locked
+   * until the reader unlocks it). Focus -  Edit without the preview -  is a
+   * toggle on the source editor's own toolbar, not a segment here: it is a
+   * way of writing, not a third thing to read. No icon button beside the
+   * control duplicates a mode the segments already offer, and nothing is
+   * reachable only from the keyboard.
    *
    * Primary actions are ordered Publish → Export → Save so Save is always the
    * right-most button. There is no overflow menu: Export opens the export
@@ -139,9 +143,7 @@
   } = $props();
 
   // The collapsed menu's summary reports the mode it stands in for.
-  const modeIcon = $derived(
-    mode === "viewer" ? "book-open" : mode === "focus" ? "maximize" : "pen-line",
-  );
+  const modeIcon = $derived(mode === "viewer" ? "book-open" : "pen-line");
 
   // Close the enclosing <details> menu after a menu item is chosen, and return
   // focus to its summary for keyboard users.
@@ -311,24 +313,20 @@
     {/if}
     <span class="toolbar-sep" aria-hidden="true"></span>
 
-    <!-- Workspace mode (Edit/Read/Focus): one segment per `WorkspaceMode`
-         value on wide toolbars; collapses into a single menu button when space
-         is tight. Reading is two pages side by side; editing is one page
-         beside the editor; focus is the editor alone — the page layout follows
-         from the mode, it is not a separate choice (see `WorkspaceMode`).
-         Focus is the odd one out on narrow layouts: there the tab bar already
-         picks the single visible pane, so hiding the viewer just leaves it on
-         screen but inert — the same reason togglePreview() refuses when
-         `isNarrow`. -->
+    <!-- Workspace mode (Edit/Read): one segment each on wide toolbars;
+         collapses into a single menu button when space is tight. Edit is the
+         source editor with the paginated preview beside it; Read is the paged
+         editor alone. Focus (Edit without the preview) is a toggle on the
+         source editor's toolbar and reports here as Edit, which it is. -->
     <div class="mode-group">
       <button
         class="icon-text"
-        class:active={mode === "editor"}
+        class:active={mode !== "viewer"}
         onclick={() => onSetMode("editor")}
         disabled={editorToggleDisabled}
-        title="Write, with one page of the book beside you (Ctrl+E)"
+        title="Write in the source editor, with the book beside you (Ctrl+E)"
         aria-label="Edit"
-        aria-pressed={mode === "editor"}
+        aria-pressed={mode !== "viewer"}
       >
         <Icon name="pen-line" /><span class="view-label">Edit</span>
       </button>
@@ -337,34 +335,23 @@
         class:active={mode === "viewer"}
         onclick={() => onSetMode("viewer")}
         disabled={editorToggleDisabled}
-        title="Read the book two pages at a time, like an open book"
+        title="Read the book as it prints; unlock it to edit in place"
         aria-label="Read"
         aria-pressed={mode === "viewer"}
       >
         <Icon name="book-open" /><span class="view-label">Read</span>
       </button>
-      <button
-        class="icon-text"
-        class:active={mode === "focus"}
-        onclick={() => onSetMode("focus")}
-        disabled={editorToggleDisabled || isNarrow}
-        title="Write with nothing beside you — just your words (Ctrl+Shift+F)"
-        aria-label="Focus"
-        aria-pressed={mode === "focus"}
-      >
-        <Icon name="maximize" /><span class="view-label">Focus</span>
-      </button>
     </div>
     <details class="menu mode-menu">
-      <summary class="icon-btn menu-summary" title="Edit, read or focus" aria-label="Edit, read or focus">
+      <summary class="icon-btn menu-summary" title="Edit or read" aria-label="Edit or read">
         <Icon name={modeIcon} />
         <Icon name="chevron-down" size={12} />
       </summary>
       <div class="menu-panel">
         <button
-          aria-pressed={mode === "editor"}
+          aria-pressed={mode !== "viewer"}
           class="menu-item"
-          class:active={mode === "editor"}
+          class:active={mode !== "viewer"}
           onclick={(e) => { onSetMode("editor"); closeMenu(e); }}
           disabled={editorToggleDisabled}
         >
@@ -378,15 +365,6 @@
           disabled={editorToggleDisabled}
         >
           <Icon name="book-open" /> Read
-        </button>
-        <button
-          aria-pressed={mode === "focus"}
-          class="menu-item"
-          class:active={mode === "focus"}
-          onclick={(e) => { onSetMode("focus"); closeMenu(e); }}
-          disabled={editorToggleDisabled || isNarrow}
-        >
-          <Icon name="maximize" /> Focus
         </button>
       </div>
     </details>

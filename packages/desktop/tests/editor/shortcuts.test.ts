@@ -201,3 +201,21 @@ test("Cmd/Ctrl+F resolves to find; Ctrl+Shift+F stays focus-mode (global find, 2
 test("bare f (preview fit-width) stays untouched by the find shortcut", () => {
   expect(resolveGlobalShortcut({ ctrlOrMeta: false, shift: false, key: "f" })).toBe("none");
 });
+
+// The browser's zoom keys are the app's: they zoom the surface on screen
+// (preview or paged editor), and the Electron menu no longer carries the
+// roles that would have zoomed the whole window.
+test("Cmd/Ctrl+= and Cmd/Ctrl++ zoom in", () => {
+  expect(resolveGlobalShortcut({ ctrlOrMeta: true, shift: false, key: "=" })).toBe("zoom-in");
+  expect(resolveGlobalShortcut({ ctrlOrMeta: true, shift: true, key: "+" })).toBe("zoom-in");
+});
+
+test("Cmd/Ctrl+- zooms out and Cmd/Ctrl+0 resets to fit-width", () => {
+  expect(resolveGlobalShortcut({ ctrlOrMeta: true, shift: false, key: "-" })).toBe("zoom-out");
+  expect(resolveGlobalShortcut({ ctrlOrMeta: true, shift: false, key: "0" })).toBe("zoom-reset");
+});
+
+test("the zoom keys without the modifier are not global shortcuts", () => {
+  expect(resolveGlobalShortcut({ ctrlOrMeta: false, shift: false, key: "=" })).toBe("none");
+  expect(resolveGlobalShortcut({ ctrlOrMeta: false, shift: false, key: "0" })).toBe("none");
+});

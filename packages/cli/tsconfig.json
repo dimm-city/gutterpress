@@ -39,5 +39,5 @@
   // into every Node file in the package (measured: it silently broke an
   // unrelated `new Response(uint8Array)` call in npm-plugin-installer.test.ts).
   // Excluded here and checked in their own isolated program instead.
-  "exclude": ["src/engine/viewer", "src/engine/compiler/agent.ts"]
+  "exclude": ["src/engine/viewer", "src/engine/compiler/agent.ts", "src/viewer.ts"]
 }

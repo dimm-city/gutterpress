@@ -1,7 +1,9 @@
 /**
- * Shared auto-sync settings hook for the sync:setAutoSync server route
- * (ARCH review #8 — migrated off IPC; it was a pure settings write with no
- * push stream or live-BrowserWindow need).
+ * Shared auto-sync settings hook for the sync:setAutoSync IPC handler in
+ * `electron/api/remote.ts` (SFE-P5c3 — restored to IPC; the
+ * `sync/set-auto-sync/+server.ts` route it replaced, served through
+ * ARCH review #8's "migrated off IPC" for a pure settings write with no push
+ * stream or live-BrowserWindow need, is deleted).
  *
  * Storage lives in the single collapsed host object (ARCH review #31,
  * `./host-services.ts`) — `getSyncSettingsHooks()` is a thin derived selector

@@ -32,10 +32,9 @@ import { isBuiltin } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const entry = join(
-  resolve(dirname(fileURLToPath(import.meta.url)), "..", "dist"),
-  "render.js",
-);
+const DIST = resolve(dirname(fileURLToPath(import.meta.url)), "..", "dist");
+/** Every browser-facing subpath: each is built as its own non-split graph. */
+const ENTRIES = ["render.js", "viewer.js"];
 
 /** Collect every import/export/require specifier in the module's source. */
 function specifiersOf(source) {
@@ -51,39 +50,39 @@ function specifiersOf(source) {
   return out;
 }
 
-let source;
-try {
-  source = readFileSync(entry, "utf8");
-} catch {
-  console.error(`✖ ${entry} is unreadable — build incomplete?`);
-  process.exit(1);
-}
-
 const violations = [];
-if (/createRequire/.test(source)) {
-  violations.push("contains createRequire");
-}
-for (const spec of specifiersOf(source)) {
-  if (isBuiltin(spec)) {
-    violations.push(`imports Node builtin "${spec}"`);
-  } else if (spec.startsWith("./") || spec.startsWith("../")) {
-    violations.push(
-      `imports relative chunk "${spec}" — render.js must stay a single non-split graph`,
-    );
+for (const name of ENTRIES) {
+  const entry = join(DIST, name);
+  let source;
+  try {
+    source = readFileSync(entry, "utf8");
+  } catch {
+    console.error(`✖ ${entry} is unreadable — build incomplete?`);
+    process.exit(1);
+  }
+  if (/createRequire/.test(source)) violations.push(`${name}: contains createRequire`);
+  for (const spec of specifiersOf(source)) {
+    if (isBuiltin(spec)) {
+      violations.push(`${name}: imports Node builtin "${spec}"`);
+    } else if (spec.startsWith("./") || spec.startsWith("../")) {
+      violations.push(
+        `${name}: imports relative chunk "${spec}" — it must stay a single non-split graph`,
+      );
+    }
   }
 }
 
 if (violations.length > 0) {
   console.error(
-    "✖ gutterpress/render is no longer node-free/self-contained — the desktop " +
-      "SPA value-imports it into the browser bundle (root CLAUDE.md §8):",
+    "✖ a browser-facing subpath is no longer node-free/self-contained — the " +
+      "desktop SPA value-imports these into the browser bundle (root CLAUDE.md §8):",
   );
   for (const v of violations) console.error("  - " + v);
   console.error(
-    "Keep src/render.ts's transitive graph free of node:* / Node builtins, " +
-      "and keep its `bun build` invocation separate from the Node entrypoints.",
+    "Keep each entry's transitive graph free of node:* / Node builtins, and " +
+      "keep its `bun build` invocation separate from the Node entrypoints.",
   );
   process.exit(1);
 }
 
-console.log("✓ render subpath is node-free and self-contained (dist/render.js)");
+console.log(`✓ browser subpaths are node-free and self-contained (${ENTRIES.join(", ")})`);

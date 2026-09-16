@@ -10,9 +10,15 @@
    */
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
-  import { getPlatform, isDesktop } from "$lib/platform";
+  import { isDesktop } from "$lib/platform";
   import { basenameOf } from "$lib/platform/paths";
-  import { api } from "$lib/api";
+  import {
+    getRecentFolders,
+    getFavorites,
+    removeRecent as removeRecentCapability,
+    toggleFavorite as toggleFavoriteCapability,
+  } from "$lib/app-lifecycle/app-lifecycle-capability";
+  import { openDirectory } from "$lib/files/files-capability";
   import { discoverProjectsCached, type DiscoveredProject } from "$lib/projects-discover-cache";
 
   // #49: recents/favorites are FolderRef-shaped (key + precomputed displayName)
@@ -102,8 +108,8 @@
     loading = true;
     try {
       const [rawR, rawF] = await Promise.all([
-        api.app.getRecentFolders(),
-        api.app.getFavorites(),
+        getRecentFolders(),
+        getFavorites(),
       ]);
       recents = rawR.map((r) => ({
         key: r.path,
@@ -263,13 +269,13 @@
 
   async function removeRecent(path: string, e: MouseEvent | KeyboardEvent) {
     e.stopPropagation();
-    await api.app.removeRecent(path).catch(() => {});
+    await removeRecentCapability(path).catch(() => {});
     await loadLists();
   }
 
   async function toggleFavorite(path: string, title: string, e: MouseEvent | KeyboardEvent) {
     e.stopPropagation();
-    await api.app.toggleFavorite(path, title).catch(() => {});
+    await toggleFavoriteCapability(path, title).catch(() => {});
     await loadLists();
   }
 
@@ -305,7 +311,7 @@
       return;
     }
     if (!isDesktop()) return;
-    const pathStr = await api.dialog.openDirectory();
+    const pathStr = await openDirectory();
     if (!pathStr) return;
     onChosen?.(pathStr);
   }

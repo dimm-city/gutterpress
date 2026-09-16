@@ -1,0 +1,9 @@
+# The root .gitignore's blanket `dist`/`dist/` rules exist to keep
+# REGENERABLE build output out of git (tools/check-generated-files.mjs's
+# rule 5 documents the same policy for `packages/*/dist/`). This package's
+# `dist/` is different: it is the VENDORED, hand-patched published artifact
+# of @vscode/markdown-editor@0.0.2-84 (see ../NOTICE and ../PATCHES.md) —
+# there is no build step that regenerates it, so it must be tracked like any
+# other source file. Re-include it here, scoped to this one package only.
+!/dist/
+!/dist/**

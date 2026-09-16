@@ -33,6 +33,7 @@ import { upsertRecentFolder } from "../recent-folders";
 import type { DesktopPrefs } from "../prefs-store";
 import type { PreviewStartResult } from "../bridge-types";
 import type { TokenStore } from "gutterpress";
+import type { SecureHandle } from "../server-bridge/secure-handle";
 
 type LibModule = typeof import("gutterpress");
 type ProjectSourceResult = Awaited<ReturnType<LibModule["detectProjectSource"]>>;
@@ -326,4 +327,10 @@ export class PreviewOpenController {
       // Non-fatal: the pill simply stays hidden if detection/diagnosis fails.
     }
   }
+}
+
+/** Register `api:preview` / `api:stopPreview` (SFE-P6b, extracted from electron/main.ts). */
+export function registerPreviewHandlers(secureHandle: SecureHandle, previewOpen: PreviewOpenController): void {
+  secureHandle("api:preview", (_e, args: { input?: string }) => previewOpen.open(args));
+  secureHandle("api:stopPreview", () => previewOpen.stop());
 }

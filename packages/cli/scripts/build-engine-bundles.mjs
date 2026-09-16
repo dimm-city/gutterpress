@@ -18,7 +18,7 @@
 // Run directly (`bun scripts/build-engine-bundles.mjs`) to refresh the
 // committed bundles after an engine source change.
 // ──────────────────────────────────────────────────────────────────────────
-import { copyFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -26,8 +26,6 @@ const PKG_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ENGINE_SRC = join(PKG_ROOT, "src", "engine");
 const OUT_DIR = join(PKG_ROOT, "src", "assets", "engine");
 const VIEWER_BUNDLE = "gutterpress-viewer.js";
-// The desktop PWA's static mirror of the viewer bundle (see the copy below).
-const DESKTOP_STATIC_ENGINE = resolve(PKG_ROOT, "..", "desktop", "static", "engine");
 
 const TARGETS = [
   { entry: join(ENGINE_SRC, "viewer", "global.ts"), outName: VIEWER_BUNDLE, minify: false },
@@ -92,19 +90,13 @@ async function buildEngineBundlesHere(force, outDir) {
     }
     built.push(target.outName);
   }
-  // The desktop PWA serves the viewer as a plain static file
-  // (packages/desktop/static/engine/) — it cannot reach into the CLI's
-  // embedded assets from the browser. That copy is a second on-disk original,
-  // so refresh it here or a `--force` rebuild silently ships a stale viewer to
-  // the web target while the CLI runs the new one. Only when writing the real
-  // committed output dir (bundle-freshness.test.ts builds into a scratch dir).
-  if (resolve(outDir) === OUT_DIR) {
-    mkdirSync(DESKTOP_STATIC_ENGINE, { recursive: true });
-    copyFileSync(
-      join(OUT_DIR, VIEWER_BUNDLE),
-      join(DESKTOP_STATIC_ENGINE, VIEWER_BUNDLE),
-    );
-  }
+  // No desktop static mirror to refresh: the desktop package's only two
+  // consumers of a `packages/desktop/static/engine/` copy (the dormant
+  // browser host's `WebAdapter.renderBookHtml` and the service worker's
+  // precache list) were both deleted in SFE-P5a (D10). The desktop preview
+  // iframe is served from the CLI preview server origin, which injects this
+  // same bundle from these embedded assets directly — never a static mirror.
+  // See docs/plans/source-first-editor/deletion-ledger.md's SFE-P5a entry.
   return built;
 }
 
