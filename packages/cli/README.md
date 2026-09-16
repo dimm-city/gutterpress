@@ -194,7 +194,7 @@ gutterpress preview [input-dir] [options]
   --icc <path>            Path to ICC profile (required for --format pdfx)
   --manifest <path>       Path to manifest.yaml                          (pdf|pdfx only)
   --strip-annotations     Strip PDF annotations for PDF/X compliance    (pdfx only)
-  --skip-lint             Skip CSS linting                              (pdf|pdfx only)
+  --skip-lint             Skip the CSS print-safety check               (pdf|pdfx only)
   --skip-pre-validate     Skip pre-build validation                     (pdf|pdfx only)
   --skip-post-validate    Skip post-build PDF/X validation              (pdfx only)
   --allow-shrink          Build anyway when content is wider than the page content box (pdf|pdfx only)
@@ -202,7 +202,7 @@ gutterpress preview [input-dir] [options]
 
 ### `gutterpress build`
 
-Build a PDF (default) or HTML output. Pipeline: `lint → validate:pre → convert → assets → build → validate:post`.
+Build a PDF (default) or HTML output. Pipeline: `validate:pre → convert → assets → build → validate:post`. The CSS print-safety check (remote urls, risky print effects, page-containment) runs once, inside `validate:pre`, as the `source.stylelint` check — there is no separate lint phase.
 
 ```sh
 gutterpress build [input-dir] [options]
@@ -214,7 +214,7 @@ gutterpress build [input-dir] [options]
   --icc <path>            Path to ICC profile (required for --format pdfx)
   --manifest <path>       Path to manifest.yaml
   --strip-annotations     Strip PDF annotations for PDF/X compliance
-  --skip-lint             Skip the CSS print-safety pass (default: lint runs for pdf/pdfx)
+  --skip-lint             Skip the CSS print-safety check (default: it runs for pdf/pdfx)
   --skip-pre-validate     Skip pre-build validation
   --skip-post-validate    Skip post-build PDF/X validation
   --allow-shrink          Build anyway when content is wider than the page content box. Chromium then scales the WHOLE book down to fit it — the build reports that whole-document scale (e.g. "about 0.72x its declared size") plus every offender, as warnings.

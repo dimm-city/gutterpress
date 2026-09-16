@@ -5,6 +5,25 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **One CSS gate, not two.** `gutterpress build` used to run its own
+  print-safety CSS check (a separate lint gate) and then run the identical
+  check again one phase later as pre-build validation's `source.stylelint`
+  check, printing every finding twice. The CSS print-safety check (remote
+  URLs, rasterizing effects, page-containment) now runs exactly once, as
+  `source.stylelint` inside pre-build validation. `--skip-lint` and
+  `config.lint.enabled: false` now disable just that one check instead of a
+  whole separate phase, and no longer make the build exit with code `2` on a
+  print-safety error — that finding now fails the build the same way every
+  other pre-build validation finding does (exit `1`), matching the exit-code
+  contract standalone `gutterpress lint` already used. An unreadable
+  configured stylesheet is now an error finding of `source.stylelint`
+  (file + message) instead of being silently skipped. Standalone
+  `gutterpress lint` now prints and counts every finding `checkCss` returns,
+  including `printsafe/page-containment` ones it previously dropped despite
+  the CLI README documenting `lint` as covering page-containment risk. (#272)
+
 ## [0.10.9] - 2026-09-12
 
 ### Changed

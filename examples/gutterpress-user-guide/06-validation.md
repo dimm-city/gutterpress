@@ -17,8 +17,14 @@ When using `gutterpress build`, validation is automatically integrated into the
 pipeline:
 
 ```
-lint → validate:pre-build → convert → assets → build → validate:post-build
+validate:pre-build → convert → assets → build → validate:post-build
 ```
+
+The CSS print-safety check (remote URLs, rasterizing effects, and
+page-containment risks — the same check `gutterpress lint` runs standalone)
+runs once, inside `validate:pre-build`, as the `source.stylelint` check.
+There is no separate lint phase; `--skip-lint` disables that one check
+without skipping the rest of pre-build validation.
 
 The final `validate:post-build` phase runs for `--format pdfx` only — a plain
 `--format pdf` build stops after the build step. Everything before it runs for
