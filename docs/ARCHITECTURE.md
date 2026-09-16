@@ -269,7 +269,7 @@ never a `<link>` — in a fixed cascade order (`markdown/assemble.ts`):
    `gutterpress-css.ts` (`gp-*` image, positioning, and column vocabulary).
 3. **Extension CSS** - each `extensions:` entry's stylesheets, in list order:
    a look's or component library's declared `styles` (from its
-   `gutterpress.json` / `theme.json`), or a plugin module's `styles` files
+   `package.json`'s `gutterpress` block), or a plugin module's `styles` files
    (paths relative to the module) followed by its `css` string export. All
    are resolved at load time and inlined through the same
    `lib/asset-inline.ts` pass as project CSS; a later entry's CSS wins ties.
@@ -579,9 +579,8 @@ it is; there is no `path:`/`name:` wrapper and no `priority`:
    into Gutterpress — no install, no network; bundled names shadow npm and
    cannot be pinned;
 2. `./x`, `../x`, `/x` or a Windows drive path is a **path** relative to the
-   manifest — a folder with a `gutterpress.json` (or legacy
-   `theme.json`/`theme.css`) or a bare `.js` plugin file — referenced in
-   place, never copied;
+   manifest — a folder with a `package.json` or a bare `.js` plugin file —
+   referenced in place, never copied;
 3. anything else is an **npm** specifier; `name@version` pins it, and
    `gutterpress ext add` writes the pin.
 
@@ -646,14 +645,16 @@ export const styles = ['./styles/my-plugin.css'];
 
 ### Extension folders
 
-A path entry that names a FOLDER is loaded through its metadata file
-(`lib/extension-manifest.ts`: `gutterpress.json`, falling back to
-`theme.json`): `name`, `author`, `description`, `preview`, `styles` (ordered
-sheets — a folder that declares none but holds a `theme.css` is a one-sheet
-look), `tokensFile`, `markdown` (a JS module loaded through the exact same
-plain-markdown-it contract as a bare file), `snippets`, `components`. A
-theme-era `theme.css` + `theme.json` folder is therefore a valid extension
-unchanged, and "look" and "plugin" are just what a folder happens to declare.
+A path entry that names a FOLDER is loaded through its `package.json`
+(`lib/extension-manifest.ts`): npm's own `name`, `description`, `author`,
+`keywords` and `main` (the markdown-it entry, loaded through the exact same
+plain-markdown-it contract as a bare file), plus a `gutterpress` block —
+`styles` (ordered sheets), `tokensFile`, `preview`, `snippets`, `components`,
+and `markdown` for the one case `main` cannot express. A package maintainer
+writes no second manifest, so a plain markdown-it plugin package is a valid
+extension unchanged, and "look" and "plugin" are just what a package happens
+to declare. The removed `gutterpress.json`/`theme.json` are not read: a folder
+still carrying one fails to load with the package.json shape spelled out.
 The three built-in looks are the one thing the manager COPIES into a project
 (`extensions/<id>/`, then referenced as `./extensions/<id>`): a book's look
 must be the author's own editable files, never a hidden dependency on the CSS

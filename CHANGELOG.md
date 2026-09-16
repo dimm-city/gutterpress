@@ -22,20 +22,22 @@ This project follows [Semantic Versioning](https://semver.org/).
   the existing online-backup switch is unaffected, since it already reads
   "Keep this project backed up online". (#273)
 
-- **An extension discovery surface: a curated index, `gutterpress ext search`,
-  and a desktop "More extensions" list.** A new committed, curated JSON index
-  (`site/extensions.json`, published at
-  `https://dimm-city.github.io/gutterpress/extensions.json`) lists extensions
-  beyond the bundled/built-in set — curation is a PR to this repo, no
-  registry service, no accounts. `gutterpress ext search [query]` fetches it
-  on demand (never at build/preview time) and prints each match's `use`
-  specifier — exactly what `gutterpress ext add` takes — ready to install;
-  `GUTTERPRESS_EXTENSION_INDEX` overrides the index URL. The desktop's
-  Features view shows the same index as a "More extensions" list under the
-  bundled "Turn on" rows, loaded only once that view mounts; a fetch failure
-  is one quiet line, never a modal, and never blocks the local extension
-  list. The index's first (and so far only) entry is the Dimm City component
-  library (dc-op-manual#47). (#246)
+- **An extension discovery surface: `gutterpress ext search` searches npm, and
+  the desktop can too.** npm already is the registry, so there is no curated
+  index and nothing to register: an extension tags itself `gutterpress` in its
+  package `keywords`, and the markdown-it ecosystem's own `markdown-it-plugin`
+  tag finds every plain plugin (which works in Gutterpress unchanged).
+  `gutterpress ext search [query]` queries the registry on demand (never at
+  build/preview time) and prints each match's `name@version`, which kind it is
+  and its description, ending with the `ext add` command that installs it.
+  `GUTTERPRESS_NPM_REGISTRY` points search AND the installer at a private
+  mirror (http(s) only), and the installer now accepts tarballs only from the
+  configured registry's own origin rather than a hard-coded host. The
+  desktop's Features view has a "Find more on npm" box under the bundled
+  "Turn on" rows, searched once that view mounts and on every query; a fetch
+  failure is one quiet line, never a modal, and never blocks the local
+  extension list. Publishing an extension is `npm publish` with the keyword.
+  (#246)
 
 ### Fixed
 
@@ -53,6 +55,25 @@ This project follows [Semantic Versioning](https://semver.org/).
   (manifest-default `dist/<slug>/`) target are unchanged. (#270, #271)
 
 ### Changed
+
+- **`package.json` is the extension manifest; `gutterpress.json` and
+  `theme.json` are gone.** A package maintainer is no longer asked for a
+  second, Gutterpress-specific manifest: the standard `package.json` describes
+  an extension. npm's own `name`, `description`, `author`, `keywords` and
+  `main` are read as-is — `main` IS the markdown-it plugin of a folder
+  extension — and everything Gutterpress-specific lives under one optional
+  `"gutterpress"` key (`styles`, `markdown`, `snippets`, `components`,
+  `tokensFile`, `preview`). A plain markdown-it plugin package therefore needs
+  nothing at all to load as an extension, a look needs `gutterpress.styles`,
+  and a component library needs `main` + `gutterpress.styles`. There is no
+  implicit `theme.css` any more: a look declares its sheets. A folder still
+  carrying a `gutterpress.json` or `theme.json` fails to load with a message
+  that names the file, says it is no longer read, and prints the package.json
+  that replaces it. `.zip` / `.css` / URL imports still work on an old package
+  — `theme.css` is still the anchor — and now write a package.json into the
+  landed copy (keeping whatever fields the source had, with the name taken
+  from the folder) so what lands always loads. The built-in looks and both
+  `gutterpress new --kind plugin|theme` scaffolds ship a package.json. (#276)
 
 - **One CSS gate, not two.** `gutterpress build` used to run its own
   print-safety CSS check (a separate lint gate) and then run the identical

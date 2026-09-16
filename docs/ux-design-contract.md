@@ -798,10 +798,11 @@ Shipped refinements (#106, 0.8.0-beta.1; carried into the one-list model):
   `LookSection` (formerly `AppearanceSection`, merged #243) renders the
   sample into a hover-preview iframe via `hoverPreviewSrcdoc`.
 - **ZIP drag-and-drop import**, validated against the extension package
-  format: `theme.css` at root + optional `assets/` + optional
-  `gutterpress.json` (or theme-era `theme.json`) declaring `name`,
-  `styles` and `tokensFile` (#239/#241 — every declared sheet is validated
-  like `theme.css`; a theme-era folder is a valid extension unchanged);
+  format: `theme.css` at root + optional `assets/` + optional `package.json`
+  declaring `name` and a `gutterpress` block's `styles`/`tokensFile`
+  (#239/#241/#276 — every declared sheet is validated like `theme.css`; a
+  package without one gets a package.json written into the landed copy, so
+  what lands always loads);
   validation order = structure → CSS parses → print-safety
   check passes (note `printsafe/no-remote-urls` fails CDN-referencing looks
   — surface that clearly) → declares at least one `--print-*` token.

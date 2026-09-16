@@ -147,7 +147,7 @@ Scaffold a new book, plugin or theme from an embedded starter template — the f
 
 `--kind book` is the default. Every new book picks the vendor preset it's designed for: `dtrpg` (DriveThruRPG print-on-demand), `book` (neutral 6x9in trade book), or `custom` (you supply the trim size in points).
 
-`--kind plugin` and `--kind theme` scaffold an **extension package** instead — a folder with a `gutterpress.json` a book can load. The plugin starter carries a declarative marker table, a hand-written markdown-it rule, component CSS and a `bun test` fixture suite; the theme starter carries the six-file layered CSS architecture (tokens / base / components / page-templates / page-rules / book), each sheet opening with its own OWNS / MUST NOT CONTAIN contract header. Both include a README explaining which conventions are load-bearing. An extension needs no preset, trim size or publish target, so the book-only flags below are rejected rather than ignored when `--kind` names one — and `--prefix`/`--description` are likewise rejected for a book.
+`--kind plugin` and `--kind theme` scaffold an **extension package** instead — a folder with a `package.json` a book can load. The plugin starter carries a declarative marker table, a hand-written markdown-it rule, component CSS and a `bun test` fixture suite; the theme starter carries the six-file layered CSS architecture (tokens / base / components / page-templates / page-rules / book), each sheet opening with its own OWNS / MUST NOT CONTAIN contract header. Both include a README explaining which conventions are load-bearing. An extension needs no preset, trim size or publish target, so the book-only flags below are rejected rather than ignored when `--kind` names one — and `--prefix`/`--description` are likewise rejected for a book.
 
 ```sh
 gutterpress new <name> [--kind <id>] [options]
@@ -443,12 +443,13 @@ gutterpress ext enable markdown-it-mark ./my-book
 
 #### `gutterpress ext search`
 
-Search a curated, community-maintained index of extensions beyond the bundled
-set — the same discovery list the desktop app's Features view shows under
-"More extensions." Not project-scoped (no `dir` argument): it fetches
-[`extensions.json`](https://dimm-city.github.io/gutterpress/extensions.json)
-and prints each match's `use` specifier, name, what it carries, and its
-description, ending with the `ext add` command to install it.
+Search **npm** for extensions — the same list the desktop app's Features view
+shows under "Find more on npm." Not project-scoped (no `dir` argument): it
+queries the registry for packages tagged `gutterpress` (Gutterpress
+extensions: plugins, looks, component libraries) or `markdown-it-plugin` (the
+markdown-it ecosystem's own tag — those work in Gutterpress unchanged), and
+prints each match's `name@version`, which kind it is, and its description,
+ending with the `ext add` command to install it.
 
 ```sh
 gutterpress ext search [query]
@@ -456,13 +457,15 @@ gutterpress ext search [query]
 
 ```sh
 gutterpress ext search
-gutterpress ext search components
+gutterpress ext search footnote
 ```
 
-An empty or omitted `query` lists every entry; the match is a case-insensitive
-substring over id, name, description and author. Set `GUTTERPRESS_EXTENSION_INDEX`
-to point at a different index URL (http/https only) — useful for a private
-mirror, or for testing.
+An empty or omitted `query` lists the most relevant tagged packages. To
+publish an extension, `npm publish` it with `"gutterpress"` in its
+`keywords` — there is no index to be added to and nothing to register. Set
+`GUTTERPRESS_NPM_REGISTRY` to point at a different registry (http/https only)
+— useful for a private mirror, or for testing; the installer uses the same
+setting, and only accepts tarballs from that registry's own origin.
 
 ## Exit codes
 
@@ -499,6 +502,26 @@ extensions:
   - use: ./plugins/drafts.js
     enabled: false               # keep the entry, skip loading it
 ```
+
+An extension folder (or npm package) describes itself in its **`package.json`** — there is no second, Gutterpress-specific manifest file. npm's own fields are read as-is, and everything Gutterpress needs sits under one optional `"gutterpress"` key:
+
+```json
+{
+  "name": "field-notes",
+  "description": "Margin notes and term boxes",
+  "author": "You",
+  "keywords": ["gutterpress", "markdown-it-plugin"],
+  "main": "plugin.js",
+  "gutterpress": {
+    "styles": ["styles/plugin.css"],
+    "snippets": "snippets",
+    "components": "components.yaml",
+    "tokensFile": "styles/tokens.css"
+  }
+}
+```
+
+`main` is the markdown-it plugin — npm's own convention — so a plain markdown-it plugin package needs nothing else at all. A look needs only `gutterpress.styles` (an ordered list, relative to the folder); a component library carries both. `gutterpress.markdown` exists for the one case `main` can't express: a package whose `main` is not the plugin. Folders still carrying the removed `gutterpress.json` or `theme.json` fail to load with a message showing the package.json that replaces them.
 
 Order is load order: a later entry's markdown runs after earlier entries' (and sees their output) and its CSS wins ties; the project's own `styles:` always load after every extension. There is no `priority` and no `path:`/`name:` wrapper — a manifest still carrying `plugins:` fails with a message that prints the same entries rewritten as `extensions:`. The `engine:` and `engineStyles:` keys are gone too (there is one engine; move any `engineStyles` entries to the end of `styles:`).
 
