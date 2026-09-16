@@ -7,9 +7,11 @@
  * contract these tests pin: 0 clean / 1 findings / 2 usage / 3 pipeline.
  */
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import * as http from "node:http";
+import type * as net from "node:net";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -17,18 +19,48 @@ import { makeTempDir } from "../test-helpers/testkit.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI_ENTRY = path.join(__dirname, "..", "cli.ts");
+const REPO_ROOT = path.join(__dirname, "..", "..", "..", "..");
 
-function runCli(cliArgs: string[]): { exitCode: number; stdout: string; stderr: string } {
+function runCli(
+  cliArgs: string[],
+  env: Record<string, string> = {},
+): { exitCode: number; stdout: string; stderr: string } {
   const result = Bun.spawnSync({
     cmd: ["bun", "run", CLI_ENTRY, ...cliArgs],
     stdout: "pipe",
     stderr: "pipe",
+    env: { ...process.env, ...env },
   });
   return {
     exitCode: result.exitCode,
     stdout: result.stdout.toString(),
     stderr: result.stderr.toString(),
   };
+}
+
+/**
+ * Async sibling of `runCli`, for the one suite (`ext search`) that spins up
+ * its own HTTP server IN THIS TEST PROCESS: `Bun.spawnSync` blocks this
+ * process's event loop until the child exits, so a same-process server can
+ * never service the child's request and the child hangs until its own fetch
+ * timeout fires. `Bun.spawn` + `await exited` keeps the loop running.
+ */
+async function runCliAsync(
+  cliArgs: string[],
+  env: Record<string, string> = {},
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const proc = Bun.spawn({
+    cmd: ["bun", "run", CLI_ENTRY, ...cliArgs],
+    stdout: "pipe",
+    stderr: "pipe",
+    env: { ...process.env, ...env },
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  return { exitCode, stdout, stderr };
 }
 
 async function makeProjectDir(manifestYaml?: string): Promise<string> {
@@ -262,6 +294,7 @@ describe("C7: every command rejects unknown flags", () => {
     ["ext remove", ["ext", "remove", "some-id"]],
     ["ext enable", ["ext", "enable", "some-id"]],
     ["ext disable", ["ext", "disable", "some-id"]],
+    ["ext search", ["ext", "search"]],
   ];
 
   test.each(invocations)("%s rejects an unknown option with exit 2", (_name, args) => {
@@ -434,7 +467,7 @@ describe("parse-time usage errors keep the documented exit code", () => {
   test("bare ext shows its subcommand help and exits successfully", () => {
     const { exitCode, stdout, stderr } = runCli(["ext"]);
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("List, add, remove, enable, or disable the project's extensions");
+    expect(stdout).toContain("List, add, remove, enable, disable, or search for the project's extensions");
     expect(stdout).toContain("add");
     expect(stderr).toBe("");
   });
@@ -617,4 +650,81 @@ describe("M48: unknown preset errors instead of silently falling back to dtrpg",
       await rm(dir, { recursive: true, force: true });
     }
   }, 30000);
+});
+
+// ── #246: `gutterpress ext search` against the curated index ───────────────
+
+describe("ext search (#246)", () => {
+  let server: http.Server | undefined;
+
+  afterEach(async () => {
+    if (server) {
+      await new Promise<void>((resolve) => server!.close(() => resolve()));
+      server = undefined;
+    }
+  });
+
+  async function serve(body: string, status = 200): Promise<string> {
+    server = http.createServer((_req, res) => {
+      res.writeHead(status, { "content-type": "application/json" });
+      res.end(body);
+    });
+    await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
+    const port = (server!.address() as net.AddressInfo).port;
+    return `http://127.0.0.1:${port}/extensions.json`;
+  }
+
+  test("finds the committed index's Dimm City row and prints how to add it", async () => {
+    const body = await readFile(path.join(REPO_ROOT, "site", "extensions.json"), "utf8");
+    const url = await serve(body);
+    const { exitCode, stdout, stderr } = await runCliAsync(["ext", "search"], {
+      GUTTERPRESS_EXTENSION_INDEX: url,
+    });
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
+    expect(stdout).toContain("dimm-city-components");
+    expect(stdout).toContain("Dimm City Components");
+    expect(stdout).toContain("Add one with: gutterpress ext add <use>");
+  }, 30000);
+
+  test("a query narrows the results by substring, case-insensitively", async () => {
+    const url = await serve(
+      JSON.stringify({
+        schema: 1,
+        extensions: [
+          { id: "a", name: "Alpha", description: "d", author: "x", use: "a", carries: ["markdown"] },
+          { id: "b", name: "Beta", description: "d", author: "x", use: "b", carries: ["markdown"] },
+        ],
+      }),
+    );
+    const { exitCode, stdout } = await runCliAsync(["ext", "search", "ALPHA"], {
+      GUTTERPRESS_EXTENSION_INDEX: url,
+    });
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Alpha");
+    expect(stdout).not.toContain("Beta");
+  }, 30000);
+
+  test("no matches is a clean exit 0 with a one-line message", async () => {
+    const url = await serve(JSON.stringify({ schema: 1, extensions: [] }));
+    const { exitCode, stdout } = await runCliAsync(["ext", "search", "nonexistent-xyz"], {
+      GUTTERPRESS_EXTENSION_INDEX: url,
+    });
+    expect(exitCode).toBe(0);
+    expect(stdout.trim()).toBe('No extensions match "nonexistent-xyz".');
+  }, 30000);
+
+  test("an unreachable index is a pipeline failure, not a crash", () => {
+    const { exitCode, stderr } = runCli(["ext", "search"], {
+      GUTTERPRESS_EXTENSION_INDEX: "http://127.0.0.1:1/extensions.json",
+    });
+    expect(exitCode).toBe(3);
+    expect(stderr).toContain("Could not search the extension index");
+  }, 30000);
+
+  test("ext search rejects unknown flags with exit 2, matching every other ext subcommand", () => {
+    const { exitCode, stderr } = runCli(["ext", "search", "--definitely-unknown"]);
+    expect(exitCode).toBe(2);
+    expect(stderr).toContain("unknown option --definitely-unknown");
+  });
 });
