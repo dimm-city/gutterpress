@@ -220,6 +220,21 @@ gutterpress build [input-dir] [options]
   --allow-shrink          Build anyway when content is wider than the page content box. Chromium then scales the WHOLE book down to fit it — the build reports that whole-document scale (e.g. "about 0.72x its declared size") plus every offender, as warnings.
 ```
 
+A `--out <dir>` is shared between formats safely: each build delivers only
+what its own format produces, so it never disturbs another format's output
+already sitting in that folder. `--format html` writes `book.html` (with the
+viewer bundle), `index.html`, and referenced assets. `--format pdf`/`pdfx`
+writes only its own PDF (e.g. `my-book-pdf.pdf`). This is what makes the
+two-command sequence below safe:
+
+```sh
+gutterpress build --format html --out ./_site
+gutterpress build --format pdf --out ./_site
+```
+
+`./_site` ends up with the paginating `book.html` from the first command
+plus the PDF from the second — the pdf build never overwrites `book.html`.
+
 ### `gutterpress publish`
 
 Push a built PDF/HTML artifact to a publishing platform (itch.io, DriveThruRPG, Amazon KDP, Azure Static Web Apps, Shopify, Google Drive), headlessly and CI-safely. Credentials live in a 0600 user-config store (never in the project); provider env vars override it for CI. Most providers connect with a pasted API key; Google Drive connects through your browser instead (`--connect` opens the sign-in page — nothing to paste).

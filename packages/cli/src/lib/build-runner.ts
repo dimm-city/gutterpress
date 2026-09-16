@@ -97,10 +97,12 @@ export interface BuildRunnerOptions {
 export interface BuildRunnerResult {
   outDir: string;
   /**
-   * The published `book.html`, or `null` for a one-file delivery (`--out x.pdf`,
-   * a desktop export) where only the PDF is delivered and everything else is
-   * discarded with the work dir. Returning a work-dir path here would hand the
-   * caller a filename that is already deleted by the time they see it.
+   * The published `book.html`, or `null` when only the PDF is delivered and
+   * everything else is discarded with the work dir — a one-file delivery
+   * (`--out x.pdf`, a desktop export), or a `pdf`/`pdfx` build into a
+   * `--out <dir>` (#270, #271; see {@link PublishTarget}'s `directory` case).
+   * Returning a work-dir path here would hand the caller a filename that is
+   * already deleted by the time they see it.
    */
   htmlPath: string | null;
   pdfPath: string | null;
@@ -160,7 +162,15 @@ export function splitOutPath(
 type PublishTarget =
   /** gutterpress's own `dist/<slug>/`. Replaced wholesale, so stale files vanish. */
   | { kind: "project"; dir: string }
-  /** `--out <dir>`: the user's directory. Files are added; nothing is removed. */
+  /**
+   * `--out <dir>`: the user's directory. Files are added; nothing is removed.
+   * An `html` build delivers its whole bundle (book.html + viewer, index.html,
+   * assets, fingerprint) here. A `pdf`/`pdfx` build delivers ONLY its own PDF
+   * — never book.html/index.html/assets — so building both formats into one
+   * shared directory (the documented `--out ./_site` sequence) cannot let the
+   * pdf build's staged, viewer-less, link-stripped `book.html` clobber the
+   * html build's published one (#270, #271).
+   */
   | { kind: "directory"; dir: string }
   /** `--out <file.pdf>` / the desktop's Save dialog: ONE file, nothing else. */
   | { kind: "file"; file: string };
@@ -600,10 +610,17 @@ async function finalizeBuild(
   });
   await publishBuild(ctx, artifactName);
 
-  // A `file` target delivers ONE artifact; the fingerprint and book.html stay
-  // in the work dir and are removed with it, so they are reported as absent
-  // rather than as paths the caller cannot open.
-  const delivered = ctx.target.kind !== "file";
+  // book.html + fingerprint are delivered everywhere except: a `file` target
+  // (`--out x.pdf`), which delivers ONE artifact; and a `directory` target for
+  // pdf/pdfx, which delivers only its own PDF into the shared folder — never
+  // book.html/index.html/assets, and never a fingerprint that could shadow an
+  // html build's own (#270, #271; see PublishTarget's `directory` case). In
+  // both non-delivering cases the fingerprint and book.html stay in the work
+  // dir and are removed with it, so they are reported as absent rather than
+  // as paths the caller cannot open.
+  const delivered =
+    ctx.target.kind === "project" ||
+    (ctx.target.kind === "directory" && ctx.format === "html");
   const fingerprintPath = delivered
     ? path.join(ctx.outDir, path.basename(workFingerprint))
     : null;
@@ -619,6 +636,38 @@ async function finalizeBuild(
     fingerprintPath,
     diagnostics,
   };
+}
+
+/**
+ * Publish a completed work dir into a `--out <dir>` target: the pure copy
+ * decision behind {@link PublishTarget}'s `directory` case, pulled out of
+ * {@link publishBuild} so it is unit-testable without a full
+ * {@link BuildContext}.
+ *
+ * `html` delivers the whole bundle (book.html + viewer, index.html, assets,
+ * fingerprint) — files are added, never removed. `pdf`/`pdfx` delivers ONLY
+ * its own PDF: its staged `book.html` has no viewer script
+ * (`HtmlOutput.finish` never runs for these formats) and, since #263, no
+ * relative hrefs either, so copying the whole work dir would silently
+ * clobber an html build's published book.html/index.html/assets in the same
+ * `--out` directory (#270, #271).
+ */
+export async function publishToDirectory(
+  workDir: string,
+  targetDir: string,
+  format: BuildFormat,
+  artifactName: string | null
+): Promise<void> {
+  await fsp.mkdir(targetDir, { recursive: true });
+  if (format !== "html") {
+    if (!artifactName) throw new BuildError("No artifact to write for this format", 1);
+    await fsp.copyFile(
+      path.join(workDir, artifactName),
+      path.join(targetDir, artifactName)
+    );
+    return;
+  }
+  await fsp.cp(workDir, targetDir, { recursive: true, force: true });
 }
 
 /**
@@ -642,9 +691,7 @@ async function publishBuild(ctx: BuildContext, artifactName: string | null): Pro
   }
 
   if (target.kind === "directory") {
-    // The user's directory: add files, never remove any.
-    await fsp.mkdir(target.dir, { recursive: true });
-    await fsp.cp(workDir, target.dir, { recursive: true, force: true });
+    await publishToDirectory(workDir, target.dir, ctx.format, artifactName);
     return;
   }
 
