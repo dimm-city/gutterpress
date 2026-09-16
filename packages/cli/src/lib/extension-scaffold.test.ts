@@ -72,10 +72,10 @@ describe("resolveExtensionPrefix", () => {
   });
 });
 
-// ── Both kinds produce a folder #241's own resolver accepts ─────────────────
+// ── Both kinds produce a folder the manifest resolver accepts ──────────────
 
 describe.each([...EXTENSION_KINDS])("scaffoldExtension --kind %s", (kind) => {
-  test("writes a folder whose gutterpress.json resolves through extension-manifest.ts", async () => {
+  test("writes a folder whose package.json resolves through extension-manifest.ts", async () => {
     const parent = await tmpParent();
     const result = await scaffoldExtension({
       name: "Field Notes",
@@ -96,8 +96,9 @@ describe.each([...EXTENSION_KINDS])("scaffoldExtension --kind %s", (kind) => {
 
     // THE assertion: the real reader, the real containment guard, the real
     // resolver — not a hand-rolled JSON.parse.
+    expect(path.basename(result.manifestPath)).toBe("package.json");
     const meta = await readExtensionMeta(result.extensionDir);
-    expect(meta.name).toBe("Field Notes");
+    expect(meta.name).toBe("field-notes");
     expect(meta.author).toBe("Jane Author");
     expect(() => assertExtensionContained(meta)).not.toThrow();
 
@@ -134,9 +135,9 @@ describe.each([...EXTENSION_KINDS])("scaffoldExtension --kind %s", (kind) => {
       parentDir: parent,
       author: 'A "quoted" author',
     });
-    const meta = JSON.parse(await readFile(result.manifestPath, "utf8"));
-    expect(meta.name).toBe('Jane "JJ" Notes');
-    expect(meta.author).toBe('A "quoted" author');
+    const pkg = JSON.parse(await readFile(result.manifestPath, "utf8"));
+    expect(pkg.name).toBe("jane-jj-notes");
+    expect(pkg.author).toBe('A "quoted" author');
   });
 
   test("the chosen prefix is what the files actually carry", async () => {
@@ -177,7 +178,7 @@ describe("scaffoldExtension --kind plugin", () => {
     const result = await scaffoldExtension({ name: "Field Notes", kind: "plugin", parentDir: parent });
 
     const [loaded] = await loadPlugins([pluginCfg(result.slug)], parent);
-    expect(loaded?.name).toBe("Field Notes");
+    expect(loaded?.name).toBe("field-notes");
     expect(typeof loaded?.plugin).toBe("function");
     // #240's declarative table has to survive the FOLDER load path, not just
     // a direct `path: …/plugin.js` — see plugins.test.ts's own regression.

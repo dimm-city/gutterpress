@@ -169,7 +169,7 @@ export interface SavedTemplateInfo extends TemplateInfo {
 
 /**
  * Provenance of one merged snippet entry (#242 — extensions can now ship a
- * `snippets` folder in their gutterpress.json, merged into this SAME picker
+ * `snippets` folder declared in their package.json, merged into this SAME picker
  * feed by the lib's `listMergedSnippets`).
  *
  * `{ kind: 'project' }` is the author's own snippet — the only kind

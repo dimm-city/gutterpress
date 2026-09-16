@@ -7,12 +7,12 @@ CSS and insertable snippets to a book.
 
 ```
 {{SLUG}}/
-├── gutterpress.json     what this package declares to Gutterpress
+├── package.json         what this package declares: `main` is the plugin,
+│                        the `gutterpress` block names the styles and snippets
 ├── plugin.js            the markdown-it plugin (declarative + bespoke halves)
 ├── styles/plugin.css    component CSS, with public tokens at :root
 ├── snippets/            insertable recipes, one per component
-├── test/                fixture.md → expected.html, runnable with `bun test`
-└── package.json         only needed for `bun test` and publishing to npm
+└── test/                fixture.md → expected.html, runnable with `bun test`
 ```
 
 ## Try it
@@ -32,7 +32,7 @@ extensions:
 `gutterpress ext add ./plugins/{{SLUG}} <book>` writes that line for you (the
 book directory is the second positional argument). Either way the entry names
 the FOLDER, not `plugin.js`. That is what makes Gutterpress read
-`gutterpress.json` and pick up the stylesheet and snippets alongside the
+`package.json` and pick up the stylesheet and snippets alongside the
 markdown behaviour — point it at the `.js` file and you get the markdown and
 nothing else. The folder is referenced in place, never copied: keep editing it
 and the book follows.

@@ -5,7 +5,6 @@
   "type": "module",
   "main": "plugin.js",
   "files": [
-    "gutterpress.json",
     "plugin.js",
     "styles",
     "snippets",
@@ -14,6 +13,10 @@
   "keywords": ["gutterpress", "gutterpress-plugin", "markdown-it-plugin"],
   "author": "{{AUTHOR}}",
   "license": "MIT",
+  "gutterpress": {
+    "styles": ["styles/plugin.css"],
+    "snippets": "snippets"
+  },
   "scripts": {
     "test": "bun test"
   },

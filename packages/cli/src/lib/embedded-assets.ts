@@ -68,7 +68,6 @@ import tplTechnicalChapter01 from "../assets/templates/technical/chapter-01.md" 
 // `src` with `allowJs`) while `plugin.test.js` would be COLLECTED AND RUN by
 // this package's own `bun test`. The suffix keeps template text out of reach
 // of both, with no tool config to remember.
-import tplPluginManifest from "../assets/extension-templates/plugin/gutterpress.json" with { type: "file" };
 import tplPluginPackageJson from "../assets/extension-templates/plugin/package.json" with { type: "file" };
 import tplPluginReadme from "../assets/extension-templates/plugin/README.md" with { type: "file" };
 import tplPluginModule from "../assets/extension-templates/plugin/plugin.js.tpl" with { type: "file" };
@@ -78,7 +77,7 @@ import tplPluginFixture from "../assets/extension-templates/plugin/test/fixture.
 import tplPluginExpected from "../assets/extension-templates/plugin/test/expected.html" with { type: "file" };
 import tplPluginTest from "../assets/extension-templates/plugin/test/plugin.test.js.tpl" with { type: "file" };
 
-import tplThemeManifest from "../assets/extension-templates/theme/gutterpress.json" with { type: "file" };
+import tplThemePackageJson from "../assets/extension-templates/theme/package.json" with { type: "file" };
 import tplThemeReadme from "../assets/extension-templates/theme/README.md" with { type: "file" };
 import tplThemeCatalog from "../assets/extension-templates/theme/components.yaml" with { type: "file" };
 import tplThemeSnippet from "../assets/extension-templates/theme/snippets/callout.md" with { type: "file" };
@@ -89,14 +88,14 @@ import tplThemePageTemplatesCss from "../assets/extension-templates/theme/styles
 import tplThemePageRulesCss from "../assets/extension-templates/theme/styles/page-rules.css" with { type: "file" };
 import tplThemeBookCss from "../assets/extension-templates/theme/styles/book.css" with { type: "file" };
 
-// Built-in themes (#32). Each = theme.css + theme.json, baked in so the Theme
-// Manager (compiled binary + desktop) lists/applies from one embedded source.
+// Built-in looks (#32, #276). Each = theme.css + package.json, baked in so the
+// look list (compiled binary + desktop) reads from one embedded source.
 import themeCleanBookCss from "../assets/themes/clean-book/theme.css" with { type: "file" };
-import themeCleanBookJson from "../assets/themes/clean-book/theme.json" with { type: "file" };
+import themeCleanBookJson from "../assets/themes/clean-book/package.json" with { type: "file" };
 import themeZineCss from "../assets/themes/zine/theme.css" with { type: "file" };
-import themeZineJson from "../assets/themes/zine/theme.json" with { type: "file" };
+import themeZineJson from "../assets/themes/zine/package.json" with { type: "file" };
 import themeTechnicalCss from "../assets/themes/technical-doc/theme.css" with { type: "file" };
-import themeTechnicalJson from "../assets/themes/technical-doc/theme.json" with { type: "file" };
+import themeTechnicalJson from "../assets/themes/technical-doc/package.json" with { type: "file" };
 
 // Resolve paths relative to this module's location so that relative string
 // paths produced by bun build --target node work regardless of CWD.
@@ -122,7 +121,6 @@ const EMBEDDED_ASSETS: Record<string, string> = {
   "templates/zine/chapter-01.md":           abs(filePath(tplZineChapter01)),
   "templates/technical/manifest.yaml":      abs(filePath(tplTechnicalManifest)),
   "templates/technical/chapter-01.md":      abs(filePath(tplTechnicalChapter01)),
-  "extension-templates/plugin/gutterpress.json":        abs(filePath(tplPluginManifest)),
   "extension-templates/plugin/package.json":            abs(filePath(tplPluginPackageJson)),
   "extension-templates/plugin/README.md":               abs(filePath(tplPluginReadme)),
   "extension-templates/plugin/plugin.js.tpl":           abs(filePath(tplPluginModule)),
@@ -131,7 +129,7 @@ const EMBEDDED_ASSETS: Record<string, string> = {
   "extension-templates/plugin/test/fixture.md":         abs(filePath(tplPluginFixture)),
   "extension-templates/plugin/test/expected.html":      abs(filePath(tplPluginExpected)),
   "extension-templates/plugin/test/plugin.test.js.tpl": abs(filePath(tplPluginTest)),
-  "extension-templates/theme/gutterpress.json":         abs(filePath(tplThemeManifest)),
+  "extension-templates/theme/package.json":             abs(filePath(tplThemePackageJson)),
   "extension-templates/theme/README.md":                abs(filePath(tplThemeReadme)),
   "extension-templates/theme/components.yaml":          abs(filePath(tplThemeCatalog)),
   "extension-templates/theme/snippets/callout.md":      abs(filePath(tplThemeSnippet)),
@@ -142,11 +140,11 @@ const EMBEDDED_ASSETS: Record<string, string> = {
   "extension-templates/theme/styles/page-rules.css":    abs(filePath(tplThemePageRulesCss)),
   "extension-templates/theme/styles/book.css":          abs(filePath(tplThemeBookCss)),
   "themes/clean-book/theme.css":            abs(filePath(themeCleanBookCss)),
-  "themes/clean-book/theme.json":           abs(filePath(themeCleanBookJson)),
+  "themes/clean-book/package.json":         abs(filePath(themeCleanBookJson)),
   "themes/zine/theme.css":                  abs(filePath(themeZineCss)),
-  "themes/zine/theme.json":                 abs(filePath(themeZineJson)),
+  "themes/zine/package.json":               abs(filePath(themeZineJson)),
   "themes/technical-doc/theme.css":         abs(filePath(themeTechnicalCss)),
-  "themes/technical-doc/theme.json":        abs(filePath(themeTechnicalJson)),
+  "themes/technical-doc/package.json":      abs(filePath(themeTechnicalJson)),
 };
 
 let extractPromise: Promise<string> | null = null;

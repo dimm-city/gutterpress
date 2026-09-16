@@ -79,7 +79,7 @@ describe("theme-import pure helpers", () => {
   describe("unexpectedThemeFiles", () => {
     test("passes through the known files and recognized assets", () => {
       expect(
-        unexpectedThemeFiles(["theme.css", "theme.json", "fonts/body.woff2", "art/cover.png"]),
+        unexpectedThemeFiles(["theme.css", "package.json", "fonts/body.woff2", "art/cover.png"]),
       ).toEqual([]);
     });
     test("flags files that aren't a stylesheet or common asset", () => {
@@ -88,9 +88,9 @@ describe("theme-import pure helpers", () => {
         "install.sh",
       ]);
     });
-    // #241
-    test("gutterpress.json itself is a recognized file, not an unexpected one", () => {
-      expect(unexpectedThemeFiles(["theme.css", "gutterpress.json"])).toEqual([]);
+    // #276
+    test("package.json itself is a recognized file, not an unexpected one", () => {
+      expect(unexpectedThemeFiles(["theme.css", "package.json"])).toEqual([]);
     });
     test("declaredExtras suppresses an exact declared file (markdown/components)", () => {
       expect(
@@ -132,7 +132,9 @@ describe("theme-import host pipeline", () => {
     const dir = projectDir();
     const zip = zipSync({
       "theme.css": strToU8(CLEAN_CSS),
-      "theme.json": strToU8(JSON.stringify({ name: "Midnight" })),
+      "package.json": strToU8(
+        JSON.stringify({ name: "midnight", gutterpress: { styles: ["theme.css"] } }),
+      ),
     });
     const { entry, warnings } = await importExtensionFromZip(dir, zip);
     expect(entry.label).toBe("Midnight");
@@ -147,7 +149,9 @@ describe("theme-import host pipeline", () => {
     const dir = projectDir();
     const zip = zipSync({
       "midnight/theme.css": strToU8(CLEAN_CSS),
-      "midnight/theme.json": strToU8(JSON.stringify({ name: "Midnight" })),
+      "midnight/package.json": strToU8(
+        JSON.stringify({ name: "midnight", gutterpress: { styles: ["theme.css"] } }),
+      ),
       "midnight/fonts/body.woff2": strToU8("not-a-real-font"),
     });
     const { entry } = await importExtensionFromZip(dir, zip);
@@ -183,27 +187,54 @@ describe("theme-import host pipeline", () => {
     const dir = projectDir();
     const zip = zipSync({
       "theme.css": strToU8('@font-face { src: url("https://fonts.example/x.woff2"); }'),
-      "theme.json": strToU8(JSON.stringify({ name: "Remote" })),
+      "package.json": strToU8(
+        JSON.stringify({ name: "remote", gutterpress: { styles: ["theme.css"] } }),
+      ),
     });
     const { entry, warnings } = await importExtensionFromZip(dir, zip);
     expect(entry.label).toBe("Remote");
     expect(warnings.some((w) => w.code === "print-safety")).toBe(true);
   });
 
-  test("warns when theme.json is missing", async () => {
+  // #276 — a zip with no manifest still lands as a LOADABLE look: the import
+  // writes the package.json the folder needs, and says so.
+  test("warns when package.json is missing, and writes one that loads", async () => {
     const dir = projectDir();
     const zip = zipSync({ "theme.css": strToU8(CLEAN_CSS) });
-    const { warnings } = await importExtensionFromZip(dir, zip);
+    const { entry, warnings } = await importExtensionFromZip(dir, zip);
     expect(warnings.some((w) => w.code === "no-theme-json")).toBe(true);
+    const pkg = JSON.parse(readFileSync(join(dir, entry.use, "package.json"), "utf8"));
+    expect(pkg).toEqual({ name: "imported-look", gutterpress: { styles: ["theme.css"] } });
+    expect(entry.carries.styles).toBe(true);
+  });
+
+  // #276 — an old package carrying only the removed metadata file still
+  // imports (theme.css is the anchor) and lands loadable, named from the folder.
+  test("a zip carrying only a legacy theme.json imports and lands with a synthesized package.json", async () => {
+    const dir = projectDir();
+    const zip = zipSync({
+      "old-look/theme.css": strToU8(CLEAN_CSS),
+      "old-look/theme.json": strToU8(JSON.stringify({ name: "Old Look" })),
+    });
+    const { entry, warnings } = await importExtensionFromZip(dir, zip);
+    expect(warnings.some((w) => w.code === "no-theme-json")).toBe(true);
+    const pkg = JSON.parse(readFileSync(join(dir, entry.use, "package.json"), "utf8"));
+    expect(pkg.name).toBe("old-look");
+    expect(pkg.gutterpress.styles).toEqual(["theme.css"]);
+    expect(entry.carries.styles).toBe(true);
   });
 
   test("imports a bare .css by wrapping it into a theme folder", async () => {
     const dir = projectDir();
     const { entry, warnings } = await importExtensionFromCssText(dir, CLEAN_CSS, "My Sheet");
-    expect(entry.label).toBe("My Sheet");
+    expect(entry.label).toBe("My sheet");
     const css = readFileSync(join(dir, entry.use, "theme.css"), "utf8");
     expect(css).toContain("--accent");
     expect(warnings.some((w) => w.code === "no-theme-json")).toBe(true);
+    // #276 — the wrapped folder carries the package.json that makes it load.
+    const pkg = JSON.parse(readFileSync(join(dir, entry.use, "package.json"), "utf8"));
+    expect(pkg).toEqual({ name: "my-sheet", gutterpress: { styles: ["theme.css"] } });
+    expect(entry.carries.styles).toBe(true);
   });
 
   test("rejects a bare .css that fails to parse", async () => {
@@ -213,7 +244,7 @@ describe("theme-import host pipeline", () => {
     );
   });
 
-  // #239 — theme.json may declare ADDITIONAL sheets beyond the anchor
+  // #239 — package.json may declare ADDITIONAL sheets beyond the anchor
   // theme.css; every one is validated (exists + print-safe) at import time,
   // exactly like theme.css itself.
   describe("multi-sheet zip validation (#239)", () => {
@@ -221,8 +252,11 @@ describe("theme-import host pipeline", () => {
       const dir = projectDir();
       const zip = zipSync({
         "theme.css": strToU8(CLEAN_CSS),
-        "theme.json": strToU8(
-          JSON.stringify({ name: "Layered", styles: ["theme.css", "components.css"] }),
+        "package.json": strToU8(
+          JSON.stringify({
+            name: "layered",
+            gutterpress: { styles: ["theme.css", "components.css"] },
+          }),
         ),
         "components.css": strToU8("@page { background-blend-mode: multiply; }"),
       });
@@ -236,12 +270,12 @@ describe("theme-import host pipeline", () => {
       ).toBe(true);
     });
 
-    test("rejects a zip whose theme.json declares a sheet the package doesn't contain", async () => {
+    test("rejects a zip whose package.json declares a sheet the package doesn't contain", async () => {
       const dir = projectDir();
       const zip = zipSync({
         "theme.css": strToU8(CLEAN_CSS),
-        "theme.json": strToU8(
-          JSON.stringify({ name: "Broken", styles: ["theme.css", "missing.css"] }),
+        "package.json": strToU8(
+          JSON.stringify({ name: "broken", gutterpress: { styles: ["theme.css", "missing.css"] } }),
         ),
       });
       await expect(importExtensionFromZip(dir, zip)).rejects.toThrow(/missing\.css/);
@@ -251,20 +285,23 @@ describe("theme-import host pipeline", () => {
       const dir = projectDir();
       const zip = zipSync({
         "theme.css": strToU8(CLEAN_CSS),
-        "theme.json": strToU8(
-          JSON.stringify({ name: "Broken", styles: ["theme.css", "bad.css"] }),
+        "package.json": strToU8(
+          JSON.stringify({ name: "broken", gutterpress: { styles: ["theme.css", "bad.css"] } }),
         ),
         "bad.css": strToU8("h1 { color: "),
       });
       await expect(importExtensionFromZip(dir, zip)).rejects.toThrow(/bad\.css could not be parsed/);
     });
 
-    test("a theme.json declaring the removed `engineStyles` field is rejected at import, naming the replacement (#266)", async () => {
+    test("a package.json declaring the removed `engineStyles` field is rejected at import, naming the replacement (#266)", async () => {
       const dir = projectDir();
       const zip = zipSync({
         "theme.css": strToU8(CLEAN_CSS),
-        "theme.json": strToU8(
-          JSON.stringify({ name: "Furniture", engineStyles: { native: ["native.css"] } }),
+        "package.json": strToU8(
+          JSON.stringify({
+            name: "furniture",
+            gutterpress: { styles: ["theme.css"], engineStyles: { native: ["native.css"] } },
+          }),
         ),
         "native.css": strToU8("@page { color: red; }"),
       });
@@ -273,11 +310,13 @@ describe("theme-import host pipeline", () => {
       );
     });
 
-    test("a theme.json declaring only theme.css (the default) has no extra validation to fail — unchanged behavior", async () => {
+    test("a package.json declaring only theme.css has no extra validation to fail", async () => {
       const dir = projectDir();
       const zip = zipSync({
         "theme.css": strToU8(CLEAN_CSS),
-        "theme.json": strToU8(JSON.stringify({ name: "Plain" })),
+        "package.json": strToU8(
+          JSON.stringify({ name: "plain", gutterpress: { styles: ["theme.css"] } }),
+        ),
       });
       const { entry, warnings } = await importExtensionFromZip(dir, zip);
       expect(entry.label).toBe("Plain");
@@ -285,47 +324,60 @@ describe("theme-import host pipeline", () => {
     });
   });
 
-  // #241 — the metadata file inside a zip package may be gutterpress.json
-  // instead of theme.json. The zip-root anchor stays theme.css (unchanged,
-  // documented as a known pre-existing gap for a theme.css-free package —
-  // see this file's header); only which metadata filename is read once that
-  // root is found generalizes.
-  describe("gutterpress.json metadata inside a zip package (#241)", () => {
-    test("reads name/styles from gutterpress.json instead of theme.json", async () => {
+  // #276 — the metadata file inside a zip package is its package.json. The
+  // zip-root anchor stays theme.css (unchanged, documented as a known
+  // pre-existing gap for a theme.css-free package — see this file's header).
+  describe("package.json metadata inside a zip package (#276)", () => {
+    test("reads name/styles from the package.json's gutterpress block", async () => {
       const dir = projectDir();
       const zip = zipSync({
         "theme.css": strToU8(CLEAN_CSS),
-        "gutterpress.json": strToU8(
-          JSON.stringify({ name: "GP Package", styles: ["theme.css", "extra.css"] }),
+        "package.json": strToU8(
+          JSON.stringify({
+            name: "gp-package",
+            gutterpress: { styles: ["theme.css", "extra.css"] },
+          }),
         ),
         "extra.css": strToU8(".extra {}"),
       });
       const { entry, warnings } = await importExtensionFromZip(dir, zip);
-      expect(entry.label).toBe("GP Package");
+      expect(entry.label).toBe("Gp package");
       expect(entry.carries.styles).toBe(true);
       expect(existsSync(join(dir, entry.use, "extra.css"))).toBe(true);
-      // gutterpress.json itself, and the extra sheet it declares, must not
+      // package.json itself, and the extra sheet it declares, must not
       // trigger a false "unexpected extra files" warning.
       expect(warnings).toEqual([]);
     });
 
-    test("gutterpress.json wins over a sibling theme.json inside the same package", async () => {
+    test("a package.json without gutterpress.styles is completed in the landed copy, keeping its own fields", async () => {
       const dir = projectDir();
       const zip = zipSync({
         "theme.css": strToU8(CLEAN_CSS),
-        "theme.json": strToU8(JSON.stringify({ name: "Old" })),
-        "gutterpress.json": strToU8(JSON.stringify({ name: "New" })),
+        "package.json": strToU8(
+          JSON.stringify({ name: "half-done", version: "2.0.0", description: "Half a look" }),
+        ),
       });
-      const { entry } = await importExtensionFromZip(dir, zip);
-      expect(entry.label).toBe("New");
+      const { entry, warnings } = await importExtensionFromZip(dir, zip);
+      expect(warnings.some((w) => w.code === "no-theme-json")).toBe(false);
+      const pkg = JSON.parse(readFileSync(join(dir, entry.use, "package.json"), "utf8"));
+      expect(pkg).toEqual({
+        name: "half-done",
+        version: "2.0.0",
+        description: "Half a look",
+        gutterpress: { styles: ["theme.css"] },
+      });
+      expect(entry.carries.styles).toBe(true);
     });
 
     test("a declared markdown entry is validated for containment but does not block import, and is not flagged as an unexpected file", async () => {
       const dir = projectDir();
       const zip = zipSync({
         "theme.css": strToU8(CLEAN_CSS),
-        "gutterpress.json": strToU8(
-          JSON.stringify({ name: "Full", markdown: "plugin.js" }),
+        "package.json": strToU8(
+          JSON.stringify({
+            name: "full",
+            gutterpress: { styles: ["theme.css"], markdown: "plugin.js" },
+          }),
         ),
         "plugin.js": strToU8("export default function (md) {}"),
       });
@@ -335,12 +387,12 @@ describe("theme-import host pipeline", () => {
       expect(warnings.some((w) => w.code === "extra-files")).toBe(false);
     });
 
-    test("rejects a gutterpress.json declaring markdown outside the package", async () => {
+    test("rejects a package.json declaring markdown outside the package", async () => {
       const dir = projectDir();
       const zip = zipSync({
         "theme.css": strToU8(CLEAN_CSS),
-        "gutterpress.json": strToU8(
-          JSON.stringify({ name: "Sneaky", markdown: "../../../etc/passwd" }),
+        "package.json": strToU8(
+          JSON.stringify({ name: "sneaky", gutterpress: { markdown: "../../../etc/passwd" } }),
         ),
       });
       await expect(importExtensionFromZip(dir, zip)).rejects.toThrow(/outside its own folder/);

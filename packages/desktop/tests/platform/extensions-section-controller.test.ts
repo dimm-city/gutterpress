@@ -189,7 +189,7 @@ function make(
     importFromUrl: (dir, url) => {
       record("importFromUrl", dir, url);
       h.entries = [...h.entries, LOOK_B];
-      return Promise.resolve({ entry: LOOK_B, warnings: [{ code: "no-theme-json", message: "No theme.json found" }] });
+      return Promise.resolve({ entry: LOOK_B, warnings: [{ code: "no-theme-json", message: "No package.json found" }] });
     },
     onLookAdded: (label) => onLookAdded(label),
     afterLookChange: () => {
@@ -504,11 +504,11 @@ test("importFile surfaces the host warnings, announces the look, and reloads on 
     entry: LOOK_B,
     warnings: [
       { code: "print-safety", message: "Remote URL is not allowed" },
-      { code: "no-theme-json", message: "No theme.json found" },
+      { code: "no-theme-json", message: "No package.json found" },
     ],
   };
   await h.ctrl.importFile();
-  expect(h.ctrl.importWarnings).toEqual(["Remote URL is not allowed", "No theme.json found"]);
+  expect(h.ctrl.importWarnings).toEqual(["Remote URL is not allowed", "No package.json found"]);
   expect(h.ctrl.looks).toEqual([LOOK_B]);
   expect(h.onLookAdded.calls).toEqual([["Zine"]]);
   expect(h.afterLookChange.calls.length).toBe(1);
@@ -537,7 +537,7 @@ test("importUrl trims, imports, clears the draft, surfaces warnings, and reloads
   await h.ctrl.importUrl();
   expect(named(h, "importFromUrl").map((c) => c.args)).toEqual([["/proj", "https://example.com/theme.css"]]);
   expect(h.ctrl.url).toBe("");
-  expect(h.ctrl.importWarnings).toEqual(["No theme.json found"]);
+  expect(h.ctrl.importWarnings).toEqual(["No package.json found"]);
   expect(h.ctrl.looks).toEqual([LOOK_B]);
   expect(h.ctrl.error).toBeNull();
 });
