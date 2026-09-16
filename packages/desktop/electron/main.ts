@@ -1222,7 +1222,25 @@ const appImageHooksImpl: AppImageHooks = {
 // path could resolve against the main-process CWD by accident).
 
 // loadLib + operationLogPath for VCS SvelteKit server routes.
-const vcsHooksImpl: VcsHooks<LibModule> = { loadLib, operationLogPath };
+const vcsHooksImpl: VcsHooks<LibModule> = {
+  loadLib,
+  operationLogPath,
+  // #273: pause both host timers around a copy switch's checkout so neither
+  // fires against the mid-switch working tree (an auto-snapshot would commit
+  // a half-checked-out tree) or targets the wrong branch (auto-sync pushes
+  // whatever branch is current when it runs). `folderWatch`'s own fs events
+  // re-arm both naturally once the checkout's writes land on disk — the
+  // explicit resume below exists only so the auto-sync periodic interval
+  // restarts even when the switch changed no files on disk (two branches
+  // with identical content): a cancelled interval never restarts on its own.
+  pauseTimers: (dir) => {
+    autoSnapshot.cancel();
+    autoSync.cancelTimer(dir);
+  },
+  resumeTimers: (dir) => {
+    if (folderWatch.getWatchedDir() === dir) autoSync.schedule(dir);
+  },
+};
 
 function requireAbsoluteDir(channel: string, projectDir: unknown): string {
   if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {

@@ -637,6 +637,13 @@ export const api = {
       post<{ restoredId: string; backupId?: string }>('/api/vcs/restore-snapshot', { projectDir, id }),
     saveSnapshot: (projectDir: string, message?: string) =>
       post<SnapshotEntry>('/api/vcs/save-snapshot', { projectDir, message }),
+    /** The project's local copies (git branches) and which one is open;
+     *  `null` when the source has nothing to switch between (#273). */
+    listBranches: (projectDir: string) =>
+      post<{ current: string | null; branches: string[] } | null>('/api/vcs/list-branches', { projectDir }),
+    /** Switch the project's working tree to another local copy (#273). */
+    switchBranch: (projectDir: string, branch: string) =>
+      post<{ current: string; changedFiles: string[] }>('/api/vcs/switch-branch', { projectDir, branch }),
   },
 
   remote: {

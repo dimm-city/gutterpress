@@ -369,11 +369,22 @@ the plan wins.**
     there is no engine without it to write a `visualViewport` fallback for
     (the iOS Safari branch was struck 2026-08-23 with the Chromium-only ruling).
   - `position: sticky` cannot pin above a keyboard; do not spec it.
-- **Auto-save is SHIPPED and works as follows** (do not respecify): debounced
-  disk save 500ms after the last edit (`EditorBuffer`), crash-recovery
-  snapshots at 1000ms, a user setting ("Save edits automatically",
-  default 500ms), plus explicit `Cmd/Ctrl+S` / toolbar Save. The save
-  indicator is subtle (no modal) — see Anti-Patterns.
+- **Auto-save is SHIPPED and works as follows** (do not respecify): a FIXED
+  debounced disk save 500ms after the last edit (`EditorBuffer`) and an
+  ALWAYS-ON crash-recovery draft 1000ms after the last edit, plus explicit
+  `Cmd/Ctrl+S` / toolbar Save. Neither delay is a user setting (#274) — the
+  two Settings → Saving rows that used to expose them ("Save edits
+  automatically", "Recover edits after an unexpected close") were removed as
+  tuning knobs an author had no basis to set; the save indicator is subtle
+  (no modal) — see Anti-Patterns.
+- **Switching copies is SHIPPED in Settings → Saving** (#273): the Saving &
+  recovery group names the local copy (git branch) the open project is on
+  and, only when more than one exists locally, offers a picker to switch —
+  local copies only, never a remote checkout or a create. Author-facing
+  vocabulary says "copy", never "branch". The switch takes a version of any
+  in-progress edit first, so nothing is lost and nothing is ever forced; the
+  editor/file tree/preview then show the new copy the same way they pick up
+  any other external change.
 - Image insertion on mobile: system photo picker + camera (PROPOSED — gate on
   the PWA file-write path).
 - Offline: service worker app-shell precache is SHIPPED

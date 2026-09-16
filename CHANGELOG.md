@@ -7,6 +7,21 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Switch which local copy of a project you're working on, from Settings →
+  Saving.** The Saving & recovery group now shows the copy (git branch) the
+  open project is on and, when more than one exists locally, a picker to
+  switch to another — local copies only, no remote checkout and no create.
+  Uncommitted edits are saved as a version first, so nothing typed is lost
+  and the switch never forces an overwrite; a file that changed on disk right
+  as the switch started is reported as a friendly error instead. Auto-backup
+  and the automatic-versions timer pause for the moment of the switch and
+  resume after. The editor reconciles its open file the same way a version
+  restore does, and a crash-recovery draft from the copy just left behind is
+  cleared for any file the switch changed, so it can never be offered over
+  the new copy's version of that file. The author-facing word is "copy" —
+  the existing online-backup switch is unaffected, since it already reads
+  "Keep this project backed up online". (#273)
+
 - **An extension discovery surface: a curated index, `gutterpress ext search`,
   and a desktop "More extensions" list.** A new committed, curated JSON index
   (`site/extensions.json`, published at
@@ -74,6 +89,33 @@ This project follows [Semantic Versioning](https://semver.org/).
   the conclusion. The gate's EXACT-FIT BOUNDARY outcome (#261) stays the
   accepted, permanent classification for this shape of divergence — no
   allowlist entry, no shim. (#268)
+
+- **Desktop Settings → Saving is two switches, not five controls.** "Keep
+  previous versions" and "Keep this project backed up online" (renamed from
+  "Keep an online copy up to date") are what's left of a group where three of
+  the five old controls did less than their labels said: autosave delay could
+  not turn autosave off, the crash-recovery toggle removed a safety net for
+  nothing, and the quiet-period minutes field was dead on any project that
+  can sync (a sync commits every 2 minutes regardless). The online-backup
+  switch now shows only for a project that can actually sync — a local-only
+  project or the start screen gets one status line pointing at Accounts
+  instead of a switch that would do nothing — and is disabled with a hint
+  when previous versions is off, since a backup with nothing to push isn't
+  one. The group's Reset now resets the whole group in one call. (#274)
+
+### Removed
+
+- **Autosave delay and the crash-recovery toggle are no longer settings.**
+  `editor.autoSaveDelay`, `editor.crashRecovery`, and the quiet-period
+  `versionHistory.autoSnapshotMinutes` are deleted from the settings schema,
+  defaults, and the `Platform` contract — deleted, not deprecated, with no
+  compatibility shim. The editor's disk save stays a fixed 500ms after the
+  last edit and its crash-recovery draft a fixed 1000ms; both were already
+  effectively unconditional in practice (a 0s "delay" was never actually off,
+  and turning recovery off only removed a safety net). A settings file still
+  carrying the old keys loads cleanly — the generic settings merge now drops
+  patch keys the current schema doesn't declare, instead of carrying them
+  forward forever. (#274)
 
 ## [0.10.9] - 2026-09-12
 

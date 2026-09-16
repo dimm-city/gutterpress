@@ -261,11 +261,17 @@ export {
   AUTO_SNAPSHOT_MESSAGE,
   RESTORE_BACKUP_MESSAGE,
   HISTORY_PAGE_LIMIT,
+  listLocalBranches,
+  switchBranch,
+  SWITCH_BRANCH_SNAPSHOT_MESSAGE,
 } from "../lib/source-provider.ts";
 
 export type {
   ListHistoryOptions,
   HistoryPage,
+  LocalBranches,
+  SwitchBranchOptions,
+  SwitchBranchResult,
 } from "../lib/source-provider.ts";
 
 // ── Host-timer cadence policy (auto-snapshot / auto-sync delays) ──────────────
@@ -273,8 +279,6 @@ export {
   autoSnapshotDelayMs,
   autoSyncDelayMs,
   isGitInternalPath,
-  AUTO_SNAPSHOT_MIN_MINUTES,
-  AUTO_SNAPSHOT_MAX_MINUTES,
   AUTO_SNAPSHOT_DEFAULT_MINUTES,
   AUTO_SYNC_MIN_MINUTES,
   AUTO_SYNC_MAX_MINUTES,

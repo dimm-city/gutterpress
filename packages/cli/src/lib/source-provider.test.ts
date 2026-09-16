@@ -14,6 +14,9 @@ import {
   AUTO_SNAPSHOT_MESSAGE,
   isNoChangesError,
   resolveGitAuthor,
+  listLocalBranches,
+  switchBranch,
+  SWITCH_BRANCH_SNAPSHOT_MESSAGE,
 } from "./source-provider";
 
 async function tempDir(): Promise<string> {
@@ -941,4 +944,150 @@ test("withRepoLock: the queue map is reclaimed to empty once all ops settle (B4)
   // Every entry reclaimed: the map is back to its starting size (no permanent
   // one-entry-per-dir-ever-opened growth).
   expect(__repoLockQueueSizeForTests()).toBe(before);
+});
+
+// ── Local branches / copy switching (#273) ────────────────────────────────────
+
+test("listLocalBranches returns null for a plain folder — nothing to switch between", async () => {
+  const dir = await tempDir();
+  try {
+    expect(await listLocalBranches(dir)).toBeNull();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("listLocalBranches lists every local copy and which one is current", async () => {
+  const dir = await tempDir();
+  try {
+    await initProject(dir);
+    await git.branch({ fs, dir, ref: "second-copy" });
+    const result = await listLocalBranches(dir);
+    expect(result).not.toBeNull();
+    expect(result!.current).toBe("main");
+    expect(result!.branches.slice().sort()).toEqual(["main", "second-copy"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("switchBranch checks out another local copy and preserves an in-progress edit with a safety snapshot", async () => {
+  const dir = await tempDir();
+  try {
+    const provider = await initProject(dir);
+    await git.branch({ fs, dir, ref: "second-copy" });
+    // Diverge "second-copy" (bypassing switchBranch, which is what's under test).
+    await git.checkout({ fs, dir, ref: "second-copy" });
+    await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\nSecond copy's draft.\n");
+    await writeFile(path.join(dir, "chapter-02.md"), "# New chapter\n\nOnly on the second copy.\n");
+    await provider.snapshot({ projectDir: dir, message: "Second copy draft" });
+    await git.checkout({ fs, dir, ref: "main" });
+
+    // An in-progress, UNCOMMITTED edit on main — must survive the switch.
+    await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\nStill typing on main.\n");
+
+    const result = await switchBranch({ projectDir: dir, branch: "second-copy" });
+    expect(result.current).toBe("second-copy");
+    expect(result.changedFiles.slice().sort()).toEqual(
+      [path.join(dir, "chapter-01.md"), path.join(dir, "chapter-02.md")].sort(),
+    );
+
+    // Working tree now matches "second-copy".
+    expect(await readFile(path.join(dir, "chapter-01.md"), "utf-8")).toBe(
+      "# Hello\n\nSecond copy's draft.\n",
+    );
+    expect(await readFile(path.join(dir, "chapter-02.md"), "utf-8")).toBe(
+      "# New chapter\n\nOnly on the second copy.\n",
+    );
+    expect(await git.currentBranch({ fs, dir, fullname: false })).toBe("second-copy");
+
+    // The uncommitted edit on main was snapshotted, not lost — switch back
+    // (a no-op safety snapshot, since second-copy's tree is clean) and confirm.
+    await switchBranch({ projectDir: dir, branch: "main" });
+    expect(await readFile(path.join(dir, "chapter-01.md"), "utf-8")).toBe(
+      "# Hello\n\nStill typing on main.\n",
+    );
+    const mainHistory = await provider.listHistory(dir);
+    expect(mainHistory[0]!.message).toBe(SWITCH_BRANCH_SNAPSHOT_MESSAGE);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("switchBranch takes no safety snapshot (and reports no changed files) when nothing differs", async () => {
+  const dir = await tempDir();
+  try {
+    const provider = await initProject(dir);
+    await git.branch({ fs, dir, ref: "second-copy" });
+    const before = await provider.listHistory(dir);
+    const result = await switchBranch({ projectDir: dir, branch: "second-copy" });
+    expect(result.changedFiles).toEqual([]);
+    const after = await provider.listHistory(dir);
+    expect(after.length).toBe(before.length);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("switchBranch on a project with no version history is a friendly rejection", async () => {
+  const dir = await tempDir();
+  try {
+    await expect(
+      switchBranch({ projectDir: dir, branch: "main" }),
+    ).rejects.toThrow(/no version history yet/i);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("switchBranch surfaces a checkout conflict as a friendly error and never forces the overwrite", async () => {
+  const dir = await tempDir();
+  try {
+    // "ignored.md" is gitignored on main, so the pre-switch safety snapshot
+    // never touches it (listWorkdirChanges prunes ignored paths) — it stays
+    // untracked on disk. Built entirely with plumbing (readTree/writeBlob/
+    // writeTree/commit) so main's own checkout/index is never touched — the
+    // ordinary way to reach this (checking "second-copy" out for real to
+    // commit there) would itself stage "ignored.md", turning main's own next
+    // checkout into a plain tracked-file delete instead of the untracked-file
+    // conflict this test targets.
+    await writeFile(path.join(dir, ".gitignore"), "ignored.md\n");
+    const plain = providerFor({ type: "local-folder", path: dir });
+    await plain.initVersionHistory({ projectDir: dir, initialMessage: "Initial snapshot" });
+
+    await writeFile(path.join(dir, "ignored.md"), "LOCAL ONLY\n");
+
+    const mainOid = await git.resolveRef({ fs, dir, ref: "main" });
+    const { commit } = await git.readCommit({ fs, dir, oid: mainOid });
+    const { tree } = await git.readTree({ fs, dir, oid: commit.tree });
+    const blobOid = await git.writeBlob({
+      fs,
+      dir,
+      blob: new TextEncoder().encode("COMMITTED ON SECOND COPY\n"),
+    });
+    const newTree = [
+      ...tree.filter((e) => e.path !== "ignored.md"),
+      { mode: "100644", path: "ignored.md", oid: blobOid, type: "blob" as const },
+    ];
+    const newTreeOid = await git.writeTree({ fs, dir, tree: newTree });
+    await git.commit({
+      fs,
+      dir,
+      ref: "refs/heads/second-copy",
+      tree: newTreeOid,
+      parent: [mainOid],
+      message: "Track ignored.md here",
+      author: { name: "Test", email: "test@example.com" },
+    });
+
+    await expect(
+      switchBranch({ projectDir: dir, branch: "second-copy" }),
+    ).rejects.toThrow(/couldn't switch copies/i);
+
+    // Never forced: the untracked file on disk, and the current branch, are untouched.
+    expect(await readFile(path.join(dir, "ignored.md"), "utf-8")).toBe("LOCAL ONLY\n");
+    expect(await git.currentBranch({ fs, dir, fullname: false })).toBe("main");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
