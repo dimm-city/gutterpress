@@ -9,11 +9,12 @@
  *                  failures (validate/preflight/audit findings, a build's
  *                  quality-gate rejection). The invocation itself was fine;
  *                  the content wasn't. Standalone `gutterpress lint` uses this
- *                  code for CSS lint failures too, but the `build` pipeline's
- *                  own CSS-lint gate is a documented historical exception
- *                  that exits 2 instead (see build-runner.ts's
- *                  runQualityGates) — not a bug, just an inconsistency kept
- *                  for back-compat.
+ *                  code for CSS lint failures too. `gutterpress build`'s CSS
+ *                  print-safety check (`source.stylelint`) now runs as one
+ *                  of pre-build validation's checks (#272 — one CSS gate,
+ *                  not two) and fails the build through this same code; the
+ *                  `build` pipeline's former separate CSS-lint gate, and its
+ *                  own exit code 2, are gone.
  *   2  USAGE     — the invocation itself was wrong: a bad flag, positional,
  *                  preset, or value. See {@link UsageError} in ./cli-args.ts.
  *   3  PIPELINE  — the build/render/export pipeline failed for a reason

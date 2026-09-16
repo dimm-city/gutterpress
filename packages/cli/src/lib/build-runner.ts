@@ -17,7 +17,6 @@ import {
 } from "./ghostscript";
 import { writeBuildFingerprint, type BuildFingerprintInput } from "./build-fingerprint";
 import { getAssetPath } from "./embedded-assets";
-import { runLint } from "./lint-runner";
 import { executeAndReport } from "./validation-exec";
 import { log } from "../utils/logger";
 import { BuildError } from "./build-error";
@@ -62,6 +61,14 @@ export interface BuildRunnerOptions {
   iccPath?: string;
   manifestPath?: string;
   stripAnnotations?: boolean;
+  /**
+   * Skip the CSS print-safety check (#272 — one CSS gate, not two). This used
+   * to gate a separate `runLint` pass; it now disables just the
+   * `source.stylelint` check inside pre-build validation (see
+   * {@link computeGates}'s `skipStylelint`). Has no effect when
+   * `skipPreValidate` is also set — pre-build validation, CSS check
+   * included, does not run at all in that case.
+   */
   skipLint?: boolean;
   skipPreValidate?: boolean;
   skipPostValidate?: boolean;
@@ -224,10 +231,10 @@ export interface BuildContext {
   prevalidatedLayoutWarningKeys: Set<string>;
   /**
    * The build's ONE plugin load (#262). `null` until {@link loadBuildPlugins}
-   * runs; every stage that needs plugins (the lint gate and preValidate gate
-   * in {@link runQualityGates}, and {@link renderBook}) calls that function
-   * and gets the SAME resolved `{ plugins, pluginCss, pluginStylePaths }`
-   * back, whichever of them runs first.
+   * runs; every stage that needs plugins (the preValidate gate in
+   * {@link runQualityGates}, and {@link renderBook}) calls that function and
+   * gets the SAME resolved `{ plugins, pluginCss, pluginStylePaths }` back,
+   * whichever of them runs first.
    *
    * Before this, `runQualityGates`'s lint gate and `renderBook` each called
    * `loadPluginsWithCss` independently for the identical manifest. For an
@@ -343,13 +350,13 @@ export async function resolveBuildContext(
 
 /**
  * Load every plugin the manifest configures, exactly once for the whole
- * build (#262). Memoized on `ctx.plugins`: the lint gate, the preValidate
- * gate (both in {@link runQualityGates}), and {@link renderBook} each call
- * this instead of `loadPluginsWithCss` directly, and only the first caller
- * does real work — the rest get the cached result back, however the gates
- * are configured and whichever stage happens to run first (a test calling
- * {@link renderBook} directly, without going through `runQualityGates`, gets
- * a fresh load here exactly as it would have before this existed).
+ * build (#262). Memoized on `ctx.plugins`: the preValidate gate (in
+ * {@link runQualityGates}) and {@link renderBook} each call this instead of
+ * `loadPluginsWithCss` directly, and only the first caller does real work —
+ * the other gets the cached result back, whichever stage happens to run
+ * first (a test calling {@link renderBook} directly, without going through
+ * `runQualityGates`, gets a fresh load here exactly as it would have before
+ * this existed).
  *
  * Fail-fast (no `onError`), matching `renderBook`'s pre-existing behavior:
  * a build/export must never silently omit author-configured formatting (see
@@ -383,38 +390,37 @@ export async function loadBuildPlugins(ctx: BuildContext): Promise<LoadedPlugins
 }
 
 /**
- * Stage 2 — run the CSS lint + pre-build validation gates. Each is skipped
- * unless its gate is on (see {@link computeGates} in ./build-preflight); a
- * failing gate throws a BuildError with the gate's historic exit code
- * (lint=2, pre-validate=1).
+ * Stage 2 — run pre-build validation, the build's only remaining quality
+ * gate (#272 — one CSS gate, not two). Before this, `gutterpress build` ran
+ * `checkCss` over the configured stylesheets TWICE: once in a separate lint
+ * gate (`runLint`, lint-runner.ts) and again one phase later here, inside
+ * `source.stylelint` — a build printed the identical CSS finding list twice,
+ * a phase apart. The CSS print-safety check now lives ONLY as
+ * `source.stylelint`, run by `executeAndReport` below like every other
+ * pre-build check; `gates.skipStylelint` (`--skip-lint` /
+ * `config.lint.enabled: false`) disables just that one check for this run,
+ * via the `skipStylelint` arg threaded into `executeValidation`
+ * (validation-exec.ts), rather than skipping this whole gate. Skipped
+ * entirely when `preValidate` is off (`--format html`, `--skip-pre-validate`,
+ * or `config.validate.enabled: false`) — a failing gate throws a BuildError
+ * with the pre-build validation exit code (1); the build pipeline's old
+ * lint-gate exception (exit 2) is gone, matching M47's exit-code contract.
  *
- * When either gate is on, plugins are loaded ONCE here via
+ * When the gate is on, plugins are loaded ONCE here via
  * {@link loadBuildPlugins} and the resulting `pluginStylePaths` are handed to
- * BOTH the lint gate (`runLint`) and the preValidate gate (`executeAndReport`,
- * validation-exec.ts) so neither loads plugins itself (#262) — `renderBook`
- * then reuses the same memoized result for its own render-time needs
- * (`plugins`/`pluginCss`). Skipped entirely when both gates are off (e.g.
- * `--format html` or `--skip-lint --skip-pre-validate`): in that case nothing
- * here needs plugins, and `renderBook` remains the sole, first loader — this
- * function changes NOTHING about that case.
+ * `executeAndReport` (validation-exec.ts) so it does not load plugins itself
+ * (#262) — `renderBook` then reuses the same memoized result for its own
+ * render-time needs (`plugins`/`pluginCss`). Skipped entirely when the gate
+ * is off (e.g. `--format html` or `--skip-pre-validate`): in that case
+ * nothing here needs plugins, and `renderBook` remains the sole, first
+ * loader — this function changes NOTHING about that case.
  */
 async function runQualityGates(ctx: BuildContext): Promise<void> {
   const { gates, opts, renderDir } = ctx;
 
-  const pluginStylePaths = gates.lint || gates.preValidate
+  const pluginStylePaths = gates.preValidate
     ? (await loadBuildPlugins(ctx)).pluginStylePaths
     : undefined;
-
-  if (gates.lint) {
-    log.info("Lint: CSS print-safety");
-    const lintResult = await runLint({
-      manifest: opts.manifestPath ?? renderDir,
-      pluginStylePaths,
-    });
-    if (!lintResult.ok) {
-      throw new BuildError("CSS lint failed", 2);
-    }
-  }
 
   if (gates.preValidate) {
     log.info("Pre-build validation");
@@ -424,6 +430,7 @@ async function runQualityGates(ctx: BuildContext): Promise<void> {
         phase: "pre-build",
         manifest: opts.manifestPath,
         pluginStylePaths,
+        skipStylelint: gates.skipStylelint,
       },
       "text"
     );

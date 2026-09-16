@@ -30,7 +30,19 @@ const check: Check = {
       let css: string;
       try {
         css = await readFile(file, "utf8");
-      } catch {
+      } catch (err) {
+        // An unreadable configured stylesheet is an error finding, not a
+        // silent skip (#272) — this is now the ONLY CSS print-safety gate a
+        // build runs, so a missing/unreadable file must fail loudly here
+        // rather than let the build report "validated" having inspected
+        // nothing. Mirrors lint-runner.ts's own unreadable-stylesheet
+        // handling.
+        results.push({
+          checkId: check.id,
+          severity: "error",
+          message: `Cannot read stylesheet: ${err instanceof Error ? err.message : String(err)}`,
+          file,
+        });
         continue;
       }
       for (const w of checkCss(css, file)) {

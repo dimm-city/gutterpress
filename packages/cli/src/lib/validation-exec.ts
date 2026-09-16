@@ -54,6 +54,17 @@ export interface ValidationExecutionArgs {
    * "unset".
    */
   pluginStylePaths?: string[];
+  /**
+   * Disable the `source.stylelint` check (CSS print-safety) for this run
+   * only, without touching the manifest's `validate.source.stylelint`
+   * setting on disk (#272 — one CSS gate, not two). Set by the build
+   * pipeline's `runQualityGates` (build-runner.ts) from `--skip-lint` /
+   * `config.lint.enabled: false`, so that flag disables just the one check
+   * it always meant to gate rather than a whole separate lint pass. Every
+   * other caller (`gutterpress validate`/`preflight`/`audit`, the desktop
+   * Problems panel) leaves this unset and gets the manifest's own setting.
+   */
+  skipStylelint?: boolean;
 }
 
 export interface ValidationExecutionResult {
@@ -361,7 +372,14 @@ export async function executeValidation(
     { explicit: manifestPath !== undefined }
   );
 
-  const config = resolveConfig({}, manifest);
+  // `skipStylelint` (#272) overrides the manifest's `validate.source.stylelint`
+  // for this run only — the SAME cli-overrides-beat-manifest precedence
+  // `resolveConfig` already implements, applied to the one field the build
+  // pipeline's `--skip-lint` / `config.lint.enabled: false` needs to reach.
+  const config = resolveConfig(
+    args.skipStylelint ? { validate: { source: { stylelint: false } } } : {},
+    manifest
+  );
   // Explicit --target overrides the manifest's targets for this run; both go
   // through the registry so an unknown id fails loudly either way.
   const targetIds = resolveTargets(
