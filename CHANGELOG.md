@@ -5,6 +5,23 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Switch which local copy of a project you're working on, from Settings →
+  Saving.** The Saving & recovery group now shows the copy (git branch) the
+  open project is on and, when more than one exists locally, a picker to
+  switch to another — local copies only, no remote checkout and no create.
+  Uncommitted edits are saved as a version first, so nothing typed is lost
+  and the switch never forces an overwrite; a file that changed on disk right
+  as the switch started is reported as a friendly error instead. Auto-backup
+  and the automatic-versions timer pause for the moment of the switch and
+  resume after. The editor reconciles its open file the same way a version
+  restore does, and a crash-recovery draft from the copy just left behind is
+  cleared for any file the switch changed, so it can never be offered over
+  the new copy's version of that file. The author-facing word is "copy" —
+  the existing online-backup switch is unaffected, since it already reads
+  "Keep this project backed up online". (#273)
+
 ### Changed
 
 - **Desktop Settings → Saving is two switches, not five controls.** "Keep

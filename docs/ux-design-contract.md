@@ -377,6 +377,14 @@ the plan wins.**
   automatically", "Recover edits after an unexpected close") were removed as
   tuning knobs an author had no basis to set; the save indicator is subtle
   (no modal) — see Anti-Patterns.
+- **Switching copies is SHIPPED in Settings → Saving** (#273): the Saving &
+  recovery group names the local copy (git branch) the open project is on
+  and, only when more than one exists locally, offers a picker to switch —
+  local copies only, never a remote checkout or a create. Author-facing
+  vocabulary says "copy", never "branch". The switch takes a version of any
+  in-progress edit first, so nothing is lost and nothing is ever forced; the
+  editor/file tree/preview then show the new copy the same way they pick up
+  any other external change.
 - Image insertion on mobile: system photo picker + camera (PROPOSED — gate on
   the PWA file-write path).
 - Offline: service worker app-shell precache is SHIPPED

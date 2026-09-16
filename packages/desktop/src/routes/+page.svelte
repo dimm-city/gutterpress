@@ -424,10 +424,12 @@
       (!settings.current.gitIdentity.authorName.trim() ||
         !settings.current.gitIdentity.authorEmail.trim()),
   );
-  /** After a successful snapshot restore (H2): reconcile the open editor
-   * buffer against disk — same reconciliation the folder watcher runs for any
-   * external change (see `startFolderWatch`/`onSyncFilesChanged`) — and
-   * re-check for print problems, since a restore can rewrite many files. */
+  /** After a successful snapshot restore (H2), or a Saving-tab copy switch
+   * (#273 — passed as `onProjectFilesChanged` to WelcomeLanding/SettingsView):
+   * reconcile the open editor buffer against disk — same reconciliation the
+   * folder watcher runs for any external change (see
+   * `startFolderWatch`/`onSyncFilesChanged`) — and re-check for print
+   * problems, since either operation can rewrite many files at once. */
   function onSnapshotRestored(): void {
     void buffer?.reconcileExternalChange();
     refreshProblems();
@@ -3060,6 +3062,7 @@
   onCheckForUpdates={() => updateController.check()}
   onDismiss={() => dismissLanding()}
   settingsTab={landingSettingsTab}
+  onProjectFilesChanged={onSnapshotRestored}
 />
 {#if projectSettingsOpen}
   <!-- Project settings (manifest): full-window like the app settings. Keyed by

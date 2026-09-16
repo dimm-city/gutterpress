@@ -8,6 +8,7 @@
   import { getPlatform, isDesktop } from "$lib/platform";
   import { sanitizeSettingsTab, type SettingsTab } from "$lib/settings-tabs";
   import { api, type AppImageIntegrationStatus } from "$lib/api";
+  import { friendlyHostError } from "$lib/errors";
 
   let {
     onClose,
@@ -15,6 +16,7 @@
     initialTab = "app",
     embedded = false,
     idPrefix = "settings",
+    onProjectFilesChanged,
   }: {
     onClose?: () => void;
     /** The open project dir (Connections tab: adding a publishing key verifies
@@ -33,6 +35,15 @@
      *  start screen's tab and the full-window sheet opened over it), and
      *  duplicate ids would break the tab/panel aria wiring for both. */
     idPrefix?: string;
+    /** Called after the Saving tab's copy switcher (#273) successfully checks
+     *  out another local copy — the files under `projectDir` just changed out
+     *  from under whatever the workspace has open. The parent reconciles the
+     *  open editor buffer/preview the same way it does after a version
+     *  restore (`ProjectActivityView`'s `onRestored`); the file tree and
+     *  preview pick up the change on their own via the existing folder-
+     *  changed push stream, since the checkout's writes are ordinary disk
+     *  writes to the watched folder. */
+    onProjectFilesChanged?: () => void;
   } = $props();
 
   const settings = useSettings();
@@ -130,6 +141,61 @@
         canSyncLoading = false;
       });
   });
+
+  // ── Saving tab — the copy this project is on (#273) ───────────────────────
+  // Local branches only (see the issue's scope note): no remote checkout, no
+  // create. Hidden entirely — not shown with an error — when there's nothing
+  // to switch between: no project open, the browser target (no local git
+  // access at all), or `listBranches` reports `null` (a plain local-folder,
+  // which has no repository). Loaded once on mount, reloaded after a switch;
+  // no `$effect` (CLAUDE.md §8).
+  let copies = $state<{ current: string | null; branches: string[] } | null>(null);
+  let copiesLoading = $state(true);
+  let selectedCopy = $state("");
+  let copySwitching = $state(false);
+  let copySwitchError = $state<string | null>(null);
+
+  async function loadCopies() {
+    if (!isDesktop() || !projectDir) {
+      copies = null;
+      copiesLoading = false;
+      return;
+    }
+    copiesLoading = true;
+    try {
+      copies = await api.vcs.listBranches(projectDir);
+    } catch {
+      copies = null;
+    } finally {
+      copiesLoading = false;
+    }
+  }
+
+  onMount(() => {
+    void loadCopies();
+  });
+
+  async function switchCopy() {
+    if (!projectDir || !selectedCopy || copySwitching) return;
+    const target = selectedCopy;
+    copySwitching = true;
+    copySwitchError = null;
+    try {
+      await api.vcs.switchBranch(projectDir, target);
+      selectedCopy = "";
+      await loadCopies();
+      // The files under projectDir just changed out from under the open
+      // workspace — reconcile the open editor buffer the same way a version
+      // restore does (the file tree/preview pick up the change on their own
+      // via the folder-changed push stream, which the checkout's writes fire
+      // just like any other external disk change).
+      onProjectFilesChanged?.();
+    } catch (e) {
+      copySwitchError = friendlyHostError(e instanceof Error ? e.message : String(e));
+    } finally {
+      copySwitching = false;
+    }
+  }
 
   async function runAppImageAction(action: "install" | "remove") {
     // `disabled={appImageBusy}` only takes effect after Svelte flushes, so a
@@ -516,6 +582,45 @@
           </div>
         {:else}
           <div class="row"><span class="row-hint">This project isn't connected to an online service yet. Connect one in Settings &gt; Accounts to back it up.</span></div>
+        {/if}
+        <!-- Copy switching (#273): which local copy (git branch) the project
+             is on, and a way to switch to another that already exists
+             locally — no remote checkout, no create (see the issue's scope
+             note). Hidden entirely, never shown as a dead control, when
+             there's nothing to switch between: no project open, the browser
+             target, or `copies` is null (a plain local-folder has no
+             repository to have copies of). Vocabulary: "copy", never
+             "branch", in every string below. -->
+        {#if isDesktop() && projectDir && !copiesLoading && copies}
+          {@const otherCopies = copies.branches.filter((name) => name !== copies?.current)}
+          <div class="row">
+            <div class="row-label">
+              <span class="row-title">Copy of this project you're working on</span>
+              <span class="row-hint">{copies.current ?? "Unknown — this project's history looks unusual."}</span>
+            </div>
+            {#if otherCopies.length > 0}
+              <div class="row-actions">
+                <select
+                  aria-label="Switch to another copy"
+                  bind:value={selectedCopy}
+                  disabled={copySwitching}
+                >
+                  <option value="" disabled>Switch to…</option>
+                  {#each otherCopies as name (name)}
+                    <option value={name}>{name}</option>
+                  {/each}
+                </select>
+                <button
+                  class="action"
+                  disabled={!selectedCopy || copySwitching}
+                  onclick={switchCopy}
+                >{copySwitching ? "Switching…" : "Switch"}</button>
+              </div>
+            {/if}
+          </div>
+          {#if copySwitchError}
+            <p class="row-error" role="alert">{copySwitchError}</p>
+          {/if}
         {/if}
       </section>
 

@@ -47,6 +47,20 @@ describe("Settings — 'Saving & recovery' group with writer-friendly labels (#2
   });
 });
 
+describe("Settings — copy switcher uses 'copy', never 'branch' (#273)", () => {
+  const dialog = read("src/lib/components/SettingsView.svelte");
+  test("the row names the current copy and offers a switcher", () => {
+    expect(dialog).toContain("Copy of this project you're working on");
+    expect(dialog).toContain("Switch to another copy");
+    expect(dialog).toContain('"Switching…" : "Switch"');
+  });
+  test("no visible label says 'branch' — 'copy' is the one word for both the online mirror and a local git branch", () => {
+    // Code identifiers (switchBranch, api.vcs.switchBranch, the `branch`
+    // param) legitimately say "branch" — only text between tags is checked.
+    expect(dialog).not.toMatch(/>[^<]*\bBranch\b[^<]*</);
+  });
+});
+
 describe("Previous versions timeline (ProjectActivityView)", () => {
   const view = read("src/lib/components/ProjectActivityView.svelte");
   test("titled 'Previous versions', renders a day-grouped timeline via the helper", () => {
