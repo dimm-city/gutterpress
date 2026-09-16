@@ -175,8 +175,10 @@ gutterpress build ./design-guide --format pdf --out ./_site
 
 The PDF — named `<title-slug>-pdf.pdf` (a slug of the manifest `title`, e.g.
 `your-book-title-design-guide-pdf.pdf`) — is dropped into `_site/` alongside
-the desktop files. Link to it from `00-overview.md` so readers can grab the
-print-ready version.
+the desktop files; the html build's `book.html`, `index.html`, and assets are
+left exactly as they were, since a `pdf`/`pdfx` build into a shared `--out`
+directory only ever adds its own PDF. Link to it from `00-overview.md` so
+readers can grab the print-ready version.
 
 For a fully validated PDF/X (CMYK, embedded fonts, post-build checks),
 use:

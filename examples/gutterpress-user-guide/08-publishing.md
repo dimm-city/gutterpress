@@ -99,6 +99,24 @@ gutterpress publish --provider itch
 
 @end-section
 
+## Sharing a Folder Between Formats
+
+`gutterpress build --out <dir>` writes into a plain folder instead of the
+project's own `dist/`, which is how you build a static site and its
+downloadable PDF into one place:
+
+```bash
+gutterpress build --format html --out ./_site
+gutterpress build --format pdf --out ./_site
+```
+
+Each command only delivers what its own format produces, so the second
+command never disturbs the first's output: `--format html` writes
+`book.html` (with the viewer), `index.html`, and the referenced assets;
+`--format pdf`/`pdfx` adds only its own PDF. `./_site` ends up with both —
+the paginating `book.html` a browser opens, and a PDF a reader can download —
+with neither build overwriting the other's files.
+
 ## Publishing From CI
 
 The `publish` command is fully headless. Set the provider's environment

@@ -5,6 +5,21 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A shared `--out` directory no longer lets a pdf build overwrite the html
+  build's `book.html`.** `gutterpress build --format html --out ./_site`
+  followed by `gutterpress build --format pdf --out ./_site` used to copy the
+  pdf build's whole staging directory over `./_site`, replacing the html
+  build's `book.html` (viewer script + relative links intact) with the pdf
+  build's own staged copy (no viewer script, and since #263 no relative
+  hrefs) — silently breaking the published site. A `pdf`/`pdfx` build into a
+  `--out <dir>` now delivers only its own PDF; `book.html`, `index.html` and
+  assets already published there are left untouched, and
+  `BuildRunnerResult.htmlPath`/`fingerprintPath` are `null` for that build
+  since nothing else was delivered. `--format html` and the `project`
+  (manifest-default `dist/<slug>/`) target are unchanged. (#270, #271)
+
 ## [0.10.9] - 2026-09-12
 
 ### Changed
