@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.10] - unreleased
+
 ### Added
 
 - **Switch which local copy of a project you're working on, from Settings →
