@@ -30,6 +30,8 @@ export interface LibModule {
   connectGenericHost?(args: { host: string; username?: string; token: string; repoUrl?: string }): Promise<{ host: string; username?: string; kind: string; token: string; label?: string; createdAt: number }>;
   knownForgeTokenUrl?(host: string): Promise<string | null>;
   syncProject?(args: { projectDir: string; tokenStore: TokenStore; message?: string; authorName?: string; authorEmail?: string }): Promise<unknown>;
+  /** Fetch every remote branch so the copy picker sees copies created elsewhere (#273). */
+  refreshRemoteCopies?(args: { projectDir: string; tokenStore: TokenStore }): Promise<{ refreshed: boolean }>;
   /** Best-effort revoke at Google (never throws) — used by remote:disconnectHost
    *  for `kind: "google-oauth"` publish credentials (#221). */
   revokeGoogleCredential?(refreshToken: string): Promise<void>;

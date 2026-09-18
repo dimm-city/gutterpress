@@ -27,7 +27,8 @@ async function writeManifest(projectDir: string, body: string): Promise<void> {
 }
 
 /** Scaffold a local-plugin extension folder at `plugins/<folderName>/`: a
- *  `gutterpress.json` (with `meta` merged in) plus one `.md` file per entry
+ *  `package.json` (with `meta` merged into its `gutterpress` block) plus one
+ *  `.md` file per entry
  *  in `snippetFiles` under `<meta.snippets ?? "snippets">/`. Does NOT touch
  *  the manifest — callers wire (or omit) the `plugins:` entry themselves so
  *  enabled/disabled and the exact `path:` spelling stay visible at the call
@@ -43,12 +44,12 @@ async function makePluginExtensionFolder(
   await mkdir(path.join(dir, snippetsRel), { recursive: true });
   // Always declare `snippets` in the written metadata (defaulting to the
   // same folder the files are actually scaffolded into) — a caller that
-  // wants "no snippets field at all" writes gutterpress.json directly
+  // wants "no snippets field at all" writes package.json directly
   // instead of going through this helper (see the "declares no snippets
   // field" test below).
   await writeFile(
-    path.join(dir, "gutterpress.json"),
-    JSON.stringify({ ...meta, snippets: snippetsRel }),
+    path.join(dir, "package.json"),
+    JSON.stringify({ name: meta.name, gutterpress: { snippets: snippetsRel } }),
     "utf8",
   );
   for (const [fileName, body] of Object.entries(snippetFiles)) {
@@ -57,7 +58,7 @@ async function makePluginExtensionFolder(
   return dir;
 }
 
-/** Scaffold a PROJECT theme folder at `themes/<id>/` (theme.json + theme.css
+/** Scaffold a PROJECT look folder at `extensions/<id>/` (package.json + theme.css
  *  + declared snippets/*.md) and wire the manifest's `styles:` so it is the
  *  ACTIVE theme (`getActiveTheme` finds it). */
 async function makeActiveThemeFixture(
@@ -70,8 +71,11 @@ async function makeActiveThemeFixture(
   const snippetsRel = meta.snippets ?? "snippets";
   await mkdir(path.join(dir, snippetsRel), { recursive: true });
   await writeFile(
-    path.join(dir, "theme.json"),
-    JSON.stringify({ ...meta, snippets: snippetsRel }),
+    path.join(dir, "package.json"),
+    JSON.stringify({
+      name: meta.name,
+      gutterpress: { styles: ["theme.css"], snippets: snippetsRel },
+    }),
     "utf8",
   );
   await writeFile(path.join(dir, "theme.css"), "/* theme */\n", "utf8");
@@ -294,15 +298,15 @@ test("listMergedSnippets excludes a DISABLED plugin's snippets (matches: never l
   }
 });
 
-test("listMergedSnippets ignores an npm-kind plugin entry (no gutterpress.json is read for name: entries today)", async () => {
+test("listMergedSnippets ignores an npm-kind plugin entry that is not installed", async () => {
   const proj = await tmpProject();
   try {
     // A folder that HAPPENS to sit at the npm package's own name — proves
     // the skip is driven by the npm entry being uninstalled, not merely "no folder found".
     await mkdir(path.join(proj, "some-npm-pkg", "snippets"), { recursive: true });
     await writeFile(
-      path.join(proj, "some-npm-pkg", "gutterpress.json"),
-      JSON.stringify({ name: "Should not appear", snippets: "snippets" }),
+      path.join(proj, "some-npm-pkg", "package.json"),
+      JSON.stringify({ name: "Should not appear", gutterpress: { snippets: "snippets" } }),
       "utf8",
     );
     await writeFile(path.join(proj, "some-npm-pkg", "snippets", "x.md"), "x", "utf8");
@@ -320,8 +324,8 @@ test("listMergedSnippets ignores a plugin folder that declares no snippets field
     const dir = path.join(proj, "plugins", "styles-only");
     await mkdir(dir, { recursive: true });
     await writeFile(
-      path.join(dir, "gutterpress.json"),
-      JSON.stringify({ name: "Styles Only" }),
+      path.join(dir, "package.json"),
+      JSON.stringify({ name: "Styles Only", gutterpress: { styles: ["theme.css"] } }),
       "utf8",
     );
     await writeManifest(proj, ["extensions:", "  - ./plugins/styles-only", ""].join("\n"));
@@ -363,8 +367,8 @@ test("listMergedSnippets excludes a look that is on disk but not in extensions:"
     const dormantDir = path.join(proj, "extensions", "dormant");
     await mkdir(path.join(dormantDir, "snippets"), { recursive: true });
     await writeFile(
-      path.join(dormantDir, "theme.json"),
-      JSON.stringify({ name: "Dormant", snippets: "snippets" }),
+      path.join(dormantDir, "package.json"),
+      JSON.stringify({ name: "Dormant", gutterpress: { styles: ["theme.css"], snippets: "snippets" } }),
       "utf8",
     );
     await writeFile(path.join(dormantDir, "theme.css"), "/* dormant */\n", "utf8");
@@ -444,8 +448,8 @@ test("listMergedSnippets tolerates (skips) an extension whose declared snippets 
     const dir = path.join(proj, "plugins", "sneaky");
     await mkdir(dir, { recursive: true });
     await writeFile(
-      path.join(dir, "gutterpress.json"),
-      JSON.stringify({ name: "Sneaky", snippets: "../../../etc" }),
+      path.join(dir, "package.json"),
+      JSON.stringify({ name: "Sneaky", gutterpress: { snippets: "../../../etc" } }),
       "utf8",
     );
     await writeManifest(proj, ["extensions:", "  - ./plugins/sneaky", ""].join("\n"));

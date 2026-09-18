@@ -8,24 +8,24 @@
   import { getPlatform, isDesktop } from "$lib/platform";
   import { sanitizeSettingsTab, type SettingsTab } from "$lib/settings-tabs";
   import { api, type AppImageIntegrationStatus } from "$lib/api";
+  import { friendlyHostError } from "$lib/errors";
 
   let {
     onClose,
     projectDir = null,
     initialTab = "app",
-    onCrashRecoveryChange,
     embedded = false,
     idPrefix = "settings",
+    onProjectFilesChanged,
   }: {
     onClose?: () => void;
     /** The open project dir (Connections tab: adding a publishing key verifies
-     *  against the platform, and some checks read the project's settings). */
+     *  against the platform, and some checks read the project's settings;
+     *  the Saving tab's online-backup switch uses it to check canSync). */
     projectDir?: string | null;
     /** The tab to land on when the view opens (e.g. "connections" from the
      *  reconnect / advanced-setup entry points). */
     initialTab?: SettingsTab;
-    /** Called immediately when the user toggles crash recovery. */
-    onCrashRecoveryChange?: (enabled: boolean) => void;
     /** Rendered INSIDE another surface (the start screen's Settings tab)
      *  rather than as the full-window sheet: drops the title bar and close
      *  button — that surface has its own — and stops owning a scroll region,
@@ -35,6 +35,15 @@
      *  start screen's tab and the full-window sheet opened over it), and
      *  duplicate ids would break the tab/panel aria wiring for both. */
     idPrefix?: string;
+    /** Called after the Saving tab's copy switcher (#273) successfully checks
+     *  out another local copy — the files under `projectDir` just changed out
+     *  from under whatever the workspace has open. The parent reconciles the
+     *  open editor buffer/preview the same way it does after a version
+     *  restore (`ProjectActivityView`'s `onRestored`); the file tree and
+     *  preview pick up the change on their own via the existing folder-
+     *  changed push stream, since the checkout's writes are ordinary disk
+     *  writes to the watched folder. */
+    onProjectFilesChanged?: () => void;
   } = $props();
 
   const settings = useSettings();
@@ -104,6 +113,106 @@
         appImage = null;
       });
   });
+
+  // ── Saving tab — can this project sync? (#274) ────────────────────────────
+  // The online-backup switch only makes sense for a project that can sync;
+  // otherwise it is a control that would do nothing, per issue #274. Checked
+  // once on mount (no `$effect` in this repo — CLAUDE.md §8), same as
+  // ConnectionsSettings/ProjectConnectionsSection's own diagnoseProjectRemote
+  // load. `projectDir === null` (the start screen) is treated as "cannot
+  // sync" without a round-trip.
+  let canSyncLoading = $state(true);
+  let canSync = $state(false);
+
+  onMount(() => {
+    if (!isDesktop() || !projectDir) {
+      canSyncLoading = false;
+      return;
+    }
+    api.remote
+      .diagnoseProjectRemote(projectDir)
+      .then((diag) => {
+        canSync = diag.canSync;
+      })
+      .catch(() => {
+        canSync = false;
+      })
+      .finally(() => {
+        canSyncLoading = false;
+      });
+  });
+
+  // ── Saving tab — the copy this project is on (#273) ───────────────────────
+  // Every copy is listed, including ones that so far exist only online;
+  // switching to one of those creates it locally first. Hidden entirely — not
+  // shown with an error — when there's nothing to switch between: no project
+  // open, the browser target (no local git access at all), or `listBranches`
+  // reports `null` (a plain local-folder, which has no repository). Loaded
+  // once on mount, reloaded after a switch; no `$effect` (CLAUDE.md §8).
+  let copies = $state<{ current: string | null; branches: string[]; remoteOnly: string[] } | null>(null);
+  let copiesLoading = $state(true);
+  /** The online check failed, so the copy list may be missing copies made elsewhere. */
+  let copiesStale = $state(false);
+  let selectedCopy = $state("");
+  let copySwitching = $state(false);
+  let copySwitchError = $state<string | null>(null);
+
+  /**
+   * `listBranches` reads refs off disk, so a copy pushed from somewhere else
+   * is invisible until this clone fetches. Refreshing first is what makes a
+   * copy created on another machine — or by a pull request opened for you —
+   * show up here without dropping to a terminal. Best-effort: offline or
+   * unconnected simply lists what is already on disk.
+   */
+  async function loadCopies(options: { refresh?: boolean } = {}) {
+    if (!isDesktop() || !projectDir) {
+      copies = null;
+      copiesLoading = false;
+      return;
+    }
+    copiesLoading = true;
+    try {
+      if (options.refresh) {
+        const r = await api.remote
+          .refreshCopies(projectDir)
+          .catch(() => ({ refreshed: false, reason: "offline" as const }));
+        // "no-remote" is not a problem — a project with no online copy has
+        // nothing to check for. The other two mean the list may be short.
+        copiesStale = !r.refreshed && r.reason !== "no-remote";
+      }
+      copies = await api.vcs.listBranches(projectDir);
+    } catch {
+      copies = null;
+    } finally {
+      copiesLoading = false;
+    }
+  }
+
+  onMount(() => {
+    void loadCopies({ refresh: true });
+  });
+
+  async function switchCopy() {
+    if (!projectDir || !selectedCopy || copySwitching) return;
+    const target = selectedCopy;
+    copySwitching = true;
+    copySwitchError = null;
+    try {
+      await api.vcs.switchBranch(projectDir, target);
+      selectedCopy = "";
+      await loadCopies();
+      // The files under projectDir just changed out from under the open
+      // workspace — reconcile the open editor buffer the same way a version
+      // restore does (the file tree/preview pick up the change on their own
+      // via the folder-changed push stream, which the checkout's writes fire
+      // just like any other external disk change).
+      onProjectFilesChanged?.();
+    } catch (e) {
+      copySwitchError = friendlyHostError(e instanceof Error ? e.message : String(e));
+    } finally {
+      copySwitching = false;
+    }
+  }
 
   async function runAppImageAction(action: "install" | "remove") {
     // `disabled={appImageBusy}` only takes effect after Svelte flushes, so a
@@ -426,41 +535,24 @@
       {/if}
 
       {#if activeTab === "saving"}
-      <!-- Saving & recovery (UX follow-up: writer-friendly protection model) -
-           The three protection layers a writer actually reasons about — saved
-           on this computer, previous versions, and the online copy — plus the
-           temporary emergency crash-draft, grouped together with plain labels.
-           None of the underlying machinery changes; the persisted keys
-           (editor.autoSaveDelay / editor.crashRecovery, versionHistory.
-           autoSnapshot / autoSnapshotMinutes / autoSync) are internal and
-           unchanged (the schema `editor` and `versionHistory` sections still
-           own them, so each section's Reset still restores its own keys). -->
+      <!-- Saving (#274 — two switches instead of five controls, three of which
+           did less than their labels said). Saving itself (500ms debounce)
+           and crash recovery (1s emergency draft) are no longer settings —
+           EditorBuffer runs both unconditionally with its own fixed defaults
+           — so this group is left with the two things a writer can actually
+           decide: whether to keep previous versions, and whether to keep an
+           online backup. Both persist under `versionHistory`, so this group's
+           Reset restores the whole group in one call. -->
       <section class="group">
         <div class="group-head">
           <h3>Saving &amp; recovery</h3>
-          <button class="reset" onclick={() => settings.resetSection("versionHistory")} title="Reset previous-version and online-copy settings to defaults">Reset</button>
-        </div>
-        <!-- On this computer -->
-        <div class="row">
-          <div class="row-label">
-            <label for="set-autosave">Save edits automatically</label>
-            <span class="row-hint">Writes your current changes to this computer as you work (delay in seconds)</span>
-          </div>
-          <input
-            id="set-autosave"
-            type="number"
-            min="0"
-            max="10"
-            step="0.5"
-            value={s.editor.autoSaveDelay / 1000}
-            onchange={(e) => settings.set({ editor: { autoSaveDelay: Math.round(Number((e.currentTarget as HTMLInputElement).value) * 1000) } })}
-          />
+          <button class="reset" onclick={() => settings.resetSection("versionHistory")} title="Reset saving settings to defaults">Reset</button>
         </div>
         <!-- Previous versions -->
         <div class="row row-toggle">
           <div class="row-label">
             <label for="set-auto-snapshot">Keep previous versions</label>
-            <span class="row-hint">Lets you return to earlier versions of the project. Turning this off does not affect saving on this computer.</span>
+            <span class="row-hint">Lets you return to earlier versions of the project.</span>
           </div>
           <input
             id="set-auto-snapshot"
@@ -469,55 +561,95 @@
             onchange={(e) => settings.set({ versionHistory: { autoSnapshot: (e.currentTarget as HTMLInputElement).checked } })}
           />
         </div>
-        <div class="row">
-          <label for="set-auto-snapshot-minutes">Create a version after I stop editing for (minutes)</label>
-          <input
-            id="set-auto-snapshot-minutes"
-            type="number"
-            min="5"
-            max="1440"
-            step="5"
-            value={s.versionHistory.autoSnapshotMinutes}
-            disabled={!s.versionHistory.autoSnapshot}
-            onchange={(e) => settings.set({ versionHistory: { autoSnapshotMinutes: Number((e.currentTarget as HTMLInputElement).value) } })}
-          />
-        </div>
-        <!-- Online copy (transparent-sync plan §6 / §8 step 7). Default ON for
-             projects with a remote; local-only projects never sync regardless
-             of this toggle (the host enforces the canSync gate). -->
-        <div class="row row-toggle">
-          <div class="row-label">
-            <label for="set-auto-sync">Keep an online copy up to date</label>
-            <span class="row-hint">Available when this project is connected to an online service — changes are saved to it in the background. Turning this off does not affect saving on this computer or your previous versions.</span>
+        <!-- Online backup (transparent-sync plan §6 / §8 step 7). Shown only
+             for a project that can sync — canSyncLoading/canSync are read
+             once on mount from diagnoseProjectRemote (no live re-check while
+             this view stays open, matching ConnectionsSettings/
+             ProjectConnectionsSection); a local-only project or the start
+             screen (projectDir === null) gets one status line instead of a
+             switch that would do nothing. Disabled when previous versions is
+             off: a backup with nothing to push is not a backup. -->
+        {#if canSyncLoading}
+          <div class="row"><span class="row-hint">Checking this project's online status…</span></div>
+        {:else if canSync}
+          <div class="row row-toggle">
+            <div class="row-label">
+              <label for="set-auto-sync">Keep this project backed up online</label>
+              <span class="row-hint">
+                {#if s.versionHistory.autoSnapshot}
+                  Sends your previous versions to your connected online service in the background.
+                {:else}
+                  Needs "Keep previous versions" turned on — a backup is made of your versions.
+                {/if}
+              </span>
+            </div>
+            <input
+              id="set-auto-sync"
+              type="checkbox"
+              checked={s.versionHistory.autoSync}
+              disabled={!s.versionHistory.autoSnapshot}
+              onchange={(e) => {
+                const enabled = (e.currentTarget as HTMLInputElement).checked;
+                settings.set({ versionHistory: { autoSync: enabled } });
+                // Notify the host orchestrator immediately so the change takes effect
+                // without waiting for a settings reload cycle (§4.3).
+                if (isDesktop()) getPlatform().setAutoSync(enabled).catch(() => {});
+              }}
+            />
           </div>
-          <input
-            id="set-auto-sync"
-            type="checkbox"
-            checked={s.versionHistory.autoSync}
-            onchange={(e) => {
-              const enabled = (e.currentTarget as HTMLInputElement).checked;
-              settings.set({ versionHistory: { autoSync: enabled } });
-              // Notify the host orchestrator immediately so the change takes effect
-              // without waiting for a settings reload cycle (§4.3).
-              if (isDesktop()) getPlatform().setAutoSync(enabled).catch(() => {});
-            }}
-          />
-        </div>
-        <!-- Emergency copy (crash-draft subsystem — kept distinct from previous
-             versions, per UX follow-up + review M38). The persisted key
-             `editor.crashRecovery` is internal/unchanged. -->
-        <div class="row row-toggle">
-          <div class="row-label">
-            <label for="set-crash-recovery">Recover edits after an unexpected close</label>
-            <span class="row-hint">Keeps a temporary emergency copy of your unsaved edits until they are saved. This is separate from your previous versions.</span>
+        {:else}
+          <div class="row"><span class="row-hint">This project isn't connected to an online service yet. Connect one in Settings &gt; Accounts to back it up.</span></div>
+        {/if}
+        <!-- Copy switching (#273): which copy (git branch) the project is on,
+             and a way to switch to another. Copies that exist only online are
+             listed too and marked as such — switching to one creates it
+             locally on the way in. Listing local copies alone made this look
+             broken: the copy you went looking for was simply missing, with
+             nothing to tell that apart from a bug. Hidden entirely, never
+             shown as a dead control, when there's nothing to switch between:
+             no project open, the browser target, or `copies` is null (a plain
+             local-folder has no repository to have copies of). Vocabulary:
+             "copy", never "branch", in every string below. -->
+        {#if isDesktop() && projectDir && !copiesLoading && copies}
+          {@const otherCopies = copies.branches.filter((name) => name !== copies?.current)}
+          {@const onlineOnly = new Set(copies.remoteOnly ?? [])}
+          <div class="row">
+            <div class="row-label">
+              <span class="row-title">Copy of this project you're working on</span>
+              <span class="row-hint">{copies.current ?? "Unknown — this project's history looks unusual."}</span>
+            </div>
+            {#if otherCopies.length > 0}
+              <div class="row-actions">
+                <select
+                  aria-label="Switch to another copy"
+                  bind:value={selectedCopy}
+                  disabled={copySwitching}
+                >
+                  <option value="" disabled>Switch to…</option>
+                  {#each otherCopies as name (name)}
+                    <option value={name}
+                      >{name}{onlineOnly.has(name) ? " (online only)" : ""}</option
+                    >
+                  {/each}
+                </select>
+                <button
+                  class="action"
+                  disabled={!selectedCopy || copySwitching}
+                  onclick={switchCopy}
+                >{copySwitching ? "Switching…" : "Switch"}</button>
+              </div>
+            {/if}
           </div>
-          <input
-            id="set-crash-recovery"
-            type="checkbox"
-            checked={s.editor.crashRecovery}
-            onchange={(e) => { const enabled = (e.currentTarget as HTMLInputElement).checked; settings.set({ editor: { crashRecovery: enabled } }); onCrashRecoveryChange?.(enabled); }}
-          />
-        </div>
+          {#if copiesStale}
+            <p class="row-hint">
+              Couldn't check online for copies made elsewhere, so this list may be
+              incomplete. It shows the copies already on this computer.
+            </p>
+          {/if}
+          {#if copySwitchError}
+            <p class="row-error" role="alert">{copySwitchError}</p>
+          {/if}
+        {/if}
       </section>
 
       {/if}

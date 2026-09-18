@@ -5,7 +5,7 @@
  *   `:root` custom properties, and nothing else. The palette, the type scale,
  *   the spacing scale, the measure. This is the file a non-technical author
  *   edits to rebrand the whole book, and the file the desktop app's Design
- *   panel reads (`gutterpress.json` points `tokensFile` here).
+ *   panel reads (`package.json` points `gutterpress.tokensFile` here).
  *
  * MUST NOT CONTAIN
  *   - Any selector other than `:root`. The moment a rule here targets `h1`,

@@ -90,13 +90,6 @@ writeFileSync(
     leftPanel: { open: true, activeTab: "files", width: 280 },
   }),
 );
-// This regression specifically verifies that a configured delay reaches the
-// buffer instead of falling back to 500 ms. Keep it distinct from the product
-// default so autosave cannot win before the Save-button assertion.
-writeFileSync(
-  join(userDataDir, "app-settings.json"),
-  JSON.stringify({ settingsSchemaVersion: 2, editor: { autoSaveDelay: 2500 } }),
-);
 appArgv.push(`--user-data-dir=${userDataDir}`);
 
 const useXvfb = process.platform === "linux" && !process.env.DISPLAY;
@@ -234,13 +227,14 @@ if (stuckOnLoading) {
 }
 
 // ── 8. packaged source-save path ─────────────────────────────────────────────
-// This test explicitly configures 2.5 s. A regression left EditorBuffer on its 500 ms
-// fallback, making the main Save button look permanently disabled and turning
-// Ctrl+S into an apparent no-op because autosave had already won the race.
+// Autosave delay is a fixed 500 ms EditorBuffer default — not a user setting
+// (#274) — so this no longer configures/asserts a distinct delay. It keeps
+// the regression it can still catch without a timing race: a CodeMirror edit
+// must flip the main Save button to enabled (dirty state reaches the UI),
+// and Ctrl+S (below) must reach disk either way.
 const chapterName = readdirSync(bookDir).sort().find((name) => name.endsWith(".md") && name !== "README.md");
 if (!chapterName) fail(`fixture has no markdown chapter under ${bookDir}`);
 const chapterPath = join(bookDir, chapterName);
-const chapterBefore = readFileSync(chapterPath, "utf8");
 const marker = `packaged-save-${Date.now()}`;
 const editorPoint = await evalJs(`(() => {
   const rect = document.querySelector('.cm-content').getBoundingClientRect();
@@ -270,9 +264,9 @@ if (!editorReceivedMarker) {
   fail(`CDP text insertion did not change the CodeMirror document (${JSON.stringify(diagnostics)})`);
 }
 
-// Wait past the old hard-coded 500 ms fallback while remaining well inside the
-// configured 2.5 s window. Save must still be available and disk untouched.
-await sleep(750);
+// The 500 ms autosave debounce means a disk-untouched assertion here would
+// race the fixed delay rather than test anything — so this only checks that
+// the dirty state reaches the toolbar promptly.
 let saveEnabled = false;
 for (let i = 0; i < 20; i++) {
   saveEnabled = await evalJs(`document.querySelector('header.toolbar button.save-btn')?.disabled === false`);
@@ -280,9 +274,6 @@ for (let i = 0; i < 20; i++) {
   await sleep(25);
 }
 if (!saveEnabled) fail("main Save button did not enable after a CodeMirror edit");
-if (readFileSync(chapterPath, "utf8") !== chapterBefore) {
-  fail("chapter autosaved before the configured 2.5 s delay elapsed");
-}
 
 await evalJs(`(() => {
   window.__gutterpressSavePreviewProbe = { startedAt: performance.now(), result: null, sequence: 0 };

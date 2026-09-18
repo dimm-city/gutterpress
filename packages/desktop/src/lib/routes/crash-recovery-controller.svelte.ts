@@ -36,8 +36,6 @@ export interface CrashRecoveryEntry {
 
 export interface CrashRecoveryDeps {
   isDesktop: () => boolean;
-  /** Live `settings.current.editor.crashRecovery` toggle. */
-  crashRecoveryEnabled: () => boolean;
   listRecovery: (dir: string) => Promise<CrashRecoveryEntry[]>;
   clearRecovery: (filePath: string) => Promise<unknown>;
   readRecoveryFile: (recoveryPath: string) => Promise<string>;
@@ -75,7 +73,6 @@ export class CrashRecoveryController {
     this.scanDir = dir;
     const generation = ++this.generation;
     this.items = [];
-    if (!d.crashRecoveryEnabled()) return;
     try {
       const entries = await d.listRecovery(dir);
       if (generation !== this.generation) return;

@@ -26,8 +26,8 @@ function writeLook(dir: string, id: string, color: string): void {
   const ext = join(dir, "ext", id);
   mkdirSync(join(ext, "css"), { recursive: true });
   writeFileSync(
-    join(ext, "gutterpress.json"),
-    JSON.stringify({ name: id, markdown: "plugin.js", styles: ["css/look.css"] }),
+    join(ext, "package.json"),
+    JSON.stringify({ name: id, main: "plugin.js", gutterpress: { styles: ["css/look.css"] } }),
     "utf8",
   );
   writeFileSync(

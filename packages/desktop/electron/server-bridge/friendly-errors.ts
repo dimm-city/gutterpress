@@ -44,7 +44,7 @@ function logFailure(line: string): void {
 // pass through to the renderer verbatim. Anything else is an unexpected
 // internal failure.
 const VCS_FRIENDLY_ERROR =
-  /no changes since the last snapshot|no version history yet|your work is safe|project files were not changed|requires an absolute project path|valid snapshot id|already inside a versioned project/i;
+  /no changes since the last snapshot|no version history yet|your work is safe|project files were not changed|requires an absolute project path|valid snapshot id|already inside a versioned project|couldn't switch copies|requires a branch name/i;
 
 /**
  * Classify a version-history failure. Logs the full error under `logLabel`,

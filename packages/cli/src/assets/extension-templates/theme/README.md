@@ -8,7 +8,8 @@ arrangement of the files is the part worth keeping.
 
 ```
 {{SLUG}}/
-├── gutterpress.json          what this package declares to Gutterpress
+├── package.json              what this package declares: the `gutterpress`
+│                             block names the sheets, catalog and snippets
 ├── components.yaml           the catalog: what an author can opt into
 ├── snippets/                 insertable recipes for the components
 └── styles/
@@ -129,9 +130,9 @@ That asymmetry is the whole difference between the two kinds of package.
 ```
 
 Each sheet then puts everything it owns inside its layer. The cascade is
-settled by that one line rather than by which sheet `gutterpress.json`'s
-`styles` lists last, so splitting a sheet or reordering that list can no
-longer silently flip who wins.
+settled by that one line rather than by which sheet `package.json`'s
+`gutterpress.styles` lists last, so splitting a sheet or reordering that list
+can no longer silently flip who wins.
 
 The trap, and it catches everyone once: a rule left OUTSIDE all the layers is
 fully unlayered, and unlayered CSS beats layered CSS at any specificity. So

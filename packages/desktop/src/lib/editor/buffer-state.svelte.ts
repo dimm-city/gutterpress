@@ -30,11 +30,14 @@ export interface ExternalChange {
 export interface EditorBufferOptions {
   /** The platform adapter (Electron). */
   platform: Platform;
-  /** Disk-save debounce (ms). Defaults to 500 (the responsive edit→preview loop). */
+  /** Disk-save debounce (ms). Defaults to 500 (the responsive edit→preview
+   *  loop) — not a user setting (#274); a test-only override. */
   saveDelayMs?: number;
   /** Crash-recovery snapshot debounce (ms). Defaults to 1000. */
   recoveryDelayMs?: number;
-  /** When false, no sidecar recovery snapshots are written (#45 setting). */
+  /** When false, no sidecar recovery snapshots are written. Not wired to a
+   *  user setting (#274 — crash recovery is always on); a test-only knob for
+   *  isolating save behavior from recovery writes. */
   recoveryEnabled?: boolean;
   /** Called after a successful disk write (e.g. to refresh the preview). */
   onSaved?: (filePath: string) => void;
@@ -112,25 +115,6 @@ export class EditorBuffer {
       this.lastPendingSave = nowPending;
       this.opts.onDirty?.(nowPending);
     }
-  }
-
-  /** Toggle crash-recovery snapshotting at runtime (#45 setting). */
-  setRecoveryEnabled(enabled: boolean): void {
-    this.opts.recoveryEnabled = enabled;
-    if (!enabled && this.recoveryTimer) {
-      clearTimeout(this.recoveryTimer);
-      this.recoveryTimer = null;
-    }
-  }
-
-  /** Update the autosave delay and restart any pending dirty-buffer timer. */
-  setSaveDelayMs(delayMs: number): void {
-    if (this.opts.saveDelayMs === delayMs) return;
-    this.opts.saveDelayMs = delayMs;
-    if (!this.saveTimer) return;
-    clearTimeout(this.saveTimer);
-    this.saveTimer = null;
-    if (this.isDirty) this.scheduleSave();
   }
 
   /**

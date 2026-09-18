@@ -26,20 +26,19 @@ import {
   type ProjectExtensionEntry,
 } from "./extension-manager.ts";
 import { FriendlyHttpError, withFetchTimeout } from "./fetch-timeout.ts";
-import { prettify } from "./slug.ts";
+import { prettify, slugify } from "./slug.ts";
 // #239: the SAME declared-stylesheet resolver extension-manager.ts's addExtension/
 // importThemeFromFolder and plugins.ts's resolvePluginStyles use.
 import { resolveDeclaredStyles } from "./style-declarations.ts";
-// #241: metadata may now be named gutterpress.json instead of theme.json —
-// same superset shape, same tolerant-missing/invalid-JSON contract. The
-// anchor a zip/css-text import locates its root BY stays theme.css (see this
-// file's header) — only WHICH metadata file is read once that root is found
-// generalizes here.
+// #276: an extension describes itself in its package.json. The anchor a
+// zip/css-text import locates its root BY stays theme.css (see this file's
+// header) — only the metadata file read once that root is found changes.
 import {
   assertExtensionContained,
-  extensionStyleListWithDefault,
+  extensionStyleList,
   readExtensionMeta,
   EXTENSION_MANIFEST_FILENAME,
+  type ExtensionMetadata,
 } from "./extension-manifest.ts";
 
 /** Reject a raw archive larger than this before unzipping (zip-bomb surface). */
@@ -112,10 +111,9 @@ export function classifyThemeCssFindings(findings: PrintSafeWarning[]): {
   return { reject, warnings };
 }
 
-// #241: gutterpress.json joins theme.json as a recognized metadata filename —
-// a package using the new format must not get a false "unexpected file"
-// warning for its own metadata file.
-const KNOWN_THEME_FILES = new Set(["theme.css", "theme.json", EXTENSION_MANIFEST_FILENAME]);
+// A package must not get a false "unexpected file" warning for the two files
+// an extension IS: its anchor stylesheet and its package.json.
+const KNOWN_THEME_FILES = new Set(["theme.css", EXTENSION_MANIFEST_FILENAME]);
 const ALLOWED_ASSET_EXTS = new Set([
   ".woff", ".woff2", ".ttf", ".otf", ".eot",
   ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".avif",
@@ -124,7 +122,7 @@ const ALLOWED_ASSET_EXTS = new Set([
 
 /**
  * From a theme folder's relative file paths, return the ones that are neither
- * `theme.css`/`theme.json`/`gutterpress.json`, a recognized bundled asset
+ * `theme.css`/`package.json`, a recognized bundled asset
  * (font/image/css), nor one the metadata itself declared (#241 —
  * `declaredExtras`: the extension's `markdown`/`components`/`snippets`
  * entries, when present, passed as relative paths; a `snippets` folder
@@ -193,26 +191,22 @@ async function finalizeExtensionImport(
     warnings.push({ code: "print-safety", message: w.message });
   }
 
-  // #241: gutterpress.json is checked first, theme.json second — same
-  // fallback order every real on-disk theme read uses (readExtensionMeta).
-  // The warning `code` stays "no-theme-json" (the desktop's dtos.ts carries
-  // its own copy of this union, decoupled from the lib per CLAUDE.md §8) even
-  // though the wording now covers either filename.
-  const metaExists =
-    existsSync(path.join(sourceDir, EXTENSION_MANIFEST_FILENAME)) ||
-    existsSync(path.join(sourceDir, "theme.json"));
+  // #276: package.json is the one metadata file. The warning `code` stays
+  // "no-theme-json" (the desktop's dtos.ts carries its own copy of this union,
+  // decoupled from the lib per CLAUDE.md §8); only the wording changes.
+  const metaExists = existsSync(path.join(sourceDir, EXTENSION_MANIFEST_FILENAME));
   const meta = metaExists ? await readExtensionMeta(sourceDir) : {};
   if (!metaExists) {
     warnings.push({
       code: "no-theme-json",
       message:
-        "No gutterpress.json or theme.json found — the theme's name was taken from the file/folder name.",
+        "No package.json found — one was written for you, and the theme's name was taken from the file/folder name.",
     });
   } else if (!meta.name || !meta.name.trim()) {
     warnings.push({
       code: "unnamed-theme",
       message:
-        'The metadata file has no "name" — the theme\'s name was taken from the file/folder name.',
+        'The package.json has no "name" — the theme\'s name was taken from the file/folder name.',
     });
   }
 
@@ -226,13 +220,9 @@ async function finalizeExtensionImport(
   // top: it is an import-specific richness (WARN, don't just reject)
   // that plugin loading has no equivalent of.
   assertExtensionContained(meta);
-  const metaFilename = existsSync(path.join(sourceDir, EXTENSION_MANIFEST_FILENAME))
-    ? EXTENSION_MANIFEST_FILENAME
-    : "theme.json";
-  const extraSheets = [
-    ...new Set(extensionStyleListWithDefault(meta, sourceDir)),
-  ].filter((rel) => rel !== "theme.css");
-  const extraSheetPaths = resolveDeclaredStyles(extraSheets, sourceDir, metaFilename) ?? [];
+  const extraSheets = [...new Set(extensionStyleList(meta))].filter((rel) => rel !== "theme.css");
+  const extraSheetPaths =
+    resolveDeclaredStyles(extraSheets, sourceDir, EXTENSION_MANIFEST_FILENAME) ?? [];
   for (let i = 0; i < extraSheets.length; i++) {
     const rel = extraSheets[i]!;
     const sheetPath = extraSheetPaths[i]!;
@@ -248,7 +238,7 @@ async function finalizeExtensionImport(
     }
   }
 
-  // #241: markdown/components/snippets are declared-but-unenforced here
+  // markdown/components/snippets are declared-but-unenforced here
   // (same "advisory, not existence-checked by this flow" treatment
   // tokensFile already had) — only suppressed from the "unexpected extra
   // files" warning below so a well-formed extension package doesn't get a
@@ -274,8 +264,60 @@ async function finalizeExtensionImport(
   const dest = path.join(projectDir, EXTENSIONS_DIR, id);
   await mkdir(path.dirname(dest), { recursive: true });
   await cp(sourceDir, dest, { recursive: true });
+  await completeLandedManifest(dest, id, meta, metaExists);
   const entry = await addExtension(projectDir, `./${EXTENSIONS_DIR}/${id}`);
   return { entry, warnings };
+}
+
+/**
+ * Make the landed copy LOAD (#276). A look is an extension whose package.json
+ * declares `gutterpress.styles`; a bare stylesheet, or a package that carries
+ * only the pre-0.10.10 `theme.json`/`gutterpress.json`, declares nothing.
+ * Import is the ONE place that converts a bare stylesheet into an extension,
+ * so it is the one place a manifest may be synthesized — everywhere else a
+ * folder that declares nothing is an error the author fixes.
+ *
+ * Writes the minimum: the package's own fields are preserved verbatim, only
+ * an absent `name` (the landed folder id, already a slug) and an absent
+ * `gutterpress.styles` (the `theme.css` anchor every import guarantees) are
+ * filled in.
+ */
+async function completeLandedManifest(
+  dest: string,
+  id: string,
+  meta: ExtensionMetadata,
+  metaExists: boolean,
+): Promise<void> {
+  if (metaExists && extensionStyleList(meta).length > 0) return;
+  const file = path.join(dest, EXTENSION_MANIFEST_FILENAME);
+  let pkg: Record<string, unknown> = {};
+  if (metaExists) {
+    try {
+      const parsed: unknown = JSON.parse(await readFile(file, "utf8"));
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        pkg = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Unparseable: replaced by the minimum manifest below, same as none.
+    }
+  }
+  const gutterpress =
+    pkg.gutterpress && typeof pkg.gutterpress === "object" && !Array.isArray(pkg.gutterpress)
+      ? (pkg.gutterpress as Record<string, unknown>)
+      : {};
+  await writeFile(
+    file,
+    JSON.stringify(
+      {
+        ...pkg,
+        name: typeof pkg.name === "string" && pkg.name.trim() ? pkg.name : id,
+        gutterpress: { ...gutterpress, styles: ["theme.css"] },
+      },
+      null,
+      2,
+    ),
+    "utf8",
+  );
 }
 
 /**
@@ -365,8 +407,8 @@ export async function importExtensionFromZip(
 
 /**
  * Import a theme from a bare `.css` file by wrapping it into a one-file theme
- * folder (`theme.css` + a synthesized `theme.json` naming it). REJECTS a CSS
- * that fails to parse.
+ * folder (`theme.css` + a synthesized `package.json` naming it and declaring
+ * it). REJECTS a CSS that fails to parse.
  */
 export async function importExtensionFromCssText(
   projectDir: string,
@@ -383,13 +425,18 @@ export async function importExtensionFromCssText(
   try {
     await writeFile(path.join(tmp, "theme.css"), css, "utf8");
     await writeFile(
-      path.join(tmp, "theme.json"),
-      JSON.stringify({ name: displayName }, null, 2),
+      path.join(tmp, EXTENSION_MANIFEST_FILENAME),
+      JSON.stringify({ name: slugify(displayName, "look"), gutterpress: { styles: ["theme.css"] } }, null, 2),
       "utf8",
     );
-    const result = await finalizeExtensionImport(projectDir, tmp, ["theme.css", "theme.json"], displayName);
+    const result = await finalizeExtensionImport(
+      projectDir,
+      tmp,
+      ["theme.css", EXTENSION_MANIFEST_FILENAME],
+      displayName,
+    );
     // The source was a single stylesheet with no packaged metadata — surface
-    // that even though we synthesized a theme.json for the name.
+    // that even though we synthesized a package.json for the name.
     result.warnings.unshift({
       code: "no-theme-json",
       message: "A single CSS file was imported — its name came from the file name.",
@@ -479,7 +526,7 @@ function assertLooksLikeCss(text: string, url: string): void {
  * Import a look from a URL using the global `fetch` (bundle-safe — no node
  * http client). Two shapes: a `.css` URL is the look's `theme.css`, with
  * metadata synthesised from the URL; a base URL (no `.css`) fetches
- * `<base>/theme.json` (optional) and `<base>/theme.css` (required). Bundled
+ * `<base>/package.json` (optional) and `<base>/theme.css` (required). Bundled
  * fonts are not followed — authors wanting bundled assets use a folder or a
  * `.zip`. The fetched files go through the same validation as a `.zip`.
  */
@@ -500,10 +547,10 @@ export async function importExtensionFromUrl(
     const base = trimmed.endsWith("/") ? trimmed : `${trimmed}/`;
     css = await fetchText(`${base}theme.css`);
     try {
-      const parsed = JSON.parse(await fetchText(`${base}theme.json`)) as unknown;
+      const parsed = JSON.parse(await fetchText(`${base}${EXTENSION_MANIFEST_FILENAME}`)) as unknown;
       if (parsed && typeof parsed === "object") meta = parsed as Record<string, unknown>;
     } catch {
-      // theme.json is optional for folder URLs.
+      // package.json is optional for folder URLs.
     }
     baseName =
       (typeof meta.name === "string" && meta.name) ||
@@ -516,14 +563,33 @@ export async function importExtensionFromUrl(
   const tmp = await mkdtemp(path.join(tmpdir(), "gutterpress-ext-"));
   try {
     await writeFile(path.join(tmp, "theme.css"), css, "utf8");
+    const gp =
+      meta.gutterpress && typeof meta.gutterpress === "object" && !Array.isArray(meta.gutterpress)
+        ? (meta.gutterpress as Record<string, unknown>)
+        : {};
     const finalMeta = {
-      name: (typeof meta.name === "string" && meta.name) || prettify(baseName),
+      name: (typeof meta.name === "string" && meta.name) || slugify(baseName, "look"),
       ...(typeof meta.author === "string" ? { author: meta.author } : {}),
       ...(typeof meta.description === "string" ? { description: meta.description } : {}),
-      preview: typeof meta.preview === "string" ? meta.preview : null,
+      // Only the anchor sheet is fetched, so the landed look declares exactly
+      // that one however many the remote package listed.
+      gutterpress: {
+        ...gp,
+        styles: ["theme.css"],
+        preview: typeof gp.preview === "string" ? gp.preview : null,
+      },
     };
-    await writeFile(path.join(tmp, "theme.json"), JSON.stringify(finalMeta, null, 2), "utf8");
-    return await finalizeExtensionImport(projectDir, tmp, ["theme.css", "theme.json"], baseName);
+    await writeFile(
+      path.join(tmp, EXTENSION_MANIFEST_FILENAME),
+      JSON.stringify(finalMeta, null, 2),
+      "utf8",
+    );
+    return await finalizeExtensionImport(
+      projectDir,
+      tmp,
+      ["theme.css", EXTENSION_MANIFEST_FILENAME],
+      baseName,
+    );
   } finally {
     await rm(tmp, { recursive: true, force: true });
   }

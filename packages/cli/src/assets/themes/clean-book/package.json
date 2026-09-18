@@ -1,0 +1,10 @@
+{
+  "name": "clean-book",
+  "description": "A calm, classic book look: serif body, generous margins, restrained accents.",
+  "author": "gutterpress",
+  "keywords": ["gutterpress", "gutterpress-look"],
+  "gutterpress": {
+    "styles": ["theme.css"],
+    "preview": null
+  }
+}

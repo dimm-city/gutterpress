@@ -53,6 +53,18 @@ test("ignores a section whose patch value is an array (no corruption)", () => {
   expect(merged.editor).toEqual({ fontSize: 14, lineHeight: 1.6 } as never);
 });
 
+test("drops a patch key no longer present in the base section (#274)", () => {
+  const base = makeBase();
+  // A persisted file can still carry a key a later schema version removed
+  // (e.g. the deleted editor.autoSaveDelay) — it must not survive the merge.
+  const merged = deepMergeSettings(base, {
+    editor: { fontSize: 16, autoSaveDelay: 2500 },
+  } as unknown as DeepPartial<AppSettings>);
+
+  expect(merged.editor).toEqual({ fontSize: 16, lineHeight: 1.6 } as never);
+  expect(merged.editor).not.toHaveProperty("autoSaveDelay");
+});
+
 test("ignores undefined sections", () => {
   const base = makeBase();
   const merged = deepMergeSettings(base, {

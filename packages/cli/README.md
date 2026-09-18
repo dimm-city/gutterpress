@@ -147,7 +147,7 @@ Scaffold a new book, plugin or theme from an embedded starter template — the f
 
 `--kind book` is the default. Every new book picks the vendor preset it's designed for: `dtrpg` (DriveThruRPG print-on-demand), `book` (neutral 6x9in trade book), or `custom` (you supply the trim size in points).
 
-`--kind plugin` and `--kind theme` scaffold an **extension package** instead — a folder with a `gutterpress.json` a book can load. The plugin starter carries a declarative marker table, a hand-written markdown-it rule, component CSS and a `bun test` fixture suite; the theme starter carries the six-file layered CSS architecture (tokens / base / components / page-templates / page-rules / book), each sheet opening with its own OWNS / MUST NOT CONTAIN contract header. Both include a README explaining which conventions are load-bearing. An extension needs no preset, trim size or publish target, so the book-only flags below are rejected rather than ignored when `--kind` names one — and `--prefix`/`--description` are likewise rejected for a book.
+`--kind plugin` and `--kind theme` scaffold an **extension package** instead — a folder with a `package.json` a book can load. The plugin starter carries a declarative marker table, a hand-written markdown-it rule, component CSS and a `bun test` fixture suite; the theme starter carries the six-file layered CSS architecture (tokens / base / components / page-templates / page-rules / book), each sheet opening with its own OWNS / MUST NOT CONTAIN contract header. Both include a README explaining which conventions are load-bearing. An extension needs no preset, trim size or publish target, so the book-only flags below are rejected rather than ignored when `--kind` names one — and `--prefix`/`--description` are likewise rejected for a book.
 
 ```sh
 gutterpress new <name> [--kind <id>] [options]
@@ -194,7 +194,7 @@ gutterpress preview [input-dir] [options]
   --icc <path>            Path to ICC profile (required for --format pdfx)
   --manifest <path>       Path to manifest.yaml                          (pdf|pdfx only)
   --strip-annotations     Strip PDF annotations for PDF/X compliance    (pdfx only)
-  --skip-lint             Skip CSS linting                              (pdf|pdfx only)
+  --skip-lint             Skip the CSS print-safety check               (pdf|pdfx only)
   --skip-pre-validate     Skip pre-build validation                     (pdf|pdfx only)
   --skip-post-validate    Skip post-build PDF/X validation              (pdfx only)
   --allow-shrink          Build anyway when content is wider than the page content box (pdf|pdfx only)
@@ -202,7 +202,7 @@ gutterpress preview [input-dir] [options]
 
 ### `gutterpress build`
 
-Build a PDF (default) or HTML output. Pipeline: `lint → validate:pre → convert → assets → build → validate:post`.
+Build a PDF (default) or HTML output. Pipeline: `validate:pre → convert → assets → build → validate:post`. The CSS print-safety check (remote urls, risky print effects, page-containment) runs once, inside `validate:pre`, as the `source.stylelint` check — there is no separate lint phase.
 
 ```sh
 gutterpress build [input-dir] [options]
@@ -214,11 +214,26 @@ gutterpress build [input-dir] [options]
   --icc <path>            Path to ICC profile (required for --format pdfx)
   --manifest <path>       Path to manifest.yaml
   --strip-annotations     Strip PDF annotations for PDF/X compliance
-  --skip-lint             Skip the CSS print-safety pass (default: lint runs for pdf/pdfx)
+  --skip-lint             Skip the CSS print-safety check (default: it runs for pdf/pdfx)
   --skip-pre-validate     Skip pre-build validation
   --skip-post-validate    Skip post-build PDF/X validation
   --allow-shrink          Build anyway when content is wider than the page content box. Chromium then scales the WHOLE book down to fit it — the build reports that whole-document scale (e.g. "about 0.72x its declared size") plus every offender, as warnings.
 ```
+
+A `--out <dir>` is shared between formats safely: each build delivers only
+what its own format produces, so it never disturbs another format's output
+already sitting in that folder. `--format html` writes `book.html` (with the
+viewer bundle), `index.html`, and referenced assets. `--format pdf`/`pdfx`
+writes only its own PDF (e.g. `my-book-pdf.pdf`). This is what makes the
+two-command sequence below safe:
+
+```sh
+gutterpress build --format html --out ./_site
+gutterpress build --format pdf --out ./_site
+```
+
+`./_site` ends up with the paginating `book.html` from the first command
+plus the PDF from the second — the pdf build never overwrites `book.html`.
 
 ### `gutterpress publish`
 
@@ -346,7 +361,7 @@ terminal is the same entry the GUI shows.
 ```sh
 gutterpress ext
 
-  --help    Show ext subcommands (list, add, remove, enable, disable)
+  --help    Show ext subcommands (list, add, remove, enable, disable, search)
 ```
 
 Every subcommand takes the project directory as an optional trailing
@@ -426,6 +441,32 @@ gutterpress ext disable markdown-it-mark ./my-book
 gutterpress ext enable markdown-it-mark ./my-book
 ```
 
+#### `gutterpress ext search`
+
+Search **npm** for extensions — the same list the desktop app's Features view
+shows under "Find more on npm." Not project-scoped (no `dir` argument): it
+queries the registry for packages tagged `gutterpress` (Gutterpress
+extensions: plugins, looks, component libraries) or `markdown-it-plugin` (the
+markdown-it ecosystem's own tag — those work in Gutterpress unchanged), and
+prints each match's `name@version`, which kind it is, and its description,
+ending with the `ext add` command to install it.
+
+```sh
+gutterpress ext search [query]
+```
+
+```sh
+gutterpress ext search
+gutterpress ext search footnote
+```
+
+An empty or omitted `query` lists the most relevant tagged packages. To
+publish an extension, `npm publish` it with `"gutterpress"` in its
+`keywords` — there is no index to be added to and nothing to register. Set
+`GUTTERPRESS_NPM_REGISTRY` to point at a different registry (http/https only)
+— useful for a private mirror, or for testing; the installer uses the same
+setting, and only accepts tarballs from that registry's own origin.
+
 ## Exit codes
 
 Every command follows the same exit-code contract, so CI can branch on the result without parsing output:
@@ -461,6 +502,26 @@ extensions:
   - use: ./plugins/drafts.js
     enabled: false               # keep the entry, skip loading it
 ```
+
+An extension folder (or npm package) describes itself in its **`package.json`** — there is no second, Gutterpress-specific manifest file. npm's own fields are read as-is, and everything Gutterpress needs sits under one optional `"gutterpress"` key:
+
+```json
+{
+  "name": "field-notes",
+  "description": "Margin notes and term boxes",
+  "author": "You",
+  "keywords": ["gutterpress", "markdown-it-plugin"],
+  "main": "plugin.js",
+  "gutterpress": {
+    "styles": ["styles/plugin.css"],
+    "snippets": "snippets",
+    "components": "components.yaml",
+    "tokensFile": "styles/tokens.css"
+  }
+}
+```
+
+`main` is the markdown-it plugin — npm's own convention — so a plain markdown-it plugin package needs nothing else at all. A look needs only `gutterpress.styles` (an ordered list, relative to the folder); a component library carries both. `gutterpress.markdown` exists for the one case `main` can't express: a package whose `main` is not the plugin. Folders still carrying the removed `gutterpress.json` or `theme.json` fail to load with a message showing the package.json that replaces them.
 
 Order is load order: a later entry's markdown runs after earlier entries' (and sees their output) and its CSS wins ties; the project's own `styles:` always load after every extension. There is no `priority` and no `path:`/`name:` wrapper — a manifest still carrying `plugins:` fails with a message that prints the same entries rewritten as `extensions:`. The `engine:` and `engineStyles:` keys are gone too (there is one engine; move any `engineStyles` entries to the end of `styles:`).
 

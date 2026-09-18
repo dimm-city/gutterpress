@@ -339,54 +339,82 @@ describe("plugin loader", () => {
       expect(typeof loaded.plugin).toBe("function");
     });
 
-    // #265 — an npm package that ships a gutterpress.json is an extension like
-    // any folder: its declared styles ride along with its markdown-it entry,
-    // and its metadata backs a module that exports none of its own.
-    test("an npm package's gutterpress.json contributes its declared styles and metadata (#265)", async () => {
+    // #265/#276 — an npm package's own package.json is its extension
+    // manifest: a `gutterpress` block's declared styles ride along with its
+    // markdown-it entry, and its metadata backs a module that exports none of
+    // its own.
+    test("an npm package's `gutterpress` block contributes its declared styles and metadata (#265, #276)", async () => {
       const name = "npm-extension-fixture";
       const packageDir = join(TMP_ROOT, "node_modules", name);
       mkdirSync(join(packageDir, "css"), { recursive: true });
       writeFileSync(
         join(packageDir, "package.json"),
-        JSON.stringify({ name, version: "1.0.0", type: "module", exports: "./index.js" }),
+        JSON.stringify({
+          name,
+          version: "1.0.0",
+          type: "module",
+          exports: "./index.js",
+          description: "A look and its markup, from npm",
+          gutterpress: { styles: ["css/look.css"] },
+        }),
       );
       writeFileSync(
         join(packageDir, "index.js"),
         "export default function plugin(md) { md.__npmExtension = true; }\n",
       );
-      writeFileSync(
-        join(packageDir, "gutterpress.json"),
-        JSON.stringify({
-          name: "House",
-          description: "A look and its markup, from npm",
-          markdown: "index.js",
-          styles: ["css/look.css"],
-        }),
-      );
       writeFileSync(join(packageDir, "css", "look.css"), ".x { color: red; }\n");
 
       const loaded = await loadPlugin(cfg({ name }), TMP_ROOT);
       expect(loaded.styles).toEqual([join(packageDir, "css", "look.css")]);
-      expect(loaded.metadata?.name).toBe("House");
+      expect(loaded.metadata?.name).toBe(name);
+      expect(loaded.metadata?.description).toBe("A look and its markup, from npm");
       const md = { __npmExtension: false };
       (loaded.plugin as (md: unknown) => void)(md);
       expect(md.__npmExtension).toBe(true);
     });
 
-    test("an npm package's gutterpress.json may not name a markdown entry other than the package entry (#265)", async () => {
+    // #276 — `main` is NOT the entry rule for an npm package: the installer
+    // already resolved it with full `exports` semantics. A package whose
+    // `main` names a file that does not exist (exports-only) must still load.
+    test("an npm package's `main` is never re-derived as the entry (#276)", async () => {
+      const name = "npm-exports-only-fixture";
+      const packageDir = join(TMP_ROOT, "node_modules", name);
+      mkdirSync(packageDir, { recursive: true });
+      writeFileSync(
+        join(packageDir, "package.json"),
+        JSON.stringify({
+          name,
+          version: "1.0.0",
+          type: "module",
+          main: "dist/legacy.cjs",
+          exports: "./index.js",
+        }),
+      );
+      writeFileSync(join(packageDir, "index.js"), "export default function plugin() {}\n");
+
+      const loaded = await loadPlugin(cfg({ name }), TMP_ROOT);
+      expect(typeof loaded.plugin).toBe("function");
+    });
+
+    test("an npm package's gutterpress.markdown may not name an entry other than the package entry (#265)", async () => {
       const name = "npm-extension-mismatch-fixture";
       const packageDir = join(TMP_ROOT, "node_modules", name);
       mkdirSync(packageDir, { recursive: true });
       writeFileSync(
         join(packageDir, "package.json"),
-        JSON.stringify({ name, version: "1.0.0", type: "module", exports: "./index.js" }),
+        JSON.stringify({
+          name,
+          version: "1.0.0",
+          type: "module",
+          exports: "./index.js",
+          gutterpress: { markdown: "other.js" },
+        }),
       );
       writeFileSync(join(packageDir, "index.js"), "export default function plugin() {}\n");
       writeFileSync(join(packageDir, "other.js"), "export default function plugin() {}\n");
-      writeFileSync(join(packageDir, "gutterpress.json"), JSON.stringify({ markdown: "other.js" }));
 
       await expect(loadPlugin(cfg({ name }), TMP_ROOT)).rejects.toThrow(
-        /declares markdown "other\.js" but the package entry is "index\.js"/,
+        /declares gutterpress\.markdown "other\.js" but the package entry is "index\.js"/,
       );
     });
 
@@ -442,21 +470,22 @@ describe("plugin loader", () => {
     });
   });
 
-  // #241 — a `path` entry may name an EXTENSION FOLDER (a gutterpress.json/
-  // theme.json package) instead of a bare JS file. These tests pin the two
+  // #241/#276 — a `path` entry may name an EXTENSION FOLDER (a package.json
+  // package) instead of a bare JS file. These tests pin the two
   // non-negotiable backward-compat claims from the OTHER direction (a plugin
   // is the degenerate "markdown only" extension) plus the new folder-loading
   // behavior itself; every test above this block is completely unmodified
-  // and still exercises the pre-#241 bare-file/npm paths unchanged.
+  // and still exercises the bare-file/npm paths unchanged.
   describe("loadPlugin (extension folder, #241)", () => {
+    /** Write an extension folder described by a literal `package.json`. */
     function writeExtension(
       relDir: string,
-      meta: Record<string, unknown>,
+      pkg: Record<string, unknown>,
       files: Record<string, string> = {},
     ): string {
       const dir = join(TMP_ROOT, relDir);
       mkdirSync(dir, { recursive: true });
-      writeFileSync(join(dir, "gutterpress.json"), JSON.stringify(meta), "utf8");
+      writeFileSync(join(dir, "package.json"), JSON.stringify(pkg), "utf8");
       for (const [rel, contents] of Object.entries(files)) {
         const filePath = join(dir, rel);
         mkdirSync(join(filePath, ".."), { recursive: true });
@@ -465,10 +494,34 @@ describe("plugin loader", () => {
       return dir;
     }
 
-    test("a folder with markdown + styles loads the function AND resolves the styles", async () => {
+    // #276 — the headline case: a package.json whose `main` is a plain
+    // markdown-it plugin, with NO `gutterpress` key at all, is an extension.
+    // A package maintainer is never asked for a second manifest.
+    test("a folder whose package.json `main` is a plain markdown-it plugin loads, with no gutterpress key (#276)", async () => {
+      writeExtension(
+        "plain-npm-shaped",
+        { name: "plain-npm-shaped", version: "1.0.0", type: "module", main: "index.js" },
+        { "index.js": "export default function (md) { md.__plain = true; }" },
+      );
+
+      const loaded = await loadPlugin(cfg({ path: "plain-npm-shaped" }), TMP_ROOT);
+      expect(loaded.styles).toBeUndefined();
+      expect(loaded.metadata?.name).toBe("plain-npm-shaped");
+
+      const md = new MarkdownIt();
+      applyPlugins(md, [loaded]);
+      expect((md as MarkdownIt & { __plain?: boolean }).__plain).toBe(true);
+    });
+
+    test("a folder with `main` + `gutterpress.styles` loads both; the entry is `main` (#276)", async () => {
       const dir = writeExtension(
         "full-extension",
-        { name: "Full Extension", markdown: "plugin.js", styles: ["css/a.css"] },
+        {
+          name: "full-extension",
+          description: "Full Extension",
+          main: "plugin.js",
+          gutterpress: { styles: ["css/a.css"] },
+        },
         {
           "plugin.js": "export default function (md) { md.__fullExtension = true; }",
           "css/a.css": ".a { color: red; }",
@@ -483,6 +536,26 @@ describe("plugin loader", () => {
       expect((md as MarkdownIt & { __fullExtension?: boolean }).__fullExtension).toBe(true);
     });
 
+    test("`gutterpress.markdown` overrides `main` for a package whose main is not the plugin (#276)", async () => {
+      writeExtension(
+        "explicit-markdown",
+        {
+          name: "explicit-markdown",
+          main: "index.js",
+          gutterpress: { markdown: "gutterpress-plugin.js" },
+        },
+        {
+          "index.js": "export default function (md) { md.__which = 'main'; }",
+          "gutterpress-plugin.js": "export default function (md) { md.__which = 'declared'; }",
+        },
+      );
+
+      const loaded = await loadPlugin(cfg({ path: "explicit-markdown" }), TMP_ROOT);
+      const md = new MarkdownIt();
+      applyPlugins(md, [loaded]);
+      expect((md as MarkdownIt & { __which?: string }).__which).toBe("declared");
+    });
+
     // #240 × #241 regression. `createMarkdownRenderer` builds the declared-
     // marker registry from `LoadedPlugin.markers`, and this loader path did
     // not carry the field: a plugin loaded as a FOLDER had every declared
@@ -492,7 +565,7 @@ describe("plugin loader", () => {
     test("a folder's markdown entry keeps its `markers` export (#240)", async () => {
       writeExtension(
         "declares-markers",
-        { name: "Declares Markers", markdown: "plugin.js" },
+        { name: "declares-markers", main: "plugin.js" },
         {
           "plugin.js": `export default function (md) {};
              export const markers = { "note-box": { tag: "aside", class: "nb-note-box" } };`,
@@ -514,7 +587,7 @@ describe("plugin loader", () => {
     test("extension-declared styles are ordered BEFORE the module's own `styles` export", async () => {
       writeExtension(
         "ordered-styles",
-        { markdown: "plugin.js", styles: ["ext.css"] },
+        { main: "plugin.js", gutterpress: { styles: ["ext.css"] } },
         {
           "plugin.js": `export default function (md) {};
              export const styles = ["./own.css"];`,
@@ -533,7 +606,10 @@ describe("plugin loader", () => {
     test("an extension declaring the removed `engineStyles` field is rejected, naming the replacement (#266)", async () => {
       writeExtension(
         "engine-styles",
-        { markdown: "plugin.js", styles: ["a.css"], engineStyles: { native: ["native.css"] } },
+        {
+          main: "plugin.js",
+          gutterpress: { styles: ["a.css"], engineStyles: { native: ["native.css"] } },
+        },
         { "plugin.js": "export default function (md) {}", "a.css": ".a {}", "native.css": "@page {}" },
       );
 
@@ -542,72 +618,78 @@ describe("plugin loader", () => {
       );
     });
 
-    test("a folder with NO markdown field is a styles-only extension: a no-op plugin function, styles still resolved", async () => {
+    test("a folder with NO entry is a styles-only extension: a no-op plugin function, styles still resolved", async () => {
       const dir = writeExtension(
         "styles-only",
-        { name: "Styles Only", styles: ["theme.css"] },
+        { name: "styles-only", gutterpress: { styles: ["theme.css"] } },
         { "theme.css": ":root { --x: 1; }" },
       );
 
       const loaded = await loadPlugin(cfg({ path: "styles-only" }), TMP_ROOT);
       expect(loaded.styles).toEqual([join(dir, "theme.css")]);
-      expect(loaded.metadata?.name).toBe("Styles Only");
+      expect(loaded.metadata?.name).toBe("styles-only");
 
       // The plugin function is a harmless no-op — md.use() must not throw.
       const md = new MarkdownIt();
       expect(() => applyPlugins(md, [loaded])).not.toThrow();
     });
 
-    test("a legacy theme.json (no gutterpress.json) is honored identically as a plugin-folder's metadata", async () => {
-      // Proves the SAME reader (readExtensionMeta) backs both the theme
-      // flow and the plugin-folder flow: a folder using the pre-#241
-      // filename works here too, not just in theme-manager.ts.
-      const dir = join(TMP_ROOT, "legacy-theme-json-plugin");
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(
-        join(dir, "theme.json"),
-        JSON.stringify({ name: "Legacy", markdown: "plugin.js" }),
-        "utf8",
-      );
-      writeFileSync(join(dir, "plugin.js"), "export default function (md) { md.__legacy = true; }");
-
-      const loaded = await loadPlugin(cfg({ path: "legacy-theme-json-plugin" }), TMP_ROOT);
-      expect(loaded.metadata?.name).toBe("Legacy");
-      const md = new MarkdownIt();
-      applyPlugins(md, [loaded]);
-      expect((md as MarkdownIt & { __legacy?: boolean }).__legacy).toBe(true);
-    });
-
-    test("a folder declaring neither markdown nor styles fails loudly, not silently", async () => {
+    test("a folder declaring neither an entry nor styles fails loudly, not silently", async () => {
       // Fail-fast doctrine (CLAUDE.md §5): a `path:` pointed at a folder with
-      // no gutterpress.json/theme.json (or one declaring nothing at all) has
-      // no observable effect — that is almost certainly an author mistake,
-      // not a legitimate degenerate extension, so it must error, not no-op.
+      // no package.json (or one declaring nothing at all) has no observable
+      // effect — that is almost certainly an author mistake, not a legitimate
+      // degenerate extension, so it must error, not no-op.
       const dir = join(TMP_ROOT, "empty-extension");
       mkdirSync(dir, { recursive: true });
       writeFileSync(join(dir, "README.txt"), "nothing to see here", "utf8");
 
       await expect(loadPlugin(cfg({ path: "empty-extension" }), TMP_ROOT)).rejects.toThrow(
-        /declares neither `markdown` nor `styles`/,
+        /declares no markdown-it plugin \(`main`\) and no `gutterpress.styles` in its package.json/,
       );
     });
 
+    // #276 — the migration a 0.10.9 project hits: a look folder still
+    // carrying only the removed metadata file. It must say WHICH file is
+    // being ignored and show the package.json that replaces it, not just
+    // "there is nothing to load".
+    test("a folder carrying only a stale gutterpress.json/theme.json fails with the package.json shape spelled out (#276)", async () => {
+      for (const stale of ["gutterpress.json", "theme.json"]) {
+        const dir = join(TMP_ROOT, `stale-${stale}`);
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(
+          join(dir, stale),
+          JSON.stringify({ name: "Old Look", styles: ["theme.css"] }),
+          "utf8",
+        );
+        writeFileSync(join(dir, "theme.css"), ":root { --x: 1; }", "utf8");
+
+        const error = await loadPlugin(cfg({ path: `stale-${stale}` }), TMP_ROOT).then(
+          () => null,
+          (e: Error) => e,
+        );
+        expect(error?.message).toContain(`This folder still has a ${stale}`);
+        expect(error?.message).toContain("Gutterpress no longer reads it");
+        expect(error?.message).toContain('"gutterpress": { "styles": ["theme.css"] }');
+        expect(error?.message).toContain('"main": "plugin.js"');
+      }
+    });
+
     test("throws when the declared markdown entry does not exist", async () => {
-      writeExtension("missing-markdown", { markdown: "does-not-exist.js" });
+      writeExtension("missing-markdown", { gutterpress: { markdown: "does-not-exist.js" } });
       await expect(loadPlugin(cfg({ path: "missing-markdown" }), TMP_ROOT)).rejects.toThrow(
         /does-not-exist\.js.*no file exists/s,
       );
     });
 
     test("throws when a declared style is missing", async () => {
-      writeExtension("missing-style-ext", { styles: ["missing.css"] });
+      writeExtension("missing-style-ext", { gutterpress: { styles: ["missing.css"] } });
       await expect(loadPlugin(cfg({ path: "missing-style-ext" }), TMP_ROOT)).rejects.toThrow(
         /missing\.css.*no file exists/s,
       );
     });
 
     test("throws when a declared path escapes the extension folder (containment)", async () => {
-      writeExtension("escaping-extension", { markdown: "../../../etc/passwd" });
+      writeExtension("escaping-extension", { main: "../../../etc/passwd" });
       await expect(loadPlugin(cfg({ path: "escaping-extension" }), TMP_ROOT)).rejects.toThrow(
         /outside its own folder/,
       );
@@ -616,7 +698,7 @@ describe("plugin loader", () => {
     test("named export selection (`export:`) works for an extension's markdown module", async () => {
       writeExtension(
         "named-export-ext",
-        { markdown: "plugin.js" },
+        { main: "plugin.js" },
         {
           "plugin.js": `export function full(md) { md.__namedExport = 'full'; }
              export function light(md) { md.__namedExport = 'light'; }`,
@@ -632,8 +714,8 @@ describe("plugin loader", () => {
       expect((md as MarkdownIt & { __namedExport?: string }).__namedExport).toBe("full");
     });
 
-    test("a bare .js file path is UNCHANGED by this feature — still loads as a plain file, not probed for gutterpress.json", async () => {
-      // Backward-compat guard: a sibling gutterpress.json existing NEXT TO a
+    test("a bare .js file path is UNCHANGED by this feature — still loads as a plain file, not probed for package.json", async () => {
+      // Backward-compat guard: a sibling package.json existing NEXT TO a
       // bare-file plugin entry (not a folder path) must have zero effect —
       // the directory-detection branch only triggers when `path` itself
       // resolves to a directory.
@@ -641,8 +723,8 @@ describe("plugin loader", () => {
       mkdirSync(dir, { recursive: true });
       writeFileSync(join(dir, "plugin.js"), "export default function (md) { md.__bare = true; }");
       writeFileSync(
-        join(dir, "gutterpress.json"),
-        JSON.stringify({ markdown: "some-other-file.js" }),
+        join(dir, "package.json"),
+        JSON.stringify({ gutterpress: { markdown: "some-other-file.js" } }),
         "utf8",
       );
 

@@ -1,8 +1,0 @@
-{
-  "name": "{{NAME}}",
-  "author": "{{AUTHOR}}",
-  "description": "{{DESCRIPTION}}",
-  "markdown": "plugin.js",
-  "styles": ["styles/plugin.css"],
-  "snippets": "snippets"
-}

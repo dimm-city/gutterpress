@@ -46,6 +46,8 @@ test("friendlyVcsError maps every known friendly phrase to 422", () => {
     "requires an absolute project path",
     "valid snapshot id",
     "already inside a versioned project",
+    "couldn't switch copies",
+    "requires a branch name",
   ];
   for (const p of phrases) {
     expect(friendlyVcsError(new Error(p), "op", "vcs/x").status).toBe(422);

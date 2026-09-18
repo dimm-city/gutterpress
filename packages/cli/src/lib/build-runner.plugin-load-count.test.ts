@@ -17,16 +17,19 @@
  * `verifyNativeChromiumMilestone` entirely (`rendersInPooledChromium` is
  * false whenever `opts.engineBrowser` is set — build-preflight.ts), so these
  * tests need no real browser and run in any environment, while still
- * exercising runQualityGates' real lint gate, the real preValidate gate
- * (executeAndReport/validation-exec.ts), and the real renderBook — the throw
+ * exercising runQualityGates' real preValidate gate
+ * (executeAndReport/validation-exec.ts) and the real renderBook — the throw
  * only cuts in at the LAST stage (PdfOutput.finish's buildNativePdf call),
  * strictly after every plugin-loading call site under test has already run.
  *
  * Measured on this exact fixture (see the PR description for the full
- * numbers): before this fix, a build with only the lint gate on (preValidate
- * skipped) called `verifyVendoredPlugin` twice — once from the lint gate's
- * own `loadPluginsWithCss`, once from `renderBook`'s; after, once. With BOTH
- * gates on (the default), the total additionally includes two calls from
+ * numbers): at the time #262 was fixed, `gutterpress build` still ran the CSS
+ * print-safety check as a separate lint gate ahead of preValidate (merged
+ * away by #272 — see build-runner.ts's runQualityGates); a build with only
+ * that lint gate on (preValidate skipped) called `verifyVendoredPlugin`
+ * twice — once from the lint gate's own `loadPluginsWithCss`, once from
+ * `renderBook`'s; after #262's fix, once. With BOTH gates on (the
+ * then-default), the total additionally includes two calls from
  * `source.layout-markers`/`source.local-refs` (checks/source/*.ts) — a
  * PRE-EXISTING, unrelated duplication (those checks call the lower-level
  * `loadPlugins` directly, resolved against `ctx.inputDir`, not
@@ -193,12 +196,13 @@ test("#262: a build loads/verifies an npm-vendored plugin ONCE via loadPluginsWi
 
   loadSpy = spyOn(pluginsMod, "loadPluginsWithCss");
 
-  // Both gates on (the default — no skipLint/skipPreValidate), so this
-  // exercises the lint gate, the preValidate gate, AND renderBook, all
-  // against the SAME BuildContext. Before the fix this alone made
-  // `loadPluginsWithCss` run twice (lint gate, then render); this asserts it
-  // now runs exactly once regardless of how many of those three consumers
-  // are active — the ONE thing `loadBuildPlugins`'s memoization controls.
+  // preValidate on (the default — no --skip-pre-validate), so this exercises
+  // BOTH the preValidate gate and renderBook against the SAME BuildContext.
+  // Before #262's fix (when the CSS print-safety check still ran as its own
+  // separate lint gate ahead of preValidate — merged away by #272) this
+  // alone made `loadPluginsWithCss` run twice (lint gate, then render); this
+  // asserts it now runs exactly once regardless of how many consumers are
+  // active — the ONE thing `loadBuildPlugins`'s memoization controls.
   // (verifyVendoredPlugin's own raw total is a less precise assertion here:
   // it also picks up source.layout-markers/source.local-refs's independent,
   // pre-existing, out-of-scope `loadPlugins` calls during preValidate — see
@@ -217,7 +221,7 @@ test("#262: a build loads/verifies an npm-vendored plugin ONCE via loadPluginsWi
   expect(loadSpy).toHaveBeenCalledTimes(1);
 });
 
-test("#262: --skip-pre-validate isolates the exact pair the issue names — lint gate + renderBook share one verifyVendoredPlugin call", async () => {
+test("#262/#272: --skip-pre-validate removes the build's only pre-render plugin load, leaving renderBook's own call", async () => {
   const { dir, outDir } = await makeVendoredPluginProject("isolated");
   dirsToClean.push(dir, outDir);
 
@@ -234,10 +238,10 @@ test("#262: --skip-pre-validate isolates the exact pair the issue names — lint
     })
   ).rejects.toThrow(/engine build should not be reached/);
 
-  // With preValidate out of the picture, verifyVendoredPlugin's count is a
-  // direct, unambiguous measurement of just the lint gate + renderBook pair
-  // #262 names (no unrelated check-registry loads to account for) — was 2,
-  // now 1.
+  // With preValidate out of the picture, the CSS print-safety check (now
+  // preValidate's own `source.stylelint`, since #272) does not run at all,
+  // so renderBook is the ONLY plugin loader left — a direct, unambiguous
+  // measurement with no unrelated check-registry loads to account for.
   expect(verifySpy).toHaveBeenCalledTimes(1);
 });
 
