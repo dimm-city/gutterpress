@@ -1756,6 +1756,28 @@ describe("Source checks skip when tool is disabled", () => {
     }
   });
 
+  // #272: an unreadable configured stylesheet used to be skipped silently
+  // (`catch { continue; }`), which reported "validated" having inspected
+  // nothing. This is now the ONLY CSS print-safety gate a build runs, so a
+  // missing/unreadable file must fail loudly as an error finding instead.
+  test("an unreadable configured stylesheet is an error finding, not a silent skip", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-stylelint-unreadable-"));
+    try {
+      const missingFile = join(dir, "does-not-exist.css");
+
+      const check = getCheckById("source.stylelint")!;
+      const ctx = makeCtx({ inputDir: dir, cssFiles: [missingFile] });
+      const results = await check.run(ctx);
+
+      expect(results).toHaveLength(1);
+      expect(results[0]!.severity).toBe("error");
+      expect(results[0]!.file).toBe(missingFile);
+      expect(results[0]!.message).toContain("Cannot read stylesheet");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
 });
 
 // ---------------------------------------------------------------------------

@@ -105,6 +105,8 @@ export type {
   BuiltInStyleSet,
   ExtensionImportResult,
   ExtensionImportWarning,
+  NpmExtensionMatch,
+  ExtensionSearchResult,
   ProjectStyle,
   RecoveryEntry,
   ProjectClassification,
@@ -126,6 +128,7 @@ import type {
   RecommendedExtension,
   BuiltInStyleSet,
   ExtensionImportResult,
+  ExtensionSearchResult,
   ProjectStyle,
   RecoveryEntry,
   ProjectClassification,
@@ -166,7 +169,7 @@ export interface SavedTemplateInfo extends TemplateInfo {
 
 /**
  * Provenance of one merged snippet entry (#242 — extensions can now ship a
- * `snippets` folder in their gutterpress.json, merged into this SAME picker
+ * `snippets` folder declared in their package.json, merged into this SAME picker
  * feed by the lib's `listMergedSnippets`).
  *
  * `{ kind: 'project' }` is the author's own snippet — the only kind
@@ -539,6 +542,8 @@ export const api = {
       post<ExtensionValidationResult[]>('/api/extension/validate', { projectDir }),
     /** The bundled markdown features an author can turn on with no install (static). */
     recommended: () => get<RecommendedExtension[]>('/api/extension/recommended'),
+    /** Search npm for extensions (#246), on demand. A network/parse failure is data (`ok: false`), never a thrown error. */
+    search: (query: string) => post<ExtensionSearchResult>('/api/extension/search', { query }),
     /** The built-in looks (static metadata). */
     listBuiltIn: () => get<BuiltInStyleSet[]>('/api/extension/built-in'),
     /** Copy a built-in look into `extensions/<id>/` and add it as `./extensions/<id>`. */
@@ -632,6 +637,13 @@ export const api = {
       post<{ restoredId: string; backupId?: string }>('/api/vcs/restore-snapshot', { projectDir, id }),
     saveSnapshot: (projectDir: string, message?: string) =>
       post<SnapshotEntry>('/api/vcs/save-snapshot', { projectDir, message }),
+    /** The project's local copies (git branches) and which one is open;
+     *  `null` when the source has nothing to switch between (#273). */
+    listBranches: (projectDir: string) =>
+      post<{ current: string | null; branches: string[] } | null>('/api/vcs/list-branches', { projectDir }),
+    /** Switch the project's working tree to another local copy (#273). */
+    switchBranch: (projectDir: string, branch: string) =>
+      post<{ current: string; changedFiles: string[] }>('/api/vcs/switch-branch', { projectDir, branch }),
   },
 
   remote: {

@@ -134,7 +134,8 @@ remember it: `packages/cli/src/lib/printsafe.ts`'s
 `printsafe/no-risky-print-effects` rule already warns on every `filter`
 declaration, and its message names this exact consequence ("text becomes
 unselectable, unsearchable, and inaccessible") and points back here. Run
-it — the CLI's pre-build lint gate and the desktop Problems panel both call
+it — `gutterpress build`'s pre-build validation (`source.stylelint`),
+standalone `gutterpress lint`, and the desktop Problems panel all call
 `checkCss` — over any stylesheet you're about to trust render-parity to
 cover; `gutterpress lint` lists each finding with its file and `line:col`,
 and `filter: none` (a suppressed filter) is not one. **If a text-bearing

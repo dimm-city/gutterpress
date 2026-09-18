@@ -1,0 +1,28 @@
+{
+  "name": "{{SLUG}}",
+  "version": "0.1.0",
+  "description": "{{DESCRIPTION}}",
+  "files": [
+    "styles",
+    "snippets",
+    "components.yaml",
+    "README.md"
+  ],
+  "keywords": ["gutterpress", "gutterpress-look"],
+  "author": "{{AUTHOR}}",
+  "license": "MIT",
+  "gutterpress": {
+    "styles": [
+      "styles/tokens.css",
+      "styles/base.css",
+      "styles/components.css",
+      "styles/page-templates.css",
+      "styles/page-rules.css",
+      "styles/book.css"
+    ],
+    "tokensFile": "styles/tokens.css",
+    "components": "components.yaml",
+    "snippets": "snippets",
+    "preview": null
+  }
+}

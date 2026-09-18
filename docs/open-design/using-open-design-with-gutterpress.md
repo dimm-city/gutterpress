@@ -189,7 +189,7 @@ Open Design may edit prose and manuscript structure as well as design files. Use
 
 Gutterpress keeps two different CSS locations:
 
-- `extensions/<id>/` holds a look: an extension folder containing `theme.css` (or the sheets its `gutterpress.json` declares), optional metadata, and optional look-owned assets, listed in the manifest's `extensions:` list as `./extensions/<id>`. Built-in looks (`gutterpress ext add <id> --look`) and zip imports copy complete packages there; bare CSS and URL imports create only the stylesheet plus metadata, and URL imports do not fetch referenced assets. A folder that already exists anywhere (`gutterpress ext add ./path`) is referenced in place, not copied.
+- `extensions/<id>/` holds a look: an extension folder containing the sheets its `package.json` declares under `gutterpress.styles` (`theme.css`, by convention), plus optional look-owned assets, listed in the manifest's `extensions:` list as `./extensions/<id>`. Built-in looks (`gutterpress ext add <id> --look`) and zip imports copy complete packages there; bare CSS and URL imports create only the stylesheet plus metadata, and URL imports do not fetch referenced assets. A folder that already exists anywhere (`gutterpress ext add ./path`) is referenced in place, not copied.
 - `styles/` contains ordinary publication CSS such as `book.css` and reusable component rules, listed under `styles:`.
 
 A small project may use only:

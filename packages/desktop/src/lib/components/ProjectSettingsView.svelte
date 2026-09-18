@@ -147,6 +147,7 @@
     list: (dir) => api.extension.list(dir),
     recommended: () => api.extension.recommended(),
     listBuiltIn: () => api.extension.listBuiltIn(),
+    search: (query) => api.extension.search(query),
     validate: (dir) => api.extension.validate(dir),
     add: (dir, specifier, exportName) => api.extension.add(dir, specifier, exportName),
     addLocal: (dir) => api.extension.addLocal(dir),

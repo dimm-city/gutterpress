@@ -188,6 +188,9 @@ gutterpress build design-guide --format pdfx --out ./_site --pdfx-flavor x1a --i
 
 The PDF is named `<title-slug>-pdf.pdf` (a slug of the manifest `title`) — link
 to it from `00-toc.md`, e.g. `[Download PDF](your-book-title-design-guide-pdf.pdf){.download}`.
+A `pdf`/`pdfx` build into a shared `--out` directory only ever adds its own
+PDF: the html build's `book.html`, `index.html`, and assets are left exactly
+as they were.
 
 ---
 

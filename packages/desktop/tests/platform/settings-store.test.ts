@@ -35,7 +35,6 @@ test("mergeSettings patches one field in a section, preserving sibling fields", 
   // Sibling fields in the same section survive.
   expect(merged.editor.lineHeight).toBe(DEFAULT_SETTINGS.editor.lineHeight);
   expect(merged.editor.fontFamily).toBe(DEFAULT_SETTINGS.editor.fontFamily);
-  expect(merged.editor.autoSaveDelay).toBe(DEFAULT_SETTINGS.editor.autoSaveDelay);
 });
 
 test("mergeSettings patches preview.splitRatio, preserving sibling preview fields (#103)", () => {
@@ -204,19 +203,23 @@ test("readSettings deep-merges a stored partial over DEFAULT_SETTINGS", async ()
   expect(s.appearance).toEqual(DEFAULT_SETTINGS.appearance);
 });
 
-test("readSettings migrates the old persisted 2500ms default once", async () => {
-  const legacy = makeStore({
-    readFileImpl: async () => JSON.stringify({ editor: { autoSaveDelay: 2500 } }),
+test("readSettings loads a file still carrying keys deleted from the schema, dropping them (#274)", async () => {
+  const { store } = makeStore({
+    readFileImpl: async () =>
+      JSON.stringify({
+        editor: { fontSize: 18, autoSaveDelay: 2500, crashRecovery: false },
+        versionHistory: { autoSnapshotMinutes: 30 },
+      }),
   });
-  expect((await legacy.store.readSettings()).editor.autoSaveDelay).toBe(500);
+  const s = await store.readSettings();
 
-  const current = makeStore({
-    readFileImpl: async () => JSON.stringify({
-      settingsSchemaVersion: 2,
-      editor: { autoSaveDelay: 2500 },
-    }),
-  });
-  expect((await current.store.readSettings()).editor.autoSaveDelay).toBe(2500);
+  // Loads cleanly (no throw) and keeps the fields that still exist.
+  expect(s.editor.fontSize).toBe(18);
+  // The removed keys do not survive the merge.
+  expect(s.editor).not.toHaveProperty("autoSaveDelay");
+  expect(s.editor).not.toHaveProperty("crashRecovery");
+  expect(s.versionHistory).not.toHaveProperty("autoSnapshotMinutes");
+  expect(s.versionHistory.autoSnapshot).toBe(DEFAULT_SETTINGS.versionHistory.autoSnapshot);
 });
 
 test("readSettings fills in preview.splitRatio default for a stored file missing it (#103)", async () => {

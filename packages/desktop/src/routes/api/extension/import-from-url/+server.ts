@@ -3,7 +3,7 @@ import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 // Import a look from an http(s) URL (a raw `.css`, or a folder URL holding
-// theme.css + optional theme.json). The lib refuses non-http(s) schemes.
+// theme.css + optional package.json). The lib refuses non-http(s) schemes.
 export const POST: RequestHandler = defineRoute<{ projectDir: string; url: string }>({
   validate: async (raw) => {
     const body = raw as { projectDir?: string; url?: string };

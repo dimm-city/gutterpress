@@ -5,6 +5,139 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Switch which local copy of a project you're working on, from Settings →
+  Saving.** The Saving & recovery group now shows the copy (git branch) the
+  open project is on and, when more than one exists locally, a picker to
+  switch to another — local copies only, no remote checkout and no create.
+  Uncommitted edits are saved as a version first, so nothing typed is lost
+  and the switch never forces an overwrite; a file that changed on disk right
+  as the switch started is reported as a friendly error instead. Auto-backup
+  and the automatic-versions timer pause for the moment of the switch and
+  resume after. The editor reconciles its open file the same way a version
+  restore does, and a crash-recovery draft from the copy just left behind is
+  cleared for any file the switch changed, so it can never be offered over
+  the new copy's version of that file. The author-facing word is "copy" —
+  the existing online-backup switch is unaffected, since it already reads
+  "Keep this project backed up online". (#273)
+
+- **An extension discovery surface: `gutterpress ext search` searches npm, and
+  the desktop can too.** npm already is the registry, so there is no curated
+  index and nothing to register: an extension tags itself `gutterpress` in its
+  package `keywords`, and the markdown-it ecosystem's own `markdown-it-plugin`
+  tag finds every plain plugin (which works in Gutterpress unchanged).
+  `gutterpress ext search [query]` queries the registry on demand (never at
+  build/preview time) and prints each match's `name@version`, which kind it is
+  and its description, ending with the `ext add` command that installs it.
+  `GUTTERPRESS_NPM_REGISTRY` points search AND the installer at a private
+  mirror (http(s) only), and the installer now accepts tarballs only from the
+  configured registry's own origin rather than a hard-coded host. The
+  desktop's Features view has a "Find more on npm" box under the bundled
+  "Turn on" rows, searched once that view mounts and on every query; a fetch
+  failure is one quiet line, never a modal, and never blocks the local
+  extension list. Publishing an extension is `npm publish` with the keyword.
+  (#246)
+
+### Fixed
+
+- **A shared `--out` directory no longer lets a pdf build overwrite the html
+  build's `book.html`.** `gutterpress build --format html --out ./_site`
+  followed by `gutterpress build --format pdf --out ./_site` used to copy the
+  pdf build's whole staging directory over `./_site`, replacing the html
+  build's `book.html` (viewer script + relative links intact) with the pdf
+  build's own staged copy (no viewer script, and since #263 no relative
+  hrefs) — silently breaking the published site. A `pdf`/`pdfx` build into a
+  `--out <dir>` now delivers only its own PDF; `book.html`, `index.html` and
+  assets already published there are left untouched, and
+  `BuildRunnerResult.htmlPath`/`fingerprintPath` are `null` for that build
+  since nothing else was delivered. `--format html` and the `project`
+  (manifest-default `dist/<slug>/`) target are unchanged. (#270, #271)
+
+### Changed
+
+- **`package.json` is the extension manifest; `gutterpress.json` and
+  `theme.json` are gone.** A package maintainer is no longer asked for a
+  second, Gutterpress-specific manifest: the standard `package.json` describes
+  an extension. npm's own `name`, `description`, `author`, `keywords` and
+  `main` are read as-is — `main` IS the markdown-it plugin of a folder
+  extension — and everything Gutterpress-specific lives under one optional
+  `"gutterpress"` key (`styles`, `markdown`, `snippets`, `components`,
+  `tokensFile`, `preview`). A plain markdown-it plugin package therefore needs
+  nothing at all to load as an extension, a look needs `gutterpress.styles`,
+  and a component library needs `main` + `gutterpress.styles`. There is no
+  implicit `theme.css` any more: a look declares its sheets. A folder still
+  carrying a `gutterpress.json` or `theme.json` fails to load with a message
+  that names the file, says it is no longer read, and prints the package.json
+  that replaces it. `.zip` / `.css` / URL imports still work on an old package
+  — `theme.css` is still the anchor — and now write a package.json into the
+  landed copy (keeping whatever fields the source had, with the name taken
+  from the folder) so what lands always loads. The built-in looks and both
+  `gutterpress new --kind plugin|theme` scaffolds ship a package.json. (#276)
+
+- **One CSS gate, not two.** `gutterpress build` used to run its own
+  print-safety CSS check (a separate lint gate) and then run the identical
+  check again one phase later as pre-build validation's `source.stylelint`
+  check, printing every finding twice. The CSS print-safety check (remote
+  URLs, rasterizing effects, page-containment) now runs exactly once, as
+  `source.stylelint` inside pre-build validation. `--skip-lint` and
+  `config.lint.enabled: false` now disable just that one check instead of a
+  whole separate phase, and no longer make the build exit with code `2` on a
+  print-safety error — that finding now fails the build the same way every
+  other pre-build validation finding does (exit `1`), matching the exit-code
+  contract standalone `gutterpress lint` already used. An unreadable
+  configured stylesheet is now an error finding of `source.stylelint`
+  (file + message) instead of being silently skipped. Standalone
+  `gutterpress lint` now prints and counts every finding `checkCss` returns,
+  including `printsafe/page-containment` ones it previously dropped despite
+  the CLI README documenting `lint` as covering page-containment risk. (#272)
+
+- **Docs: the exact-fit boundary's engine question is answered — no CSS lever,
+  no fix.** #268 asked whether the viewer's Multicol fragmentainer could carry
+  print's sub-pixel tolerance so `docs/fixtures/exact-fit-boundary` reads
+  CLEAN instead of EXACT-FIT BOUNDARY. Re-tested at the most surgical layer
+  available (a `calc(var(--gp-content-h) + Xpx)` bump on `.gp-strip`'s actual
+  fragmentainer height, leaving the `--gp-content-h` custom property every
+  other consumer reads untouched): `X ≥ 0.36px` does flip the fixture clean
+  with every other registered gate fixture's page count unchanged, but it is
+  not shipped — it fails an existing invariant test (`zoom.test.ts`) the
+  moment `X > 0`, and this repo's registered fixtures are all US Letter, so a
+  clean run here cannot rule out the same failure this project already has on
+  record for a fixed epsilon: matching one page geometry, not generalizing to
+  another. `docs/engine/ENGINE.md` §4 records the full experiment table;
+  `docs/known-limitations.md` §4 and a draft upstream Chromium report
+  (`docs/engine/chromium-bug-drafts/exact-fit-multicol-vs-print.md`) record
+  the conclusion. The gate's EXACT-FIT BOUNDARY outcome (#261) stays the
+  accepted, permanent classification for this shape of divergence — no
+  allowlist entry, no shim. (#268)
+
+- **Desktop Settings → Saving is two switches, not five controls.** "Keep
+  previous versions" and "Keep this project backed up online" (renamed from
+  "Keep an online copy up to date") are what's left of a group where three of
+  the five old controls did less than their labels said: autosave delay could
+  not turn autosave off, the crash-recovery toggle removed a safety net for
+  nothing, and the quiet-period minutes field was dead on any project that
+  can sync (a sync commits every 2 minutes regardless). The online-backup
+  switch now shows only for a project that can actually sync — a local-only
+  project or the start screen gets one status line pointing at Accounts
+  instead of a switch that would do nothing — and is disabled with a hint
+  when previous versions is off, since a backup with nothing to push isn't
+  one. The group's Reset now resets the whole group in one call. (#274)
+
+### Removed
+
+- **Autosave delay and the crash-recovery toggle are no longer settings.**
+  `editor.autoSaveDelay`, `editor.crashRecovery`, and the quiet-period
+  `versionHistory.autoSnapshotMinutes` are deleted from the settings schema,
+  defaults, and the `Platform` contract — deleted, not deprecated, with no
+  compatibility shim. The editor's disk save stays a fixed 500ms after the
+  last edit and its crash-recovery draft a fixed 1000ms; both were already
+  effectively unconditional in practice (a 0s "delay" was never actually off,
+  and turning recovery off only removed a safety net). A settings file still
+  carrying the old keys loads cleanly — the generic settings merge now drops
+  patch keys the current schema doesn't declare, instead of carrying them
+  forward forever. (#274)
+
 ## [0.10.9] - 2026-09-12
 
 ### Changed

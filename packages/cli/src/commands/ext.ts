@@ -12,9 +12,10 @@ import {
   listProjectExtensions,
   parseExtensionSpecifier,
   removeExtension,
+  searchNpmExtensions,
   setExtensionEnabled,
 } from "../index.ts";
-import type { ProjectExtensionEntry } from "../index.ts";
+import type { NpmExtensionMatch, ProjectExtensionEntry } from "../index.ts";
 import {
   EXIT_CODES,
   rejectExtraPositionals,
@@ -33,6 +34,13 @@ import {
  *   gutterpress ext remove <specifier> [dir]
  *   gutterpress ext enable <specifier> [dir]
  *   gutterpress ext disable <specifier> [dir]
+ *   gutterpress ext search [query]
+ *
+ * `search` (#246) is the one command not scoped to a project: it searches the
+ * npm registry for packages tagged `gutterpress` (Gutterpress extensions) or
+ * `markdown-it-plugin` (the markdown-it ecosystem's own tag) — a discovery
+ * surface for extensions beyond the bundled set and whatever a book already
+ * has installed.
  *
  * `add` takes an npm package (`name`, `name@version`), a bundled feature
  * name, a folder or plugin-file path, a `.zip`/`.css` file, or an http(s)
@@ -79,7 +87,15 @@ export const extRemoveArgs = { specifier: specifierArg, dir: dirArg } as const;
 export const extEnableArgs = { specifier: specifierArg, dir: dirArg } as const;
 export const extDisableArgs = { specifier: specifierArg, dir: dirArg } as const;
 
-export const EXT_SUBCOMMANDS = ["list", "add", "remove", "enable", "disable"] as const;
+export const extSearchArgs = {
+  query: {
+    type: "positional",
+    description: "Words to search npm for; omit to list the most relevant tagged packages",
+    required: false,
+  },
+} as const;
+
+export const EXT_SUBCOMMANDS = ["list", "add", "remove", "enable", "disable", "search"] as const;
 
 const parentArgs = {} as const;
 
@@ -122,6 +138,12 @@ function describeLine(entry: ProjectExtensionEntry): string {
   const state = entry.enabled ? "" : "  (disabled)";
   const label = entry.label !== entry.name ? `  ${entry.label}` : "";
   return `  ${entry.use}${state}  [${entry.kind}; ${carriesLabel(entry)}]${label}`;
+}
+
+function describeMatchLine(match: NpmExtensionMatch): string {
+  const kind = match.kind === "gutterpress" ? "gutterpress" : "markdown-it plugin";
+  const description = match.description ? `  ${match.description}` : "";
+  return `  ${match.name}@${match.version}  [${kind}]${description}`;
 }
 
 function printAdded(entry: ProjectExtensionEntry, projectDir: string, warnings: string[] = []): void {
@@ -310,14 +332,44 @@ const disable = specifierCommand(
   },
 );
 
+const search = defineCommand({
+  meta: {
+    name: "search",
+    description: "Search npm for extensions (network; not project-scoped)",
+  },
+  args: extSearchArgs,
+  async run({ args, rawArgs }) {
+    try {
+      rejectUnknownFlags(rawArgs, extSearchArgs, "ext search");
+      rejectExtraPositionals(args._, 1, "ext search");
+    } catch (error) {
+      exitForUsage(error);
+    }
+    const query = typeof args.query === "string" ? args.query.trim() : "";
+    try {
+      const { matches, total } = await searchNpmExtensions(query);
+      if (matches.length === 0) {
+        console.log(query ? `No extensions on npm match "${query}".` : "No extensions found on npm.");
+        return;
+      }
+      const scope = query ? ` matching "${query}"` : "";
+      console.log(`Extensions on npm${scope} (showing ${matches.length} of ${total}):`);
+      for (const match of matches) console.log(describeMatchLine(match));
+      console.log("Add one with: gutterpress ext add <name>");
+    } catch (error) {
+      failPipeline("Could not search npm", error);
+    }
+  },
+});
+
 export default defineCommand({
   meta: {
     name: "ext",
-    description: "List, add, remove, enable, or disable the project's extensions",
+    description: "List, add, remove, enable, disable the project's extensions, or search npm",
   },
   args: parentArgs,
   setup({ rawArgs }) {
     rejectParentFlags(rawArgs);
   },
-  subCommands: { list, add, remove, enable, disable },
+  subCommands: { list, add, remove, enable, disable, search },
 });

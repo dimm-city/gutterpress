@@ -17,7 +17,6 @@ import {
 } from "./ghostscript";
 import { writeBuildFingerprint, type BuildFingerprintInput } from "./build-fingerprint";
 import { getAssetPath } from "./embedded-assets";
-import { runLint } from "./lint-runner";
 import { executeAndReport } from "./validation-exec";
 import { log } from "../utils/logger";
 import { BuildError } from "./build-error";
@@ -62,6 +61,14 @@ export interface BuildRunnerOptions {
   iccPath?: string;
   manifestPath?: string;
   stripAnnotations?: boolean;
+  /**
+   * Skip the CSS print-safety check (#272 — one CSS gate, not two). This used
+   * to gate a separate `runLint` pass; it now disables just the
+   * `source.stylelint` check inside pre-build validation (see
+   * {@link computeGates}'s `skipStylelint`). Has no effect when
+   * `skipPreValidate` is also set — pre-build validation, CSS check
+   * included, does not run at all in that case.
+   */
   skipLint?: boolean;
   skipPreValidate?: boolean;
   skipPostValidate?: boolean;
@@ -97,10 +104,12 @@ export interface BuildRunnerOptions {
 export interface BuildRunnerResult {
   outDir: string;
   /**
-   * The published `book.html`, or `null` for a one-file delivery (`--out x.pdf`,
-   * a desktop export) where only the PDF is delivered and everything else is
-   * discarded with the work dir. Returning a work-dir path here would hand the
-   * caller a filename that is already deleted by the time they see it.
+   * The published `book.html`, or `null` when only the PDF is delivered and
+   * everything else is discarded with the work dir — a one-file delivery
+   * (`--out x.pdf`, a desktop export), or a `pdf`/`pdfx` build into a
+   * `--out <dir>` (#270, #271; see {@link PublishTarget}'s `directory` case).
+   * Returning a work-dir path here would hand the caller a filename that is
+   * already deleted by the time they see it.
    */
   htmlPath: string | null;
   pdfPath: string | null;
@@ -160,7 +169,15 @@ export function splitOutPath(
 type PublishTarget =
   /** gutterpress's own `dist/<slug>/`. Replaced wholesale, so stale files vanish. */
   | { kind: "project"; dir: string }
-  /** `--out <dir>`: the user's directory. Files are added; nothing is removed. */
+  /**
+   * `--out <dir>`: the user's directory. Files are added; nothing is removed.
+   * An `html` build delivers its whole bundle (book.html + viewer, index.html,
+   * assets, fingerprint) here. A `pdf`/`pdfx` build delivers ONLY its own PDF
+   * — never book.html/index.html/assets — so building both formats into one
+   * shared directory (the documented `--out ./_site` sequence) cannot let the
+   * pdf build's staged, viewer-less, link-stripped `book.html` clobber the
+   * html build's published one (#270, #271).
+   */
   | { kind: "directory"; dir: string }
   /** `--out <file.pdf>` / the desktop's Save dialog: ONE file, nothing else. */
   | { kind: "file"; file: string };
@@ -214,10 +231,10 @@ export interface BuildContext {
   prevalidatedLayoutWarningKeys: Set<string>;
   /**
    * The build's ONE plugin load (#262). `null` until {@link loadBuildPlugins}
-   * runs; every stage that needs plugins (the lint gate and preValidate gate
-   * in {@link runQualityGates}, and {@link renderBook}) calls that function
-   * and gets the SAME resolved `{ plugins, pluginCss, pluginStylePaths }`
-   * back, whichever of them runs first.
+   * runs; every stage that needs plugins (the preValidate gate in
+   * {@link runQualityGates}, and {@link renderBook}) calls that function and
+   * gets the SAME resolved `{ plugins, pluginCss, pluginStylePaths }` back,
+   * whichever of them runs first.
    *
    * Before this, `runQualityGates`'s lint gate and `renderBook` each called
    * `loadPluginsWithCss` independently for the identical manifest. For an
@@ -333,13 +350,13 @@ export async function resolveBuildContext(
 
 /**
  * Load every plugin the manifest configures, exactly once for the whole
- * build (#262). Memoized on `ctx.plugins`: the lint gate, the preValidate
- * gate (both in {@link runQualityGates}), and {@link renderBook} each call
- * this instead of `loadPluginsWithCss` directly, and only the first caller
- * does real work — the rest get the cached result back, however the gates
- * are configured and whichever stage happens to run first (a test calling
- * {@link renderBook} directly, without going through `runQualityGates`, gets
- * a fresh load here exactly as it would have before this existed).
+ * build (#262). Memoized on `ctx.plugins`: the preValidate gate (in
+ * {@link runQualityGates}) and {@link renderBook} each call this instead of
+ * `loadPluginsWithCss` directly, and only the first caller does real work —
+ * the other gets the cached result back, whichever stage happens to run
+ * first (a test calling {@link renderBook} directly, without going through
+ * `runQualityGates`, gets a fresh load here exactly as it would have before
+ * this existed).
  *
  * Fail-fast (no `onError`), matching `renderBook`'s pre-existing behavior:
  * a build/export must never silently omit author-configured formatting (see
@@ -373,38 +390,37 @@ export async function loadBuildPlugins(ctx: BuildContext): Promise<LoadedPlugins
 }
 
 /**
- * Stage 2 — run the CSS lint + pre-build validation gates. Each is skipped
- * unless its gate is on (see {@link computeGates} in ./build-preflight); a
- * failing gate throws a BuildError with the gate's historic exit code
- * (lint=2, pre-validate=1).
+ * Stage 2 — run pre-build validation, the build's only remaining quality
+ * gate (#272 — one CSS gate, not two). Before this, `gutterpress build` ran
+ * `checkCss` over the configured stylesheets TWICE: once in a separate lint
+ * gate (`runLint`, lint-runner.ts) and again one phase later here, inside
+ * `source.stylelint` — a build printed the identical CSS finding list twice,
+ * a phase apart. The CSS print-safety check now lives ONLY as
+ * `source.stylelint`, run by `executeAndReport` below like every other
+ * pre-build check; `gates.skipStylelint` (`--skip-lint` /
+ * `config.lint.enabled: false`) disables just that one check for this run,
+ * via the `skipStylelint` arg threaded into `executeValidation`
+ * (validation-exec.ts), rather than skipping this whole gate. Skipped
+ * entirely when `preValidate` is off (`--format html`, `--skip-pre-validate`,
+ * or `config.validate.enabled: false`) — a failing gate throws a BuildError
+ * with the pre-build validation exit code (1); the build pipeline's old
+ * lint-gate exception (exit 2) is gone, matching M47's exit-code contract.
  *
- * When either gate is on, plugins are loaded ONCE here via
+ * When the gate is on, plugins are loaded ONCE here via
  * {@link loadBuildPlugins} and the resulting `pluginStylePaths` are handed to
- * BOTH the lint gate (`runLint`) and the preValidate gate (`executeAndReport`,
- * validation-exec.ts) so neither loads plugins itself (#262) — `renderBook`
- * then reuses the same memoized result for its own render-time needs
- * (`plugins`/`pluginCss`). Skipped entirely when both gates are off (e.g.
- * `--format html` or `--skip-lint --skip-pre-validate`): in that case nothing
- * here needs plugins, and `renderBook` remains the sole, first loader — this
- * function changes NOTHING about that case.
+ * `executeAndReport` (validation-exec.ts) so it does not load plugins itself
+ * (#262) — `renderBook` then reuses the same memoized result for its own
+ * render-time needs (`plugins`/`pluginCss`). Skipped entirely when the gate
+ * is off (e.g. `--format html` or `--skip-pre-validate`): in that case
+ * nothing here needs plugins, and `renderBook` remains the sole, first
+ * loader — this function changes NOTHING about that case.
  */
 async function runQualityGates(ctx: BuildContext): Promise<void> {
   const { gates, opts, renderDir } = ctx;
 
-  const pluginStylePaths = gates.lint || gates.preValidate
+  const pluginStylePaths = gates.preValidate
     ? (await loadBuildPlugins(ctx)).pluginStylePaths
     : undefined;
-
-  if (gates.lint) {
-    log.info("Lint: CSS print-safety");
-    const lintResult = await runLint({
-      manifest: opts.manifestPath ?? renderDir,
-      pluginStylePaths,
-    });
-    if (!lintResult.ok) {
-      throw new BuildError("CSS lint failed", 2);
-    }
-  }
 
   if (gates.preValidate) {
     log.info("Pre-build validation");
@@ -414,6 +430,7 @@ async function runQualityGates(ctx: BuildContext): Promise<void> {
         phase: "pre-build",
         manifest: opts.manifestPath,
         pluginStylePaths,
+        skipStylelint: gates.skipStylelint,
       },
       "text"
     );
@@ -600,10 +617,17 @@ async function finalizeBuild(
   });
   await publishBuild(ctx, artifactName);
 
-  // A `file` target delivers ONE artifact; the fingerprint and book.html stay
-  // in the work dir and are removed with it, so they are reported as absent
-  // rather than as paths the caller cannot open.
-  const delivered = ctx.target.kind !== "file";
+  // book.html + fingerprint are delivered everywhere except: a `file` target
+  // (`--out x.pdf`), which delivers ONE artifact; and a `directory` target for
+  // pdf/pdfx, which delivers only its own PDF into the shared folder — never
+  // book.html/index.html/assets, and never a fingerprint that could shadow an
+  // html build's own (#270, #271; see PublishTarget's `directory` case). In
+  // both non-delivering cases the fingerprint and book.html stay in the work
+  // dir and are removed with it, so they are reported as absent rather than
+  // as paths the caller cannot open.
+  const delivered =
+    ctx.target.kind === "project" ||
+    (ctx.target.kind === "directory" && ctx.format === "html");
   const fingerprintPath = delivered
     ? path.join(ctx.outDir, path.basename(workFingerprint))
     : null;
@@ -619,6 +643,38 @@ async function finalizeBuild(
     fingerprintPath,
     diagnostics,
   };
+}
+
+/**
+ * Publish a completed work dir into a `--out <dir>` target: the pure copy
+ * decision behind {@link PublishTarget}'s `directory` case, pulled out of
+ * {@link publishBuild} so it is unit-testable without a full
+ * {@link BuildContext}.
+ *
+ * `html` delivers the whole bundle (book.html + viewer, index.html, assets,
+ * fingerprint) — files are added, never removed. `pdf`/`pdfx` delivers ONLY
+ * its own PDF: its staged `book.html` has no viewer script
+ * (`HtmlOutput.finish` never runs for these formats) and, since #263, no
+ * relative hrefs either, so copying the whole work dir would silently
+ * clobber an html build's published book.html/index.html/assets in the same
+ * `--out` directory (#270, #271).
+ */
+export async function publishToDirectory(
+  workDir: string,
+  targetDir: string,
+  format: BuildFormat,
+  artifactName: string | null
+): Promise<void> {
+  await fsp.mkdir(targetDir, { recursive: true });
+  if (format !== "html") {
+    if (!artifactName) throw new BuildError("No artifact to write for this format", 1);
+    await fsp.copyFile(
+      path.join(workDir, artifactName),
+      path.join(targetDir, artifactName)
+    );
+    return;
+  }
+  await fsp.cp(workDir, targetDir, { recursive: true, force: true });
 }
 
 /**
@@ -642,9 +698,7 @@ async function publishBuild(ctx: BuildContext, artifactName: string | null): Pro
   }
 
   if (target.kind === "directory") {
-    // The user's directory: add files, never remove any.
-    await fsp.mkdir(target.dir, { recursive: true });
-    await fsp.cp(workDir, target.dir, { recursive: true, force: true });
+    await publishToDirectory(workDir, target.dir, ctx.format, artifactName);
     return;
   }
 

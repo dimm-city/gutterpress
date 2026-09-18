@@ -1,11 +1,12 @@
 /**
- * Writer-friendly UX follow-up (maintainer request): saving / previous
- * versions / online copy / crash recovery are presented to non-technical
- * writers as plain-language protection layers, and the TOC panel is a
- * collapsible tree. No component-render harness exists here, so — following the
- * repo convention (ProjectActivityView.test.ts) — these assert on the compiled
- * source text: the new writer-facing strings appear, the jargon-y ones don't,
- * and the interaction wiring is present.
+ * Writer-friendly UX follow-up (maintainer request): previous versions and
+ * online backup are presented to non-technical writers as plain-language
+ * protection layers (#274 — saving and crash recovery are no longer settings
+ * at all), and the TOC panel is a collapsible tree. No component-render
+ * harness exists here, so — following the repo convention
+ * (ProjectActivityView.test.ts) — these assert on the compiled source text:
+ * the new writer-facing strings appear, the jargon-y ones don't, and the
+ * interaction wiring is present.
  */
 import { expect, test, describe } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -19,28 +20,44 @@ import {
 const root = path.resolve(import.meta.dir, "../..");
 const read = (rel: string) => readFileSync(path.join(root, rel), "utf8");
 
-describe("Settings — 'Saving & recovery' group with writer-friendly labels", () => {
+describe("Settings — 'Saving & recovery' group with writer-friendly labels (#274)", () => {
   const dialog = read("src/lib/components/SettingsView.svelte");
-  test("consolidated group + plain-language controls", () => {
+  test("two switches: previous versions and online backup", () => {
     expect(dialog).toContain("Saving &amp; recovery");
-    expect(dialog).toContain("Save edits automatically");
     expect(dialog).toContain("Keep previous versions");
-    expect(dialog).toContain("Create a version after I stop editing for");
-    expect(dialog).toContain("Keep an online copy up to date");
-    expect(dialog).toContain("Recover edits after an unexpected close");
+    expect(dialog).toContain("Keep this project backed up online");
   });
-  test("crash recovery is described as a temporary emergency copy, distinct from history", () => {
-    expect(dialog).toContain("temporary emergency copy");
-    expect(dialog).toContain("separate from your previous versions");
+  test("the online-backup switch is disabled with a hint when previous versions is off", () => {
+    expect(dialog).toContain('disabled={!s.versionHistory.autoSnapshot}');
+    expect(dialog).toContain('Needs "Keep previous versions" turned on');
   });
-  test("turning off one layer does not imply the others are disabled", () => {
-    expect(dialog).toContain("does not affect saving on this computer");
-    expect(dialog).toContain("or your previous versions");
+  test("a project that can't sync sees one status line, never a dead switch", () => {
+    expect(dialog).toContain("isn't connected to an online service yet");
+    expect(dialog).toContain("Settings &gt; Accounts");
+  });
+  test("autosave and crash-recovery rows are gone — no longer user settings", () => {
+    expect(dialog).not.toContain("Save edits automatically");
+    expect(dialog).not.toContain("Create a version after I stop editing for");
+    expect(dialog).not.toContain("Recover edits after an unexpected close");
   });
   test("old jargon labels are gone", () => {
     expect(dialog).not.toContain("Automatic snapshots");
     expect(dialog).not.toContain("Automatically keep changes in sync");
     expect(dialog).not.toContain(">Git identity<");
+  });
+});
+
+describe("Settings — copy switcher uses 'copy', never 'branch' (#273)", () => {
+  const dialog = read("src/lib/components/SettingsView.svelte");
+  test("the row names the current copy and offers a switcher", () => {
+    expect(dialog).toContain("Copy of this project you're working on");
+    expect(dialog).toContain("Switch to another copy");
+    expect(dialog).toContain('"Switching…" : "Switch"');
+  });
+  test("no visible label says 'branch' — 'copy' is the one word for both the online mirror and a local git branch", () => {
+    // Code identifiers (switchBranch, api.vcs.switchBranch, the `branch`
+    // param) legitimately say "branch" — only text between tags is checked.
+    expect(dialog).not.toMatch(/>[^<]*\bBranch\b[^<]*</);
   });
 });
 

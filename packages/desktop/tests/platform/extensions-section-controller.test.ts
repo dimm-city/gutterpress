@@ -6,6 +6,8 @@ import type {
   RecommendedExtension,
   BuiltInStyleSet,
   ExtensionImportResult,
+  NpmExtensionMatch,
+  ExtensionSearchResult,
 } from "../../src/lib/platform/dtos";
 import { sampleSrcdoc, hoverPreviewSrcdoc } from "../../src/lib/components/config/config-helpers";
 
@@ -46,6 +48,22 @@ const REC_SUB: RecommendedExtension = { use: "markdown-it-sub", label: "Subscrip
 const BUILTIN_CLEAN: BuiltInStyleSet = { id: "clean-book", name: "Clean Book", description: "d" };
 const BUILTIN_ZINE: BuiltInStyleSet = { id: "zine", name: "Zine", description: "d" };
 
+const FOUND_DC: NpmExtensionMatch = {
+  name: "dimm-city-components",
+  version: "1.2.0",
+  description: "d",
+  kind: "gutterpress",
+  keywords: ["gutterpress"],
+  npmUrl: "https://www.npmjs.com/package/dimm-city-components",
+};
+const FOUND_OTHER: NpmExtensionMatch = {
+  name: "markdown-it-other",
+  version: "2.0.0",
+  description: "d",
+  kind: "markdown-it",
+  keywords: ["markdown-it-plugin"],
+};
+
 interface Harness {
   ctrl: ExtensionsSectionController;
   projectDir: string | null;
@@ -63,6 +81,7 @@ interface Harness {
   importFileResult: ExtensionImportResult | null;
   onLookAdded: ReturnType<typeof spy>;
   afterLookChange: ReturnType<typeof spy>;
+  searchResult: ExtensionSearchResult;
 }
 
 function make(
@@ -71,6 +90,7 @@ function make(
     entries: ProjectExtensionEntry[];
     recommended: RecommendedExtension[];
     builtIns: BuiltInStyleSet[];
+    searchResult: ExtensionSearchResult;
   }> = {},
 ): Harness {
   const onLookAdded = spy();
@@ -90,6 +110,7 @@ function make(
     addWarnings: [],
     addLocalResult: null,
     importFileResult: null,
+    searchResult: over.searchResult ?? { ok: true, matches: [FOUND_DC, FOUND_OTHER], total: 42 },
   } as Harness;
   const record = (name: string, ...args: unknown[]) => h.calls.push({ name, args });
   const named = (n: string) => h.calls.filter((c) => c.name === n);
@@ -103,6 +124,10 @@ function make(
     },
     recommended: () => Promise.resolve(h.recommended),
     listBuiltIn: () => Promise.resolve(h.builtIns),
+    search: (query) => {
+      record("search", query);
+      return Promise.resolve(h.searchResult);
+    },
     validate: () => {
       if (h.failValidate) return Promise.reject(new Error("validate failed"));
       return Promise.resolve(
@@ -162,7 +187,7 @@ function make(
     importFromUrl: (dir, url) => {
       record("importFromUrl", dir, url);
       h.entries = [...h.entries, LOOK_B];
-      return Promise.resolve({ entry: LOOK_B, warnings: [{ code: "no-theme-json", message: "No theme.json found" }] });
+      return Promise.resolve({ entry: LOOK_B, warnings: [{ code: "no-theme-json", message: "No package.json found" }] });
     },
     onLookAdded: (label) => onLookAdded(label),
     afterLookChange: () => {
@@ -196,6 +221,9 @@ test("initial public rune state matches the panel defaults", () => {
   expect(ctrl.hoverPreview).toBeNull();
   expect(ctrl.looks).toEqual([]);
   expect(ctrl.features).toEqual([]);
+  expect(ctrl.search).toEqual({ status: "idle", query: "", matches: [], total: 0, message: null });
+  expect(ctrl.searchQuery).toBe("");
+  expect(ctrl.availableSearch).toEqual([]);
 });
 
 test("loadExtensions populates the list, the recommended + built-in catalogs, and the validation map keyed by use", async () => {
@@ -254,6 +282,79 @@ test("isBuiltInAdded reflects a ./extensions/<id> entry", async () => {
   await h.ctrl.loadExtensions();
   expect(h.ctrl.isBuiltInAdded("clean-book")).toBe(true);
   expect(h.ctrl.isBuiltInAdded("zine")).toBe(false);
+});
+
+// ── Search: npm (#246) ──────────────────────────────────────────────────────
+
+test("loadExtensions never touches search — npm is only searched on demand", async () => {
+  const h = make();
+  await h.ctrl.loadExtensions();
+  expect(h.ctrl.search).toEqual({ status: "idle", query: "", matches: [], total: 0, message: null });
+  expect(named(h, "search")).toEqual([]);
+});
+
+test("runSearch populates matches + total and records the query it ran", async () => {
+  const h = make();
+  h.ctrl.searchQuery = "  footnote  ";
+  await h.ctrl.runSearch();
+  expect(named(h, "search").map((c) => c.args)).toEqual([["footnote"]]);
+  expect(h.ctrl.search).toEqual({
+    status: "ready",
+    query: "footnote",
+    matches: [FOUND_DC, FOUND_OTHER],
+    total: 42,
+    message: null,
+  });
+});
+
+test("runSearch surfaces an `ok: false` result as search.message, not ctrl.error", async () => {
+  const h = make({ searchResult: { ok: false, message: "Couldn't reach the npm registry." } });
+  await h.ctrl.runSearch("");
+  expect(h.ctrl.search).toEqual({
+    status: "error",
+    query: "",
+    matches: [],
+    total: 0,
+    message: "Couldn't reach the npm registry.",
+  });
+  expect(h.ctrl.error).toBeNull();
+});
+
+test("runSearch refuses a second concurrent call while one is loading", async () => {
+  const h = make();
+  const first = h.ctrl.runSearch("");
+  expect(h.ctrl.search.status).toBe("loading");
+  const second = h.ctrl.runSearch(""); // issued while the first is still in flight
+  await Promise.all([first, second]);
+  expect(named(h, "search").length).toBe(1);
+  expect(h.ctrl.search.status).toBe("ready");
+});
+
+test("availableSearch hides packages already configured, matching an npm entry by NAME not by its pin", async () => {
+  const h = make({
+    entries: [entry({ use: "dimm-city-components@1.1.0", kind: "npm", name: "dimm-city-components", carries: MARKDOWN })],
+  });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.runSearch("");
+  expect(h.ctrl.availableSearch).toEqual([FOUND_OTHER]);
+});
+
+test("addSearched adds by the package name and reloads the list", async () => {
+  const h = make();
+  await h.ctrl.runSearch("");
+  await h.ctrl.addSearched(FOUND_DC);
+  expect(named(h, "add").map((c) => c.args)).toEqual([["/proj", "dimm-city-components", undefined]]);
+  expect(h.entries.some((e) => e.use === "dimm-city-components")).toBe(true);
+  expect(named(h, "list").length).toBeGreaterThan(0); // reloaded after the add
+});
+
+test("addSearched refreshes Styles+Design when the INSTALLED package turns out to carry styles", async () => {
+  // The search result says nothing about what a package carries; the host's
+  // described entry does, and that is what decides.
+  const h = make();
+  h.addWarnings = [];
+  await h.ctrl.addSearched(FOUND_DC);
+  expect(h.afterLookChange.calls.length).toBe(0); // the fake host echoes a markdown-only entry
 });
 
 // ── One verb set: toggle / remove / move ──────────────────────────────────────
@@ -407,11 +508,11 @@ test("importFile surfaces the host warnings, announces the look, and reloads on 
     entry: LOOK_B,
     warnings: [
       { code: "print-safety", message: "Remote URL is not allowed" },
-      { code: "no-theme-json", message: "No theme.json found" },
+      { code: "no-theme-json", message: "No package.json found" },
     ],
   };
   await h.ctrl.importFile();
-  expect(h.ctrl.importWarnings).toEqual(["Remote URL is not allowed", "No theme.json found"]);
+  expect(h.ctrl.importWarnings).toEqual(["Remote URL is not allowed", "No package.json found"]);
   expect(h.ctrl.looks).toEqual([LOOK_B]);
   expect(h.onLookAdded.calls).toEqual([["Zine"]]);
   expect(h.afterLookChange.calls.length).toBe(1);
@@ -440,7 +541,7 @@ test("importUrl trims, imports, clears the draft, surfaces warnings, and reloads
   await h.ctrl.importUrl();
   expect(named(h, "importFromUrl").map((c) => c.args)).toEqual([["/proj", "https://example.com/theme.css"]]);
   expect(h.ctrl.url).toBe("");
-  expect(h.ctrl.importWarnings).toEqual(["No theme.json found"]);
+  expect(h.ctrl.importWarnings).toEqual(["No package.json found"]);
   expect(h.ctrl.looks).toEqual([LOOK_B]);
   expect(h.ctrl.error).toBeNull();
 });

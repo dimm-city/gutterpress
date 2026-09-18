@@ -154,6 +154,75 @@ Two practical consequences:
 The posture that follows: **the PDF is ground truth.** Printed page numbers must
 come from compiler measurement, never from the screen preview's page map.
 
+#### #268: re-tested the epsilon, at a more surgical layer, and it still fails
+
+Issue #268 re-opened the epsilon question for the specific EXACT-FIT BOUNDARY
+`docs/fixtures/exact-fit-boundary` pins (native-parity-gate.md): print keeps a
+`pre` line whose box ends **875.98px** of a 876px column (slack +0.02px), the
+viewer's multicol fragmenter lays the same line at **876.36px** (slack
+-0.36px) and pushes it, and with `orphans: 3` the whole heading chain above it
+moves to the next page in the viewer only.
+
+The candidate tried here is more targeted than the one above: give
+`.gp-strip`'s actual fragmentainer `height` (Multicol L1 — the base,
+non-wrap-mode rule) a `calc(var(--gp-content-h) + Xpx)` bump, leaving the
+`--gp-content-h` **custom property** itself untouched. Every other consumer of
+that property — `stripMetrics()`'s `rowStride`, the compiler's published page
+height, the page-root `min-height`, the gate's own boundary measurement — reads
+the property, not the rendered box, so none of them move. Only Chromium's own
+column-break decision sees the extra height. This is a narrower blast radius
+than the whole-book epsilon above, and it was worth re-testing on that basis
+alone.
+
+| `X` (px) | fixture outcome | full gate (12 fixtures) |
+| --- | --- | --- |
+| 0 (baseline) | EXACT-FIT (viewer -0.36px) | 11 clean, 1 exact-fit, 0 divergence |
+| 0.05 – 0.355 | still EXACT-FIT, unchanged numbers | not run (fixture alone decides) |
+| **0.36** (the exact measured shortfall) | **CLEAN** | 12 clean, 0 exact-fit, 0 divergence — every fixture's page count identical to baseline |
+| 0.4, 0.5, 1 | CLEAN | 0.5px: 12 clean, 0 exact-fit, 0 divergence, all page counts identical |
+
+Every value at or above 0.36px flips the fixture, and re-running the full
+registered gate at 0.36px and at 0.5px changed nothing else — same page counts
+on every fixture, including the two full example books (design-guide 54pp,
+gutterpress-user-guide 71pp). Taken alone, that looks like a pass by this
+issue's own "definition of done."
+
+It is not shipped, for two reasons, both confirmed rather than assumed:
+
+1. **`zoom.test.ts` already asserts the invariant this candidate breaks.**
+   `stripRectHeight` is checked against `stripClientHeight` to within 0.05px —
+   the test's way of confirming the strip's rendered box has no border/padding
+   surprises at any zoom. Any `X > 0` fails it (measured: `X = 0.36` reports
+   `360 !== 360.359375` at zoom 1). Loosening that assertion to admit the
+   epsilon is exactly the "weaken a test to get green" this project's process
+   forbids — the invariant is real, not incidental.
+2. **The registered gate has no A4/mm fixture, which is precisely the case
+   the ORIGINAL epsilon experiment (above) already falsified.** Every one of
+   the 12 registered fixtures is a US Letter book. A 12/12 clean result here
+   is evidence the fix works *on US Letter*, which is exactly the geometry the
+   original `+0.5px` experiment also matched cleanly — its failure only showed
+   up on the 210×297mm book. Nothing in this repo's fixture set can currently
+   confirm or rule out the same failure recurring here, and the mechanism is
+   identical (a fixed additive bias against Chromium's own sub-pixel
+   fragmentainer arithmetic, whose direction and magnitude the section above
+   already measured as font/geometry-dependent, not constant). Shipping a
+   constant that has one falsifying counter-example on record, into a viewer
+   every book renders through, is exactly the "shim that would have to be
+   kept forever, tuned per font stack" this project's constitution rules out
+   — not a thin, removable fix for a named spec gap, but a permanent guess.
+
+No CSS-level lever was found that reproduces print's actual mechanism (line
+boxes land on whole CSS px in the page fragmenter; multicol keeps 1/64px
+`LayoutUnit` precision throughout) without also being a blind constant. Doing
+that properly would mean snapping every rendered line box to the page grid
+inside the multicol fragmenter itself — not exposed to CSS, and far past
+"thin shim" territory even if it were. The conclusion stands as recorded
+above: **not fixable by an epsilon**, now confirmed at the fragmentainer-only
+layer as well as the whole-book layer. The gate's EXACT-FIT BOUNDARY outcome
+is the accepted classification for this shape of divergence, not a defect to
+close. Chromium bug draft:
+[`chromium-bug-drafts/exact-fit-multicol-vs-print.md`](./chromium-bug-drafts/exact-fit-multicol-vs-print.md).
+
 ---
 
 ## 5. Painting: content is clipped to the content box

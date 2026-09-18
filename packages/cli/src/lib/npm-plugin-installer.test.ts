@@ -108,10 +108,11 @@ function registryFixture(
   name: string,
   version: string,
   entries: TarEntry[],
-  options: { badIntegrity?: boolean } = {},
+  options: { badIntegrity?: boolean; registry?: string } = {},
 ): { fetch: typeof globalThis.fetch; calls: string[]; archive: Uint8Array } {
+  const registry = options.registry ?? "https://registry.npmjs.org";
   const archive = gzipSync(tar(entries), { mtime: 0 });
-  const tarball = `https://registry.npmjs.org/${name}/-/${name.split("/").at(-1)}-${version}.tgz`;
+  const tarball = `${registry}/${name}/-/${name.split("/").at(-1)}-${version}.tgz`;
   const integrity = options.badIntegrity
     ? `sha512-${Buffer.alloc(64, 7).toString("base64")}`
     : `sha512-${createHash("sha512").update(archive).digest("base64")}`;
@@ -130,7 +131,7 @@ function registryFixture(
   const fetch = (async (input: string | URL | Request) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     calls.push(url);
-    if (url === `https://registry.npmjs.org/${encodeURIComponent(name)}`) {
+    if (url === `${registry}/${encodeURIComponent(name)}`) {
       return new Response(JSON.stringify(metadata), {
         headers: { "content-type": "application/json" },
       });
@@ -286,10 +287,43 @@ describe("npm plugin installation", () => {
     const listed = await listProjectPlugins(dir);
     expect(listed).toHaveLength(1);
     expect(listed[0]).toMatchObject({ use: `${name}@${version}`, kind: "npm", enabled: true, version });
+    // An installed npm package IS a markdown-it plugin (its entry is what the
+    // installer load-tested), whether or not its package.json says so.
+    expect(listed[0]?.carries.markdown).toBe(true);
     const resolved = resolveConfig({}, await loadManifest(dir));
     expect(resolved.extensions[0]?.version).toBe(version);
     expect((await validateProjectPlugins(dir))[0]?.ok).toBe(true);
     expect(await readFile(path.join(dir, "manifest.yaml"), "utf8")).toContain(`${name}@${version}`);
+  });
+
+  test("GUTTERPRESS_NPM_REGISTRY: a package vendored from a private mirror installs AND keeps loading", async () => {
+    // The installer records the mirror's tarball URL in the receipt, and
+    // plugin-vendor.ts re-verifies that receipt on EVERY later load — both
+    // checks must accept the configured registry's origin, or a mirror
+    // install succeeds and then fails at its own load-test (and on every
+    // build after it).
+    const mirror = "http://127.0.0.1:4873";
+    const previous = process.env.GUTTERPRESS_NPM_REGISTRY;
+    process.env.GUTTERPRESS_NPM_REGISTRY = mirror;
+    try {
+      const dir = await projectDir();
+      const name = "markdown-it-mirror-fixture";
+      const version = "1.0.0";
+      const fixture = registryFixture(name, version, packageEntries(name, version), { registry: mirror });
+
+      const result = await addNpmPlugin(dir, name, { fetch: fixture.fetch });
+
+      expect(result).toMatchObject({ use: `${name}@${version}`, name, kind: "npm", version });
+      expect(fixture.calls).toEqual([
+        `${mirror}/${encodeURIComponent(name)}`,
+        `${mirror}/${name}/-/${name}-${version}.tgz`,
+      ]);
+      expect((await validateProjectPlugins(dir))[0]?.ok).toBe(true);
+      expect(await loadedMarker(dir, name, version, "__npmPluginLoaded")).toBe(true);
+    } finally {
+      if (previous === undefined) delete process.env.GUTTERPRESS_NPM_REGISTRY;
+      else process.env.GUTTERPRESS_NPM_REGISTRY = previous;
+    }
   });
 
   test("rejects an integrity mismatch and leaves no partial install or manifest entry", async () => {

@@ -29,7 +29,7 @@ extensions:
 | Written as | Resolves to |
 |------------|-------------|
 | One of the five bundled names — `markdown-it-mark`, `markdown-it-sub`, `markdown-it-sup`, `markdown-it-abbr`, `gutterpress-gfm-alerts` | The copy compiled into Gutterpress. No install, no network; a bundled name shadows any npm package of the same name and cannot be pinned (`markdown-it-mark@3.0.0` is an error). |
-| Starts with `./`, `../`, `/`, or a Windows drive (`C:\`) | A path relative to the manifest: a folder holding a `gutterpress.json` (or a theme-era `theme.json` / `theme.css`), or a bare `.js` markdown-it plugin file. Referenced in place — never copied. |
+| Starts with `./`, `../`, `/`, or a Windows drive (`C:\`) | A path relative to the manifest: a folder holding a `package.json`, or a bare `.js` markdown-it plugin file. Referenced in place — never copied. |
 | Anything else | An npm package name. `name@version` pins it; `gutterpress ext add` installs the package and writes the pin for you. |
 
 @end-section
@@ -91,6 +91,21 @@ gutterpress ext remove markdown-it-highlightjs ./my-book
 
 `add` also takes a `.zip` or `.css` file, an `http(s)` URL, or — with `--look` — a built-in look id; those land a copy in `extensions/<id>/` and list it as `./extensions/<id>` ([Chapter 4](#ch-styling)). `remove`, `enable` and `disable` take the specifier as it appears in the manifest (for an npm package the bare name is enough). Re-running `add` on something already listed re-pins that entry in place rather than adding a second one; `remove` deletes an npm package's vendored copy but never touches a folder you referenced by path.
 
+Not sure what's out there? `gutterpress ext search [query]` searches **npm**
+(not project-scoped — it takes no directory) for packages tagged `gutterpress`
+or `markdown-it-plugin`, and prints each match's `name@version`, ready to hand
+straight to `ext add`:
+
+```bash
+gutterpress ext search              # the most relevant tagged packages
+gutterpress ext search footnote
+```
+
+Publishing one is `npm publish` with `"gutterpress"` in your package's
+`keywords` — there is no index to be added to. A plain markdown-it plugin
+needs no Gutterpress keyword at all: the ecosystem's own `markdown-it-plugin`
+tag already finds it, and it works here unchanged.
+
 The desktop app shows the same list under **Project settings → Features** (the entries that carry markdown) and **Project settings → Look** (the entries that carry styles) — two views over one list, with the same add, enable/disable, reorder and remove actions.
 
 ## Installing npm Plugins
@@ -120,10 +135,14 @@ Packages that require install/build scripts, native addon compilation, bundled
 dependencies may be skipped when unavailable or incompatible with the current
 platform; required dependencies and required peers must install successfully.
 
-An npm package that ships a `gutterpress.json` is read exactly like a folder
-extension: its declared stylesheets load with it, in list order, and its
-snippets appear in the picker. Its markdown-it plugin is the package's own
-entry module — a `markdown` field, if present, must name that same file.
+An npm package's `package.json` is read exactly like a folder extension's: a
+`"gutterpress"` block's declared stylesheets load with it, in list order, and
+its snippets appear in the picker. Its markdown-it plugin is the package's own
+entry module (resolved by `exports`/`main`, npm's rules) — a
+`gutterpress.markdown` field, if present, must name that same file.
+
+If you publish an extension, add `"gutterpress"` to your package's `keywords`
+so `gutterpress ext search` finds it.
 
 Most plugins use a default export. When a package exposes multiple named plugin
 functions instead, select one in the desktop app's optional **export** field or
@@ -149,7 +168,7 @@ gutterpress new "Field Notes" --kind plugin
 cd field-notes && bun install && bun test
 ```
 
-That produces a complete, runnable package: `gutterpress.json`, a `plugin.js` with one declarative container and one hand-written rule, component CSS with public `:root` tokens, an insertable snippet, and a fixture test you run with `bun test`. Its README explains which conventions are load-bearing and why — class prefixing, why you cannot import `gutterpress` at runtime, and where your CSS belongs in the cascade. Add it to a book with `gutterpress ext add ./field-notes <book>`, which lists the folder under `extensions:` and references it in place.
+That produces a complete, runnable package: `package.json`, a `plugin.js` with one declarative container and one hand-written rule, component CSS with public `:root` tokens, an insertable snippet, and a fixture test you run with `bun test`. Its README explains which conventions are load-bearing and why — class prefixing, why you cannot import `gutterpress` at runtime, and where your CSS belongs in the cascade. Add it to a book with `gutterpress ext add ./field-notes <book>`, which lists the folder under `extensions:` and references it in place.
 
 Use `--prefix` to choose the class prefix it claims (it defaults to the package slug):
 
@@ -248,28 +267,39 @@ it. `css` and `styles` can coexist; the string is placed after the files.
 
 A bare `.js` file gives a book markdown behaviour and nothing else. To ship
 component CSS and insertable snippets with it, make the plugin a **folder**
-with a `gutterpress.json` — the same package format a look uses:
+with a `package.json` — the same standard file npm already wants, and the same
+package format a look uses:
 
 ```json
 {
-  "name": "Field Notes",
-  "author": "Your Name",
+  "name": "field-notes",
   "description": "Term boxes and inline definitions",
-  "markdown": "plugin.js",
-  "styles": ["styles/plugin.css"],
-  "snippets": "snippets"
+  "author": "Your Name",
+  "keywords": ["gutterpress", "markdown-it-plugin"],
+  "main": "plugin.js",
+  "gutterpress": {
+    "styles": ["styles/plugin.css"],
+    "snippets": "snippets"
+  }
 }
 ```
 
-`markdown` names the plugin module (loaded through exactly the plain
-markdown-it contract above), `styles` lists sheets in cascade order,
-`snippets` names a folder of insertable recipes, and `components` a catalog
-file; `preview` and `tokensFile` are the look-side fields ([Chapter 4](#ch-styling)).
+`name`, `description`, `author`, `keywords` and `main` are npm's own fields,
+read as-is: `main` is the plugin module, loaded through exactly the plain
+markdown-it contract above. Everything else sits under `"gutterpress"` —
+`styles` lists sheets in cascade order, `snippets` names a folder of
+insertable recipes, `components` a catalog file; `preview` and `tokensFile`
+are the look-side fields ([Chapter 4](#ch-styling)). `markdown` is there for
+the one case `main` can't express: a package whose `main` is not the plugin.
 Every path is relative to the folder and must stay inside it. List the
 folder, not the `.js` file — `./plugins/field-notes` — and Gutterpress reads
-the metadata and picks up everything it declares. A folder that declares only
-`styles` is a look; one that declares only `markdown` is a plugin; the format
-is the same. This is what `gutterpress new --kind plugin` scaffolds.
+the package.json and picks up everything it declares. A folder that declares
+only `gutterpress.styles` is a look; one whose `main` is a markdown-it plugin
+is a plugin; the format is the same. This is what `gutterpress new --kind
+plugin` scaffolds.
+
+Older packages carried a separate `gutterpress.json` or `theme.json`. Neither
+is read any more: move their fields into `package.json` as above.
 
 ## Built-in Plugins
 
@@ -325,7 +355,7 @@ extensions:
   - gutterpress-gfm-alerts
 ```
 
-The desktop lists the same five as recommended features under **Project settings → Features** — turning one on writes exactly this entry.
+**Project settings → Features** in the desktop writes exactly this entry.
 
 > **Callouts are bundled:** `gutterpress-gfm-alerts` (the **Callouts** feature
 > in the desktop) renders each `> [!NOTE]`-style alert as a `.gp-alert` box

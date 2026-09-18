@@ -31,6 +31,23 @@
 // entries are app-managed machine state (never the user's real file), so
 // clearing one is a lifecycle action, not user-data deletion.
 //
+// CROSS-COPY RULE (#273). A draft is keyed by an absolute file path, not by
+// which local copy (git branch) of the project was open when it was taken.
+// Switching copies (Settings → Saving) can silently invalidate a pending
+// draft: the file at that path on the NEW copy may be entirely different
+// content than what the draft was written against. `listRecovery`'s
+// baseMtimeMs staleness check catches most of this incidentally (a checkout
+// that rewrites a file's bytes also bumps its mtime), but it is NOT the
+// mechanism this relies on — it doesn't cover a file the checkout DELETES
+// (listRecovery's "file missing on disk" branch still offers those, by
+// design, for the ordinary "I deleted it by accident" case) or a
+// same-millisecond mtime coincidence. The switch-branch route
+// (`api/vcs/switch-branch`) therefore explicitly clears the recovery entry
+// for every path `switchBranch`'s checkout added, removed, or changed the
+// content of, right after a successful switch — so a draft from the copy
+// just left behind can never be offered over the new copy's version of the
+// same file.
+//
 // IO helpers take the recovery directory as an argument so the pure index
 // transforms (which carry the testable logic) stay free of electron / a global
 // userData path and can be unit-tested in isolation (mirrors project-state.ts).

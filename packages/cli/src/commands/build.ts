@@ -23,7 +23,7 @@ const commandArgs = {
   icc: { type: "string", description: "Path to ICC profile (required for --format pdfx)" },
   manifest: { type: "string", description: "Path to manifest.yaml" },
   "strip-annotations": { type: "boolean", description: "Strip PDF annotations for PDF/X compliance" },
-  "skip-lint": { type: "boolean", description: "Skip CSS linting (default: lint runs for pdf/pdfx)" },
+  "skip-lint": { type: "boolean", description: "Skip the CSS print-safety check (default: it runs for pdf/pdfx)" },
   "skip-pre-validate": { type: "boolean", description: "Skip pre-build validation" },
   "skip-post-validate": { type: "boolean", description: "Skip post-build PDF/X validation" },
   "allow-shrink": { type: "boolean", description: "Build anyway when content is wider than the page content box, instead of failing. Chromium then scales the WHOLE book down to fit; each offender is reported as a warning." },

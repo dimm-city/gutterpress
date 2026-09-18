@@ -85,7 +85,7 @@
     onUpdateDownload,
     onCheckForUpdates,
     onDismiss,
-    onCrashRecoveryChange,
+    onProjectFilesChanged,
   }: {
     visible?: boolean;
     inactive?: boolean;
@@ -120,7 +120,11 @@
     onUpdateDownload?: () => void;
     onCheckForUpdates?: () => void;
     onDismiss?: () => void;
-    onCrashRecoveryChange?: (enabled: boolean) => void;
+    /** Forwarded to the embedded Settings view's Saving tab (#273): fires
+     *  after its copy switcher checks out another local copy of the open
+     *  project, so the workspace behind this layer can reconcile the open
+     *  editor buffer against the now-changed files on disk. */
+    onProjectFilesChanged?: () => void;
   } = $props();
 
   // ── Tabs (Projects / Settings / Help / Logs) ──────────────────────────────
@@ -443,7 +447,7 @@
           idPrefix="landing-settings"
           initialTab={settingsTab}
           {projectDir}
-          {onCrashRecoveryChange}
+          {onProjectFilesChanged}
         />
       </section>
       {:else if activeTab === "logs"}
