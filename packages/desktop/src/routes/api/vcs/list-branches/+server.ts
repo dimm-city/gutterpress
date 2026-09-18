@@ -6,6 +6,8 @@ import type { RequestHandler } from './$types';
 interface LocalBranches {
   current: string | null;
   branches: string[];
+  /** Subset of `branches` that has no local ref yet (created on switch). */
+  remoteOnly: string[];
 }
 
 // Local type — do NOT import from contract.ts or the lib (keeps SPA bundle clean).

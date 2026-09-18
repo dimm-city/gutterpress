@@ -640,7 +640,7 @@ export const api = {
     /** The project's local copies (git branches) and which one is open;
      *  `null` when the source has nothing to switch between (#273). */
     listBranches: (projectDir: string) =>
-      post<{ current: string | null; branches: string[] } | null>('/api/vcs/list-branches', { projectDir }),
+      post<{ current: string | null; branches: string[]; remoteOnly: string[] } | null>('/api/vcs/list-branches', { projectDir }),
     /** Switch the project's working tree to another local copy (#273). */
     switchBranch: (projectDir: string, branch: string) =>
       post<{ current: string; changedFiles: string[] }>('/api/vcs/switch-branch', { projectDir, branch }),

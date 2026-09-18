@@ -9,10 +9,13 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- **Switch which local copy of a project you're working on, from Settings →
+- **Switch which copy of a project you're working on, from Settings →
   Saving.** The Saving & recovery group now shows the copy (git branch) the
-  open project is on and, when more than one exists locally, a picker to
-  switch to another — local copies only, no remote checkout and no create.
+  open project is on and, when more than one exists, a picker to switch to
+  another. Copies that so far exist only online are listed too, marked
+  "(online only)"; switching to one creates it locally and sets it to track
+  the remote, so a copy you fetched but never opened is one click away
+  instead of invisible. Creating a brand-new copy is still out of scope.
   Uncommitted edits are saved as a version first, so nothing typed is lost
   and the switch never forces an overwrite; a file that changed on disk right
   as the switch started is reported as a friendly error instead. Auto-backup

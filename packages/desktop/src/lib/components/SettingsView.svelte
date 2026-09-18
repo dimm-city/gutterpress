@@ -143,13 +143,13 @@
   });
 
   // ── Saving tab — the copy this project is on (#273) ───────────────────────
-  // Local branches only (see the issue's scope note): no remote checkout, no
-  // create. Hidden entirely — not shown with an error — when there's nothing
-  // to switch between: no project open, the browser target (no local git
-  // access at all), or `listBranches` reports `null` (a plain local-folder,
-  // which has no repository). Loaded once on mount, reloaded after a switch;
-  // no `$effect` (CLAUDE.md §8).
-  let copies = $state<{ current: string | null; branches: string[] } | null>(null);
+  // Every copy is listed, including ones that so far exist only online;
+  // switching to one of those creates it locally first. Hidden entirely — not
+  // shown with an error — when there's nothing to switch between: no project
+  // open, the browser target (no local git access at all), or `listBranches`
+  // reports `null` (a plain local-folder, which has no repository). Loaded
+  // once on mount, reloaded after a switch; no `$effect` (CLAUDE.md §8).
+  let copies = $state<{ current: string | null; branches: string[]; remoteOnly: string[] } | null>(null);
   let copiesLoading = $state(true);
   let selectedCopy = $state("");
   let copySwitching = $state(false);
@@ -583,16 +583,19 @@
         {:else}
           <div class="row"><span class="row-hint">This project isn't connected to an online service yet. Connect one in Settings &gt; Accounts to back it up.</span></div>
         {/if}
-        <!-- Copy switching (#273): which local copy (git branch) the project
-             is on, and a way to switch to another that already exists
-             locally — no remote checkout, no create (see the issue's scope
-             note). Hidden entirely, never shown as a dead control, when
-             there's nothing to switch between: no project open, the browser
-             target, or `copies` is null (a plain local-folder has no
-             repository to have copies of). Vocabulary: "copy", never
-             "branch", in every string below. -->
+        <!-- Copy switching (#273): which copy (git branch) the project is on,
+             and a way to switch to another. Copies that exist only online are
+             listed too and marked as such — switching to one creates it
+             locally on the way in. Listing local copies alone made this look
+             broken: the copy you went looking for was simply missing, with
+             nothing to tell that apart from a bug. Hidden entirely, never
+             shown as a dead control, when there's nothing to switch between:
+             no project open, the browser target, or `copies` is null (a plain
+             local-folder has no repository to have copies of). Vocabulary:
+             "copy", never "branch", in every string below. -->
         {#if isDesktop() && projectDir && !copiesLoading && copies}
           {@const otherCopies = copies.branches.filter((name) => name !== copies?.current)}
+          {@const onlineOnly = new Set(copies.remoteOnly ?? [])}
           <div class="row">
             <div class="row-label">
               <span class="row-title">Copy of this project you're working on</span>
@@ -607,7 +610,9 @@
                 >
                   <option value="" disabled>Switch to…</option>
                   {#each otherCopies as name (name)}
-                    <option value={name}>{name}</option>
+                    <option value={name}
+                      >{name}{onlineOnly.has(name) ? " (online only)" : ""}</option
+                    >
                   {/each}
                 </select>
                 <button

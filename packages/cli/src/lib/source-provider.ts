@@ -868,26 +868,40 @@ export async function restoreVersionWithBackup(
   });
 }
 
-// ── Local branches / copy switching (#273) ────────────────────────────────────
+// ── Copies / copy switching (#273) ────────────────────────────────────────────
 //
-// A project can hold several local copies of itself (git branches). Settings →
-// Saving lets the author see which one is open and switch to another —
-// switching between copies that already exist LOCALLY, per the issue's scope
-// (no remote checkout, no create). The author-facing word is "copy"; "branch"
-// stays in this module and the route names only.
+// A project can hold several copies of itself (git branches). Settings → Saving
+// lets the author see which one is open and switch to another. A copy counts
+// whether or not it exists locally yet: one that so far lives only on the
+// remote is switched to by creating the local branch from it, which is what
+// `git checkout <name>` does for a remote-tracking branch. Listing only the
+// local ones made the picker look broken — the copy you went looking for was
+// simply absent, with nothing to distinguish that from a bug.
+//
+// The author-facing word is "copy"; "branch" stays in this module and the
+// route names only.
 
-/** The project's local copies (git branches) and which one is currently open. */
+/** The project's copies (git branches) and which one is currently open. */
 export interface LocalBranches {
   /** Name of the branch HEAD points to, or `null` on a detached/unborn HEAD. */
   current: string | null;
-  /** Every local branch name (`refs/heads/*`), in no particular order. */
+  /**
+   * Every copy the project can switch to, sorted: local branches
+   * (`refs/heads/*`) plus copies that so far exist only on a remote.
+   */
   branches: string[];
+  /**
+   * The subset of {@link branches} with no local ref yet. Switching to one of
+   * these creates the local copy from the remote and tracks it; the UI uses
+   * this only to say so before it happens.
+   */
+  remoteOnly: string[];
 }
 
 /** Inputs for {@link switchBranch}. */
 export interface SwitchBranchOptions {
   projectDir: string;
-  /** Local branch name to check out. */
+  /** Branch name to check out — local, or one that so far exists only on a remote. */
   branch: string;
   /** Identity recorded on the automatic pre-switch safety snapshot, if one is taken. */
   authorName?: string;
@@ -913,22 +927,74 @@ export interface SwitchBranchResult {
 export const SWITCH_BRANCH_SNAPSHOT_MESSAGE = "Saved before switching copy";
 
 /**
- * List the project's local copies (git branches) and which one is open, for a
+ * List the project's copies (git branches) and which one is open, for a
  * `local-git-folder` project. Returns `null` for any other source type —
  * there is nothing to switch between, and the caller (the Saving settings row)
  * hides the whole control on `null` rather than showing an error.
+ *
+ * Copies that exist only on a remote are included: they are as real to the
+ * author as the local ones, and {@link switchBranch} creates the local branch
+ * on the way in.
  */
 export async function listLocalBranches(dir: string): Promise<LocalBranches | null> {
   const source = await detectProjectSource(dir);
   if (source.type !== "local-git-folder") return null;
   const repoDir = gitScopeFor(source);
-  const [branches, current] = await Promise.all([
+  const [local, current, remotes] = await Promise.all([
     git.listBranches({ fs, dir: repoDir }),
     // An unborn/detached HEAD (no commits yet, or a mid-restore artifact) has
     // no current branch name — treat that as "unknown" rather than throwing.
     git.currentBranch({ fs, dir: repoDir, fullname: false }).catch(() => undefined),
+    // A repo with no remote configured is the normal offline case, not an error.
+    git.listRemotes({ fs, dir: repoDir }).catch(() => []),
   ]);
-  return { current: current ?? null, branches };
+  const localNames = new Set(local);
+  const remoteOnly = new Set<string>();
+  for (const { remote } of remotes) {
+    const names = await git
+      .listBranches({ fs, dir: repoDir, remote })
+      .catch(() => [] as string[]);
+    for (const name of names) {
+      // The remote's own HEAD pointer is a symref, not a copy to switch to.
+      if (name === "HEAD") continue;
+      if (!localNames.has(name)) remoteOnly.add(name);
+    }
+  }
+  return {
+    current: current ?? null,
+    branches: [...localNames, ...remoteOnly].sort(),
+    remoteOnly: [...remoteOnly].sort(),
+  };
+}
+
+/**
+ * Resolve a copy name to the commit it points at, and the remote it came from
+ * when it has no local ref yet.
+ *
+ * `resolveRef`'s search path is `<ref>`, `refs/<ref>`, `refs/tags/<ref>`,
+ * `refs/heads/<ref>`, `refs/remotes/<ref>`, `refs/remotes/<ref>/HEAD` — note
+ * that it never reaches `refs/remotes/<remote>/<ref>`. A copy that has only
+ * ever existed online therefore has to be looked up per-remote, which is the
+ * lookup the copy picker used to be missing.
+ */
+async function resolveCopy(
+  repoDir: string,
+  branch: string,
+): Promise<{ oid: string; remote?: string }> {
+  const local = await git
+    .resolveRef({ fs, dir: repoDir, ref: `refs/heads/${branch}` })
+    .catch(() => undefined);
+  if (local) return { oid: local };
+  const remotes = await git.listRemotes({ fs, dir: repoDir }).catch(() => []);
+  for (const { remote } of remotes) {
+    const oid = await git
+      .resolveRef({ fs, dir: repoDir, ref: `refs/remotes/${remote}/${branch}` })
+      .catch(() => undefined);
+    if (oid) return { oid, remote };
+  }
+  throw new Error(
+    `Couldn't find a copy named "${branch}" — it may have been renamed or deleted.`,
+  );
 }
 
 /**
@@ -1026,9 +1092,21 @@ export async function switchBranch(
     const fromOid = await git
       .resolveRef({ fs, dir: repoDir, ref: "HEAD" })
       .catch(() => undefined);
-    const toOid = await git.resolveRef({ fs, dir: repoDir, ref: branch });
+    // A copy that exists only on a remote resolves through its remote ref;
+    // checkout then creates the local branch and sets it to track the remote
+    // one, which is isomorphic-git's documented behaviour for a ref with no
+    // local branch. `remote` is passed explicitly so a remote that isn't
+    // named "origin" works too — checkout would otherwise assume origin.
+    const { oid: toOid, remote } = await resolveCopy(repoDir, branch);
     try {
-      await git.checkout({ fs, dir: repoDir, cache, ref: branch, force: false });
+      await git.checkout({
+        fs,
+        dir: repoDir,
+        cache,
+        ref: branch,
+        force: false,
+        ...(remote ? { remote } : {}),
+      });
     } catch (e) {
       if (isCheckoutConflictError(e)) {
         throw new Error(

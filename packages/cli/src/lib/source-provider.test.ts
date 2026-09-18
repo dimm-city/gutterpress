@@ -966,6 +966,52 @@ test("listLocalBranches lists every local copy and which one is current", async 
     expect(result).not.toBeNull();
     expect(result!.current).toBe("main");
     expect(result!.branches.slice().sort()).toEqual(["main", "second-copy"]);
+    expect(result!.remoteOnly).toEqual([]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("listLocalBranches lists a copy that exists only on the remote, and marks it", async () => {
+  const dir = await tempDir();
+  try {
+    await initProject(dir);
+    // Remote names come from config, not from the ref path: without this,
+    // `refs/remotes/origin/a/b` is ambiguous between remote "origin" and
+    // remote "origin/a". A fetched copy always implies a configured remote.
+    await git.addRemote({ fs, dir, remote: "origin", url: "https://example.invalid/p.git" });
+    const head = await git.resolveRef({ fs, dir, ref: "main" });
+    // A copy that was only ever fetched: a remote-tracking ref with no
+    // refs/heads/ counterpart. This is the case that used to be invisible.
+    await git.writeRef({
+      fs,
+      dir,
+      ref: "refs/remotes/origin/online-copy",
+      value: head,
+      force: true,
+    });
+    // One that exists both places must not be listed twice or marked online-only.
+    await git.branch({ fs, dir, ref: "shared-copy" });
+    await git.writeRef({
+      fs,
+      dir,
+      ref: "refs/remotes/origin/shared-copy",
+      value: head,
+      force: true,
+    });
+    // The remote's own HEAD symref is not a copy.
+    await git.writeRef({
+      fs,
+      dir,
+      ref: "refs/remotes/origin/HEAD",
+      value: head,
+      force: true,
+    });
+
+    const result = await listLocalBranches(dir);
+    expect(result).not.toBeNull();
+    expect(result!.branches).toEqual(["main", "online-copy", "shared-copy"]);
+    expect(result!.remoteOnly).toEqual(["online-copy"]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -1009,6 +1055,64 @@ test("switchBranch checks out another local copy and preserves an in-progress ed
     );
     const mainHistory = await provider.listHistory(dir);
     expect(mainHistory[0]!.message).toBe(SWITCH_BRANCH_SNAPSHOT_MESSAGE);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("switchBranch checks out a copy that exists only on the remote, creating and tracking it locally", async () => {
+  const dir = await tempDir();
+  try {
+    const provider = await initProject(dir);
+    await git.addRemote({ fs, dir, remote: "origin", url: "https://example.invalid/p.git" });
+    // Build the copy's content, record where it lands, then remove the local
+    // branch so only the remote-tracking ref is left — exactly the shape of a
+    // copy you have fetched but never checked out.
+    await git.branch({ fs, dir, ref: "online-copy" });
+    await git.checkout({ fs, dir, ref: "online-copy" });
+    await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\nWritten online.\n");
+    await provider.snapshot({ projectDir: dir, message: "Online copy draft" });
+    const onlineOid = await git.resolveRef({ fs, dir, ref: "online-copy" });
+    await git.checkout({ fs, dir, ref: "main" });
+    await git.deleteBranch({ fs, dir, ref: "online-copy" });
+    await git.writeRef({
+      fs,
+      dir,
+      ref: "refs/remotes/origin/online-copy",
+      value: onlineOid,
+      force: true,
+    });
+    expect(await git.listBranches({ fs, dir })).not.toContain("online-copy");
+
+    const result = await switchBranch({ projectDir: dir, branch: "online-copy" });
+
+    expect(result.current).toBe("online-copy");
+    expect(result.changedFiles).toEqual([path.join(dir, "chapter-01.md")]);
+    // The working tree really moved, and the local branch now exists.
+    expect(await readFile(path.join(dir, "chapter-01.md"), "utf-8")).toBe(
+      "# Hello\n\nWritten online.\n",
+    );
+    expect(await git.listBranches({ fs, dir })).toContain("online-copy");
+    expect(await git.currentBranch({ fs, dir, fullname: false })).toBe("online-copy");
+    // Tracking is set, so the copy pushes and pulls where it came from.
+    expect(
+      await git.getConfig({ fs, dir, path: "branch.online-copy.remote" }),
+    ).toBe("origin");
+    // It is no longer reported as online-only, because it is now local too.
+    const listed = await listLocalBranches(dir);
+    expect(listed!.remoteOnly).not.toContain("online-copy");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("switchBranch gives a friendly error for a copy that no longer exists anywhere", async () => {
+  const dir = await tempDir();
+  try {
+    await initProject(dir);
+    expect(
+      switchBranch({ projectDir: dir, branch: "never-existed" }),
+    ).rejects.toThrow(/Couldn't find a copy named "never-existed"/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
