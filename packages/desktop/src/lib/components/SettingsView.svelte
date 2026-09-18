@@ -151,11 +151,20 @@
   // once on mount, reloaded after a switch; no `$effect` (CLAUDE.md §8).
   let copies = $state<{ current: string | null; branches: string[]; remoteOnly: string[] } | null>(null);
   let copiesLoading = $state(true);
+  /** The online check failed, so the copy list may be missing copies made elsewhere. */
+  let copiesStale = $state(false);
   let selectedCopy = $state("");
   let copySwitching = $state(false);
   let copySwitchError = $state<string | null>(null);
 
-  async function loadCopies() {
+  /**
+   * `listBranches` reads refs off disk, so a copy pushed from somewhere else
+   * is invisible until this clone fetches. Refreshing first is what makes a
+   * copy created on another machine — or by a pull request opened for you —
+   * show up here without dropping to a terminal. Best-effort: offline or
+   * unconnected simply lists what is already on disk.
+   */
+  async function loadCopies(options: { refresh?: boolean } = {}) {
     if (!isDesktop() || !projectDir) {
       copies = null;
       copiesLoading = false;
@@ -163,6 +172,14 @@
     }
     copiesLoading = true;
     try {
+      if (options.refresh) {
+        const r = await api.remote
+          .refreshCopies(projectDir)
+          .catch(() => ({ refreshed: false, reason: "offline" as const }));
+        // "no-remote" is not a problem — a project with no online copy has
+        // nothing to check for. The other two mean the list may be short.
+        copiesStale = !r.refreshed && r.reason !== "no-remote";
+      }
       copies = await api.vcs.listBranches(projectDir);
     } catch {
       copies = null;
@@ -172,7 +189,7 @@
   }
 
   onMount(() => {
-    void loadCopies();
+    void loadCopies({ refresh: true });
   });
 
   async function switchCopy() {
@@ -623,6 +640,12 @@
               </div>
             {/if}
           </div>
+          {#if copiesStale}
+            <p class="row-hint">
+              Couldn't check online for copies made elsewhere, so this list may be
+              incomplete. It shows the copies already on this computer.
+            </p>
+          {/if}
           {#if copySwitchError}
             <p class="row-error" role="alert">{copySwitchError}</p>
           {/if}

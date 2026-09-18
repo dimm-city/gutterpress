@@ -48,6 +48,8 @@ import { convergeMerge } from "./converge-merge.ts";
 import {
   MSG_BUSY,
   SYNC_LATE_EDIT_MESSAGE,
+  MSG_NO_REMOTE,
+  MSG_SSH_REMOTE,
   MSG_SYNCED,
   MSG_SYNCED_MERGED,
   MSG_HISTORY_UNREADABLE,
@@ -73,6 +75,7 @@ import type {
   SyncProjectOptions,
   SyncRetryOptions,
 } from "./sync-types.ts";
+import type { HostCredential, TokenStore } from "./token-store.ts";
 
 // ── Re-exports: the module's public surface ──────────────────────────────────
 export { onAuthFor };
@@ -400,4 +403,70 @@ export async function syncProject(
       return { ...failureOutcome(e, snapshotId), ...(filesChanged ? { filesChanged: true } : {}) };
     }
   });
+}
+
+/**
+ * Fetch every branch the remote has, so the project's copy list reflects what
+ * exists online rather than only what this clone happened to fetch before.
+ *
+ * The copy picker reads refs off disk (`listLocalBranches`). That makes a
+ * branch pushed from anywhere else — another machine, the web UI, an agent
+ * opening a PR — invisible here until someone runs `git fetch` in a terminal,
+ * which is precisely the thing this app exists to avoid. So the picker calls
+ * this first.
+ *
+ * Unlike `fetchRemoteTip` this deliberately does NOT use `singleBranch`: the
+ * whole point is the branches we do not have yet. It only ever writes
+ * remote-tracking refs (`refs/remotes/<remote>/*`) — no local branch, no
+ * working-tree change, no merge — so it is safe to call on a dirty tree.
+ * `prune` drops tracking refs for branches deleted online, so the list cannot
+ * offer a copy that is gone.
+ *
+ * Best-effort by contract: offline, unauthenticated, or no remote at all
+ * resolves to `{ refreshed: false, reason }` rather than throwing. A stale
+ * list beats an error dialog over a control the author did not explicitly ask
+ * to sync — but it reports WHY, because a picker that silently omits copies
+ * is indistinguishable from a broken one, which is the bug this whole
+ * function exists to fix.
+ */
+export async function refreshRemoteCopies(options: {
+  projectDir: string;
+  credential?: HostCredential;
+  tokenStore?: TokenStore;
+  httpClient?: typeof defaultGitHttp;
+}): Promise<{ refreshed: boolean; reason?: "no-remote" | "auth" | "offline" }> {
+  const http = options.httpClient ?? defaultGitHttp;
+  try {
+    const dir = await repoDirFor(options.projectDir);
+    const transport = await resolveTransport(dir, {
+      ...(options.credential ? { credential: options.credential } : {}),
+      ...(options.tokenStore ? { tokenStore: options.tokenStore } : {}),
+    });
+    await git.fetch({
+      fs,
+      http,
+      dir,
+      remote: transport.remote,
+      singleBranch: false,
+      prune: true,
+      tags: false,
+      ...onAuthFor(transport.credential),
+    });
+    return { refreshed: true };
+  } catch (e) {
+    // Every failure mode here is non-fatal: no remote configured, an SSH
+    // remote, no saved credential, a private repo, or simply being offline.
+    // The caller lists whatever is on disk either way — but it is told which,
+    // so it can say "couldn't check online" instead of quietly showing a
+    // short list that looks like the whole truth.
+    const message = (e as { message?: string })?.message ?? "";
+    if (message === MSG_NO_REMOTE || message === MSG_SSH_REMOTE) {
+      return { refreshed: false, reason: "no-remote" };
+    }
+    const status = (e as { data?: { statusCode?: number } })?.data?.statusCode;
+    if (status === 401 || status === 403 || status === 404) {
+      return { refreshed: false, reason: "auth" };
+    }
+    return { refreshed: false, reason: "offline" };
+  }
 }

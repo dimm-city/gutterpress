@@ -673,6 +673,11 @@ export const api = {
     diagnoseProjectRemote: (projectDir: string) =>
       post<ProjectRemoteDiagnosis>('/api/remote/diagnose-project', { projectDir }),
 
+    /** Fetch every remote branch so the copy picker sees copies made elsewhere
+     *  (#273). Best-effort: `{ refreshed: false }` when offline or unconnected. */
+    refreshCopies: (projectDir: string) =>
+      post<{ refreshed: boolean }>('/api/remote/refresh-copies', { projectDir }),
+
     /** Explicit, user-initiated remote probe (the git ls-remote equivalent). */
     testRemoteAccess: (url: string) =>
       post<RemoteAccessResult>('/api/remote/test-remote-access', { url }),

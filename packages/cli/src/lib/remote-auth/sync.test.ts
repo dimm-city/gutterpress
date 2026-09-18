@@ -27,9 +27,11 @@ import { cloneRepository } from "./clone.ts";
 import {
   isPushRejected,
   isUnrelatedHistories,
+  refreshRemoteCopies,
   syncProject,
   SYNC_SNAPSHOT_MESSAGE,
 } from "./sync.ts";
+import { listLocalBranches } from "../source-provider.ts";
 import { mergeWithMarkers } from "./converge-merge.ts";
 import { MSG_HISTORY_UNREADABLE } from "./sync-messages.ts";
 import type { HostCredential } from "./token-store.ts";
@@ -1634,5 +1636,77 @@ describe("isUnrelatedHistories", () => {
     expect(isUnrelatedHistories(new Error("refusing to merge unrelated histories"))).toBe(true);
     expect(isUnrelatedHistories(new Error("no common commits"))).toBe(true);
     expect(isUnrelatedHistories(new Error("plain failure"))).toBe(false);
+  });
+});
+
+describe("refreshRemoteCopies", () => {
+  test("makes a copy that exists only on the server visible to the copy picker", async () => {
+    const h = await setupClone();
+    try {
+      // A branch pushed from somewhere else — another machine, the web UI, or
+      // a pull request opened on your behalf. The clone has never seen it.
+      const tip = await git.resolveRef({ fs, dir: h.serverDir, ref: "main" });
+      await git.branch({ fs, dir: h.serverDir, ref: "made-elsewhere", object: tip });
+
+      const before = await listLocalBranches(h.projectDir);
+      expect(before!.branches).not.toContain("made-elsewhere");
+
+      const result = await refreshRemoteCopies({ projectDir: h.projectDir });
+      expect(result.refreshed).toBe(true);
+
+      const after = await listLocalBranches(h.projectDir);
+      expect(after!.branches).toContain("made-elsewhere");
+      expect(after!.remoteOnly).toContain("made-elsewhere");
+      // Refreshing must not touch the working tree or move HEAD.
+      expect(after!.current).toBe(before!.current);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("drops a copy that was deleted online, so the picker cannot offer a dead one", async () => {
+    const h = await setupClone();
+    try {
+      const tip = await git.resolveRef({ fs, dir: h.serverDir, ref: "main" });
+      await git.branch({ fs, dir: h.serverDir, ref: "short-lived", object: tip });
+      await refreshRemoteCopies({ projectDir: h.projectDir });
+      expect((await listLocalBranches(h.projectDir))!.branches).toContain("short-lived");
+
+      await git.deleteBranch({ fs, dir: h.serverDir, ref: "short-lived" });
+      await refreshRemoteCopies({ projectDir: h.projectDir });
+      expect((await listLocalBranches(h.projectDir))!.branches).not.toContain("short-lived");
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("reports reason 'auth' for a private repo with no saved connection, so the UI can say the list is short", async () => {
+    const h = await setupClone({ requireAuth: { username: "u", password: "p" } });
+    try {
+      const tip = await git.resolveRef({ fs, dir: h.serverDir, ref: "main" });
+      await git.branch({ fs, dir: h.serverDir, ref: "private-copy", object: tip });
+      // No credential passed: exactly the 401 a private repo returns.
+      const result = await refreshRemoteCopies({ projectDir: h.projectDir });
+      expect(result).toEqual({ refreshed: false, reason: "auth" });
+      // The picker still lists what is on disk rather than erroring out.
+      expect((await listLocalBranches(h.projectDir))!.branches).toContain("main");
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("reports refreshed:false instead of throwing when there is no remote to reach", async () => {
+    const dir = await tempDir("gutterpress-copies-noremote-");
+    try {
+      await createFixtureRepo(dir);
+      // No remote configured at all: the picker must still list local copies.
+      expect(await refreshRemoteCopies({ projectDir: dir })).toEqual({
+        refreshed: false,
+        reason: "no-remote",
+      });
+      expect((await listLocalBranches(dir))!.branches).toContain("main");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

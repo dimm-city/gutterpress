@@ -401,6 +401,7 @@ export type {
 // ── Sync (#15 sync phase, ADR 0006 D5) ───────────────────────────────────────
 export {
   syncProject,
+  refreshRemoteCopies,
   SYNC_SNAPSHOT_MESSAGE,
 } from "../lib/remote-auth/sync.ts";
 
