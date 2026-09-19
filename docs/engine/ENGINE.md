@@ -1,18 +1,22 @@
 # What Chromium actually does with CSS Paged Media
 
 Every row here was **measured**, not read from a spec or a compatibility table,
-and each names the spike that re-measures it on every run. If you are building
-anything on Chromium's print path, this is the ground truth to build against.
+and each names the spike that produced it. If you are building anything on
+Chromium's print path, this is the ground truth to build against.
 
 **Gutterpress is pinned to Chrome 148** (`REQUIRED_MILESTONE` in
 `packages/cli/src/engine/shared/cdp.ts`; launching an older engine throws). Everything below is a
 property of *that engine*, not of "Chromium" in general — §2 is a worked example
 of a milestone bump silently disabling a shim with no error anywhere, which is
-why the version is pinned and why these facts are re-measured rather than
-remembered.
+why the version is pinned.
 
-Measured on Chrome **151.0.7922.75**. Re-run with `bun run spikes`
-(15 spikes, 217 checks, ~19 s).
+Measured once, on Chrome **151.0.7922.75**. The `spike/folio/spikes/` harness
+that took these measurements (`bun run spikes`, 15 spikes, 217 checks) was
+deleted along with the rest of the pre-native-engine scaffolding; no command
+in this repo re-runs them today. Every figure below is a one-time measurement
+against that specific build, not a continuously re-verified one — a future
+milestone bump would need the harness rebuilt before any of this could be
+re-checked.
 
 ---
 
@@ -70,8 +74,8 @@ Two consequences, both load-bearing:
 1. **`CSS.supports` is not a usable feature detector for these.** A shim gated on
    it would switch itself off and silently drop every cross-reference. The only
    honest detector is a render probe: set the property on a probe element and
-   read back `getComputedStyle(el, '::after').content`. `s0` does exactly this,
-   and asserts both halves — that it does not render, *and* that it falsely
+   read back `getComputedStyle(el, '::after').content`. `s0` did exactly this,
+   and asserted both halves — that it does not render, *and* that it falsely
    claims support.
 2. **A surviving declaration wins the cascade.** The author's
    `a.xref::after` (specificity 0,1,1) outranks a generated
@@ -86,8 +90,9 @@ check — output silently went from `"See target (p. 2)"` to `"See target"`. Tha
 is the whole argument for `REQUIRED_MILESTONE`: an engine upgrade can disable a
 shim in either direction, by implementing a feature *or* by half-implementing
 it, and a shim cannot defend itself by asking whether the feature exists. Treat
-a milestone bump as a code change: raise the pin deliberately, re-run the
-spikes, and read every changed measurement as a finding.
+a milestone bump as a code change: raise the pin deliberately, and re-measure
+every fact in this document by hand before shipping — the spike harness that
+produced them no longer exists (see the note at the top of this file).
 
 ---
 

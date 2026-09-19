@@ -1,5 +1,7 @@
 # Recommendation — `@page { background: url() }`
 
+> **Superseded.** The agreed solution shipped: `assemble.ts` emits a per-image `<link rel="preload">` and `asset-inline.ts` content-addresses CSS images. Kept as a record of the decision.
+
 **Status:** the agreed solution for [#152](https://github.com/dimm-city/gutterpress/issues/152).
 Design only; no product code changed. Every edit made while measuring was
 reverted before commit.

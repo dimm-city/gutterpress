@@ -1,11 +1,13 @@
 # Extensions review — plugins, themes, and the extension-authoring surface
 
+> **Superseded.** Extensions shipped in 0.10.10 as a single `gutterpress ext {list,add,remove,enable,disable,search}` command set, with `package.json` as the sole manifest under `extensions/<id>/`, no `apply`/`revert`, and no curated index — npm is the registry. Kept as a record of the decision.
+
 Date: 2026-09-01. Read-only review, no code changed.
 
 **Method.** Read in full: the plugin loader (`markdown/plugins.ts`), plugin
-manager (`plugin-manager.ts`), the npm vendoring pipeline (`plugin-vendor.ts`,
+manager (`plugin-manager.ts`, merged into `extension-manager.ts` in 0.10.10), the npm vendoring pipeline (`plugin-vendor.ts`,
 `npm-plugin-installer.ts`), the plugin author API (`markdown/renderer.ts`), the
-theme manager and importer (`theme-manager.ts`, `theme-import.ts`), project
+theme manager and importer (`theme-manager.ts`, merged into `extension-manager.ts`; `theme-import.ts`, renamed `extension-import.ts`), project
 templates/scaffold/presets, the desktop Look&nbsp;&amp;&nbsp;style and Plugins
 panels, the CLI command surface, user-guide chapters 4–5, and
 `dimm-city-plugin.js` (2,082 lines) as the flagship extension.
@@ -98,7 +100,8 @@ already proves this works by reading `preset:` from the template's own manifest.
 There is `gutterpress plugin add` but no `gutterpress theme` anything — the user
 guide has to say "Today that apply/import flow lives in the desktop app's Theme
 panel." A CI setup, an agent or a terminal user cannot apply or import a theme
-without hand-editing the manifest and copying folders. `theme-manager.ts` is
+without hand-editing the manifest and copying folders. `theme-manager.ts`
+(merged into `extension-manager.ts` in 0.10.10) is
 already shared-lib and platform-clean; the asymmetry is an accident of
 implementation order.
 

@@ -1,5 +1,7 @@
 # Solution proposal — the subtraction reading
 
+> **Superseded.** The agreed solution shipped: `assemble.ts` emits a per-image `<link rel="preload">` and `asset-inline.ts` content-addresses CSS images. Kept as a record of the decision.
+
 **Status:** design proposal, **amended once** — see the amendment immediately
 below, which withdraws a claim this document made and adds a second deletion to
 the recommendation. No product code changed. Every product-code edit made while
