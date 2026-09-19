@@ -2,7 +2,7 @@
 
 **Audience:** teams producing one or more Gutterpress books with Open Design  
 **Goal:** keep publication source, reusable assets, design decisions, and Open Design workflows synchronized through Git with little or no Gutterpress change.  
-**Verified against:** this Gutterpress branch on July 28, 2026, and Open Design
+**Verified against:** Gutterpress 0.10.10 and Open Design
 `main` at [`a7e2059`](https://github.com/nexu-io/open-design/commit/a7e205939d441d29d64e616d6f5ec89c53bb711a).
 
 > **Revision note (2026-07-28).** The shared-asset section was rewritten: the

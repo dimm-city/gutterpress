@@ -284,12 +284,14 @@ describe('Feature name', () => {
 
 ### Dependency Security
 
-The project uses automated tools to monitor and update dependencies securely:
+Dependency security today is a manual process; nothing in CI scans for
+vulnerabilities or opens dependency-update PRs automatically:
 
-1. **Automated Vulnerability Scanning**
-   - **CI Security Audit**: Every push and pull request runs `bun audit` to check for known vulnerabilities
-   - **Dependabot**: Automatically creates PRs for dependency updates weekly
-   - **Lock File Integrity**: CI verifies `bun.lock` hasn't been tampered with
+1. **Automated Vulnerability Scanning** *(not yet automated)*
+   - No CI job runs `bun audit` — it must be run locally (see below)
+   - No `.github/dependabot.yml` — there are no automated dependency-update PRs
+   - Nothing in CI verifies `bun.lock` integrity beyond `--frozen-lockfile` in
+     the release and Pages workflows (see Lock File Management below)
 
 2. **Manual Security Audits**
    ```bash
@@ -303,15 +305,15 @@ The project uses automated tools to monitor and update dependencies securely:
    bun update [package-name]
    ```
 
-3. **Dependency Update Process**
-   - **Automated Updates**: Dependabot creates PRs every Monday at 9:00 AM
-   - **Review Process**:
+3. **Dependency Update Process** *(not yet automated)*
+   - No Dependabot (or equivalent) configuration exists — dependency updates
+     are proposed manually, not by a scheduled bot
+   - **Review Process** (for any dependency-update PR):
      - Check PR description for breaking changes
      - Review CHANGELOG of updated packages
      - Run full test suite locally
      - Merge if tests pass and no breaking changes
    - **Security Updates**: High-priority, merge as soon as verified
-   - **Grouped Updates**: Minor/patch updates grouped to reduce PR noise
 
 4. **Adding New Dependencies**
 
@@ -336,7 +338,10 @@ The project uses automated tools to monitor and update dependencies securely:
 5. **Lock File Management**
    - **Always commit** `bun.lock` with dependency changes
    - **Never manually edit** the lock file
-   - **CI enforces** `--frozen-lockfile` to prevent inconsistencies
+   - **`--frozen-lockfile`** is enforced in the release (`release.yml`) and
+     GitHub Pages (`pages.yml`) workflows, which fail if `bun.lock` is out of
+     sync with `package.json`; the main CI workflow (`ci.yml`) currently
+     installs with plain `bun install`
    - **Resolve conflicts** by running `bun install` after merging
 
 6. **Security Update Priority**
@@ -357,12 +362,14 @@ The project uses automated tools to monitor and update dependencies securely:
 
 ### GitHub Actions Security
 
-The CI/CD pipeline includes security measures:
+The CI/CD pipeline's security measures today:
 
-- **Frozen lockfile**: Ensures consistent dependencies across environments
-- **Automated audits**: Runs on every commit to catch new vulnerabilities
+- **Frozen lockfile**: enforced in the release (`release.yml`) and Pages
+  (`pages.yml`) workflows to keep dependencies consistent; not yet enforced
+  in the main CI (`ci.yml`) workflow
 - **Minimal permissions**: GitHub Actions use least-privilege principle
-- **Audit logging**: All security audit results logged in CI output
+- **Dependency audits** *(not yet automated)*: no workflow runs `bun audit`
+  or logs audit results — run it locally (see Manual Security Audits above)
 
 ## Submitting Changes
 
