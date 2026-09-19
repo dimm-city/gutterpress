@@ -12,11 +12,11 @@ Download for your platform from the [latest release](https://github.com/dimm-cit
 
 | Platform | Binary |
 |---|---|
-| Linux x64 | `gutterpress-linux-x64` |
-| Linux ARM64 | `gutterpress-linux-arm64` |
-| macOS Apple Silicon | `gutterpress-macos-arm64` |
-| macOS Intel | `gutterpress-macos-x64` |
-| Windows x64 | `gutterpress-windows-x64.exe` |
+| Linux x64 | `gutterpress-cli-linux-x64` |
+| Linux ARM64 | `gutterpress-cli-linux-arm64` |
+| macOS Apple Silicon | `gutterpress-cli-macos-arm64` |
+| macOS Intel | `gutterpress-cli-macos-x64` |
+| Windows x64 | `gutterpress-cli-windows-x64.exe` |
 
 Move the binary somewhere on your `PATH`, mark it executable (`chmod +x`), and you're done.
 
@@ -546,7 +546,7 @@ The standalone binary is the easiest way — drop it in a GitHub Actions step an
 - name: Build PDF
   run: |
     curl -L -o gutterpress \
-      https://github.com/dimm-city/gutterpress/releases/latest/download/gutterpress-linux-x64
+      https://github.com/dimm-city/gutterpress/releases/latest/download/gutterpress-cli-linux-x64
     chmod +x gutterpress
     sudo apt-get install -y google-chrome-stable ghostscript
     ./gutterpress build ./my-book --out dist/my-book.pdf

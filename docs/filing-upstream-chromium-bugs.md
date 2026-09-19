@@ -2,12 +2,13 @@
 
 Concrete steps for [`known-limitations.md`](./known-limitations.md)'s step 3 —
 *"a maintainer with a crbug.com account files it against Chromium."* Three
-reports are ready to file and have never been filed.
+reports were drafted and have never been filed. **#152 no longer reproduces
+on Chrome 152+ (see its row below) — do not file it.**
 
 Each needs a Google account. `crbug.com` now redirects to the Chromium Issue
 Tracker at **<https://issues.chromium.org>**.
 
-## The three, ready to go
+## The two still worth filing
 
 Every one already has a verified minimal repro, a known-good control, and
 measured pixel evidence in its GitHub issue — copy the body across rather than
@@ -17,7 +18,7 @@ rewriting it.
 |---|---|---|
 | [#149](https://github.com/dimm-city/gutterpress/issues/149) | Gradient in `@page { background }` paints nothing in print (linear, radial and repeating alike) | A solid colour on the same `@page` paints the full sheet (152.866 vs 0.000). Cite the solid contrast, **not** `url()` — that one is #152. |
 | [#150](https://github.com/dimm-city/gutterpress/issues/150) | Margin boxes silently drop stacking-context and outside-the-box properties — `box-shadow`, `transform`, `opacity`, `outline`, `filter`, `mix-blend-mode` | `text-shadow` (0.1164) is honoured on the same box while `box-shadow` (0.0000) is not — two shadows, split by whether it paints outside the box |
-| [#152](https://github.com/dimm-city/gutterpress/issues/152) | `@page { background: url() }` not painted unless the image is referenced elsewhere | Adding a `<link rel=preload>` for the same URL makes it paint; the image is fetched either way |
+| [#152](https://github.com/dimm-city/gutterpress/issues/152) | `@page { background: url() }` not painted unless the image is referenced elsewhere | Adding a `<link rel=preload>` for the same URL makes it paint; the image is fetched either way. **No longer reproduces on Chrome 152+ (measured 2026-09-03) — do not file this one.** |
 
 The control is the important half. It is what makes each of these a
 Chromium inconsistency rather than "paged media is unsupported," and it is the
@@ -25,8 +26,9 @@ first thing triage will look for.
 
 ## The script
 
-`node tools/file-upstream-chromium-bugs.mjs` fills the wizard for all three
-(or pass ids: `… 150 152`). It opens Chrome with a persistent profile so you
+`node tools/file-upstream-chromium-bugs.mjs` fills the wizard. Pass only the
+ids that still reproduce — `… 149 150` — since #152 is fixed upstream in
+Chrome 152 and should not be filed. It opens Chrome with a persistent profile so you
 sign in to Google once, then for each report selects the role and category,
 ticks the search acknowledgement, and types the summary, repro and description
 into the right fields.

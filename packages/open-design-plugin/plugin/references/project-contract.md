@@ -81,7 +81,7 @@ dist/**              # dist/<title-slug>/ — the whole generated output bundle
 ```
 
 `book.html` contains the rendered Markdown, inlined stylesheets, and embedded
-fonts, but a complete HTML build may also contain copied large images,
+fonts, but a complete HTML build may also contain copied images,
 navigation scripts, `index.html`, a build fingerprint, and the engine's viewer
 bundle. Treat the output directory as one bundle. None of it is source;
 saving a serialized preview DOM back over any source file destroys the authoring

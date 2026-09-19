@@ -2,7 +2,7 @@
 
 @section .lede
 
-Gutterpress's validation system checks your project for print compliance at two points in the pipeline — before the PDF build and after. This chapter covers the 34 built-in checks, CLI usage, and production workflow recommendations.
+Gutterpress's validation system checks your project for print compliance at two points in the pipeline — before the PDF build and after. This chapter covers the 36 built-in checks, CLI usage, and production workflow recommendations.
 
 @end-section
 
@@ -143,7 +143,7 @@ gutterpress validate --pdf dist/my-book/my-book-pdf.pdf --format json
 | `--only` | Run only these check IDs (comma-separated, supports `*`) |
 | `--skip` | Skip these check IDs |
 | `--format` | Output format: `text` (default) or `json` |
-| `--phase` | Override phase: `pre-build` or `post-build` |
+| `--phase` | Override phase: `pre` \| `post` \| `all` \| `pre-build` \| `post-build` (default: `all`) |
 | `--target` | Publish targets to validate against (comma-separated: `dtrpg`, `itch`), overriding the manifest's `targets:` |
 
 @end-section
@@ -164,7 +164,7 @@ Examples: page size matches manifest, fonts are embedded, metadata is present, P
 
 ### Asset checks (pre-build)
 
-Run on image and font files in the `assets` directory.
+Run on image and font files anywhere in your project folder — there's no `assets` convention to follow (see Chapter 3) — plus the directories any shared stylesheets pull assets from.
 
 Examples: image resolution below 300 DPI, unsupported color profiles, missing font files.
 
@@ -201,7 +201,8 @@ validate:
 # keys are silently ignored, so a threshold nested under `validate:` has no
 # effect at all.
 ink:
-  maxTac: 240        # max total area coverage %, default 240
+  maxTac: 240        # max total area coverage %; the dtrpg preset's default —
+                     # book (this guide's preset) defaults to 400 instead
   tacTolerance: 0.5  # allowed overage before a page is flagged, default 0.5
 ```
 

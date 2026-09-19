@@ -2,7 +2,7 @@
 
 > **Status: draft revision** of the contract originally proposed in issue
 > [#40](https://github.com/dimm-city/gutterpress/issues/40). Baselined against
-> desktop **0.10.2-alpha.3** (2026-08-26).
+> desktop **0.10.10** (2026-08-26).
 >
 > This document is the normative home of the UX contract. Issue #40 remains
 > the tracking issue and links here. **Deviations are proposed as PRs against
