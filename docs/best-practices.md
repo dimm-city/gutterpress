@@ -298,7 +298,8 @@ path relative to the CSS file that loads it.
 
 **Solutions:**
 - Check for extra `@page-break` directives
-- Review H1 auto-rules (force right page)
+- Review any `break-before: recto` rules on chapter H1s (there is no built-in
+  rule forcing right-hand pages — this is author CSS the engine honours)
 - Verify `@spread` directives
 - Check for empty markdown files
 
@@ -441,8 +442,6 @@ Make your documents accessible:
 
 ## Resources
 
-- **Prince XML Docs:** https://www.princexml.com/doc/
-- **Vivliostyle Docs:** https://docs.vivliostyle.org/
 - **Markdown Guide:** https://www.markdownguide.org/
 - **Print Design:** Research book design principles
 - **CSS Paged Media:** https://www.w3.org/TR/css-page-3/

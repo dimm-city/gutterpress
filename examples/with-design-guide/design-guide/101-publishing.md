@@ -77,7 +77,9 @@ gutterpress build field-guide --format pdfx --pdfx-flavor x1a --icc ./profiles/C
 
 There is no separate "full pipeline" command — `gutterpress build` already runs
 the validated pipeline on its own:
-`lint → validate:pre-build → convert → assets → build → validate:post-build`.
+`validate:pre-build → convert → assets → build → validate:post-build`.
+CSS print-safety (`--skip-lint`) runs as the `source.stylelint` check inside
+`validate:pre-build` — there is no separate lint phase or gate.
 Note that the final `validate:post-build` phase runs for `--format pdfx` ONLY;
 a plain `--format pdf` build stops after the build step
 (see [User Guide, Chapter 6 — Validation](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/06-validation.md)).

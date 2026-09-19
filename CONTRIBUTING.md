@@ -15,7 +15,7 @@ Thank you for your interest in contributing to Gutterpress! This document provid
 
 ### Prerequisites
 
-- **Bun** v1.3.1 or later - [Install Bun](https://bun.sh)
+- **Bun** v1.3.14 or later - [Install Bun](https://bun.sh)
 - **Git** - Version control
 
 ### Initial Setup
@@ -57,7 +57,7 @@ Root-level scripts delegate to the relevant workspace package:
 bun run cli -- preview ./examples/my-book
 bun run cli -- build ./examples/my-book
 
-# Run all tests (CLI package)
+# Run all tests (all packages)
 bun run test
 
 # Type-check all packages
@@ -99,9 +99,11 @@ gutterpress/                     # Workspace root (private)
 │   │   │   ├── checks/          # Validation check system
 │   │   │   └── preview/         # Headless preview server (node:http + ws + chokidar)
 │   │   └── tests/               # Bun test suite
-│   └── desktop/                 # @dimm-city/gutterpress-desktop — Electron + SvelteKit desktop app
-│       ├── electron/            # Electron main process
-│       └── src/                 # SvelteKit UI + server routes
+│   ├── desktop/                 # @dimm-city/gutterpress-desktop — Electron + SvelteKit desktop app
+│   │   ├── electron/            # Electron main process
+│   │   └── src/                 # SvelteKit UI + server routes
+│   └── open-design-plugin/      # @dimm-city/gutterpress-open-design-plugin — Open Design plugin (design existing books)
+│       └── plugin/              # Installable plugin root (SKILL.md, open-design.json, references)
 ├── examples/                    # Example projects
 ├── docs/                        # Documentation
 └── package.json                 # Workspace root (private Bun workspace)

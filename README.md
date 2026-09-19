@@ -15,7 +15,7 @@ Gutterpress is a desktop application (with a CLI for power users) that turns a f
 | **macOS Intel** | `Gutterpress-<version>-x64.dmg` | Open the disk image, then drag the app to Applications. |
 | **Linux** | `Gutterpress-<version>.AppImage` | `chmod +x` the file, then double-click or run it. To get it in your KDE/GNOME application menu, open **Settings → App → Desktop integration → Add to application menu** — see [Desktop integration](./docs/desktop-shortcut.md#linux-appimage-application-menu-integration-desktop-app). |
 
-The desktop app is fully self-contained — no Bun, Node, Chromium, or other runtime to install. **Save PDF** renders through Electron's own bundled Chromium (`webContents.printToPDF`), so there's nothing extra to set up. (The separate `gutterpress` CLI, for scripting and CI, does need a Chromium-based browser on the machine it runs on — see [User Guide: Chapter 7 — System Setup](./examples/gutterpress-user-guide/07-system-setup.md) if you're using that instead.)
+The desktop app is fully self-contained — no Bun, Node, Chromium, or other runtime to install. PDF export renders through Electron's own bundled Chromium (`webContents.printToPDF`), so there's nothing extra to set up. (The separate `gutterpress` CLI, for scripting and CI, does need a Chromium-based browser on the machine it runs on — see [User Guide: Chapter 7 — System Setup](./examples/gutterpress-user-guide/07-system-setup.md) if you're using that instead.)
 
 The downloads are currently unsigned. Each new release includes SHA-256
 checksums plus macOS Gatekeeper and Windows SmartScreen instructions. See the
@@ -25,10 +25,11 @@ guidance.
 
 ## Your first book
 
-**Prefer the command line?** `gutterpress new "My Book"` scaffolds a project
-folder with a manifest, a starter chapter, and a stylesheet in one command —
-no hand-written `manifest.yaml` required (see the [CLI README](./packages/cli/README.md)).
-Otherwise, start from the desktop app:
+**Prefer the command line?** `gutterpress new "My Book" --preset dtrpg`
+scaffolds a project folder with a manifest, a starter chapter, and a
+stylesheet in one command — no hand-written `manifest.yaml` required (see the
+[CLI README](./packages/cli/README.md)). `--preset` is required (`dtrpg`,
+`book`, or `custom`). Otherwise, start from the desktop app:
 
 1. **Make a folder** anywhere on your computer with a couple of markdown files in it:
 
@@ -38,9 +39,9 @@ Otherwise, start from the desktop app:
      └─ chapter-02.md
    ```
 
-2. **Launch the desktop app**, click **Open Folder**, pick your `my-book/` folder. You'll see a paginated preview update live as you edit the files.
+2. **Launch the desktop app**, click **Open a folder**, pick your `my-book/` folder. You'll see a paginated preview update live as you edit the files.
 
-3. **Click Save PDF**. Done.
+3. **Click Export**, choose **PDF**, then **Export PDF…**. Done.
 
 For richer projects (cover art, fonts, a multi-chapter book with running headers, page numbers, etc), copy one of the example projects in [`examples/`](./examples/) as a starting point — `with-design-guide` is the most complete reference.
 
@@ -49,7 +50,7 @@ For richer projects (cover art, fonts, a multi-chapter book with running headers
 | If you want to… | Start here |
 |---|---|
 | **Learn all Gutterpress features** | [Gutterpress User Guide](./examples/gutterpress-user-guide/) — comprehensive guide covering all core features |
-| Understand markdown extensions (page breaks, columns, callouts) | [User Guide: Chapter 2 — Writing Your Content](./examples/gutterpress-user-guide/02-writing-content.md) |
+| Understand markdown extensions (page breaks, columns) | [User Guide: Chapter 2 — Writing Your Content](./examples/gutterpress-user-guide/02-writing-content.md) |
 | Style your book with CSS (fonts, colors, page size, margins) | [User Guide: Chapter 4 — Styling & Theming](./examples/gutterpress-user-guide/04-styling-theming.md) |
 | **Structure your CSS like a pro** — the recommended pattern for variant assignment | [Contextual Cascade Principle](./docs/contextual-cascade-principle.md) |
 | **Use the CLI** for scripting, CI builds, or batch work | [CLI README](./packages/cli/README.md) |
@@ -68,7 +69,7 @@ See [docs/](./docs/) for technical architecture and developer references.
 
 - **Live preview** with paginated layout — your book renders the way it'll print, while you edit
 - **PDF export** — directly from the app, or via the `gutterpress` CLI
-- **Print-ready output** — PDF/X (CMYK + ICC profile) for offset printers and PDF/A
+- **Print-ready output** — PDF/X (CMYK + ICC profile) for offset printers
 - **Custom CSS** for everything: typography, page size, margins, columns, running headers/footers, page numbers, bleed
 - **Plugin system** for custom markdown — use any of hundreds of existing `markdown-it-*` plugins, or write your own
 - **Validation** — pre/post-build checks for image DPI, color space, font embedding, structural PDF correctness
@@ -87,8 +88,9 @@ Browse the [`examples/`](./examples/) directory for real projects you can copy:
 ```
 gutterpress/
 ├─ packages/
-│  ├─ cli/        — gutterpress              — library + CLI + standalone binary (markdown, preview, build, lint)
-│  └─ desktop/    — @dimm-city/gutterpress-desktop — Electron desktop app
+│  ├─ cli/                — gutterpress — library + CLI + standalone binary (markdown, preview, build, lint)
+│  ├─ desktop/            — @dimm-city/gutterpress-desktop — Electron desktop app
+│  └─ open-design-plugin/ — @dimm-city/gutterpress-open-design-plugin — Open Design integration plugin
 ├─ examples/      — Sample projects
 └─ docs/          — Authoring, architecture, system requirements
 ```

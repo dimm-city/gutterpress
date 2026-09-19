@@ -72,7 +72,8 @@ design-guide/
 ├── 03-components.md
 ├── 04-page-templates.md
 ├── 05-layout.md
-└── 06-markdown-reference.md
+├── 06-markdown-reference.md
+└── 101-publishing.md
 ```
 
 ## Download

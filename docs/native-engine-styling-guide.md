@@ -50,15 +50,18 @@ something makes one. Almost every gotcha below is a consequence of that.
   chrome-free pages. Keep an empty background fill in the suppressed box so a
   patterned margin band stays continuous.
 
-- **Large raster images in `@page { background }` are silently dropped.**
-  Measured: a 2550×3300 texture never paints (flat colour, no error, every
-  page) while a 450×582 downscale of the same image paints correctly —
-  bounded between 450×582 (ok) and 638×825 (dropped). Resample background
-  tiles to their display resolution (450px at a 1.5in tile is exactly
-  300dpi). Gradients in `@page { background }` paint nothing at all. Both
-  are tracked: dimm-city/gutterpress#152, #149. Verify any `@page`
-  background fixture with a PRODUCTION-SIZED asset — a 16×16 test tile
-  passes and proves nothing.
+- **An `@page { background }` image is dropped unless something else in the
+  document references the same URL — it is not a size threshold.** An
+  earlier version of this note blamed image dimensions (450×582 painting,
+  638×825 and up dropping) and told you to resample tiles and verify at
+  production size; both halves were wrong — the trigger is being the SOLE
+  reference, regardless of size. **[handled]** — the build stages every
+  image your project stylesheets reference and declares it with a `<link
+  rel="preload" as="image">` in the built `<head>`, which is the second
+  reference Chromium needs, so the ordinary case needs no workaround from
+  you. Tracked: dimm-city/gutterpress#152. Gradients in `@page { background
+  }` still paint nothing at all, a separate and still-open bug:
+  dimm-city/gutterpress#149.
 
 ## 2. The whole-document shrink-to-fit trap
 
@@ -332,6 +335,8 @@ spell-check-style source findings; from the CLI they print as warnings.
 | Empty column | A balanced multi-column block that runs past one page, leaving dead columns (§5). |
 | Taller than the page | Content that print splits but the screen preview clips — the two will not agree there (§4). |
 | Image resolution | Below the DPI floor; may look soft in print. |
+| Margin box couldn't relocate | A `.gp-flush`-freed margin box's `content` isn't a value the build can re-home; it will not print on that page — simplify the content or drop `.gp-flush` there. |
+| Page background not preloaded | An `@page` background image the build can't stage and preload — remote, reached from CSS outside your project stylesheets, or also used as an `<img src>` — so Chromium prints the background colour alone (§1). |
 
 If you add a check to the engine, give it a code in `BUILD_DIAGNOSTIC_CODES`
 and a plain-language label in the desktop's `SOURCE_LABELS` — a test fails
