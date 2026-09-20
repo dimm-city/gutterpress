@@ -12,6 +12,14 @@ downloaded, hash-checked, installed, and executed the published CLI binaries.
 It can be manually re-run for an existing stable release without republishing
 that release.
 
+> **Known gap (as of 0.10.10).** The committed metadata below is stale:
+> `Formula/gutterpress.rb`, `bucket/gutterpress.json`,
+> `packaging/package-manager-assets.json`, and the `packaging/winget/`
+> manifests are all still at 0.8.3, eleven stable releases behind. Either the
+> `release.yml` dispatch of `package-managers.yml` is failing silently or its
+> commits are not landing. Do not assume this automation is working; verify a
+> run actually completed and its commit landed before relying on it.
+
 Local verification is dependency-free:
 
 ```sh

@@ -1,5 +1,7 @@
 # CSS architecture review — gutterpress core vs dc-design-guide vs field guide
 
+> **Superseded.** The C3 finding's recommended fix shipped — `assemble.ts` now emits `@layer gp.marker, gp.vocab;` — so the stack is no longer load-order archaeology. Kept as a record of the decision.
+
 Date: 2026-09-01. Read-only review, no code changed.
 
 **Method.** Read in full: `gutterpress-css.ts` (GUTTERPRESS_CSS), `markers.js`
