@@ -95,7 +95,9 @@ gutterpress publish --provider itch
 @section .callout-tip
 
 **Tip:** DriveThruRPG has strict print requirements. Run `gutterpress validate
---target dtrpg` before uploading — it checks bleed, ink density and more.
+--pdf dist/my-book/my-book-pdf.pdf --target dtrpg` before uploading — it checks
+bleed, ink density and more. Without `--pdf`, there's no built PDF to inspect,
+so those checks silently pass without measuring anything.
 
 @end-section
 

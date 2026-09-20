@@ -231,6 +231,15 @@ Vendor preset supplying the defaults for every other section — page geometry, 
 preset: book
 ```
 
+#### `targets` (array of strings)
+Publish targets to record and validate against (ADR 0008): `gutterpress validate`/`gutterpress preflight` check the built PDF against each target's requirements, one target at a time, so one book can target several destinations. `--target`/`--targets` on the CLI override this at invocation time. One of `dtrpg`, `itch`. Omitting it uses the preset's default (`dtrpg` -> `["dtrpg"]`; `book`/`custom` -> `[]`).
+
+```yaml
+targets:
+  - dtrpg
+  - itch
+```
+
 #### `styles` (array of strings)
 CSS files to link into the rendered book, applied in order, relative to the manifest directory. If omitted, Gutterpress discovers one: `styles/book.css` (what `gutterpress new` scaffolds), then four **legacy** names kept only so pre-existing projects keep working — `css/print.css`, `css/index.css`, `css/style.css`, `css/main.css` — then the first `.css` it finds, then none. New projects should set `styles:` explicitly or use `styles/book.css`; the `css/*.css` fallback names are not a recommended convention.
 
@@ -316,8 +325,8 @@ PDF/X conversion settings, used by `gutterpress build --format pdfx`.
 - `tacTolerance` (number) - Percentage of sampled pixels allowed to exceed `maxTac`. Default `0.5`.
 
 #### `lint` (object)
-- `enabled` (boolean) - Default `true`.
-- `configPath` (string or `null`) - markdownlint config path. `null` uses the built-in defaults.
+- `enabled` (boolean) - Default `true`. Despite the name, this gates the `source.stylelint` CSS print-safety check, not Markdown linting — `build-preflight.ts` sets `skipStylelint` when this is `false` (or `--skip-lint` is passed).
+- `configPath` (string or `null`) - Read by no production code. Markdownlint's own config path is `validate.source.markdownlint`, below (not this object's `source`); with no config found, `source.markdownlint` reports nothing.
 
 #### `validate` (object)
 Preflight configuration.
@@ -342,7 +351,7 @@ validate:
 ```
 
 #### `publish` (object)
-Non-secret publish settings per provider (`itch`, `drivethrurpg`, `kdp`, `azure-swa`, `shopify`), keyed by the same id `gutterpress publish --provider <id>` takes. API keys and tokens are **never** stored here — they live in the host credential store. See [publishing.md](./publishing.md).
+Non-secret publish settings per provider (`itch`, `drivethrurpg`, `kdp`, `azure-swa`, `shopify`, `gdrive`), keyed by the same id `gutterpress publish --provider <id>` takes. API keys and tokens are **never** stored here — they live in the host credential store. See [publishing.md](./publishing.md).
 
 ---
 

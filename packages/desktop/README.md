@@ -14,8 +14,10 @@ Electron main process (out/main/main.js — ESM, built by electron-vite)
   │                            listens on 127.0.0.1:<random> (a local HTTP server)
   ├─ protocol.handle("app", ...) — proxies every app:// request to that
   │                            local server via fetch (so +server.ts routes run)
-  ├─ ipcMain.handle("api:preview", ...)   — wraps lib.startPreviewServer
-  ├─ ipcMain.handle("api:build", ...)     — wraps lib.runBuild for Save PDF
+  ├─ secureHandle("api:preview", ...)  — wraps lib.startPreviewServer
+  ├─ secureHandle("api:build", ...)    — delegates to export/controller.ts
+  │                            (secureHandle wraps ipcMain.handle and rejects
+  │                            any invocation from an untrusted sender frame)
   └─ webContents.send(...) push channels  — build progress, folder-changed,
                                             sync status, updater events
 
@@ -54,7 +56,7 @@ removed:
 ### Dev (this package)
 
 - **Bun** for workspace installation, tests, and the shared library build
-- **Node 20+** for the Node-based build/check scripts invoked by package scripts
+- **Node 22+** for the Node-based build/check scripts invoked by package scripts
 
 ### End users (packaged desktop)
 
@@ -223,6 +225,11 @@ notes and [installation guide](../../docs/installing.md) provide Gatekeeper
 instructions. For unsigned local testing, set `CSC_IDENTITY_AUTO_DISCOVERY=false`.
 
 ## Project structure
+
+An abridged selection — `electron/` and `src/lib/` each hold more files than
+shown here (e.g. `electron/export/`, `electron/preview/`,
+`electron/server-bridge/`, `electron/updater.ts`, `electron/recovery.ts`,
+`electron/auto-sync/`, and dozens more `src/lib/components/*.svelte` files).
 
 ```
 packages/desktop/

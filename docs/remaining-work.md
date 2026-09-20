@@ -8,7 +8,7 @@ tracks ratified engine/tooling decisions, open verification/cleanup/
 engineering work, and known upstream Chromium gaps. Spans two repos:
 `gutterpress` (this one) and `dc-op-manual` (DC design guide + field guide).
 
-Last updated 2026-08-26.
+Last updated 2026-09-19.
 
 ---
 
@@ -138,7 +138,10 @@ Labelled `upstream` and written up for authors in
 [`docs/known-limitations.md`](./known-limitations.md). All three fail
 **silently**; each entry carries a workaround and a removal trigger. No shims —
 "Chrome wins once it ships." Re-verified empirically 2026-08-24 by
-differential testing against Chrome 151.0.7922.75; all three remain open.
+differential testing against Chrome 151.0.7922.75; #149 and #150 remain open.
+#152 is fixed upstream (measured 2026-09-03 against Chrome 152) — the entry
+stays only because the engine's Chromium floor (`REQUIRED_MILESTONE`) is
+still 148.
 
 - [ ] **#149** a gradient in `@page { background }` paints nothing — linear,
       radial and repeating alike; a solid colour in the same place paints the
@@ -146,15 +149,19 @@ differential testing against Chrome 151.0.7922.75; all three remain open.
 - [ ] **#150** margin boxes drop every stacking-context / outside-the-box
       property — `box-shadow`, `transform`, `opacity`, `outline`, `filter`,
       `mix-blend-mode`; `text-shadow` and `border-radius` on the same box paint
-- [ ] **#152** `@page { background: url() }` is dropped for a **fetched URL**
-      that no unconsumed `<link rel="preload">` names; a `data:` URI paints.
-      Not image dimensions — `asset-inline.ts` used to inline images ≤512 KB,
-      so assets under that threshold painted and larger ones did not, which is
-      what the old "450×582 paints / 638×825 dropped" bound was really
-      measuring. The build now preloads every staged CSS image; the canary
-      `page-background-chromium-bug.canary.test.ts` is the removal trigger
-- [ ] A maintainer with a Google account should file all three against
-      Chromium; our issues stay open as the citable reference and re-test
+- [x] **#152** `@page { background: url() }` used to be dropped for a
+      **fetched URL** that no unconsumed `<link rel="preload">` names; a
+      `data:` URI paints. Not image dimensions — `asset-inline.ts` used to
+      inline images ≤512 KB, so assets under that threshold painted and
+      larger ones did not, which is what the old "450×582 paints / 638×825
+      dropped" bound was really measuring. **Fixed upstream in Chrome 152.**
+      The build already preloads every staged CSS image as the workaround
+      for older Chromium; the canary
+      `page-background-chromium-bug.canary.test.ts` goes red — the removal
+      trigger — once `REQUIRED_MILESTONE` reaches 152
+- [ ] A maintainer with a Google account should file the two that still
+      reproduce (#149, #150) against Chromium — #152 is fixed upstream in
+      Chrome 152 and must not be filed; our issues stay open as the citable reference and re-test
       trigger. Still open as of 2026-08-26: `tools/file-upstream-chromium-bugs.mjs`
       (added 2026-08-24) fills the tracker wizard, but the human sign-in/
       reCAPTCHA/submit step hasn't run yet — no crbug links exist in

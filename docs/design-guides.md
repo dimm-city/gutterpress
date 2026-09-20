@@ -99,8 +99,9 @@ with these sections and add to them as the manuscript grows:
 
 - **Typography** — heading scale, body face, line height, inline elements
   (bold/italic/code), block quotes, lists.
-- **Callouts and asides** — every `@callout`, `@sidebar`, and `> [!TYPE]`
-  alert variant the book uses, with one realistic example each.
+- **Callouts and asides** — every `@section .callout-*` variant,
+  `@section .sidebar`, and `> [!TYPE]` alert variant the book uses, with
+  one realistic example each.
 - **Page templates** — `@page chapter`, `@spread`, `@end-section`, plus a
   representative full body page so leading and hyphenation are visible at
   scale.
