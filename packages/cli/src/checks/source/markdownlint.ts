@@ -62,8 +62,11 @@ interface MarkdownlintError {
   errorRange?: [number, number] | null;
 }
 
+/** The registered id, shared with `validate --fix`'s selector gate (#275). */
+export const MARKDOWNLINT_CHECK_ID = "source.markdownlint";
+
 const check: Check = {
-  id: "source.markdownlint",
+  id: MARKDOWNLINT_CHECK_ID,
   name: "Markdownlint",
   description:
     "Runs markdownlint with project config to validate Markdown files",

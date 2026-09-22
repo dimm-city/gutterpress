@@ -318,6 +318,12 @@ uses the same `.markdownlint.*` config the `source.markdownlint` check uses,
 and does nothing when no config is found. A file with uncommitted changes is
 rewritten too — you get a notice, not a refusal.
 
+It writes only when `source.markdownlint` is actually part of the run, so
+`--skip source.markdownlint`, an `--only` that names other checks, or a
+`--phase`/`--category` that filters the source checks out all leave your
+markdown untouched — `--fix` can never rewrite a file for a check the report
+does not mention.
+
 ### `gutterpress audit`
 
 Run asset-only validation checks (image DPI/format/color-space, print-readiness) without the rest of the validation pipeline.

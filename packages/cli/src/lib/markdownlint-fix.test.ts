@@ -84,6 +84,34 @@ describe("validate --fix applies markdownlint's auto-fixes", () => {
     }
   });
 
+  test("writes nothing when --skip excludes the check", async () => {
+    const dir = await makeProject();
+    const warnings = captureWarnings();
+    try {
+      await executeValidation({ input: dir, skip: "source.markdownlint", fix: true });
+
+      // The whole point of the gate: --fix must not rewrite files belonging to
+      // a check this run excluded, or the write happens with nothing in the
+      // report to explain it.
+      expect(await readFile(path.join(dir, "chapter-01.md"), "utf-8")).toBe(UNFIXED);
+      expect(warnings.join("\n")).toContain("is not part of this run");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("writes nothing when --phase excludes the source checks", async () => {
+    const dir = await makeProject();
+    captureWarnings();
+    try {
+      await executeValidation({ input: dir, phase: "post-build", fix: true });
+
+      expect(await readFile(path.join(dir, "chapter-01.md"), "utf-8")).toBe(UNFIXED);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("prints every file it rewrote", async () => {
     const dir = await makeProject();
     const warnings = captureWarnings();
