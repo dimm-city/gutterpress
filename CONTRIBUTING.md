@@ -293,10 +293,10 @@ dependency-update PRs automatically:
    - `ci.yml`'s `security-audit` job runs `bun audit` on every push and pull
      request, with `continue-on-error: true` — it is deliberately
      NON-BLOCKING. As of 0.10.10 the baseline is 35 known advisories (23
-     high, 10 moderate, 2 low), almost all transitive through
-     `electron-builder`, and not fixable from this repo without a cross-major
-     Electron bump; failing the build on them would wall off every PR for
-     something no PR author can fix. The job exists so the number is in every
+     high, 10 moderate, 2 low), of which 24 are transitive through
+     `electron-builder` and not fixable from this repo without a major
+     `electron-builder` bump; failing the build on them would wall off every
+     PR for something no PR author can fix. The job exists so the number is in every
      run's log and a NEW advisory is noticed instead of arriving silently.
      Issue #287 tracks burning the baseline down and flipping
      `continue-on-error` off.

@@ -12,9 +12,9 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **A non-blocking `bun audit` in CI.** `ci.yml`'s new `security-audit` job
   runs `bun audit` on every push and pull request with
   `continue-on-error: true`. It is a visibility surface, not a gate: the
-  current baseline is 35 advisories (23 high, 10 moderate, 2 low), almost all
+  current baseline is 35 advisories (23 high, 10 moderate, 2 low), 24 of them
   transitive through `electron-builder`, which no PR author can fix from this
-  repo without a cross-major Electron bump. The point is that the number
+  repo without a major `electron-builder` bump. The point is that the number
   appears in every run's log, so a new advisory is noticed. #287 tracks
   burning the baseline down and flipping `continue-on-error` off. (#286,
   #281)
