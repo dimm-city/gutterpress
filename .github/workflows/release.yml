@@ -52,9 +52,13 @@ jobs:
       #
       # BUMPING IT: pick a version from Chrome for Testing's
       # known-good-versions-with-downloads.json; it must be >= the engine floor
-      # (REQUIRED_MILESTONE, currently 148). Then re-run `bun run spikes` and
-      # treat every changed measurement as a finding — the same bar cdp.ts sets
-      # for moving the floor itself. release.yml is workflow_dispatch-only, so
+      # (REQUIRED_MILESTONE, currently 148). Then re-measure and treat every
+      # changed measurement as a finding — the same bar cdp.ts sets for moving
+      # the floor itself. The spike harness that took those measurements
+      # (`bun run spikes`) was deleted with the pre-native-engine scaffolding
+      # and nothing in this repo re-runs it, so re-measuring means rebuilding
+      # it first (docs/engine/ENGINE.md, provenance note at the top).
+      # release.yml is workflow_dispatch-only, so
       # no PR run will catch a bad bump for you; dispatch a prerelease first.
       # Ghostscript rasterises PDFs for the pixel-diff suites, INCLUDING
       # page-background-chromium-bug.canary.test.ts — the expiry trigger that
