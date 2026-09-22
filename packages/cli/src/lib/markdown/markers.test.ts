@@ -282,6 +282,15 @@ describe("marker grammar (parsed via rendered output + warnings)", () => {
       expect(html).toBe('<div class="page"><p>Hi</p>\n</div>');
     });
 
+    test("a key already spelled with the data- prefix is not prefixed twice (#280)", () => {
+      const bare = renderPaged('@page augmented-ui="tl-clip"\nHi\n').html;
+      expect(attr(bare, "data-augmented-ui")).toBe("tl-clip");
+
+      const prefixed = renderPaged('@page data-augmented-ui="tl-clip"\nHi\n').html;
+      expect(attr(prefixed, "data-augmented-ui")).toBe("tl-clip");
+      expect(prefixed).not.toContain("data-data-");
+    });
+
     test("key=value where key is 'id' behaves the same as #id shorthand", () => {
       const { html } = renderPaged("@page id=explicit-id\nHi\n");
       expect(html).toBe('<div class="page" id="explicit-id"><p>Hi</p>\n</div>');
