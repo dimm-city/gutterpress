@@ -527,7 +527,7 @@ error message lists the sanctioned alternatives (onMount for DOM
 setup/cleanup, event handlers for user-triggered state, `$derived` + `class:`
 bindings for reactive presentation, `{#key}` for identity re-init,
 `untrack()` for one-time reads) — but nothing in CI runs eslint (`ci.yml`'s
-jobs are test, render-parity, build, type-check), so this ban is not
+jobs are test, render-parity, build, type-check, security-audit), so this ban is not
 currently gated in CI. For imperative side-effects on settings changes
 specifically, use the
 settings store's `onSettingsChange()` channel with `settingsChangeGuard()`
