@@ -106,6 +106,19 @@ describe("validate command — positional/--input precedence (M46) and arg mappi
     expect(capturedFormat).toBe("json");
   });
 
+  test("--fix reaches executeAndReport, and is false when it is omitted (#275)", async () => {
+    const captured: Array<boolean | undefined> = [];
+    stubExecuteAndReport(async (args) => {
+      captured.push(args.fix);
+      return { ok: true, execution: {} };
+    });
+
+    await runCommand(validateCommand, { rawArgs: [".", "--fix"] });
+    await runCommand(validateCommand, { rawArgs: ["."] });
+
+    expect(captured).toEqual([true, false]);
+  });
+
   test("format defaults to text when --format is omitted", async () => {
     let capturedFormat: string | undefined;
     execSpy = spyOn(validationExecMod, "executeAndReport").mockImplementation((async (

@@ -308,7 +308,15 @@ gutterpress validate [dir] [options]
   --format <fmt>       text (default) | json
   --phase <p>          pre | post | all | pre-build | post-build   (default: all)
   --target <t>         Publish targets to validate against (comma-separated, e.g. dtrpg,itch), overriding the manifest's `targets:`
+  --fix                Rewrite the source markdown in place with markdownlint's auto-fixes (source.markdownlint only)
 ```
+
+`--fix` is the only thing validation ever writes, and only when you ask for
+it: it applies markdownlint's own auto-fixes to the markdown, prints every
+file it rewrote, and still reports whatever cannot be fixed mechanically. It
+uses the same `.markdownlint.*` config the `source.markdownlint` check uses,
+and does nothing when no config is found. A file with uncommitted changes is
+rewritten too — you get a notice, not a refusal.
 
 ### `gutterpress audit`
 

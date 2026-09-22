@@ -145,8 +145,27 @@ gutterpress validate --pdf dist/my-book/my-book-pdf.pdf --format json
 | `--format` | Output format: `text` (default) or `json` |
 | `--phase` | Override phase: `pre` \| `post` \| `all` \| `pre-build` \| `post-build` (default: `all`) |
 | `--target` | Publish targets to validate against (comma-separated: `dtrpg`, `itch`), overriding the manifest's `targets:` |
+| `--fix` | Rewrite the source markdown in place with markdownlint's auto-fixes (`source.markdownlint` only) |
 
 @end-section
+
+### Fixing markdown automatically
+
+Validation is read-only unless you pass `--fix`, which rewrites the markdown
+in place using markdownlint's own auto-fixes — trailing spaces, multiple blank
+lines, blank-line placement, list markers and indentation, hard tabs, emphasis
+style, and so on:
+
+```sh
+gutterpress validate --input . --fix
+```
+
+Every rewritten file is printed. Anything markdownlint cannot fix
+mechanically is still reported, and the other source checks (broken links, alt
+text, layout markers, CSS print-safety) are never touched. The rules come from
+the same `.markdownlint.*` config the check uses; with no config file, `--fix`
+says so and changes nothing. A file with uncommitted changes is rewritten too
+— you get a notice, not a refusal.
 
 ## Check Categories
 
