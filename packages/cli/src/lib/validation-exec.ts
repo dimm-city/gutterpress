@@ -10,10 +10,13 @@ import { resolveActiveStyles } from "./style-resolver";
 import { loadPluginsWithCss } from "./markdown/plugins";
 import { collectStyleDependencies, escapesProjectRoot } from "./asset-inline";
 import { resolveActiveMarkdownFiles } from "./markdown/index";
+import { applyMarkdownlintFixes } from "./markdownlint-fix";
+import { MARKDOWNLINT_CHECK_ID } from "../checks/source/markdownlint";
 import { canonicalChapterId } from "./markdown/chapter-id";
 import { formatReport, type OutputFormat } from "../checks/formatter";
 import { runChecks, type RunnerOptions, type RunnerReport } from "../checks/runner";
 import { getChecks, getKnownCategories, resolveCheckSelectors } from "../checks/registry";
+import { selectChecks } from "../checks/policy";
 import {
   checkToolAvailability,
   reportMissingTools,
@@ -65,6 +68,12 @@ export interface ValidationExecutionArgs {
    * Problems panel) leaves this unset and gets the manifest's own setting.
    */
   skipStylelint?: boolean;
+  /**
+   * Apply markdownlint's auto-fixes to the source markdown, in place, before
+   * the checks run (#275 — `gutterpress validate --fix`). Opt-in only: every
+   * other caller leaves it unset and validation stays entirely read-only.
+   */
+  fix?: boolean;
 }
 
 export interface ValidationExecutionResult {
@@ -536,6 +545,26 @@ export async function executeValidation(
     only,
     skip,
   };
+
+  // #275: the ONLY write a validation run ever performs, and only when the
+  // caller explicitly asked for it. Runs BEFORE the checks so the report
+  // describes what is left after the fixes, not what they already removed.
+  //
+  // Gated on `selectChecks` — the SAME selector `runChecks` uses — so a run
+  // that excludes the check can never still rewrite its files. Without this,
+  // `--fix --skip source.markdownlint` and `--fix --phase post-build` both
+  // wrote markdown while reporting no markdownlint check at all, which is
+  // exactly the invisible write the flag was designed to avoid.
+  if (args.fix) {
+    const selected = selectChecks(runnerOptions, config).checks;
+    if (selected.some((check) => check.id === MARKDOWNLINT_CHECK_ID)) {
+      await applyMarkdownlintFixes(context);
+    } else {
+      log.warn(
+        `--fix: ${MARKDOWNLINT_CHECK_ID} is not part of this run — no files were fixed.`
+      );
+    }
+  }
 
   const runs = planRuns({ manifest, baseConfig: config, targetIds, pdfPath, categories, only });
 

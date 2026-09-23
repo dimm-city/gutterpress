@@ -53,6 +53,11 @@ const commandArgs = {
     description:
       "Publish targets to validate against (comma-separated, e.g. dtrpg,itch), overriding the manifest's `targets:`",
   },
+  fix: {
+    type: "boolean",
+    description:
+      "Rewrite the source markdown in place with markdownlint's auto-fixes (source.markdownlint only)",
+  },
 } as const;
 
 export default defineCommand({
@@ -87,6 +92,7 @@ export default defineCommand({
           skip: typeof args.skip === "string" ? args.skip : undefined,
           phase: typeof args.phase === "string" ? args.phase : undefined,
           target: typeof args.target === "string" ? args.target : undefined,
+          fix: args.fix === true,
         },
         format
       );
