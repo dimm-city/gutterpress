@@ -313,7 +313,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       # NON-BLOCKING ON PURPOSE. As of 0.10.10 `bun audit` reports 35
-      # advisories (23 high), almost all transitive through electron-builder ->
+      # advisories (23 high), 24 of them transitive through electron-builder ->
       # app-builder-lib -> tar/undici, which cannot be fixed from this repo
       # without a major electron-builder bump. Failing the build on them would
       # wall off every PR for something no PR author can fix.

@@ -61,8 +61,12 @@ export function findChromium(): string {
  * bundled Chromium ships (42.1.0 → 148.0.7778.97 as of 2026-08-08), and the
  * desktop app needs to drive its own Chromium for native-engine PDF export
  * (see packages/desktop/electron's engine-browser module). Raising or
- * lowering this floor again means re-running `bun run spikes` and treating
- * every changed measurement as a finding, same as before.
+ * lowering this floor again means re-measuring and treating every changed
+ * measurement as a finding, same as before — but the `spike/folio/spikes/`
+ * harness that produced these numbers (`bun run spikes`) was deleted with
+ * the rest of the pre-native-engine scaffolding and no command in this repo
+ * re-runs it, so it would have to be rebuilt first. See the provenance note
+ * at the top of docs/engine/ENGINE.md.
  */
 export const REQUIRED_MILESTONE = 148;
 

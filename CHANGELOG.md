@@ -5,6 +5,81 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.11] - unreleased
+
+### Added
+
+- **A non-blocking `bun audit` in CI.** `ci.yml`'s new `security-audit` job
+  runs `bun audit` on every push and pull request with
+  `continue-on-error: true`. It is a visibility surface, not a gate: the
+  current baseline is 35 advisories (23 high, 10 moderate, 2 low), 24 of them
+  transitive through `electron-builder`, which no PR author can fix from this
+  repo without a major `electron-builder` bump. The point is that the number
+  appears in every run's log, so a new advisory is noticed. #287 tracks
+  burning the baseline down and flipping `continue-on-error` off. (#286,
+  #281)
+
+- **`installer-asset-names.test.ts` also checks `packages/cli/README.md`.**
+  The guard exists because release asset names and installer instructions
+  diverged once and every download 404'd; it then happened again in a README
+  the guard did not cover, shipping 404ing instructions against v0.10.10.
+  (#286)
+
+### Fixed
+
+- **A marker attribute the author already spelled `data-…` is no longer
+  prefixed twice.** `@page data-augmented-ui="tl-clip"` rendered as
+  `data-data-augmented-ui="tl-clip"`, so the selector the author wrote never
+  matched; a key that already begins with `data-` is now set verbatim, and a
+  key without it is prefixed exactly as before. (The issue reported these
+  attributes as silently dropped — they were carried through, just under the
+  wrong name.) (#280)
+
+- **`bun install` in CI is `--frozen-lockfile` everywhere.** All six installs
+  in `ci.yml` now fail if `bun.lock` is out of sync with `package.json`,
+  matching what `pages.yml` and `release.yml`'s build and publish jobs
+  already did — so a `package.json` edit that forgot to regenerate the
+  lockfile is caught at PR time instead of at the release gate. (#286, #283)
+
+- **`brew install` and `scoop install` serve 0.10.10 again.**
+  `package-managers.yml` had failed on every run since 0.8.3: the commit job
+  checks out and then downloads the generate job's artifact, and
+  `download-artifact` overlays rather than replaces, so the previous
+  version's `packaging/winget/` directory survived beside the new one and
+  `--check` correctly rejected the tree as carrying unexpected winget
+  manifests. The commit job now clears the generated trees before the
+  download. The eleven-release backlog was cleared in the same change by
+  regenerating `Formula/gutterpress.rb`, `bucket/gutterpress.json`,
+  `packaging/package-manager-assets.json` and the winget manifest from the
+  published v0.10.10 `SHA256SUMS.txt`, verified by an independent `--check`.
+  No release has exercised the workflow fix yet. (#286, #285)
+
+### Documentation
+
+- **Docs no longer claim automation and verification that do not exist.**
+  Two passes: a mechanical correction of drift against the 0.10.10 release
+  (#278), and a set of claims that needed a decision rather than an edit
+  (#279) — CONTRIBUTING.md described `bun audit`, Dependabot and lock-file
+  enforcement that were not wired up, and both engine docs cited a
+  `bun run spikes` harness that was deleted with the pre-native-engine
+  scaffolding. The measurements are kept, since they were real when taken
+  against Chrome 151.0.7922.75, but they are no longer presented as
+  continuously re-verified.
+
+- **The claims #286 made false, one day after #279 documented them, are
+  corrected.** `packaging/README.md`'s known-gap callout said the committed
+  metadata was "still at 0.8.3"; it now records that the metadata was
+  repaired by hand and that the automated dispatch has still never been
+  observed working end-to-end, which is what the caution was always about.
+  CONTRIBUTING.md's three "not yet automated" passages now describe the
+  `security-audit` job and the frozen-lockfile installs that exist, including
+  why the audit is deliberately non-blocking. CLAUDE.md's list of `ci.yml`
+  jobs gains `security-audit`; nothing in CI still runs eslint, and that part
+  stands. The two remaining "re-run `bun run spikes`" comments
+  (`packages/cli/src/engine/shared/cdp.ts`, `.github/workflows/release.yml`)
+  now match the engine docs: the harness would have to be rebuilt before a
+  milestone bump could be re-measured.
+
 ## [0.10.10] - 2026-09-18
 
 ### Added

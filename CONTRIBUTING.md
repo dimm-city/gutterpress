@@ -286,14 +286,24 @@ describe('Feature name', () => {
 
 ### Dependency Security
 
-Dependency security today is a manual process; nothing in CI scans for
-vulnerabilities or opens dependency-update PRs automatically:
+CI scans for vulnerabilities but does not gate on them, and nothing opens
+dependency-update PRs automatically:
 
-1. **Automated Vulnerability Scanning** *(not yet automated)*
-   - No CI job runs `bun audit` — it must be run locally (see below)
+1. **Automated Vulnerability Scanning** *(reported, not gated)*
+   - `ci.yml`'s `security-audit` job runs `bun audit` on every push and pull
+     request, with `continue-on-error: true` — it is deliberately
+     NON-BLOCKING. As of 0.10.10 the baseline is 35 known advisories (23
+     high, 10 moderate, 2 low), of which 24 are transitive through
+     `electron-builder` and not fixable from this repo without a major
+     `electron-builder` bump; failing the build on them would wall off every
+     PR for something no PR author can fix. The job exists so the number is in every
+     run's log and a NEW advisory is noticed instead of arriving silently.
+     Issue #287 tracks burning the baseline down and flipping
+     `continue-on-error` off.
    - No `.github/dependabot.yml` — there are no automated dependency-update PRs
-   - Nothing in CI verifies `bun.lock` integrity beyond `--frozen-lockfile` in
-     the release and Pages workflows (see Lock File Management below)
+   - CI verifies `bun.lock` integrity only through `--frozen-lockfile`, which
+     every `ci.yml` install now uses (see Lock File Management below); there
+     is no deeper lockfile check
 
 2. **Manual Security Audits**
    ```bash
@@ -340,10 +350,13 @@ vulnerabilities or opens dependency-update PRs automatically:
 5. **Lock File Management**
    - **Always commit** `bun.lock` with dependency changes
    - **Never manually edit** the lock file
-   - **`--frozen-lockfile`** is enforced in the release (`release.yml`) and
-     GitHub Pages (`pages.yml`) workflows, which fail if `bun.lock` is out of
-     sync with `package.json`; the main CI workflow (`ci.yml`) currently
-     installs with plain `bun install`
+   - **`--frozen-lockfile`** fails the install if `bun.lock` is out of sync
+     with `package.json`. Since #286 every install in the main CI workflow
+     (`ci.yml`) uses it — all six install steps, across its five jobs — as do
+     GitHub Pages (`pages.yml`) and `release.yml`'s `build-cli` and
+     `publish-npm` jobs. Two `release.yml` jobs still install plain:
+     `version`, which regenerates the lockfile after bumping the
+     `package.json` versions, and `test`
    - **Resolve conflicts** by running `bun install` after merging
 
 6. **Security Update Priority**
@@ -366,12 +379,16 @@ vulnerabilities or opens dependency-update PRs automatically:
 
 The CI/CD pipeline's security measures today:
 
-- **Frozen lockfile**: enforced in the release (`release.yml`) and Pages
-  (`pages.yml`) workflows to keep dependencies consistent; not yet enforced
-  in the main CI (`ci.yml`) workflow
+- **Frozen lockfile**: enforced in every main CI (`ci.yml`) install since
+  #286, and in the Pages (`pages.yml`) and release (`release.yml`)
+  workflows — see Lock File Management above for the two `release.yml` jobs
+  that still install plain
 - **Minimal permissions**: GitHub Actions use least-privilege principle
-- **Dependency audits** *(not yet automated)*: no workflow runs `bun audit`
-  or logs audit results — run it locally (see Manual Security Audits above)
+- **Dependency audits** *(reported, not gated)*: `ci.yml`'s `security-audit`
+  job runs `bun audit` on every push and pull request and logs the result,
+  but with `continue-on-error: true` — it cannot fail a build. That is
+  deliberate while the 35-advisory baseline stands (see Automated
+  Vulnerability Scanning above); #287 tracks making it blocking
 
 ## Submitting Changes
 

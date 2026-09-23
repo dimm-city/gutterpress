@@ -427,7 +427,10 @@ function attachDataAttrs(token, kind, name, attrs) {
   for (const [k, v] of Object.entries(attrs)) {
     if (!v) continue;
     if (k === 'class' || k === 'id' || k === 'template' || k === 'region') continue;
-    token.attrSet(`data-${k}`, v);
+    // A key the author already spelled with the `data-` prefix is set
+    // verbatim — `data-augmented-ui=tl-clip` used to land as
+    // `data-data-augmented-ui` (#280).
+    token.attrSet(k.startsWith('data-') ? k : `data-${k}`, v);
   }
 }
 
