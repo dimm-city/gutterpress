@@ -82,7 +82,7 @@ that generated structure:
 `http(s)://` and protocol-relative references, which may not be reachable at
 print time. And it warns on properties that can force rasterization in print:
 `filter`,
-`backdrop-filter`, `mix-blend-mode`, `background-blend-mode`, `isolation`,
+`backdrop-filter`, `mix-blend-mode`, `background-blend-mode`,
 `animation`, `transition`, `will-change`, `clip-path`.
 
 Ask the user to run `gutterpress lint <book>` after a substantial CSS change.

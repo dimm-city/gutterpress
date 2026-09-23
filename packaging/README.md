@@ -12,6 +12,20 @@ downloaded, hash-checked, installed, and executed the published CLI binaries.
 It can be manually re-run for an existing stable release without republishing
 that release.
 
+> **Known gap (as of 0.10.10).** The committed metadata is current —
+> `Formula/gutterpress.rb`, `bucket/gutterpress.json`,
+> `packaging/package-manager-assets.json` and the `packaging/winget/`
+> manifests all read 0.10.10 — but it got there by hand, not by automation:
+> #286 regenerated it from the published v0.10.10 `SHA256SUMS.txt` after it
+> had sat at 0.8.3 for eleven stable releases. #286 also identified why the
+> workflow failed (the commit job's `download-artifact` overlays onto the
+> previous version's winget directory instead of replacing it, so `--check`
+> rejected the result) and added a step that clears the generated trees
+> before the download. No release has exercised that fix yet, so the
+> end-to-end dispatch has still never been observed working. Do not assume
+> this automation is working; verify a run actually completed and its commit
+> landed before relying on it.
+
 Local verification is dependency-free:
 
 ```sh

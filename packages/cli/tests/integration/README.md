@@ -30,7 +30,7 @@ docker build -f tests/integration/Dockerfile.windows -t gutterpress-windows-test
 
 Run the full test suite:
 ```bash
-docker run -it gutterpress-windows-test powershell -File C:\gutterpress\tests\integration\run-install-test.ps1
+docker run -it gutterpress-windows-test powershell -File C:\pagedmd\tests\integration\run-install-test.ps1
 ```
 
 ### Available Test Modes
@@ -38,21 +38,20 @@ docker run -it gutterpress-windows-test powershell -File C:\gutterpress\tests\in
 #### 1. Full Test Suite (Recommended)
 Runs complete installation and validation:
 ```bash
-docker run -it gutterpress-windows-test powershell -File C:\gutterpress\tests\integration\run-install-test.ps1
+docker run -it gutterpress-windows-test powershell -File C:\pagedmd\tests\integration\run-install-test.ps1
 ```
 
 Tests performed:
 - Check Install script execution
-- Check Bun installation verification
 - Check gutterpress global installation
 - Check Command availability checks
-- Check Desktop shortcut creation
+- Check Desktop shortcut creation (only with `-RequireShortcut`)
 - Check Version output validation
 
 #### 2. Quick Test (Faster Iteration)
 Runs basic installation without extensive validation:
 ```bash
-docker run -it gutterpress-windows-test powershell -File C:\gutterpress\tests\integration\run-install-test.ps1 -Quick
+docker run -it gutterpress-windows-test powershell -File C:\pagedmd\tests\integration\run-install-test.ps1 -Quick
 ```
 
 #### 3. Interactive Shell
@@ -73,7 +72,6 @@ Inside the container, you can run:
 .\scripts\install.ps1
 
 # Manual validation
-bun --version
 gutterpress --version
 gutterpress --help
 gutterpress build --help
@@ -86,7 +84,7 @@ To test local changes to `install.ps1`:
 docker build -f tests/integration/Dockerfile.windows -t gutterpress-windows-test .
 
 # Run tests
-docker run -it gutterpress-windows-test powershell -File C:\gutterpress\tests\integration\run-install-test.ps1
+docker run -it gutterpress-windows-test powershell -File C:\pagedmd\tests\integration\run-install-test.ps1
 ```
 
 ### Test Environment Details
@@ -96,7 +94,7 @@ The Docker container provides:
 - **PowerShell**: Version 5.1 (Windows PowerShell)
 - **Git**: Pre-installed for repository operations
 - **User Simulation**: Test user directories at `C:\Users\TestUser\`
-- **Working Directory**: `C:\gutterpress` (contains repository code)
+- **Working Directory**: `C:\pagedmd` (contains repository code)
 
 ### Troubleshooting
 
@@ -142,7 +140,7 @@ For automated testing in CI/CD pipelines:
 
 - name: Run installation tests
   run: |
-       docker run gutterpress-windows-test powershell -File C:\gutterpress\tests\integration\run-install-test.ps1
+       docker run gutterpress-windows-test powershell -File C:\pagedmd\tests\integration\run-install-test.ps1
 
 - name: Capture test logs
   if: failure()
@@ -164,12 +162,12 @@ Typical workflow for testing install script changes:
 
 3. **Run quick test**:
    ```bash
-   docker run -it gutterpress-windows-test powershell -File C:\gutterpress\tests\integration\run-install-test.ps1 -Quick
+   docker run -it gutterpress-windows-test powershell -File C:\pagedmd\tests\integration\run-install-test.ps1 -Quick
    ```
 
 4. **Run full test suite**:
    ```bash
-   docker run -it gutterpress-windows-test powershell -File C:\gutterpress\tests\integration\run-install-test.ps1
+   docker run -it gutterpress-windows-test powershell -File C:\pagedmd\tests\integration\run-install-test.ps1
    ```
 
 5. **Interactive debugging** (if needed):

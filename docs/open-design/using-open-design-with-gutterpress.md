@@ -3,10 +3,9 @@
 Open Design can refine a Gutterpress publication directly because both applications work with ordinary files. Open Design edits the repository; Gutterpress renders the authoritative paginated preview. There is no conversion step and no Open Design-specific Gutterpress project format.
 
 This guide uses release candidate 0.2.0 of the **Gutterpress Publishing** plugin,
-Open Design 0.16.1, and the unreleased Gutterpress source on this branch as of
-2026-07-28. Published Gutterpress 0.8.3 does not contain the required preview
-corrections. Open Design records but does not enforce the plugin's declared
-`>=0.16.1` engine floor, so verify the CLI version manually.
+Open Design 0.16.1, and Gutterpress 0.10.0 or later. Open Design records but
+does not enforce the plugin's declared `>=0.16.1` engine floor, so verify the
+CLI version manually.
 
 ## Install the Open Design plugin
 

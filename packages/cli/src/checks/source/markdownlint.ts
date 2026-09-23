@@ -5,7 +5,9 @@ import { registerCheck } from "../registry";
 import { findConfigFile } from "./config-file";
 import type { Check, CheckContext, CheckResult } from "../types";
 
-const CONFIG_NAMES = [
+/** Exported so `validate --fix` (lib/markdownlint-fix.ts) discovers config
+ * through THIS list, never a second copy of it. */
+export const CONFIG_NAMES = [
   ".markdownlint.yaml",
   ".markdownlint.yml",
   ".markdownlint.json",
@@ -27,8 +29,11 @@ function stripJsonComments(s: string): string {
  * YAML — which also accepts plain JSON). markdownlint-cli2-style files nest the
  * rules under a `config:` key; plain markdownlint files are the rules object
  * directly, so `parsed.config ?? parsed` handles both shapes.
+ *
+ * Exported for `validate --fix` (lib/markdownlint-fix.ts), so the fixer and
+ * this check can never disagree about which rules apply.
  */
-async function loadConfig(
+export async function loadConfig(
   configPath: string
 ): Promise<Record<string, unknown>> {
   const raw = await readFile(configPath, "utf8");
@@ -57,8 +62,11 @@ interface MarkdownlintError {
   errorRange?: [number, number] | null;
 }
 
+/** The registered id, shared with `validate --fix`'s selector gate (#275). */
+export const MARKDOWNLINT_CHECK_ID = "source.markdownlint";
+
 const check: Check = {
-  id: "source.markdownlint",
+  id: MARKDOWNLINT_CHECK_ID,
   name: "Markdownlint",
   description:
     "Runs markdownlint with project config to validate Markdown files",

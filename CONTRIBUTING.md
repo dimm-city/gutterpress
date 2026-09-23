@@ -15,7 +15,7 @@ Thank you for your interest in contributing to Gutterpress! This document provid
 
 ### Prerequisites
 
-- **Bun** v1.3.1 or later - [Install Bun](https://bun.sh)
+- **Bun** v1.3.14 or later - [Install Bun](https://bun.sh)
 - **Git** - Version control
 
 ### Initial Setup
@@ -57,7 +57,7 @@ Root-level scripts delegate to the relevant workspace package:
 bun run cli -- preview ./examples/my-book
 bun run cli -- build ./examples/my-book
 
-# Run all tests (CLI package)
+# Run all tests (all packages)
 bun run test
 
 # Type-check all packages
@@ -99,9 +99,11 @@ gutterpress/                     # Workspace root (private)
 │   │   │   ├── checks/          # Validation check system
 │   │   │   └── preview/         # Headless preview server (node:http + ws + chokidar)
 │   │   └── tests/               # Bun test suite
-│   └── desktop/                 # @dimm-city/gutterpress-desktop — Electron + SvelteKit desktop app
-│       ├── electron/            # Electron main process
-│       └── src/                 # SvelteKit UI + server routes
+│   ├── desktop/                 # @dimm-city/gutterpress-desktop — Electron + SvelteKit desktop app
+│   │   ├── electron/            # Electron main process
+│   │   └── src/                 # SvelteKit UI + server routes
+│   └── open-design-plugin/      # @dimm-city/gutterpress-open-design-plugin — Open Design plugin (design existing books)
+│       └── plugin/              # Installable plugin root (SKILL.md, open-design.json, references)
 ├── examples/                    # Example projects
 ├── docs/                        # Documentation
 └── package.json                 # Workspace root (private Bun workspace)
@@ -284,12 +286,24 @@ describe('Feature name', () => {
 
 ### Dependency Security
 
-The project uses automated tools to monitor and update dependencies securely:
+CI scans for vulnerabilities but does not gate on them, and nothing opens
+dependency-update PRs automatically:
 
-1. **Automated Vulnerability Scanning**
-   - **CI Security Audit**: Every push and pull request runs `bun audit` to check for known vulnerabilities
-   - **Dependabot**: Automatically creates PRs for dependency updates weekly
-   - **Lock File Integrity**: CI verifies `bun.lock` hasn't been tampered with
+1. **Automated Vulnerability Scanning** *(reported, not gated)*
+   - `ci.yml`'s `security-audit` job runs `bun audit` on every push and pull
+     request, with `continue-on-error: true` — it is deliberately
+     NON-BLOCKING. As of 0.10.10 the baseline is 35 known advisories (23
+     high, 10 moderate, 2 low), of which 24 are transitive through
+     `electron-builder` and not fixable from this repo without a major
+     `electron-builder` bump; failing the build on them would wall off every
+     PR for something no PR author can fix. The job exists so the number is in every
+     run's log and a NEW advisory is noticed instead of arriving silently.
+     Issue #287 tracks burning the baseline down and flipping
+     `continue-on-error` off.
+   - No `.github/dependabot.yml` — there are no automated dependency-update PRs
+   - CI verifies `bun.lock` integrity only through `--frozen-lockfile`, which
+     every `ci.yml` install now uses (see Lock File Management below); there
+     is no deeper lockfile check
 
 2. **Manual Security Audits**
    ```bash
@@ -303,15 +317,15 @@ The project uses automated tools to monitor and update dependencies securely:
    bun update [package-name]
    ```
 
-3. **Dependency Update Process**
-   - **Automated Updates**: Dependabot creates PRs every Monday at 9:00 AM
-   - **Review Process**:
+3. **Dependency Update Process** *(not yet automated)*
+   - No Dependabot (or equivalent) configuration exists — dependency updates
+     are proposed manually, not by a scheduled bot
+   - **Review Process** (for any dependency-update PR):
      - Check PR description for breaking changes
      - Review CHANGELOG of updated packages
      - Run full test suite locally
      - Merge if tests pass and no breaking changes
    - **Security Updates**: High-priority, merge as soon as verified
-   - **Grouped Updates**: Minor/patch updates grouped to reduce PR noise
 
 4. **Adding New Dependencies**
 
@@ -336,7 +350,13 @@ The project uses automated tools to monitor and update dependencies securely:
 5. **Lock File Management**
    - **Always commit** `bun.lock` with dependency changes
    - **Never manually edit** the lock file
-   - **CI enforces** `--frozen-lockfile` to prevent inconsistencies
+   - **`--frozen-lockfile`** fails the install if `bun.lock` is out of sync
+     with `package.json`. Since #286 every install in the main CI workflow
+     (`ci.yml`) uses it — all six install steps, across its five jobs — as do
+     GitHub Pages (`pages.yml`) and `release.yml`'s `build-cli` and
+     `publish-npm` jobs. Two `release.yml` jobs still install plain:
+     `version`, which regenerates the lockfile after bumping the
+     `package.json` versions, and `test`
    - **Resolve conflicts** by running `bun install` after merging
 
 6. **Security Update Priority**
@@ -357,12 +377,18 @@ The project uses automated tools to monitor and update dependencies securely:
 
 ### GitHub Actions Security
 
-The CI/CD pipeline includes security measures:
+The CI/CD pipeline's security measures today:
 
-- **Frozen lockfile**: Ensures consistent dependencies across environments
-- **Automated audits**: Runs on every commit to catch new vulnerabilities
+- **Frozen lockfile**: enforced in every main CI (`ci.yml`) install since
+  #286, and in the Pages (`pages.yml`) and release (`release.yml`)
+  workflows — see Lock File Management above for the two `release.yml` jobs
+  that still install plain
 - **Minimal permissions**: GitHub Actions use least-privilege principle
-- **Audit logging**: All security audit results logged in CI output
+- **Dependency audits** *(reported, not gated)*: `ci.yml`'s `security-audit`
+  job runs `bun audit` on every push and pull request and logs the result,
+  but with `continue-on-error: true` — it cannot fail a build. That is
+  deliberate while the 35-advisory baseline stands (see Automated
+  Vulnerability Scanning above); #287 tracks making it blocking
 
 ## Submitting Changes
 

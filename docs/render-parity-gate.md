@@ -220,7 +220,7 @@ To run it, check out gutterpress alongside the book repo and invoke the
 script directly:
 
 ```bash
-git clone --depth 1 --branch v0.10.6 https://github.com/dimm-city/gutterpress.git ../gutterpress
+git clone --depth 1 --branch v0.10.10 https://github.com/dimm-city/gutterpress.git ../gutterpress
 cd ../gutterpress && bun install
 
 bun packages/cli/scripts/render-parity.ts compare \

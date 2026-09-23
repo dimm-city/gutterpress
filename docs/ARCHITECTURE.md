@@ -19,10 +19,11 @@ This document describes the architecture, design decisions, and implementation d
 
 ### Monorepo structure
 
-The repo is a Bun workspace with two packages:
+The repo is a Bun workspace with three packages:
 
 - **`packages/cli/`** (`gutterpress`) — the single published package: all runtime logic (markdown rendering, preview HTTP server, PDF generation, lint, validation) under `src/`, exposed both as a library (`exports` → `dist/index.js`) and a CLI (`bin` → `dist/cli.js`). The standard build compiles `src/index.ts` + `src/api/index.ts`, the node-free `src/render.ts` subpath, and `src/cli.ts` in separate invocations; render purity is enforced by `scripts/check-render-pure.mjs`, then `tsc` emits declarations. It is also distributed as a standalone compiled binary via `bun build --compile`.
 - **`packages/desktop/`** (`@dimm-city/gutterpress-desktop`) — Electron + SvelteKit desktop app. Depends on `gutterpress` (workspace) and loads its library entry in the Electron main process.
+- **`packages/open-design-plugin/`** (`@dimm-city/gutterpress-open-design-plugin`) — a static Open Design plugin (no JavaScript, no MCP server): the `SKILL.md` workflow contract and `open-design.json` metadata that let an agent edit an existing Gutterpress project's Markdown/CSS/manifest files in place, with the running preview as the pagination authority.
 
 ### Key Features
 
@@ -105,10 +106,12 @@ packages/cli/src/
 │   ├── asset-inline.ts     # Inlines CSS/fonts, plans image copies from references
 │   ├── output-paths.ts     # dist/<title-slug>/ + <slug>-<format> artifact naming
 │   └── markdown/           # Markdown processing
-│       ├── index.ts        # Main renderer (createMarkdownRenderer)
+│       ├── renderer.ts     # Pure markdown-it factory (createMarkdownRenderer, applyPlugins)
+│       ├── index.ts        # File-reading wrapper (resolveActiveMarkdownFiles, renderChapters)
+│       ├── assemble.ts     # Pure book-HTML assembly (assembleBookHtml)
 │       ├── plugins.ts      # Plugin loader
 │       ├── images.ts       # Records every image reference the render emits
-│       └── markers.js       # Built-in @marker parser and structural CSS
+│       └── markers.js      # Built-in @marker parser and structural CSS
 ├── schema/
 │   └── manifest.types.ts   # GutterpressManifest + ResolvedConfig
 ├── preview/                # Preview server modules
@@ -132,16 +135,17 @@ User Input (CLI)
     ↓
 Configuration Manager (loads manifest.yaml + resolveConfig)
     ↓
-Pipeline Orchestrator (build-runner.ts — 6 steps)
+Pipeline Orchestrator (build-runner.ts — 5 steps)
     │
-    ├── 1. CSS Linting (print-safety / postcss)
-    ├── 2. Pre-build Validation (source + asset checks)
-    ├── 3. Markdown → HTML Conversion (records every image reference as it renders)
-    ├── 4. Asset Inlining + Copying (lib/asset-inline.ts: stylesheets read and
+    ├── 1. Pre-build Validation (source + asset checks, including CSS
+    │      print-safety via the `source.stylelint` check — there is no
+    │      separate lint gate)
+    ├── 2. Markdown → HTML Conversion (records every image reference as it renders)
+    ├── 3. Asset Inlining + Copying (lib/asset-inline.ts: stylesheets read and
     │      inlined, fonts embedded as data: URIs, referenced images copied —
     │      nothing is copied that the book doesn't actually reference)
-    ├── 5. HTML → PDF Build (native Chromium print engine)
-    └── 6. Post-build Validation (PDF + heuristic checks)
+    ├── 4. HTML → PDF Build (native Chromium print engine)
+    └── 5. Post-build Validation (PDF + heuristic checks)
     ↓
 Output (PDF + validation report)
 ```
@@ -174,8 +178,8 @@ Formatter (formatter.ts)
     └── JSON format (structured, for CI)
 ```
 
-**35 checks across 4 categories:**
-- **Source (9)**: markdownlint + htmlhint wrappers, print-safety CSS checks
+**36 checks across 4 categories:**
+- **Source (10)**: markdownlint + htmlhint wrappers, print-safety CSS checks
   (PostCSS), an optional CSS ownership contract check (PostCSS —
   [docs/css-ownership-contract.md](./css-ownership-contract.md)), local
   link/ref checks, layout-marker diagnostics, alt-text and heading-order
@@ -225,14 +229,14 @@ function resolveConfig(
 
 ### 2. Markdown Processing
 
-**Location**: `packages/cli/src/lib/markdown/index.ts`
+**Location**: `packages/cli/src/lib/markdown/renderer.ts`
 
 #### Plugin Architecture
 
 The `createMarkdownRenderer()` factory function creates a fully configured
 MarkdownIt instance with Gutterpress's built-in marker plugin and attribute
 support. Custom plugins from the manifest are applied at creation time via
-`applyPlugins()` from `packages/cli/src/lib/markdown/plugins.ts`:
+`applyPlugins()`, also from `packages/cli/src/lib/markdown/renderer.ts`:
 
 ```typescript
 // Creates a new MarkdownIt instance with all built-in plugins
@@ -240,7 +244,10 @@ function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): MarkdownIt {
   const md = new MarkdownIt({ html: true, linkify: true, typographer: true });
 
   md.use(markdownItAttrs);
-  md.use(gutterpressMarkers); // Local markers.js plugin: @spread, @page, @section, @end-section, @page-break, @column-break
+  md.use(markdownItFootnote);
+  md.use(markdownItDeflist);
+  md.use(markdownItSourceMap);
+  md.use(gutterpressMarkers); // Local markers.js plugin: @chapter, @spread, @page, @section, @continue, @end-section, @page-break, @column-break
 
   // markdown-it-container removed 2026-05-17; @-marker family is canonical.
 
@@ -255,8 +262,8 @@ function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): MarkdownIt {
 
 **Design Rationale**:
 - Factory function creates fresh instance per render call
-- Gutterpress's built-in `markers.js` registered early as the primary layout plugin (`@spread`, `@page`, `@section`, `@end-section`, `@page-break`, `@column-break`)
-- Plugin loading is separate (`plugins.ts`) from renderer creation (`index.ts`)
+- Gutterpress's built-in `markers.js` registered early as the primary layout plugin (`@chapter`, `@spread`, `@page`, `@section`, `@continue`, `@end-section`, `@page-break`, `@column-break`)
+- Plugin loading (`plugins.ts`) is separate from renderer creation (`renderer.ts`)
 
 #### CSS Cascade
 
@@ -783,7 +790,7 @@ See [User Guide: Chapter 5 — Plugins](../examples/gutterpress-user-guide/05-pl
 
 **Reasons**:
 - PDF is the primary (and effectively only) build output
-- HTML output is a byproduct of the convert step, not a separate strategy
+- HTML output is just `gutterpress build --format html` (the standalone `convert` command was removed), not a separate strategy
 - Preview is handled by a separate server, not the build command
 - Simple linear flow is easier to understand and debug
 
@@ -882,4 +889,4 @@ confine author assets and chapter-update requests to the selected project.
 ---
 
 **Last Updated**: 2026-08-26
-**Version**: 0.10.2-alpha.3 (packages/cli + packages/desktop)
+**Version**: 0.10.10 (packages/cli + packages/desktop)

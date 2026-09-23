@@ -48,7 +48,7 @@ Chapter titles automatically switch to the `chapter` named page via the `page: c
 - **No running header** (the chapter title *is* the header)
 - **Folio**: page number, outside bottom corner
 
-**Directive** — insert `@page chapter` in your markdown *before* the H1 if you need to force the current content onto a fresh chapter opener. Usually this is automatic because every `h1` already sets `break-before: page; page: chapter`.
+**Directive** — `@page chapter` in markdown only sets `data-page="chapter"` on the page wrapper; this stylesheet defines no `[data-page="chapter"]` rule, so the marker does **not** by itself bind that wrapper to the `@page chapter` CSS rule above. Inserting it before non-`h1` content forces a page break, but onto a page with the *default* margins and running header still printing. The chapter opener's 2.5in top margin and suppressed header come entirely from `h1 { break-before: page; page: chapter; }`, which fires automatically on every chapter title — so in practice `@page chapter` is rarely needed.
 
 ```markdown
 @page chapter
@@ -151,7 +151,7 @@ And placed in the margin via:
 | Template | `@page` rule | Triggers via | Top margin | Chrome |
 |----------|-------------|--------------|------------|--------|
 | Default | `@page` | (automatic) | 0.875 in | Header + folio |
-| Chapter opener | `@page chapter` | `h1` / `@page chapter` | 2.5 in | Folio only |
+| Chapter opener | `@page chapter` | `h1` (automatic) | 2.5 in | Folio only |
 | Cover | `@page cover` | `.cover-page` class | 0 | None |
 | Full-bleed | `@page full-bleed` | `page: full-bleed` | 0 | None |
 

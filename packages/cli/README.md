@@ -12,11 +12,11 @@ Download for your platform from the [latest release](https://github.com/dimm-cit
 
 | Platform | Binary |
 |---|---|
-| Linux x64 | `gutterpress-linux-x64` |
-| Linux ARM64 | `gutterpress-linux-arm64` |
-| macOS Apple Silicon | `gutterpress-macos-arm64` |
-| macOS Intel | `gutterpress-macos-x64` |
-| Windows x64 | `gutterpress-windows-x64.exe` |
+| Linux x64 | `gutterpress-cli-linux-x64` |
+| Linux ARM64 | `gutterpress-cli-linux-arm64` |
+| macOS Apple Silicon | `gutterpress-cli-macos-arm64` |
+| macOS Intel | `gutterpress-cli-macos-x64` |
+| Windows x64 | `gutterpress-cli-windows-x64.exe` |
 
 Move the binary somewhere on your `PATH`, mark it executable (`chmod +x`), and you're done.
 
@@ -308,7 +308,21 @@ gutterpress validate [dir] [options]
   --format <fmt>       text (default) | json
   --phase <p>          pre | post | all | pre-build | post-build   (default: all)
   --target <t>         Publish targets to validate against (comma-separated, e.g. dtrpg,itch), overriding the manifest's `targets:`
+  --fix                Rewrite the source markdown in place with markdownlint's auto-fixes (source.markdownlint only)
 ```
+
+`--fix` is the only thing validation ever writes, and only when you ask for
+it: it applies markdownlint's own auto-fixes to the markdown, prints every
+file it rewrote, and still reports whatever cannot be fixed mechanically. It
+uses the same `.markdownlint.*` config the `source.markdownlint` check uses,
+and does nothing when no config is found. A file with uncommitted changes is
+rewritten too — you get a notice, not a refusal.
+
+It writes only when `source.markdownlint` is actually part of the run, so
+`--skip source.markdownlint`, an `--only` that names other checks, or a
+`--phase`/`--category` that filters the source checks out all leave your
+markdown untouched — `--fix` can never rewrite a file for a check the report
+does not mention.
 
 ### `gutterpress audit`
 
@@ -546,7 +560,7 @@ The standalone binary is the easiest way — drop it in a GitHub Actions step an
 - name: Build PDF
   run: |
     curl -L -o gutterpress \
-      https://github.com/dimm-city/gutterpress/releases/latest/download/gutterpress-linux-x64
+      https://github.com/dimm-city/gutterpress/releases/latest/download/gutterpress-cli-linux-x64
     chmod +x gutterpress
     sudo apt-get install -y google-chrome-stable ghostscript
     ./gutterpress build ./my-book --out dist/my-book.pdf

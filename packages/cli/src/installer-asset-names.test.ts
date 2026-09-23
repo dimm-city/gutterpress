@@ -7,6 +7,12 @@
  * `gutterpress-<os>-<arch>` — every real download 404'd, and CI masked it by
  * installing from a local binary instead of the release. Keep this test green
  * so the installer ↔ release contract can never silently diverge again.
+ *
+ * It then happened AGAIN, in the one place a user is most likely to look: the
+ * guard covered install.sh/install.ps1 but not packages/cli/README.md, so the
+ * README kept the broken `gutterpress-<os>-<arch>` names after the installers
+ * were fixed, and shipped 404ing download instructions against v0.10.10. The
+ * README is now covered too — see the last test.
  */
 import { describe, test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -59,5 +65,22 @@ describe("installer ↔ release asset-name contract", () => {
     const name = ps1.match(/return\s+"(gutterpress-cli-[^"]+\.exe)"/)?.[1];
     expect(name).toBeDefined();
     expect(artifacts).toContain(name!);
+  });
+
+  // The README documents the same asset names for manual download, and is
+  // where the 404 survived after the installers were fixed. Any
+  // `gutterpress-...` token it spells must be one the release actually
+  // uploads — a bare `gutterpress-linux-x64` (no `-cli-`) is the exact
+  // regression this catches.
+  test("README documents only asset names the release uploads", () => {
+    const readme = read("packages/cli/README.md");
+    const uploaded = new Set(artifacts);
+    const mentioned = [
+      ...readme.matchAll(/\bgutterpress-(?:cli-)?(?:linux|macos|windows)-[\w.]+/g),
+    ].map((m) => m[0]);
+
+    expect(mentioned.length).toBeGreaterThan(0);
+    const wrong = [...new Set(mentioned)].filter((n) => !uploaded.has(n));
+    expect(wrong).toEqual([]);
   });
 });
