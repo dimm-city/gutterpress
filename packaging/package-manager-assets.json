@@ -1,12 +1,12 @@
 {
-  "version": "0.10.10",
+  "version": "0.10.11",
   "windowsInstaller": "Gutterpress-setup-win-x64.exe",
   "assets": {
-    "gutterpress-cli-linux-arm64": "c269168a564dca5694c7813a1a6dc552e8b5d9a841611d8adcdb14b21f53fe7f",
-    "gutterpress-cli-linux-x64": "7434299e07017039fc3fc027bd8a5ab40fd1f1b59b462264856028aa97b6293a",
-    "gutterpress-cli-macos-arm64": "44251645ced688905ef4334748ba9c064c66fe93567f02cca3167949279f771d",
-    "gutterpress-cli-macos-x64": "a3579524ba5b3906a37b852010576bf43eb4eec2a5bd98d08841822db7b045a0",
-    "gutterpress-cli-windows-x64.exe": "db3c6d9df7e83dc86911c9d0a9f86d8992acd8b5c20fb26fdb9d12dad6d78712",
-    "Gutterpress-setup-win-x64.exe": "875db008fceba49d61203301c0a2de918da1ca43a11946a3b4285d234c54c0de"
+    "gutterpress-cli-linux-arm64": "a228e8adeeb592d0808d486a560a4d8de5da7ee8b47dc7fba3ba3f58480bf0a1",
+    "gutterpress-cli-linux-x64": "845d44e30684bff0c3c2d09fa5bb72a5ebce5ef2c8a692ec72db2fe2af9843a1",
+    "gutterpress-cli-macos-arm64": "e5e7e6d57e15f8706a68b8384961f394953833482eafc68e48dc57fc7c73019a",
+    "gutterpress-cli-macos-x64": "19c3b2c469489b2fa53c9006bbdc5e6eeb940a31d9ba2d97cfdcdebd7f1ab668",
+    "gutterpress-cli-windows-x64.exe": "245a000974a1315eb85a413cf66752fffcb100ef594136ad7495c760ca732dbc",
+    "Gutterpress-setup-win-x64.exe": "90ba1c81789c88b32c945b6e809984b984f095dde41a9081b8d4be88161800cb"
   }
 }
