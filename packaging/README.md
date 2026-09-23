@@ -12,19 +12,16 @@ downloaded, hash-checked, installed, and executed the published CLI binaries.
 It can be manually re-run for an existing stable release without republishing
 that release.
 
-> **Known gap (as of 0.10.10).** The committed metadata is current —
-> `Formula/gutterpress.rb`, `bucket/gutterpress.json`,
-> `packaging/package-manager-assets.json` and the `packaging/winget/`
-> manifests all read 0.10.10 — but it got there by hand, not by automation:
-> #286 regenerated it from the published v0.10.10 `SHA256SUMS.txt` after it
-> had sat at 0.8.3 for eleven stable releases. #286 also identified why the
-> workflow failed (the commit job's `download-artifact` overlays onto the
-> previous version's winget directory instead of replacing it, so `--check`
-> rejected the result) and added a step that clears the generated trees
-> before the download. No release has exercised that fix yet, so the
-> end-to-end dispatch has still never been observed working. Do not assume
-> this automation is working; verify a run actually completed and its commit
-> landed before relying on it.
+> **History.** This automation first worked end to end on the 0.10.11
+> stable cut: [run 35902797310](https://github.com/dimm-city/gutterpress/actions/runs/35902797310)
+> committed `a1a89aa0`, moving all four metadata files to 0.10.11 and
+> replacing the winget directory rather than adding a second one beside it.
+> Every checksum it wrote matches the release's `SHA256SUMS.txt`. Before
+> that, the metadata had not moved since 0.8.3: the commit job's
+> `download-artifact` overlaid the previous version's winget directory
+> instead of replacing it, so `--check` rejected the tree. #286 regenerated
+> 0.10.10's metadata by hand and added the step that clears the generated
+> trees before the download; 0.10.11 was the first release to exercise it.
 
 Local verification is dependency-free:
 
