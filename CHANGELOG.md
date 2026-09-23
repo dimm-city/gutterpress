@@ -27,6 +27,13 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The release workflow's test gate now installs from the lockfile.**
+  `release.yml`'s `test` job ran a plain `bun install`, so the one job that
+  authorises a release could test a dependency tree other than the one
+  `bun.lock` describes — the gap #286 closed across `ci.yml` but not here.
+  The `version` job's plain install stays: it deliberately regenerates the
+  lockfile after bumping the package versions, and says so in place. (#290)
+
 - **A marker attribute the author already spelled `data-…` is no longer
   prefixed twice.** `@page data-augmented-ui="tl-clip"` rendered as
   `data-data-augmented-ui="tl-clip"`, so the selector the author wrote never
