@@ -14,16 +14,21 @@ describe("Toolbar Save button — flush all pending changes beside Export", () =
   const page = read("src/routes/+page.svelte");
   const toolbar = read("src/lib/components/AppToolbar.svelte");
   const editor = read("src/lib/components/MarkdownEditor.svelte");
-  test("wired to the same force-save the status bar uses, disabled when clean", () => {
+  test("wired to the same force-save the status bar uses, available whenever a file is open", () => {
     // The button markup lives in the extracted AppToolbar; +page wires the
-    // intent (onSave → handleForceSave) and the clean-state disable.
+    // intent (onSave → handleForceSave) and when it is disabled. Autosave
+    // writes an edit to disk 500ms after the last keystroke, so gating Save
+    // on the buffer's save phase left it greyed out almost all the time and
+    // an author could never save by hand. Like Ctrl+S, it is unavailable
+    // only with no file open or while a save is already running.
     const idx = toolbar.indexOf('class="save-btn icon-text"');
     expect(idx).toBeGreaterThan(-1);
     const btn = toolbar.slice(idx, idx + 700);
     expect(btn).toContain("onclick={onSave}");
     expect(btn).toContain("All changes saved");
     expect(page).toContain("onSave={handleForceSave}");
-    expect(page).toMatch(/saveDisabled=\{[^}]*editorSavePhase === "clean"/);
+    expect(page).toContain("saveDisabled={!editorFilePath || forceSaving}");
+    expect(page).not.toMatch(/saveDisabled=\{[^}]*editorSavePhase/);
     // Sits after the Export button — Save is the right-most action.
     expect(idx).toBeGreaterThan(toolbar.indexOf('class="export-btn'));
   });

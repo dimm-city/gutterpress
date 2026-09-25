@@ -5,6 +5,16 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The desktop toolbar's Save button can be clicked whenever a file is
+  open.** It was enabled only while an edit waited on the 500ms autosave, so
+  it was greyed out almost all the time and an author could not save by hand.
+  It now matches Ctrl+S and the editor pane's own Save button: available with
+  any file open, it writes pending edits to disk immediately, and its tooltip
+  still says whether anything is pending. No setting was ever involved:
+  turning off "Keep previous versions" stops automatic versions, not saving.
+
 ## [0.10.11] - 2026-09-23
 
 ### Added

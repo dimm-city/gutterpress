@@ -230,8 +230,10 @@ if (stuckOnLoading) {
 // Autosave delay is a fixed 500 ms EditorBuffer default — not a user setting
 // (#274) — so this no longer configures/asserts a distinct delay. It keeps
 // the regression it can still catch without a timing race: a CodeMirror edit
-// must flip the main Save button to enabled (dirty state reaches the UI),
-// and Ctrl+S (below) must reach disk either way.
+// must flip the main Save button's tooltip to "Save pending changes" (dirty
+// state reaches the UI — the button itself is enabled whenever a file is
+// open, so its disabled state no longer carries that signal), and Ctrl+S
+// (below) must reach disk either way.
 const chapterName = readdirSync(bookDir).sort().find((name) => name.endsWith(".md") && name !== "README.md");
 if (!chapterName) fail(`fixture has no markdown chapter under ${bookDir}`);
 const chapterPath = join(bookDir, chapterName);
@@ -267,13 +269,15 @@ if (!editorReceivedMarker) {
 // The 500 ms autosave debounce means a disk-untouched assertion here would
 // race the fixed delay rather than test anything — so this only checks that
 // the dirty state reaches the toolbar promptly.
-let saveEnabled = false;
+let savePending = false;
 for (let i = 0; i < 20; i++) {
-  saveEnabled = await evalJs(`document.querySelector('header.toolbar button.save-btn')?.disabled === false`);
-  if (saveEnabled) break;
+  savePending = await evalJs(
+    `document.querySelector('header.toolbar button.save-btn')?.title.startsWith('Save pending changes') === true`,
+  );
+  if (savePending) break;
   await sleep(25);
 }
-if (!saveEnabled) fail("main Save button did not enable after a CodeMirror edit");
+if (!savePending) fail("main Save button did not report pending changes after a CodeMirror edit");
 
 await evalJs(`(() => {
   window.__gutterpressSavePreviewProbe = { startedAt: performance.now(), result: null, sequence: 0 };
@@ -318,6 +322,23 @@ for (let i = 0; i < 80; i++) {
   await sleep(25);
 }
 if (!sourceSaved) fail("Ctrl+S did not write the CodeMirror edit to disk");
+
+// With the edit on disk and nothing left pending, Save must stay clickable:
+// it used to grey out as soon as autosave caught up, so an author could
+// never save by hand.
+let saveAtRest = null;
+for (let i = 0; i < 80; i++) {
+  saveAtRest = await evalJs(`(() => {
+    const btn = document.querySelector('header.toolbar button.save-btn');
+    return btn ? { title: btn.title, disabled: btn.disabled } : null;
+  })()`);
+  if (saveAtRest?.title === "All changes saved") break;
+  await sleep(25);
+}
+if (saveAtRest?.title !== "All changes saved") {
+  fail(`main Save button never reported "All changes saved" after the edit reached disk: ${JSON.stringify(saveAtRest)}`);
+}
+if (saveAtRest.disabled) fail("main Save button is disabled with nothing pending — an author cannot save by hand");
 
 async function queryActivePreviewForMarker() {
   return evalJs(`new Promise((resolve) => {
@@ -418,7 +439,7 @@ if (!latePreviewResult?.hasMarker) {
 }
 
 log(
-  `PASS — Save enabled, Ctrl+S wrote source, preview updated in ${saveToVisibleMs}ms, and the app remained responsive ` +
+  `PASS — Save reported the pending edit and stayed enabled once saved, Ctrl+S wrote source, preview updated in ${saveToVisibleMs}ms, and the app remained responsive ` +
   `(pre-shell ${preShellMs}ms, shell ${hotReloadMs}ms)`,
 );
 cleanup();

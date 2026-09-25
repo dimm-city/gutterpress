@@ -2721,7 +2721,7 @@
     {exportHints}
     exportWarning={canSavePdf ? lifecycle.saveWarning : null}
     saving={forceSaving}
-    saveDisabled={!editorFilePath || forceSaving || editorSavePhase === "clean"}
+    saveDisabled={!editorFilePath || forceSaving}
     savePending={!!editorFilePath && editorSavePhase !== "clean"}
     onSave={handleForceSave}
     showProjectSettings={toolbarProjectOpen && isDesktop()}

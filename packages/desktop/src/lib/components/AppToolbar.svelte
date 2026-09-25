@@ -464,8 +464,10 @@
       <span class="btn-label">{exporting ? "Exporting…" : "Export"}</span>
     </button>
     <!-- Save: flush all pending editor changes to disk NOW (the same
-         force-save the status bar's "Save now" runs). Disabled (with an
-         "everything saved" tooltip) when there is nothing pending. -->
+         force-save the status bar's "Save now" and Ctrl+S run). Enabled
+         whenever a file is open, pending or not: autosave clears "pending"
+         500ms after the last edit, so gating on it left Save greyed out
+         almost all the time. The tooltip says whether anything is pending. -->
     <button
       class="save-btn icon-text"
       onclick={onSave}
