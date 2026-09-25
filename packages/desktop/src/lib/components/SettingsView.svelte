@@ -535,18 +535,30 @@
       {/if}
 
       {#if activeTab === "saving"}
-      <!-- Saving (#274 — two switches instead of five controls, three of which
-           did less than their labels said). Saving itself (500ms debounce)
-           and crash recovery (1s emergency draft) are no longer settings —
-           EditorBuffer runs both unconditionally with its own fixed defaults
-           — so this group is left with the two things a writer can actually
-           decide: whether to keep previous versions, and whether to keep an
-           online backup. Both persist under `versionHistory`, so this group's
-           Reset restores the whole group in one call. -->
+      <!-- Saving (#274 cut five controls to switches a writer can actually
+           decide). Saving automatically is an on/off switch (owner request
+           2026-09-25): #274 had dropped its old delay field because 0s was
+           never off, but with no way to turn autosave off the Save button did
+           nothing. The delay and crash recovery (1s emergency draft) stay
+           fixed, not settings. Every switch persists under `versionHistory`,
+           so this group's Reset restores the whole group in one call. -->
       <section class="group">
         <div class="group-head">
           <h3>Saving &amp; recovery</h3>
           <button class="reset" onclick={() => settings.resetSection("versionHistory")} title="Reset saving settings to defaults">Reset</button>
+        </div>
+        <!-- Saving on this computer -->
+        <div class="row row-toggle">
+          <div class="row-label">
+            <label for="set-auto-save">Save edits automatically</label>
+            <span class="row-hint">Writes your changes to this computer as you type. When off, they're saved when you press Save or leave the file, and the preview updates then.</span>
+          </div>
+          <input
+            id="set-auto-save"
+            type="checkbox"
+            checked={s.versionHistory.autoSave}
+            onchange={(e) => settings.set({ versionHistory: { autoSave: (e.currentTarget as HTMLInputElement).checked } })}
+          />
         </div>
         <!-- Previous versions -->
         <div class="row row-toggle">

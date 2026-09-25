@@ -1197,6 +1197,7 @@
     let instance: EditorBuffer;
     instance = new EditorBuffer({
       platform: getPlatform(),
+      autoSave: () => settings.current.versionHistory.autoSave,
       onError: (msg) => {
         if (editorFiles.isActive(instance)) toast?.error(msg);
       },
@@ -1285,12 +1286,20 @@
     mode = m;
     if (m !== "viewer") loadEditorModule();
   });
+  // Autosave: the buffer reads the setting per edit, so turning it back ON
+  // would otherwise leave edits made while it was off unsaved until the next
+  // keystroke. Save them now through the failure-aware flush every other
+  // flush point uses (a clean buffer's flush is a no-op).
+  const autoSaveSink = settingsChangeGuard<boolean>((on) => {
+    if (on) void flushEditorBuffer();
+  });
   onMount(() =>
     onSettingsChange((s) => {
       previewBgSink(s.appearance.previewBg);
       splitRatioSink(s.preview.splitRatio);
       contextMenuSettingSink(s.preview.contextMenu);
       modeSink(s.preview.mode);
+      autoSaveSink(s.versionHistory.autoSave);
     }),
   );
 
@@ -2992,6 +3001,7 @@
     hasRemote={projectSession.projectHasRemote}
     canSnapshot={!!(projectSession.projectCapabilities?.canSnapshot)}
     savePhase={editorSavePhase}
+    autoSave={settings.current.versionHistory.autoSave}
     fileOpen={!!editorFilePath}
     {forceSaving}
     forceSyncing={syncController.forceSyncing}

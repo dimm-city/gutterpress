@@ -198,6 +198,8 @@ test("readSettings deep-merges a stored partial over DEFAULT_SETTINGS", async ()
   expect(s.versionHistory.autoSnapshot).toBe(
     DEFAULT_SETTINGS.versionHistory.autoSnapshot,
   );
+  // A file written before autosave became a switch still saves automatically.
+  expect(s.versionHistory.autoSave).toBe(true);
   // Untouched sections keep their defaults.
   expect(s.editor).toEqual(DEFAULT_SETTINGS.editor);
   expect(s.appearance).toEqual(DEFAULT_SETTINGS.appearance);

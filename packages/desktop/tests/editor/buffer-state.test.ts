@@ -454,3 +454,48 @@ test("a failed disk write rejects flush and remains dirty for the close gate", a
   buffer.reset();
   expect(dirty).toEqual([true, false]);
 });
+
+test("autosave on (the default): an edit writes itself after the save delay", async () => {
+  const platform = new MemoryPlatform({ "/book/chapter.md": "original" });
+  const buffer = new EditorBuffer({
+    platform: platform as Platform,
+    saveDelayMs: 5,
+    recoveryEnabled: false,
+  });
+
+  await buffer.load("/book/chapter.md");
+  buffer.edit("typed");
+  await Bun.sleep(40);
+
+  expect(platform.getContent("/book/chapter.md")).toBe("typed");
+  expect(buffer.phase).toBe("clean");
+});
+
+test("autosave off: an edit stays unsaved until flush (Save / Ctrl+S / leaving the file)", async () => {
+  const platform = new MemoryPlatform({ "/book/chapter.md": "original" });
+  let autoSave = false;
+  const buffer = new EditorBuffer({
+    platform: platform as Platform,
+    saveDelayMs: 5,
+    recoveryEnabled: false,
+    autoSave: () => autoSave,
+  });
+
+  await buffer.load("/book/chapter.md");
+  buffer.edit("typed");
+  await Bun.sleep(40);
+
+  expect(platform.getContent("/book/chapter.md")).toBe("original");
+  expect(buffer.phase).toBe("dirty");
+  expect(buffer.hasPendingSave).toBe(true);
+
+  await buffer.flush();
+  expect(platform.getContent("/book/chapter.md")).toBe("typed");
+  expect(buffer.phase).toBe("clean");
+
+  // Read live: switching it back on makes the next edit save itself again.
+  autoSave = true;
+  buffer.edit("typed again");
+  await Bun.sleep(40);
+  expect(platform.getContent("/book/chapter.md")).toBe("typed again");
+});

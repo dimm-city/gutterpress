@@ -33,6 +33,11 @@ export interface EditorBufferOptions {
   /** Disk-save debounce (ms). Defaults to 500 (the responsive edit→preview
    *  loop) — not a user setting (#274); a test-only override. */
   saveDelayMs?: number;
+  /** Whether an edit saves itself after `saveDelayMs` (Settings → Saving,
+   *  "Save edits automatically"). Read each time a save would be scheduled,
+   *  so a change applies from the next edit. When it returns false, edits
+   *  stay pending until {@link EditorBuffer.flush}. Default: on. */
+  autoSave?: () => boolean;
   /** Crash-recovery snapshot debounce (ms). Defaults to 1000. */
   recoveryDelayMs?: number;
   /** When false, no sidecar recovery snapshots are written. Not wired to a
@@ -197,6 +202,10 @@ export class EditorBuffer {
 
   private scheduleSave(): void {
     if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    // Autosave off: the edit waits for an explicit flush() — Save, Ctrl+S,
+    // or leaving the file (switching files/books, closing the project/app).
+    if (this.opts.autoSave?.() === false) return;
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
       // Debounced saves report through onError; explicit flush() callers need
