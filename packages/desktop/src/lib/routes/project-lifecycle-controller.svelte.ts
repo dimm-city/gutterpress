@@ -151,6 +151,13 @@ export interface ProjectLifecycleDeps {
   resetFirstRenderGate: () => void;
   /** Flush the editor buffer's pending save; false means the transition must stop. */
   flushBuffer: () => Promise<boolean>;
+  /**
+   * Leaving the open file (opening/switching a project or book, closing the
+   * project): like `flushBuffer`, but with autosave off it asks Save / Don't
+   * Save / Cancel first. False means the transition must stop. Defaults to
+   * `flushBuffer`; "Try preview again" keeps `flushBuffer` — it isn't leaving.
+   */
+  leaveBuffer?: () => Promise<boolean>;
   /** Reset the editor buffer's in-memory state (no-op if there is no buffer). */
   resetBuffer: () => void;
   /** Fire-and-forget: preload the first file into the editor buffer. */
@@ -278,7 +285,7 @@ export class ProjectLifecycleController {
       // Flush before classification resets the current ProjectSession. The
       // dirty-state POST to main is only best-effort; this direct result is the
       // authority for whether replacing the workspace is safe.
-      const flushed = await d.flushBuffer();
+      const flushed = await (d.leaveBuffer ?? d.flushBuffer)();
       if (superseded()) return false;
       if (!flushed) return false;
       this.openError = null;
@@ -476,7 +483,7 @@ export class ProjectLifecycleController {
     const d = this.deps;
     if (!dir || !d.isDesktop()) return false;
     const epoch = ++this.folderOpenEpoch;
-    const flushed = await d.flushBuffer();
+    const flushed = await (d.leaveBuffer ?? d.flushBuffer)();
     if (epoch !== this.folderOpenEpoch || !flushed) return false;
     d.dismissLanding(false);
     this.adopting = true;
@@ -518,7 +525,7 @@ export class ProjectLifecycleController {
     const epoch = ++this.folderOpenEpoch;
     // A URL is another project-switch target. Flush before resetWorkspace()
     // clears the old folder's buffer, exactly as folder-to-folder switching does.
-    const flushed = await d.flushBuffer();
+    const flushed = await (d.leaveBuffer ?? d.flushBuffer)();
     if (epoch !== this.folderOpenEpoch || !flushed) return false;
     this.busy = false;
     this.busyLabel = "";
@@ -555,7 +562,7 @@ export class ProjectLifecycleController {
     const d = this.deps;
     // Flush any pending edit before tearing down so closing the project never
     // drops an in-flight auto-save (#44).
-    if (!(await d.flushBuffer())) return false;
+    if (!(await (d.leaveBuffer ?? d.flushBuffer)())) return false;
     await d.stopPreviewHost().catch(() => {});
     this.resetWorkspace();
     // The start screen is the app's empty state — it returns on its own now

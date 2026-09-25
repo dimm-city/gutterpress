@@ -151,7 +151,7 @@ declare global {
       // writeRecovery, clearRecovery, listRecovery — migrated to server routes
       // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.
       // app:setDirtyState — migrated to server route (Phase 2B).
-      onFlushBeforeClose(cb: () => boolean | void | Promise<boolean | void>): () => void;
+      onFlushBeforeClose(cb: (mode?: "flush" | "discard") => boolean | void | Promise<boolean | void>): () => void;
       onFolderChanged(cb: (data: { filename: string }) => void): () => void;
     };
   }

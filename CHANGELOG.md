@@ -5,6 +5,27 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-09-25
+
+### Added
+
+- **Auto-save can be turned off.** Settings → Saving has a "Save edits
+  automatically" switch, on by default. It replaces the seconds field #274
+  removed, which could never turn auto-save off (0s still saved). Without an
+  off switch, every edit reached disk half a second after typing stopped, so
+  the toolbar Save button was greyed out and had nothing to do. With the
+  switch off, typing no longer writes the file. The toolbar Save lights up
+  while anything is unsaved, the status bar reads "Unsaved changes", and
+  edits are written when you press Save or Ctrl+S. Leaving a file with
+  unsaved changes (switching files, books or projects, closing the project,
+  or closing the window) asks Save / Don't Save / Cancel. Don't Save throws
+  the edits away, including their crash-recovery draft, and Cancel stays
+  where you are. The window-close prompt is shown before the close gate's
+  save timer starts, so it can wait as long as you need. Crash-recovery
+  drafts still cover unsaved edits. The preview renders from the saved file,
+  so it updates when you save. Turning the switch back on saves anything
+  still pending.
+
 ## [0.11.0] - 2026-09-25
 
 ### Changed

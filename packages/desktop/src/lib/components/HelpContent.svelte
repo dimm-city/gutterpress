@@ -132,7 +132,7 @@
       <ol class="steps">
         <li><strong>Open your project folder</strong> — click <em>Open</em> in the toolbar and choose the folder that contains your <code>manifest.yaml</code> file.</li>
         <li><strong>Browse your document</strong> — use the arrow keys or Page Up/Down to flip through pages. Use <em>Single / Two-page</em> to switch between one page and two pages side by side.</li>
-        <li><strong>Edit your pages</strong> — click <em>Edit</em> (or press {modKey}+E) to open the markdown editor beside the preview. Your changes auto-save, and {modKey}+S or the editor save button saves immediately.</li>
+        <li><strong>Edit your pages</strong> — click <em>Edit</em> (or press {modKey}+E) to open the markdown editor beside the preview. By default your changes save automatically, and {modKey}+S or the Save button saves immediately. To save only when you choose, turn off <em>Save edits automatically</em> in Settings &gt; Saving.</li>
         <li><strong>Keep a history of your work</strong> — click the sync/status pill to see your project's saved history and activity log.</li>
         <li><strong>Export PDF</strong> — click <em>Export</em> (or press {modKey}+Shift+E) when your layout looks right.</li>
       </ol>

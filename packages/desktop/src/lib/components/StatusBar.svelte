@@ -54,6 +54,10 @@
     canSnapshot = false,
     /** Current save phase from the editor buffer. */
     savePhase = "clean" as "clean" | "dirty" | "saving" | "error",
+    /** Settings → Saving "Save edits automatically". Off, a dirty buffer is
+     *  waiting for the author's Save, not about to save itself — so it reads
+     *  "Unsaved changes", never "Saving…". */
+    autoSave = true,
     /** Whether a file is currently open in the editor. */
     fileOpen = false,
     /** Whether a manual force-save is in progress. */
@@ -105,6 +109,7 @@
     hasRemote?: boolean;
     canSnapshot?: boolean;
     savePhase?: "clean" | "dirty" | "saving" | "error";
+    autoSave?: boolean;
     fileOpen?: boolean;
     forceSaving?: boolean;
     forceSyncing?: boolean;
@@ -132,6 +137,7 @@
     if (forceSaving) return "Saving…";
     switch (savePhase) {
       case "dirty":
+        return autoSave ? "Saving…" : "Unsaved changes";
       case "saving":
         return "Saving…";
       case "error":
@@ -154,7 +160,11 @@
   let versionsLoaded = $state(false);
   let versionsLoading = $state(false);
 
+  /** Autosave off and edits waiting for the author's Save. */
+  let unsaved = $derived(savePhase === "dirty" && !autoSave && !forceSaving);
+
   let onThisComputerText = $derived.by((): string => {
+    if (unsaved) return "Not saved yet";
     if (forceSaving || savePhase === "saving" || savePhase === "dirty") return "Saving…";
     if (savePhase === "error") return "Couldn't save — check the file";
     return "Saved";
@@ -255,7 +265,8 @@
         return "saved";
     }
   });
-  let saveStateIcon = $derived.by<"refresh-cw" | "triangle-alert" | "circle-check">(() => {
+  let saveStateIcon = $derived.by<"pen-line" | "refresh-cw" | "triangle-alert" | "circle-check">(() => {
+    if (unsaved) return "pen-line";
     if (forceSaving || savePhase === "saving" || savePhase === "dirty") return "refresh-cw";
     if (savePhase === "error") return "triangle-alert";
     return "circle-check";
@@ -356,7 +367,7 @@
           aria-haspopup="dialog"
           aria-expanded={summaryOpen}
           onclick={toggleSummary}
-          title={savePhase === "dirty" || savePhase === "saving" ? "Pending changes are being saved" : "What's protecting your work"}
+          title={unsaved ? "You have unsaved changes" : savePhase === "dirty" || savePhase === "saving" ? "Pending changes are being saved" : "What's protecting your work"}
         ><Icon name={saveStateIcon} size={13} /><span class="save-text" aria-live="polite" aria-atomic="true">{saveLabel}</span></button>
         {#if summaryOpen}
           <div class="save-summary" role="dialog" aria-label="What's protecting your work">

@@ -372,11 +372,17 @@ the plan wins.**
 - **Auto-save is SHIPPED and works as follows** (do not respecify): a FIXED
   debounced disk save 500ms after the last edit (`EditorBuffer`) and an
   ALWAYS-ON crash-recovery draft 1000ms after the last edit, plus explicit
-  `Cmd/Ctrl+S` / toolbar Save. Neither delay is a user setting (#274) — the
-  two Settings → Saving rows that used to expose them ("Save edits
-  automatically", "Recover edits after an unexpected close") were removed as
-  tuning knobs an author had no basis to set; the save indicator is subtle
-  (no modal) — see Anti-Patterns.
+  `Cmd/Ctrl+S` / toolbar Save. Neither delay is a user setting (#274), but
+  auto-save itself is an on/off switch, default on: Settings → Saving, "Save
+  edits automatically" (owner request 2026-09-25 — with no way to turn it
+  off, the Save button had nothing to do). Off, edits wait for Save /
+  `Cmd/Ctrl+S`, the toolbar Save stays lit while anything is unsaved, the
+  status bar reads "Unsaved changes", and the preview updates on save.
+  Leaving a file with unsaved edits (switching files, books or projects,
+  closing the project or the window) asks a native Save / Don't Save /
+  Cancel — the one modal in the saving flow, and only when auto-save is
+  off. The save indicator itself stays subtle (no modal) — see
+  Anti-Patterns.
 - **Switching copies is SHIPPED in Settings → Saving** (#273): the Saving &
   recovery group names the local copy (git branch) the open project is on
   and, only when more than one exists locally, offers a picker to switch —
@@ -1144,7 +1150,7 @@ explicit width/height (never scaled by `font-size`). Icon-only buttons:
 | Hiding features behind unlock gates | Contradicts escape-hatch principle; regresses shipped UI | Soft emphasis: Advanced badge, never hidden (§4) |
 | Opening help in an external browser tab | Breaks flow; offline failure | In-app help: the start screen's Help tab (`HelpContent`) |
 | Print-tool "modes" (pointer/text/frame tools) | Wrong mental model | Markdown-first; properties in inspector |
-| Requiring save before preview | Breaks the live loop | Shipped: 500ms debounced save + live preview |
+| Requiring save before preview | Breaks the live loop | Shipped: 500ms debounced save + live preview (default; turning auto-save off is the author's opt-in to preview-on-save) |
 | Raw engine / `@page` errors shown to authors | Opaque, frightening | Plain-language Problems entries (shipped, §10) |
 | Raw rule IDs / linter jargon as primary text | Writer-first product | Plain-language labels, codes demoted (shipped, §10) |
 | Reintroducing stylelint or any bundler-hostile dep for editor lint | Breaks `bun build --compile` (CLAUDE.md §3) | Extend `printsafe.ts` |

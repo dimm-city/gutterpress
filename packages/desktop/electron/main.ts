@@ -38,7 +38,7 @@ import type { WatchHooks } from "./server-bridge/watch-hooks";
 import type { AppHooks } from "./server-bridge/app-hooks";
 import type { PrefsHooks } from "./server-bridge/prefs-hooks";
 import type { RecoveryHooks } from "./server-bridge/recovery-hooks";
-import type { AppImageHooks, DesktopHooks, DoctorHooks } from "./server-bridge/host-hooks";
+import type { AppImageHooks, DesktopHooks, DoctorHooks, UnsavedChoice } from "./server-bridge/host-hooks";
 import { AppImageIntegration } from "./appimage-integration";
 import type { MediaHooks } from "./server-bridge/media-hooks";
 import type { VcsHooks } from "./server-bridge/vcs-hooks";
@@ -660,7 +660,7 @@ function createWindow() {
   mainWindow = win;
   const flushSession = new RendererFlushSession({
     isAlive: () => !win.isDestroyed(),
-    sendFlushRequest: () => win.webContents.send("app:flushBeforeClose"),
+    sendFlushRequest: (mode) => win.webContents.send("app:flushBeforeClose", mode),
   });
   activeRendererFlush = { window: win, session: flushSession };
   mainWindow.once("ready-to-show", () => slog("renderer ready-to-show (first paint)"));
@@ -839,12 +839,32 @@ function createWindow() {
     if (!needsFlush && !needsSnapshot) return;
     e.preventDefault();
     closeGateStarted = true;
-    void runCloseGate({
-      flush: () => flushSession.request(),
-      recordFlushFailure: () => recordLastFlushFailure(),
-      snapshot: () => flushAutoSnapshot(),
-      finish: () => win.destroy(),
-    });
+    void (async () => {
+      // "Save edits automatically" off with unsaved edits: ask Save / Don't
+      // Save / Cancel BEFORE the gate starts, so its flush watchdog never runs
+      // while the author is reading the prompt. The dirty report is only a
+      // hint; when it is wrong the gate simply saves, as it always has.
+      let mode: "flush" | "discard" = "flush";
+      if (needsFlush && flushSession.lastReportedDirtyState) {
+        const autoSave = await readSettings()
+          .then((s) => s.versionHistory.autoSave)
+          .catch(() => true);
+        if (!autoSave && !win.isDestroyed()) {
+          const choice = await askUnsavedChanges(null);
+          if (choice === "cancel") {
+            closeGateStarted = false;
+            return;
+          }
+          if (choice === "discard") mode = "discard";
+        }
+      }
+      await runCloseGate({
+        flush: () => flushSession.request(undefined, mode),
+        recordFlushFailure: () => recordLastFlushFailure(),
+        snapshot: () => flushAutoSnapshot(),
+        finish: () => win.destroy(),
+      });
+    })();
   });
 
   win.on("closed", () => {
@@ -1050,6 +1070,29 @@ secureHandle("app:flushDone", async (event, flushed: boolean): Promise<void> => 
   active.session.resolve(flushed === true);
 });
 
+/**
+ * The one Save / Don't Save / Cancel prompt, used when "Save edits
+ * automatically" is off and the author leaves a file with unsaved edits —
+ * in-app (via the dialog/confirm-unsaved route) and on window close (the
+ * close gate asks BEFORE its flush watchdog starts, so a prompt left open
+ * can never be cut short into a silent save or discard).
+ */
+async function askUnsavedChanges(fileName: string | null): Promise<UnsavedChoice> {
+  const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  const options: Electron.MessageBoxOptions = {
+    type: "warning",
+    title: "Unsaved changes",
+    message: fileName ? `Save your changes to ${fileName}?` : "Save your changes before closing?",
+    detail: "Your changes will be lost if you don't save them.",
+    buttons: ["Save", "Don't Save", "Cancel"],
+    defaultId: 0,
+    cancelId: 2,
+    noLink: true,
+  };
+  const { response } = win ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
+  return response === 0 ? "save" : response === 1 ? "discard" : "cancel";
+}
+
 const desktopHooksImpl: DesktopHooks = {
   showOpenDialog: async (options) => {
     const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
@@ -1081,6 +1124,7 @@ const desktopHooksImpl: DesktopHooks = {
       : await dialog.showMessageBox(options);
     return result.response === 1;
   },
+  confirmUnsavedChanges: askUnsavedChanges,
   openExternal: async (url: string) => {
     // Defense in depth (review finding): every shell.openExternal path must
     // pass the app's single http(s)-only gate. The route validates too, but a

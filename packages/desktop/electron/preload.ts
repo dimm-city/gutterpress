@@ -272,15 +272,17 @@ contextBridge.exposeInMainWorld("electron", {
    * Returns an unsubscribe fn.
    */
   onFlushBeforeClose: (
-    cb: () => boolean | void | Promise<boolean | void>,
+    cb: (mode?: "flush" | "discard") => boolean | void | Promise<boolean | void>,
   ): (() => void) =>
-    forwardPush("app:flushBeforeClose", () => {
+    // `mode` is "discard" when the author chose Don't Save in main's close
+    // prompt; anything else means flush as before.
+    forwardPush<"flush" | "discard" | undefined>("app:flushBeforeClose", (mode) => {
       // The renderer flushes its buffer, then signals completion so main can
       // destroy the window. Signal failure even if the callback throws so quit
       // never hangs and main can persist the next-launch warning.
       let flushed = false;
       void Promise.resolve()
-        .then(() => cb())
+        .then(() => cb(mode === "discard" ? "discard" : "flush"))
         .then((result) => {
           flushed = result !== false;
         })

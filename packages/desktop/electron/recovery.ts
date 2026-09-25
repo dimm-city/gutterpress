@@ -15,8 +15,10 @@
 // with no writer-facing value); only each domain's writer-facing dialog copy
 // is disambiguated.
 //
-// The in-app editor (#38) auto-saves on a debounce; between an edit and that
-// disk write the buffer differs from disk and an unclean exit would lose it.
+// The in-app editor (#38) auto-saves on a debounce — or, with Settings →
+// Saving's "Save edits automatically" off, only when the author saves;
+// between an edit and that disk write the buffer differs from disk and an
+// unclean exit would lose it.
 // This module persists a debounced *sidecar snapshot* of the open buffer under
 // Electron `userData/recovery/` so the next launch can offer to restore it.
 //
