@@ -532,6 +532,7 @@
     getDesktopProjectState: (dir) => api.app.getDesktopProjectState(dir).catch(() => null),
     resetFirstRenderGate: () => previewEvents.resetFirstRenderGate(),
     flushBuffer: () => flushEditorBuffer(),
+    leaveBuffer: () => leaveEditorBuffer(),
     resetBuffer: () => resetEditorBuffer(),
     ensureEditorFile: () => void ensureEditorFile(),
     startFolderWatch: (dir) => startFolderWatch(dir),
@@ -1165,7 +1166,7 @@
   // One session owns one active file and performs atomic buffer handoffs.
   const editorFiles = new EditorFileSession({
     createBuffer: () => createEditorBuffer(),
-    flush: (target) => flushEditorBuffer(target),
+    flush: (target) => leaveEditorBuffer(target),
     onActivate: (target) => {
       if (target.filePath) showEditorContent(target.filePath, target.content);
       if (isDesktop()) trackPersistence(api.app.setDirtyState(target.hasPendingSave));
@@ -1240,6 +1241,30 @@
       }
       return false;
     }
+  }
+
+  /**
+   * Leaving a file (switching files, books or projects). With "Save edits
+   * automatically" off and unsaved edits, ask Save / Don't Save / Cancel;
+   * otherwise save as before. Resolves false when the author cancels or the
+   * save fails, which stops the switch.
+   */
+  async function leaveEditorBuffer(target: EditorBuffer | null = buffer): Promise<boolean> {
+    if (!target?.filePath || !target.isDirty || settings.current.versionHistory.autoSave || !isDesktop()) {
+      return flushEditorBuffer(target);
+    }
+    let choice: "save" | "discard" | "cancel";
+    try {
+      choice = await api.dialog.confirmUnsaved(basenameOf(target.filePath));
+    } catch {
+      choice = "save"; // no prompt available: keep the edits
+    }
+    if (choice === "cancel") return false;
+    if (choice === "discard") {
+      await target.discard();
+      return true;
+    }
+    return flushEditorBuffer(target);
   }
 
   // ARCH #61: imperative settings side-effects go through the store's single
@@ -1320,10 +1345,18 @@
   }
 
   // Window close gate (#44): when main asks the renderer to flush before
-  // closing, flush the buffer. The preload wrapper signals main when done.
+  // closing, flush the buffer — or, when the author chose Don't Save in the
+  // close prompt main showed, discard it. The preload wrapper signals main
+  // when done.
   onMount(() => {
     if (!isDesktop()) return;
-    const off = getPlatform().onFlushBeforeClose(() => flushEditorBuffer(buffer, false));
+    const off = getPlatform().onFlushBeforeClose(async (mode) => {
+      if (mode === "discard") {
+        await buffer?.discard();
+        return true;
+      }
+      return flushEditorBuffer(buffer, false);
+    });
     return () => off?.();
   });
 

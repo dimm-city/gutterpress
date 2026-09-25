@@ -204,7 +204,7 @@ export class EditorBuffer {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = null;
     // Autosave off: the edit waits for an explicit flush() — Save, Ctrl+S,
-    // or leaving the file (switching files/books, closing the project/app).
+    // or Save in the prompt shown on leaving the file.
     if (this.opts.autoSave?.() === false) return;
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
@@ -424,6 +424,25 @@ export class EditorBuffer {
     // content stays; isDirty is recomputed against the external disk baseline.
     this.setPhase(this.isDirty ? "dirty" : "clean");
     if (this.isDirty) this.scheduleSave();
+  }
+
+  /**
+   * Don't Save: throw away unsaved edits, putting the buffer back on the disk
+   * version, and delete their crash-recovery draft so the next launch does not
+   * offer them back. Awaits the draft delete — callers may be about to close
+   * the window.
+   */
+  async discard(): Promise<void> {
+    const filePath = this.filePath;
+    this.cancelTimers();
+    this.externalChange = null;
+    this.content = this.diskContent;
+    this.setPhase("clean");
+    if (!filePath) return;
+    this.opts.onContentReplaced?.(filePath, this.content);
+    if (this.opts.recoveryEnabled !== false) {
+      await api.recovery.clear(filePath).catch(() => {});
+    }
   }
 
   /** Drop the buffer entirely (e.g. closing a folder / switching to URL mode). */

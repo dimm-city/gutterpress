@@ -471,7 +471,7 @@ export interface HostServices {
    * (#44). Returning false reports that the buffer did not reach disk; main
    * records the durable failure marker and still closes after bounded waits.
    */
-  onFlushBeforeClose(cb: () => boolean | void | Promise<boolean | void>): () => void;
+  onFlushBeforeClose(cb: (mode?: "flush" | "discard") => boolean | void | Promise<boolean | void>): () => void;
   /**
    * Subscribe to debounced folder-change notifications for the open project
    * (#44), backing external-edit detection. Returns an unsubscribe fn.

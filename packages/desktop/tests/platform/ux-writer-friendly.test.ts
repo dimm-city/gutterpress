@@ -52,6 +52,16 @@ describe("Settings — 'Saving & recovery' group with writer-friendly labels (#2
     // Turning it back on saves what piled up while it was off.
     expect(page).toContain("autoSaveSink(s.versionHistory.autoSave)");
   });
+  test("leaving a file with autosave off asks Save / Don't Save / Cancel, window close included", () => {
+    const main = read("electron/main.ts");
+    expect(main).toContain('buttons: ["Save", "Don\'t Save", "Cancel"]');
+    // The close prompt runs BEFORE the gate, so its flush watchdog can't cut
+    // the author's decision short.
+    const close = main.slice(main.indexOf('win.on("close"'), main.indexOf('win.on("closed"'));
+    expect(close.indexOf("askUnsavedChanges(null)")).toBeGreaterThan(-1);
+    expect(close.indexOf("askUnsavedChanges(null)")).toBeLessThan(close.indexOf("runCloseGate("));
+    expect(close).toContain("flushSession.request(undefined, mode)");
+  });
   test("crash-recovery and version-timing rows are gone — no longer user settings", () => {
     expect(dialog).not.toContain("Create a version after I stop editing for");
     expect(dialog).not.toContain("Recover edits after an unexpected close");

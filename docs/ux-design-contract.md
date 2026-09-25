@@ -376,10 +376,12 @@ the plan wins.**
   auto-save itself is an on/off switch, default on: Settings → Saving, "Save
   edits automatically" (owner request 2026-09-25 — with no way to turn it
   off, the Save button had nothing to do). Off, edits wait for Save /
-  `Cmd/Ctrl+S` or for leaving the file (switching files or books, closing
-  the project or the app, which already flush), the toolbar Save stays lit
-  while anything is unsaved, the status bar reads "Unsaved changes", and the
-  preview updates on save. The save indicator is subtle (no modal) — see
+  `Cmd/Ctrl+S`, the toolbar Save stays lit while anything is unsaved, the
+  status bar reads "Unsaved changes", and the preview updates on save.
+  Leaving a file with unsaved edits (switching files, books or projects,
+  closing the project or the window) asks a native Save / Don't Save /
+  Cancel — the one modal in the saving flow, and only when auto-save is
+  off. The save indicator itself stays subtle (no modal) — see
   Anti-Patterns.
 - **Switching copies is SHIPPED in Settings → Saving** (#273): the Saving &
   recovery group names the local copy (git branch) the open project is on

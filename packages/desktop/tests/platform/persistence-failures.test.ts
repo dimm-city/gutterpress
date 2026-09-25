@@ -75,7 +75,15 @@ test("the page routes every destructive buffer transition and close through the 
 
   expect(page).not.toMatch(/\.flush\(\)\.catch\(\(\) => \{\}\)/);
   expect(page).toContain("flushBuffer: () => flushEditorBuffer()"); // project close/switch lifecycle
-  expect(page).toContain("onFlushBeforeClose(() => flushEditorBuffer(buffer, false))");
+  // Leaving a file asks first when autosave is off, then saves through the
+  // same failure-aware flush (or discards, on Don't Save).
+  expect(page).toContain("leaveBuffer: () => leaveEditorBuffer()");
+  expect(page).toContain("flush: (target) => leaveEditorBuffer(target)");
+  const leave = page.slice(page.indexOf("async function leaveEditorBuffer"), page.indexOf("// ARCH #61"));
+  expect(leave).toContain("return flushEditorBuffer(target);");
+  expect(leave).toContain("await target.discard();");
+  expect(page).toContain("onFlushBeforeClose(async (mode) => {");
+  expect(page).toContain("return flushEditorBuffer(buffer, false);");
   expect(page).toContain("return flushEditorBuffer(buffer);"); // tree rename/delete
 
   // File replacement is delegated to the behavior-tested editor session,

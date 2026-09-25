@@ -499,3 +499,26 @@ test("autosave off: an edit stays unsaved until flush (Save / Ctrl+S / leaving t
   await Bun.sleep(40);
   expect(platform.getContent("/book/chapter.md")).toBe("typed again");
 });
+
+test("discard (Don't Save) puts the buffer back on the disk version and writes nothing", async () => {
+  const platform = new MemoryPlatform({ "/book/chapter.md": "original" });
+  const replaced: string[] = [];
+  const buffer = new EditorBuffer({
+    platform: platform as Platform,
+    saveDelayMs: 5,
+    recoveryEnabled: false,
+    autoSave: () => false,
+    onContentReplaced: (_path, content) => replaced.push(content),
+  });
+
+  await buffer.load("/book/chapter.md");
+  buffer.edit("unwanted edit");
+  await buffer.discard();
+  await Bun.sleep(40);
+
+  expect(buffer.content).toBe("original");
+  expect(buffer.phase).toBe("clean");
+  expect(buffer.hasPendingSave).toBe(false);
+  expect(platform.getContent("/book/chapter.md")).toBe("original");
+  expect(replaced).toEqual(["original"]);
+});

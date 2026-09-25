@@ -250,7 +250,7 @@ export class ElectronAdapter implements Platform {
 
   // setDirtyState — migrated to server route (Phase 2B)
 
-  onFlushBeforeClose(cb: () => boolean | void | Promise<boolean | void>): () => void {
+  onFlushBeforeClose(cb: (mode?: "flush" | "discard") => boolean | void | Promise<boolean | void>): () => void {
     return bridge().onFlushBeforeClose(cb);
   }
 

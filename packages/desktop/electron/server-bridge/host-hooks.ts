@@ -30,6 +30,9 @@ interface SaveDialogOptions {
   filters?: DialogFilter[];
 }
 
+/** The author's answer to the unsaved-changes prompt. */
+export type UnsavedChoice = "save" | "discard" | "cancel";
+
 export interface DesktopHooks {
   showOpenDialog: (options: OpenDialogOptions) => Promise<{
     canceled: boolean;
@@ -41,6 +44,12 @@ export interface DesktopHooks {
   }>;
   /** Native trust gate shown before downloading and executing an npm plugin. */
   confirmNpmPluginInstall: (packageName: string) => Promise<boolean>;
+  /**
+   * Native Save / Don't Save / Cancel prompt for leaving a file with unsaved
+   * edits while "Save edits automatically" is off. `fileName` null = the
+   * whole window is closing.
+   */
+  confirmUnsavedChanges: (fileName: string | null) => Promise<UnsavedChoice>;
   openExternal: (url: string) => Promise<void>;
   showItemInFolder: (filePath: string) => void;
   getNativeTheme: () => { shouldUseDarkColors: boolean };

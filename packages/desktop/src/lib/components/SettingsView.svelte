@@ -551,7 +551,7 @@
         <div class="row row-toggle">
           <div class="row-label">
             <label for="set-auto-save">Save edits automatically</label>
-            <span class="row-hint">Writes your changes to this computer as you type. When off, they're saved when you press Save or leave the file, and the preview updates then.</span>
+            <span class="row-hint">Writes your changes to this computer as you type. When off, they're saved when you press Save, the preview updates then, and leaving a file with unsaved changes asks whether to save them.</span>
           </div>
           <input
             id="set-auto-save"
