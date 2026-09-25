@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-25
+
 ### Changed
 
 - **Each extension's CSS is in its own cascade layer.** The built document
