@@ -57,7 +57,8 @@ export const FLUSH_FAILURE_MARKER_BACKSTOP_MS = 1_000;
 /** Host touch-points for one BrowserWindow's renderer flush session. */
 export interface RendererFlushSessionDeps {
   isAlive: () => boolean;
-  sendFlushRequest: () => void;
+  /** `mode` "discard" = the author chose Don't Save; the renderer drops its edits. */
+  sendFlushRequest: (mode: "flush" | "discard") => void;
   setTimer?: (cb: () => void, ms: number) => unknown;
   clearTimer?: (handle: unknown) => void;
 }
@@ -103,7 +104,7 @@ export class RendererFlushSession {
    * Ask this window to flush. Concurrent close/update requests share one
    * request, and the timeout guarantees callers always regain control.
    */
-  request(timeoutMs = 5_000): Promise<boolean> {
+  request(timeoutMs = 5_000, mode: "flush" | "discard" = "flush"): Promise<boolean> {
     if (!this.editorMayExist || !this.deps.isAlive()) return Promise.resolve(true);
     if (this.pending) return this.pending.promise;
 
@@ -126,7 +127,7 @@ export class RendererFlushSession {
     this.pending = { promise, settle };
     timer = setTimer(() => settle(false), timeoutMs);
     try {
-      this.deps.sendFlushRequest();
+      this.deps.sendFlushRequest(mode);
     } catch {
       settle(false);
     }

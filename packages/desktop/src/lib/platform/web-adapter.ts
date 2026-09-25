@@ -897,7 +897,7 @@ export class WebAdapter implements Platform {
   // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.
   // app:setDirtyState — migrated to server route (Phase 2B).
 
-  onFlushBeforeClose(_cb: () => boolean | void | Promise<boolean | void>): () => void {
+  onFlushBeforeClose(_cb: (mode?: "flush" | "discard") => boolean | void | Promise<boolean | void>): () => void {
     return () => {};
   }
 

@@ -1,8 +1,9 @@
 /**
  * Writer-friendly UX follow-up (maintainer request): previous versions and
  * online backup are presented to non-technical writers as plain-language
- * protection layers (#274 — saving and crash recovery are no longer settings
- * at all), and the TOC panel is a collapsible tree. No component-render
+ * protection layers (#274 — crash recovery and the save delay are not
+ * settings; saving automatically is one on/off switch), and the TOC panel is
+ * a collapsible tree. No component-render
  * harness exists here, so — following the repo convention
  * (ProjectActivityView.test.ts) — these assert on the compiled source text:
  * the new writer-facing strings appear, the jargon-y ones don't, and the
@@ -22,8 +23,9 @@ const read = (rel: string) => readFileSync(path.join(root, rel), "utf8");
 
 describe("Settings — 'Saving & recovery' group with writer-friendly labels (#274)", () => {
   const dialog = read("src/lib/components/SettingsView.svelte");
-  test("two switches: previous versions and online backup", () => {
+  test("three switches: saving automatically, previous versions, online backup", () => {
     expect(dialog).toContain("Saving &amp; recovery");
+    expect(dialog).toContain("Save edits automatically");
     expect(dialog).toContain("Keep previous versions");
     expect(dialog).toContain("Keep this project backed up online");
   });
@@ -35,8 +37,32 @@ describe("Settings — 'Saving & recovery' group with writer-friendly labels (#2
     expect(dialog).toContain("isn't connected to an online service yet");
     expect(dialog).toContain("Settings &gt; Accounts");
   });
-  test("autosave and crash-recovery rows are gone — no longer user settings", () => {
-    expect(dialog).not.toContain("Save edits automatically");
+  test("autosave is an on/off switch, not the old delay field (owner request 2026-09-25)", () => {
+    // #274 removed a seconds field that could not turn autosave off (0s still
+    // saved); without any way to turn it off, the Save button did nothing.
+    const row = dialog.slice(dialog.indexOf('id="set-auto-save"'), dialog.indexOf('id="set-auto-save"') + 250);
+    expect(row).toContain('type="checkbox"');
+    expect(row).toContain("checked={s.versionHistory.autoSave}");
+    expect(dialog).not.toContain('id="set-autosave"');
+  });
+  test("the switch reaches the editor buffer and the status bar", () => {
+    const page = read("src/routes/+page.svelte");
+    expect(page).toContain("autoSave: () => settings.current.versionHistory.autoSave");
+    expect(page).toContain("autoSave={settings.current.versionHistory.autoSave}");
+    // Turning it back on saves what piled up while it was off.
+    expect(page).toContain("autoSaveSink(s.versionHistory.autoSave)");
+  });
+  test("leaving a file with autosave off asks Save / Don't Save / Cancel, window close included", () => {
+    const main = read("electron/main.ts");
+    expect(main).toContain('buttons: ["Save", "Don\'t Save", "Cancel"]');
+    // The close prompt runs BEFORE the gate, so its flush watchdog can't cut
+    // the author's decision short.
+    const close = main.slice(main.indexOf('win.on("close"'), main.indexOf('win.on("closed"'));
+    expect(close.indexOf("askUnsavedChanges(null)")).toBeGreaterThan(-1);
+    expect(close.indexOf("askUnsavedChanges(null)")).toBeLessThan(close.indexOf("runCloseGate("));
+    expect(close).toContain("flushSession.request(undefined, mode)");
+  });
+  test("crash-recovery and version-timing rows are gone — no longer user settings", () => {
     expect(dialog).not.toContain("Create a version after I stop editing for");
     expect(dialog).not.toContain("Recover edits after an unexpected close");
   });
@@ -138,6 +164,10 @@ describe("Status bar — one calm state opening a 3-row protection summary", () 
   test("default label is 'All work saved'", () => {
     expect(status).toContain('return "All work saved"');
     expect(status).not.toContain('return "All changes saved"');
+  });
+  test("with autosave off, a pending edit reads 'Unsaved changes', never 'Saving…'", () => {
+    expect(status).toContain('return autoSave ? "Saving…" : "Unsaved changes"');
+    expect(status).toContain('if (unsaved) return "Not saved yet"');
   });
   test("summary shows local save, previous versions, and online copy separately", () => {
     expect(status).toContain("On this computer");

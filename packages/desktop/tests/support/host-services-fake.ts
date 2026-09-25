@@ -81,6 +81,7 @@ export function makeHostServices(overrides: HostServicesOverrides = {}): HostSer
       showOpenDialog: async () => ({ canceled: true, filePaths: [] as string[] }),
       showSaveDialog: async () => ({ canceled: true }),
       confirmNpmPluginInstall: async () => false,
+      confirmUnsavedChanges: async () => "cancel" as const,
       openExternal: async () => {},
       showItemInFolder: noop,
       getNativeTheme: () => ({ shouldUseDarkColors: false }),

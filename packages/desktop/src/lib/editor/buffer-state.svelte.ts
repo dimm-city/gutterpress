@@ -33,6 +33,11 @@ export interface EditorBufferOptions {
   /** Disk-save debounce (ms). Defaults to 500 (the responsive edit→preview
    *  loop) — not a user setting (#274); a test-only override. */
   saveDelayMs?: number;
+  /** Whether an edit saves itself after `saveDelayMs` (Settings → Saving,
+   *  "Save edits automatically"). Read each time a save would be scheduled,
+   *  so a change applies from the next edit. When it returns false, edits
+   *  stay pending until {@link EditorBuffer.flush}. Default: on. */
+  autoSave?: () => boolean;
   /** Crash-recovery snapshot debounce (ms). Defaults to 1000. */
   recoveryDelayMs?: number;
   /** When false, no sidecar recovery snapshots are written. Not wired to a
@@ -197,6 +202,10 @@ export class EditorBuffer {
 
   private scheduleSave(): void {
     if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    // Autosave off: the edit waits for an explicit flush() — Save, Ctrl+S,
+    // or Save in the prompt shown on leaving the file.
+    if (this.opts.autoSave?.() === false) return;
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
       // Debounced saves report through onError; explicit flush() callers need
@@ -415,6 +424,42 @@ export class EditorBuffer {
     // content stays; isDirty is recomputed against the external disk baseline.
     this.setPhase(this.isDirty ? "dirty" : "clean");
     if (this.isDirty) this.scheduleSave();
+  }
+
+  /**
+   * Don't Save: throw away unsaved edits, putting the buffer back on the file
+   * as it is on disk NOW, and delete their crash-recovery draft so the next
+   * launch does not offer them back. Re-reads rather than trusting
+   * `diskContent`: reconcile skips a dirty buffer, so a sync, checkout or
+   * outside edit made while edits were unsaved leaves that baseline stale.
+   * Awaits the draft delete — callers may be about to close the window.
+   */
+  async discard(): Promise<void> {
+    const filePath = this.filePath;
+    const gen = this.loadGen;
+    this.cancelTimers();
+    this.externalChange = null;
+    let disk = this.diskContent;
+    let mtimeMs = this.diskMtimeMs;
+    if (filePath) {
+      try {
+        const st = await this.platform.statFile(filePath);
+        disk = st.exists ? await this.platform.readFile(filePath) : "";
+        mtimeMs = st.exists ? st.mtimeMs : 0;
+      } catch {
+        // Unreadable right now: fall back to the last known disk version.
+      }
+      if (this.filePath !== filePath || this.loadGen !== gen) return;
+    }
+    this.content = disk;
+    this.diskContent = disk;
+    this.diskMtimeMs = mtimeMs;
+    this.setPhase("clean");
+    if (!filePath) return;
+    this.opts.onContentReplaced?.(filePath, this.content);
+    if (this.opts.recoveryEnabled !== false) {
+      await api.recovery.clear(filePath).catch(() => {});
+    }
   }
 
   /** Drop the buffer entirely (e.g. closing a folder / switching to URL mode). */

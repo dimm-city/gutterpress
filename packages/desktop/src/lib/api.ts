@@ -257,6 +257,9 @@ export const api = {
     pickPdfFile: () => post<string | null>('/api/dialog/pick-pdf-file'),
     /** Open native multi-select image file picker. Resolves [] when cancelled. */
     pickImageFiles: () => post<string[]>('/api/dialog/pick-image-files'),
+    /** Native Save / Don't Save / Cancel prompt for a file with unsaved edits. */
+    confirmUnsaved: (fileName: string) =>
+      post<'save' | 'discard' | 'cancel'>('/api/dialog/confirm-unsaved', { fileName }),
   },
 
   shell: {
