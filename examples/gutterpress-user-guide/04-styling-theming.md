@@ -31,9 +31,8 @@ gutterpress ext add clean-book ./my-book --look   # copy the built-in look in an
 gutterpress ext list ./my-book                    # every extension, in load (= cascade) order
 ```
 
-`gutterpress new` does exactly this with its template's starter look, so even
-a freshly scaffolded project has a real, editable look from the start. The
-resulting manifest reads:
+A new book has no look until you add one this way. After adding
+`clean-book`, the manifest reads:
 
 ```yaml
 extensions:
@@ -325,18 +324,21 @@ styles:
   - "styles/chapter-art.css"      # 5. Chapter-specific rules (last wins)
 ```
 
-Gutterpress's own CSS sits underneath all of this in two cascade layers —
-the marker structural CSS in `@layer gp.marker`, the `gp-*` utility
-vocabulary in `@layer gp.vocab` — both declared before anything above. A
-cascade layer always loses to unlayered CSS, so every extension stylesheet
-and every stylesheet in `styles:` beats core's defaults automatically, at any
-specificity — even a bare element selector.
-You never need `!important`, or an extra selector to inflate specificity,
-just to beat a `gp-*` rule.
+This order is enforced with CSS cascade layers, so it holds no matter how an
+extension writes its CSS. Gutterpress's own CSS sits underneath everything in
+two layers — the marker structural CSS in `@layer gp.marker`, the `gp-*`
+utility vocabulary in `@layer gp.vocab`. Each extension's stylesheets are
+then wrapped in a layer of their own, `@layer ext.<name>`, declared in list
+order — so a later extension beats an earlier one, and an extension that
+leaves its CSS unlayered cannot jump ahead of one listed after it. Your own
+`styles:` are the only unlayered CSS in the book, and unlayered CSS beats
+every layer at any specificity: a bare element selector in `book.css`
+overrides a look's most specific rule. You never need `!important`, or an
+extra selector to inflate specificity, to beat core or an extension.
 
-If your own look is more than a couple of files, declare your own layer
-order at the top of your first stylesheet instead of relying on the list
-above:
+If your own stylesheets are more than a couple of files, declare your own
+layer order at the top of your first stylesheet instead of relying on the
+list above:
 
 ```css
 @layer tokens, base, components, templates, pages, book;

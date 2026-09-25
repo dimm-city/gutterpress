@@ -8,7 +8,12 @@
  *   2. the same list order IS the markdown registration order;
  *   3. the project's own `styles:` come after every extension, whatever the
  *      list order — an author rule beats an extension rule by position alone,
- *      and core's layered blocks sit before all of them.
+ *      and core's layered blocks sit before all of them;
+ *   4. each extension's CSS sits in its own cascade layer (`ext.<name>`), in
+ *      list order, so the list order holds even when an earlier extension
+ *      leaves its CSS unlayered and a later one layers its own — and the
+ *      book's unlayered `styles:` beat them all. Proved on computed style in
+ *      Chromium, not on string positions.
  */
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
@@ -18,11 +23,12 @@ import { resolveConfig } from "./manifest";
 import { loadPluginsWithCss } from "./markdown/plugins";
 import { createMarkdownRenderer } from "./markdown/renderer";
 import { renderChapters } from "./markdown/index";
+import { launchChromium } from "../engine/shared/cdp.ts";
 
 const TMP_ROOT = join(process.cwd(), ".tmp", `extensions-cascade-${Date.now()}`);
 let counter = 0;
 
-function writeLook(dir: string, id: string, color: string): void {
+function writeLook(dir: string, id: string, color: string, css = `.tie { color: ${color}; }\n`): void {
   const ext = join(dir, "ext", id);
   mkdirSync(join(ext, "css"), { recursive: true });
   writeFileSync(
@@ -35,7 +41,7 @@ function writeLook(dir: string, id: string, color: string): void {
     `export default function (md) { (md.__order ??= []).push(${JSON.stringify(id)}); }\n`,
     "utf8",
   );
-  writeFileSync(join(ext, "css", "look.css"), `.tie { color: ${color}; }\n`, "utf8");
+  writeFileSync(join(ext, "css", "look.css"), css, "utf8");
 }
 
 async function render(
@@ -43,14 +49,13 @@ async function render(
   order: string[],
 ): Promise<{ html: string; registration: string[] }> {
   const config = resolveConfig({}, { extensions: order, styles: ["styles/book.css"] });
-  const { plugins, pluginCss, pluginStylePaths } = await loadPluginsWithCss(config.extensions, dir);
+  const { plugins, pluginStyles } = await loadPluginsWithCss(config.extensions, dir);
   const md = createMarkdownRenderer(plugins) as unknown as { __order?: string[] };
   const html = await renderChapters(dir, {
     styles: config.styles,
     files: ["chapter.md"],
     plugins,
-    pluginCss,
-    pluginStylePaths,
+    pluginStyles,
   });
   return { html, registration: md.__order ?? [] };
 }
@@ -79,6 +84,52 @@ describe("extensions cascade contract (#265)", () => {
     const ba = await render(dir, ["./ext/beta", "./ext/alpha"]);
     expect(ba.html.indexOf("color: blue")).toBeLessThan(ba.html.indexOf("color: red"));
   });
+
+  test("each extension's CSS is wrapped in its own layer, declared after core's, in list order", async () => {
+    const { html } = await render(dir, ["./ext/alpha", "./ext/beta"]);
+    const at = (s: string) => {
+      const i = html.indexOf(s);
+      expect(i, s).toBeGreaterThan(-1);
+      return i;
+    };
+    expect(at("@layer gp.marker, gp.vocab;")).toBeLessThan(at("@layer ext.alpha, ext.beta;"));
+    expect(at("@layer ext.alpha, ext.beta;")).toBeLessThan(at("@layer ext.alpha {"));
+    expect(at("@layer ext.alpha {")).toBeLessThan(at("color: red"));
+    expect(at("color: red")).toBeLessThan(at("@layer ext.beta {"));
+    expect(at("@layer ext.beta {")).toBeLessThan(at("color: blue"));
+    expect(at("color: blue")).toBeLessThan(at("color: green"));
+  });
+
+  test(
+    "computed style: an unlayered earlier extension loses to a layered later one, and the book beats both",
+    async () => {
+      // The bug this guards: an extension whose CSS is unlayered used to beat
+      // every layered extension after it, whatever the list said.
+      writeLook(dir, "alpha", "red", "p { color: red; }\n");
+      writeLook(dir, "beta", "blue", "@layer beta { p { color: blue; } }\n");
+      writeFileSync(join(dir, "styles", "book.css"), ".unrelated { color: green; }\n", "utf8");
+      const browser = await launchChromium();
+      try {
+        const colorOf = async (html: string): Promise<string> => {
+          const page = await browser.newPage();
+          try {
+            await page.setContent(html);
+            return await page.evaluate<string>("getComputedStyle(document.querySelector('p')).color");
+          } finally {
+            await page.close();
+          }
+        };
+        expect(await colorOf((await render(dir, ["./ext/alpha", "./ext/beta"])).html)).toBe("rgb(0, 0, 255)");
+        expect(await colorOf((await render(dir, ["./ext/beta", "./ext/alpha"])).html)).toBe("rgb(255, 0, 0)");
+
+        writeFileSync(join(dir, "styles", "book.css"), "p { color: green; }\n", "utf8");
+        expect(await colorOf((await render(dir, ["./ext/alpha", "./ext/beta"])).html)).toBe("rgb(0, 128, 0)");
+      } finally {
+        await browser.close();
+      }
+    },
+    60000,
+  );
 
   test("list order is the markdown registration order", async () => {
     expect((await render(dir, ["./ext/alpha", "./ext/beta"])).registration).toEqual(["alpha", "beta"]);

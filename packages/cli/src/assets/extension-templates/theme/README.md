@@ -134,14 +134,16 @@ settled by that one line rather than by which sheet `package.json`'s
 `gutterpress.styles` lists last, so splitting a sheet or reordering that list
 can no longer silently flip who wins.
 
-The trap, and it catches everyone once: a rule left OUTSIDE all the layers is
-fully unlayered, and unlayered CSS beats layered CSS at any specificity. So
-one stray rule at the bottom of `components.css` will out-rank every rule in
-`book.css`. Adopt the convention for a whole sheet at a time.
+The trap, and it catches everyone once: a rule left OUTSIDE all the layers
+beats every layered rule in the theme at any specificity. So one stray rule
+at the bottom of `components.css` will out-rank every rule in `book.css`.
+Adopt the convention for a whole sheet at a time.
 
-These layers are unlayered relative to Gutterpress core (which uses
-`gp.marker` and `gp.vocab`), so every rule here still beats core exactly as it
-did before layers existed.
+Gutterpress wraps the whole theme in a cascade layer of its own
+(`ext.<name>`), after core's `gp.marker`/`gp.vocab` and before the book's own
+`styles:`. These layers nest inside it: they settle ties between the theme's
+own files, every one of them beats core, and the book's own rules beat every
+one of them.
 
 ### 3. Authors write semantic markdown
 

@@ -24,8 +24,8 @@ bun packages/cli/src/cli.ts --version
 ## Create Your First Project
 
 The fastest way to start is the built-in scaffolder — it generates a working
-project (manifest, a starter chapter, a starter look, a real editable
-stylesheet, and local version history) in one command, so you never have to
+project (manifest, a starter chapter, an editable stylesheet, and local
+version history) in one command, so you never have to
 hand-write a manifest just to get going:
 
 ```bash
@@ -53,17 +53,16 @@ This creates a `my-book/` folder in the current directory:
 my-book/
 ├── manifest.yaml       # Pre-filled with your title and author
 ├── chapter-01.md       # A starter chapter — replace with your content
-├── extensions/
-│   └── clean-book/     # The starter look (theme.css + package.json) — yours to edit
 ├── styles/
-│   └── book.css        # Your own stylesheet — loads after the look, ready to edit
+│   └── book.css        # Your own stylesheet — ready to edit
 └── assets/             # Images, fonts, diagrams go here
 ```
 
-The look is an *extension*: `extensions/clean-book` is listed under
-`extensions:` in the manifest, and `styles/book.css` is your own layer on top
-of it. Chapter 4 covers swapping looks; Chapter 5 covers the `extensions:`
-list itself.
+A new book has no look. Add one when you want it — a built-in look
+(`gutterpress ext add clean-book my-book --look`) or one from npm — and it is
+listed under `extensions:` in the manifest, with `styles/book.css` as your own
+layer on top of it. Chapter 4 covers looks; Chapter 5 covers the
+`extensions:` list itself.
 
 It also runs `git init` and records a "Created project" snapshot by default —
 local version history with no credentials and no remote required. Pass

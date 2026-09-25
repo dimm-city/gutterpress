@@ -222,11 +222,10 @@ describe("conventions", () => {
     }
   });
 
-  test("the stylesheet keeps all of its rules inside its own cascade layer", () => {
-    // An unlayered rule beats every layered one, including this package's
-    // own — see the header comment in styles/plugin.css.
-    expect(css).toContain("@layer {{SLUG}} {");
-    const outside = css.replace(/@layer\s+[\w-]+\s*\{[\s\S]*\}/m, "");
-    expect(outside).not.toMatch(/^[^*\/\s][^{}]*\{/m);
+  test("the stylesheet declares no cascade layer of its own", () => {
+    // Gutterpress wraps this extension's CSS in `@layer ext.<name>` itself,
+    // in `extensions:` list order — see the header comment in
+    // styles/plugin.css. A layer declared here would only nest inside it.
+    expect(css).not.toMatch(/@layer/);
   });
 });

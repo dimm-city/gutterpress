@@ -27,12 +27,13 @@ What the built document contains, in order:
 
 ```text
 1. core layout primitives and author utilities (layered — they lose to everything below)
-2. extension stylesheets, in `extensions:` list order
-3. manifest `styles:` entries, in listed order
+2. extension stylesheets, each in its own cascade layer (`ext.<name>`), in `extensions:` list order
+3. manifest `styles:` entries, unlayered, in listed order
 ```
 
-Project CSS is last, so it wins at equal specificity. Within each list, later
-entries win. That is the entire precedence model.
+Project CSS is last and unlayered, so it wins at any specificity. Within each
+list, later entries win — for extensions by layer order, so it holds however
+an extension writes its CSS. That is the entire precedence model.
 
 ```yaml
 extensions:

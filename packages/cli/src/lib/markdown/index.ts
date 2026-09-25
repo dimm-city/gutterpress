@@ -6,7 +6,7 @@ import { canonicalChapterId } from "./chapter-id";
 import { assembleBookHtml, type LayoutWarning } from "./assemble";
 import { resolveActiveStyles } from "../style-resolver";
 import { inlineStyles, type AssetCopy } from "../asset-inline";
-import type { LoadedPlugin } from "./renderer";
+import type { LoadedPlugin, PluginStyleGroup } from "./renderer";
 
 export type { LayoutWarning } from "./assemble";
 
@@ -60,21 +60,14 @@ export async function renderChapters(
     styles?: string[];
     files?: string[] | null;
     plugins?: LoadedPlugin[];
-    pluginCss?: string;
     /**
-     * #238 — absolute paths of plugin-declared `styles` files, in plugin load
-     * order (`loadPluginsWithCss`'s `pluginStylePaths`). Inlined through the
-     * SAME pipeline the project's own stylesheets get (`inlineStyles`: fonts/
+     * Each extension's CSS (`loadPluginsWithCss`'s `pluginStyles`), in
+     * `extensions:` list order. Every group is inlined through the SAME
+     * pipeline as the project's own stylesheets (`inlineStyles`: fonts and
      * images embedded, local `@import` followed, print-safety lintable) and
-     * placed in the SAME cascade position the legacy `pluginCss` string
-     * already holds — after core, before the project's own stylesheets.
-     * Absolute paths pass through `inlineStyles` unchanged (`path.resolve` is
-     * a no-op on an already-absolute input), so a plugin's stylesheet
-     * location is independent of `inputDir`. Omitting this (existing
-     * string-only-`css` plugins, or none at all) is a zero-cost, byte-
-     * identical no-op — see the test asserting exactly that.
+     * wrapped in its own cascade layer — see the block below.
      */
-    pluginStylePaths?: string[];
+    pluginStyles?: PluginStyleGroup[];
     /** Wrap each source file for incremental preview pagination. */
     wrapChapters?: boolean;
     /** Add source-file ids to source-mapped preview blocks without wrappers. */
@@ -105,34 +98,35 @@ export async function renderChapters(
   // location — themes/, ../design-guide/, anywhere — has no effect on output.
   const inlined = await inlineStyles(inputDir, styles);
 
-  // #238: plugin-declared stylesheet FILES get the SAME asset-inline pass as
-  // the project's own — not just concatenated as an opaque string — so a
-  // plugin's CSS is print-safety lintable and can `url()` a font/image.
-  // `inlineStyles` resolves each entry via `path.resolve(inputDir, entry)`,
-  // which is a no-op when `entry` is already absolute (as every entry in
-  // `pluginStylePaths` is — see `loadPlugin`'s resolvePluginStyles), so
-  // `inputDir` here is irrelevant to plugin styles and only threaded through
-  // because this is one shared helper call. An empty/omitted list (every
-  // plugin using only the legacy `css` string, or no plugins at all) makes
-  // this call a zero-I/O no-op — `inlineStyles([])`'s loop never runs — so
-  // existing books render byte-identically (see index.test.ts's plugin-styles
-  // backward-compat case).
-  const pluginInlined = await inlineStyles(inputDir, opts.pluginStylePaths ?? []);
-
-  const styleWarnings = [...pluginInlined.warnings, ...inlined.warnings];
+  // Each extension's CSS goes in its own cascade layer, in `extensions:`
+  // list order, so precedence IS the list order: an extension cannot jump
+  // the queue by leaving its CSS unlayered, and the book's own `styles:` —
+  // unlayered, below — beat every extension by construction. An extension's
+  // own `@layer`s nest inside its layer and keep their relative order. Its
+  // stylesheet FILES get the same asset-inline pass as the project's own
+  // (fonts/images embedded, print-safety lintable; `inlineStyles` leaves
+  // their absolute paths alone). A module's `css` string export follows its
+  // files, inside the same layer.
+  const blocks: string[] = [];
+  const layers: string[] = [];
+  const styleWarnings: string[] = [];
+  const cssAssetCopies: AssetCopy[] = [];
+  for (const group of opts.pluginStyles ?? []) {
+    const groupInlined = await inlineStyles(inputDir, group.paths);
+    styleWarnings.push(...groupInlined.warnings);
+    cssAssetCopies.push(...groupInlined.copies);
+    const css = [groupInlined.css, group.css]
+      .filter((s): s is string => !!s && s.trim().length > 0)
+      .join("\n\n");
+    if (!css) continue;
+    layers.push(group.layer);
+    blocks.push(`/* ${group.name} */\n@layer ${group.layer} {\n${css.trim()}\n}`);
+  }
+  styleWarnings.push(...inlined.warnings);
   if (styleWarnings.length > 0) opts.onStyleWarnings?.(styleWarnings);
-  const cssAssetCopies = [...pluginInlined.copies, ...inlined.copies];
+  cssAssetCopies.push(...inlined.copies);
   if (cssAssetCopies.length > 0) opts.onCssAssets?.(cssAssetCopies);
-
-  // The legacy `export const css` string (kept for simple cases — see
-  // GutterpressPluginExport's docstring) is appended after the file-based
-  // plugin styles, both still ahead of the project's own stylesheets — the
-  // SAME cascade slot `pluginCss` alone used to occupy. When there is no
-  // file-based plugin CSS this is exactly `opts.pluginCss` (or `""`),
-  // unchanged from before.
-  const pluginCss = [pluginInlined.css, opts.pluginCss]
-    .filter((s): s is string => !!s && s.trim().length > 0)
-    .join("\n\n");
+  const pluginCss = blocks.length > 0 ? [`@layer ${layers.join(", ")};`, ...blocks].join("\n\n") : "";
 
   // Determine which files to process (manifest `source.files` in order, else
   // every root-level .md file alphabetically) — see resolveActiveMarkdownFiles.
@@ -156,7 +150,7 @@ export async function renderChapters(
     // full rationale and the canary that says when to delete this. Plugin CSS
     // images (#238) need the same treatment, now that plugin `styles` files
     // go through the same inliner.
-    preloadImages: [...pluginInlined.copies.map((c) => c.to), ...inlined.copies.map((c) => c.to)],
+    preloadImages: cssAssetCopies.map((c) => c.to),
     title: opts.title,
     plugins: opts.plugins,
     pluginCss,
@@ -181,9 +175,8 @@ export async function renderChaptersToFile(
     styles?: string[];
     files?: string[] | null;
     plugins?: LoadedPlugin[];
-    pluginCss?: string;
-    /** #238 — see {@link renderChapters}'s option of the same name. */
-    pluginStylePaths?: string[];
+    /** See {@link renderChapters}'s option of the same name. */
+    pluginStyles?: PluginStyleGroup[];
     /** ARCH finding #4 — see {@link renderChapters}'s option of the same name. */
     onChapterWarnings?: (file: string, warnings: LayoutWarning[]) => void;
     /** See {@link renderChapters}'s options of the same names. */
@@ -198,8 +191,7 @@ export async function renderChaptersToFile(
     styles: opts.styles,
     files: opts.files,
     plugins: opts.plugins,
-    pluginCss: opts.pluginCss,
-    pluginStylePaths: opts.pluginStylePaths,
+    pluginStyles: opts.pluginStyles,
     onChapterWarnings: opts.onChapterWarnings,
     onImageRefs: opts.onImageRefs,
     onCssAssets: opts.onCssAssets,
