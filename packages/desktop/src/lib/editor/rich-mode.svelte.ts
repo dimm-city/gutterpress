@@ -33,7 +33,7 @@
  * ## Undo epoch (D7)
  *
  * "Switching modes establishes an explicit undo epoch ... must never alter
- * source." Concretely, for 0.11.0: CodeMirror's own `history()` extension
+ * source." Concretely, for 0.12.0: CodeMirror's own `history()` extension
  * and the shared rich editor's host-delegated undo (`@vscode/markdown-editor`
  * fork) are two INDEPENDENT undo stacks — D7 is explicit that source and
  * rich "share source and persistence but not an undo stack." There is

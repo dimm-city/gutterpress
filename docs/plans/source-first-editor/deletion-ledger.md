@@ -241,7 +241,7 @@ correctly treated as absent, not as a status-note target this lane skipped.
 #### Docs statused this run
 
 - **`CLAUDE.md` §8** — the "PWA scaffolding (`WebAdapter`, #33 — partially
-  shipped)" paragraph rewritten in place to "PWA scaffolding — REMOVED (0.11,
+  shipped)" paragraph rewritten in place to "PWA scaffolding — REMOVED (0.12,
   SFE-P5a, plan D10)": states `WebAdapter` and its dependents were deleted
   rather than completed, that a future web product is a separate package
   consuming `@dimm-city/gutterpress-editor` and `gutterpress/render`, and
@@ -269,7 +269,7 @@ correctly treated as absent, not as a status-note target this lane skipped.
   round-1 repair (see below), not by this commit. Measured:
   `git diff c33868f8..5db8c581 --stat -- CLAUDE.md` → `21 insertions(+), 21 deletions(-)`.
 - **`docs/pwa-webadapter-plan.md`** — a new status block inserted at the top
-  of the existing status blockquote: "CLOSED 2026-09-01 (0.11, SFE-P5a, plan
+  of the existing status blockquote: "CLOSED 2026-09-01 (0.12, SFE-P5a, plan
   D10) — the implementation this plan describes was removed, not completed,"
   naming what was deleted, pointing to this ledger's SFE-P5a entry for proof,
   and stating explicitly that the rest of the document is historical and
@@ -312,7 +312,7 @@ a post-commit review pass, not part of `5db8c581`:**
 - **`docs/ux-design-contract.md`** — a live product/UX contract, not a plan
   snapshot, that `5db8c581` left uncorrected even though SFE-P4's Lane C set
   the precedent of editing this exact file. Re-statused "PWA requirements"
-  and "§3 Mobile / PWA editor UX" as REMOVED (0.11, SFE-P5a, plan D10) with
+  and "§3 Mobile / PWA editor UX" as REMOVED (0.12, SFE-P5a, plan D10) with
   wording matching CLAUDE.md §8's paragraph; dropped the "the plan wins" /
   "Normative: `docs/pwa-webadapter-plan.md`" delegations; narrowed the Scope
   section to the Electron desktop app; demoted the Vision Statement's "(via
@@ -633,7 +633,7 @@ excluded).
   leaving "Status 2026-08-24: SHIPPED." as the first thing a reader saw,
   followed by present-tense "Entry points" text for a feature that no
   longer exists. The status line is now rewritten in place — "Status:
-  SHIPPED 2026-08-24, REMOVED 2026-09-01 (0.11, SFE-P4) — historical
+  SHIPPED 2026-08-24, REMOVED 2026-09-01 (0.12, SFE-P4) — historical
   record." — matching the treatment `docs/ux-design-contract.md` already
   used, and the "Entry points" sentence moved below the removal note and
   into past tense. Body kept as historical record.
@@ -3149,7 +3149,7 @@ Changes:
   existed.
 - Footer "Last Updated"/"Version" corrected to the real, checked package
   versions (`packages/cli`/`packages/desktop` still 0.10.2 pending the
-  0.11.0 release; `packages/editor` 0.11.0-experimental.0) rather than
+  0.12.0 release; `packages/editor` 0.12.0-experimental.0) rather than
   restating the stale 0.10.2-alpha.3 line, which predates every package
   this run added to the monorepo-packages list.
 
@@ -3442,7 +3442,7 @@ $ rg -c 'CommitEngine' . | awk -F: '{s+=$2} END{print s}'   # 59, 19 files
 One production-source hit: `packages/desktop/src/routes/+page.svelte`,
 lines 1042/1049/1050 — a JSDoc comment on the `hasFile`/`applyRangeEditIn`
 type members explaining they were "Added for `CommitEngine`... `CommitEngine`
-was removed in 0.11 (SFE-P4)" (class 1, verified by reading the surrounding
+was removed in 0.12 (SFE-P4)" (class 1, verified by reading the surrounding
 20 lines — comment only, no live reference). The same three
 `packages/desktop/tests/editor/*.test.ts` files as §1.2 (class 2) and 15
 `docs/plans/**`/`docs/adr/{0009,0013}` files (class 3) account for the rest.
@@ -3620,7 +3620,7 @@ protected"), `docs/**`, `CLAUDE.md`, `CHANGELOG.md`, `packages/desktop/README.md
 
 "loopback" (28 files) splits into two groups: the desktop's own class-1
 comments (`main.ts`, `app-protocol.ts`, two `tests/platform/*.test.ts`
-files, `README.md`, `CLAUDE.md`, `docs/releases/0.11.0.md`) AND **an
+files, `README.md`, `CLAUDE.md`, `docs/releases/0.12.0.md`) AND **an
 unrelated, live feature that
 happens to use the same English word** (judgment call (b)):
 `packages/cli/src/lib/remote-auth/{transport,test-access,github-auth,
@@ -4038,8 +4038,8 @@ documents for an open/proposed status requiring resolution:
 
 | Document | Status found | Disposition |
 |---|---|---|
-| `docs/pwa-webadapter-plan.md` | Already `CLOSED 2026-09-01 (0.11, SFE-P5a, plan D10)` | No action — already resolved |
-| `docs/inline-editing-plan.md` | Already `SHIPPED 2026-08-24, REMOVED 2026-09-01 (0.11, SFE-P4)` | No action — already resolved |
+| `docs/pwa-webadapter-plan.md` | Already `CLOSED 2026-09-01 (0.12, SFE-P5a, plan D10)` | No action — already resolved |
+| `docs/inline-editing-plan.md` | Already `SHIPPED 2026-08-24, REMOVED 2026-09-01 (0.12, SFE-P4)` | No action — already resolved |
 | `docs/plans/source-first-editor-enterprise-refactor.md` (the master plan) | No formal status field; opens "This plan is ready for execution. It contains no unresolved design decisions." | Not touched — still the actively governing document through this very run (P7 is its own final phase, not yet complete pending Lane B/C/the acceptance sweep); marking it terminal from inside Lane A, before those other lanes finish, would be premature and outside a documentation lane's authority over the plan's own binding text |
 | `docs/plans/source-first-editor/upstream-issue-measurement.md` | `Status: ready to file... Not yet submitted` | Left as-is — accurately self-describes a genuinely open external action (filing a `microsoft/vscode-packages` issue) that nothing in this run changes; forcing ACCEPTED/RESOLVED/SUPERSEDED would misstate reality more than an honest "still pending" does. Confirmed real and current by reading `packages/vscode-markdown-editor/PATCHES.md`: the fork this issue is a removal-trigger condition for is still vendored and active |
 | `docs/plans/source-first-editor/upstream-issue-render-custom-block.md` | `Status: ready to file... Not yet submitted` | Same disposition as above, same reason |

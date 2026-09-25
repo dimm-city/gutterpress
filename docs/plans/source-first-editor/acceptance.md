@@ -9,7 +9,7 @@
 
 | ID | Acceptance criterion | Owning phase | Required evidence | Final status |
 |---|---|---:|---|---|
-| AC-01 | Post-release branch baseline verified | P0a | Recorded `main` SHA, `release/0.11.0` equality check, and work-branch ancestry proof | Evidenced (SFE-P0a: `baseline.md` §1–§3; equality check replaced by the recorded deviation — `release/0.11.0` absent, work branch == `origin/main`) — Implementation: `docs/plans/source-first-editor/baseline.md`. |
+| AC-01 | Post-release branch baseline verified | P0a | Recorded `main` SHA, `release/0.12.0` equality check, and work-branch ancestry proof | Evidenced (SFE-P0a: `baseline.md` §1–§3; equality check replaced by the recorded deviation — `release/0.12.0` absent, work branch == `origin/main`) — Implementation: `docs/plans/source-first-editor/baseline.md`. |
 | AC-02 | No ProseMirror-family dependency | P0/P7 | Lockfile/package/import search | Enforced (SFE-P0b: `check-architecture.mjs` Rule 1 in CI, sabotage-proven; final search sweep remains P7) — Implementation: `tools/check-architecture.mjs` (Rule 1), wired in `.github/workflows/ci.yml`. |
 | AC-03 | Exact no-edit byte identity | P2/P3 | Corpus and real-book byte tests | **Evidenced** (SFE-P2a 19-fixture corpus + P1b browser cases; SFE-P3d-parity: 25 real chapters / 154,366 bytes plus a 3-chapter plugin book round-trip through the real host/controller/projection with zero drift, sabotage-proven) — Implementation: `packages/editor/src/core/apply-edit.ts`, `validate.ts`, `contract-tests.ts`; real-book host: `packages/desktop/src/lib/editor-host/desktop-document-host.ts`. |
 | AC-04 | Explicit edit locality | P2/P3 | Source diff tests and randomized range cases | **Evidenced** (SFE-P2a independent-bound oracle, sabotage-proven; SFE-P3d-parity: the same oracle reused verbatim against real books and the real DesktopDocumentHost — 2,810 locality cases, 400 whole-document cases, plus edits adjacent to and inside plugin regions) — Implementation: `packages/editor/src/core/apply-edit.ts` (minimal-range replacement); the command layer emitting the edits: `packages/editor/src/web/standard/*.ts`, `packages/editor/src/core/commands.ts`. |
@@ -867,7 +867,7 @@
     "Post-approve, caught by the acceptance sweep (F-1): the round-2 repair embedded the literal specifier text import(\"gutterpress\") in a header comment, tripping the runtime-deps scanner — CI red at e10b7059; fixed at dfe75b91, CI green at that SHA"
   ],
   "advisories": [
-    "F-2: origin/release/0.11.0 still at ea7b60d5 vs main 5ec25e5a — release-management action for the stakeholder",
+    "F-2: origin/release/0.12.0 still at ea7b60d5 vs main 5ec25e5a — release-management action for the stakeholder",
     "F-3: two test-support .d.ts files leak into the npm tarball (p7-sweeps §3.1)",
     "F-4: the two a11y items and three D13 follow-ups restated so the close-out does not bury them",
     "PlatformAdapter is dead exported surface (public-contract change, not taken unilaterally); no in-tree version bump by design (stakeholder release action)"
@@ -963,9 +963,9 @@ satisfied at `e10b7059`.**
   recurring one round later with a live gate consequence.
 
 **F-2 — Open release-management action (not a code defect).**
-`origin/release/0.11.0` still points at `ea7b60d5`, while `origin/main` is
+`origin/release/0.12.0` still points at `ea7b60d5`, while `origin/main` is
 `5ec25e5a` (5 commits ahead) — re-verified live in this pass. Success
-criterion 1's second conjunct ("`release/0.11.0` was already synchronized
+criterion 1's second conjunct ("`release/0.12.0` was already synchronized
 with that baseline before feature commits") is therefore still literally
 unmet, exactly as `baseline.md` §"Deviations" recorded it. Named here so it
 is not lost between the sweep and the release.
@@ -990,7 +990,7 @@ performance follow-ups (AC-24 below).
   facts, §1.2 ancestry proof, §1.3 byte-identity, §"Deviations").
 - **Test/fixture evidence:** n/a (record criterion). Re-derived here:
   `git merge-base --is-ancestor ea7b60d5 HEAD` → exit 0; `git rev-parse
-  origin/release/0.11.0` → `ea7b60d5`; `git rev-parse origin/main` →
+  origin/release/0.12.0` → `ea7b60d5`; `git rev-parse origin/main` →
   `5ec25e5a`.
 - **Gate evidence:** SFE-P0a gate, 4 commands exit 0 (typecheck; desktop
   2132 pass/1 skip; cli 1810 pass/60 skip; the baseline byte-identity
@@ -1482,7 +1482,7 @@ performance follow-ups (AC-24 below).
 
 - **Implementation:** `docs/architecture/source-first-editor.md`,
   `docs/vscode-extension.md`, `docs/adr/0012`-`0017`, `docs/ARCHITECTURE.md`,
-  `CHANGELOG.md`, `docs/releases/0.11.0.md` — all verified present, and all
+  `CHANGELOG.md`, `docs/releases/0.12.0.md` — all verified present, and all
   six ADRs present as separate files.
 - **Doc-link evidence (re-derived here):** every relative link in
   `docs/architecture/source-first-editor.md` resolves — 6 ADRs, the plan,
@@ -1496,7 +1496,7 @@ performance follow-ups (AC-24 below).
   the parity-gate "proves" wording, and the P5a `~−3,100` figure that
   contradicted the audited −2,546) and four more stale comments in round 2 —
   the records now agree with the tree they ship with.
-- **Open item:** `CHANGELOG.md` dates a `0.11.0` release while no version
+- **Open item:** `CHANGELOG.md` dates a `0.12.0` release while no version
   bump exists anywhere in the tree (`packages/cli` is still `0.10.2`). The
   integrator dispositioned this as intended — the bump and publish are
   stakeholder release actions listed in the wrap-up. Recorded, not treated
@@ -1582,7 +1582,7 @@ performance follow-ups (AC-24 below).
 | NOT APPLICABLE | 0 | — |
 
 Of the 23 PASS results, seven are **scoped** — the scope is stated in the
-criterion's own rationale, not hidden here: AC-01 (the `release/0.11.0`
+criterion's own rationale, not hidden here: AC-01 (the `release/0.12.0`
 equality precondition is unmet and is a release action, F-2), AC-10 (no
 real-VS-Code activation — network blocked), AC-11 (two open a11y items,
 F-4), AC-16 (win/mac packaged smokes are CI-runner work), AC-18 (substance
@@ -1641,7 +1641,7 @@ report-only lane may not write; until it lands, the SFE-P7 gate requirement
 | `git diff --numstat cf5dacda fc6f543a -- <production paths>` | 0 | 246 files, +7,608/−10,097 = **−2,489** |
 | `git diff --name-status --diff-filter=A/D cf5dacda fc6f543a` | 0 | 42 production files added, 124 deleted |
 | `git diff --stat ea2610b3 HEAD -- packages/` | 0 | 35 files, doc comments only |
-| `git rev-parse origin/release/0.11.0 origin/main` | 0 | `ea7b60d5` / `5ec25e5a` (F-2) |
+| `git rev-parse origin/release/0.12.0 origin/main` | 0 | `ea7b60d5` / `5ec25e5a` (F-2) |
 | GitHub Actions API — run `33579455024` (`ea2610b3`) jobs/steps | n/a | 4/4 jobs success; `Test` step 10 *Preview/print parity gate* **success** |
 | GitHub Actions API — run `33582923756` (HEAD) jobs/steps + job log | n/a | `Test` **failure** (1980/10/1); parity-gate step **skipped**; `Build`, `Desktop Test`, `Type Check` success |
 

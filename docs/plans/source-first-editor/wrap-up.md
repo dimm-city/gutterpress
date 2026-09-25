@@ -68,7 +68,7 @@ per-criterion evidence is `docs/plans/source-first-editor/acceptance.md`'s
   served via a custom `app://` protocol from disk/asar.
 - New public subpath **`gutterpress/plugins`**; `gutterpress/render`
   gained the projection surface. Full details: `CHANGELOG.md` and
-  `docs/releases/0.11.0.md`.
+  `docs/releases/0.12.0.md`.
 
 ## Architecture changes
 
@@ -167,9 +167,9 @@ final SHA.
 
 1. **Merge decision** on [PR #214](https://github.com/dimm-city/gutterpress/pull/214).
 2. **Version bump + publish**: no version number changed in-tree by
-   design; bump to 0.11.0, npm publish (`gutterpress`), and the VS Code
+   design; bump to 0.12.0, npm publish (`gutterpress`), and the VS Code
    marketplace decision for the Experimental extension.
-3. **Release branch**: `origin/release/0.11.0` still points at
+3. **Release branch**: `origin/release/0.12.0` still points at
    `ea7b60d5` while `origin/main` is `5ec25e5a` (sweep F-2) — a
    release-management action.
 4. **CI-runner work**: win/mac packaged smokes (`dist:win`/`dist:mac`);

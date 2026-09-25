@@ -5,7 +5,7 @@
 > VS Code extension detail: [`docs/vscode-extension.md`](../vscode-extension.md)
 
 This document describes the source-first rich-editing architecture as it
-stands in Gutterpress `0.11.0`: the document model, the Gutterpress
+stands in Gutterpress `0.12.0`: the document model, the Gutterpress
 projection, the desktop and VS Code hosts, and the preview's boundary with
 all of it. It is current-state, not a change history — see the plan's
 `docs/plans/source-first-editor/runs/` for how each piece was built and
@@ -246,7 +246,7 @@ this section is the map into the source:
 ## Read-only preview and the parity gate
 
 The paginated preview is the print/layout authority and carries no editing
-affordances after `0.11.0` (ADR 0013). Preview navigation, selection/copy,
+affordances after `0.12.0` (ADR 0013). Preview navigation, selection/copy,
 open link/image, diagnostics, and page controls remain; in-flow
 `contenteditable`, block-edit commands, and preview-specific source
 rewriting were deleted in P4 (protocol v8→v9) — see the deletion ledger's

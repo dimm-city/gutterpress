@@ -5,7 +5,7 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.11.0-alpha.0] - 2026-09-02
+## [0.12.0-alpha.0] - 2026-09-02
 
 An alpha: the paged editor is new, and editor↔page agreement is still being
 worked on real books. The preview remains the print authority — where the two

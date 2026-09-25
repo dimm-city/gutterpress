@@ -36,10 +36,10 @@ so every later deletion can prove its inventoried callers moved or disappeared.
   exactly the baseline SHA.
 - **Deviation (release management, non-blocking):** the final `v0.10.2` tag has not
   been pushed (latest tag `v0.10.2-beta.2`; package versions read `0.10.2-beta.2`),
-  and `origin/release/0.11.0` does not exist yet. The plan's equality precondition
+  and `origin/release/0.12.0` does not exist yet. The plan's equality precondition
   is vacuously safe — there is no release branch to diverge from and the work branch
   equals `origin/main` — so execution proceeds; release management must create
-  `release/0.11.0` from this baseline and cut the final `0.10.2` tag.
+  `release/0.12.0` from this baseline and cut the final `0.10.2` tag.
 
 ## Behavior table
 

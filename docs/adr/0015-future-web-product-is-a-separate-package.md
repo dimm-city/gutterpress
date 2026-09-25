@@ -78,8 +78,8 @@ whether a PWA ever ships from `packages/desktop`.
   gets a dedicated host package") and by the concrete incident above: a
   dormant fallback is not free, it actively weakens the render-purity gate
   it coexists with.
-- **Finish `WebAdapter` into a real PWA now** — out of scope for 0.11.0 (plan
-  "out of scope: shipping a browser PWA in 0.11.0") and would have meant
+- **Finish `WebAdapter` into a real PWA now** — out of scope for 0.12.0 (plan
+  "out of scope: shipping a browser PWA in 0.12.0") and would have meant
   building a second host adapter against the desktop's pre-rich-editor
   architecture, immediately stale once ADR 0012/0014's editor package
   landed.

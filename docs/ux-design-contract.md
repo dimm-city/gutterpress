@@ -24,7 +24,7 @@ Every feature area below is tagged with its implementation status:
 This contract governs the **desktop application** — the Electron app. There
 is no PWA/browser target inside this package: the browser host (#33/#34,
 `docs/pwa-webadapter-plan.md`) shipped partially, then was deleted rather
-than completed (0.11, SFE-P5a, plan D10; see CLAUDE.md §8 and the deletion
+than completed (0.12, SFE-P5a, plan D10; see CLAUDE.md §8 and the deletion
 ledger's SFE-P5a entry). A future web product would be a separate package
 consuming `@dimm-city/gutterpress-editor` and `gutterpress/render`, not a
 mode of this application — this contract does not govern it.
@@ -153,7 +153,7 @@ print theme are deliberately separated concepts; do not merge them back.
   single column with a **Markdown / CSS / Preview** tab bar, keyboard-aware
   via `visualViewport`. Any multi-tier breakpoint proposal is a PROPOSED
   change to this shipped behavior and needs an issue.
-- **Mobile primary navigation (PWA) — REMOVED (0.11, SFE-P5a, plan D10):**
+- **Mobile primary navigation (PWA) — REMOVED (0.12, SFE-P5a, plan D10):**
   described a Write/Preview/Files/Settings tab set for the now-deleted
   browser host. No PWA/browser target exists in this package (see Scope
   above); a future web product would define its own navigation model.
@@ -236,7 +236,7 @@ Proposed refinements:
 
 ### 1b. Inline editing in the preview
 
-**Status: SHIPPED in 0.10.0, then PARTIALLY REMOVED in 0.11 (SFE-P4,
+**Status: SHIPPED in 0.10.0, then PARTIALLY REMOVED in 0.12 (SFE-P4,
 2026-09-01).** Originally tracked by **#135** Tier 0 and **#136** Tier 1;
 implementation plan `docs/inline-editing-plan.md`, rationale
 `docs/adr/0009-inline-editing-source-ranges.md`.
@@ -376,7 +376,7 @@ buttons.
 
 ### 3. Mobile / PWA editor UX
 
-**Status: REMOVED (0.11, SFE-P5a, plan D10).** Previously tracked in #33
+**Status: REMOVED (0.12, SFE-P5a, plan D10).** Previously tracked in #33
 (closed, PR #63) and #34 (closed), with normative implementation detail in
 `docs/pwa-webadapter-plan.md`. That implementation — the `WebAdapter` browser
 host this section specified against (write-first tab layout, keyboard
@@ -841,7 +841,7 @@ drawer.
 
 ### PWA requirements
 
-**Status: REMOVED (0.11, SFE-P5a, plan D10).** Previously shipped (Phases
+**Status: REMOVED (0.12, SFE-P5a, plan D10).** Previously shipped (Phases
 1–5) via #33/PR #63, normative in `docs/pwa-webadapter-plan.md`. That
 implementation — `service-worker.ts` (app-shell precache), the web app
 manifest, and `WebAdapter` (FSA primitives + IndexedDB persistence) — was
@@ -928,7 +928,7 @@ they are validated by usability testing, not by a wall-clock CI gate.
 | Theme switch (hover sample-spread render) | ≤500ms | sample spread only — full-document re-apply is exempt above N pages and shows progress |
 
 Mobile/PWA performance targets are historical: `docs/pwa-webadapter-plan.md`
-is closed (0.11, SFE-P5a, plan D10) and its follow-ups do not apply — there
+is closed (0.12, SFE-P5a, plan D10) and its follow-ups do not apply — there
 is no PWA/browser target in this package (see "PWA requirements" above). A
 future web product would define its own performance targets against a named
 reference device.

@@ -550,7 +550,7 @@ settings store's `onSettingsChange()` channel with `settingsChangeGuard()`
 (see `src/lib/settings.svelte.ts`'s header) — every state replacement flows
 through one choke point, so the notify cannot be forgotten by a new setter.
 
-**PWA scaffolding — REMOVED (0.11, SFE-P5a, plan D10).** Issue #33's
+**PWA scaffolding — REMOVED (0.12, SFE-P5a, plan D10).** Issue #33's
 `WebAdapter` (the FSA folder-open path, in-browser preview, IndexedDB
 persistence, the service worker, and the web app manifest) shipped
 partially, then was **deleted rather than completed**: `packages/desktop`

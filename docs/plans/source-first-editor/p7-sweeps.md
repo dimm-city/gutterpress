@@ -598,7 +598,7 @@ deletion ledger's §1.1 uses `rg -c` per-identifier and arrives at the same
   `docs/adr/0009-inline-editing-source-ranges.md` (8), `p7-sweeps.md` — this
   file, self-reference (5), `p3d-sweep-audit.md` (4), `parity-matrix.md` (3),
   `baseline.md` (3), `runs/SFE-P7.md` (2), `runs/SFE-P0a.md` (2),
-  `acceptance.md` (2), `docs/releases/0.11.0.md` (1), `runs/SFE-P3e.md` (1),
+  `acceptance.md` (2), `docs/releases/0.12.0.md` (1), `runs/SFE-P3e.md` (1),
   `runs/SFE-P3d-parity.md` (1), `runs/SFE-P3ab.md` (1) — every one names the
   deleted identifiers as history, per the ruling's own text ("the
   docs/plans history and this spec keep the names").
@@ -665,7 +665,7 @@ section used:
   (9), `capability-map.md` (8), `p7-sweeps.md` — this file, self-reference,
   count as it stood before this section's own rewrite (6), `runs/SFE-P5a.md`
   (4), `acceptance.md` (3), `docs/ux-design-contract.md` (2),
-  `docs/releases/0.11.0.md` (1), `runs/SFE-P7.md` (1),
+  `docs/releases/0.12.0.md` (1), `runs/SFE-P7.md` (1),
   `docs/adr/0017-narrow-feature-owned-capabilities.md` (1).
 - **Class (b) (dated release/architecture record) — `CHANGELOG.md` (1),
   `CLAUDE.md` (3)**: CLAUDE.md's own "Monorepo layout" section narrates the

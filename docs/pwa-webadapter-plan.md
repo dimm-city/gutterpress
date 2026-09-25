@@ -1,6 +1,6 @@
 # PWA / WebAdapter Implementation Plan (Issue #33)
 
-> Status: **CLOSED 2026-09-01 (0.11, SFE-P5a, plan D10) — the implementation
+> Status: **CLOSED 2026-09-01 (0.12, SFE-P5a, plan D10) — the implementation
 > this plan describes was removed, not completed.** `WebAdapter` and
 > everything it depended on (`web-fs.ts`, `web-store.ts`, `fsa.d.ts`, the
 > service worker, `static/manifest.webmanifest`, their tests) were deleted

@@ -18,11 +18,11 @@ This document describes the architecture, design decisions, and implementation d
 
 ## Overview
 
-**Gutterpress** is a markdown-to-PDF converter for professional print layout. It uses its native Chromium print engine for PDF generation and the same engine's viewer for live preview. It is designed as a single-user local application optimized for creating print-ready documents like books, game manuals, and professional reports. Since the 0.11 source-first editor work, it also ships a shared rich-editing surface reused by the desktop app and an Experimental VS Code extension — see [Monorepo packages](#monorepo-packages) and `docs/adr/0012-source-first-editor-sparse-projection.md` onward.
+**Gutterpress** is a markdown-to-PDF converter for professional print layout. It uses its native Chromium print engine for PDF generation and the same engine's viewer for live preview. It is designed as a single-user local application optimized for creating print-ready documents like books, game manuals, and professional reports. Since the 0.12 source-first editor work, it also ships a shared rich-editing surface reused by the desktop app and an Experimental VS Code extension — see [Monorepo packages](#monorepo-packages) and `docs/adr/0012-source-first-editor-sparse-projection.md` onward.
 
 ### Monorepo packages
 
-The repo is a Bun workspace (`packages/*`) with six packages. `packages/cli` and `packages/desktop` are the original two and remain the primary published/shipped surfaces; the other four exist to support the source-first rich editor (`docs/plans/source-first-editor-enterprise-refactor.md`) and are Experimental for 0.11.0. See `docs/OWNERSHIP.md` for the four architectural review boundaries these packages map onto.
+The repo is a Bun workspace (`packages/*`) with six packages. `packages/cli` and `packages/desktop` are the original two and remain the primary published/shipped surfaces; the other four exist to support the source-first rich editor (`docs/plans/source-first-editor-enterprise-refactor.md`) and are Experimental for 0.12.0. See `docs/OWNERSHIP.md` for the four architectural review boundaries these packages map onto.
 
 - **`packages/cli/`** (`gutterpress`) — the single published package: all runtime logic (markdown rendering, preview HTTP server, PDF generation, lint, validation, project scaffolding, Git/VCS, plugin loading) under `src/`, exposed both as a library and a CLI (`bin` → `dist/cli.js`). Public subpath exports are `.` (the full library), `./api` (manifest/style config mutation), `./render` (the browser-safe, Node-free rendering + projection boundary — ADR 0012), and `./plugins` (the plugin loader — D11's one narrower subpath with a real external consumer today; see [Public Package Exports](#public-package-exports)). The standard build compiles `src/index.ts` + `src/api/index.ts` + `src/plugins.ts` together, the node-free `src/render.ts` subpath as its own non-split graph (render purity enforced by `scripts/check-render-pure.mjs`), and `src/cli.ts` separately; `tsc` then emits declarations. It is also distributed as a standalone compiled binary via `bun build --compile`.
 - **`packages/desktop/`** (`@dimm-city/gutterpress-desktop`) — Electron + SvelteKit desktop app. Depends on `gutterpress` (workspace) and loads its library entry in the Electron main process via a dynamic `import("gutterpress")`. See [Desktop Application Architecture](#desktop-application-architecture) below.
@@ -817,7 +817,7 @@ See [User Guide: Chapter 5 — Plugins](../examples/gutterpress-user-guide/05-pl
 | `./plugins` | The plugin loader (`loadPlugins`/`loadPluginsWithCss`, `dist/plugins.js`) | The desktop's `electron/editor-projection.ts` (its host-side rich-editor projection builder — this subpath's original motivating consumer, added in SFE-P3e) and `packages/vscode-extension`'s `src/project/projection.ts`, both loading a project's real (receipt-verified, degrade-and-report) plugins outside the CLI's own build/preview path |
 
 `gutterpress`, `gutterpress/api`, and `gutterpress/render` predate the
-source-first editor plan and remain supported through 0.11.0 unchanged
+source-first editor plan and remain supported through 0.12.0 unchanged
 (plan D11). `gutterpress/plugins` was added specifically to give
 non-CLI hosts the SAME plugin loader the CLI's build/preview path uses,
 rather than each host reimplementing a narrower duplicate — the desktop
@@ -1029,6 +1029,6 @@ confine author assets and chapter-update requests to the selected project.
 
 **Last Updated**: 2026-09-01 (SFE-P6c — monorepo packages, desktop composition
 roots, and public exports sections rewritten against the post-P6 tree)
-**Version**: packages/cli + packages/desktop 0.10.2 (0.11.0 release pending
-final P7 acceptance); packages/editor 0.11.0-experimental.0 (Experimental,
+**Version**: packages/cli + packages/desktop 0.10.2 (0.12.0 release pending
+final P7 acceptance); packages/editor 0.12.0-experimental.0 (Experimental,
 D1/D11)

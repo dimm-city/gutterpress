@@ -62,7 +62,7 @@ This guide adds practical guardrails to those decisions. Every phase specificati
 
 This review used:
 
-- [PR 158 — editor: rich editing surface — deferred to 0.11](https://github.com/dimm-city/gutterpress/pull/158)
+- [PR 158 — editor: rich editing surface — deferred to 0.12](https://github.com/dimm-city/gutterpress/pull/158)
 - The 72-commit PR branch history through head `5a5e54e86dfd073cc08789fb52cf0bb5b19f8b1f`
 - [`docs/rich-editor-lessons-learned.md`](https://github.com/dimm-city/gutterpress/blob/5a5e54e86dfd073cc08789fb52cf0bb5b19f8b1f/docs/rich-editor-lessons-learned.md)
 - [`docs/editor-core-rule-provenance-plan.md`](https://github.com/dimm-city/gutterpress/blob/5a5e54e86dfd073cc08789fb52cf0bb5b19f8b1f/docs/editor-core-rule-provenance-plan.md)

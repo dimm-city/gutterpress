@@ -1058,7 +1058,7 @@
      * of its own (this repo bans `$effect`). */
     switchFile: (path: string | null, content: string) => void;
     /** Whether the live document is this file. Originally added for
-     * `CommitEngine` (inline-editing plan §4.7 Step 4, removed 0.11
+     * `CommitEngine` (inline-editing plan §4.7 Step 4, removed 0.12
      * SFE-P4); its surviving callers are the `updateContent`/`revealLine`
      * gates below, which still need to confirm the editor is showing the
      * right file before acting on it. */
@@ -1066,7 +1066,7 @@
     /** Apply a `[from, to)` character-range edit to one file as a single
      * undoable transaction. Offsets are into THAT FILE, not into the
      * document. Added for `CommitEngine` (inline-editing plan §4.7 Step 4);
-     * `CommitEngine` was removed in 0.11 (SFE-P4) and no other caller has
+     * `CommitEngine` was removed in 0.12 (SFE-P4) and no other caller has
      * taken this over — kept on the exported surface as a documented,
      * currently-unused capability rather than deleted, since removing it is
      * outside a comment-only fix. */

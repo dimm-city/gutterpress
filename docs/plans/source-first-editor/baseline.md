@@ -105,10 +105,10 @@ re-derived or re-argued:
 >
 > **Deviation (release management, non-blocking):** the final `v0.10.2` tag
 > has not been pushed (latest tag `v0.10.2-beta.2`; package versions read
-> `0.10.2-beta.2`), and `origin/release/0.11.0` does not exist yet. The plan's
+> `0.10.2-beta.2`), and `origin/release/0.12.0` does not exist yet. The plan's
 > equality precondition is vacuously safe — there is no release branch to
 > diverge from and the work branch equals `origin/main` — so execution
-> proceeds; release management must create `release/0.11.0` from this
+> proceeds; release management must create `release/0.12.0` from this
 > baseline and cut the final `0.10.2` tag.
 
 These are recorded as-ratified. This run does not re-verify or contest them.
@@ -499,10 +499,10 @@ Both deviations recorded in §1 are now resolved or narrowed:
   intermediate engine-bundle refresh commits reproduced identical bytes).
   The work branch merged `origin/main` at `c0966b55`; all fitness checks and
   typecheck stayed green.
-- **`origin/release/0.11.0`: EXISTS, but points at `ea7b60d5`** — the pre-bump
+- **`origin/release/0.12.0`: EXISTS, but points at `ea7b60d5`** — the pre-bump
   merge commit, 5 commits behind post-release `main` (`5ec25e5a`). The plan's
-  equality precondition (`release/0.11.0` == post-release `main`) is therefore
+  equality precondition (`release/0.12.0` == post-release `main`) is therefore
   still not literally satisfied; release management should fast-forward
-  `release/0.11.0` to `5ec25e5a`. Not blocking: the work branch contains
-  `origin/main`, so the eventual merge into `release/0.11.0` carries the release
+  `release/0.12.0` to `5ec25e5a`. Not blocking: the work branch contains
+  `origin/main`, so the eventual merge into `release/0.12.0` carries the release
   commits either way.

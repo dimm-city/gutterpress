@@ -24,7 +24,7 @@
 
 Gutterpress needs a primary rich Markdown authoring experience for non-technical authors without sacrificing exact Markdown source, project-specific syntax, print fidelity, or maintainability. The previous rich-editor effort in PR 158 proved several hard product and rendering requirements, but its ProseMirror document model, Markdown serializer, normalization workflow, and broad branch divergence are no longer the correct foundation.
 
-This plan assumes `0.10.2` has been merged to `main` and released before implementation begins. The execution baseline is therefore the post-release `main` branch, and `release/0.11.0` is already synchronized with that same commit. That baseline treats Markdown source as authoritative, includes a browser-safe `gutterpress/render` boundary, has a working CodeMirror source editor, and contains source-range infrastructure. It also contains architectural complexity that can now be removed: paginated-preview editing, a dormant in-desktop PWA implementation, a broad platform service locator, and two host transports inside Electron.
+This plan assumes `0.10.2` has been merged to `main` and released before implementation begins. The execution baseline is therefore the post-release `main` branch, and `release/0.12.0` is already synchronized with that same commit. That baseline treats Markdown source as authoritative, includes a browser-safe `gutterpress/render` boundary, has a working CodeMirror source editor, and contains source-range infrastructure. It also contains architectural complexity that can now be removed: paginated-preview editing, a dormant in-desktop PWA implementation, a broad platform service locator, and two host transports inside Electron.
 
 This effort therefore combines one new capability with a deletion-led architecture refinement:
 
@@ -37,7 +37,7 @@ This effort therefore combines one new capability with a deletion-led architectu
 
 ### Objective
 
-Deliver Gutterpress `0.11.0` with a lean, source-first rich editor shared by Electron and VS Code; preserve exact Markdown bytes outside explicit edits; support Gutterpress layout and project-plugin projections without introducing a second full document model; retain CodeMirror for source and code-oriented files; make the paginated preview read-only; remove dormant PWA scaffolding from the desktop package; converge Electron on typed IPC instead of local HTTP plus IPC; replace the broad `Platform` service locator with narrow feature-owned capabilities; and leave an auditable net reduction in runtime concepts, branches, modules, and lines of code.
+Deliver Gutterpress `0.12.0` with a lean, source-first rich editor shared by Electron and VS Code; preserve exact Markdown bytes outside explicit edits; support Gutterpress layout and project-plugin projections without introducing a second full document model; retain CodeMirror for source and code-oriented files; make the paginated preview read-only; remove dormant PWA scaffolding from the desktop package; converge Electron on typed IPC instead of local HTTP plus IPC; replace the broad `Platform` service locator with narrow feature-owned capabilities; and leave an auditable net reduction in runtime concepts, branches, modules, and lines of code.
 
 ### Current state
 
@@ -47,15 +47,15 @@ Deliver Gutterpress `0.11.0` with a lean, source-first rich editor shared by Ele
 - Baseline branch: `main`
 - Baseline commit: captured in P0a from `origin/main` after the `0.10.2` release; it is intentionally not hard-coded in this plan
 - Released baseline version: `0.10.2`
-- Target integration branch: `release/0.11.0`
-- Execution precondition: `origin/release/0.11.0` resolves to the same commit as `origin/main` before the work branch is created
-- Target release: `0.11.0`
+- Target integration branch: `release/0.12.0`
+- Execution precondition: `origin/release/0.12.0` resolves to the same commit as `origin/main` before the work branch is created
+- Target release: `0.12.0`
 - Versioning constraint:
-  - Internal desktop and editor architecture may break during `0.11.0`.
+  - Internal desktop and editor architecture may break during `0.12.0`.
   - Existing Gutterpress project Markdown, manifest, CLI, build, preview, and published package behavior remain compatible unless a run explicitly proves and documents a required correction.
-  - `@dimm-city/gutterpress-editor` and the initial VS Code extension are **Experimental** for `0.11.0`.
+  - `@dimm-city/gutterpress-editor` and the initial VS Code extension are **Experimental** for `0.12.0`.
   - No user-data migration is introduced by this plan.
-- Changelog destination: `CHANGELOG.md` under the `0.11.0` section
+- Changelog destination: `CHANGELOG.md` under the `0.12.0` section
 - Implementation plan destination: `docs/plans/source-first-editor-enterprise-refactor.md`
 - Run specifications: `docs/plans/source-first-editor/runs/`
 - Review and acceptance log: `docs/plans/source-first-editor/acceptance.md`
@@ -67,7 +67,7 @@ Deliver Gutterpress `0.11.0` with a lean, source-first rich editor shared by Ele
 
 - Execution baseline: <https://github.com/dimm-city/gutterpress/tree/main>
 - Reviewed `0.10.2` implementation line: <https://github.com/dimm-city/gutterpress/tree/release/0.10.2>
-- Target integration branch: <https://github.com/dimm-city/gutterpress/tree/release/0.11.0>
+- Target integration branch: <https://github.com/dimm-city/gutterpress/tree/release/0.12.0>
 - Superseded rich-editor research branch: <https://github.com/dimm-city/gutterpress/pull/158>
 - Root workspace scripts: `package.json`
 - Desktop dependencies and scripts: `packages/desktop/package.json`
@@ -97,7 +97,7 @@ This plan may intentionally undo, replace, or decline to reuse unmerged work fro
 
 ### In scope
 
-- Create the work branch from post-release `main` after confirming `release/0.11.0` is already synchronized with the same baseline commit.
+- Create the work branch from post-release `main` after confirming `release/0.12.0` is already synchronized with the same baseline commit.
 - Add `packages/editor` as a framework-free, browser-safe shared editor package.
 - Add `packages/vscode-extension` early enough to continuously prove host portability.
 - Integrate an exact-pinned `@vscode/markdown-editor` implementation behind one adapter.
@@ -129,7 +129,7 @@ This plan may intentionally undo, replace, or decline to reuse unmerged work fro
 - Rewriting the print, PDF, PDF/X, pagination, or native Chromium engine.
 - Removing the standalone `gutterpress preview` CLI capability.
 - Replacing CodeMirror for source Markdown, CSS, YAML, JavaScript, plugin, or manifest editing.
-- Shipping a browser PWA in `0.11.0`.
+- Shipping a browser PWA in `0.12.0`.
 - Building a pixel-identical paginated rich editor; exact page layout remains the preview’s responsibility.
 - Taking over all VS Code Markdown files by default.
 - Introducing a language server unless current extension features prove that a shared language-service package is necessary.
@@ -145,8 +145,8 @@ This plan may intentionally undo, replace, or decline to reuse unmerged work fro
 - No source normalization prerequisite for rich editing.
 - No generic dependency-injection container, registry, event bus, or cross-platform service framework.
 - No retained PWA abstraction “for later.” A future web product gets a dedicated host package.
-- No cross-mode undo promise in `0.11.0`; switching between source and rich modes establishes a documented undo boundary.
-- No arbitrary extension API for third-party rich-editor plugins in `0.11.0`.
+- No cross-mode undo promise in `0.12.0`; switching between source and rich modes establishes a documented undo boundary.
+- No arbitrary extension API for third-party rich-editor plugins in `0.12.0`.
 - No compatibility adapter without an explicit owner and deletion phase.
 
 ---
@@ -168,7 +168,7 @@ This plan may intentionally undo, replace, or decline to reuse unmerged work fro
 
 ### Corrections absorbed into this plan
 
-- The implementation does **not** continue or rebase PR 158. It starts from a fresh feature branch created from post-release `main`; synchronization of `release/0.11.0` with `main` is a release-management precondition, not a feature-development run.
+- The implementation does **not** continue or rebase PR 158. It starts from a fresh feature branch created from post-release `main`; synchronization of `release/0.12.0` with `main` is a release-management precondition, not a feature-development run.
 - PR 158 is an evidence and fixture source, not a code integration source. No initial cherry-picks are allowed.
 - ProseMirror is removed from the architecture entirely; because it is absent from the reviewed `0.10.2` implementation and the post-release `main` baseline, the plan prevents introduction rather than scheduling a runtime removal.
 - A complete Gutterpress editor AST is not the starting design. The shared editor uses the VS Code editor’s source model plus a sparse Gutterpress projection.
@@ -181,14 +181,14 @@ This plan may intentionally undo, replace, or decline to reuse unmerged work fro
 ### Unknowns resolved during exploration
 
 - **Which branch is authoritative for execution?** → Post-release `main`, after `0.10.2` has been merged and released.
-- **Does this plan perform release-branch alignment?** → No. `release/0.11.0` must already match the recorded `main` baseline before the work branch is created; otherwise execution stops until release management resolves it.
+- **Does this plan perform release-branch alignment?** → No. `release/0.12.0` must already match the recorded `main` baseline before the work branch is created; otherwise execution stops until release management resolves it.
 - **Is ProseMirror required?** → No.
 - **Should PR 158 be merged, rebased, or cherry-picked broadly?** → No; use it only as research evidence and manually port selected fixtures after the new core exists.
 - **Should the desktop PWA code remain for VS Code reuse?** → No; VS Code requires a different host adapter. A future PWA gets a separate package.
 - **Should preview editing coexist permanently with the rich editor?** → No; preview becomes read-only after parity.
 - **Should Electron retain HTTP and IPC?** → No; request/reply operations converge on typed IPC.
 - **Should the initial rich editor fork the VS Code package immediately?** → No; direct exact-pin first. A minimal fork is permitted only when the package compatibility gate proves a required generic extension seam is absent.
-- **Is cross-mode undo required for `0.11.0`?** → No; mode switching creates a clear undo boundary. Exact source and persistence remain continuous.
+- **Is cross-mode undo required for `0.12.0`?** → No; mode switching creates a clear undo boundary. Exact source and persistence remain continuous.
 
 ### Remaining uncertainties
 
@@ -199,12 +199,12 @@ None. Package compatibility is resolved by the binding decision and pass/fail ga
 ## Stakeholder decisions
 
 - **Pacing:** Continuous execution through each checkpoint group. Pause only on a stop/re-plan condition or when the plan owner explicitly requests a checkpoint pause.
-- **Compatibility:** Internal editor and desktop architecture may break in `0.11.0`. Released project, Markdown, manifest, CLI, build, preview, and publish contracts remain compatible.
+- **Compatibility:** Internal editor and desktop architecture may break in `0.12.0`. Released project, Markdown, manifest, CLI, build, preview, and publish contracts remain compatible.
 - **Public surface:** `@dimm-city/gutterpress-editor` and the VS Code extension may be introduced as Experimental. Existing stable public package entry points remain supported.
 - **Push policy:** Push after every integrator commit that passes the fast check. Do not leave reviewed milestones only in a local workspace.
 - **Review policy:** One senior adversarial reviewer per run; maximum three confirmed-finding repair rounds. Exceeding three requires splitting or redesigning the run.
 - **Deletion policy:** Superseded capability is removed in the phase that proves its replacement. Compatibility code may not survive past its named deletion run.
-- **Release policy:** Repository owner reviews the final acceptance report, remaining advisories, net-complexity ledger, packaged desktop smoke, extension smoke, and release checks before merging to `release/0.11.0`.
+- **Release policy:** Repository owner reviews the final acceptance report, remaining advisories, net-complexity ledger, packaged desktop smoke, extension smoke, and release checks before merging to `release/0.12.0`.
 - **PR 158 policy:** Close as superseded after the new branch and decision record exist. Preserve the branch or tag for history; do not merge its implementation.
 
 ---
@@ -216,7 +216,7 @@ None. Package compatibility is resolved by the binding decision and pass/fail ga
 ### D1 — Baseline, versions, and vocabulary
 
 - Begin only after `0.10.2` has been merged to `main` and released.
-- Verify `origin/release/0.11.0` resolves to the same commit as `origin/main`.
+- Verify `origin/release/0.12.0` resolves to the same commit as `origin/main`.
 - Create `feature/source-first-rich-editor-architecture` directly from that recorded `origin/main` commit.
 - Initial shared package: `@dimm-city/gutterpress-editor`.
 - Initial extension package: `@dimm-city/gutterpress-vscode`.
@@ -390,7 +390,7 @@ Projection rules:
 - Desktop uses the current document session/buffer persistence semantics through a narrow adapter.
 - VS Code uses `TextDocument`, `WorkspaceEdit`, and native undo/redo.
 - Only one editing surface is mounted for a document at a time.
-- Source and rich modes share source and persistence but not an undo stack in `0.11.0`.
+- Source and rich modes share source and persistence but not an undo stack in `0.12.0`.
 - Switching modes establishes an explicit undo epoch and must warn only if an operation would otherwise be lost; it must never alter source.
 - File switches and external full replacements are not undoable into the prior file.
 - Autosave, recovery, and filesystem conflicts remain host responsibilities, outside `packages/editor`.
@@ -458,7 +458,7 @@ Rules:
 
 ### D11 — Public compatibility and package exports
 
-- Existing `gutterpress`, `gutterpress/api`, and `gutterpress/render` exports remain supported through `0.11.0`.
+- Existing `gutterpress`, `gutterpress/api`, and `gutterpress/render` exports remain supported through `0.12.0`.
 - Add narrower subpath exports only where current consumers justify them:
   - `gutterpress/project`
   - `gutterpress/build`
@@ -467,8 +467,8 @@ Rules:
   - `gutterpress/publish`
   - `gutterpress/vcs`
 - Do not create separate npm packages for these subpaths.
-- `@dimm-city/gutterpress-editor` is Experimental in `0.11.0`.
-- VS Code extension identifiers and settings are Experimental in `0.11.0`.
+- `@dimm-city/gutterpress-editor` is Experimental in `0.12.0`.
+- VS Code extension identifiers and settings are Experimental in `0.12.0`.
 - No project source migration is needed.
 - No runtime compatibility with PR 158 internal types or serialized output is provided.
 
@@ -543,7 +543,7 @@ Rules:
 
 The implementation is complete only when all applicable criteria are satisfied and evidenced.
 
-1. The work branch is created from the recorded post-`0.10.2` `main` baseline, and `release/0.11.0` was already synchronized with that baseline before feature commits.
+1. The work branch is created from the recorded post-`0.10.2` `main` baseline, and `release/0.12.0` was already synchronized with that baseline before feature commits.
 2. The current tree contains no ProseMirror, Tiptap, or Milkdown dependency or production import.
 3. Opening and closing supported Markdown in source or rich mode changes zero bytes.
 4. An accepted rich-editor edit changes only its explicit source range.
@@ -572,7 +572,7 @@ The implementation is complete only when all applicable criteria are satisfied a
 
 | ID | Acceptance criterion | Owning phase | Required evidence | Final status |
 |---|---|---:|---|---|
-| AC-01 | Post-release branch baseline verified | P0a | Recorded `main` SHA, `release/0.11.0` equality check, and work-branch ancestry proof | Pending |
+| AC-01 | Post-release branch baseline verified | P0a | Recorded `main` SHA, `release/0.12.0` equality check, and work-branch ancestry proof | Pending |
 | AC-02 | No ProseMirror-family dependency | P0/P7 | Lockfile/package/import search | Pending |
 | AC-03 | Exact no-edit byte identity | P2/P3 | Corpus and real-book byte tests | Pending |
 | AC-04 | Explicit edit locality | P2/P3 | Source diff tests and randomized range cases | Pending |
@@ -804,7 +804,7 @@ Do not repeat the same failing work plan unchanged. Narrow the run, split a lane
 
 - Verify `0.10.2` has been released from `main`.
 - Record the exact `origin/main` baseline SHA.
-- Verify `origin/release/0.11.0` resolves to that same SHA.
+- Verify `origin/release/0.12.0` resolves to that same SHA.
 - Verify `feature/source-first-rich-editor-architecture` was created from that `origin/main` baseline.
 - Record package graph, scripts, route count, IPC handler count, tracked generated files, production LOC, test LOC, and dependency inventory.
 - Write only: `docs/plans/source-first-editor/baseline.md`.
@@ -837,7 +837,7 @@ Do not repeat the same failing work plan unchanged. Narrow the run, split a lane
 
 ```bash
 BASE_SHA="$(git rev-parse origin/main)"
-test "$(git rev-parse origin/release/0.11.0)" = "$BASE_SHA"
+test "$(git rev-parse origin/release/0.12.0)" = "$BASE_SHA"
 git merge-base --is-ancestor "$BASE_SHA" HEAD
 bun run typecheck
 bun run test
@@ -846,7 +846,7 @@ bun run test
 **Exit criteria**
 
 - [ ] The post-release `main` baseline is recorded and work-branch ancestry is proven.
-- [ ] `release/0.11.0` matches the recorded baseline before feature work.
+- [ ] `release/0.12.0` matches the recorded baseline before feature work.
 - [ ] Baseline behavior is reproducible.
 - [ ] Mutation caller inventory is complete.
 - [ ] Platform and transport inventories are complete.
@@ -1557,7 +1557,7 @@ A criterion without evidence is not complete.
 - Accepted ADRs under `docs/adr/`
 - `docs/vscode-extension.md`
 - `CHANGELOG.md`
-- `docs/releases/0.11.0.md`
+- `docs/releases/0.12.0.md`
 - Final stakeholder wrap-up using the template at the end of this plan
 
 ---
@@ -1779,7 +1779,7 @@ The final acceptance sweep exercises:
 - Install the VS Code extension package into a clean VS Code profile.
 - Review final advisories and deferred work.
 - Review net-complexity ledger.
-- Make explicit merge decision for `release/0.11.0`.
+- Make explicit merge decision for `release/0.12.0`.
 
 ---
 
@@ -1992,7 +1992,7 @@ Required artifacts:
 - ADRs under `docs/adr/`
 - Contributor/package boundary guide
 - `CHANGELOG.md`
-- `docs/releases/0.11.0.md`
+- `docs/releases/0.12.0.md`
 
 Documentation rules:
 
@@ -2014,7 +2014,7 @@ Documentation rules:
 On approval:
 
 1. Confirm `0.10.2` has been merged to `main` and released, then fetch the latest remote branches.
-2. Confirm `origin/release/0.11.0` resolves to the same commit as `origin/main`. If it does not, stop; release management must synchronize the branches outside this implementation plan.
+2. Confirm `origin/release/0.12.0` resolves to the same commit as `origin/main`. If it does not, stop; release management must synchronize the branches outside this implementation plan.
 3. Create `feature/source-first-rich-editor-architecture` directly from `origin/main`, or verify the existing work branch has that commit as its merge base.
 4. Record the exact baseline SHA in `docs/plans/source-first-editor/baseline.md`.
 5. Commit this plan at `docs/plans/source-first-editor-enterprise-refactor.md`.
@@ -2031,7 +2031,7 @@ On approval:
 - [ ] Plan file contains no template placeholders.
 - [ ] The `0.10.2` release is complete and `origin/main` contains the released baseline.
 - [ ] The exact `origin/main` baseline SHA is recorded immediately before execution.
-- [ ] `origin/release/0.11.0` resolves to the same baseline SHA.
+- [ ] `origin/release/0.12.0` resolves to the same baseline SHA.
 - [ ] The work branch is created directly from the recorded `origin/main` baseline.
 - [ ] PR 158 remains unmerged.
 - [ ] Binding decisions are complete and internally consistent.

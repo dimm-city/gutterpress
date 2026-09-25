@@ -8,10 +8,10 @@ a one-off demo — that the shared editor package
 component, and to give Gutterpress authors a rich-editing option inside an
 existing editor they may already use for the rest of a project's files.
 
-## Status: Experimental (0.11.0)
+## Status: Experimental (0.12.0)
 
 Both `@dimm-city/gutterpress-editor` and this extension are Experimental for
-the 0.11.0 release (plan D1/D11). Concretely:
+the 0.12.0 release (plan D1/D11). Concretely:
 
 - The extension is **not** the default editor for Markdown files. It
   registers `gutterpress.markdownEditor` as an *optional* custom text
@@ -136,7 +136,7 @@ bun run build        # bun scripts/build.mjs -> dist/extension.js + the webview 
 ```
 
 There is no separate packaging (`.vsix`) step documented here yet — the
-extension is not published to the Marketplace for 0.11.0; `bun run build`
+extension is not published to the Marketplace for 0.12.0; `bun run build`
 produces the `dist/` the `main` field in `package.json` points at, which is
 enough to load the extension unpacked (VS Code's "Install from VSIX" is not
 required for local development — see VS Code's own extension-development

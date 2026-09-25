@@ -49,7 +49,7 @@ finding, not a reason to add scripts unilaterally.
 | Lane | May write | Must not write | Deliverable |
 |---|---|---|---|
 | A — remnants, ledger, ADRs | `docs/plans/source-first-editor/deletion-ledger.md` (final section + one-line record corrections), `docs/adr/**`, `docs/plans/source-first-editor/runs/SFE-P7.md` (its lane report section only), proposal/plan records under `docs/plans/**` EXCEPT acceptance.md | `docs/plans/source-first-editor/acceptance.md`, `CHANGELOG.md`, `docs/releases/**`, `docs/architecture/**`, any production or test file | Zero-remnant proof set; nine-metric measured before/after; proposal records resolved ACCEPTED/RESOLVED/SUPERSEDED; ADR cross-references; final commit SHAs |
-| B — release records | `CHANGELOG.md`, `docs/releases/0.11.0.md`, `docs/architecture/source-first-editor.md`, `docs/plans/source-first-editor/acceptance.md` (matrix implementation-location/evidence columns ONLY — not the final sweep section) | `deletion-ledger.md`, `docs/adr/**`, any production or test file | Changelog + release notes grounded in git history; the architecture doc; acceptance matrix rows carry implementation locations |
+| B — release records | `CHANGELOG.md`, `docs/releases/0.12.0.md`, `docs/architecture/source-first-editor.md`, `docs/plans/source-first-editor/acceptance.md` (matrix implementation-location/evidence columns ONLY — not the final sweep section) | `deletion-ledger.md`, `docs/adr/**`, any production or test file | Changelog + release notes grounded in git history; the architecture doc; acceptance matrix rows carry implementation locations |
 | C — sweeps | `docs/plans/source-first-editor/p7-sweeps.md` (new evidence doc) | Everything else — this lane is evidence-only; a defect found is REPORTED, not fixed | Real-book sweep, packaged-product sweep incl. the packaged-asar smoke attempt, release checks (`dist:linux` attempt, `npm pack --dry-run`), plan-gate name→command mapping table with each command actually run |
 
 Lane details:
@@ -163,7 +163,7 @@ command (routes 104→0, IPC 12→120, protocol messages 5→0, locator members
 31→0, architecture checks 0→4+3, with production/test LOC and
 module/dependency counts split baseline-scope vs whole-workspace and the
 vendored fork a stated exclusion); a verified 21-run SHA chain; release
-records (CHANGELOG 0.11.0, `docs/releases/0.11.0.md`,
+records (CHANGELOG 0.12.0, `docs/releases/0.12.0.md`,
 `docs/architecture/source-first-editor.md`) whose every claim survived an
 adversarial re-derivation; the packaged-asar smoke closed with a real
 electron-builder build and headless launch; and the 24-criterion
@@ -234,7 +234,7 @@ repair itself introduced: the literal specifier text in a rewritten header
 comment tripped the runtime-deps scanner. Fixed at `dfe75b91` (comment
 reworded; test re-run locally, 1 pass).
 
-Advisory dispositions (integrator): "CHANGELOG dates a 0.11.0 release with
+Advisory dispositions (integrator): "CHANGELOG dates a 0.12.0 release with
 no version bump anywhere in the tree" — correct and intended: the version
 bump and publish are stakeholder release actions, listed as such in the
 wrap-up, not this program's to take. "PlatformAdapter is dead exported

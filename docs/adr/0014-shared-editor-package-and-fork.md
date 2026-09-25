@@ -29,7 +29,7 @@ gap requires Gutterpress-specific syntax or broad rewrites.
 ## Decision
 
 **`packages/editor` (`@dimm-city/gutterpress-editor`, Experimental in
-0.11.0) is the one framework-free, browser-safe editor package.** It
+0.12.0) is the one framework-free, browser-safe editor package.** It
 imports `@vscode/markdown-editor` (via the fork below) and
 `gutterpress/render` (ADR 0012's projection), and nothing else host-shaped —
 no Svelte, Electron, `vscode`, or `node:fs` imports (plan D4). Desktop wraps

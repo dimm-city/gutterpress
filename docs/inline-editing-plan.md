@@ -1,13 +1,13 @@
 # Inline editing plan
 
-> **Status: SHIPPED 2026-08-24, REMOVED 2026-09-01 (0.11, SFE-P4) —
+> **Status: SHIPPED 2026-08-24, REMOVED 2026-09-01 (0.12, SFE-P4) —
 > historical record.** The original 1128-line plan shipped in full over six
 > PRs — click-to-source, `data-source-range`, the bridge protocol, the
 > commit engine, the right-click menu, selection formatting, and the
 > click-to-edit block overlay. **In-flow editing then replaced the overlay**
 > (bridge protocol v8). This document recorded that design as built.
 >
-> **Removed 2026-09-01 (0.11, SFE-P4).** The in-flow/preview-mutation design
+> **Removed 2026-09-01 (0.12, SFE-P4).** The in-flow/preview-mutation design
 > this document records — `InlineEditController`, `CommitEngine`, the
 > `beginBlockEdit`/`endBlockEdit` bridge protocol (v8) and its three events,
 > the context menu's "Edit this block" item and double-click-to-edit, and the
