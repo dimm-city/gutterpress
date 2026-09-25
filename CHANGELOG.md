@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.12] - 2026-09-25
+
 ### Added
 
 - **Auto-save can be turned off.** Settings → Saving has a "Save edits
