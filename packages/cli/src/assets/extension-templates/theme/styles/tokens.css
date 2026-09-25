@@ -30,15 +30,15 @@
  *
  * Two things worth knowing before you edit this:
  *
- *   - These layers are unlayered RELATIVE TO Gutterpress core (which puts its
- *     own CSS in `gp.marker` and `gp.vocab`). So every rule here still beats
- *     core, exactly as it did before layers existed. Declaring an order only
- *     changes how YOUR OWN files settle ties with each other.
+ *   - Gutterpress wraps this whole extension in a cascade layer of its own
+ *     (`ext.<name>`), after core's `gp.marker`/`gp.vocab` and before the
+ *     book's own stylesheets. These layers nest inside it, so declaring an
+ *     order only changes how YOUR OWN files settle ties with each other; the
+ *     book's rules still beat every one of them.
  *
- *   - A rule left OUTSIDE all of these layers is fully unlayered and beats
- *     every layered rule here, at any specificity. That is the one real trap:
- *     adopt the convention per whole sheet, never for a few rules inside an
- *     otherwise plain file.
+ *   - A rule left OUTSIDE all of these layers beats every layered rule here,
+ *     at any specificity. That is the one real trap: adopt the convention
+ *     per whole sheet, never for a few rules inside an otherwise plain file.
  * ------------------------------------------------------------------------ */
 @layer tokens, base, components, templates, pages, book;
 

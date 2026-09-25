@@ -5,6 +5,24 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Each extension's CSS is in its own cascade layer.** The built document
+  wraps every extension's stylesheets (and a plugin's `css` export) in
+  `@layer ext.<name>`, in `extensions:` list order, after core's
+  `gp.marker`/`gp.vocab` layers and before the book's own `styles:`, which
+  stay unlayered. Precedence is therefore exactly the list order: an
+  extension can no longer jump the queue by leaving its CSS unlayered (a
+  starter look's bare `body { font-family }` used to beat a layered package
+  look installed after it), and the book's own rules beat every extension
+  at any specificity, by construction. An extension's own `@layer`s nest
+  inside its layer and keep their order. Extension authors need no layer of
+  their own; the plugin template's `@layer` wrapper is gone.
+- **`gutterpress new` no longer applies a look.** A new book has
+  `styles/book.css` and nothing under `extensions:`; add a look when you
+  want one (`gutterpress ext add clean-book <book> --look`). The same holds
+  for adopting an existing folder.
+
 ## [0.10.11] - 2026-09-23
 
 ### Added

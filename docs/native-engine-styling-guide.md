@@ -354,13 +354,26 @@ the assembled `<style>` block:
 @layer gp.vocab  { /* GUTTERPRESS_CSS — the gp-* utility vocabulary */ }
 ```
 
-Everything else — extension CSS (looks and plugins, in `extensions:` list
-order), every stylesheet the manifest's `styles:` list names, and anything
-those sheets `@import` — stays UNLAYERED. Per the
-CSS Cascading and Layers spec, unlayered CSS always wins over layered CSS,
-regardless of selector specificity: a book rule as unspecific as a bare
-element selector (`section { columns: unset }`) now overrides a core
-`.gp-columns-2` utility outright and correctly, and this is true BY
+Each extension's CSS (looks and plugins) follows in a layer of its own,
+`@layer ext.<name>`, declared in `extensions:` list order:
+
+```css
+@layer ext.clean-book, ext.callouts;
+@layer ext.clean-book { /* its stylesheets, then its `css` export */ }
+@layer ext.callouts   { /* … */ }
+```
+
+So every extension beats core, a later extension beats an earlier one, and an
+extension that leaves its CSS unlayered cannot jump ahead of one listed after
+it — the list order is the precedence, by construction. An extension's own
+`@layer`s nest inside its layer and keep their relative order.
+
+Every stylesheet the manifest's `styles:` list names, and anything those
+sheets `@import`, stays UNLAYERED. Per the CSS Cascading and Layers spec,
+unlayered CSS always wins over layered CSS, regardless of selector
+specificity: a book rule as unspecific as a bare element selector
+(`section { columns: unset }`) overrides a core `.gp-columns-2` utility — or
+a look's most specific rule — outright and correctly, and this is true BY
 CONSTRUCTION for every book — not a fact that happens to hold because of
 where a sheet sits in `styles:`, the way it worked before #227 (and could
 regress: a theme's `columns: unset` silently ate core's `columns: 2` for
@@ -386,10 +399,9 @@ first stylesheet:
 Every rule you then place inside one of those layers cascades by that fixed
 order — `components` always beats `base`, regardless of which file
 `styles:` lists last — so splitting or reordering your stylesheets can no
-longer silently flip who wins. (Your layers are still unlayered relative to
-`gp.marker`/`gp.vocab`, so they keep winning over core exactly as before —
-declaring an order only changes how YOUR OWN files settle ties with each
-other.) A caveat worth stating because it surprises people the first time:
+longer silently flip who wins. (Your layers are declared after core's and
+after every extension's, so they keep winning over both — declaring an order
+only changes how YOUR OWN files settle ties with each other.) A caveat worth stating because it surprises people the first time:
 once a stylesheet declares layers, any rule you leave OUTSIDE all of them is
 still fully unlayered and therefore beats every one of your own layered
 rules too — so adopt the convention for a whole sheet at once, not for a

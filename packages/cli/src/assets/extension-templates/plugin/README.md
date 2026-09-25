@@ -110,27 +110,20 @@ Marker names are global across every plugin a book loads. Two plugins
 declaring `@callout` is a hard load error naming both — which is a good
 outcome, and another reason to prefix.
 
-### 5. Put your CSS in your own cascade layer
+### 5. Leave the cascade to Gutterpress
 
-`styles/plugin.css` wraps everything in `@layer {{SLUG}}`.
+Gutterpress wraps every extension's CSS in a cascade layer of its own
+(`@layer ext.<name>`), in `extensions:` list order, before the book's own
+`styles:`. So `styles/plugin.css` needs no `@layer` of its own: the book's
+unlayered `styles:` always beat you, at any specificity, which is right — a
+plugin should be the easiest thing in the book to override — and against a
+look, position decides. Listed above the look, this plugin's layer sorts first
+and the look wins ties; listed below it, the plugin's component rules win.
+Either way the author moves one line to change it; that is the whole point of
+the list.
 
-Extension CSS lands in the book in `extensions:` list order, and always before
-the book's own `styles:`. In CSS an unlayered rule beats a layered one at any
-specificity. So an unlayered plugin sheet outranks every rule in a book whose
-look uses the recommended
-`@layer tokens, base, components, templates, pages, book;` convention — the
-author edits their CSS and nothing happens.
-
-Inside a layer, the book's own unlayered `styles:` always beat you, which is
-right. Against the LOOK's layers, position decides: a layer sorts by where it
-is first declared, so with this plugin listed above the look in `extensions:`
-its layer sorts first and is the weakest thing in the book — the right place
-for a plugin to sit. Listed below the look, its component rules win ties over
-the look's layered rules instead. Either way the author moves one line to
-change it; that is the whole point of the list.
-
-Adopt it for the whole file: a rule left outside the layer is unlayered and
-beats everything inside it, including your own.
+If you do declare layers inside this sheet, they nest inside your extension's
+layer and only settle ties between your own rules.
 
 ## Theming: the token pattern
 

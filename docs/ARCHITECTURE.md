@@ -279,7 +279,10 @@ never a `<link>` — in a fixed cascade order (`markdown/assemble.ts`):
    `package.json`'s `gutterpress` block), or a plugin module's `styles` files
    (paths relative to the module) followed by its `css` string export. All
    are resolved at load time and inlined through the same
-   `lib/asset-inline.ts` pass as project CSS; a later entry's CSS wins ties.
+   `lib/asset-inline.ts` pass as project CSS, and each entry's CSS is
+   wrapped in its own cascade layer (`@layer ext.<name>`, declared in list
+   order after core's), so a later entry's CSS wins ties whatever the
+   extension's own CSS does, and every extension beats core.
 4. **Project CSS** - the manifest's `styles:` list, resolved and inlined last
    (so project rules win at equal specificity, over every extension) by
    `lib/asset-inline.ts`: each
@@ -594,7 +597,7 @@ it is; there is no `path:`/`name:` wrapper and no `priority`:
 ```yaml
 # manifest.yaml
 extensions:
-  - ./extensions/clean-book            # a look, copied in by `gutterpress new` / `ext add --look`
+  - ./extensions/clean-book            # a look, copied in by `ext add --look`
   - ./plugins/my-custom-plugin.js      # a bare plugin file, referenced in place
   - markdown-it-footnote@4.0.0         # npm, pinned by `ext add`
   - use: markdown-it-anchor@9.2.0      # object form: only when an entry needs more
