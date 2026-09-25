@@ -427,16 +427,33 @@ export class EditorBuffer {
   }
 
   /**
-   * Don't Save: throw away unsaved edits, putting the buffer back on the disk
-   * version, and delete their crash-recovery draft so the next launch does not
-   * offer them back. Awaits the draft delete — callers may be about to close
-   * the window.
+   * Don't Save: throw away unsaved edits, putting the buffer back on the file
+   * as it is on disk NOW, and delete their crash-recovery draft so the next
+   * launch does not offer them back. Re-reads rather than trusting
+   * `diskContent`: reconcile skips a dirty buffer, so a sync, checkout or
+   * outside edit made while edits were unsaved leaves that baseline stale.
+   * Awaits the draft delete — callers may be about to close the window.
    */
   async discard(): Promise<void> {
     const filePath = this.filePath;
+    const gen = this.loadGen;
     this.cancelTimers();
     this.externalChange = null;
-    this.content = this.diskContent;
+    let disk = this.diskContent;
+    let mtimeMs = this.diskMtimeMs;
+    if (filePath) {
+      try {
+        const st = await this.platform.statFile(filePath);
+        disk = st.exists ? await this.platform.readFile(filePath) : "";
+        mtimeMs = st.exists ? st.mtimeMs : 0;
+      } catch {
+        // Unreadable right now: fall back to the last known disk version.
+      }
+      if (this.filePath !== filePath || this.loadGen !== gen) return;
+    }
+    this.content = disk;
+    this.diskContent = disk;
+    this.diskMtimeMs = mtimeMs;
     this.setPhase("clean");
     if (!filePath) return;
     this.opts.onContentReplaced?.(filePath, this.content);

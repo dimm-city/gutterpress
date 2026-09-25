@@ -522,3 +522,25 @@ test("discard (Don't Save) puts the buffer back on the disk version and writes n
   expect(platform.getContent("/book/chapter.md")).toBe("original");
   expect(replaced).toEqual(["original"]);
 });
+
+test("discard adopts the file as it is on disk NOW, not a stale baseline", async () => {
+  const platform = new MemoryPlatform({ "/book/chapter.md": "original" });
+  const buffer = new EditorBuffer({
+    platform: platform as Platform,
+    saveDelayMs: 5,
+    recoveryEnabled: false,
+    autoSave: () => false,
+  });
+
+  await buffer.load("/book/chapter.md");
+  buffer.edit("unwanted edit");
+  // A sync/checkout/outside editor changes the file while the buffer is
+  // dirty — reconcile skips a dirty buffer, so the baseline is now stale.
+  platform.externalWrite("/book/chapter.md", "pulled text");
+  await buffer.reconcileExternalChange();
+  await buffer.discard();
+
+  expect(buffer.content).toBe("pulled text");
+  expect(buffer.diskContent).toBe("pulled text");
+  expect(buffer.phase).toBe("clean");
+});
