@@ -385,3 +385,43 @@ export function collectPluginCss(plugins: LoadedPlugin[]): string {
 export function collectPluginStylePaths(plugins: LoadedPlugin[]): string[] {
   return plugins.flatMap((p) => p.styles ?? []);
 }
+
+/** One extension's CSS, ready for its own cascade layer in the built document. */
+export interface PluginStyleGroup {
+  /** The extension's name, for the comment above its block. */
+  name: string;
+  /** Its cascade layer, `ext.<slug>`, unique within the book. */
+  layer: string;
+  /** Absolute paths of its stylesheet files, in declared order. */
+  paths: string[];
+  /** Its `css` string export, placed after the files. */
+  css?: string;
+}
+
+/**
+ * Group every plugin's CSS by plugin, in load order, and name each group's
+ * cascade layer after the plugin. The renderer wraps each group in that
+ * layer, so `extensions:` list order IS the cascade order whatever an
+ * extension's own CSS does. Plugins with no CSS are left out.
+ */
+export function collectPluginStyleGroups(plugins: LoadedPlugin[]): PluginStyleGroup[] {
+  const taken = new Set<string>();
+  const groups: PluginStyleGroup[] = [];
+  for (const p of plugins) {
+    const paths = p.styles ?? [];
+    const css = typeof p.css === "string" && p.css.length > 0 ? p.css : undefined;
+    if (paths.length === 0 && !css) continue;
+    const base = `ext.${layerSlug(p.name)}`;
+    let layer = base;
+    for (let n = 2; taken.has(layer); n++) layer = `${base}-${n}`;
+    taken.add(layer);
+    groups.push({ name: p.name, layer, paths, ...(css ? { css } : {}) });
+  }
+  return groups;
+}
+
+/** A cascade-layer name from a plugin name: lowercase `[a-z0-9-]`, starting with a letter. */
+function layerSlug(name: string): string {
+  const slug = name.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+  return /^[a-z]/.test(slug) ? slug : `x${slug}`;
+}

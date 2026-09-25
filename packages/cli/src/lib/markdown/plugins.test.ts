@@ -1070,18 +1070,18 @@ describe("plugin loader", () => {
     test("undefined configs short-circuits to no plugins, empty css", async () => {
       const result = await loadPluginsWithCss(undefined, TMP_ROOT);
       expect(result.plugins).toBeUndefined();
-      expect(result.pluginCss).toBe("");
+      expect(result.pluginStyles).toEqual([]);
       expect(result.pluginStylePaths).toEqual([]);
     });
 
     test("empty configs array short-circuits to no plugins, empty css", async () => {
       const result = await loadPluginsWithCss([], TMP_ROOT);
       expect(result.plugins).toBeUndefined();
-      expect(result.pluginCss).toBe("");
+      expect(result.pluginStyles).toEqual([]);
       expect(result.pluginStylePaths).toEqual([]);
     });
 
-    test("loads plugins and collects their css in one call", async () => {
+    test("loads plugins and groups their css per extension, each with its cascade layer", async () => {
       fixture(
         "css-c.mjs",
         `export default function () {}; export const css = '.c {}';`
@@ -1094,7 +1094,7 @@ describe("plugin loader", () => {
 
       expect(result.plugins).toHaveLength(1);
       expect(result.plugins![0]!.name).toBe("css-c.mjs");
-      expect(result.pluginCss).toContain(".c {}");
+      expect(result.pluginStyles).toEqual([{ name: "css-c.mjs", layer: "ext.css-c-mjs", paths: [], css: ".c {}" }]);
       expect(result.pluginStylePaths).toEqual([]);
     });
 

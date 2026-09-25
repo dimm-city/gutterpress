@@ -56,8 +56,9 @@ export type {
   GutterpressPluginExport,
   LoadedPlugin,
 } from "./renderer";
-export { applyPlugins, collectPluginCss, collectPluginStylePaths } from "./renderer";
-import { BUILTIN_OPTIONAL_PLUGINS, collectPluginCss, collectPluginStylePaths } from "./renderer";
+export { applyPlugins, collectPluginCss, collectPluginStylePaths, collectPluginStyleGroups } from "./renderer";
+export type { PluginStyleGroup } from "./renderer";
+import { BUILTIN_OPTIONAL_PLUGINS, collectPluginStyleGroups, collectPluginStylePaths, type PluginStyleGroup } from "./renderer";
 
 interface VendorCjsTree {
   sourceRoot: string;
@@ -1442,13 +1443,16 @@ export async function loadPlugins(
 }
 
 /** Result of {@link loadPluginsWithCss}: loaded plugins ready for `applyPlugins`
- * plus their concatenated CSS ready for injection into the rendered document. */
+ * plus their CSS, grouped per extension for the renderer. */
 export interface LoadedPluginsWithCss {
   /** `undefined` (not `[]`) when there were no configs to load — matches the
    * `plugins?:` field the renderer options expect, so callers can pass this
    * straight through without an `?? []` at every call site. */
   plugins: LoadedPlugin[] | undefined;
-  pluginCss: string;
+  /** Each extension's CSS — its stylesheet files and `css` export — in load
+   * order, each destined for its own cascade layer (`renderChapters`). `[]`
+   * when no loaded plugin has any. */
+  pluginStyles: PluginStyleGroup[];
   /**
    * #238 — absolute paths of every plugin-declared `styles` file, flattened
    * in plugin load order. `[]` when no loaded plugin declares any (including
@@ -1469,7 +1473,7 @@ export interface LoadedPluginsWithCss {
  * wiring around it.
  *
  * A `configs` of `undefined`/empty short-circuits WITHOUT calling
- * `loadPlugins` at all (`plugins: undefined`, `pluginCss: ""`) — matching
+ * `loadPlugins` at all (`plugins: undefined`, `pluginStyles: []`) — matching
  * both call sites' prior behavior of never plugin-loading when the manifest
  * declares no plugins.
  */
@@ -1479,12 +1483,12 @@ export async function loadPluginsWithCss(
   onError?: (pluginRef: string, error: Error) => void
 ): Promise<LoadedPluginsWithCss> {
   if (!configs || configs.length === 0) {
-    return { plugins: undefined, pluginCss: "", pluginStylePaths: [] };
+    return { plugins: undefined, pluginStyles: [], pluginStylePaths: [] };
   }
   const plugins = await loadPlugins(configs, baseDir, onError);
   return {
     plugins,
-    pluginCss: collectPluginCss(plugins),
+    pluginStyles: collectPluginStyleGroups(plugins),
     pluginStylePaths: collectPluginStylePaths(plugins),
   };
 }

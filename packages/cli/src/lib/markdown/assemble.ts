@@ -236,21 +236,21 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
     opts.onImageRefs([...imageRefs]);
   }
 
-  // Inject built-in + user-plugin CSS as a single <style> block.
+  // Inject built-in + extension + project CSS as a single <style> block.
   //
   // Cascade order (#227): core's two blocks are wrapped in cascade layers —
   // `@layer gp.marker, gp.vocab;` declares the order, then each block gets
-  // its own named layer. Per the CSS Cascade Layers spec, unlayered CSS
-  // ALWAYS wins over layered CSS regardless of selector specificity, so
-  // user plugin CSS and the author's own project stylesheets — both left
-  // UNLAYERED below — win over core's two layers "by construction" rather
-  // than by outrunning them on specificity or injection order. This
-  // replaces source-order + `:where()` as the mechanism that makes "author
-  // wins" true; `:where()` stays inside MARKER_CSS's own break/orphan rules
-  // because those still need to lose to an author's UNLAYERED rule at ANY
-  // specificity too (an author-declared layer is a separate concern — see
-  // the styling guide's cascade-layers section for the recommended book
-  // convention).
+  // its own named layer. `pluginCss` (index.ts) follows, one `ext.<name>`
+  // layer per extension in `extensions:` list order — declared after core's,
+  // so every extension beats core and later extensions beat earlier ones.
+  // Per the CSS Cascade Layers spec, unlayered CSS ALWAYS wins over layered
+  // CSS regardless of selector specificity, so the author's own project
+  // stylesheets — left UNLAYERED below — win over core and every extension
+  // "by construction" rather than by outrunning them on specificity or
+  // injection order. `:where()` stays inside MARKER_CSS's own break/orphan
+  // rules because those still need to lose to an author's UNLAYERED rule at
+  // ANY specificity too (an author-declared layer is a separate concern —
+  // see the styling guide's cascade-layers section).
   // The two core blocks stay separate by ownership: MARKER_CSS supports the
   // marker-generated DOM, while gutterpress-css.ts owns the broader `gp-*`
   // author vocabulary.
@@ -258,7 +258,7 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
     "@layer gp.marker, gp.vocab;",
     `/* gutterpress markers */\n@layer gp.marker {\n${MARKER_CSS.trim()}\n}`,
     `/* gutterpress */\n@layer gp.vocab {\n${GUTTERPRESS_CSS.trim()}\n}`,
-    pluginCss ? `/* user plugin css */\n${pluginCss.trim()}` : null,
+    pluginCss ? `/* extension css */\n${pluginCss.trim()}` : null,
     projectCss ? `/* project css */\n${projectCss.trim()}` : null,
   ].filter(Boolean).join("\n\n");
 

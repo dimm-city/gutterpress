@@ -69,9 +69,9 @@ Those four keys are the whole object form. There is no `path:`, `name:`, `versio
 The list is read top to bottom, and its order means two things at once:
 
 - **Markdown registration.** A later entry's plugin is registered with markdown-it after the earlier ones, so it runs later during parsing and sees the tokens earlier plugins produced. If plugin B needs plugin A's output, list A first.
-- **The cascade.** Extension stylesheets land in the book in list order, and a later sheet wins ties. Your own `styles:` always load after every extension, so you can override any extension rule at equal specificity from your own stylesheet.
+- **The cascade.** Each extension's stylesheets are wrapped in a cascade layer of their own (`@layer ext.<name>`), declared in list order, so a later entry wins ties whatever its CSS looks like. Your own `styles:` stay unlayered and load after every extension, so a rule in your own stylesheet beats any extension rule at any specificity.
 
-Underneath all of it, core's built-in plugins (below) always run first, and core's own CSS sits in two cascade layers that every extension beats automatically. To change who wins, move the entry: `gutterpress ext list` prints the list in this order, and the desktop's Look and Features views let you drag entries into a new order.
+Underneath all of it, core's built-in plugins (below) always run first, and core's own CSS sits in two cascade layers declared before every extension's. To change who wins, move the entry: `gutterpress ext list` prints the list in this order, and the desktop's Look and Features views let you drag entries into a new order.
 
 ## Managing Extensions from the Terminal
 

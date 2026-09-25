@@ -480,7 +480,7 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
   // without going through runQualityGates at all, e.g. a unit test). Either
   // way this is a plain memo read/populate, never a second load of the SAME
   // plugin set — see loadBuildPlugins for why that duplication mattered.
-  const { plugins, pluginCss, pluginStylePaths } = await loadBuildPlugins(ctx);
+  const { plugins, pluginStyles } = await loadBuildPlugins(ctx);
 
   // The render reports every asset the book actually references: image `src`
   // values (markdown tokens + raw HTML) and any CSS image too large to inline.
@@ -494,8 +494,7 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
     styles: config.styles,
     files: config.source.files,
     plugins,
-    pluginCss,
-    pluginStylePaths,
+    pluginStyles,
     // Prevalidation may have reported these exact parser findings through
     // source.markdown.layout-markers. Suppress only an exact match: a disabled,
     // failed, or skipped check leaves this set empty and the final render still
