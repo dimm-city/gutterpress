@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.3] - 2026-09-27
+
 ### Fixed
 
 - **Sync keeps both versions of a picture inside a folder.** When a picture,
