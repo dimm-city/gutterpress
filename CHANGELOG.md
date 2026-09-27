@@ -15,6 +15,11 @@ This project follows [Semantic Versioning](https://semver.org/).
   stopped every sync with "Syncing didn't complete… please try again", and
   trying again never helped. Both versions are now kept wherever the file
   lives.
+- **The sync log says why a push failed.** When the online copy refused this
+  computer's changes, the log under Previous versions → Technical details
+  recorded nothing about why, so a sync that failed the same way every few
+  minutes left no clue. It now records the reason the online copy gave, such
+  as GitHub's "push declined due to email privacy restrictions".
 
 ## [0.11.2] - 2026-09-27
 

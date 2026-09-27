@@ -1011,6 +1011,61 @@ describe("push rejection precision (BUG 2)", () => {
   });
 });
 
+describe("a failed push is logged with its reason", () => {
+  /** The operation-log line for the failed push. */
+  async function pushFailedLine(logFile: string): Promise<string | undefined> {
+    const log = await readFile(logFile, "utf8");
+    return log.split("\n").find((l) => l.endsWith("| push failed"));
+  }
+
+  test("the online copy's refusal reason lands in the log, on one line", async () => {
+    const h = await setupClone();
+    const logFile = path.join(path.dirname(h.projectDir), "sync.log");
+    try {
+      await writeFile(path.join(h.projectDir, "chapter-01.md"), "local\n");
+      await syncProject({
+        projectDir: h.projectDir,
+        logFile,
+        httpClient: pushRejectingHttpClient("push declined due to email privacy restrictions"),
+      });
+      const line = await pushFailedLine(logFile);
+      expect(line).toContain("code=GitPushError");
+      expect(line).toContain("refs/heads/main: push declined due to email privacy restrictions");
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("a token embedded in a URL in the error never reaches the log", async () => {
+    const h = await setupClone();
+    const logFile = path.join(path.dirname(h.projectDir), "sync.log");
+    try {
+      await writeFile(path.join(h.projectDir, "chapter-01.md"), "local\n");
+      await syncProject({
+        projectDir: h.projectDir,
+        logFile,
+        httpClient: {
+          async request(config: Parameters<typeof httpNode.request>[0]) {
+            if (config.method === "POST" && config.url.endsWith("/git-receive-pack")) {
+              throw Object.assign(
+                new Error("write EPIPE to https://user:s3cret@example.test/book.git"),
+                { code: "EPIPE" },
+              );
+            }
+            return httpNode.request(config);
+          },
+        } as typeof httpNode,
+      });
+      const line = await pushFailedLine(logFile);
+      expect(line).toContain("code=EPIPE");
+      expect(line).toContain("https://example.test/book.git");
+      expect(await readFile(logFile, "utf8")).not.toContain("s3cret");
+    } finally {
+      await h.cleanup();
+    }
+  });
+});
+
 // ── BUG 3: a MIXED text+binary conflict must keep binary bytes byte-identical ──
 
 describe("binary convergence (keep BOTH, byte-exact)", () => {

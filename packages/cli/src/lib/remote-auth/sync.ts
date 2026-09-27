@@ -374,7 +374,22 @@ export async function syncProject(
           // attempt, since the loop is about to exit). Anything that is NOT a
           // non-fast-forward rejection — a permission decline, a pre-receive
           // hook — is NOT a race and must surface to the failure classifier.
-          if (!isPushRejected(e)) throw e;
+          if (!isPushRejected(e)) {
+            // Log WHY first: the classifier folds anything it doesn't know
+            // into a generic "try again", and an online copy's refusal reason
+            // (e.g. "push declined due to email privacy restrictions") exists
+            // only in this error's message. One line, and any URL's
+            // `user:token@` stripped — the operation log never holds secrets.
+            const err = e as { code?: string; name?: string; message?: string };
+            logger.warn("sync", "push failed", {
+              code: err?.code ?? err?.name,
+              error: String(err?.message ?? e)
+                .replace(/\s+/g, " ")
+                .trim()
+                .replace(/\/\/[^/\s]*@/g, "//"),
+            });
+            throw e;
+          }
           logger.info("sync", `push rejected (non-fast-forward) — retrying`);
           if (attempt < attempts - 1 && backoffMs > 0) await sleep(backoffMs);
           continue;
