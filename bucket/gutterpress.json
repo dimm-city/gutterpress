@@ -1,15 +1,15 @@
 {
-  "version": "0.11.2",
+  "version": "0.11.3",
   "description": "Convert Markdown and CSS into print-ready PDFs.",
   "homepage": "https://github.com/dimm-city/gutterpress",
   "license": {
     "identifier": "MPL-2.0",
-    "url": "https://github.com/dimm-city/gutterpress/blob/v0.11.2/LICENSE"
+    "url": "https://github.com/dimm-city/gutterpress/blob/v0.11.3/LICENSE"
   },
   "architecture": {
     "64bit": {
-      "url": "https://github.com/dimm-city/gutterpress/releases/download/v0.11.2/gutterpress-cli-windows-x64.exe#/gutterpress.exe",
-      "hash": "0d1f7737c9dc7fbf02dc95476fa967afe8d48dc52dc88720ab6d218dcae86c57"
+      "url": "https://github.com/dimm-city/gutterpress/releases/download/v0.11.3/gutterpress-cli-windows-x64.exe#/gutterpress.exe",
+      "hash": "ecdd224f470f5121e7883c0a14a7266e9bcf0df2de7045a04b76dcd34fa0a25b"
     }
   },
   "bin": "gutterpress.exe",
