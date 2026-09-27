@@ -15,6 +15,12 @@ import { canonicalChapterId } from '../lib/markdown/chapter-id';
 import { loadManifest, resolveConfig } from '../lib/manifest';
 import { resolveActiveStyles } from '../lib/style-resolver';
 import { collectStyleDependencies, type AssetCopy } from '../lib/asset-inline';
+import {
+  EXTENSION_MANIFEST_FILENAME,
+  extensionEntry,
+  extensionStyleList,
+  readExtensionMeta,
+} from '../lib/extension-manifest';
 import { loadPluginsWithCss } from '../lib/markdown/plugins';
 import { BOOK_HTML_FILENAME } from '../lib/desktop';
 import type { ServerState } from './server-context';
@@ -390,6 +396,35 @@ export async function externalWatchRoots(targets: Iterable<string>): Promise<str
 }
 
 /**
+ * The files an extension FOLDER (#241 — a `path:` entry naming a directory)
+ * feeds the render: its package.json, its markdown-it entry, and the
+ * dependency closure of its `gutterpress.styles` — the same fields
+ * `loadExtensionFromDir` reads, through the same metadata reader. A folder
+ * checked out next to the book (a design system developed against the books
+ * that pin it) is otherwise invisible to the preview: an edit to its CSS or
+ * its plugin never triggers a rebuild.
+ *
+ * `[]` for a bare plugin file or a missing path — the path itself is already a
+ * target, so its later creation is still observed. A missing or unparseable
+ * package.json reads as no fields, leaving the package.json itself watched so
+ * repairing it rebuilds and expands the rest.
+ */
+async function extensionFolderFiles(dir: string): Promise<string[]> {
+  try {
+    if (!(await fsp.stat(dir)).isDirectory()) return [];
+  } catch {
+    return [];
+  }
+  const meta = await readExtensionMeta(dir);
+  const entry = extensionEntry(meta);
+  return [
+    path.join(dir, EXTENSION_MANIFEST_FILENAME),
+    ...(entry ? [path.resolve(dir, entry)] : []),
+    ...(await collectStyleDependencies(dir, extensionStyleList(meta))),
+  ];
+}
+
+/**
  * Everything the book reads from OUTSIDE its own folder — absolute paths,
  * deduped. The project watch root covers in-book files; this is what it can't
  * see.
@@ -411,6 +446,10 @@ export async function externalWatchRoots(targets: Iterable<string>): Promise<str
  * because a local stylesheet can reference a shared font just as easily — only
  * the results that land outside the book are added here.
  *
+ * An extension `path:` that names a FOLDER expands to the files the loader
+ * reads from it ({@link extensionFolderFiles}); the folder path on its own
+ * matches no file inside it.
+ *
  * Watching is per-FILE, never per-directory, so the set stays exact and cannot
  * accidentally pull a large sibling tree into the watcher.
  */
@@ -427,12 +466,14 @@ export async function externalWatchTargets(
     // it disappears during a restart race.
   }
   const styles = await resolveActiveStyles(root, config.styles);
+  const extensionPaths = (config.extensions ?? [])
+    .map((p) => p.path)
+    .filter((p): p is string => !!p)
+    .map((p) => path.resolve(root, p));
   const candidates = [
     ...(await collectStyleDependencies(root, styles)),
-    ...(config.extensions ?? [])
-      .map((p) => p.path)
-      .filter((p): p is string => !!p)
-      .map((p) => path.resolve(root, p)),
+    ...extensionPaths,
+    ...(await Promise.all(extensionPaths.map(extensionFolderFiles))).flat(),
   ];
 
   const external = new Set<string>();

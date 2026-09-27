@@ -434,6 +434,57 @@ describe('externalWatchTargets', () => {
     }
   });
 
+  test('expands an extension folder outside the book to the files it declares', async () => {
+    // A design system checked out next to the book, referenced by path while
+    // it is developed. Watching the folder path alone matched no file in it,
+    // so editing its CSS or plugin never reached the preview.
+    const repo = await mkdtemp(join(tmpdir(), 'gutterpress-ext-folder-'));
+    try {
+      const book = join(repo, 'books', 'core-book');
+      const ext = join(repo, 'design-system');
+      await mkdirp(book, { recursive: true });
+      await mkdirp(join(ext, 'styles'), { recursive: true });
+      await mkdirp(join(ext, 'fonts'), { recursive: true });
+      await mkdirp(join(ext, 'snippets'), { recursive: true });
+      await writeFile(
+        join(ext, 'package.json'),
+        JSON.stringify({
+          name: 'design-system',
+          main: 'plugin.js',
+          gutterpress: { styles: ['styles/components.css'], snippets: 'snippets' },
+        }),
+      );
+      await writeFile(join(ext, 'plugin.js'), 'export default () => {};');
+      await writeFile(join(ext, 'styles', 'tokens.css'), ':root{--c:red}');
+      await writeFile(
+        join(ext, 'styles', 'components.css'),
+        '@import "./tokens.css";\n' +
+          '@font-face{font-family:D;src:url("../fonts/Display.woff2")}\n',
+      );
+      await writeFile(join(ext, 'fonts', 'Display.woff2'), 'font-bytes');
+      await writeFile(join(ext, 'snippets', 'card.md'), 'snippet');
+      await writeFile(join(ext, 'README.md'), 'not read by the render');
+
+      const targets = await externalWatchTargets(book, {
+        extensions: [{ use: '../../design-system', path: '../../design-system', options: {} }],
+      });
+
+      // What the loader reads, and nothing else: no README, no snippets.
+      expect(targets.sort()).toEqual(
+        [
+          ext,
+          join(ext, 'package.json'),
+          join(ext, 'plugin.js'),
+          join(ext, 'styles', 'components.css'),
+          join(ext, 'styles', 'tokens.css'),
+          join(ext, 'fonts', 'Display.woff2'),
+        ].sort(),
+      );
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
   test('follows a LOCAL stylesheet out to a shared font', async () => {
     // The closure is computed from every active stylesheet, not just the
     // external ones: a book-local sheet can reference a shared face too.
@@ -829,6 +880,81 @@ describe('createFileWatcher', () => {
       await rm(fontTempDir, { recursive: true, force: true });
     }
   }, 50000);
+
+  test('editing an extension folder outside the book rebuilds the preview', async () => {
+    // Local extension development: the manifest lists a checkout by path
+    // (`../../design-system`) instead of a pinned npm version. Both halves of
+    // the package — a declared stylesheet and the plugin module — must reach
+    // the live preview without touching a book file.
+    const repo = await mkdtemp(join(tmpdir(), 'gutterpress-test-ext-'));
+    const book = join(repo, 'books', 'core-book');
+    const ext = join(repo, 'design-system');
+    const extCss = join(ext, 'styles', 'components.css');
+    const extPlugin = join(ext, 'plugin.js');
+    await mkdirp(book, { recursive: true });
+    await mkdirp(join(ext, 'styles'), { recursive: true });
+    await writeFile(join(book, 'chapter-01.md'), '# One');
+    // Every rebuild re-reads the manifest from disk, so it must be real.
+    await writeFile(
+      join(book, 'manifest.yaml'),
+      'title: Core Book\nextensions:\n  - ../../design-system\n',
+    );
+    await writeFile(
+      join(ext, 'package.json'),
+      JSON.stringify({
+        name: 'design-system',
+        main: 'plugin.js',
+        gutterpress: { styles: ['styles/components.css'] },
+      }),
+    );
+    await writeFile(extCss, 'body { color: red }');
+    await writeFile(
+      extPlugin,
+      "export default () => {};\nexport const css = '.from-plugin { color: red }';\n",
+    );
+    const extTempDir = await mkdtemp(join(tmpdir(), 'gutterpress-test-temp-'));
+    const extState = createTestServerState(book, extTempDir);
+    extState.config = resolveConfig({}, {
+      title: 'Core Book',
+      extensions: ['../../design-system'],
+    });
+
+    const calls = attachBroadcastRecorder(extState);
+    const watcher = createFileWatcher(extState);
+    extState.currentWatcher = watcher;
+    const rebuiltSince = (seen: number) =>
+      pollUntil(() => calls.length > seen && !extState.isRebuilding);
+    try {
+      await waitForWatcherReady(watcher);
+      await wait(300); // external targets are added asynchronously
+      // The initial scan reports the extension folder itself, which can
+      // schedule a rebuild at startup. Let it finish so it cannot stand in for
+      // the rebuild each edit below must cause.
+      await pollUntil(() => !extState.isRebuilding && !extState.rebuildTimer);
+
+      let seen = calls.length;
+      await writeFile(extCss, 'body { color: blue }');
+      await rebuiltSince(seen);
+      expect(calls.length).toBeGreaterThan(seen);
+      expect(calls.at(-1)).toEqual({ type: 'full-reload' });
+      expect(await Bun.file(join(extTempDir, 'book.html')).text()).toContain('color: blue');
+
+      seen = calls.length;
+      await writeFile(
+        extPlugin,
+        "export default () => {};\nexport const css = '.from-plugin { color: green }';\n",
+      );
+      await rebuiltSince(seen);
+      expect(calls.length).toBeGreaterThan(seen);
+      expect(await Bun.file(join(extTempDir, 'book.html')).text()).toContain(
+        '.from-plugin { color: green }',
+      );
+    } finally {
+      await watcher.close();
+      await rm(repo, { recursive: true, force: true });
+      await rm(extTempDir, { recursive: true, force: true });
+    }
+  }, 70000);
 
   test('recovers when a manifest declares a shared stylesheet before that file exists', async () => {
     const repo = await mkdtemp(join(tmpdir(), 'gutterpress-test-late-shared-'));
