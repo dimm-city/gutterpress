@@ -70,6 +70,9 @@ See the [Gutterpress User Guide](../examples/gutterpress-user-guide/) for all to
 **Develop on the desktop app or the lib**
 → [Architecture](ARCHITECTURE.md)
 
+**Develop an extension against a real book without publishing it**
+→ [Developing an extension locally](./local-extension-development.md)
+
 **My CSS looks right but nothing painted in the PDF**
 → [Known limitations](./known-limitations.md) — the browser-level gaps that fail silently
 
@@ -143,6 +146,7 @@ docs/
 ├── contextual-cascade-principle.md        # ★ Recommended CSS architecture pattern
 ├── installing.md                           # Install channels, platform support, unsigned-app guidance
 ├── known-limitations.md                   # Silent Chromium print gaps (upstream-tracked)
+├── local-extension-development.md         # Develop an extension against a book, unpublished
 ├── SOURCE-FILES-GUIDE.md                  # Deep-dive into source.files configuration
 ├── migrations/                            # Migration guides
 ├── docker.md                              # Running Gutterpress in Docker

@@ -5,6 +5,20 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-09-27
+
+### Fixed
+
+- **The preview live-reloads an extension folder outside the book.** An
+  `extensions:` entry that points at a folder by path — typically a working
+  copy of a published extension, checked out next to the book while you
+  develop it — was watched only as the folder itself, so editing its CSS or
+  its plugin never rebuilt the preview. The preview now watches the files the
+  book reads from that folder: its `package.json`, its markdown-it entry, and
+  its declared stylesheets with the fonts, images and `@import`s they
+  reference. The workflow is written up in
+  `docs/local-extension-development.md`.
+
 ## [0.11.1] - 2026-09-25
 
 ### Added
