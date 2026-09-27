@@ -269,7 +269,6 @@ export async function convergeMerge(params: {
   const ourTip = await git.resolveRef({ fs, dir, ref: branch });
 
   const combined = new Set<string>();
-  const driverBinary = new Set<string>();
   const keptBothFiles: KeptBothFile[] = [];
 
   // The branch tip each merge attempt started from — the point the rollback
@@ -288,6 +287,9 @@ export async function convergeMerge(params: {
       // Always false: syncProject merges two views of ONE history. The
       // option existed only for repairRepo's salvage step, which is gone.
       allowUnrelatedHistories: false,
+      // `path` is only the file's BASENAME (isomorphic-git never passes the
+      // repo-relative path), so it can't be matched against the conflict
+      // lists below, which carry full paths.
       mergeDriver: ({ contents, path: filepath }) => {
         const [base, ours, theirsContent] = contents as [string, string, string];
         if (
@@ -300,7 +302,6 @@ export async function convergeMerge(params: {
           // string round-trip would garble the bytes — flag it unclean so
           // the merge aborts UNTOUCHED and the equalization pass below
           // settles it byte-exactly. The returned text is never committed.
-          driverBinary.add(filepath);
           return { cleanMerge: false, mergedText: ours };
         }
         combined.add(filepath);
@@ -362,9 +363,10 @@ export async function convergeMerge(params: {
   } catch (e) {
     if (isMergeConflictError(e)) {
       // Text clashes were already converged by the driver (cleanMerge:true),
-      // so ONLY binaries and delete-vs-edit remain in the lists.
+      // so ONLY binaries and delete-vs-edit remain in the lists —
+      // `bothModified` is exactly the binaries, by repo-relative path.
       await equalize({
-        binary: (e.data.bothModified ?? []).filter((p) => driverBinary.has(p)),
+        binary: e.data.bothModified ?? [],
         deleteByUs: e.data.deleteByUs ?? [],
         deleteByTheirs: e.data.deleteByTheirs ?? [],
       });

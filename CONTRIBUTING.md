@@ -484,12 +484,34 @@ test(config): add tests for manifest validation
 Releases are triggered by **dispatching** the [Release workflow](./.github/workflows/release.yml)
 — it runs on `workflow_dispatch` only, so pushing a tag by hand does nothing.
 
-1. **Update CHANGELOG.md**
-   - Add a `## [x.y.z]` entry for the release. The workflow verifies this
-     entry exists (checked against the base version, so a prerelease like
-     `0.10.1-beta.4` looks for `## [0.10.1]`) and fails if it's missing.
+1. **Pick the version**
+   - The next patch is the latest `v*` tag plus one:
+     `git ls-remote --tags origin 'v0.11.*'` listing `v0.11.2` as the newest
+     means `0.11.3`.
+   - Leave `packages/*/package.json` alone — they still hold the previous
+     version, and the workflow bumps them.
 
-2. **Dispatch the Release workflow** (Actions → Release → Run workflow, or
+2. **Date the CHANGELOG heading**
+   - Each PR adds its entry under `## [Unreleased]` as it lands. To cut the
+     release, insert the dated heading directly below it, leaving
+     `## [Unreleased]` empty above:
+
+     ```markdown
+     ## [Unreleased]
+
+     ## [0.11.3] - 2026-09-27
+
+     ### Fixed
+     ```
+
+   - Commit it as `Date the x.y.z changelog heading for the stable cut` —
+     on `main`, or as the last commit of the PR being released (then merge
+     that PR once CI is green on its new head).
+   - The workflow fails if the heading is missing. It checks the base
+     version, so a prerelease like `0.10.1-beta.4` looks for `## [0.10.1]` —
+     add the heading when you cut the first prerelease.
+
+3. **Dispatch the Release workflow** (Actions → Release → Run workflow, or
    `gh workflow run release.yml -f version=1.2.3`)
    - `version`: `1.2.3` for a stable release, or `1.2.3-alpha.1` /
      `1.2.3-beta.1` for a prerelease. No other suffix is accepted — alpha and
@@ -497,15 +519,24 @@ Releases are triggered by **dispatching** the [Release workflow](./.github/workf
      recognizes.
    - Stable releases must be dispatched from the default branch. Prereleases
      may also be dispatched from a `release/*` branch.
-
-3. **The workflow does the rest**
-   - Bumps the version in both `packages/cli/package.json` and
-     `packages/desktop/package.json`, commits, and creates and pushes the
-     `v<version>` tag (stable tags are immutable; re-dispatching an existing
-     stable version fails instead of re-pointing it).
-   - Builds all release artifacts, publishes to npm via OIDC trusted
-     publishing (unless `skip_npm_publish` is set), and creates the GitHub
+   - Leave `skip_npm_publish` off unless you mean to hold back the npm
      release.
+
+4. **The workflow does the rest**
+   - Runs the test suite on the dispatched branch.
+   - Bumps the version in both `packages/cli/package.json` and
+     `packages/desktop/package.json`, commits `chore: bump version to x.y.z`
+     to the dispatched branch, and creates and pushes the `v<version>` tag
+     (stable tags are immutable; re-dispatching an existing stable version
+     fails instead of re-pointing it).
+   - Builds all release artifacts, publishes to npm via OIDC trusted
+     publishing (unless `skip_npm_publish` is set), creates the GitHub
+     release, and publishes the Docker image (`docker.yml`, at the tag).
+   - For a stable release, updates the Homebrew formula, Scoop bucket, and
+     winget manifest (`package-managers.yml`), committing
+     `chore: update package managers for x.y.z` to the default branch.
+   - These commits come from `github-actions[bot]`, so pull before starting
+     the next change.
 
 ## Getting Help
 

@@ -5,6 +5,24 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.3] - 2026-09-27
+
+### Fixed
+
+- **Sync keeps both versions of a picture inside a folder.** When a picture,
+  or any other file that can't hold review marks, changes both on this
+  computer and online, sync keeps your version in place and saves the online
+  one beside it (`cover.online.png`). That only worked at the top of the
+  project. The same clash inside a folder, such as `images/cover.png`,
+  stopped every sync with "Syncing didn't complete… please try again", and
+  trying again never helped. Both versions are now kept wherever the file
+  lives.
+- **The sync log says why a push failed.** When the online copy refused this
+  computer's changes, the log under Previous versions → Technical details
+  recorded nothing about why, so a sync that failed the same way every few
+  minutes left no clue. It now records the reason the online copy gave, such
+  as GitHub's "push declined due to email privacy restrictions".
+
 ## [0.11.2] - 2026-09-27
 
 ### Fixed
