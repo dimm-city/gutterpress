@@ -5,6 +5,17 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Sync keeps both versions of a picture inside a folder.** When a picture,
+  or any other file that can't hold review marks, changes both on this
+  computer and online, sync keeps your version in place and saves the online
+  one beside it (`cover.online.png`). That only worked at the top of the
+  project. The same clash inside a folder, such as `images/cover.png`,
+  stopped every sync with "Syncing didn't complete… please try again", and
+  trying again never helped. Both versions are now kept wherever the file
+  lives.
+
 ## [0.11.2] - 2026-09-27
 
 ### Fixed

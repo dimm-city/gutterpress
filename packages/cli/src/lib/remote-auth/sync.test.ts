@@ -1020,17 +1020,22 @@ describe("binary convergence (keep BOTH, byte-exact)", () => {
    * by editing BOTH files differently.
    *
    * `localTimestamp` (epoch seconds) controls the LOCAL commit's clock — the
-   * keep-both policy must ignore it in BOTH directions.
+   * keep-both policy must ignore it in BOTH directions. `folder` (e.g.
+   * `"art/"`) puts both clashing files inside a subfolder.
    */
   async function setupBinaryClash(
     myPng: Uint8Array,
     localTimestamp?: number,
+    folder = "",
   ): Promise<{ h: Harness; onlinePng: Uint8Array }> {
+    const cover = `${folder}cover.png`;
+    const chapter = `${folder}chapter-01.md`;
     const serverDir = await tempDir("gutterpress-bin-server-");
     await createFixtureRepo(serverDir);
-    await commitBinary(serverDir, "cover.png", PNG_BYTES);
-    await writeFile(path.join(serverDir, "chapter-01.md"), "# One\n\nBase.\n");
-    await git.add({ fs, dir: serverDir, filepath: "chapter-01.md" });
+    await mkdir(path.join(serverDir, folder), { recursive: true });
+    await commitBinary(serverDir, cover, PNG_BYTES);
+    await writeFile(path.join(serverDir, chapter), "# One\n\nBase.\n");
+    await git.add({ fs, dir: serverDir, filepath: chapter });
     await git.commit({
       fs,
       dir: serverDir,
@@ -1045,18 +1050,18 @@ describe("binary convergence (keep BOTH, byte-exact)", () => {
 
     // The ONLINE copy diverges: a distinct binary variant + a text edit.
     const onlinePng = PNG_BYTES_VARIANT;
-    await commitBinary(serverDir, "cover.png", onlinePng);
+    await commitBinary(serverDir, cover, onlinePng);
     await serverCommit(
       serverDir,
-      { "chapter-01.md": "# One\n\nOnline rewrite.\n" },
+      { [chapter]: "# One\n\nOnline rewrite.\n" },
       "online edits both",
     );
 
     // The LOCAL copy diverges differently on BOTH files.
-    await writeFile(path.join(projectDir, "cover.png"), myPng);
-    await writeFile(path.join(projectDir, "chapter-01.md"), "# One\n\nLocal rewrite.\n");
-    await git.add({ fs, dir: projectDir, filepath: "cover.png" });
-    await git.add({ fs, dir: projectDir, filepath: "chapter-01.md" });
+    await writeFile(path.join(projectDir, cover), myPng);
+    await writeFile(path.join(projectDir, chapter), "# One\n\nLocal rewrite.\n");
+    await git.add({ fs, dir: projectDir, filepath: cover });
+    await git.add({ fs, dir: projectDir, filepath: chapter });
     await git.commit({
       fs,
       dir: projectDir,
@@ -1151,6 +1156,42 @@ describe("binary convergence (keep BOTH, byte-exact)", () => {
         { path: "cover.png", onlinePath: "cover.online.png" },
       ]);
       expect(await isClean(h.projectDir)).toBe(true);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  // isomorphic-git hands the merge driver only a file's BASENAME, so a
+  // picture anywhere but the repo root was never recognized as binary, never
+  // kept-both, and EVERY sync failed with "please try again".
+  test("a picture inside a folder keeps both versions too", async () => {
+    const myPng = new Uint8Array(PNG_BYTES);
+    myPng[44] = 0x05;
+    const { h, onlinePng } = await setupBinaryClash(myPng, undefined, "art/");
+    try {
+      const outcome = await syncProject({ projectDir: h.projectDir });
+      expect(outcome.status).toBe("synced");
+      if (outcome.status !== "synced") throw new Error("unreachable");
+
+      expect(outcome.keptBothFiles).toEqual([
+        { path: "art/cover.png", onlinePath: "art/cover.online.png" },
+      ]);
+      const mine = new Uint8Array(await readFile(path.join(h.projectDir, "art/cover.png")));
+      expect(mine).toEqual(myPng);
+      const theirs = new Uint8Array(
+        await readFile(path.join(h.projectDir, "art/cover.online.png")),
+      );
+      expect(theirs).toEqual(new Uint8Array(onlinePng));
+      expect(await isClean(h.projectDir)).toBe(true);
+
+      // Pushed: the server has both versions too.
+      const serverOid = await serverHead(h.serverDir);
+      const readServer = async (filepath: string) =>
+        new Uint8Array(
+          (await git.readBlob({ fs, dir: h.serverDir, oid: serverOid, filepath })).blob,
+        );
+      expect(await readServer("art/cover.png")).toEqual(myPng);
+      expect(await readServer("art/cover.online.png")).toEqual(new Uint8Array(onlinePng));
     } finally {
       await h.cleanup();
     }
