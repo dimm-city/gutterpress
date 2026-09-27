@@ -226,7 +226,7 @@ async function runExtensionScaffold(
       console.log(`        gutterpress ext add ./${result.slug} <book>`);
       console.log("");
       console.log("      (that lists the FOLDER under `extensions:` in the book's manifest —");
-      console.log("       not plugin.js — which is what makes Gutterpress read gutterpress.json");
+      console.log("       not plugin.js — which is what makes Gutterpress read package.json");
       console.log("       and pick up the stylesheet too.)");
     } else {
       // `ext add` takes the project directory as its SECOND POSITIONAL, not

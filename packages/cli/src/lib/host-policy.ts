@@ -19,14 +19,10 @@
 export interface AutoSnapshotPolicy {
   /** Master switch — automatic snapshots default ON. */
   autoSnapshot: boolean;
-  /** Minutes of quiet after the last edit before a snapshot fires. */
-  autoSnapshotMinutes: number;
 }
 
-/** Cadence bounds: never below 5 minutes (commit-per-keystroke guard), never
- * above a day (a longer value means the user effectively wants it off). */
-export const AUTO_SNAPSHOT_MIN_MINUTES = 5;
-export const AUTO_SNAPSHOT_MAX_MINUTES = 24 * 60;
+/** Quiet period before a snapshot fires. Fixed (#274) — no longer a settings
+ * knob, so there is nothing left to clamp. */
 export const AUTO_SNAPSHOT_DEFAULT_MINUTES = 10;
 
 // ── Automatic sync (transparent-sync integration plan §4.3) ──────────────────
@@ -40,10 +36,10 @@ export interface AutoSyncPolicy {
 }
 
 /**
- * Cadence bounds for the periodic safety sync. The floor (1 min) is lower than
- * the snapshot floor because a network round-trip is cheaper than a full tree
- * walk, and the transparent-sync plan targets ~2 min as the default cadence.
- * The ceiling matches the snapshot ceiling (one day = effectively paused).
+ * Cadence bounds for the periodic safety sync. The floor (1 min) is low
+ * because a network round-trip is cheaper than a full tree walk, and the
+ * transparent-sync plan targets ~2 min as the default cadence. The ceiling
+ * (one day) means "effectively paused" for an absurdly large configured value.
  */
 export const AUTO_SYNC_MIN_MINUTES = 1;
 export const AUTO_SYNC_MAX_MINUTES = 24 * 60;
@@ -95,13 +91,6 @@ function clampedDelayMs(
   return clamped * 60_000;
 }
 
-const AUTO_SNAPSHOT_BOUNDS: DelayBounds = {
-  min: AUTO_SNAPSHOT_MIN_MINUTES,
-  max: AUTO_SNAPSHOT_MAX_MINUTES,
-  default: AUTO_SNAPSHOT_DEFAULT_MINUTES,
-  enabledDefault: true,
-};
-
 const AUTO_SYNC_BOUNDS: DelayBounds = {
   min: AUTO_SYNC_MIN_MINUTES,
   max: AUTO_SYNC_MAX_MINUTES,
@@ -114,14 +103,17 @@ const AUTO_SYNC_BOUNDS: DelayBounds = {
  * `null` when automatic snapshots are disabled. Pure — the testable core of
  * the trigger policy (the timer itself lives in the Electron main process).
  *
+ * The quiet period is fixed at `AUTO_SNAPSHOT_DEFAULT_MINUTES` (#274 — the
+ * minutes field this used to clamp was deleted from the settings schema, so
+ * there is nothing left to resolve here beyond the master switch).
  * Defensive about persisted settings: a missing policy means "defaults"
- * (enabled, 10 min); a non-finite/absurd minutes value falls back to the
- * default and is then clamped into [5, 1440].
+ * (enabled, 10 min).
  */
 export function autoSnapshotDelayMs(
   policy: Partial<AutoSnapshotPolicy> | undefined,
 ): number | null {
-  return clampedDelayMs(policy?.autoSnapshot, policy?.autoSnapshotMinutes, AUTO_SNAPSHOT_BOUNDS);
+  const isEnabled = policy?.autoSnapshot ?? true;
+  return isEnabled ? AUTO_SNAPSHOT_DEFAULT_MINUTES * 60_000 : null;
 }
 
 /**

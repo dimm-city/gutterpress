@@ -159,7 +159,17 @@ export async function verifyNativeChromiumMilestone(): Promise<void> {
 }
 
 export interface Gates {
-  lint: boolean;
+  /**
+   * Disable the `source.stylelint` check (CSS print-safety: remote urls,
+   * risky print effects, page-containment) for this run, without touching
+   * `preValidate` itself (#272 — one CSS gate, not two: this used to be a
+   * whole second gate, `runLint`, that duplicated `source.stylelint`'s own
+   * `checkCss` pass one phase later). `true` when `--skip-lint` was passed or
+   * `config.lint.enabled === false`; consulted only when `preValidate` is
+   * also true — with `preValidate` off, no pre-build check (CSS included)
+   * runs at all, `--skip-lint` or not.
+   */
+  skipStylelint: boolean;
   preValidate: boolean;
   postValidate: boolean;
 }
@@ -175,15 +185,15 @@ export function computeGates(
         "Validation/lint flags ignored for --format html (no validation phases apply)"
       );
     }
-    return { lint: false, preValidate: false, postValidate: false };
+    return { skipStylelint: false, preValidate: false, postValidate: false };
   }
 
-  const lint = !opts.skipLint && config.lint.enabled !== false;
+  const skipStylelint = !!opts.skipLint || config.lint.enabled === false;
   const preValidate = !opts.skipPreValidate && config.validate.enabled !== false;
   const postValidate =
     format === "pdfx" &&
     !opts.skipPostValidate &&
     config.validate.enabled !== false;
 
-  return { lint, preValidate, postValidate };
+  return { skipStylelint, preValidate, postValidate };
 }

@@ -36,6 +36,7 @@ import type {
   SyncOutcome,
   SyncStatus,
 } from "$lib/platform/contract";
+import type { RefreshCopiesResult } from "$lib/platform/dtos";
 
 // ── Managed GitHub integration (#15, ADR 0006) ──────────────────────────────
 
@@ -90,6 +91,15 @@ export function diagnoseProjectRemote(projectDir: string): Promise<ProjectRemote
 /** Explicit, user-initiated remote probe (the git ls-remote equivalent). */
 export function testRemoteAccess(url: string): Promise<RemoteAccessResult> {
   return hostCall(bridge().remote.testRemoteAccess(url));
+}
+
+/**
+ * Fetch every remote branch so the copy picker sees copies made elsewhere
+ * (#273). Best-effort: `refreshed: false` with the `reason` when the check
+ * could not run, so the picker can say the list may be incomplete.
+ */
+export function refreshCopies(projectDir: string): Promise<RefreshCopiesResult> {
+  return hostCall(bridge().remote.refreshCopies(projectDir));
 }
 
 /**

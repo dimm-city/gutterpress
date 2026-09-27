@@ -1,7 +1,9 @@
 /**
  * Local version-history IPC handlers for the "vcs" capability (SFE-P5c2).
  * Ports `src/routes/api/vcs/{enable-version-history,save-snapshot,
- * restore-snapshot,list-snapshots-page}/+server.ts` verbatim, including
+ * restore-snapshot,list-snapshots-page}/+server.ts` verbatim (and, after
+ * the 0.11.3 merge, upstream's `list-branches`/`switch-branch` routes for
+ * #273's copy switching - see `vcsListBranches`/`vcsSwitchBranch`), including
  * `friendlyVcsError`'s security/UX error-filter classification (shared
  * module, `electron/server-bridge/friendly-errors.ts` — unchanged; only its
  * `{status, message}` result's STATUS is dropped here, since IPC has no
@@ -24,6 +26,7 @@
  */
 import { basename } from "node:path";
 import { friendlyVcsError } from "../server-bridge/friendly-errors";
+import { getRecoveryHooks } from "../server-bridge/recovery-hooks";
 import { getVcsHooks, type VcsHooks } from "../server-bridge/vcs-hooks";
 import { gitIdentityArgs } from "./git-identity-args";
 import { loadLib } from "./lib-loader";
@@ -63,6 +66,27 @@ interface LibModule {
     authorName?: string;
     authorEmail?: string;
   }) => Promise<unknown>;
+  listLocalBranches: (dir: string) => Promise<LocalBranches | null>;
+  switchBranch: (opts: {
+    projectDir: string;
+    branch: string;
+    authorName?: string;
+    authorEmail?: string;
+  }) => Promise<SwitchBranchResult>;
+}
+
+/** Mirrors the lib's `LocalBranches` (source-provider.ts) - the copies a project can switch between. */
+interface LocalBranches {
+  current: string | null;
+  branches: string[];
+  /** Subset of `branches` that has no local ref yet (created on switch). */
+  remoteOnly: string[];
+}
+
+/** Mirrors the lib's `SwitchBranchResult`. */
+interface SwitchBranchResult {
+  current: string;
+  changedFiles: string[];
 }
 
 /**
@@ -165,6 +189,65 @@ export async function vcsListSnapshotsPage(
   }
 }
 
+/**
+ * The project's local copies (git branches) and which one is open, for
+ * Settings -> Saving's copy picker (#273). `null` means the source has nothing
+ * to switch between (not a `local-git-folder`) - the Saving row hides on
+ * that, so it passes straight through rather than becoming an error.
+ */
+export async function vcsListBranches(rawProjectDir: unknown): Promise<LocalBranches | null> {
+  const hooks = getVcsHooks<LibModule>() as VcsHooks<LibModule> | null;
+  if (!hooks) throw new Error("VCS hooks not registered");
+  const projectDir = await requireProjectDir(rawProjectDir, "vcs:listBranches");
+  try {
+    const lib = await hooks.loadLib();
+    return await lib.listLocalBranches(projectDir);
+  } catch (e) {
+    throw new Error(friendlyVcsError(e, "listLocalBranches", "vcs/list-branches").message);
+  }
+}
+
+/**
+ * Switch the project's working tree to another local copy (#273). The lib
+ * takes a version of any in-progress edit first, so nothing is lost.
+ *
+ * The auto-snapshot/auto-sync host timers are paused around the checkout
+ * (see `VcsHooks.pauseTimers`) so neither fires against the mid-switch
+ * working tree or the wrong branch, and always resumed, success or failure.
+ * Crash-recovery drafts are keyed by absolute file path, not by copy - the
+ * entries for every file the checkout changed are dropped afterwards so a
+ * draft taken on the copy just left behind can never be offered over the NEW
+ * copy's version of the same file (recovery.ts's header documents the rule).
+ * That clear is best-effort: a failure there never turns an already-
+ * successful switch into a reported error.
+ */
+export async function vcsSwitchBranch(rawProjectDir: unknown, rawBranch: unknown): Promise<SwitchBranchResult> {
+  const hooks = getVcsHooks<LibModule>() as VcsHooks<LibModule> | null;
+  if (!hooks) throw new Error("VCS hooks not registered");
+  const projectDir = await requireProjectDir(rawProjectDir, "vcs:switchBranch");
+  if (typeof rawBranch !== "string" || !rawBranch.trim()) {
+    throw new Error("vcs:switchBranch requires a branch name");
+  }
+  const branch = rawBranch.trim();
+  let result: SwitchBranchResult;
+  try {
+    const lib = await hooks.loadLib();
+    hooks.pauseTimers?.(projectDir);
+    try {
+      result = await lib.switchBranch({ projectDir, branch, ...(await gitIdentityArgs()) });
+    } finally {
+      hooks.resumeTimers?.(projectDir);
+    }
+  } catch (e) {
+    throw new Error(friendlyVcsError(e, "switchBranch", "vcs/switch-branch").message);
+  }
+  const recovery = getRecoveryHooks();
+  if (recovery) {
+    await Promise.all(result.changedFiles.map((filePath) => recovery.clear(filePath).catch(() => {})));
+  }
+  return result;
+}
+
 /** Register the vcs:* IPC channels (SFE-P6b). */
 export function registerVcsHandlers(secureHandle: SecureHandle): void {
   secureHandle("vcs:enableVersionHistory", (_e, projectDir: unknown) =>
@@ -178,5 +261,9 @@ export function registerVcsHandlers(secureHandle: SecureHandle): void {
   );
   secureHandle("vcs:saveSnapshot", (_e, projectDir: unknown, message?: unknown) =>
     vcsSaveSnapshot(projectDir, message),
+  );
+  secureHandle("vcs:listBranches", (_e, projectDir: unknown) => vcsListBranches(projectDir));
+  secureHandle("vcs:switchBranch", (_e, projectDir: unknown, branch: unknown) =>
+    vcsSwitchBranch(projectDir, branch),
   );
 }

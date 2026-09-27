@@ -7,38 +7,17 @@ import {
   autoSyncDelayMs,
 } from "./host-policy";
 
-test("autoSnapshotDelayMs: defaults, disable, clamping, garbage", () => {
-  // Missing policy → defaults (enabled, 10 minutes).
+test("autoSnapshotDelayMs: fixed 10-minute quiet period, disable-only switch (#274)", () => {
+  // Missing policy → defaults (enabled, fixed 10 minutes).
   expect(autoSnapshotDelayMs(undefined)).toBe(
     AUTO_SNAPSHOT_DEFAULT_MINUTES * 60_000,
   );
-  // Explicit values pass through.
-  expect(
-    autoSnapshotDelayMs({ autoSnapshot: true, autoSnapshotMinutes: 15 }),
-  ).toBe(15 * 60_000);
+  // Enabled → the fixed quiet period; there is no minutes input anymore.
+  expect(autoSnapshotDelayMs({ autoSnapshot: true })).toBe(
+    AUTO_SNAPSHOT_DEFAULT_MINUTES * 60_000,
+  );
   // Disabled → null (the host never arms the timer).
-  expect(
-    autoSnapshotDelayMs({ autoSnapshot: false, autoSnapshotMinutes: 10 }),
-  ).toBe(null);
-  // Floor: never below 5 minutes (commit-per-keystroke guard).
-  expect(
-    autoSnapshotDelayMs({ autoSnapshot: true, autoSnapshotMinutes: 1 }),
-  ).toBe(5 * 60_000);
-  // Ceiling: never above a day.
-  expect(
-    autoSnapshotDelayMs({ autoSnapshot: true, autoSnapshotMinutes: 99_999 }),
-  ).toBe(24 * 60 * 60_000);
-  // Garbage minutes fall back to the default, then clamp.
-  expect(
-    autoSnapshotDelayMs({ autoSnapshot: true, autoSnapshotMinutes: Number.NaN }),
-  ).toBe(AUTO_SNAPSHOT_DEFAULT_MINUTES * 60_000);
-  expect(
-    autoSnapshotDelayMs({ autoSnapshot: true, autoSnapshotMinutes: -3 }),
-  ).toBe(AUTO_SNAPSHOT_DEFAULT_MINUTES * 60_000);
-  // Partial policy: only minutes set, switch defaults ON (enabledDefault).
-  expect(
-    autoSnapshotDelayMs({ autoSnapshotMinutes: 20 }),
-  ).toBe(20 * 60_000);
+  expect(autoSnapshotDelayMs({ autoSnapshot: false })).toBe(null);
 });
 
 test("autoSyncDelayMs: defaults, disable, clamping, non-finite fallback", () => {

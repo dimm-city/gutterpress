@@ -1,9 +1,0 @@
-{
-  "name": "Technical Document",
-  "author": "gutterpress",
-  "description": "Clean sans-serif manual look with clear hierarchy, code styling, and tidy tables.",
-  "preview": null,
-  "styles": [
-    "theme.css"
-  ]
-}

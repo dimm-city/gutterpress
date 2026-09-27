@@ -73,9 +73,10 @@ async function makeBrokenLintProject(): Promise<{ dir: string; outDir: string }>
     "title: Leak Test\nstyles:\n  - broken.css\n",
     "utf-8"
   );
-  // Missing closing brace -> postcss CssSyntaxError -> lint severity "error"
-  // -> runLint returns { ok: false } -> runQualityGates throws BuildError,
-  // AFTER prewarmBrowser() has already fired.
+  // Missing closing brace -> postcss CssSyntaxError -> source.stylelint
+  // reports an error-severity finding -> pre-build validation fails ->
+  // runQualityGates throws BuildError, AFTER prewarmBrowser() has already
+  // fired.
   await writeFile(join(dir, "broken.css"), "body { color: red;\n", "utf-8");
   await writeFile(join(dir, "chapter-01.md"), "# Hello\n", "utf-8");
   return { dir, outDir };
@@ -90,18 +91,16 @@ test("runBuild closes the prewarmed browser when a quality gate throws before pa
         inputDir: dir,
         format: "pdf",
         outDir,
-        skipLint: false,
-        skipPreValidate: true,
         rawArgs: {},
       })
-    ).rejects.toThrow(/CSS lint failed/);
+    ).rejects.toThrow(/Pre-build validation failed/);
 
     // The browser was prewarmed (this build would have paginated in
     // Chromium) — proving the failure happened AFTER the prewarm, not before
     // it (a before-prewarm failure wouldn't exercise the fix at all).
     expect(prewarmBrowserMock).toHaveBeenCalledTimes(1);
     // getBrowser (the real render/pagination step) was never reached — the
-    // lint gate failed first.
+    // pre-build validation gate failed first.
     expect(getBrowserMock).not.toHaveBeenCalled();
     // And yet the pool was still closed: the try/finally around runBuild's
     // pipeline runs on the throw, not just on the old success-only tail.
@@ -126,12 +125,10 @@ test("runBuild skips the pool entirely when an engineBrowser is injected (deskto
         inputDir: dir,
         format: "pdf",
         outDir,
-        skipLint: false,
-        skipPreValidate: true,
         engineBrowser: fakeEngineBrowser,
         rawArgs: {},
       })
-    ).rejects.toThrow(/CSS lint failed/);
+    ).rejects.toThrow(/Pre-build validation failed/);
 
     expect(prewarmBrowserMock).not.toHaveBeenCalled();
     expect(getBrowserMock).not.toHaveBeenCalled();
@@ -151,12 +148,10 @@ test("runBuild does NOT close the browser when keepBrowserAlive is set", async (
         inputDir: dir,
         format: "pdf",
         outDir,
-        skipLint: false,
-        skipPreValidate: true,
         keepBrowserAlive: true,
         rawArgs: {},
       })
-    ).rejects.toThrow(/CSS lint failed/);
+    ).rejects.toThrow(/Pre-build validation failed/);
 
     expect(prewarmBrowserMock).toHaveBeenCalledTimes(1);
     expect(closeBrowserMock).not.toHaveBeenCalled();

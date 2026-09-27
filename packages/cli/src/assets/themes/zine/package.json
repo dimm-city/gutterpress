@@ -1,0 +1,10 @@
+{
+  "name": "zine",
+  "description": "High-contrast, punchy sans-serif look for short photocopier-friendly zines.",
+  "author": "gutterpress",
+  "keywords": ["gutterpress", "gutterpress-look"],
+  "gutterpress": {
+    "styles": ["theme.css"],
+    "preview": null
+  }
+}

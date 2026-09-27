@@ -114,3 +114,18 @@ walked the heading onto the next page in the preview only.
 The committed fixture pins this outcome on the CI font stack and Chromium. On
 a different font stack the same slice may agree on both sides and read CLEAN
 — also a pass. It can never fail the gate on its own.
+
+### Why the fixture isn't made CLEAN with a CSS fudge factor (#268)
+
+It looks fixable from the numbers above: give the viewer's fragmentainer
+0.36px more room and the fixture goes CLEAN, with the rest of this file's
+fixture list unaffected (verified — see `docs/engine/ENGINE.md` §4, "#268:
+re-tested the epsilon, at a more surgical layer, and it still fails," for the
+full experiment table). It is not shipped: an existing viewer test
+(`zoom.test.ts`) already asserts the strip's rendered box has zero slack
+against its own custom property, so the fix trades a real invariant for a
+constant that this file's own fixture set — every entry above is a US Letter
+book — cannot confirm generalizes, and an earlier, broader version of the same
+constant is on record failing exactly that generalization on an A4/mm book
+(`ENGINE.md` §4). The EXACT-FIT BOUNDARY outcome stays the accepted
+classification for this fixture, not a bug pending a fudge factor.

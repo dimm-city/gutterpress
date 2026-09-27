@@ -21,11 +21,11 @@
  *            carrying its OWNS / MUST NOT CONTAIN contract header. Loaded by
  *            a book through `gutterpress ext add <folder>`.
  *
- * Both emit a `gutterpress.json` in #241's format and nothing more: this
- * module CONSUMES that format, it does not extend it. There is no `kind:`
- * field — a plugin is "an extension with markdown", a theme is "an extension
- * with only styles", and the metadata says so by what it declares rather than
- * by a label.
+ * Both emit a standard `package.json` and nothing more: this module CONSUMES
+ * that format, it does not extend it. There is no `kind:` field — a plugin is
+ * "an extension with markdown" (its `main`), a theme is "an extension with
+ * only styles" (its `gutterpress.styles`), and the manifest says so by what it
+ * declares rather than by a label.
  *
  * Pure Node fs/path over the embedded templates (`embedded-assets.ts`,
  * CLAUDE.md §4) — no subprocess, no bundler, no runtime package.json reads.
@@ -64,7 +64,6 @@ export const RESERVED_PREFIX = "gp-";
  */
 const TEMPLATE_FILES: Record<ExtensionKind, ReadonlyArray<readonly [string, string]>> = {
   plugin: [
-    ["gutterpress.json", "gutterpress.json"],
     ["package.json", "package.json"],
     ["README.md", "README.md"],
     ["plugin.js.tpl", "plugin.js"],
@@ -75,7 +74,7 @@ const TEMPLATE_FILES: Record<ExtensionKind, ReadonlyArray<readonly [string, stri
     ["test/plugin.test.js.tpl", "test/plugin.test.js"],
   ],
   theme: [
-    ["gutterpress.json", "gutterpress.json"],
+    ["package.json", "package.json"],
     ["README.md", "README.md"],
     ["components.yaml", "components.yaml"],
     ["snippets/callout.md", "snippets/callout.md"],
@@ -129,7 +128,7 @@ export interface ScaffoldExtensionOptions {
 export interface ScaffoldExtensionResult {
   /** Absolute path of the created folder. */
   extensionDir: string;
-  /** Absolute path of its `gutterpress.json`. */
+  /** Absolute path of its `package.json`. */
   manifestPath: string;
   kind: ExtensionKind;
   /** Folder name / package name that was used. */
@@ -267,7 +266,7 @@ export async function scaffoldExtension(
   // Two substitution tables, because the same value needs different escaping
   // depending on where it lands. A name containing a `"` would produce
   // unparseable JSON otherwise — and a scaffold that emits a broken
-  // gutterpress.json is worse than no scaffold at all.
+  // package.json is worse than no scaffold at all.
   const plain: Record<string, string> = {
     "{{NAME}}": name,
     "{{SLUG}}": slug,
@@ -292,7 +291,7 @@ export async function scaffoldExtension(
 
       // Every template file is text. `.json` gets the escaped table so a name
       // containing a quote still produces parseable JSON — a scaffold that
-      // emits a broken gutterpress.json is worse than no scaffold at all.
+      // emits a broken package.json is worse than no scaffold at all.
       const text = await readFile(src, "utf8");
       const table = relDest.endsWith(".json") ? jsonSafe : plain;
       await writeFile(dest, substitute(text, table), "utf8");
@@ -307,7 +306,7 @@ export async function scaffoldExtension(
 
   return {
     extensionDir,
-    manifestPath: path.join(extensionDir, "gutterpress.json"),
+    manifestPath: path.join(extensionDir, "package.json"),
     kind,
     slug,
     prefix,

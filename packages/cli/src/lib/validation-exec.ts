@@ -10,10 +10,13 @@ import { resolveActiveStyles } from "./style-resolver";
 import { loadPluginsWithCss } from "./markdown/plugins";
 import { collectStyleDependencies, escapesProjectRoot } from "./asset-inline";
 import { resolveActiveMarkdownFiles } from "./markdown/index";
+import { applyMarkdownlintFixes } from "./markdownlint-fix";
+import { MARKDOWNLINT_CHECK_ID } from "../checks/source/markdownlint";
 import { canonicalChapterId } from "./markdown/chapter-id";
 import { formatReport, type OutputFormat } from "../checks/formatter";
 import { runChecks, type RunnerOptions, type RunnerReport } from "../checks/runner";
 import { getChecks, getKnownCategories, resolveCheckSelectors } from "../checks/registry";
+import { selectChecks } from "../checks/policy";
 import {
   checkToolAvailability,
   reportMissingTools,
@@ -54,6 +57,23 @@ export interface ValidationExecutionArgs {
    * "unset".
    */
   pluginStylePaths?: string[];
+  /**
+   * Disable the `source.stylelint` check (CSS print-safety) for this run
+   * only, without touching the manifest's `validate.source.stylelint`
+   * setting on disk (#272 — one CSS gate, not two). Set by the build
+   * pipeline's `runQualityGates` (build-runner.ts) from `--skip-lint` /
+   * `config.lint.enabled: false`, so that flag disables just the one check
+   * it always meant to gate rather than a whole separate lint pass. Every
+   * other caller (`gutterpress validate`/`preflight`/`audit`, the desktop
+   * Problems panel) leaves this unset and gets the manifest's own setting.
+   */
+  skipStylelint?: boolean;
+  /**
+   * Apply markdownlint's auto-fixes to the source markdown, in place, before
+   * the checks run (#275 — `gutterpress validate --fix`). Opt-in only: every
+   * other caller leaves it unset and validation stays entirely read-only.
+   */
+  fix?: boolean;
 }
 
 export interface ValidationExecutionResult {
@@ -361,7 +381,14 @@ export async function executeValidation(
     { explicit: manifestPath !== undefined }
   );
 
-  const config = resolveConfig({}, manifest);
+  // `skipStylelint` (#272) overrides the manifest's `validate.source.stylelint`
+  // for this run only — the SAME cli-overrides-beat-manifest precedence
+  // `resolveConfig` already implements, applied to the one field the build
+  // pipeline's `--skip-lint` / `config.lint.enabled: false` needs to reach.
+  const config = resolveConfig(
+    args.skipStylelint ? { validate: { source: { stylelint: false } } } : {},
+    manifest
+  );
   // Explicit --target overrides the manifest's targets for this run; both go
   // through the registry so an unknown id fails loudly either way.
   const targetIds = resolveTargets(
@@ -518,6 +545,26 @@ export async function executeValidation(
     only,
     skip,
   };
+
+  // #275: the ONLY write a validation run ever performs, and only when the
+  // caller explicitly asked for it. Runs BEFORE the checks so the report
+  // describes what is left after the fixes, not what they already removed.
+  //
+  // Gated on `selectChecks` — the SAME selector `runChecks` uses — so a run
+  // that excludes the check can never still rewrite its files. Without this,
+  // `--fix --skip source.markdownlint` and `--fix --phase post-build` both
+  // wrote markdown while reporting no markdownlint check at all, which is
+  // exactly the invisible write the flag was designed to avoid.
+  if (args.fix) {
+    const selected = selectChecks(runnerOptions, config).checks;
+    if (selected.some((check) => check.id === MARKDOWNLINT_CHECK_ID)) {
+      await applyMarkdownlintFixes(context);
+    } else {
+      log.warn(
+        `--fix: ${MARKDOWNLINT_CHECK_ID} is not part of this run — no files were fixed.`
+      );
+    }
+  }
 
   const runs = planRuns({ manifest, baseConfig: config, targetIds, pdfPath, categories, only });
 

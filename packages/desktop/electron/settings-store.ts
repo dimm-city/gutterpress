@@ -60,19 +60,6 @@ function migrateLegacySettings(stored: StoredSettings): DeepPartialSettings {
       updates: { ...rest, channel: includePrereleases ? "beta" : "stable" },
     } as DeepPartialSettings;
   }
-  // v2 shortened the normal edit→preview loop. Older stores commonly contain
-  // the old 2500ms default because settings writes persist the full object.
-  // Gate the exact-default migration on a schema marker so an author can still
-  // deliberately choose 2500ms after upgrading and keep that preference.
-  if (
-    (stored.settingsSchemaVersion ?? 1) < SETTINGS_SCHEMA_VERSION &&
-    migrated.editor?.autoSaveDelay === 2500
-  ) {
-    migrated = {
-      ...migrated,
-      editor: { ...migrated.editor, autoSaveDelay: 500 },
-    };
-  }
   return migrated;
 }
 

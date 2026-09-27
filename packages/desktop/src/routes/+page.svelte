@@ -16,7 +16,6 @@
   import StatusBar from "$lib/components/StatusBar.svelte";
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
   import ProjectActivityView from "$lib/components/ProjectActivityView.svelte";
-  import SettingsView from "$lib/components/SettingsView.svelte";
   import NewProjectWizard from "$lib/components/NewProjectWizard.svelte";
   import GitHubDialog from "$lib/components/GitHubDialog.svelte";
   import PublishWizard from "$lib/components/PublishWizard.svelte";
@@ -136,6 +135,7 @@
     openDirectory as openDirectoryCapability,
     savePdf as savePdfCapability,
     pickPdfFile as pickPdfFileCapability,
+    confirmUnsaved as confirmUnsavedCapability,
     openExternal as openExternalCapability,
     showInFolder as showInFolderCapability,
   } from "$lib/files/files-capability";
@@ -517,10 +517,12 @@
       (!settings.current.gitIdentity.authorName.trim() ||
         !settings.current.gitIdentity.authorEmail.trim()),
   );
-  /** After a successful snapshot restore (H2): reconcile the open editor
-   * buffer against disk — same reconciliation the folder watcher runs for any
-   * external change (see `startFolderWatch`/`onSyncFilesChanged`) — and
-   * re-check for print problems, since a restore can rewrite many files. */
+  /** After a successful snapshot restore (H2), or a Saving-tab copy switch
+   * (#273 — passed as `onProjectFilesChanged` to WelcomeLanding/SettingsView):
+   * reconcile the open editor buffer against disk — same reconciliation the
+   * folder watcher runs for any external change (see
+   * `startFolderWatch`/`onSyncFilesChanged`) — and re-check for print
+   * problems, since either operation can rewrite many files at once. */
   function onSnapshotRestored(): void {
     void buffer?.reconcileExternalChange();
     problemsController.refresh();
@@ -623,6 +625,7 @@
     getDesktopProjectState: (dir) => getDesktopProjectStateCapability(dir).catch(() => null),
     resetFirstRenderGate: () => previewEvents.resetFirstRenderGate(),
     flushBuffer: () => flushEditorBuffer(),
+    leaveBuffer: () => leaveEditorBuffer(),
     resetBuffer: () => resetEditorBuffer(),
     ensureEditorFile: () => void ensureEditorFile(),
     startFolderWatch: (dir) => startFolderWatch(dir),
@@ -928,7 +931,6 @@
   // pattern `lifecycle`'s deps use.
   const crashRecovery = new CrashRecoveryController({
     isDesktop: () => isDesktop(),
-    crashRecoveryEnabled: () => settings.current.editor.crashRecovery,
     listRecovery: (dir) => listRecovery(dir),
     clearRecovery: (filePath) => clearRecovery(filePath),
     readRecoveryFile: (path) => readFileCapability(path),
@@ -2036,7 +2038,7 @@
   // One session owns one active file and performs atomic buffer handoffs.
   const editorFiles = new EditorFileSession({
     createBuffer: () => createEditorBuffer(),
-    flush: (target) => flushEditorBuffer(target),
+    flush: (target) => leaveEditorBuffer(target),
     onActivate: (target) => {
       if (target.filePath) showEditorContent(target.filePath, target.content);
       if (isDesktop()) trackPersistence(setDirtyStateCapability(target.hasPendingSave));
@@ -2107,8 +2109,7 @@
     let instance: EditorBuffer;
     instance = new EditorBuffer({
       fs: { readFile: readFileCapability, writeFile: writeFileCapability, statFile: statFileCapability },
-      saveDelayMs: settings.current.editor.autoSaveDelay,
-      recoveryEnabled: settings.current.editor.crashRecovery,
+      autoSave: () => settings.current.versionHistory.autoSave,
       onError: (msg) => {
         if (editorFiles.isActive(instance)) toast?.error(msg);
       },
@@ -2158,19 +2159,39 @@
     }
   }
 
+  /**
+   * Leaving a file (switching files, books or projects). With "Save edits
+   * automatically" off and unsaved edits, ask Save / Don't Save / Cancel;
+   * otherwise save as before. Resolves false when the author cancels or the
+   * save fails, which stops the switch.
+   */
+  async function leaveEditorBuffer(target: EditorBuffer | null = buffer): Promise<boolean> {
+    if (!target?.filePath || !target.isDirty || settings.current.versionHistory.autoSave || !isDesktop()) {
+      return flushEditorBuffer(target);
+    }
+    let choice: "save" | "discard" | "cancel";
+    try {
+      choice = await confirmUnsavedCapability(basenameOf(target.filePath));
+    } catch {
+      choice = "save"; // no prompt available: keep the edits
+    }
+    if (choice === "cancel") return false;
+    if (choice === "discard") {
+      await target.discard();
+      return true;
+    }
+    return flushEditorBuffer(target);
+  }
+
   // ARCH #61: imperative settings side-effects go through the store's single
   // onSettingsChange channel ($effect is banned in the SPA — see CLAUDE.md and
   // the store header; the store's replaceState choke point owns the notify, so
   // the old forgot-to-notify hazard is structurally gone). Each sink is
   // wrapped in settingsChangeGuard so it fires only when ITS field changed:
-  // - autoSaveDelay/crashRecovery → the live buffer's save/recovery settings;
-  //   the buffer's own constructor seeds both, so a fresh buffer needs no push.
   // - previewBg → re-inject desktop canvas styles; initial injection happens in
   //   the renderingComplete handler, this catches live changes. The ready()
   //   check keeps a pre-mount change from being dropped (it re-fires once the
   //   preview client exists).
-  const autoSaveDelaySink = settingsChangeGuard<number>((delay) => buffer?.setSaveDelayMs(delay));
-  const recoverySink = settingsChangeGuard<boolean>((enabled) => buffer?.setRecoveryEnabled(enabled));
   const previewBgSink = settingsChangeGuard<string>(
     (bg) => {
       // The viewer honours this background rule directly. See
@@ -2207,14 +2228,20 @@
     if (m !== "viewer") loadEditorModule();
     else loadBookSurfaceModule();
   });
+  // Autosave: the buffer reads the setting per edit, so turning it back ON
+  // would otherwise leave edits made while it was off unsaved until the next
+  // keystroke. Save them now through the failure-aware flush every other
+  // flush point uses (a clean buffer's flush is a no-op).
+  const autoSaveSink = settingsChangeGuard<boolean>((on) => {
+    if (on) void flushEditorBuffer();
+  });
   onMount(() =>
     onSettingsChange((s) => {
-      autoSaveDelaySink(s.editor.autoSaveDelay);
-      recoverySink(s.editor.crashRecovery);
       previewBgSink(s.appearance.previewBg);
       splitRatioSink(s.preview.splitRatio);
       contextMenuSettingSink(s.preview.contextMenu);
       modeSink(s.preview.mode);
+      autoSaveSink(s.versionHistory.autoSave);
     }),
   );
 
@@ -2235,10 +2262,18 @@
   }
 
   // Window close gate (#44): when main asks the renderer to flush before
-  // closing, flush the buffer. The preload wrapper signals main when done.
+  // closing, flush the buffer — or, when the author chose Don't Save in the
+  // close prompt main showed, discard it. The preload wrapper signals main
+  // when done.
   onMount(() => {
     if (!isDesktop()) return;
-    const off = onFlushBeforeClose(() => flushEditorBuffer(buffer, false));
+    const off = onFlushBeforeClose(async (mode) => {
+      if (mode === "discard") {
+        await buffer?.discard();
+        return true;
+      }
+      return flushEditorBuffer(buffer, false);
+    });
     return () => off?.();
   });
 
@@ -4275,6 +4310,7 @@
     hasRemote={projectSession.projectHasRemote}
     canSnapshot={!!(projectSession.projectCapabilities?.canSnapshot)}
     savePhase={editorSavePhase}
+    autoSave={settings.current.versionHistory.autoSave}
     fileOpen={!!editorFilePath}
     {forceSaving}
     forceSyncing={syncController.forceSyncing}
@@ -4345,7 +4381,7 @@
   onCheckForUpdates={() => updateController.check()}
   onDismiss={() => dismissLanding()}
   settingsTab={landingSettingsTab}
-  onCrashRecoveryChange={(enabled) => { buffer?.setRecoveryEnabled(enabled); }}
+  onProjectFilesChanged={onSnapshotRestored}
 />
 {#if projectSettingsOpen}
   <!-- Project settings (manifest): full-window like the app settings. Keyed by

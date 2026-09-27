@@ -113,6 +113,16 @@ export type {
   DoctorDiagnostics,
 } from "../src/lib/platform/dtos";
 
+// 0.11.3 merge: the saving-flow and copy-switching payloads upstream added
+// as HTTP routes (#273/#274/#246), carried here as IPC the same way.
+export type {
+  ExtensionSearchResult,
+  LocalBranches,
+  RefreshCopiesResult,
+  SwitchBranchResult,
+  UnsavedChoice,
+} from "../src/lib/platform/dtos";
+
 // SFE-P5c2: project/manifest/tpl/snip/media/plugin/theme/style IPC payload
 // DTOs. All ~13 of these already lived in `dtos.ts` (the established home
 // for "plain data shapes the typed IPC capability modules return", per that

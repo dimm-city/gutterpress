@@ -56,7 +56,7 @@ gutterpress ext add zine ./my-book --look                     # another built-in
 gutterpress ext add ./house-style ./my-book                   # a folder you already have — referenced in place, never copied
 gutterpress ext add ./parchment.zip ./my-book                 # a packaged look → extensions/parchment/
 gutterpress ext add ./parchment.css ./my-book                 # a single stylesheet → extensions/parchment/
-gutterpress ext add https://example.com/looks/cool/ ./my-book # theme.css (+ optional theme.json) fetched → extensions/cool/
+gutterpress ext add https://example.com/looks/cool/ ./my-book # theme.css (+ optional package.json) fetched → extensions/cool/
 ```
 
 Zip, CSS and URL imports are checked before they land: every declared sheet

@@ -349,7 +349,11 @@ describe("gutterpress lint prints each risky finding (#259)", () => {
       // Post-build validation runs only for pdfx and only catches fully
       // flattened pages, so this promise was false and is gone.
       expect(lines.some((l) => l.includes("validator will check"))).toBe(false);
-      expect(lines.some((l) => l.includes("1 risky print properties found"))).toBe(true);
+      expect(
+        lines.some((l) =>
+          l.includes("1 print-safety warning(s): 1 risky effect(s), 0 page-containment"),
+        ),
+      ).toBe(true);
     } finally {
       warnSpy.mockRestore();
       await rm(dir, { recursive: true, force: true });
@@ -381,6 +385,51 @@ describe("gutterpress lint prints each risky finding (#259)", () => {
       expect(result.riskyCount).toBe(0);
       expect(lines.some((l) => l.includes("risky print properties"))).toBe(false);
       expect(lines.some((l) => l.includes(cssPath))).toBe(false);
+    } finally {
+      warnSpy.mockRestore();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// #272 — `lint-runner.ts` counted and printed only `printsafe/no-risky-print-effects`
+// findings and silently dropped `printsafe/page-containment` ones, even though
+// the CLI README documents `gutterpress lint` as covering page-containment
+// risk (the Dimm City field guide has three such findings `lint` never showed).
+describe("gutterpress lint prints page-containment findings (#272)", () => {
+  test("a page-containment finding is counted separately and printed, not dropped", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-lint-containment-"));
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await mkdir(join(dir, "styles"), { recursive: true });
+      const cssPath = join(dir, "styles", "book.css");
+      // `.page { overflow: hidden }` clips out-of-flow descendants —
+      // printsafe.ts's `rulePageContainment` finding.
+      await writeFile(cssPath, ".page {\n  overflow: hidden;\n}\n", "utf8");
+      await writeFile(
+        join(dir, "manifest.yaml"),
+        "title: Containment\npreset: book\nstyles:\n  - styles/book.css\n",
+        "utf8",
+      );
+
+      const { runLint } = await import("./lint-runner");
+      const result = await runLint({ manifest: dir });
+      const lines = (warnSpy.mock.calls as unknown[][]).map((c) => String(c[0]));
+
+      expect(result.ok).toBe(true);
+      expect(result.riskyCount).toBe(0);
+      expect(result.containmentCount).toBe(1);
+      expect(lines.some((l) => l.includes(cssPath))).toBe(true);
+      expect(
+        lines.some((l) =>
+          /2:3\s+.*clips out-of-flow descendants.*\(printsafe\/page-containment\)/.test(l),
+        ),
+      ).toBe(true);
+      expect(
+        lines.some((l) =>
+          l.includes("1 print-safety warning(s): 0 risky effect(s), 1 page-containment"),
+        ),
+      ).toBe(true);
     } finally {
       warnSpy.mockRestore();
       await rm(dir, { recursive: true, force: true });

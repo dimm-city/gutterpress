@@ -7,6 +7,13 @@ not have to rediscover them.
 
 Engine facts these rules are built on: [`ENGINE.md`](./ENGINE.md).
 
+Every `s`-numbered citation below (`s0`, `s1`, `s5`, `s8-compiler`, `s11`,
+`s13`, …) names the one-off spike that produced the number or check it is
+attached to. That spike suite was deleted along with the rest of the
+pre-native-engine scaffolding (see the provenance note at the top of
+`ENGINE.md`) — none of these citations describe something that still runs;
+they are historical labels only.
+
 ---
 
 ## 1. Every synthesis decision lives in ONE shared function
@@ -33,7 +40,7 @@ apart on the next change. The observation that named the rule:
 The resolution is not discipline about twins; it is not having twins. There is
 one function, called from two places.
 
-**What keeps it honest.** `s1` diffs viewer against print block by block; the
+**What keeps it honest.** `s1` diffed viewer against print block by block; the
 shared module has 20 unit tests.
 
 ---
@@ -55,8 +62,8 @@ Making measurement genuinely neutral deleted both the hope and the pass: Tier 3
 now costs 2 prints instead of 4 (61-page book: 3.1 s → 1.8 s warm), and the
 document that was measured **is** the document that ships.
 
-**What keeps it honest.** `s11` prints the same file with plain Chromium and
-requires byte-identical hostile-CSS output and page count.
+**What keeps it honest.** `s11` printed the same file with plain Chromium and
+required byte-identical hostile-CSS output and page count.
 
 **Residual risk, accepted and written down:** a `parent > :first-child` rule
 could observe the injected child. Elements with author ids — the common case,
@@ -88,8 +95,8 @@ Each was the same root cause found in a different emitter. The rule is now
 applied uniformly: `counterStyleCss` and the bleed geometry both loop over
 `pseudoVariants(model)` and emit resolved blocks.
 
-**What keeps it honest.** `s13` measures margins by page parity through the real
-build; `s11` checks the cover and TOC carry no head.
+**What keeps it honest.** `s13` measured margins by page parity through the real
+build; `s11` checked the cover and TOC carried no head.
 
 ---
 
@@ -111,8 +118,8 @@ bug that bought the engine pin ([`ENGINE.md`](./ENGINE.md) §2): the failure was
 invisible to every form of feature detection, so the defence is a fixed engine
 plus a harness that renders.
 
-**What keeps it honest.** `s0` render-probes instead of trusting `CSS.supports`;
-`s11` asserts the rendered reference text.
+**What keeps it honest.** `s0` render-probed instead of trusting `CSS.supports`;
+`s11` asserted the rendered reference text.
 
 ---
 
@@ -132,7 +139,7 @@ Where the answer genuinely cannot be computed in one shot — table header and
 footer reservation — the state is made **sticky** instead: claims only ever grow,
 and the loop ends when a pass adds nothing new.
 
-**What keeps it honest.** The measurement loop must converge, and `s5` requires
+**What keeps it honest.** The measurement loop must converge, and `s5` required
 rows-per-page to match print exactly.
 
 ---
@@ -167,10 +174,13 @@ alternative before hardening it.
 
 ## 7. Verify with an independent reader, never the tool's own model
 
-Every spike asserts against a PDF reader Gutterpress does not share code with —
-PyMuPDF where available, poppler otherwise (`spikes/pdfprobe*.py`, selected
+Every spike asserted against a PDF reader Gutterpress does not share code with
+— PyMuPDF where available, poppler otherwise (`spikes/pdfprobe*.py`, selected
 automatically by `probe.ts`; both expose the same CLI and JSON shapes, so the
-spikes never learn which answered). Gutterpress only ever *writes* PDFs, with pdf-lib.
+spikes never learned which answered). That harness no longer exists (see the
+note above), but the rule it enforced still stands: Gutterpress only ever
+*writes* PDFs, with pdf-lib, so verifying what a PDF actually contains needs a
+reader Gutterpress had no hand in.
 
 This is what makes findings falsifiable rather than self-confirming: when the
 tool's model and the reader disagree, the reader wins.
@@ -303,9 +313,9 @@ navigate + agent-script evaluate + `fragmentDocument()` (~140–185 ms measured,
 above the 0.11 s pure-layout figure this section already cited) is paid for
 and not recouped when the guess misses. The win is real but not universal: the
 `s8-compiler` spike's Tier-3 fixture (a chaptered book with running heads, no
-cover-page opener idiom) now converges in **1 pass** where every prior
-measurement in this repo required 2 (`s8` assertion already tolerated `passes
-<= 2`; it now observes 1). Fixing the cover-page idiom itself is out of this
+cover-page opener idiom) converged in **1 pass** where every prior
+measurement in this repo had required 2 (`s8`'s assertion had tolerated
+`passes <= 2`; it came to observe 1). Fixing the cover-page idiom itself is out of this
 section's scope — it is a pre-existing, separately-documented viewer
 limitation, not a predict-then-verify defect, and the fallback already handles
 it correctly.
@@ -320,17 +330,17 @@ decimal instead of the author's requested style. `mapSignature()` now folds
 `pageCount` into the comparison, so a pageCount mismatch alone forces another
 pass through the loop (verified against the print's own measured
 `facts.pageCount`, never a predicted or assumed value); `s8-compiler`'s C2
-gate (below) asserts this with a deterministic case.
+gate (below) asserted this with a deterministic case.
 
-**C2 regression gate (added by review).** Two `s8-compiler` checks close the
+**C2 regression gate (added by review).** Two `s8-compiler` checks closed the
 "1-print win has zero coverage" gap: (a) the running-heads fixture (no
-cover-page opener idiom) asserts `prints === 1` EXACTLY — not `<= 2` — so a
+cover-page opener idiom) asserted `prints === 1` EXACTLY — not `<= 2` — so a
 regression back to the pre-C2 two-print cost on a document that used to hit
-is no longer invisible; (b) a fixture built with the `.cover-page h1 { page:
-cover }` idiom deterministically MISSES (the same limitation measured above),
+was no longer invisible; (b) a fixture built with the `.cover-page h1 { page:
+cover }` idiom deterministically MISSED (the same limitation measured above),
 asserting `prints >= 2`, `converged === true`, and — read back with the
 poppler-backed `pdfText`, an independent reader — that the shipped
-cross-reference resolves to the page the target actually printed on.
+cross-reference resolved to the page the target actually printed on.
 
 **This cost is export-only.** The viewer contains zero print/CDP code — it
 paginates with multicol and `getBoundingClientRect()`, feeding the same shared

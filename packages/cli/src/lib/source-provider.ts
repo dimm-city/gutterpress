@@ -867,3 +867,263 @@ export async function restoreVersionWithBackup(
     return { restoredId: id, backupId };
   });
 }
+
+// ── Copies / copy switching (#273) ────────────────────────────────────────────
+//
+// A project can hold several copies of itself (git branches). Settings → Saving
+// lets the author see which one is open and switch to another. A copy counts
+// whether or not it exists locally yet: one that so far lives only on the
+// remote is switched to by creating the local branch from it, which is what
+// `git checkout <name>` does for a remote-tracking branch. Listing only the
+// local ones made the picker look broken — the copy you went looking for was
+// simply absent, with nothing to distinguish that from a bug.
+//
+// The author-facing word is "copy"; "branch" stays in this module and the
+// route names only.
+
+/** The project's copies (git branches) and which one is currently open. */
+export interface LocalBranches {
+  /** Name of the branch HEAD points to, or `null` on a detached/unborn HEAD. */
+  current: string | null;
+  /**
+   * Every copy the project can switch to, sorted: local branches
+   * (`refs/heads/*`) plus copies that so far exist only on a remote.
+   */
+  branches: string[];
+  /**
+   * The subset of {@link branches} with no local ref yet. Switching to one of
+   * these creates the local copy from the remote and tracks it; the UI uses
+   * this only to say so before it happens.
+   */
+  remoteOnly: string[];
+}
+
+/** Inputs for {@link switchBranch}. */
+export interface SwitchBranchOptions {
+  projectDir: string;
+  /** Branch name to check out — local, or one that so far exists only on a remote. */
+  branch: string;
+  /** Identity recorded on the automatic pre-switch safety snapshot, if one is taken. */
+  authorName?: string;
+  authorEmail?: string;
+}
+
+/** Result of a successful {@link switchBranch}. */
+export interface SwitchBranchResult {
+  /** The branch now checked out (equals `options.branch`). */
+  current: string;
+  /**
+   * Absolute paths of every file the checkout added, removed, or changed the
+   * content of (a diff of the old HEAD's tree against the new branch's tree,
+   * computed before the checkout runs). The host uses this to drop crash-
+   * recovery drafts for these paths — see recovery.ts's header: a draft taken
+   * on the copy just left behind must never be offered over a DIFFERENT copy's
+   * version of the same file.
+   */
+  changedFiles: string[];
+}
+
+/** Snapshot message for the safety snapshot {@link switchBranch} takes before checking out, when the working tree has changes. */
+export const SWITCH_BRANCH_SNAPSHOT_MESSAGE = "Saved before switching copy";
+
+/**
+ * List the project's copies (git branches) and which one is open, for a
+ * `local-git-folder` project. Returns `null` for any other source type —
+ * there is nothing to switch between, and the caller (the Saving settings row)
+ * hides the whole control on `null` rather than showing an error.
+ *
+ * Copies that exist only on a remote are included: they are as real to the
+ * author as the local ones, and {@link switchBranch} creates the local branch
+ * on the way in.
+ */
+export async function listLocalBranches(dir: string): Promise<LocalBranches | null> {
+  const source = await detectProjectSource(dir);
+  if (source.type !== "local-git-folder") return null;
+  const repoDir = gitScopeFor(source);
+  const [local, current, remotes] = await Promise.all([
+    git.listBranches({ fs, dir: repoDir }),
+    // An unborn/detached HEAD (no commits yet, or a mid-restore artifact) has
+    // no current branch name — treat that as "unknown" rather than throwing.
+    git.currentBranch({ fs, dir: repoDir, fullname: false }).catch(() => undefined),
+    // A repo with no remote configured is the normal offline case, not an error.
+    git.listRemotes({ fs, dir: repoDir }).catch(() => []),
+  ]);
+  const localNames = new Set(local);
+  const remoteOnly = new Set<string>();
+  for (const { remote } of remotes) {
+    const names = await git
+      .listBranches({ fs, dir: repoDir, remote })
+      .catch(() => [] as string[]);
+    for (const name of names) {
+      // The remote's own HEAD pointer is a symref, not a copy to switch to.
+      if (name === "HEAD") continue;
+      if (!localNames.has(name)) remoteOnly.add(name);
+    }
+  }
+  return {
+    current: current ?? null,
+    branches: [...localNames, ...remoteOnly].sort(),
+    remoteOnly: [...remoteOnly].sort(),
+  };
+}
+
+/**
+ * Resolve a copy name to the commit it points at, and the remote it came from
+ * when it has no local ref yet.
+ *
+ * `resolveRef`'s search path is `<ref>`, `refs/<ref>`, `refs/tags/<ref>`,
+ * `refs/heads/<ref>`, `refs/remotes/<ref>`, `refs/remotes/<ref>/HEAD` — note
+ * that it never reaches `refs/remotes/<remote>/<ref>`. A copy that has only
+ * ever existed online therefore has to be looked up per-remote, which is the
+ * lookup the copy picker used to be missing.
+ */
+async function resolveCopy(
+  repoDir: string,
+  branch: string,
+): Promise<{ oid: string; remote?: string }> {
+  const local = await git
+    .resolveRef({ fs, dir: repoDir, ref: `refs/heads/${branch}` })
+    .catch(() => undefined);
+  if (local) return { oid: local };
+  const remotes = await git.listRemotes({ fs, dir: repoDir }).catch(() => []);
+  for (const { remote } of remotes) {
+    const oid = await git
+      .resolveRef({ fs, dir: repoDir, ref: `refs/remotes/${remote}/${branch}` })
+      .catch(() => undefined);
+    if (oid) return { oid, remote };
+  }
+  throw new Error(
+    `Couldn't find a copy named "${branch}" — it may have been renamed or deleted.`,
+  );
+}
+
+/**
+ * True when isomorphic-git's checkout refused to overwrite a working-tree
+ * file whose content moved after the pre-switch snapshot below. Same
+ * predicate as remote-auth/converge-merge.ts's `isCheckoutConflict` —
+ * duplicated rather than imported to avoid a source-provider ⇄ remote-auth
+ * import cycle for a one-line `.code` check.
+ */
+function isCheckoutConflictError(e: unknown): boolean {
+  return (e as { code?: string })?.code === "CheckoutConflictError";
+}
+
+/**
+ * Repo-root-relative paths that differ (added, removed, or modified) between
+ * two commits. Used by {@link switchBranch} to report which files the
+ * checkout is about to move out from under any crash-recovery draft.
+ * Deliberately TREE-vs-TREE only (immutable commits), unlike
+ * {@link listWorkdirChanges}'s WORKDIR/STAGE walk.
+ */
+async function diffCommitPaths(
+  dir: string,
+  fromOid: string,
+  toOid: string,
+  cache: GitCache,
+): Promise<string[]> {
+  const changed: string[] = [];
+  await git.walk({
+    fs,
+    dir,
+    cache,
+    trees: [git.TREE({ ref: fromOid }), git.TREE({ ref: toOid })],
+    map: async (filepath, [from, to]) => {
+      if (filepath === ".") return;
+      const [fType, tType] = await Promise.all([
+        from ? from.type() : Promise.resolve(undefined),
+        to ? to.type() : Promise.resolve(undefined),
+      ]);
+      if (fType === "tree" || tType === "tree") return; // recurse
+      if (!fType && !tType) return;
+      if (!fType || !tType) {
+        changed.push(filepath); // added on one side, absent on the other
+        return;
+      }
+      const [fOid, tOid] = await Promise.all([from!.oid(), to!.oid()]);
+      if (fOid !== tOid) changed.push(filepath);
+    },
+  });
+  return changed;
+}
+
+/**
+ * Switch the project's working tree to another local copy (git branch).
+ *
+ * Safety, in order (see the issue's "what the switch has to take care of"):
+ *  1. If the working tree has uncommitted changes, snapshot them first (so
+ *     nothing the author typed is lost) and tolerate the expected
+ *     "no changes" rejection when it doesn't.
+ *  2. Check out the target branch WITHOUT `force` — isomorphic-git then
+ *     refuses (CheckoutConflictError) rather than silently overwriting a
+ *     working-tree file that moved after the snapshot above, which is
+ *     reported as a friendly error instead of a forced checkout.
+ *  3. Report every path the checkout touched so the host can drop stale
+ *     crash-recovery drafts for them (see {@link SwitchBranchResult}).
+ *
+ * Pause/resume of the auto-snapshot/auto-sync host timers around the
+ * checkout, and refreshing the open editor/file-tree/preview afterwards, are
+ * host (desktop) responsibilities — this function only does the git work.
+ */
+export async function switchBranch(
+  options: SwitchBranchOptions,
+): Promise<SwitchBranchResult> {
+  const { projectDir, branch, authorName, authorEmail } = options;
+  const source = await detectProjectSource(projectDir);
+  if (source.type !== "local-git-folder") {
+    throw new Error(
+      "This project has no version history yet. Enable version history first.",
+    );
+  }
+  const repoDir = gitScopeFor(source);
+  return withRepoLock(repoDir, async () => {
+    const cache: GitCache = {};
+    try {
+      await snapshotWorkingTreeUnlocked({
+        projectDir,
+        repoRoot: repoDir,
+        message: SWITCH_BRANCH_SNAPSHOT_MESSAGE,
+        authorName,
+        authorEmail,
+        cache,
+      });
+    } catch (e) {
+      if (!isNoChangesError(e)) throw e;
+    }
+    const fromOid = await git
+      .resolveRef({ fs, dir: repoDir, ref: "HEAD" })
+      .catch(() => undefined);
+    // A copy that exists only on a remote resolves through its remote ref;
+    // checkout then creates the local branch and sets it to track the remote
+    // one, which is isomorphic-git's documented behaviour for a ref with no
+    // local branch. `remote` is passed explicitly so a remote that isn't
+    // named "origin" works too — checkout would otherwise assume origin.
+    const { oid: toOid, remote } = await resolveCopy(repoDir, branch);
+    try {
+      await git.checkout({
+        fs,
+        dir: repoDir,
+        cache,
+        ref: branch,
+        force: false,
+        ...(remote ? { remote } : {}),
+      });
+    } catch (e) {
+      if (isCheckoutConflictError(e)) {
+        throw new Error(
+          "Couldn't switch copies — some files changed on disk right as the switch " +
+            "started. Try again.",
+          { cause: e },
+        );
+      }
+      throw e;
+    }
+    const changedPaths =
+      fromOid && fromOid !== toOid
+        ? await diffCommitPaths(repoDir, fromOid, toOid, cache)
+        : [];
+    return {
+      current: branch,
+      changedFiles: changedPaths.map((p) => path.join(repoDir, p)),
+    };
+  });
+}

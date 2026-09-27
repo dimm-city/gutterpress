@@ -25,7 +25,7 @@ export type {
   ReadText,
 } from "./lib/markdown/assemble";
 
-export { createMarkdownRenderer, collectPluginCss, applyPlugins } from "./lib/markdown/renderer";
+export { createMarkdownRenderer, collectPluginCss, applyPlugins, layerExtensionCss } from "./lib/markdown/renderer";
 export type {
   LoadedPlugin,
   GutterpressPlugin,

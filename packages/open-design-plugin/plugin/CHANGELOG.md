@@ -19,7 +19,7 @@ ownership rules are user-visible compatibility changes.
 - Made the injected skill self-contained because Open Design stages companion
   files without exposing a stable package-relative path to the agent.
 - Documented the CLI run's lack of Browser/form UI, the unenforced Open Design
-  engine declaration, the unreleased Print-MD floor, output bundles, and
+  engine declaration, the unreleased Gutterpress floor, output bundles, and
   stylesheet-only URL theme imports.
 - Added package contract tests, compatibility fixtures, behavioral evals, and a
   release checklist.
@@ -39,13 +39,13 @@ Initial package.
   reference-based shared composition, semantic layout markers, the preview /
   source-metadata loop, and Git scope with plugin ownership.
 
-Verified against the Print-MD source that shipped the package on 2026-07-28,
+Verified against the Gutterpress source that shipped the package on 2026-07-28,
 which includes:
 
 - shared design composed **by reference** — a `styles:` entry is a path to read,
   so `source.assets` staging and flattening no longer exist (and a manifest
   carrying `source.assets` or `output` now fails the build);
-- a full rebuild and complete Paged.js repagination after **every** stylesheet
+- a full rebuild and complete repagination after **every** stylesheet
   edit, replacing the old `<link>` hot-swap; and
 - preview watching of the book's **declared external dependencies**, so editing
   a shared stylesheet or authored plugin refreshes the preview.

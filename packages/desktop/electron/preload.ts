@@ -1,5 +1,10 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
+  ExtensionSearchResult,
+  LocalBranches,
+  RefreshCopiesResult,
+  SwitchBranchResult,
+  UnsavedChoice,
   UpdaterEventPayload,
   UpdaterStatus,
   DeviceCodeInfo,
@@ -228,6 +233,9 @@ contextBridge.exposeInMainWorld("electron", {
     pickImageFile: (): Promise<string | null> => ipcRenderer.invoke("dialog:pickImageFile"),
     pickPdfFile: (): Promise<string | null> => ipcRenderer.invoke("dialog:pickPdfFile"),
     pickImageFiles: (): Promise<string[]> => ipcRenderer.invoke("dialog:pickImageFiles"),
+    /** Native Save / Don't Save / Cancel prompt for a file with unsaved edits (#274). */
+    confirmUnsaved: (fileName: string): Promise<UnsavedChoice> =>
+      ipcRenderer.invoke("dialog:confirmUnsaved", fileName),
   },
 
   shell: {
@@ -335,6 +343,8 @@ contextBridge.exposeInMainWorld("electron", {
     list: (projectDir: string): Promise<ProjectExtensionEntry[]> => ipcRenderer.invoke("extension:list", projectDir),
     recommended: (): Promise<RecommendedExtension[]> => ipcRenderer.invoke("extension:recommended"),
     listBuiltIn: (): Promise<BuiltInStyleSet[]> => ipcRenderer.invoke("extension:listBuiltIn"),
+    /** Search npm for extensions (#246); a network/parse failure is data (`ok: false`), never a rejection. */
+    search: (query: string): Promise<ExtensionSearchResult> => ipcRenderer.invoke("extension:search", query),
     validate: (projectDir: string): Promise<ExtensionValidationResult[]> =>
       ipcRenderer.invoke("extension:validate", projectDir),
     add: (projectDir: string, specifier: string, exportName?: string): Promise<ProjectExtensionEntry | null> =>
@@ -369,6 +379,12 @@ contextBridge.exposeInMainWorld("electron", {
       ipcRenderer.invoke("vcs:restoreSnapshot", projectDir, id),
     saveSnapshot: (projectDir: string, message?: string): Promise<SnapshotEntry> =>
       ipcRenderer.invoke("vcs:saveSnapshot", projectDir, message),
+    /** The project's local copies (git branches) and which one is open; null when there is nothing to switch between (#273). */
+    listBranches: (projectDir: string): Promise<LocalBranches | null> =>
+      ipcRenderer.invoke("vcs:listBranches", projectDir),
+    /** Switch the project's working tree to another local copy (#273). */
+    switchBranch: (projectDir: string, branch: string): Promise<SwitchBranchResult> =>
+      ipcRenderer.invoke("vcs:switchBranch", projectDir, branch),
   },
 
   style: {
@@ -414,6 +430,9 @@ contextBridge.exposeInMainWorld("electron", {
       ipcRenderer.invoke("remote:diagnoseProject", projectDir),
     testRemoteAccess: (url: string): Promise<RemoteAccessResult> =>
       ipcRenderer.invoke("remote:testRemoteAccess", url),
+    /** Fetch every remote branch so the copy picker sees copies made elsewhere (#273); best-effort. */
+    refreshCopies: (projectDir: string): Promise<RefreshCopiesResult> =>
+      ipcRenderer.invoke("remote:refreshCopies", projectDir),
     connectGenericHost: (
       args: ConnectGenericHostArgs,
     ): Promise<{ connected: boolean; host: string; username?: string }> =>
@@ -600,15 +619,17 @@ contextBridge.exposeInMainWorld("electron", {
    * Returns an unsubscribe fn.
    */
   onFlushBeforeClose: (
-    cb: () => boolean | void | Promise<boolean | void>,
+    cb: (mode?: "flush" | "discard") => boolean | void | Promise<boolean | void>,
   ): (() => void) =>
-    forwardPush("app:flushBeforeClose", () => {
+    // `mode` is "discard" when the author chose Don't Save in main's close
+    // prompt; anything else means flush as before.
+    forwardPush<"flush" | "discard" | undefined>("app:flushBeforeClose", (mode) => {
       // The renderer flushes its buffer, then signals completion so main can
       // destroy the window. Signal failure even if the callback throws so quit
       // never hangs and main can persist the next-launch warning.
       let flushed = false;
       void Promise.resolve()
-        .then(() => cb())
+        .then(() => cb(mode === "discard" ? "discard" : "flush"))
         .then((result) => {
           flushed = result !== false;
         })

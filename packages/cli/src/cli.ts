@@ -92,8 +92,9 @@ async function preflightRequiredInvocations(rawArgs: string[]): Promise<void> {
       if (!(EXT_SUBCOMMANDS as readonly string[]).includes(subcommand)) {
         throw new UsageError(`gutterpress ext: unknown command "${subcommand}"`);
       }
-      // list takes no required positional — nothing further to check.
-      if (subcommand === "list") return;
+      // list/search take no required positional — nothing further to check
+      // (search's query positional is optional).
+      if (subcommand === "list" || subcommand === "search") return;
       const [positionalKey, positionalLabel, commandArgsDef] =
         subcommand === "add"
           ? (["source", "SOURCE", extAddArgs] as const)

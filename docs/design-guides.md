@@ -99,8 +99,9 @@ with these sections and add to them as the manuscript grows:
 
 - **Typography** — heading scale, body face, line height, inline elements
   (bold/italic/code), block quotes, lists.
-- **Callouts and asides** — every `@callout`, `@sidebar`, and `> [!TYPE]`
-  alert variant the book uses, with one realistic example each.
+- **Callouts and asides** — every `@section .callout-*` variant,
+  `@section .sidebar`, and `> [!TYPE]` alert variant the book uses, with
+  one realistic example each.
 - **Page templates** — `@page chapter`, `@spread`, `@end-section`, plus a
   representative full body page so leading and hyphenation are visible at
   scale.
@@ -175,8 +176,10 @@ gutterpress build ./design-guide --format pdf --out ./_site
 
 The PDF — named `<title-slug>-pdf.pdf` (a slug of the manifest `title`, e.g.
 `your-book-title-design-guide-pdf.pdf`) — is dropped into `_site/` alongside
-the desktop files. Link to it from `00-overview.md` so readers can grab the
-print-ready version.
+the desktop files; the html build's `book.html`, `index.html`, and assets are
+left exactly as they were, since a `pdf`/`pdfx` build into a shared `--out`
+directory only ever adds its own PDF. Link to it from `00-overview.md` so
+readers can grab the print-ready version.
 
 For a fully validated PDF/X (CMYK, embedded fonts, post-build checks),
 use:

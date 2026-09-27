@@ -3,10 +3,9 @@
 Open Design can refine a Gutterpress publication directly because both applications work with ordinary files. Open Design edits the repository; Gutterpress renders the authoritative paginated preview. There is no conversion step and no Open Design-specific Gutterpress project format.
 
 This guide uses release candidate 0.2.0 of the **Gutterpress Publishing** plugin,
-Open Design 0.16.1, and the unreleased Gutterpress source on this branch as of
-2026-07-28. Published Gutterpress 0.8.3 does not contain the required preview
-corrections. Open Design records but does not enforce the plugin's declared
-`>=0.16.1` engine floor, so verify the CLI version manually.
+Open Design 0.16.1, and Gutterpress 0.10.0 or later. Open Design records but
+does not enforce the plugin's declared `>=0.16.1` engine floor, so verify the
+CLI version manually.
 
 ## Install the Open Design plugin
 
@@ -189,7 +188,7 @@ Open Design may edit prose and manuscript structure as well as design files. Use
 
 Gutterpress keeps two different CSS locations:
 
-- `extensions/<id>/` holds a look: an extension folder containing `theme.css` (or the sheets its `gutterpress.json` declares), optional metadata, and optional look-owned assets, listed in the manifest's `extensions:` list as `./extensions/<id>`. Built-in looks (`gutterpress ext add <id> --look`) and zip imports copy complete packages there; bare CSS and URL imports create only the stylesheet plus metadata, and URL imports do not fetch referenced assets. A folder that already exists anywhere (`gutterpress ext add ./path`) is referenced in place, not copied.
+- `extensions/<id>/` holds a look: an extension folder containing the sheets its `package.json` declares under `gutterpress.styles` (`theme.css`, by convention), plus optional look-owned assets, listed in the manifest's `extensions:` list as `./extensions/<id>`. Built-in looks (`gutterpress ext add <id> --look`) and zip imports copy complete packages there; bare CSS and URL imports create only the stylesheet plus metadata, and URL imports do not fetch referenced assets. A folder that already exists anywhere (`gutterpress ext add ./path`) is referenced in place, not copied.
 - `styles/` contains ordinary publication CSS such as `book.css` and reusable component rules, listed under `styles:`.
 
 A small project may use only:

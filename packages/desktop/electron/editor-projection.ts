@@ -94,7 +94,7 @@ import {
 import { composeEditorCss, inlineStyles, loadManifestWithPath, resolveConfig } from "gutterpress";
 import { registerEditorAssets, rewriteEditorAssetUrls } from "./editor-assets";
 import { stat } from "node:fs/promises";
-import { loadPluginsWithCss } from "gutterpress/plugins";
+import { layerExtensionCss, loadPluginsWithCss, type PluginStyleGroup } from "gutterpress/plugins";
 import { RICH_MODE_MAX_CONTENT_BYTES } from "gutterpress/render";
 import type { SecureHandle } from "./server-bridge/secure-handle";
 
@@ -108,7 +108,7 @@ export interface EditorProjectionPluginError {
 
 export interface EditorProjectionHostResult {
   readonly projection: GutterpressProjection;
-  /** Concatenated plugin CSS (load order), ready for the mount's `extraCss` — `""` when no loaded plugin declares any. */
+  /** Every extension's CSS in its own cascade layer (`layerExtensionCss`, the built document's own block), stylesheet files inlined; `""` when no loaded plugin declares any. */
   readonly pluginCss: string;
   /** Every plugin that failed to load. Empty when every configured plugin loaded (or none are configured). */
   readonly pluginErrors: readonly EditorProjectionPluginError[];
@@ -119,27 +119,53 @@ export interface EditorProjectionHostResult {
 /** Selector of the element that plays the book's `body` inside the desktop's rich editor. */
 export const EDITOR_BOOK_SCOPE_SELECTOR = ".rich-editor-host .md-document";
 
-const bookCssCache = new Map<string, { stamp: string; css: string }>();
+const bookCssCache = new Map<string, { stamp: string; pluginCss: string; css: string }>();
+
+async function fileStamp(projectDir: string, file: string): Promise<string> {
+  try {
+    const st = await stat(path.resolve(projectDir, file));
+    return `${file}@${st.mtimeMs}:${st.size}`;
+  } catch {
+    return `${file}@missing`;
+  }
+}
 
 /**
- * The editor's book CSS for one project, rebuilt only when a stylesheet or
- * the plugin CSS changes (stat-stamped): projections rebuild per edit, and
- * inlining fonts on every keystroke would be wasted work.
+ * The editor's book CSS for one project, rebuilt only when a stylesheet (the
+ * book's own or an extension's) or an extension's `css` export changes
+ * (stat-stamped): projections rebuild per edit, and inlining fonts on every
+ * keystroke would be wasted work.
+ *
+ * Extension stylesheets go through the SAME inliner as the book's own and
+ * into the SAME per-extension cascade layers the built document uses
+ * (`layerExtensionCss`), so the editor's cascade is the page's: an
+ * extension beats core, the book beats every extension.
  */
-async function bookCssFor(projectDir: string, styles: readonly string[], pluginCss: string): Promise<string> {
-  const stamps = await Promise.all(
-    styles.map(async (rel) => {
-      try {
-        const st = await stat(path.resolve(projectDir, rel));
-        return `${rel}@${st.mtimeMs}:${st.size}`;
-      } catch {
-        return `${rel}@missing`;
-      }
-    }),
-  );
-  const stamp = JSON.stringify([stamps, pluginCss]);
+async function bookCssFor(
+  projectDir: string,
+  styles: readonly string[],
+  pluginStyles: readonly PluginStyleGroup[],
+): Promise<{ pluginCss: string; css: string }> {
+  const stamps = await Promise.all([
+    ...styles.map((rel) => fileStamp(projectDir, rel)),
+    ...pluginStyles.flatMap((group) => group.paths.map((abs) => fileStamp(projectDir, abs))),
+  ]);
+  const stamp = JSON.stringify([stamps, pluginStyles.map((group) => [group.layer, group.css ?? ""])]);
   const cached = bookCssCache.get(projectDir);
-  if (cached && cached.stamp === stamp) return cached.css;
+  if (cached && cached.stamp === stamp) return { pluginCss: cached.pluginCss, css: cached.css };
+  const groups: Array<{ name: string; layer: string; css: string }> = [];
+  for (const group of pluginStyles) {
+    const groupInlined = await inlineStyles(projectDir, group.paths);
+    registerEditorAssets(groupInlined.copies);
+    groups.push({
+      name: group.name,
+      layer: group.layer,
+      css: [rewriteEditorAssetUrls(groupInlined.css), group.css]
+        .filter((text): text is string => !!text && text.trim().length > 0)
+        .join("\n\n"),
+    });
+  }
+  const pluginCss = layerExtensionCss(groups);
   const inlined = await inlineStyles(projectDir, [...styles]);
   // The book's art: `inlineStyles` planned copies the build would make; the
   // editor serves the originals instead (editor-assets.ts).
@@ -149,8 +175,8 @@ async function bookCssFor(projectDir: string, styles: readonly string[], pluginC
     pluginCss,
     projectCss: rewriteEditorAssetUrls(inlined.css),
   });
-  bookCssCache.set(projectDir, { stamp, css });
-  return css;
+  bookCssCache.set(projectDir, { stamp, pluginCss, css });
+  return { pluginCss, css };
 }
 
 export interface EditorProjectionHostArgs {
@@ -176,9 +202,10 @@ export interface EditorProjectionHostArgs {
  *   (c) build the plugin-applied `md` the exact way the render path does
  *       (`createMarkdownRenderer(plugins)` — a real, public `gutterpress/render`
  *       export);
- *   (d) return `{ projection, pluginCss, pluginErrors }` — `pluginCss` comes
- *       straight from `loadPluginsWithCss` (it already calls `collectPluginCss`
- *       internally), never a second hand-rolled join.
+ *   (d) return `{ projection, pluginCss, pluginErrors, bookCss }`; `pluginCss`
+ *       is `loadPluginsWithCss`'s per-extension `pluginStyles`, inlined and
+ *       layered by the lib's own `layerExtensionCss` (the built document's
+ *       extension block), never a second hand-rolled join.
  *
  * Never throws for a plugin load failure (that is exactly what degrade-and-
  * report means) — only for something the caller must treat as a hard
@@ -191,7 +218,7 @@ export async function buildHostEditorProjection(
   const config = resolveConfig({}, manifest);
 
   const pluginErrors: EditorProjectionPluginError[] = [];
-  const { plugins, pluginCss } = await loadPluginsWithCss(config.extensions, manifestDir, (pluginRef, error) => {
+  const { plugins, pluginStyles } = await loadPluginsWithCss(config.extensions, manifestDir, (pluginRef, error) => {
     pluginErrors.push({ pluginRef, message: error.message });
   });
 
@@ -202,7 +229,7 @@ export async function buildHostEditorProjection(
     trusted: true,
   });
 
-  const bookCss = await bookCssFor(manifestDir, config.styles ?? [], pluginCss);
+  const { pluginCss, css: bookCss } = await bookCssFor(manifestDir, config.styles ?? [], pluginStyles);
 
   return { projection, pluginCss, pluginErrors, bookCss };
 }

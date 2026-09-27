@@ -294,6 +294,29 @@ export async function remoteForgeTokenUrl(rawHost: unknown): Promise<string | nu
   return lib.knownForgeTokenUrl(rawHost);
 }
 
+/**
+ * Fetch every branch the project's remote has, so Settings -> Saving's copy
+ * picker lists copies created somewhere else (#273). Reads the network but
+ * only ever writes remote-tracking refs - no local branch, no working-tree
+ * change - so it is safe to call with unsaved work open.
+ *
+ * Best-effort by contract: an older lib, no remote, no credential, or being
+ * offline all resolve to `{ refreshed: false }`. The picker then lists
+ * whatever is already on disk rather than showing an error over a control the
+ * author never explicitly asked to sync.
+ */
+export async function remoteRefreshCopies(
+  rawProjectDir: unknown,
+): Promise<{ refreshed: boolean; reason?: "no-remote" | "auth" | "offline" }> {
+  const hooks = requireHooks();
+  const projectDir = await requireProjectDir(rawProjectDir, "remote:refreshCopies");
+  return handleRemoteErrors("remote:refreshCopies", async () => {
+    const lib = await hooks.loadLib();
+    if (!lib.refreshRemoteCopies) return { refreshed: false };
+    return lib.refreshRemoteCopies({ projectDir, tokenStore: hooks.tokenStore });
+  });
+}
+
 // ── Sync (#15 sync phase, ADR 0006 D5) ──────────────────────────────────────
 
 /** Snapshot-first sync of the project to its online repository. */
@@ -378,6 +401,7 @@ export function registerRemoteHandlers(secureHandle: SecureHandle): void {
     remoteDiagnoseProject(projectDir),
   );
   secureHandle("remote:testRemoteAccess", (_e, url: unknown) => remoteTestRemoteAccess(url));
+  secureHandle("remote:refreshCopies", (_e, projectDir: unknown) => remoteRefreshCopies(projectDir));
   secureHandle("remote:connectGenericHost", (_e, args: unknown) =>
     remoteConnectGenericHost(args),
   );

@@ -7,12 +7,12 @@ CSS and insertable snippets to a book.
 
 ```
 {{SLUG}}/
-├── gutterpress.json     what this package declares to Gutterpress
+├── package.json         what this package declares: `main` is the plugin,
+│                        the `gutterpress` block names the styles and snippets
 ├── plugin.js            the markdown-it plugin (declarative + bespoke halves)
 ├── styles/plugin.css    component CSS, with public tokens at :root
 ├── snippets/            insertable recipes, one per component
-├── test/                fixture.md → expected.html, runnable with `bun test`
-└── package.json         only needed for `bun test` and publishing to npm
+└── test/                fixture.md → expected.html, runnable with `bun test`
 ```
 
 ## Try it
@@ -32,7 +32,7 @@ extensions:
 `gutterpress ext add ./plugins/{{SLUG}} <book>` writes that line for you (the
 book directory is the second positional argument). Either way the entry names
 the FOLDER, not `plugin.js`. That is what makes Gutterpress read
-`gutterpress.json` and pick up the stylesheet and snippets alongside the
+`package.json` and pick up the stylesheet and snippets alongside the
 markdown behaviour — point it at the `.js` file and you get the markdown and
 nothing else. The folder is referenced in place, never copied: keep editing it
 and the book follows.
@@ -110,27 +110,20 @@ Marker names are global across every plugin a book loads. Two plugins
 declaring `@callout` is a hard load error naming both — which is a good
 outcome, and another reason to prefix.
 
-### 5. Put your CSS in your own cascade layer
+### 5. Leave the cascade to Gutterpress
 
-`styles/plugin.css` wraps everything in `@layer {{SLUG}}`.
+Gutterpress wraps every extension's CSS in a cascade layer of its own
+(`@layer ext.<name>`), in `extensions:` list order, before the book's own
+`styles:`. So `styles/plugin.css` needs no `@layer` of its own: the book's
+unlayered `styles:` always beat you, at any specificity, which is right — a
+plugin should be the easiest thing in the book to override — and against a
+look, position decides. Listed above the look, this plugin's layer sorts first
+and the look wins ties; listed below it, the plugin's component rules win.
+Either way the author moves one line to change it; that is the whole point of
+the list.
 
-Extension CSS lands in the book in `extensions:` list order, and always before
-the book's own `styles:`. In CSS an unlayered rule beats a layered one at any
-specificity. So an unlayered plugin sheet outranks every rule in a book whose
-look uses the recommended
-`@layer tokens, base, components, templates, pages, book;` convention — the
-author edits their CSS and nothing happens.
-
-Inside a layer, the book's own unlayered `styles:` always beat you, which is
-right. Against the LOOK's layers, position decides: a layer sorts by where it
-is first declared, so with this plugin listed above the look in `extensions:`
-its layer sorts first and is the weakest thing in the book — the right place
-for a plugin to sit. Listed below the look, its component rules win ties over
-the look's layered rules instead. Either way the author moves one line to
-change it; that is the whole point of the list.
-
-Adopt it for the whole file: a rule left outside the layer is unlayered and
-beats everything inside it, including your own.
+If you do declare layers inside this sheet, they nest inside your extension's
+layer and only settle ties between your own rules.
 
 ## Theming: the token pattern
 

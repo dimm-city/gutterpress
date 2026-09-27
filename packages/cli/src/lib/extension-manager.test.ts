@@ -40,16 +40,16 @@ function readManifest(dir: string): string {
   return readFileSync(join(dir, "manifest.yaml"), "utf8");
 }
 
-/** An extension folder: optional gutterpress.json + files (nested paths allowed). */
+/** An extension folder: optional package.json + files (nested paths allowed). */
 function writeExtension(
   root: string,
   rel: string,
-  meta: Record<string, unknown> | null,
+  pkg: Record<string, unknown> | null,
   files: Record<string, string>,
 ): string {
   const dir = join(root, rel);
   mkdirSync(dir, { recursive: true });
-  if (meta) writeFileSync(join(dir, "gutterpress.json"), JSON.stringify(meta), "utf8");
+  if (pkg) writeFileSync(join(dir, "package.json"), JSON.stringify(pkg), "utf8");
   for (const [name, body] of Object.entries(files)) {
     mkdirSync(join(dir, name, ".."), { recursive: true });
     writeFileSync(join(dir, name), body, "utf8");
@@ -63,7 +63,11 @@ function writeHouse(root: string, rel = "ext/house"): string {
   return writeExtension(
     root,
     rel,
-    { name: "House Style", markdown: "plugin.js", styles: ["css/tokens.css", "css/rules.css"], snippets: "snippets" },
+    {
+      name: "house-style",
+      main: "plugin.js",
+      gutterpress: { styles: ["css/tokens.css", "css/rules.css"], snippets: "snippets" },
+    },
     {
       "plugin.js": PLUGIN_JS,
       "css/tokens.css": ":root { --house: 1; }\n",
@@ -116,7 +120,7 @@ describe("extension-manager", () => {
       const [house, bare, mark, footnote, pinned, missing] = list;
       expect(house).toMatchObject({
         kind: "path",
-        label: "House Style",
+        label: "House style",
         enabled: true,
         carries: { markdown: true, styles: true, snippets: true, components: false },
         styles: ["css/tokens.css", "css/rules.css"],
@@ -137,9 +141,11 @@ describe("extension-manager", () => {
       expect(missing!.warnings?.join(" ")).toMatch(/Not found/);
     });
 
-    test("a metadata-less theme.css folder is a one-sheet look; an unparseable specifier is reported, not thrown", async () => {
+    test("a look declaring one sheet is described from its package.json; an unparseable specifier is reported, not thrown", async () => {
       const dir = projectDir(["title: T", "extensions:", "  - ./looks/plain", "  - plugins/oops.js", ""].join("\n"));
-      writeExtension(dir, "looks/plain", null, { "theme.css": "body { color: blue; }\n" });
+      writeExtension(dir, "looks/plain", { name: "plain", gutterpress: { styles: ["theme.css"] } }, {
+        "theme.css": "body { color: blue; }\n",
+      });
 
       const [plain, oops] = await listProjectExtensions(dir);
       expect(plain).toMatchObject({
@@ -177,7 +183,7 @@ describe("extension-manager", () => {
       const shared = writeExtension(
         TMP_ROOT,
         "shared/lib",
-        { name: "Shared", styles: ["lib.css"] },
+        { name: "shared", gutterpress: { styles: ["lib.css"] } },
         { "lib.css": ".shared {}\n" },
       );
 
@@ -212,8 +218,10 @@ describe("extension-manager", () => {
       const dir = projectDir();
       await expect(addExtension(dir, "./nope")).rejects.toThrow(/Extension not found/);
 
-      writeExtension(dir, "ext/empty", { name: "Empty" }, {});
-      await expect(addExtension(dir, "./ext/empty")).rejects.toThrow(/declares neither/);
+      writeExtension(dir, "ext/empty", { name: "empty" }, {});
+      await expect(addExtension(dir, "./ext/empty")).rejects.toThrow(
+        /declares no markdown-it plugin \(`main`\) and no `gutterpress.styles`/,
+      );
 
       mkdirSync(join(dir, "plugins"), { recursive: true });
       writeFileSync(join(dir, "plugins", "broken.js"), "export default 42;\n", "utf8");

@@ -126,7 +126,7 @@ not assume a conventional file is active when it does not exist.
 
 Each stylesheet's `url()` references resolve relative to **that stylesheet**, so
 a shared theme's fonts and images already travel with it. Fonts are embedded;
-images are embedded or copied by size.
+images are copied.
 
 ### 3. Enforce ownership and edit scope
 

@@ -1,5 +1,7 @@
 # Why the `@page` background drops — the mechanism
 
+> **Superseded.** The agreed solution shipped: `assemble.ts` emits a per-image `<link rel="preload">` and `asset-inline.ts` content-addresses CSS images. Kept as a record of the decision.
+
 **Analysis only. No product code changed.** `git diff` against `release/0.10.2`
 is this document plus `tools/page-background-mechanism.mjs`.
 

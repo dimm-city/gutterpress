@@ -17,6 +17,17 @@
  *
  * Everything else is left byte-for-byte: the author's `h1`, `.section.lede`,
  * `.gp-columns-2` rules match the editor's real `<h1>`/`div.section` DOM.
+ *
+ * Cascade layers are the print path's, verbatim: core in `gp.marker` /
+ * `gp.vocab`, each extension in its own `ext.<name>` layer (the caller
+ * passes `pluginCss` already layered by `layerExtensionCss`), the author's
+ * stylesheets unlayered on top - so an extension beats core and the book
+ * beats every extension, at any specificity, exactly as on the page. Layer
+ * BLOCKS stay nested inside the `@scope` (Chromium applies them there and
+ * keeps their order); only the `@layer` order STATEMENTS are hoisted, since
+ * first declaration fixes the order and the fork's own `gp-fork` layer is
+ * declared before this sheet. Hoisting the blocks, as this file once did,
+ * would drop their rules outside the scope and onto the app's own chrome.
  */
 import postcss, { type AtRule, type ChildNode, type Root } from "postcss";
 import { MARKER_CSS } from "./markdown/markers.js";
@@ -25,7 +36,7 @@ import { GUTTERPRESS_CSS } from "./markdown/gutterpress-css.ts";
 export interface ComposeEditorCssOptions {
   /** Selector of the element that plays the book's `body`/`:root` (the editor document). */
   scopeSelector: string;
-  /** Concatenated plugin CSS (load order), as `loadPluginsWithCss` returns it. */
+  /** Every extension's CSS in its own cascade layer, as `layerExtensionCss` builds it (`""` when none). */
   pluginCss?: string;
   /** The author's fully-inlined stylesheets (`inlineStyles(...).css`). */
   projectCss?: string;
@@ -44,7 +55,6 @@ const HOISTED_AT_RULES = new Set([
   "import",
   "keyframes",
   "-webkit-keyframes",
-  "layer",
   "property",
   "page",
 ]);
@@ -86,7 +96,10 @@ function rewriteTree(nodes: readonly ChildNode[], hoisted: ChildNode[]): void {
   for (const node of [...nodes]) {
     if (node.type === "atrule") {
       const at = node as AtRule;
-      if (HOISTED_AT_RULES.has(at.name)) {
+      // A `@layer a, b;` order statement is hoisted (see the header); a
+      // `@layer a { ... }` block stays where it is and is walked like any
+      // other group rule, so its `:root` rewrites and `@page` hoists apply.
+      if (HOISTED_AT_RULES.has(at.name) || (at.name === "layer" && !at.nodes)) {
         at.remove();
         hoisted.push(at);
         continue;
@@ -114,13 +127,14 @@ export function scopeCssToEditor(css: string, scopeSelector: string): string {
   return out.toString();
 }
 
-/** The full editor stylesheet: markers + utilities + plugin CSS + the author's CSS, scoped. */
+/** The full editor stylesheet: markers + utilities + extension CSS + the author's CSS, layered as in print and scoped. */
 export function composeEditorCss(opts: ComposeEditorCssOptions): string {
   const layers = [
     PAGE_COLOR_CONTEXT,
-    `/* gutterpress markers */\n${MARKER_CSS.trim()}`,
-    `/* gutterpress */\n${GUTTERPRESS_CSS.trim()}`,
-    opts.pluginCss?.trim() ? `/* user plugin css */\n${opts.pluginCss.trim()}` : null,
+    "@layer gp.marker, gp.vocab;",
+    `/* gutterpress markers */\n@layer gp.marker {\n${MARKER_CSS.trim()}\n}`,
+    `/* gutterpress */\n@layer gp.vocab {\n${GUTTERPRESS_CSS.trim()}\n}`,
+    opts.pluginCss?.trim() ? `/* extension css */\n${opts.pluginCss.trim()}` : null,
     opts.projectCss?.trim() ? `/* project css */\n${opts.projectCss.trim()}` : null,
   ].filter((layer): layer is string => layer !== null);
   return scopeCssToEditor(layers.join("\n\n"), opts.scopeSelector);

@@ -1,7 +1,7 @@
 /**
  * Shared "declared stylesheet list" resolution (#239) — the ONE function a
- * plugin's `styles` export (#238) and a theme's `theme.json` `styles` both
- * resolve through. This is the concrete code-level
+ * plugin's `styles` export (#238) and a look's package.json
+ * `gutterpress.styles` both resolve through. This is the concrete code-level
  * answer to the 0.10.7 milestone's acceptance criterion for this pair — "a
  * theme and a styles-carrying plugin are the same object": both declare an
  * ORDERED LIST of stylesheet paths relative to their OWN folder/module, and

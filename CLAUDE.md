@@ -2,7 +2,7 @@
 
 ## Monorepo layout
 
-This repo is a Bun workspace with two packages:
+This repo is a Bun workspace with three packages:
 
 - **`packages/cli/`** (`gutterpress`) — the single published package:
   ALL runtime logic (markdown rendering, preview HTTP server, native-engine PDF
@@ -12,7 +12,7 @@ This repo is a Bun workspace with two packages:
   entrypoints, `--target=node --packages=external --splitting`; `src/render.ts`
   is compiled as a SEPARATE non-split invocation so the node-free
   `/render` subpath never shares a chunk with Node code — enforced by
-  `scripts/check-render-pure.mjs`) + `tsc` for
+  `packages/cli/scripts/check-render-pure.mjs`) + `tsc` for
   `.d.ts` — see the package.json `build` script; deps are normal `dependencies`,
   not bundled. Also ships as a standalone single-file binary via `bun build
   --compile`, run inline by the `build-cli` job in `.github/workflows/release.yml`
@@ -133,7 +133,7 @@ Two constraints survive the relaxation, and they are what keep it honest:
 2. **It must not change what the document means.** Tooling may re-present the
    author's pages; it may not re-decide them. Where the viewer derives
    pagination by any means other than the print fragmenter, the preview↔print
-   parity gate (`scripts/native-parity-gate.ts`) is what proves it still
+   parity gate (`packages/cli/scripts/native-parity-gate.ts`) is what proves it still
    agrees with the PDF — and it must stay green with an empty allowlist. A
    sub-pixel exact-fit boundary the gate has measured in both fragmenters
    (see `docs/native-parity-gate.md`) is a distinct passing outcome, not an
@@ -540,12 +540,15 @@ through the shared bridge accessor because CodeMirror's lint-source contract
 expects one async function to hand it, not because every capability needs
 its own module.
 
-**Svelte 5 conventions: `$effect` is banned in the SPA.** Enforced by eslint
-(`no-restricted-syntax` in `packages/desktop/eslint.config.*`) — the error
-message lists the sanctioned alternatives (onMount for DOM setup/cleanup,
-event handlers for user-triggered state, `$derived` + `class:` bindings for
-reactive presentation, `{#key}` for identity re-init, `untrack()` for one-time
-reads). For imperative side-effects on settings changes specifically, use the
+**Svelte 5 conventions: `$effect` is banned in the SPA.** The rule exists in
+eslint (`no-restricted-syntax` in `packages/desktop/eslint.config.*`) — the
+error message lists the sanctioned alternatives (onMount for DOM
+setup/cleanup, event handlers for user-triggered state, `$derived` + `class:`
+bindings for reactive presentation, `{#key}` for identity re-init,
+`untrack()` for one-time reads) — but nothing in CI runs eslint (`ci.yml`'s
+jobs are test, render-parity, build, type-check, security-audit), so this ban is not
+currently gated in CI. For imperative side-effects on settings changes
+specifically, use the
 settings store's `onSettingsChange()` channel with `settingsChangeGuard()`
 (see `src/lib/settings.svelte.ts`'s header) — every state replacement flows
 through one choke point, so the notify cannot be forgotten by a new setter.
@@ -587,7 +590,7 @@ crashes on it — this is exactly how a shared bun-build chunk topped with
 `createRequire` leaked through `gutterpress/render` in 2026-07. The lib side
 therefore has its own gate: `packages/cli`'s build compiles `src/render.ts`
 as a separate non-split `bun build` graph and runs
-`scripts/check-render-pure.mjs`, which fails if the `dist/render.js` closure
+`packages/cli/scripts/check-render-pure.mjs`, which fails if the `dist/render.js` closure
 contains any Node builtin or `createRequire`. Treat a hit from either gate as
 a release-blocking regression. (The
 `bun build --compile` CLI binary is the *opposite* environment — it bundles the
@@ -605,7 +608,7 @@ The Dimm City design guide — the seven-file CSS layer contract, the
 `dc-components`/`fg-overrides` ownership rules, the Contextual Cascade pattern's
 DC-specific application, the specialty variant system, the frozen chapter-opener
 composite, and the R1–R12 print-CSS anti-patterns — used to live in
-`examples/dc-design-guide/` here. That example was removed (commit `db0f0fc`)
+`examples/dc-design-guide/` here. That example was removed
 and the full design guide now lives in the **`dc-op-manual`** repo
 (`dc-op-manual/dc-design-guide/`). Do that work there, against that repo's
 own guidance.

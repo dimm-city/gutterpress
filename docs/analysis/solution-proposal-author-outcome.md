@@ -1,5 +1,7 @@
 # Solution proposal — judged by the author's outcome
 
+> **Superseded.** The agreed solution shipped: `assemble.ts` emits a per-image `<link rel="preload">` and `asset-inline.ts` content-addresses CSS images. Kept as a record of the decision.
+
 **Status:** design proposal. **No implementation, no product code changed.**
 **Lens:** one of three competing proposals for the `@page { background: url() }`
 defect. This one is argued from Gutterpress's primary goals — non-technical

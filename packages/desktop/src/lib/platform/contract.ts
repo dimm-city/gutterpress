@@ -129,6 +129,11 @@ import type {
   RecommendedExtension,
   BuiltInStyleSet,
   ExtensionImportResult,
+  ExtensionSearchResult,
+  LocalBranches,
+  RefreshCopiesResult,
+  SwitchBranchResult,
+  UnsavedChoice,
   ProjectStyle,
   MediaImageEntry,
   MediaImageDetails,
@@ -626,7 +631,7 @@ export interface ElectronBridge {
    * (#44). Returning false reports that the buffer did not reach disk; main
    * records the durable failure marker and still closes after bounded waits.
    */
-  onFlushBeforeClose(cb: () => boolean | void | Promise<boolean | void>): () => void;
+  onFlushBeforeClose(cb: (mode?: "flush" | "discard") => boolean | void | Promise<boolean | void>): () => void;
   /**
    * Subscribe to debounced folder-change notifications for the open project
    * (#44), backing external-edit detection. Returns an unsubscribe fn.
@@ -655,6 +660,8 @@ export interface ElectronBridge {
     pickImageFile(): Promise<string | null>;
     pickPdfFile(): Promise<string | null>;
     pickImageFiles(): Promise<string[]>;
+    /** Native Save / Don't Save / Cancel prompt for a file with unsaved edits (#274). */
+    confirmUnsaved(fileName: string): Promise<UnsavedChoice>;
   };
 
   shell: {
@@ -739,6 +746,8 @@ export interface ElectronBridge {
     list(projectDir: string): Promise<ProjectExtensionEntry[]>;
     recommended(): Promise<RecommendedExtension[]>;
     listBuiltIn(): Promise<BuiltInStyleSet[]>;
+    /** Search npm for extensions (#246); a fetch/parse failure is data (`ok: false`), never a rejection. */
+    search(query: string): Promise<ExtensionSearchResult>;
     validate(projectDir: string): Promise<ExtensionValidationResult[]>;
     add(projectDir: string, specifier: string, exportName?: string): Promise<ProjectExtensionEntry | null>;
     addLocal(projectDir: string): Promise<ProjectExtensionEntry | null>;
@@ -759,6 +768,10 @@ export interface ElectronBridge {
     ): Promise<SnapshotPage>;
     restoreSnapshot(projectDir: string, id: string): Promise<RestoreVersionResult>;
     saveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry>;
+    /** The project's local copies and which one is open; null when there is nothing to switch between (#273). */
+    listBranches(projectDir: string): Promise<LocalBranches | null>;
+    /** Switch the working tree to another local copy (#273). */
+    switchBranch(projectDir: string, branch: string): Promise<SwitchBranchResult>;
   };
 
   style: {
@@ -799,6 +812,8 @@ export interface ElectronBridge {
     listRepoBooks(owner: string, repo: string, branch: string): Promise<RepoBook[]>;
     diagnoseProject(projectDir: string): Promise<SharedProjectRemoteDiagnosis>;
     testRemoteAccess(url: string): Promise<RemoteAccessResult>;
+    /** Fetch every remote branch so the copy picker sees copies made elsewhere (#273); best-effort. */
+    refreshCopies(projectDir: string): Promise<RefreshCopiesResult>;
     connectGenericHost(
       args: ConnectGenericHostArgs,
     ): Promise<{ connected: boolean; host: string; username?: string }>;

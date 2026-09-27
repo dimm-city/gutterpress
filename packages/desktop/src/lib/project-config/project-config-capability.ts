@@ -38,6 +38,7 @@ import { hostCall } from "../errors";
 import type {
   BuiltInStyleSet,
   ExtensionImportResult,
+  ExtensionSearchResult,
   ExtensionValidationResult,
   MediaImageDetails,
   MediaImageEntry,
@@ -190,6 +191,15 @@ export async function extensionRecommended(): Promise<RecommendedExtension[]> {
 /** The built-in looks (static metadata). */
 export async function extensionListBuiltIn(): Promise<BuiltInStyleSet[]> {
   return hostCall(bridge().extension.listBuiltIn());
+}
+
+/**
+ * Search npm for extensions (#246), on demand. A network/parse failure is
+ * data (`ok: false`), never a thrown error - the Features panel shows it as
+ * one quiet line and the local extension list is never blocked by it.
+ */
+export async function extensionSearch(query: string): Promise<ExtensionSearchResult> {
+  return hostCall(bridge().extension.search(query));
 }
 
 /** Load-test every configured extension; reports ok/error per entry (degrade-and-report). */

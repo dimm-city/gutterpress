@@ -11,7 +11,7 @@
  * directly unit-tested; the fs helpers are thin wrappers used by the host IPC.
  *
  * #242 — an installed extension may now ALSO contribute snippets, declared as
- * `gutterpress.json`'s `snippets` field (#241, `extension-manifest.ts`). This
+ * package.json's `gutterpress.snippets` field (`extension-manifest.ts`). This
  * module — "the snippet host" the issue names — is deliberately the ONE place
  * that merge happens: `listMergedSnippets` is the sole new entry point the
  * picker calls; `readExtensionSnippet` is its lazy-body-read counterpart.
@@ -254,8 +254,8 @@ interface InstalledExtension {
    *  extension later — never written to disk, never itself a filesystem
    *  path. */
   ref: string;
-  /** Absolute path to the extension's OWN folder (where its gutterpress.json
-   *  or theme.json lives) — may lie outside `projectDir` for a plugin `path:`
+  /** Absolute path to the extension's OWN folder (where its package.json
+   *  lives) — may lie outside `projectDir` for a plugin `path:`
    *  entry shared across a multi-book repo, exactly as `loadPlugin` already
    *  allows (see this interface's doc comment on trust below). */
   dir: string;

@@ -31,9 +31,8 @@ gutterpress ext add clean-book ./my-book --look   # copy the built-in look in an
 gutterpress ext list ./my-book                    # every extension, in load (= cascade) order
 ```
 
-`gutterpress new` does exactly this with its template's starter look, so even
-a freshly scaffolded project has a real, editable look from the start. The
-resulting manifest reads:
+A new book has no look until you add one this way. After adding
+`clean-book`, the manifest reads:
 
 ```yaml
 extensions:
@@ -57,7 +56,7 @@ gutterpress ext add zine ./my-book --look                     # another built-in
 gutterpress ext add ./house-style ./my-book                   # a folder you already have — referenced in place, never copied
 gutterpress ext add ./parchment.zip ./my-book                 # a packaged look → extensions/parchment/
 gutterpress ext add ./parchment.css ./my-book                 # a single stylesheet → extensions/parchment/
-gutterpress ext add https://example.com/looks/cool/ ./my-book # theme.css (+ optional theme.json) fetched → extensions/cool/
+gutterpress ext add https://example.com/looks/cool/ ./my-book # theme.css (+ optional package.json) fetched → extensions/cool/
 ```
 
 Zip, CSS and URL imports are checked before they land: every declared sheet
@@ -144,38 +143,47 @@ For one book, the fastest approach is three sections in `styles/book.css`:
 }
 ```
 
-To reuse a look across books, make it a folder. Any folder with a `theme.css`
-is already a valid one-sheet look, and `gutterpress new "House Style" --kind
-theme` scaffolds a layered six-sheet one with a `gutterpress.json`; either
-way `gutterpress ext add ./house-style <book>` lists it, referenced in place.
+To reuse a look across books, make it a folder: a `theme.css` plus a
+`package.json` declaring it, which is all a one-sheet look is. `gutterpress
+new "House Style" --kind theme` scaffolds a layered six-sheet one; either way
+`gutterpress ext add ./house-style <book>` lists it, referenced in place.
 
 ### Looks with more than one stylesheet
 
-A look folder is not limited to one `theme.css`. Its `gutterpress.json` (the
-older `theme.json` name is still read) can declare an ordered list of sheets
-and which sheet holds the tokens the Design panel edits:
+A look folder is not limited to one `theme.css`. Its `package.json` — the same
+standard file npm already wants — declares an ordered list of sheets and which
+sheet holds the tokens the Design panel edits, under one `"gutterpress"` key:
 
 ```json
 {
-  "name": "Dimm City",
-  "styles": ["css/tokens.css", "css/core.css", "css/components.css", "css/book.css"],
-  "tokensFile": "css/tokens.css"
+  "name": "dimm-city",
+  "description": "The house look",
+  "author": "Your Name",
+  "keywords": ["gutterpress", "gutterpress-look"],
+  "gutterpress": {
+    "styles": ["css/tokens.css", "css/core.css", "css/components.css", "css/book.css"],
+    "tokensFile": "css/tokens.css"
+  }
 }
 ```
 
 Paths are relative to the look's folder and must stay inside it. The sheets
 load in that order at the look's position in `extensions:` — one entry,
 however many files — and a sheet that must win over the others simply goes
-last in the list. Disabling or removing the entry removes them all. A
-metadata file without `styles` means `["theme.css"]`, so existing looks need
-no change, and `tokensFile` defaults to the first entry in `styles`. A folder
-that declares `styles` needs no `theme.css` at all; a `.zip` or URL import
-still needs one to find the package root.
+last in the list. Disabling or removing the entry removes them all. A look
+declares its sheets: there is no implicit `theme.css`, so `gutterpress.styles`
+is the one field a look cannot leave out. `tokensFile` defaults to the first
+entry in `styles`. The file need not be called `theme.css` at all; a `.zip` or
+URL import still needs one to find the package root, and an import writes the
+package.json for you when the package has none.
 
-The other metadata fields are `author`, `description`, `preview` (an image,
-relative to the folder), and — for a look that is also a plugin or a component
-library — `markdown`, `snippets` and `components`. [Chapter 5](#ch-plugins)
-covers those.
+The other fields are npm's own `name`, `description` and `author`, plus
+`gutterpress.preview` (an image, relative to the folder) and — for a look that
+is also a plugin or a component library — `main`, `gutterpress.snippets` and
+`gutterpress.components`. [Chapter 5](#ch-plugins) covers those.
+
+A look still carrying the removed `gutterpress.json` or `theme.json` fails to
+load with a message showing the package.json that replaces it.
 
 ## Font Loading {#font-loading}
 
@@ -316,18 +324,21 @@ styles:
   - "styles/chapter-art.css"      # 5. Chapter-specific rules (last wins)
 ```
 
-Gutterpress's own CSS sits underneath all of this in two cascade layers —
-the marker structural CSS in `@layer gp.marker`, the `gp-*` utility
-vocabulary in `@layer gp.vocab` — both declared before anything above. A
-cascade layer always loses to unlayered CSS, so every extension stylesheet
-and every stylesheet in `styles:` beats core's defaults automatically, at any
-specificity — even a bare element selector.
-You never need `!important`, or an extra selector to inflate specificity,
-just to beat a `gp-*` rule.
+This order is enforced with CSS cascade layers, so it holds no matter how an
+extension writes its CSS. Gutterpress's own CSS sits underneath everything in
+two layers — the marker structural CSS in `@layer gp.marker`, the `gp-*`
+utility vocabulary in `@layer gp.vocab`. Each extension's stylesheets are
+then wrapped in a layer of their own, `@layer ext.<name>`, declared in list
+order — so a later extension beats an earlier one, and an extension that
+leaves its CSS unlayered cannot jump ahead of one listed after it. Your own
+`styles:` are the only unlayered CSS in the book, and unlayered CSS beats
+every layer at any specificity: a bare element selector in `book.css`
+overrides a look's most specific rule. You never need `!important`, or an
+extra selector to inflate specificity, to beat core or an extension.
 
-If your own look is more than a couple of files, declare your own layer
-order at the top of your first stylesheet instead of relying on the list
-above:
+If your own stylesheets are more than a couple of files, declare your own
+layer order at the top of your first stylesheet instead of relying on the
+list above:
 
 ```css
 @layer tokens, base, components, templates, pages, book;

@@ -152,6 +152,16 @@ jobs:
         with:
           ref: ${{ github.ref_name }}
 
+      # download-artifact OVERLAYS files; it never deletes. The winget manifest
+      # path carries the version (packaging/winget/.../<version>/), so without
+      # this the checkout's previous-version directory survives alongside the
+      # new one and `--check` fails with "stale or unexpected winget manifest
+      # files" — as it did on every release from 0.8.3 to 0.10.10. `--update`
+      # prunes WINGET_ROOT for exactly this reason when it runs locally; this
+      # reproduces that before the validated copy is restored.
+      - name: Clear generated metadata so the artifact is the only source
+        run: rm -rf Formula bucket packaging/winget packaging/package-manager-assets.json
+
       - name: Download validated metadata
         uses: actions/download-artifact@v6
         with:

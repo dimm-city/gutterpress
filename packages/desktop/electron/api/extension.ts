@@ -40,6 +40,24 @@ export async function extensionRecommended(): Promise<unknown> {
   return lib.RECOMMENDED_EXTENSIONS;
 }
 
+/**
+ * Search npm for extensions (#246): packages tagged `gutterpress` or
+ * `markdown-it-plugin`, fetched on demand - never at project load, never by
+ * the loader/build/preview paths. A fetch/parse failure is DATA (`ok: false`),
+ * not a rejection: the Features panel shows one quiet line and the local
+ * extension list is never blocked by a flaky network.
+ */
+export async function extensionSearch(rawQuery: unknown): Promise<unknown> {
+  const query = typeof rawQuery === "string" ? rawQuery : "";
+  const lib = await loadLib();
+  try {
+    const { matches, total } = await lib.searchNpmExtensions(query);
+    return { ok: true as const, matches, total };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 /** The built-in looks (static metadata). */
 export async function extensionListBuiltIn(): Promise<unknown> {
   const lib = await loadLib();
@@ -182,6 +200,7 @@ export function registerExtensionHandlers(secureHandle: SecureHandle): void {
   secureHandle("extension:list", (_e, projectDir: unknown) => extensionList(projectDir));
   secureHandle("extension:recommended", () => extensionRecommended());
   secureHandle("extension:listBuiltIn", () => extensionListBuiltIn());
+  secureHandle("extension:search", (_e, query: unknown) => extensionSearch(query));
   secureHandle("extension:validate", (_e, projectDir: unknown) => extensionValidate(projectDir));
   secureHandle("extension:add", (_e, projectDir: unknown, specifier: unknown, exportName?: unknown) =>
     extensionAdd(projectDir, specifier, exportName),

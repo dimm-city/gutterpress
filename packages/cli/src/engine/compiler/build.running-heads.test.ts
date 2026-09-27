@@ -58,7 +58,7 @@ testIf(
       const { manifest, manifestPath } = await loadManifestWithPath(FIXTURE_DIR);
       const config = resolveConfig({}, manifest);
       const renderDir = manifestPath ? path.dirname(manifestPath) : FIXTURE_DIR;
-      const { plugins, pluginCss } = await loadPluginsWithCss(config.extensions, renderDir);
+      const { plugins, pluginStyles } = await loadPluginsWithCss(config.extensions, renderDir);
 
       const imageRefs: string[] = [];
       const htmlPath = await renderChaptersToFile(renderDir, stageDir, {
@@ -66,7 +66,7 @@ testIf(
         styles: config.styles,
         files: config.source.files,
         plugins,
-        pluginCss,
+        pluginStyles,
         onImageRefs: (refs) => imageRefs.push(...refs),
       });
       const { copies } = await planImageCopies(renderDir, imageRefs);

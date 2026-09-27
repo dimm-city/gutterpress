@@ -45,7 +45,7 @@ docker run --rm -v "$PWD:/work" ghcr.io/dimm-city/gutterpress lint my-book
 
 # Validate an already-built PDF
 docker run --rm -v "$PWD:/work" ghcr.io/dimm-city/gutterpress \
-    validate dist/my-book.pdf
+    validate --pdf dist/my-book.pdf
 ```
 
 ### Keep output files owned by you

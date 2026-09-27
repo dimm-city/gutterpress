@@ -127,9 +127,6 @@ export interface AppSettings {
     fontSize: number;
     lineHeight: number;
     spellCheckLanguage: string;
-    autoSaveDelay: number;
-    /** Write crash-recovery sidecar snapshots while editing (#44). */
-    crashRecovery: boolean;
   };
   appearance: {
     theme: "light" | "dark" | "system";
@@ -170,14 +167,24 @@ export interface AppSettings {
   };
   versionHistory: {
     /**
+     * Write editor changes to disk on their own, 500ms after the last edit
+     * (Settings → Saving, "Save edits automatically"). Off: edits wait for
+     * Save / Ctrl+S (leaving the file asks Save / Don't Save / Cancel), so
+     * the Save button means something. Lives in this section, not `editor`,
+     * because this section is
+     * the Saving group's storage — its one Reset restores every switch there,
+     * and the Editor tab's Reset leaves it alone. Default ON.
+     */
+    autoSave: boolean;
+    /**
      * Save automatic snapshots while the author works (RC1-3): the host arms a
-     * quiet-period timer on every save and snapshots when edits settle, plus on
-     * project close / app quit. Only for projects that already have version
-     * history — a plain folder is never auto-initialised. Default ON.
+     * quiet-period timer (fixed at 10 minutes, see `host-policy.ts`'s
+     * `AUTO_SNAPSHOT_DEFAULT_MINUTES`) on every save and snapshots when edits
+     * settle, plus on project close / app quit. Only for projects that
+     * already have version history — a plain folder is never
+     * auto-initialised. Default ON.
      */
     autoSnapshot: boolean;
-    /** Minutes of quiet after the last edit before a snapshot fires (floor 5). */
-    autoSnapshotMinutes: number;
     /**
      * Automatically sync to the remote in the background when a remote is
      * configured (transparent-sync plan §6). Defaults ON for projects with
@@ -213,8 +220,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
     fontSize: 14,
     lineHeight: 1.6,
     spellCheckLanguage: "en-US",
-    autoSaveDelay: 500,
-    crashRecovery: true,
   },
   appearance: {
     theme: "system",
@@ -234,8 +239,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     channel: "stable",
   },
   versionHistory: {
+    autoSave: true,
     autoSnapshot: true,
-    autoSnapshotMinutes: 10,
     autoSync: true, // transparent-sync plan §6: ON by default when canSync
     autoSyncMinutes: 2, // ~2 min periodic safety cadence
   },

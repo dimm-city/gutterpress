@@ -41,8 +41,8 @@ utility vocabulary lives in `gutterpress-css.ts`. Both are Gutterpress.
 
 This supersedes the short-lived `.gutterpress-continued` → `.md-continued`
 rename, which shipped earlier in 0.10.0's pre-release on the assumption that
-`md-` belonged to a separate package. Since 0.10.0 has not shipped, `md-continued`
-never reached a release; books upgrading from 0.9.x rename directly from
-`gutterpress-continued` to `gp-continued`.
+`md-` belonged to a separate package. That rename was superseded before
+0.10.0 shipped, so `md-continued` never reached a release; books upgrading
+from 0.9.x rename directly from `gutterpress-continued` to `gp-continued`.
 
 The library export also changed: `PAGED_CSS` → `MARKER_CSS`.

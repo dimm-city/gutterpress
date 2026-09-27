@@ -113,7 +113,7 @@ test("an explicit manifest `styles:` list still wins over styles/book.css", asyn
 
 // #238 — plugin `styles` files enter the SAME asset-inline pipeline a
 // manifest `styles:` entry does, not just string concatenation. These
-// characterize renderChapters's new `pluginStylePaths` option directly
+// characterize renderChapters's `pluginStyles` option directly
 // (build-runner.ts / preview/file-watcher.ts are the only real callers, both
 // thin wrappers around this).
 describe("renderChapters plugin styles (#238)", () => {
@@ -133,7 +133,7 @@ describe("renderChapters plugin styles (#238)", () => {
 
     const html = await renderChapters(dir, {
       files: ["01.md"],
-      pluginStylePaths: [join(pluginDir, "plugin.css")],
+      pluginStyles: [{ name: "plugin", layer: "ext.plugin", paths: [join(pluginDir, "plugin.css")] }],
     });
 
     // Resolved + embedded (asset-inline.ts), not left as a bare relative path
@@ -154,36 +154,33 @@ describe("renderChapters plugin styles (#238)", () => {
     const html = await renderChapters(dir, {
       files: ["01.md"],
       styles: ["styles/book.css"],
-      pluginCss: ".from-plugin-string {}",
-      pluginStylePaths: [join(pluginDir, "plugin.css")],
+      pluginStyles: [
+        { name: "plugin", layer: "ext.plugin", paths: [join(pluginDir, "plugin.css")], css: ".from-plugin-string {}" },
+      ],
     });
 
+    // Files first, then the `css` export, both inside the extension's own
+    // layer; the project's own (unlayered) stylesheet after the layer closes.
+    const layerIdx = html.indexOf("@layer ext.plugin {");
     const fileIdx = html.indexOf(".from-plugin-file");
     const stringIdx = html.indexOf(".from-plugin-string");
     const projectIdx = html.indexOf(".from-project");
-    expect(fileIdx).toBeGreaterThan(-1);
-    expect(stringIdx).toBeGreaterThan(-1);
-    expect(projectIdx).toBeGreaterThan(-1);
-    expect(fileIdx).toBeLessThan(projectIdx);
-    expect(stringIdx).toBeLessThan(projectIdx);
+    expect(layerIdx).toBeGreaterThan(-1);
+    expect(fileIdx).toBeGreaterThan(layerIdx);
+    expect(stringIdx).toBeGreaterThan(fileIdx);
+    expect(projectIdx).toBeGreaterThan(stringIdx);
+    expect(html).toContain("@layer ext.plugin;");
   });
 
-  test("omitting pluginStylePaths (every pre-existing caller) is a byte-identical no-op", async () => {
+  test("no extension CSS: omitting pluginStyles and passing [] are byte-identical, and no extension layer is declared", async () => {
     const dir = await makeProject();
     await writeFile(join(dir, "01.md"), "# Chapter One\n", "utf8");
 
-    const withoutOption = await renderChapters(dir, {
-      files: ["01.md"],
-      pluginCss: ".legacy-string-plugin {}",
-    });
-    const withEmptyArray = await renderChapters(dir, {
-      files: ["01.md"],
-      pluginCss: ".legacy-string-plugin {}",
-      pluginStylePaths: [],
-    });
+    const withoutOption = await renderChapters(dir, { files: ["01.md"] });
+    const withEmptyArray = await renderChapters(dir, { files: ["01.md"], pluginStyles: [] });
 
     expect(withEmptyArray).toBe(withoutOption);
-    expect(withoutOption).toContain(".legacy-string-plugin {}");
+    expect(withoutOption).not.toContain("@layer ext.");
   });
 
   test("onCssAssets and onStyleWarnings surface plugin-sourced entries too", async () => {
@@ -200,7 +197,7 @@ describe("renderChapters plugin styles (#238)", () => {
     const warnings: string[] = [];
     await renderChapters(dir, {
       files: ["01.md"],
-      pluginStylePaths: [join(pluginDir, "plugin.css")],
+      pluginStyles: [{ name: "plugin", layer: "ext.plugin", paths: [join(pluginDir, "plugin.css")] }],
       onStyleWarnings: (w) => warnings.push(...w),
     });
 

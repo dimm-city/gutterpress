@@ -6,8 +6,8 @@ Verified against the Gutterpress source that ships this package, 2026-09-08.
 ## Two CSS locations, different roles
 
 - **`extensions/<id>/`** is a look — an extension *package*: `theme.css` plus
-  a small `gutterpress.json` (or `theme.json`) naming what it carries, and any
-  fonts or images the look owns. It is listed under `extensions:` as
+  a standard `package.json` whose `gutterpress` block names what it carries,
+  and any fonts or images the look owns. It is listed under `extensions:` as
   `./extensions/<id>`; a folder elsewhere (a shared `../../shared/house-style`)
   is listed by its own path and read in place.
 - **`styles/`** is ordinary publication CSS — `book.css`, component sheets,
@@ -27,12 +27,13 @@ What the built document contains, in order:
 
 ```text
 1. core layout primitives and author utilities (layered — they lose to everything below)
-2. extension stylesheets, in `extensions:` list order
-3. manifest `styles:` entries, in listed order
+2. extension stylesheets, each in its own cascade layer (`ext.<name>`), in `extensions:` list order
+3. manifest `styles:` entries, unlayered, in listed order
 ```
 
-Project CSS is last, so it wins at equal specificity. Within each list, later
-entries win. That is the entire precedence model.
+Project CSS is last and unlayered, so it wins at any specificity. Within each
+list, later entries win — for extensions by layer order, so it holds however
+an extension writes its CSS. That is the entire precedence model.
 
 ```yaml
 extensions:

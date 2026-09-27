@@ -115,6 +115,13 @@ disagree, the preview is right.
   a range crossing the wrapper's that the editor could not nest and dropped
   whole - so the page break went with it and the chapter paginated a page
   short of the book.
+- **The paged editor keeps the page's cascade after 0.11.0's extension
+  layers.** 0.11.0 put each extension's CSS in its own cascade layer in the
+  built document, below the book's own stylesheets. The editor now composes
+  its book CSS through the same helper, with core in the same `gp.marker` /
+  `gp.vocab` layers, so an extension beats core and the book beats every
+  extension on the page and in the editor alike. An extension's stylesheet
+  files reach the editor too, inlined the way the book's own are.
 - **A book rule that gives a tight list item's paragraph a box of its own
   now wins in the paged editor.** The editor renders a tight item's paragraph
   inline (the page has no paragraph element there), and that rule outranked
@@ -123,6 +130,302 @@ disagree, the preview is right.
   editor and two field guide chapters paginated a page off the book. The
   emulation now sits at zero specificity, above the user-agent default and
   below any book rule.
+
+## [0.11.3] - 2026-09-27
+
+### Fixed
+
+- **Sync keeps both versions of a picture inside a folder.** When a picture,
+  or any other file that can't hold review marks, changes both on this
+  computer and online, sync keeps your version in place and saves the online
+  one beside it (`cover.online.png`). That only worked at the top of the
+  project. The same clash inside a folder, such as `images/cover.png`,
+  stopped every sync with "Syncing didn't complete… please try again", and
+  trying again never helped. Both versions are now kept wherever the file
+  lives.
+- **The sync log says why a push failed.** When the online copy refused this
+  computer's changes, the log under Previous versions → Technical details
+  recorded nothing about why, so a sync that failed the same way every few
+  minutes left no clue. It now records the reason the online copy gave, such
+  as GitHub's "push declined due to email privacy restrictions".
+
+## [0.11.2] - 2026-09-27
+
+### Fixed
+
+- **The preview live-reloads an extension folder outside the book.** An
+  `extensions:` entry that points at a folder by path — typically a working
+  copy of a published extension, checked out next to the book while you
+  develop it — was watched only as the folder itself, so editing its CSS or
+  its plugin never rebuilt the preview. The preview now watches the files the
+  book reads from that folder: its `package.json`, its markdown-it entry, and
+  its declared stylesheets with the fonts, images and `@import`s they
+  reference. The workflow is written up in
+  `docs/local-extension-development.md`.
+
+## [0.11.1] - 2026-09-25
+
+### Added
+
+- **Auto-save can be turned off.** Settings → Saving has a "Save edits
+  automatically" switch, on by default. It replaces the seconds field #274
+  removed, which could never turn auto-save off (0s still saved). Without an
+  off switch, every edit reached disk half a second after typing stopped, so
+  the toolbar Save button was greyed out and had nothing to do. With the
+  switch off, typing no longer writes the file. The toolbar Save lights up
+  while anything is unsaved, the status bar reads "Unsaved changes", and
+  edits are written when you press Save or Ctrl+S. Leaving a file with
+  unsaved changes (switching files, books or projects, closing the project,
+  or closing the window) asks Save / Don't Save / Cancel. Don't Save throws
+  the edits away, including their crash-recovery draft, and Cancel stays
+  where you are. The window-close prompt is shown before the close gate's
+  save timer starts, so it can wait as long as you need. Crash-recovery
+  drafts still cover unsaved edits. The preview renders from the saved file,
+  so it updates when you save. Turning the switch back on saves anything
+  still pending.
+
+## [0.11.0] - 2026-09-25
+
+### Changed
+
+- **Each extension's CSS is in its own cascade layer.** The built document
+  wraps every extension's stylesheets (and a plugin's `css` export) in
+  `@layer ext.<name>`, in `extensions:` list order, after core's
+  `gp.marker`/`gp.vocab` layers and before the book's own `styles:`, which
+  stay unlayered. Precedence is therefore exactly the list order: an
+  extension can no longer jump the queue by leaving its CSS unlayered (a
+  starter look's bare `body { font-family }` used to beat a layered package
+  look installed after it), and the book's own rules beat every extension
+  at any specificity, by construction. An extension's own `@layer`s nest
+  inside its layer and keep their order. Extension authors need no layer of
+  their own; the plugin template's `@layer` wrapper is gone.
+- **`gutterpress new` no longer applies a look.** A new book has
+  `styles/book.css` and nothing under `extensions:`; add a look when you
+  want one (`gutterpress ext add clean-book <book> --look`). The same holds
+  for adopting an existing folder.
+
+## [0.10.11] - 2026-09-23
+
+### Added
+
+- **A non-blocking `bun audit` in CI.** `ci.yml`'s new `security-audit` job
+  runs `bun audit` on every push and pull request with
+  `continue-on-error: true`. It is a visibility surface, not a gate: the
+  current baseline is 35 advisories (23 high, 10 moderate, 2 low), 24 of them
+  transitive through `electron-builder`, which no PR author can fix from this
+  repo without a major `electron-builder` bump. The point is that the number
+  appears in every run's log, so a new advisory is noticed. #287 tracks
+  burning the baseline down and flipping `continue-on-error` off. (#286,
+  #281)
+
+- **`installer-asset-names.test.ts` also checks `packages/cli/README.md`.**
+  The guard exists because release asset names and installer instructions
+  diverged once and every download 404'd; it then happened again in a README
+  the guard did not cover, shipping 404ing instructions against v0.10.10.
+  (#286)
+
+### Fixed
+
+- **The release workflow's test gate now installs from the lockfile.**
+  `release.yml`'s `test` job ran a plain `bun install`, so the one job that
+  authorises a release could test a dependency tree other than the one
+  `bun.lock` describes — the gap #286 closed across `ci.yml` but not here.
+  The `version` job's plain install stays: it deliberately regenerates the
+  lockfile after bumping the package versions, and says so in place. (#290)
+
+- **A marker attribute the author already spelled `data-…` is no longer
+  prefixed twice.** `@page data-augmented-ui="tl-clip"` rendered as
+  `data-data-augmented-ui="tl-clip"`, so the selector the author wrote never
+  matched; a key that already begins with `data-` is now set verbatim, and a
+  key without it is prefixed exactly as before. (The issue reported these
+  attributes as silently dropped — they were carried through, just under the
+  wrong name.) (#280)
+
+- **`bun install` in CI is `--frozen-lockfile` everywhere.** All six installs
+  in `ci.yml` now fail if `bun.lock` is out of sync with `package.json`,
+  matching what `pages.yml` and `release.yml`'s build and publish jobs
+  already did — so a `package.json` edit that forgot to regenerate the
+  lockfile is caught at PR time instead of at the release gate. (#286, #283)
+
+- **`brew install` and `scoop install` serve 0.10.10 again.**
+  `package-managers.yml` had failed on every run since 0.8.3: the commit job
+  checks out and then downloads the generate job's artifact, and
+  `download-artifact` overlays rather than replaces, so the previous
+  version's `packaging/winget/` directory survived beside the new one and
+  `--check` correctly rejected the tree as carrying unexpected winget
+  manifests. The commit job now clears the generated trees before the
+  download. The eleven-release backlog was cleared in the same change by
+  regenerating `Formula/gutterpress.rb`, `bucket/gutterpress.json`,
+  `packaging/package-manager-assets.json` and the winget manifest from the
+  published v0.10.10 `SHA256SUMS.txt`, verified by an independent `--check`.
+  No release has exercised the workflow fix yet. (#286, #285)
+
+### Documentation
+
+- **Docs no longer claim automation and verification that do not exist.**
+  Two passes: a mechanical correction of drift against the 0.10.10 release
+  (#278), and a set of claims that needed a decision rather than an edit
+  (#279) — CONTRIBUTING.md described `bun audit`, Dependabot and lock-file
+  enforcement that were not wired up, and both engine docs cited a
+  `bun run spikes` harness that was deleted with the pre-native-engine
+  scaffolding. The measurements are kept, since they were real when taken
+  against Chrome 151.0.7922.75, but they are no longer presented as
+  continuously re-verified.
+
+- **The claims #286 made false, one day after #279 documented them, are
+  corrected.** `packaging/README.md`'s known-gap callout said the committed
+  metadata was "still at 0.8.3"; it now records that the metadata was
+  repaired by hand and that the automated dispatch has still never been
+  observed working end-to-end, which is what the caution was always about.
+  CONTRIBUTING.md's three "not yet automated" passages now describe the
+  `security-audit` job and the frozen-lockfile installs that exist, including
+  why the audit is deliberately non-blocking. CLAUDE.md's list of `ci.yml`
+  jobs gains `security-audit`; nothing in CI still runs eslint, and that part
+  stands. The two remaining "re-run `bun run spikes`" comments
+  (`packages/cli/src/engine/shared/cdp.ts`, `.github/workflows/release.yml`)
+  now match the engine docs: the harness would have to be rebuilt before a
+  milestone bump could be re-measured.
+
+## [0.10.10] - 2026-09-18
+
+### Added
+
+- **Switch which copy of a project you're working on, from Settings →
+  Saving.** The Saving & recovery group now shows the copy (git branch) the
+  open project is on and, when more than one exists, a picker to switch to
+  another. Opening Saving checks online first, so a copy pushed from another
+  machine — or a branch opened for you as a pull request — appears without
+  dropping to a terminal to fetch it; when that check can't run, the list
+  says so rather than quietly looking complete. Copies that exist only online
+  are listed and marked "(online only)"; switching to one creates it locally
+  and sets it to track the remote. Creating a brand-new copy is still out of
+  scope.
+  Uncommitted edits are saved as a version first, so nothing typed is lost
+  and the switch never forces an overwrite; a file that changed on disk right
+  as the switch started is reported as a friendly error instead. Auto-backup
+  and the automatic-versions timer pause for the moment of the switch and
+  resume after. The editor reconciles its open file the same way a version
+  restore does, and a crash-recovery draft from the copy just left behind is
+  cleared for any file the switch changed, so it can never be offered over
+  the new copy's version of that file. The author-facing word is "copy" —
+  the existing online-backup switch is unaffected, since it already reads
+  "Keep this project backed up online". (#273)
+
+- **An extension discovery surface: `gutterpress ext search` searches npm, and
+  the desktop can too.** npm already is the registry, so there is no curated
+  index and nothing to register: an extension tags itself `gutterpress` in its
+  package `keywords`, and the markdown-it ecosystem's own `markdown-it-plugin`
+  tag finds every plain plugin (which works in Gutterpress unchanged).
+  `gutterpress ext search [query]` queries the registry on demand (never at
+  build/preview time) and prints each match's `name@version`, which kind it is
+  and its description, ending with the `ext add` command that installs it.
+  `GUTTERPRESS_NPM_REGISTRY` points search AND the installer at a private
+  mirror (http(s) only), and the installer now accepts tarballs only from the
+  configured registry's own origin rather than a hard-coded host. The
+  desktop's Features view has a "Find more on npm" box under the bundled
+  "Turn on" rows, searched once that view mounts and on every query; a fetch
+  failure is one quiet line, never a modal, and never blocks the local
+  extension list. Publishing an extension is `npm publish` with the keyword.
+  (#246)
+
+### Fixed
+
+- **A shared `--out` directory no longer lets a pdf build overwrite the html
+  build's `book.html`.** `gutterpress build --format html --out ./_site`
+  followed by `gutterpress build --format pdf --out ./_site` used to copy the
+  pdf build's whole staging directory over `./_site`, replacing the html
+  build's `book.html` (viewer script + relative links intact) with the pdf
+  build's own staged copy (no viewer script, and since #263 no relative
+  hrefs) — silently breaking the published site. A `pdf`/`pdfx` build into a
+  `--out <dir>` now delivers only its own PDF; `book.html`, `index.html` and
+  assets already published there are left untouched, and
+  `BuildRunnerResult.htmlPath`/`fingerprintPath` are `null` for that build
+  since nothing else was delivered. `--format html` and the `project`
+  (manifest-default `dist/<slug>/`) target are unchanged. (#270, #271)
+
+### Changed
+
+- **`package.json` is the extension manifest; `gutterpress.json` and
+  `theme.json` are gone.** A package maintainer is no longer asked for a
+  second, Gutterpress-specific manifest: the standard `package.json` describes
+  an extension. npm's own `name`, `description`, `author`, `keywords` and
+  `main` are read as-is — `main` IS the markdown-it plugin of a folder
+  extension — and everything Gutterpress-specific lives under one optional
+  `"gutterpress"` key (`styles`, `markdown`, `snippets`, `components`,
+  `tokensFile`, `preview`). A plain markdown-it plugin package therefore needs
+  nothing at all to load as an extension, a look needs `gutterpress.styles`,
+  and a component library needs `main` + `gutterpress.styles`. There is no
+  implicit `theme.css` any more: a look declares its sheets. A folder still
+  carrying a `gutterpress.json` or `theme.json` fails to load with a message
+  that names the file, says it is no longer read, and prints the package.json
+  that replaces it. `.zip` / `.css` / URL imports still work on an old package
+  — `theme.css` is still the anchor — and now write a package.json into the
+  landed copy (keeping whatever fields the source had, with the name taken
+  from the folder) so what lands always loads. The built-in looks and both
+  `gutterpress new --kind plugin|theme` scaffolds ship a package.json. (#276)
+
+- **One CSS gate, not two.** `gutterpress build` used to run its own
+  print-safety CSS check (a separate lint gate) and then run the identical
+  check again one phase later as pre-build validation's `source.stylelint`
+  check, printing every finding twice. The CSS print-safety check (remote
+  URLs, rasterizing effects, page-containment) now runs exactly once, as
+  `source.stylelint` inside pre-build validation. `--skip-lint` and
+  `config.lint.enabled: false` now disable just that one check instead of a
+  whole separate phase, and no longer make the build exit with code `2` on a
+  print-safety error — that finding now fails the build the same way every
+  other pre-build validation finding does (exit `1`), matching the exit-code
+  contract standalone `gutterpress lint` already used. An unreadable
+  configured stylesheet is now an error finding of `source.stylelint`
+  (file + message) instead of being silently skipped. Standalone
+  `gutterpress lint` now prints and counts every finding `checkCss` returns,
+  including `printsafe/page-containment` ones it previously dropped despite
+  the CLI README documenting `lint` as covering page-containment risk. (#272)
+
+- **Docs: the exact-fit boundary's engine question is answered — no CSS lever,
+  no fix.** #268 asked whether the viewer's Multicol fragmentainer could carry
+  print's sub-pixel tolerance so `docs/fixtures/exact-fit-boundary` reads
+  CLEAN instead of EXACT-FIT BOUNDARY. Re-tested at the most surgical layer
+  available (a `calc(var(--gp-content-h) + Xpx)` bump on `.gp-strip`'s actual
+  fragmentainer height, leaving the `--gp-content-h` custom property every
+  other consumer reads untouched): `X ≥ 0.36px` does flip the fixture clean
+  with every other registered gate fixture's page count unchanged, but it is
+  not shipped — it fails an existing invariant test (`zoom.test.ts`) the
+  moment `X > 0`, and this repo's registered fixtures are all US Letter, so a
+  clean run here cannot rule out the same failure this project already has on
+  record for a fixed epsilon: matching one page geometry, not generalizing to
+  another. `docs/engine/ENGINE.md` §4 records the full experiment table;
+  `docs/known-limitations.md` §4 and a draft upstream Chromium report
+  (`docs/engine/chromium-bug-drafts/exact-fit-multicol-vs-print.md`) record
+  the conclusion. The gate's EXACT-FIT BOUNDARY outcome (#261) stays the
+  accepted, permanent classification for this shape of divergence — no
+  allowlist entry, no shim. (#268)
+
+- **Desktop Settings → Saving is two switches, not five controls.** "Keep
+  previous versions" and "Keep this project backed up online" (renamed from
+  "Keep an online copy up to date") are what's left of a group where three of
+  the five old controls did less than their labels said: autosave delay could
+  not turn autosave off, the crash-recovery toggle removed a safety net for
+  nothing, and the quiet-period minutes field was dead on any project that
+  can sync (a sync commits every 2 minutes regardless). The online-backup
+  switch now shows only for a project that can actually sync — a local-only
+  project or the start screen gets one status line pointing at Accounts
+  instead of a switch that would do nothing — and is disabled with a hint
+  when previous versions is off, since a backup with nothing to push isn't
+  one. The group's Reset now resets the whole group in one call. (#274)
+
+### Removed
+
+- **Autosave delay and the crash-recovery toggle are no longer settings.**
+  `editor.autoSaveDelay`, `editor.crashRecovery`, and the quiet-period
+  `versionHistory.autoSnapshotMinutes` are deleted from the settings schema,
+  defaults, and the `Platform` contract — deleted, not deprecated, with no
+  compatibility shim. The editor's disk save stays a fixed 500ms after the
+  last edit and its crash-recovery draft a fixed 1000ms; both were already
+  effectively unconditional in practice (a 0s "delay" was never actually off,
+  and turning recovery off only removed a safety net). A settings file still
+  carrying the old keys loads cleanly — the generic settings merge now drops
+  patch keys the current schema doesn't declare, instead of carrying them
+  forward forever. (#274)
 
 ## [0.10.9] - 2026-09-12
 

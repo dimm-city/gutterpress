@@ -44,3 +44,41 @@ describe("the page's colour context", () => {
     expect(css).not.toContain("canvastext");
   });
 });
+
+/**
+ * The editor's cascade is the page's (extensions cascade contract, #296):
+ * core sits in `gp.marker` / `gp.vocab`, each extension in its own layer,
+ * the author's stylesheets unlayered on top. Layer BLOCKS must stay inside
+ * the scope - hoisted, their rules would land on the app chrome - while the
+ * `@layer` order STATEMENT is hoisted so first declaration fixes the order.
+ */
+describe("cascade layers", () => {
+  test("core is layered like the page and the order statement is hoisted above the scope", () => {
+    const css = composeEditorCss({ scopeSelector: SCOPE });
+    const scopeAt = css.indexOf("@scope");
+    expect(css.indexOf("@layer gp.marker, gp.vocab;")).toBeLessThan(scopeAt);
+    expect(css.indexOf("@layer gp.marker {")).toBeGreaterThan(scopeAt);
+    expect(css.indexOf("@layer gp.vocab {")).toBeGreaterThan(css.indexOf("@layer gp.marker {"));
+  });
+
+  test("an extension's layer block stays inside the scope, after core and before the author's CSS", () => {
+    const css = composeEditorCss({
+      scopeSelector: SCOPE,
+      pluginCss: "@layer ext.alpha;\n\n/* alpha */\n@layer ext.alpha {\np { color: red; }\n}",
+      projectCss: "p { color: blue; }",
+    });
+    const scopeAt = css.indexOf("@scope");
+    expect(css.indexOf("@layer ext.alpha;")).toBeLessThan(scopeAt);
+    const alphaAt = css.indexOf("@layer ext.alpha {");
+    expect(alphaAt).toBeGreaterThan(css.indexOf("@layer gp.vocab {"));
+    expect(css.indexOf("color: blue")).toBeGreaterThan(alphaAt);
+    // Nothing of the extension escaped the scope.
+    expect(css.slice(0, scopeAt)).not.toContain("color: red");
+  });
+
+  test("rules inside an extension's layer still get the document-root rewrite", () => {
+    const css = scopeCssToEditor("@layer ext.alpha {\nbody { font-size: 11pt; }\n}", SCOPE);
+    expect(css).toContain(":scope");
+    expect(css).not.toContain("body {");
+  });
+});

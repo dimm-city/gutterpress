@@ -9,7 +9,7 @@
  * (P5c4) and the export controller's `out` consumption, so registering here
  * keeps authorizing those call sites exactly as before.
  */
-import { getDesktopHooks } from "../server-bridge/host-hooks";
+import { getDesktopHooks, type UnsavedChoice } from "../server-bridge/host-hooks";
 import { getPickedFilesHooks, getSavePathsHooks } from "../server-bridge/picked-files";
 import type { SecureHandle } from "../server-bridge/secure-handle";
 
@@ -82,6 +82,16 @@ export async function dialogPickImageFiles(): Promise<string[]> {
   return res.filePaths;
 }
 
+/**
+ * Native Save / Don't Save / Cancel prompt for leaving a file with unsaved
+ * edits while "Save edits automatically" is off (#274). Returns the author's
+ * choice; `fileName` names the file in the prompt (null = the window itself
+ * is closing, which main.ts's close gate asks directly).
+ */
+export async function dialogConfirmUnsaved(rawFileName?: unknown): Promise<UnsavedChoice> {
+  return hooks().confirmUnsavedChanges(typeof rawFileName === "string" ? rawFileName : null);
+}
+
 /** Register the dialog:* IPC channels (SFE-P6b). */
 export function registerDialogHandlers(secureHandle: SecureHandle): void {
   secureHandle("dialog:openDirectory", () => dialogOpenDirectory());
@@ -89,4 +99,5 @@ export function registerDialogHandlers(secureHandle: SecureHandle): void {
   secureHandle("dialog:pickImageFile", () => dialogPickImageFile());
   secureHandle("dialog:pickPdfFile", () => dialogPickPdfFile());
   secureHandle("dialog:pickImageFiles", () => dialogPickImageFiles());
+  secureHandle("dialog:confirmUnsaved", (_e, fileName?: unknown) => dialogConfirmUnsaved(fileName));
 }

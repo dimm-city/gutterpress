@@ -16,7 +16,13 @@
  * imports from `./contract` (that would create a cycle; `contract.ts` is the
  * one that imports FROM this file, not the reverse).
  */
-import type { ProjectSource, ProjectCapabilities } from "gutterpress";
+import type {
+  ProjectSource,
+  ProjectCapabilities,
+  NpmExtensionMatch,
+  LocalBranches,
+  SwitchBranchResult,
+} from "gutterpress";
 
 // ── Unsaved-changes / recovery types (#44) ────────────────────────────────────
 //
@@ -213,6 +219,41 @@ export interface ExtensionImportResult {
   entry: ProjectExtensionEntry;
   warnings: ExtensionImportWarning[];
 }
+
+// ── Extension search (#246) — npm ────────────────────────────────────────────
+// One npm package the registry returned for the `gutterpress` /
+// `markdown-it-plugin` keywords, re-exported (not re-declared) so a
+// search-list consumer doesn't need a second import.
+export type { NpmExtensionMatch };
+
+/**
+ * Result of searching npm. A fetch/parse failure is DATA (`ok: false`), never
+ * a thrown error or an HTTP 500 — the search route always resolves, and the
+ * panel shows `message` as one quiet line beside the box.
+ */
+export type ExtensionSearchResult =
+  | { ok: true; matches: NpmExtensionMatch[]; total: number }
+  | { ok: false; message: string };
+
+// -- Saving flow and copy switching (#273 / #274) ----------------------------
+// Re-exported from the lib (type-only, erased at build) rather than
+// re-declared, same as `NpmExtensionMatch` above: the copy picker's list
+// shape and the switch outcome (`changedFiles`, which the host uses to drop
+// stale crash-recovery drafts) are the lib's own contract.
+export type { LocalBranches, SwitchBranchResult };
+
+/**
+ * Outcome of asking the remote for copies made elsewhere before listing them.
+ * Best-effort: `refreshed: false` carries WHY, so the picker can say the list
+ * may be incomplete ("no-remote" is not a problem - nothing to check for).
+ */
+export interface RefreshCopiesResult {
+  refreshed: boolean;
+  reason?: "no-remote" | "auth" | "offline";
+}
+
+/** The author's answer to the native Save / Don't Save / Cancel prompt. */
+export type UnsavedChoice = "save" | "discard" | "cancel";
 
 // ── Style resolver (CSS editor; audit B2/G1) ──────────────────────────────────
 //

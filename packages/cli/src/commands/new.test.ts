@@ -365,12 +365,12 @@ function fakeExtensionResult(
 ): ScaffoldExtensionResult {
   return {
     extensionDir: "/tmp/parent/my-plugin",
-    manifestPath: "/tmp/parent/my-plugin/gutterpress.json",
+    manifestPath: "/tmp/parent/my-plugin/package.json",
     kind: "plugin",
     slug: "my-plugin",
     prefix: "my-plugin-",
     openFile: "/tmp/parent/my-plugin/plugin.js",
-    files: ["gutterpress.json", "plugin.js"],
+    files: ["package.json", "plugin.js"],
     ...overrides,
   };
 }

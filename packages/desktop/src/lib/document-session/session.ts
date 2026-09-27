@@ -60,7 +60,8 @@
  * ## What stays out of this file (by design, per the run spec)
  *
  *   - Debounce timers, timer cancellation, and delay configuration
- *     (`setSaveDelayMs`/`setRecoveryEnabled` in `EditorBuffer`).
+ *     (the `saveDelayMs`/`recoveryDelayMs`/`autoSave` options and the
+ *     timers in `EditorBuffer`).
  *   - Any generation-counter / stale-async-result suppression (`loadGen` in
  *     `EditorBuffer`). That is exclusively about discarding a superseded
  *     `Promise` result when the user switches files mid-I/O — a concern of

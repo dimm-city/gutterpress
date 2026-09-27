@@ -29,7 +29,7 @@ The repo is a Bun workspace (`packages/*`) with six packages. `packages/cli` and
 - **`packages/editor/`** (`@dimm-city/gutterpress-editor`, Experimental) — the framework-free, browser-safe shared source-first rich editor. Imports `@vscode/markdown-editor` (via the fork below) and `gutterpress/render`; no Svelte, Electron, `vscode`, or `node:*` imports. Mounted by both the desktop app and the VS Code extension so there is one editor implementation, not two. See `docs/adr/0012-source-first-editor-sparse-projection.md` and `docs/adr/0014-shared-editor-package-and-fork.md`.
 - **`packages/vscode-markdown-editor/`** (`@dimm-city/vscode-markdown-editor`, internal only — never a public Gutterpress export) — a minimal, bounded internal fork of `@vscode/markdown-editor@0.0.2-85`, adding exactly one generic custom-block rendering hook the upstream package does not expose. `PATCHES.md` records the complete diff against the pinned upstream version and the removal trigger (an equivalent upstream hook shipping natively). See `docs/adr/0014-shared-editor-package-and-fork.md`.
 - **`packages/vscode-extension/`** (`@dimm-city/gutterpress-vscode`, Experimental) — the VS Code custom text editor extension built on `packages/editor`. See `docs/vscode-extension.md` for what it does, its trust model, and how to build/test it.
-- **`packages/open-design-plugin/`** — an independent markdown-it plugin package, unrelated to the source-first editor work; unchanged by it.
+- **`packages/open-design-plugin/`** (`@dimm-city/gutterpress-open-design-plugin`) — a static Open Design plugin (no JavaScript, no MCP server): the `SKILL.md` workflow contract and `open-design.json` metadata that let an agent edit an existing Gutterpress project's Markdown/CSS/manifest files in place, with the running preview as the pagination authority.
 
 ### Key Features
 
@@ -112,10 +112,12 @@ packages/cli/src/
 │   ├── asset-inline.ts     # Inlines CSS/fonts, plans image copies from references
 │   ├── output-paths.ts     # dist/<title-slug>/ + <slug>-<format> artifact naming
 │   └── markdown/           # Markdown processing
-│       ├── index.ts        # Main renderer (createMarkdownRenderer)
+│       ├── renderer.ts     # Pure markdown-it factory (createMarkdownRenderer, applyPlugins)
+│       ├── index.ts        # File-reading wrapper (resolveActiveMarkdownFiles, renderChapters)
+│       ├── assemble.ts     # Pure book-HTML assembly (assembleBookHtml)
 │       ├── plugins.ts      # Plugin loader
 │       ├── images.ts       # Records every image reference the render emits
-│       └── markers.js       # Built-in @marker parser and structural CSS
+│       └── markers.js      # Built-in @marker parser and structural CSS
 ├── schema/
 │   └── manifest.types.ts   # GutterpressManifest + ResolvedConfig
 ├── preview/                # Preview server modules
@@ -139,16 +141,17 @@ User Input (CLI)
     ↓
 Configuration Manager (loads manifest.yaml + resolveConfig)
     ↓
-Pipeline Orchestrator (build-runner.ts — 6 steps)
+Pipeline Orchestrator (build-runner.ts — 5 steps)
     │
-    ├── 1. CSS Linting (print-safety / postcss)
-    ├── 2. Pre-build Validation (source + asset checks)
-    ├── 3. Markdown → HTML Conversion (records every image reference as it renders)
-    ├── 4. Asset Inlining + Copying (lib/asset-inline.ts: stylesheets read and
+    ├── 1. Pre-build Validation (source + asset checks, including CSS
+    │      print-safety via the `source.stylelint` check — there is no
+    │      separate lint gate)
+    ├── 2. Markdown → HTML Conversion (records every image reference as it renders)
+    ├── 3. Asset Inlining + Copying (lib/asset-inline.ts: stylesheets read and
     │      inlined, fonts embedded as data: URIs, referenced images copied —
     │      nothing is copied that the book doesn't actually reference)
-    ├── 5. HTML → PDF Build (native Chromium print engine)
-    └── 6. Post-build Validation (PDF + heuristic checks)
+    ├── 4. HTML → PDF Build (native Chromium print engine)
+    └── 5. Post-build Validation (PDF + heuristic checks)
     ↓
 Output (PDF + validation report)
 ```
@@ -181,8 +184,8 @@ Formatter (formatter.ts)
     └── JSON format (structured, for CI)
 ```
 
-**35 checks across 4 categories:**
-- **Source (9)**: markdownlint + htmlhint wrappers, print-safety CSS checks
+**36 checks across 4 categories:**
+- **Source (10)**: markdownlint + htmlhint wrappers, print-safety CSS checks
   (PostCSS), an optional CSS ownership contract check (PostCSS —
   [docs/css-ownership-contract.md](./css-ownership-contract.md)), local
   link/ref checks, layout-marker diagnostics, alt-text and heading-order
@@ -232,14 +235,14 @@ function resolveConfig(
 
 ### 2. Markdown Processing
 
-**Location**: `packages/cli/src/lib/markdown/index.ts`
+**Location**: `packages/cli/src/lib/markdown/renderer.ts`
 
 #### Plugin Architecture
 
 The `createMarkdownRenderer()` factory function creates a fully configured
 MarkdownIt instance with Gutterpress's built-in marker plugin and attribute
 support. Custom plugins from the manifest are applied at creation time via
-`applyPlugins()` from `packages/cli/src/lib/markdown/plugins.ts`:
+`applyPlugins()`, also from `packages/cli/src/lib/markdown/renderer.ts`:
 
 ```typescript
 // Creates a new MarkdownIt instance with all built-in plugins
@@ -247,7 +250,10 @@ function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): MarkdownIt {
   const md = new MarkdownIt({ html: true, linkify: true, typographer: true });
 
   md.use(markdownItAttrs);
-  md.use(gutterpressMarkers); // Local markers.js plugin: @spread, @page, @section, @end-section, @page-break, @column-break
+  md.use(markdownItFootnote);
+  md.use(markdownItDeflist);
+  md.use(markdownItSourceMap);
+  md.use(gutterpressMarkers); // Local markers.js plugin: @chapter, @spread, @page, @section, @continue, @end-section, @page-break, @column-break
 
   // markdown-it-container removed 2026-05-17; @-marker family is canonical.
 
@@ -262,8 +268,8 @@ function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): MarkdownIt {
 
 **Design Rationale**:
 - Factory function creates fresh instance per render call
-- Gutterpress's built-in `markers.js` registered early as the primary layout plugin (`@spread`, `@page`, `@section`, `@end-section`, `@page-break`, `@column-break`)
-- Plugin loading is separate (`plugins.ts`) from renderer creation (`index.ts`)
+- Gutterpress's built-in `markers.js` registered early as the primary layout plugin (`@chapter`, `@spread`, `@page`, `@section`, `@continue`, `@end-section`, `@page-break`, `@column-break`)
+- Plugin loading (`plugins.ts`) is separate from renderer creation (`renderer.ts`)
 
 #### CSS Cascade
 
@@ -276,10 +282,13 @@ never a `<link>` — in a fixed cascade order (`markdown/assemble.ts`):
    `gutterpress-css.ts` (`gp-*` image, positioning, and column vocabulary).
 3. **Extension CSS** - each `extensions:` entry's stylesheets, in list order:
    a look's or component library's declared `styles` (from its
-   `gutterpress.json` / `theme.json`), or a plugin module's `styles` files
+   `package.json`'s `gutterpress` block), or a plugin module's `styles` files
    (paths relative to the module) followed by its `css` string export. All
    are resolved at load time and inlined through the same
-   `lib/asset-inline.ts` pass as project CSS; a later entry's CSS wins ties.
+   `lib/asset-inline.ts` pass as project CSS, and each entry's CSS is
+   wrapped in its own cascade layer (`@layer ext.<name>`, declared in list
+   order after core's), so a later entry's CSS wins ties whatever the
+   extension's own CSS does, and every extension beats core.
 4. **Project CSS** - the manifest's `styles:` list, resolved and inlined last
    (so project rules win at equal specificity, over every extension) by
    `lib/asset-inline.ts`: each
@@ -679,16 +688,15 @@ it is; there is no `path:`/`name:` wrapper and no `priority`:
    into Gutterpress — no install, no network; bundled names shadow npm and
    cannot be pinned;
 2. `./x`, `../x`, `/x` or a Windows drive path is a **path** relative to the
-   manifest — a folder with a `gutterpress.json` (or legacy
-   `theme.json`/`theme.css`) or a bare `.js` plugin file — referenced in
-   place, never copied;
+   manifest — a folder with a `package.json` or a bare `.js` plugin file —
+   referenced in place, never copied;
 3. anything else is an **npm** specifier; `name@version` pins it, and
    `gutterpress ext add` writes the pin.
 
 ```yaml
 # manifest.yaml
 extensions:
-  - ./extensions/clean-book            # a look, copied in by `gutterpress new` / `ext add --look`
+  - ./extensions/clean-book            # a look, copied in by `ext add --look`
   - ./plugins/my-custom-plugin.js      # a bare plugin file, referenced in place
   - markdown-it-footnote@4.0.0         # npm, pinned by `ext add`
   - use: markdown-it-anchor@9.2.0      # object form: only when an entry needs more
@@ -746,14 +754,16 @@ export const styles = ['./styles/my-plugin.css'];
 
 ### Extension folders
 
-A path entry that names a FOLDER is loaded through its metadata file
-(`lib/extension-manifest.ts`: `gutterpress.json`, falling back to
-`theme.json`): `name`, `author`, `description`, `preview`, `styles` (ordered
-sheets — a folder that declares none but holds a `theme.css` is a one-sheet
-look), `tokensFile`, `markdown` (a JS module loaded through the exact same
-plain-markdown-it contract as a bare file), `snippets`, `components`. A
-theme-era `theme.css` + `theme.json` folder is therefore a valid extension
-unchanged, and "look" and "plugin" are just what a folder happens to declare.
+A path entry that names a FOLDER is loaded through its `package.json`
+(`lib/extension-manifest.ts`): npm's own `name`, `description`, `author`,
+`keywords` and `main` (the markdown-it entry, loaded through the exact same
+plain-markdown-it contract as a bare file), plus a `gutterpress` block —
+`styles` (ordered sheets), `tokensFile`, `preview`, `snippets`, `components`,
+and `markdown` for the one case `main` cannot express. A package maintainer
+writes no second manifest, so a plain markdown-it plugin package is a valid
+extension unchanged, and "look" and "plugin" are just what a package happens
+to declare. The removed `gutterpress.json`/`theme.json` are not read: a folder
+still carrying one fails to load with the package.json shape spelled out.
 The three built-in looks are the one thing the manager COPIES into a project
 (`extensions/<id>/`, then referenced as `./extensions/<id>`): a book's look
 must be the author's own editable files, never a hidden dependency on the CSS
@@ -929,7 +939,7 @@ actually shipped by `npm pack --dry-run`.
 
 **Reasons**:
 - PDF is the primary (and effectively only) build output
-- HTML output is a byproduct of the convert step, not a separate strategy
+- HTML output is just `gutterpress build --format html` (the standalone `convert` command was removed), not a separate strategy
 - Preview is handled by a separate server, not the build command
 - Simple linear flow is easier to understand and debug
 
@@ -1027,8 +1037,9 @@ confine author assets and chapter-update requests to the selected project.
 
 ---
 
-**Last Updated**: 2026-09-01 (SFE-P6c — monorepo packages, desktop composition
-roots, and public exports sections rewritten against the post-P6 tree)
-**Version**: packages/cli + packages/desktop 0.10.2 (0.12.0 release pending
-final P7 acceptance); packages/editor 0.12.0-experimental.0 (Experimental,
-D1/D11)
+**Last Updated**: 2026-09-27 (upstream 0.11.3 merged into the source-first
+editor branch; the desktop composition roots, public exports and monorepo
+sections describe the post-P6 tree)
+**Version**: packages/cli + packages/desktop 0.12.0-alpha.0 (0.11.3 plus the
+source-first editor, release pending final P7 acceptance); packages/editor
+0.12.0-alpha.0 (Experimental, D1/D11)

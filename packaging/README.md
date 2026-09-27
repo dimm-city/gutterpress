@@ -12,6 +12,17 @@ downloaded, hash-checked, installed, and executed the published CLI binaries.
 It can be manually re-run for an existing stable release without republishing
 that release.
 
+> **History.** This automation first worked end to end on the 0.10.11
+> stable cut: [run 35902797310](https://github.com/dimm-city/gutterpress/actions/runs/35902797310)
+> committed `a1a89aa0`, moving all four metadata files to 0.10.11 and
+> replacing the winget directory rather than adding a second one beside it.
+> Every checksum it wrote matches the release's `SHA256SUMS.txt`. Before
+> that, the metadata had not moved since 0.8.3: the commit job's
+> `download-artifact` overlaid the previous version's winget directory
+> instead of replacing it, so `--check` rejected the tree. #286 regenerated
+> 0.10.10's metadata by hand and added the step that clears the generated
+> trees before the download; 0.10.11 was the first release to exercise it.
+
 Local verification is dependency-free:
 
 ```sh

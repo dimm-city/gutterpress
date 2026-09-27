@@ -309,3 +309,25 @@ test("rejected snapshot promise still finishes exactly once and clears the backs
   expect(h.finishCalls).toBe(1);
   expect(h.clock.armedMs).toEqual([]);
 });
+
+test("a flush request carries the close prompt's Don't Save as a discard mode", async () => {
+  const clock = new FakeClock();
+  const modes: string[] = [];
+  const session = new RendererFlushSession({
+    isAlive: () => true,
+    sendFlushRequest: (mode) => {
+      modes.push(mode);
+    },
+    setTimer: clock.set,
+    clearTimer: clock.clear,
+  });
+  session.markRendererLoaded();
+
+  const flush = session.request();
+  session.resolve(true);
+  await flush;
+  const discard = session.request(undefined, "discard");
+  session.resolve(true);
+  expect(await discard).toBe(true);
+  expect(modes).toEqual(["flush", "discard"]);
+});

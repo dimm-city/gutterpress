@@ -52,9 +52,13 @@ jobs:
       #
       # BUMPING IT: pick a version from Chrome for Testing's
       # known-good-versions-with-downloads.json; it must be >= the engine floor
-      # (REQUIRED_MILESTONE, currently 148). Then re-run `bun run spikes` and
-      # treat every changed measurement as a finding — the same bar cdp.ts sets
-      # for moving the floor itself. release.yml is workflow_dispatch-only, so
+      # (REQUIRED_MILESTONE, currently 148). Then re-measure and treat every
+      # changed measurement as a finding — the same bar cdp.ts sets for moving
+      # the floor itself. The spike harness that took those measurements
+      # (`bun run spikes`) was deleted with the pre-native-engine scaffolding
+      # and nothing in this repo re-runs it, so re-measuring means rebuilding
+      # it first (docs/engine/ENGINE.md, provenance note at the top).
+      # release.yml is workflow_dispatch-only, so
       # no PR run will catch a bad bump for you; dispatch a prerelease first.
       # Ghostscript rasterises PDFs for the pixel-diff suites, INCLUDING
       # page-background-chromium-bug.canary.test.ts — the expiry trigger that
@@ -74,8 +78,13 @@ jobs:
       - name: Setup Bun (cached)
         uses: ./.github/actions/bun
 
+      # Pinned like ci.yml's six install steps (#286) and the two build jobs
+      # below: this job is the gate that authorises a release, so it must test
+      # the tree bun.lock describes, not whatever resolves on the day. The
+      # `version` job's plain install further down is the deliberate exception,
+      # and says so in place.
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       # NO Chromium pin here, and NO PUPPETEER_EXECUTABLE_PATH — the engine
       # resolves the runner image's google-chrome-stable, exactly as ci.yml

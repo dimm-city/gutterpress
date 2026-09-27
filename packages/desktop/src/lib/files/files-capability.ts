@@ -51,6 +51,7 @@
 import { bridge } from "../platform/bridge";
 import { hostCall } from "../errors";
 import type { FileStat, FileWriteResult } from "../platform/contract";
+import type { UnsavedChoice } from "../platform/dtos";
 
 export interface DirEntry {
   name: string;
@@ -144,6 +145,15 @@ export async function pickPdfFile(): Promise<string | null> {
 /** Open native multi-select image file picker. Resolves [] when cancelled. */
 export async function pickImageFiles(): Promise<string[]> {
   return hostCall(bridge().dialog.pickImageFiles());
+}
+
+/**
+ * Native Save / Don't Save / Cancel prompt for leaving a file with unsaved
+ * edits while "Save edits automatically" is off (#274). Resolves the author's
+ * choice; `fileName` is what the prompt names.
+ */
+export async function confirmUnsaved(fileName: string): Promise<UnsavedChoice> {
+  return hostCall(bridge().dialog.confirmUnsaved(fileName));
 }
 
 // ── shell ────────────────────────────────────────────────────────────────

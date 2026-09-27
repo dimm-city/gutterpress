@@ -2,7 +2,7 @@
 
 @section .lede
 
-Gutterpress's validation system checks your project for print compliance at two points in the pipeline — before the PDF build and after. This chapter covers the 34 built-in checks, CLI usage, and production workflow recommendations.
+Gutterpress's validation system checks your project for print compliance at two points in the pipeline — before the PDF build and after. This chapter covers the 36 built-in checks, CLI usage, and production workflow recommendations.
 
 @end-section
 
@@ -17,8 +17,14 @@ When using `gutterpress build`, validation is automatically integrated into the
 pipeline:
 
 ```
-lint → validate:pre-build → convert → assets → build → validate:post-build
+validate:pre-build → convert → assets → build → validate:post-build
 ```
+
+The CSS print-safety check (remote URLs, rasterizing effects, and
+page-containment risks — the same check `gutterpress lint` runs standalone)
+runs once, inside `validate:pre-build`, as the `source.stylelint` check.
+There is no separate lint phase; `--skip-lint` disables that one check
+without skipping the rest of pre-build validation.
 
 The final `validate:post-build` phase runs for `--format pdfx` only — a plain
 `--format pdf` build stops after the build step. Everything before it runs for
@@ -137,10 +143,29 @@ gutterpress validate --pdf dist/my-book/my-book-pdf.pdf --format json
 | `--only` | Run only these check IDs (comma-separated, supports `*`) |
 | `--skip` | Skip these check IDs |
 | `--format` | Output format: `text` (default) or `json` |
-| `--phase` | Override phase: `pre-build` or `post-build` |
+| `--phase` | Override phase: `pre` \| `post` \| `all` \| `pre-build` \| `post-build` (default: `all`) |
 | `--target` | Publish targets to validate against (comma-separated: `dtrpg`, `itch`), overriding the manifest's `targets:` |
+| `--fix` | Rewrite the source markdown in place with markdownlint's auto-fixes (`source.markdownlint` only) |
 
 @end-section
+
+### Fixing markdown automatically
+
+Validation is read-only unless you pass `--fix`, which rewrites the markdown
+in place using markdownlint's own auto-fixes — trailing spaces, multiple blank
+lines, blank-line placement, list markers and indentation, hard tabs, emphasis
+style, and so on:
+
+```sh
+gutterpress validate --input . --fix
+```
+
+Every rewritten file is printed. Anything markdownlint cannot fix
+mechanically is still reported, and the other source checks (broken links, alt
+text, layout markers, CSS print-safety) are never touched. The rules come from
+the same `.markdownlint.*` config the check uses; with no config file, `--fix`
+says so and changes nothing. A file with uncommitted changes is rewritten too
+— you get a notice, not a refusal.
 
 ## Check Categories
 
@@ -158,7 +183,7 @@ Examples: page size matches manifest, fonts are embedded, metadata is present, P
 
 ### Asset checks (pre-build)
 
-Run on image and font files in the `assets` directory.
+Run on image and font files anywhere in your project folder — there's no `assets` convention to follow (see Chapter 3) — plus the directories any shared stylesheets pull assets from.
 
 Examples: image resolution below 300 DPI, unsupported color profiles, missing font files.
 
@@ -195,7 +220,8 @@ validate:
 # keys are silently ignored, so a threshold nested under `validate:` has no
 # effect at all.
 ink:
-  maxTac: 240        # max total area coverage %, default 240
+  maxTac: 240        # max total area coverage %; the dtrpg preset's default —
+                     # book (this guide's preset) defaults to 400 instead
   tacTolerance: 0.5  # allowed overage before a page is flagged, default 0.5
 ```
 

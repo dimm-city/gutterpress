@@ -79,6 +79,8 @@ interface Harness {
     /** Per-project persisted state, keyed by the dir it is stored under. */
     projectStateByDir: Record<string, { currentPage?: number } | null>;
     flushImpl?: () => Promise<boolean>;
+    /** When set, wired as the controller's `leaveBuffer` dep. */
+    leaveImpl?: () => Promise<boolean>;
   };
 }
 
@@ -187,6 +189,9 @@ function make(): Harness {
     flushBuffer: () => {
       flushBuffer();
       return state.flushImpl ? state.flushImpl() : Promise.resolve(state.flushResult);
+    },
+    get leaveBuffer() {
+      return state.leaveImpl;
     },
     resetBuffer: () => resetBuffer(),
     ensureEditorFile: () => ensureEditorFile(),
@@ -891,4 +896,32 @@ test("a book with no saved state opens at the defaults, with no restore applied"
 
   expect(h.deps.getDesktopProjectState.calls).toEqual([["/loose-folder"]]);
   expect(h.deps.setPendingRestore.calls).toEqual([[null]]);
+});
+
+test("leaving the file asks via leaveBuffer; Cancel keeps the project open; retry never asks", async () => {
+  const { ctrl, deps } = make();
+  const leaves: string[] = [];
+  let answer = true;
+  deps.leaveImpl = () => {
+    leaves.push("leave");
+    return Promise.resolve(answer);
+  };
+  await ctrl.startFolderPreview("/proj");
+  ctrl.previewUrl = "preview://proj";
+
+  // Cancel in the prompt: closing the project stops, nothing is torn down.
+  answer = false;
+  expect(await ctrl.stopPreview()).toBe(false);
+  expect(ctrl.currentDir).toBe("/proj");
+  expect(deps.stopPreviewHost.calls).toHaveLength(0);
+
+  // "Try preview again" is not leaving the file — it saves, never prompts.
+  const before = leaves.length;
+  await ctrl.retryPreview();
+  expect(leaves.length).toBe(before);
+  expect(deps.flushBuffer.calls.length).toBeGreaterThan(0);
+
+  answer = true;
+  expect(await ctrl.stopPreview()).toBe(true);
+  expect(leaves).toEqual(["leave", "leave", "leave"]); // open, cancelled close, close
 });

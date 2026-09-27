@@ -33,6 +33,11 @@
 // ──────────────────────────────────────────────────────────────────────────
 
 import type {
+  ExtensionSearchResult,
+  LocalBranches,
+  RefreshCopiesResult,
+  SwitchBranchResult,
+  UnsavedChoice,
   UpdaterEventPayload,
   AppSettings,
   DeviceCodeInfo,
@@ -141,6 +146,7 @@ declare global {
         pickImageFile(): Promise<string | null>;
         pickPdfFile(): Promise<string | null>;
         pickImageFiles(): Promise<string[]>;
+        confirmUnsaved(fileName: string): Promise<UnsavedChoice>;
       };
       shell: {
         openExternal(url: string): Promise<{ ok: true }>;
@@ -214,6 +220,7 @@ declare global {
         list(projectDir: string): Promise<ProjectExtensionEntry[]>;
         recommended(): Promise<RecommendedExtension[]>;
         listBuiltIn(): Promise<BuiltInStyleSet[]>;
+        search(query: string): Promise<ExtensionSearchResult>;
         validate(projectDir: string): Promise<ExtensionValidationResult[]>;
         add(projectDir: string, specifier: string, exportName?: string): Promise<ProjectExtensionEntry | null>;
         addLocal(projectDir: string): Promise<ProjectExtensionEntry | null>;
@@ -233,6 +240,8 @@ declare global {
         ): Promise<SnapshotPage>;
         restoreSnapshot(projectDir: string, id: string): Promise<RestoreVersionResult>;
         saveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry>;
+        listBranches(projectDir: string): Promise<LocalBranches | null>;
+        switchBranch(projectDir: string, branch: string): Promise<SwitchBranchResult>;
       };
       style: {
         setActive(projectDir: string, paths: string[]): Promise<string[]>;
@@ -263,6 +272,7 @@ declare global {
         listRepoBooks(owner: string, repo: string, branch: string): Promise<RepoBook[]>;
         diagnoseProject(projectDir: string): Promise<ProjectRemoteDiagnosis>;
         testRemoteAccess(url: string): Promise<RemoteAccessResult>;
+        refreshCopies(projectDir: string): Promise<RefreshCopiesResult>;
         connectGenericHost(
           args: ConnectGenericHostArgs,
         ): Promise<{ connected: boolean; host: string; username?: string }>;
@@ -377,7 +387,7 @@ declare global {
       // above (SFE-P5c4: typed IPC).
       // app:setDirtyState migrated to typed IPC (SFE-P5c1) — see the `app`
       // member above.
-      onFlushBeforeClose(cb: () => boolean | void | Promise<boolean | void>): () => void;
+      onFlushBeforeClose(cb: (mode?: "flush" | "discard") => boolean | void | Promise<boolean | void>): () => void;
       onFolderChanged(cb: (data: { filename: string }) => void): () => void;
     };
   }

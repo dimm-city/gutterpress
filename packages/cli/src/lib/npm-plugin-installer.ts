@@ -47,8 +47,7 @@ import {
   type VendorReceipt,
   type VendorSkippedDependency,
 } from "./plugin-vendor.ts";
-
-const NPM_REGISTRY = "https://registry.npmjs.org";
+import { npmRegistryUrl } from "./npm-registry.ts";
 
 interface NpmPluginInstallLimits {
   metadataBytes: number;
@@ -232,7 +231,7 @@ async function fetchPackument(ctx: InstallContext, name: string): Promise<Record
         `Looking up ${name} on npm failed (${cause instanceof Error ? cause.message : String(cause)}).`,
     },
     async (signal) => {
-      const response = await ctx.fetch(`${NPM_REGISTRY}/${encodeURIComponent(name)}`, {
+      const response = await ctx.fetch(`${npmRegistryUrl()}/${encodeURIComponent(name)}`, {
         signal,
         redirect: "error",
         headers: { accept: "application/vnd.npm.install-v1+json" },
@@ -372,9 +371,11 @@ async function selectPackage(
   } catch {
     throw new SecurityInstallError(`npm returned an invalid tarball URL for "${name}@${version}".`);
   }
+  // The tarball must come from the SAME origin as the configured registry
+  // (scheme, host and port together): a registry that hands out a third-party
+  // tarball host is redirecting the download somewhere nobody configured.
   if (
-    tarball.origin !== NPM_REGISTRY ||
-    tarball.protocol !== "https:" ||
+    tarball.origin !== new URL(npmRegistryUrl()).origin ||
     tarball.username ||
     tarball.password
   ) {

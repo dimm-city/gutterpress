@@ -9,7 +9,7 @@ tests and fixtures must not enter the archive.
 - Current upstream reference: `a7e205939d441d29d64e616d6f5ec89c53bb711a`
 - Supported distribution: trusted local install
 - Marketplace status: not published
-- Gutterpress release floor: unreleased branch source; 0.8.3 is unsupported
+- Gutterpress release floor: `>=0.10.10`
 - Existing-project UI status: host snapshot transport bug; use `od plugin run`
 - CLI run context: no Browser-tab attachment or interactive form collection
 - Engine floor: declared as `>=0.16.1`, not enforced by Open Design 0.16.1
@@ -37,9 +37,7 @@ bun test
 From `packages/cli/`:
 
 ```bash
-bun test src/lib/theme-manager.test.ts \
-  src/lib/asset-inline.test.ts \
-  src/lib/pagination.test.ts \
+bun test src/lib/asset-inline.test.ts \
   src/lib/markdown/plugins.test.ts \
   src/preview/file-watcher.test.ts \
   src/preview/http-server.test.ts \
@@ -99,7 +97,7 @@ od plugin doctor gutterpress-publishing --json
 ## Publication checks
 
 - [ ] A canonical public repository or stable monorepo subpath exists at a tag.
-- [ ] The required Gutterpress preview changes have a tagged release and the exact
+- [x] The required Gutterpress preview changes have a tagged release and the exact
   supported version floor is recorded.
 - [ ] The README uses only install commands that actually resolve.
 - [ ] Open Design's existing-project snapshot transport is fixed, or CLI-only

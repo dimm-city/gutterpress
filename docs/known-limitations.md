@@ -16,13 +16,16 @@ Each entry below therefore records the same four things: what breaks, **how it
 fails**, what to write instead, and the **removal trigger** — the condition
 under which the workaround should be deleted.
 
-What makes these three dangerous is that every one of them fails **silently**
-in Chromium. There is no error and the PDF looks valid. Gutterpress therefore
-reports each of them itself — §1 and §2 from the CSS as you type it
-(`printsafe/no-risky-print-effects`), §3 from the built document
+What makes the first three dangerous is that every one of them fails
+**silently** in Chromium. There is no error and the PDF looks valid.
+Gutterpress therefore reports each of them itself — §1 and §2 from the CSS as
+you type it (`printsafe/no-risky-print-effects`), §3 from the built document
 (`engine.page-background.unreferenced`) — so "the CSS is correct but nothing
 painted" reaches you as a warning rather than as a blank page in print. §3 is
 also the one the build now works around on your behalf; see there.
+
+§4 is a different shape: the PDF is correct, and the on-screen preview is what
+disagrees with it, at a boundary too small to be a CSS bug.
 
 ---
 
@@ -186,6 +189,54 @@ milestone can never silently drift from reality.
 > reference the image elsewhere on the page, so all of them passed regardless
 > of the bug. A fixture is only testing this if the `@page` rule is the sole
 > reference.
+
+---
+
+## 4. A line box within a fraction of a pixel of the page bottom can paginate differently on screen than in the PDF
+
+**Tracking:** [#268](https://github.com/dimm-city/gutterpress/issues/268) ·
+measured on Chrome 153, the CI font stack, `docs/fixtures/exact-fit-boundary`
+· gate mechanism shipped in #261/#269 (0.10.9); this entry is #268's engine
+finding.
+
+Chromium positions a line box on whole CSS pixels when it paginates for print,
+but keeps 1/64px `LayoutUnit` precision when it lays out a CSS Multicol
+fragmentainer — which is what the preview uses to paginate on screen
+(`packages/cli/src/engine/viewer/fragment.ts`). At an ordinary boundary the gap
+between the two is invisible. At a boundary where a line's box happens to end
+within about half a pixel of the column/page bottom, one fragmenter can keep
+the line and the other overflow it — measured on the fixture: print keeps a
+`pre` line with **+0.02px** of slack, the viewer overflows the same line by
+**-0.36px** and pushes it. `orphans`/`widows` and any `break-*: avoid` chain
+above the line then make each side choose a different, equally correct break,
+so a heading several elements earlier can land one page later in the preview
+than in the PDF.
+
+**This is not a Chromium bug** in the sense of §1–§3 above — nothing here
+contradicts the CSS Paged Media or Multicol specs, which have never promised
+that two different fragmentation contexts round identically. It is a genuine
+platform limitation: there is no CSS property that gives a multicol
+fragmentainer print's whole-pixel line-box rounding, so the preview cannot be
+made to match print at this exact class of boundary without either an
+unprincipled constant (tried and rejected — see `docs/engine/ENGINE.md` §4)
+or reimplementing print's own line-box snapping inside the multicol
+fragmenter, which is not exposed to CSS at all.
+
+**Write instead:** nothing — this cannot be authored around reliably, and
+trying to (nudging a paragraph, tweaking `orphans`/`widows`) only moves the
+knife edge to different content. `packages/cli/scripts/native-parity-gate.ts`
+classifies this shape as an **EXACT-FIT BOUNDARY** rather than a divergence
+(`docs/native-parity-gate.md`) specifically so it does not need an allowlist
+entry and does not block a release. The failure mode for an author: a heading
+appears to move by one page in the live preview only, never in the built PDF —
+the PDF is always correct.
+
+**Removal trigger:** Chromium ships a way for a Multicol fragmentainer to
+round line-box placement the same way its page fragmenter does (draft upstream
+report:
+[`chromium-bug-drafts/exact-fit-multicol-vs-print.md`](./engine/chromium-bug-drafts/exact-fit-multicol-vs-print.md)),
+or Chromium unifies the two fragmentation code paths outright. Until then this
+is permanent, not a shim awaiting deletion.
 
 ---
 

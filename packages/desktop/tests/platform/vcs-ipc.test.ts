@@ -28,9 +28,11 @@ import { registerHostServices, getHostServices, type HostServices } from "../../
 import { makeHostServices } from "../support/host-services-fake";
 import {
   vcsEnableVersionHistory,
+  vcsListBranches,
   vcsListSnapshotsPage,
   vcsRestoreSnapshot,
   vcsSaveSnapshot,
+  vcsSwitchBranch,
 } from "../../electron/api/vcs";
 
 const HEX40_A = "a".repeat(40);
@@ -40,6 +42,8 @@ const ROUTES: Array<{ name: string; call: (dir: string) => Promise<unknown> }> =
   { name: "vcs:listSnapshotsPage", call: (d) => vcsListSnapshotsPage(d) },
   { name: "vcs:restoreSnapshot", call: (d) => vcsRestoreSnapshot(d, HEX40_A) },
   { name: "vcs:saveSnapshot", call: (d) => vcsSaveSnapshot(d, "snap") },
+  { name: "vcs:listBranches", call: (d) => vcsListBranches(d) },
+  { name: "vcs:switchBranch", call: (d) => vcsSwitchBranch(d, "main") },
 ];
 
 let base: string;

@@ -44,7 +44,7 @@
 import { resolve } from "node:path";
 import type { Diagnostic, DocumentSnapshot } from "@dimm-city/gutterpress-editor/core";
 import { loadManifestWithPath, resolveConfig } from "gutterpress";
-import { loadPluginsWithCss } from "gutterpress/plugins";
+import { layerExtensionCss, loadPluginsWithCss } from "gutterpress/plugins";
 import { createEditorProjection, createMarkdownRenderer, type GutterpressProjection } from "gutterpress/render";
 import { pluginsUntrustedDiagnostic, projectionBuildFailedDiagnostic } from "../protocol/diagnostics.ts";
 import type { ProjectionPluginError } from "../protocol/messages.ts";
@@ -112,8 +112,10 @@ export type PluginLoaderFn = typeof loadPluginsWithCss;
 
 export interface ProjectEditorProjectionResult {
   readonly projection: GutterpressProjection;
-  /** Concatenated plugin CSS (load order) — `""` when no loaded plugin
-   *  declares any. */
+  /** Each extension's `css` export in its own cascade layer, as the built
+   *  document carries it (`layerExtensionCss`); `""` when no loaded plugin
+   *  declares any. Stylesheet FILES stay out here: the webview has no asset
+   *  path to serve them from. */
   readonly pluginCss: string;
   /** Every plugin that failed to load. Empty when every configured plugin
    *  loaded (or none are configured). */
@@ -182,10 +184,14 @@ export async function buildProjectEditorProjection(
     return false;
   });
 
-  const { plugins, pluginCss } = await loadPlugins(scopedConfigs, manifestDir, (pluginRef, error) => {
+  const { plugins, pluginStyles } = await loadPlugins(scopedConfigs, manifestDir, (pluginRef, error) => {
     onPluginLoadError?.(pluginRef, error);
     pluginErrors.push({ pluginRef, message: PLUGIN_LOAD_FAILED_WIRE_MESSAGE });
   });
+  // The `css` export of each extension, in the layer the built document
+  // gives it; a group with stylesheet files but no export declares nothing
+  // here (see `ProjectEditorProjectionResult.pluginCss`).
+  const pluginCss = layerExtensionCss(pluginStyles ?? []);
 
   const md = createMarkdownRenderer(plugins);
   const projection = createEditorProjection(args.content, {

@@ -12,4 +12,6 @@
  * internal resolution machinery.
  */
 export { loadPlugins, loadPluginsWithCss } from "./lib/markdown/plugins";
+export { layerExtensionCss } from "./lib/markdown/renderer";
+export type { PluginStyleGroup } from "./lib/markdown/renderer";
 export type { LoadedPluginsWithCss } from "./lib/markdown/plugins";

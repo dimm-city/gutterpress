@@ -21,7 +21,7 @@ The `@` marker system controls page flow and generates semantic HTML wrappers. M
 Generated HTML:
 ```html
 <div class="chapter typography" id="ch-typography">
-<div class="page opener" id="pg-intro" data-page="..." data-template="chapter">
+<div class="page opener" id="pg-intro" data-template="chapter">
 <div class="section type-scale" id="sec-scale" data-section="..." data-region="main">
 ```
 
@@ -101,7 +101,7 @@ Content that spans both pages of a spread.
 
 ### @section / @end-section — Region Block
 
-Wraps content in `<div class="section">`. Use to group a logical block within a page — equivalent to `break-inside: avoid` plus an addressable ID. Close with `@end-section`.
+Wraps content in `<div class="section">`. Use to group a logical block within a page — core keeps the group's first child from being stranded at a page boundary, but deliberately does **not** put `break-inside: avoid` on the whole section, since long sections must be allowed to fragment; add that stronger rule to an explicitly classed section in your project CSS when the group really must stay together. `@section` also gives the group an addressable ID. Close with `@end-section`.
 
 **Syntax** — `@section #id .class region=name` … `@end-section`
 

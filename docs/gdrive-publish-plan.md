@@ -2,7 +2,8 @@
 
 **Status:** design **validated against live Google** (spike 11/11 + P13 —
 Appendix B); all §8 decisions ratified by the product owner 2026-08-31.
-No implementation yet — Phase 1 is unblocked.
+**Shipped** — Phases 1–3 all landed (#221, released 0.10.5); see the §8
+checklists and `docs/publishing.md` for the live provider.
 **Date:** 2026-08-31 (revised same day — see D7 correction and Appendix A)
 **Goal:** a non-technical author clicks *Publish → Google Drive*, approves
 Gutterpress in their browser once, picks (or names) a Drive folder, and their

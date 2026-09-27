@@ -95,9 +95,29 @@ gutterpress publish --provider itch
 @section .callout-tip
 
 **Tip:** DriveThruRPG has strict print requirements. Run `gutterpress validate
---target dtrpg` before uploading — it checks bleed, ink density and more.
+--pdf dist/my-book/my-book-pdf.pdf --target dtrpg` before uploading — it checks
+bleed, ink density and more. Without `--pdf`, there's no built PDF to inspect,
+so those checks silently pass without measuring anything.
 
 @end-section
+
+## Sharing a Folder Between Formats
+
+`gutterpress build --out <dir>` writes into a plain folder instead of the
+project's own `dist/`, which is how you build a static site and its
+downloadable PDF into one place:
+
+```bash
+gutterpress build --format html --out ./_site
+gutterpress build --format pdf --out ./_site
+```
+
+Each command only delivers what its own format produces, so the second
+command never disturbs the first's output: `--format html` writes
+`book.html` (with the viewer), `index.html`, and the referenced assets;
+`--format pdf`/`pdfx` adds only its own PDF. `./_site` ends up with both —
+the paginating `book.html` a browser opens, and a PDF a reader can download —
+with neither build overwriting the other's files.
 
 ## Publishing From CI
 

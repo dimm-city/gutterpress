@@ -2,7 +2,7 @@
 
 > **Status: draft revision** of the contract originally proposed in issue
 > [#40](https://github.com/dimm-city/gutterpress/issues/40). Baselined against
-> desktop **0.10.2-alpha.3** (2026-08-26).
+> desktop **0.10.10** (2026-08-26).
 >
 > This document is the normative home of the UX contract. Issue #40 remains
 > the tracking issue and links here. **Deviations are proposed as PRs against
@@ -392,6 +392,33 @@ is recorded in the deletion ledger's SFE-P5a entry
 (`docs/plans/source-first-editor/deletion-ledger.md`). The narrow/mobile
 **desktop** window layout (820px breakpoint, §1 above) is unaffected — it is
 shipped Electron behavior, not PWA-specific.
+
+Two saving-flow facts that this section used to carry are shipped DESKTOP
+behavior, not PWA-specific, and survive its removal:
+
+- **Auto-save is SHIPPED and works as follows** (do not respecify): a FIXED
+  debounced disk save 500ms after the last edit (`EditorBuffer`) and an
+  ALWAYS-ON crash-recovery draft 1000ms after the last edit, plus explicit
+  `Cmd/Ctrl+S` / toolbar Save. Neither delay is a user setting (#274), but
+  auto-save itself is an on/off switch, default on: Settings -> Saving, "Save
+  edits automatically" (owner request 2026-09-25 - with no way to turn it
+  off, the Save button had nothing to do). Off, edits wait for Save /
+  `Cmd/Ctrl+S`, the toolbar Save stays lit while anything is unsaved, the
+  status bar reads "Unsaved changes", and the preview updates on save.
+  Leaving a file with unsaved edits (switching files, books or projects,
+  closing the project or the window) asks a native Save / Don't Save /
+  Cancel - the one modal in the saving flow, and only when auto-save is
+  off. The save indicator itself stays subtle (no modal) - see
+  Anti-Patterns.
+- **Switching copies is SHIPPED in Settings -> Saving** (#273): the Saving &
+  recovery group names the copy (git branch) the open project is on and,
+  when other copies exist, offers a picker to switch. Copies that so far
+  exist only online are listed too, marked "(online only)", and created
+  locally on the way in; the picker never creates a new copy. Author-facing
+  vocabulary says "copy", never "branch". The switch takes a version of any
+  in-progress edit first, so nothing is lost and nothing is ever forced; the
+  editor/file tree/preview then show the new copy the same way they pick up
+  any other external change.
 
 ### 4. Onboarding — progressive disclosure
 
@@ -795,10 +822,11 @@ Shipped refinements (#106, 0.8.0-beta.1; carried into the one-list model):
   `LookSection` (formerly `AppearanceSection`, merged #243) renders the
   sample into a hover-preview iframe via `hoverPreviewSrcdoc`.
 - **ZIP drag-and-drop import**, validated against the extension package
-  format: `theme.css` at root + optional `assets/` + optional
-  `gutterpress.json` (or theme-era `theme.json`) declaring `name`,
-  `styles` and `tokensFile` (#239/#241 — every declared sheet is validated
-  like `theme.css`; a theme-era folder is a valid extension unchanged);
+  format: `theme.css` at root + optional `assets/` + optional `package.json`
+  declaring `name` and a `gutterpress` block's `styles`/`tokensFile`
+  (#239/#241/#276 — every declared sheet is validated like `theme.css`; a
+  package without one gets a package.json written into the landed copy, so
+  what lands always loads);
   validation order = structure → CSS parses → print-safety
   check passes (note `printsafe/no-remote-urls` fails CDN-referencing looks
   — surface that clearly) → declares at least one `--print-*` token.
@@ -1136,7 +1164,7 @@ explicit width/height (never scaled by `font-size`). Icon-only buttons:
 | Hiding features behind unlock gates | Contradicts escape-hatch principle; regresses shipped UI | Soft emphasis: Advanced badge, never hidden (§4) |
 | Opening help in an external browser tab | Breaks flow; offline failure | In-app help: the start screen's Help tab (`HelpContent`) |
 | Print-tool "modes" (pointer/text/frame tools) | Wrong mental model | Markdown-first; properties in inspector |
-| Requiring save before preview | Breaks the live loop | Shipped: 500ms debounced save + live preview |
+| Requiring save before preview | Breaks the live loop | Shipped: 500ms debounced save + live preview (default; turning auto-save off is the author's opt-in to preview-on-save) |
 | Raw engine / `@page` errors shown to authors | Opaque, frightening | Plain-language Problems entries (shipped, §10) |
 | Raw rule IDs / linter jargon as primary text | Writer-first product | Plain-language labels, codes demoted (shipped, §10) |
 | Reintroducing stylelint or any bundler-hostile dep for editor lint | Breaks `bun build --compile` (CLAUDE.md §3) | Extend `printsafe.ts` |

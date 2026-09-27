@@ -77,11 +77,19 @@ export interface ExternalChange {
 export interface EditorBufferOptions {
   /** The fs primitives this buffer reads/writes through (SFE-P5c1: `$lib/files/files-capability` in production). */
   fs: EditorBufferFs;
-  /** Disk-save debounce (ms). Defaults to 500 (the responsive edit→preview loop). */
+  /** Disk-save debounce (ms). Defaults to 500 (the responsive edit→preview
+   *  loop) — not a user setting (#274); a test-only override. */
   saveDelayMs?: number;
+  /** Whether an edit saves itself after `saveDelayMs` (Settings → Saving,
+   *  "Save edits automatically"). Read each time a save would be scheduled,
+   *  so a change applies from the next edit. When it returns false, edits
+   *  stay pending until {@link EditorBuffer.flush}. Default: on. */
+  autoSave?: () => boolean;
   /** Crash-recovery snapshot debounce (ms). Defaults to 1000. */
   recoveryDelayMs?: number;
-  /** When false, no sidecar recovery snapshots are written (#45 setting). */
+  /** When false, no sidecar recovery snapshots are written. Not wired to a
+   *  user setting (#274 — crash recovery is always on); a test-only knob for
+   *  isolating save behavior from recovery writes. */
   recoveryEnabled?: boolean;
   /** Called after a successful disk write (e.g. to refresh the preview). */
   onSaved?: (filePath: string) => void;
@@ -193,25 +201,6 @@ export class EditorBuffer {
     this.setPhase(this.session.phase);
   }
 
-  /** Toggle crash-recovery snapshotting at runtime (#45 setting). */
-  setRecoveryEnabled(enabled: boolean): void {
-    this.opts.recoveryEnabled = enabled;
-    if (!enabled && this.recoveryTimer) {
-      clearTimeout(this.recoveryTimer);
-      this.recoveryTimer = null;
-    }
-  }
-
-  /** Update the autosave delay and restart any pending dirty-buffer timer. */
-  setSaveDelayMs(delayMs: number): void {
-    if (this.opts.saveDelayMs === delayMs) return;
-    this.opts.saveDelayMs = delayMs;
-    if (!this.saveTimer) return;
-    clearTimeout(this.saveTimer);
-    this.saveTimer = null;
-    if (this.isDirty) this.scheduleSave();
-  }
-
   /**
    * Load a file from disk into the buffer, clearing any prior pending state.
    *
@@ -297,6 +286,10 @@ export class EditorBuffer {
 
   private scheduleSave(): void {
     if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    // Autosave off: the edit waits for an explicit flush() — Save, Ctrl+S,
+    // or Save in the prompt shown on leaving the file.
+    if (this.opts.autoSave?.() === false) return;
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
       // Debounced saves report through onError; explicit flush() callers need
@@ -506,6 +499,42 @@ export class EditorBuffer {
     const outcome = this.session.keepMine();
     this.syncFromSession();
     if (outcome.scheduleSave) this.scheduleSave();
+  }
+
+  /**
+   * Don't Save: throw away unsaved edits, putting the buffer back on the file
+   * as it is on disk NOW, and delete their crash-recovery draft so the next
+   * launch does not offer them back. Re-reads rather than trusting
+   * `diskContent`: reconcile skips a dirty buffer, so a sync, checkout or
+   * outside edit made while edits were unsaved leaves that baseline stale.
+   * Awaits the draft delete — callers may be about to close the window.
+   *
+   * Re-opening the document through {@link DocumentSession.open} with the
+   * disk text is exactly "clean against this baseline" - the same transition
+   * {@link load} performs - so the runes are written by {@link syncFromSession}
+   * alone, never directly (CLAUDE.md section 8's one-choke-point rule).
+   */
+  async discard(): Promise<void> {
+    const filePath = this.filePath;
+    if (!filePath) return;
+    const gen = this.loadGen;
+    this.cancelTimers();
+    let disk = this.diskContent;
+    let mtimeMs = this.diskMtimeMs;
+    try {
+      const st = await this.fs.statFile(filePath);
+      disk = st.exists ? await this.fs.readFile(filePath) : "";
+      mtimeMs = st.exists ? st.mtimeMs : 0;
+    } catch {
+      // Unreadable right now: fall back to the last known disk version.
+    }
+    if (this.filePath !== filePath || this.loadGen !== gen) return;
+    this.session.open(filePath, disk, mtimeMs);
+    this.syncFromSession();
+    this.opts.onContentReplaced?.(filePath, this.content);
+    if (this.opts.recoveryEnabled !== false) {
+      await clearRecovery(filePath).catch(() => {});
+    }
   }
 
   /** Drop the buffer entirely (e.g. closing a folder / switching to URL mode). */

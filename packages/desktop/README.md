@@ -19,6 +19,8 @@ Electron main process (out/main/main.js — ESM, built by electron-vite)
   │                            manifest, tpl, snip, media, plugin, theme, vcs,
   │                            style, remote, publish, updater, recovery,
   │                            doctor, lint, …) — electron/api/*.ts
+  │                            (secureHandle wraps ipcMain.handle and rejects
+  │                            any invocation from an untrusted sender frame)
   └─ webContents.send(...) push channels  — build progress, folder-changed,
                                             sync status, updater events
 
@@ -74,7 +76,7 @@ removed:
 ### Dev (this package)
 
 - **Bun** for workspace installation, tests, and the shared library build
-- **Node 20+** for the Node-based build/check scripts invoked by package scripts
+- **Node 22+** for the Node-based build/check scripts invoked by package scripts
 
 ### End users (packaged desktop)
 
@@ -246,6 +248,11 @@ notes and [installation guide](../../docs/installing.md) provide Gatekeeper
 instructions. For unsigned local testing, set `CSC_IDENTITY_AUTO_DISCOVERY=false`.
 
 ## Project structure
+
+An abridged selection — `electron/` and `src/lib/` each hold more files than
+shown here (e.g. `electron/export/`, `electron/preview/`,
+`electron/server-bridge/`, `electron/updater.ts`, `electron/recovery.ts`,
+`electron/auto-sync/`, and dozens more `src/lib/components/*.svelte` files).
 
 ```
 packages/desktop/

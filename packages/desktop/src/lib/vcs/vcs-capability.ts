@@ -31,6 +31,7 @@
 import { bridge } from "../platform/bridge";
 import { hostCall } from "../errors";
 import type { RestoreVersionResult, SnapshotEntry, SnapshotPage } from "../platform/contract";
+import type { LocalBranches, SwitchBranchResult } from "../platform/dtos";
 
 /** Turn a plain local-folder project into a versioned one (CLAUDE.md §7's escape hatch). */
 export async function vcsEnableVersionHistory(projectDir: string): Promise<unknown> {
@@ -57,4 +58,22 @@ export async function vcsRestoreSnapshot(projectDir: string, id: string): Promis
 /** Save a snapshot of the project's current working tree. */
 export async function vcsSaveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry> {
   return hostCall(bridge().vcs.saveSnapshot(projectDir, message));
+}
+
+/**
+ * The project's local copies (git branches) and which one is open, for
+ * Settings -> Saving's copy picker (#273). `null` when the source has nothing
+ * to switch between (a plain local folder has no repository to have copies of).
+ */
+export async function vcsListBranches(projectDir: string): Promise<LocalBranches | null> {
+  return hostCall(bridge().vcs.listBranches(projectDir));
+}
+
+/**
+ * Switch the project's working tree to another local copy (#273). The host
+ * takes a version of any in-progress edit first and drops the crash-recovery
+ * drafts of every file the checkout changed.
+ */
+export async function vcsSwitchBranch(projectDir: string, branch: string): Promise<SwitchBranchResult> {
+  return hostCall(bridge().vcs.switchBranch(projectDir, branch));
 }

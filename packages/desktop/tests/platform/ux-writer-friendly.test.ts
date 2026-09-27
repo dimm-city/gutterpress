@@ -1,11 +1,13 @@
 /**
- * Writer-friendly UX follow-up (maintainer request): saving / previous
- * versions / online copy / crash recovery are presented to non-technical
- * writers as plain-language protection layers, and the TOC panel is a
- * collapsible tree. No component-render harness exists here, so — following the
- * repo convention (ProjectActivityView.test.ts) — these assert on the compiled
- * source text: the new writer-facing strings appear, the jargon-y ones don't,
- * and the interaction wiring is present.
+ * Writer-friendly UX follow-up (maintainer request): previous versions and
+ * online backup are presented to non-technical writers as plain-language
+ * protection layers (#274 — crash recovery and the save delay are not
+ * settings; saving automatically is one on/off switch), and the TOC panel is
+ * a collapsible tree. No component-render
+ * harness exists here, so — following the repo convention
+ * (ProjectActivityView.test.ts) — these assert on the compiled source text:
+ * the new writer-facing strings appear, the jargon-y ones don't, and the
+ * interaction wiring is present.
  */
 import { expect, test, describe } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -19,28 +21,69 @@ import {
 const root = path.resolve(import.meta.dir, "../..");
 const read = (rel: string) => readFileSync(path.join(root, rel), "utf8");
 
-describe("Settings — 'Saving & recovery' group with writer-friendly labels", () => {
+describe("Settings — 'Saving & recovery' group with writer-friendly labels (#274)", () => {
   const dialog = read("src/lib/components/SettingsView.svelte");
-  test("consolidated group + plain-language controls", () => {
+  test("three switches: saving automatically, previous versions, online backup", () => {
     expect(dialog).toContain("Saving &amp; recovery");
     expect(dialog).toContain("Save edits automatically");
     expect(dialog).toContain("Keep previous versions");
-    expect(dialog).toContain("Create a version after I stop editing for");
-    expect(dialog).toContain("Keep an online copy up to date");
-    expect(dialog).toContain("Recover edits after an unexpected close");
+    expect(dialog).toContain("Keep this project backed up online");
   });
-  test("crash recovery is described as a temporary emergency copy, distinct from history", () => {
-    expect(dialog).toContain("temporary emergency copy");
-    expect(dialog).toContain("separate from your previous versions");
+  test("the online-backup switch is disabled with a hint when previous versions is off", () => {
+    expect(dialog).toContain('disabled={!s.versionHistory.autoSnapshot}');
+    expect(dialog).toContain('Needs "Keep previous versions" turned on');
   });
-  test("turning off one layer does not imply the others are disabled", () => {
-    expect(dialog).toContain("does not affect saving on this computer");
-    expect(dialog).toContain("or your previous versions");
+  test("a project that can't sync sees one status line, never a dead switch", () => {
+    expect(dialog).toContain("isn't connected to an online service yet");
+    expect(dialog).toContain("Settings &gt; Accounts");
+  });
+  test("autosave is an on/off switch, not the old delay field (owner request 2026-09-25)", () => {
+    // #274 removed a seconds field that could not turn autosave off (0s still
+    // saved); without any way to turn it off, the Save button did nothing.
+    const row = dialog.slice(dialog.indexOf('id="set-auto-save"'), dialog.indexOf('id="set-auto-save"') + 250);
+    expect(row).toContain('type="checkbox"');
+    expect(row).toContain("checked={s.versionHistory.autoSave}");
+    expect(dialog).not.toContain('id="set-autosave"');
+  });
+  test("the switch reaches the editor buffer and the status bar", () => {
+    const page = read("src/routes/+page.svelte");
+    expect(page).toContain("autoSave: () => settings.current.versionHistory.autoSave");
+    expect(page).toContain("autoSave={settings.current.versionHistory.autoSave}");
+    // Turning it back on saves what piled up while it was off.
+    expect(page).toContain("autoSaveSink(s.versionHistory.autoSave)");
+  });
+  test("leaving a file with autosave off asks Save / Don't Save / Cancel, window close included", () => {
+    const main = read("electron/main.ts");
+    expect(main).toContain('buttons: ["Save", "Don\'t Save", "Cancel"]');
+    // The close prompt runs BEFORE the gate, so its flush watchdog can't cut
+    // the author's decision short.
+    const close = main.slice(main.indexOf('win.on("close"'), main.indexOf('win.on("closed"'));
+    expect(close.indexOf("askUnsavedChanges(null)")).toBeGreaterThan(-1);
+    expect(close.indexOf("askUnsavedChanges(null)")).toBeLessThan(close.indexOf("runCloseGate("));
+    expect(close).toContain("flushSession.request(undefined, mode)");
+  });
+  test("crash-recovery and version-timing rows are gone — no longer user settings", () => {
+    expect(dialog).not.toContain("Create a version after I stop editing for");
+    expect(dialog).not.toContain("Recover edits after an unexpected close");
   });
   test("old jargon labels are gone", () => {
     expect(dialog).not.toContain("Automatic snapshots");
     expect(dialog).not.toContain("Automatically keep changes in sync");
     expect(dialog).not.toContain(">Git identity<");
+  });
+});
+
+describe("Settings — copy switcher uses 'copy', never 'branch' (#273)", () => {
+  const dialog = read("src/lib/components/SettingsView.svelte");
+  test("the row names the current copy and offers a switcher", () => {
+    expect(dialog).toContain("Copy of this project you're working on");
+    expect(dialog).toContain("Switch to another copy");
+    expect(dialog).toContain('"Switching…" : "Switch"');
+  });
+  test("no visible label says 'branch' — 'copy' is the one word for both the online mirror and a local git branch", () => {
+    // Code identifiers (switchBranch, api.vcs.switchBranch, the `branch`
+    // param) legitimately say "branch" — only text between tags is checked.
+    expect(dialog).not.toMatch(/>[^<]*\bBranch\b[^<]*</);
   });
 });
 
@@ -121,6 +164,10 @@ describe("Status bar — one calm state opening a 3-row protection summary", () 
   test("default label is 'All work saved'", () => {
     expect(status).toContain('return "All work saved"');
     expect(status).not.toContain('return "All changes saved"');
+  });
+  test("with autosave off, a pending edit reads 'Unsaved changes', never 'Saving…'", () => {
+    expect(status).toContain('return autoSave ? "Saving…" : "Unsaved changes"');
+    expect(status).toContain('if (unsaved) return "Not saved yet"');
   });
   test("summary shows local save, previous versions, and online copy separately", () => {
     expect(status).toContain("On this computer");

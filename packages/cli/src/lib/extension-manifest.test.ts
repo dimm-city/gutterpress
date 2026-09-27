@@ -1,9 +1,11 @@
 /**
- * #241 — `extension-manifest.ts` is the metadata reader + resolver the
- * unified extension package format is built on. These tests pin the shared
- * contract directly: `readExtensionMeta`'s gutterpress.json-then-theme.json
- * fallback, `assertExtensionContained`'s write-boundary guard over every
- * declared field, and `resolveExtension`'s absolute-path resolution built on
+ * #241/#276 — `extension-manifest.ts` is the metadata reader + resolver the
+ * extension package format is built on, and that format is the standard
+ * `package.json`. These tests pin the shared contract directly:
+ * `readExtensionMeta`'s npm-fields + `gutterpress`-block mapping,
+ * `extensionEntry`'s `gutterpress.markdown ?? main` rule,
+ * `assertExtensionContained`'s write-boundary guard over every declared
+ * field, and `resolveExtension`'s absolute-path resolution built on
  * `resolveDeclaredStyles`.
  */
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
@@ -12,9 +14,10 @@ import { join } from "node:path";
 
 import {
   EXTENSION_MANIFEST_FILENAME,
-  LEGACY_THEME_MANIFEST_FILENAME,
   readExtensionMeta,
   extensionStyleList,
+  extensionEntry,
+  extensionCarries,
   assertExtensionContained,
   resolveExtension,
 } from "./extension-manifest";
@@ -33,67 +36,119 @@ describe("extension-manifest", () => {
   afterEach(() => rmSync(TMP_ROOT, { recursive: true, force: true }));
 
   describe("filenames", () => {
-    test("gutterpress.json is the unified format's filename", () => {
-      expect(EXTENSION_MANIFEST_FILENAME).toBe("gutterpress.json");
-    });
-    test("theme.json is still the recognized legacy filename", () => {
-      expect(LEGACY_THEME_MANIFEST_FILENAME).toBe("theme.json");
+    test("package.json is the one manifest filename", () => {
+      expect(EXTENSION_MANIFEST_FILENAME).toBe("package.json");
     });
   });
 
+  /** Write a package.json into a fresh extension folder. */
+  function pkgDir(pkg: unknown): string {
+    const dir = extDir();
+    writeFileSync(join(dir, "package.json"), JSON.stringify(pkg), "utf8");
+    return dir;
+  }
+
   describe("readExtensionMeta", () => {
-    test("reads theme.json when there is no gutterpress.json (backward compat)", async () => {
-      const dir = extDir();
-      writeFileSync(join(dir, "theme.json"), JSON.stringify({ name: "Legacy Theme" }), "utf8");
-      const meta = await readExtensionMeta(dir);
-      expect(meta.name).toBe("Legacy Theme");
-      expect(meta.markdown).toBeUndefined();
-    });
-
-    test("prefers gutterpress.json over a sibling theme.json", async () => {
-      const dir = extDir();
-      writeFileSync(join(dir, "theme.json"), JSON.stringify({ name: "Old" }), "utf8");
-      writeFileSync(join(dir, "gutterpress.json"), JSON.stringify({ name: "New" }), "utf8");
-      const meta = await readExtensionMeta(dir);
-      expect(meta.name).toBe("New");
-    });
-
-    test("reads a gutterpress.json-only folder (no theme.json at all)", async () => {
-      const dir = extDir();
-      writeFileSync(
-        join(dir, "gutterpress.json"),
-        JSON.stringify({ name: "Pure Extension", markdown: "plugin.js" }),
-        "utf8",
+    test("reads npm's own fields as-is", async () => {
+      const meta = await readExtensionMeta(
+        pkgDir({
+          name: "field-notes",
+          description: "Notes in the margin",
+          author: "Ada",
+          keywords: ["gutterpress", "markdown-it-plugin"],
+          main: "plugin.js",
+        }),
       );
-      const meta = await readExtensionMeta(dir);
-      expect(meta.name).toBe("Pure Extension");
-      expect(meta.markdown).toBe("plugin.js");
+      expect(meta).toEqual({
+        name: "field-notes",
+        description: "Notes in the margin",
+        author: "Ada",
+        keywords: ["gutterpress", "markdown-it-plugin"],
+        main: "plugin.js",
+      });
     });
 
-    test("returns {} for a folder with neither file", async () => {
-      const dir = extDir();
-      expect(await readExtensionMeta(dir)).toEqual({});
+    test("author may be npm's object form — its `name` is used", async () => {
+      const meta = await readExtensionMeta(
+        pkgDir({ name: "x", author: { name: "Ada Lovelace", email: "ada@example.com" } }),
+      );
+      expect(meta.author).toBe("Ada Lovelace");
+    });
+
+    test("every Gutterpress-specific field comes from the `gutterpress` block", async () => {
+      const meta = await readExtensionMeta(
+        pkgDir({
+          name: "look",
+          gutterpress: {
+            styles: ["a.css", "b.css"],
+            markdown: "lib/plugin.js",
+            snippets: "snippets",
+            components: "components.yaml",
+            tokensFile: "a.css",
+            preview: "preview.png",
+          },
+        }),
+      );
+      expect(meta.styles).toEqual(["a.css", "b.css"]);
+      expect(meta.markdown).toBe("lib/plugin.js");
+      expect(meta.snippets).toBe("snippets");
+      expect(meta.components).toBe("components.yaml");
+      expect(meta.tokensFile).toBe("a.css");
+      expect(meta.preview).toBe("preview.png");
+    });
+
+    test("a top-level `styles` key is NOT a declaration — only the gutterpress block is", async () => {
+      const meta = await readExtensionMeta(pkgDir({ name: "x", styles: ["sneaky.css"] }));
+      expect(meta.styles).toBeUndefined();
+    });
+
+    test("a plain markdown-it plugin package needs no gutterpress key at all", async () => {
+      const meta = await readExtensionMeta(pkgDir({ name: "markdown-it-mark", main: "index.js" }));
+      expect(meta.main).toBe("index.js");
+      expect(meta.styles).toBeUndefined();
+      expect(extensionCarries(meta)).toEqual({
+        markdown: true,
+        styles: false,
+        snippets: false,
+        components: false,
+      });
+    });
+
+    test("returns {} for a folder with no package.json", async () => {
+      expect(await readExtensionMeta(extDir())).toEqual({});
     });
 
     test("returns {} for unparseable JSON rather than throwing", async () => {
       const dir = extDir();
-      writeFileSync(join(dir, "gutterpress.json"), "{ not json", "utf8");
+      writeFileSync(join(dir, "package.json"), "{ not json", "utf8");
       expect(await readExtensionMeta(dir)).toEqual({});
     });
 
-    test("a broken gutterpress.json does not fall back to a sibling theme.json", async () => {
+    test("a stale gutterpress.json/theme.json is not read", async () => {
       const dir = extDir();
-      writeFileSync(join(dir, "theme.json"), JSON.stringify({ name: "Should not win" }), "utf8");
-      writeFileSync(join(dir, "gutterpress.json"), "{ not json", "utf8");
+      writeFileSync(join(dir, "gutterpress.json"), JSON.stringify({ name: "Old" }), "utf8");
+      writeFileSync(join(dir, "theme.json"), JSON.stringify({ name: "Older" }), "utf8");
       expect(await readExtensionMeta(dir)).toEqual({});
+    });
+  });
+
+  describe("extensionEntry", () => {
+    test("npm's `main` is the markdown-it entry of a folder extension", () => {
+      expect(extensionEntry({ main: "plugin.js" })).toBe("plugin.js");
+    });
+    test("an explicit gutterpress.markdown overrides `main`", () => {
+      expect(extensionEntry({ main: "index.js", markdown: "gutterpress-plugin.js" })).toBe(
+        "gutterpress-plugin.js",
+      );
+    });
+    test("neither declared is no markdown behaviour (a look)", () => {
+      expect(extensionEntry({ styles: ["theme.css"] })).toBeUndefined();
     });
   });
 
   describe("extensionStyleList", () => {
     test("styles absent/empty means NO declared styles — no theme.css default", () => {
-      // Unlike theme-manager.ts's themeStyleList, the generic extension list
-      // does not default to ["theme.css"] — a markdown-only extension has no
-      // reason to require a stylesheet it never declared.
+      // A look declares `gutterpress.styles`; there is no implicit theme.css.
       expect(extensionStyleList({})).toEqual([]);
       expect(extensionStyleList({ styles: [] })).toEqual([]);
       expect(extensionStyleList({ styles: ["a.css", "b.css"] })).toEqual(["a.css", "b.css"]);
@@ -149,7 +204,7 @@ describe("extension-manifest", () => {
   });
 
   describe("resolveExtension", () => {
-    test("resolves markdown and styles to absolute existence-checked paths", () => {
+    test("resolves the folder's entry (`main`) and styles to absolute existence-checked paths", () => {
       const dir = extDir();
       writeFileSync(join(dir, "plugin.js"), "export default function () {}", "utf8");
       mkdirSync(join(dir, "css"), { recursive: true });
@@ -158,7 +213,7 @@ describe("extension-manifest", () => {
       const resolved = resolveExtension(
         dir,
         {
-          markdown: "plugin.js",
+          main: "plugin.js",
           styles: ["css/a.css"],
         },
         "Plugin \"demo\"",

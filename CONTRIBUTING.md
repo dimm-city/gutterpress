@@ -15,7 +15,7 @@ Thank you for your interest in contributing to Gutterpress! This document provid
 
 ### Prerequisites
 
-- **Bun** v1.3.1 or later - [Install Bun](https://bun.sh)
+- **Bun** v1.3.14 or later - [Install Bun](https://bun.sh)
 - **Git** - Version control
 
 ### Initial Setup
@@ -57,7 +57,7 @@ Root-level scripts delegate to the relevant workspace package:
 bun run cli -- preview ./examples/my-book
 bun run cli -- build ./examples/my-book
 
-# Run all tests (CLI package)
+# Run all tests (all packages)
 bun run test
 
 # Type-check all packages
@@ -99,9 +99,11 @@ gutterpress/                     # Workspace root (private)
 │   │   │   ├── checks/          # Validation check system
 │   │   │   └── preview/         # Headless preview server (node:http + ws + chokidar)
 │   │   └── tests/               # Bun test suite
-│   └── desktop/                 # @dimm-city/gutterpress-desktop — Electron + SvelteKit desktop app
-│       ├── electron/            # Electron main process
-│       └── src/                 # SvelteKit UI + server routes
+│   ├── desktop/                 # @dimm-city/gutterpress-desktop — Electron + SvelteKit desktop app
+│   │   ├── electron/            # Electron main process
+│   │   └── src/                 # SvelteKit UI + server routes
+│   └── open-design-plugin/      # @dimm-city/gutterpress-open-design-plugin — Open Design plugin (design existing books)
+│       └── plugin/              # Installable plugin root (SKILL.md, open-design.json, references)
 ├── examples/                    # Example projects
 ├── docs/                        # Documentation
 └── package.json                 # Workspace root (private Bun workspace)
@@ -284,12 +286,24 @@ describe('Feature name', () => {
 
 ### Dependency Security
 
-The project uses automated tools to monitor and update dependencies securely:
+CI scans for vulnerabilities but does not gate on them, and nothing opens
+dependency-update PRs automatically:
 
-1. **Automated Vulnerability Scanning**
-   - **CI Security Audit**: Every push and pull request runs `bun audit` to check for known vulnerabilities
-   - **Dependabot**: Automatically creates PRs for dependency updates weekly
-   - **Lock File Integrity**: CI verifies `bun.lock` hasn't been tampered with
+1. **Automated Vulnerability Scanning** *(reported, not gated)*
+   - `ci.yml`'s `security-audit` job runs `bun audit` on every push and pull
+     request, with `continue-on-error: true` — it is deliberately
+     NON-BLOCKING. As of 0.10.10 the baseline is 35 known advisories (23
+     high, 10 moderate, 2 low), of which 24 are transitive through
+     `electron-builder` and not fixable from this repo without a major
+     `electron-builder` bump; failing the build on them would wall off every
+     PR for something no PR author can fix. The job exists so the number is in every
+     run's log and a NEW advisory is noticed instead of arriving silently.
+     Issue #287 tracks burning the baseline down and flipping
+     `continue-on-error` off.
+   - No `.github/dependabot.yml` — there are no automated dependency-update PRs
+   - CI verifies `bun.lock` integrity only through `--frozen-lockfile`, which
+     every `ci.yml` install now uses (see Lock File Management below); there
+     is no deeper lockfile check
 
 2. **Manual Security Audits**
    ```bash
@@ -303,15 +317,15 @@ The project uses automated tools to monitor and update dependencies securely:
    bun update [package-name]
    ```
 
-3. **Dependency Update Process**
-   - **Automated Updates**: Dependabot creates PRs every Monday at 9:00 AM
-   - **Review Process**:
+3. **Dependency Update Process** *(not yet automated)*
+   - No Dependabot (or equivalent) configuration exists — dependency updates
+     are proposed manually, not by a scheduled bot
+   - **Review Process** (for any dependency-update PR):
      - Check PR description for breaking changes
      - Review CHANGELOG of updated packages
      - Run full test suite locally
      - Merge if tests pass and no breaking changes
    - **Security Updates**: High-priority, merge as soon as verified
-   - **Grouped Updates**: Minor/patch updates grouped to reduce PR noise
 
 4. **Adding New Dependencies**
 
@@ -336,7 +350,13 @@ The project uses automated tools to monitor and update dependencies securely:
 5. **Lock File Management**
    - **Always commit** `bun.lock` with dependency changes
    - **Never manually edit** the lock file
-   - **CI enforces** `--frozen-lockfile` to prevent inconsistencies
+   - **`--frozen-lockfile`** fails the install if `bun.lock` is out of sync
+     with `package.json`. Since #286 every install in the main CI workflow
+     (`ci.yml`) uses it — all six install steps, across its five jobs — as do
+     GitHub Pages (`pages.yml`) and `release.yml`'s `build-cli` and
+     `publish-npm` jobs. Two `release.yml` jobs still install plain:
+     `version`, which regenerates the lockfile after bumping the
+     `package.json` versions, and `test`
    - **Resolve conflicts** by running `bun install` after merging
 
 6. **Security Update Priority**
@@ -357,12 +377,18 @@ The project uses automated tools to monitor and update dependencies securely:
 
 ### GitHub Actions Security
 
-The CI/CD pipeline includes security measures:
+The CI/CD pipeline's security measures today:
 
-- **Frozen lockfile**: Ensures consistent dependencies across environments
-- **Automated audits**: Runs on every commit to catch new vulnerabilities
+- **Frozen lockfile**: enforced in every main CI (`ci.yml`) install since
+  #286, and in the Pages (`pages.yml`) and release (`release.yml`)
+  workflows — see Lock File Management above for the two `release.yml` jobs
+  that still install plain
 - **Minimal permissions**: GitHub Actions use least-privilege principle
-- **Audit logging**: All security audit results logged in CI output
+- **Dependency audits** *(reported, not gated)*: `ci.yml`'s `security-audit`
+  job runs `bun audit` on every push and pull request and logs the result,
+  but with `continue-on-error: true` — it cannot fail a build. That is
+  deliberate while the 35-advisory baseline stands (see Automated
+  Vulnerability Scanning above); #287 tracks making it blocking
 
 ## Submitting Changes
 
@@ -458,12 +484,34 @@ test(config): add tests for manifest validation
 Releases are triggered by **dispatching** the [Release workflow](./.github/workflows/release.yml)
 — it runs on `workflow_dispatch` only, so pushing a tag by hand does nothing.
 
-1. **Update CHANGELOG.md**
-   - Add a `## [x.y.z]` entry for the release. The workflow verifies this
-     entry exists (checked against the base version, so a prerelease like
-     `0.10.1-beta.4` looks for `## [0.10.1]`) and fails if it's missing.
+1. **Pick the version**
+   - The next patch is the latest `v*` tag plus one:
+     `git ls-remote --tags origin 'v0.11.*'` listing `v0.11.2` as the newest
+     means `0.11.3`.
+   - Leave `packages/*/package.json` alone — they still hold the previous
+     version, and the workflow bumps them.
 
-2. **Dispatch the Release workflow** (Actions → Release → Run workflow, or
+2. **Date the CHANGELOG heading**
+   - Each PR adds its entry under `## [Unreleased]` as it lands. To cut the
+     release, insert the dated heading directly below it, leaving
+     `## [Unreleased]` empty above:
+
+     ```markdown
+     ## [Unreleased]
+
+     ## [0.11.3] - 2026-09-27
+
+     ### Fixed
+     ```
+
+   - Commit it as `Date the x.y.z changelog heading for the stable cut` —
+     on `main`, or as the last commit of the PR being released (then merge
+     that PR once CI is green on its new head).
+   - The workflow fails if the heading is missing. It checks the base
+     version, so a prerelease like `0.10.1-beta.4` looks for `## [0.10.1]` —
+     add the heading when you cut the first prerelease.
+
+3. **Dispatch the Release workflow** (Actions → Release → Run workflow, or
    `gh workflow run release.yml -f version=1.2.3`)
    - `version`: `1.2.3` for a stable release, or `1.2.3-alpha.1` /
      `1.2.3-beta.1` for a prerelease. No other suffix is accepted — alpha and
@@ -471,15 +519,24 @@ Releases are triggered by **dispatching** the [Release workflow](./.github/workf
      recognizes.
    - Stable releases must be dispatched from the default branch. Prereleases
      may also be dispatched from a `release/*` branch.
-
-3. **The workflow does the rest**
-   - Bumps the version in both `packages/cli/package.json` and
-     `packages/desktop/package.json`, commits, and creates and pushes the
-     `v<version>` tag (stable tags are immutable; re-dispatching an existing
-     stable version fails instead of re-pointing it).
-   - Builds all release artifacts, publishes to npm via OIDC trusted
-     publishing (unless `skip_npm_publish` is set), and creates the GitHub
+   - Leave `skip_npm_publish` off unless you mean to hold back the npm
      release.
+
+4. **The workflow does the rest**
+   - Runs the test suite on the dispatched branch.
+   - Bumps the version in both `packages/cli/package.json` and
+     `packages/desktop/package.json`, commits `chore: bump version to x.y.z`
+     to the dispatched branch, and creates and pushes the `v<version>` tag
+     (stable tags are immutable; re-dispatching an existing stable version
+     fails instead of re-pointing it).
+   - Builds all release artifacts, publishes to npm via OIDC trusted
+     publishing (unless `skip_npm_publish` is set), creates the GitHub
+     release, and publishes the Docker image (`docker.yml`, at the tag).
+   - For a stable release, updates the Homebrew formula, Scoop bucket, and
+     winget manifest (`package-managers.yml`), committing
+     `chore: update package managers for x.y.z` to the default branch.
+   - These commits come from `github-actions[bot]`, so pull before starting
+     the next change.
 
 ## Getting Help
 

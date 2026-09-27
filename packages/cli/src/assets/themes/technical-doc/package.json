@@ -1,0 +1,10 @@
+{
+  "name": "technical-doc",
+  "description": "Clean sans-serif manual look with clear hierarchy, code styling, and tidy tables.",
+  "author": "gutterpress",
+  "keywords": ["gutterpress", "gutterpress-look"],
+  "gutterpress": {
+    "styles": ["theme.css"],
+    "preview": null
+  }
+}

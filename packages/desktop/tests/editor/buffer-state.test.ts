@@ -67,24 +67,6 @@ function makeBuffer(platform: MemoryPlatform, events: string[] = []): EditorBuff
   });
 }
 
-test("changing the autosave delay reschedules a pending edit", async () => {
-  const platform = new MemoryPlatform({ "/book/chapter.md": "original" });
-  const buffer = makeBuffer(platform);
-
-  await buffer.load("/book/chapter.md");
-  buffer.edit("edited");
-  expect(platform.getContent("/book/chapter.md")).toBe("original");
-  expect(buffer.phase).toBe("dirty");
-
-  buffer.setSaveDelayMs(0);
-  for (let attempt = 0; attempt < 20 && buffer.phase !== "clean"; attempt++) {
-    await Bun.sleep(5);
-  }
-
-  expect(platform.getContent("/book/chapter.md")).toBe("edited");
-  expect(buffer.phase).toBe("clean");
-});
-
 test("flush refuses to overwrite disk content that changed after the buffer loaded", async () => {
   const platform = new MemoryPlatform({ "/book/chapter.md": "old local text" });
   const events: string[] = [];
@@ -625,4 +607,94 @@ test("a failed disk write rejects flush and remains dirty for the close gate", a
 
   buffer.reset();
   expect(dirty).toEqual([true, false]);
+});
+
+test("autosave on (the default): an edit writes itself after the save delay", async () => {
+  const platform = new MemoryPlatform({ "/book/chapter.md": "original" });
+  const buffer = new EditorBuffer({
+    fs: platform,
+    saveDelayMs: 5,
+    recoveryEnabled: false,
+  });
+
+  await buffer.load("/book/chapter.md");
+  buffer.edit("typed");
+  await Bun.sleep(40);
+
+  expect(platform.getContent("/book/chapter.md")).toBe("typed");
+  expect(buffer.phase).toBe("clean");
+});
+
+test("autosave off: an edit stays unsaved until flush (Save / Ctrl+S / leaving the file)", async () => {
+  const platform = new MemoryPlatform({ "/book/chapter.md": "original" });
+  let autoSave = false;
+  const buffer = new EditorBuffer({
+    fs: platform,
+    saveDelayMs: 5,
+    recoveryEnabled: false,
+    autoSave: () => autoSave,
+  });
+
+  await buffer.load("/book/chapter.md");
+  buffer.edit("typed");
+  await Bun.sleep(40);
+
+  expect(platform.getContent("/book/chapter.md")).toBe("original");
+  expect(buffer.phase).toBe("dirty");
+  expect(buffer.hasPendingSave).toBe(true);
+
+  await buffer.flush();
+  expect(platform.getContent("/book/chapter.md")).toBe("typed");
+  expect(buffer.phase).toBe("clean");
+
+  // Read live: switching it back on makes the next edit save itself again.
+  autoSave = true;
+  buffer.edit("typed again");
+  await Bun.sleep(40);
+  expect(platform.getContent("/book/chapter.md")).toBe("typed again");
+});
+
+test("discard (Don't Save) puts the buffer back on the disk version and writes nothing", async () => {
+  const platform = new MemoryPlatform({ "/book/chapter.md": "original" });
+  const replaced: string[] = [];
+  const buffer = new EditorBuffer({
+    fs: platform,
+    saveDelayMs: 5,
+    recoveryEnabled: false,
+    autoSave: () => false,
+    onContentReplaced: (_path, content) => replaced.push(content),
+  });
+
+  await buffer.load("/book/chapter.md");
+  buffer.edit("unwanted edit");
+  await buffer.discard();
+  await Bun.sleep(40);
+
+  expect(buffer.content).toBe("original");
+  expect(buffer.phase).toBe("clean");
+  expect(buffer.hasPendingSave).toBe(false);
+  expect(platform.getContent("/book/chapter.md")).toBe("original");
+  expect(replaced).toEqual(["original"]);
+});
+
+test("discard adopts the file as it is on disk NOW, not a stale baseline", async () => {
+  const platform = new MemoryPlatform({ "/book/chapter.md": "original" });
+  const buffer = new EditorBuffer({
+    fs: platform,
+    saveDelayMs: 5,
+    recoveryEnabled: false,
+    autoSave: () => false,
+  });
+
+  await buffer.load("/book/chapter.md");
+  buffer.edit("unwanted edit");
+  // A sync/checkout/outside editor changes the file while the buffer is
+  // dirty — reconcile skips a dirty buffer, so the baseline is now stale.
+  platform.externalWrite("/book/chapter.md", "pulled text");
+  await buffer.reconcileExternalChange();
+  await buffer.discard();
+
+  expect(buffer.content).toBe("pulled text");
+  expect(buffer.diskContent).toBe("pulled text");
+  expect(buffer.phase).toBe("clean");
 });

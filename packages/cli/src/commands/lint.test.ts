@@ -45,7 +45,7 @@ describe("lint command — manifest-dir vs glob-pattern positional", () => {
       let captured: lintRunnerMod.LintRunnerOptions | undefined;
       stubRunLint(async (opts) => {
         captured = opts;
-        return { ok: true, riskyCount: 0, filesLinted: 0 };
+        return { ok: true, riskyCount: 0, containmentCount: 0, filesLinted: 0 };
       });
 
       await runCommand(lintCommand, { rawArgs: [dir] });
@@ -61,7 +61,7 @@ describe("lint command — manifest-dir vs glob-pattern positional", () => {
     let captured: lintRunnerMod.LintRunnerOptions | undefined;
     stubRunLint(async (opts) => {
       captured = opts;
-      return { ok: true, riskyCount: 0, filesLinted: 0 };
+      return { ok: true, riskyCount: 0, containmentCount: 0, filesLinted: 0 };
     });
 
     await runCommand(lintCommand, { rawArgs: ["css/**/*.css"] });
@@ -76,7 +76,7 @@ describe("lint command — manifest-dir vs glob-pattern positional", () => {
       let captured: lintRunnerMod.LintRunnerOptions | undefined;
       stubRunLint(async (opts) => {
         captured = opts;
-        return { ok: true, riskyCount: 0, filesLinted: 0 };
+        return { ok: true, riskyCount: 0, containmentCount: 0, filesLinted: 0 };
       });
 
       await runCommand(lintCommand, { rawArgs: [dir] });
@@ -95,7 +95,7 @@ describe("lint command — manifest-dir vs glob-pattern positional", () => {
       let captured: lintRunnerMod.LintRunnerOptions | undefined;
       stubRunLint(async (opts) => {
         captured = opts;
-        return { ok: true, riskyCount: 0, filesLinted: 0 };
+        return { ok: true, riskyCount: 0, containmentCount: 0, filesLinted: 0 };
       });
 
       await runCommand(lintCommand, {
@@ -112,7 +112,7 @@ describe("lint command — manifest-dir vs glob-pattern positional", () => {
 describe("lint command — exit-code contract (M47)", () => {
   test("findings (ok: false) exit with EXIT_CODES.FINDINGS (1), not a usage error", async () => {
     stubExit();
-    stubRunLint(async () => ({ ok: false, riskyCount: 2, filesLinted: 1 }));
+    stubRunLint(async () => ({ ok: false, riskyCount: 2, containmentCount: 0, filesLinted: 1 }));
 
     await expect(runCommand(lintCommand, { rawArgs: ["css/**/*.css"] })).rejects.toThrow(
       new RegExp(`process\\.exit\\(${EXIT_CODES.FINDINGS}\\)`)
@@ -121,7 +121,7 @@ describe("lint command — exit-code contract (M47)", () => {
 
   test("a clean lint (ok: true) never calls process.exit", async () => {
     stubExit();
-    stubRunLint(async () => ({ ok: true, riskyCount: 0, filesLinted: 3 }));
+    stubRunLint(async () => ({ ok: true, riskyCount: 0, containmentCount: 0, filesLinted: 3 }));
 
     await runCommand(lintCommand, { rawArgs: ["css/**/*.css"] });
 
@@ -130,7 +130,7 @@ describe("lint command — exit-code contract (M47)", () => {
 
   test("an extra positional is a usage error (exit 2); runLint is never called", async () => {
     stubExit();
-    stubRunLint(async () => ({ ok: true, riskyCount: 0, filesLinted: 0 }));
+    stubRunLint(async () => ({ ok: true, riskyCount: 0, containmentCount: 0, filesLinted: 0 }));
 
     await expect(runCommand(lintCommand, { rawArgs: ["a", "b"] })).rejects.toThrow(
       /process\.exit\(2\)/

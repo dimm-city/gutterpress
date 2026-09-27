@@ -5,8 +5,8 @@
 # is the thing a new author browses, and the thing to check a component
 # against when you change it.
 #
-# Gutterpress reads this file's PRESENCE today (gutterpress.json's
-# `components:` field points here, and a missing file fails at apply time
+# Gutterpress reads this file's PRESENCE today (package.json's
+# `gutterpress.components` field points here, and a missing file fails at apply time
 # rather than silently at render time). Nothing yet reads the entries — the
 # registry that will is not built. So treat the shape below as this theme's
 # own convention, useful to you now, and expect to adjust it when core grows

@@ -17,7 +17,7 @@ export const previewArgs = {
   icc: { type: "string", description: "Path to ICC profile (required for --format pdfx)" },
   manifest: { type: "string", description: "Path to manifest.yaml (pdf|pdfx only)" },
   "strip-annotations": { type: "boolean", description: "Strip PDF annotations for PDF/X compliance (pdfx only)" },
-  "skip-lint": { type: "boolean", description: "Skip CSS linting (pdf|pdfx only)" },
+  "skip-lint": { type: "boolean", description: "Skip the CSS print-safety check (pdf|pdfx only)" },
   "skip-pre-validate": { type: "boolean", description: "Skip pre-build validation (pdf|pdfx only)" },
   "skip-post-validate": { type: "boolean", description: "Skip post-build PDF/X validation (pdfx only)" },
   "allow-shrink": { type: "boolean", description: "Build anyway when content is wider than the page content box, instead of failing. Chromium then scales the WHOLE book down to fit; the scale and each offender are reported as warnings. (pdf|pdfx only)" },

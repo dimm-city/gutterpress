@@ -160,10 +160,9 @@ manifest fields, both of which fail a current Gutterpress build.
 
 ## Compatibility
 
-- **Gutterpress:** this release candidate requires the unreleased Gutterpress source
-  on this branch as of 2026-07-28. Published version 0.8.3 does not contain the
-  required full-document preview reload and shared-dependency recovery fixes;
-  record an exact release floor after those changes are tagged.
+- **Gutterpress:** this release candidate requires Gutterpress `>=0.10.10`,
+  which contains the required full-document preview reload and
+  shared-dependency recovery fixes.
 - **Open Design:** validated and packed with 0.16.1. The manifest declares
   `>=0.16.1`, but Open Design 0.16.1 parses rather than enforces that field, so
   verify the installed CLI version manually. Current upstream behavior was

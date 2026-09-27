@@ -234,7 +234,7 @@ describe("resolveEditorProjectionPayload — the trust/project gate (deliverable
     // loadable plugin (the same fixture Part 1 above proves loads for
     // real) — this is the point: even a real, loadable project's plugin
     // must not be touched when the workspace is untrusted.
-    const loadPluginsSpy = mock(async () => ({ plugins: [], pluginCss: "" }) as never);
+    const loadPluginsSpy = mock(async () => ({ plugins: [], pluginStyles: [] }) as never);
     await resolveEditorProjectionPayload(
       { text: HIGHLIGHT_CONTENT, version: 0 },
       { projectDir: FIXTURE_ROOT },
@@ -246,7 +246,7 @@ describe("resolveEditorProjectionPayload — the trust/project gate (deliverable
   });
 
   test("POSITIVE CONTROL for the spy above: trusted + project DOES invoke the loader (proves the spy is actually wired, not vacuously always-zero, G-12/AP-20)", async () => {
-    const loadPluginsSpy = mock(async () => ({ plugins: [], pluginCss: "" }) as never);
+    const loadPluginsSpy = mock(async () => ({ plugins: [], pluginStyles: [] }) as never);
     await resolveEditorProjectionPayload(
       { text: HIGHLIGHT_CONTENT, version: 0 },
       { projectDir: FIXTURE_ROOT },

@@ -50,15 +50,18 @@ something makes one. Almost every gotcha below is a consequence of that.
   chrome-free pages. Keep an empty background fill in the suppressed box so a
   patterned margin band stays continuous.
 
-- **Large raster images in `@page { background }` are silently dropped.**
-  Measured: a 2550×3300 texture never paints (flat colour, no error, every
-  page) while a 450×582 downscale of the same image paints correctly —
-  bounded between 450×582 (ok) and 638×825 (dropped). Resample background
-  tiles to their display resolution (450px at a 1.5in tile is exactly
-  300dpi). Gradients in `@page { background }` paint nothing at all. Both
-  are tracked: dimm-city/gutterpress#152, #149. Verify any `@page`
-  background fixture with a PRODUCTION-SIZED asset — a 16×16 test tile
-  passes and proves nothing.
+- **An `@page { background }` image is dropped unless something else in the
+  document references the same URL — it is not a size threshold.** An
+  earlier version of this note blamed image dimensions (450×582 painting,
+  638×825 and up dropping) and told you to resample tiles and verify at
+  production size; both halves were wrong — the trigger is being the SOLE
+  reference, regardless of size. **[handled]** — the build stages every
+  image your project stylesheets reference and declares it with a `<link
+  rel="preload" as="image">` in the built `<head>`, which is the second
+  reference Chromium needs, so the ordinary case needs no workaround from
+  you. Tracked: dimm-city/gutterpress#152. Gradients in `@page { background
+  }` still paint nothing at all, a separate and still-open bug:
+  dimm-city/gutterpress#149.
 
 ## 2. The whole-document shrink-to-fit trap
 
@@ -332,6 +335,8 @@ spell-check-style source findings; from the CLI they print as warnings.
 | Empty column | A balanced multi-column block that runs past one page, leaving dead columns (§5). |
 | Taller than the page | Content that print splits but the screen preview clips — the two will not agree there (§4). |
 | Image resolution | Below the DPI floor; may look soft in print. |
+| Margin box couldn't relocate | A `.gp-flush`-freed margin box's `content` isn't a value the build can re-home; it will not print on that page — simplify the content or drop `.gp-flush` there. |
+| Page background not preloaded | An `@page` background image the build can't stage and preload — remote, reached from CSS outside your project stylesheets, or also used as an `<img src>` — so Chromium prints the background colour alone (§1). |
 
 If you add a check to the engine, give it a code in `BUILD_DIAGNOSTIC_CODES`
 and a plain-language label in the desktop's `SOURCE_LABELS` — a test fails
@@ -349,13 +354,26 @@ the assembled `<style>` block:
 @layer gp.vocab  { /* GUTTERPRESS_CSS — the gp-* utility vocabulary */ }
 ```
 
-Everything else — extension CSS (looks and plugins, in `extensions:` list
-order), every stylesheet the manifest's `styles:` list names, and anything
-those sheets `@import` — stays UNLAYERED. Per the
-CSS Cascading and Layers spec, unlayered CSS always wins over layered CSS,
-regardless of selector specificity: a book rule as unspecific as a bare
-element selector (`section { columns: unset }`) now overrides a core
-`.gp-columns-2` utility outright and correctly, and this is true BY
+Each extension's CSS (looks and plugins) follows in a layer of its own,
+`@layer ext.<name>`, declared in `extensions:` list order:
+
+```css
+@layer ext.clean-book, ext.callouts;
+@layer ext.clean-book { /* its stylesheets, then its `css` export */ }
+@layer ext.callouts   { /* … */ }
+```
+
+So every extension beats core, a later extension beats an earlier one, and an
+extension that leaves its CSS unlayered cannot jump ahead of one listed after
+it — the list order is the precedence, by construction. An extension's own
+`@layer`s nest inside its layer and keep their relative order.
+
+Every stylesheet the manifest's `styles:` list names, and anything those
+sheets `@import`, stays UNLAYERED. Per the CSS Cascading and Layers spec,
+unlayered CSS always wins over layered CSS, regardless of selector
+specificity: a book rule as unspecific as a bare element selector
+(`section { columns: unset }`) overrides a core `.gp-columns-2` utility — or
+a look's most specific rule — outright and correctly, and this is true BY
 CONSTRUCTION for every book — not a fact that happens to hold because of
 where a sheet sits in `styles:`, the way it worked before #227 (and could
 regress: a theme's `columns: unset` silently ate core's `columns: 2` for
@@ -381,10 +399,9 @@ first stylesheet:
 Every rule you then place inside one of those layers cascades by that fixed
 order — `components` always beats `base`, regardless of which file
 `styles:` lists last — so splitting or reordering your stylesheets can no
-longer silently flip who wins. (Your layers are still unlayered relative to
-`gp.marker`/`gp.vocab`, so they keep winning over core exactly as before —
-declaring an order only changes how YOUR OWN files settle ties with each
-other.) A caveat worth stating because it surprises people the first time:
+longer silently flip who wins. (Your layers are declared after core's and
+after every extension's, so they keep winning over both — declaring an order
+only changes how YOUR OWN files settle ties with each other.) A caveat worth stating because it surprises people the first time:
 once a stylesheet declares layers, any rule you leave OUTSIDE all of them is
 still fully unlayered and therefore beats every one of your own layered
 rules too — so adopt the convention for a whole sheet at once, not for a

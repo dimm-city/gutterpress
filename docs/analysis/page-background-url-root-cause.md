@@ -1,5 +1,7 @@
 # Root cause: `@page { background: url() }` is dropped in print
 
+> **Superseded.** The agreed solution shipped: `assemble.ts` emits a per-image `<link rel="preload">` and `asset-inline.ts` content-addresses CSS images. Kept as a record of the decision.
+
 **Status:** analysis only. No fix, no shim, no pipeline change.
 **Tracking:** [#152](https://github.com/dimm-city/gutterpress/issues/152) ·
 [`known-limitations.md` §3](../known-limitations.md)

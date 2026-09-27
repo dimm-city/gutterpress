@@ -75,7 +75,7 @@ sharing permissions on your behalf.
 
 You can disconnect Google Drive at any time:
 
-- From inside Gutterpress (**Settings → Connections**, or
+- From inside Gutterpress (**Settings → Accounts**, or
   `gutterpress publish --provider gdrive --disconnect`), which deletes the
   locally stored refresh token and makes a best-effort request to revoke it
   with Google.

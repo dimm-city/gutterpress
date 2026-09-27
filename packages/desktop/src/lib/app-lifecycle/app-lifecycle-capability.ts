@@ -56,8 +56,12 @@ export function onFolderChanged(cb: (data: FolderChangedEvent) => void): () => v
  * Subscribe to the main process's request to flush before the window closes
  * (#44). Returning false reports that the buffer did not reach disk; main
  * records the durable failure marker and still closes after bounded waits.
+ * `mode` is "discard" when the author chose Don't Save in main's close prompt
+ * (#274 - "Save edits automatically" off); anything else means flush.
  */
-export function onFlushBeforeClose(cb: () => boolean | void | Promise<boolean | void>): () => void {
+export function onFlushBeforeClose(
+  cb: (mode?: "flush" | "discard") => boolean | void | Promise<boolean | void>,
+): () => void {
   return bridge().onFlushBeforeClose(cb);
 }
 
