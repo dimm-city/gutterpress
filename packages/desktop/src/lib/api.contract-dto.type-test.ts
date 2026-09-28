@@ -2,11 +2,11 @@
  * Type-level regression guard (work item P1 / api-dto-import-type; extended
  * for ARCH review #40).
  *
- * `src/lib/api.ts` must consume the shared contract DTOs, not local
- * re-declarations that can silently drift from the host/renderer source of
- * truth, and must not re-loosen a server route's return type to `unknown`/
- * `Record<string, unknown>`/an inline object literal that happens to
- * structurally match today. This file fails `svelte-check` if
+ * The typed IPC capability modules this file pins must return the shared
+ * contract DTOs, not local re-declarations that can silently drift from the
+ * host/renderer source of truth, and must not re-loosen a return type to
+ * `unknown`/`Record<string, unknown>`/an inline object literal that happens
+ * to structurally match today. This file fails `svelte-check` if
  * `ProjectRemoteDiagnosis.classification` regresses back to `any` — the exact
  * drift work item P1 fixed — or if any of the endpoints below drifts away
  * from its DTO (loosens to `any`/`unknown`, or stops matching exactly).
@@ -14,10 +14,31 @@
  * Types only: fully erased at build, no runtime, no `gutterpress` value
  * import (§8 renderer purity). `import type { api }` binds `api` for use only
  * in type positions (`typeof api.…`) — no value import, no bundle cost.
+ *
+ * SFE-P5c1: the four `app.*` endpoints this file pins (classifyProject,
+ * getDesktopPrefs, getDesktopProjectState, createProject, adoptFolder) moved
+ * off `api.app.*` (deleted, HTTP) to
+ * `$lib/app-lifecycle/app-lifecycle-capability` (typed IPC) — the same
+ * regression guard now pins those functions' return types instead.
+ *
+ * SFE-P5c3: `ProjectRemoteDiagnosis` no longer re-exports through `./api`
+ * (its `remote` namespace is deleted, typed IPC) — imported directly from
+ * `./platform/contract`, its canonical source, same as `DesktopPrefs`/
+ * `ProjectState`/`CreateProjectResult` below.
+ *
+ * SFE-P5c4: `./api` (`src/lib/api.ts`) is deleted — its last namespace
+ * (`doctor`) moved to typed IPC. `DoctorT` below now pins
+ * `$lib/doctor/doctor-capability`'s `getDoctorDiagnostics` instead.
  */
-import type { api, ProjectRemoteDiagnosis } from "./api";
+import type * as appLifecycleCapability from "./app-lifecycle/app-lifecycle-capability";
+import type * as doctorCapability from "./doctor/doctor-capability";
 import type { ProjectSource } from "./platform/shared-types";
-import type { DesktopPrefs, ProjectState, CreateProjectResult } from "./platform/contract";
+import type {
+  DesktopPrefs,
+  ProjectState,
+  CreateProjectResult,
+  ProjectRemoteDiagnosis,
+} from "./platform/contract";
 import type { ProjectClassification, DoctorDiagnostics } from "./platform/dtos";
 
 /** Resolves to `true` only for the `any` type. */
@@ -57,32 +78,32 @@ export const _classificationIsProjectSource: [ClassificationT] extends [ProjectS
 // `Record<string, unknown>` / a hand-inlined literal must stay pinned to
 // their real DTO. ─────────────────────────────────────────────────────────
 
-type ClassifyProjectT = Awaited<ReturnType<typeof api.app.classifyProject>>;
+type ClassifyProjectT = Awaited<ReturnType<typeof appLifecycleCapability.classifyProject>>;
 export const _classifyProjectIsProjectClassification: AssertDto<
   ClassifyProjectT,
   ProjectClassification
 > = true;
 
-type GetDesktopPrefsT = Awaited<ReturnType<typeof api.app.getDesktopPrefs>>;
+type GetDesktopPrefsT = Awaited<ReturnType<typeof appLifecycleCapability.getDesktopPrefs>>;
 export const _getDesktopPrefsIsDesktopPrefs: AssertDto<GetDesktopPrefsT, DesktopPrefs> = true;
 
-type GetDesktopProjectStateT = Awaited<ReturnType<typeof api.app.getDesktopProjectState>>;
+type GetDesktopProjectStateT = Awaited<ReturnType<typeof appLifecycleCapability.getDesktopProjectState>>;
 export const _getDesktopProjectStateIsProjectStateOrNull: AssertDto<
   GetDesktopProjectStateT,
   ProjectState | null
 > = true;
 
-type CreateProjectT = Awaited<ReturnType<typeof api.app.createProject>>;
+type CreateProjectT = Awaited<ReturnType<typeof appLifecycleCapability.createProject>>;
 export const _createProjectIsCreateProjectResult: AssertDto<
   CreateProjectT,
   CreateProjectResult
 > = true;
 
-type AdoptFolderT = Awaited<ReturnType<typeof api.app.adoptFolder>>;
+type AdoptFolderT = Awaited<ReturnType<typeof appLifecycleCapability.adoptFolder>>;
 export const _adoptFolderIsCreateProjectResult: AssertDto<
   AdoptFolderT,
   CreateProjectResult
 > = true;
 
-type DoctorT = Awaited<ReturnType<typeof api.doctor>>;
+type DoctorT = Awaited<ReturnType<typeof doctorCapability.getDoctorDiagnostics>>;
 export const _doctorIsDoctorDiagnostics: AssertDto<DoctorT, DoctorDiagnostics> = true;

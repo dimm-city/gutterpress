@@ -1,5 +1,7 @@
 /**
- * Shared remote-operation hooks for remote:* server routes.
+ * Shared remote-operation hooks for the remote:* IPC handlers in
+ * `electron/api/remote.ts` (through SFE-P5c3, also the now-deleted
+ * `remote/*​/+server.ts` routes).
  *
  * Storage lives in the single collapsed host object (ARCH review #31,
  * `./host-services.ts`) — `getRemoteHooks()` is a thin derived selector over
@@ -31,7 +33,7 @@ export interface LibModule {
   knownForgeTokenUrl?(host: string): Promise<string | null>;
   syncProject?(args: { projectDir: string; tokenStore: TokenStore; message?: string; authorName?: string; authorEmail?: string }): Promise<unknown>;
   /** Fetch every remote branch so the copy picker sees copies created elsewhere (#273). */
-  refreshRemoteCopies?(args: { projectDir: string; tokenStore: TokenStore }): Promise<{ refreshed: boolean }>;
+  refreshRemoteCopies?(args: { projectDir: string; tokenStore: TokenStore }): Promise<{ refreshed: boolean; reason?: "no-remote" | "auth" | "offline" }>;
   /** Best-effort revoke at Google (never throws) — used by remote:disconnectHost
    *  for `kind: "google-oauth"` publish credentials (#221). */
   revokeGoogleCredential?(refreshToken: string): Promise<void>;

@@ -1,0 +1,91 @@
+{
+  "name": "@dimm-city/vscode-markdown-editor",
+  "version": "0.0.2-87.gp.1",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "description": "Internal Gutterpress fork of @vscode/markdown-editor@0.0.2-87 (SFE-P1b; pinned 0.0.2-84 -> -85 on 2026-09-02 and -85 -> -87 on 2026-09-03: dist/index.js and dist/index.d.ts are byte-identical across all three, only dist/web-editors.* changed upstream), carrying nine additive patches (29 hunks: 25 in dist/index.js, 4 in dist/index.d.ts) - the renderCustomBlock seam, the SFE-P3f measurement patch, groupBlocks, decorateInactiveBlock, afterDocumentMount, renderEpoch, columns and chips. Not published; see NOTICE and PATCHES.md.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "typesVersions": {
+    "*": {
+      "config": [
+        "./dist/config.d.ts"
+      ],
+      "commands": [
+        "./dist/commands.d.ts"
+      ]
+    }
+  },
+  "files": [
+    "dist",
+    "src/view/editor.css",
+    "src/view/themes/default.css",
+    "src/view/themes/github.css",
+    "src/view/themes/vscode-github.css",
+    "src/view/themes/vscode-default.css",
+    "src/contrib/comments/commentInput.css",
+    "src/contrib/comments/commentWidget.css",
+    "src/contrib/find/find.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.js"
+    },
+    "./commands": {
+      "types": "./dist/commands.d.ts",
+      "import": "./dist/commands.js"
+    },
+    "./web-editors": {
+      "types": "./dist/web-editors.d.ts",
+      "import": "./dist/web-editors.js"
+    },
+    "./editor.css": "./src/view/editor.css",
+    "./themes/default.css": "./src/view/themes/default.css",
+    "./themes/github.css": "./src/view/themes/github.css",
+    "./themes/vscode-github.css": "./src/view/themes/vscode-github.css",
+    "./themes/vscode-default.css": "./src/view/themes/vscode-default.css",
+    "./commentInput.css": "./src/contrib/comments/commentInput.css",
+    "./commentWidget.css": "./src/contrib/comments/commentWidget.css"
+  },
+  "dependencies": {
+    "@vscode/codicons": "0.0.46-36",
+    "@vscode/diff": "0.0.2-0",
+    "@vscode/observables": "^0.1.1-0",
+    "katex": "^0.16.33",
+    "micromark": "^4.0.1",
+    "micromark-extension-frontmatter": "^2.0.0",
+    "micromark-extension-gfm": "^3.0.0",
+    "micromark-extension-gfm-strikethrough": "^2.1.0",
+    "micromark-extension-gfm-table": "^2.1.1",
+    "micromark-extension-gfm-task-list-item": "^2.1.0",
+    "micromark-extension-math": "^3.1.0"
+  },
+  "scripts": {
+    "verify-vendored": "node scripts/verify-vendored.mjs"
+  },
+  "gutterpressFork": {
+    "upstreamName": "@vscode/markdown-editor",
+    "upstreamVersion": "0.0.2-87",
+    "upstreamGitHead": "d9273d06982df9665363145e27b502205abe2ba1",
+    "upstreamRepository": {
+      "type": "git",
+      "url": "https://github.com/microsoft/vscode-packages",
+      "directory": "vscode-team-tools/packages/markdown-editor"
+    },
+    "vendoredFrom": {
+      "tarball": "https://registry.npmjs.org/@vscode/markdown-editor/-/markdown-editor-0.0.2-87.tgz",
+      "integrity": "sha512-c1T5c2p2btf8NGVARkDN/qGezyZ25xCL/2KXqwsQeh9NmcH4bPZi2CtaeaLmQU2EyHS7WpdYKcIdwGMrJstLEg=="
+    },
+    "patches": "nine patches, 29 hunks (25 in dist/index.js, 4 in dist/index.d.ts), 28 gp-fork: markers in dist/index.js: 1 renderCustomBlock (SFE-P1b), 2 measurement (SFE-P3f), 3 groupBlocks, 4 decorateInactiveBlock, 5 afterDocumentMount, 6 renderCustomBlock for every block kind, 7 renderEpoch, 8 columns, 9 chips - inventory table and per-patch sections in PATCHES.md",
+    "removalTrigger": "Delete this fork only when all nine per-patch removal triggers in PATCHES.md are met (each patch has its own 'upstreaming / removal trigger' section; Patch 1's is a generic block-render hook on BlockViewOptions, or that seam upstreamed as an accepted PR). Re-pin the upstream version only per PATCHES.md's 'Re-pin trigger' section - pin age alone is not a trigger (0.0.2-111, checked 2026-09-28, met none). See docs/plans/source-first-editor/runs/SFE-P1b.md."
+  }
+}

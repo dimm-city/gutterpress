@@ -235,51 +235,50 @@ describe("AppToolbar — small-screen pane switcher (defunct style tab removed)"
   });
 });
 
-// ── One segmented control per workspace mode ─────────────────────────────────
+// -- One segmented control: Edit / Read ------
 //
-// `WorkspaceMode` has three values; the toolbar used to carry FOUR controls for
-// them (an Edit/Read segmented pair, an eye button for `focus`, and a pen
-// button that toggled the editor). The segmented control is now the whole
-// story: one segment per enum value, nothing keyboard-only, no icon buttons
-// duplicating it.
+// The toolbar used to carry FOUR controls for the workspace mode (an Edit/Read
+// segmented pair, an eye button for `focus`, and a pen button that toggled the
+// editor), then three segments with Focus as a mode of its own. Focus is Edit
+// without the preview -  a way of writing, not a third thing to read -  so it
+// is a toggle on the source editor's toolbar and the segmented control has
+// exactly the two modes there are to choose between.
 describe("AppToolbar — the mode control is the whole mode model", () => {
-  test("the segmented group has one segment per WorkspaceMode value", () => {
+  test("the segmented group has Edit and Read, and no Focus segment", () => {
     const src = toolbar();
     const group = src.slice(src.indexOf('<div class="mode-group">'), src.indexOf("</div>", src.indexOf('<div class="mode-group">')));
     expect(group).toContain('onSetMode("editor")');
     expect(group).toContain('onSetMode("viewer")');
-    expect(group).toContain('onSetMode("focus")');
     expect(group).toContain('aria-label="Edit"');
     expect(group).toContain('aria-label="Read"');
-    expect(group).toContain('aria-label="Focus"');
+    expect(src).not.toContain('onSetMode("focus")');
+    expect(src).not.toContain('aria-label="Focus"');
   });
 
-  test("segments are mutually exclusive — active/aria-pressed track the mode exactly", () => {
+  test("segments are mutually exclusive - Edit lights up for Edit and its Focus sub-state, Read for Read", () => {
     const src = toolbar();
-    // Edit used to light up for `focus` too (it was `mode !== "viewer"`), which
-    // is precisely the ambiguity a third segment removes.
-    expect(src).toContain('class:active={mode === "editor"}');
+    expect(src).toContain('class:active={mode !== "viewer"}');
     expect(src).toContain('class:active={mode === "viewer"}');
-    expect(src).toContain('class:active={mode === "focus"}');
+    expect(src).not.toContain('mode === "focus"');
     expect(src).not.toContain("editorShowing");
   });
 
-  test("the collapsed menu twin carries the same three modes", () => {
+  test("the collapsed menu twin carries the same two modes", () => {
     const src = toolbar();
     const menu = src.slice(src.indexOf('<details class="menu mode-menu">'), src.indexOf("</details>", src.indexOf('<details class="menu mode-menu">')));
-    for (const m of ["editor", "viewer", "focus"]) {
+    for (const m of ["editor", "viewer"]) {
       expect(menu).toContain(`onSetMode("${m}"); closeMenu(e);`);
     }
-    // Its summary icon reports the CURRENT mode — all three of them.
-    expect(src).toMatch(/"book-open"[\s\S]{0,80}?"maximize"[\s\S]{0,80}?"pen-line"/);
+    expect(menu).not.toContain("focus");
+    // Its summary icon reports the CURRENT mode.
+    expect(src).toContain('mode === "viewer" ? "book-open" : "pen-line"');
   });
 
-  test("Focus is unavailable below the narrow breakpoint — there is no side-by-side viewer to hide", () => {
-    const src = toolbar();
-    // Matches togglePreview()'s own `if (!lifecycle.previewUrl || isNarrow) return`
-    // guard: narrow layouts pick their single pane with the tab bar, so a
-    // viewer-less `focus` there leaves the preview on screen but inert.
-    expect(src).toContain("disabled={editorToggleDisabled || isNarrow}");
+  test("Focus lives on the source editor's toolbar, where the preview it hides is", () => {
+    const actions = read("src/lib/editor/toolbar-actions.ts");
+    expect(actions).toMatch(/id: "focus-mode"/);
+    // ...and is dropped for the paged editor, which has no preview beside it.
+    expect(actions).toContain('if (item.id === "focus-mode" && opts.richMode) return false;');
   });
 
   test("the eye and pen icon buttons are gone, along with the props that fed them", () => {
@@ -310,7 +309,8 @@ describe("AppToolbar — the mode control is the whole mode model", () => {
     const src = toolbar();
     // The pen button's tooltip was the only place the app named Ctrl+E.
     expect(src).toContain("(Ctrl+E)");
-    expect(src).toContain("(Ctrl+Shift+F)");
+    // Ctrl+Shift+F is named where Focus lives: the source editor's toolbar.
+    expect(read("src/lib/editor/toolbar-actions.ts")).toContain("(Ctrl+Shift+F)");
   });
 });
 

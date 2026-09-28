@@ -4,8 +4,8 @@
  * §1/§8 / ADR 0004: this module imports ONLY pure JS — markdown-it and its
  * plugins, Gutterpress's inlined marker parser (`markers.js`), and the node-free
  * leveled logger (console-only). It contains NO `node:*`,
- * NO `fs`/`path`/`url`, and NO filesystem access, so it can be imported by the
- * browser renderer (the PWA WebAdapter, #33) AND bundled into the
+ * NO `fs`/`path`/`url`, and NO filesystem access, so it can be imported in the
+ * browser (via `gutterpress/render`) AND bundled into the
  * `bun build --compile` CLI binary alike.
  *
  * The plugin *author* types and the markdown-it factory live here (not in
@@ -418,6 +418,32 @@ export function collectPluginStyleGroups(plugins: LoadedPlugin[]): PluginStyleGr
     groups.push({ name: p.name, layer, paths, ...(css ? { css } : {}) });
   }
   return groups;
+}
+
+/**
+ * The extension-CSS block of a built document (`assemble.ts`'s "extension
+ * css" slot): one `@layer` statement naming every group's layer in list
+ * order, then each group's CSS inside its own layer. Pure: each group's
+ * `css` is the complete text for that layer, so a caller that inlines the
+ * group's stylesheet files does that first (`renderChapters`, the desktop
+ * editor's book CSS), and a caller that cannot serve files passes the `css`
+ * export alone (the VS Code extension's webview). A group whose `css` is
+ * empty declares no layer, so an extension with no CSS leaves no trace;
+ * `""` when none remain. Shared by every consumer so the editor and the
+ * printed page agree on the cascade by construction.
+ */
+export function layerExtensionCss(
+  groups: ReadonlyArray<{ name: string; layer: string; css?: string }>,
+): string {
+  const blocks: string[] = [];
+  const layers: string[] = [];
+  for (const group of groups) {
+    const css = group.css?.trim();
+    if (!css) continue;
+    layers.push(group.layer);
+    blocks.push(`/* ${group.name} */\n@layer ${group.layer} {\n${css}\n}`);
+  }
+  return blocks.length > 0 ? [`@layer ${layers.join(", ")};`, ...blocks].join("\n\n") : "";
 }
 
 /** A cascade-layer name from a plugin name: lowercase `[a-z0-9-]`, starting with a letter. */

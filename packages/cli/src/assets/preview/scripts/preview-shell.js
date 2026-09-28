@@ -19,11 +19,6 @@
   var pendingSwap = null;
   var pendingSwapTimer = null;
   var SCROLL_IDLE_MS = 250;
-  // True while the book iframe has a live in-flow block editor open
-  // (preview-interface.js's blockEditStateChanged, protocol v8). A swap
-  // replaces the whole iframe, so swapping mid-edit would destroy the caret
-  // and the author's uncommitted typing with it — see holdForEdit below.
-  var blockEditOpen = false;
   if (!active) return;
 
   // Transparent bridge relay: forward host-toolbar commands to the active book
@@ -32,25 +27,11 @@
     try {
       if (window.parent !== window && e.source === window.parent) {
         if (active && active.contentWindow) active.contentWindow.postMessage(e.data, '*');
-        // Opening the in-flow editor needs KEYBOARD focus in the book, and a
-        // postMessage carries no user activation the book could focus itself
-        // with. The host focuses this shell frame; this hands it the rest of
-        // the way down to the active book iframe, whose own window-focus
-        // listener then seats the caret.
-        if (e.data && e.data.type === 'gutterpress:cmd' && e.data.cmd === 'beginBlockEdit' && active) {
-          try { active.focus(); } catch (_f) {}
-        }
       } else if (active && e.source === active.contentWindow) {
         var data = e.data;
         if (data && data.type === 'gutterpress:event' && data.name === 'viewportChanged') {
           lastViewportChangeAt = Date.now();
           if (pendingSwap) armPendingSwap();
-        }
-        if (data && data.type === 'gutterpress:event' && data.name === 'blockEditStateChanged') {
-          blockEditOpen = !!(data.detail && data.detail.open);
-          // Releasing the hold: a swap that arrived mid-edit is still queued,
-          // so start it now that the caret is gone.
-          if (!blockEditOpen && pendingSwap) armPendingSwap();
         }
         // A swapped-in frame's own lifecycle events are the shell's business,
         // not the host's: finish() reports the swap (see reportSwapComplete).
@@ -171,12 +152,6 @@
   }
 
   function swap(instance, revision) {
-    // The editor lived in the frame we are about to retire, so the hold is
-    // void whatever the book document last reported. Every update path reaches
-    // swap() through armPendingSwap(), which refuses while an edit is open, so
-    // this only fires when the frame goes away some other way — but a flag
-    // left stuck true would freeze hot reload for the session.
-    blockEditOpen = false;
     discardBuilding();
     var frame = document.createElement('iframe');
     frame.style.visibility = 'hidden';
@@ -271,13 +246,6 @@
 
   function armPendingSwap() {
     if (pendingSwapTimer !== null) clearTimeout(pendingSwapTimer);
-    // An open in-flow editor holds the swap indefinitely — there is no timeout
-    // to race, because an author may legitimately sit in one block for
-    // minutes. The hold is released by blockEditStateChanged{open:false},
-    // which preview-interface.js emits on EVERY close path (commit, cancel,
-    // blur, SPA-forced), and defensively by swap() below in case the frame
-    // carrying the editor goes away first.
-    if (blockEditOpen) return;
     var delay = Math.max(0, SCROLL_IDLE_MS - (Date.now() - lastViewportChangeAt));
     if (delay === 0) beginPendingSwap();
     else pendingSwapTimer = setTimeout(beginPendingSwap, delay);
@@ -303,10 +271,10 @@
   // `relayout()` unwraps the strips and re-runs `buildStrips()` from
   // scratch before re-measuring, precisely so a mutation that adds or
   // removes a page-context run is seen. Do not cite the old objection as a
-  // reason a DOM mutation cannot be re-paginated — it can, and the inline
-  // editing work depends on it (docs/inline-editing-plan.md, ADR 0009
-  // decision 4 as revised). The perf comparison above still stands on its
-  // own for the full-document reload path.
+  // reason a DOM mutation cannot be re-paginated — it can (this was proven by
+  // the in-flow block editing feature, which relied on it and was itself
+  // deleted in SFE-P4; see ADR 0009 decision 4 history). The perf comparison
+  // above still stands on its own for the full-document reload path.
 
   function markActiveReady() {
     onReady(active, function () {

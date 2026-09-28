@@ -12,8 +12,7 @@
  * are type-only imports — ZERO `node:*` / lib value imports.
  */
 
-import type { SyncOutcome } from "../api";
-import type { KeptBothFile, ProjectRemoteDiagnosis } from "../platform/contract";
+import type { KeptBothFile, ProjectRemoteDiagnosis, SyncOutcome } from "../platform/contract";
 
 /** Minimal toast surface the controller drives. */
 interface SyncToast {

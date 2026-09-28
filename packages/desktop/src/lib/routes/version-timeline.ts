@@ -1,4 +1,4 @@
-import type { SnapshotEntry } from "$lib/api";
+import type { SnapshotEntry } from "$lib/platform/contract";
 
 /**
  * Writer-facing view helpers for the "Previous versions" timeline

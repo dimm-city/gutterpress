@@ -12,18 +12,26 @@
  * `bannerDismissed`, `checking`, `downloading`) and calls the intent methods
  * (`init`, `check`, `download`, `applyNow`, `dismissBanner`).
  *
- * PWA-clean (§8 / ADR 0004): pure UI state driven through the platform adapter
- * (`getPlatform()` / `isDesktop()`), ZERO `node:*` imports and no lib value
- * imports. Toast feedback is injected through an accessor seam so this stays
- * decoupled from the Toast component's late (bind:api) initialisation.
+ * PWA-clean (§8 / ADR 0004): pure UI state driven through the updater
+ * capability module (`$lib/update/updater-capability`) plus `isDesktop()`,
+ * ZERO `node:*` imports and no lib value imports. Toast feedback is injected
+ * through an accessor seam so this stays decoupled from the Toast
+ * component's late (bind:api) initialisation.
  */
 
-import { getPlatform, isDesktop } from "$lib/platform";
+import { isDesktop } from "$lib/platform";
+import {
+  applyUpdateNow,
+  checkForUpdate,
+  downloadUpdate,
+  getUpdaterStatus,
+  onUpdaterEvent,
+} from "./updater-capability";
 import type {
   UpdaterAvailableAction,
   UpdaterEvent,
   UpdaterStatus,
-} from "$lib/platform";
+} from "$lib/platform/contract";
 
 /** Minimal toast surface used for update feedback; injected by the component. */
 export interface UpdateToastSink {
@@ -64,12 +72,10 @@ export class UpdateController {
    */
   init(): (() => void) | void {
     if (!isDesktop()) return;
-    const platform = getPlatform();
 
     // Peek at current status so we can surface a banner immediately if an
     // update was found or downloaded during a previous run.
-    platform.updater
-      .getStatus()
+    getUpdaterStatus()
       .then((status: UpdaterStatus) => {
         if (status.stagedVersion) {
           this.readyVersion = status.stagedVersion;
@@ -97,7 +103,7 @@ export class UpdateController {
     // toast on every launch and would double-toast during a manual check
     // (which drives its own feedback from the IPC return value in
     // check()).
-    const off = platform.updater.onEvent((event: UpdaterEvent) => {
+    const off = onUpdaterEvent((event: UpdaterEvent) => {
       if (event.type === "available") {
         this.readyVersion = null;
         this.availableVersion = event.version;
@@ -124,7 +130,7 @@ export class UpdateController {
     this.checking = true;
     this.toast()?.info?.("Checking for updates…");
     try {
-      const status = await getPlatform().updater.check();
+      const status = await checkForUpdate();
       if (status.stagedVersion) {
         // Preserve the staged action even when this re-check itself failed.
         this.readyVersion = status.stagedVersion;
@@ -172,7 +178,7 @@ export class UpdateController {
     const action = this.availableAction;
     this.downloading = true;
     try {
-      const status = await getPlatform().updater.download();
+      const status = await downloadUpdate();
       if (status.stagedVersion) {
         this.readyVersion = status.stagedVersion;
         this.availableVersion = null;
@@ -197,9 +203,8 @@ export class UpdateController {
 
   async applyNow(): Promise<void> {
     if (!isDesktop()) return;
-    const platform = getPlatform();
     try {
-      const result = await platform.updater.applyNow();
+      const result = await applyUpdateNow();
       // On success main quits, installs the update, and relaunches — this
       // code never runs. On failure, reconcile whether the staged action is
       // still retryable before reporting the host's actionable error.
@@ -208,7 +213,7 @@ export class UpdateController {
         // installer is invalidated host-side into an available/download action;
         // mirror the authoritative status so the stale Restart banner clears.
         try {
-          const status = await platform.updater.getStatus();
+          const status = await getUpdaterStatus();
           if (status.stagedVersion) {
             this.readyVersion = status.stagedVersion;
             this.availableVersion = null;

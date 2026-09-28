@@ -1,7 +1,9 @@
 // Cross-origin postMessage bridge for window.previewAPI.
 //
 // The desktop (Svelte toolbar) and this iframe are on different origins
-// (SvelteKit on port A, gutterpress preview on port B), so the toolbar can't
+// (the packaged app's toolbar is served from the app:// origin, or a
+// SvelteKit dev-server port in development; this gutterpress preview iframe
+// is always its own http://localhost:PORT), so the toolbar can't
 // reach window.previewAPI directly. This bridge listens for command
 // messages, calls the local previewAPI, and posts results / events back to
 // the parent window.
@@ -81,21 +83,6 @@
   // context-menu target request.
   window.addEventListener('contextMenuRequested', function (e) {
     post({ type: 'gutterpress:event', name: 'contextMenuRequested', detail: e.detail });
-  });
-  // In-flow block editing (protocol v8). `Requested` is the double-click entry
-  // point — the SPA answers it with a beginBlockEdit command. `Finished`
-  // carries the edited text back for an end the AUTHOR initiated inside the
-  // book (Escape / Cmd+Enter / blur), which the SPA cannot observe. `State`
-  // fires on every open and close, including SPA-initiated ones, and is what
-  // preview-shell.js holds hot-reload swaps on.
-  window.addEventListener('blockEditRequested', function (e) {
-    post({ type: 'gutterpress:event', name: 'blockEditRequested', detail: e.detail });
-  });
-  window.addEventListener('blockEditFinished', function (e) {
-    post({ type: 'gutterpress:event', name: 'blockEditFinished', detail: e.detail });
-  });
-  window.addEventListener('blockEditStateChanged', function (e) {
-    post({ type: 'gutterpress:event', name: 'blockEditStateChanged', detail: e.detail });
   });
 
   // Announce readiness as soon as previewAPI is defined.

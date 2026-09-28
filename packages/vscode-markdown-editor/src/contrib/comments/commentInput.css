@@ -1,0 +1,89 @@
+@import '@vscode/codicons/dist/codicon.css';
+
+.md-comment-input {
+	box-sizing: border-box;
+	display: flex;
+	align-items: flex-end;
+	width: 165px;
+	min-height: 24px;
+	padding: 3px 4px 3px 7px;
+	background-color: var(--vscode-menu-background);
+	color: var(--vscode-input-foreground);
+	border: 1px solid var(--vscode-menu-border);
+	border-radius: 6px;
+	box-shadow: 0 0 12px var(--vscode-widget-shadow);
+	font-family: var(--vscode-font-family);
+	font-size: var(--vscode-font-size);
+}
+
+.md-comment-input-textarea {
+	flex: 1 1 auto;
+	width: 0;
+	min-width: 0;
+	min-height: 16px;
+	max-height: 160px;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	outline: none;
+	resize: none;
+	overflow-y: hidden;
+	box-sizing: border-box;
+	background: transparent;
+	color: var(--vscode-input-foreground);
+	font: inherit;
+	line-height: 16px;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	caret-color: var(--vscode-editorCursor-foreground);
+}
+
+.md-comment-input-textarea::placeholder {
+	color: var(--vscode-input-placeholderForeground);
+	opacity: 1;
+}
+
+.md-comment-input-measure {
+	position: absolute;
+	visibility: hidden;
+	width: max-content;
+	height: 0;
+	overflow: hidden;
+	white-space: pre;
+	font: inherit;
+}
+
+.md-comment-input-submit {
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+	margin: 0 0 0 4px;
+	padding: 0;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--vscode-icon-foreground);
+	cursor: pointer;
+}
+
+.md-comment-input-submit:hover:not(:disabled) {
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.md-comment-input-submit:disabled {
+	cursor: default;
+}
+
+.md-comment-input .md-comment-input-submit .codicon {
+	display: block;
+	flex: none;
+	font-size: 12px;
+	line-height: 12px;
+}
+
+.md-comment-active .md-cursor {
+	display: none;
+}

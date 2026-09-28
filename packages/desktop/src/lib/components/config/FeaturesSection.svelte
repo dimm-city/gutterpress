@@ -18,7 +18,7 @@
    */
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
-  import { api } from "$lib/api";
+  import { openExternal } from "$lib/files/files-capability";
   import { extensionStatus, extensionSourceLabel } from "./config-helpers";
   import type { ExtensionsSectionController } from "$lib/routes/extensions-section-controller.svelte";
 
@@ -127,7 +127,7 @@
             <span class="rec-pkg">{match.name}@{match.version}</span>
             <span class="badge">{match.kind === "gutterpress" ? "gutterpress" : "markdown-it plugin"}</span>
             {#if match.npmUrl}
-              <button class="inline-link" onclick={() => match.npmUrl && api.shell.openExternal(match.npmUrl).catch(() => {})}>{match.npmUrl}</button>
+              <button class="inline-link" onclick={() => match.npmUrl && openExternal(match.npmUrl).catch(() => {})}>{match.npmUrl}</button>
             {/if}
           </div>
           <button class="primary small app-btn-primary" onclick={() => controller.addSearched(match)} disabled={controller.busy !== null}>Add</button>
@@ -165,7 +165,7 @@
   .rec-label { font-size: 12px; font-weight: 600; color: var(--app-text); }
   .rec-pkg { font-size: 10px; color: var(--app-text-muted); font-family: var(--app-font-mono); }
   .search-status { font-size: 12px; }
-  /* Opens via api.shell.openExternal (never a bare `<a target="_blank">` in
+  /* Opens via the files capability's openExternal (never a bare `<a target="_blank">` in
      the Electron shell — see ConnectionsSettings.svelte for the pattern). */
   button.inline-link {
     background: transparent;

@@ -79,7 +79,7 @@ describe("NewProjectWizard — M21 default parentDir", () => {
 
   test("loadDefaultParentDir prefers the persisted newProjectParentDir pref", () => {
     const src = readSource();
-    expect(src).toContain("api.app.getDesktopPrefs()");
+    expect(src).toContain("getDesktopPrefs()");
     expect(src).toContain("newProjectParentDir");
   });
 
@@ -224,7 +224,7 @@ describe("NewProjectWizard — ADR 0008 publish targets", () => {
 
   test("the missing-tool probe reads real doctor data for the print tools", () => {
     const src = readSource();
-    expect(src).toContain("api.doctor()");
+    expect(src).toContain("getDoctorDiagnostics()");
     expect(src).toContain("PRINT_TOOL_IDS.includes(t.id)");
   });
 });

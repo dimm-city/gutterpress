@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { addedBuiltInIds } from "../../src/lib/components/config/theme-grid";
-import type { ProjectExtensionEntry } from "../../src/lib/api";
+import type { ProjectExtensionEntry } from "../../src/lib/platform/dtos";
 
 const CARRIES_STYLES = { markdown: false, styles: true, snippets: false, components: false };
 

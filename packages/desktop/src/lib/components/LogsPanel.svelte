@@ -6,11 +6,13 @@
    * by design — the host's `log/list` + `log/read` routes are confined to the
    * fs-guard's read-only roots (userData/logs).
    *
-   * PWA-clean (§8 / ADR 0004): all host work through `api.log.*`.
+   * PWA-clean (§8 / ADR 0004): all host work through
+   * `$lib/app-lifecycle/app-lifecycle-capability`'s `listLogs`/`readLog`
+   * (SFE-P5c1: typed IPC, not `api.log.*`).
    */
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
-  import { api } from "$lib/api";
+  import { listLogs, readLog } from "$lib/app-lifecycle/app-lifecycle-capability";
   import type { LogFileEntry } from "$lib/platform/dtos";
 
   let files = $state<LogFileEntry[]>([]);
@@ -26,7 +28,7 @@
     loading = true;
     errorMessage = null;
     try {
-      files = await api.log.list();
+      files = await listLogs();
       if (selectFirst) {
         const keep = files.find((f) => f.path === selectedPath);
         const target = keep ?? files[0];
@@ -47,7 +49,7 @@
     selectedPath = path;
     reading = true;
     try {
-      content = (await api.log.read(path)) ?? "";
+      content = (await readLog(path)) ?? "";
     } catch {
       content = "";
       errorMessage = "That log couldn't be read right now.";

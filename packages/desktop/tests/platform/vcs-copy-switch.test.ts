@@ -1,68 +1,74 @@
 /**
- * Route-level coverage for #273's copy-switching surface (`vcs/list-branches`
- * and `vcs/switch-branch`), which route-scoping.test.ts only covers for the
- * project-path guard. This file covers:
- *  - happy-path forwarding to the lib, including `list-branches`' `null`
+ * Handler-level coverage for #273's copy-switching surface
+ * (`electron/api/vcs.ts`'s `vcsListBranches` / `vcsSwitchBranch`), which
+ * vcs-ipc.test.ts only covers for the project-path guard. Ported from the
+ * route-level suite upstream wrote against `src/routes/api/vcs/{list-branches,
+ * switch-branch}/+server.ts` (deleted with the local server, SFE-P5d); IPC has
+ * no HTTP status, so every rejection is asserted by its message. This file
+ * covers:
+ *  - happy-path forwarding to the lib, including `listBranches`' `null`
  *    passthrough (nothing to switch between);
- *  - `switch-branch`'s 400 on a missing/blank branch name;
- *  - `switch-branch` pauses the host's auto-snapshot/auto-sync timers around
+ *  - `switchBranch`'s rejection of a missing/blank branch name;
+ *  - `switchBranch` pauses the host's auto-snapshot/auto-sync timers around
  *    the checkout and always resumes them, success or failure (VcsHooks
  *    `pauseTimers`/`resumeTimers`);
- *  - `switch-branch` clears the crash-recovery draft for every path the lib
- *    reports as changed — the mechanism recovery.ts's header (#273) documents
+ *  - `switchBranch` clears the crash-recovery draft for every path the lib
+ *    reports as changed - the mechanism recovery.ts's header (#273) documents
  *    for "a draft from the old copy must never be offered over the new
  *    copy's version of the same file", and does so best-effort (a recovery
  *    failure never turns a successful switch into a reported error).
  */
-import { afterEach, describe, expect, test } from "bun:test";
-import { isHttpError } from "@sveltejs/kit";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import {
+  getHostServices,
   registerHostServices,
   type HostServices,
 } from "../../electron/server-bridge/host-services";
 import { makeHostServices } from "../support/host-services-fake";
-import { POST as vcsListBranches } from "../../src/routes/api/vcs/list-branches/+server";
-import { POST as vcsSwitchBranch } from "../../src/routes/api/vcs/switch-branch/+server";
+import { vcsListBranches, vcsSwitchBranch } from "../../electron/api/vcs";
 
-function request(body?: unknown): Request {
-  return new Request("http://local.test", {
-    method: "POST",
-    body: JSON.stringify(body ?? {}),
-    headers: { "content-type": "application/json" },
-  });
-}
+let base: string;
+let projectDir: string;
+let savedHostServices: HostServices | null;
 
-async function caught(p: Promise<unknown>): Promise<{ status: number; message: unknown }> {
+/** The rejection message of a promise, or null when it resolved. */
+async function messageOf(p: Promise<unknown>): Promise<string | null> {
   try {
     await p;
-    throw new Error("expected the promise to reject, but it resolved");
+    return null;
   } catch (e) {
-    if (!isHttpError(e)) throw e;
-    return { status: e.status, message: (e.body as { message?: unknown }).message };
+    return e instanceof Error ? e.message : String(e);
   }
 }
 
-function openProject(overrides: Parameters<typeof makeHostServices>[0] = {}): HostServices {
-  const services = makeHostServices({
-    fsGuard: { projectRoots: () => ["/abs/project"], readOnlyRoots: () => [] as string[] },
-    ...overrides,
-  });
-  registerHostServices(services);
-  return services;
+function openProject(overrides: Parameters<typeof makeHostServices>[0] = {}): void {
+  registerHostServices(
+    makeHostServices({
+      fsGuard: { projectRoots: () => [projectDir], readOnlyRoots: () => [] as string[] },
+      ...overrides,
+    }),
+  );
 }
 
-afterEach(() => {
-  registerHostServices(undefined as unknown as HostServices);
+beforeEach(async () => {
+  savedHostServices = getHostServices();
+  base = await mkdtemp(path.join(tmpdir(), "gutterpress-vcs-copy-switch-"));
+  projectDir = path.join(base, "project");
+  await mkdir(projectDir, { recursive: true });
 });
 
-describe("POST /api/vcs/list-branches", () => {
-  test("503 when vcs hooks are not registered", async () => {
+afterEach(async () => {
+  await rm(base, { recursive: true, force: true });
+  registerHostServices(savedHostServices as HostServices);
+});
+
+describe("vcs:listBranches", () => {
+  test("fails closed when vcs hooks are not registered", async () => {
     openProject({ vcs: undefined });
-    const { status, message } = await caught(
-      vcsListBranches({ request: request({ projectDir: "/abs/project" }) } as never),
-    );
-    expect(status).toBe(503);
-    expect(message).toBe("VCS hooks not registered");
+    expect(await messageOf(vcsListBranches(projectDir))).toBe("VCS hooks not registered");
   });
 
   test("forwards to lib.listLocalBranches and returns its result", async () => {
@@ -72,64 +78,60 @@ describe("POST /api/vcs/list-branches", () => {
         loadLib: async () => ({
           listLocalBranches: async (dir: string) => {
             calls.push(dir);
-            return { current: "main", branches: ["main", "second-copy"] };
+            return { current: "main", branches: ["main", "second-copy"], remoteOnly: [] };
           },
         }),
       } as never,
     });
-    const res = await vcsListBranches({ request: request({ projectDir: "/abs/project" }) } as never);
-    expect(await res.json()).toEqual({ current: "main", branches: ["main", "second-copy"] });
-    expect(calls).toEqual(["/abs/project"]);
+    expect(await vcsListBranches(projectDir)).toEqual({
+      current: "main",
+      branches: ["main", "second-copy"],
+      remoteOnly: [],
+    });
+    expect(calls).toEqual([projectDir]);
   });
 
   test("passes a null result straight through (nothing to switch between)", async () => {
     openProject({
       vcs: { loadLib: async () => ({ listLocalBranches: async () => null }) } as never,
     });
-    const res = await vcsListBranches({ request: request({ projectDir: "/abs/project" }) } as never);
-    expect(await res.json()).toBeNull();
+    expect(await vcsListBranches(projectDir)).toBeNull();
   });
 });
 
-describe("POST /api/vcs/switch-branch", () => {
-  test("503 when vcs hooks are not registered", async () => {
+describe("vcs:switchBranch", () => {
+  test("fails closed when vcs hooks are not registered", async () => {
     openProject({ vcs: undefined });
-    const { status, message } = await caught(
-      vcsSwitchBranch({ request: request({ projectDir: "/abs/project", branch: "main" }) } as never),
-    );
-    expect(status).toBe(503);
-    expect(message).toBe("VCS hooks not registered");
+    expect(await messageOf(vcsSwitchBranch(projectDir, "main"))).toBe("VCS hooks not registered");
   });
 
-  test("400 when branch is missing or blank", async () => {
+  test("rejects a missing or blank branch name before touching the lib", async () => {
     openProject({ vcs: { loadLib: async () => ({}) } as never });
     for (const branch of [undefined, "", "   "]) {
-      const { status, message } = await caught(
-        vcsSwitchBranch({ request: request({ projectDir: "/abs/project", branch }) } as never),
+      expect(await messageOf(vcsSwitchBranch(projectDir, branch))).toBe(
+        "vcs:switchBranch requires a branch name",
       );
-      expect(status).toBe(400);
-      expect(message).toBe("vcs/switch-branch requires a branch name");
     }
   });
 
   test("pauses timers before the checkout, resumes after, and clears recovery for every changed path", async () => {
     const order: string[] = [];
     const recoveryCleared: string[] = [];
+    const changed = [path.join(projectDir, "chapter-01.md"), path.join(projectDir, "chapter-02.md")];
     openProject({
       vcs: {
         loadLib: async () => ({
           switchBranch: async (opts: { projectDir: string; branch: string }) => {
             order.push(`switchBranch(${opts.branch})`);
-            return {
-              current: opts.branch,
-              changedFiles: ["/abs/project/chapter-01.md", "/abs/project/chapter-02.md"],
-            };
+            return { current: opts.branch, changedFiles: changed };
           },
         }),
         pauseTimers: (dir: string) => order.push(`pause(${dir})`),
         resumeTimers: (dir: string) => order.push(`resume(${dir})`),
       } as never,
       recovery: {
+        write: async () => ({ ok: true }),
+        list: async () => [],
         clear: async (filePath: string) => {
           recoveryCleared.push(filePath);
           return { ok: true };
@@ -137,21 +139,12 @@ describe("POST /api/vcs/switch-branch", () => {
       },
     });
 
-    const res = await vcsSwitchBranch({
-      request: request({ projectDir: "/abs/project", branch: "second-copy" }),
-    } as never);
-    expect(await res.json()).toEqual({
+    expect(await vcsSwitchBranch(projectDir, "second-copy")).toEqual({
       current: "second-copy",
-      changedFiles: ["/abs/project/chapter-01.md", "/abs/project/chapter-02.md"],
+      changedFiles: changed,
     });
-    expect(order).toEqual([
-      "pause(/abs/project)",
-      "switchBranch(second-copy)",
-      "resume(/abs/project)",
-    ]);
-    expect(recoveryCleared.sort()).toEqual(
-      ["/abs/project/chapter-01.md", "/abs/project/chapter-02.md"].sort(),
-    );
+    expect(order).toEqual([`pause(${projectDir})`, "switchBranch(second-copy)", `resume(${projectDir})`]);
+    expect(recoveryCleared.sort()).toEqual([...changed].sort());
   });
 
   test("resumes timers even when the lib call fails, and never clears recovery", async () => {
@@ -168,39 +161,43 @@ describe("POST /api/vcs/switch-branch", () => {
         pauseTimers: (dir: string) => order.push(`pause(${dir})`),
         resumeTimers: (dir: string) => order.push(`resume(${dir})`),
       } as never,
-      recovery: { clear: async () => { recoveryCalled = true; return { ok: true }; } },
+      recovery: {
+        write: async () => ({ ok: true }),
+        list: async () => [],
+        clear: async () => {
+          recoveryCalled = true;
+          return { ok: true };
+        },
+      },
     });
 
-    const { status } = await caught(
-      vcsSwitchBranch({ request: request({ projectDir: "/abs/project", branch: "second-copy" }) } as never),
+    // The lib's own friendly message passes through friendlyVcsError verbatim.
+    expect(await messageOf(vcsSwitchBranch(projectDir, "second-copy"))).toBe(
+      "no version history yet. Enable version history first.",
     );
-    expect(status).toBe(422); // the lib's own friendly message passes through
-    expect(order).toEqual(["pause(/abs/project)", "switchBranch:throw", "resume(/abs/project)"]);
+    expect(order).toEqual([`pause(${projectDir})`, "switchBranch:throw", `resume(${projectDir})`]);
     expect(recoveryCalled).toBe(false);
   });
 
   test("a recovery-clear failure never turns a successful switch into a reported error", async () => {
+    const changed = [path.join(projectDir, "chapter-01.md")];
     openProject({
       vcs: {
         loadLib: async () => ({
-          switchBranch: async () => ({
-            current: "second-copy",
-            changedFiles: ["/abs/project/chapter-01.md"],
-          }),
+          switchBranch: async () => ({ current: "second-copy", changedFiles: changed }),
         }),
       } as never,
       recovery: {
+        write: async () => ({ ok: true }),
+        list: async () => [],
         clear: async () => {
           throw new Error("disk full");
         },
       },
     });
-    const res = await vcsSwitchBranch({
-      request: request({ projectDir: "/abs/project", branch: "second-copy" }),
-    } as never);
-    expect(await res.json()).toEqual({
+    expect(await vcsSwitchBranch(projectDir, "second-copy")).toEqual({
       current: "second-copy",
-      changedFiles: ["/abs/project/chapter-01.md"],
+      changedFiles: changed,
     });
   });
 
@@ -212,9 +209,9 @@ describe("POST /api/vcs/switch-branch", () => {
         }),
       } as never,
     });
-    const res = await vcsSwitchBranch({
-      request: request({ projectDir: "/abs/project", branch: "second-copy" }),
-    } as never);
-    expect(await res.json()).toEqual({ current: "second-copy", changedFiles: [] });
+    expect(await vcsSwitchBranch(projectDir, "second-copy")).toEqual({
+      current: "second-copy",
+      changedFiles: [],
+    });
   });
 });

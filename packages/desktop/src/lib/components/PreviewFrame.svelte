@@ -69,7 +69,7 @@
   drives native viewer layout and the postMessage command bridge (preview-client.ts).
   allow-same-origin is required too: without it the sandboxed frame gets an
   opaque origin, which breaks its own same-origin resource fetches (fonts,
-  images, the adapter-node routes it's served from) — normally allow-scripts +
+  images, the CLI preview server's own routes it's served from) — normally allow-scripts +
   allow-same-origin together would let a same-origin frame strip its own
   sandbox, but that escape needs the frame's real origin to match the
   embedding document's, and this frame's real origin (http://127.0.0.1:<port>)

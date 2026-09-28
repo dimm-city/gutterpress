@@ -10,26 +10,25 @@ import { checkCss, type PrintSafeWarning } from "gutterpress";
 import { EditorState } from "@codemirror/state";
 import { CompletionContext } from "@codemirror/autocomplete";
 
-// cssDiagnosticsSource calls api.lint.checkCss which posts to /api/lint/check-css.
-// In tests there is no running server, so we mock globalThis.fetch to call the
-// real lib checkCss directly — exercising the same warning→diagnostic mapping.
-const origFetch = globalThis.fetch;
+// cssDiagnosticsSource calls $lib/lint/lint-capability's checkCss, which goes
+// through window.electron.lint.checkCss (typed IPC, SFE-P5c4). In tests
+// there is no real Electron bridge, so we stub window.electron.lint.checkCss
+// to call the real lib checkCss directly — exercising the same
+// warning→diagnostic mapping the IPC handler (electron/api/lint.ts) does.
 beforeEach(() => {
-  // @ts-expect-error test stub
-  globalThis.fetch = async (url: string, init?: RequestInit) => {
-    if (typeof url === "string" && url.endsWith("/api/lint/check-css")) {
-      const body = init?.body ? JSON.parse(init.body as string) : {};
-      const warnings = checkCss(body.content ?? "", body.cssPath ?? undefined);
-      return new Response(JSON.stringify(warnings), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    return origFetch(url, init);
+  // @ts-expect-error test global
+  globalThis.window = {
+    electron: {
+      lint: {
+        checkCss: async (cssPath: string, content: string) =>
+          checkCss(content ?? "", cssPath ?? undefined),
+      },
+    },
   };
 });
 afterEach(() => {
-  globalThis.fetch = origFetch;
+  // @ts-expect-error test global
+  globalThis.window = undefined;
 });
 
 // ── languageForPath ──────────────────────────────────────────────────────────

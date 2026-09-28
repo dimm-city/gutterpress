@@ -4,8 +4,7 @@ import {
   keptBothMessage,
   SyncController,
 } from "../../src/lib/routes/sync-controller.svelte";
-import type { SyncOutcome } from "../../src/lib/api";
-import type { KeptBothFile, ProjectRemoteDiagnosis } from "../../src/lib/platform/contract";
+import type { SyncOutcome, KeptBothFile, ProjectRemoteDiagnosis } from "../../src/lib/platform/contract";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
 // these unit tests. The production compiler replaces $state; the class only

@@ -70,6 +70,7 @@
     type EditorLanguage,
   } from "$lib/editor/css-editor";
   import { markerCompletionSource } from "$lib/editor/marker-completions";
+  import { basenameOf } from "$lib/platform/paths";
   import { onMount } from "svelte";
 
   let {
@@ -266,6 +267,13 @@
         ]),
         editableTheme,
         EditorView.lineWrapping,
+        // CodeMirror already emits role=textbox and aria-multiline on
+        // `.cm-content`; only the name is added, so the textbox announces by
+        // the file it shows (the same naming the rich editor's textbox uses)
+        // rather than as an anonymous textbox inside the editor pane's
+        // landmark. Built from `forPath`, not the `filePath` prop, for the
+        // reason the comment above `buildState` gives.
+        EditorView.contentAttributes.of({ "aria-label": forPath ? `${lang === "css" ? "CSS" : "Markdown"} source of ${basenameOf(forPath)}` : "Markdown source" }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged && !applyingExternal) {
             onChange?.(update.state.doc.toString());

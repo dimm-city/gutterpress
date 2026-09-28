@@ -106,13 +106,18 @@ export interface ProjectCapabilities {
  * The ONE switch for what the wide workspace shows. Everything else about the
  * layout is derived from it:
  *
- *   viewMode       = mode === "viewer" && !isNarrow ? "two-column" : "single"
- *   previewVisible = mode !== "focus"
- *   editorVisible  = mode !== "viewer"
+ *   viewMode          = mode === "viewer" && !isNarrow ? "two-column" : "single"
+ *   previewVisible    = mode === "editor"
+ *   editorEditable    = mode !== "viewer"   (the pane is mounted in every mode)
+ *   richSurfaceActive = mode === "viewer"
  *
- * `focus` is editor-only WITH the toolbar and standard chrome kept — it hides
- * the viewer, nothing else. It is transient: `AppSettings.preview.mode` cannot
- * hold it (see that field), so it always persists as `editor`.
+ * Read (`viewer`) mounts the paged editor, which is itself the paginated
+ * book, so it has no separate preview pane: the preview shows beside the
+ * source editor in Edit only.
+ *
+ * `focus` is Edit without the preview pane, standard chrome kept. It is
+ * transient: `AppSettings.preview.mode` cannot hold it (see that field), so
+ * it always persists as `editor`.
  *
  * Orthogonal to `preview.paneMode`, which is the ≤820px single-column tab
  * selector.

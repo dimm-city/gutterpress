@@ -46,18 +46,21 @@ describe("unsyncedStateFor — the one connect-vs-local rule", () => {
 
 describe("main.ts wiring — the sync state machine reacts to its inputs", () => {
   const main = read("electron/main.ts");
+  // SFE-P6b: the fs:watchFolder handler itself moved out of main.ts into its
+  // own registrar (electron/api/fs-watch.ts) — see that module's header.
+  const fsWatch = read("electron/api/fs-watch.ts");
 
   test("fs:watchFolder arms the periodic interval once the watcher is live", () => {
     // The arm must happen INSIDE the watchFolder handler, after
     // startFolderWatch — the open-time arm (preview controller) always lost
     // its watched-dir race and cancelAll() wiped any survivor.
-    const handlerStart = main.indexOf('secureHandle("fs:watchFolder"');
+    const handlerStart = fsWatch.indexOf('secureHandle("fs:watchFolder"');
     expect(handlerStart).toBeGreaterThan(-1);
-    const handler = main.slice(handlerStart, main.indexOf("});", handlerStart) + 3);
-    expect(handler).toContain("startFolderWatch(dirPath)");
-    expect(handler).toContain("autoSync.armInterval(");
-    expect(handler.indexOf("startFolderWatch(dirPath)")).toBeLessThan(
-      handler.indexOf("autoSync.armInterval("),
+    const handler = fsWatch.slice(handlerStart, fsWatch.indexOf("});", handlerStart) + 3);
+    expect(handler).toContain("deps.startFolderWatch(dirPath)");
+    expect(handler).toContain("deps.armSyncInterval(");
+    expect(handler.indexOf("deps.startFolderWatch(dirPath)")).toBeLessThan(
+      handler.indexOf("deps.armSyncInterval("),
     );
   });
 

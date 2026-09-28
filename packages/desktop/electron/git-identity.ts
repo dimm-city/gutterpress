@@ -5,8 +5,9 @@
  *
  * WHY THIS EXISTS
  * ---------------
- * The manual "Save a version" path went through `src/lib/server/settings.ts`'s
- * `gitIdentityArgs()` and therefore carried the configured identity, while every
+ * The manual "Save a version" path went through the route-side (now,
+ * SFE-P5c3, IPC-side) `gitIdentityArgs()` and therefore carried the
+ * configured identity, while every
  * HOST-SCHEDULED commit — the auto-snapshot debounce, auto-sync (which
  * snapshots-first and can write merge commits), the pre-export sync gate, and
  * the recovery flows — called the lib with no identity at all and silently

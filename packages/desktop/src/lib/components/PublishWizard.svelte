@@ -12,7 +12,8 @@
    * buttons) exactly like NewProjectWizard, so it matches the rest of the app.
    *
    * ZERO new backend: it drives the existing PublishSectionController
-   * (api.publish.*). Credentials stay in the host store (safeStorage) and are
+   * (`$lib/publish/publish-capability`, typed IPC — SFE-P5c3). Credentials
+   * stay in the host store (safeStorage) and are
    * reused across projects; the wizard surfaces connection status and lets the
    * author connect/change a key inline.
    *

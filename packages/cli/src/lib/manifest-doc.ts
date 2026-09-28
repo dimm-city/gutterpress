@@ -8,8 +8,9 @@
  * `manifestPathFor` + `loadDoc`, and plugin/theme carried a copy of the
  * "ensure this seq exists" helper differing only by key.
  *
- * Host-side (node:fs); the renderer reaches these through SvelteKit server
- * routes / IPC. Bundle-safe (CLAUDE.md §1/§3): no runtime package.json reads,
+ * Host-side (node:fs); the renderer reaches these through the `manifest:*`/
+ * `plugin:*`/`theme:*` typed IPC channels (`electron/api/*.ts`).
+ * Bundle-safe (CLAUDE.md §1/§3): no runtime package.json reads,
  * no computed dynamic imports, no bundlers.
  */
 import { existsSync } from "node:fs";

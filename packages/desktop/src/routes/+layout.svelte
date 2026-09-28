@@ -3,30 +3,13 @@
   import { onMount } from "svelte";
   import { _loadSettings } from "$lib/settings.svelte";
   import { initTheme, syncThemeFromSettings } from "$lib/theme.svelte";
-  import { isDesktop } from "$lib/platform";
 
   let { children } = $props();
 
-  // PWA service worker (#33 Phase 4). Register ONLY in a real browser
-  // (!isDesktop()) — NEVER under Electron, where the SPA loads via app:// and
-  // ships inside the app (updated as a whole via electron-updater); a SW there
-  // would serve stale cached assets across app updates. The SW precaches the
-  // app shell + embedded preview assets for offline use. SvelteKit auto-registration
-  // is disabled in svelte.config.js so this guarded registration is the only one.
-  onMount(() => {
-    if (isDesktop()) return;
-    // Chromium does not support service workers on Electron's custom app://
-    // scheme. Keep this safe even if the preload bridge fails to initialize.
-    if (location.protocol !== "http:" && location.protocol !== "https:") return;
-    if (!("serviceWorker" in navigator)) return;
-    // import.meta.env.DEV is false in the static production build; skip
-    // registration in `vite dev` because the SW would cache the dev server's
-    // unhashed modules and break HMR.
-    if (import.meta.env.DEV) return;
-    navigator.serviceWorker
-      .register(`${import.meta.env.BASE_URL}service-worker.js`, { type: "module" })
-      .catch((err) => console.warn("[pwa] service worker registration failed:", err));
-  });
+  // SFE-P5a (D10): the PWA service worker registration that used to live here
+  // was deleted along with `src/service-worker.ts` and the dormant WebAdapter
+  // it supported — a future web product is a separate package, not a second
+  // host inside this Electron-only SPA.
 
   // Kick off the settings load so the theme controller can read the persisted
   // appearance.theme. (Idempotent — +page.svelte also calls it.)

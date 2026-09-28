@@ -1,9 +1,9 @@
 /**
  * The layout-marker check is the ONLY path by which `env.layoutWarnings`
  * reaches the desktop Problems panel: the panel is filled by
- * `executeValidation({ category: "source", phase: "pre-build" })` via
- * `/api/lint/project`, and before this check every marker warning died in a
- * build-log line the desktop user never saw.
+ * `executeValidation({ category: "source", phase: "pre-build" })` via the
+ * `lint:project` typed IPC channel, and before this check every marker
+ * warning died in a build-log line the desktop user never saw.
  */
 import { describe, test, expect } from "bun:test";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
@@ -46,6 +46,11 @@ describe("source.markdown.layout-markers", () => {
     }
     expect(results.find((r) => r.code === "extra_bare_marker_token")!.line).toBe(5);
     expect(results.find((r) => r.code === "unknown_marker")!.line).toBe(9);
+  });
+
+  test("a marker glued to its paragraph is a line-numbered warning", async () => {
+    const results = await runOn("@section\ntext\n\n@end-section\n");
+    expect(results.map((r) => [r.code, r.line, r.severity])).toEqual([["marker_glued", 1, "warning"]]);
   });
 
   test("a document with well-formed markers produces no findings", async () => {

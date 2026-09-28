@@ -14,9 +14,11 @@
  * rune fields and calls the intent methods.
  *
  * Host coupling is injected so this stays testable with fakes and PWA-clean
- * (§8 / ADR 0004): the reactive `projectDir` accessor, the `api.publish.*` /
- * `api.dialog.*` / `api.shell.*` host calls, and the `onSaved` / `onConnected`
- * / `onPublished` callbacks (the panel wires these to toasts).
+ * (§8 / ADR 0004): the reactive `projectDir` accessor, the
+ * `$lib/publish/publish-capability` typed-IPC calls (SFE-P5c3) and
+ * `$lib/files/files-capability`'s dialog/shell IPC calls (SFE-P5c1), and the
+ * `onSaved` / `onConnected` / `onPublished` callbacks (the panel wires these
+ * to toasts).
  * `PublishProviderCard` / `PublishRunResult` are type-only imports — ZERO
  * `node:*` / lib value imports.
  */

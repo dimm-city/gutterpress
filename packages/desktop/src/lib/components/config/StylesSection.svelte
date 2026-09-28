@@ -7,14 +7,14 @@
    * almost never needs, so the parent now nests it behind an "Advanced"
    * `<details>` disclosure instead of giving it an always-visible section of
    * its own. No section wrapper or `<h3>` of its own anymore. All state and
-   * `api.style.*` / `api.project.listStyles` calls live in
+   * `styleSetActive` / `projectListStyles` calls live in
    * `StylesSectionController` (passed as the single `controller` prop, per
    * the design-controller pattern — see M14); this child renders the
    * controller's rune fields and calls its intent methods.
    *
    * M35 guard: unchecking every stylesheet yields an unstyled preview with no
    * explanation (`toggleStyleActive` could pass an empty array straight to
-   * `api.style.setActive`). Computed entirely from `controller.styles`, so the
+   * `styleSetActive`). Computed entirely from `controller.styles`, so the
    * guard needs no changes anywhere else: once only one stylesheet is active,
    * that one's checkbox is disabled with an explanatory hint instead of
    * allowing the last uncheck.

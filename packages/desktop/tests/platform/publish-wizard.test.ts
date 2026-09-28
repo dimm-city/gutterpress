@@ -38,10 +38,11 @@ describe("Toolbar Publish button (front-and-centre entry point)", () => {
     expect(page).toContain("controller={publishController}");
     expect(page).toContain("onClose={() => (publishOpen = false)}");
     expect(page).toContain("const publishController = new PublishSectionController(");
-    // Reuses the existing api.publish.* backend + the new preflight route (#105).
-    expect(page).toContain("api.publish.listProviders");
-    expect(page).toContain("api.publish.run(dir, providerId, options)");
-    expect(page).toContain("api.publish.preflight(dir, providerIds)");
+    // Reuses the existing publish-capability backend (SFE-P5c3: typed IPC) +
+    // the preflight member (#105).
+    expect(page).toContain("publish.listProviders");
+    expect(page).toContain("publish.run(dir, providerId, options)");
+    expect(page).toContain("publish.preflight(dir, providerIds)");
     // Preflight "Go to" delegates to the shared Problems-panel navigation.
     expect(page).toContain("onNavigate={(entry) =>");
     expect(page).toContain("openProblem(entry)");

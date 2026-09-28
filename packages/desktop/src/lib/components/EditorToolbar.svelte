@@ -10,8 +10,8 @@
    * - All actions operate through `onAction(action, payload?)` — a callback prop
    *   that the parent (+page.svelte) routes into the EditorView transaction. The
    *   toolbar has zero direct knowledge of CodeMirror; it just fires named events.
-   * - The Insert Image flow involves host calls (dialog.pickImageFile +
-   *   api.media.importImage — the ONE host-side import-policy route, UX
+   * - The Insert Image flow involves host calls (pickImageFile +
+   *   mediaImportImage — the ONE host-side import-policy call, UX
    *   review M10), so the toolbar accepts `projectDir` to keep it testable
    *   without a full Electron environment. The toolbar does no path/fs math
    *   of its own; the route returns the project-relative `src` to insert.
@@ -20,9 +20,10 @@
    */
   import Icon from "$lib/components/Icon.svelte";
   import type { ComponentProps } from "svelte";
-  import { getPlatform, isDesktop } from "$lib/platform";
+  import { isDesktop } from "$lib/platform";
   import { basenameOf } from "$lib/platform/paths";
-  import { api } from "$lib/api";
+  import { mediaImportImage } from "$lib/project-config/project-config-capability";
+  import { pickImageFile } from "$lib/files/files-capability";
   import { dialogBehavior, FOCUSABLE } from "$lib/dialog";
   import {
     IMAGE_POSITION_OPTIONS,
@@ -35,7 +36,22 @@
     LAYOUT_BLOCK_ITEMS,
     type ToolbarItemDef,
     type LayoutBlockKind,
+    type ToolbarAction as ToolbarActionType,
+    type ToolbarPayload as ToolbarPayloadType,
   } from "$lib/editor/toolbar-actions";
+
+  // Type ALIASES (not a bare `export type { X }` re-export — svelte-check's
+  // component typegen does not surface a plain re-export the way it does an
+  // `export type X = ...` declaration, which broke both of this component's
+  // existing consumers, `MarkdownEditor.svelte` and `+page.svelte`) so this
+  // component's existing public contract (`import type { ToolbarAction,
+  // ToolbarPayload } from "$lib/components/EditorToolbar.svelte"`) stays
+  // unchanged — see toolbar-actions.ts's own header for why the canonical
+  // declarations themselves moved there (SFE-P3ab: `rich-commands.ts`, a
+  // plain `.ts` module, needs them too, and cannot import types from a
+  // `.svelte` file).
+  export type ToolbarAction = ToolbarActionType;
+  export type ToolbarPayload = ToolbarPayloadType;
 
   // toolbar-actions.ts declares item icons as plain strings (it stays
   // Svelte-import-free by design). Narrow to Icon's actual prop type here,
@@ -45,42 +61,43 @@
   let {
     /** Current file path — toolbar is only active for .md files. */
     filePath = null,
-    /** Called by the parent to route an edit action into the CodeMirror view. */
+    /** Called by the parent to route an edit action into the active editing
+     *  surface (CodeMirror when `richMode` is false, the rich editor's own
+     *  `EditorDocumentHost` when it is true — see `+page.svelte`'s
+     *  `onAction` wiring, SFE-P3ab). */
     onAction,
     onSave,
     /** Absolute path to the open project, used to compute assets/ destination. */
     projectDir = null,
+    /**
+     * Whether the PAGED editing surface is the currently mounted one
+     * (G-10: "the active surface owns the authoring workflow"). Its only
+     * remaining job is to pick which "Insert image" flow runs (see
+     * `onOpenImageProperties` below) — every other toolbar item fires the
+     * same `onAction` either way, with `+page.svelte` deciding which surface
+     * actually receives it -  and to drop the Focus item, which hides the
+     * preview beside the SOURCE editor and means nothing beside the paged
+     * one. It is NOT a control: the workspace's own Edit/Read decides the
+     * surface, and the toggle that used to sit beside this toolbar is gone.
+     */
+    richMode = false,
+    /**
+     * Opens the FULL `ImagePropertiesDialog` flow instead of this
+     * component's own simpler (width/position/size/shape) inline dialog —
+     * called for "Insert image" only while `richMode` is true (G-10/AP-17:
+     * image authoring must be reachable from whichever surface is active;
+     * G-09: reuse the one dialog that already owns the complete `gp-*`
+     * vocabulary rather than growing this component's own dialog to match).
+     */
+    onOpenImageProperties,
   }: {
     filePath?: string | null;
     onAction: (action: ToolbarAction, payload?: ToolbarPayload) => void;
     onSave?: () => void;
     projectDir?: string | null;
+    richMode?: boolean;
+    onOpenImageProperties?: () => void;
   } = $props();
-
-  /** The set of named edit actions the toolbar can fire. */
-  export type ToolbarAction =
-    | "bold"
-    | "italic"
-    | "strikethrough"
-    | "code"
-    | "link"
-    | "blockquote"
-    | "ul"
-    | "ol"
-    | "heading"
-    | "hr"
-    | "page-break"
-    | "table"
-    | "image"
-    | "snippet"
-    | "focus-mode"
-    | "layout-block";
-
-  export type ToolbarPayload =
-    | { level: 1 | 2 | 3 | 4 }           // heading
-    | { cols: number }                    // table
-    | { src: string; alt: string; width?: string; position?: string; size?: string; shape?: boolean } // image
-    | { kind: LayoutBlockKind };          // layout-block
 
   // The toolbar is only meaningful for markdown files.
   let isMarkdown = $derived(
@@ -90,7 +107,7 @@
   // ── M23: single declarative item array drives BOTH the grouped toolbar
   // buttons and the flat More menu — see toolbar-actions.ts for rationale. ──
   let visibleItems = $derived(
-    visibleToolbarItems({ hasSave: !!onSave, desktop: isDesktop() }),
+    visibleToolbarItems({ hasSave: !!onSave, desktop: isDesktop(), richMode }),
   );
   let saveItems = $derived(visibleItems.filter((i) => i.group === "save"));
   let primaryItems = $derived(visibleItems.filter((i) => i.group === "primary"));
@@ -238,7 +255,7 @@
     imageError = "";
     imageBusy = true;
     try {
-      const picked = await api.dialog.pickImageFile();
+      const picked = await pickImageFile();
       if (!picked) return;
       imageSrc = picked;
       imageError = "";
@@ -263,7 +280,7 @@
       // ONE route (UX review M10) — the toolbar just hands it the picked
       // absolute path and gets back a project-relative `src`.
       if (projectDir && isDesktop()) {
-        const result = await api.media.importImage(projectDir, imageSrc);
+        const result = await mediaImportImage(projectDir, imageSrc);
         finalSrc = result.src;
       }
     } catch (e) {
@@ -308,6 +325,14 @@
   }
 
   function openImageDialog(e: MouseEvent) {
+    // Rich mode (SFE-P3ab, G-10/G-09): route to the parent's
+    // `ImagePropertiesDialog` flow (the full `gp-*` vocabulary) instead of
+    // this component's own simpler dialog — see this component's own prop
+    // doc comment on `onOpenImageProperties`.
+    if (richMode) {
+      onOpenImageProperties?.();
+      return;
+    }
     imageDialogTriggerEl = e.currentTarget as HTMLButtonElement;
     imageOpen = true;
     // Initial focus placement is handled by the dialogBehavior action.
@@ -577,6 +602,7 @@
       </div>
     {/if}
   </div>
+
 </div>
 {/if}
 

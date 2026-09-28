@@ -3,9 +3,10 @@
 // Verifies the §8 renderer-purity guardrail: scanning a directory whose files
 // contain none of the forbidden host/node tokens exits 0, while a directory
 // containing even one (e.g. "fileURLToPath") exits 1. Also checks the
-// "build dir absent" skip path exits 0, and — the case that matters for §8 —
-// that an adapter-node layout (clean build/client + a host-code build/server)
-// PASSES when scoped to build/client but FAILS when the whole build/ is scanned.
+// "build dir absent" skip path exits 0, and — the case that matters for §8
+// post-SFE-P5d, when adapter-static writes a single flat build/ tree with no
+// legitimate host-code subtree to exclude — that the scan actually recurses
+// into nested subdirectories rather than only checking top-level files.
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -66,39 +67,27 @@ try {
   rmSync(dirtyDir2, { recursive: true, force: true });
 }
 
-// Case 5: adapter-node-shaped layout — the behavior that actually matters for
-// §8. build/client is clean; build/server + build/handler.js contain host Node
-// code (node:fs, isomorphic-git, createRequire) that is legitimate BY DESIGN.
-// Scanning build/client must PASS (exit 0); scanning the whole build/ tree must
-// FAIL (exit 1). This proves the check is scoped to the client bundle and that
-// the legitimate server bundle is EXCLUDED — the exact scoping the default
-// buildDir (packages/desktop/build/client) and the CI invocation rely on.
-const buildRoot = mkdtempSync(join(tmpdir(), "render-purity-adapter-node-"));
+// Case 5: host code nested several directories deep in the scanned tree is
+// still caught. adapter-static (SFE-P5d) emits a single flat build/ tree
+// with no server-only sibling to carve out — unlike the deleted adapter-node
+// layout, there is no legitimate host-code subtree for this gate to exclude,
+// so the default buildDir and the CI/npm-run-build invocations now scan the
+// WHOLE directory. This fixture proves the walk recurses into an arbitrary
+// nested subdirectory (mirroring a real _app/immutable/chunks/ layout) and
+// still finds a violation there, rather than only checking top-level files.
+const nestedRoot = mkdtempSync(join(tmpdir(), "render-purity-nested-"));
 try {
-  const clientDir = join(buildRoot, "client");
-  const clientAppDir = join(clientDir, "_app");
-  const serverDir = join(buildRoot, "server");
-  mkdirSync(clientAppDir, { recursive: true });
-  mkdirSync(serverDir, { recursive: true });
-
-  // Clean browser bundle: no forbidden host/node tokens.
-  writeFileSync(join(clientAppDir, "entry.js"), "export const start = () => 'ready';\n");
-  writeFileSync(join(clientDir, "index.html"), "<!doctype html><title>Gutterpress</title>\n");
-
-  // Legitimate host Node code the adapter emits — must be excluded when scoped.
+  const assetsDir = join(nestedRoot, "_app", "immutable", "chunks");
+  mkdirSync(assetsDir, { recursive: true });
+  writeFileSync(join(nestedRoot, "index.html"), "<!doctype html><title>Gutterpress</title>\n");
   writeFileSync(
-    join(serverDir, "index.js"),
-    "import { readFileSync } from 'node:fs';\nimport git from 'isomorphic-git';\n",
-  );
-  writeFileSync(
-    join(buildRoot, "handler.js"),
+    join(assetsDir, "leaked.js"),
     "import { createRequire } from 'node:module';\nconst require = createRequire(import.meta.url);\n",
   );
 
-  check("adapter-node: scanning build/client passes (exit 0)", run(clientDir).status, 0);
-  check("adapter-node: scanning whole build/ fails on server host code (exit 1)", run(buildRoot).status, 1);
+  check("host code nested deep in the tree fails the whole-tree scan (exit 1)", run(nestedRoot).status, 1);
 } finally {
-  rmSync(buildRoot, { recursive: true, force: true });
+  rmSync(nestedRoot, { recursive: true, force: true });
 }
 
 

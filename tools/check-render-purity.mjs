@@ -21,12 +21,17 @@
 //      never hand-listed, so new builtins are covered automatically.
 //
 // Usage:  node tools/check-render-purity.mjs [buildDir] [--strict]
-//   buildDir defaults to packages/desktop/build/client (relative to the repo
-//   root) — the browser assets adapter-node emits. It MUST NOT default to the
-//   whole build/ tree: adapter-node also emits build/server/ + build/handler.js
-//   (the compiled +server.ts host routes), which are host Node code BY DESIGN
-//   (§8) and legitimately contain node:fs/isomorphic-git/etc. Scoping to
-//   build/client/ is the whole point of the §8 verification contract.
+//   buildDir defaults to packages/desktop/build (relative to the repo root)
+//   — the whole SPA build adapter-static emits. adapter-static (SFE-P5d
+//   replaced adapter-node) writes a single static file tree with no
+//   client/server split — no build/server/, no build/handler.js, no
+//   +server.ts routes compiled in anywhere — so there is no host-code
+//   subtree left to carve out of the scan; the whole directory IS the
+//   renderer bundle. (Before SFE-P5d, adapter-node also emitted
+//   build/server/ + build/handler.js, host Node code BY DESIGN (§8) that a
+//   narrower build/client/-only scope had to exclude — that carve-out no
+//   longer applies and must not be reintroduced without a matching
+//   client/server split actually existing again.)
 //   Without --strict, an absent dir prints a skip notice and exits 0 (safe to
 //   run before a build). With --strict — the desktop build's mode — an absent
 //   dir OR zero scanned files is a FAILURE: a gate that scans nothing has
@@ -93,9 +98,7 @@ function main() {
   const args = process.argv.slice(2);
   const strict = args.includes("--strict");
   const dirArg = args.find((a) => !a.startsWith("--"));
-  const buildDir = dirArg
-    ? dirArg
-    : join(repoRoot(), "packages", "desktop", "build", "client");
+  const buildDir = dirArg ? dirArg : join(repoRoot(), "packages", "desktop", "build");
 
   if (!existsSync(buildDir)) {
     if (strict) {
@@ -136,8 +139,9 @@ function main() {
     }
     console.error(
       "\nThe SPA must only value-import gutterpress/render, which must stay node-free.\n" +
-        "Move the Node work into an api/**/+server.ts route (or the IPC bridge) and call it\n" +
-        "through the platform adapter; use `import type` for types.",
+        "Move the Node work into a typed IPC channel (electron/main.ts secureHandle(...),\n" +
+        "electron/api/*.ts) and call it through a feature-owned capability module over\n" +
+        "src/lib/platform/bridge.ts; use `import type` for types.",
     );
     process.exit(1);
   }

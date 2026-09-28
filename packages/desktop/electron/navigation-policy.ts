@@ -57,9 +57,9 @@ export function isTrustedAppUrl(url: string, config: OriginPolicyConfig): boolea
 
 /**
  * Resolve the trusted dev-server URL for `mainWindow.loadURL`, the
- * origin-policy config, and the "is the local adapter-node server needed"
- * check — the ONE gate all three call sites in main.ts must share (ARCH
- * review finding #1, CRITICAL).
+ * origin-policy config, and the "does the static build directory need to be
+ * valid" check — the ONE gate all three call sites in main.ts must share
+ * (ARCH review finding #1, CRITICAL).
  *
  * A packaged build must NEVER honor `VITE_DEV_SERVER_URL`. Without this
  * gate, an attacker who launches the packaged binary with that env var set

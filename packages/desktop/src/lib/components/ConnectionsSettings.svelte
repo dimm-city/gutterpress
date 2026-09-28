@@ -30,12 +30,33 @@
    * providers needs the open project's manifest — so that form asks for an
    * open project when none is.
    *
-   * PWA-clean (§8): api.* routes + getPlatform() only.
+   * PWA-clean (§8): the remote/publish/files capability modules only
+   * (SFE-P5c3: remote/sync/publish moved off `api.*` HTTP routes to typed IPC).
    */
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
-  import { api, type PublishProviderStaticInfo } from "$lib/api";
-  import { getPlatform, isDesktop } from "$lib/platform";
+  import { openExternal } from "$lib/files/files-capability";
+  import { isDesktop } from "$lib/platform";
+  import {
+    connectGenericHost,
+    connectGitHubCancel,
+    connectGitHubStart,
+    connectGitHubWait,
+    diagnoseProjectRemote,
+    disconnectGitHub as disconnectGitHubRemote,
+    disconnectHost,
+    forgeTokenUrl,
+    getRemoteConnection,
+    listHostConnections,
+  } from "$lib/remote/remote-capability";
+  import {
+    connect as connectPublishProvider,
+    connectGoogleCancel,
+    connectGoogleStart,
+    connectGoogleWait,
+    providers as fetchPublishProviders,
+    type PublishProviderStaticInfo,
+  } from "$lib/publish/publish-capability";
   import { friendlyHostError } from "$lib/errors";
   import type {
     HostConnectionInfo,
@@ -96,8 +117,8 @@
       clearTimeout(serverInputTimer);
       serverInputTimer = undefined;
       // A device flow left mid-poll must not keep polling after the tab closes.
-      if (ghBusy) getPlatform().connectGitHubCancel().catch(() => {});
-      if (pubOauthInFlight) getPlatform().connectGoogleCancel().catch(() => {});
+      if (ghBusy) connectGitHubCancel().catch(() => {});
+      if (pubOauthInFlight) connectGoogleCancel().catch(() => {});
     };
   });
 
@@ -110,12 +131,10 @@
     loadError = null;
     try {
       const [conn, list, provs, d] = await Promise.all([
-        api.remote.getRemoteConnection().catch(() => null),
-        api.remote.listHostConnections().catch(() => [] as HostConnectionInfo[]),
-        api.publish.providers().catch(() => [] as PublishProviderStaticInfo[]),
-        projectDir
-          ? (api.remote.diagnoseProjectRemote(projectDir) as Promise<ProjectRemoteDiagnosis>).catch(() => null)
-          : Promise.resolve(null),
+        getRemoteConnection().catch(() => null),
+        listHostConnections().catch(() => [] as HostConnectionInfo[]),
+        fetchPublishProviders().catch(() => [] as PublishProviderStaticInfo[]),
+        projectDir ? diagnoseProjectRemote(projectDir).catch(() => null) : Promise.resolve(null),
       ]);
       github = conn;
       entries = list as HostConnectionInfo[];
@@ -138,7 +157,7 @@
 
   async function refreshDiag() {
     if (!projectDir) return;
-    diag = await (api.remote.diagnoseProjectRemote(projectDir) as Promise<ProjectRemoteDiagnosis>).catch(() => diag);
+    diag = await diagnoseProjectRemote(projectDir).catch(() => diag);
   }
 
   // ── Classification: publishing accounts vs Git servers ─────────────────────
@@ -181,10 +200,10 @@
     ghBusy = true;
     ghError = null;
     try {
-      const info = await getPlatform().connectGitHubStart();
+      const info = await connectGitHubStart();
       ghCode = info;
-      api.shell.openExternal(info.verificationUri).catch(() => {});
-      await getPlatform().connectGitHubWait();
+      openExternal(info.verificationUri).catch(() => {});
+      await connectGitHubWait();
       ghCode = null;
       await load();
     } catch (e) {
@@ -197,7 +216,7 @@
 
   async function disconnectGitHub() {
     try {
-      await api.remote.disconnectGitHub();
+      await disconnectGitHubRemote();
       await load();
     } catch (e) {
       removeError = friendlyHostError(e instanceof Error ? e.message : String(e));
@@ -219,8 +238,7 @@
       return;
     }
     serverInputTimer = setTimeout(() => {
-      api.remote
-        .forgeTokenUrl(value)
+      forgeTokenUrl(value)
         .then((url) => {
           if (serverInput.trim() === value) tokenUrl = url;
         })
@@ -240,7 +258,7 @@
     serverError = null;
     serverNotice = null;
     try {
-      const result = await api.remote.connectGenericHost({
+      const result = await connectGenericHost({
         host: serverInput,
         ...(serverUser.trim() ? { username: serverUser.trim() } : {}),
         token: serverToken,
@@ -270,7 +288,7 @@
     pubError = null;
     pubNotice = null;
     try {
-      await api.publish.connect(projectDir, pubProviderId, pubToken, pubAccount.trim() || undefined);
+      await connectPublishProvider(projectDir, pubProviderId, pubToken, pubAccount.trim() || undefined);
       pubToken = "";
       pubAccount = "";
       const label = providers.find((p) => p.id === pubProviderId)?.label ?? pubProviderId;
@@ -293,9 +311,9 @@
     pubError = null;
     pubNotice = null;
     try {
-      const { authUrl } = await getPlatform().connectGoogleStart(pubAccount.trim() || undefined);
+      const { authUrl } = await connectGoogleStart(pubAccount.trim() || undefined);
       pubOauthAuthUrl = authUrl;
-      await getPlatform().connectGoogleWait();
+      await connectGoogleWait();
       pubAccount = "";
       const label = providers.find((p) => p.id === pubProviderId)?.label ?? pubProviderId;
       pubNotice = `Connected ${label}.`;
@@ -311,7 +329,7 @@
 
   async function cancelPublishOAuth() {
     try {
-      await getPlatform().connectGoogleCancel();
+      await connectGoogleCancel();
     } finally {
       pubBusy = false;
       pubOauthInFlight = false;
@@ -320,7 +338,7 @@
   }
 
   function reopenPublishOAuthUrl() {
-    if (pubOauthAuthUrl) api.shell.openExternal(pubOauthAuthUrl).catch(() => {});
+    if (pubOauthAuthUrl) openExternal(pubOauthAuthUrl).catch(() => {});
   }
 
   // ── Removal (raw store key — works for bare-host AND compound keys) ─────────
@@ -337,7 +355,7 @@
     removing = key;
     removeError = null;
     try {
-      await api.remote.disconnectHost(key);
+      await disconnectHost(key);
       entries = entries.filter((c) => c.host !== key);
       // A removed server credential changes the project's sync readiness.
       await refreshDiag();
@@ -456,7 +474,7 @@
         <p class="hint muted">Open a project to add a publishing key — the key is checked with the platform first, and some checks read the project's settings. Saved keys work across all projects.</p>
       {/if}
       {#if selectedProvider?.tokenUrl}
-        <p class="hint">Create a key at: <button class="inline-link" onclick={() => selectedProvider?.tokenUrl && api.shell.openExternal(selectedProvider.tokenUrl).catch(() => {})}>{selectedProvider.tokenUrl}</button></p>
+        <p class="hint">Create a key at: <button class="inline-link" onclick={() => selectedProvider?.tokenUrl && openExternal(selectedProvider.tokenUrl).catch(() => {})}>{selectedProvider.tokenUrl}</button></p>
       {/if}
       {#if pubNotice}<p class="notice">{pubNotice}</p>{/if}
       {#if pubError}<p class="error" role="alert">{pubError}</p>{/if}
@@ -498,7 +516,7 @@
       {#if tokenUrl}
         <p class="hint">
           Create a token on your server:
-          <button class="inline-link" onclick={() => tokenUrl && api.shell.openExternal(tokenUrl).catch(() => {})}>open the token settings page</button>
+          <button class="inline-link" onclick={() => tokenUrl && openExternal(tokenUrl).catch(() => {})}>open the token settings page</button>
         </p>
       {/if}
       {#if serverNotice}<p class="notice">{serverNotice}</p>{/if}

@@ -13,7 +13,8 @@
 // uncached — they are cheap single-file reads and must reflect the open that
 // just happened.
 // ──────────────────────────────────────────────────────────────────────────
-import { api, type DiscoveredProject } from "$lib/api";
+import { discoverProjects } from "$lib/app-lifecycle/app-lifecycle-capability";
+import type { DiscoveredProject } from "$lib/platform/dtos";
 
 export type { DiscoveredProject };
 
@@ -27,8 +28,7 @@ export function discoverProjectsCached(): Promise<DiscoveredProject[]> {
   if (cache && Date.now() - cachedAt < TTL_MS) return Promise.resolve(cache);
   if (inflight) return inflight;
 
-  const p = api.app
-    .discoverProjects()
+  const p = discoverProjects()
     .then((r) => {
       // If the cache was invalidated (or a newer scan started) while this scan
       // was in flight, don't repopulate the module cache with stale results.

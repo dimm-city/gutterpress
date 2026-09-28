@@ -5,9 +5,12 @@
   import GitIdentitySection from "$lib/components/GitIdentitySection.svelte";
   import { useSettings } from "$lib/settings.svelte";
   import { setThemeMode } from "$lib/theme.svelte";
-  import { getPlatform, isDesktop } from "$lib/platform";
+  import { isDesktop } from "$lib/platform";
+  import { diagnoseProjectRemote, refreshCopies, setAutoSync } from "$lib/remote/remote-capability";
+  import { vcsListBranches, vcsSwitchBranch } from "$lib/vcs/vcs-capability";
   import { sanitizeSettingsTab, type SettingsTab } from "$lib/settings-tabs";
-  import { api, type AppImageIntegrationStatus } from "$lib/api";
+  import type { AppImageIntegrationStatus } from "$lib/platform/dtos";
+  import { appImageIntegration } from "$lib/app-lifecycle/app-lifecycle-capability";
   import { friendlyHostError } from "$lib/errors";
 
   let {
@@ -102,7 +105,7 @@
 
   onMount(() => {
     if (!isDesktop()) return;
-    api.app.appImageIntegration
+    appImageIntegration
       .getStatus()
       .then((status) => {
         appImage = status;
@@ -129,8 +132,7 @@
       canSyncLoading = false;
       return;
     }
-    api.remote
-      .diagnoseProjectRemote(projectDir)
+    diagnoseProjectRemote(projectDir)
       .then((diag) => {
         canSync = diag.canSync;
       })
@@ -173,14 +175,13 @@
     copiesLoading = true;
     try {
       if (options.refresh) {
-        const r = await api.remote
-          .refreshCopies(projectDir)
+        const r = await refreshCopies(projectDir)
           .catch(() => ({ refreshed: false, reason: "offline" as const }));
         // "no-remote" is not a problem — a project with no online copy has
         // nothing to check for. The other two mean the list may be short.
         copiesStale = !r.refreshed && r.reason !== "no-remote";
       }
-      copies = await api.vcs.listBranches(projectDir);
+      copies = await vcsListBranches(projectDir);
     } catch {
       copies = null;
     } finally {
@@ -198,7 +199,7 @@
     copySwitching = true;
     copySwitchError = null;
     try {
-      await api.vcs.switchBranch(projectDir, target);
+      await vcsSwitchBranch(projectDir, target);
       selectedCopy = "";
       await loadCopies();
       // The files under projectDir just changed out from under the open
@@ -226,8 +227,8 @@
     try {
       const result =
         action === "install"
-          ? await api.app.appImageIntegration.install()
-          : await api.app.appImageIntegration.remove();
+          ? await appImageIntegration.install()
+          : await appImageIntegration.remove();
       appImage = result.status;
       appImageNotice = result.message;
     } catch (e) {
@@ -605,7 +606,7 @@
                 settings.set({ versionHistory: { autoSync: enabled } });
                 // Notify the host orchestrator immediately so the change takes effect
                 // without waiting for a settings reload cycle (§4.3).
-                if (isDesktop()) getPlatform().setAutoSync(enabled).catch(() => {});
+                if (isDesktop()) setAutoSync(enabled).catch(() => {});
               }}
             />
           </div>

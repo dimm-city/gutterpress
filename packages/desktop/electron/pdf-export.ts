@@ -10,6 +10,7 @@
  * `lib.runBuild` as `engineBrowser`.
  */
 import type { BrowserWindow } from "electron";
+import type { SecureHandle } from "./server-bridge/secure-handle";
 
 export interface ExportProgressEvent {
   exportId: string;
@@ -63,4 +64,24 @@ export function throwIfExportCanceled(session: ExportSession): void {
   if (session.canceled) {
     throw new ExportCanceledError();
   }
+}
+
+/**
+ * Register `api:cancelExport` (SFE-P6b, extracted from electron/main.ts).
+ * Operates only on this module's own active-export-session state — no
+ * mainWindow or other main.ts-composed dependency needed.
+ */
+export function registerPdfExportHandlers(secureHandle: SecureHandle): void {
+  secureHandle("api:cancelExport", async (_e, exportId: string) => {
+    const session = getActiveExportSession();
+    if (!session || session.id !== exportId) {
+      return { canceled: false };
+    }
+    session.canceled = true;
+    const exportWin = session.win;
+    if (exportWin && !exportWin.isDestroyed()) {
+      exportWin.destroy();
+    }
+    return { canceled: true };
+  });
 }

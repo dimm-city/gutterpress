@@ -103,15 +103,39 @@ const electronApp = await electron.launch({
   timeout: 90_000,
 });
 
+/**
+ * Resize the APP window and wait until the SPA has laid out at the new width.
+ *
+ * The app opens a second, hidden BrowserWindow for every engine render pass
+ * (electron/engine-browser.ts), so `getAllWindows()[0]` is a race: with a
+ * preview render in flight it can be that engine window, and the app window
+ * then keeps its old size. That is how this drive failed in CI once: the
+ * window stayed at the narrow startup width, the narrow toolbar keeps the
+ * mode switch hidden, and `setMode` waited on a hidden element forever. The
+ * app window is the one on app://, and the SPA's own innerWidth is the proof
+ * the resize landed (the matchMedia narrow-mode flip follows it synchronously).
+ */
+async function resizeAppWindow(page, width, height) {
+  await electronApp.evaluate(({ BrowserWindow }, size) => {
+    const win = BrowserWindow.getAllWindows().find(
+      (candidate) => !candidate.isDestroyed() && candidate.webContents.getURL().startsWith("app://"),
+    );
+    if (!win) throw new Error("no app:// window to resize");
+    win.setSize(size.width, size.height);
+  }, { width, height });
+  await page.waitForFunction(
+    (target) => window.innerWidth <= target && window.innerWidth >= target - 40,
+    width,
+    { timeout: 15_000 },
+  );
+}
+
 let exitCode = 0;
 try {
   // firstWindow() would return the data:-URL SPLASH screen — wait for the
   // real SPA window on the app:// origin instead.
   const page = await waitForAppWindow(electronApp);
-  await electronApp.evaluate(({ BrowserWindow }) => {
-    const win = BrowserWindow.getAllWindows().find((candidate) => !candidate.isDestroyed());
-    win?.setSize(760, 800);
-  });
+  await resizeAppWindow(page, 760, 800);
   log(`window at ${page.url()}`);
 
   // The fixture auto-opens; wait until the preview has rendered and the
@@ -129,15 +153,31 @@ try {
   // The narrow startup assertion is complete. Widen the real window for the
   // remaining editor/file-isolation interactions so the open Contents panel
   // is a sidebar instead of a modal scrim over the toolbar.
-  await electronApp.evaluate(({ BrowserWindow }) => {
-    BrowserWindow.getAllWindows()[0]?.setSize(1200, 800);
-  });
-  await page.locator('[aria-label="Edit"]').waitFor({ state: "visible", timeout: 10_000 });
+  await resizeAppWindow(page, 1200, 800);
 
-  // Open the editor pane (auto-selects the first chapter file). The active
-  // file lives in the Files tab — its panel is display:none while Contents is
-  // active, so assert on the ATTACHED state and read textContent.
-  await page.locator('[aria-label="Edit"]').click();
+  /**
+   * Choose a workspace mode however the toolbar is currently laid out. Below
+   * a container width of 1150px the inline mode buttons collapse into a menu
+   * (AppToolbar's own "collapse stages"), and with the Contents panel open at
+   * 1200px the toolbar is on the far side of that line — so a drive that
+   * clicks only the inline button waits forever on a hidden element.
+   */
+  async function setMode(label) {
+    const inline = page.locator(`.mode-group [aria-label="${label}"]`);
+    if (await inline.isVisible().catch(() => false)) {
+      await inline.click();
+      return;
+    }
+    await page.locator('.mode-menu > summary').click();
+    await page.locator(`.mode-menu .menu-item:has-text("${label}")`).click();
+  }
+
+  // This drive is about the SOURCE editor: one file per document, byte-exact
+  // edits at the first and last line. That surface is Edit mode - Read mounts
+  // the paged editor, which renders the book rather than the source and has no
+  // lines to click. The one-file invariant belongs to the shared buffer, so it
+  // holds for both surfaces; only the source editor can be asserted line by line.
+  await setMode("Edit");
   await page.locator(".cm-editor").waitFor({ timeout: 15_000 });
   await page
     .locator(".file-item.active")

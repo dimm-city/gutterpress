@@ -38,7 +38,7 @@ export const PUBLISH_TARGET_CHOICES: PublishTargetChoice[] = [
   },
 ];
 
-/** Tool ids whose absence blocks a print-compliant build (for `/api/doctor`). */
+/** Tool ids whose absence blocks a print-compliant build (for `doctor:getDiagnostics`). */
 export const PRINT_TOOL_IDS = ["qpdf", "gs"];
 
 /** Writer-facing tool name — `gs` means nothing to a non-technical author. */
