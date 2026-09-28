@@ -792,17 +792,19 @@ async function main() {
 
   // getProtocolVersion() bumped to 9 (SFE-P4: in-flow block editing deleted;
   // beginBlockEdit/endBlockEdit no longer exist on previewAPI at all — this is
-  // the permanent post-deletion shape, not a feature-detect fallback).
+  // the permanent post-deletion shape, not a feature-detect fallback), then
+  // to 10 when getChapters() was added for the desktop's Read chapter list.
   {
     const { api } = loadInterfaceWithDom("<p>x</p>");
-    assert.equal(api.getProtocolVersion(), 9);
+    assert.equal(api.getProtocolVersion(), 10);
+    assert.equal(typeof api.getChapters, "function", "the Read chapter list's command");
     assert.equal(api.beginBlockEdit, undefined, "in-flow block editing command removed");
     assert.equal(api.endBlockEdit, undefined, "in-flow block editing command removed");
     assert.equal(api.getRectsFor, undefined, "geometry command removed with the panel");
     assert.equal(api.setEditMask, undefined, "mask command removed with the panel");
   }
 
-  console.log("[desktop-test] PASS protocol version 9 / block-edit commands absent");
+  console.log("[desktop-test] PASS protocol version 10 / block-edit commands absent");
 
   // The cross-origin bridge must forward the immediate viewport invalidation,
   // not merely emit it inside the iframe where desktop controllers cannot see it.

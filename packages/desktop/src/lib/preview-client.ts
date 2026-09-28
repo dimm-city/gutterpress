@@ -109,6 +109,14 @@ export interface ContextTarget {
   selection: ContextTargetSelection | null;
 }
 
+/** Where a chapter the preview paginated starts - see getChapters(). */
+export interface ChapterStart {
+  /** Source filename (data-chapter-src) of the chapter. */
+  chapter: string;
+  /** 1-based page of its first block; 0 when the viewer has not placed it. */
+  page: number;
+}
+
 /** A heading from getOutline() — see ADR 0005. */
 export interface OutlineEntry {
   level: number;
@@ -272,6 +280,15 @@ export class PreviewClient {
   /** Heading tree with page + source line. */
   getOutline(): Promise<OutlineEntry[]> {
     return this.call<OutlineEntry[]>("getOutline");
+  }
+
+  /**
+   * The chapters the preview paginated, in book order, with the page each
+   * starts on. The outline above names only headings, so a chapter without
+   * one is absent from it; this names every source file in the book.
+   */
+  getChapters(): Promise<ChapterStart[]> {
+    return this.call<ChapterStart[]>("getChapters");
   }
 
   /** Scroll the preview to a line / id / selector / page. */

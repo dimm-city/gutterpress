@@ -78,8 +78,9 @@
   import { createEditorProjection } from "gutterpress/render";
   import type { GutterpressProjection } from "gutterpress/render";
   import SnippetPicker from "$lib/components/SnippetPicker.svelte";
-  import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
+  import { PreviewClient, type ChapterStart, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
   import { activeOutlineIndexForLine } from "$lib/routes/outline";
+  import { bookOrder } from "$lib/routes/book-order";
   import { PageNavController } from "$lib/routes/page-nav-controller.svelte";
   import { ZoomViewController } from "$lib/routes/zoom-view-controller.svelte";
   import { PreviewEventController } from "$lib/routes/preview-event-controller";
@@ -1348,38 +1349,17 @@
   }
 
   /**
-   * The book's chapters in book order: as the preview reported them (its
-   * outline names every chapter file, in manifest order), else the
-   * project's markdown files by name until the preview has rendered once.
+   * The book's chapters in book order, with a page estimate each: as the
+   * preview paginated them (it names every source file in the book,
+   * heading or not - see `bookOrder`), else the project's markdown files
+   * by name until the preview has rendered once.
    */
   let bookFiles = $state<string[]>([]);
-  let bookChapters = $derived.by(() => {
-    const dir = lifecycle.currentDir;
-    if (!dir) return [] as string[];
-    const seen = new Set<string>();
-    for (const entry of outline) {
-      if (entry.chapter && isSafeChapterId(entry.chapter)) seen.add(chapterPath(dir, entry.chapter));
-    }
-    return seen.size ? [...seen] : bookFiles;
-  });
-  /** Page counts per chapter from the preview's outline, for placeholder heights and folio offsets before a chapter lays out. */
-  let bookPageEstimates = $derived.by(() => {
-    const dir = lifecycle.currentDir;
-    const estimates: Record<string, number> = {};
-    if (!dir) return estimates;
-    const firstPage = new Map<string, number>();
-    for (const entry of outline) {
-      if (!entry.chapter || !isSafeChapterId(entry.chapter)) continue;
-      const path = chapterPath(dir, entry.chapter);
-      if (!firstPage.has(path)) firstPage.set(path, entry.page);
-    }
-    const starts = [...firstPage.entries()];
-    starts.forEach(([path, page], i) => {
-      const next = starts[i + 1]?.[1] ?? pageNav.totalPages + 1;
-      estimates[path] = Math.max(1, next - page);
-    });
-    return estimates;
-  });
+  let bookStarts = $state<ChapterStart[]>([]);
+  let book = $derived(
+    lifecycle.currentDir ? bookOrder(lifecycle.currentDir, bookStarts, pageNav.totalPages) : { chapters: [], estimates: {} },
+  );
+  let bookChapters = $derived(book.chapters.length ? book.chapters : bookFiles);
 
   /** The project's markdown files by name: the book's order until the preview has rendered once. */
   async function loadBookFiles(): Promise<void> {
@@ -2877,6 +2857,7 @@
     resetOutline: () => {
       outline = [];
       activeOutlineIndex = 0;
+      bookStarts = [];
     },
     consumePendingRestore: () => {
       const restore = { page: pendingRestorePage };
@@ -3232,6 +3213,16 @@
       })
       .catch(() => {
         outline = [];
+      });
+    // Read's chapter list comes from the same render: the chapters the
+    // preview paginated, not the headings it found in them.
+    client
+      .getChapters()
+      .then((starts) => {
+        bookStarts = starts ?? [];
+      })
+      .catch(() => {
+        bookStarts = [];
       });
   }
 
@@ -4162,7 +4153,7 @@
                       readonly={richLocked}
                       zoom={richZoom}
                       projectDir={lifecycle.currentDir}
-                      pageEstimates={bookPageEstimates}
+                      pageEstimates={book.estimates}
                       readChapter={readFileCapability}
                       buildProjection={buildRichProjection}
                       onSnapshotChange={onBookSnapshotChange}

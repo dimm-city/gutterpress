@@ -751,7 +751,10 @@
     // they drove. A v9 SPA that still offers "Edit this block" has nothing to
     // call; a pre-v9 SPA feature-detecting on the version simply stops
     // offering it.
-    getProtocolVersion: function () { return 9; },
+    // 10: getChapters() added - the chapters the preview paginated, in book
+    // order, so the desktop's Read can mount a chapter that has no heading
+    // (getOutline() never names one).
+    getProtocolVersion: function () { return 10; },
 
     // Resolve the annotated element/selection at a viewport point (protocol
     // v4). Pure read; see buildContextTarget() above for the full contract.
@@ -792,6 +795,25 @@
           page: pageIndexOf(h),
           index: i
         });
+      }
+      return out;
+    },
+
+    // The chapters the preview paginated, in book order, each with the page
+    // it starts on. data-chapter-src is stamped on every source-mapped block
+    // (lib/markdown/source-range.ts), so the first block carrying a file's id
+    // is where that chapter starts - heading or no heading, which is what the
+    // outline above cannot say.
+    getChapters: function () {
+      refreshPages();
+      var seen = {};
+      var out = [];
+      var els = document.querySelectorAll('[data-chapter-src]');
+      for (var i = 0; i < els.length; i++) {
+        var chapter = els[i].getAttribute('data-chapter-src');
+        if (!chapter || seen[chapter]) continue;
+        seen[chapter] = true;
+        out.push({ chapter: chapter, page: pageIndexOf(els[i]) });
       }
       return out;
     },

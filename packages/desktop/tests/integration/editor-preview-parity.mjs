@@ -365,10 +365,11 @@ try {
       // Read draws one wrapper per chapter of its list up front, then mounts
       // them one at a time. A chapter the preview paginated (it is in
       // `expected`) but that Read left out of its list is never going to
-      // mount, so say so now instead of waiting out the timeout for it - the
-      // list comes from the preview's outline, which a chapter without a
-      // heading is absent from. A few seconds of grace covers the list being
-      // rebuilt when that outline first arrives.
+      // mount, so say so now instead of waiting out the timeout for it. The
+      // list comes from the preview's chapter roots (it once came from the
+      // heading outline, which a chapter without a heading is absent from).
+      // A few seconds of grace covers the list being rebuilt when the
+      // preview's first render arrives.
       const missing = state.order.length ? expected.filter((c) => !state.order.includes(c)) : [];
       if (!missing.length) missingSince = 0;
       else if (!missingSince) missingSince = Date.now();
