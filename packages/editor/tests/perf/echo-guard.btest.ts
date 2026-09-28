@@ -59,11 +59,11 @@ import { generateMarkdownCorpus, KIB } from "./support/corpus.ts";
  * 1), confirming the assertion is live, not vacuous. Reverted before
  * committing; not left in the tree. Recorded in this run's audit doc.
  *
- * Wired into `bun run test:perf` via `perf-control.btest.ts`'s side-effect
- * import of this file — `packages/editor/package.json` is outside this
- * lane's write ownership, so a new `test:perf` script line is not
- * available; a side-effect import from an already-wired file is the
- * smallest way to reach the gate without it.
+ * Wired into `bun run test:browser` (packages/editor/package.json, ENG-4):
+ * this is a fail-closed call-count guard, not a timing budget, so it runs
+ * with the CI browser chain rather than the CI-less `test:perf` suite. (It
+ * used to reach `test:perf` through a side-effect import from
+ * `perf-control.btest.ts`; that import is gone.)
  */
 
 const entryPath = resolve(import.meta.dir, "support/echo-guard-entry.ts");
@@ -98,6 +98,8 @@ describe("D13 root-cause regression guard — echo-convergence stays the fast pa
 
       const selector = await harness.page.evaluate(() => window.__gpEchoGuard.containerSelector);
       await harness.page.click(selector);
+      // Bare `End` (a line-end, not the document end) is fine HERE: the
+      // getSnapshot-count assertion below is caret-independent (PERF-1).
       await harness.page.keyboard.press("End");
 
       // AP-21 liveness: the counter must already be at its expected

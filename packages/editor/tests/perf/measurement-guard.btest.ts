@@ -55,12 +55,11 @@ import { generateMarkdownCorpus, KIB } from "./support/corpus.ts";
  * confirming the assertion is live, not vacuous. Reverted before finishing;
  * not left in the tree. Recorded in this run's audit doc.
  *
- * Wired into `bun run test:perf` via `perf-control.btest.ts`'s side-effect
- * import of this file — `packages/editor/package.json` is outside this
- * lane's write ownership, so a new `test:perf` script line is not
- * available; a side-effect import from an already-wired file is the
- * smallest way to reach the gate without it (the same technique Lane D's
- * `echo-guard.btest.ts` already uses for the identical reason).
+ * Wired into `bun run test:browser` (packages/editor/package.json, ENG-4):
+ * this is a fail-closed call-count guard, not a timing budget, so it runs
+ * with the CI browser chain rather than the CI-less `test:perf` suite. (It
+ * used to reach `test:perf` through a side-effect import from
+ * `perf-control.btest.ts`; that import is gone.)
  */
 
 const entryPath = resolve(import.meta.dir, "support/measurement-guard-entry.ts");

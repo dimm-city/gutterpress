@@ -103,6 +103,15 @@ jobs:
         working-directory: packages/cli
         run: bun scripts/native-parity-gate.ts
 
+      # NOT gated here: the editor<->preview page-count gate
+      # (packages/desktop/tests/integration/editor-preview-parity.mjs,
+      # `bun run parity:gate` in packages/desktop). It drives a headed
+      # Electron window through Read mode, needs the desktop build plus
+      # xvfb, and waits up to 300 s per lock state, so it stays a manual
+      # step documented in packages/desktop/README.md ("Tests"). Run it
+      # against examples/gutterpress-user-guide before touching the paged
+      # editor or the preview's pagination.
+
   # Enforces "core is a no-op for the un-migrated book" (0.10.6 milestone,
   # gutterpress#252) by building the SAME fixture sources with the base
   # branch's CLI and the PR's CLI in one job (one Chromium) and comparing the
@@ -422,3 +431,23 @@ jobs:
       - name: Audit dependencies
         continue-on-error: true
         run: bun audit
+
+      # NON-BLOCKING, like the audit above, and for the same reason:
+      # visibility. packages/vscode-markdown-editor is a vendored fork of
+      # @vscode/markdown-editor pinned at gutterpressFork.upstreamVersion.
+      # Upstream publishes under the `next` dist-tag (`latest` is stuck at
+      # 0.0.2-0), so that is the tag compared. A ::warning:: here means
+      # upstream moved on; whether to re-pin is decided by the trigger in
+      # packages/vscode-markdown-editor/PATCHES.md, and whether to delete
+      # the fork altogether by gutterpressFork.removalTrigger in its
+      # package.json. Neither decision is made by this step.
+      - name: Check vendored fork drift against upstream next
+        continue-on-error: true
+        run: |
+          pin="$(node -p "require('./packages/vscode-markdown-editor/package.json').gutterpressFork.upstreamVersion")"
+          next="$(bun pm view @vscode/markdown-editor dist-tags.next)"
+          if [ "$pin" = "$next" ]; then
+            echo "::notice::fork pinned at $pin, upstream next is $next (in sync)"
+          else
+            echo "::warning::fork pinned at $pin, upstream next is $next (see gutterpressFork.removalTrigger and PATCHES.md's re-pin trigger)"
+          fi

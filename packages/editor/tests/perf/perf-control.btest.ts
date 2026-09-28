@@ -9,19 +9,10 @@ import { generateMarkdownCorpus, KIB } from "./support/corpus.ts";
 import { mountDocument, typeAndMeasure } from "./support/drive.ts";
 import { formatSummary, summarize } from "./support/stats.ts";
 import { CONTROL_SLOWDOWN_MS } from "./support/constants.ts";
-// SFE-P3d-sweep Lane D — side-effect import wires `echo-guard.btest.ts`
-// (the D13 root-cause regression guard) into `bun run test:perf` without a
-// new package.json script line (`packages/editor/package.json` is outside
-// this lane's write ownership). Registers its own `describe`/`beforeAll`/
-// `afterAll` independently of this file's — see that file's own header for
-// what it guards and why.
-import "./echo-guard.btest.ts";
-// SFE-P3f Lane A — the same technique, for the same reason, wiring in this
-// run's own mechanism-pinning regression guard: per-keystroke
-// document.createRange() calls stay O(changed), not O(document), through
-// the vendored fork's measurement pass this run patched. See that file's
-// own header for the full mechanism and evidence.
-import "./measurement-guard.btest.ts";
+// The measurement/echo call-count guards (`measurement-guard.btest.ts`,
+// `echo-guard.btest.ts`) run in the `test:browser` chain (ENG-4), not via
+// side-effect imports here: they are fail-closed correctness guards, and
+// this file is a timing control that has no CI job.
 
 /**
  * SFE-P3d-sweep Lane B — G-12/AP-20 control for `perf-sweep.btest.ts`'s
