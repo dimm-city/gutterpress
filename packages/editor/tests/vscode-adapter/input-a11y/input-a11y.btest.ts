@@ -500,26 +500,19 @@ describe("case 8 — accessibility", () => {
     // by `Locator.ariaSnapshot()` (a YAML accessibility-tree dump). Using
     // the API that actually exists in the exact pinned runtime, not an
     // assumed/older one (I-01).
-    let axSnapshot: string | undefined;
-    let axError: string | undefined;
-    try {
-      axSnapshot = await harness.page.locator(`${selector} .md-editor`).ariaSnapshot();
-    } catch (error) {
-      axError = error instanceof Error ? error.message : String(error);
-    }
+    const axSnapshot = await harness.page.locator(`${selector} .md-editor`).ariaSnapshot();
 
-    // Recorded, not assumed: whatever role Chromium actually computes for
-    // this focusable-but-role-less element is evidence for the decision
-    // record either way. The one hard requirement proven here is that the
-    // node is REACHABLE in the accessibility tree at all (not pruned/absent
-    // entirely, e.g. not an empty string), which a keyboard-only or
-    // screen-reader user depends on.
-    if (axError) {
-      console.log(`case 8 accessibility snapshot unavailable: ${axError}`);
-    } else {
-      expect(axSnapshot).toBeTruthy();
-      console.log(`case 8 accessibility snapshot (ariaSnapshot): ${JSON.stringify(axSnapshot)}`);
-    }
+    // Asserted, no longer merely recorded (A11Y-1). This case used to log
+    // whatever role Chromium computed for the root and require only that
+    // the node was reachable at all; the logged answer was NO role, since
+    // Chromium computes none for a bare EditContext host. The adapter now
+    // sets role=textbox on the root at mount (`src/vscode-adapter/
+    // adapter.ts`), so the computed tree must announce a textbox here.
+    // The full attribute set (aria-multiline, aria-readonly, the name) is
+    // pinned by `tests/web/mount.btest.ts`; this raw-adapter mount proves
+    // the role is the adapter's, not the web mount shell's.
+    expect(axSnapshot).toBeTruthy();
+    expect(axSnapshot).toContain("textbox");
 
     await dispose("a11y-focus");
   });

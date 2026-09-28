@@ -88,6 +88,9 @@ export interface EditorMountOptions {
    */
   readonly readonly?: boolean;
 
+  /** See `VscodeEditorAdapterOptions.accessibleName` - the textbox's `aria-label`, typically the file's name. */
+  readonly accessibleName?: string;
+
   /**
    * The fork's `renderCustomBlock` hook (D6/G-11) — must be supplied at
    * `EditorView` CONSTRUCTION time, so it is threaded straight through to
@@ -233,6 +236,7 @@ export function mountEditor(
   const adapter: VscodeEditorAdapter = createVscodeEditorAdapter(container, host, {
     onDiagnostic: options.onDiagnostic,
     readonly: options.readonly,
+    accessibleName: options.accessibleName,
     viewOptions: {
       classNames: options.themeClassName === null ? [] : [options.themeClassName ?? FORK_THEME_CLASS_NAME],
       renderCustomBlock: options.renderCustomBlock,

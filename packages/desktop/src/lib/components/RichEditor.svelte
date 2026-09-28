@@ -152,10 +152,16 @@
     if (surface && onPaginated) surface.onPaginated(onPaginated);
     surfaceHandle = surface;
     if (surface && zoom) surface.setZoom(zoom);
+    // The textbox is named by its file, so a book's chapters announce as
+    // distinct textboxes. `filePath` is an absolute OS-native path; the last
+    // segment after either separator is the name. No "Chapter" prefix: the
+    // file is what the author opened, and the name is read out as is.
+    const accessibleName = filePath?.split(/[\\/]/).pop() || undefined;
     const mount = projection
       ? mountGutterpressEditor(container, host, {
           projection,
           readonly,
+          accessibleName,
           extraCss,
           onDiagnostic,
           // The book's own CSS supplies the typography; the fork's default
@@ -171,7 +177,7 @@
             surface?.onDocumentMount(documentElement);
           },
         })
-      : { ...mountEditor(container, host, { readonly, extraCss, onDiagnostic, showReadonlyToggle: false }), refreshProjection: () => {} };
+      : { ...mountEditor(container, host, { readonly, accessibleName, extraCss, onDiagnostic, showReadonlyToggle: false }), refreshProjection: () => {} };
     mountHandle = mount;
     return () => {
       mountHandle = undefined;

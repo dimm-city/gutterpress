@@ -29,6 +29,8 @@ export interface MountGutterpressEditorOptions {
   readonly projection: GutterpressProjection;
   readonly onDiagnostic?: (diagnostic: Diagnostic) => void;
   readonly readonly?: boolean;
+  /** See `mountEditor`'s option of the same name; the lock/unlock remount in `build()` carries it over. */
+  readonly accessibleName?: string;
   readonly extraCss?: string;
   /** See `mountEditor`'s option of the same name. Pass `null` when `extraCss` carries the book's own typography. */
   readonly themeClassName?: string | null;
@@ -138,6 +140,7 @@ export function mountGutterpressEditor(
     const built: EditorMount = mountEditor(container, host, {
       onDiagnostic: options.onDiagnostic,
       readonly,
+      accessibleName: options.accessibleName,
       extraCss: `${GUTTERPRESS_EDITOR_CSS}\n${options.extraCss ?? ""}`,
       renderCustomBlock: provider.renderCustomBlock,
       groupBlocks: provider.groupBlocks,

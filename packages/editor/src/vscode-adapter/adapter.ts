@@ -6,6 +6,7 @@ import {
   Selection,
   StringValue,
   type EditorViewOptions,
+  type IClipboardStrategy,
 } from "@dimm-city/vscode-markdown-editor";
 import {
   diagnosticForEditRejection,
@@ -111,6 +112,15 @@ export interface VscodeEditorAdapterOptions {
   readonly readonly?: boolean;
 
   /**
+   * The accessible name of the mounted textbox (`aria-label` on the fork's
+   * root, see `createVscodeEditorAdapter`) - a host names it by the file it
+   * shows, so two chapters mounted side by side announce as two distinct
+   * textboxes. Omitted: the textbox has no name of its own and inherits
+   * whatever labeled landmark encloses it.
+   */
+  readonly accessibleName?: string;
+
+  /**
    * Passed through to the package's `EditorView` untouched (theme class
    * names, limited-width mode, ...). Optional and unused by this run's own
    * cases (1/1b/2/3); present so a later lane (case 7's isolated-mounting
@@ -157,9 +167,10 @@ export interface VscodeEditorAdapter {
    * explicit, caret-relative user gesture (a toolbar click, a keyboard
    * shortcut) MUST NOT treat `undefined` as "safe to anchor at the document
    * end" — see `rich-commands.ts`'s header for how the desktop app's
-   * callers handle this (some refuse with a diagnostic; image insertion via
-   * drag-and-drop deliberately keeps the document-end fallback, since that
-   * gesture is genuinely anchorless).
+   * callers handle this (some refuse with a diagnostic; image insertion
+   * from the Media panel's Insert button - a sidebar gesture with no caret
+   * of its own, which uses the editor's live caret when one exists and the
+   * document end otherwise - keeps the document-end fallback).
    *
    * Backed by `model.selection` (`ISettableObservable<Selection_2 |
    * undefined, void>` — package internals, not re-exported; this is the
@@ -207,6 +218,66 @@ export interface VscodeEditorAdapter {
 }
 
 /**
+ * The fork's `NativeClipboardStrategy` with one change: an event is the
+ * editor's when the root (the focusable EditContext host) HOLDS FOCUS,
+ * rather than when the event's target has no nested control between it
+ * and the root. Same three native listeners, same `clipboardData`
+ * plumbing, same `IClipboardContext` calls - the fork's public
+ * `EditorControllerOptions.clipboardStrategy` seam, no dist edit.
+ *
+ * Why the predicate moves (measured; see the textbox-role comment in
+ * `createVscodeEditorAdapter`): Chromium targets a keyboard-sourced
+ * copy/cut/paste at the element containing the native selection, which the
+ * fork parks collapsed on arbitrary descendants, so the target says nothing
+ * about who the author meant. Focus does: with the root itself active the
+ * author is editing the document; with a descendant active the event
+ * belongs to that control (native paste into the find widget's input
+ * proceeds untouched; a paste with a marker tag focused changes nothing).
+ * The fork returns focus to the root from its own content (a link, a
+ * block), so the descendants that can hold it are the fork's controls and
+ * a host's overlays such as the marker tags.
+ */
+function createClipboardStrategy(): IClipboardStrategy {
+  return {
+    connect(context) {
+      const root = context.element;
+      const owned = (): boolean => root.ownerDocument.activeElement === root;
+      const onCopy = (event: ClipboardEvent): void => {
+        if (!owned()) return;
+        const text = context.getSelectedText();
+        if (text === undefined) return;
+        event.preventDefault();
+        event.clipboardData?.setData("text/plain", text);
+      };
+      const onCut = (event: ClipboardEvent): void => {
+        if (!owned()) return;
+        const text = context.getSelectedText();
+        if (text === undefined) return;
+        event.preventDefault();
+        event.clipboardData?.setData("text/plain", text);
+        context.deleteSelection();
+      };
+      const onPaste = (event: ClipboardEvent): void => {
+        if (!owned()) return;
+        event.preventDefault();
+        const text = event.clipboardData?.getData("text/plain");
+        if (text) context.insertText(text);
+      };
+      root.addEventListener("copy", onCopy);
+      root.addEventListener("cut", onCut);
+      root.addEventListener("paste", onPaste);
+      return {
+        dispose: () => {
+          root.removeEventListener("copy", onCopy);
+          root.removeEventListener("cut", onCut);
+          root.removeEventListener("paste", onPaste);
+        },
+      };
+    },
+  };
+}
+
+/**
  * Mounts a real `@vscode/markdown-editor` surface into `container`, backed
  * by `host`. Mounting is synchronous: the model holds the host's CURRENT
  * snapshot (`host.getSnapshot()`) before this function returns.
@@ -241,10 +312,49 @@ export function createVscodeEditorAdapter(
   const view = new EditorView(model, options.viewOptions);
   container.appendChild(view.element);
 
+  // Textbox semantics on the fork's root, set here so every rebuild of the
+  // surface (the gutterpress mount remounts on lock/unlock) carries them.
+  // Measured, not designed: the root is the focusable EditContext host
+  // (`element.editContext = ...`, dist/index.js), and Chromium computes NO
+  // role for an EditContext host - `input-a11y.btest.ts`'s case 8 used to
+  // record a snapshot with no role at all, so a screen reader reached a
+  // focusable node it could not name. The desktop's other editing surface,
+  // CodeMirror's `.cm-content`, already carries role=textbox and
+  // aria-multiline, so with these both surfaces announce alike.
+  //
+  // The role changes what the fork's DEFAULT clipboard strategy does, which
+  // is why the controller below is connected with `createClipboardStrategy`
+  // instead. The default (`ba` in dist/index.js, `NativeClipboardStrategy`)
+  // listens for copy/cut/paste on this root and guards each event with
+  // `Ye(target, root)`: it returns undefined when the target IS the root,
+  // and otherwise resolves `closest('input, textarea, [contenteditable],
+  // [role="textbox"]')` from the target and, when that lands inside the
+  // root, early-returns so a nested control keeps its own clipboard. With
+  // role=textbox on the root, any event targeted at a descendant resolves
+  // to the root itself and is dropped. That would be the scope's intended
+  // no-op for a focused marker tag or link - except that Chromium targets
+  // a keyboard-sourced clipboard event at the element containing the
+  // native selection, not at the focused element, and the fork keeps that
+  // native selection collapsed on whatever descendant a click last touched
+  // (`_discardNativeSelection`; measured live: with the root focused, a
+  // Ctrl+V's paste event was targeted at `span.md-readonly-toggle-indicator`).
+  // Every author paste is therefore descendant-targeted, and with the role
+  // alone every one of them was dropped (`input-a11y.btest.ts`'s clipboard
+  // round trip failed). The adapter's own strategy keys on FOCUS instead,
+  // which is what the guard meant all along; `tests/web/mount.btest.ts`
+  // pins both shapes.
+  view.element.setAttribute("role", "textbox");
+  view.element.setAttribute("aria-multiline", "true");
+  view.element.setAttribute("aria-readonly", String(options.readonly ?? false));
+  if (options.accessibleName !== undefined) {
+    view.element.setAttribute("aria-label", options.accessibleName);
+  }
+
   // `EditorController`'s own doc comment: "Left unset, the chords are
   // passed on to the host" (see the file header above) — `historyStrategy`
-  // is intentionally never set here.
-  const controller = new EditorController(model, view);
+  // is intentionally never set here. `clipboardStrategy` IS set: see the
+  // comment on the textbox role above and `createClipboardStrategy` below.
+  const controller = new EditorController(model, view, { clipboardStrategy: createClipboardStrategy() });
 
   // True for the exact synchronous duration of an `host.applyEdit(...)`
   // call THIS adapter makes from inside `onWillApplySourceEdit` below, and
@@ -379,6 +489,7 @@ export function createVscodeEditorAdapter(
     setReadonly(readonly: boolean): void {
       if (disposed) return;
       model.readonlyMode.set(readonly, undefined, undefined);
+      view.element.setAttribute("aria-readonly", String(readonly));
     },
     dispose(): void {
       if (disposed) return;

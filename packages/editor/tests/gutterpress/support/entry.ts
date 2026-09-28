@@ -1,5 +1,7 @@
 import { createEditorProjection, type GutterpressProjection } from "gutterpress/render";
 import { MemoryDocumentHost } from "../../../src/core/index.ts";
+import type { EditorDocumentHost } from "../../../src/core/index.ts";
+import { withCallCounting, withSubscriberCounting } from "../../web/support/counting-host.ts";
 import { mountGutterpressEditor, type GutterpressEditorMount } from "../../../src/gutterpress/mount.ts";
 
 /**
@@ -63,6 +65,11 @@ export interface ChipInfo {
   readonly gpBlockKind: string | undefined;
 }
 
+export interface GutterpressMountOptions {
+  readonly keepHost?: boolean;
+  readonly readonly?: boolean;
+}
+
 declare global {
   interface Window {
     __gpGutterpress: GutterpressDriver;
@@ -73,14 +80,40 @@ declare global {
 }
 
 export interface GutterpressDriver {
-  /** Builds a REAL projection (via `createEditorProjection`) from `text` and mounts through `mountGutterpressEditor`, backed by a fresh `MemoryDocumentHost` seeded with the SAME `text` at version 0. */
-  mount(text: string): MountResult;
+  /**
+   * Builds a REAL projection (via `createEditorProjection`) from `text` and
+   * mounts through `mountGutterpressEditor`, backed by a fresh
+   * `MemoryDocumentHost` seeded with the SAME `text` at version 0. The host
+   * is wrapped in `tests/web/support/counting-host.ts`'s decorators
+   * (imported, not copied) so `activeSubscriberCount()` and
+   * `applyEditCallCount()` below can observe the boundary.
+   *
+   * `options.keepHost` (T2, mirroring `tests/web/support/entry.ts`'s option
+   * of the same name) reuses the PREVIOUS mount's host - text argument
+   * ignored, projection rebuilt from the host's current text and version -
+   * which is what the desktop's lock/unlock remount does: BookSurface bumps a
+   * slot's epoch, RichEditor's onMount mounts again on the same host with
+   * `readonly` fixed for that mount's lifetime. Ignored on the very first
+   * `mount()` call. `options.readonly` is passed straight to
+   * `mountGutterpressEditor`.
+   */
+  mount(text: string, options?: GutterpressMountOptions): MountResult;
   /** Same as `mount`, but the projection is built with a `sourceVersion` that does NOT match the host's initial version -- proves G-11 stale fallthrough end-to-end. */
   mountStale(text: string): MountResult;
   dispose(): void;
 
   getHostText(): string;
   getHostVersion(): number;
+  /** ACTIVE subscriber count on the current host (`withSubscriberCounting`). */
+  activeSubscriberCount(): number;
+  /** `applyEdit` calls the current host has received (`withCallCounting`). */
+  applyEditCallCount(): number;
+  /** Count of `.gp-marker-tags` overlay layers in the document (marker-tags.ts installs one per unlocked mount). */
+  markerTagLayerCount(): number;
+  /** Count of `<style data-gp-editor-css>` elements `mountEditor` injected. */
+  injectedStyleElementCount(): number;
+  /** Whether the mounted surface is the fork's locked view (`.md-editor.md-readonly`). */
+  isReadonlySurface(): boolean;
   /** G-11 -- true once the LIVE host's version has moved past the mounted projection's own `sourceVersion`. */
   needsRefresh(): boolean;
   /** Builds a projection for the host's CURRENT text and version and hands it to `GutterpressEditorMount.refreshProjection` - the host-side refresh an edit triggers. */
@@ -96,6 +129,13 @@ export interface GutterpressDriver {
    *  depending on `:nth-child` CSS matching every sibling under
    *  `.md-document`. */
   blockCenter(index: number): { x: number; y: number };
+
+  /** T1 (real-book sweep): scrolls the i-th `.md-block` to the viewport's center so `blockCenter(i)` is a clickable point on a long chapter. */
+  scrollBlockIntoView(index: number): void;
+  /** T1: the position of the i-th chip among `blockCount()`'s blocks (a chip IS a block), so the sweep can find the chip's adjacent non-chip block. */
+  chipBlockIndex(chipIndex: number): number;
+  /** T1: scrolls the i-th chip's margin tag to the viewport's center so `markerTagPoint(i)` is a clickable point on a long chapter. */
+  scrollChipIntoView(chipIndex: number): void;
 
   /** Every `.gp-block-chip` element in the mounted document, in order. */
   chipCount(): number;
@@ -129,30 +169,47 @@ export interface GutterpressDriver {
 
 const CONTAINER_ID = "gp-gutterpress-mount";
 
+type CountingHost = EditorDocumentHost & {
+  activeSubscriberCount(): number;
+  applyEditCallCount(): number;
+};
+
 let mountHandle: GutterpressEditorMount | undefined;
-let host: MemoryDocumentHost | undefined;
+let host: CountingHost | undefined;
 
 function buildProjection(text: string, sourceVersion: number): GutterpressProjection {
   return createEditorProjection(text, { sourceVersion });
 }
 
-function doMount(text: string, projectionSourceVersion: number): MountResult {
+function createCountingHost(text: string): CountingHost {
+  const subscriberCounted = withSubscriberCounting(new MemoryDocumentHost({ text, version: 0 }));
+  const callCounted = withCallCounting(subscriberCounted);
+  return { ...callCounted, activeSubscriberCount: subscriberCounted.activeSubscriberCount };
+}
+
+function doMount(text: string, projectionSourceVersion: number, options: GutterpressMountOptions = {}): MountResult {
   mountHandle?.dispose();
   document.getElementById(CONTAINER_ID)?.remove();
 
-  host = new MemoryDocumentHost({ text, version: 0 });
-  const projection = buildProjection(text, projectionSourceVersion);
+  let projection: GutterpressProjection;
+  if (options.keepHost && host) {
+    const snapshot = host.getSnapshot();
+    projection = buildProjection(snapshot.text, snapshot.version);
+  } else {
+    host = createCountingHost(text);
+    projection = buildProjection(text, projectionSourceVersion);
+  }
 
   const container = document.createElement("div");
   container.id = CONTAINER_ID;
   document.body.appendChild(container);
 
-  mountHandle = mountGutterpressEditor(container, host, { projection });
+  mountHandle = mountGutterpressEditor(container, host, { projection, readonly: options.readonly });
 
   return { containerSelector: `#${CONTAINER_ID}` };
 }
 
-function requireHost(): MemoryDocumentHost {
+function requireHost(): CountingHost {
   if (!host) throw new Error("gutterpress harness: mount() has not been called yet");
   return host;
 }
@@ -219,7 +276,7 @@ function segmentTextNode(chipIndex: number, charIndex: number): Text {
 window.__gpcScriptRan = false;
 
 window.__gpGutterpress = {
-  mount: (text: string) => doMount(text, 0),
+  mount: (text: string, options?: GutterpressMountOptions) => doMount(text, 0, options),
   mountStale: (text: string) => doMount(text, 999999),
   dispose(): void {
     mountHandle?.dispose();
@@ -227,6 +284,11 @@ window.__gpGutterpress = {
 
   getHostText: () => requireHost().getSnapshot().text,
   getHostVersion: () => requireHost().getSnapshot().version,
+  activeSubscriberCount: () => requireHost().activeSubscriberCount(),
+  applyEditCallCount: () => requireHost().applyEditCallCount(),
+  markerTagLayerCount: () => document.querySelectorAll(".gp-marker-tags").length,
+  injectedStyleElementCount: () => document.querySelectorAll("style[data-gp-editor-css]").length,
+  isReadonlySurface: () => document.querySelector(".md-editor.md-readonly") !== null,
   needsRefresh: () => {
     if (!mountHandle) throw new Error("gutterpress harness: mount() has not been called yet");
     return mountHandle.needsRefresh();
@@ -248,6 +310,23 @@ window.__gpGutterpress = {
     if (!el) throw new Error(`gutterpress harness: no block at index ${index}`);
     const rect = el.getBoundingClientRect();
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  },
+
+  scrollBlockIntoView(index: number): void {
+    const el = blockElements()[index];
+    if (!el) throw new Error(`gutterpress harness: no block at index ${index}`);
+    el.scrollIntoView({ block: "center" });
+  },
+  chipBlockIndex(chipIndex: number): number {
+    const index = blockElements().indexOf(requireChip(chipIndex));
+    if (index < 0) throw new Error(`gutterpress harness: chip ${chipIndex} is not among the top-level blocks`);
+    return index;
+  },
+  scrollChipIntoView(chipIndex: number): void {
+    const start = requireChip(chipIndex).getAttribute("data-gp-caret");
+    const tag = start === null ? null : document.querySelector<HTMLElement>(`.gp-marker-tag[data-gp-caret="${start}"]`);
+    if (!tag) throw new Error(`gutterpress harness: chip ${chipIndex} has no margin tag to scroll to`);
+    tag.scrollIntoView({ block: "center" });
   },
 
   chipCount: () => chipElements().length,

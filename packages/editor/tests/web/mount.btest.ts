@@ -569,6 +569,115 @@ describe("getSelection reports the fork's LIVE caret as D3 source offsets (SFE-P
   });
 });
 
+/** The mounted root's attribute, or null when absent (A11Y-1). */
+async function rootAttribute(selector: string, name: string): Promise<string | null> {
+  return harness.page.evaluate(
+    ({ sel, name }) => document.querySelector(`${sel} .md-editor`)?.getAttribute(name) ?? null,
+    { sel: selector, name },
+  );
+}
+
+/**
+ * Dispatch a real-shaped paste event (a `ClipboardEvent` carrying
+ * `text/plain`) at the first element `targetSelector` matches, after
+ * focusing `focusSelector`'s element (or leaving focus where it is).
+ * Returns whether the target existed.
+ */
+async function pasteAt(targetSelector: string, text: string, focusSelector?: string): Promise<boolean> {
+  return harness.page.evaluate(
+    ({ targetSelector, text, focusSelector }) => {
+      const target = document.querySelector(targetSelector);
+      if (!(target instanceof HTMLElement)) return false;
+      if (focusSelector) (document.querySelector(focusSelector) as HTMLElement | null)?.focus();
+      const data = new DataTransfer();
+      data.setData("text/plain", text);
+      target.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: data }));
+      return true;
+    },
+    { targetSelector, text, focusSelector },
+  );
+}
+
+describe("the mounted root is an honest multiline textbox (A11Y-1)", () => {
+  test("carries role=textbox, aria-multiline, aria-readonly and the accessibleName as its aria-label, and Chromium's tree announces it as a named textbox", async () => {
+    const selector = await mount("named textbox probe", { accessibleName: "01-intro.md" });
+    await requireDocumentText(selector);
+
+    expect(await rootAttribute(selector, "role")).toBe("textbox");
+    expect(await rootAttribute(selector, "aria-multiline")).toBe("true");
+    expect(await rootAttribute(selector, "aria-readonly")).toBe("false");
+    expect(await rootAttribute(selector, "aria-label")).toBe("01-intro.md");
+
+    // The computed tree, not the markup: `input-a11y.btest.ts`'s case 8 used
+    // to record this snapshot with NO role at all (Chromium computes none
+    // for a bare EditContext host). The children under the textbox are the
+    // fork's own controls (the readonly toggle this mount leaves on).
+    const snapshot = await harness.page.locator(`${selector} .md-editor`).ariaSnapshot();
+    expect(snapshot.startsWith('- textbox "01-intro.md":')).toBe(true);
+  });
+
+  test("with no accessibleName the root is still a textbox, just an unnamed one", async () => {
+    const selector = await mount("unnamed textbox probe");
+    await requireDocumentText(selector);
+
+    expect(await rootAttribute(selector, "role")).toBe("textbox");
+    expect(await rootAttribute(selector, "aria-label")).toBeNull();
+  });
+
+  test("setReadonly flips aria-readonly live, in both directions", async () => {
+    const selector = await mount("readonly flip probe", { readonly: true });
+    await requireDocumentText(selector);
+    expect(await rootAttribute(selector, "aria-readonly")).toBe("true");
+
+    await harness.page.evaluate(() => window.__gpMount.setReadonly(false));
+    expect(await rootAttribute(selector, "aria-readonly")).toBe("false");
+
+    await harness.page.evaluate(() => window.__gpMount.setReadonly(true));
+    expect(await rootAttribute(selector, "aria-readonly")).toBe("true");
+  });
+
+  test("a paste event with a descendant control FOCUSED is a no-op on the host; a descendant-targeted event with the root focused (Chromium's keyboard shape) still inserts", async () => {
+    // Two blocks: the caret goes in the first, so the second stays inactive
+    // and keeps rendering its link as the `<a href>` the fork emits for an
+    // inactive block. The link is a TARGET only: the fork returns focus to
+    // the root when a content descendant is focused (measured: after
+    // `a.focus()` the active element was still `.md-editor`), so the
+    // reachable focused descendants are the fork's own controls - here its
+    // readonly toggle button, which the web mount leaves on - and a host's
+    // marker tags (`tests/gutterpress/gutterpress.btest.ts`).
+    const text = "first line\n\nsee [site](https://example.com) now";
+    const selector = await mount(text);
+    await requireDocumentText(selector);
+    const root = `${selector} .md-editor`;
+    const link = `${root} a[href]`;
+    const toggle = `${root} button.md-readonly-toggle`;
+
+    await harness.page.click(selector);
+    await harness.page.keyboard.press("Home");
+    expect(await selectionOffsets()).toEqual({ from: 0, to: 0 });
+
+    // Focus on the toggle: the event belongs to that control, not to the
+    // document (adapter.ts's `createClipboardStrategy`), so the model is
+    // untouched.
+    expect(await pasteAt(toggle, "PASTED", toggle)).toBe(true);
+    await harness.page.waitForTimeout(50);
+    expect(await hostText()).toBe(text);
+    expect(await applyEditCallCount()).toBe(0);
+
+    // Focus back on the root, event TARGETED at a descendant: this is the
+    // shape a real Ctrl+V has in Chromium (the event goes to the element
+    // holding the native selection, never to the focused root -
+    // adapter.ts's textbox-role comment has the measurement), and it must
+    // insert, or no keyboard paste would. The fork's own target-based guard
+    // drops exactly this event once the root carries role=textbox; the
+    // real-keyboard proof is `input-a11y.btest.ts`'s clipboard round trip.
+    expect(await pasteAt(link, "PASTED", root)).toBe(true);
+    await harness.page.waitForTimeout(50);
+    expect(await hostText()).toBe(`PASTED${text}`);
+    expect(await applyEditCallCount()).toBe(1);
+  });
+});
+
 describe("harness liveness", () => {
   test("the shared session produced no console or page errors across every case above", () => {
     expect(harness.consoleErrors).toEqual([]);

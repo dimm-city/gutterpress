@@ -802,6 +802,202 @@ describe("editing paragraphs immediately adjacent to a generated-view-anchoring 
   });
 });
 
+// ---------------------------------------------------------------------------
+// T2: the production lock/unlock remount, on ONE host. The desktop never
+// calls `GutterpressEditorMount.setReadonly` for the Read/Edit toggle:
+// BookSurface.svelte's `setReadonly` bumps every slot's epoch, `{#key
+// slot.epoch}` destroys and recreates each RichEditor, and RichEditor's
+// onMount calls `mountGutterpressEditor` again on the SAME host with
+// `readonly` fixed for that mount's lifetime. This case does exactly that
+// sequence through the driver's `keepHost` option and asserts the things a
+// leak across the remount would break: the host's subscriber count (a
+// disposed mount's adapter must have unsubscribed), the `.gp-marker-tags`
+// overlay count (marker-tags.ts installs one per unlocked mount and must
+// remove it on dispose), the injected `<style>` count, and that after three
+// cycles one keystroke still reaches the host exactly once.
+//
+// SABOTAGE EVIDENCE (run locally, reverted, not committed): commenting out
+// `unsubscribeHost()` in `src/vscode-adapter/adapter.ts`'s dispose fails the
+// subscriber-count assertion (expected 0, received 1); deleting the
+// `if (readonly) return;` before `installMarkerTags` in
+// `src/gutterpress/mount.ts` fails the locked-mount layer-count assertion
+// (expected 0, received 1). Commenting out `markerTags?.dispose()` in
+// mount.ts's dispose does NOT fail here, and cannot be made to with a DOM
+// count: marker-tags.ts appends the layer to the document element's parent
+// (the fork's `.md-editor-content`, two levels under the `.md-editor`
+// `view.element` the adapter appends to the container and `.remove()`s in
+// its own dispose), so the adapter's dispose takes the layer out of the
+// document either way; what that call still owns is the layer's observers
+// and pending frame, visible only as a heap number this case deliberately
+// does not take.
+// ---------------------------------------------------------------------------
+
+describe("lock/unlock remount on one host (T2: the epoch remount BookSurface + RichEditor perform)", () => {
+  /** Two animation frames: marker-tags' rAF/observer paths and the fork's own post-mount work run before the next assertion. */
+  async function rafYield(): Promise<void> {
+    await harness.page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+    );
+  }
+  const subscribers = () => harness.page.evaluate(() => window.__gpGutterpress.activeSubscriberCount());
+  const applyEdits = () => harness.page.evaluate(() => window.__gpGutterpress.applyEditCallCount());
+  const tagLayers = () => harness.page.evaluate(() => window.__gpGutterpress.markerTagLayerCount());
+  const styleCount = () => harness.page.evaluate(() => window.__gpGutterpress.injectedStyleElementCount());
+  const isReadonly = () => harness.page.evaluate(() => window.__gpGutterpress.isReadonlySurface());
+  const remount = async (readonly: boolean) => {
+    await harness.page.evaluate((ro) => window.__gpGutterpress.mount("ignored - keepHost", { keepHost: true, readonly: ro }), readonly);
+    await rafYield();
+  };
+
+  test("three unlocked -> locked -> unlocked cycles restore every baseline count, a locked keystroke changes nothing, and one unlocked keystroke afterwards reaches the host exactly once, byte-exact", async () => {
+    await mount(FIXTURE_SOURCE);
+    await requireCounts(TOTAL_BLOCK_COUNT, TOTAL_CHIP_COUNT);
+    await markerTagPoint(PAGE_CHIP_INDEX); // waits for the overlay's first paint
+    await rafYield();
+
+    const originalText = await hostText();
+    expect(await hostVersion()).toBe(0);
+    const baseline = {
+      blocks: await blockCount(),
+      chips: await chipCount(),
+      layers: await tagLayers(),
+      styles: await styleCount(),
+      subscribers: await subscribers(),
+    };
+    // AP-21 liveness: the baseline is the real, populated unlocked surface.
+    expect(baseline.layers).toBe(1);
+    expect(baseline.subscribers).toBe(1);
+    expect(baseline.styles).toBeGreaterThan(0);
+    expect(await isReadonly()).toBe(false);
+    const editsBefore = await applyEdits();
+
+    for (let cycle = 1; cycle <= 3; cycle++) {
+      // Lock: dispose (RichEditor's onMount cleanup), then mount readonly.
+      await harness.page.evaluate(() => window.__gpGutterpress.dispose());
+      await rafYield();
+      expect(await subscribers()).toBe(0);
+      expect(await tagLayers()).toBe(0);
+      expect(await styleCount()).toBe(0);
+
+      await remount(true);
+      expect(await subscribers()).toBe(1);
+      expect(await tagLayers()).toBe(0);
+      expect(await isReadonly()).toBe(true);
+      expect(await blockCount()).toBe(baseline.blocks);
+
+      // A keystroke on the locked surface changes nothing.
+      await clickBlock(INTRO_BLOCK_INDEX);
+      await harness.page.keyboard.type("x");
+      await harness.page.waitForTimeout(50);
+      expect(await hostText()).toBe(originalText);
+      expect(await hostVersion()).toBe(0);
+      expect(await applyEdits()).toBe(editsBefore);
+
+      // Unlock: dispose again, then mount unlocked on the same host.
+      await harness.page.evaluate(() => window.__gpGutterpress.dispose());
+      await rafYield();
+      expect(await subscribers()).toBe(0);
+
+      await remount(false);
+      await markerTagPoint(PAGE_CHIP_INDEX);
+      expect(await isReadonly()).toBe(false);
+      expect({
+        blocks: await blockCount(),
+        chips: await chipCount(),
+        layers: await tagLayers(),
+        styles: await styleCount(),
+        subscribers: await subscribers(),
+      }).toEqual(baseline);
+      expect(await hostText()).toBe(originalText);
+      expect(await hostVersion()).toBe(0);
+    }
+
+    // After the cycles, one keystroke on the unlocked surface reaches the
+    // host exactly once, and lands byte-exactly at the caret (placed the way
+    // the getSelection cases above place it: Home, then ArrowRight steps).
+    await clickBlock(INTRO_BLOCK_INDEX);
+    await harness.page.keyboard.press("Home");
+    const withinBlock = "Intro ".length;
+    for (let i = 0; i < withinBlock; i++) await harness.page.keyboard.press("ArrowRight");
+    await harness.page.keyboard.type("x");
+    await harness.page.waitForTimeout(50);
+    const insertAt = FIXTURE_SOURCE.indexOf("Intro paragraph.") + withinBlock;
+    expect(await applyEdits()).toBe(editsBefore + 1);
+    expect(await hostText()).toBe(originalText.slice(0, insertAt) + "x" + originalText.slice(insertAt));
+    expect(await hostVersion()).toBe(1);
+    expect(await subscribers()).toBe(1);
+  });
+});
+
+describe("the mounted root announces as a textbox whose marker tags are named buttons (A11Y-1, folding A11Y-5 tier 1)", () => {
+  test("Chromium's accessibility tree lists the section marker tags as buttons under the textbox", async () => {
+    const selector = await mount("## Heading\n\n@section .lede\n\nBody.\n\n@end-section\n\nAfter.\n");
+    // Content liveness by the DOM, not the snapshot: a textbox's text nodes
+    // do not appear as children in Chromium's tree, so the snapshot alone
+    // cannot prove the document rendered.
+    const documentText = await harness.page.evaluate(
+      (sel: string) => document.querySelector(`${sel} .md-document`)?.textContent ?? null,
+      selector,
+    );
+    expect(documentText).toContain("Body.");
+    await markerTagPoint(0);
+
+    const snapshot = await harness.page.locator(`${selector} .md-editor`).ariaSnapshot();
+    // The gutterpress harness passes no accessibleName, so the textbox is
+    // unnamed here; RichEditor names it by file (its own landmarks test).
+    expect(snapshot.startsWith("- textbox")).toBe(true);
+    // `marker-tags.ts` labels each tag `${kind} marker: ${text}`; both are
+    // real buttons in the tree, nested under the textbox, not siblings of it.
+    const lines = snapshot.split("\n");
+    const tagLines = lines.filter((line) => line.includes("button \"section marker: @section .lede\"") || line.includes("button \"end-section marker: @end-section\""));
+    expect(tagLines).toHaveLength(2);
+    for (const line of tagLines) expect(line.startsWith("  ")).toBe(true);
+  });
+
+  test("with a marker tag focused, cut and paste leave the document unchanged; with the root focused again, the same paste inserts", async () => {
+    const text = "## Heading\n\n@section .lede\n\nBody.\n\n@end-section\n\nAfter.\n";
+    const selector = await mount(text);
+    // heading, @section, Body., @end-section, After. - two of them chips.
+    await requireCounts(5, 2);
+    await markerTagPoint(0);
+    const root = `${selector} .md-editor`;
+
+    // A caret in the body paragraph, so a paste that DID reach the model
+    // would have somewhere to land.
+    const bodyIndex = 2;
+    await clickBlock(bodyIndex);
+    await harness.page.keyboard.press("Home");
+    expect(await selectionOffsets()).toEqual({ from: text.indexOf("Body."), to: text.indexOf("Body.") });
+
+    const clipboardAt = async (kind: "cut" | "paste", focusRoot: boolean): Promise<string> =>
+      harness.page.evaluate(
+        ({ root, kind, focusRoot }) => {
+          const tag = document.querySelector(`${root} .gp-marker-tag`) as HTMLElement;
+          (focusRoot ? (document.querySelector(root) as HTMLElement) : tag).focus();
+          const data = new DataTransfer();
+          data.setData("text/plain", "PASTED");
+          tag.dispatchEvent(new ClipboardEvent(kind, { bubbles: true, cancelable: true, clipboardData: data }));
+          return document.activeElement?.className ?? "";
+        },
+        { root, kind, focusRoot },
+      );
+
+    // The tag holds focus (it is tabbable, and unlike the fork's content
+    // the fork does not pull focus back from it), so the events are its.
+    expect(await clipboardAt("cut", false)).toContain("gp-marker-tag");
+    expect(await clipboardAt("paste", false)).toContain("gp-marker-tag");
+    await harness.page.waitForTimeout(50);
+    expect(await hostText()).toBe(text);
+    expect(await hostVersion()).toBe(0);
+
+    // Liveness twin: root focused, same event at the same tag, inserts.
+    expect(await clipboardAt("paste", true)).toContain("md-editor");
+    await harness.page.waitForTimeout(50);
+    expect(await hostText()).toBe(text.replace("Body.", "PASTEDBody."));
+    expect(await hostVersion()).toBe(1);
+  });
+});
+
 describe("harness liveness", () => {
   test("no console or page errors across every case above", () => {
     expect(harness.consoleErrors).toEqual([]);

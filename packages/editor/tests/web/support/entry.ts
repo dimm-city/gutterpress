@@ -47,6 +47,8 @@ import { withDisposeOnFirstNotify } from "./self-disposing-host.ts";
 
 export interface MountOptions {
   readonly readonly?: boolean;
+  /** Passed straight to `mountEditor` - the textbox's `aria-label` (A11Y-1). */
+  readonly accessibleName?: string;
   readonly extraCss?: string;
   /** When set, the mounted host's `applyEdit` ALWAYS rejects with this
    * reason (see `rejecting-host.ts`) — used by the rejection-diagnostic
@@ -99,6 +101,8 @@ export interface GutterpressMountHarnessDriver {
    * ask before ever mounting.
    */
   getSelection(): { readonly from: number; readonly to: number } | undefined;
+  /** Passthrough to the current mount's `EditorMount.setReadonly()` (A11Y-1: flips `aria-readonly` live). */
+  setReadonly(readonly: boolean): void;
   readonly containerSelector: string;
 
   /**
@@ -187,6 +191,7 @@ function mount(initialText: string, options: MountOptions = {}): string {
 
   mountHandle = mountEditor(container, host, {
     readonly: options.readonly ?? false,
+    accessibleName: options.accessibleName,
     extraCss: options.extraCss,
     onDiagnostic: (diagnostic) => collectedDiagnostics.push(diagnostic),
   });
@@ -250,6 +255,7 @@ window.__gpMount = {
     document.querySelectorAll("style[data-gp-editor-css]").length,
   activeSubscriberCount: () => requireSubscriberCountingHost().activeSubscriberCount(),
   getSelection: () => mountHandle?.getSelection(),
+  setReadonly: (readonly: boolean) => mountHandle?.setReadonly(readonly),
   containerSelector: `#${CONTAINER_ID}`,
 
   mountSecond,
