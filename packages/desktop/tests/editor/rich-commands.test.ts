@@ -17,9 +17,12 @@
  * Uses `MemoryDocumentHost` (the package's own test host — `@dimm-city/
  * gutterpress-editor`) exactly like `desktop-document-host.test.ts` and
  * `rich-mode.test.ts` already do, so these tests exercise the REAL D3
- * `applyEdit`/stale/readonly/invalid-range behavior, not a mock.
+ * `applyEdit`/stale/readonly/invalid-range behavior, not a mock. The
+ * capture-staleness cases at the end use a real `DesktopDocumentHost`,
+ * built the way `BookSurface` builds one, because the replaced-host case
+ * is about that host's identity and its save scheduling.
  */
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { MemoryDocumentHost } from "@dimm-city/gutterpress-editor";
 import type { ApplyEditResult, DocumentSnapshot, EditorDocumentHost, SourceEdit } from "@dimm-city/gutterpress-editor/core";
 import {
@@ -28,9 +31,15 @@ import {
   applyRichCommand,
   applyRichImageInsert,
   applyRichLayoutBlock,
+  applyRichImagePropertiesEdit,
+  applyRichLinkEditEdit,
   blockIndexAtOffset,
   buildImageInsertText,
+  captureRichSelection,
   documentEndSelection,
+  isRichCaptureFresh,
+  locateRichImagePropertiesAtCaret,
+  locateRichLinkEditAtCaret,
   moveBlock,
   resolveRichSelection,
   routeToolbarAction,
@@ -41,6 +50,7 @@ import {
 } from "../../src/lib/editor/rich-commands";
 import { descriptorForLayoutBlock, type LayoutBlockKind } from "../../src/lib/editor/toolbar-actions";
 import type { ImagePropertiesValue } from "../../src/lib/editor/image-classes";
+import { DesktopDocumentHost } from "../../src/lib/editor-host/desktop-document-host";
 
 const blankImage: ImagePropertiesValue = {
   src: "",
@@ -296,7 +306,7 @@ describe("applyRichLayoutBlock", () => {
 describe("applyRichAppend", () => {
   test("appends arbitrary text at the document end", () => {
     const host = new MemoryDocumentHost({ text: "one", version: 0 });
-    const outcome = applyRichAppend(host, "\n\ntwo");
+    const outcome = applyRichAppend(host, captureRichSelection(host, undefined), "\n\ntwo");
     expect(outcome.ok).toBe(true);
     expect(host.getSnapshot().text).toBe("one\n\ntwo");
   });
@@ -305,7 +315,7 @@ describe("applyRichAppend", () => {
     const host = new MemoryDocumentHost({ text: "one two", version: 0 });
     const caret = "one ".length;
     const live: LiveSelection = { from: caret, to: caret };
-    const outcome = applyRichAppend(host, "MID", live);
+    const outcome = applyRichAppend(host, captureRichSelection(host, live), "MID");
     expect(outcome.ok).toBe(true);
     expect(host.getSnapshot().text).toBe("one MIDtwo");
   });
@@ -314,7 +324,7 @@ describe("applyRichAppend", () => {
     const host = new MemoryDocumentHost({ text: "one two three", version: 0 });
     const wordStart = "one ".length;
     const live: LiveSelection = { from: wordStart, to: wordStart + "two".length };
-    const outcome = applyRichAppend(host, "TWO", live);
+    const outcome = applyRichAppend(host, captureRichSelection(host, live), "TWO");
     expect(outcome.ok).toBe(true);
     expect(host.getSnapshot().text).toBe("one TWO three");
   });
@@ -418,7 +428,7 @@ describe("applyRichImageInsert", () => {
   test("appends the built snippet at the document end and accepts the edit", () => {
     const host = new MemoryDocumentHost({ text: "para", version: 0 });
     const value = { ...blankImage, src: "cover.png", alt: "Cover" };
-    const outcome = applyRichImageInsert(host, value);
+    const outcome = applyRichImageInsert(host, captureRichSelection(host, undefined), value);
     expect(outcome.ok).toBe(true);
     expect(host.getSnapshot().text).toBe("para" + buildImageInsertText(value));
   });
@@ -428,7 +438,7 @@ describe("applyRichImageInsert", () => {
     const caret = "before".length;
     const live: LiveSelection = { from: caret, to: caret };
     const value = { ...blankImage, src: "cover.png", alt: "Cover" };
-    const outcome = applyRichImageInsert(host, value, live);
+    const outcome = applyRichImageInsert(host, captureRichSelection(host, live), value);
     expect(outcome.ok).toBe(true);
     expect(host.getSnapshot().text).toBe("before" + buildImageInsertText(value) + " after");
   });
@@ -909,5 +919,88 @@ describe("caret-driven block move (blockIndexAtOffset + applyBlockMove composed,
     expect(outcome.ok).toBe(true);
     expect(host.getSnapshot().text).toBe("Intro.\n\nOutro.\n\n@page-break");
     expect(host.getSnapshot().text).toContain("@page-break");
+  });
+});
+
+// -- Selection capture across a dialog (P1) ------------------------------------
+//
+// The three cases that discriminate the guard: a version bump on the SAME
+// host, a REPLACED host (the silent-loss case only the identity half
+// catches - a fresh host is version 0 too), and a fresh capture with no
+// selection (the anchorless fallback the callers rely on, unchanged).
+
+describe("capture staleness (real DesktopDocumentHost)", () => {
+  const text = "Intro.\n\n![A cat](cat.png)\n\nSee [docs](https://old.example.com).";
+
+  test("a version bump between capture and apply refuses with stale and leaves the text byte-identical", () => {
+    const host = new DesktopDocumentHost(text, { documentId: "chapter.md" });
+    const caret = text.indexOf("cat.png");
+    const capture = captureRichSelection(host, { from: caret, to: caret });
+    const located = locateRichImagePropertiesAtCaret(host, capture.selection!);
+    if (!located.ok) throw new Error("unreachable");
+    expect(isRichCaptureFresh(host, capture)).toBe(true);
+
+    // An edit lands while the dialog is open.
+    expect(host.applyEdit({ from: 0, to: 0, insert: "X", expectedVersion: 0 }).ok).toBe(true);
+    const after = host.getSnapshot().text;
+    expect(isRichCaptureFresh(host, capture)).toBe(false);
+
+    for (const outcome of [
+      applyRichImagePropertiesEdit(host, capture, located.value, { ...located.value.initial, alt: "never" }),
+      applyRichImageInsert(host, capture, { ...blankImage, src: "never.png" }),
+      applyRichAppend(host, capture, "never"),
+    ]) {
+      expect(outcome.ok).toBe(false);
+      if (outcome.ok) throw new Error("unreachable");
+      expect(outcome.diagnostic.category).toBe("EDITOR_STALE_EDIT");
+    }
+    expect(host.getSnapshot().text).toBe(after);
+    expect(host.getSnapshot().version).toBe(1);
+  });
+
+  test("a replaced host: capture on hostA, a fresh hostB current -> stale, neither host touched, no save scheduled", () => {
+    const scheduledA: number[] = [];
+    const hostA = new DesktopDocumentHost(text, { documentId: "chapter.md", onScheduleSave: () => scheduledA.push(1) });
+    const caret = text.indexOf("old.example.com");
+    const capture = captureRichSelection(hostA, { from: caret, to: caret });
+    const located = locateRichLinkEditAtCaret(hostA, capture.selection!);
+    if (!located.ok) throw new Error("unreachable");
+
+    // BookSurface.rebuildDegraded: the slot's host is dropped and a brand-new
+    // one is built from the text on disk - version 0 again, different text.
+    const textB = "Rebuilt.\n\nSee [docs](https://other.example.com).";
+    const hostB = new DesktopDocumentHost(textB, { documentId: "chapter.md" });
+    const applyA = spyOn(hostA, "applyEdit");
+    const applyB = spyOn(hostB, "applyEdit");
+    expect(hostB.getSnapshot().version).toBe(capture.version); // a version compare alone would pass
+    expect(isRichCaptureFresh(hostB, capture)).toBe(false);
+
+    for (const outcome of [
+      applyRichLinkEditEdit(hostB, capture, located.value, "https://new.example.com"),
+      applyRichImageInsert(hostB, capture, { ...blankImage, src: "never.png" }),
+      applyRichAppend(hostB, capture, "never"),
+      applyRichAppend(null, capture, "never"),
+    ]) {
+      expect(outcome.ok).toBe(false);
+      if (outcome.ok) throw new Error("unreachable");
+      expect(outcome.diagnostic.category).toBe("EDITOR_STALE_EDIT");
+    }
+    expect(hostA.getSnapshot()).toEqual({ text, version: 0 });
+    expect(hostB.getSnapshot()).toEqual({ text: textB, version: 0 });
+    expect(applyA).toHaveBeenCalledTimes(0);
+    expect(applyB).toHaveBeenCalledTimes(0);
+    expect(scheduledA).toHaveLength(0);
+  });
+
+  test("a fresh capture with no selection keeps the anchorless document-end fallback", () => {
+    const host = new DesktopDocumentHost("para", { documentId: "chapter.md" });
+    const capture = captureRichSelection(host, undefined);
+    expect(isRichCaptureFresh(host, capture)).toBe(true);
+    const value = { ...blankImage, src: "cover.png", alt: "Cover" };
+    const outcome = applyRichImageInsert(host, capture, value);
+    expect(outcome.ok).toBe(true);
+    expect(host.getSnapshot().text).toBe("para" + buildImageInsertText(value));
+    // The capture is spent: the accepted edit bumped the version.
+    expect(isRichCaptureFresh(host, capture)).toBe(false);
   });
 });

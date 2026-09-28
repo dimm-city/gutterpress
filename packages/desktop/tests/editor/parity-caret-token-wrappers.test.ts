@@ -40,6 +40,7 @@ import {
 import {
   locateRichImagePropertiesAtCaret,
   applyRichImagePropertiesEdit,
+  captureRichSelection,
   applyRichImageUnwrapAtCaret,
   locateRichLinkEditAtCaret,
   applyRichLinkEditEdit,
@@ -234,12 +235,11 @@ describe("rich mode: locateRichImagePropertiesAtCaret / applyRichImageProperties
     if (!located.ok) throw new Error("unreachable");
     expect(located.value.initial.src).toBe("cat.png");
 
-    const outcome = applyRichImagePropertiesEdit(
-      host,
-      located.value,
-      { ...located.value.initial, alt: "A happy cat", size: "gp-large" },
-      host.getSnapshot().version,
-    );
+    const outcome = applyRichImagePropertiesEdit(host, captureRichSelection(host, live), located.value, {
+      ...located.value.initial,
+      alt: "A happy cat",
+      size: "gp-large",
+    });
     expect(outcome.ok).toBe(true);
     expect(host.getSnapshot().text).toBe("Intro.\n\n![A happy cat](cat.png){.gp-large}\n\nOutro.");
     expect(host.getSnapshot().version).toBe(1);
@@ -253,7 +253,7 @@ describe("rich mode: locateRichImagePropertiesAtCaret / applyRichImageProperties
     const located = locateRichImagePropertiesAtCaret(host, live);
     expect(located.ok).toBe(true);
     if (!located.ok) throw new Error("unreachable");
-    const capturedVersion = host.getSnapshot().version;
+    const capture = captureRichSelection(host, live);
 
     // An out-of-band edit lands on the SAME host while the caller's dialog
     // was open (an external reload, a plugin, or a race with another
@@ -262,12 +262,10 @@ describe("rich mode: locateRichImagePropertiesAtCaret / applyRichImageProperties
     expect(intervening.ok).toBe(true);
     const afterIntervening = host.getSnapshot().text;
 
-    const outcome = applyRichImagePropertiesEdit(
-      host,
-      located.value,
-      { ...located.value.initial, alt: "This must never land" },
-      capturedVersion,
-    );
+    const outcome = applyRichImagePropertiesEdit(host, capture, located.value, {
+      ...located.value.initial,
+      alt: "This must never land",
+    });
     expect(outcome.ok).toBe(false);
     if (outcome.ok) throw new Error("unreachable");
     expect(outcome.diagnostic.category).toBe("EDITOR_STALE_EDIT");
@@ -310,7 +308,7 @@ describe("rich mode: locateRichLinkEditAtCaret / applyRichLinkEditEdit", () => {
     if (!located.ok) throw new Error("unreachable");
     expect(located.value.initialHref).toBe("https://old.example.com/docs");
 
-    const outcome = applyRichLinkEditEdit(host, located.value, "https://new.example.com/docs", host.getSnapshot().version);
+    const outcome = applyRichLinkEditEdit(host, captureRichSelection(host, live), located.value, "https://new.example.com/docs");
     expect(outcome.ok).toBe(true);
     expect(host.getSnapshot().text).toBe('See [our docs](https://new.example.com/docs "Docs").');
     expect(host.getSnapshot().version).toBe(1);
@@ -325,7 +323,7 @@ describe("rich mode: locateRichLinkEditAtCaret / applyRichLinkEditEdit", () => {
     const located = locateRichLinkEditAtCaret(host, live);
     expect(located.ok).toBe(true);
     if (!located.ok) throw new Error("unreachable");
-    const capturedVersion = host.getSnapshot().version;
+    const capture = captureRichSelection(host, live);
 
     const intervening = host.applyEdit({
       from: text.length,
@@ -336,7 +334,7 @@ describe("rich mode: locateRichLinkEditAtCaret / applyRichLinkEditEdit", () => {
     expect(intervening.ok).toBe(true);
     const afterIntervening = host.getSnapshot().text;
 
-    const outcome = applyRichLinkEditEdit(host, located.value, "https://new.example.com/docs", capturedVersion);
+    const outcome = applyRichLinkEditEdit(host, capture, located.value, "https://new.example.com/docs");
     expect(outcome.ok).toBe(false);
     if (outcome.ok) throw new Error("unreachable");
     expect(outcome.diagnostic.category).toBe("EDITOR_STALE_EDIT");

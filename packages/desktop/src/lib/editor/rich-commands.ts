@@ -53,9 +53,11 @@
  * know); every `applyRich*` function below still resolves its edit position
  * through {@link resolveRichSelection}, which still falls back to
  * {@link documentEndSelection} when `live` is `undefined`, and that fallback
- * remains correct for a GENUINELY anchorless caller (image insertion via
- * drag-and-drop from outside the mounted surface, or before the surface has
- * ever been focused at all — `applyRichImageInsert`). But a caller that
+ * remains correct for a GENUINELY anchorless caller (image insertion from
+ * the Media panel's Insert button - a sidebar gesture with no caret of its
+ * own, which uses the editor's live caret when one exists and the document
+ * end otherwise - or before the surface has ever been focused at all:
+ * `applyRichImageInsert`). But a caller that
  * represents an explicit, caret-relative user gesture — a toolbar click, a
  * keyboard shortcut, "insert snippet" — must NOT silently reuse that same
  * fallback: one stray click in the gutter between two keystrokes and the
@@ -159,6 +161,43 @@ export function documentEndSelection(snapshot: DocumentSnapshot): CommandSelecti
 export interface LiveSelection {
   readonly from: number;
   readonly to: number;
+}
+
+// -- Selection capture across a dialog (SFE-P3ab review round 1) -------------
+//
+// A dialog's `await` gives an external reload or a file switch time to
+// replace the rich host entirely, and a plain offset with no document
+// identity attached used to be silently applied to whatever document was
+// live once the dialog resolved. A capture pairs the selection with the
+// exact host + version it was read against. Every apply function below
+// that can run after such an await takes the CURRENT host beside the
+// capture and refuses with "stale" itself when the identity differs (the
+// silent-loss case only an identity check catches: a replaced host is a
+// fresh object at version 0, so a version compare alone would pass). The
+// version half is the host's own guard: `capture.version` is threaded as
+// `expectedVersion`, and `applyEdit` (apply-edit.ts) refuses a mismatch.
+
+export interface RichSelectionCapture {
+  readonly host: EditorDocumentHost;
+  readonly version: number;
+  readonly selection: LiveSelection | undefined;
+}
+
+/** Pairs `selection` (the mount's live selection, read the moment the
+ *  gesture fires) with `host` and its CURRENT version. */
+export function captureRichSelection(host: EditorDocumentHost, selection: LiveSelection | undefined): RichSelectionCapture {
+  return { host, version: host.getSnapshot().version, selection };
+}
+
+/** Whether `capture` is still valid against `currentHost`: false once the
+ *  document identity was replaced (a rebuild) or any edit landed since the
+ *  capture, either of which makes the captured offsets meaningless. */
+export function isRichCaptureFresh(currentHost: EditorDocumentHost | null, capture: RichSelectionCapture): boolean {
+  return currentHost === capture.host && currentHost.getSnapshot().version === capture.version;
+}
+
+function staleCapture(): RichCommandOutcome {
+  return { ok: false, diagnostic: diagnosticForEditRejection("stale") };
 }
 
 /**
@@ -294,13 +333,13 @@ export function applyRichLayoutBlock(
  *  live CodeMirror selection (`view.dispatch({changes: {from, to, insert:
  *  text}, ...})` — replace, not append-after). */
 export function applyRichAppend(
-  host: EditorDocumentHost,
+  currentHost: EditorDocumentHost | null,
+  capture: RichSelectionCapture,
   text: string,
-  live?: LiveSelection,
 ): RichCommandOutcome {
-  const snapshot = host.getSnapshot();
-  const { start, endExclusive } = resolveRichSelection(snapshot, live);
-  return finishEdit(host, { from: start, to: endExclusive, insert: text, expectedVersion: snapshot.version });
+  if (!isRichCaptureFresh(currentHost, capture)) return staleCapture();
+  const { start, endExclusive } = resolveRichSelection(capture.host.getSnapshot(), capture.selection);
+  return finishEdit(capture.host, { from: start, to: endExclusive, insert: text, expectedVersion: capture.version });
 }
 
 // ── Images (G-10/AP-17, G-09) ───────────────────────────────────────────────
@@ -380,14 +419,14 @@ export function buildImageInsertText(value: ImagePropertiesValue): string {
  *  message instead of calling this on an invalid value (mirrors the
  *  existing context-menu image-properties flow). */
 export function applyRichImageInsert(
-  host: EditorDocumentHost,
+  currentHost: EditorDocumentHost | null,
+  capture: RichSelectionCapture,
   value: ImagePropertiesValue,
-  live?: LiveSelection,
 ): RichCommandOutcome {
-  const snapshot = host.getSnapshot();
-  const at = resolveRichSelection(snapshot, live).endExclusive;
+  if (!isRichCaptureFresh(currentHost, capture)) return staleCapture();
+  const at = resolveRichSelection(capture.host.getSnapshot(), capture.selection).endExclusive;
   const insert = buildImageInsertText(value);
-  return finishEdit(host, { from: at, to: at, insert, expectedVersion: snapshot.version });
+  return finishEdit(capture.host, { from: at, to: at, insert, expectedVersion: capture.version });
 }
 
 // ── Command routing (source vs. rich path selection) ───────────────────────
@@ -506,15 +545,14 @@ export function routeToolbarAction(action: ToolbarAction, payload?: ToolbarPaylo
 // image-properties and link-edit are split into a LOCATE step and an APPLY
 // step for the SAME reason `toolbar-actions.ts`'s equivalents are: the
 // caller (`+page.svelte`) owns the `promptImageProperties`/`promptText`
-// dialog AND the document-identity staleness check
-// (`captureRichSelection`/`isRichSelectionCaptureFresh` — SFE-P3ab review
-// round 1's fix for a captured `richDocHost` reference going stale across
-// an `await`, reused here rather than reinvented) — this file must not
-// swallow either. `expectedVersion` is threaded through explicitly from the
-// caller's OWN captured version (not re-read from `host` at apply time)
-// so a caller that already re-verified freshness via
-// `isRichSelectionCaptureFresh` gets exactly the guard it asked for; D3/D7
-// still make `applyEdit` itself refuse if it does not match.
+// dialog. The document-identity staleness check across that dialog is this
+// file's (`captureRichSelection`/`isRichCaptureFresh` above - SFE-P3ab
+// review round 1's fix for a captured host reference going stale across an
+// `await`): the caller captures before the dialog and passes the CURRENT
+// host beside the capture at apply time, and the apply step refuses with
+// "stale" itself. `capture.version` is threaded through as
+// `expectedVersion` (not re-read from the host at apply time), so D3/D7
+// make `applyEdit` itself refuse a version mismatch too.
 
 /**
  * Locate step for "Image properties…" (rich mode) — resolves the image at
@@ -532,19 +570,20 @@ export function locateRichImagePropertiesAtCaret(
 
 /** Apply step for "Image properties…" (rich mode) — computes and applies
  *  the diff between `located.initial` and `next`
- *  (`caret-token-commands.ts#computeImagePropertiesEdit`), against
- *  `expectedVersion` (the caller's own captured, re-verified version — see
- *  this section's header). Caller is expected to have already validated
- *  `next` (`validateImageProperties`). */
+ *  (`caret-token-commands.ts#computeImagePropertiesEdit`), against the
+ *  `capture` the locate step was read from (see this section's header).
+ *  Caller is expected to have already validated `next`
+ *  (`validateImageProperties`). */
 export function applyRichImagePropertiesEdit(
-  host: EditorDocumentHost,
+  currentHost: EditorDocumentHost | null,
+  capture: RichSelectionCapture,
   located: ImageCaretMatch,
   next: ImagePropertiesValue,
-  expectedVersion: number,
 ): RichCommandOutcome {
+  if (!isRichCaptureFresh(currentHost, capture)) return staleCapture();
   const edit = computeImagePropertiesEdit(located.match, located.initial, next);
-  if (!edit) return { ok: true, snapshot: host.getSnapshot() }; // nothing actually changed
-  return finishEdit(host, { ...edit, expectedVersion });
+  if (!edit) return { ok: true, snapshot: capture.host.getSnapshot() }; // nothing actually changed
+  return finishEdit(capture.host, { ...edit, expectedVersion: capture.version });
 }
 
 /** "Unwrap image" (rich mode) — removes an existing image's enclosing link
@@ -566,15 +605,17 @@ export function locateRichLinkEditAtCaret(host: EditorDocumentHost, live: LiveSe
 
 /** Apply step for "Edit link…" (rich mode) — computes and applies the new
  *  href (`caret-token-commands.ts#computeLinkEditEdit` — `rewriteLinkToken`
- *  unchanged), against `expectedVersion` (see this section's header). */
+ *  unchanged), against the `capture` the locate step was read from (see
+ *  this section's header). */
 export function applyRichLinkEditEdit(
-  host: EditorDocumentHost,
+  currentHost: EditorDocumentHost | null,
+  capture: RichSelectionCapture,
   located: LinkCaretMatch,
   href: string,
-  expectedVersion: number,
 ): RichCommandOutcome {
+  if (!isRichCaptureFresh(currentHost, capture)) return staleCapture();
   const edit = computeLinkEditEdit(located.match, href);
-  return finishEdit(host, { ...edit, expectedVersion });
+  return finishEdit(capture.host, { ...edit, expectedVersion: capture.version });
 }
 
 // ── Block movement (SFE-P3ab, Lane B: now WIRED, via the live caret) ───────

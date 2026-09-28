@@ -777,8 +777,8 @@ export type CaretTokenCommandOutcome =
  * file switch always produces a brand-new `Text`) and a strictly stronger
  * substitute for the byte compare (any accepted edit anywhere in the
  * document invalidates the capture) — the SAME strictness the rich
- * surface's `captureRichSelection`/`isRichSelectionCaptureFresh` already
- * applies via `richDocHost.getSnapshot().version`, just proven a different
+ * surface's `captureRichSelection`/`isRichCaptureFresh` (rich-commands.ts)
+ * already applies via the host's `getSnapshot().version`, just proven a different
  * way on this surface's plain `EditorView` (no `DocumentSnapshot.version`
  * to compare here). The original exact-span byte compare is KEPT alongside
  * it as defense in depth (belt and suspenders — a future change to either

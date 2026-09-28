@@ -55,7 +55,8 @@
  * (`playwright-core`-backed), outside this lane's write ownership and
  * explicitly not to be reinvented here (run spec: "follow [the established
  * pattern in `rich-mode.test.ts`/`rich-mode-commit-integration.test.ts`]
- * rather than inventing a new harness"). Per the run spec's own escape
+ * rather than inventing a new harness"; the latter file was deleted in
+ * SFE-P4, 731aee7e, with the `CommitEngine` it tested). Per the run spec's own escape
  * hatch — "If a genuinely browser-only assertion is needed and this
  * package has no way to run one, say so in your report rather than faking
  * it in jsdom" — this file does NOT stub `EditContext` or otherwise force
@@ -201,10 +202,12 @@ describe("real-book corpus liveness (AP-21) — this file actually loaded real, 
 // `packages/editor/tests/vscode-adapter/browser.cases.btest.ts`'s
 // "mount + unmount with zero edits leaves host source byte-identical"
 // cases, which mount the real `@vscode/markdown-editor` fork in Chromium —
-// against a SYNTHETIC corpus, not these real chapters. Real chapters have
-// never been mounted in a real browser; that is a named, owner-attributed
-// gap (Lane B, this run) for a follow-up to close, not a claim this file
-// makes.
+// against a SYNTHETIC corpus. The real-Chromium gap for THESE chapters
+// (once a named, owner-attributed gap of Lane B's run) is closed by
+// `packages/editor/tests/gutterpress/real-book-sweep.btest.ts` (T1): it
+// mounts this same 25-file corpus plus the plugin-book fixture through the
+// real `mountGutterpressEditor` in Chromium, reads the host back
+// byte-for-byte, and opens/closes one marker per chapter with zero drift.
 describe("no-edit byte identity: real chapter -> DesktopDocumentHost -> projection build -> read back", () => {
   for (const file of LOADED) {
     test(`${file.id} — document session + projection build changes ZERO bytes`, () => {

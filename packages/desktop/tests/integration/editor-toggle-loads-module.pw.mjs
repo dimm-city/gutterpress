@@ -26,7 +26,11 @@
  *      i.e. the CodeMirror module loaded.
  *   5. Switches to Read and asserts the paged editor mounts - the rich
  *      module loaded too.
- *   6. Asserts no "Loading…" placeholder is left on either surface, and runs
+ *   6. Right-clicks the second block of the locked book and chooses "Unlock
+ *      to edit": the pill flips to Lock, that block is the active one and the
+ *      focus is inside the paged editor (MODE-4: the caret lands where the
+ *      reader right-clicked, not at the chapter top).
+ *   7. Asserts no "Loading..." placeholder is left on either surface, and runs
  *      the packaged source-save path (type, Ctrl+S, see it in the book) on
  *      the CodeMirror surface, back in Edit mode so the preview is on screen.
  *
@@ -251,6 +255,56 @@ if (!(await waitForMount(".rich-editor-host .md-editor"))) {
   fail("No paged editor after 10s - the rich module did not load in Read mode");
 }
 log("paged editor mounted in Read mode");
+
+// -- 7c. right-click -> "Unlock to edit" places the caret at that block ------
+// The SECOND block: the first is the chapter heading, where a fallback to
+// offset 0 would also land, so only the second tells the two apart. Every
+// check is DOM-observable (the pill, the fork's own .md-block-active, the
+// focused element), never the page's internal bookRef.
+const unlockTarget = await evalJs(`(() => {
+  const blocks = [...document.querySelectorAll('.rich-editor-host .md-block[data-gp-start]')];
+  const el = blocks[1];
+  if (!el) return null;
+  const rect = el.getBoundingClientRect();
+  el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: rect.left + 8, clientY: rect.top + 8 }));
+  return { start: el.dataset.gpStart, text: (el.textContent ?? '').trim().slice(0, 24) };
+})()`);
+if (!unlockTarget) fail("the paged editor has no second block to right-click");
+let unlockItemClicked = false;
+for (let i = 0; i < 20; i++) {
+  unlockItemClicked = await evalJs(`(() => {
+    const item = [...document.querySelectorAll('[role="menuitem"]')].find((b) => b.textContent.trim() === 'Unlock to edit');
+    if (!item) return false;
+    item.click();
+    return true;
+  })()`);
+  if (unlockItemClicked) break;
+  await sleep(100);
+}
+if (!unlockItemClicked) fail('the paged editor\'s context menu did not offer "Unlock to edit"');
+let unlocked = null;
+for (let i = 0; i < 40; i++) {
+  unlocked = await evalJs(`(() => {
+    const active = document.querySelector('.rich-editor-host .md-block-active');
+    return {
+      pill: document.querySelector('button.rich-lock')?.getAttribute('aria-label') ?? null,
+      activeStart: active?.dataset.gpStart ?? null,
+      activeText: (active?.textContent ?? '').trim().slice(0, 24),
+      focusInside: !!document.activeElement?.closest('.rich-editor-host'),
+    };
+  })()`);
+  if (unlocked.pill === "Lock" && unlocked.activeText && unlocked.focusInside) break;
+  await sleep(250);
+}
+if (unlocked?.pill !== "Lock") fail(`"Unlock to edit" did not unlock the book (pill: ${JSON.stringify(unlocked)})`);
+const firstWord = unlockTarget.text.split(/\s+/)[0] ?? "";
+const sameBlock = unlocked.activeStart === unlockTarget.start
+  || (firstWord.length > 0 && unlocked.activeText.includes(firstWord));
+if (!sameBlock) {
+  fail(`"Unlock to edit" activated a different block than the right-clicked one: ${JSON.stringify({ unlockTarget, unlocked })}`);
+}
+if (!unlocked.focusInside) fail(`focus is not inside the paged editor after "Unlock to edit": ${JSON.stringify(unlocked)}`);
+log(`"Unlock to edit" placed the caret in the right-clicked block (${JSON.stringify(unlockTarget.text)})`);
 
 // ── 8. packaged source-save path ─────────────────────────────────────────────
 // Autosave delay is a fixed 500 ms EditorBuffer default — not a user setting

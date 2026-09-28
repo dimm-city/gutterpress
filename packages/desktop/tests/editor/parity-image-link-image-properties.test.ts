@@ -8,7 +8,9 @@
  * image. `locateImageAtCaret`/`computeImagePropertiesEdit`
  * (`../../src/lib/editor/caret-token-commands.ts`) are the shared pure
  * computation both editing surfaces' "Image properties…" toolbar item now
- * routes through (`+page.svelte`'s `handleImagePropertiesAtCaret`).
+ * routes through (`+page.svelte`'s `handleImagePropertiesAtCaret`; rich
+ * mode's staleness guard across the dialog is `rich-commands.ts`'s own
+ * `captureRichSelection`/`applyRichImagePropertiesEdit`, not a page check).
  *
  * G-01/AP-01: every test below EXERCISES the replacement against a real
  * fixture and asserts EXACT resulting bytes — never "a function with this

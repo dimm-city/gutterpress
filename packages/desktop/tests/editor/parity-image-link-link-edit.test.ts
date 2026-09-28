@@ -9,9 +9,11 @@
  * note on this distinction). `locateLinkAtCaret`/`computeLinkEditEdit`
  * (`../../src/lib/editor/caret-token-commands.ts`) are the shared pure
  * computation both editing surfaces' "Edit link…" toolbar item now routes
- * through (`+page.svelte`'s `handleLinkEditAtCaret`) — `rewriteLinkToken`
- * itself is unchanged, reused exactly as the preview context menu's own
- * "Edit link…" item used it.
+ * through (`+page.svelte`'s `handleLinkEditAtCaret`; rich mode's staleness
+ * guard across the prompt is `rich-commands.ts`'s own
+ * `captureRichSelection`/`applyRichLinkEditEdit`, not a page check) -
+ * `rewriteLinkToken` itself is unchanged, reused exactly as the preview
+ * context menu's own "Edit link..." item used it.
  *
  * G-01/AP-01: every test EXERCISES the replacement against a real fixture
  * and asserts EXACT resulting bytes. AP-21: each case asserts the located

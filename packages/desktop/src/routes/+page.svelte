@@ -25,8 +25,10 @@
   import ProjectSettingsView from "$lib/components/ProjectSettingsView.svelte";
   import EditorToolbar from "$lib/components/EditorToolbar.svelte";
   import type { ToolbarAction, ToolbarPayload } from "$lib/components/EditorToolbar.svelte";
-  // SFE-P3ab, Lane A — the shared rich editor, off by default this run. See
-  // rich-mode.svelte.ts's own header for the mode-selection contract.
+  // SFE-P3ab, Lane A - the shared rich editor. The paged surface is what
+  // Read mounts; which surface is live is derived from the workspace mode
+  // via `syncRichSurface` below. See rich-mode.svelte.ts's own header for
+  // the mode-selection contract.
   import { createRichModeController, trackSurfaceMount } from "$lib/editor/rich-mode.svelte";
   import { DesktopDocumentHost } from "$lib/editor-host/desktop-document-host";
   // SFE-P6a — the rich-mode document-host + D6 projection lifecycle (owns
@@ -41,6 +43,8 @@
     applyRichLayoutBlock,
     applyRichImageInsert,
     applyRichAppend,
+    captureRichSelection,
+    type RichSelectionCapture,
     applyBlockMove,
     blockIndexAtOffset,
     validateImageProperties,
@@ -1048,6 +1052,8 @@
   let richZoom = $state("fit-width");
   let editorPaneEl = $state<HTMLElement | undefined>(undefined);
   let workspaceEl = $state<HTMLElement | undefined>(undefined);
+  /** The main-content landmark element; the skip link moves focus here. */
+  let mainContentEl = $state<HTMLElement | undefined>(undefined);
   let editorRef = $state<{
     focus: () => void;
     revealLine: (line: number, focusEditor?: boolean) => void;
@@ -1094,18 +1100,18 @@
   // they invoked the picker). SFE-P3ab review round 1 (CONFIRMED finding):
   // a plain selection offset with no document identity attached was
   // silently re-applied even after an external reload replaced the
-  // document underneath the open dialog — `RichSelectionCapture` (defined
-  // with `captureRichSelection` below) pairs the offsets with the exact
-  // host + version they were read against, so `onInsert` (near the bottom
-  // of this file) can detect that and refuse instead of splicing into the
-  // wrong document. `undefined` in source mode or with no rich document
-  // open at all.
+  // document underneath the open dialog - `RichSelectionCapture`
+  // (rich-commands.ts) pairs the offsets with the exact host + version they
+  // were read against, so `applyRichAppend` (from `onInsert`, near the
+  // bottom of this file) refuses instead of splicing into the wrong
+  // document. `undefined` in source mode or with no rich document open at
+  // all.
   let richSnippetCapture: RichSelectionCapture | undefined;
 
   function openSnippetPicker() {
     if (!isDesktop() || !lifecycle.currentDir) return;
     contextMenu.close();
-    richSnippetCapture = captureRichSelection();
+    richSnippetCapture = richCapture();
     snippetPickerRef?.show();
   }
 
@@ -1274,7 +1280,7 @@
    * JS/plugin/manifest editing CodeMirror-only). SFE-P3ab review round 1
    * (CONFIRMED finding): `showEditorContent`/`setRichMode` used to rebuild
    * `richHost()` - and the template used to mount the rich surface - for
-   * ANY open file while `richMode.mode === "rich"`, so a CSS file clicked
+   * ANY open file while the controller's surface was "rich", so a CSS file clicked
    * from the tree opened silently inside the Markdown rich surface with no
    * visible way back (the toolbar's mode toggle only renders for markdown
    * files). Hoisted so every gate below (`showEditorContent`, `setRichMode`,
@@ -1590,29 +1596,14 @@
    *  `richHost()` at a fresh version 0 with different text) - a captured
    *  offset with no identity attached was silently re-applied to whatever
    *  document happened to be live when the dialog resolved. */
-  interface RichSelectionCapture {
-    readonly host: DesktopDocumentHost;
-    readonly version: number;
-    readonly selection: { readonly from: number; readonly to: number } | undefined;
-  }
-
-  /** Captures {@link richLiveSelection} together with `richHost()` and its
-   *  CURRENT version. `undefined` when there is no rich document open at
-   *  all (no host to capture identity from). */
-  function captureRichSelection(): RichSelectionCapture | undefined {
+  /** {@link richLiveSelection} captured with `richHost()` and its CURRENT
+   *  version (`captureRichSelection`, rich-commands.ts); `undefined` when
+   *  no rich document is open at all. Every `applyRich*` call made after a
+   *  dialog's await passes `richHost()` beside this capture, and refuses
+   *  itself when the document was replaced or edited meanwhile. */
+  function richCapture(): RichSelectionCapture | undefined {
     const host = richHost();
-    if (!host) return undefined;
-    return { host, version: host.getSnapshot().version, selection: richLiveSelection() };
-  }
-
-  /** Whether `capture` (from {@link captureRichSelection}) is still valid
-   *  against the CURRENT `richHost()` - false once the document identity
-   *  was replaced (a rebuild) or any edit landed since capture, either of
-   *  which makes the captured offsets meaningless (see that function's own
-   *  header). */
-  function isRichSelectionCaptureFresh(capture: RichSelectionCapture): boolean {
-    const host = richHost();
-    return host === capture.host && host.getSnapshot().version === capture.version;
+    return host ? captureRichSelection(host, richLiveSelection()) : undefined;
   }
 
   /** D14 diagnostic for a caret-relative rich command invoked with NO live
@@ -1622,10 +1613,13 @@
    *  there happens to be no caret right now (one stray gutter click since
    *  the last keystroke) would format or insert text somewhere the author
    *  never asked for. `documentEndSelection` remains the correct, DOCUMENTED
-   *  fallback only for a genuinely anchorless gesture (image insertion via
-   *  drag-and-drop, or before the surface has ever been focused) — see
-   *  `openRichImageProperties`/`insertImageIntoChapter` below, which do NOT
-   *  use this diagnostic. */
+   *  fallback only for a genuinely anchorless gesture: image insertion from
+   *  the Media panel's Insert button - a sidebar gesture with no caret of
+   *  its own, which uses the editor's live caret when one exists and the
+   *  document end otherwise - or before the surface has ever been focused.
+   *  See `openRichImageProperties`/`insertImageIntoChapter` below, which do
+   *  NOT use this diagnostic. (A media tile dragged onto the paged surface
+   *  is not inserted: only CodeMirror accepts the drop.) */
   const NO_LIVE_CARET_DIAGNOSTIC: Diagnostic = {
     category: "EDITOR_INVALID_RANGE",
     message: "Place the cursor in the document, then try that again.",
@@ -1751,7 +1745,7 @@
   /**
    * Routes one `EditorToolbar` action through the RICH path — the mirror of
    * `editorRef?.runToolbarAction(action, payload)` for source mode. Called
-   * only while `richMode.mode === "rich"`; "image" is excluded (handled by
+   * only while `richSurfaceActive`; "image" is excluded (handled by
    * `openRichImageProperties` below via the `ImagePropertiesDialog` flow,
    * not a plain `EditorCommand`).
    *
@@ -1788,22 +1782,24 @@
    *
    * SFE-P3ab review round 1 (CONFIRMED finding): the selection is captured
    * TOGETHER with the document identity it was read against
-   * (`captureRichSelection`) — the dialog's `await` gives an external
+   * (`richCapture`) - the dialog's `await` gives an external
    * reload (or a file switch) time to rebuild `richHost()` entirely, and a
    * captured offset with no identity attached used to be silently applied
    * to whatever document happened to be live once the dialog resolved. A
    * missing LIVE CARET at capture time is left to `applyRichImageInsert`'s
-   * own `documentEndSelection` fallback — image insertion is reachable via
-   * drag-and-drop, a genuinely anchorless gesture (`insertImageIntoChapter`
-   * below), so this toolbar path stays consistent with that one behavior
-   * rather than refusing only when invoked from the toolbar.
+   * own `documentEndSelection` fallback - image insertion is also reachable
+   * from the Media panel's Insert button, a sidebar gesture with no caret of
+   * its own, which uses the editor's live caret when one exists and the
+   * document end otherwise (`insertImageIntoChapter` below), so this toolbar
+   * path stays consistent with that one behavior rather than refusing only
+   * when invoked from the toolbar.
    */
   async function openRichImageProperties(): Promise<void> {
     // Captured BEFORE the dialog opens and steals focus — the dialog is a
     // separate surface, so the caret the author actually meant is whatever
     // it was the moment they invoked "Insert image", not whatever (if
     // anything) the mount still reports once focus has moved away.
-    const capture = captureRichSelection();
+    const capture = richCapture();
     if (!capture) return;
     const blank: ImagePropertiesValue = {
       src: "",
@@ -1817,18 +1813,22 @@
       flush: false,
       layer: "",
     };
-    const value = await promptImageProperties(blank);
-    if (value == null) return;
-    const error = validateImageProperties(value);
+    const value = await promptValidatedImageProperties(blank);
+    if (!value) return;
+    reportRichOutcome(applyRichImageInsert(richHost(), capture, value));
+  }
+
+  /** The image dialog followed by `validateImageProperties`: the value, or
+   *  null when the author cancelled or the value was refused (toasted). */
+  async function promptValidatedImageProperties(initial: ImagePropertiesValue): Promise<ImagePropertiesValue | null> {
+    const next = await promptImageProperties(initial);
+    if (next == null) return null;
+    const error = validateImageProperties(next);
     if (error) {
       toast?.error(error);
-      return;
+      return null;
     }
-    if (!isRichSelectionCaptureFresh(capture)) {
-      showRichDiagnostic(diagnosticForEditRejection("stale"));
-      return;
-    }
-    reportRichOutcome(applyRichImageInsert(capture.host, value, capture.selection));
+    return next;
   }
 
   // ── Caret-driven image/link commands (SFE-P3d-parity, Lane D) ────────────
@@ -1849,19 +1849,20 @@
   /**
    * "Image properties…" — edits an EXISTING image's attrs/src/alt at the
    * caret, via the SAME `ImagePropertiesDialog` the preview context menu's
-   * "Set properties…" used before SFE-P4 deleted that item. Rich mode reuses
-   * `captureRichSelection`/`isRichSelectionCaptureFresh` — the SAME
-   * document-identity staleness guard `openRichImageProperties` above
-   * already relies on for its own `promptImageProperties` await, not a
-   * second mechanism — because `locateRichImagePropertiesAtCaret`'s result
-   * is only safe to apply against the EXACT `richHost()` it was read from;
-   * source mode's `applyImagePropertiesEdit` re-verifies its own span
-   * directly against the live `view` instead (see its own doc comment for
-   * why the two surfaces' staleness guards differ).
+   * "Set properties..." used before SFE-P4 deleted that item. Rich mode
+   * captures before the dialog (`richCapture`) and lets
+   * `applyRichImagePropertiesEdit` refuse a stale capture - the SAME
+   * document-identity guard `openRichImageProperties` above relies on for
+   * its own `promptImageProperties` await, not a second mechanism - because
+   * `locateRichImagePropertiesAtCaret`'s result is only safe to apply
+   * against the EXACT `richHost()` it was read from; source mode's
+   * `applyImagePropertiesEdit` re-verifies its own span directly against
+   * the live `view` instead (see its own doc comment for why the two
+   * surfaces' staleness guards differ).
    */
   function handleImagePropertiesAtCaret(): void {
     if (richSurfaceActive) {
-      const capture = captureRichSelection();
+      const capture = richCapture();
       if (!capture || !capture.selection) {
         showRichDiagnostic(NO_LIVE_CARET_DIAGNOSTIC);
         return;
@@ -1872,20 +1873,9 @@
         return;
       }
       void (async () => {
-        const next = await promptImageProperties(located.value.initial);
-        if (next == null) return; // cancelled
-        const error = validateImageProperties(next);
-        if (error) {
-          toast?.error(error);
-          return;
-        }
-        if (!isRichSelectionCaptureFresh(capture)) {
-          showRichDiagnostic(diagnosticForEditRejection("stale"));
-          return;
-        }
-        reportRichOutcome(
-          applyRichImagePropertiesEdit(capture.host, located.value, next, capture.version),
-        );
+        const next = await promptValidatedImageProperties(located.value.initial);
+        if (!next) return;
+        reportRichOutcome(applyRichImagePropertiesEdit(richHost(), capture, located.value, next));
       })();
       return;
     }
@@ -1900,13 +1890,8 @@
         showRichDiagnostic(located.diagnostic);
         return;
       }
-      const next = await promptImageProperties(located.value.initial);
-      if (next == null) return; // cancelled
-      const error = validateImageProperties(next);
-      if (error) {
-        toast?.error(error);
-        return;
-      }
+      const next = await promptValidatedImageProperties(located.value.initial);
+      if (!next) return;
       const outcome = applyImagePropertiesEdit(view, located.value, next);
       if (!outcome.ok) showRichDiagnostic(outcome.diagnostic);
     })();
@@ -1944,7 +1929,7 @@
    *  Same staleness-guard split as `handleImagePropertiesAtCaret` above. */
   function handleLinkEditAtCaret(): void {
     if (richSurfaceActive) {
-      const capture = captureRichSelection();
+      const capture = richCapture();
       if (!capture || !capture.selection) {
         showRichDiagnostic(NO_LIVE_CARET_DIAGNOSTIC);
         return;
@@ -1961,11 +1946,7 @@
           initialValue: located.value.initialHref,
         });
         if (next == null) return; // cancelled
-        if (!isRichSelectionCaptureFresh(capture)) {
-          showRichDiagnostic(diagnosticForEditRejection("stale"));
-          return;
-        }
-        reportRichOutcome(applyRichLinkEditEdit(capture.host, located.value, next, capture.version));
+        reportRichOutcome(applyRichLinkEditEdit(richHost(), capture, located.value, next));
       })();
       return;
     }
@@ -1999,8 +1980,10 @@
    * chapter — a bounded rAF retry, so there's no race (we never insert into an
    * unloaded doc) and no infinite loop (gives up with a clear toast). Routes
    * to whichever surface is active (SFE-P3ab: this used to be CodeMirror-only
-   * — a G-10 gap the media panel's drag/drop path shared with the toolbar's
-   * own "Insert image" button before this run).
+   * - a G-10 gap the Media panel's Insert-button path shared with the
+   * toolbar's own "Insert image" button before this run). A media tile
+   * dragged from the panel still reaches CodeMirror only: the paged surface
+   * registers no drop handler.
    */
   function insertImageIntoChapter(payload: { src: string; alt?: string }) {
     if (!isMarkdownPath(editorFilePath)) {
@@ -2061,19 +2044,12 @@
   let externalChange = $derived(buffer?.externalChange ?? null);
   let externalFileName = $derived(editorFilePath ? basenameOf(editorFilePath) : "");
 
-  /**
-   * Whether the RICH surface is the one that should actually be mounted
-   * right now — the user's mode PREFERENCE (`richMode.mode === "rich"`)
-   * narrowed to files rich mode actually supports (`isMarkdownPath`).
-   * `richMode.mode` itself is never forced back to `"source"` for a
-   * non-markdown file (so the preference survives switching back to a
-   * markdown one — see `setRichMode`), but every decision about which
-   * surface is ACTUALLY live, and which write-path an action should take,
-   * keys off THIS, not the raw preference (SFE-P3ab review round 1,
-   * CONFIRMED finding). `editorFilePath === null` (no file open yet) still
-   * counts as active so the rich pane's own "select a file" placeholder
-   * keeps showing while the preference is "rich", matching prior behavior.
-   */
+  // Whether the RICH surface is the one that should actually be mounted
+  // right now. Every decision about which surface is ACTUALLY live, and
+  // which write-path an action should take, keys off THIS, not the
+  // controller's own `richMode.mode` (SFE-P3ab review round 1, CONFIRMED
+  // finding) - the controller is told this value by `syncRichSurface`.
+  //
   // ONE mode control decides the surface, and it is the workspace's own
   // Edit / Read. Edit (and Focus, which is Edit without the preview) is the
   // raw-Markdown surface: CodeMirror, with the paginated preview beside it.
@@ -2299,7 +2275,7 @@
 
   /**
    * Scroll the open document to `line`, on whichever editing surface is
-   * mounted: the paged editor (Edit/Read) or CodeMirror (Focus, and any
+   * mounted: the paged editor (Read) or CodeMirror (Edit, Focus, and any
    * non-markdown file). Both address the same source, so navigation is a
    * property of the workspace, not of one surface — before this, every
    * "take me there" (an outline row, a click in the book, a diagnostic)
@@ -3414,9 +3390,11 @@
   }
 
   /**
-   * Lock or unlock the paged editor in place -  the pill in the editor pane.
-   * The mount rebuilds its surface on the toggle (`setReadonly` in
-   * `mountGutterpressEditor`), and both shapes paginate like the page.
+   * Lock or unlock the paged editor in place - the pill in the editor pane.
+   * BookSurface remounts each chapter slot on the toggle (`{#key slot.epoch}`
+   * with `readonly` fixed at mount; BookSurface.svelte's `setReadonly`), so
+   * the mount-level `setReadonly` of `mountGutterpressEditor` is not on this
+   * path. Both shapes paginate like the page.
    */
   function setRichLocked(locked: boolean): void {
     if (locked === richLocked) return;
@@ -3546,14 +3524,45 @@
     focusEditorWhenReady();
   }
 
+  /**
+   * Unlock the book with the caret at `offset` in `chapter`. Unlocking
+   * remounts the chapters, so the caret waits for this one. The one
+   * implementation behind both the image click and the context menu's
+   * "Unlock to edit".
+   */
+  async function unlockRichAt(chapter: string, offset: number): Promise<void> {
+    setRichLocked(false);
+    await bookRef?.setSelection(chapter, offset);
+  }
+
   /** Put the caret in an image's token, unlocking first if needed, and open Image properties. */
   function openRichImageAt(chapter: string, offset: number): void {
     void (async () => {
-      if (richLocked) setRichLocked(false);
-      // Unlocking remounts the chapters; the caret waits for this one.
-      await bookRef?.setSelection(chapter, offset);
+      await unlockRichAt(chapter, offset);
       handleImagePropertiesAtCaret();
     })();
+  }
+
+  /**
+   * Where the caret lands when the reader unlocks from a right-click. A
+   * marker chip carries its own caret offset (`data-gp-caret`, CHIP_CARET_ATTR
+   * in mount.ts: the block's own start may be the blank line before the
+   * marker, and a caret there activates the block above); any other block
+   * places it at its first non-blank character; the page margin at the
+   * nearest block above the pointer. Null when nothing is known - never 0,
+   * which would yank the reader to the chapter top and defeat the remount's
+   * place-keeping.
+   */
+  function richUnlockOffset(target: EventTarget | null, block: RichBlockHit | null, chapter: string | null, clientY: number): number | null {
+    const chip = target instanceof Element ? target.closest<HTMLElement>("[data-gp-caret]") : null;
+    const chipCaret = chip ? Number(chip.getAttribute("data-gp-caret")) : Number.NaN;
+    if (Number.isFinite(chipCaret)) return chipCaret;
+    if (block) {
+      const text = bookRef?.hostOf(block.chapter)?.getSnapshot().text ?? "";
+      const blockText = text.slice(block.start, block.start + block.length);
+      return block.start + (blockText.length - blockText.trimStart().length);
+    }
+    return chapter ? richBlockStartAbove(chapter, clientY) : null;
   }
 
   function onRichContextMenu(e: MouseEvent): void {
@@ -3562,6 +3571,7 @@
     const chapter = block?.chapter ?? richChapterOf(e.target) ?? bookRef?.activePath() ?? null;
     const img = e.target instanceof HTMLImageElement ? e.target : null;
     const imageOffset = img && block ? richImageOffset(img, block) : null;
+    const unlockAt = richUnlockOffset(e.target, block, chapter, e.clientY);
     const items: ContextMenuItem[] = [];
     if (block && imageOffset !== null) {
       items.push({
@@ -3615,7 +3625,18 @@
     }
     items.push(
       richLocked
-        ? { id: "unlock", label: "Unlock to edit", enabled: true, run: () => { richContextMenu.close(); setRichLocked(false); } }
+        ? {
+            id: "unlock",
+            label: "Unlock to edit",
+            enabled: true,
+            run: () => {
+              richContextMenu.close();
+              // The caret goes where the reader right-clicked; with nothing to
+              // place it at, unlock in place and leave the caret alone.
+              if (chapter && unlockAt !== null) void unlockRichAt(chapter, unlockAt);
+              else setRichLocked(false);
+            },
+          }
         : { id: "lock", label: "Lock", enabled: true, run: () => { richContextMenu.close(); setRichLocked(true); } },
     );
     e.preventDefault();
@@ -3856,6 +3877,15 @@
 <!-- inert while the start screen or full-window Settings view is up: the
       workspace keeps rendering, but never accepts interaction underneath. -->
 <div class="app-root" inert={landingVisible || projectSettingsOpen}>
+<!-- Skip link: the first Tab stop in the workspace. Inert exactly when the
+     workspace is, since `.app-root` carries `inert`. -->
+<a
+  class="skip-link"
+  href="#main-content"
+  onclick={(e) => {
+    e.preventDefault();
+    mainContentEl?.focus();
+  }}>Skip to content</a>
 {#if (updateController.readyVersion || updateController.availableVersion) && !updateController.bannerDismissed}
   <div class="update-banner" role="status" aria-live="polite">
     {#if updateController.readyVersion}
@@ -3986,7 +4016,7 @@
     />
 
     <!-- Main content area (preview + editor) -->
-    <div class="main-content">
+    <main class="main-content" id="main-content" tabindex="-1" bind:this={mainContentEl}>
 
   <!-- Loose-folder nudge: a plain folder renders fine but has no manifest,
        editable styles, or version history. Offer a one-click setup (adopt). -->
@@ -4296,7 +4326,7 @@
     </div>
   {/if}
 
-    </div> <!-- /main-content -->
+    </main> <!-- /main-content -->
   </div> <!-- /left-panel-region -->
 
   <!-- StatusBar: always-visible bottom bar with sync pill, save indicator,
@@ -4445,14 +4475,15 @@
   onInsert={(text) => {
     if (richSurfaceActive) {
       // SFE-P3ab review round 1 (CONFIRMED finding): refuse rather than
-      // silently insert against a stale/absent capture — see
+      // silently insert against an absent capture or one without a caret;
+      // `applyRichAppend` refuses a stale one itself - see
       // `richSnippetCapture`'s and `NO_LIVE_CARET_DIAGNOSTIC`'s own headers.
-      if (!richSnippetCapture || !isRichSelectionCaptureFresh(richSnippetCapture)) {
+      if (!richSnippetCapture) {
         showRichDiagnostic(diagnosticForEditRejection("stale"));
       } else if (!richSnippetCapture.selection) {
         showRichDiagnostic(NO_LIVE_CARET_DIAGNOSTIC);
       } else {
-        reportRichOutcome(applyRichAppend(richSnippetCapture.host, text, richSnippetCapture.selection));
+        reportRichOutcome(applyRichAppend(richHost(), richSnippetCapture, text));
       }
       return;
     }
@@ -4496,6 +4527,21 @@
     background: var(--app-bg);
     color: var(--app-text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  }
+
+  .skip-link {
+    position: absolute;
+    left: -9999px;
+    top: 8px;
+    z-index: var(--app-z-toast);
+  }
+  .skip-link:focus-visible,
+  .skip-link:focus {
+    left: 8px;
+    padding: 6px 10px;
+    background: var(--app-surface-raised);
+    color: var(--app-text);
+    outline: 2px solid var(--app-focus-ring);
   }
 
   .app-root {

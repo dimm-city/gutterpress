@@ -10,14 +10,15 @@
  * `.md-focused` class as a real side effect of focus, the Tab-trap-for-
  * indentation default with its documented `Control+M` escape hatch
  * (`aria-description`/`aria-keyshortcuts` on the editor root), keyboard
- * caret movement, and clean dispose/remount. It also records — as verified,
- * not assumed, API evidence — that the mounted `.md-editor` root carries NO
- * explicit ARIA role of its own: "the ONE hard requirement proven there is
- * that the node is REACHABLE in the accessibility tree at all," not that it
- * exposes a specific role. That leaves the SHELL around the mount
- * responsible for giving the rich-editing surface (and every other major
- * region) a name and a landmark — this file is the desktop-level half of
- * scenario 11, auditing exactly that shell.
+ * caret movement, and clean dispose/remount. Since A11Y-1 it also asserts
+ * that the mounted `.md-editor` root announces as a textbox: the adapter
+ * (`packages/editor/src/vscode-adapter/adapter.ts`) sets role=textbox,
+ * aria-multiline and aria-readonly on the root, and `RichEditor.svelte`
+ * names it by its file through the mount's `accessibleName` option
+ * (`packages/editor/tests/web/mount.btest.ts` pins the computed tree).
+ * The SHELL around the mount remains responsible for the landmarks every
+ * other major region needs, and for the editor pane's own region name -
+ * this file is the desktop-level half of scenario 11, auditing that shell.
  *
  * ## Why these are structural (source-text) assertions
  *
@@ -67,6 +68,14 @@
  *      accessible name computes an implicit `region` role even without an
  *      explicit `role` attribute — real, standard behavior, but not
  *      independently confirmed against a real accessibility tree here.
+ *      That label names the REGION only. The textboxes inside it carry
+ *      their own names: the rich editor's root is named by its file
+ *      (`RichEditor.svelte`'s `accessibleName`, computed-tree proof in
+ *      `packages/editor/tests/web/mount.btest.ts`), and the source editor's
+ *      `.cm-content` by `MarkdownEditor.svelte`'s `contentAttributes`
+ *      (A11Y-3) - pinned as source text below, since CodeMirror's own
+ *      role=textbox/aria-multiline on that element is upstream behavior
+ *      this test tree cannot mount.
  *   2. Nothing here proves NO computed-name collisions, tab-order
  *      correctness, or that a screen reader actually announces any of
  *      these labels the way a sighted reading of the markup suggests.
@@ -87,6 +96,7 @@ const problemsPanel = () => read("src/lib/components/ProblemsPanel.svelte");
 const fileTree = () => read("src/lib/components/FileTree.svelte");
 const previewFrame = () => read("src/lib/components/PreviewFrame.svelte");
 const richEditor = () => read("src/lib/components/RichEditor.svelte");
+const markdownEditor = () => read("src/lib/components/MarkdownEditor.svelte");
 const page = () => read("src/routes/+page.svelte");
 
 describe("EditorToolbar — the formatting toolbar is a labeled landmark", () => {
@@ -256,6 +266,8 @@ describe("PreviewFrame — the preview surface has a real, unconditional accessi
 describe("+page.svelte — the editor pane, preview pane, and pane-resize separator are labeled", () => {
   test("the editor pane has an unconditional aria-label (CSS vs. Markdown editor), true on every layout — not gated behind isNarrow like the preview pane below", () => {
     const src = page();
+    // The pane's REGION name. The textbox inside it is named separately, by
+    // its file (see the RichEditor and MarkdownEditor describes below).
     expect(src).toContain('aria-label={openFileIsCss ? "CSS editor" : "Markdown editor"}');
   });
 
@@ -275,21 +287,46 @@ describe("+page.svelte — the editor pane, preview pane, and pane-resize separa
   });
 });
 
-describe("RichEditor — the mount container itself carries no role or label of its own (recorded architecture, not a defect this lane can fix)", () => {
-  test("RichEditor.svelte's own root <div> has no role/aria-* attributes — its accessible name comes entirely from the ancestor <section> in +page.svelte", () => {
+describe("RichEditor - the textbox semantics live on the mounted fork root, named by file; the wrapper div stays bare", () => {
+  test("RichEditor.svelte's own root <div> has no role/aria-* attributes, and the mount is given an accessibleName instead", () => {
     const src = richEditor();
     const mountLine = src.slice(src.indexOf('<div class="rich-editor-host"'), src.indexOf("</div>", src.indexOf('<div class="rich-editor-host"')) + 6);
     expect(mountLine).toBe('<div class="rich-editor-host" class:rich-editor-host--stacked={stacked} bind:this={container}></div>');
     expect(mountLine).not.toContain("role=");
     expect(mountLine).not.toContain("aria-");
-    // Confirms this is a deliberately thin wrapper (D4/component header),
-    // not an oversight: mountGutterpressEditor/mountEditor own everything
-    // inside `container`, and per input-a11y.btest.ts's own verified
-    // evidence, the fork's OWN mounted root also carries no explicit ARIA
-    // role — so the "Markdown editor" name from +page.svelte's editor-pane
-    // <section> (see the describe block above) is the ONLY accessible name
-    // this whole subtree has, on every layout.
+    // The wrapper is a deliberately thin container (D4/component header):
+    // mountGutterpressEditor/mountEditor own everything inside it, and the
+    // adapter puts role=textbox, aria-multiline and aria-readonly on the
+    // fork's own `.md-editor` root (the focusable EditContext host) - a role
+    // on this wrapper would nest a textbox in a second, unfocusable one.
+    // The name goes in through the mount option, computed from the file so
+    // a book's chapters announce as distinct textboxes.
     expect(src).toContain("owns DOM lifecycle for its own subtree only");
+    expect(src).toContain("accessibleName");
+    expect(src).toContain("const accessibleName = filePath?.split(/[\\\\/]/).pop() || undefined;");
+    expect(src).not.toContain("Chapter ");
+  });
+});
+
+describe("MarkdownEditor - the CodeMirror textbox is named by its file in source/CSS mode (A11Y-3)", () => {
+  test("buildState adds only an aria-label through contentAttributes (CodeMirror's .cm-content already carries role=textbox and aria-multiline)", () => {
+    const src = markdownEditor();
+    expect(src).toContain('EditorView.contentAttributes.of({ "aria-label"');
+    // Named for the file `switchFile` was told to switch TO (`forPath`),
+    // never the `filePath` prop, for the reason `buildState`'s comment gives.
+    expect(src).toContain('forPath ? `${lang === "css" ? "CSS" : "Markdown"} source of ${basenameOf(forPath)}` : "Markdown source"');
+    // Only the name: the attribute object carries no role or multiline key
+    // of its own (those come from CodeMirror; a duplicate would shadow it).
+    const start = src.indexOf("EditorView.contentAttributes.of({");
+    const attrs = src.slice(start, src.indexOf("})", start));
+    expect(attrs).not.toContain("role");
+    expect(attrs).not.toContain("aria-multiline");
+  });
+
+  test("the basename comes from $lib/platform/paths, never node:path (the renderer stays PWA-clean)", () => {
+    const src = markdownEditor();
+    expect(src).toContain('import { basenameOf } from "$lib/platform/paths"');
+    expect(src).not.toContain("node:");
   });
 });
 
@@ -313,5 +350,35 @@ describe("assertion liveness (AP-21) — this file's own check mechanism can fai
     expect(() => {
       expect(brokenFixture).toContain('<div class="editor-toolbar" role="toolbar" aria-label="Markdown formatting toolbar">');
     }).toThrow();
+  });
+});
+
+// -- A11Y-2: the main landmark and the skip link ----------------------------
+describe("+page.svelte - the workspace has one main landmark and a skip link", () => {
+  const MAIN_RE = /<main class="main-content"[^>]*\bid="main-content"[^>]*\btabindex="-1"[^>]*>/;
+
+  test("the main content area is a focusable <main> landmark with a stable id", () => {
+    expect(page()).toMatch(MAIN_RE);
+  });
+
+  test("exactly one <main> opens and exactly one closes", () => {
+    const src = page();
+    expect(src.match(/<main\b/g)?.length).toBe(1);
+    expect(src.match(/<\/main>/g)?.length).toBe(1);
+  });
+
+  test("the skip link sits inside .app-root, before the AppToolbar, and targets the landmark", () => {
+    const src = page();
+    const appRoot = src.indexOf('<div class="app-root"');
+    const skip = src.indexOf('href="#main-content"');
+    const toolbar = src.indexOf("<AppToolbar");
+    expect(appRoot).toBeGreaterThan(-1);
+    expect(skip).toBeGreaterThan(appRoot);
+    expect(toolbar).toBeGreaterThan(skip);
+  });
+
+  test("liveness twin: the landmark regex rejects the pre-A11Y-2 div and a <main> without tabindex", () => {
+    expect('<div class="main-content">').not.toMatch(MAIN_RE);
+    expect('<main class="main-content" id="main-content">').not.toMatch(MAIN_RE);
   });
 });

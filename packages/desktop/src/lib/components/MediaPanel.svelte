@@ -4,8 +4,9 @@
    *
    * Thumbnail grid of every image under the open project, with a detail view
    * (dimensions / file size / DPI / color space / alpha + plain-language
-   * print-readiness notes), insert-at-cursor, drag-to-editor, and an
-   * "Add images…" importer.
+   * print-readiness notes), insert-at-cursor, drag-to-editor (the source
+   * editor only: the paged surface registers no drop handler, so a tile
+   * dragged onto it is not inserted), and an "Add images..." importer.
    *
    * Host work — listing, thumbnails (generated AND cached host-side so
    * multi-MB originals never reach the renderer), inspection, and file
@@ -183,8 +184,10 @@
   }
 
   function onDragStart(event: DragEvent, entry: MediaImageEntry): void {
-    // CodeMirror accepts plain-text drops natively — dragging a tile into the
-    // editor inserts the markdown at the drop position with zero editor code.
+    // CodeMirror accepts plain-text drops natively - dragging a tile into the
+    // SOURCE editor inserts the markdown at the drop position with zero
+    // editor code. That is the only drop target: the paged surface registers
+    // no drop handler, so a tile dragged onto it is not inserted.
     event.dataTransfer?.setData(
       "text/plain",
       imageMarkdown(entry.relPath, defaultAltText(entry.name)),

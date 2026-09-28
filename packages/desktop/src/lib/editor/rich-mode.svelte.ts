@@ -6,7 +6,7 @@
  *
  * ## D7/D8 — the "one editing surface" invariant, ASSERTED not assumed
  *
- * `+page.svelte`'s own `{#if mode === "rich"}…{:else}…{/if}` template
+ * `+page.svelte`'s own `{#if richSurfaceActive}...{:else}...{/if}` template
  * already makes the two surfaces structurally exclusive — Svelte destroys
  * the old branch before creating the new one, so under NORMAL rendering
  * only one can ever exist in the DOM. That is an ASSUMPTION about how the
@@ -34,14 +34,17 @@
  *
  * "Switching modes establishes an explicit undo epoch ... must never alter
  * source." Concretely, for 0.12.0: CodeMirror's own `history()` extension
- * and the shared rich editor's host-delegated undo (`@vscode/markdown-editor`
- * fork) are two INDEPENDENT undo stacks — D7 is explicit that source and
- * rich "share source and persistence but not an undo stack." There is
- * nothing to merge, hand off, or migrate between them. "Establishing a new
- * undo epoch" therefore means exactly this: the surface becoming active
- * starts with an EMPTY undo history of its own (CodeMirror gets a fresh
- * `EditorState`/`history()` on `switchFile`; a freshly mounted rich editor
- * gets a fresh `EditorModel` with no undo history yet). This controller
+ * is the ONLY undo stack. The shared rich editor delegates undo to the
+ * host by design (the `@vscode/markdown-editor` fork adapter leaves
+ * `historyStrategy` unset, so Ctrl+Z/Ctrl+Y pass through to the host) and
+ * the desktop host implements none, so the paged surface has no undo
+ * stack of its own - D7 is explicit that source and rich "share source and
+ * persistence but not an undo stack." There is nothing to merge, hand
+ * off, or migrate between them. "Establishing a new undo epoch" therefore
+ * means exactly this: the surface becoming active starts with an EMPTY
+ * undo history (CodeMirror gets a fresh `EditorState`/`history()` on
+ * `switchFile`; a freshly mounted rich editor gets a fresh `EditorModel`,
+ * and no history accrues there afterwards either). This controller
  * performs no undo-stack bookkeeping itself — it never touches document
  * text, so it cannot alter source, which is a structural guarantee rather
  * than a runtime check (`rich-mode.test.ts` proves it by asserting a host's
@@ -84,8 +87,14 @@ export type EditorSurface = "source" | "rich";
 export class RichModeController {
   /**
    * The surface SELECTED for the current document. Reactive — read
-   * directly in templates/`$derived`. Defaults to `"source"` (rich mode is
-   * off by default this run).
+   * directly in templates/`$derived`. Defaults to `"source"`. The controller
+   * holds no user preference: `+page.svelte` constructs it with
+   * `initialSurface: "rich"` and its `syncRichSurface()` overwrites this
+   * from `richSurfaceActive` on every `setMode`. Until the first `setMode`
+   * (its `if (next === mode) return` short-circuit means a cold start into
+   * Edit never calls it) the two can disagree, which is why the page's
+   * `showEditorContent` guards on `richSurfaceActive || richMode.mode ===
+   * "rich"` rather than on this field alone.
    */
   mode = $state<EditorSurface>("source");
 

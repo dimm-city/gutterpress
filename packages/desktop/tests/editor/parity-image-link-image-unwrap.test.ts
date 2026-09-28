@@ -11,7 +11,8 @@
  * (`../../src/lib/editor/caret-token-commands.ts`) is the shared caret-
  * driven wrapper both editing surfaces' "Unwrap image" toolbar item now
  * routes through (`+page.svelte`'s `handleImageUnwrapAtCaret`) — it calls
- * `findImageWrapper` unchanged, it does not reimplement it.
+ * `findImageWrapper` unchanged, it does not reimplement it. No dialog, so
+ * no capture: rich mode applies against the live selection in one step.
  *
  * G-01/AP-01: every test EXERCISES the replacement against a real fixture
  * and asserts EXACT resulting bytes. AP-21: each case asserts the located

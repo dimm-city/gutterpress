@@ -106,7 +106,7 @@ const log = (m) => console.log(`[editor-opens] ${m}`);
 
 /**
  * The workspace has two editing surfaces and either may be the live one: the
- * paged editor (Edit/Read on a markdown file) or CodeMirror (Focus, and any
+ * paged editor (Read on a markdown file) or CodeMirror (Edit, Focus, and any
  * non-markdown file). Every check below is about the EDITOR PANE — that it
  * mounted, and what document it is showing — never about which surface won,
  * so they address whichever is mounted rather than pinning the drive to one.

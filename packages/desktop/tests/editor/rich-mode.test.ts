@@ -53,7 +53,7 @@ describe("RichModeController — mode selection", () => {
 });
 
 describe("RichModeController — switching never alters source", () => {
-  test("switchTo leaves the shared document host's snapshot byte-identical", () => {
+  test("switchTo holds no host reference, so it cannot alter one (structural)", () => {
     const host = new MemoryDocumentHost({ text: "# Chapter One\n\nOriginal words.", version: 0 });
     const controller = new RichModeController();
 

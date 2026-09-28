@@ -43,6 +43,23 @@ test("the preview shows beside the source editor only; Focus hides it from the s
   const a11y = read("src/lib/a11y.ts");
   expect(a11y).toContain('el?.closest?.(".cm-editor, .md-editor")');
   expect(src).toContain("if (!lifecycle.previewUrl || !previewVisible) return;");
+  // The WorkspaceMode doc in shared-types.ts is the written contract for the
+  // derivations above; keep it in step with the page.
+  const types = read("src/lib/platform/shared-types.ts");
+  expect(types).toContain('previewVisible    = mode === "editor"');
+  expect(types).toContain('richSurfaceActive = mode === "viewer"');
+});
+
+test("the paged editor's context menu unlocks with the caret at the right-clicked block", () => {
+  const src = read("src/routes/+page.svelte");
+  // One implementation of "unlock, then place the caret once the chapters
+  // have remounted", shared by the image click and the context menu.
+  expect(src).toContain("async function unlockRichAt(chapter: string, offset: number)");
+  const unlockItem = src.slice(src.indexOf('id: "unlock"'), src.indexOf('id: "lock"'));
+  expect(unlockItem).toContain("void unlockRichAt(chapter, unlockAt)");
+  // Never offset 0: that would yank the reader to the chapter top.
+  expect(unlockItem).not.toContain("?? 0");
+  expect(src).toMatch(/function openRichImageAt[\s\S]{0,160}?await unlockRichAt\(chapter, offset\)/);
 });
 
 test("a preview-generation failure keeps the folder workspace open with repair actions", () => {
