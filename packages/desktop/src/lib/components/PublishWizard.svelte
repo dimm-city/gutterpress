@@ -309,7 +309,7 @@
 
       {#if card.formats && card.formats.length > 1}
         {@const chosenFormat = pendingFormat[card.id] ?? controller.effectiveFormat(card)}
-        <fieldset class="field fmt-choice">
+        <fieldset class="fmt-choice">
           <legend>What to publish</legend>
           <ul class="dest-list">
             {#each card.formats as fmt (fmt)}
@@ -722,6 +722,7 @@
     border-radius: 6px;
     font-size: 14px;
     width: 100%;
+    box-sizing: border-box;
   }
   .field input:focus { outline: none; border-color: var(--app-focus-ring); }
   .field select {
@@ -732,23 +733,28 @@
     border-radius: 6px;
     font-size: 14px;
     width: 100%;
+    box-sizing: border-box;
   }
   .field select:focus { outline: none; border-color: var(--app-focus-ring); }
   .optional { font-style: italic; color: var(--app-text-muted); font-weight: 400; }
   .key-row { display: flex; gap: 8px; }
   /* In-body primary buttons (Connect / Publish / Open upload page) sit outside
      the .dlg-actions footer, so they restate its geometry; colors come from
-     .app-btn-primary. */
-  .dlg-primary-inline {
+     .app-btn-primary. In-body ghost buttons (Save settings / Cancel / Re-run)
+     likewise need it — dialog-shell.css only gives them colors. */
+  .dlg-primary-inline,
+  .dialog-body .dlg-ghost {
     padding: 6px 14px; font-size: 13px; border-radius: 4px;
     border-width: 1px; border-style: solid; cursor: pointer;
   }
+  .dialog-body .dlg-ghost:disabled { opacity: 0.45; cursor: default; }
   .key-row input { flex: 1; min-width: 0; }
   .self-start { align-self: flex-start; }
 
-  /* Format choice (#221 phase 3, D8) reuses the .dest-list row language —
-     border/margin reset since it's a <fieldset>, not the .field <label>. */
-  .fmt-choice { border: none; margin: 0; padding: 0; }
+  /* Format choice (#221 phase 3, D8) reuses the .dest-list row language.
+     Deliberately NOT a .field: `.field input` (full-width text-input styling)
+     would stretch its radio buttons across the row and squeeze the labels. */
+  .fmt-choice { border: none; margin: 0; padding: 0; min-width: 0; }
   .fmt-choice legend { font-size: 12px; color: var(--app-text-muted); font-weight: 500; padding: 0; margin: 0 0 6px; }
   .dest-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
   .dest { display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface-sunken); cursor: pointer; }
@@ -811,5 +817,5 @@
   .pf-provider { padding: 1px 6px; border-radius: 10px; background: var(--app-surface); border: 1px solid var(--app-border); color: var(--app-text-muted); }
   .pf-code { font-family: var(--app-font-mono); color: var(--app-text-muted); }
   .pf-loc { color: var(--app-text-muted); }
-  .pf-goto { flex-shrink: 0; align-self: flex-start; font-size: 11px; padding: 4px 8px; }
+  .dialog-body .pf-goto { flex-shrink: 0; align-self: flex-start; font-size: 11px; padding: 4px 8px; }
 </style>
