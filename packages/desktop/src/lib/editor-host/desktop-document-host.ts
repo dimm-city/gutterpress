@@ -114,6 +114,21 @@
  * subscribe contract ("Subscribes to snapshot changes ... never rejected
  * edits") without hand-tracking which of `DocumentSession`'s many branches
  * happen to call `replaceText` internally.
+ *
+ * ## Undo/redo - the page's history lives here
+ *
+ * The shared editor delegates the history chords to the host (D7), so
+ * this host keeps the paged editor's undo stack: `applyEdit` records every
+ * edit it accepts (the range written and the text it replaced), and
+ * `undo()`/`redo()` replay the inverse through `applyEdit` itself, so an
+ * undo is one more bounded, versioned edit against the exact source that
+ * notifies subscribers like any other. A run of typing closer together
+ * than {@link HISTORY_GROUP_MS} is one step. The history is only ever
+ * applied to the text it was recorded against: a change by any other path
+ * (a reload from disk, `replaceExternal`, a restore) clears it rather than
+ * replaying edits that no longer line up. The stack is this host's, so it
+ * survives the editor being remounted (a lock toggle) and ends with the
+ * host (leaving Read).
  */
 import { DocumentSession } from "../document-session/session";
 import type {
@@ -147,7 +162,23 @@ export interface DesktopDocumentHostOptions {
   readonly onScheduleRecovery?: () => void;
   /** Supplies the opaque disk stamp `replaceExternal` feeds the session. Defaults to an internal monotonic counter. */
   readonly nextDiskStamp?: () => unknown;
+  /** The clock the undo history groups a run of typing by. Defaults to `Date.now`. */
+  readonly now?: () => number;
 }
+
+/** One accepted edit, kept so it can be taken back: the range it wrote and the text it replaced. */
+interface HistoryEntry {
+  from: number;
+  insert: string;
+  removed: string;
+  /** When the entry was last extended, for grouping a run of typing. */
+  at: number;
+}
+
+/** Consecutive edits closer together than this are one undo step (CodeMirror's own grouping delay). */
+export const HISTORY_GROUP_MS = 500;
+/** Undo steps kept per document. */
+export const HISTORY_LIMIT = 200;
 
 /**
  * The desktop `EditorDocumentHost` adapter. Implements the four D3/D7
@@ -169,8 +200,15 @@ export class DesktopDocumentHost implements EditorDocumentHost {
   readonly #onScheduleSave: (() => void) | undefined;
   readonly #onScheduleRecovery: (() => void) | undefined;
   readonly #nextDiskStamp: () => unknown;
+  readonly #now: () => number;
   readonly #listeners = new Set<(snapshot: DocumentSnapshot) => void>();
   #externalStampCounter = 0;
+  #past: HistoryEntry[] = [];
+  #future: HistoryEntry[] = [];
+  /** The text as of the last edit the history recorded or replayed; any other text means the document changed behind it. */
+  #historyText: string;
+  /** True while `undo`/`redo` is putting an entry back through `applyEdit`, which must not record it again. */
+  #replaying = false;
 
   constructor(initialText: string, options: DesktopDocumentHostOptions = {}) {
     this.#session = new DocumentSession();
@@ -179,6 +217,8 @@ export class DesktopDocumentHost implements EditorDocumentHost {
     this.#onScheduleSave = options.onScheduleSave;
     this.#onScheduleRecovery = options.onScheduleRecovery;
     this.#nextDiskStamp = options.nextDiskStamp ?? (() => ++this.#externalStampCounter);
+    this.#now = options.now ?? Date.now;
+    this.#historyText = this.getSnapshot().text;
   }
 
   // ── EditorDocumentHost (D3/D7) ──────────────────────────────────────────
@@ -189,12 +229,90 @@ export class DesktopDocumentHost implements EditorDocumentHost {
 
   applyEdit(edit: SourceEdit): ApplyEditResult {
     return this.#withSessionMutation(() => {
-      const result = applyEditPure(this.getSnapshot(), edit, { readonly: this.#readonly });
+      const before = this.getSnapshot();
+      const result = applyEditPure(before, edit, { readonly: this.#readonly });
       if (result.ok) {
+        if (!this.#replaying) this.#record(before.text, edit);
+        this.#historyText = result.snapshot.text;
         this.#forwardScheduling(this.#session.edit(result.snapshot.text));
       }
       return result;
     });
+  }
+
+  // -- Undo/redo (see the file header) -------------------------------------
+
+  /** Takes back the last edit. Returns where the caret belongs afterwards, or null when there is nothing to undo. */
+  undo(): number | null {
+    const entry = this.#applicable(this.#past);
+    if (!entry) return null;
+    if (!this.#replay({ from: entry.from, to: entry.from + entry.insert.length, insert: entry.removed })) return null;
+    this.#past.pop();
+    this.#future.push(entry);
+    return entry.from + entry.removed.length;
+  }
+
+  /** Puts back the last edit undone. Returns where the caret belongs afterwards, or null when there is nothing to redo. */
+  redo(): number | null {
+    const entry = this.#applicable(this.#future);
+    if (!entry) return null;
+    if (!this.#replay({ from: entry.from, to: entry.from + entry.removed.length, insert: entry.insert })) return null;
+    this.#future.pop();
+    this.#past.push(entry);
+    return entry.from + entry.insert.length;
+  }
+
+  #record(beforeText: string, edit: SourceEdit): void {
+    if (beforeText !== this.#historyText) this.#clearHistory();
+    this.#future = [];
+    const removed = beforeText.slice(edit.from, edit.to);
+    const now = this.#now();
+    const last = this.#past.at(-1);
+    if (last && now - last.at <= HISTORY_GROUP_MS) {
+      last.at = now;
+      // Typing on: the new text lands right after the last.
+      if (removed === "" && last.removed === "" && edit.from === last.from + last.insert.length) {
+        last.insert += edit.insert;
+        return;
+      }
+      // Backspacing on: the new deletion ends where the last began.
+      if (edit.insert === "" && last.insert === "" && edit.to === last.from) {
+        last.from = edit.from;
+        last.removed = removed + last.removed;
+        return;
+      }
+      // Deleting forward: the new deletion starts where the last did.
+      if (edit.insert === "" && last.insert === "" && edit.from === last.from) {
+        last.removed += removed;
+        return;
+      }
+    }
+    this.#past.push({ from: edit.from, insert: edit.insert, removed, at: now });
+    if (this.#past.length > HISTORY_LIMIT) this.#past.shift();
+  }
+
+  /** The entry on top of `stack`, or undefined when the text is no longer the one it was recorded against. */
+  #applicable(stack: HistoryEntry[]): HistoryEntry | undefined {
+    if (this.getSnapshot().text !== this.#historyText) {
+      this.#clearHistory();
+      return undefined;
+    }
+    return stack.at(-1);
+  }
+
+  #replay(edit: Omit<SourceEdit, "expectedVersion">): boolean {
+    this.#replaying = true;
+    try {
+      return this.applyEdit({ ...edit, expectedVersion: this.getSnapshot().version }).ok;
+    } finally {
+      this.#replaying = false;
+    }
+  }
+
+  #clearHistory(): void {
+    this.#past = [];
+    this.#future = [];
+    this.#historyText = this.getSnapshot().text;
   }
 
   replaceExternal(text: string): void {

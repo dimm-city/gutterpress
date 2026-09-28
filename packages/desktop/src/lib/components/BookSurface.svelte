@@ -422,6 +422,7 @@
           <RichEditor
             bind:this={refs[slot.path]}
             host={slot.host}
+            history={slot.host}
             projection={slot.projection ?? undefined}
             extraCss={slot.editorCss}
             {onDiagnostic}

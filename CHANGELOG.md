@@ -22,13 +22,6 @@ An alpha: the paged editor is new, and editor↔page agreement is still being
 worked on real books. The preview remains the print authority — where the two
 disagree, the preview is right.
 
-Known limitation: the paged editor (Read, unlocked) has no undo/redo. The
-shared editor delegates history to the host by design and the desktop host
-implements none, so Ctrl+Z/Ctrl+Y do nothing on the page. Undo exists only
-for edits made in Edit or Focus (CodeMirror's history), and every mode
-switch starts a fresh epoch, so an edit made on the unlocked page cannot be
-undone anywhere afterwards - use Edit or Focus for undo-sensitive work.
-
 ### Added
 
 - **A paginated, source-first editor in the desktop app, and an Experimental
@@ -55,6 +48,12 @@ undone anywhere afterwards - use Edit or Focus for undo-sensitive work.
   preview and never persists. A non-Markdown file (CSS, YAML) always opens
   on the source editor in every mode. There is no second Rich/Source toggle
   beside the editor toolbar any more.
+- **Undo and redo on the page.** In Read, unlocked, Ctrl+Z takes back the
+  last edit and Ctrl+Y (or Ctrl+Shift+Z; Cmd on macOS) puts it back, one
+  chapter at a time, with a run of typing as one step. The page's history
+  is the chapter's own: it stays through locking and unlocking, it is
+  cleared when the file changes on disk, and it is separate from the
+  source editor's - switching modes starts fresh, as it always has.
 - **The Gutterpress VS Code extension** (`@dimm-city/gutterpress-vscode`,
   published separately, Experimental). It registers an optional
   "Gutterpress Markdown Editor" — reachable via *Reopen With…*, never the

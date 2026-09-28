@@ -287,3 +287,120 @@ describe("DesktopDocumentHost — replaceExternal, backed by the session's adopt
     expect(host.phase).toBe("clean");
   });
 });
+
+// -- 3. Undo/redo: the page's history lives with the chapter's host -------
+// The shared editor routes Ctrl+Z / Ctrl+Y to the host (D7). This host
+// records every edit it accepts and replays the inverse through its own
+// applyEdit, so an undo is one more bounded, versioned edit that notifies
+// subscribers, and the source stays byte-exact along the way.
+
+function typing(host: DesktopDocumentHost, at: number, text: string): void {
+  for (let i = 0; i < text.length; i++) {
+    const result = host.applyEdit({ from: at + i, to: at + i, insert: text[i], expectedVersion: host.getSnapshot().version });
+    expect(result.ok).toBe(true);
+  }
+}
+
+describe("DesktopDocumentHost - undo/redo", () => {
+  /** A host whose clock steps by `stepMs` per edit, so grouping is decided by the test, not the wall clock. */
+  const spaced = (text: string, stepMs: number, opts: { readonly?: boolean } = {}) => {
+    let t = 0;
+    return new DesktopDocumentHost(text, { ...opts, now: () => (t += stepMs) });
+  };
+
+  test("undo takes back the last accepted edit byte for byte and says where the caret goes", () => {
+    const host = spaced("hello world", 1000);
+    host.applyEdit({ from: 5, to: 5, insert: ",", expectedVersion: 0 });
+    host.applyEdit({ from: 12, to: 12, insert: "!", expectedVersion: 1 });
+    expect(host.getSnapshot().text).toBe("hello, world!");
+    expect(host.undo()).toBe(12);
+    expect(host.getSnapshot().text).toBe("hello, world");
+    expect(host.undo()).toBe(5);
+    expect(host.getSnapshot().text).toBe("hello world");
+    expect(host.undo()).toBeNull();
+    expect(host.getSnapshot().text).toBe("hello world");
+  });
+
+  test("redo puts an undone edit back; a new edit after an undo drops what could be redone", () => {
+    const host = spaced("ab", 1000);
+    host.applyEdit({ from: 1, to: 2, insert: "XY", expectedVersion: 0 });
+    expect(host.undo()).toBe(2);
+    expect(host.getSnapshot().text).toBe("ab");
+    expect(host.redo()).toBe(3);
+    expect(host.getSnapshot().text).toBe("aXY");
+    expect(host.redo()).toBeNull();
+    host.undo();
+    host.applyEdit({ from: 0, to: 0, insert: "-", expectedVersion: host.getSnapshot().version });
+    expect(host.redo()).toBeNull();
+    expect(host.getSnapshot().text).toBe("-ab");
+  });
+
+  test("a run of typing within the grouping window is one step; a pause starts the next", () => {
+    const host = spaced("hello", 100);
+    typing(host, 5, " world");
+    expect(host.getSnapshot().text).toBe("hello world");
+    expect(host.undo()).toBe(5);
+    expect(host.getSnapshot().text).toBe("hello");
+    expect(host.redo()).toBe(11);
+    const slow = spaced("hello", 1000);
+    typing(slow, 5, " ok");
+    expect(slow.undo()).toBe(7);
+    expect(slow.getSnapshot().text).toBe("hello o");
+  });
+
+  test("a run of backspaces, and a run of forward deletes, are each one step", () => {
+    const back = spaced("abcdef", 100);
+    for (let at = 6; at > 3; at--) back.applyEdit({ from: at - 1, to: at, insert: "", expectedVersion: back.getSnapshot().version });
+    expect(back.getSnapshot().text).toBe("abc");
+    expect(back.undo()).toBe(6);
+    expect(back.getSnapshot().text).toBe("abcdef");
+    const forward = spaced("abcdef", 100);
+    for (let i = 0; i < 3; i++) forward.applyEdit({ from: 1, to: 2, insert: "", expectedVersion: forward.getSnapshot().version });
+    expect(forward.getSnapshot().text).toBe("aef");
+    expect(forward.undo()).toBe(4);
+    expect(forward.getSnapshot().text).toBe("abcdef");
+  });
+
+  test("an undo is a versioned edit like any other: version +1, subscribers told, save scheduled", () => {
+    const saves: number[] = [];
+    let t = 0;
+    const host = new DesktopDocumentHost("x", { now: () => (t += 1000), onScheduleSave: () => saves.push(host.getSnapshot().version) });
+    const seen: string[] = [];
+    host.subscribe((snapshot) => seen.push(snapshot.text));
+    host.applyEdit({ from: 1, to: 1, insert: "y", expectedVersion: 0 });
+    host.undo();
+    expect(host.getSnapshot().version).toBe(2);
+    expect(seen).toEqual(["xy", "x"]);
+    expect(saves.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("a change by any other path clears the history rather than replaying edits that no longer line up", () => {
+    const host = spaced("one", 1000);
+    host.applyEdit({ from: 3, to: 3, insert: " two", expectedVersion: 0 });
+    host.replaceExternal("something else");
+    expect(host.undo()).toBeNull();
+    expect(host.getSnapshot().text).toBe("something else");
+    host.applyEdit({ from: 0, to: 0, insert: "!", expectedVersion: host.getSnapshot().version });
+    expect(host.undo()).toBe(0);
+    expect(host.getSnapshot().text).toBe("something else");
+  });
+
+  test("a readonly host has nothing to undo, and a rejected edit records nothing", () => {
+    const locked = spaced("keep", 1000, { readonly: true });
+    expect(locked.applyEdit({ from: 0, to: 0, insert: "x", expectedVersion: 0 }).ok).toBe(false);
+    expect(locked.undo()).toBeNull();
+    const host = spaced("keep", 1000);
+    expect(host.applyEdit({ from: 0, to: 0, insert: "x", expectedVersion: 99 }).ok).toBe(false);
+    expect(host.undo()).toBeNull();
+    expect(host.getSnapshot().text).toBe("keep");
+  });
+
+  test("the history holds the last 200 steps", () => {
+    const host = spaced("", 1000);
+    for (let i = 0; i < 205; i++) host.applyEdit({ from: i, to: i, insert: "a", expectedVersion: i });
+    let undone = 0;
+    while (host.undo() !== null) undone++;
+    expect(undone).toBe(200);
+    expect(host.getSnapshot().text).toBe("aaaaa");
+  });
+});

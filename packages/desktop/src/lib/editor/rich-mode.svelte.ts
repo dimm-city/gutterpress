@@ -33,18 +33,21 @@
  * ## Undo epoch (D7)
  *
  * "Switching modes establishes an explicit undo epoch ... must never alter
- * source." Concretely, for 0.12.0: CodeMirror's own `history()` extension
- * is the ONLY undo stack. The shared rich editor delegates undo to the
- * host by design (the `@vscode/markdown-editor` fork adapter leaves
- * `historyStrategy` unset, so Ctrl+Z/Ctrl+Y pass through to the host) and
- * the desktop host implements none, so the paged surface has no undo
- * stack of its own - D7 is explicit that source and rich "share source and
- * persistence but not an undo stack." There is nothing to merge, hand
- * off, or migrate between them. "Establishing a new undo epoch" therefore
- * means exactly this: the surface becoming active starts with an EMPTY
- * undo history (CodeMirror gets a fresh `EditorState`/`history()` on
- * `switchFile`; a freshly mounted rich editor gets a fresh `EditorModel`,
- * and no history accrues there afterwards either). This controller
+ * source." Concretely: each surface keeps its own history, and neither
+ * reaches the other's. The source editor's is CodeMirror's `history()`
+ * extension. The paged editor's lives in the chapter's own
+ * `DesktopDocumentHost` (`undo()`/`redo()`): the shared editor delegates
+ * the chords to the host by design (D7), and the desktop host records
+ * every edit it accepts and replays it back through its own `applyEdit`,
+ * so an undo is one more bounded edit against the same exact source. D7
+ * is explicit that source and rich "share source and persistence but not
+ * an undo stack." There is nothing to merge, hand off, or migrate between
+ * them. "Establishing a new undo epoch" therefore means exactly this: the
+ * surface becoming active starts with an EMPTY undo history (CodeMirror
+ * gets a fresh `EditorState`/`history()` on `switchFile`; a book's chapter
+ * hosts are built when Read mounts the book and dropped when it leaves,
+ * and a host clears its history whenever its text changes by any path
+ * but its own edits - a reload from disk, say). This controller
  * performs no undo-stack bookkeeping itself — it never touches document
  * text, so it cannot alter source, which is a structural guarantee rather
  * than a runtime check (`rich-mode.test.ts` proves it by asserting a host's

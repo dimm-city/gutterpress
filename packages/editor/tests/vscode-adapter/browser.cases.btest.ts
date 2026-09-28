@@ -225,6 +225,36 @@ describe("case 3 — host-delegated undo/redo (D7)", () => {
     expect(await harness.page.evaluate(() => window.__gp.diagnostics())).toEqual([]);
     expect(await requireDocumentText(selector)).toContain("hello one two");
   });
+
+  test("with a host history supplied, Ctrl+Z reverts the last keystroke through the host and Ctrl+Y puts it back", async () => {
+    const selector = await mount("hello", { history: true });
+    await requireDocumentText(selector);
+
+    await harness.page.click(selector);
+    await harness.page.keyboard.press("End");
+    await harness.page.keyboard.type(" one");
+    await harness.page.waitForTimeout(50);
+    expect(await hostText()).toBe("hello one");
+    const callsAfterTyping = await harness.page.evaluate(() => window.__gp.applyEditCallCount());
+
+    await harness.page.keyboard.press("Control+z");
+    await harness.page.waitForTimeout(150);
+
+    // The chord reached the host's history, which undid ONE keystroke (the
+    // harness history keeps one entry per accepted edit) as one more edit
+    // through applyEdit - and the view shows the host's text, not a copy.
+    expect(await harness.page.evaluate(() => window.__gp.historyCalls())).toEqual(["undo"]);
+    expect(await hostText()).toBe("hello on");
+    expect(await harness.page.evaluate(() => window.__gp.applyEditCallCount())).toBe(callsAfterTyping + 1);
+    expect(await requireDocumentText(selector)).toContain("hello on");
+
+    await harness.page.keyboard.press("Control+y");
+    await harness.page.waitForTimeout(150);
+    expect(await harness.page.evaluate(() => window.__gp.historyCalls())).toEqual(["undo", "redo"]);
+    expect(await hostText()).toBe("hello one");
+    expect(await requireDocumentText(selector)).toContain("hello one");
+    expect(await harness.page.evaluate(() => window.__gp.diagnostics())).toEqual([]);
+  });
 });
 
 describe("rejection path — stale edit reverts the model and fires EDITOR_STALE_EDIT", () => {

@@ -59,6 +59,7 @@
     filePath = null,
     zoom = "fit-width",
     stacked = false,
+    history,
   }: {
     /**
      * The document this mount reads/writes through — the D3/D7
@@ -98,6 +99,13 @@
      * content container stops scrolling so the book's own scroller does.
      */
     stacked?: boolean;
+    /**
+     * The document's own undo/redo, if `host` keeps one (`DesktopDocumentHost`
+     * does): the editor routes Ctrl+Z / Ctrl+Y (Cmd on macOS) to it, and
+     * the caret follows the change. Each call answers where the caret
+     * belongs afterwards, or null when there was nothing to do.
+     */
+    history?: { undo(): number | null; redo(): number | null };
   } = $props();
 
   let container = $state<HTMLDivElement | undefined>(undefined);
@@ -157,11 +165,20 @@
     // segment after either separator is the name. No "Chapter" prefix: the
     // file is what the author opened, and the name is read out as is.
     const accessibleName = filePath?.split(/[\\/]/).pop() || undefined;
+    // The host replays the edit; the caret is this component's to place,
+    // through the same handle a click or an outline row uses.
+    const placeCaret = (at: number | null): void => {
+      if (at !== null) mountHandle?.setSelection(at);
+    };
+    const editorHistory = history
+      ? { undo: () => placeCaret(history.undo()), redo: () => placeCaret(history.redo()) }
+      : undefined;
     const mount = projection
       ? mountGutterpressEditor(container, host, {
           projection,
           readonly,
           accessibleName,
+          history: editorHistory,
           extraCss,
           onDiagnostic,
           // The book's own CSS supplies the typography; the fork's default
@@ -177,7 +194,10 @@
             surface?.onDocumentMount(documentElement);
           },
         })
-      : { ...mountEditor(container, host, { readonly, accessibleName, extraCss, onDiagnostic, showReadonlyToggle: false }), refreshProjection: () => {} };
+      : {
+          ...mountEditor(container, host, { readonly, accessibleName, history: editorHistory, extraCss, onDiagnostic, showReadonlyToggle: false }),
+          refreshProjection: () => {},
+        };
     mountHandle = mount;
     return () => {
       mountHandle = undefined;

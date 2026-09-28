@@ -9,7 +9,7 @@
  * byte-for-byte because the option did not exist yet).
  */
 import type { Diagnostic, EditorDocumentHost } from "../core/index.ts";
-import { mountEditor, type EditorMount } from "../web/mount.ts";
+import { mountEditor, type EditorMount, type EditorMountOptions } from "../web/mount.ts";
 import { projectionNeedsRefresh } from "./match.ts";
 import { diagnosticForProjection } from "./projection-diagnostics.ts";
 import { createGutterpressBlockProvider } from "./provider.ts";
@@ -31,6 +31,8 @@ export interface MountGutterpressEditorOptions {
   readonly readonly?: boolean;
   /** See `mountEditor`'s option of the same name; the lock/unlock remount in `build()` carries it over. */
   readonly accessibleName?: string;
+  /** See `EditorMountOptions.history` - the host's own undo/redo. */
+  readonly history?: EditorMountOptions["history"];
   readonly extraCss?: string;
   /** See `mountEditor`'s option of the same name. Pass `null` when `extraCss` carries the book's own typography. */
   readonly themeClassName?: string | null;
@@ -141,6 +143,7 @@ export function mountGutterpressEditor(
       onDiagnostic: options.onDiagnostic,
       readonly,
       accessibleName: options.accessibleName,
+      history: options.history,
       extraCss: `${GUTTERPRESS_EDITOR_CSS}\n${options.extraCss ?? ""}`,
       renderCustomBlock: provider.renderCustomBlock,
       groupBlocks: provider.groupBlocks,

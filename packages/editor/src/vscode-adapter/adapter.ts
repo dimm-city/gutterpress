@@ -56,20 +56,23 @@ import { stringEditToSourceEdit } from "./convert.ts";
  *     `onWillApplySourceEdit` subscription, and the host subscription, and
  *     detaches the mounted DOM.
  *
- * Undo/redo (D7 case 3): `EditorControllerOptions.historyStrategy` is left
- * UNSET on purpose. The package's own doc comment on that option is exact
- * about what this does: "Left unset, the chords are passed on to the
- * host." No `IHistoryStrategy` (the package's only source of a second,
- * package-owned edit history — see `LocalHistoryStrategy` in the package's
- * `dist/index.d.ts`) is ever constructed or wired here, so the package
- * never builds or consults a persistent history of its own; undo/redo
- * chords are not intercepted, and it is entirely the HOST's responsibility
+ * Undo/redo (D7 case 3): the history is the HOST's. No `IHistoryStrategy`
+ * of the package's own (`LocalHistoryStrategy` in its `dist/index.d.ts`,
+ * the package's only source of a second, package-owned edit history) is
+ * ever constructed here, so the package never builds or consults a
+ * persistent history of its own. It is entirely the host's responsibility
  * (outside this package, per D7: "`EditorDocumentHost` owns the
- * authoritative snapshot, accepted edits, external replacements") to
- * implement undo by replaying prior `DocumentSnapshot`s through
- * `host.applyEdit`/`replaceExternal`. `tests/vscode-adapter/
- * browser.cases.btest.ts`'s case-3 exercises this in a real browser: typing
- * twice, then pressing Ctrl+Z, leaves the source unchanged.
+ * authoritative snapshot, accepted edits, external replacements") to keep
+ * one, by recording the edits it accepts and replaying their inverses
+ * through its own `applyEdit`. A host that keeps one hands it in as
+ * `options.history`; the fork then routes Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y
+ * (and the Cmd forms) to it, and the host's replayed edit reaches the
+ * model through the same `subscribe` path as any other external change.
+ * Without it, the package's own doc comment on `historyStrategy` is exact
+ * about what happens: "Left unset, the chords are passed on to the host."
+ * `tests/vscode-adapter/browser.cases.btest.ts`'s case 3 exercises both in
+ * a real browser: typing twice, then pressing Ctrl+Z, leaves the source
+ * unchanged with no history, and reverts the last keystroke with one.
  *
  * SFE-P3ab (Lane C): the returned handle also exposes `getSelection()` —
  * the fork's live caret/selection as D3 source offsets (see the interface's
@@ -121,6 +124,15 @@ export interface VscodeEditorAdapterOptions {
   readonly accessibleName?: string;
 
   /**
+   * The host's own undo/redo, if it keeps one - see the file header. The
+   * fork routes the history chords to it; the host answers each by
+   * replaying an edit through its own `applyEdit`, which reaches this
+   * adapter's model like any other host-side change. Omitted: the chords
+   * pass through to the host untouched (D7).
+   */
+  readonly history?: EditorHistory;
+
+  /**
    * Passed through to the package's `EditorView` untouched (theme class
    * names, limited-width mode, ...). Optional and unused by this run's own
    * cases (1/1b/2/3); present so a later lane (case 7's isolated-mounting
@@ -128,6 +140,12 @@ export interface VscodeEditorAdapterOptions {
    * without a signature change to this function.
    */
   readonly viewOptions?: EditorViewOptions;
+}
+
+/** What a host that keeps the document's history exposes to the editor: the two chords. */
+export interface EditorHistory {
+  undo(): void;
+  redo(): void;
 }
 
 /** Handle returned by `createVscodeEditorAdapter`. */
@@ -350,11 +368,14 @@ export function createVscodeEditorAdapter(
     view.element.setAttribute("aria-label", options.accessibleName);
   }
 
-  // `EditorController`'s own doc comment: "Left unset, the chords are
-  // passed on to the host" (see the file header above) — `historyStrategy`
-  // is intentionally never set here. `clipboardStrategy` IS set: see the
-  // comment on the textbox role above and `createClipboardStrategy` below.
-  const controller = new EditorController(model, view, { clipboardStrategy: createClipboardStrategy() });
+  // `historyStrategy` is the host's history or nothing (see the file
+  // header): never a strategy of the package's own. `clipboardStrategy` IS
+  // set: see the comment on the textbox role above and
+  // `createClipboardStrategy` below.
+  const controller = new EditorController(model, view, {
+    clipboardStrategy: createClipboardStrategy(),
+    historyStrategy: options.history,
+  });
 
   // True for the exact synchronous duration of an `host.applyEdit(...)`
   // call THIS adapter makes from inside `onWillApplySourceEdit` below, and

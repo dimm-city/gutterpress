@@ -1,5 +1,6 @@
 import {
   createVscodeEditorAdapter,
+  type EditorHistory,
   type VscodeEditorAdapter,
   type VscodeEditorAdapterOptions,
 } from "../vscode-adapter/index.ts";
@@ -90,6 +91,9 @@ export interface EditorMountOptions {
 
   /** See `VscodeEditorAdapterOptions.accessibleName` - the textbox's `aria-label`, typically the file's name. */
   readonly accessibleName?: string;
+
+  /** See `VscodeEditorAdapterOptions.history` - the host's own undo/redo, which the chords are routed to. */
+  readonly history?: EditorHistory;
 
   /**
    * The fork's `renderCustomBlock` hook (D6/G-11) — must be supplied at
@@ -237,6 +241,7 @@ export function mountEditor(
     onDiagnostic: options.onDiagnostic,
     readonly: options.readonly,
     accessibleName: options.accessibleName,
+    history: options.history,
     viewOptions: {
       classNames: options.themeClassName === null ? [] : [options.themeClassName ?? FORK_THEME_CLASS_NAME],
       renderCustomBlock: options.renderCustomBlock,

@@ -176,6 +176,7 @@ New bindings must not conflict with this table. (Shipped source:
 | `Cmd/Ctrl+K` | Insert link | PROPOSED (reserved; the markdown-editor convention) |
 | `Cmd/Ctrl+Shift+P` | Command palette | NOT PLANNED (evaluated 2026-07-14; stays reserved if it returns) |
 | `Cmd/Ctrl+Shift+F` | Focus mode | SHIPPED (0.12; **#104**) - Edit without the preview, standard chrome kept; also the focus toggle on the source editor's toolbar. **Not** F11: F11 is OS/Chromium fullscreen on Win/Linux and Show Desktop on macOS |
+| `Cmd/Ctrl+Z`, `Cmd/Ctrl+Y` / `Cmd/Ctrl+Shift+Z` (editor focused) | Undo, redo | SHIPPED (0.12) - the focused editor's own history: CodeMirror's in Edit and Focus; in Read, unlocked, the chapter's history kept by the desktop host. The two are separate (D7) |
 
 ---
 
