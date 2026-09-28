@@ -32,7 +32,18 @@
  * in the text flow, so unlocked has no excuse to paginate differently.
  *
  * Usage:
- *   node tests/integration/editor-preview-parity.mjs [book-dir]
+ *   bun run parity:gate [--in-place] [book-dir]     (in packages/desktop)
+ *   node tests/integration/editor-preview-parity.mjs [--in-place] [book-dir]
+ *
+ *   [book-dir]   the project to compare; defaults to tests/fixtures/plugin-book.
+ *   --in-place   run against the book where it lives instead of a temp copy
+ *                (see copyBookWithSiblings below for when the copy falls short).
+ *
+ * Prerequisites: `bun run build && bun run electron:build` (out/main/main.js
+ * plus the devDependency electron - not the AppImage), and a display: on a
+ * headless Linux box wrap the command in `xvfb-run -a`. Expect minutes of
+ * runtime; it is not gated in CI (see ci.yml's Test job).
+ *
  * Exit 0 when every chapter agrees, 1 otherwise.
  */
 import { createRequire } from "node:module";
@@ -348,8 +359,22 @@ try {
     const deadline = Date.now() + timeoutMs;
     let last = null;
     let stableSince = 0;
+    let missingSince = 0;
     while (Date.now() < deadline) {
       const state = await readChapters().catch(() => ({ order: [], byName: {} }));
+      // Read draws one wrapper per chapter of its list up front, then mounts
+      // them one at a time. A chapter the preview paginated (it is in
+      // `expected`) but that Read left out of its list is never going to
+      // mount, so say so now instead of waiting out the timeout for it - the
+      // list comes from the preview's outline, which a chapter without a
+      // heading is absent from. A few seconds of grace covers the list being
+      // rebuilt when that outline first arrives.
+      const missing = state.order.length ? expected.filter((c) => !state.order.includes(c)) : [];
+      if (!missing.length) missingSince = 0;
+      else if (!missingSince) missingSince = Date.now();
+      else if (Date.now() - missingSince >= 5_000) {
+        throw new Error(`chapter ${missing.join(", ")} is not in Read's chapter list (Read mounted: ${state.order.join(", ") || "none"})`);
+      }
       const ready = expected.every((c) => {
         const chapter = state.byName[c];
         return chapter?.editor && chapter.layout >= 0 && chapter.readonly === lockState;

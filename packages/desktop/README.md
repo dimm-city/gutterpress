@@ -134,6 +134,27 @@ bridge.ts`) has no non-Electron implementation and throws
 older versions of this doc described. Use `electron:hmr` above for all
 UI/CSS iteration.
 
+### Tests
+
+```bash
+# Unit + integration suite. This is what CI runs (`bun --filter '*' test`).
+bun --cwd packages/desktop run test
+
+# Packaged-app UI tests: every tests/integration/*.pw.mjs, driven through
+# playwright-core against the AppImage / .app in dist/. Needs `dist:linux`
+# (or `dist:mac`) first.
+bun --cwd packages/desktop run test:ui
+
+# Editor<->preview page-count parity gate
+# (tests/integration/editor-preview-parity.mjs). Opens the real app in Read
+# mode and checks that the paged editor breaks each chapter into the same
+# number of pages as the preview, locked and unlocked. NOT the AppImage: it
+# needs `bun run build && bun run electron:build` (out/main/main.js plus the
+# devDependency electron), a display (`xvfb-run -a` on headless Linux), and
+# minutes of runtime, so it is documented here rather than gated in CI.
+bun --cwd packages/desktop run parity:gate [--in-place] [book-dir]
+```
+
 ## Building for production
 
 ```bash

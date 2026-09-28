@@ -27,6 +27,15 @@ const STRUCTURAL_PARENTS = new Set(["TABLE", "THEAD", "TBODY", "TFOOT", "TR", "U
 
 /** `decorateInactiveBlock` half: make the inactive block's DOM the page's. */
 export function stripHiddenMarkup(element: HTMLElement): void {
+  // A fenced code block's text is the source slice after the opening fence
+  // line, so it begins with that line's newline - an empty first line the
+  // page's <code> does not have. The fence itself goes below with the rest
+  // of the hidden syntax, so the block is tagged first: editor-css.ts pulls
+  // a tagged block's code up one line box. An indented code block has no
+  // fence, no such newline, and gets no tag.
+  for (const fence of Array.from(element.querySelectorAll(".md-marker-openFence"))) {
+    fence.closest(".md-code-block")?.classList.add("gp-fenced");
+  }
   for (const marker of Array.from(element.querySelectorAll(".md-marker-hidden, .md-list-gutter, .md-glue-indent.md-glue-hidden"))) {
     marker.remove();
   }

@@ -263,30 +263,24 @@ export const GUTTERPRESS_EDITOR_CSS = `
 .gp-inline-html-tag {
   display: none;
 }
-/* The fork keeps a hidden code fence's vertical footprint (visibility: hidden,
-   not display: none) so a code block does not change height when the author
-   clicks into it and the real fence lines appear. That reservation costs
-   exactly two lines per code block against the printed page, so an inactive
-   code block drops it; the block grows by those two lines on the click. */
-.md-editor .md-code-block.md-markers-hidden .md-marker-openFence.md-marker-hidden,
-.md-editor .md-code-block.md-markers-hidden .md-marker-closeFence.md-marker-hidden,
-.md-editor .md-markers-hidden .md-code-block .md-marker-openFence.md-marker-hidden,
-.md-editor .md-markers-hidden .md-code-block .md-marker-closeFence.md-marker-hidden {
-  display: none;
-}
-/* ...and the fork's code text is the exact source slice, which begins with
-   the newline that ended the opening fence line. The book's own HTML has no
-   such newline, so that empty first line is dropped by pulling the code up
-   exactly one line box. The lh unit reads the block's own line-height, so a
-   book that changes it stays correct.
+/* An inactive fenced code block (.gp-fenced, tagged by hidden-markup.ts as
+   it removes the fence lines) keeps the fork's code text, which is the
+   exact source slice and so begins with the newline that ended the opening
+   fence line. The book's own HTML has no such newline, so that empty first
+   line is dropped by pulling the code up exactly one line box. The lh unit
+   reads the block's own line-height, so a book that changes it stays
+   correct. The tag, not the fence element, is what this rule keys on: the
+   fence is gone from the inactive DOM before layout, and a rule that looked
+   for it (:has(> .md-marker-openFence)) never matched, which left every
+   inactive code block one line taller than the page - measured as chapters
+   03, 04 and 05 of the user guide each paginating a page long.
 
    break-after: avoid is not a tweak: this box is a zero-height compensation
    for the line below it, not content. Breaking between the two would leave
    the compensation on one page and the code it corrects on the next, so the
    fragmenter counts the empty line as a real one and splits a code block the
    book keeps whole (measured: 07-system-setup ran a page short without it). */
-.md-editor .md-code-block.md-markers-hidden:has(> .md-marker-openFence)::before,
-.md-editor .md-markers-hidden .md-code-block:has(> .md-marker-openFence)::before {
+.md-editor .md-code-block.gp-fenced::before {
   content: "";
   display: block;
   margin-bottom: -1lh;
