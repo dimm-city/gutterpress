@@ -5,6 +5,18 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.4] - 2026-09-28
+
+### Fixed
+
+- **The Publish window lays out properly again.** On a destination that
+  offers a choice of what to publish, such as Google Drive, the PDF and
+  Website options stretched their round buttons across the whole row and
+  squeezed the descriptions into a narrow column, and the window scrolled
+  sideways, cutting off its left edge. The options now read as normal rows,
+  text boxes fit inside the window, and buttons in the middle of the window
+  such as "Save settings" and "Cancel" match the rest of the app.
+
 ## [0.11.3] - 2026-09-27
 
 ### Fixed
