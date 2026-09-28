@@ -50,8 +50,9 @@
  *
  * Pinned fork version this copy was taken from (packages/vscode-markdown-editor
  * /package.json's `gutterpressFork` block): upstreamVersion 0.0.2-87 (dist/index.js byte-identical to 0.0.2-85),
- * upstreamGitHead b5fd5cda44376c118dd383f8c03ac4f6a06c648e, fork version
- * 0.0.2-87.gp.1.
+ * upstreamGitHead d9273d06982df9665363145e27b502205abe2ba1, fork version
+ * 0.0.2-87.gp.1. The two embedded constants are Microsoft's MIT-licensed
+ * text, covered by the fork's NOTICE (packages/vscode-markdown-editor/NOTICE).
  */
 
 /**

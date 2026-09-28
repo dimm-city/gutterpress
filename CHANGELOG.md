@@ -5,11 +5,29 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Read: right-click > Unlock to edit now places the caret in the block you
+  right-clicked (a marker chip opens on its marker line), instead of leaving
+  the caret wherever it was.
+- Accessibility: the paged editor's root (one per chapter mounted in Read)
+  now carries `role="textbox"`, `aria-multiline="true"`, `aria-readonly`
+  (true while locked, false once unlocked) and an `aria-label` naming the
+  chapter file; the app shell wraps its content in a `<main id="main-content">`
+  landmark with a skip link as the first focusable element; and the source
+  editor's CodeMirror textbox is named "Markdown source of <file>" (or
+  "CSS source of <file>") through `EditorView.contentAttributes`.
+
 ## [0.12.0-alpha.0] - 2026-09-02
 
 An alpha: the paged editor is new, and editor↔page agreement is still being
 worked on real books. The preview remains the print authority — where the two
 disagree, the preview is right.
+
+Known limitation: the paged editor (Read, unlocked) has no undo/redo. The
+shared editor delegates history to the host by design and the desktop host
+implements none, so Ctrl+Z/Ctrl+Y do nothing on the page. Undo exists only
+for edits made in Edit or Focus (CodeMirror's history), and every mode
+switch starts a fresh epoch, so an edit made on the unlocked page cannot be
+undone anywhere afterwards - use Edit or Focus for undo-sensitive work.
 
 ### Added
 
@@ -29,11 +47,14 @@ disagree, the preview is right.
   modes, changes zero bytes. A document over 2 MiB opens in the raw-Markdown
   surface automatically rather than loading the paged one slowly or
   unreliably.
-- **One mode control: Edit, Read, Focus.** Edit is the paged editor;
-  Read is the same editor locked, which paginates exactly like the printed
-  page; Focus is the raw-Markdown surface (CodeMirror) with the preview out
-  of the way, and is where a non-Markdown file always opens. There is no
-  second Rich/Source toggle beside the editor toolbar any more.
+- **One mode control: Edit, Read, Focus.** Edit is the source editor
+  (CodeMirror) with the paginated preview beside it (Ctrl+E); Read is the
+  paged editor alone, opening locked and paginating exactly like the
+  printed page, with an in-pane Unlock pill that edits the same pages in
+  place; Focus (Ctrl+Shift+F or the source toolbar) is Edit without the
+  preview and never persists. A non-Markdown file (CSS, YAML) always opens
+  on the source editor in every mode. There is no second Rich/Source toggle
+  beside the editor toolbar any more.
 - **The Gutterpress VS Code extension** (`@dimm-city/gutterpress-vscode`,
   published separately, Experimental). It registers an optional
   "Gutterpress Markdown Editor" — reachable via *Reopen With…*, never the

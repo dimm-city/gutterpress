@@ -67,18 +67,27 @@ defines its own editing surface or command vocabulary — see
 
 ### The `@vscode/markdown-editor` fork
 
-The rich-editing surface itself is `@vscode/markdown-editor@0.0.2-85`
-consumed through one adapter (`packages/editor/src/vscode-adapter/`), plus
-a minimal internal fork, `packages/vscode-markdown-editor/`
-(`@dimm-city/vscode-markdown-editor`, never a public Gutterpress export).
-The fork exists because the upstream package has no generic hook for a
-custom block view; `packages/vscode-markdown-editor/PATCHES.md` records the
-complete diff against the pinned upstream version — two patches, ten hunks
-total — the `CustomBlockRendering`/`renderCustomBlock` seam Gutterpress's
-projection layer uses (Patch 1) and a measurement-path fix for large
-documents (Patch 2, `SFE-P3f`), plus each patch's own upstreaming/removal
-trigger. See [ADR 0014](../adr/0014-shared-editor-package-and-fork.md) for
-why direct consumption was insufficient and why the fork stays narrow.
+The rich-editing surface itself is `@vscode/markdown-editor@0.0.2-87`
+(re-pinned 2026-09-03) consumed through one adapter
+(`packages/editor/src/vscode-adapter/`), plus an internal fork,
+`packages/vscode-markdown-editor/` (`@dimm-city/vscode-markdown-editor`,
+never a public Gutterpress export). The fork began because the upstream
+package has no generic hook for a custom block view;
+`packages/vscode-markdown-editor/PATCHES.md` records the complete diff
+against the pinned upstream version - nine additive patches, 29 hunks (25
+in `dist/index.js`, 4 in `dist/index.d.ts`), still only those two files -
+the `CustomBlockRendering`/`renderCustomBlock` seam Gutterpress's
+projection layer uses (Patches 1 and 6), a measurement-path fix for large
+documents (Patch 2, `SFE-P3f`), container mounting for Gutterpress scopes
+(Patches 3 and 9), a per-block decoration hook (4), a pre-measurement hook
+the page engine paginates through (5), a render epoch that rebuilds every
+block view without remounting (7) and point-in-block hit testing for
+multi-column pages (8), plus each patch's own upstreaming/removal trigger
+and a re-pin trigger for the pin itself. See
+[ADR 0014](../adr/0014-shared-editor-package-and-fork.md) (and its
+2026-09-28 addendum) for why direct consumption was insufficient and how
+the fork's character changed from a display seam to mounting and
+pagination hooks.
 
 ## The sparse Gutterpress projection
 
@@ -203,11 +212,18 @@ validated boundary — no local HTTP server, no proxy, no bearer token
 - `packages/desktop/src/lib/components/RichEditor.svelte` — the thin Svelte
   shell around `mountGutterpressEditor`/`mountEditor`; the host owns
   iframe/document creation, CSP, and project CSS injection.
-- `packages/desktop/src/lib/editor/rich-mode.svelte.ts` — source/rich mode
-  selection; only one editing surface is mounted per document.
-- `packages/desktop/src/lib/editor/rich-doc-host-controller.svelte.ts` —
-  keeps the rich mount's `DocumentHost` in step with the desktop document
-  session across file switches and external replacements.
+- `packages/desktop/src/lib/editor/rich-mode.svelte.ts` - the
+  mounted-surface invariant: exactly one editing surface (CodeMirror or the
+  paged editor) is registered live at a time, and the controller is told
+  which one by `+page.svelte`'s `syncRichSurface()` (Read mounts the paged
+  editor, Edit and Focus the source editor).
+- `packages/desktop/src/lib/components/BookSurface.svelte` - the whole
+  book in Read: one `DesktopDocumentHost` per chapter (constructed in its
+  `load()`), edits routed out through `onSnapshotChange`, external changes
+  routed in through `+page.svelte`'s `onContentReplaced` (the
+  `bookRef?.replaceText` call - the one path by which text reaches a
+  mounted chapter from outside its editor); a file switch never pushes
+  text into a host.
 - `packages/desktop/src/lib/editor/rich-commands.ts` — the desktop's
   binding from toolbar/context actions to the shared `EditorCommand`
   vocabulary (`packages/editor/src/core/commands.ts`); there is no
@@ -267,6 +283,11 @@ replacement editor command) and was deleted in `SFE-P3e`, before P4 removed
 the mutation surface it audited, once that run's replacement parity
 evidence landed (acceptance.md's SFE-P3e record: "tools/check-parity.mjs +
 check-parity.test.mjs + root script + 2 CI steps deleted (-2,142 LOC)").
+The editor<->preview page-count gate is a third, separate script:
+`packages/desktop/tests/integration/editor-preview-parity.mjs` (`bun run
+parity:gate` in `packages/desktop`), which opens the real app in Read mode
+and checks that the paged editor breaks every chapter into the same number
+of pages as the preview, locked and unlocked.
 
 ## Where each binding decision is recorded
 

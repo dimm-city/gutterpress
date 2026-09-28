@@ -537,6 +537,59 @@ the runtime shape Hunk 1 introduced, for anyone reading the file.
   responsibility, per the run spec's "Segments decision" requirement. Lane
   A's patch supports both the plain-`dom` and `segments` shapes equally.
 
+## Re-pin trigger (all patches)
+
+The pin (`gutterpressFork.upstreamVersion` in package.json, 0.0.2-87 since
+2026-09-03) moves only when one of these fires:
+
+(a) a removal trigger below fires - upstream ships something that lets a
+    patch be deleted, and the re-pin is the deletion;
+(b) a specific upstream fix is tied to a failing Gutterpress test or a
+    filed Gutterpress bug, named in the re-pin commit; or
+(c) a security advisory names the pinned version or one of its runtime
+    dependencies.
+
+Pin age alone is not a trigger. Upstream's `next` line moves often
+(0.0.2-87 was published 2026-09-02, 0.0.2-111 on 2026-09-28, 24
+prereleases later) and ci.yml's non-blocking "fork drift" step reports
+that distance on every run; the report is information, not a to-do.
+0.0.2-111 was checked on 2026-09-28 against Patch 2's trigger (see that
+section) and met none of (a)-(c), so the pin stayed.
+
+A re-pin that changes `dist/index.js` or `dist/index.d.ts` is a
+re-verification, not a version bump. It must, in one change set:
+
+- repeat the D5 compatibility suite (`packages/editor/tests/vscode-adapter/**`)
+  against the new artifact, and re-run the parser-alignment evidence:
+  `markers.js`'s `marker_glued` warning and `match.ts`'s trailing-blank
+  convention both encode how the fork's parser splits blocks, and a parser
+  change upstream silently moves the projection's block boundaries;
+- regenerate `packages/editor/src/web/fork-editor-css.ts` from the new
+  `src/view/editor.css` and `src/view/themes/default.css` (its header
+  records the pinned version and gitHead it was taken from);
+- re-derive Patch 2's consumer map (every reader of `_publishMeasurements`'s
+  output), since the incremental translate is only safe while that map is
+  complete;
+- decide the `video` block arm 0.0.2-111 introduced (`case "video":` in the
+  view-factory switch, `dist/index.js` -111:4302, right before the
+  `unhandledBlock` arm; the AST builder's own arm is -111:969) with a
+  pinning test: either the
+  `renderCustomBlock` seam reaches it like the six kinds Patches 1 and 6
+  cover, or the test pins that it does not and why;
+- commit the `bun.lock` delta the new artifact brings (0.0.2-111 adds a
+  runtime dependency on `entities@6.0.1`, BSD-2-Clause, whose notice then
+  belongs in NOTICE);
+- re-thread Hunk 26 onto the options spread `_renderAutorun` builds for
+  `DocumentViewNode.create` (-111:7027, `const p = { ...this._options,`),
+  and Hunks 27-28 after `_resolveControlFreeVideoOffset` (-111:6928) and
+  `_resolveTableCellOffset` (-111:6948), which 0.0.2-111 added to
+  `resolveOffsetFromPoint` (-111:6914-6917) around the seam Patch 8
+  consults;
+- refresh `checksums.json` (`unpatched`, `upstreamBaseline`, `patched`),
+  `NOTICE`'s provenance block, package.json's `gutterpressFork` block and
+  this file's inventory table, and re-cite every `-<version>:<line>` anchor
+  in the drafts under `docs/plans/source-first-editor/upstream-issue-*.md`.
+
 ## Patch 1 upstreaming / removal trigger
 
 Delete this fork, and switch `packages/editor` back to the plain
@@ -805,10 +858,13 @@ correctness/simplicity grounds despite a real, measured cost: it is the
 smaller, more obviously correct change (one added comparison, no new
 arithmetic on `sourceRange`), and it cannot silently miscompute a shift the
 way a `dOff`-arithmetic bug could. But the D13 benchmark harness
-(`packages/editor/tests/perf/support/drive.ts`) does not exercise an
-append-only workload - its `page.click(selector)` + `press("End")` lands
-the caret at character ~937 of 256,018, under 1% into the document, so
-nearly every block's `absoluteStart` shifts on nearly every keystroke.
+(`packages/editor/tests/perf/support/drive.ts`) did not, at the time,
+exercise an append-only workload - its `page.click(selector)` +
+`press("End")` landed the caret at character ~937 of 256,018, under 1%
+into the document, so nearly every block's `absoluteStart` shifted on
+nearly every keystroke. (Historical: `drive.ts` was fixed on 2026-09-28 to
+navigate with `Control+End`; see the dated note under "Patch 2
+upstreaming / removal trigger" below for the re-measured numbers.)
 Against that (unfixed) navigation, (a) forfeits the entire apparent win:
 the re-measured p95 across this repair round's two clean invocations is
 560.2-577.0 ms, statistically indistinguishable from the unpatched
@@ -1137,6 +1193,32 @@ subsumes it, is a pure performance no-op for every consumer. (This claim
 holds for the patch AS SHIPPED, `absoluteStart`-checked - see "Why the
 translate is exact, not approximate," above, for the repair round that made
 it true.)
+
+**2026-09-28 - trigger checked against upstream 0.0.2-111; not met.**
+`@vscode/markdown-editor@0.0.2-111` (published 2026-09-28T06:37Z, gitHead
+`3fd578f652b8ccb5ba000ea25c28c920b8925b95`, 24 prereleases past the pin)
+leaves every site this patch touches unchanged: `_publishMeasurements`
+(`dist/index.js` -111:7046-7085) still walks every block with
+`<Map>.measure([...])` per block (line 7058 in -111; the body diffs
+against 0.0.2-87's only in minified identifiers), `_renderAutorun`
+(-111:7004) still calls it with one argument (-111:7035), and the
+`editContext.updateText(0, this.editContext.text.length, s)` full-document
+mirror is still its first act (-111:7006). Neither condition 1 nor
+condition 2 above is met, so the pin stays at 0.0.2-87 (see "Re-pin
+trigger"); a re-pin to -111 would not be a performance fix.
+
+The benchmark this patch was judged by was fixed the same day (PERF-1:
+`drive.ts` navigates with `Control+End`, resets samples after navigation,
+and fails if a sample exists before the first keystroke) and re-run
+in-repo (`bun run test:perf`, 2026-09-28 09:50:57 UTC, commit f5c7926 plus
+that fix; sandbox - `test:perf` is not a CI job): 250 KiB p95 304.1 ms
+and 279.4 ms over two runs (n=60), end-of-document, against the 554-632 ms
+near-start band cited above; 25 KiB p95 36.3 ms, 100 KiB 121.8 ms, 1 MiB
+1159.2 ms. The D13 gate still fails at 250 KiB, and the residual (~1
+ms/KiB; 250 KiB p50 ~205 ms, matching the 255.2 ms no-op prototype in
+"Strategy chosen" above) lies outside `_renderAutorun`. Full table:
+`docs/plans/source-first-editor/p3d-sweep-audit.md`, Lane E's 2026-09-28
+addendum.
 
 ## Patch 3 - `groupBlocks` (container mounting for Gutterpress scopes)
 

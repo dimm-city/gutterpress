@@ -151,6 +151,20 @@ fought with new xvfb wiring (below).
   toggle-bold) builds on top of the committed text instead of silently
   reverting it. This is the mode-switch-adjacent "the two surfaces must
   never silently diverge" half of scenario 14.
+  - **SFE-P4 status note (added 2026-09-28):** the citation above no longer
+    resolves - `rich-mode-commit-integration.test.ts` was deleted in SFE-P4
+    (`731aee7e`, "refactor(p4): delete the desktop side of preview
+    editing") along with `CommitEngine`, the mechanism it tested. The
+    surviving evidence for the capability it proved (exact-bytes/locality
+    writes through `DesktopDocumentHost.applyEdit`) is
+    `packages/desktop/tests/editor/parity-caret-token-wrappers.test.ts` and
+    `packages/desktop/tests/editor/parity-replacements.test.ts`, as
+    `parity-matrix.md`'s own SFE-P4 status note records. Lane A's scenario-16
+    undo hand-off (recorded in this document for Lane C) was never picked
+    up: the paged editor has no undo/redo in 0.12.0-alpha.0 (the adapter
+    leaves `historyStrategy` unset and the desktop host implements none;
+    `docs/releases/0.12.0.md`, Known limitations). The bullet's own text is
+    left as written, per this document's dated-record convention.
 - `packages/desktop/tests/editor/real-book-byte-identity.test.ts` (306
   lines, 25 real chapter files across 5 corpora) — for every real chapter:
   constructs a `DesktopDocumentHost` at the exact file text, mounts via
@@ -163,8 +177,13 @@ fought with new xvfb wiring (below).
   file, not assumed from its name. Its own header is explicit that this is
   NOT a real browser mount (`EditContext` is undefined under happy-dom for
   the real fork — verified live in this sandbox before that file was
-  written) — a real-Chromium mount of actual book chapters remains a named,
-  owner-attributed gap for a follow-up, not something this lane re-opens.
+  written). That gap is now closed by
+  `packages/editor/tests/gutterpress/real-book-sweep.btest.ts` (T1,
+  2026-09-28), which mounts the same 25-file corpus plus the desktop
+  plugin-book fixture (plugin-blind) through the real
+  `mountGutterpressEditor` in real Chromium, asserts byte identity at
+  version 0 after mount, after opening and closing one marker, and after
+  dispose, and runs in `bun run test:browser`.
 - `packages/desktop/tests/editor/editor-file-session.test.ts` (148 lines) —
   `EditorFileSession` (the lower buffer-swap layer `+page.svelte`'s
   `editorFiles` is) race-hardening: latest selection wins when an older
@@ -1488,6 +1507,41 @@ NOT invalidated by the correctness defect above — it was measured with
 `_publishMeasurements` forced to a complete no-op, independent of the
 `absoluteStart` question — so it remains live evidence for a future run,
 unlike the "44-50% reduction" headline number.
+
+**Addendum 2026-09-28 - the lead item is done (PERF-1), re-measured
+(PERF-3).** `drive.ts` now navigates with `Control+End` (the fork's
+`documentEnd` command), resets the sample buffer AFTER click + navigation
+in the second of two `requestAnimationFrame` callbacks, and throws if any
+sample exists before the first keystroke. `bun run test:perf` was then
+re-run in this repository on 2026-09-28 (09:50:57 UTC, commit f5c7926
+with that fix applied; sandbox - `test:perf` is not a CI job, `ci.yml`
+runs only `test` and `test:browser` for `packages/editor`). The four-size
+sweep, n=60 post-warm-up samples at every size (the AP-21 `all.length ===
+80` liveness check held), end-of-document typing:
+
+| size | mount-to-interactive | p50 | p95 | min | max | mean |
+|---|---|---|---|---|---|---|
+| 25 KiB | 223.6 ms | 23.5 ms | 36.3 ms | 19.4 ms | 42.2 ms | 25.6 ms |
+| 100 KiB | 344.5 ms | 84.3 ms | 121.8 ms | 72.5 ms | 137.8 ms | 89.7 ms |
+| 250 KiB, run 1 | 607.5 ms | 204.2 ms | 304.1 ms | 172.9 ms | 413.1 ms | 218.0 ms |
+| 250 KiB, run 2 | 643.2 ms | 207.4 ms | 279.4 ms | 169.1 ms | 300.5 ms | 219.7 ms |
+| 1 MiB | 2675.8 ms | 891.4 ms | 1159.2 ms | 770.5 ms | 1414.9 ms | 917.0 ms |
+
+The D13 gate (250 KiB p95 < 100 ms) still fails, at 304.1 and 279.4 ms -
+down from the 554-632 ms pre-patch band and the 560-577 ms patched
+near-start band above, both of which measured a shape Patch 2 cannot
+help, and still roughly 3x over budget. `perf-control.btest.ts` passed in
+the same run (a 150 ms/keystroke injected busy-wait moved p50 by
+147.6 ms; assertion `delta > 75 ms`). The residual is ~1 ms/KiB (250 KiB
+p50 ~205 ms, 1 MiB p50 ~890 ms) and matches the `_publishMeasurements`
+no-op prototype's 255.2 ms p50 above within noise, so it lies outside
+`_renderAutorun`, as this section predicted. Upstream 0.0.2-111
+(published 2026-09-28, gitHead 3fd578f) leaves `_publishMeasurements`
+(`dist/index.js` 7046-7085), the `_renderAutorun` call site (7035) and
+the full-document `editContext.updateText` mirror (7006) unchanged, so
+Patch 2's removal trigger is not met. The remaining two follow-ups (the
+delta-translation variant; re-profiling the `EditContext` residual) stand
+as written above.
 
 ### Verification run by this lane
 

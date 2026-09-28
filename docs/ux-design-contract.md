@@ -175,7 +175,7 @@ New bindings must not conflict with this table. (Shipped source:
 | Arrows / Home / End / `+` / `-` (preview) | Page nav / zoom | SHIPPED |
 | `Cmd/Ctrl+K` | Insert link | PROPOSED (reserved; the markdown-editor convention) |
 | `Cmd/Ctrl+Shift+P` | Command palette | NOT PLANNED (evaluated 2026-07-14; stays reserved if it returns) |
-| `Cmd/Ctrl+Shift+F` | Focus mode | PROPOSED — **#104** (**not** F11: F11 is OS/Chromium fullscreen on Win/Linux and Show Desktop on macOS) |
+| `Cmd/Ctrl+Shift+F` | Focus mode | SHIPPED (0.12; **#104**) - Edit without the preview, standard chrome kept; also the focus toggle on the source editor's toolbar. **Not** F11: F11 is OS/Chromium fullscreen on Win/Linux and Show Desktop on macOS |
 
 ---
 
@@ -225,14 +225,57 @@ Proposed refinements:
   reset-to-default. Gutter is keyboard-adjustable (Arrow keys when focused)
   — this is also the WCAG 2.2 SC 2.5.7 single-pointer alternative.
   Tracked in **#103**.
-- Focus mode (`Cmd/Ctrl+Shift+F` / dedicated button): hides all chrome except
-  the editor; must compose with the existing pane/panel toggles.
-  Tracked in **#104**.
+- Focus mode - SHIPPED in 0.12 (**#104**), not as proposed: it hides only
+  the viewer (`mode: "focus"` is Edit without the preview pane; the
+  toolbar, panels and status bar stay), is toggled by `Cmd/Ctrl+Shift+F`
+  or the source editor's toolbar, and is persisted as `editor`, so it
+  never outlives the session (`shared-types.ts`'s `WorkspaceMode` doc).
+  See "Workspace modes" below.
 - Typora-style seamless WYSIWYG as an opt-in toggle — never the default;
   explicit source/preview is the default because print layout fidelity
   matters.
 - Avoid: forcing permanent single-pane mode; auto-hiding scrollbars that
   cause layout shift.
+
+#### Workspace modes (SHIPPED 0.12, bcfb002)
+
+There is ONE workspace control with two segments, Edit and Read, plus a
+toggle on the source editor's toolbar, Focus
+(`packages/desktop/tests/integration/workspace-mode.mjs`:4-7 is the
+helper's own statement of it):
+
+- **Edit** (`mode: "editor"`) is the source editor (CodeMirror) with the
+  paginated preview beside it - `previewVisible = mode === "editor"`
+  (`+page.svelte`:1042).
+- **Read** (`mode: "viewer"`) is the paged editor alone: the whole book,
+  paginated by the same engine that paginates the preview, so no preview
+  sits beside it - the two paginate alike, locked and unlocked, and
+  `tests/integration/editor-preview-parity.mjs`:29-33 is the proof. Read
+  opens LOCKED (`richLocked` starts `true`, `+page.svelte`:1050); the
+  lock pill in the pane (and right-click > Unlock to edit) unlocks the
+  same pages in place, and coming back to Read is coming back to read.
+  `editorEditable = mode !== "viewer"` (`+page.svelte`:1046) and
+  `richSurfaceActive = mode === "viewer"` (`+page.svelte`:2065);
+  `shared-types.ts`:109-112 is the derivation table the tests pin
+  (`tests/platform/gutterpress-ui-regressions.test.ts`:21-40).
+- **Focus** (`mode: "focus"`) is Edit without the preview pane, standard
+  chrome kept; `Cmd/Ctrl+Shift+F` or the source toolbar's toggle. It is
+  persisted as `editor`, so it never survives a restart
+  (`shared-types.ts`:118-121).
+- Cold start opens on the book: the default is `preview.mode: "viewer"`
+  (`shared-types.ts`:236).
+- A non-Markdown file (CSS, YAML) opens on the source editor in every
+  mode: only a Markdown path stays in the reader
+  (`staysInReader = mode === "viewer" && isMarkdownPath(path)`,
+  `+page.svelte`:3994).
+- The unlocked paged editor is the fork's HYBRID model - the active block
+  is edited as source while every other block stays rendered - not a
+  Typora-style seamless WYSIWYG. The rule above ("never the default")
+  therefore stays true: Read opens locked, and unlocking is an explicit,
+  per-session act on the page.
+- External changes reach a mounted chapter through one path only,
+  `onContentReplaced` -> `bookRef?.replaceText` (`+page.svelte`:2092-2097);
+  a file switch never pushes text into a chapter's host.
 
 ### 1b. Inline editing in the preview
 
@@ -254,10 +297,13 @@ preview. The rest of this section (click-to-source, the read-only context
 menu items) remains current; do not treat the mutation items or the block
 overlay below as live product behavior.
 
-The paginated preview is an editing surface, not only a viewer. This does
-**not** supersede the opt-in WYSIWYG rule above: these are explicit,
-user-invoked actions on a specific target, not a seamless typing surface.
-The source pane remains the default editing model.
+Since the 2026-09-01 correction the paginated preview is a viewer only.
+The sentence this paragraph used to open with ("an editing surface, not
+only a viewer") described the deleted mutation half; what remains true is
+that nothing here supersedes the opt-in WYSIWYG rule above - the preview
+takes no typing at all, and the editing surfaces are the source editor
+(Edit, Focus) and the paged editor (Read, unlocked), per "Workspace
+modes" above.
 
 Shipped behavior:
 
@@ -1214,7 +1260,7 @@ before implementation** (Primary Goals: unscoped mandated work is prohibited)
 - ✅ Editor (#38) · ✅ CSS language mode (#39) · ✅ Toolbar (#31) · ✅ Snippets (#29)
 - ✅ Synchronized scroll (EditorPreviewSyncController) · 🆕 user toggle to disable
 - ⏳ Resizable gutter with snap points + keyboard adjustment — **#103**
-- ⏳ Focus mode (`Cmd/Ctrl+Shift+F`) — **#104**
+- ✅ Focus mode (`Cmd/Ctrl+Shift+F`, 0.12: Edit without the preview) — **#104**
 - ❌ Command palette — evaluated, not planned (shortcut stays reserved)
 
 ### Onboarding

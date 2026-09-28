@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "license": "MIT",
-  "description": "Internal Gutterpress fork of @vscode/markdown-editor@0.0.2-87 (SFE-P1b; re-pinned from 0.0.2-85 on 2026-09-03: dist/index.js and dist/index.d.ts are byte-identical, only dist/web-editors.* changed upstream), carrying the minimal renderCustomBlock seam and the SFE-P3f measurement patch. Not published; see NOTICE and PATCHES.md.",
+  "description": "Internal Gutterpress fork of @vscode/markdown-editor@0.0.2-87 (SFE-P1b; pinned 0.0.2-84 -> -85 on 2026-09-02 and -85 -> -87 on 2026-09-03: dist/index.js and dist/index.d.ts are byte-identical across all three, only dist/web-editors.* changed upstream), carrying nine additive patches (29 hunks: 25 in dist/index.js, 4 in dist/index.d.ts) - the renderCustomBlock seam, the SFE-P3f measurement patch, groupBlocks, decorateInactiveBlock, afterDocumentMount, renderEpoch, columns and chips. Not published; see NOTICE and PATCHES.md.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "sideEffects": [
@@ -85,7 +85,7 @@
       "tarball": "https://registry.npmjs.org/@vscode/markdown-editor/-/markdown-editor-0.0.2-87.tgz",
       "integrity": "sha512-c1T5c2p2btf8NGVARkDN/qGezyZ25xCL/2KXqwsQeh9NmcH4bPZi2CtaeaLmQU2EyHS7WpdYKcIdwGMrJstLEg=="
     },
-    "patches": "renderCustomBlock (SFE-P1b) + measurement (SFE-P3f) — see PATCHES.md",
-    "removalTrigger": "Delete this fork when upstream ships an equivalent generic block-render hook (BlockViewOptions gaining a paragraph/unhandledBlock custom-render seam), or when the seam is upstreamed as a PR. See docs/plans/source-first-editor/runs/SFE-P1b.md."
+    "patches": "nine patches, 29 hunks (25 in dist/index.js, 4 in dist/index.d.ts), 28 gp-fork: markers in dist/index.js: 1 renderCustomBlock (SFE-P1b), 2 measurement (SFE-P3f), 3 groupBlocks, 4 decorateInactiveBlock, 5 afterDocumentMount, 6 renderCustomBlock for every block kind, 7 renderEpoch, 8 columns, 9 chips - inventory table and per-patch sections in PATCHES.md",
+    "removalTrigger": "Delete this fork only when all nine per-patch removal triggers in PATCHES.md are met (each patch has its own 'upstreaming / removal trigger' section; Patch 1's is a generic block-render hook on BlockViewOptions, or that seam upstreamed as an accepted PR). Re-pin the upstream version only per PATCHES.md's 'Re-pin trigger' section - pin age alone is not a trigger (0.0.2-111, checked 2026-09-28, met none). See docs/plans/source-first-editor/runs/SFE-P1b.md."
   }
 }

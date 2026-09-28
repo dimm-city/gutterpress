@@ -1,6 +1,6 @@
 # ADR 0014 — One shared, framework-free editor package for desktop and VS Code
 
-Date: 2026-09-01 · Status: accepted · Implemented by: SFE-P1a, P1b, P1b2, P3a, P3c, P3f
+Date: 2026-09-01 · Status: accepted · Implemented by: SFE-P1a, P1b, P1b2, P3a, P3c, P3f; Patches 3-9 by the post-program commits a67f189 (2026-09-02, Patches 3-5), fa962b3 (2026-09-02, Patch 6), 5a52dbf (2026-09-03, Patch 7), b957098 and fe5da13 (2026-09-03, Patch 8), 7c96204 (2026-09-15, Patch 9); re-pinned to 0.0.2-87 by 1972df6 (2026-09-03) - see the addendum below
 
 > **Supersedes, in part:** the (missing) platform-abstraction ADR that
 > `CLAUDE.md` and several desktop source comments still cite as "ADR 0004" —
@@ -8,6 +8,44 @@ Date: 2026-09-01 · Status: accepted · Implemented by: SFE-P1a, P1b, P1b2, P3a,
 > predecessors" and the deletion ledger's SFE-P5a entry). Where those
 > comments describe the desktop/VS Code host-portability boundary, this ADR
 > and ADR 0017 are the current record.
+>
+> **Addendum 2026-09-28 - the fork as shipped.** The Decision below is the
+> record as written on 2026-09-01 and is kept as such; the counts in it
+> were true then and are not true now. As shipped in 0.12.0-alpha.0 the
+> fork `packages/vscode-markdown-editor` (`@dimm-city/vscode-markdown-editor@0.0.2-87.gp.1`)
+> is pinned to the published `@vscode/markdown-editor@0.0.2-87` artifact
+> (the pin went 0.0.2-84 -> -85 on 2026-09-02 and -85 -> -87 on
+> 2026-09-03; `dist/index.js` and `dist/index.d.ts` are byte-identical
+> across all three, so every hunk carried over) and carries **nine patches in 29
+> hunks - 25 in `dist/index.js` and 4 in `dist/index.d.ts` - marked by 28
+> `gp-fork:` comments in `dist/index.js`** (`grep -c 'gp-fork:'`), still
+> touching only those two files. `PATCHES.md`'s inventory table is the
+> authoritative hunk list. The seven patches added after this record was
+> written are `groupBlocks` (Patch 3), `decorateInactiveBlock` (4),
+> `afterDocumentMount` (5), `renderCustomBlock` for the heading, block
+> quote, list and table arms (6), `renderEpoch` (7), `columns` (8) and
+> `chips` (9).
+>
+> That list changes the fork's character, and this addendum says so
+> plainly: the fork the Decision describes was a display seam (one
+> inactive-render hook for two block kinds) plus a measurement fix. The
+> fork as shipped also mounts runs of blocks inside host-owned containers
+> (Patch 3, with Patch 9 deciding where a marker chip sits), hands the host
+> a pre-measurement hook so the book's own page engine can paginate the
+> editor's document (Patch 5), lets the host retire every block view
+> without remounting through a render epoch (Patch 7), and resolves a
+> click against the block under the pointer so multi-column pages take
+> their own clicks (Patch 8). Every patch stays additive and generic
+> (no Gutterpress vocabulary in the public surface), but "minimal" now
+> means "the smallest seam for each of nine needs", not "one hook".
+>
+> Consequently, unforking requires all nine per-patch triggers recorded in
+> `PATCHES.md` (each patch has its own "upstreaming / removal trigger"
+> section), not the two named in Consequences below; `PATCHES.md` also
+> carries the fork's re-pin trigger, which says when the upstream pin
+> moves at all. The 0.0.2-111 check of 2026-09-28 (`PATCHES.md`, Patch 2's
+> trigger) is the worked example: upstream moved 24 prereleases without
+> meeting any trigger, so the pin did not.
 
 ## Context
 
@@ -56,11 +94,14 @@ custom-block/view hook is absent... failure of unrelated optional styling
 does not justify a fork"): the missing seam was narrow, precisely named, and
 had a direct precedent already shipping in the package (`renderMath`'s
 segment-mapping return shape). `packages/vscode-markdown-editor`
-(`@dimm-city/vscode-markdown-editor@0.0.2-85.gp.1`) is the resulting minimal
-internal fork. It carries **two** patches, applied on top of the unmodified,
-published `0.0.2-85` artifact (re-pinned 2026-09-02 from `0.0.2-84`, whose
-vendored files are byte-identical — only upstream's package.json version and
-gitHead changed) and fully itemized in
+(`@dimm-city/vscode-markdown-editor@0.0.2-87.gp.1`) is the resulting minimal
+internal fork. When this record was written it carried **two** patches
+(nine as shipped - see the addendum above), applied on top of the
+unmodified, published upstream artifact - `0.0.2-87` since the 2026-09-03
+re-pin (the pin went `0.0.2-84` -> -85 on 2026-09-02 and -85 -> -87 on
+2026-09-03); the two patched files are byte-identical across all three,
+only upstream's package.json version and gitHead changed - and fully
+itemized in
 `packages/vscode-markdown-editor/PATCHES.md`:
 
 - **Patch 1 — `renderCustomBlock`** (Hunks 1-7): adds one new option,
@@ -91,8 +132,10 @@ gitHead changed) and fully itemized in
   the `absoluteStart`-keyed cache-reuse guard (`gpReusable`) that makes the
   translation exact rather than approximate.
 
-Ten hunks total against upstream, across the two files the fork touches
-(`dist/index.js`, `dist/index.d.ts`) — not seven against one story. Both
+Hunks 1-10 were the whole divergence from upstream when this record was
+written (29 hunks as shipped - see the addendum above), across the two
+files the fork touches (`dist/index.js`, `dist/index.d.ts`) — not seven
+against one story. Both
 patches keep MIT notices, upstream version, and source recorded, and add no
 unrelated reformatting of upstream code — matching D5's fork requirements.
 "No Gutterpress vocabulary" describes the package's PUBLIC surface (option
@@ -128,9 +171,10 @@ adapter.
   patch — Patch 1 (`renderCustomBlock`) needs an equivalent generic
   custom-block hook, Patch 2 (`measurement`) needs `_publishMeasurements`
   to skip unchanged blocks on its own — and unforking the package entirely
-  requires BOTH, not one (the same "thin over capable, design for deletion"
-  discipline root `CLAUDE.md` applies to rendering-engine shims applies here
-  to this fork).
+  requires all nine per-patch triggers recorded in `PATCHES.md`, not one
+  (the addendum above lists Patches 3-9; the same "thin over capable,
+  design for deletion" discipline root `CLAUDE.md` applies to
+  rendering-engine shims applies here to this fork).
 - The fork remains an internal package, not a public Gutterpress API
   (D5) — `gutterpress`'s own public exports (ADR 0012, and this run's
   subpath work) never re-export it.
