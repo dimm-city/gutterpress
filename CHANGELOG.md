@@ -5,6 +5,20 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.5] - 2026-09-29
+
+### Fixed
+
+- **Sync failures record the step and original cause.** Technical details now
+  include a run ID, runtime version, push mode, elapsed time, and a final
+  outcome for every completed attempt. Merge, checkout, snapshot, and fetch
+  errors retain their diagnostic details with credentials removed. Background
+  errors also carry the log path to the status pill.
+- **Unreadable conflict files no longer disappear into another merge error.**
+  Sync preserves the original read failure. Unsupported merges are only
+  reported as unrelated histories after checking that no common history exists.
+  Invalid retry settings cannot create an unbounded retry loop.
+
 ## [0.11.4] - 2026-09-28
 
 ### Fixed

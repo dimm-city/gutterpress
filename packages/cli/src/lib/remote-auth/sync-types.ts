@@ -1,7 +1,7 @@
 /**
- * Type/interface declarations for snapshot-first sync + conflict resolution
- * (#15, ADR 0006 D5). Extracted from sync.ts so the orchestrator, transport and
- * conflict-resolution modules share ONE definition of each result/option shape.
+ * Type/interface declarations for snapshot-first sync
+ * (#15, ADR 0006 D5). Shared by the orchestrator, transport and
+ * convergence modules share ONE definition of each result/option shape.
  * Pure type surface — no runtime code.
  */
 import type httpNode from "isomorphic-git/http/node";
@@ -101,17 +101,17 @@ export interface SyncProjectOptions {
   retry?: SyncRetryOptions;
   /**
    * Optional path to a log file for debugging sync/recovery operations.
-   * When set, each step (snapshot, fetch, merge, push, conflict) is appended
-   * as a timestamped line. Never logs secrets.
+   * When set, each stage and terminal outcome is appended with a run ID,
+   * runtime version, timing, and sanitized error details. Never logs credentials.
    */
   logFile?: string;
 }
 
 /** Bounded retry policy for the sync race loop (BUG 6). */
 export interface SyncRetryOptions {
-  /** Max pull→push passes before giving up. Clamped to ≥ 1. Default 3. */
+  /** Max pull→push passes before giving up. Finite integer clamped to 1–10; non-finite values use default 3. */
   attempts?: number;
-  /** Delay between passes, in ms. Clamped to ≥ 0. Default 150. */
+  /** Delay between passes, in ms. Clamped to 0–30,000; non-finite values use default 150. */
   backoffMs?: number;
   /** Injectable delay (tests only); defaults to a real timer. */
   sleep?: (ms: number) => Promise<void>;
