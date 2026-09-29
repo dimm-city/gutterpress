@@ -398,6 +398,7 @@ export async function fetchRemoteTip(
     ) {
       const err = new Error(
         "The online repository couldn't be accessed with the saved connection. Reconnect and try again.",
+        { cause: e },
       ) as Error & { code: string; data: { statusCode: number } };
       err.code = "HttpError";
       err.data = { statusCode: 401 };

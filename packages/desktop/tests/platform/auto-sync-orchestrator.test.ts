@@ -488,3 +488,17 @@ test("a failed exit push re-arms the push for the next session's first tick", as
   await h.orch.run(DIR); // "reopen": first tick pushes again, not in 13 minutes
   expect([pushFlagOf(h, 0), pushFlagOf(h, 1), pushFlagOf(h, 2)]).toEqual([true, true, true]);
 });
+
+
+test("background sync errors include the technical log path", async () => {
+  for (const throws of [false, true]) {
+    const h = makeHarness({ syncProject: () => {
+      if (throws) throw new Error("unexpected sync failure");
+      return { status: "error", message: "Sync did not complete" };
+    } });
+    await h.orch.run(DIR);
+    const failure = h.emitted.find(p => p.state === "error");
+    expect(failure?.logFile).toBe(h.syncArgs[0]?.logFile);
+    expect(failure?.logFile).toMatch(/^\/logs\/.+\.log$/);
+  }
+});

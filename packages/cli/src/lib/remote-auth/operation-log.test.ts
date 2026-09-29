@@ -5,6 +5,8 @@ import path from "node:path";
 
 import {
   createFileLogger,
+  errorLogData,
+  sanitizeLogText,
   resolveLogger,
 } from "./operation-log.ts";
 
@@ -133,5 +135,38 @@ describe("operation-log", () => {
         await rm(dir, { recursive: true, force: true });
       }
     });
+  });
+});
+
+
+describe("safe error diagnostics", () => {
+  test("redacts URL, query, auth header and resolved credentials before truncation", () => {
+    const secret = "p@ss/word";
+    const text = sanitizeLogText(`https://writer:password@example.test/book?token=hidden&access_token=more \nAuthorization: Bearer private-value Basic c2VjcmV0 ghp_GitHubSecret ${secret} ${encodeURIComponent(secret)}`, [secret]);
+    for (const hidden of ["password", "hidden", "more", "private-value", "c2VjcmV0", "GitHubSecret", secret, encodeURIComponent(secret)]) expect(text).not.toContain(hidden);
+    expect(text).toContain("https://example.test/book");
+    expect(text).not.toContain("\n");
+    expect(sanitizeLogText("x".repeat(10_000))).toHaveLength(6000);
+  });
+
+  test("logs bounded causes and allowlisted Git details without arbitrary payloads", async () => {
+    const dir = await tempDir();
+    try {
+      const err = Object.assign(new Error("merge failed\nfor a file"), {
+        code: "MergeConflictError",
+        data: { filepaths: ["chapter.md"], prettyDetails: "remote refused", request: { password: "DO_NOT_LOG" }, token: "DO_NOT_LOG" },
+      });
+      Object.assign(err, { cause: err });
+      const data = errorLogData(err);
+      const logFile = path.join(dir, "sync.log");
+      createFileLogger(logFile, "sync").warn("merge", "failed", data);
+      const log = await readFile(logFile, "utf8");
+      expect(log.trim().split("\n")).toHaveLength(1);
+      expect(log).toContain("code=MergeConflictError");
+      expect(log).toContain("filepaths=chapter.md");
+      expect(log).toContain("prettyDetails=remote refused");
+      expect(log).not.toContain("DO_NOT_LOG");
+      expect(log).not.toContain("cause1_");
+    } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });

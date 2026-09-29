@@ -352,7 +352,7 @@ export class AutoSyncOrchestrator {
       // failures through its outcome, so anything thrown here is unexpected —
       // a damaged history included. The status pill says so plainly and the
       // periodic timer keeps trying.
-      this.deps.emit({ state: "error", projectDir: dir, lastSyncAt: now });
+      this.deps.emit({ state: "error", projectDir: dir, lastSyncAt: now, logFile });
       releaseFlight();
       return;
     }
@@ -414,6 +414,7 @@ export class AutoSyncOrchestrator {
       default:
         this.deps.emit({
           state: "error",
+          logFile,
           projectDir: dir,
           lastSyncAt: completedAt,
           ...(outcome.message ? { message: outcome.message } : {}),
