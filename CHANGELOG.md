@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.5] - 2026-09-29
+
 ### Fixed
 
 - **Sync failures record the step and original cause.** Technical details now
