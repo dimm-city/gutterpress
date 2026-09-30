@@ -127,7 +127,7 @@ describe("AppToolbar — modern responsive layout (no overflow)", () => {
   });
 });
 
-describe("AppToolbar — primary action order: Publish, Export, Save", () => {
+describe("AppToolbar — action order: Publish, Export, Save", () => {
   test("markup order is Publish, then Export, then Save (Save right-most)", () => {
     const src = toolbar();
     const publishIdx = src.indexOf('class="publish-btn');
@@ -316,6 +316,22 @@ describe("AppToolbar — the mode control is the whole mode model", () => {
     // The pen button's tooltip was the only place the app named Ctrl+E.
     expect(src).toContain("(Ctrl+E)");
     expect(src).toContain("(Ctrl+Shift+F)");
+  });
+});
+
+// ── One primary action (#306) ────────────────────────────────────────────────
+describe("AppToolbar — Export is the one primary action (#306)", () => {
+  test("only Export carries the primary recipe; Publish is a secondary button", () => {
+    const src = toolbar();
+    const primaries = [...src.matchAll(/class="([^"]*\bapp-btn-primary\b[^"]*)"/g)].map((m) => m[1]);
+    expect(primaries).toHaveLength(1);
+    expect(primaries[0]).toContain("export-btn");
+    const at = src.indexOf('class="publish-btn');
+    const publish = src.slice(at, src.indexOf("</button>", at));
+    expect(publish).not.toMatch(/\bprimary\b/);
+    // Its look comes from the toolbar's existing non-primary button recipe (the
+    // one Save uses) — no new colours or tokens.
+    expect(src).toMatch(/\.toolbar button:not\(\.app-btn-primary\):not\(\.active\)\s*\{/);
   });
 });
 

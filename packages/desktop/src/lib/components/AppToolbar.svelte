@@ -30,10 +30,11 @@
    * value — no icon button beside it duplicating a mode the segments already
    * offer, and nothing reachable only from the keyboard.
    *
-   * Primary actions are ordered Publish → Export → Save so Save is always the
-   * right-most button. There is no overflow menu: Export opens the export
-   * dialog, project settings is a dedicated button beside the mode control,
-   * advanced setup in app Settings.
+   * Actions are ordered Publish → Export → Save so Save is always the
+   * right-most button. Export is the one primary (solid) action; Publish is a
+   * secondary button, since its wizard exports too. There is no overflow menu:
+   * Export opens the export dialog, project settings is a dedicated button
+   * beside the mode control, advanced setup in app Settings.
    *
    * PWA-clean (§8): type-only imports, zero host/Node code.
    */
@@ -451,13 +452,16 @@
       <span class="save-hint save-warning" role="alert">{exportWarning}</span>
     {/if}
 
-    <!-- Primary actions — Publish, Export, Save (Save right-most). No
-         overflow menu: focus mode is a segment of the mode control, advanced
-         setup lives in the app Settings view, save-as-template in the export
-         dialog, and project settings beside the mode control above. -->
+    <!-- Actions — Publish, Export, Save (Save right-most). Export is the ONE
+         primary (solid) action; Publish is a secondary button beside it — its
+         wizard exports too, so two equal-weight solid buttons left the choice
+         unclear. No overflow menu: focus mode is a segment of the mode
+         control, advanced setup lives in the app Settings view,
+         save-as-template in the export dialog, and project settings beside the
+         mode control above. -->
     {#if publishVisible}
       <button
-        class="publish-btn primary app-btn-primary icon-text"
+        class="publish-btn icon-text"
         onclick={onPublish}
         disabled={publishDisabled}
         title="Publish your book to itch.io, KDP, Shopify and more"
