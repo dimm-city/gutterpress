@@ -681,3 +681,74 @@ test("the retired view-mode machinery is gone, not merely unused", () => {
   expect(page).not.toContain("class:focus-mode");
   expect(page).not.toContain(".shell.focus-mode");
 });
+
+// ── First run: Edit with the panel open, and no jargon banner (#304, #315) ───
+//
+// A first-time writer used to open a book on a single cover page — Read mode,
+// left panel collapsed, no visible way to type — and meet a yellow "versions"
+// banner before doing anything. These pin the defaults that replaced that and
+// the two places that could quietly undo them.
+
+test("a book opens in Edit by default; the left panel opens too unless the window is narrow", () => {
+  const types = read("src/lib/platform/shared-types.ts");
+  expect(types).toMatch(/mode: "editor",\s*\n\s*paneMode: "view",/);
+  // Only a profile with NO saved panel choice reaches the fallback; a saved
+  // `open: false` (or true) wins because `??` only fills undefined/null.
+  const page = read("src/routes/+page.svelte");
+  expect(page).toContain("leftPanelOpen = panelPrefs?.open ?? !isNarrow;");
+  expect(page).not.toContain("panelPrefs?.open ?? false");
+});
+
+test("resetting the workspace restores the SAVED mode — it must not force Read and save it", () => {
+  const src = read("src/routes/+page.svelte");
+  const idx = src.indexOf("resetExtras: () => {");
+  expect(idx).toBeGreaterThan(-1);
+  const body = src.slice(idx, src.indexOf("problemsOpen = false;", idx));
+  // A failed open, a cancelled open and a URL preview all reset the workspace.
+  // `setMode` persists, so forcing "viewer" here turned a new writer's Edit
+  // default into a saved Read after their first mistyped path.
+  expect(body).toContain("setMode(settings.current.preview.mode)");
+  expect(body).not.toContain('setMode("viewer")');
+});
+
+test("the name/email notice needs version history AND a first save or sync, and says it in plain words", () => {
+  const src = read("src/routes/+page.svelte");
+  const start = src.indexOf("const needsGitIdentity");
+  expect(start).toBeGreaterThan(-1);
+  const derived = src.slice(start, src.indexOf("/** After a successful snapshot restore", start));
+  expect(derived).toContain("settings.loaded");
+  expect(derived).toContain("identityNoticeArmed");
+  expect(derived).toContain("!identityNoticeDismissed");
+  // A plain folder (no history) never needs it.
+  expect(derived).toContain("projectSession.projectCapabilities?.canSnapshot");
+  // Armed only by events the renderer already receives: a sync starting…
+  expect(src).toContain('if (status.state === "syncing") identityNoticeArmed = true;');
+  // …and a version saved by hand.
+  expect(src).toMatch(/await api\.vcs\.saveSnapshot\(dir\);\s*identityNoticeArmed = true;/);
+  // The copy carries no version-control jargon; the action and "Not now" stay.
+  const banner = src.slice(src.indexOf('<div class="identity-banner"'), src.indexOf("{/if}", src.indexOf('<div class="identity-banner"')));
+  const message = banner.slice(banner.indexOf('<span class="identity-banner-msg">'), banner.indexOf("</span>"));
+  expect(message).not.toMatch(/version/i);
+  expect(banner).toContain('openSettings("connections")');
+  expect(banner).toContain("Add your name &amp; email");
+  expect(banner).toContain("identityNoticeDismissed = true");
+});
+
+test("closing the left panel with Escape or the scrim is remembered, exactly like the toolbar toggle", () => {
+  const left = read("src/lib/components/LeftPanel.svelte");
+  const start = left.indexOf("function close() {");
+  expect(start).toBeGreaterThan(-1);
+  const closeBody = left.slice(start, left.indexOf("// ── Keyboard: close on Escape", start));
+  // The panel opens by default (#304), so a close that wasn't saved came back on
+  // every launch. Escape and the scrim both close through `close()`…
+  expect(closeBody).toContain("open = false;");
+  expect(closeBody).toContain("onPanelStateChange?.();");
+  expect(left).toMatch(/if \(e\.key === "Escape"\) \{[\s\S]{0,80}?close\(\);/);
+  expect(left).toContain("onclick={close}");
+  // …and the page saves on that callback the way its own toolbar toggle does.
+  const page = read("src/routes/+page.svelte");
+  expect(page).toContain("onPanelStateChange={persistLeftPanelPrefs}");
+  const toggleAt = page.indexOf("function toggleLeftPanel() {");
+  expect(toggleAt).toBeGreaterThan(-1);
+  expect(page.slice(toggleAt, toggleAt + 160)).toContain("persistLeftPanelPrefs();");
+});

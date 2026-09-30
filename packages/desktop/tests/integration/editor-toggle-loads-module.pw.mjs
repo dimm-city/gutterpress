@@ -10,9 +10,11 @@
  * state indefinitely.
  *
  * What this test verifies:
- *   1. Opens the app with a fresh userData that auto-opens the multichapter
- *      fixture and sets the left panel to the Files tab (so no file has been
- *      clicked — module not pre-loaded).
+ *   1. Opens the app in READ mode (seeded — Edit is the shipped default, and
+ *      opening a book in Edit loads the editor without any toggle; that path is
+ *      editor-opens-with-content.pw.mjs) with a fresh userData that auto-opens
+ *      the multichapter fixture and sets the left panel to the Files tab (so no
+ *      file has been clicked — module not pre-loaded).
  *   2. Waits for the first preview render to complete.
  *   3. Clicks the toolbar's "Edit" mode segment.
  *   4. Asserts `.cm-editor` is present in the DOM within 10 s — i.e., the
@@ -89,6 +91,11 @@ writeFileSync(
     lastProjectDir: bookDir,
     leftPanel: { open: true, activeTab: "files", width: 280 },
   }),
+);
+// Start in Read: the Edit click below must be a real Read → Edit transition.
+writeFileSync(
+  join(userDataDir, "app-settings.json"),
+  JSON.stringify({ settingsSchemaVersion: 2, preview: { mode: "viewer" } }),
 );
 appArgv.push(`--user-data-dir=${userDataDir}`);
 

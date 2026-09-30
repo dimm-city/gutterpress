@@ -110,6 +110,13 @@ writeFileSync(
     showLandingAtStartup: false,
   }),
 );
+// Inline editing happens in the viewer, and this drive asserts the editor pane
+// stays closed around it (assertEditorClosed) — so start in Read; a profile with
+// no saved mode opens in Edit.
+writeFileSync(
+  join(userDataDir, "app-settings.json"),
+  JSON.stringify({ settingsSchemaVersion: 2, preview: { mode: "viewer" } }),
+);
 
 const packaged = /(?:\.AppImage|\.exe)$/i.test(launchTarget) || launchTarget.includes(".app/");
 if (requirePackaged && !packaged) {
@@ -152,6 +159,32 @@ try {
   const page = await waitForAppWindow(electronApp);
   log(`window at ${page.url()}`);
 
+  // Renders follow file writes a beat later (watcher debounce), often more than
+  // one per write. Keys sent while the book frame is being swapped go to a frame
+  // that is about to be replaced and are lost, so remember when the preview last
+  // rendered and let a step wait for quiet instead of racing it.
+  await page.evaluate(() => {
+    window.__etestRenderAt = 0;
+    window.addEventListener("message", (e) => {
+      const d = e.data;
+      if (d && d.type === "gutterpress:event" && (d.name === "renderingStarted" || d.name === "renderingComplete")) {
+        window.__etestRenderAt = performance.now();
+      }
+    });
+  });
+  async function waitForQuietPreview(quietMs = 1500) {
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
+      const quiet = await page.evaluate(
+        (ms) => performance.now() - window.__etestRenderAt > ms && !document.querySelector(".preview-updating-pill"),
+        quietMs,
+      );
+      if (quiet) return;
+      await sleep(100);
+    }
+    throw new Error("the preview was still re-rendering after 20s");
+  }
+
   // Test-side-only instrumentation: an ADDITIONAL listener on the real
   // `webContents` "context-menu" event, alongside the app's own handler
   // (electron/main.ts ~L731). This does not modify, remove, or race the
@@ -186,7 +219,7 @@ try {
   const marginBox = book.locator('.gp-marginbox[data-box="top-center"]');
 
   function isFrameSwapError(error) {
-    return /Cannot find context|Execution context was destroyed|Frame was detached/i.test(
+    return /Cannot find context|Execution context was destroyed|Frame was detached|Unable to adopt element handle from a different document/i.test(
       error?.message || String(error),
     );
   }
@@ -298,8 +331,9 @@ try {
     // known-inert point in the MAIN document (never inside either iframe:
     // mousedown inside an iframe does not bubble to the top document's
     // `window` listener that ContextMenu.svelte relies on for outside-click
-    // dismissal). (5,5) resolves to the static `.identity-banner` status
-    // strip, confirmed to have no click handler.
+    // dismissal). (5,5) resolves to the toolbar's own padding, confirmed to
+    // have no click handler. (It used to be the `.identity-banner` strip, which
+    // now only appears once a version is saved or a sync starts.)
     await page.mouse.click(5, 5, { button: "left" });
     await page.waitForTimeout(150);
   }
@@ -411,6 +445,9 @@ try {
   // ── 4. Shift+F10 opens the menu too (keyboard path, listener lives in the
   //      cross-origin book iframe) ────────────────────────────────────────────
   await step("4. Shift+F10 opens the context menu (keyboard path)", async () => {
+    // Step 3d ends by restoring the fixture on disk, which triggers hot reloads
+    // that can still be landing here. A key pressed mid-swap is lost.
+    await waitForQuietPreview();
     // Left-click a NEUTRAL point first — the margin box has no
     // data-source-line, so this cannot trigger elementActivated/click-to-
     // source (which would steal focus back into the editor and confound the

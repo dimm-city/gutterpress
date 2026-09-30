@@ -96,7 +96,12 @@ export class ZoomViewController {
         : 1;
       await client.call("setZoom", [scale]);
     } catch {
-      await client.call("setZoom", [1]).catch(() => {});
+      // Leave the zoom alone. A failed or timed-out measurement says nothing
+      // about the page: PreviewClient gives up on a call after 10s (a refit
+      // posted before the book frame exists never gets a reply), and resetting
+      // to 100% here used to land ~10s after the first render, on top of the
+      // fit it had already applied. The viewer's own initial zoom covers "never
+      // fitted".
     }
   }
 
