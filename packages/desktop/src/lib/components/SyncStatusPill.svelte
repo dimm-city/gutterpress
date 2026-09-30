@@ -38,9 +38,9 @@
     onReconnect?: () => void;
     onDetails?: (logFilePath: string | null) => void;
     /** Fired on every sync-state transition so an ancestor (the status-bar
-     *  protection summary) can show the live online-copy status instead of a
+     *  save-status dialog) can show the live online-copy status instead of a
      *  static capability flag. */
-    onSyncState?: (state: SyncState) => void;
+    onSyncState?: (state: SyncState, lastSyncAt?: string | null) => void;
   } = $props();
 
   let syncState = $state<SyncState>("idle");
@@ -84,7 +84,7 @@
       // Scope to this project only (the host may manage multiple open windows).
       if (status.projectDir !== projectDir) return;
       syncState = status.state;
-      onSyncState?.(status.state);
+      onSyncState?.(status.state, status.lastSyncAt);
       statusMessage = status.message ?? null;
       // M40: announce the transition via the persistent live region. `pillText`
       // is a $derived that already reflects the `syncState` assignment above by
@@ -125,13 +125,15 @@
       case "syncing":
         return "Syncing…";
       case "synced":
-        return "Online backup in sync";
+        return "Online backup is on";
       case "offline":
         return "Offline — edits are saved on this computer";
       case "local":
-        // Local project, no online copy: previous versions are being kept.
-        // Clickable → opens the Previous versions view (§5.2 reachability).
-        return "Version history available";
+        // Local project, no usable online copy. Says what is NOT true rather
+        // than a vague "history available" (which read as a backup). Clickable
+        // → opens the Previous versions view (§5.2 reachability); the save
+        // status dialog explains the rest.
+        return "Not backed up online";
       case "connect":
         // An HTTPS remote exists but Gutterpress isn't connected to it — one
         // step from syncing. Actionable copy + click routes to the connect

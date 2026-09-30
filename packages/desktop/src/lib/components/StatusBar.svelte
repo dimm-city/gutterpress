@@ -28,9 +28,10 @@
   import BookSwitcher from "$lib/components/BookSwitcher.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { api } from "$lib/api";
-  import { relativeTime } from "$lib/format";
+  import SaveStatusDialog from "$lib/components/SaveStatusDialog.svelte";
+  import { saveStatusCopy, type SaveStatusActionId } from "$lib/save-status";
   import { canExpandProblems, problemCounts, problemsSummary } from "$lib/problems";
-  import { onMount, tick } from "svelte";
+  import { onDestroy, onMount, tick } from "svelte";
   import type { SyncState } from "$lib/platform/contract";
   import type { ProblemEntry } from "$lib/platform/dtos";
   import type { ProjectBookEntry } from "$lib/routes/project-session-controller.svelte";
@@ -64,6 +65,10 @@
      *  waiting for the author's Save, not about to save itself — so it reads
      *  "Unsaved changes", never "Saving…". */
     autoSave = true,
+    /** Settings → Saving "Keep previous versions": Gutterpress makes versions itself. */
+    autoVersions = true,
+    /** Settings → Saving "Keep this book backed up online". */
+    autoBackup = true,
     /** Whether a file is currently open in the editor. */
     fileOpen = false,
     /** Whether a manual force-save is in progress. */
@@ -110,6 +115,14 @@
      *  summary can refresh its "latest version" line and the parent can show
      *  the single confirmation toast. */
     onSaveVersion = undefined as (() => Promise<void>) | undefined,
+    /** Called when the author clicks "Turn on version history" for a plain
+     *  folder. Resolves once the folder has history (and the page re-classified
+     *  it), rejects on failure after showing its own toast. */
+    onEnableVersionHistory = undefined as (() => Promise<void>) | undefined,
+    /** Called for "See previous versions" — opens the activity view. */
+    onShowVersions = undefined as (() => void) | undefined,
+    /** Called for the online-backup rows that only explain: opens Book settings → Connections. */
+    onOpenBookConnections = undefined as (() => void) | undefined,
     onOpenSettings = undefined as (() => void) | undefined,
     onOpenHelp = undefined as (() => void) | undefined,
   }: {
@@ -118,6 +131,8 @@
     canSync?: boolean;
     hasRemote?: boolean;
     canSnapshot?: boolean;
+    autoVersions?: boolean;
+    autoBackup?: boolean;
     savePhase?: "clean" | "dirty" | "saving" | "error";
     autoSave?: boolean;
     fileOpen?: boolean;
@@ -137,6 +152,9 @@
     onForceSave?: () => void;
     onForceSync?: () => void;
     onSaveVersion?: () => Promise<void>;
+    onEnableVersionHistory?: () => Promise<void>;
+    onShowVersions?: () => void;
+    onOpenBookConnections?: () => void;
     onOpenSettings?: () => void;
     onOpenHelp?: () => void;
   } = $props();
@@ -158,107 +176,158 @@
     }
   });
 
-  // ── Protection summary (UX follow-up: one calm status → a compact summary) ──
-  // Clicking the save indicator opens a small popover that shows the three
-  // protections a writer reasons about, each separately: saved on this
-  // computer, previous versions, and the online copy. Rows 1 and 3 use data the
-  // bar already has; the "previous versions" time is fetched lazily on open via
-  // the PWA-clean api.vcs route (no $effect — event-driven, per CLAUDE.md §8).
+  // ── "Where your work is kept" dialog ────────────────────────────────────────
+  // Clicking the save indicator opens a modal that explains Saving / Versions /
+  // Online backup separately and reconciles them ("saved, but not in a version
+  // yet"). The words come from the pure `saveStatusCopy` ($lib/save-status);
+  // this block only gathers the facts: the bar's own props, the live sync state
+  // from the pill, and two lazily fetched version facts (newest version time
+  // and how many files changed since — the PWA-clean api.vcs routes). No
+  // $effect: fetches are event-driven (open / after an action / a save landing
+  // while open), per CLAUDE.md §8.
   let summaryOpen = $state(false);
-  let summaryEl = $state<HTMLDivElement | null>(null);
+  let saveBtnEl = $state<HTMLButtonElement | null>(null);
   let latestVersionAt = $state<number | null>(null);
-  let versionsLoaded = $state(false);
-  let versionsLoading = $state(false);
+  let changedFiles = $state<number | null>(null);
+  let versionsLoad = $state<"loading" | "ready" | "error">("loading");
+  let liveSyncState = $state<SyncState>("idle");
+  let lastSyncAt = $state<string | null>(null);
+  let savingVersion = $state(false);
+  let nowMs = $state(Date.now());
 
   /** Autosave off and edits waiting for the author's Save. */
   let unsaved = $derived(savePhase === "dirty" && !autoSave && !forceSaving);
 
-  let onThisComputerText = $derived.by((): string => {
-    if (unsaved) return "Not saved yet — press Save";
-    if (forceSaving || savePhase === "saving" || savePhase === "dirty") return "Saving…";
-    if (savePhase === "error") return "Couldn't save — check the file";
-    return "Saved on this computer";
-  });
-  let previousVersionsText = $derived.by((): string => {
-    if (!canSnapshot) return "Not turned on for this book";
-    if (versionsLoading) return "Checking…";
-    if (!versionsLoaded) return "";
-    if (latestVersionAt == null) return "No versions saved yet";
-    return `Last version saved ${relativeTime(latestVersionAt, Date.now())}`;
-  });
-  // Live sync state from the pill (below), so the "online copy" row reflects
-  // reality (up to date / offline / syncing) instead of only the static
-  // capability flag — which wrongly read "not set up" for projects that DO
-  // sync (user feedback). Falls back to the capability flag only when idle.
-  let liveSyncState = $state<SyncState>("idle");
-  let onlineCopyText = $derived.by((): string => {
-    switch (liveSyncState) {
-      case "syncing":
-        return "Syncing…";
-      case "offline":
-        return "Offline — will sync when you're back online";
-      case "error":
-        return "Couldn't sync — your work is safe here";
-      case "auth":
-        return "Reconnect to keep syncing";
-      case "synced":
-        return "In sync";
-      case "connect":
-        // An HTTPS remote exists but Gutterpress isn't connected to it — one
-        // connect step from syncing. The summary popover pairs this with a
-        // Connect action (below) so the row directs instead of dead-ending.
-        return "Not connected — connect below";
-      case "local":
-        // A remote IS configured but Gutterpress isn't auto-syncing it (SSH) →
-        // don't imply it's local-only. No remote at all → the honest "only on
-        // this computer" copy.
-        return hasRemote ? "Not syncing automatically" : "Not set up";
-      case "idle":
-      default:
-        if (canSync) return "In sync";
-        return hasRemote ? "Not syncing automatically" : "Not set up";
-    }
-  });
+  let copy = $derived(
+    saveStatusCopy({
+      savePhase,
+      autoSave,
+      forceSaving,
+      versions: {
+        enabled: canSnapshot,
+        automatic: autoVersions,
+        load: versionsLoad,
+        lastVersionAt: latestVersionAt,
+        changedFiles,
+        savingVersion,
+      },
+      online: {
+        state: liveSyncState,
+        canSync,
+        hasRemote,
+        automatic: autoBackup,
+        lastSyncAt,
+        syncing: forceSyncing,
+      },
+      now: nowMs,
+    }),
+  );
 
-  async function fetchLatestVersion() {
-    if (!projectDir || !canSnapshot) return;
-    versionsLoading = true;
+  // The save phase the version facts were read at: while the dialog is open a
+  // landed save changes "N files not in a version yet", so a cheap timer
+  // re-reads once the phase has moved (and never otherwise).
+  let factsPhase: typeof savePhase = "clean";
+  let refreshTimer: ReturnType<typeof setInterval> | null = null;
+
+  async function fetchVersionFacts() {
+    const dir = projectDir;
+    if (!dir || !canSnapshot) return;
+    factsPhase = savePhase;
+    nowMs = Date.now();
     try {
-      const page = await api.vcs.listSnapshotsPage(projectDir, { limit: 1 });
+      const [page, pending] = await Promise.all([
+        api.vcs.listSnapshotsPage(dir, { limit: 1 }),
+        api.vcs.unversionedChanges(dir),
+      ]);
+      if (projectDir !== dir) return;
       latestVersionAt = page.entries[0]?.timestamp ?? null;
-      versionsLoaded = true;
+      changedFiles = pending.changedFiles;
+      versionsLoad = "ready";
     } catch {
-      // Non-fatal: the summary just shows a blank "previous versions" line
-      // rather than an alarming error in the always-visible chrome.
-      versionsLoaded = true;
-    } finally {
-      versionsLoading = false;
+      // Non-fatal: the dialog says it couldn't check, rather than guessing.
+      if (projectDir === dir) versionsLoad = "error";
     }
   }
 
-  function toggleSummary() {
-    summaryOpen = !summaryOpen;
-    if (summaryOpen && canSnapshot && !versionsLoaded) void fetchLatestVersion();
+  function stopRefresh() {
+    if (refreshTimer) clearInterval(refreshTimer);
+    refreshTimer = null;
   }
+  function openSummary() {
+    summaryOpen = true;
+    versionsLoad = "loading";
+    latestVersionAt = null;
+    changedFiles = null;
+    void fetchVersionFacts();
+    stopRefresh();
+    refreshTimer = setInterval(() => {
+      nowMs = Date.now();
+      if (savePhase !== factsPhase && (savePhase === "clean" || savePhase === "error")) void fetchVersionFacts();
+    }, 2000);
+  }
+  function closeSummary() {
+    summaryOpen = false;
+    stopRefresh();
+  }
+  function toggleSummary() {
+    if (summaryOpen) closeSummary();
+    else openSummary();
+  }
+  onDestroy(stopRefresh);
 
-  let savingVersion = $state(false);
   async function saveVersionNow() {
     if (!onSaveVersion || savingVersion) return;
     savingVersion = true;
     try {
       await onSaveVersion();
-      // Reflect the new version in the summary immediately.
-      versionsLoaded = false;
-      await fetchLatestVersion();
+      await fetchVersionFacts();
     } catch {
-      // The parent surfaces the failure toast; keep the summary calm.
+      // The parent surfaces the failure toast; keep the dialog calm.
     } finally {
       savingVersion = false;
     }
   }
 
-  function onWindowPointerDown(e: PointerEvent) {
-    if (summaryOpen && summaryEl && !summaryEl.contains(e.target as Node)) summaryOpen = false;
+  async function enableHistory() {
+    if (!onEnableVersionHistory) return;
+    try {
+      await onEnableVersionHistory();
+      versionsLoad = "loading";
+      // canSnapshot flips through props after the page re-classifies.
+      await tick();
+      await fetchVersionFacts();
+    } catch {
+      // The parent surfaces the failure toast.
+    }
+  }
+
+  function onSummaryAction(id: SaveStatusActionId) {
+    switch (id) {
+      case "save":
+        onForceSave?.();
+        break;
+      case "saveVersion":
+        void saveVersionNow();
+        break;
+      case "viewVersions":
+        closeSummary();
+        onShowVersions?.();
+        break;
+      case "enableVersionHistory":
+        void enableHistory();
+        break;
+      case "connect":
+        closeSummary();
+        onConnectOnline?.();
+        break;
+      case "syncNow":
+        onForceSync?.();
+        break;
+      case "openBookConnections":
+        closeSummary();
+        onOpenBookConnections?.();
+        break;
+    }
   }
 
   /** CSS modifier class for the save indicator. */
@@ -344,7 +413,7 @@
   onMount(updateCompact);
 </script>
 
-<svelte:window onresize={updateCompact} onpointerdown={onWindowPointerDown} />
+<svelte:window onresize={updateCompact} />
 
 <!-- The Problems list: a row of its own directly above the bar, in normal flow
      (the page's .shell is a flex column), so opening it shrinks the workspace
@@ -449,7 +518,7 @@
           {projectDir}
           onReconnect={onReconnect}
           onDetails={onShowLog}
-          onSyncState={(s) => (liveSyncState = s)}
+          onSyncState={(s, at) => { liveSyncState = s; lastSyncAt = at ?? null; }}
         />
       {/key}
     {/if}
@@ -457,37 +526,15 @@
       <span class="status-sep" aria-hidden="true"></span>
     {/if}
     {#if fileOpen}
-      <div class="save-summary-wrap" bind:this={summaryEl}>
-        <button
-          type="button"
-          class="save-indicator {saveClass}"
-          aria-haspopup="dialog"
-          aria-expanded={summaryOpen}
-          onclick={toggleSummary}
-          title={unsaved ? "You have unsaved changes" : savePhase === "dirty" || savePhase === "saving" ? "Pending changes are being saved" : "Where your work is kept"}
-        ><Icon name={saveStateIcon} size={13} /><span class="save-text" aria-live="polite" aria-atomic="true">{saveLabel}</span></button>
-        {#if summaryOpen}
-          <div class="save-summary" role="dialog" aria-label="Where your work is kept">
-            <ul class="summary-rows">
-              <li><span class="summary-key">Your edits</span><span class="summary-val">{onThisComputerText}</span></li>
-              <li><span class="summary-key">Version history</span><span class="summary-val">{previousVersionsText}</span></li>
-              <li><span class="summary-key">Online backup</span><span class="summary-val">{onlineCopyText}</span></li>
-            </ul>
-            {#if liveSyncState === "connect" && onConnectOnline}
-              <!-- The row directs instead of dead-ending: one click starts the
-                   connect flow for the repo's existing online copy. -->
-              <button class="summary-action" onclick={() => { summaryOpen = false; onConnectOnline?.(); }}>
-                Connect online backup
-              </button>
-            {/if}
-            {#if canSnapshot && onSaveVersion}
-              <button class="summary-action" onclick={saveVersionNow} disabled={savingVersion}>
-                {savingVersion ? "Saving a version…" : "Save a version now"}
-              </button>
-            {/if}
-          </div>
-        {/if}
-      </div>
+      <button
+        bind:this={saveBtnEl}
+        type="button"
+        class="save-indicator {saveClass}"
+        aria-haspopup="dialog"
+        aria-expanded={summaryOpen}
+        onclick={toggleSummary}
+        title={unsaved ? "You have unsaved changes — click for details" : savePhase === "dirty" || savePhase === "saving" ? "Pending changes are being saved — click for details" : "Where your work is kept — click for details"}
+      ><Icon name={saveStateIcon} size={13} /><span class="save-text" aria-live="polite" aria-atomic="true">{saveLabel}</span></button>
     {/if}
     {#if showForceSave}
       <button
@@ -509,6 +556,10 @@
     </button>
   </div>
 </div>
+
+{#if summaryOpen}
+  <SaveStatusDialog {copy} triggerEl={saveBtnEl ?? undefined} onAction={onSummaryAction} onClose={closeSummary} />
+{/if}
 
 <style>
   .status-bar {
@@ -630,8 +681,7 @@
     }
   }
 
-  /* ── Save indicator (now a button that opens the protection summary) ────── */
-  .save-summary-wrap { position: relative; display: inline-flex; }
+  /* ── Save indicator (a button that opens the "Where your work is kept" dialog) ── */
   .save-indicator {
     display: inline-flex;
     align-items: center;
@@ -649,37 +699,6 @@
   .save-indicator:hover { background: var(--app-surface-hover); }
   .save-indicator:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
 
-  /* Protection summary popover — grows upward from the bar, like ProblemsPanel. */
-  .save-summary {
-    position: absolute;
-    bottom: calc(100% + 6px);
-    right: 0;
-    min-width: 300px;
-    max-width: calc(100vw - 24px);
-    padding: 8px;
-    background: var(--app-surface-raised);
-    border: 1px solid var(--app-border);
-    border-radius: 8px;
-    box-shadow: 0 -4px 16px var(--app-shadow-md);
-    z-index: var(--app-z-menu);
-  }
-  .summary-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-  .summary-rows li { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-  .summary-key { white-space: nowrap; font-size: 11px; color: var(--app-text); font-weight: 600; }
-  .summary-val { font-size: 11px; color: var(--app-text-secondary); text-align: right; }
-  .summary-action {
-    margin-top: 8px;
-    width: 100%;
-    font-size: 11px;
-    padding: 5px 8px;
-    border: 1px solid var(--app-border-strong);
-    border-radius: 5px;
-    background: transparent;
-    color: var(--app-text-secondary);
-    cursor: pointer;
-  }
-  .summary-action:hover:not(:disabled) { color: var(--app-text); background: var(--app-surface-hover); }
-  .summary-action:disabled { opacity: 0.6; cursor: default; }
   /* Resting (saved): visible but calm — not faint enough to miss. */
   .save-indicator.saved {
     color: var(--app-text-secondary);

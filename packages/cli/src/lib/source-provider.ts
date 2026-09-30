@@ -744,6 +744,26 @@ export function isNoChangesError(e: unknown): boolean {
 }
 
 /**
+ * How many files changed since the last version (snapshot) — i.e. what "Save a
+ * version" would capture right now. `null` when the project has no version
+ * history (a plain folder). Uses the same workdir-vs-index walk a snapshot
+ * uses to decide "nothing new to save", so `0` here means `snapshot()` would
+ * reject with the no-changes error. Queued behind the repo lock so it never
+ * reads the index mid-snapshot; lock-free walk otherwise (no history read).
+ */
+export async function countUnversionedChanges(
+  projectDir: string,
+): Promise<number | null> {
+  const source = await detectProjectSource(projectDir);
+  if (source.type !== "local-git-folder") return null;
+  const dir = gitScopeFor(source);
+  return withRepoLock(dir, async () => {
+    const { adds, removes } = await listWorkdirChanges(dir);
+    return new Set([...adds, ...removes]).size;
+  });
+}
+
+/**
  * Select the {@link SourceProvider} implementation for a classified source.
  * `managed-github` (#15/#16) is not implemented yet — it throws if reached.
  */

@@ -1023,7 +1023,16 @@
     }
     contextMenu.close();
     void inlineEdit.endActive(true); // opening a dialog commits the in-flow edit
+    projectSettingsTab = "details";
     projectSettingsOpen = true;
+  }
+
+  // Book settings opens on Details; the save-status dialog sends writers to
+  // Connections to see how an online backup gets set up.
+  let projectSettingsTab = $state<"details" | "connections">("details");
+  function openBookConnections(): void {
+    openProjectConfig();
+    projectSettingsTab = "connections";
   }
 
   function closeProjectSettings(): void {
@@ -3066,6 +3075,8 @@
     canSnapshot={!!(projectSession.projectCapabilities?.canSnapshot)}
     savePhase={editorSavePhase}
     autoSave={settings.current.versionHistory.autoSave}
+    autoVersions={settings.current.versionHistory.autoSnapshot}
+    autoBackup={settings.current.versionHistory.autoSync}
     fileOpen={!!editorFilePath}
     {forceSaving}
     forceSyncing={syncController.forceSyncing}
@@ -3095,6 +3106,20 @@
         throw e;
       }
     }}
+    onEnableVersionHistory={async () => {
+      const dir = lifecycle.currentDir;
+      if (!dir) return;
+      try {
+        await api.vcs.enableVersionHistory(dir);
+        await projectSession.classify(dir);
+        toast?.success("Version history is on.");
+      } catch (e) {
+        toast?.error("Couldn't turn on version history. Your book is unchanged.");
+        throw e;
+      }
+    }}
+    onShowVersions={showActivityView}
+    onOpenBookConnections={openBookConnections}
     onOpenSettings={openSettings}
     onOpenHelp={openHelp}
   />
@@ -3150,6 +3175,7 @@
       <ProjectSettingsView
         projectDir={lifecycle.currentDir}
         repoRoot={projectSession.repoRoot}
+        initialTab={projectSettingsTab}
         {toast}
         onClose={closeProjectSettings}
         onEditRawCss={(path) => { closeProjectSettings(); openStyleFile(path); }}

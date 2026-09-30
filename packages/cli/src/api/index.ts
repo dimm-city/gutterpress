@@ -258,6 +258,7 @@ export {
   providerFor,
   restoreVersionWithBackup,
   isNoChangesError,
+  countUnversionedChanges,
   AUTO_SNAPSHOT_MESSAGE,
   RESTORE_BACKUP_MESSAGE,
   HISTORY_PAGE_LIMIT,

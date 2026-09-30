@@ -159,8 +159,10 @@ describe("Files panel — app internals are never shown to the writer", () => {
   });
 });
 
-describe("Status bar — one calm state opening a 3-row protection summary", () => {
+describe("Status bar — one calm label opening a 'Where your work is kept' dialog", () => {
   const status = read("src/lib/components/StatusBar.svelte");
+  const dialog = read("src/lib/components/SaveStatusDialog.svelte");
+  const copy = read("src/lib/save-status.ts");
   test("default label is 'Edits saved' (it claims only what is true: edits are on disk)", () => {
     expect(status).toContain('return "Edits saved"');
     expect(status).not.toContain('return "All work saved"');
@@ -168,31 +170,60 @@ describe("Status bar — one calm state opening a 3-row protection summary", () 
   });
   test("with autosave off, a pending edit reads 'Unsaved changes', never 'Saving…'", () => {
     expect(status).toContain('return autoSave ? "Saving…" : "Unsaved changes"');
-    expect(status).toContain('if (unsaved) return "Not saved yet — press Save"');
+    expect(copy).toContain("You have changes that aren't saved yet.");
   });
-  test("summary shows local save, previous versions, and online copy separately", () => {
-    expect(status).toContain("Your edits");
-    expect(status).toContain("Saved on this computer");
-    expect(status).toContain("Version history");
-    expect(status).toContain("Last version saved");
-    expect(status).toContain("Online backup");
-    // Old labels read as a contradiction ("Saved" beside "Latest version 3 days ago").
-    expect(status).not.toContain("Latest version ");
-    expect(status).not.toContain("Previous versions");
+  test("the old popover is gone: a real modal built on the shared dialog shell", () => {
+    // The popover listed three bare facts ("Saved on this computer" beside
+    // "Last version saved 3 days ago") that read as a contradiction.
+    expect(status).not.toContain("save-summary");
+    expect(status).not.toContain("summary-rows");
+    expect(status).toContain("<SaveStatusDialog");
+    expect(dialog).toContain("dialogBehavior");
+    expect(dialog).toContain("dialog-shell.css");
+    expect(dialog).toContain('labelledBy: "save-dialog-title"');
+    expect(dialog).toContain("Where your work is kept");
+    expect(dialog).toContain("Online backup");
   });
-  test("a manual 'Save a version now' action is offered", () => {
-    expect(status).toContain("Save a version now");
+  test("each concept gets a plain explanation: saving, a version as a restore point, an online copy", () => {
+    expect(copy).toContain("What you type is written to a file on this computer.");
+    expect(copy).toContain("A version is a restore point");
+    expect(copy).toContain("A copy of your versions online");
+  });
+  test("the writer-facing strings never use version-control jargon", () => {
+    // Only quoted string literals / template strings count (comments may name the words).
+    const strings = [...copy.matchAll(/"([^"\n]*)"|`([^`]*)`/g)].map((m) => m[1] ?? m[2] ?? "");
+    for (const word of ["commit", "snapshot", "repository", "branch", "push", "pull", "remote"]) {
+      const re = new RegExp(`\\b${word}\\b`, "i");
+      expect(strings.filter((t) => re.test(t))).toEqual([]);
+    }
+  });
+  test("it reconciles 'saved' with 'last version 3 days ago' using the real changed-file count", () => {
+    expect(copy).toContain("They're saved on this computer, but not in a version yet.");
+    expect(copy).toContain("Everything you've written is in it.");
+    expect(status).toContain("api.vcs.unversionedChanges");
+    expect(status).toContain("api.vcs.listSnapshotsPage");
+  });
+  test("a manual 'Save a version now' action is offered, plus the previous-versions view", () => {
+    expect(copy).toContain("Save a version now");
+    expect(copy).toContain("See previous versions");
     expect(status).toContain("onSaveVersion");
+    expect(status).toContain("onShowVersions");
+  });
+  test("a plain folder can turn version history on from the dialog (same route as Book settings)", () => {
+    expect(copy).toContain("Turn on version history");
+    const page = read("src/routes/+page.svelte");
+    expect(page).toContain("onEnableVersionHistory");
+    expect(page).toContain("api.vcs.enableVersionHistory(dir)");
   });
   test("the online-copy row reflects the LIVE sync state, not just the capability flag (#1)", () => {
     const pill = read("src/lib/components/SyncStatusPill.svelte");
     // StatusBar derives the row from the live state surfaced by the pill,
     // so a syncing/up-to-date project never wrongly reads "not set up".
     expect(status).toContain("liveSyncState");
-    expect(status).toContain("onSyncState={(s) => (liveSyncState = s)}");
+    expect(status).toContain("liveSyncState = s");
     expect(status).not.toContain('canSync ? "Kept up to date in the background" : "Not set up for this book"');
     // The pill surfaces every transition upward.
-    expect(pill).toContain("onSyncState?.(status.state)");
+    expect(pill).toContain("onSyncState?.(status.state, status.lastSyncAt)");
   });
   test("a configured-but-unsynced remote is NOT reported as local-only (#1)", () => {
     const page = read("src/routes/+page.svelte");
@@ -202,7 +233,8 @@ describe("Status bar — one calm state opening a 3-row protection summary", () 
     // Gutterpress just isn't auto-syncing (SSH / uncredentialed HTTPS) reads
     // "Not syncing automatically" instead.
     expect(status).toContain("hasRemote");
-    expect(status).toContain('return hasRemote ? "Not syncing automatically" : "Not set up"');
+    expect(copy).toContain('status: "Not backing up automatically."');
+    expect(copy).toContain('status: "Not set up."');
     // hasRemote flows from the project source classification, through the
     // session controller, to the status bar.
     expect(session).toContain("projectHasRemote");
@@ -218,10 +250,10 @@ describe("Status bar — one calm state opening a 3-row protection summary", () 
     expect(pill).toContain('case "connect":');
     expect(pill).toContain("Connect online backup");
     expect(pill).toContain('syncState === "auth" || syncState === "connect"');
-    // Status summary: the row pairs honest copy with a one-click action.
-    expect(status).toContain('case "connect":');
-    expect(status).toContain("Not connected — connect below");
-    expect(status).toContain("Connect online backup");
+    // Dialog: the section pairs honest copy with a one-click action.
+    expect(copy).toContain('case "connect":');
+    expect(copy).toContain('status: "Not connected yet."');
+    expect(copy).toContain('id: "connect"');
     expect(status).toContain("onConnectOnline");
     expect(page).toContain("onConnectOnline={onSyncReconnect}");
   });
@@ -260,9 +292,10 @@ describe("Failure & conflict copy reassures that local work is safe", () => {
     expect(ctrl).toContain("nothing is lost");
     expect(ctrl).not.toContain("merge conflict");
   });
-  test("the sync pill uses 'Version history available', not 'Version history on'", () => {
+  test("the sync pill says what is NOT true ('Not backed up online'), not 'Version history available'", () => {
     const pill = read("src/lib/components/SyncStatusPill.svelte");
-    expect(pill).toContain("Version history available");
+    expect(pill).toContain("Not backed up online");
+    expect(pill).not.toContain("Version history available");
     expect(pill).not.toContain("Version history on");
   });
 });

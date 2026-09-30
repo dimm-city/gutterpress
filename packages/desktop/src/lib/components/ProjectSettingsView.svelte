@@ -69,6 +69,7 @@
   let {
     projectDir,
     repoRoot = null,
+    initialTab = "details",
     toast = null,
     onEditRawCss,
     onClose,
@@ -78,6 +79,8 @@
     projectDir: string | null;
     /** The repo the open book belongs to — lets the pickers offer SHARED styles. */
     repoRoot?: string | null;
+    /** Tab to open on. Read once at mount (the view is keyed per open). */
+    initialTab?: "details" | "connections";
     toast?: ToastController | null;
     /** Escape hatch: open a stylesheet in the raw-CSS editor (the parent
      *  closes this view first). */
@@ -213,7 +216,8 @@
     { id: "features", label: "Features" },
     { id: "connections", label: "Connections" },
   ];
-  let activeTab = $state<ProjectSettingsTab>("details");
+  // svelte-ignore state_referenced_locally
+  let activeTab = $state<ProjectSettingsTab>(initialTab);
   let tabEls = $state<Record<ProjectSettingsTab, HTMLButtonElement | undefined>>({
     details: undefined,
     look: undefined,

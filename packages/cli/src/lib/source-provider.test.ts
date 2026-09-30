@@ -13,6 +13,7 @@ import {
   RESTORE_BACKUP_MESSAGE,
   AUTO_SNAPSHOT_MESSAGE,
   isNoChangesError,
+  countUnversionedChanges,
   resolveGitAuthor,
   listLocalBranches,
   switchBranch,
@@ -367,6 +368,28 @@ test("automatic snapshot on a clean tree rejects with an isNoChangesError error"
     // The guard kept history clean: no empty "Automatic snapshot" entry.
     expect((await provider.listHistory(dir)).length).toBe(1);
   } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("countUnversionedChanges counts files since the last version and is null for a plain folder", async () => {
+  const plain = await tempDir();
+  const dir = await tempDir();
+  try {
+    await writeFile(path.join(plain, "a.md"), "# A\n");
+    expect(await countUnversionedChanges(plain)).toBeNull();
+
+    const provider = await initProject(dir);
+    expect(await countUnversionedChanges(dir)).toBe(0);
+    await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\nSecond draft.\n");
+    await writeFile(path.join(dir, "chapter-02.md"), "# Two\n");
+    expect(await countUnversionedChanges(dir)).toBe(2);
+    await rm(path.join(dir, "chapter-01.md"));
+    expect(await countUnversionedChanges(dir)).toBe(2); // one deleted + one new
+    await provider.snapshot({ projectDir: dir, message: "next" });
+    expect(await countUnversionedChanges(dir)).toBe(0);
+  } finally {
+    await rm(plain, { recursive: true, force: true });
     await rm(dir, { recursive: true, force: true });
   }
 });
