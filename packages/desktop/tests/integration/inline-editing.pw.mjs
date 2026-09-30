@@ -159,6 +159,32 @@ try {
   const page = await waitForAppWindow(electronApp);
   log(`window at ${page.url()}`);
 
+  // Renders follow file writes a beat later (watcher debounce), often more than
+  // one per write. Keys sent while the book frame is being swapped go to a frame
+  // that is about to be replaced and are lost, so remember when the preview last
+  // rendered and let a step wait for quiet instead of racing it.
+  await page.evaluate(() => {
+    window.__etestRenderAt = 0;
+    window.addEventListener("message", (e) => {
+      const d = e.data;
+      if (d && d.type === "gutterpress:event" && (d.name === "renderingStarted" || d.name === "renderingComplete")) {
+        window.__etestRenderAt = performance.now();
+      }
+    });
+  });
+  async function waitForQuietPreview(quietMs = 1500) {
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
+      const quiet = await page.evaluate(
+        (ms) => performance.now() - window.__etestRenderAt > ms && !document.querySelector(".preview-updating-pill"),
+        quietMs,
+      );
+      if (quiet) return;
+      await sleep(100);
+    }
+    throw new Error("the preview was still re-rendering after 20s");
+  }
+
   // Test-side-only instrumentation: an ADDITIONAL listener on the real
   // `webContents` "context-menu" event, alongside the app's own handler
   // (electron/main.ts ~L731). This does not modify, remove, or race the
@@ -419,6 +445,9 @@ try {
   // ── 4. Shift+F10 opens the menu too (keyboard path, listener lives in the
   //      cross-origin book iframe) ────────────────────────────────────────────
   await step("4. Shift+F10 opens the context menu (keyboard path)", async () => {
+    // Step 3d ends by restoring the fixture on disk, which triggers hot reloads
+    // that can still be landing here. A key pressed mid-swap is lost.
+    await waitForQuietPreview();
     // Left-click a NEUTRAL point first — the margin box has no
     // data-source-line, so this cannot trigger elementActivated/click-to-
     // source (which would steal focus back into the editor and confound the
