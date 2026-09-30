@@ -115,11 +115,17 @@ export function closesPanelOnSelect(compact: boolean): boolean {
   return compact;
 }
 
-/** Escape closes the panel only when it's the compact overlay AND actually
- *  open — otherwise it must not interfere with unrelated Escape handling
- *  elsewhere in the app. */
-export function closesPanelOnEscape(compact: boolean, open: boolean, key: string): boolean {
-  return compact && open && key === "Escape";
+/** Escape closes an OPEN panel from anywhere when it's the compact sheet (it
+ *  covers the toggle, so there is no other dismiss path), and from inside the
+ *  list when it's the in-flow row — otherwise it must not interfere with
+ *  unrelated Escape handling elsewhere in the app. */
+export function closesPanelOnEscape(
+  compact: boolean,
+  open: boolean,
+  key: string,
+  focusInside = false,
+): boolean {
+  return open && key === "Escape" && (compact || focusInside);
 }
 
 /** Errors + warnings (the badge count). Infos are listed but not badged. */
@@ -138,6 +144,30 @@ export function problemCounts(problems: ProblemEntry[]): {
     else infos++;
   }
   return { errors, warnings, infos, badge: errors + warnings };
+}
+
+/** The badge counts in words — "1 error, 3 warnings" — for screen readers and
+ *  the toggle's accessible name. Empty when there is neither. */
+export function problemsSummary(counts: { errors: number; warnings: number }): string {
+  const parts: string[] = [];
+  if (counts.errors > 0) parts.push(`${counts.errors} ${counts.errors === 1 ? "error" : "errors"}`);
+  if (counts.warnings > 0) parts.push(`${counts.warnings} ${counts.warnings === 1 ? "warning" : "warnings"}`);
+  return parts.join(", ");
+}
+
+/**
+ * Whether the status bar offers to expand the list (#307). An empty list has
+ * nothing to show, so a clean project reads "No problems" in the bar instead
+ * of opening an empty panel. A failed check still has a message to show, and a
+ * list that is already open stays closable — e.g. the writer just fixed the
+ * last problem.
+ */
+export function canExpandProblems(
+  problems: ProblemEntry[],
+  error: string | null,
+  open: boolean,
+): boolean {
+  return problems.length > 0 || !!error || open;
 }
 
 /**

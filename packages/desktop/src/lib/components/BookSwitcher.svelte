@@ -2,16 +2,15 @@
   /**
    * BookSwitcher (C2) — quiet toggle+list disclosure for switching the active
    * book inside a multi-book repo. Shown ONLY when there is more than one book
-   * (the parent guards with `books.length > 1`, mirroring how ProblemsPanel's
-   * toggle strip is always mounted but the caller decides visibility).
+   * (the parent guards with `books.length > 1`; the caller decides visibility).
    *
    * Presentational: the parent owns `books`/`activeBookDir` (from
    * ProjectSessionController) and re-opens the project at the chosen book's
    * folder — the same full open path a fresh folder-open uses (C2 design:
    * "session identity pinned to repoRoot", switching is a full retarget).
    *
-   * Mirrors ProblemsPanel's toggle-strip + absolutely-positioned body pattern
-   * (no outside-click handling there either — same minimal disclosure here).
+   * A minimal disclosure: a toggle and an absolutely-positioned list, with no
+   * outside-click handling.
    */
   import Icon from "$lib/components/Icon.svelte";
   import type { ProjectBookEntry } from "$lib/routes/project-session-controller.svelte";

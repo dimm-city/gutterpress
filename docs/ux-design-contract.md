@@ -750,7 +750,10 @@ a flat columned table), check ids translated to plain-language labels
 Raw rule-ID columns and rule-ID-first presentation are anti-patterns here.
 
 - Bottom drawer, collapsible, badge with error/warning count
-  (`aria-label="3 errors, 2 warnings"`).
+  (`aria-label="Problems: 3 errors, 2 warnings"`). The list is a row of its own
+  above the status bar, in normal flow: opening it pushes the workspace up and
+  never overlays the left panel or the editor (#307). Below 820px it is a
+  full-viewport sheet with its own Close button instead.
 - Click row → jump to location in the editor. PROPOSED: severity filters;
   Arrow-key row navigation with Enter-to-jump; inline "Go to" navigation on
   rows (matching §6's navigate-only remediation — no auto-fix — and required
@@ -764,7 +767,10 @@ Raw rule-ID columns and rule-ID-first presentation are anti-patterns here.
   keystroke): widows/orphans, image aspect-ratio mismatch, page overflow
   (see §5).
 - Rule explanations open the in-app help drawer, not an external browser.
-- Empty state: "No problems found — document looks great."
+- Empty state: nothing to open. The status bar reads "No problems" beside a
+  tick and the toggle gives way to that plain label (#307). A list already open
+  when its last problem is fixed says "No problems found — your project looks
+  good!" until dismissed.
 
 ### 11. Look (the Extensions surface's styles view)
 
@@ -1021,7 +1027,7 @@ device class.
   is typing.** After ~3s idle following a re-render, announce meaningful
   deltas only ("Preview updated — now 52 pages"), max one per idle period,
   via a status node **separate from the re-rendering preview DOM**.
-- Problems badge: `aria-label="3 errors, 2 warnings"`.
+- Problems badge: `aria-label="Problems: 3 errors, 2 warnings"`.
 - Publish/export progress: `role="status"` (shipped, #21).
 - Editor: CodeMirror 6's built-in accessibility tree; do not override
   `aria-multiline`.

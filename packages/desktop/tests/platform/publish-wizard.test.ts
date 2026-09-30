@@ -17,19 +17,22 @@ const read = (rel: string) => readFileSync(path.join(root, rel), "utf8");
 describe("Toolbar Publish button (front-and-centre entry point)", () => {
   const page = read("src/routes/+page.svelte");
   const toolbar = read("src/lib/components/AppToolbar.svelte");
-  test("a Publish button leads the primary action trio, uses the global button style, and opens the wizard", () => {
+  test("a Publish button leads the action trio as a secondary button beside the one primary, and opens the wizard", () => {
     // The button markup lives in the extracted AppToolbar; +page wires the
     // intent (onPublish → publishOpen = true).
     const pubIdx = toolbar.indexOf('name="cloud-upload"');
     expect(pubIdx).toBeGreaterThan(-1);
     expect(page).toContain("publishOpen = true");
-    // The Publish button follows the global primary button style (#5) — the
-    // same class the neighbouring Export button uses.
-    const region = toolbar.slice(Math.max(0, pubIdx - 300), pubIdx);
-    expect(region).toContain("app-btn-primary");
-    // Publish leads the trio: Publish → Export → Save (Save right-most).
+    // Publish's wizard exports too, so two adjacent solid buttons of equal
+    // weight left the choice unclear (#306): Publish uses the toolbar's
+    // ordinary (secondary) button style, and only Export — the neighbouring
+    // button — carries the global primary recipe.
+    const publishTag = toolbar.slice(toolbar.indexOf('class="publish-btn'), pubIdx);
+    expect(publishTag).not.toContain("app-btn-primary");
     const exportIdx = toolbar.indexOf('class="export-btn');
     expect(exportIdx).toBeGreaterThan(-1);
+    expect(toolbar.slice(exportIdx, exportIdx + 80)).toContain("app-btn-primary");
+    // Publish leads the trio: Publish → Export → Save (Save right-most).
     expect(pubIdx).toBeLessThan(exportIdx);
   });
   test("the wizard is mounted (fresh, via {#if}) and wired to the shared controller", () => {
