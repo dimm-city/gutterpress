@@ -30,7 +30,10 @@
    *      ≤620px   page nav, title/path, mode/zoom menus, separators, hints drop
    *    The narrow layout (≤820px window) adds the pane tabs to the end cluster;
    *    the ≤760px stage is what keeps prev/next clear of it (touch, whose 44px
-   *    targets cannot spare the room, keeps the old no-page-nav behavior).
+   *    targets cannot spare the room, keeps the old no-page-nav behavior). The
+   *    select drop and the page nav's phone floor are therefore scoped to
+   *    `.narrow`: the docked Project settings panel makes the toolbar this
+   *    narrow without the tabs, and there the page nav still fits.
    *  - `(pointer: coarse)` keeps ≥44×44px touch targets on touch devices
    *    without fattening the desktop layout.
    *
@@ -902,15 +905,19 @@
   }
   @container (max-width: 760px) {
     /* The narrow layout adds the pane tabs to the end cluster: the page-number
-       select yields so prev/next stay clear of it, and the title trims. */
-    .page-select { display: none; }
-    .doc-title { max-width: 64px; }
+       select yields so prev/next stay clear of it, and the title trims.
+       Scoped to .narrow because the toolbar can be this narrow WITHOUT the
+       tabs — the docked Project settings panel shrinks the whole app — and
+       there the select and the room for it are both still there. */
+    .toolbar.narrow .page-select { display: none; }
+    .toolbar.narrow .doc-title { max-width: 64px; }
   }
   @container (max-width: 620px) {
-    /* Phone floor: below ~470px not even prev/next fit beside the end
-       cluster, and display:none (not clipping) keeps the hidden buttons out of
-       the tab order. */
-    .page-nav,
+    /* Phone floor (narrow layout only, for the same reason): below ~470px not
+       even prev/next fit beside the pane tabs and the end cluster, and
+       display:none (not clipping) keeps the hidden buttons out of the tab
+       order. */
+    .toolbar.narrow .page-nav,
     .doc-title,
     .path,
     .toolbar-sep,

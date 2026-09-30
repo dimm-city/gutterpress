@@ -468,7 +468,15 @@ describe("AppToolbar — deliberate collapse (#316)", () => {
     for (const [px, body] of stages) {
       if (px > 620) expect(body).not.toMatch(/\.page-nav|\.toolbar-center/);
     }
-    expect(stages.get(620)).toMatch(/\.page-nav,/);
+    // Both narrow-layout rules are scoped to `.narrow`: the docked Project
+    // settings panel shrinks the whole app, so the toolbar can be 600px wide
+    // WITHOUT the pane tabs that make these rules necessary — and there the
+    // page nav (select included) still fits and must stay. Unscoped, opening
+    // the panel at 1024px made the nav vanish from a 324px-wide empty track.
+    expect(stages.get(620)).toMatch(/\.toolbar\.narrow \.page-nav,/);
+    expect(stages.get(620)).not.toMatch(/^\s*\.page-nav/m);
+    expect(stages.get(760)).toMatch(/\.toolbar\.narrow \.page-select\s*\{\s*display:\s*none/);
+    expect(stages.get(760)).not.toMatch(/^\s*\.page-select/m);
     const dropsAt = (re: RegExp) => [...stages].find(([, body]) => re.test(body))![0];
     const firstLast = dropsAt(/\.nav-first/);
     const select = dropsAt(/\.page-select\s*\{\s*display:\s*none/);
