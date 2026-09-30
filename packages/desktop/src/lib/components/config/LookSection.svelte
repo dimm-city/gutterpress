@@ -230,9 +230,10 @@
   .theme-warnings li { font-size: 11px; line-height: 1.4; }
 
   /* #106: enlarged fixed 2-page sample spread shown while hovering a row. It is
-     a decorative overlay (pointer-events:none) pinned to the desktop's right edge. */
+     a decorative overlay (pointer-events:none) pinned just left of the docked
+     Project settings panel, over the live preview. */
   .hover-preview {
-    position: fixed; right: 16px; top: 50%; transform: translateY(-50%);
+    position: fixed; right: calc(var(--app-settings-panel-width) + 16px); top: 50%; transform: translateY(-50%);
     width: 360px; max-width: 42vw; aspect-ratio: 3 / 2;
     z-index: 40; pointer-events: none;
     border-radius: 8px; overflow: hidden;
@@ -241,11 +242,10 @@
   }
   .hover-preview iframe { width: 100%; height: 100%; border: 0; background: #fff; }
 
-  /* The viewport-pinned flyout needs true free space RIGHT of the settings
-     view's centered 860px column: its left edge (100vw - 376px) crosses the
-     column's right edge ((100vw + 860px) / 2) below ~1620px, where it would
-     cover the very rows being hovered. Below that, the row's own thumbnail is
-     the preview. */
+  /* Wide windows only: on anything narrower the flyout would cover most of the
+     live preview beside the panel (and, in the panel-covers-the-window layout
+     below 900px, the very rows being hovered). Below that, the row's own
+     thumbnail is the preview. */
   @media (max-width: 1620px) {
     .hover-preview { display: none; }
   }

@@ -39,6 +39,9 @@
    * Delete. Delete uses the same two-step inline "armed" confirm as
    * LookSection's theme Remove (W4/M7). Create/rename use a small
    * inline text input in place of the row's name, not a separate modal.
+   * A resting row shows only its name: the row buttons appear while the row is
+   * hovered or has focus inside it (#313), while the delete confirm and the
+   * inline inputs are never hidden.
    *
    * "New chapter" is deliberately ROOT-ONLY, not a per-folder action: the
    * default chapter build (`renderChapters` in the lib, when a manifest
@@ -351,6 +354,11 @@
 
   // ── Delete (two-step inline confirm — same pattern as LookSection's
   // theme Remove, W4/M7) ─────────────────────────────────────────────────────
+  // There is deliberately no Undo (#313): api/fs/delete removes the path
+  // permanently (not the OS trash). The only way back is Version History (the
+  // route snapshots first when the project has it), but that restores the
+  // WHOLE project to a snapshot, not one file, so as an "Undo" it would also
+  // roll back whatever was edited since. This armed confirm is the guard.
   let deleteArmedPath = $state<string | null>(null);
   let deleteBusy = $state<string | null>(null);
   let deleteError = $state<string | null>(null);
@@ -518,7 +526,7 @@
           <Icon name="folder" />
           <span class="file-name">{entry.name}</span>
         </button>
-        <div class="row-actions">
+        <div class="row-actions hover-only">
           <button
             class="inline-btn"
             onclick={() => startCreate(entry.path, "folder")}
@@ -581,7 +589,7 @@
           <Icon name="file-text" />
           <span class="file-name">{entry.name}</span>
         </button>
-        <div class="row-actions">
+        <div class="row-actions hover-only">
           <button
             class="inline-btn"
             onclick={() => startRename(entry, parentDir)}
@@ -770,6 +778,19 @@
     gap: 1px;
     flex: 0 0 auto;
     padding-right: 4px;
+  }
+  /* Resting rows show only their names (#313: a pencil and trash on every row
+     was noise, and an always-visible trash made a mis-click on delete easy).
+     The buttons appear while the row is hovered or focus is inside it.
+     Opacity, not display/visibility, so they stay in the tab order: Tab onto
+     the row's file button and :focus-within reveals the rest. The inline-edit
+     and delete-confirm groups share .row-actions but not .hover-only, so they
+     never hide. Touch has no hover, so it keeps them visible. */
+  .row-actions.hover-only { opacity: 0; }
+  .tree-row:hover .row-actions.hover-only,
+  .tree-row:focus-within .row-actions.hover-only { opacity: 1; }
+  @media (hover: none) {
+    .row-actions.hover-only { opacity: 1; }
   }
   .inline-btn {
     display: inline-flex;

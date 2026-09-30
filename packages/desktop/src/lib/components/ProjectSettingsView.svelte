@@ -1,10 +1,14 @@
 <script lang="ts">
   /**
-   * ProjectSettingsView — the full-window "Project settings" surface, patterned
-   * after the app SettingsView (header + close, tab bar, one cohesive slice per
-   * tab). It replaced the left-sidebar Config tab (and with it the retired
+   * ProjectSettingsView — the "Project settings" surface, patterned after the
+   * app SettingsView (header + close, tab bar, one cohesive slice per tab). It
+   * replaced the left-sidebar Config tab (and with it the retired
    * ProjectConfigPanel): the sidebar's 260px column was a cramped frame for
    * manifest editing, theme browsing, and plugin management.
+   *
+   * +page.svelte docks it beside the workspace, so the book preview stays
+   * visible — and re-renders live as a stylesheet is written — while the
+   * writer works in it; only a window too narrow for both gets it full-window.
    *
    * This is the COMPOSITION ROOT for the per-domain section controllers
    * (UX review M14): it instantiates one `*SectionController` per domain and
@@ -69,6 +73,7 @@
     onEditRawCss,
     onClose,
     onOpenAccounts,
+    onVersionHistoryEnabled,
   }: {
     projectDir: string | null;
     /** The repo the open book belongs to — lets the pickers offer SHARED styles. */
@@ -82,6 +87,8 @@
     /** Open the app Settings view on the Accounts tab (the parent closes
      *  this view first). Used by the Connections tab's guidance. */
     onOpenAccounts?: () => void;
+    /** The Connections tab just turned on version history: re-read the project's classification. */
+    onVersionHistoryEnabled?: (projectDir: string) => void;
   } = $props();
 
   // Covers the initial parallel load of all sections.
@@ -159,7 +166,7 @@
     importFromFile: (dir) => api.extension.importFromFile(dir),
     importFromUrl: (dir, url) => api.extension.importFromUrl(dir, url),
     onLookAdded: (label) => {
-      toast?.success?.(`${label} added — close Project settings to see it in the preview. Use Design to fine-tune.`);
+      toast?.success?.(`${label} added — it now shows in the preview. Use Design to fine-tune.`);
     },
     afterLookChange: async () => {
       await Promise.all([styles.loadStyles(), design.loadDesign()]);
@@ -299,7 +306,7 @@
         <!-- This project's connection details (moved from the app Settings'
              Connections tab, 2026-07-30). Accounts/credentials stay global in
              Settings → Accounts; onOpenAccounts routes there. -->
-        <ProjectConnectionsSection {projectDir} {onOpenAccounts} />
+        <ProjectConnectionsSection {projectDir} {onOpenAccounts} {onVersionHistoryEnabled} />
       {/if}
     {/if}
   </div>

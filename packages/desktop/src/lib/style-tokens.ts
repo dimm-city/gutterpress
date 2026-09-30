@@ -17,8 +17,9 @@
  *   the heuristic Fonts/Colors/Sizes/Other bucket its `kind` would otherwise
  *   choose. Named groups are listed before the heuristic ones, in the order
  *   their names first appear in the file (`DesignSectionController.customGroups`).
- * - `@label <text>` — human label shown instead of the name-derived default
- *   (`--color-accent` → "Color accent").
+ * - `@label <text>` — human label shown instead of the default: a plain-language
+ *   name for the shared vocabulary (`--color-ink` → "Text color"), else one
+ *   derived from the token name (`--gap-large` → "Gap large").
  * - `@internal` — omit this token from the panel entirely. The CSS itself is
  *   untouched; this only controls what the guided editor surfaces.
  *
@@ -129,10 +130,39 @@ export const PRINT_SAFE_FONT_STACKS: FontStackChoice[] = [
   { label: "System monospace", value: "monospace" },
 ];
 
+/**
+ * Plain-language labels for the shared token vocabulary every built-in look
+ * defines and the user guide's styling chapter teaches (plus `--color-ink-faint`,
+ * the third step of the same ink scale). The name-derived default ("Color ink
+ * muted", "Fs h1") reads as designer jargon to a writer; these say what the
+ * token DOES. Tokens a look adds beyond this set keep the derived label unless
+ * the look labels them itself. Display only: the token NAMES are the CSS
+ * authors write and are never renamed (the panel keeps showing them beside the
+ * label), and a stylesheet's own `@label` still wins over these.
+ */
+const SHARED_TOKEN_LABELS: Record<string, string> = {
+  "--font-body": "Body text font",
+  "--font-display": "Heading font",
+  "--font-mono": "Code font",
+  "--color-ink": "Text color",
+  "--color-ink-muted": "Secondary text color",
+  "--color-ink-faint": "Faint text color",
+  "--color-accent": "Accent color",
+  "--color-paper": "Page color",
+  "--color-rule": "Line color",
+  "--fs-body": "Body text size",
+  "--fs-h1": "Heading 1 size",
+  "--fs-h2": "Heading 2 size",
+  "--fs-h3": "Heading 3 size",
+  "--leading": "Line spacing",
+};
+
 /** Build a typed StyleToken (color / font / length / number / text) from a
  * name + raw value. */
 export function makeStyleToken(name: string, raw: string): StyleToken {
-  const label = name.replace(/^--/, "").replace(/-/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+  const label =
+    SHARED_TOKEN_LABELS[name] ??
+    name.replace(/^--/, "").replace(/-/g, " ").replace(/^\w/, (c) => c.toUpperCase());
   const trimmed = raw.trim();
   if (
     /^#[0-9a-fA-F]{3,8}$|^rgba?\s*\(|^hsla?\s*\(|^oklch\s*\(|^color\s*\(/.test(trimmed) ||

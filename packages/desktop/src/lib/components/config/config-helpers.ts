@@ -95,6 +95,18 @@ export function extensionSourceLabel(entry: ProjectExtensionEntry): string {
 }
 
 /**
+ * Split a feature description on its backtick spans — the lib writes "what to
+ * type" that way ("Subscript text with `H~2~O`.") — so the template can set
+ * those spans in code type instead of showing the raw backticks.
+ */
+export function describeSegments(description: string): Array<{ text: string; code: boolean }> {
+  return description
+    .split("`")
+    .map((text, i) => ({ text, code: i % 2 === 1 }))
+    .filter((segment) => segment.text !== "");
+}
+
+/**
  * The full `use` order after moving `entry` one slot up (`delta` -1) or down
  * (+1) WITHIN `view` — a filtered projection of `entries`, such as the looks.
  * The Look and Features views each show a subset of the one list, so "move
@@ -158,7 +170,7 @@ export function extensionStatus(
     return {
       label: "Needs install",
       kind: "error",
-      detail: `This project's downloaded copy is missing. Enter ${entry.use} under Install from npm below, then click Re-check.`,
+      detail: `This project's downloaded copy is missing. Open Advanced on the Features tab, enter ${entry.use} under Install from npm, then click Re-check.`,
       raw: needsInstall,
     };
   }

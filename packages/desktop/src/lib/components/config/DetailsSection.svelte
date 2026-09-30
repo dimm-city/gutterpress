@@ -64,9 +64,12 @@
   {#if controller.detailsError}
     <p class="error" role="alert">{controller.detailsError}</p>
   {/if}
-  <label class="field">
+  <!-- Bound by for/id as well as by nesting: a UX review saw this input named
+       after its placeholder ("Untitled project") instead of "Title". -->
+  <label class="field" for="details-title">
     <span class="lbl">Title</span>
     <input
+      id="details-title"
       class="input"
       type="text"
       bind:value={controller.titleDraft}
