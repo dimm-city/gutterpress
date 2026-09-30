@@ -197,6 +197,21 @@ test("#307: until the first check has run the bar says 'Checking…', never 'No 
   expect(status).toContain('{problemsLoading ? "Checking…" : "No problems"}');
 });
 
+test("#307: the narrow left-panel drawer spans the workspace region — it stops at the status bar's top edge", () => {
+  const left = read("src/lib/components/LeftPanel.svelte");
+  const page = read("src/routes/+page.svelte");
+  // Viewport-fixed with bottom:0, the drawer ran underneath the status bar and
+  // hid its own footer buttons (New project). Positioned against
+  // .left-panel-region it ends exactly where the region — and so the bar —
+  // begins, with no height to keep in sync.
+  const drawer = /@media screen and \(max-width: 820px\) \{\s*\.left-panel \{([^}]*)\}/.exec(left)?.[1] ?? "";
+  expect(drawer).toContain("position: absolute");
+  expect(drawer).not.toContain("position: fixed");
+  expect(drawer).toMatch(/top:\s*0;/);
+  expect(drawer).toMatch(/bottom:\s*0;/);
+  expect(page).toMatch(/\.left-panel-region \{[^}]*position: relative;/s);
+});
+
 test("top toolbar small-screen styles/config controls are removed", () => {
   const page = read("src/routes/+page.svelte");
   expect(page).not.toContain("Configure project…");

@@ -18,7 +18,8 @@
  *      offending line scrolled into view.
  *   5. At 700px window width the toolbar still has zero pairwise overlaps
  *      (getBoundingClientRect audit of every visible toolbar control), and the
- *      status bar still shows its save-state text and Problems label (#316).
+ *      status bar still shows its save-state text and Problems label (#316),
+ *      and the left-panel drawer stops at the status bar's top edge (#307).
  *
  * Screenshots: <os tmpdir>/problems-panel-{wide,narrow}.png.
  * Prints the audit JSON for the report.
@@ -462,6 +463,30 @@ if (!bar.saveTextShown || !bar.saveText) fail(`save-state text is not visible at
 if (!bar.stripTitleShown) fail(`Problems label is not visible at 700px: ${JSON.stringify(bar)}`);
 if (!bar.stripLabel) fail("Problems toggle has no accessible name");
 
-log("PASS: badge, panel contents, click-through navigation, keyboard focus, 700px toolbar audit and status-bar text all verified");
+// ── 10. #307: at 700px the left-panel drawer overlays the workspace but stops
+// at the status bar's top edge. It used to be viewport-fixed with bottom:0, so
+// it ran underneath the bar and hid its own footer buttons (New project).
+await evalJs(`(() => {
+  if (!document.querySelector('.left-panel.open')) {
+    document.querySelector('button[aria-label="Toggle left panel"]').click();
+  }
+  return true;
+})()`);
+await sleep(600);
+const drawer = await evalJs(`(() => {
+  const panel = document.querySelector('.left-panel.open');
+  if (!panel) return null;
+  return {
+    bottom: panel.getBoundingClientRect().bottom,
+    barTop: document.querySelector('.status-bar').getBoundingClientRect().top,
+  };
+})()`);
+if (!drawer) fail("left panel did not open at 700px");
+console.log(`[problems-panel] 700px drawer: ${JSON.stringify(drawer)}`);
+if (Math.abs(drawer.bottom - drawer.barTop) > 1) {
+  fail(`left-panel drawer does not stop at the status bar's top edge: ${JSON.stringify(drawer)}`);
+}
+
+log("PASS: badge, panel contents, click-through navigation, keyboard focus, 700px toolbar audit, status-bar text and drawer edge all verified");
 cleanup();
 process.exit(0);
