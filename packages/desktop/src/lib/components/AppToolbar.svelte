@@ -22,7 +22,7 @@
    *    every control that turns icon-only keeps its aria-label and tooltip.
    *    The container is the toolbar's content box (window width − 24px), so a
    *    900px window measures 876px:
-   *      ≤1150px  Edit/Read/Focus segmented group → dropdown menu, Save drops
+   *      ≤1150px  Edit/Read segmented group → dropdown menu, Save drops
    *               its text label, export hints drop
    *      ≤875px   Publish/Export drop their text labels, page nav loses its
    *               first/last jump buttons, path trims
@@ -39,7 +39,8 @@
    *
    * The workspace mode is ONE control with one segment per `WorkspaceMode`
    * value — no icon button beside it duplicating a mode the segments already
-   * offer, and nothing reachable only from the keyboard.
+   * offer, and nothing reachable only from the keyboard. Focus is NOT a mode:
+   * it is a separate toggle beside that control (see `focus`).
    *
    * Actions are ordered Publish → Export → Save so Save is always the
    * right-most button. Export is the one primary (solid) action; Publish is a
@@ -78,6 +79,8 @@
     hidePreviewControls,
     mode,
     onSetMode,
+    focus,
+    onToggleFocus,
     zoom,
     previewControlsDisabled,
     onApplyZoom,
@@ -123,6 +126,9 @@
     /** The workspace mode — the ONE layout switch (see `WorkspaceMode`). */
     mode: WorkspaceMode;
     onSetMode: (mode: WorkspaceMode) => void;
+    /** Focus is on: chrome hidden. A session toggle on top of Edit or Read. */
+    focus: boolean;
+    onToggleFocus: () => void;
     zoom: string;
     previewControlsDisabled: boolean;
     onApplyZoom: (zoom: string) => void;
@@ -151,18 +157,15 @@
   } = $props();
 
   // The collapsed menu's summary reports the mode it stands in for.
-  const modeIcon = $derived(
-    mode === "viewer" ? "book-open" : mode === "focus" ? "maximize" : "pen-line",
-  );
+  const modeIcon = $derived(mode === "viewer" ? "book-open" : "pen-line");
 
-  // Each tooltip says what its layout shows. Esc is deliberately NOT a way out
-  // of Focus (see onGlobalKey in +page.svelte), so Focus names the real ones.
+  // Each tooltip says what its layout shows.
   const MODE_TITLE = {
     editor: "Edit — editor and preview side by side (Ctrl+E)",
     viewer: "Read — the preview on its own, two pages at a time",
-    focus:
-      "Focus — editor only (Ctrl+Shift+F). Press it again, or choose Edit or Read, to bring the preview back",
   } as const;
+  const FOCUS_TITLE =
+    "Focus — hide the panels and toolbars (Ctrl+Shift+F). Esc or the same shortcut brings them back";
 
   // Close the enclosing <details> menu after a menu item is chosen, and return
   // focus to its summary for keyboard users.
@@ -332,15 +335,11 @@
     {/if}
     <span class="toolbar-sep" aria-hidden="true"></span>
 
-    <!-- Workspace mode (Edit/Read/Focus): one segment per `WorkspaceMode`
-         value on wide toolbars; collapses into a single menu button when space
-         is tight. Reading is two pages side by side; editing is one page
-         beside the editor; focus is the editor alone — the page layout follows
-         from the mode, it is not a separate choice (see `WorkspaceMode`).
-         Focus is the odd one out on narrow layouts: there the tab bar already
-         picks the single visible pane, so hiding the viewer just leaves it on
-         screen but inert — the same reason togglePreview() refuses when
-         `isNarrow`. -->
+    <!-- Workspace mode (Edit/Read): one segment per `WorkspaceMode` value on
+         wide toolbars; collapses into a single menu button when space is
+         tight. Reading is two pages side by side; editing is one page beside
+         the editor — the page layout follows from the mode, it is not a
+         separate choice (see `WorkspaceMode`). -->
     <div class="mode-group">
       <button
         class="icon-text"
@@ -364,23 +363,9 @@
       >
         <Icon name="book-open" /><span class="view-label">Read</span>
       </button>
-      <!-- Disabled means "can't be entered": the mode you are ALREADY in is
-           never unavailable, so a Focus carried into a narrow window still
-           reads as selected rather than dimmed. -->
-      <button
-        class="icon-text"
-        class:active={mode === "focus"}
-        onclick={() => onSetMode("focus")}
-        disabled={editorToggleDisabled || (isNarrow && mode !== "focus")}
-        title={MODE_TITLE.focus}
-        aria-label="Focus"
-        aria-pressed={mode === "focus"}
-      >
-        <Icon name="maximize" /><span class="view-label">Focus</span>
-      </button>
     </div>
     <details class="menu mode-menu">
-      <summary class="icon-btn menu-summary" title="Edit, read or focus" aria-label="Edit, read or focus">
+      <summary class="icon-btn menu-summary" title="Edit or read" aria-label="Edit or read">
         <Icon name={modeIcon} />
         <Icon name="chevron-down" size={12} />
       </summary>
@@ -405,18 +390,24 @@
         >
           <Icon name="book-open" /> Read
         </button>
-        <button
-          aria-pressed={mode === "focus"}
-          class="menu-item"
-          class:active={mode === "focus"}
-          onclick={(e) => { onSetMode("focus"); closeMenu(e); }}
-          disabled={editorToggleDisabled || (isNarrow && mode !== "focus")}
-          title={MODE_TITLE.focus}
-        >
-          <Icon name="maximize" /> Focus
-        </button>
       </div>
     </details>
+
+    <!-- Focus: a toggle on top of Edit OR Read (not a third mode), on wide and
+         narrow layouts alike. Pressing it swaps this toolbar for the minimal
+         FocusBar; nothing persisted changes. -->
+    <button
+      id="focus-toggle-btn"
+      class="focus-btn icon-text"
+      class:active={focus}
+      onclick={onToggleFocus}
+      disabled={editorToggleDisabled}
+      title={FOCUS_TITLE}
+      aria-label="Focus"
+      aria-pressed={focus}
+    >
+      <Icon name="maximize" /><span class="view-label">Focus</span>
+    </button>
 
     <!-- Zoom: always the compact icon button so the toolbar stays tight. -->
     <details class="menu zoom-menu">
@@ -466,7 +457,7 @@
     <!-- Actions — Publish, Export, Save (Save right-most). Export is the ONE
          primary (solid) action; Publish is a secondary button beside it — its
          wizard exports too, so two equal-weight solid buttons left the choice
-         unclear. No overflow menu: focus mode is a segment of the mode
+         unclear. No overflow menu: Focus is a toggle beside the mode
          control, advanced setup lives in the app Settings view,
          save-as-template in the export dialog, and book settings beside the
          mode control above. Both keep their aria-label when the text label
@@ -885,6 +876,7 @@
   /* A URL source has no editor, so two of the three modes are meaningless —
      drop the whole switch rather than show it permanently disabled. */
   .toolbar.url-mode .mode-group,
+  .toolbar.url-mode .focus-btn,
   .toolbar.url-mode details.mode-menu { display: none; }
   .toolbar.url-mode .save-hint { display: none; }
   /* Publish is disabled for a URL source, so its label is the first to yield. */
@@ -938,6 +930,7 @@
     .save-hint,
     .mode-group,
     .mode-menu,
+    .focus-btn,
     .zoom-menu {
       display: none;
     }

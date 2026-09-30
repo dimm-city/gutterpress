@@ -106,18 +106,16 @@ export interface ProjectCapabilities {
  * The ONE switch for what the wide workspace shows. Everything else about the
  * layout is derived from it:
  *
- *   viewMode       = mode === "viewer" && !isNarrow ? "two-column" : "single"
- *   previewVisible = mode !== "focus"
- *   editorVisible  = mode !== "viewer"
+ *   viewMode      = mode === "viewer" && !isNarrow ? "two-column" : "single"
+ *   editorVisible = mode !== "viewer"
  *
- * `focus` is editor-only WITH the toolbar and standard chrome kept — it hides
- * the viewer, nothing else. It is transient: `AppSettings.preview.mode` cannot
- * hold it (see that field), so it always persists as `editor`.
+ * Focus (hide the chrome) is deliberately NOT a value here: it is a separate,
+ * session-only boolean layered on top of either mode, never persisted.
  *
  * Orthogonal to `preview.paneMode`, which is the ≤820px single-column tab
  * selector.
  */
-export type WorkspaceMode = "editor" | "viewer" | "focus";
+export type WorkspaceMode = "editor" | "viewer";
 
 // ── User settings (#45) ───────────────────────────────────────────────────
 
@@ -136,11 +134,9 @@ export interface AppSettings {
     defaultZoom: string;
     /**
      * Which panes the wide workspace shows — the ONE workspace-layout switch
-     * (see `WorkspaceMode`). `focus` is transient by construction: it is not
-     * in this type, so entering it persists as `editor` and a restart can
-     * never wake into a viewer-less window.
+     * (see `WorkspaceMode`).
      */
-    mode: Exclude<WorkspaceMode, "focus">;
+    mode: WorkspaceMode;
     /**
      * On small/narrow viewports the editor and preview can't sit side by side,
      * so the workspace collapses to a single pane and this picks which one is

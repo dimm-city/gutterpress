@@ -665,10 +665,11 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
     desktopOnly: true,
   },
   {
-    // Focus mode lives on the EDITOR toolbar (not the main toolbar): it is an
-    // editing posture, and this bar stays visible inside focus mode so the
-    // same button toggles back out. It is not an insertion, so it has its own
-    // "view" group instead of a row in the Insert menu.
+    // A second way IN to Focus, beside the editing controls (the main
+    // toolbar's Focus toggle is the other). This bar is hidden while Focus is
+    // on, so it only ever enters; the minimal bar's Exit button, Esc or the
+    // shortcut leave. It is not an insertion, so it has its own "view" group
+    // instead of a row in the Insert menu.
     id: "focus-mode",
     kind: "action",
     action: "focus-mode",
