@@ -62,7 +62,6 @@ Useful selectors: `[aria-label='Project settings']`, `[aria-label='Close project
 - The `New project` button is only visible while the left panel is open (already open on a fresh profile; the toggle closes it).
 - Selectors like `button:has-text('Edit')` can match several nodes; the first is used. Keep `p.setDefaultTimeout` short (5s) or a bad selector stalls the run.
 - Don't `pkill -f "vite dev"` in your own shell command; the pattern matches the shell and kills the session.
-- A fresh `HOME` starts the preview at a larger zoom than fit-to-width (page overflows with a horizontal scrollbar); click the zoom control and pick "Fit to width" before layout screenshots.
 - Window size changes via `size` reflow the toolbar (labels collapse to icons at ~1024, page nav disappears at ~800).
 
 ## Troubleshooting
