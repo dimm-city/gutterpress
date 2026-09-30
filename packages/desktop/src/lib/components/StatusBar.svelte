@@ -33,6 +33,7 @@
   import { canExpandProblems, problemCounts, problemsSummary } from "$lib/problems";
   import { onDestroy, onMount, tick } from "svelte";
   import type { SyncState } from "$lib/platform/contract";
+  import type { ManualBackup } from "$lib/routes/sync-controller.svelte";
   import type { ProblemEntry } from "$lib/platform/dtos";
   import type { ProjectBookEntry } from "$lib/routes/project-session-controller.svelte";
 
@@ -109,7 +110,10 @@
     /** Called when the author clicks "Save now". */
     onForceSave = undefined as (() => void) | undefined,
     /** Called when the author clicks "Sync now". */
-    onForceSync = undefined as (() => void) | undefined,
+    onForceSync = undefined as (() => void | Promise<void>) | undefined,
+    /** Outcome of the last manual "Back up now" (manual backups bypass the
+     *  host orchestrator, the only emitter of the status stream). */
+    manualBackup = null as ManualBackup | null,
     /** Called when the author clicks "Save a version now" in the summary.
      *  Resolves when the version is saved (or rejects on failure) so the
      *  summary can refresh its "latest version" line and the parent can show
@@ -150,7 +154,8 @@
     onConnectOnline?: () => void;
     onShowLog?: (logFilePath: string | null) => void;
     onForceSave?: () => void;
-    onForceSync?: () => void;
+    onForceSync?: () => void | Promise<void>;
+    manualBackup?: ManualBackup | null;
     onSaveVersion?: () => Promise<void>;
     onEnableVersionHistory?: () => Promise<void>;
     onShowVersions?: () => void;
@@ -191,15 +196,33 @@
   let changedFiles = $state<number | null>(null);
   let stale = $state(false);
   // The host said automatic versions keep failing (a `source: "versions"` status).
-  let versionsProblem = $state(false);
+  // Which book the flag belongs to; shown only for the open book and only while
+  // automatic versions are on (a failing safety net you turned off isn't news).
+  let versionsProblemDir = $state<string | null>(null);
+  let versionsProblem = $derived(versionsProblemDir === projectDir && autoVersions);
   // Newest-wins sequencing for the version-facts requests, and the project the
   // dialog was opened for (closing it if the project changes underneath).
   let factsSeq = 0;
   let factsAt = 0;
   let dialogDir: string | null = null;
   let versionsLoad = $state<"loading" | "ready" | "error">("loading");
-  let liveSyncState = $state<SyncState>("idle");
-  let lastSyncAt = $state<string | null>(null);
+  // Backup state: the newest of the status stream's last event (the pill) and
+  // the last manual "Back up now", each only for the book it was about, so
+  // book A's "backed up" never shows on book B.
+  let pillStatus = $state<{ dir: string | null; state: SyncState; at: string | null; seenAt: number }>({
+    dir: null,
+    state: "idle",
+    at: null,
+    seenAt: 0,
+  });
+  let live = $derived.by((): { state: SyncState; at: string | null } => {
+    const p = pillStatus.dir === projectDir ? pillStatus : null;
+    const m = manualBackup && manualBackup.dir === projectDir ? manualBackup : null;
+    if (m && (!p || Date.parse(m.at) >= p.seenAt)) return { state: m.state, at: m.at };
+    return p ? { state: p.state, at: p.at } : { state: "idle", at: null };
+  });
+  let liveSyncState = $derived(live.state);
+  let lastSyncAt = $derived(live.at);
   let savingVersion = $state(false);
   let nowMs = $state(Date.now());
 
@@ -301,10 +324,20 @@
   /** A backup pass finished or changed state while the dialog is open: a sync
    *  can make a version, so re-read the version facts too. */
   function onPillState(state: SyncState, at: string | null | undefined) {
-    const changed = state !== liveSyncState || (at ?? null) !== lastSyncAt;
-    liveSyncState = state;
-    lastSyncAt = at ?? null;
+    const changed = state !== pillStatus.state || (at ?? null) !== pillStatus.at;
+    pillStatus = { dir: projectDir, state, at: at ?? null, seenAt: Date.now() };
+    // A completed backup pass makes a version first, so it also proves the
+    // automatic-version safety net works again.
+    if (state === "synced") versionsProblemDir = null;
     if (changed && summaryOpen) void fetchVersionFacts();
+  }
+
+  /** "Back up now": wait for the outcome, then re-read the version facts (a
+   *  backup pass can make a version) and clear a stale version warning. */
+  async function backUpNow() {
+    await onForceSync?.();
+    if (manualBackup?.state === "synced") versionsProblemDir = null;
+    if (summaryOpen) void fetchVersionFacts();
   }
 
   async function saveVersionNow() {
@@ -312,7 +345,7 @@
     savingVersion = true;
     try {
       await onSaveVersion();
-      versionsProblem = false;
+      versionsProblemDir = null;
       await fetchVersionFacts();
     } catch {
       // The parent surfaces the failure toast; keep the dialog calm.
@@ -354,7 +387,7 @@
         onConnectOnline?.();
         break;
       case "syncNow":
-        onForceSync?.();
+        void backUpNow();
         break;
       case "openBookConnections":
         closeSummary();
@@ -537,7 +570,7 @@
       <button
         class="status-icon-btn"
         class:spinning={forceSyncing}
-        onclick={onForceSync}
+        onclick={backUpNow}
         disabled={forceSyncing}
         aria-label={forceSyncing ? "Backing up…" : "Back up online now"}
         title={forceSyncing ? "Backing up…" : "Back up online now"}
@@ -553,7 +586,7 @@
           onDetails={onShowLog}
           onSyncState={onPillState}
           versionsAlert={versionsProblem}
-          onVersionsProblem={() => (versionsProblem = true)}
+          onVersionsProblem={() => (versionsProblemDir = projectDir)}
         />
       {/key}
     {/if}

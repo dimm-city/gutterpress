@@ -42,10 +42,12 @@
     return { destroy: () => node.remove() };
   }
 
-  const TONE_ICON: Record<SaveStatusTone, "circle-check" | "info" | "triangle-alert" | "circle-x" | "refresh-cw"> = {
+  // Shape, not only colour, tells the tones apart: a neutral circle-i, an arrow
+  // where an action is suggested.
+  const TONE_ICON: Record<SaveStatusTone, "circle-check" | "info" | "arrow-right" | "triangle-alert" | "circle-x" | "refresh-cw"> = {
     ok: "circle-check",
     neutral: "info",
-    action: "info",
+    action: "arrow-right",
     warn: "triangle-alert",
     error: "circle-x",
     pending: "refresh-cw",
@@ -196,7 +198,7 @@
   .spin :global(svg) { animation: save-dlg-spin 0.8s linear infinite; }
   @keyframes save-dlg-spin { to { transform: rotate(360deg); } }
 
-  .explain { font-size: 12px; line-height: 1.45; color: var(--app-text-muted); }
+  .explain { font-size: 12px; line-height: 1.45; color: var(--app-text-secondary); }
   .note { font-size: 12px; line-height: 1.4; color: var(--app-text-muted); }
 
   /* The shared .dlg-actions footer, reused inline for a section's buttons:

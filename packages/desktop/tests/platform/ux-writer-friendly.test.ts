@@ -184,9 +184,9 @@ describe("Status bar — one calm label opening a 'Where your work is kept' dial
     expect(dialog).toContain("Where your work is kept");
     expect(dialog).toContain("Online backup");
   });
-  test("each concept gets a plain explanation: saving, a version as a restore point, an online copy", () => {
+  test("each concept gets a plain explanation: saving, a version as a saved copy, an online backup", () => {
     expect(copy).toContain("What you type is written to a file on this computer.");
-    expect(copy).toContain("A version is a restore point");
+    expect(copy).toContain("A version is a saved copy of your book that you can go back to.");
     expect(copy).toContain("A copy of your book kept online");
   });
   test("the writer-facing strings never use version-control jargon", () => {
@@ -221,7 +221,8 @@ describe("Status bar — one calm label opening a 'Where your work is kept' dial
     // StatusBar derives the row from the live state surfaced by the pill,
     // so a syncing/up-to-date project never wrongly reads "not set up".
     expect(status).toContain("liveSyncState");
-    expect(status).toContain("liveSyncState = s");
+    expect(status).toContain("onSyncState={onPillState}");
+    expect(status).toContain("manualBackup");
     expect(status).not.toContain('canSync ? "Kept up to date in the background" : "Not set up for this book"');
     // The pill surfaces every transition upward.
     expect(pill).toContain("onSyncState?.(status.state, status.lastSyncAt)");

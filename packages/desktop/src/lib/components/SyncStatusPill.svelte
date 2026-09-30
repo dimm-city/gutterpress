@@ -144,7 +144,8 @@
       case "syncing":
         return "Backing up…";
       case "synced":
-        return "Online backup is on";
+        // Neutral and true whether or not automatic backup is on.
+        return "Backed up online";
       case "offline":
         return "Offline — edits are saved on this computer";
       case "local":

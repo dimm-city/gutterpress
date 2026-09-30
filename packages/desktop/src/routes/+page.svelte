@@ -490,6 +490,7 @@
     onSyncCompleted: (mergedRemoteChanges, filesChanged) =>
       onSyncCompleted(mergedRemoteChanges, filesChanged),
     onFilesChanged: () => onSyncFilesChanged(),
+    autoBackup: () => settings.current.versionHistory.autoSync,
   });
 
   // ── Project session capability state (#12) ───────────────────────────────────
@@ -884,8 +885,8 @@
   function onSyncCompleted(mergedRemoteChanges: boolean, filesChanged = mergedRemoteChanges) {
     toast?.success(
       mergedRemoteChanges
-        ? "Synced — changes from the online copy were combined in, so the preview will refresh."
-        : "Synced — your changes are online.",
+        ? "Backed up online — changes from the online backup were combined in, so the preview will refresh."
+        : "Backed up online — your changes are online.",
     );
     // A sync may add new commits to the project's version history (both push
     // and pull sides) — refresh the activity view's snapshot list so new
@@ -3093,6 +3094,7 @@
     onShowLog={showProjectLog}
     onForceSave={handleForceSave}
     onForceSync={() => syncController.handleForceSync()}
+    manualBackup={syncController.lastManual}
     onSaveVersion={async () => {
       const dir = lifecycle.currentDir;
       if (!dir) return;

@@ -130,7 +130,7 @@ describe("versions", () => {
   test("plain folder: not keeping versions; one button; says it saves a first version now", () => {
     const s = versionsSection(input({ versions: { enabled: false } }));
     expect(s.status).toBe("Your book isn't keeping versions yet.");
-    expect(s.detail).toBe("Your edits are saved on this computer, but you can't go back to an earlier copy.");
+    expect(s.detail).toBe("Your edits are saved, but you can't go back to an earlier version.");
     expect(s.note).toBe("This saves a first version of your book now.");
     expect(ids(s)).toEqual(["enableVersionHistory"]);
   });
@@ -148,7 +148,7 @@ describe("versions", () => {
     const s = versionsSection(input({ versions: { changedFiles: 4 } }));
     expect(s.status).toBe("Your last version is from 3 days ago.");
     expect(s.detail).toBe(
-      "You've changed 4 files since then. They're saved on this computer, but not in a version yet.",
+      "You've changed 4 files since then. They're saved on this computer, but not in a version yet. Save a version to be able to come back to how your book is now.",
     );
     expect(s.tone).toBe("action");
     expect(s.actions[0]).toMatchObject({ id: "saveVersion", primary: true, disabled: false });
@@ -193,10 +193,10 @@ describe("versions", () => {
     expect(none.status).toBe("No versions yet.");
     expect(none.detail).toBeUndefined();
     expect(versionsSection(input({ versions: { lastVersionAt: null, changedFiles: 1 } })).detail).toBe(
-      "1 file is saved on this computer, but not in a version yet.",
+      "1 file is saved on this computer, but not in a version yet. Save a version to be able to come back to how your book is now.",
     );
     expect(versionsSection(input({ versions: { lastVersionAt: null, changedFiles: 3 } })).detail).toBe(
-      "3 files are saved on this computer, but not in a version yet.",
+      "3 files are saved on this computer, but not in a version yet. Save a version to be able to come back to how your book is now.",
     );
   });
   test("a version is being saved: button says so and is disabled", () => {
@@ -209,22 +209,30 @@ describe("versions", () => {
     expect(note).toContain(`after you stop editing for ${VERSION_QUIET_MINUTES} minutes`);
     expect(note).toContain("usually when you close the book");
   });
+  test("online backup that uploads also saves a version: the note stays true with automatic versions on OR off", () => {
+    const backup = { canSync: true, automatic: true };
+    const on = versionsSection(input({ online: backup })).note!;
+    const off = versionsSection(input({ versions: { automatic: false }, online: backup })).note!;
+    for (const n of [on, off]) expect(n).toContain("Online backup also saves a version each time it uploads.");
+    expect(versionsSection(input({ versions: { automatic: false } })).note).not.toContain("Online backup also");
+    expect(versionsSection(input({ online: { canSync: true, automatic: false } })).note).not.toContain("Online backup also");
+  });
   test("automatic off: names the actual settings switch", () => {
     const note = versionsSection(input({ versions: { automatic: false } })).note!;
     expect(note).toContain("Settings → Saving → Keep previous versions");
   });
   test("failing automatic versions are flagged in THIS section", () => {
     const s = versionsSection(input({ versions: { problem: true } }));
-    expect(s.alert).toContain("Automatic versions aren't completing");
+    expect(s.alert).toContain("Automatic versions aren't working right now");
     expect(versionsSection(input()).alert).toBeUndefined();
     // …and do not leak into the online backup section.
-    expect(onlineSection(input({ versions: { problem: true } })).status).not.toContain("aren't completing");
+    expect(onlineSection(input({ versions: { problem: true } })).status).not.toContain("aren't working");
   });
-  test("'restore point' appears only in the explainer", () => {
+  test("never says 'restore point'", () => {
     const c = saveStatusCopy(input({ versions: { changedFiles: 2, problem: true } }));
     const all = [c.saving, c.versions, c.online].flatMap((s) => [s.status, s.detail, s.note, s.alert]);
-    expect(all.filter((t) => t && /restore point/i.test(t))).toEqual([]);
-    expect(c.versions.explain).toContain("restore point");
+    expect([...all, c.versions.explain].filter((t) => t && /restore point/i.test(t))).toEqual([]);
+    expect(c.versions.explain).toBe("A version is a saved copy of your book that you can go back to.");
   });
 });
 
@@ -235,7 +243,7 @@ describe("online backup", () => {
   test("plain folder: needs versions first, no action", () => {
     const s = onlineSection(input({ versions: { enabled: false } }));
     expect(s.status).toBe("Not backed up online.");
-    expect(s.detail).toBe("Online backup needs versions first — start keeping versions above.");
+    expect(s.detail).toBe("Turn on versions first to use online backup.");
     expect(s.actions).toEqual([]);
   });
   test("no remote (local / idle): not backed up, points to setup", () => {
@@ -307,7 +315,7 @@ describe("online backup", () => {
   });
   test("idle on a book that can back up: ready (auto on) or off (auto off)", () => {
     const on = sync("idle", { canSync: true });
-    expect(on.status).toBe("Ready — your book will be backed up automatically.");
+    expect(on.status).toBe("Online backup is on. Your book will be copied online automatically.");
     expect(ids(on)).toEqual(["syncNow"]);
     const off = sync("idle", { canSync: true, automatic: false });
     expect(off.status).toBe("Automatic online backup is off.");
@@ -362,6 +370,14 @@ describe("wiring (source-level)", () => {
     const bar = read("src/lib/components/StatusBar.svelte");
     expect(bar).toContain("onVersionsProblem");
     expect(bar).toContain("problem: versionsProblem");
+  });
+  test("a manual backup's outcome feeds the dialog, is per-book, and refetches; the version warning is per-book and gated", () => {
+    const bar = read("src/lib/components/StatusBar.svelte");
+    expect(bar).toContain("manualBackup && manualBackup.dir === projectDir");
+    expect(bar).toContain("pillStatus.dir === projectDir");
+    expect(bar).toContain("versionsProblemDir === projectDir && autoVersions");
+    expect(bar).toContain("async function backUpNow()");
+    expect(read("src/routes/+page.svelte")).toContain("manualBackup={syncController.lastManual}");
   });
   test("the status bar sequences lookups and refreshes on a slow poll and on backup-state changes", () => {
     const bar = read("src/lib/components/StatusBar.svelte");

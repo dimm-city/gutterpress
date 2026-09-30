@@ -4,7 +4,7 @@
  *
  * Writers see three different protections that all read like "saved":
  *   1. Saving         — edits written to a file on this computer,
- *   2. Versions       — restore points (local git commits) you can go back to,
+ *   2. Versions       — saved copies (local git commits) you can go back to,
  *   3. Online backup  — a copy of those versions on an online service.
  *
  * This module turns the REAL state into a short explanation for each — the
@@ -17,9 +17,9 @@
  * combination is unit-testable. Never claims a fact it wasn't given: an unknown
  * value reads "Checking…" or is simply left out.
  *
- * Vocabulary: the noun is "version" ("restore point" appears only in the
- * one-line explainer). The online side is always "online backup". Never
- * commit / snapshot / repository / branch / push / pull / remote.
+ * Vocabulary: the noun is "version". The online side is always "online
+ * backup". Never restore point / commit / snapshot / repository / branch /
+ * push / pull / remote.
  */
 import { relativeTime } from "./format";
 import type { SyncState } from "./platform/contract";
@@ -124,13 +124,14 @@ export interface SaveStatusInput {
 
 export const SAVING_EXPLAIN = "What you type is written to a file on this computer.";
 export const VERSIONS_EXPLAIN =
-  "A version is a restore point: a copy of your book you can go back to later.";
+  "A version is a saved copy of your book that you can go back to.";
 export const ONLINE_EXPLAIN =
   "A copy of your book kept online, so you can get it back if this computer is lost.";
 
 const SETTING_VERSIONS = "Settings → Saving → Keep previous versions";
 const SETTING_BACKUP = "Settings → Saving → Keep this book backed up online";
 
+const COME_BACK = "Save a version to be able to come back to how your book is now.";
 const files = (n: number): string => `${n} file${n === 1 ? "" : "s"}`;
 
 /** "Your last version is from 3 days ago." / "…was made just now." */
@@ -184,7 +185,7 @@ export function savingSection(i: Pick<SaveStatusInput, "savePhase" | "autoSave" 
 
 // ── Versions ──────────────────────────────────────────────────────────────────
 
-export function versionsSection(i: Pick<SaveStatusInput, "versions" | "now">): SaveStatusSection {
+export function versionsSection(i: Pick<SaveStatusInput, "versions" | "online" | "now">): SaveStatusSection {
   const v = i.versions;
   const base = { explain: VERSIONS_EXPLAIN };
 
@@ -194,7 +195,7 @@ export function versionsSection(i: Pick<SaveStatusInput, "versions" | "now">): S
     return {
       ...base,
       status: "Your book isn't keeping versions yet.",
-      detail: "Your edits are saved on this computer, but you can't go back to an earlier copy.",
+      detail: "Your edits are saved, but you can't go back to an earlier version.",
       note: "This saves a first version of your book now.",
       tone: "action",
       actions: [{ id: "enableVersionHistory", label: "Start keeping versions", primary: true }],
@@ -202,11 +203,17 @@ export function versionsSection(i: Pick<SaveStatusInput, "versions" | "now">): S
   }
 
   const viewVersions: SaveStatusAction = { id: "viewVersions", label: "See previous versions" };
-  const note = v.automatic
-    ? `Gutterpress also makes one after you stop editing for ${VERSION_QUIET_MINUTES} minutes, and usually when you close the book.`
-    : `Automatic versions are off (${SETTING_VERSIONS}). Make one yourself whenever you like.`;
+  // A push-enabled backup pass always makes a version first (sync.ts).
+  const backupMakesOne = i.online.automatic && i.online.canSync
+    ? " Online backup also saves a version each time it uploads."
+    : "";
+  const note =
+    (v.automatic
+      ? `Gutterpress also makes one after you stop editing for ${VERSION_QUIET_MINUTES} minutes, and usually when you close the book.`
+      : `Automatic versions are off (${SETTING_VERSIONS}). Make one yourself whenever you like.`) +
+    backupMakesOne;
   const alert = v.problem
-    ? "Automatic versions aren't completing. Try Save a version now; if it keeps failing, make sure no other program has the book folder open."
+    ? "Automatic versions aren't working right now. Try Save a version now. If that fails, close any other program that might be using your book folder."
     : undefined;
   const withAlert = alert ? { alert } : {};
 
@@ -240,7 +247,7 @@ export function versionsSection(i: Pick<SaveStatusInput, "versions" | "now">): S
     status = "No versions yet.";
     tone = "neutral";
     if (n != null && n > 0) {
-      detail = `${n === 1 ? "1 file is" : `${n} files are`} saved on this computer, but not in a version yet.`;
+      detail = `${n === 1 ? "1 file is" : `${n} files are`} saved on this computer, but not in a version yet. ${COME_BACK}`;
       tone = "action";
     }
   } else {
@@ -248,7 +255,7 @@ export function versionsSection(i: Pick<SaveStatusInput, "versions" | "now">): S
     if (n == null) {
       tone = "ok";
     } else if (n > 0) {
-      detail = `You've changed ${files(n)} since then. They're saved on this computer, but not in a version yet.`;
+      detail = `You've changed ${files(n)} since then. They're saved on this computer, but not in a version yet. ${COME_BACK}`;
       tone = "action";
     } else if (v.stale) {
       detail = "Some recent work may not be in it yet.";
@@ -292,7 +299,7 @@ export function onlineSection(
     return {
       ...base,
       status: "Not backed up online.",
-      detail: "Online backup needs versions first — start keeping versions above.",
+      detail: "Turn on versions first to use online backup.",
       tone: "neutral",
       actions: [],
     };
@@ -355,7 +362,7 @@ export function onlineSection(
       return {
         ...base,
         status: "Not signed in to online backup.",
-        detail: "This book has an online address, but you haven't signed in to it on this computer.",
+        detail: "This book is linked to an online account, but you're not signed in on this computer.",
         tone: "action",
         actions: [{ id: "connect", label: "Sign in to online backup", primary: true }],
       };
@@ -367,7 +374,7 @@ export function onlineSection(
         return o.automatic
           ? {
               ...base,
-              status: "Ready — your book will be backed up automatically.",
+              status: "Online backup is on. Your book will be copied online automatically.",
               tone: "ok",
               actions: backUpNow(),
             }
@@ -388,7 +395,7 @@ function notBackedUp(explain: string, hasRemote: boolean): SaveStatusSection {
     return {
       explain,
       status: "Not backed up online.",
-      detail: "This book has an online address, but Gutterpress can't back up to it from here.",
+      detail: "This book is linked to an online location Gutterpress can't back up to automatically.",
       tone: "neutral",
       actions: [{ id: "openBookConnections", label: "Online backup details…" }],
     };
