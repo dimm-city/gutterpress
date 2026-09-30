@@ -400,7 +400,7 @@ test("visibleToolbarItems: drops desktop-only items (image, snippet) when deskto
 
 test("visibleToolbarItems: every visible item belongs to exactly one known group (no orphans dropped from the More menu)", () => {
   const items = visibleToolbarItems({ hasSave: true, desktop: true });
-  const groups = ["save", "primary", "block", "insert"];
+  const groups = ["save", "primary", "block", "insert", "view"];
   for (const item of items) {
     expect(groups).toContain(item.group);
   }
@@ -507,6 +507,35 @@ test("TOOLBAR_ITEMS: declares an insert-layout-block control in the insert group
   const item = TOOLBAR_ITEMS.find((i) => i.id === "layout-block");
   expect(item).toBeDefined();
   expect(item?.group).toBe("insert");
+});
+
+// ── #311: one Insert menu; Focus mode is not an insertion ───────────────────
+
+test("TOOLBAR_ITEMS: Focus mode is a 'view' item, so it keeps its own button instead of becoming a row in the Insert menu", () => {
+  const focus = TOOLBAR_ITEMS.find((i) => i.id === "focus-mode");
+  expect(focus?.group).toBe("view");
+  expect(TOOLBAR_ITEMS.filter((i) => i.group === "insert").some((i) => i.action === "focus-mode")).toBe(false);
+});
+
+test("Insert menu rows are unique: Page break is offered once, through the layout picker", () => {
+  // The Insert popup lists each insert item's label, with the layout-block
+  // item expanded into LAYOUT_BLOCK_ITEMS (EditorToolbar's `menuRows`).
+  // A standalone Page break item used to sit beside the layout picker's own
+  // Page break entry, so the menu would have listed it twice.
+  const rows = visibleToolbarItems({ hasSave: true, desktop: true })
+    .filter((i) => i.group === "insert")
+    .flatMap((i) => (i.kind === "layout-block" ? LAYOUT_BLOCK_ITEMS.map((b) => b.label) : [i.label]));
+  expect(new Set(rows).size).toBe(rows.length);
+  expect(rows.filter((label) => label === "Page break")).toHaveLength(1);
+  expect(TOOLBAR_ITEMS.some((i) => i.id === "page-break" || i.action === "page-break")).toBe(false);
+});
+
+test("the Insert menu carries every insert the toolbar used to show as a separate icon", () => {
+  const ids = visibleToolbarItems({ hasSave: true, desktop: true })
+    .filter((i) => i.group === "insert")
+    .map((i) => i.id);
+  // rule, layout blocks (columns, page break, chapter…), table, image, snippet
+  expect(ids).toEqual(["hr", "layout-block", "table", "image", "snippet"]);
 });
 
 // ── M26: image dialog Position must offer the bleed layout ───────────────────

@@ -15,8 +15,12 @@
    *   review M10), so the toolbar accepts `projectDir` to keep it testable
    *   without a full Electron environment. The toolbar does no path/fs math
    *   of its own; the route returns the project-relative `src` to insert.
-   * - At narrow editor-pane widths (~350px) the toolbar uses @container to overflow
-   *   secondary actions into a "More" popover so nothing clips or wraps.
+   * - The shape is stable: every insert action lives in ONE Insert menu, so
+   *   opening the left panel (which narrows this pane) does not swap buttons in
+   *   and out. Only when the pane is too narrow for a group does @container move
+   *   it into the "More" popover, and that popover lists exactly the groups
+   *   that are hidden (see the tier comment in the style block) — never a repeat
+   *   of what shows.
    */
   import Icon from "$lib/components/Icon.svelte";
   import type { ComponentProps } from "svelte";
@@ -69,7 +73,6 @@
     | "ol"
     | "heading"
     | "hr"
-    | "page-break"
     | "table"
     | "image"
     | "snippet"
@@ -87,8 +90,8 @@
     filePath !== null && /\.(md|markdown)$/i.test(filePath),
   );
 
-  // ── M23: single declarative item array drives BOTH the grouped toolbar
-  // buttons and the flat More menu — see toolbar-actions.ts for rationale. ──
+  // ── M23: single declarative item array drives the grouped toolbar buttons,
+  // the Insert menu AND the More menu — see toolbar-actions.ts for rationale. ──
   let visibleItems = $derived(
     visibleToolbarItems({ hasSave: !!onSave, desktop: isDesktop() }),
   );
@@ -96,21 +99,26 @@
   let primaryItems = $derived(visibleItems.filter((i) => i.group === "primary"));
   let blockItems = $derived(visibleItems.filter((i) => i.group === "block"));
   let insertItems = $derived(visibleItems.filter((i) => i.group === "insert"));
+  let viewItems = $derived(visibleItems.filter((i) => i.group === "view"));
 
   function fireAction(item: ToolbarItemDef) {
     if (item.action) onAction(item.action as ToolbarAction);
   }
 
-  // ── Focus-first-child helper for the heading/layout/More popups below ──────
+  // ── Focus-first-child helper for the heading/insert/More popups below ──────
   // These are plain disclosures, not modal dialogs (see the "not role=listbox"
   // comments on their markup), so they don't go through `dialogBehavior` — they
   // only need "focus the first focusable child on open," not a full ARIA/
   // Escape/Tab-trap/restore contract. The table and image dialogs below ARE
   // modal and use `dialogBehavior` directly (ARCH #42), which owns the trap
   // itself; this helper reuses the same shared `FOCUSABLE` selector from
-  // dialog.ts rather than hand-rolling its own copy.
+  // dialog.ts rather than hand-rolling its own copy. Hidden elements are
+  // skipped: the More popup keeps the sections for groups that are currently
+  // showing in the toolbar `display: none`, and focusing those does nothing.
   function focusableElementsIn(container: HTMLElement | undefined): HTMLElement[] {
-    return Array.from(container?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []);
+    return Array.from(container?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []).filter(
+      (el) => el.offsetParent !== null,
+    );
   }
 
   // ── Heading level picker ──────────────────────────────────────────────────────
@@ -122,7 +130,7 @@
 
   function openHeadingPopup(e: MouseEvent) {
     headingTriggerEl = e.currentTarget as HTMLButtonElement;
-    openPopup(() => { headingOpen = !headingOpen; });
+    openPopup(() => { headingOpen = !headingOpen; insertOpen = moreOpen = false; });
     // M24 fix round 1: the popup <div> is a SIBLING of this trigger button,
     // not an ancestor, so an Escape keydown whose target is still the
     // trigger (focus left where it was) never bubbles to the popup's own
@@ -154,49 +162,46 @@
     headingOpen = false;
   }
 
-  // ── Insert layout block picker (UX M26) ──────────────────────────────────
-  // Same plain-disclosure pattern as the heading popup above: Chapter /
-  // Section / Two columns / Page break / Spread, inserting the core
-  // `@marker` skeleton for the picked kind via toolbar-actions.ts helpers.
-  let layoutOpen = $state(false);
-  let layoutTriggerEl = $state<HTMLButtonElement | undefined>(undefined);
-  let layoutPopupEl = $state<HTMLDivElement | undefined>(undefined);
+  // ── Insert menu ──────────────────────────────────────────────────────────
+  // Every insert action (layout blocks — UX M26 — rule, table, image, snippet)
+  // behind ONE button, so the toolbar keeps its shape whether or not the left
+  // panel is open. Same plain-disclosure pattern as the heading popup above;
+  // its rows are rendered by `menuRows`, the same rows the More menu lists when
+  // this group is hidden.
+  let insertOpen = $state(false);
+  let insertTriggerEl = $state<HTMLButtonElement | undefined>(undefined);
+  let insertPopupEl = $state<HTMLDivElement | undefined>(undefined);
 
-  function openLayoutPopup(e: MouseEvent) {
-    layoutTriggerEl = e.currentTarget as HTMLButtonElement;
-    openPopup(() => { layoutOpen = !layoutOpen; });
-    if (layoutOpen) {
-      queueMicrotask(() => focusableElementsIn(layoutPopupEl)[0]?.focus());
+  function openInsertPopup(e: MouseEvent) {
+    insertTriggerEl = e.currentTarget as HTMLButtonElement;
+    openPopup(() => { insertOpen = !insertOpen; headingOpen = moreOpen = false; });
+    if (insertOpen) {
+      queueMicrotask(() => focusableElementsIn(insertPopupEl)[0]?.focus());
     }
   }
 
-  function closeLayoutPopup() {
-    layoutOpen = false;
-    layoutTriggerEl?.focus();
+  function closeInsertPopup() {
+    insertOpen = false;
+    insertTriggerEl?.focus();
   }
 
-  function onLayoutPopupKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape") closeLayoutPopup();
-  }
-
-  function pickLayoutBlock(kind: LayoutBlockKind) {
-    onAction("layout-block", { kind });
-    layoutOpen = false;
+  function onInsertPopupKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape") closeInsertPopup();
   }
 
   // ── Table column picker (M11: a fixed-position dialog, like the image
   // dialog below, so it works regardless of which trigger opened it — the
-  // always-visible toolbar button OR the More menu item — and is never
-  // nested inside a container that can be `display: none` at the exact
-  // widths where the More menu exists). ──────────────────────────────────────
+  // Insert menu row OR the More menu row — and is never nested inside a
+  // container that can be `display: none` at the widths where the More menu
+  // takes over from the Insert menu). ────────────────────────────────────────
   let tableOpen = $state(false);
   let tableCols = $state(3);
   let tableDialogEl = $state<HTMLDivElement | undefined>(undefined);
-  /** The toolbar/More-menu button that opened the table dialog — focus is restored on close. */
+  /** The Insert/More-menu button that opened the table dialog — focus is restored on close. */
   let tableDialogTriggerEl = $state<HTMLButtonElement | undefined>(undefined);
 
-  function openTableDialog(e: MouseEvent) {
-    tableDialogTriggerEl = e.currentTarget as HTMLButtonElement;
+  function openTableDialog(trigger: HTMLButtonElement | undefined) {
+    tableDialogTriggerEl = trigger;
     tableOpen = true;
     // Initial focus placement is handled by the dialogBehavior action.
   }
@@ -230,7 +235,7 @@
   let imageBusy = $state(false);
   let imageError = $state("");
   let imageDialogEl = $state<HTMLDivElement | undefined>(undefined);
-  /** The toolbar button that opened the image dialog — focus is restored on close. */
+  /** The Insert/More-menu button that opened the image dialog — focus is restored on close. */
   let imageDialogTriggerEl = $state<HTMLButtonElement | undefined>(undefined);
 
   async function pickImage() {
@@ -307,8 +312,8 @@
     // dialogBehavior action.
   }
 
-  function openImageDialog(e: MouseEvent) {
-    imageDialogTriggerEl = e.currentTarget as HTMLButtonElement;
+  function openImageDialog(trigger: HTMLButtonElement | undefined) {
+    imageDialogTriggerEl = trigger;
     imageOpen = true;
     // Initial focus placement is handled by the dialogBehavior action.
   }
@@ -322,7 +327,7 @@
 
   function openMorePopup(e: MouseEvent) {
     moreTriggerEl = e.currentTarget as HTMLButtonElement;
-    openPopup(() => { moreOpen = !moreOpen; });
+    openPopup(() => { moreOpen = !moreOpen; headingOpen = insertOpen = false; });
     // M24 fix round 1: same rationale as openHeadingPopup above — move focus
     // into the popup on open so Escape closes it immediately, not only after
     // the user manually Tabs in.
@@ -343,6 +348,24 @@
     if (e.key === "Escape") closeMorePopup();
   }
 
+  // ── Rows shared by the Insert and More menus ─────────────────────────────
+  // `pick` closes the popup and moves focus to its trigger BEFORE running the
+  // row's action. The row itself unmounts with the popup, so a dialog opened
+  // from it (table, image, snippet picker) would otherwise try to hand focus
+  // back to a detached button; the trigger is still on screen.
+  type PopupMenu = {
+    pick: (run: (trigger: HTMLButtonElement | undefined) => void) => void;
+    onKey: (e: KeyboardEvent) => void;
+  };
+  const insertMenu: PopupMenu = {
+    pick(run) { closeInsertPopup(); run(insertTriggerEl); },
+    onKey: onInsertPopupKeydown,
+  };
+  const moreMenu: PopupMenu = {
+    pick(run) { closeMorePopup(); run(moreTriggerEl); },
+    onKey: onMorePopupKeydown,
+  };
+
   // Close all open pickers when clicking outside.
   // Uses a "just opened" flag so the same click that opens a popup doesn't
   // immediately close it via event bubbling to the window handler.
@@ -361,7 +384,7 @@
     const target = e.target as HTMLElement | null;
     if (!target?.closest?.(".toolbar-popup, .tb-popup-wrap")) {
       headingOpen = false;
-      layoutOpen = false;
+      insertOpen = false;
       moreOpen = false;
     }
     // Don't close imageOpen/tableOpen on outside click — both are
@@ -374,9 +397,9 @@
 {#if isMarkdown}
 <div class="editor-toolbar" role="toolbar" aria-label="Markdown formatting toolbar">
   <!-- Primary group: Save (when wired) + always-visible inline formatting.
-       Both this group AND the More menu below render from `visibleItems`
-       (toolbar-actions.ts) so Save/Snippet can never be listed in one place
-       and silently dropped from the other (M23). -->
+       Every group here AND the Insert/More menus below render from
+       `visibleItems` (toolbar-actions.ts) so an item can never be listed in
+       one place and silently dropped from another (M23). -->
   <div class="tb-group primary-group">
     {#each saveItems as item (item.id)}
       <button
@@ -401,7 +424,7 @@
     {/each}
   </div>
 
-  <span class="tb-sep" aria-hidden="true"></span>
+  <span class="tb-sep sep-block" aria-hidden="true"></span>
 
   <!-- Block formatting group -->
   <div class="tb-group block-group">
@@ -454,84 +477,58 @@
     {/each}
   </div>
 
-  <span class="tb-sep" aria-hidden="true"></span>
+  <span class="tb-sep sep-tail" aria-hidden="true"></span>
 
-  <!-- Insert group: layout block, HR, page break, table, image, snippet -->
+  <!-- Insert group: ONE menu button for every insert action (layout blocks,
+       rule, table, image, snippet). The table/image rows open the fixed-position
+       dialogs below — NOT nested inside this group, so they keep working from
+       the More menu even when `.insert-group` is `display: none` at narrow
+       widths (M11). Plain disclosure like the heading picker above (M24). -->
   <div class="tb-group insert-group">
-    {#each insertItems as item (item.id)}
-      {#if item.kind === "layout-block"}
-        <!-- Insert layout block picker (UX M26) — Chapter / Section / Two
-             columns / Page break / Spread, same split-button + popup
-             pattern as the heading picker below. -->
-        <div class="tb-popup-wrap">
-          <button
-            class="tb-btn tb-btn-split"
-            onclick={openLayoutPopup}
-            aria-expanded={layoutOpen}
-            title={item.title}
-            aria-label={item.ariaLabel}
-          >
-            <Icon name={item.icon as IconName} size={14} />
-            <Icon name="chevron-down" size={10} />
-          </button>
-          {#if layoutOpen}
-            <div
-              bind:this={layoutPopupEl}
-              class="toolbar-popup layout-popup"
-              aria-label="Insert layout block"
-            >
-              {#each LAYOUT_BLOCK_ITEMS as block (block.kind)}
-                <button
-                  class="popup-item"
-                  title={block.detail}
-                  onclick={() => pickLayoutBlock(block.kind)}
-                  onkeydown={onLayoutPopupKeydown}
-                >
-                  {block.label}
-                </button>
-              {/each}
-            </div>
-          {/if}
+    <div class="tb-popup-wrap">
+      <button
+        class="tb-btn tb-btn-split tb-insert-btn"
+        onclick={openInsertPopup}
+        aria-expanded={insertOpen}
+        title="Insert a layout block, table, image, snippet or rule"
+        aria-label="Insert"
+      >
+        <Icon name="plus" size={14} />
+        <span class="tb-insert-label">Insert</span>
+        <Icon name="chevron-down" size={10} />
+      </button>
+      {#if insertOpen}
+        <div
+          bind:this={insertPopupEl}
+          class="toolbar-popup insert-popup"
+          aria-label="Insert"
+        >
+          {@render menuRows(insertItems, insertMenu)}
         </div>
-      {:else if item.kind === "table"}
-        <!-- Opens the fixed-position table dialog below — NOT nested inside
-             this group, so it keeps working from the More menu even when
-             `.insert-group` is `display: none` at narrow widths (M11). -->
-        <button
-          class="tb-btn"
-          onclick={openTableDialog}
-          title={item.title}
-          aria-label={item.ariaLabel}
-        >
-          <Icon name={item.icon as IconName} size={14} />
-        </button>
-      {:else if item.kind === "image"}
-        <button
-          class="tb-btn"
-          onclick={openImageDialog}
-          title={item.title}
-          aria-label={item.ariaLabel}
-        >
-          <Icon name={item.icon as IconName} size={14} />
-        </button>
-      {:else}
-        <button
-          class="tb-btn"
-          onclick={() => fireAction(item)}
-          title={item.title}
-          aria-label={item.ariaLabel}
-        >
-          <Icon name={item.icon as IconName} size={14} />
-        </button>
       {/if}
+    </div>
+  </div>
+
+  <!-- View group: editing-posture toggles, apart from the formatting controls. -->
+  <div class="tb-group view-group">
+    {#each viewItems as item (item.id)}
+      <button
+        class="tb-btn"
+        onclick={() => fireAction(item)}
+        title={item.title}
+        aria-label={item.ariaLabel}
+      >
+        <Icon name={item.icon as IconName} size={14} />
+      </button>
     {/each}
   </div>
 
-  <!-- "More" overflow button — CSS @container shows this at narrow widths only.
-       Renders EVERY item in `visibleItems` (unfiltered by group) so nothing
-       reachable in the full-width toolbar goes missing here (M23). Plain
-       disclosure, not role=menu — see the heading picker comment above; same
-       rationale (M24). -->
+  <!-- "More" overflow button — CSS @container shows it only while a group is
+       hidden, and each section below only while ITS group is hidden, so the
+       popup lists what the toolbar cannot show and never repeats what it does
+       (tier comment in the style block). Sections render from the same item
+       arrays as the groups (M23). Plain disclosure, not role=menu — see the
+       heading picker comment above; same rationale (M24). -->
   <div class="tb-more-wrap">
     <button
       class="tb-btn tb-more-btn"
@@ -548,37 +545,46 @@
         class="toolbar-popup more-popup"
         aria-label="More formatting options"
       >
-        {#each visibleItems as item, i (item.id)}
-          {#if i > 0 && visibleItems[i - 1].group !== item.group}
-            <hr class="popup-hr" />
-          {/if}
-          {#if item.kind === "save"}
-            <button class="popup-item" onclick={() => { onSave?.(); moreOpen = false; }} onkeydown={onMorePopupKeydown}>{item.label}</button>
-          {:else if item.kind === "heading"}
-            {#each [1, 2, 3, 4] as level (level)}
-              <button class="popup-item" onclick={() => { pickHeading(level as 1 | 2 | 3 | 4); moreOpen = false; }} onkeydown={onMorePopupKeydown}>
-                Heading {level}
-              </button>
-            {/each}
-          {:else if item.kind === "layout-block"}
-            {#each LAYOUT_BLOCK_ITEMS as block (block.kind)}
-              <button class="popup-item" title={block.detail} onclick={() => { pickLayoutBlock(block.kind); moreOpen = false; }} onkeydown={onMorePopupKeydown}>
-                {block.label}
-              </button>
-            {/each}
-          {:else if item.kind === "table"}
-            <button class="popup-item" onclick={(e) => { openTableDialog(e); moreOpen = false; }} onkeydown={onMorePopupKeydown}>{item.label}</button>
-          {:else if item.kind === "image"}
-            <button class="popup-item" onclick={(e) => { openImageDialog(e); moreOpen = false; }} onkeydown={onMorePopupKeydown}>{item.label}</button>
-          {:else}
-            <button class="popup-item" onclick={() => { fireAction(item); moreOpen = false; }} onkeydown={onMorePopupKeydown}>{item.label}</button>
-          {/if}
-        {/each}
+        <div class="more-block">
+          {@render menuRows(blockItems, moreMenu)}
+        </div>
+        <div class="more-tail">
+          {@render menuRows(insertItems, moreMenu)}
+          <hr class="popup-hr" />
+          {@render menuRows(viewItems, moreMenu)}
+        </div>
       </div>
     {/if}
   </div>
 </div>
 {/if}
+
+<!-- One row per action, for the Insert popup and the More popup alike. -->
+{#snippet menuRows(items: ToolbarItemDef[], menu: PopupMenu)}
+  {#each items as item, i (item.id)}
+    {#if item.kind === "heading"}
+      {#each [1, 2, 3, 4] as level (level)}
+        <button class="popup-item" onclick={() => menu.pick(() => pickHeading(level as 1 | 2 | 3 | 4))} onkeydown={menu.onKey}>
+          Heading {level}
+        </button>
+      {/each}
+    {:else if item.kind === "layout-block"}
+      {#if i > 0}<hr class="popup-hr" />{/if}
+      {#each LAYOUT_BLOCK_ITEMS as block (block.kind)}
+        <button class="popup-item" title={block.detail} onclick={() => menu.pick(() => onAction("layout-block", { kind: block.kind }))} onkeydown={menu.onKey}>
+          {block.label}
+        </button>
+      {/each}
+      {#if i < items.length - 1}<hr class="popup-hr" />{/if}
+    {:else if item.kind === "table"}
+      <button class="popup-item" onclick={() => menu.pick(openTableDialog)} onkeydown={menu.onKey}>{item.label}</button>
+    {:else if item.kind === "image"}
+      <button class="popup-item" onclick={() => menu.pick(openImageDialog)} onkeydown={menu.onKey}>{item.label}</button>
+    {:else}
+      <button class="popup-item" title={item.title} onclick={() => menu.pick(() => fireAction(item))} onkeydown={menu.onKey}>{item.label}</button>
+    {/if}
+  {/each}
+{/snippet}
 
 <!-- Table insert dialog (fixed-position overlay, rendered outside the
      toolbar — same pattern as the image dialog below, and for the same
@@ -768,6 +774,8 @@
     flex-shrink: 0;
   }
   .save-sep { margin-right: 5px; }
+  /* Focus mode sits at the right edge, apart from the formatting controls. */
+  .view-group { margin-left: auto; }
 
   /* ── Toolbar buttons ─────────────────────────────────────────────────────── */
   .tb-btn {
@@ -802,8 +810,11 @@
   .tb-btn-split {
     gap: 1px;
   }
+  .tb-insert-label {
+    padding: 0 2px;
+  }
 
-  /* ── Popup wrappers (heading, table, more) ───────────────────────────────── */
+  /* ── Popup wrappers (heading, insert, more) ──────────────────────────────── */
   .tb-popup-wrap {
     position: relative;
   }
@@ -889,45 +900,81 @@
     width: clamp(220px, 60vw, 300px);
   }
 
-  /* ── More overflow button ─────────────────────────────────────────────────── */
-  .tb-more-wrap {
-    position: relative;
-    margin-left: auto;
-    /* Hidden by default; shown at narrow container widths via @container */
-    display: none;
-  }
+  /* ── Heading, Insert and More popups ──────────────────────────────────────── */
+  /* Right-aligned to their trigger so they open back over the pane instead of
+     off its right edge (the pane clips overflow). */
+  .heading-popup,
+  .insert-popup,
   .more-popup {
     right: 0;
     left: auto;
+  }
+  .insert-popup,
+  .more-popup {
     min-width: 180px;
+  }
+  .more-popup {
     max-height: 320px;
     overflow-y: auto;
   }
 
+  /* ── More overflow button ─────────────────────────────────────────────────── */
+  .tb-more-wrap {
+    position: relative;
+    margin-left: auto;
+    /* Hidden by default; shown only while a group is hidden (tiers below). */
+    display: none;
+  }
+  /* One section per hideable group; listed only while that group is hidden. */
+  .more-block,
+  .more-tail {
+    display: none;
+    flex-direction: column;
+    gap: 1px;
+  }
+
   /*
-   * @container rule: at editor-pane widths below ~380px, hide the
-   * primary/block/insert groups and show only the "More" button.
-   * Between 380px and 520px hide the insert group and show the "More" button
-   * alongside primary+block groups.
+   * Overflow tiers, by the toolbar's own width (a container query: the pane
+   * narrows when the left panel opens or the window shrinks, so this — not the
+   * panel state — is what "fits" means). Thresholds are what the groups need
+   * (measured) plus a little slack; re-measure if a group gains a button.
+   *   >= 420px  everything, Insert labelled
+   *   >= 385px  everything, Insert as an icon
+   *   >= 340px  Insert + Focus mode move into "…"
+   *   below     the block group (quote, lists, heading) moves in as well
+   * "…" and each of its sections appear only in the tiers that hide the
+   * matching group, so the popup never repeats a visible button.
    */
-  @container editor-toolbar (max-width: 379px) {
-    .primary-group,
-    .block-group,
-    .insert-group,
-    .tb-sep {
+  @container editor-toolbar (max-width: 419px) {
+    .tb-insert-label {
       display: none;
-    }
-    .tb-more-wrap {
-      display: flex;
-      margin-left: 0;
     }
   }
-  @container editor-toolbar (min-width: 380px) and (max-width: 519px) {
-    .insert-group {
+  @container editor-toolbar (max-width: 384px) {
+    .sep-tail,
+    .insert-group,
+    .view-group {
       display: none;
     }
     .tb-more-wrap {
       display: flex;
+    }
+    .more-tail {
+      display: flex;
+    }
+  }
+  @container editor-toolbar (max-width: 339px) {
+    .sep-block,
+    .block-group {
+      display: none;
+    }
+    .more-block {
+      display: flex;
+    }
+    .more-tail {
+      border-top: 1px solid var(--app-border);
+      margin-top: 3px;
+      padding-top: 3px;
     }
   }
 

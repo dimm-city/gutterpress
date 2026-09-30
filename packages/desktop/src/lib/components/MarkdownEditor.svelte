@@ -46,7 +46,6 @@
     applyOrderedList,
     applyHeading,
     applyHr,
-    applyPageBreak,
     applyTable,
     applyImage,
     applyLayoutBlock,
@@ -454,7 +453,6 @@
         break;
       }
       case "hr":             applyHr(view); break;
-      case "page-break":     applyPageBreak(view); break;
       case "table": {
         const cols = (payload as { cols: number } | undefined)?.cols ?? 3;
         applyTable(view, cols);
