@@ -43,12 +43,27 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The preview no longer re-breaks pages when you zoom.** Zooming used to
+  move some paragraphs onto a different page at certain zoom levels (for
+  example 50% versus 25%). Zoom now only changes how big the pages look, never
+  where they break (#318).
+- **Clearer save status.** The status popover now separates your edits
+  ("Saved on this computer"), version history ("Last version saved 3 days
+  ago") and the online backup, instead of "Saved" next to "Latest version 3
+  days ago". The status bar says "Edits saved".
+- **Readable editor suggestions.** The list that opens when you type `@` (and
+  in CSS files) follows the light or dark theme, keeps text readable on every
+  row and no longer cuts labels off.
+- **The zoom and view menus look like menus** — one panel with plain rows and
+  a quiet check on the current choice, in light and dark themes.
+- **Messages from version history, sync, GitHub and new-book creation say
+  "book" too.**
 - **The Problems list no longer covers the left panel.** It opens as a row of
   its own above the status bar, keyboard focus moves into it, and a book with
   no problems just says so — after it has been checked, not before.
 - **The toolbar and status bar narrow gracefully.** Publish and Export keep
   their labels on a 900px window, previous and next page stay available at
-  800px, and "All work saved" stays visible.
+  800px, and the save status stays visible.
 - **The preview stays fitted to its pane.** A slow page measurement no longer
   resets the zoom to 100% about ten seconds after a book opens.
 - **On a narrow window the left panel stops at the status bar,** so its New
