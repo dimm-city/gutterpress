@@ -58,6 +58,9 @@ test("friendlySource maps known check ids to plain language, passes unknown thro
   expect(friendlySource("source.stylelint")).toBe("Print-safety (CSS)");
   expect(friendlySource("source.accessibility.alt-text")).toBe("Image description");
   expect(friendlySource("desktop.preview")).toBe("Preview");
+  // US spelling, like every other label in the app.
+  expect(friendlySource("asset.image.color-space")).toBe("Image color space");
+  expect(friendlySource("asset.font.license")).toBe("Font license");
   expect(friendlySource("some.future.check")).toBe("some.future.check");
 });
 
