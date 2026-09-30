@@ -733,3 +733,22 @@ test("the name/email notice needs version history AND a first save or sync, and 
   expect(banner).toContain("Add your name &amp; email");
   expect(banner).toContain("identityNoticeDismissed = true");
 });
+
+test("closing the left panel with Escape or the scrim is remembered, exactly like the toolbar toggle", () => {
+  const left = read("src/lib/components/LeftPanel.svelte");
+  const start = left.indexOf("function close() {");
+  expect(start).toBeGreaterThan(-1);
+  const closeBody = left.slice(start, left.indexOf("// ── Keyboard: close on Escape", start));
+  // The panel opens by default (#304), so a close that wasn't saved came back on
+  // every launch. Escape and the scrim both close through `close()`…
+  expect(closeBody).toContain("open = false;");
+  expect(closeBody).toContain("onPanelStateChange?.();");
+  expect(left).toMatch(/if \(e\.key === "Escape"\) \{[\s\S]{0,80}?close\(\);/);
+  expect(left).toContain("onclick={close}");
+  // …and the page saves on that callback the way its own toolbar toggle does.
+  const page = read("src/routes/+page.svelte");
+  expect(page).toContain("onPanelStateChange={persistLeftPanelPrefs}");
+  const toggleAt = page.indexOf("function toggleLeftPanel() {");
+  expect(toggleAt).toBeGreaterThan(-1);
+  expect(page.slice(toggleAt, toggleAt + 160)).toContain("persistLeftPanelPrefs();");
+});

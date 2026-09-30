@@ -102,7 +102,8 @@
     /** Show the start screen over the workspace. */
     onShowWelcome?: () => void;
     onSyncReconnect?: () => void;
-    /** Called whenever tab or width changes so the parent can persist the state. */
+    /** Called whenever tab or width changes, or the panel closes itself (Esc,
+     *  scrim), so the parent can persist the state. */
     onPanelStateChange?: () => void;
   } = $props();
 
@@ -156,9 +157,13 @@
   }
 
   // ── Panel close ──────────────────────────────────────────────────────────
+  // Escape and the scrim both close through here, so this is where the choice
+  // is remembered — the panel opens by default, and a close that wasn't saved
+  // came back on every launch. The toolbar toggle persists the same way.
   function close() {
     open = false;
     toggleBtn?.focus();
+    onPanelStateChange?.();
   }
 
   // ── Keyboard: close on Escape ─────────────────────────────────────────────
