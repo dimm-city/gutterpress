@@ -378,7 +378,7 @@ describe("AppToolbar — the selected mode never looks disabled (#305)", () => {
     }
   });
 
-  test("entering Focus shows a transient hint naming the real keys — Esc is not one", () => {
+  test("the first Focus entry of a session shows a transient hint naming the real keys — Esc is not one", () => {
     const src = page();
     const body = src.slice(
       src.indexOf("function setMode(next: WorkspaceMode): void {"),
@@ -386,7 +386,16 @@ describe("AppToolbar — the selected mode never looks disabled (#305)", () => {
     );
     // setMode is the one writer of `mode`, so the segment, Ctrl+Shift+F and the
     // editor toolbar's Focus button all get the hint. Existing toast, no new UI.
-    expect(body).toMatch(/if \(next === "focus"\)\s+toast\?\.info\?\.\(/);
+    expect(body).toMatch(
+      /if \(next === "focus" && !focusHintShown\) \{\s+focusHintShown = true;\s+toast\?\.info\?\.\(/,
+    );
+    // ONCE per app session: the Focus tooltip carries the same words
+    // permanently, so a writer who lives in Focus is not told on every
+    // Ctrl+Shift+F. A plain component-level flag — set when the hint shows and
+    // never reset, not persisted, no new setting.
+    expect(src).toMatch(/^\s*let focusHintShown = false;/m);
+    expect(src.match(/focusHintShown = true/g)).toHaveLength(1);
+    expect(src.match(/focusHintShown = false/g)).toHaveLength(1);
     const hint = body.match(/toast\?\.info\?\.\("(Focus mode:[^"]+)"/)?.[1] ?? "";
     expect(hint).toContain("Ctrl+Shift+F");
     expect(hint).toContain("Edit or Read");

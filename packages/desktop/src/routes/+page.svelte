@@ -945,6 +945,11 @@
   // The one genuinely ambiguous transition: leaving `focus` could mean either
   // `editor` or `viewer`. Written ONLY on entering focus.
   let modeBeforeFocus: "editor" | "viewer" | null = null;
+  // The "how to leave Focus" toast shows the first time Focus is entered in an
+  // app session only — the Focus tooltip carries the same words permanently,
+  // and a writer who lives in Focus should not be told on every Ctrl+Shift+F.
+  // Not persisted on purpose.
+  let focusHintShown = false;
   /** The viewer is hidden in `focus` and nowhere else. */
   let previewVisible = $derived(mode !== "focus");
   /** `focus` is the editor without the viewer, so the editor shows in both. */
@@ -2478,9 +2483,11 @@
     if (next === mode) return;
     if (next === "focus") modeBeforeFocus = mode === "viewer" ? "viewer" : "editor";
     // The viewer vanishes in focus, and Esc is not the way back (see
-    // onGlobalKey) — say what is.
-    if (next === "focus")
+    // onGlobalKey) — say what is, once per session (see focusHintShown).
+    if (next === "focus" && !focusHintShown) {
+      focusHintShown = true;
       toast?.info?.("Focus mode: press Ctrl+Shift+F, or choose Edit or Read, to bring the preview back.", 6000);
+    }
     settings.set({ preview: { mode: next === "focus" ? "editor" : next } });
     mode = next;
     zoomView.applyViewMode(viewMode);
