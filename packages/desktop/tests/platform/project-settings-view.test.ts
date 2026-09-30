@@ -22,6 +22,7 @@
  *  5. The retired sidebar ProjectConfigPanel is gone.
  *  6. The Look tab (#308): plain-language token labels (the CSS variable
  *     stays visible) and font pickers styled like the other form controls.
+ *  7. The Details tab (#308): the Title input is bound to its label.
  */
 import { describe, test, expect } from "bun:test";
 import * as fs from "node:fs";
@@ -288,6 +289,15 @@ describe("Look tab — plain-language token labels and styled font pickers (#308
     // wrap it and move the field the writer is typing in.
     const plain = src.match(/\.token-row\s*\{([^}]*)\}/)?.[1] ?? "";
     expect(plain).not.toContain("wrap");
+  });
+});
+
+describe("Details tab — the Title input is bound to its label (#308)", () => {
+  test("the label's for= matches the input's id (the placeholder must not become its name)", () => {
+    const src = read("src/lib/components/config/DetailsSection.svelte");
+    expect(src).toContain('<label class="field" for="details-title">');
+    expect(src).toMatch(/<input\s+id="details-title"[^>]*type="text"[^>]*bind:value=\{controller\.titleDraft\}/s);
+    expect(src).toContain('<span class="lbl">Title</span>');
   });
 });
 
