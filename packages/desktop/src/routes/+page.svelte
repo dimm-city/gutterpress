@@ -1107,6 +1107,10 @@
       : "",
   );
 
+  // ── Scroll wheel page-flip (issue #301) ───────────────────────────────────
+  // Timestamps used for cooldown and flick detection on the preview pane.
+  let pageFlipLastAt = $state(0);
+  let pageFlipLastTime = $state(0);
 
   // MarkdownEditor wraps the full CodeMirror 6 stack (+ lang-markdown's
   // code-language loaders), a ~300 KB chunk. The editor pane is closed by
@@ -2120,6 +2124,28 @@
   // same registration order for the same event; `onKeydown` just calls both
   // from one `addEventListener` instead of two.
   // ----------------------------------------------------------------
+  function handlePreviewWheel(e: WheelEvent) {
+    if (!lifecycle.previewUrl || lifecycle.rendering) return;
+
+    const absDy = Math.abs(e.deltaY);
+    const absDx = Math.abs(e.deltaX);
+    if (absDy < 40 || absDx > absDy * 2) return;
+
+    const now = Date.now();
+    if (now - pageFlipLastAt < 500) return;
+
+    const dir = e.deltaY > 0 ? 1 : -1; // scroll down → next pages, scroll up → prev pages
+    const step = viewMode === "single" ? 1 : 2;
+    const targetPage = Math.max(1, Math.min(pageNav.totalPages, pageNav.currentPage + dir * step));
+
+    if (targetPage !== pageNav.currentPage && client) {
+      e.preventDefault();
+      void client.scrollToPage(targetPage).catch(() => {});
+      pageFlipLastAt = now;
+      pageFlipLastTime = now;
+    }
+  }
+
   onMount(() => {
     function onGlobalKey(e: KeyboardEvent) {
       // The Book settings panel owns the keyboard while it's up: the
@@ -2994,6 +3020,7 @@
         aria-labelledby={isNarrow ? "mobile-tab-preview" : undefined}
         aria-hidden={!previewVisible}
         inert={!previewVisible || (isNarrow && (editorPaneOpen || editorView !== "editor")) ? true : undefined}
+        onwheel={handlePreviewWheel}
       >
         <FindBar bind:this={findBarRef} bind:open={findBarOpen} {client} />
         {#if lifecycle.previewUrl}

@@ -401,4 +401,9 @@ export class PreviewClient {
     if (!this.win || !this.expectedOrigin) return;
     this.win.postMessage({ type: "gutterpress:inject-styles", id, css }, this.expectedOrigin);
   }
+
+  /** Smooth-scroll the preview iframe to a specific page number (1-based). */
+  scrollToPage(page: number): Promise<{ ok: true }> {
+    return this.call("scrollToPage", [page]);
+  }
 }

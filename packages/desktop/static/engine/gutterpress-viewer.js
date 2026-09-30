@@ -2411,6 +2411,17 @@
         applySpreadMode(layout.strips, spreadOn);
         decoration.redraw();
         emit();
+      },
+      scrollToPage(page) {
+        const clamped = Math.max(1, Math.min(layout.totalPages, Math.round(page)));
+        const sheets = document.querySelectorAll(".gp-sheet[data-page]");
+        for (const sheet of sheets) {
+          if (parseInt(sheet.dataset.page, 10) === clamped) {
+            sheet.scrollIntoView({ block: "start", inline: "start", behavior: "smooth" });
+            return;
+          }
+        }
+        api.goto(clamped);
       }
     });
     let current = 0;
