@@ -497,16 +497,15 @@ describe("AppToolbar — deliberate collapse (#316)", () => {
 });
 
 describe("AppToolbar — relocated overflow-menu items stay reachable elsewhere", () => {
-  test("Focus has an editor-toolbar entry too, advanced setup lives in app Settings, template export in the export dialog", () => {
+  test("advanced setup lives in app Settings, template export in the export dialog", () => {
     const actions = read("src/lib/editor/toolbar-actions.ts");
-    expect(actions).toMatch(/id: "focus-mode"/);
-    expect(actions).toContain("Focus mode (Ctrl+Shift+F)");
+    expect(actions).not.toMatch(/id: "focus-mode"/);
     const settings = read("src/lib/components/SettingsView.svelte");
     expect(settings).toContain("<ConnectionsSettings {projectDir} />");
     const exportDialog = read("src/lib/components/ExportDialog.svelte");
     expect(exportDialog).toContain("template");
-    // +page routes the editor-toolbar action into Focus.
-    expect(page()).toMatch(/action === "focus-mode"[\s\S]{0,120}?setFocus\(true\)/);
+    // The app-toolbar toggle and the shortcut are Focus's only entry points.
+    expect(page()).not.toContain('action === "focus-mode"');
   });
 });
 

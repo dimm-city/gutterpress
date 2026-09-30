@@ -30,6 +30,9 @@ test("Focus is a toggle that swaps the app toolbar for the minimal bar and hides
   // The left panel is hidden by CSS so the PERSISTED open flag is never touched.
   expect(src).toContain("class:in-focus={inFocus}");
   expect(src).toMatch(/\.left-panel-region\.in-focus > :global\(\.left-panel\)/);
+  // Focus is dropped on close (resetExtras) and on book switch (onProjectSwitch).
+  expect(src).toContain("onProjectSwitch: () => setFocus(false),");
+  expect(src).toMatch(/resetExtras: \(\) => \{[\s\S]*?focus = false;/);
   // The preview is never hidden by Focus any more (Edit+Focus keeps it beside the editor).
   expect(src).not.toContain("previewVisible");
   expect(src).not.toContain("preview-collapsed");
@@ -165,7 +168,7 @@ test("M23: the Insert and More menus render rows from the shared item arrays thr
   const src = read("src/lib/components/EditorToolbar.svelte");
   // Every group array is filtered from the ONE visibleItems list…
   expect(src).toContain("visibleToolbarItems({ hasSave: !!onSave, desktop: isDesktop() })");
-  for (const group of ["save", "primary", "block", "insert", "view"]) {
+  for (const group of ["save", "primary", "block", "insert"]) {
     expect(src).toContain(`visibleItems.filter((i) => i.group === "${group}")`);
   }
   // …and both popups draw their rows from those arrays via the same
@@ -179,7 +182,6 @@ test("M23: the Insert and More menus render rows from the shared item arrays thr
   const morePopup = src.slice(morePopupIdx, src.indexOf("{/if}", morePopupIdx));
   expect(morePopup).toContain("{@render menuRows(blockItems, moreMenu)}");
   expect(morePopup).toContain("{@render menuRows(insertItems, moreMenu)}");
-  expect(morePopup).toContain("{@render menuRows(viewItems, moreMenu)}");
   // Guard against reverting to the old bugs: a second, hand-typed list of
   // buttons that called onAction directly and had already dropped Save and
   // Snippet by the time it was reviewed…
@@ -236,10 +238,10 @@ test("#311: \"…\" lists only what the toolbar hides — each More section is s
   if (!labelTier || !tailTier || !blockTier) throw new Error("expected label, tail and block tiers");
 
   // As the toolbar narrows: the Insert label drops first, then the Insert menu
-  // + Focus mode move into "…", then the block group (quote, lists, heading).
+  // moves into "…", then the block group (quote, lists, heading).
   expect(labelTier.maxWidth).toBeGreaterThan(tailTier.maxWidth);
   expect(tailTier.maxWidth).toBeGreaterThan(blockTier.maxWidth);
-  expect(tailTier.hidden.sort()).toEqual([".insert-group", ".sep-tail", ".view-group"]);
+  expect(tailTier.hidden.sort()).toEqual([".insert-group", ".sep-tail"]);
   expect(tailTier.shown.sort()).toEqual([".more-tail", ".tb-more-wrap"]);
   expect(blockTier.hidden.sort()).toEqual([".block-group", ".sep-block"]);
   expect(blockTier.shown).toEqual([".more-block"]);
@@ -275,7 +277,7 @@ test("#311: \"…\" lists only what the toolbar hides — each More section is s
 test("#311: every insert action sits behind ONE Insert menu button, so the toolbar keeps its shape when the left panel narrows the pane", () => {
   const src = read("src/lib/components/EditorToolbar.svelte");
   const groupStart = src.indexOf('<div class="tb-group insert-group">');
-  const groupEnd = src.indexOf("<!-- View group", groupStart);
+  const groupEnd = src.indexOf("<!-- \"More\" overflow button", groupStart);
   expect(groupStart).toBeGreaterThan(-1);
   expect(groupEnd).toBeGreaterThan(groupStart);
   const insertGroup = src.slice(groupStart, groupEnd);
@@ -290,16 +292,16 @@ test("#311: every insert action sits behind ONE Insert menu button, so the toolb
   expect(insertGroup).not.toContain("{#each insertItems");
   expect(insertGroup).not.toContain("openTableDialog");
 
-  // Focus mode is a posture toggle, not an insertion: it keeps its own direct
-  // button in the View group instead of a row in the Insert menu.
-  expect(src).toContain('<div class="tb-group view-group">');
-  expect(src).toContain("{#each viewItems as item (item.id)}");
+  // Focus is not an editor-toolbar item at all: the app toolbar's toggle and
+  // Ctrl+Shift+F are its only entry points.
+  expect(src).not.toContain("view-group");
+  expect(src).not.toContain("viewItems");
 });
 
 test("M11: the table-insert dialog is hoisted outside .insert-group, which is display:none at exactly the widths where the More menu exists", () => {
   const src = read("src/lib/components/EditorToolbar.svelte");
   const groupStart = src.indexOf('<div class="tb-group insert-group">');
-  const groupEnd = src.indexOf("<!-- View group", groupStart);
+  const groupEnd = src.indexOf("<!-- \"More\" overflow button", groupStart);
   expect(groupStart).toBeGreaterThan(-1);
   expect(groupEnd).toBeGreaterThan(groupStart);
   const insertGroupRegion = src.slice(groupStart, groupEnd);
@@ -696,7 +698,7 @@ test("a book opens in Edit by default; the left panel opens too unless the windo
   expect(page).not.toContain("panelPrefs?.open ?? false");
 });
 
-test("resetting the workspace restores the SAVED mode — it must not force Read and save it", () => {
+test("resetting the workspace drops Focus and never touches the SAVED mode — it must not force Read and save it", () => {
   const src = read("src/routes/+page.svelte");
   const idx = src.indexOf("resetExtras: () => {");
   expect(idx).toBeGreaterThan(-1);
@@ -704,8 +706,8 @@ test("resetting the workspace restores the SAVED mode — it must not force Read
   // A failed open, a cancelled open and a URL preview all reset the workspace.
   // `setMode` persists, so forcing "viewer" here turned a new writer's Edit
   // default into a saved Read after their first mistyped path.
-  expect(body).toContain("setMode(settings.current.preview.mode)");
-  expect(body).not.toContain('setMode("viewer")');
+  expect(body).toContain("focus = false;");
+  expect(body).not.toContain("setMode(");
 });
 
 test("the name/email notice needs version history AND a first save or sync, and says it in plain words", () => {

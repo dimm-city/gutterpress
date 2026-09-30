@@ -54,6 +54,7 @@ interface Harness {
     setPendingRestore: Spy<[unknown]>;
     getDesktopProjectState: Spy<[string]>;
     resetFirstRenderGate: Spy<[]>;
+    onProjectSwitch: Spy<[]>;
     flushBuffer: Spy<[]>;
     resetBuffer: Spy<[]>;
     ensureEditorFile: Spy<[]>;
@@ -95,6 +96,7 @@ function make(): Harness {
   const setSplitRatioSetting = spy<[number]>();
   const setPendingRestore = spy<[unknown]>();
   const resetFirstRenderGate = spy<[]>();
+  const onProjectSwitch = spy<[]>();
   const flushBuffer = spy<[]>();
   const resetBuffer = spy<[]>();
   const ensureEditorFile = spy<[]>();
@@ -120,6 +122,7 @@ function make(): Harness {
     setPendingRestore,
     getDesktopProjectState,
     resetFirstRenderGate,
+    onProjectSwitch,
     flushBuffer,
     resetBuffer,
     ensureEditorFile,
@@ -186,6 +189,7 @@ function make(): Harness {
       return Promise.resolve(state.projectStateByDir[dir] ?? null);
     },
     resetFirstRenderGate: () => resetFirstRenderGate(),
+    onProjectSwitch: () => onProjectSwitch(),
     flushBuffer: () => {
       flushBuffer();
       return state.flushImpl ? state.flushImpl() : Promise.resolve(state.flushResult);
@@ -364,6 +368,17 @@ test("a failed pre-navigation flush preserves the open project and never starts 
   expect(deps.startPreviewHost.calls).toHaveLength(0);
   expect(deps.resetBuffer.calls).toHaveLength(0);
   expect(deps.resetExtras.calls).toHaveLength(0);
+});
+
+test("onProjectSwitch fires when an open is committed (so Focus never follows the writer into the next book), but not when the pre-flush fails", async () => {
+  const ok = make();
+  await ok.ctrl.startFolderPreview("/proj");
+  expect(ok.deps.onProjectSwitch.calls).toHaveLength(1);
+
+  const blocked = make();
+  blocked.deps.flushResult = false;
+  await blocked.ctrl.startFolderPreview("/replacement");
+  expect(blocked.deps.onProjectSwitch.calls).toHaveLength(0);
 });
 
 // ── Rapid double-open (epoch supersede) ──────────────────────────────────────

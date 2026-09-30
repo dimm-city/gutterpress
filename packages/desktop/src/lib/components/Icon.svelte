@@ -72,7 +72,7 @@
     | "arrow-right"
     | "book-open"
     | "lightbulb"
-    // Editor-toolbar focus mode toggle
+    // App-toolbar Focus toggle
     | "maximize"
     // Source-files list drag handle
     | "grip-vertical";

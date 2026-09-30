@@ -565,6 +565,7 @@
       problemsError = null;
       logFilePath = null;
     },
+    onProjectSwitch: () => setFocus(false),
     resetExtras: () => {
       stopFolderWatch();
       pageNav.totalPages = 0;
@@ -572,10 +573,11 @@
       // A project closed while its settings view was up must not show that
       // view over the next project (or the empty workspace).
       projectSettingsOpen = false;
-      // Back to the SAVED layout — this only sheds the transient `focus`. A
-      // reset is not a choice: forcing Read here also saved it, so one failed
-      // open turned a new writer's Edit default into Read for good.
-      setMode(settings.current.preview.mode);
+      // Focus is per-book-session: closing drops it here (switching via
+      // onProjectSwitch), so the next book never opens chromeless. The saved
+      // mode is untouched (a reset is not a choice; forcing Read here once
+      // saved it for good).
+      focus = false;
       // A project closed while activity borrowed the editor must not reopen the
       // next project on that stale view.
       editorView = "editor";
@@ -2928,10 +2930,6 @@
               onAction={(action, payload) => {
                 if (action === "snippet") {
                   openSnippetPicker();
-                  return;
-                }
-                if (action === "focus-mode") {
-                  setFocus(true);
                   return;
                 }
                 editorRef?.runToolbarAction(action, payload);

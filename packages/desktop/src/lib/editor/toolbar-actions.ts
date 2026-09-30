@@ -481,11 +481,10 @@ export const LAYOUT_BLOCK_ITEMS: readonly LayoutBlockItem[] = [
 
 /**
  * Which section of the toolbar an item belongs to (the UX contract's
- * Format / Insert / View): "save", "primary" and "block" are the always-there
- * format controls; "insert" items live together in the Insert menu; "view"
- * items are editing-posture toggles that sit apart at the toolbar's right edge.
+ * Format / Insert): "save", "primary" and "block" are the always-there
+ * format controls; "insert" items live together in the Insert menu.
  */
-type ToolbarGroup = "save" | "primary" | "block" | "insert" | "view";
+type ToolbarGroup = "save" | "primary" | "block" | "insert";
 
 /**
  * How an item behaves when activated:
@@ -663,21 +662,6 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
     label: "Insert snippet",
     group: "insert",
     desktopOnly: true,
-  },
-  {
-    // A second way IN to Focus, beside the editing controls (the main
-    // toolbar's Focus toggle is the other). This bar is hidden while Focus is
-    // on, so it only ever enters; the minimal bar's Exit button, Esc or the
-    // shortcut leave. It is not an insertion, so it has its own "view" group
-    // instead of a row in the Insert menu.
-    id: "focus-mode",
-    kind: "action",
-    action: "focus-mode",
-    icon: "maximize",
-    title: "Focus mode (Ctrl+Shift+F)",
-    ariaLabel: "Toggle focus mode",
-    label: "Focus mode",
-    group: "view",
   },
 ];
 
