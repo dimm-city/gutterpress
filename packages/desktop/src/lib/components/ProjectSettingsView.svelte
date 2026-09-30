@@ -73,6 +73,7 @@
     onEditRawCss,
     onClose,
     onOpenAccounts,
+    onVersionHistoryEnabled,
   }: {
     projectDir: string | null;
     /** The repo the open book belongs to — lets the pickers offer SHARED styles. */
@@ -86,6 +87,8 @@
     /** Open the app Settings view on the Accounts tab (the parent closes
      *  this view first). Used by the Connections tab's guidance. */
     onOpenAccounts?: () => void;
+    /** The Connections tab just turned on version history: re-read the project's classification. */
+    onVersionHistoryEnabled?: (projectDir: string) => void;
   } = $props();
 
   // Covers the initial parallel load of all sections.
@@ -303,7 +306,7 @@
         <!-- This project's connection details (moved from the app Settings'
              Connections tab, 2026-07-30). Accounts/credentials stay global in
              Settings → Accounts; onOpenAccounts routes there. -->
-        <ProjectConnectionsSection {projectDir} {onOpenAccounts} />
+        <ProjectConnectionsSection {projectDir} {onOpenAccounts} {onVersionHistoryEnabled} />
       {/if}
     {/if}
   </div>

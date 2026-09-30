@@ -33,10 +33,10 @@
  *
  * `search` (#246) is a SEPARATE, quieter load than the three above: an npm
  * registry search for packages tagged `gutterpress` or `markdown-it-plugin`,
- * run over the network only when the Features view mounts (never at project
- * load) and whenever the author types a query. A fetch/parse failure surfaces
- * as `search.message` — one line, never an error toast — and never blocks
- * `entries`/`recommended`/`builtIns`.
+ * run over the network only when the Features view's Advanced section is
+ * first opened (never at project load) and whenever the author types a
+ * query. A fetch/parse failure surfaces as `search.message` — one line,
+ * never an error toast — and never blocks `entries`/`recommended`/`builtIns`.
  *
  * Removal never touches the author's files (a path entry's folder stays; an
  * npm entry's vendored copy — Gutterpress's own — is deleted), so it is a
@@ -119,9 +119,10 @@ export class ExtensionsSectionController {
   builtIns = $state<BuiltInStyleSet[]>([]);
   /**
    * npm search (#246) — the "Find more on npm" list beyond the bundled/
-   * built-in set. Run ON DEMAND when the Features view mounts and on every
-   * query the author submits, never at project load; a fetch failure is one
-   * quiet `message`, never a modal, and never blocks the rest of the panel.
+   * built-in set. Run ON DEMAND the first time the Features view's Advanced
+   * section opens and on every query the author submits, never at project
+   * load; a fetch failure is one quiet `message`, never a modal, and never
+   * blocks the rest of the panel.
    */
   search = $state<{
     status: "idle" | "loading" | "ready" | "error";
@@ -236,11 +237,11 @@ export class ExtensionsSectionController {
   };
 
   /**
-   * Search npm. Called with an empty query when the Features view mounts
-   * (never at project load) and with the author's query when they submit the
-   * box. Refuses to pile up a second in-flight search; a failure lands in
-   * `search.message`, not `this.error` — it must never block or blank the
-   * rest of the panel.
+   * Search npm. Called with an empty query the first time the Features view's
+   * Advanced section opens (never at project load) and with the author's query
+   * when they submit the box. Refuses to pile up a second in-flight search; a
+   * failure lands in `search.message`, not `this.error` — it must never block
+   * or blank the rest of the panel.
    */
   runSearch = async (query = this.searchQuery): Promise<void> => {
     if (this.search.status === "loading") return;

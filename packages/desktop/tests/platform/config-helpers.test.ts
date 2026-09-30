@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test";
 import {
+  describeSegments,
   extensionSourceLabel,
   extensionStatus,
   orderAfterMove,
@@ -46,6 +47,32 @@ test("extensionSourceLabel names the three sources", () => {
   expect(extensionSourceLabel(entry({ kind: "npm", use: "markdown-it-emoji", name: "markdown-it-emoji" }))).toBe("npm");
   expect(extensionSourceLabel(entry({ kind: "path", use: "./extensions/clean-book", name: "./extensions/clean-book" }))).toBe("extensions/clean-book");
   expect(extensionSourceLabel(entry({ kind: "path", use: "../shared/house", name: "../shared/house" }))).toBe("../shared/house");
+});
+
+// ── describeSegments (#309): "what to type" spans set in code type ─────────
+
+test("describeSegments marks the backtick spans of a feature description as code", () => {
+  expect(describeSegments("Subscript text with `H~2~O`.")).toEqual([
+    { text: "Subscript text with ", code: false },
+    { text: "H~2~O", code: true },
+    { text: ".", code: false },
+  ]);
+  // Two spans in one line, as the Highlight feature writes it.
+  expect(describeSegments("Highlighted text with `==marked==` -> `<mark>`.")).toEqual([
+    { text: "Highlighted text with ", code: false },
+    { text: "==marked==", code: true },
+    { text: " -> ", code: false },
+    { text: "<mark>", code: true },
+    { text: ".", code: false },
+  ]);
+});
+
+test("describeSegments leaves plain text alone, drops empty pieces, and never returns the backticks", () => {
+  expect(describeSegments("Nothing to type here.")).toEqual([{ text: "Nothing to type here.", code: false }]);
+  expect(describeSegments("`only code`")).toEqual([{ text: "only code", code: true }]);
+  expect(describeSegments("")).toEqual([]);
+  // An unbalanced trailing backtick still shows no stray backtick.
+  expect(describeSegments("Type `oops").map((s) => s.text).join("")).toBe("Type oops");
 });
 
 // ── orderAfterMove: a move inside one view, expressed as the full order ────
@@ -111,6 +138,8 @@ test("extensionStatus: an npm entry the lib flagged as not installed / not pinne
     const st = extensionStatus(e, validation, false);
     expect(st.label).toBe("Needs install");
     expect(st.kind).toBe("error");
+    // Install from npm lives behind the Features tab's Advanced disclosure (#309).
+    expect(st.detail).toContain("Advanced");
     expect(st.detail).toContain("Install from npm");
     expect(st.detail).toContain("markdown-it-footnote@4.0.0");
     expect(st.raw).toBe(warning);
