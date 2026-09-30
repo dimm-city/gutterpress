@@ -157,7 +157,7 @@
      row with other controls). */
   .tokens-title { margin: 0; font-size: 11px; font-weight: 600; color: var(--app-text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
   /* Label beside its control, so the label stays whole in a narrow panel (the
-     docked Project settings) and the input takes the squeeze instead. A font
+     docked Book settings) and the input takes the squeeze instead. A font
      row is too wide for that — select plus text input — so it stacks: label on
      top, controls full width below. A row's shape never depends on its dirty
      state, so the reset button appearing can't make a field jump mid-edit. */

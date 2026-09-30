@@ -4,7 +4,7 @@ import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 // The "turn a plain local-folder into a versioned project" half of the
-// CLAUDE.md §7 escape hatch. Project settings → Connections calls it for a
+// CLAUDE.md §7 escape hatch. Book settings → Connections calls it for a
 // plain folder (ProjectConnectionsSection, #310).
 
 // Local type — do NOT import from contract.ts or the lib (keeps SPA bundle clean).

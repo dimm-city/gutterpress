@@ -50,18 +50,18 @@ describe("ProjectsListBody — M20 error-vs-empty for recents/favorites", () => 
     expect(catchBlock).not.toMatch(/^\s*\}\s*catch\s*\{\s*\/\/ non-fatal\s*\}/);
   });
 
-  test("the empty-state branch checks lastLoadError BEFORE falling back to the 'No recent projects yet' hint", () => {
+  test("the empty-state branch checks lastLoadError BEFORE falling back to the 'No recent books yet' hint", () => {
     const src = readSource();
     const recentsSection = src.slice(
       src.indexOf('<h3 class="list-heading">Recently opened</h3>'),
       src.indexOf("</section>", src.indexOf('<h3 class="list-heading">Recently opened</h3>')),
     );
     const errorBranchIdx = recentsSection.indexOf("{:else if lastLoadError}");
-    const emptyHintIdx = recentsSection.indexOf("No recent projects yet");
+    const emptyHintIdx = recentsSection.indexOf("No recent books yet");
     expect(errorBranchIdx).toBeGreaterThan(-1);
     expect(emptyHintIdx).toBeGreaterThan(-1);
     // The lastLoadError branch must come first so a genuine failure never
-    // falls through to the "no projects yet" copy.
+    // falls through to the "no books yet" copy.
     expect(errorBranchIdx).toBeLessThan(emptyHintIdx);
   });
 
@@ -85,7 +85,7 @@ describe("ProjectsListBody — M20 error-vs-empty for recents/favorites", () => 
   test("a genuinely empty list (no error) still keeps the original copy", () => {
     const src = readSource();
     expect(src).toContain(
-      '<p class="empty-section-hint">No recent projects yet. Open a folder to get started.</p>',
+      '<p class="empty-section-hint">No recent books yet. Open a folder to get started.</p>',
     );
   });
 });
@@ -152,6 +152,6 @@ describe("ProjectsListBody — M20 error-vs-empty for the discover scan (surface
     // as before M20 (no regression to an always-visible empty Discovered box).
     const sectionIdx = src.indexOf('{#if filteredDiscovered.length > 0 || discoverError}');
     const section = src.slice(sectionIdx, src.indexOf("{/if}", src.indexOf("</section>", sectionIdx)));
-    expect(section).not.toMatch(/No (discovered )?projects (found|on disk)/i);
+    expect(section).not.toMatch(/No (discovered )?books (found|on disk)/i);
   });
 });

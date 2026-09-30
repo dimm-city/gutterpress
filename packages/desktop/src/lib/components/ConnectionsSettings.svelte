@@ -5,7 +5,7 @@
    * first — it sits directly under the author's name & email, the identity
    * it carries — then publishing accounts, then other Git servers. The open
    * project's sync diagnostics (the "This project" section) moved to
-   * Project settings → Connections (ProjectConnectionsSection.svelte,
+   * Book settings → Connections (ProjectConnectionsSection.svelte,
    * 2026-07-30); the diagnosis is still fetched here because the Git-server
    * connect form uses it for host prefill and repo-scoped validation.
    *
@@ -400,7 +400,7 @@
     <!-- Publishing accounts -->
     <section class="conn-group">
       <h4>Publishing accounts</h4>
-      <p class="hint">Accounts used to publish your books (itch.io, Azure Static Web Apps, Shopify, Google Drive…). Connected once and available to every project.</p>
+      <p class="hint">Accounts used to publish your books (itch.io, Azure Static Web Apps, Shopify, Google Drive…). Connected once and available to every book.</p>
       {#each publishEntries as entry (entry.host)}
         <div class="conn-row">
           <span class="conn-name">
@@ -453,7 +453,7 @@
           </p>
         {/if}
       {:else if !projectDir}
-        <p class="hint muted">Open a project to add a publishing key — the key is checked with the platform first, and some checks read the project's settings. Saved keys work across all projects.</p>
+        <p class="hint muted">Open a book to add a publishing key — the key is checked with the platform first, and some checks read the book's settings. Saved keys work across all books.</p>
       {/if}
       {#if selectedProvider?.tokenUrl}
         <p class="hint">Create a key at: <button class="inline-link" onclick={() => selectedProvider?.tokenUrl && api.shell.openExternal(selectedProvider.tokenUrl).catch(() => {})}>{selectedProvider.tokenUrl}</button></p>
@@ -539,9 +539,9 @@
           </dd>
           <dt>SSH addresses (git@…)</dt>
           <dd>
-            Projects opened from an SSH clone keep every local feature —
+            Books opened from an SSH clone keep every local feature —
             preview, snapshots, history, restore. Gutterpress can't sync over
-            SSH, so sync with your usual Git tool, or switch the project to
+            SSH, so sync with your usual Git tool, or switch the book to
             the web (HTTPS) address and connect the server here.
           </dd>
         </dl>

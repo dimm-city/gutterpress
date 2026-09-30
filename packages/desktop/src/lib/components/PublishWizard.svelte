@@ -566,7 +566,7 @@
     {:else}
       <!-- Publish step -->
       <p class="lead">
-        Publishing uses your project's latest build output. If you've changed the book,
+        Publishing uses your book's latest build output. If you've changed the book,
         use <strong>Export</strong> first, then publish.
       </p>
       {#if preflightMissing}

@@ -91,7 +91,7 @@ describe("ProjectConnectionsSection — git-backed projects are unchanged (#310)
   test("the no-remote guidance for a git folder keeps its original sentence", () => {
     const caseAt = script.indexOf('case "local-only":');
     expect(script.slice(caseAt, caseAt + 700)).toContain(
-      '"This project lives only on this computer. Everything works without a Git server."',
+      '"This book lives only on this computer. Everything works without a Git server."',
     );
     // ...and only a plain folder gets the version-history sentence instead.
     expect(script.slice(caseAt, caseAt + 200)).toContain("isPlainFolder");

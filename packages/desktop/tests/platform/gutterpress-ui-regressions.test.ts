@@ -118,7 +118,7 @@ test("app settings live ONLY on the start screen's Settings tab — no separate 
   const openBody = src.slice(openIdx, openIdx + 400);
   expect(openBody).toContain('landingRef?.showTab("settings")');
   expect(openBody).toContain("landingForcedOpen = true");
-  // Project settings keep their own view (docked beside the workspace).
+  // Book settings keep their own view (docked beside the workspace).
   expect(src).toContain('class="settings-global-view"');
 });
 
@@ -494,7 +494,7 @@ test("settings/help live in a bottom-right status toolbar and problems overlay w
   expect(page).toContain("onOpenHelp={openHelp}");
 });
 
-test("left sidebar has four content tabs (project settings moved to the full-screen view), each labelled under its icon", () => {
+test("left sidebar has four content tabs (book settings moved to the full-screen view), each labelled under its icon", () => {
   const src = read("src/lib/components/LeftPanel.svelte");
   expect(src).toContain('export type PanelTab = "projects" | "toc" | "files" | "media"');
   expect(src).not.toContain("ProjectConfigPanel");

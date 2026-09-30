@@ -174,7 +174,7 @@ describe("AppToolbar — action order: Publish, Export, Save", () => {
     expect(src).toMatch(/save-btn[\s\S]{0,400}?onclick=\{[^}]*onSave/);
   });
 
-  test("the Project settings button sits beside the view controls (and stays reachable on narrow layouts)", () => {
+  test("the Book settings button sits beside the view controls (and stays reachable on narrow layouts)", () => {
     const src = toolbar();
     const zoomIdx = src.indexOf('class="menu zoom-menu"');
     const settingsIdx = src.indexOf('class="icon-btn project-settings-btn"');

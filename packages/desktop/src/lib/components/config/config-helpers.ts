@@ -170,7 +170,7 @@ export function extensionStatus(
     return {
       label: "Needs install",
       kind: "error",
-      detail: `This project's downloaded copy is missing. Open Advanced on the Features tab, enter ${entry.use} under Install from npm, then click Re-check.`,
+      detail: `This book's downloaded copy is missing. Open Advanced on the Features tab, enter ${entry.use} under Install from npm, then click Re-check.`,
       raw: needsInstall,
     };
   }

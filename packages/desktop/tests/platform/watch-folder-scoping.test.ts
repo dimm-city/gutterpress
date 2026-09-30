@@ -129,7 +129,7 @@ test("(b) fs/read-file: a directory merely watched outside the active workspace 
     } as Parameters<typeof readFileRoute>[0]),
   );
   expect(status).toBe(403);
-  expect(message).toBe("fs:readFile: path is outside the open project");
+  expect(message).toBe("fs:readFile: path is outside the open book");
 });
 
 // ── (c) fs:watchFolder rejects a dirPath that isn't the active preview ─────

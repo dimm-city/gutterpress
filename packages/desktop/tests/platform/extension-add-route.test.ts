@@ -56,7 +56,7 @@ describe("POST /api/extension/add", () => {
 
   test("rejects an outside directory before showing the trust prompt", async () => {
     const result = await caught(call({ projectDir: outsideDir, specifier: "markdown-it-highlightjs" }));
-    expect(result).toEqual({ status: 403, message: "extension/add: path is outside the open project" });
+    expect(result).toEqual({ status: 403, message: "extension/add: path is outside the open book" });
     expect(confirmations).toEqual([]);
   });
 
@@ -106,7 +106,7 @@ describe("POST /api/extension/add", () => {
   test("refuses a relative path that escapes the open project (403)", async () => {
     await writeFile(path.join(outsideDir, "plugin.js"), "export default function () {}\n", "utf8");
     const result = await caught(call({ projectDir, specifier: "../outside/plugin.js" }));
-    expect(result).toEqual({ status: 403, message: "extension/add: path is outside the open project" });
+    expect(result).toEqual({ status: 403, message: "extension/add: path is outside the open book" });
   });
 
   test("references an in-project path in place — written relative, nothing copied", async () => {

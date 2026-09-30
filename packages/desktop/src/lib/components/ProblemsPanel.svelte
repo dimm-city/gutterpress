@@ -104,7 +104,7 @@
   // Polite live region: announce error/warning counts when lint completes.
   let lintAnnouncement = $derived.by<string>(() => {
     if (loading) return "";
-    if (error) return "Problems: we couldn't check your project this time";
+    if (error) return "Problems: we couldn't check your book this time";
     const summary = problemsSummary(problemCounts(problems));
     return summary ? `Problems: ${summary}` : "";
   });
@@ -169,7 +169,7 @@
       <div class="empty-state" role="status">
         <span class="empty-icon"><Icon name="circle-check" size={18} /></span>
         <p class="empty-text">
-          {loading ? "Checking your project…" : "No problems found — your project looks good!"}
+          {loading ? "Checking your book…" : "No problems found — your book looks good!"}
         </p>
       </div>
     {:else}

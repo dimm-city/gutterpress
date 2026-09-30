@@ -161,7 +161,7 @@
     }
   }
   // The explanation for tools a CHECKED destination needs but this computer
-  // lacks — shared verbatim with project settings.
+  // lacks — shared verbatim with book settings.
   let targetToolGap = $derived(
     toolGapMessage(missingToolsForTargets(effectiveTargets, missingTools))
   );
@@ -377,7 +377,7 @@
 
   async function chooseLocation() {
     if (!isDesktop()) {
-      error = "Creating a project needs the desktop app.";
+      error = "Creating a book needs the desktop app.";
       return;
     }
     error = null;
@@ -431,7 +431,7 @@
 
   async function create() {
     if (!isDesktop()) {
-      error = "Creating a project needs the desktop app.";
+      error = "Creating a book needs the desktop app.";
       return;
     }
     if (!parentDir) {
@@ -549,7 +549,7 @@
         {#if templates.length > 0}
           <div class="field">
             <span>Start from a template</span>
-            <div class="template-list" role="radiogroup" aria-label="Project template">
+            <div class="template-list" role="radiogroup" aria-label="Book template">
               {#each templates as tpl (tpl.kind + ":" + tpl.id)}
                 {@const picked = selectedTemplate?.id === tpl.id && selectedTemplate?.kind === tpl.kind}
                 <label class="template-card" class:selected={picked}>

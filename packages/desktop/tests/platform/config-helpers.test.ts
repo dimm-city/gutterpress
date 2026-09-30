@@ -52,18 +52,18 @@ test("extensionSourceLabel names the three sources", () => {
 // ── describeSegments (#309): "what to type" spans set in code type ─────────
 
 test("describeSegments marks the backtick spans of a feature description as code", () => {
-  expect(describeSegments("Subscript text with `H~2~O`.")).toEqual([
-    { text: "Subscript text with ", code: false },
+  expect(describeSegments("Lower text below the line, like the 2 in `H~2~O`.")).toEqual([
+    { text: "Lower text below the line, like the 2 in ", code: false },
     { text: "H~2~O", code: true },
     { text: ".", code: false },
   ]);
-  // Two spans in one line, as the Highlight feature writes it.
-  expect(describeSegments("Highlighted text with `==marked==` -> `<mark>`.")).toEqual([
-    { text: "Highlighted text with ", code: false },
-    { text: "==marked==", code: true },
-    { text: " -> ", code: false },
-    { text: "<mark>", code: true },
-    { text: ".", code: false },
+  // Two spans in one line, as the Callouts feature writes it.
+  expect(describeSegments("Start a quote with `> [!NOTE]` (or `TIP`).")).toEqual([
+    { text: "Start a quote with ", code: false },
+    { text: "> [!NOTE]", code: true },
+    { text: " (or ", code: false },
+    { text: "TIP", code: true },
+    { text: ").", code: false },
   ]);
 });
 

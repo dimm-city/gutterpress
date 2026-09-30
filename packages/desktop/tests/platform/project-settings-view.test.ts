@@ -1,6 +1,6 @@
 /**
- * Source-level tests for the Project settings view (toolbar-refactor):
- * project settings moved OUT of the left sidebar's Config tab into a
+ * Source-level tests for the Book settings view (toolbar-refactor):
+ * book settings moved OUT of the left sidebar's Config tab into a
  * full-screen view patterned after the app SettingsView, for a friendlier
  * layout when managing the project manifest.
  *
@@ -39,8 +39,8 @@ const page = () => read("src/routes/+page.svelte");
 describe("ProjectSettingsView — SettingsView-patterned full view", () => {
   test("has the settings-view frame: header, title, close button", () => {
     const src = view();
-    expect(src).toContain("Project settings");
-    expect(src).toMatch(/aria-label="Close project settings"/);
+    expect(src).toContain("Book settings");
+    expect(src).toMatch(/aria-label="Close book settings"/);
     expect(src).toMatch(/<Icon name="x"/);
   });
 
@@ -163,7 +163,7 @@ describe("+page.svelte — docked mount, teardown, prefs migration", () => {
   test("mounts ProjectSettingsView as the settings-global-view panel and remounts per project", () => {
     const src = page();
     expect(src).toContain('import ProjectSettingsView from "$lib/components/ProjectSettingsView.svelte"');
-    const mountIdx = src.indexOf('aria-label="Project settings"');
+    const mountIdx = src.indexOf('aria-label="Book settings"');
     expect(mountIdx).toBeGreaterThan(-1);
     const mount = src.slice(Math.max(0, mountIdx - 300), mountIdx + 800);
     expect(mount).toContain('class="settings-global-view"');
@@ -199,7 +199,7 @@ describe("+page.svelte — docked mount, teardown, prefs migration", () => {
     expect(body).toMatch(/if \(projectSettingsOpen\) \{[\s\S]{0,300}?closeProjectSettings\(\);[\s\S]{0,100}?return;/);
     expect(body.indexOf("if (projectSettingsOpen)")).toBeLessThan(body.indexOf("resolveGlobalShortcut"));
     // Preview paging/zoom keys must not act on the (inert) preview beside the
-    // project settings panel (app settings live on the start screen,
+    // book settings panel (app settings live on the start screen,
     // which the landingVisible guard above already covers).
     const navIdx = src.indexOf("function onPreviewNavKey");
     expect(src.slice(navIdx, navIdx + 700)).toContain("if (projectSettingsOpen) return;");
@@ -216,7 +216,7 @@ describe("+page.svelte — docked mount, teardown, prefs migration", () => {
   });
 });
 
-describe("+page.svelte — Project settings docks beside the live preview (#308)", () => {
+describe("+page.svelte — Book settings docks beside the live preview (#308)", () => {
   // The preview already re-renders as soon as a stylesheet is written (the
   // folder watcher rebuilds it); it was only hidden under an opaque full-window
   // sheet. So the fix is presentational: dock the panel and let the app shrink.
@@ -239,11 +239,11 @@ describe("+page.svelte — Project settings docks beside the live preview (#308)
     expect(narrow).toMatch(/\.app-root\.settings-docked\s*\{\s*margin-right:\s*0/);
   });
 
-  test("no copy tells the writer to close Project settings to see the preview", () => {
+  test("no copy tells the writer to close Book settings to see the preview", () => {
     const design = read("src/lib/components/config/DesignSection.svelte");
-    expect(design).not.toContain("close Project settings");
+    expect(design).not.toContain("close Book settings");
     expect(design).toContain("the preview updates live");
-    expect(view()).not.toContain("close Project settings to see");
+    expect(view()).not.toContain("close Book settings to see");
   });
 
   test("the panel width is one shared token that the Look tab's hover flyout also honours", () => {

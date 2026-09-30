@@ -40,11 +40,11 @@ const SOURCE_LABELS: Record<string, string> = {
   // authority — preflight must not maintain a second, drifting label map.
   "asset.image.file-size": "Image file size",
   "asset.image.resolution": "Image resolution",
-  "asset.image.color-space": "Image colour space",
+  "asset.image.color-space": "Image color space",
   "asset.image.alpha-channel": "Image transparency",
   "asset.image.tac-raster": "Image ink coverage",
   "asset.font.approved-files": "Font files",
-  "asset.font.license": "Font licence",
+  "asset.font.license": "Font license",
   // Print-quality findings from the render itself (native engine). These are
   // things only pagination can know — nothing in the source files is wrong,
   // so they cannot come from a source lint. Kept in the same table so
@@ -180,7 +180,7 @@ export function groupProblems(problems: ProblemEntry[]): ProblemGroup[] {
     const key = p.file ?? "";
     let g = groups.get(key);
     if (!g) {
-      g = { file: p.file ?? "Project", filePath: p.filePath, entries: [] };
+      g = { file: p.file ?? "Book", filePath: p.filePath, entries: [] };
       groups.set(key, g);
     }
     g.entries.push(p);

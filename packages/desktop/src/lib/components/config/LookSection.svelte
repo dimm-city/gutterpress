@@ -36,8 +36,8 @@
 
   function removeTitle(e: ProjectExtensionEntry): string {
     return e.kind === "npm"
-      ? "Remove from this project (deletes its downloaded copy)"
-      : "Remove from this project (the folder stays on disk)";
+      ? "Remove from this book (deletes its downloaded copy)"
+      : "Remove from this book (the folder stays on disk)";
   }
 </script>
 
@@ -113,7 +113,7 @@
   {/if}
 
   <h4 class="subhead">Built-in looks</h4>
-  <p class="hint">Use one and it's copied into your project's <code>extensions</code> folder as your own files, ready to fine-tune under Design.</p>
+  <p class="hint">Use one and it's copied into your book's <code>extensions</code> folder as your own files, ready to fine-tune under Design.</p>
   <ul class="theme-grid">
     {#each controller.builtIns as b (b.id)}
       <li class="theme-card">
@@ -134,7 +134,7 @@
   </ul>
 
   <div class="actions row">
-    <button class="ghost small" onclick={controller.importFile} disabled={controller.busy !== null} title="Import an extension package (.zip) or a stylesheet (.css) into this project">
+    <button class="ghost small" onclick={controller.importFile} disabled={controller.busy !== null} title="Import an extension package (.zip) or a stylesheet (.css) into this book">
       <Icon name="cloud-upload" size={13} /> Import a look (.zip/.css)...
     </button>
     <button class="ghost small" onclick={controller.addLocal} disabled={controller.busy !== null} title="Add a folder on disk — it is used where it is, not copied">
@@ -231,7 +231,7 @@
 
   /* #106: enlarged fixed 2-page sample spread shown while hovering a row. It is
      a decorative overlay (pointer-events:none) pinned just left of the docked
-     Project settings panel, over the live preview. */
+     Book settings panel, over the live preview. */
   .hover-preview {
     position: fixed; right: calc(var(--app-settings-panel-width) + 16px); top: 50%; transform: translateY(-50%);
     width: 360px; max-width: 42vw; aspect-ratio: 3 / 2;

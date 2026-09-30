@@ -20,7 +20,7 @@ const root = path.resolve(import.meta.dir, "../..");
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), "utf8");
 const landing = read("src/lib/components/WelcomeLanding.svelte");
 
-describe("the landing OPENS on Projects", () => {
+describe("the landing OPENS on Books", () => {
   test("`activeTab` initialises to projects", () => {
     expect(landing).toMatch(/let activeTab = \$state<LandingTab>\("projects"\)/);
   });
@@ -32,14 +32,14 @@ describe("the landing OPENS on Projects", () => {
     // instead of their books. The missing-identity nudge is the workspace
     // banner (`needsGitIdentity`), not the front door. `showTab` may only be
     // called from an explicit user action (the help button, openSettings,
-    // the Projects panel's "Welcome screen").
+    // the Books panel's "Welcome screen").
     const page = read("src/routes/+page.svelte");
     expect(page).not.toMatch(/onMount\([\s\S]{0,600}?showTab\(/);
     expect(page).not.toContain('landingSettingsTab = "connections"');
   });
 });
 
-describe("the landing returns to Projects after it is dismissed", () => {
+describe("the landing returns to Books after it is dismissed", () => {
   test("the outro-end handler resets the tab", () => {
     expect(landing).toMatch(/function onOutroEnd\(\)\s*\{\s*activeTab = "projects";/);
   });
@@ -90,14 +90,14 @@ describe("the Logs tab (diagnostic sharing)", () => {
   });
 });
 
-describe("the left panel's Projects tab can reopen the welcome screen", () => {
+describe("the left panel's Books tab can reopen the welcome screen", () => {
   test("ProjectsListBody offers the action ONLY when the host passes it", () => {
     const body = read("src/lib/components/ProjectsListBody.svelte");
     expect(body).toContain("onShowWelcome");
     expect(body).toContain("Welcome screen");
   });
 
-  test("+page wires it to the landing (forced open on the Projects tab)", () => {
+  test("+page wires it to the landing (forced open on the Books tab)", () => {
     const page = read("src/routes/+page.svelte");
     expect(page).toMatch(/onShowWelcome=\{\(\) => \{[\s\S]{0,200}landingForcedOpen = true;/);
     // The start screen's own embedded ProjectsListBody must NOT get the

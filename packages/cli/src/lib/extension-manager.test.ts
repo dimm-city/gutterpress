@@ -338,4 +338,15 @@ describe("extension-manager", () => {
   test("RECOMMENDED_EXTENSIONS are exactly the bundled names", () => {
     expect(RECOMMENDED_EXTENSIONS.map((r) => r.use).sort()).toEqual([...BUNDLED_EXTENSIONS].sort());
   });
+
+  test("RECOMMENDED_EXTENSIONS descriptions are plain words with paired backtick spans, no HTML tags", () => {
+    for (const rec of RECOMMENDED_EXTENSIONS) {
+      // The desktop splits on backticks and sets odd-numbered pieces in code
+      // type, so an unpaired backtick would render as the wrong text.
+      expect(rec.description.split("`").length % 2).toBe(1);
+      // Writers type markdown, not HTML: the description must not talk in tags.
+      expect(rec.description).not.toMatch(/<\/?[a-z][a-z0-9]*>/i);
+      expect(rec.description).not.toContain("->");
+    }
+  });
 });

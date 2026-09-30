@@ -27,7 +27,7 @@ describe("Settings — 'Saving & recovery' group with writer-friendly labels (#2
     expect(dialog).toContain("Saving &amp; recovery");
     expect(dialog).toContain("Save edits automatically");
     expect(dialog).toContain("Keep previous versions");
-    expect(dialog).toContain("Keep this project backed up online");
+    expect(dialog).toContain("Keep this book backed up online");
   });
   test("the online-backup switch is disabled with a hint when previous versions is off", () => {
     expect(dialog).toContain('disabled={!s.versionHistory.autoSnapshot}');
@@ -76,7 +76,7 @@ describe("Settings — 'Saving & recovery' group with writer-friendly labels (#2
 describe("Settings — copy switcher uses 'copy', never 'branch' (#273)", () => {
   const dialog = read("src/lib/components/SettingsView.svelte");
   test("the row names the current copy and offers a switcher", () => {
-    expect(dialog).toContain("Copy of this project you're working on");
+    expect(dialog).toContain("Copy of this book you're working on");
     expect(dialog).toContain("Switch to another copy");
     expect(dialog).toContain('"Switching…" : "Switch"');
   });
@@ -184,7 +184,7 @@ describe("Status bar — one calm state opening a 3-row protection summary", () 
     // so a syncing/up-to-date project never wrongly reads "not set up".
     expect(status).toContain("liveSyncState");
     expect(status).toContain("onSyncState={(s) => (liveSyncState = s)}");
-    expect(status).not.toContain('canSync ? "Kept up to date in the background" : "Not set up for this project"');
+    expect(status).not.toContain('canSync ? "Kept up to date in the background" : "Not set up for this book"');
     // The pill surfaces every transition upward.
     expect(pill).toContain("onSyncState?.(status.state)");
   });

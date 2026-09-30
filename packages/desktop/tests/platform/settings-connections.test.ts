@@ -133,7 +133,7 @@ describe("Connections tab — central credential management", () => {
   });
   test("adding a publishing key uses verify-before-store and asks for an open project", () => {
     expect(conn).toContain("api.publish.connect(projectDir, pubProviderId, pubToken");
-    expect(conn).toContain("Open a project to add a publishing key");
+    expect(conn).toContain("Open a book to add a publishing key");
   });
   test("stays $effect-free (CLAUDE.md §8) — load happens onMount", () => {
     expect(conn).not.toContain("$effect(");
@@ -203,7 +203,7 @@ describe("Advanced setup consolidated into the Connections tab (owner request 20
     expect(conn).toContain('"https-connect-server"');
   });
 
-  test("project diagnostics + Test remote access live on Project settings > Connections", () => {
+  test("project diagnostics + Test remote access live on Book settings > Connections", () => {
     // Moved out of the app-level Accounts tab (2026-07-30): the diagnosis is
     // about ONE project, so it renders as ProjectSettingsView's Connections
     // tab. ConnectionsSettings keeps fetching the diagnosis for its

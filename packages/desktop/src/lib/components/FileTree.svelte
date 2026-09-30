@@ -614,7 +614,7 @@
   </li>
 {/snippet}
 
-<nav class="file-tree" aria-label="Project files">
+<nav class="file-tree" aria-label="Book files">
   {#if projectDir}
     <div class="tree-toolbar">
       <button

@@ -175,7 +175,7 @@ async function press(name) {
 }
 await send("Page.bringToFront");
 
-// ── 4. open the seeded fixture via the left panel Projects tab ───────────────
+// ── 4. open the seeded fixture via the left panel Books tab ──────────────────
 let spaReady = false;
 for (let i = 0; i < 60; i++) {
   if (await evalJs(`!!document.querySelector('button[aria-label="Toggle left panel"]')`)) { spaReady = true; break; }
@@ -183,7 +183,7 @@ for (let i = 0; i < 60; i++) {
 }
 if (!spaReady) fail("SPA never became interactive (left panel toggle not found in 60s)");
 
-// Wait for the Projects tab to auto-open (it opens when no project is loaded)
+// Wait for the Books tab to auto-open (it opens when no book is loaded)
 let panelReady = false;
 for (let i = 0; i < 20; i++) {
   const hasInput = await evalJs(`!!document.querySelector('.projects-body .location-input')`);
@@ -195,7 +195,7 @@ if (!panelReady) {
   await sleep(500);
   await evalJs(`(() => {
     const tabs = [...document.querySelectorAll('.panel-tab')];
-    const t = tabs.find(b => b.textContent.trim().toUpperCase().includes('PROJECTS'));
+    const t = tabs.find(b => b.textContent.trim().toUpperCase().includes('BOOKS'));
     if (t) t.click();
     return !!t;
   })()`);
@@ -213,7 +213,7 @@ await evalJs(`(async () => {
   inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   return true;
 })()`);
-log("projects panel driven; waiting for project to open…");
+log("books panel driven; waiting for book to open…");
 
 // Wait for the Contents outline to populate — same signal the editor-dropdown-sync
 // test uses (120s). This fires once markdown-it has parsed the files and the
@@ -465,7 +465,7 @@ if (!bar.stripLabel) fail("Problems toggle has no accessible name");
 
 // ── 10. #307: at 700px the left-panel drawer overlays the workspace but stops
 // at the status bar's top edge. It used to be viewport-fixed with bottom:0, so
-// it ran underneath the bar and hid its own footer buttons (New project).
+// it ran underneath the bar and hid its own footer buttons (New book).
 await evalJs(`(() => {
   if (!document.querySelector('.left-panel.open')) {
     document.querySelector('button[aria-label="Toggle left panel"]').click();

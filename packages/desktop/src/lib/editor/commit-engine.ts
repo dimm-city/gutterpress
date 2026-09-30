@@ -180,7 +180,7 @@ export class CommitEngine {
     // value is untrusted (see isSafeChapterId's comment), so validate its
     // shape before it is ever joined onto the project directory.
     const dir = this.deps.currentDir();
-    if (!dir) return fail("no-project", "No project is open.");
+    if (!dir) return fail("no-project", "No book is open.");
     if (!isSafeChapterId(patch.chapter)) {
       return fail("unsafe-chapter-path", "This block's chapter reference looks invalid.");
     }

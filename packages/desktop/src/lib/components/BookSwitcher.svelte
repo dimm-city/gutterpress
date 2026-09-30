@@ -51,7 +51,7 @@
     <Icon name={open ? "chevron-up" : "chevron-down"} size={12} />
   </button>
   {#if open}
-    <ul class="book-switcher-list" aria-label="Books in this project">
+    <ul class="book-switcher-list" aria-label="Books in this folder">
       {#each books as book (book.path)}
         <li>
           <button
