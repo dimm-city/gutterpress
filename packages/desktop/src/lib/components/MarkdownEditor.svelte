@@ -572,7 +572,7 @@
     --cm-selection: light-dark(rgba(9, 105, 218, 0.18), rgba(92, 179, 255, 0.28));
     --cm-active-line: light-dark(rgba(27, 31, 36, 0.045), rgba(255, 255, 255, 0.05));
     --cm-gutter-bg: var(--app-surface);
-    --cm-gutter-text: light-dark(#8c959f, #6b7280);
+    --cm-gutter-text: var(--app-text-muted);
     --cm-bracket-bg: light-dark(rgba(9, 105, 218, 0.14), rgba(92, 179, 255, 0.18));
     --cm-bracket-outline: light-dark(rgba(9, 105, 218, 0.45), rgba(92, 179, 255, 0.5));
   }

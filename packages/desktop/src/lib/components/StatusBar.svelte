@@ -404,7 +404,7 @@
   </div>
 
   <div class="shell-actions" aria-label="Application actions">
-    <button class="status-icon-btn" onclick={() => onOpenSettings?.()} title="Settings (Ctrl+,)" aria-label="Settings">
+    <button class="status-icon-btn" onclick={() => onOpenSettings?.()} title="App preferences (Ctrl+,)" aria-label="App preferences">
       <Icon name="settings" size={14} />
     </button>
     <button class="status-icon-btn" onclick={onOpenHelp} title="Help and about" aria-label="Help and about">
@@ -500,7 +500,10 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 2px;
+    /* 14px glyph + 5px padding = 24x24 hit area (WCAG 2.5.8); the -3px margin
+       keeps the layout footprint at the old 18x18 so the bar height is unchanged. */
+    padding: 5px;
+    margin: -3px;
     border: none;
     background: transparent;
     color: var(--app-text-secondary);

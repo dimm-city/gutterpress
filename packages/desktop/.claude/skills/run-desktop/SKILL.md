@@ -48,7 +48,7 @@ Commands: `shot name`, `click sel`, `fill sel | value`, `press Key`, `size w h`,
 `text` (dump body text), `btns` (visible controls with x,y,w,h), `eval js`.
 Failed commands print `FAIL ...` and the script continues. Pass `""` as the book dir to stay on the welcome screen.
 Useful selectors: `[aria-label='Project settings']`, `[aria-label='Close project settings']`,
-`[aria-label='Settings']` (app settings, status bar), `[aria-label='Help and about']`, `button:has-text('Publish')`,
+`[aria-label='App preferences']` (app settings, status bar), `[aria-label='Help and about']`, `button:has-text('Publish')`,
 `button:has-text('PROBLEMS')`, `button:has-text('New project')`.
 
 ## Human path
