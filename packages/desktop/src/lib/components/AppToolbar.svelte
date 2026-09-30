@@ -18,11 +18,19 @@
    *  - `container-type: inline-size` + four documented @container stages
    *    collapse progressively by the toolbar's OWN width (not the viewport),
    *    with thresholds derived from the measured cluster widths so the middle
-   *    track always has room for the page nav:
-   *      ≤1150px  Edit/Read/Focus segmented group → dropdown menu
-   *      ≤1000px  button text labels drop (icon-only), title/path trim
-   *      ≤900px   page nav compacts (first/last jump buttons drop)
-   *      ≤620px   title/path, mode/zoom menus, separators, hints drop
+   *    track always has room for the page nav. Least important goes first, and
+   *    every control that turns icon-only keeps its aria-label and tooltip.
+   *    The container is the toolbar's content box (window width − 24px), so a
+   *    900px window measures 876px:
+   *      ≤1150px  Edit/Read/Focus segmented group → dropdown menu, Save drops
+   *               its text label, export hints drop
+   *      ≤875px   Publish/Export drop their text labels, page nav loses its
+   *               first/last jump buttons, path trims
+   *      ≤760px   the page-number select drops (prev/next stay), title trims
+   *      ≤620px   page nav, title/path, mode/zoom menus, separators, hints drop
+   *    The narrow layout (≤820px window) adds the pane tabs to the end cluster;
+   *    the ≤760px stage is what keeps prev/next clear of it (touch, whose 44px
+   *    targets cannot spare the room, keeps the old no-page-nav behavior).
    *  - `(pointer: coarse)` keeps ≥44×44px touch targets on touch devices
    *    without fattening the desktop layout.
    *
@@ -183,7 +191,7 @@
   }
 </script>
 
-<header class="toolbar" class:edit-narrow={hidePreviewControls} class:url-mode={sourceMode === "url"}>
+<header class="toolbar" class:narrow={isNarrow} class:edit-narrow={hidePreviewControls} class:url-mode={sourceMode === "url"}>
   <div class="toolbar-start">
     <!-- Panel toggle — far left, first control in navbar -->
     <button
@@ -458,13 +466,15 @@
          unclear. No overflow menu: focus mode is a segment of the mode
          control, advanced setup lives in the app Settings view,
          save-as-template in the export dialog, and project settings beside the
-         mode control above. -->
+         mode control above. Both keep their aria-label when the text label
+         drops at narrow widths. -->
     {#if publishVisible}
       <button
         class="publish-btn icon-text"
         onclick={onPublish}
         disabled={publishDisabled}
         title="Publish your book to itch.io, KDP, Shopify and more"
+        aria-label="Publish"
       >
         <Icon name="cloud-upload" />
         <span class="btn-label">Publish</span>
@@ -478,6 +488,7 @@
       onclick={onOpenExport}
       disabled={exportDisabled}
       title="Export (choose format and settings)"
+      aria-label={exporting ? "Exporting…" : "Export"}
     >
       <Icon name="file-down" />
       <span class="btn-label">{exporting ? "Exporting…" : "Export"}</span>
@@ -859,33 +870,47 @@
   .toolbar.url-mode .mode-group,
   .toolbar.url-mode details.mode-menu { display: none; }
   .toolbar.url-mode .save-hint { display: none; }
+  /* Publish is disabled for a URL source, so its label is the first to yield. */
+  .toolbar.url-mode .publish-btn .btn-label { display: none; }
 
   /* ---- Collapse stages (see the header comment for the full table) ---- */
   @container (max-width: 1150px) {
-    /* Swap the inline view-mode buttons for the compact menu button; the
-       export hints yield to the page nav from here down. */
+    /* Swap the inline view-mode buttons for the compact menu button; Save
+       drops its text label (icon, tooltip and aria-label stay) and the export
+       hints yield to the page nav from here down. */
     .mode-group { display: none; }
     details.mode-menu { display: inline-block; }
     .save-hint { display: none; }
-    .path { max-width: 140px; }
-  }
-  @container (max-width: 1000px) {
-    /* Icon-only buttons: labels drop, aria-label/title keep them accessible. */
-    .view-label { display: none; }
-    .btn-label { display: none; }
-    .doc-title { max-width: 140px; }
+    .save-btn .btn-label { display: none; }
+    /* The title ellipsizes (full text in its tooltip); the page nav must not
+       clip, and a 3-digit page count widens it by ~15px. */
+    .doc-title { max-width: 120px; }
     .path { max-width: 100px; }
   }
-  @container (max-width: 900px) {
-    /* Compact page navigation: drop the first/last jump buttons; the path
-       (URL mode) yields entirely, and the URL title with it. */
+  @container (max-width: 875px) {
+    /* Icon-only Publish/Export (aria-label/title keep them accessible; 875
+       is what keeps their labels on a 900px window) and compact page
+       navigation: the first/last jump buttons drop, and the path (URL mode)
+       yields entirely, the URL title with it. */
+    .view-label { display: none; }
+    .btn-label { display: none; }
     .nav-first,
     .nav-last { display: none; }
     .page-select { min-width: 64px; }
     .path { display: none; }
     .toolbar.url-mode .doc-title { display: none; }
   }
+  @container (max-width: 760px) {
+    /* The narrow layout adds the pane tabs to the end cluster: the page-number
+       select yields so prev/next stay clear of it, and the title trims. */
+    .page-select { display: none; }
+    .doc-title { max-width: 64px; }
+  }
   @container (max-width: 620px) {
+    /* Phone floor: below ~470px not even prev/next fit beside the end
+       cluster, and display:none (not clipping) keeps the hidden buttons out of
+       the tab order. */
+    .page-nav,
     .doc-title,
     .path,
     .toolbar-sep,
@@ -910,6 +935,12 @@
     .toolbar .primary {
       min-width: 44px;
       min-height: 44px;
+    }
+    /* The narrow layout's pane tabs plus 44px targets leave no room for the
+       page nav (it clipped at 700–820px), so touch keeps its old behavior
+       there: no nav — pages scroll. The desktop's narrow layout shows it. */
+    .toolbar.narrow .page-nav {
+      display: none;
     }
     .toolbar .icon-btn,
     .toolbar .menu-summary {

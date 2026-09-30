@@ -2743,7 +2743,7 @@
     onOpenInBrowser={openInBrowser}
     {pageNav}
     rendering={lifecycle.rendering}
-    showPageNav={!!lifecycle.previewUrl && !isNarrow}
+    showPageNav={!!lifecycle.previewUrl}
     {isNarrow}
     {mobileTab}
     onSelectMobileTab={selectMobileTab}

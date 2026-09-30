@@ -32,6 +32,23 @@ const read = (rel: string) => fs.readFileSync(path.join(root, rel), "utf-8");
 const toolbar = () => read("src/lib/components/AppToolbar.svelte");
 const page = () => read("src/routes/+page.svelte");
 
+/** `@container (max-width: Npx) { … }` bodies keyed by N (brace-matched). */
+function containerStages(src: string): Map<number, string> {
+  const out = new Map<number, string>();
+  for (const m of src.matchAll(/@container\s*\(max-width:\s*(\d+)px\)\s*\{/g)) {
+    const start = m.index! + m[0].length;
+    let depth = 1;
+    let i = start;
+    while (i < src.length && depth > 0) {
+      if (src[i] === "{") depth++;
+      else if (src[i] === "}") depth--;
+      i++;
+    }
+    out.set(Number(m[1]), src.slice(start, i - 1));
+  }
+  return out;
+}
+
 describe("AppToolbar — extraction out of +page.svelte", () => {
   test("+page.svelte renders the AppToolbar component instead of inline toolbar markup", () => {
     const src = page();
@@ -111,6 +128,8 @@ describe("AppToolbar — modern responsive layout (no overflow)", () => {
     // A URL source has no editor, so BOTH forms of the mode switch go.
     expect(src).toMatch(/\.toolbar\.url-mode \.mode-group,\s*\n\s*\.toolbar\.url-mode details\.mode-menu\s*\{\s*display:\s*none/);
     expect(src).toMatch(/\.toolbar\.url-mode \.save-hint\s*\{\s*display:\s*none/);
+    // Publish is disabled for a URL source, so its label yields at every width.
+    expect(src).toMatch(/\.toolbar\.url-mode \.publish-btn \.btn-label\s*\{\s*display:\s*none/);
   });
 
   test("edit-narrow hides the separators along with the view controls (no adjacent double rule)", () => {
@@ -319,22 +338,6 @@ describe("AppToolbar — the mode control is the whole mode model", () => {
   });
 });
 
-// ── One primary action (#306) ────────────────────────────────────────────────
-describe("AppToolbar — Export is the one primary action (#306)", () => {
-  test("only Export carries the primary recipe; Publish is a secondary button", () => {
-    const src = toolbar();
-    const primaries = [...src.matchAll(/class="([^"]*\bapp-btn-primary\b[^"]*)"/g)].map((m) => m[1]);
-    expect(primaries).toHaveLength(1);
-    expect(primaries[0]).toContain("export-btn");
-    const at = src.indexOf('class="publish-btn');
-    const publish = src.slice(at, src.indexOf("</button>", at));
-    expect(publish).not.toMatch(/\bprimary\b/);
-    // Its look comes from the toolbar's existing non-primary button recipe (the
-    // one Save uses) — no new colours or tokens.
-    expect(src).toMatch(/\.toolbar button:not\(\.app-btn-primary\):not\(\.active\)\s*\{/);
-  });
-});
-
 // ── The selected mode reads as selected (#305) ───────────────────────────────
 describe("AppToolbar — the selected mode never looks disabled (#305)", () => {
   test("hover cannot override the selected fill: the :hover rules exclude .active", () => {
@@ -391,6 +394,96 @@ describe("AppToolbar — the selected mode never looks disabled (#305)", () => {
     // Esc stays deliberately un-wired; if that changes, this hint and the Focus
     // tooltip must change with it.
     expect(src).toContain("Esc is deliberately NOT an exit");
+  });
+});
+
+// ── One primary action (#306) ────────────────────────────────────────────────
+describe("AppToolbar — Export is the one primary action (#306)", () => {
+  test("only Export carries the primary recipe; Publish is a secondary button", () => {
+    const src = toolbar();
+    const primaries = [...src.matchAll(/class="([^"]*\bapp-btn-primary\b[^"]*)"/g)].map((m) => m[1]);
+    expect(primaries).toHaveLength(1);
+    expect(primaries[0]).toContain("export-btn");
+    const at = src.indexOf('class="publish-btn');
+    const publish = src.slice(at, src.indexOf("</button>", at));
+    expect(publish).not.toMatch(/\bprimary\b/);
+    // Its look comes from the toolbar's existing non-primary button recipe (the
+    // one Save uses) — no new colours or tokens.
+    expect(src).toMatch(/\.toolbar button:not\(\.app-btn-primary\):not\(\.active\)\s*\{/);
+  });
+});
+
+// ── Deliberate collapse (#316) ───────────────────────────────────────────────
+//
+// The container is the toolbar's content box (window width − 24px of padding),
+// so a 900px window measures 876px, and the narrow layout (≤820px window)
+// starts at 796px. Thresholds were calibrated by sweeping real window widths
+// from 1440 down to 360 against the measured cluster widths (no clipped nav or
+// cluster overlap at any width; touch measured separately).
+describe("AppToolbar — deliberate collapse (#316)", () => {
+  test("Publish/Export keep their labels on a 900px window; Save yields its label first", () => {
+    const stages = containerStages(toolbar());
+    // Line-anchored, so `.save-btn .btn-label` does not count as the general rule.
+    const labelStage = [...stages].find(([, body]) => /^\s*\.btn-label\s*\{\s*display:\s*none/m.test(body));
+    expect(labelStage).toBeDefined();
+    // 900px window → 876px container: still labelled. But they must be gone
+    // before the narrow layout's pane tabs (796px), which leave no room.
+    expect(labelStage![0]).toBeLessThan(876);
+    expect(labelStage![0]).toBeGreaterThanOrEqual(796);
+    // Save's label goes at the widest stage: its icon needs no words.
+    const widest = Math.max(...stages.keys());
+    expect(stages.get(widest)).toMatch(/\.save-btn \.btn-label\s*\{\s*display:\s*none/);
+  });
+
+  test("every control that can turn icon-only keeps an aria-label and a tooltip", () => {
+    const src = toolbar();
+    for (const cls of ["publish-btn", "export-btn", "save-btn"]) {
+      const at = src.indexOf(`class="${cls}`);
+      expect(at).toBeGreaterThan(-1);
+      const button = src.slice(at, src.indexOf("</button>", at));
+      expect(button).toContain("aria-label=");
+      expect(button).toContain("title=");
+    }
+  });
+
+  test("page nav degrades in order — first/last, then the select — and only the phone floor removes prev/next", () => {
+    const src = toolbar();
+    const stages = containerStages(src);
+    // First/last carry their own classes; prev/next carry none, so no stage
+    // can hide them. (The old layout removed the whole nav at 820px.)
+    expect(src).toMatch(/nav-first[\s\S]{0,300}?aria-label="First page"/);
+    expect(src).toMatch(/nav-last[\s\S]{0,300}?aria-label="Last page"/);
+    // The whole nav drops only at the phone floor (≤620px), where not even
+    // prev/next fit — and as display:none, so the hidden buttons also leave
+    // the tab order instead of sitting clipped and focusable.
+    for (const [px, body] of stages) {
+      if (px > 620) expect(body).not.toMatch(/\.page-nav|\.toolbar-center/);
+    }
+    expect(stages.get(620)).toMatch(/\.page-nav,/);
+    const dropsAt = (re: RegExp) => [...stages].find(([, body]) => re.test(body))![0];
+    const firstLast = dropsAt(/\.nav-first/);
+    const select = dropsAt(/\.page-select\s*\{\s*display:\s*none/);
+    expect(select).toBeLessThan(firstLast);
+    // The select only yields inside the narrow layout, where the pane tabs
+    // crowd the end cluster — a wide window never loses the page number.
+    expect(select).toBeLessThan(796);
+    expect(select).toBeGreaterThan(620);
+  });
+
+  test("touch keeps the narrow layout's old no-page-nav behavior (44px targets leave no room for it)", () => {
+    const src = toolbar();
+    // Measured with a real `pointer: coarse` at 700–820px: the nav clipped by
+    // 10–30px a side. The desktop's narrow layout shows it; touch does not.
+    expect(src).toContain("class:narrow={isNarrow}");
+    const coarse = src.slice(src.indexOf("@media (pointer: coarse)"));
+    expect(coarse).toMatch(/\.toolbar\.narrow \.page-nav\s*\{\s*display:\s*none/);
+  });
+
+  test("the narrow layout keeps the page nav — +page.svelte no longer hides it, the editor tab still does", () => {
+    expect(page()).toContain("showPageNav={!!lifecycle.previewUrl}");
+    expect(page()).not.toMatch(/showPageNav=\{[^}]*isNarrow/);
+    // Narrow + editor tab: the preview is hidden, so its controls are noise.
+    expect(toolbar()).toMatch(/\.toolbar\.edit-narrow \.toolbar-center/);
   });
 });
 
