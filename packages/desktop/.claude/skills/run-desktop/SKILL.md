@@ -32,9 +32,9 @@ Rebuild after any change under `src/` or `electron/`; the driver runs the built 
 ```bash
 cp -r ../../examples/gutterpress-user-guide /tmp/gpbook   # never point it at the repo copy: edits save to disk
 xvfb-run -a -s "-screen 0 1600x1000x24" node .claude/skills/run-desktop/driver.mjs /tmp/gpbook /tmp/shots <<'EOF2'
-click button:has-text('Edit')
-click [aria-label='Toggle left panel']
 shot editor
+click button:has-text('Read')
+shot read
 click button:has-text('Export')
 shot export
 press Escape
@@ -56,10 +56,10 @@ Useful selectors: `[aria-label='Project settings']`, `[aria-label='Close project
 
 ## Gotchas
 - Opening a book = typing its path into the welcome screen's "Search your books" box + Enter (the native folder dialog can't be driven).
-- Opens in **Read** mode with the left panel collapsed. Click Edit and the panel toggle first.
+- A fresh profile opens a book in **Edit** (editor beside the page) with the left panel open (closed if the window is narrow). A saved Read/Edit or panel choice wins on later launches, so delete `GP_HOME` for a first-run view.
 - `HOME` is set to `/tmp/gphome` (override with `GP_HOME`) so recents/settings don't leak between runs.
 - Settings, Help and Project settings are full-screen pages that cover the workspace; Esc or the X (`Close project settings`) closes them.
-- The `New project` button is only visible while the left panel is open (toggle it once, not twice).
+- The `New project` button is only visible while the left panel is open (already open on a fresh profile; the toggle closes it).
 - Selectors like `button:has-text('Edit')` can match several nodes; the first is used. Keep `p.setDefaultTimeout` short (5s) or a bad selector stalls the run.
 - Don't `pkill -f "vite dev"` in your own shell command; the pattern matches the shell and kills the session.
 - A fresh `HOME` starts the preview at a larger zoom than fit-to-width (page overflows with a horizontal scrollbar); click the zoom control and pick "Fit to width" before layout screenshots.

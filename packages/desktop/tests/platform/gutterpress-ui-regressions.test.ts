@@ -512,3 +512,32 @@ test("the retired view-mode machinery is gone, not merely unused", () => {
   expect(page).not.toContain("class:focus-mode");
   expect(page).not.toContain(".shell.focus-mode");
 });
+
+// ── First run: Edit with the panel open, and no jargon banner (#304, #315) ───
+//
+// A first-time writer used to open a book on a single cover page — Read mode,
+// left panel collapsed, no visible way to type — and meet a yellow "versions"
+// banner before doing anything. These pin the defaults that replaced that and
+// the two places that could quietly undo them.
+
+test("a book opens in Edit by default; the left panel opens too unless the window is narrow", () => {
+  const types = read("src/lib/platform/shared-types.ts");
+  expect(types).toMatch(/mode: "editor",\s*\n\s*paneMode: "view",/);
+  // Only a profile with NO saved panel choice reaches the fallback; a saved
+  // `open: false` (or true) wins because `??` only fills undefined/null.
+  const page = read("src/routes/+page.svelte");
+  expect(page).toContain("leftPanelOpen = panelPrefs?.open ?? !isNarrow;");
+  expect(page).not.toContain("panelPrefs?.open ?? false");
+});
+
+test("resetting the workspace restores the SAVED mode — it must not force Read and save it", () => {
+  const src = read("src/routes/+page.svelte");
+  const idx = src.indexOf("resetExtras: () => {");
+  expect(idx).toBeGreaterThan(-1);
+  const body = src.slice(idx, src.indexOf("problemsOpen = false;", idx));
+  // A failed open, a cancelled open and a URL preview all reset the workspace.
+  // `setMode` persists, so forcing "viewer" here turned a new writer's Edit
+  // default into a saved Read after their first mistyped path.
+  expect(body).toContain("setMode(settings.current.preview.mode)");
+  expect(body).not.toContain('setMode("viewer")');
+});

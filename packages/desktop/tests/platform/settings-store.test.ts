@@ -237,6 +237,21 @@ test("readSettings fills in preview.splitRatio default for a stored file missing
   expect(s.preview.splitRatio).toBe(DEFAULT_SETTINGS.preview.splitRatio);
 });
 
+test("a profile with no saved mode opens books in Edit; a saved Read mode is never overridden (#304)", async () => {
+  // First run: no settings file at all.
+  expect((await makeStore().store.readSettings()).preview.mode).toBe("editor");
+  // A file that predates the field gets the default too…
+  const legacy = makeStore({
+    readFileImpl: async () => JSON.stringify({ appearance: { theme: "dark" } }),
+  });
+  expect((await legacy.store.readSettings()).preview.mode).toBe("editor");
+  // …but a returning author's saved choice always wins over the default.
+  const saved = makeStore({
+    readFileImpl: async () => JSON.stringify({ preview: { mode: "viewer" } }),
+  });
+  expect((await saved.store.readSettings()).preview.mode).toBe("viewer");
+});
+
 test("readSettings defaults the update channel to stable for existing settings files", async () => {
   const { store } = makeStore({
     readFileImpl: async () => JSON.stringify({ appearance: { theme: "dark" } }),

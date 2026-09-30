@@ -557,7 +557,10 @@
       // A project closed while its settings view was up must not show that
       // view over the next project (or the empty workspace).
       projectSettingsOpen = false;
-      setMode("viewer");
+      // Back to the SAVED layout — this only sheds the transient `focus`. A
+      // reset is not a choice: forcing Read here also saved it, so one failed
+      // open turned a new writer's Edit default into Read for good.
+      setMode(settings.current.preview.mode);
       // A project closed while activity borrowed the editor must not reopen the
       // next project on that stale view.
       editorView = "editor";
@@ -1779,7 +1782,9 @@
       if (typeof panelPrefs?.width === "number") {
         leftPanelWidth = clampPanelWidth(panelPrefs.width, viewportWidth());
       }
-      leftPanelOpen = panelPrefs?.open ?? false;
+      // No saved choice (first run): show the panel — unless the window is
+      // narrow, where it is an overlay that would cover the page.
+      leftPanelOpen = panelPrefs?.open ?? !isNarrow;
     },
     setLandingShowPref: (show) => {
       landingShowPref = show;

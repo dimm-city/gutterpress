@@ -110,6 +110,13 @@ writeFileSync(
     showLandingAtStartup: false,
   }),
 );
+// Inline editing happens in the viewer, and this drive asserts the editor pane
+// stays closed around it (assertEditorClosed) — so start in Read; a profile with
+// no saved mode opens in Edit.
+writeFileSync(
+  join(userDataDir, "app-settings.json"),
+  JSON.stringify({ settingsSchemaVersion: 2, preview: { mode: "viewer" } }),
+);
 
 const packaged = /(?:\.AppImage|\.exe)$/i.test(launchTarget) || launchTarget.includes(".app/");
 if (requirePackaged && !packaged) {
