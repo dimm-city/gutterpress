@@ -58,7 +58,7 @@ Useful selectors: `[aria-label='Project settings']`, `[aria-label='Close project
 - Opening a book = typing its path into the welcome screen's "Search your books" box + Enter (the native folder dialog can't be driven).
 - Opens in **Read** mode with the left panel collapsed. Click Edit and the panel toggle first.
 - `HOME` is set to `/tmp/gphome` (override with `GP_HOME`) so recents/settings don't leak between runs.
-- Settings, Help and Project settings are full-screen pages; **Esc does not close them**. Click the X / `Close project settings`.
+- Settings, Help and Project settings are full-screen pages that cover the workspace; Esc or the X (`Close project settings`) closes them.
 - The `New project` button is only visible while the left panel is open (toggle it once, not twice).
 - Selectors like `button:has-text('Edit')` can match several nodes; the first is used. Keep `p.setDefaultTimeout` short (5s) or a bad selector stalls the run.
 - Don't `pkill -f "vite dev"` in your own shell command; the pattern matches the shell and kills the session.
