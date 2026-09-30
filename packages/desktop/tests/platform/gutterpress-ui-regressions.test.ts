@@ -541,3 +541,26 @@ test("resetting the workspace restores the SAVED mode — it must not force Read
   expect(body).toContain("setMode(settings.current.preview.mode)");
   expect(body).not.toContain('setMode("viewer")');
 });
+
+test("the name/email notice needs version history AND a first save or sync, and says it in plain words", () => {
+  const src = read("src/routes/+page.svelte");
+  const start = src.indexOf("const needsGitIdentity");
+  expect(start).toBeGreaterThan(-1);
+  const derived = src.slice(start, src.indexOf("/** After a successful snapshot restore", start));
+  expect(derived).toContain("settings.loaded");
+  expect(derived).toContain("identityNoticeArmed");
+  expect(derived).toContain("!identityNoticeDismissed");
+  // A plain folder (no history) never needs it.
+  expect(derived).toContain("projectSession.projectCapabilities?.canSnapshot");
+  // Armed only by events the renderer already receives: a sync starting…
+  expect(src).toContain('if (status.state === "syncing") identityNoticeArmed = true;');
+  // …and a version saved by hand.
+  expect(src).toMatch(/await api\.vcs\.saveSnapshot\(dir\);\s*identityNoticeArmed = true;/);
+  // The copy carries no version-control jargon; the action and "Not now" stay.
+  const banner = src.slice(src.indexOf('<div class="identity-banner"'), src.indexOf("{/if}", src.indexOf('<div class="identity-banner"')));
+  const message = banner.slice(banner.indexOf('<span class="identity-banner-msg">'), banner.indexOf("</span>"));
+  expect(message).not.toMatch(/version/i);
+  expect(banner).toContain('openSettings("connections")');
+  expect(banner).toContain("Add your name &amp; email");
+  expect(banner).toContain("identityNoticeDismissed = true");
+});

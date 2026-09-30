@@ -25,7 +25,6 @@ if (book) {
   await p.fill("input[placeholder^='Search your books']", book);
   await p.keyboard.press("Enter");
   await p.waitForTimeout(8000); // preview paginates async; 74 pages takes a few s
-  await p.click("text=Not now").catch(() => {}); // dismiss identity banner
 }
 for (const line of readFileSync(0, "utf8").split("\n").map((l) => l.trim()).filter(Boolean)) {
   const [cmd, ...rest] = line.split(" "), arg = rest.join(" ");

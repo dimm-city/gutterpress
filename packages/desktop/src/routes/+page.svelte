@@ -395,10 +395,16 @@
     else openSettings();
   }
   /**
-   * No author name/email yet: every version this project saves would be
-   * attributed to a placeholder, so the workspace carries a persistent notice
+   * No author name/email yet: what a project with version history keeps would
+   * be attributed to a placeholder, so the workspace carries a persistent notice
    * with a one-click route to Settings → Accounts. It clears itself the moment
    * both fields are filled.
+   *
+   * It waits until that is about to matter: the open project HAS version
+   * history (`canSnapshot`) and a version was just saved by hand or a sync just
+   * started — the two moments the renderer is told about (`identityNoticeArmed`,
+   * set where they happen). It used to greet every writer the moment any book
+   * opened, plain folders with no history included.
    *
    * Gated on `settings.loaded`: the in-memory defaults ARE empty strings, so an
    * ungated check would flash the banner on every launch in the window before
@@ -417,10 +423,16 @@
    * wrong for silences it, and it returns next launch in case the setting
    * still matters to them.
    */
+  let identityNoticeArmed = $state(false);
   let identityNoticeDismissed = $state(false);
-  const needsGitIdentity = $derived(
-    settings.loaded &&
+  // `$derived.by`: reads `projectSession`, declared further down — a plain
+  // `$derived(expr)` would evaluate it here, before that declaration.
+  const needsGitIdentity = $derived.by(
+    () =>
+      settings.loaded &&
+      identityNoticeArmed &&
       !identityNoticeDismissed &&
+      !!projectSession.projectCapabilities?.canSnapshot &&
       (!settings.current.gitIdentity.authorName.trim() ||
         !settings.current.gitIdentity.authorEmail.trim()),
   );
@@ -916,6 +928,7 @@
     const off = getPlatform().onSyncStatus((status) => {
       // Scope to the currently open project.
       if (status.projectDir !== lifecycle.currentDir) return;
+      if (status.state === "syncing") identityNoticeArmed = true;
       if (shouldReconcileAfterSync(status)) {
         onSyncFilesChanged();
       }
@@ -2720,7 +2733,7 @@
 {#if needsGitIdentity}
   <div class="identity-banner" role="status">
     <span class="identity-banner-msg">
-      Add your name and email so the versions you save show who made each change.
+      Add your name and email so the changes you save are credited to you.
     </span>
     <button class="identity-action" onclick={() => openSettings("connections")}>
       Add your name &amp; email
@@ -3061,6 +3074,7 @@
       if (!dir) return;
       try {
         await api.vcs.saveSnapshot(dir);
+        identityNoticeArmed = true;
         toast?.success("Saved a version.");
         activityViewRef?.refreshHistory();
       } catch (e) {

@@ -305,8 +305,9 @@ try {
     // known-inert point in the MAIN document (never inside either iframe:
     // mousedown inside an iframe does not bubble to the top document's
     // `window` listener that ContextMenu.svelte relies on for outside-click
-    // dismissal). (5,5) resolves to the static `.identity-banner` status
-    // strip, confirmed to have no click handler.
+    // dismissal). (5,5) resolves to the toolbar's own padding, confirmed to
+    // have no click handler. (It used to be the `.identity-banner` strip, which
+    // now only appears once a version is saved or a sync starts.)
     await page.mouse.click(5, 5, { button: "left" });
     await page.waitForTimeout(150);
   }
