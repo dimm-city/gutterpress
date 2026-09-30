@@ -258,7 +258,7 @@ test("a successful run emits syncing then synced with a fake-clock timestamp", a
 });
 
 test("an 'up-to-date' outcome emits the same 'synced' state as a sending sync", async () => {
-  // The pill draws both identically ("Everything is in sync"), so there is
+  // The pill draws both identically ("Online backup in sync"), so there is
   // ONE wire state. The lib's SyncOutcome still distinguishes them — that is
   // what the manual-sync toast reads.
   const h = makeHarness({

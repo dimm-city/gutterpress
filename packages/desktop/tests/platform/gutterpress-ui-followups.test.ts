@@ -67,7 +67,7 @@ test("#316: the save state keeps its text at the narrow breakpoint; only the Pro
   const narrow = /@media screen and \(max-width: 820px\) \{([^}]*)\}/.exec(status)?.[1] ?? "";
   expect(narrow).toContain(".sync-pill");
   expect(narrow).toContain(".status-action");
-  // …but "All work saved" used to collapse to an unlabeled check icon here.
+  // …but "Edits saved" used to collapse to an unlabeled check icon here.
   expect(narrow).not.toContain(".save-text");
   expect(status).not.toMatch(/\.save-text[^{]*\{[^}]*display:\s*none/);
   // The Problems label only drops out at phone widths, and the toggle then

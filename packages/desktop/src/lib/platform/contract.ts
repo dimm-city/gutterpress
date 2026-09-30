@@ -224,7 +224,7 @@ export type { SharedProjectRemoteDiagnosis as ProjectRemoteDiagnosis };
  *
  * States:
  *   idle        — no sync scheduled or needed (local-only project, or auto-sync OFF)
- *   syncing     — commit→fetch→merge→push in flight ("Saving changes…")
+ *   syncing     — commit→fetch→merge→push in flight ("Syncing…")
  *   synced      — last sync completed and remote is up to date
  *   up-to-date  — sync ran; nothing needed (no local or remote changes)
  *   offline     — network unavailable; changes are saved locally
