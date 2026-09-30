@@ -299,8 +299,8 @@
   // gated the whole cluster off). It now always renders — below 820px
   // ProblemsPanel's `compact` prop presents the expanded list as a
   // full-viewport sheet instead of the row above the bar, which has no room to
-  // be useful at narrow widths. (The toggle's label drops out at the same
-  // width — see the media query below.)
+  // be useful at narrow widths. (The toggle's own label only drops out much
+  // later, at 560px — see the media queries below.)
   let showProblems = $derived(!!projectDir && sourceMode === "folder");
 
   // #307: the bar shows the problems state itself; the toggle exists only when
@@ -675,13 +675,12 @@
     font-weight: 600;
   }
 
+  /* Narrow (the app's single-pane layout): the lower-priority items drop out.
+     The save state stays — it is the one thing the bar is always for. */
   @media screen and (max-width: 820px) {
     .status-right :global(.sync-pill),
-    .save-text,
     .status-sep,
-    .status-action,
-    .strip-title,
-    .strip-status {
+    .status-action {
       display: none;
     }
   }
@@ -769,6 +768,15 @@
   }
   .idle-icon { display: inline-flex; }
   .idle-icon.ok { color: var(--app-success-text); }
+
+  /* Very narrow windows: the toggle keeps its icon + counts; the label and
+     status text drop out (its aria-label still says all of it). */
+  @media screen and (max-width: 560px) {
+    .strip-title,
+    .strip-status {
+      display: none;
+    }
+  }
 
   .shell-actions {
     display: flex;

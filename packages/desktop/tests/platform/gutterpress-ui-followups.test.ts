@@ -61,6 +61,24 @@ test("bottom status uses save icons and compact mobile rules", () => {
   expect(read("src/lib/components/ProblemsPanel.svelte")).toContain(".problems-panel.compact .panel-body");
 });
 
+test("#316: the save state keeps its text at the narrow breakpoint; only the Problems label drops, much later", () => {
+  const status = read("src/lib/components/StatusBar.svelte");
+  // At the app's single-pane width (820px) the lower-priority items drop out…
+  const narrow = /@media screen and \(max-width: 820px\) \{([^}]*)\}/.exec(status)?.[1] ?? "";
+  expect(narrow).toContain(".sync-pill");
+  expect(narrow).toContain(".status-action");
+  // …but "All work saved" used to collapse to an unlabeled check icon here.
+  expect(narrow).not.toContain(".save-text");
+  expect(status).not.toMatch(/\.save-text[^{]*\{[^}]*display:\s*none/);
+  // The Problems label only drops out at phone widths, and the toggle then
+  // still has an accessible name (always set, since its icons + counts say
+  // nothing to a screen reader).
+  const phone = /@media screen and \(max-width: 560px\) \{([^}]*)\}/.exec(status)?.[1] ?? "";
+  expect(phone).toContain(".strip-title");
+  expect(phone).toContain(".strip-status");
+  expect(status).toContain("aria-label={stripLabel}");
+});
+
 test("#307: the Problems list is a row of its own above the bar — it never overlays the workspace", () => {
   const status = read("src/lib/components/StatusBar.svelte");
   const panel = read("src/lib/components/ProblemsPanel.svelte");

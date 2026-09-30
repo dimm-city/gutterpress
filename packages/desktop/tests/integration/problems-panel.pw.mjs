@@ -15,7 +15,8 @@
  *   4. Clicking the broken-ref entry opens the editor on 01-alpha.md with the
  *      offending line scrolled into view.
  *   5. At 700px window width the toolbar still has zero pairwise overlaps
- *      (getBoundingClientRect audit of every visible toolbar control).
+ *      (getBoundingClientRect audit of every visible toolbar control), and the
+ *      status bar still shows its save-state text and Problems label (#316).
  *
  * Screenshots: <os tmpdir>/problems-panel-{wide,narrow}.png.
  * Prints the audit JSON for the report.
@@ -396,6 +397,26 @@ if (audit.overlaps.length > 0) fail(`toolbar overlaps at 700px: ${JSON.stringify
 if (audit.overflow.length > 0) fail(`toolbar controls overflow at 700px: ${JSON.stringify(audit.overflow)}`);
 await screenshot(join(tmpdir(), "problems-panel-narrow.png"));
 
-log("PASS: badge, panel contents, click-through navigation, and 700px toolbar audit all verified");
+// ── 9. #316: the status bar keeps its words at 700px ─────────────────────────
+// "All work saved" and the PROBLEMS label used to collapse to bare icons below
+// 820px. The save text now stays at every width; the label only drops at 560px.
+const bar = await evalJs(`(() => {
+  const shown = (sel) => {
+    const el = document.querySelector(sel);
+    return !!el && el.getClientRects().length > 0 && getComputedStyle(el).display !== 'none';
+  };
+  return {
+    saveText: document.querySelector('.save-text')?.textContent?.trim() ?? null,
+    saveTextShown: shown('.save-text'),
+    stripTitleShown: shown('.toggle-strip .strip-title'),
+    stripLabel: document.querySelector('.toggle-strip')?.getAttribute('aria-label') ?? null,
+  };
+})()`);
+console.log(`[problems-panel] 700px status bar: ${JSON.stringify(bar)}`);
+if (!bar.saveTextShown || !bar.saveText) fail(`save-state text is not visible at 700px: ${JSON.stringify(bar)}`);
+if (!bar.stripTitleShown) fail(`Problems label is not visible at 700px: ${JSON.stringify(bar)}`);
+if (!bar.stripLabel) fail("Problems toggle has no accessible name");
+
+log("PASS: badge, panel contents, click-through navigation, 700px toolbar audit and status-bar text all verified");
 cleanup();
 process.exit(0);
