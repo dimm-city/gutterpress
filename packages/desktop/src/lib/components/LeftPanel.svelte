@@ -575,14 +575,17 @@
     outline: 2px solid var(--app-focus-ring);
     outline-offset: -2px;
   }
-  /* Tab labels are intentionally icon-only at every panel width (user
-     request) — icons + title tooltips + aria-label keep the tabs
-     identifiable without a visible label. (Decided once here: no
-     width-conditional toggle — a prior version had a full label typography
-     ruleset immediately followed by an unconditional `display: none`, plus a
-     redundant `@container` rule repeating the same hide.) */
+  /* Each tab names itself under its icon (#313: four bare glyphs were hard to
+     learn). The four labels are short enough to share the row at the 300px
+     panel minimum; on a narrower overlay panel a label ellipsizes rather than
+     disappears, and the title tooltip carries the long form. Decided once
+     here: no width-conditional toggle — a prior version had a label ruleset
+     immediately undone by an unconditional `display: none`, plus a redundant
+     `@container` rule repeating the same hide. */
   .tab-label {
-    display: none;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .resize-handle {
     position: absolute;

@@ -10,6 +10,13 @@
    * rest of the project's settings. Credential management stays in
    * Settings → Accounts; the guidance copy points there.
    *
+   * #310: a plain folder gets a next step instead of two facts on a blank
+   * page — "Turn on version history" (`api.vcs.enableVersionHistory`, the
+   * CLAUDE.md §7 escape hatch's other half). After it, the tab reads as any
+   * other git-backed project. An online copy has no equivalent action: the
+   * app can clone one (Open from GitHub) but cannot attach a repository to an
+   * existing folder, so there is nothing honest to offer for that here.
+   *
    * PWA-clean (§8): api.* routes only.
    */
   import { onMount } from "svelte";
@@ -21,14 +28,22 @@
   let {
     projectDir,
     onOpenAccounts,
+    onVersionHistoryEnabled,
   }: {
     projectDir: string | null;
     /** Open the app Settings view on the Accounts tab (to connect a server). */
     onOpenAccounts?: () => void;
+    /** Version history was just turned on: the parent re-reads the project's classification so the status bar catches up. */
+    onVersionHistoryEnabled?: (projectDir: string) => void;
   } = $props();
 
   let loading = $state(true);
   let diag = $state<ProjectRemoteDiagnosis | null>(null);
+
+  // Turn on version history — only ever offered for a plain folder.
+  let enabling = $state(false);
+  let justEnabled = $state(false);
+  let enableError = $state<string | null>(null);
 
   // Test Remote Access — only ever runs on explicit click.
   let testing = $state(false);
@@ -70,9 +85,33 @@
     }
   }
 
+  // Give a plain folder its history. The parent is told so the status bar's
+  // cached classification catches up; the tab then re-reads its own diagnosis
+  // and shows the folder as version-history-backed.
+  async function turnOnVersionHistory() {
+    if (!projectDir || enabling) return;
+    enabling = true;
+    enableError = null;
+    try {
+      await api.vcs.enableVersionHistory(projectDir);
+      justEnabled = true;
+      onVersionHistoryEnabled?.(projectDir);
+      await load();
+    } catch {
+      // The route's own message is a raw JSON envelope naming an internal
+      // operation — say what happened in plain words instead.
+      enableError =
+        "Couldn't turn on version history. Your book is unchanged — try again, and check the app log if it keeps happening.";
+    } finally {
+      enabling = false;
+    }
+  }
+
+  const isPlainFolder = $derived(diag?.classification.type === "local-folder");
+
   const folderLabel = $derived.by(() => {
     if (!diag) return "—";
-    if (diag.classification.type === "local-folder") return "Plain folder";
+    if (isPlainFolder) return "Plain folder";
     return diag.remoteUrl
       ? "Connected folder (has an online repository)"
       : "Local version history";
@@ -82,7 +121,9 @@
     if (!diag) return null;
     switch (diag.guidance) {
       case "local-only":
-        return "This project lives only on this computer. Everything works without a Git server.";
+        return isPlainFolder
+          ? "Version history is off. Turn it on to keep previous versions of your book on this computer, so you can go back to an earlier one. Nothing is uploaded."
+          : "This project lives only on this computer. Everything works without a Git server.";
       case "connect-github-to-sync":
         return "This project's online repository is on GitHub. Connect GitHub in Settings > Accounts so Gutterpress can sync for you.";
       case "https-connect-server":
@@ -139,8 +180,19 @@
         <dd>{diag.credentialPresent ? "Saved on this computer" : "Not saved yet"}</dd>
       {/if}
     </dl>
+    {#if justEnabled}
+      <p class="hint guidance" role="status">Version history is on — the first version of your book is saved.</p>
+    {/if}
     {#if guidanceCopy}
       <p class="hint guidance">{guidanceCopy}</p>
+    {/if}
+    {#if isPlainFolder}
+      <button class="primary app-btn-primary" onclick={turnOnVersionHistory} disabled={enabling}>
+        {enabling ? "Turning on…" : "Turn on version history"}
+      </button>
+      {#if enableError}
+        <p class="test-result fail" role="alert">{enableError}</p>
+      {/if}
     {/if}
     {#if needsAccounts && onOpenAccounts}
       <button class="ghost" onclick={() => onOpenAccounts?.()}>Open account settings…</button>
@@ -192,6 +244,8 @@
   .test-result { margin: 0; font-size: 13px; line-height: 1.5; }
   .test-result.ok { color: var(--app-text); }
   .test-result.fail { color: var(--app-error-text); }
+  /* The primary colors come from the shared .app-btn-primary recipe (theme.css). */
+  button.primary { align-self: flex-start; }
   button.ghost {
     align-self: flex-start;
     background: transparent;

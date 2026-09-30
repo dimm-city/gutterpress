@@ -140,6 +140,11 @@
   /* Monospace stack for chrome code snippets, paths, shortcut keys. */
   --app-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
+  /* Width of the docked Project settings panel: the workspace shrinks by this
+     much so the live preview stays visible beside it, and the Look tab's
+     hover flyout anchors just left of the panel. */
+  --app-settings-panel-width: clamp(400px, 34vw, 520px);
+
   /* z-index scale — the app-level stacking layers. Use these tokens for any
      surface that competes app-wide; intra-component stacking (sticky headers,
      gutters, badges) keeps small literals (1/10/40) inside its own stacking
