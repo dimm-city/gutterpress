@@ -37,7 +37,7 @@ test("friendlyFolderError gives repair guidance for malformed manifest.yaml", ()
       'Preview server failed to start: Invalid YAML in "/books/example/manifest.yaml" at line 3, column 1: Tabs are not allowed as indentation',
     ),
   ).toBe(
-    "The project manifest has invalid YAML at line 3, column 1. Fix that entry and try again.",
+    "This book's manifest has invalid YAML at line 3, column 1. Fix that entry and try again.",
   );
 });
 

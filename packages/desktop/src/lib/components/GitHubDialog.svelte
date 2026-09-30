@@ -302,9 +302,9 @@
     if (!p) return "Starting download…";
     if (p.total) {
       const pct = Math.min(100, Math.round((p.loaded / p.total) * 100));
-      return `Downloading your project… ${pct}%`;
+      return `Downloading your book… ${pct}%`;
     }
-    return "Downloading your project…";
+    return "Downloading your book…";
   }
 
 </script>
@@ -320,7 +320,7 @@
   >
     <header class="dlg-header">
       <h2 id="github-dialog-title">
-        {#if step === "connect" || step === "code"}Connect GitHub{:else if step === "repos"}Choose a repository{:else if step === "configure"}Open project{:else if step === "books"}Choose a book{:else}Downloading…{/if}
+        {#if step === "connect" || step === "code"}Connect GitHub{:else if step === "repos"}Choose a repository{:else if step === "configure"}Open book{:else if step === "books"}Choose a book{:else}Downloading…{/if}
       </h2>
       <button
         class="dlg-close"
@@ -345,7 +345,7 @@
 
       {#if step === "connect"}
         <p class="hint">
-          Connect your GitHub account to open the book projects stored there.
+          Connect your GitHub account to open the books stored there.
           A browser window will ask you to enter a short code — that's it.
         </p>
         {#if onAdvancedSetup}
@@ -471,7 +471,7 @@
             class="dlg-primary app-btn-primary"
             onclick={openProject}
             disabled={!destination || !folderName.trim() || busy}
-          >{booksLoading ? "Looking inside…" : "Open project"}</button>
+          >{booksLoading ? "Looking inside…" : "Open book"}</button>
         </footer>
       {:else if step === "books" && selectedRepo}
         <p class="hint">

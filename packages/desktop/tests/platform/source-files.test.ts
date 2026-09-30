@@ -1,5 +1,5 @@
 /**
- * Unit tests for the source-files list model (project settings → Details →
+ * Unit tests for the source-files list model (book settings → Details →
  * the drag-and-drop include/exclude editor that replaced the textarea).
  */
 import { describe, test, expect } from "bun:test";

@@ -1,6 +1,6 @@
 /**
  * Publishing UX overhaul: publishing moved from the crammed last section of
- * Project settings to a front-and-centre toolbar **Publish** button that opens
+ * Book settings to a front-and-centre toolbar **Publish** button that opens
  * a step-by-step **PublishWizard**. No component-render harness exists here, so
  * (per the repo convention — see ProjectActivityView.test.ts) these assert on
  * the compiled source text: the toolbar entry point exists, the wizard reuses
@@ -51,7 +51,7 @@ describe("Toolbar Publish button (front-and-centre entry point)", () => {
   });
 });
 
-describe("Publishing removed from the crammed Project settings section", () => {
+describe("Publishing removed from the crammed Book settings section", () => {
   // ProjectConfigPanel (the retired sidebar embed) became the full-window
   // ProjectSettingsView — publishing must stay out of it either way.
   const panel = read("src/lib/components/ProjectSettingsView.svelte");

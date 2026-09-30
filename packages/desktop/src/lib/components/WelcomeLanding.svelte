@@ -20,7 +20,7 @@
    *
    * The host page owns all state; this component is presentational + focus
    * management. Recents/favorites/discovered reuse ProjectsListBody — the
-   * exact list the left panel's Projects tab shows, so there is ONE browsing
+   * exact list the left panel's Books tab shows, so there is ONE browsing
    * surface to maintain.
    */
   import { fade } from "svelte/transition";
@@ -127,8 +127,8 @@
     onProjectFilesChanged?: () => void;
   } = $props();
 
-  // ── Tabs (Projects / Settings / Help / Logs) ──────────────────────────────
-  // The landing is the app's front door: Projects carries the continue card +
+  // ── Tabs (Books / Settings / Help / Logs) ──────────────────────────────
+  // The landing is the app's front door: Books carries the continue card +
   // quick actions + book list; Settings embeds the WHOLE settings surface,
   // sub-tabs and all; Help carries the former help modal's content; Logs
   // shows the app's diagnostic logs for easy copy/paste sharing. Because
@@ -137,7 +137,7 @@
   // missing identity at launch → "settings" on its Accounts sub-tab).
   type LandingTab = "projects" | "settings" | "help" | "logs";
   const LANDING_TABS: Array<{ id: LandingTab; label: string }> = [
-    { id: "projects", label: "Projects" },
+    { id: "projects", label: "Books" },
     { id: "settings", label: "Settings" },
     { id: "help", label: "Help" },
     { id: "logs", label: "Logs" },
@@ -389,7 +389,7 @@
           </div>
           {#if otherBooks.length > 0}
             <div class="cc-books">
-              <span class="cc-books-label">Other books in this project:</span>
+              <span class="cc-books-label">Other books in this folder:</span>
               {#each otherBooks as book (book.path)}
                 <button
                   type="button"

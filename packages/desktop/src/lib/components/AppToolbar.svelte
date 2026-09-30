@@ -32,7 +32,7 @@
    *    the ≤760px stage is what keeps prev/next clear of it (touch, whose 44px
    *    targets cannot spare the room, keeps the old no-page-nav behavior). The
    *    select drop and the page nav's phone floor are therefore scoped to
-   *    `.narrow`: the docked Project settings panel makes the toolbar this
+   *    `.narrow`: the docked Book settings panel makes the toolbar this
    *    narrow without the tabs, and there the page nav still fits.
    *  - `(pointer: coarse)` keeps ≥44×44px touch targets on touch devices
    *    without fattening the desktop layout.
@@ -44,7 +44,7 @@
    * Actions are ordered Publish → Export → Save so Save is always the
    * right-most button. Export is the one primary (solid) action; Publish is a
    * secondary button, since its wizard exports too. There is no overflow menu:
-   * Export opens the export dialog, project settings is a dedicated button
+   * Export opens the export dialog, book settings is a dedicated button
    * beside the mode control, advanced setup in app Settings.
    *
    * PWA-clean (§8): type-only imports, zero host/Node code.
@@ -440,14 +440,14 @@
     </details>
 
     {#if showProjectSettings}
-      <!-- Project settings (manifest) — beside the mode control. Rendered on
+      <!-- Book settings (manifest) — beside the mode control. Rendered on
            narrow layouts too (the tab bar replaces the mode control there,
-           but project settings must stay reachable). -->
+           but book settings must stay reachable). -->
       <button
         class="icon-btn project-settings-btn"
         onclick={onOpenProjectSettings}
-        title="Project settings"
-        aria-label="Project settings"
+        title="Book settings"
+        aria-label="Book settings"
       >
         <Icon name="settings" />
       </button>
@@ -468,7 +468,7 @@
          wizard exports too, so two equal-weight solid buttons left the choice
          unclear. No overflow menu: focus mode is a segment of the mode
          control, advanced setup lives in the app Settings view,
-         save-as-template in the export dialog, and project settings beside the
+         save-as-template in the export dialog, and book settings beside the
          mode control above. Both keep their aria-label when the text label
          drops at narrow widths. -->
     {#if publishVisible}
@@ -907,7 +907,7 @@
     /* The narrow layout adds the pane tabs to the end cluster: the page-number
        select yields so prev/next stay clear of it, and the title trims.
        Scoped to .narrow because the toolbar can be this narrow WITHOUT the
-       tabs — the docked Project settings panel shrinks the whole app — and
+       tabs — the docked Book settings panel shrinks the whole app — and
        there the select and the room for it are both still there. */
     .toolbar.narrow .page-select { display: none; }
     .toolbar.narrow .doc-title { max-width: 64px; }

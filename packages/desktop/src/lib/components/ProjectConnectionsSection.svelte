@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * ProjectConnectionsSection — Project settings → Connections.
+   * ProjectConnectionsSection — Book settings → Connections.
    *
    * The open project's connection details: how the folder is set up, its
    * online repository address, branch, whether a server credential is saved,
@@ -123,15 +123,15 @@
       case "local-only":
         return isPlainFolder
           ? "Version history is off. Turn it on to keep previous versions of your book on this computer, so you can go back to an earlier one. Nothing is uploaded."
-          : "This project lives only on this computer. Everything works without a Git server.";
+          : "This book lives only on this computer. Everything works without a Git server.";
       case "connect-github-to-sync":
-        return "This project's online repository is on GitHub. Connect GitHub in Settings > Accounts so Gutterpress can sync for you.";
+        return "This book's online repository is on GitHub. Connect GitHub in Settings > Accounts so Gutterpress can sync for you.";
       case "https-connect-server":
-        return "This project's online repository is on a Git server Gutterpress doesn't know yet. Connect that server in Settings > Accounts to prepare it for syncing.";
+        return "This book's online repository is on a Git server Gutterpress doesn't know yet. Connect that server in Settings > Accounts to prepare it for syncing.";
       case "ready-to-sync":
         return "This server is connected. Use Sync Changes in the toolbar to send your work to the online repository.";
       case "ssh-use-own-tools":
-        return "This project's online address uses SSH (git@…). Everything on this computer works — preview, snapshots, history, restore. To sync, use your usual Git tool.";
+        return "This book's online address uses SSH (git@…). Everything on this computer works — preview, snapshots, history, restore. To sync, use your usual Git tool.";
     }
   });
 
@@ -155,12 +155,12 @@
   }
 </script>
 
-<section class="block project-connections" aria-label="Project connections">
+<section class="block project-connections" aria-label="Book connections">
   <h3>Connections</h3>
   {#if !isDesktop()}
     <p class="hint">Connection details are available in the desktop app.</p>
   {:else if loading}
-    <p class="hint">Reading this project's connection status…</p>
+    <p class="hint">Reading this book's connection status…</p>
   {:else if !diag}
     <p class="hint muted">Could not read this folder's status.</p>
   {:else}
@@ -200,13 +200,13 @@
     {#if diag.guidance === "ssh-use-own-tools" && diag.provider && diag.provider !== "generic"}
       <p class="hint muted">
         Tip: this address points at a server Gutterpress can work with. If you
-        switch the project's address to the web (HTTPS) form with your Git
+        switch the book's address to the web (HTTPS) form with your Git
         tool, Gutterpress will be able to sync once you connect the server.
       </p>
     {/if}
     {#if diag.remoteUrl}
       <p class="hint muted">
-        Checks whether Gutterpress can reach this project's online repository.
+        Checks whether Gutterpress can reach this book's online repository.
         Nothing is changed or uploaded.
       </p>
       <div class="test-row">

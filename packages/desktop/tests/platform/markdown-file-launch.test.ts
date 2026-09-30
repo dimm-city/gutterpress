@@ -85,7 +85,7 @@ test("an unrelated Markdown file is rejected instead of opening a loose folder",
   const result = await resolveMarkdownFileLaunch(chapter);
   expect(result.type).toBe("error");
   if (result.type === "error") {
-    expect(result.message).toContain("isn't inside a Gutterpress project");
+    expect(result.message).toContain("isn't inside a Gutterpress book");
     expect(result.message).toContain("manifest.yaml");
   }
 });

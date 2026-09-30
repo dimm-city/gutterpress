@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * ProjectSettingsView — the "Project settings" surface, patterned after the
+   * ProjectSettingsView — the "Book settings" surface, patterned after the
    * app SettingsView (header + close, tab bar, one cohesive slice per tab). It
    * replaced the left-sidebar Config tab (and with it the retired
    * ProjectConfigPanel): the sidebar's 260px column was a cramped frame for
@@ -143,7 +143,7 @@
             .filter((t) => !t.found && PRINT_TOOL_IDS.includes(t.id))
             .map((t) => t.id),
         ),
-    onSaved: () => toast?.success?.("Project details saved."),
+    onSaved: () => toast?.success?.("Book details saved."),
     onError: (msg) => toast?.error?.(msg),
   });
 
@@ -242,11 +242,11 @@
 
 <div class="settings-view" aria-busy={loadingAll}>
   <header class="settings-header">
-    <h2 id="project-settings-title">Project settings</h2>
-    <button bind:this={closeBtnEl} class="settings-close" onclick={close} title="Close project settings (Esc)" aria-label="Close project settings"><Icon name="x" size={16} /></button>
+    <h2 id="project-settings-title">Book settings</h2>
+    <button bind:this={closeBtnEl} class="settings-close" onclick={close} title="Close book settings (Esc)" aria-label="Close book settings"><Icon name="x" size={16} /></button>
   </header>
 
-  <div class="tab-bar" role="tablist" aria-label="Project settings sections" onkeydown={onTablistKeydown} tabindex="-1">
+  <div class="tab-bar" role="tablist" aria-label="Book settings sections" onkeydown={onTablistKeydown} tabindex="-1">
     {#each TABS as tab (tab.id)}
       <button
         id="project-settings-tab-{tab.id}"
@@ -270,7 +270,7 @@
   >
     {#if !hasProject}
       <div class="empty">
-        <p>Open a project folder to configure it.</p>
+        <p>Open a book to configure it.</p>
       </div>
     {:else if loadingAll}
       <p class="loading">Loading…</p>
@@ -284,7 +284,7 @@
              merged under one writer-shaped "Look & style" heading (the tab
              button itself is shortened to "Look", #243 — see the header
              comment). The stylesheet list is a plain always-visible section
-             - project settings has no collapsible sections. -->
+             - book settings has no collapsible sections. -->
         <section class="block look-style">
           <h3>Look &amp; style</h3>
           <LookSection controller={extensions} />

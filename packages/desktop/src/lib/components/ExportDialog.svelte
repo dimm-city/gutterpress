@@ -129,7 +129,7 @@
           <input type="radio" name="export-format" value="pdf" bind:group={format} />
           <span class="format-info">
             <span class="format-title">PDF</span>
-            <span class="format-desc">Print-ready PDF using your project's page settings. You'll choose where to save it next. (Ctrl+Shift+E exports directly.)</span>
+            <span class="format-desc">Print-ready PDF using your book's page settings. You'll choose where to save it next. (Ctrl+Shift+E exports directly.)</span>
           </span>
         </label>
       {/if}
@@ -145,7 +145,7 @@
           <input type="radio" name="export-format" value="template" bind:group={format} />
           <span class="format-info">
             <span class="format-title">Template</span>
-            <span class="format-desc">Save this project as a reusable starter for new books.</span>
+            <span class="format-desc">Save this book as a reusable starter for new books.</span>
           </span>
         </label>
       {/if}

@@ -180,7 +180,7 @@
     return "Saved";
   });
   let previousVersionsText = $derived.by((): string => {
-    if (!canSnapshot) return "Off for this project";
+    if (!canSnapshot) return "Off for this book";
     if (versionsLoading) return "Checking…";
     if (!versionsLoaded) return "";
     if (latestVersionAt == null) return "No versions yet";

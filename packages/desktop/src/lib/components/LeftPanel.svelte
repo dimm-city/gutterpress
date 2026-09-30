@@ -2,7 +2,7 @@
   /**
    * LeftPanel — global left panel with 4 tabs.
    *
-   * Tabs: Projects, TOC, Files, Media. (Project settings used to be a fifth
+   * Tabs: Books, TOC, Files, Media. (Book settings used to be a fifth
    * Config tab; they moved to the full-window ProjectSettingsView.)
    *
    * Architecture notes:
@@ -216,12 +216,12 @@
     else if (e.key === "End") { e.preventDefault(); width = clampWidth(PANEL_MAX_W); onPanelStateChange?.(); }
   }
 
-  // Projects first (user request): opening/switching books is the entry-point
+  // Books first (user request): opening/switching books is the entry-point
   // action, so it gets the left-most tab.
   const TABS: Array<{ id: PanelTab; label: string; icon: IconName; title: string }> = [
-    { id: "projects", label: "Projects", icon: "folder-open", title: "Open projects" },
+    { id: "projects", label: "Books", icon: "folder-open", title: "Your books" },
     { id: "toc", label: "TOC", icon: "list", title: "Table of contents" },
-    { id: "files", label: "Files", icon: "files", title: "Project files" },
+    { id: "files", label: "Files", icon: "files", title: "Book files" },
     { id: "media", label: "Media", icon: "image", title: "Media library" },
   ];
 
@@ -337,7 +337,7 @@
       {#if outline.length === 0}
         <div class="empty-tab">
           <Icon name="list" size={24} />
-          <p>{projectDir ? "No outline — render the book to see chapters." : "Open a project to see its table of contents."}</p>
+          <p>{projectDir ? "No outline — render the book to see chapters." : "Open a book to see its table of contents."}</p>
         </div>
       {:else}
         <ul class="toc-list" aria-label="Table of contents">
@@ -411,7 +411,7 @@
       {#if !projectDir || sourceMode !== "folder"}
         <div class="empty-tab">
           <Icon name="files" size={24} />
-          <p>Open a project folder to see its files.</p>
+          <p>Open a book to see its files.</p>
         </div>
       {:else}
         {#key projectDir}
@@ -440,7 +440,7 @@
       {#if !projectDir || sourceMode !== "folder"}
         <div class="empty-tab">
           <Icon name="image" size={24} />
-          <p>Open a project folder to browse media.</p>
+          <p>Open a book to browse media.</p>
         </div>
       {:else}
         <!-- Insert is available whenever a folder project is open: the host
@@ -457,7 +457,7 @@
       {/if}
     </div>
 
-    <!-- Projects tab -->
+    <!-- Books tab -->
     <div
       id="panel-content-projects"
       class="tab-panel"
@@ -466,7 +466,7 @@
       aria-labelledby="panel-tab-projects"
       aria-hidden={activeTab !== "projects"}
     >
-      <h2 class="panel-heading">Projects</h2>
+      <h2 class="panel-heading">Books</h2>
       <ProjectsListBody
         compact
         currentProjectPath={sourceMode === "folder" ? projectDir : null}
@@ -525,7 +525,7 @@
      Positioned against .left-panel-region (relative, overflow hidden) rather
      than the viewport, so it spans exactly the workspace: it starts under the
      toolbar and stops at the status bar's top edge, instead of running
-     underneath the bar and hiding the footer buttons (New project). */
+     underneath the bar and hiding the footer buttons (New book). */
   @media screen and (max-width: 820px) {
     .left-panel {
       position: absolute;

@@ -36,7 +36,7 @@ export function formatLastFlushFailureNotice(
       timeStyle: "short",
     }).format(date),
 ): string {
-  const project = marker.projectDir ? basenameOf(marker.projectDir) : "your project";
+  const project = marker.projectDir ? basenameOf(marker.projectDir) : "your book";
   const failedAt = new Date(marker.failedAt);
   const when = Number.isNaN(failedAt.getTime())
     ? "during your previous session"

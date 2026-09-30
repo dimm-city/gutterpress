@@ -132,7 +132,7 @@
     <p class="logs-empty" aria-live="polite">Loading logs…</p>
   {:else if files.length === 0}
     <p class="logs-empty">
-      No logs yet — they appear once a project has synced, saved a version, or
+      No logs yet — they appear once a book has synced, saved a version, or
       been repaired.
     </p>
   {:else}

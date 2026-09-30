@@ -177,7 +177,7 @@
           class="ghost small"
           onclick={() => armRestore(entry.id)}
           disabled={restoringId !== null}
-          title="Restore the project to this version"
+          title="Restore the book to this version"
         >
           Restore this version
         </button>

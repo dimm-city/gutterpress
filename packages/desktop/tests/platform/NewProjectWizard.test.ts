@@ -386,7 +386,7 @@ describe("NewProjectWizard — #312 selectable cards", () => {
   test("template and preset cards are native radios in labelled radiogroups", () => {
     const src = readSource();
     expect(src.match(/role="radiogroup"/g)?.length).toBe(2);
-    expect(src).toContain('aria-label="Project template"');
+    expect(src).toContain('aria-label="Book template"');
     expect(src).toContain('aria-label="Book preset"');
     expect(src).toMatch(/type="radio"\s+class="dlg-sr-only"\s+name="np-template"\s+checked=\{picked\}/);
     expect(src).toMatch(/type="radio"\s+class="dlg-sr-only"\s+name="np-preset"\s+checked=\{picked\}/);

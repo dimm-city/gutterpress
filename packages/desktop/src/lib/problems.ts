@@ -180,7 +180,7 @@ export function groupProblems(problems: ProblemEntry[]): ProblemGroup[] {
     const key = p.file ?? "";
     let g = groups.get(key);
     if (!g) {
-      g = { file: p.file ?? "Project", filePath: p.filePath, entries: [] };
+      g = { file: p.file ?? "Book", filePath: p.filePath, entries: [] };
       groups.set(key, g);
     }
     g.entries.push(p);

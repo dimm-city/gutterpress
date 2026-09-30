@@ -139,7 +139,7 @@
         // "local" framing that read as a remote-detection bug.
         return "Connect to keep an online copy";
       case "auth":
-        return "Reconnect your project";
+        return "Reconnect your book";
       case "error":
         // M40: honest copy — a transient/unexpected sync failure is NOT the
         // same thing as no network, and telling a writer on a working

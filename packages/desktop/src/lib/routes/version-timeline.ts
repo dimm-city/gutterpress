@@ -59,7 +59,7 @@ export function versionLabel(message: string): string {
     case "combined":
       return "Combined with the online copy";
     case "created":
-      return "Project created";
+      return "Book created";
     case "manual":
       return "Version saved by you";
   }

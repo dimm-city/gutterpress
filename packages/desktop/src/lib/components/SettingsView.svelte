@@ -564,7 +564,7 @@
         <div class="row row-toggle">
           <div class="row-label">
             <label for="set-auto-snapshot">Keep previous versions</label>
-            <span class="row-hint">Lets you return to earlier versions of the project.</span>
+            <span class="row-hint">Lets you return to earlier versions of the book.</span>
           </div>
           <input
             id="set-auto-snapshot"
@@ -582,11 +582,11 @@
              switch that would do nothing. Disabled when previous versions is
              off: a backup with nothing to push is not a backup. -->
         {#if canSyncLoading}
-          <div class="row"><span class="row-hint">Checking this project's online status…</span></div>
+          <div class="row"><span class="row-hint">Checking this book's online status…</span></div>
         {:else if canSync}
           <div class="row row-toggle">
             <div class="row-label">
-              <label for="set-auto-sync">Keep this project backed up online</label>
+              <label for="set-auto-sync">Keep this book backed up online</label>
               <span class="row-hint">
                 {#if s.versionHistory.autoSnapshot}
                   Sends your previous versions to your connected online service in the background.
@@ -610,7 +610,7 @@
             />
           </div>
         {:else}
-          <div class="row"><span class="row-hint">This project isn't connected to an online service yet. Connect one in Settings &gt; Accounts to back it up.</span></div>
+          <div class="row"><span class="row-hint">This book isn't connected to an online service yet. Connect one in Settings &gt; Accounts to back it up.</span></div>
         {/if}
         <!-- Copy switching (#273): which copy (git branch) the project is on,
              and a way to switch to another. Copies that exist only online are
@@ -627,8 +627,8 @@
           {@const onlineOnly = new Set(copies.remoteOnly ?? [])}
           <div class="row">
             <div class="row-label">
-              <span class="row-title">Copy of this project you're working on</span>
-              <span class="row-hint">{copies.current ?? "Unknown — this project's history looks unusual."}</span>
+              <span class="row-title">Copy of this book you're working on</span>
+              <span class="row-hint">{copies.current ?? "Unknown — this book's history looks unusual."}</span>
             </div>
             {#if otherCopies.length > 0}
               <div class="row-actions">

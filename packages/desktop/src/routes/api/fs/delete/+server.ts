@@ -54,7 +54,7 @@ export const POST: RequestHandler = defineRoute<
     );
     const target = await requireWithinProjectRoot(requireAbsolute(body.path, 'fs:delete'), 'fs:delete');
     if (path.resolve(target) === path.resolve(projectDir)) {
-      error(400, 'fs:delete cannot delete the project root');
+      error(400, 'fs:delete cannot delete the book folder');
     }
     return { path: target, projectDir };
   },

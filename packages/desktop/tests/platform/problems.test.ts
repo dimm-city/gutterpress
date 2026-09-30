@@ -47,7 +47,7 @@ test("canExpandProblems: nothing to list means nothing to expand", () => {
   expect(canExpandProblems([make({ severity: "error" })], null, false)).toBe(true);
   expect(canExpandProblems([make({ severity: "info" })], null, false)).toBe(true);
   // A failed check has a message to show — never mistaken for a clean run.
-  expect(canExpandProblems([], "We couldn't check your project this time.", false)).toBe(true);
+  expect(canExpandProblems([], "We couldn't check your book this time.", false)).toBe(true);
   // Already open (e.g. the writer just fixed the last problem): stays closable.
   expect(canExpandProblems([], null, true)).toBe(true);
 });
@@ -68,10 +68,10 @@ test("groupProblems groups by file, sorts groups by name and entries by line", (
     make({ file: "b.md", filePath: "/p/b.md", line: 2, severity: "error" }),
     make({ message: "project-level finding" }), // no file
   ]);
-  expect(groups.map((g) => g.file)).toEqual(["a.md", "b.md", "Project"]);
+  expect(groups.map((g) => g.file)).toEqual(["a.md", "b.md", "Book"]);
   const b = groups[1]!;
   expect(b.entries.map((e) => e.line)).toEqual([2, 9]);
-  // Project-level group renders last and keeps its entries.
+  // The file-less ("Book") group renders last and keeps its entries.
   expect(groups[2]!.entries[0]!.message).toBe("project-level finding");
   expect(groups[2]!.filePath).toBeUndefined();
 });

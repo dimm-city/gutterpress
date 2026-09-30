@@ -2,7 +2,7 @@
   /**
    * ProjectsListBody — the reusable list body for browsing/opening projects.
    * Extracted from OpenLocationDialog for composition into the left panel's
-   * Projects tab and for direct use in the dialog itself.
+   * Books tab and for direct use in the dialog itself.
    *
    * Owns: recents/favorites/discovered data, filter, DISCOVERED_CAP, keyboard nav.
    * The parent passes callback props for actions so this component is purely
@@ -73,7 +73,7 @@
   let discovered = $state<DiscoveredProject[]>([]);
   let loading = $state(false);
   // M20: the recents/favorites load used to catch-and-ignore, so a failed
-  // load rendered the exact same "No recent projects yet" copy as a
+  // load rendered the exact same "No recent books yet" copy as a
   // genuinely empty list — a lie that hides a real problem from the writer.
   // Tracked per-surface (this component owns one load surface: recents +
   // favorites, loaded together below) so the empty-state branch can tell
@@ -147,7 +147,7 @@
       // (see projects-discover-cache.ts), so calling this again — e.g. from
       // the Retry button below — genuinely re-runs the scan rather than
       // replaying a stale failure.
-      discoverError = "Couldn't discover projects on disk.";
+      discoverError = "Couldn't discover books on disk.";
     }
   }
 
@@ -295,7 +295,7 @@
       onChosen?.(first.path);
       location = "";
     } else {
-      error = "No matching projects. Type a folder path or web address.";
+      error = "No matching books. Type a folder path or web address.";
     }
   }
 
@@ -473,7 +473,7 @@
             <button type="button" class="retry-btn" onclick={() => loadLists()}>Retry</button>
           </div>
         {:else if !loading}
-          <p class="empty-section-hint">No recent projects yet. Open a folder to get started.</p>
+          <p class="empty-section-hint">No recent books yet. Open a folder to get started.</p>
         {/if}
       </section>
     {/if}
@@ -487,7 +487,7 @@
           {/if}
         </h3>
         {#if filteredDiscovered.length > 0}
-          <ul class="list" aria-label="Discovered projects">
+          <ul class="list" aria-label="Discovered books">
             {#each visibleDiscovered as proj, i}
               {@const rowIndex = filteredFavorites.length + filteredRecents.length + i}
               <li class="list-item">
@@ -527,7 +527,7 @@
     {/if}
 
     {#if !loading && allRows.length === 0 && effectiveFilter}
-      <p class="empty-hint">No projects match "{effectiveFilter}".</p>
+      <p class="empty-hint">No books match "{effectiveFilter}".</p>
     {/if}
   </div>
 
@@ -541,13 +541,13 @@
         </button>
       {/if}
       {#if onOpenGitHub}
-        <button class="footer-action" onclick={onOpenGitHub} title="Open a project from GitHub">
+        <button class="footer-action" onclick={onOpenGitHub} title="Open a book from GitHub">
           <Icon name="github" size={14} /> Open from GitHub
         </button>
       {/if}
       {#if onNewProject}
-        <button class="footer-action primary" onclick={onNewProject} title="Create a new book project">
-          <Icon name="plus" size={14} /> New project
+        <button class="footer-action primary" onclick={onNewProject} title="Create a new book">
+          <Icon name="plus" size={14} /> New book
         </button>
       {/if}
     </div>

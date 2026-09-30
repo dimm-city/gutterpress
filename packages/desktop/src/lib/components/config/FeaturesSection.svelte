@@ -93,7 +93,7 @@
           <button class="toggle" class:on={e.enabled} role="switch" aria-checked={e.enabled} aria-label={`${e.enabled ? "Disable" : "Enable"} ${e.label}`} disabled={controller.busy !== null} onclick={() => controller.toggle(e)}>
             <span class="knob"></span>
           </button>
-          <button class="ghost icononly" onclick={() => controller.remove(e)} disabled={controller.busy !== null} title={e.kind === "npm" ? "Remove (deletes its downloaded copy)" : "Remove from this project"} aria-label={`Remove ${e.label}`}>
+          <button class="ghost icononly" onclick={() => controller.remove(e)} disabled={controller.busy !== null} title={e.kind === "npm" ? "Remove (deletes its downloaded copy)" : "Remove from this book"} aria-label={`Remove ${e.label}`}>
             <Icon name="trash" size={13} />
           </button>
         </li>
@@ -170,7 +170,7 @@
       <button class="ghost small full" onclick={controller.addLocal} disabled={controller.busy !== null}>
         <Icon name="folder" size={14} /> Add a plugin file or folder...
       </button>
-      <p class="hint">A file or folder you pick is used where it is — nothing is copied into the project.</p>
+      <p class="hint">A file or folder you pick is used where it is — nothing is copied into the book.</p>
     </div>
   </details>
 </section>

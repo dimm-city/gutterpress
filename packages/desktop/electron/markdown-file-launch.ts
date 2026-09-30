@@ -107,7 +107,7 @@ export async function resolveMarkdownFileLaunch(
     type: "error",
     filePath: absolute,
     message:
-      `"${path.basename(absolute)}" isn't inside a Gutterpress project. ` +
+      `"${path.basename(absolute)}" isn't inside a Gutterpress book. ` +
       `Open a Markdown chapter from a folder that contains ${MANIFEST_FILENAMES[0]}.`,
   };
 }

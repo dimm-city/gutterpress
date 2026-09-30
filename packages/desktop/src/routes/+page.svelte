@@ -773,11 +773,11 @@
   // author's books — the screen's whole job is to pick or continue a book.
   // The missing-identity nudge is the workspace banner (`needsGitIdentity`
   // above), which is where the owner put it on 2026-07-30; the landing opens
-  // on Projects and stays there until the author asks for another tab.
+  // on Books and stays there until the author asks for another tab.
 
   /**
    * The ONE open-a-project-folder pipeline behind the folder picker, the
-   * Projects panel, the start screen, the GitHub dialog, and the new-project
+   * Books panel, the start screen, the GitHub dialog, and the new-book
    * wizard: leave the start screen, restore the folder's saved per-project
    * state (#43), and hand off to startFolderPreview. There is NO await before
    * startFolderPreview, so the open epoch is claimed at user-intent time (last
@@ -1002,15 +1002,15 @@
     snippetPickerRef?.show();
   }
 
-  // ── Project settings view (#PCV → docked panel) ────────────────────────────
-  // Project settings live in a panel docked beside the workspace, patterned
+  // ── Book settings view (#PCV → docked panel) ────────────────────────────
+  // Book settings live in a panel docked beside the workspace, patterned
   // after the app SettingsView (they used to be a left-sidebar Config tab);
   // activity is the only alternate editor-pane view.
   let editorView = $state<"editor" | "activity">("editor");
   let projectSettingsOpen = $state(false);
 
   /**
-   * One button → the whole project settings view (manifest details, look &
+   * One button → the whole book settings view (manifest details, look &
    * style, plugins). Docked beside the workspace so the preview stays visible
    * while the writer styles the book; the workspace goes inert and returns
    * untouched on close.
@@ -1018,7 +1018,7 @@
   function openProjectConfig(): void {
     if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
     if (!isDesktop()) {
-      toast?.info?.("Project configuration is available in the desktop app for now.");
+      toast?.info?.("Book settings are available in the desktop app for now.");
       return;
     }
     contextMenu.close();
@@ -1699,7 +1699,7 @@
         // distinct error state instead of silently clearing to [].
         if (lifecycle.currentDir === dir) {
           problems = [];
-          problemsError = "We couldn't check your project this time.";
+          problemsError = "We couldn't check your book this time.";
         }
       })
       .finally(() => {
@@ -2112,7 +2112,7 @@
   // ----------------------------------------------------------------
   onMount(() => {
     function onGlobalKey(e: KeyboardEvent) {
-      // The Project settings panel owns the keyboard while it's up: the
+      // The Book settings panel owns the keyboard while it's up: the
       // workspace beside it is inert, so acting on it (opening Settings
       // BENEATH the panel, toggling focus mode, exporting, snippet picker)
       // would change UI the writer isn't working in. Escape closes the panel.
@@ -2196,7 +2196,7 @@
       if (e.defaultPrevented) return;
       // Never page/zoom the pre-rendering preview from behind the start screen.
       if (landingVisible) return;
-      // Never page/zoom the (inert) preview beside the project settings
+      // Never page/zoom the (inert) preview beside the book settings
       // panel (PageUp/PageDown must scroll its body, not the preview).
       if (projectSettingsOpen) return;
       // Don't intercept when focus is in a form control or the CodeMirror
@@ -2309,7 +2309,7 @@
 
   function getSaveReadinessWarning(): string | null {
     if (lifecycle.sourceMode !== "folder" || !lifecycle.currentDir) {
-      return "Open a project folder before saving a PDF.";
+      return "Open a book before saving a PDF.";
     }
     if (lifecycle.rendering || !lifecycle.previewUrl) {
       return "Your document is still loading. Wait a moment and try again.";
@@ -2566,7 +2566,7 @@
   // editor and the preview. `editorPaneOpen` is the visible source of truth;
   // the persisted paneMode is only consulted after the editor was explicitly
   // opened. (The defunct CSS/style tab was retired with the toolbar
-  // refactor — project styling lives in the Project settings view.)
+  // refactor — project styling lives in the Book settings view.)
   //
   // M1 (single source of truth): whether the shared editor is on a CSS file is
   // derived SOLELY from the open file's extension (`openFileIsCss`) — no
@@ -2715,7 +2715,7 @@
   <title>{lifecycle.docTitle ? `${lifecycle.docTitle} — Gutterpress` : "Gutterpress"}</title>
 </svelte:head>
 
-<!-- inert while the start screen or Project settings is up: the workspace keeps
+<!-- inert while the start screen or Book settings is up: the workspace keeps
       rendering (the docked panel leaves the preview visible and live beside
       it), but never accepts interaction underneath. -->
 <div class="app-root" class:settings-docked={projectSettingsOpen} inert={landingVisible || projectSettingsOpen}>
@@ -3140,12 +3140,12 @@
   onProjectFilesChanged={onSnapshotRestored}
 />
 {#if projectSettingsOpen}
-  <!-- Project settings (manifest): a panel docked beside the workspace, so the
+  <!-- Book settings (manifest): a panel docked beside the workspace, so the
        book preview stays visible (and re-renders live) while the writer styles
        it; it covers the whole window only when the window is too narrow for
        both. Keyed by projectDir so a project switch can never leave stale
        section state (drafts, theme lists) resident under the new project. -->
-  <section class="settings-global-view" aria-label="Project settings">
+  <section class="settings-global-view" aria-label="Book settings">
     {#key lifecycle.currentDir}
       <ProjectSettingsView
         projectDir={lifecycle.currentDir}
@@ -3164,7 +3164,7 @@
   bind:open={githubOpen}
   onOpened={(projectDir) => {
     invalidateDiscoveredProjects(); // a fresh clone is a new discoverable book
-    return openProjectPath(projectDir, "Opening your project…");
+    return openProjectPath(projectDir, "Opening your book…");
   }}
   onAdvancedSetup={() => openSettings("connections")}
   onClosed={onConnectDialogClosed}
@@ -3321,7 +3321,7 @@
   .editor-pane {
     border-right: 1px solid var(--app-border);
   }
-  /* Project settings docks to the right edge; the (inert) app shrinks by the
+  /* Book settings docks to the right edge; the (inert) app shrinks by the
      panel's width so the preview re-fits into what is left instead of hiding
      under it. Below 900px there is no room for both, so the panel covers the
      window as it did before. */

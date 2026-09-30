@@ -47,7 +47,7 @@ export const POST: RequestHandler = defineRoute<Body>({
     }
     if (kind === 'path') {
       if (!specifier.startsWith('./') && !specifier.startsWith('../')) {
-        error(400, 'extension/add takes a project-relative path (./x or ../x) — choose an absolute path with extension/add-local');
+        error(400, 'extension/add takes a path relative to the book (./x or ../x) — choose an absolute path with extension/add-local');
       }
       await requireWithinProjectRoot(path.resolve(projectDir, specifier), 'extension/add');
     }

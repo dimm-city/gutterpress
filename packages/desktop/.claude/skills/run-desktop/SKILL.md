@@ -47,9 +47,9 @@ Then Read the PNGs (`/tmp/shots/editor.png`, ...). Look at them; a blank frame i
 Commands: `shot name`, `click sel`, `fill sel | value`, `press Key`, `size w h`, `wait ms`,
 `text` (dump body text), `btns` (visible controls with x,y,w,h), `eval js`.
 Failed commands print `FAIL ...` and the script continues. Pass `""` as the book dir to stay on the welcome screen.
-Useful selectors: `[aria-label='Project settings']`, `[aria-label='Close project settings']`,
+Useful selectors: `[aria-label='Book settings']`, `[aria-label='Close book settings']`,
 `[aria-label='App preferences']` (app settings, status bar), `[aria-label='Help and about']`, `button:has-text('Publish')`,
-`button:has-text('PROBLEMS')`, `button:has-text('New project')`.
+`button:has-text('PROBLEMS')`, `button:has-text('New book')`.
 
 ## Human path
 `npm run electron:dev` opens a window and blocks; useless headless.
@@ -58,8 +58,8 @@ Useful selectors: `[aria-label='Project settings']`, `[aria-label='Close project
 - Opening a book = typing its path into the welcome screen's "Search your books" box + Enter (the native folder dialog can't be driven).
 - A fresh profile opens a book in **Edit** (editor beside the page) with the left panel open (closed if the window is narrow). A saved Read/Edit or panel choice wins on later launches, so delete `GP_HOME` for a first-run view.
 - `HOME` is set to `/tmp/gphome` (override with `GP_HOME`) so recents/settings don't leak between runs.
-- Settings and Help are full-screen pages that cover the workspace; Esc closes them. Project settings is a panel docked on the right (the inert book preview stays visible and refits beside it; it covers the whole window only below 900px wide); Esc or the X (`Close project settings`) closes it.
-- The `New project` button is only visible while the left panel is open (already open on a fresh profile; the toggle closes it).
+- Settings and Help are full-screen pages that cover the workspace; Esc closes them. Book settings is a panel docked on the right (the inert book preview stays visible and refits beside it; it covers the whole window only below 900px wide); Esc or the X (`Close book settings`) closes it.
+- The `New book` button is only visible while the left panel is open (already open on a fresh profile; the toggle closes it).
 - Selectors like `button:has-text('Edit')` can match several nodes; the first is used. Keep `p.setDefaultTimeout` short (5s) or a bad selector stalls the run.
 - Don't `pkill -f "vite dev"` in your own shell command; the pattern matches the shell and kills the session.
 - Window size changes via `size` reflow the toolbar (labels collapse to icons at ~1024, page nav disappears at ~800).

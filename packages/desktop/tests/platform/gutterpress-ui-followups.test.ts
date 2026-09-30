@@ -27,7 +27,7 @@ test("files tab no longer has configure project button and embedded panels own t
   const left = read("src/lib/components/LeftPanel.svelte");
   const media = read("src/lib/components/MediaPanel.svelte");
   expect(left).not.toContain("Configure project");
-  expect(left).toContain("Projects");
+  expect(left).toContain('label: "Books"');
   expect(left).toContain("Table of contents");
   expect(left).toContain("Files");
   expect(left).toContain("sidebarEmbedded={true}");
@@ -201,7 +201,7 @@ test("#307: the narrow left-panel drawer spans the workspace region — it stops
   const left = read("src/lib/components/LeftPanel.svelte");
   const page = read("src/routes/+page.svelte");
   // Viewport-fixed with bottom:0, the drawer ran underneath the status bar and
-  // hid its own footer buttons (New project). Positioned against
+  // hid its own footer buttons (New book). Positioned against
   // .left-panel-region it ends exactly where the region — and so the bar —
   // begins, with no height to keep in sync.
   const drawer = /@media screen and \(max-width: 820px\) \{\s*\.left-panel \{([^}]*)\}/.exec(left)?.[1] ?? "";

@@ -44,7 +44,7 @@ export async function requireWithinProjectRoot(
   const roots = guard ? guard.projectRoots() : [];
   const allowed = options.includeReadOnlyRoots && guard ? [...roots, ...guard.readOnlyRoots()] : roots;
   if (!(await isWithinAnyRootCanonical(absPath, allowed))) {
-    error(403, `${routeName}: path is outside the open project`);
+    error(403, `${routeName}: path is outside the open book`);
   }
   return absPath;
 }
@@ -113,6 +113,6 @@ export async function requireContainedOrPicked(
       picked.register([absPath]);
       return absPath;
     }
-    error(403, `${routeName}: path is outside the open project and was not chosen from a file dialog`);
+    error(403, `${routeName}: path is outside the open book and was not chosen from a file dialog`);
   }
 }

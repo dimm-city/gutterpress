@@ -79,7 +79,7 @@ const electronBin = isMainJs ? require_("electron") : target;
 const appArgv = [...(isMainJs ? [target] : []), `--remote-debugging-port=${PORT}`, "--no-sandbox"];
 
  fakeHome = mkdtempSync(join(tmpdir(), "gutterpress-panel-reopen-home-"));
-// Fresh userData — no lastProjectDir — so the app shows the welcome Projects panel.
+// Fresh userData — no lastProjectDir — so the app shows the welcome Books panel.
 
 // A real book to open AFTER the failed opens, copied outside this git repo:
 // the committed fixture lives inside the Gutterpress repo, so the app sees a
@@ -163,15 +163,15 @@ for (let i = 0; i < 60; i++) {
 if (!spaReady) fail("SPA never became interactive (60s)");
 log("SPA ready");
 
-// ── 4. wait for Projects panel to auto-open ───────────────────────────────────
+// ── 4. wait for Books panel to auto-open ───────────────────────────────────
 let panelOpen = false;
 for (let i = 0; i < 20; i++) {
   const hasPanel = await evalJs(`!!document.querySelector('.projects-body')`);
   if (hasPanel) { panelOpen = true; break; }
   await sleep(500);
 }
-if (!panelOpen) fail("Projects panel did not auto-open on startup (no .projects-body in 10s)");
-log("Projects panel open on startup");
+if (!panelOpen) fail("Books panel did not auto-open on startup (no .projects-body in 10s)");
+log("Books panel open on startup");
 
 // ── 5. enter a path and press Enter ──────────────────────────────────────────
 async function submitLocation(value) {
@@ -220,12 +220,12 @@ for (const attempt of [1, 2]) {
   const panelStillOpen = await evalJs(`!!document.querySelector('.projects-body')`);
   if (!panelStillOpen) {
     fail(
-      `Projects panel closed after failed folder open (attempt ${attempt}) — user is stranded. ` +
+      `Books panel closed after failed folder open (attempt ${attempt}) — user is stranded. ` +
       'This is the beta.6 regression: the autoOpenPanel $effect was removed ' +
       'without adding panel re-open to startFolderPreview\'s catch block.'
     );
   }
-  log(`attempt ${attempt}: Projects panel visible after the failed open`);
+  log(`attempt ${attempt}: Books panel visible after the failed open`);
 }
 
 // ── 8. a real folder still opens afterwards ──────────────────────────────────

@@ -50,10 +50,10 @@ describe("versionKind / versionLabel — writer-facing classification from messa
     }
   });
 
-  test("history-start commits read as project creation", () => {
+  test("history-start commits read as book creation", () => {
     for (const m of CREATED_MESSAGES) {
       expect(versionKind(m)).toBe("created");
-      expect(versionLabel(m)).toBe("Project created");
+      expect(versionLabel(m)).toBe("Book created");
     }
   });
 

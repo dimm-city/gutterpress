@@ -34,7 +34,7 @@ export const POST: RequestHandler = defineRoute<
 
     // C1 (repo-root sessions): a `local-git-folder` source's `repoRoot` may hold
     // several books (folders directly containing a manifest). Reuse the same
-    // BFS scan the Projects tab's background discovery already uses, rooted at
+    // BFS scan the Books tab's background discovery already uses, rooted at
     // just this one repo — the desktop decides which book is "active" from this
     // list (project-session-controller.svelte.ts's resolveActiveBookDir).
     const typedSource = source as { type: string; repoRoot?: string };
