@@ -20,6 +20,8 @@
  *     and sanitizes a persisted leftPanel.activeTab of "config" from older
  *     sessions.
  *  5. The retired sidebar ProjectConfigPanel is gone.
+ *  6. The Look tab (#308): plain-language token labels (the CSS variable
+ *     stays visible) and font pickers styled like the other form controls.
  */
 import { describe, test, expect } from "bun:test";
 import * as fs from "node:fs";
@@ -248,6 +250,44 @@ describe("+page.svelte — Project settings docks beside the live preview (#308)
     // Pinned to the viewport edge the flyout would sit on top of the docked panel.
     const look = read("src/lib/components/config/LookSection.svelte");
     expect(look).toMatch(/\.hover-preview\s*\{[^}]*right:\s*calc\(var\(--app-settings-panel-width\)/);
+  });
+});
+
+describe("Look tab — plain-language token labels and styled font pickers (#308)", () => {
+  const design = () => read("src/lib/components/config/DesignSection.svelte");
+
+  test("a token row leads with its plain label and keeps the real CSS variable visible", () => {
+    const src = design();
+    expect(src).toContain('<span class="token-name">{t.label}</span>');
+    // Muted secondary line, out of the control's accessible name; the tooltip
+    // repeats it for the case the line is truncated.
+    expect(src).toContain('<span class="token-var" aria-hidden="true">{t.name}</span>');
+    expect(src).toContain("title={t.name}");
+  });
+
+  test("the panel's group headings use the same spelling as the labels (colour)", () => {
+    expect(design()).toContain('<h4 class="subhead">Colours</h4>');
+    expect(design()).not.toMatch(/>Colors</);
+  });
+
+  test("font pickers wear the form tokens instead of native select chrome", () => {
+    const src = design();
+    const rule = src.match(/\.control\.font select\s*\{([^}]*)\}/)?.[1] ?? "";
+    for (const token of ["--app-surface-sunken", "--app-border", "--app-text-secondary"]) {
+      expect(rule).toContain(`var(${token})`);
+    }
+    expect(src).toMatch(/\.control\.font select:focus\s*\{[^}]*var\(--app-focus-ring\)/);
+  });
+
+  test("a font row stacks, and no row's shape depends on its dirty state", () => {
+    const src = design();
+    // Only font rows stack (label over select + text input)…
+    expect(src).toContain("class:stacked={t.kind === \"font\"}");
+    expect(src).toMatch(/\.token-row\.stacked\s*\{[^}]*flex-wrap:\s*wrap/);
+    // …every other row stays a single line, so the reset button appearing can't
+    // wrap it and move the field the writer is typing in.
+    const plain = src.match(/\.token-row\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(plain).not.toContain("wrap");
   });
 });
 
