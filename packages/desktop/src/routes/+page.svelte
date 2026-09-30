@@ -3120,6 +3120,7 @@
         onClose={closeProjectSettings}
         onEditRawCss={(path) => { closeProjectSettings(); openStyleFile(path); }}
         onOpenAccounts={() => { closeProjectSettings(); openSettings("connections"); }}
+        onVersionHistoryEnabled={(dir) => void projectSession.classify(dir)}
       />
     {/key}
   </section>
