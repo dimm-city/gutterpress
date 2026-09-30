@@ -219,7 +219,7 @@ try {
   const marginBox = book.locator('.gp-marginbox[data-box="top-center"]');
 
   function isFrameSwapError(error) {
-    return /Cannot find context|Execution context was destroyed|Frame was detached/i.test(
+    return /Cannot find context|Execution context was destroyed|Frame was detached|Unable to adopt element handle from a different document/i.test(
       error?.message || String(error),
     );
   }
