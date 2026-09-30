@@ -467,20 +467,25 @@ export const LAYOUT_BLOCK_ITEMS: readonly LayoutBlockItem[] = [
 
 // ── Toolbar item declarations (single source of truth — M23) ────────────────
 //
-// EditorToolbar renders BOTH the always-visible toolbar groups AND the
-// narrow-width "More" overflow menu from this ONE array. Previously the More
-// menu was a hand-duplicated second list of buttons that had already drifted
-// from the toolbar — it silently omitted Save and Snippet, so Save vanished
-// entirely once the container narrowed enough to hide the primary group.
-// Deriving both surfaces from the same filtered list makes that class of
-// drift structurally impossible: an item is either in this array (and shows
-// up everywhere it should) or it isn't declared at all.
+// EditorToolbar renders the always-visible toolbar groups, the Insert menu AND
+// the narrow-width "More" overflow menu from this ONE array. Previously the
+// More menu was a hand-duplicated second list of buttons that had already
+// drifted from the toolbar — it silently omitted Save and Snippet, so Save
+// vanished entirely once the container narrowed enough to hide the primary
+// group. Deriving every surface from the same filtered list makes that class
+// of drift structurally impossible: an item is either in this array (and
+// shows up everywhere it should) or it isn't declared at all.
 //
 // Pure data + a pure filter function — zero Svelte imports, so it is testable
 // the same way the transaction helpers above are.
 
-/** Which visually-grouped section of the always-visible toolbar an item renders in. */
-type ToolbarGroup = "save" | "primary" | "block" | "insert";
+/**
+ * Which section of the toolbar an item belongs to (the UX contract's
+ * Format / Insert / View): "save", "primary" and "block" are the always-there
+ * format controls; "insert" items live together in the Insert menu; "view"
+ * items are editing-posture toggles that sit apart at the toolbar's right edge.
+ */
+type ToolbarGroup = "save" | "primary" | "block" | "insert" | "view";
 
 /**
  * How an item behaves when activated:
@@ -504,7 +509,7 @@ export interface ToolbarItemDef {
   title: string;
   /** aria-label for the icon-only toolbar button (may differ from the More-menu label). */
   ariaLabel: string;
-  /** Plain-text label shown for this item inside the More menu. */
+  /** Plain-text label shown for this item inside the Insert and More menus. */
   label: string;
   group: ToolbarGroup;
   /** Only shown when isDesktop() — image insert and snippet need host IPCs. */
@@ -630,16 +635,6 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
     group: "insert",
   },
   {
-    id: "page-break",
-    kind: "action",
-    action: "page-break",
-    icon: "file-separator",
-    title: "Page break (@page-break)",
-    ariaLabel: "Insert page break",
-    label: "Page break",
-    group: "insert",
-  },
-  {
     id: "table",
     kind: "table",
     icon: "table",
@@ -672,7 +667,8 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
   {
     // Focus mode lives on the EDITOR toolbar (not the main toolbar): it is an
     // editing posture, and this bar stays visible inside focus mode so the
-    // same button toggles back out (Esc works too).
+    // same button toggles back out. It is not an insertion, so it has its own
+    // "view" group instead of a row in the Insert menu.
     id: "focus-mode",
     kind: "action",
     action: "focus-mode",
@@ -680,7 +676,7 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
     title: "Focus mode (Ctrl+Shift+F)",
     ariaLabel: "Toggle focus mode",
     label: "Focus mode",
-    group: "insert",
+    group: "view",
   },
 ];
 

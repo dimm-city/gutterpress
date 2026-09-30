@@ -50,7 +50,6 @@
     | "list-ordered"
     | "heading"
     | "minus"
-    | "file-separator"
     | "table"
     | "image"
     | "more-horizontal"
@@ -160,8 +159,6 @@
       '<path d="M6 12h12"/><path d="M6 20V4"/><path d="M18 20V4"/>',
     "minus":
       '<line x1="5" x2="19" y1="12" y2="12"/>',
-    "file-separator":
-      '<path d="M3 12h18"/><path d="M3 6h18"/><path d="M3 18h18"/>',
     "table":
       '<path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/>',
     "image":
