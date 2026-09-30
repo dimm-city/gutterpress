@@ -683,40 +683,54 @@
     /* Intra-toolbar stacking only: the toolbar (z: var(--app-z-toolbar)) is a
        stacking context, so this small literal never competes app-wide. */
     z-index: 80;
-    min-width: 168px;
+    min-width: 120px;
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 1px;
     padding: 4px;
-    background: var(--app-surface-raised);
+    /* Same values as EditorToolbar's `.toolbar-popup` (the Insert menu), so
+       every toolbar dropdown reads as one family. */
+    background: var(--app-surface);
     border: 1px solid var(--app-border);
-    border-radius: 8px;
-    box-shadow: 0 6px 20px var(--app-shadow-md);
+    border-radius: 4px;
+    box-shadow: 0 4px 12px var(--app-shadow-md);
   }
-  .menu-item {
+  /* Rows, not buttons. The generic `.toolbar button` rules above (border,
+     neutral fill, `button.active` accent slab) outrank a bare `.menu-item`, so
+     every selector here is anchored on `.toolbar .menu-panel button` to win at
+     equal-or-higher specificity: one panel owns the border and shadow; rows are
+     borderless and transparent until hovered. */
+  .toolbar .menu-panel button.menu-item {
     display: flex;
     align-items: center;
     gap: 8px;
     width: 100%;
     text-align: left;
     background: transparent;
-    border: 1px solid transparent;
-    border-radius: 5px;
-    padding: 6px 10px;
-    font-size: 13px;
+    border: 0;
+    border-radius: 3px;
+    color: var(--app-text);
+    padding: 5px 8px;
+    font-size: 12px;
+    font-weight: 400;
     white-space: nowrap;
   }
-  /* :not(.active) — the selected item must keep its accent fill under the
-     pointer. Unexcluded, this rule (0,3,0) outranked `.menu-item.active`
-     (0,2,0) and left white text on a pale hover fill. */
-  .menu-item:not(.active):hover:not(:disabled) {
+  /* :not(.active) — the selected row keeps its selected look under the
+     pointer. Unexcluded, the hover fill would repaint it as a plain hover row
+     (the #305 defect, originally white-on-pale text). */
+  .toolbar .menu-panel button.menu-item:not(.active):hover:not(:disabled) {
     background: var(--app-control-hover-bg);
-    border-color: var(--app-control-hover-border);
   }
-  .menu-item.active {
-    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
-    border-color: var(--app-accent-border);
-    color: var(--app-accent-text);
+  /* Quiet selected state: accent-tinted row, accent text, trailing check. */
+  .toolbar .menu-panel button.menu-item.active {
+    background: var(--app-accent-subtle);
+    color: var(--app-link);
+    font-weight: 600;
+  }
+  .toolbar .menu-panel button.menu-item.active::after {
+    content: "\2713" / "";
+    margin-left: auto;
+    padding-left: 12px;
   }
 
   /* Page/Spread as a true segmented control: one bordered track, the selected
