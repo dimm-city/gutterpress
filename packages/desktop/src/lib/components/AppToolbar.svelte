@@ -143,6 +143,15 @@
     mode === "viewer" ? "book-open" : mode === "focus" ? "maximize" : "pen-line",
   );
 
+  // Each tooltip says what its layout shows. Esc is deliberately NOT a way out
+  // of Focus (see onGlobalKey in +page.svelte), so Focus names the real ones.
+  const MODE_TITLE = {
+    editor: "Edit — editor and preview side by side (Ctrl+E)",
+    viewer: "Read — the preview on its own, two pages at a time",
+    focus:
+      "Focus — editor only (Ctrl+Shift+F). Press it again, or choose Edit or Read, to bring the preview back",
+  } as const;
+
   // Close the enclosing <details> menu after a menu item is chosen, and return
   // focus to its summary for keyboard users.
   function closeMenu(e: Event) {
@@ -326,7 +335,7 @@
         class:active={mode === "editor"}
         onclick={() => onSetMode("editor")}
         disabled={editorToggleDisabled}
-        title="Write, with one page of the book beside you (Ctrl+E)"
+        title={MODE_TITLE.editor}
         aria-label="Edit"
         aria-pressed={mode === "editor"}
       >
@@ -337,18 +346,21 @@
         class:active={mode === "viewer"}
         onclick={() => onSetMode("viewer")}
         disabled={editorToggleDisabled}
-        title="Read the book two pages at a time, like an open book"
+        title={MODE_TITLE.viewer}
         aria-label="Read"
         aria-pressed={mode === "viewer"}
       >
         <Icon name="book-open" /><span class="view-label">Read</span>
       </button>
+      <!-- Disabled means "can't be entered": the mode you are ALREADY in is
+           never unavailable, so a Focus carried into a narrow window still
+           reads as selected rather than dimmed. -->
       <button
         class="icon-text"
         class:active={mode === "focus"}
         onclick={() => onSetMode("focus")}
-        disabled={editorToggleDisabled || isNarrow}
-        title="Write with nothing beside you — just your words (Ctrl+Shift+F)"
+        disabled={editorToggleDisabled || (isNarrow && mode !== "focus")}
+        title={MODE_TITLE.focus}
         aria-label="Focus"
         aria-pressed={mode === "focus"}
       >
@@ -367,6 +379,7 @@
           class:active={mode === "editor"}
           onclick={(e) => { onSetMode("editor"); closeMenu(e); }}
           disabled={editorToggleDisabled}
+          title={MODE_TITLE.editor}
         >
           <Icon name="pen-line" /> Edit
         </button>
@@ -376,6 +389,7 @@
           class:active={mode === "viewer"}
           onclick={(e) => { onSetMode("viewer"); closeMenu(e); }}
           disabled={editorToggleDisabled}
+          title={MODE_TITLE.viewer}
         >
           <Icon name="book-open" /> Read
         </button>
@@ -384,7 +398,8 @@
           class="menu-item"
           class:active={mode === "focus"}
           onclick={(e) => { onSetMode("focus"); closeMenu(e); }}
-          disabled={editorToggleDisabled || isNarrow}
+          disabled={editorToggleDisabled || (isNarrow && mode !== "focus")}
+          title={MODE_TITLE.focus}
         >
           <Icon name="maximize" /> Focus
         </button>
@@ -673,7 +688,10 @@
     font-size: 13px;
     white-space: nowrap;
   }
-  .menu-item:hover:not(:disabled) {
+  /* :not(.active) — the selected item must keep its accent fill under the
+     pointer. Unexcluded, this rule (0,3,0) outranked `.menu-item.active`
+     (0,2,0) and left white text on a pale hover fill. */
+  .menu-item:not(.active):hover:not(:disabled) {
     background: var(--app-control-hover-bg);
     border-color: var(--app-control-hover-border);
   }
@@ -699,7 +717,11 @@
     border-radius: 5px;
     padding: 4px 9px;
   }
-  .mode-group button:hover:not(:disabled) {
+  /* :not(.active) — the just-clicked segment sits under the pointer, and this
+     rule (0,3,1) outranked `.mode-group button.active` (0,2,1): the selected
+     segment lost its accent fill but kept its white text, so it read as
+     disabled exactly when the author had just chosen it. */
+  .mode-group button:not(.active):hover:not(:disabled) {
     background: var(--app-control-hover-bg);
     border-color: transparent;
   }

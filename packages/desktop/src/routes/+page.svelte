@@ -2476,6 +2476,10 @@
   function setMode(next: WorkspaceMode): void {
     if (next === mode) return;
     if (next === "focus") modeBeforeFocus = mode === "viewer" ? "viewer" : "editor";
+    // The viewer vanishes in focus, and Esc is not the way back (see
+    // onGlobalKey) — say what is.
+    if (next === "focus")
+      toast?.info?.("Focus mode: press Ctrl+Shift+F, or choose Edit or Read, to bring the preview back.", 6000);
     settings.set({ preview: { mode: next === "focus" ? "editor" : next } });
     mode = next;
     zoomView.applyViewMode(viewMode);

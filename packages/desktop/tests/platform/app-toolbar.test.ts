@@ -274,12 +274,17 @@ describe("AppToolbar — the mode control is the whole mode model", () => {
     expect(src).toMatch(/"book-open"[\s\S]{0,80}?"maximize"[\s\S]{0,80}?"pen-line"/);
   });
 
-  test("Focus is unavailable below the narrow breakpoint — there is no side-by-side viewer to hide", () => {
+  test("Focus can't be ENTERED below the narrow breakpoint — there is no side-by-side viewer to hide", () => {
     const src = toolbar();
     // Matches togglePreview()'s own `if (!lifecycle.previewUrl || isNarrow) return`
     // guard: narrow layouts pick their single pane with the tab bar, so a
     // viewer-less `focus` there leaves the preview on screen but inert.
-    expect(src).toContain("disabled={editorToggleDisabled || isNarrow}");
+    // Disabled means "can't be entered", so the mode you are ALREADY in is
+    // exempt: a Focus carried into a narrow window used to render selected AND
+    // dimmed. Both forms of the control (segment + collapsed menu item).
+    const guard = 'disabled={editorToggleDisabled || (isNarrow && mode !== "focus")}';
+    expect(src.split(guard).length - 1).toBe(2);
+    expect(src).not.toContain("disabled={editorToggleDisabled || isNarrow}");
   });
 
   test("the eye and pen icon buttons are gone, along with the props that fed them", () => {
@@ -311,6 +316,65 @@ describe("AppToolbar — the mode control is the whole mode model", () => {
     // The pen button's tooltip was the only place the app named Ctrl+E.
     expect(src).toContain("(Ctrl+E)");
     expect(src).toContain("(Ctrl+Shift+F)");
+  });
+});
+
+// ── The selected mode reads as selected (#305) ───────────────────────────────
+describe("AppToolbar — the selected mode never looks disabled (#305)", () => {
+  test("hover cannot override the selected fill: the :hover rules exclude .active", () => {
+    const src = toolbar();
+    // `.mode-group button:hover:not(:disabled)` (0,3,1) out-specified
+    // `.mode-group button.active` (0,2,1). The just-clicked segment sits under
+    // the pointer, so it lost its accent fill but kept its white text: white on
+    // pale grey, i.e. it looked disabled exactly when the author had chosen it.
+    // The collapsed menu's `.menu-item` had the identical defect.
+    expect(src).toMatch(/\.mode-group button:not\(\.active\):hover:not\(:disabled\)/);
+    expect(src).toMatch(/\.menu-item:not\(\.active\):hover:not\(:disabled\)/);
+    expect(src).not.toMatch(/\.mode-group button:hover/);
+    expect(src).not.toMatch(/\.menu-item:hover/);
+  });
+
+  test("every segment and its collapsed-menu twin reports the mode with aria-pressed", () => {
+    const src = toolbar();
+    for (const m of ["editor", "viewer", "focus"]) {
+      expect(src.split(`aria-pressed={mode === "${m}"}`).length - 1).toBe(2);
+    }
+  });
+
+  test("each tooltip names its layout and says what it shows; Focus names the real way out", () => {
+    const src = toolbar();
+    const table = src.match(/const MODE_TITLE = \{([\s\S]*?)\} as const/)?.[1] ?? "";
+    const title = (k: string) => table.match(new RegExp(`${k}:\\s*"([^"]+)"`))?.[1] ?? "";
+    expect(title("editor")).toMatch(/^Edit — editor and preview side by side/);
+    expect(title("viewer")).toMatch(/^Read — the preview on its own/);
+    expect(title("focus")).toMatch(/^Focus — editor only/);
+    // Esc does NOT leave Focus (deliberate — see onGlobalKey), so the tooltip
+    // names the keys and the toolbar path that do.
+    expect(title("focus")).toContain("Ctrl+Shift+F");
+    expect(title("focus")).toContain("Edit or Read");
+    expect(title("focus")).not.toMatch(/Esc/);
+    // Both forms of the control carry them (the menu items had no tooltip).
+    for (const m of ["editor", "viewer", "focus"]) {
+      expect(src.split(`title={MODE_TITLE.${m}}`).length - 1).toBe(2);
+    }
+  });
+
+  test("entering Focus shows a transient hint naming the real keys — Esc is not one", () => {
+    const src = page();
+    const body = src.slice(
+      src.indexOf("function setMode(next: WorkspaceMode): void {"),
+      src.indexOf("function togglePreview()"),
+    );
+    // setMode is the one writer of `mode`, so the segment, Ctrl+Shift+F and the
+    // editor toolbar's Focus button all get the hint. Existing toast, no new UI.
+    expect(body).toMatch(/if \(next === "focus"\)\s+toast\?\.info\?\.\(/);
+    const hint = body.match(/toast\?\.info\?\.\("(Focus mode:[^"]+)"/)?.[1] ?? "";
+    expect(hint).toContain("Ctrl+Shift+F");
+    expect(hint).toContain("Edit or Read");
+    expect(hint).not.toMatch(/Esc/);
+    // Esc stays deliberately un-wired; if that changes, this hint and the Focus
+    // tooltip must change with it.
+    expect(src).toContain("Esc is deliberately NOT an exit");
   });
 });
 
