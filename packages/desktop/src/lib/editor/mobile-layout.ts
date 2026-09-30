@@ -47,7 +47,7 @@ export function isNarrowWidth(
  * The two tabs shown in the single-column mobile layout: "markdown" surfaces
  * the editor pane, "preview" the live preview pane. (A third "css"/style tab
  * used to sit between them; it was retired with the toolbar refactor —
- * project styling lives in the full-screen Project settings view now.)
+ * project styling lives in the full-screen Book settings view now.)
  */
 export type MobileTab = "markdown" | "preview";
 

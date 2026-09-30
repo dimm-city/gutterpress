@@ -82,6 +82,7 @@ export type {
 export {
   scaffoldProject,
   adoptFolder,
+  ensureGitignoreHasDist,
   slugifyProjectName,
   escapeYamlScalar,
 } from "../lib/project-scaffold.ts";
@@ -258,6 +259,7 @@ export {
   providerFor,
   restoreVersionWithBackup,
   isNoChangesError,
+  countUnversionedChanges,
   AUTO_SNAPSHOT_MESSAGE,
   RESTORE_BACKUP_MESSAGE,
   HISTORY_PAGE_LIMIT,
@@ -269,6 +271,7 @@ export {
 export type {
   ListHistoryOptions,
   HistoryPage,
+  UnversionedChanges,
   LocalBranches,
   SwitchBranchOptions,
   SwitchBranchResult,

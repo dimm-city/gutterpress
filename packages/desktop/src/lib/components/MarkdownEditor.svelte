@@ -46,7 +46,6 @@
     applyOrderedList,
     applyHeading,
     applyHr,
-    applyPageBreak,
     applyTable,
     applyImage,
     applyLayoutBlock,
@@ -234,6 +233,64 @@
     },
     ".cm-selectionMatch": { backgroundColor: "var(--cm-selection)" },
     "&.cm-focused": { outline: "none" },
+    // Autocomplete popup — shared by the markdown `@marker` list and the CSS
+    // editor's Paged Media list (both use this one theme). CodeMirror's stock
+    // popup is a light-only palette (white panel, pale grey text, solid blue
+    // selection), so it is re-skinned here from app tokens for both themes.
+    ".cm-tooltip": {
+      backgroundColor: "var(--app-surface-raised)",
+      color: "var(--app-text)",
+      border: "1px solid var(--app-border-strong)",
+      borderRadius: "6px",
+      boxShadow: "0 6px 18px var(--app-shadow-lg)",
+      overflow: "hidden",
+    },
+    ".cm-tooltip.cm-tooltip-autocomplete > ul": {
+      fontFamily: "var(--app-font-mono)",
+      fontSize: "13px",
+      minWidth: "340px",
+      maxWidth: "min(680px, 90vw)",
+    },
+    ".cm-tooltip.cm-tooltip-autocomplete > ul > li": {
+      display: "flex",
+      alignItems: "baseline",
+      gap: "14px",
+      padding: "3px 10px",
+      color: "var(--app-text)",
+      borderLeft: "3px solid transparent",
+    },
+    ".cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]": {
+      backgroundColor: "color-mix(in srgb, var(--app-accent-bright) 26%, var(--app-surface-raised))",
+      color: "var(--app-text)",
+      borderLeftColor: "var(--app-accent-bright)",
+    },
+    // The label never truncates; the description takes the leftover width and
+    // clamps with an ellipsis.
+    ".cm-completionLabel": { flex: "none" },
+    ".cm-completionMatchedText": {
+      textDecoration: "none",
+      fontWeight: "700",
+      color: "var(--app-text)",
+    },
+    // On the tinted selected row the muted description would drop to ~4.6:1,
+    // so it steps up one text tier there.
+    ".cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected] .cm-completionDetail": {
+      color: "var(--app-text-secondary)",
+    },
+    ".cm-completionDetail": {
+      flex: "1 1 auto",
+      minWidth: "0",
+      marginLeft: "0",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+      fontStyle: "normal",
+      fontFamily: "system-ui, sans-serif",
+      fontSize: "11.5px",
+      color: "var(--app-text-muted)",
+    },
+    // The type glyph (a key for every marker) says nothing to authors.
+    ".cm-completionIcon": { display: "none" },
   });
 
   // `forPath` is passed explicitly rather than read off the `filePath` prop:
@@ -454,7 +511,6 @@
         break;
       }
       case "hr":             applyHr(view); break;
-      case "page-break":     applyPageBreak(view); break;
       case "table": {
         const cols = (payload as { cols: number } | undefined)?.cols ?? 3;
         applyTable(view, cols);
@@ -572,7 +628,7 @@
     --cm-selection: light-dark(rgba(9, 105, 218, 0.18), rgba(92, 179, 255, 0.28));
     --cm-active-line: light-dark(rgba(27, 31, 36, 0.045), rgba(255, 255, 255, 0.05));
     --cm-gutter-bg: var(--app-surface);
-    --cm-gutter-text: light-dark(#8c959f, #6b7280);
+    --cm-gutter-text: var(--app-text-muted);
     --cm-bracket-bg: light-dark(rgba(9, 105, 218, 0.14), rgba(92, 179, 255, 0.18));
     --cm-bracket-outline: light-dark(rgba(9, 105, 218, 0.45), rgba(92, 179, 255, 0.5));
   }

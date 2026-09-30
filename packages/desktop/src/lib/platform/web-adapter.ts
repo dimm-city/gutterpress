@@ -248,7 +248,7 @@ export class WebAdapter implements Platform {
     if (typeof picker !== "function") {
       throw new Error(
         "openFolder: this browser has no File System Access directory picker. " +
-          "Open the project in desktop Chrome or Edge over HTTPS.",
+          "Open the book in desktop Chrome or Edge over HTTPS.",
       );
     }
     let handle: FileSystemDirectoryHandle;
@@ -342,7 +342,7 @@ export class WebAdapter implements Platform {
     if (state !== "granted") {
       throw new Error(
         `Permission to access "${record.displayName}" was denied. ` +
-          "Click “Reopen” and allow access to edit this project again.",
+          "Click “Reopen” and allow access to edit this book again.",
       );
     }
 
@@ -747,7 +747,7 @@ export class WebAdapter implements Platform {
     if (md.length === 0) {
       throw new Error(
         `No markdown files found in "${input.displayName}". ` +
-          "Add a .md file to preview this project.",
+          "Add a .md file to preview this book.",
       );
     }
 

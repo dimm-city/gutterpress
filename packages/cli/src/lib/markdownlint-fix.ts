@@ -61,7 +61,7 @@ export async function applyMarkdownlintFixes(
   const sourceConfig = ctx.config.validate.source;
   if (sourceConfig.markdownlint === false) {
     log.warn(
-      "--fix: source.markdownlint is disabled for this project — no files were fixed."
+      "--fix: source.markdownlint is disabled for this book — no files were fixed."
     );
     return [];
   }

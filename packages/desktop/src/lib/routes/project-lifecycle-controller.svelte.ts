@@ -313,7 +313,7 @@ export class ProjectLifecycleController {
         (targetDir !== dir || dir !== d.projectSession.repoRoot)
       ) {
         d.toast()?.info?.(
-          `This book is part of ${basenameOf(d.projectSession.repoRoot)} — opened the whole project.`,
+          `This book is part of ${basenameOf(d.projectSession.repoRoot)} — opened the whole folder.`,
         );
       }
       // #49: the app-facing contract takes a FolderRef. Once retargeted,

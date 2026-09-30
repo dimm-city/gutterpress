@@ -13,7 +13,7 @@
  */
 
 import type { SyncOutcome } from "../api";
-import type { KeptBothFile, ProjectRemoteDiagnosis } from "../platform/contract";
+import type { KeptBothFile, ProjectRemoteDiagnosis, SyncState } from "../platform/contract";
 
 /** Minimal toast surface the controller drives. */
 interface SyncToast {
@@ -35,6 +35,22 @@ export interface SyncControllerDeps {
   onSyncCompleted: (mergedRemoteChanges: boolean, filesChanged: boolean) => void;
   /** Remote changes landed on disk: buffer reconcile + re-lint (in the component). */
   onFilesChanged: () => void;
+  /** Settings → Saving "Keep this book backed up online". Decides whether a
+   *  failure toast may promise an automatic retry. Defaults to on. */
+  autoBackup?: () => boolean;
+}
+
+/**
+ * The outcome of the last MANUAL "Back up now", in the ambient status
+ * vocabulary. Manual syncs bypass the auto-sync orchestrator (the only emitter
+ * of sync:status), so the status bar's dialog reads this to learn what a
+ * manual backup just did.
+ */
+export interface ManualBackup {
+  dir: string;
+  state: SyncState;
+  /** ISO time the attempt finished. */
+  at: string;
 }
 
 const baseName = (p: string): string => p.split("/").pop() ?? p;
@@ -67,6 +83,8 @@ export class SyncController {
   syncDiag = $state<ProjectRemoteDiagnosis | null>(null);
   /** True while a manual force-sync is in flight (guards re-entry). */
   forceSyncing = $state(false);
+  /** The last manual backup's outcome, or null before any this session. */
+  lastManual = $state<ManualBackup | null>(null);
   private deps: SyncControllerDeps;
 
   constructor(deps: SyncControllerDeps) {
@@ -107,36 +125,50 @@ export class SyncController {
     const dir = this.deps.currentDir();
     if (!dir || this.forceSyncing) return;
     this.forceSyncing = true;
+    const retry = (this.deps.autoBackup?.() ?? true)
+      ? "we'll try again later."
+      : "try again when you're ready.";
+    const failed = `Couldn't finish the online backup. Your work is saved on this computer — ${retry}`;
+    const record = (state: SyncState) => {
+      this.lastManual = { dir, state, at: new Date().toISOString() };
+    };
     try {
       const outcome = await this.deps.syncChanges(dir);
       if (this.deps.currentDir() !== dir) return; // Project switched mid-sync.
+      record(
+        outcome.status === "synced" || outcome.status === "up-to-date"
+          ? "synced"
+          : outcome.status === "auth"
+            ? "auth"
+            : outcome.status === "offline"
+              ? "offline"
+              : "error",
+      );
       if (outcome.status === "synced") {
         this.deps.onSyncCompleted(outcome.mergedRemoteChanges, outcome.filesChanged === true);
         this.applyConvergeReport(outcome.combinedFiles, outcome.keptBothFiles);
       } else if (outcome.status === "up-to-date") {
         if (outcome.filesChanged) this.deps.onSyncCompleted(false, true);
-        else this.deps.toast()?.info?.("Already up to date — no changes to sync.");
+        else this.deps.toast()?.info?.("Already up to date — nothing new to back up.");
       } else if (outcome.status === "auth") {
         if (outcome.filesChanged) this.deps.onFilesChanged();
-        this.deps.toast()?.error("Not connected. Use Connect in the sidebar to set up syncing.");
+        this.deps.toast()?.error("Not signed in to online backup. Use the button in Where your work is kept to sign in.");
       } else if (outcome.status === "offline") {
         if (outcome.filesChanged) this.deps.onFilesChanged();
-        this.deps.toast()?.info?.("You appear to be offline. Try again when connected.");
+        this.deps.toast()?.info?.("You're offline. Try the online backup again when you're connected.");
       } else {
         if (outcome.filesChanged) this.deps.onFilesChanged();
         // Error state. The lib's error-arm messages are ALL authored writer
         // copy (the MSG_* constants or an authored generic — transport.ts
         // failureOutcome; never raw git text), and some carry the actual fix
-        // ("Check the project's online address"), so show them. The fixed
+        // ("Check the book's online address"), so show them. The fixed
         // fallback covers an empty message and keeps stating what remains
         // safe (UX follow-up: a sync failure must state what remains safe).
-        this.deps.toast()?.error(
-          outcome.message ||
-            "Couldn't update the online copy. Your work is saved on this computer — we'll try again later.",
-        );
+        this.deps.toast()?.error(outcome.message || failed);
       }
     } catch {
-      this.deps.toast()?.error("Couldn't update the online copy. Your work is saved on this computer — we'll try again later.");
+      if (this.deps.currentDir() === dir) record("error");
+      this.deps.toast()?.error(failed);
     } finally {
       if (this.deps.currentDir() === dir) this.forceSyncing = false;
     }

@@ -1134,7 +1134,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     //
     // Unreferenced @page image: Chromium fetches a `url()` referenced only
     // from inside an `@page` rule and then paints nothing — the sheet prints
-    // with its background colour alone (docs/known-limitations.md §3, #152).
+    // with its background color alone (docs/known-limitations.md §3, #152).
     // MEASURED on Chrome 151.0.7922.75, 96dpi raster, mean absolute pixel
     // difference against the same page with no background image: the sole
     // reference scores 0.0000, and a `<link rel="preload" as="image">` or an
@@ -1370,7 +1370,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       for (const hit of pageBackgrounds)
         diagnose(
           "engine.page-background.unreferenced",
-          `"${hit.url}" is only referenced from "${hit.where}", and Chromium will not print an image referenced nowhere else — the page prints with its background colour alone, with no error. Gutterpress stages and preloads every image your project stylesheets reference, so this one is outside that: it is remote (a url(https://...), which is never staged), or it comes from CSS that does not pass through your stylesheets, or an element in the document uses the same URL as its src, which drops it on its own. Use a local image, referenced from one of your project stylesheets, and not also used as an <img>.`,
+          `"${hit.url}" is only referenced from "${hit.where}", and Chromium will not print an image referenced nowhere else — the page prints with its background color alone, with no error. Gutterpress stages and preloads every image your book's stylesheets reference, so this one is outside that: it is remote (a url(https://...), which is never staged), or it comes from CSS that does not pass through your stylesheets, or an element in the document uses the same URL as its src, which drops it on its own. Use a local image, referenced from one of your book's stylesheets, and not also used as an <img>.`,
         );
       if (pageBackgrounds.length)
         log(`audit: ${pageBackgrounds.length} unreferenced @page background image(s)`);

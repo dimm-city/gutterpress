@@ -25,6 +25,7 @@ import {
   findEnclosingRepoDir,
 } from "./project-source.ts";
 import { createFileLogger } from "./remote-auth/operation-log.ts";
+import { PLUGINS_DIR, VENDORED_NPM_DIR, VENDOR_RECEIPT_FILE } from "./plugin-vendor.ts";
 
 const noopLogger: { debug(): void; info(): void; warn(): void; error(): void } = {
   debug: () => {},
@@ -467,7 +468,7 @@ class LocalFolderSourceProvider implements SourceProvider {
     // source must still never nest a repo.
     if ((await findEnclosingRepoDir(dir)) !== undefined) {
       throw new Error(
-        "This folder is already inside a versioned project, so gutterpress " +
+        "This folder is already inside a versioned book, so gutterpress " +
           "won't create a separate history here.",
       );
     }
@@ -496,7 +497,7 @@ class LocalFolderSourceProvider implements SourceProvider {
   snapshot(): Promise<SnapshotEntry> {
     return Promise.reject(
       new Error(
-        "This project has no version history yet. Enable version history first.",
+        "This book has no version history yet. Enable version history first.",
       ),
     );
   }
@@ -512,7 +513,7 @@ class LocalFolderSourceProvider implements SourceProvider {
   restore(): Promise<void> {
     return Promise.reject(
       new Error(
-        "This project has no version history yet. Enable version history first.",
+        "This book has no version history yet. Enable version history first.",
       ),
     );
   }
@@ -743,6 +744,52 @@ export function isNoChangesError(e: unknown): boolean {
   return e instanceof Error && /no changes since the last snapshot/i.test(e.message);
 }
 
+/** What "Save a version" would capture in the open book right now. */
+export interface UnversionedChanges {
+  /**
+   * Files of THIS book (its folder inside the repo) that changed since the
+   * last version — writer work only: app-written files (the vendored plugin
+   * folder and its install receipt) are not counted.
+   */
+  changedFiles: number;
+  /**
+   * A previous version attempt died after staging (its crash marker is still
+   * present), so the index may hold work HEAD doesn't have even when the
+   * working tree looks clean. The count can't be trusted to be 0 then.
+   */
+  stale: boolean;
+}
+
+/**
+ * How many files of the open book changed since the last version (snapshot).
+ * `null` when the project has no version history (a plain folder). Uses the
+ * same workdir-vs-index walk a snapshot uses to decide "nothing new to save".
+ * A book inside a larger repo (`subPath`) is counted on its own folder only.
+ * Queued behind the repo lock so it never reads the index mid-snapshot;
+ * otherwise a lock-free walk that reads no history.
+ */
+export async function countUnversionedChanges(
+  projectDir: string,
+): Promise<UnversionedChanges | null> {
+  const source = await detectProjectSource(projectDir);
+  if (source.type !== "local-git-folder") return null;
+  const dir = gitScopeFor(source);
+  const bookPrefix = source.subPath ? `${source.subPath.replace(/\/+$/, "")}/` : "";
+  const appWritten = `${bookPrefix}${PLUGINS_DIR}/${VENDORED_NPM_DIR}/`;
+  return withRepoLock(dir, async () => {
+    const { adds, removes } = await listWorkdirChanges(dir);
+    const mine = new Set(
+      [...adds, ...removes].filter(
+        (f) =>
+          f.startsWith(bookPrefix) &&
+          !f.startsWith(appWritten) &&
+          path.posix.basename(f) !== VENDOR_RECEIPT_FILE,
+      ),
+    );
+    return { changedFiles: mine.size, stale: fs.existsSync(snapshotStagingMarkerPath(dir)) };
+  });
+}
+
 /**
  * Select the {@link SourceProvider} implementation for a classified source.
  * `managed-github` (#15/#16) is not implemented yet — it throws if reached.
@@ -755,7 +802,7 @@ export function providerFor(source: ProjectSource): SourceProvider {
       return new LocalGitSourceProvider(source);
     case "managed-github":
       throw new Error(
-        "Managed GitHub projects are not supported yet (#15/#16).",
+        "Managed GitHub books are not supported yet (#15/#16).",
       );
   }
 }
@@ -829,7 +876,7 @@ export async function restoreVersionWithBackup(
   const source = await detectProjectSource(projectDir);
   if (source.type !== "local-git-folder") {
     throw new Error(
-      "This project has no version history yet. Enable version history first.",
+      "This book has no version history yet. Enable version history first.",
     );
   }
   const provider = new LocalGitSourceProvider(source);
@@ -860,7 +907,7 @@ export async function restoreVersionWithBackup(
           ? "The restore could not be completed, but your work is safe — it was " +
             `automatically saved as a backup snapshot (${backupId.slice(0, 7)}) ` +
             "and appears in your version history."
-          : "The restore could not be completed. Your project files were not changed.",
+          : "The restore could not be completed. Your book files were not changed.",
         { cause },
       );
     }
@@ -1071,7 +1118,7 @@ export async function switchBranch(
   const source = await detectProjectSource(projectDir);
   if (source.type !== "local-git-folder") {
     throw new Error(
-      "This project has no version history yet. Enable version history first.",
+      "This book has no version history yet. Enable version history first.",
     );
   }
   const repoDir = gitScopeFor(source);

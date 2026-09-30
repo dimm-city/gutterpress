@@ -94,7 +94,7 @@ test("resolveBuildContext rejects a build when project discovery finds no manife
       rawArgs: {},
     })
   ).rejects.toThrow(
-    `No project manifest found in ${projNoManifest}`
+    `No book manifest found in ${projNoManifest}`
   );
   await expect(
     resolveBuildContext({
@@ -102,5 +102,5 @@ test("resolveBuildContext rejects a build when project discovery finds no manife
       format: "html",
       rawArgs: {},
     })
-  ).rejects.toThrow("gutterpress build <project-dir>");
+  ).rejects.toThrow("gutterpress build <book-dir>");
 });

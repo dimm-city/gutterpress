@@ -5,6 +5,90 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.6] - 2026-09-30
+
+### Changed
+
+- **"Where your work is kept" explains saving, versions and online backup.**
+  Clicking the save status now opens a short dialog in plain words: your
+  writing is saved on this computer as you type; a version is a saved copy
+  you can go back to (and how many files changed since the last one); and
+  whether the book is backed up online. Each part has the one button that
+  helps, such as Save a version now, Start keeping versions or Set up online
+  backup. The status bar and backup messages use the same words, and a
+  manual "Back up online now" updates the dialog right away.
+- **Books open ready to write.** Opening a book for the first time now shows
+  Edit — the editor beside the page — with the left panel open, instead of a
+  lone cover page. A layout or panel choice you have already made still wins.
+- **Book settings sits beside your book.** It docks on the right, so the
+  preview stays in view and updates as you change fonts and colors. Design
+  settings have plain names ("Text color", "Code font", "Line spacing") with
+  the CSS variable shown underneath, and the font pickers match the other
+  fields. On a window narrower than 900px it still covers the window.
+- **A clearer toolbar.** The Edit, Read or Focus button you picked stays
+  highlighted — it used to look disabled right after you clicked it — and
+  each one says what it shows. Export is the one main button, with Publish
+  beside it as a secondary one. The first time you enter Focus in a session,
+  a note says how to get back.
+- **Formatting extras in plain words.** The Features tab leads with the
+  built-in extras and what to type for each. npm packages and plugin files
+  are under Advanced, and npm is only searched once you open it.
+- **Turn on version history from Connections.** A book kept in a plain folder
+  now gets a button to start keeping previous versions on this computer.
+- **A steadier editor toolbar.** Every insert action is in one Insert menu, so
+  the toolbar keeps its shape when the left panel opens, and "…" appears only
+  for what doesn't fit.
+- **Creating a book takes three short steps** — name, template, then print
+  and save — with the Create button always in view and a check mark on the
+  cards you chose.
+- **Left-panel tabs show their names,** and a file's rename and delete buttons
+  appear when you point at or tab to its row.
+- **It's called a book everywhere.** Book settings, New book, the Books tab and
+  the app's messages now say "book" instead of mixing in "project".
+- **The name-and-email notice waits until it matters.** It appears for books
+  with version history once you save a version or start a sync, and says what
+  it is for in plain words.
+
+### Fixed
+
+- **The preview no longer re-breaks pages when you zoom.** Zooming used to
+  move some paragraphs onto a different page at certain zoom levels (for
+  example 50% versus 25%). Zoom now only changes how big the pages look, never
+  where they break (#318).
+- **Clearer save status.** The status popover now separates your edits
+  ("Saved on this computer"), version history ("Last version saved 3 days
+  ago") and the online backup, instead of "Saved" next to "Latest version 3
+  days ago". The status bar says "Edits saved".
+- **Readable editor suggestions.** The list that opens when you type `@` (and
+  in CSS files) follows the light or dark theme, keeps text readable on every
+  row and no longer cuts labels off.
+- **The zoom and view menus look like menus** — one panel with plain rows and
+  a quiet check on the current choice, in light and dark themes.
+- **Messages from version history, sync, GitHub and new-book creation say
+  "book" too.**
+- **The Problems list no longer covers the left panel.** It opens as a row of
+  its own above the status bar, keyboard focus moves into it, and a book with
+  no problems just says so — after it has been checked, not before.
+- **The toolbar and status bar narrow gracefully.** Publish and Export keep
+  their labels on a 900px window, previous and next page stay available at
+  800px, and the save status stays visible.
+- **The preview stays fitted to its pane.** A slow page measurement no longer
+  resets the zoom to 100% about ten seconds after a book opens.
+- **On a narrow window the left panel stops at the status bar,** so its New
+  book button is no longer hidden, and closing the panel with Esc is
+  remembered.
+- **Esc closes the Settings, Help and Logs page.** It could only be closed with
+  its X button. Esc still does nothing while you are typing in a field.
+- **In-app Help matches the app.** It no longer points at a toolbar Open
+  button, a Single / Two-page toggle or a Ctrl+O shortcut that do not exist.
+- **Easier to read and click.** Editor line numbers have enough contrast to
+  read comfortably, the status-bar settings and help buttons are larger click
+  targets, and the status-bar gear is now named "App preferences" so it is
+  not confused with the toolbar's Book settings gear.
+- **Welcome screen polish.** The book search box uses the normal font, the
+  "No recent books" hint is easier to read, and the version label is hidden
+  instead of showing "vunknown" when the version is unavailable.
+
 ## [0.11.5] - 2026-09-29
 
 ### Fixed

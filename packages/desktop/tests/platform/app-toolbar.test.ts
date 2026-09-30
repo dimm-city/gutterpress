@@ -32,6 +32,23 @@ const read = (rel: string) => fs.readFileSync(path.join(root, rel), "utf-8");
 const toolbar = () => read("src/lib/components/AppToolbar.svelte");
 const page = () => read("src/routes/+page.svelte");
 
+/** `@container (max-width: Npx) { … }` bodies keyed by N (brace-matched). */
+function containerStages(src: string): Map<number, string> {
+  const out = new Map<number, string>();
+  for (const m of src.matchAll(/@container\s*\(max-width:\s*(\d+)px\)\s*\{/g)) {
+    const start = m.index! + m[0].length;
+    let depth = 1;
+    let i = start;
+    while (i < src.length && depth > 0) {
+      if (src[i] === "{") depth++;
+      else if (src[i] === "}") depth--;
+      i++;
+    }
+    out.set(Number(m[1]), src.slice(start, i - 1));
+  }
+  return out;
+}
+
 describe("AppToolbar — extraction out of +page.svelte", () => {
   test("+page.svelte renders the AppToolbar component instead of inline toolbar markup", () => {
     const src = page();
@@ -111,6 +128,8 @@ describe("AppToolbar — modern responsive layout (no overflow)", () => {
     // A URL source has no editor, so BOTH forms of the mode switch go.
     expect(src).toMatch(/\.toolbar\.url-mode \.mode-group,\s*\n\s*\.toolbar\.url-mode details\.mode-menu\s*\{\s*display:\s*none/);
     expect(src).toMatch(/\.toolbar\.url-mode \.save-hint\s*\{\s*display:\s*none/);
+    // Publish is disabled for a URL source, so its label yields at every width.
+    expect(src).toMatch(/\.toolbar\.url-mode \.publish-btn \.btn-label\s*\{\s*display:\s*none/);
   });
 
   test("edit-narrow hides the separators along with the view controls (no adjacent double rule)", () => {
@@ -127,7 +146,7 @@ describe("AppToolbar — modern responsive layout (no overflow)", () => {
   });
 });
 
-describe("AppToolbar — primary action order: Publish, Export, Save", () => {
+describe("AppToolbar — action order: Publish, Export, Save", () => {
   test("markup order is Publish, then Export, then Save (Save right-most)", () => {
     const src = toolbar();
     const publishIdx = src.indexOf('class="publish-btn');
@@ -155,7 +174,7 @@ describe("AppToolbar — primary action order: Publish, Export, Save", () => {
     expect(src).toMatch(/save-btn[\s\S]{0,400}?onclick=\{[^}]*onSave/);
   });
 
-  test("the Project settings button sits beside the view controls (and stays reachable on narrow layouts)", () => {
+  test("the Book settings button sits beside the view controls (and stays reachable on narrow layouts)", () => {
     const src = toolbar();
     const zoomIdx = src.indexOf('class="menu zoom-menu"');
     const settingsIdx = src.indexOf('class="icon-btn project-settings-btn"');
@@ -274,12 +293,17 @@ describe("AppToolbar — the mode control is the whole mode model", () => {
     expect(src).toMatch(/"book-open"[\s\S]{0,80}?"maximize"[\s\S]{0,80}?"pen-line"/);
   });
 
-  test("Focus is unavailable below the narrow breakpoint — there is no side-by-side viewer to hide", () => {
+  test("Focus can't be ENTERED below the narrow breakpoint — there is no side-by-side viewer to hide", () => {
     const src = toolbar();
     // Matches togglePreview()'s own `if (!lifecycle.previewUrl || isNarrow) return`
     // guard: narrow layouts pick their single pane with the tab bar, so a
     // viewer-less `focus` there leaves the preview on screen but inert.
-    expect(src).toContain("disabled={editorToggleDisabled || isNarrow}");
+    // Disabled means "can't be entered", so the mode you are ALREADY in is
+    // exempt: a Focus carried into a narrow window used to render selected AND
+    // dimmed. Both forms of the control (segment + collapsed menu item).
+    const guard = 'disabled={editorToggleDisabled || (isNarrow && mode !== "focus")}';
+    expect(src.split(guard).length - 1).toBe(2);
+    expect(src).not.toContain("disabled={editorToggleDisabled || isNarrow}");
   });
 
   test("the eye and pen icon buttons are gone, along with the props that fed them", () => {
@@ -311,6 +335,172 @@ describe("AppToolbar — the mode control is the whole mode model", () => {
     // The pen button's tooltip was the only place the app named Ctrl+E.
     expect(src).toContain("(Ctrl+E)");
     expect(src).toContain("(Ctrl+Shift+F)");
+  });
+});
+
+// ── The selected mode reads as selected (#305) ───────────────────────────────
+describe("AppToolbar — the selected mode never looks disabled (#305)", () => {
+  test("hover cannot override the selected fill: the :hover rules exclude .active", () => {
+    const src = toolbar();
+    // `.mode-group button:hover:not(:disabled)` (0,3,1) out-specified
+    // `.mode-group button.active` (0,2,1). The just-clicked segment sits under
+    // the pointer, so it lost its accent fill but kept its white text: white on
+    // pale grey, i.e. it looked disabled exactly when the author had chosen it.
+    // The collapsed menu's `.menu-item` had the identical defect.
+    expect(src).toMatch(/\.mode-group button:not\(\.active\):hover:not\(:disabled\)/);
+    expect(src).toMatch(/\.menu-item:not\(\.active\):hover:not\(:disabled\)/);
+    expect(src).not.toMatch(/\.mode-group button:hover/);
+    expect(src).not.toMatch(/\.menu-item:hover/);
+  });
+
+  test("every segment and its collapsed-menu twin reports the mode with aria-pressed", () => {
+    const src = toolbar();
+    for (const m of ["editor", "viewer", "focus"]) {
+      expect(src.split(`aria-pressed={mode === "${m}"}`).length - 1).toBe(2);
+    }
+  });
+
+  test("each tooltip names its layout and says what it shows; Focus names the real way out", () => {
+    const src = toolbar();
+    const table = src.match(/const MODE_TITLE = \{([\s\S]*?)\} as const/)?.[1] ?? "";
+    const title = (k: string) => table.match(new RegExp(`${k}:\\s*"([^"]+)"`))?.[1] ?? "";
+    expect(title("editor")).toMatch(/^Edit — editor and preview side by side/);
+    expect(title("viewer")).toMatch(/^Read — the preview on its own/);
+    expect(title("focus")).toMatch(/^Focus — editor only/);
+    // Esc does NOT leave Focus (deliberate — see onGlobalKey), so the tooltip
+    // names the keys and the toolbar path that do.
+    expect(title("focus")).toContain("Ctrl+Shift+F");
+    expect(title("focus")).toContain("Edit or Read");
+    expect(title("focus")).not.toMatch(/Esc/);
+    // Both forms of the control carry them (the menu items had no tooltip).
+    for (const m of ["editor", "viewer", "focus"]) {
+      expect(src.split(`title={MODE_TITLE.${m}}`).length - 1).toBe(2);
+    }
+  });
+
+  test("the first Focus entry of a session shows a transient hint naming the real keys — Esc is not one", () => {
+    const src = page();
+    const body = src.slice(
+      src.indexOf("function setMode(next: WorkspaceMode): void {"),
+      src.indexOf("function togglePreview()"),
+    );
+    // setMode is the one writer of `mode`, so the segment, Ctrl+Shift+F and the
+    // editor toolbar's Focus button all get the hint. Existing toast, no new UI.
+    expect(body).toMatch(
+      /if \(next === "focus" && !focusHintShown\) \{\s+focusHintShown = true;\s+toast\?\.info\?\.\(/,
+    );
+    // ONCE per app session: the Focus tooltip carries the same words
+    // permanently, so a writer who lives in Focus is not told on every
+    // Ctrl+Shift+F. A plain component-level flag — set when the hint shows and
+    // never reset, not persisted, no new setting.
+    expect(src).toMatch(/^\s*let focusHintShown = false;/m);
+    expect(src.match(/focusHintShown = true/g)).toHaveLength(1);
+    expect(src.match(/focusHintShown = false/g)).toHaveLength(1);
+    const hint = body.match(/toast\?\.info\?\.\("(Focus mode:[^"]+)"/)?.[1] ?? "";
+    expect(hint).toContain("Ctrl+Shift+F");
+    expect(hint).toContain("Edit or Read");
+    expect(hint).not.toMatch(/Esc/);
+    // Esc stays deliberately un-wired; if that changes, this hint and the Focus
+    // tooltip must change with it.
+    expect(src).toContain("Esc is deliberately NOT an exit");
+  });
+});
+
+// ── One primary action (#306) ────────────────────────────────────────────────
+describe("AppToolbar — Export is the one primary action (#306)", () => {
+  test("only Export carries the primary recipe; Publish is a secondary button", () => {
+    const src = toolbar();
+    const primaries = [...src.matchAll(/class="([^"]*\bapp-btn-primary\b[^"]*)"/g)].map((m) => m[1]);
+    expect(primaries).toHaveLength(1);
+    expect(primaries[0]).toContain("export-btn");
+    const at = src.indexOf('class="publish-btn');
+    const publish = src.slice(at, src.indexOf("</button>", at));
+    expect(publish).not.toMatch(/\bprimary\b/);
+    // Its look comes from the toolbar's existing non-primary button recipe (the
+    // one Save uses) — no new colours or tokens.
+    expect(src).toMatch(/\.toolbar button:not\(\.app-btn-primary\):not\(\.active\)\s*\{/);
+  });
+});
+
+// ── Deliberate collapse (#316) ───────────────────────────────────────────────
+//
+// The container is the toolbar's content box (window width − 24px of padding),
+// so a 900px window measures 876px, and the narrow layout (≤820px window)
+// starts at 796px. Thresholds were calibrated by sweeping real window widths
+// from 1440 down to 360 against the measured cluster widths (no clipped nav or
+// cluster overlap at any width; touch measured separately).
+describe("AppToolbar — deliberate collapse (#316)", () => {
+  test("Publish/Export keep their labels on a 900px window; Save yields its label first", () => {
+    const stages = containerStages(toolbar());
+    // Line-anchored, so `.save-btn .btn-label` does not count as the general rule.
+    const labelStage = [...stages].find(([, body]) => /^\s*\.btn-label\s*\{\s*display:\s*none/m.test(body));
+    expect(labelStage).toBeDefined();
+    // 900px window → 876px container: still labelled. But they must be gone
+    // before the narrow layout's pane tabs (796px), which leave no room.
+    expect(labelStage![0]).toBeLessThan(876);
+    expect(labelStage![0]).toBeGreaterThanOrEqual(796);
+    // Save's label goes at the widest stage: its icon needs no words.
+    const widest = Math.max(...stages.keys());
+    expect(stages.get(widest)).toMatch(/\.save-btn \.btn-label\s*\{\s*display:\s*none/);
+  });
+
+  test("every control that can turn icon-only keeps an aria-label and a tooltip", () => {
+    const src = toolbar();
+    for (const cls of ["publish-btn", "export-btn", "save-btn"]) {
+      const at = src.indexOf(`class="${cls}`);
+      expect(at).toBeGreaterThan(-1);
+      const button = src.slice(at, src.indexOf("</button>", at));
+      expect(button).toContain("aria-label=");
+      expect(button).toContain("title=");
+    }
+  });
+
+  test("page nav degrades in order — first/last, then the select — and only the phone floor removes prev/next", () => {
+    const src = toolbar();
+    const stages = containerStages(src);
+    // First/last carry their own classes; prev/next carry none, so no stage
+    // can hide them. (The old layout removed the whole nav at 820px.)
+    expect(src).toMatch(/nav-first[\s\S]{0,300}?aria-label="First page"/);
+    expect(src).toMatch(/nav-last[\s\S]{0,300}?aria-label="Last page"/);
+    // The whole nav drops only at the phone floor (≤620px), where not even
+    // prev/next fit — and as display:none, so the hidden buttons also leave
+    // the tab order instead of sitting clipped and focusable.
+    for (const [px, body] of stages) {
+      if (px > 620) expect(body).not.toMatch(/\.page-nav|\.toolbar-center/);
+    }
+    // Both narrow-layout rules are scoped to `.narrow`: the docked Project
+    // settings panel shrinks the whole app, so the toolbar can be 600px wide
+    // WITHOUT the pane tabs that make these rules necessary — and there the
+    // page nav (select included) still fits and must stay. Unscoped, opening
+    // the panel at 1024px made the nav vanish from a 324px-wide empty track.
+    expect(stages.get(620)).toMatch(/\.toolbar\.narrow \.page-nav,/);
+    expect(stages.get(620)).not.toMatch(/^\s*\.page-nav/m);
+    expect(stages.get(760)).toMatch(/\.toolbar\.narrow \.page-select\s*\{\s*display:\s*none/);
+    expect(stages.get(760)).not.toMatch(/^\s*\.page-select/m);
+    const dropsAt = (re: RegExp) => [...stages].find(([, body]) => re.test(body))![0];
+    const firstLast = dropsAt(/\.nav-first/);
+    const select = dropsAt(/\.page-select\s*\{\s*display:\s*none/);
+    expect(select).toBeLessThan(firstLast);
+    // The select only yields inside the narrow layout, where the pane tabs
+    // crowd the end cluster — a wide window never loses the page number.
+    expect(select).toBeLessThan(796);
+    expect(select).toBeGreaterThan(620);
+  });
+
+  test("touch keeps the narrow layout's old no-page-nav behavior (44px targets leave no room for it)", () => {
+    const src = toolbar();
+    // Measured with a real `pointer: coarse` at 700–820px: the nav clipped by
+    // 10–30px a side. The desktop's narrow layout shows it; touch does not.
+    expect(src).toContain("class:narrow={isNarrow}");
+    const coarse = src.slice(src.indexOf("@media (pointer: coarse)"));
+    expect(coarse).toMatch(/\.toolbar\.narrow \.page-nav\s*\{\s*display:\s*none/);
+  });
+
+  test("the narrow layout keeps the page nav — +page.svelte no longer hides it, the editor tab still does", () => {
+    expect(page()).toContain("showPageNav={!!lifecycle.previewUrl}");
+    expect(page()).not.toMatch(/showPageNav=\{[^}]*isNarrow/);
+    // Narrow + editor tab: the preview is hidden, so its controls are noise.
+    expect(toolbar()).toMatch(/\.toolbar\.edit-narrow \.toolbar-center/);
   });
 });
 

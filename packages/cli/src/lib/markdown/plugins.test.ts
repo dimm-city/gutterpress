@@ -448,7 +448,7 @@ describe("plugin loader", () => {
     test("error message points to the built-in installer, not an external tool", async () => {
       await expect(
         loadPlugin(cfg({ name: "this-package-does-not-exist-xyz" }), TMP_ROOT)
-      ).rejects.toThrow(/gutterpress ext add this-package-does-not-exist-xyz.*Project settings > Extensions/);
+      ).rejects.toThrow(/gutterpress ext add this-package-does-not-exist-xyz.*Book settings > Features > Advanced/);
     });
 
     // ARCH finding #57 near-miss: a bare filename with a JS extension but no

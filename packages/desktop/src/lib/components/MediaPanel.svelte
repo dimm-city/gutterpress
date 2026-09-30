@@ -316,7 +316,7 @@
       <p class="media-msg media-error" role="alert">{error}</p>
     {:else if images.length === 0}
       <p class="media-msg">
-        No images in this project yet. Use “Add images…” to copy some in.
+        No images in this book yet. Use “Add images…” to copy some in.
       </p>
     {:else}
       <ul class="media-grid">

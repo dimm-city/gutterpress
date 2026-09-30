@@ -9,7 +9,7 @@
  * `publish-targets.contract.test.ts` pins these ids/tools against the real
  * registry so the two can't drift.
  *
- * Shared by the new-book wizard and project settings so both surfaces
+ * Shared by the new-book wizard and book settings so both surfaces
  * describe a destination the same way.
  */
 

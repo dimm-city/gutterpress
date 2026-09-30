@@ -103,6 +103,8 @@ export interface SyncStatusPayload {
   message?: string;
   /** Operation log path — present on "error". */
   logFile?: string;
+  /** "versions": the automatic-version safety net failed, not the online backup. */
+  source?: "versions";
   /** True when the completed sync changed files in the local worktree. */
   filesChanged?: boolean;
   /** Files whose text now holds BOTH versions inside git conflict markers. */

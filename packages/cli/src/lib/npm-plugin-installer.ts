@@ -824,7 +824,7 @@ async function prepareVendorParent(projectDir: string, name: string): Promise<st
     realpath(packageParent),
   ]);
   if (!isContained(projectDir, realNpm) || !isContained(projectDir, realPackageParent)) {
-    throw new Error("Plugin install path resolves outside the project.");
+    throw new Error("Plugin install path resolves outside the book folder.");
   }
   return realNpm;
 }
@@ -921,7 +921,7 @@ export async function installNpmPlugin(
     finalRoot = vendoredNpmPluginRoot(projectDir, rootRecord.name, rootRecord.version);
     const realFinalParent = await realpath(path.dirname(finalRoot));
     if (!isContained(projectDir, realFinalParent)) {
-      throw new Error("Plugin install destination resolves outside the project.");
+      throw new Error("Plugin install destination resolves outside the book folder.");
     }
     try {
       await lstat(finalRoot);

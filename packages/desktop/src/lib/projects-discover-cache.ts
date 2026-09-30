@@ -3,7 +3,7 @@
 //
 // The discover scan is a depth-3 filesystem BFS in the Electron main process
 // — the most expensive call ProjectsListBody makes. Two instances of that
-// component can mount at once (the start screen and the left panel's Projects
+// component can mount at once (the start screen and the left panel's Books
 // tab), and the start screen remounts on every re-show, so without this
 // module every launch ran two concurrent scans and every landing re-show ran
 // another. One module-level cache means: concurrent callers share a single

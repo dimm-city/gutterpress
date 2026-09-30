@@ -230,7 +230,7 @@ test("project/assets symlinked to an outside directory: import is REJECTED (403)
     } as Parameters<typeof importImageRoute>[0]),
   );
   expect(status).toBe(403);
-  expect(message).toBe("media:importImage: path is outside the open project");
+  expect(message).toBe("media:importImage: path is outside the open book");
 
   // Nothing should have been written into the symlink target outside the project.
   const outsideEntries = await readdir(outsideTarget);
@@ -269,7 +269,7 @@ test.skipIf(!canSymlink)(
       } as Parameters<typeof importImageRoute>[0]),
     );
     expect(status).toBe(403);
-    expect(message).toBe("media:importImage: path is outside the open project");
+    expect(message).toBe("media:importImage: path is outside the open book");
 
     // Nothing should have been created at the dangling symlink's outside target.
     await expect(readFile(danglingTarget, "utf8")).rejects.toThrow();
@@ -302,7 +302,7 @@ test("projectDir outside the currently-open project is rejected (403)", async ()
     } as Parameters<typeof importImageRoute>[0]),
   );
   expect(status).toBe(403);
-  expect(message).toBe("media:importImage: path is outside the open project");
+  expect(message).toBe("media:importImage: path is outside the open book");
 });
 
 test("fails closed (403) when no project is open (empty projectRoots)", async () => {

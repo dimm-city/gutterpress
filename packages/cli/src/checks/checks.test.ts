@@ -875,7 +875,7 @@ describe("Local markdown refs check", () => {
           (result) =>
             result.line === 1 &&
             result.severity === "error" &&
-            result.message.includes("must be relative to the project"),
+            result.message.includes("must be relative to the book folder"),
         ),
       ).toBe(true);
       expect(

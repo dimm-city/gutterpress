@@ -133,7 +133,9 @@ export interface RecommendedExtension {
   use: string;
   /** Short, plain-language feature name shown as the row title. */
   label: string;
-  /** One-line author-friendly description. */
+  /** One-line author-friendly description in plain words. Backtick spans mark
+   *  "what to type" (the desktop sets them in code type), so keep them paired
+   *  and keep HTML tag names out of the prose. */
   description: string;
 }
 
@@ -148,29 +150,29 @@ export const RECOMMENDED_EXTENSIONS: RecommendedExtension[] = [
   {
     use: "markdown-it-mark",
     label: "Highlight",
-    description: "Highlighted text with `==marked==` -> `<mark>`.",
+    description: "Highlight text by wrapping it in `==double equals==`.",
   },
   {
     use: "markdown-it-sub",
     label: "Subscript",
-    description: "Subscript text with `H~2~O`.",
+    description: "Lower text below the line, like the 2 in `H~2~O`.",
   },
   {
     use: "markdown-it-sup",
     label: "Superscript",
-    description: "Superscript text with `29^th^`.",
+    description: "Raise text above the line, like the th in `29^th^`.",
   },
   {
     use: "markdown-it-abbr",
     label: "Abbreviations",
-    description: "Define `*[HTML]: Hyper Text...` and get `<abbr>` tooltips.",
+    description: "Explain an abbreviation when readers hover over it. Define it once, like `*[GPS]: Global Positioning System`.",
   },
   {
     // Not a real npm package — Gutterpress's own code (#237), named to fit
     // the "keyed by npm name" shape. See BUILTIN_OPTIONAL_PLUGINS (renderer.ts).
     use: "gutterpress-gfm-alerts",
     label: "Callouts",
-    description: "GitHub-style `> [!NOTE]` alert boxes (Note/Tip/Important/Warning/Caution).",
+    description: "Turn a quote into a boxed note: start it with `> [!NOTE]` (or `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`).",
   },
 ];
 
@@ -268,7 +270,7 @@ function indexOfUse(seq: YAMLSeq, use: string): number {
 function manifestPathFor(projectDir: string, abs: string): string {
   const rel = path.relative(path.resolve(projectDir), abs).split(path.sep).join("/");
   if (rel === "") {
-    throw new Error("An extension cannot be the project folder itself.");
+    throw new Error("An extension cannot be the book folder itself.");
   }
   if (isPathSpecifier(rel)) return rel; // `../x`, or an absolute path on another drive
   return `./${rel}`;

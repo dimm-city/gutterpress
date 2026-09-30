@@ -1421,7 +1421,7 @@ describe("npm plugin installation", () => {
 
     const validation = await validateProjectPlugins(dir);
     expect(validation[0]).toMatchObject({ ok: false });
-    expect(validation[0]?.error).toMatch(/install root.*normal directory|outside the project/i);
+    expect(validation[0]?.error).toMatch(/install root.*normal directory|outside the book folder/i);
   });
 
   test("rolls the vendor tree and manifest back when activation fails before commit", async () => {

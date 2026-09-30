@@ -1,13 +1,20 @@
 <script lang="ts">
   /**
-   * ProblemsPanel (#28) — a bottom strip (VS Code-style) listing the project's
-   * lint findings: file, line, plain-language message, and the originating
-   * check. Entirely presentational: the page owns the data (refreshed on each
+   * ProblemsPanel (#28) — the list of the project's lint findings (VS Code-
+   * style): file, line, plain-language message, and the originating check.
+   * Entirely presentational: the page owns the data (refreshed on each
    * live-preview rebuild) and the click-to-open navigation.
    *
-   * The panel owns its own toggle strip (the top border strip is always
-   * visible; clicking it expands/collapses the body). The toggle does NOT
-   * live in the navbar any more.
+   * This is the LIST only. The toggle lives in the StatusBar, because it has to
+   * sit between that bar's other items — while the list needs a row of its own
+   * above the bar, in normal flow, so that opening it pushes the workspace up
+   * instead of covering the left panel and the editor (#307). Renders nothing
+   * visible while collapsed.
+   *
+   * A plain disclosure, like the editor toolbar's popups: because the list
+   * comes BEFORE the bar in the DOM, the StatusBar moves focus into it on open
+   * (`focusList`), and Escape / Close hand focus back to the toggle. No focus
+   * trap — it is a panel, not a modal.
    */
   import Icon from "$lib/components/Icon.svelte";
   import type { ProblemEntry } from "$lib/platform/dtos";
@@ -17,6 +24,7 @@
     friendlySource,
     groupProblems,
     problemCounts,
+    problemsSummary,
     splitProblemMessage,
   } from "$lib/problems";
 
@@ -27,6 +35,7 @@
     onSelect,
     error = null,
     compact = false,
+    toggleEl = null,
   }: {
     problems: ProblemEntry[];
     loading?: boolean;
@@ -42,51 +51,62 @@
      */
     error?: string | null;
     /**
-     * L9: below 820px the host (StatusBar) has no room for the "Problems"
-     * label/status text — this shrinks the toggle strip to an icon + count
-     * badge (an explicit aria-label carries what the hidden text used to
-     * convey) while leaving the expand/collapse behavior untouched. The host
-     * is responsible for presenting the expanded body as an overlay in this
-     * mode; this component only changes the toggle strip's content.
+     * L9: below 820px (the app's single-pane layout) the list has no room to
+     * grow out of the bar — it is presented as a full-viewport sheet instead
+     * (see `.problems-panel.compact` below), with its own Close button.
      */
     compact?: boolean;
+    /** The bar's toggle that opens this list — Escape and Close return focus here. */
+    toggleEl?: HTMLButtonElement | null;
   } = $props();
 
   let groups = $derived(groupProblems(problems));
-  let counts = $derived(problemCounts(problems));
+  let bodyEl = $state<HTMLDivElement | null>(null);
 
   /**
-   * L9 regression fix: in compact mode the expanded body is presented by the
-   * host (StatusBar) as a full-viewport overlay that visually covers the
-   * toggle strip below it, so the strip's own collapse click can no longer
-   * reach it (the overlay intercepts the click). Selecting a problem should
-   * also return the writer to the now-unobscured editor rather than leaving
-   * the overlay open on top of it.
+   * Move focus into the list just opened: its first entry, or — when it only
+   * shows a message — the body itself (tabindex="-1"), so the next Tab or
+   * Escape acts on the list rather than on whatever was behind it. Called by
+   * the StatusBar right after it opens the list.
+   */
+  export function focusList() {
+    (bodyEl?.querySelector<HTMLElement>(".entry.clickable") ?? bodyEl)?.focus();
+  }
+
+  /** Close the list and hand focus back to the toggle that opened it. */
+  function closeToToggle() {
+    open = false;
+    toggleEl?.focus();
+  }
+
+  /**
+   * L9 regression fix: in compact mode the expanded body is a full-viewport
+   * sheet that visually covers the toggle in the bar below it, so the toggle's
+   * own collapse click can no longer reach it (the sheet intercepts the
+   * click). Selecting a problem should also return the writer to the
+   * now-unobscured editor rather than leaving the sheet open on top of it.
    */
   function selectEntry(entry: ProblemEntry) {
     onSelect?.(entry);
     if (closesPanelOnSelect(compact)) open = false;
   }
 
-  /** Escape closes the compact overlay in place — there is otherwise no
-   *  dismiss path once the toggle strip is covered (see selectEntry above). */
+  /** Escape closes the compact sheet from anywhere — there is otherwise no
+   *  dismiss path once the toggle strip is covered (see selectEntry above) —
+   *  and the in-flow row from inside the list. */
   function handleWindowKeydown(e: KeyboardEvent) {
-    if (closesPanelOnEscape(compact, open, e.key)) {
-      open = false;
+    const focusInside = !!bodyEl && bodyEl.contains(e.target as Node | null);
+    if (closesPanelOnEscape(compact, open, e.key, focusInside)) {
+      closeToToggle();
     }
   }
 
   // Polite live region: announce error/warning counts when lint completes.
   let lintAnnouncement = $derived.by<string>(() => {
     if (loading) return "";
-    if (error) return "Problems: we couldn't check your project this time";
-    if (problems.length === 0) return "";
-    const e = counts.errors;
-    const w = counts.warnings;
-    const parts: string[] = [];
-    if (e > 0) parts.push(`${e} ${e === 1 ? "error" : "errors"}`);
-    if (w > 0) parts.push(`${w} ${w === 1 ? "warning" : "warnings"}`);
-    return parts.length > 0 ? `Problems: ${parts.join(", ")}` : "";
+    if (error) return "Problems: we couldn't check your book this time";
+    const summary = problemsSummary(problemCounts(problems));
+    return summary ? `Problems: ${summary}` : "";
   });
 
   const SEVERITY_ICON = {
@@ -112,55 +132,17 @@
   class:compact
   aria-label="Problems"
 >
-  <!-- Toggle strip — always visible at the bottom edge.
-       Uses a <button> with aria-expanded so screen readers announce state. -->
-  <button
-    class="toggle-strip"
-    onclick={() => (open = !open)}
-    aria-expanded={open}
-    aria-controls="problems-body"
-    title={open ? "Collapse problems panel" : "Expand problems panel"}
-    aria-label={compact
-      ? `Problems${loading ? ": checking" : error ? ": couldn't check" : counts.badge > 0 ? `: ${counts.badge} ${counts.badge === 1 ? "issue" : "issues"}` : ": none"}`
-      : undefined}
-  >
-    <span class="strip-left">
-      <Icon name={error ? "info" : counts.badge > 0 ? "triangle-alert" : "circle-check"} size={13} />
-      <span class="strip-title">Problems</span>
-      {#if counts.badge > 0}
-        <span class="strip-counts">
-          {#if counts.errors > 0}
-            <span class="strip-count error-count">
-              <Icon name="circle-x" size={12} />
-              {counts.errors}
-            </span>
-          {/if}
-          {#if counts.warnings > 0}
-            <span class="strip-count warning-count">
-              <Icon name="triangle-alert" size={12} />
-              {counts.warnings}
-            </span>
-          {/if}
-        </span>
-      {/if}
-      {#if loading}
-        <span class="strip-status" role="status">Checking…</span>
-      {:else if error}
-        <span class="strip-status" role="status">Couldn't check</span>
-      {/if}
-    </span>
-    <span class="strip-chevron" aria-hidden="true">
-      <Icon name={open ? "chevron-down" : "chevron-up"} size={13} />
-    </span>
-  </button>
-
-  <!-- Panel body — shown only when expanded -->
+  <!-- Panel body — shown only when expanded. The StatusBar's toggle controls it
+       (aria-controls="problems-body"). tabindex="-1": focusList() lands here
+       when the list shows only a message, so Escape still works. -->
   <div
+    bind:this={bodyEl}
     id="problems-body"
     class="panel-body"
     role="region"
     aria-label="Problems list"
     aria-hidden={!open}
+    tabindex="-1"
   >
     {#if compact}
       <!-- L9: the compact overlay has no other reachable dismiss control
@@ -169,7 +151,7 @@
         <span class="panel-body-bar-title">Problems</span>
         <button
           class="panel-close-btn"
-          onclick={() => (open = false)}
+          onclick={closeToToggle}
           aria-label="Close problems panel"
           title="Close problems panel"
         >
@@ -187,7 +169,7 @@
       <div class="empty-state" role="status">
         <span class="empty-icon"><Icon name="circle-check" size={18} /></span>
         <p class="empty-text">
-          {loading ? "Checking your project…" : "No problems found — your project looks good!"}
+          {loading ? "Checking your book…" : "No problems found — your book looks good!"}
         </p>
       </div>
     {:else}
@@ -242,13 +224,12 @@
 </section>
 
 <style>
+  /* In normal flow, directly above the status bar: opening the list makes the
+     workspace above it shorter instead of drawing over it (#307). The section
+     holds only the body, so collapsed it takes no space at all. */
   .problems-panel {
-    display: flex;
-    flex-direction: column;
     flex-shrink: 0;
-    background: var(--app-surface-raised);
     color: var(--app-text);
-    border-top: 1px solid var(--app-border);
   }
   /* Body only shown when expanded */
   .problems-panel .panel-body {
@@ -256,72 +237,29 @@
     overflow-y: auto;
     min-height: 0;
     max-height: 32vh;
+    background: var(--app-surface-raised);
+    border-top: 1px solid var(--app-border);
   }
   .problems-panel.expanded .panel-body {
     display: block;
   }
-
-  /* ── Toggle strip ──────────────────────────────────────────────────────── */
-  .toggle-strip {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    padding: 5px 12px;
-    background: transparent;
-    border: none;
-    border-bottom: 1px solid transparent;
-    cursor: pointer;
-    font-size: 12px;
-    color: var(--app-text-secondary);
-    text-align: left;
-    min-height: 30px;
-    gap: 8px;
-  }
-  .expanded .toggle-strip {
-    border-bottom-color: var(--app-border);
-  }
-  .toggle-strip:hover {
-    background: var(--app-control-hover-bg);
-  }
-  .toggle-strip:focus-visible {
+  /* Keyboard focus on the body itself (a message-only list): show it. */
+  .problems-panel .panel-body:focus-visible {
     outline: 2px solid var(--app-focus-ring);
     outline-offset: -2px;
   }
-  .strip-left {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    flex: 1;
-    min-width: 0;
-  }
-  .strip-title {
-    font-size: 12px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    color: var(--app-text-secondary);
-  }
-  .strip-counts {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    font-variant-numeric: tabular-nums;
-  }
-  .strip-count {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    font-size: 11px;
-  }
-  .error-count { color: var(--app-error-text); }
-  .warning-count { color: var(--app-warning-text); }
-  .strip-status { font-size: 11px; color: var(--app-text-muted); }
-  .strip-chevron {
-    flex-shrink: 0;
-    display: inline-flex;
-    align-items: center;
-    color: var(--app-text-muted);
+
+  /* L9: below 820px there is no room for a row of its own — the list becomes a
+     full-viewport sheet (below the toolbar, above everything else short of app
+     dialogs). The toggle in the status bar stays where it is, under the sheet. */
+  .problems-panel.compact .panel-body {
+    position: fixed;
+    top: 56px;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    max-height: none;
+    z-index: var(--app-z-sheet);
   }
 
   /* ── Panel body ──────────────────────────────────────────────────────────── */
@@ -492,14 +430,6 @@
     font-family: var(--app-font-mono);
     color: var(--app-text-muted);
     align-self: center;
-  }
-
-  /* L9: compact mode (host below 820px) shrinks the toggle strip to an icon
-     + count badge — the "Problems" label and loading/error status text would
-     not fit, and are still carried by the button's aria-label. */
-  .problems-panel.compact .strip-title,
-  .problems-panel.compact .strip-status {
-    display: none;
   }
 
   .sr-only {

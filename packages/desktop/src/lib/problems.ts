@@ -40,11 +40,11 @@ const SOURCE_LABELS: Record<string, string> = {
   // authority — preflight must not maintain a second, drifting label map.
   "asset.image.file-size": "Image file size",
   "asset.image.resolution": "Image resolution",
-  "asset.image.color-space": "Image colour space",
+  "asset.image.color-space": "Image color space",
   "asset.image.alpha-channel": "Image transparency",
   "asset.image.tac-raster": "Image ink coverage",
   "asset.font.approved-files": "Font files",
-  "asset.font.license": "Font licence",
+  "asset.font.license": "Font license",
   // Print-quality findings from the render itself (native engine). These are
   // things only pagination can know — nothing in the source files is wrong,
   // so they cannot come from a source lint. Kept in the same table so
@@ -115,11 +115,17 @@ export function closesPanelOnSelect(compact: boolean): boolean {
   return compact;
 }
 
-/** Escape closes the panel only when it's the compact overlay AND actually
- *  open — otherwise it must not interfere with unrelated Escape handling
- *  elsewhere in the app. */
-export function closesPanelOnEscape(compact: boolean, open: boolean, key: string): boolean {
-  return compact && open && key === "Escape";
+/** Escape closes an OPEN panel from anywhere when it's the compact sheet (it
+ *  covers the toggle, so there is no other dismiss path), and from inside the
+ *  list when it's the in-flow row — otherwise it must not interfere with
+ *  unrelated Escape handling elsewhere in the app. */
+export function closesPanelOnEscape(
+  compact: boolean,
+  open: boolean,
+  key: string,
+  focusInside = false,
+): boolean {
+  return open && key === "Escape" && (compact || focusInside);
 }
 
 /** Errors + warnings (the badge count). Infos are listed but not badged. */
@@ -140,6 +146,30 @@ export function problemCounts(problems: ProblemEntry[]): {
   return { errors, warnings, infos, badge: errors + warnings };
 }
 
+/** The badge counts in words — "1 error, 3 warnings" — for screen readers and
+ *  the toggle's accessible name. Empty when there is neither. */
+export function problemsSummary(counts: { errors: number; warnings: number }): string {
+  const parts: string[] = [];
+  if (counts.errors > 0) parts.push(`${counts.errors} ${counts.errors === 1 ? "error" : "errors"}`);
+  if (counts.warnings > 0) parts.push(`${counts.warnings} ${counts.warnings === 1 ? "warning" : "warnings"}`);
+  return parts.join(", ");
+}
+
+/**
+ * Whether the status bar offers to expand the list (#307). An empty list has
+ * nothing to show, so a clean project reads "No problems" in the bar instead
+ * of opening an empty panel. A failed check still has a message to show, and a
+ * list that is already open stays closable — e.g. the writer just fixed the
+ * last problem.
+ */
+export function canExpandProblems(
+  problems: ProblemEntry[],
+  error: string | null,
+  open: boolean,
+): boolean {
+  return problems.length > 0 || !!error || open;
+}
+
 /**
  * Group problems by file for display: groups sorted by file name (project-
  * level findings last), entries within a group sorted by line then severity.
@@ -150,7 +180,7 @@ export function groupProblems(problems: ProblemEntry[]): ProblemGroup[] {
     const key = p.file ?? "";
     let g = groups.get(key);
     if (!g) {
-      g = { file: p.file ?? "Project", filePath: p.filePath, entries: [] };
+      g = { file: p.file ?? "Book", filePath: p.filePath, entries: [] };
       groups.set(key, g);
     }
     g.entries.push(p);

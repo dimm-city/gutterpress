@@ -395,10 +395,16 @@
     else openSettings();
   }
   /**
-   * No author name/email yet: every version this project saves would be
-   * attributed to a placeholder, so the workspace carries a persistent notice
+   * No author name/email yet: what a project with version history keeps would
+   * be attributed to a placeholder, so the workspace carries a persistent notice
    * with a one-click route to Settings → Accounts. It clears itself the moment
    * both fields are filled.
+   *
+   * It waits until that is about to matter: the open project HAS version
+   * history (`canSnapshot`) and a version was just saved by hand or a sync just
+   * started — the two moments the renderer is told about (`identityNoticeArmed`,
+   * set where they happen). It used to greet every writer the moment any book
+   * opened, plain folders with no history included.
    *
    * Gated on `settings.loaded`: the in-memory defaults ARE empty strings, so an
    * ungated check would flash the banner on every launch in the window before
@@ -417,10 +423,16 @@
    * wrong for silences it, and it returns next launch in case the setting
    * still matters to them.
    */
+  let identityNoticeArmed = $state(false);
   let identityNoticeDismissed = $state(false);
-  const needsGitIdentity = $derived(
-    settings.loaded &&
+  // `$derived.by`: reads `projectSession`, declared further down — a plain
+  // `$derived(expr)` would evaluate it here, before that declaration.
+  const needsGitIdentity = $derived.by(
+    () =>
+      settings.loaded &&
+      identityNoticeArmed &&
       !identityNoticeDismissed &&
+      !!projectSession.projectCapabilities?.canSnapshot &&
       (!settings.current.gitIdentity.authorName.trim() ||
         !settings.current.gitIdentity.authorEmail.trim()),
   );
@@ -478,6 +490,7 @@
     onSyncCompleted: (mergedRemoteChanges, filesChanged) =>
       onSyncCompleted(mergedRemoteChanges, filesChanged),
     onFilesChanged: () => onSyncFilesChanged(),
+    autoBackup: () => settings.current.versionHistory.autoSync,
   });
 
   // ── Project session capability state (#12) ───────────────────────────────────
@@ -557,7 +570,10 @@
       // A project closed while its settings view was up must not show that
       // view over the next project (or the empty workspace).
       projectSettingsOpen = false;
-      setMode("viewer");
+      // Back to the SAVED layout — this only sheds the transient `focus`. A
+      // reset is not a choice: forcing Read here also saved it, so one failed
+      // open turned a new writer's Edit default into Read for good.
+      setMode(settings.current.preview.mode);
       // A project closed while activity borrowed the editor must not reopen the
       // next project on that stale view.
       editorView = "editor";
@@ -758,11 +774,11 @@
   // author's books — the screen's whole job is to pick or continue a book.
   // The missing-identity nudge is the workspace banner (`needsGitIdentity`
   // above), which is where the owner put it on 2026-07-30; the landing opens
-  // on Projects and stays there until the author asks for another tab.
+  // on Books and stays there until the author asks for another tab.
 
   /**
    * The ONE open-a-project-folder pipeline behind the folder picker, the
-   * Projects panel, the start screen, the GitHub dialog, and the new-project
+   * Books panel, the start screen, the GitHub dialog, and the new-book
    * wizard: leave the start screen, restore the folder's saved per-project
    * state (#43), and hand off to startFolderPreview. There is NO await before
    * startFolderPreview, so the open epoch is claimed at user-intent time (last
@@ -869,8 +885,8 @@
   function onSyncCompleted(mergedRemoteChanges: boolean, filesChanged = mergedRemoteChanges) {
     toast?.success(
       mergedRemoteChanges
-        ? "Synced — changes from the online copy were combined in, so the preview will refresh."
-        : "Synced — your changes are online.",
+        ? "Backed up online — changes from the online backup were combined in, so the preview will refresh."
+        : "Backed up online — your changes are online.",
     );
     // A sync may add new commits to the project's version history (both push
     // and pull sides) — refresh the activity view's snapshot list so new
@@ -913,6 +929,7 @@
     const off = getPlatform().onSyncStatus((status) => {
       // Scope to the currently open project.
       if (status.projectDir !== lifecycle.currentDir) return;
+      if (status.state === "syncing") identityNoticeArmed = true;
       if (shouldReconcileAfterSync(status)) {
         onSyncFilesChanged();
       }
@@ -945,6 +962,11 @@
   // The one genuinely ambiguous transition: leaving `focus` could mean either
   // `editor` or `viewer`. Written ONLY on entering focus.
   let modeBeforeFocus: "editor" | "viewer" | null = null;
+  // The "how to leave Focus" toast shows the first time Focus is entered in an
+  // app session only — the Focus tooltip carries the same words permanently,
+  // and a writer who lives in Focus should not be told on every Ctrl+Shift+F.
+  // Not persisted on purpose.
+  let focusHintShown = false;
   /** The viewer is hidden in `focus` and nowhere else. */
   let previewVisible = $derived(mode !== "focus");
   /** `focus` is the editor without the viewer, so the editor shows in both. */
@@ -981,27 +1003,37 @@
     snippetPickerRef?.show();
   }
 
-  // ── Project settings view (#PCV → full window) ─────────────────────────────
-  // Project settings live in a full-window view patterned after the app
-  // SettingsView (they used to be a left-sidebar Config tab); activity is the
-  // only alternate editor-pane view.
+  // ── Book settings view (#PCV → docked panel) ────────────────────────────
+  // Book settings live in a panel docked beside the workspace, patterned
+  // after the app SettingsView (they used to be a left-sidebar Config tab);
+  // activity is the only alternate editor-pane view.
   let editorView = $state<"editor" | "activity">("editor");
   let projectSettingsOpen = $state(false);
 
   /**
-   * One button → the whole project settings view (manifest details, look &
-   * style, plugins). Full-window like the app settings; the workspace behind
-   * it goes inert and returns untouched on close.
+   * One button → the whole book settings view (manifest details, look &
+   * style, plugins). Docked beside the workspace so the preview stays visible
+   * while the writer styles the book; the workspace goes inert and returns
+   * untouched on close.
    */
   function openProjectConfig(): void {
     if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
     if (!isDesktop()) {
-      toast?.info?.("Project configuration is available in the desktop app for now.");
+      toast?.info?.("Book settings are available in the desktop app for now.");
       return;
     }
     contextMenu.close();
     void inlineEdit.endActive(true); // opening a dialog commits the in-flow edit
+    projectSettingsTab = "details";
     projectSettingsOpen = true;
+  }
+
+  // Book settings opens on Details; the save-status dialog sends writers to
+  // Connections to see how an online backup gets set up.
+  let projectSettingsTab = $state<"details" | "connections">("details");
+  function openBookConnections(): void {
+    openProjectConfig();
+    projectSettingsTab = "connections";
   }
 
   function closeProjectSettings(): void {
@@ -1677,7 +1709,7 @@
         // distinct error state instead of silently clearing to [].
         if (lifecycle.currentDir === dir) {
           problems = [];
-          problemsError = "We couldn't check your project this time.";
+          problemsError = "We couldn't check your book this time.";
         }
       })
       .finally(() => {
@@ -1779,7 +1811,9 @@
       if (typeof panelPrefs?.width === "number") {
         leftPanelWidth = clampPanelWidth(panelPrefs.width, viewportWidth());
       }
-      leftPanelOpen = panelPrefs?.open ?? false;
+      // No saved choice (first run): show the panel — unless the window is
+      // narrow, where it is an overlay that would cover the page.
+      leftPanelOpen = panelPrefs?.open ?? !isNarrow;
     },
     setLandingShowPref: (show) => {
       landingShowPref = show;
@@ -2088,10 +2122,10 @@
   // ----------------------------------------------------------------
   onMount(() => {
     function onGlobalKey(e: KeyboardEvent) {
-      // The full-window Project settings view owns the keyboard while it's up:
-      // the workspace behind it is inert, so acting on it (opening Settings
-      // invisibly BENEATH the view, toggling focus mode, exporting, snippet
-      // picker) would mutate UI the user can't see. Escape closes the view.
+      // The Book settings panel owns the keyboard while it's up: the
+      // workspace beside it is inert, so acting on it (opening Settings
+      // BENEATH the panel, toggling focus mode, exporting, snippet picker)
+      // would change UI the writer isn't working in. Escape closes the panel.
       if (projectSettingsOpen) {
         if (e.key === "Escape") {
           e.preventDefault();
@@ -2172,8 +2206,8 @@
       if (e.defaultPrevented) return;
       // Never page/zoom the pre-rendering preview from behind the start screen.
       if (landingVisible) return;
-      // Never page/zoom the hidden preview behind full-window project
-      // settings (PageUp/PageDown must scroll its body, not the preview).
+      // Never page/zoom the (inert) preview beside the book settings
+      // panel (PageUp/PageDown must scroll its body, not the preview).
       if (projectSettingsOpen) return;
       // Don't intercept when focus is in a form control or the CodeMirror
       // editor (#38) — preview-nav keys (arrows, Home/End, +/-/=, f) must
@@ -2285,7 +2319,7 @@
 
   function getSaveReadinessWarning(): string | null {
     if (lifecycle.sourceMode !== "folder" || !lifecycle.currentDir) {
-      return "Open a project folder before saving a PDF.";
+      return "Open a book before saving a PDF.";
     }
     if (lifecycle.rendering || !lifecycle.previewUrl) {
       return "Your document is still loading. Wait a moment and try again.";
@@ -2476,6 +2510,12 @@
   function setMode(next: WorkspaceMode): void {
     if (next === mode) return;
     if (next === "focus") modeBeforeFocus = mode === "viewer" ? "viewer" : "editor";
+    // The viewer vanishes in focus, and Esc is not the way back (see
+    // onGlobalKey) — say what is, once per session (see focusHintShown).
+    if (next === "focus" && !focusHintShown) {
+      focusHintShown = true;
+      toast?.info?.("Focus mode: press Ctrl+Shift+F, or choose Edit or Read, to bring the preview back.", 6000);
+    }
     settings.set({ preview: { mode: next === "focus" ? "editor" : next } });
     mode = next;
     zoomView.applyViewMode(viewMode);
@@ -2536,7 +2576,7 @@
   // editor and the preview. `editorPaneOpen` is the visible source of truth;
   // the persisted paneMode is only consulted after the editor was explicitly
   // opened. (The defunct CSS/style tab was retired with the toolbar
-  // refactor — project styling lives in the Project settings view.)
+  // refactor — project styling lives in the Book settings view.)
   //
   // M1 (single source of truth): whether the shared editor is on a CSS file is
   // derived SOLELY from the open file's extension (`openFileIsCss`) — no
@@ -2685,9 +2725,10 @@
   <title>{lifecycle.docTitle ? `${lifecycle.docTitle} — Gutterpress` : "Gutterpress"}</title>
 </svelte:head>
 
-<!-- inert while the start screen or full-window Settings view is up: the
-      workspace keeps rendering, but never accepts interaction underneath. -->
-<div class="app-root" inert={landingVisible || projectSettingsOpen}>
+<!-- inert while the start screen or Book settings is up: the workspace keeps
+      rendering (the docked panel leaves the preview visible and live beside
+      it), but never accepts interaction underneath. -->
+<div class="app-root" class:settings-docked={projectSettingsOpen} inert={landingVisible || projectSettingsOpen}>
 {#if (updateController.readyVersion || updateController.availableVersion) && !updateController.bannerDismissed}
   <div class="update-banner" role="status" aria-live="polite">
     {#if updateController.readyVersion}
@@ -2715,7 +2756,7 @@
 {#if needsGitIdentity}
   <div class="identity-banner" role="status">
     <span class="identity-banner-msg">
-      Add your name and email so the versions you save show who made each change.
+      Add your name and email so the changes you save are credited to you.
     </span>
     <button class="identity-action" onclick={() => openSettings("connections")}>
       Add your name &amp; email
@@ -2739,7 +2780,7 @@
     onOpenInBrowser={openInBrowser}
     {pageNav}
     rendering={lifecycle.rendering}
-    showPageNav={!!lifecycle.previewUrl && !isNarrow}
+    showPageNav={!!lifecycle.previewUrl}
     {isNarrow}
     {mobileTab}
     onSelectMobileTab={selectMobileTab}
@@ -3032,14 +3073,16 @@
     sourceMode={lifecycle.sourceMode}
     canSync={!!(syncController.syncDiag?.canSync)}
     hasRemote={projectSession.projectHasRemote}
-    canSnapshot={!!(projectSession.projectCapabilities?.canSnapshot)}
+    canSnapshot={projectSession.projectCapabilities ? !!projectSession.projectCapabilities.canSnapshot : null}
     savePhase={editorSavePhase}
     autoSave={settings.current.versionHistory.autoSave}
+    autoVersions={settings.current.versionHistory.autoSnapshot}
+    autoBackup={settings.current.versionHistory.autoSync}
     fileOpen={!!editorFilePath}
     {forceSaving}
     forceSyncing={syncController.forceSyncing}
     problems={displayedProblems}
-    problemsLoading={problemsLoading}
+    problemsLoading={problemsLoading || lifecycle.rendering}
     {problemsError}
     bind:problemsOpen={problemsOpen}
     books={projectSession.books}
@@ -3051,11 +3094,13 @@
     onShowLog={showProjectLog}
     onForceSave={handleForceSave}
     onForceSync={() => syncController.handleForceSync()}
+    manualBackup={syncController.lastManual}
     onSaveVersion={async () => {
       const dir = lifecycle.currentDir;
       if (!dir) return;
       try {
         await api.vcs.saveSnapshot(dir);
+        identityNoticeArmed = true;
         toast?.success("Saved a version.");
         activityViewRef?.refreshHistory();
       } catch (e) {
@@ -3063,6 +3108,20 @@
         throw e;
       }
     }}
+    onEnableVersionHistory={async () => {
+      const dir = lifecycle.currentDir;
+      if (!dir) return;
+      try {
+        await api.vcs.enableVersionHistory(dir);
+        await projectSession.classify(dir);
+        toast?.success("Version history is on.");
+      } catch (e) {
+        toast?.error("Couldn't turn on version history. Your book is unchanged.");
+        throw e;
+      }
+    }}
+    onShowVersions={showActivityView}
+    onOpenBookConnections={openBookConnections}
     onOpenSettings={openSettings}
     onOpenHelp={openHelp}
   />
@@ -3108,18 +3167,22 @@
   onProjectFilesChanged={onSnapshotRestored}
 />
 {#if projectSettingsOpen}
-  <!-- Project settings (manifest): full-window like the app settings. Keyed by
-       projectDir so a project switch can never leave stale section state
-       (drafts, theme lists) resident under the new project. -->
-  <section class="settings-global-view" aria-label="Project settings">
+  <!-- Book settings (manifest): a panel docked beside the workspace, so the
+       book preview stays visible (and re-renders live) while the writer styles
+       it; it covers the whole window only when the window is too narrow for
+       both. Keyed by projectDir so a project switch can never leave stale
+       section state (drafts, theme lists) resident under the new project. -->
+  <section class="settings-global-view" aria-label="Book settings">
     {#key lifecycle.currentDir}
       <ProjectSettingsView
         projectDir={lifecycle.currentDir}
         repoRoot={projectSession.repoRoot}
+        initialTab={projectSettingsTab}
         {toast}
         onClose={closeProjectSettings}
         onEditRawCss={(path) => { closeProjectSettings(); openStyleFile(path); }}
         onOpenAccounts={() => { closeProjectSettings(); openSettings("connections"); }}
+        onVersionHistoryEnabled={(dir) => void projectSession.classify(dir)}
       />
     {/key}
   </section>
@@ -3129,7 +3192,7 @@
   bind:open={githubOpen}
   onOpened={(projectDir) => {
     invalidateDiscoveredProjects(); // a fresh clone is a new discoverable book
-    return openProjectPath(projectDir, "Opening your project…");
+    return openProjectPath(projectDir, "Opening your book…");
   }}
   onAdvancedSetup={() => openSettings("connections")}
   onClosed={onConnectDialogClosed}
@@ -3286,12 +3349,32 @@
   .editor-pane {
     border-right: 1px solid var(--app-border);
   }
+  /* Book settings docks to the right edge; the (inert) app shrinks by the
+     panel's width so the preview re-fits into what is left instead of hiding
+     under it. Below 900px there is no room for both, so the panel covers the
+     window as it did before. */
   .settings-global-view {
     position: fixed;
-    inset: 0;
+    inset: 0 0 0 auto;
+    box-sizing: border-box;
+    width: var(--app-settings-panel-width);
     z-index: calc(var(--app-z-sheet) + 1);
     display: flex;
+    border-left: 1px solid var(--app-border);
     background: var(--app-bg);
+  }
+  .app-root.settings-docked {
+    margin-right: var(--app-settings-panel-width);
+  }
+  @media screen and (max-width: 900px) {
+    .settings-global-view {
+      inset: 0;
+      width: auto;
+      border-left: none;
+    }
+    .app-root.settings-docked {
+      margin-right: 0;
+    }
   }
   .splitter {
     width: 6px;

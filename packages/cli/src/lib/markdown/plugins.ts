@@ -808,7 +808,7 @@ async function loadNpmPackage(
 
   throw new Error(
     `Extension "${packageName}" not found. Install it with ` +
-      `\`gutterpress ext add ${packageName}\` (or Project settings > Extensions),\n` +
+      `\`gutterpress ext add ${packageName}\` (or Book settings > Features > Advanced in the desktop app),\n` +
       `or reference a local file under \`extensions:\`:\n` +
       `  extensions:\n` +
       `    - ${suggestedPath}`

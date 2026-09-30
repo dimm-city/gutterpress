@@ -564,7 +564,7 @@ export async function resolveVendoredPluginInstallRoot(
     realpath(requestedInstallRoot),
   ]);
   if (!isContained(realProjectRoot, installRoot)) {
-    throw new Error("Vendor install root resolves outside the project.");
+    throw new Error("Vendor install root resolves outside the book folder.");
   }
   return installRoot;
 }

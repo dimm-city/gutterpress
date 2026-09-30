@@ -258,7 +258,7 @@ test("a successful run emits syncing then synced with a fake-clock timestamp", a
 });
 
 test("an 'up-to-date' outcome emits the same 'synced' state as a sending sync", async () => {
-  // The pill draws both identically ("Everything is in sync"), so there is
+  // The pill draws both identically ("Online backup in sync"), so there is
   // ONE wire state. The lib's SyncOutcome still distinguishes them — that is
   // what the manual-sync toast reads.
   const h = makeHarness({
@@ -278,7 +278,7 @@ test("an 'up-to-date' outcome emits the same 'synced' state as a sending sync", 
 // while auto-sync users only ever see a generic error pill.
 
 const INSECURE_MSG =
-  "This project's online address isn't secure, so the saved connection wasn't sent — connections are never sent over an insecure address. Switch the address to a secure one (starting with https) to sync.";
+  "This book's online address isn't secure, so the saved connection wasn't sent — connections are never sent over an insecure address. Switch the address to a secure one (starting with https) to sync.";
 
 test("an 'error' outcome carries the outcome's plain-language message on the emit", async () => {
   const h = makeHarness({

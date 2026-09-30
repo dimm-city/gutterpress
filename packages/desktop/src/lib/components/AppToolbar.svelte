@@ -18,11 +18,22 @@
    *  - `container-type: inline-size` + four documented @container stages
    *    collapse progressively by the toolbar's OWN width (not the viewport),
    *    with thresholds derived from the measured cluster widths so the middle
-   *    track always has room for the page nav:
-   *      ≤1150px  Edit/Read/Focus segmented group → dropdown menu
-   *      ≤1000px  button text labels drop (icon-only), title/path trim
-   *      ≤900px   page nav compacts (first/last jump buttons drop)
-   *      ≤620px   title/path, mode/zoom menus, separators, hints drop
+   *    track always has room for the page nav. Least important goes first, and
+   *    every control that turns icon-only keeps its aria-label and tooltip.
+   *    The container is the toolbar's content box (window width − 24px), so a
+   *    900px window measures 876px:
+   *      ≤1150px  Edit/Read/Focus segmented group → dropdown menu, Save drops
+   *               its text label, export hints drop
+   *      ≤875px   Publish/Export drop their text labels, page nav loses its
+   *               first/last jump buttons, path trims
+   *      ≤760px   the page-number select drops (prev/next stay), title trims
+   *      ≤620px   page nav, title/path, mode/zoom menus, separators, hints drop
+   *    The narrow layout (≤820px window) adds the pane tabs to the end cluster;
+   *    the ≤760px stage is what keeps prev/next clear of it (touch, whose 44px
+   *    targets cannot spare the room, keeps the old no-page-nav behavior). The
+   *    select drop and the page nav's phone floor are therefore scoped to
+   *    `.narrow`: the docked Book settings panel makes the toolbar this
+   *    narrow without the tabs, and there the page nav still fits.
    *  - `(pointer: coarse)` keeps ≥44×44px touch targets on touch devices
    *    without fattening the desktop layout.
    *
@@ -30,10 +41,11 @@
    * value — no icon button beside it duplicating a mode the segments already
    * offer, and nothing reachable only from the keyboard.
    *
-   * Primary actions are ordered Publish → Export → Save so Save is always the
-   * right-most button. There is no overflow menu: Export opens the export
-   * dialog, project settings is a dedicated button beside the mode control,
-   * advanced setup in app Settings.
+   * Actions are ordered Publish → Export → Save so Save is always the
+   * right-most button. Export is the one primary (solid) action; Publish is a
+   * secondary button, since its wizard exports too. There is no overflow menu:
+   * Export opens the export dialog, book settings is a dedicated button
+   * beside the mode control, advanced setup in app Settings.
    *
    * PWA-clean (§8): type-only imports, zero host/Node code.
    */
@@ -143,6 +155,15 @@
     mode === "viewer" ? "book-open" : mode === "focus" ? "maximize" : "pen-line",
   );
 
+  // Each tooltip says what its layout shows. Esc is deliberately NOT a way out
+  // of Focus (see onGlobalKey in +page.svelte), so Focus names the real ones.
+  const MODE_TITLE = {
+    editor: "Edit — editor and preview side by side (Ctrl+E)",
+    viewer: "Read — the preview on its own, two pages at a time",
+    focus:
+      "Focus — editor only (Ctrl+Shift+F). Press it again, or choose Edit or Read, to bring the preview back",
+  } as const;
+
   // Close the enclosing <details> menu after a menu item is chosen, and return
   // focus to its summary for keyboard users.
   function closeMenu(e: Event) {
@@ -173,7 +194,7 @@
   }
 </script>
 
-<header class="toolbar" class:edit-narrow={hidePreviewControls} class:url-mode={sourceMode === "url"}>
+<header class="toolbar" class:narrow={isNarrow} class:edit-narrow={hidePreviewControls} class:url-mode={sourceMode === "url"}>
   <div class="toolbar-start">
     <!-- Panel toggle — far left, first control in navbar -->
     <button
@@ -326,7 +347,7 @@
         class:active={mode === "editor"}
         onclick={() => onSetMode("editor")}
         disabled={editorToggleDisabled}
-        title="Write, with one page of the book beside you (Ctrl+E)"
+        title={MODE_TITLE.editor}
         aria-label="Edit"
         aria-pressed={mode === "editor"}
       >
@@ -337,18 +358,21 @@
         class:active={mode === "viewer"}
         onclick={() => onSetMode("viewer")}
         disabled={editorToggleDisabled}
-        title="Read the book two pages at a time, like an open book"
+        title={MODE_TITLE.viewer}
         aria-label="Read"
         aria-pressed={mode === "viewer"}
       >
         <Icon name="book-open" /><span class="view-label">Read</span>
       </button>
+      <!-- Disabled means "can't be entered": the mode you are ALREADY in is
+           never unavailable, so a Focus carried into a narrow window still
+           reads as selected rather than dimmed. -->
       <button
         class="icon-text"
         class:active={mode === "focus"}
         onclick={() => onSetMode("focus")}
-        disabled={editorToggleDisabled || isNarrow}
-        title="Write with nothing beside you — just your words (Ctrl+Shift+F)"
+        disabled={editorToggleDisabled || (isNarrow && mode !== "focus")}
+        title={MODE_TITLE.focus}
         aria-label="Focus"
         aria-pressed={mode === "focus"}
       >
@@ -367,6 +391,7 @@
           class:active={mode === "editor"}
           onclick={(e) => { onSetMode("editor"); closeMenu(e); }}
           disabled={editorToggleDisabled}
+          title={MODE_TITLE.editor}
         >
           <Icon name="pen-line" /> Edit
         </button>
@@ -376,6 +401,7 @@
           class:active={mode === "viewer"}
           onclick={(e) => { onSetMode("viewer"); closeMenu(e); }}
           disabled={editorToggleDisabled}
+          title={MODE_TITLE.viewer}
         >
           <Icon name="book-open" /> Read
         </button>
@@ -384,7 +410,8 @@
           class="menu-item"
           class:active={mode === "focus"}
           onclick={(e) => { onSetMode("focus"); closeMenu(e); }}
-          disabled={editorToggleDisabled || isNarrow}
+          disabled={editorToggleDisabled || (isNarrow && mode !== "focus")}
+          title={MODE_TITLE.focus}
         >
           <Icon name="maximize" /> Focus
         </button>
@@ -413,14 +440,14 @@
     </details>
 
     {#if showProjectSettings}
-      <!-- Project settings (manifest) — beside the mode control. Rendered on
+      <!-- Book settings (manifest) — beside the mode control. Rendered on
            narrow layouts too (the tab bar replaces the mode control there,
-           but project settings must stay reachable). -->
+           but book settings must stay reachable). -->
       <button
         class="icon-btn project-settings-btn"
         onclick={onOpenProjectSettings}
-        title="Project settings"
-        aria-label="Project settings"
+        title="Book settings"
+        aria-label="Book settings"
       >
         <Icon name="settings" />
       </button>
@@ -436,16 +463,21 @@
       <span class="save-hint save-warning" role="alert">{exportWarning}</span>
     {/if}
 
-    <!-- Primary actions — Publish, Export, Save (Save right-most). No
-         overflow menu: focus mode is a segment of the mode control, advanced
-         setup lives in the app Settings view, save-as-template in the export
-         dialog, and project settings beside the mode control above. -->
+    <!-- Actions — Publish, Export, Save (Save right-most). Export is the ONE
+         primary (solid) action; Publish is a secondary button beside it — its
+         wizard exports too, so two equal-weight solid buttons left the choice
+         unclear. No overflow menu: focus mode is a segment of the mode
+         control, advanced setup lives in the app Settings view,
+         save-as-template in the export dialog, and book settings beside the
+         mode control above. Both keep their aria-label when the text label
+         drops at narrow widths. -->
     {#if publishVisible}
       <button
-        class="publish-btn primary app-btn-primary icon-text"
+        class="publish-btn icon-text"
         onclick={onPublish}
         disabled={publishDisabled}
         title="Publish your book to itch.io, KDP, Shopify and more"
+        aria-label="Publish"
       >
         <Icon name="cloud-upload" />
         <span class="btn-label">Publish</span>
@@ -459,6 +491,7 @@
       onclick={onOpenExport}
       disabled={exportDisabled}
       title="Export (choose format and settings)"
+      aria-label={exporting ? "Exporting…" : "Export"}
     >
       <Icon name="file-down" />
       <span class="btn-label">{exporting ? "Exporting…" : "Export"}</span>
@@ -650,37 +683,54 @@
     /* Intra-toolbar stacking only: the toolbar (z: var(--app-z-toolbar)) is a
        stacking context, so this small literal never competes app-wide. */
     z-index: 80;
-    min-width: 168px;
+    min-width: 120px;
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 1px;
     padding: 4px;
-    background: var(--app-surface-raised);
+    /* Same values as EditorToolbar's `.toolbar-popup` (the Insert menu), so
+       every toolbar dropdown reads as one family. */
+    background: var(--app-surface);
     border: 1px solid var(--app-border);
-    border-radius: 8px;
-    box-shadow: 0 6px 20px var(--app-shadow-md);
+    border-radius: 4px;
+    box-shadow: 0 4px 12px var(--app-shadow-md);
   }
-  .menu-item {
+  /* Rows, not buttons. The generic `.toolbar button` rules above (border,
+     neutral fill, `button.active` accent slab) outrank a bare `.menu-item`, so
+     every selector here is anchored on `.toolbar .menu-panel button` to win at
+     equal-or-higher specificity: one panel owns the border and shadow; rows are
+     borderless and transparent until hovered. */
+  .toolbar .menu-panel button.menu-item {
     display: flex;
     align-items: center;
     gap: 8px;
     width: 100%;
     text-align: left;
     background: transparent;
-    border: 1px solid transparent;
-    border-radius: 5px;
-    padding: 6px 10px;
-    font-size: 13px;
+    border: 0;
+    border-radius: 3px;
+    color: var(--app-text);
+    padding: 5px 8px;
+    font-size: 12px;
+    font-weight: 400;
     white-space: nowrap;
   }
-  .menu-item:hover:not(:disabled) {
+  /* :not(.active) — the selected row keeps its selected look under the
+     pointer. Unexcluded, the hover fill would repaint it as a plain hover row
+     (the #305 defect, originally white-on-pale text). */
+  .toolbar .menu-panel button.menu-item:not(.active):hover:not(:disabled) {
     background: var(--app-control-hover-bg);
-    border-color: var(--app-control-hover-border);
   }
-  .menu-item.active {
-    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
-    border-color: var(--app-accent-border);
-    color: var(--app-accent-text);
+  /* Quiet selected state: accent-tinted row, accent text, trailing check. */
+  .toolbar .menu-panel button.menu-item.active {
+    background: var(--app-accent-subtle);
+    color: var(--app-link);
+    font-weight: 600;
+  }
+  .toolbar .menu-panel button.menu-item.active::after {
+    content: "\2713" / "";
+    margin-left: auto;
+    padding-left: 12px;
   }
 
   /* Page/Spread as a true segmented control: one bordered track, the selected
@@ -699,7 +749,11 @@
     border-radius: 5px;
     padding: 4px 9px;
   }
-  .mode-group button:hover:not(:disabled) {
+  /* :not(.active) — the just-clicked segment sits under the pointer, and this
+     rule (0,3,1) outranked `.mode-group button.active` (0,2,1): the selected
+     segment lost its accent fill but kept its white text, so it read as
+     disabled exactly when the author had just chosen it. */
+  .mode-group button:not(.active):hover:not(:disabled) {
     background: var(--app-control-hover-bg);
     border-color: transparent;
   }
@@ -833,33 +887,51 @@
   .toolbar.url-mode .mode-group,
   .toolbar.url-mode details.mode-menu { display: none; }
   .toolbar.url-mode .save-hint { display: none; }
+  /* Publish is disabled for a URL source, so its label is the first to yield. */
+  .toolbar.url-mode .publish-btn .btn-label { display: none; }
 
   /* ---- Collapse stages (see the header comment for the full table) ---- */
   @container (max-width: 1150px) {
-    /* Swap the inline view-mode buttons for the compact menu button; the
-       export hints yield to the page nav from here down. */
+    /* Swap the inline view-mode buttons for the compact menu button; Save
+       drops its text label (icon, tooltip and aria-label stay) and the export
+       hints yield to the page nav from here down. */
     .mode-group { display: none; }
     details.mode-menu { display: inline-block; }
     .save-hint { display: none; }
-    .path { max-width: 140px; }
-  }
-  @container (max-width: 1000px) {
-    /* Icon-only buttons: labels drop, aria-label/title keep them accessible. */
-    .view-label { display: none; }
-    .btn-label { display: none; }
-    .doc-title { max-width: 140px; }
+    .save-btn .btn-label { display: none; }
+    /* The title ellipsizes (full text in its tooltip); the page nav must not
+       clip, and a 3-digit page count widens it by ~15px. */
+    .doc-title { max-width: 120px; }
     .path { max-width: 100px; }
   }
-  @container (max-width: 900px) {
-    /* Compact page navigation: drop the first/last jump buttons; the path
-       (URL mode) yields entirely, and the URL title with it. */
+  @container (max-width: 875px) {
+    /* Icon-only Publish/Export (aria-label/title keep them accessible; 875
+       is what keeps their labels on a 900px window) and compact page
+       navigation: the first/last jump buttons drop, and the path (URL mode)
+       yields entirely, the URL title with it. */
+    .view-label { display: none; }
+    .btn-label { display: none; }
     .nav-first,
     .nav-last { display: none; }
     .page-select { min-width: 64px; }
     .path { display: none; }
     .toolbar.url-mode .doc-title { display: none; }
   }
+  @container (max-width: 760px) {
+    /* The narrow layout adds the pane tabs to the end cluster: the page-number
+       select yields so prev/next stay clear of it, and the title trims.
+       Scoped to .narrow because the toolbar can be this narrow WITHOUT the
+       tabs — the docked Book settings panel shrinks the whole app — and
+       there the select and the room for it are both still there. */
+    .toolbar.narrow .page-select { display: none; }
+    .toolbar.narrow .doc-title { max-width: 64px; }
+  }
   @container (max-width: 620px) {
+    /* Phone floor (narrow layout only, for the same reason): below ~470px not
+       even prev/next fit beside the pane tabs and the end cluster, and
+       display:none (not clipping) keeps the hidden buttons out of the tab
+       order. */
+    .toolbar.narrow .page-nav,
     .doc-title,
     .path,
     .toolbar-sep,
@@ -884,6 +956,12 @@
     .toolbar .primary {
       min-width: 44px;
       min-height: 44px;
+    }
+    /* The narrow layout's pane tabs plus 44px targets leave no room for the
+       page nav (it clipped at 700–820px), so touch keeps its old behavior
+       there: no nav — pages scroll. The desktop's narrow layout shows it. */
+    .toolbar.narrow .page-nav {
+      display: none;
     }
     .toolbar .icon-btn,
     .toolbar .menu-summary {

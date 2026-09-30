@@ -8,7 +8,7 @@ export const POST: RequestHandler = defineRoute<Record<string, never>, DesktopHo
   hooksUnavailableMessage: 'Desktop hooks not registered',
   call: async ({ hooks }) => {
     const res = await hooks.showOpenDialog({
-      title: 'Open Gutterpress project',
+      title: 'Open Gutterpress book',
       properties: ['openDirectory'],
     });
     if (res.canceled || res.filePaths.length === 0) return null;

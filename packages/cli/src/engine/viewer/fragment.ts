@@ -1147,32 +1147,29 @@ export function strideOf(strip: HTMLElement): number {
 }
 
 /**
- * The CSS `zoom` in effect on `el` — the factor between the coordinate space
+ * The stage scale in effect — the factor between the coordinate space
  * `getBoundingClientRect()` reports in and the one every other number in this
  * file is written in.
  *
- * The viewer zooms its whole stage (`viewer.css`'s `.gp-stage`:
- * `zoom: calc(var(--gutterpress-zoom,1) * var(--gutterpress-fit-zoom,1))`).
- * Client rects are SCALED by that zoom; `clientHeight`, `scrollWidth`,
- * `scrollLeft` and custom properties (`--gp-content-w`/`--gp-content-h`, what
- * `stripMetrics()` reads) are NOT. So any comparison of a rect against a
- * stride has to divide the rect side by this first, or the two sides are in
- * different spaces and the answer is wrong by the zoom factor. Measured at
- * the field guide's fit-width zoom 0.7936: a 1104px row stride against a real
- * rect-space sheet pitch of 876.1px, and 277 of 316 headings resolved to the
- * wrong page.
+ * The viewer scales its whole stage with a paint transform (`viewer.css`'s
+ * `.gp-stage`: `transform: scale(calc(var(--gutterpress-zoom,1) *
+ * var(--gutterpress-fit-zoom,1)))`). Client rects are SCALED by it;
+ * `clientHeight`, `scrollWidth`, `scrollLeft` and custom properties
+ * (`--gp-content-w`/`--gp-content-h`, what `stripMetrics()` reads) are NOT. So
+ * any comparison of a rect against a stride has to divide the rect side by this
+ * first, or the two sides are in different spaces and the answer is wrong by
+ * the zoom factor. Measured at the field guide's fit-width zoom 0.7936: a
+ * 1104px row stride against a real rect-space sheet pitch of 876.1px, and 277
+ * of 316 headings resolved to the wrong page.
  *
  * Convert HERE, at the comparison — never by making `stripMetrics()` read
  * scaled geometry instead. The unscaled values are the stable ones (they are
  * what the sheets, spacers and column boxes are sized in), and the rest of
  * the fragmenter depends on them.
- *
- * `currentCSSZoom` is Chromium 128+. `?? 1` is a feature fallback, not a
- * browser branch: an engine without it does not implement layout-affecting
- * CSS `zoom` either, so its rects are already in unscaled space.
  */
 function cssZoomOf(el: Element): number {
-  return (el as Element & { currentCSSZoom?: number }).currentCSSZoom ?? 1;
+  const stage = el.closest(".gp-stage") ?? document.body;
+  return new DOMMatrixReadOnly(getComputedStyle(stage).transform).a || 1;
 }
 
 /**
@@ -1246,7 +1243,7 @@ function indexInStrip(left: number, top: number, strip: StripInfo): number {
   const { stride, rowStride } = stripMetrics(strip.el);
   const stripBox = strip.el.getBoundingClientRect();
   // `left`/`top` and `stripBox` are client-rect coordinates — scaled by the
-  // stage's CSS zoom; `stride`/`rowStride` are not (see `cssZoomOf`). Take
+  // stage's scale; `stride`/`rowStride` are not (see `cssZoomOf`). Take
   // the offsets into the strip in rect space, then convert them once, so both
   // sides of the divisions below are in the strip's own unscaled CSS pixels.
   const zoom = cssZoomOf(strip.el);

@@ -1,10 +1,14 @@
 <script lang="ts">
   /**
-   * ProjectSettingsView — the full-window "Project settings" surface, patterned
-   * after the app SettingsView (header + close, tab bar, one cohesive slice per
-   * tab). It replaced the left-sidebar Config tab (and with it the retired
+   * ProjectSettingsView — the "Book settings" surface, patterned after the
+   * app SettingsView (header + close, tab bar, one cohesive slice per tab). It
+   * replaced the left-sidebar Config tab (and with it the retired
    * ProjectConfigPanel): the sidebar's 260px column was a cramped frame for
    * manifest editing, theme browsing, and plugin management.
+   *
+   * +page.svelte docks it beside the workspace, so the book preview stays
+   * visible — and re-renders live as a stylesheet is written — while the
+   * writer works in it; only a window too narrow for both gets it full-window.
    *
    * This is the COMPOSITION ROOT for the per-domain section controllers
    * (UX review M14): it instantiates one `*SectionController` per domain and
@@ -65,14 +69,18 @@
   let {
     projectDir,
     repoRoot = null,
+    initialTab = "details",
     toast = null,
     onEditRawCss,
     onClose,
     onOpenAccounts,
+    onVersionHistoryEnabled,
   }: {
     projectDir: string | null;
     /** The repo the open book belongs to — lets the pickers offer SHARED styles. */
     repoRoot?: string | null;
+    /** Tab to open on. Read once at mount (the view is keyed per open). */
+    initialTab?: "details" | "connections";
     toast?: ToastController | null;
     /** Escape hatch: open a stylesheet in the raw-CSS editor (the parent
      *  closes this view first). */
@@ -82,6 +90,8 @@
     /** Open the app Settings view on the Accounts tab (the parent closes
      *  this view first). Used by the Connections tab's guidance. */
     onOpenAccounts?: () => void;
+    /** The Connections tab just turned on version history: re-read the project's classification. */
+    onVersionHistoryEnabled?: (projectDir: string) => void;
   } = $props();
 
   // Covers the initial parallel load of all sections.
@@ -136,7 +146,7 @@
             .filter((t) => !t.found && PRINT_TOOL_IDS.includes(t.id))
             .map((t) => t.id),
         ),
-    onSaved: () => toast?.success?.("Project details saved."),
+    onSaved: () => toast?.success?.("Book details saved."),
     onError: (msg) => toast?.error?.(msg),
   });
 
@@ -159,7 +169,7 @@
     importFromFile: (dir) => api.extension.importFromFile(dir),
     importFromUrl: (dir, url) => api.extension.importFromUrl(dir, url),
     onLookAdded: (label) => {
-      toast?.success?.(`${label} added — close Project settings to see it in the preview. Use Design to fine-tune.`);
+      toast?.success?.(`${label} added — it now shows in the preview. Use Design to fine-tune.`);
     },
     afterLookChange: async () => {
       await Promise.all([styles.loadStyles(), design.loadDesign()]);
@@ -206,7 +216,8 @@
     { id: "features", label: "Features" },
     { id: "connections", label: "Connections" },
   ];
-  let activeTab = $state<ProjectSettingsTab>("details");
+  // svelte-ignore state_referenced_locally
+  let activeTab = $state<ProjectSettingsTab>(initialTab);
   let tabEls = $state<Record<ProjectSettingsTab, HTMLButtonElement | undefined>>({
     details: undefined,
     look: undefined,
@@ -235,11 +246,11 @@
 
 <div class="settings-view" aria-busy={loadingAll}>
   <header class="settings-header">
-    <h2 id="project-settings-title">Project settings</h2>
-    <button bind:this={closeBtnEl} class="settings-close" onclick={close} title="Close project settings (Esc)" aria-label="Close project settings"><Icon name="x" size={16} /></button>
+    <h2 id="project-settings-title">Book settings</h2>
+    <button bind:this={closeBtnEl} class="settings-close" onclick={close} title="Close book settings (Esc)" aria-label="Close book settings"><Icon name="x" size={16} /></button>
   </header>
 
-  <div class="tab-bar" role="tablist" aria-label="Project settings sections" onkeydown={onTablistKeydown} tabindex="-1">
+  <div class="tab-bar" role="tablist" aria-label="Book settings sections" onkeydown={onTablistKeydown} tabindex="-1">
     {#each TABS as tab (tab.id)}
       <button
         id="project-settings-tab-{tab.id}"
@@ -263,7 +274,7 @@
   >
     {#if !hasProject}
       <div class="empty">
-        <p>Open a project folder to configure it.</p>
+        <p>Open a book to configure it.</p>
       </div>
     {:else if loadingAll}
       <p class="loading">Loading…</p>
@@ -277,7 +288,7 @@
              merged under one writer-shaped "Look & style" heading (the tab
              button itself is shortened to "Look", #243 — see the header
              comment). The stylesheet list is a plain always-visible section
-             - project settings has no collapsible sections. -->
+             - book settings has no collapsible sections. -->
         <section class="block look-style">
           <h3>Look &amp; style</h3>
           <LookSection controller={extensions} />
@@ -299,7 +310,7 @@
         <!-- This project's connection details (moved from the app Settings'
              Connections tab, 2026-07-30). Accounts/credentials stay global in
              Settings → Accounts; onOpenAccounts routes there. -->
-        <ProjectConnectionsSection {projectDir} {onOpenAccounts} />
+        <ProjectConnectionsSection {projectDir} {onOpenAccounts} {onVersionHistoryEnabled} />
       {/if}
     {/if}
   </div>

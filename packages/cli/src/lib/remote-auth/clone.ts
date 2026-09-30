@@ -93,7 +93,7 @@ async function assertCloneTarget(dir: string): Promise<void> {
     const entries = await readdir(dir);
     if (entries.length > 0) {
       throw new Error(
-        "That folder already has files in it. Choose an empty folder for the project.",
+        "That folder already has files in it. Choose an empty folder for the book.",
       );
     }
   } catch (e) {
@@ -134,7 +134,7 @@ function friendlyCloneError(e: unknown): Error {
     return e;
   }
   return new Error(
-    "The project couldn't be downloaded from GitHub. Please try again.",
+    "The book couldn't be downloaded from GitHub. Please try again.",
     { cause: e },
   );
 }

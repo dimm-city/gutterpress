@@ -1,4 +1,6 @@
 import { test, expect } from "bun:test";
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
 import {
   makeStyleToken,
   parseStyleTokens,
@@ -221,4 +223,66 @@ test("annotations only affect the declaration immediately following them, not th
   const tokens = parseStyleTokens(css);
   expect(tokens.find((t) => t.name === "--color-accent")!.group).toBe("Colors");
   expect(tokens.find((t) => t.name === "--color-secondary")!.group).toBeUndefined();
+});
+
+// ── Plain-language labels for the shared vocabulary (issue #308) ─────────────
+//
+// The name-derived default ("Color ink muted", "Fs h1") is designer jargon. The
+// tokens every built-in look defines are labelled in plain language instead;
+// the token NAMES (the CSS authors write) are untouched and stay visible in the
+// panel beside the label.
+
+const PLAIN_LABELS: Record<string, string> = {
+  "--font-body": "Body text font",
+  "--font-display": "Heading font",
+  "--font-mono": "Code font",
+  "--color-ink": "Text color",
+  "--color-ink-muted": "Secondary text color",
+  "--color-ink-faint": "Faint text color",
+  "--color-accent": "Accent color",
+  "--color-paper": "Page color",
+  "--color-rule": "Line color",
+  "--fs-body": "Body text size",
+  "--fs-h1": "Heading 1 size",
+  "--fs-h2": "Heading 2 size",
+  "--fs-h3": "Heading 3 size",
+  "--leading": "Line spacing",
+};
+
+test("the shared token vocabulary gets plain-language labels (#308)", () => {
+  for (const [name, label] of Object.entries(PLAIN_LABELS)) {
+    const t = makeStyleToken(name, "1");
+    expect(t.label).toBe(label);
+    // Display only: the token keeps its real CSS name.
+    expect(t.name).toBe(name);
+  }
+});
+
+test("a token outside the shared vocabulary keeps the name-derived label", () => {
+  expect(makeStyleToken("--fs-display", "30pt").label).toBe("Fs display");
+  expect(makeStyleToken("--dc-skill-tab-shape", "1px").label).toBe("Dc skill tab shape");
+});
+
+test("a stylesheet's own @label wins over the plain-language default", () => {
+  const css = `:root {\n  /* @label Ink */\n  --color-ink: #1a1a1a;\n  --color-ink-muted: #555555;\n}\n`;
+  const tokens = parseStyleTokens(css);
+  expect(tokens.find((t) => t.name === "--color-ink")!.label).toBe("Ink");
+  // One-shot, as ever: the neighbour still gets its plain-language default.
+  expect(tokens.find((t) => t.name === "--color-ink-muted")!.label).toBe("Secondary text color");
+});
+
+test("every token all the built-in looks share is labelled in plain language", () => {
+  // Guards drift the other way: a token added to every built-in look must get a
+  // label here, or the Design panel goes back to showing "Color ink muted".
+  const themesDir = path.resolve(import.meta.dir, "../../../cli/src/assets/themes");
+  const perTheme = readdirSync(themesDir, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => parseStyleTokens(readFileSync(path.join(themesDir, e.name, "theme.css"), "utf8")));
+  expect(perTheme.length).toBeGreaterThan(1);
+  const shared = perTheme[0]!.filter((t) => perTheme.every((tokens) => tokens.some((o) => o.name === t.name)));
+  expect(shared.length).toBeGreaterThanOrEqual(13);
+  for (const t of shared) {
+    const derived = t.name.replace(/^--/, "").replace(/-/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+    expect(t.label, `${t.name} still has the name-derived label`).not.toBe(derived);
+  }
 });

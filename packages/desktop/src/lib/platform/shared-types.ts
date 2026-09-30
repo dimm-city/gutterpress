@@ -227,8 +227,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   preview: {
     defaultZoom: "fit-width",
-    // Cold start opens on the book, not the editor.
-    mode: "viewer",
+    // A book opens in Edit (editor beside the page) so a first-time writer can
+    // see where to type. Only fills a settings file that has no choice saved.
+    mode: "editor",
     paneMode: "view",
     // Matches DEFAULT_SPLIT_RATIO in src/lib/editor/preview-layout.ts so the
     // durable default and the double-click reset target agree (#103).

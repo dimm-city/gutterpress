@@ -64,13 +64,16 @@
   {#if controller.detailsError}
     <p class="error" role="alert">{controller.detailsError}</p>
   {/if}
-  <label class="field">
+  <!-- Bound by for/id as well as by nesting: a UX review saw this input named
+       after its placeholder ("Untitled book") instead of "Title". -->
+  <label class="field" for="details-title">
     <span class="lbl">Title</span>
     <input
+      id="details-title"
       class="input"
       type="text"
       bind:value={controller.titleDraft}
-      placeholder="Untitled project"
+      placeholder="Untitled book"
     />
   </label>
   <div class="field">
@@ -97,7 +100,7 @@
   <div class="field">
     <span class="lbl">Source files</span>
     {#if controller.sourceFiles.length === 0}
-      <p class="hint">No markdown files found in this project yet.</p>
+      <p class="hint">No markdown files found in this book yet.</p>
     {:else}
       <ul class="source-list" aria-label="Source files (drag to reorder)">
         {#each controller.sourceFiles as entry, i (entry.path)}
@@ -122,7 +125,7 @@
             />
             <span class="source-path" class:mono={true}>{entry.path}</span>
             {#if entry.missing}
-              <span class="missing" title="This manifest entry has no matching file in the project">missing</span>
+              <span class="missing" title="This manifest entry has no matching file in this book">missing</span>
             {/if}
             <span class="row-move">
               <button

@@ -145,14 +145,14 @@ export function proseImageRefError(ref: string, projectDir: string): string | nu
   const cleaned = stripUrlSuffix(decodeRef(ref));
   if (/^file:/i.test(cleaned) || path.isAbsolute(cleaned)) {
     return (
-      `Image reference must be relative to the project: ${ref}\n` +
-      `  Copy the file into your project folder and reference it from there.`
+      `Image reference must be relative to the book folder: ${ref}\n` +
+      `  Copy the file into your book folder and reference it from there.`
     );
   }
   if (escapesProjectRoot(projectDir, path.resolve(projectDir, cleaned))) {
     return (
-      `Image reference points outside the project: ${ref}\n` +
-      `  Copy the file into your project folder and reference it from there.`
+      `Image reference points outside the book folder: ${ref}\n` +
+      `  Copy the file into your book folder and reference it from there.`
     );
   }
   return null;
@@ -275,7 +275,7 @@ async function inlineOne(
   if (seen.has(abs)) return "";
   seen.add(abs);
 
-  const source = await readOrThrow(abs, "stylesheet", "the project manifest");
+  const source = await readOrThrow(abs, "stylesheet", "the book manifest");
   const cssDir = path.dirname(abs);
 
   let root: postcss.Root;

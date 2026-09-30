@@ -118,7 +118,7 @@ test("app settings live ONLY on the start screen's Settings tab — no separate 
   const openBody = src.slice(openIdx, openIdx + 400);
   expect(openBody).toContain('landingRef?.showTab("settings")');
   expect(openBody).toContain("landingForcedOpen = true");
-  // Project settings keep their own full-window view.
+  // Book settings keep their own view (docked beside the workspace).
   expect(src).toContain('class="settings-global-view"');
 });
 
@@ -156,31 +156,153 @@ test("editor toolbar has a save button and usable small-screen overflow", () => 
   expect(src).toContain("background: var(--app-surface-raised");
 });
 
-test("M23: the More menu renders the full shared item array, not a hand-duplicated subset that can drop Save/Snippet", () => {
+test("M23: the Insert and More menus render rows from the shared item arrays through one snippet, not hand-duplicated lists that can drop Save/Snippet", () => {
   const src = read("src/lib/components/EditorToolbar.svelte");
+  // Every group array is filtered from the ONE visibleItems list…
+  expect(src).toContain("visibleToolbarItems({ hasSave: !!onSave, desktop: isDesktop() })");
+  for (const group of ["save", "primary", "block", "insert", "view"]) {
+    expect(src).toContain(`visibleItems.filter((i) => i.group === "${group}")`);
+  }
+  // …and both popups draw their rows from those arrays via the same
+  // `menuRows` snippet, so a row can never exist in one menu and be missing
+  // from the other.
+  const insertPopupIdx = src.indexOf('class="toolbar-popup insert-popup"');
+  expect(insertPopupIdx).toBeGreaterThan(-1);
+  expect(src.indexOf("{@render menuRows(insertItems, insertMenu)}", insertPopupIdx)).toBeGreaterThan(insertPopupIdx);
   const morePopupIdx = src.indexOf('class="toolbar-popup more-popup"');
   expect(morePopupIdx).toBeGreaterThan(-1);
-  // The More menu must iterate the SAME unfiltered array the toolbar groups
-  // are filtered from, so it can never omit an item the toolbar shows.
-  const moreEachIdx = src.indexOf("{#each visibleItems as item, i (item.id)}", morePopupIdx);
-  expect(moreEachIdx).toBeGreaterThan(morePopupIdx);
-  // Guard against reverting to the old bug: a second, hand-typed list of
+  const morePopup = src.slice(morePopupIdx, src.indexOf("{/if}", morePopupIdx));
+  expect(morePopup).toContain("{@render menuRows(blockItems, moreMenu)}");
+  expect(morePopup).toContain("{@render menuRows(insertItems, moreMenu)}");
+  expect(morePopup).toContain("{@render menuRows(viewItems, moreMenu)}");
+  // Guard against reverting to the old bugs: a second, hand-typed list of
   // buttons that called onAction directly and had already dropped Save and
-  // Snippet by the time it was reviewed.
+  // Snippet by the time it was reviewed…
   expect(src).not.toContain('onAction("bold"); moreOpen = false');
   expect(src).not.toContain('onAction("italic"); moreOpen = false');
+  // …and a More menu that walks the WHOLE array, repeating buttons the
+  // toolbar is still showing (#311).
+  expect(morePopup).not.toContain("{#each visibleItems");
+});
+
+/** The body of the CSS block that opens at `marker` (brace-balanced). */
+function cssBlock(css: string, marker: string): string {
+  const start = css.indexOf(marker);
+  expect(start).toBeGreaterThan(-1);
+  const open = css.indexOf("{", start);
+  let depth = 0;
+  for (let i = open; i < css.length; i++) {
+    if (css[i] === "{") depth++;
+    else if (css[i] === "}" && --depth === 0) return css.slice(open + 1, i);
+  }
+  throw new Error(`unbalanced CSS block at ${marker}`);
+}
+
+/** Which selectors a (tier) CSS block hides (`display: none`) and shows (`display: flex`). */
+function displayRules(css: string): { hidden: string[]; shown: string[] } {
+  const hidden: string[] = [];
+  const shown: string[] = [];
+  for (const [, selectors, body] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const list = selectors.split(",").map((s) => s.trim());
+    if (/display:\s*none/.test(body)) hidden.push(...list);
+    if (/display:\s*flex/.test(body)) shown.push(...list);
+  }
+  return { hidden, shown };
+}
+
+test("#311: \"…\" lists only what the toolbar hides — each More section is switched on by the container query that hides its group", () => {
+  const src = read("src/lib/components/EditorToolbar.svelte");
+  const style = src.slice(src.indexOf("<style>"));
+
+  // Nothing overflows by default: the "…" button and both of its sections are
+  // off, so a toolbar that fits shows no "…" at all.
+  expect(cssBlock(style, ".tb-more-wrap {")).toMatch(/display:\s*none/);
+  expect(cssBlock(style, ".more-block,")).toMatch(/display:\s*none/);
+
+  // The tiers, found by what they hide rather than by their breakpoint value
+  // (the numbers are measured widths and get retuned when a group changes).
+  const tiers = [...style.matchAll(/@container editor-toolbar \(max-width: (\d+)px\)/g)].map((m) => ({
+    maxWidth: Number(m[1]),
+    ...displayRules(cssBlock(style, m[0])),
+  }));
+  const labelTier = tiers.find((t) => t.hidden.includes(".tb-insert-label"));
+  const tailTier = tiers.find((t) => t.hidden.includes(".insert-group"));
+  const blockTier = tiers.find((t) => t.hidden.includes(".block-group"));
+  if (!labelTier || !tailTier || !blockTier) throw new Error("expected label, tail and block tiers");
+
+  // As the toolbar narrows: the Insert label drops first, then the Insert menu
+  // + Focus mode move into "…", then the block group (quote, lists, heading).
+  expect(labelTier.maxWidth).toBeGreaterThan(tailTier.maxWidth);
+  expect(tailTier.maxWidth).toBeGreaterThan(blockTier.maxWidth);
+  expect(tailTier.hidden.sort()).toEqual([".insert-group", ".sep-tail", ".view-group"]);
+  expect(tailTier.shown.sort()).toEqual([".more-tail", ".tb-more-wrap"]);
+  expect(blockTier.hidden.sort()).toEqual([".block-group", ".sep-block"]);
+  expect(blockTier.shown).toEqual([".more-block"]);
+
+  // Every group a tier hides gets its rows into the popup in that same tier
+  // (the narrower tier inherits the wider tier's rules, so it must not need
+  // to repeat them).
+  const homeInMore: Record<string, string> = {
+    ".block-group": ".more-block",
+    ".insert-group": ".more-tail",
+    ".view-group": ".more-tail",
+  };
+  const shownIn = { tail: [...tailTier.shown], block: [...tailTier.shown, ...blockTier.shown] };
+  for (const group of tailTier.hidden.filter((s) => s in homeInMore)) {
+    expect(shownIn.tail).toContain(homeInMore[group]);
+  }
+  for (const group of [...tailTier.hidden, ...blockTier.hidden].filter((s) => s in homeInMore)) {
+    expect(shownIn.block).toContain(homeInMore[group]);
+  }
+
+  // Save + inline formatting never overflow, and "…" itself is never hidden.
+  for (const tier of tiers) {
+    expect(tier.hidden).not.toContain(".primary-group");
+    expect(tier.hidden).not.toContain(".tb-more-wrap");
+  }
+  // "…" stays at the right edge in every tier: its popup is right-aligned, so
+  // a tier that reset margin-left put it at the pane's left edge with the
+  // popup opening off the pane (clipped) — the pre-#311 narrow-width bug.
+  expect(cssBlock(style, ".tb-more-wrap {")).toMatch(/margin-left:\s*auto/);
+  expect(style).not.toMatch(/\.tb-more-wrap\s*\{[^}]*margin-left:\s*0/);
+});
+
+test("#311: every insert action sits behind ONE Insert menu button, so the toolbar keeps its shape when the left panel narrows the pane", () => {
+  const src = read("src/lib/components/EditorToolbar.svelte");
+  const groupStart = src.indexOf('<div class="tb-group insert-group">');
+  const groupEnd = src.indexOf("<!-- View group", groupStart);
+  expect(groupStart).toBeGreaterThan(-1);
+  expect(groupEnd).toBeGreaterThan(groupStart);
+  const insertGroup = src.slice(groupStart, groupEnd);
+
+  // One trigger, labelled (name + tooltip), announcing its expanded state…
+  expect(insertGroup.match(/<button/g)).toHaveLength(1);
+  expect(insertGroup).toContain("onclick={openInsertPopup}");
+  expect(insertGroup).toContain("aria-expanded={insertOpen}");
+  expect(insertGroup).toContain('aria-label="Insert"');
+  expect(insertGroup).toContain('title="Insert');
+  // …and no per-action buttons (the old row of icons that vanished at ~520px).
+  expect(insertGroup).not.toContain("{#each insertItems");
+  expect(insertGroup).not.toContain("openTableDialog");
+
+  // Focus mode is a posture toggle, not an insertion: it keeps its own direct
+  // button in the View group instead of a row in the Insert menu.
+  expect(src).toContain('<div class="tb-group view-group">');
+  expect(src).toContain("{#each viewItems as item (item.id)}");
 });
 
 test("M11: the table-insert dialog is hoisted outside .insert-group, which is display:none at exactly the widths where the More menu exists", () => {
   const src = read("src/lib/components/EditorToolbar.svelte");
   const groupStart = src.indexOf('<div class="tb-group insert-group">');
-  const groupEnd = src.indexOf('<!-- "More" overflow button', groupStart);
+  const groupEnd = src.indexOf("<!-- View group", groupStart);
   expect(groupStart).toBeGreaterThan(-1);
   expect(groupEnd).toBeGreaterThan(groupStart);
   const insertGroupRegion = src.slice(groupStart, groupEnd);
 
-  // The trigger button lives inside the (hideable) insert group...
-  expect(insertGroupRegion).toContain("openTableDialog");
+  // The Insert menu's table row (rendered by the shared `menuRows` snippet)
+  // only calls openTableDialog...
+  expect(insertGroupRegion).toContain("{@render menuRows(insertItems, insertMenu)}");
+  expect(src).toContain("menu.pick(openTableDialog)");
   // ...but the popup/dialog itself — and its backdrop — must NOT be nested
   // inside that group, unlike the old dead control.
   expect(insertGroupRegion).not.toContain("image-dialog-backdrop");
@@ -190,12 +312,13 @@ test("M11: the table-insert dialog is hoisted outside .insert-group, which is di
   // {#if isMarkdown} block closes, exactly like the (already-correct) image
   // dialog — so it keeps working from the More menu even when
   // `.insert-group` is hidden.
-  const toolbarCloseIdx = src.indexOf("{/if}", groupEnd);
+  const toolbarCloseIdx = src.indexOf("</div>\n{/if}\n", groupEnd);
   const tableDialogIdx = src.indexOf('aria-label="Insert table"');
+  expect(toolbarCloseIdx).toBeGreaterThan(groupEnd);
   expect(tableDialogIdx).toBeGreaterThan(toolbarCloseIdx);
 });
 
-test("M24 (fix round 1): opening the heading or More popup moves focus inside it, so an Escape keydown fired right after opening reaches the popup's own handler", () => {
+test("M24 (fix round 1): opening the heading, Insert or More popup moves focus inside it, so an Escape keydown fired right after opening reaches the popup's own handler", () => {
   // The popup <div> is a SIBLING of its trigger button, not an ancestor, and
   // <svelte:window> only binds onclick — so an Escape keydown whose target is
   // still the trigger (focus never moved) can never bubble to the popup div's
@@ -217,13 +340,35 @@ test("M24 (fix round 1): opening the heading or More popup moves focus inside it
   expect(openMoreBody).toContain("queueMicrotask");
   expect(openMoreBody).toContain("morePopupEl");
 
+  // The Insert popup (#311) follows the same pattern as its neighbours.
+  const openInsertIdx = src.indexOf("function openInsertPopup");
+  const openInsertEnd = src.indexOf("\n  }", openInsertIdx);
+  expect(openInsertIdx).toBeGreaterThan(-1);
+  const openInsertBody = src.slice(openInsertIdx, openInsertEnd);
+  expect(openInsertBody).toContain("queueMicrotask");
+  expect(openInsertBody).toContain("insertPopupEl");
+
   // The popup divs must actually expose the elements referenced above.
   expect(src).toContain("bind:this={headingPopupEl}");
+  expect(src).toContain("bind:this={insertPopupEl}");
   expect(src).toContain("bind:this={morePopupEl}");
 
   // The existing Escape handlers must stay in place (option B was not taken).
   expect(src).toContain('if (e.key === "Escape") closeHeadingPopup();');
+  expect(src).toContain('if (e.key === "Escape") closeInsertPopup();');
   expect(src).toContain('if (e.key === "Escape") closeMorePopup();');
+
+  // Opening one popup closes the others: Heading, Insert and "…" sit side by
+  // side, and two open at once would overlap.
+  expect(openHeadingBody).toContain("insertOpen = moreOpen = false");
+  expect(openInsertBody).toContain("headingOpen = moreOpen = false");
+  expect(openMoreBody).toContain("headingOpen = insertOpen = false");
+
+  // The first-focus helper skips hidden rows: the More popup keeps the
+  // sections of currently-visible groups display:none, and .focus() on those
+  // silently does nothing (Escape would then never reach the popup).
+  const helperIdx = src.indexOf("function focusableElementsIn");
+  expect(src.slice(helperIdx, src.indexOf("\n  }", helperIdx))).toContain("offsetParent !== null");
 
   // No ARIA role should be reintroduced while fixing this (M24 stays a plain
   // disclosure).
@@ -290,14 +435,28 @@ test("ARCH #42: image/table dialog triggers are still captured on open for focus
   const openImageIdx = src.indexOf("function openImageDialog");
   const openImageEnd = src.indexOf("\n  }", openImageIdx);
   expect(src.slice(openImageIdx, openImageEnd)).toContain(
-    "imageDialogTriggerEl = e.currentTarget as HTMLButtonElement;",
+    "imageDialogTriggerEl = trigger;",
   );
 
   const openTableIdx = src.indexOf("function openTableDialog");
   const openTableEnd = src.indexOf("\n  }", openTableIdx);
   expect(src.slice(openTableIdx, openTableEnd)).toContain(
-    "tableDialogTriggerEl = e.currentTarget as HTMLButtonElement;",
+    "tableDialogTriggerEl = trigger;",
   );
+});
+
+test("#311: a dialog opened from a popup row restores focus to the popup's trigger, not to the row that unmounts with the popup", () => {
+  const src = read("src/lib/components/EditorToolbar.svelte");
+  // The table/image rows now live inside the Insert and More popups. The row
+  // itself is gone by the time the dialog closes, and dialogBehavior can only
+  // focus a button that still exists — so each popup's `pick` closes it (which
+  // focuses its trigger) and then hands that trigger to the action.
+  expect(src).toMatch(/pick\(run\)\s*\{\s*closeInsertPopup\(\);\s*run\(insertTriggerEl\);\s*\}/);
+  expect(src).toMatch(/pick\(run\)\s*\{\s*closeMorePopup\(\);\s*run\(moreTriggerEl\);\s*\}/);
+  expect(src).toContain("menu.pick(openTableDialog)");
+  expect(src).toContain("menu.pick(openImageDialog)");
+  // The rows must not capture their own (about to detach) button as the trigger.
+  expect(src).not.toMatch(/(?:table|image)DialogTriggerEl\s*=\s*e\.currentTarget/);
 });
 
 test("ARCH #42: dialog.ts exports FOCUSABLE and owns the one private trapFocus implementation", () => {
@@ -335,13 +494,23 @@ test("settings/help live in a bottom-right status toolbar and problems overlay w
   expect(page).toContain("onOpenHelp={openHelp}");
 });
 
-test("left sidebar has four content tabs (project settings moved to the full-screen view) and icon-only short tabs", () => {
+test("left sidebar has four content tabs (book settings moved to the full-screen view), each labelled under its icon", () => {
   const src = read("src/lib/components/LeftPanel.svelte");
   expect(src).toContain('export type PanelTab = "projects" | "toc" | "files" | "media"');
   expect(src).not.toContain("ProjectConfigPanel");
   expect(src).not.toContain('id: "config"');
   expect(src).not.toContain('id: "history"');
-  expect(src).toMatch(/\.tab-label\s*\{\s*display:\s*none;\s*\}/);
+  // #313: the label is visible, not display:none. A narrow panel ellipsizes it
+  // (every tab must stay on screen) and title/aria-label stay as the tooltip
+  // and accessible name.
+  const style = src.slice(src.indexOf("<style>")).replace(/\/\*[\s\S]*?\*\//g, "");
+  const tabLabelRule = style.match(/\.tab-label\s*\{([^}]*)\}/);
+  expect(tabLabelRule).not.toBeNull();
+  expect(tabLabelRule![1]).not.toMatch(/display:\s*none/);
+  expect(tabLabelRule![1]).toContain("text-overflow: ellipsis");
+  expect(src).toContain('<span class="tab-label">{tab.label}</span>');
+  expect(src).toContain("aria-label={tab.label}");
+  expect(src).toContain("title={tab.title}");
   expect(src).toContain("min-height: 32px");
 });
 
@@ -511,4 +680,75 @@ test("the retired view-mode machinery is gone, not merely unused", () => {
   // shortcut's identity, and it now hides the viewer.)
   expect(page).not.toContain("class:focus-mode");
   expect(page).not.toContain(".shell.focus-mode");
+});
+
+// ── First run: Edit with the panel open, and no jargon banner (#304, #315) ───
+//
+// A first-time writer used to open a book on a single cover page — Read mode,
+// left panel collapsed, no visible way to type — and meet a yellow "versions"
+// banner before doing anything. These pin the defaults that replaced that and
+// the two places that could quietly undo them.
+
+test("a book opens in Edit by default; the left panel opens too unless the window is narrow", () => {
+  const types = read("src/lib/platform/shared-types.ts");
+  expect(types).toMatch(/mode: "editor",\s*\n\s*paneMode: "view",/);
+  // Only a profile with NO saved panel choice reaches the fallback; a saved
+  // `open: false` (or true) wins because `??` only fills undefined/null.
+  const page = read("src/routes/+page.svelte");
+  expect(page).toContain("leftPanelOpen = panelPrefs?.open ?? !isNarrow;");
+  expect(page).not.toContain("panelPrefs?.open ?? false");
+});
+
+test("resetting the workspace restores the SAVED mode — it must not force Read and save it", () => {
+  const src = read("src/routes/+page.svelte");
+  const idx = src.indexOf("resetExtras: () => {");
+  expect(idx).toBeGreaterThan(-1);
+  const body = src.slice(idx, src.indexOf("problemsOpen = false;", idx));
+  // A failed open, a cancelled open and a URL preview all reset the workspace.
+  // `setMode` persists, so forcing "viewer" here turned a new writer's Edit
+  // default into a saved Read after their first mistyped path.
+  expect(body).toContain("setMode(settings.current.preview.mode)");
+  expect(body).not.toContain('setMode("viewer")');
+});
+
+test("the name/email notice needs version history AND a first save or sync, and says it in plain words", () => {
+  const src = read("src/routes/+page.svelte");
+  const start = src.indexOf("const needsGitIdentity");
+  expect(start).toBeGreaterThan(-1);
+  const derived = src.slice(start, src.indexOf("/** After a successful snapshot restore", start));
+  expect(derived).toContain("settings.loaded");
+  expect(derived).toContain("identityNoticeArmed");
+  expect(derived).toContain("!identityNoticeDismissed");
+  // A plain folder (no history) never needs it.
+  expect(derived).toContain("projectSession.projectCapabilities?.canSnapshot");
+  // Armed only by events the renderer already receives: a sync starting…
+  expect(src).toContain('if (status.state === "syncing") identityNoticeArmed = true;');
+  // …and a version saved by hand.
+  expect(src).toMatch(/await api\.vcs\.saveSnapshot\(dir\);\s*identityNoticeArmed = true;/);
+  // The copy carries no version-control jargon; the action and "Not now" stay.
+  const banner = src.slice(src.indexOf('<div class="identity-banner"'), src.indexOf("{/if}", src.indexOf('<div class="identity-banner"')));
+  const message = banner.slice(banner.indexOf('<span class="identity-banner-msg">'), banner.indexOf("</span>"));
+  expect(message).not.toMatch(/version/i);
+  expect(banner).toContain('openSettings("connections")');
+  expect(banner).toContain("Add your name &amp; email");
+  expect(banner).toContain("identityNoticeDismissed = true");
+});
+
+test("closing the left panel with Escape or the scrim is remembered, exactly like the toolbar toggle", () => {
+  const left = read("src/lib/components/LeftPanel.svelte");
+  const start = left.indexOf("function close() {");
+  expect(start).toBeGreaterThan(-1);
+  const closeBody = left.slice(start, left.indexOf("// ── Keyboard: close on Escape", start));
+  // The panel opens by default (#304), so a close that wasn't saved came back on
+  // every launch. Escape and the scrim both close through `close()`…
+  expect(closeBody).toContain("open = false;");
+  expect(closeBody).toContain("onPanelStateChange?.();");
+  expect(left).toMatch(/if \(e\.key === "Escape"\) \{[\s\S]{0,80}?close\(\);/);
+  expect(left).toContain("onclick={close}");
+  // …and the page saves on that callback the way its own toolbar toggle does.
+  const page = read("src/routes/+page.svelte");
+  expect(page).toContain("onPanelStateChange={persistLeftPanelPrefs}");
+  const toggleAt = page.indexOf("function toggleLeftPanel() {");
+  expect(toggleAt).toBeGreaterThan(-1);
+  expect(page.slice(toggleAt, toggleAt + 160)).toContain("persistLeftPanelPrefs();");
 });

@@ -32,10 +32,10 @@ export function friendlyFolderError(msg: string): string {
     /Invalid YAML in [^\n]+ at line (\d+), column (\d+)/i,
   );
   if (yamlPosition) {
-    return `The project manifest has invalid YAML at line ${yamlPosition[1]}, column ${yamlPosition[2]}. Fix that entry and try again.`;
+    return `This book's manifest has invalid YAML at line ${yamlPosition[1]}, column ${yamlPosition[2]}. Fix that entry and try again.`;
   }
   if (/Invalid YAML in /i.test(msg)) {
-    return "The project manifest has invalid YAML. Fix it and try again.";
+    return "This book's manifest has invalid YAML. Fix it and try again.";
   }
   if (/ENOENT|No such file|not found/i.test(msg)) {
     return "The folder couldn't be read. Check that it exists and you have permission to open it.";
@@ -60,7 +60,7 @@ export function friendlyPreviewError(raw: string): FriendlyPreviewError {
   const yamlPosition = details.match(/Invalid YAML in [^\n]+ at line (\d+), column (\d+)/i);
   if (yamlPosition) {
     return {
-      title: "The project manifest has invalid YAML.",
+      title: "This book's manifest has invalid YAML.",
       message: `Fix the entry at line ${yamlPosition[1]}, column ${yamlPosition[2]}, then try the preview again.`,
       details,
     };

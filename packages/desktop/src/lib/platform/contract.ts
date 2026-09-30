@@ -224,7 +224,7 @@ export type { SharedProjectRemoteDiagnosis as ProjectRemoteDiagnosis };
  *
  * States:
  *   idle        — no sync scheduled or needed (local-only project, or auto-sync OFF)
- *   syncing     — commit→fetch→merge→push in flight ("Saving changes…")
+ *   syncing     — commit→fetch→merge→push in flight ("Syncing…")
  *   synced      — last sync completed and remote is up to date
  *   up-to-date  — sync ran; nothing needed (no local or remote changes)
  *   offline     — network unavailable; changes are saved locally
@@ -280,6 +280,12 @@ export interface SyncStatus {
    * Timestamped steps, never secrets.
    */
   logFile?: string;
+  /**
+   * Which part of the product this status is about. Absent = the online
+   * backup. "versions" = the automatic-version safety net failed (it reuses
+   * this channel with state "error"), which must NOT read as a backup failure.
+   */
+  source?: "versions";
   /** True when the completed sync changed files in the local worktree. */
   filesChanged?: boolean;
   /**

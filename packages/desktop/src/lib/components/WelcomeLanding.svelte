@@ -20,7 +20,7 @@
    *
    * The host page owns all state; this component is presentational + focus
    * management. Recents/favorites/discovered reuse ProjectsListBody — the
-   * exact list the left panel's Projects tab shows, so there is ONE browsing
+   * exact list the left panel's Books tab shows, so there is ONE browsing
    * surface to maintain.
    */
   import { fade } from "svelte/transition";
@@ -127,8 +127,8 @@
     onProjectFilesChanged?: () => void;
   } = $props();
 
-  // ── Tabs (Projects / Settings / Help / Logs) ──────────────────────────────
-  // The landing is the app's front door: Projects carries the continue card +
+  // ── Tabs (Books / Settings / Help / Logs) ──────────────────────────────
+  // The landing is the app's front door: Books carries the continue card +
   // quick actions + book list; Settings embeds the WHOLE settings surface,
   // sub-tabs and all; Help carries the former help modal's content; Logs
   // shows the app's diagnostic logs for easy copy/paste sharing. Because
@@ -137,7 +137,7 @@
   // missing identity at launch → "settings" on its Accounts sub-tab).
   type LandingTab = "projects" | "settings" | "help" | "logs";
   const LANDING_TABS: Array<{ id: LandingTab; label: string }> = [
-    { id: "projects", label: "Projects" },
+    { id: "projects", label: "Books" },
     { id: "settings", label: "Settings" },
     { id: "help", label: "Help" },
     { id: "logs", label: "Logs" },
@@ -217,7 +217,10 @@
   }
 
   function onKeydown(e: KeyboardEvent) {
-    if (e.key !== "Escape") return;
+    if (e.key !== "Escape" || !visible || e.defaultPrevented) return;
+    // Window-level (focus can sit on <body> when a dialog element defeated
+    // focusOnShow): yield to any open dialog that is not part of this layer.
+    if (document.querySelector('[role="dialog"]:not(.landing *)')) return;
     // Esc inside a field means "cancel my typing", not "leave the start
     // screen" — never hijack it from form controls (e.g. the books search).
     if (isEditableTarget(e.target)) return;
@@ -264,10 +267,9 @@
   }
 </script>
 
+<svelte:window onkeydown={onKeydown} />
+
 {#if visible}
-  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -- the keydown
-       is a layer-scoped Esc convenience (never required: Continue is a real
-       button); the section is the focus root while the workspace is inert. -->
   <section
     class="landing"
     bind:this={rootEl}
@@ -275,7 +277,6 @@
     tabindex="-1"
     inert={inactive || undefined}
     aria-label="Start screen"
-    onkeydown={onKeydown}
     transition:fade={{ duration: 180 }}
     onoutrostart={onOutroStart}
     onoutroend={onOutroEnd}
@@ -284,7 +285,7 @@
       <header class="brand-row">
         <div class="brand-left">
           <BrandMark size={64} />
-          {#if version}<span class="brand-version">v{version}</span>{/if}
+          {#if version && version !== "unknown"}<span class="brand-version">v{version}</span>{/if}
         </div>
         <div class="brand-right">
           {#if updateReadyVersion && onUpdateApply}
@@ -388,7 +389,7 @@
           </div>
           {#if otherBooks.length > 0}
             <div class="cc-books">
-              <span class="cc-books-label">Other books in this project:</span>
+              <span class="cc-books-label">Other books in this folder:</span>
               {#each otherBooks as book (book.path)}
                 <button
                   type="button"

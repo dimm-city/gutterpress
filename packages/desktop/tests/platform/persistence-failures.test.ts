@@ -64,7 +64,7 @@ test("notice degrades safely when project or date context is unavailable", () =>
       { failedAt: "not-a-date" },
       () => "must not run",
     ),
-  ).toBe("Your last edit in your project during your previous session may not have been saved.");
+  ).toBe("Your last edit in your book during your previous session may not have been saved.");
 });
 
 test("the page routes every destructive buffer transition and close through the failure-aware flush", () => {

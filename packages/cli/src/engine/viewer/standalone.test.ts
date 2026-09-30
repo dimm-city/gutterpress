@@ -146,10 +146,10 @@ testIf(
           // second scale into the host's fit-width calculation.
           const zoom = await page.evaluate(() => {
             document.documentElement.style.setProperty("--gutterpress-zoom", "2");
-            const wide = getComputedStyle(document.body).zoom;
+            const wide = new DOMMatrixReadOnly(getComputedStyle(document.body).transform).a;
             return { wide, fitWide: document.body.style.getPropertyValue("--gutterpress-fit-zoom") };
           });
-          expect(parseFloat(zoom.wide)).toBeCloseTo(2, 2);
+          expect(zoom.wide).toBeCloseTo(2, 2);
           expect(zoom.fitWide).toBe("");
 
           await page.setViewport({ width: 320, height: 900 });
@@ -158,7 +158,7 @@ testIf(
             await new Promise((r) => setTimeout(r, 100));
             return {
               fit: document.body.style.getPropertyValue("--gutterpress-fit-zoom"),
-              zoom: parseFloat(getComputedStyle(document.body).zoom),
+              zoom: new DOMMatrixReadOnly(getComputedStyle(document.body).transform).a,
             };
           });
           expect(narrow.fit).toBe("");
