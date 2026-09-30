@@ -161,18 +161,24 @@ describe("Files panel — app internals are never shown to the writer", () => {
 
 describe("Status bar — one calm state opening a 3-row protection summary", () => {
   const status = read("src/lib/components/StatusBar.svelte");
-  test("default label is 'All work saved'", () => {
-    expect(status).toContain('return "All work saved"');
+  test("default label is 'Edits saved' (it claims only what is true: edits are on disk)", () => {
+    expect(status).toContain('return "Edits saved"');
+    expect(status).not.toContain('return "All work saved"');
     expect(status).not.toContain('return "All changes saved"');
   });
   test("with autosave off, a pending edit reads 'Unsaved changes', never 'Saving…'", () => {
     expect(status).toContain('return autoSave ? "Saving…" : "Unsaved changes"');
-    expect(status).toContain('if (unsaved) return "Not saved yet"');
+    expect(status).toContain('if (unsaved) return "Not saved yet — press Save"');
   });
   test("summary shows local save, previous versions, and online copy separately", () => {
-    expect(status).toContain("On this computer");
-    expect(status).toContain("Previous versions");
-    expect(status).toContain("Online copy");
+    expect(status).toContain("Your edits");
+    expect(status).toContain("Saved on this computer");
+    expect(status).toContain("Version history");
+    expect(status).toContain("Last version saved");
+    expect(status).toContain("Online backup");
+    // Old labels read as a contradiction ("Saved" beside "Latest version 3 days ago").
+    expect(status).not.toContain("Latest version ");
+    expect(status).not.toContain("Previous versions");
   });
   test("a manual 'Save a version now' action is offered", () => {
     expect(status).toContain("Save a version now");
@@ -191,12 +197,12 @@ describe("Status bar — one calm state opening a 3-row protection summary", () 
   test("a configured-but-unsynced remote is NOT reported as local-only (#1)", () => {
     const page = read("src/routes/+page.svelte");
     const session = read("src/lib/routes/project-session-controller.svelte.ts");
-    // The status bar takes a hasRemote signal and only says "Kept on this
-    // computer" when there is genuinely no remote; a project WITH a remote that
+    // The status bar takes a hasRemote signal and only says "Not set up"
+    //  when there is genuinely no remote; a project WITH a remote that
     // Gutterpress just isn't auto-syncing (SSH / uncredentialed HTTPS) reads
     // "Not syncing automatically" instead.
     expect(status).toContain("hasRemote");
-    expect(status).toContain('return hasRemote ? "Not syncing automatically" : "Kept on this computer"');
+    expect(status).toContain('return hasRemote ? "Not syncing automatically" : "Not set up"');
     // hasRemote flows from the project source classification, through the
     // session controller, to the status bar.
     expect(session).toContain("projectHasRemote");
@@ -210,12 +216,12 @@ describe("Status bar — one calm state opening a 3-row protection summary", () 
     // as "auth" — an HTTPS remote Gutterpress isn't connected to is ONE step from
     // syncing, not a "kept on this computer" dead end.
     expect(pill).toContain('case "connect":');
-    expect(pill).toContain("Connect to keep an online copy");
+    expect(pill).toContain("Connect online backup");
     expect(pill).toContain('syncState === "auth" || syncState === "connect"');
     // Status summary: the row pairs honest copy with a one-click action.
     expect(status).toContain('case "connect":');
-    expect(status).toContain("Not connected yet");
-    expect(status).toContain("Connect to sync online");
+    expect(status).toContain("Not connected — connect below");
+    expect(status).toContain("Connect online backup");
     expect(status).toContain("onConnectOnline");
     expect(page).toContain("onConnectOnline={onSyncReconnect}");
   });
@@ -254,9 +260,9 @@ describe("Failure & conflict copy reassures that local work is safe", () => {
     expect(ctrl).toContain("nothing is lost");
     expect(ctrl).not.toContain("merge conflict");
   });
-  test("the sync pill uses 'Previous versions available', not 'Version history on'", () => {
+  test("the sync pill uses 'Version history available', not 'Version history on'", () => {
     const pill = read("src/lib/components/SyncStatusPill.svelte");
-    expect(pill).toContain("Previous versions available");
+    expect(pill).toContain("Version history available");
     expect(pill).not.toContain("Version history on");
   });
 });

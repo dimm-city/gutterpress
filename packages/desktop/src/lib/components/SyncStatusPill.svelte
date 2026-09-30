@@ -123,28 +123,28 @@
   let pillText = $derived.by((): string | null => {
     switch (syncState) {
       case "syncing":
-        return "Saving changes…";
+        return "Syncing…";
       case "synced":
-        return "Everything is in sync";
+        return "Online backup in sync";
       case "offline":
-        return "Offline — changes are saved on this computer";
+        return "Offline — edits are saved on this computer";
       case "local":
         // Local project, no online copy: previous versions are being kept.
         // Clickable → opens the Previous versions view (§5.2 reachability).
-        return "Previous versions available";
+        return "Version history available";
       case "connect":
         // An HTTPS remote exists but Gutterpress isn't connected to it — one
         // step from syncing. Actionable copy + click routes to the connect
         // flow (same plumbing as "auth"), instead of the old misleading
         // "local" framing that read as a remote-detection bug.
-        return "Connect to keep an online copy";
+        return "Connect online backup";
       case "auth":
-        return "Reconnect your book";
+        return "Reconnect online backup";
       case "error":
         // M40: honest copy — a transient/unexpected sync failure is NOT the
         // same thing as no network, and telling a writer on a working
         // connection they're "Offline" is misleading. Still calm/no-jargon.
-        return "Sync paused — changes are saved on this computer";
+        return "Sync paused — edits are saved on this computer";
       case "idle":
       default:
         return null;

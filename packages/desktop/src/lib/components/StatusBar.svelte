@@ -151,10 +151,10 @@
       case "saving":
         return "Saving…";
       case "error":
-        return "Save error";
+        return "Couldn't save";
       case "clean":
       default:
-        return "All work saved";
+        return "Edits saved";
     }
   });
 
@@ -174,17 +174,17 @@
   let unsaved = $derived(savePhase === "dirty" && !autoSave && !forceSaving);
 
   let onThisComputerText = $derived.by((): string => {
-    if (unsaved) return "Not saved yet";
+    if (unsaved) return "Not saved yet — press Save";
     if (forceSaving || savePhase === "saving" || savePhase === "dirty") return "Saving…";
     if (savePhase === "error") return "Couldn't save — check the file";
-    return "Saved";
+    return "Saved on this computer";
   });
   let previousVersionsText = $derived.by((): string => {
-    if (!canSnapshot) return "Off for this book";
+    if (!canSnapshot) return "Not turned on for this book";
     if (versionsLoading) return "Checking…";
     if (!versionsLoaded) return "";
-    if (latestVersionAt == null) return "No versions yet";
-    return `Latest version ${relativeTime(latestVersionAt, Date.now())}`;
+    if (latestVersionAt == null) return "No versions saved yet";
+    return `Last version saved ${relativeTime(latestVersionAt, Date.now())}`;
   });
   // Live sync state from the pill (below), so the "online copy" row reflects
   // reality (up to date / offline / syncing) instead of only the static
@@ -194,29 +194,29 @@
   let onlineCopyText = $derived.by((): string => {
     switch (liveSyncState) {
       case "syncing":
-        return "Saving changes…";
+        return "Syncing…";
       case "offline":
-        return "Offline — your work is safe here";
+        return "Offline — will sync when you're back online";
       case "error":
-        return "Paused — your work is safe here";
+        return "Couldn't sync — your work is safe here";
       case "auth":
-        return "Needs reconnecting";
+        return "Reconnect to keep syncing";
       case "synced":
-        return "Up to date";
+        return "In sync";
       case "connect":
         // An HTTPS remote exists but Gutterpress isn't connected to it — one
         // connect step from syncing. The summary popover pairs this with a
         // Connect action (below) so the row directs instead of dead-ending.
-        return "Not connected yet";
+        return "Not connected — connect below";
       case "local":
         // A remote IS configured but Gutterpress isn't auto-syncing it (SSH) →
         // don't imply it's local-only. No remote at all → the honest "only on
         // this computer" copy.
-        return hasRemote ? "Not syncing automatically" : "Kept on this computer";
+        return hasRemote ? "Not syncing automatically" : "Not set up";
       case "idle":
       default:
-        if (canSync) return "Up to date";
-        return hasRemote ? "Not syncing automatically" : "Not set up yet";
+        if (canSync) return "In sync";
+        return hasRemote ? "Not syncing automatically" : "Not set up";
     }
   });
 
@@ -464,20 +464,20 @@
           aria-haspopup="dialog"
           aria-expanded={summaryOpen}
           onclick={toggleSummary}
-          title={unsaved ? "You have unsaved changes" : savePhase === "dirty" || savePhase === "saving" ? "Pending changes are being saved" : "What's protecting your work"}
+          title={unsaved ? "You have unsaved changes" : savePhase === "dirty" || savePhase === "saving" ? "Pending changes are being saved" : "Where your work is kept"}
         ><Icon name={saveStateIcon} size={13} /><span class="save-text" aria-live="polite" aria-atomic="true">{saveLabel}</span></button>
         {#if summaryOpen}
-          <div class="save-summary" role="dialog" aria-label="What's protecting your work">
+          <div class="save-summary" role="dialog" aria-label="Where your work is kept">
             <ul class="summary-rows">
-              <li><span class="summary-key">On this computer</span><span class="summary-val">{onThisComputerText}</span></li>
-              <li><span class="summary-key">Previous versions</span><span class="summary-val">{previousVersionsText}</span></li>
-              <li><span class="summary-key">Online copy</span><span class="summary-val">{onlineCopyText}</span></li>
+              <li><span class="summary-key">Your edits</span><span class="summary-val">{onThisComputerText}</span></li>
+              <li><span class="summary-key">Version history</span><span class="summary-val">{previousVersionsText}</span></li>
+              <li><span class="summary-key">Online backup</span><span class="summary-val">{onlineCopyText}</span></li>
             </ul>
             {#if liveSyncState === "connect" && onConnectOnline}
               <!-- The row directs instead of dead-ending: one click starts the
                    connect flow for the repo's existing online copy. -->
               <button class="summary-action" onclick={() => { summaryOpen = false; onConnectOnline?.(); }}>
-                Connect to sync online
+                Connect online backup
               </button>
             {/if}
             {#if canSnapshot && onSaveVersion}
@@ -654,7 +654,8 @@
     position: absolute;
     bottom: calc(100% + 6px);
     right: 0;
-    min-width: 240px;
+    min-width: 300px;
+    max-width: calc(100vw - 24px);
     padding: 8px;
     background: var(--app-surface-raised);
     border: 1px solid var(--app-border);
@@ -664,7 +665,7 @@
   }
   .summary-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
   .summary-rows li { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-  .summary-key { font-size: 11px; color: var(--app-text); font-weight: 600; }
+  .summary-key { white-space: nowrap; font-size: 11px; color: var(--app-text); font-weight: 600; }
   .summary-val { font-size: 11px; color: var(--app-text-secondary); text-align: right; }
   .summary-action {
     margin-top: 8px;

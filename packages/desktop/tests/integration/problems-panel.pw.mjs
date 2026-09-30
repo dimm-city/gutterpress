@@ -444,7 +444,7 @@ if (audit.overflow.length > 0) fail(`toolbar controls overflow at 700px: ${JSON.
 await screenshot(join(tmpdir(), "problems-panel-narrow.png"));
 
 // ── 9. #316: the status bar keeps its words at 700px ─────────────────────────
-// "All work saved" and the PROBLEMS label used to collapse to bare icons below
+// "Edits saved" and the PROBLEMS label used to collapse to bare icons below
 // 820px. The save text now stays at every width; the label only drops at 560px.
 const bar = await evalJs(`(() => {
   const shown = (sel) => {
