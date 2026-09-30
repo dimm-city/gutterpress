@@ -335,13 +335,23 @@ test("settings/help live in a bottom-right status toolbar and problems overlay w
   expect(page).toContain("onOpenHelp={openHelp}");
 });
 
-test("left sidebar has four content tabs (project settings moved to the full-screen view) and icon-only short tabs", () => {
+test("left sidebar has four content tabs (project settings moved to the full-screen view), each labelled under its icon", () => {
   const src = read("src/lib/components/LeftPanel.svelte");
   expect(src).toContain('export type PanelTab = "projects" | "toc" | "files" | "media"');
   expect(src).not.toContain("ProjectConfigPanel");
   expect(src).not.toContain('id: "config"');
   expect(src).not.toContain('id: "history"');
-  expect(src).toMatch(/\.tab-label\s*\{\s*display:\s*none;\s*\}/);
+  // #313: the label is visible, not display:none. A narrow panel ellipsizes it
+  // (every tab must stay on screen) and title/aria-label stay as the tooltip
+  // and accessible name.
+  const style = src.slice(src.indexOf("<style>")).replace(/\/\*[\s\S]*?\*\//g, "");
+  const tabLabelRule = style.match(/\.tab-label\s*\{([^}]*)\}/);
+  expect(tabLabelRule).not.toBeNull();
+  expect(tabLabelRule![1]).not.toMatch(/display:\s*none/);
+  expect(tabLabelRule![1]).toContain("text-overflow: ellipsis");
+  expect(src).toContain('<span class="tab-label">{tab.label}</span>');
+  expect(src).toContain("aria-label={tab.label}");
+  expect(src).toContain("title={tab.title}");
   expect(src).toContain("min-height: 32px");
 });
 
