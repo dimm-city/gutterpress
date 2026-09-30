@@ -10,6 +10,11 @@
    * above the bar, in normal flow, so that opening it pushes the workspace up
    * instead of covering the left panel and the editor (#307). Renders nothing
    * visible while collapsed.
+   *
+   * A plain disclosure, like the editor toolbar's popups: because the list
+   * comes BEFORE the bar in the DOM, the StatusBar moves focus into it on open
+   * (`focusList`), and Escape / Close hand focus back to the toggle. No focus
+   * trap — it is a panel, not a modal.
    */
   import Icon from "$lib/components/Icon.svelte";
   import type { ProblemEntry } from "$lib/platform/dtos";
@@ -30,6 +35,7 @@
     onSelect,
     error = null,
     compact = false,
+    toggleEl = null,
   }: {
     problems: ProblemEntry[];
     loading?: boolean;
@@ -50,9 +56,28 @@
      * (see `.problems-panel.compact` below), with its own Close button.
      */
     compact?: boolean;
+    /** The bar's toggle that opens this list — Escape and Close return focus here. */
+    toggleEl?: HTMLButtonElement | null;
   } = $props();
 
   let groups = $derived(groupProblems(problems));
+  let bodyEl = $state<HTMLDivElement | null>(null);
+
+  /**
+   * Move focus into the list just opened: its first entry, or — when it only
+   * shows a message — the body itself (tabindex="-1"), so the next Tab or
+   * Escape acts on the list rather than on whatever was behind it. Called by
+   * the StatusBar right after it opens the list.
+   */
+  export function focusList() {
+    (bodyEl?.querySelector<HTMLElement>(".entry.clickable") ?? bodyEl)?.focus();
+  }
+
+  /** Close the list and hand focus back to the toggle that opened it. */
+  function closeToToggle() {
+    open = false;
+    toggleEl?.focus();
+  }
 
   /**
    * L9 regression fix: in compact mode the expanded body is a full-viewport
@@ -66,11 +91,13 @@
     if (closesPanelOnSelect(compact)) open = false;
   }
 
-  /** Escape closes the compact overlay in place — there is otherwise no
-   *  dismiss path once the toggle strip is covered (see selectEntry above). */
+  /** Escape closes the compact sheet from anywhere — there is otherwise no
+   *  dismiss path once the toggle strip is covered (see selectEntry above) —
+   *  and the in-flow row from inside the list. */
   function handleWindowKeydown(e: KeyboardEvent) {
-    if (closesPanelOnEscape(compact, open, e.key)) {
-      open = false;
+    const focusInside = !!bodyEl && bodyEl.contains(e.target as Node | null);
+    if (closesPanelOnEscape(compact, open, e.key, focusInside)) {
+      closeToToggle();
     }
   }
 
@@ -106,13 +133,16 @@
   aria-label="Problems"
 >
   <!-- Panel body — shown only when expanded. The StatusBar's toggle controls it
-       (aria-controls="problems-body"). -->
+       (aria-controls="problems-body"). tabindex="-1": focusList() lands here
+       when the list shows only a message, so Escape still works. -->
   <div
+    bind:this={bodyEl}
     id="problems-body"
     class="panel-body"
     role="region"
     aria-label="Problems list"
     aria-hidden={!open}
+    tabindex="-1"
   >
     {#if compact}
       <!-- L9: the compact overlay has no other reachable dismiss control
@@ -121,7 +151,7 @@
         <span class="panel-body-bar-title">Problems</span>
         <button
           class="panel-close-btn"
-          onclick={() => (open = false)}
+          onclick={closeToToggle}
           aria-label="Close problems panel"
           title="Close problems panel"
         >
@@ -212,6 +242,11 @@
   }
   .problems-panel.expanded .panel-body {
     display: block;
+  }
+  /* Keyboard focus on the body itself (a message-only list): show it. */
+  .problems-panel .panel-body:focus-visible {
+    outline: 2px solid var(--app-focus-ring);
+    outline-offset: -2px;
   }
 
   /* L9: below 820px there is no room for a row of its own — the list becomes a

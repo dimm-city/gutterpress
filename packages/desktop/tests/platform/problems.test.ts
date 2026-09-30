@@ -131,6 +131,22 @@ test("closesPanelOnEscape: only Escape, while compact AND open, closes the panel
   expect(closesPanelOnEscape(true, true, "Enter")).toBe(false);
 });
 
+// Keyboard access to the in-flow list (#307): opening it moves focus inside,
+// and Escape from inside closes it — but only from inside, so an unrelated
+// Escape elsewhere in the app can't collapse it.
+test("closesPanelOnEscape: the in-flow row closes on Escape only from inside the list", () => {
+  expect(closesPanelOnEscape(false, true, "Escape", true)).toBe(true);
+  // Focus anywhere else (editor, a dialog, the toolbar): leave the row alone.
+  expect(closesPanelOnEscape(false, true, "Escape", false)).toBe(false);
+  // Nothing to close, or some other key — even with focus inside. Tab in
+  // particular is never swallowed: the list is a panel, not a modal.
+  expect(closesPanelOnEscape(false, false, "Escape", true)).toBe(false);
+  expect(closesPanelOnEscape(false, true, "Tab", true)).toBe(false);
+  // The compact sheet covers the toggle, so it closes from anywhere.
+  expect(closesPanelOnEscape(true, true, "Escape", false)).toBe(true);
+  expect(closesPanelOnEscape(true, true, "Escape", true)).toBe(true);
+});
+
 // M32: SOURCE_LABELS must cover every check the CLI actually registers under
 // category "source" — keyed to the live registry (not a hand-copied id list)
 // so a new check can't ship without a label silently rendering its raw id.

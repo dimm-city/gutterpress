@@ -115,11 +115,17 @@ export function closesPanelOnSelect(compact: boolean): boolean {
   return compact;
 }
 
-/** Escape closes the panel only when it's the compact overlay AND actually
- *  open — otherwise it must not interfere with unrelated Escape handling
- *  elsewhere in the app. */
-export function closesPanelOnEscape(compact: boolean, open: boolean, key: string): boolean {
-  return compact && open && key === "Escape";
+/** Escape closes an OPEN panel from anywhere when it's the compact sheet (it
+ *  covers the toggle, so there is no other dismiss path), and from inside the
+ *  list when it's the in-flow row — otherwise it must not interfere with
+ *  unrelated Escape handling elsewhere in the app. */
+export function closesPanelOnEscape(
+  compact: boolean,
+  open: boolean,
+  key: string,
+  focusInside = false,
+): boolean {
+  return open && key === "Escape" && (compact || focusInside);
 }
 
 /** Errors + warnings (the badge count). Infos are listed but not badged. */

@@ -30,7 +30,7 @@
   import { api } from "$lib/api";
   import { relativeTime } from "$lib/format";
   import { canExpandProblems, problemCounts, problemsSummary } from "$lib/problems";
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import type { SyncState } from "$lib/platform/contract";
   import type { ProblemEntry } from "$lib/platform/dtos";
   import type { ProjectBookEntry } from "$lib/routes/project-session-controller.svelte";
@@ -303,6 +303,18 @@
   // later, at 560px — see the media queries below.)
   let showProblems = $derived(!!projectDir && sourceMode === "folder");
 
+  // The list is ProblemsPanel's and sits BEFORE the bar in the DOM, so Tab from
+  // the toggle would skip past it. Like the editor toolbar's popups, opening
+  // moves focus into the list, and Escape / Close there hand it back to the
+  // toggle (passed down as `toggleEl`). No focus trap — it is a panel.
+  let toggleEl = $state<HTMLButtonElement | null>(null);
+  let panelRef = $state<{ focusList: () => void } | null>(null);
+
+  function toggleProblems() {
+    problemsOpen = !problemsOpen;
+    if (problemsOpen) void tick().then(() => panelRef?.focusList());
+  }
+
   // #307: the bar shows the problems state itself; the toggle exists only when
   // there is something to expand (see canExpandProblems).
   let counts = $derived(problemCounts(problems));
@@ -335,12 +347,14 @@
      instead of covering the left panel's buttons or the editor's last lines. -->
 {#if showProblems}
   <ProblemsPanel
+    bind:this={panelRef}
     {problems}
     loading={problemsLoading}
     error={problemsError}
     bind:open={problemsOpen}
     onSelect={onProblemSelect}
     compact={isCompact}
+    {toggleEl}
   />
 {/if}
 
@@ -362,8 +376,9 @@
     <div class="status-problems">
       {#if canExpand}
         <button
+          bind:this={toggleEl}
           class="toggle-strip"
-          onclick={() => (problemsOpen = !problemsOpen)}
+          onclick={toggleProblems}
           aria-expanded={problemsOpen}
           aria-controls="problems-body"
           aria-label={stripLabel}

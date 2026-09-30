@@ -148,16 +148,42 @@ test("L9 regression: compact Problems overlay has a reachable close control and 
   expect(problems).toContain("export function closesPanelOnEscape");
   expect(panel).toContain("closesPanelOnSelect");
   expect(panel).toContain("closesPanelOnEscape");
-  // A visible, always-reachable close button lives inside the overlay itself.
+  // A visible, always-reachable close button lives inside the overlay itself
+  // (it closes AND hands focus back to the toggle — see the keyboard test).
   expect(panel).toContain('{#if compact}');
   expect(panel).toContain('aria-label="Close problems panel"');
-  expect(panel).toContain("onclick={() => (open = false)}");
+  expect(panel).toContain("onclick={closeToToggle}");
   // Escape is wired via a window-level keydown handler.
   expect(panel).toContain("<svelte:window onkeydown={handleWindowKeydown} />");
   // Selecting an entry routes through the shared close-aware handler, not the
   // raw onSelect callback directly.
   expect(panel).toContain("onclick={() => selectEntry(entry)}");
   expect(panel).not.toContain("onclick={() => onSelect?.(entry)}");
+});
+
+test("#307: keyboard — opening the list moves focus into it; Escape and Close hand it back to the toggle; no trap", () => {
+  const status = read("src/lib/components/StatusBar.svelte");
+  const panel = read("src/lib/components/ProblemsPanel.svelte");
+  // The list is BEFORE the bar in the DOM, so Tab from the toggle would skip
+  // past it: opening focuses into it, as the editor toolbar's popups do.
+  expect(status).toContain("onclick={toggleProblems}");
+  expect(status).toContain("if (problemsOpen) void tick().then(() => panelRef?.focusList());");
+  expect(panel).toContain("export function focusList()");
+  // The first entry — or the body itself (tabindex="-1") when the list only
+  // shows a message, so Escape still works there.
+  expect(panel).toContain('(bodyEl?.querySelector<HTMLElement>(".entry.clickable") ?? bodyEl)?.focus()');
+  expect(panel).toContain('tabindex="-1"');
+  // Escape and the compact sheet's Close hand focus back to the toggle, which
+  // the StatusBar passes down.
+  expect(status).toContain("bind:this={toggleEl}");
+  expect(status).toContain("{toggleEl}");
+  expect(panel).toContain("toggleEl?.focus()");
+  expect(panel).toContain("onclick={closeToToggle}");
+  // Escape is honoured from inside the list (or anywhere in the compact sheet).
+  expect(panel).toContain("closesPanelOnEscape(compact, open, e.key, focusInside)");
+  // It is a panel, not a modal: nothing traps Tab.
+  expect(panel).not.toContain("trapFocus");
+  expect(panel).not.toMatch(/key === ["']Tab["']/);
 });
 
 test("top toolbar small-screen styles/config controls are removed", () => {

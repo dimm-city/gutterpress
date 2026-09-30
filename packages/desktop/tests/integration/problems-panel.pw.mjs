@@ -12,6 +12,8 @@
  *   2. After the preview renders, the toolbar Problems button shows badge "2".
  *   3. Opening the panel lists both findings (file, line, message), in a row of
  *      its own between the workspace and the status bar (never over either, #307).
+ *      Keyboard: opening moves focus into the list, Escape closes it and puts
+ *      focus back on the toggle, Enter on the toggle re-opens it (#307).
  *   4. Clicking the broken-ref entry opens the editor on 01-alpha.md with the
  *      offending line scrolled into view.
  *   5. At 700px window width the toolbar still has zero pairwise overlaps
@@ -158,6 +160,17 @@ async function screenshot(file) {
   const r = await send("Page.captureScreenshot", { format: "png" });
   writeFileSync(file, Buffer.from(r.result.data, "base64"));
   log(`screenshot: ${file}`);
+}
+// A real key press through CDP (not a synthetic DOM event), so a focused
+// button activates on Enter the way it does for a person at the keyboard.
+const KEYS = {
+  Enter: { key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, text: "\r" },
+  Escape: { key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 },
+};
+async function press(name) {
+  const { text, ...k } = KEYS[name];
+  await send("Input.dispatchKeyEvent", { type: text ? "keyDown" : "rawKeyDown", text, ...k });
+  await send("Input.dispatchKeyEvent", { type: "keyUp", ...k });
 }
 await send("Page.bringToFront");
 
@@ -310,6 +323,38 @@ if (rows.bodyBottom > rows.barTop + 1) {
   fail(`problems list overlaps the status bar: list bottom ${rows.bodyBottom} > bar top ${rows.barTop}`);
 }
 log(`list sits between workspace and bar: ${JSON.stringify(rows)}`);
+// #307 keyboard access: the list comes BEFORE the bar in the DOM, so a keyboard
+// user who opens it from the toggle could not Tab into it. Opening therefore
+// moves focus into the list, and Escape from inside closes it and hands focus
+// back to the toggle (the way the editor toolbar's popups behave).
+const focusState = () => evalJs(`(() => {
+  const toggle = document.querySelector('.toggle-strip');
+  const list = document.getElementById('problems-body');
+  return {
+    expanded: toggle?.getAttribute('aria-expanded') ?? null,
+    inList: !!list && list.contains(document.activeElement),
+    onToggle: !!toggle && document.activeElement === toggle,
+    active: (document.activeElement?.className ?? '').toString().slice(0, 60),
+  };
+})()`);
+let keyboard = await focusState();
+// The click that opened the list above must already have put focus inside it.
+if (keyboard.expanded !== "true" || !keyboard.inList) {
+  fail(`opening the list did not move focus into it: ${JSON.stringify(keyboard)}`);
+}
+await press("Escape");
+await sleep(300);
+keyboard = await focusState();
+if (keyboard.expanded !== "false" || !keyboard.onToggle) {
+  fail(`Escape did not close the list and return focus to the toggle: ${JSON.stringify(keyboard)}`);
+}
+await press("Enter"); // focus is on the toggle: re-open it the way a keyboard user does
+await sleep(500);
+keyboard = await focusState();
+if (keyboard.expanded !== "true" || !keyboard.inList) {
+  fail(`Enter on the toggle did not open the list with focus inside: ${JSON.stringify(keyboard)}`);
+}
+log("keyboard: opening puts focus in the list; Escape closes it back to the toggle");
 await screenshot(join(tmpdir(), "problems-panel-wide.png"));
 
 // ── 7. click the broken-ref entry → editor opens 01-alpha.md at the line ────
@@ -417,6 +462,6 @@ if (!bar.saveTextShown || !bar.saveText) fail(`save-state text is not visible at
 if (!bar.stripTitleShown) fail(`Problems label is not visible at 700px: ${JSON.stringify(bar)}`);
 if (!bar.stripLabel) fail("Problems toggle has no accessible name");
 
-log("PASS: badge, panel contents, click-through navigation, 700px toolbar audit and status-bar text all verified");
+log("PASS: badge, panel contents, click-through navigation, keyboard focus, 700px toolbar audit and status-bar text all verified");
 cleanup();
 process.exit(0);
