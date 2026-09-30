@@ -118,7 +118,7 @@ test("app settings live ONLY on the start screen's Settings tab — no separate 
   const openBody = src.slice(openIdx, openIdx + 400);
   expect(openBody).toContain('landingRef?.showTab("settings")');
   expect(openBody).toContain("landingForcedOpen = true");
-  // Project settings keep their own full-window view.
+  // Project settings keep their own view (docked beside the workspace).
   expect(src).toContain('class="settings-global-view"');
 });
 

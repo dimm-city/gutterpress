@@ -14,9 +14,11 @@
  *     components/controllers (Details, Look & style, Features) — one
  *     implementation, new frame.
  *  3. LeftPanel no longer has a Config tab (or any embedded config panel).
- *  4. +page.svelte mounts the view full-window like SettingsView, remounts it
- *     per project ({#key}), resets it on project teardown, and sanitizes a
- *     persisted leftPanel.activeTab of "config" from older sessions.
+ *  4. +page.svelte mounts the view as a panel docked beside the workspace
+ *     (#308: the live preview stays visible while the writer styles the
+ *     book), remounts it per project ({#key}), resets it on project teardown,
+ *     and sanitizes a persisted leftPanel.activeTab of "config" from older
+ *     sessions.
  *  5. The retired sidebar ProjectConfigPanel is gone.
  */
 import { describe, test, expect } from "bun:test";
@@ -103,7 +105,8 @@ describe("ProjectSettingsView — SettingsView-patterned full view", () => {
   test("the centered body includes its padding in its width (no horizontal overflow in narrow windows)", () => {
     const src = view();
     // No global border-box reset exists: width:100% + side padding in
-    // content-box overflows the fixed full-window sheet below ~896px.
+    // content-box overflows the fixed sheet (it covers the whole window below
+    // 900px) below ~896px.
     expect(src).toMatch(/\.settings-body\s*\{[^}]*box-sizing:\s*border-box/);
   });
 
@@ -144,7 +147,7 @@ describe("LeftPanel — Config tab removed", () => {
   });
 });
 
-describe("+page.svelte — full-window mount, teardown, prefs migration", () => {
+describe("+page.svelte — docked mount, teardown, prefs migration", () => {
   test("openProjectConfig opens the full view instead of a sidebar tab", () => {
     const src = page();
     const fnIdx = src.indexOf("function openProjectConfig()");
@@ -154,7 +157,7 @@ describe("+page.svelte — full-window mount, teardown, prefs migration", () => 
     expect(body).not.toContain('leftPanelTab = "config"');
   });
 
-  test("mounts ProjectSettingsView full-window (settings-global-view) and remounts per project", () => {
+  test("mounts ProjectSettingsView as the settings-global-view panel and remounts per project", () => {
     const src = page();
     expect(src).toContain('import ProjectSettingsView from "$lib/components/ProjectSettingsView.svelte"');
     const mountIdx = src.indexOf('aria-label="Project settings"');
@@ -192,8 +195,8 @@ describe("+page.svelte — full-window mount, teardown, prefs migration", () => 
     // view, Ctrl+Shift+F toggles focus mode behind it, etc.
     expect(body).toMatch(/if \(projectSettingsOpen\) \{[\s\S]{0,300}?closeProjectSettings\(\);[\s\S]{0,100}?return;/);
     expect(body.indexOf("if (projectSettingsOpen)")).toBeLessThan(body.indexOf("resolveGlobalShortcut"));
-    // Preview paging/zoom keys must not act on the hidden preview behind the
-    // full-window project settings (app settings live on the start screen,
+    // Preview paging/zoom keys must not act on the (inert) preview beside the
+    // project settings panel (app settings live on the start screen,
     // which the landingVisible guard above already covers).
     const navIdx = src.indexOf("function onPreviewNavKey");
     expect(src.slice(navIdx, navIdx + 700)).toContain("if (projectSettingsOpen) return;");
@@ -207,6 +210,44 @@ describe("+page.svelte — full-window mount, teardown, prefs migration", () => 
     // Restored tab must be validated against the live tab set, not blind-cast.
     expect(body).toMatch(/projects.*toc.*files.*media/s);
     expect(body).not.toMatch(/leftPanelTab = panelPrefs\.activeTab as typeof leftPanelTab/);
+  });
+});
+
+describe("+page.svelte — Project settings docks beside the live preview (#308)", () => {
+  // The preview already re-renders as soon as a stylesheet is written (the
+  // folder watcher rebuilds it); it was only hidden under an opaque full-window
+  // sheet. So the fix is presentational: dock the panel and let the app shrink.
+  test("the inert app shrinks by the panel's width, so the preview stays visible", () => {
+    const src = page();
+    expect(src).toContain("class:settings-docked={projectSettingsOpen}");
+    expect(src).toMatch(/\.app-root\.settings-docked\s*\{\s*margin-right:\s*var\(--app-settings-panel-width\);?\s*\}/);
+    expect(src).toMatch(/\.settings-global-view\s*\{[^}]*width:\s*var\(--app-settings-panel-width\)/);
+    // Visible is not editable: the workspace beside the panel stays inert.
+    expect(src).toMatch(/inert=\{landingVisible \|\| projectSettingsOpen\}/);
+  });
+
+  test("a window too narrow for both lets the panel cover it, as before", () => {
+    const src = page();
+    const from = src.indexOf(".settings-global-view {");
+    expect(from).toBeGreaterThan(-1);
+    const rules = src.slice(from, src.indexOf("@media (prefers-reduced-motion", from));
+    const narrow = rules.slice(rules.indexOf("@media screen and (max-width: 900px)"));
+    expect(narrow).toMatch(/\.settings-global-view\s*\{[^}]*inset:\s*0;[^}]*width:\s*auto/);
+    expect(narrow).toMatch(/\.app-root\.settings-docked\s*\{\s*margin-right:\s*0/);
+  });
+
+  test("no copy tells the writer to close Project settings to see the preview", () => {
+    const design = read("src/lib/components/config/DesignSection.svelte");
+    expect(design).not.toContain("close Project settings");
+    expect(design).toContain("the preview updates live");
+    expect(view()).not.toContain("close Project settings to see");
+  });
+
+  test("the panel width is one shared token that the Look tab's hover flyout also honours", () => {
+    expect(read("src/lib/theme.css")).toMatch(/--app-settings-panel-width:\s*clamp\(/);
+    // Pinned to the viewport edge the flyout would sit on top of the docked panel.
+    const look = read("src/lib/components/config/LookSection.svelte");
+    expect(look).toMatch(/\.hover-preview\s*\{[^}]*right:\s*calc\(var\(--app-settings-panel-width\)/);
   });
 });
 
