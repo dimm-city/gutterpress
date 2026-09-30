@@ -1,15 +1,20 @@
 <script lang="ts">
   /**
    * StatusBar — slim bottom bar hosting the book switcher (C2), sync status
-   * pill, save indicator, and the Problems panel toggle/body (VS Code-style).
+   * pill, save indicator, and the Problems toggle (VS Code-style).
    *
    * Layout (left → right):
    *   [book switcher] [Problems toggle] ··· [sync pill] [saving indicator] [settings] [help]
    *
    * The project you picked comes first, then what's wrong with it; everything
    * about saving and syncing is grouped at the far right beside the app
-   * actions. Problems takes the slack in between — its expanded body needs
-   * the bar's middle width.
+   * actions. Problems takes the slack in between.
+   *
+   * The Problems LIST is not in the bar: ProblemsPanel renders it as a row of
+   * its own directly above the bar, in normal flow, so opening it pushes the
+   * workspace up instead of covering the left panel and the editor (#307). With
+   * nothing to list, the toggle gives way to a plain "No problems" label — an
+   * empty list has nothing to open.
    *
    * The bar is always visible when a project is open (the saving indicator shows
    * "All changes saved" at rest, never blank), so both pieces of status are
@@ -24,7 +29,8 @@
   import Icon from "$lib/components/Icon.svelte";
   import { api } from "$lib/api";
   import { relativeTime } from "$lib/format";
-  import { onMount } from "svelte";
+  import { canExpandProblems, problemCounts, problemsSummary } from "$lib/problems";
+  import { onMount, tick } from "svelte";
   import type { SyncState } from "$lib/platform/contract";
   import type { ProblemEntry } from "$lib/platform/dtos";
   import type { ProjectBookEntry } from "$lib/routes/project-session-controller.svelte";
@@ -66,7 +72,11 @@
     forceSyncing = false,
     /** Problem entries from the lint runner. */
     problems = [] as ProblemEntry[],
-    /** Whether problems are loading. */
+    /** Whether the project has not been checked yet: the lint is running, or
+     *  the render that triggers it has not finished (the page passes
+     *  `problemsLoading || rendering`). Until then the bar says "Checking…" —
+     *  never "No problems", which would be a claim about a check that has not
+     *  happened. */
     problemsLoading = false,
     /** Set when the lint API call itself failed — distinct from a clean run
      *  that found zero problems. Forwarded to ProblemsPanel's neutral (not
@@ -290,12 +300,43 @@
   );
 
   // L9: Problems access used to disappear entirely below 820px (isCompact
-  // gated the whole cluster off). It now always renders — ProblemsPanel's own
-  // `compact` prop shrinks the toggle strip to an icon + count badge, and the
-  // `.compact` class below repositions the expanded body as a full-viewport
-  // overlay instead of the normal "grows upward from the bar" panel, which
-  // has no room to be useful at narrow widths.
+  // gated the whole cluster off). It now always renders — below 820px
+  // ProblemsPanel's `compact` prop presents the expanded list as a
+  // full-viewport sheet instead of the row above the bar, which has no room to
+  // be useful at narrow widths. (The toggle's own label only drops out much
+  // later, at 560px — see the media queries below.)
   let showProblems = $derived(!!projectDir && sourceMode === "folder");
+
+  // The list is ProblemsPanel's and sits BEFORE the bar in the DOM, so Tab from
+  // the toggle would skip past it. Like the editor toolbar's popups, opening
+  // moves focus into the list, and Escape / Close there hand it back to the
+  // toggle (passed down as `toggleEl`). No focus trap — it is a panel.
+  let toggleEl = $state<HTMLButtonElement | null>(null);
+  let panelRef = $state<{ focusList: () => void } | null>(null);
+
+  function toggleProblems() {
+    problemsOpen = !problemsOpen;
+    if (problemsOpen) void tick().then(() => panelRef?.focusList());
+  }
+
+  // #307: the bar shows the problems state itself; the toggle exists only when
+  // there is something to expand (see canExpandProblems).
+  let counts = $derived(problemCounts(problems));
+  let canExpand = $derived(canExpandProblems(problems, problemsError, problemsOpen));
+  let stripIcon = $derived.by<"info" | "triangle-alert" | "circle-check">(() =>
+    problemsError ? "info" : counts.badge > 0 ? "triangle-alert" : "circle-check",
+  );
+  /** The toggle's accessible name. Always set: at narrow widths its visible
+   *  text is hidden and the icons + bare counts alone say nothing. */
+  let stripLabel = $derived(
+    problemsLoading
+      ? "Problems: checking"
+      : problemsError
+        ? "Problems: couldn't check"
+        : counts.badge > 0
+          ? `Problems: ${problemsSummary(counts)}`
+          : "Problems: none",
+  );
 
   // Book switcher (C2): only when the open repo actually has more than one book.
   let showBookSwitcher = $derived(!!projectDir && sourceMode === "folder" && books.length > 1);
@@ -305,8 +346,24 @@
 
 <svelte:window onresize={updateCompact} onpointerdown={onWindowPointerDown} />
 
+<!-- The Problems list: a row of its own directly above the bar, in normal flow
+     (the page's .shell is a flex column), so opening it shrinks the workspace
+     instead of covering the left panel's buttons or the editor's last lines. -->
+{#if showProblems}
+  <ProblemsPanel
+    bind:this={panelRef}
+    {problems}
+    loading={problemsLoading}
+    error={problemsError}
+    bind:open={problemsOpen}
+    onSelect={onProblemSelect}
+    compact={isCompact}
+    {toggleEl}
+  />
+{/if}
+
 <div class="status-bar" role="status" aria-label="Application status">
-  <!-- Left cluster: [book switcher]. The problems panel sits directly to its
+  <!-- Left cluster: [book switcher]. The problems toggle sits directly to its
        right (the project you picked, then what's wrong with it); everything
        about SAVING and SYNCING is grouped at the far right, next to the
        settings and help buttons. -->
@@ -317,17 +374,57 @@
   </div>
 
   <!-- Problems: immediately right of the book switcher, and the element that
-       takes up the slack — its expanded body needs the bar's middle width. -->
+       takes up the slack. With nothing to list there is no button — the bar
+       just says so (#307). -->
   {#if showProblems}
-    <div class="status-problems" class:compact={isCompact}>
-      <ProblemsPanel
-        {problems}
-        loading={problemsLoading}
-        error={problemsError}
-        bind:open={problemsOpen}
-        onSelect={onProblemSelect}
-        compact={isCompact}
-      />
+    <div class="status-problems">
+      {#if canExpand}
+        <button
+          bind:this={toggleEl}
+          class="toggle-strip"
+          onclick={toggleProblems}
+          aria-expanded={problemsOpen}
+          aria-controls="problems-body"
+          aria-label={stripLabel}
+          title={problemsOpen ? "Collapse problems panel" : "Expand problems panel"}
+        >
+          <span class="strip-left">
+            <Icon name={stripIcon} size={13} />
+            <span class="strip-title">Problems</span>
+            {#if counts.badge > 0}
+              <span class="strip-counts">
+                {#if counts.errors > 0}
+                  <span class="strip-count error-count">
+                    <Icon name="circle-x" size={12} />
+                    {counts.errors}
+                  </span>
+                {/if}
+                {#if counts.warnings > 0}
+                  <span class="strip-count warning-count">
+                    <Icon name="triangle-alert" size={12} />
+                    {counts.warnings}
+                  </span>
+                {/if}
+              </span>
+            {/if}
+            {#if problemsLoading}
+              <span class="strip-status" role="status">Checking…</span>
+            {:else if problemsError}
+              <span class="strip-status" role="status">Couldn't check</span>
+            {/if}
+          </span>
+          <span class="strip-chevron" aria-hidden="true">
+            <Icon name={problemsOpen ? "chevron-down" : "chevron-up"} size={13} />
+          </span>
+        </button>
+      {:else}
+        <span class="strip-idle">
+          <span class="idle-icon" class:ok={!problemsLoading}>
+            <Icon name={problemsLoading ? "refresh-cw" : "circle-check"} size={13} />
+          </span>
+          {problemsLoading ? "Checking…" : "No problems"}
+        </span>
+      {/if}
     </div>
   {/if}
 
@@ -420,11 +517,11 @@
     flex-shrink: 0;
     background: var(--app-surface-raised);
     border-top: 1px solid var(--app-border);
-    /* The bar is a flex row; ProblemsPanel sits in the right cluster and
-       grows upward when expanded (flex-direction: column-reverse inside). */
+    /* The bar is one flex row in normal document flow. The Problems list is not
+       part of it — ProblemsPanel renders that as its own row directly above. */
     position: relative;
     z-index: var(--app-z-popover);
-    /* Never cover the preview iframe — normal document flow, no overlap. */
+    /* The save summary and book switcher open upward out of the bar. */
     overflow: visible;
   }
 
@@ -453,7 +550,7 @@
     min-height: 28px;
     flex: 0 0 auto;
     min-width: 0;
-    /* Hugs the right even when the problems panel (the flex-grower) is
+    /* Hugs the right even when the problems toggle (the flex-grower) is
        absent, so the save/sync group always sits beside the app actions. */
     margin-left: auto;
   }
@@ -597,77 +694,109 @@
     font-weight: 600;
   }
 
+  /* Narrow (the app's single-pane layout): the lower-priority items drop out.
+     The save state stays — it is the one thing the bar is always for. */
   @media screen and (max-width: 820px) {
     .status-right :global(.sync-pill),
-    .save-text,
     .status-sep,
     .status-action {
       display: none;
     }
   }
 
-  /* ── Problems panel ───────────────────────────────────────────────────── */
-  /* The panel body expands upward out of the bar via position:absolute, so the
-     bar height stays fixed at 28px whether or not the panel is open.
-     The problems panel takes the bar's slack: its expanded body needs the
-     middle width, and growing here keeps the save/sync cluster pinned right. */
+  /* ── Problems toggle ──────────────────────────────────────────────────── */
+  /* The toggle — or, with nothing to list, the plain "No problems" label —
+     takes the bar's slack, which keeps the save/sync cluster pinned right. The
+     list it opens is ProblemsPanel's own row above the bar. */
   .status-problems {
     flex: 1 1 auto;
     display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
     min-width: 0;
-    /* ProblemsPanel uses position relative internally; its expanded body must
-       grow UPWARD. We achieve this by making the panel itself use flex-direction
-       column-reverse (toggle strip at bottom, body above). The ProblemsPanel
-       component handles its own layout. */
-    position: relative;
   }
-
-  /* Override ProblemsPanel's top border (it already has one) since the
-     status bar provides the bar's top border — avoid double borders on the
-     right side of the bar. ProblemsPanel styles are scoped in its own
-     component; we target the wrapper here via :global. */
-  .status-problems :global(.problems-panel) {
-    border-top: none;
-    /* panel body expands upward */
-    flex-direction: column-reverse;
-  }
-
-  /* The toggle strip inside ProblemsPanel shows a separator on the LEFT so it
-     reads as a distinct group from the book switcher beside it. */
-  .status-problems :global(.toggle-strip) {
+  .toggle-strip,
+  .strip-idle {
+    display: flex;
+    box-sizing: border-box; /* the label is a span: same 30px as the button */
+    align-items: center;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 30px;
+    padding: 5px 12px;
+    gap: 8px;
+    overflow: hidden;
+    border: none;
+    /* A separator on the LEFT so it reads as a distinct group from the book
+       switcher beside it. */
     border-left: 1px solid var(--app-border);
+    font-size: 12px;
+    color: var(--app-text-secondary);
+  }
+  .toggle-strip {
+    justify-content: space-between;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+  }
+  .toggle-strip:hover {
+    background: var(--app-control-hover-bg);
+  }
+  .toggle-strip:focus-visible {
+    outline: 2px solid var(--app-focus-ring);
+    outline-offset: -2px;
+  }
+  .strip-left {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+  }
+  .strip-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--app-text-secondary);
+  }
+  .strip-counts {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-variant-numeric: tabular-nums;
+  }
+  .strip-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 11px;
+  }
+  .error-count { color: var(--app-error-text); }
+  .warning-count { color: var(--app-warning-text); }
+  .strip-status { font-size: 11px; color: var(--app-text-muted); }
+  .strip-chevron {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    color: var(--app-text-muted);
+  }
+  /* Nothing to list: a plain label, sentence case — not the caps "PROBLEMS"
+     heading, which beside a tick reads as a contradiction. */
+  .strip-idle {
+    gap: 6px;
+    white-space: nowrap;
+  }
+  .idle-icon { display: inline-flex; }
+  .idle-icon.ok { color: var(--app-success-text); }
+
+  /* Very narrow windows: the toggle keeps its icon + counts; the label and
+     status text drop out (its aria-label still says all of it). */
+  @media screen and (max-width: 560px) {
+    .strip-title,
+    .strip-status {
+      display: none;
+    }
   }
 
-  /* Expanded panel body: absolute, grows upward from the top of the status bar. */
-  .status-problems :global(.panel-body) {
-    position: absolute;
-    bottom: 100%;
-    left: 0;
-    right: 0;
-    max-height: 32vh;
-    overflow-y: auto;
-    background: var(--app-surface-raised);
-    border: 1px solid var(--app-border);
-    border-bottom: none;
-    box-shadow: 0 -4px 16px var(--app-shadow-md);
-    z-index: var(--app-z-popover);
-  }
-
-  /* L9: below 820px the "grows upward from the bar" panel has no room to be
-     useful — reposition the expanded body as a full-viewport overlay instead
-     (below the toolbar, above everything else short of app dialogs). The
-     compact toggle strip itself (icon + count badge) stays inline in the bar. */
-  .status-problems.compact :global(.panel-body) {
-    position: fixed;
-    top: 56px;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    max-height: none;
-    z-index: var(--app-z-sheet);
-  }
   .shell-actions {
     display: flex;
     align-items: center;

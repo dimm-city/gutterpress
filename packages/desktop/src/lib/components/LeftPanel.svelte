@@ -516,11 +516,15 @@
   .left-panel.open {
     transform: translateX(0);
   }
-  /* Narrow: overlay mode — panel floats over content, not part of flex flow */
+  /* Narrow: overlay mode — panel floats over content, not part of flex flow.
+     Positioned against .left-panel-region (relative, overflow hidden) rather
+     than the viewport, so it spans exactly the workspace: it starts under the
+     toolbar and stops at the status bar's top edge, instead of running
+     underneath the bar and hiding the footer buttons (New project). */
   @media screen and (max-width: 820px) {
     .left-panel {
-      position: fixed;
-      top: 56px; /* toolbar height */
+      position: absolute;
+      top: 0;
       left: 0;
       bottom: 0;
       z-index: var(--app-z-panel);

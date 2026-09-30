@@ -53,12 +53,67 @@ test("bottom status uses save icons and compact mobile rules", () => {
   expect(status).toContain("@media screen and (max-width: 820px)");
   expect(status).toContain("display: none");
   // L9: Problems access used to disappear entirely below 820px
-  // (`!isCompact` gated the whole cluster off). It now always renders as a
-  // compact icon + count badge that opens the panel as a full-viewport
-  // overlay — see ProblemsPanel's own `compact` prop.
+  // (`!isCompact` gated the whole cluster off). It now always renders, and
+  // below 820px opens the list as a full-viewport sheet — see ProblemsPanel's
+  // own `compact` prop, whose sheet CSS lives with the list.
   expect(status).toContain('showProblems = $derived(!!projectDir && sourceMode === "folder")');
   expect(status).toContain("compact={isCompact}");
-  expect(status).toContain(".status-problems.compact");
+  expect(read("src/lib/components/ProblemsPanel.svelte")).toContain(".problems-panel.compact .panel-body");
+});
+
+test("#316: the save state keeps its text at the narrow breakpoint; only the Problems label drops, much later", () => {
+  const status = read("src/lib/components/StatusBar.svelte");
+  // At the app's single-pane width (820px) the lower-priority items drop out…
+  const narrow = /@media screen and \(max-width: 820px\) \{([^}]*)\}/.exec(status)?.[1] ?? "";
+  expect(narrow).toContain(".sync-pill");
+  expect(narrow).toContain(".status-action");
+  // …but "All work saved" used to collapse to an unlabeled check icon here.
+  expect(narrow).not.toContain(".save-text");
+  expect(status).not.toMatch(/\.save-text[^{]*\{[^}]*display:\s*none/);
+  // The Problems label only drops out at phone widths, and the toggle then
+  // still has an accessible name (always set, since its icons + counts say
+  // nothing to a screen reader).
+  const phone = /@media screen and \(max-width: 560px\) \{([^}]*)\}/.exec(status)?.[1] ?? "";
+  expect(phone).toContain(".strip-title");
+  expect(phone).toContain(".strip-status");
+  expect(status).toContain("aria-label={stripLabel}");
+});
+
+test("#307: the Problems list is a row of its own above the bar — it never overlays the workspace", () => {
+  const status = read("src/lib/components/StatusBar.svelte");
+  const panel = read("src/lib/components/ProblemsPanel.svelte");
+  // Rendered before (above) the bar, not inside it. The page's .shell is a
+  // flex column, so a list in normal flow shrinks the workspace above it.
+  const listIdx = status.indexOf("<ProblemsPanel");
+  expect(listIdx).toBeGreaterThan(-1);
+  expect(listIdx).toBeLessThan(status.indexOf('class="status-bar"'));
+  // The old mechanism — an absolutely-positioned body reaching up out of the
+  // bar over the left panel and editor — is gone…
+  expect(status).not.toContain(":global(.panel-body)");
+  // …and the only out-of-flow mode left is the narrow sheet (a deliberate,
+  // dismissible full-viewport surface).
+  const outsideSheet = panel.replace(/\.problems-panel\.compact \.panel-body \{[^}]*\}/, "");
+  expect(outsideSheet).not.toMatch(/\.panel-body[^{]*\{[^}]*position:\s*(absolute|fixed)/);
+  // The toggle in the bar still drives the list by id.
+  expect(status).toContain('aria-controls="problems-body"');
+  expect(panel).toContain('id="problems-body"');
+  expect(status).toContain("aria-expanded={problemsOpen}");
+});
+
+test("#307: a clean project shows 'No problems' in the bar with no button to open an empty list", () => {
+  const status = read("src/lib/components/StatusBar.svelte");
+  // The toggle exists only when there is something to expand…
+  const ifIdx = status.indexOf("{#if canExpand}");
+  const elseIdx = status.indexOf("{:else}", ifIdx);
+  expect(ifIdx).toBeGreaterThan(-1);
+  expect(elseIdx).toBeGreaterThan(ifIdx);
+  expect(status.slice(ifIdx, elseIdx)).toContain('class="toggle-strip"');
+  // …and the rest of that block is a plain, non-interactive label.
+  const idle = status.slice(elseIdx, status.indexOf("{/if}", status.indexOf('class="strip-idle"')));
+  expect(idle).toContain('class="strip-idle"');
+  expect(idle).toContain("No problems");
+  expect(idle).not.toContain("<button");
+  expect(idle).not.toContain("onclick");
 });
 
 test("status bar groups saving/syncing on the right and puts Problems beside the book switcher", () => {
@@ -82,9 +137,9 @@ test("status bar groups saving/syncing on the right and puts Problems beside the
 });
 
 test("L9 regression: compact Problems overlay has a reachable close control and closes on select/Escape", () => {
-  // The compact overlay (`.status-right.compact :global(.panel-body)`, fixed
-  // and z-index:900) visually covers the toggle strip that would otherwise
-  // collapse it, so the panel must not depend on that strip to be dismissed.
+  // The compact sheet (`.problems-panel.compact .panel-body`, fixed and
+  // z-index:900) visually covers the toggle that would otherwise collapse it,
+  // so the panel must not depend on that toggle to be dismissed.
   const panel = read("src/lib/components/ProblemsPanel.svelte");
   const problems = read("src/lib/problems.ts");
   // Decision logic is real, unit-tested predicates (see problems.test.ts),
@@ -93,16 +148,68 @@ test("L9 regression: compact Problems overlay has a reachable close control and 
   expect(problems).toContain("export function closesPanelOnEscape");
   expect(panel).toContain("closesPanelOnSelect");
   expect(panel).toContain("closesPanelOnEscape");
-  // A visible, always-reachable close button lives inside the overlay itself.
+  // A visible, always-reachable close button lives inside the overlay itself
+  // (it closes AND hands focus back to the toggle — see the keyboard test).
   expect(panel).toContain('{#if compact}');
   expect(panel).toContain('aria-label="Close problems panel"');
-  expect(panel).toContain("onclick={() => (open = false)}");
+  expect(panel).toContain("onclick={closeToToggle}");
   // Escape is wired via a window-level keydown handler.
   expect(panel).toContain("<svelte:window onkeydown={handleWindowKeydown} />");
   // Selecting an entry routes through the shared close-aware handler, not the
   // raw onSelect callback directly.
   expect(panel).toContain("onclick={() => selectEntry(entry)}");
   expect(panel).not.toContain("onclick={() => onSelect?.(entry)}");
+});
+
+test("#307: keyboard — opening the list moves focus into it; Escape and Close hand it back to the toggle; no trap", () => {
+  const status = read("src/lib/components/StatusBar.svelte");
+  const panel = read("src/lib/components/ProblemsPanel.svelte");
+  // The list is BEFORE the bar in the DOM, so Tab from the toggle would skip
+  // past it: opening focuses into it, as the editor toolbar's popups do.
+  expect(status).toContain("onclick={toggleProblems}");
+  expect(status).toContain("if (problemsOpen) void tick().then(() => panelRef?.focusList());");
+  expect(panel).toContain("export function focusList()");
+  // The first entry — or the body itself (tabindex="-1") when the list only
+  // shows a message, so Escape still works there.
+  expect(panel).toContain('(bodyEl?.querySelector<HTMLElement>(".entry.clickable") ?? bodyEl)?.focus()');
+  expect(panel).toContain('tabindex="-1"');
+  // Escape and the compact sheet's Close hand focus back to the toggle, which
+  // the StatusBar passes down.
+  expect(status).toContain("bind:this={toggleEl}");
+  expect(status).toContain("{toggleEl}");
+  expect(panel).toContain("toggleEl?.focus()");
+  expect(panel).toContain("onclick={closeToToggle}");
+  // Escape is honoured from inside the list (or anywhere in the compact sheet).
+  expect(panel).toContain("closesPanelOnEscape(compact, open, e.key, focusInside)");
+  // It is a panel, not a modal: nothing traps Tab.
+  expect(panel).not.toContain("trapFocus");
+  expect(panel).not.toMatch(/key === ["']Tab["']/);
+});
+
+test("#307: until the first check has run the bar says 'Checking…', never 'No problems'", () => {
+  const page = read("src/routes/+page.svelte");
+  const status = read("src/lib/components/StatusBar.svelte");
+  // "Not checked yet" is the lint running OR the render that triggers it still
+  // in flight: renderingComplete clears `rendering` and starts the lint in the
+  // same synchronous call, so the two flags leave no gap between them.
+  expect(page).toContain("problemsLoading={problemsLoading || lifecycle.rendering}");
+  // The plain label follows that flag.
+  expect(status).toContain('{problemsLoading ? "Checking…" : "No problems"}');
+});
+
+test("#307: the narrow left-panel drawer spans the workspace region — it stops at the status bar's top edge", () => {
+  const left = read("src/lib/components/LeftPanel.svelte");
+  const page = read("src/routes/+page.svelte");
+  // Viewport-fixed with bottom:0, the drawer ran underneath the status bar and
+  // hid its own footer buttons (New project). Positioned against
+  // .left-panel-region it ends exactly where the region — and so the bar —
+  // begins, with no height to keep in sync.
+  const drawer = /@media screen and \(max-width: 820px\) \{\s*\.left-panel \{([^}]*)\}/.exec(left)?.[1] ?? "";
+  expect(drawer).toContain("position: absolute");
+  expect(drawer).not.toContain("position: fixed");
+  expect(drawer).toMatch(/top:\s*0;/);
+  expect(drawer).toMatch(/bottom:\s*0;/);
+  expect(page).toMatch(/\.left-panel-region \{[^}]*position: relative;/s);
 });
 
 test("top toolbar small-screen styles/config controls are removed", () => {
