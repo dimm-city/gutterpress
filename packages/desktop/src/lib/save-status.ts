@@ -63,6 +63,9 @@ export interface SaveStatusSection {
   explain: string;
   /** Optional extra note about how it happens automatically. */
   note?: string;
+  /** Calm one-off result of the last button press (e.g. "Nothing new to save").
+   *  Not a problem, so it carries no tone; announced with the section. */
+  notice?: string;
   tone: SaveStatusTone;
   actions: SaveStatusAction[];
 }
@@ -101,6 +104,8 @@ export interface SaveStatusInput {
     savingVersion: boolean;
     /** The host reported that automatic versions keep failing. */
     problem: boolean;
+    /** "Save a version now" was just pressed and found nothing new to save. */
+    nothingNew: boolean;
   };
   online: {
     /** Live state from the sync status stream ("idle" until the first one). */
@@ -125,6 +130,7 @@ export interface SaveStatusInput {
 export const SAVING_EXPLAIN = "What you type is written to a file on this computer.";
 export const VERSIONS_EXPLAIN =
   "A version is a saved copy of your book that you can go back to.";
+export const NOTHING_NEW_NOTICE = "Nothing new to save — your last version already has everything.";
 export const ONLINE_EXPLAIN =
   "A copy of your book kept online, so you can get it back if this computer is lost.";
 
@@ -239,7 +245,6 @@ export function versionsSection(i: Pick<SaveStatusInput, "versions" | "online" |
   }
 
   const n = v.changedFiles;
-  const nothingToSave = n === 0 && !v.stale;
   let status: string;
   let detail: string | undefined;
   let tone: SaveStatusTone;
@@ -277,10 +282,9 @@ export function versionsSection(i: Pick<SaveStatusInput, "versions" | "online" |
     tone,
     note,
     ...withAlert,
-    actions: [
-      ...(nothingToSave ? [] : [saveBtn({ primary: (n != null && n > 0) || v.stale })]),
-      viewVersions,
-    ],
+    // Always offered: pressing it on a clean book is a calm no-op (the notice).
+    ...(v.nothingNew && !(n != null && n > 0) ? { notice: NOTHING_NEW_NOTICE } : {}),
+    actions: [saveBtn({ primary: (n != null && n > 0) || v.stale }), viewVersions],
   };
 }
 
@@ -291,8 +295,13 @@ export function onlineSection(
 ): SaveStatusSection {
   const o = i.online;
   const base = { explain: ONLINE_EXPLAIN };
-  const backUpNow = (label = "Back up now", primary = false): SaveStatusAction[] =>
-    o.canSync ? [{ id: "syncNow", label, disabled: o.syncing, primary }] : [];
+  // Offered in every state where a manual backup can work (a usable remote and
+  // a stored sign-in); primary only when it is the suggested fix.
+  const busy = o.syncing || o.state === "syncing";
+  const backUpNow = (primary = false): SaveStatusAction[] =>
+    o.canSync
+      ? [{ id: "syncNow", label: busy ? "Backing up…" : "Back up now", disabled: busy, primary: primary && !busy }]
+      : [];
 
   if (i.versions.enabled === null) return checking(base.explain);
   if (!i.versions.enabled) {
@@ -305,7 +314,7 @@ export function onlineSection(
     };
   }
   if (o.syncing || o.state === "syncing") {
-    return { ...base, status: "Backing up now…", tone: "pending", actions: [] };
+    return { ...base, status: "Backing up now…", tone: "pending", actions: backUpNow() };
   }
 
   const checked =
@@ -336,9 +345,9 @@ export function onlineSection(
         status: "You're offline.",
         detail: o.automatic
           ? "Your work is safe on this computer. Online backup will try again on its own."
-          : "Your work is safe on this computer. Use Try again when you're back online.",
+          : "Your work is safe on this computer. Use Back up now when you're back online.",
         tone: "warn",
-        actions: backUpNow("Try again"),
+        actions: backUpNow(!o.automatic),
       };
     case "error":
       return {
@@ -346,9 +355,9 @@ export function onlineSection(
         status: "The last online backup didn't finish.",
         detail: o.automatic
           ? "Your work is safe on this computer. Gutterpress will try again."
-          : "Your work is safe on this computer. Use Try again when you're ready.",
+          : "Your work is safe on this computer. Use Back up now when you're ready.",
         tone: "warn",
-        actions: backUpNow("Try again"),
+        actions: backUpNow(!o.automatic),
       };
     case "auth":
       return {

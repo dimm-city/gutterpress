@@ -3097,13 +3097,18 @@
     manualBackup={syncController.lastManual}
     onSaveVersion={async () => {
       const dir = lifecycle.currentDir;
-      if (!dir) return;
+      if (!dir) return "unchanged";
       try {
         await api.vcs.saveSnapshot(dir);
         identityNoticeArmed = true;
         toast?.success("Saved a version.");
         activityViewRef?.refreshHistory();
+        return "saved";
       } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        // A clean book is not a failure: the dialog says so calmly (no toast).
+        // Local copy of the lib's isNoChangesError (the SPA can't import it).
+        if (/no changes since the last snapshot/i.test(msg)) return "unchanged";
         toast?.error(friendlyHostError(e instanceof Error ? e.message : String(e)));
         throw e;
       }

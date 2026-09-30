@@ -129,7 +129,8 @@ test("status bar groups saving/syncing on the right and puts Problems beside the
   const right = status.slice(rightIdx, actionsIdx);
   expect(right).toContain("<SyncStatusPill");
   expect(right).toContain("save-indicator");
-  expect(right).toContain("Back up online now");
+  // The one-click backup lives in the save-status dialog, not the bar.
+  expect(right).not.toContain("Back up online now");
   // …and Problems no longer sits in it.
   expect(right).not.toContain("<ProblemsPanel");
   // The right cluster hugs the app actions even with no problems panel.

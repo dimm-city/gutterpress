@@ -66,7 +66,10 @@
   // What a screen reader hears when the state changes: the summary plus each
   // section's current line — one region, so nothing is announced twice.
   let announcement = $derived(
-    [copy.summary.text, ...SECTIONS.map((s) => `${s.title}: ${copy[s.key].status}`)].join(" "),
+    [
+      copy.summary.text,
+      ...SECTIONS.map((s) => `${s.title}: ${copy[s.key].status}${copy[s.key].notice ? ` ${copy[s.key].notice}` : ""}`),
+    ].join(" "),
   );
 </script>
 
@@ -112,6 +115,7 @@
           {/if}
           <p class="explain">{s.explain}</p>
           {#if s.note}<p class="note">{s.note}</p>{/if}
+          {#if s.notice}<p class="notice">{s.notice}</p>{/if}
           {#if s.actions.length > 0}
             <div class="dlg-actions section-actions">
               {#each s.actions as a (a.id)}
@@ -199,6 +203,7 @@
   @keyframes save-dlg-spin { to { transform: rotate(360deg); } }
 
   .explain { font-size: 12px; line-height: 1.45; color: var(--app-text-secondary); }
+  .notice { font-size: 12px; line-height: 1.4; font-weight: 600; color: var(--app-text); }
   .note { font-size: 12px; line-height: 1.4; color: var(--app-text-muted); }
 
   /* The shared .dlg-actions footer, reused inline for a section's buttons:
