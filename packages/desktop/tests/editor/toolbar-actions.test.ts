@@ -400,7 +400,7 @@ test("visibleToolbarItems: drops desktop-only items (image, snippet) when deskto
 
 test("visibleToolbarItems: every visible item belongs to exactly one known group (no orphans dropped from the More menu)", () => {
   const items = visibleToolbarItems({ hasSave: true, desktop: true });
-  const groups = ["save", "primary", "block", "insert", "view"];
+  const groups = ["save", "primary", "block", "insert"];
   for (const item of items) {
     expect(groups).toContain(item.group);
   }
@@ -509,12 +509,10 @@ test("TOOLBAR_ITEMS: declares an insert-layout-block control in the insert group
   expect(item?.group).toBe("insert");
 });
 
-// ── #311: one Insert menu; Focus mode is not an insertion ───────────────────
+// ── Focus lives on the app toolbar, not here ────────────────────────────────
 
-test("TOOLBAR_ITEMS: Focus mode is a 'view' item, so it keeps its own button instead of becoming a row in the Insert menu", () => {
-  const focus = TOOLBAR_ITEMS.find((i) => i.id === "focus-mode");
-  expect(focus?.group).toBe("view");
-  expect(TOOLBAR_ITEMS.filter((i) => i.group === "insert").some((i) => i.action === "focus-mode")).toBe(false);
+test("TOOLBAR_ITEMS: there is no Focus item (the app toolbar toggle and Ctrl+Shift+F are the entry points)", () => {
+  expect(TOOLBAR_ITEMS.some((i) => i.id === "focus-mode" || (i.action as string) === "focus-mode")).toBe(false);
 });
 
 test("Insert menu rows are unique: Page break is offered once, through the layout picker", () => {

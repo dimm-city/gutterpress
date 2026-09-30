@@ -20,6 +20,7 @@
   import PublishWizard from "$lib/components/PublishWizard.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import AppToolbar from "$lib/components/AppToolbar.svelte";
+  import FocusBar from "$lib/components/FocusBar.svelte";
   import ExportDialog from "$lib/components/ExportDialog.svelte";
   import ProjectSettingsView from "$lib/components/ProjectSettingsView.svelte";
   import EditorToolbar from "$lib/components/EditorToolbar.svelte";
@@ -61,6 +62,7 @@
   } from "$lib/editor/mobile-layout";
   import { commandForSaveShortcut } from "$lib/editor/save-shortcuts";
   import { resolveGlobalShortcut, resolvePreviewNavCommand } from "$lib/routes/shortcuts";
+  import { escapeExitsFocus } from "$lib/routes/focus-mode";
   import { splitTemplateColumns, shouldRefitPreview } from "$lib/editor/preview-layout";
   import { useSettings, _loadSettings, settingsChangeGuard, onSettingsChange } from "$lib/settings.svelte";
   import { sanitizeSettingsTab, type SettingsTab } from "$lib/settings-tabs";
@@ -563,6 +565,7 @@
       problemsError = null;
       logFilePath = null;
     },
+    onProjectSwitch: () => setFocus(false),
     resetExtras: () => {
       stopFolderWatch();
       pageNav.totalPages = 0;
@@ -570,10 +573,11 @@
       // A project closed while its settings view was up must not show that
       // view over the next project (or the empty workspace).
       projectSettingsOpen = false;
-      // Back to the SAVED layout — this only sheds the transient `focus`. A
-      // reset is not a choice: forcing Read here also saved it, so one failed
-      // open turned a new writer's Edit default into Read for good.
-      setMode(settings.current.preview.mode);
+      // Focus is per-book-session: closing drops it here (switching via
+      // onProjectSwitch), so the next book never opens chromeless. The saved
+      // mode is untouched (a reset is not a choice; forcing Read here once
+      // saved it for good).
+      focus = false;
       // A project closed while activity borrowed the editor must not reopen the
       // next project on that stale view.
       editorView = "editor";
@@ -955,21 +959,18 @@
   // reconciliation. The editor owns exactly one file buffer at a time.
   // The ONE workspace-layout switch (see `WorkspaceMode`). Declared here
   // (before the deriveds that read it) so it is initialised ahead of them.
-  // A local $state rather than a settings derived, because `focus` is
-  // deliberately absent from the persisted shape — `setMode` writes the
-  // durable half through and `modeSink` below reads it back on load.
+  // A local $state that `setMode` writes through to settings and `modeSink`
+  // below reads back on load.
   let mode = $state<WorkspaceMode>(settings.current.preview.mode);
-  // The one genuinely ambiguous transition: leaving `focus` could mean either
-  // `editor` or `viewer`. Written ONLY on entering focus.
-  let modeBeforeFocus: "editor" | "viewer" | null = null;
+  // Focus: a SESSION-ONLY toggle layered on top of Edit or Read (see
+  // focus-mode.ts). It hides the chrome and nothing else — it never touches
+  // `mode` or the persisted left-panel setting, so leaving it restores exactly
+  // what was there. Not persisted on purpose: a restart never wakes chromeless.
+  let focus = $state(false);
   // The "how to leave Focus" toast shows the first time Focus is entered in an
   // app session only — the Focus tooltip carries the same words permanently,
   // and a writer who lives in Focus should not be told on every Ctrl+Shift+F.
-  // Not persisted on purpose.
   let focusHintShown = false;
-  /** The viewer is hidden in `focus` and nowhere else. */
-  let previewVisible = $derived(mode !== "focus");
-  /** `focus` is the editor without the viewer, so the editor shows in both. */
   let editorVisible = $derived(mode !== "viewer");
   let workspaceEl = $state<HTMLElement | undefined>(undefined);
   let editorRef = $state<{
@@ -1092,18 +1093,12 @@
   let findBarRef = $state<{ focusInput: () => void } | null>(null);
   const viewerVisibleForFind = $derived(
     !!lifecycle.previewUrl &&
-      previewVisible &&
       !(isNarrow && (editorPaneOpen || editorView !== "editor")),
   );
 
   let splitGridColumns = $derived(
-    editorPaneOpen && !isNarrow && previewVisible
+    editorPaneOpen && !isNarrow
       ? splitTemplateColumns(zoomView.splitPaneRatio)
-      : "",
-  );
-  let previewCollapseGridColumns = $derived(
-    editorPaneOpen && !isNarrow && !previewVisible
-      ? "minmax(0, 1fr) 0 minmax(0, 0)"
       : "",
   );
 
@@ -1329,17 +1324,16 @@
   const contextMenuSettingSink = settingsChangeGuard<boolean>((enabled) => {
     if (!enabled) contextMenu.close();
   });
-  // Workspace mode: the live value is local $state (it can hold `focus`, which
-  // the persisted shape cannot), so the async settings load has to be pushed
-  // into it. The guard dedupes against the last value seen, so setMode's own
-  // write-back cannot bounce back and clobber a live `focus`.
+  // Workspace mode: the live value is local $state, so the async settings load
+  // has to be pushed into it. The guard dedupes against the last value seen,
+  // so setMode's own write-back is a no-op.
   // Restoring a persisted `editor` mode assigns `mode` directly rather than
   // going through setMode, so it has to kick the lazy import the way setMode
   // does. The settings fetch and the auto-open of the last project are
   // independent async starts: when settings land LAST, the project-open path
   // already ran `ensureEditorFile()` while the workspace still looked like
   // viewer mode, and nothing else would ever load the editor component.
-  const modeSink = settingsChangeGuard<Exclude<WorkspaceMode, "focus">>((m) => {
+  const modeSink = settingsChangeGuard<WorkspaceMode>((m) => {
     mode = m;
     if (m !== "viewer") loadEditorModule();
   });
@@ -1612,8 +1606,8 @@
    * Open the editor pane: mark it open, lazy-load the editor module, ensure a
    * file is loaded, and move focus into it. Centralizes the sequence that was
    * hand-repeated across five call sites (audit E3). `focus` and `ensureFile`
-   * cover the two sites that intentionally differ (togglePreview never steals
-   * focus; the file-tree selection path already has a file).
+   * cover the sites that intentionally differ (the file-tree selection path
+   * already has a file; go-to-source places its own caret).
    */
   function openEditorPane(opts: { focus?: boolean; ensureFile?: boolean } = {}) {
     const { focus = true, ensureFile = true } = opts;
@@ -2148,14 +2142,17 @@
       // Esc handling); workspace shortcuts must not act on the inert UI
       // behind it.
       if (landingVisible) return;
-      // Cmd/Ctrl+Shift+F hides the viewer so the editor has the window
-      // (#104). Esc is deliberately NOT an exit: focus keeps the toolbar, so
-      // the control that entered it is still on screen — and a global Esc
-      // that reshuffles panes mid-sentence is a surprise. Esc stays the
-      // dismiss-the-transient-thing key (find bar, dialogs, menus).
+      // Cmd/Ctrl+Shift+F toggles Focus. Esc leaves it, but ONLY when nothing
+      // else wants the key: an open dialog/menu/popover, the find bar, or a
+      // handler that already consumed it (editor, context menu) keeps Esc.
       if (command === "focus-mode") {
         e.preventDefault();
-        togglePreview();
+        setFocus(!focus);
+        return;
+      }
+      if (inFocus && escapeExitsFocus(e, document, findBarOpen)) {
+        e.preventDefault();
+        setFocus(false);
         return;
       }
       // Cmd/Ctrl+F finds in the VIEWER only (owner ruling 2026-08-15): the
@@ -2494,47 +2491,38 @@
   }
 
   /**
-   * The ONE writer of `mode`. Persists the durable half (`focus` stores as
-   * `editor` — waking into a viewer-less window would be hostile), pushes the
-   * derived page layout into the viewer, and guarantees the editor module is
-   * loading whenever the editor pane is about to be on screen (the pane
-   * renders "Loading editor…" until it is).
-   *
-   * Persist BEFORE assigning. `settings.set` notifies synchronously, so the
-   * write-back reaches `modeSink` inside this call — and entering `focus`
-   * from `viewer` writes "editor", a value the sink has NOT seen, so its
-   * dedupe does not catch it and it assigns `mode = "editor"`. Doing that
-   * echo first and the assignment last keeps the one writer of `mode` the
-   * last word; Read → Focus used to land in Edit with the viewer still up.
+   * The ONE writer of `mode`: persists it, pushes the derived page layout into
+   * the viewer, and guarantees the editor module is loading whenever the
+   * editor pane is about to be on screen (the pane renders "Loading editor…"
+   * until it is).
    */
   function setMode(next: WorkspaceMode): void {
     if (next === mode) return;
-    if (next === "focus") modeBeforeFocus = mode === "viewer" ? "viewer" : "editor";
-    // The viewer vanishes in focus, and Esc is not the way back (see
-    // onGlobalKey) — say what is, once per session (see focusHintShown).
-    if (next === "focus" && !focusHintShown) {
-      focusHintShown = true;
-      toast?.info?.("Focus mode: press Ctrl+Shift+F, or choose Edit or Read, to bring the preview back.", 6000);
-    }
-    settings.set({ preview: { mode: next === "focus" ? "editor" : next } });
+    settings.set({ preview: { mode: next } });
     mode = next;
     zoomView.applyViewMode(viewMode);
     if (next !== "viewer") loadEditorModule();
   }
 
-  /** Hide/show the viewer — the focus toggle. */
-  function togglePreview() {
-    if (!lifecycle.previewUrl || isNarrow) return;
-    if (mode === "focus") {
-      setMode(modeBeforeFocus ?? "editor");
-      modeBeforeFocus = null;
-      return;
+  /** Focus applies while a project workspace is open; it is never persisted. */
+  let inFocus = $derived(focus && toolbarProjectOpen);
+
+  /**
+   * Turn Focus on/off. It only hides chrome (see `focus`), so neither the mode
+   * nor the left-panel setting is touched and leaving restores exactly what
+   * was visible. `returnFocus` puts keyboard focus back on the toolbar's Focus
+   * button, which the minimal bar's Exit button replaced.
+   */
+  function setFocus(on: boolean, returnFocus = false): void {
+    if (on === focus || (on && !toolbarProjectOpen)) return;
+    contextMenu.close();
+    focus = on;
+    if (on && !focusHintShown) {
+      focusHintShown = true;
+      toast?.info?.("Focus: press Esc or Ctrl+Shift+F to exit", 6000);
     }
-    setMode("focus");
-    // Don't yank focus into the editor — the author asked to hide the preview,
-    // not to start typing.
-    if (lifecycle.currentDir && lifecycle.sourceMode === "folder") {
-      openEditorPane({ focus: false });
+    if (!on && returnFocus) {
+      void tick().then(() => document.getElementById("focus-toggle-btn")?.focus());
     }
   }
 
@@ -2605,6 +2593,15 @@
     }
     setPaneMode(paneModeForTab(tab));
   }
+
+  /** The minimal bar's Edit/Read switch: a mode on wide layouts, a tab on narrow. */
+  function selectFocusView(view: "edit" | "read"): void {
+    if (isNarrow) void selectMobileTab(view === "edit" ? "markdown" : "preview");
+    else setMode(view === "edit" ? "editor" : "viewer");
+  }
+  let focusView = $derived<"edit" | "read">(
+    (isNarrow ? mobileTab === "markdown" : mode !== "viewer") ? "edit" : "read",
+  );
 
   // ── Virtual-keyboard handling (#34) ────────────────────────────────────────
   // When the on-screen keyboard opens on a touch device, the visual viewport
@@ -2768,6 +2765,16 @@
 {/if}
 
 <div class="shell">
+  {#if inFocus}
+    <FocusBar
+      view={focusView}
+      onSelectView={(v) => { contextMenu.close(); selectFocusView(v); }}
+      onExit={() => setFocus(false, true)}
+      {pageNav}
+      showPageNav={focusView === "read" && !!lifecycle.previewUrl}
+      rendering={lifecycle.rendering}
+    />
+  {:else}
   <AppToolbar
     bind:panelToggleEl={leftPanelToggleBtn}
     {leftPanelOpen}
@@ -2809,10 +2816,13 @@
     onSave={handleForceSave}
     showProjectSettings={toolbarProjectOpen && isDesktop()}
     onOpenProjectSettings={openProjectConfig}
+    {focus}
+    onToggleFocus={() => setFocus(!focus)}
   />
+  {/if}
 
   <!-- Global left panel — available in both preview and edit modes -->
-  <div id="left-panel-region" class="left-panel-region" class:panel-open={leftPanelOpen} style="--left-panel-width: {leftPanelWidth}px">
+  <div id="left-panel-region" class="left-panel-region" class:panel-open={leftPanelOpen} class:in-focus={inFocus} style="--left-panel-width: {leftPanelWidth}px">
     <LeftPanel
       bind:open={leftPanelOpen}
       bind:width={leftPanelWidth}
@@ -2879,10 +2889,8 @@
       class:narrow={isNarrow}
       class:show-edit={isNarrow && editorPaneOpen}
       class:show-view={isNarrow && !editorPaneOpen}
-      class:preview-hidden={!previewVisible}
-      class:preview-collapsed={!previewVisible}
       bind:this={workspaceEl}
-      style="--kbd-offset: {keyboardInset}px; {previewCollapseGridColumns ? `grid-template-columns: ${previewCollapseGridColumns};` : splitGridColumns ? `grid-template-columns: ${splitGridColumns};` : ''}"
+      style="--kbd-offset: {keyboardInset}px; {splitGridColumns ? `grid-template-columns: ${splitGridColumns};` : ''}"
     >
       {#if editorPaneOpen}
         <section
@@ -2915,6 +2923,7 @@
             {/if}
             <!-- Editor toolbar (#31): compact formatting bar, visible only when a
                  markdown file is open. Placed above the editor, within the pane. -->
+            {#if !inFocus}
             <EditorToolbar
               filePath={editorFilePath}
               projectDir={lifecycle.currentDir}
@@ -2923,14 +2932,11 @@
                   openSnippetPicker();
                   return;
                 }
-                if (action === "focus-mode") {
-                  togglePreview();
-                  return;
-                }
                 editorRef?.runToolbarAction(action, payload);
               }}
               onSave={handleForceSave}
             />
+            {/if}
             {#if MarkdownEditor}
               <!-- No per-file `{#key}` remount: MarkdownEditor keeps ONE
                    EditorView, while EditorFileSession gives it exactly ONE
@@ -2956,7 +2962,7 @@
             {/if}
           {/if}
         </section>
-        {#if !isNarrow && previewVisible}
+        {#if !isNarrow}
           <!-- Focusable separator (ARIA window-splitter pattern): drag, or
                Arrow-key resize / double-click reset for the non-drag path
                (#103, WCAG 2.2 SC 2.5.7). A <div>, not a <button> — a button
@@ -2992,8 +2998,7 @@
         id="mobile-panel-preview"
         role={isNarrow ? "tabpanel" : undefined}
         aria-labelledby={isNarrow ? "mobile-tab-preview" : undefined}
-        aria-hidden={!previewVisible}
-        inert={!previewVisible || (isNarrow && (editorPaneOpen || editorView !== "editor")) ? true : undefined}
+        inert={isNarrow && (editorPaneOpen || editorView !== "editor") ? true : undefined}
       >
         <FindBar bind:this={findBarRef} bind:open={findBarOpen} {client} />
         {#if lifecycle.previewUrl}
@@ -3068,6 +3073,7 @@
        and problems panel toggle. Sits below the left-panel-region in the
        .shell flex column so it spans the full window width. Never covers
        the preview iframe (normal layout flow). -->
+  {#if !inFocus}
   <StatusBar
     projectDir={lifecycle.currentDir}
     sourceMode={lifecycle.sourceMode}
@@ -3130,6 +3136,7 @@
     onOpenSettings={openSettings}
     onOpenHelp={openHelp}
   />
+  {/if}
 </div>
 </div>
 
@@ -3321,6 +3328,17 @@
      even when off-screen. We compensate with a negative margin-left. */
   .left-panel-region:not(.panel-open) .main-content {
     margin-left: calc(-1 * var(--left-panel-width, 300px));
+  }
+  /* Focus hides the panel WITHOUT touching `leftPanelOpen` (the persisted
+     setting): display:none drops it from layout and the tab order, and
+     main-content takes the full width whether the panel was open or closed.
+     Leaving Focus just removes the class. */
+  .left-panel-region.in-focus > :global(.left-panel),
+  .left-panel-region.in-focus > :global(.panel-scrim) {
+    display: none;
+  }
+  .left-panel-region.in-focus .main-content {
+    margin-left: 0;
   }
   /* Narrow screens: panel overlays, so main-content never shifts */
   @media screen and (max-width: 820px) {

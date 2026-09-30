@@ -5,13 +5,12 @@ import path from "node:path";
 const root = path.resolve(import.meta.dir, "../..");
 const read = (rel: string) => readFileSync(path.join(root, rel), "utf8");
 
-test("hidden preview is collapsed to zero width instead of unmounted and editor gets full track", () => {
+test("the preview pane is never hidden or collapsed by Focus: Edit+Focus keeps editor and preview side by side", () => {
   const page = read("src/routes/+page.svelte");
-  expect(page).toContain("previewCollapseGridColumns");
-  expect(page).toContain("class:preview-collapsed={!previewVisible}");
-  expect(page).toContain("aria-hidden={!previewVisible}");
-  expect(page).toContain("inert={!previewVisible");
-  expect(page).not.toContain("{#if previewVisible}\n      <section");
+  expect(page).not.toContain("previewCollapseGridColumns");
+  expect(page).not.toContain("previewVisible");
+  expect(page).not.toContain("aria-hidden={!previewVisible}");
+  expect(page).toContain('inert={isNarrow && (editorPaneOpen || editorView !== "editor") ? true : undefined}');
 });
 
 test("project activity view has an explicit close action returning to the editor", () => {
