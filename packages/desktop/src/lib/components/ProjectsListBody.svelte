@@ -584,7 +584,7 @@
     padding: 6px 8px;
     border-radius: 5px;
     font-size: 12px;
-    font-family: var(--app-font-mono);
+    font-family: inherit;
   }
   .location-input:focus {
     outline: 2px solid var(--app-focus-ring);
@@ -661,7 +661,7 @@
     gap: 4px;
   }
   .list-heading-count { font-weight: 500; letter-spacing: 0; text-transform: none; font-size: 10px; color: var(--app-text-muted); }
-  .empty-section-hint { font-size: 11px; color: var(--app-text-muted); margin: 2px 0 0 2px; font-style: italic; }
+  .empty-section-hint { font-size: 12px; color: var(--app-text-secondary); margin: 2px 0 0 2px; }
   .load-error {
     display: flex;
     align-items: center;

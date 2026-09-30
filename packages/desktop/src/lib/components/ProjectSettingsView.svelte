@@ -48,6 +48,7 @@
    */
   import { onMount } from "svelte";
   import { api } from "$lib/api";
+  import { isEditableTarget } from "$lib/a11y";
   import type { ToastController } from "$lib/components/Toast.svelte";
   import { DetailsSectionController } from "$lib/routes/details-section-controller.svelte";
   import { ExtensionsSectionController } from "$lib/routes/extensions-section-controller.svelte";
@@ -231,7 +232,19 @@
   function close() {
     onClose?.();
   }
+
+  // Esc closes the view — same path as the X button. Yields to anything that
+  // already handled Esc (open select/menu/dialog) and to form controls.
+  function onWindowKeydown(e: KeyboardEvent) {
+    if (e.key !== "Escape" || e.defaultPrevented) return;
+    if (isEditableTarget(e.target)) return;
+    if (document.querySelector('[role="dialog"]:not(.settings-view *), [role="menu"], [role="listbox"]')) return;
+    e.preventDefault();
+    close();
+  }
 </script>
+
+<svelte:window onkeydown={onWindowKeydown} />
 
 <div class="settings-view" aria-busy={loadingAll}>
   <header class="settings-header">

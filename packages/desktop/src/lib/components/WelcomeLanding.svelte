@@ -217,7 +217,10 @@
   }
 
   function onKeydown(e: KeyboardEvent) {
-    if (e.key !== "Escape") return;
+    if (e.key !== "Escape" || !visible || e.defaultPrevented) return;
+    // Window-level (focus can sit on <body> when a dialog element defeated
+    // focusOnShow): yield to any open dialog that is not part of this layer.
+    if (document.querySelector('[role="dialog"]:not(.landing *)')) return;
     // Esc inside a field means "cancel my typing", not "leave the start
     // screen" — never hijack it from form controls (e.g. the books search).
     if (isEditableTarget(e.target)) return;
@@ -264,10 +267,9 @@
   }
 </script>
 
+<svelte:window onkeydown={onKeydown} />
+
 {#if visible}
-  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -- the keydown
-       is a layer-scoped Esc convenience (never required: Continue is a real
-       button); the section is the focus root while the workspace is inert. -->
   <section
     class="landing"
     bind:this={rootEl}
@@ -275,7 +277,6 @@
     tabindex="-1"
     inert={inactive || undefined}
     aria-label="Start screen"
-    onkeydown={onKeydown}
     transition:fade={{ duration: 180 }}
     onoutrostart={onOutroStart}
     onoutroend={onOutroEnd}
@@ -284,7 +285,7 @@
       <header class="brand-row">
         <div class="brand-left">
           <BrandMark size={64} />
-          {#if version}<span class="brand-version">v{version}</span>{/if}
+          {#if version && version !== "unknown"}<span class="brand-version">v{version}</span>{/if}
         </div>
         <div class="brand-right">
           {#if updateReadyVersion && onUpdateApply}

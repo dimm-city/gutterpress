@@ -5,6 +5,23 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.6] - 2026-09-30
+
+### Fixed
+
+- **Esc closes Project settings and the Settings / Help / Logs page.** Both
+  full-screen views could only be closed with their X button. Esc still does
+  nothing while you are typing in a field or have a menu open.
+- **In-app Help matches the app.** It no longer points at a toolbar Open
+  button, a Single / Two-page toggle or a Ctrl+O shortcut that do not exist.
+- **Easier to read and click.** Editor line numbers have enough contrast to
+  read comfortably, the status-bar settings and help buttons are larger click
+  targets, and the status-bar gear is now named "App preferences" so it is
+  not confused with the toolbar's Project settings gear.
+- **Welcome screen polish.** The book search box uses the normal font, the
+  "No recent projects" hint is easier to read, and the version label is hidden
+  instead of showing "vunknown" when the version is unavailable.
+
 ## [0.11.5] - 2026-09-29
 
 ### Fixed
