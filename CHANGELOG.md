@@ -9,6 +9,14 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **"Where your work is kept" explains saving, versions and online backup.**
+  Clicking the save status now opens a short dialog in plain words: your
+  writing is saved on this computer as you type; a version is a saved copy
+  you can go back to (and how many files changed since the last one); and
+  whether the book is backed up online. Each part has the one button that
+  helps, such as Save a version now, Start keeping versions or Set up online
+  backup. The status bar and backup messages use the same words, and a
+  manual "Back up online now" updates the dialog right away.
 - **Books open ready to write.** Opening a book for the first time now shows
   Edit — the editor beside the page — with the left panel open, instead of a
   lone cover page. A layout or panel choice you have already made still wins.
