@@ -140,6 +140,30 @@ export function problemCounts(problems: ProblemEntry[]): {
   return { errors, warnings, infos, badge: errors + warnings };
 }
 
+/** The badge counts in words — "1 error, 3 warnings" — for screen readers and
+ *  the toggle's accessible name. Empty when there is neither. */
+export function problemsSummary(counts: { errors: number; warnings: number }): string {
+  const parts: string[] = [];
+  if (counts.errors > 0) parts.push(`${counts.errors} ${counts.errors === 1 ? "error" : "errors"}`);
+  if (counts.warnings > 0) parts.push(`${counts.warnings} ${counts.warnings === 1 ? "warning" : "warnings"}`);
+  return parts.join(", ");
+}
+
+/**
+ * Whether the status bar offers to expand the list (#307). An empty list has
+ * nothing to show, so a clean project reads "No problems" in the bar instead
+ * of opening an empty panel. A failed check still has a message to show, and a
+ * list that is already open stays closable — e.g. the writer just fixed the
+ * last problem.
+ */
+export function canExpandProblems(
+  problems: ProblemEntry[],
+  error: string | null,
+  open: boolean,
+): boolean {
+  return problems.length > 0 || !!error || open;
+}
+
 /**
  * Group problems by file for display: groups sorted by file name (project-
  * level findings last), entries within a group sorted by line then severity.

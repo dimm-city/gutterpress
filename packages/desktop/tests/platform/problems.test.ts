@@ -1,11 +1,13 @@
 import { test, expect } from "bun:test";
 import {
+  canExpandProblems,
   closesPanelOnEscape,
   closesPanelOnSelect,
   buildProblems,
   friendlySource,
   groupProblems,
   problemCounts,
+  problemsSummary,
   splitProblemMessage,
 } from "../../src/lib/problems";
 import type { ProblemEntry } from "../../src/lib/platform/dtos";
@@ -26,6 +28,28 @@ test("problemCounts: badge = errors + warnings; infos listed separately", () => 
   ]);
   expect(counts).toEqual({ errors: 2, warnings: 1, infos: 1, badge: 3 });
   expect(problemCounts([])).toEqual({ errors: 0, warnings: 0, infos: 0, badge: 0 });
+});
+
+test("problemsSummary: the badge counts in words, singular/plural, empty when neither", () => {
+  expect(problemsSummary({ errors: 1, warnings: 3 })).toBe("1 error, 3 warnings");
+  expect(problemsSummary({ errors: 2, warnings: 1 })).toBe("2 errors, 1 warning");
+  expect(problemsSummary({ errors: 0, warnings: 4 })).toBe("4 warnings");
+  expect(problemsSummary({ errors: 1, warnings: 0 })).toBe("1 error");
+  expect(problemsSummary({ errors: 0, warnings: 0 })).toBe("");
+});
+
+// #307: a clean project must not offer an expander — the empty "No problems
+// found" strip used to open over the left panel's buttons.
+test("canExpandProblems: nothing to list means nothing to expand", () => {
+  // The #307 case: a clean, closed list offers no expander.
+  expect(canExpandProblems([], null, false)).toBe(false);
+  // Entries to list (an info-only list still has entries).
+  expect(canExpandProblems([make({ severity: "error" })], null, false)).toBe(true);
+  expect(canExpandProblems([make({ severity: "info" })], null, false)).toBe(true);
+  // A failed check has a message to show — never mistaken for a clean run.
+  expect(canExpandProblems([], "We couldn't check your project this time.", false)).toBe(true);
+  // Already open (e.g. the writer just fixed the last problem): stays closable.
+  expect(canExpandProblems([], null, true)).toBe(true);
 });
 
 test("friendlySource maps known check ids to plain language, passes unknown through", () => {

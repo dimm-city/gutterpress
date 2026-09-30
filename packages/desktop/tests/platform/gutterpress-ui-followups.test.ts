@@ -53,12 +53,49 @@ test("bottom status uses save icons and compact mobile rules", () => {
   expect(status).toContain("@media screen and (max-width: 820px)");
   expect(status).toContain("display: none");
   // L9: Problems access used to disappear entirely below 820px
-  // (`!isCompact` gated the whole cluster off). It now always renders as a
-  // compact icon + count badge that opens the panel as a full-viewport
-  // overlay — see ProblemsPanel's own `compact` prop.
+  // (`!isCompact` gated the whole cluster off). It now always renders, and
+  // below 820px opens the list as a full-viewport sheet — see ProblemsPanel's
+  // own `compact` prop, whose sheet CSS lives with the list.
   expect(status).toContain('showProblems = $derived(!!projectDir && sourceMode === "folder")');
   expect(status).toContain("compact={isCompact}");
-  expect(status).toContain(".status-problems.compact");
+  expect(read("src/lib/components/ProblemsPanel.svelte")).toContain(".problems-panel.compact .panel-body");
+});
+
+test("#307: the Problems list is a row of its own above the bar — it never overlays the workspace", () => {
+  const status = read("src/lib/components/StatusBar.svelte");
+  const panel = read("src/lib/components/ProblemsPanel.svelte");
+  // Rendered before (above) the bar, not inside it. The page's .shell is a
+  // flex column, so a list in normal flow shrinks the workspace above it.
+  const listIdx = status.indexOf("<ProblemsPanel");
+  expect(listIdx).toBeGreaterThan(-1);
+  expect(listIdx).toBeLessThan(status.indexOf('class="status-bar"'));
+  // The old mechanism — an absolutely-positioned body reaching up out of the
+  // bar over the left panel and editor — is gone…
+  expect(status).not.toContain(":global(.panel-body)");
+  // …and the only out-of-flow mode left is the narrow sheet (a deliberate,
+  // dismissible full-viewport surface).
+  const outsideSheet = panel.replace(/\.problems-panel\.compact \.panel-body \{[^}]*\}/, "");
+  expect(outsideSheet).not.toMatch(/\.panel-body[^{]*\{[^}]*position:\s*(absolute|fixed)/);
+  // The toggle in the bar still drives the list by id.
+  expect(status).toContain('aria-controls="problems-body"');
+  expect(panel).toContain('id="problems-body"');
+  expect(status).toContain("aria-expanded={problemsOpen}");
+});
+
+test("#307: a clean project shows 'No problems' in the bar with no button to open an empty list", () => {
+  const status = read("src/lib/components/StatusBar.svelte");
+  // The toggle exists only when there is something to expand…
+  const ifIdx = status.indexOf("{#if canExpand}");
+  const elseIdx = status.indexOf("{:else}", ifIdx);
+  expect(ifIdx).toBeGreaterThan(-1);
+  expect(elseIdx).toBeGreaterThan(ifIdx);
+  expect(status.slice(ifIdx, elseIdx)).toContain('class="toggle-strip"');
+  // …and the rest of that block is a plain, non-interactive label.
+  const idle = status.slice(elseIdx, status.indexOf("{/if}", status.indexOf('class="strip-idle"')));
+  expect(idle).toContain('class="strip-idle"');
+  expect(idle).toContain("No problems");
+  expect(idle).not.toContain("<button");
+  expect(idle).not.toContain("onclick");
 });
 
 test("status bar groups saving/syncing on the right and puts Problems beside the book switcher", () => {
@@ -82,9 +119,9 @@ test("status bar groups saving/syncing on the right and puts Problems beside the
 });
 
 test("L9 regression: compact Problems overlay has a reachable close control and closes on select/Escape", () => {
-  // The compact overlay (`.status-right.compact :global(.panel-body)`, fixed
-  // and z-index:900) visually covers the toggle strip that would otherwise
-  // collapse it, so the panel must not depend on that strip to be dismissed.
+  // The compact sheet (`.problems-panel.compact .panel-body`, fixed and
+  // z-index:900) visually covers the toggle that would otherwise collapse it,
+  // so the panel must not depend on that toggle to be dismissed.
   const panel = read("src/lib/components/ProblemsPanel.svelte");
   const problems = read("src/lib/problems.ts");
   // Decision logic is real, unit-tested predicates (see problems.test.ts),

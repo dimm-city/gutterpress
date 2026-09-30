@@ -10,7 +10,8 @@
  *      source.links.local-refs) and a `filter:` declaration in a CSS file
  *      (warning, source.stylelint / printsafe risky-props).
  *   2. After the preview renders, the toolbar Problems button shows badge "2".
- *   3. Opening the panel lists both findings (file, line, message).
+ *   3. Opening the panel lists both findings (file, line, message), in a row of
+ *      its own between the workspace and the status bar (never over either, #307).
  *   4. Clicking the broken-ref entry opens the editor on 01-alpha.md with the
  *      offending line scrolled into view.
  *   5. At 700px window width the toolbar still has zero pairwise overlaps
@@ -212,8 +213,10 @@ if (!projectOpen) fail("project never opened — no TOC items or file items appe
 log("project opened");
 
 // ── 5. counts on the problems strip ──────────────────────────────────────────
-// The strip is always visible at the bottom of the screen (not in the navbar)
-// and shows error/warning counts without a dedicated badge element.
+// The strip sits in the status bar at the bottom of the screen (not in the
+// navbar) and shows error/warning counts without a dedicated badge element. It
+// is a button only while there is something to list (#307) — a clean project
+// shows a plain "No problems" label instead — so it appears with the counts.
 //
 // Those counts are downstream of the FIRST FULL RENDER, not of the project-open
 // gate above: the app calls refreshProblems() from its renderingComplete
@@ -287,6 +290,25 @@ if (!risky) fail("risky print-property (filter) finding not listed");
 if (risky.file !== "extra.css") fail(`risky finding grouped under ${risky.file}, expected extra.css`);
 if (!/warning/.test(risky.severity)) fail(`risky severity class ${risky.severity}, expected sev-warning`);
 log("both seeded findings listed with correct file/severity");
+// #307: the list is a row of its own between the workspace and the status bar.
+// It used to be an absolutely-positioned overlay that covered the bottom of the
+// left panel (hiding its buttons) and of the editor/preview.
+const rows = await evalJs(`(() => {
+  const body = document.querySelector('.problems-panel .panel-body').getBoundingClientRect();
+  return {
+    bodyTop: body.top,
+    bodyBottom: body.bottom,
+    workspaceBottom: document.querySelector('.left-panel-region').getBoundingClientRect().bottom,
+    barTop: document.querySelector('.status-bar').getBoundingClientRect().top,
+  };
+})()`);
+if (rows.bodyTop < rows.workspaceBottom - 1) {
+  fail(`problems list overlaps the workspace: list top ${rows.bodyTop} < workspace bottom ${rows.workspaceBottom}`);
+}
+if (rows.bodyBottom > rows.barTop + 1) {
+  fail(`problems list overlaps the status bar: list bottom ${rows.bodyBottom} > bar top ${rows.barTop}`);
+}
+log(`list sits between workspace and bar: ${JSON.stringify(rows)}`);
 await screenshot(join(tmpdir(), "problems-panel-wide.png"));
 
 // ── 7. click the broken-ref entry → editor opens 01-alpha.md at the line ────
