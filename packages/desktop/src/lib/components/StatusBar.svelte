@@ -72,7 +72,11 @@
     forceSyncing = false,
     /** Problem entries from the lint runner. */
     problems = [] as ProblemEntry[],
-    /** Whether problems are loading. */
+    /** Whether the project has not been checked yet: the lint is running, or
+     *  the render that triggers it has not finished (the page passes
+     *  `problemsLoading || rendering`). Until then the bar says "Checking…" —
+     *  never "No problems", which would be a claim about a check that has not
+     *  happened. */
     problemsLoading = false,
     /** Set when the lint API call itself failed — distinct from a clean run
      *  that found zero problems. Forwarded to ProblemsPanel's neutral (not

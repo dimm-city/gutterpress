@@ -3039,7 +3039,7 @@
     {forceSaving}
     forceSyncing={syncController.forceSyncing}
     problems={displayedProblems}
-    problemsLoading={problemsLoading}
+    problemsLoading={problemsLoading || lifecycle.rendering}
     {problemsError}
     bind:problemsOpen={problemsOpen}
     books={projectSession.books}

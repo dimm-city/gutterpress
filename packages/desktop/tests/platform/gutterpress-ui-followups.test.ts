@@ -186,6 +186,17 @@ test("#307: keyboard — opening the list moves focus into it; Escape and Close 
   expect(panel).not.toMatch(/key === ["']Tab["']/);
 });
 
+test("#307: until the first check has run the bar says 'Checking…', never 'No problems'", () => {
+  const page = read("src/routes/+page.svelte");
+  const status = read("src/lib/components/StatusBar.svelte");
+  // "Not checked yet" is the lint running OR the render that triggers it still
+  // in flight: renderingComplete clears `rendering` and starts the lint in the
+  // same synchronous call, so the two flags leave no gap between them.
+  expect(page).toContain("problemsLoading={problemsLoading || lifecycle.rendering}");
+  // The plain label follows that flag.
+  expect(status).toContain('{problemsLoading ? "Checking…" : "No problems"}');
+});
+
 test("top toolbar small-screen styles/config controls are removed", () => {
   const page = read("src/routes/+page.svelte");
   expect(page).not.toContain("Configure project…");
