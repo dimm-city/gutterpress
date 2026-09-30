@@ -280,6 +280,12 @@ export interface SyncStatus {
    * Timestamped steps, never secrets.
    */
   logFile?: string;
+  /**
+   * Which part of the product this status is about. Absent = the online
+   * backup. "versions" = the automatic-version safety net failed (it reuses
+   * this channel with state "error"), which must NOT read as a backup failure.
+   */
+  source?: "versions";
   /** True when the completed sync changed files in the local worktree. */
   filesChanged?: boolean;
   /**

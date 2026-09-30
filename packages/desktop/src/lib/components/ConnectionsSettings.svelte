@@ -540,7 +540,7 @@
           <dt>SSH addresses (git@…)</dt>
           <dd>
             Books opened from an SSH clone keep every local feature —
-            preview, snapshots, history, restore. Gutterpress can't sync over
+            preview, versions, history, restore. Gutterpress can't sync over
             SSH, so sync with your usual Git tool, or switch the book to
             the web (HTTPS) address and connect the server here.
           </dd>

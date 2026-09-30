@@ -58,7 +58,7 @@
     /** Whether the project keeps local version history (canSnapshot) — true for
      *  any local-git project even without a syncable remote. Drives the pill so
      *  local-only projects still get a clickable "Version history" affordance. */
-    canSnapshot = false,
+    canSnapshot = false as boolean | null,
     /** Current save phase from the editor buffer. */
     savePhase = "clean" as "clean" | "dirty" | "saving" | "error",
     /** Settings → Saving "Save edits automatically". Off, a dirty buffer is
@@ -130,7 +130,7 @@
     sourceMode?: "folder" | "url";
     canSync?: boolean;
     hasRemote?: boolean;
-    canSnapshot?: boolean;
+    canSnapshot?: boolean | null;
     autoVersions?: boolean;
     autoBackup?: boolean;
     savePhase?: "clean" | "dirty" | "saving" | "error";
@@ -189,6 +189,14 @@
   let saveBtnEl = $state<HTMLButtonElement | null>(null);
   let latestVersionAt = $state<number | null>(null);
   let changedFiles = $state<number | null>(null);
+  let stale = $state(false);
+  // The host said automatic versions keep failing (a `source: "versions"` status).
+  let versionsProblem = $state(false);
+  // Newest-wins sequencing for the version-facts requests, and the project the
+  // dialog was opened for (closing it if the project changes underneath).
+  let factsSeq = 0;
+  let factsAt = 0;
+  let dialogDir: string | null = null;
   let versionsLoad = $state<"loading" | "ready" | "error">("loading");
   let liveSyncState = $state<SyncState>("idle");
   let lastSyncAt = $state<string | null>(null);
@@ -209,7 +217,9 @@
         load: versionsLoad,
         lastVersionAt: latestVersionAt,
         changedFiles,
+        stale,
         savingVersion,
+        problem: versionsProblem,
       },
       online: {
         state: liveSyncState,
@@ -232,20 +242,24 @@
   async function fetchVersionFacts() {
     const dir = projectDir;
     if (!dir || !canSnapshot) return;
+    const seq = ++factsSeq;
     factsPhase = savePhase;
-    nowMs = Date.now();
+    factsAt = Date.now();
+    nowMs = factsAt;
     try {
       const [page, pending] = await Promise.all([
         api.vcs.listSnapshotsPage(dir, { limit: 1 }),
         api.vcs.unversionedChanges(dir),
       ]);
-      if (projectDir !== dir) return;
+      // A newer request (or another project) superseded this one: drop it.
+      if (seq !== factsSeq || projectDir !== dir) return;
       latestVersionAt = page.entries[0]?.timestamp ?? null;
       changedFiles = pending.changedFiles;
+      stale = pending.stale;
       versionsLoad = "ready";
     } catch {
       // Non-fatal: the dialog says it couldn't check, rather than guessing.
-      if (projectDir === dir) versionsLoad = "error";
+      if (seq === factsSeq && projectDir === dir) versionsLoad = "error";
     }
   }
 
@@ -255,19 +269,28 @@
   }
   function openSummary() {
     summaryOpen = true;
+    dialogDir = projectDir;
     versionsLoad = "loading";
     latestVersionAt = null;
     changedFiles = null;
+    stale = false;
     void fetchVersionFacts();
     stopRefresh();
     refreshTimer = setInterval(() => {
       nowMs = Date.now();
-      if (savePhase !== factsPhase && (savePhase === "clean" || savePhase === "error")) void fetchVersionFacts();
+      // The book changed underneath the dialog: close rather than show its facts.
+      if (projectDir !== dialogDir) {
+        closeSummary();
+        return;
+      }
+      const phaseSettled = savePhase !== factsPhase && (savePhase === "clean" || savePhase === "error");
+      if (phaseSettled || Date.now() - factsAt > 15_000) void fetchVersionFacts();
     }, 2000);
   }
   function closeSummary() {
     summaryOpen = false;
     stopRefresh();
+    factsSeq++; // any in-flight lookup is now stale
   }
   function toggleSummary() {
     if (summaryOpen) closeSummary();
@@ -275,11 +298,21 @@
   }
   onDestroy(stopRefresh);
 
+  /** A backup pass finished or changed state while the dialog is open: a sync
+   *  can make a version, so re-read the version facts too. */
+  function onPillState(state: SyncState, at: string | null | undefined) {
+    const changed = state !== liveSyncState || (at ?? null) !== lastSyncAt;
+    liveSyncState = state;
+    lastSyncAt = at ?? null;
+    if (changed && summaryOpen) void fetchVersionFacts();
+  }
+
   async function saveVersionNow() {
     if (!onSaveVersion || savingVersion) return;
     savingVersion = true;
     try {
       await onSaveVersion();
+      versionsProblem = false;
       await fetchVersionFacts();
     } catch {
       // The parent surfaces the failure toast; keep the dialog calm.
@@ -506,8 +539,8 @@
         class:spinning={forceSyncing}
         onclick={onForceSync}
         disabled={forceSyncing}
-        aria-label={forceSyncing ? "Syncing…" : "Sync changes now"}
-        title={forceSyncing ? "Syncing…" : "Sync changes now"}
+        aria-label={forceSyncing ? "Backing up…" : "Back up online now"}
+        title={forceSyncing ? "Backing up…" : "Back up online now"}
       >
         <Icon name="refresh-cw" size={14} />
       </button>
@@ -518,7 +551,9 @@
           {projectDir}
           onReconnect={onReconnect}
           onDetails={onShowLog}
-          onSyncState={(s, at) => { liveSyncState = s; lastSyncAt = at ?? null; }}
+          onSyncState={onPillState}
+          versionsAlert={versionsProblem}
+          onVersionsProblem={() => (versionsProblem = true)}
         />
       {/key}
     {/if}

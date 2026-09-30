@@ -19,6 +19,7 @@ interface LibModule {
     }) => Promise<unknown>;
   };
   capabilitiesFor: (source: unknown) => unknown;
+  ensureGitignoreHasDist: (projectDir: string) => Promise<void>;
 }
 
 export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
@@ -28,6 +29,9 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
   call: async ({ body }) => {
     const lib = (await loadLib()) as unknown as LibModule;
     const source = await lib.detectProjectSource(body.projectDir);
+    // The first version commits everything now: keep build output (dist/) out
+    // of it, exactly like new-book setup and "Set up as a book" do.
+    await lib.ensureGitignoreHasDist(body.projectDir);
     await lib.providerFor(source).initVersionHistory({
       projectDir: body.projectDir,
       initialMessage: 'Initial snapshot',

@@ -55,9 +55,9 @@ export function versionKind(message: string): VersionKind {
 export function versionLabel(message: string): string {
   switch (versionKind(message)) {
     case "automatic":
-      return "Automatic backup";
+      return "Automatic version";
     case "combined":
-      return "Combined with the online copy";
+      return "Combined with the online backup";
     case "created":
       return "Book created";
     case "manual":
@@ -158,7 +158,7 @@ export function collapseAutomaticRuns(entries: SnapshotEntry[]): TimelineRow[] {
   return rows;
 }
 
-/** "Backed up automatically · 9:02 AM–1:14 PM · 84 times" (entries newest-first). */
+/** "Versions made automatically · 9:02 AM–1:14 PM · 84 times" (entries newest-first). */
 export function autoRunSummary(entries: SnapshotEntry[]): string {
   const at = (ms: number): string => {
     try {
@@ -170,5 +170,5 @@ export function autoRunSummary(entries: SnapshotEntry[]): string {
   const newest = at(entries[0]!.timestamp);
   const oldest = at(entries[entries.length - 1]!.timestamp);
   const span = oldest === newest ? newest : `${oldest}–${newest}`;
-  return `Backed up automatically · ${span} · ${entries.length} times`;
+  return `Versions made automatically · ${span} · ${entries.length} times`;
 }

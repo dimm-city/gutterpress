@@ -3072,7 +3072,7 @@
     sourceMode={lifecycle.sourceMode}
     canSync={!!(syncController.syncDiag?.canSync)}
     hasRemote={projectSession.projectHasRemote}
-    canSnapshot={!!(projectSession.projectCapabilities?.canSnapshot)}
+    canSnapshot={projectSession.projectCapabilities ? !!projectSession.projectCapabilities.canSnapshot : null}
     savePhase={editorSavePhase}
     autoSave={settings.current.versionHistory.autoSave}
     autoVersions={settings.current.versionHistory.autoSnapshot}

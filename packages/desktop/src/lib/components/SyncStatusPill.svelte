@@ -33,6 +33,8 @@
      */
     onDetails,
     onSyncState,
+    versionsAlert = false,
+    onVersionsProblem,
   }: {
     projectDir?: string | null;
     onReconnect?: () => void;
@@ -41,6 +43,11 @@
      *  save-status dialog) can show the live online-copy status instead of a
      *  static capability flag. */
     onSyncState?: (state: SyncState, lastSyncAt?: string | null) => void;
+    /** The automatic-version safety net is failing (owner: StatusBar). It
+     *  outranks the quiet online-backup states, since it is a different problem. */
+    versionsAlert?: boolean;
+    /** A status with `source: "versions"` arrived (a version problem, not a backup one). */
+    onVersionsProblem?: (message: string | null) => void;
   } = $props();
 
   let syncState = $state<SyncState>("idle");
@@ -53,6 +60,8 @@
   // insecure-transport guidance). Reset on every status so a stale error
   // message never outlives its state.
   let statusMessage = $state<string | null>(null);
+  // The host's message for a version problem (source: "versions").
+  let versionsMessage = $state<string | null>(null);
   /**
    * M40: text for the ALWAYS-rendered visually-hidden live region below,
    * updated on every real state transition (see the onSyncStatus handler).
@@ -83,6 +92,13 @@
     const applyStatus = (status: SyncStatus) => {
       // Scope to this project only (the host may manage multiple open windows).
       if (status.projectDir !== projectDir) return;
+      if (status.logFile) logFilePath = status.logFile;
+      if (status.source === "versions") {
+        // Not an online-backup state: leave the backup state alone.
+        versionsMessage = status.message ?? null;
+        onVersionsProblem?.(versionsMessage);
+        return;
+      }
       syncState = status.state;
       onSyncState?.(status.state, status.lastSyncAt);
       statusMessage = status.message ?? null;
@@ -121,9 +137,12 @@
    * "idle" returns null — pill is hidden when there's nothing to show.
    */
   let pillText = $derived.by((): string | null => {
+    if (versionsAlert && (syncState === "idle" || syncState === "local" || syncState === "synced")) {
+      return "Versions need attention";
+    }
     switch (syncState) {
       case "syncing":
-        return "Syncing…";
+        return "Backing up…";
       case "synced":
         return "Online backup is on";
       case "offline":
@@ -146,7 +165,7 @@
         // M40: honest copy — a transient/unexpected sync failure is NOT the
         // same thing as no network, and telling a writer on a working
         // connection they're "Offline" is misleading. Still calm/no-jargon.
-        return "Sync paused — edits are saved on this computer";
+        return "Online backup paused — your edits are safe on this computer";
       case "idle":
       default:
         return null;
@@ -159,7 +178,11 @@
    * same detail manual sync surfaces — instead of only the generic pill copy.
    */
   let pillTitle = $derived(
-    syncState === "error" && statusMessage ? statusMessage : pillText,
+    pillText === "Versions need attention" && versionsMessage
+      ? versionsMessage
+      : syncState === "error" && statusMessage
+        ? statusMessage
+        : pillText,
   );
 
   /**
@@ -170,14 +193,17 @@
 
   /** True for states that are visually "quiet" (no action needed). */
   let isQuiet = $derived(
-    syncState === "synced" || syncState === "idle" || syncState === "local",
+    !versionsAlert && (syncState === "synced" || syncState === "idle" || syncState === "local"),
   );
 
   /** True when the pill should pulse/animate (a sync is actively running). */
   let isActive = $derived(syncState === "syncing");
 
   /** True for states that require user attention. */
-  let isWarning = $derived(syncState === "auth");
+  let isWarning = $derived(
+    syncState === "auth" ||
+      (versionsAlert && (syncState === "idle" || syncState === "local" || syncState === "synced")),
+  );
 
   /** "connect" invites (not warns): accent dot, clickable, neutral text. */
   let isInvite = $derived(syncState === "connect");

@@ -6,8 +6,10 @@ import type { RequestHandler } from './$types';
 // last version. The save-status dialog reads it to reconcile "your edits are
 // saved" with "your last version is days old". Read-only — the lib walks the
 // working tree against the index with isomorphic-git (no system git, §7) and
-// never touches history. `changedFiles` is null for a plain folder (no version
-// history to compare against).
+// never touches history. Counts the OPEN BOOK's folder only (a book inside a
+// larger repo ignores its siblings) and skips app-written plugin files.
+// `changedFiles` is null for a plain folder (no version history to compare
+// against); `stale` means a crashed version attempt may have left staged work.
 
 export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
   validate: async (raw) => ({
@@ -15,7 +17,8 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
   }),
   call: async ({ body }) => {
     const lib = await loadLib();
-    return { changedFiles: await lib.countUnversionedChanges(body.projectDir) };
+    const found = await lib.countUnversionedChanges(body.projectDir);
+    return { changedFiles: found ? found.changedFiles : null, stale: found ? found.stale : false };
   },
   onError: (e) => friendlyVcsError(e, 'unversionedChanges', 'vcs/unversioned-changes'),
 });

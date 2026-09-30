@@ -187,7 +187,7 @@ describe("Status bar — one calm label opening a 'Where your work is kept' dial
   test("each concept gets a plain explanation: saving, a version as a restore point, an online copy", () => {
     expect(copy).toContain("What you type is written to a file on this computer.");
     expect(copy).toContain("A version is a restore point");
-    expect(copy).toContain("A copy of your versions online");
+    expect(copy).toContain("A copy of your book kept online");
   });
   test("the writer-facing strings never use version-control jargon", () => {
     // Only quoted string literals / template strings count (comments may name the words).
@@ -199,7 +199,7 @@ describe("Status bar — one calm label opening a 'Where your work is kept' dial
   });
   test("it reconciles 'saved' with 'last version 3 days ago' using the real changed-file count", () => {
     expect(copy).toContain("They're saved on this computer, but not in a version yet.");
-    expect(copy).toContain("Everything you've written is in it.");
+    expect(copy).toContain("Everything you've written is in that version.");
     expect(status).toContain("api.vcs.unversionedChanges");
     expect(status).toContain("api.vcs.listSnapshotsPage");
   });
@@ -210,7 +210,8 @@ describe("Status bar — one calm label opening a 'Where your work is kept' dial
     expect(status).toContain("onShowVersions");
   });
   test("a plain folder can turn version history on from the dialog (same route as Book settings)", () => {
-    expect(copy).toContain("Turn on version history");
+    expect(copy).toContain("Start keeping versions");
+    expect(copy).toContain("This saves a first version of your book now.");
     const page = read("src/routes/+page.svelte");
     expect(page).toContain("onEnableVersionHistory");
     expect(page).toContain("api.vcs.enableVersionHistory(dir)");
@@ -233,8 +234,8 @@ describe("Status bar — one calm label opening a 'Where your work is kept' dial
     // Gutterpress just isn't auto-syncing (SSH / uncredentialed HTTPS) reads
     // "Not syncing automatically" instead.
     expect(status).toContain("hasRemote");
-    expect(copy).toContain('status: "Not backing up automatically."');
-    expect(copy).toContain('status: "Not set up."');
+    expect(copy).toContain("Online backup details…");
+    expect(copy).toContain("Set up online backup…");
     // hasRemote flows from the project source classification, through the
     // session controller, to the status bar.
     expect(session).toContain("projectHasRemote");
@@ -252,7 +253,7 @@ describe("Status bar — one calm label opening a 'Where your work is kept' dial
     expect(pill).toContain('syncState === "auth" || syncState === "connect"');
     // Dialog: the section pairs honest copy with a one-click action.
     expect(copy).toContain('case "connect":');
-    expect(copy).toContain('status: "Not connected yet."');
+    expect(copy).toContain('status: "Not signed in to online backup."');
     expect(copy).toContain('id: "connect"');
     expect(status).toContain("onConnectOnline");
     expect(page).toContain("onConnectOnline={onSyncReconnect}");

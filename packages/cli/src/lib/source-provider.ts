@@ -25,6 +25,7 @@ import {
   findEnclosingRepoDir,
 } from "./project-source.ts";
 import { createFileLogger } from "./remote-auth/operation-log.ts";
+import { PLUGINS_DIR, VENDORED_NPM_DIR, VENDOR_RECEIPT_FILE } from "./plugin-vendor.ts";
 
 const noopLogger: { debug(): void; info(): void; warn(): void; error(): void } = {
   debug: () => {},
@@ -743,23 +744,49 @@ export function isNoChangesError(e: unknown): boolean {
   return e instanceof Error && /no changes since the last snapshot/i.test(e.message);
 }
 
+/** What "Save a version" would capture in the open book right now. */
+export interface UnversionedChanges {
+  /**
+   * Files of THIS book (its folder inside the repo) that changed since the
+   * last version — writer work only: app-written files (the vendored plugin
+   * folder and its install receipt) are not counted.
+   */
+  changedFiles: number;
+  /**
+   * A previous version attempt died after staging (its crash marker is still
+   * present), so the index may hold work HEAD doesn't have even when the
+   * working tree looks clean. The count can't be trusted to be 0 then.
+   */
+  stale: boolean;
+}
+
 /**
- * How many files changed since the last version (snapshot) — i.e. what "Save a
- * version" would capture right now. `null` when the project has no version
- * history (a plain folder). Uses the same workdir-vs-index walk a snapshot
- * uses to decide "nothing new to save", so `0` here means `snapshot()` would
- * reject with the no-changes error. Queued behind the repo lock so it never
- * reads the index mid-snapshot; lock-free walk otherwise (no history read).
+ * How many files of the open book changed since the last version (snapshot).
+ * `null` when the project has no version history (a plain folder). Uses the
+ * same workdir-vs-index walk a snapshot uses to decide "nothing new to save".
+ * A book inside a larger repo (`subPath`) is counted on its own folder only.
+ * Queued behind the repo lock so it never reads the index mid-snapshot;
+ * otherwise a lock-free walk that reads no history.
  */
 export async function countUnversionedChanges(
   projectDir: string,
-): Promise<number | null> {
+): Promise<UnversionedChanges | null> {
   const source = await detectProjectSource(projectDir);
   if (source.type !== "local-git-folder") return null;
   const dir = gitScopeFor(source);
+  const bookPrefix = source.subPath ? `${source.subPath.replace(/\/+$/, "")}/` : "";
+  const appWritten = `${bookPrefix}${PLUGINS_DIR}/${VENDORED_NPM_DIR}/`;
   return withRepoLock(dir, async () => {
     const { adds, removes } = await listWorkdirChanges(dir);
-    return new Set([...adds, ...removes]).size;
+    const mine = new Set(
+      [...adds, ...removes].filter(
+        (f) =>
+          f.startsWith(bookPrefix) &&
+          !f.startsWith(appWritten) &&
+          path.posix.basename(f) !== VENDOR_RECEIPT_FILE,
+      ),
+    );
+    return { changedFiles: mine.size, stale: fs.existsSync(snapshotStagingMarkerPath(dir)) };
   });
 }
 

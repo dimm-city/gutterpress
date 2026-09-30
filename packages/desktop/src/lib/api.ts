@@ -639,9 +639,10 @@ export const api = {
     restoreSnapshot: (projectDir: string, id: string) =>
       post<{ restoredId: string; backupId?: string }>('/api/vcs/restore-snapshot', { projectDir, id }),
     /** Files changed since the last version (saved, but not in a version yet);
-     *  `changedFiles` is null for a plain folder with no version history. */
+     *  `changedFiles` is null for a plain folder with no version history;
+     *  `stale` = a crashed version attempt may have left staged work. */
     unversionedChanges: (projectDir: string) =>
-      post<{ changedFiles: number | null }>('/api/vcs/unversioned-changes', { projectDir }),
+      post<{ changedFiles: number | null; stale: boolean }>('/api/vcs/unversioned-changes', { projectDir }),
     saveSnapshot: (projectDir: string, message?: string) =>
       post<SnapshotEntry>('/api/vcs/save-snapshot', { projectDir, message }),
     /** The project's local copies (git branches) and which one is open;

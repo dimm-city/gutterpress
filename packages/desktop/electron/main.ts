@@ -379,8 +379,9 @@ const autoSnapshot = new AutoSnapshotScheduler({
       projectDir: dir,
       lastSyncAt: null,
       logFile: operationLogPathForDir(dir),
+      source: "versions",
       message:
-        "Version history needs attention — the last few automatic backups of this book didn't complete. " +
+        "Versions need attention — the last few automatic versions of this book didn't complete. " +
         "Try saving a version now; if it keeps failing, make sure no other program has the book folder open or locked.",
     });
   },

@@ -82,6 +82,7 @@ export type {
 export {
   scaffoldProject,
   adoptFolder,
+  ensureGitignoreHasDist,
   slugifyProjectName,
   escapeYamlScalar,
 } from "../lib/project-scaffold.ts";
@@ -270,6 +271,7 @@ export {
 export type {
   ListHistoryOptions,
   HistoryPage,
+  UnversionedChanges,
   LocalBranches,
   SwitchBranchOptions,
   SwitchBranchResult,

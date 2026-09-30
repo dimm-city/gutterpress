@@ -7,25 +7,33 @@
  *   2. Versions       — restore points (local git commits) you can go back to,
  *   3. Online backup  — a copy of those versions on an online service.
  *
- * The old popover listed them as three bare facts ("Saved on this computer" /
- * "Last version saved 3 days ago"), which read as a contradiction. This module
- * turns the REAL state into a short explanation for each — what it is, what is
- * true right now, and what (if anything) the writer can do — and says so
- * plainly when the two clocks differ ("saved, but not in a version yet").
+ * This module turns the REAL state into a short explanation for each — the
+ * current state first, then what the thing is, then what (if anything) the
+ * writer can do — and says so plainly when the two clocks differ ("saved, but
+ * not in a version yet").
  *
  * Pure: no DOM, no host imports, no clock reads (callers pass `now`). The
  * dialog and StatusBar only render what this returns, so every state
  * combination is unit-testable. Never claims a fact it wasn't given: an unknown
  * value reads "Checking…" or is simply left out.
  *
- * Vocabulary: "version" (never commit/snapshot), "online backup" (never
- * remote/push/sync-jargon beyond the "Sync" word the toolbar already uses),
- * "restore point" only as the one analogy for what a version is.
+ * Vocabulary: the noun is "version" ("restore point" appears only in the
+ * one-line explainer). The online side is always "online backup". Never
+ * commit / snapshot / repository / branch / push / pull / remote.
  */
 import { relativeTime } from "./format";
 import type { SyncState } from "./platform/contract";
 
-export type SaveStatusTone = "ok" | "info" | "warn" | "error" | "pending";
+/**
+ * Cadence the copy quotes. The lib owns the real values
+ * (`AUTO_SNAPSHOT_DEFAULT_MINUTES`, `AUTO_SYNC_PUSH_INTERVAL_MINUTES` in
+ * host-policy.ts); the renderer can't value-import the lib (CLAUDE.md §8), so
+ * tests/platform/save-status.test.ts asserts these equal the lib's constants.
+ */
+export const VERSION_QUIET_MINUTES = 10;
+export const BACKUP_UPLOAD_MINUTES = 15;
+
+export type SaveStatusTone = "ok" | "neutral" | "action" | "warn" | "error" | "pending";
 
 export type SaveStatusActionId =
   | "save"
@@ -45,19 +53,23 @@ export interface SaveStatusAction {
 }
 
 export interface SaveStatusSection {
-  /** One line: what this thing IS, in plain words. Constant per section. */
-  explain: string;
-  /** One line: the current state, stated from real data. */
+  /** One line: the current state, from real data. Shown first. */
   status: string;
   /** Optional second line that qualifies the state. */
   detail?: string;
-  /** Optional note about how it happens automatically. */
+  /** A problem worth its own warning line (e.g. automatic versions failing). */
+  alert?: string;
+  /** One short sentence: what this thing IS. Constant per section. */
+  explain: string;
+  /** Optional extra note about how it happens automatically. */
   note?: string;
   tone: SaveStatusTone;
   actions: SaveStatusAction[];
 }
 
 export interface SaveStatusCopy {
+  /** The "is my work safe?" line at the top. */
+  summary: { text: string; tone: SaveStatusTone };
   saving: SaveStatusSection;
   versions: SaveStatusSection;
   online: SaveStatusSection;
@@ -71,18 +83,24 @@ export interface SaveStatusInput {
   /** A manual Save is in progress. */
   forceSaving: boolean;
   versions: {
-    /** The book keeps version history (a local git repo). False for a plain folder. */
-    enabled: boolean;
+    /** The book keeps version history (a local git repo). False for a plain
+     *  folder; `null` while the project's classification hasn't loaded yet. */
+    enabled: boolean | null;
     /** Settings → Saving "Keep previous versions" (automatic versions). */
     automatic: boolean;
-    /** State of the lookup for the two facts below. */
+    /** State of the lookup for the facts below. */
     load: "loading" | "ready" | "error";
     /** Epoch ms of the newest version, or null when there is none. */
     lastVersionAt: number | null;
-    /** Files changed since the newest version, or null when unknown. */
+    /** Files of this book changed since the newest version, or null when unknown. */
     changedFiles: number | null;
+    /** A crashed version attempt may have left staged work: `changedFiles: 0`
+     *  can't be trusted to mean "nothing to save". */
+    stale: boolean;
     /** "Save a version now" is in progress. */
     savingVersion: boolean;
+    /** The host reported that automatic versions keep failing. */
+    problem: boolean;
   };
   online: {
     /** Live state from the sync status stream ("idle" until the first one). */
@@ -93,22 +111,25 @@ export interface SaveStatusInput {
     hasRemote: boolean;
     /** Settings → Saving "Keep this book backed up online". */
     automatic: boolean;
-    /** ISO time of the last completed sync attempt this session, or null. */
+    /** ISO time of the last completed backup check this session, or null. */
     lastSyncAt: string | null;
-    /** A manual Sync now is in progress. */
+    /** A manual "Back up now" is in progress. */
     syncing: boolean;
   };
   /** Epoch ms "now", injected so the mapping stays pure. */
   now: number;
 }
 
-// ── Constant explanations (one line each, no jargon) ──────────────────────────
+// ── Constant explainers (one short sentence each) ─────────────────────────────
 
 export const SAVING_EXPLAIN = "What you type is written to a file on this computer.";
 export const VERSIONS_EXPLAIN =
-  "A version is a restore point: a copy of your whole book at one moment, so you can go back to it later.";
+  "A version is a restore point: a copy of your book you can go back to later.";
 export const ONLINE_EXPLAIN =
-  "A copy of your versions online, so you can open your book on another computer and it survives if this one is lost.";
+  "A copy of your book kept online, so you can get it back if this computer is lost.";
+
+const SETTING_VERSIONS = "Settings → Saving → Keep previous versions";
+const SETTING_BACKUP = "Settings → Saving → Keep this book backed up online";
 
 const files = (n: number): string => `${n} file${n === 1 ? "" : "s"}`;
 
@@ -117,6 +138,13 @@ function lastVersionLine(ago: string): string {
   if (ago === "just now") return "Your last version was made just now.";
   return `Your last version is from ${ago || "a while ago"}.`;
 }
+
+const checking = (explain: string): SaveStatusSection => ({
+  status: "Checking…",
+  explain,
+  tone: "pending",
+  actions: [],
+});
 
 // ── Saving ────────────────────────────────────────────────────────────────────
 
@@ -138,7 +166,7 @@ export function savingSection(i: Pick<SaveStatusInput, "savePhase" | "autoSave" 
     return {
       ...base,
       status: "Couldn't save your last change.",
-      detail: "It's still open here. Check that the file isn't locked or read-only, then try again.",
+      detail: "It's still open here. Check that the file isn't open in another program or set to read-only.",
       tone: "error",
       actions: [{ id: "save", label: "Try saving again", primary: true }],
     };
@@ -156,30 +184,41 @@ export function savingSection(i: Pick<SaveStatusInput, "savePhase" | "autoSave" 
 
 // ── Versions ──────────────────────────────────────────────────────────────────
 
-export function versionsSection(
-  i: Pick<SaveStatusInput, "versions" | "now">,
-): SaveStatusSection {
+export function versionsSection(i: Pick<SaveStatusInput, "versions" | "now">): SaveStatusSection {
   const v = i.versions;
   const base = { explain: VERSIONS_EXPLAIN };
+
+  if (v.enabled === null) return checking(base.explain);
 
   if (!v.enabled) {
     return {
       ...base,
-      status: "Version history is off for this folder.",
-      detail: "So there are no restore points yet. Your edits are still saved here.",
-      tone: "info",
-      actions: [{ id: "enableVersionHistory", label: "Turn on version history", primary: true }],
+      status: "Your book isn't keeping versions yet.",
+      detail: "Your edits are saved on this computer, but you can't go back to an earlier copy.",
+      note: "This saves a first version of your book now.",
+      tone: "action",
+      actions: [{ id: "enableVersionHistory", label: "Start keeping versions", primary: true }],
     };
   }
 
   const viewVersions: SaveStatusAction = { id: "viewVersions", label: "See previous versions" };
   const note = v.automatic
-    ? "Gutterpress also makes one for you after you stop editing for 10 minutes, and when you close the book."
-    : "Automatic versions are off (Settings → Saving), so make one yourself when you want a restore point.";
+    ? `Gutterpress also makes one after you stop editing for ${VERSION_QUIET_MINUTES} minutes, and usually when you close the book.`
+    : `Automatic versions are off (${SETTING_VERSIONS}). Make one yourself whenever you like.`;
+  const alert = v.problem
+    ? "Automatic versions aren't completing. Try Save a version now; if it keeps failing, make sure no other program has the book folder open."
+    : undefined;
+  const withAlert = alert ? { alert } : {};
 
   if (v.load === "loading") {
-    return { ...base, status: "Checking…", tone: "pending", note, actions: [] };
+    return { ...base, status: "Checking…", tone: "pending", note, ...withAlert, actions: [] };
   }
+  const saveBtn = (extra: Partial<SaveStatusAction> = {}): SaveStatusAction => ({
+    id: "saveVersion",
+    label: v.savingVersion ? "Saving a version…" : "Save a version now",
+    disabled: v.savingVersion,
+    ...extra,
+  });
   if (v.load === "error") {
     return {
       ...base,
@@ -187,31 +226,41 @@ export function versionsSection(
       detail: "Your edits are still saved on this computer.",
       tone: "warn",
       note,
-      actions: [{ id: "saveVersion", label: saveLabel(v.savingVersion), disabled: v.savingVersion }, viewVersions],
+      ...withAlert,
+      actions: [saveBtn(), viewVersions],
     };
   }
 
   const n = v.changedFiles;
+  const nothingToSave = n === 0 && !v.stale;
   let status: string;
   let detail: string | undefined;
   let tone: SaveStatusTone;
   if (v.lastVersionAt == null) {
     status = "No versions yet.";
-    tone = "info";
+    tone = "neutral";
     if (n != null && n > 0) {
       detail = `${n === 1 ? "1 file is" : `${n} files are`} saved on this computer, but not in a version yet.`;
+      tone = "action";
     }
   } else {
     status = lastVersionLine(relativeTime(v.lastVersionAt, i.now));
     if (n == null) {
       tone = "ok";
-    } else if (n === 0) {
-      detail = "Everything you've written is in it.";
-      tone = "ok";
-    } else {
+    } else if (n > 0) {
       detail = `You've changed ${files(n)} since then. They're saved on this computer, but not in a version yet.`;
-      tone = "info";
+      tone = "action";
+    } else if (v.stale) {
+      detail = "Some recent work may not be in it yet.";
+      tone = "action";
+    } else {
+      detail = "Everything you've written is in that version.";
+      tone = "ok";
     }
+  }
+  if (v.lastVersionAt == null && n === 0 && v.stale) {
+    detail = "Some recent work may not be in a version yet.";
+    tone = "action";
   }
 
   return {
@@ -220,20 +269,12 @@ export function versionsSection(
     ...(detail ? { detail } : {}),
     tone,
     note,
+    ...withAlert,
     actions: [
-      {
-        id: "saveVersion",
-        label: saveLabel(v.savingVersion),
-        disabled: v.savingVersion || n === 0,
-        primary: n != null && n > 0,
-      },
+      ...(nothingToSave ? [] : [saveBtn({ primary: (n != null && n > 0) || v.stale })]),
       viewVersions,
     ],
   };
-}
-
-function saveLabel(saving: boolean): string {
-  return saving ? "Saving a version…" : "Save a version now";
 }
 
 // ── Online backup ─────────────────────────────────────────────────────────────
@@ -246,12 +287,13 @@ export function onlineSection(
   const backUpNow = (label = "Back up now", primary = false): SaveStatusAction[] =>
     o.canSync ? [{ id: "syncNow", label, disabled: o.syncing, primary }] : [];
 
+  if (i.versions.enabled === null) return checking(base.explain);
   if (!i.versions.enabled) {
     return {
       ...base,
-      status: "Not set up.",
-      detail: "It needs version history first — the backup is a copy of your versions.",
-      tone: "info",
+      status: "Not backed up online.",
+      detail: "Online backup needs versions first — start keeping versions above.",
+      tone: "neutral",
       actions: [],
     };
   }
@@ -261,93 +303,126 @@ export function onlineSection(
 
   const checked =
     o.lastSyncAt && !Number.isNaN(Date.parse(o.lastSyncAt))
-      ? `Last checked ${relativeTime(Date.parse(o.lastSyncAt), i.now)}.`
+      ? `Checked ${relativeTime(Date.parse(o.lastSyncAt), i.now)}.`
       : null;
-  const autoOff = "Automatic backup is off (Settings → Saving).";
 
   switch (o.state) {
     case "synced":
       return {
         ...base,
-        status: "On and working.",
-        detail: [checked, o.automatic ? "New versions are sent every few minutes." : autoOff]
+        status: "Your book is backed up online.",
+        detail: [
+          checked,
+          o.automatic
+            ? `New versions are uploaded about every ${BACKUP_UPLOAD_MINUTES} minutes, and usually when you close the book.`
+            : `Automatic online backup is off (${SETTING_BACKUP}), so use Back up now.`,
+        ]
           .filter(Boolean)
           .join(" "),
+        note: "You can open it on another computer too.",
         tone: "ok",
         actions: backUpNow(),
       };
     case "offline":
       return {
         ...base,
-        status: "Offline.",
-        detail: "Your work is safe on this computer. Backup picks up again when you're back online.",
+        status: "You're offline.",
+        detail: o.automatic
+          ? "Your work is safe on this computer. Online backup will try again on its own."
+          : "Your work is safe on this computer. Use Try again when you're back online.",
         tone: "warn",
         actions: backUpNow("Try again"),
       };
     case "error":
       return {
         ...base,
-        status: "The last backup didn't finish.",
-        detail: "Your work is safe on this computer. Gutterpress will try again.",
+        status: "The last online backup didn't finish.",
+        detail: o.automatic
+          ? "Your work is safe on this computer. Gutterpress will try again."
+          : "Your work is safe on this computer. Use Try again when you're ready.",
         tone: "warn",
         actions: backUpNow("Try again"),
       };
     case "auth":
       return {
         ...base,
-        status: "Sign-in needed.",
-        detail: "Reconnect to keep your online copy up to date. Your work is safe here.",
+        status: "Please sign in again.",
+        detail: "Your online backup paused because the sign-in ran out. Your work is safe on this computer.",
         tone: "warn",
-        actions: [{ id: "connect", label: "Reconnect", primary: true }],
+        actions: [{ id: "connect", label: "Sign in again", primary: true }],
       };
     case "connect":
       return {
         ...base,
-        status: "Not connected yet.",
-        detail: "This book has an online copy, but you haven't signed in to it on this computer.",
-        tone: "info",
-        actions: [{ id: "connect", label: "Connect", primary: true }],
+        status: "Not signed in to online backup.",
+        detail: "This book has an online address, but you haven't signed in to it on this computer.",
+        tone: "action",
+        actions: [{ id: "connect", label: "Sign in to online backup", primary: true }],
       };
     case "local":
-      return notSyncing(base.explain, o.hasRemote);
+      return notBackedUp(base.explain, o.hasRemote);
     case "idle":
     default:
       if (o.canSync) {
-        return {
-          ...base,
-          status: o.automatic ? "Ready." : "Automatic backup is off.",
-          detail: o.automatic
-            ? "Gutterpress backs up in the background while this book is open."
-            : "Turn it on in Settings → Saving, or back up now.",
-          tone: o.automatic ? "ok" : "info",
-          actions: backUpNow(),
-        };
+        return o.automatic
+          ? {
+              ...base,
+              status: "Ready — your book will be backed up automatically.",
+              tone: "ok",
+              actions: backUpNow(),
+            }
+          : {
+              ...base,
+              status: "Automatic online backup is off.",
+              detail: `Turn it on in ${SETTING_BACKUP}, or back up now.`,
+              tone: "neutral",
+              actions: backUpNow(),
+            };
       }
-      return notSyncing(base.explain, o.hasRemote);
+      return notBackedUp(base.explain, o.hasRemote);
   }
 }
 
-function notSyncing(explain: string, hasRemote: boolean): SaveStatusSection {
+function notBackedUp(explain: string, hasRemote: boolean): SaveStatusSection {
   if (hasRemote) {
     return {
       explain,
-      status: "Not backing up automatically.",
+      status: "Not backed up online.",
       detail: "This book has an online address, but Gutterpress can't back up to it from here.",
-      tone: "info",
-      actions: [{ id: "openBookConnections", label: "See connection details" }],
+      tone: "neutral",
+      actions: [{ id: "openBookConnections", label: "Online backup details…" }],
     };
   }
   return {
     explain,
-    status: "Not set up.",
+    status: "Not backed up online.",
     detail: "This book is only on this computer for now.",
-    tone: "info",
-    actions: [{ id: "openBookConnections", label: "See how to connect" }],
+    tone: "neutral",
+    actions: [{ id: "openBookConnections", label: "Set up online backup…" }],
   };
+}
+
+// ── Summary ───────────────────────────────────────────────────────────────────
+
+export function summaryLine(
+  i: Pick<SaveStatusInput, "savePhase" | "autoSave" | "forceSaving">,
+): SaveStatusCopy["summary"] {
+  const s = savingSection(i);
+  switch (s.tone) {
+    case "error":
+      return { text: "Your last change couldn't be saved.", tone: "error" };
+    case "warn":
+      return { text: "You have changes that aren't saved yet.", tone: "warn" };
+    case "pending":
+      return { text: "Saving your writing…", tone: "pending" };
+    default:
+      return { text: "Your writing is safe on this computer.", tone: "ok" };
+  }
 }
 
 export function saveStatusCopy(input: SaveStatusInput): SaveStatusCopy {
   return {
+    summary: summaryLine(input),
     saving: savingSection(input),
     versions: versionsSection(input),
     online: onlineSection(input),

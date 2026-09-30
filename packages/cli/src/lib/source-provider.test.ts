@@ -14,6 +14,7 @@ import {
   AUTO_SNAPSHOT_MESSAGE,
   isNoChangesError,
   countUnversionedChanges,
+  snapshotStagingMarkerPath,
   resolveGitAuthor,
   listLocalBranches,
   switchBranch,
@@ -372,7 +373,7 @@ test("automatic snapshot on a clean tree rejects with an isNoChangesError error"
   }
 });
 
-test("countUnversionedChanges counts files since the last version and is null for a plain folder", async () => {
+test("countUnversionedChanges counts book files since the last version and is null for a plain folder", async () => {
   const plain = await tempDir();
   const dir = await tempDir();
   try {
@@ -380,17 +381,50 @@ test("countUnversionedChanges counts files since the last version and is null fo
     expect(await countUnversionedChanges(plain)).toBeNull();
 
     const provider = await initProject(dir);
-    expect(await countUnversionedChanges(dir)).toBe(0);
+    expect(await countUnversionedChanges(dir)).toEqual({ changedFiles: 0, stale: false });
     await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\nSecond draft.\n");
     await writeFile(path.join(dir, "chapter-02.md"), "# Two\n");
-    expect(await countUnversionedChanges(dir)).toBe(2);
+    expect((await countUnversionedChanges(dir))!.changedFiles).toBe(2);
     await rm(path.join(dir, "chapter-01.md"));
-    expect(await countUnversionedChanges(dir)).toBe(2); // one deleted + one new
+    expect((await countUnversionedChanges(dir))!.changedFiles).toBe(2); // one deleted + one new
     await provider.snapshot({ projectDir: dir, message: "next" });
-    expect(await countUnversionedChanges(dir)).toBe(0);
+    expect((await countUnversionedChanges(dir))!.changedFiles).toBe(0);
   } finally {
     await rm(plain, { recursive: true, force: true });
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("countUnversionedChanges ignores app-written plugin files and reports a stale staging marker", async () => {
+  const dir = await tempDir();
+  try {
+    await initProject(dir);
+    await mkdir(path.join(dir, "plugins", "npm", "x", "1.0.0"), { recursive: true });
+    await writeFile(path.join(dir, "plugins", "npm", "x", "1.0.0", "index.js"), "1");
+    await writeFile(path.join(dir, ".gutterpress-install.json"), "{}");
+    expect(await countUnversionedChanges(dir)).toEqual({ changedFiles: 0, stale: false });
+    fs.writeFileSync(snapshotStagingMarkerPath(dir), "");
+    expect(await countUnversionedChanges(dir)).toEqual({ changedFiles: 0, stale: true });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("countUnversionedChanges counts only the open book's folder inside a larger repo", async () => {
+  const repo = await tempDir();
+  try {
+    await mkdir(path.join(repo, "book-a"));
+    await mkdir(path.join(repo, "book-b"));
+    await writeFile(path.join(repo, "book-a", "one.md"), "# 1\n");
+    await writeFile(path.join(repo, "book-b", "two.md"), "# 2\n");
+    await providerFor({ type: "local-folder", path: repo }).initVersionHistory({ projectDir: repo });
+    await writeFile(path.join(repo, "book-a", "one.md"), "# 1 edited\n");
+    await writeFile(path.join(repo, "book-b", "two.md"), "# 2 edited\n");
+    await writeFile(path.join(repo, "book-b", "three.md"), "# 3\n");
+    expect((await countUnversionedChanges(path.join(repo, "book-a")))!.changedFiles).toBe(1);
+    expect((await countUnversionedChanges(path.join(repo, "book-b")))!.changedFiles).toBe(2);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
   }
 });
 

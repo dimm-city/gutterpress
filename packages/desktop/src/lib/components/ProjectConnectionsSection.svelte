@@ -131,7 +131,7 @@
       case "ready-to-sync":
         return "This server is connected. Use Sync Changes in the toolbar to send your work to the online repository.";
       case "ssh-use-own-tools":
-        return "This book's online address uses SSH (git@…). Everything on this computer works — preview, snapshots, history, restore. To sync, use your usual Git tool.";
+        return "This book's online address uses SSH (git@…). Everything on this computer works — preview, versions, history, restore. To sync, use your usual Git tool.";
     }
   });
 

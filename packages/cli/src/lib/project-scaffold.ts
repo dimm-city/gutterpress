@@ -655,7 +655,7 @@ export async function adoptFolder(options: AdoptFolderOptions): Promise<CreatePr
  * APPENDED, not prepended or reformatted, so any content the author already
  * has stays exactly as they wrote it.
  */
-async function ensureGitignoreHasDist(projectDir: string): Promise<void> {
+export async function ensureGitignoreHasDist(projectDir: string): Promise<void> {
   const gitignorePath = path.join(projectDir, ".gitignore");
 
   let existing: string | null = null;
