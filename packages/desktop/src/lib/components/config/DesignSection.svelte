@@ -55,7 +55,7 @@
   {:else if controller.designError}
     <p class="error" role="alert">{controller.designError}</p>
   {:else if !controller.cssPath}
-    <p class="muted">No stylesheet yet. Use a look above, then fine-tune its colours and sizes here.</p>
+    <p class="muted">No stylesheet yet. Use a look above, then fine-tune its colors and sizes here.</p>
   {:else if controller.tokens.length === 0}
     <p class="muted">{controller.cssName} doesn't expose any settings yet. Use “Edit raw CSS” to add <code>:root</code> custom properties.</p>
   {:else}
@@ -69,7 +69,7 @@
       {#each controller.fontTokens as t (t.name)}{@render tokenRow(t)}{/each}
     {/if}
     {#if controller.colorTokens.length > 0}
-      <h4 class="subhead">Colours</h4>
+      <h4 class="subhead">Colors</h4>
       {#each controller.colorTokens as t (t.name)}{@render tokenRow(t)}{/each}
     {/if}
     {#if controller.sizeTokens.length > 0}

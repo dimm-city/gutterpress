@@ -18,7 +18,7 @@
  *   choose. Named groups are listed before the heuristic ones, in the order
  *   their names first appear in the file (`DesignSectionController.customGroups`).
  * - `@label <text>` — human label shown instead of the default: a plain-language
- *   name for the shared vocabulary (`--color-ink` → "Text colour"), else one
+ *   name for the shared vocabulary (`--color-ink` → "Text color"), else one
  *   derived from the token name (`--gap-large` → "Gap large").
  * - `@internal` — omit this token from the panel entirely. The CSS itself is
  *   untouched; this only controls what the guided editor surfaces.
@@ -144,12 +144,12 @@ const SHARED_TOKEN_LABELS: Record<string, string> = {
   "--font-body": "Body text font",
   "--font-display": "Heading font",
   "--font-mono": "Code font",
-  "--color-ink": "Text colour",
-  "--color-ink-muted": "Secondary text colour",
-  "--color-ink-faint": "Faint text colour",
-  "--color-accent": "Accent colour",
-  "--color-paper": "Page colour",
-  "--color-rule": "Line colour",
+  "--color-ink": "Text color",
+  "--color-ink-muted": "Secondary text color",
+  "--color-ink-faint": "Faint text color",
+  "--color-accent": "Accent color",
+  "--color-paper": "Page color",
+  "--color-rule": "Line color",
   "--fs-body": "Body text size",
   "--fs-h1": "Heading 1 size",
   "--fs-h2": "Heading 2 size",

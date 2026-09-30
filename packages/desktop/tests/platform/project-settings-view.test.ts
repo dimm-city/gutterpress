@@ -266,9 +266,12 @@ describe("Look tab — plain-language token labels and styled font pickers (#308
     expect(src).toContain("title={t.name}");
   });
 
-  test("the panel's group headings use the same spelling as the labels (colour)", () => {
-    expect(design()).toContain('<h4 class="subhead">Colours</h4>');
-    expect(design()).not.toMatch(/>Colors</);
+  test("the panel's copy uses the app's US spelling, like the token labels (Colors)", () => {
+    const src = design();
+    const template = src.slice(0, src.indexOf("<style>"));
+    expect(template).toContain('<h4 class="subhead">Colors</h4>');
+    expect(template).toContain("fine-tune its colors and sizes here");
+    expect(template).not.toMatch(/colour/i);
   });
 
   test("font pickers wear the form tokens instead of native select chrome", () => {
