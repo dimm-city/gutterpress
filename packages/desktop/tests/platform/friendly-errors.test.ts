@@ -42,10 +42,10 @@ test("friendlyVcsError maps every known friendly phrase to 422", () => {
     "no changes since the last snapshot",
     "no version history yet",
     "your work is safe",
-    "project files were not changed",
+    "book files were not changed",
     "requires an absolute project path",
     "valid snapshot id",
-    "already inside a versioned project",
+    "already inside a versioned book",
     "couldn't switch copies",
     "requires a branch name",
   ];

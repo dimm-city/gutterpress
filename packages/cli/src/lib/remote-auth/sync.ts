@@ -445,7 +445,7 @@ export async function syncProject(
         // A damaged history must not be reported as a transient failure: "please
         // try again" is false when trying again can never work.
         if (await historyUnreadable(dir)) {
-          logger.error("sync", "the project's history could not be read");
+          logger.error("sync", "the book's history could not be read");
           return { status: "error", message: MSG_HISTORY_UNREADABLE, ...base() };
         }
         return { ...failureOutcome(e, snapshotId), ...(filesChanged ? { filesChanged: true } : {}) };

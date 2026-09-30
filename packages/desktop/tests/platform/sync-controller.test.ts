@@ -175,12 +175,12 @@ test("error -> the outcome's authored guidance is shown, not a false 'we'll try 
   h.sync.next = {
     status: "error",
     message:
-      "The online address points at a different project's files, so the two can't be combined. Check the project's online address.",
+      "The online address points at a different book's files, so the two can't be combined. Check the book's online address.",
   };
   await h.ctrl.handleForceSync();
   expect(h.toast.error.calls).toEqual([
     [
-      "The online address points at a different project's files, so the two can't be combined. Check the project's online address.",
+      "The online address points at a different book's files, so the two can't be combined. Check the book's online address.",
     ],
   ]);
 });

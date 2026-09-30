@@ -339,7 +339,7 @@ export default defineCommand({
         process.exit(e instanceof UsageError ? e.exitCode : EXIT_CODES.FINDINGS);
       }
       log.success(
-        `Connected ${provider.info.label}${account ? ` (${account})` : ""}. The key is stored in your user config, not the project.`,
+        `Connected ${provider.info.label}${account ? ` (${account})` : ""}. The key is stored in your user config, not the book.`,
       );
       return;
     }

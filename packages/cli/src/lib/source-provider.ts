@@ -467,7 +467,7 @@ class LocalFolderSourceProvider implements SourceProvider {
     // source must still never nest a repo.
     if ((await findEnclosingRepoDir(dir)) !== undefined) {
       throw new Error(
-        "This folder is already inside a versioned project, so gutterpress " +
+        "This folder is already inside a versioned book, so gutterpress " +
           "won't create a separate history here.",
       );
     }
@@ -496,7 +496,7 @@ class LocalFolderSourceProvider implements SourceProvider {
   snapshot(): Promise<SnapshotEntry> {
     return Promise.reject(
       new Error(
-        "This project has no version history yet. Enable version history first.",
+        "This book has no version history yet. Enable version history first.",
       ),
     );
   }
@@ -512,7 +512,7 @@ class LocalFolderSourceProvider implements SourceProvider {
   restore(): Promise<void> {
     return Promise.reject(
       new Error(
-        "This project has no version history yet. Enable version history first.",
+        "This book has no version history yet. Enable version history first.",
       ),
     );
   }
@@ -755,7 +755,7 @@ export function providerFor(source: ProjectSource): SourceProvider {
       return new LocalGitSourceProvider(source);
     case "managed-github":
       throw new Error(
-        "Managed GitHub projects are not supported yet (#15/#16).",
+        "Managed GitHub books are not supported yet (#15/#16).",
       );
   }
 }
@@ -829,7 +829,7 @@ export async function restoreVersionWithBackup(
   const source = await detectProjectSource(projectDir);
   if (source.type !== "local-git-folder") {
     throw new Error(
-      "This project has no version history yet. Enable version history first.",
+      "This book has no version history yet. Enable version history first.",
     );
   }
   const provider = new LocalGitSourceProvider(source);
@@ -860,7 +860,7 @@ export async function restoreVersionWithBackup(
           ? "The restore could not be completed, but your work is safe — it was " +
             `automatically saved as a backup snapshot (${backupId.slice(0, 7)}) ` +
             "and appears in your version history."
-          : "The restore could not be completed. Your project files were not changed.",
+          : "The restore could not be completed. Your book files were not changed.",
         { cause },
       );
     }
@@ -1071,7 +1071,7 @@ export async function switchBranch(
   const source = await detectProjectSource(projectDir);
   if (source.type !== "local-git-folder") {
     throw new Error(
-      "This project has no version history yet. Enable version history first.",
+      "This book has no version history yet. Enable version history first.",
     );
   }
   const repoDir = gitScopeFor(source);

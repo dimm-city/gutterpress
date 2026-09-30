@@ -279,8 +279,8 @@ export async function resolveBuildContext(
   );
   if (manifestPath === null) {
     throw new UsageError(
-      `No project manifest found in ${inputDir}. Looked for ${MANIFEST_FILENAMES.join(" or ")}. ` +
-        "Run from your project folder or pass that folder with `gutterpress build <project-dir>`. " +
+      `No book manifest found in ${inputDir}. Looked for ${MANIFEST_FILENAMES.join(" or ")}. ` +
+        "Run from your book folder or pass that folder with `gutterpress build <book-dir>`. " +
         "For a custom manifest filename, pass `--manifest <path>`."
     );
   }

@@ -394,7 +394,7 @@ describe("ext add usage errors", () => {
       ]);
 
       expect(exitCode).toBe(2);
-      expect(stderr).toContain(`Project directory does not exist: ${missing}`);
+      expect(stderr).toContain(`Book folder does not exist: ${missing}`);
       expect(fs.existsSync(missing)).toBe(false);
     } finally {
       await rm(parent, { recursive: true, force: true });
