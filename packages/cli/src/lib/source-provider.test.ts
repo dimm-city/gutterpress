@@ -398,7 +398,7 @@ test("initVersionHistory never git-inits inside an existing repo (hand-built sou
     const provider = providerFor({ type: "local-folder", path: inner });
     await expect(
       provider.initVersionHistory({ projectDir: inner }),
-    ).rejects.toThrow(/already inside a versioned project/i);
+    ).rejects.toThrow(/already inside a versioned book/i);
     // No shadow repo was created.
     await expect(stat(gitDirFor(inner))).rejects.toThrow();
   } finally {

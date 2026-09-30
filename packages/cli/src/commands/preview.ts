@@ -47,7 +47,7 @@ export default defineCommand({
       if (format === "html") {
         if (typeof args.manifest === "string") {
           throw new UsageError(
-            "--manifest is only supported by preview --format pdf or pdfx; live HTML preview discovers the project manifest from its input directory."
+            "--manifest is only supported by preview --format pdf or pdfx; live HTML preview discovers the book manifest from its input directory."
           );
         }
         await startPreviewServer({

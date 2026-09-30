@@ -270,7 +270,7 @@ function indexOfUse(seq: YAMLSeq, use: string): number {
 function manifestPathFor(projectDir: string, abs: string): string {
   const rel = path.relative(path.resolve(projectDir), abs).split(path.sep).join("/");
   if (rel === "") {
-    throw new Error("An extension cannot be the project folder itself.");
+    throw new Error("An extension cannot be the book folder itself.");
   }
   if (isPathSpecifier(rel)) return rel; // `../x`, or an absolute path on another drive
   return `./${rel}`;

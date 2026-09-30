@@ -127,7 +127,7 @@ export class SyncController {
         // Error state. The lib's error-arm messages are ALL authored writer
         // copy (the MSG_* constants or an authored generic — transport.ts
         // failureOutcome; never raw git text), and some carry the actual fix
-        // ("Check the project's online address"), so show them. The fixed
+        // ("Check the book's online address"), so show them. The fixed
         // fallback covers an empty message and keeps stating what remains
         // safe (UX follow-up: a sync failure must state what remains safe).
         this.deps.toast()?.error(

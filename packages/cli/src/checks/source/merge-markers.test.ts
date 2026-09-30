@@ -102,10 +102,10 @@ describe("source.sync.merge-markers", () => {
     ]);
     const covers = results.find((r) => r.file!.endsWith("cover.online.png"))!;
     expect(covers.message).toBe(
-      "Two versions of art/cover.png are in your project — keep the one you want, then delete the other.",
+      "Two versions of art/cover.png are in your book — keep the one you want, then delete the other.",
     );
     const notes = results.find((r) => r.file!.endsWith("notes.online"))!;
-    expect(notes.message).toContain("Two versions of notes are in your project");
+    expect(notes.message).toContain("Two versions of notes are in your book");
 
     // Self-clears: the same project without the siblings reports nothing.
     const { "art/cover.online.png": _a, "notes.online": _b, ...resolved } = files;

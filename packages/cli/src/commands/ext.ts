@@ -117,12 +117,12 @@ async function requireProjectDir(dir: unknown, verb: string): Promise<string> {
     info = await stat(projectDir);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      throw new UsageError(`Project directory does not exist: ${projectDir}`);
+      throw new UsageError(`Book folder does not exist: ${projectDir}`);
     }
     throw error;
   }
   if (!info.isDirectory()) {
-    throw new UsageError(`Project path is not a directory: ${projectDir}`);
+    throw new UsageError(`Book path is not a folder: ${projectDir}`);
   }
   return projectDir;
 }
