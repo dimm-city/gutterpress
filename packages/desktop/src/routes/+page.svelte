@@ -981,17 +981,18 @@
     snippetPickerRef?.show();
   }
 
-  // ── Project settings view (#PCV → full window) ─────────────────────────────
-  // Project settings live in a full-window view patterned after the app
-  // SettingsView (they used to be a left-sidebar Config tab); activity is the
-  // only alternate editor-pane view.
+  // ── Project settings view (#PCV → docked panel) ────────────────────────────
+  // Project settings live in a panel docked beside the workspace, patterned
+  // after the app SettingsView (they used to be a left-sidebar Config tab);
+  // activity is the only alternate editor-pane view.
   let editorView = $state<"editor" | "activity">("editor");
   let projectSettingsOpen = $state(false);
 
   /**
    * One button → the whole project settings view (manifest details, look &
-   * style, plugins). Full-window like the app settings; the workspace behind
-   * it goes inert and returns untouched on close.
+   * style, plugins). Docked beside the workspace so the preview stays visible
+   * while the writer styles the book; the workspace goes inert and returns
+   * untouched on close.
    */
   function openProjectConfig(): void {
     if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
@@ -2088,10 +2089,10 @@
   // ----------------------------------------------------------------
   onMount(() => {
     function onGlobalKey(e: KeyboardEvent) {
-      // The full-window Project settings view owns the keyboard while it's up:
-      // the workspace behind it is inert, so acting on it (opening Settings
-      // invisibly BENEATH the view, toggling focus mode, exporting, snippet
-      // picker) would mutate UI the user can't see. Escape closes the view.
+      // The Project settings panel owns the keyboard while it's up: the
+      // workspace beside it is inert, so acting on it (opening Settings
+      // BENEATH the panel, toggling focus mode, exporting, snippet picker)
+      // would change UI the writer isn't working in. Escape closes the panel.
       if (projectSettingsOpen) {
         if (e.key === "Escape") {
           e.preventDefault();
@@ -2172,8 +2173,8 @@
       if (e.defaultPrevented) return;
       // Never page/zoom the pre-rendering preview from behind the start screen.
       if (landingVisible) return;
-      // Never page/zoom the hidden preview behind full-window project
-      // settings (PageUp/PageDown must scroll its body, not the preview).
+      // Never page/zoom the (inert) preview beside the project settings
+      // panel (PageUp/PageDown must scroll its body, not the preview).
       if (projectSettingsOpen) return;
       // Don't intercept when focus is in a form control or the CodeMirror
       // editor (#38) — preview-nav keys (arrows, Home/End, +/-/=, f) must
@@ -2685,9 +2686,10 @@
   <title>{lifecycle.docTitle ? `${lifecycle.docTitle} — Gutterpress` : "Gutterpress"}</title>
 </svelte:head>
 
-<!-- inert while the start screen or full-window Settings view is up: the
-      workspace keeps rendering, but never accepts interaction underneath. -->
-<div class="app-root" inert={landingVisible || projectSettingsOpen}>
+<!-- inert while the start screen or Project settings is up: the workspace keeps
+      rendering (the docked panel leaves the preview visible and live beside
+      it), but never accepts interaction underneath. -->
+<div class="app-root" class:settings-docked={projectSettingsOpen} inert={landingVisible || projectSettingsOpen}>
 {#if (updateController.readyVersion || updateController.availableVersion) && !updateController.bannerDismissed}
   <div class="update-banner" role="status" aria-live="polite">
     {#if updateController.readyVersion}
@@ -3108,9 +3110,11 @@
   onProjectFilesChanged={onSnapshotRestored}
 />
 {#if projectSettingsOpen}
-  <!-- Project settings (manifest): full-window like the app settings. Keyed by
-       projectDir so a project switch can never leave stale section state
-       (drafts, theme lists) resident under the new project. -->
+  <!-- Project settings (manifest): a panel docked beside the workspace, so the
+       book preview stays visible (and re-renders live) while the writer styles
+       it; it covers the whole window only when the window is too narrow for
+       both. Keyed by projectDir so a project switch can never leave stale
+       section state (drafts, theme lists) resident under the new project. -->
   <section class="settings-global-view" aria-label="Project settings">
     {#key lifecycle.currentDir}
       <ProjectSettingsView
@@ -3287,12 +3291,32 @@
   .editor-pane {
     border-right: 1px solid var(--app-border);
   }
+  /* Project settings docks to the right edge; the (inert) app shrinks by the
+     panel's width so the preview re-fits into what is left instead of hiding
+     under it. Below 900px there is no room for both, so the panel covers the
+     window as it did before. */
   .settings-global-view {
     position: fixed;
-    inset: 0;
+    inset: 0 0 0 auto;
+    box-sizing: border-box;
+    width: var(--app-settings-panel-width);
     z-index: calc(var(--app-z-sheet) + 1);
     display: flex;
+    border-left: 1px solid var(--app-border);
     background: var(--app-bg);
+  }
+  .app-root.settings-docked {
+    margin-right: var(--app-settings-panel-width);
+  }
+  @media screen and (max-width: 900px) {
+    .settings-global-view {
+      inset: 0;
+      width: auto;
+      border-left: none;
+    }
+    .app-root.settings-docked {
+      margin-right: 0;
+    }
   }
   .splitter {
     width: 6px;

@@ -1,10 +1,14 @@
 <script lang="ts">
   /**
-   * ProjectSettingsView — the full-window "Project settings" surface, patterned
-   * after the app SettingsView (header + close, tab bar, one cohesive slice per
-   * tab). It replaced the left-sidebar Config tab (and with it the retired
+   * ProjectSettingsView — the "Project settings" surface, patterned after the
+   * app SettingsView (header + close, tab bar, one cohesive slice per tab). It
+   * replaced the left-sidebar Config tab (and with it the retired
    * ProjectConfigPanel): the sidebar's 260px column was a cramped frame for
    * manifest editing, theme browsing, and plugin management.
+   *
+   * +page.svelte docks it beside the workspace, so the book preview stays
+   * visible — and re-renders live as a stylesheet is written — while the
+   * writer works in it; only a window too narrow for both gets it full-window.
    *
    * This is the COMPOSITION ROOT for the per-domain section controllers
    * (UX review M14): it instantiates one `*SectionController` per domain and
@@ -162,7 +166,7 @@
     importFromFile: (dir) => api.extension.importFromFile(dir),
     importFromUrl: (dir, url) => api.extension.importFromUrl(dir, url),
     onLookAdded: (label) => {
-      toast?.success?.(`${label} added — close Project settings to see it in the preview. Use Design to fine-tune.`);
+      toast?.success?.(`${label} added — it now shows in the preview. Use Design to fine-tune.`);
     },
     afterLookChange: async () => {
       await Promise.all([styles.loadStyles(), design.loadDesign()]);
