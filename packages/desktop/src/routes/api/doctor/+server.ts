@@ -1,4 +1,5 @@
 import { getDoctorHooks } from '$lib/server/host-hooks.js';
+import { binOnPath, isToolId, planToolInstall, TOOL_DOWNLOAD_URLS } from '$lib/server/tool-install.js';
 import { defineRoute, loadLib } from '../_lib/route';
 import type { RequestHandler } from './$types';
 
@@ -11,6 +12,7 @@ interface ToolStatus {
   version?: string;
   usedBy: Array<{ feature: string; severity: 'required' | 'optional' }>;
   installHint: string;
+  install?: { kind: 'run'; label: string } | { kind: 'download'; url: string };
 }
 
 interface SystemDiagnostics {
@@ -52,7 +54,14 @@ export const GET: RequestHandler = defineRoute({
           ],
           installHint: 'No setup required in the desktop app.',
         },
-        ...externalTools,
+        ...externalTools.map((tool) => {
+          if (!isToolId(tool.id)) return tool;
+          const plan = planToolInstall(tool.id, process.platform, binOnPath);
+          const install = plan
+            ? { kind: 'run' as const, label: plan.label }
+            : { kind: 'download' as const, url: TOOL_DOWNLOAD_URLS[tool.id] };
+          return { ...tool, install };
+        }),
       ],
       desktopVersion: doctorHooks ? doctorHooks.getDesktopVersion() : 'unknown',
       electronVersion: process.versions.electron,

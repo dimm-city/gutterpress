@@ -672,7 +672,7 @@
   // the inert workspace, which is a spec no-op).
   let landingRef = $state<{
     focusLayer: () => void;
-    showTab: (tab: "projects" | "settings" | "help" | "troubleshooting", sub?: "diagnostics" | "logs" | "about") => void;
+    showTab: (tab: "projects" | "settings" | "help" | "about" | "troubleshooting", sub?: "diagnostics" | "logs") => void;
   } | null>(null);
   /** Sub-tab the start screen's embedded Settings opens on. */
   let landingSettingsTab = $state<SettingsTab>("app");
