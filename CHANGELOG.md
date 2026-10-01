@@ -20,6 +20,9 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Picking a chapter moves the preview too.** Choosing a file from the
+  Chapter list in Focus, or from the Files tab, now scrolls the preview to
+  that chapter's first page instead of leaving it where it was.
 - **A damaged version only this computer had now says so.** Sync reported it
   as "didn't complete — please try again", which could never help. It now
   says the history can't be read and points at Repair online backup.
