@@ -21,6 +21,7 @@ import * as fs from "node:fs";
 import { watch } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { scanForProjects, type ScanDeps } from "./discover-projects";
+import { seedSamples } from "./seed-samples";
 import {
   createSettingsStore,
   type AppSettings,
@@ -1926,6 +1927,19 @@ app.whenReady().then(async () => {
   loadLib().catch((err) => {
     console.warn("[prewarm] loadLib failed (non-fatal):", err);
   });
+
+  // First launch of an installed app: copy the bundled user guide + examples
+  // to ~/Documents/Gutterpress (see seed-samples.ts). Not in dev (no samples).
+  if (app.isPackaged) {
+    void (async () => {
+      if ((await readPrefs()).samplesSeeded) return;
+      await seedSamples(
+        path.join(process.resourcesPath, "samples"),
+        path.join(os.homedir(), "Documents", "Gutterpress"),
+      );
+      await updatePrefs((p) => ({ ...p, samplesSeeded: true }));
+    })().catch((err) => console.warn("[samples] seeding failed (non-fatal):", err));
+  }
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

@@ -70,42 +70,100 @@ describe("start-screen copy", () => {
   });
 });
 
-describe("the Logs tab (diagnostic sharing)", () => {
-  test("Logs is the LAST tab, after Help", () => {
+describe("the Troubleshooting tab (diagnostics, logs, about)", () => {
+  test("Troubleshooting is the LAST tab, after Help; no standalone Logs tab", () => {
     const tabs = landing.slice(
       landing.indexOf("const LANDING_TABS"),
       landing.indexOf("];", landing.indexOf("const LANDING_TABS")),
     );
     const order = [...tabs.matchAll(/id: "([a-z]+)"/g)].map((m) => m[1]);
-    expect(order).toEqual(["projects", "settings", "help", "logs"]);
+    expect(order).toEqual(["projects", "settings", "help", "troubleshooting"]);
+    expect(landing).not.toContain('activeTab === "logs"');
   });
 
-  test("the logs panel mounts LogsPanel (list + read via api.log.*)", () => {
-    expect(landing).toContain('activeTab === "logs"');
-    expect(landing).toContain("<LogsPanel />");
+  test("showTab takes an optional sub-tab for deep links", () => {
+    expect(landing).toMatch(/export function showTab\(tab: LandingTab, sub\?: TroubleshootingTab\)/);
+    expect(landing).toContain("sanitizeTroubleshootingTab(sub)");
+  });
+
+  test("the panel mounts TroubleshootingView with the update wiring", () => {
+    expect(landing).toContain("<TroubleshootingView");
+    expect(landing).toContain("{onCheckForUpdates}");
+    expect(landing).not.toContain("LogsPanel");
+  });
+
+  test("its Logs sub-tab re-lists on every visit (LogsPanel mounts only while active)", () => {
+    const view = read("src/lib/components/TroubleshootingView.svelte");
+    expect(view).toMatch(/\{#if activeTab === "logs"\}\s*(<!--[\s\S]*?-->\s*)?<LogsPanel \/>/);
     const logsPanel = read("src/lib/components/LogsPanel.svelte");
     expect(logsPanel).toContain("api.log.list()");
     expect(logsPanel).toContain("api.log.read(");
     expect(logsPanel).toContain("navigator.clipboard.writeText");
   });
-});
 
-describe("the left panel's Books tab can reopen the welcome screen", () => {
-  test("ProjectsListBody offers the action ONLY when the host passes it", () => {
-    const body = read("src/lib/components/ProjectsListBody.svelte");
-    expect(body).toContain("onShowWelcome");
-    expect(body).toContain("Welcome screen");
+  test("reuses SettingsView's sub-tab pattern", () => {
+    const view = read("src/lib/components/TroubleshootingView.svelte");
+    expect(view).toContain('role="tablist" aria-label="Troubleshooting sections"');
+    expect(view).toContain("onTablistKeydown");
+    expect(view).toContain('role="tabpanel"');
+    expect(view).toContain("{idPrefix}-panel");
   });
 
-  test("+page wires it to the landing (forced open on the Books tab)", () => {
+  test("Diagnostics keeps the doctor load + copy report (with versions); About has versions + updates", () => {
+    const view = read("src/lib/components/TroubleshootingView.svelte");
+    expect(view).toContain("api.doctor()");
+    expect(view).toContain("Copy diagnostic info");
+    expect(view).toContain("`Gutterpress desktop ${data.desktopVersion}`");
+    expect(view).toContain("Check for updates");
+    expect(view).toContain("<strong>Desktop:</strong>");
+  });
+});
+
+describe("the Help tab is guidance only", () => {
+  const help = read("src/lib/components/HelpContent.svelte");
+
+  test("no doctor call, loading/error state, diagnostics or updates", () => {
+    expect(help).not.toContain("api.doctor");
+    expect(help).not.toContain("loading");
+    expect(help).not.toContain("Retry");
+    expect(help).not.toContain("Copy diagnostic info");
+    expect(help).not.toContain("system-info");
+    expect(help).not.toContain("Optional system tools");
+    expect(help).not.toContain("Check for updates");
+    expect(help).not.toContain("Loaded versions");
+  });
+
+  test("sections run Getting Started, Online Copy, Keyboard Shortcuts, with the one-line intro", () => {
+    const at = (t: string) => help.indexOf(t);
+    expect(help).toContain("How to open, edit, save and publish your book.");
+    expect(at("Getting Started")).toBeGreaterThan(-1);
+    expect(at("Getting Started")).toBeLessThan(at("Work with an Online Copy"));
+    expect(at("Work with an Online Copy")).toBeLessThan(at("Keyboard Shortcuts"));
+  });
+});
+
+describe("the left panel's Books footer", () => {
+  test("is Open book… then New book — no Welcome screen / GitHub buttons", () => {
+    const body = read("src/lib/components/ProjectsListBody.svelte");
+    expect(body).not.toContain("onShowWelcome");
+    expect(body).not.toContain("Welcome screen");
+    expect(body).not.toContain("Open from GitHub");
+    expect(body.indexOf("Open book…")).toBeGreaterThan(-1);
+    expect(body.indexOf("Open book…")).toBeLessThan(body.indexOf("> New book"));
+    expect(read("src/routes/+page.svelte")).not.toContain("onShowWelcome");
+  });
+
+  test("Open book… hands off to the existing local-folder and GitHub flows", () => {
+    // Mounted by +page (outside the transformed left panel, which would
+    // otherwise become the containing block of the modal's fixed positioning).
     const page = read("src/routes/+page.svelte");
-    expect(page).toMatch(/onShowWelcome=\{\(\) => \{[\s\S]{0,200}landingForcedOpen = true;/);
-    // The start screen's own embedded ProjectsListBody must NOT get the
-    // action (it would be a no-op button under the screen it opens).
-    const landingBodyProps = landing.slice(
-      landing.indexOf("<ProjectsListBody"),
-      landing.indexOf("/>", landing.indexOf("<ProjectsListBody")),
-    );
-    expect(landingBodyProps).not.toContain("onShowWelcome");
+    expect(page).toMatch(/onLocal=\{\(\) => \{[^}]*pickAndOpenFolder\(\)/);
+    expect(page).toMatch(/onGitHub=\{isDesktop\(\) \? \(\) => \{[^}]*githubOpen = true/);
+    expect(read("src/lib/components/ProjectsListBody.svelte")).not.toContain("OpenBookDialog");
+    const dlg = read("src/lib/components/OpenBookDialog.svelte");
+    expect(dlg).toContain("Open a book");
+    expect(dlg).toContain("From this computer");
+    expect(dlg).toContain("From GitHub");
+    expect(dlg).toContain("dialogBehavior");
   });
 });

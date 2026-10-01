@@ -52,12 +52,18 @@
     /** Called by the parent to route an edit action into the CodeMirror view. */
     onAction,
     onSave,
+    /** Unsaved changes exist: Save is emphasized (primary); otherwise a calm "Saved". */
+    savePending = false,
+    /** A save is in flight. */
+    saving = false,
     /** Absolute path to the open project, used to compute assets/ destination. */
     projectDir = null,
   }: {
     filePath?: string | null;
     onAction: (action: ToolbarAction, payload?: ToolbarPayload) => void;
     onSave?: () => void;
+    savePending?: boolean;
+    saving?: boolean;
     projectDir?: string | null;
   } = $props();
 
@@ -400,13 +406,19 @@
        one place and silently dropped from another (M23). -->
   <div class="tb-group primary-group">
     {#each saveItems as item (item.id)}
+      <!-- Save: primary while there is something to save, a calm disabled
+           "Saved" otherwise. The text label yields to the icon in the
+           narrow tiers (see the style block); title/aria-label stay. -->
       <button
         class="tb-btn save-btn"
+        class:app-btn-primary={savePending}
         onclick={onSave}
-        title={item.title}
-        aria-label={item.ariaLabel}
+        disabled={!savePending || saving}
+        title={savePending ? `${item.title} (Ctrl+S)` : "All changes saved"}
+        aria-label={savePending ? item.ariaLabel : "All changes saved"}
       >
-        <Icon name={item.icon as IconName} size={14} />
+        <Icon name={savePending ? (item.icon as IconName) : "circle-check"} size={14} />
+        <span class="save-label">{saving ? "Saving…" : savePending ? "Save" : "Saved"}</span>
       </button>
       <span class="tb-sep save-sep" aria-hidden="true"></span>
     {/each}
@@ -757,6 +769,37 @@
   }
   .save-sep { margin-right: 5px; }
 
+  /* Save: a labelled button. Pending = .app-btn-primary (theme.css owns the
+     colour); clean = quiet muted text, no fill. */
+  .save-btn {
+    gap: 5px;
+    padding: 3px 9px;
+    border: 1px solid transparent;
+    font-size: 12px;
+  }
+  .save-btn:disabled {
+    color: var(--app-text-muted);
+    cursor: default;
+  }
+  .save-btn:disabled:hover {
+    background: transparent;
+  }
+  /* .tb-btn's own (more specific) colours would beat the global
+     .app-btn-primary recipe, so the pending state restates its tokens. */
+  .save-btn.app-btn-primary {
+    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
+    color: var(--app-accent-text);
+    border-color: var(--app-accent-border);
+    font-weight: 600;
+  }
+  .save-btn.app-btn-primary:hover:not(:disabled) {
+    background: linear-gradient(to bottom, var(--app-accent-bright), var(--app-accent-hover));
+    color: var(--app-accent-text);
+  }
+  .save-btn.app-btn-primary:disabled {
+    opacity: 0.7;
+  }
+
   /* ── Toolbar buttons ─────────────────────────────────────────────────────── */
   .tb-btn {
     display: inline-flex;
@@ -918,13 +961,23 @@
    * narrows when the left panel opens or the window shrinks, so this — not the
    * panel state — is what "fits" means). Thresholds are what the groups need
    * (measured) plus a little slack; re-measure if a group gains a button.
-   *   >= 420px  everything, Insert labelled
+   *   >= 480px  everything, Save and Insert labelled
+   *   >= 420px  everything, Insert labelled, Save icon-only
    *   >= 385px  everything, Insert as an icon
    *   >= 340px  Insert moves into "…"
    *   below     the block group (quote, lists, heading) moves in as well
    * "…" and each of its sections appear only in the tiers that hide the
    * matching group, so the popup never repeats a visible button.
    */
+  @container editor-toolbar (max-width: 479px) {
+    /* The Save label (the widest always-on control) yields first. */
+    .save-label {
+      display: none;
+    }
+    .save-btn {
+      padding: 3px 5px;
+    }
+  }
   @container editor-toolbar (max-width: 419px) {
     .tb-insert-label {
       display: none;

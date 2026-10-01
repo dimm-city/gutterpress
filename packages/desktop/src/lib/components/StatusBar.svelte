@@ -1,10 +1,10 @@
 <script lang="ts">
   /**
    * StatusBar — slim bottom bar hosting the book switcher (C2), sync status
-   * pill, save indicator, and the Problems toggle (VS Code-style).
+   * pill, save indicator, and the Problems badge (VS Code-style).
    *
    * Layout (left → right):
-   *   [book switcher] [Problems toggle] ··· [sync pill] [saving indicator] [settings] [help]
+   *   [book switcher] [Problems badge] ··· [sync pill] [saving indicator] [settings] [help]
    *
    * The project you picked comes first, then what's wrong with it; everything
    * about saving and syncing is grouped at the far right beside the app
@@ -12,9 +12,9 @@
    *
    * The Problems LIST is not in the bar: ProblemsPanel renders it as a row of
    * its own directly above the bar, in normal flow, so opening it pushes the
-   * workspace up instead of covering the left panel and the editor (#307). With
-   * nothing to list, the toggle gives way to a plain "No problems" label — an
-   * empty list has nothing to open.
+   * workspace up instead of covering the left panel and the editor (#307). The
+   * bar itself carries only a compact badge (status icon + count); with nothing
+   * to list it is inert — an empty list has nothing to open.
    *
    * The bar is always visible when a project is open (the saving indicator shows
    * "All changes saved" at rest, never blank), so both pieces of status are
@@ -439,8 +439,7 @@
   // gated the whole cluster off). It now always renders — below 820px
   // ProblemsPanel's `compact` prop presents the expanded list as a
   // full-viewport sheet instead of the row above the bar, which has no room to
-  // be useful at narrow widths. (The toggle's own label only drops out much
-  // later, at 560px — see the media queries below.)
+  // be useful at narrow widths.
   let showProblems = $derived(!!projectDir && sourceMode === "folder");
 
   // The list is ProblemsPanel's and sits BEFORE the bar in the DOM, so Tab from
@@ -459,11 +458,12 @@
   // there is something to expand (see canExpandProblems).
   let counts = $derived(problemCounts(problems));
   let canExpand = $derived(canExpandProblems(problems, problemsError, problemsOpen));
-  let stripIcon = $derived.by<"info" | "triangle-alert" | "circle-check">(() =>
-    problemsError ? "info" : counts.badge > 0 ? "triangle-alert" : "circle-check",
+  // Icon for the no-errors-no-warnings states (counts supply their own icons).
+  let stripIcon = $derived.by<"info" | "refresh-cw" | "circle-check">(() =>
+    problemsError ? "info" : problemsLoading ? "refresh-cw" : "circle-check",
   );
-  /** The toggle's accessible name. Always set: at narrow widths its visible
-   *  text is hidden and the icons + bare counts alone say nothing. */
+  /** The badge's accessible name. Always set: the badge is icons + bare
+   *  counts, which say nothing to a screen reader. */
   let stripLabel = $derived(
     problemsLoading
       ? "Problems: checking"
@@ -471,7 +471,7 @@
         ? "Problems: couldn't check"
         : counts.badge > 0
           ? `Problems: ${problemsSummary(counts)}`
-          : "Problems: none",
+          : "No problems",
   );
 
   // Book switcher (C2): only when the open repo actually has more than one book.
@@ -509,9 +509,10 @@
     {/if}
   </div>
 
-  <!-- Problems: immediately right of the book switcher, and the element that
-       takes up the slack. With nothing to list there is no button — the bar
-       just says so (#307). -->
+  <!-- Problems: a compact badge — status icon + count — immediately right of
+       the book switcher. A button (opens ProblemsPanel) only while there is
+       something to list (#307); otherwise the same badge, inert. The accessible
+       name carries what the badge only shows as icons. -->
   {#if showProblems}
     <div class="status-problems">
       {#if canExpand}
@@ -522,43 +523,34 @@
           aria-expanded={problemsOpen}
           aria-controls="problems-body"
           aria-label={stripLabel}
-          title={problemsOpen ? "Collapse problems panel" : "Expand problems panel"}
+          title={`${stripLabel} — ${problemsOpen ? "click to collapse" : "click to expand"}`}
         >
-          <span class="strip-left">
-            <Icon name={stripIcon} size={13} />
-            <span class="strip-title">Problems</span>
-            {#if counts.badge > 0}
-              <span class="strip-counts">
-                {#if counts.errors > 0}
-                  <span class="strip-count error-count">
-                    <Icon name="circle-x" size={12} />
-                    {counts.errors}
-                  </span>
-                {/if}
-                {#if counts.warnings > 0}
-                  <span class="strip-count warning-count">
-                    <Icon name="triangle-alert" size={12} />
-                    {counts.warnings}
-                  </span>
-                {/if}
+          {#if counts.badge > 0}
+            {#if counts.errors > 0}
+              <span class="strip-count error-count">
+                <Icon name="circle-x" size={13} />
+                {counts.errors}
               </span>
             {/if}
-            {#if problemsLoading}
-              <span class="strip-status" role="status">Checking…</span>
-            {:else if problemsError}
-              <span class="strip-status" role="status">Couldn't check</span>
+            {#if counts.warnings > 0}
+              <span class="strip-count warning-count">
+                <Icon name="triangle-alert" size={13} />
+                {counts.warnings}
+              </span>
             {/if}
-          </span>
-          <span class="strip-chevron" aria-hidden="true">
-            <Icon name={problemsOpen ? "chevron-down" : "chevron-up"} size={13} />
-          </span>
+          {:else}
+            <span class="strip-count" class:ok={!problemsError && !problemsLoading}>
+              <Icon name={stripIcon} size={13} />
+              {#if !problemsError && !problemsLoading}0{/if}
+            </span>
+          {/if}
         </button>
       {:else}
-        <span class="strip-idle">
-          <span class="idle-icon" class:ok={!problemsLoading}>
+        <span class="strip-idle" role="img" aria-label={stripLabel} title={stripLabel}>
+          <span class="strip-count" class:ok={!problemsLoading}>
             <Icon name={problemsLoading ? "refresh-cw" : "circle-check"} size={13} />
+            {#if !problemsLoading}0{/if}
           </span>
-          {problemsLoading ? "Checking…" : "No problems"}
         </span>
       {/if}
     </div>
@@ -771,38 +763,32 @@
     }
   }
 
-  /* ── Problems toggle ──────────────────────────────────────────────────── */
-  /* The toggle — or, with nothing to list, the plain "No problems" label —
-     takes the bar's slack, which keeps the save/sync cluster pinned right. The
-     list it opens is ProblemsPanel's own row above the bar. */
+  /* ── Problems badge ───────────────────────────────────────────────────── */
+  /* Icon + count only — deliberately quiet. The list it opens is
+     ProblemsPanel's own row above the bar. */
   .status-problems {
-    flex: 1 1 auto;
+    flex: 0 0 auto;
     display: flex;
     min-width: 0;
   }
   .toggle-strip,
   .strip-idle {
     display: flex;
-    box-sizing: border-box; /* the label is a span: same 30px as the button */
+    box-sizing: border-box; /* the idle badge is a span: same 30px as the button */
     align-items: center;
-    flex: 1 1 auto;
-    min-width: 0;
     min-height: 30px;
-    padding: 5px 12px;
+    padding: 5px 10px;
     gap: 8px;
-    overflow: hidden;
     border: none;
     /* A separator on the LEFT so it reads as a distinct group from the book
        switcher beside it. */
     border-left: 1px solid var(--app-border);
-    font-size: 12px;
+    font-size: 11px;
     color: var(--app-text-secondary);
   }
   .toggle-strip {
-    justify-content: space-between;
     background: transparent;
     cursor: pointer;
-    text-align: left;
   }
   .toggle-strip:hover {
     background: var(--app-control-hover-bg);
@@ -811,58 +797,15 @@
     outline: 2px solid var(--app-focus-ring);
     outline-offset: -2px;
   }
-  .strip-left {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    flex: 1;
-    min-width: 0;
-  }
-  .strip-title {
-    font-size: 12px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    color: var(--app-text-secondary);
-  }
-  .strip-counts {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    font-variant-numeric: tabular-nums;
-  }
   .strip-count {
     display: inline-flex;
     align-items: center;
     gap: 3px;
-    font-size: 11px;
+    font-variant-numeric: tabular-nums;
   }
   .error-count { color: var(--app-error-text); }
   .warning-count { color: var(--app-warning-text); }
-  .strip-status { font-size: 11px; color: var(--app-text-muted); }
-  .strip-chevron {
-    flex-shrink: 0;
-    display: inline-flex;
-    align-items: center;
-    color: var(--app-text-muted);
-  }
-  /* Nothing to list: a plain label, sentence case — not the caps "PROBLEMS"
-     heading, which beside a tick reads as a contradiction. */
-  .strip-idle {
-    gap: 6px;
-    white-space: nowrap;
-  }
-  .idle-icon { display: inline-flex; }
-  .idle-icon.ok { color: var(--app-success-text); }
-
-  /* Very narrow windows: the toggle keeps its icon + counts; the label and
-     status text drop out (its aria-label still says all of it). */
-  @media screen and (max-width: 560px) {
-    .strip-title,
-    .strip-status {
-      display: none;
-    }
-  }
+  .strip-count.ok { color: var(--app-success-text); }
 
   .shell-actions {
     display: flex;

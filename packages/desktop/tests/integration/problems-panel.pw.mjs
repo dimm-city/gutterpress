@@ -18,7 +18,7 @@
  *      offending line scrolled into view.
  *   5. At 700px window width the toolbar still has zero pairwise overlaps
  *      (getBoundingClientRect audit of every visible toolbar control), and the
- *      status bar still shows its save-state text and Problems label (#316),
+ *      status bar still shows its save-state text and the Problems badge (#316),
  *      and the left-panel drawer stops at the status bar's top edge (#307).
  *
  * Screenshots: <os tmpdir>/problems-panel-{wide,narrow}.png.
@@ -231,7 +231,7 @@ log("project opened");
 // The strip sits in the status bar at the bottom of the screen (not in the
 // navbar) and shows error/warning counts without a dedicated badge element. It
 // is a button only while there is something to list (#307) — a clean project
-// shows a plain "No problems" label instead — so it appears with the counts.
+// shows the same badge, inert — so it appears with the counts.
 //
 // Those counts are downstream of the FIRST FULL RENDER, not of the project-open
 // gate above: the app calls refreshProblems() from its renderingComplete
@@ -250,7 +250,7 @@ const readStrip = () => evalJs(`(() => {
     strip: true,
     errs: strip.querySelector('.error-count')?.textContent?.trim() ?? null,
     warns: strip.querySelector('.warning-count')?.textContent?.trim() ?? null,
-    status: strip.querySelector('.strip-status')?.textContent?.trim() ?? null,
+    status: /couldn't check/.test(strip.getAttribute('aria-label') ?? '') ? "Couldn't check" : null,
     stillRendering: !!document.querySelector('.loading-overlay'),
   };
 })()`);
@@ -444,8 +444,9 @@ if (audit.overflow.length > 0) fail(`toolbar controls overflow at 700px: ${JSON.
 await screenshot(join(tmpdir(), "problems-panel-narrow.png"));
 
 // ── 9. #316: the status bar keeps its words at 700px ─────────────────────────
-// "Edits saved" and the PROBLEMS label used to collapse to bare icons below
-// 820px. The save text now stays at every width; the label only drops at 560px.
+// "Edits saved" used to collapse to a bare icon below 820px. The save text now
+// stays at every width; the Problems control is a compact badge (icon + count,
+// no text label) with an accessible name that carries the breakdown.
 const bar = await evalJs(`(() => {
   const shown = (sel) => {
     const el = document.querySelector(sel);
@@ -454,14 +455,17 @@ const bar = await evalJs(`(() => {
   return {
     saveText: document.querySelector('.save-text')?.textContent?.trim() ?? null,
     saveTextShown: shown('.save-text'),
-    stripTitleShown: shown('.toggle-strip .strip-title'),
+    stripShown: shown('.toggle-strip'),
+    stripCountShown: shown('.toggle-strip .error-count, .toggle-strip .warning-count'),
+    stripHasText: /problems/i.test(document.querySelector('.toggle-strip')?.textContent ?? ''),
     stripLabel: document.querySelector('.toggle-strip')?.getAttribute('aria-label') ?? null,
   };
 })()`);
 console.log(`[problems-panel] 700px status bar: ${JSON.stringify(bar)}`);
 if (!bar.saveTextShown || !bar.saveText) fail(`save-state text is not visible at 700px: ${JSON.stringify(bar)}`);
-if (!bar.stripTitleShown) fail(`Problems label is not visible at 700px: ${JSON.stringify(bar)}`);
-if (!bar.stripLabel) fail("Problems toggle has no accessible name");
+if (!bar.stripShown || !bar.stripCountShown) fail(`Problems badge (icon + count) is not visible at 700px: ${JSON.stringify(bar)}`);
+if (bar.stripHasText) fail(`Problems badge should carry no visible text label: ${JSON.stringify(bar)}`);
+if (!/^Problems: .*(error|warning)/.test(bar.stripLabel ?? "")) fail(`Problems badge accessible name is wrong: ${JSON.stringify(bar)}`);
 
 // ── 10. #307: at 700px the left-panel drawer overlays the workspace but stops
 // at the status bar's top edge. It used to be viewport-fixed with bottom:0, so

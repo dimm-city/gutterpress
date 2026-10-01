@@ -16,7 +16,8 @@
  *     whose center participates in layout (no absolutely-positioned center
  *     column that overlaps its neighbours = the overflow bug), with a small
  *     documented set of container-query collapse stages.
- *  3. Action order: Publish, Export, Save — Save is the right-most button.
+ *  3. Action order: Publish, Export — Export is the right-most button; Save
+ *     lives in the editor toolbar, not here.
  *  4. The page number control is a native <select> (one option per page,
  *     current page selected), not a numeric text input.
  *  5. The small-screen pane switcher has exactly the editor and desktop tabs —
@@ -146,38 +147,43 @@ describe("AppToolbar — modern responsive layout (no overflow)", () => {
   });
 });
 
-describe("AppToolbar — action order: Publish, Export, Save", () => {
-  test("markup order is Publish, then Export, then Save (Save right-most)", () => {
+describe("AppToolbar — action order: Publish, Export (no Save)", () => {
+  test("markup order is Publish, then Export (Export right-most)", () => {
     const src = toolbar();
     const publishIdx = src.indexOf('class="publish-btn');
     const exportIdx = src.indexOf('class="export-btn');
-    const saveIdx = src.indexOf('class="save-btn');
     expect(publishIdx).toBeGreaterThan(-1);
     expect(exportIdx).toBeGreaterThan(publishIdx);
-    expect(saveIdx).toBeGreaterThan(exportIdx);
   });
 
-  test("there is no overflow menu — Save is the right-most button with nothing after it", () => {
+  test("Save lives in the editor toolbar — the app toolbar carries no save control or props", () => {
+    const src = toolbar();
+    expect(src).not.toContain("save-btn");
+    expect(src).not.toContain("savePending");
+    expect(src).not.toContain("saveDisabled");
+    expect(src).not.toContain("onSave");
+  });
+
+  test("there is no overflow menu — Export is the right-most button with nothing after it", () => {
     const src = toolbar();
     expect(src).not.toContain("more-menu");
     expect(src).not.toContain("ellipsis-vertical");
-    const saveIdx = src.indexOf('class="save-btn');
-    const afterSave = src.slice(saveIdx, src.indexOf("</header>"));
-    expect(afterSave).not.toContain("<details");
-    expect(afterSave.indexOf("<button")).toBe(afterSave.lastIndexOf("<button"));
+    const exportIdx = src.indexOf('class="export-btn');
+    const afterExport = src.slice(exportIdx, src.indexOf("</header>"));
+    expect(afterExport).not.toContain("<details");
+    expect(afterExport.indexOf("<button")).toBe(afterExport.lastIndexOf("<button"));
   });
 
-  test("actions keep their intents: onPublish, onOpenExport (the export dialog), onSave", () => {
+  test("actions keep their intents: onPublish, onOpenExport (the export dialog)", () => {
     const src = toolbar();
     expect(src).toMatch(/publish-btn[\s\S]{0,400}?onclick=\{[^}]*onPublish/);
     expect(src).toMatch(/export-btn[\s\S]{0,400}?onclick=\{[^}]*onOpenExport/);
-    expect(src).toMatch(/save-btn[\s\S]{0,400}?onclick=\{[^}]*onSave/);
   });
 
   test("the Book settings button sits beside the view controls (and stays reachable on narrow layouts)", () => {
     const src = toolbar();
     const zoomIdx = src.indexOf('class="menu zoom-menu"');
-    const settingsIdx = src.indexOf('class="icon-btn project-settings-btn"');
+    const settingsIdx = src.indexOf('class="icon-btn icon-text project-settings-btn"');
     expect(zoomIdx).toBeGreaterThan(-1);
     expect(settingsIdx).toBeGreaterThan(zoomIdx);
     // Before the separator that leads into the primary actions.
@@ -407,7 +413,7 @@ describe("AppToolbar — Export is the one primary action (#306)", () => {
     const publish = src.slice(at, src.indexOf("</button>", at));
     expect(publish).not.toMatch(/\bprimary\b/);
     // Its look comes from the toolbar's existing non-primary button recipe (the
-    // one Save uses) — no new colours or tokens.
+    // one Setup uses) — no new colours or tokens.
     expect(src).toMatch(/\.toolbar button:not\(\.app-btn-primary\):not\(\.active\)\s*\{/);
   });
 });
@@ -420,7 +426,7 @@ describe("AppToolbar — Export is the one primary action (#306)", () => {
 // from 1440 down to 360 against the measured cluster widths (no clipped nav or
 // cluster overlap at any width; touch measured separately).
 describe("AppToolbar — deliberate collapse (#316)", () => {
-  test("Publish/Export keep their labels on a 900px window; Save yields its label first", () => {
+  test("Publish/Export/Setup keep their labels on a 900px window and drop them together", () => {
     const stages = containerStages(toolbar());
     // Line-anchored, so `.save-btn .btn-label` does not count as the general rule.
     const labelStage = [...stages].find(([, body]) => /^\s*\.btn-label\s*\{\s*display:\s*none/m.test(body));
@@ -429,14 +435,21 @@ describe("AppToolbar — deliberate collapse (#316)", () => {
     // before the narrow layout's pane tabs (796px), which leave no room.
     expect(labelStage![0]).toBeLessThan(876);
     expect(labelStage![0]).toBeGreaterThanOrEqual(796);
-    // Save's label goes at the widest stage: its icon needs no words.
-    const widest = Math.max(...stages.keys());
-    expect(stages.get(widest)).toMatch(/\.save-btn \.btn-label\s*\{\s*display:\s*none/);
+  });
+
+  test("the Book setup button is a labelled wrench that shares the .btn-label collapse and keeps its name", () => {
+    const src = toolbar();
+    const at = src.indexOf('class="icon-btn icon-text project-settings-btn"');
+    const button = src.slice(at, src.indexOf("</button>", at));
+    expect(button).toContain('name="wrench"');
+    expect(button).toContain('<span class="btn-label">Setup</span>');
+    expect(button).toContain('aria-label="Book setup"');
+    expect(button).toContain('title="Book setup"');
   });
 
   test("every control that can turn icon-only keeps an aria-label and a tooltip", () => {
     const src = toolbar();
-    for (const cls of ["publish-btn", "export-btn", "save-btn"]) {
+    for (const cls of ["publish-btn", "export-btn", "icon-btn icon-text project-settings-btn"]) {
       const at = src.indexOf(`class="${cls}`);
       expect(at).toBeGreaterThan(-1);
       const button = src.slice(at, src.indexOf("</button>", at));

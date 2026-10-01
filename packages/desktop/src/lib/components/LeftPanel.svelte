@@ -29,7 +29,6 @@
   import FileTree from "$lib/components/FileTree.svelte";
   import MediaPanel from "$lib/components/MediaPanel.svelte";
   import ProjectsListBody from "$lib/components/ProjectsListBody.svelte";
-  import { isDesktop } from "$lib/platform";
   import {
     buildTocTree,
     ancestorKeysForActive,
@@ -65,9 +64,8 @@
     onInsertImage,
     onProjectChosen,
     onOpenUrl,
-    onOpenGitHub,
+    onOpenBook,
     onNewProject,
-    onShowWelcome,
     onSyncReconnect,
     onPanelStateChange,
   }: {
@@ -97,10 +95,8 @@
     onInsertImage?: (payload: { src: string; alt?: string }) => void;
     onProjectChosen?: (path: string) => void;
     onOpenUrl?: (url: string) => void;
-    onOpenGitHub?: () => void;
+    onOpenBook?: () => void;
     onNewProject?: () => void;
-    /** Show the start screen over the workspace. */
-    onShowWelcome?: () => void;
     onSyncReconnect?: () => void;
     /** Called whenever tab or width changes, or the panel closes itself (Esc,
      *  scrim), so the parent can persist the state. */
@@ -473,9 +469,8 @@
         currentProjectDisplayName={sourceMode === "folder" ? projectDisplayName : null}
         onChosen={(path) => { onProjectChosen?.(path); }}
         onOpenUrl={(url) => { onOpenUrl?.(url); }}
-        onOpenGitHub={isDesktop() ? onOpenGitHub : undefined}
+        {onOpenBook}
         onNewProject={onNewProject}
-        onShowWelcome={onShowWelcome}
       />
     </div>
 

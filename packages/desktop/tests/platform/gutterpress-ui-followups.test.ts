@@ -60,7 +60,7 @@ test("bottom status uses save icons and compact mobile rules", () => {
   expect(read("src/lib/components/ProblemsPanel.svelte")).toContain(".problems-panel.compact .panel-body");
 });
 
-test("#316: the save state keeps its text at the narrow breakpoint; only the Problems label drops, much later", () => {
+test("#316: the save state keeps its text at the narrow breakpoint; the Problems badge is icon + count at every width", () => {
   const status = read("src/lib/components/StatusBar.svelte");
   // At the app's single-pane width (820px) the lower-priority items drop out…
   const narrow = /@media screen and \(max-width: 820px\) \{([^}]*)\}/.exec(status)?.[1] ?? "";
@@ -69,12 +69,12 @@ test("#316: the save state keeps its text at the narrow breakpoint; only the Pro
   // …but "Edits saved" used to collapse to an unlabeled check icon here.
   expect(narrow).not.toContain(".save-text");
   expect(status).not.toMatch(/\.save-text[^{]*\{[^}]*display:\s*none/);
-  // The Problems label only drops out at phone widths, and the toggle then
-  // still has an accessible name (always set, since its icons + counts say
-  // nothing to a screen reader).
-  const phone = /@media screen and \(max-width: 560px\) \{([^}]*)\}/.exec(status)?.[1] ?? "";
-  expect(phone).toContain(".strip-title");
-  expect(phone).toContain(".strip-status");
+  // The Problems control is a compact badge (status icon + count) with no
+  // visible text to drop, so it needs no width rules — but it always has an
+  // accessible name, since icons + counts say nothing to a screen reader.
+  expect(status).not.toContain("strip-title");
+  expect(status).not.toContain("strip-status");
+  expect(status).not.toMatch(/@media screen and \(max-width: 560px\)/);
   expect(status).toContain("aria-label={stripLabel}");
 });
 
@@ -99,7 +99,7 @@ test("#307: the Problems list is a row of its own above the bar — it never ove
   expect(status).toContain("aria-expanded={problemsOpen}");
 });
 
-test("#307: a clean project shows 'No problems' in the bar with no button to open an empty list", () => {
+test("#307: a clean project shows an inert badge ('No problems' name) with no button to open an empty list", () => {
   const status = read("src/lib/components/StatusBar.svelte");
   // The toggle exists only when there is something to expand…
   const ifIdx = status.indexOf("{#if canExpand}");
@@ -110,7 +110,8 @@ test("#307: a clean project shows 'No problems' in the bar with no button to ope
   // …and the rest of that block is a plain, non-interactive label.
   const idle = status.slice(elseIdx, status.indexOf("{/if}", status.indexOf('class="strip-idle"')));
   expect(idle).toContain('class="strip-idle"');
-  expect(idle).toContain("No problems");
+  expect(idle).toContain("aria-label={stripLabel}");
+  expect(status).toContain('"No problems"');
   expect(idle).not.toContain("<button");
   expect(idle).not.toContain("onclick");
 });
@@ -186,15 +187,18 @@ test("#307: keyboard — opening the list moves focus into it; Escape and Close 
   expect(panel).not.toMatch(/key === ["']Tab["']/);
 });
 
-test("#307: until the first check has run the bar says 'Checking…', never 'No problems'", () => {
+test("#307: until the first check has run the badge says 'checking', never 'No problems'", () => {
   const page = read("src/routes/+page.svelte");
   const status = read("src/lib/components/StatusBar.svelte");
   // "Not checked yet" is the lint running OR the render that triggers it still
   // in flight: renderingComplete clears `rendering` and starts the lint in the
   // same synchronous call, so the two flags leave no gap between them.
   expect(page).toContain("problemsLoading={problemsLoading || lifecycle.rendering}");
-  // The plain label follows that flag.
-  expect(status).toContain('{problemsLoading ? "Checking…" : "No problems"}');
+  // The inert badge follows that flag: spinner icon and no "0" until checked,
+  // and the accessible name says so rather than claiming "No problems".
+  expect(status).toContain('name={problemsLoading ? "refresh-cw" : "circle-check"}');
+  expect(status).toContain("{#if !problemsLoading}0{/if}");
+  expect(status).toMatch(/problemsLoading\s*\?\s*"Problems: checking"/);
 });
 
 test("#307: the narrow left-panel drawer spans the workspace region — it stops at the status bar's top edge", () => {

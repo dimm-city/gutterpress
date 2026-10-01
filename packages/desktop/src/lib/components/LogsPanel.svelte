@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * LogsPanel — the start screen's Logs tab: the app's diagnostic logs,
+   * LogsPanel — the start screen's Troubleshooting → Logs tab: the app's diagnostic logs,
    * readable in place and one click away from the clipboard, so a writer can
    * paste them into a chat/issue when something needs investigating. Read-only
    * by design — the host's `log/list` + `log/read` routes are confined to the

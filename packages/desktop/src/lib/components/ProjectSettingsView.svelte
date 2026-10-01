@@ -137,7 +137,7 @@
         .listDir(dir)
         .then((entries) => entries.filter((e) => !e.isDir && /\.md$/i.test(e.name)).map((e) => e.name)),
     // Which print tools are absent, for the publish-targets note — the same
-    // /api/doctor data the Help tab shows.
+    // /api/doctor data Troubleshooting → Diagnostics shows.
     listMissingPrintTools: () =>
       api
         .doctor()

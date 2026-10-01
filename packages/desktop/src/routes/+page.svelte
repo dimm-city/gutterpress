@@ -17,6 +17,7 @@
   import ProjectActivityView from "$lib/components/ProjectActivityView.svelte";
   import NewProjectWizard from "$lib/components/NewProjectWizard.svelte";
   import GitHubDialog from "$lib/components/GitHubDialog.svelte";
+  import OpenBookDialog from "$lib/components/OpenBookDialog.svelte";
   import PublishWizard from "$lib/components/PublishWizard.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import AppToolbar from "$lib/components/AppToolbar.svelte";
@@ -49,6 +50,7 @@
   import { getPlatform, isDesktop } from "$lib/platform";
   import type { WorkspaceMode } from "$lib/platform";
   import { api } from "$lib/api";
+  import { buildSourceList } from "$lib/components/config/source-files";
   import { isEditableTarget } from "$lib/a11y";
   import { invalidateDiscoveredProjects } from "$lib/projects-discover-cache";
   import { basenameOf, joinPath, isPathAtOrUnder } from "$lib/platform/paths";
@@ -473,6 +475,7 @@
 
   // "Open from GitHub" flow (#15)
   let githubOpen = $state(false);
+  let openBookOpen = $state(false);
   // New-project wizard (#25). L4: opening is exclusively via show() below —
   // there is no bindable `open` prop any more (the wizard owns that state).
   let newProjectWizardRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
@@ -668,7 +671,7 @@
   // the inert workspace, which is a spec no-op).
   let landingRef = $state<{
     focusLayer: () => void;
-    showTab: (tab: "projects" | "settings" | "help") => void;
+    showTab: (tab: "projects" | "settings" | "help" | "troubleshooting", sub?: "diagnostics" | "logs" | "about") => void;
   } | null>(null);
   /** Sub-tab the start screen's embedded Settings opens on. */
   let landingSettingsTab = $state<SettingsTab>("app");
@@ -2518,6 +2521,26 @@
   let inFocus = $derived(focus && toolbarProjectOpen);
 
   /**
+   * Edit+Focus file switcher: the book's markdown files in book order — the
+   * manifest's `sourceFiles` when pinned, else every top-level .md in natural
+   * order (the same list the Details section edits, via `buildSourceList`).
+   */
+  let focusFiles = $state<string[]>([]);
+  async function loadFocusFiles(): Promise<void> {
+    const dir = lifecycle.currentDir;
+    if (!dir) return;
+    try {
+      const [{ md }, cfg] = await Promise.all([api.fs.listProjectFiles(dir), api.manifest.read(dir)]);
+      if (dir !== lifecycle.currentDir) return;
+      focusFiles = buildSourceList(md, cfg.sourceFiles ?? null)
+        .filter((e) => e.included && !e.missing)
+        .map((e) => e.path);
+    } catch {
+      focusFiles = [];
+    }
+  }
+
+  /**
    * Turn Focus on/off. It only hides chrome (see `focus`), so neither the mode
    * nor the left-panel setting is touched and leaving restores exactly what
    * was visible. `returnFocus` puts keyboard focus back on the toolbar's Focus
@@ -2527,6 +2550,7 @@
     if (on === focus || (on && !toolbarProjectOpen)) return;
     contextMenu.close();
     focus = on;
+    if (on) void loadFocusFiles();
     if (on && !focusHintShown) {
       focusHintShown = true;
       toast?.info?.("Focus: press Esc to exit", 6000);
@@ -2783,6 +2807,9 @@
       {pageNav}
       showPageNav={focusView === "read" && !!lifecycle.previewUrl}
       rendering={lifecycle.rendering}
+      files={focusView === "edit" ? focusFiles : []}
+      currentFile={editorFilePath ? basenameOf(editorFilePath) : null}
+      onSelectFile={(name) => lifecycle.currentDir ? selectEditorFile(joinPath(lifecycle.currentDir, name)).then(() => {}) : undefined}
     />
   {:else}
   <AppToolbar
@@ -2820,10 +2847,6 @@
     bind:exportBtnEl
     {exportHints}
     exportWarning={canSavePdf ? lifecycle.saveWarning : null}
-    saving={forceSaving}
-    saveDisabled={!editorFilePath || forceSaving || editorSavePhase === "clean"}
-    savePending={!!editorFilePath && editorSavePhase !== "clean"}
-    onSave={handleForceSave}
     showProjectSettings={toolbarProjectOpen && isDesktop()}
     onOpenProjectSettings={openProjectConfig}
     {focus}
@@ -2860,13 +2883,8 @@
       onInsertImage={(payload) => insertImageIntoChapter(payload)}
       onProjectChosen={(path) => void openProjectPath(path)}
       onOpenUrl={openUrl}
-      onOpenGitHub={isDesktop() ? () => { contextMenu.close(); void inlineEdit.endActive(true); githubOpen = true; } : undefined}
+      onOpenBook={() => { contextMenu.close(); void inlineEdit.endActive(true); openBookOpen = true; }}
       onNewProject={() => { contextMenu.close(); void inlineEdit.endActive(true); newProjectWizardRef?.show(); }}
-      onShowWelcome={() => {
-        contextMenu.close();
-        landingRef?.showTab("projects");
-        landingForcedOpen = true;
-      }}
       onSyncReconnect={onSyncReconnect}
       onPanelStateChange={persistLeftPanelPrefs}
     />
@@ -2945,6 +2963,8 @@
                 editorRef?.runToolbarAction(action, payload);
               }}
               onSave={handleForceSave}
+              savePending={editorSavePhase !== "clean"}
+              saving={forceSaving}
             />
             {/if}
             {#if MarkdownEditor}
@@ -3208,6 +3228,14 @@
       />
     {/key}
   </section>
+{/if}
+
+{#if openBookOpen}
+  <OpenBookDialog
+    onClose={() => (openBookOpen = false)}
+    onLocal={() => { openBookOpen = false; void pickAndOpenFolder(); }}
+    onGitHub={isDesktop() ? () => { openBookOpen = false; githubOpen = true; } : undefined}
+  />
 {/if}
 
 <GitHubDialog

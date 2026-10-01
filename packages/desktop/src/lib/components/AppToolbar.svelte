@@ -22,8 +22,8 @@
    *    every control that turns icon-only keeps its aria-label and tooltip.
    *    The container is the toolbar's content box (window width − 24px), so a
    *    900px window measures 876px:
-   *      ≤1150px  Edit/Read segmented group → dropdown menu, Save drops
-   *               its text label, export hints drop
+   *      ≤1150px  Edit/Read segmented group → dropdown menu, export
+   *               hints and the Setup label drop
    *      ≤875px   Publish/Export drop their text labels, page nav loses its
    *               first/last jump buttons, path trims
    *      ≤760px   the page-number select drops (prev/next stay), title trims
@@ -42,11 +42,12 @@
    * offer, and nothing reachable only from the keyboard. Focus is NOT a mode:
    * it is a separate toggle beside that control (see `focus`).
    *
-   * Actions are ordered Publish → Export → Save so Save is always the
-   * right-most button. Export is the one primary (solid) action; Publish is a
-   * secondary button, since its wizard exports too. There is no overflow menu:
-   * Export opens the export dialog, book settings is a dedicated button
-   * beside the mode control, advanced setup in app Settings.
+   * Actions are ordered Publish → Export, Export right-most. Export is the one
+   * primary (solid) action; Publish is a secondary button, since its wizard
+   * exports too. There is no Save here: saving lives in the editor toolbar
+   * (and Ctrl/Cmd+S). There is no overflow menu: Export opens the export
+   * dialog, book setup is a dedicated labelled button beside the mode
+   * control, advanced setup in app Settings.
    *
    * PWA-clean (§8): type-only imports, zero host/Node code.
    */
@@ -95,10 +96,6 @@
     exportBtnEl = $bindable(undefined),
     exportHints = [],
     exportWarning = null,
-    saving,
-    saveDisabled,
-    savePending,
-    onSave,
     showProjectSettings,
     onOpenProjectSettings,
   }: {
@@ -148,10 +145,6 @@
     exportHints?: string[];
     /** Save-readiness warning (rendered as role="alert"). */
     exportWarning?: string | null;
-    saving: boolean;
-    saveDisabled: boolean;
-    savePending: boolean;
-    onSave: () => void;
     showProjectSettings: boolean;
     onOpenProjectSettings: () => void;
   } = $props();
@@ -431,16 +424,18 @@
     </details>
 
     {#if showProjectSettings}
-      <!-- Book settings (manifest) — beside the mode control. Rendered on
+      <!-- Book setup (manifest) — beside the mode control. Rendered on
            narrow layouts too (the tab bar replaces the mode control there,
-           but book settings must stay reachable). -->
+           but book setup must stay reachable). Its text label yields at the
+           ≤1150px stage, before Publish/Export's; aria-label and tooltip stay. -->
       <button
-        class="icon-btn project-settings-btn"
+        class="icon-btn icon-text project-settings-btn"
         onclick={onOpenProjectSettings}
-        title="Book settings"
-        aria-label="Book settings"
+        title="Book setup"
+        aria-label="Book setup"
       >
-        <Icon name="settings" />
+        <Icon name="wrench" />
+        <span class="btn-label">Setup</span>
       </button>
     {/if}
 
@@ -454,12 +449,12 @@
       <span class="save-hint save-warning" role="alert">{exportWarning}</span>
     {/if}
 
-    <!-- Actions — Publish, Export, Save (Save right-most). Export is the ONE
+    <!-- Actions — Publish, Export (Export right-most). Export is the ONE
          primary (solid) action; Publish is a secondary button beside it — its
          wizard exports too, so two equal-weight solid buttons left the choice
          unclear. No overflow menu: Focus is a toggle beside the mode
          control, advanced setup lives in the app Settings view,
-         save-as-template in the export dialog, and book settings beside the
+         save-as-template in the export dialog, and book setup beside the
          mode control above. Both keep their aria-label when the text label
          drops at narrow widths. -->
     {#if publishVisible}
@@ -486,19 +481,6 @@
     >
       <Icon name="file-down" />
       <span class="btn-label">{exporting ? "Exporting…" : "Export"}</span>
-    </button>
-    <!-- Save: flush all pending editor changes to disk NOW (the same
-         force-save the status bar's "Save now" runs). Disabled (with an
-         "everything saved" tooltip) when there is nothing pending. -->
-    <button
-      class="save-btn icon-text"
-      onclick={onSave}
-      disabled={saveDisabled}
-      title={savePending ? "Save pending changes (Ctrl+S)" : "All changes saved"}
-      aria-label="Save pending changes"
-    >
-      <Icon name="save" />
-      <span class="btn-label">{saving ? "Saving…" : "Save"}</span>
     </button>
   </div>
 </header>
@@ -884,13 +866,15 @@
 
   /* ---- Collapse stages (see the header comment for the full table) ---- */
   @container (max-width: 1150px) {
-    /* Swap the inline view-mode buttons for the compact menu button; Save
+    /* Swap the inline view-mode buttons for the compact menu button; Setup
        drops its text label (icon, tooltip and aria-label stay) and the export
-       hints yield to the page nav from here down. */
+       hints yield to the page nav from here down. Setup goes before
+       Publish/Export: its ~40px is what keeps the page nav's first/last jump
+       buttons clear on a 900px window. */
     .mode-group { display: none; }
     details.mode-menu { display: inline-block; }
     .save-hint { display: none; }
-    .save-btn .btn-label { display: none; }
+    .project-settings-btn .btn-label { display: none; }
     /* The title ellipsizes (full text in its tooltip); the page nav must not
        clip, and a 3-digit page count widens it by ~15px. */
     .doc-title { max-width: 120px; }

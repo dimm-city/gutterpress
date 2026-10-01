@@ -1,5 +1,5 @@
 /**
- * Settings tabs + the central Connections tab, and the toolbar Save button
+ * Settings tabs + the central Connections tab, and the editor-toolbar Save button
  * (owner requests, 2026-07-13). Source-text pins per the repo convention for
  * component wiring (see publish-wizard.test.ts).
  */
@@ -10,22 +10,29 @@ import path from "node:path";
 const root = path.resolve(import.meta.dir, "../..");
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), "utf8");
 
-describe("Toolbar Save button — flush all pending changes beside Export", () => {
+describe("Editor-toolbar Save button — flush all pending changes", () => {
   const page = read("src/routes/+page.svelte");
-  const toolbar = read("src/lib/components/AppToolbar.svelte");
+  const toolbar = read("src/lib/components/EditorToolbar.svelte");
+  const appToolbar = read("src/lib/components/AppToolbar.svelte");
   const editor = read("src/lib/components/MarkdownEditor.svelte");
-  test("wired to the same force-save the status bar uses, disabled when clean", () => {
-    // The button markup lives in the extracted AppToolbar; +page wires the
-    // intent (onSave → handleForceSave) and the clean-state disable.
-    const idx = toolbar.indexOf('class="save-btn icon-text"');
+  test("wired to the same force-save the status bar uses; primary while pending, calm 'Saved' when clean", () => {
+    // The button markup lives in EditorToolbar; +page wires the intent
+    // (onSave → handleForceSave) and the dirty/saving state.
+    const idx = toolbar.indexOf('class="tb-btn save-btn"');
     expect(idx).toBeGreaterThan(-1);
-    const btn = toolbar.slice(idx, idx + 700);
+    const btn = toolbar.slice(idx, toolbar.indexOf("</button>", idx));
+    expect(btn).toContain("class:app-btn-primary={savePending}");
     expect(btn).toContain("onclick={onSave}");
+    expect(btn).toContain("disabled={!savePending || saving}");
     expect(btn).toContain("All changes saved");
+    expect(btn).toContain('"Saved"');
     expect(page).toContain("onSave={handleForceSave}");
-    expect(page).toMatch(/saveDisabled=\{[^}]*editorSavePhase === "clean"/);
-    // Sits after the Export button — Save is the right-most action.
-    expect(idx).toBeGreaterThan(toolbar.indexOf('class="export-btn'));
+    expect(page).toMatch(/savePending=\{editorSavePhase !== "clean"\}/);
+    // The app toolbar no longer carries a Save button.
+    expect(appToolbar).not.toContain("save-btn");
+  });
+  test("the label yields to an icon-only button in the editor toolbar's narrow tier", () => {
+    expect(toolbar).toMatch(/@container editor-toolbar \(max-width: 479px\)\s*\{\s*[^}]*\.save-label\s*\{\s*display:\s*none/);
   });
   test("CodeMirror handles Cmd/Ctrl+S directly through the same force-save path", () => {
     expect(editor).toContain('{ key: "Mod-s"');

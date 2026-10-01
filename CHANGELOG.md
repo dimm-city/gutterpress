@@ -5,6 +5,35 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.8] - 2026-10-01
+
+### Changed
+
+- **Save lives in the editor.** The Save button left the top toolbar; the
+  editor toolbar's Save is now a labelled button that turns blue when you have
+  unsaved changes and quietly says "Saved" when you don't. Ctrl/Cmd+S still
+  saves.
+- **Book settings is now "Setup".** The toolbar button has a tools icon and
+  the word Setup, so it's easier to find.
+- **A quieter problems indicator.** The status bar shows a small badge — an
+  icon and a count — instead of the PROBLEMS strip. Click it to open the same
+  problems panel as before.
+- **Pick a chapter while focusing.** In Focus while editing, the slim bar has a
+  Chapter list of your book's files, so you can switch without leaving Focus.
+- **Open book… replaces the old Books tab buttons.** The bottom of the Books tab
+  now has just Open book… and New book. Open book… asks where the book is —
+  on this computer or on GitHub — and takes you to the right place. The
+  welcome screen is still one click away from Help.
+- **Help is just help; Troubleshooting has the rest.** The start screen's Help
+  tab now holds only how-to guidance and keyboard shortcuts. A new
+  Troubleshooting tab has three sections: Diagnostics (what your computer has,
+  and a button to copy the details when you ask for help), Logs, and About
+  (version and update check). The separate Logs tab is gone.
+- **The user guide and examples come with the app.** On first launch the
+  desktop app copies the Gutterpress User Guide (with Getting Started) and the
+  example books to Documents/Gutterpress, where they show up under Discovered
+  books. Your copies are never overwritten.
+
 ## [0.11.7] - 2026-10-01
 
 ### Changed

@@ -40,6 +40,21 @@ test("Focus is a toggle that swaps the app toolbar for the minimal bar and hides
   expect(toolbar).not.toContain("Preview only");
 });
 
+test("Edit+Focus shows the book's files in the minimal bar, reusing the existing file switch", () => {
+  const src = read("src/routes/+page.svelte");
+  const bar = read("src/lib/components/FocusBar.svelte");
+  // Book order = the Details section's list (manifest sourceFiles, else natural order).
+  expect(src).toContain("buildSourceList(md, cfg.sourceFiles ?? null)");
+  expect(src).toContain("api.fs.listProjectFiles(dir)");
+  // Edit only; selecting goes through the same atomic selectEditorFile as the tree.
+  expect(src).toContain('files={focusView === "edit" ? focusFiles : []}');
+  expect(src).toMatch(/onSelectFile=\{\(name\) =>[^\n]*selectEditorFile\(joinPath\(lifecycle\.currentDir, name\)\)/);
+  expect(bar).toContain('aria-label="Chapter"');
+  // A cancelled switch snaps the select back; the bar's select-hold logic still applies.
+  expect(bar).toContain('el.value = currentFile ?? "";');
+  expect(bar).toContain('t.tagName === "SELECT"');
+});
+
 test("a preview-generation failure keeps the folder workspace open with repair actions", () => {
   const src = read("src/routes/+page.svelte");
   expect(src).toContain(

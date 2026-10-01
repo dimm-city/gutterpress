@@ -16,6 +16,14 @@ files:
 extraResources:
   - from: build-resources/icon.png
     to: build-resources/icon.png
+  # First-launch samples (electron/seed-samples.ts): the user guide + examples,
+  # copied as-is from the repo's examples/ — one source, no duplicate assets.
+  - from: ../../examples/gutterpress-user-guide
+    to: samples/gutterpress-user-guide
+  - from: ../../examples/with-design-guide
+    to: samples/with-design-guide
+  - from: ../../examples/with-validation
+    to: samples/with-validation
 
 extraMetadata:
   main: out/main/main.js
