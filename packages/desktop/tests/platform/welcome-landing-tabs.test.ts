@@ -70,23 +70,75 @@ describe("start-screen copy", () => {
   });
 });
 
-describe("the Logs tab (diagnostic sharing)", () => {
-  test("Logs is the LAST tab, after Help", () => {
+describe("the Troubleshooting tab (diagnostics, logs, about)", () => {
+  test("Troubleshooting is the LAST tab, after Help; no standalone Logs tab", () => {
     const tabs = landing.slice(
       landing.indexOf("const LANDING_TABS"),
       landing.indexOf("];", landing.indexOf("const LANDING_TABS")),
     );
     const order = [...tabs.matchAll(/id: "([a-z]+)"/g)].map((m) => m[1]);
-    expect(order).toEqual(["projects", "settings", "help", "logs"]);
+    expect(order).toEqual(["projects", "settings", "help", "troubleshooting"]);
+    expect(landing).not.toContain('activeTab === "logs"');
   });
 
-  test("the logs panel mounts LogsPanel (list + read via api.log.*)", () => {
-    expect(landing).toContain('activeTab === "logs"');
-    expect(landing).toContain("<LogsPanel />");
+  test("showTab takes an optional sub-tab for deep links", () => {
+    expect(landing).toMatch(/export function showTab\(tab: LandingTab, sub\?: TroubleshootingTab\)/);
+    expect(landing).toContain("sanitizeTroubleshootingTab(sub)");
+  });
+
+  test("the panel mounts TroubleshootingView with the update wiring", () => {
+    expect(landing).toContain("<TroubleshootingView");
+    expect(landing).toContain("{onCheckForUpdates}");
+    expect(landing).not.toContain("LogsPanel");
+  });
+
+  test("its Logs sub-tab re-lists on every visit (LogsPanel mounts only while active)", () => {
+    const view = read("src/lib/components/TroubleshootingView.svelte");
+    expect(view).toMatch(/\{#if activeTab === "logs"\}\s*(<!--[\s\S]*?-->\s*)?<LogsPanel \/>/);
     const logsPanel = read("src/lib/components/LogsPanel.svelte");
     expect(logsPanel).toContain("api.log.list()");
     expect(logsPanel).toContain("api.log.read(");
     expect(logsPanel).toContain("navigator.clipboard.writeText");
+  });
+
+  test("reuses SettingsView's sub-tab pattern", () => {
+    const view = read("src/lib/components/TroubleshootingView.svelte");
+    expect(view).toContain('role="tablist" aria-label="Troubleshooting sections"');
+    expect(view).toContain("onTablistKeydown");
+    expect(view).toContain('role="tabpanel"');
+    expect(view).toContain("{idPrefix}-panel");
+  });
+
+  test("Diagnostics keeps the doctor load + copy report (with versions); About has versions + updates", () => {
+    const view = read("src/lib/components/TroubleshootingView.svelte");
+    expect(view).toContain("api.doctor()");
+    expect(view).toContain("Copy diagnostic info");
+    expect(view).toContain("`Gutterpress desktop ${data.desktopVersion}`");
+    expect(view).toContain("Check for updates");
+    expect(view).toContain("<strong>Desktop:</strong>");
+  });
+});
+
+describe("the Help tab is guidance only", () => {
+  const help = read("src/lib/components/HelpContent.svelte");
+
+  test("no doctor call, loading/error state, diagnostics or updates", () => {
+    expect(help).not.toContain("api.doctor");
+    expect(help).not.toContain("loading");
+    expect(help).not.toContain("Retry");
+    expect(help).not.toContain("Copy diagnostic info");
+    expect(help).not.toContain("system-info");
+    expect(help).not.toContain("Optional system tools");
+    expect(help).not.toContain("Check for updates");
+    expect(help).not.toContain("Loaded versions");
+  });
+
+  test("sections run Getting Started, Online Copy, Keyboard Shortcuts, with the one-line intro", () => {
+    const at = (t: string) => help.indexOf(t);
+    expect(help).toContain("How to open, edit, save and publish your book.");
+    expect(at("Getting Started")).toBeGreaterThan(-1);
+    expect(at("Getting Started")).toBeLessThan(at("Work with an Online Copy"));
+    expect(at("Work with an Online Copy")).toBeLessThan(at("Keyboard Shortcuts"));
   });
 });
 

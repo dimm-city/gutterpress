@@ -146,7 +146,7 @@
   }
 
   // qpdf/Ghostscript availability on this computer (from the same /api/doctor
-  // data the Help tab shows), for the can't-build-compliant-PDFs note below.
+  // data Troubleshooting → Diagnostics shows), for the can't-build-compliant-PDFs note below.
   // Best-effort: a failed probe just shows no note.
   let missingTools = $state<string[]>([]);
   async function loadToolStatus(): Promise<void> {
