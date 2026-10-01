@@ -152,6 +152,35 @@ describe("repairOnlineBackup", () => {
     }
   });
 
+  test("a sign-in that lived only inside the old online address still backs up after the repair", async () => {
+    const serverDir = await tempDir("gp-repair-auth-server-");
+    await createFixtureRepo(serverDir);
+    const auth = { username: "writer", password: "secret" };
+    const server = await startGitServer(serverDir, { requireAuth: auth });
+    const parent = await tempDir("gp-repair-auth-client-");
+    const projectDir = path.join(parent, "book");
+    const backupDir = path.join(parent, "backups", "book", "t1");
+    try {
+      // Our own clone strips an embedded sign-in from the stored address, so
+      // this is the hand-edited (or older-tool) config the field can present.
+      const embedded = server.url.replace("://", `://${auth.username}:${auth.password}@`);
+      await cloneRepository({ url: embedded, dir: projectDir });
+      await git.setConfig({ fs, dir: projectDir, path: "remote.origin.url", value: embedded });
+      await localVersionWithEmptyTree(projectDir, "chapter-02.md", "# Two\n");
+      await serverCommit(serverDir, "chapter-03.md", "# Three\n");
+      const result = await repairOnlineBackup({ projectDir, backupDir });
+      expect(result.outcome.status).toBe("synced");
+      // The repair's own backup reached the server (the desktop's token store
+      // would also now hold the migrated sign-in for later syncs).
+      const [head] = await git.log({ fs, dir: projectDir, depth: 1 });
+      expect(await git.resolveRef({ fs, dir: serverDir, ref: "main" })).toBe(head!.oid);
+    } finally {
+      await server.close();
+      await rm(serverDir, { recursive: true, force: true });
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
+
   test("a download that fails touches nothing in the book", async () => {
     const h = await setup();
     try {

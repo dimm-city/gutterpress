@@ -78,10 +78,12 @@ export async function repairOnlineBackup(
   const movedGitTo = path.join(options.backupDir, "git");
   const freshDir = path.join(options.backupDir, "fresh-clone");
 
+  let usedCredential: RepairOnlineBackupOptions["credential"];
   const restoredFiles = await withRepoLock(dir, async () => {
     // Reads only `.git/config`, which survives most damage; a book whose
     // config is gone too has no online address, and nothing here can invent one.
     const transport = await resolveTransport(dir, options);
+    usedCredential = transport.credential;
     let branch: string | undefined;
     try {
       branch = (await git.currentBranch({ fs, dir })) ?? undefined;
@@ -94,33 +96,51 @@ export async function repairOnlineBackup(
       dir: freshDir,
       ...(transport.credential ? { credential: transport.credential } : {}),
       ...(branch ? { branch } : {}),
+      // A sign-in that lived only inside the old address is migrated into the
+      // store here, so the closing backup below still has it.
+      tokenStore: options.tokenStore,
       httpClient: options.httpClient,
     });
 
     logger.info("swap", "moving old history aside", { to: movedGitTo });
     await moveDir(oldGit, movedGitTo);
-    await moveDir(path.join(freshDir, ".git"), oldGit);
+    try {
+      await moveDir(path.join(freshDir, ".git"), oldGit);
+    } catch (e) {
+      // Never leave the book with no (or half a) `.git`: put the old one back.
+      await rm(oldGit, { recursive: true, force: true });
+      await moveDir(movedGitTo, oldGit);
+      throw e;
+    }
     await rm(freshDir, { recursive: true, force: true });
 
     // Edit-beats-delete: a file the online copy has and this computer lacks
     // comes back from the download; every file here stays exactly as it is.
+    // The swap is done by now, so a restore that fails (an unwritable name on
+    // this OS) is logged and the repair carries on to the backup.
     const ref = fresh.branch ?? "HEAD";
-    const tracked = await git.listFiles({ fs, dir, ref });
-    const missing = tracked.filter((f) => !fs.existsSync(path.join(dir, f)));
-    if (missing.length > 0) {
-      await git.checkout({ fs, dir, ref, filepaths: missing, force: true });
-      logger.info("restore", "restored files missing on this computer", { files: missing });
+    try {
+      const tracked = await git.listFiles({ fs, dir, ref });
+      const missing = tracked.filter((f) => !fs.existsSync(path.join(dir, f)));
+      if (missing.length > 0) {
+        await git.checkout({ fs, dir, ref, filepaths: missing, force: true });
+        logger.info("restore", "restored files missing on this computer", { files: missing });
+      }
+      return missing;
+    } catch (e) {
+      logger.warn("restore", "could not restore every online-only file", errorLogData(e));
+      return [];
     }
-    return missing;
   }).catch((e) => {
     logger.error("repair", "repair failed", errorLogData(e));
     throw e;
   });
 
-  // Outside the lock: syncProject takes it itself.
+  // Outside the lock: syncProject takes it itself. With no store, the
+  // credential resolved from the old address is the only one there is.
   const outcome = await syncProject({
     projectDir: options.projectDir,
-    credential: options.credential,
+    credential: options.credential ?? (options.tokenStore ? undefined : usedCredential),
     tokenStore: options.tokenStore,
     authorName: options.authorName,
     authorEmail: options.authorEmail,

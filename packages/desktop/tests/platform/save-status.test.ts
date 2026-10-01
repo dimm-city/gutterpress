@@ -462,7 +462,7 @@ describe("repair online backup", () => {
     const s = onlineSection(input({ online: { state: "error", canSync: true, repair: "armed" } }));
     expect(s.status).toBe("Repair online backup?");
     expect(s.detail).toContain("stay exactly as they are");
-    expect(s.detail).toContain("kept aside, not deleted");
+    expect(s.detail).toContain("kept aside in the app's data folder, not deleted");
     expect(s.actions.map((a) => [a.id, a.primary ?? false])).toEqual([
       ["repairNow", true],
       ["repairCancel", false],
@@ -472,7 +472,7 @@ describe("repair online backup", () => {
   test("running: no buttons, and it says the files are not touched", () => {
     const s = onlineSection(input({ online: { state: "error", canSync: true, repair: "running" } }));
     expect(s.tone).toBe("pending");
-    expect(s.detail).toContain("not touched");
+    expect(s.detail).toContain("stay as they are");
     expect(s.actions).toEqual([]);
   });
 });

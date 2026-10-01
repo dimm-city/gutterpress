@@ -212,7 +212,7 @@ export class SyncController {
         msg || "The repair didn't finish. Your work is saved on this computer — see Troubleshooting → Logs for details.",
       );
     } finally {
-      if (this.deps.currentDir() === dir) this.repairing = false;
+      this.repairing = false;
     }
   }
 }

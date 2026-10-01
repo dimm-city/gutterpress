@@ -300,7 +300,7 @@ export function versionsSection(i: Pick<SaveStatusInput, "versions" | "online" |
 export const REPAIR_EXPLAIN =
   "Repair downloads a fresh copy of your book's online history and puts it under the files on this computer. " +
   "Your files here stay exactly as they are and win over the online copy; anything only the online copy has is brought back. " +
-  "The old history is kept aside, not deleted. Then a version is saved and backed up.";
+  "The old history is kept aside in the app's data folder, not deleted. Then a version is saved and backed up.";
 const REPAIR_ACTION: SaveStatusAction = { id: "repair", label: "Repair online backup…" };
 
 export function onlineSection(
@@ -327,7 +327,7 @@ export function onlineSection(
     };
   }
   if (o.repair === "running") {
-    return { ...base, status: "Repairing online backup…", detail: "This can take a minute. Your files on this computer are not touched.", tone: "pending", actions: [] };
+    return { ...base, status: "Repairing online backup…", detail: "This can take a minute. Your files on this computer stay as they are.", tone: "pending", actions: [] };
   }
   if (o.repair === "armed") {
     return {
