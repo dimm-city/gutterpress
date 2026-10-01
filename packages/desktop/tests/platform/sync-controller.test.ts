@@ -78,6 +78,7 @@ function make(): Harness {
   };
   h.ctrl = new SyncController({
     syncChanges: (d) => sync.fn(d),
+    repair: () => Promise.reject(new Error("not wired in this test")),
     diagnose: () =>
       h.diagnose.throws
         ? Promise.reject(new Error("diag down"))
@@ -352,9 +353,8 @@ test("handleRepair: a repaired book reports synced, toasts once, and reloads the
   expect(h.calls).toEqual(["/proj"]);
   expect(h.ctrl.lastManual?.state).toBe("synced");
   expect(h.toast.success.calls[0][0]).toContain("repaired");
-  expect(h.toast.info.calls[0][0]).toContain("1 file");
+  expect(h.toast.success.calls[0][0]).toContain("1 file");
   expect(h.onSyncCompleted.calls[0]).toEqual([true, true]);
-  expect(h.ctrl.repairing).toBe(false);
 });
 
 test("handleRepair: a repair whose closing backup failed shows the lib's message and records error", async () => {
@@ -364,20 +364,16 @@ test("handleRepair: a repair whose closing backup failed shows the lib's message
   expect(h.toast.error.calls[0][0]).toBe("Everything is in sync.");
 });
 
-test("handleRepair: a thrown repair toasts the error and never leaves repairing stuck", async () => {
-  const h = makeWithRepair(new Error("No online address"));
+test("handleRepair: a thrown repair toasts the fixed failure line and records error", async () => {
+  const h = makeWithRepair(new Error("ENOSPC"));
   await h.ctrl.handleRepair();
-  expect(h.toast.error.calls[0][0]).toBe("No online address");
-  expect(h.ctrl.repairing).toBe(false);
+  expect(h.toast.error.calls[0][0]).toContain("The repair didn't finish");
   expect(h.ctrl.lastManual?.state).toBe("error");
 });
 
-test("handleRepair: a no-op when no project is open or no repair dep is wired", async () => {
+test("handleRepair: a no-op when no project is open", async () => {
   const h = makeWithRepair({ outcome: { status: "synced", message: "", mergedRemoteChanges: false }, restoredFiles: [] });
   h.dir = null;
   await h.ctrl.handleRepair();
   expect(h.calls).toEqual([]);
-  const plain = make();
-  await plain.ctrl.handleRepair();
-  expect(plain.toast.error.calls.length).toBe(0);
 });

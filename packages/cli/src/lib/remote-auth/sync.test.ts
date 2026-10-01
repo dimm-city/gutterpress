@@ -44,63 +44,7 @@ import {
   type GitServer,
 } from "./test-support/git-http-server.ts";
 
-const SERVER_AUTHOR = { name: "Server", email: "server@test.local" };
-
-interface Harness {
-  serverDir: string;
-  server: GitServer;
-  projectDir: string;
-  cleanup(): Promise<void>;
-}
-
-async function setupClone(opts: { requireAuth?: { username: string; password: string } } = {}): Promise<Harness> {
-  const serverDir = await tempDir("gutterpress-sync-server-");
-  await createFixtureRepo(serverDir);
-  const server = await startGitServer(serverDir, opts);
-  const parent = await tempDir("gutterpress-sync-client-");
-  const projectDir = path.join(parent, "project");
-  const credential: HostCredential | undefined = opts.requireAuth
-    ? {
-        host: "127.0.0.1",
-        kind: "token",
-        token: opts.requireAuth.password,
-        username: opts.requireAuth.username,
-        createdAt: Date.now(),
-      }
-    : undefined;
-  await cloneRepository({
-    url: server.url,
-    dir: projectDir,
-    ...(credential ? { credential } : {}),
-  });
-  return {
-    serverDir,
-    server,
-    projectDir,
-    cleanup: async () => {
-      await server.close();
-      await rm(serverDir, { recursive: true, force: true });
-      await rm(parent, { recursive: true, force: true });
-    },
-  };
-}
-
-async function serverCommit(
-  serverDir: string,
-  files: Record<string, string | null>,
-  message: string,
-): Promise<string> {
-  for (const [name, content] of Object.entries(files)) {
-    if (content === null) {
-      await rm(path.join(serverDir, name), { force: true });
-      await git.remove({ fs, dir: serverDir, filepath: name });
-    } else {
-      await writeFile(path.join(serverDir, name), content);
-      await git.add({ fs, dir: serverDir, filepath: name });
-    }
-  }
-  return git.commit({ fs, dir: serverDir, message, author: SERVER_AUTHOR });
-}
+import { SERVER_AUTHOR, serverCommit, setupClone, type Harness } from "./test-support/sync-harness.ts";
 
 async function isClean(dir: string): Promise<boolean> {
   const matrix = await git.statusMatrix({ fs, dir });

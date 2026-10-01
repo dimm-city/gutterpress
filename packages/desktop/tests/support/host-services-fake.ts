@@ -123,7 +123,7 @@ export function makeHostServices(overrides: HostServicesOverrides = {}): HostSer
       check: async () => idleUpdaterStatus(),
       download: async () => idleUpdaterStatus(),
     },
-    vcs: { loadLib: async () => ({}), operationLogPath: () => "/fake/log" },
+    vcs: { loadLib: async () => ({}), operationLogPath: () => "/fake/log", repairBackupDir: () => "/fake/repair" },
     watch: { startFolderWatch: noop, stopFolderWatch: noop, getWatchedDir: () => null },
     write: {
       scheduleAutoSnapshot: noop,

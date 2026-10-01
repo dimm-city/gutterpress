@@ -5,26 +5,14 @@ import { getVcsHooks } from '../../../../../electron/server-bridge/vcs-hooks';
 import { defineRoute, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-// "Repair online backup" (lib remote-auth/repair.ts): one fixed sequence that
-// replaces a book's broken `.git` with a fresh download of its online history,
-// keeps every file on this computer, restores files that exist only online,
-// then saves a version and backs up. The old `.git` is moved (never deleted)
-// to a per-repair folder under userData (`repairBackupDir`).
+// "Repair online backup" (lib remote-auth/repair.ts): replace a book's broken
+// `.git` with a fresh download of its online history, keep every file on this
+// computer, bring back files that exist only online, then save a version and
+// back up. The old `.git` is moved (never deleted) to a per-repair folder
+// under userData (`repairBackupDir`).
 
-interface RepairLib extends LibModule {
-  repairOnlineBackup?(args: {
-    projectDir: string;
-    backupDir: string;
-    logFile: string;
-    tokenStore: TokenStore;
-    authorName?: string;
-    authorEmail?: string;
-  }): Promise<{ outcome: unknown; movedGitTo: string; restoredFiles: string[] }>;
-  repoDirFor?(projectDir: string): Promise<string>;
-}
-
-export const POST: RequestHandler = defineRoute<{ projectDir: string }, RemoteHooks<RepairLib, TokenStore>>({
-  hooks: () => getHooks<RepairLib, TokenStore>(),
+export const POST: RequestHandler = defineRoute<{ projectDir: string }, RemoteHooks<LibModule, TokenStore>>({
+  hooks: getHooks,
   hooksUnavailableMessage: 'Remote hooks not available',
   validate: async (raw) => ({
     projectDir: await requireProjectDir((raw as { projectDir?: string }).projectDir, 'remote:repair'),
@@ -33,12 +21,13 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string }, RemoteHo
     handleRemoteErrors('remote:repair', async () => {
       const lib = await hooks.loadLib();
       const vcs = getVcsHooks();
-      if (!lib.repairOnlineBackup || !lib.repoDirFor || !vcs?.repairBackupDir) {
+      if (!lib.repairOnlineBackup || !lib.detectProjectSource || !lib.repoRootForSource || !vcs) {
         throw new Error('Repair is not available in this version of the lib');
       }
-      const slug = basename(await lib.repoDirFor(body.projectDir));
+      // The same slug every other sync/version log of this repo uses.
+      const slug = basename(lib.repoRootForSource(await lib.detectProjectSource(body.projectDir), body.projectDir));
       const identity = await gitIdentityArgs();
-      const { outcome, restoredFiles } = await lib.repairOnlineBackup({
+      return lib.repairOnlineBackup({
         projectDir: body.projectDir,
         backupDir: vcs.repairBackupDir(slug),
         logFile: vcs.operationLogPath(slug),
@@ -46,6 +35,5 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string }, RemoteHo
         authorName: identity.authorName,
         authorEmail: identity.authorEmail,
       });
-      return { outcome, restoredFiles };
     }),
 });

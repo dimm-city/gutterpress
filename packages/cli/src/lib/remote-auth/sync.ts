@@ -145,17 +145,14 @@ export function isUnrelatedHistories(e: unknown): boolean {
  * as a damaged history, not a transient failure.
  */
 function isDamagedObjectError(e: unknown): boolean {
-  if (
-    e instanceof TypeError &&
-    /property 'caller' on string|^Attempted to assign to readonly property\.$/.test(e.message)
-  ) {
-    return true;
-  }
-  // An object the history refers to is gone — including an empty loose object
-  // git-fs just removed that no pack held a copy of (a version only this
-  // computer ever had). Reached only after the fetch succeeded, so it is the
-  // local history that is missing something, not the network.
-  return (e as { code?: string })?.code === "NotFoundError";
+  return (
+    (e instanceof TypeError &&
+      /property 'caller' on string|^Attempted to assign to readonly property\.$/.test(e.message)) ||
+    // An object the history refers to is gone — e.g. an empty loose object
+    // git-fs removed that no pack held a copy of (a version only this
+    // computer ever had). The caller applies this only past the fetch stage.
+    (e as { code?: string })?.code === "NotFoundError"
+  );
 }
 
 /**
@@ -470,7 +467,7 @@ export async function syncProject(
         if (setupMsg) return { status: "error", message: setupMsg, ...base() };
         // A damaged history must not be reported as a transient failure: "please
         // try again" is false when trying again can never work.
-        if (isDamagedObjectError(e) || (await historyUnreadable(dir))) {
+        if ((stage !== "fetch" && isDamagedObjectError(e)) || (await historyUnreadable(dir))) {
           logger.error("sync", "the book's history could not be read");
           return { status: "error", message: MSG_HISTORY_UNREADABLE, ...base() };
         }

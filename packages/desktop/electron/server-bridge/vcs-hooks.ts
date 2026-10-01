@@ -11,7 +11,7 @@ export interface VcsHooks<LibModule = unknown> {
   loadLib: () => Promise<LibModule>;
   operationLogPath: (slug: string) => string;
   /** A fresh folder for one "Repair online backup" to keep the old `.git` in. */
-  repairBackupDir?: (slug: string) => string;
+  repairBackupDir: (slug: string) => string;
   /**
    * Pause the auto-snapshot debounce and `dir`'s auto-sync periodic timer
    * (#273 — around a copy switch's checkout, so neither fires against the

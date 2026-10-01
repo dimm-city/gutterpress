@@ -22,36 +22,21 @@ import { cloneRepository } from "./clone.ts";
 import { REPAIR_SNAPSHOT_MESSAGE, repairOnlineBackup } from "./repair.ts";
 import { MSG_HISTORY_UNREADABLE } from "./sync-messages.ts";
 import { syncProject } from "./sync.ts";
-import { createFixtureRepo, startGitServer, tempDir, type GitServer } from "./test-support/git-http-server.ts";
+import { createFixtureRepo, startGitServer, tempDir } from "./test-support/git-http-server.ts";
+import { serverCommit, setupClone, type Harness } from "./test-support/sync-harness.ts";
 
 const AUTHOR = { name: "A", email: "a@example.com" };
 
-interface Harness {
-  serverDir: string;
-  server: GitServer;
-  projectDir: string;
-  backupDir: string;
-  cleanup(): Promise<void>;
-}
-
-async function setup(): Promise<Harness> {
-  const serverDir = await tempDir("gp-repair-server-");
-  await createFixtureRepo(serverDir);
-  const server = await startGitServer(serverDir);
-  const parent = await tempDir("gp-repair-client-");
-  const projectDir = path.join(parent, "book");
-  await cloneRepository({ url: server.url, dir: projectDir });
-  const backupDir = path.join(await tempDir("gp-repair-backups-"), "book", "2026-10-01T00-00-00Z");
+/** A clone plus a backup folder for one repair, as the desktop host provides. */
+async function setup(): Promise<Harness & { backupDir: string; cleanup(): Promise<void> }> {
+  const h = await setupClone();
+  const backupsRoot = await tempDir("gp-repair-backups-");
   return {
-    serverDir,
-    server,
-    projectDir,
-    backupDir,
+    ...h,
+    backupDir: path.join(backupsRoot, "book", "2026-10-01T00-00-00Z"),
     cleanup: async () => {
-      await server.close();
-      await rm(serverDir, { recursive: true, force: true });
-      await rm(parent, { recursive: true, force: true });
-      await rm(path.dirname(path.dirname(backupDir)), { recursive: true, force: true });
+      await h.cleanup();
+      await rm(backupsRoot, { recursive: true, force: true });
     },
   };
 }
@@ -65,18 +50,12 @@ async function localVersionWithEmptyTree(dir: string, file: string, text: string
   fs.writeFileSync(path.join(dir, ".git", "objects", commit.tree.slice(0, 2), commit.tree.slice(2)), "");
 }
 
-async function serverCommit(serverDir: string, file: string, text: string): Promise<void> {
-  await writeFile(path.join(serverDir, file), text);
-  await git.add({ fs, dir: serverDir, filepath: file });
-  await git.commit({ fs, dir: serverDir, author: { name: "Server", email: "s@test.local" }, message: `server ${file}` });
-}
-
 describe("repairOnlineBackup", () => {
   test("REPRO: an empty local-only object leaves sync with no way back", async () => {
     const h = await setup();
     try {
       await localVersionWithEmptyTree(h.projectDir, "chapter-02.md", "# Two\n");
-      await serverCommit(h.serverDir, "chapter-03.md", "# Three\n"); // forces a merge
+      await serverCommit(h.serverDir, { "chapter-03.md": "# Three\n" }, "server"); // forces a merge
       const outcome = await syncProject({ projectDir: h.projectDir });
       expect(outcome.status).toBe("error");
       expect(outcome.message).toBe(MSG_HISTORY_UNREADABLE);
@@ -89,11 +68,11 @@ describe("repairOnlineBackup", () => {
     const h = await setup();
     try {
       await localVersionWithEmptyTree(h.projectDir, "chapter-02.md", "# Two\n");
-      await serverCommit(h.serverDir, "chapter-03.md", "# Three\n");
+      await serverCommit(h.serverDir, { "chapter-03.md": "# Three\n" }, "server");
       // An edit made here after the damage, never in any version.
       await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nMy latest draft.\n");
       // The same file also changed online: this computer's copy must win.
-      await serverCommit(h.serverDir, "chapter-01.md", "# One\n\nOnline draft.\n");
+      await serverCommit(h.serverDir, { "chapter-01.md": "# One\n\nOnline draft.\n" }, "server");
 
       const result = await repairOnlineBackup({ projectDir: h.projectDir, backupDir: h.backupDir });
 
@@ -167,7 +146,7 @@ describe("repairOnlineBackup", () => {
       await cloneRepository({ url: embedded, dir: projectDir });
       await git.setConfig({ fs, dir: projectDir, path: "remote.origin.url", value: embedded });
       await localVersionWithEmptyTree(projectDir, "chapter-02.md", "# Two\n");
-      await serverCommit(serverDir, "chapter-03.md", "# Three\n");
+      await serverCommit(serverDir, { "chapter-03.md": "# Three\n" }, "server");
       const result = await repairOnlineBackup({ projectDir, backupDir });
       expect(result.outcome.status).toBe("synced");
       // The repair's own backup reached the server (the desktop's token store
