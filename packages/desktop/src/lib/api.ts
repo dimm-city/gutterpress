@@ -248,9 +248,25 @@ export const api = {
   dialog: {
     /** Open native directory picker. Resolves null when cancelled. */
     openDirectory: () => post<string | null>('/api/dialog/open-directory'),
-    /** Open native PDF save dialog. Resolves null when cancelled. */
-    savePdf: (defaultName?: string) =>
-      post<string | null>('/api/dialog/save-pdf', defaultName !== undefined ? { defaultName } : {}),
+    /**
+     * Open native PDF save dialog, optionally opening in `defaultDir`.
+     * Resolves null when cancelled.
+     */
+    savePdf: (defaultName?: string, defaultDir?: string) =>
+      post<string | null>('/api/dialog/save-pdf', {
+        ...(defaultName !== undefined ? { defaultName } : {}),
+        ...(defaultDir !== undefined ? { defaultDir } : {}),
+      }),
+    /**
+     * Native folder picker for a build's output folder (may create one). The
+     * chosen folder becomes a valid `api:build` `out` and publish artifact.
+     * Resolves null when cancelled.
+     */
+    pickOutputFolder: (defaultPath?: string) =>
+      post<string | null>(
+        '/api/dialog/pick-output-folder',
+        defaultPath !== undefined ? { defaultPath } : {},
+      ),
     /** Open native single image file picker. Resolves null when cancelled. */
     pickImageFile: () => post<string | null>('/api/dialog/pick-image-file'),
     /** Native open dialog for the publish artifact (PDF). Null when cancelled. */

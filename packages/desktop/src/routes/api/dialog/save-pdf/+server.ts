@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { getDesktopHooks, type DesktopHooks } from '$lib/server/host-hooks.js';
 import { defineRoute } from '../../_lib/route';
 import { getSavePathsHooks } from '../../../../../electron/server-bridge/picked-files';
@@ -13,13 +14,19 @@ import type { RequestHandler } from './$types';
 // capability (`../../../../../electron/server-bridge/picked-files.ts`),
 // consumed by the export controller before it will write to `out` — see that
 // module's doc comment for the full policy.
-export const POST: RequestHandler = defineRoute<{ defaultName?: string }, DesktopHooks>({
+//
+// `defaultDir` only seeds where the dialog opens (the Publish wizard passes
+// the book's remembered output folder); the capability is still the path the
+// dialog returns, wherever the author finally points it.
+export const POST: RequestHandler = defineRoute<{ defaultName?: string; defaultDir?: string }, DesktopHooks>({
   hooks: getDesktopHooks,
   hooksUnavailableMessage: 'Desktop hooks not registered',
   call: async ({ body, hooks }) => {
     const res = await hooks.showSaveDialog({
       title: 'Save PDF',
-      defaultPath: body.defaultName ?? 'book.pdf',
+      defaultPath: body.defaultDir
+        ? path.join(body.defaultDir, body.defaultName ?? 'book.pdf')
+        : (body.defaultName ?? 'book.pdf'),
       filters: [{ name: 'PDF', extensions: ['pdf'] }],
     });
     if (res.canceled || !res.filePath) return null;
