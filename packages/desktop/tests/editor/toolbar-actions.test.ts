@@ -511,7 +511,7 @@ test("TOOLBAR_ITEMS: declares an insert-layout-block control in the insert group
 
 // ── Focus lives on the app toolbar, not here ────────────────────────────────
 
-test("TOOLBAR_ITEMS: there is no Focus item (the app toolbar toggle and Ctrl+Shift+F are the entry points)", () => {
+test("TOOLBAR_ITEMS: there is no Focus item (the app toolbar toggle is the entry point)", () => {
   expect(TOOLBAR_ITEMS.some((i) => i.id === "focus-mode" || (i.action as string) === "focus-mode")).toBe(false);
 });
 

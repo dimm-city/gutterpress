@@ -26,7 +26,7 @@
   import EditorToolbar from "$lib/components/EditorToolbar.svelte";
   import type { ToolbarAction, ToolbarPayload } from "$lib/components/EditorToolbar.svelte";
   import SnippetPicker from "$lib/components/SnippetPicker.svelte";
-  import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
+  import { PreviewClient, type OutlineEntry, type PreviewEvent, type PreviewTarget } from "$lib/preview-client";
   import { activeOutlineIndexForLine } from "$lib/routes/outline";
   import { PageNavController } from "$lib/routes/page-nav-controller.svelte";
   import { ZoomViewController } from "$lib/routes/zoom-view-controller.svelte";
@@ -969,7 +969,7 @@
   let focus = $state(false);
   // The "how to leave Focus" toast shows the first time Focus is entered in an
   // app session only — the Focus tooltip carries the same words permanently,
-  // and a writer who lives in Focus should not be told on every Ctrl+Shift+F.
+  // and a writer who lives in Focus should not be told every time.
   let focusHintShown = false;
   let editorVisible = $derived(mode !== "viewer");
   let workspaceEl = $state<HTMLElement | undefined>(undefined);
@@ -2081,6 +2081,19 @@
   // throws), and in URL-preview mode the SAME component loads an arbitrary
   // third-party page, which must never get the command/event bridge wired up
   // at all (a locked client's later attach() call is a permanent no-op).
+  /**
+   * Esc pressed inside the preview. The preview is a cross-origin iframe, so
+   * its keystrokes never reach this window; preview-bridge.js forwards an Esc
+   * nothing in the book consumed (in-place block editing keeps its own).
+   * Same rule as the window's Esc: leave Focus only if nothing else owns it.
+   */
+  function onPreviewEscape(e: PreviewEvent): void {
+    if (e.name !== "escapePressed" || !inFocus) return;
+    if (escapeExitsFocus({ key: "Escape", defaultPrevented: false }, document, findBarOpen)) {
+      setFocus(false);
+    }
+  }
+
   function onClientReady(c: PreviewClient) {
     previewUpdating = false;
     if (lifecycle.sourceMode === "url") {
@@ -2091,6 +2104,7 @@
     previewEvents.subscribe(c);
     contextMenu.subscribe(c);
     inlineEdit.subscribe(c);
+    c.on(onPreviewEscape);
   }
 
   // ----------------------------------------------------------------
@@ -2142,14 +2156,10 @@
       // Esc handling); workspace shortcuts must not act on the inert UI
       // behind it.
       if (landingVisible) return;
-      // Cmd/Ctrl+Shift+F toggles Focus. Esc leaves it, but ONLY when nothing
-      // else wants the key: an open dialog/menu/popover, the find bar, or a
-      // handler that already consumed it (editor, context menu) keeps Esc.
-      if (command === "focus-mode") {
-        e.preventDefault();
-        setFocus(!focus);
-        return;
-      }
+      // Esc leaves Focus, but ONLY when nothing else wants the key: an open
+      // dialog/menu/popover, the find bar, or a handler that already consumed
+      // it (editor, context menu) keeps Esc. An Esc pressed inside the preview
+      // never reaches this window — see onPreviewEscape.
       if (inFocus && escapeExitsFocus(e, document, findBarOpen)) {
         e.preventDefault();
         setFocus(false);
@@ -2519,7 +2529,7 @@
     focus = on;
     if (on && !focusHintShown) {
       focusHintShown = true;
-      toast?.info?.("Focus: press Esc or Ctrl+Shift+F to exit", 6000);
+      toast?.info?.("Focus: press Esc to exit", 6000);
     }
     if (!on && returnFocus) {
       void tick().then(() => document.getElementById("focus-toggle-btn")?.focus());

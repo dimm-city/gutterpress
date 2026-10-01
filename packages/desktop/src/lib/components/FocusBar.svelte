@@ -3,17 +3,17 @@
    * FocusBar — the slim bar that replaces the app toolbar while Focus is on.
    *
    * Holds ONLY: the Edit/Read switch, Exit focus, and (in Read) page
-   * navigation. It floats over the workspace instead of taking layout space,
-   * fades out after a few idle seconds, and comes back on pointer movement
-   * near the top edge or when it receives keyboard focus (Tab). Reduced motion
-   * gets the same show/hide without the fade. The show/fade state machine is
-   * `createIdleReveal` (focus-mode.ts).
+   * navigation. It floats over the workspace instead of taking layout space.
+   * After a few idle seconds it slides up until only a sliver shows at the
+   * top edge; pointing at that sliver (or Tab into it) slides it back down.
+   * Reduced motion gets the same show/hide without the slide. The show/hide
+   * state machine is `createIdleReveal` (focus-mode.ts).
    *
    * Purely presentational and PWA-clean (§8): props in, callbacks out.
    */
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
-  import { createIdleReveal, pointerWakesBar, type IdleReveal } from "$lib/routes/focus-mode";
+  import { createIdleReveal, type IdleReveal } from "$lib/routes/focus-mode";
   import type { PageNavController } from "$lib/routes/page-nav-controller.svelte";
 
   let {
@@ -39,40 +39,38 @@
 
   onMount(() => {
     idle = createIdleReveal((v) => (visible = v));
-    const onMove = (e: PointerEvent) => {
-      if (pointerWakesBar(e.clientY)) idle?.reveal();
-    };
-    window.addEventListener("pointermove", onMove);
-    return () => {
-      window.removeEventListener("pointermove", onMove);
-      idle?.dispose();
-    };
+    return () => idle?.dispose();
   });
 
-  // Hovering, or KEYBOARD focus (Tab), inside the bar holds it open; leaving
-  // restarts the countdown. A mouse click also focuses a button, so plain focus
-  // must not hold — the bar would never fade after the first click.
-  // focusout only releases when focus really left the bar.
-  const hold = () => idle?.hold(true);
-  const release = () => idle?.hold(false);
+  // Pointer over the bar shows it and restarts the idle countdown; it tucks
+  // away once the pointer has stopped moving over it. Deliberately NOT a
+  // hover hold released on pointerleave: below the bar is the cross-origin
+  // preview iframe, and a pointer that moves into it never tells this
+  // document it left, so a hold would keep the bar down for good.
+  const reveal = () => idle?.reveal();
+  // KEYBOARD focus (Tab) inside the bar, or an open page <select>, holds it
+  // open. A mouse click also focuses a button, so plain focus must not hold —
+  // the bar would never tuck away after the first click. focusout only
+  // releases when focus really left the bar.
   function onFocusIn(e: FocusEvent) {
-    if ((e.target as HTMLElement).matches(":focus-visible")) hold();
+    const t = e.target as HTMLElement;
+    if (t.matches(":focus-visible") || t.tagName === "SELECT") idle?.hold(true);
   }
   function onFocusOut(e: FocusEvent) {
-    if (!barEl?.contains(e.relatedTarget as Node | null)) release();
+    if (!barEl?.contains(e.relatedTarget as Node | null)) idle?.hold(false);
   }
 </script>
 
-<!-- Pointer/focus handlers only hold the bar open; every control inside is a real button. -->
+<!-- Pointer/focus handlers only show or hold the bar; every control inside is a real button. -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
   bind:this={barEl}
   class="focus-bar"
-  class:faded={!visible}
+  class:tucked={!visible}
   role="group"
   aria-label="Focus controls"
-  onpointerenter={hold}
-  onpointerleave={release}
+  onpointerenter={reveal}
+  onpointermove={reveal}
   onfocusin={onFocusIn}
   onfocusout={onFocusOut}
 >
@@ -127,15 +125,18 @@
     </nav>
   {/if}
 
-  <button class="exit" onclick={onExit} title="Exit focus (Esc or Ctrl+Shift+F)" aria-label="Exit focus">
+  <button class="exit" onclick={onExit} title="Exit focus (Esc)" aria-label="Exit focus">
     <Icon name="x" /><span class="label">Exit focus</span>
   </button>
 </div>
 
 <style>
+  /* Hangs from the top edge like a drawer, so a pointer resting on the very
+     top of the window stays over it while it slides down (a gap above it
+     made the bar slide away from the pointer and flicker). */
   .focus-bar {
     position: fixed;
-    top: 8px;
+    top: 0;
     left: 50%;
     transform: translateX(-50%);
     z-index: var(--app-z-toolbar);
@@ -146,16 +147,18 @@
     padding: 4px 6px;
     background: var(--app-surface);
     border: 1px solid var(--app-border);
-    border-radius: 10px;
+    border-top: none;
+    border-radius: 0 0 10px 10px;
     box-shadow: 0 4px 14px var(--app-shadow-md);
-    opacity: 1;
-    transition: opacity 0.25s ease-out;
+    transition: transform 0.2s ease-out;
+    /* How much of the tucked bar stays visible at the top edge. */
+    --focus-bar-peek: 6px;
   }
-  /* Faded: invisible and click-through, but still in the tab order so Tab
-     reaches it (focusin holds it open). */
-  .focus-bar.faded {
-    opacity: 0;
-    pointer-events: none;
+  /* Tucked: slid up so only its bottom edge shows at the top of the window.
+     It stays pointable (pointing at the sliver slides it back down) and in
+     the tab order (focusin holds it open). */
+  .focus-bar.tucked {
+    transform: translate(-50%, calc(-100% + var(--focus-bar-peek)));
   }
   @media (prefers-reduced-motion: reduce) {
     .focus-bar {

@@ -165,7 +165,7 @@
     viewer: "Read — the preview on its own, two pages at a time",
   } as const;
   const FOCUS_TITLE =
-    "Focus — hide the panels and toolbars (Ctrl+Shift+F). Esc or the same shortcut brings them back";
+    "Focus — hide the panels and toolbars. Press Esc to bring them back";
 
   // Close the enclosing <details> menu after a menu item is chosen, and return
   // focus to its summary for keyboard users.

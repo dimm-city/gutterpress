@@ -12,9 +12,11 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **Focus works while writing and while reading.** Focus is now an on/off
   switch beside Edit and Read. It hides the left panel, the status bar and the
   toolbars, leaving only your writing and pages plus a slim bar with Edit/Read,
-  Exit focus and (while reading) page navigation. The bar fades while you
-  work and comes back when you move the mouse to the top. Press Esc or
-  Ctrl+Shift+F to leave Focus; your layout comes back exactly as it was.
+  Exit focus and (while reading) page navigation. After a few seconds the bar
+  slides up until only its edge peeks out at the top of the window; point at
+  it and it slides back down. Press Esc to leave Focus — it works even after
+  you've clicked into the pages — and your layout comes back exactly as it
+  was. The Ctrl+Shift+F shortcut is gone; use the Focus button and Esc.
 - **Back up now and Save a version now live in "Where your work is kept".**
   The separate backup button in the status bar is gone. Open the dialog from
   the save status to back up online or save a version. Save a version now is

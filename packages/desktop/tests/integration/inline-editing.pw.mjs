@@ -1018,25 +1018,28 @@ try {
   });
 
   // ── 13. Focus is a toggle on top of Edit AND Read, not a third mode ───────
-  // Ctrl+Shift+F hides the chrome (app toolbar, left panel, status bar, editor
-  // toolbar) behind a minimal bar, leaves the persisted mode alone, and
-  // toggling it back restores exactly the mode that was active.
-  await step("13. Ctrl+Shift+F toggles Focus over Read and over Edit, restoring the mode", async () => {
+  // The toolbar's Focus toggle hides the chrome (app toolbar, left panel,
+  // status bar, editor toolbar) behind a minimal bar and leaves the persisted
+  // mode alone; Esc restores exactly the mode that was active — including an
+  // Esc pressed with the keyboard inside the preview iframe (forwarded by
+  // preview-bridge.js), which is where a Read-mode click leaves it.
+  await step("13. The Focus toggle works over Read and over Edit; Esc (even from the preview) restores the mode", async () => {
     const modeActive = async (label) =>
       (await page.locator(`.mode-group button[aria-label="${label}"]`).getAttribute("aria-pressed")) === "true";
     const inFocus = async () => (await page.locator(".focus-bar").count()) > 0;
 
     for (const mode of ["Read", "Edit"]) {
       await setWorkspaceMode(page, mode);
-      if (!(await modeActive(mode))) throw new Error(`the toolbar does not report ${mode} before Ctrl+Shift+F`);
+      if (!(await modeActive(mode))) throw new Error(`the toolbar does not report ${mode} before Focus`);
       const statusBarBefore = await page.locator(".status-bar").count();
 
       for (const round of [1, 2]) {
-        await page.keyboard.press("Control+Shift+F");
+        await page.locator("#focus-toggle-btn").click();
         await page.waitForTimeout(300);
-        if (!(await inFocus())) throw new Error(`${mode} round ${round}: Ctrl+Shift+F did not enter Focus`);
+        if (!(await inFocus())) throw new Error(`${mode} round ${round}: the Focus toggle did not enter Focus`);
         if ((await page.locator(".toolbar").count()) > 0) throw new Error(`${mode} round ${round}: app toolbar still present in Focus`);
-        // Esc leaves Focus (nothing else consumes it).
+        // Round 2 presses Esc with the keyboard inside the preview iframe.
+        if (round === 2) await page.locator("iframe").first().click({ position: { x: 40, y: 40 } });
         await page.keyboard.press("Escape");
         await page.waitForTimeout(300);
         if (await inFocus()) throw new Error(`${mode} round ${round}: Esc did not leave Focus`);

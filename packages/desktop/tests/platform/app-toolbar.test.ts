@@ -333,7 +333,6 @@ describe("AppToolbar — the mode control is the whole mode model", () => {
     const src = toolbar();
     // The pen button's tooltip was the only place the app named Ctrl+E.
     expect(src).toContain("(Ctrl+E)");
-    expect(src).toContain("(Ctrl+Shift+F)");
   });
 });
 
@@ -370,10 +369,10 @@ describe("AppToolbar — the selected mode never looks disabled (#305)", () => {
     for (const m of ["editor", "viewer"]) {
       expect(src.split(`title={MODE_TITLE.${m}}`).length - 1).toBe(2);
     }
-    // Esc now leaves Focus (when nothing else consumes it), so the tooltip says so.
+    // Esc is the one way out of Focus (Ctrl+Shift+F was dropped in 0.11.7).
     const focusTitle = src.match(/const FOCUS_TITLE =\s*"([^"]+)"/)?.[1] ?? "";
     expect(focusTitle).toMatch(/^Focus — /);
-    expect(focusTitle).toContain("Ctrl+Shift+F");
+    expect(focusTitle).not.toContain("Ctrl+Shift+F");
     expect(focusTitle).toContain("Esc");
     expect(src).toContain("title={FOCUS_TITLE}");
   });
@@ -384,8 +383,7 @@ describe("AppToolbar — the selected mode never looks disabled (#305)", () => {
       src.indexOf("function setFocus("),
       src.indexOf("function selectFocusView("),
     );
-    // setFocus is the one writer of `focus`, so the toolbar button,
-    // Ctrl+Shift+F and the editor toolbar's Focus button all get the hint.
+    // setFocus is the one writer of `focus`, so every way in gets the hint.
     expect(body).toMatch(
       /if \(on && !focusHintShown\) \{\s+focusHintShown = true;\s+toast\?\.info\?\.\(/,
     );
@@ -394,7 +392,7 @@ describe("AppToolbar — the selected mode never looks disabled (#305)", () => {
     expect(src).toMatch(/^\s*let focusHintShown = false;/m);
     expect(src.match(/focusHintShown = true/g)).toHaveLength(1);
     expect(src.match(/focusHintShown = false/g)).toHaveLength(1);
-    expect(body).toContain('"Focus: press Esc or Ctrl+Shift+F to exit"');
+    expect(body).toContain('"Focus: press Esc to exit"');
   });
 });
 

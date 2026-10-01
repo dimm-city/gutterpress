@@ -15,7 +15,9 @@ export interface PreviewEvent {
     | "contextMenuRequested"
     | "blockEditRequested"
     | "blockEditFinished"
-    | "blockEditStateChanged";
+    | "blockEditStateChanged"
+    /** An Esc nothing in the book consumed (the app uses it to leave Focus). */
+    | "escapePressed";
   detail: {
     currentPage?: number;
     totalPages?: number;

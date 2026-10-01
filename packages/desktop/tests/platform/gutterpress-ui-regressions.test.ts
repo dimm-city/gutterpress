@@ -292,8 +292,8 @@ test("#311: every insert action sits behind ONE Insert menu button, so the toolb
   expect(insertGroup).not.toContain("{#each insertItems");
   expect(insertGroup).not.toContain("openTableDialog");
 
-  // Focus is not an editor-toolbar item at all: the app toolbar's toggle and
-  // Ctrl+Shift+F are its only entry points.
+  // Focus is not an editor-toolbar item at all: the app toolbar's toggle is
+  // its only entry point.
   expect(src).not.toContain("view-group");
   expect(src).not.toContain("viewItems");
 });
@@ -652,8 +652,14 @@ test("Esc leaves Focus only through escapeExitsFocus, after the book-settings an
   // The settings panel and start screen own Esc first (they return before this).
   expect(src.indexOf("if (projectSettingsOpen) {")).toBeLessThan(escIdx);
   expect(src.indexOf("if (landingVisible) return;")).toBeLessThan(escIdx);
-  // The shortcut toggles both ways.
-  expect(src).toContain("setFocus(!focus);");
+  // An Esc pressed inside the preview iframe (forwarded by preview-bridge.js
+  // as `escapePressed`) goes through the same rule.
+  const fwd = src.slice(src.indexOf("function onPreviewEscape("), src.indexOf("function onClientReady("));
+  expect(fwd).toContain('e.name !== "escapePressed"');
+  expect(fwd).toContain("escapeExitsFocus(");
+  expect(src).toContain("c.on(onPreviewEscape);");
+  // Ctrl+Shift+F is gone (0.11.7): Esc and the toolbar toggle are the controls.
+  expect(src).not.toContain('command === "focus-mode"');
 });
 
 test("the Edit/Read switch in the minimal bar maps to a mode on wide and a tab on narrow", () => {
@@ -675,8 +681,7 @@ test("the retired view-mode machinery is gone, not merely unused", () => {
   // No Settings control for a value that is no longer stored.
   expect(settingsView).not.toContain("set-viewmode");
   // Focus swaps components ({#if inFocus}) rather than toggling a chrome
-  // class on the shell. (The "focus-mode" COMMAND id survives — it is the
-  // Ctrl+Shift+F shortcut's identity.)
+  // class on the shell.
   expect(page).not.toContain("class:focus-mode");
   expect(page).not.toContain(".shell.focus-mode");
 });

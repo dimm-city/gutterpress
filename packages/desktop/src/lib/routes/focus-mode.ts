@@ -28,26 +28,20 @@ export function escapeExitsFocus(
   return !doc.querySelector(ESCAPE_OWNERS);
 }
 
-/** How far from the window's top edge the pointer wakes the minimal bar. */
-export const FOCUS_BAR_WAKE_ZONE_PX = 72;
-/** Idle time before the minimal bar fades out. */
+/** Idle time before the minimal bar tucks away. */
 export const FOCUS_BAR_IDLE_MS = 3000;
-
-export function pointerWakesBar(clientY: number): boolean {
-  return clientY <= FOCUS_BAR_WAKE_ZONE_PX;
-}
 
 export interface IdleReveal {
   /** Show the bar now and restart the idle countdown. */
   reveal(): void;
-  /** While held (pointer over the bar, focus inside it) it never fades. */
+  /** While held (pointer over the bar, focus inside it) it never tucks away. */
   hold(held: boolean): void;
   dispose(): void;
 }
 
 /**
- * The bar's show/fade state machine, separate from the DOM so it is testable
- * with an injected scheduler. Starts visible; fades `delay` ms after the last
+ * The bar's show/tuck state machine, separate from the DOM so it is testable
+ * with an injected scheduler. Starts visible; tucks away `delay` ms after the last
  * reveal unless held.
  */
 export function createIdleReveal(

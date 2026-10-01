@@ -1,10 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   FOCUS_BAR_IDLE_MS,
-  FOCUS_BAR_WAKE_ZONE_PX,
   createIdleReveal,
   escapeExitsFocus,
-  pointerWakesBar,
 } from "../../src/lib/routes/focus-mode";
 
 const noOverlay = { querySelector: () => null };
@@ -29,14 +27,6 @@ describe("escapeExitsFocus", () => {
 
   test("state owned outside the DOM (the find bar) keeps Esc", () => {
     expect(escapeExitsFocus({ key: "Escape", defaultPrevented: false }, noOverlay, true)).toBe(false);
-  });
-});
-
-describe("pointerWakesBar", () => {
-  test("only near the top edge", () => {
-    expect(pointerWakesBar(0)).toBe(true);
-    expect(pointerWakesBar(FOCUS_BAR_WAKE_ZONE_PX)).toBe(true);
-    expect(pointerWakesBar(FOCUS_BAR_WAKE_ZONE_PX + 1)).toBe(false);
   });
 });
 

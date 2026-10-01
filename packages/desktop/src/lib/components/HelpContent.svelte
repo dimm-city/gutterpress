@@ -183,7 +183,7 @@
           <tr><td>Zoom in / out</td><td>+ / -</td></tr>
           <tr><td>Fit to width</td><td>F</td></tr>
           <tr><td>Toggle editor (Edit mode)</td><td>{modKey}+E</td></tr>
-          <tr><td>Focus (hide panels and toolbars)</td><td>{modKey}+Shift+F</td></tr>
+          <tr><td>Leave Focus (Focus is in the toolbar)</td><td>Esc</td></tr>
           <tr><td>Save source edits</td><td>{modKey}+S</td></tr>
           <tr><td>Export PDF</td><td>{modKey}+Shift+E</td></tr>
           <tr><td>Settings</td><td>{modKey}+,</td></tr>
