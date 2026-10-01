@@ -23,7 +23,6 @@
   import Icon from "$lib/components/Icon.svelte";
   import AppToolbar from "$lib/components/AppToolbar.svelte";
   import FocusBar from "$lib/components/FocusBar.svelte";
-  import ExportDialog from "$lib/components/ExportDialog.svelte";
   import ProjectSettingsView from "$lib/components/ProjectSettingsView.svelte";
   import EditorToolbar from "$lib/components/EditorToolbar.svelte";
   import type { ToolbarAction, ToolbarPayload } from "$lib/components/EditorToolbar.svelte";
@@ -157,7 +156,8 @@
     displayName: () => lifecycle.currentFolderDisplayName,
     isBusy: () => lifecycle.busy,
     sourceMode: () => lifecycle.sourceMode,
-    chooseSavePath: (defaultName) => api.dialog.savePdf(defaultName),
+    chooseSavePath: (defaultName, defaultDir) => api.dialog.savePdf(defaultName, defaultDir),
+    pickOutputFolder: (defaultPath) => api.dialog.pickOutputFolder(defaultPath),
     onBuildProgress: (cb) => getPlatform().onBuildProgress(cb),
     buildPdf: (input, outPath, opts) =>
       getPlatform()
@@ -184,7 +184,7 @@
           buildProblemEntries = buildProblems(result.diagnostics ?? []);
           return result;
         }),
-    buildHtml: (input) => getPlatform().build({ input, format: "html" }),
+    buildHtml: (input, out) => getPlatform().build({ input, format: "html", ...(out ? { out } : {}) }),
     cancelExportHost: (exportId) => getPlatform().cancelExport(exportId),
     downloadFile: (url, filename) => {
       const a = document.createElement("a");
@@ -231,8 +231,6 @@
     listDestinations: (dir, providerId) => api.publish.listDestinations(dir, providerId),
     createDestination: (dir, providerId, name) => api.publish.createDestination(dir, providerId, name),
     run: (dir, providerId, options) => api.publish.run(dir, providerId, options),
-    pickPdfFile: () => api.dialog.pickPdfFile(),
-    openDirectory: () => api.dialog.openDirectory(),
     openExternal: (url) => api.shell.openExternal(url),
     onSaved: () => toast?.success?.("Publish settings saved."),
     onConnected: () => toast?.success?.("Connected — the key is stored securely on this computer."),
@@ -630,18 +628,17 @@
   // AppToolbar is purely presentational: it receives finished booleans/strings,
   // never lifecycle objects, so its contract stays small and testable.
   let toolbarProjectOpen = $derived(!!lifecycle.currentDir && lifecycle.sourceMode === "folder");
-  let exportDisabled = $derived(
+  let publishDisabled = $derived(
     lifecycle.busy || exportController.exporting || !lifecycle.currentDir || lifecycle.sourceMode === "url",
   );
-  // Why-is-Export-disabled notes (UX-023) + the web-target "desktop app" note.
-  // URL mode wins over the no-folder message (currentDir is null there too,
-  // and "Open a folder first" would be misleading while previewing a URL);
-  // the toolbar hides hints entirely in URL mode anyway.
-  let exportHints = $derived.by(() => {
+  // Why-is-Publish-disabled notes (UX-023). URL mode wins over the no-folder
+  // message (currentDir is null there too, and "Open a folder first" would be
+  // misleading while previewing a URL); the toolbar hides hints entirely in
+  // URL mode anyway.
+  let publishHints = $derived.by(() => {
     const hints: string[] = [];
     if (lifecycle.sourceMode === "url") hints.push("Not available for web previews");
     else if (!lifecycle.currentDir && !lifecycle.busy) hints.push("Open a folder first");
-    if (!canSavePdf) hints.push("PDF export requires the desktop app");
     return hints;
   });
 
@@ -1066,9 +1063,8 @@
     focusEditorWhenReady();
   }
 
-  // "Save as template" (#29) now lives in the ExportDialog (Template format).
-  let exportOpen = $state(false);
-  let exportBtnEl = $state<HTMLButtonElement | undefined>(undefined);
+  // The Publish button element — the wizard's focus-restore target.
+  let publishBtnEl = $state<HTMLButtonElement | undefined>(undefined);
 
   // True below the single-pane breakpoint. Assigned by the matchMedia
   // subscription further down; declared here so the derived below can read it.
@@ -2848,16 +2844,17 @@
     {mode}
     onSetMode={(next) => { contextMenu.close(); setMode(next); }}
     editorToggleDisabled={!toolbarProjectOpen}
-    publishVisible={isDesktop()}
-    publishDisabled={lifecycle.busy || !lifecycle.currentDir || lifecycle.sourceMode === "url"}
-    onPublish={() => (publishOpen = true)}
-    {canSavePdf}
-    exporting={exportController.exporting}
-    {exportDisabled}
-    onOpenExport={() => (exportOpen = true)}
-    bind:exportBtnEl
-    {exportHints}
-    exportWarning={canSavePdf ? lifecycle.saveWarning : null}
+    publishLabel={isDesktop() ? "Publish" : "Download website"}
+    {publishDisabled}
+    onPublish={() => {
+      // The web target has no host to build into a folder or upload from: the
+      // one thing it can do is hand the website over as a download.
+      if (isDesktop()) publishOpen = true;
+      else void exportController.exportHtml();
+    }}
+    bind:publishBtnEl
+    {publishHints}
+    publishWarning={canSavePdf ? lifecycle.saveWarning : null}
     showProjectSettings={toolbarProjectOpen && isDesktop()}
     onOpenProjectSettings={openProjectConfig}
     {focus}
@@ -3277,6 +3274,12 @@
        to step 1 (no $effect, per CLAUDE.md §8). -->
   <PublishWizard
     controller={publishController}
+    projectDir={lifecycle.currentDir ?? ""}
+    {canSavePdf}
+    buildArtifact={(opts) => exportController.buildTo(opts)}
+    pickFolder={(defaultPath) => api.dialog.pickOutputFolder(defaultPath)}
+    onShowInFolder={(path) => void api.shell.showInFolder(path).catch(() => {})}
+    triggerEl={publishBtnEl}
     onClose={() => (publishOpen = false)}
     onNavigate={(entry) => {
       // A preflight "Go to" — close the modal wizard, then reveal the finding
@@ -3305,19 +3308,6 @@
   getSelectionText={() => editorRef?.getSelectionText() ?? ""}
   onInsert={(text) => editorRef?.insertSnippet(text)}
 />
-<!-- Export dialog: format (PDF / HTML / template) + settings for the toolbar
-     Export button. Mounted fresh per open so its state resets. -->
-{#if exportOpen}
-  <ExportDialog
-    projectDir={lifecycle.currentDir}
-    {canSavePdf}
-    {toast}
-    triggerEl={exportBtnEl}
-    onExportPdf={(opts) => void exportController.savePdf(opts)}
-    onExportHtml={() => void exportController.exportHtml()}
-    onClose={() => (exportOpen = false)}
-  />
-{/if}
 {#if textPrompt}
   <TextPromptDialog
     title={textPrompt.title}

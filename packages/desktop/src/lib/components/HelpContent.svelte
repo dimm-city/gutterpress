@@ -24,7 +24,7 @@
       <li><strong>Browse your document</strong> — use the arrow keys or Page Up/Down to flip through pages. Click <em>Read</em> in the toolbar to see two pages side by side like an open book, and use the magnifier menu to zoom.</li>
       <li><strong>Edit your pages</strong> — click <em>Edit</em> (or press {modKey}+E) to open the markdown editor beside the preview. By default your changes save automatically, and {modKey}+S or the Save button saves immediately. To save only when you choose, turn off <em>Save edits automatically</em> under Settings &gt; Saving (open Settings with the gear icon in the bottom-right corner).</li>
       <li><strong>Keep versions of your work</strong> — click the save status in the bottom-right corner to open <em>Where your work is kept</em>: save a version, see previous versions, and back up online.</li>
-      <li><strong>Export PDF</strong> — click <em>Export</em> (or press {modKey}+Shift+E) when your layout looks right.</li>
+      <li><strong>Publish</strong> — click <em>Publish</em> to save a PDF or website to a folder and send it on (or press {modKey}+Shift+E to save a PDF directly).</li>
     </ol>
     <p class="gs-note">Don't have a book yet? Visit the <button class="inline-link" onclick={onOpenGuide}>online setup guide</button> to create one.</p>
   </section>
@@ -52,7 +52,7 @@
         <tr><td>Toggle editor (Edit mode)</td><td>{modKey}+E</td></tr>
         <tr><td>Leave Focus (Focus is in the toolbar)</td><td>Esc</td></tr>
         <tr><td>Save source edits</td><td>{modKey}+S</td></tr>
-        <tr><td>Export PDF</td><td>{modKey}+Shift+E</td></tr>
+        <tr><td>Save PDF</td><td>{modKey}+Shift+E</td></tr>
         <tr><td>Settings</td><td>{modKey}+,</td></tr>
       </tbody>
     </table>

@@ -8,6 +8,7 @@ import { drivethrurpgProvider } from "./providers/drivethrurpg.ts";
 import { gdriveProvider } from "./providers/gdrive.ts";
 import { itchProvider } from "./providers/itch.ts";
 import { kdpProvider } from "./providers/kdp.ts";
+import { localFolderProvider } from "./providers/local-folder.ts";
 import { shopifyProvider } from "./providers/shopify.ts";
 import type {
   PublishProvider,
@@ -16,6 +17,7 @@ import type {
 } from "./types.ts";
 
 const PROVIDERS: Record<PublishProviderId, PublishProvider> = {
+  local: localFolderProvider,
   itch: itchProvider,
   drivethrurpg: drivethrurpgProvider,
   kdp: kdpProvider,

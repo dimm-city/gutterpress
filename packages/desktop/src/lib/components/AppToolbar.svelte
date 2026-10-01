@@ -33,12 +33,12 @@
    * offer, and nothing reachable only from the keyboard. Focus is NOT a mode:
    * it is a separate toggle beside that control (see `focus`).
    *
-   * Actions are ordered Publish → Export, Export right-most. Export is the one
-   * primary (solid) action; Publish is a secondary button, since its wizard
-   * exports too. There is no Save here: saving lives in the editor toolbar
-   * (and Ctrl/Cmd+S). There is no overflow menu: Export opens the export
-   * dialog, book setup is a dedicated labelled button beside the mode
-   * control, advanced setup in app Settings.
+   * Publish is the one primary (solid) action and the right-most button: its
+   * wizard builds the book (PDF or website, into a folder) and sends it on,
+   * so there is no separate Export. There is no Save here: saving lives in
+   * the editor toolbar (and Ctrl/Cmd+S). There is no overflow menu: book
+   * setup is a dedicated labelled button beside the mode control, advanced
+   * setup in app Settings, save-as-template in book setup.
    *
    * PWA-clean (§8): type-only imports, zero host/Node code.
    */
@@ -69,16 +69,12 @@
     focus,
     onToggleFocus,
     editorToggleDisabled,
-    publishVisible,
+    publishLabel = "Publish",
     publishDisabled,
     onPublish,
-    canSavePdf,
-    exporting,
-    exportDisabled,
-    onOpenExport,
-    exportBtnEl = $bindable(undefined),
-    exportHints = [],
-    exportWarning = null,
+    publishBtnEl = $bindable(undefined),
+    publishHints = [],
+    publishWarning = null,
     showProjectSettings,
     onOpenProjectSettings,
   }: {
@@ -108,20 +104,16 @@
     onToggleFocus: () => void;
     /** No project open — the whole mode control has nothing to switch. */
     editorToggleDisabled: boolean;
-    publishVisible: boolean;
+    /** "Publish" on the desktop; the web target downloads the website instead. */
+    publishLabel?: string;
     publishDisabled: boolean;
     onPublish: () => void;
-    canSavePdf: boolean;
-    exporting: boolean;
-    exportDisabled: boolean;
-    /** Opens the export dialog (format + settings live there, not here). */
-    onOpenExport: () => void;
-    /** The Export button element — the export dialog's focus-restore target. */
-    exportBtnEl?: HTMLButtonElement | undefined;
-    /** Why Export is unavailable right now (rendered as quiet notes). */
-    exportHints?: string[];
+    /** The Publish button element — the wizard's focus-restore target. */
+    publishBtnEl?: HTMLButtonElement | undefined;
+    /** Why Publish is unavailable right now (rendered as quiet notes). */
+    publishHints?: string[];
     /** Save-readiness warning (rendered as role="alert"). */
-    exportWarning?: string | null;
+    publishWarning?: string | null;
     showProjectSettings: boolean;
     onOpenProjectSettings: () => void;
   } = $props();
@@ -338,46 +330,28 @@
       </button>
     {/if}
 
-    <!-- Why-is-Export-disabled notes (UX-023). -->
-    {#each exportHints as hint (hint)}
+    <!-- Why-is-Publish-disabled notes (UX-023). -->
+    {#each publishHints as hint (hint)}
       <span class="save-hint" role="note">{hint}</span>
     {/each}
-    {#if exportWarning}
-      <span class="save-hint save-warning" role="alert">{exportWarning}</span>
+    {#if publishWarning}
+      <span class="save-hint save-warning" role="alert">{publishWarning}</span>
     {/if}
 
-    <!-- Actions — Publish, Export (Export right-most). Export is the ONE
-         primary (solid) action; Publish is a secondary button beside it — its
-         wizard exports too, so two equal-weight solid buttons left the choice
-         unclear. No overflow menu: Focus is a toggle beside the mode
-         control, advanced setup lives in the app Settings view,
-         save-as-template in the export dialog, and book setup beside the
-         mode control above. Both keep their aria-label when the text label
-         drops at narrow widths. -->
-    {#if publishVisible}
-      <button
-        class="publish-btn icon-text"
-        onclick={onPublish}
-        disabled={publishDisabled}
-        title="Publish your book to itch.io, KDP, Shopify and more"
-        aria-label="Publish"
-      >
-        <Icon name="cloud-upload" />
-        <span class="btn-label">Publish</span>
-      </button>
-    {/if}
-    <!-- Export opens the export dialog (choose PDF / HTML / template and
-         adjust settings there). Ctrl+Shift+E stays the quick PDF export. -->
+    <!-- Publish — the ONE primary (solid) action, right-most. Its wizard
+         builds the book into a folder and sends it to any online destination,
+         so there is no separate Export button. Keeps its aria-label when the
+         text label drops at narrow widths. -->
     <button
-      bind:this={exportBtnEl}
-      class="export-btn primary app-btn-primary icon-text"
-      onclick={onOpenExport}
-      disabled={exportDisabled}
-      title="Export (choose format and settings)"
-      aria-label={exporting ? "Exporting…" : "Export"}
+      bind:this={publishBtnEl}
+      class="publish-btn primary app-btn-primary icon-text"
+      onclick={onPublish}
+      disabled={publishDisabled}
+      title="Publish — save as PDF or a website, and send it to itch.io, Google Drive and more"
+      aria-label={publishLabel}
     >
-      <Icon name="file-down" />
-      <span class="btn-label">{exporting ? "Exporting…" : "Export"}</span>
+      <Icon name="cloud-upload" />
+      <span class="btn-label">{publishLabel}</span>
     </button>
   </div>
 </header>

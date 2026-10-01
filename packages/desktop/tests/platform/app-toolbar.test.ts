@@ -14,8 +14,9 @@
  *     instead of carrying ~400 lines of inline toolbar markup + CSS.
  *  2. Modern responsive layout: a flex row of two clusters (start / end)
  *     with a small documented set of container-query collapse stages.
- *  3. Action order: Publish, Export — Export is the right-most button; Save
- *     lives in the editor toolbar, not here.
+ *  3. Publish is the one action, right-most and primary: its wizard builds
+ *     the book (the old Export) and sends it on. Save lives in the editor
+ *     toolbar, not here.
  *  4. Page navigation and zoom are NOT here — they live on the preview
  *     pane's own strip (PreviewToolbar.svelte, see preview-toolbar.test.ts).
  *  5. The small-screen pane switcher has exactly the editor and desktop tabs —
@@ -142,13 +143,18 @@ describe("AppToolbar — modern responsive layout (no overflow)", () => {
   });
 });
 
-describe("AppToolbar — action order: Publish, Export (no Save)", () => {
-  test("markup order is Publish, then Export (Export right-most)", () => {
+describe("AppToolbar — Publish is the one action (no Export, no Save)", () => {
+  test("Publish is the right-most button with nothing after it, and there is no Export button", () => {
     const src = toolbar();
     const publishIdx = src.indexOf('class="publish-btn');
-    const exportIdx = src.indexOf('class="export-btn');
     expect(publishIdx).toBeGreaterThan(-1);
-    expect(exportIdx).toBeGreaterThan(publishIdx);
+    expect(src).not.toContain("export-btn");
+    expect(src).not.toContain("onOpenExport");
+    expect(src).not.toContain("exportHints");
+    const afterPublish = src.slice(publishIdx, src.indexOf("</header>"));
+    expect(afterPublish).not.toContain("<details");
+    expect(afterPublish.indexOf("<button")).toBe(afterPublish.lastIndexOf("<button"));
+    expect(afterPublish).not.toContain("<button");
   });
 
   test("Save lives in the editor toolbar — the app toolbar carries no save control or props", () => {
@@ -159,20 +165,14 @@ describe("AppToolbar — action order: Publish, Export (no Save)", () => {
     expect(src).not.toContain("onSave");
   });
 
-  test("there is no overflow menu — Export is the right-most button with nothing after it", () => {
+  test("Publish keeps its intent and exposes its element for the wizard's focus restore", () => {
     const src = toolbar();
-    expect(src).not.toContain("more-menu");
-    expect(src).not.toContain("ellipsis-vertical");
-    const exportIdx = src.indexOf('class="export-btn');
-    const afterExport = src.slice(exportIdx, src.indexOf("</header>"));
-    expect(afterExport).not.toContain("<details");
-    expect(afterExport.indexOf("<button")).toBe(afterExport.lastIndexOf("<button"));
-  });
-
-  test("actions keep their intents: onPublish, onOpenExport (the export dialog)", () => {
-    const src = toolbar();
-    expect(src).toMatch(/publish-btn[\s\S]{0,400}?onclick=\{[^}]*onPublish/);
-    expect(src).toMatch(/export-btn[\s\S]{0,400}?onclick=\{[^}]*onOpenExport/);
+    expect(src).toMatch(/publish-btn[\s\S]{0,400}?onclick=\{onPublish\}/);
+    expect(src).toContain("bind:this={publishBtnEl}");
+    expect(src).toContain("publishBtnEl = $bindable(undefined)");
+    // The web target reuses the button to download the website.
+    expect(src).toContain('publishLabel = "Publish"');
+    expect(src).toContain("<span class=\"btn-label\">{publishLabel}</span>");
   });
 
   test("the Book settings button follows Focus after a separator, and sits with the actions (no separator before Publish)", () => {
@@ -355,17 +355,17 @@ describe("AppToolbar — the selected mode never looks disabled (#305)", () => {
 });
 
 // ── One primary action (#306) ────────────────────────────────────────────────
-describe("AppToolbar — Export is the one primary action (#306)", () => {
-  test("only Export carries the primary recipe; Publish is a secondary button", () => {
+describe("AppToolbar — Publish is the one primary action (#306)", () => {
+  test("only Publish carries the primary recipe; Setup stays a secondary button", () => {
     const src = toolbar();
     const primaries = [...src.matchAll(/class="([^"]*\bapp-btn-primary\b[^"]*)"/g)].map((m) => m[1]);
     expect(primaries).toHaveLength(1);
-    expect(primaries[0]).toContain("export-btn");
-    const at = src.indexOf('class="publish-btn');
-    const publish = src.slice(at, src.indexOf("</button>", at));
-    expect(publish).not.toMatch(/\bprimary\b/);
-    // Its look comes from the toolbar's existing non-primary button recipe (the
-    // one Setup uses) — no new colours or tokens.
+    expect(primaries[0]).toContain("publish-btn");
+    const at = src.indexOf('class="icon-btn icon-text project-settings-btn"');
+    const setup = src.slice(at, src.indexOf("</button>", at));
+    expect(setup).not.toMatch(/\bprimary\b/);
+    // Secondary look comes from the toolbar's existing non-primary button
+    // recipe — no new colours or tokens.
     expect(src).toMatch(/\.toolbar button:not\(\.app-btn-primary\):not\(\.active\)\s*\{/);
   });
 });
@@ -378,7 +378,7 @@ describe("AppToolbar — Export is the one primary action (#306)", () => {
 // from 1440 down to 360 against the measured cluster widths (no clipped nav or
 // cluster overlap at any width; touch measured separately).
 describe("AppToolbar — deliberate collapse (#316)", () => {
-  test("Publish/Export/Setup keep their labels on a 900px window and drop them together", () => {
+  test("Publish/Setup keep their labels on a 900px window and drop them together", () => {
     const stages = containerStages(toolbar());
     // Line-anchored, so `.save-btn .btn-label` does not count as the general rule.
     const labelStage = [...stages].find(([, body]) => /^\s*\.btn-label\s*\{\s*display:\s*none/m.test(body));
@@ -401,7 +401,7 @@ describe("AppToolbar — deliberate collapse (#316)", () => {
 
   test("every control that can turn icon-only keeps an aria-label and a tooltip", () => {
     const src = toolbar();
-    for (const cls of ["publish-btn", "export-btn", "icon-btn icon-text project-settings-btn"]) {
+    for (const cls of ["publish-btn", "icon-btn icon-text project-settings-btn"]) {
       const at = src.indexOf(`class="${cls}`);
       expect(at).toBeGreaterThan(-1);
       const button = src.slice(at, src.indexOf("</button>", at));
@@ -432,13 +432,12 @@ describe("AppToolbar — deliberate collapse (#316)", () => {
 });
 
 describe("AppToolbar — relocated overflow-menu items stay reachable elsewhere", () => {
-  test("advanced setup lives in app Settings, template export in the export dialog", () => {
+  test("advanced setup lives in app Settings, save-as-template in Book setup → Details", () => {
     const actions = read("src/lib/editor/toolbar-actions.ts");
     expect(actions).not.toMatch(/id: "focus-mode"/);
     const settings = read("src/lib/components/SettingsView.svelte");
     expect(settings).toContain("<ConnectionsSettings {projectDir} />");
-    const exportDialog = read("src/lib/components/ExportDialog.svelte");
-    expect(exportDialog).toContain("template");
+    expect(read("src/lib/components/ProjectSettingsView.svelte")).toContain("<SaveTemplateDialog");
     // The app-toolbar toggle and the shortcut are Focus's only entry points.
     expect(page()).not.toContain('action === "focus-mode"');
   });

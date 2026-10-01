@@ -200,7 +200,7 @@
       <section class="tools">
         <h3>Optional system tools</h3>
         <p class="hint">
-          Gutterpress renders your preview using the built-in browser engine. The standard <strong>Export</strong> feature needs no extra tools. The optional <strong>pre-press PDF export</strong> (for professional print shops) additionally needs Ghostscript and qpdf.
+          Gutterpress renders your preview using the built-in browser engine. The standard <strong>Publish</strong> PDF needs no extra tools. The optional <strong>pre-press PDF</strong> (for professional print shops) additionally needs Ghostscript and qpdf.
         </p>
         <ul>
           {#each data.tools as t (t.bin)}
