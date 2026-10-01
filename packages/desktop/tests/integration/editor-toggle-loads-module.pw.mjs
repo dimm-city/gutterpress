@@ -276,11 +276,11 @@ if (!editorReceivedMarker) {
 // the dirty state reaches the toolbar promptly.
 let saveEnabled = false;
 for (let i = 0; i < 20; i++) {
-  saveEnabled = await evalJs(`document.querySelector('header.toolbar button.save-btn')?.disabled === false`);
+  saveEnabled = await evalJs(`document.querySelector('.editor-toolbar button.save-btn')?.disabled === false`);
   if (saveEnabled) break;
   await sleep(25);
 }
-if (!saveEnabled) fail("main Save button did not enable after a CodeMirror edit");
+if (!saveEnabled) fail("editor-toolbar Save button did not enable after a CodeMirror edit");
 
 await evalJs(`(() => {
   window.__gutterpressSavePreviewProbe = { startedAt: performance.now(), result: null, sequence: 0 };

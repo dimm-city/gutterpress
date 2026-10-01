@@ -2820,10 +2820,6 @@
     bind:exportBtnEl
     {exportHints}
     exportWarning={canSavePdf ? lifecycle.saveWarning : null}
-    saving={forceSaving}
-    saveDisabled={!editorFilePath || forceSaving || editorSavePhase === "clean"}
-    savePending={!!editorFilePath && editorSavePhase !== "clean"}
-    onSave={handleForceSave}
     showProjectSettings={toolbarProjectOpen && isDesktop()}
     onOpenProjectSettings={openProjectConfig}
     {focus}
@@ -2945,6 +2941,8 @@
                 editorRef?.runToolbarAction(action, payload);
               }}
               onSave={handleForceSave}
+              savePending={editorSavePhase !== "clean"}
+              saving={forceSaving}
             />
             {/if}
             {#if MarkdownEditor}
