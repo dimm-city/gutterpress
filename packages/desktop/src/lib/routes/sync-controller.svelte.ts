@@ -25,6 +25,8 @@ interface SyncToast {
 export interface SyncControllerDeps {
   /** Host round-trip: run an immediate sync for the given project dir. */
   syncChanges: (dir: string) => Promise<SyncOutcome>;
+  /** Host round-trip: "Repair online backup" for the given project dir. */
+  repair?: (dir: string) => Promise<{ outcome: SyncOutcome; restoredFiles: string[] }>;
   /** Host round-trip: diagnose the project's remote (protocol/credential/provider). */
   diagnose: (dir: string) => Promise<ProjectRemoteDiagnosis>;
   /** The currently open project dir, or null when none is open. */
@@ -83,6 +85,8 @@ export class SyncController {
   syncDiag = $state<ProjectRemoteDiagnosis | null>(null);
   /** True while a manual force-sync is in flight (guards re-entry). */
   forceSyncing = $state(false);
+  /** True while "Repair online backup" is in flight. */
+  repairing = $state(false);
   /** The last manual backup's outcome, or null before any this session. */
   lastManual = $state<ManualBackup | null>(null);
   private deps: SyncControllerDeps;
@@ -171,6 +175,44 @@ export class SyncController {
       this.deps.toast()?.error(failed);
     } finally {
       if (this.deps.currentDir() === dir) this.forceSyncing = false;
+    }
+  }
+
+  /**
+   * "Repair online backup" (lib remote-auth/repair.ts): one fixed sequence,
+   * no diagnosis. Reports through the same lastManual state the dialog reads.
+   */
+  async handleRepair(): Promise<void> {
+    const dir = this.deps.currentDir();
+    if (!dir || this.repairing || this.forceSyncing || !this.deps.repair) return;
+    this.repairing = true;
+    const record = (state: SyncState) => {
+      this.lastManual = { dir, state, at: new Date().toISOString() };
+    };
+    try {
+      const { outcome, restoredFiles } = await this.deps.repair(dir);
+      if (this.deps.currentDir() !== dir) return;
+      const ok = outcome.status === "synced" || outcome.status === "up-to-date";
+      record(ok ? "synced" : outcome.status === "auth" ? "auth" : outcome.status === "offline" ? "offline" : "error");
+      if (ok) {
+        this.deps.toast()?.success("Online backup repaired. Your book is backed up online.");
+        if (restoredFiles.length > 0) {
+          this.deps.toast()?.info?.(
+            `Brought back ${restoredFiles.length} file${restoredFiles.length === 1 ? "" : "s"} that only the online copy had.`,
+          );
+        }
+        this.deps.onSyncCompleted(true, restoredFiles.length > 0 || outcome.filesChanged === true);
+      } else {
+        this.deps.toast()?.error(outcome.message || "The repair didn't finish. Your work is saved on this computer.");
+      }
+    } catch (e) {
+      if (this.deps.currentDir() === dir) record("error");
+      const msg = e instanceof Error ? e.message : "";
+      this.deps.toast()?.error(
+        msg || "The repair didn't finish. Your work is saved on this computer — see Troubleshooting → Logs for details.",
+      );
+    } finally {
+      if (this.deps.currentDir() === dir) this.repairing = false;
     }
   }
 }

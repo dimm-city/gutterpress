@@ -1410,7 +1410,7 @@ describe("syncProject — a history that cannot be read", () => {
         // The three things the message promises are all true.
         expect(outcome.message).toContain("version history can't be read");
         expect(outcome.message).toContain("Your writing is safe");
-        expect(outcome.message).toContain("download a fresh copy");
+        expect(outcome.message).toContain("Repair online backup");
         expect(outcome.message).not.toContain("try again");
         // And the book really IS intact — that is what makes it honest.
         expect(await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8")).toContain(

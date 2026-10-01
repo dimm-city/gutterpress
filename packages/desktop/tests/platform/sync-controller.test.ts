@@ -324,3 +324,60 @@ test("with automatic online backup off, a failure never promises an automatic re
   ]);
   expect(ctrl.lastManual!.state).toBe("error");
 });
+
+// ── Repair online backup ─────────────────────────────────────────────────────
+
+function makeWithRepair(result: { outcome: SyncOutcome; restoredFiles: string[] } | Error) {
+  const h = make() as Harness & { calls: string[] };
+  const calls: string[] = [];
+  h.calls = calls;
+  h.ctrl = new SyncController({
+    syncChanges: (d) => h.sync.fn(d),
+    repair: (d) => {
+      calls.push(d);
+      return result instanceof Error ? Promise.reject(result) : Promise.resolve(result);
+    },
+    diagnose: () => Promise.resolve(DIAG),
+    currentDir: () => h.dir,
+    toast: () => h.toast,
+    onSyncCompleted: (m, f) => h.onSyncCompleted(m, f),
+    onFilesChanged: () => h.onFilesChanged(),
+  });
+  return h;
+}
+
+test("handleRepair: a repaired book reports synced, toasts once, and reloads the files", async () => {
+  const h = makeWithRepair({ outcome: { status: "synced", message: "", mergedRemoteChanges: false }, restoredFiles: ["b.md"] });
+  await h.ctrl.handleRepair();
+  expect(h.calls).toEqual(["/proj"]);
+  expect(h.ctrl.lastManual?.state).toBe("synced");
+  expect(h.toast.success.calls[0][0]).toContain("repaired");
+  expect(h.toast.info.calls[0][0]).toContain("1 file");
+  expect(h.onSyncCompleted.calls[0]).toEqual([true, true]);
+  expect(h.ctrl.repairing).toBe(false);
+});
+
+test("handleRepair: a repair whose closing backup failed shows the lib's message and records error", async () => {
+  const h = makeWithRepair({ outcome: { status: "error", message: "Everything is in sync." }, restoredFiles: [] });
+  await h.ctrl.handleRepair();
+  expect(h.ctrl.lastManual?.state).toBe("error");
+  expect(h.toast.error.calls[0][0]).toBe("Everything is in sync.");
+});
+
+test("handleRepair: a thrown repair toasts the error and never leaves repairing stuck", async () => {
+  const h = makeWithRepair(new Error("No online address"));
+  await h.ctrl.handleRepair();
+  expect(h.toast.error.calls[0][0]).toBe("No online address");
+  expect(h.ctrl.repairing).toBe(false);
+  expect(h.ctrl.lastManual?.state).toBe("error");
+});
+
+test("handleRepair: a no-op when no project is open or no repair dep is wired", async () => {
+  const h = makeWithRepair({ outcome: { status: "synced", message: "", mergedRemoteChanges: false }, restoredFiles: [] });
+  h.dir = null;
+  await h.ctrl.handleRepair();
+  expect(h.calls).toEqual([]);
+  const plain = make();
+  await plain.ctrl.handleRepair();
+  expect(plain.toast.error.calls.length).toBe(0);
+});

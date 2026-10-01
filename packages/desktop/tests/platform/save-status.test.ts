@@ -50,6 +50,7 @@ function input(over: {
       automatic: true,
       lastSyncAt: null,
       syncing: false,
+      repair: "idle" as const,
       ...over.online,
     },
     now: NOW,
@@ -445,5 +446,33 @@ describe("wiring (source-level)", () => {
     expect(d).toContain('role="status"');
     expect(d).not.toContain("small");
     expect(d).toContain("min(560px");
+  });
+});
+
+describe("repair online backup", () => {
+  test("offered only in the error state, and only when a backup could work", () => {
+    expect(ids(onlineSection(input({ online: { state: "error", canSync: true } })))).toContain("repair");
+    expect(ids(onlineSection(input({ online: { state: "error", canSync: false } })))).not.toContain("repair");
+    for (const state of ["synced", "idle", "offline", "auth", "connect", "local"] as const) {
+      expect(ids(onlineSection(input({ online: { state, canSync: true, hasRemote: true } })))).not.toContain("repair");
+    }
+  });
+
+  test("armed: says what it will do, then Repair now (primary) or Cancel", () => {
+    const s = onlineSection(input({ online: { state: "error", canSync: true, repair: "armed" } }));
+    expect(s.status).toBe("Repair online backup?");
+    expect(s.detail).toContain("stay exactly as they are");
+    expect(s.detail).toContain("kept aside, not deleted");
+    expect(s.actions.map((a) => [a.id, a.primary ?? false])).toEqual([
+      ["repairNow", true],
+      ["repairCancel", false],
+    ]);
+  });
+
+  test("running: no buttons, and it says the files are not touched", () => {
+    const s = onlineSection(input({ online: { state: "error", canSync: true, repair: "running" } }));
+    expect(s.tone).toBe("pending");
+    expect(s.detail).toContain("not touched");
+    expect(s.actions).toEqual([]);
   });
 });

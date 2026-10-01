@@ -5,6 +5,25 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.9] - 2026-10-01
+
+### Added
+
+- **Repair online backup.** When online backup keeps failing, *Where your
+  work is kept* now offers one button that fixes it. Repair downloads a fresh
+  copy of your book's online history and puts it under the files on this
+  computer: your files here stay exactly as they are and win over the online
+  copy, anything only the online copy has is brought back, and the old history
+  is kept aside (never deleted) in the app's data folder. Then a version is
+  saved and backed up. It asks once before it runs and says exactly what it
+  will do.
+
+### Fixed
+
+- **A damaged version only this computer had now says so.** Sync reported it
+  as "didn't complete — please try again", which could never help. It now
+  says the history can't be read and points at Repair online backup.
+
 ## [0.11.8] - 2026-10-01
 
 ### Changed

@@ -42,7 +42,10 @@ export type SaveStatusActionId =
   | "enableVersionHistory"
   | "connect"
   | "syncNow"
-  | "openBookConnections";
+  | "openBookConnections"
+  | "repair"
+  | "repairNow"
+  | "repairCancel";
 
 export interface SaveStatusAction {
   id: SaveStatusActionId;
@@ -120,6 +123,8 @@ export interface SaveStatusInput {
     lastSyncAt: string | null;
     /** A manual "Back up now" is in progress. */
     syncing: boolean;
+    /** "Repair online backup": offered (idle), awaiting confirmation (armed), or running. */
+    repair: "idle" | "armed" | "running";
   };
   /** Epoch ms "now", injected so the mapping stays pure. */
   now: number;
@@ -290,6 +295,14 @@ export function versionsSection(i: Pick<SaveStatusInput, "versions" | "online" |
 
 // ── Online backup ─────────────────────────────────────────────────────────────
 
+/** What "Repair online backup" does, in the order it does it. Shown before the
+ *  button so a writer can decide with no surprises. */
+export const REPAIR_EXPLAIN =
+  "Repair downloads a fresh copy of your book's online history and puts it under the files on this computer. " +
+  "Your files here stay exactly as they are and win over the online copy; anything only the online copy has is brought back. " +
+  "The old history is kept aside, not deleted. Then a version is saved and backed up.";
+const REPAIR_ACTION: SaveStatusAction = { id: "repair", label: "Repair online backup…" };
+
 export function onlineSection(
   i: Pick<SaveStatusInput, "online" | "versions" | "now">,
 ): SaveStatusSection {
@@ -311,6 +324,21 @@ export function onlineSection(
       detail: "Turn on versions first to use online backup.",
       tone: "neutral",
       actions: [],
+    };
+  }
+  if (o.repair === "running") {
+    return { ...base, status: "Repairing online backup…", detail: "This can take a minute. Your files on this computer are not touched.", tone: "pending", actions: [] };
+  }
+  if (o.repair === "armed") {
+    return {
+      ...base,
+      status: "Repair online backup?",
+      detail: REPAIR_EXPLAIN,
+      tone: "action",
+      actions: [
+        { id: "repairNow", label: "Repair now", primary: true },
+        { id: "repairCancel", label: "Cancel" },
+      ],
     };
   }
   if (o.syncing || o.state === "syncing") {
@@ -354,10 +382,10 @@ export function onlineSection(
         ...base,
         status: "The last online backup didn't finish.",
         detail: o.automatic
-          ? "Your work is safe on this computer. Gutterpress will try again."
-          : "Your work is safe on this computer. Use Back up now when you're ready.",
+          ? "Your work is safe on this computer. Gutterpress will try again. If it keeps failing, use Repair online backup."
+          : "Your work is safe on this computer. Use Back up now when you're ready, or Repair online backup if it keeps failing.",
         tone: "warn",
-        actions: backUpNow(!o.automatic),
+        actions: [...backUpNow(!o.automatic), ...(o.canSync ? [REPAIR_ACTION] : [])],
       };
     case "auth":
       return {

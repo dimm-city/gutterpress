@@ -724,6 +724,15 @@ export const api = {
       }),
 
     /**
+     * "Repair online backup": replace the book's broken history with a fresh
+     * download of the online copy, keep every file on this computer, restore
+     * files that exist only online, then save a version and back up. The old
+     * history is kept aside, never deleted.
+     */
+    repairOnlineBackup: (projectDir: string) =>
+      post<{ outcome: SyncOutcome; restoredFiles: string[] }>('/api/remote/repair', { projectDir }),
+
+    /**
      * Download ("clone") a repository into a new local project folder
      * (ARCH review #8 — was IPC despite being a plain request/response; the
      * clone-progress push stays a separate `onCloneProgress` subscription).

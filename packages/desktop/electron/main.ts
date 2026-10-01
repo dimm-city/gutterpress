@@ -126,6 +126,7 @@ import {
   appLogPath as appLogPathImpl,
   recoveryDir as recoveryDirImpl,
   operationLogPath as operationLogPathImpl,
+  repairBackupDir as repairBackupDirImpl,
   operationLogSlug,
   logsDir as logsDirImpl,
 } from "./recovery-paths";
@@ -1288,6 +1289,7 @@ const appImageHooksImpl: AppImageHooks = {
 const vcsHooksImpl: VcsHooks<LibModule> = {
   loadLib,
   operationLogPath,
+  repairBackupDir: (slug) => repairBackupDirImpl(app.getPath("userData"), slug),
   // #273: pause both host timers around a copy switch's checkout so neither
   // fires against the mid-switch working tree (an auto-snapshot would commit
   // a half-checked-out tree) or targets the wrong branch (auto-sync pushes

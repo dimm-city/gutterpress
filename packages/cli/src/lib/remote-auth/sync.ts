@@ -145,17 +145,24 @@ export function isUnrelatedHistories(e: unknown): boolean {
  * as a damaged history, not a transient failure.
  */
 function isDamagedObjectError(e: unknown): boolean {
-  return (
+  if (
     e instanceof TypeError &&
     /property 'caller' on string|^Attempted to assign to readonly property\.$/.test(e.message)
-  );
+  ) {
+    return true;
+  }
+  // An object the history refers to is gone — including an empty loose object
+  // git-fs just removed that no pack held a copy of (a version only this
+  // computer ever had). Reached only after the fetch succeeded, so it is the
+  // local history that is missing something, not the network.
+  return (e as { code?: string })?.code === "NotFoundError";
 }
 
 /**
  * Can this repo's history be read at all? Asked only AFTER a sync has already
  * failed, to tell a transient failure ("try again") apart from a damaged
  * history (trying again will never work). Deliberately a plain read of the
- * three things every sync needs — the branch tip, its commit, and the index —
+ * things every sync needs — the branch tip, its commit, its tree, and the index —
  * rather than a health taxonomy: the answer only has to pick the message.
  */
 async function historyUnreadable(dir: string): Promise<boolean> {
@@ -163,6 +170,8 @@ async function historyUnreadable(dir: string): Promise<boolean> {
     const oid = await git.resolveRef({ fs, dir, ref: "HEAD" });
     await git.readCommit({ fs, dir, oid });
     await git.listFiles({ fs, dir });
+    // The tip's tree as well as the index: a sync's merge reads it.
+    await git.listFiles({ fs, dir, ref: "HEAD" });
     return false;
   } catch {
     return true;

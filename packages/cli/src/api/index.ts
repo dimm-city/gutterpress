@@ -408,6 +408,13 @@ export {
   refreshRemoteCopies,
   SYNC_SNAPSHOT_MESSAGE,
 } from "../lib/remote-auth/sync.ts";
+export { repoDirFor } from "../lib/remote-auth/transport.ts";
+export {
+  repairOnlineBackup,
+  REPAIR_SNAPSHOT_MESSAGE,
+  type RepairOnlineBackupOptions,
+  type RepairOnlineBackupResult,
+} from "../lib/remote-auth/repair.ts";
 
 export type {
   SyncOutcome,
