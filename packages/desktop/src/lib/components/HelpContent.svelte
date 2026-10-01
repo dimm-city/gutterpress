@@ -23,7 +23,7 @@
       <li><strong>Open your book folder</strong> — on the welcome screen, click <em>Open a folder</em> (or pick a book from <em>Your books</em>) and choose the folder that contains your <code>manifest.yaml</code> file. Once a book is open, the <em>Books</em> tab in the left panel lists your other books.</li>
       <li><strong>Browse your document</strong> — use the arrow keys or Page Up/Down to flip through pages. Click <em>Read</em> in the toolbar to see two pages side by side like an open book, and use the magnifier menu to zoom.</li>
       <li><strong>Edit your pages</strong> — click <em>Edit</em> (or press {modKey}+E) to open the markdown editor beside the preview. By default your changes save automatically, and {modKey}+S or the Save button saves immediately. To save only when you choose, turn off <em>Save edits automatically</em> under Settings &gt; Saving (open Settings with the gear icon in the bottom-right corner).</li>
-      <li><strong>Keep a history of your work</strong> — click the sync status in the bottom-right corner to see your book's saved history and activity log.</li>
+      <li><strong>Keep versions of your work</strong> — click the save status in the bottom-right corner to open <em>Where your work is kept</em>: save a version, see previous versions, and back up online.</li>
       <li><strong>Export PDF</strong> — click <em>Export</em> (or press {modKey}+Shift+E) when your layout looks right.</li>
     </ol>
     <p class="gs-note">Don't have a book yet? Visit the <button class="inline-link" onclick={onOpenGuide}>online setup guide</button> to create one.</p>

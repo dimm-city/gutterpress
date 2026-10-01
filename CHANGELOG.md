@@ -24,6 +24,11 @@ This project follows [Semantic Versioning](https://semver.org/).
   now has just Open book… and New book. Open book… asks where the book is —
   on this computer or on GitHub — and takes you to the right place. The
   welcome screen is still one click away from Help.
+- **Help is just help; Troubleshooting has the rest.** The start screen's Help
+  tab now holds only how-to guidance and keyboard shortcuts. A new
+  Troubleshooting tab has three sections: Diagnostics (what your computer has,
+  and a button to copy the details when you ask for help), Logs, and About
+  (version and update check). The separate Logs tab is gone.
 - **The user guide and examples come with the app.** On first launch the
   desktop app copies the Gutterpress User Guide (with Getting Started) and the
   example books to Documents/Gutterpress, where they show up under Discovered
