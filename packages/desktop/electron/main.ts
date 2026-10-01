@@ -47,7 +47,7 @@ import type { RemoteHooks } from "./server-bridge/remote-hooks";
 import type { SyncSettingsHooks } from "./server-bridge/sync-settings-hooks";
 import type { UpdaterHooks } from "./server-bridge/updater-hooks";
 import { handleRemoteErrors, handlePublishErrors } from "./server-bridge/friendly-errors";
-import { isWithinRoot, type FsGuardHooks } from "./server-bridge/fs-guard";
+import { isWithinAnyRootCanonical, isWithinRoot, type FsGuardHooks } from "./server-bridge/fs-guard";
 import { createPickedFilesService, createSavePathsService } from "./server-bridge/picked-files";
 import {
   writeRecovery as writeRecoveryStore,
@@ -1691,6 +1691,7 @@ const exportController = new ExportController({
   rename: (from, to) => rename(from, to),
   rm: (p) => rm(p, { force: true }),
   consumeSavePath: (absPath) => savePathsImpl.consume(absPath),
+  isWithinProject: (absPath) => isWithinAnyRootCanonical(absPath, fsGuardImpl.projectRoots()),
   registerPickedPath: (absPath) => pickedFilesImpl.register([absPath]),
 });
 
@@ -1994,7 +1995,9 @@ app.on("window-all-closed", async () => {
     if (exportSession.win && !exportSession.win.isDestroyed()) {
       exportSession.win.destroy();
     }
-    await rm(exportSession.tempOutPath, { force: true }).catch(() => {});
+    if (exportSession.tempOutPath) {
+      await rm(exportSession.tempOutPath, { force: true }).catch(() => {});
+    }
     setActiveExportSession(null);
   }
   await previewOpen.stop();
