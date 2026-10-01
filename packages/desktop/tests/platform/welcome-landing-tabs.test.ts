@@ -90,22 +90,28 @@ describe("the Logs tab (diagnostic sharing)", () => {
   });
 });
 
-describe("the left panel's Books tab can reopen the welcome screen", () => {
-  test("ProjectsListBody offers the action ONLY when the host passes it", () => {
+describe("the left panel's Books footer", () => {
+  test("is Open book… then New book — no Welcome screen / GitHub buttons", () => {
     const body = read("src/lib/components/ProjectsListBody.svelte");
-    expect(body).toContain("onShowWelcome");
-    expect(body).toContain("Welcome screen");
+    expect(body).not.toContain("onShowWelcome");
+    expect(body).not.toContain("Welcome screen");
+    expect(body).not.toContain("Open from GitHub");
+    expect(body.indexOf("Open book…")).toBeGreaterThan(-1);
+    expect(body.indexOf("Open book…")).toBeLessThan(body.indexOf("> New book"));
+    expect(read("src/routes/+page.svelte")).not.toContain("onShowWelcome");
   });
 
-  test("+page wires it to the landing (forced open on the Books tab)", () => {
+  test("Open book… hands off to the existing local-folder and GitHub flows", () => {
+    // Mounted by +page (outside the transformed left panel, which would
+    // otherwise become the containing block of the modal's fixed positioning).
     const page = read("src/routes/+page.svelte");
-    expect(page).toMatch(/onShowWelcome=\{\(\) => \{[\s\S]{0,200}landingForcedOpen = true;/);
-    // The start screen's own embedded ProjectsListBody must NOT get the
-    // action (it would be a no-op button under the screen it opens).
-    const landingBodyProps = landing.slice(
-      landing.indexOf("<ProjectsListBody"),
-      landing.indexOf("/>", landing.indexOf("<ProjectsListBody")),
-    );
-    expect(landingBodyProps).not.toContain("onShowWelcome");
+    expect(page).toMatch(/onLocal=\{\(\) => \{[^}]*pickAndOpenFolder\(\)/);
+    expect(page).toMatch(/onGitHub=\{isDesktop\(\) \? \(\) => \{[^}]*githubOpen = true/);
+    expect(read("src/lib/components/ProjectsListBody.svelte")).not.toContain("OpenBookDialog");
+    const dlg = read("src/lib/components/OpenBookDialog.svelte");
+    expect(dlg).toContain("Open a book");
+    expect(dlg).toContain("From this computer");
+    expect(dlg).toContain("From GitHub");
+    expect(dlg).toContain("dialogBehavior");
   });
 });

@@ -32,9 +32,8 @@
   let {
     onChosen,
     onOpenUrl,
-    onOpenGitHub,
+    onOpenBook,
     onNewProject,
-    onShowWelcome,
     onBrowse,
     currentProjectPath = null,
     currentProjectDisplayName = null,
@@ -46,11 +45,9 @@
     onChosen?: (path: string) => void;
     /** Called when user submits a URL. */
     onOpenUrl?: (url: string) => void;
-    /** Hand off to the GitHub connect flow. */
-    onOpenGitHub?: () => void;
-    /** Show the start screen over the workspace (left-panel mount only —
-     *  the start screen itself never passes this). */
-    onShowWelcome?: () => void;
+    /** Open the "Open a book" source picker (hosted by the page, outside any
+     *  transformed panel, so its fixed-position modal centres on the window). */
+    onOpenBook?: () => void;
     /** Hand off to the new-project wizard. */
     onNewProject?: () => void;
     /** Trigger a native folder picker and call onChosen with the result. */
@@ -533,23 +530,14 @@
 
   <!-- Actions footer — omitted entirely when the host provides its own action
        surface (the start screen), so no empty bordered strip renders. -->
-  {#if onOpenGitHub || onNewProject || onShowWelcome}
+  {#if onNewProject}
     <div class="actions-footer">
-      {#if onShowWelcome}
-        <button class="footer-action" onclick={onShowWelcome} title="Show the welcome screen">
-          <Icon name="book-open" size={14} /> Welcome screen
-        </button>
-      {/if}
-      {#if onOpenGitHub}
-        <button class="footer-action" onclick={onOpenGitHub} title="Open a book from GitHub">
-          <Icon name="github" size={14} /> Open from GitHub
-        </button>
-      {/if}
-      {#if onNewProject}
-        <button class="footer-action primary" onclick={onNewProject} title="Create a new book">
-          <Icon name="plus" size={14} /> New book
-        </button>
-      {/if}
+      <button class="footer-action" onclick={onOpenBook} title="Open a book from this computer or GitHub">
+        <Icon name="folder-open" size={14} /> Open book…
+      </button>
+      <button class="footer-action primary" onclick={onNewProject} title="Create a new book">
+        <Icon name="plus" size={14} /> New book
+      </button>
     </div>
   {/if}
 </div>
@@ -777,13 +765,13 @@
     flex-shrink: 0;
     display: flex;
     gap: 6px;
-    padding: 6px 10px;
+    padding: 8px 10px;
     border-top: 1px solid var(--app-border-subtle);
-    flex-wrap: wrap;
   }
   .footer-action {
+    flex: 1 1 0; min-width: 0; justify-content: center; white-space: nowrap;
     display: inline-flex; align-items: center; gap: 5px;
-    padding: 5px 10px; border-radius: 5px; font-size: 12px;
+    padding: 7px 10px; border-radius: 5px; font-size: 12px;
     cursor: pointer; background: var(--app-control-bg);
     border: 1px solid var(--app-control-border); color: var(--app-control-text);
   }

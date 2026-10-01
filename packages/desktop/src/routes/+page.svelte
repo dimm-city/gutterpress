@@ -17,6 +17,7 @@
   import ProjectActivityView from "$lib/components/ProjectActivityView.svelte";
   import NewProjectWizard from "$lib/components/NewProjectWizard.svelte";
   import GitHubDialog from "$lib/components/GitHubDialog.svelte";
+  import OpenBookDialog from "$lib/components/OpenBookDialog.svelte";
   import PublishWizard from "$lib/components/PublishWizard.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import AppToolbar from "$lib/components/AppToolbar.svelte";
@@ -473,6 +474,7 @@
 
   // "Open from GitHub" flow (#15)
   let githubOpen = $state(false);
+  let openBookOpen = $state(false);
   // New-project wizard (#25). L4: opening is exclusively via show() below —
   // there is no bindable `open` prop any more (the wizard owns that state).
   let newProjectWizardRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
@@ -2860,13 +2862,8 @@
       onInsertImage={(payload) => insertImageIntoChapter(payload)}
       onProjectChosen={(path) => void openProjectPath(path)}
       onOpenUrl={openUrl}
-      onOpenGitHub={isDesktop() ? () => { contextMenu.close(); void inlineEdit.endActive(true); githubOpen = true; } : undefined}
+      onOpenBook={() => { contextMenu.close(); void inlineEdit.endActive(true); openBookOpen = true; }}
       onNewProject={() => { contextMenu.close(); void inlineEdit.endActive(true); newProjectWizardRef?.show(); }}
-      onShowWelcome={() => {
-        contextMenu.close();
-        landingRef?.showTab("projects");
-        landingForcedOpen = true;
-      }}
       onSyncReconnect={onSyncReconnect}
       onPanelStateChange={persistLeftPanelPrefs}
     />
@@ -3208,6 +3205,14 @@
       />
     {/key}
   </section>
+{/if}
+
+{#if openBookOpen}
+  <OpenBookDialog
+    onClose={() => (openBookOpen = false)}
+    onLocal={() => { openBookOpen = false; void pickAndOpenFolder(); }}
+    onGitHub={isDesktop() ? () => { openBookOpen = false; githubOpen = true; } : undefined}
+  />
 {/if}
 
 <GitHubDialog
