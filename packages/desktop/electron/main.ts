@@ -1158,6 +1158,10 @@ const desktopHooksImpl: DesktopHooks = {
   showItemInFolder: (filePath: string) => {
     shell.showItemInFolder(filePath);
   },
+  openLogsFolder: async () => {
+    await mkdir(logsDir(), { recursive: true });
+    await shell.openPath(logsDir());
+  },
   getNativeTheme: () => ({ shouldUseDarkColors: nativeTheme.shouldUseDarkColors }),
   getUserDataPath: () => app.getPath('userData'),
 };

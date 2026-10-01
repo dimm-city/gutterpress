@@ -52,6 +52,8 @@ export interface DesktopHooks {
   confirmUnsavedChanges: (fileName: string | null) => Promise<UnsavedChoice>;
   openExternal: (url: string) => Promise<void>;
   showItemInFolder: (filePath: string) => void;
+  /** Create (if needed) and open the diagnostic logs folder in the OS file manager. */
+  openLogsFolder: () => Promise<void>;
   getNativeTheme: () => { shouldUseDarkColors: boolean };
   getUserDataPath: () => string;
 }

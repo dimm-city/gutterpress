@@ -84,6 +84,7 @@ export function makeHostServices(overrides: HostServicesOverrides = {}): HostSer
       confirmUnsavedChanges: async () => "cancel" as const,
       openExternal: async () => {},
       showItemInFolder: noop,
+      openLogsFolder: async () => {},
       getNativeTheme: () => ({ shouldUseDarkColors: false }),
       getUserDataPath: () => "/fake/userData",
     },

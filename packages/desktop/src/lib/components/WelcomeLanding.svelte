@@ -31,6 +31,7 @@
   import BrandMark from "$lib/components/BrandMark.svelte";
   import HelpContent from "$lib/components/HelpContent.svelte";
   import TroubleshootingView from "$lib/components/TroubleshootingView.svelte";
+  import AboutView from "$lib/components/AboutView.svelte";
   import { sanitizeTroubleshootingTab, type TroubleshootingTab } from "$lib/troubleshooting-tabs";
   import { isEditableTarget } from "$lib/a11y";
   import type { ContinueStatus } from "$lib/routes/startup-landing";
@@ -128,19 +129,20 @@
     onProjectFilesChanged?: () => void;
   } = $props();
 
-  // ── Tabs (Books / Settings / Help / Troubleshooting) ───────────────────
+  // ── Tabs (Books / Settings / Help / About / Troubleshooting) ───────────────────
   // The landing is the app's front door: Books carries the continue card +
   // quick actions + book list; Settings embeds the WHOLE settings surface,
   // sub-tabs and all; Help carries the how-to guidance; Troubleshooting
-  // holds Diagnostics, Logs and About (versions + updates) as sub-tabs. Because
+  // holds Diagnostics and Logs as sub-tabs; About carries versions + updates. Because
   // settings and help are tabs here, the brand row no longer needs its own
   // buttons. The host can land on a specific tab (help button → "help";
   // missing identity at launch → "settings" on its Accounts sub-tab).
-  type LandingTab = "projects" | "settings" | "help" | "troubleshooting";
+  type LandingTab = "projects" | "settings" | "help" | "about" | "troubleshooting";
   const LANDING_TABS: Array<{ id: LandingTab; label: string }> = [
     { id: "projects", label: "Books" },
     { id: "settings", label: "Settings" },
     { id: "help", label: "Help" },
+    { id: "about", label: "About" },
     { id: "troubleshooting", label: "Troubleshooting" },
   ];
   let activeTab = $state<LandingTab>("projects");
@@ -148,6 +150,7 @@
     projects: undefined,
     settings: undefined,
     help: undefined,
+    about: undefined,
     troubleshooting: undefined,
   });
 
@@ -462,16 +465,21 @@
       <section class="help-sec" aria-label="Help">
         <HelpContent {onOpenGuide} />
       </section>
-      {:else}
-      <section class="troubleshooting-sec" aria-label="Troubleshooting">
-        <TroubleshootingView
-          idPrefix="landing-troubleshooting"
-          initialTab={troubleshootingTab}
+      {:else if activeTab === "about"}
+      <section class="about-sec" aria-label="About">
+        <AboutView
           {onCheckForUpdates}
           {checkingUpdates}
           {updateReadyVersion}
           {updateAvailableVersion}
           {updateAvailableAction}
+        />
+      </section>
+      {:else}
+      <section class="troubleshooting-sec" aria-label="Troubleshooting">
+        <TroubleshootingView
+          idPrefix="landing-troubleshooting"
+          initialTab={troubleshootingTab}
         />
       </section>
       {/if}
@@ -613,7 +621,7 @@
     gap: 22px;
     min-height: 0;
   }
-  .settings-sec, .help-sec, .troubleshooting-sec { display: flex; flex-direction: column; gap: 14px; }
+  .settings-sec, .help-sec, .about-sec, .troubleshooting-sec { display: flex; flex-direction: column; gap: 14px; }
 
   /* ── Continue card ─────────────────────────────────────────────────── */
   .continue-sec { display: flex; flex-direction: column; gap: 10px; }
