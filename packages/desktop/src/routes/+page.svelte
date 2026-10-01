@@ -1,5 +1,6 @@
 <script lang="ts">
   import PreviewFrame from "$lib/components/PreviewFrame.svelte";
+  import PreviewToolbar from "$lib/components/PreviewToolbar.svelte";
   import FindBar from "$lib/components/FindBar.svelte";
   import ExternalEditBanner from "$lib/components/ExternalEditBanner.svelte";
   import CrashRecoveryDialog from "$lib/components/CrashRecoveryDialog.svelte";
@@ -2838,9 +2839,6 @@
     folderTitle={lifecycle.currentDir ? displayTitle : null}
     folderTooltip={lifecycle.currentDir}
     onOpenInBrowser={openInBrowser}
-    {pageNav}
-    rendering={lifecycle.rendering}
-    showPageNav={!!lifecycle.previewUrl}
     {isNarrow}
     {mobileTab}
     onSelectMobileTab={selectMobileTab}
@@ -2849,9 +2847,6 @@
     hidePreviewControls={isNarrow && editorPaneOpen}
     {mode}
     onSetMode={(next) => { contextMenu.close(); setMode(next); }}
-    {zoom}
-    previewControlsDisabled={!lifecycle.previewUrl}
-    onApplyZoom={(val) => { contextMenu.close(); zoomView.applyZoom(val); }}
     editorToggleDisabled={!toolbarProjectOpen}
     publishVisible={isDesktop()}
     publishDisabled={lifecycle.busy || !lifecycle.currentDir || lifecycle.sourceMode === "url"}
@@ -3046,6 +3041,18 @@
         aria-labelledby={isNarrow ? "mobile-tab-preview" : undefined}
         inert={isNarrow && (editorPaneOpen || editorView !== "editor") ? true : undefined}
       >
+        {#if !inFocus && lifecycle.previewUrl}
+          <!-- Page navigation and zoom sit on the pane they act on (the
+               editor pane has its own toolbar the same way). Focus keeps the
+               preview bare: the FocusBar carries page nav for reading. -->
+          <PreviewToolbar
+            {pageNav}
+            rendering={lifecycle.rendering}
+            {zoom}
+            zoomDisabled={!lifecycle.previewUrl}
+            onApplyZoom={(val) => { contextMenu.close(); zoomView.applyZoom(val); }}
+          />
+        {/if}
         <FindBar bind:this={findBarRef} bind:open={findBarOpen} {client} />
         {#if lifecycle.previewUrl}
           {#key lifecycle.previewUrl}
@@ -3493,10 +3500,14 @@
   }
   .preview-pane {
     position: relative;
+    /* Named container for PreviewToolbar's own collapse stages. */
+    container-type: inline-size;
+    container-name: preview-pane;
   }
   .preview-updating-pill {
     position: absolute;
-    top: 10px;
+    /* Below the preview toolbar, which holds the zoom menu on that side. */
+    top: 44px;
     right: 12px;
     z-index: 9;
     display: flex;
