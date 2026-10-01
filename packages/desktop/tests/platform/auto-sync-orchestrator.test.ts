@@ -443,24 +443,27 @@ test("runExitPush skips while a tick is in flight (single-flight, never overlap)
   await p1;
 });
 
-test("runExitPush is BOUNDED: a hung network cannot hang quit, and the slot is released", async () => {
-  let calls = 0;
+test("runExitPush runs the sync to completion — never abandoned on a timer", async () => {
+  // Abandoning the exit pass let quit kill git between its object and ref
+  // writes, which left empty object files that broke every later merge.
+  let finish!: () => void;
   const h = makeHarness({
-    syncProject: () => {
-      calls++;
-      // Only the exit pass hangs; a later tick behaves normally.
-      return calls === 1 ? new Promise(() => {}) : { status: "synced" };
-    },
+    syncProject: () =>
+      new Promise((resolve) => {
+        finish = () => resolve({ status: "synced" });
+      }),
   });
-  const started = performance.now();
-  await h.orch.runExitPush(DIR, 50);
-  expect(performance.now() - started).toBeLessThan(1_500);
-  // The single-flight slot is free again despite the hung sync…
+  let settled = false;
+  const exit = h.orch.runExitPush(DIR).then(() => {
+    settled = true;
+  });
+  await new Promise((r) => setTimeout(r, 100));
+  expect(settled).toBe(false);
+  // The single-flight slot stays held while the pass is still writing.
+  expect(h.orch.getState(DIR)?.inFlight ?? false).toBe(true);
+  finish();
+  await exit;
   expect(h.orch.getState(DIR)?.inFlight ?? false).toBe(false);
-  // …and the timed-out send left the push window ARMED: the next session's
-  // first tick pushes the work this pass could not.
-  await h.orch.run(DIR);
-  expect(pushFlagOf(h, 1)).toBe(true);
 });
 
 test("runExitPush does nothing when the project cannot sync", async () => {

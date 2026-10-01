@@ -109,7 +109,7 @@
     onShowLog = undefined as ((logFilePath: string | null) => void) | undefined,
     /** Called when the author clicks "Save now". */
     onForceSave = undefined as (() => void) | undefined,
-    /** Called when the author clicks "Sync now". */
+    /** Called when the author clicks "Back up now" in the dialog. */
     onForceSync = undefined as (() => void | Promise<void>) | undefined,
     /** Outcome of the last manual "Back up now" (manual backups bypass the
      *  host orchestrator, the only emitter of the status stream). */
@@ -118,7 +118,7 @@
      *  Resolves when the version is saved (or rejects on failure) so the
      *  summary can refresh its "latest version" line and the parent can show
      *  the single confirmation toast. */
-    onSaveVersion = undefined as (() => Promise<void>) | undefined,
+    onSaveVersion = undefined as (() => Promise<"saved" | "unchanged">) | undefined,
     /** Called when the author clicks "Turn on version history" for a plain
      *  folder. Resolves once the folder has history (and the page re-classified
      *  it), rejects on failure after showing its own toast. */
@@ -156,7 +156,7 @@
     onForceSave?: () => void;
     onForceSync?: () => void | Promise<void>;
     manualBackup?: ManualBackup | null;
-    onSaveVersion?: () => Promise<void>;
+    onSaveVersion?: () => Promise<"saved" | "unchanged">;
     onEnableVersionHistory?: () => Promise<void>;
     onShowVersions?: () => void;
     onOpenBookConnections?: () => void;
@@ -224,6 +224,8 @@
   let liveSyncState = $derived(live.state);
   let lastSyncAt = $derived(live.at);
   let savingVersion = $state(false);
+  // "Save a version now" found nothing new (a calm result, not a failure).
+  let nothingNew = $state(false);
   let nowMs = $state(Date.now());
 
   /** Autosave off and edits waiting for the author's Save. */
@@ -243,6 +245,7 @@
         stale,
         savingVersion,
         problem: versionsProblem,
+        nothingNew,
       },
       online: {
         state: liveSyncState,
@@ -279,6 +282,7 @@
       latestVersionAt = page.entries[0]?.timestamp ?? null;
       changedFiles = pending.changedFiles;
       stale = pending.stale;
+      if ((changedFiles ?? 0) > 0 || stale) nothingNew = false;
       versionsLoad = "ready";
     } catch {
       // Non-fatal: the dialog says it couldn't check, rather than guessing.
@@ -292,6 +296,7 @@
   }
   function openSummary() {
     summaryOpen = true;
+    nothingNew = false;
     dialogDir = projectDir;
     versionsLoad = "loading";
     latestVersionAt = null;
@@ -344,7 +349,8 @@
     if (!onSaveVersion || savingVersion) return;
     savingVersion = true;
     try {
-      await onSaveVersion();
+      const outcome = await onSaveVersion();
+      nothingNew = outcome === "unchanged";
       versionsProblemDir = null;
       await fetchVersionFacts();
     } catch {
@@ -420,11 +426,6 @@
   /** Show "Save now" when there are unsaved edits and no force-save in progress. */
   let showForceSave = $derived(
     fileOpen && (savePhase === "dirty" || savePhase === "saving") && !forceSaving,
-  );
-
-  /** Show "Sync now" when the project can sync and no force-sync is in progress. */
-  let showForceSync = $derived(
-    !!projectDir && sourceMode === "folder" && canSync,
   );
 
   // Show the status pill for any folder project that can sync OR keep local
@@ -563,21 +564,8 @@
     </div>
   {/if}
 
-  <!-- Right cluster: [sync refresh icon] [sync pill] | [save indicator] [Save now] -->
+  <!-- Right cluster: [sync pill] | [save indicator] [Save now] -->
   <div class="status-right">
-    {#if showForceSync}
-      <!-- Sync now — a bare refresh icon at the far left; spins while syncing. -->
-      <button
-        class="status-icon-btn"
-        class:spinning={forceSyncing}
-        onclick={backUpNow}
-        disabled={forceSyncing}
-        aria-label={forceSyncing ? "Backing up…" : "Back up online now"}
-        title={forceSyncing ? "Backing up…" : "Back up online now"}
-      >
-        <Icon name="refresh-cw" size={14} />
-      </button>
-    {/if}
     {#if showSync}
       {#key projectDir}
         <SyncStatusPill
@@ -590,7 +578,7 @@
         />
       {/key}
     {/if}
-    {#if (showSync || showForceSync) && fileOpen}
+    {#if showSync && fileOpen}
       <span class="status-sep" aria-hidden="true"></span>
     {/if}
     {#if fileOpen}
@@ -711,7 +699,7 @@
     cursor: default;
   }
 
-  /* ── Sync-now icon button (bare refresh icon, far left) ──────────────────── */
+  /* ── Bare icon button (settings, help) ───────────────────────────────────── */
   .status-icon-btn {
     display: inline-flex;
     align-items: center;
@@ -738,15 +726,6 @@
   }
   .status-icon-btn:disabled {
     cursor: default;
-  }
-  /* Spin the refresh glyph while a sync is in flight. */
-  .status-icon-btn.spinning :global(svg) {
-    animation: status-sync-spin 0.8s linear infinite;
-  }
-  @keyframes status-sync-spin {
-    to {
-      transform: rotate(360deg);
-    }
   }
 
   /* ── Save indicator (a button that opens the "Where your work is kept" dialog) ── */

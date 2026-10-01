@@ -901,6 +901,7 @@ test("a clean tree with no stale marker still reports 'no changes'", async () =>
 
 import {
   withRepoLock,
+  whenGitIdle,
   __repoLockQueueSizeForTests,
 } from "./source-provider";
 
@@ -1251,4 +1252,30 @@ test("switchBranch surfaces a checkout conflict as a friendly error and never fo
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("whenGitIdle waits for running AND later-chained git work on every repo", async () => {
+  const gates: Array<() => void> = [];
+  const op = () => new Promise<void>((r) => gates.push(r));
+  void withRepoLock("/tmp/gp-idle-a", op);
+  void withRepoLock("/tmp/gp-idle-b", op);
+  let idle = false;
+  const waiting = whenGitIdle().then(() => {
+    idle = true;
+  });
+  await flushMicrotasks();
+  gates.shift()!(); // repo A's op finishes…
+  void withRepoLock("/tmp/gp-idle-a", op); // …and a new op is chained while waiting.
+  await flushMicrotasks();
+  expect(idle).toBe(false);
+  while (gates.length) {
+    gates.shift()!();
+    await flushMicrotasks();
+  }
+  await waiting;
+  expect(idle).toBe(true);
+});
+
+test("whenGitIdle resolves at once when nothing is queued", async () => {
+  await whenGitIdle();
 });

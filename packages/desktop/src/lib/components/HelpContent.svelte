@@ -143,7 +143,7 @@
       <h3>Work with an Online Copy</h3>
       <ul class="steps">
         <li><strong>Open from GitHub</strong> — click <em>Open from GitHub</em> (on the welcome screen, or at the bottom of the left panel's <em>Books</em> tab) to connect your GitHub account, choose a repository, and download a copy of the book to your computer.</li>
-        <li><strong>Sync Changes</strong> — when your book has an online copy, click the circular-arrows sync button in the bottom-right corner to send your latest work to it. If you're offline, your work stays saved on this computer and it will sync when you're back online. If your copy and the online copy both changed, Gutterpress lists each file that differs and lets you choose: keep your version, use the online version, or keep both copies.</li>
+        <li><strong>Back up now</strong> — when your book is backed up online, click the save status in the bottom-right corner (it says <em>Saved</em>) to open <em>Where your work is kept</em>, then click <em>Back up now</em> under <em>Online backup</em>. If you're offline, your work stays saved on this computer and the backup catches up when you're back online. If your copy and the online copy both changed, Gutterpress lists each file that differs and lets you choose: keep your version, use the online version, or keep both copies.</li>
         <li><strong>Other hosting services</strong> — if your book lives somewhere other than GitHub, open the gear icon in the bottom-right corner, then <em>Accounts</em>, to connect a Git server (such as Gitea or Forgejo).</li>
       </ul>
     </section>
@@ -183,7 +183,7 @@
           <tr><td>Zoom in / out</td><td>+ / -</td></tr>
           <tr><td>Fit to width</td><td>F</td></tr>
           <tr><td>Toggle editor (Edit mode)</td><td>{modKey}+E</td></tr>
-          <tr><td>Focus mode (editor only)</td><td>{modKey}+Shift+F</td></tr>
+          <tr><td>Leave Focus (Focus is in the toolbar)</td><td>Esc</td></tr>
           <tr><td>Save source edits</td><td>{modKey}+S</td></tr>
           <tr><td>Export PDF</td><td>{modKey}+Shift+E</td></tr>
           <tr><td>Settings</td><td>{modKey}+,</td></tr>

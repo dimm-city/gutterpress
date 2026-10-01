@@ -214,6 +214,20 @@ export function withRepoLock<T>(projectDir: string, fn: () => Promise<T>): Promi
 }
 
 /**
+ * Resolve once NO git operation is queued or running on any repo — including
+ * ones chained while waiting. The desktop host awaits this before quitting so
+ * an exit snapshot, backup or merge finishes instead of being killed between
+ * its object and ref writes. Never rejects.
+ */
+export async function whenGitIdle(): Promise<void> {
+  while (repoQueues.size > 0) {
+    await Promise.all(repoQueues.values());
+    // Let the settle handlers above reclaim their entries before re-checking.
+    await Promise.resolve();
+  }
+}
+
+/**
  * Test-only: current number of live per-repo lock queues. Lets tests assert the
  * B4 reclamation actually happens (the map returns to empty once every queued
  * op settles) without exporting the map itself. Same test-hook convention as

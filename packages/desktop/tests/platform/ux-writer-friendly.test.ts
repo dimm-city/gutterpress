@@ -209,6 +209,16 @@ describe("Status bar — one calm label opening a 'Where your work is kept' dial
     expect(status).toContain("onSaveVersion");
     expect(status).toContain("onShowVersions");
   });
+  test("saving a version with nothing new is calm: no error toast, the dialog says so", () => {
+    const page = read("src/routes/+page.svelte");
+    const handler = page.slice(page.indexOf("onSaveVersion={async"), page.indexOf("onEnableVersionHistory={"));
+    const noChanges = handler.indexOf("no changes since the last snapshot");
+    expect(noChanges).toBeGreaterThan(-1);
+    // The clean-tree rejection returns before the error toast is reached.
+    expect(noChanges).toBeLessThan(handler.indexOf("toast?.error"));
+    expect(handler.slice(noChanges, handler.indexOf("toast?.error"))).toContain('return "unchanged"');
+    expect(status).toContain('outcome === "unchanged"');
+  });
   test("a plain folder can turn version history on from the dialog (same route as Book settings)", () => {
     expect(copy).toContain("Start keeping versions");
     expect(copy).toContain("This saves a first version of your book now.");

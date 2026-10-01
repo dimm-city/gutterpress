@@ -1017,48 +1017,37 @@ try {
     }
   });
 
-  // ── 13. The workspace mode has TWO writers, and they must not race ────────
-  // `setMode` assigns the live mode; `settings.set` notifies synchronously and
-  // echoes the persisted value back through the settings sink. Focus persists
-  // as "editor" (waking into a viewer-less window would be hostile), so
-  // entering Focus FROM Read writes a value the sink has not seen — its dedupe
-  // misses it and the echo assigns `mode = "editor"`. With the assignment
-  // first, that echo landed last and Ctrl+Shift+F from Read opened Edit with
-  // the viewer still up. Only Read → Focus reaches it: from Edit the echo is
-  // the value the sink already holds, so the dedupe swallows it.
-  await step("13. Ctrl+Shift+F enters Focus from Read, on both round trips", async () => {
-    // `aria-pressed` is the app's own signal (same source workspace-mode.mjs
-    // reads), and the buttons stay in the DOM at every width — CSS only
-    // decides which form is visible.
+  // ── 13. Focus is a toggle on top of Edit AND Read, not a third mode ───────
+  // The toolbar's Focus toggle hides the chrome (app toolbar, left panel,
+  // status bar, editor toolbar) behind a minimal bar and leaves the persisted
+  // mode alone; Esc restores exactly the mode that was active — including an
+  // Esc pressed with the keyboard inside the preview iframe (forwarded by
+  // preview-bridge.js), which is where a Read-mode click leaves it.
+  await step("13. The Focus toggle works over Read and over Edit; Esc (even from the preview) restores the mode", async () => {
     const modeActive = async (label) =>
       (await page.locator(`.mode-group button[aria-label="${label}"]`).getAttribute("aria-pressed")) === "true";
-    const previewHidden = async () =>
-      (await page.locator(".preview-pane").getAttribute("aria-hidden")) === "true";
+    const inFocus = async () => (await page.locator(".focus-bar").count()) > 0;
 
-    // Picking Read while ALREADY in Read is this action performed as a no-op:
-    // it must leave the live mode and its persisted echo agreeing, so the
-    // Ctrl+Shift+F below starts from a genuine Read.
-    await setWorkspaceMode(page, "Read");
-    await setWorkspaceMode(page, "Read");
-    if (!(await modeActive("Read"))) throw new Error("the toolbar does not report Read before Ctrl+Shift+F");
-    if (await previewHidden()) throw new Error("the viewer is already hidden in Read mode");
+    for (const mode of ["Read", "Edit"]) {
+      await setWorkspaceMode(page, mode);
+      if (!(await modeActive(mode))) throw new Error(`the toolbar does not report ${mode} before Focus`);
+      const statusBarBefore = await page.locator(".status-bar").count();
 
-    for (const round of [1, 2]) {
-      await page.keyboard.press("Control+Shift+F");
-      await page.waitForTimeout(300);
-      if (!(await modeActive("Focus"))) {
-        throw new Error(
-          `round ${round}: Ctrl+Shift+F from Read did not land in Focus ` +
-          `(Edit=${await modeActive("Edit")}, Read=${await modeActive("Read")}, ` +
-          `viewer hidden=${await previewHidden()})`,
-        );
+      for (const round of [1, 2]) {
+        await page.locator("#focus-toggle-btn").click();
+        await page.waitForTimeout(300);
+        if (!(await inFocus())) throw new Error(`${mode} round ${round}: the Focus toggle did not enter Focus`);
+        if ((await page.locator(".toolbar").count()) > 0) throw new Error(`${mode} round ${round}: app toolbar still present in Focus`);
+        // Round 2 presses Esc with the keyboard inside the preview iframe.
+        if (round === 2) await page.locator("iframe").first().click({ position: { x: 40, y: 40 } });
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(300);
+        if (await inFocus()) throw new Error(`${mode} round ${round}: Esc did not leave Focus`);
+        if (!(await modeActive(mode))) throw new Error(`${mode} round ${round}: leaving Focus did not restore ${mode}`);
+        if ((await page.locator(".status-bar").count()) !== statusBarBefore) {
+          throw new Error(`${mode} round ${round}: status bar not restored after Focus`);
+        }
       }
-      if (!(await previewHidden())) throw new Error(`round ${round}: Focus left the viewer on screen`);
-
-      await page.keyboard.press("Control+Shift+F");
-      await page.waitForTimeout(300);
-      if (!(await modeActive("Read"))) throw new Error(`round ${round}: leaving Focus did not return to Read`);
-      if (await previewHidden()) throw new Error(`round ${round}: leaving Focus left the viewer hidden`);
     }
   });
 } catch (err) {

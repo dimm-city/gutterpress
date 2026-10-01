@@ -225,6 +225,24 @@ function loadLib(): Promise<LibModule> {
   return libPromise;
 }
 
+/**
+ * Resolve once no git operation (snapshot, backup, merge, restore, clone) is
+ * queued or running. Quitting mid-operation killed isomorphic-git between its
+ * writes and left empty object files that broke every later merge (0.11.6
+ * field report), so quit waits here — there is deliberately NO timeout. The
+ * operations bound themselves: local git work is short, and the network legs
+ * carry git-http's idle/upload timeouts. Skips the lib import entirely when
+ * the lib was never loaded, since then nothing can be running.
+ */
+async function waitForGitIdle(): Promise<void> {
+  if (!libPromise) return;
+  try {
+    await (await libPromise).whenGitIdle();
+  } catch {
+    // A lib that failed to load has no git work in flight.
+  }
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // PDF export subsystem lives in electron/pdf-export.ts — it owns the single
 // active export session + the Electron-native PDF renderer. Wire its progress
@@ -461,8 +479,7 @@ const autoSync = new AutoSyncOrchestrator({
  * The in-flight final exit push for the project that just closed, or null.
  * Started at the folder watcher's onStop flush point (project switch/close and
  * window close both land there); `window-all-closed` awaits it before quitting
- * so the send is not killed mid-flight. It is BOUNDED inside `runExitPush`, so
- * awaiting it can never hang quit; nulled on settle so a later quit never
+ * so the send is not killed mid-flight. Nulled on settle so a later quit never
  * waits on a stale, already-settled promise.
  */
 let pendingExitSync: Promise<void> | null = null;
@@ -484,8 +501,8 @@ const folderWatch = new FolderWatcher({
     // take it now (fire-and-forget) instead of dropping the timer.
     void flushAutoSnapshot();
     // Final exit push (owner decision 2026-08-23): between push windows the
-    // 2-minute ticks hold local work back, so send it now. `runExitPush` is
-    // bounded internally, skips when a tick is in flight, and syncProject
+    // 2-minute ticks hold local work back, so send it now. `runExitPush`
+    // skips when a tick is in flight, and syncProject
     // itself makes no network push when there is nothing to send. Started
     // BEFORE cancelAll() below, while the single-flight state it consults is
     // still intact. (getWatchedDir() is still the closing project here —
@@ -1804,31 +1821,39 @@ if (!gotSingleInstanceLock) {
     focusMainWindow();
   });
 
-  // Record a closing line before the app actually exits — registered only in
-  // this branch (the primary instance) so the loser's own app.quit() above
-  // never writes a bogus "closing" entry into the log the PRIMARY instance is
-  // using; that process never reaches here.
+  // Before the app actually exits: record a closing line and wait out any
+  // in-flight git work. Registered only in this branch (the primary instance)
+  // so the loser's own app.quit() above never writes a bogus "closing" entry
+  // into the log the PRIMARY instance is using; that process never reaches
+  // here.
   //
   // before-quit fires before Electron proceeds with its default action, and
   // is NOT awaited by Electron — an async listener's promise is ignored, so
   // the only way to delay real quitting is the standard preventDefault-then-
-  // requeue dance: cancel this attempt synchronously, write the line, then
-  // call app.quit() again once the write settles (or after a short bound, so
-  // a stalled disk can't leave the app unable to quit at all — logAppEvent
-  // itself never rejects, but it can still hang on a wedged filesystem).
-  let closingLogStarted = false;
+  // requeue dance: cancel this attempt synchronously, do the work, then call
+  // app.quit() again once it settles. Every quit path (Cmd+Q, the updater's
+  // quit-and-install, the last window closing) lands here.
+  //
+  // - The log line is bounded (2s): logAppEvent never rejects, but it can hang
+  //   on a wedged filesystem, and a log line is not worth a stuck app.
+  // - Git work is NOT bounded (see waitForGitIdle): killing it mid-write is
+  //   what damaged 0.11.6 repositories.
+  // - Quit triggers arriving while we wait (double Cmd+Q, a second app.quit())
+  //   are cancelled too, not let through — letting one through is exactly
+  //   the mid-write kill this wait exists to prevent.
+  let quitPhase: "running" | "closing" | "ready" = "running";
   app.on("before-quit", (event) => {
-    if (closingLogStarted) return;
-    // Set BEFORE the async work starts, not in .finally() — before-quit
-    // listeners aren't awaited, so a second quit trigger arriving while the
-    // write is still in flight (double Cmd+Q, a second app.quit() call) would
-    // otherwise still see this false and start a duplicate write + timer.
-    closingLogStarted = true;
+    if (quitPhase === "ready") return;
     event.preventDefault();
+    if (quitPhase === "closing") return;
+    quitPhase = "closing";
     const timeout = new Promise<void>((resolve) => setTimeout(resolve, 2_000));
-    Promise.race([logAppEvent("[app] closing"), timeout]).finally(() => {
-      app.quit();
-    });
+    Promise.all([Promise.race([logAppEvent("[app] closing"), timeout]), waitForGitIdle()]).finally(
+      () => {
+        quitPhase = "ready";
+        app.quit();
+      },
+    );
   });
 }
 
@@ -1954,11 +1979,13 @@ app.on("window-all-closed", async () => {
   }
   await previewOpen.stop();
   // Wait for the final exit push (started at the watcher's onStop when the
-  // window closed) so quitting does not kill the send mid-flight. It is
-  // bounded inside runExitPush, so this can delay quit by a few seconds at
-  // most; a pass that could not finish is picked up by the next launch's
-  // first tick, which always pushes. On macOS the app outlives the window,
-  // so the push simply completes in the background instead.
+  // window closed) and every other git operation still queued — the exit
+  // snapshot flush, a tick that was mid-merge — so quitting never kills git
+  // between its object and ref writes (see waitForGitIdle). On macOS the app
+  // outlives the window, so the work simply completes in the background.
   if (pendingExitSync) await pendingExitSync;
-  if (process.platform !== "darwin") app.quit();
+  if (process.platform !== "darwin") {
+    await waitForGitIdle();
+    app.quit();
+  }
 });

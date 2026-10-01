@@ -1,7 +1,7 @@
 /**
  * Shared test helper: pick the workspace mode from the toolbar.
  *
- * There is ONE workspace switch — `mode: "editor" | "viewer" | "focus"` — and
+ * There is ONE workspace switch — `mode: "editor" | "viewer"` (Focus is a separate session toggle on top) — and
  * the page count follows from it rather than being chosen directly:
  *
  *   viewMode = mode === "viewer" && !isNarrow ? "two-column" : "single"
@@ -37,7 +37,7 @@ export async function setWorkspaceMode(page, mode) {
   }
   // Collapsed toolbar: the same choice lives behind a disclosure, where the
   // items carry their label as TEXT rather than aria-label.
-  await page.locator('summary[aria-label="Edit, read or focus"]').click();
+  await page.locator('summary[aria-label="Edit or read"]').click();
   await page.locator(".mode-menu .menu-item", { hasText: mode }).click();
 }
 

@@ -5,6 +5,36 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.7] - 2026-10-01
+
+### Changed
+
+- **Focus works while writing and while reading.** Focus is now an on/off
+  switch beside Edit and Read. It hides the left panel, the status bar and the
+  toolbars, leaving only your writing and pages plus a slim bar with Edit/Read,
+  Exit focus and (while reading) page navigation. After a few seconds the bar
+  slides up until only its edge peeks out at the top of the window; point at
+  it and it slides back down. Press Esc to leave Focus — it works even after
+  you've clicked into the pages — and your layout comes back exactly as it
+  was. The Ctrl+Shift+F shortcut is gone; use the Focus button and Esc.
+- **Back up now and Save a version now live in "Where your work is kept".**
+  The separate backup button in the status bar is gone. Open the dialog from
+  the save status to back up online or save a version. Save a version now is
+  always beside See previous versions, and saving when nothing changed simply
+  says there's nothing new to save.
+
+### Fixed
+
+- **Online backup no longer gets stuck failing with "merge failed".**
+  Closing Gutterpress while a backup was saving could leave an empty file in
+  the book's version history. Every later backup then failed the same way,
+  because the damaged file was never rewritten. Gutterpress now waits for
+  version-history work to finish before it quits, and writes those files in a
+  way an interrupted save can't damage. Books already affected repair
+  themselves on the next backup. If a damaged file can't be repaired, the
+  message now says the version history can't be read instead of asking you to
+  try again.
+
 ## [0.11.6] - 2026-09-30
 
 ### Changed

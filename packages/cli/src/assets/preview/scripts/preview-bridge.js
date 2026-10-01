@@ -10,7 +10,7 @@
 //   parent -> iframe: { type: 'gutterpress:cmd', id: <number>, cmd: <string>, args?: [...] }
 //   iframe -> parent: { type: 'gutterpress:reply', id: <number>, ok: true, result: <any> }
 //                  or { type: 'gutterpress:reply', id: <number>, ok: false, error: <string> }
-//   iframe -> parent: { type: 'gutterpress:event', name: 'pageChanged'|'renderingComplete'|'ready', detail }
+//   iframe -> parent: { type: 'gutterpress:event', name: 'pageChanged'|'renderingComplete'|'ready'|'escapePressed'|…, detail }
 //
 // Commands map 1:1 to previewAPI methods: getTotalPages, getCurrentPage,
 // goToPage, firstPage, prevPage, nextPage, lastPage, setViewMode, setZoom,
@@ -96,6 +96,15 @@
   });
   window.addEventListener('blockEditStateChanged', function (e) {
     post({ type: 'gutterpress:event', name: 'blockEditStateChanged', detail: e.detail });
+  });
+
+  // Esc pressed inside the book. Keystrokes in this cross-origin document
+  // never reach the app, so an Esc nothing here consumed is forwarded (the app
+  // uses it to leave Focus). Bubble phase on window, so in-book handlers that
+  // own Esc — in-place block editing stops it at the document — run first.
+  window.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    post({ type: 'gutterpress:event', name: 'escapePressed', detail: {} });
   });
 
   // Announce readiness as soon as previewAPI is defined.

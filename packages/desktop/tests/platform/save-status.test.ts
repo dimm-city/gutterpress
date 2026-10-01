@@ -40,6 +40,7 @@ function input(over: {
       stale: false,
       savingVersion: false,
       problem: false,
+      nothingNew: false,
       ...over.versions,
     },
     online: {
@@ -157,11 +158,29 @@ describe("versions", () => {
   test("singular file", () => {
     expect(versionsSection(input({ versions: { changedFiles: 1 } })).detail).toContain("changed 1 file since then");
   });
-  test("nothing changed: 'in that version'; the Save button is HIDDEN, not disabled", () => {
+  test("nothing changed: 'in that version'; Save stays offered, but secondary", () => {
     const s = versionsSection(input({ versions: { changedFiles: 0 } }));
     expect(s.detail).toBe("Everything you've written is in that version.");
     expect(s.tone).toBe("ok");
-    expect(ids(s)).toEqual(["viewVersions"]);
+    expect(ids(s)).toEqual(["saveVersion", "viewVersions"]);
+    expect(s.actions[0]!.primary).toBeFalsy();
+    expect(s.notice).toBeUndefined();
+  });
+  test("Save pressed on a clean book: a calm notice, not a problem", () => {
+    const s = versionsSection(input({ versions: { changedFiles: 0, nothingNew: true } }));
+    expect(s.notice).toBe("Nothing new to save — your last version already has everything.");
+    expect(s.tone).toBe("ok");
+    expect(s.alert).toBeUndefined();
+    expect(ids(s)).toEqual(["saveVersion", "viewVersions"]);
+    // …and the announcement region hears it too (single role=status).
+    const dlg = fs.readFileSync(path.resolve(__dirname, "../../src/lib/components/SaveStatusDialog.svelte"), "utf8");
+    expect(dlg).toContain("copy[s.key].notice");
+    expect(dlg.match(/<div[^>]*role="status"/g)).toHaveLength(1);
+  });
+  test("the notice is withdrawn once there are changes to save", () => {
+    const s = versionsSection(input({ versions: { changedFiles: 2, nothingNew: true } }));
+    expect(s.notice).toBeUndefined();
+    expect(s.actions[0]).toMatchObject({ id: "saveVersion", primary: true });
   });
   test("stale staging: a clean-looking tree is NOT reported as fully versioned; Save stays", () => {
     const s = versionsSection(input({ versions: { changedFiles: 0, stale: true } }));
@@ -277,7 +296,11 @@ describe("online backup", () => {
     expect(sync("syncing", { canSync: true }).status).toBe("Backing up now…");
     const manual = sync("synced", { canSync: true, syncing: true });
     expect(manual.status).toBe("Backing up now…");
-    expect(manual.actions).toEqual([]);
+    // The button stays, disabled and honest, so the dialog is the one home for it.
+    expect(manual.actions).toEqual([{ id: "syncNow", label: "Backing up…", disabled: true, primary: false }]);
+    expect(sync("syncing", { canSync: true }).actions[0]).toMatchObject({ id: "syncNow", disabled: true });
+    // No usable remote: nothing to press.
+    expect(sync("syncing", { canSync: false }).actions).toEqual([]);
   });
   test("synced: backed up, honest cadence from the constants, 'Back up now'", () => {
     const s = sync("synced", { canSync: true, lastSyncAt: new Date(NOW - 5 * 60_000).toISOString() });
@@ -288,6 +311,25 @@ describe("online backup", () => {
     expect(s.tone).toBe("ok");
     expect(s.note).toBe("You can open it on another computer too.");
     expect(s.actions[0]).toMatchObject({ id: "syncNow", label: "Back up now" });
+    expect(s.actions[0]!.primary).toBeFalsy();
+  });
+  test("Back up now is offered exactly where a manual backup can work", () => {
+    const can = ["synced", "idle", "offline", "error", "syncing"] as const;
+    for (const state of can) {
+      expect(ids(sync(state, { canSync: true })), state).toContain("syncNow");
+      expect(ids(sync(state, { canSync: false, hasRemote: true })), state).not.toContain("syncNow");
+    }
+    for (const state of ["auth", "connect", "local"] as const) {
+      expect(ids(sync(state, { canSync: true, hasRemote: true })), state).not.toContain("syncNow");
+    }
+    expect(ids(onlineSection(input({ versions: { enabled: false }, online: { canSync: true } })))).toEqual([]);
+  });
+  test("Back up now is primary only when it is the suggested fix", () => {
+    for (const state of ["offline", "error"] as const) {
+      expect(sync(state, { canSync: true, automatic: false }).actions[0]!.primary, state).toBe(true);
+      expect(sync(state, { canSync: true, automatic: true }).actions[0]!.primary, state).toBeFalsy();
+    }
+    expect(sync("idle", { canSync: true, automatic: false }).actions[0]!.primary).toBeFalsy();
   });
   test("synced without a timestamp: no invented time", () => {
     expect(sync("synced", { canSync: true }).detail!.startsWith("New versions are uploaded")).toBe(true);
@@ -303,8 +345,8 @@ describe("online backup", () => {
     expect(on.detail).toContain("will try again on its own");
     const off = sync("offline", { canSync: true, automatic: false });
     expect(off.detail).not.toContain("on its own");
-    expect(off.detail).toContain("Use Try again");
-    expect(on.actions[0]).toMatchObject({ id: "syncNow", label: "Try again" });
+    expect(off.detail).toContain("Use Back up now");
+    expect(on.actions[0]).toMatchObject({ id: "syncNow", label: "Back up now" });
   });
   test("error: automatic on promises a retry; off does not", () => {
     const on = sync("error", { canSync: true });

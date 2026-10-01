@@ -76,7 +76,6 @@
     | "table"
     | "image"
     | "snippet"
-    | "focus-mode"
     | "layout-block";
 
   export type ToolbarPayload =
@@ -99,7 +98,6 @@
   let primaryItems = $derived(visibleItems.filter((i) => i.group === "primary"));
   let blockItems = $derived(visibleItems.filter((i) => i.group === "block"));
   let insertItems = $derived(visibleItems.filter((i) => i.group === "insert"));
-  let viewItems = $derived(visibleItems.filter((i) => i.group === "view"));
 
   function fireAction(item: ToolbarItemDef) {
     if (item.action) onAction(item.action as ToolbarAction);
@@ -509,20 +507,6 @@
     </div>
   </div>
 
-  <!-- View group: editing-posture toggles, apart from the formatting controls. -->
-  <div class="tb-group view-group">
-    {#each viewItems as item (item.id)}
-      <button
-        class="tb-btn"
-        onclick={() => fireAction(item)}
-        title={item.title}
-        aria-label={item.ariaLabel}
-      >
-        <Icon name={item.icon as IconName} size={14} />
-      </button>
-    {/each}
-  </div>
-
   <!-- "More" overflow button — CSS @container shows it only while a group is
        hidden, and each section below only while ITS group is hidden, so the
        popup lists what the toolbar cannot show and never repeats what it does
@@ -550,8 +534,6 @@
         </div>
         <div class="more-tail">
           {@render menuRows(insertItems, moreMenu)}
-          <hr class="popup-hr" />
-          {@render menuRows(viewItems, moreMenu)}
         </div>
       </div>
     {/if}
@@ -774,8 +756,6 @@
     flex-shrink: 0;
   }
   .save-sep { margin-right: 5px; }
-  /* Focus mode sits at the right edge, apart from the formatting controls. */
-  .view-group { margin-left: auto; }
 
   /* ── Toolbar buttons ─────────────────────────────────────────────────────── */
   .tb-btn {
@@ -940,7 +920,7 @@
    * (measured) plus a little slack; re-measure if a group gains a button.
    *   >= 420px  everything, Insert labelled
    *   >= 385px  everything, Insert as an icon
-   *   >= 340px  Insert + Focus mode move into "…"
+   *   >= 340px  Insert moves into "…"
    *   below     the block group (quote, lists, heading) moves in as well
    * "…" and each of its sections appear only in the tiers that hide the
    * matching group, so the popup never repeats a visible button.
@@ -952,8 +932,7 @@
   }
   @container editor-toolbar (max-width: 384px) {
     .sep-tail,
-    .insert-group,
-    .view-group {
+    .insert-group {
       display: none;
     }
     .tb-more-wrap {

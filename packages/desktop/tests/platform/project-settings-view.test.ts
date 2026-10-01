@@ -195,7 +195,7 @@ describe("+page.svelte — docked mount, teardown, prefs migration", () => {
     const body = src.slice(fnIdx, fnIdx + 900);
     // Early-return guard BEFORE any command dispatch, with Escape-to-close —
     // otherwise Ctrl+, mounts the app SettingsView invisibly beneath this
-    // view, Ctrl+Shift+F toggles focus mode behind it, etc.
+    // view, Ctrl+F opens find behind it, etc.
     expect(body).toMatch(/if \(projectSettingsOpen\) \{[\s\S]{0,300}?closeProjectSettings\(\);[\s\S]{0,100}?return;/);
     expect(body.indexOf("if (projectSettingsOpen)")).toBeLessThan(body.indexOf("resolveGlobalShortcut"));
     // Preview paging/zoom keys must not act on the (inert) preview beside the

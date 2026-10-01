@@ -17,18 +17,26 @@ test("ProjectConfigPanel theme thumbnails always render a non-blank fallback", (
   expect(src).not.toContain("thumb-placeholder\" aria-hidden=\"true\"");
 });
 
-test("the Focus segment hides the preview so the editor can fill the workspace", () => {
+test("Focus is a toggle that swaps the app toolbar for the minimal bar and hides the other chrome", () => {
   const src = read("src/routes/+page.svelte");
   const toolbar = read("src/lib/components/AppToolbar.svelte");
-  // Hiding the preview IS the `focus` workspace mode — one enum, not a
-  // second boolean beside it.
-  expect(src).toContain("let previewVisible = $derived(mode !== \"focus\")");
-  expect(src).toContain("function togglePreview");
-  expect(src).toContain("class:preview-hidden={!previewVisible}");
-  // The control is a segment of the one mode switch, not an eye button beside
-  // it: a three-state model gets a three-segment control.
-  expect(toolbar).toContain('onclick={() => onSetMode("focus")}');
-  expect(toolbar).toContain('aria-label="Focus"');
+  // One session boolean beside the mode — not a third mode value.
+  expect(src).toContain("let focus = $state(false);");
+  expect(src).toContain("let inFocus = $derived(focus && toolbarProjectOpen);");
+  // Each piece of chrome is gated on it: app toolbar, editor toolbar, status bar.
+  expect(src).toMatch(/\{#if inFocus\}\s*<FocusBar/);
+  expect(src).toMatch(/\{#if !inFocus\}\s*<EditorToolbar/);
+  expect(src).toMatch(/\{#if !inFocus\}\s*<StatusBar/);
+  // The left panel is hidden by CSS so the PERSISTED open flag is never touched.
+  expect(src).toContain("class:in-focus={inFocus}");
+  expect(src).toMatch(/\.left-panel-region\.in-focus > :global\(\.left-panel\)/);
+  // Focus is dropped on close (resetExtras) and on book switch (onProjectSwitch).
+  expect(src).toContain("onProjectSwitch: () => setFocus(false),");
+  expect(src).toMatch(/resetExtras: \(\) => \{[\s\S]*?focus = false;/);
+  // The preview is never hidden by Focus any more (Edit+Focus keeps it beside the editor).
+  expect(src).not.toContain("previewVisible");
+  expect(src).not.toContain("preview-collapsed");
+  expect(toolbar).toContain("onclick={onToggleFocus}");
   expect(toolbar).not.toContain("Preview only");
 });
 
@@ -160,7 +168,7 @@ test("M23: the Insert and More menus render rows from the shared item arrays thr
   const src = read("src/lib/components/EditorToolbar.svelte");
   // Every group array is filtered from the ONE visibleItems list…
   expect(src).toContain("visibleToolbarItems({ hasSave: !!onSave, desktop: isDesktop() })");
-  for (const group of ["save", "primary", "block", "insert", "view"]) {
+  for (const group of ["save", "primary", "block", "insert"]) {
     expect(src).toContain(`visibleItems.filter((i) => i.group === "${group}")`);
   }
   // …and both popups draw their rows from those arrays via the same
@@ -174,7 +182,6 @@ test("M23: the Insert and More menus render rows from the shared item arrays thr
   const morePopup = src.slice(morePopupIdx, src.indexOf("{/if}", morePopupIdx));
   expect(morePopup).toContain("{@render menuRows(blockItems, moreMenu)}");
   expect(morePopup).toContain("{@render menuRows(insertItems, moreMenu)}");
-  expect(morePopup).toContain("{@render menuRows(viewItems, moreMenu)}");
   // Guard against reverting to the old bugs: a second, hand-typed list of
   // buttons that called onAction directly and had already dropped Save and
   // Snippet by the time it was reviewed…
@@ -231,10 +238,10 @@ test("#311: \"…\" lists only what the toolbar hides — each More section is s
   if (!labelTier || !tailTier || !blockTier) throw new Error("expected label, tail and block tiers");
 
   // As the toolbar narrows: the Insert label drops first, then the Insert menu
-  // + Focus mode move into "…", then the block group (quote, lists, heading).
+  // moves into "…", then the block group (quote, lists, heading).
   expect(labelTier.maxWidth).toBeGreaterThan(tailTier.maxWidth);
   expect(tailTier.maxWidth).toBeGreaterThan(blockTier.maxWidth);
-  expect(tailTier.hidden.sort()).toEqual([".insert-group", ".sep-tail", ".view-group"]);
+  expect(tailTier.hidden.sort()).toEqual([".insert-group", ".sep-tail"]);
   expect(tailTier.shown.sort()).toEqual([".more-tail", ".tb-more-wrap"]);
   expect(blockTier.hidden.sort()).toEqual([".block-group", ".sep-block"]);
   expect(blockTier.shown).toEqual([".more-block"]);
@@ -270,7 +277,7 @@ test("#311: \"…\" lists only what the toolbar hides — each More section is s
 test("#311: every insert action sits behind ONE Insert menu button, so the toolbar keeps its shape when the left panel narrows the pane", () => {
   const src = read("src/lib/components/EditorToolbar.svelte");
   const groupStart = src.indexOf('<div class="tb-group insert-group">');
-  const groupEnd = src.indexOf("<!-- View group", groupStart);
+  const groupEnd = src.indexOf("<!-- \"More\" overflow button", groupStart);
   expect(groupStart).toBeGreaterThan(-1);
   expect(groupEnd).toBeGreaterThan(groupStart);
   const insertGroup = src.slice(groupStart, groupEnd);
@@ -285,16 +292,16 @@ test("#311: every insert action sits behind ONE Insert menu button, so the toolb
   expect(insertGroup).not.toContain("{#each insertItems");
   expect(insertGroup).not.toContain("openTableDialog");
 
-  // Focus mode is a posture toggle, not an insertion: it keeps its own direct
-  // button in the View group instead of a row in the Insert menu.
-  expect(src).toContain('<div class="tb-group view-group">');
-  expect(src).toContain("{#each viewItems as item (item.id)}");
+  // Focus is not an editor-toolbar item at all: the app toolbar's toggle is
+  // its only entry point.
+  expect(src).not.toContain("view-group");
+  expect(src).not.toContain("viewItems");
 });
 
 test("M11: the table-insert dialog is hoisted outside .insert-group, which is display:none at exactly the widths where the More menu exists", () => {
   const src = read("src/lib/components/EditorToolbar.svelte");
   const groupStart = src.indexOf('<div class="tb-group insert-group">');
-  const groupEnd = src.indexOf("<!-- View group", groupStart);
+  const groupEnd = src.indexOf("<!-- \"More\" overflow button", groupStart);
   expect(groupStart).toBeGreaterThan(-1);
   expect(groupEnd).toBeGreaterThan(groupStart);
   const insertGroupRegion = src.slice(groupStart, groupEnd);
@@ -612,9 +619,8 @@ test("ContextMenu focus-on-open runs per menu-open, not once at app boot (keyboa
 test("the workspace layout derives from one mode enum, in exactly one direction", () => {
   const src = read("src/routes/+page.svelte");
   expect(src).toContain('let mode = $state<WorkspaceMode>(settings.current.preview.mode)');
-  // The three derivations ARE the rule — read them off the source.
+  // The derivations ARE the rule — read them off the source.
   expect(src).toContain('mode === "viewer" && !isNarrow ? "two-column" : "single"');
-  expect(src).toContain('let previewVisible = $derived(mode !== "focus")');
   expect(src).toContain('let editorVisible = $derived(mode !== "viewer")');
   // `isNarrow` clamps the derived value; it is not a second decider, and the
   // duplicated 1280 width heuristic that used to be one is gone.
@@ -622,46 +628,45 @@ test("the workspace layout derives from one mode enum, in exactly one direction"
   expect(read("src/lib/routes/preview-event-controller.ts")).not.toContain("1280");
 });
 
-test("`focus` is transient: it never reaches the persisted settings", () => {
+test("Focus is not a workspace mode and is never persisted", () => {
   const src = read("src/routes/+page.svelte");
-  // One writer, and it maps focus to the layout it is a variant of — waking
-  // into a viewer-less window would be hostile.
-  expect(src).toContain('settings.set({ preview: { mode: next === "focus" ? "editor" : next } })');
-  // Enforced by the type too: the persisted field cannot hold "focus".
-  expect(read("src/lib/platform/shared-types.ts")).toContain(
-    'mode: Exclude<WorkspaceMode, "focus">',
-  );
+  const types = read("src/lib/platform/shared-types.ts");
+  expect(types).toContain('export type WorkspaceMode = "editor" | "viewer";');
+  expect(types).not.toContain("Exclude<WorkspaceMode");
+  // setMode persists the mode verbatim; Focus has no settings.set of its own.
+  expect(src).toContain("settings.set({ preview: { mode: next } })");
+  const focusBody = src.slice(src.indexOf("function setFocus("), src.indexOf("function selectFocusView("));
+  expect(focusBody).not.toContain("settings.set");
+  expect(focusBody).not.toContain("setMode(");
+  expect(focusBody).not.toContain("leftPanelOpen");
+  expect(focusBody).not.toContain("persistLeftPanelPrefs");
+  // The mode-before-focus bookkeeping is gone with the third mode.
+  expect(src).not.toContain("modeBeforeFocus");
+  expect(src).not.toContain('"focus" ?');
 });
 
-test("setMode persists BEFORE it assigns, so its own write-back cannot land on `focus`", () => {
+test("Esc leaves Focus only through escapeExitsFocus, after the book-settings and landing guards", () => {
   const src = read("src/routes/+page.svelte");
-  const body = src.slice(
-    src.indexOf("function setMode(next: WorkspaceMode): void {"),
-    src.indexOf("function togglePreview()"),
-  );
-  const persistIdx = body.indexOf("settings.set({ preview:");
-  const assignIdx = body.indexOf("mode = next;");
-  expect(persistIdx).toBeGreaterThan(-1);
-  expect(assignIdx).toBeGreaterThan(-1);
-  // `focus` persists AS "editor", and the settings notify is synchronous, so
-  // entering focus from `viewer` fires modeSink with a value it has not seen
-  // ("editor" ≠ "viewer") — the sink then assigns mode = "editor" and the
-  // author lands in Edit with the viewer still on screen. Persisting first
-  // means that echo happens BEFORE the assignment, so the one writer of
-  // `mode` still wins. The guard's dedupe is a nicety, not the correctness
-  // argument.
-  expect(persistIdx).toBeLessThan(assignIdx);
+  const escIdx = src.indexOf("escapeExitsFocus(e, document, findBarOpen)");
+  expect(escIdx).toBeGreaterThan(-1);
+  // The settings panel and start screen own Esc first (they return before this).
+  expect(src.indexOf("if (projectSettingsOpen) {")).toBeLessThan(escIdx);
+  expect(src.indexOf("if (landingVisible) return;")).toBeLessThan(escIdx);
+  // An Esc pressed inside the preview iframe (forwarded by preview-bridge.js
+  // as `escapePressed`) goes through the same rule.
+  const fwd = src.slice(src.indexOf("function onPreviewEscape("), src.indexOf("function onClientReady("));
+  expect(fwd).toContain('e.name !== "escapePressed"');
+  expect(fwd).toContain("escapeExitsFocus(");
+  expect(src).toContain("c.on(onPreviewEscape);");
+  // Ctrl+Shift+F is gone (0.11.7): Esc and the toolbar toggle are the controls.
+  expect(src).not.toContain('command === "focus-mode"');
 });
 
-test("only leaving `focus` is ambiguous, so only entering it stores a previous mode", () => {
+test("the Edit/Read switch in the minimal bar maps to a mode on wide and a tab on narrow", () => {
   const src = read("src/routes/+page.svelte");
-  const writes = src.match(/modeBeforeFocus = (?!null)/g) ?? [];
-  expect(writes.length).toBe(1);
-  expect(src).toContain('if (next === "focus") modeBeforeFocus =');
-  // Closing the editor needs no stored state — it always lands on the viewer.
-  const toggleIdx = src.indexOf("function toggleEditor()");
-  expect(toggleIdx).toBeGreaterThan(-1);
-  expect(src.slice(toggleIdx, toggleIdx + 900)).toContain("setMode(\"viewer\")");
+  const body = src.slice(src.indexOf("function selectFocusView("), src.indexOf("let focusView"));
+  expect(body).toContain('selectMobileTab(view === "edit" ? "markdown" : "preview")');
+  expect(body).toContain('setMode(view === "edit" ? "editor" : "viewer")');
 });
 
 test("the retired view-mode machinery is gone, not merely unused", () => {
@@ -675,9 +680,8 @@ test("the retired view-mode machinery is gone, not merely unused", () => {
   expect(zoomView).not.toContain("toggleViewMode");
   // No Settings control for a value that is no longer stored.
   expect(settingsView).not.toContain("set-viewmode");
-  // Focus keeps the toolbar, so the chrome-hiding class + CSS have no reason
-  // to exist. (The "focus-mode" COMMAND id survives — it is the Ctrl+Shift+F
-  // shortcut's identity, and it now hides the viewer.)
+  // Focus swaps components ({#if inFocus}) rather than toggling a chrome
+  // class on the shell.
   expect(page).not.toContain("class:focus-mode");
   expect(page).not.toContain(".shell.focus-mode");
 });
@@ -699,7 +703,7 @@ test("a book opens in Edit by default; the left panel opens too unless the windo
   expect(page).not.toContain("panelPrefs?.open ?? false");
 });
 
-test("resetting the workspace restores the SAVED mode — it must not force Read and save it", () => {
+test("resetting the workspace drops Focus and never touches the SAVED mode — it must not force Read and save it", () => {
   const src = read("src/routes/+page.svelte");
   const idx = src.indexOf("resetExtras: () => {");
   expect(idx).toBeGreaterThan(-1);
@@ -707,8 +711,8 @@ test("resetting the workspace restores the SAVED mode — it must not force Read
   // A failed open, a cancelled open and a URL preview all reset the workspace.
   // `setMode` persists, so forcing "viewer" here turned a new writer's Edit
   // default into a saved Read after their first mistyped path.
-  expect(body).toContain("setMode(settings.current.preview.mode)");
-  expect(body).not.toContain('setMode("viewer")');
+  expect(body).toContain("focus = false;");
+  expect(body).not.toContain("setMode(");
 });
 
 test("the name/email notice needs version history AND a first save or sync, and says it in plain words", () => {
