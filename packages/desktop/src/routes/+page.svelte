@@ -1451,6 +1451,21 @@
   }
 
   /**
+   * User-initiated file switch (Focus Chapter select, Files tab): select the
+   * file, then emit one top-of-viewport ("scroll") anchor so the preview follows. Loading a
+   * file emits no anchor of its own, and the editor opens every file at line 1
+   * (no per-file position is restored). Deliberately NOT inside
+   * `selectEditorFile`: go-to-source and other programmatic callers reveal a
+   * specific line afterwards and must not top-scroll first.
+   */
+  async function openChapter(path: string): Promise<void> {
+    if (!(await selectEditorFile(path))) return;
+    whenEditorReady(() => {
+      if (editorRef?.hasFile(path)) editorSync.onEditorAnchorLine(1, "scroll", editorChapter);
+    });
+  }
+
+  /**
    * Make `path` the file the author is working in.
    *
    * The session keeps the outgoing file active while the target reads and
@@ -2810,7 +2825,7 @@
       rendering={lifecycle.rendering}
       files={focusView === "edit" ? focusFiles : []}
       currentFile={editorFilePath ? basenameOf(editorFilePath) : null}
-      onSelectFile={(name) => lifecycle.currentDir ? selectEditorFile(joinPath(lifecycle.currentDir, name)).then(() => {}) : undefined}
+      onSelectFile={(name) => lifecycle.currentDir ? openChapter(joinPath(lifecycle.currentDir, name)) : undefined}
     />
   {:else}
   <AppToolbar
@@ -2871,7 +2886,7 @@
       toggleBtn={leftPanelToggleBtn}
       onJumpToOutline={jumpToOutline}
       onSelectEditorFile={(path) => {
-        selectEditorFile(path);
+        void openChapter(path);
         if (!editorVisible && lifecycle.currentDir && lifecycle.sourceMode === "folder") {
           // A file was just selected in the tree, so no ensureEditorFile needed.
           openEditorPane({ ensureFile: false });

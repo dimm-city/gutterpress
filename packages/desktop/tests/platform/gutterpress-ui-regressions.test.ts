@@ -46,9 +46,9 @@ test("Edit+Focus shows the book's files in the minimal bar, reusing the existing
   // Book order = the Details section's list (manifest sourceFiles, else natural order).
   expect(src).toContain("buildSourceList(md, cfg.sourceFiles ?? null)");
   expect(src).toContain("api.fs.listProjectFiles(dir)");
-  // Edit only; selecting goes through the same atomic selectEditorFile as the tree.
+  // Edit only; selecting goes through openChapter (atomic selectEditorFile + preview follow).
   expect(src).toContain('files={focusView === "edit" ? focusFiles : []}');
-  expect(src).toMatch(/onSelectFile=\{\(name\) =>[^\n]*selectEditorFile\(joinPath\(lifecycle\.currentDir, name\)\)/);
+  expect(src).toMatch(/onSelectFile=\{\(name\) =>[^\n]*openChapter\(joinPath\(lifecycle\.currentDir, name\)\)/);
   expect(bar).toContain('aria-label="Chapter"');
   // A cancelled switch snaps the select back; the bar's select-hold logic still applies.
   expect(bar).toContain('el.value = currentFile ?? "";');
