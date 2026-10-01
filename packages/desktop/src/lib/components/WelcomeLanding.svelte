@@ -30,7 +30,8 @@
   import SettingsView from "$lib/components/SettingsView.svelte";
   import BrandMark from "$lib/components/BrandMark.svelte";
   import HelpContent from "$lib/components/HelpContent.svelte";
-  import LogsPanel from "$lib/components/LogsPanel.svelte";
+  import TroubleshootingView from "$lib/components/TroubleshootingView.svelte";
+  import { sanitizeTroubleshootingTab, type TroubleshootingTab } from "$lib/troubleshooting-tabs";
   import { isEditableTarget } from "$lib/a11y";
   import type { ContinueStatus } from "$lib/routes/startup-landing";
   import type { UpdaterAvailableAction } from "$lib/platform";
@@ -127,31 +128,37 @@
     onProjectFilesChanged?: () => void;
   } = $props();
 
-  // ── Tabs (Books / Settings / Help / Logs) ──────────────────────────────
+  // ── Tabs (Books / Settings / Help / Troubleshooting) ───────────────────
   // The landing is the app's front door: Books carries the continue card +
   // quick actions + book list; Settings embeds the WHOLE settings surface,
-  // sub-tabs and all; Help carries the former help modal's content; Logs
-  // shows the app's diagnostic logs for easy copy/paste sharing. Because
+  // sub-tabs and all; Help carries the how-to guidance; Troubleshooting
+  // holds Diagnostics, Logs and About (versions + updates) as sub-tabs. Because
   // settings and help are tabs here, the brand row no longer needs its own
   // buttons. The host can land on a specific tab (help button → "help";
   // missing identity at launch → "settings" on its Accounts sub-tab).
-  type LandingTab = "projects" | "settings" | "help" | "logs";
+  type LandingTab = "projects" | "settings" | "help" | "troubleshooting";
   const LANDING_TABS: Array<{ id: LandingTab; label: string }> = [
     { id: "projects", label: "Books" },
     { id: "settings", label: "Settings" },
     { id: "help", label: "Help" },
-    { id: "logs", label: "Logs" },
+    { id: "troubleshooting", label: "Troubleshooting" },
   ];
   let activeTab = $state<LandingTab>("projects");
   let tabEls = $state<Record<LandingTab, HTMLButtonElement | undefined>>({
     projects: undefined,
     settings: undefined,
     help: undefined,
-    logs: undefined,
+    troubleshooting: undefined,
   });
 
-  /** Host-driven tab switch (help button, launch-time identity nudge). */
-  export function showTab(tab: LandingTab) {
+  /** Sub-tab the Troubleshooting tab opens on (deep link or its default). */
+  let troubleshootingTab = $state<TroubleshootingTab>("diagnostics");
+
+  /** Tab switch — host-driven (help button) and user-driven alike, so a plain
+   *  switch drops any earlier deep link (`sub` omitted → the default sub-tab).
+   *  `sub` deep-links a Troubleshooting sub-tab: showTab("troubleshooting", "logs"). */
+  export function showTab(tab: LandingTab, sub?: TroubleshootingTab) {
+    troubleshootingTab = sanitizeTroubleshootingTab(sub);
     activeTab = tab;
   }
 
@@ -165,7 +172,7 @@
     else if (e.key === "End") next = ids.length - 1;
     if (next === undefined) return;
     e.preventDefault();
-    activeTab = ids[next]!;
+    showTab(ids[next]!);
     tabEls[activeTab]?.focus();
   }
 
@@ -344,7 +351,7 @@
             aria-controls="landing-panel"
             tabindex={activeTab === tab.id ? 0 : -1}
             bind:this={tabEls[tab.id]}
-            onclick={() => (activeTab = tab.id)}
+            onclick={() => showTab(tab.id)}
           >{tab.label}</button>
         {/each}
       </div>
@@ -451,16 +458,15 @@
           {onProjectFilesChanged}
         />
       </section>
-      {:else if activeTab === "logs"}
-      <section class="logs-sec" aria-label="Diagnostic logs">
-        <!-- Keyed so each visit re-lists (a sync may have written since). -->
-        {#key activeTab}
-          <LogsPanel />
-        {/key}
+      {:else if activeTab === "help"}
+      <section class="help-sec" aria-label="Help">
+        <HelpContent {onOpenGuide} />
       </section>
       {:else}
-      <section class="help-sec" aria-label="Help and about">
-        <HelpContent
+      <section class="troubleshooting-sec" aria-label="Troubleshooting">
+        <TroubleshootingView
+          idPrefix="landing-troubleshooting"
+          initialTab={troubleshootingTab}
           {onCheckForUpdates}
           {checkingUpdates}
           {updateReadyVersion}
@@ -607,7 +613,7 @@
     gap: 22px;
     min-height: 0;
   }
-  .settings-sec, .help-sec, .logs-sec { display: flex; flex-direction: column; gap: 14px; }
+  .settings-sec, .help-sec, .troubleshooting-sec { display: flex; flex-direction: column; gap: 14px; }
 
   /* ── Continue card ─────────────────────────────────────────────────── */
   .continue-sec { display: flex; flex-direction: column; gap: 10px; }

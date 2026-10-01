@@ -204,8 +204,7 @@
   }
 
   /* The Advanced disclosure (#309): a native <details> whose marker is an
-     inline SVG chevron that rotates when open — the same treatment as
-     HelpContent's "System info" (content glyphs are banned, see
+     inline SVG chevron that rotates when open (content glyphs are banned, see
      no-glyph-chrome.test.ts). */
   .advanced { border-top: 1px solid var(--app-border-subtle); padding-top: 4px; }
   .advanced > summary { cursor: pointer; font-size: 12px; color: var(--app-text-muted); user-select: none; padding: 6px 0; list-style: none; }
