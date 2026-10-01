@@ -498,9 +498,12 @@ test("Help content copy reflects current save/export shortcuts", () => {
   const src = read("src/lib/components/HelpContent.svelte");
   expect(src).toContain("Save source edits");
   expect(src).toContain("{modKey}+S");
-  expect(src).toContain("Export PDF");
+  // Export was folded into Publish; Ctrl+Shift+E still saves a PDF directly.
+  expect(src).toContain("Save PDF");
+  expect(src).not.toContain("Export PDF");
   expect(src).toContain("{modKey}+Shift+E");
-  expect(src).not.toContain("Save PDF</td><td>{modKey}+S");
+  // Plain Ctrl+S saves source edits, never a PDF.
+  expect(src).not.toContain("Save PDF</td><td>{modKey}+S</td>");
 });
 
 test("settings/help live in a bottom-right status toolbar and problems overlay wins over the sidebar", () => {
