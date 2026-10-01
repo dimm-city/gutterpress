@@ -46,9 +46,9 @@ test("Edit+Focus shows the book's files in the minimal bar, reusing the existing
   // Book order = the Details section's list (manifest sourceFiles, else natural order).
   expect(src).toContain("buildSourceList(md, cfg.sourceFiles ?? null)");
   expect(src).toContain("api.fs.listProjectFiles(dir)");
-  // Edit only; selecting goes through the same atomic selectEditorFile as the tree.
+  // Edit only; selecting goes through openChapter (atomic selectEditorFile + preview follow).
   expect(src).toContain('files={focusView === "edit" ? focusFiles : []}');
-  expect(src).toMatch(/onSelectFile=\{\(name\) =>[^\n]*selectEditorFile\(joinPath\(lifecycle\.currentDir, name\)\)/);
+  expect(src).toMatch(/onSelectFile=\{\(name\) =>[^\n]*openChapter\(joinPath\(lifecycle\.currentDir, name\)\)/);
   expect(bar).toContain('aria-label="Chapter"');
   // A cancelled switch snaps the select back; the bar's select-hold logic still applies.
   expect(bar).toContain('el.value = currentFile ?? "";');
@@ -498,9 +498,12 @@ test("Help content copy reflects current save/export shortcuts", () => {
   const src = read("src/lib/components/HelpContent.svelte");
   expect(src).toContain("Save source edits");
   expect(src).toContain("{modKey}+S");
-  expect(src).toContain("Export PDF");
+  // Export was folded into Publish; Ctrl+Shift+E still saves a PDF directly.
+  expect(src).toContain("Save PDF");
+  expect(src).not.toContain("Export PDF");
   expect(src).toContain("{modKey}+Shift+E");
-  expect(src).not.toContain("Save PDF</td><td>{modKey}+S");
+  // Plain Ctrl+S saves source edits, never a PDF.
+  expect(src).not.toContain("Save PDF</td><td>{modKey}+S</td>");
 });
 
 test("settings/help live in a bottom-right status toolbar and problems overlay wins over the sidebar", () => {

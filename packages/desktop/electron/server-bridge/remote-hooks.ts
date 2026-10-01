@@ -30,6 +30,17 @@ export interface LibModule {
   connectGenericHost?(args: { host: string; username?: string; token: string; repoUrl?: string }): Promise<{ host: string; username?: string; kind: string; token: string; label?: string; createdAt: number }>;
   knownForgeTokenUrl?(host: string): Promise<string | null>;
   syncProject?(args: { projectDir: string; tokenStore: TokenStore; message?: string; authorName?: string; authorEmail?: string }): Promise<unknown>;
+  /** "Repair online backup" (lib remote-auth/repair.ts). */
+  repairOnlineBackup?(args: {
+    projectDir: string;
+    backupDir: string;
+    logFile: string;
+    tokenStore: TokenStore;
+    authorName?: string;
+    authorEmail?: string;
+  }): Promise<{ outcome: unknown; movedGitTo: string; restoredFiles: string[] }>;
+  detectProjectSource?(dir: string): Promise<unknown>;
+  repoRootForSource?(source: unknown, fallbackDir: string): string;
   /** Fetch every remote branch so the copy picker sees copies created elsewhere (#273). */
   refreshRemoteCopies?(args: { projectDir: string; tokenStore: TokenStore }): Promise<{ refreshed: boolean }>;
   /** Best-effort revoke at Google (never throws) — used by remote:disconnectHost

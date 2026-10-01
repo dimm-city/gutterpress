@@ -47,7 +47,7 @@ import type { RemoteHooks } from "./server-bridge/remote-hooks";
 import type { SyncSettingsHooks } from "./server-bridge/sync-settings-hooks";
 import type { UpdaterHooks } from "./server-bridge/updater-hooks";
 import { handleRemoteErrors, handlePublishErrors } from "./server-bridge/friendly-errors";
-import { isWithinRoot, type FsGuardHooks } from "./server-bridge/fs-guard";
+import { isWithinAnyRootCanonical, isWithinRoot, type FsGuardHooks } from "./server-bridge/fs-guard";
 import { createPickedFilesService, createSavePathsService } from "./server-bridge/picked-files";
 import {
   writeRecovery as writeRecoveryStore,
@@ -126,6 +126,7 @@ import {
   appLogPath as appLogPathImpl,
   recoveryDir as recoveryDirImpl,
   operationLogPath as operationLogPathImpl,
+  repairBackupDir as repairBackupDirImpl,
   operationLogSlug,
   logsDir as logsDirImpl,
 } from "./recovery-paths";
@@ -1157,6 +1158,10 @@ const desktopHooksImpl: DesktopHooks = {
   showItemInFolder: (filePath: string) => {
     shell.showItemInFolder(filePath);
   },
+  openLogsFolder: async () => {
+    await mkdir(logsDir(), { recursive: true });
+    await shell.openPath(logsDir());
+  },
   getNativeTheme: () => ({ shouldUseDarkColors: nativeTheme.shouldUseDarkColors }),
   getUserDataPath: () => app.getPath('userData'),
 };
@@ -1288,6 +1293,7 @@ const appImageHooksImpl: AppImageHooks = {
 const vcsHooksImpl: VcsHooks<LibModule> = {
   loadLib,
   operationLogPath,
+  repairBackupDir: (slug) => repairBackupDirImpl(app.getPath("userData"), slug),
   // #273: pause both host timers around a copy switch's checkout so neither
   // fires against the mid-switch working tree (an auto-snapshot would commit
   // a half-checked-out tree) or targets the wrong branch (auto-sync pushes
@@ -1685,6 +1691,7 @@ const exportController = new ExportController({
   rename: (from, to) => rename(from, to),
   rm: (p) => rm(p, { force: true }),
   consumeSavePath: (absPath) => savePathsImpl.consume(absPath),
+  isWithinProject: (absPath) => isWithinAnyRootCanonical(absPath, fsGuardImpl.projectRoots()),
   registerPickedPath: (absPath) => pickedFilesImpl.register([absPath]),
 });
 
@@ -1988,7 +1995,9 @@ app.on("window-all-closed", async () => {
     if (exportSession.win && !exportSession.win.isDestroyed()) {
       exportSession.win.destroy();
     }
-    await rm(exportSession.tempOutPath, { force: true }).catch(() => {});
+    if (exportSession.tempOutPath) {
+      await rm(exportSession.tempOutPath, { force: true }).catch(() => {});
+    }
     setActiveExportSession(null);
   }
   await previewOpen.stop();

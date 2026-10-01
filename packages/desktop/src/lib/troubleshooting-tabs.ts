@@ -6,7 +6,7 @@
  * the panel can never render empty.
  */
 
-export const TROUBLESHOOTING_TAB_IDS = ["diagnostics", "logs", "about"] as const;
+export const TROUBLESHOOTING_TAB_IDS = ["diagnostics", "logs"] as const;
 
 export type TroubleshootingTab = (typeof TROUBLESHOOTING_TAB_IDS)[number];
 

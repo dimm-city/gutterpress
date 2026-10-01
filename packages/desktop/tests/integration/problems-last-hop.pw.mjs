@@ -26,7 +26,7 @@ import {
 } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { waitForAppWindow } from "./app-window.mjs";
 
@@ -113,7 +113,9 @@ process.once("SIGTERM", () => void handleSignal(143));
 try {
   projectDir = mkdtempSync(join(tmpdir(), "gutterpress-problems-last-hop-project-"));
   userDataDir = mkdtempSync(join(tmpdir(), "gutterpress-problems-last-hop-home-"));
-  outputPath = join(userDataDir, "problems-last-hop.pdf");
+  // Where the wizard's local folder build lands: <book>/dist/<folder name>.pdf
+  // (the display name of a plain folder is its basename).
+  outputPath = join(projectDir, "dist", `${basename(projectDir)}.pdf`);
   cpSync(sourceFixture, projectDir, { recursive: true });
 
   // Put the malformed marker well below the initial CodeMirror viewport. The
@@ -259,14 +261,23 @@ try {
     `problem click opened ${activeFile?.trim()} and revealed line ${malformedLine}: ${JSON.stringify(revealEvidence)}`,
   );
 
-  // Keep the real route/capability/export path. Only replace the native file
-  // picker, which an automated renderer cannot interact with headlessly.
-  await electronApp.evaluate(({ dialog }, out) => {
-    dialog.showSaveDialog = async () => ({ canceled: false, filePath: out });
-  }, outputPath);
-  await page.locator("button.export-btn").click();
-  await page.locator(".export-dialog").waitFor({ state: "visible", timeout: 5_000 });
-  await page.locator(".export-dialog .dlg-primary").click();
+  // Export is the Publish wizard's first two steps now: Format (PDF) → Choose
+  // (the local folder, always on) → Folder → Preflight → Save. The default
+  // folder is `dist` inside the book, so the real build path runs end to end
+  // with no native dialog to stub.
+  await page.locator("button.publish-btn").click();
+  const wizard = page.locator(".dlg-shell.wizard");
+  await wizard.waitFor({ state: "visible", timeout: 5_000 });
+  const nextStep = async (label) => {
+    await wizard.locator(".steps li.current").filter({ hasText: label }).waitFor({ timeout: 10_000 });
+    await wizard.locator(".dlg-actions .dlg-primary").click();
+  };
+  await nextStep("Format");
+  await nextStep("Choose");
+  await nextStep("Folder");
+  await nextStep("Preflight");
+  await wizard.locator(".steps li.current").filter({ hasText: "Publish" }).waitFor({ timeout: 10_000 });
+  await wizard.locator(".dlg-actions .dlg-primary").click();
   await waitUntil(
     () => existsSync(outputPath) && statSync(outputPath).size > 1_000,
     120_000,

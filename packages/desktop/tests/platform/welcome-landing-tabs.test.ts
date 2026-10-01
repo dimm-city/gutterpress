@@ -70,14 +70,14 @@ describe("start-screen copy", () => {
   });
 });
 
-describe("the Troubleshooting tab (diagnostics, logs, about)", () => {
+describe("the About and Troubleshooting tabs", () => {
   test("Troubleshooting is the LAST tab, after Help; no standalone Logs tab", () => {
     const tabs = landing.slice(
       landing.indexOf("const LANDING_TABS"),
       landing.indexOf("];", landing.indexOf("const LANDING_TABS")),
     );
     const order = [...tabs.matchAll(/id: "([a-z]+)"/g)].map((m) => m[1]);
-    expect(order).toEqual(["projects", "settings", "help", "troubleshooting"]);
+    expect(order).toEqual(["projects", "settings", "help", "about", "troubleshooting"]);
     expect(landing).not.toContain('activeTab === "logs"');
   });
 
@@ -86,8 +86,9 @@ describe("the Troubleshooting tab (diagnostics, logs, about)", () => {
     expect(landing).toContain("sanitizeTroubleshootingTab(sub)");
   });
 
-  test("the panel mounts TroubleshootingView with the update wiring", () => {
+  test("the panels mount TroubleshootingView and AboutView (which gets the update wiring)", () => {
     expect(landing).toContain("<TroubleshootingView");
+    expect(landing).toContain("<AboutView");
     expect(landing).toContain("{onCheckForUpdates}");
     expect(landing).not.toContain("LogsPanel");
   });
@@ -114,8 +115,12 @@ describe("the Troubleshooting tab (diagnostics, logs, about)", () => {
     expect(view).toContain("api.doctor()");
     expect(view).toContain("Copy diagnostic info");
     expect(view).toContain("`Gutterpress desktop ${data.desktopVersion}`");
-    expect(view).toContain("Check for updates");
-    expect(view).toContain("<strong>Desktop:</strong>");
+    expect(view).not.toContain("Check for updates");
+    const about = read("src/lib/components/AboutView.svelte");
+    expect(about).toContain("api.doctor()");
+    expect(about).toContain("Check for updates");
+    expect(about).toContain("<strong>Desktop:</strong>");
+    expect(about).toContain("<strong>Lib:</strong>");
   });
 });
 

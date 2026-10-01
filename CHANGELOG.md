@@ -5,6 +5,48 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.9] - 2026-10-01
+
+### Added
+
+- **Export is part of Publish.** The Export button is gone; *Publish* is the
+  one blue action. Its wizard starts with the format (PDF or website), then
+  always saves to a folder on this computer first — `dist` inside your book
+  by default, or any folder you choose, remembered in the manifest — and
+  only then sends that same file to the online destinations you pick. A
+  website export now really writes a folder on the desktop. "Save as
+  template" moved to *Setup → Details*.
+- **Page navigation and zoom live on the preview.** The preview pane has its
+  own strip, like the editor's, with the page picker and a zoom menu that
+  shows the current level. The top toolbar keeps only Edit/Read, Focus,
+  Setup and Publish.
+- **One-click tool installs.** *Troubleshooting → Diagnostics* now offers an
+  Install button for Ghostscript and qpdf wherever the computer has a
+  package manager Gutterpress can drive (apt, dnf or pacman via the system
+  password prompt; Homebrew; winget), and a Download button otherwise. The
+  manual commands stay under "Install manually".
+- **Logs tab actions.** *Open folder* reveals the log folder in your file
+  manager; *Clear logs* (asks once) deletes every log file.
+- **About is its own tab** on the start screen, between Help and
+  Troubleshooting, with the versions and the update check.
+- **Repair online backup.** When online backup keeps failing, *Where your
+  work is kept* now offers one button that fixes it. Repair downloads a fresh
+  copy of your book's online history and puts it under the files on this
+  computer: your files here stay exactly as they are and win over the online
+  copy, anything only the online copy has is brought back, and the old history
+  is kept aside (never deleted) in the app's data folder. Then a version is
+  saved and backed up. It asks once before it runs and says exactly what it
+  will do.
+
+### Fixed
+
+- **Picking a chapter moves the preview too.** Choosing a file from the
+  Chapter list in Focus, or from the Files tab, now scrolls the preview to
+  that chapter's first page instead of leaving it where it was.
+- **A damaged version only this computer had now says so.** Sync reported it
+  as "didn't complete — please try again", which could never help. It now
+  says the history can't be read and points at Repair online backup.
+
 ## [0.11.8] - 2026-10-01
 
 ### Changed

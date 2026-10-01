@@ -109,6 +109,8 @@
     onShowLog = undefined as ((logFilePath: string | null) => void) | undefined,
     /** Called when the author clicks "Save now". */
     onForceSave = undefined as (() => void) | undefined,
+    /** Called when the author confirms "Repair online backup" in the dialog. */
+    onRepair = undefined as (() => void | Promise<void>) | undefined,
     /** Called when the author clicks "Back up now" in the dialog. */
     onForceSync = undefined as (() => void | Promise<void>) | undefined,
     /** Outcome of the last manual "Back up now" (manual backups bypass the
@@ -155,6 +157,7 @@
     onShowLog?: (logFilePath: string | null) => void;
     onForceSave?: () => void;
     onForceSync?: () => void | Promise<void>;
+    onRepair?: () => void | Promise<void>;
     manualBackup?: ManualBackup | null;
     onSaveVersion?: () => Promise<"saved" | "unchanged">;
     onEnableVersionHistory?: () => Promise<void>;
@@ -227,6 +230,9 @@
   // "Save a version now" found nothing new (a calm result, not a failure).
   let nothingNew = $state(false);
   let nowMs = $state(Date.now());
+  // "Repair online backup" asks once ("armed") before it runs; the dialog's
+  // Online backup section shows what it does and the Repair now / Cancel pair.
+  let repairPhase = $state<"idle" | "armed" | "running">("idle");
 
   /** Autosave off and edits waiting for the author's Save. */
   let unsaved = $derived(savePhase === "dirty" && !autoSave && !forceSaving);
@@ -254,6 +260,7 @@
         automatic: autoBackup,
         lastSyncAt,
         syncing: forceSyncing,
+        repair: repairPhase,
       },
       now: nowMs,
     }),
@@ -317,6 +324,7 @@
   }
   function closeSummary() {
     summaryOpen = false;
+    if (repairPhase === "armed") repairPhase = "idle";
     stopRefresh();
     factsSeq++; // any in-flight lookup is now stale
   }
@@ -335,6 +343,18 @@
     // automatic-version safety net works again.
     if (state === "synced") versionsProblemDir = null;
     if (changed && summaryOpen) void fetchVersionFacts();
+  }
+
+  async function repairNow() {
+    if (repairPhase === "running") return;
+    repairPhase = "running";
+    try {
+      await onRepair?.();
+    } finally {
+      repairPhase = "idle";
+    }
+    if (manualBackup?.state === "synced") versionsProblemDir = null;
+    if (summaryOpen) void fetchVersionFacts();
   }
 
   /** "Back up now": wait for the outcome, then re-read the version facts (a
@@ -394,6 +414,15 @@
         break;
       case "syncNow":
         void backUpNow();
+        break;
+      case "repair":
+        repairPhase = "armed";
+        break;
+      case "repairCancel":
+        repairPhase = "idle";
+        break;
+      case "repairNow":
+        void repairNow();
         break;
       case "openBookConnections":
         closeSummary();

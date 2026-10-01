@@ -1,5 +1,6 @@
 <script lang="ts">
   import PreviewFrame from "$lib/components/PreviewFrame.svelte";
+  import PreviewToolbar from "$lib/components/PreviewToolbar.svelte";
   import FindBar from "$lib/components/FindBar.svelte";
   import ExternalEditBanner from "$lib/components/ExternalEditBanner.svelte";
   import CrashRecoveryDialog from "$lib/components/CrashRecoveryDialog.svelte";
@@ -22,7 +23,6 @@
   import Icon from "$lib/components/Icon.svelte";
   import AppToolbar from "$lib/components/AppToolbar.svelte";
   import FocusBar from "$lib/components/FocusBar.svelte";
-  import ExportDialog from "$lib/components/ExportDialog.svelte";
   import ProjectSettingsView from "$lib/components/ProjectSettingsView.svelte";
   import EditorToolbar from "$lib/components/EditorToolbar.svelte";
   import type { ToolbarAction, ToolbarPayload } from "$lib/components/EditorToolbar.svelte";
@@ -156,7 +156,8 @@
     displayName: () => lifecycle.currentFolderDisplayName,
     isBusy: () => lifecycle.busy,
     sourceMode: () => lifecycle.sourceMode,
-    chooseSavePath: (defaultName) => api.dialog.savePdf(defaultName),
+    chooseSavePath: (defaultName, defaultDir) => api.dialog.savePdf(defaultName, defaultDir),
+    pickOutputFolder: (defaultPath) => api.dialog.pickOutputFolder(defaultPath),
     onBuildProgress: (cb) => getPlatform().onBuildProgress(cb),
     buildPdf: (input, outPath, opts) =>
       getPlatform()
@@ -183,7 +184,7 @@
           buildProblemEntries = buildProblems(result.diagnostics ?? []);
           return result;
         }),
-    buildHtml: (input) => getPlatform().build({ input, format: "html" }),
+    buildHtml: (input, out) => getPlatform().build({ input, format: "html", ...(out ? { out } : {}) }),
     cancelExportHost: (exportId) => getPlatform().cancelExport(exportId),
     downloadFile: (url, filename) => {
       const a = document.createElement("a");
@@ -230,8 +231,6 @@
     listDestinations: (dir, providerId) => api.publish.listDestinations(dir, providerId),
     createDestination: (dir, providerId, name) => api.publish.createDestination(dir, providerId, name),
     run: (dir, providerId, options) => api.publish.run(dir, providerId, options),
-    pickPdfFile: () => api.dialog.pickPdfFile(),
-    openDirectory: () => api.dialog.openDirectory(),
     openExternal: (url) => api.shell.openExternal(url),
     onSaved: () => toast?.success?.("Publish settings saved."),
     onConnected: () => toast?.success?.("Connected — the key is stored securely on this computer."),
@@ -489,6 +488,7 @@
   // + buffer).
   const syncController = new SyncController({
     syncChanges: (dir) => api.remote.syncChanges(dir),
+    repair: (dir) => api.remote.repairOnlineBackup(dir),
     diagnose: (dir) => api.remote.diagnoseProjectRemote(dir),
     currentDir: () => lifecycle.currentDir,
     toast: () => toast,
@@ -628,18 +628,17 @@
   // AppToolbar is purely presentational: it receives finished booleans/strings,
   // never lifecycle objects, so its contract stays small and testable.
   let toolbarProjectOpen = $derived(!!lifecycle.currentDir && lifecycle.sourceMode === "folder");
-  let exportDisabled = $derived(
+  let publishDisabled = $derived(
     lifecycle.busy || exportController.exporting || !lifecycle.currentDir || lifecycle.sourceMode === "url",
   );
-  // Why-is-Export-disabled notes (UX-023) + the web-target "desktop app" note.
-  // URL mode wins over the no-folder message (currentDir is null there too,
-  // and "Open a folder first" would be misleading while previewing a URL);
-  // the toolbar hides hints entirely in URL mode anyway.
-  let exportHints = $derived.by(() => {
+  // Why-is-Publish-disabled notes (UX-023). URL mode wins over the no-folder
+  // message (currentDir is null there too, and "Open a folder first" would be
+  // misleading while previewing a URL); the toolbar hides hints entirely in
+  // URL mode anyway.
+  let publishHints = $derived.by(() => {
     const hints: string[] = [];
     if (lifecycle.sourceMode === "url") hints.push("Not available for web previews");
     else if (!lifecycle.currentDir && !lifecycle.busy) hints.push("Open a folder first");
-    if (!canSavePdf) hints.push("PDF export requires the desktop app");
     return hints;
   });
 
@@ -671,7 +670,7 @@
   // the inert workspace, which is a spec no-op).
   let landingRef = $state<{
     focusLayer: () => void;
-    showTab: (tab: "projects" | "settings" | "help" | "troubleshooting", sub?: "diagnostics" | "logs" | "about") => void;
+    showTab: (tab: "projects" | "settings" | "help" | "about" | "troubleshooting", sub?: "diagnostics" | "logs") => void;
   } | null>(null);
   /** Sub-tab the start screen's embedded Settings opens on. */
   let landingSettingsTab = $state<SettingsTab>("app");
@@ -1064,9 +1063,8 @@
     focusEditorWhenReady();
   }
 
-  // "Save as template" (#29) now lives in the ExportDialog (Template format).
-  let exportOpen = $state(false);
-  let exportBtnEl = $state<HTMLButtonElement | undefined>(undefined);
+  // The Publish button element — the wizard's focus-restore target.
+  let publishBtnEl = $state<HTMLButtonElement | undefined>(undefined);
 
   // True below the single-pane breakpoint. Assigned by the matchMedia
   // subscription further down; declared here so the derived below can read it.
@@ -1446,6 +1444,21 @@
     }
     whenEditorReady(() => {
       if (editorRef?.hasFile(path)) editorRef.revealLine(line, focus);
+    });
+  }
+
+  /**
+   * User-initiated file switch (Focus Chapter select, Files tab): select the
+   * file, then emit one top-of-viewport ("scroll") anchor so the preview follows. Loading a
+   * file emits no anchor of its own, and the editor opens every file at line 1
+   * (no per-file position is restored). Deliberately NOT inside
+   * `selectEditorFile`: go-to-source and other programmatic callers reveal a
+   * specific line afterwards and must not top-scroll first.
+   */
+  async function openChapter(path: string): Promise<void> {
+    if (!(await selectEditorFile(path))) return;
+    whenEditorReady(() => {
+      if (editorRef?.hasFile(path)) editorSync.onEditorAnchorLine(1, "scroll", editorChapter);
     });
   }
 
@@ -2809,7 +2822,7 @@
       rendering={lifecycle.rendering}
       files={focusView === "edit" ? focusFiles : []}
       currentFile={editorFilePath ? basenameOf(editorFilePath) : null}
-      onSelectFile={(name) => lifecycle.currentDir ? selectEditorFile(joinPath(lifecycle.currentDir, name)).then(() => {}) : undefined}
+      onSelectFile={(name) => lifecycle.currentDir ? openChapter(joinPath(lifecycle.currentDir, name)) : undefined}
     />
   {:else}
   <AppToolbar
@@ -2822,9 +2835,6 @@
     folderTitle={lifecycle.currentDir ? displayTitle : null}
     folderTooltip={lifecycle.currentDir}
     onOpenInBrowser={openInBrowser}
-    {pageNav}
-    rendering={lifecycle.rendering}
-    showPageNav={!!lifecycle.previewUrl}
     {isNarrow}
     {mobileTab}
     onSelectMobileTab={selectMobileTab}
@@ -2833,20 +2843,18 @@
     hidePreviewControls={isNarrow && editorPaneOpen}
     {mode}
     onSetMode={(next) => { contextMenu.close(); setMode(next); }}
-    {zoom}
-    previewControlsDisabled={!lifecycle.previewUrl}
-    onApplyZoom={(val) => { contextMenu.close(); zoomView.applyZoom(val); }}
     editorToggleDisabled={!toolbarProjectOpen}
-    publishVisible={isDesktop()}
-    publishDisabled={lifecycle.busy || !lifecycle.currentDir || lifecycle.sourceMode === "url"}
-    onPublish={() => (publishOpen = true)}
-    {canSavePdf}
-    exporting={exportController.exporting}
-    {exportDisabled}
-    onOpenExport={() => (exportOpen = true)}
-    bind:exportBtnEl
-    {exportHints}
-    exportWarning={canSavePdf ? lifecycle.saveWarning : null}
+    publishLabel={isDesktop() ? "Publish" : "Download website"}
+    {publishDisabled}
+    onPublish={() => {
+      // The web target has no host to build into a folder or upload from: the
+      // one thing it can do is hand the website over as a download.
+      if (isDesktop()) publishOpen = true;
+      else void exportController.exportHtml();
+    }}
+    bind:publishBtnEl
+    {publishHints}
+    publishWarning={canSavePdf ? lifecycle.saveWarning : null}
     showProjectSettings={toolbarProjectOpen && isDesktop()}
     onOpenProjectSettings={openProjectConfig}
     {focus}
@@ -2870,7 +2878,7 @@
       toggleBtn={leftPanelToggleBtn}
       onJumpToOutline={jumpToOutline}
       onSelectEditorFile={(path) => {
-        selectEditorFile(path);
+        void openChapter(path);
         if (!editorVisible && lifecycle.currentDir && lifecycle.sourceMode === "folder") {
           // A file was just selected in the tree, so no ensureEditorFile needed.
           openEditorPane({ ensureFile: false });
@@ -3030,6 +3038,18 @@
         aria-labelledby={isNarrow ? "mobile-tab-preview" : undefined}
         inert={isNarrow && (editorPaneOpen || editorView !== "editor") ? true : undefined}
       >
+        {#if !inFocus && lifecycle.previewUrl}
+          <!-- Page navigation and zoom sit on the pane they act on (the
+               editor pane has its own toolbar the same way). Focus keeps the
+               preview bare: the FocusBar carries page nav for reading. -->
+          <PreviewToolbar
+            {pageNav}
+            rendering={lifecycle.rendering}
+            {zoom}
+            zoomDisabled={!lifecycle.previewUrl}
+            onApplyZoom={(val) => { contextMenu.close(); zoomView.applyZoom(val); }}
+          />
+        {/if}
         <FindBar bind:this={findBarRef} bind:open={findBarOpen} {client} />
         {#if lifecycle.previewUrl}
           {#key lifecycle.previewUrl}
@@ -3130,6 +3150,7 @@
     onShowLog={showProjectLog}
     onForceSave={handleForceSave}
     onForceSync={() => syncController.handleForceSync()}
+    onRepair={() => syncController.handleRepair()}
     manualBackup={syncController.lastManual}
     onSaveVersion={async () => {
       const dir = lifecycle.currentDir;
@@ -3253,6 +3274,12 @@
        to step 1 (no $effect, per CLAUDE.md §8). -->
   <PublishWizard
     controller={publishController}
+    projectDir={lifecycle.currentDir ?? ""}
+    {canSavePdf}
+    buildArtifact={(opts) => exportController.buildTo(opts)}
+    pickFolder={(defaultPath) => api.dialog.pickOutputFolder(defaultPath)}
+    onShowInFolder={(path) => void api.shell.showInFolder(path).catch(() => {})}
+    triggerEl={publishBtnEl}
     onClose={() => (publishOpen = false)}
     onNavigate={(entry) => {
       // A preflight "Go to" — close the modal wizard, then reveal the finding
@@ -3281,19 +3308,6 @@
   getSelectionText={() => editorRef?.getSelectionText() ?? ""}
   onInsert={(text) => editorRef?.insertSnippet(text)}
 />
-<!-- Export dialog: format (PDF / HTML / template) + settings for the toolbar
-     Export button. Mounted fresh per open so its state resets. -->
-{#if exportOpen}
-  <ExportDialog
-    projectDir={lifecycle.currentDir}
-    {canSavePdf}
-    {toast}
-    triggerEl={exportBtnEl}
-    onExportPdf={(opts) => void exportController.savePdf(opts)}
-    onExportHtml={() => void exportController.exportHtml()}
-    onClose={() => (exportOpen = false)}
-  />
-{/if}
 {#if textPrompt}
   <TextPromptDialog
     title={textPrompt.title}
@@ -3476,10 +3490,14 @@
   }
   .preview-pane {
     position: relative;
+    /* Named container for PreviewToolbar's own collapse stages. */
+    container-type: inline-size;
+    container-name: preview-pane;
   }
   .preview-updating-pill {
     position: absolute;
-    top: 10px;
+    /* Below the preview toolbar, which holds the zoom menu on that side. */
+    top: 44px;
     right: 12px;
     z-index: 9;
     display: flex;

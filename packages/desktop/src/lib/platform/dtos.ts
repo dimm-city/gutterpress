@@ -396,6 +396,15 @@ export interface DoctorToolStatus {
   version?: string;
   usedBy: Array<{ feature: string; severity: "required" | "optional" }>;
   installHint: string;
+  /** Set for missing optional tools: how the UI can offer to fix it. */
+  install?: { kind: "run"; label: string } | { kind: "download"; url: string };
+}
+
+/** `POST /api/doctor/install` result. */
+export interface DoctorInstallResult {
+  ok: boolean;
+  exitCode: number | null;
+  output: string;
 }
 
 /** Full `/api/doctor` response — system + tool diagnostics for the Help dialog. */

@@ -5,35 +5,26 @@
    * a prop and every action leaves through a callback, so the component is
    * testable in isolation and `+page.svelte` stays a composition root.
    *
-   * Responsive design (replaces the old hand-rolled absolute-centering +
-   * 8-stage collapse ladder):
+   * Page navigation and zoom are NOT here: they live on the preview pane's
+   * own strip (PreviewToolbar.svelte), beside the pages they act on, the way
+   * the editor pane carries EditorToolbar. This bar holds only app-level
+   * controls — identity, the workspace mode, Focus, book setup, publishing.
    *
-   *  - The shell is a 3-column CSS grid — `auto minmax(0,1fr) auto`. The
-   *    page-nav sits in the middle track, i.e. in the space REMAINING between
-   *    the start/end clusters, optically centered within it. Unlike the old
-   *    `position:absolute; left:50%` column (or a naive `1fr auto 1fr` grid),
-   *    in-flow neighbours cannot paint over each other, so cluster overlap is
-   *    impossible by construction; the middle additionally clips
-   *    (`overflow-x: clip`) as a belt-and-braces guarantee.
-   *  - `container-type: inline-size` + four documented @container stages
-   *    collapse progressively by the toolbar's OWN width (not the viewport),
-   *    with thresholds derived from the measured cluster widths so the middle
-   *    track always has room for the page nav. Least important goes first, and
-   *    every control that turns icon-only keeps its aria-label and tooltip.
-   *    The container is the toolbar's content box (window width − 24px), so a
-   *    900px window measures 876px:
-   *      ≤1150px  Edit/Read segmented group → dropdown menu, export
+   * Responsive design:
+   *
+   *  - The shell is a flex row: the start cluster (panel toggle + identity)
+   *    shrinks and ellipsizes; the end cluster keeps its controls.
+   *  - `container-type: inline-size` + three documented @container stages
+   *    collapse progressively by the toolbar's OWN width (not the viewport).
+   *    Least important goes first, and every control that turns icon-only
+   *    keeps its aria-label and tooltip. The container is the toolbar's
+   *    content box (window width − 24px), so a 900px window measures 876px:
+   *      ≤1150px  Edit/Read segmented group → dropdown menu, publish
    *               hints and the Setup label drop
-   *      ≤875px   Publish/Export drop their text labels, page nav loses its
-   *               first/last jump buttons, path trims
-   *      ≤760px   the page-number select drops (prev/next stay), title trims
-   *      ≤620px   page nav, title/path, mode/zoom menus, separators, hints drop
-   *    The narrow layout (≤820px window) adds the pane tabs to the end cluster;
-   *    the ≤760px stage is what keeps prev/next clear of it (touch, whose 44px
-   *    targets cannot spare the room, keeps the old no-page-nav behavior). The
-   *    select drop and the page nav's phone floor are therefore scoped to
-   *    `.narrow`: the docked Book settings panel makes the toolbar this
-   *    narrow without the tabs, and there the page nav still fits.
+   *      ≤875px   the action buttons drop their text labels, path trims
+   *      ≤620px   title/path, mode menu, Focus, separators, hints drop
+   *    The narrow layout (≤820px window) adds the pane tabs to the end
+   *    cluster.
    *  - `(pointer: coarse)` keeps ≥44×44px touch targets on touch devices
    *    without fattening the desktop layout.
    *
@@ -42,19 +33,18 @@
    * offer, and nothing reachable only from the keyboard. Focus is NOT a mode:
    * it is a separate toggle beside that control (see `focus`).
    *
-   * Actions are ordered Publish → Export, Export right-most. Export is the one
-   * primary (solid) action; Publish is a secondary button, since its wizard
-   * exports too. There is no Save here: saving lives in the editor toolbar
-   * (and Ctrl/Cmd+S). There is no overflow menu: Export opens the export
-   * dialog, book setup is a dedicated labelled button beside the mode
-   * control, advanced setup in app Settings.
+   * Publish is the one primary (solid) action and the right-most button: its
+   * wizard builds the book (PDF or website, into a folder) and sends it on,
+   * so there is no separate Export. There is no Save here: saving lives in
+   * the editor toolbar (and Ctrl/Cmd+S). There is no overflow menu: book
+   * setup is a dedicated labelled button beside the mode control, advanced
+   * setup in app Settings, save-as-template in book setup.
    *
    * PWA-clean (§8): type-only imports, zero host/Node code.
    */
   import Icon from "$lib/components/Icon.svelte";
   import { adjacentTab, type MobileTab } from "$lib/editor/mobile-layout";
   import type { WorkspaceMode } from "$lib/platform";
-  import type { PageNavController } from "$lib/routes/page-nav-controller.svelte";
 
   let {
     // ── Start cluster: panel toggle + document identity ──────────────────────
@@ -67,10 +57,6 @@
     folderTitle = null,
     folderTooltip = null,
     onOpenInBrowser,
-    // ── Center: page navigation ──────────────────────────────────────────────
-    pageNav,
-    rendering,
-    showPageNav,
     // ── End cluster: pane tabs (narrow), view controls, actions ──────────────
     isNarrow,
     mobileTab,
@@ -82,20 +68,13 @@
     onSetMode,
     focus,
     onToggleFocus,
-    zoom,
-    previewControlsDisabled,
-    onApplyZoom,
     editorToggleDisabled,
-    publishVisible,
+    publishLabel = "Publish",
     publishDisabled,
     onPublish,
-    canSavePdf,
-    exporting,
-    exportDisabled,
-    onOpenExport,
-    exportBtnEl = $bindable(undefined),
-    exportHints = [],
-    exportWarning = null,
+    publishBtnEl = $bindable(undefined),
+    publishHints = [],
+    publishWarning = null,
     showProjectSettings,
     onOpenProjectSettings,
   }: {
@@ -110,15 +89,12 @@
     folderTitle?: string | null;
     folderTooltip?: string | null;
     onOpenInBrowser: () => void;
-    pageNav: PageNavController;
-    rendering: boolean;
-    showPageNav: boolean;
     isNarrow: boolean;
     mobileTab: MobileTab;
     onSelectMobileTab: (tab: MobileTab) => void;
     editorTabDisabled: boolean;
     previewTabDisabled: boolean;
-    /** Narrow + editor tab: the preview controls are noise — hide them. */
+    /** Narrow + editor tab: the preview is hidden, so the mode switch is noise. */
     hidePreviewControls: boolean;
     /** The workspace mode — the ONE layout switch (see `WorkspaceMode`). */
     mode: WorkspaceMode;
@@ -126,25 +102,18 @@
     /** Focus is on: chrome hidden. A session toggle on top of Edit or Read. */
     focus: boolean;
     onToggleFocus: () => void;
-    zoom: string;
-    previewControlsDisabled: boolean;
-    onApplyZoom: (zoom: string) => void;
     /** No project open — the whole mode control has nothing to switch. */
     editorToggleDisabled: boolean;
-    publishVisible: boolean;
+    /** "Publish" on the desktop; the web target downloads the website instead. */
+    publishLabel?: string;
     publishDisabled: boolean;
     onPublish: () => void;
-    canSavePdf: boolean;
-    exporting: boolean;
-    exportDisabled: boolean;
-    /** Opens the export dialog (format + settings live there, not here). */
-    onOpenExport: () => void;
-    /** The Export button element — the export dialog's focus-restore target. */
-    exportBtnEl?: HTMLButtonElement | undefined;
-    /** Why Export is unavailable right now (rendered as quiet notes). */
-    exportHints?: string[];
+    /** The Publish button element — the wizard's focus-restore target. */
+    publishBtnEl?: HTMLButtonElement | undefined;
+    /** Why Publish is unavailable right now (rendered as quiet notes). */
+    publishHints?: string[];
     /** Save-readiness warning (rendered as role="alert"). */
-    exportWarning?: string | null;
+    publishWarning?: string | null;
     showProjectSettings: boolean;
     onOpenProjectSettings: () => void;
   } = $props();
@@ -218,65 +187,6 @@
       <span class="doc-title" title={folderTooltip ?? folderTitle}>{folderTitle}</span>
     {:else}
       <span class="path no-project">Gutterpress</span>
-    {/if}
-  </div>
-
-  <!-- Center column: an in-flow grid track (never absolutely positioned), so
-       it stays centered when space allows and can NEVER overlap the start/end
-       clusters when space is tight. -->
-  <div class="toolbar-center">
-    {#if showPageNav}
-      <nav class="page-nav" aria-label="Page navigation">
-        <button class="icon-btn nav-first" onclick={() => pageNav.firstPage()} disabled={rendering} title="First page (Home)" aria-label="First page">
-          <Icon name="chevrons-left" />
-        </button>
-        <button class="icon-btn" onclick={() => pageNav.prevPage()} disabled={rendering} title="Previous page (Left/PageUp)" aria-label="Previous page">
-          <Icon name="chevron-left" />
-        </button>
-        <!-- Page picker: a native select — one option per page, the current
-             page selected. Clicking "3 / 12" drops down the full page list.
-             The selection is driven through the select's VALUE (a property
-             write), never per-option `selected` attributes: once a user has
-             picked an option the browser marks it dirty and ignores attribute
-             changes, which would freeze the display on stale pages. The
-             onchange handler immediately re-syncs the DOM to currentPage so a
-             dropped/failed navigation (mid-render, client gone, host error)
-             can never leave the select showing a page the preview isn't on —
-             the successful navigation updates currentPage and the value
-             follows.
-             data-current-page/data-total-pages are the machine-readable seam
-             the perf gates read (tests/perf/*-gate.mjs): a select's option
-             text never appears in document.body.innerText, so the gates
-             cannot scrape the page indicator the way they did the old text
-             pill. Keep these attributes when changing this control. -->
-        <select
-          class="page-select"
-          aria-label="Go to page"
-          disabled={rendering || pageNav.totalPages === 0}
-          data-current-page={pageNav.currentPage}
-          data-total-pages={pageNav.totalPages}
-          value={pageNav.currentPage}
-          onchange={(e) => {
-            const el = e.currentTarget as HTMLSelectElement;
-            pageNav.selectPage(el.value);
-            el.value = String(pageNav.currentPage);
-          }}
-        >
-          {#if pageNav.totalPages === 0}
-            <option selected>&mdash; / &mdash;</option>
-          {:else}
-            {#each pageNav.pageOptions as p (p)}
-              <option value={p}>{p} / {pageNav.totalPages}</option>
-            {/each}
-          {/if}
-        </select>
-        <button class="icon-btn" onclick={() => pageNav.nextPage()} disabled={rendering} title="Next page (Right/PageDown)" aria-label="Next page">
-          <Icon name="chevron-right" />
-        </button>
-        <button class="icon-btn nav-last" onclick={() => pageNav.lastPage()} disabled={rendering} title="Last page (End)" aria-label="Last page">
-          <Icon name="chevrons-right" />
-        </button>
-      </nav>
     {/if}
   </div>
 
@@ -402,32 +312,13 @@
       <Icon name="maximize" /><span class="view-label">Focus</span>
     </button>
 
-    <!-- Zoom: always the compact icon button so the toolbar stays tight. -->
-    <details class="menu zoom-menu">
-      <summary class="icon-btn menu-summary" title="Zoom level" aria-label="Zoom level">
-        <Icon name="zoom-in" />
-        <Icon name="chevron-down" size={12} />
-      </summary>
-      <div class="menu-panel">
-        {#each [["fit-width", "Fit to width"], ["0.25", "25%"], ["0.5", "50%"], ["0.75", "75%"], ["1", "100%"], ["1.25", "125%"], ["1.5", "150%"], ["2", "200%"]] as [val, label] (val)}
-          <button
-            aria-pressed={zoom === val}
-            class="menu-item"
-            class:active={zoom === val}
-            onclick={(e) => { onApplyZoom(val); closeMenu(e); }}
-            disabled={previewControlsDisabled}
-          >
-            {label}
-          </button>
-        {/each}
-      </div>
-    </details>
+    <span class="toolbar-sep" aria-hidden="true"></span>
 
     {#if showProjectSettings}
       <!-- Book setup (manifest) — beside the mode control. Rendered on
            narrow layouts too (the tab bar replaces the mode control there,
            but book setup must stay reachable). Its text label yields at the
-           ≤1150px stage, before Publish/Export's; aria-label and tooltip stay. -->
+           ≤1150px stage, before the action buttons'; aria-label and tooltip stay. -->
       <button
         class="icon-btn icon-text project-settings-btn"
         onclick={onOpenProjectSettings}
@@ -439,57 +330,37 @@
       </button>
     {/if}
 
-    <span class="toolbar-sep" aria-hidden="true"></span>
-
-    <!-- Why-is-Export-disabled notes (UX-023). -->
-    {#each exportHints as hint (hint)}
+    <!-- Why-is-Publish-disabled notes (UX-023). -->
+    {#each publishHints as hint (hint)}
       <span class="save-hint" role="note">{hint}</span>
     {/each}
-    {#if exportWarning}
-      <span class="save-hint save-warning" role="alert">{exportWarning}</span>
+    {#if publishWarning}
+      <span class="save-hint save-warning" role="alert">{publishWarning}</span>
     {/if}
 
-    <!-- Actions — Publish, Export (Export right-most). Export is the ONE
-         primary (solid) action; Publish is a secondary button beside it — its
-         wizard exports too, so two equal-weight solid buttons left the choice
-         unclear. No overflow menu: Focus is a toggle beside the mode
-         control, advanced setup lives in the app Settings view,
-         save-as-template in the export dialog, and book setup beside the
-         mode control above. Both keep their aria-label when the text label
-         drops at narrow widths. -->
-    {#if publishVisible}
-      <button
-        class="publish-btn icon-text"
-        onclick={onPublish}
-        disabled={publishDisabled}
-        title="Publish your book to itch.io, KDP, Shopify and more"
-        aria-label="Publish"
-      >
-        <Icon name="cloud-upload" />
-        <span class="btn-label">Publish</span>
-      </button>
-    {/if}
-    <!-- Export opens the export dialog (choose PDF / HTML / template and
-         adjust settings there). Ctrl+Shift+E stays the quick PDF export. -->
+    <!-- Publish — the ONE primary (solid) action, right-most. Its wizard
+         builds the book into a folder and sends it to any online destination,
+         so there is no separate Export button. Keeps its aria-label when the
+         text label drops at narrow widths. -->
     <button
-      bind:this={exportBtnEl}
-      class="export-btn primary app-btn-primary icon-text"
-      onclick={onOpenExport}
-      disabled={exportDisabled}
-      title="Export (choose format and settings)"
-      aria-label={exporting ? "Exporting…" : "Export"}
+      bind:this={publishBtnEl}
+      class="publish-btn primary app-btn-primary icon-text"
+      onclick={onPublish}
+      disabled={publishDisabled}
+      title="Publish — save as PDF or a website, and send it to itch.io, Google Drive and more"
+      aria-label={publishLabel}
     >
-      <Icon name="file-down" />
-      <span class="btn-label">{exporting ? "Exporting…" : "Export"}</span>
+      <Icon name="cloud-upload" />
+      <span class="btn-label">{publishLabel}</span>
     </button>
   </div>
 </header>
 
 <style>
-  /* ---- Shell: 3-column grid, container queries enabled ---- */
+  /* ---- Shell: flex row, container queries enabled ---- */
   .toolbar {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    display: flex;
+    justify-content: space-between;
     align-items: center;
     gap: 8px;
     padding: 0 12px;
@@ -519,25 +390,11 @@
     min-width: 0;
     overflow: hidden;
   }
-  .toolbar-center {
-    /* Fills the REMAINING space between the clusters; the page nav is
-       optically centered within it and clips rather than overlaps if a stage
-       boundary is ever miscalibrated. */
-    display: flex;
-    justify-content: center;
-    min-width: 0;
-    overflow-x: clip;
-  }
   .toolbar-end {
     display: flex;
     align-items: center;
     gap: 6px;
-    justify-self: end;
-  }
-  .page-nav {
-    display: flex;
-    align-items: center;
-    gap: 6px;
+    flex-shrink: 0;
   }
 
   /* ---- Buttons & inputs ---- */
@@ -577,8 +434,7 @@
   }
   /* Explicit focus ring for all toolbar interactive elements — replaces UA
      default with the app's consistent ring. */
-  .toolbar button:focus-visible,
-  .toolbar select:focus-visible {
+  .toolbar button:focus-visible {
     outline: 2px solid var(--app-focus-ring);
     outline-offset: 2px;
   }
@@ -633,7 +489,7 @@
     color: var(--app-accent-text);
   }
 
-  /* ---- Collapsible dropdown menus (view-mode + zoom + more) ---- */
+  /* ---- Collapsible dropdown menu (view-mode) ---- */
   .menu { position: relative; display: inline-block; }
   /* The view-mode menu only appears when the segmented group collapses. */
   details.mode-menu { display: none; }
@@ -736,45 +592,6 @@
     color: var(--app-accent-text);
   }
 
-  /* Page select — styled like the old page pill, with a custom chevron (the
-     native GTK/OS select chrome ignores `background` on some platforms). */
-  .page-select {
-    /* Component-private palette (single consumer — stays out of theme.css per
-       its admission rule); flips with the app theme via color-scheme. */
-    --pill-from: light-dark(#e8edf5, #313740);
-    --pill-to: light-dark(#dde4ef, #262c34);
-    appearance: none;
-    -webkit-appearance: none;
-    background: linear-gradient(to bottom, var(--pill-from), var(--pill-to));
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a8a8a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
-    background-repeat: no-repeat;
-    background-position: right 8px center;
-    border: 1px solid light-dark(#b3c0d4, #576170);
-    border-radius: 6px;
-    color: light-dark(#1a3055, #eef4ff);
-    font-size: 13px;
-    font-weight: 500;
-    padding: 5px 26px 5px 10px;
-    min-width: 84px;
-    text-align: center;
-    cursor: pointer;
-  }
-  .page-select:hover:not(:disabled) {
-    border-color: var(--app-control-hover-border);
-  }
-  .page-select:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-  /* The dropdown list is OS/browser-rendered and does NOT inherit the pill
-     styling above — without explicit option colors the popup can pair the
-     pill's light text with a light popup background (or vice versa) and the
-     page list becomes unreadable. */
-  .page-select option {
-    background: var(--app-surface);
-    color: var(--app-text);
-  }
-
   /* Panel toggle button — accent fill matching other active toggles. */
   .panel-toggle-btn.active {
     background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
@@ -818,8 +635,8 @@
     flex-shrink: 0;
   }
 
-  /* Hint beside Export when disabled (UX-023). Capped so it can never starve
-     the page-nav's middle track. */
+  /* Hint beside the action when disabled (UX-023). Capped so it can never
+     starve the identity cluster. */
   .save-hint {
     font-size: 11px;
     color: var(--app-text-muted);
@@ -835,24 +652,20 @@
     line-height: 1.35;
   }
 
-  /* Narrow + editor tab: the preview is hidden, so its controls (page
-     navigation, single/spread, zoom) are noise — hide them so the edit
-     toolbar is just Panel · Tabs · Actions. The separators go too: with the
-     view controls gone they would render as an adjacent double rule. */
-  .toolbar.edit-narrow .toolbar-center,
+  /* Narrow + editor tab: the preview is hidden, so the mode switch is noise
+     — hide it so the edit toolbar is just Panel · Tabs · Actions. The
+     separators go too: with the view controls gone they would render as an
+     adjacent double rule. */
   .toolbar.edit-narrow .mode-group,
   .toolbar.edit-narrow .mode-menu,
-  .toolbar.edit-narrow .zoom-menu,
   .toolbar.edit-narrow .toolbar-sep {
     display: none;
   }
 
   /* URL-mode budget: the start cluster carries title + full URL + the
-     open-in-browser button (~2× the folder cluster), so URL mode pre-pays for
-     the page nav's middle track at EVERY width — tighter title/path caps, the
-     view-mode group always in its compact menu form, and no export hints
-     (Export's own tooltip carries the explanation). Without these the middle
-     track starves and the page nav clips on ordinary desktop windows. */
+     open-in-browser button (~2× the folder cluster), so URL mode keeps
+     tighter title/path caps and no hints (the action's own tooltip carries
+     the explanation). */
   .toolbar.url-mode .doc-title { max-width: 140px; }
   .toolbar.url-mode .path { max-width: 120px; }
   /* A URL source has no editor, so two of the three modes are meaningless —
@@ -867,55 +680,36 @@
   /* ---- Collapse stages (see the header comment for the full table) ---- */
   @container (max-width: 1150px) {
     /* Swap the inline view-mode buttons for the compact menu button; Setup
-       drops its text label (icon, tooltip and aria-label stay) and the export
-       hints yield to the page nav from here down. Setup goes before
-       Publish/Export: its ~40px is what keeps the page nav's first/last jump
-       buttons clear on a 900px window. */
+       drops its text label (icon, tooltip and aria-label stay) and the
+       hints yield from here down. */
     .mode-group { display: none; }
     details.mode-menu { display: inline-block; }
     .save-hint { display: none; }
     .project-settings-btn .btn-label { display: none; }
-    /* The title ellipsizes (full text in its tooltip); the page nav must not
-       clip, and a 3-digit page count widens it by ~15px. */
+    /* The title ellipsizes (full text in its tooltip). */
     .doc-title { max-width: 120px; }
     .path { max-width: 100px; }
   }
   @container (max-width: 875px) {
-    /* Icon-only Publish/Export (aria-label/title keep them accessible; 875
-       is what keeps their labels on a 900px window) and compact page
-       navigation: the first/last jump buttons drop, and the path (URL mode)
+    /* Icon-only action buttons (aria-label/title keep them accessible; 875
+       is what keeps their labels on a 900px window); the path (URL mode)
        yields entirely, the URL title with it. */
     .view-label { display: none; }
     .btn-label { display: none; }
-    .nav-first,
-    .nav-last { display: none; }
-    .page-select { min-width: 64px; }
     .path { display: none; }
     .toolbar.url-mode .doc-title { display: none; }
-  }
-  @container (max-width: 760px) {
-    /* The narrow layout adds the pane tabs to the end cluster: the page-number
-       select yields so prev/next stay clear of it, and the title trims.
-       Scoped to .narrow because the toolbar can be this narrow WITHOUT the
-       tabs — the docked Book settings panel shrinks the whole app — and
-       there the select and the room for it are both still there. */
-    .toolbar.narrow .page-select { display: none; }
     .toolbar.narrow .doc-title { max-width: 64px; }
   }
   @container (max-width: 620px) {
-    /* Phone floor (narrow layout only, for the same reason): below ~470px not
-       even prev/next fit beside the pane tabs and the end cluster, and
-       display:none (not clipping) keeps the hidden buttons out of the tab
-       order. */
-    .toolbar.narrow .page-nav,
+    /* Phone floor: display:none (not clipping) keeps the hidden controls out
+       of the tab order. */
     .doc-title,
     .path,
     .toolbar-sep,
     .save-hint,
     .mode-group,
     .mode-menu,
-    .focus-btn,
-    .zoom-menu {
+    .focus-btn {
       display: none;
     }
   }
@@ -928,17 +722,10 @@
     .toolbar .icon-btn,
     .toolbar .icon-text,
     .toolbar .menu-summary,
-    .toolbar .page-select,
     .pane-toggle .seg,
     .toolbar .primary {
       min-width: 44px;
       min-height: 44px;
-    }
-    /* The narrow layout's pane tabs plus 44px targets leave no room for the
-       page nav (it clipped at 700–820px), so touch keeps its old behavior
-       there: no nav — pages scroll. The desktop's narrow layout shows it. */
-    .toolbar.narrow .page-nav {
-      display: none;
     }
     .toolbar .icon-btn,
     .toolbar .menu-summary {
@@ -957,7 +744,6 @@
       .toolbar .icon-btn,
       .toolbar .icon-text,
       .toolbar .menu-summary,
-      .toolbar .page-select,
       .pane-toggle .seg,
       .toolbar .primary {
         min-width: 40px;

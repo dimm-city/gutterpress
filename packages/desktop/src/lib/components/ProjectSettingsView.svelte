@@ -64,6 +64,7 @@
   import DesignSection from "$lib/components/config/DesignSection.svelte";
   import FeaturesSection from "$lib/components/config/FeaturesSection.svelte";
   import ProjectConnectionsSection from "$lib/components/ProjectConnectionsSection.svelte";
+  import SaveTemplateDialog from "$lib/components/SaveTemplateDialog.svelte";
   import { PRINT_TOOL_IDS } from "$lib/publish-targets";
 
   let {
@@ -242,6 +243,10 @@
   function close() {
     onClose?.();
   }
+
+  // "Save as template…" (Details tab) — mounted fresh per open so its form
+  // resets; the opening button is remembered for focus restore.
+  let templateDialogTrigger = $state<HTMLButtonElement | null>(null);
 </script>
 
 <div class="settings-view" aria-busy={loadingAll}>
@@ -280,7 +285,7 @@
       <p class="loading">Loading…</p>
     {:else}
       {#if activeTab === "details"}
-        <DetailsSection controller={details} />
+        <DetailsSection controller={details} onSaveAsTemplate={(el) => (templateDialogTrigger = el)} />
       {/if}
 
       {#if activeTab === "look"}
@@ -314,6 +319,14 @@
       {/if}
     {/if}
   </div>
+{#if templateDialogTrigger && projectDir}
+    <SaveTemplateDialog
+      {projectDir}
+      {toast}
+      triggerEl={templateDialogTrigger}
+      onClose={() => (templateDialogTrigger = null)}
+    />
+  {/if}
 </div>
 
 <style>

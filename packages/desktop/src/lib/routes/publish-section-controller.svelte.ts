@@ -71,10 +71,6 @@ export interface PublishSectionDeps {
     providerId: string,
     options?: { dryRun?: boolean; artifactPath?: string },
   ) => Promise<PublishRunResult>;
-  /** Native open dialog for a PDF artifact. Null when cancelled. */
-  pickPdfFile: () => Promise<string | null>;
-  /** Native directory picker for a website-folder artifact. Null when cancelled. */
-  openDirectory: () => Promise<string | null>;
   openExternal: (url: string) => Promise<unknown>;
   /** Fired after Save settings succeeds (the panel wires this to a toast). */
   onSaved?: () => void;
@@ -95,9 +91,6 @@ export class PublishSectionController {
   // Account-label draft when ADDING a new named credential (the picker's
   // "Add another account" flow). Empty stores/uses the default credential.
   publishAccountDrafts = $state<Record<string, string>>({});
-  // Explicit artifact path per provider — desktop PDF exports go wherever the
-  // author chose in the save dialog, so the manifest-default rarely exists.
-  publishArtifactDrafts = $state<Record<string, string>>({});
 
   // ── OAuth connect (#221 D10, gdrive) ─────────────────────────────────────
   // The auth URL the browser was (or should be) sent to, per provider — set
@@ -468,7 +461,9 @@ export class PublishSectionController {
     });
   };
 
-  runPublish = async (providerId: string, dryRun: boolean): Promise<void> => {
+  /** Run one provider. `artifactPath` is the file/folder the wizard just
+   *  built (the lib's manifest-default location is used when absent). */
+  runPublish = async (providerId: string, dryRun: boolean, artifactPath = ""): Promise<void> => {
     const projectDir = this.deps.projectDir();
     if (!projectDir || this.publishBusyId) return;
     this.publishBusyId = providerId;
@@ -478,7 +473,6 @@ export class PublishSectionController {
       // sees; a dry run ("Check readiness") must have NO side effects, so it
       // checks what's on disk.
       if (!dryRun) await this.flushPublishDraft(providerId);
-      const artifactPath = (this.publishArtifactDrafts[providerId] ?? "").trim();
       const result = await this.deps.run(projectDir, providerId, {
         dryRun,
         ...(artifactPath ? { artifactPath } : {}),
@@ -491,25 +485,6 @@ export class PublishSectionController {
       this.publishError = e instanceof Error ? e.message : String(e);
     } finally {
       this.publishBusyId = null;
-    }
-  };
-
-  pickPublishArtifact = async (card: PublishProviderCard): Promise<void> => {
-    try {
-      // #221 phase 3, D8: a gdrive card set to "html" must offer the
-      // directory picker, matching what azure-swa (fixed html) already does
-      // — branch on the EFFECTIVE selected format, not the card's static
-      // default, which stays "pdf" for gdrive regardless of the author's
-      // choice.
-      const picked =
-        this.effectiveFormat(card) === "pdf"
-          ? await this.deps.pickPdfFile()
-          : await this.deps.openDirectory();
-      if (picked) {
-        this.publishArtifactDrafts = { ...this.publishArtifactDrafts, [card.id]: picked };
-      }
-    } catch (e) {
-      this.publishError = e instanceof Error ? e.message : String(e);
     }
   };
 

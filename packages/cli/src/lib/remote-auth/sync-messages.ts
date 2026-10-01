@@ -26,16 +26,16 @@ export const MSG_BUSY =
  * The book's own version history is unreadable — a damaged or missing
  * `.git`. Says the three things that are actually true and useful: the writing
  * is safe, the HISTORY is what broke, and (sync always has a remote, so this
- * always applies here) a fresh copy from online is the way back.
+ * always applies here) Repair online backup is the way back.
  */
 export const MSG_HISTORY_UNREADABLE =
-  "This book's version history can't be read, so syncing can't continue. Your writing is safe — every file is still here on this computer. To get history and syncing working again, download a fresh copy of the book from online, then move any recent changes into it.";
+  "This book's version history can't be read, so syncing can't continue. Your writing is safe — every file is still here on this computer. Use Repair online backup (in Where your work is kept) to get history and syncing working again.";
 // Two DIFFERENT causes produce "no common history", and the message must not
 // assert one of them: the online address may point at a different book, or
 // this book's own history may have been lost and started over. Naming both
 // beats sending a writer whose history is gone to inspect a correct address.
 export const MSG_UNRELATED =
-  "This book and the online copy have no history in common, so they can't be combined. Either the online address points at a different book, or this book's own history was lost and started over. Your writing is safe — every file is still here on this computer. Check the online address; if it is correct, download a fresh copy from online and move any recent changes into it.";
+  "This book and the online copy have no history in common, so they can't be combined. Either the online address points at a different book, or this book's own history was lost and started over. Your writing is safe — every file is still here on this computer. Check the online address; if it is correct, use Repair online backup (in Where your work is kept).";
 export const MSG_NO_REMOTE =
   "This book isn't connected to an online repository yet.";
 export const MSG_SSH_REMOTE =

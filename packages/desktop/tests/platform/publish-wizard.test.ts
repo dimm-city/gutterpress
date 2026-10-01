@@ -17,23 +17,17 @@ const read = (rel: string) => readFileSync(path.join(root, rel), "utf8");
 describe("Toolbar Publish button (front-and-centre entry point)", () => {
   const page = read("src/routes/+page.svelte");
   const toolbar = read("src/lib/components/AppToolbar.svelte");
-  test("a Publish button leads the action trio as a secondary button beside the one primary, and opens the wizard", () => {
+  test("the one primary Publish button opens the wizard on the desktop and downloads the website on the web", () => {
     // The button markup lives in the extracted AppToolbar; +page wires the
-    // intent (onPublish → publishOpen = true).
+    // intent (onPublish → publishOpen = true). Export was folded into the
+    // wizard (its Format + Folder steps), so Publish is the one primary.
     const pubIdx = toolbar.indexOf('name="cloud-upload"');
     expect(pubIdx).toBeGreaterThan(-1);
-    expect(page).toContain("publishOpen = true");
-    // Publish's wizard exports too, so two adjacent solid buttons of equal
-    // weight left the choice unclear (#306): Publish uses the toolbar's
-    // ordinary (secondary) button style, and only Export — the neighbouring
-    // button — carries the global primary recipe.
     const publishTag = toolbar.slice(toolbar.indexOf('class="publish-btn'), pubIdx);
-    expect(publishTag).not.toContain("app-btn-primary");
-    const exportIdx = toolbar.indexOf('class="export-btn');
-    expect(exportIdx).toBeGreaterThan(-1);
-    expect(toolbar.slice(exportIdx, exportIdx + 80)).toContain("app-btn-primary");
-    // Publish leads the trio: Publish → Export → Save (Save right-most).
-    expect(pubIdx).toBeLessThan(exportIdx);
+    expect(publishTag).toContain("app-btn-primary");
+    expect(toolbar).not.toContain("export-btn");
+    expect(page).toMatch(/if \(isDesktop\(\)\) publishOpen = true;\s*else void exportController\.exportHtml\(\);/);
+    expect(page).toContain('publishLabel={isDesktop() ? "Publish" : "Download website"}');
   });
   test("the wizard is mounted (fresh, via {#if}) and wired to the shared controller", () => {
     expect(page).toContain("{#if publishOpen}");
@@ -64,19 +58,67 @@ describe("Publishing removed from the crammed Book settings section", () => {
 
 describe("PublishWizard — guided, multi-target, reuses saved connections", () => {
   const wiz = read("src/lib/components/PublishWizard.svelte");
+  const page = read("src/routes/+page.svelte");
   test("drives the existing controller, not a new backend", () => {
     expect(wiz).toContain("controller: PublishSectionController");
     expect(wiz).toContain("controller.loadPublish()");
-    expect(wiz).toContain("controller.runPublish(card.id, false)");
+    expect(wiz).toContain("controller.runPublish(card.id, false, artifact)");
     expect(wiz).toContain("controller.connectPublish(card.id)");
     expect(wiz).toContain("controller.setPublishConfigDraft(card.id");
   });
   test("generates a dynamic setup step per selected destination (not one long form)", () => {
     expect(wiz).toContain("let stepIndex = $state(0)");
-    // choose + one step per selected destination + preflight + publish (#105)
-    expect(wiz).toContain("const totalSteps = $derived(selectedCards.length + 3)");
+    // format + choose + one step per selected destination + preflight + publish (#105)
+    expect(wiz).toContain("const totalSteps = $derived(selectedCards.length + 4)");
+    expect(wiz).toContain('stepKind === "format"');
     expect(wiz).toContain('stepKind === "setup"');
-    expect(wiz).toContain("selectedCards[stepIndex - 1]");
+    expect(wiz).toContain("selectedCards[stepIndex - 2]");
+  });
+
+  // ── Export folded in: Format first, the local folder always first ────────
+  test("Format is the first step: PDF (desktop) with print-safety validation, or Website", () => {
+    expect(wiz).toMatch(/let format = \$state<"pdf" \| "html">\(canSavePdf \? "pdf" : "html"\)/);
+    expect(wiz).toContain('name="pw-format" value="pdf"');
+    expect(wiz).toContain('name="pw-format" value="html"');
+    expect(wiz).toContain("Run print-safety validation");
+    expect(wiz).toContain("PDF export requires the desktop app");
+    // Changing the format drops destinations that can't take it.
+    expect(wiz).toContain("function setFormat(");
+    expect(wiz).toMatch(/visibleCards = \$derived\(\s*cards\.filter\(\(c\) => c\.id === LOCAL \|\| c\.format === format/);
+  });
+
+  test("the local folder is the first destination, always selected, and shows its resolved path", () => {
+    expect(wiz).toContain('const LOCAL = "local"');
+    expect(wiz).toContain("new Set([LOCAL])");
+    expect(wiz).toMatch(/if \(id === LOCAL\) return;/);
+    expect(wiz).toContain("disabled={card.id === LOCAL}");
+    expect(wiz).toContain("{card.id === LOCAL ? localDir : card.description}");
+    // Default dist inside the book, publish.local.dir overrides (relative or absolute).
+    expect(wiz).toContain('const LOCAL_DEFAULT_DIR = "dist"');
+    expect(wiz).toMatch(/joinPath\(projectDir, dir\)/);
+    // Its setup step: the folder with a native picker, saved to the manifest.
+    expect(wiz).toContain('currentCard?.id === LOCAL');
+    expect(wiz).toContain("controller.setPublishConfigDraft(LOCAL, \"dir\", picked)");
+    expect(wiz).toContain("controller.savePublishConfig(LOCAL)");
+    // The lib lists it first.
+    const registry = read("../cli/src/lib/publish/registry.ts");
+    expect(registry).toMatch(/PROVIDERS[^=]*=\s*\{\s*local: localFolderProvider/);
+  });
+
+  test("Publish builds into the local folder first, then sends that artifact to every online destination", () => {
+    const idx = wiz.indexOf("async function publishAll()");
+    const body = wiz.slice(idx, idx + 700);
+    expect(body).toContain("await buildArtifact({ format, dir: localDir, validate })");
+    expect(body).toContain("if (!artifact) return;");
+    expect(body).toContain("for (const card of onlineCards)");
+    expect(body).toContain("controller.runPublish(card.id, false, artifact)");
+    // +page hands the wizard the export controller's folder build.
+    expect(page).toContain("buildArtifact={(opts) => exportController.buildTo(opts)}");
+    expect(page).toContain("pickFolder={(defaultPath) => api.dialog.pickOutputFolder(defaultPath)}");
+    // No per-destination Publish/Check buttons remain — one button does it.
+    expect(wiz).not.toContain("Check readiness");
+    expect(wiz).not.toContain("Publish to all");
+    expect(wiz).not.toContain("pickPublishArtifact");
   });
 
   test("has a Preflight step between setup and publish that runs on enter + manual re-run (#105)", () => {
@@ -99,7 +141,7 @@ describe("PublishWizard — guided, multi-target, reuses saved connections", () 
     expect(wiz).toContain(
       "const publishGated = $derived(preflightMissing || preflightErrored || preflightBlocks)",
     );
-    expect(wiz).toContain("disabled={busy || needsConnect || publishGated}");
+    expect(wiz).toContain("disabled={publishing || controller.publishBusyId !== null || publishGated}");
     // Warnings/info never block — only error count drives preflightBlocks.
     expect(wiz).toContain('controller.preflightRows.filter((r) => r.severity === "error").length');
     // "Publish anyway" requires the shared inline-confirm (two-step).
@@ -205,36 +247,14 @@ describe("PublishWizard — guided, multi-target, reuses saved connections", () 
     expect(wiz).toContain("entersPreflightForward,");
   });
 
-  // ── Format choice (#221 phase 3, D8 — gdrive PDF/Website) ────────────────
-  test("renders a PDF/Website choice only for a provider that declares more than one format", () => {
-    expect(wiz).toContain("card.formats && card.formats.length > 1");
-    expect(wiz).toContain("controller.effectiveFormat(card)");
-    expect(wiz).toContain("chooseFormat(card, fmt)");
-  });
-  test("the format choice mentions Drive is file delivery, not a live website", () => {
-    const idx = wiz.indexOf("card.formats && card.formats.length > 1");
-    const region = wiz.slice(idx, idx + 1600);
-    expect(region).toContain("Azure Static Web Apps");
-  });
-
-  // ── Radio `checked` state must re-derive from the controller after a
-  //    failed selectFormat(), not stay stuck on the clicked option (#221 C8) ─
-  test("the format radio's checked state is driven by an in-flight optimistic pick that ALWAYS clears once selectFormat settles", () => {
-    // The `{@const}` reads pendingFormat directly (not through a wrapper
-    // function) so Svelte tracks it as a real dependency — see the
-    // `pendingFormat` declaration's comment for why that matters (#221 C8).
-    expect(wiz).toContain(
-      "{@const chosenFormat = pendingFormat[card.id] ?? controller.effectiveFormat(card)}",
-    );
-    expect(wiz).toContain("checked={chosenFormat === fmt}");
-    // chooseFormat sets the optimistic pick, then clears it in `finally` —
-    // i.e. on BOTH success and failure, never leaving a stale override.
-    const idx = wiz.indexOf("async function chooseFormat(");
-    expect(idx).toBeGreaterThan(-1);
-    const region = wiz.slice(idx, idx + 500);
-    expect(region).toContain("pendingFormat = { ...pendingFormat, [card.id]: fmt }");
-    expect(region).toContain("await controller.selectFormat(card.id, fmt)");
-    expect(region).toContain("} finally {");
-    expect(region).toContain("delete rest[card.id]");
+  // ── Multi-format providers (#221 phase 3, D8 — gdrive) follow the wizard's
+  //    Format step; no per-card PDF/Website radio remains ──────────────────────
+  test("a destination that takes both formats follows the wizard's format choice on entering its setup step", () => {
+    const idx = wiz.indexOf("function enterStep(");
+    const body = wiz.slice(idx, idx + 800);
+    expect(body).toContain("card?.formats && controller.effectiveFormat(card) !== format");
+    expect(body).toContain("controller.selectFormat(card.id, format)");
+    expect(wiz).not.toContain("chooseFormat(");
+    expect(wiz).not.toContain("pendingFormat");
   });
 });

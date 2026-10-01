@@ -19,7 +19,14 @@
     toolGapMessage,
   } from "$lib/publish-targets";
 
-  let { controller }: { controller: DetailsSectionController } = $props();
+  let {
+    controller,
+    onSaveAsTemplate,
+  }: {
+    controller: DetailsSectionController;
+    /** Open the Save-as-template dialog (owned by ProjectSettingsView). */
+    onSaveAsTemplate?: (triggerEl: HTMLButtonElement) => void;
+  } = $props();
 
   // The tool-gap explanation for the CHECKED destinations (null when nothing
   // checked needs a tool this computer lacks).
@@ -180,9 +187,20 @@
       only the general print checks run.
     </span>
   </div>
-  <button class="primary small app-btn-primary" onclick={controller.saveDetails} disabled={controller.detailsSaving}>
-    {controller.detailsSaving ? "Saving…" : "Save details"}
-  </button>
+  <div class="details-actions">
+    <button class="primary small app-btn-primary" onclick={controller.saveDetails} disabled={controller.detailsSaving}>
+      {controller.detailsSaving ? "Saving…" : "Save details"}
+    </button>
+    {#if onSaveAsTemplate}
+      <button
+        class="ghost small"
+        onclick={(e) => onSaveAsTemplate?.(e.currentTarget as HTMLButtonElement)}
+        title="Save this book as a reusable starter for new books"
+      >
+        Save as template…
+      </button>
+    {/if}
+  </div>
 </section>
 
 <style>
@@ -196,6 +214,7 @@
   .target-desc { font-size: 11px; color: var(--app-text-muted); line-height: 1.35; }
   .tool-note { margin: 4px 0 0; font-size: 11px; line-height: 1.45; color: var(--app-warning-text); }
 
+  .details-actions { display: flex; align-items: center; gap: 8px; }
   .authors { display: flex; flex-direction: column; gap: 4px; }
   .author-row { display: flex; gap: 4px; align-items: center; }
   .author-row .input { flex: 1; }

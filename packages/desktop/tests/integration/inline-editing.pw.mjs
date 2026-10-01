@@ -1054,6 +1054,8 @@ try {
   // ── 14. Edit+Focus carries a file switcher (Read+Focus keeps page nav) ─────
   await step("14. Edit+Focus shows a chapter <select>; switching changes the editor's file and Focus stays on", async () => {
     writeFileSync(join(fixturePath, "02-second.md"), "# Second\n\nFOCUS-SWITCH-MARKER paragraph.\n");
+    // Pad the first chapter so the second starts several pages in: choosing it must scroll the preview there.
+    writeFileSync(chapterPath, `${readFileSync(chapterPath, "utf8")}\n${Array.from({ length: 60 }, (_, i) => `Padding paragraph ${i + 1} so the first chapter spans several preview pages and the second begins on a later one.\n`).join("\n")}`);
     // The fixture manifest pins `source.files`; the switcher follows it (book order).
     const manifestPath = join(fixturePath, "manifest.yaml");
     writeFileSync(manifestPath, readFileSync(manifestPath, "utf8").replace("    - 01-chapter.md\n", "    - 01-chapter.md\n    - 02-second.md\n"));
@@ -1067,6 +1069,9 @@ try {
     await page.mouse.move(400, 1); // reveal the tucked bar for the screenshot
     await page.waitForTimeout(400);
     if (process.env.GP_SHOTS) await page.screenshot({ path: `${process.env.GP_SHOTS}/edit-focus-select.png` });
+    await waitForQuietPreview();
+    const currentPage = () => book.locator("body").evaluate(() => window.previewAPI.getCurrentPage());
+    const pageBefore = await currentPage();
     await select.selectOption("02-second.md");
     await page.waitForFunction(
       () => document.querySelector(".cm-content")?.textContent?.includes("FOCUS-SWITCH-MARKER"),
@@ -1075,6 +1080,14 @@ try {
     );
     if ((await page.locator(".focus-bar").count()) === 0) throw new Error("selecting a file left Focus");
     if ((await select.inputValue()) !== "02-second.md") throw new Error("select does not show the open file");
+    // The preview follows a user-initiated file switch to the new chapter's first page.
+    const deadline = Date.now() + 10_000;
+    let pageAfter = pageBefore;
+    while (Date.now() < deadline && !(pageAfter > pageBefore)) {
+      await sleep(200);
+      pageAfter = await currentPage();
+    }
+    if (!(pageAfter > pageBefore)) throw new Error(`preview stayed on page ${pageBefore} after choosing 02-second.md (now ${pageAfter})`);
     if (process.env.GP_SHOTS) await page.screenshot({ path: `${process.env.GP_SHOTS}/edit-focus-switched.png` });
     // Read+Focus: page nav only, no file select.
     await page.locator('.focus-bar button[title^="Read"]').click();

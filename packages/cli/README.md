@@ -237,12 +237,12 @@ plus the PDF from the second — the pdf build never overwrites `book.html`.
 
 ### `gutterpress publish`
 
-Push a built PDF/HTML artifact to a publishing platform (itch.io, DriveThruRPG, Amazon KDP, Azure Static Web Apps, Shopify, Google Drive), headlessly and CI-safely. Credentials live in a 0600 user-config store (never in the project); provider env vars override it for CI. Most providers connect with a pasted API key; Google Drive connects through your browser instead (`--connect` opens the sign-in page — nothing to paste).
+Push a built PDF/HTML artifact to a publishing platform (itch.io, DriveThruRPG, Amazon KDP, Azure Static Web Apps, Shopify, Google Drive) or copy it to a local folder (`local`, the desktop's default first destination), headlessly and CI-safely. Credentials live in a 0600 user-config store (never in the project); provider env vars override it for CI. Most providers connect with a pasted API key; Google Drive connects through your browser instead (`--connect` opens the sign-in page — nothing to paste).
 
 ```sh
 gutterpress publish [project] [options]
 
-  --provider <id>     itch | drivethrurpg | kdp | azure-swa | shopify | gdrive
+  --provider <id>     local | itch | drivethrurpg | kdp | azure-swa | shopify | gdrive
   --list               List providers and connection status
   --connect            Store an API key for --provider (from --token, the provider's env var, or piped stdin) — or, for gdrive, open the browser to connect
   --disconnect         Forget the stored key for --provider

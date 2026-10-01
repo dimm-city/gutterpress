@@ -3,47 +3,33 @@
    * TroubleshootingView — the start screen's Troubleshooting tab: the
    * sub-tabbed home for everything a writer needs when something is wrong or
    * support asks "which version?". Diagnostics (system + tool status, copyable
-   * report), Logs (the app's diagnostic logs), About (versions + updates).
-   * Split out of the old Help screen, which now carries guidance only.
+   * report) and Logs (the app's diagnostic logs). Versions + updates live in
+   * the landing's About tab. Split out of the old Help screen, which now
+   * carries guidance only.
    *
    * Reuses SettingsView's sub-tab pattern (TABS, tablist keys, tabpanel with
-   * `idPrefix`). Owns its api.doctor load: Diagnostics and About both read it.
-   * The host passes only the update-check wiring.
+   * `idPrefix`). Owns its api.doctor load for Diagnostics.
    */
   import { isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
   import type { DoctorDiagnostics } from "$lib/api";
-  import Icon from "$lib/components/Icon.svelte";
   import LogsPanel from "$lib/components/LogsPanel.svelte";
-  import type { UpdaterAvailableAction } from "$lib/platform";
   import { sanitizeTroubleshootingTab, type TroubleshootingTab } from "$lib/troubleshooting-tabs";
 
   let {
     initialTab = "diagnostics",
     idPrefix = "troubleshooting",
-    onCheckForUpdates,
-    checkingUpdates = false,
-    updateReadyVersion = null,
-    updateAvailableVersion = null,
-    updateAvailableAction = null,
   }: {
     /** The sub-tab to land on (deep link, e.g. "logs"). */
     initialTab?: TroubleshootingTab;
     /** Element-id namespace for the tab/panel aria wiring. */
     idPrefix?: string;
-    /** Relocated from the toolbar: triggers the manual update check. */
-    onCheckForUpdates?: () => void;
-    checkingUpdates?: boolean;
-    updateReadyVersion?: string | null;
-    updateAvailableVersion?: string | null;
-    updateAvailableAction?: UpdaterAvailableAction | null;
   } = $props();
 
   // ── Tabs ────────────────────────────────────────────────────────────────────
   const TABS: Array<{ id: TroubleshootingTab; label: string }> = [
     { id: "diagnostics", label: "Diagnostics" },
     { id: "logs", label: "Logs" },
-    { id: "about", label: "About" },
   ];
   // Mounted fresh per visit; the initial value is the requested landing tab.
   // svelte-ignore state_referenced_locally
@@ -51,7 +37,6 @@
   let tabEls = $state<Record<TroubleshootingTab, HTMLButtonElement | undefined>>({
     diagnostics: undefined,
     logs: undefined,
-    about: undefined,
   });
 
   function onTablistKeydown(e: KeyboardEvent) {
@@ -72,6 +57,23 @@
   let loading = $state(false);
   let error = $state<string | null>(null);
   let copied = $state(false);
+  // Per-tool one-click install: id of the tool being installed + last failure.
+  let installing = $state<string | null>(null);
+  let installError = $state<Record<string, string>>({});
+
+  async function installTool(toolId: string) {
+    installing = toolId;
+    installError = { ...installError, [toolId]: "" };
+    try {
+      const r = await api.doctorInstall(toolId);
+      if (r.ok) await load();
+      else installError = { ...installError, [toolId]: `Install failed (exit ${r.exitCode ?? "none"}). ${r.output.split("\n").slice(-5).join("\n")}` };
+    } catch (e) {
+      installError = { ...installError, [toolId]: e instanceof Error ? e.message : String(e) };
+    } finally {
+      installing = null;
+    }
+  }
 
   async function load() {
     loading = true;
@@ -180,7 +182,7 @@
     {:else if error}
       <p class="status error">{error}</p>
       <button class="retry app-btn-primary" onclick={load}>Retry</button>
-    {:else if data && activeTab === "diagnostics"}
+    {:else if data}
       <p class="intro">Check that your computer has what Gutterpress needs, and copy the details to share when you ask for help.</p>
 
       <section class="versions">
@@ -198,7 +200,7 @@
       <section class="tools">
         <h3>Optional system tools</h3>
         <p class="hint">
-          Gutterpress renders your preview using the built-in browser engine. The standard <strong>Export</strong> feature needs no extra tools. The optional <strong>pre-press PDF export</strong> (for professional print shops) additionally needs Ghostscript and qpdf.
+          Gutterpress renders your preview using the built-in browser engine. The standard <strong>Publish</strong> PDF needs no extra tools. The optional <strong>pre-press PDF</strong> (for professional print shops) additionally needs Ghostscript and qpdf.
         </p>
         <ul>
           {#each data.tools as t (t.bin)}
@@ -224,8 +226,21 @@
                 {/each}
               </div>
               {#if !t.found}
+                {@const install = t.install}
+                {#if install?.kind === "run"}
+                  <button class="install-btn app-btn-primary" onclick={() => void installTool(t.id)} disabled={installing !== null} title={install.label}>
+                    {installing === t.id ? "Installing…" : `Install ${t.name}`}
+                  </button>
+                {:else if install?.kind === "download"}
+                  <button class="install-btn app-btn-primary" onclick={() => void api.shell.openExternal(install.url)}>
+                    Download {t.name}
+                  </button>
+                {/if}
+                {#if installError[t.id]}
+                  <p class="install-error" role="alert">{installError[t.id]}</p>
+                {/if}
                 <details class="install-hint">
-                  <summary>Install</summary>
+                  <summary>Install manually</summary>
                   {#if data.platform.os === 'win32'}
                     <p class="install-note">Run in Command Prompt or PowerShell as Administrator, or download the installer from the tool's website.</p>
                   {:else if data.platform.os === 'darwin'}
@@ -244,36 +259,6 @@
           {copied ? "Copied!" : "Copy diagnostic info"}
         </button>
       </footer>
-    {:else if data}
-      <p class="intro">Which version you're running, and whether an update is available.</p>
-
-      <section class="versions">
-        <div><strong>Desktop:</strong> {data.desktopVersion}</div>
-        <div><strong>Lib:</strong> {data.libVersion}</div>
-      </section>
-
-      {#if isDesktop() && onCheckForUpdates}
-        <section class="updates">
-          <h3>Updates</h3>
-          <p class="updates-note">
-            {#if updateReadyVersion}
-              An update (v{updateReadyVersion}) is ready to apply — use the update button at the top of this screen.
-            {:else if updateAvailableVersion}
-              An update (v{updateAvailableVersion}) is available — use the update button at the top of this screen to {updateAvailableAction === "open-release" ? "download it from GitHub" : "download it"}.
-            {:else}
-              Gutterpress checks for updates automatically. You can also check now.
-            {/if}
-          </p>
-          <button
-            class="update-check"
-            onclick={() => onCheckForUpdates?.()}
-            disabled={checkingUpdates}
-          >
-            <span class="update-check-icon" class:spinning={checkingUpdates}><Icon name="refresh-cw" /></span>
-            {checkingUpdates ? "Checking for updates…" : "Check for updates"}
-          </button>
-        </section>
-      {/if}
     {/if}
   </div>
 </div>
@@ -288,28 +273,6 @@
     padding: 6px 14px; font-size: 13px; border-radius: 4px;
     border-width: 1px; border-style: solid; cursor: pointer;
   }
-
-  /* Updates section (relocated from Help) */
-  .updates { margin-bottom: 18px; }
-  .updates h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; color: var(--app-text-muted); letter-spacing: 0.5px; }
-  .updates-note { margin: 0 0 10px; font-size: 12px; color: var(--app-text-muted); line-height: 1.5; }
-  .update-check {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 14px;
-    font-size: 13px;
-    border-radius: 6px;
-    cursor: pointer;
-    background: transparent;
-    color: var(--app-text-muted);
-    border: 1px solid var(--app-border);
-  }
-  .update-check:hover:not(:disabled) { background: var(--app-surface-hover); color: var(--app-text); }
-  .update-check:disabled { opacity: 0.6; cursor: not-allowed; }
-  .update-check-icon { display: inline-flex; }
-  .update-check-icon.spinning :global(svg) { animation: help-update-spin 1s linear infinite; }
-  @keyframes help-update-spin { to { transform: rotate(360deg); } }
 
   .versions { font-size: 13px; line-height: 1.7; margin-bottom: 18px; }
   .versions strong { color: var(--app-text-muted); font-weight: 500; min-width: 80px; display: inline-block; }
@@ -384,6 +347,12 @@
   }
   .badge.required { background: var(--app-error-bg); color: var(--app-error-text); }
   .badge.optional { background: var(--app-info-bg); color: var(--app-info-text); }
+  .install-btn {
+    margin: 8px 0 0 24px; padding: 5px 12px; font-size: 12px; border-radius: 4px;
+    border-width: 1px; border-style: solid; cursor: pointer;
+  }
+  .install-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  .install-error { margin: 6px 0 0 24px; font-size: 11px; color: var(--app-error-text); white-space: pre-wrap; font-family: var(--app-font-mono); }
   .install-hint { margin: 6px 0 0 24px; font-size: 11px; }
   .install-hint summary { cursor: pointer; color: var(--app-info-text); }
   .install-hint pre {
