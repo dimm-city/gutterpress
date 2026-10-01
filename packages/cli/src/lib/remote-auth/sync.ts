@@ -135,6 +135,23 @@ export function isUnrelatedHistories(e: unknown): boolean {
 }
 
 /**
+ * A damaged object file, seen through isomorphic-git's error masking: pako
+ * (its zlib) throws a plain STRING ("buffer error", "incorrect header
+ * check"), and isomorphic-git's command wrapper then crashes assigning
+ * `err.caller` to it — so the only trace is this TypeError, worded by the
+ * engine: V8 (Electron, Node) says "Cannot create property 'caller' on string
+ * …", JavaScriptCore (Bun: the CLI binary, the tests) says "Attempted to
+ * assign to readonly property." Retrying can never fix it, so it is reported
+ * as a damaged history, not a transient failure.
+ */
+function isDamagedObjectError(e: unknown): boolean {
+  return (
+    e instanceof TypeError &&
+    /property 'caller' on string|^Attempted to assign to readonly property\.$/.test(e.message)
+  );
+}
+
+/**
  * Can this repo's history be read at all? Asked only AFTER a sync has already
  * failed, to tell a transient failure ("try again") apart from a damaged
  * history (trying again will never work). Deliberately a plain read of the
@@ -444,7 +461,7 @@ export async function syncProject(
         if (setupMsg) return { status: "error", message: setupMsg, ...base() };
         // A damaged history must not be reported as a transient failure: "please
         // try again" is false when trying again can never work.
-        if (await historyUnreadable(dir)) {
+        if (isDamagedObjectError(e) || (await historyUnreadable(dir))) {
           logger.error("sync", "the book's history could not be read");
           return { status: "error", message: MSG_HISTORY_UNREADABLE, ...base() };
         }

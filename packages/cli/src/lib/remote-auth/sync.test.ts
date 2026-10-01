@@ -1423,6 +1423,37 @@ describe("syncProject — a history that cannot be read", () => {
   }
 });
 
+test("a damaged object file (masked by isomorphic-git as a TypeError) says the history can't be read", async () => {
+  // 0.11.6 field report: pako throws a STRING for a damaged object and
+  // isomorphic-git's wrapper crashes assigning `err.caller` to it, so the
+  // failure reached the writer as a bare "merge failed". HEAD, its commit
+  // and the index all still read, so only recognising the masked error can
+  // tell this apart from a transient failure.
+  const h = await setupClone();
+  try {
+    await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nLocal work.\n");
+    await git.add({ fs, dir: h.projectDir, filepath: "chapter-01.md" });
+    const local = await git.commit({
+      fs,
+      dir: h.projectDir,
+      message: "local",
+      author: { name: "A", email: "a@example.com" },
+    });
+    await serverCommit(h.serverDir, { "remote.md": "remote\n" }, "remote");
+    const { commit } = await git.readCommit({ fs, dir: h.projectDir, oid: local });
+    const tree = path.join(h.projectDir, ".git", "objects", commit.tree.slice(0, 2), commit.tree.slice(2));
+    fs.writeFileSync(tree, "not a zlib stream"); // non-empty: the self-heal does not apply
+
+    const outcome = await syncProject({ projectDir: h.projectDir });
+
+    expect(outcome.status).toBe("error");
+    if (outcome.status !== "error") throw new Error("unreachable");
+    expect(outcome.message).toBe(MSG_HISTORY_UNREADABLE);
+  } finally {
+    await h.cleanup();
+  }
+});
+
 // ── Staged-but-uncommitted recovery ──────────────────────────────────────────
 //
 // A snapshot killed between `git.add` and `git.commit` leaves the staging

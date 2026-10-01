@@ -21,6 +21,18 @@ This project follows [Semantic Versioning](https://semver.org/).
   always beside See previous versions, and saving when nothing changed simply
   says there's nothing new to save.
 
+### Fixed
+
+- **Online backup no longer gets stuck failing with "merge failed".**
+  Closing Gutterpress while a backup was saving could leave an empty file in
+  the book's version history. Every later backup then failed the same way,
+  because the damaged file was never rewritten. Gutterpress now waits for
+  version-history work to finish before it quits, and writes those files in a
+  way an interrupted save can't damage. Books already affected repair
+  themselves on the next backup. If a damaged file can't be repaired, the
+  message now says the version history can't be read instead of asking you to
+  try again.
+
 ## [0.11.6] - 2026-09-30
 
 ### Changed

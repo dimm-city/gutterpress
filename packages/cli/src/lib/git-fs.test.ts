@@ -1,5 +1,6 @@
 /**
- * git-fs.ts — atomic writes for git's mutable metadata.
+ * git-fs.ts — atomic writes for git's metadata and object store, and the
+ * self-heal for empty loose objects left by older builds.
  *
  * The load-bearing test is the LAST one: it runs a real snapshot through the
  * real snapshot path and proves the atomic write actually engaged, rather than
@@ -35,10 +36,19 @@ describe("needsAtomicWrite", () => {
     }
   });
 
-  test("objects and working-tree files keep the plain write", () => {
+  test("the object store is atomic too (loose objects and packs)", () => {
     for (const p of [
-      // Content-addressed: written once under a hash, never overwritten.
-      "/book/.git/objects/ab/cdef",
+      "/book/.git/objects/ab/cdef0123456789abcdef0123456789abcdef01",
+      "/book/.git/objects/pack/pack-abc.pack",
+      "/book/.git/objects/pack/pack-abc.idx",
+      "C:\\Users\\a\\book\\.git\\objects\\ab\\cdef",
+    ]) {
+      expect(needsAtomicWrite(p)).toBe(true);
+    }
+  });
+
+  test("working-tree files keep the plain write", () => {
+    for (const p of [
       // The author's own files — including ones named like git metadata.
       "/book/chapters/index",
       "/book/index.md",
@@ -140,6 +150,146 @@ test("a real snapshot REPLACES the branch ref instead of truncating it", async (
     });
 
     expect(fs.statSync(refPath).ino).not.toBe(before);
+  } finally {
+    await h.cleanup();
+  }
+});
+
+// ── Empty loose objects (0.11.6 field report) ────────────────────────────────
+//
+// Quitting the app mid-sync could leave a loose object file EMPTY. isomorphic-
+// git reads loose objects before packs and never rewrites one that exists, so
+// every later merge failed with the masked
+// "TypeError: Cannot create property 'caller' on string 'buffer error'".
+
+const AUTHOR = { name: "A", email: "a@example.com" };
+
+/** Two diverged branches; returns our tip's tree oid and their tip. */
+async function makeDivergedRepo(): Promise<{
+  dir: string;
+  ourTree: string;
+  theirs: string;
+  cleanup: () => Promise<void>;
+}> {
+  const dir = await mkdtemp(path.join(tmpdir(), "gp-gitfs-torn-"));
+  await git.init({ fs, dir, defaultBranch: "main" });
+  await writeFile(path.join(dir, "a.md"), "base\n");
+  await git.add({ fs, dir, filepath: "a.md" });
+  await git.commit({ fs, dir, author: AUTHOR, message: "base" });
+  await git.branch({ fs, dir, ref: "theirs" });
+  await writeFile(path.join(dir, "b.md"), "ours\n");
+  await git.add({ fs, dir, filepath: "b.md" });
+  const ours = await git.commit({ fs, dir, author: AUTHOR, message: "ours" });
+  await git.checkout({ fs, dir, ref: "theirs" });
+  await writeFile(path.join(dir, "c.md"), "theirs\n");
+  await git.add({ fs, dir, filepath: "c.md" });
+  const theirs = await git.commit({ fs, dir, author: AUTHOR, message: "theirs" });
+  await git.checkout({ fs, dir, ref: "main" });
+  const { commit } = await git.readCommit({ fs, dir, oid: ours });
+  return { dir, ourTree: commit.tree, theirs, cleanup: () => rm(dir, { recursive: true, force: true }) };
+}
+
+function loosePath(dir: string, oid: string): string {
+  return path.join(dir, ".git", "objects", oid.slice(0, 2), oid.slice(2));
+}
+
+/** Pack every loose object — the good copies a fetch would have downloaded. */
+async function packEverything(dir: string): Promise<void> {
+  const objects = path.join(dir, ".git", "objects");
+  const oids = fs
+    .readdirSync(objects)
+    .filter((d) => /^[0-9a-f]{2}$/.test(d))
+    .flatMap((d) => fs.readdirSync(path.join(objects, d)).map((f) => d + f));
+  const { filename } = await git.packObjects({ fs, dir, oids, write: true });
+  await git.indexPack({ fs, dir, filepath: path.join(".git", "objects", "pack", filename) });
+}
+
+test("REPRO: an empty loose object makes plain-fs merges fail with the masked TypeError", async () => {
+  const h = await makeDivergedRepo();
+  try {
+    await packEverything(h.dir);
+    fs.writeFileSync(loosePath(h.dir, h.ourTree), "");
+    let caught: unknown;
+    try {
+      await git.merge({ fs, dir: h.dir, ours: "main", theirs: h.theirs, author: AUTHOR });
+    } catch (e) {
+      caught = e;
+    }
+    // Bun's wording differs from V8's ("Cannot create property 'caller' on
+    // string 'buffer error'"); both are the TypeError the field log showed.
+    expect(caught).toBeInstanceOf(TypeError);
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test("through gitFs the same repo merges: the empty object is removed and the pack copy is used", async () => {
+  const h = await makeDivergedRepo();
+  try {
+    await packEverything(h.dir);
+    fs.writeFileSync(loosePath(h.dir, h.ourTree), "");
+    const result = await git.merge({
+      fs: gitFs,
+      dir: h.dir,
+      ours: "main",
+      theirs: h.theirs,
+      author: AUTHOR,
+    });
+    expect(result.oid).toBeTruthy();
+    expect(fs.existsSync(loosePath(h.dir, h.ourTree))).toBe(false);
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test("an empty loose object with no other copy reads as missing, not as a masked TypeError", async () => {
+  const h = await makeDivergedRepo();
+  try {
+    fs.writeFileSync(loosePath(h.dir, h.ourTree), "");
+    let caught: unknown;
+    try {
+      await git.readTree({ fs: gitFs, dir: h.dir, oid: h.ourTree });
+    } catch (e) {
+      caught = e;
+    }
+    expect((caught as { code?: string }).code).toBe("NotFoundError");
+    // Removed, so the next write of this object can recreate it.
+    expect(fs.existsSync(loosePath(h.dir, h.ourTree))).toBe(false);
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test("a non-empty loose object is read untouched", async () => {
+  const h = await makeDivergedRepo();
+  try {
+    const { tree } = await git.readTree({ fs: gitFs, dir: h.dir, oid: h.ourTree });
+    expect(tree.map((e) => e.path).sort()).toEqual(["a.md", "b.md"]);
+    expect(fs.existsSync(loosePath(h.dir, h.ourTree))).toBe(true);
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test("objects written through gitFs land complete and leave no temp files", async () => {
+  const h = await makeRepo();
+  try {
+    await writeFile(path.join(h.dir, "chapter-02.md"), "# Two\n");
+    await snapshotWorkingTreeUnlocked({
+      projectDir: h.dir,
+      repoRoot: h.dir,
+      message: "objects",
+      authorName: "A",
+      authorEmail: "a@example.com",
+    });
+    const objects = path.join(h.dir, ".git", "objects");
+    const files = fs
+      .readdirSync(objects)
+      .filter((d) => /^[0-9a-f]{2}$/.test(d))
+      .flatMap((d) => fs.readdirSync(path.join(objects, d)));
+    expect(files.some((f) => f.startsWith("tmp_obj_"))).toBe(false);
+    const [head] = await git.log({ fs: gitFs, dir: h.dir, depth: 1 });
+    expect(head?.commit.message.trim()).toBe("objects");
   } finally {
     await h.cleanup();
   }

@@ -260,6 +260,7 @@ export {
   restoreVersionWithBackup,
   isNoChangesError,
   countUnversionedChanges,
+  whenGitIdle,
   AUTO_SNAPSHOT_MESSAGE,
   RESTORE_BACKUP_MESSAGE,
   HISTORY_PAGE_LIMIT,
