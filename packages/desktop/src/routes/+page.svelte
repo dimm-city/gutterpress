@@ -49,6 +49,7 @@
   import { getPlatform, isDesktop } from "$lib/platform";
   import type { WorkspaceMode } from "$lib/platform";
   import { api } from "$lib/api";
+  import { buildSourceList } from "$lib/components/config/source-files";
   import { isEditableTarget } from "$lib/a11y";
   import { invalidateDiscoveredProjects } from "$lib/projects-discover-cache";
   import { basenameOf, joinPath, isPathAtOrUnder } from "$lib/platform/paths";
@@ -2518,6 +2519,26 @@
   let inFocus = $derived(focus && toolbarProjectOpen);
 
   /**
+   * Edit+Focus file switcher: the book's markdown files in book order — the
+   * manifest's `sourceFiles` when pinned, else every top-level .md in natural
+   * order (the same list the Details section edits, via `buildSourceList`).
+   */
+  let focusFiles = $state<string[]>([]);
+  async function loadFocusFiles(): Promise<void> {
+    const dir = lifecycle.currentDir;
+    if (!dir) return;
+    try {
+      const [{ md }, cfg] = await Promise.all([api.fs.listProjectFiles(dir), api.manifest.read(dir)]);
+      if (dir !== lifecycle.currentDir) return;
+      focusFiles = buildSourceList(md, cfg.sourceFiles ?? null)
+        .filter((e) => e.included && !e.missing)
+        .map((e) => e.path);
+    } catch {
+      focusFiles = [];
+    }
+  }
+
+  /**
    * Turn Focus on/off. It only hides chrome (see `focus`), so neither the mode
    * nor the left-panel setting is touched and leaving restores exactly what
    * was visible. `returnFocus` puts keyboard focus back on the toolbar's Focus
@@ -2527,6 +2548,7 @@
     if (on === focus || (on && !toolbarProjectOpen)) return;
     contextMenu.close();
     focus = on;
+    if (on) void loadFocusFiles();
     if (on && !focusHintShown) {
       focusHintShown = true;
       toast?.info?.("Focus: press Esc to exit", 6000);
@@ -2783,6 +2805,9 @@
       {pageNav}
       showPageNav={focusView === "read" && !!lifecycle.previewUrl}
       rendering={lifecycle.rendering}
+      files={focusView === "edit" ? focusFiles : []}
+      currentFile={editorFilePath ? basenameOf(editorFilePath) : null}
+      onSelectFile={(name) => lifecycle.currentDir ? selectEditorFile(joinPath(lifecycle.currentDir, name)).then(() => {}) : undefined}
     />
   {:else}
   <AppToolbar

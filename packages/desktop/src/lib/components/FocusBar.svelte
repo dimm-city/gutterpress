@@ -3,7 +3,7 @@
    * FocusBar — the slim bar that replaces the app toolbar while Focus is on.
    *
    * Holds ONLY: the Edit/Read switch, Exit focus, and (in Read) page
-   * navigation. It floats over the workspace instead of taking layout space.
+   * navigation or (in Edit) the book's file switcher. It floats over the workspace instead of taking layout space.
    * After a few idle seconds it slides up until only a sliver shows at the
    * top edge; pointing at that sliver (or Tab into it) slides it back down.
    * Reduced motion gets the same show/hide without the slide. The show/hide
@@ -23,6 +23,9 @@
     pageNav,
     showPageNav,
     rendering,
+    files,
+    currentFile,
+    onSelectFile,
   }: {
     view: "edit" | "read";
     onSelectView: (view: "edit" | "read") => void;
@@ -31,6 +34,11 @@
     /** Page navigation shows in Read only (and only once a preview exists). */
     showPageNav: boolean;
     rendering: boolean;
+    /** Markdown files in book order; the switcher shows in Edit when non-empty. */
+    files: string[];
+    /** Basename of the file open in the editor. */
+    currentFile: string | null;
+    onSelectFile: (name: string) => void | Promise<void>;
   } = $props();
 
   let visible = $state(true);
@@ -123,6 +131,25 @@
         <Icon name="chevron-right" />
       </button>
     </nav>
+  {/if}
+
+  {#if files.length > 0}
+    <select
+      class="page-select file-select"
+      aria-label="Chapter"
+      title="Switch chapter"
+      value={currentFile}
+      onchange={async (e) => {
+        const el = e.currentTarget as HTMLSelectElement;
+        await onSelectFile(el.value);
+        // A cancelled/failed switch leaves the editor on the old file.
+        el.value = currentFile ?? "";
+      }}
+    >
+      {#each files as f (f)}
+        <option value={f}>{f}</option>
+      {/each}
+    </select>
   {/if}
 
   <button class="exit" onclick={onExit} title="Exit focus (Esc)" aria-label="Exit focus">
@@ -222,6 +249,10 @@
     padding: 4px 8px;
     min-width: 72px;
     cursor: pointer;
+  }
+  .file-select {
+    max-width: 220px;
+    text-overflow: ellipsis;
   }
   .page-select:disabled {
     opacity: 0.4;
