@@ -48,6 +48,8 @@ export interface DesktopPrefs {
    * project B never overwrites project A's page/view/chapter state.
    */
   projectStates?: ProjectStateMap;
+  /** True once the bundled user guide + examples were copied to Documents (seed-samples.ts). */
+  samplesSeeded?: boolean;
   /** Root dirs scanned by app:discoverProjects (#27). Defaults applied below. */
   projectSearchRoots?: string[];
   /**
