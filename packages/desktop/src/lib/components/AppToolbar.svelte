@@ -23,8 +23,8 @@
    *    The container is the toolbar's content box (window width − 24px), so a
    *    900px window measures 876px:
    *      ≤1150px  Edit/Read segmented group → dropdown menu, export
-   *               hints drop
-   *      ≤875px   Publish/Export/Setup drop their text labels, page nav loses its
+   *               hints and the Setup label drop
+   *      ≤875px   Publish/Export drop their text labels, page nav loses its
    *               first/last jump buttons, path trims
    *      ≤760px   the page-number select drops (prev/next stay), title trims
    *      ≤620px   page nav, title/path, mode/zoom menus, separators, hints drop
@@ -426,8 +426,8 @@
     {#if showProjectSettings}
       <!-- Book setup (manifest) — beside the mode control. Rendered on
            narrow layouts too (the tab bar replaces the mode control there,
-           but book setup must stay reachable). The text label yields with
-           Publish/Export's (`.btn-label`); aria-label and tooltip stay. -->
+           but book setup must stay reachable). Its text label yields at the
+           ≤1150px stage, before Publish/Export's; aria-label and tooltip stay. -->
       <button
         class="icon-btn icon-text project-settings-btn"
         onclick={onOpenProjectSettings}
@@ -866,12 +866,15 @@
 
   /* ---- Collapse stages (see the header comment for the full table) ---- */
   @container (max-width: 1150px) {
-    /* Swap the inline view-mode buttons for the compact menu button; Save
+    /* Swap the inline view-mode buttons for the compact menu button; Setup
        drops its text label (icon, tooltip and aria-label stay) and the export
-       hints yield to the page nav from here down. */
+       hints yield to the page nav from here down. Setup goes before
+       Publish/Export: its ~40px is what keeps the page nav's first/last jump
+       buttons clear on a 900px window. */
     .mode-group { display: none; }
     details.mode-menu { display: inline-block; }
     .save-hint { display: none; }
+    .project-settings-btn .btn-label { display: none; }
     /* The title ellipsizes (full text in its tooltip); the page nav must not
        clip, and a 3-digit page count widens it by ~15px. */
     .doc-title { max-width: 120px; }
