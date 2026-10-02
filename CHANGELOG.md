@@ -5,6 +5,20 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.10] - Unreleased
+
+### Added
+
+- **Troubleshooting → Sync.** A new tab for a book whose online backup keeps
+  failing. Choose the book's folder, then:
+  - *Repair online backup* — the same repair offered in "Where your work is
+    kept", now reachable without opening the book.
+  - *Scorched earth* — the last resort. Copies the whole folder to a backup in
+    the app's data folder (kept, never deleted), deletes everything in the
+    folder, downloads a fresh copy from online, then copies your files from the
+    backup back on top (everything except the old history). Your files win;
+    files only the online copy has stay. Asks once before it runs.
+
 ## [0.11.9] - 2026-10-01
 
 ### Added

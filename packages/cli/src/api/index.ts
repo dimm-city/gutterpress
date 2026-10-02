@@ -414,6 +414,11 @@ export {
   type RepairOnlineBackupOptions,
   type RepairOnlineBackupResult,
 } from "../lib/remote-auth/repair.ts";
+export {
+  scorchedEarth,
+  type ScorchedEarthOptions,
+  type ScorchedEarthResult,
+} from "../lib/remote-auth/scorched-earth.ts";
 
 export type {
   SyncOutcome,

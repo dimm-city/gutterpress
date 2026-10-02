@@ -3,7 +3,8 @@
    * TroubleshootingView — the start screen's Troubleshooting tab: the
    * sub-tabbed home for everything a writer needs when something is wrong or
    * support asks "which version?". Diagnostics (system + tool status, copyable
-   * report) and Logs (the app's diagnostic logs). Versions + updates live in
+   * report), Logs (the app's diagnostic logs) and Sync (repair tools
+   * for a stuck online backup). Versions + updates live in
    * the landing's About tab. Split out of the old Help screen, which now
    * carries guidance only.
    *
@@ -14,6 +15,7 @@
   import { api } from "$lib/api";
   import type { DoctorDiagnostics } from "$lib/api";
   import LogsPanel from "$lib/components/LogsPanel.svelte";
+  import SyncToolsPanel from "$lib/components/SyncToolsPanel.svelte";
   import { sanitizeTroubleshootingTab, type TroubleshootingTab } from "$lib/troubleshooting-tabs";
 
   let {
@@ -30,6 +32,7 @@
   const TABS: Array<{ id: TroubleshootingTab; label: string }> = [
     { id: "diagnostics", label: "Diagnostics" },
     { id: "logs", label: "Logs" },
+    { id: "sync", label: "Sync" },
   ];
   // Mounted fresh per visit; the initial value is the requested landing tab.
   // svelte-ignore state_referenced_locally
@@ -37,6 +40,7 @@
   let tabEls = $state<Record<TroubleshootingTab, HTMLButtonElement | undefined>>({
     diagnostics: undefined,
     logs: undefined,
+    sync: undefined,
   });
 
   function onTablistKeydown(e: KeyboardEvent) {
@@ -177,6 +181,8 @@
       <!-- Mounted only while this tab is active, so each visit re-lists (a
            sync may have written since). -->
       <LogsPanel />
+    {:else if activeTab === "sync"}
+      <SyncToolsPanel />
     {:else if loading}
       <p class="status">Checking system…</p>
     {:else if error}

@@ -758,6 +758,14 @@ export const api = {
       post<{ outcome: SyncOutcome; restoredFiles: string[] }>('/api/remote/repair', { projectDir }),
 
     /**
+     * "Scorched earth": copy the folder to a backup, empty it, download a
+     * fresh copy from its online address, then copy the backed-up files (not
+     * the old history) back on top. Nothing is saved or backed up afterwards.
+     */
+    scorchedEarth: (projectDir: string) =>
+      post<{ dir: string; backupDir: string; branch?: string }>('/api/remote/scorched-earth', { projectDir }),
+
+    /**
      * Download ("clone") a repository into a new local project folder
      * (ARCH review #8 — was IPC despite being a plain request/response; the
      * clone-progress push stays a separate `onCloneProgress` subscription).

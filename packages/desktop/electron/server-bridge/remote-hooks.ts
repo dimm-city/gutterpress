@@ -39,6 +39,13 @@ export interface LibModule {
     authorName?: string;
     authorEmail?: string;
   }): Promise<{ outcome: unknown; movedGitTo: string; restoredFiles: string[] }>;
+  /** "Scorched earth" (lib remote-auth/scorched-earth.ts). */
+  scorchedEarth?(args: {
+    projectDir: string;
+    backupDir: string;
+    logFile: string;
+    tokenStore: TokenStore;
+  }): Promise<{ dir: string; backupDir: string; branch?: string }>;
   detectProjectSource?(dir: string): Promise<unknown>;
   repoRootForSource?(source: unknown, fallbackDir: string): string;
   /** Fetch every remote branch so the copy picker sees copies created elsewhere (#273). */
