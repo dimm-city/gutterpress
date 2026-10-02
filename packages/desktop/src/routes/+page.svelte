@@ -3228,6 +3228,7 @@
   onDismiss={() => dismissLanding()}
   settingsTab={landingSettingsTab}
   onProjectFilesChanged={onSnapshotRestored}
+  onCloseBook={() => lifecycle.stopPreview()}
 />
 {#if projectSettingsOpen}
   <!-- Book settings (manifest): a panel docked beside the workspace, so the

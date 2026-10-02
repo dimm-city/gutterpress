@@ -88,6 +88,7 @@
     onCheckForUpdates,
     onDismiss,
     onProjectFilesChanged,
+    onCloseBook,
   }: {
     visible?: boolean;
     inactive?: boolean;
@@ -122,6 +123,8 @@
     onUpdateDownload?: () => void;
     onCheckForUpdates?: () => void;
     onDismiss?: () => void;
+    /** Close the open book (Troubleshooting → Sync's Scorched earth ends with it). */
+    onCloseBook?: () => Promise<boolean>;
     /** Forwarded to the embedded Settings view's Saving tab (#273): fires
      *  after its copy switcher checks out another local copy of the open
      *  project, so the workspace behind this layer can reconcile the open
@@ -480,6 +483,8 @@
         <TroubleshootingView
           idPrefix="landing-troubleshooting"
           initialTab={troubleshootingTab}
+          {projectDir}
+          {onCloseBook}
         />
       </section>
       {/if}

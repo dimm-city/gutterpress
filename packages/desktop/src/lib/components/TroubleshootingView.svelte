@@ -21,11 +21,16 @@
   let {
     initialTab = "diagnostics",
     idPrefix = "troubleshooting",
+    projectDir = null,
+    onCloseBook,
   }: {
     /** The sub-tab to land on (deep link, e.g. "logs"). */
     initialTab?: TroubleshootingTab;
     /** Element-id namespace for the tab/panel aria wiring. */
     idPrefix?: string;
+    /** The open book, if any — Sync's Scorched earth closes it when it is in the reset folder. */
+    projectDir?: string | null;
+    onCloseBook?: () => Promise<boolean>;
   } = $props();
 
   // ── Tabs ────────────────────────────────────────────────────────────────────
@@ -182,7 +187,7 @@
            sync may have written since). -->
       <LogsPanel />
     {:else if activeTab === "sync"}
-      <SyncToolsPanel />
+      <SyncToolsPanel {projectDir} {onCloseBook} />
     {:else if loading}
       <p class="status">Checking system…</p>
     {:else if error}

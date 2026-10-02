@@ -4,12 +4,30 @@
    * book folder whose online backup (Git/GitHub sync) is stuck. Pick a folder,
    * then either Repair online backup (swap in a fresh history, keep files,
    * save and back up) or Scorched earth (back up the whole folder, empty it,
-   * download a fresh copy, copy the backed-up files back on top).
+   * download a fresh copy, copy the backed-up files back on top, and — as the
+   * final step, whether or not the reset worked — close the open book when it
+   * lives in that folder, so the app holds no stale state from before the reset).
    *
    * PWA-clean (§8 / ADR 0004): all host work through `api.*`.
    */
   import { api } from "$lib/api";
   import { cancelInlineConfirm, requestInlineConfirm, type InlineConfirmState } from "$lib/dialog";
+
+  let {
+    projectDir = null,
+    onCloseBook,
+  }: {
+    /** The open book, if any. */
+    projectDir?: string | null;
+    /** Close the open book. */
+    onCloseBook?: () => Promise<boolean>;
+  } = $props();
+
+  /** True when `inner` is `outer` or inside it. */
+  function isInside(inner: string, outer: string): boolean {
+    const o = outer.replace(/[\\/]+$/, "");
+    return inner === o || inner.startsWith(o + "/") || inner.startsWith(o + "\\");
+  }
 
   let dir = $state<string | null>(null);
   let running = $state<"repair" | "scorched" | null>(null);
@@ -34,6 +52,7 @@
     running = kind;
     message = null;
     errorMessage = null;
+    let resetDir = dir;
     try {
       if (kind === "repair") {
         const { outcome } = await api.remote.repairOnlineBackup(dir);
@@ -41,18 +60,28 @@
         else message = "Online backup repaired.";
       } else {
         const r = await api.remote.scorchedEarth(dir);
+        resetDir = r.dir;
         message = `Fresh copy downloaded${r.branch ? ` (${r.branch})` : ""} and your files copied back on top. A full copy of the folder as it was is kept at ${r.backupDir}. Open the book and back up to save the result online.`;
       }
     } catch (e) {
       errorMessage = `${e instanceof Error ? e.message : String(e)} See the Logs tab for details.`;
     } finally {
+      // Scorched earth's final step: close the open book if it is in the reset folder.
+      if (kind === "scorched" && projectDir && onCloseBook && (isInside(projectDir, resetDir) || isInside(projectDir, dir))) {
+        try {
+          if (!(await onCloseBook())) throw new Error("not closed");
+          if (message) message += " The open book was closed.";
+        } catch {
+          errorMessage = "The book couldn't be closed. Close it before you keep working.";
+        }
+      }
       running = null;
     }
   }
 </script>
 
 <div class="sync-tools">
-  <p class="intro">Fix a book whose online backup keeps failing. Close the book first if it is open.</p>
+  <p class="intro">Fix a book whose online backup keeps failing.</p>
 
   <div class="folder-row">
     <button class="app-btn-primary" onclick={() => void chooseFolder()} disabled={running !== null}>
@@ -74,7 +103,7 @@
 
   <section class="tool danger">
     <h3>Scorched earth</h3>
-    <p class="hint">The last resort. Copies the whole folder to a backup, deletes everything in it, downloads a fresh copy from online, then copies your files from the backup back on top (everything except the old history). Your files win; files only the online copy has stay. The backup is never deleted.</p>
+    <p class="hint">The last resort. Copies the whole folder to a backup, deletes everything in it, downloads a fresh copy from online, then copies your files from the backup back on top (everything except the old history). Your files win; files only the online copy has stay. The backup is never deleted. If that book is open, it is closed at the end.</p>
     <button
       class="danger-btn"
       onclick={() => void run("scorched")}

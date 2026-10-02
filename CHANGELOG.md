@@ -17,7 +17,8 @@ This project follows [Semantic Versioning](https://semver.org/).
     the app's data folder (kept, never deleted), deletes everything in the
     folder, downloads a fresh copy from online, then copies your files from the
     backup back on top (everything except the old history). Your files win;
-    files only the online copy has stay. Asks once before it runs.
+    files only the online copy has stay. If that book is open, it is closed
+    as the final step. Asks once before it runs.
 
 ## [0.11.9] - 2026-10-01
 
