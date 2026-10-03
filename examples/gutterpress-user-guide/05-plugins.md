@@ -255,7 +255,7 @@ export const styles = ["./styles/components.css", "./styles/callouts.css"];
 
 A `styles` file is treated exactly like one of your project's own stylesheets:
 a `url()` to a font or image next to it is embedded in the build, a local
-`@import` is followed, and the `source.stylelint` check (`gutterpress validate`) checks it for print-safety
+`@import` is followed, and `gutterpress validate` checks it for print-safety
 problems — none of which a `css` string gets, because a string is opaque to
 every other part of the tool. The files land in the same cascade position as
 `css` (the entry's position in `extensions:`, before your stylesheets), in the

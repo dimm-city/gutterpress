@@ -92,6 +92,14 @@ jobs:
 
       # Preview<->print parity is the invariant this project treats as most
       # important, and until now the gate ran only when a human remembered.
+      - name: Font diagnostics (temporary)
+        run: |
+          google-chrome-stable --version
+          fc-list : family file | sort
+          for f in Georgia "Times New Roman" "Helvetica Neue" Helvetica Arial Menlo Consolas "Courier New" serif sans-serif monospace; do printf '%s -> ' "$f"; fc-match "$f"; done
+          ls /etc/fonts/conf.d
+          dpkg -l | grep -i 'fonts-' || true
+
       - name: Preview/print parity gate
         working-directory: packages/cli
         run: bun scripts/native-parity-gate.ts
