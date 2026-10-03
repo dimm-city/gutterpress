@@ -121,15 +121,24 @@ jobs:
           node tools/update-package-managers.test.mjs
           node tools/update-package-managers.mjs --check
 
-  # ── 2. Version bump & tag ─────────────────────────────────────────────────
+  # ── 2. Version bump ───────────────────────────────────────────────────────
+  #
+  # Bumps package.json + bun.lock and pushes THAT COMMIT only. The tag is
+  # created by `github-release` at the very end, once every artifact exists:
+  # three failed prerelease attempts in a row (0.11.10-alpha.4/5) each left a
+  # tag with no release behind it, because this job used to tag before a
+  # single binary had been built. A stray bump commit on a failed run is
+  # harmless (the next attempt bumps again); a stray tag is not — it is what
+  # consumers and `--verify-tag` key on.
   version:
-    name: Bump Version & Tag
+    name: Bump Version
     needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: write
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
+      sha: ${{ steps.tag.outputs.sha }}
       version: ${{ steps.tag.outputs.version }}
       prerelease: ${{ steps.tag.outputs.prerelease }}
     env:
@@ -168,8 +177,8 @@ jobs:
             exit 1
           fi
 
-      # Check out (and later push the bump commit + tag to) the branch the
-      # release was dispatched from — main for stable, release/* for a beta.
+      # Check out (and later push the bump commit to) the branch the release
+      # was dispatched from — main for stable, release/* for a beta.
       - uses: actions/checkout@v5
         with:
           ref: ${{ github.ref_name }}
@@ -212,43 +221,37 @@ jobs:
       - name: Update lockfile
         run: bun install
 
-      - name: Commit and tag
+      - name: Commit the bump
         id: tag
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-           git add packages/cli/package.json packages/desktop/package.json bun.lock
+          git add packages/cli/package.json packages/desktop/package.json bun.lock
 
           if ! git diff --cached --quiet; then
             git commit -m "chore: bump version to $VERSION"
             git push
           fi
 
-          # Finding #48: a stable release tag is immutable once pushed —
+          # Finding #48, checked EARLY so a stable re-dispatch fails before
+          # any build runs: a stable release tag is immutable once pushed —
           # re-dispatching the same stable VERSION must fail loudly instead of
           # silently deleting and re-pointing a tag consumers may already have
           # pulled artifacts against. Only prerelease versions (VERSION
           # contains '-', e.g. 0.4.0-beta.1) may be re-dispatched to let a
-          # release/* branch iterate on a beta before it ships stable.
+          # release/* branch iterate on a beta before it ships stable; the
+          # github-release job re-points such a tag when it creates it.
           if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null; then
             if echo "$VERSION" | grep -qE -- '-'; then
-              echo "Prerelease v$VERSION already exists on origin — re-dispatch replaces it."
-              git push origin ":refs/tags/v$VERSION"
+              echo "Prerelease v$VERSION already exists on origin — the release job will re-point it."
             else
               echo "::error::Tag v$VERSION already exists on origin. Stable release tags are immutable — refusing to re-point it. Dispatch a new version instead."
               exit 1
             fi
           fi
 
-          # Clear any local tag left over so tag creation below is idempotent
-          # (should not normally exist on a fresh checkout).
-          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
-            git tag -d "v$VERSION"
-          fi
-
-          git tag "v$VERSION"
-          git push origin "v$VERSION"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
           # A version with a '-' (e.g. 0.4.0-beta.1) is a prerelease: it marks
@@ -298,7 +301,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ needs.version.outputs.tag }}
+          ref: ${{ needs.version.outputs.sha }}
 
       - uses: ./.github/actions/bun
 
@@ -357,7 +360,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ needs.version.outputs.tag }}
+          ref: ${{ needs.version.outputs.sha }}
 
       - uses: ./.github/actions/bun
 
@@ -393,7 +396,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ needs.version.outputs.tag }}
+          ref: ${{ needs.version.outputs.sha }}
 
       - uses: ./.github/actions/bun
 
@@ -424,12 +427,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ needs.version.outputs.tag }}
+          ref: ${{ needs.version.outputs.sha }}
 
       - uses: ./.github/actions/bun
 
-      # No version patch needed — this job checks out the tag the `version`
-      # job already bumped and committed (ref: needs.version.outputs.tag).
+      # No version patch needed — this job checks out the bump commit the
+      # `version` job pushed (ref: needs.version.outputs.sha).
 
       # Finding #62: see build-desktop-linux. The action carries
       # CSC_IDENTITY_AUTO_DISCOVERY=false, which is what keeps this unsigned
@@ -465,7 +468,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ needs.version.outputs.tag }}
+          ref: ${{ needs.version.outputs.sha }}
 
       - uses: actions/setup-node@v5
         with:
@@ -529,10 +532,11 @@ jobs:
   # substantive smoke (new/ext add/build). Do not re-add per-OS verify
   # runners without a recorded failure class they would have caught.
 
-  # ── 6. Create release with ALL artifacts ──────────────────────────────────
+  # ── 6. Tag and create release with ALL artifacts ──────────────────────────
   #
-  # Waits for every build job before creating the release. Users see a complete
-  # release — no partial-artifact window.
+  # Waits for every build job before tagging and creating the release. Users
+  # see a complete release — no partial-artifact window — and a failed run
+  # leaves no tag behind.
 
   github-release:
     name: Create GitHub Release
@@ -562,7 +566,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ needs.version.outputs.tag }}
+          ref: ${{ needs.version.outputs.sha }}
 
       - name: Download CLI artifacts
         uses: actions/download-artifact@v6
@@ -678,6 +682,30 @@ jobs:
           cat >> release-notes.md <<'EOF'
           ```
           EOF
+
+      # The tag is created HERE, at the bump commit every artifact above was
+      # built from, and only once they all exist (see the `version` job's
+      # header). A prerelease tag left by an earlier dispatch of the SAME
+      # version is re-pointed; a stable one was already refused by `version`.
+      - name: Tag the release commit
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+          SHA: ${{ needs.version.outputs.sha }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            if [ "${{ needs.version.outputs.prerelease }}" = "true" ]; then
+              echo "Prerelease $TAG already exists on origin — re-pointing it at $SHA."
+              git push origin ":refs/tags/$TAG"
+            else
+              echo "::error::Tag $TAG already exists on origin. Stable release tags are immutable."
+              exit 1
+            fi
+          fi
+          git tag "$TAG" "$SHA"
+          git push origin "$TAG"
 
       - name: Create GitHub release
         run: |
