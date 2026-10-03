@@ -36,11 +36,14 @@
     onRestore,
     onDiscard,
     onDismiss,
+    onReportProblem,
   }: {
     items: RecoveryItem[];
     onRestore: (item: RecoveryItem) => void;
     onDiscard: (item: RecoveryItem) => void;
     onDismiss: () => void;
+    /** An unclean exit is a bug worth hearing about: opens Report a problem (after "Decide later"). */
+    onReportProblem?: () => void;
   } = $props();
 
   function when(ms: number): string {
@@ -209,6 +212,9 @@
       {/each}
     </ul>
     <footer class="cr-foot">
+      {#if onReportProblem}
+        <button class="cr-link" onclick={() => { onDismiss(); onReportProblem?.(); }}>Report a problem</button>
+      {/if}
       <button class="cr-btn cr-btn-neutral" onclick={onDismiss}>Decide later</button>
     </footer>
   </div>
@@ -307,6 +313,18 @@
   .cr-foot {
     display: flex;
     justify-content: flex-end;
+    align-items: center;
+    gap: 12px;
+  }
+  .cr-link {
+    margin-right: auto;
+    padding: 0;
+    background: none;
+    border: none;
+    color: var(--app-info-text);
+    font-size: 12px;
+    cursor: pointer;
+    text-decoration: underline;
   }
   /* Geometry only — colors come from .cr-btn-neutral, .cr-btn-danger, or the
      shared .app-btn-primary recipe (theme.css). */

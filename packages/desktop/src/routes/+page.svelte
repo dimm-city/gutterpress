@@ -4,6 +4,7 @@
   import FindBar from "$lib/components/FindBar.svelte";
   import ExternalEditBanner from "$lib/components/ExternalEditBanner.svelte";
   import CrashRecoveryDialog from "$lib/components/CrashRecoveryDialog.svelte";
+  import type { TroubleshootingTab } from "$lib/troubleshooting-tabs";
   import { EditorBuffer } from "$lib/editor/buffer-state.svelte";
   import { EditorFileSession } from "$lib/editor/editor-file-session.svelte";
   import { chapterPath, isSafeChapterId } from "$lib/editor/chapter-path";
@@ -670,7 +671,7 @@
   // the inert workspace, which is a spec no-op).
   let landingRef = $state<{
     focusLayer: () => void;
-    showTab: (tab: "projects" | "settings" | "help" | "about" | "troubleshooting", sub?: "diagnostics" | "logs") => void;
+    showTab: (tab: "projects" | "settings" | "help" | "about" | "troubleshooting", sub?: TroubleshootingTab) => void;
   } | null>(null);
   /** Sub-tab the start screen's embedded Settings opens on. */
   let landingSettingsTab = $state<SettingsTab>("app");
@@ -714,6 +715,12 @@
   /** Open the start screen on its Help tab (the global help affordance). */
   function openHelp() {
     landingRef?.showTab("help");
+    landingForcedOpen = true;
+  }
+
+  /** Open Troubleshooting → Report a problem (from an error toast or the unsaved-changes dialog). */
+  function openReportProblem() {
+    landingRef?.showTab("troubleshooting", "report");
     landingForcedOpen = true;
   }
 
@@ -2708,13 +2715,14 @@
 
 </script>
 
-<Toast bind:api={toast} />
+<Toast bind:api={toast} onReportProblem={openReportProblem} />
 
 <CrashRecoveryDialog
   items={crashRecovery.items}
   onRestore={(item) => crashRecovery.restore(item)}
   onDiscard={(item) => crashRecovery.discard(item)}
   onDismiss={() => crashRecovery.dismiss()}
+  onReportProblem={openReportProblem}
 />
 
 <!-- RC3-1: App-level overlay for the initial "Opening folder…" lifecycle.busy state ONLY

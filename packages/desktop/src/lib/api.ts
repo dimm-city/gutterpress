@@ -115,6 +115,7 @@ export type {
   PrintSafeWarning,
   ProblemEntry,
   DoctorDiagnostics,
+  ProblemReport,
   DoctorInstallResult,
 } from './platform/dtos';
 
@@ -138,6 +139,7 @@ import type {
   PrintSafeWarning,
   ProblemEntry,
   DoctorDiagnostics,
+  ProblemReport,
   DoctorInstallResult,
 } from './platform/dtos';
 
@@ -286,6 +288,12 @@ export const api = {
     /** Reveal a file in the OS file manager. */
     showInFolder: (filePath: string) =>
       post<{ ok: boolean }>('/api/shell/show-in-folder', { filePath }),
+  },
+
+  report: {
+    /** Build the "Report a problem" bundle for the open book (null = no book). */
+    bundle: (projectDir: string | null) =>
+      post<ProblemReport>('/api/report/bundle', { projectDir }),
   },
 
   log: {

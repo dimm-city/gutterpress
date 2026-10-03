@@ -4,7 +4,8 @@
    * sub-tabbed home for everything a writer needs when something is wrong or
    * support asks "which version?". Diagnostics (system + tool status, copyable
    * report), Logs (the app's diagnostic logs) and Sync (repair tools
-   * for a stuck online backup). Versions + updates live in
+   * for a stuck online backup) and Report a problem (the diagnostic bundle
+   * + prefilled GitHub issue). Versions + updates live in
    * the landing's About tab. Split out of the old Help screen, which now
    * carries guidance only.
    *
@@ -15,6 +16,7 @@
   import { api } from "$lib/api";
   import type { DoctorDiagnostics } from "$lib/api";
   import LogsPanel from "$lib/components/LogsPanel.svelte";
+  import ReportProblemPanel from "$lib/components/ReportProblemPanel.svelte";
   import SyncToolsPanel from "$lib/components/SyncToolsPanel.svelte";
   import { sanitizeTroubleshootingTab, type TroubleshootingTab } from "$lib/troubleshooting-tabs";
 
@@ -38,6 +40,7 @@
     { id: "logs", label: "Logs" },
     { id: "diagnostics", label: "Diagnostics" },
     { id: "sync", label: "Sync" },
+    { id: "report", label: "Report a problem" },
   ];
   // Mounted fresh per visit; the initial value is the requested landing tab.
   // svelte-ignore state_referenced_locally
@@ -46,6 +49,7 @@
     diagnostics: undefined,
     logs: undefined,
     sync: undefined,
+    report: undefined,
   });
 
   function onTablistKeydown(e: KeyboardEvent) {
@@ -188,6 +192,8 @@
       <LogsPanel />
     {:else if activeTab === "sync"}
       <SyncToolsPanel {projectDir} {onCloseBook} />
+    {:else if activeTab === "report"}
+      <ReportProblemPanel {projectDir} />
     {:else if loading}
       <p class="status">Checking system…</p>
     {:else if error}

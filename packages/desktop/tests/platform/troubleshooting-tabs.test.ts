@@ -10,8 +10,8 @@ import { TROUBLESHOOTING_TAB_IDS, sanitizeTroubleshootingTab } from "../../src/l
 const root = path.resolve(import.meta.dir, "../..");
 
 describe("sanitizeTroubleshootingTab", () => {
-  test("ids are Logs, Diagnostics, Sync in that order", () => {
-    expect([...TROUBLESHOOTING_TAB_IDS]).toEqual(["logs", "diagnostics", "sync"]);
+  test("ids are Logs, Diagnostics, Sync, Report a problem in that order", () => {
+    expect([...TROUBLESHOOTING_TAB_IDS]).toEqual(["logs", "diagnostics", "sync", "report"]);
   });
 
   test("valid ids pass through unchanged", () => {

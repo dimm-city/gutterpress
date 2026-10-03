@@ -328,6 +328,14 @@ export type RemoteGuidanceId =
   | "ready-to-sync"
   | "ssh-use-own-tools";
 
+/** "Report a problem" bundle (`api.report.bundle`). Mirrors `$lib/server/problem-report.ts`. */
+export interface ProblemReport {
+  /** Full Markdown report (system + book summary + app-log tail) for the clipboard. */
+  report: string;
+  /** GitHub `issues/new` URL with the system + book sections prefilled. */
+  issueUrl: string;
+}
+
 /** One diagnostic log file the host can list (userData/logs, newest first). */
 export interface LogFileEntry {
   /** File name (e.g. "my-book.log"). */
