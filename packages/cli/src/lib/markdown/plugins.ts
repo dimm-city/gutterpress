@@ -1,13 +1,16 @@
-import { existsSync, statSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, statSync, unlinkSync } from "node:fs";
 import { link, unlink } from "node:fs/promises";
-import { resolve, join, dirname, basename, extname, relative } from "node:path";
+import { isBuiltin } from "node:module";
+import { resolve, join, dirname, basename, extname, isAbsolute, relative, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { ResolvedExtensionConfig } from "../../schema/manifest.types";
 import {
   isExactNpmVersion,
   isValidNpmPackageName,
+  packageResolutionTargets,
   resolvePackageEntry,
   resolveVendoredPluginInstallRoot,
+  safePackageTarget,
   vendoredNpmPluginPackageDir,
 } from "../plugin-vendor";
 // #239: the SAME declared-stylesheet resolver a theme's `styles` resolve
@@ -63,6 +66,114 @@ interface LoadedNpmPackage {
   entryPath: string | null;
 }
 
+// ── Compiled-binary resolver (Bun standalone executables only) ──────────────
+//
+// A `bun build --compile` binary resolves bare specifiers from on-disk modules
+// with its own resolver, and that resolver cannot find a dependency whose
+// package.json carries an `exports` map ("Cannot find package 'highlight.js'
+// from …/markdown-it-highlightjs/dist/index.js") — the same vendored tree loads
+// fine under `bun run` and under Node (the desktop host). So, for importers
+// inside a vendored plugin tree the loader has opened, this runtime plugin
+// answers bare requests itself: walk the nested `node_modules` the way Node
+// does, honour `exports` with the installer's own helper, hand back the file.
+// Anything it cannot resolve falls through to Bun's resolver unchanged, and
+// nothing outside a vendored tree is ever touched. Node never sees it.
+
+interface BunRuntime {
+  plugin?(plugin: {
+    name: string;
+    setup(build: {
+      onResolve(
+        options: { filter: RegExp },
+        callback: (args: { path: string; importer: string; kind: string }) => { path: string } | undefined,
+      ): void;
+    }): void;
+  }): void;
+}
+
+const vendoredRootsOpened = new Set<string>();
+let bunVendoredResolverInstalled = false;
+
+function isInsideDir(candidate: string, root: string): boolean {
+  return candidate === root || candidate.startsWith(root.endsWith(sep) ? root : root + sep);
+}
+
+/** Node-style bare-specifier resolution from `fromDir`, confined to `stopRoot`. */
+function resolveBareSpecifierSync(
+  specifier: string,
+  fromDir: string,
+  stopRoot: string,
+  condition: "import" | "require",
+): string | null {
+  const parts = specifier.split("/");
+  const name = specifier.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0]!;
+  const subpath = specifier.slice(name.length).replace(/^\//, "");
+  for (let dir = fromDir; isInsideDir(dir, stopRoot); dir = dirname(dir)) {
+    const packageDir = join(dir, "node_modules", ...name.split("/"));
+    const packageJson = join(packageDir, "package.json");
+    if (!existsSync(packageJson)) {
+      if (dir === stopRoot) break;
+      continue;
+    }
+    let manifest: Record<string, unknown>;
+    try {
+      manifest = JSON.parse(readFileSync(packageJson, "utf8")) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+    for (const target of packageResolutionTargets(manifest, subpath, condition)) {
+      const rel = safePackageTarget(target.target);
+      if (!rel) continue;
+      const base = resolve(packageDir, ...rel.split("/"));
+      if (!isInsideDir(base, packageDir)) continue;
+      const candidates = target.exact
+        ? [base]
+        : [base, `${base}.mjs`, `${base}.js`, `${base}.cjs`, `${base}.json`, join(base, "index.mjs"), join(base, "index.js"), join(base, "index.cjs")];
+      for (const candidate of candidates) {
+        try {
+          if (statSync(candidate).isFile()) return candidate;
+        } catch {
+          // next candidate
+        }
+      }
+    }
+    return null;
+  }
+  return null;
+}
+
+function installBunVendoredResolver(): void {
+  if (bunVendoredResolverInstalled) return;
+  bunVendoredResolverInstalled = true;
+  const bun = (globalThis as { Bun?: BunRuntime }).Bun;
+  if (typeof bun?.plugin !== "function") return;
+  bun.plugin({
+    name: "gutterpress-vendored-plugins",
+    setup(build) {
+      build.onResolve({ filter: /^[^./]/ }, (args) => {
+        if (!args.importer || isAbsolute(args.path) || /^[a-z]+:/i.test(args.path) || isBuiltin(args.path)) {
+          return undefined;
+        }
+        let root: string | undefined;
+        for (const opened of vendoredRootsOpened) {
+          if (isInsideDir(args.importer, opened)) {
+            root = opened;
+            break;
+          }
+        }
+        if (!root) return undefined;
+        const resolved = resolveBareSpecifierSync(
+          args.path,
+          dirname(args.importer),
+          root,
+          args.kind === "require-call" || args.kind === "require-resolve" ? "require" : "import",
+        );
+        return resolved ? { path: resolved } : undefined;
+      });
+    },
+  });
+}
+
 /**
  * Resolve and import an npm plugin package.
  *
@@ -82,11 +193,13 @@ async function loadNpmPackage(
   version?: string,
 ): Promise<LoadedNpmPackage> {
   // A pinned entry loads from its vendored copy — a plain nested npm tree, so
-  // a dynamic `import()` of the package entry is all it takes: Node (and Bun,
-  // including the compiled CLI binary — this is a runtime path, nothing for a
-  // bundler to embed) resolves the package's own imports/requires through its
-  // `node_modules` the ordinary way, and `import()` loads a CommonJS entry as
-  // readily as an ESM one. The folder is authoritative once present: a broken
+  // a dynamic `import()` of the package entry is all it takes: Node (and Bun —
+  // this is a runtime path, nothing for a bundler to embed) resolves the
+  // package's own imports/requires through its `node_modules` the ordinary
+  // way, and `import()` loads a CommonJS entry as readily as an ESM one. The
+  // one exception is the compiled CLI binary, whose resolver needs the small
+  // runtime plugin above for `exports`-bearing dependencies. The folder is
+  // authoritative once present: a broken
   // copy is an error pointing at reinstall, never a silent fall-through to
   // some other package of the same name. A pinned entry with NO vendored
   // folder falls through to the legacy lookups below and ends at the "not
@@ -108,6 +221,8 @@ async function loadNpmPackage(
         );
       }
       const entryPath = join(packageDir, ...entry.split("/"));
+      vendoredRootsOpened.add(installRoot);
+      installBunVendoredResolver();
       return {
         module: await import(pathToFileURL(entryPath).href),
         moduleDir: dirname(entryPath),

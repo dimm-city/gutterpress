@@ -333,7 +333,12 @@ dynamic `import()` of the vendored package's entry (resolved from its own
 `package.json`); Node's — and Bun's, in the compiled binary — ordinary module
 resolution serves the package's imports from that nested tree. Nothing is
 recorded about the tree and nothing re-verifies it on load: integrity is
-checked once, at install time. A vendored folder that is present but broken
+checked once, at install time. One runtime seam remains: a `bun build
+--compile` binary's own resolver cannot find a dependency whose package.json
+carries an `exports` map, so inside the compiled CLI a ~80-line `Bun.plugin`
+resolver (in `plugins.ts`, active only for importers inside a vendored tree)
+answers those bare requests the way Node would; `bun run` and Node never use
+it. A vendored folder that is present but broken
 fails with a reinstall hint; it never falls through to another package. (The
 receipt / snapshot / import-rewriting scheme that preceded this — a tree
 digest re-verified on every load, an acorn + es-module-lexer rewrite of every

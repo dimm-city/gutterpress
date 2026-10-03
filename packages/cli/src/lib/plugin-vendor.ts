@@ -166,7 +166,7 @@ async function readPackageJson(packageDir: string): Promise<Record<string, unkno
   return parsed;
 }
 
-function packageResolutionTargets(
+export function packageResolutionTargets(
   manifest: Record<string, unknown>,
   subpath: string,
   condition: "import" | "require",
@@ -195,7 +195,7 @@ function packageResolutionTargets(
   return [...new Set(targets)].map((target) => ({ target, exact: false }));
 }
 
-function safePackageTarget(target: string): string | null {
+export function safePackageTarget(target: string): string | null {
   if (
     !target ||
     target.includes("\\") ||

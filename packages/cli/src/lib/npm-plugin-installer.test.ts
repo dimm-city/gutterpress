@@ -1220,14 +1220,38 @@ describe("npm plugin installation", () => {
       const dir = await projectDir();
       const name = `markdown-it-runtime-${format}-fixture`;
       const dependency = `gutterpress-runtime-${format}-dependency`;
+      const shaped = `gutterpress-runtime-${format}-shaped.js`;
       const packages: GraphPackageFixture[] = format === "module"
         ? [
             {
               name,
               version: "1.0.0",
-              manifest: { type: "module", exports: "./index.js", dependencies: { [dependency]: "1.0.0" } },
+              // The entry sits in dist/ and imports a second dependency shaped
+              // like highlight.js (commonjs-typed, `main` + an `exports` map
+              // with a leading `types` condition) — exactly the shape the
+              // compiled binary's own resolver fails on (0.11.10-alpha.4).
+              manifest: {
+                type: "module",
+                exports: "./dist/index.js",
+                dependencies: { [dependency]: "1.0.0", [shaped]: "1.0.0" },
+              },
               files: {
-                "index.js": `import value from "${dependency}";\nexport default function plugin(md) { md.result = value; }\n`,
+                "dist/index.js": `import value from "${dependency}";\nimport shaped from "${shaped}";\nexport default function plugin(md) { md.result = value + "+" + shaped; }\n`,
+              },
+            },
+            {
+              name: shaped,
+              version: "1.0.0",
+              manifest: {
+                type: "commonjs",
+                main: "./lib/index.js",
+                exports: { ".": { types: "./types/index.d.ts", require: "./lib/index.js", import: "./es/index.js" } },
+              },
+              files: {
+                // highlight.js marks its ESM build with a nested package.json.
+                "es/package.json": '{"type":"module"}',
+                "es/index.js": "export default 'shaped-esm';\n",
+                "lib/index.js": "module.exports = 'shaped-cjs';\n",
               },
             },
             {
@@ -1282,7 +1306,7 @@ describe("npm plugin installation", () => {
       projects.push({
         dir,
         name,
-        expected: format === "module" ? "esm-declared" : "cjs-declared:json",
+        expected: format === "module" ? "esm-declared+shaped-esm" : "cjs-declared:json",
       });
     }
 
