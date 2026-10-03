@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { registerHostServices, getHostServices, type HostServices } from "../../electron/server-bridge/host-services";
+import { registerHostServices, type HostServices } from "../../electron/server-bridge/host-services";
 import {
   createPickedFilesService,
   createSavePathsService,
@@ -29,7 +29,6 @@ function request(body: unknown = {}): Request {
   });
 }
 
-let savedHostServices: HostServices | null;
 let savePaths: ReturnType<typeof createSavePathsService>;
 let pickedFiles: ReturnType<typeof createPickedFilesService>;
 /** What the mocked native Save dialog returns on its next call. */
@@ -42,11 +41,6 @@ let nextOpenResult: { canceled: boolean; filePaths: string[] };
 let lastOpenOptions: { title?: string; properties?: string[]; defaultPath?: string } | null;
 
 beforeEach(() => {
-  // Host services are process-global — save/restore so this file's fixture
-  // never leaks into a sibling test file (same convention as
-  // picked-files-capability.test.ts).
-  savedHostServices = getHostServices();
-
   savePaths = createSavePathsService();
   pickedFiles = createPickedFilesService();
   nextSaveResult = { canceled: true };
@@ -73,7 +67,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  registerHostServices(savedHostServices as HostServices);
+  registerHostServices(undefined as unknown as HostServices);
 });
 
 // ── dialog/save-pdf registers what the native dialog returned ──────────────

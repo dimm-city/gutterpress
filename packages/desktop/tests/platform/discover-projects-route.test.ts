@@ -54,12 +54,6 @@ afterEach(() => {
   registerHostServices(undefined as unknown as HostServices);
 });
 
-test("503 when prefs hooks are not registered", async () => {
-  const { status, message } = await caught(discoverProjectsRoute({ request: request() } as never));
-  expect(status).toBe(503);
-  expect(message).toBe("Prefs hooks not registered");
-});
-
 test("resolves 200 with the scan result on success — including a genuinely empty scan", async () => {
   registerHostServices(servicesWith({ scanForProjects: async () => [] }));
   const res = await discoverProjectsRoute({ request: request() } as never);

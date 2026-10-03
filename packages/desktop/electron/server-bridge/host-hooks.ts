@@ -1,12 +1,10 @@
 /**
  * Shared desktop/doctor hooks for server routes that need Electron host APIs.
  *
- * Storage lives in the single collapsed host object (ARCH review #31,
- * `./host-services.ts`) — `getDesktopHooks()`/`getDoctorHooks()` are thin
- * derived selectors over it.
+ * Routes reach them through `getHostServices().desktop` / `.doctor` /
+ * `.appImage` (`./host-services.ts`).
  */
 
-import { getHostServices } from './host-services';
 import type {
   AppImageInstallResult,
   AppImageRemoveResult,
@@ -77,19 +75,4 @@ export interface AppImageHooks {
   install: () => Promise<AppImageInstallResult>;
   /** Remove the desktop entry + icon (idempotent). */
   remove: () => Promise<AppImageRemoveResult>;
-}
-
-/** The live `DesktopHooks` slice of the collapsed host object, or null before `registerHostServices` runs. */
-export function getDesktopHooks(): DesktopHooks | null {
-  return getHostServices()?.desktop ?? null;
-}
-
-/** The live `DoctorHooks` slice of the collapsed host object, or null before `registerHostServices` runs. */
-export function getDoctorHooks(): DoctorHooks | null {
-  return getHostServices()?.doctor ?? null;
-}
-
-/** The live `AppImageHooks` slice of the collapsed host object, or null before `registerHostServices` runs. */
-export function getAppImageHooks(): AppImageHooks | null {
-  return getHostServices()?.appImage ?? null;
 }

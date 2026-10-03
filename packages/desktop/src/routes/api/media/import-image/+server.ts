@@ -1,9 +1,8 @@
 import { error } from '@sveltejs/kit';
 import { mkdir, copyFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { defineRoute, requireAbsolute, requireWithinProjectRoot } from '../../_lib/route';
+import { defineRoute, getHostServices, requireAbsolute, requireWithinProjectRoot } from '../../_lib/route';
 import { isWithinRootCanonical } from '../../../../../electron/server-bridge/fs-guard';
-import { getPickedFilesHooks } from '../../../../../electron/server-bridge/picked-files';
 import type { RequestHandler } from './$types';
 
 // ARCH/UX review M10: the toolbar's "Insert Image" dialog and MediaPanel's
@@ -73,7 +72,7 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; src: strin
     // dialog itself just returned (via dialog:pickImageFile[s]) can be
     // copied in; a `src` no picker call produced — or one already spent —
     // is rejected.
-    if (!getPickedFilesHooks()?.consume(srcResolved)) {
+    if (!getHostServices().pickedFiles.consume(srcResolved)) {
       error(403, 'media:importImage: src was not returned by a recent file picker');
     }
 

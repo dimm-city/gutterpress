@@ -4,7 +4,7 @@
  *
  * The route must accept NO path input — only a fixed `action` string — so a
  * renderer can never redirect the install. These tests exercise the route
- * factory (validate() + hooks wiring + the 503/400 envelopes), not
+ * factory (validate() + host wiring + the 400 envelope), not
  * electron/main.ts.
  */
 import { afterEach, describe, expect, test } from "bun:test";
@@ -61,13 +61,6 @@ afterEach(() => {
 });
 
 describe("GET /api/app/appimage-integration", () => {
-  test("503 when the hooks are not registered", async () => {
-    registerHostServices(makeHostServices({ appImage: undefined }));
-    const { status, message } = await caught(statusRoute({ request: request() } as never));
-    expect(status).toBe(503);
-    expect(message).toBe("AppImage integration hooks not registered");
-  });
-
   test("returns the host status verbatim", async () => {
     registerHostServices(
       makeHostServices({ appImage: { getStatus: async () => supportedStatus } }),
@@ -121,12 +114,6 @@ describe("POST /api/app/appimage-integration", () => {
     await actionRoute({ request: request({ action: "install" }) } as never);
     await actionRoute({ request: request({ action: "remove" }) } as never);
     expect(calls).toEqual(["install", "remove"]);
-  });
-
-  test("503 when the hooks are not registered", async () => {
-    registerHostServices(makeHostServices({ appImage: undefined }));
-    const { status } = await caught(actionRoute({ request: request({ action: "install" }) } as never));
-    expect(status).toBe(503);
   });
 
   // Every realistic failure here is a raw node:fs error. A non-technical

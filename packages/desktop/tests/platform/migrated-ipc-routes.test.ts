@@ -5,7 +5,7 @@
  *     updater:getStatus/check/download were plain request/response IPC
  *     channels despite their remote: and updater: siblings already being
  *     server routes. These tests exercise the ROUTE versions (factory-level:
- *     validate() + hooks wiring + the 503/400 envelopes), not electron/main.ts
+ *     validate() + host wiring + the 400 envelopes), not electron/main.ts
  *     directly.
  *  2. fs:watchFolder's dead route + the dead api.fs.watchFolder/unwatchFolder,
  *     api.app.flushDone, and api.status() client wrappers are gone — grep
@@ -48,9 +48,8 @@ async function caught(p: Promise<unknown>): Promise<{ status: number; message: u
 }
 
 /**
- * The shared base fake, with remote/sync/updater defaulting to "not
- * registered" (undefined) — each describe block below overrides the ONE it's
- * testing per-test; the 503 tests rely on this default.
+ * The shared base fake — each describe block below overrides the ONE domain
+ * it's testing per-test.
  *
  * `fsGuard` models an OPEN project at `/abs/project`: `remote/*` routes now
  * confine their `projectDir` to the host-owned `projectRoots()` allow-list
@@ -62,20 +61,16 @@ async function caught(p: Promise<unknown>): Promise<{ status: number; message: u
  */
 function baseServices(): HostServices {
   return makeHostServices({
-    remote: undefined,
-    sync: undefined,
-    updater: undefined,
     fsGuard: { projectRoots: () => ["/abs/project"], readOnlyRoots: () => [] as string[] },
   });
 }
 
 afterEach(() => {
-  // Fully UN-register (not just reset to an all-hooks-missing fake) — bun's
-  // test file execution order is not alphabetical/deterministic, and
-  // `__gutterpressHost__` is one process-wide globalThis key (host-services.ts),
-  // so leaving even a "safe" fake object registered here would leak into
-  // host-services.test.ts's "returns null before registration" assertion
-  // if that file happens to run after this one.
+  // Fully UN-register — bun's test file execution order is not
+  // alphabetical/deterministic, and `__gutterpressHost__` is one process-wide
+  // globalThis key (host-services.ts), so leaving even a "safe" fake object
+  // registered here would leak into host-services.test.ts's "throws before
+  // registration" assertion if that file happens to run after this one.
   registerHostServices(undefined as unknown as HostServices);
 });
 
@@ -87,13 +82,6 @@ describe("POST /api/sync/set-auto-sync", () => {
     const { status, message } = await caught(setAutoSyncRoute({ request: request({ enabled: "yes" }) } as never));
     expect(status).toBe(400);
     expect(message).toBe("sync:setAutoSync requires a boolean");
-  });
-
-  test("503 when sync hooks are not registered", async () => {
-    registerHostServices(baseServices());
-    const { status, message } = await caught(setAutoSyncRoute({ request: request({ enabled: true }) } as never));
-    expect(status).toBe(503);
-    expect(message).toBe("Sync settings hooks not registered");
   });
 
   test("calls hooks.setAutoSync with the validated boolean and returns its result", async () => {
@@ -116,7 +104,7 @@ describe("POST /api/sync/set-auto-sync", () => {
 // ── remote/clone-repository ──────────────────────────────────────────────────
 
 describe("POST /api/remote/clone-repository", () => {
-  const remoteBase = { loadLib: async () => ({}), tokenStore: {} as never, GITHUB_HOST: "github.com" };
+  const remoteBase = { tokenStore: {} as never, GITHUB_HOST: "github.com" };
 
   test("400 when url is missing", async () => {
     registerHostServices({
@@ -139,15 +127,6 @@ describe("POST /api/remote/clone-repository", () => {
       cloneRepositoryRoute({ request: request({ url: "https://x/y.git", parentDir: "rel" }) } as never),
     );
     expect(status).toBe(400);
-  });
-
-  test("503 when remote hooks are not registered", async () => {
-    registerHostServices(baseServices());
-    const { status, message } = await caught(
-      cloneRepositoryRoute({ request: request({ url: "https://x/y.git", parentDir: "/abs" }) } as never),
-    );
-    expect(status).toBe(503);
-    expect(message).toBe("Remote hooks not available");
   });
 
   test("calls hooks.cloneRepository with the validated body and returns its result", async () => {
@@ -194,13 +173,6 @@ describe("POST /api/remote/clone-repository", () => {
 // ── updater/get-status, updater/check, updater/download ─────────────────────
 
 describe("updater server routes", () => {
-  test("get-status: 503 when updater hooks are not registered", async () => {
-    registerHostServices(baseServices());
-    const { status, message } = await caught(updaterGetStatusRoute({ request: request() } as never));
-    expect(status).toBe(503);
-    expect(message).toBe("Updater hooks not registered");
-  });
-
   test("get-status: calls hooks.getStatus and returns its result", async () => {
     const fakeStatus = { currentVersion: "1.0.0", stagedVersion: null, availableVersion: null, availableAction: null, phase: "idle", error: null };
     registerHostServices({

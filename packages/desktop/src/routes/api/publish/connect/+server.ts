@@ -1,5 +1,5 @@
-import { getHooks, handlePublishErrors } from '../_hooks';
-import { defineRoute, requireProjectDir } from '../../_lib/route';
+import { handlePublishErrors } from '../_hooks';
+import { defineRoute, getHostServices, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 /**
@@ -8,12 +8,7 @@ import type { RequestHandler } from './$types';
  * paste (or a manifest error mid-verify) leaves any previously working
  * credential untouched. Response is redacted — never includes the token.
  */
-export const POST: RequestHandler = defineRoute<
-  { projectDir: string; providerId?: string; token?: string; account?: string },
-  NonNullable<ReturnType<typeof getHooks>>
->({
-  hooks: getHooks,
-  hooksUnavailableMessage: 'Publish hooks not available',
+export const POST: RequestHandler = defineRoute<{ projectDir: string; providerId?: string; token?: string; account?: string }>({
   // In `validate`, not `call` — see publish/run's note on handlePublishErrors.
   validate: async (raw) => {
     const body = raw as {
@@ -29,22 +24,19 @@ export const POST: RequestHandler = defineRoute<
       ...(typeof body.account === 'string' ? { account: body.account } : {}),
     };
   },
-  call: async ({ body, hooks }) =>
+  call: async ({ body }) =>
     handlePublishErrors('publish:connect', async () => {
       if (!body.providerId || typeof body.token !== 'string' || !body.token.trim()) {
         throw new Error('publish:connect requires { providerId, token }');
       }
-      const lib = await hooks.loadLib();
-      if (!lib.connectPublishProvider) {
-        throw new Error('Publishing is not available in this version of the lib');
-      }
+      const lib = await loadLib();
       // An optional account label stores a NAMED credential (under the compound
       // `<host>#<account>` key) so a user can keep several per provider; empty
       // stores the default.
       const account = typeof body.account === 'string' ? body.account.trim() : '';
       return lib.connectPublishProvider(
         { projectDir: body.projectDir, providerId: body.providerId, token: body.token, ...(account ? { account } : {}) },
-        { tokenStore: hooks.tokenStore },
+        { tokenStore: getHostServices().remote.tokenStore },
       );
     }),
 });

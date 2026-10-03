@@ -1,9 +1,8 @@
 import { error } from '@sveltejs/kit';
 import { mkdir, copyFile } from 'node:fs/promises';
 import path from 'node:path';
-import { defineRoute, requireWithinProjectRoot } from '../../_lib/route';
-import { getFsGuardHooks, isWithinAnyRootCanonical } from '../../../../../electron/server-bridge/fs-guard';
-import { getPickedFilesHooks } from '../../../../../electron/server-bridge/picked-files';
+import { defineRoute, getHostServices, requireWithinProjectRoot } from '../../_lib/route';
+import { isWithinAnyRootCanonical } from '../../../../../electron/server-bridge/fs-guard';
 import type { RequestHandler } from './$types';
 
 // P1 review: `src` is not confined to the open project the way `dest` is —
@@ -40,10 +39,8 @@ export const POST: RequestHandler = defineRoute<{ src: string; dest: string }>({
     // A src already inside the currently-open project needs no picker
     // capability — nothing is being smuggled in from outside. Only a src
     // OUTSIDE every known project root is the escape the P1 review flagged.
-    const guard = getFsGuardHooks();
-    const projectRoots = guard ? guard.projectRoots() : [];
-    const insideProject = await isWithinAnyRootCanonical(srcResolved, projectRoots);
-    if (!insideProject && !getPickedFilesHooks()?.consume(srcResolved)) {
+    const insideProject = await isWithinAnyRootCanonical(srcResolved, getHostServices().fsGuard.projectRoots());
+    if (!insideProject && !getHostServices().pickedFiles.consume(srcResolved)) {
       error(403, 'fs:copyFile: src was not returned by a recent file picker');
     }
 

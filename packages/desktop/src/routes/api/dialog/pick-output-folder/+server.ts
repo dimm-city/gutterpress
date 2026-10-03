@@ -1,9 +1,4 @@
-import { getDesktopHooks, type DesktopHooks } from '$lib/server/host-hooks.js';
-import { defineRoute } from '../../_lib/route';
-import {
-  getPickedFilesHooks,
-  getSavePathsHooks,
-} from '../../../../../electron/server-bridge/picked-files';
+import { defineRoute, getHostServices } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 // The Publish wizard's output-folder picker. Unlike `open-directory`, whose
@@ -20,19 +15,17 @@ import type { RequestHandler } from './$types';
 //     else meaningful: the other consumers of this capability
 //     (`fs:copyFile`/`media:importImage` `src`) match exact paths and would
 //     fail on a directory anyway.
-export const POST: RequestHandler = defineRoute<{ defaultPath?: string }, DesktopHooks>({
-  hooks: getDesktopHooks,
-  hooksUnavailableMessage: 'Desktop hooks not registered',
-  call: async ({ body, hooks }) => {
-    const res = await hooks.showOpenDialog({
+export const POST: RequestHandler = defineRoute<{ defaultPath?: string }>({
+  call: async ({ body }) => {
+    const res = await getHostServices().desktop.showOpenDialog({
       title: 'Choose where to save',
       properties: ['openDirectory', 'createDirectory'],
       ...(body.defaultPath ? { defaultPath: body.defaultPath } : {}),
     });
     if (res.canceled || res.filePaths.length === 0) return null;
     const dir = res.filePaths[0];
-    getSavePathsHooks()?.register(dir);
-    getPickedFilesHooks()?.register([dir]);
+    getHostServices().savePaths.register(dir);
+    getHostServices().pickedFiles.register([dir]);
     return dir;
   },
 });

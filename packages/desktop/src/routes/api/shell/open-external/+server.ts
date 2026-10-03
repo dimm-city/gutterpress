@@ -1,12 +1,9 @@
 import { error } from '@sveltejs/kit';
 import { isHttpUrl } from '../../../../../electron/navigation-policy';
-import { getDesktopHooks, type DesktopHooks } from '$lib/server/host-hooks.js';
-import { defineRoute } from '../../_lib/route';
+import { defineRoute, getHostServices } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = defineRoute<{ url: string }, DesktopHooks>({
-  hooks: getDesktopHooks,
-  hooksUnavailableMessage: 'Desktop hooks not registered',
+export const POST: RequestHandler = defineRoute<{ url: string }>({
   validate: (raw) => {
     const body = raw as { url?: string };
     if (!body.url) error(400, 'url is required');
@@ -18,8 +15,8 @@ export const POST: RequestHandler = defineRoute<{ url: string }, DesktopHooks>({
     }
     return { url: body.url };
   },
-  call: async ({ body, hooks }) => {
-    await hooks.openExternal(body.url);
+  call: async ({ body }) => {
+    await getHostServices().desktop.openExternal(body.url);
     return { ok: true };
   },
 });

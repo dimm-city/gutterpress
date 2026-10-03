@@ -1,5 +1,5 @@
-import { getHooks, handlePublishErrors, type LibPublishProviderInfo } from '../_hooks';
-import { defineRoute } from '../../_lib/route';
+import { handlePublishErrors } from '../_hooks';
+import { defineRoute, loadLib } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 /**
@@ -9,19 +9,11 @@ import type { RequestHandler } from './$types';
  * "publishing accounts" vs "Git servers" and to label them, independent of
  * whatever project happens to be open.
  */
-export const POST: RequestHandler = defineRoute<
-  Record<string, never>,
-  NonNullable<ReturnType<typeof getHooks>>
->({
-  hooks: getHooks,
-  hooksUnavailableMessage: 'Publish hooks not available',
-  call: async ({ hooks }) =>
+export const POST: RequestHandler = defineRoute<Record<string, never>>({
+  call: async () =>
     handlePublishErrors('publish:providers', async () => {
-      const lib = await hooks.loadLib();
-      if (!lib.listPublishProviders) {
-        throw new Error('Publishing is not available in this version of the lib');
-      }
-      return lib.listPublishProviders().map((info: LibPublishProviderInfo) => ({
+      const lib = await loadLib();
+      return lib.listPublishProviders().map((info) => ({
         id: info.id,
         label: info.label,
         kind: info.kind,

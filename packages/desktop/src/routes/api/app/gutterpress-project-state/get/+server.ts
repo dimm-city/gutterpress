@@ -1,19 +1,16 @@
-import { getPrefsHooks, type PrefsHooks } from '../../../../../../electron/server-bridge/prefs-hooks';
-import { defineRoute, requireAbsolute } from '../../../_lib/route';
+import { defineRoute, getHostServices, requireAbsolute } from '../../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = defineRoute<{ projectDir: string }, PrefsHooks>({
-  hooks: getPrefsHooks,
-  hooksUnavailableMessage: 'Prefs hooks not registered',
+export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
   validate: (raw) => ({
     projectDir: requireAbsolute(
       (raw as { projectDir?: string }).projectDir,
        'app/gutterpress-project-state:get',
     ),
   }),
-  call: async ({ body, hooks }) => {
-    const prefs = await hooks.readPrefs();
-    const state = hooks.readProjectState(prefs.projectStates as Record<string, unknown> | undefined, body.projectDir);
+  call: async ({ body }) => {
+    const { prefs } = getHostServices();
+    const state = prefs.readProjectState((await prefs.readPrefs()).projectStates, body.projectDir);
     return state ?? null;
   },
 });

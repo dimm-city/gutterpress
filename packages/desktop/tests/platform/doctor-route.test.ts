@@ -1,5 +1,11 @@
-import { expect, test } from "bun:test";
+import { beforeAll, expect, test } from "bun:test";
+import { registerHostServices } from "../../electron/server-bridge/host-services";
+import { makeHostServices } from "../support/host-services-fake";
 import { GET } from "../../src/routes/api/doctor/+server";
+
+beforeAll(() => {
+  registerHostServices(makeHostServices());
+});
 
 // L10: the doctor route must exclude the bundled-Chromium diagnostic entry
 // from the "external tools" list by matching a stable machine id
@@ -40,7 +46,7 @@ test("doctor route response includes versions, docs, and the existing config dir
   const res = await GET(event());
   const body = await res.json();
   expect(body).toHaveProperty('desktopVersion');
-  expect(body.desktopVersion).toBe('unknown'); // getDoctorHooks() isn't registered in tests
+  expect(body.desktopVersion).toBe('0.0.0-test'); // the registered host's doctor.getDesktopVersion()
   expect(body).toHaveProperty('libVersion');
   expect(body).toHaveProperty('configDir');
   expect(body.configDir).toContain('gutterpress');

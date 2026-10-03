@@ -1,14 +1,9 @@
-import { getHooks, handleRemoteErrors, type LibModule, type RemoteHooks, type TokenStore } from '../_hooks';
-import { defineRoute } from '../../_lib/route';
+import { handleRemoteErrors } from '../../../../../electron/server-bridge/friendly-errors';
+import { defineRoute, getHostServices, loadLib } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = defineRoute<
-  { host?: string },
-  RemoteHooks<LibModule, TokenStore>
->({
-  hooks: getHooks,
-  hooksUnavailableMessage: 'Remote hooks not available',
-  call: async ({ body, hooks }) =>
+export const POST: RequestHandler = defineRoute<{ host?: string }>({
+  call: async ({ body }) =>
     handleRemoteErrors('remote:disconnectHost', async () => {
       if (typeof body?.host !== 'string' || !body.host.trim()) {
         throw new Error('remote:disconnectHost requires a host');
@@ -22,17 +17,13 @@ export const POST: RequestHandler = defineRoute<
       // credential — github.com/generic-forge disconnects (the common case
       // for this generic route) never pay for it, and go straight to a plain
       // local delete.
-      const existing = await hooks.tokenStore.get(body.host);
+      const { tokenStore } = getHostServices().remote;
+      const existing = await tokenStore.get(body.host);
       if (existing?.kind === 'google-oauth') {
-        const lib = await hooks.loadLib();
-        if (lib.disconnectPublishCredential) {
-          await lib.disconnectPublishCredential(body.host, { tokenStore: hooks.tokenStore });
-        } else {
-          await hooks.tokenStore.delete(body.host);
-          if (lib.revokeGoogleCredential) void lib.revokeGoogleCredential(existing.token);
-        }
+        const lib = await loadLib();
+        await lib.disconnectPublishCredential(body.host, { tokenStore });
       } else {
-        await hooks.tokenStore.delete(body.host);
+        await tokenStore.delete(body.host);
       }
       return { ok: true };
     }),

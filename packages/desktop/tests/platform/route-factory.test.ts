@@ -1,11 +1,10 @@
 import { expect, test } from "bun:test";
 import { isHttpError } from "@sveltejs/kit";
-import { defineRoute, loadLib, loadApiLib, requireAbsolute } from "../../src/routes/api/_lib/route";
+import { defineRoute, loadLib, loadApiLib, requireAbsolute, setLibForTests } from "../../src/routes/api/_lib/route";
 
 // defineRoute (#35/#36/#38): the declarative route factory that owns body
-// parsing, absolute-path validation, error mapping, and the
-// hooks-not-registered 503 in one place, so the ~91 +server.ts route files
-// don't each hand-roll the same 4-6 line skeleton.
+// parsing, absolute-path validation and error mapping in one place, so the
+// +server.ts route files don't each hand-roll the same skeleton.
 
 function event(body: unknown): Parameters<ReturnType<typeof defineRoute>>[0] {
   return {
@@ -64,37 +63,6 @@ test("defineRoute's validate passing through lets call run and returns its resul
   });
   const res = await handler(event({ projectDir: "/abs/path" }));
   expect(await res.json()).toEqual({ ok: true, projectDir: "/abs/path" });
-});
-
-test("defineRoute returns a 503 with the given message when hooks() is not registered", async () => {
-  const handler = defineRoute<Record<string, never>, { ping(): string }>({
-    hooks: () => null,
-    hooksUnavailableMessage: "Widget hooks not registered",
-    call: async ({ hooks }) => hooks.ping(),
-  });
-  const { status, message } = await caught(handler(event({})));
-  expect(status).toBe(503);
-  expect(message).toBe("Widget hooks not registered");
-});
-
-test("defineRoute falls back to a generic 503 message when none is given", async () => {
-  const handler = defineRoute({
-    hooks: () => null,
-    call: async () => "unreachable",
-  });
-  const { status, message } = await caught(handler(event({})));
-  expect(status).toBe(503);
-  expect(message).toBe("Hooks not registered");
-});
-
-test("defineRoute passes the live hooks object through to call when registered", async () => {
-  const hooksObj = { ping: () => "pong" };
-  const handler = defineRoute<Record<string, never>, typeof hooksObj>({
-    hooks: () => hooksObj,
-    call: async ({ hooks }) => ({ result: hooks.ping() }),
-  });
-  const res = await handler(event({}));
-  expect(await res.json()).toEqual({ result: "pong" });
 });
 
 test("defineRoute maps a thrown plain Error to a 500 with its message (no onError given)", async () => {
@@ -176,7 +144,14 @@ test("loadLib resolves the real lib module and caches the same promise across ca
   expect(typeof lib.listBuiltInStyleSets).toBe("function");
 });
 
-  test("loadApiLib resolves the narrower 'gutterpress/api' surface and caches it", async () => {
+test("setLibForTests substitutes what loadLib resolves, and null restores the real lib", async () => {
+  setLibForTests({ addExtension: (async () => "fake") as never });
+  expect(await (await loadLib()).addExtension("/p", "x")).toBe("fake");
+  setLibForTests(null);
+  expect(typeof (await loadLib()).listBuiltInStyleSets).toBe("function");
+});
+
+test("loadApiLib resolves the narrower 'gutterpress/api' surface and caches it", async () => {
   const p1 = loadApiLib();
   const p2 = loadApiLib();
   expect(p1).toBe(p2);

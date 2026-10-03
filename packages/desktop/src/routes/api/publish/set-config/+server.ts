@@ -1,5 +1,5 @@
-import { getHooks, handlePublishErrors } from '../_hooks';
-import { defineRoute, requireProjectDir } from '../../_lib/route';
+import { handlePublishErrors } from '../_hooks';
+import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 /**
@@ -7,16 +7,11 @@ import type { RequestHandler } from './$types';
  * section (empty string values delete the key). Secrets never travel here —
  * they go through publish:connect into the credential store.
  */
-export const POST: RequestHandler = defineRoute<
-  {
+export const POST: RequestHandler = defineRoute<{
     projectDir: string;
     providerId?: string;
     values?: Record<string, unknown>;
-  },
-  NonNullable<ReturnType<typeof getHooks>>
->({
-  hooks: getHooks,
-  hooksUnavailableMessage: 'Publish hooks not available',
+  }>({
   // In `validate`, not `call` — see publish/run's note on handlePublishErrors.
   validate: async (raw) => {
     const body = raw as { projectDir?: unknown; providerId?: unknown; values?: unknown };
@@ -28,15 +23,12 @@ export const POST: RequestHandler = defineRoute<
         : {}),
     };
   },
-  call: async ({ body, hooks }) =>
+  call: async ({ body }) =>
     handlePublishErrors('publish:setConfig', async () => {
       if (!body.providerId || !body.values || typeof body.values !== 'object') {
         throw new Error('publish:setConfig requires { providerId, values }');
       }
-      const lib = await hooks.loadLib();
-      if (!lib.setPublishProviderConfig || !lib.publishProviderFor) {
-        throw new Error('Publishing is not available in this version of the lib');
-      }
+      const lib = await loadLib();
       // Validates the id (throws on unknown); the manifest key IS the id.
       const provider = lib.publishProviderFor(body.providerId);
       // Only plain string/number values may reach the manifest writer.

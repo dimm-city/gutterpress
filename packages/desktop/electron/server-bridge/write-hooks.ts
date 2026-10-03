@@ -1,10 +1,9 @@
 /**
  * Shared write-side-effect hooks for fs:writeFile server route.
  *
- * Storage lives in the single collapsed host object (ARCH review #31,
- * `./host-services.ts`) — `getWriteHooks()` is a thin derived selector over
- * it, retrieving the live reference the route uses to trigger the
- * auto-snapshot/sync debounce that lives in main.
+ * Reached through `getHostServices().write` (`./host-services.ts`): the live
+ * reference the route uses to trigger the auto-snapshot/sync debounce that
+ * lives in main.
  */
 
 import { getHostServices } from './host-services';
@@ -24,11 +23,6 @@ export interface WriteHooks {
    * exactly like the fs-guard's own repo root.
    */
   getRepositoryRoot: () => string | null;
-}
-
-/** The live `WriteHooks` slice of the collapsed host object, or null before `registerHostServices` runs. */
-export function getWriteHooks(): WriteHooks | null {
-  return getHostServices()?.write ?? null;
 }
 
 /**
@@ -59,8 +53,7 @@ export function getWriteHooks(): WriteHooks | null {
  * confirmed it was pasted, not shared.
  */
 export function scheduleAutoWriteEffects(targetPath: string): void {
-  const hooks = getWriteHooks();
-  if (!hooks) return;
+  const hooks = getHostServices().write;
   const watchedDir = hooks.getWatchedDir();
   if (!watchedDir) return;
   const repositoryRoot = hooks.getRepositoryRoot();
@@ -74,5 +67,5 @@ export function scheduleAutoWriteEffects(targetPath: string): void {
 
 /** Start preview regeneration immediately after the route's awaited write. */
 export function notifyPreviewSettledWrite(targetPath: string, writtenContent: string): void {
-  getWriteHooks()?.notifyPreviewSettledWrite(targetPath, writtenContent);
+  getHostServices().write.notifyPreviewSettledWrite(targetPath, writtenContent);
 }

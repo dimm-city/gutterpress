@@ -43,16 +43,16 @@ async function caught(p: Promise<unknown>): Promise<{ status: number; message: u
   }
 }
 
-/** The shared base fake, with remote/sync/updater "not registered" — each test overrides `remote` with the hook it's exercising. */
+/** The shared base fake — each test overrides `remote` with the hook it's exercising. */
 function baseServices(): HostServices {
-  return makeHostServices({ remote: undefined, sync: undefined, updater: undefined });
+  return makeHostServices();
 }
 
 afterEach(() => {
   registerHostServices(undefined as unknown as HostServices);
 });
 
-const remoteBase = { loadLib: async () => ({}), tokenStore: {} as never, GITHUB_HOST: "github.com" };
+const remoteBase = { tokenStore: {} as never, GITHUB_HOST: "github.com" };
 
 describe("POST /api/remote/sync", () => {
   test("400 (not 500) when projectDir is relative", async () => {

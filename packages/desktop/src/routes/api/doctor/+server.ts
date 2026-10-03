@@ -1,38 +1,11 @@
-import { getDoctorHooks } from '$lib/server/host-hooks.js';
 import { binOnPath, isToolId, planToolInstall, TOOL_DOWNLOAD_URLS } from '$lib/server/tool-install.js';
-import { defineRoute, loadLib } from '../_lib/route';
+import { defineRoute, getHostServices, loadLib } from '../_lib/route';
 import type { RequestHandler } from './$types';
-
-interface ToolStatus {
-  id: string;
-  name: string;
-  bin: string;
-  found: boolean;
-  path?: string;
-  version?: string;
-  usedBy: Array<{ feature: string; severity: 'required' | 'optional' }>;
-  installHint: string;
-  install?: { kind: 'run'; label: string } | { kind: 'download'; url: string };
-}
-
-interface SystemDiagnostics {
-  libVersion: string;
-  platform: { os: string; arch: string; release: string; node: string };
-  tools: ToolStatus[];
-  configDir: string;
-  docsUrl: string;
-}
-
-interface DoctorLibModule {
-  getSystemDiagnostics: () => Promise<SystemDiagnostics>;
-}
 
 export const GET: RequestHandler = defineRoute({
   call: async () => {
-    const lib = (await loadLib()) as unknown as DoctorLibModule;
+    const lib = await loadLib();
     const diag = await lib.getSystemDiagnostics();
-
-    const doctorHooks = getDoctorHooks();
 
     // Filter on the stable machine id, not the human-readable `bin` display
     // string — rewording the label must not silently stop excluding the
@@ -63,7 +36,7 @@ export const GET: RequestHandler = defineRoute({
           return { ...tool, install };
         }),
       ],
-      desktopVersion: doctorHooks ? doctorHooks.getDesktopVersion() : 'unknown',
+      desktopVersion: getHostServices().doctor.getDesktopVersion(),
       electronVersion: process.versions.electron,
       chromeVersion: process.versions.chrome,
     };

@@ -5,6 +5,7 @@ import path from "node:path";
 import { isHttpError } from "@sveltejs/kit";
 import { registerHostServices, type HostServices } from "../../electron/server-bridge/host-services";
 import { makeHostServices, type HostServicesOverrides } from "../support/host-services-fake";
+import { setLibForTests, type LibModule } from "../../src/routes/api/_lib/route";
 import * as gutterpress from "gutterpress";
 import { POST as createFileRoute } from "../../src/routes/api/fs/create-file/+server";
 import { POST as createFolderRoute } from "../../src/routes/api/fs/create-folder/+server";
@@ -47,23 +48,27 @@ let projectDir: string;
 let siblingDir: string;
 let outsideDir: string;
 
-/** Fake lib module for the VCS hooks bag, defaulting to "no version history"
- *  (local-folder) so delete tests that don't care about snapshotting can
- *  ignore it entirely. Individual tests override `vcs.loadLib` for the
- *  snapshot-discipline cases. */
 function baseServices(overrides: HostServicesOverrides = {}): HostServices {
   return makeHostServices({
     desktop: { getUserDataPath: () => tmpdir() },
     fsGuard: { projectRoots: () => [projectDir], readOnlyRoots: () => [] },
-    vcs: {
-      loadLib: async () => ({
-        detectProjectSource: async () => ({ type: "local-folder" }),
-        capabilitiesFor: () => ({ canSnapshot: false }),
-        providerFor: () => ({ snapshot: async () => ({ id: "fake", message: "", timestamp: 0 }) }),
-        isNoChangesError: () => false,
-      }),
-    },
     ...overrides,
+  });
+}
+
+/** Substitute the lib the routes reach through `loadLib()`. */
+function fakeLib(lib: Record<string, unknown>): void {
+  setLibForTests(lib as Partial<LibModule>);
+}
+
+/** The default lib fake: "no version history" (local-folder), so delete tests
+ *  that don't care about snapshotting can ignore it entirely. */
+function localFolderLib(): void {
+  fakeLib({
+    detectProjectSource: async () => ({ type: "local-folder" }),
+    capabilitiesFor: () => ({ canSnapshot: false }),
+    providerFor: () => ({ snapshot: async () => ({ id: "fake", message: "", timestamp: 0 }) }),
+    isNoChangesError: () => false,
   });
 }
 
@@ -77,9 +82,11 @@ beforeEach(async () => {
   await mkdir(outsideDir, { recursive: true });
   await writeFile(path.join(projectDir, "chapter-01.md"), "# One", "utf8");
   registerHostServices(baseServices());
+  localFolderLib();
 });
 
 afterEach(async () => {
+  setLibForTests(null);
   await rm(path.dirname(projectDir), { recursive: true, force: true });
 });
 
@@ -267,28 +274,22 @@ test("fs/delete: cannot delete the project root itself (400)", async () => {
 
 test("fs/delete: with version history, snapshots the working tree BEFORE deleting", async () => {
   const snapshotCalls: Array<{ projectDir: string; message: string }> = [];
-  registerHostServices(
-    baseServices({
-      vcs: {
-        loadLib: async () => ({
-          detectProjectSource: async () => ({ type: "local-git-folder" }),
-          capabilitiesFor: () => ({ canSnapshot: true }),
-          repoRootForSource: (s: { type?: string; repoRoot?: string }, d: string) =>
-            s?.type === "local-git-folder" ? s.repoRoot || d : d,
-          providerFor: () => ({
-            snapshot: async (opts: { projectDir: string; message: string }) => {
-              snapshotCalls.push({ projectDir: opts.projectDir, message: opts.message });
-              // The delete must not have happened yet when the snapshot runs.
-              expect(await exists(path.join(projectDir, "chapter-01.md"))).toBe(true);
-              return { id: "abc123", message: opts.message, timestamp: 0 };
-            },
-          }),
-          isNoChangesError: () => false,
-        }),
-        operationLogPath: () => "/fake/log",
+  registerHostServices(baseServices());
+  fakeLib({
+    detectProjectSource: async () => ({ type: "local-git-folder" }),
+    capabilitiesFor: () => ({ canSnapshot: true }),
+    repoRootForSource: (s: { type?: string; repoRoot?: string }, d: string) =>
+      s?.type === "local-git-folder" ? s.repoRoot || d : d,
+    providerFor: () => ({
+      snapshot: async (opts: { projectDir: string; message: string }) => {
+        snapshotCalls.push({ projectDir: opts.projectDir, message: opts.message });
+        // The delete must not have happened yet when the snapshot runs.
+        expect(await exists(path.join(projectDir, "chapter-01.md"))).toBe(true);
+        return { id: "abc123", message: opts.message, timestamp: 0 };
       },
     }),
-  );
+    isNoChangesError: () => false,
+  });
   const target = path.join(projectDir, "chapter-01.md");
   const res = await deleteRoute({
     request: request({ path: target, projectDir }),
@@ -300,25 +301,19 @@ test("fs/delete: with version history, snapshots the working tree BEFORE deletin
 });
 
 test("fs/delete: a real 'no changes since last snapshot' rejection is swallowed and the delete proceeds", async () => {
-  registerHostServices(
-    baseServices({
-      vcs: {
-        loadLib: async () => ({
-          detectProjectSource: async () => ({ type: "local-git-folder" }),
-          capabilitiesFor: () => ({ canSnapshot: true }),
-          repoRootForSource: (s: { type?: string; repoRoot?: string }, d: string) =>
-            s?.type === "local-git-folder" ? s.repoRoot || d : d,
-          providerFor: () => ({
-            snapshot: async () => {
-              throw new Error("no changes since the last snapshot");
-            },
-          }),
-          isNoChangesError: (e: unknown) => e instanceof Error && /no changes since the last snapshot/i.test(e.message),
-        }),
-        operationLogPath: () => "/fake/log",
+  registerHostServices(baseServices());
+  fakeLib({
+    detectProjectSource: async () => ({ type: "local-git-folder" }),
+    capabilitiesFor: () => ({ canSnapshot: true }),
+    repoRootForSource: (s: { type?: string; repoRoot?: string }, d: string) =>
+      s?.type === "local-git-folder" ? s.repoRoot || d : d,
+    providerFor: () => ({
+      snapshot: async () => {
+        throw new Error("no changes since the last snapshot");
       },
     }),
-  );
+    isNoChangesError: (e: unknown) => e instanceof Error && /no changes since the last snapshot/i.test(e.message),
+  });
   const target = path.join(projectDir, "chapter-01.md");
   const res = await deleteRoute({
     request: request({ path: target, projectDir }),
@@ -328,25 +323,19 @@ test("fs/delete: a real 'no changes since last snapshot' rejection is swallowed 
 });
 
 test("fs/delete: a REAL snapshot failure aborts the delete — nothing is deleted", async () => {
-  registerHostServices(
-    baseServices({
-      vcs: {
-        loadLib: async () => ({
-          detectProjectSource: async () => ({ type: "local-git-folder" }),
-          capabilitiesFor: () => ({ canSnapshot: true }),
-          repoRootForSource: (s: { type?: string; repoRoot?: string }, d: string) =>
-            s?.type === "local-git-folder" ? s.repoRoot || d : d,
-          providerFor: () => ({
-            snapshot: async () => {
-              throw new Error("git object database is corrupt");
-            },
-          }),
-          isNoChangesError: () => false,
-        }),
-        operationLogPath: () => "/fake/log",
+  registerHostServices(baseServices());
+  fakeLib({
+    detectProjectSource: async () => ({ type: "local-git-folder" }),
+    capabilitiesFor: () => ({ canSnapshot: true }),
+    repoRootForSource: (s: { type?: string; repoRoot?: string }, d: string) =>
+      s?.type === "local-git-folder" ? s.repoRoot || d : d,
+    providerFor: () => ({
+      snapshot: async () => {
+        throw new Error("git object database is corrupt");
       },
     }),
-  );
+    isNoChangesError: () => false,
+  });
   const target = path.join(projectDir, "chapter-01.md");
   const { status, message } = await caught(
     deleteRoute({ request: request({ path: target, projectDir }) } as Parameters<typeof deleteRoute>[0]),
@@ -377,14 +366,8 @@ test("fs/delete: end-to-end against a REAL git repo — the deleted file's conte
   const target = path.join(projectDir, "chapter-01.md");
   await writeFile(target, "# One (edited)", "utf8");
 
-  registerHostServices(
-    baseServices({
-      vcs: {
-        loadLib: async () => gutterpress as unknown as Record<string, unknown>,
-        operationLogPath: () => "/fake/log",
-      },
-    }),
-  );
+  registerHostServices(baseServices());
+  setLibForTests(gutterpress);
 
   const res = await deleteRoute({
     request: request({ path: target, projectDir }),

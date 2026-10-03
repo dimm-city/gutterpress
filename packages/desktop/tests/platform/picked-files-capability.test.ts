@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile, mkdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { isHttpError } from "@sveltejs/kit";
-import { registerHostServices, getHostServices, type HostServices } from "../../electron/server-bridge/host-services";
+import { registerHostServices, type HostServices } from "../../electron/server-bridge/host-services";
 import { createPickedFilesService } from "../../electron/server-bridge/picked-files";
 import { makeHostServices } from "../support/host-services-fake";
 import { POST as pickImageFileRoute } from "../../src/routes/api/dialog/pick-image-file/+server";
@@ -44,17 +44,11 @@ async function caught(p: Promise<unknown>): Promise<{ status: number; message: u
 let base: string;
 let projectDir: string;
 let outsideDir: string;
-let savedHostServices: HostServices | null;
 let pickedFiles: ReturnType<typeof createPickedFilesService>;
 /** What the mocked native dialog returns on its next `showOpenDialog` call. */
 let nextFilePaths: string[];
 
 beforeEach(async () => {
-  // Host services are process-global — save/restore so this file's fixture
-  // never leaks into a sibling test file (same convention as
-  // media-import-image-route.test.ts / fs-routes-scoping.test.ts).
-  savedHostServices = getHostServices();
-
   base = await mkdtemp(path.join(tmpdir(), "gutterpress-picked-files-"));
   projectDir = path.join(base, "proj");
   outsideDir = path.join(base, "elsewhere");
@@ -77,7 +71,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await rm(base, { recursive: true, force: true });
-  registerHostServices(savedHostServices as HostServices);
+  registerHostServices(undefined as unknown as HostServices);
 });
 
 // ── dialog routes register what the native dialog returns ──────────────────

@@ -6,14 +6,13 @@
  */
 import { readdir, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { getFsGuardHooks } from '../../../../../electron/server-bridge/fs-guard';
-import { defineRoute } from '../../_lib/route';
+import { defineRoute, getHostServices } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = defineRoute({
   call: async (): Promise<{ removed: number }> => {
     let removed = 0;
-    for (const root of getFsGuardHooks()?.readOnlyRoots() ?? []) {
+    for (const root of getHostServices().fsGuard.readOnlyRoots()) {
       let names: string[];
       try {
         names = await readdir(root);

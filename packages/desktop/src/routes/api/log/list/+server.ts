@@ -9,8 +9,7 @@
  */
 import { readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { getFsGuardHooks } from '../../../../../electron/server-bridge/fs-guard';
-import { defineRoute } from '../../_lib/route';
+import { defineRoute, getHostServices } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 interface LogFileEntry {
@@ -22,7 +21,7 @@ interface LogFileEntry {
 
 export const POST: RequestHandler = defineRoute({
   call: async (): Promise<LogFileEntry[]> => {
-    const roots = getFsGuardHooks()?.readOnlyRoots() ?? [];
+    const roots = getHostServices().fsGuard.readOnlyRoots();
     const entries: LogFileEntry[] = [];
     for (const root of roots) {
       let names: string[];

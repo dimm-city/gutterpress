@@ -7,23 +7,18 @@
  * directory and `$XDG_DATA_HOME`, so a renderer cannot redirect the install.
  */
 import { error } from '@sveltejs/kit';
-import { getAppImageHooks, type AppImageHooks } from '$lib/server/host-hooks.js';
 import { friendlyAppImageError } from '../../../../../electron/server-bridge/friendly-errors';
-import { defineRoute } from '../../_lib/route';
+import { defineRoute, getHostServices } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 const ACTIONS = ['install', 'remove'] as const;
 type Action = (typeof ACTIONS)[number];
 
-export const GET: RequestHandler = defineRoute<Record<string, never>, AppImageHooks>({
-  hooks: getAppImageHooks,
-  hooksUnavailableMessage: 'AppImage integration hooks not registered',
-  call: async ({ hooks }) => hooks.getStatus(),
+export const GET: RequestHandler = defineRoute<Record<string, never>>({
+  call: async () => getHostServices().appImage.getStatus(),
 });
 
-export const POST: RequestHandler = defineRoute<{ action: Action }, AppImageHooks>({
-  hooks: getAppImageHooks,
-  hooksUnavailableMessage: 'AppImage integration hooks not registered',
+export const POST: RequestHandler = defineRoute<{ action: Action }>({
   validate: (body) => {
     const action = (body as { action?: unknown } | null)?.action;
     if (typeof action !== 'string' || !ACTIONS.includes(action as Action)) {
@@ -31,8 +26,8 @@ export const POST: RequestHandler = defineRoute<{ action: Action }, AppImageHook
     }
     return { action: action as Action };
   },
-  call: async ({ body, hooks }) =>
-    body.action === 'install' ? hooks.install() : hooks.remove(),
+  call: async ({ body }) =>
+    body.action === 'install' ? getHostServices().appImage.install() : getHostServices().appImage.remove(),
   // Every realistic failure here is a raw node:fs error (EACCES on a locked-down
   // home, EROFS, ENOSPC mid-copy). Without this the author would see
   // "EACCES: permission denied, copyfile '/home/…' -> '/home/…'" in the
