@@ -15,9 +15,9 @@
  * Self-skips (like every other real-Chromium test in this package — see
  * chromium.ts's `resolveChromiumExecutable`) when no Chrome/Chromium/Edge is
  * resolvable. Running it needs the env vars documented in this repo's
- * AGENT-ENV.md-equivalent (PUPPETEER_EXECUTABLE_PATH / GUTTERPRESS_CHROMIUM_ARGS
- * under a root/no-sandbox container); CI supplies PUPPETEER_EXECUTABLE_PATH via
- * the runner's own Chrome.
+ * AGENT-ENV.md-equivalent (CHROMIUM_PATH / GUTTERPRESS_CHROMIUM_ARGS under a
+ * root/no-sandbox container); CI supplies CHROMIUM_PATH via the runner's own
+ * Chrome.
  */
 import { describe, expect, test, afterAll } from "bun:test";
 import { existsSync } from "node:fs";
@@ -28,7 +28,6 @@ import { fileURLToPath } from "node:url";
 
 import { resolveChromiumExecutable } from "./chromium.ts";
 import { runBuild } from "./build-runner.ts";
-import { closeBrowser } from "./browser-pool.ts";
 import { clearPdfCache } from "./pdf-inspect.ts";
 import { compareReports, extractReport, serializeReport } from "./render-parity.ts";
 
@@ -44,7 +43,7 @@ const testIf = chromium ? test : test.skip;
 if (!chromium) {
   // eslint-disable-next-line no-console
   console.warn(
-    "[render-parity.acceptance.test] No Chromium resolved — skipping. Install Chrome/Chromium or set CHROMIUM_PATH/PUPPETEER_EXECUTABLE_PATH to run it.",
+    "[render-parity.acceptance.test] No Chromium resolved — skipping. Install Chrome/Chromium or set CHROMIUM_PATH to run it.",
   );
 }
 
@@ -52,12 +51,8 @@ const TIMEOUT_MS = 90_000;
 const dirsToClean: string[] = [];
 
 afterAll(async () => {
-  // Every build below passes keepBrowserAlive so concurrent builds share one
-  // pooled Chromium instead of racing each other's close() (browser-pool.ts's
-  // pool is a single shared instance; runBuild's default is to close it in a
-  // `finally`, which would kill a sibling build's in-flight page). This suite
-  // owns the one shutdown instead.
-  if (chromium) await closeBrowser();
+  // Each runBuild launches and closes its own Chromium, so concurrent builds
+  // below cannot race each other's close() and nothing is left to shut down.
   clearPdfCache();
   for (const d of dirsToClean.splice(0)) await rm(d, { recursive: true, force: true });
 });
@@ -74,7 +69,6 @@ async function buildFixturePdf(projectDir: string, tag: string): Promise<string>
     // tests in this package (see build-runner.page-background.test.ts).
     skipLint: true,
     skipPreValidate: true,
-    keepBrowserAlive: true,
     rawArgs: {},
   });
   if (!result.pdfPath) throw new Error(`build of ${projectDir} produced no pdfPath`);

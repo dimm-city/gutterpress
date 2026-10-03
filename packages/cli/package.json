@@ -81,7 +81,6 @@
     "markdownlint": "^0.40.0",
     "pdf-lib": "^1.17.1",
     "postcss": "^8.5.18",
-    "puppeteer-core": "^25.0.4",
     "resolve.exports": "2.0.3",
     "semver": "7.8.0",
     "tar": "7.5.20",

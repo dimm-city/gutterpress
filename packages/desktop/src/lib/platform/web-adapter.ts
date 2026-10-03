@@ -34,7 +34,7 @@ import {
 // (`gutterpress/render`). This subpath transitively imports markdown-it
 // + the marker plugin and contains ZERO `node:*`/`fs`/`path`/`url`, so it
 // stays PWA-clean in the renderer bundle. NEVER import build-runner / index
-// (those drag puppeteer + node:fs). This is what lets the in-browser preview
+// (those drag the Chromium launcher + node:fs). This is what lets the in-browser preview
 // (#33 Phase 2) render entirely client-side with no localhost server.
 import { assembleBookHtml } from "gutterpress/render";
 import { IndexedDbWebStore } from "./web-store";
@@ -847,7 +847,7 @@ export class WebAdapter implements Platform {
    *   export handler). The adapter intentionally does NOT track or revoke it.
    *
    * - `format:"pdf"|"pdfx"` — reject with an explicit desktop-only message. PDF
-   *   uses Chromium's printToPDF (Electron) / puppeteer (CLI), neither of which
+   *   uses Chromium's printToPDF (Electron) / a launched headless Chromium (CLI), neither of which
    *   exists in the browser. `capabilities().nativeSavePath` is already false and
    *   the SPA hides the PDF control on web (Phase 4), so this is a belt-and-braces
    *   guard with a clear message rather than the generic 0.6.0 stub.

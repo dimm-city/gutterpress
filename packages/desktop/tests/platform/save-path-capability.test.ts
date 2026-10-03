@@ -157,7 +157,6 @@ function makeController(): ExportController {
     loadLib: async () => lib,
     tokenStore: {} as ExportControllerDeps["tokenStore"],
     isOnline: () => true,
-    usePuppeteer: () => false,
     pdfRenderer: (async () => {}) as ExportControllerDeps["pdfRenderer"],
     sync: { isConflictLatched: () => false, latchConflict: () => {} },
     getActiveExportSession: () => session,

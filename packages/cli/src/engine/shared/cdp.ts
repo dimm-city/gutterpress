@@ -1,32 +1,24 @@
 /**
- * Minimal CDP client for the Gutterpress engine.
+ * Minimal CDP client for the Gutterpress engine, and THE ONE Chrome launcher.
  *
- * Deliberately NOT puppeteer: the proposal's compiler contract is "drive the
- * *system* Chromium over raw CDP (chrome-launcher + WebSocket)". This file is
- * the whole browser dependency surface — ~150 lines, one runtime dep (`ws`).
+ * The compiler contract is "drive the *system* Chromium over raw CDP (spawn +
+ * WebSocket)". This file is the whole browser dependency surface — one
+ * runtime dep (`ws`). Every product path that needs a Chromium process — the
+ * CLI's PDF build (`lib/build-runner.ts`), the engine dev CLI, the
+ * preview↔print parity gate and the engine's own tests — launches it through
+ * `launchChromium()` below, so they all get the same binary resolution
+ * (`lib/chromium.ts`, governed by `CHROMIUM_PATH`), the same flags, and the
+ * same milestone floor. There is deliberately no second launcher and no
+ * "attach to a browser someone else started" path: a gate that launched
+ * Chrome differently from the shipped CLI would be testing a different
+ * product.
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import WebSocket from "ws";
-
-const CANDIDATES = [
-  process.env.GUTTERPRESS_CHROMIUM,
-  process.env.PUPPETEER_EXECUTABLE_PATH,
-  "/opt/pw-browsers/chromium",
-  "/usr/bin/chromium",
-  "/usr/bin/chromium-browser",
-  "/usr/bin/google-chrome",
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-].filter(Boolean) as string[];
-
-export function findChromium(): string {
-  for (const c of CANDIDATES) if (existsSync(c)) return c;
-  throw new Error(
-    `No Chromium found. Set GUTTERPRESS_CHROMIUM. Looked in:\n  ${CANDIDATES.join("\n  ")}`,
-  );
-}
+import { requireChromiumExecutable } from "../../lib/chromium.ts";
 
 /**
  * Gutterpress targets exactly one engine.
@@ -72,10 +64,13 @@ export const REQUIRED_MILESTONE = 148;
 
 /**
  * Refuse to paginate on a browser below the floor. The invariant belongs to
- * the `Browser` CONTRACT, not to any one way of obtaining a browser — the
- * launch/connect paths and the host-injected path (an Electron
- * `EngineBrowser`, `lib/engine.ts`) must enforce the identical rule with the
- * identical message, or the two drift (they already had once).
+ * the `Browser` CONTRACT, not to any one way of obtaining a browser — every
+ * producer of a `Browser` enforces it once, at construction: `launchChromium`
+ * below for the CLI's external Chromium, and the desktop's
+ * `createElectronEngineBrowser` (packages/desktop/electron/engine-browser.ts)
+ * for Electron's bundled one. Consumers (`lib/build-runner.ts`, the compiler)
+ * trust a `Browser` they are handed; a second check downstream is drift
+ * waiting to happen (the two messages had already diverged once).
  */
 export function assertMilestone(product: string, origin: string, hint = ""): void {
   const milestone = Number(/Chrome\/(\d+)/.exec(product)?.[1] ?? 0);
@@ -145,22 +140,49 @@ export interface Session {
   close(): Promise<void>;
 }
 
+/**
+ * The flags every Gutterpress-launched Chromium gets. One list: the CLI build,
+ * the parity gate and the tests must not drift from each other, because the
+ * gate's whole job is to measure the browser the product ships with.
+ */
+const DEFAULT_ARGS = [
+  "--headless=new",
+  "--no-first-run",
+  "--no-default-browser-check",
+  "--disable-gpu",
+  "--no-sandbox",
+  "--hide-scrollbars",
+  "--allow-file-access-from-files",
+  "--font-render-hinting=none",
+];
+
+/**
+ * Launch the system Chromium and verify it meets {@link REQUIRED_MILESTONE}.
+ *
+ * Binary resolution is `lib/chromium.ts`'s (`CHROMIUM_PATH`, then standard
+ * install locations, then a PATH probe) — the same resolver the preflight
+ * presence check and `gutterpress doctor` use, so what they report is what
+ * gets launched. Extra flags come from `GUTTERPRESS_CHROMIUM_ARGS`
+ * (containers/CI, e.g. `--disable-dev-shm-usage`; see docs/docker.md) and
+ * `opts.args`; `opts.ignoreDefaultArgs` removes entries from
+ * {@link DEFAULT_ARGS} for a test that needs a host WITHOUT one of them.
+ *
+ * The launch is also the one and only milestone check: a too-old browser is
+ * torn down and rejected here, with the override hint, before any caller
+ * gets a `Browser`.
+ */
 export async function launchChromium(
-  opts: { headless?: boolean; args?: string[] } = {},
+  opts: { args?: string[]; ignoreDefaultArgs?: string[] } = {},
 ): Promise<Browser> {
-  const bin = findChromium();
+  const bin = await requireChromiumExecutable();
   const userDataDir = mkdtempSync(join(tmpdir(), "gp-cdp-"));
+  const envArgs = (process.env.GUTTERPRESS_CHROMIUM_ARGS ?? "").split(/\s+/).filter(Boolean);
+  const ignored = new Set(opts.ignoreDefaultArgs ?? []);
   const args = [
     "--remote-debugging-port=0",
     `--user-data-dir=${userDataDir}`,
-    "--no-first-run",
-    "--no-default-browser-check",
-    "--disable-gpu",
-    "--no-sandbox",
-    "--hide-scrollbars",
-    "--allow-file-access-from-files",
-    "--font-render-hinting=none",
-    ...(opts.headless === false ? [] : ["--headless=new"]),
+    ...DEFAULT_ARGS.filter((a) => !ignored.has(a)),
+    ...envArgs,
     ...(opts.args ?? []),
     "about:blank",
   ];
@@ -195,58 +217,13 @@ export async function launchChromium(
     rmSync(userDataDir, { recursive: true, force: true });
   };
 
-  return checkMilestoneAndWrap(conn, wsUrl, `at ${bin}`, teardown);
-}
-
-/**
- * Attach to an ALREADY-RUNNING Chromium (a pooled/pre-warmed browser owned by
- * the caller, e.g. `browser-pool.ts`'s puppeteer instance via
- * `browser.wsEndpoint()`) instead of spawning a new process.
- *
- * Deliberately the mirror image of `launchChromium`: same version pin, same
- * `Session`/`newPage` machinery (`checkMilestoneAndWrap`, shared below), but
- * `close()` only drops OUR websocket connection — it never sends
- * `Browser.close`, kills a process, or removes a profile dir, because this
- * function didn't create any of those. Ownership of the underlying browser's
- * lifecycle stays entirely with whoever handed us `wsUrl`.
- */
-export async function connectChromium(wsUrl: string): Promise<Browser> {
-  const conn = await Connection.open(wsUrl);
-  return checkMilestoneAndWrap(
-    conn,
-    wsUrl,
-    "via connected browser",
-    async () => {
-      conn.close();
-    },
-    // Unlike launchChromium (which resolves its own binary via findChromium(),
-    // governed by GUTTERPRESS_CHROMIUM), this path attaches to a browser someone
-    // ELSE already launched — in practice `browser-pool.ts`'s puppeteer
-    // instance, resolved via `chromium.ts`'s CHROMIUM_PATH /
-    // PUPPETEER_EXECUTABLE_PATH. Telling a user on this path to set
-    // GUTTERPRESS_CHROMIUM does nothing.
-    `Set CHROMIUM_PATH (or PUPPETEER_EXECUTABLE_PATH) to a ${REQUIRED_MILESTONE}+ binary.`,
-  );
-}
-
-/**
- * Shared by `launchChromium` and `connectChromium`: verify the pin (same
- * error message shape either way, per ARCHITECTURE.md §1 — one function owns
- * the check), then wrap the raw `Connection` in the public `Browser` shape.
- * `teardown` is the only thing that differs between the two callers; so does
- * `overrideHint`, since the two callers resolve their binary through
- * different env vars (see connectChromium's call site comment).
- */
-async function checkMilestoneAndWrap(
-  conn: Connection,
-  wsUrl: string,
-  origin: string,
-  teardown: () => Promise<void>,
-  overrideHint: string = `Set GUTTERPRESS_CHROMIUM to a ${REQUIRED_MILESTONE}+ binary.`,
-): Promise<Browser> {
   const version = await conn.send<{ product: string }>("Browser.getVersion", {});
   try {
-    assertMilestone(version.product, origin, overrideHint);
+    assertMilestone(
+      version.product,
+      `at ${bin}`,
+      `Install a newer Chrome, Chromium, or Edge, or point CHROMIUM_PATH at a ${REQUIRED_MILESTONE}+ binary.`,
+    );
   } catch (e) {
     await teardown();
     throw e;

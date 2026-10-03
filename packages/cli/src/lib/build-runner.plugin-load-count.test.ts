@@ -11,13 +11,12 @@
  * uncached, expensive (recursive walk + full read-and-SHA-256 of the vendored
  * tree) operation #262 is about.
  *
- * `engineBrowser` is injected as a callback that throws the instant it is
- * invoked (mirrors build-runner.browser-lifecycle.test.ts's
- * `fakeEngineBrowser`): this skips the Chromium preflight AND
- * `verifyNativeChromiumMilestone` entirely (`rendersInPooledChromium` is
- * false whenever `opts.engineBrowser` is set — build-preflight.ts), so these
- * tests need no real browser and run in any environment, while still
- * exercising runQualityGates' real preValidate gate
+ * `engineBrowser` is injected as a factory that returns a browser whose
+ * `newPage()` throws the instant it is invoked (mirrors
+ * build-runner.browser-lifecycle.test.ts's fake): an injected factory replaces
+ * the Chromium launcher outright and skips the Chromium presence preflight
+ * (build-preflight.ts), so these tests need no real browser and run in any
+ * environment, while still exercising runQualityGates' real preValidate gate
  * (executeAndReport/validation-exec.ts) and the real renderBook — the throw
  * only cuts in at the LAST stage (PdfOutput.finish's buildNativePdf call),
  * strictly after every plugin-loading call site under test has already run.
@@ -50,9 +49,20 @@ import * as pluginsMod from "./markdown/plugins";
 import * as pluginVendorMod from "./plugin-vendor";
 import { runBuild, type EngineBrowser } from "./build-runner";
 
-const fakeEngineBrowser = async (): Promise<EngineBrowser> => {
-  throw new Error("engine build should not be reached in this test");
-};
+// The factory itself must RESOLVE: runBuild awaits it before renderBook (so a
+// launch failure fails fast), and renderBook is a plugin-loading call site
+// under test here. Only the first use of the browser — `newPage()`, inside
+// the compiler — throws.
+const fakeEngineBrowser = async (): Promise<EngineBrowser> =>
+  ({
+    wsUrl: "test://fake",
+    version: "Chrome/148.0.0.0",
+    milestone: 148,
+    newPage: async () => {
+      throw new Error("engine build should not be reached in this test");
+    },
+    close: async () => {},
+  }) as unknown as EngineBrowser;
 
 interface TarEntry {
   name: string;

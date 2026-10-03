@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 
 import { resolveChromiumExecutable } from "../../lib/chromium.ts";
 import { makeTempDir, pngRgb } from "../../test-helpers/testkit.ts";
-import { connectChromium, type Browser } from "../shared/cdp.ts";
+import { launchChromium, type Browser } from "../shared/cdp.ts";
 import { build } from "./build.ts";
 
 /**
@@ -19,9 +19,10 @@ import { build } from "./build.ts";
  * VERDICTS about it are wrong.
  *
  * WHY THIS EXISTS (docs/analysis/cli-desktop-print-parity.md §6, §7): Chromium
- * only hides scrollbars if something asks. The CLI's browser is launched by
- * puppeteer, whose default argument set contains `--hide-scrollbars`; an
- * Electron `BrowserWindow` — the desktop app's engine browser — is not. So the
+ * only hides scrollbars if something asks. The CLI's browser is launched with
+ * `--hide-scrollbars` among its default flags (then puppeteer's defaults, now
+ * `launchChromium`'s); an Electron `BrowserWindow` — the desktop app's engine
+ * browser — is not. So the
  * same book, byte for byte, measured 576px on the CLI and 561px on the
  * desktop, and that decided real outcomes in BOTH directions: a box measuring
  * 450px against a 442px limit hard-errored on the CLI and shipped a PDF on the
@@ -37,11 +38,11 @@ import { build } from "./build.ts";
  * HARNESS CONDITIONS (this defect family has been misdiagnosed three times by
  * harness artifacts, so they are stated rather than assumed):
  *
- *   - driver: puppeteer-core `launch` -> `connectChromium`, which IS the CLI's
- *     product path (`browser-pool.ts` -> `lib/engine.ts`) — but with
+ *   - driver: `launchChromium`, which IS the CLI's product launcher
+ *     (`lib/build-runner.ts` -> `lib/engine.ts`) — but with
  *     `ignoreDefaultArgs: ["--hide-scrollbars"]`, i.e. a host that does not
- *     contribute the flag. **A version of these tests that runs under
- *     puppeteer's defaults passes today and proves nothing.**
+ *     contribute the flag. **A version of these tests that runs under the
+ *     launcher's defaults passes today and proves nothing.**
  *   - `--virtual-time-budget`: not passed.
  *   - pre-navigation device-metrics override: none. `build()` navigates first
  *     and pins after; nothing here establishes an override before that.
@@ -98,24 +99,16 @@ if (!chromium) {
 }
 
 /**
- * The CLI's own launch + connect path, minus the one default flag that has
- * been silently doing this job. `ignoreDefaultArgs` takes the flag out of
- * puppeteer's set without adding anything to Gutterpress's.
+ * The CLI's own launcher, minus the one default flag that has been silently
+ * doing this job. `ignoreDefaultArgs` takes the flag out of the launcher's set
+ * without adding anything to it.
  */
 async function withScrollbarDrawingBrowser<T>(fn: (browser: Browser) => Promise<T>): Promise<T> {
-  const puppeteer = (await import("puppeteer-core")).default;
-  const pup = await puppeteer.launch({
-    headless: true,
-    executablePath: chromium!,
-    ignoreDefaultArgs: ["--hide-scrollbars"],
-    args: (process.env.GUTTERPRESS_CHROMIUM_ARGS ?? "").split(/\s+/).filter(Boolean),
-  });
-  const browser = await connectChromium(pup.wsEndpoint());
+  const browser = await launchChromium({ ignoreDefaultArgs: ["--hide-scrollbars"] });
   try {
     return await fn(browser);
   } finally {
     await browser.close();
-    await pup.close();
   }
 }
 

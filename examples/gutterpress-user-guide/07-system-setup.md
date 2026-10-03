@@ -111,9 +111,9 @@ sudo dnf install chromium ghostscript qpdf
 
 ### Chrome / Chromium — required for PDF
 
-Gutterpress uses `puppeteer-core` (not full `puppeteer`) to drive Chromium for PDF
-rendering. **`puppeteer-core` never downloads or bundles a browser** — it only
-ever drives one already on your machine. If no browser is found, you will see:
+Gutterpress launches a Chromium-based browser already on your machine and drives
+it over the DevTools protocol to render PDFs. **It never downloads or bundles a
+browser.** If no browser is found, you will see:
 
 ```
 No Chrome / Chromium / Edge binary found. Gutterpress needs a Chromium-based
@@ -122,7 +122,7 @@ browser to render PDFs.
 
 **Resolution order** (Gutterpress checks these in sequence — first match wins):
 
-1. The `CHROMIUM_PATH` or `PUPPETEER_EXECUTABLE_PATH` environment variable (either works; `CHROMIUM_PATH` is checked first)
+1. The `CHROMIUM_PATH` environment variable (`PUPPETEER_EXECUTABLE_PATH` is still accepted as a deprecated alias; `CHROMIUM_PATH` is checked first)
 2. Standard install locations for Chrome, Chromium, Edge, and Brave on your OS (the paths installed by the commands above)
 3. A `PATH` probe (`which` / `where.exe`) for Chrome, Chromium, Edge, Brave, Vivaldi, Opera, and their platform-specific variants
 
@@ -210,7 +210,8 @@ including from the standalone binary.
 | Variable | Effect |
 |----------|--------|
 | `CHROMIUM_PATH` | Override browser binary location (checked first) |
-| `PUPPETEER_EXECUTABLE_PATH` | Alternative browser override (same priority as `CHROMIUM_PATH`) |
+| `PUPPETEER_EXECUTABLE_PATH` | Deprecated alias for `CHROMIUM_PATH` (consulted only when `CHROMIUM_PATH` is unset) |
+| `GUTTERPRESS_CHROMIUM_ARGS` | Extra Chromium flags, space-separated (containers/CI, e.g. `--disable-dev-shm-usage`) |
 | `GHOSTSCRIPT_PATH` | Override Ghostscript command-line executable location (checked first) |
 | `GUTTERPRESS_CONFIG_DIR` | Override the CLI config and credential directory |
 
@@ -242,10 +243,9 @@ gs --version
 ### `No Chrome / Chromium / Edge binary found`
 
 No browser was found. Install Chrome, Chromium, Edge, Brave, Vivaldi, or Opera, or set
-`CHROMIUM_PATH` (or `PUPPETEER_EXECUTABLE_PATH`) to an existing binary.
-puppeteer-core cannot download one for you — see "Chrome / Chromium —
-required for PDF" above. Alternatively, use the desktop app, which includes
-its own browser.
+`CHROMIUM_PATH` to an existing binary. Gutterpress cannot download one for
+you — see "Chrome / Chromium — required for PDF" above. Alternatively, use the
+desktop app, which includes its own browser.
 
 ### `spawn qpdf ENOENT` during PDF/X build
 
@@ -267,7 +267,7 @@ non-standard location, set `CHROMIUM_PATH` (Chromium), set `GHOSTSCRIPT_PATH`
 
 ### Shipped
 
-- Chrome / Chromium PDF rendering via puppeteer-core
+- Chrome / Chromium PDF rendering over the DevTools protocol (no browser driver dependency)
 - Ghostscript PDF/X conversion
 - qpdf annotation stripping + PDF/X validation
 - In-process PDF validation via bundled PDF.js (replaced Poppler)

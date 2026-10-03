@@ -101,7 +101,6 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     tokenStore: {} as ExportControllerDeps["tokenStore"],
     gitIdentity: async () => opts.gitIdentity ?? {},
     isOnline: () => opts.isOnline ?? true,
-    usePuppeteer: () => false,
     pdfRenderer: (async () => {}) as ExportControllerDeps["pdfRenderer"],
     engineBrowser: (async () => ({}) as never) as ExportControllerDeps["engineBrowser"],
     getActiveExportSession: () => session,

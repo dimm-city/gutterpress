@@ -5,7 +5,6 @@ import path from "node:path";
 
 import { publishToDirectory, runBuild } from "./build-runner.ts";
 import { resolveChromiumExecutable } from "./chromium.ts";
-import { closeBrowser } from "./browser-pool.ts";
 import { makeTempDir } from "../test-helpers/testkit.ts";
 
 /**
@@ -111,7 +110,6 @@ testIf(
       inputDir: book,
       format: "html",
       outDir,
-      keepBrowserAlive: true,
       rawArgs: {},
     });
     expect(htmlResult.htmlPath).toBe(path.join(outDir, "book.html"));
@@ -122,7 +120,6 @@ testIf(
       outDir,
       skipLint: true,
       skipPreValidate: true,
-      keepBrowserAlive: true,
       rawArgs: {},
     });
 
@@ -141,8 +138,6 @@ testIf(
 
     // The PDF landed alongside it.
     expect(existsSync(pdfResult.pdfPath!)).toBe(true);
-
-    await closeBrowser();
   },
   60_000
 );

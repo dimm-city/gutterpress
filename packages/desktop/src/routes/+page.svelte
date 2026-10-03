@@ -242,7 +242,7 @@
   // #33 Phase 4: PDF/build gating via the capabilities() seam (NOT a
   // `platform === "web"` branch). `nativeSavePath` is true on the desktop host
   // (Electron writes the PDF to a chosen path) and false on the web (no
-  // puppeteer / printToPDF in the browser). When false the "Save PDF" control is
+  // headless Chromium / printToPDF in the browser). When false the "Save PDF" control is
   // replaced with a short "requires the desktop app" note (acceptance criterion).
   // Desktop is UNCHANGED: nativeSavePath:true → canSavePdf:true → identical UI.
   const canSavePdf = $derived(getPlatform().capabilities().nativeSavePath);

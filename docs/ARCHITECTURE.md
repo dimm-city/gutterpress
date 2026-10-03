@@ -308,29 +308,40 @@ never a `<link>` — in a fixed cascade order (`markdown/assemble.ts`):
 **Location**: `packages/cli/src/lib/engine.ts` (`buildNativePdf`) and
 `packages/cli/src/engine/compiler/build.ts` (`build`).
 
-`buildNativePdf` attaches the engine's CDP client to the pooled Chromium used by
-the CLI. The desktop may instead inject an engine browser backed by Electron's
-own Chromium. The compiler reads the author's CSS, pins the viewport and print
+`runBuild` (`build-runner.ts`) owns the browser: it starts `launchChromium()`
+(`engine/shared/cdp.ts`) un-awaited while the quality gates run, awaits it
+before rendering, hands it to `buildNativePdf`, and closes it in a `finally`.
+The desktop injects `createElectronEngineBrowser` in the launcher's place — an
+engine browser backed by Electron's own Chromium — and the same lifecycle
+applies. The compiler reads the author's CSS, pins the viewport and print
 media to the resolved sheet, synthesizes the CSS Paged Media features Chromium
 does not provide directly, prints to a fixpoint when generated page references
 require it, runs computed-DOM print-quality audits, and postprocesses the final
 bytes.
 
 ```typescript
-const engineBrowser = await connectChromium((await getBrowser()).wsEndpoint());
-const result = await build({ input: htmlFile, browser: engineBrowser, title, author });
-await writeFile(outPdf, result.bytes);
-return result.diagnostics;
+const browser = await (opts.engineBrowser ?? launchChromium)();
+try {
+  const result = await build({ input: htmlFile, browser, title, author });
+  await writeFile(outPdf, result.bytes);
+  return result.diagnostics;
+} finally {
+  await browser.close();
+}
 ```
 
 **Optional PDF/X conversion**: When `--format pdfx` is specified, the build command runs Ghostscript (`packages/cli/src/lib/ghostscript.ts`) to convert the Chromium PDF to CMYK PDF/X-1a or PDF/X-3, with optional annotation stripping for compliance.
 
 **Design Rationale**:
 - An injectable engine `Browser` lets the CLI and packaged Electron desktop
-  share one compiler while using pooled external Chromium or Electron's own
+  share one compiler while using an external Chromium or Electron's own
   Chromium respectively
-- The engine controls printing through its raw-CDP session (`printToPDF`) while
-  Puppeteer is limited to launching and pooling the CLI browser
+- One Chrome launcher: `engine/shared/cdp.ts`'s `launchChromium()` spawns the
+  system Chromium (resolved by `lib/chromium.ts`, overridable with
+  `CHROMIUM_PATH`), enforces the engine's milestone floor, and drives it over
+  raw CDP (`printToPDF`). The CLI build, the parity gate and the engine tests
+  all launch through it, so they test the browser the product ships with; there
+  is no browser-driver dependency (puppeteer-core was removed in 0.11.10)
 - Ghostscript post-processing handles CMYK conversion separately from rendering
 
 ## Preview Server
@@ -729,15 +740,17 @@ See [User Guide: Chapter 5 — Plugins](../examples/gutterpress-user-guide/05-pl
 - Modern APIs (fetch, WebSocket)
 - Better DX for single-user tools
 
-### 2. Why puppeteer-core + Chromium for PDF?
+### 2. Why raw CDP + the system Chromium for PDF?
 
-**Chosen over**: Prince XML, Playwright
+**Chosen over**: Prince XML, Playwright, puppeteer-core
 
 **Reasons**:
 - Open-source and cross-platform (macOS, Linux, Windows)
 - Chromium supplies native paged layout and PDF printing; the Gutterpress
   engine synthesizes the CSS Paged Media features Chromium does not implement
-- puppeteer-core ships no bundled browser (we resolve a system/bundled Chromium ourselves)
+- No browser driver to download or bundle: the engine resolves a system (or
+  Electron-bundled) Chromium itself and talks to it over `ws` — the whole
+  browser surface is one ~500-line file
 - Direct page rendering eliminates subprocess overhead
 - Direct raw-CDP `printToPDF` generation
 - Better TypeScript support

@@ -2,6 +2,13 @@
 
 **Status:** investigation and design. No product code changed; every edit made
 while measuring lives in a scratch harness outside the repo.
+**Since superseded in part (0.11.10):** option C below ("one browser for both
+hosts") landed as far as the CLI is concerned — `puppeteer-core`, the browser
+pool, `connectChromium` and the desktop's `GUTTERPRESS_PUPPETEER` escape hatch
+are gone, and the CLI launches Chromium only through `engine/shared/cdp.ts`'s
+`launchChromium()`. Every mention of puppeteer below describes the CLI as it
+was when this was measured; the launch flags it inherited from puppeteer's
+defaults are now `launchChromium`'s own explicit list.
 **Settles:** [#186](https://github.com/dimm-city/gutterpress/pull/186) §7 residual
 risk 5 — *"the CLI and the desktop host may not be in the same browser state …
 whether the desktop is in the immunised state is **unmeasured**."*

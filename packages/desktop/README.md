@@ -61,8 +61,8 @@ removed:
 ### End users (packaged desktop)
 
 - **No separate browser or runtime is required.** Save PDF uses Electron's own
-  bundled Chromium through `webContents.printToPDF`; the packaged desktop does
-  not use the CLI's `puppeteer-core` browser discovery path.
+  bundled Chromium through `webContents.printToPDF`; the packaged desktop never
+  looks for or launches an external Chromium.
 
 - **Ghostscript is not used for plain Save PDF.** Electron creates the PDF and
   the lib stamps `/Creator` metadata in-process with `pdf-lib`. Ghostscript is
@@ -331,8 +331,8 @@ never touches electron-updater directly.
   (externalizing electron + the lib); SvelteKit's adapter-node builds the
   renderer + host routes into `build/`. No CJS↔ESM interop trick: the ESM main
   just does `await import("gutterpress")`, cached so subsequent calls
-  reuse the module. Packaged with asar (puppeteer-core unpacked;
-  `build/handler.js` is loaded from inside the asar).
+  reuse the module. Packaged with asar, nothing unpacked
+  (`build/handler.js` is loaded from inside the asar).
 - **Preview iframe** — `lib.startPreviewServer` returns an `http://127.0.0.1:N`
   URL that the renderer puts in `<iframe src={url}>`. Iframe is cross-origin
   (different scheme) from the SPA's `app://` parent; postMessage bridge

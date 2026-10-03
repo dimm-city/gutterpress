@@ -201,7 +201,7 @@ export function withRepoLock<T>(projectDir: string, fn: () => Promise<T>): Promi
   // Reclaim the entry once this tail settles IF nothing newer was chained after
   // it (audit B4). Without this, `repoQueues` kept one permanent entry per
   // distinct project dir ever opened for the life of a long-running host. The
-  // identity guard is the same pattern browser-pool.ts uses: a concurrent
+  // identity guard is the usual promise-cache pattern: a concurrent
   // withRepoLock for the same key replaces the map value, so `get(key) === tail`
   // is only true when this was the last queued op. A still-queued op holds its
   // OWN `prev` reference captured above, so deleting the map entry never affects
