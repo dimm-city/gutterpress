@@ -9,24 +9,61 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Troubleshooting → Report a problem.** Builds everything we need to look
+  into a bug — app and system versions, how the open book is set up (never
+  its text), and the app's recent log, with your home folder redacted —
+  shows it in full, and copies it or opens a prefilled GitHub issue. Nothing
+  is sent until you submit the issue. Every error toast and the
+  unsaved-changes dialog link to it.
 - **Troubleshooting → Sync.** A new tab for a book whose online backup keeps
-  failing. Choose the book's folder, then:
+  failing. It leads with *Reconnect GitHub* for the expired login that makes
+  every backup fail with a sign-in error (signs you in again; books and
+  history untouched), then, for the open book:
   - *Repair online backup* — the same repair offered in "Where your work is
-    kept", now reachable without opening the book.
+    kept".
   - *Scorched earth* — the last resort. Copies the whole folder to a backup in
     the app's data folder (kept, never deleted), deletes everything in the
     folder, downloads a fresh copy from online, then copies your files from the
     backup back on top (everything except the old history). Your files win;
-    files only the online copy has stay. If that book is open, it is closed
-    as the final step. Asks once before it runs.
+    files only the online copy has stay. The book is closed as the final step.
+    Asks once before it runs.
 
 ### Changed
 
 - **Troubleshooting opens on Logs.** Logs is now the first and default tab,
   ahead of Diagnostics and Sync.
+- **The desktop app serves itself in-process.** The window's requests are
+  answered by the app directly; there is no longer a local HTTP server, port,
+  session token or proxy. Nothing else on the computer can reach the app's
+  internals, and long operations such as downloading a large book from GitHub
+  no longer time out after five minutes.
+- **One Chromium launcher.** `gutterpress build` finds Chrome through
+  `CHROMIUM_PATH` (or the usual install locations) and launches it itself;
+  `puppeteer-core` is no longer a dependency. `PUPPETEER_EXECUTABLE_PATH`
+  still works as a deprecated alias.
+- **Plugins load with a plain import.** Installing an extension still pins an
+  exact version, verifies every tarball and vendors its full dependency tree;
+  loading it is now an ordinary `import()` of that vendored copy. The receipt,
+  snapshot and import-rewriting scheme that re-verified the tree on every
+  load is gone.
+
+### Removed
+
+- **`gutterpress lint` and `gutterpress audit`.** Both duplicated `validate`:
+  use `gutterpress validate <dir> --only source.stylelint` and
+  `gutterpress validate <dir> --category asset --phase pre`. The library no
+  longer exports `runLint`.
+- The `GUTTERPRESS_CHROMIUM` and `GUTTERPRESS_PREVIEW_INCREMENTAL`
+  environment variables (undocumented).
 
 ### Fixed
 
+- **Open book from GitHub** no longer fails on a large repository with
+  "A request to the app's internal server failed. TypeError: fetch failed".
+- **Sync tools work.** Repair and Scorched earth used to be refused with
+  "path is outside the open book"; they now act on the open book.
+- Errors from the app's own routes read as a sentence instead of a raw
+  `{"message": …}` blob.
 - **Book settings is an ordinary side panel.** Like the left panel, it sits
   beside the book and nothing else is locked while it is open: the preview
   scrolls, and the editor, toolbar and shortcuts all keep working.
