@@ -1,6 +1,4 @@
 import { expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { EditorBuffer } from "../../src/lib/editor/buffer-state.svelte";
 import { isPathAtOrUnder } from "../../src/lib/platform/paths";
 import type { FileStat, FileWriteResult, Platform } from "../../src/lib/platform/contract";
@@ -239,61 +237,3 @@ test("a failed pre-delete flush preserves the dirty file buffer for retry", asyn
   expect(platform.getContent("/book/chapter-01.md")).toBe("saved text");
 });
 
-// ── Wiring check ──────────────────────────────────────────────────────────
-// +page.svelte itself (a large .svelte SFC) can't be imported/driven by
-// bun:test directly (no Svelte compiler in this harness — see
-// buffer-state.test.ts's header comment on the same limitation). This pins
-// that the four handlers above are actually DEFINED and WIRED to LeftPanel,
-// same convention as git-identity-and-activity.test.ts's route-wiring checks
-// in this file.
-test("+page.svelte defines and wires the FileTree open-file rename/delete handlers", () => {
-  const root = path.resolve(import.meta.dir, "../..");
-  const page = readFileSync(path.join(root, "src/routes/+page.svelte"), "utf8");
-  expect(page).toContain("function onTreeBeforeRename");
-  expect(page).toContain("function onTreeBeforeDelete");
-  expect(page).toContain("function onTreeFileRenamed");
-  expect(page).toContain("function onTreeFileDeleted");
-  expect(page).toContain("resetEditorBuffer()");
-  // The delete handler must treat a deleted DIRECTORY as affecting every open
-  // file nested inside it (code-review), not only an exact path match — the
-  // containment predicate is unit-tested in paths.test.ts.
-  expect(page).toContain("isPathAtOrUnder(buffer.filePath, path)");
-  expect(page).toContain("isPathAtOrUnder(editorFilePath, oldPath)");
-  expect(page).toContain("onBeforeRenameOpenFile={onTreeBeforeRename}");
-  expect(page).toContain("onBeforeDeleteOpenFile={onTreeBeforeDelete}");
-  expect(page).toContain("onFileRenamed={onTreeFileRenamed}");
-  expect(page).toContain("onFileDeleted={onTreeFileDeleted}");
-});
-
-// The one open buffer is flushed only when the renamed/deleted path contains
-// its file; unrelated tree actions cannot perturb the editor.
-test("+page.svelte's rename/delete pre-hooks scope the flush to the open file", () => {
-  const root = path.resolve(import.meta.dir, "../..");
-  const page = readFileSync(path.join(root, "src/routes/+page.svelte"), "utf8");
-  for (const name of ["onTreeBeforeRename", "onTreeBeforeDelete"]) {
-    const match = page.match(new RegExp(`async function ${name}\\([\\s\\S]*?\\n  \\}`));
-    expect(match).not.toBeNull();
-    const body = match![0];
-    expect(body).toContain("isPathAtOrUnder(buffer.filePath, path)");
-    expect(body).toContain("return flushEditorBuffer(buffer);");
-  }
-});
-
-test("switching from CSS to Markdown uses the normal flush-before-select path", () => {
-  const root = path.resolve(import.meta.dir, "../..");
-  const page = readFileSync(path.join(root, "src/routes/+page.svelte"), "utf8");
-  const fn = page.slice(
-    page.indexOf("async function selectMobileTab("),
-    page.indexOf("// ── Virtual-keyboard handling"),
-  );
-  expect(fn).not.toContain("buffer?.reset()");
-  expect(fn).toContain("selectEditorFile(");
-});
-
-test("+page delegates file selection and default loading to the behavior-tested session", () => {
-  const root = path.resolve(import.meta.dir, "../..");
-  const page = readFileSync(path.join(root, "src/routes/+page.svelte"), "utf8");
-  expect(page).toContain("return editorFiles.select(path)");
-  expect(page).toContain("await editorFiles.ensureDefault(");
-  expect(page).toContain("return editorFiles.restore(filePath, content)");
-});

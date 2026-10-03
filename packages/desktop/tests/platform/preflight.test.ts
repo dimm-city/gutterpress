@@ -158,8 +158,7 @@ test("categoryLabel gives plain language, falls back to the raw category", () =>
 // whether to (re)run preflight. Only FORWARD entry into the Preflight step
 // should rerun it — stepping BACK into it from Publish must leave an existing
 // "publish anyway" override alone. Pure decision, unit-tested here since
-// there's no Svelte component-render harness in this repo (per the sibling
-// publish-wizard.test.ts's source-text convention for everything else).
+// there's no Svelte component-render harness in this repo.
 test("entersPreflightForward is true only for forward navigation landing exactly on the Preflight step", () => {
   // 1 selected destination → totalSteps = 1 + 3 = 4; preflight index = 2.
   const totalSteps = 4;
