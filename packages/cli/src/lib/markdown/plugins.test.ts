@@ -12,7 +12,7 @@ import {
   __resetPathPluginCacheForTests,
 } from "./plugins";
 import type { ResolvedExtensionConfig } from "../../schema/manifest.types";
-import { vendoredNpmPluginRoot, VENDOR_RECEIPT_FILE } from "../plugin-vendor";
+import { vendoredNpmPluginPackageDir, vendoredNpmPluginRoot } from "../plugin-vendor";
 
 const TMP_ROOT = join(process.cwd(), ".tmp", `plugin-tests-${Date.now()}`);
 
@@ -325,7 +325,7 @@ describe("plugin loader", () => {
       expect(typeof loaded.plugin).toBe("function");
     });
 
-    test("keeps legacy exact versions on node_modules resolution when no receipt exists", async () => {
+    test("keeps legacy exact versions on node_modules resolution when nothing is vendored", async () => {
       const name = "legacy-exact-plugin-fixture";
       const packageDir = join(TMP_ROOT, "node_modules", name);
       mkdirSync(packageDir, { recursive: true });
@@ -418,8 +418,31 @@ describe("plugin loader", () => {
       );
     });
 
-    test("does not fall back when a pinned vendor marker is present but invalid", async () => {
-      const name = "invalid-receipt-plugin-fixture";
+    test("loads a pinned entry from its vendored copy, ahead of a same-named project node_modules package", async () => {
+      const name = "vendored-plugin-fixture";
+      const ambient = join(TMP_ROOT, "node_modules", name);
+      mkdirSync(ambient, { recursive: true });
+      writeFileSync(
+        join(ambient, "package.json"),
+        JSON.stringify({ name, version: "9.9.9", type: "module", exports: "./index.js" }),
+      );
+      writeFileSync(join(ambient, "index.js"), "export default function plugin(md) { md.from = 'ambient'; }\n");
+      const vendored = vendoredNpmPluginPackageDir(vendoredNpmPluginRoot(TMP_ROOT, name, "1.2.3"), name);
+      mkdirSync(vendored, { recursive: true });
+      writeFileSync(
+        join(vendored, "package.json"),
+        JSON.stringify({ name, version: "1.2.3", type: "module", exports: "./index.js" }),
+      );
+      writeFileSync(join(vendored, "index.js"), "export default function plugin(md) { md.from = 'vendored'; }\n");
+
+      const loaded = await loadPlugin(cfg({ name, version: "1.2.3" }), TMP_ROOT);
+      const md: { from?: string } = {};
+      (loaded.plugin as (md: unknown) => void)(md);
+      expect(md.from).toBe("vendored");
+    });
+
+    test("does not fall back when a pinned vendored copy is present but broken", async () => {
+      const name = "broken-vendored-plugin-fixture";
       const packageDir = join(TMP_ROOT, "node_modules", name);
       mkdirSync(packageDir, { recursive: true });
       writeFileSync(
@@ -427,15 +450,15 @@ describe("plugin loader", () => {
         JSON.stringify({ name, version: "1.2.3", type: "module", exports: "./index.js" }),
       );
       writeFileSync(join(packageDir, "index.js"), "export default function plugin() {}\n");
-      const installRoot = vendoredNpmPluginRoot(TMP_ROOT, name, "1.2.3");
-      mkdirSync(installRoot, { recursive: true });
-      writeFileSync(
-        join(installRoot, VENDOR_RECEIPT_FILE),
-        JSON.stringify({ schemaVersion: 1 }),
-      );
+      // The vendored folder exists but lost its package.json (a half-copied
+      // project): the loader must say "reinstall", not quietly load the
+      // project's node_modules copy instead.
+      mkdirSync(vendoredNpmPluginPackageDir(vendoredNpmPluginRoot(TMP_ROOT, name, "1.2.3"), name), {
+        recursive: true,
+      });
 
       await expect(loadPlugin(cfg({ name, version: "1.2.3" }), TMP_ROOT)).rejects.toThrow(
-        /unsupported vendor receipt schema|failed verification/i,
+        /incomplete.*Reinstall it with `gutterpress ext add/i,
       );
     });
 

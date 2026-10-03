@@ -236,20 +236,9 @@ export interface BuildContext {
    * gets the SAME resolved `{ plugins, pluginCss, pluginStylePaths }` back,
    * whichever of them runs first.
    *
-   * Before this, `runQualityGates`'s lint gate and `renderBook` each called
-   * `loadPluginsWithCss` independently for the identical manifest. For an
-   * npm-vendored plugin, EVERY load re-runs `verifyVendoredPlugin` ->
-   * `computeVendorTreeDigest` (plugin-vendor.ts) — a recursive walk of the
-   * vendored tree plus a full read-and-SHA-256 of every file, with no cache
-   * anywhere in that module BY DESIGN (the digest exists to detect tampering
-   * with the vendored tree; a cache keyed on anything less than the file
-   * contents themselves — e.g. the receipt's mtime — would not notice an
-   * edited vendored file). A `gutterpress build` with the lint gate on
-   * therefore paid that cost twice for no reason: same manifest, same
-   * `renderDir` anchor (see that field's doc comment — the two call sites'
-   * base dirs were the historical risk here, and they are now provably the
-   * same value), same plugin list. Memoizing the ONE load on the context
-   * removes the duplicate work without caching anything security-relevant.
+   * One load means one answer: the validation gate checks exactly the plugin
+   * stylesheets the render will use, and a plugin that fails to load aborts
+   * the build at the first stage that needs it rather than partway through.
    */
   plugins: LoadedPluginsWithCss | null;
 }
@@ -477,9 +466,7 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
   // #262: reuses runQualityGates' load when a gate already ran one for this
   // same ctx (the common case — see loadBuildPlugins' doc comment); loads
   // fresh, fail-fast, otherwise (both gates off, or a caller that renders
-  // without going through runQualityGates at all, e.g. a unit test). Either
-  // way this is a plain memo read/populate, never a second load of the SAME
-  // plugin set — see loadBuildPlugins for why that duplication mattered.
+  // without going through runQualityGates at all, e.g. a unit test).
   const { plugins, pluginStyles } = await loadBuildPlugins(ctx);
 
   // The render reports every asset the book actually references: image `src`

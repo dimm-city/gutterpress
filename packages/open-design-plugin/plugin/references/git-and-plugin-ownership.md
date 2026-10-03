@@ -66,7 +66,7 @@ design/tmp/
 ```
 
 Do **not** ignore `plugins/npm/` — a team that expects the book to build offline
-on another machine needs that vendored tree committed, receipts and all.
+on another machine needs that vendored tree committed.
 
 ## Two unrelated plugin systems
 

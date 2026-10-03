@@ -676,8 +676,8 @@ The specifier's form picks the branch:
 1. **Bundled** names → `BUILTIN_OPTIONAL_PLUGINS` (`markdown/renderer.ts`),
    before any other lookup
 2. **Paths** → the file or folder, relative to the manifest
-3. **npm** → the receipt-verified project-local package graph
-   (`plugins/npm/`, selected by the pinned `name@version`); an unpinned name
+3. **npm** → the project-local vendored copy
+   (`plugins/npm/<name>/<version>/`, selected by the pinned `name@version`); an unpinned name
    falls back to the project's `node_modules`, then to Gutterpress's own
    dependencies (legacy manifests only — `ext list` flags it as "Not pinned")
 4. **Fail fast** — anything else identifies the manifest entry and points to
@@ -686,20 +686,19 @@ The specifier's form picks the branch:
 The loader does **not** install or access the network. Installation is an
 explicit shared-lib action — `addExtension` (`lib/extension-manager.ts`),
 called by the desktop's routes and by `gutterpress ext add`. Registry metadata
-is resolved to an exact root and dependency graph, each tarball integrity is
-verified, and a bounded nested `node_modules` tree is safely vendored before
-the pinned specifier `name@<exact version>` is written to the manifest (the
-vendor tree is rolled back if the load-test fails).
-A schema-v2 receipt records provenance, dependency
-edges, import/require entries, skipped optional dependencies, and a SHA-256
-whole-tree digest. Before loading, the loader snapshots the vendor tree and
-verifies that private copy, including each package's declared dependency edges
-and export entries. It then copies packages separately into a digest-addressed
-process-local tree with no `node_modules` links. Literal ESM imports and
-CommonJS requires in the reachable module graph are resolved through the
-receipt and rewritten to those private copies; unresolved or nonliteral module
-requests fail closed instead of substituting project or ancestor packages.
-(Full rationale was ADR 0007, removed in the 2026-07-29 docs cleanup.)
+is resolved to an exact root and dependency graph, each tarball's integrity is
+verified against the registry's SRI hash, and a bounded nested `node_modules`
+tree is safely vendored (no package scripts, no bundled `node_modules`, no
+links or path traversal) before the pinned specifier `name@<exact version>` is
+written to the manifest (the vendor tree is rolled back if the load-test
+fails). The vendored tree is an ordinary npm layout and nothing more: the
+loader resolves the package entry from its own `package.json` and `import()`s
+it, and Node's own module resolution serves the package's imports and requires
+from the nested `node_modules`. Nothing is recorded about the tree and nothing
+re-verifies it on load; a vendored folder that is present but incomplete is an
+error pointing at reinstall, never a silent fall-through. (The earlier
+receipt/snapshot/import-rewriting scheme was removed in 0.11.10 as
+disproportionate for a local authoring tool.)
 
 Plugin modules normally expose a default function. An entry's `export`
 selects a named function when a package exposes several plugin variants
@@ -707,7 +706,7 @@ instead.
 
 **Design Rationale**:
 - One manifest list keeps configuration explicit; the specifier's form encodes its source, so no wrapper keys
-- Exact versions, complete project-local dependency trees, and receipts make installs reproducible
+- Exact versions and complete project-local dependency trees make installs reproducible
 - List order is load order and cascade order — reordering is the only ordering control
 - Fail-fast on missing extensions surfaces misconfiguration immediately rather than silently skipping
 - Extension stylesheets (`styles` in metadata; `styles`/`css` module exports) let a plugin or look inject styles into rendered output, always below the author's own `styles:`
