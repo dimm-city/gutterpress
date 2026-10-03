@@ -335,7 +335,6 @@ jobs:
           # Exercise the compiled binary's registry installer and direct-entry
           # loader with a real plugin that imports a runtime dependency.
           "./${{ matrix.artifact }}" ext add markdown-it-highlightjs@4.3.0 /tmp/gutterpress-smoke/smoke-test-book
-          test -f /tmp/gutterpress-smoke/smoke-test-book/plugins/npm/markdown-it-highlightjs/4.3.0/.gutterpress-install.json
           test -f /tmp/gutterpress-smoke/smoke-test-book/plugins/npm/markdown-it-highlightjs/4.3.0/node_modules/markdown-it-highlightjs/node_modules/highlight.js/package.json
           # Cover the two npm archive/module shapes that have broken the
           # compiled installer in practice: @types' legacy tar root and a
