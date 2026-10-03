@@ -56,7 +56,6 @@ function makeStubServer(): PreviewServer & {
     broadcastReload() {
       stub.broadcastReloadCalls++;
     },
-    broadcastContentUpdate() {},
   };
   return stub;
 }
@@ -414,8 +413,7 @@ describe("shutdownServer", () => {
       port: 3000,
       close: () => new Promise<void>(() => {}), // never resolves
       broadcastReload() {},
-      broadcastContentUpdate() {},
-    };
+      };
     const state = makeState({ tempDir, previewServer: hangingServer });
 
     // withTimeout's internal budget is 2000ms per step; give it headroom.

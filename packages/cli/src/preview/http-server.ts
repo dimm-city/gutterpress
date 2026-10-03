@@ -5,7 +5,7 @@
  * runs under both Bun (dev / compiled binary) and Node.js (Electron in-process).
  *
  * This module deliberately avoids any bundler runtime (vite/rollup/esbuild)
- * — see ADR `docs/adr/0001-no-bundlers-at-runtime.md`.
+ * — see CLAUDE.md §1 ("No bundlers at runtime").
  */
 
 import http from 'node:http';
@@ -17,16 +17,9 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { info } from '../utils/logger.ts';
 import { openPath } from '../lib/open-path.ts';
 import { getAssetPath } from '../lib/embedded-assets.ts';
-import {
-  STATIC_MIME,
-  hasDotSegment,
-  resolveStaticPath,
-  resolveWithinRoot,
-} from '../lib/static-serve.ts';
+import { STATIC_MIME, hasDotSegment, resolveStaticPath } from '../lib/static-serve.ts';
 import { PACKAGE_VERSION } from '../lib/version.ts';
 import type { ServerState } from './server-context.ts';
-import { incrementalPreviewEnabled, renderChapterPreviewHtml } from './file-watcher.ts';
-import { canonicalChapterId } from '../lib/markdown/chapter-id.ts';
 import { resolvePort, UsageError } from '../lib/cli-args.ts';
 import { BuildError } from '../lib/build-error.ts';
 
@@ -36,178 +29,11 @@ import { BuildError } from '../lib/build-error.ts';
 const HMR_PATH = '/__gutterpress-hmr';
 
 /**
- * Tiny client snippet injected into served HTML. Reconciles the visible page
- * to the server's latest rendered revision across reloads and reconnects.
- */
-function hmrClientSnippet(initialRevision: number, instanceId: string): string {
-  return `
-<script>
-  (function () {
-    // When loaded by the preview SHELL (iframe double-buffer), the shell loads us
-    // with ?gutterpressshell=1 and owns HMR (it swaps frames + syncs scroll), so we stay
-    // inert. We must NOT bail merely because we're framed — other hosts (the
-    // Electron desktop's SPA) embed book.html directly and rely on this HMR client
-    // for scroll-anchor and reload.
-    if (/[?&]gutterpressshell=1/.test(location.search)) return;
-  var ANCHOR_KEY = 'gutterpress-scroll-anchor';
-  var appliedRevision = ${initialRevision};
-  var appliedInstance = ${JSON.stringify(instanceId)};
-  var readyToAcknowledge = false;
-  var reloadRequested = false;
-
-    // Find the element nearest the top of the viewport that carries a source
-    // line (markdown-it-source-map emits data-source-line on block elements).
-    // We anchor on SOURCE position, not pixels, because page breaks move when
-    // content re-paginates.
-    function captureAnchor() {
-      var els = document.querySelectorAll('[data-source-line]');
-      var best = null, bestTop = -Infinity;
-      for (var i = 0; i < els.length; i++) {
-        var r = els[i].getBoundingClientRect();
-        if (r.bottom < 0 || r.height === 0) continue;
-        if (r.top <= 80 && r.top > bestTop) { bestTop = r.top; best = els[i]; }
-      }
-      if (!best) {
-        for (var j = 0; j < els.length; j++) {
-          var rr = els[j].getBoundingClientRect();
-          if (rr.bottom > 0 && rr.height > 0) { best = els[j]; break; }
-        }
-      }
-      if (!best) return null;
-      var chapter = best.closest && best.closest('[data-chapter-src]');
-      return {
-        chapter: chapter ? chapter.getAttribute('data-chapter-src') : null,
-        line: best.getAttribute('data-source-line'),
-        offset: best.getBoundingClientRect().top
-      };
-    }
-
-    // After a content reload, put the same source line back at the same viewport
-    // offset so the author keeps their place (no jump to the top).
-    function restoreAnchor() {
-      var raw;
-      try { raw = sessionStorage.getItem(ANCHOR_KEY); } catch (_) { return; }
-      if (!raw) return;
-      try { sessionStorage.removeItem(ANCHOR_KEY); } catch (_) {}
-      var a; try { a = JSON.parse(raw); } catch (_) { return; }
-      var tries = 0;
-      (function attempt() {
-        var blocks = document.querySelectorAll('[data-source-line]');
-        var el = null;
-        for (var i = 0; i < blocks.length; i++) {
-          var chapter = blocks[i].closest && blocks[i].closest('[data-chapter-src]');
-          var chapterId = chapter ? chapter.getAttribute('data-chapter-src') : null;
-          if ((!a.chapter || chapterId === a.chapter) &&
-              blocks[i].getAttribute('data-source-line') === String(a.line)) {
-            el = blocks[i];
-            break;
-          }
-        }
-        if (el) {
-          window.scrollBy({
-            top: el.getBoundingClientRect().top - a.offset,
-            behavior: 'instant'
-          });
-          if (window.previewAPI && typeof window.previewAPI.refresh === 'function') {
-            window.previewAPI.refresh();
-          }
-          return;
-        }
-        if (tries++ < 240) setTimeout(attempt, 25); // wait for pagination
-      })();
-    }
-    var restored = false;
-    function restoreOnce() { if (restored) return; restored = true; restoreAnchor(); }
-    function finishInitialRender() {
-      restoreOnce();
-      readyToAcknowledge = true;
-      acknowledge();
-    }
-    // CRITICAL ordering: when the pagination engine is present it restructures
-    // the DOM after load, so restoring the scroll anchor early would target
-    // pre-pagination geometry. The Gutterpress engine viewer fires
-    // 'gp:layout' when its pagination completes — wait for it. In static
-    // mode (no engine) the content is final immediately, so restore right
-    // after load.
-    var hasEngine = !!document.querySelector('script[src*="/engine/gutterpress-viewer.js"]');
-    window.addEventListener('gp:layout', finishInitialRender, { once: true });
-    if (!hasEngine) {
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function () { setTimeout(finishInitialRender, 50); });
-      } else {
-        setTimeout(finishInitialRender, 50);
-      }
-    }
-    var ws = null;
-    var reconnectTimer = null;
-    var reconnectDelay = 250;
-    var stopped = false;
-
-    function acknowledge() {
-      if (!readyToAcknowledge || !ws || ws.readyState !== 1) return;
-      try {
-        ws.send(JSON.stringify({
-          type: 'reload-applied',
-          instance: appliedInstance,
-          revision: appliedRevision
-        }));
-      } catch (_) {}
-    }
-
-    function connect() {
-      if (stopped) return;
-      ws = new WebSocket(location.origin.replace(/^http/, 'ws') + '${HMR_PATH}');
-      ws.onopen = function () {
-        reconnectDelay = 250;
-        acknowledge();
-      };
-      ws.onmessage = function (e) {
-        var msg;
-        try { msg = JSON.parse(e.data); } catch (_) { return; }
-        if (
-          msg.type !== 'reload-state' &&
-          msg.type !== 'full-reload' &&
-          msg.type !== 'content-update'
-        ) return;
-        var instance = typeof msg.instance === 'string' ? msg.instance : null;
-        var revision = Number(msg.revision);
-        if (!instance || !Number.isSafeInteger(revision) || revision < 0) return;
-        if (instance === appliedInstance && revision <= appliedRevision) {
-          acknowledge();
-          return;
-        }
-        if (reloadRequested) return;
-        reloadRequested = true;
-        try { var a = captureAnchor(); if (a) sessionStorage.setItem(ANCHOR_KEY, JSON.stringify(a)); } catch (_) {}
-        location.reload();
-      };
-      ws.onclose = function () {
-        ws = null;
-        if (stopped || reconnectTimer !== null) return;
-        reconnectTimer = setTimeout(function () {
-          reconnectTimer = null;
-          connect();
-        }, reconnectDelay);
-        reconnectDelay = Math.min(reconnectDelay * 2, 5000);
-      };
-      ws.onerror = function () { try { ws.close(); } catch (_) {} };
-    }
-
-    window.addEventListener('beforeunload', function () {
-      stopped = true;
-      if (reconnectTimer !== null) clearTimeout(reconnectTimer);
-    });
-    connect();
-  })();
-</script>
-`;
-}
-
-/**
- * Preview shell (enabled by default; legacy opt-out is
- * GUTTERPRESS_PREVIEW_INCREMENTAL=0). Hosts book.html in an iframe and
- * paginates one edited Markdown source in a hidden frame, while geometry-wide
- * changes still double-buffer and swap a full document.
+ * Preview shell, served at "/". Hosts book.html in an iframe and owns live
+ * reload (preview-shell.js): every update double-buffers the complete
+ * regenerated book in a hidden frame and swaps it in once paginated, carrying
+ * the reader's scroll anchor across. There is no other client — book.html
+ * itself is served verbatim, with nothing injected.
  */
 function shellHtml(initialRevision: number, instanceId: string): string {
   return `<!doctype html>
@@ -235,8 +61,6 @@ export interface PreviewServer {
    * Safe to call after `close()` (no-op).
    */
   broadcastReload(): void;
-  /** Paginate and replace one edited Markdown source in connected shells. */
-  broadcastContentUpdate(file: string): void;
 }
 
 /**
@@ -318,21 +142,11 @@ export async function findAvailablePort(
 }
 
 /**
- * Inject the HMR client snippet just before the closing `</body>` tag.
- */
-function injectHmrClient(html: string, revision: number, instanceId: string): string {
-  const snippet = hmrClientSnippet(revision, instanceId);
-  const closingBody = html.lastIndexOf('</body>');
-  if (closingBody === -1) return html + snippet;
-  return html.slice(0, closingBody) + snippet + html.slice(closingBody);
-}
-
-/**
- * Serve a static file (or directory's `index.html`) with HMR injection for
- * HTML responses. Writes 404 if the path doesn't resolve to a real file.
+ * Serve a static file (or directory's `index.html`). Writes 404 if the path
+ * doesn't resolve to a real file.
  *
  * `cacheControl` is the value sent in the Cache-Control header. Generated
- * HTML uses the `no-store` default. Project assets are served through
+ * HTML always goes out `no-store`: it contains each render. Project assets are served through
  * `serveRevalidatedStatic` below so replacement frames can reuse unchanged
  * image bytes without ever accepting an edited file as fresh.
  */
@@ -341,8 +155,6 @@ async function serveStatic(
   res: http.ServerResponse,
   cacheControl: string = 'no-store',
   extraHeaders: Record<string, string> = {},
-  hmrRevision: number = 0,
-  hmrInstance: string = '',
 ): Promise<void> {
   let filePath = absPath;
 
@@ -367,9 +179,8 @@ async function serveStatic(
 
   const isHtml = filePath.endsWith('.html') || filePath.endsWith('.htm');
   if (isHtml) {
-    const withHmr = injectHmrClient(data.toString('utf-8'), hmrRevision, hmrInstance);
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-    res.end(withHmr);
+    res.end(data);
     return;
   }
 
@@ -387,7 +198,7 @@ async function serveStatic(
  * Defender hash-cache stay warm) AND with a long, immutable Cache-Control
  * (see `EMBEDDED_CACHE_CONTROL` below) so Chrome's HTTP cache reuses the
  * response across reloads within the same preview session instead of
- * re-fetching the ~900 KB polyfill on every load.
+ * re-fetching the engine viewer bundle on every load.
  */
 const EMBEDDED_PREFIXES = ['/preview/scripts/', '/engine/'];
 const EMBEDDED_EXACT = new Set(['/favicon.ico']);
@@ -396,11 +207,11 @@ const EMBEDDED_EXACT = new Set(['/favicon.ico']);
  * Embedded assets are content-fixed per gutterpress VERSION, not forever: the
  * preview server binds a fixed default port (3579), so the SAME URL on the
  * SAME origin serves DIFFERENT bytes after a gutterpress upgrade. `immutable`
- * would pin a browser to the old ~900 KB polyfill for a year (it forbids even
+ * would pin a browser to the old viewer bundle for a year (it forbids even
  * a reload from revalidating), silently serving stale vendored scripts across
  * an upgrade. Instead we tag each response with a version ETag and use
  * `no-cache` (store, but revalidate before every use): an unchanged version
- * returns a 304 with no body — so the polyfill is still never re-downloaded
+ * returns a 304 with no body — so the bundle is still never re-downloaded
  * within or across sessions — while an upgrade's new ETag forces a fresh 200.
  */
 const EMBEDDED_CACHE_CONTROL = 'public, no-cache';
@@ -514,19 +325,10 @@ export async function createPreviewServer(
     retryTimer: ReturnType<typeof setTimeout> | null;
   }>();
 
-  function sendRevision(
-    ws: WebSocket,
-    type: 'reload-state' | 'full-reload' | 'content-update',
-    file?: string,
-  ): void {
+  function sendRevision(ws: WebSocket, type: 'reload-state' | 'full-reload'): void {
     if (ws.readyState !== WebSocket.OPEN) return;
     try {
-      ws.send(JSON.stringify({
-        type,
-        instance: instanceId,
-        revision: reloadRevision,
-        ...(file ? { file } : {}),
-      }));
+      ws.send(JSON.stringify({ type, instance: instanceId, revision: reloadRevision }));
     } catch {
       // The close handler removes the client; a reconnect receives current state.
     }
@@ -628,52 +430,7 @@ export async function createPreviewServer(
       return;
     }
 
-    // 3. Render one source file for the shell's fast Markdown-update path.
-    if (url.pathname === '/__chapter' && req.method === 'GET') {
-      const rawFile = url.searchParams.get('file');
-      const file = rawFile ? canonicalChapterId(rawFile) : '';
-      const revision = Number(url.searchParams.get('revision'));
-      const configuredFiles = state.config.source?.files;
-      if (
-        !file ||
-        !state.currentInputPath ||
-        !incrementalPreviewEnabled() ||
-        !Number.isSafeInteger(revision) ||
-        revision !== reloadRevision ||
-        path.extname(file).toLowerCase() !== '.md' ||
-        hasDotSegment(file) ||
-        !resolveWithinRoot(file, state.currentInputPath) ||
-        (Array.isArray(configuredFiles) && configuredFiles.length > 0 &&
-          !configuredFiles.some((configured) => canonicalChapterId(configured) === file))
-      ) {
-        res.writeHead(400);
-        res.end('Bad Request');
-        return;
-      }
-      try {
-        const html = await renderChapterPreviewHtml(
-          state.currentInputPath,
-          file,
-          state.config,
-        );
-        if (revision !== reloadRevision) {
-          res.writeHead(409);
-          res.end('Superseded');
-          return;
-        }
-        res.writeHead(200, {
-          'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'no-store',
-        });
-        res.end(html);
-      } catch (error) {
-        res.writeHead(500);
-        res.end(error instanceof Error ? error.message : String(error));
-      }
-      return;
-    }
-
-    // 4. Embedded assets (vendor + desktop scripts) — served from the
+    // 3. Embedded assets (vendor + desktop scripts) — served from the
     // process-wide extracted assets dir, with a long, immutable cache header
     // (EMBEDDED_CACHE_CONTROL). These never change within a process
     // lifetime, so we never copy them into per-project tempDirs (avoids
@@ -682,7 +439,7 @@ export async function createPreviewServer(
     if (matchesEmbedded(url.pathname)) {
       // Conditional request: when the browser already has this version's copy
       // (If-None-Match matches the version ETag), answer 304 with no body —
-      // the ~900 KB polyfill is never re-read from disk or re-sent.
+      // the viewer bundle is never re-read from disk or re-sent.
       if (req.headers['if-none-match'] === EMBEDDED_ETAG) {
         res.writeHead(304, { ETag: EMBEDDED_ETAG, 'Cache-Control': EMBEDDED_CACHE_CONTROL });
         res.end();
@@ -704,16 +461,14 @@ export async function createPreviewServer(
       return;
     }
 
-    // 5. Preview shell: serve the incremental/double-buffered shell at "/".
-    if (url.pathname === '/' && incrementalPreviewEnabled()) {
+    // 4. Preview shell: serve the double-buffered shell at "/".
+    if (url.pathname === '/') {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       res.end(shellHtml(reloadRevision, instanceId));
       return;
     }
 
-    // 6. Static file fallback: book.html vs the project root.
-    // Treat bare "/" as book.html — the desktop app (packages/desktop) wraps
-    // book.html in its own iframe-based toolbar.
+    // 5. Static file fallback: book.html vs the project root.
     //
     // book.html is the ONE file gutterpress generates (CSS + fonts are inlined
     // into it at render time — see asset-inline.ts), so it is the only path
@@ -736,9 +491,9 @@ export async function createPreviewServer(
     // honors on Windows. No-input mode (`state.currentInputPath === ''`) has
     // no project to serve from either, so every non-book.html path 404s there
     // too.
-    const pathname = url.pathname === '/' ? '/book.html' : url.pathname;
+    const pathname = url.pathname;
 
-    // 4a. Inlined-CSS assets the render could not embed. `asset-inline.ts`
+    // 5a. Inlined-CSS assets the render could not embed. `asset-inline.ts`
     // rewrites an oversized image to `assets/<contentHash><ext>` when it lives
     // OUTSIDE the book — art referenced from a repo-root shared stylesheet,
     // the normative multi-book layout — and returns a copy plan. The build
@@ -778,7 +533,7 @@ export async function createPreviewServer(
     }
     const serve = servingProjectRoot
       ? serveRevalidatedStatic(req, absPath, res, projectAssetValidators)
-      : serveStatic(absPath, res, 'no-store', {}, reloadRevision, instanceId);
+      : serveStatic(absPath, res);
     await serve.catch((err: Error) => {
       if (!res.headersSent) {
         res.writeHead(500);
@@ -813,24 +568,6 @@ export async function createPreviewServer(
 
   let stopped = false;
 
-  const broadcastUpdate = (
-    type: 'full-reload' | 'content-update',
-    file?: string,
-  ): void => {
-    if (stopped) return;
-    reloadRevision++;
-    for (const [ws] of clients) {
-      sendRevision(ws, type, file);
-      waitForAcknowledgement(ws);
-    }
-  };
-
-  const updateInFlight = (): boolean => {
-    for (const client of clients.values()) {
-      if (client.acknowledgedRevision < reloadRevision) return true;
-    }
-    return false;
-  };
 
   return {
     port: boundPort,
@@ -852,14 +589,12 @@ export async function createPreviewServer(
       });
     },
     broadcastReload() {
-      broadcastUpdate('full-reload');
-    },
-    broadcastContentUpdate(file: string) {
-      // Revisions are cumulative. If any visible client is still applying an
-      // older update, a second isolated splice could omit it; the latest
-      // authoritative book.html safely subsumes both changes.
-      if (updateInFlight()) broadcastUpdate('full-reload');
-      else broadcastUpdate('content-update', canonicalChapterId(file));
+      if (stopped) return;
+      reloadRevision++;
+      for (const [ws] of clients) {
+        sendRevision(ws, 'full-reload');
+        waitForAcknowledgement(ws);
+      }
     },
   };
 }

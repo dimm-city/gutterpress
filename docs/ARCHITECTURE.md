@@ -341,10 +341,10 @@ return result.diagnostics;
 
 Preview mode runs a single `node:http` server (plus a `ws` `WebSocketServer`)
 that handles static files, the one `/api/status` route, and a
-`/__gutterpress-hmr` WebSocket. A single Markdown edit may use the focused
-`content-update` notification, while wider changes use `full-reload`; the
-preview shell deliberately handles both by swapping the complete regenerated
-book so pagination never depends on per-source isolation wrappers. It does
+`/__gutterpress-hmr` WebSocket. Every change — a one-word Markdown edit or a
+stylesheet rewrite — is one `full-reload` notification; the preview shell
+double-buffers the complete regenerated book and swaps it in, so pagination
+never depends on per-source isolation wrappers. It does
 **not** use `Bun.serve`: the lib runtime must stay Node-compatible so the
 Electron desktop can run it in-process on Electron's bundled Node (see
 `CLAUDE.md`, Monorepo layout section, and §1). There is no toolbar, page

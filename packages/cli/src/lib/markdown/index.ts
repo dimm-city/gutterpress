@@ -68,8 +68,6 @@ export async function renderChapters(
      * wrapped in its own cascade layer — see the block below.
      */
     pluginStyles?: PluginStyleGroup[];
-    /** Wrap each source file for incremental preview pagination. */
-    wrapChapters?: boolean;
     /** Add source-file ids to source-mapped preview blocks without wrappers. */
     annotateSourceChapters?: boolean;
     /**
@@ -154,7 +152,6 @@ export async function renderChapters(
     title: opts.title,
     plugins: opts.plugins,
     pluginCss,
-    wrapChapters: opts.wrapChapters,
     annotateSourceChapters: opts.annotateSourceChapters,
     onChapterWarnings: opts.onChapterWarnings,
     onImageRefs: opts.onImageRefs,
