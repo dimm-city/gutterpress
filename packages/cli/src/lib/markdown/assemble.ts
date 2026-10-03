@@ -95,8 +95,8 @@ export interface AssembleBookHtmlOptions {
    * Chromium reaches an `@page`-only `url()` lazily, during the print, and the
    * print path CDP drives never waits for a pending resource — so the sheet
    * comes back with its background colour alone, no error, a valid PDF of
-   * blank paper (docs/known-limitations.md §3; mechanism in
-   * PR #187's `docs/analysis/why-page-background-drops.md`).
+   * blank paper (docs/known-limitations.md §3; mechanism analysis in
+   * PR #187).
    *
    * What the preload buys is that the fetch STARTS during document load
    * instead of during the print. That is not a timing guarantee: a response

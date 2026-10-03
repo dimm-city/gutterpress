@@ -147,6 +147,6 @@ and each fires only for a specific, real ownership violation.
 ## See also
 
 - [Schema reference — `validate.source`](./schema-autocomplete.md#validate-object)
-- [CSS architecture review, finding C6](./audits/2026-09-01-css-architecture-review.md) — the review this check implements
+- The 2026-09-01 CSS architecture review, finding C6 — the review this check implements (the review document itself was retired once its findings shipped; the check landed in 0.10.8 under #238/#262)
 - `packages/cli/src/lib/printsafe.ts` — the sibling postcss-based print-safety
   checks this follows the same no-stylelint approach as

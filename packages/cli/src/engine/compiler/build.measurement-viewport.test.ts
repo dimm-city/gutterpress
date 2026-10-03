@@ -18,7 +18,8 @@ import { build } from "./build.ts";
  * the print itself re-lays out at the paper box, the PDF looks fine while the
  * VERDICTS about it are wrong.
  *
- * WHY THIS EXISTS (docs/analysis/cli-desktop-print-parity.md §6, §7): Chromium
+ * WHY THIS EXISTS (the CLI↔desktop print-parity investigation that followed
+ * PR #186/#187): Chromium
  * only hides scrollbars if something asks. The CLI's browser is launched by
  * puppeteer, whose default argument set contains `--hide-scrollbars`; an
  * Electron `BrowserWindow` — the desktop app's engine browser — is not. So the

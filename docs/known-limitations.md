@@ -150,9 +150,9 @@ what Gutterpress does about it:
 The image **is** fetched either way (confirmed in an HTTP access log on the
 failing run) — the print issues the request itself and then does not wait for
 it. `--virtual-time-budget` at 30s and 60s both still produce a flat page. The
-mechanism, read from Chromium source at tag 151.0.7922.75, is in
-[#187](https://github.com/dimm-city/gutterpress/pull/187)'s
-`docs/analysis/why-page-background-drops.md`.
+mechanism, read from Chromium source at tag 151.0.7922.75, is recorded in
+[#187](https://github.com/dimm-city/gutterpress/pull/187); the shim's
+removal trigger is `page-background-chromium-bug.canary.test.ts`.
 
 Measured on Chrome 151.0.7922.75, left-margin strip std-dev, same artwork at
 three sizes:
