@@ -86,8 +86,8 @@ in the contract, so a stray `columns: 2` in some unrelated file is still
 caught — including a plugin's own declared `styles` file (#238): an installed
 plugin is not exempt from the project's ownership contract just because its
 CSS ships from `node_modules` rather than the theme folder. This coverage is
-uniform across every surface that runs this check — `gutterpress lint`,
-`validate`/`preflight`, and the desktop Problems panel all resolve the exact
+uniform across every surface that runs this check — `gutterpress
+validate`/`preflight` and the desktop Problems panel all resolve the exact
 same plugin-inclusive stylesheet set (#262) — so a contract violation cannot
 pass on one surface and fail on another. This is the direct fix for the
 motivating example:

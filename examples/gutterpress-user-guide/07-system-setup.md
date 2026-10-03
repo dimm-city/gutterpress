@@ -197,9 +197,9 @@ linting auto-detects `.htmlhintrc`.
 
 ### CSS print-safety linting — built in (no stylelint)
 
-`gutterpress lint` checks CSS for print-safety issues (remote URLs, rasterizing
-effects) using Gutterpress's own postcss-based
-checks. **stylelint is not used or required** — it can't be bundled into the
+The `source.stylelint` check (`gutterpress validate`, and `gutterpress build`'s
+pre-build validation) checks CSS for print-safety issues (remote URLs,
+rasterizing effects) using Gutterpress's own postcss-based checks. **stylelint is not used or required** — it can't be bundled into the
 `bun build --compile` binary, so these checks run in-process everywhere,
 including from the standalone binary.
 

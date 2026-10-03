@@ -24,7 +24,7 @@ Every feature area below is tagged with its implementation status:
 This contract governs the **desktop application** — the desktop Electron app
 and its PWA/browser target (#33/#34, `docs/pwa-webadapter-plan.md`).
 
-**Out of scope:** the CLI (`gutterpress new/build/preview/lint/publish`). The CLI
+**Out of scope:** the CLI (`gutterpress new/build/preview/validate/publish`). The CLI
 is the power-user and CI surface (see the repo README: "a desktop application
 (with a CLI for power users)") and is governed by `packages/cli/README.md` and
 `docs/publishing.md`. Developer users are expected to move between the app and

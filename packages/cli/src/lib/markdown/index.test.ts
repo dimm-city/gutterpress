@@ -207,8 +207,8 @@ describe("renderChapters plugin styles (#238)", () => {
 
 /**
  * resolveActiveMarkdownFiles (2026-07-28 duplication audit) — extracted out of
- * renderChapters's own inline fallback so validation-exec.ts and
- * lint-runner.ts can resolve "the book's markdown files" with the exact same
+ * renderChapters's own inline fallback so validation-exec.ts can resolve
+ * "the book's markdown files" with the exact same
  * logic renderChapters uses, instead of a separately-maintained recursive
  * glob. These pin down the two branches directly.
  */

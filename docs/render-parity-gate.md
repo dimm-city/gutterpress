@@ -135,9 +135,9 @@ remember it: `packages/cli/src/lib/printsafe.ts`'s
 declaration, and its message names this exact consequence ("text becomes
 unselectable, unsearchable, and inaccessible") and points back here. Run
 it — `gutterpress build`'s pre-build validation (`source.stylelint`),
-standalone `gutterpress lint`, and the desktop Problems panel all call
-`checkCss` — over any stylesheet you're about to trust render-parity to
-cover; `gutterpress lint` lists each finding with its file and `line:col`,
+standalone `gutterpress validate --only source.stylelint`, and the desktop
+Problems panel all call `checkCss` — over any stylesheet you're about to trust
+render-parity to cover; each finding is listed with its file and `line:col`,
 and `filter: none` (a suppressed filter) is not one. **If a text-bearing
 element or one of its ancestors trips that `filter` warning, render-parity
 cannot see a text-only change confined to it — verify such a change by other

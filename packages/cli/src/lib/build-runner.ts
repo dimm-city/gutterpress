@@ -63,7 +63,7 @@ export interface BuildRunnerOptions {
   stripAnnotations?: boolean;
   /**
    * Skip the CSS print-safety check (#272 — one CSS gate, not two). This used
-   * to gate a separate `runLint` pass; it now disables just the
+   * to gate a separate lint-runner pass (since deleted); it now disables just the
    * `source.stylelint` check inside pre-build validation (see
    * {@link computeGates}'s `skipStylelint`). Has no effect when
    * `skipPreValidate` is also set — pre-build validation, CSS check
@@ -393,7 +393,7 @@ export async function loadBuildPlugins(ctx: BuildContext): Promise<LoadedPlugins
  * Stage 2 — run pre-build validation, the build's only remaining quality
  * gate (#272 — one CSS gate, not two). Before this, `gutterpress build` ran
  * `checkCss` over the configured stylesheets TWICE: once in a separate lint
- * gate (`runLint`, lint-runner.ts) and again one phase later here, inside
+ * gate (the since-deleted lint-runner) and again one phase later here, inside
  * `source.stylelint` — a build printed the identical CSS finding list twice,
  * a phase apart. The CSS print-safety check now lives ONLY as
  * `source.stylelint`, run by `executeAndReport` below like every other

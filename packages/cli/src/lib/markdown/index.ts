@@ -14,8 +14,8 @@ export type { LayoutWarning } from "./assemble";
 /**
  * THE canonical "which markdown files make up this book, and in what order?"
  * resolver — markdown's counterpart to `resolveActiveStyles` (style-resolver.ts).
- * Both `renderChapters` below AND validation/lint (validation-exec.ts,
- * lint-runner.ts) call this, so what gets checked is always what gets rendered
+ * Both `renderChapters` below AND validation (validation-exec.ts) call this,
+ * so what gets checked is always what gets rendered
  * (2026-07-28 duplication audit — those two used to each re-derive their own
  * recursive-glob approximation of "the book's markdown files" instead of
  * calling this):
