@@ -6,7 +6,7 @@ This repo is a Bun workspace with three packages:
 
 - **`packages/cli/`** (`gutterpress`) — the single published package:
   ALL runtime logic (markdown rendering, preview HTTP server, native-engine PDF
-  generation, lint, validation — under `src/`) **and** the CLI entry
+  generation, validation including CSS print-safety — under `src/`) **and** the CLI entry
   (`src/cli.ts`). It exposes a library (`exports` → `dist/index.js`) and a CLI
   (`bin` → `dist/cli.js`). Built the standard way: `bun build` (the Node
   entrypoints, `--target=node --packages=external --splitting`; `src/render.ts`
@@ -261,10 +261,10 @@ Monorepo layout section above: no `Bun.serve`/`Bun.file`) so Electron's bundled
 Node can run it in-process; `Bun.serve` would work under Bun but crash the
 packaged desktop app. The actual implementation
 (`packages/cli/src/preview/http-server.ts`) is a `node:http` static file
-server + a `ws` WebSocket server. A single Markdown edit may use the focused
-`content-update` notification and wider changes use `full-reload`, but the
-preview shell handles both by swapping the complete regenerated book. This
-keeps pagination independent of per-source isolation wrappers. The server is
+server + a `ws` WebSocket server. Every change is one `full-reload`
+notification; the preview shell double-buffers the complete regenerated book
+and swaps it in, so pagination never depends on per-source isolation
+wrappers. The server is
 Node-compatible, runs under both Bun (dev / compiled binary) and Node.js
 (Electron), with no bundler involved.
 
