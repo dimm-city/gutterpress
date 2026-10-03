@@ -37,8 +37,8 @@ This repo is a Bun workspace with three packages:
   (no CJS→ESM `new Function` bridge — that was removed when the build moved to
   electron-vite + asar). No afterPack hook; electron-builder
   packages the lib + its transitive deps from the workspace `node_modules` via
-  its standard dep walker (puppeteer-core is `asarUnpack`ed; PDF export itself
-  uses Electron's own Chromium via `webContents.printToPDF`).
+  its standard dep walker (nothing is `asarUnpack`ed; PDF export uses
+  Electron's own Chromium via `webContents.printToPDF`).
   See [project_gutterpress_architecture] memory + `packages/desktop/` for the
   full picture.
 
@@ -270,8 +270,9 @@ Node-compatible, runs under both Bun (dev / compiled binary) and Node.js
 
 ### 2. Lazy-load heavy optional deps
 
-Anything used by a single subcommand (e.g. `puppeteer-core` in `gutterpress build`)
-should be imported with a dynamic `import()` inside the command handler, not at
+Anything used by a single subcommand (e.g. the engine compiler and
+`engine/shared/cdp.ts`'s `launchChromium` in `gutterpress build`) should be
+imported with a dynamic `import()` inside the command handler, not at
 top-level. This keeps `gutterpress --help` fast and isolates failures to the
 specific command path.
 
