@@ -14,7 +14,9 @@
  */
 import { app, protocol } from "electron";
 import path from "node:path";
-import { createServer, type IncomingHttpHeaders, type RequestListener } from "node:http";
+import { createServer, request as httpRequest, type IncomingHttpHeaders, type RequestListener } from "node:http";
+import { Readable } from "node:stream";
+import { logAppError } from "./app-log";
 import { pathToFileURL, fileURLToPath } from "node:url";
 
 // Module directory, ESM-safe — see the note on `HERE` in main.ts. Do NOT use the
@@ -196,6 +198,60 @@ export function buildProxyRequest(
   });
 }
 
+/**
+ * Send a proxy request over plain `node:http` and wrap the reply as a web
+ * `Response`. NOT Node's global `fetch`: undici gives up on any request whose
+ * response headers take longer than 5 minutes (its default headersTimeout),
+ * and surfaces that as a bare "TypeError: fetch failed". Routes legitimately
+ * take longer — `remote/clone-repository` downloads a whole repository in
+ * one request — and the loopback hop must wait exactly as long as the route
+ * does. `http.request` has no client timeout unless one is asked for.
+ * Exported for the proxy tests (tests/platform/sveltekit-host-proxy.test.ts).
+ */
+export function sendProxyRequest(req: Request): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const url = new URL(req.url);
+    const headers: Record<string, string> = {};
+    req.headers.forEach((value, name) => {
+      // http.request derives Host from the target; a forwarded one would be the app:// host.
+      if (name !== "host") headers[name] = value;
+    });
+    const creq = httpRequest(
+      { host: url.hostname, port: url.port, path: url.pathname + url.search, method: req.method, headers },
+      (res) => {
+        const resHeaders = new Headers();
+        for (const [name, value] of Object.entries(res.headers)) {
+          if (Array.isArray(value)) for (const v of value) resHeaders.append(name, v);
+          else if (value !== undefined) resHeaders.set(name, value);
+        }
+        const status = res.statusCode ?? 502;
+        // A Response may not carry a body for HEAD or a null-body status.
+        const bodyless = req.method === "HEAD" || status === 204 || status === 205 || status === 304;
+        if (bodyless) res.resume();
+        resolve(
+          new Response(bodyless ? null : (Readable.toWeb(res) as unknown as ReadableStream), {
+            status,
+            statusText: res.statusMessage,
+            headers: resHeaders,
+          }),
+        );
+      },
+    );
+    creq.on("error", reject);
+    if (req.body && req.method !== "GET" && req.method !== "HEAD") {
+      Readable.fromWeb(req.body as never).on("error", reject).pipe(creq);
+    } else {
+      creq.end();
+    }
+  });
+}
+
+/** `String(e)` plus the cause Node attaches to transport failures (the part that says why). */
+function describeError(e: unknown): string {
+  const cause = (e as { cause?: unknown } | null)?.cause;
+  return cause ? `${String(e)} — ${String(cause)}` : String(e);
+}
+
 export function registerAppProtocol(authToken: string): void {
   protocol.handle("app", async (req) => {
     const url = new URL(req.url);
@@ -220,14 +276,16 @@ export function registerAppProtocol(authToken: string): void {
       );
     }
     try {
-      return await fetch(buildProxyRequest(req, skServerPort, authToken));
+      return await sendProxyRequest(buildProxyRequest(req, skServerPort, authToken));
     } catch (e) {
-      console.error(`[app://] proxy error for ${url.pathname}:`, e);
+      const detail = describeError(e);
+      // Console AND the app log, so the Logs tab (and a problem report) says why.
+      void logAppError(`[app://] proxy error for ${url.pathname}: ${detail}`);
       return new Response(
         buildHostErrorPage({
           title: "Gutterpress ran into a problem",
           message: "A request to the app's internal server failed.",
-          detail: String(e),
+          detail,
         }),
         { status: 502, headers: HTML_HEADERS }
       );
