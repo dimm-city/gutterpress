@@ -27,17 +27,18 @@ test("service worker precaches the native engine's viewer bundle (offline previe
   // WebAdapter.startPreview) must be in the precache SHELL so preview renders
   // offline.
   expect(swSource).toContain("/engine/gutterpress-viewer.js");
-  // And the actual asset must ship in static/ so the build emits it.
+  // static/engine/ is a build product (not committed): tools/sync-engine-viewer.mjs
+  // copies the CLI's committed bundle there in the `dev`/`build` scripts, since
+  // the browser cannot reach the CLI's embedded assets. When a copy is present
+  // it must match the CLI's bundle — a stale one would silently ship the web
+  // target an old engine while the CLI runs the new one.
   const staticViewer = join(desktopRoot, "static", "engine", "gutterpress-viewer.js");
-  expect(existsSync(staticViewer)).toBe(true);
-  // static/engine/ is a MIRROR of the CLI's committed bundle (the browser
-  // cannot reach the CLI's embedded assets). `build-engine-bundles.mjs`
-  // refreshes both, but a stale mirror is silent and would ship the web
-  // target an old engine while the CLI runs the new one — so pin them equal.
-  const cliViewer = join(
-    desktopRoot, "..", "cli", "src", "assets", "engine", "gutterpress-viewer.js",
-  );
-  expect(readFileSync(staticViewer, "utf8")).toBe(readFileSync(cliViewer, "utf8"));
+  if (existsSync(staticViewer)) {
+    const cliViewer = join(
+      desktopRoot, "..", "cli", "src", "assets", "engine", "gutterpress-viewer.js",
+    );
+    expect(readFileSync(staticViewer, "utf8")).toBe(readFileSync(cliViewer, "utf8"));
+  }
 });
 
 test("service worker precaches the adapter-static build shell (#33)", () => {
