@@ -122,9 +122,9 @@ gutterpress ext add markdown-it-emoji@3.0.0 ./my-book --export full
 
 Gutterpress resolves the npm registry metadata to exact versions, verifies each
 registry integrity hash, and vendors the plugin's complete runtime dependency
-tree under the project's `plugins/npm/` folder. A receipt records the package
-graph and a hash of every file. Gutterpress then writes the pinned specifier —
-`markdown-it-highlightjs@4.3.0` — into `extensions:`, so the vendored graph
+tree under the project's `plugins/npm/` folder as a plain `node_modules`
+layout. Gutterpress then writes the pinned specifier —
+`markdown-it-highlightjs@4.3.0` — into `extensions:`, so the vendored tree
 travels with the project and later builds do not access the network. Explicit
 reinstall always downloads fresh bytes rather than trusting the existing folder.
 
@@ -255,7 +255,7 @@ export const styles = ["./styles/components.css", "./styles/callouts.css"];
 
 A `styles` file is treated exactly like one of your project's own stylesheets:
 a `url()` to a font or image next to it is embedded in the build, a local
-`@import` is followed, and `gutterpress lint` checks it for print-safety
+`@import` is followed, and `gutterpress validate` checks it for print-safety
 problems — none of which a `css` string gets, because a string is opaque to
 every other part of the tool. The files land in the same cascade position as
 `css` (the entry's position in `extensions:`, before your stylesheets), in the

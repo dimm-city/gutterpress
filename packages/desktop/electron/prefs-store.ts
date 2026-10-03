@@ -29,7 +29,7 @@ import path from "node:path";
 import type { ProjectStateMap } from "./project-state";
 import type { RecentFolder, FavoriteFolder } from "./recent-folders";
 import type { ProjectSource } from "gutterpress";
-import type { LastFlushFailure } from "./bridge-types";
+import type { LastFlushFailure } from "../src/lib/platform/shared-types";
 
 export interface DesktopPrefs {
   lastProjectDir?: string;

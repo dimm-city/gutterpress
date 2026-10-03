@@ -52,8 +52,9 @@ export function operationLogPath(userDataDir: string, repoSlug: string): string 
 // The SPACE in the name is what keeps it distinguishable from a project's log
 // at a glance: slugifyRepo maps every char outside [A-Za-z0-9_-] to "_", so no
 // project log's name can ever contain one.
+export const APP_LOG_FILENAME = "Gutterpress app.log";
 export function appLogPath(userDataDir: string): string {
-  return path.join(logsDir(userDataDir), "Gutterpress app.log");
+  return path.join(logsDir(userDataDir), APP_LOG_FILENAME);
 }
 
 /**

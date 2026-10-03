@@ -14,7 +14,6 @@ import {
 } from "electron";
 import path from "node:path";
 import os from "node:os";
-import { randomBytes } from "node:crypto";
 import { appendFile, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import * as fs from "node:fs";
@@ -22,11 +21,8 @@ import { watch } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { scanForProjects, type ScanDeps } from "./discover-projects";
 import { seedSamples } from "./seed-samples";
-import {
-  createSettingsStore,
-  type AppSettings,
-} from "./settings-store";
-import { createPrefsStore, type DesktopPrefs } from "./prefs-store";
+import { createSettingsStore } from "./settings-store";
+import { createPrefsStore } from "./prefs-store";
 // ARCH review #31: the 11 independent `registerXHooks()` service locators
 // have been collapsed into ONE `registerHostServices()` call (below) that
 // writes a single typed `HostServices` object. Each domain module below is
@@ -35,7 +31,6 @@ import { createPrefsStore, type DesktopPrefs } from "./prefs-store";
 // `registerHostServices` together, once, after every dependency exists.
 import { registerHostServices } from "./server-bridge/host-services";
 import type { WriteHooks } from "./server-bridge/write-hooks";
-import type { WatchHooks } from "./server-bridge/watch-hooks";
 import type { AppHooks } from "./server-bridge/app-hooks";
 import type { PrefsHooks } from "./server-bridge/prefs-hooks";
 import type { RecoveryHooks } from "./server-bridge/recovery-hooks";
@@ -63,17 +58,9 @@ import {
   shouldBackgroundCheck,
   getStatus as getUpdaterStatus,
 } from "./updater";
-import type { MarkdownFileLaunchEvent, UpdaterEventPayload } from "./bridge-types";
-import {
-  removeRecentFolder,
-  toggleFavoriteFolder,
-  type RecentFolder,
-} from "./recent-folders";
-import {
-  readProjectState,
-  writeProjectState,
-  type ProjectStateMap,
-} from "./project-state";
+import type { MarkdownFileLaunchEvent, UpdaterEventPayload } from "../src/lib/platform/shared-types";
+import { removeRecentFolder, toggleFavoriteFolder } from "./recent-folders";
+import { readProjectState, writeProjectState } from "./project-state";
 import {
   electronTokenStore,
   markLinuxBasicTextStorageNoticeShown,
@@ -142,8 +129,8 @@ import {
 } from "./pdf-export";
 import { createElectronEngineBrowser } from "./engine-browser";
 import {
+  loadSvelteKitServer,
   registerAppProtocol,
-  startSvelteKitServer,
 } from "./sveltekit-host";
 import {
   APP_ORIGIN,
@@ -283,7 +270,7 @@ function setActiveRepositoryRoot(root: string | null): void {
 // discarded (#34).
 // ──────────────────────────────────────────────────────────────────────────
 
-const { readPrefs, writePrefs, updatePrefs, existingDirectory } = createPrefsStore({
+const { readPrefs, updatePrefs, existingDirectory } = createPrefsStore({
   getUserDataDir: () => app.getPath("userData"),
   fs: { readFile, writeFile, mkdir, stat, rename },
 });
@@ -798,10 +785,10 @@ function createWindow() {
   // SvelteKit DX while still exercising the real Electron preload bridge
   // (window.electron.* IPC) against the same main process used in prod.
   //
-  // Prod mode: adapter-node emits a Node HTTP handler to build/handler.js.
-  // startSvelteKitServer() runs it on a local 127.0.0.1 server and
-  // registerAppProtocol() proxies app:// requests to it via fetch, so the
-  // page has a stable app:// origin. Load the root "/" — NOT "/index.html" —
+  // Prod mode: loadSvelteKitServer() constructs the SvelteKit server from
+  // build/server/ and registerAppProtocol() answers app:// requests with
+  // Server.respond() in-process, so the page has a stable app:// origin and
+  // no HTTP server exists. Load the root "/" — NOT "/index.html" —
   // so SvelteKit's client router sees the root route. (Loading /index.html
   // makes the router try to resolve a page named "index.html" and throw
   // "Not found: /index.html".)
@@ -901,21 +888,14 @@ function createWindow() {
 // ──────────────────────────────────────────────────────────────────────────
 // app:// protocol — serves the static SvelteKit SPA from build/
 //
-// The adapter-node HTTP bridge (startSvelteKitServer) and the app:// protocol
-// proxy (registerAppProtocol) live in electron/sveltekit-host.ts. The privileged-
-// scheme registration stays here so it runs at its original point (before
-// app.whenReady). main.ts calls startSvelteKitServer(slog, skAuthToken) +
-// registerAppProtocol(skAuthToken) from whenReady below.
+// The SvelteKit server (loadSvelteKitServer) and the app:// protocol handler
+// (registerAppProtocol) live in electron/sveltekit-host.ts: the window's
+// requests are answered in-process by Server.respond() — no HTTP server, no
+// port, nothing for another local process to reach. The privileged-scheme
+// registration stays here so it runs at its original point (before
+// app.whenReady). main.ts calls loadSvelteKitServer(slog) +
+// registerAppProtocol() from whenReady below.
 // ──────────────────────────────────────────────────────────────────────────
-
-// P1 review (PR #98, finding #2): a loopback bind (127.0.0.1) is not caller
-// authentication — any other local process that discovers the OS-assigned
-// port could otherwise call the privileged adapter-node API routes directly.
-// Mint a per-session random bearer token once at process start (never
-// persisted, never leaves this process except as the header
-// registerAppProtocol injects into its own proxied requests below); the
-// loopback server rejects any request that doesn't carry it.
-const skAuthToken = randomBytes(32).toString("hex");
 
 // The `VAAPI version is too old` / `MESA-LOADER` lines in the launch log are
 // harmless Chromium GPU-probe noise, NOT the cause of slow launches — the
@@ -956,17 +936,9 @@ const writeHooksImpl: WriteHooks = {
   // write was allowed" and "this write counts as an edit" can never disagree.
   getRepositoryRoot: () => activeRepositoryRoot,
 };
-const watchHooksImpl: WatchHooks = {
-  startFolderWatch,
-  stopFolderWatch,
-  getWatchedDir: () => folderWatch.getWatchedDir(),
-};
 const appHooksImpl: AppHooks = {
   setRendererDirty: (isDirty: boolean) => {
     activeRendererFlush?.session.setReportedDirtyState(!!isDirty);
-  },
-  sendToRenderer: (channel: string, ...args: unknown[]) => {
-    safeSend(channel, ...args);
   },
   // The shared error filters already printed the line to the console; this
   // puts it in the app log the Logs tab shows (file only, no double print).
@@ -1167,7 +1139,7 @@ const desktopHooksImpl: DesktopHooks = {
 };
 
 // Media thumbnail generation is exposed through a hook instead of importing
-// `electron` from the SvelteKit handler bundle. Packaged adapter-node routes run
+// `electron` from the SvelteKit server build. Packaged +server.ts routes run
 // in a different ESM context, and importing Electron there can fail.
 const mediaHooksImpl: MediaHooks = {
   async createThumbnail(filePath: string, maxPx: number): Promise<string | null> {
@@ -1234,14 +1206,8 @@ const discoverScanDeps: ScanDeps = {
 // this object is no longer registered on its own the moment it's built, so
 // there is nothing to get wrong by reading it before `registerHostServices`
 // runs at the end of this section (ARCH #31).
-//
-// `loadLib` is assigned directly — no cast. `host-services.ts` stores
-// `HostServices.prefs` against the REAL `LibModule` type (this file's own,
-// same type `loadLib` already returns), not a fabricated narrow subset, so
-// `Promise<LibModule>` here needs no narrowing to satisfy the field.
-const prefsHooksImpl: PrefsHooks<LibModule, DesktopPrefs, AppSettings, ProjectStateMap | undefined, RecentFolder> = {
+const prefsHooksImpl: PrefsHooks = {
   readPrefs,
-  writePrefs,
   updatePrefs,
   readSettings,
   updateSettings,
@@ -1252,7 +1218,6 @@ const prefsHooksImpl: PrefsHooks<LibModule, DesktopPrefs, AppSettings, ProjectSt
   scanForProjects: (roots: string[], exclude: Set<string>) => scanForProjects(roots, exclude, discoverScanDeps),
   toggleFavoriteFolder,
   removeRecentFolder,
-  loadLib,
 };
 
 // Doctor-route hooks, exposed through the collapsed host object so the
@@ -1289,9 +1254,8 @@ const appImageHooksImpl: AppImageHooks = {
 // from app:classifyProject. Paths MUST be absolute (trusted SPA, but a relative
 // path could resolve against the main-process CWD by accident).
 
-// loadLib + operationLogPath for VCS SvelteKit server routes.
-const vcsHooksImpl: VcsHooks<LibModule> = {
-  loadLib,
+// operationLogPath + timers for the VCS SvelteKit server routes.
+const vcsHooksImpl: VcsHooks = {
   operationLogPath,
   repairBackupDir: (slug) => repairBackupDirImpl(app.getPath("userData"), slug),
   // #273: pause both host timers around a copy switch's checkout so neither
@@ -1310,13 +1274,6 @@ const vcsHooksImpl: VcsHooks<LibModule> = {
     if (folderWatch.getWatchedDir() === dir) autoSync.schedule(dir);
   },
 };
-
-function requireAbsoluteDir(channel: string, projectDir: unknown): string {
-  if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
-    throw new Error(`${channel} requires an absolute project path`);
-  }
-  return projectDir;
-}
 
 // Error sanitization for vcs:* now lives in the shared server-bridge/friendly-errors
 // module (friendlyVcsError), consumed by the SvelteKit routes.
@@ -1339,8 +1296,7 @@ const GITHUB_HOST = "github.com";
 // call, clone-progress push) the old IPC handler used to do inline. Friendly-error sanitization (handleRemoteErrors) stays at the
 // ROUTE, matching every other remote:* route (e.g. remote/sync/+server.ts) —
 // these hooks are the raw operation.
-const remoteHooksImpl: RemoteHooks<LibModule> = {
-  loadLib,
+const remoteHooksImpl: RemoteHooks = {
   tokenStore: electronTokenStore,
   GITHUB_HOST,
   cloneRepository: async (args) => {
@@ -1619,7 +1575,6 @@ registerHostServices({
   sync: syncSettingsHooksImpl,
   updater: updaterHooksImpl,
   vcs: vcsHooksImpl,
-  watch: watchHooksImpl,
   write: writeHooksImpl,
 });
 
@@ -1681,7 +1636,6 @@ const exportController = new ExportController({
   tokenStore: electronTokenStore,
   gitIdentity: async () => gitIdentityFrom(await readSettings()),
   isOnline: () => net.isOnline(),
-  usePuppeteer: () => !!process.env.GUTTERPRESS_PUPPETEER,
   engineBrowser: createElectronEngineBrowser,
   getActiveExportSession,
   setActiveExportSession,
@@ -1708,9 +1662,8 @@ secureHandle("api:build", (_e, args: ExportBuildArgs) => exportController.build(
 //
 // getStatus/check/download (ARCH review #8) are plain request/response —
 // no push stream, no live-BrowserWindow need — so they're SvelteKit server
-// routes (src/routes/api/updater/*), which import getStatus/checkForUpdates/
-// download from ./updater.ts directly (no hooks bag needed: they're already
-// plain exported functions with no main.ts-only state). applyNow stays on
+// routes (src/routes/api/updater/*), reached through `getHostServices().updater`
+// (updater.ts's state lives in THIS bundle — see updater-hooks.ts). applyNow stays on
 // IPC: it flushes the live renderer's unsaved buffer via
 // `mainWindow.webContents.send` before quitting — a live-BrowserWindow call
 // §8 sanctions.
@@ -1873,22 +1826,21 @@ app.whenReady().then(async () => {
   void logAppEvent(`[app] started ${app.getVersion()}`);
   app.setAppUserModelId?.(APP_USER_MODEL_ID);
   // In dev mode (VITE_DEV_SERVER_URL set, app NOT packaged) the SvelteKit dev
-  // server is already running externally — skip the local handler.js launch.
+  // server is already running externally — skip loading the built server.
   // In prod (or a packaged build where VITE_DEV_SERVER_URL is set by an
   // attacker — ARCH review finding #1, CRITICAL — resolveDevServerUrl()
-  // ignores it), start the adapter-node HTTP server and wire it to the
+  // ignores it), load the SvelteKit server from build/ and wire it to the
   // app:// protocol so the window only ever loads local content.
   if (!resolveDevServerUrl(app.isPackaged, process.env.VITE_DEV_SERVER_URL)) {
     try {
-      await startSvelteKitServer(slog, skAuthToken);
+      await loadSvelteKitServer(slog);
     } catch (err) {
       console.error("[sk-server] failed to start SvelteKit server:", err);
       // Non-fatal (ARCH review #28): registerAppProtocol still comes up and
-      // serves a styled retry page for every app:// request until
-      // skServerPort is set (corrupt install / port exhaustion / missing
-      // handler.js can all still resolve without a restart — e.g. a later
-      // manual retry). But a console.error alone stranded the author on a
-      // raw "SvelteKit server not started" page with zero explanation, so
+      // serves a styled retry page for every app:// request until the server
+      // has loaded (a corrupt install can still resolve without a restart —
+      // e.g. a later manual retry). But a console.error alone stranded the
+      // author on a raw "server not started" page with zero explanation, so
       // also surface it as a plain-language native dialog right away.
       dialog.showErrorBox(
         "Gutterpress couldn't start",
@@ -1899,7 +1851,7 @@ app.whenReady().then(async () => {
       );
     }
   }
-  registerAppProtocol(skAuthToken);
+  registerAppProtocol();
   registerUrlPreviewHeaderWatch();
   createWindow();
   appShellReady = true;

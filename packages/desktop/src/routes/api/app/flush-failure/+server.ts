@@ -1,18 +1,13 @@
 import { error } from '@sveltejs/kit';
 import { createLastFlushFailure } from '$lib/persistence-failures';
-import type { DesktopPrefs } from '$lib/platform/contract';
-import { getPrefsHooks, type PrefsHooks } from '../../../../../electron/server-bridge/prefs-hooks';
-import { defineRoute, requireAbsolute } from '../../_lib/route';
+import { defineRoute, getHostServices, requireAbsolute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 type FlushFailureBody =
   | { action: 'record'; projectDir: string | null }
   | { action: 'acknowledge'; failedAt: string };
-type FlushFailureHooks = PrefsHooks<unknown, DesktopPrefs>;
 
-export const POST: RequestHandler = defineRoute<FlushFailureBody, FlushFailureHooks>({
-  hooks: getPrefsHooks,
-  hooksUnavailableMessage: 'Prefs hooks not registered',
+export const POST: RequestHandler = defineRoute<FlushFailureBody>({
   validate: (raw) => {
     const body = raw as { action?: unknown; projectDir?: unknown; failedAt?: unknown };
     if (body.action === 'record') {
@@ -29,15 +24,15 @@ export const POST: RequestHandler = defineRoute<FlushFailureBody, FlushFailureHo
     }
     error(400, 'app/flush-failure requires record or acknowledge details');
   },
-  call: async ({ body, hooks }) => {
+  call: async ({ body }) => {
     if (body.action === 'record') {
       const marker = createLastFlushFailure(body.projectDir);
-      await hooks.updatePrefs((current) => ({ ...current, lastFlushFailed: marker }));
+      await getHostServices().prefs.updatePrefs((current) => ({ ...current, lastFlushFailed: marker }));
       return marker;
     }
 
     let acknowledged = false;
-    await hooks.updatePrefs((current) => {
+    await getHostServices().prefs.updatePrefs((current) => {
       if (current.lastFlushFailed?.failedAt !== body.failedAt) return current;
       acknowledged = true;
       const next = { ...current };

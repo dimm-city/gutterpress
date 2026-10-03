@@ -1,13 +1,9 @@
-import { getDesktopHooks, type DesktopHooks } from '$lib/server/host-hooks.js';
-import { defineRoute } from '../../_lib/route';
-import { getPickedFilesHooks } from '../../../../../electron/server-bridge/picked-files';
+import { defineRoute, getHostServices } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = defineRoute<Record<string, never>, DesktopHooks>({
-  hooks: getDesktopHooks,
-  hooksUnavailableMessage: 'Desktop hooks not registered',
-  call: async ({ hooks }) => {
-    const res = await hooks.showOpenDialog({
+export const POST: RequestHandler = defineRoute<Record<string, never>>({
+  call: async () => {
+    const res = await getHostServices().desktop.showOpenDialog({
       title: 'Open Gutterpress book',
       properties: ['openDirectory'],
     });
@@ -20,7 +16,7 @@ export const POST: RequestHandler = defineRoute<Record<string, never>, DesktopHo
     // nothing else meaningful: the other consumers of this capability
     // (`fs:copyFile`/`media:importImage` `src`) match exact paths and would
     // fail on a directory anyway.
-    getPickedFilesHooks()?.register(res.filePaths);
+    getHostServices().pickedFiles.register(res.filePaths);
     return res.filePaths[0];
   },
 });

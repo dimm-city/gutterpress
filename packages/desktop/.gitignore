@@ -11,3 +11,6 @@ vite.config.ts.timestamp-*
 
 # render-perf gate generated fixture (tests/perf/make-fixture-book.mjs)
 .fixture-book/
+
+# viewer bundle copied from ../cli/src/assets/engine by tools/sync-engine-viewer.mjs
+static/engine/

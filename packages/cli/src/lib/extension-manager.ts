@@ -15,7 +15,7 @@
  *     offline;
  *   - a PATH (`./x`, `../x`) is referenced IN PLACE. The author put that
  *     folder there; Gutterpress reads it. Nothing is copied;
- *   - an NPM specifier is downloaded, verified, vendored with a receipt under
+ *   - an NPM specifier is downloaded, integrity-checked, vendored under
  *     `plugins/npm/` (`npm-plugin-installer.ts`) and written back pinned, as
  *     `name@version`.
  *
@@ -38,7 +38,7 @@ import path from "node:path";
 import { isSeq, isMap, isScalar, YAMLMap, YAMLSeq, Scalar } from "yaml";
 import type { Node } from "yaml";
 
-import { clearVendoredPluginResolver, loadPlugin } from "./markdown/plugins.ts";
+import { loadPlugin } from "./markdown/plugins.ts";
 import { loadManifestDoc, ensureSeq, writeManifestDoc } from "./manifest-doc.ts";
 import {
   finalizeNpmPluginInstall,
@@ -552,7 +552,6 @@ export async function removeExtension(projectDir: string, use: string): Promise<
         recursive: true,
         force: true,
       });
-      clearVendoredPluginResolver(projectDir, parsed.name, parsed.version);
     }
   });
 }
@@ -621,8 +620,8 @@ async function addPathExtension(
  *   - a bundled name is written as-is;
  *   - a path (`./x`, `../x`, or absolute) is load-tested and written relative
  *     to the project, referenced in place;
- *   - an npm specifier (`name`, `name@version`) is downloaded, verified,
- *     vendored with a receipt, load-tested, and written back as
+ *   - an npm specifier (`name`, `name@version`) is downloaded,
+ *     integrity-checked, vendored, load-tested, and written back as
  *     `name@<exact version>`. On any failure the vendor tree is rolled back.
  *
  * Idempotent: adding what is already listed re-pins/updates that entry.
@@ -678,7 +677,6 @@ async function addExtensionUnlocked(
   } catch (cause) {
     try {
       await rollbackNpmPluginInstall(installed);
-      clearVendoredPluginResolver(projectDir, installed.name, installed.version);
     } catch (rollbackError) {
       throw new Error(
         `Extension install failed and its previous vendor tree could not be restored: ` +

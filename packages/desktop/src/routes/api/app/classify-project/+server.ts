@@ -1,13 +1,5 @@
-import { getPrefsHooks, type PrefsHooks } from '../../../../../electron/server-bridge/prefs-hooks';
-import { defineRoute, requireAbsolute } from '../../_lib/route';
+import { defineRoute, getHostServices, loadLib, requireAbsolute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
-
-interface ProjectSourceLibModule {
-  detectProjectSource: (path: string) => Promise<unknown>;
-  capabilitiesFor: (source: unknown) => unknown;
-  repoSubPath: (repoRoot: string, folderPath: string) => string;
-  hasProjectManifest: (folderPath: string) => boolean;
-}
 
 /** A book found inside the classified project's repo (C1: repo-root sessions). */
 interface RepoBookEntry {
@@ -16,18 +8,13 @@ interface RepoBookEntry {
   subPath: string;
 }
 
-export const POST: RequestHandler = defineRoute<
-  { projectDir: string },
-  PrefsHooks<ProjectSourceLibModule>
->({
-  hooks: () => getPrefsHooks<ProjectSourceLibModule>(),
-  hooksUnavailableMessage: 'Prefs hooks not registered',
+export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
   validate: (raw) => ({
     projectDir: requireAbsolute((raw as { projectDir?: string }).projectDir, 'app/classify-project'),
   }),
-  call: async ({ body, hooks }) => {
+  call: async ({ body }) => {
     const folderPath = body.projectDir;
-    const lib = await hooks.loadLib();
+    const lib = await loadLib();
     const source = await lib.detectProjectSource(folderPath);
     const capabilities = lib.capabilitiesFor(source);
     const hasManifest = lib.hasProjectManifest(folderPath);
@@ -42,7 +29,7 @@ export const POST: RequestHandler = defineRoute<
     let books: RepoBookEntry[] | undefined;
     if (typedSource.type === 'local-git-folder' && typedSource.repoRoot) {
       repoRoot = typedSource.repoRoot;
-      const discovered = (await hooks.scanForProjects([repoRoot], new Set())) as Array<{
+      const discovered = (await getHostServices().prefs.scanForProjects([repoRoot], new Set())) as Array<{
         path: string;
         title: string;
       }>;

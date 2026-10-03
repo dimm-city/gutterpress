@@ -1,5 +1,4 @@
-import { getDesktopHooks, type DesktopHooks } from '$lib/server/host-hooks.js';
-import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
+import { defineRoute, getHostServices, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 // #265: add an extension the author already has on disk — a folder (a look,
@@ -8,14 +7,12 @@ import type { RequestHandler } from './$types';
 // manifest relative to the project), never copied; the host's own dialog is
 // what authorizes an absolute path here (compare `extension/add`, which
 // refuses one from the renderer). Resolves null when cancelled.
-export const POST: RequestHandler = defineRoute<{ projectDir: string }, DesktopHooks>({
-  hooks: getDesktopHooks,
-  hooksUnavailableMessage: 'Desktop hooks not registered',
+export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
   validate: async (raw) => ({
     projectDir: await requireProjectDir((raw as { projectDir?: string }).projectDir, 'extension/add-local'),
   }),
-  call: async ({ body, hooks }) => {
-    const res = await hooks.showOpenDialog({
+  call: async ({ body }) => {
+    const res = await getHostServices().desktop.showOpenDialog({
       title: 'Choose an extension folder or plugin file',
       properties: ['openFile', 'openDirectory'],
       filters: [{ name: 'Extension', extensions: ['js', 'mjs', 'cjs', 'ts'] }],

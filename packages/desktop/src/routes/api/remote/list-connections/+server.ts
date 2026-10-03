@@ -1,13 +1,7 @@
-import { getHooks, type LibModule, type RemoteHooks, type TokenStore } from '../_hooks';
-import { defineRoute } from '../../_lib/route';
+import { defineRoute, getHostServices } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = defineRoute<
-  Record<string, never>,
-  RemoteHooks<LibModule, TokenStore>
->({
-  hooks: getHooks,
-  hooksUnavailableMessage: 'Remote hooks not available',
+export const POST: RequestHandler = defineRoute<Record<string, never>>({
   // Redacted list only — host/username/label/kind, never tokens or ciphertext.
-  call: async ({ hooks }) => hooks.tokenStore.listRedacted(),
+  call: async () => getHostServices().remote.tokenStore.listRedacted(),
 });

@@ -4,10 +4,9 @@ import { dirname, resolve } from "node:path";
 
 // electron-vite builds the Electron main + preload (ESM — the package is
 // "type": "module"). The renderer is NOT built here: it's a SvelteKit
-// adapter-node app (server + client bundle) built separately by `vite build`
-// into build/, whose Node handler (build/handler.js) Electron main starts on
-// a local 127.0.0.1 server and serves to the window via the app:// protocol
-// (which proxies each request to that server with fetch — see CLAUDE.md §8).
+// SvelteKit app (server + client) built separately by `vite build` into
+// build/ with adapter-electron.js; Electron main constructs that server and
+// answers app:// requests with Server.respond() in-process (CLAUDE.md §8).
 // externalizeDepsPlugin keeps the runtime deps (gutterpress and its
 // graph) out of the bundle so electron-builder ships them from node_modules.
 const root = dirname(fileURLToPath(import.meta.url));
@@ -33,7 +32,7 @@ export default defineConfig({
         // electron is the runtime (devDependency → not caught by
         // externalizeDepsPlugin) and the lib is a workspace:* dep (also not
         // caught). Externalize both: electron is provided by the runtime, and
-        // the lib (with its puppeteer-core/markdown-it graph) loads from
+        // the lib (with its markdown-it/isomorphic-git graph) loads from
         // node_modules — keeping main tiny.
         // electron-updater is externalized explicitly (the plugin misses it
         // under bun's node_modules layout): it's a production dependency, so

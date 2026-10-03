@@ -10,12 +10,11 @@
  *     need the exact same value and would otherwise hand-duplicate it (e.g.
  *     `DEFAULT_SETTINGS` below). No imports, still, ever.
  *   - All types must be self-contained (no references to external modules).
- *   - Used by `electron/bridge-types.ts` (host side) and, for most types,
- *     `src/lib/platform/contract.ts` (renderer side).
+ *   - Imported directly by the Electron host (`electron/*.ts`) and, for most
+ *     types, by `src/lib/platform/contract.ts` (renderer side).
  *
- * When you add a new IPC payload type, add it here first, then re-export it
- * in `bridge-types.ts` and consume it in `contract.ts`. No more "Keep them
- * in sync manually" comments.
+ * When you add a new IPC payload type, add it here first, then consume it
+ * from both sides. No more "Keep them in sync manually" comments.
  *
  * CAVEAT (audit D8): `ProjectSource` and `ProjectCapabilities` are the two
  * exceptions — `contract.ts` type-imports those straight from
@@ -208,7 +207,7 @@ export interface AppSettings {
  * duplicated between `electron/settings-store.ts` and
  * `src/lib/platform/contract.ts` with "kept in sync manually" comments; both
  * now import this value (contract.ts directly, settings-store.ts via
- * `bridge-types.ts`'s value re-export) instead of redeclaring it.
+ * `electron/settings-store.ts`'s import) instead of redeclaring it.
  */
 export const DEFAULT_SETTINGS: AppSettings = {
   editor: {

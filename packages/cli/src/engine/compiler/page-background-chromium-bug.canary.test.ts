@@ -44,7 +44,7 @@ import { build } from "./build.ts";
  * The mechanism is known — `PrintRenderFrameHelper::PrintWithParams`, the path
  * CDP `Page.printToPDF` reaches, never calls `Document::WillPrintSoon()`, so
  * the print does not wait for the resource it just requested
- * (PR #187's `docs/analysis/why-page-background-drops.md`) — but three earlier
+ * (mechanism analysis in PR #187) — but three earlier
  * explanations of this defect were wrong, and a canary pinned to an
  * explanation retires on the wrong day.
  *
@@ -163,13 +163,15 @@ testIf(
       // 3. THE LAUNCH-CONFIG CHECK, executable rather than a comment. Measured:
       //    an element reference protects the page box ONLY when the page was
       //    already under a device-metrics override before it loaded (which is
-      //    what puppeteer's `defaultViewport` does at page creation). This
+      //    what puppeteer's `defaultViewport` did at page creation, back when
+      //    puppeteer launched the CLI's browser). This
       //    pipeline establishes none — it navigates first — so an `<img>` must
       //    NOT protect. If it does, the browser this canary runs in is in that
       //    immunised state, and assertion 1 would be measuring a different
       //    browser from the one the product prints with. This is the guard for
       //    the accident named in #187: acquiring a pre-navigation override by
-      //    switching to puppeteer, a pooled browser, or a `BrowserWindow`.
+      //    switching to a driver that sets a default viewport (as puppeteer
+      //    did), a shared pre-warmed browser, or a `BrowserWindow`.
       //    Only meaningful while the bug exists: on a fixed Chromium the
       //    image paints with or without the <img>, so there is nothing for
       //    an <img> to "protect".

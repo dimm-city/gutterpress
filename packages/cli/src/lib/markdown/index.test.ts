@@ -17,7 +17,7 @@ import {
  * real build, exercising the EXACT call chain `renderBook()` in
  * build-runner.ts uses (`resolveConfig` -> `renderChaptersToFile` ->
  * `renderChapters` -> `resolveActiveStyles` -> `assembleBookHtml`'s `<link>`
- * emission) — no puppeteer/Chromium needed since this is the HTML-assembly
+ * emission) — no Chromium needed since this is the HTML-assembly
  * stage, not pagination/PDF.
  *
  * Before the fix, `DTRPG_PRESET.styles` (`["css/print.css"]`) made
@@ -207,8 +207,8 @@ describe("renderChapters plugin styles (#238)", () => {
 
 /**
  * resolveActiveMarkdownFiles (2026-07-28 duplication audit) — extracted out of
- * renderChapters's own inline fallback so validation-exec.ts and
- * lint-runner.ts can resolve "the book's markdown files" with the exact same
+ * renderChapters's own inline fallback so validation-exec.ts can resolve
+ * "the book's markdown files" with the exact same
  * logic renderChapters uses, instead of a separately-maintained recursive
  * glob. These pin down the two branches directly.
  */

@@ -88,7 +88,7 @@ Browse the [`examples/`](./examples/) directory for real projects you can copy:
 ```
 gutterpress/
 ├─ packages/
-│  ├─ cli/                — gutterpress — library + CLI + standalone binary (markdown, preview, build, lint)
+│  ├─ cli/                — gutterpress — library + CLI + standalone binary (markdown, preview, build, validate)
 │  ├─ desktop/            — @dimm-city/gutterpress-desktop — Electron desktop app
 │  └─ open-design-plugin/ — @dimm-city/gutterpress-open-design-plugin — Open Design integration plugin
 ├─ examples/      — Sample projects

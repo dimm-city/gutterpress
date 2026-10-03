@@ -48,7 +48,7 @@ import type {
   UpdaterAvailableAction,
   UpdaterStatus,
   UpdaterEventPayload,
-} from "./bridge-types";
+} from "../src/lib/platform/shared-types";
 
 const { autoUpdater: realAutoUpdater } = electronUpdater;
 

@@ -1,14 +1,10 @@
-import { getDesktopHooks, type DesktopHooks } from '$lib/server/host-hooks.js';
-import { defineRoute } from '../../_lib/route';
-import { getPickedFilesHooks } from '../../../../../electron/server-bridge/picked-files';
+import { defineRoute, getHostServices } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 /** Native open dialog for choosing a PDF (the publish artifact picker, #35). */
-export const POST: RequestHandler = defineRoute<Record<string, never>, DesktopHooks>({
-  hooks: getDesktopHooks,
-  hooksUnavailableMessage: 'Desktop hooks not registered',
-  call: async ({ hooks }) => {
-    const res = await hooks.showOpenDialog({
+export const POST: RequestHandler = defineRoute<Record<string, never>>({
+  call: async () => {
+    const res = await getHostServices().desktop.showOpenDialog({
       title: 'Choose the PDF to publish',
       properties: ['openFile'],
       filters: [{ name: 'PDF', extensions: ['pdf'] }],
@@ -19,7 +15,7 @@ export const POST: RequestHandler = defineRoute<Record<string, never>, DesktopHo
     // will upload an artifact from OUTSIDE the open project, so a script
     // POSTing an arbitrary `artifactPath` straight to that route — skipping
     // this dialog — can't turn a publish into a file-exfiltration primitive.
-    getPickedFilesHooks()?.register(res.filePaths);
+    getHostServices().pickedFiles.register(res.filePaths);
     return res.filePaths[0];
   },
 });

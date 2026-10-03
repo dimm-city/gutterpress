@@ -21,8 +21,9 @@ validate:pre-build → convert → assets → build → validate:post-build
 ```
 
 The CSS print-safety check (remote URLs, rasterizing effects, and
-page-containment risks — the same check `gutterpress lint` runs standalone)
-runs once, inside `validate:pre-build`, as the `source.stylelint` check.
+page-containment risks) runs once, inside `validate:pre-build`, as the
+`source.stylelint` check — standalone, `gutterpress validate my-book --only
+source.stylelint` runs just that check.
 There is no separate lint phase; `--skip-lint` disables that one check
 without skipping the rest of pre-build validation.
 

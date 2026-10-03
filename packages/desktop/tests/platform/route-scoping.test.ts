@@ -36,6 +36,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { isHttpError } from "@sveltejs/kit";
 import { registerHostServices } from "../../electron/server-bridge/host-services";
+import { setLibForTests, type LibModule } from "../../src/routes/api/_lib/route";
 import { createPickedFilesService } from "../../electron/server-bridge/picked-files";
 import { makeHostServices } from "../support/host-services-fake";
 
@@ -199,6 +200,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  setLibForTests(null);
   await rm(base, { recursive: true, force: true });
 });
 
@@ -360,13 +362,10 @@ function publishHost(roots: string[], picked: ReturnType<typeof createPickedFile
       desktop: { getUserDataPath: () => base },
       fsGuard: { projectRoots: () => roots, readOnlyRoots: () => [] as string[] },
       pickedFiles: picked,
-      remote: {
-        loadLib: async () => ({ runPublish: async () => ({ ok: true, outcome: { kind: "api" } }) }),
-        tokenStore: {},
-        GITHUB_HOST: "github.com",
-      } as never,
+      remote: { tokenStore: {} as never, GITHUB_HOST: "github.com" },
     }),
   );
+  setLibForTests({ runPublish: async () => ({ ok: true, outcome: { kind: "api" } }) } as unknown as Partial<LibModule>);
 }
 
 test("publish/run: an artifact inside the project is allowed", async () => {

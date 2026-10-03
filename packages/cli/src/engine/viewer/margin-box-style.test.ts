@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { resolveChromiumExecutable } from "../../lib/chromium.ts";
 import { getAssetPath } from "../../lib/embedded-assets.ts";
-import { closeBrowser, getBrowser } from "../../lib/browser-pool.ts";
+import { closeBrowser, getBrowser } from "./test-support/browser.ts";
 
 const FIXTURES_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 const RENDER_TEST_TIMEOUT_MS = 60_000;
@@ -38,7 +38,7 @@ testIf(
       );
       const { url: root, close } = await serveDir(dir, "margin-box-style.html");
       try {
-        const browser = await getBrowser(RENDER_TEST_TIMEOUT_MS);
+        const browser = await getBrowser();
         const page = await browser.newPage();
         let boxes: Array<{
           page: string;
@@ -59,7 +59,7 @@ testIf(
           inlineBoxShadow: string;
         }>;
         try {
-          await page.goto(`${root}margin-box-style.html`, { waitUntil: "networkidle0" });
+          await page.goto(`${root}margin-box-style.html`);
           await page.waitForFunction("window.Gutterpress && window.Gutterpress.totalPages > 0");
           boxes = await page.evaluate(() =>
             Array.from(document.querySelectorAll<HTMLElement>(".gp-marginbox")).map((slot) => {

@@ -1,16 +1,11 @@
-import { getHooks, handleRemoteErrors, type LibModule, type RemoteHooks, type TokenStore } from '../_hooks';
-import { defineRoute } from '../../_lib/route';
+import { handleRemoteErrors } from '../../../../../electron/server-bridge/friendly-errors';
+import { defineRoute, getHostServices } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = defineRoute<
-  Record<string, never>,
-  RemoteHooks<LibModule, TokenStore>
->({
-  hooks: getHooks,
-  hooksUnavailableMessage: 'Remote hooks not available',
-  call: async ({ hooks }) =>
+export const POST: RequestHandler = defineRoute<Record<string, never>>({
+  call: async () =>
     handleRemoteErrors('remote:disconnectGitHub', async () => {
-      await hooks.tokenStore.delete(hooks.GITHUB_HOST);
+      await getHostServices().remote.tokenStore.delete(getHostServices().remote.GITHUB_HOST);
       return { ok: true };
     }),
 });

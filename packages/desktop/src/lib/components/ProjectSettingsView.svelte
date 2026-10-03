@@ -6,9 +6,9 @@
    * ProjectConfigPanel): the sidebar's 260px column was a cramped frame for
    * manifest editing, theme browsing, and plugin management.
    *
-   * +page.svelte docks it beside the workspace, so the book preview stays
-   * visible — and re-renders live as a stylesheet is written — while the
-   * writer works in it; only a window too narrow for both gets it full-window.
+   * +page.svelte mounts it as a full-window layer, like the start screen: the
+   * workspace is inert underneath until the writer closes it with the X or
+   * Esc (Esc defers to any dialog open on top, e.g. "Save as template…").
    *
    * This is the COMPOSITION ROOT for the per-domain section controllers
    * (UX review M14): it instantiates one `*SectionController` per domain and
@@ -97,10 +97,6 @@
 
   // Covers the initial parallel load of all sections.
   let loadingAll = $state(true);
-  // Focus target on open: opening the view makes the whole workspace (and the
-  // toolbar button that opened it) inert, which would drop keyboard focus to
-  // <body> — so the close button takes it, mirroring dialog behavior.
-  let closeBtnEl = $state<HTMLButtonElement | undefined>(undefined);
 
   const projectDirAccessor = () => projectDir;
 
@@ -179,7 +175,6 @@
 
   // ── Lifecycle: load every section's data on mount ────────────────────────
   onMount(() => {
-    closeBtnEl?.focus();
     let cancelled = false;
     void loadAll().finally(() => {
       if (!cancelled) loadingAll = false;
@@ -244,15 +239,32 @@
     onClose?.();
   }
 
+  // Esc closes the layer, like the start screen — unless a dialog on top of
+  // it (Save as template…) is the one that should take the key.
+  function onWindowKeydown(e: KeyboardEvent) {
+    if (e.key !== "Escape" || e.defaultPrevented) return;
+    if (document.querySelector('[role="dialog"]')) return;
+    e.preventDefault();
+    close();
+  }
+
+  // Move focus into the layer when it appears, so Esc and Tab start here and
+  // not on the inert workspace behind it.
+  function focusOnShow(el: HTMLElement) {
+    el.focus();
+  }
+
   // "Save as template…" (Details tab) — mounted fresh per open so its form
   // resets; the opening button is remembered for focus restore.
   let templateDialogTrigger = $state<HTMLButtonElement | null>(null);
 </script>
 
-<div class="settings-view" aria-busy={loadingAll}>
+<svelte:window onkeydown={onWindowKeydown} />
+
+<div class="settings-view" aria-busy={loadingAll} tabindex="-1" use:focusOnShow>
   <header class="settings-header">
     <h2 id="project-settings-title">Book settings</h2>
-    <button bind:this={closeBtnEl} class="settings-close" onclick={close} title="Close book settings (Esc)" aria-label="Close book settings"><Icon name="x" size={16} /></button>
+    <button class="settings-close" onclick={close} title="Close book settings (Esc)" aria-label="Close book settings"><Icon name="x" size={16} /></button>
   </header>
 
   <div class="tab-bar" role="tablist" aria-label="Book settings sections" onkeydown={onTablistKeydown} tabindex="-1">
@@ -342,15 +354,23 @@
     min-height: 0;
     background: var(--app-bg);
     color: var(--app-text-secondary);
+    outline: none;
+  }
+  /* Header and tab bar share the body's reading measure, so the whole view
+     reads as one centred column on a wide window — the start screen's shape. */
+  .settings-header,
+  .tab-bar {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 860px;
+    margin: 0 auto;
   }
   .settings-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-shrink: 0;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--app-border);
-    background: var(--app-surface-raised);
+    padding: clamp(16px, 5vh, 40px) 18px 12px;
   }
   .settings-header h2 {
     margin: 0;

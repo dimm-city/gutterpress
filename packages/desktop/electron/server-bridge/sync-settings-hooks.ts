@@ -2,13 +2,8 @@
  * Shared auto-sync settings hook for the sync:setAutoSync server route
  * (ARCH review #8 — migrated off IPC; it was a pure settings write with no
  * push stream or live-BrowserWindow need).
- *
- * Storage lives in the single collapsed host object (ARCH review #31,
- * `./host-services.ts`) — `getSyncSettingsHooks()` is a thin derived selector
- * over it, same pattern as every other domain in this directory.
+ * Routes reach it through `getHostServices().sync` (`./host-services.ts`).
  */
-
-import { getHostServices } from './host-services';
 
 export interface SyncSettingsHooks {
   /**
@@ -27,9 +22,4 @@ export interface SyncSettingsHooks {
    * longer strands on blank/stale status.
    */
   getStatus(projectDir: string): Promise<object | null>;
-}
-
-/** The live `SyncSettingsHooks` slice of the collapsed host object, or null before `registerHostServices` runs. */
-export function getSyncSettingsHooks(): SyncSettingsHooks | null {
-  return getHostServices()?.sync ?? null;
 }

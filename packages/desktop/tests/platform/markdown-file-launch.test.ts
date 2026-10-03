@@ -8,7 +8,7 @@ import {
   markdownFilePathsFromArgv,
   resolveMarkdownFileLaunch,
 } from "../../electron/markdown-file-launch";
-import type { MarkdownFileLaunchEvent } from "../../electron/bridge-types";
+import type { MarkdownFileLaunchEvent } from "../../src/lib/platform/shared-types";
 
 let root = "";
 

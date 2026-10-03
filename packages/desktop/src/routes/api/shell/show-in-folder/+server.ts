@@ -1,5 +1,4 @@
-import { getDesktopHooks, type DesktopHooks } from '$lib/server/host-hooks.js';
-import { defineRoute, requireAbsolute, requireContainedOrPicked } from '../../_lib/route';
+import { defineRoute, getHostServices, requireAbsolute, requireContainedOrPicked } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 /**
@@ -23,17 +22,15 @@ import type { RequestHandler } from './$types';
  * path; the shared helper's consume-then-re-register lets the "Show in Folder"
  * toast be clicked more than once.
  */
-export const POST: RequestHandler = defineRoute<{ filePath: string }, DesktopHooks>({
-  hooks: getDesktopHooks,
-  hooksUnavailableMessage: 'Desktop hooks not registered',
+export const POST: RequestHandler = defineRoute<{ filePath: string }>({
   validate: async (raw) => {
     const body = raw as { filePath?: unknown };
     const filePath = requireAbsolute(body.filePath, 'shell:showInFolder');
     await requireContainedOrPicked(filePath, 'shell:showInFolder', { includeReadOnlyRoots: true });
     return { filePath };
   },
-  call: async ({ body, hooks }) => {
-    hooks.showItemInFolder(body.filePath);
+  call: async ({ body }) => {
+    getHostServices().desktop.showItemInFolder(body.filePath);
     return { ok: true };
   },
 });

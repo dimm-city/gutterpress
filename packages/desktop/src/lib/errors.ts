@@ -236,12 +236,12 @@ export interface FriendlyPublishError {
  * `{"message": "…"}` JSON (see routes/api/_lib/handler.ts's `jsonRoute`).
  * `$lib/api.ts`'s `post`/`get` helpers read a non-OK response body with
  * `r.text()` and throw `new Error(text)` verbatim — they never JSON.parse
- * it — so every publish `catch (e)` in ProjectConfigPanel sees this raw
- * `{"message": "…"}` envelope as `e.message` instead of the message itself.
- * Peel it back before classifying so neither the summary nor the "Show
- * details" text ever shows an author a bare JSON blob.
+ * it — so a `catch (e)` on any `api.*` call sees this raw `{"message": "…"}`
+ * envelope as `e.message` instead of the message itself. Peel it back before
+ * showing it (publish errors below; Troubleshooting → Sync) so an author is
+ * never shown a bare JSON blob.
  */
-function unwrapPublishErrorEnvelope(text: string): string {
+export function unwrapRouteError(text: string): string {
   const trimmed = text.trim();
   if (!trimmed.startsWith("{")) return text;
   try {
@@ -266,7 +266,7 @@ function unwrapPublishErrorEnvelope(text: string): string {
  */
 export function friendlyPublishError(e: unknown): FriendlyPublishError {
   const raw = e instanceof Error ? e.message : String(e ?? "");
-  const msg = unwrapPublishErrorEnvelope(raw).trim();
+  const msg = unwrapRouteError(raw).trim();
   if (!msg) {
     return { summary: "Publishing failed for an unknown reason." };
   }

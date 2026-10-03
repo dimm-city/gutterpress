@@ -4,6 +4,7 @@
   import FindBar from "$lib/components/FindBar.svelte";
   import ExternalEditBanner from "$lib/components/ExternalEditBanner.svelte";
   import CrashRecoveryDialog from "$lib/components/CrashRecoveryDialog.svelte";
+  import type { TroubleshootingTab } from "$lib/troubleshooting-tabs";
   import { EditorBuffer } from "$lib/editor/buffer-state.svelte";
   import { EditorFileSession } from "$lib/editor/editor-file-session.svelte";
   import { chapterPath, isSafeChapterId } from "$lib/editor/chapter-path";
@@ -242,7 +243,7 @@
   // #33 Phase 4: PDF/build gating via the capabilities() seam (NOT a
   // `platform === "web"` branch). `nativeSavePath` is true on the desktop host
   // (Electron writes the PDF to a chosen path) and false on the web (no
-  // puppeteer / printToPDF in the browser). When false the "Save PDF" control is
+  // headless Chromium / printToPDF in the browser). When false the "Save PDF" control is
   // replaced with a short "requires the desktop app" note (acceptance criterion).
   // Desktop is UNCHANGED: nativeSavePath:true → canSavePdf:true → identical UI.
   const canSavePdf = $derived(getPlatform().capabilities().nativeSavePath);
@@ -670,7 +671,7 @@
   // the inert workspace, which is a spec no-op).
   let landingRef = $state<{
     focusLayer: () => void;
-    showTab: (tab: "projects" | "settings" | "help" | "about" | "troubleshooting", sub?: "diagnostics" | "logs") => void;
+    showTab: (tab: "projects" | "settings" | "help" | "about" | "troubleshooting", sub?: TroubleshootingTab) => void;
   } | null>(null);
   /** Sub-tab the start screen's embedded Settings opens on. */
   let landingSettingsTab = $state<SettingsTab>("app");
@@ -714,6 +715,12 @@
   /** Open the start screen on its Help tab (the global help affordance). */
   function openHelp() {
     landingRef?.showTab("help");
+    landingForcedOpen = true;
+  }
+
+  /** Open Troubleshooting → Report a problem (from an error toast or the unsaved-changes dialog). */
+  function openReportProblem() {
+    landingRef?.showTab("troubleshooting", "report");
     landingForcedOpen = true;
   }
 
@@ -1006,27 +1013,24 @@
     snippetPickerRef?.show();
   }
 
-  // ── Book settings view (#PCV → docked panel) ────────────────────────────
-  // Book settings live in a panel docked beside the workspace, patterned
-  // after the app SettingsView (they used to be a left-sidebar Config tab);
-  // activity is the only alternate editor-pane view.
+  // ── Book settings view ──────────────────────────────────────────────────
+  // Book settings take over the whole window, exactly like the start screen:
+  // the workspace underneath is inert until the writer closes them (X or
+  // Esc). They used to be a left-sidebar Config tab, then a panel docked
+  // beside the workspace; both squeezed manifest editing, theme browsing and
+  // plugin management into a strip. Activity is the only alternate
+  // editor-pane view.
   let editorView = $state<"editor" | "activity">("editor");
   let projectSettingsOpen = $state(false);
 
-  /**
-   * One button → the whole book settings view (manifest details, look &
-   * style, plugins). Docked beside the workspace so the preview stays visible
-   * while the writer styles the book; the workspace goes inert and returns
-   * untouched on close.
-   */
+  /** One button → the whole book settings view (manifest details, look &
+   *  style, plugins), covering the workspace. */
   function openProjectConfig(): void {
     if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
     if (!isDesktop()) {
       toast?.info?.("Book settings are available in the desktop app for now.");
       return;
     }
-    contextMenu.close();
-    void inlineEdit.endActive(true); // opening a dialog commits the in-flow edit
     projectSettingsTab = "details";
     projectSettingsOpen = true;
   }
@@ -2146,17 +2150,6 @@
   // ----------------------------------------------------------------
   onMount(() => {
     function onGlobalKey(e: KeyboardEvent) {
-      // The Book settings panel owns the keyboard while it's up: the
-      // workspace beside it is inert, so acting on it (opening Settings
-      // BENEATH the panel, toggling focus mode, exporting, snippet picker)
-      // would change UI the writer isn't working in. Escape closes the panel.
-      if (projectSettingsOpen) {
-        if (e.key === "Escape") {
-          e.preventDefault();
-          closeProjectSettings();
-        }
-        return;
-      }
       const command = resolveGlobalShortcut({
         ctrlOrMeta: e.ctrlKey || e.metaKey,
         shift: e.shiftKey,
@@ -2229,9 +2222,6 @@
       if (e.defaultPrevented) return;
       // Never page/zoom the pre-rendering preview from behind the start screen.
       if (landingVisible) return;
-      // Never page/zoom the (inert) preview beside the book settings
-      // panel (PageUp/PageDown must scroll its body, not the preview).
-      if (projectSettingsOpen) return;
       // Don't intercept when focus is in a form control or the CodeMirror
       // editor (#38) — preview-nav keys (arrows, Home/End, +/-/=, f) must
       // never hijack editing. Shared guard: $lib/a11y isEditableTarget.
@@ -2725,13 +2715,14 @@
 
 </script>
 
-<Toast bind:api={toast} />
+<Toast bind:api={toast} onReportProblem={openReportProblem} />
 
 <CrashRecoveryDialog
   items={crashRecovery.items}
   onRestore={(item) => crashRecovery.restore(item)}
   onDiscard={(item) => crashRecovery.discard(item)}
   onDismiss={() => crashRecovery.dismiss()}
+  onReportProblem={openReportProblem}
 />
 
 <!-- RC3-1: App-level overlay for the initial "Opening folder…" lifecycle.busy state ONLY
@@ -2770,9 +2761,9 @@
 </svelte:head>
 
 <!-- inert while the start screen or Book settings is up: the workspace keeps
-      rendering (the docked panel leaves the preview visible and live beside
-      it), but never accepts interaction underneath. -->
-<div class="app-root" class:settings-docked={projectSettingsOpen} inert={landingVisible || projectSettingsOpen}>
+      rendering (a stylesheet written from Book settings re-renders the preview
+      live) but never accepts interaction underneath the layer. -->
+<div class="app-root" inert={landingVisible || projectSettingsOpen}>
 {#if (updateController.readyVersion || updateController.availableVersion) && !updateController.bannerDismissed}
   <div class="update-banner" role="status" aria-live="polite">
     {#if updateController.readyVersion}
@@ -3228,13 +3219,12 @@
   onDismiss={() => dismissLanding()}
   settingsTab={landingSettingsTab}
   onProjectFilesChanged={onSnapshotRestored}
+  onCloseBook={() => lifecycle.stopPreview()}
 />
 {#if projectSettingsOpen}
-  <!-- Book settings (manifest): a panel docked beside the workspace, so the
-       book preview stays visible (and re-renders live) while the writer styles
-       it; it covers the whole window only when the window is too narrow for
-       both. Keyed by projectDir so a project switch can never leave stale
-       section state (drafts, theme lists) resident under the new project. -->
+  <!-- Book settings (manifest): a full-window layer like the start screen.
+       Keyed by projectDir so a project switch can never leave stale section
+       state (drafts, theme lists) resident under the new project. -->
   <section class="settings-global-view" aria-label="Book settings">
     {#key lifecycle.currentDir}
       <ProjectSettingsView
@@ -3424,32 +3414,13 @@
   .editor-pane {
     border-right: 1px solid var(--app-border);
   }
-  /* Book settings docks to the right edge; the (inert) app shrinks by the
-     panel's width so the preview re-fits into what is left instead of hiding
-     under it. Below 900px there is no room for both, so the panel covers the
-     window as it did before. */
+  /* Book settings covers the whole window, on the start screen's layer. */
   .settings-global-view {
     position: fixed;
-    inset: 0 0 0 auto;
-    box-sizing: border-box;
-    width: var(--app-settings-panel-width);
-    z-index: calc(var(--app-z-sheet) + 1);
+    inset: 0;
+    z-index: var(--app-z-sheet);
     display: flex;
-    border-left: 1px solid var(--app-border);
     background: var(--app-bg);
-  }
-  .app-root.settings-docked {
-    margin-right: var(--app-settings-panel-width);
-  }
-  @media screen and (max-width: 900px) {
-    .settings-global-view {
-      inset: 0;
-      width: auto;
-      border-left: none;
-    }
-    .app-root.settings-docked {
-      margin-right: 0;
-    }
   }
   .splitter {
     width: 6px;

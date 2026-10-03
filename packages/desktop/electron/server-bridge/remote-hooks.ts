@@ -1,60 +1,23 @@
 /**
- * Shared remote-operation hooks for remote:* server routes.
+ * Shared remote-operation hooks for remote:* and publish:* server routes.
+ * main.ts builds the object and passes it as the `remote` field to
+ * `registerHostServices()`; routes reach it through `getHostServices().remote`
+ * (`./host-services.ts`). The lib itself comes from `loadLib()` in
+ * `src/routes/api/_lib/route.ts`.
  *
- * Storage lives in the single collapsed host object (ARCH review #31,
- * `./host-services.ts`) — `getRemoteHooks()` is a thin derived selector over
- * it. main.ts's real registration stores the hooks against the REAL
- * `gutterpress` module type (`host-services.ts`'s `LibModule`), not
- * this file's own looser `LibModule` (a hand-mirrored subset) — that concrete
- * type is what `LibModule` here, and `getRemoteHooks<RemoteLibModule = LibModule>()`,
- * default to for callers that don't ask for a narrower view.
+ * SECURITY: token values never appear in responses. The token store's
+ * read-side methods are redacted (`status`, `listRedacted`); `set` only stores
+ * results the lib returns after validation.
  */
 
-import { getHostServices } from './host-services';
-import type { CloneRepositoryArgs } from '../bridge-types';
+import type { electronTokenStore } from '../credential-store';
+import type { CloneRepositoryArgs } from '../../src/lib/platform/shared-types';
 
-export interface TokenStore {
-  get(host: string): Promise<{ token: string; host: string; username?: string; kind: string; label?: string; createdAt: number } | null>;
-  set(host: string, credential: { token: string; host: string; username?: string; kind: string; label?: string; createdAt: number }): Promise<void>;
-  delete(host: string): Promise<void>;
-  status(host: string): Promise<{ connected: boolean; username?: string; label?: string }>;
-  listRedacted(): Promise<Array<{ host: string; kind: string; username?: string; label?: string; createdAt: number }>>;
-}
+/** The desktop's safeStorage-backed credential store: the lib's `TokenStore` plus the redacted read methods. */
+export type TokenStore = typeof electronTokenStore;
 
-export interface LibModule {
-  listGitHubRepositories?(credential: unknown): Promise<unknown[]>;
-  listGitHubBranches?(credential: unknown, owner: string, repo: string): Promise<unknown[]>;
-  listRepoBooks?(credential: unknown, owner: string, repo: string, branch: string): Promise<unknown[]>;
-  diagnoseProjectRemote?(dir: string, opts: { tokenStore: TokenStore }): Promise<unknown>;
-  testRemoteAccess?(args: { url: string; credential?: unknown }): Promise<unknown>;
-  connectGenericHost?(args: { host: string; username?: string; token: string; repoUrl?: string }): Promise<{ host: string; username?: string; kind: string; token: string; label?: string; createdAt: number }>;
-  knownForgeTokenUrl?(host: string): Promise<string | null>;
-  syncProject?(args: { projectDir: string; tokenStore: TokenStore; message?: string; authorName?: string; authorEmail?: string }): Promise<unknown>;
-  /** "Repair online backup" (lib remote-auth/repair.ts). */
-  repairOnlineBackup?(args: {
-    projectDir: string;
-    backupDir: string;
-    logFile: string;
-    tokenStore: TokenStore;
-    authorName?: string;
-    authorEmail?: string;
-  }): Promise<{ outcome: unknown; movedGitTo: string; restoredFiles: string[] }>;
-  detectProjectSource?(dir: string): Promise<unknown>;
-  repoRootForSource?(source: unknown, fallbackDir: string): string;
-  /** Fetch every remote branch so the copy picker sees copies created elsewhere (#273). */
-  refreshRemoteCopies?(args: { projectDir: string; tokenStore: TokenStore }): Promise<{ refreshed: boolean }>;
-  /** Best-effort revoke at Google (never throws) — used by remote:disconnectHost
-   *  for `kind: "google-oauth"` publish credentials (#221). */
-  revokeGoogleCredential?(refreshToken: string): Promise<void>;
-  /** Delete a stored credential by its TokenStore key, best-effort revoking
-   *  it first when its kind supports one — shared with the publish:disconnect
-   *  route. Never awaits the revoke itself. */
-  disconnectPublishCredential?(key: string, deps: { tokenStore: TokenStore }): Promise<void>;
-}
-
-export interface RemoteHooks<RemoteLibModule = LibModule, TokenStoreType = TokenStore> {
-  loadLib(): Promise<RemoteLibModule>;
-  tokenStore: TokenStoreType;
+export interface RemoteHooks {
+  tokenStore: TokenStore;
   GITHUB_HOST: string;
   /**
    * Clone a repo into `${parentDir}/${sanitized folderName}` and resolve to the
@@ -65,14 +28,4 @@ export interface RemoteHooks<RemoteLibModule = LibModule, TokenStoreType = Token
    * `mainWindow` reference) only ever calls this one method.
    */
   cloneRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }>;
-}
-
-/**
- * The live `RemoteHooks` slice of the collapsed host object, narrowed to
- * whatever generic view the caller asks for (same "narrow at the point of
- * use" pattern as `getPrefsHooks` — see its doc comment).
- */
-export function getRemoteHooks<RemoteLibModule = LibModule, TokenStoreType = TokenStore>(): RemoteHooks<RemoteLibModule, TokenStoreType> | null {
-  const remote = getHostServices()?.remote;
-  return (remote as unknown as RemoteHooks<RemoteLibModule, TokenStoreType> | undefined) ?? null;
 }

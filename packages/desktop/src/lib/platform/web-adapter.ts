@@ -34,7 +34,7 @@ import {
 // (`gutterpress/render`). This subpath transitively imports markdown-it
 // + the marker plugin and contains ZERO `node:*`/`fs`/`path`/`url`, so it
 // stays PWA-clean in the renderer bundle. NEVER import build-runner / index
-// (those drag puppeteer + node:fs). This is what lets the in-browser preview
+// (those drag the Chromium launcher + node:fs). This is what lets the in-browser preview
 // (#33 Phase 2) render entirely client-side with no localhost server.
 import { assembleBookHtml } from "gutterpress/render";
 import { IndexedDbWebStore } from "./web-store";
@@ -187,7 +187,6 @@ const webUpdater: UpdaterApi = {
 
 export class WebAdapter implements Platform {
   readonly platform = "web" as const;
-  readonly apiVersion = 0;
   readonly updater = webUpdater;
 
   // #33 Phase 3: the persistence seam. Defaults to the IndexedDB-backed store in
@@ -430,8 +429,6 @@ export class WebAdapter implements Platform {
     return rejectNotImplemented("pickImageFiles");
   }
 
-  // listProjectImages, imageThumbnail, inspectImage migrated to server routes (Phase 2C)
-
   openExternal(_url: string): Promise<void> {
     return rejectNotImplemented("openExternal");
   }
@@ -445,8 +442,6 @@ export class WebAdapter implements Platform {
     // gracefully hide the "View log" button.
     return Promise.resolve(null);
   }
-
-  // getStatus migrated to server route (Phase 2C)
 
   // #33 Phase 3: the last-opened folder key (its handle + recents row are
   // persisted; the SPA reopens it via reopenFolder on a user gesture).
@@ -462,8 +457,6 @@ export class WebAdapter implements Platform {
     const { root } = this.resolveRoot(projectDir);
     return listProjectFilesFromRoot(root);
   }
-
-  // checkCss, lintProject migrated to server routes (Phase 2C)
 
   // ── Desktop prefs (#33 Phase 3) — a single IndexedDB blob, merge-patched ──────
   async getDesktopPrefs(): Promise<DesktopPrefs> {
@@ -634,13 +627,6 @@ export class WebAdapter implements Platform {
     return rejectNotImplemented("adoptFolder");
   }
 
-  // tpl:* and snip:* migrated to server routes (Phase 2D) — removed from WebAdapter.
-  // plugin:*, theme:*, project:listStyles migrated to server routes (Phase 2E) — removed from WebAdapter.
-
-  // ── Local version history (#13) — desktop-only; reject/empty on web ────────
-  // enableVersionHistory, listSnapshots, listSnapshotsPage, restoreSnapshot
-  // — migrated to SvelteKit server routes (src/routes/api/vcs/*).
-
   saveSnapshot(_projectDir: string, _message?: string): Promise<SnapshotEntry> {
     return rejectNotImplemented("saveSnapshot");
   }
@@ -675,9 +661,6 @@ export class WebAdapter implements Platform {
     return Promise.resolve({ ok: true });
   }
 
-  // disconnectGitHub, getRemoteConnection, listRemoteRepositories,
-  // listRemoteBranches, listRepoBooks — migrated to server routes (Phase 2F).
-
   cloneRemoteRepository(_args: CloneRepositoryArgs): Promise<{ projectDir: string }> {
     return rejectNotImplemented("cloneRemoteRepository");
   }
@@ -685,9 +668,6 @@ export class WebAdapter implements Platform {
   onCloneProgress(_cb: (data: CloneProgressEvent) => void): () => void {
     return () => {};
   }
-
-  // diagnoseProjectRemote, testRemoteAccess, connectGenericHost, disconnectHost,
-  // listHostConnections, forgeTokenUrl — migrated to server routes (Phase 2F).
 
   // ── Auto-sync orchestrator seam — desktop-only; safe stubs on web ───────────
   // The ambient pill simply stays absent (no handler is ever called) when
@@ -701,8 +681,6 @@ export class WebAdapter implements Platform {
     // Auto-sync is desktop-only until the PWA sync backend lands in 0.6.0.
     return Promise.resolve();
   }
-
-  // syncChanges — migrated to server route (Phase 2F).
 
   // ── In-browser live preview (#33 Phase 2) — no server, no Chromium ──────────
   // The last object URL minted by startPreview, revoked by stopPreview (and
@@ -847,7 +825,7 @@ export class WebAdapter implements Platform {
    *   export handler). The adapter intentionally does NOT track or revoke it.
    *
    * - `format:"pdf"|"pdfx"` — reject with an explicit desktop-only message. PDF
-   *   uses Chromium's printToPDF (Electron) / puppeteer (CLI), neither of which
+   *   uses Chromium's printToPDF (Electron) / a launched headless Chromium (CLI), neither of which
    *   exists in the browser. `capabilities().nativeSavePath` is already false and
    *   the SPA hides the PDF control on web (Phase 4), so this is a belt-and-braces
    *   guard with a clear message rather than the generic 0.6.0 stub.
@@ -879,8 +857,6 @@ export class WebAdapter implements Platform {
     };
   }
 
-  // doctor migrated to server route (Phase 2C)
-
   onBuildProgress(_cb: (data: ExportProgressEvent) => void): () => void {
     return () => {};
   }
@@ -892,10 +868,6 @@ export class WebAdapter implements Platform {
   onOpenMarkdownFile(_cb: (event: MarkdownFileLaunchEvent) => void): () => void {
     return () => {};
   }
-
-  // writeRecovery, clearRecovery, listRecovery — migrated to server routes
-  // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.
-  // app:setDirtyState — migrated to server route (Phase 2B).
 
   onFlushBeforeClose(_cb: (mode?: "flush" | "discard") => boolean | void | Promise<boolean | void>): () => void {
     return () => {};

@@ -1,130 +1,108 @@
-/**
- * SvelteKit adapter-node host — extracted from electron/main.ts (composition
- * root).
- *
- * adapter-node emits a Node.js HTTP handler to build/handler.js. We start a
- * local HTTP server bound to 127.0.0.1 on an OS-assigned port, then forward
- * all app:// requests to it via fetch. This lets +server.ts routes run in the
- * Electron main process where they can import { dialog, shell } from 'electron'
- * directly, while the renderer stays PWA-clean (fetch('/api/...') only).
- *
- * Owns the resolved server port. main.ts starts the server (passing its startup
- * logger) and registers the app:// protocol; the privileged-scheme registration
- * itself stays in main.ts so it runs at its original point before app.whenReady.
- */
-import { app, protocol } from "electron";
-import path from "node:path";
-import { createServer, type IncomingHttpHeaders, type RequestListener } from "node:http";
-import { pathToFileURL, fileURLToPath } from "node:url";
+// ──────────────────────────────────────────────────────────────────────────
+// sveltekit-host.ts — serves the SvelteKit app (the SPA and its +server.ts
+// host routes) to the window over the app:// protocol, IN-PROCESS.
+//
+// adapter-electron.js (svelte.config.js) writes the SvelteKit server
+// unbundled to build/server/ — index.js exports `Server`, manifest.js its
+// manifest — and the browser assets to build/client/. loadSvelteKitServer()
+// constructs that Server once; registerAppProtocol() answers each
+// app://local/* request by serving the file under build/client/ when one
+// exists at that path, and otherwise handing the Request to Server.respond(),
+// the same call adapter-node's handler made behind an HTTP server.
+//
+// No HTTP server: nothing listens on a port, so there is no port for another
+// local process to discover, no bearer token to guard it, and no proxy hop
+// (whose fetch gave up on any route slower than five minutes — a long clone).
+// The scheme stays `app://local` (registered privileged in main.ts): a stable
+// origin for the SPA's origin-bound storage, and a secure context.
+// ──────────────────────────────────────────────────────────────────────────
 
-// Module directory, ESM-safe — see the note on `HERE` in main.ts. Do NOT use the
-// bare `__dirname` electron-vite shim; it is not reliably in scope once the main
-// bundle is split across sibling modules. This module is bundled into main.js, so
+import { app, net, protocol } from "electron";
+import { stat } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { logAppError } from "./app-log";
+
 // import.meta.url resolves to out/main/ at runtime.
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-let skServerPort: number | null = null;
+
+/** The slice of SvelteKit's generated `Server` this host calls. */
+export interface SvelteKitServer {
+  respond(request: Request, options: { getClientAddress: () => string }): Promise<Response>;
+}
+
+interface SvelteKitHost {
+  server: SvelteKitServer;
+  /** build/client — the browser assets, served straight from disk. */
+  clientDir: string;
+}
+
+let host: SvelteKitHost | null = null;
 
 /**
  * Test-only: lets unit tests exercise registerAppProtocol's "server is up,
- * host is local" proxy path directly, without spinning up a real adapter-node
- * build via startSvelteKitServer (which loads handler.js from disk). Never
- * called from production code — main.ts only ever sets skServerPort by
- * actually starting the server. Mirrors the `__resetPlatform`-style test seam
- * in src/lib/platform/index.ts.
+ * host is local" path against a fake Server and a temp client dir, without
+ * a real SvelteKit build on disk. Never called from production code — main.ts
+ * only ever sets the host by loading the real build.
  */
-export function __setSkServerPortForTests(port: number | null): void {
-  skServerPort = port;
+export function __setHostForTests(h: SvelteKitHost | null): void {
+  host = h;
 }
 
-// ── Caller authentication (P1 review, PR #98, finding #2) ──────────────────
-// The adapter-node HTTP server is bound to 127.0.0.1 with an OS-assigned
-// port, but a loopback bind alone is NOT caller authentication — any other
-// local process (another user-level app, a script) can discover the port
-// (e.g. by scanning 127.0.0.1) and call the same privileged
-// `src/routes/api/**/+server.ts` routes (fs, git, GitHub token, …) the
-// renderer uses. main.ts mints a per-session random bearer token
-// (node:crypto, never persisted) once at process start and passes it to both
-// startSvelteKitServer() and registerAppProtocol() below: the app:// proxy
-// injects it into every request it forwards, and the loopback server itself
-// rejects any request that doesn't carry it — so a stray process that finds
-// the port but not the token gets a 401.
-const AUTH_HEADER = "x-gutterpress-token";
+function getBuildDir(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "app.asar", "build")
+    : path.join(HERE, "..", "..", "build");
+}
 
-/** Pure — does `headers` carry the expected bearer token? Unit-testable with a plain header object, no live server required. */
-export function isAuthorizedRequest(
-  headers: IncomingHttpHeaders,
-  token: string,
-): boolean {
-  const provided = headers[AUTH_HEADER];
-  return typeof provided === "string" && token.length > 0 && provided === token;
+/** Construct the SvelteKit Server from build/server/ (once). */
+export async function loadSvelteKitServer(slog: (msg: string) => void): Promise<void> {
+  if (host) return;
+  const dir = getBuildDir();
+  slog(`loading SvelteKit server from ${path.join(dir, "server")}`);
+  const { Server } = (await import(pathToFileURL(path.join(dir, "server", "index.js")).href)) as {
+    Server: new (manifest: unknown) => SvelteKitServer & { init(opts: { env: Record<string, string | undefined> }): Promise<void> };
+  };
+  const { manifest } = (await import(pathToFileURL(path.join(dir, "server", "manifest.js")).href)) as {
+    manifest: unknown;
+  };
+  const server = new Server(manifest);
+  await server.init({ env: process.env });
+  host = { server, clientDir: path.join(dir, "client") };
+  slog("SvelteKit server ready (in-process)");
 }
 
 /**
- * Wrap a raw Node HTTP handler (SvelteKit adapter-node's `handler`, or any
- * fake handler in tests) so a request without the correct bearer token is
- * rejected with 401 before it ever reaches the real handler. Exported
- * separately from startSvelteKitServer (which loads the real handler from an
- * on-disk build) so the auth behavior is testable against a plain
- * node:http server with no Electron process or build output involved.
+ * The file under `clientDir` that an app:// pathname names, or null when
+ * there is none. Pure path work plus one stat, exported for its test: a
+ * pathname can never reach outside build/client (`..`, encoded or not), and
+ * a directory is not a file.
  */
-export function withTokenAuth(
-  handler: RequestListener,
-  token: string,
-): RequestListener {
-  return (req, res) => {
-    if (!isAuthorizedRequest(req.headers, token)) {
-      res.statusCode = 401;
-      res.setHeader("Content-Type", "text/plain; charset=utf-8");
-      res.end("Unauthorized");
-      return;
-    }
-    handler(req, res);
-  };
-}
-
-function getSvelteKitHandlerPath(): string {
-  return app.isPackaged
-    ? path.join(process.resourcesPath, "app.asar", "build", "handler.js")
-    : path.join(HERE, "..", "..", "build", "handler.js");
-}
-
-export async function startSvelteKitServer(
-  slog: (msg: string) => void,
-  authToken: string,
-): Promise<number> {
-  if (skServerPort) return skServerPort;
-  const handlerPath = getSvelteKitHandlerPath();
-  slog(`loading SvelteKit handler from ${handlerPath}`);
-  const { handler } = (await import(pathToFileURL(handlerPath).href)) as {
-    handler: RequestListener;
-  };
-  const server = createServer(withTokenAuth(handler, authToken));
-  return new Promise<number>((resolve, reject) => {
-    server.listen(0, "127.0.0.1", () => {
-      const addr = server.address();
-      if (!addr || typeof addr === "string") {
-        reject(new Error("Failed to get SvelteKit server address"));
-        return;
-      }
-      skServerPort = addr.port;
-      slog(`SvelteKit server listening on 127.0.0.1:${skServerPort}`);
-      resolve(skServerPort);
-    });
-    server.on("error", reject);
-  });
+export async function resolveClientFile(clientDir: string, pathname: string): Promise<string | null> {
+  let rel: string;
+  try {
+    rel = decodeURIComponent(pathname);
+  } catch {
+    return null;
+  }
+  const root = path.resolve(clientDir);
+  const file = path.resolve(root, "." + rel);
+  if (file !== root && !file.startsWith(root + path.sep)) return null;
+  try {
+    return (await stat(file)).isFile() ? file : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
  * A small, self-contained HTML error page shown in the `app://` window when
- * the SvelteKit host server isn't reachable — either it hasn't started yet
- * (503, {@link registerAppProtocol}'s early-return below) or a request to it
- * failed after startup (502, the proxy `catch` below). Previously both cases
- * returned a raw text body ("SvelteKit server not started" / "Proxy error:
- * …") with no explanation and no way to recover short of force-quitting the
- * app (ARCH review #28). No external assets/fonts/scripts — this must render
- * standalone, since it exists precisely because the app's own server may not
- * be up. Extracted as a pure function (no `protocol`/`Response` dependency)
- * so it's unit-testable without a running Electron process.
+ * the SvelteKit server can't answer — it hasn't loaded yet (503, below) or
+ * Server.respond() itself threw (500, below). No external assets/fonts/
+ * scripts — this must render standalone, since it exists precisely because
+ * the app's own server is not up. Extracted as a pure function (no
+ * `protocol`/`Response` dependency) so it's unit-testable without a running
+ * Electron process.
  */
 export function buildHostErrorPage(opts: {
   title: string;
@@ -171,65 +149,46 @@ export function buildHostErrorPage(opts: {
 
 const HTML_HEADERS = { "Content-Type": "text/html; charset=utf-8" };
 
-/**
- * Build the outgoing loopback request for an incoming `app://local/...`
- * request: rewrites the target to `http://127.0.0.1:<port>` and injects the
- * session bearer token as a header. Exported separately from
- * registerAppProtocol so the header-injection behavior is unit-testable
- * without an Electron process or a live server on either end.
- */
-export function buildProxyRequest(
-  req: Request,
-  port: number,
-  authToken: string,
-): Request {
-  const url = new URL(req.url);
-  const targetUrl = "http://127.0.0.1:" + port + url.pathname + url.search;
-  const headers = new Headers(req.headers);
-  headers.set(AUTH_HEADER, authToken);
-  return new Request(targetUrl, {
-    method: req.method,
-    headers,
-    body: req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
-    // @ts-expect-error — duplex is required for streaming POST bodies in Node 18+
-    duplex: "half",
-  });
+/** `String(e)` plus the cause Node attaches to many failures (the part that says why). */
+function describeError(e: unknown): string {
+  const cause = (e as { cause?: unknown } | null)?.cause;
+  return cause ? `${String(e)} — ${String(cause)}` : String(e);
 }
 
-export function registerAppProtocol(authToken: string): void {
+export function registerAppProtocol(): void {
   protocol.handle("app", async (req) => {
     const url = new URL(req.url);
-    // P1 review (PR #98, finding #2): the app:// scheme is registered as
-    // "standard", which means ANY host under it — app://evil/... just as
-    // much as app://local/... — is a well-formed request this handler
-    // receives. The pre-fix handler ignored `url.host` entirely and proxied
-    // every app:// request to the privileged loopback server regardless of
-    // host. Only the app's own "local" host may reach the proxy; anything
-    // else is rejected outright (never forwarded).
+    // The app:// scheme is registered as "standard", so ANY host under it —
+    // app://evil/... as much as app://local/... — is a well-formed request
+    // this handler receives. Only the app's own "local" host is served.
     if (url.hostname !== "local") {
       console.warn(`[app://] rejected request for untrusted host "${url.hostname}"`);
       return new Response("Not Found", { status: 404 });
     }
-    if (skServerPort === null) {
+    if (!host) {
       return new Response(
         buildHostErrorPage({
           title: "Gutterpress is still starting",
-          message: "The app's internal server hasn't started yet.",
+          message: "The app's interface hasn't loaded yet.",
         }),
         { status: 503, headers: HTML_HEADERS }
       );
     }
+    const file = await resolveClientFile(host.clientDir, url.pathname);
+    if (file) return net.fetch(pathToFileURL(file).href);
     try {
-      return await fetch(buildProxyRequest(req, skServerPort, authToken));
+      return await host.server.respond(req, { getClientAddress: () => "127.0.0.1" });
     } catch (e) {
-      console.error(`[app://] proxy error for ${url.pathname}:`, e);
+      const detail = describeError(e);
+      // Console AND the app log, so the Logs tab (and a problem report) says why.
+      void logAppError(`[app://] ${url.pathname} failed: ${detail}`);
       return new Response(
         buildHostErrorPage({
           title: "Gutterpress ran into a problem",
-          message: "A request to the app's internal server failed.",
-          detail: String(e),
+          message: "The app couldn't answer a request from its own interface.",
+          detail,
         }),
-        { status: 502, headers: HTML_HEADERS }
+        { status: 500, headers: HTML_HEADERS }
       );
     }
   });

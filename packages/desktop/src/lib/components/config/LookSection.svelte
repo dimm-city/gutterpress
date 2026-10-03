@@ -230,10 +230,10 @@
   .theme-warnings li { font-size: 11px; line-height: 1.4; }
 
   /* #106: enlarged fixed 2-page sample spread shown while hovering a row. It is
-     a decorative overlay (pointer-events:none) pinned just left of the docked
-     Book settings panel, over the live preview. */
+     a decorative overlay (pointer-events:none) pinned to the right edge of the
+     Book settings layer, in the space beside its centred column. */
   .hover-preview {
-    position: fixed; right: calc(var(--app-settings-panel-width) + 16px); top: 50%; transform: translateY(-50%);
+    position: fixed; right: 24px; top: 50%; transform: translateY(-50%);
     width: 360px; max-width: 42vw; aspect-ratio: 3 / 2;
     z-index: 40; pointer-events: none;
     border-radius: 8px; overflow: hidden;
@@ -242,10 +242,10 @@
   }
   .hover-preview iframe { width: 100%; height: 100%; border: 0; background: #fff; }
 
-  /* Wide windows only: on anything narrower the flyout would cover most of the
-     live preview beside the panel (and, in the panel-covers-the-window layout
-     below 900px, the very rows being hovered). Below that, the row's own
-     thumbnail is the preview. */
+  /* Wide windows only: the layer's column is centred at up to 860px, so the
+     flyout clears it only from ~1620px; narrower than that it would cover the
+     very rows being hovered. Below that, the row's own thumbnail is the
+     preview. */
   @media (max-width: 1620px) {
     .hover-preview { display: none; }
   }

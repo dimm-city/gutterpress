@@ -1,6 +1,6 @@
 import path from 'node:path';
-import { getHooks, handlePublishErrors } from '../_hooks';
-import { defineRoute, requireContainedOrPicked, requireProjectDir } from '../../_lib/route';
+import { handlePublishErrors } from '../_hooks';
+import { defineRoute, getHostServices, loadLib, requireContainedOrPicked, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 /**
@@ -19,17 +19,12 @@ import type { RequestHandler } from './$types';
  * (`run-publish.ts` does `path.resolve(projectDir, artifactPath)`), so a
  * relative artifact stays project-relative and can't `../` out.
  */
-export const POST: RequestHandler = defineRoute<
-  {
+export const POST: RequestHandler = defineRoute<{
     projectDir: string;
     providerId?: string;
     artifactPath?: string;
     dryRun?: boolean;
-  },
-  NonNullable<ReturnType<typeof getHooks>>
->({
-  hooks: getHooks,
-  hooksUnavailableMessage: 'Publish hooks not available',
+  }>({
   // The path checks live HERE, not inside `call`: `handlePublishErrors` maps
   // any non-`Error` throwable to a generic 500, and a SvelteKit `HttpError` is
   // a plain object — so a 403/400 raised inside `call` would reach the client
@@ -56,13 +51,10 @@ export const POST: RequestHandler = defineRoute<
       ...(body.dryRun ? { dryRun: true } : {}),
     };
   },
-  call: async ({ body, hooks }) =>
+  call: async ({ body }) =>
     handlePublishErrors('publish:run', async () => {
       if (!body.providerId) throw new Error('publish:run requires { providerId }');
-      const lib = await hooks.loadLib();
-      if (!lib.runPublish) {
-        throw new Error('Publishing is not available in this version of the lib');
-      }
+      const lib = await loadLib();
       const log: string[] = [];
       const result = await lib.runPublish(
         {
@@ -74,7 +66,7 @@ export const POST: RequestHandler = defineRoute<
           ...(body.dryRun ? { dryRun: true } : {}),
         },
         {
-          tokenStore: hooks.tokenStore,
+          tokenStore: getHostServices().remote.tokenStore,
           onProgress: (line: string) => {
             log.push(line);
             if (log.length > 500) log.shift();

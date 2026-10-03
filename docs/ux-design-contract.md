@@ -24,7 +24,7 @@ Every feature area below is tagged with its implementation status:
 This contract governs the **desktop application** — the desktop Electron app
 and its PWA/browser target (#33/#34, `docs/pwa-webadapter-plan.md`).
 
-**Out of scope:** the CLI (`gutterpress new/build/preview/lint/publish`). The CLI
+**Out of scope:** the CLI (`gutterpress new/build/preview/validate/publish`). The CLI
 is the power-user and CI surface (see the repo README: "a desktop application
 (with a CLI for power users)") and is governed by `packages/cli/README.md` and
 `docs/publishing.md`. Developer users are expected to move between the app and
@@ -40,7 +40,7 @@ contract and those documents conflict, the architecture documents win.**
 | Renderer stays PWA-clean; host capabilities via server routes (default) or the Platform seam (push streams, BrowserWindow calls, FSA-divergent fs) | `CLAUDE.md` §8 | Theme import file IO, AI/publish network calls, preflight fs checks → server routes. Publish/build **progress streams** → the adapter/IPC push seam. No `node:*` or lib value-imports in the SPA. |
 | Preview bridge protocol | ADR 0005 (removed in the 2026-07-29 docs cleanup) | Sync scroll, page navigation, outline, any preview overlay or overflow probe must go through the bridge. |
 | Plugins are plain markdown-it plugins; no plugin API; loader never auto-installs | `CLAUDE.md` §5 | Constrains §9 (Features) below. |
-| PDF rendering = Electron `printToPDF` (desktop) / puppeteer-core (CLI); pure-JS tooling posture | ADR 0002 (removed in the 2026-07-29 docs cleanup) | Preflight/export UX; "export" not "download". |
+| PDF rendering = Electron `printToPDF` (desktop) / a system Chromium driven over raw CDP (CLI); pure-JS tooling posture | ADR 0002 (removed in the 2026-07-29 docs cleanup) | Preflight/export UX; "export" not "download". |
 | Git/GitHub operations are Node-native pure JS | `CLAUDE.md` §7 | Project source / sync / provider-auth UX. |
 | `$effect` is eslint-banned in the SPA; persisted preferences flow through the settings store's `onSettingsChange()` channel | `CLAUDE.md` §8 | Every persisted preference this contract specs (font size, pane layout, sync toggle, tooltip-seen state). |
 | All changes must REDUCE complexity unless properly justified | `CLAUDE.md` Primary Goals | Every PROPOSED item needs a scoped issue before implementation. |

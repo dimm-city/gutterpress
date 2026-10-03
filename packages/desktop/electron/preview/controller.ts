@@ -31,7 +31,7 @@ import { operationLogSlug } from "../recovery-paths";
 import { unsyncedStateFor } from "../auto-sync/unsynced-status";
 import { upsertRecentFolder } from "../recent-folders";
 import type { DesktopPrefs } from "../prefs-store";
-import type { PreviewStartResult } from "../bridge-types";
+import type { PreviewStartResult } from "../../src/lib/platform/shared-types";
 import type { TokenStore } from "gutterpress";
 
 type LibModule = typeof import("gutterpress");

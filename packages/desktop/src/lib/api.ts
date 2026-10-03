@@ -9,25 +9,41 @@
  * All methods throw on non-OK responses (with the response body as the message).
  */
 
+/**
+ * The message to throw for a non-OK response. A route's own error is the
+ * `{"message": …}` JSON body (see `$lib/errors`'s `unwrapRouteError`). An
+ * HTML body is not from a route at all: it is the `app://` handler's error
+ * page (electron/sveltekit-host.ts), sent when the server itself could not
+ * answer — so say that in one sentence, with the page's `<code>` detail,
+ * instead of handing a component a page of markup to display.
+ */
+export function hostErrorMessage(contentType: string | null, text: string): string {
+  if (!/text\/html/i.test(contentType ?? '')) return text;
+  const code = /<code>([\s\S]*?)<\/code>/i.exec(text)?.[1]?.trim();
+  const detail = code
+    ? code.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+    : '';
+  return `The app's internal server didn't answer.${detail ? ` (${detail})` : ''}`;
+}
+
+async function failed(r: Response): Promise<Error> {
+  const text = await r.text().catch(() => r.statusText);
+  return new Error(hostErrorMessage(r.headers.get('content-type'), text) || r.statusText);
+}
+
 async function post<T>(url: string, body?: unknown): Promise<T> {
   const r = await fetch(url, {
     method: 'POST',
     headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-  if (!r.ok) {
-    const msg = await r.text().catch(() => r.statusText);
-    throw new Error(msg || r.statusText);
-  }
+  if (!r.ok) throw await failed(r);
   return r.json() as Promise<T>;
 }
 
 async function get<T>(url: string): Promise<T> {
   const r = await fetch(url);
-  if (!r.ok) {
-    const msg = await r.text().catch(() => r.statusText);
-    throw new Error(msg || r.statusText);
-  }
+  if (!r.ok) throw await failed(r);
   return r.json() as Promise<T>;
 }
 
@@ -115,6 +131,7 @@ export type {
   PrintSafeWarning,
   ProblemEntry,
   DoctorDiagnostics,
+  ProblemReport,
   DoctorInstallResult,
 } from './platform/dtos';
 
@@ -138,6 +155,7 @@ import type {
   PrintSafeWarning,
   ProblemEntry,
   DoctorDiagnostics,
+  ProblemReport,
   DoctorInstallResult,
 } from './platform/dtos';
 
@@ -286,6 +304,12 @@ export const api = {
     /** Reveal a file in the OS file manager. */
     showInFolder: (filePath: string) =>
       post<{ ok: boolean }>('/api/shell/show-in-folder', { filePath }),
+  },
+
+  report: {
+    /** Build the "Report a problem" bundle for the open book (null = no book). */
+    bundle: (projectDir: string | null) =>
+      post<ProblemReport>('/api/report/bundle', { projectDir }),
   },
 
   log: {
@@ -756,6 +780,14 @@ export const api = {
      */
     repairOnlineBackup: (projectDir: string) =>
       post<{ outcome: SyncOutcome; restoredFiles: string[] }>('/api/remote/repair', { projectDir }),
+
+    /**
+     * "Scorched earth": copy the folder to a backup, empty it, download a
+     * fresh copy from its online address, then copy the backed-up files (not
+     * the old history) back on top. Nothing is saved or backed up afterwards.
+     */
+    scorchedEarth: (projectDir: string) =>
+      post<{ dir: string; backupDir: string; branch?: string }>('/api/remote/scorched-earth', { projectDir }),
 
     /**
      * Download ("clone") a repository into a new local project folder

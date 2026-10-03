@@ -6,7 +6,7 @@ import path from "node:path";
 import { MARKER_CSS } from "./markers.js";
 import { GUTTERPRESS_CSS } from "./gutterpress-css.ts";
 import { resolveChromiumExecutable } from "../chromium.ts";
-import { closeBrowser, getBrowser } from "../browser-pool.ts";
+import { launchChromium, type Browser } from "../../engine/shared/cdp.ts";
 import { inspectPdf } from "../../engine/shared/pdf-inspect.ts";
 
 /**
@@ -89,8 +89,11 @@ if (!chromium) {
   );
 }
 
+// One Chromium for the file, launched through the engine's own launcher
+// (the same binary, flags and resolver the CLI builds with).
+let browser: Browser | undefined;
 afterAll(async () => {
-  await closeBrowser();
+  await browser?.close();
 });
 
 testIf(
@@ -100,10 +103,10 @@ testIf(
     try {
       const file = path.join(dir, "fixture.html");
       await fsp.writeFile(file, fixture, "utf8");
-      const browser = await getBrowser(RENDER_TEST_TIMEOUT_MS);
+      browser ??= await launchChromium();
       const page = await browser.newPage();
       try {
-        await page.goto(`file://${file}`, { waitUntil: "networkidle0" });
+        await page.navigate(`file://${file}`);
 
         // Evaluated as a source string, not a closure: this package's tsconfig
         // is deliberately DOM-free (see its comment), so `document` has no
@@ -179,7 +182,7 @@ testIf(
 
         // Print: five container divs that each exactly fill a sheet print
         // as exactly five sheets — the out-of-flow pins add none.
-        const bytes = await page.pdf({ preferCSSPageSize: true, printBackground: true });
+        const bytes = await page.printToPDF();
         const facts = await inspectPdf(new Uint8Array(bytes));
         expect(facts.pageCount).toBe(5);
       } finally {
@@ -224,10 +227,10 @@ testIf(
     try {
       const file = path.join(dir, "fixture.html");
       await fsp.writeFile(file, shortFixture, "utf8");
-      const browser = await getBrowser(RENDER_TEST_TIMEOUT_MS);
+      browser ??= await launchChromium();
       const page = await browser.newPage();
       try {
-        await page.goto(`file://${file}`, { waitUntil: "networkidle0" });
+        await page.navigate(`file://${file}`);
         const m = (await page.evaluate(
           `(() => {
             const box = (id) => document.getElementById(id).getBoundingClientRect();
@@ -265,7 +268,7 @@ testIf(
 
         // Stretching page roots must not cost a sheet: two roots that each
         // fill their content box still print as exactly two sheets.
-        const bytes = await page.pdf({ preferCSSPageSize: true, printBackground: true });
+        const bytes = await page.printToPDF();
         const facts = await inspectPdf(new Uint8Array(bytes));
         expect(facts.pageCount).toBe(2);
       } finally {

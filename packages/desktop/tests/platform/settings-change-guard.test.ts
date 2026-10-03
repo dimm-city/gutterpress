@@ -12,9 +12,8 @@
  * this is what the old `+page.svelte` `lastBg` closure guarded against for
  * the previewBg → iframe-style sync. `settingsChangeGuard()` is the extracted,
  * directly-testable replacement for that guard (no Svelte component/effect
- * harness exists in this repo — see `history-seam-retirement.test.ts` — so
- * the guard logic must be a plain function to be pinned with a real test
- * rather than a source-text assertion).
+ * harness exists in this repo, so the guard logic must be a plain function
+ * to be pinned with a real test rather than a source-text assertion).
  */
 import { expect, test } from "bun:test";
 

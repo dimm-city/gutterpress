@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 import { resolveChromiumExecutable } from "../../lib/chromium.ts";
 import { getAssetPath } from "../../lib/embedded-assets.ts";
-import { closeBrowser, getBrowser } from "../../lib/browser-pool.ts";
+import { closeBrowser, getBrowser } from "./test-support/browser.ts";
 
 /**
  * WP-B item 5: a live-preview `target-counter()` reference to a nonexistent
@@ -53,10 +53,10 @@ testIf(
       );
       const { url, close } = await serveDir(dir, "broken-xref.html");
       try {
-        const browser = await getBrowser(RENDER_TEST_TIMEOUT_MS);
+        const browser = await getBrowser();
         const page = await browser.newPage();
         try {
-          await page.goto(url, { waitUntil: "networkidle0" });
+          await page.goto(url);
           await page.waitForFunction(
             "window.Gutterpress && window.Gutterpress.totalPages > 0"
           );
