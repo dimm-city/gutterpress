@@ -19,7 +19,7 @@
   import { sanitizeTroubleshootingTab, type TroubleshootingTab } from "$lib/troubleshooting-tabs";
 
   let {
-    initialTab = "diagnostics",
+    initialTab = "logs",
     idPrefix = "troubleshooting",
     projectDir = null,
     onCloseBook,
@@ -35,8 +35,8 @@
 
   // ── Tabs ────────────────────────────────────────────────────────────────────
   const TABS: Array<{ id: TroubleshootingTab; label: string }> = [
-    { id: "diagnostics", label: "Diagnostics" },
     { id: "logs", label: "Logs" },
+    { id: "diagnostics", label: "Diagnostics" },
     { id: "sync", label: "Sync" },
   ];
   // Mounted fresh per visit; the initial value is the requested landing tab.

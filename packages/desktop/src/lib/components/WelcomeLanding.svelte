@@ -158,7 +158,7 @@
   });
 
   /** Sub-tab the Troubleshooting tab opens on (deep link or its default). */
-  let troubleshootingTab = $state<TroubleshootingTab>("diagnostics");
+  let troubleshootingTab = $state<TroubleshootingTab>("logs");
 
   /** Tab switch — host-driven (help button) and user-driven alike, so a plain
    *  switch drops any earlier deep link (`sub` omitted → the default sub-tab).

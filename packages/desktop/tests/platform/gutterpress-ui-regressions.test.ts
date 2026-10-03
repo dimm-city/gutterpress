@@ -132,7 +132,7 @@ test("app settings live ONLY on the start screen's Settings tab — no separate 
   // Settings tab, exactly like the help button. The standalone sheet (and its
   // `settingsOpen` state) is gone, so there is no second instance to keep
   // above the landing, and no second inert gate to maintain.
-  expect(src).toContain('inert={landingVisible || projectSettingsOpen}');
+  expect(src).toContain('inert={landingVisible}');
   expect(src).toContain('visible={landingVisible}');
   expect(src).not.toContain("settingsOpen");
   expect(src).not.toContain('editorView === "settings"');

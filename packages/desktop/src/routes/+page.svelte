@@ -1016,8 +1016,7 @@
   /**
    * One button → the whole book settings view (manifest details, look &
    * style, plugins). Docked beside the workspace so the preview stays visible
-   * while the writer styles the book; the workspace goes inert and returns
-   * untouched on close.
+   * (and scrollable) while the writer styles the book.
    */
   function openProjectConfig(): void {
     if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
@@ -2769,10 +2768,11 @@
   <title>{lifecycle.docTitle ? `${lifecycle.docTitle} — Gutterpress` : "Gutterpress"}</title>
 </svelte:head>
 
-<!-- inert while the start screen or Book settings is up: the workspace keeps
-      rendering (the docked panel leaves the preview visible and live beside
-      it), but never accepts interaction underneath. -->
-<div class="app-root" class:settings-docked={projectSettingsOpen} inert={landingVisible || projectSettingsOpen}>
+<!-- inert while the start screen is up: the workspace keeps rendering but
+      never accepts interaction underneath it. Book settings docks BESIDE the
+      workspace, so the workspace stays live there — the preview must scroll
+      while the writer styles the book (an inert iframe takes no wheel). -->
+<div class="app-root" class:settings-docked={projectSettingsOpen} inert={landingVisible}>
 {#if (updateController.readyVersion || updateController.availableVersion) && !updateController.bannerDismissed}
   <div class="update-banner" role="status" aria-live="polite">
     {#if updateController.readyVersion}

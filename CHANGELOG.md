@@ -20,6 +20,16 @@ This project follows [Semantic Versioning](https://semver.org/).
     files only the online copy has stay. If that book is open, it is closed
     as the final step. Asks once before it runs.
 
+### Changed
+
+- **Troubleshooting opens on Logs.** Logs is now the first and default tab,
+  ahead of Diagnostics and Sync.
+
+### Fixed
+
+- **The preview scrolls while Book settings is open.** The panel docks
+  beside the book, and the preview next to it can be scrolled again.
+
 ## [0.11.9] - 2026-10-01
 
 ### Added

@@ -169,8 +169,8 @@ describe("+page.svelte — docked mount, teardown, prefs migration", () => {
     expect(mount).toContain('class="settings-global-view"');
     expect(mount).toContain("{#key lifecycle.currentDir}");
     expect(mount).toContain("<ProjectSettingsView");
-    // The workspace behind the view goes inert, like the start screen.
-    expect(src).toMatch(/inert=\{landingVisible \|\| projectSettingsOpen\}/);
+    // Only the start screen makes the workspace inert; Book settings docks beside it.
+    expect(src).toMatch(/inert=\{landingVisible\}/);
   });
 
   test("project teardown closes the view (resetExtras)", () => {
@@ -220,13 +220,13 @@ describe("+page.svelte — Book settings docks beside the live preview (#308)", 
   // The preview already re-renders as soon as a stylesheet is written (the
   // folder watcher rebuilds it); it was only hidden under an opaque full-window
   // sheet. So the fix is presentational: dock the panel and let the app shrink.
-  test("the inert app shrinks by the panel's width, so the preview stays visible", () => {
+  test("the app shrinks by the panel's width, so the preview stays visible", () => {
     const src = page();
     expect(src).toContain("class:settings-docked={projectSettingsOpen}");
     expect(src).toMatch(/\.app-root\.settings-docked\s*\{\s*margin-right:\s*var\(--app-settings-panel-width\);?\s*\}/);
     expect(src).toMatch(/\.settings-global-view\s*\{[^}]*width:\s*var\(--app-settings-panel-width\)/);
-    // Visible is not editable: the workspace beside the panel stays inert.
-    expect(src).toMatch(/inert=\{landingVisible \|\| projectSettingsOpen\}/);
+    // The workspace beside the panel stays live, so the preview scrolls.
+    expect(src).toMatch(/inert=\{landingVisible\}/);
   });
 
   test("a window too narrow for both lets the panel cover it, as before", () => {
