@@ -50,10 +50,9 @@ export interface ValidationExecutionArgs {
    * build pipeline's preValidate gate (`build-runner.ts`'s
    * `runQualityGates`, via `loadBuildPlugins`) so this run does not load
    * plugins itself when the build already has. `undefined` (the default —
-   * every standalone `validate`/`preflight`/`audit` invocation, and the
-   * desktop Problems panel) makes {@link executeValidation} load plugins
-   * itself, degrade-and-report, exactly like `gutterpress lint`
-   * (lint-runner.ts). An explicit `[]` is honored as-is, not treated as
+   * every standalone `validate`/`preflight` invocation, and the desktop
+   * Problems panel) makes {@link executeValidation} load plugins itself,
+   * degrade-and-report. An explicit `[]` is honored as-is, not treated as
    * "unset".
    */
   pluginStylePaths?: string[];
@@ -64,8 +63,8 @@ export interface ValidationExecutionArgs {
    * pipeline's `runQualityGates` (build-runner.ts) from `--skip-lint` /
    * `config.lint.enabled: false`, so that flag disables just the one check
    * it always meant to gate rather than a whole separate lint pass. Every
-   * other caller (`gutterpress validate`/`preflight`/`audit`, the desktop
-   * Problems panel) leaves this unset and gets the manifest's own setting.
+   * other caller (`gutterpress validate`/`preflight`, the desktop Problems
+   * panel) leaves this unset and gets the manifest's own setting.
    */
   skipStylelint?: boolean;
   /**
@@ -479,17 +478,15 @@ export async function executeValidation(
     // findings on a minified file are meaningless; it still ships via
     // resolveActiveStyles/inlineStyles regardless.
     //
-    // #262: NOW the same list lint-runner.ts builds — since #238 a plugin's
-    // file-based `styles` are a real, lintable/ownership-checked CSS surface,
-    // and it was folded into `gutterpress lint` there but not here, so a
-    // plugin's CSS was print-safety and ownership checked by `gutterpress
-    // lint` and never by `validate`/`preflight` or the desktop Problems
-    // panel — the three surfaces most people actually use. `pluginStylePaths`
-    // is either the build's preValidate gate handing in its own
-    // already-loaded plugins (build-runner.ts's loadBuildPlugins — this run
-    // is then free: no plugin load happens here at all), or, for a standalone
-    // `validate`/`preflight`/`audit` run with no such preload, loaded here
-    // degrade-and-report, same failure mode as lint-runner.ts: one broken
+    // #262: since #238 a plugin's file-based `styles` are a real,
+    // lintable/ownership-checked CSS surface, and for a while only the (since
+    // deleted) standalone `gutterpress lint` folded them in — a plugin's CSS
+    // was never checked by `validate`/`preflight` or the desktop Problems
+    // panel, the surfaces people actually use. `pluginStylePaths` is either
+    // the build's preValidate gate handing in its own already-loaded plugins
+    // (build-runner.ts's loadBuildPlugins — this run is then free: no plugin
+    // load happens here at all), or, for a standalone `validate`/`preflight`
+    // run with no such preload, loaded here degrade-and-report: one broken
     // plugin must not blank print-safety checking for the rest of the
     // project's CSS.
     const relStyles = await resolveActiveStyles(manifestDir, config.styles);

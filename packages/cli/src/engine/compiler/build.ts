@@ -394,7 +394,8 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // against a 442px limit on the CLI measured 435px on the desktop — a hard
     // error on one host, a shipped book on the other, and 8 of 21 low-DPI
     // warnings on a real book that the desktop author never saw. Owned here
-    // so no host can contribute it (docs/analysis/cli-desktop-print-parity.md).
+    // so no host can contribute it (build.measurement-viewport.test.ts asserts
+    // the invariant; the CLI↔desktop measurement is recorded in PR #186/#187).
     await page.send("Emulation.setScrollbarsHidden", { hidden: true });
     await page.send("Emulation.setDeviceMetricsOverride", sheetViewport);
 

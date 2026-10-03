@@ -56,14 +56,14 @@ describe("identity contract: preview tags are canonical", () => {
   }
 
   test("root file listed as bare basename", async () => {
-    const html = await renderChapters(inputDir, { files: ["root.md"], wrapChapters: true });
+    const html = await renderChapters(inputDir, { files: ["root.md"], annotateSourceChapters: true });
     expect(tagsOf(html)).toEqual(["root.md"]);
   });
 
   test("subdirectory chapter listed plainly", async () => {
     const html = await renderChapters(inputDir, {
       files: ["chapters/03-the-players.md"],
-      wrapChapters: true,
+      annotateSourceChapters: true,
     });
     expect(tagsOf(html)).toEqual(["chapters/03-the-players.md"]);
   });
@@ -71,7 +71,7 @@ describe("identity contract: preview tags are canonical", () => {
   test("./-prefixed manifest entry (the v0.5.0-rc.2 splice regression)", async () => {
     const html = await renderChapters(inputDir, {
       files: ["./chapters/03-the-players.md"],
-      wrapChapters: true,
+      annotateSourceChapters: true,
     });
     expect(tagsOf(html)).toEqual(["chapters/03-the-players.md"]);
     expect(tagsOf(html)[0]).toBe("chapters/03-the-players.md");
@@ -80,13 +80,13 @@ describe("identity contract: preview tags are canonical", () => {
   test("backslashed manifest entry (Windows-authored manifest)", async () => {
     const html = await renderChapters(inputDir, {
       files: ["chapters\\03-the-players.md"],
-      wrapChapters: true,
+      annotateSourceChapters: true,
     });
     expect(tagsOf(html)).toEqual(["chapters/03-the-players.md"]);
   });
 
   test("discovery mode (no files key) tags root files canonically", async () => {
-    const html = await renderChapters(inputDir, { files: null, wrapChapters: true });
+    const html = await renderChapters(inputDir, { files: null, annotateSourceChapters: true });
     expect(tagsOf(html)).toEqual(["root.md"]);
   });
 

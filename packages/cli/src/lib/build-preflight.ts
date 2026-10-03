@@ -163,7 +163,7 @@ export interface Gates {
    * Disable the `source.stylelint` check (CSS print-safety: remote urls,
    * risky print effects, page-containment) for this run, without touching
    * `preValidate` itself (#272 — one CSS gate, not two: this used to be a
-   * whole second gate, `runLint`, that duplicated `source.stylelint`'s own
+   * whole second gate, a separate lint-runner, that duplicated `source.stylelint`'s own
    * `checkCss` pass one phase later). `true` when `--skip-lint` was passed or
    * `config.lint.enabled === false`; consulted only when `preValidate` is
    * also true — with `preValidate` off, no pre-build check (CSS included)

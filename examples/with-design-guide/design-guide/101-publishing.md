@@ -98,13 +98,11 @@ gutterpress build field-guide --format pdfx --out .gutterpress/build/field-guide
   --pdfx-flavor x1a --icc .gutterpress/profiles/CGATS21_CRPC1.icc
 ```
 
-### gutterpress lint / validate / audit / preflight
+### gutterpress validate / preflight
 
 | Command | Description |
 |---------|-------------|
-| `lint [DIR]` | Check CSS for print-safety issues |
 | `validate [FILE]` | Validate source files or a built PDF for print compliance |
-| `audit [DIR]` | Asset-only validation checks |
 | `preflight [FILE]` | Deterministic print preflight for a built PDF |
 
 ---

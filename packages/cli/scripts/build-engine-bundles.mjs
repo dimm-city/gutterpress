@@ -9,7 +9,7 @@
 // compiled `bun build --compile` binary cannot carry a live bundler. So the
 // bundles are produced HERE, at package build time (wired into the `build`
 // script in package.json), and committed as ordinary generated assets under
-// `src/assets/engine/`, exactly like the vendored `paged.polyfill.js`.
+// `src/assets/engine/`, alongside the preview scripts in `src/assets/preview/`.
 // `src/lib/embedded-assets.ts` then embeds them via `with { type: "file" }`
 // (CLAUDE.md §4) so both `bun packages/cli/src/cli.ts` (source checkout —
 // the files are already on disk, no build step required) and the compiled

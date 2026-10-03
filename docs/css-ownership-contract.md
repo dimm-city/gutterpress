@@ -86,8 +86,8 @@ in the contract, so a stray `columns: 2` in some unrelated file is still
 caught — including a plugin's own declared `styles` file (#238): an installed
 plugin is not exempt from the project's ownership contract just because its
 CSS ships from `node_modules` rather than the theme folder. This coverage is
-uniform across every surface that runs this check — `gutterpress lint`,
-`validate`/`preflight`, and the desktop Problems panel all resolve the exact
+uniform across every surface that runs this check — `gutterpress
+validate`/`preflight` and the desktop Problems panel all resolve the exact
 same plugin-inclusive stylesheet set (#262) — so a contract violation cannot
 pass on one surface and fail on another. This is the direct fix for the
 motivating example:
@@ -147,6 +147,6 @@ and each fires only for a specific, real ownership violation.
 ## See also
 
 - [Schema reference — `validate.source`](./schema-autocomplete.md#validate-object)
-- [CSS architecture review, finding C6](./audits/2026-09-01-css-architecture-review.md) — the review this check implements
+- The 2026-09-01 CSS architecture review, finding C6 — the review this check implements (the review document itself was retired once its findings shipped; the check landed in 0.10.8 under #238/#262)
 - `packages/cli/src/lib/printsafe.ts` — the sibling postcss-based print-safety
   checks this follows the same no-stylelint approach as

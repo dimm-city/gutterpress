@@ -26,11 +26,12 @@ jobs:
       #
       # Ghostscript has a SECOND dependent, and it is the one with no second
       # chance: page-background-chromium-bug.canary.test.ts, the expiry trigger
-      # for the `@page { background: url() }` preload shim (RECOMMENDATION.md
-      # §6). It needs Chromium AND Ghostscript, and self-skips on either. A
-      # skipped canary is a green CI that has stopped watching for the day
-      # Chromium fixes #152 — the shim then entrenches silently, which is the
-      # exact failure §7 risk 10 names. So this job must always leave SOME
+      # for the `@page { background: url() }` preload shim (#152; the agreed
+      # fix is recorded in PR #186). It needs Chromium AND Ghostscript, and
+      # self-skips on either. A skipped canary is a green CI that has stopped
+      # watching for the day Chromium fixes #152 — the shim then entrenches
+      # silently, the exact risk that test's header names. So this job must
+      # always leave SOME
       # Chromium and SOME Ghostscript resolvable. Removing either tool entirely
       # means deleting that test and its shim in the same change.
       #

@@ -21,7 +21,7 @@ This document describes the architecture, design decisions, and implementation d
 
 The repo is a Bun workspace with three packages:
 
-- **`packages/cli/`** (`gutterpress`) — the single published package: all runtime logic (markdown rendering, preview HTTP server, PDF generation, lint, validation) under `src/`, exposed both as a library (`exports` → `dist/index.js`) and a CLI (`bin` → `dist/cli.js`). The standard build compiles `src/index.ts` + `src/api/index.ts`, the node-free `src/render.ts` subpath, and `src/cli.ts` in separate invocations; render purity is enforced by `scripts/check-render-pure.mjs`, then `tsc` emits declarations. It is also distributed as a standalone compiled binary via `bun build --compile`.
+- **`packages/cli/`** (`gutterpress`) — the single published package: all runtime logic (markdown rendering, preview HTTP server, PDF generation, validation) under `src/`, exposed both as a library (`exports` → `dist/index.js`) and a CLI (`bin` → `dist/cli.js`). The standard build compiles `src/index.ts` + `src/api/index.ts`, the node-free `src/render.ts` subpath, and `src/cli.ts` in separate invocations; render purity is enforced by `scripts/check-render-pure.mjs`, then `tsc` emits declarations. It is also distributed as a standalone compiled binary via `bun build --compile`.
 - **`packages/desktop/`** (`@dimm-city/gutterpress-desktop`) — Electron + SvelteKit desktop app. Depends on `gutterpress` (workspace) and loads its library entry in the Electron main process.
 - **`packages/open-design-plugin/`** (`@dimm-city/gutterpress-open-design-plugin`) — a static Open Design plugin (no JavaScript, no MCP server): the `SKILL.md` workflow contract and `open-design.json` metadata that let an agent edit an existing Gutterpress project's Markdown/CSS/manifest files in place, with the running preview as the pagination authority.
 
@@ -79,8 +79,6 @@ packages/cli/src/
 │   ├── preview.ts          # Headless preview server launcher
 │   ├── publish.ts          # Push built output to distribution platforms
 │   ├── validate.ts         # Print validation
-│   ├── lint.ts             # CSS linting
-│   ├── audit.ts            # Asset-only validation
 │   ├── preflight.ts        # Structured CI preflight payload
 │   ├── doctor.ts           # Check system tools used by Gutterpress
 │   └── ext.ts              # List/add/remove/enable/disable the project's extensions
@@ -341,10 +339,10 @@ return result.diagnostics;
 
 Preview mode runs a single `node:http` server (plus a `ws` `WebSocketServer`)
 that handles static files, the one `/api/status` route, and a
-`/__gutterpress-hmr` WebSocket. A single Markdown edit may use the focused
-`content-update` notification, while wider changes use `full-reload`; the
-preview shell deliberately handles both by swapping the complete regenerated
-book so pagination never depends on per-source isolation wrappers. It does
+`/__gutterpress-hmr` WebSocket. Every change — a one-word Markdown edit or a
+stylesheet rewrite — is one `full-reload` notification; the preview shell
+double-buffers the complete regenerated book and swaps it in, so pagination
+never depends on per-source isolation wrappers. It does
 **not** use `Bun.serve`: the lib runtime must stay Node-compatible so the
 Electron desktop can run it in-process on Electron's bundled Node (see
 `CLAUDE.md`, Monorepo layout section, and §1). There is no toolbar, page

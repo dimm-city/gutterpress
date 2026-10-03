@@ -11,7 +11,6 @@ import path from 'path';
 import { info, debug, warn, error as logError } from '../utils/logger';
 import { DEBOUNCE } from '../constants';
 import { renderChapters } from '../lib/markdown/index';
-import { canonicalChapterId } from '../lib/markdown/chapter-id';
 import { loadManifest, resolveConfig } from '../lib/manifest';
 import { resolveActiveStyles } from '../lib/style-resolver';
 import { collectStyleDependencies, type AssetCopy } from '../lib/asset-inline';
@@ -50,15 +49,6 @@ const EMPTY_BOOK_HTML = `<!doctype html>
 `;
 
 /**
- * Whether the incremental preview shell is active. The historical env name is
- * retained because users may already set it. A single Markdown edit paginates
- * only that source file; geometry-wide changes still swap a full document.
- */
-export function incrementalPreviewEnabled(): boolean {
-  return process.env.GUTTERPRESS_PREVIEW_INCREMENTAL !== "0";
-}
-
-/**
  * Shared preview render path. renderChapters() does all Markdown + CSS work.
  *
  * Named `renderPreviewBook` (ARCH finding #53) to distinguish it from
@@ -74,7 +64,6 @@ async function renderPreviewBook(
   config: { title?: string; styles?: string[]; extensions?: ResolvedExtensionConfig[] },
   opts: {
     files: string[] | null;
-    wrapChapters: boolean;
     /**
      * Receives the inliner's copy plan so the HTTP server can resolve the
      * rewritten asset URLs — see {@link ServerState.cssAssets}. The build
@@ -94,7 +83,6 @@ async function renderPreviewBook(
     files: opts.files,
     plugins,
     pluginStyles,
-    wrapChapters: opts.wrapChapters,
     annotateSourceChapters: true,
     ...(opts.onCssAssets ? { onCssAssets: opts.onCssAssets } : {}),
     // ARCH finding #4: Gutterpress's typed, line-numbered marker warnings
@@ -119,30 +107,18 @@ async function renderPreviewBook(
  * toolbar — together they make the desktop's whole
  * `gutterpress:cmd/reply/event` command protocol work.
  *
- * `pageIsolateChapters` is reserved for the one-source render. The full book
- * always paginates as one document: native preview updates use a full iframe
- * swap, so forcing every source wrapper to a new page buys no incremental
- * splice boundary and diverges from the PDF whenever a source file begins in
- * the middle of a printed page.
+ * The book always paginates as ONE document, exactly as the print path does:
+ * no per-source wrappers or forced breaks are added, so preview pagination
+ * never diverges from the PDF where a source file begins mid-page.
  */
-export function injectPreviewScripts(
-  html: string,
-  pageIsolateChapters: boolean,
-): string {
+export function injectPreviewScripts(html: string): string {
   const scripts =
     '  <script src="/engine/gutterpress-viewer.js"></script>\n  '
     + '<script src="/preview/scripts/preview-interface.js"></script>\n  '
     + '<script src="/preview/scripts/preview-bridge.js"></script>\n';
-  let output = /<\/head>/i.test(html)
+  return /<\/head>/i.test(html)
     ? html.replace(/<\/head>/i, scripts + '</head>')
     : html + scripts;
-  if (pageIsolateChapters && /<\/head>/i.test(output)) {
-    output = output.replace(
-      /<\/head>/i,
-      '<style>.gutterpress-chapter{break-before:page}</style>\n</head>'
-    );
-  }
-  return output;
 }
 
 /**
@@ -176,7 +152,6 @@ export async function generateAndWriteHtml(
   const nextAssets = new Map<string, string>();
   const html = await renderPreviewBook(inputPath, config, {
     files: config.source?.files ?? null,
-    wrapChapters: false,
     onCssAssets: (copies) => {
       for (const copy of copies) nextAssets.set(copy.to, copy.from);
     },
@@ -185,87 +160,9 @@ export async function generateAndWriteHtml(
   for (const [to, from] of nextAssets) cssAssets.set(to, from);
   await fsp.writeFile(
     path.join(tempDir, BOOK_HTML_FILENAME),
-    injectPreviewScripts(html, false),
+    injectPreviewScripts(html),
     "utf-8"
   );
-}
-
-/**
- * Render one source file with the same CSS, plugins, source metadata, and
- * preview scripts as the full book. The shell paginates this small document in
- * a hidden iframe and replaces only the edited source file's pages.
- */
-export async function renderChapterPreviewHtml(
-  inputPath: string,
-  file: string,
-  config: { title?: string; styles?: string[]; extensions?: ResolvedExtensionConfig[] }
-): Promise<string> {
-  const html = await renderPreviewBook(inputPath, config, {
-    files: [canonicalChapterId(file)],
-    wrapChapters: true,
-  });
-  return injectPreviewScripts(html, true);
-}
-
-/** One changed project file, named for the preview broadcast decision. */
-export interface ChangedFile {
-  relativePath: string;
-  ext: string;
-  event: string;
-}
-
-/**
- * Describe in-project changes using the same canonical path form emitted in
- * `data-chapter-src`. Declared external dependencies intentionally drop out;
- * their presence in the original change count forces a full reload.
- */
-export function describeChanges(
-  changes: [filePath: string, event: string][],
-  inputResolved: string
-): ChangedFile[] {
-  const files: ChangedFile[] = [];
-  for (const [changedPath, event] of changes) {
-    const relative = path.relative(inputResolved, path.resolve(changedPath));
-    if (
-      relative === '' ||
-      relative === '..' ||
-      relative.startsWith(`..${path.sep}`) ||
-      path.isAbsolute(relative)
-    ) continue;
-    files.push({
-      relativePath: canonicalChapterId(relative),
-      ext: path.extname(changedPath).toLowerCase(),
-      event,
-    });
-  }
-  return files;
-}
-
-export type BroadcastDecision =
-  | { kind: 'chapter-splice'; chapterId: string; relativePath: string }
-  | { kind: 'full-reload' };
-
-/** A single surviving Markdown edit can be paginated independently. */
-export function decideBroadcast(
-  files: ChangedFile[],
-  changeCount: number,
-  incremental: boolean
-): BroadcastDecision {
-  const only = files.length === 1 ? files[0]! : null;
-  if (
-    incremental &&
-    changeCount === 1 &&
-    only?.ext === '.md' &&
-    only.event !== 'unlink' &&
-    only.event !== 'unlinkDir'
-  ) {
-    return {
-      kind: 'chapter-splice',
-      chapterId: canonicalChapterId(only.relativePath),
-      relativePath: only.relativePath,
-    };
-  }
-  return { kind: 'full-reload' };
 }
 
 /**
@@ -776,22 +673,16 @@ export function createFileWatcher(state: ServerState): FSWatcher {
         await generateAndWriteHtml(inputResolved, state.tempDir, updatedConfig, state.cssAssets);
         if (closed) return;
 
-        const decision = decideBroadcast(
-          describeChanges(changes, inputResolved),
-          changes.length,
-          incrementalPreviewEnabled(),
+        // One broadcast kind, whatever changed: the shell double-buffers the
+        // complete regenerated book and swaps it in, so a one-word edit and a
+        // stylesheet rewrite take the same path (preview-shell.js's header
+        // records why the per-chapter splice was removed).
+        state.previewServer?.broadcastReload();
+        info(
+          changes.length > 1
+            ? `Preview updated (${changes.length} files changed)`
+            : 'Preview updated'
         );
-        if (decision.kind === 'chapter-splice') {
-          state.previewServer?.broadcastContentUpdate(decision.chapterId);
-          info(`Chapter updated: ${decision.relativePath}`);
-        } else {
-          state.previewServer?.broadcastReload();
-          info(
-            changes.length > 1
-              ? `Preview updated (${changes.length} files changed — full reload)`
-              : 'Preview updated'
-          );
-        }
       } catch (err) {
         logError('Failed to regenerate preview:', err);
       } finally {

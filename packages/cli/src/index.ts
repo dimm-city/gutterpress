@@ -14,7 +14,6 @@ export * from "./api/index.ts";
 
 // ── CLI command helpers (used by packages/cli/src/commands/) ─────────────────
 export { log } from "./utils/logger.ts";
-export { runLint } from "./lib/lint-runner.ts";
 export { openPath } from "./lib/open-path.ts";
 export { executeAndReport, executeValidation } from "./lib/validation-exec.ts";
 export type { ValidationExecutionResult } from "./lib/validation-exec.ts";

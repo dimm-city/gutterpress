@@ -95,8 +95,8 @@ export interface AssembleBookHtmlOptions {
    * Chromium reaches an `@page`-only `url()` lazily, during the print, and the
    * print path CDP drives never waits for a pending resource — so the sheet
    * comes back with its background colour alone, no error, a valid PDF of
-   * blank paper (docs/known-limitations.md §3; mechanism in
-   * PR #187's `docs/analysis/why-page-background-drops.md`).
+   * blank paper (docs/known-limitations.md §3; mechanism analysis in
+   * PR #187).
    *
    * What the preload buys is that the fetch STARTS during document load
    * instead of during the print. That is not a timing guarantee: a response
@@ -133,13 +133,6 @@ export interface AssembleBookHtmlOptions {
   title?: string;
   plugins?: LoadedPlugin[];
   pluginCss?: string;
-  /**
-   * Wrap each source file in `<div class="gutterpress-chapter"
-   * data-chapter-src="<file>">`. Used only by incremental preview so one
-   * source can be paginated and replaced independently. Off by default; build
-   * output is unaffected.
-   */
-  wrapChapters?: boolean;
   /** Add a layout-neutral source-file id to source-mapped preview blocks. */
   annotateSourceChapters?: boolean;
   /**
@@ -221,12 +214,7 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
       opts.onChapterWarnings?.(chapterId, env.layoutWarnings);
     }
     for (const ref of env.imageRefs ?? []) imageRefs.add(ref);
-    if (opts.wrapChapters) {
-      const safe = chapterId.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-      bodyContent += `<div class="gutterpress-chapter" data-chapter-src="${safe}">\n${rendered}\n</div>\n`;
-    } else {
-      bodyContent += rendered + "\n";
-    }
+    bodyContent += rendered + "\n";
   }
 
   // Raw HTML <img> (author-written or plugin-emitted) never passes through the

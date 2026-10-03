@@ -17,9 +17,7 @@ const SUBCOMMANDS = {
   build: () => import("./commands/build").then((m) => m.default),
   publish: () => import("./commands/publish").then((m) => m.default),
   // CI / advanced:
-  lint: () => import("./commands/lint").then((m) => m.default),
   validate: () => import("./commands/validate").then((m) => m.default),
-  audit: () => import("./commands/audit").then((m) => m.default),
   preflight: () => import("./commands/preflight").then((m) => m.default),
   doctor: () => import("./commands/doctor").then((m) => m.default),
   ext: () => import("./commands/ext").then((m) => m.default),

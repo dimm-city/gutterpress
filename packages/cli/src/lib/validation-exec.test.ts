@@ -487,10 +487,10 @@ describe("executeValidation markdown/css file-set resolvers", () => {
   });
 });
 
-// #262 — cssFiles now folds in a plugin's declared `styles`, mirroring
-// lint-runner.ts exactly: a plugin's CSS was print-safety/ownership checked
-// by `gutterpress lint` and never by `validate`/`preflight`/the desktop
-// Problems panel. `build-runner.plugin-load-count.test.ts` proves a REAL
+// #262 — cssFiles now folds in a plugin's declared `styles`: before this a
+// plugin's CSS was print-safety/ownership checked only by the (since deleted)
+// standalone `gutterpress lint` and never by `validate`/`preflight`/the
+// desktop Problems panel. `build-runner.plugin-load-count.test.ts` proves a REAL
 // check (source.stylelint) actually inspects the plugin's file, end to end;
 // these pin just executeValidation's own cssFiles wiring.
 describe("executeValidation folds in plugin styles (#262)", () => {

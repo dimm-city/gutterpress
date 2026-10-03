@@ -293,8 +293,10 @@
   // tried and removed (2026-08-08 review), and the standing reason is
   // PERFORMANCE, not soundness: measured end-to-end (file write -> change
   // visible, 5 samples, 34pp field guide) the plain full reload (`swap`,
-  // below) is 509ms avg vs the incremental splice's 998ms avg. Every
-  // content-update goes straight to `swap()`.
+  // below) is 509ms avg vs the incremental splice's 998ms avg. The server
+  // now sends ONE update kind, `full-reload`, and every one goes straight to
+  // `swap()`; the `/__chapter` route and `content-update` message that fed
+  // the splice were deleted with it.
   //
   // CORRECTED 2026-08-24: the 2026-08-08 review ALSO recorded a soundness
   // objection — that `refresh()` -> `relayout()` "only re-measures the
@@ -372,11 +374,7 @@
   }
 
   var disconnectChanges = connectChanges(function (message) {
-    if (!message || (
-      message.type !== 'reload-state' &&
-      message.type !== 'full-reload' &&
-      message.type !== 'content-update'
-    )) return;
+    if (!message || (message.type !== 'reload-state' && message.type !== 'full-reload')) return;
     var instance = typeof message.instance === 'string' ? message.instance : null;
     var revision = Number(message.revision);
     if (!instance || !Number.isSafeInteger(revision) || revision < 0) return;

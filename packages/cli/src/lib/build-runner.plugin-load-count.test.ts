@@ -257,8 +257,7 @@ test("#262: validate sees a plugin's declared styles file (fails before the fix)
 
   // Not just present in the file SET — actually inspected: the plugin's
   // risky `background-blend-mode` (checks/source/stylelint.ts) must show up
-  // in the pre-build report, exactly as it already does under
-  // `gutterpress lint` (lint-runner.test.ts's matching plugin-styles case).
+  // in the pre-build report.
   const riskyOnPlugin = execution.report.results.some(
     (r) => r.checkId === "source.stylelint" && r.file?.endsWith("plugin.css"),
   );

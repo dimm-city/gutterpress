@@ -44,7 +44,7 @@ import { build } from "./build.ts";
  * The mechanism is known — `PrintRenderFrameHelper::PrintWithParams`, the path
  * CDP `Page.printToPDF` reaches, never calls `Document::WillPrintSoon()`, so
  * the print does not wait for the resource it just requested
- * (PR #187's `docs/analysis/why-page-background-drops.md`) — but three earlier
+ * (mechanism analysis in PR #187) — but three earlier
  * explanations of this defect were wrong, and a canary pinned to an
  * explanation retires on the wrong day.
  *

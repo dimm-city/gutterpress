@@ -42,7 +42,7 @@ function chapterHtml() {
   return (
     pageWrap(
       1,
-      `<div class="gutterpress-chapter" data-chapter-src="a.md">
+      `<div data-chapter-src="a.md">
         <h1 data-source-line="1" id="a-title">Alpha Title</h1>
         <p data-source-line="4">alpha body</p>
         <h2 data-source-line="9">Alpha Section</h2>
@@ -50,7 +50,7 @@ function chapterHtml() {
     ) +
     pageWrap(
       2,
-      `<div class="gutterpress-chapter" data-chapter-src="b.md">
+      `<div data-chapter-src="b.md">
         <h1 data-source-line="1" id="b-title">Beta Title</h1>
         <p data-source-line="4">beta body</p>
         <h2 data-source-line="9">Beta Section</h2>

@@ -2,7 +2,7 @@
 # =============================================================================
 # Gutterpress CLI container
 #
-# A self-contained image with EVERYTHING the lint → build → validate pipeline
+# A self-contained image with EVERYTHING the validate → build → validate pipeline
 # needs to turn a markdown project into a validated, print-ready PDF — including
 # the full PDF/X (CMYK) pre-print path:
 #   - the Gutterpress CLI (Node bundle: src + gutterpress compiled in)
@@ -88,7 +88,7 @@ bun /tmp/pin-runtime-deps.mjs
 rm /tmp/pin-runtime-deps.mjs
 DOCKER_EOF
 
-# ── Stage 2: runtime with all OS + lint dependencies ─────────────────────────
+# ── Stage 2: runtime with all OS + validation dependencies ───────────────────
 # node:20-bookworm-slim gives us Node on Debian 12, whose apt has a real
 # `chromium` package (Ubuntu's is a snap, which doesn't work in containers).
 FROM node:22-bookworm-slim AS runtime

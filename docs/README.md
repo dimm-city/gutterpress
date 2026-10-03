@@ -157,11 +157,13 @@ docs/
 ├── design-guides.md                       # Companion design-guide projects
 ├── open-design/                           # Open Design workflow and plugin guides
 ├── desktop-shortcut.md                    # OS desktop shortcuts for the desktop app
-└── [remaining files are point-in-time audits/plans, kept for history — not
-     part of the current documentation set]
+└── [remaining files are point-in-time plans (e.g. gdrive-publish-plan.md,
+     inline-editing-plan.md, pwa-webadapter-plan.md) — not part of the
+     current documentation set. Analyses and audits are retired once their
+     findings ship; the GitHub issue/PR they name is the record.]
 ```
 
-All authoring documentation lives in the **[Gutterpress User Guide](../examples/gutterpress-user-guide/)** (in `examples/`). This directory contains developer/architect reference materials — some current (the files listed above), some historical audit/planning artifacts kept for the record.
+All authoring documentation lives in the **[Gutterpress User Guide](../examples/gutterpress-user-guide/)** (in `examples/`). This directory contains developer/architect reference materials — the current files listed above, plus a few point-in-time plans. Superseded analyses and audits are deleted rather than kept; their GitHub issue/PR is the record.
 
 ## Contributing
 
