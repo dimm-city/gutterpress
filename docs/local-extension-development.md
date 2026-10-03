@@ -13,9 +13,9 @@ extensions:
 ```
 
 An `extensions:` entry that starts with `./`, `../` or `/` is a path instead,
-and Gutterpress reads that folder in place: nothing is downloaded, vendored or
-checked against a receipt. Point the book at your working copy while you
-develop, and switch back to a pinned version when you release.
+and Gutterpress reads that folder in place: nothing is downloaded or vendored.
+Point the book at your working copy while you develop, and switch back to a
+pinned version when you release.
 
 ## 1. Point the book at your working copy
 
@@ -131,7 +131,8 @@ The cascade layer is the same either way: `ext.<name>`, from the `name` in
 
 ## Don't edit the vendored copy
 
-Editing files under `plugins/npm/` is not a shortcut. Gutterpress checks that
-tree against the file hashes in its receipt, so a single changed byte stops
-the build with `Vendor tree hash does not match its receipt`. Point the book
-at a working copy instead.
+Editing files under `plugins/npm/` is not a shortcut. That tree is
+Gutterpress's own downloaded copy of a published version: the next
+`gutterpress ext add` of the same version replaces it wholesale, and anyone
+else who installs the pin gets the published bytes, not your edits. Point the
+book at a working copy instead.

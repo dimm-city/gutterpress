@@ -398,9 +398,9 @@ Add an extension. What `SOURCE` is decides what happens:
 
 - an **npm package** (`name` or `name@version`) is downloaded straight from
   the registry along with its runtime dependencies, hash-verified, vendored
-  into the project under `plugins/npm/` with a receipt, load-tested, and
-  written back pinned as `name@<exact version>`. This does not invoke npm,
-  Bun, Node.js tooling, or package install scripts;
+  into the project under `plugins/npm/`, load-tested, and written back pinned
+  as `name@<exact version>`. This does not invoke npm, Bun, Node.js tooling,
+  or package install scripts;
 - a **bundled feature** (`markdown-it-mark`, `markdown-it-sub`,
   `markdown-it-sup`, `markdown-it-abbr`, `gutterpress-gfm-alerts`) is simply
   listed — nothing to install, works offline;
@@ -539,13 +539,14 @@ An extension folder (or npm package) describes itself in its **`package.json`** 
 
 Order is load order: a later entry's markdown runs after earlier entries' (and sees their output) and its CSS wins ties — each extension's stylesheets are wrapped in their own cascade layer (`@layer ext.<name>`), declared in list order, so this holds however an extension writes its CSS; the project's own `styles:` stay unlayered and load after every extension, beating all of them at any specificity. There is no `priority` and no `path:`/`name:` wrapper — a manifest still carrying `plugins:` fails with a message that prints the same entries rewritten as `extensions:`. The `engine:` and `engineStyles:` keys are gone too (there is one engine; move any `engineStyles` entries to the end of `styles:`).
 
-Pinned npm packages and their runtime dependencies live under `plugins/npm/`,
-with a receipt that records the exact graph and hashes the complete tree. They
-travel with the project and builds never fetch from the registry. Install/build
-scripts, native addon compilation, bundled `node_modules`, and non-registry
-dependency selectors are intentionally unsupported. Only install packages you
-trust: extensions run unsandboxed with the process's full filesystem and network
-privileges.
+Pinned npm packages and their runtime dependencies live under `plugins/npm/`
+as a plain nested `node_modules` tree, which Node's own module resolution loads.
+They travel with the project and builds never fetch from the registry; each
+tarball's integrity is checked against the registry's hash when it is
+installed. Install/build scripts, native addon compilation, bundled
+`node_modules`, and non-registry dependency selectors are intentionally
+unsupported. Only install packages you trust: extensions run unsandboxed with
+the process's full filesystem and network privileges.
 
 Use the entry's `export` field, or `ext add --export <name>`, for packages
 that expose a named plugin function instead of a default export.

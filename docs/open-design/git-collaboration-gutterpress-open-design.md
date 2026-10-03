@@ -171,7 +171,7 @@ For a named export:
 gutterpress ext add markdown-it-emoji@3.0.0 ./books/core-book --export full
 ```
 
-Gutterpress verifies the package graph, vendors exact runtime dependencies beneath `books/core-book/plugins/npm/`, and writes the entry back pinned (`markdown-it-highlightjs@4.3.0`). Commit the manifest change and the managed tree. Do not replace this with a shared `node_modules`, a package-manager install, or a hand-copied vendor directory.
+Gutterpress resolves and integrity-checks the package graph, vendors exact runtime dependencies beneath `books/core-book/plugins/npm/`, and writes the entry back pinned (`markdown-it-highlightjs@4.3.0`). Commit the manifest change and the managed tree. Do not replace this with a shared `node_modules`, a package-manager install, or a hand-copied vendor directory.
 
 `gutterpress ext list|remove|enable|disable` cover the rest of the list from the terminal; the desktop's Look and Features views are the same list.
 
@@ -212,7 +212,7 @@ Commit everything required to reproduce the publication and continue design work
 - manifests and manuscript Markdown;
 - shared and local looks (extension folders), styles, fonts, and images;
 - authored Gutterpress plugins and shared profiles;
-- Gutterpress-managed `plugins/npm/` dependency trees and receipts;
+- Gutterpress-managed `plugins/npm/` dependency trees;
 - repository and book design guidance;
 - durable decisions and next steps;
 - team-authored Open Design skills and plugins; and

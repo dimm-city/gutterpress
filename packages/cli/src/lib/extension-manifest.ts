@@ -76,7 +76,7 @@ export interface ExtensionMetadata {
    * npm's own convention. See {@link extensionEntry} for the entry rule
    * (`gutterpress.markdown` wins when present). NOT used for an npm-installed
    * package: the installer resolves that entry with full `exports` semantics
-   * (`npm-plugin-installer.ts`'s `resolvePackageEntry`), and it is never
+   * (`plugin-vendor.ts`'s `resolvePackageEntry`), and it is never
    * re-derived from `main` here.
    */
   main?: string;

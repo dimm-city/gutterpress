@@ -25,7 +25,7 @@ import {
   findEnclosingRepoDir,
 } from "./project-source.ts";
 import { createFileLogger } from "./remote-auth/operation-log.ts";
-import { PLUGINS_DIR, VENDORED_NPM_DIR, VENDOR_RECEIPT_FILE } from "./plugin-vendor.ts";
+import { PLUGINS_DIR, VENDORED_NPM_DIR } from "./plugin-vendor.ts";
 
 const noopLogger: { debug(): void; info(): void; warn(): void; error(): void } = {
   debug: () => {},
@@ -763,7 +763,7 @@ export interface UnversionedChanges {
   /**
    * Files of THIS book (its folder inside the repo) that changed since the
    * last version — writer work only: app-written files (the vendored plugin
-   * folder and its install receipt) are not counted.
+   * folder) are not counted.
    */
   changedFiles: number;
   /**
@@ -793,12 +793,7 @@ export async function countUnversionedChanges(
   return withRepoLock(dir, async () => {
     const { adds, removes } = await listWorkdirChanges(dir);
     const mine = new Set(
-      [...adds, ...removes].filter(
-        (f) =>
-          f.startsWith(bookPrefix) &&
-          !f.startsWith(appWritten) &&
-          path.posix.basename(f) !== VENDOR_RECEIPT_FILE,
-      ),
+      [...adds, ...removes].filter((f) => f.startsWith(bookPrefix) && !f.startsWith(appWritten)),
     );
     return { changedFiles: mine.size, stale: fs.existsSync(snapshotStagingMarkerPath(dir)) };
   });

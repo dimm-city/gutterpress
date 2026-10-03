@@ -9,17 +9,6 @@ import { loadPluginsWithCss } from "./markdown/plugins";
 export interface LintRunnerOptions {
   files?: string;
   manifest?: string;
-  /**
-   * Pre-loaded, absolute plugin `styles` file paths (#262). `undefined` (the
-   * default — every standalone `gutterpress lint` invocation, which is now
-   * this function's only production caller since #272 removed the build
-   * pipeline's own separate lint gate) makes this function load plugins
-   * itself, degrade-and-report (warn-and-skip) for a plugin that fails to
-   * load. An explicit `[]` or a pre-loaded list from a caller that already
-   * knows the resolved plugin styles for this manifest is honored as-is, not
-   * treated as "unset".
-   */
-  pluginStylePaths?: string[];
 }
 
 export interface LintRunnerResult {
@@ -70,29 +59,16 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
     const projectFiles = relStyles.map((rel) => resolve(manifestDir, rel));
 
     // #238: a plugin's file-based `styles` are a real, lintable CSS surface
-    // now too — no longer an opaque string printsafe never saw.
-    //
-    // #262: a caller that already loaded plugins for this exact manifest can
-    // pass the resolved paths in directly (`opts.pluginStylePaths`) and this
-    // skips loading them a second time — an npm-vendored plugin's
-    // vendor-tree verification (plugin-vendor.ts's
-    // verifyVendoredPlugin/computeVendorTreeDigest) is not free. Since #272
-    // removed the build pipeline's own separate lint gate, every standalone
-    // `gutterpress lint` run (this function's only production caller) has no
-    // such preload, so it loads plugins itself here, same as always:
-    // degrade-and-report — a plugin that can't load is a WARNING here, not a
+    // too — no longer an opaque string printsafe never saw. Loaded
+    // degrade-and-report: a plugin that can't load is a WARNING here, not a
     // reason to fail `gutterpress lint` outright (that fail-fast bar belongs
     // to build/export, not this pre-flight check — see loadPlugins' doc
-    // comment on the two failure modes). Already-absolute paths pass through
-    // untouched below.
-    let pluginStylePaths = opts.pluginStylePaths;
-    if (pluginStylePaths === undefined) {
-      ({ pluginStylePaths } = await loadPluginsWithCss(
-        resolved.extensions,
-        manifestDir,
-        (ref, err) => log.warn(`Skipping plugin "${ref}" for lint — ${err.message}`),
-      ));
-    }
+    // comment on the two failure modes).
+    const { pluginStylePaths } = await loadPluginsWithCss(
+      resolved.extensions,
+      manifestDir,
+      (ref, err) => log.warn(`Skipping plugin "${ref}" for lint — ${err.message}`),
+    );
 
     files = [...projectFiles, ...pluginStylePaths].filter((f) => !f.endsWith(".min.css"));
   }

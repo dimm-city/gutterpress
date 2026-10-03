@@ -122,9 +122,9 @@ gutterpress ext add markdown-it-emoji@3.0.0 ./my-book --export full
 
 Gutterpress resolves the npm registry metadata to exact versions, verifies each
 registry integrity hash, and vendors the plugin's complete runtime dependency
-tree under the project's `plugins/npm/` folder. A receipt records the package
-graph and a hash of every file. Gutterpress then writes the pinned specifier —
-`markdown-it-highlightjs@4.3.0` — into `extensions:`, so the vendored graph
+tree under the project's `plugins/npm/` folder as a plain `node_modules`
+layout. Gutterpress then writes the pinned specifier —
+`markdown-it-highlightjs@4.3.0` — into `extensions:`, so the vendored tree
 travels with the project and later builds do not access the network. Explicit
 reinstall always downloads fresh bytes rather than trusting the existing folder.
 

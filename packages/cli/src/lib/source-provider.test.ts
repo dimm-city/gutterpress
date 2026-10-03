@@ -401,7 +401,6 @@ test("countUnversionedChanges ignores app-written plugin files and reports a sta
     await initProject(dir);
     await mkdir(path.join(dir, "plugins", "npm", "x", "1.0.0"), { recursive: true });
     await writeFile(path.join(dir, "plugins", "npm", "x", "1.0.0", "index.js"), "1");
-    await writeFile(path.join(dir, ".gutterpress-install.json"), "{}");
     expect(await countUnversionedChanges(dir)).toEqual({ changedFiles: 0, stale: false });
     fs.writeFileSync(snapshotStagingMarkerPath(dir), "");
     expect(await countUnversionedChanges(dir)).toEqual({ changedFiles: 0, stale: true });
