@@ -318,20 +318,26 @@ Reasons:
 Plugin loader (`packages/cli/src/lib/markdown/plugins.ts`) does NOT auto-install
 or access the network. Installation is an explicit shared-lib action
 (`addExtension` in `extension-manager.ts`, used by the desktop routes and
-`gutterpress ext add`) that resolves
-the public npm registry to an exact version graph, verifies every tarball,
-safely vendors a complete nested dependency tree under the project, writes a
-whole-tree schema-v2 receipt, load-tests it, and only then atomically records
-the pinned specifier `name@<exact version>` in the manifest's `extensions:`
-list (the object form's `export:` explicitly selects a named plugin function
-for packages without a default export). Reinstall always fetches fresh bytes.
-Package scripts, bundled `node_modules`, native build steps, and non-registry
-dependency selectors are intentionally unsupported. Receipt-backed loads verify
-the full tree from a private snapshot, then rewrite reachable literal ESM and
-CommonJS package requests to receipt-approved private copies; unresolved or
-nonliteral requests fail closed, and an invalid marker never falls back to a
-global cache. Full rationale and optional/peer semantics were captured in ADR 0007,
-removed in the 2026-07-29 docs cleanup.
+`gutterpress ext add`) that resolves the public npm registry to an exact
+version graph, verifies every tarball against the registry's SRI hash, safely
+vendors a complete nested dependency tree under the project's
+`plugins/npm/<name>/<version>/` (a plain npm `node_modules` layout),
+load-tests it, and only then atomically records the pinned specifier
+`name@<exact version>` in the manifest's `extensions:` list (the object form's
+`export:` explicitly selects a named plugin function for packages without a
+default export). Reinstall always fetches fresh bytes. Package scripts,
+bundled `node_modules`, native build steps, and non-registry dependency
+selectors are intentionally unsupported. Loading a pinned entry is a plain
+dynamic `import()` of the vendored package's entry (resolved from its own
+`package.json`); Node's — and Bun's, in the compiled binary — ordinary module
+resolution serves the package's imports from that nested tree. Nothing is
+recorded about the tree and nothing re-verifies it on load: integrity is
+checked once, at install time. A vendored folder that is present but broken
+fails with a reinstall hint; it never falls through to another package. (The
+receipt / snapshot / import-rewriting scheme that preceded this — a tree
+digest re-verified on every load, an acorn + es-module-lexer rewrite of every
+reachable import, a `Module._resolveFilename` hook — was removed in 0.11.10
+as disproportionate for a local authoring tool.)
 The loader has two modes via `loadPlugins(configs, baseDir, onError?)`:
 
   - **Fail-fast (no `onError`)** — build/export/validate. Any load error aborts
