@@ -192,41 +192,12 @@ describe("+page.svelte — docked mount, teardown, prefs migration", () => {
   });
 });
 
-describe("+page.svelte — Book settings docks beside the live preview (#308)", () => {
-  // The preview already re-renders as soon as a stylesheet is written (the
-  // folder watcher rebuilds it); it was only hidden under an opaque full-window
-  // sheet. So the fix is presentational: dock the panel and let the app shrink.
-  test("the app shrinks by the panel's width, so the preview stays visible", () => {
+describe("+page.svelte — Book settings covers the window like the start screen", () => {
+  test("the panel is a full-window layer just below the start screen", () => {
     const src = page();
-    expect(src).toContain("class:settings-docked={projectSettingsOpen}");
-    expect(src).toMatch(/\.app-root\.settings-docked\s*\{\s*margin-right:\s*var\(--app-settings-panel-width\);?\s*\}/);
-    expect(src).toMatch(/\.settings-global-view\s*\{[^}]*width:\s*var\(--app-settings-panel-width\)/);
-    // The workspace beside the panel stays live, so the preview scrolls.
+    expect(src).toMatch(/\.settings-global-view\s*\{[^}]*position:\s*fixed;[^}]*inset:\s*0;[^}]*z-index:\s*calc\(var\(--app-z-sheet\) - 1\)/);
+    expect(src).not.toContain("settings-docked");
     expect(src).toMatch(/inert=\{landingVisible\}/);
-  });
-
-  test("a window too narrow for both lets the panel cover it, as before", () => {
-    const src = page();
-    const from = src.indexOf(".settings-global-view {");
-    expect(from).toBeGreaterThan(-1);
-    const rules = src.slice(from, src.indexOf("@media (prefers-reduced-motion", from));
-    const narrow = rules.slice(rules.indexOf("@media screen and (max-width: 900px)"));
-    expect(narrow).toMatch(/\.settings-global-view\s*\{[^}]*inset:\s*0;[^}]*width:\s*auto/);
-    expect(narrow).toMatch(/\.app-root\.settings-docked\s*\{\s*margin-right:\s*0/);
-  });
-
-  test("no copy tells the writer to close Book settings to see the preview", () => {
-    const design = read("src/lib/components/config/DesignSection.svelte");
-    expect(design).not.toContain("close Book settings");
-    expect(design).toContain("the preview updates live");
-    expect(view()).not.toContain("close Book settings to see");
-  });
-
-  test("the panel width is one shared token that the Look tab's hover flyout also honours", () => {
-    expect(read("src/lib/theme.css")).toMatch(/--app-settings-panel-width:\s*clamp\(/);
-    // Pinned to the viewport edge the flyout would sit on top of the docked panel.
-    const look = read("src/lib/components/config/LookSection.svelte");
-    expect(look).toMatch(/\.hover-preview\s*\{[^}]*right:\s*calc\(var\(--app-settings-panel-width\)/);
   });
 });
 

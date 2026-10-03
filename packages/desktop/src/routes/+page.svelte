@@ -2756,7 +2756,7 @@
       never accepts interaction underneath it. Book settings docks BESIDE the
       workspace, so the workspace stays live there — the preview must scroll
       while the writer styles the book (an inert iframe takes no wheel). -->
-<div class="app-root" class:settings-docked={projectSettingsOpen} inert={landingVisible}>
+<div class="app-root" inert={landingVisible}>
 {#if (updateController.readyVersion || updateController.availableVersion) && !updateController.bannerDismissed}
   <div class="update-banner" role="status" aria-live="polite">
     {#if updateController.readyVersion}
@@ -3215,10 +3215,8 @@
   onCloseBook={() => lifecycle.stopPreview()}
 />
 {#if projectSettingsOpen}
-  <!-- Book settings (manifest): a panel docked beside the workspace, so the
-       book preview stays visible (and re-renders live) while the writer styles
-       it; it covers the whole window only when the window is too narrow for
-       both. Keyed by projectDir so a project switch can never leave stale
+  <!-- Book settings (manifest): covers the whole window, like the start
+       screen. Keyed by projectDir so a project switch can never leave stale
        section state (drafts, theme lists) resident under the new project. -->
   <section class="settings-global-view" aria-label="Book settings">
     {#key lifecycle.currentDir}
@@ -3409,32 +3407,14 @@
   .editor-pane {
     border-right: 1px solid var(--app-border);
   }
-  /* Book settings docks to the right edge; the (inert) app shrinks by the
-     panel's width so the preview re-fits into what is left instead of hiding
-     under it. Below 900px there is no room for both, so the panel covers the
-     window as it did before. */
+  /* Book settings covers the whole window, like the start screen — just
+     below it, so the start screen still opens on top. */
   .settings-global-view {
     position: fixed;
-    inset: 0 0 0 auto;
-    box-sizing: border-box;
-    width: var(--app-settings-panel-width);
-    z-index: calc(var(--app-z-sheet) + 1);
+    inset: 0;
+    z-index: calc(var(--app-z-sheet) - 1);
     display: flex;
-    border-left: 1px solid var(--app-border);
     background: var(--app-bg);
-  }
-  .app-root.settings-docked {
-    margin-right: var(--app-settings-panel-width);
-  }
-  @media screen and (max-width: 900px) {
-    .settings-global-view {
-      inset: 0;
-      width: auto;
-      border-left: none;
-    }
-    .app-root.settings-docked {
-      margin-right: 0;
-    }
   }
   .splitter {
     width: 6px;

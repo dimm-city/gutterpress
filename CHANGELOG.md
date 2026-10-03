@@ -27,9 +27,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- **Book settings is an ordinary side panel.** Like the left panel, it sits
-  beside the book and nothing else is locked while it is open: the preview
-  scrolls, and the editor, toolbar and shortcuts all keep working.
+- **Book settings takes the whole window,** like the start screen. Close it
+  to get back to your book.
 
 ## [0.11.9] - 2026-10-01
 
