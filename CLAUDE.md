@@ -516,8 +516,8 @@ above).
 3. If it's a push stream or must drive a live `BrowserWindow`, also wire the
    **IPC bridge**: `electron/main.ts` — `ipcMain.handle("ns:op", …)` (or a
    `webContents.send` push channel); `electron/preload.ts` — expose it on
-   `contextBridge`; `electron/types.d.ts` — add it to the `Window.electron`
-   shape; `contract.ts` — add it to `ElectronBridge`
+   `contextBridge`; `contract.ts` — add it to `ElectronBridge` (which types
+   `Window.electron` via `src/app.d.ts`)
 
 **The canonical fix when node code is needed by the UI:** don't bundle it into
 the renderer — run it in the host and expose it as a server route (default) or,
