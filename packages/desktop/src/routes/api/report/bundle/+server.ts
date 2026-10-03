@@ -7,15 +7,13 @@
 import { readdir, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { getDoctorHooks } from '$lib/server/host-hooks.js';
 import { formatProblemReport, summarizeManifest, tailLog, type ProblemReport } from '$lib/server/problem-report.js';
 import { APP_LOG_FILENAME } from '../../../../../electron/recovery-paths';
-import { getFsGuardHooks } from '../../../../../electron/server-bridge/fs-guard';
-import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
+import { defineRoute, getHostServices, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 async function readAppLogTail(): Promise<string | null> {
-  for (const root of getFsGuardHooks()?.readOnlyRoots() ?? []) {
+  for (const root of getHostServices().fsGuard.readOnlyRoots()) {
     try {
       return tailLog(await readFile(path.join(root, APP_LOG_FILENAME), 'utf-8'));
     } catch {
@@ -44,7 +42,7 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string | null }>({
     const lib = await loadLib();
     const diag = await lib.getSystemDiagnostics();
     return formatProblemReport({
-      desktopVersion: getDoctorHooks()?.getDesktopVersion() ?? 'unknown',
+      desktopVersion: getHostServices().doctor.getDesktopVersion(),
       libVersion: diag.libVersion,
       electronVersion: process.versions.electron,
       chromeVersion: process.versions.chrome,
