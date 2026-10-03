@@ -20,22 +20,26 @@
  * classification and the route handlers throw the SvelteKit `error()` with it,
  * so main.ts can import this module without pulling SvelteKit into its bundle.
  */
-import { getAppHooks } from "./app-hooks";
+import { getHostServices } from "./host-services";
 
 /**
  * Log one failure line: to the console (the dev terminal) and, once main.ts
  * has registered the host services, to the app log the Logs tab shows — so
  * the "See the app log for details" every filter below promises is TRUE from
  * this module's SvelteKit-bundle copy too, not only main.ts's own. (The two
- * bundles share nothing but globalThis, which is how `getAppHooks` reaches
+ * bundles share nothing but globalThis, which is how `getHostServices` reaches
  * main's writer.) A packaged app never shows its stderr, so before this the
  * details the message pointed at existed nowhere an author could look — the
- * 0.10.5 Google Drive bring-up hit exactly that. Before registration (`bun
- * test`), console only.
+ * 0.10.5 Google Drive bring-up hit exactly that. Logging must never throw, so
+ * before registration (`bun test`) this stays console-only.
  */
 function logFailure(line: string): void {
   console.error(line);
-  getAppHooks()?.logFailure?.(line);
+  try {
+    getHostServices().app.logFailure?.(line);
+  } catch {
+    /* host services not registered yet — console only */
+  }
 }
 
 // ── Version history (vcs:*) ──────────────────────────────────────────────────

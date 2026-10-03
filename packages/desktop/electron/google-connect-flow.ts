@@ -35,9 +35,8 @@ import type { TokenStore } from "gutterpress";
 // "gutterpress" — GoogleAuthProvider.connect()'s onAuthUrl callback just
 // takes a bare `url: string`, and the lib's own connectGoogleDrive() result
 // shape is `{ connected: true; email? }`, not what the IPC bridge returns).
-// These two are desktop-local wire shapes (shared-types.ts), reached here via
-// the single-import re-export convention bridge-types.ts documents.
-import type { GoogleConnectResult, GoogleConnectStartResult } from "./bridge-types";
+// These two are desktop-local wire shapes (shared-types.ts).
+import type { GoogleConnectResult, GoogleConnectStartResult } from "../src/lib/platform/shared-types";
 
 type LibModule = typeof import("gutterpress");
 

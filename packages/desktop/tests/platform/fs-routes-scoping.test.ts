@@ -304,7 +304,7 @@ test.skipIf(!canSymlink)(
 
 test("fs/read-file: fails closed (403) when no project is open (empty projectRoots)", async () => {
   registerHostServices({
-    ...(await import("../../electron/server-bridge/host-services")).getHostServices()!,
+    ...(await import("../../electron/server-bridge/host-services")).getHostServices(),
     fsGuard: { projectRoots: () => [], readOnlyRoots: () => [] },
   } as HostServices);
   const { status } = await caught(

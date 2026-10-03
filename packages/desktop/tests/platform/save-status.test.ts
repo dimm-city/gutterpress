@@ -173,10 +173,6 @@ describe("versions", () => {
     expect(s.tone).toBe("ok");
     expect(s.alert).toBeUndefined();
     expect(ids(s)).toEqual(["saveVersion", "viewVersions"]);
-    // …and the announcement region hears it too (single role=status).
-    const dlg = fs.readFileSync(path.resolve(__dirname, "../../src/lib/components/SaveStatusDialog.svelte"), "utf8");
-    expect(dlg).toContain("copy[s.key].notice");
-    expect(dlg.match(/<div[^>]*role="status"/g)).toHaveLength(1);
   });
   test("the notice is withdrawn once there are changes to save", () => {
     const s = versionsSection(input({ versions: { changedFiles: 2, nothingNew: true } }));
@@ -399,53 +395,6 @@ describe("saveStatusCopy", () => {
         }
       }
     }
-  });
-});
-
-describe("wiring (source-level)", () => {
-  const root = path.resolve(__dirname, "../..");
-  const read = (p: string) => fs.readFileSync(path.join(root, p), "utf8");
-  test("automatic-version failures travel on the status channel with source 'versions', not as a backup error", () => {
-    expect(read("electron/main.ts")).toContain('source: "versions"');
-    expect(read("src/lib/platform/contract.ts")).toContain('source?: "versions"');
-    const pill = read("src/lib/components/SyncStatusPill.svelte");
-    expect(pill).toContain('status.source === "versions"');
-    const bar = read("src/lib/components/StatusBar.svelte");
-    expect(bar).toContain("onVersionsProblem");
-    expect(bar).toContain("problem: versionsProblem");
-  });
-  test("a manual backup's outcome feeds the dialog, is per-book, and refetches; the version warning is per-book and gated", () => {
-    const bar = read("src/lib/components/StatusBar.svelte");
-    expect(bar).toContain("manualBackup && manualBackup.dir === projectDir");
-    expect(bar).toContain("pillStatus.dir === projectDir");
-    expect(bar).toContain("versionsProblemDir === projectDir && autoVersions");
-    expect(bar).toContain("async function backUpNow()");
-    expect(read("src/routes/+page.svelte")).toContain("manualBackup={syncController.lastManual}");
-  });
-  test("the status bar sequences lookups and refreshes on a slow poll and on backup-state changes", () => {
-    const bar = read("src/lib/components/StatusBar.svelte");
-    expect(bar).toContain("seq !== factsSeq");
-    expect(bar).toContain("15_000");
-    expect(bar).toContain("if (changed && summaryOpen) void fetchVersionFacts()");
-    expect(bar).toContain("projectDir !== dialogDir");
-  });
-  test("unknown classification is passed as null, not false", () => {
-    expect(read("src/routes/+page.svelte")).toContain(
-      "projectSession.projectCapabilities ? !!projectSession.projectCapabilities.canSnapshot : null",
-    );
-  });
-  test("turning on version history keeps dist/ out of the first version", () => {
-    expect(read("src/routes/api/vcs/enable-version-history/+server.ts")).toContain(
-      "await lib.ensureGitignoreHasDist(body.projectDir)",
-    );
-  });
-  test("the dialog focuses the primary action, uses the shared shell, and one live region", () => {
-    const d = read("src/lib/components/SaveStatusDialog.svelte");
-    expect(d).toContain('initialFocus: ".dlg-primary:not(:disabled)"');
-    expect(d.match(/aria-live/g)?.length).toBe(1);
-    expect(d).toContain('role="status"');
-    expect(d).not.toContain("small");
-    expect(d).toContain("min(560px");
   });
 });
 

@@ -21,11 +21,8 @@ import { watch } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { scanForProjects, type ScanDeps } from "./discover-projects";
 import { seedSamples } from "./seed-samples";
-import {
-  createSettingsStore,
-  type AppSettings,
-} from "./settings-store";
-import { createPrefsStore, type DesktopPrefs } from "./prefs-store";
+import { createSettingsStore } from "./settings-store";
+import { createPrefsStore } from "./prefs-store";
 // ARCH review #31: the 11 independent `registerXHooks()` service locators
 // have been collapsed into ONE `registerHostServices()` call (below) that
 // writes a single typed `HostServices` object. Each domain module below is
@@ -34,7 +31,6 @@ import { createPrefsStore, type DesktopPrefs } from "./prefs-store";
 // `registerHostServices` together, once, after every dependency exists.
 import { registerHostServices } from "./server-bridge/host-services";
 import type { WriteHooks } from "./server-bridge/write-hooks";
-import type { WatchHooks } from "./server-bridge/watch-hooks";
 import type { AppHooks } from "./server-bridge/app-hooks";
 import type { PrefsHooks } from "./server-bridge/prefs-hooks";
 import type { RecoveryHooks } from "./server-bridge/recovery-hooks";
@@ -62,17 +58,9 @@ import {
   shouldBackgroundCheck,
   getStatus as getUpdaterStatus,
 } from "./updater";
-import type { MarkdownFileLaunchEvent, UpdaterEventPayload } from "./bridge-types";
-import {
-  removeRecentFolder,
-  toggleFavoriteFolder,
-  type RecentFolder,
-} from "./recent-folders";
-import {
-  readProjectState,
-  writeProjectState,
-  type ProjectStateMap,
-} from "./project-state";
+import type { MarkdownFileLaunchEvent, UpdaterEventPayload } from "../src/lib/platform/shared-types";
+import { removeRecentFolder, toggleFavoriteFolder } from "./recent-folders";
+import { readProjectState, writeProjectState } from "./project-state";
 import {
   electronTokenStore,
   markLinuxBasicTextStorageNoticeShown,
@@ -282,7 +270,7 @@ function setActiveRepositoryRoot(root: string | null): void {
 // discarded (#34).
 // ──────────────────────────────────────────────────────────────────────────
 
-const { readPrefs, writePrefs, updatePrefs, existingDirectory } = createPrefsStore({
+const { readPrefs, updatePrefs, existingDirectory } = createPrefsStore({
   getUserDataDir: () => app.getPath("userData"),
   fs: { readFile, writeFile, mkdir, stat, rename },
 });
@@ -948,17 +936,9 @@ const writeHooksImpl: WriteHooks = {
   // write was allowed" and "this write counts as an edit" can never disagree.
   getRepositoryRoot: () => activeRepositoryRoot,
 };
-const watchHooksImpl: WatchHooks = {
-  startFolderWatch,
-  stopFolderWatch,
-  getWatchedDir: () => folderWatch.getWatchedDir(),
-};
 const appHooksImpl: AppHooks = {
   setRendererDirty: (isDirty: boolean) => {
     activeRendererFlush?.session.setReportedDirtyState(!!isDirty);
-  },
-  sendToRenderer: (channel: string, ...args: unknown[]) => {
-    safeSend(channel, ...args);
   },
   // The shared error filters already printed the line to the console; this
   // puts it in the app log the Logs tab shows (file only, no double print).
@@ -1226,14 +1206,8 @@ const discoverScanDeps: ScanDeps = {
 // this object is no longer registered on its own the moment it's built, so
 // there is nothing to get wrong by reading it before `registerHostServices`
 // runs at the end of this section (ARCH #31).
-//
-// `loadLib` is assigned directly — no cast. `host-services.ts` stores
-// `HostServices.prefs` against the REAL `LibModule` type (this file's own,
-// same type `loadLib` already returns), not a fabricated narrow subset, so
-// `Promise<LibModule>` here needs no narrowing to satisfy the field.
-const prefsHooksImpl: PrefsHooks<LibModule, DesktopPrefs, AppSettings, ProjectStateMap | undefined, RecentFolder> = {
+const prefsHooksImpl: PrefsHooks = {
   readPrefs,
-  writePrefs,
   updatePrefs,
   readSettings,
   updateSettings,
@@ -1244,7 +1218,6 @@ const prefsHooksImpl: PrefsHooks<LibModule, DesktopPrefs, AppSettings, ProjectSt
   scanForProjects: (roots: string[], exclude: Set<string>) => scanForProjects(roots, exclude, discoverScanDeps),
   toggleFavoriteFolder,
   removeRecentFolder,
-  loadLib,
 };
 
 // Doctor-route hooks, exposed through the collapsed host object so the
@@ -1281,9 +1254,8 @@ const appImageHooksImpl: AppImageHooks = {
 // from app:classifyProject. Paths MUST be absolute (trusted SPA, but a relative
 // path could resolve against the main-process CWD by accident).
 
-// loadLib + operationLogPath for VCS SvelteKit server routes.
-const vcsHooksImpl: VcsHooks<LibModule> = {
-  loadLib,
+// operationLogPath + timers for the VCS SvelteKit server routes.
+const vcsHooksImpl: VcsHooks = {
   operationLogPath,
   repairBackupDir: (slug) => repairBackupDirImpl(app.getPath("userData"), slug),
   // #273: pause both host timers around a copy switch's checkout so neither
@@ -1302,13 +1274,6 @@ const vcsHooksImpl: VcsHooks<LibModule> = {
     if (folderWatch.getWatchedDir() === dir) autoSync.schedule(dir);
   },
 };
-
-function requireAbsoluteDir(channel: string, projectDir: unknown): string {
-  if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
-    throw new Error(`${channel} requires an absolute project path`);
-  }
-  return projectDir;
-}
 
 // Error sanitization for vcs:* now lives in the shared server-bridge/friendly-errors
 // module (friendlyVcsError), consumed by the SvelteKit routes.
@@ -1331,8 +1296,7 @@ const GITHUB_HOST = "github.com";
 // call, clone-progress push) the old IPC handler used to do inline. Friendly-error sanitization (handleRemoteErrors) stays at the
 // ROUTE, matching every other remote:* route (e.g. remote/sync/+server.ts) —
 // these hooks are the raw operation.
-const remoteHooksImpl: RemoteHooks<LibModule> = {
-  loadLib,
+const remoteHooksImpl: RemoteHooks = {
   tokenStore: electronTokenStore,
   GITHUB_HOST,
   cloneRepository: async (args) => {
@@ -1611,7 +1575,6 @@ registerHostServices({
   sync: syncSettingsHooksImpl,
   updater: updaterHooksImpl,
   vcs: vcsHooksImpl,
-  watch: watchHooksImpl,
   write: writeHooksImpl,
 });
 
@@ -1699,9 +1662,8 @@ secureHandle("api:build", (_e, args: ExportBuildArgs) => exportController.build(
 //
 // getStatus/check/download (ARCH review #8) are plain request/response —
 // no push stream, no live-BrowserWindow need — so they're SvelteKit server
-// routes (src/routes/api/updater/*), which import getStatus/checkForUpdates/
-// download from ./updater.ts directly (no hooks bag needed: they're already
-// plain exported functions with no main.ts-only state). applyNow stays on
+// routes (src/routes/api/updater/*), reached through `getHostServices().updater`
+// (updater.ts's state lives in THIS bundle — see updater-hooks.ts). applyNow stays on
 // IPC: it flushes the live renderer's unsaved buffer via
 // `mainWindow.webContents.send` before quitting — a live-BrowserWindow call
 // §8 sanctions.

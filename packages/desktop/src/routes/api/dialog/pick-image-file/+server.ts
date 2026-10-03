@@ -1,13 +1,9 @@
-import { getDesktopHooks, type DesktopHooks } from '$lib/server/host-hooks.js';
-import { defineRoute } from '../../_lib/route';
-import { getPickedFilesHooks } from '../../../../../electron/server-bridge/picked-files';
+import { defineRoute, getHostServices } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = defineRoute<Record<string, never>, DesktopHooks>({
-  hooks: getDesktopHooks,
-  hooksUnavailableMessage: 'Desktop hooks not registered',
-  call: async ({ hooks }) => {
-    const res = await hooks.showOpenDialog({
+export const POST: RequestHandler = defineRoute<Record<string, never>>({
+  call: async () => {
+    const res = await getHostServices().desktop.showOpenDialog({
       title: 'Insert image',
       properties: ['openFile'],
       filters: [
@@ -22,7 +18,7 @@ export const POST: RequestHandler = defineRoute<Record<string, never>, DesktopHo
     // capability (P1 review): `media:importImage`/`fs:copyFile` require this
     // before copying a `src` from outside the project, so a script POSTing an
     // arbitrary path directly — skipping this route — can't authorize itself.
-    getPickedFilesHooks()?.register(res.filePaths);
+    getHostServices().pickedFiles.register(res.filePaths);
     return res.filePaths[0];
   },
 });

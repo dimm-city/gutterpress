@@ -1,7 +1,5 @@
 import path from 'node:path';
-import { getDesktopHooks, type DesktopHooks } from '$lib/server/host-hooks.js';
-import { defineRoute } from '../../_lib/route';
-import { getSavePathsHooks } from '../../../../../electron/server-bridge/picked-files';
+import { defineRoute, getHostServices } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 // P1/finding #4 (2026-07-13 maintainer review): the returned `filePath` used
@@ -18,11 +16,9 @@ import type { RequestHandler } from './$types';
 // `defaultDir` only seeds where the dialog opens (the Publish wizard passes
 // the book's remembered output folder); the capability is still the path the
 // dialog returns, wherever the author finally points it.
-export const POST: RequestHandler = defineRoute<{ defaultName?: string; defaultDir?: string }, DesktopHooks>({
-  hooks: getDesktopHooks,
-  hooksUnavailableMessage: 'Desktop hooks not registered',
-  call: async ({ body, hooks }) => {
-    const res = await hooks.showSaveDialog({
+export const POST: RequestHandler = defineRoute<{ defaultName?: string; defaultDir?: string }>({
+  call: async ({ body }) => {
+    const res = await getHostServices().desktop.showSaveDialog({
       title: 'Save PDF',
       defaultPath: body.defaultDir
         ? path.join(body.defaultDir, body.defaultName ?? 'book.pdf')
@@ -30,7 +26,7 @@ export const POST: RequestHandler = defineRoute<{ defaultName?: string; defaultD
       filters: [{ name: 'PDF', extensions: ['pdf'] }],
     });
     if (res.canceled || !res.filePath) return null;
-    getSavePathsHooks()?.register(res.filePath);
+    getHostServices().savePaths.register(res.filePath);
     return res.filePath;
   },
 });

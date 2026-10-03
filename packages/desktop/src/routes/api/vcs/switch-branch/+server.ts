@@ -1,32 +1,10 @@
 import { error } from '@sveltejs/kit';
 import { gitIdentityArgs } from '$lib/server/settings';
-import { getVcsHooks, type VcsHooks } from '../../../../../electron/server-bridge/vcs-hooks';
-import { getRecoveryHooks } from '../../../../../electron/server-bridge/recovery-hooks';
 import { friendlyVcsError } from '../../../../../electron/server-bridge/friendly-errors';
-import { defineRoute, requireProjectDir } from '../../_lib/route';
+import { defineRoute, getHostServices, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-interface SwitchBranchResult {
-  current: string;
-  changedFiles: string[];
-}
-
-// Local type — do NOT import from contract.ts or the lib (keeps SPA bundle clean).
-interface LibModule {
-  switchBranch: (opts: {
-    projectDir: string;
-    branch: string;
-    authorName?: string;
-    authorEmail?: string;
-  }) => Promise<SwitchBranchResult>;
-}
-
-export const POST: RequestHandler = defineRoute<
-  { projectDir: string; branch: string },
-  VcsHooks<LibModule>
->({
-  hooks: () => getVcsHooks<LibModule>(),
-  hooksUnavailableMessage: 'VCS hooks not registered',
+export const POST: RequestHandler = defineRoute<{ projectDir: string; branch: string }>({
   validate: async (raw) => {
     const body = raw as { projectDir?: string; branch?: unknown };
     const projectDir = await requireProjectDir(body.projectDir, 'vcs/switch-branch');
@@ -35,14 +13,14 @@ export const POST: RequestHandler = defineRoute<
     }
     return { projectDir, branch: body.branch.trim() };
   },
-  call: async ({ body, hooks }) => {
-    const lib = await hooks.loadLib();
+  call: async ({ body }) => {
+    const lib = await loadLib();
     // Pause the auto-snapshot/auto-sync host timers around the checkout (#273
     // — see VcsHooks.pauseTimers's doc comment) so neither fires against the
     // mid-switch working tree or the wrong branch; always resume, whether the
     // switch succeeds or fails.
-    hooks.pauseTimers?.(body.projectDir);
-    let result: SwitchBranchResult;
+    getHostServices().vcs.pauseTimers?.(body.projectDir);
+    let result: Awaited<ReturnType<typeof lib.switchBranch>>;
     try {
       result = await lib.switchBranch({
         projectDir: body.projectDir,
@@ -50,7 +28,7 @@ export const POST: RequestHandler = defineRoute<
         ...(await gitIdentityArgs()),
       });
     } finally {
-      hooks.resumeTimers?.(body.projectDir);
+      getHostServices().vcs.resumeTimers?.(body.projectDir);
     }
     // Crash-recovery drafts are keyed by absolute file path, not by copy —
     // drop the ones for files the checkout just changed so a draft taken on
@@ -58,12 +36,10 @@ export const POST: RequestHandler = defineRoute<
     // version of the same file (recovery.ts's header documents the rule).
     // Best-effort: a failure here must never turn an already-successful
     // switch into a reported error.
-    const recovery = getRecoveryHooks();
-    if (recovery) {
-      await Promise.all(
-        result.changedFiles.map((filePath) => recovery.clear(filePath).catch(() => {})),
-      );
-    }
+    const recovery = getHostServices().recovery;
+    await Promise.all(
+      result.changedFiles.map((filePath) => recovery.clear(filePath).catch(() => {})),
+    );
     return result;
   },
   onError: (e) => friendlyVcsError(e, 'switchBranch', 'vcs/switch-branch'),

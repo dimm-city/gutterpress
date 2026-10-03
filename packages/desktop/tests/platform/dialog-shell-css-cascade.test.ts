@@ -10,8 +10,8 @@
  * Browse/Close) rendered with an invisible transparent border instead of the
  * pre-migration visible one.
  *
- * There is no component/DOM mount harness in this repo's bun:test setup (see
- * NewProjectWizard.test.ts), so an actual computed-style assertion isn't
+ * There is no component/DOM mount harness in this repo's bun:test setup, so
+ * an actual computed-style assertion isn't
  * possible here. This test instead encodes the specificity invariant at the
  * source level: the generic `.dlg-actions button` rule must never carry a
  * color-bearing `border` (shorthand or `border-color` longhand) — only the

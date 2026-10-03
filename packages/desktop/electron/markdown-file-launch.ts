@@ -7,7 +7,7 @@ import { stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { MANIFEST_FILENAMES } from "gutterpress";
-import type { MarkdownFileLaunchEvent } from "./bridge-types";
+import type { MarkdownFileLaunchEvent } from "../src/lib/platform/shared-types";
 
 export function isMarkdownFilePath(filePath: string): boolean {
   return path.extname(filePath).toLowerCase() === ".md";

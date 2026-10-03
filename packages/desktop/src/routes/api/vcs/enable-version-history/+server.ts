@@ -7,27 +7,12 @@ import type { RequestHandler } from './$types';
 // CLAUDE.md §7 escape hatch. Book settings → Connections calls it for a
 // plain folder (ProjectConnectionsSection, #310).
 
-// Local type — do NOT import from contract.ts or the lib (keeps SPA bundle clean).
-interface LibModule {
-  detectProjectSource: (dir: string) => Promise<unknown>;
-  providerFor: (source: unknown) => {
-    initVersionHistory: (opts: {
-      projectDir: string;
-      initialMessage?: string;
-      authorName?: string;
-      authorEmail?: string;
-    }) => Promise<unknown>;
-  };
-  capabilitiesFor: (source: unknown) => unknown;
-  ensureGitignoreHasDist: (projectDir: string) => Promise<void>;
-}
-
 export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
   validate: async (raw) => ({
     projectDir: await requireProjectDir((raw as { projectDir?: string }).projectDir, 'vcs/enable-version-history'),
   }),
   call: async ({ body }) => {
-    const lib = (await loadLib()) as unknown as LibModule;
+    const lib = await loadLib();
     const source = await lib.detectProjectSource(body.projectDir);
     // The first version commits everything now: keep build output (dist/) out
     // of it, exactly like new-book setup and "Set up as a book" do.

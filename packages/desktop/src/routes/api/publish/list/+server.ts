@@ -1,5 +1,5 @@
-import { getHooks, handlePublishErrors, type LibPublishProviderInfo } from '../_hooks';
-import { defineRoute, requireProjectDir } from '../../_lib/route';
+import { handlePublishErrors } from '../_hooks';
+import { defineRoute, getHostServices, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 /**
@@ -7,29 +7,17 @@ import type { RequestHandler } from './$types';
  * declared settings fields) + redacted connection status + the project's
  * non-secret `publish.*` manifest settings.
  */
-export const POST: RequestHandler = defineRoute<
-  { projectDir: string },
-  NonNullable<ReturnType<typeof getHooks>>
->({
-  hooks: getHooks,
-  hooksUnavailableMessage: 'Publish hooks not available',
+export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
   // In `validate`, not `call` — see publish/run's note on handlePublishErrors.
   validate: async (raw) => ({
     projectDir: await requireProjectDir((raw as { projectDir?: unknown }).projectDir, 'publish:list'),
   }),
-  call: async ({ body, hooks }) =>
+  call: async ({ body }) =>
     handlePublishErrors('publish:list', async () => {
-      const lib = await hooks.loadLib();
-      if (
-        !lib.listPublishProviders ||
-        !lib.readPublishSettings ||
-        !lib.publishConnectionStatus
-      ) {
-        throw new Error('Publishing is not available in this version of the lib');
-      }
+      const lib = await loadLib();
       const settings = await lib.readPublishSettings(body.projectDir);
       const cards = await Promise.all(
-        lib.listPublishProviders().map(async (info: LibPublishProviderInfo) => {
+        lib.listPublishProviders().map(async (info) => {
           const raw = settings[info.id] ?? {};
           // Book-level selected account (manifest `publish.<id>.credential`);
           // "" = the default credential. It's a selection reference, NOT a
@@ -43,15 +31,15 @@ export const POST: RequestHandler = defineRoute<
           }
           // "connected" (env var or stored key) is evaluated for the SELECTED
           // account — the same shared definition the CLI's --list uses.
-          const status = await lib.publishConnectionStatus!(
+          const status = await lib.publishConnectionStatus(
             info,
-            { tokenStore: hooks.tokenStore, credentialAccount: selectedAccount },
+            { tokenStore: getHostServices().remote.tokenStore, credentialAccount: selectedAccount },
             selectedAccount,
           );
           // Redacted saved credentials for the picker (default + named).
-          const savedAccounts = lib.listPublishAccounts
-            ? await lib.listPublishAccounts(info, { tokenStore: hooks.tokenStore })
-            : [];
+          const savedAccounts = await lib.listPublishAccounts(info, {
+            tokenStore: getHostServices().remote.tokenStore,
+          });
           return {
             id: info.id,
             label: info.label,

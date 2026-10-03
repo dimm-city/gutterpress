@@ -21,6 +21,7 @@ import {
   type HostServices,
 } from "../../electron/server-bridge/host-services";
 import { makeHostServices } from "../support/host-services-fake";
+import { setLibForTests, type LibModule } from "../../src/routes/api/_lib/route";
 import { POST as vcsListBranches } from "../../src/routes/api/vcs/list-branches/+server";
 import { POST as vcsSwitchBranch } from "../../src/routes/api/vcs/switch-branch/+server";
 
@@ -51,31 +52,25 @@ function openProject(overrides: Parameters<typeof makeHostServices>[0] = {}): Ho
   return services;
 }
 
+/** The lib fake every test hands the routes through `loadLib()`. */
+function fakeLib(lib: Record<string, unknown>): void {
+  setLibForTests(lib as Partial<LibModule>);
+}
+
 afterEach(() => {
   registerHostServices(undefined as unknown as HostServices);
+  setLibForTests(null);
 });
 
 describe("POST /api/vcs/list-branches", () => {
-  test("503 when vcs hooks are not registered", async () => {
-    openProject({ vcs: undefined });
-    const { status, message } = await caught(
-      vcsListBranches({ request: request({ projectDir: "/abs/project" }) } as never),
-    );
-    expect(status).toBe(503);
-    expect(message).toBe("VCS hooks not registered");
-  });
-
   test("forwards to lib.listLocalBranches and returns its result", async () => {
     const calls: string[] = [];
-    openProject({
-      vcs: {
-        loadLib: async () => ({
-          listLocalBranches: async (dir: string) => {
-            calls.push(dir);
-            return { current: "main", branches: ["main", "second-copy"] };
-          },
-        }),
-      } as never,
+    openProject();
+    fakeLib({
+      listLocalBranches: async (dir: string) => {
+        calls.push(dir);
+        return { current: "main", branches: ["main", "second-copy"] };
+      },
     });
     const res = await vcsListBranches({ request: request({ projectDir: "/abs/project" }) } as never);
     expect(await res.json()).toEqual({ current: "main", branches: ["main", "second-copy"] });
@@ -83,26 +78,17 @@ describe("POST /api/vcs/list-branches", () => {
   });
 
   test("passes a null result straight through (nothing to switch between)", async () => {
-    openProject({
-      vcs: { loadLib: async () => ({ listLocalBranches: async () => null }) } as never,
-    });
+    openProject();
+    fakeLib({ listLocalBranches: async () => null });
     const res = await vcsListBranches({ request: request({ projectDir: "/abs/project" }) } as never);
     expect(await res.json()).toBeNull();
   });
 });
 
 describe("POST /api/vcs/switch-branch", () => {
-  test("503 when vcs hooks are not registered", async () => {
-    openProject({ vcs: undefined });
-    const { status, message } = await caught(
-      vcsSwitchBranch({ request: request({ projectDir: "/abs/project", branch: "main" }) } as never),
-    );
-    expect(status).toBe(503);
-    expect(message).toBe("VCS hooks not registered");
-  });
-
   test("400 when branch is missing or blank", async () => {
-    openProject({ vcs: { loadLib: async () => ({}) } as never });
+    openProject();
+    fakeLib({});
     for (const branch of [undefined, "", "   "]) {
       const { status, message } = await caught(
         vcsSwitchBranch({ request: request({ projectDir: "/abs/project", branch }) } as never),
@@ -117,23 +103,23 @@ describe("POST /api/vcs/switch-branch", () => {
     const recoveryCleared: string[] = [];
     openProject({
       vcs: {
-        loadLib: async () => ({
-          switchBranch: async (opts: { projectDir: string; branch: string }) => {
-            order.push(`switchBranch(${opts.branch})`);
-            return {
-              current: opts.branch,
-              changedFiles: ["/abs/project/chapter-01.md", "/abs/project/chapter-02.md"],
-            };
-          },
-        }),
         pauseTimers: (dir: string) => order.push(`pause(${dir})`),
         resumeTimers: (dir: string) => order.push(`resume(${dir})`),
-      } as never,
+      },
       recovery: {
         clear: async (filePath: string) => {
           recoveryCleared.push(filePath);
           return { ok: true };
         },
+      },
+    });
+    fakeLib({
+      switchBranch: async (opts: { projectDir: string; branch: string }) => {
+        order.push(`switchBranch(${opts.branch})`);
+        return {
+          current: opts.branch,
+          changedFiles: ["/abs/project/chapter-01.md", "/abs/project/chapter-02.md"],
+        };
       },
     });
 
@@ -159,16 +145,16 @@ describe("POST /api/vcs/switch-branch", () => {
     let recoveryCalled = false;
     openProject({
       vcs: {
-        loadLib: async () => ({
-          switchBranch: async () => {
-            order.push("switchBranch:throw");
-            throw new Error("no version history yet. Enable version history first.");
-          },
-        }),
         pauseTimers: (dir: string) => order.push(`pause(${dir})`),
         resumeTimers: (dir: string) => order.push(`resume(${dir})`),
-      } as never,
+      },
       recovery: { clear: async () => { recoveryCalled = true; return { ok: true }; } },
+    });
+    fakeLib({
+      switchBranch: async () => {
+        order.push("switchBranch:throw");
+        throw new Error("no version history yet. Enable version history first.");
+      },
     });
 
     const { status } = await caught(
@@ -181,19 +167,17 @@ describe("POST /api/vcs/switch-branch", () => {
 
   test("a recovery-clear failure never turns a successful switch into a reported error", async () => {
     openProject({
-      vcs: {
-        loadLib: async () => ({
-          switchBranch: async () => ({
-            current: "second-copy",
-            changedFiles: ["/abs/project/chapter-01.md"],
-          }),
-        }),
-      } as never,
       recovery: {
         clear: async () => {
           throw new Error("disk full");
         },
       },
+    });
+    fakeLib({
+      switchBranch: async () => ({
+        current: "second-copy",
+        changedFiles: ["/abs/project/chapter-01.md"],
+      }),
     });
     const res = await vcsSwitchBranch({
       request: request({ projectDir: "/abs/project", branch: "second-copy" }),
@@ -205,13 +189,8 @@ describe("POST /api/vcs/switch-branch", () => {
   });
 
   test("works without pauseTimers/resumeTimers (optional hooks)", async () => {
-    openProject({
-      vcs: {
-        loadLib: async () => ({
-          switchBranch: async () => ({ current: "second-copy", changedFiles: [] }),
-        }),
-      } as never,
-    });
+    openProject();
+    fakeLib({ switchBranch: async () => ({ current: "second-copy", changedFiles: [] }) });
     const res = await vcsSwitchBranch({
       request: request({ projectDir: "/abs/project", branch: "second-copy" }),
     } as never);

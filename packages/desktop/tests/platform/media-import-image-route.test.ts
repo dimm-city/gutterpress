@@ -67,20 +67,9 @@ let base: string;
 let projectDir: string;
 let siblingDir: string; // shares a string prefix with projectDir but is a DIFFERENT directory
 let outsideDir: string;
-let savedHostServices: HostServices | null;
 let pickedFiles: ReturnType<typeof createPickedFilesService>;
 
 beforeEach(async () => {
-  // This suite intentionally calls registerHostServices (like the sibling
-  // fs-routes-scoping.test.ts does) to exercise the project-scoping guard.
-  // Host services are process-global (electron/server-bridge/host-services.ts),
-  // so this saves and restores whatever was registered before this file ran —
-  // the same defensive convention `sveltekit-host.test.ts` / other route-test
-  // files use — so this file's fixture never leaks into a sibling test file's
-  // "nothing registered yet" assertions (e.g. doctor-route.test.ts,
-  // host-services.test.ts).
-  savedHostServices = (await import("../../electron/server-bridge/host-services")).getHostServices();
-
   base = await mkdtemp(path.join(tmpdir(), "gutterpress-media-import-"));
   projectDir = path.join(base, "proj");
   siblingDir = path.join(base, "proj2"); // "proj" + "2" — the sibling-prefix case
@@ -101,7 +90,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await rm(base, { recursive: true, force: true });
-  registerHostServices(savedHostServices as HostServices);
+  registerHostServices(undefined as unknown as HostServices);
 });
 
 // ── already inside the project ──────────────────────────────────────────────
@@ -307,7 +296,7 @@ test("projectDir outside the currently-open project is rejected (403)", async ()
 
 test("fails closed (403) when no project is open (empty projectRoots)", async () => {
   registerHostServices({
-    ...(await import("../../electron/server-bridge/host-services")).getHostServices()!,
+    ...(await import("../../electron/server-bridge/host-services")).getHostServices(),
     fsGuard: { projectRoots: () => [], readOnlyRoots: () => [] },
   } as HostServices);
   const src = path.join(outsideDir, "photo.jpg");

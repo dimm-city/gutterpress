@@ -67,7 +67,6 @@
  */
 import path from "node:path";
 import { realpath, lstat, readlink } from "node:fs/promises";
-import { getHostServices } from "./host-services";
 
 /**
  * True if `candidate` (an absolute path) IS `root`, or is nested under it.
@@ -224,9 +223,4 @@ export interface FsGuardHooks {
    * copy-file-`dest` target.
    */
   readOnlyRoots(): string[];
-}
-
-/** The live `FsGuardHooks` slice of the collapsed host object (ARCH #31), or null before `registerHostServices` runs. */
-export function getFsGuardHooks(): FsGuardHooks | null {
-  return getHostServices()?.fsGuard ?? null;
 }

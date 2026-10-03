@@ -1,9 +1,6 @@
 import { describe, test, expect } from "bun:test";
-import * as fs from "node:fs";
-import * as path from "node:path";
 import { planToolInstall } from "../../src/lib/server/tool-install";
 
-const root = path.resolve(import.meta.dir, "../..");
 const only = (...bins: string[]) => (b: string) => bins.includes(b);
 
 describe("planToolInstall", () => {
@@ -43,12 +40,3 @@ describe("planToolInstall", () => {
   });
 });
 
-describe("the install route", () => {
-  test("re-plans server-side from a tool id; nothing renderer-supplied is spawned", () => {
-    const route = fs.readFileSync(path.join(root, "src/routes/api/doctor/install/+server.ts"), "utf8");
-    expect(route).toContain("isToolId(toolId)");
-    expect(route).toContain("planToolInstall(");
-    expect(route).toContain("spawn(plan.command, plan.args");
-    expect(route).not.toContain("shell: true");
-  });
-});

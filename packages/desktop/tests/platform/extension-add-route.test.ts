@@ -76,15 +76,6 @@ describe("POST /api/extension/add", () => {
     expect(await readFile(path.join(projectDir, "manifest.yaml"), "utf8")).toContain("markdown-it-mark");
   });
 
-  test("fails closed when the native confirmation hook is unavailable", async () => {
-    registerHostServices(makeHostServices({
-      fsGuard: { projectRoots: () => [projectDir] },
-      desktop: undefined,
-    }));
-    const result = await caught(call({ projectDir, specifier: "markdown-it-highlightjs" }));
-    expect(result).toEqual({ status: 503, message: "Desktop hooks not registered" });
-  });
-
   test("rejects a blank or unparseable specifier with a 400 that says what to write instead", async () => {
     expect((await caught(call({ projectDir, specifier: "   " }))).status).toBe(400);
     // A bare `plugins/foo.js` is neither a path (no ./) nor an npm name.
