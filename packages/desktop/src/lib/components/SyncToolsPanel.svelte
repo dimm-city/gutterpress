@@ -4,12 +4,14 @@
    * book whose online backup (Git/GitHub sync) is stuck. First the cheapest
    * fix — Reconnect GitHub, for the expired login that makes every backup
    * fail with a sign-in error (the device flow's success overwrites the
-   * stale token, so no disconnect step). Then the folder tools: pick a folder,
-   * then either Repair online backup (swap in a fresh history, keep files,
-   * save and back up) or Scorched earth (back up the whole folder, empty it,
-   * download a fresh copy, copy the backed-up files back on top, and — as the
-   * final step, whether or not the reset worked — close the open book when it
-   * lives in that folder, so the app holds no stale state from before the reset).
+   * stale token, so no disconnect step). Then the tools for the OPEN book —
+   * no folder picker: the routes only ever accept the open book, and a
+   * picker that offered any folder was how every button 403'd in
+   * 0.11.10-alpha.3 — either Repair online backup (swap in a fresh history,
+   * keep files, save and back up) or Scorched earth (back up the whole
+   * folder, empty it, download a fresh copy, copy the backed-up files back on
+   * top, and — as the final step, whether or not the reset worked — close the
+   * book, so the app holds no stale state from before the reset).
    *
    * PWA-clean (§8 / ADR 0004): all host work through `api.*`; the GitHub
    * device flow through `getPlatform()` (the interactive-connect seam
@@ -18,7 +20,7 @@
   import { onMount } from "svelte";
   import { api } from "$lib/api";
   import { getPlatform, isDesktop } from "$lib/platform";
-  import { friendlyHostError } from "$lib/errors";
+  import { friendlyHostError, unwrapRouteError } from "$lib/errors";
   import type { DeviceCodeInfo, RemoteConnection } from "$lib/platform/contract";
   import { cancelInlineConfirm, requestInlineConfirm, type InlineConfirmState } from "$lib/dialog";
 
@@ -26,17 +28,11 @@
     projectDir = null,
     onCloseBook,
   }: {
-    /** The open book, if any. */
+    /** The open book, if any — the folder every tool below acts on. */
     projectDir?: string | null;
     /** Close the open book. */
     onCloseBook?: () => Promise<boolean>;
   } = $props();
-
-  /** True when `inner` is `outer` or inside it. */
-  function isInside(inner: string, outer: string): boolean {
-    const o = outer.replace(/[\\/]+$/, "");
-    return inner === o || inner.startsWith(o + "/") || inner.startsWith(o + "\\");
-  }
 
   // ── Reconnect GitHub ──────────────────────────────────────────────────────
   let github = $state<RemoteConnection | null>(null);
@@ -83,23 +79,14 @@
     };
   });
 
-  // ── Folder tools ──────────────────────────────────────────────────────────
-  let dir = $state<string | null>(null);
+  // ── Open-book tools ───────────────────────────────────────────────────────
   let running = $state<"repair" | "scorched" | null>(null);
   let confirm = $state<InlineConfirmState>({});
   let message = $state<string | null>(null);
   let errorMessage = $state<string | null>(null);
 
-  async function chooseFolder() {
-    const picked = await api.dialog.openDirectory();
-    if (picked) {
-      dir = picked;
-      message = null;
-      errorMessage = null;
-    }
-  }
-
   async function run(kind: "repair" | "scorched") {
+    const dir = projectDir;
     if (!dir) return;
     const { state, confirmed } = requestInlineConfirm(confirm, kind);
     confirm = state;
@@ -107,7 +94,6 @@
     running = kind;
     message = null;
     errorMessage = null;
-    let resetDir = dir;
     try {
       if (kind === "repair") {
         const { outcome } = await api.remote.repairOnlineBackup(dir);
@@ -115,14 +101,13 @@
         else message = "Online backup repaired.";
       } else {
         const r = await api.remote.scorchedEarth(dir);
-        resetDir = r.dir;
         message = `Fresh copy downloaded${r.branch ? ` (${r.branch})` : ""} and your files copied back on top. A full copy of the folder as it was is kept at ${r.backupDir}. Open the book and back up to save the result online.`;
       }
     } catch (e) {
-      errorMessage = `${e instanceof Error ? e.message : String(e)} See the Logs tab for details.`;
+      errorMessage = `${unwrapRouteError(e instanceof Error ? e.message : String(e))} See the Logs tab for details.`;
     } finally {
-      // Scorched earth's final step: close the open book if it is in the reset folder.
-      if (kind === "scorched" && projectDir && onCloseBook && (isInside(projectDir, resetDir) || isInside(projectDir, dir))) {
+      // Scorched earth's final step: close the book it just reset.
+      if (kind === "scorched" && onCloseBook) {
         try {
           if (!(await onCloseBook())) throw new Error("not closed");
           if (message) message += " The open book was closed.";
@@ -156,13 +141,12 @@
     {#if ghError}<p class="result error" role="alert">{ghError}</p>{/if}
   </section>
 
-  <h3 class="group">Book folder tools</h3>
-  <div class="folder-row">
-    <button class="app-btn-primary" onclick={() => void chooseFolder()} disabled={running !== null}>
-      {dir ? "Change folder…" : "Choose book folder…"}
-    </button>
-    {#if dir}<code class="folder">{dir}</code>{/if}
-  </div>
+  <h3 class="group">This book</h3>
+  {#if projectDir}
+    <p class="folder-row"><code class="folder">{projectDir}</code></p>
+  {:else}
+    <p class="hint">Open the book whose backup is failing, then come back here.</p>
+  {/if}
 
   <section class="tool">
     <h3>Repair online backup</h3>
@@ -171,7 +155,7 @@
       class="app-btn-primary"
       onclick={() => void run("repair")}
       onblur={() => (confirm = cancelInlineConfirm(confirm, "repair"))}
-      disabled={!dir || running !== null}
+      disabled={!projectDir || running !== null}
     >{running === "repair" ? "Repairing…" : confirm["repair"] ? "Really repair?" : "Repair online backup"}</button>
   </section>
 
@@ -182,7 +166,7 @@
       class="danger-btn"
       onclick={() => void run("scorched")}
       onblur={() => (confirm = cancelInlineConfirm(confirm, "scorched"))}
-      disabled={!dir || running !== null}
+      disabled={!projectDir || running !== null}
     >{running === "scorched" ? "Working…" : confirm["scorched"] ? "Really start over from online?" : "Scorched earth"}</button>
   </section>
 
@@ -193,7 +177,7 @@
 <style>
   .sync-tools { font-size: 13px; }
   .intro { margin: 0 0 14px; font-size: 12px; color: var(--app-text-muted); }
-  .folder-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+  .folder-row { margin: 0 0 16px; }
   .folder { font-family: var(--app-font-mono); font-size: 12px; word-break: break-all; }
   .tool {
     padding: 10px 12px;
