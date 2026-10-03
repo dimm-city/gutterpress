@@ -1,16 +1,25 @@
 <script lang="ts">
   /**
    * SyncToolsPanel — the start screen's Troubleshooting → Sync tab: tools for a
-   * book folder whose online backup (Git/GitHub sync) is stuck. Pick a folder,
+   * book whose online backup (Git/GitHub sync) is stuck. First the cheapest
+   * fix — Reconnect GitHub, for the expired login that makes every backup
+   * fail with a sign-in error (the device flow's success overwrites the
+   * stale token, so no disconnect step). Then the folder tools: pick a folder,
    * then either Repair online backup (swap in a fresh history, keep files,
    * save and back up) or Scorched earth (back up the whole folder, empty it,
    * download a fresh copy, copy the backed-up files back on top, and — as the
    * final step, whether or not the reset worked — close the open book when it
    * lives in that folder, so the app holds no stale state from before the reset).
    *
-   * PWA-clean (§8 / ADR 0004): all host work through `api.*`.
+   * PWA-clean (§8 / ADR 0004): all host work through `api.*`; the GitHub
+   * device flow through `getPlatform()` (the interactive-connect seam
+   * ConnectionsSettings uses).
    */
+  import { onMount } from "svelte";
   import { api } from "$lib/api";
+  import { getPlatform, isDesktop } from "$lib/platform";
+  import { friendlyHostError } from "$lib/errors";
+  import type { DeviceCodeInfo, RemoteConnection } from "$lib/platform/contract";
   import { cancelInlineConfirm, requestInlineConfirm, type InlineConfirmState } from "$lib/dialog";
 
   let {
@@ -29,6 +38,52 @@
     return inner === o || inner.startsWith(o + "/") || inner.startsWith(o + "\\");
   }
 
+  // ── Reconnect GitHub ──────────────────────────────────────────────────────
+  let github = $state<RemoteConnection | null>(null);
+  let ghBusy = $state(false);
+  let ghCode = $state<DeviceCodeInfo | null>(null);
+  let ghMessage = $state<string | null>(null);
+  let ghError = $state<string | null>(null);
+
+  async function loadGitHub() {
+    if (!isDesktop()) return;
+    try {
+      github = await api.remote.getRemoteConnection();
+    } catch {
+      github = null;
+    }
+  }
+
+  async function reconnectGitHub() {
+    if (ghBusy) return;
+    ghBusy = true;
+    ghMessage = null;
+    ghError = null;
+    try {
+      const info = await getPlatform().connectGitHubStart();
+      ghCode = info;
+      api.shell.openExternal(info.verificationUri).catch(() => {});
+      await getPlatform().connectGitHubWait();
+      ghCode = null;
+      await loadGitHub();
+      ghMessage = `Signed in to GitHub${github?.username ? ` as @${github.username}` : ""}. Open the book and back up again.`;
+    } catch (e) {
+      ghError = friendlyHostError(e instanceof Error ? e.message : String(e));
+      ghCode = null;
+    } finally {
+      ghBusy = false;
+    }
+  }
+
+  onMount(() => {
+    void loadGitHub();
+    return () => {
+      // A device flow left mid-poll must not keep polling after the tab closes.
+      if (ghBusy) getPlatform().connectGitHubCancel().catch(() => {});
+    };
+  });
+
+  // ── Folder tools ──────────────────────────────────────────────────────────
   let dir = $state<string | null>(null);
   let running = $state<"repair" | "scorched" | null>(null);
   let confirm = $state<InlineConfirmState>({});
@@ -83,6 +138,25 @@
 <div class="sync-tools">
   <p class="intro">Fix a book whose online backup keeps failing.</p>
 
+  <section class="tool">
+    <h3>Reconnect GitHub</h3>
+    <p class="hint">If backups stopped with a sign-in or permission error, your GitHub login has probably expired. Reconnecting signs you in again and replaces the saved login. Your books and their history are not touched.</p>
+    <div class="gh-row">
+      <span class="gh-status">
+        {#if github?.connected}Connected as {github.username ? `@${github.username}` : "GitHub"}{:else}Not connected{/if}
+      </span>
+      <button class="app-btn-primary" onclick={() => void reconnectGitHub()} disabled={ghBusy || running !== null}>
+        {ghBusy ? "Waiting for GitHub…" : "Reconnect GitHub…"}
+      </button>
+    </div>
+    {#if ghCode}
+      <p class="hint code-hint">Enter this code on the GitHub page that opened: <strong class="user-code">{ghCode.userCode}</strong></p>
+    {/if}
+    {#if ghMessage}<p class="result" role="status">{ghMessage}</p>{/if}
+    {#if ghError}<p class="result error" role="alert">{ghError}</p>{/if}
+  </section>
+
+  <h3 class="group">Book folder tools</h3>
   <div class="folder-row">
     <button class="app-btn-primary" onclick={() => void chooseFolder()} disabled={running !== null}>
       {dir ? "Change folder…" : "Choose book folder…"}
@@ -130,6 +204,11 @@
   }
   .tool.danger { border-left-color: var(--app-error-text); }
   .tool h3 { margin: 0 0 6px; font-size: 13px; }
+  .group { margin: 18px 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--app-text-muted); }
+  .gh-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .gh-status { font-size: 12px; color: var(--app-text-secondary); }
+  .code-hint { margin: 10px 0 0; }
+  .user-code { font-family: var(--app-font-mono); font-size: 15px; letter-spacing: 0.1em; color: var(--app-text); }
   .hint { font-size: 12px; color: var(--app-text-muted); margin: 0 0 10px; }
   button { padding: 5px 12px; font-size: 12px; border-radius: 4px; border-width: 1px; border-style: solid; cursor: pointer; }
   button:disabled { opacity: 0.6; cursor: not-allowed; }
