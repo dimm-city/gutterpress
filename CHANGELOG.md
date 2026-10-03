@@ -27,8 +27,9 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- **The preview scrolls while Book settings is open.** The panel docks
-  beside the book, and the preview next to it can be scrolled again.
+- **Book settings is an ordinary side panel.** Like the left panel, it sits
+  beside the book and nothing else is locked while it is open: the preview
+  scrolls, and the editor, toolbar and shortcuts all keep working.
 
 ## [0.11.9] - 2026-10-01
 

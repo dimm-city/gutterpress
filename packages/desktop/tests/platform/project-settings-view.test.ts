@@ -44,14 +44,6 @@ describe("ProjectSettingsView — SettingsView-patterned full view", () => {
     expect(src).toMatch(/<Icon name="x"/);
   });
 
-  test("takes keyboard focus on open (the opener goes inert, so focus would drop to <body>)", () => {
-    const src = view();
-    expect(src).toContain("bind:this={closeBtnEl}");
-    const mountIdx = src.indexOf("onMount(");
-    expect(mountIdx).toBeGreaterThan(-1);
-    expect(src.slice(mountIdx, mountIdx + 200)).toContain("closeBtnEl?.focus()");
-  });
-
   test("uses the tabbed layout (WAI-ARIA tabs with arrow-key navigation)", () => {
     const src = view();
     expect(src).toContain('role="tablist"');
@@ -188,22 +180,6 @@ describe("+page.svelte — docked mount, teardown, prefs migration", () => {
     expect(mount).toMatch(/onEditRawCss=\{[\s\S]{0,200}?closeProjectSettings\(\);?[\s\S]{0,200}?openStyleFile\(/);
   });
 
-  test("the view owns the keyboard: workspace shortcuts are suppressed and Escape closes it", () => {
-    const src = page();
-    const fnIdx = src.indexOf("function onGlobalKey");
-    expect(fnIdx).toBeGreaterThan(-1);
-    const body = src.slice(fnIdx, fnIdx + 900);
-    // Early-return guard BEFORE any command dispatch, with Escape-to-close —
-    // otherwise Ctrl+, mounts the app SettingsView invisibly beneath this
-    // view, Ctrl+F opens find behind it, etc.
-    expect(body).toMatch(/if \(projectSettingsOpen\) \{[\s\S]{0,300}?closeProjectSettings\(\);[\s\S]{0,100}?return;/);
-    expect(body.indexOf("if (projectSettingsOpen)")).toBeLessThan(body.indexOf("resolveGlobalShortcut"));
-    // Preview paging/zoom keys must not act on the (inert) preview beside the
-    // book settings panel (app settings live on the start screen,
-    // which the landingVisible guard above already covers).
-    const navIdx = src.indexOf("function onPreviewNavKey");
-    expect(src.slice(navIdx, navIdx + 700)).toContain("if (projectSettingsOpen) return;");
-  });
 
   test("a persisted activeTab of 'config' from an older session falls back to a live tab", () => {
     const src = page();

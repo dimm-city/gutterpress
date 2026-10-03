@@ -1024,8 +1024,6 @@
       toast?.info?.("Book settings are available in the desktop app for now.");
       return;
     }
-    contextMenu.close();
-    void inlineEdit.endActive(true); // opening a dialog commits the in-flow edit
     projectSettingsTab = "details";
     projectSettingsOpen = true;
   }
@@ -2145,17 +2143,6 @@
   // ----------------------------------------------------------------
   onMount(() => {
     function onGlobalKey(e: KeyboardEvent) {
-      // The Book settings panel owns the keyboard while it's up: the
-      // workspace beside it is inert, so acting on it (opening Settings
-      // BENEATH the panel, toggling focus mode, exporting, snippet picker)
-      // would change UI the writer isn't working in. Escape closes the panel.
-      if (projectSettingsOpen) {
-        if (e.key === "Escape") {
-          e.preventDefault();
-          closeProjectSettings();
-        }
-        return;
-      }
       const command = resolveGlobalShortcut({
         ctrlOrMeta: e.ctrlKey || e.metaKey,
         shift: e.shiftKey,
@@ -2228,9 +2215,6 @@
       if (e.defaultPrevented) return;
       // Never page/zoom the pre-rendering preview from behind the start screen.
       if (landingVisible) return;
-      // Never page/zoom the (inert) preview beside the book settings
-      // panel (PageUp/PageDown must scroll its body, not the preview).
-      if (projectSettingsOpen) return;
       // Don't intercept when focus is in a form control or the CodeMirror
       // editor (#38) — preview-nav keys (arrows, Home/End, +/-/=, f) must
       // never hijack editing. Shared guard: $lib/a11y isEditableTarget.
