@@ -64,9 +64,9 @@ This project follows [Semantic Versioning](https://semver.org/).
   "path is outside the open book"; they now act on the open book.
 - Errors from the app's own routes read as a sentence instead of a raw
   `{"message": …}` blob.
-- **Book settings is an ordinary side panel.** Like the left panel, it sits
-  beside the book and nothing else is locked while it is open: the preview
-  scrolls, and the editor, toolbar and shortcuts all keep working.
+- **Book settings fills the window.** Like the start screen, it takes over
+  the whole app view instead of squeezing into a side panel; close it with
+  the X or Esc to return to your book exactly as you left it.
 
 ## [0.11.9] - 2026-10-01
 
