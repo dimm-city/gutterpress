@@ -771,10 +771,10 @@ See [User Guide: Chapter 5 — Plugins](../examples/gutterpress-user-guide/05-pl
 **Reasons**:
 - Non-technical users need a native-feeling app with folder picker, page
   navigation, and PDF export — not a browser tab.
-- SvelteKit is built with `@sveltejs/adapter-node`, which emits a Node HTTP
-  handler (`build/handler.js`). Electron main starts that handler on a local
-  `127.0.0.1` server and serves the window through a custom `app://` protocol
-  handler that proxies each request to it with `fetch`. Host capabilities are
+- SvelteKit is built with the desktop package's `adapter-electron.js`, which
+  writes the SvelteKit server unbundled to `build/server/`. Electron main
+  constructs that server and answers the window's `app://` requests with
+  `Server.respond()` in-process — no HTTP server or proxy. Host capabilities are
   exposed as `src/routes/api/**/+server.ts` routes the renderer calls with
   `fetch("/api/…")`; a narrow `ipcMain`/preload bridge is reserved for push
   streams and calls that must drive a live `BrowserWindow` (see `CLAUDE.md`

@@ -12,9 +12,9 @@
 /**
  * The message to throw for a non-OK response. A route's own error is the
  * `{"message": …}` JSON body (see `$lib/errors`'s `unwrapRouteError`). An
- * HTML body is not from a route at all: it is the `app://` proxy's error
- * page (electron/sveltekit-host.ts), sent when the loopback request itself
- * failed — so say that in one sentence, with the page's `<code>` detail,
+ * HTML body is not from a route at all: it is the `app://` handler's error
+ * page (electron/sveltekit-host.ts), sent when the server itself could not
+ * answer — so say that in one sentence, with the page's `<code>` detail,
  * instead of handing a component a page of markup to display.
  */
 export function hostErrorMessage(contentType: string | null, text: string): string {

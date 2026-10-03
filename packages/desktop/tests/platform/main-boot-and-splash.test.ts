@@ -6,7 +6,7 @@
  * desktop-ui-regressions.test.ts) these are source-text assertions rather than
  * an executed unit test:
  *
- *  - #28: if startSvelteKitServer() throws during app.whenReady(), main.ts
+ *  - #28: if loadSvelteKitServer() throws during app.whenReady(), main.ts
  *    must show a plain-language dialog.showErrorBox(...) instead of only
  *    logging to console.error and silently continuing.
  *
@@ -26,8 +26,8 @@ const main = readFileSync(
 );
 
 test("ARCH #28: a SvelteKit boot failure shows a plain-language native dialog, not just a console.error swallow", () => {
-  // The try/catch around startSvelteKitServer() in app.whenReady().
-  const bootBlockStart = main.indexOf("await startSvelteKitServer(slog, skAuthToken);");
+  // The try/catch around loadSvelteKitServer() in app.whenReady().
+  const bootBlockStart = main.indexOf("await loadSvelteKitServer(slog);");
   expect(bootBlockStart).toBeGreaterThan(-1);
   const catchBlock = main.slice(bootBlockStart, bootBlockStart + 1500);
 
@@ -55,11 +55,11 @@ test("the splash machinery stays deleted (superseded by the in-window start scre
   expect(main).not.toContain("createSplashWindow");
 });
 
-test("residual docs-sweep fix: the prod-mode window-load comment describes adapter-node, not adapter-static", () => {
+test("residual docs-sweep fix: the prod-mode window-load comment describes the in-process server, not adapter-static", () => {
   const loadUrlIdx = main.indexOf('mainWindow.loadURL(devUrl || "app://local/");');
   expect(loadUrlIdx).toBeGreaterThan(-1);
   const precedingComment = main.slice(Math.max(0, loadUrlIdx - 800), loadUrlIdx);
-  expect(precedingComment).toContain("adapter-node emits a Node HTTP handler");
+  expect(precedingComment).toContain("Server.respond() in-process");
   expect(precedingComment).not.toContain("adapter-static emits an SPA");
 });
 
@@ -100,7 +100,7 @@ test("ARCH #1: originPolicyConfig()'s devServerOrigin uses the packaged-aware ga
 });
 
 test("ARCH #1: the whenReady() local-server-start gate uses the packaged-aware helper", () => {
-  const idx = main.indexOf("await startSvelteKitServer(slog, skAuthToken);");
+  const idx = main.indexOf("await loadSvelteKitServer(slog);");
   expect(idx).toBeGreaterThan(-1);
   const precedingGate = main.slice(Math.max(0, idx - 400), idx);
   expect(precedingGate).toContain(

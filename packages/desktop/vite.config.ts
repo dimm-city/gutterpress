@@ -1,9 +1,9 @@
 import { sveltekit } from "@sveltejs/kit/vite";
 import { defineConfig } from "vite";
 
-// adapter-node architecture (see svelte.config.js): the SvelteKit build emits
-// a Node server bundle (build/server/, build/handler.js) alongside the client
-// assets (build/client/). The renderer reaches the host mainly via
+// adapter-electron (see svelte.config.js): the SvelteKit build emits the
+// unbundled server (build/server/) alongside the client assets
+// (build/client/); Electron main answers app:// requests with it in-process. The renderer reaches the host mainly via
 // fetch("/api/...") against src/routes/api/**/+server.ts routes; a narrow
 // ipcMain/preload bridge (window.electron.*) is reserved for push-event
 // streams and calls that must drive a live BrowserWindow — see CLAUDE.md §8.

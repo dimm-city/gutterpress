@@ -10,10 +10,10 @@ and export a PDF — no terminal required, no runtime to install.
 
 ```
 Electron main process (out/main/main.js — ESM, built by electron-vite)
-  ├─ startSvelteKitServer()  — imports build/handler.js (adapter-node) and
-  │                            listens on 127.0.0.1:<random> (a local HTTP server)
-  ├─ protocol.handle("app", ...) — proxies every app:// request to that
-  │                            local server via fetch (so +server.ts routes run)
+  ├─ loadSvelteKitServer()   — constructs the SvelteKit Server from build/server/
+  ├─ protocol.handle("app", ...) — serves build/client/ files, and answers every
+  │                            other app:// request with Server.respond() in-process
+  │                            (so +server.ts routes run; no HTTP server, no port)
   ├─ secureHandle("api:preview", ...)  — wraps lib.startPreviewServer
   ├─ secureHandle("api:build", ...)    — delegates to export/controller.ts
   │                            (secureHandle wraps ipcMain.handle and rejects
@@ -100,8 +100,8 @@ bun --cwd packages/desktop run dev
 # Edit electron/*.ts → rebuild + restart manually (Ctrl+C, re-run).
 bun --cwd packages/desktop run electron:hmr
 
-# Full Electron against the production build (no HMR — static SPA
-# served via app:// protocol exactly like the packaged app does).
+# Full Electron against the production build (no HMR — the built SPA
+# served over the app:// protocol exactly like the packaged app does).
 # Use when you need to test something protocol-handler-specific or
 # when the HMR version misbehaves and you want a clean baseline.
 bun --cwd packages/desktop run electron:dev
@@ -246,7 +246,7 @@ packages/desktop/
 │   ├── routes/
 │   │   ├── +layout.ts       # ssr=false (client-rendered SPA; not prerendered)
 │   │   ├── +page.svelte     # Toolbar + iframe shell
-│   │   └── api/**/+server.ts # ~100 host routes (run in main via adapter-node)
+│   │   └── api/**/+server.ts # ~100 host routes (run in main, in-process)
 │   ├── lib/
 │   │   ├── preview-client.ts       # postMessage wrappers for the iframe bridge
 │   │   ├── iframe-styles.ts        # Injected iframe CSS
@@ -256,11 +256,12 @@ packages/desktop/
 │   │       └── LoadingOverlay.svelte
 │   └── app.html
 ├── static/                  # Static assets served from app:// root (favicon)
-├── build/                   # SvelteKit adapter-node output (git-ignored):
-│                            #   handler.js + server/ (host) + client/ (SPA)
+├── build/                   # SvelteKit build output (git-ignored):
+│                            #   server/ (host, unbundled) + client/ (SPA)
 ├── tests/                   # Bun unit/contract tests + Playwright integration tests
 ├── electron-builder.yml     # Packaging config (Linux AppImage, Windows installer/zip, macOS dmg)
-├── svelte.config.js         # adapter-node (out: build), paths.relative
+├── adapter-electron.js      # the ~20-line SvelteKit adapter: unbundled server + client
+├── svelte.config.js         # adapter-electron (out: build), paths.relative
 └── package.json
 ```
 
@@ -306,33 +307,33 @@ never touches electron-updater directly.
 
 ## Architecture notes
 
-- **adapter-node + local HTTP server** — `svelte.config.js` uses
-  `@sveltejs/adapter-node`, which emits a Node HTTP handler to
-  `build/handler.js` plus `build/client/` (browser assets) and `build/server/`
-  (SSR + `+server.ts` routes). In production `electron/main.ts`
-  (`startSvelteKitServer`) imports that handler and `createServer(...).listen(0,
-  "127.0.0.1")`, giving the SPA a real local origin. `+layout.ts` sets
-  `ssr=false`, so pages are client-rendered; the "API" surface is the
-  `+server.ts` routes served by the same handler.
-- **app:// protocol (a proxy)** — `electron/main.ts` calls
+- **adapter-electron + in-process server** — `svelte.config.js` uses the
+  package's own `adapter-electron.js`, which writes the SvelteKit server
+  UNBUNDLED to `build/server/` (`index.js` exports `Server`, `manifest.js` its
+  manifest) plus `build/client/` (browser assets). In production
+  `electron/sveltekit-host.ts` (`loadSvelteKitServer`) constructs that Server
+  once. `+layout.ts` sets `ssr=false`, so pages are client-rendered; the "API"
+  surface is the `+server.ts` routes the same Server answers. Nothing listens
+  on a port.
+- **app:// protocol** — `electron/main.ts` calls
   `protocol.registerSchemesAsPrivileged([{ scheme: "app", privileges: { standard, secure, supportFetchAPI, stream } }])`
   at module load and `protocol.handle("app", ...)` inside `app.whenReady`. The
-  handler does NOT read files — it **proxies** each `app://local/*` request to
-  `http://127.0.0.1:<skServerPort>` with `fetch`, so both the SPA and every
-  `fetch("/api/…")` from it hit the adapter-node handler. In dev
+  handler serves a `build/client/` file when the path names one (never a path
+  outside that dir), and hands every other `app://local/*` request — the SPA
+  shell and every `fetch("/api/…")` — to `Server.respond()`. In dev
   (`VITE_DEV_SERVER_URL` set) the window loads the vite dev server directly and
-  this local server is skipped.
+  the built server is not loaded.
 - **fetch for routes, IPC for the rest** — most host calls are
   `fetch("/api/…")` to `+server.ts` routes; the `window.electron` bridge
   (`preload.ts`) is reserved for push-event streams and the preview/build
   pipeline (e.g. `window.electron.startPreview({input})`). The renderer only
   ever calls `getPlatform().X(...)`.
 - **Build** — `electron-vite` builds the ESM main + preload into `out/`
-  (externalizing electron + the lib); SvelteKit's adapter-node builds the
-  renderer + host routes into `build/`. No CJS↔ESM interop trick: the ESM main
-  just does `await import("gutterpress")`, cached so subsequent calls
-  reuse the module. Packaged with asar (puppeteer-core unpacked;
-  `build/handler.js` is loaded from inside the asar).
+  (externalizing electron + the lib); SvelteKit builds the renderer + host
+  routes into `build/`. No CJS↔ESM interop trick: the ESM main just does
+  `await import("gutterpress")`, cached so subsequent calls reuse the module.
+  Packaged with asar (puppeteer-core unpacked; `build/server/index.js` is
+  imported from inside the asar).
 - **Preview iframe** — `lib.startPreviewServer` returns an `http://127.0.0.1:N`
   URL that the renderer puts in `<iframe src={url}>`. Iframe is cross-origin
   (different scheme) from the SPA's `app://` parent; postMessage bridge

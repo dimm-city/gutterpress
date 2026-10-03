@@ -14,7 +14,6 @@ import {
 } from "electron";
 import path from "node:path";
 import os from "node:os";
-import { randomBytes } from "node:crypto";
 import { appendFile, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import * as fs from "node:fs";
@@ -142,8 +141,8 @@ import {
 } from "./pdf-export";
 import { createElectronEngineBrowser } from "./engine-browser";
 import {
+  loadSvelteKitServer,
   registerAppProtocol,
-  startSvelteKitServer,
 } from "./sveltekit-host";
 import {
   APP_ORIGIN,
@@ -798,10 +797,10 @@ function createWindow() {
   // SvelteKit DX while still exercising the real Electron preload bridge
   // (window.electron.* IPC) against the same main process used in prod.
   //
-  // Prod mode: adapter-node emits a Node HTTP handler to build/handler.js.
-  // startSvelteKitServer() runs it on a local 127.0.0.1 server and
-  // registerAppProtocol() proxies app:// requests to it via fetch, so the
-  // page has a stable app:// origin. Load the root "/" — NOT "/index.html" —
+  // Prod mode: loadSvelteKitServer() constructs the SvelteKit server from
+  // build/server/ and registerAppProtocol() answers app:// requests with
+  // Server.respond() in-process, so the page has a stable app:// origin and
+  // no HTTP server exists. Load the root "/" — NOT "/index.html" —
   // so SvelteKit's client router sees the root route. (Loading /index.html
   // makes the router try to resolve a page named "index.html" and throw
   // "Not found: /index.html".)
@@ -901,21 +900,14 @@ function createWindow() {
 // ──────────────────────────────────────────────────────────────────────────
 // app:// protocol — serves the static SvelteKit SPA from build/
 //
-// The adapter-node HTTP bridge (startSvelteKitServer) and the app:// protocol
-// proxy (registerAppProtocol) live in electron/sveltekit-host.ts. The privileged-
-// scheme registration stays here so it runs at its original point (before
-// app.whenReady). main.ts calls startSvelteKitServer(slog, skAuthToken) +
-// registerAppProtocol(skAuthToken) from whenReady below.
+// The SvelteKit server (loadSvelteKitServer) and the app:// protocol handler
+// (registerAppProtocol) live in electron/sveltekit-host.ts: the window's
+// requests are answered in-process by Server.respond() — no HTTP server, no
+// port, nothing for another local process to reach. The privileged-scheme
+// registration stays here so it runs at its original point (before
+// app.whenReady). main.ts calls loadSvelteKitServer(slog) +
+// registerAppProtocol() from whenReady below.
 // ──────────────────────────────────────────────────────────────────────────
-
-// P1 review (PR #98, finding #2): a loopback bind (127.0.0.1) is not caller
-// authentication — any other local process that discovers the OS-assigned
-// port could otherwise call the privileged adapter-node API routes directly.
-// Mint a per-session random bearer token once at process start (never
-// persisted, never leaves this process except as the header
-// registerAppProtocol injects into its own proxied requests below); the
-// loopback server rejects any request that doesn't carry it.
-const skAuthToken = randomBytes(32).toString("hex");
 
 // The `VAAPI version is too old` / `MESA-LOADER` lines in the launch log are
 // harmless Chromium GPU-probe noise, NOT the cause of slow launches — the
@@ -1167,7 +1159,7 @@ const desktopHooksImpl: DesktopHooks = {
 };
 
 // Media thumbnail generation is exposed through a hook instead of importing
-// `electron` from the SvelteKit handler bundle. Packaged adapter-node routes run
+// `electron` from the SvelteKit server build. Packaged +server.ts routes run
 // in a different ESM context, and importing Electron there can fail.
 const mediaHooksImpl: MediaHooks = {
   async createThumbnail(filePath: string, maxPx: number): Promise<string | null> {
@@ -1873,22 +1865,21 @@ app.whenReady().then(async () => {
   void logAppEvent(`[app] started ${app.getVersion()}`);
   app.setAppUserModelId?.(APP_USER_MODEL_ID);
   // In dev mode (VITE_DEV_SERVER_URL set, app NOT packaged) the SvelteKit dev
-  // server is already running externally — skip the local handler.js launch.
+  // server is already running externally — skip loading the built server.
   // In prod (or a packaged build where VITE_DEV_SERVER_URL is set by an
   // attacker — ARCH review finding #1, CRITICAL — resolveDevServerUrl()
-  // ignores it), start the adapter-node HTTP server and wire it to the
+  // ignores it), load the SvelteKit server from build/ and wire it to the
   // app:// protocol so the window only ever loads local content.
   if (!resolveDevServerUrl(app.isPackaged, process.env.VITE_DEV_SERVER_URL)) {
     try {
-      await startSvelteKitServer(slog, skAuthToken);
+      await loadSvelteKitServer(slog);
     } catch (err) {
       console.error("[sk-server] failed to start SvelteKit server:", err);
       // Non-fatal (ARCH review #28): registerAppProtocol still comes up and
-      // serves a styled retry page for every app:// request until
-      // skServerPort is set (corrupt install / port exhaustion / missing
-      // handler.js can all still resolve without a restart — e.g. a later
-      // manual retry). But a console.error alone stranded the author on a
-      // raw "SvelteKit server not started" page with zero explanation, so
+      // serves a styled retry page for every app:// request until the server
+      // has loaded (a corrupt install can still resolve without a restart —
+      // e.g. a later manual retry). But a console.error alone stranded the
+      // author on a raw "server not started" page with zero explanation, so
       // also surface it as a plain-language native dialog right away.
       dialog.showErrorBox(
         "Gutterpress couldn't start",
@@ -1899,7 +1890,7 @@ app.whenReady().then(async () => {
       );
     }
   }
-  registerAppProtocol(skAuthToken);
+  registerAppProtocol();
   registerUrlPreviewHeaderWatch();
   createWindow();
   appShellReady = true;

@@ -1,13 +1,13 @@
 /**
  * Unit tests for electron/sveltekit-host.ts's buildHostErrorPage (ARCH review
  * #28) — the extracted, pure HTML-page builder behind the app:// protocol's
- * 503 ("server not started") and 502 ("proxy error") responses.
+ * 503 ("server not loaded yet") and 500 ("Server.respond() threw") responses.
  *
  * Previously both responses were a raw text body with no explanation and no
  * way to recover short of force-quitting the app. buildHostErrorPage() is a
  * pure function (no `protocol`/`Response`/Electron dependency) — this file
  * only ever calls that one export, never registerAppProtocol()/
- * startSvelteKitServer() (which do touch `protocol`/`app`).
+ * loadSvelteKitServer() (which do touch `protocol`/`app`).
  *
  * sveltekit-host.ts still imports `{ app, protocol } from "electron"` at
  * module scope though, so importing it at all requires a mock: outside a

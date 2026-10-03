@@ -20,12 +20,12 @@ This repo is a Bun workspace with three packages:
   no separate `compile` package.json script or `scripts/compile.ts`. The
   no-bundlers-at-runtime rule (§1 below) applies to this package.
 - **`packages/desktop/`** (`@dimm-city/gutterpress-desktop`) — Electron desktop
-  app with a SvelteKit SPA frontend. The SPA is built with
-  `@sveltejs/adapter-node`, which emits a Node HTTP handler (`build/handler.js`).
-  In production the Electron main process starts that handler on a local
-  `127.0.0.1` server (OS-assigned port) and serves the SPA to the window via a
-  custom `app://` protocol handler that proxies every request to the local
-  server with `fetch`. Host capabilities are exposed as ~100
+  app with a SvelteKit SPA frontend. The SPA is built with the package's own
+  tiny `adapter-electron.js`, which writes the SvelteKit server unbundled to
+  `build/server/` and the browser assets to `build/client/`. In production the
+  Electron main process constructs that server and answers every `app://`
+  request from the window in-process with `Server.respond()` — there is no
+  HTTP server, port, or proxy. Host capabilities are exposed as ~100
   `src/routes/api/**/+server.ts` HTTP routes (status, fs, dialog, theme, plugin,
   remote/sync, vcs, recovery, …) — NOT a handful of `ipcMain.handle()`
   endpoints. The `ipcMain`/preload bridge is deliberately narrow: it carries
@@ -433,15 +433,16 @@ are unaffected by this rule — this rule governs the new Git/source surface onl
 > standard, applied by default.
 
 The desktop app is an Electron shell hosting a **SvelteKit SPA** (built with
-`@sveltejs/adapter-node`). The SPA is written so it could run unchanged in a
+the package's `adapter-electron.js`). The SPA is written so it could run unchanged in a
 browser PWA tomorrow. To make that true — and to keep the desktop build correct
 — the renderer never contains host/Node code; it reaches the host through one
 of two seams, chosen by capability class, and both keep the SPA "PWA-clean."
 
-**Transport.** In production, Electron main starts the adapter-node handler
-(`build/handler.js`) on a local `127.0.0.1` HTTP server and serves the window
-via the `app://` protocol, which proxies each request to that server with
-`fetch`. Host capabilities the renderer needs are reached two ways: the bulk
+**Transport.** In production, Electron main constructs the SvelteKit server
+from `build/server/` and answers each `app://` request from the window
+in-process with `Server.respond()` (`electron/sveltekit-host.ts`); static
+assets come straight from `build/client/`. No HTTP server, no port, no proxy.
+Host capabilities the renderer needs are reached two ways: the bulk
 (status, fs, dialog, theme, plugin, remote/sync, vcs, recovery, …) are ordinary
 `src/routes/api/**/+server.ts` HTTP routes the SPA calls with `fetch("/api/…")`;
 a **narrow** `ipcMain`/preload bridge carries only the things a plain HTTP
@@ -553,8 +554,8 @@ and the browser (`WebAdapter`); on the Electron target, `api.ts` remains the
 correct call site for those capabilities.
 
 **Verification (must pass before any desktop change is "done"):** the client
-SPA bundle must contain no host code — adapter-node emits the browser assets
-to `build/client/`, and this is now **enforced automatically** by ONE script,
+SPA bundle must contain no host code — the SvelteKit build emits the browser
+assets to `build/client/`, and this is now **enforced automatically** by ONE script,
 `tools/check-render-purity.mjs`: CI runs it (`.github/workflows/ci.yml`) and
 the desktop app's `npm run build` runs it with `--strict` (absent dir or zero
 scannable files = failure). It fails on host code — the named leak
@@ -562,8 +563,8 @@ identifiers (`fileURLToPath`/`createRequire`/`isomorphic-git`), any quoted
 `node:*` specifier, or a bare builtin `require()` (generated from
 `builtinModules`, never hand-listed) — anywhere under `build/client/`.
 Two caveats keep this honest:
-(1) the server side — `build/server/`, `build/handler.js`, and the
-`+server.ts` routes compiled into it — is host Node code by design; the check
+(1) the server side — `build/server/` and the `+server.ts` routes compiled
+into it — is host Node code by design; the check
 scopes to `build/client/` only. (2) Rollup tree-shaking can HIDE a leak from
 the production scan while `vite dev` (no tree-shaking) still crashes on it —
 this is exactly how a shared bun-build chunk topped with `createRequire`

@@ -57,7 +57,7 @@ export function isTrustedAppUrl(url: string, config: OriginPolicyConfig): boolea
 
 /**
  * Resolve the trusted dev-server URL for `mainWindow.loadURL`, the
- * origin-policy config, and the "is the local adapter-node server needed"
+ * origin-policy config, and the "is the built SvelteKit server needed"
  * check — the ONE gate all three call sites in main.ts must share (ARCH
  * review finding #1, CRITICAL).
  *

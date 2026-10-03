@@ -22,9 +22,9 @@
 //
 // Usage:  node tools/check-render-purity.mjs [buildDir] [--strict]
 //   buildDir defaults to packages/desktop/build/client (relative to the repo
-//   root) — the browser assets adapter-node emits. It MUST NOT default to the
-//   whole build/ tree: adapter-node also emits build/server/ + build/handler.js
-//   (the compiled +server.ts host routes), which are host Node code BY DESIGN
+//   root) — the browser assets the SvelteKit build emits. It MUST NOT default
+//   to the whole build/ tree: the build also emits build/server/ (the compiled
+//   +server.ts host routes), which is host Node code BY DESIGN
 //   (§8) and legitimately contain node:fs/isomorphic-git/etc. Scoping to
 //   build/client/ is the whole point of the §8 verification contract.
 //   Without --strict, an absent dir prints a skip notice and exits 0 (safe to
