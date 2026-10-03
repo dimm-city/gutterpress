@@ -7,7 +7,7 @@
  * — and NOTHING from `node:*`/`fs`/`path`/`url`. This is what the desktop's WebAdapter imports
  * (a *value* import that stays PWA-clean), so the in-browser live preview (#33)
  * can render the opened project entirely client-side with no localhost server
- * and no puppeteer.
+ * and no headless Chromium.
  *
  * The CLI build path keeps using `renderChapters` / `renderChaptersToFile` from
  * `./lib/markdown/index.ts` (the node wrapper around this same core).

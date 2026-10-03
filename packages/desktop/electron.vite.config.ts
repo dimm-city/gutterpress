@@ -32,7 +32,7 @@ export default defineConfig({
         // electron is the runtime (devDependency → not caught by
         // externalizeDepsPlugin) and the lib is a workspace:* dep (also not
         // caught). Externalize both: electron is provided by the runtime, and
-        // the lib (with its puppeteer-core/markdown-it graph) loads from
+        // the lib (with its markdown-it/isomorphic-git graph) loads from
         // node_modules — keeping main tiny.
         // electron-updater is externalized explicitly (the plugin misses it
         // under bun's node_modules layout): it's a production dependency, so

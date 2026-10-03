@@ -20,10 +20,6 @@ on:
       - "examples/**"
   workflow_dispatch:
 
-env:
-  PUPPETEER_SKIP_DOWNLOAD: "true"
-  PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
-
 jobs:
   preview-smoke:
     name: Native preview smoke (chromium)

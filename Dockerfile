@@ -29,9 +29,7 @@
 FROM oven/bun:1 AS builder
 
 # The builder only needs the CLI + lib graph to bundle; skip heavy optionals.
-ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1 \
-    PUPPETEER_SKIP_DOWNLOAD=1 \
-    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=1
+ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
 
 WORKDIR /src
 COPY . .
@@ -107,13 +105,10 @@ RUN set -eux; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*
 
-ENV PUPPETEER_SKIP_DOWNLOAD=1 \
-    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=1
-
 WORKDIR /app
 
 # Install the package's runtime deps. dist/ is built with `--packages=external`,
-# so all `dependencies` (markdown-it*, puppeteer-core, isomorphic-git,
+# so all `dependencies` (markdown-it*, ws, isomorphic-git,
 # markdownlint, postcss, …) are resolved here from the pinned minimal
 # package.json the builder stage emitted (name/version/dependencies, exact
 # versions from bun.lock — see finding #47 — dropping devDependencies).

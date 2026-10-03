@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 import { resolveChromiumExecutable } from "../../lib/chromium.ts";
 import { getAssetPath } from "../../lib/embedded-assets.ts";
-import { closeBrowser, getBrowser } from "../../lib/browser-pool.ts";
+import { closeBrowser, getBrowser } from "./test-support/browser.ts";
 
 /**
  * WP-B item 1: `Gutterpress.refresh()` must rebuild the strip structure, not
@@ -57,14 +57,14 @@ testIf(
       const url = `${root}refresh-splice.html`;
       const expectedUrl = `${root}refresh-splice-expected.html`;
       try {
-        const browser = await getBrowser(RENDER_TEST_TIMEOUT_MS);
+        const browser = await getBrowser();
 
         const page = await browser.newPage();
         let before: number;
         let afterRefresh: number;
         let repeat: { counts: number[]; runs: number[]; textSame: boolean[] };
         try {
-          await page.goto(url, { waitUntil: "networkidle0" });
+          await page.goto(url);
           await page.waitForFunction(
             "window.Gutterpress && window.Gutterpress.totalPages > 0"
           );
@@ -106,7 +106,7 @@ testIf(
         const expectedPage = await browser.newPage();
         let expected: number;
         try {
-          await expectedPage.goto(expectedUrl, { waitUntil: "networkidle0" });
+          await expectedPage.goto(expectedUrl);
           await expectedPage.waitForFunction(
             "window.Gutterpress && window.Gutterpress.totalPages > 0"
           );

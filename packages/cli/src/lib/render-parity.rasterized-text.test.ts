@@ -37,7 +37,6 @@ import { fileURLToPath } from "node:url";
 
 import { resolveChromiumExecutable } from "./chromium.ts";
 import { runBuild } from "./build-runner.ts";
-import { closeBrowser } from "./browser-pool.ts";
 import { clearPdfCache } from "./pdf-inspect.ts";
 import { compareReports, extractReport, type Report } from "./render-parity.ts";
 
@@ -53,7 +52,7 @@ const testIf = chromium ? test : test.skip;
 if (!chromium) {
   // eslint-disable-next-line no-console
   console.warn(
-    "[render-parity.rasterized-text.test] No Chromium resolved — skipping. Install Chrome/Chromium or set CHROMIUM_PATH/PUPPETEER_EXECUTABLE_PATH to run it.",
+    "[render-parity.rasterized-text.test] No Chromium resolved — skipping. Install Chrome/Chromium or set CHROMIUM_PATH to run it.",
   );
 }
 
@@ -61,7 +60,6 @@ const TIMEOUT_MS = 90_000;
 const dirsToClean: string[] = [];
 
 afterAll(async () => {
-  if (chromium) await closeBrowser();
   clearPdfCache();
   for (const d of dirsToClean.splice(0)) await rm(d, { recursive: true, force: true });
 });
@@ -80,7 +78,6 @@ async function buildFixturePdf(projectDir: string, tag: string): Promise<string>
     skipLint: true,
     skipPreValidate: true,
     skipPostValidate: true,
-    keepBrowserAlive: true,
     rawArgs: {},
   });
   if (!result.pdfPath) throw new Error(`build of ${projectDir} produced no pdfPath`);

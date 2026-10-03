@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import { resolveChromiumExecutable } from "../../lib/chromium.ts";
 import { getAssetPath } from "../../lib/embedded-assets.ts";
-import { closeBrowser, getBrowser } from "../../lib/browser-pool.ts";
+import { closeBrowser, getBrowser } from "./test-support/browser.ts";
 import { MARKER_CSS } from "../../lib/markdown/markers.js";
 import { GUTTERPRESS_CSS } from "../../lib/markdown/gutterpress-css.ts";
 
@@ -52,10 +52,10 @@ testIf(
       );
       const { url, close } = await serveDir(dir, "flush-pin.html");
       try {
-        const browser = await getBrowser(RENDER_TEST_TIMEOUT_MS);
+        const browser = await getBrowser();
         const page = await browser.newPage();
         try {
-          await page.goto(url, { waitUntil: "networkidle0" });
+          await page.goto(url);
           await page.waitForFunction("window.Gutterpress?.totalPages > 0");
           const m = await page.evaluate(() => {
             const sheets = Array.from(document.querySelectorAll(".gp-sheet")).map((s) =>

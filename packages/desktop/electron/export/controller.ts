@@ -93,14 +93,12 @@ export interface ExportControllerDeps {
   gitIdentity: () => Promise<GitIdentityArgs>;
   /** Network reachability (Electron net.isOnline in production). */
   isOnline: () => boolean;
-  /** True when GUTTERPRESS_PUPPETEER opts out of the Electron engine browser. */
-  usePuppeteer: () => boolean;
   /**
    * Electron-native engine browser factory (electron/engine-browser.ts).
    * Threaded through to `lib.runBuild` as `engineBrowser` — `build-runner.ts`
-   * only calls it (lazily, one hidden `BrowserWindow` per build). The
-   * `usePuppeteer()` escape hatch falls back to the CLI's pooled external
-   * Chromium (and its usual Chromium-milestone preflight) when set.
+   * calls it in place of its own Chromium launcher (one hidden
+   * `BrowserWindow` per build) and closes what it returns. The desktop has
+   * exactly one PDF path: Electron's bundled Chromium.
    */
   engineBrowser: () => Promise<EngineBrowser>;
   /** Single active export session accessors (electron/pdf-export.ts). */
@@ -321,8 +319,8 @@ export class ExportController {
           skipPreValidate: args.skipPreValidate,
           skipPostValidate: args.skipPostValidate,
           allowShrink: args.allowShrink,
-          // Render with Electron's own Chromium unless explicitly opted out.
-          engineBrowser: this.deps.usePuppeteer() ? undefined : this.deps.engineBrowser,
+          // Render with Electron's own Chromium.
+          engineBrowser: this.deps.engineBrowser,
           rawArgs: { input: args.input, format, out: args.out },
         });
         this.deps.throwIfCanceled(exportSession);

@@ -42,10 +42,6 @@ on:
       - ".github/workflows/render-perf-gate.yml"
   workflow_dispatch:
 
-env:
-  PUPPETEER_SKIP_DOWNLOAD: "true"
-  PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
-
 jobs:
   behaviour:
     name: App behaviour (xvfb)

@@ -476,8 +476,8 @@ export class ExportController {
   }
 
   /**
-   * #33 Phase 5: HTML export on web. PDF is desktop-only (puppeteer/
-   * printToPDF), so on the web (capabilities().nativeSavePath === false) the
+   * #33 Phase 5: HTML export on web. PDF is desktop-only (a headless Chromium
+   * / printToPDF), so on the web (capabilities().nativeSavePath === false) the
    * export delivers a standalone book.html instead — build() renders it
    * in-browser and returns a blob: downloadUrl, which the host's
    * `downloadFile` turns into a browser download. Desktop is UNCHANGED: it

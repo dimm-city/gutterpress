@@ -45,7 +45,7 @@ ciOnly("CI environment preconditions", () => {
       "No Chromium resolved in CI. Every suite gated on resolveChromiumExecutable() " +
         "has stopped asserting, including the @page-background removal-trigger canary, " +
         "and the build is green anyway. Fix the runner's Chrome install or " +
-        "PUPPETEER_EXECUTABLE_PATH — do not silence this test.",
+        "CHROMIUM_PATH — do not silence this test.",
     ).toBeTruthy();
   });
 

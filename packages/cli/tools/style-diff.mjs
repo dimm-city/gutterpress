@@ -34,9 +34,12 @@
  *   `string-set` / `content: string()` values, @page margin-box content and
  *   chrome, actual page breaks and page counts, anything about pagination.
  *   It compares the INPUT to fragmentation, not the fragmentation.
+ *
+ * DRIVER: the engine's own launcher + raw-CDP session (`engine/shared/cdp.ts`)
+ *   — the same Chromium, flags and resolver (`CHROMIUM_PATH`) the CLI builds
+ *   with, so the styles compared here are the ones the fragmenter sees.
  */
-import puppeteer from "puppeteer-core";
-import { resolveChromiumExecutable } from "../src/lib/chromium.ts";
+import { launchChromium } from "../src/engine/shared/cdp.ts";
 
 const DEFAULT_PROPS = [
   "break-before", "break-after", "break-inside", "column-fill", "column-span",
@@ -61,19 +64,16 @@ if (files.length !== 2) {
   process.exit(2);
 }
 
-const browser = await puppeteer.launch({
-  executablePath: await resolveChromiumExecutable(),
-  headless: true,
-  args: ["--no-sandbox"],
-});
+const browser = await launchChromium();
 
 async function dump(file) {
   const page = await browser.newPage();
   // print media: the refactors this tool guards are print-only, and @media
   // print rules would otherwise be invisible here.
-  await page.emulateMediaType("print");
-  await page.goto("file://" + file, { waitUntil: "domcontentloaded", timeout: 180_000 });
-  const rows = await page.evaluate((props) => {
+  await page.send("Emulation.setEmulatedMedia", { media: "print" });
+  await page.navigate("file://" + file);
+  const rows = await page.evaluate(`(() => {
+    const props = ${JSON.stringify(PROPS)};
     const out = [];
     for (const el of document.querySelectorAll("body *")) {
       const cs = getComputedStyle(el);
@@ -81,7 +81,7 @@ async function dump(file) {
       out.push(el.tagName + "." + cls + "|" + props.map((p) => cs.getPropertyValue(p)).join(";"));
     }
     return out;
-  }, PROPS);
+  })()`);
   await page.close();
   return rows;
 }

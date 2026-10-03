@@ -370,7 +370,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // Viewport-relative units (vw/vh — 143 uses in one real book) resolve
     // against the LAYOUT viewport even in print, so print output silently
     // depends on whatever window/emulation state the browser happens to be
-    // in: an engine-launched window, a pooled puppeteer default, or the
+    // in: an engine-launched window, a host-launched browser's default, or the
     // width check's cleared override each gave DIFFERENT sizes — measured
     // as a 0.84x shrink-to-fit on one path and none on another, for the
     // same document. Pin the viewport to the author's page size before
@@ -387,9 +387,10 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // check and the viewer prediction read boxes laid out inside it, so it
     // must be the sheet — not the sheet minus a scrollbar. Chromium only
     // hides scrollbars if something asks, and until this line nothing in the
-    // print path did: the CLI's browser is launched by puppeteer, which
-    // passes `--hide-scrollbars` in its defaults, and the desktop's Electron
-    // `BrowserWindow` is not. Measured 2026-08-24, same staged bytes: 576px
+    // print path did: the CLI's browser was launched (then by puppeteer, now
+    // by `launchChromium`) with `--hide-scrollbars` among its default flags,
+    // and the desktop's Electron `BrowserWindow` is not. Measured 2026-08-24,
+    // same staged bytes: 576px
     // on the CLI and 561px on the desktop, and one box that measured 450px
     // against a 442px limit on the CLI measured 435px on the desktop — a hard
     // error on one host, a shipped book on the other, and 8 of 21 low-DPI

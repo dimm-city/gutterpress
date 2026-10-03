@@ -8,7 +8,6 @@ import { renderChaptersToFile } from "./markdown/index";
 import { loadPluginsWithCss, type LoadedPluginsWithCss } from "./markdown/plugins";
 import { type AssetCopy } from "./asset-inline";
 import { resolveOutputDir, artifactName, BOOK_HTML } from "./output-paths";
-import { prewarmBrowser, closeBrowser, RENDER_TIMEOUT_MS } from "./browser-pool";
 import {
   convertToPdfxCmyk,
   hasLiveTransparency,
@@ -23,16 +22,8 @@ import { BuildError } from "./build-error";
 import type { BuildDiagnostic } from "../engine/compiler/build.ts";
 import type { Browser as EngineBrowser, Session as EngineSession } from "../engine/shared/cdp.ts";
 import { UsageError } from "./cli-args";
-import {
-  preflightBuildTools,
-  rendersInPooledChromium,
-  computeGates,
-  verifyNativeChromiumMilestone,
-  type Gates,
-} from "./build-preflight";
+import { preflightBuildTools, computeGates, type Gates } from "./build-preflight";
 import { shipViewerHtml, createStageRoot, stageBookAssets } from "./build-staging";
-
-export { RENDER_TIMEOUT_MS };
 
 // EngineBrowser/EngineSession are part of this module's long-standing public
 // surface (re-exported through src/api/index.ts) — re-export so existing
@@ -79,24 +70,17 @@ export interface BuildRunnerOptions {
    * diagnostic — this buys an eyes-open build, not a clean one.
    */
   allowShrink?: boolean;
-  /**
-   * Keep the pooled headless browser alive after the build returns. A one-shot
-   * CLI build leaves this false so the process can exit; a long-lived
-   * preview/watch server sets it true so the browser stays warm across rebuilds
-   * (every rebuild then skips the ~1–2s Chromium launch). The server owns
-   * `closeBrowser()` on shutdown.
-   */
-  keepBrowserAlive?: boolean;
   rawArgs: Record<string, unknown>;
   /**
-   * Optional injected engine-Chromium factory for native builds
-   * (`engine.ts`'s `buildNativePdf`). When omitted (the CLI's default), the
-   * native engine attaches to `browser-pool.ts`'s pooled external Chromium,
-   * and the usual Chromium preflight / milestone check apply. When supplied
-   * (the desktop, over its own Electron `BrowserWindow` — see
-   * `packages/desktop/electron`'s engine-browser module), it is used
-   * instead, no external Chromium is required, and both of those checks are
-   * skipped.
+   * Optional injected engine-browser factory for native (pdf/pdfx) builds.
+   * When omitted (the CLI's default), `runBuild` launches the system Chromium
+   * through `engine/shared/cdp.ts`'s `launchChromium()` — the one launcher,
+   * which resolves the binary via `lib/chromium.ts` and enforces the engine's
+   * milestone floor. When supplied (the desktop, over its own Electron
+   * `BrowserWindow` — see `packages/desktop/electron`'s engine-browser
+   * module), it is called in `launchChromium`'s place: no external Chromium
+   * is required or looked for. Either way `runBuild` owns the browser it
+   * obtains and closes it when the build ends.
    */
   engineBrowser?: () => Promise<EngineBrowser>;
 }
@@ -579,8 +563,8 @@ export async function resolveIccProfile(
  * inline. `wroteMessage` and the fingerprint/paths differ per format, so they
  * are passed in.
  *
- * Does NOT close the pooled browser (finding #50) — that used to happen here,
- * on the success-only path, which leaked the pre-warmed Chromium whenever a
+ * Does NOT close the browser (finding #50) — that used to happen here, on the
+ * success-only path, which leaked the pre-launched Chromium whenever a
  * quality gate or render step threw before reaching this function. The close
  * is now a single try/finally around the whole pipeline in {@link runBuild}
  * so it runs on every exit, not just this one.
@@ -719,7 +703,16 @@ async function listPdfs(dir: string): Promise<string[]> {
  * and hands it the resolved context + the rendered book.
  */
 interface OutputStrategy {
-  finish(ctx: BuildContext, htmlFile: string): Promise<BuildRunnerResult>;
+  /**
+   * `browser` is the engine browser `runBuild` launched (or was handed) for
+   * this build — present for pdf/pdfx, absent for html, which never paginates
+   * at build time.
+   */
+  finish(
+    ctx: BuildContext,
+    htmlFile: string,
+    browser: EngineBrowser | undefined
+  ): Promise<BuildRunnerResult>;
 }
 
 /**
@@ -775,8 +768,10 @@ class HtmlOutput implements OutputStrategy {
 class PdfOutput implements OutputStrategy {
   async finish(
     ctx: BuildContext,
-    htmlFile: string
+    htmlFile: string,
+    browser: EngineBrowser | undefined
   ): Promise<BuildRunnerResult> {
+    if (!browser) throw new BuildError("PDF build reached the render stage without a browser");
     const { workDir, outDir, inputDir, config, opts, format, manifestDir, gates } = ctx;
 
     const pdfxMode: PdfxFlavor | undefined =
@@ -815,7 +810,7 @@ class PdfOutput implements OutputStrategy {
           signature: config.print.signature,
           allowShrink: opts.allowShrink,
         },
-        opts.engineBrowser
+        browser
       );
       for (const d of engineDiagnostics) log.warn(d.message);
 
@@ -925,19 +920,22 @@ class PdfOutput implements OutputStrategy {
 
 /**
  * Orchestrate a build: resolve the context, mkdir the output, preflight tools
- * (non-html), pre-warm the browser when this build will render in Chromium,
- * run the quality gates, render the book, then hand off to the per-format output
- * strategy for rendering + finalize. The heavy lifting lives in the named
- * stages + strategies above (plus ./build-preflight and ./build-staging);
- * this reads as the pipeline it is.
+ * (non-html), start the engine browser when this build will render in
+ * Chromium, run the quality gates, render the book, then hand off to the
+ * per-format output strategy for rendering + finalize. The heavy lifting
+ * lives in the named stages + strategies above (plus ./build-preflight and
+ * ./build-staging); this reads as the pipeline it is.
  *
- * Everything from the prewarm decision onward runs inside a try/finally that
- * closes the pooled browser (unless `keepBrowserAlive` is set) — finding #50:
+ * The browser is this function's to own: there is ONE launcher
+ * (`engine/shared/cdp.ts`'s `launchChromium`, or the host's injected
+ * `engineBrowser` factory in its place), it is started un-awaited so the
+ * ~1–2s Chromium cold start overlaps lint + validation + markdown render, it
+ * is awaited right before rendering (so a missing or too-old Chromium fails
+ * there, with the launcher's own message, rather than deep inside the engine),
+ * and it is closed in a `finally` that runs on every exit — finding #50:
  * previously the close only happened on the success tail (inside
- * `finalizeBuild`), so a prewarmed Chromium leaked whenever a quality gate or
- * the render itself threw. `closeBrowser()` is a no-op if nothing was
- * launched (including the injected-`engineBrowser` path, which never uses
- * the pool), so it is safe to call unconditionally here.
+ * `finalizeBuild`), so a pre-launched Chromium leaked whenever a quality gate
+ * or the render itself threw.
  */
 export async function runBuild(
   opts: BuildRunnerOptions
@@ -950,56 +948,66 @@ export async function runBuild(
   //
   // Without this we'd discover missing tools deep in the pipeline (30-90s in
   // for a real book) when ENOENT bubbles up from a child_process spawn. A 50ms
-  // probe at the top gives an actionable error immediately.
-  // Every build reuses this file's puppeteer pool (./engine.ts connects the
-  // engine's raw-CDP client to the pool's browser) unless `opts.engineBrowser`
-  // is supplied (the desktop's Electron path), which drives its own Chromium
-  // and needs neither the pool nor an external binary; `preflightBuildTools`
-  // itself skips its Chromium check in that case, but ghostscript/qpdf checks
-  // for pdfx still apply, so this call stays unconditional.
+  // probe at the top gives an actionable error immediately. With an injected
+  // `engineBrowser` (the desktop's Electron path) no external Chromium is
+  // needed and `preflightBuildTools` skips that check, but the ghostscript/
+  // qpdf checks for pdfx still apply, so this call stays unconditional.
   if (ctx.format !== "html") {
     await preflightBuildTools(ctx.format, opts, ctx.config);
   }
 
-  // Pre-warm the headless browser NOW (fire-and-forget) so the ~1–2s Chromium
-  // cold start overlaps with lint + validation + markdown render + asset staging
-  // below, instead of sitting on the critical path at render time. Only when
-  // this build will actually render in the POOLED Chromium: a PDF/PDFX build
-  // with no injected `engineBrowser`. HTML builds never touch Chromium — the
-  // native viewer bundle paginates in the reader's browser, not at build time.
-  if (rendersInPooledChromium(ctx.format, opts)) prewarmBrowser(RENDER_TIMEOUT_MS);
+  // Start the engine browser NOW, un-awaited, so the ~1–2s Chromium cold start
+  // overlaps lint + validation + markdown render + asset staging below instead
+  // of sitting on the critical path at render time. Only for a build that
+  // paginates at build time (pdf/pdfx) — HTML builds never touch Chromium; the
+  // native viewer bundle paginates in the reader's browser. `launchChromium`
+  // is loaded lazily (CLAUDE.md §2) so `gutterpress --help` and html builds
+  // never pay for the engine's CDP client.
+  const launch =
+    opts.engineBrowser ??
+    (async () => (await import("../engine/shared/cdp.ts")).launchChromium());
+  const browserPromise = ctx.format === "html" ? null : launch();
+  // The real await is below; this only keeps an early launch failure from
+  // surfacing as an unhandled rejection while the gates are still running.
+  browserPromise?.catch(() => {});
 
   try {
     // Created INSIDE the try so the finally below always reclaims it. Creating
     // it earlier leaked a `.slug-build-*` directory on every build whose
-    // preflight or prewarm threw — e.g. every attempt with Ghostscript missing.
+    // preflight threw — e.g. every attempt with Ghostscript missing.
     await fsp.mkdir(ctx.workDir, { recursive: true });
 
     await runQualityGates(ctx);
 
-    // Verify the pooled Chromium meets the engine's minimum milestone BEFORE
-    // rendering — a too-old browser previously surfaced only deep inside
-    // buildNativePdf, after the render below had already run. Not folded into
-    // preflightBuildTools() (which runs before quality gates): that would
-    // force this build to await Chromium's cold start before lint/validate
-    // even start, defeating prewarmBrowser()'s overlap. Placed here instead,
-    // the common failure case (a quality gate throwing) never pays for it,
-    // and by the time gates finish the prewarmed browser is usually already
-    // warm. See verifyNativeChromiumMilestone's doc comment. Skipped when
-    // `opts.engineBrowser` is supplied: that path never touches the pool (the
-    // desktop drives its own Electron Chromium instead), so there is nothing
-    // here for this check to verify.
-    if (rendersInPooledChromium(ctx.format, opts)) {
-      await verifyNativeChromiumMilestone();
+    // Await the browser BEFORE rendering: a missing or too-old Chromium fails
+    // here, with the launcher's own install/override message, rather than
+    // after the markdown render has already run. Not awaited inside
+    // preflightBuildTools (which runs before the gates) because that would
+    // put the cold start back on the critical path; here, the common failure
+    // case (a quality gate throwing) never pays for it, and by the time the
+    // gates finish the launch has usually already completed.
+    let browser: EngineBrowser | undefined;
+    if (browserPromise) {
+      try {
+        browser = await browserPromise;
+      } catch (err) {
+        throw new BuildError(
+          `Could not launch a Chromium browser for the PDF build: ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+          2
+        );
+      }
     }
 
     const htmlFile = await renderBook(ctx);
 
     const strategy: OutputStrategy =
       ctx.format === "html" ? new HtmlOutput() : new PdfOutput();
-    return await strategy.finish(ctx, htmlFile);
+    return await strategy.finish(ctx, htmlFile, browser);
   } finally {
-    if (!opts.keepBrowserAlive) await closeBrowser();
+    // Close whatever the launch produced, even if this build threw before
+    // awaiting it (the launch may still be in flight when a gate fails).
+    if (browserPromise) await browserPromise.then((b) => b.close(), () => {});
     // A failed build must leave the previous output untouched — the work dir is
     // the only thing it ever wrote to, so removing it is the whole rollback.
     await fsp.rm(ctx.workDir, { recursive: true, force: true });

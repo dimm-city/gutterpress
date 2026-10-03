@@ -3,8 +3,12 @@ import { findTool } from "./tool-probe";
 import { INSTALL_HINTS } from "./install-hints";
 
 const SYSTEM_PATHS: string[] = [
-  // CI / Docker env vars (checked first — explicit override always wins)
+  // Explicit override always wins. CHROMIUM_PATH is THE documented variable
+  // (User Guide ch. 7, docs/docker.md, the CLI's own error messages).
   process.env.CHROMIUM_PATH,
+  // Deprecated alias, kept only because the user guide documented it while
+  // puppeteer-core was the launcher. Nothing in this repo sets it; new setups
+  // should use CHROMIUM_PATH.
   process.env.PUPPETEER_EXECUTABLE_PATH,
   // Linux
   "/usr/bin/google-chrome",
@@ -67,12 +71,16 @@ const PATH_CANDIDATES: string[] = [
  * Returns the path to a system Chrome/Chromium binary, or undefined if none found.
  *
  * Resolution order:
- *   1. CHROMIUM_PATH / PUPPETEER_EXECUTABLE_PATH env vars
+ *   1. CHROMIUM_PATH env var (PUPPETEER_EXECUTABLE_PATH is a deprecated alias)
  *   2. Hard-coded standard install paths (Chrome / Edge / Brave / Chromium
  *      on Linux, macOS, Windows)
  *   3. PATH probe via `which` / `where.exe` for common binary names
  *      (catches Scoop, Chocolatey, Homebrew, portable installs, and any
  *      Chromium variant the user added to PATH manually)
+ *
+ * This is the ONE resolver: the launcher (`engine/shared/cdp.ts`'s
+ * `launchChromium`), the build preflight, the fingerprint and `doctor` all
+ * use it, so the binary they report is the binary that runs.
  *
  * Prefer requireChromiumExecutable() for build paths that cannot continue
  * without it — it surfaces a multi-line install-instructions error.

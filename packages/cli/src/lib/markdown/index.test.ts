@@ -17,7 +17,7 @@ import {
  * real build, exercising the EXACT call chain `renderBook()` in
  * build-runner.ts uses (`resolveConfig` -> `renderChaptersToFile` ->
  * `renderChapters` -> `resolveActiveStyles` -> `assembleBookHtml`'s `<link>`
- * emission) — no puppeteer/Chromium needed since this is the HTML-assembly
+ * emission) — no Chromium needed since this is the HTML-assembly
  * stage, not pagination/PDF.
  *
  * Before the fix, `DTRPG_PRESET.styles` (`["css/print.css"]`) made

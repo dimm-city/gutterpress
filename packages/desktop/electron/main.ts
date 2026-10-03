@@ -1673,7 +1673,6 @@ const exportController = new ExportController({
   tokenStore: electronTokenStore,
   gitIdentity: async () => gitIdentityFrom(await readSettings()),
   isOnline: () => net.isOnline(),
-  usePuppeteer: () => !!process.env.GUTTERPRESS_PUPPETEER,
   engineBrowser: createElectronEngineBrowser,
   getActiveExportSession,
   setActiveExportSession,
