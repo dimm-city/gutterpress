@@ -152,9 +152,30 @@ line six</pre>
 <h2 id="after">After</h2>
 </main></body></html>`;
 
+// The same column with a table in it: two rows of two cells, 21px lines,
+// 3px of bottom padding on every cell. Row one's cells both wrap to two lines
+// on shared baselines; row two pairs a two-line cell with a one-line cell
+// that the default `vertical-align: middle` centres between them, so its
+// baseline is its own. Print's text runs read that row as three lines.
+const TABLE_PAGE = `<!doctype html><html><head><meta charset="utf-8"><style>
+@page { size: 4in 3in; margin: 94px 20px; }
+body { margin: 0; font-family: serif; font-size: 14px; line-height: 21px; }
+p, h2 { margin: 0; padding: 0; line-height: 21px; }
+table { border-collapse: collapse; width: 100%; }
+td { padding: 0 0 3px; line-height: 21px; width: 50%; }
+</style></head><body><main>
+<p>Intro line.</p>
+<table><tbody>
+<tr><td>left one<br>left two</td><td>right one<br>right two</td></tr>
+<tr><td>end one<br>end two</td><td>end right</td></tr>
+</tbody></table>
+<h2 id="after">After</h2>
+</main></body></html>`;
+
 let browser: Browser | undefined;
 let dir: string | undefined;
 let url = "";
+let tableUrl = "";
 let agent = "";
 let viewer = "";
 
@@ -167,6 +188,9 @@ async function fixture(): Promise<Browser> {
   const file = join(dir, "book.html");
   await writeFile(file, PAGE);
   url = pathToFileURL(file).href;
+  const tableFile = join(dir, "table.html");
+  await writeFile(tableFile, TABLE_PAGE);
+  tableUrl = pathToFileURL(tableFile).href;
   agent = await Bun.file(await getAssetPath("engine/gutterpress-agent.js")).text();
   viewer = await Bun.file(await getAssetPath("engine/gutterpress-viewer.js")).text();
   browser = await launchChromium();
@@ -180,8 +204,8 @@ afterAll(async () => {
 
 const VIEWPORT = { width: 384, height: 288 };
 
-async function mount(bodyClass = "") {
-  const page = await mountViewer(await fixture(), url, agent, viewer, VIEWPORT);
+async function mount(bodyClass = "", at = () => url) {
+  const page = await mountViewer(await fixture(), at(), agent, viewer, VIEWPORT);
   await page.evaluate(EXACT_FIT_BROWSER_JS);
   if (bodyClass) {
     await page.evaluate(`document.body.className = ${JSON.stringify(bodyClass)}; window.__gpParity.relayout();`);
@@ -323,6 +347,66 @@ testIf(
         `window.__gpExactFit(window.__gpParity).measure(${JSON.stringify(input)})`,
       );
       expect(m.error).toMatch(/fits "line three" on p1 once its break rules are neutralised/);
+    } finally {
+      await page.close();
+    }
+  },
+  TIMEOUT,
+);
+
+testIf(
+  "a table row's lines are its cells' lines merged by baseline, left to right",
+  async () => {
+    const page = await mount("", () => tableUrl);
+    try {
+      const rows = await page.evaluate<Array<Array<{ text: string; page: number; top: number; bottom: number }>>>(`(() => {
+        const fx = window.__gpExactFit(window.__gpParity);
+        return Array.from(document.querySelectorAll("tr")).map((tr) =>
+          fx.linesOf(tr).map((l) => ({ text: l.text, page: l.page, top: l.top, bottom: l.bottom })));
+      })()`);
+      // row one: both cells wrap, so each baseline reads as one line across the row
+      expect(rows[0]!.map((l) => l.text)).toEqual(["left oneright one", "left tworight two"]);
+      expect(rows[0]!.map((l) => l.page)).toEqual([1, 1]);
+      expect(rows[0]![0]!.bottom).toBeCloseTo(42, 1);
+      // the row's last line reaches the row's edge: the cells' 3px of padding
+      expect(rows[0]![1]!.bottom).toBeCloseTo(66, 1);
+      // row two: the centred one-line cell sits on its own baseline between the other cell's two
+      expect(rows[1]!.map((l) => l.text)).toEqual(["end one", "end right", "end two"]);
+      // the row does not fit page 1 (66 + 45 > 100), so the viewer moved it whole
+      expect(rows[1]!.map((l) => l.page)).toEqual([2, 2, 2]);
+      expect(rows[1]![0]!.top).toBeCloseTo(0, 1);
+      expect(rows[1]![2]!.bottom).toBeCloseTo(45, 1);
+    } finally {
+      await page.close();
+    }
+  },
+  TIMEOUT,
+);
+
+testIf(
+  "print keeps a table row: its last line is found across the row's cells and projected back",
+  async () => {
+    const page = await mount("", () => tableUrl);
+    try {
+      // as if print had kept row two on page 1, its last line's baseline at 94px
+      const input = {
+        lo: 1,
+        agreeingPage: 1,
+        headingIds: ["after"],
+        printLines: {
+          1: [line("Intro line.", 10), line("left oneright one", 31), line("left tworight two", 52),
+              line("end one", 73), line("end right", 83), line("end two", 94)],
+          2: [line("After", 10)],
+        },
+      };
+      const m = await page.evaluate<any>(
+        `window.__gpExactFit(window.__gpParity).measure(${JSON.stringify(input)})`,
+      );
+      expect(m.error).toBeUndefined();
+      expect(m).toMatchObject({ page: 1, keptBy: "print", text: "end two", block: "tr", lineIndex: 3, lineCount: 3, contentHPx: 100 });
+      // the viewer's geometry puts the row right under row one: 66 + 45
+      expect(m.viewerBottomPx).toBeCloseTo(111, 1);
+      expect(m.printBaselinePx).toBe(94);
     } finally {
       await page.close();
     }
