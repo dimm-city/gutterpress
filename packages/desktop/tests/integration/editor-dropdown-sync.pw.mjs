@@ -92,7 +92,8 @@ writeFileSync(
 // below to keep meaning "a pane preference alone never opens the editor".)
 writeFileSync(
   join(userDataDir, "app-settings.json"),
-  JSON.stringify({ preview: { mode: "viewer", paneMode: "edit" } }),
+  // An author (the app defaults to a reader, who has no editor) …
+  JSON.stringify({ workspace: { role: "author" }, preview: { mode: "viewer", paneMode: "edit" } }),
 );
 
 log(`launching ${target}`);

@@ -92,10 +92,11 @@ writeFileSync(
     leftPanel: { open: true, activeTab: "files", width: 280 },
   }),
 );
-// Start in Read: the Edit click below must be a real Read → Edit transition.
+// An author (the app defaults to a reader, who has no Edit control) who
+// starts in Read: the Edit click below must be a real Read → Edit transition.
 writeFileSync(
   join(userDataDir, "app-settings.json"),
-  JSON.stringify({ settingsSchemaVersion: 2, preview: { mode: "viewer" } }),
+  JSON.stringify({ settingsSchemaVersion: 2, workspace: { role: "author" }, preview: { mode: "viewer" } }),
 );
 appArgv.push(`--user-data-dir=${userDataDir}`);
 

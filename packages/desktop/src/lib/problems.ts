@@ -107,24 +107,11 @@ export function splitProblemMessage(message: string): { text: string; code: stri
  * markup inspection.
  */
 
-/** Selecting a problem in compact mode should also close the overlay so the
- *  writer lands on the now-unobscured editor. Non-compact mode's panel never
- *  covers the editor, so selection there leaves the panel state untouched. */
-export function closesPanelOnSelect(compact: boolean): boolean {
-  return compact;
-}
 
-/** Escape closes an OPEN panel from anywhere when it's the compact sheet (it
- *  covers the toggle, so there is no other dismiss path), and from inside the
- *  list when it's the in-flow row — otherwise it must not interfere with
- *  unrelated Escape handling elsewhere in the app. */
-export function closesPanelOnEscape(
-  compact: boolean,
-  open: boolean,
-  key: string,
-  focusInside = false,
-): boolean {
-  return open && key === "Escape" && (compact || focusInside);
+/** Escape closes an OPEN panel only from inside the list — otherwise it must
+ *  not interfere with unrelated Escape handling elsewhere in the app. */
+export function closesPanelOnEscape(open: boolean, key: string, focusInside: boolean): boolean {
+  return open && key === "Escape" && focusInside;
 }
 
 /** Errors + warnings (the badge count). Infos are listed but not badged. */

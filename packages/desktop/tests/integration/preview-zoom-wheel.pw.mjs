@@ -56,6 +56,9 @@ writeFileSync(
   join(userDataDir, "gutterpress-prefs.json"),
   JSON.stringify({ lastProjectDir: bookDir, leftPanel: { open: false }, showLandingAtStartup: false }),
 );
+// The drives write and publish, so they run as an author (the app defaults
+// to a reader, who has no editor).
+writeFileSync(join(userDataDir, "app-settings.json"), JSON.stringify({ workspace: { role: "author" } }));
 
 const electronApp = await electron.launch({
   executablePath,

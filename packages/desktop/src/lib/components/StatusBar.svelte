@@ -1,52 +1,34 @@
 <script lang="ts">
   /**
-   * StatusBar — slim bottom bar hosting the book switcher, sync status
-   * pill, save indicator, and the Problems badge (VS Code-style).
+   * StatusBar — slim bottom bar hosting the book switcher, the sync status
+   * pill and the app actions (settings, help).
    *
    * Layout (left → right):
-   *   [book switcher] [Problems badge] ··· [sync pill] [saving indicator] [settings] [help]
+   *   [book switcher] ··· [sync pill] [settings] [help]
    *
-   * The project you picked comes first, then what's wrong with it; everything
-   * about saving and syncing is grouped at the far right beside the app
-   * actions. Problems takes the slack in between.
-   *
-   * The Problems LIST is not in the bar: ProblemsPanel renders it as a row of
-   * its own directly above the bar, in normal flow, so opening it pushes the
-   * workspace up instead of covering the left panel and the editor (#307). The
-   * bar itself carries only a compact badge (status icon + count); with nothing
-   * to list it is inert — an empty list has nothing to open.
-   *
-   * The bar is always visible when a project is open (the saving indicator shows
-   * "All changes saved" at rest, never blank), so both pieces of status are
-   * readable at a glance — not sporadic or hard to see.
+   * The save state and the Problems badge are about the text being edited, so
+   * they sit on the editor toolbar instead. This bar still owns the "Where
+   * your work is kept" view the save indicator opens (it needs the sync
+   * pill's live state): the page calls `toggleSummary(trigger)`.
    *
    * PWA-clean: all host work via api.* routes (CLAUDE.md §8).
    * No node: builtins or gutterpress value imports.
    */
   import SyncStatusPill from "$lib/components/SyncStatusPill.svelte";
-  import ProblemsPanel from "$lib/components/ProblemsPanel.svelte";
   import BookSwitcher from "$lib/components/BookSwitcher.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { api } from "$lib/api";
   import SaveStatusView from "$lib/components/SaveStatusView.svelte";
   import { saveStatusCopy, type SaveStatusActionId } from "$lib/save-status";
-  import { canExpandProblems, problemCounts, problemsSummary } from "$lib/problems";
-  import { onDestroy, onMount, tick } from "svelte";
+  import { onDestroy, tick } from "svelte";
   import type { SyncState } from "$lib/platform/contract";
   import type { ManualBackup } from "$lib/routes/sync-controller.svelte";
-  import type { ProblemEntry } from "$lib/platform/dtos";
   import type { ProjectBookEntry } from "$lib/routes/project-session-controller.svelte";
-
-  let isCompact = $state(false);
-
-  function updateCompact() {
-    isCompact = typeof window !== "undefined" && window.matchMedia("(max-width: 820px)").matches;
-  }
 
   let {
     /** Currently-open project directory. Bar is shown when non-null. */
     projectDir = null as string | null,
-    /** Source mode — sync pill and problems only shown for folder sources. */
+    /** Source mode — the sync pill only shows for folder sources. */
     sourceMode = "folder" as "folder" | "url",
     /** Whether the project has sync capability (canSync). */
     canSync = false,
@@ -70,34 +52,16 @@
     autoVersions = true,
     /** Settings → Saving "Keep this book backed up online". */
     autoBackup = true,
-    /** Whether a file is currently open in the editor. */
-    fileOpen = false,
     /** Whether a manual force-save is in progress. */
     forceSaving = false,
     /** Whether a manual force-sync is in progress. */
     forceSyncing = false,
-    /** Problem entries from the lint runner. */
-    problems = [] as ProblemEntry[],
-    /** Whether the project has not been checked yet: the lint is running, or
-     *  the render that triggers it has not finished (the page passes
-     *  `problemsLoading || rendering`). Until then the bar says "Checking…" —
-     *  never "No problems", which would be a claim about a check that has not
-     *  happened. */
-    problemsLoading = false,
-    /** Set when the lint API call itself failed — distinct from a clean run
-     *  that found zero problems. Forwarded to ProblemsPanel's neutral (not
-     *  green) error row (#28). */
-    problemsError = null as string | null,
     /** Books in the open project's repo; switcher shows only when > 1. */
     books = [] as ProjectBookEntry[],
     /** The book the session currently targets. */
     activeBookDir = null as string | null,
     /** Called with a book's folder path when the author switches books. */
     onSwitchBook = undefined as ((path: string) => void) | undefined,
-    /** Whether the problems panel body is expanded. Bindable. */
-    problemsOpen = $bindable(false),
-    /** Called when a problem entry is clicked. */
-    onProblemSelect = undefined as ((p: ProblemEntry) => void) | undefined,
     /** Called when the sync pill needs the reconnect flow. */
     onReconnect = undefined as (() => void) | undefined,
     /** Called when the author clicks "Connect to sync online" in the summary
@@ -141,17 +105,11 @@
     autoBackup?: boolean;
     savePhase?: "clean" | "dirty" | "saving" | "error";
     autoSave?: boolean;
-    fileOpen?: boolean;
     forceSaving?: boolean;
     forceSyncing?: boolean;
-    problems?: ProblemEntry[];
-    problemsLoading?: boolean;
-    problemsError?: string | null;
-    problemsOpen?: boolean;
     books?: ProjectBookEntry[];
     activeBookDir?: string | null;
     onSwitchBook?: (path: string) => void;
-    onProblemSelect?: (p: ProblemEntry) => void;
     onReconnect?: () => void;
     onConnectOnline?: () => void;
     onShowLog?: (logFilePath: string | null) => void;
@@ -167,25 +125,8 @@
     onOpenHelp?: () => void;
   } = $props();
 
-  /** Human-readable save label — always has a value so the bar never goes blank. */
-  let saveLabel = $derived.by((): string => {
-    if (!fileOpen) return "";
-    if (forceSaving) return "Saving…";
-    switch (savePhase) {
-      case "dirty":
-        return autoSave ? "Saving…" : "Unsaved changes";
-      case "saving":
-        return "Saving…";
-      case "error":
-        return "Couldn't save";
-      case "clean":
-      default:
-        return "Edits saved";
-    }
-  });
-
-  // ── "Where your work is kept" dialog ────────────────────────────────────────
-  // Clicking the save indicator opens a modal that explains Saving / Versions /
+  // ── "Where your work is kept" view ──────────────────────────────────────────
+  // The editor toolbar's save indicator opens a view that explains Saving / Versions /
   // Online backup separately and reconciles them ("saved, but not in a version
   // yet"). The words come from the pure `saveStatusCopy` ($lib/save-status);
   // this block only gathers the facts: the bar's own props, the live sync state
@@ -194,7 +135,7 @@
   // $effect: fetches are event-driven (open / after an action / a save landing
   // while open), per CLAUDE.md §8.
   let summaryOpen = $state(false);
-  let saveBtnEl = $state<HTMLButtonElement | null>(null);
+  let saveBtnEl = $state<HTMLElement | null>(null);
   let latestVersionAt = $state<number | null>(null);
   let changedFiles = $state<number | null>(null);
   let stale = $state(false);
@@ -233,9 +174,6 @@
   // "Repair online backup" asks once ("armed") before it runs; the dialog's
   // Online backup section shows what it does and the Repair now / Cancel pair.
   let repairPhase = $state<"idle" | "armed" | "running">("idle");
-
-  /** Autosave off and edits waiting for the author's Save. */
-  let unsaved = $derived(savePhase === "dirty" && !autoSave && !forceSaving);
 
   let copy = $derived(
     saveStatusCopy({
@@ -328,7 +266,10 @@
     stopRefresh();
     factsSeq++; // any in-flight lookup is now stale
   }
-  function toggleSummary() {
+  /** Open or close the view from its trigger (the editor toolbar's save
+   *  indicator), which gets focus back when it closes. */
+  export function toggleSummary(trigger?: HTMLElement) {
+    saveBtnEl = trigger ?? null;
     if (summaryOpen) closeSummary();
     else openSummary();
   }
@@ -431,32 +372,6 @@
     }
   }
 
-  /** CSS modifier class for the save indicator. */
-  let saveClass = $derived.by((): string => {
-    if (forceSaving) return "saving";
-    switch (savePhase) {
-      case "dirty":
-      case "saving":
-        return "saving";
-      case "error":
-        return "save-error";
-      case "clean":
-      default:
-        return "saved";
-    }
-  });
-  let saveStateIcon = $derived.by<"pen-line" | "refresh-cw" | "triangle-alert" | "circle-check">(() => {
-    if (unsaved) return "pen-line";
-    if (forceSaving || savePhase === "saving" || savePhase === "dirty") return "refresh-cw";
-    if (savePhase === "error") return "triangle-alert";
-    return "circle-check";
-  });
-
-  /** Show "Save now" when there are unsaved edits and no force-save in progress. */
-  let showForceSave = $derived(
-    fileOpen && (savePhase === "dirty" || savePhase === "saving") && !forceSaving,
-  );
-
   // Show the status pill for any folder project that can sync OR keep local
   // version history. canSync projects get sync status; local-only projects get
   // the "Version history on" label (both open the operation log on click).
@@ -464,126 +379,21 @@
     !!projectDir && sourceMode === "folder" && (canSync || canSnapshot),
   );
 
-  // Problems access always renders — below 820px ProblemsPanel's `compact` prop
-  // presents the expanded list as a full-viewport sheet instead of the row
-  // above the bar, which has no room to be useful at narrow widths.
-  let showProblems = $derived(!!projectDir && sourceMode === "folder");
-
-  // The list is ProblemsPanel's and sits BEFORE the bar in the DOM, so Tab from
-  // the toggle would skip past it. Like the editor toolbar's popups, opening
-  // moves focus into the list, and Escape / Close there hand it back to the
-  // toggle (passed down as `toggleEl`). No focus trap — it is a panel.
-  let toggleEl = $state<HTMLButtonElement | null>(null);
-  let panelRef = $state<{ focusList: () => void } | null>(null);
-
-  function toggleProblems() {
-    problemsOpen = !problemsOpen;
-    if (problemsOpen) void tick().then(() => panelRef?.focusList());
-  }
-
-  // #307: the bar shows the problems state itself; the toggle exists only when
-  // there is something to expand (see canExpandProblems).
-  let counts = $derived(problemCounts(problems));
-  let canExpand = $derived(canExpandProblems(problems, problemsError, problemsOpen));
-  // Icon for the no-errors-no-warnings states (counts supply their own icons).
-  let stripIcon = $derived.by<"info" | "refresh-cw" | "circle-check">(() =>
-    problemsError ? "info" : problemsLoading ? "refresh-cw" : "circle-check",
-  );
-  /** The badge's accessible name. Always set: the badge is icons + bare
-   *  counts, which say nothing to a screen reader. */
-  let stripLabel = $derived(
-    problemsLoading
-      ? "Problems: checking"
-      : problemsError
-        ? "Problems: couldn't check"
-        : counts.badge > 0
-          ? `Problems: ${problemsSummary(counts)}`
-          : "No problems",
-  );
-
   // Book switcher: only when the open repo actually has more than one book.
   let showBookSwitcher = $derived(!!projectDir && sourceMode === "folder" && books.length > 1);
 
-  onMount(updateCompact);
 </script>
 
-<svelte:window onresize={updateCompact} />
-
-<!-- The Problems list: a row of its own directly above the bar, in normal flow
-     (the page's .shell is a flex column), so opening it shrinks the workspace
-     instead of covering the left panel's buttons or the editor's last lines. -->
-{#if showProblems}
-  <ProblemsPanel
-    bind:this={panelRef}
-    {problems}
-    loading={problemsLoading}
-    error={problemsError}
-    bind:open={problemsOpen}
-    onSelect={onProblemSelect}
-    compact={isCompact}
-    {toggleEl}
-  />
-{/if}
-
 <div class="status-bar" role="status" aria-label="Application status">
-  <!-- Left cluster: [book switcher]. The problems toggle sits directly to its
-       right (the project you picked, then what's wrong with it); everything
-       about SAVING and SYNCING is grouped at the far right, next to the
-       settings and help buttons. -->
+  <!-- Left cluster: [book switcher]; syncing is grouped at the far right,
+       next to the settings and help buttons. -->
   <div class="status-left">
     {#if showBookSwitcher}
       <BookSwitcher {books} {activeBookDir} onSelect={(path) => onSwitchBook?.(path)} />
     {/if}
   </div>
 
-  <!-- Problems: a compact badge — status icon + count — immediately right of
-       the book switcher. A button (opens ProblemsPanel) only while there is
-       something to list (#307); otherwise the same badge, inert. The accessible
-       name carries what the badge only shows as icons. -->
-  {#if showProblems}
-    <div class="status-problems">
-      {#if canExpand}
-        <button
-          bind:this={toggleEl}
-          class="toggle-strip"
-          onclick={toggleProblems}
-          aria-expanded={problemsOpen}
-          aria-controls="problems-body"
-          aria-label={stripLabel}
-          title={`${stripLabel} — ${problemsOpen ? "click to collapse" : "click to expand"}`}
-        >
-          {#if counts.badge > 0}
-            {#if counts.errors > 0}
-              <span class="strip-count error-count">
-                <Icon name="circle-x" size={13} />
-                {counts.errors}
-              </span>
-            {/if}
-            {#if counts.warnings > 0}
-              <span class="strip-count warning-count">
-                <Icon name="triangle-alert" size={13} />
-                {counts.warnings}
-              </span>
-            {/if}
-          {:else}
-            <span class="strip-count" class:ok={!problemsError && !problemsLoading}>
-              <Icon name={stripIcon} size={13} />
-              {#if !problemsError && !problemsLoading}0{/if}
-            </span>
-          {/if}
-        </button>
-      {:else}
-        <span class="strip-idle" role="img" aria-label={stripLabel} title={stripLabel}>
-          <span class="strip-count" class:ok={!problemsLoading}>
-            <Icon name={problemsLoading ? "refresh-cw" : "circle-check"} size={13} />
-            {#if !problemsLoading}0{/if}
-          </span>
-        </span>
-      {/if}
-    </div>
-  {/if}
-
-  <!-- Right cluster: [sync pill] | [save indicator] [Save now] -->
+  <!-- Right cluster: [sync pill] -->
   <div class="status-right">
     {#if showSync}
       {#key projectDir}
@@ -596,29 +406,6 @@
           onVersionsProblem={() => (versionsProblemDir = projectDir)}
         />
       {/key}
-    {/if}
-    {#if showSync && fileOpen}
-      <span class="status-sep" aria-hidden="true"></span>
-    {/if}
-    {#if fileOpen}
-      <button
-        bind:this={saveBtnEl}
-        type="button"
-        class="save-indicator {saveClass}"
-        aria-haspopup="dialog"
-        aria-expanded={summaryOpen}
-        onclick={toggleSummary}
-        title={unsaved ? "You have unsaved changes — click for details" : savePhase === "dirty" || savePhase === "saving" ? "Pending changes are being saved — click for details" : "Where your work is kept — click for details"}
-      ><Icon name={saveStateIcon} size={13} /><span class="save-text" aria-live="polite" aria-atomic="true">{saveLabel}</span></button>
-    {/if}
-    {#if showForceSave}
-      <button
-        class="status-action"
-        onclick={onForceSave}
-        disabled={forceSaving}
-        aria-label="Save changes now"
-        title="Save changes now"
-      >Save now</button>
     {/if}
   </div>
 
@@ -661,13 +448,12 @@
     flex: 0 0 auto;
     min-width: 0;
   }
-  /* Empty when no book switcher shows — drop its padding so the problems
-     panel starts flush at the left edge instead of behind a phantom gap. */
+  /* Empty when no book switcher shows — drop its padding. */
   .status-left:empty {
     padding: 0;
   }
 
-  /* ── Right cluster (sync + save) ──────────────────────────────────────── */
+  /* ── Right cluster (sync) ──────────────────────────────────────── */
   .status-right {
     display: flex;
     align-items: center;
@@ -676,46 +462,7 @@
     min-height: 28px;
     flex: 0 0 auto;
     min-width: 0;
-    /* Hugs the right even when the problems toggle (the flex-grower) is
-       absent, so the save/sync group always sits beside the app actions. */
     margin-left: auto;
-  }
-
-  /* Vertical separator between sync pill and save indicator. */
-  .status-sep {
-    width: 1px;
-    height: 14px;
-    background: var(--app-border-strong);
-    flex-shrink: 0;
-  }
-
-  /* ── Status action buttons (Save now / Sync now) ─────────────────────── */
-  .status-action {
-    font-size: 11px;
-    white-space: nowrap;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    padding: 1px 6px;
-    border: 1px solid var(--app-border-strong);
-    border-radius: 3px;
-    background: transparent;
-    color: var(--app-text-secondary);
-    cursor: pointer;
-    line-height: 1.4;
-    transition: color 0.12s, background 0.12s, border-color 0.12s;
-    flex-shrink: 0;
-  }
-  .status-action:hover:not(:disabled) {
-    color: var(--app-text);
-    background: var(--app-surface-hover);
-    border-color: var(--app-border-strong);
-  }
-  .status-action:focus-visible {
-    outline: 2px solid var(--app-focus-ring);
-    outline-offset: 1px;
-  }
-  .status-action:disabled {
-    opacity: 0.5;
-    cursor: default;
   }
 
   /* ── Bare icon button (settings, help) ───────────────────────────────────── */
@@ -747,92 +494,12 @@
     cursor: default;
   }
 
-  /* ── Save indicator (a button that opens the "Where your work is kept" dialog) ── */
-  .save-indicator {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 11px;
-    white-space: nowrap;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    transition: color 0.15s;
-    background: transparent;
-    border: none;
-    padding: 2px 4px;
-    border-radius: 3px;
-    cursor: pointer;
-  }
-  .save-indicator:hover { background: var(--app-surface-hover); }
-  .save-indicator:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
-
-  /* Resting (saved): visible but calm — not faint enough to miss. */
-  .save-indicator.saved {
-    color: var(--app-text-secondary);
-  }
-  /* In-flight (saving / dirty): slightly more prominent. */
-  .save-indicator.saving {
-    color: var(--app-text-secondary);
-    font-style: italic;
-  }
-  /* Error: uses the app error token so it stands out. */
-  .save-indicator.save-error {
-    color: var(--app-error-text);
-    font-weight: 600;
-  }
-
-  /* Narrow (the app's single-pane layout): the lower-priority items drop out.
-     The save state stays — it is the one thing the bar is always for. */
+  /* Narrow (the app's single-pane layout): the sync pill drops out. */
   @media screen and (max-width: 820px) {
-    .status-right :global(.sync-pill),
-    .status-sep,
-    .status-action {
+    .status-right :global(.sync-pill) {
       display: none;
     }
   }
-
-  /* ── Problems badge ───────────────────────────────────────────────────── */
-  /* Icon + count only — deliberately quiet. The list it opens is
-     ProblemsPanel's own row above the bar. */
-  .status-problems {
-    flex: 0 0 auto;
-    display: flex;
-    min-width: 0;
-  }
-  .toggle-strip,
-  .strip-idle {
-    display: flex;
-    box-sizing: border-box; /* the idle badge is a span: same 30px as the button */
-    align-items: center;
-    min-height: 30px;
-    padding: 5px 10px;
-    gap: 8px;
-    border: none;
-    /* A separator on the LEFT so it reads as a distinct group from the book
-       switcher beside it. */
-    border-left: 1px solid var(--app-border);
-    font-size: 11px;
-    color: var(--app-text-secondary);
-  }
-  .toggle-strip {
-    background: transparent;
-    cursor: pointer;
-  }
-  .toggle-strip:hover {
-    background: var(--app-control-hover-bg);
-  }
-  .toggle-strip:focus-visible {
-    outline: 2px solid var(--app-focus-ring);
-    outline-offset: -2px;
-  }
-  .strip-count {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    font-variant-numeric: tabular-nums;
-  }
-  .error-count { color: var(--app-error-text); }
-  .warning-count { color: var(--app-warning-text); }
-  .strip-count.ok { color: var(--app-success-text); }
 
   .shell-actions {
     display: flex;

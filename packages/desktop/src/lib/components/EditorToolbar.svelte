@@ -23,6 +23,9 @@
    *   of what shows.
    */
   import Icon from "$lib/components/Icon.svelte";
+  import type { ProblemEntry } from "$lib/platform/dtos";
+  import { canExpandProblems, problemCounts, problemsSummary } from "$lib/problems";
+  import { saveIndicator } from "$lib/save-status";
   import type { ComponentProps } from "svelte";
   import { basenameOf } from "$lib/platform/paths";
   import { api } from "$lib/api";
@@ -57,6 +60,15 @@
     saving = false,
     /** Absolute path to the open project, used to compute assets/ destination. */
     projectDir = null,
+    savePhase = "clean",
+    autoSave = true,
+    forceSaving = false,
+    onSaveStatus,
+    problems = [],
+    problemsLoading = false,
+    problemsError = null,
+    problemsOpen = false,
+    onToggleProblems,
   }: {
     filePath?: string | null;
     onAction: (action: ToolbarAction, payload?: ToolbarPayload) => void;
@@ -64,7 +76,37 @@
     savePending?: boolean;
     saving?: boolean;
     projectDir?: string | null;
+    // ── Status cluster (right end): the save state and the Problems badge.
+    //    Both are about the text being edited, so they live here rather than
+    //    in the status bar; their lists/views are the page's. ──
+    savePhase?: "clean" | "dirty" | "saving" | "error";
+    autoSave?: boolean;
+    forceSaving?: boolean;
+    /** Opens "Where your work is kept"; the indicator renders only when set. */
+    onSaveStatus?: (trigger: HTMLButtonElement) => void;
+    problems?: ProblemEntry[];
+    problemsLoading?: boolean;
+    problemsError?: string | null;
+    problemsOpen?: boolean;
+    /** Toggles the Problems list (rendered by the page at the bottom of the
+     *  editor pane); the badge renders only when set. */
+    onToggleProblems?: (trigger: HTMLButtonElement) => void;
   } = $props();
+
+  let indicator = $derived(saveIndicator({ savePhase, autoSave, forceSaving }));
+  let counts = $derived(problemCounts(problems));
+  let canExpand = $derived(canExpandProblems(problems, problemsError, problemsOpen));
+  let stripLabel = $derived(
+    problemsLoading
+      ? "Problems: checking"
+      : problemsError
+        ? "Problems: couldn't check"
+        : counts.badge > 0
+          ? `Problems: ${problemsSummary(counts)}`
+          : "No problems",
+  );
+  let saveStatusEl = $state<HTMLButtonElement | null>(null);
+  let problemsToggleEl = $state<HTMLButtonElement | null>(null);
 
   /** The set of named edit actions the toolbar can fire. */
   export type ToolbarAction =
@@ -548,6 +590,56 @@
       </div>
     {/if}
   </div>
+
+  <div class="tb-group status-group">
+    {#if onToggleProblems}
+      <!-- Problems: a compact badge — status icon + count. A button only while
+           there is something to list; otherwise the same badge, inert. The
+           accessible name carries what the badge only shows as icons. -->
+      {#if canExpand}
+        <button
+          bind:this={problemsToggleEl}
+          class="toggle-strip"
+          onclick={() => problemsToggleEl && onToggleProblems(problemsToggleEl)}
+          aria-expanded={problemsOpen}
+          aria-controls="problems-body"
+          aria-label={stripLabel}
+          title={`${stripLabel} — ${problemsOpen ? "click to collapse" : "click to expand"}`}
+        >
+          {#if counts.badge > 0}
+            {#if counts.errors > 0}
+              <span class="strip-count error-count"><Icon name="circle-x" size={13} />{counts.errors}</span>
+            {/if}
+            {#if counts.warnings > 0}
+              <span class="strip-count warning-count"><Icon name="triangle-alert" size={13} />{counts.warnings}</span>
+            {/if}
+          {:else}
+            <span class="strip-count" class:ok={!problemsError && !problemsLoading}>
+              <Icon name={problemsError ? "info" : problemsLoading ? "refresh-cw" : "circle-check"} size={13} />
+              {#if !problemsError && !problemsLoading}0{/if}
+            </span>
+          {/if}
+        </button>
+      {:else}
+        <span class="strip-idle" role="img" aria-label={stripLabel} title={stripLabel}>
+          <span class="strip-count" class:ok={!problemsLoading}>
+            <Icon name={problemsLoading ? "refresh-cw" : "circle-check"} size={13} />
+            {#if !problemsLoading}0{/if}
+          </span>
+        </span>
+      {/if}
+    {/if}
+    {#if onSaveStatus}
+      <button
+        bind:this={saveStatusEl}
+        type="button"
+        class="save-indicator {indicator.cls}"
+        aria-haspopup="dialog"
+        onclick={() => saveStatusEl && onSaveStatus(saveStatusEl)}
+        title={indicator.title}
+      ><Icon name={indicator.icon} size={13} /><span class="save-text" aria-live="polite" aria-atomic="true">{indicator.label}</span></button>
+    {/if}
+  </div>
 </div>
 {/if}
 
@@ -942,7 +1034,6 @@
   /* ── More overflow button ─────────────────────────────────────────────────── */
   .tb-more-wrap {
     position: relative;
-    margin-left: auto;
     /* Hidden by default; shown only while a group is hidden (tiers below). */
     display: none;
   }
@@ -953,6 +1044,56 @@
     flex-direction: column;
     gap: 1px;
   }
+
+  /* ── Status cluster (right end): Problems badge + save indicator ────────── */
+  .status-group {
+    margin-left: auto;
+    gap: 2px;
+  }
+  .toggle-strip,
+  .strip-idle {
+    display: inline-flex;
+    box-sizing: border-box;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 6px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    font-size: 11px;
+    color: var(--app-text-secondary);
+  }
+  .toggle-strip { cursor: pointer; }
+  .toggle-strip:hover { background: var(--app-control-hover-bg); }
+  .toggle-strip:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: -2px; }
+  .strip-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-variant-numeric: tabular-nums;
+  }
+  .error-count { color: var(--app-error-text); }
+  .warning-count { color: var(--app-warning-text); }
+  .strip-count.ok { color: var(--app-success-text); }
+  /* The save state: a button that opens "Where your work is kept". Resting
+     is calm but readable; in flight is italic; an error uses the error token. */
+  .save-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    white-space: nowrap;
+    background: transparent;
+    border: none;
+    padding: 3px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--app-text-secondary);
+  }
+  .save-indicator:hover { background: var(--app-control-hover-bg); }
+  .save-indicator:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
+  .save-indicator.saving { font-style: italic; }
+  .save-indicator.save-error { color: var(--app-error-text); font-weight: 600; }
 
   /*
    * Overflow tiers, by the toolbar's own width (a container query: the pane
@@ -968,8 +1109,10 @@
    * matching group, so the popup never repeats a visible button.
    */
   @container editor-toolbar (max-width: 479px) {
-    /* The Save label (the widest always-on control) yields first. */
-    .save-label {
+    /* The Save label (the widest always-on control) yields first, with the
+       save-state text beside the Problems badge. */
+    .save-label,
+    .save-text {
       display: none;
     }
     .save-btn {

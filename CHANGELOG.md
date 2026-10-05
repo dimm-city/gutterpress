@@ -32,7 +32,15 @@ This project follows [Semantic Versioning](https://semver.org/).
   control in the top-right corner, with the workspace out of sight until you
   close it (Esc or the X). Publish and *Where your work is kept* were pop-up
   dialogs before.
-- **Problems panel has a close button** in its top-right corner.
+- **Reader or author** (Settings → App). Gutterpress now asks how you use
+  it. A reader sees just the pages: Edit/Read, Setup and Publish are gone
+  from the toolbar and the book opens in Read. An author gets everything.
+  New installs start as a reader; the choice is remembered.
+- **Problems and the save state belong to editing.** The Problems badge and
+  the "Edits saved" indicator moved from the status bar to the editor
+  toolbar, and the Problems list opens at the bottom of the editor pane,
+  never over the preview. The panel has a close button in its top-right
+  corner.
 - **The toolbar keeps its labels longer** (#316). Edit/Read, Setup and
   Publish stay labelled down to a 900px-wide window instead of collapsing
   to icons at 1150px.

@@ -472,3 +472,38 @@ export function saveStatusCopy(input: SaveStatusInput): SaveStatusCopy {
     online: onlineSection(input),
   };
 }
+
+/** What the editor toolbar's save indicator shows for the current save state. */
+export interface SaveIndicator {
+  label: string;
+  icon: "pen-line" | "refresh-cw" | "triangle-alert" | "circle-check";
+  /** CSS modifier: `saved` | `saving` | `save-error`. */
+  cls: "saved" | "saving" | "save-error";
+  title: string;
+}
+
+export function saveIndicator(
+  i: Pick<SaveStatusInput, "savePhase" | "autoSave" | "forceSaving">,
+): SaveIndicator {
+  const unsaved = i.savePhase === "dirty" && !i.autoSave && !i.forceSaving;
+  const inFlight = i.forceSaving || i.savePhase === "saving" || (i.savePhase === "dirty" && i.autoSave);
+  const label = i.forceSaving
+    ? "Saving…"
+    : i.savePhase === "dirty"
+      ? i.autoSave ? "Saving…" : "Unsaved changes"
+      : i.savePhase === "saving"
+        ? "Saving…"
+        : i.savePhase === "error"
+          ? "Couldn't save"
+          : "Edits saved";
+  return {
+    label,
+    icon: unsaved ? "pen-line" : inFlight ? "refresh-cw" : i.savePhase === "error" ? "triangle-alert" : "circle-check",
+    cls: i.forceSaving || i.savePhase === "dirty" || i.savePhase === "saving" ? "saving" : i.savePhase === "error" ? "save-error" : "saved",
+    title: unsaved
+      ? "You have unsaved changes — click for details"
+      : inFlight
+        ? "Pending changes are being saved — click for details"
+        : "Where your work is kept — click for details",
+  };
+}

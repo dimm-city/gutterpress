@@ -5,22 +5,19 @@
    * Entirely presentational: the page owns the data (refreshed on each
    * live-preview rebuild) and the click-to-open navigation.
    *
-   * This is the LIST only. The toggle lives in the StatusBar, because it has to
-   * sit between that bar's other items — while the list needs a row of its own
-   * above the bar, in normal flow, so that opening it pushes the workspace up
-   * instead of covering the left panel and the editor (#307). Renders nothing
-   * visible while collapsed.
+   * This is the LIST only. The toggle is the editor toolbar's Problems badge;
+   * the page renders this list at the bottom of the editor pane, in normal
+   * flow, so opening it shortens the editor and never covers the preview —
+   * problems are an editing concern. Renders nothing visible while collapsed.
    *
-   * A plain disclosure, like the editor toolbar's popups: because the list
-   * comes BEFORE the bar in the DOM, the StatusBar moves focus into it on open
-   * (`focusList`), and Escape / Close hand focus back to the toggle. No focus
-   * trap — it is a panel, not a modal.
+   * A plain disclosure, like the editor toolbar's popups: the page moves
+   * focus into the list on open (`focusList`), and Escape / Close hand focus
+   * back to the toggle. No focus trap — it is a panel, not a modal.
    */
   import Icon from "$lib/components/Icon.svelte";
   import type { ProblemEntry } from "$lib/platform/dtos";
   import {
     closesPanelOnEscape,
-    closesPanelOnSelect,
     friendlySource,
     groupProblems,
     problemCounts,
@@ -34,7 +31,6 @@
     open = $bindable(false),
     onSelect,
     error = null,
-    compact = false,
     toggleEl = null,
   }: {
     problems: ProblemEntry[];
@@ -49,13 +45,7 @@
      * — so a broken checker is never mistaken for a validated project (#28).
      */
     error?: string | null;
-    /**
-     * Below 820px (the app's single-pane layout) the list has no room to
-     * grow out of the bar — it is presented as a full-viewport sheet instead
-     * (see `.problems-panel.compact` below), with its own Close button.
-     */
-    compact?: boolean;
-    /** The bar's toggle that opens this list — Escape and Close return focus here. */
+    /** The toolbar badge that opens this list — Escape and Close return focus here. */
     toggleEl?: HTMLButtonElement | null;
   } = $props();
 
@@ -78,24 +68,15 @@
     toggleEl?.focus();
   }
 
-  /**
-   * In compact mode the expanded body is a full-viewport
-   * sheet that visually covers the toggle in the bar below it, so the toggle's
-   * own collapse click can't reach it (the sheet intercepts the
-   * click). Selecting a problem should also return the writer to the
-   * now-unobscured editor rather than leaving the sheet open on top of it.
-   */
   function selectEntry(entry: ProblemEntry) {
     onSelect?.(entry);
-    if (closesPanelOnSelect(compact)) open = false;
   }
 
-  /** Escape closes the compact sheet from anywhere — there is otherwise no
-   *  dismiss path once the toggle strip is covered (see selectEntry above) —
-   *  and the in-flow row from inside the list. */
+  /** Escape from inside the list closes it (and only from inside, so an
+   *  unrelated Escape elsewhere never collapses it). */
   function handleWindowKeydown(e: KeyboardEvent) {
     const focusInside = !!bodyEl && bodyEl.contains(e.target as Node | null);
-    if (closesPanelOnEscape(compact, open, e.key, focusInside)) {
+    if (closesPanelOnEscape(open, e.key, focusInside)) {
       closeToToggle();
     }
   }
@@ -128,7 +109,6 @@
 <section
   class="problems-panel"
   class:expanded={open}
-  class:compact
   aria-label="Problems"
 >
   <!-- Panel body — shown only when expanded. The StatusBar's toggle controls it
@@ -144,9 +124,7 @@
     tabindex="-1"
   >
     <!-- A close control in the panel's own top-right corner, so it can be
-         dismissed from where the writer is looking (the status-bar toggle is
-         the other way; in compact mode the sheet covers that toggle, so this
-         is the only one). -->
+         dismissed from where the writer is looking. -->
     <div class="panel-body-bar">
       <span class="panel-body-bar-title">Problems</span>
       <button
@@ -222,9 +200,9 @@
 </section>
 
 <style>
-  /* In normal flow, directly above the status bar: opening the list makes the
-     workspace above it shorter instead of drawing over it (#307). The section
-     holds only the body, so collapsed it takes no space at all. */
+  /* In normal flow at the bottom of the editor pane: opening the list makes
+     the editor above it shorter instead of drawing over anything (#307). The
+     section holds only the body, so collapsed it takes no space at all. */
   .problems-panel {
     flex-shrink: 0;
     color: var(--app-text);
@@ -245,19 +223,6 @@
   .problems-panel .panel-body:focus-visible {
     outline: 2px solid var(--app-focus-ring);
     outline-offset: -2px;
-  }
-
-  /* Below 820px there is no room for a row of its own — the list becomes a
-     full-viewport sheet (below the toolbar, above everything else short of app
-     dialogs). The toggle in the status bar stays where it is, under the sheet. */
-  .problems-panel.compact .panel-body {
-    position: fixed;
-    top: 56px;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    max-height: none;
-    z-index: var(--app-z-sheet);
   }
 
   /* ── Panel body ──────────────────────────────────────────────────────────── */

@@ -274,6 +274,30 @@
            Qualified as "App appearance" so it can't be confused with the
            book's print look ("Look & style" in Book settings). -->
       {#if activeTab === "app"}
+      <!-- Reader or author: the one switch that decides how much of the app
+           shows. Reader is the default; the choice is remembered. -->
+      <section class="group">
+        <div class="group-head">
+          <h3>How you use Gutterpress</h3>
+        </div>
+        <div class="role-options" role="radiogroup" aria-label="How you use Gutterpress">
+          <label class="role-option" class:selected={s.workspace.role === "reader"}>
+            <input type="radio" name="set-role" value="reader" checked={s.workspace.role === "reader"} onchange={() => settings.set({ workspace: { role: "reader" } })} />
+            <span class="role-text">
+              <span class="role-title">Reader</span>
+              <span class="role-desc">Just the pages. Edit, Setup and Publish stay out of the way.</span>
+            </span>
+          </label>
+          <label class="role-option" class:selected={s.workspace.role === "author"}>
+            <input type="radio" name="set-role" value="author" checked={s.workspace.role === "author"} onchange={() => settings.set({ workspace: { role: "author" } })} />
+            <span class="role-text">
+              <span class="role-title">Author</span>
+              <span class="role-desc">Write and set up your book, then publish it.</span>
+            </span>
+          </label>
+        </div>
+      </section>
+
       <section class="group">
         <div class="group-head">
           <h3>App appearance</h3>
@@ -832,4 +856,22 @@
     color: var(--app-text-muted);
     font-weight: 400;
   }
+  /* Reader / Author choice */
+  .role-options { display: flex; flex-direction: column; gap: 8px; }
+  .role-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px;
+    border: 1px solid var(--app-border);
+    border-radius: 6px;
+    background: var(--app-surface-sunken);
+    cursor: pointer;
+  }
+  .role-option:hover { background: var(--app-surface-hover); }
+  .role-option.selected { border-color: var(--app-focus-ring); background: var(--app-surface-hover); }
+  .role-option input { margin-top: 2px; flex-shrink: 0; }
+  .role-text { display: flex; flex-direction: column; gap: 2px; }
+  .role-title { font-size: 13px; font-weight: 600; color: var(--app-text); }
+  .role-desc { font-size: 11px; color: var(--app-text-muted); line-height: 1.35; }
 </style>

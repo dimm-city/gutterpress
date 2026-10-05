@@ -15,6 +15,7 @@
   import type { ProblemEntry } from "$lib/platform/dtos";
   import { buildProblems, problemCounts } from "$lib/problems";
   import StatusBar from "$lib/components/StatusBar.svelte";
+  import ProblemsPanel from "$lib/components/ProblemsPanel.svelte";
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
   import ProjectActivityView from "$lib/components/ProjectActivityView.svelte";
   import NewProjectWizard from "$lib/components/NewProjectWizard.svelte";
@@ -916,7 +917,13 @@
   // (before the deriveds that read it) so it is initialised ahead of them.
   // A local $state that `setMode` writes through to settings and `modeSink`
   // below reads back on load.
-  let mode = $state<WorkspaceMode>(settings.current.preview.mode);
+  // Reader or author (Settings → App). A reader only reads: the workspace
+  // stays in Read, and the toolbar hides Edit/Read, Setup and Publish. The
+  // author's saved Edit/Read choice is kept untouched underneath.
+  let readerMode = $derived(settings.current.workspace.role === "reader");
+  const effectiveMode = (s: typeof settings.current): WorkspaceMode =>
+    s.workspace.role === "reader" ? "viewer" : s.preview.mode;
+  let mode = $state<WorkspaceMode>(effectiveMode(settings.current));
   // Focus: a SESSION-ONLY toggle layered on top of Edit or Read (see
   // focus-mode.ts). It hides the chrome and nothing else — it never touches
   // `mode` or the persisted left-panel setting, so leaving it restores exactly
@@ -1295,7 +1302,7 @@
       previewBgSink(s.appearance.previewBg);
       splitRatioSink(s.preview.splitRatio);
       contextMenuSettingSink(s.preview.contextMenu);
-      modeSink(s.preview.mode);
+      modeSink(effectiveMode(s));
       autoSaveSink(s.versionHistory.autoSave);
     }),
   );
@@ -1558,6 +1565,7 @@
    * already has a file; go-to-source places its own caret).
    */
   function openEditorPane(opts: { focus?: boolean; ensureFile?: boolean } = {}) {
+    if (readerMode) return;
     const { focus = true, ensureFile = true } = opts;
     if (mode === "viewer") setMode("editor");
     loadEditorModule();
@@ -1597,6 +1605,18 @@
   }
 
   // ── Problems panel (#28) ───────────────────────────────────────────────────
+  // The list sits at the bottom of the editor pane; its badge is on the editor
+  // toolbar. Opening moves focus into the list, which hands it back to the badge.
+  let problemsPanelRef = $state<{ focusList: () => void } | null>(null);
+  let problemsToggleEl = $state<HTMLButtonElement | null>(null);
+  function toggleProblems(trigger: HTMLButtonElement): void {
+    problemsToggleEl = trigger;
+    problemsOpen = !problemsOpen;
+    if (problemsOpen) void tick().then(() => problemsPanelRef?.focusList());
+  }
+  // The status bar owns "Where your work is kept"; the editor toolbar's save
+  // indicator opens it.
+  let statusBarRef = $state<{ toggleSummary: (trigger?: HTMLElement) => void } | null>(null);
   // Lint findings for the open project, refreshed after every live-preview
   // rebuild (the renderingComplete event — which fires for the initial render
   // AND every watcher-triggered re-render). The toggle button lives in the
@@ -1822,7 +1842,9 @@
     const off = getPlatform().onOpenMarkdownFile((event) => {
       if (event.type === "ready") {
         initialReplayComplete = true;
-        if (!initialFileLaunchSeen) void startup.run();
+        // Settings first: whether the editor opens with the book depends on
+        // the saved reader/author choice, not the in-memory default.
+        if (!initialFileLaunchSeen) void _loadSettings().then(() => startup.run());
         return;
       }
       initialFileLaunchSeen = true;
@@ -2410,6 +2432,7 @@
    */
   function setMode(next: WorkspaceMode): void {
     if (next === mode) return;
+    if (next === "editor" && readerMode) return;
     settings.set({ preview: { mode: next } });
     mode = next;
     zoomView.applyViewMode(viewMode);
@@ -2701,6 +2724,7 @@
   {#if inFocus}
     <FocusBar
       view={focusView}
+      {readerMode}
       onSelectView={(v) => { contextMenu.close(); selectFocusView(v); }}
       onExit={() => setFocus(false, true)}
       {pageNav}
@@ -2735,6 +2759,7 @@
     {publishHints}
     publishWarning={lifecycle.saveWarning}
     showProjectSettings={toolbarProjectOpen}
+    {readerMode}
     onOpenProjectSettings={openProjectConfig}
     {focus}
     onToggleFocus={() => setFocus(!focus)}
@@ -2853,6 +2878,15 @@
               onSave={handleForceSave}
               savePending={editorSavePhase !== "clean"}
               saving={forceSaving}
+              savePhase={editorSavePhase}
+              autoSave={settings.current.versionHistory.autoSave}
+              {forceSaving}
+              onSaveStatus={(el) => statusBarRef?.toggleSummary(el)}
+              problems={displayedProblems}
+              problemsLoading={problemsLoading || lifecycle.rendering}
+              {problemsError}
+              {problemsOpen}
+              onToggleProblems={toggleProblems}
             />
             {/if}
             {#if MarkdownEditor}
@@ -2877,6 +2911,17 @@
               <div class="editor-loading" role="status" aria-live="polite">
                 Loading editor…
               </div>
+            {/if}
+            {#if !inFocus}
+              <ProblemsPanel
+                bind:this={problemsPanelRef}
+                problems={displayedProblems}
+                loading={problemsLoading || lifecycle.rendering}
+                error={problemsError}
+                bind:open={problemsOpen}
+                onSelect={openProblem}
+                toggleEl={problemsToggleEl}
+              />
             {/if}
           {/if}
         </section>
@@ -2997,12 +3042,13 @@
     </div> <!-- /main-content -->
   </div> <!-- /left-panel-region -->
 
-  <!-- StatusBar: always-visible bottom bar with sync pill, save indicator,
-       and problems panel toggle. Sits below the left-panel-region in the
-       .shell flex column so it spans the full window width. Never covers
-       the preview iframe (normal layout flow). -->
+  <!-- StatusBar: always-visible bottom bar with the book switcher, sync pill
+       and app actions. Sits below the left-panel-region in the .shell flex
+       column so it spans the full window width. Never covers the preview
+       iframe (normal layout flow). -->
   {#if !inFocus}
   <StatusBar
+    bind:this={statusBarRef}
     projectDir={lifecycle.currentDir}
     sourceMode={lifecycle.sourceMode}
     canSync={!!(syncController.syncDiag?.canSync)}
@@ -3012,17 +3058,11 @@
     autoSave={settings.current.versionHistory.autoSave}
     autoVersions={settings.current.versionHistory.autoSnapshot}
     autoBackup={settings.current.versionHistory.autoSync}
-    fileOpen={!!editorFilePath}
     {forceSaving}
     forceSyncing={syncController.forceSyncing}
-    problems={displayedProblems}
-    problemsLoading={problemsLoading || lifecycle.rendering}
-    {problemsError}
-    bind:problemsOpen={problemsOpen}
     books={projectSession.books}
     activeBookDir={projectSession.activeBookDir}
     onSwitchBook={(path) => void switchBook(path)}
-    onProblemSelect={openProblem}
     onReconnect={onSyncReconnect}
     onConnectOnline={onSyncReconnect}
     onShowLog={showProjectLog}

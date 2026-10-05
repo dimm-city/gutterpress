@@ -118,7 +118,17 @@ export type WorkspaceMode = "editor" | "viewer";
 
 // ── User settings (#45) ───────────────────────────────────────────────────
 
+export type WorkspaceRole = "reader" | "author";
+
 export interface AppSettings {
+  /**
+   * Reader or author (Settings → App). A reader only reads: the workspace
+   * stays in Read and the toolbar hides Edit/Read, Setup and Publish. Default
+   * reader — everyone starts with the simplest screen and opts into writing.
+   */
+  workspace: {
+    role: WorkspaceRole;
+  };
   editor: {
     fontFamily: string;
     fontSize: number;
@@ -207,6 +217,9 @@ export interface AppSettings {
  * value instead of redeclaring it.
  */
 export const DEFAULT_SETTINGS: AppSettings = {
+  workspace: {
+    role: "reader",
+  },
   editor: {
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
     fontSize: 14,
