@@ -1,6 +1,5 @@
 /**
- * Regression test for ARCH finding #12 (PR #98, maintainer HIGH,
- * manifest.ts:36-50):
+ * Regression test for PR #98:
  *
  * "explicit missing manifests silently fall back to defaults. A typo in
  * --manifest can create output beneath a directory named after the missing

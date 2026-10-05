@@ -40,9 +40,9 @@ const check: Check = {
 
     const maxTac = offending[0]!.tac;
 
-    // One finding = one result. The per-page breakdown that used to be emitted
-    // as many sibling rows now lives in `detail` (human-readable) and `data`
-    // (structured) so the summary layer never re-parses prose.
+    // One finding = one result. The per-page breakdown lives in `detail`
+    // (human-readable) and `data` (structured), not in sibling rows, so the
+    // summary layer never re-parses prose.
     const detailLines = [
       "Some pages may have issues with commercial print. Consider lightening dark backgrounds.",
       ...offending

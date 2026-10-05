@@ -199,7 +199,7 @@ export function withRepoLock<T>(projectDir: string, fn: () => Promise<T>): Promi
   );
   repoQueues.set(key, tail);
   // Reclaim the entry once this tail settles IF nothing newer was chained after
-  // it (audit B4). Without this, `repoQueues` kept one permanent entry per
+  // it. Without this, `repoQueues` keeps one permanent entry per
   // distinct project dir ever opened for the life of a long-running host. The
   // identity guard is the usual promise-cache pattern: a concurrent
   // withRepoLock for the same key replaces the map value, so `get(key) === tail`
@@ -401,8 +401,7 @@ export async function hasPendingChanges(
  * sync-check path per the sync-simplicity mandate): this is for build
  * *provenance* — the build fingerprint records whether the tree was clean at
  * build time, where a `git add`-ed-but-not-committed change must still count
- * as dirty (the old `git status --porcelain` fingerprint reported it; the
- * WORKDIR-vs-STAGE-only check silently dropped it).
+ * as dirty (the WORKDIR-vs-STAGE-only check silently drops it).
  */
 export async function hasUncommittedChanges(
   dir: string,
@@ -585,7 +584,7 @@ class LocalGitSourceProvider implements SourceProvider {
    * LOCK-FREE by design: `git.log` is a pure read (refs resolved once, then
    * an object walk over immutable commits/trees), so it can never corrupt
    * the repo and doesn't need the per-repo write queue. Taking the lock here
-   * used to queue the History dialog behind a running auto-snapshot of a
+   * would queue the History dialog behind a running auto-snapshot of a
    * large working tree — a multi-second stall for a read-only view.
    */
   async listHistoryPage(
@@ -1030,8 +1029,7 @@ export async function listLocalBranches(dir: string): Promise<LocalBranches | nu
  * `resolveRef`'s search path is `<ref>`, `refs/<ref>`, `refs/tags/<ref>`,
  * `refs/heads/<ref>`, `refs/remotes/<ref>`, `refs/remotes/<ref>/HEAD` — note
  * that it never reaches `refs/remotes/<remote>/<ref>`. A copy that has only
- * ever existed online therefore has to be looked up per-remote, which is the
- * lookup the copy picker used to be missing.
+ * ever existed online therefore has to be looked up per-remote.
  */
 async function resolveCopy(
   repoDir: string,

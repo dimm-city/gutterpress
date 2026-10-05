@@ -73,8 +73,8 @@ export function isCredentialTransmissionSafe(url: string): boolean {
 /**
  * Thrown by {@link onAuthFor} when a stored credential EXISTS but the remote
  * URL fails {@link isCredentialTransmissionSafe} (non-loopback http). Loud and
- * typed on purpose: the old behavior (silently withholding the credential)
- * surfaced as a 401 → "auth" → "reconnect" loop. The `code` string is the
+ * typed on purpose: silently withholding the credential surfaces as a 401 →
+ * "auth" → "reconnect" loop. The `code` string is the
  * STABLE contract (matchable across dynamic-import boundaries).
  */
 export class InsecureTransportError extends Error {

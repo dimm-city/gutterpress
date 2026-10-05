@@ -21,8 +21,8 @@ export interface AutoSnapshotPolicy {
   autoSnapshot: boolean;
 }
 
-/** Quiet period before a snapshot fires. Fixed (#274) — no longer a settings
- * knob, so there is nothing left to clamp. */
+/** Quiet period before a snapshot fires. Fixed (#274) — not a settings
+ * knob, so there is nothing to clamp. */
 export const AUTO_SNAPSHOT_DEFAULT_MINUTES = 10;
 
 // ── Automatic sync (transparent-sync integration plan §4.3) ──────────────────
@@ -103,9 +103,8 @@ const AUTO_SYNC_BOUNDS: DelayBounds = {
  * `null` when automatic snapshots are disabled. Pure — the testable core of
  * the trigger policy (the timer itself lives in the Electron main process).
  *
- * The quiet period is fixed at `AUTO_SNAPSHOT_DEFAULT_MINUTES` (#274 — the
- * minutes field this used to clamp was deleted from the settings schema, so
- * there is nothing left to resolve here beyond the master switch).
+ * The quiet period is fixed at `AUTO_SNAPSHOT_DEFAULT_MINUTES` (#274 — there
+ * is no minutes setting, so nothing to resolve here beyond the master switch).
  * Defensive about persisted settings: a missing policy means "defaults"
  * (enabled, 10 min).
  */
@@ -127,9 +126,8 @@ export function autoSnapshotDelayMs(
  * the default and is then clamped into [AUTO_SYNC_MIN_MINUTES,
  * AUTO_SYNC_MAX_MINUTES].
  *
- * Note: this is the host orchestrator's ONLY sync trigger — the file-change
- * debounce that used to sit beside it was removed (it could never fire before
- * this interval already had).
+ * Note: this is the host orchestrator's ONLY sync trigger — a file-change
+ * debounce beside it could never fire before this interval already had.
  */
 export function autoSyncDelayMs(
   policy: Partial<AutoSyncPolicy> | undefined,

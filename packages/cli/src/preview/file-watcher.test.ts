@@ -198,7 +198,7 @@ describe('generateAndWriteHtml', () => {
     expect(content).toMatch(/<h1[^>]*data-chapter-src="chapter-02\.md"/);
   }, 60000);
 
-  // ARCH finding #4 — preview terminal surfacing. Before this fix, the
+  // Preview terminal surfacing. Before this fix, the
   // preview's renderPreviewBook() called renderChapters() with no way to
   // observe the marker plugin's env.layoutWarnings, so an author whose marker
   // was silently ignored (e.g. a stray @continue) got zero feedback anywhere
@@ -1110,7 +1110,7 @@ describe('stopFileWatcher', () => {
   }, 10000);
 });
 
-// ── 2026-07-29 audit: generated output is not a source edit ──────────────────
+// ── generated output is not a source edit ────────────────────────────────────
 //
 // The in-project ignore rule was the dotfile rule alone, so `gutterpress build`
 // (which writes a whole book's worth of files into `dist/`) and a plugin install

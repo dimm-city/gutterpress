@@ -65,8 +65,7 @@ test("execCapture signal-death rejection message is byte-exact: '<cmd> was kille
   expect(err!.message).toBe("sh was killed by signal SIGKILL\n");
 });
 
-// --- PATH construction (arch finding #3: exec.ts hardcoded ":" while
-// tool-probe.ts correctly used node:path's `delimiter`) -------------------
+// --- PATH construction (joined with node:path's `delimiter`, never ":") ---
 
 test("buildEnhancedPath joins with the given separator, not a hardcoded ':'", () => {
   // Simulates Windows (";") on whatever OS the test actually runs on, so
@@ -93,7 +92,7 @@ test("exec.ts exports a single shared enhancedPath built from localBin", () => {
   expect(enhancedPath.startsWith(localBin + delimiter)).toBe(true);
 });
 
-// --- execCapture timeout + timer cleanup (arch finding #16) ---------------
+// --- execCapture timeout + timer cleanup ----------------------------------
 
 test("execCapture with no timeoutMs option behaves as before (unlimited wait)", async () => {
   const { stdout } = await execCapture("printf", ["hello"]);

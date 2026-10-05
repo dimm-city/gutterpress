@@ -2,8 +2,7 @@
  * Publish-target registry behavior (ADR 0008): registry lookup, target-list
  * resolution, the preset+overlay merge that puts a target's policy BELOW the
  * manifest in the precedence chain (cli > manifest > target > preset), and
- * the strict-PDF fill-ins (ported from the deleted validation-profile.test.ts
- * — `applyDefaultPdfStrictChecks` moved here verbatim).
+ * the strict-PDF fill-ins (`applyDefaultPdfStrictChecks`).
  */
 import { describe, expect, test } from "bun:test";
 import { resolveConfig, resolveConfigForTarget } from "./manifest";
@@ -164,7 +163,7 @@ describe("resolveConfigForTarget precedence (cli > manifest > target > preset)",
   });
 });
 
-// ── strict-PDF fill-ins (ported from validation-profile.test.ts) ─────────────
+// ── strict-PDF fill-ins ──────────────────────────────────────────────────────
 
 describe("applyDefaultPdfStrictChecks", () => {
   test("fills only undefined checks, without overwriting an explicit disable", () => {

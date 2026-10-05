@@ -447,7 +447,7 @@ describe("collectStyleDependencies", () => {
   });
 });
 
-// ── 2026-07-29 audit: a bare startsWith("..") over-rejects ───────────────────
+// ── a bare startsWith("..") over-rejects ─────────────────────────────────────
 //
 // The escape test was `path.relative(projectDir, abs).startsWith("..")`, which
 // also matches a legitimate project-root file whose NAME begins with two dots

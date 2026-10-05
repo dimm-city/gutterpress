@@ -7,10 +7,10 @@ import { providerFor, listWorkdirChanges, stageChanges } from "./source-provider
 import { PACKAGE_META } from "./version";
 
 // Covers the migration of build-fingerprint's private runCapture() onto
-// exec.ts's shared execCapture (arch finding #16) and the shared
-// PACKAGE_META import (arch finding #18 / version.ts).
+// exec.ts's shared execCapture and the shared
+// PACKAGE_META import (version.ts).
 //
-// ARCH finding #20: getGitRevision must be backed by isomorphic-git via the
+// getGitRevision must be backed by isomorphic-git via the
 // source-provider layer, NOT a spawn of the system `git` binary (CLAUDE.md
 // §7). These tests build a REAL repo with the provider layer's own
 // isomorphic-git-backed `initVersionHistory`/`snapshot` (the same fixture
@@ -146,7 +146,7 @@ test("writeBuildFingerprint records root/commit/shortCommit/dirty:false for a cl
 });
 
 test("writeBuildFingerprint resolves a REAL sourceRevision even with no `git` binary on PATH (proves isomorphic-git, not a spawn)", async () => {
-  // The decisive test for arch finding #20: a spawn-based implementation
+  // The decisive test: a spawn-based implementation
   // degrades to sourceRevision: null when `git` isn't on PATH (see the old
   // "tolerates a missing git binary" test this replaces). The isomorphic-git
   // implementation must still resolve the real commit — it never shells out.
@@ -277,7 +277,7 @@ test("writeBuildFingerprint records dirty:true for STAGED-but-uncommitted change
   }
 });
 
-// ── 2026-07-29 audit: record the DELIVERED output dir ────────────────────────
+// ── record the DELIVERED output dir ──────────────────────────────────────────
 //
 // The build always writes into an ephemeral work dir and only then publishes it
 // atomically over the destination — so the fingerprint file has to be created in

@@ -1,12 +1,12 @@
 /**
- * ARCH finding #49: `validation-exec.ts` (292 lines) previously had only its
- * pure `buildPdfSummaryLines` formatter tested (validation-exec-summary.test.ts)
- * and its `--phase` alias resolution tested against the REAL check registry
- * (validation-exec-phase.test.ts). This file covers the remaining execution
- * paths: manifest/input resolution, the `--pdf` existence guard, publish-target
- * handling (including the `withTargetRequiredCheckErrors` synthetic-error
- * injection, ADR 0008), phase auto-detection, `htmlPath`
- * detection, and `executeAndReport`'s ok/format branching.
+ * `validation-exec.ts`'s pure `buildPdfSummaryLines` formatter is tested in
+ * validation-exec-summary.test.ts and its `--phase` alias resolution against
+ * the REAL check registry in validation-exec-phase.test.ts. This file covers
+ * the remaining execution paths: manifest/input resolution, the `--pdf`
+ * existence guard, publish-target handling (including the
+ * `withTargetRequiredCheckErrors` synthetic-error injection, ADR 0008), phase
+ * auto-detection, `htmlPath` detection, and `executeAndReport`'s ok/format
+ * branching.
  *
  * `checkToolAvailability` (checks/tool-check) and `runChecks` (checks/runner)
  * are `spyOn`-stubbed so these tests are deterministic regardless of which
@@ -380,7 +380,7 @@ describe("executeValidation context derived from --input", () => {
   });
 });
 
-// ── file-set resolvers match the renderer's (2026-07-28 duplication audit) ─
+// ── file-set resolvers match the renderer's ────────────────────────────────
 //
 // Before this, an inputDir run with no manifest `source.files`/`styles`
 // globbed `**/*.md`/`**/*.css` across the WHOLE project — so validation/lint
@@ -594,7 +594,7 @@ describe("executeValidation folds in plugin styles (#262)", () => {
   });
 });
 
-// ── 2026-07-29 audit: shared assets that SHIP must be scanned ────────────────
+// ── shared assets that SHIP must be scanned ──────────────────────────────────
 //
 // `assetDirs = [inputDir]` scanned only the book folder, but a shared repo-root
 // stylesheet's own `url()` closure is embedded into the built PDF (fonts always,

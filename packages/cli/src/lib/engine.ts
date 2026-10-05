@@ -42,8 +42,8 @@ export interface NativePdfOptions {
  *
  * Returns the build's author-facing diagnostics so the caller can surface
  * them (the desktop Problems panel, the CLI's own output). Dropping them here
- * is what made the engine's print-quality audits invisible in every real
- * build path — they only ever reached the engine dev CLI.
+ * would make the engine's print-quality audits invisible in every real build
+ * path.
  */
 export async function buildNativePdf(
   htmlFile: string,

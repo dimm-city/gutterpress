@@ -1,6 +1,6 @@
 /**
- * UX finding M32 (CLI half): markdownlint messages used to lead with
- * rule-code jargon ("MD013/line-length Line length exceeds 80 characters"),
+ * markdownlint messages must not lead with rule-code jargon
+ * ("MD013/line-length Line length exceeds 80 characters"),
  * which reads as gibberish to a non-technical writer. The human-readable
  * description must come first; the rule code is demoted to a suffix (and
  * also surfaced structurally via `CheckResult.code` for consumers — e.g. the

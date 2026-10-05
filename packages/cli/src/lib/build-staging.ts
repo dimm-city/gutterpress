@@ -60,11 +60,9 @@ export interface StagedAssets {
  *
  * THE one implementation: `renderBook` (every real build/export) and the
  * preview/print parity gate both call this, so the gate can never measure a
- * document the build would not have produced. It previously hand-rolled a bare
- * `copyFile` loop, which (a) hard-crashed with a raw `ENOENT` on any book
- * carrying a stale image path — i.e. the tool that enforces preview↔print
- * parity could not run on the real books that need it — and (b) skipped
- * `inlineShapeUrls`, so `.gp-shape` wrapping silently differed from the build.
+ * document the build would not have produced (a hand-rolled `copyFile` loop
+ * in the gate would crash on a stale image path and skip `inlineShapeUrls`,
+ * silently diverging from the build).
  *
  * A missing image is NOT fatal: the same magenta placeholder the build ships
  * (see missing-asset-placeholder.ts) is substituted and every reference
@@ -140,8 +138,7 @@ export async function stageBookAssets(options: {
 /**
  * Copy the planned assets into `outDir`, preserving each one's output-relative
  * path. Parallel because these are independent file copies and a book's image
- * set is routinely in the hundreds — the old serial `copyDir` walked every
- * asset directory one `copyFile` at a time.
+ * set is routinely in the hundreds.
  */
 async function copyReferencedAssets(
   copies: AssetCopy[],

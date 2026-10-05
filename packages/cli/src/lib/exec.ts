@@ -22,10 +22,8 @@ export const localBin = resolvePath(join(import.meta.dirname, "..", "..", "node_
  * PATH with `localBin` prepended, correctly delimiter-joined. Single source
  * of truth for every spawn in the lib — `run` and `execCapture` below use
  * it, and tool-probe.ts's `isToolAvailable`/`findTool` get it for free by
- * calling `execCapture` instead of keeping their own copy (previously a
- * literal `:` here corrupted PATH on Windows while tool-probe.ts's copy of
- * the same logic used `delimiter` correctly — see docs/reviews
- * 2026-07-10-architecture-critical-review.md, finding #3).
+ * calling `execCapture` instead of keeping their own copy. Joined with
+ * `delimiter`, never a literal `:` (which corrupts PATH on Windows).
  */
 export const enhancedPath = buildEnhancedPath(localBin, process.env.PATH ?? "");
 
@@ -95,8 +93,7 @@ function keepTail(buffer: string, chunk: string, limit: number | undefined): str
  * on settle and `unref()`d so a pending call can never keep the process alive
  * on its own. `execCapture` below and publish's `defaultCommandRunner` are
  * thin adapters over this — do not grow parallel spawn loops elsewhere
- * (previously four copies existed with different bug profiles — see
- * docs/reviews 2026-07-10-architecture-critical-review.md, finding #16).
+ * (separate copies drift into different bug profiles).
  */
 export function spawnCapture(
   cmd: string,

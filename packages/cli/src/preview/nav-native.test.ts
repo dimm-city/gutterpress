@@ -1,6 +1,5 @@
 /**
- * Regression test for the native-engine preview navigation saturation bug
- * (WORK PACKAGE B item 1, docs/native-engine-acceptance-gate.md C.15).
+ * Regression test for the native-engine preview navigation saturation bug.
  *
  * The native viewer lays sheets out one CHAPTER per row (`.gp-run`), each
  * row scrolling HORIZONTALLY when its chapter is wider than the viewport, so

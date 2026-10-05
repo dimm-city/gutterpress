@@ -8,12 +8,7 @@
  * `/$bunfs/` — see CLAUDE.md §3). This is the single source of truth for
  * the lib version: `build-fingerprint.ts` and `diagnostics.ts` (and the
  * desktop's About dialog / `gutterpress doctor` through it) both import from
- * here instead of each doing their own `package.json` read. diagnostics.ts
- * previously had a private `readLibVersion()` that walked directories
- * reading `package.json` off disk at runtime — the exact pattern this file
- * (and build-fingerprint.ts, which documented but didn't share the pattern)
- * exists to avoid — and fell back to the string `"unknown"` inside the
- * compiled binary. That function has been deleted in favor of this constant.
+ * here instead of each doing their own `package.json` read.
  */
 import packageJson from "../../package.json";
 

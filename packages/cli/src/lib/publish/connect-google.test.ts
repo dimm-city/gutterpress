@@ -5,8 +5,8 @@ import { publishProviderFor } from "./registry.ts";
 import type { HostCredential, TokenStore } from "../remote-auth/token-store.ts";
 
 /**
- * Regression coverage for #221's default-connect account-label bug (found in
- * Phase 2 review): `connectGoogleDrive` used to spread `...credential`
+ * Regression coverage for #221's default-connect account-label bug:
+ * `connectGoogleDrive` used to spread `...credential`
  * straight from `GoogleAuthProvider.connect()` — which always carries the
  * connected account's EMAIL in `username`, mirroring GitHub's username=login
  * convention — into the stored entry. For a NAMED connect that's fine (it

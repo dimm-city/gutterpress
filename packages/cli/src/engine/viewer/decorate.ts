@@ -93,10 +93,10 @@ interface PageCtx {
  * `@page { background: … }` paints the WHOLE SHEET including the margins in
  * Chromium's print path (measured) — which is exactly what a book wants for
  * paper texture, and the one mechanism that does not need all 16 margin
- * boxes given a copy of the same background. The viewer used to ignore it:
- * `resolvePage()` has always returned these declarations, but `PageCtx`
- * kept only `geometry` + `marginBoxes`, so a book that used it printed a
- * page background and previewed a blank white sheet. That is a preview↔print
+ * boxes given a copy of the same background. `PageCtx` must carry these
+ * declarations (`decls`), not only `geometry` + `marginBoxes`: without them a
+ * book that uses it prints a page background and previews a blank white
+ * sheet. That is a preview↔print
  * divergence, which CLAUDE.md calls the worst failure this project can
  * produce, and it is invisible to the parity gate (which asserts page
  * counts, page-of-id maps and target-counter values — no paint assertions).
@@ -239,10 +239,9 @@ export function decorate(
    * has nothing to resolve — that is a content bug (a typo'd `href`, or a
    * heading that lost its id), not something the viewer's measurement can
    * fix, and the compiler's own build already diagnoses it
-   * (`engine.xref.broken` in `compiler/build.ts`). The preview used to leave
-   * a bare "p.?" with no explanation; it now reports the same actionable
-   * message the PDF build does, so the live preview is honest about WHY a
-   * page number is missing instead of just showing an unexplained glyph.
+   * (`engine.xref.broken` in `compiler/build.ts`). The preview reports the
+   * same actionable message the PDF build does, so it is honest about WHY a
+   * page number is missing instead of just showing an unexplained "p.?".
    */
   function fillXrefs() {
     const brokenHrefs = new Set<string>();
@@ -469,13 +468,13 @@ export function decorate(
       // third, while the inner box can shrink and still be end-aligned by the
       // slot exactly as a native page-margin box is.
       //
-      // This used to copy only font/font-size/font-family/color. Everything
-      // that makes real book furniture look like furniture -- background,
-      // padding, borders, explicit height/line-height, weight, tracking,
-      // casing, and custom properties -- disappeared in the viewer while the
-      // printed PDF remained correct. Replay the declaration list, except for
-      // the small measured set Chromium itself silently drops in native
-      // margin boxes (shared with the print-safety linter), instead of
+      // Copying only font/font-size/font-family/color is not enough:
+      // everything that makes real book furniture look like furniture --
+      // background, padding, borders, explicit height/line-height, weight,
+      // tracking, casing, and custom properties -- would vanish in the viewer
+      // while the printed PDF stayed correct. Replay the declaration list,
+      // except for the small measured set Chromium itself silently drops in
+      // native margin boxes (shared with the print-safety linter), instead of
       // maintaining another inevitably-incomplete property allowlist.
       const content = document.createElement("span");
       content.className = "gp-marginbox-content";

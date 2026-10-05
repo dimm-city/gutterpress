@@ -17,16 +17,13 @@
  *
  * Also ships the author-facing `gp-*` image/block vocabulary (CLAUDE.md §0 —
  * a behavior broadly useful to non-technical authors belongs in core, not a
- * project layer; see UX finding M17). markdown-it-attrs is bundled by
+ * project layer). markdown-it-attrs is bundled by
  * default (renderer.ts), so `![Art](x.jpg){.gp-right .gp-small}` already
  * attaches the classes to the rendered `<img>` — these rules are what make
- * them actually do something print-safe. The gp-* vocabulary REPLACED the
- * five pre-vocabulary utility names (.center/.float-left/.float-right/
- * .full-width/.full-bleed), which were removed rather than kept as
- * aliases — one vocabulary, no duplicate way to spell each layout. Books
- * migrate by renaming the classes in their markdown; the desktop editor
- * recognizes the old names when editing an image and rewrites them to the
- * gp-* names in place.
+ * them actually do something print-safe. One vocabulary, no aliases: there
+ * is no duplicate way to spell each layout (the desktop editor rewrites the
+ * pre-gp-* names `.center`/`.float-left`/`.float-right`/`.full-width`/
+ * `.full-bleed` to gp-* names in place when editing an image).
  *
  *   .gp-left      — floats left, text wraps.
  *   .gp-right     — floats right, text wraps.
@@ -211,8 +208,8 @@ export const GUTTERPRESS_CSS = `
 
 /* the per-shape decisions the paragraph above deliberately leaves to the
    author, named instead of left as raw CSS every book was reinventing
-   (2026-09-01 CSS architecture review, findings C1/C7 — CLAUDE.md §0:
-   "behavior broadly useful to non-technical authors belongs in core").
+   (CLAUDE.md §0: "behavior broadly useful to non-technical authors belongs
+   in core").
    Permanent vocabulary, standard properties verbatim — same rationale as
    the column/grid runs above. One name each, no aliases:
      .gp-columns-all       column-span: all      a heading or block that

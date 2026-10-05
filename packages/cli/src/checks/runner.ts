@@ -5,9 +5,7 @@ import type {
   CheckResult,
   CheckSeverity,
 } from "./types";
-// Self-populate the check registry no matter who reaches runChecks first
-// (audit B5) — this replaces the implicit reliance on validation-exec.ts's
-// side-effect imports running before any caller.
+// Self-populate the check registry no matter who reaches runChecks first.
 import "./register-builtins";
 import { selectChecks } from "./policy";
 // Static import is free here: register-builtins above already pulls pdf-inspect
@@ -59,9 +57,9 @@ export async function runChecks(
   }
 
   // Resolve only/skip selectors + drop manifest-disabled checks via the shared
-  // selector (audit E10 — the same sequence tool probing uses, so the two can't
-  // drift). Mistyped selectors surface as errors below rather than silently
-  // resolving to nothing and reporting a false "PASSED".
+  // selector (the same sequence tool probing uses, so the two can't drift).
+  // Mistyped selectors surface as errors below rather than silently resolving
+  // to nothing and reporting a false "PASSED".
   const { checks: selected, unmatched: unmatchedSelectors } = selectChecks(opts, ctx.config);
   let checks = selected;
 

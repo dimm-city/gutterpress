@@ -1,5 +1,5 @@
 /**
- * Tests for `--phase` resolution in `executeValidation` (UX review finding H4).
+ * Tests for `--phase` resolution in `executeValidation`.
  *
  * The README documents `--phase pre | post | all (default: all)`, but
  * `validation-exec.ts` used to cast `args.phase` straight to `CheckPhase` with

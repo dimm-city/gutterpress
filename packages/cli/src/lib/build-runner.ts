@@ -53,9 +53,8 @@ export interface BuildRunnerOptions {
   manifestPath?: string;
   stripAnnotations?: boolean;
   /**
-   * Skip the CSS print-safety check (#272 — one CSS gate, not two). This used
-   * to gate a separate lint-runner pass (since deleted); it now disables just the
-   * `source.stylelint` check inside pre-build validation (see
+   * Skip the CSS print-safety check (#272 — one CSS gate, not two): disables
+   * just the `source.stylelint` check inside pre-build validation (see
    * {@link computeGates}'s `skipStylelint`). Has no effect when
    * `skipPreValidate` is also set — pre-build validation, CSS check
    * included, does not run at all in that case.
@@ -177,17 +176,15 @@ export interface BuildContext {
   inputDir: string;
   /**
    * THE anchor every manifest-relative path resolves against: `styles:`,
-   * `source.files`, authored plugin `path:` entries, and the lint gate's own
-   * stylesheet resolution. Equal to {@link BuildContext.manifestDir}.
+   * `source.files`, authored plugin `path:` entries, and the CSS print-safety
+   * check's stylesheet resolution. Equal to {@link BuildContext.manifestDir}.
    *
-   * These used to resolve against two different roots in one build (2026-07-29
-   * audit): plugins, the lint gate, and the output dir anchored on
-   * `manifestDir`, while `styles:`/`source.files` anchored on `inputDir`. They
-   * are identical in the normative layout (the manifest lives in the book
-   * folder) and diverge only under an explicit `--manifest` pointing outside
-   * `--input` — where the docs are unambiguous that both are manifest-relative,
-   * so the lint gate was checking a different set of stylesheets than the ones
-   * that shipped.
+   * It is NOT `inputDir`. The two are identical in the normative layout (the
+   * manifest lives in the book folder) and diverge only under an explicit
+   * `--manifest` pointing outside `--input` — where the docs are unambiguous
+   * that all of these are manifest-relative. Anchoring any of them on
+   * `inputDir` would check a different set of stylesheets than the ones that
+   * ship.
    */
   renderDir: string;
   outDir: string;
@@ -328,17 +325,12 @@ export async function resolveBuildContext(
  * `loadPluginsWithCss` directly, and only the first caller does real work —
  * the other gets the cached result back, whichever stage happens to run
  * first (a test calling {@link renderBook} directly, without going through
- * `runQualityGates`, gets a fresh load here exactly as it would have before
- * this existed).
+ * `runQualityGates`, gets a fresh load here).
  *
- * Fail-fast (no `onError`), matching `renderBook`'s pre-existing behavior:
- * a build/export must never silently omit author-configured formatting (see
- * `loadPlugins`'s doc comment in markdown/plugins.ts on the two failure
- * modes). One consequence: a plugin that fails to load now aborts the build
- * as soon as quality gates start, instead of (as before) the lint gate's own
- * degrade-and-report call warning-and-skipping that same plugin only for
- * `renderBook` to hard-fail on it moments later — the build failed either
- * way, this just stops wasting the lint pass first.
+ * Fail-fast (no `onError`): a build/export must never silently omit
+ * author-configured formatting (see `loadPlugins`'s doc comment in
+ * markdown/plugins.ts on the two failure modes), so a plugin that fails to
+ * load aborts the build as soon as quality gates start.
  *
  * Resolves plugin `path:` entries against `ctx.renderDir`, which is by
  * construction identical to `ctx.manifestDir` for the life of one
@@ -363,12 +355,8 @@ export async function loadBuildPlugins(ctx: BuildContext): Promise<LoadedPlugins
 }
 
 /**
- * Stage 2 — run pre-build validation, the build's only remaining quality
- * gate (#272 — one CSS gate, not two). Before this, `gutterpress build` ran
- * `checkCss` over the configured stylesheets TWICE: once in a separate lint
- * gate (the since-deleted lint-runner) and again one phase later here, inside
- * `source.stylelint` — a build printed the identical CSS finding list twice,
- * a phase apart. The CSS print-safety check now lives ONLY as
+ * Stage 2 — run pre-build validation, the build's only quality gate (#272 —
+ * one CSS gate, not two). The CSS print-safety check lives ONLY as
  * `source.stylelint`, run by `executeAndReport` below like every other
  * pre-build check; `gates.skipStylelint` (`--skip-lint` /
  * `config.lint.enabled: false`) disables just that one check for this run,
@@ -376,8 +364,7 @@ export async function loadBuildPlugins(ctx: BuildContext): Promise<LoadedPlugins
  * (validation-exec.ts), rather than skipping this whole gate. Skipped
  * entirely when `preValidate` is off (`--format html`, `--skip-pre-validate`,
  * or `config.validate.enabled: false`) — a failing gate throws a BuildError
- * with the pre-build validation exit code (1); the build pipeline's old
- * lint-gate exception (exit 2) is gone, matching M47's exit-code contract.
+ * with the pre-build validation exit code (1).
  *
  * When the gate is on, plugins are loaded ONCE here via
  * {@link loadBuildPlugins} and the resulting `pluginStylePaths` are handed to
@@ -430,13 +417,12 @@ async function runQualityGates(ctx: BuildContext): Promise<void> {
  * rendered book.html both output strategies then paginate. This is the shared
  * pre-format work; the per-format tails live in the strategies.
  *
- * ARCH finding #4: Gutterpress's marker parser computes typed, line-numbered
- * author-mistake warnings (`env.layoutWarnings`) that every real render path
- * used to discard silently. `renderChaptersToFile`'s `onChapterWarnings`
- * threads them back out here so a final artifact never omits a marker
- * mistake without at least telling the author about it in the build log.
- * Exported (not just for the pipeline) so this stage is unit-testable
- * without driving the full `runBuild` pagination/PDF machinery.
+ * Gutterpress's marker parser computes typed, line-numbered author-mistake
+ * warnings (`env.layoutWarnings`). `renderChaptersToFile`'s
+ * `onChapterWarnings` threads them back out here so a final artifact never
+ * omits a marker mistake without at least telling the author about it in the
+ * build log. Exported (not just for the pipeline) so this stage is
+ * unit-testable without driving the full `runBuild` pagination/PDF machinery.
  */
 export async function renderBook(ctx: BuildContext): Promise<string> {
   const { config, gates, renderDir, workDir, opts, format } = ctx;
@@ -558,16 +544,13 @@ export async function resolveIccProfile(
 
 /**
  * The shared build tail every output strategy ends with: write the build
- * fingerprint and log `Wrote:` + the fingerprint path. De-duplicates the
- * identical fingerprint-writing sequence the HTML and PDF branches used to
- * inline. `wroteMessage` and the fingerprint/paths differ per format, so they
- * are passed in.
+ * fingerprint and log `Wrote:` + the fingerprint path. `wroteMessage` and the
+ * fingerprint/paths differ per format, so they are passed in.
  *
- * Does NOT close the browser (finding #50) — that used to happen here, on the
- * success-only path, which leaked the pre-launched Chromium whenever a
- * quality gate or render step threw before reaching this function. The close
- * is now a single try/finally around the whole pipeline in {@link runBuild}
- * so it runs on every exit, not just this one.
+ * Does NOT close the browser: this is a success-only path, so closing here
+ * would leak the pre-launched Chromium whenever a quality gate or render step
+ * threw first. The close is a single try/finally around the whole pipeline
+ * in {@link runBuild} so it runs on every exit.
  */
 async function finalizeBuild(
   ctx: BuildContext,
@@ -779,8 +762,8 @@ class PdfOutput implements OutputStrategy {
 
     // Artifact name is a convention: `<title-slug>-<format>.pdf`. The format is
     // part of the NAME because the extension cannot distinguish a plain PDF
-    // from a PDF/X one — previously both formats shared one configured
-    // filename, so building both left only the last one on disk.
+    // from a PDF/X one — a shared filename would leave only the last one on
+    // disk after building both.
     const pdfName = artifactName(config.title, pdfxMode ? "pdfx" : "pdf");
     // ALWAYS built inside the work dir, whatever the destination is; publishing
     // is what decides where it lands. That keeps every format atomic and keeps
@@ -929,13 +912,11 @@ class PdfOutput implements OutputStrategy {
  * The browser is this function's to own: there is ONE launcher
  * (`engine/shared/cdp.ts`'s `launchChromium`, or the host's injected
  * `engineBrowser` factory in its place), it is started un-awaited so the
- * ~1–2s Chromium cold start overlaps lint + validation + markdown render, it
+ * ~1–2s Chromium cold start overlaps validation + markdown render, it
  * is awaited right before rendering (so a missing or too-old Chromium fails
  * there, with the launcher's own message, rather than deep inside the engine),
- * and it is closed in a `finally` that runs on every exit — finding #50:
- * previously the close only happened on the success tail (inside
- * `finalizeBuild`), so a pre-launched Chromium leaked whenever a quality gate
- * or the render itself threw.
+ * and it is closed in a `finally` that runs on every exit, so a pre-launched
+ * Chromium never leaks when a quality gate or the render itself throws.
  */
 export async function runBuild(
   opts: BuildRunnerOptions

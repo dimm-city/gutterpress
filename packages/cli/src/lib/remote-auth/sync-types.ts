@@ -117,9 +117,6 @@ export interface SyncRetryOptions {
   sleep?: (ms: number) => Promise<void>;
 }
 
-// ResolveConflictsOptions / ConflictFile / ConflictKind / ConflictResolution
-// were removed with the interactive conflict flow (owner ruling 2026-08-14):
-// sync always converges, so there is nothing for a host to resolve.
 
 /** Resolved project remote + credential used by every transport call. */
 export interface RemoteTransport {

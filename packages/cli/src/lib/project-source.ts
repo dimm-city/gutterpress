@@ -80,7 +80,7 @@ export type ProjectSource =
  * What the UI may offer for a given source. Derived purely from the source
  * type; no I/O.
  *
- * NOTE (audit D5): today the desktop only reads `canSnapshot` (it gates the
+ * NOTE: today the desktop only reads `canSnapshot` (it gates the
  * StatusBar "Version history" affordance). The other flags —
  * `canEnableVersionHistory`, `canViewHistory`, `canRestoreSnapshot`, `canRead`,
  * `canWriteLocal`, `authManagedByApp` — are computed and part of the DTO but
@@ -90,9 +90,8 @@ export type ProjectSource =
  *
  * Deliberately NO `canSync` here: syncability is a credential-aware question
  * only `diagnoseProjectRemote().canSync` (remote-auth/diagnose.ts) can answer.
- * This interface used to carry a second, weaker `canSync` (= hasRemote, any
- * protocol, no credential check), and the two same-named-but-different gates
- * were a recurring source of contradictory sync behavior. Remote PRESENCE, for
+ * A second, weaker `canSync` here (= hasRemote, any protocol, no credential
+ * check) would be a source of contradictory sync behavior. Remote PRESENCE, for
  * display purposes, lives on the classification itself (`source.hasRemote`).
  */
 export interface ProjectCapabilities {

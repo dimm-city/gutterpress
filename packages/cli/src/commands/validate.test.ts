@@ -1,5 +1,5 @@
 /**
- * ARCH finding #49: command-level smoke test for `validate.ts`'s citty
+ * Command-level smoke test for `validate.ts`'s citty
  * dispatch — positional-vs-`--input` precedence (M46), arg mapping onto
  * `executeAndReport`, and the exit-code contract. `executeAndReport` is
  * `spyOn`-stubbed so this never runs a real check registry.

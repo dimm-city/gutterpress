@@ -138,8 +138,7 @@ export function escapesProjectRoot(projectDir: string, absPath: string): boolean
  * `source.links.local-refs` check consume, so validation and the build agree
  * on the rule — an image referenced from Markdown prose must live inside the
  * book folder — AND on the exact decode (`stripUrlSuffix(decodeRef(...))`) and
- * wording. They previously hand-rolled this apart and had already drifted (the
- * check decoded without stripping the `?query`/`#frag` suffix).
+ * wording.
  */
 export function proseImageRefError(ref: string, projectDir: string): string | null {
   const cleaned = stripUrlSuffix(decodeRef(ref));

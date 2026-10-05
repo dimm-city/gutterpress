@@ -1,7 +1,7 @@
 /**
  * Shared Google Drive connect flow (#221) — the ONE implementation behind
- * both the CLI's `--connect` branch and (Phase 2) the desktop's connect
- * route, mirroring how `connect.ts` is shared for pasted-token providers.
+ * both the CLI's `--connect` branch and the desktop's connect route, mirroring
+ * how `connect.ts` is shared for pasted-token providers.
  *
  * Unlike `connectPublishProvider` (verify-before-store for a PASTED token),
  * this flow is verify-by-construction: `GoogleAuthProvider.connect()` only

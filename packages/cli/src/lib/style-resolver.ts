@@ -142,13 +142,11 @@ const SHARED_STYLE_ROOTS = ["shared", "."];
 /**
  * Discover the repository's shared stylesheets, as absolute paths.
  *
- * `listProjectStyles` used to scan only inside the book (2026-07-29 audit), so a
- * `../../shared/...` entry showed up in the desktop Styles picker ONLY while it
- * was listed in the manifest. Unchecking it removed the manifest entry and the
- * next listing dropped it entirely — no way to re-enable it, or to add one, from
- * the UI a non-technical author actually uses; hand-editing `manifest.yaml` was
- * the only way back. Shared stylesheets were second-class in exactly the surface
- * meant to make them easy.
+ * `listProjectStyles` scans these as well as the book, so a `../../shared/...`
+ * entry stays in the desktop Styles picker after it is unchecked (which
+ * removes its manifest entry). Scanning only the book would leave no way to
+ * re-enable a shared stylesheet, or add one, from the UI a non-technical
+ * author actually uses.
  */
 async function discoverSharedCssFiles(repoRoot: string): Promise<string[]> {
   const found = new Set<string>();
@@ -170,7 +168,7 @@ async function discoverSharedCssFiles(repoRoot: string): Promise<string[]> {
  * the way the manifest stores them — project-relative, e.g.
  * `../../shared/styles/components.css` — so toggling one on writes the right
  * entry. Omit it (or pass the project itself) for the single-project case, which
- * behaves exactly as before.
+ * scans only the project.
  */
 export async function listProjectStyles(
   projectDir: string,

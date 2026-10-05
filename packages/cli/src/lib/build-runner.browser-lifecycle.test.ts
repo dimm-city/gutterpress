@@ -1,5 +1,5 @@
 /**
- * Browser-lifecycle guard (finding #50): the engine browser `runBuild` starts
+ * Browser-lifecycle guard: the engine browser `runBuild` starts
  * for a pdf build must be closed on EVERY exit — success or failure — not only
  * on the success tail. Before the fix, the close lived inside `finalizeBuild`,
  * the success-only tail, so a quality-gate failure (or any throw between the

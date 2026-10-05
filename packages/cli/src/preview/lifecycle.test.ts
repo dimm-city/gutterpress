@@ -1,7 +1,7 @@
 /**
- * ARC finding #49: `preview/lifecycle.ts` (232 lines — startup validation,
- * temp-dir setup with orphan reaping, restart, and the graceful-shutdown
- * state machine) had no direct tests.
+ * Direct tests for `preview/lifecycle.ts` (startup validation, temp-dir
+ * setup with orphan reaping, restart, and the graceful-shutdown state
+ * machine).
  *
  * `previewServer` is always a hand-built stub satisfying the `PreviewServer`
  * interface (never a real `node:http` listener) — these tests cover the

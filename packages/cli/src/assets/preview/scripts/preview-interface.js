@@ -362,7 +362,7 @@
   // plate UNDER the page's own text (gutterpress-css.ts's depth ladder) —
   // hit-tests beneath the covering paragraph boxes and the annotated
   // `.page`/`.section` containers too, so document.elementFromPoint() can
-  // NEVER return it. Every right-click used to resolve the covering element
+  // NEVER return it: a right-click would resolve the covering element
   // instead, leaving the image's context menu unreachable at EVERY point.
   // Probe the full hit stack for the first (= top-most in paint order, so
   // the upper of two overlapping plates wins) image layered at negative z.
@@ -634,13 +634,11 @@
   // swapped for that block's markdown source under
   // `contenteditable="plaintext-only"`, so the caret sits in the real page, in
   // the book's own typography, and Chromium's fragmenter re-flows the pages
-  // around it as the author types. This replaced a floating CodeMirror panel
-  // positioned in host-SPA coordinates; `getRectsFor()`/`setEditMask()` existed
-  // ONLY to serve that panel and went with it (protocol v8).
+  // around it as the author types.
   //
   // Three properties of the native viewer are what make this work, each
-  // spike-verified rather than assumed (plan §2) — the floating panel existed
-  // because none of them can be assumed of a paginator that pre-cuts the DOM:
+  // verified rather than assumed (plan §2) — none of them can be assumed of
+  // a paginator that pre-cuts the DOM:
   //   1. A block spanning a page break is ONE element with several client
   //      rects, so it takes ONE contenteditable and the caret crosses the
   //      break natively (ArrowDown walks into the next page).

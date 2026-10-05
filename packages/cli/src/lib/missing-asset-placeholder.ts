@@ -5,15 +5,12 @@ import { parseSrcsetUrlCandidates } from "./markdown/images";
 /**
  * A visible stand-in for an image the book references but does not have.
  *
- * WHY THIS EXISTS: a missing image used to abort the whole build
+ * WHY THIS EXISTS: without it, a missing image aborts the whole build
  * (`Could not copy asset … ENOENT`). For a non-technical author that is the
  * worst possible failure mode — one stale image path in a 273-page book and
  * nothing renders at all, with a filesystem error as the only explanation.
  * Worse, it makes the book unbuildable by anyone who does not already have
- * the missing file, which is exactly the state the dc-op-manual field guide
- * was in: two chapters referenced art that exists nowhere in the repo, so
- * every tool and every reviewer had to hand-patch placeholders in to build
- * it at all.
+ * the missing file.
  *
  * The fix is NOT to substitute something invisible. A silently-blank image
  * is how a missing illustration ships to print. This paints an unmistakable

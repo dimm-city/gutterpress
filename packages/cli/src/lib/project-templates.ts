@@ -411,14 +411,6 @@ export async function saveProjectAsTemplate(
 
 /**
  * Replace concrete title/authors values in a manifest with placeholders.
- *
- * NOTE: this used to also re-tokenise `output.filename` back to
- * `{{OUTPUT_PDF}}`. `output:` is no longer a valid manifest field —
- * `resolveConfig` throws a `UsageError` if a manifest still carries one — so
- * a project a user can actually save as a template can never have a
- * `filename:` key to rewrite. That branch (and the `{{OUTPUT_PDF}}` token
- * it produced) was removed rather than kept as permanently-dead pattern
- * matching.
  */
 async function retokeniseManifest(manifestPath: string): Promise<void> {
   let text: string;

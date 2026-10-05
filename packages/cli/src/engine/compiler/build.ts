@@ -386,10 +386,9 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // The pinned viewport is a MEASUREMENT device: every audit, the width
     // check and the viewer prediction read boxes laid out inside it, so it
     // must be the sheet — not the sheet minus a scrollbar. Chromium only
-    // hides scrollbars if something asks, and until this line nothing in the
-    // print path did: the CLI's browser was launched (then by puppeteer, now
-    // by `launchChromium`) with `--hide-scrollbars` among its default flags,
-    // and the desktop's Electron `BrowserWindow` is not. Measured 2026-08-24,
+    // hides scrollbars if something asks: the CLI's browser is launched by
+    // `launchChromium` with `--hide-scrollbars` among its default flags, and
+    // the desktop's Electron `BrowserWindow` is not. Measured 2026-08-24,
     // same staged bytes: 576px
     // on the CLI and 561px on the desktop, and one box that measured 450px
     // against a 442px limit on the CLI measured 435px on the desktop — a hard
@@ -656,8 +655,8 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       if (opts.allowShrink) {
         // The measured numbers have to travel on the DIAGNOSTICS channel, not
         // `log`: `log` is `opts.onProgress`, which the product build paths
-        // (`buildNativePdf`) never supply — opting IN used to make the report
-        // strictly less informative than the error it replaced.
+        // (`buildNativePdf`) never supply, so `log` would make opting IN
+        // strictly less informative than the error it replaces.
         if (scale !== null) diagnose("engine.width.overflow", `${headline}.`);
         for (const o of widthOffenders.boxes)
           diagnose(
@@ -1120,8 +1119,8 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // this pipeline's PDF rasterized at 96dpi, solid-color pin + text block):
     // a within-bounds pin under `.page { overflow-x: clip }` (a real book's
     // declaration) printed pixel-identical to the uncontained page — image
-    // whole, still under the text — while the old any-clipping-ancestor test
-    // warned on it. What DOES cut art, all measured to the pixel: an
+    // whole, still under the text — so "any clipping ancestor" is the wrong
+    // test. What DOES cut art, all measured to the pixel: an
     // ancestor in the element's containing-block chain cuts exactly the part
     // of the border box past its padding-box edge on an axis whose overflow
     // is not `visible` (a mid-page clip edge at x=54 cut a 20px overhang at
@@ -1546,13 +1545,11 @@ async function findWidthOffenders(
   // Each page context gets its OWN limit, and elements are compared against
   // the page they actually land on.
   //
-  // This used to be one document-wide `Math.max`, which meant a single
-  // `@page full { margin: 0 }` — the ordinary way to author a full-bleed art
-  // plate — lifted the bar to the whole sheet for EVERY page, so over-wide
-  // content on ordinary margined pages went unreported. That is precisely
-  // what hid the field guide's 696 -> 697px overflow (its real limit became
-  // the 828px sheet, leaving the offense 131px under the bar) for the four
-  // months it took to find it the expensive way. The plate is legitimate ON
+  // Not one document-wide `Math.max`: a single `@page full { margin: 0 }` —
+  // the ordinary way to author a full-bleed art plate — would lift the bar to
+  // the whole sheet for EVERY page, so over-wide content on ordinary margined
+  // pages would go unreported (that hid the field guide's 696 -> 697px
+  // overflow for four months). The plate is legitimate ON
   // ITS OWN page; the point is that its page's width is not every page's
   // width.
   const contentPxOf = (c: (typeof contexts)[number]) =>

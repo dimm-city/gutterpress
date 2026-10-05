@@ -50,10 +50,10 @@ interface CacheEntry {
 const docCache = new Map<string, CacheEntry>();
 
 /**
- * Cap on distinct cached documents (audit B3). One validation run touches a
+ * Cap on distinct cached documents. One validation run touches a
  * single PDF across ~13 checks (one entry), so this only bounds accumulation
  * ACROSS runs in a long-lived host (the Electron desktop validating many
- * projects over a session). Without it, `docCache` grew one never-freed parsed
+ * projects over a session). Without it, `docCache` grows one never-freed parsed
  * document per distinct path ever validated. LRU eviction destroys the evicted
  * document so its decoded pages/fonts/images are released, not just unreferenced.
  * (Exported so tests derive their eviction fixtures from the real cap.)
@@ -65,13 +65,13 @@ function destroyEntry(entry: CacheEntry): void {
 }
 
 /**
- * Grace period before an LRU-evicted document is destroyed (review finding):
+ * Grace period before an LRU-evicted document is destroyed:
  * a caller that obtained the proxy from `loadPdf` may still be mid-check when
  * the entry gets evicted by unrelated loads — destroying immediately would
  * make its in-flight page reads throw "Transport destroyed". Individual
  * checks complete in seconds; a minute of grace lets them drain while still
- * bounding memory. (Same-path stale replacement keeps immediate destroy —
- * that behavior predates the LRU and the superseded doc's file has changed.)
+ * bounding memory. (Same-path stale replacement destroys immediately — the
+ * superseded doc's file has changed.)
  */
 const EVICT_DESTROY_GRACE_MS = 60_000;
 
@@ -143,7 +143,7 @@ export async function loadPdf(path: string): Promise<PDFDocumentProxy | null> {
   try {
     return await docPromise;
   } catch {
-    // Identity guard (review finding): only drop OUR entry — a concurrent
+    // Identity guard: only drop OUR entry — a concurrent
     // caller may have re-inserted a newer one for this path after an eviction,
     // and an unguarded delete would silently discard their live document.
     if (docCache.get(path)?.doc === docPromise) docCache.delete(path);

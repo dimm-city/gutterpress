@@ -19,9 +19,6 @@ import { UsageError } from "./cli-args";
  * skipped because its tools are missing becomes a synthetic error, so
  * "validated for dtrpg" can never silently mean "the dtrpg checks didn't
  * run".
- *
- * Grown from the old `validate --profile dtrpg` (validation-profile.ts,
- * deleted): the profile was this exact idea hardcoded for one destination.
  */
 
 /** The deep-partial preset shape a target may overlay. */
@@ -205,8 +202,7 @@ export function overlayPreset(preset: VendorPreset, target: PublishTarget): Vend
  * The strict-PDF fill-ins applied to EVERY post-build PDF validation
  * regardless of preset/target: any of these left `undefined` by the config
  * becomes an error-severity check, without overwriting an author's explicit
- * choice (including an explicit disable). Moved verbatim from
- * validation-profile.ts (ARCH #21).
+ * choice (including an explicit disable).
  */
 export const DEFAULT_STRICT_PDF_CHECKS = [
   "pdf.structure.qpdf",

@@ -51,8 +51,7 @@ export interface HostCallbacks {
  *
  * There is no token-expiration concept to configure: OAuth device-flow
  * tokens (`gho_…`) are long-lived by default and revocable by the user from
- * GitHub → Settings → Applications. (The old GitHub-App "user-to-server
- * token expiration" foot-gun no longer applies.)
+ * GitHub → Settings → Applications.
  *
  * Override order: explicit option → GUTTERPRESS_GITHUB_CLIENT_ID env var → this
  * default (see {@link resolveGitHubClientId}). The env var exists so a
