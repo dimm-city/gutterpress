@@ -70,8 +70,9 @@ jobs:
       # One xvfb-run per drive. The two CDP drives fall back to wrapping
       # themselves in xvfb-run when DISPLAY is unset; wrapping them here sets
       # DISPLAY, so that fallback stays dormant and every drive launches the
-      # same way. problems-last-hop and editor-dropdown-sync drive Playwright's
-      # _electron, which has no such fallback and need the wrapper.
+      # same way. problems-last-hop, editor-dropdown-sync and preview-zoom-wheel
+      # drive Playwright's _electron, which has no such fallback and need the
+      # wrapper.
       - name: Drive the built app (behaviour)
         working-directory: packages/desktop
         run: |
@@ -82,3 +83,4 @@ jobs:
           xvfb-run -a node tests/integration/problems-panel.pw.mjs
           xvfb-run -a node tests/integration/editor-opens-with-content.pw.mjs
           xvfb-run -a node tests/integration/editor-dropdown-sync.pw.mjs out/main/main.js
+          xvfb-run -a node tests/integration/preview-zoom-wheel.pw.mjs out/main/main.js
