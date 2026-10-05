@@ -34,6 +34,7 @@ for (const line of readFileSync(0, "utf8").split("\n").map((l) => l.trim()).filt
     else if (cmd === "fill") { const [s, ...v] = arg.split(" | "); await p.fill(s, v.join(" | ")); }
     else if (cmd === "press") await p.keyboard.press(arg);
     else if (cmd === "move") { const [x, y, steps] = arg.split(" ").map(Number); await p.mouse.move(x, y, { steps: steps || 1 }); }
+    else if (cmd === "wheel") { const [dx, dy] = arg.split(" ").map(Number); await p.mouse.wheel(dx, dy); }
     else if (cmd === "wait") await p.waitForTimeout(+arg);
     else if (cmd === "text") console.log(await p.evaluate(() => document.body.innerText));
     else if (cmd === "eval") console.log(await p.evaluate(arg));
