@@ -209,8 +209,7 @@ test("markCanceling during the syncing phase shows Canceling…, not the stale s
 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Host intents: savePdf / buildTo / cancelExport (Phase 5 slice 2 — moved
-// from +page.svelte, UX H5 / ARCH #10).
+// Host intents: savePdf / buildTo / cancelExport.
 // ─────────────────────────────────────────────────────────────────────────────
 
 type Spy<A extends unknown[] = unknown[]> = ((...a: A) => void) & { calls: A[] };

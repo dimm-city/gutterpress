@@ -23,11 +23,9 @@ import { scanForProjects, type ScanDeps } from "./discover-projects";
 import { seedSamples } from "./seed-samples";
 import { createSettingsStore } from "./settings-store";
 import { createPrefsStore } from "./prefs-store";
-// ARCH review #31: the 11 independent `registerXHooks()` service locators
-// have been collapsed into ONE `registerHostServices()` call (below) that
-// writes a single typed `HostServices` object. Each domain module below is
-// now imported for its TYPE only — main.ts builds one plain object per
-// domain at the same place it always did, and hands all of them to
+// ONE `registerHostServices()` call (below) writes a single typed
+// `HostServices` object. Each domain module below is imported for its TYPE
+// only — main.ts builds one plain object per domain and hands all of them to
 // `registerHostServices` together, once, after every dependency exists.
 import { registerHostServices } from "./server-bridge/host-services";
 import type { WriteHooks } from "./server-bridge/write-hooks";
@@ -262,8 +260,7 @@ function setActiveRepositoryRoot(root: string | null): void {
 // Desktop prefs (#42/#43) — session/per-project state in gutterpress-prefs.json,
 // separate from durable user settings (below). The DesktopPrefs shape and the
 // prefsPath/readPrefs/writePrefs/existingDirectory read/write path live in
-// ./prefs-store (Phase 5b extraction; unit-tested in
-// tests/platform/prefs-store.test.ts) behind an injected-fs store factory.
+// ./prefs-store (unit-tested in tests/platform/prefs-store.test.ts) behind an injected-fs store factory.
 // main.ts instantiates the store with the live Electron userData dir +
 // node:fs/promises and uses its closures unchanged. Writes are atomic
 // (`rename` over a `.tmp` file) and a corrupt read is preserved rather than
@@ -280,8 +277,7 @@ const { readPrefs, updatePrefs, existingDirectory } = createPrefsStore({
 // SEPARATE file from gutterpress-prefs.json so session/per-project state and durable
 // user settings don't collide. The AppSettings shape, DEFAULT_SETTINGS, the
 // pure mergeSettings helpers, and the injected-fs store factory live in
-// ./settings-store (Phase 5b extraction; unit-tested in
-// tests/platform/settings-store.test.ts). main.ts instantiates the store with
+// ./settings-store (unit-tested in tests/platform/settings-store.test.ts). main.ts instantiates the store with
 // the live Electron userData dir + node:fs/promises and uses its read/write
 // closures unchanged. Writes are atomic and a corrupt read is preserved
 // rather than discarded (#34).
@@ -349,11 +345,7 @@ const operationLogPathForDir = (dir: string): string =>
 // opt-in). A book nested INSIDE a larger repo DOES snapshot, against that
 // enclosing repo — that is the repo-root session model ("a project is its git
 // repo", R9), and the lib's provider scopes the commit to `repoRoot` itself.
-// (This comment used to say nested folders were never auto-snapshotted; that
-// stopped being true when sessions became repo-rooted, and the scheduler has no
-// subPath check — corrected 2026-07-29.) The lib's per-repo FIFO lock
-// serializes the commit against
-// sync/restore, and its no-empty-snapshot guard turns a clean-tree fire into
+// The lib's per-repo FIFO lock serializes the commit against sync/restore, and its no-empty-snapshot guard turns a clean-tree fire into
 // the expected `isNoChangesError` rejection, swallowed below. Silent on success
 // (the history dialog reloads its list on open).
 // The single scheduler instance (electron/auto-snapshot/scheduler.ts) owns the
@@ -368,15 +360,12 @@ const autoSnapshot = new AutoSnapshotScheduler({
   readSettings,
   getWatchedDir: () => folderWatch.getWatchedDir(),
   operationLogPath,
-  // M39 (UX critical review): the safety net used to fail silently forever
-  // (console.error + return) while the pill kept asserting "Version history
-  // on". Once AUTO_SNAPSHOT_FAILURE_THRESHOLD consecutive failures hit for the
-  // SAME dir, surface it through the SAME "sync:status" push channel + guidance
-  // dialog the transparent-sync recovery flow already uses (RecoveryUiController
-  // / RecoveryGuidanceDialog react to state:"error" + guidance today — this is
-  // also the one channel local-git-folder projects with no remote already
-  // receive events on, via the one-shot "local" status below) rather than
-  // inventing a second signal path. Scoped to the still-open project so a
+  // M39: the safety net must not fail silently while the pill asserts
+  // "Version history on". Once AUTO_SNAPSHOT_FAILURE_THRESHOLD consecutive
+  // failures hit for the SAME dir, surface it through the SAME "sync:status"
+  // push channel the status pill already listens on (also the one channel
+  // local-git-folder projects with no remote receive events on, via the
+  // one-shot "local" status) rather than inventing a second signal path. Scoped to the still-open project so a
   // failure from a since-closed/switched project never surfaces stale.
   onSnapshotFailed: (dir, consecutiveFailures, error) => {
     if (folderWatch.getWatchedDir() !== dir) return;
@@ -426,10 +415,6 @@ function flushAutoSnapshot(): Promise<void> | undefined {
 // trigger fires, we set runAgain and execute exactly one follow-up on completion.
 // This coalesces a burst of triggers into at most one queued sync — we never pile
 // up N pending syncs behind one long-running network call.
-//
-// Conflict-latch (§4.1 / §6.1): on 'conflict' outcome, auto-sync is DISABLED for
-// the affected project until re-enabled (by setAutoSync or by conflict resolution).
-// Auto-snapshot keeps running so ongoing edits are never lost.
 
 // The single orchestrator instance (electron/auto-sync/orchestrator.ts) owns ALL
 // auto-sync state + timers + the single-flight / runAgain / conflict-latch control
@@ -442,8 +427,8 @@ function flushAutoSnapshot(): Promise<void> | undefined {
  * Last emitted status per project dir (resolved-path keyed) — the queryable
  * counterpart to the push channel. "sync:status" is fire-and-forget with no
  * replay, so a renderer that subscribes AFTER an emit (project open races the
- * pill's mount; one-shot "connect"/"local" states) used to strand on stale or
- * blank status forever. The pill now seeds itself from `sync:getStatus`
+ * pill's mount; one-shot "connect"/"local" states) would strand on stale or
+ * blank status forever, so the pill seeds itself from `sync:getStatus`
  * (below) right after subscribing.
  */
 const lastSyncStatusByDir = new Map<string, SyncStatusPayload>();
@@ -525,8 +510,7 @@ function startFolderWatch(dirPath: string): void {
 // The orchestrator's inputs (is a credential stored for the project's remote?)
 // must not change behind its back: when the user connects or disconnects a
 // host, re-diagnose the OPEN project and either start syncing right away
-// (connect → the pill flips to "Saving changes…" within seconds — the reward
-// for connecting used to be an unchanged status until some later tick) or
+// (connect → the pill flips to "Saving changes…" within seconds) or
 // re-emit the honest not-syncing state (disconnect → "connect"/"local").
 onCredentialChange((host) => {
   void (async () => {
@@ -566,11 +550,10 @@ let activeRendererFlush:
   | null = null;
 
 /**
- * Send an IPC push to the renderer only when the window is alive (audit A3).
- * Background senders used `mainWindow?.` alone, which still throws "Object has
- * been destroyed" in the narrow window between `webContents.destroy()` and the
- * `closed` listener nulling `mainWindow`. One guarded choke point replaces the
- * eight hand-rolled null-only checks.
+ * Send an IPC push to the renderer only when the window is alive. A bare
+ * `mainWindow?.` check still throws "Object has been destroyed" in the narrow
+ * window between `webContents.destroy()` and the `closed` listener nulling
+ * `mainWindow`, so every background push goes through this one choke point.
  */
 function safeSend(channel: string, ...args: unknown[]): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -639,8 +622,8 @@ function createWindow() {
     backgroundColor: "#1e1e1e",
     icon: appIconPath(),
     // Created hidden, then shown right after loadURL is dispatched (below) —
-    // the in-window start screen (WelcomeLanding) is the launch surface; the
-    // old external splash window is gone. The window must be VISIBLE during
+    // the in-window start screen (WelcomeLanding) is the launch surface. The
+    // window must be VISIBLE during
     // the first render so the viewer's requestAnimationFrame-driven layout
     // produces frames (a hidden window stalls it on real hardware).
     show: false,
@@ -650,7 +633,7 @@ function createWindow() {
       preload: path.resolve(HERE, "../preload/preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
-      // ARCH review finding #33: sandboxed (Electron default since v20). The
+      // Sandboxed (Electron default since v20). The
       // preload (electron/preload.ts) uses only contextBridge + ipcRenderer,
       // both sandbox-safe, so this costs nothing while shrinking the blast
       // radius of a renderer compromise in a window that intentionally hosts
@@ -701,8 +684,8 @@ function createWindow() {
   });
 
   // Editable-field context menu. Electron ships no default menu, so inputs
-  // (e.g. the Open Location URL/path field) otherwise have no right-click
-  // cut/copy/paste affordance.
+  // (e.g. the start screen's "Search your books" field) otherwise have no
+  // right-click cut/copy/paste affordance.
   mainWindow.webContents.on("context-menu", (_e, params) => {
     if (!params.isEditable && !params.selectionText) return;
     const template: Electron.MenuItemConstructorOptions[] = params.isEditable
@@ -717,16 +700,10 @@ function createWindow() {
     Menu.buildFromTemplate(template).popup({ window: mainWindow ?? undefined });
   });
 
-  // ARCH review finding #1: no flow in this app actually needs an in-app
-  // popup window — GitHub device-flow connect and every external link
-  // already go through `shell.openExternal` (see ConnectionsSettings,
-  // GitHubDialog, HelpContent, +page.svelte; a grep for
-  // `window.open`/`target="_blank"` across src/ and electron/ has zero
-  // hits). The previous handler granted `window.open`/`target="_blank"`
-  // requests a full BrowserWindow for ANY https URL — and because
-  // `overrideBrowserWindowOptions` never cleared `preload`, that popup
-  // inherited the parent's full preload bridge. `decideWindowOpen` never
-  // grants a popup a window at all: http(s) requests open in the system
+  // No flow in this app needs an in-app popup window — GitHub device-flow
+  // connect and every external link go through `shell.openExternal`. A
+  // popup BrowserWindow would inherit the parent's full preload bridge, so
+  // `decideWindowOpen` never grants one: http(s) requests open in the system
   // browser instead, so there is nothing that could inherit the bridge.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     const decision = decideWindowOpen(url);
@@ -736,17 +713,16 @@ function createWindow() {
     return { action: "deny" };
   });
 
-  // ARCH review finding #1: deny top-frame navigation to anything but the
+  // Deny top-frame navigation to anything but the
   // app's own origin (prod) / the Vite dev server (dev). Without this, the
   // cross-origin preview iframe (PreviewFrame.svelte, rendering author
   // markdown with html:true) could navigate the TOP frame via a plain
   // `<a target="_top" href="https://evil.example">` — and because the
   // preload persists across a same-window navigation, the destination
   // origin would receive the full `window.electron` bridge
-  // (arbitrary-path PDF write, arbitrary-directory repo clone, preview/watch
-  // control, …). http(s) destinations are opened in the system browser
-  // instead of loading in place; everything else (file:, javascript:,
-  // data:, arbitrary custom schemes) is denied outright.
+  // (PDF export, preview/watch control, …). http(s) destinations are opened
+  // in the system browser instead of loading in place; everything else
+  // (file:, javascript:, data:, arbitrary custom schemes) is denied outright.
   mainWindow.webContents.on("will-navigate", (event, url) => {
     const decision = decideNavigation(url, originPolicyConfig());
     if (decision.action === "allow") return;
@@ -793,7 +769,7 @@ function createWindow() {
   // makes the router try to resolve a page named "index.html" and throw
   // "Not found: /index.html".)
   //
-  // ARCH #1 (CRITICAL): gated by resolveDevServerUrl() — null when packaged.
+  // Gated by resolveDevServerUrl() — null when packaged.
   const devUrl = resolveDevServerUrl(app.isPackaged, process.env.VITE_DEV_SERVER_URL);
   mainWindow.loadURL(devUrl || "app://local/");
   if (devUrl) {
@@ -892,8 +868,7 @@ function createWindow() {
 // (registerAppProtocol) live in electron/sveltekit-host.ts: the window's
 // requests are answered in-process by Server.respond() — no HTTP server, no
 // port, nothing for another local process to reach. The privileged-scheme
-// registration stays here so it runs at its original point (before
-// app.whenReady). main.ts calls loadSvelteKitServer(slog) +
+// registration lives here so it runs before app.whenReady. main.ts calls loadSvelteKitServer(slog) +
 // registerAppProtocol() from whenReady below.
 // ──────────────────────────────────────────────────────────────────────────
 
@@ -904,7 +879,7 @@ function createWindow() {
 // Electron default; forcing software rendering only slows the live preview.
 
 // Register the scheme as standard (must happen before app.whenReady) so fetch
-// and origin-scoped browser APIs such as IndexedDB work from the app:// page.
+// and origin-scoped browser APIs (e.g. localStorage) work from the app:// page.
 protocol.registerSchemesAsPrivileged([
   {
     scheme: "app",
@@ -918,12 +893,11 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 // ──────────────────────────────────────────────────────────────────────────
-// Host-service hook groups for server routes (Phase 2A) (ARCH review #31).
+// Host-service hook groups for server routes.
 // The SvelteKit handler runs in this same process but in a separate Vite
 // bundle scope. Each group below is a plain object built where its
 // dependencies live; none of them writes to globalThis on its own — they are
-// all handed to ONE `registerHostServices()` call once every group exists
-// (see the end of this section, next to the former conflict-preview site).
+// all handed to ONE `registerHostServices()` call once every group exists.
 // ──────────────────────────────────────────────────────────────────────────
 const writeHooksImpl: WriteHooks = {
   scheduleAutoSnapshot,
@@ -952,23 +926,23 @@ initPdfExport({
   sendProgress: (event) => safeSend("build:progress", event),
 });
 // prefsHooksImpl is built after discoverScanDeps is initialized (below); the
-// single registerHostServices() call that consumes it lives further down
-// still (ARCH #31 — see that call site's comment).
+// single registerHostServices() call that consumes it lives further down.
 
 // ──────────────────────────────────────────────────────────────────────────
-// IPC handlers (replace the deleted /api/* SvelteKit routes)
+// IPC handlers — the narrow bridge for push streams and calls that drive a
+// live BrowserWindow; everything else is a SvelteKit /api route.
 //
 // Every handler below is registered through `secureHandle`, not raw
 // `ipcMain.handle`, so that ALL of them — not some hand-picked subset —
-// reject invocations whose sender frame isn't the app's own origin (ARCH
-// review finding #1). This is what stands between the preload's full IPC
-// bridge (PDF-write, repo clone, preview/watch control, …) and any remote
-// origin that a navigation/popup bug might otherwise let load into a frame.
+// reject invocations whose sender frame isn't the app's own origin. This is
+// what stands between the preload's IPC bridge (PDF export, connect flows,
+// preview/watch control, …) and any remote origin that a navigation/popup
+// bug might otherwise let load into a frame.
 // ──────────────────────────────────────────────────────────────────────────
 
 /**
  * `will-navigate`/sender-validation config: prod app:// origin + (dev-only)
- * Vite dev server. ARCH review finding #1 (CRITICAL): devServerOrigin goes
+ * Vite dev server. devServerOrigin goes
  * through resolveDevServerUrl(), which is null whenever app.isPackaged — a
  * packaged build must never add an attacker-supplied VITE_DEV_SERVER_URL to
  * the trusted-origin policy that guards the IPC bridge and top-frame
@@ -985,7 +959,7 @@ function originPolicyConfig(): OriginPolicyConfig {
  * Drop-in replacement for `ipcMain.handle` that rejects any invocation whose
  * `event.senderFrame.url` isn't the trusted app origin (or the dev server
  * origin, in dev) before calling `listener`. One mechanism applied to every
- * channel, instead of a sender check duplicated into 18 handlers.
+ * channel.
  */
 function secureHandle<Args extends unknown[], R>(
   channel: string,
@@ -1003,22 +977,17 @@ function secureHandle<Args extends unknown[], R>(
 }
 
 // ── Folder watching (PlatformAdapter.watchFolder, #44) ──────────────────────
-// Backs external-edit detection: a shallow fs.watch on the open project whose
+// Backs external-edit detection: a recursive fs.watch on the open project whose
 // debounced changes are pushed to the renderer as `fs:folderChanged`. Only one
 // project is open at a time, so subscribing replaces any prior watch.
 secureHandle("fs:watchFolder", async (_e, dirPath: string): Promise<void> => {
   if (!path.isAbsolute(dirPath)) {
     throw new Error(`fs:watchFolder requires an absolute path, got: ${dirPath}`);
   }
-  // P1 review (PR #98): this call used to accept ANY absolute path from the
-  // renderer, and fsGuardImpl.projectRoots() (below) trusted whatever
-  // directory ended up watched — so a same-origin script could call
-  // fs:watchFolder("/home/user/.ssh") and turn an arbitrary directory into an
-  // authorized fs-route root (direct reads, copy-file's "inside project"
-  // shortcut, …). The watcher exists ONLY to watch the already-open project,
-  // so it is now gated on the host-set `activeWorkspaceRoot`, never on
-  // renderer-supplied input — matching projectRoots()'s sole authorization
-  // source.
+  // PR #98: the watcher exists ONLY to watch the already-open project, so it
+  // is gated on the host-set `activeWorkspaceRoot`, never on renderer-supplied
+  // input — matching projectRoots()'s sole authorization source. Accepting any
+  // absolute path would let a same-origin script watch e.g. "/home/user/.ssh".
   if (!activeWorkspaceRoot || path.resolve(dirPath) !== activeWorkspaceRoot) {
     throw new Error(
       `fs:watchFolder: dirPath must be the active workspace directory (got: ${dirPath})`,
@@ -1031,9 +1000,8 @@ secureHandle("fs:watchFolder", async (_e, dirPath: string): Promise<void> => {
   // renderer calls fs:watchFolder, so its guard saw the previous project (or
   // null) and silently no-opped; and even a lucky arm was wiped by
   // FolderWatcher.start()'s stop() → onStop → autoSync.cancelAll() just now.
-  // Net effect pre-fix: a view-only session NEVER pulled teammate changes —
-  // the interval only ever started after the first local edit. (Reopening the
-  // SAME dir skipped the wipe, which is why sync seemed intermittent.)
+  // Without this arm a view-only session never pulls teammate changes — the
+  // interval would only start after the first local edit.
   void autoSync.armInterval(folderWatch.getWatchedDir() ?? path.resolve(dirPath));
 });
 
@@ -1200,12 +1168,8 @@ const discoverScanDeps: ScanDeps = {
   basename: (p: string) => basename(p),
 };
 
-// Prefs/settings hooks for server routes (Phase 2B). Built here because
-// scanForProjects's closure needs discoverScanDeps, which is only assembled
-// right above — a real dependency, not the ordering LANDMINE it used to be:
-// this object is no longer registered on its own the moment it's built, so
-// there is nothing to get wrong by reading it before `registerHostServices`
-// runs at the end of this section (ARCH #31).
+// Prefs/settings hooks for server routes. Built here because
+// scanForProjects's closure needs discoverScanDeps, assembled right above.
 const prefsHooksImpl: PrefsHooks = {
   readPrefs,
   updatePrefs,
@@ -1250,8 +1214,8 @@ const appImageHooksImpl: AppImageHooks = {
 // ── Local version history (#13) ──────────────────────────────────────────────
 // Thin pass-throughs to the lib's source-provider operations (isomorphic-git —
 // CLAUDE.md §7: never the system git binary). The renderer drives these through
-// the platform adapter; capability gating (which actions to even show) comes
-// from app:classifyProject. Paths MUST be absolute (trusted SPA, but a relative
+// the /api/vcs routes; capability gating (which actions to even show) comes
+// from /api/app/classify-project. Paths MUST be absolute (trusted SPA, but a relative
 // path could resolve against the main-process CWD by accident).
 
 // operationLogPath + timers for the VCS SvelteKit server routes.
@@ -1275,7 +1239,7 @@ const vcsHooksImpl: VcsHooks = {
   },
 };
 
-// Error sanitization for vcs:* now lives in the shared server-bridge/friendly-errors
+// Error sanitization for vcs:* lives in the shared server-bridge/friendly-errors
 // module (friendlyVcsError), consumed by the SvelteKit routes.
 
 // ── Managed GitHub integration (#15, ADR 0006) ───────────────────────────────
@@ -1286,14 +1250,14 @@ const vcsHooksImpl: VcsHooks = {
 
 const GITHUB_HOST = "github.com";
 
-// lib + tokenStore + GITHUB_HOST for remote SvelteKit server routes (Phase 2F).
+// lib + tokenStore + GITHUB_HOST for remote SvelteKit server routes.
 // The routes live in a separate Vite bundle and cannot directly import from
 // main.ts; they access these through the collapsed host object instead.
 //
-// cloneRepository (ARCH review #8) is a bound closure — not a raw piece —
-// for the same reason: the route that calls it cannot see `mainWindow`
-// directly, so the closure below does the FULL operation (validation, lib
-// call, clone-progress push) the old IPC handler used to do inline. Friendly-error sanitization (handleRemoteErrors) stays at the
+// cloneRepository is a bound closure — not a raw piece — for the same
+// reason: the route that calls it cannot see `mainWindow` directly, so the
+// closure below does the FULL operation (validation, lib call, clone-progress
+// push). Friendly-error sanitization (handleRemoteErrors) stays at the
 // ROUTE, matching every other remote:* route (e.g. remote/sync/+server.ts) —
 // these hooks are the raw operation.
 const remoteHooksImpl: RemoteHooks = {
@@ -1338,7 +1302,7 @@ const remoteHooksImpl: RemoteHooks = {
 
 // Error sanitization (handleRemoteErrors: friendly lib messages pass through;
 // anything else is logged with credentials redacted and replaced with a terse
-// safe message) now lives in the shared server-bridge/friendly-errors module,
+// safe message) lives in the shared server-bridge/friendly-errors module,
 // imported at the top of this file.
 
 // The device-flow "one connect at a time" state trio lives in
@@ -1441,31 +1405,25 @@ function sanitizeBookSubPath(subPath: unknown): string {
 
 // remote:diagnoseProject, remote:testRemoteAccess, remote:connectGenericHost,
 // remote:disconnectHost, remote:listConnections, remote:forgeTokenUrl,
-// remote:sync, remote:cloneRepository — migrated to SvelteKit server routes
-// (Phase 2F / ARCH review #8: src/routes/api/remote/*). cloneRepository is a
+// remote:sync, remote:cloneRepository are SvelteKit server routes
+// (src/routes/api/remote/*). cloneRepository is a
 // bound closure on remoteHooksImpl above (it needs mainWindow, which the
 // route's separate Vite bundle can't reach directly).
 
-// ── fs-route project-scoping guard (ARCH review #37) ────────────────────────
+// ── fs-route project-scoping guard ───────────────────────────────────────────
 // See electron/server-bridge/fs-guard.ts for the full policy this
 // implements. `projectRoots` is derived SOLELY from the host-validated active
 // workspace root (set before preview generation begins) plus the enclosing
 // repository root detected by the host for a nested book, never from the folder
 // watcher's tracked dir or from whether a preview server exists. This lets a
 // multi-book project edit shared styles and assets without trusting a path
-// supplied by the renderer. It
-// used to also union in `folderWatch.getWatchedDir()`, but that let a
-// renderer-supplied `fs:watchFolder` call (any absolute path, e.g. the user's
-// SSH directory) authorize itself as a project root — the watcher's tracked
-// dir is host-authorized input, not an independent authorization source (P1
-// review, PR #98; `fs:watchFolder` above now rejects any dirPath that isn't
-// this same `activeWorkspaceRoot`). The SPA's own open-project sequence
-// (`routes/+page.svelte` / `project-lifecycle-controller.svelte.ts`) already
-// awaits `startPreviewHost` (which sets `activeWorkspaceRoot`) BEFORE it
-// lists/reads the new project's files (`ensureEditorFile`, the
-// manifest-detection `listDir`) and BEFORE it calls `fs:watchFolder`, so
-// dropping the watcher union does not 403 that legitimate
-// "open a different project" window.
+// supplied by the renderer. The watcher's tracked dir is deliberately NOT a
+// root: it is host-authorized input, not an independent authorization source,
+// and must never let an `fs:watchFolder` call authorize itself (PR #98). The
+// SPA's open-project sequence (`routes/+page.svelte` /
+// `project-lifecycle-controller.svelte.ts`) awaits `startPreviewHost` (which
+// sets `activeWorkspaceRoot`) BEFORE it lists/reads the new project's files
+// and BEFORE it calls `fs:watchFolder`, so this never 403s a legitimate open.
 const fsGuardImpl: FsGuardHooks = {
   projectRoots(): string[] {
     return [activeWorkspaceRoot, activeRepositoryRoot].filter(
@@ -1484,7 +1442,7 @@ const fsGuardImpl: FsGuardHooks = {
   },
 };
 
-// ── picked-file one-time capability (P1 review) ─────────────────────────────
+// ── picked-file one-time capability ─────────────────────────────────────────
 // See electron/server-bridge/picked-files.ts for the full policy. Native
 // dialog picks (dialog:pickImageFile[s]) register the paths the OS dialog
 // itself returned; media:importImage / fs:copyFile consume them before
@@ -1492,7 +1450,7 @@ const fsGuardImpl: FsGuardHooks = {
 // (not per-request), same as fsGuardImpl above.
 const pickedFilesImpl = createPickedFilesService();
 
-// ── save-path one-time capability (finding #4, 2026-07-13 maintainer review) ─
+// ── save-path one-time capability ───────────────────────────────────────────
 // See electron/server-bridge/picked-files.ts for the full policy. The native
 // Save dialog (dialog:savePdf) registers the absolute path it itself just
 // returned; the export controller (electron/export/controller.ts) consumes
@@ -1501,22 +1459,20 @@ const pickedFilesImpl = createPickedFilesService();
 // media:importImage/fs:copyFile `src` read, and vice versa.
 const savePathsImpl = createSavePathsService();
 
-// ── Auto-sync settings (transparent-sync plan §4.3) — ARCH review #8 ────────
+// ── Auto-sync settings (transparent-sync plan §4.3) ─────────────────────────
 // The renderer calls setAutoSync(true|false) from the Settings panel via the
 // SvelteKit server route (src/routes/api/sync/set-auto-sync — a pure settings
 // write, no push stream or live-BrowserWindow need, so it doesn't belong on
 // IPC). We persist the flag into settings.versionHistory.autoSync and, if
-// re-enabled, re-arm the periodic safety timer for the currently open project
-// (unlatch conflict if any, since the user explicitly requested to resume).
+// re-enabled, re-arm the periodic safety timer for the currently open project.
 const syncSettingsHooksImpl: SyncSettingsHooks = {
   setAutoSync: async (enabled) => {
     if (typeof enabled !== "boolean") {
       throw new Error("sync:setAutoSync requires a boolean");
     }
-    // Atomic section patch (review finding): a bare readSettings()+
-    // writeSettings() pair here raced the settings route's updateSettings and
-    // silently reverted whichever change landed first — the exact lost-update
-    // audit A2 fixed one function away.
+    // Atomic section patch: a bare readSettings()+writeSettings() pair here
+    // would race the settings route's updateSettings and silently revert
+    // whichever change landed first.
     await updateSettings({ versionHistory: { autoSync: enabled } });
 
     // When re-enabling, arm the periodic timer — the author is explicitly
@@ -1537,7 +1493,7 @@ const syncSettingsHooksImpl: SyncSettingsHooks = {
   },
 };
 
-// ── Updater status/check/download hooks (ARCH review #8) ────────────────────
+// ── Updater status/check/download hooks ─────────────────────────────────────
 // getStatus/checkForUpdates/download (electron/updater.ts) are plain
 // functions with no main.ts-only state of their OWN — but electron/updater.ts
 // itself has main-bundle-only mutable state (phase/lastError/…) populated by
@@ -1553,11 +1509,10 @@ const updaterHooksImpl: UpdaterHooks = {
   download: () => downloadUpdate(),
 };
 
-// ── ONE registration for the entire host/route seam (ARCH review #31) ───────
+// ── ONE registration for the entire host/route seam ─────────────────────────
 // Every hook group assembled above is registered here, atomically, as a
-// single `__gutterpressHost__` object — replacing the previous 11 independent
-// globalThis keys written from 8 scattered call sites. This is the LAST of
-// those construction points in the file, so every dependency any field's
+// single `__gutterpressHost__` object. This is the LAST of the hook-group
+// construction points in the file, so every dependency any field's
 // closures need (discoverScanDeps, GITHUB_HOST, electronTokenStore,
 // activePreview, folderWatch, …) already exists.
 registerHostServices({
@@ -1577,8 +1532,6 @@ registerHostServices({
   vcs: vcsHooksImpl,
   write: writeHooksImpl,
 });
-
-// (api:doctor handler removed — migrated to server route)
 
 // The preview-open pipeline (start server, detect source, recents upsert,
 // auto-sync arm/preflight, local-status emit) lives in
@@ -1660,7 +1613,7 @@ secureHandle("api:build", (_e, args: ExportBuildArgs) => exportController.build(
 // Downloads require an explicit user click; installable platforms show a
 // "restart to update" banner after staging.
 //
-// getStatus/check/download (ARCH review #8) are plain request/response —
+// getStatus/check/download are plain request/response —
 // no push stream, no live-BrowserWindow need — so they're SvelteKit server
 // routes (src/routes/api/updater/*), reached through `getHostServices().updater`
 // (updater.ts's state lives in THIS bundle — see updater-hooks.ts). applyNow stays on
@@ -1701,13 +1654,10 @@ secureHandle("updater:applyNow", () => installNow());
 // visible→hidden, background timer throttling clamps the setTimeout()s
 // the viewer yields on between pages, collapsing layout to ~1 page/sec
 // (measured: a hidden window dropped from 490 setTimeout callbacks/2s to 35 —
-// and worse on real hardware with the 1s clamp). That was the "12 pages in
-// 30s" report, back when an external splash window covered the main window at
-// launch. The splash is gone (the in-window start screen is the launch
-// surface), but a covered/minimized window still hits the same clamp mid-
-// render.
+// and worse on real hardware with the 1s clamp) — the "12 pages in 30s"
+// regression. A covered/minimized window hits the same clamp mid-render.
 //
-// `backgroundThrottling: false` on the window (set below) fixes it, but these
+// `backgroundThrottling: false` on the window (set in createWindow) fixes it, but these
 // app-level switches make it bulletproof: they globally disable renderer
 // backgrounding, background-timer throttling, and occlusion-driven backgrounding,
 // so NO window — even a fully covered one — can be throttled. Verified:
@@ -1828,20 +1778,19 @@ app.whenReady().then(async () => {
   // In dev mode (VITE_DEV_SERVER_URL set, app NOT packaged) the SvelteKit dev
   // server is already running externally — skip loading the built server.
   // In prod (or a packaged build where VITE_DEV_SERVER_URL is set by an
-  // attacker — ARCH review finding #1, CRITICAL — resolveDevServerUrl()
-  // ignores it), load the SvelteKit server from build/ and wire it to the
+  // attacker — resolveDevServerUrl() ignores it), load the SvelteKit server from build/ and wire it to the
   // app:// protocol so the window only ever loads local content.
   if (!resolveDevServerUrl(app.isPackaged, process.env.VITE_DEV_SERVER_URL)) {
     try {
       await loadSvelteKitServer(slog);
     } catch (err) {
       console.error("[sk-server] failed to start SvelteKit server:", err);
-      // Non-fatal (ARCH review #28): registerAppProtocol still comes up and
-      // serves a styled retry page for every app:// request until the server
-      // has loaded (a corrupt install can still resolve without a restart —
-      // e.g. a later manual retry). But a console.error alone stranded the
-      // author on a raw "server not started" page with zero explanation, so
-      // also surface it as a plain-language native dialog right away.
+      // Non-fatal: registerAppProtocol still comes up and serves a styled
+      // retry page for every app:// request until the server has loaded (a
+      // corrupt install can still resolve without a restart — e.g. a later
+      // manual retry). A console.error alone would leave the author on that
+      // page with zero explanation, so also surface it as a plain-language
+      // native dialog right away.
       dialog.showErrorBox(
         "Gutterpress couldn't start",
         "Gutterpress's internal server didn't start, so the app can't load its interface.\n\n" +

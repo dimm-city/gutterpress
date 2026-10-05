@@ -25,7 +25,7 @@ function makeBridge() {
     watchFolder: rec("watchFolder", () => {}),
     onFlushBeforeClose: rec("onFlushBeforeClose", () => {}),
     onFolderChanged: rec("onFolderChanged", () => {}),
-    // GitHub integration (#15) — connect/clone stay on bridge; read methods migrated to server routes
+    // GitHub integration (#15) — connect stays on the bridge; everything else is a server route
     connectGitHubStart: rec("connectGitHubStart", Promise.resolve({})),
     connectGitHubWait: rec("connectGitHubWait", Promise.resolve({})),
     connectGitHubCancel: rec("connectGitHubCancel", Promise.resolve({ ok: true })),

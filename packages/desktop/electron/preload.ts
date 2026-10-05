@@ -179,7 +179,7 @@ contextBridge.exposeInMainWorld("electron", {
     cb: (mode?: "flush" | "discard") => boolean | void | Promise<boolean | void>,
   ): (() => void) =>
     // `mode` is "discard" when the author chose Don't Save in main's close
-    // prompt; anything else means flush as before.
+    // prompt; anything else means flush.
     forwardPush<"flush" | "discard" | undefined>("app:flushBeforeClose", (mode) => {
       // The renderer flushes its buffer, then signals completion so main can
       // destroy the window. Signal failure even if the callback throws so quit
@@ -197,7 +197,7 @@ contextBridge.exposeInMainWorld("electron", {
     }),
   /**
    * Subscribe to debounced folder-change notifications carrying the changed
-   * file's basename (#44). Returns an unsubscribe fn.
+   * file's path relative to the watched folder (#44). Returns an unsubscribe fn.
    */
   onFolderChanged: (cb: (data: { filename: string }) => void): (() => void) =>
     forwardPush("fs:folderChanged", cb),

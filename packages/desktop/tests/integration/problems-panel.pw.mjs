@@ -235,14 +235,12 @@ log("project opened");
 //
 // Those counts are downstream of the FIRST FULL RENDER, not of the project-open
 // gate above: the app calls refreshProblems() from its renderingComplete
-// handler, while that gate fires as soon as the sources are parsed. Measured on
-// a green CI run the counts land ~9s after "project opened", so the old 30s was
-// sized for the lint round-trip alone and left the rest of the render ~3x
-// headroom — which is what ran out on 5 of 40 CI runs. Budget it like the
-// project-open gate above, since it waits on the same pipeline, and report what
-// the strip actually showed on the way out: a render that never finished, a
-// lint that errored, and a lint that found nothing were indistinguishable
-// before, and only one of the three is fixed by waiting longer.
+// handler, while that gate fires as soon as the sources are parsed (measured on
+// a green CI run: ~9s after "project opened"). Budget it like the project-open
+// gate above, since it waits on the same pipeline, and report what the strip
+// actually showed on the way out: a render that never finished, a lint that
+// errored, and a lint that found nothing must be distinguishable, and only one
+// of the three is fixed by waiting longer.
 const readStrip = () => evalJs(`(() => {
   const strip = document.querySelector('.toggle-strip');
   if (!strip) return { strip: false };
@@ -305,9 +303,9 @@ if (!risky) fail("risky print-property (filter) finding not listed");
 if (risky.file !== "extra.css") fail(`risky finding grouped under ${risky.file}, expected extra.css`);
 if (!/warning/.test(risky.severity)) fail(`risky severity class ${risky.severity}, expected sev-warning`);
 log("both seeded findings listed with correct file/severity");
-// #307: the list is a row of its own between the workspace and the status bar.
-// It used to be an absolutely-positioned overlay that covered the bottom of the
-// left panel (hiding its buttons) and of the editor/preview.
+// #307: the list is a row of its own between the workspace and the status bar,
+// not an absolutely-positioned overlay covering the bottom of the left panel
+// (hiding its buttons) and of the editor/preview.
 const rows = await evalJs(`(() => {
   const body = document.querySelector('.problems-panel .panel-body').getBoundingClientRect();
   return {
@@ -444,7 +442,7 @@ if (audit.overflow.length > 0) fail(`toolbar controls overflow at 700px: ${JSON.
 await screenshot(join(tmpdir(), "problems-panel-narrow.png"));
 
 // ── 9. #316: the status bar keeps its words at 700px ─────────────────────────
-// "Edits saved" used to collapse to a bare icon below 820px. The save text now
+// "Edits saved" must not collapse to a bare icon below 820px: the save text
 // stays at every width; the Problems control is a compact badge (icon + count,
 // no text label) with an accessible name that carries the breakdown.
 const bar = await evalJs(`(() => {
@@ -468,8 +466,8 @@ if (bar.stripHasText) fail(`Problems badge should carry no visible text label: $
 if (!/^Problems: .*(error|warning)/.test(bar.stripLabel ?? "")) fail(`Problems badge accessible name is wrong: ${JSON.stringify(bar)}`);
 
 // ── 10. #307: at 700px the left-panel drawer overlays the workspace but stops
-// at the status bar's top edge. It used to be viewport-fixed with bottom:0, so
-// it ran underneath the bar and hid its own footer buttons (New book).
+// at the status bar's top edge — viewport-fixed with bottom:0 it would run
+// underneath the bar and hide its own footer buttons (New book).
 await evalJs(`(() => {
   if (!document.querySelector('.left-panel.open')) {
     document.querySelector('button[aria-label="Toggle left panel"]').click();

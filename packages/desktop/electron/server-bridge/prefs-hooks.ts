@@ -23,7 +23,7 @@ export interface PrefsHooks {
   readSettings: () => Promise<AppSettings>;
   /**
    * Atomic read-merge-write of a settings patch on the store's write queue
-   * (audit A2): the only way a route mutates settings.
+   * — the only way a route mutates settings.
    */
   updateSettings: (patch: Record<string, unknown>) => Promise<AppSettings>;
   existingDirectory: (dir: string | undefined) => Promise<string | null>;

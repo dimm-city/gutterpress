@@ -4,11 +4,9 @@
  * build/server/manifest.js — plus the browser assets in build/client/. The
  * Electron main process (electron/sveltekit-host.ts) constructs that Server
  * and answers every app:// request with Server.respond() in-process: no HTTP
- * server, no port, no bearer token, no proxy. Dependencies resolve from
- * node_modules the way everything else in main does.
- *
- * Replaces @sveltejs/adapter-node, whose only addition was a Node HTTP
- * handler we then had to run on a loopback port, guard, and proxy to.
+ * server, no port. Dependencies resolve from node_modules the way everything
+ * else in main does. (@sveltejs/adapter-node's only addition over this is a
+ * Node HTTP handler, which this host does not need.)
  */
 import { writeFileSync } from "node:fs";
 

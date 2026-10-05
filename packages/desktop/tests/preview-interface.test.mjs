@@ -6,8 +6,8 @@ import { fileURLToPath } from "node:url";
 import { Window } from "happy-dom";
 
 // Resolve relative to THIS FILE, not process.cwd() — the test must pass no
-// matter where bun/node is invoked from (zero-tolerance: bare `bun test`
-// from the repo root previously failed on this).
+// matter where bun/node is invoked from (bare `bun test` from the repo root
+// fails otherwise).
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const scriptPath = path.resolve(

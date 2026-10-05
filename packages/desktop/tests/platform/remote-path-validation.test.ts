@@ -1,16 +1,11 @@
 /**
- * ARCH review #36 — "some routes enforce absolute paths via requireAbsolute(),
- * some hand-roll isAbsolute()" inconsistency. remote/sync and
- * remote/diagnose-project hand-rolled `isAbsolute(...)` + `throw new Error(...)`
- * INSIDE the `handleRemoteErrors`-wrapped call. Since that thrown Error's
- * message ("...requires an absolute project path") doesn't match
- * REMOTE_FRIENDLY_ERROR, handleRemoteErrors replaced it with the generic
- * "could not be completed" message and (because it's a plain Error, not an
- * HttpError) jsonRoute defaulted the status to 500 — a relative-path typo
- * surfaced as a mystery 500 instead of a clear 400. Both routes now validate
- * with the shared `requireAbsolute()` helper in `validate()`, same as their
- * remote/clone-repository and remote/resolve-sync-conflicts siblings: the
- * check runs (and throws its `error(400, ...)` HttpError) BEFORE
+ * remote/sync and remote/diagnose-project validate absolute paths with the
+ * shared `requireAbsolute()` helper in `validate()`, same as their
+ * remote/clone-repository sibling. A hand-rolled `isAbsolute(...)` +
+ * `throw new Error(...)` INSIDE the `handleRemoteErrors`-wrapped call would
+ * be replaced with the generic "could not be completed" message and default
+ * to a 500 (a plain Error, not an HttpError) — a relative-path typo surfacing
+ * as a mystery 500 instead of a clear 400. With `validate()` the check runs (and throws its `error(400, ...)` HttpError) BEFORE
  * handleRemoteErrors ever wraps the call.
  */
 import { afterEach, describe, expect, test } from "bun:test";

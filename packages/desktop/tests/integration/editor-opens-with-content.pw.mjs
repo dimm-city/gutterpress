@@ -50,8 +50,8 @@
  *
  *   (runs 1 and 2 of a leg: 0 failures in 19 attempts each)
  *
- * That is also why the flake looked worst here: the CI behaviour job runs five
- * drives back to back and this one is LAST, so it inherited four leaked apps.
+ * That is also why the flake looked worst here: the CI behaviour job runs its
+ * drives back to back, so a later drive inherited every earlier leaked app.
  * The fix is in `cleanup()` below — SIGKILL, which cannot be caught.
  *
  * RULED OUT, with evidence — do not re-derive these:
@@ -150,9 +150,8 @@ writeFileSync(
   join(userDataDir, "gutterpress-prefs.json"),
   JSON.stringify({ lastProjectDir: bookDir, leftPanel: { open: true, activeTab: "toc", width: 300 } }),
 );
-// No app-settings.json on purpose: this drive used to seed `preview.mode:
-// "editor"`, but Edit is now the default for a profile with no saved choice, so
-// leaving it unseeded drives exactly what a first-time writer gets — the
+// No app-settings.json on purpose: Edit is the default for a profile with no
+// saved choice, so leaving it unseeded drives exactly what a first-time writer gets — the
 // workspace in Edit mode BEFORE any book is open, the state the toggle path
 // never reaches (and the CONTROL below fails if that default regresses).
 appArgv.push(`--user-data-dir=${userDataDir}`);
@@ -333,10 +332,9 @@ if (cmHasContent) {
   //    reproduced under CPU load, the band below came back at y=82 instead of
   //    the settled y=66, the layout moved 0.8s later, and the click landed on
   //    the wrong block — CHECK 2 went red for a reason it does not test.
-  //    This also puts the wait where its budget makes sense. It used to sit
-  //    AFTER the measuring below, with 30s, and the measuring had already
-  //    burned ~14s of the render by then; the overlay is up for the WHOLE
-  //    initial pagination, which the gates above budget 90-120s for.
+  //    This also puts the wait where its budget makes sense: the overlay is
+  //    up for the WHOLE initial pagination, which the gates above budget
+  //    90-120s for.
   //    The overlay's own label says which half is still running, so a stalled
   //    pagination and a stalled post-render reveal no longer look alike.
   if (!(await poll(`!document.querySelector('.loading-overlay')`, 90000))) {
@@ -529,7 +527,7 @@ const parentName = await evalJs(`(() => {
   return li.querySelector(':scope > .toc-row > .toc-item > .toc-text')?.textContent ?? null;
 })()`);
 if (!parentName) fail("CONTROL: no expandable TOC row in this book");
-// Wait for the actual condition the fixed 800ms sleep used to approximate: if
+// Wait for the actual condition rather than a fixed sleep: if
 // the row above was just expanded, its nested <ul> needs a Svelte flush before
 // a child exists to query. Polling proceeds the instant it's ready and still
 // survives a flush slower than 800ms under CI load, instead of guessing.
@@ -560,8 +558,7 @@ const parentExpandedIs = (state) => `[...document.querySelectorAll('.toc-list li
   ?.querySelector(':scope > .toc-row > .toc-item')?.getAttribute('aria-expanded') === ${JSON.stringify(state)}`;
 // Selecting the child sets `activeOutlineIndex` synchronously (jumpToOutline in
 // +page.svelte), but the parent's aria-expanded still needs a Svelte flush to
-// reflect it — poll for that instead of the fixed 2500ms this used to sleep,
-// which was only ever a guess at how long the flush takes.
+// reflect it — poll for that rather than guessing how long the flush takes.
 await poll(parentExpandedIs("true"), 10000);
 const parentBefore = await readParent();
 if (parentBefore?.exp !== "true") {

@@ -1,11 +1,9 @@
 /**
- * Shared `HostServices` fake for route-level suites (review finding: the
- * ~40-line all-domains fake was hand-copied into 10 platform suites, each
- * ending in its own `as unknown as HostServices` — so a contract change
- * meant a 10-file sweep, and a copy the sweep missed compiled silently
- * behind the cast. Same rationale as the sibling electron-mock.ts /
- * route-test-helpers.ts: ONE base object here, per-suite overrides for the
- * pieces a given test genuinely customizes).
+ * Shared `HostServices` fake for route-level suites: ONE base object here,
+ * per-suite overrides for the pieces a given test genuinely customizes, so a
+ * contract change is one edit rather than a sweep of hand-copied fakes that
+ * would compile silently behind `as unknown as HostServices` casts. Same
+ * rationale as the sibling electron-mock.ts / route-test-helpers.ts.
  *
  * Each supplied override domain is spread OVER the base domain (so
  * `desktop: { getUserDataPath: () => dir }` keeps the other desktop fakes).

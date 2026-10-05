@@ -1,11 +1,8 @@
 import { test, expect } from "bun:test";
 import { isWithinRoot, isWithinAnyRoot } from "../../electron/server-bridge/fs-guard";
 
-// ARCH review #37: pure containment logic the fs-route project-scoping guard
-// is built on. This is write-file's pre-existing
-// `path.resolve(watchedDir) + startsWith(root + sep)` test, promoted to a
-// shared, directly-tested helper (previously only exercised indirectly, and
-// only for the snapshot decision, never for authorization).
+// Pure containment logic the fs-route project-scoping guard (and the
+// write-effects snapshot decision) is built on.
 
 test("isWithinRoot: a path nested under the root is allowed", () => {
   expect(isWithinRoot("/home/u/proj/chapter-01.md", "/home/u/proj")).toBe(true);

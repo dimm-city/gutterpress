@@ -1,31 +1,22 @@
 /**
- * folder-watch/watcher.ts — the single shallow project folder watcher, extracted
- * from electron/main.ts as an injectable, unit-testable class.
+ * folder-watch/watcher.ts — the single recursive project folder watcher, as an
+ * injectable, unit-testable class.
  *
  * WHY THIS EXISTS
  * ---------------
- * The open project is watched by ONE non-recursive `fs.watch`. `fs.watch` is
+ * The open project is watched by ONE recursive `fs.watch`. `fs.watch` is
  * coarse (fires rename + change per save), so a change is debounced before the
- * renderer is notified, and `.git`-internal writes (from automatic snapshots)
- * are filtered so they never re-trigger preview reloads / re-arm timers. This
- * lived in main.ts as a pair of free functions (`startFolderWatch` /
- * `stopFolderWatch`) over module globals (`folderWatcher`, `watchedDir`,
- * `folderChangeDebounce`), which made the single-watcher / same-dir short-circuit
- * / debounce / `.git` filter / stop-old-before-new invariants impossible to
- * unit-test without a live Electron + fs stack.
+ * renderer is notified, and non-source subtrees (`.git` from automatic
+ * snapshots, build output, vendored plugins) are filtered so they never
+ * re-trigger preview reloads / re-arm timers.
  *
- * This class owns the exact same control logic, but every external touch-point —
- * the `fs.watch` factory, path normalization, the folder-changed notification,
- * the per-edit signal (auto-snapshot + auto-sync debounce), the stop-flush, and
- * the clock — is INJECTED via `deps`, so tests drive it with fakes. Mirroring
- * AutoSnapshotScheduler / AutoSyncOrchestrator, the class owns the watcher +
- * debounce + normalized watched dir; main.ts keeps thin `startFolderWatch` /
- * `stopFolderWatch` delegators and a module-level MIRROR of `watchedDir` (updated
- * ONLY via `onWatchedDirChanged`) so the many off-limits reads stay byte-identical.
- *
- * The behavior is a faithful move of the original main.ts code: the guards, the
- * filename normalization, the `.git` filter, the 150ms debounce, the try/catch,
- * and the set/clear ordering are preserved verbatim.
+ * Every external touch-point — the `fs.watch` factory, path normalization, the
+ * folder-changed notification, the per-edit signal (auto-snapshot + auto-sync),
+ * the stop-flush, and the clock — is INJECTED via `deps`, so tests drive the
+ * single-watcher / same-dir short-circuit / debounce / ignore filter /
+ * stop-old-before-new invariants with fakes. main.ts keeps thin
+ * `startFolderWatch` / `stopFolderWatch` delegators and reads the watched dir
+ * via `getWatchedDir()`.
  *
  * Node/host-side ONLY — never imported by the renderer.
  */
@@ -34,7 +25,7 @@ import type { FSWatcher } from "node:fs";
 
 /** External touch-points injected into the watcher (all faked in tests). */
 export interface FolderWatcherDeps {
-  /** Start a non-recursive fs.watch on `dir`. Real code uses node:fs `watch`. */
+  /** Start an fs.watch on `dir`. Real code uses node:fs `watch`. */
   watch: (
     dir: string,
     options: { recursive: boolean },
@@ -58,8 +49,7 @@ export interface FolderWatcherDeps {
 }
 
 /** Default timer arm: a plain setTimeout (the folder-change debounce is short-lived
- *  and is always cleared on stop, so it is intentionally NOT unref'd — byte-identical
- *  to the original main.ts `folderChangeDebounce = setTimeout(...)`). */
+ *  and is always cleared on stop, so it is intentionally NOT unref'd). */
 function defaultSetTimer(cb: () => void, ms: number): unknown {
   return setTimeout(cb, ms);
 }
@@ -76,9 +66,8 @@ function defaultSetTimer(cb: () => void, ms: number): unknown {
  *    `node_modules` — vendored dependency trees, written wholesale by an
  *    in-app plugin install, which arms its own effects through the fs routes.
  *
- * These mattered much less when the watch was non-recursive (only top-level
- * entries were ever seen); now that it is recursive, an unfiltered build or
- * plugin install would storm the debounce.
+ * The watch is recursive, so an unfiltered build or plugin install would storm
+ * the debounce.
  */
 const IGNORED_WATCH_SEGMENTS = new Set([".git", "dist", "node_modules"]);
 
@@ -133,18 +122,14 @@ export class FolderWatcher {
    * Watch `dirPath` RECURSIVELY. Normalizes the path first; a no-op if the same
    * dir is already watched. Switching dirs stops the old watcher first.
    *
-   * The watch used to be non-recursive, so the only events it could ever see
-   * were the book's TOP-LEVEL entries (2026-07-29 audit). An external editor
-   * saving `chapters/ch01.md` or `styles/book.css` produced no
-   * `fs:folderChanged` — the file tree and editor never reconciled — and no edit
-   * signal, so the auto-snapshot/auto-sync debounce never armed, while the
-   * embedded CLI preview watcher (recursive, plus the declared shared-stylesheet
-   * closure) saw the same edit and rebuilt the preview. Two observers of one
-   * project giving two answers.
+   * Recursive so an external save to e.g. `chapters/ch01.md` reaches the file
+   * tree, the editor and the auto-snapshot/auto-sync signal — the same edits
+   * the (recursive) preview watcher rebuilds on. A top-level-only watch made
+   * the two observers of one project disagree.
    */
   start(dirPath: string): void {
-    // Normalise so autoSyncStates map keys are consistent (the export gate and all
-    // other callers must use the same key — see issue #3 fix note below).
+    // Normalise so per-dir keys (auto-sync state, watched-dir guards) are
+    // consistent across all callers.
     const normalizedDir = this.deps.resolve(dirPath);
     if (this.watchedDir === normalizedDir && this.watcher) return;
     this.stop();

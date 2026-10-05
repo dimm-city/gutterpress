@@ -1,5 +1,5 @@
 /**
- * shell/open-external must only ever hand http(s) URLs to the OS (audit C1),
+ * shell/open-external must only ever hand http(s) URLs to the OS,
  * via the shared isHttpUrl gate it now shares with navigation-policy.ts and
  * the host-side openExternal hook. The scheme check lives in the route's
  * validate step, so a foreign-scheme URL is rejected before any host hook is

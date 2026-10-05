@@ -1,15 +1,14 @@
 /**
- * ARCH review #8 — "narrow IPC bridge" cleanup:
+ * The narrow IPC bridge (CLAUDE.md §8):
  *
- *  1. sync:setAutoSync, remote:cloneRepository, remote:resolveSyncConflicts,
- *     updater:getStatus/check/download were plain request/response IPC
- *     channels despite their remote: and updater: siblings already being
- *     server routes. These tests exercise the ROUTE versions (factory-level:
- *     validate() + host wiring + the 400 envelopes), not electron/main.ts
- *     directly.
- *  2. fs:watchFolder's dead route + the dead api.fs.watchFolder/unwatchFolder,
- *     api.app.flushDone, and api.status() client wrappers are gone — grep
- *     assertions lock that (the IPC path stays the live one for watchFolder;
+ *  1. sync:setAutoSync, remote:cloneRepository and
+ *     updater:getStatus/check/download are plain request/response, so they
+ *     are server routes, not IPC. These tests exercise the ROUTE versions
+ *     (factory-level: validate() + host wiring + the 400 envelopes), not
+ *     electron/main.ts directly.
+ *  2. There is no fs:watchFolder route and no api.fs.watchFolder/
+ *     unwatchFolder, api.app.flushDone, or api.status() client wrapper —
+ *     grep assertions lock that (IPC is the live path for watchFolder;
  *     app:flushDone stays IPC for the reason documented at its call site).
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -53,7 +52,7 @@ async function caught(p: Promise<unknown>): Promise<{ status: number; message: u
  *
  * `fsGuard` models an OPEN project at `/abs/project`: `remote/*` routes now
  * confine their `projectDir` to the host-owned `projectRoots()` allow-list
- * (2026-07-29 audit), so these tests have to say which project is open before
+ *, so these tests have to say which project is open before
  * they can exercise anything downstream of that check. The containment check
  * canonicalizes lexically for a path that doesn't exist on disk, so the
  * synthetic `/abs/project` works without touching the filesystem.
@@ -213,7 +212,7 @@ describe("updater server routes", () => {
   });
 });
 
-// ── Deleted dead duplicates (ARCH review #8) ─────────────────────────────────
+// ── No duplicate route/wrapper surface ──────────────────────
 
 describe("dead fs:watchFolder route + dead client wrappers are gone", () => {
   test("the /api/fs/watch-folder and /api/fs/unwatch-folder route folders no longer exist", async () => {

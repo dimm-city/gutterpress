@@ -319,7 +319,7 @@ test("scheduleInitialSync never holds the single-flight lock", () => {
   expect(h.orch.acquire(DIR)).toBe(true);
 });
 
-// ── 2026-07-29 audit: the operation log identifies the REPO, not the book ─────
+// ── the operation log identifies the REPO, not the book ─────
 //
 // A sync is a whole-repository operation (R9), so its log is the repository's
 // log. Keying it on `path.basename(dir)` — the opened BOOK — split one repo's

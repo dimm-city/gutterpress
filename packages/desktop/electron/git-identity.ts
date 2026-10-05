@@ -5,15 +5,13 @@
  *
  * WHY THIS EXISTS
  * ---------------
- * The manual "Save a version" path went through `src/lib/server/settings.ts`'s
- * `gitIdentityArgs()` and therefore carried the configured identity, while every
- * HOST-SCHEDULED commit — the auto-snapshot debounce, auto-sync (which
+ * Every HOST-SCHEDULED commit — the auto-snapshot debounce, auto-sync (which
  * snapshots-first and can write merge commits), the pre-export sync gate, and
- * the recovery flows — called the lib with no identity at all and silently
- * committed as the built-in "Gutterpress <noreply@Gutterpress.local>" default. So a
- * project's history read as the author only for the versions they saved by hand.
- * Every commit path now derives its identity here, so there is exactly one
- * trim/omit rule and one thing to change.
+ * the recovery flows — must carry the same identity the manual "Save a
+ * version" path does, or it silently commits as the built-in
+ * "Gutterpress <noreply@Gutterpress.local>" default. Every commit path derives
+ * its identity here, so there is exactly one trim/omit rule and one thing to
+ * change.
  *
  * An empty (or whitespace-only) field is OMITTED rather than sent as "", so the
  * lib's own fallback chain — existing repo config, then the Gutterpress default —

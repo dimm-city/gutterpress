@@ -4,7 +4,8 @@
 //   <one command per line>
 //   EOF2
 // Commands: shot <name> | click <playwright-selector> | press <Key> | text
-//   | size <w> <h> | wait <ms> | btns | eval <js expr> | fill <selector> <value>
+//   | size <w> <h> | wait <ms> | btns | eval <js expr> | fill <selector> | <value>
+//   | move <x> <y> [steps] | wheel <dx> <dy>
 // <book-dir> is opened via the welcome screen's path box ("" = stay on welcome).
 import { _electron } from "playwright-core";
 import { readFileSync, mkdirSync } from "node:fs";

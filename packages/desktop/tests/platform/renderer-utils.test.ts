@@ -60,10 +60,9 @@ test("friendlyPreviewError preserves missing-file details for the repair view", 
   expect(result.details).toContain("/books/example/css/missing.css");
 });
 
-// friendlyPdfError(SYNC_CONFLICT) — the host (electron/export/controller.ts)
-// throws a deliberately author-friendly message for a blocked export; the
-// renderer must pass it through verbatim instead of overwriting it with the
-// generic "check System tools" fallback (M4).
+// friendlyPdfError(SYNC_CONFLICT) — an author-friendly message carried by a
+// blocked-export error must pass through verbatim instead of being
+// overwritten with the generic "check System tools" fallback (M4).
 test("friendlyPdfError passes through a SYNC_CONFLICT error's own message", () => {
   const err = new Error(
     "Changes happened in two places. Resolve the conflict first, then save the PDF.",
@@ -116,12 +115,10 @@ test("friendlyPdfError directs a loose preview folder to the existing setup acti
   );
 });
 
-// ARCH #27 fix-round gap: `electron/pdf-export.ts`'s waitForEngineRendered
-// throws a typed BuildError on deadline ("Rendering did not finish after N
-// minutes — the export was stopped to avoid an incomplete PDF"). That error
-// crosses the `api:build` ipcMain.handle/ipcRenderer.invoke boundary, which
-// (like the SYNC_CONFLICT case above) strips the `code` and re-wraps the
-// message. friendlyPdfError must therefore recognize the timeout by message
+// A render-deadline BuildError ("Rendering did not finish after N minutes —
+// the export was stopped to avoid an incomplete PDF") crosses the `api:build`
+// ipcMain.handle/ipcRenderer.invoke boundary, which (like the SYNC_CONFLICT
+// case above) strips the `code` and re-wraps the message. friendlyPdfError must therefore recognize the timeout by message
 // text alone, or the author sees the generic "check System tools" fallback
 // instead of the reason their render was stopped.
 test("friendlyPdfError passes through a render-timeout message even without a surviving code", () => {

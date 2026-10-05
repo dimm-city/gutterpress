@@ -1,5 +1,5 @@
 /**
- * PDF export subsystem — extracted from electron/main.ts (composition root).
+ * PDF export subsystem.
  *
  * Owns the single active export session shared by the desktop's PDF export
  * pipeline: progress events, cancellation, and the accessors

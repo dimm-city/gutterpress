@@ -1,19 +1,13 @@
 /**
- * ARCH #61 — the settings store used to keep a hand-rolled `subscribers`
- * array (notified from inside `set()`/`_loadSettings()`) ALONGSIDE its
- * `$state` reactivity: two notification channels for one state object, where
- * a setter that forgot the manual notify loop would silently break every
- * imperative `subscribe()` consumer.
- *
- * That channel is retired. Consumers now read `useSettings().current...`
- * inside a component `$effect`. Because `set()` replaces the whole `current`
- * object on every call (not just the touched section), an `$effect` reading
- * one nested field would re-fire on every UNRELATED settings change too —
- * this is what the old `+page.svelte` `lastBg` closure guarded against for
- * the previewBg → iframe-style sync. `settingsChangeGuard()` is the extracted,
- * directly-testable replacement for that guard (no Svelte component/effect
- * harness exists in this repo, so the guard logic must be a plain function
- * to be pinned with a real test rather than a source-text assertion).
+ * #61 — imperative settings side-effects go through `onSettingsChange()`,
+ * notified from the store's single `replaceState()` choke point; there is no
+ * separate `subscribe()` channel a setter could forget to notify. Because
+ * `set()` replaces the whole `current` object on every call (not just the
+ * touched section), a listener reading one nested field fires on every
+ * UNRELATED settings change too. `settingsChangeGuard()` dedupes against the
+ * value actually read (e.g. the previewBg → iframe-style sync); it is a plain
+ * function so it can be pinned with a real test (no Svelte component/effect
+ * harness exists in this repo) rather than a source-text assertion.
  */
 import { expect, test } from "bun:test";
 
@@ -104,8 +98,7 @@ test("useSettings().set() with an unchanged previewBg does not re-trigger the si
   readBg();
   expect(applied).toEqual([currentBg]);
 
-  // An unrelated section change must not re-trigger the sink either (this is
-  // the exact case the old unconditional subscribe() notify loop got wrong).
+  // An unrelated section change must not re-trigger the sink either.
   settings.set({ editor: { fontSize: settings.current.editor.fontSize + 1 } });
   readBg();
   expect(applied).toEqual([currentBg]);

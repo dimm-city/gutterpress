@@ -38,7 +38,7 @@ beforeEach(async () => {
     "utf8",
   );
   // manifest/* and style/set-active confine their `projectDir` to the
-  // host-owned `projectRoots()` allow-list (2026-07-29 audit), so these tests
+  // host-owned `projectRoots()` allow-list, so these tests
   // now have to model an OPEN project. Out-of-project rejection itself lives
   // in route-scoping.test.ts.
   registerHostServices(

@@ -235,8 +235,8 @@ if (stuckOnLoading) {
 
 // ── 8. packaged source-save path ─────────────────────────────────────────────
 // Autosave delay is a fixed 500 ms EditorBuffer default — not a user setting
-// (#274) — so this no longer configures/asserts a distinct delay. It keeps
-// the regression it can still catch without a timing race: a CodeMirror edit
+// (#274) — so nothing here configures or asserts a delay. It checks the
+// regression it can catch without a timing race: a CodeMirror edit
 // must flip the main Save button to enabled (dirty state reaches the UI),
 // and Ctrl+S (below) must reach disk either way.
 const chapterName = readdirSync(bookDir).sort().find((name) => name.endsWith(".md") && name !== "README.md");

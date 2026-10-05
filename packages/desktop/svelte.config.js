@@ -8,7 +8,7 @@ const config = {
     // adapter-electron.js writes the SvelteKit server unbundled to build/.
     // In production the Electron main process constructs that Server and
     // answers app:// requests with Server.respond() in-process. In dev,
-    // VITE_DEV_SERVER_URL is used directly (unchanged). Host capabilities are
+    // VITE_DEV_SERVER_URL is used directly. Host capabilities are
     // exposed as +server.ts routes; the bridge surface is limited to
     // push-events and build-pipeline IPC.
     adapter: adapter({ out: "build" }),

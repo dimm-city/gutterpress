@@ -1,24 +1,13 @@
 /**
  * auto-snapshot/scheduler.ts — the debounced host-side auto-snapshot state
- * machine, extracted from electron/main.ts as an injectable, unit-testable class.
+ * machine, as an injectable, unit-testable class.
  *
- * WHY THIS EXISTS
- * ---------------
- * The auto-snapshot engine used to live in main.ts as a set of free functions
- * over module globals (`autoSnapshotPending`, `scheduleAutoSnapshot`,
- * `runAutoSnapshot`, `flushAutoSnapshot`, `cancelAutoSnapshotTimer`). That made
+ * Every external touch-point — the lib, settings, the watched-dir guard, the
+ * operation-log path, and the clock — is INJECTED via `deps`, so tests drive
  * the single-pending-timer / live-policy-reread / stale-dir-guard invariants
- * impossible to unit-test without a full Electron + lib stack. This class owns
- * the exact same control logic, but every external touch-point — the lib,
- * settings, the watched-dir guard, the operation-log path, and the clock — is
- * INJECTED via `deps`, so tests drive it with fakes.
- *
- * The behavior is a faithful move of the original main.ts code: the guards, the
- * snapshot payload, the log-path derivation, the error swallowing, and the timer
- * semantics are preserved verbatim. Mirroring AutoSyncOrchestrator, the class
- * owns the single pending timer + policy; main.ts keeps thin delegators and a
- * module-level mirror of `pending` (updated only via `onPendingChanged`) so the
- * off-limits createWindow read stays byte-identical.
+ * with fakes. Mirroring AutoSyncOrchestrator, the class owns the single
+ * pending timer + policy; main.ts keeps thin delegators and reads pending
+ * state via `hasPending()`.
  *
  * Node/lib-side ONLY — never imported by the renderer.
  */
@@ -58,8 +47,8 @@ export interface AutoSnapshotDeps {
    * times in a row for `dir`, and again on every subsequent multiple of the
    * threshold (M39). `consecutiveFailures` is always an exact multiple of the
    * threshold when this fires. A success or a clean-tree run resets the streak
-   * (and this stops firing) without calling back. Optional — a caller that
-   * doesn't supply it just keeps the pre-existing console.error-only behavior.
+   * (and this stops firing) without calling back. Optional — without it a
+   * failure is only logged via console.error.
    */
   onSnapshotFailed?: (dir: string, consecutiveFailures: number, error: unknown) => void;
 }
@@ -77,9 +66,8 @@ function defaultClearTimer(h: unknown): void {
 
 /**
  * Consecutive `run()` failures (for the SAME dir) before `onSnapshotFailed`
- * fires (M39 — UX critical review: the catch used to only `console.error` and
- * return, so a persistently broken safety net — stale lock, permissions —
- * gave zero signal while the pill kept asserting "Version history on"). Fires
+ * fires (M39: a persistently broken safety net — stale lock, permissions —
+ * must not stay silent while the pill asserts "Version history on"). Fires
  * again on every subsequent multiple of the threshold so a long-running
  * failure keeps re-signalling rather than going silent forever.
  */
@@ -176,8 +164,8 @@ export class AutoSnapshotScheduler {
         logFile: this.deps.operationLogPath(operationLogSlug(lib.repoRootForSource(source, dir))),
         // Attribute the commit to the author, exactly like the manual
         // "Save a version" route does. Without this, automatic snapshots — the
-        // overwhelming majority of a project's history — were committed as the
-        // lib's "Gutterpress" default while manual saves carried the real name.
+        // overwhelming majority of a project's history — would be committed as
+        // the lib's "Gutterpress" default while manual saves carry the real name.
         ...gitIdentityFrom(settings),
       });
       // Success — the safety net is working again; clear any failure streak.

@@ -852,13 +852,13 @@ test("all three teardown paths (stopPreview, openUrl, failed-open catch) call th
   expect(depsC.resetExtras.calls.length).toBe(1);
 });
 
-// ── 2026-07-29 audit: the restore-state key must be the RESOLVED book ─────────
+// ── the restore-state key must be the RESOLVED book ─────────
 //
 // The per-project page/split state is WRITTEN under the resolved book dir
-// (`lifecycle.currentDir`), but every caller used to READ it under the dir the
-// user PICKED — and those differ exactly when the session retargets: an open
-// keyed to the repo root, or to a folder inside a book. So the read missed and
-// the book silently opened at page 1.
+// (`lifecycle.currentDir`), so every caller must READ it under that key, not
+// the dir the user PICKED — those differ exactly when the session retargets:
+// an open keyed to the repo root, or to a folder inside a book. A read under
+// the picked dir misses and the book silently opens at page 1.
 //
 // Switching books had a second form of the same bug: `switchBook` passed no
 // restore state at all, so the target book ALWAYS opened at page 1 even when it

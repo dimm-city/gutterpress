@@ -1,10 +1,8 @@
 /**
- * Unit tests for electron/sveltekit-host.ts's buildHostErrorPage (ARCH review
- * #28) — the extracted, pure HTML-page builder behind the app:// protocol's
- * 503 ("server not loaded yet") and 500 ("Server.respond() threw") responses.
- *
- * Previously both responses were a raw text body with no explanation and no
- * way to recover short of force-quitting the app. buildHostErrorPage() is a
+ * Unit tests for electron/sveltekit-host.ts's buildHostErrorPage — the pure
+ * HTML-page builder behind the app:// protocol's 503 ("server not loaded
+ * yet") and 500 ("Server.respond() threw") responses, which must explain
+ * themselves and offer a way to recover. buildHostErrorPage() is a
  * pure function (no `protocol`/`Response`/Electron dependency) — this file
  * only ever calls that one export, never registerAppProtocol()/
  * loadSvelteKitServer() (which do touch `protocol`/`app`).

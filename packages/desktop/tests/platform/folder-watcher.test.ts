@@ -248,7 +248,7 @@ test("(h) onWatchedDirChanged fires on every watchedDir set/clear transition", (
   ).toBeNull();
 });
 
-// ── 2026-07-29 audit: nested edits must be observed ──────────────────────────
+// ── nested edits must be observed ──────────────────────────
 //
 // The watch was non-recursive, so its only visible events were the book's
 // TOP-LEVEL entries. An external editor saving `chapters/ch01.md` or

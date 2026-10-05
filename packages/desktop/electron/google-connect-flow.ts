@@ -19,8 +19,7 @@
  *
  * `GoogleAuthProvider.connect()` would ALSO best-effort open the URL itself
  * by default (via the lib's own spawn-based `openPath()`). That is suppressed
- * here — `connectGoogleDrive`'s `openBrowser` override (added alongside this
- * fix) is passed a no-op — because Electron's `shell.openExternal` (via the
+ * here — `connectGoogleDrive`'s `openBrowser` override is passed a no-op — because Electron's `shell.openExternal` (via the
  * `openExternal` dep below, wired to `main.ts`'s existing http(s)-only gate)
  * is the reliable, sandboxed, already-validated path the rest of the app
  * uses for external links, and D10 specifies it explicitly. This class is
@@ -52,7 +51,7 @@ export interface GoogleConnectFlowDeps {
   /** Credential store the approved connection is written to. */
   tokenStore: TokenStore;
   /** Opens a URL in the system browser (host-side; validated http(s)-only —
-   *  see main.ts's `appHooksImpl.openExternal`). Failure is non-fatal: the
+   *  see main.ts's `desktopHooksImpl.openExternal`). Failure is non-fatal: the
    *  auth URL is already handed back from `start()` as a fallback link. */
   openExternal: (url: string) => Promise<void>;
 }

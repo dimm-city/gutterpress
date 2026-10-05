@@ -8,10 +8,8 @@ import {
 import { registerHostServices } from "../../electron/server-bridge/host-services";
 import { makeHostServices } from "../support/host-services-fake";
 
-// These lock the security/UX error-filter behavior that was previously
-// copy-pasted across electron/main.ts, routes/api/remote/_hooks.ts, and the
-// four routes/api/vcs/*/+server.ts handlers. Consolidated into one shared
-// host-side module; behavior must stay byte-identical.
+// These lock the security/UX error-filter behavior of the one shared
+// host-side module that main.ts and the vcs/remote routes all use.
 
 afterEach(() => {
   // restore any console spies installed in a test

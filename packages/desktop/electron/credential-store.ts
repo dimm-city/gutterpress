@@ -78,8 +78,8 @@ async function readStore(): Promise<StoreFileShape> {
     /* falls through to preserve-and-reset below */
   }
   // The file exists but isn't valid JSON (or isn't shaped like a store).
-  // Preserve it instead of silently resetting to empty — that used to
-  // silently disconnect every configured GitHub/Git-server credential (#34).
+  // Preserve it instead of silently resetting to empty, which would silently
+  // disconnect every configured GitHub/Git-server credential (#34).
   await preserveCorruptFile(storePath()).catch(() => {});
   return { version: 1, credentials: {} };
 }
@@ -313,10 +313,9 @@ export const electronTokenStore = {
   /**
    * Redacted connection status for the renderer — NEVER includes the token.
    * DECRYPT-VERIFIES the entry: an undecryptable credential (keyring changed)
-   * reports `connected: false` + `needsReconnect: true`. It used to report
-   * plain "connected" from the plaintext entry while `get()` (what sync
-   * actually uses) returned null — the settings panel said "Connected" while
-   * the project silently stopped syncing.
+   * reports `connected: false` + `needsReconnect: true`, so the settings
+   * panel never says "Connected" while `get()` (what sync actually uses)
+   * returns null and the project silently stops syncing.
    */
   status(host: string): Promise<{
     connected: boolean;

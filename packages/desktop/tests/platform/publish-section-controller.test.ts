@@ -167,9 +167,8 @@ test("a failed connect resyncs cards from disk (the resync's own loadPublish cle
   // `catch` sets publishError, then immediately calls loadPublish() as a
   // resync — and loadPublish unconditionally resets publishError=null before
   // its own (successful) fetch. The "bad key" message is therefore
-  // clobbered by the time this settles. This mirrors the original inline
-  // `catch (e) { publishError = ...; await refresh("publish"); }` exactly —
-  // characterizing it here rather than silently fixing it in the extraction.
+  // clobbered by the time this settles. This characterizes that behavior
+  // rather than asserting the ideal one.
   expect(h.ctrl.publishError).toBeNull();
   expect(h.onConnected.calls.length).toBe(0);
   expect(h.ctrl.publishCards).toEqual([CARD]); // resynced, still disconnected

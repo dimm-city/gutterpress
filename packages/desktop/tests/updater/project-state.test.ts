@@ -4,12 +4,7 @@
 //
 // Side-effect-free (no electron, no fs), so we exercise the transforms directly.
 //
-// #30: `lastChapter`/`sidebarOpen`/`cursorLine`/`editorScroll` were removed
-// from `ProjectState` (dead schema — never had a real consumer), and
-// `migrateLegacyProjectState` was deleted outright (the release carrying its
-// migration fallback has shipped). `viewMode` went the same way once view mode
-// stopped being stored at all, leaving the two live fields: `currentPage` and
-// `splitPaneRatio`.
+// `ProjectState` has two fields: `currentPage` and `splitPaneRatio`.
 // ──────────────────────────────────────────────────────────────────────────
 
 import { describe, expect, test } from "bun:test";

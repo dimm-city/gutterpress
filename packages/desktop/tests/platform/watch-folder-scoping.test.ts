@@ -1,19 +1,8 @@
 /**
- * P1 review (PR #98, maintainer itlackey) on electron/main.ts:969's
- * `fs:watchFolder` IPC handler:
- *
- *   "An app-origin script can invoke watchFolder on an arbitrary absolute
- *   directory such as the user SSH directory. fsGuardImpl then includes that
- *   watched path in projectRoots, authorizing direct reads there and making
- *   copy-file treat its source as inside the project, bypassing the new
- *   picker capability. Restrict this IPC call to the active workspace project
- *   and do not derive authorization from the watcher state."
- *
- * Confirmed: `fsGuardImpl.projectRoots()` used to union
- * the host-owned project root with `folderWatch.getWatchedDir()`,
- * and `fs:watchFolder`'s handler accepted ANY absolute path from the
- * renderer (only guard: `path.isAbsolute`). A same-origin script (preview
- * XSS, malicious plugin-injected script) could therefore call
+ * PR #98: `fs:watchFolder` must be restricted to the active workspace
+ * project, and `fsGuardImpl.projectRoots()` must never derive authorization
+ * from the watcher state. Otherwise a same-origin script (preview XSS,
+ * malicious plugin-injected script) could call
  * `watchFolder("/home/user/.ssh")` and have that directory authorized as a
  * project root for the generic fs routes and copy-file's "src is inside the
  * project" shortcut.
@@ -21,14 +10,15 @@
  * `electron/main.ts` is Electron's entry script — module-scope
  * `app.whenReady()`, `app.commandLine.appendSwitch(...)`, etc. — so, matching
  * the established convention for main.ts-only logic in this suite
- * (migrated-ipc-routes.test.ts's "main.ts no longer registers..." test), (a) and (c) below pin the fixed shape of
+ * (migrated-ipc-routes.test.ts's "main.ts no longer registers..." test),
+ * (a) and (c) below pin the shape of
  * `fsGuardImpl.projectRoots()` and the `fs:watchFolder` handler via
  * source-text assertions rather than importing/executing main.ts. (b)
  * exercises the REAL `fs/read-file` route + the real project-scoping guard
  * (src/routes/api/_lib/fs-guard.ts) with a `projectRoots()` hook shaped like
- * the FIXED main.ts (no watcher-state union) to confirm the route correctly
+ * main.ts (no watcher-state union) to confirm the route correctly
  * 403s a directory that is merely "being watched" but is not the active
- * workspace project — the exact bypass the review demonstrated.
+ * workspace project.
  */
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { readFile, mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";

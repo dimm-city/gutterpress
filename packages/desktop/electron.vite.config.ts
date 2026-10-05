@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 
 // electron-vite builds the Electron main + preload (ESM — the package is
 // "type": "module"). The renderer is NOT built here: it's a SvelteKit
-// SvelteKit app (server + client) built separately by `vite build` into
+// app (server + client) built separately by `vite build` into
 // build/ with adapter-electron.js; Electron main constructs that server and
 // answers app:// requests with Server.respond() in-process (CLAUDE.md §8).
 // externalizeDepsPlugin keeps the runtime deps (gutterpress and its
@@ -51,12 +51,11 @@ export default defineConfig({
         external: ["electron"],
         input: resolve(root, "electron/preload.ts"),
         // MUST be CJS with a .cjs extension: the main window runs with
-        // sandbox: true (2026-07 security hardening, ARCH review #1/#33), and
-        // Electron's sandboxed preload loader cannot execute ESM — an
-        // ES-format preload fails with "Cannot use import statement outside
-        // a module" and the whole window.electron bridge silently disappears
-        // in the packaged app (caught by the packaged-app render gate, not
-        // unit tests). The .cjs extension matters because package.json is
+        // sandbox: true, and Electron's sandboxed preload loader cannot
+        // execute ESM — an ES-format preload fails with "Cannot use import
+        // statement outside a module" and the whole window.electron bridge
+        // silently disappears in the packaged app (unit tests do not catch
+        // it). The .cjs extension matters because package.json is
         // "type": "module".
         output: { format: "cjs", entryFileNames: "preload.cjs" },
       },

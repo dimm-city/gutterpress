@@ -1,5 +1,5 @@
 /**
- * Unit tests for `deepMergeSettings` (Phase 1b): it REPLACES arrays wholesale
+ * Unit tests for `deepMergeSettings`: it REPLACES arrays wholesale
  * rather than spreading them into an object.
  */
 import { test, expect } from "bun:test";

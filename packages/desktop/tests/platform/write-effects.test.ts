@@ -3,16 +3,11 @@
  * the five mutating fs routes (write-file, create-file, create-folder, rename,
  * delete).
  *
- * 2026-07-29 audit. The gate fired only when the written path was inside the
- * FOLDER-WATCHER's dir — the opened book. But fs-route authorization was
- * deliberately widened (commit c310e2) to the opened book PLUS its enclosing
- * repository root, precisely so a multi-book project can edit repo-root shared
- * styles and assets. So the app happily wrote
- * `<repo>/shared/styles/components.css` and then armed NOTHING: the edit never
- * entered version history, and never synced, until some later in-book save
- * happened to arm the timer. The two halves of the same feature disagreed —
- * writes were allowed under the repo root, but only book writes counted as
- * edits.
+ * fs-route authorization covers the opened book PLUS its enclosing repository
+ * root, so a multi-book project can edit repo-root shared styles and assets.
+ * The gate must agree: a write to `<repo>/shared/styles/components.css` that
+ * armed nothing would never enter version history or sync until some later
+ * in-book save happened to arm the timer.
  *
  * The debounce is still SCHEDULED for the watched dir (the scheduler's own
  * `getWatchedDir() !== dir` guard would drop anything else, and the snapshot

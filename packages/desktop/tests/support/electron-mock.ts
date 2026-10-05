@@ -1,5 +1,5 @@
 /**
- * Shared "electron" module mock for `bun test` (audit E7).
+ * Shared "electron" module mock for `bun test`.
  *
  * Importing the real "electron" package outside an actual Electron process
  * throws (it tries to locate/download the Electron binary), so every suite
@@ -11,8 +11,7 @@
  * imports (app.getPath/isPackaged/getVersion/single-instance lock methods/quit,
  * protocol, net, BrowserWindow, safeStorage).
  *
- * This helper owns that superset in ONE place. The five suites used to hand-copy
- * it, kept in sync only by a comment. Add a new `from "electron"` import in
+ * This helper owns that superset in ONE place. Add a new `from "electron"` import in
  * production? Extend the default here and every suite gets it. Pass per-suite
  * overrides for the pieces a given test genuinely customizes (a mutable
  * getPath, a capturing protocol.handle, a custom BrowserWindow).

@@ -9,11 +9,8 @@ import { ExportController, type ExportControllerDeps } from "../../electron/expo
 import { POST as savePdfRoute } from "../../src/routes/api/dialog/save-pdf/+server";
 import { POST as pickOutputFolderRoute } from "../../src/routes/api/dialog/pick-output-folder/+server";
 
-// Finding #4 (2026-07-13 maintainer review): "PDF export accepts arbitrary
-// output paths. The save dialog does not issue a capability, while api:build
-// accepts renderer-controlled out and atomically replaces that destination."
-//
-// This suite pins the fix end-to-end: `dialog:savePdf` REGISTERS the
+// PDF export must not accept arbitrary renderer-controlled output paths.
+// This suite pins the guard end-to-end: `dialog:savePdf` REGISTERS the
 // absolute path the native Save dialog itself just returned
 // (`electron/server-bridge/picked-files.ts`'s `SavePathHooks`); the export
 // controller's `build()` must CONSUME that one-time capability for `out`
@@ -167,7 +164,7 @@ function makeController(): ExportController {
     consumeSavePath: (absPath) => savePaths.consume(absPath),
     // Nothing is "inside the book" here, so only a dialog grant authorizes.
     isWithinProject: async () => false,
-    // Same faithfulness for the reveal capability (2026-07-29 audit): the
+    // Same faithfulness for the reveal capability: the
     // written PDF is registered as a picked path so the export's "Show in
     // Folder" action can reveal a destination outside the project.
     registerPickedPath: (absPath) => pickedFiles.register([absPath]),
