@@ -372,10 +372,13 @@ export const api = {
      * history the host snapshots the working tree first (best-effort no-op
      * when there's nothing new to save) so the deleted content stays
      * recoverable through Version History; the call rejects WITHOUT
-     * deleting if that safety snapshot fails.
+     * deleting if that safety snapshot fails. The item is set aside, not
+     * removed: `undoToken` brings it back through `undoDelete` (#313).
      */
     deletePath: (path: string, projectDir: string) =>
-      post<{ ok: true }>('/api/fs/delete', { path, projectDir }),
+      post<{ ok: true; undoToken: string }>('/api/fs/delete', { path, projectDir }),
+    /** Restore the item a `deletePath` set aside. Only the latest delete can be undone. */
+    undoDelete: (token: string) => post<{ path: string }>('/api/fs/undo-delete', { token }),
   },
 
   app: {

@@ -68,6 +68,7 @@
   import { api } from "$lib/api";
   import { getPlatform, isDesktop } from "$lib/platform";
   import Icon from "$lib/components/Icon.svelte";
+  import type { ToastController } from "$lib/components/Toast.svelte";
   import {
     invalidateDir,
     invalidateSubtree,
@@ -83,6 +84,7 @@
     onBeforeDelete,
     onFileRenamed,
     onFileDeleted,
+    toast = null,
   }: {
     projectDir: string | null;
     selectedPath?: string | null;
@@ -100,6 +102,8 @@
     onFileRenamed?: (oldPath: string, newPath: string) => void;
     /** Called after a successful delete with the deleted absolute path. */
     onFileDeleted?: (path: string) => void;
+    /** Shows "Deleted … — Undo" after a delete (#313). */
+    toast?: ToastController | null;
   } = $props();
 
   type Entry = { name: string; path: string; isDir: boolean };
@@ -354,11 +358,9 @@
 
   // ── Delete (two-step inline confirm — same pattern as LookSection's
   // theme Remove, W4/M7) ─────────────────────────────────────────────────────
-  // There is deliberately no Undo (#313): api/fs/delete removes the path
-  // permanently (not the OS trash). The only way back is Version History (the
-  // route snapshots first when the project has it), but that restores the
-  // WHOLE project to a snapshot, not one file, so as an "Undo" it would also
-  // roll back whatever was edited since. This armed confirm is the guard.
+  // A delete is undoable (#313): api/fs/delete sets the item aside, and the
+  // toast's Undo moves it back. Only the latest delete is held, so the armed
+  // confirm stays the first guard.
   let deleteArmedPath = $state<string | null>(null);
   let deleteBusy = $state<string | null>(null);
   let deleteError = $state<string | null>(null);
@@ -382,7 +384,11 @@
     deleteError = null;
     try {
       if ((await onBeforeDelete?.(entry.path)) === false) return;
-      await api.fs.deletePath(entry.path, projectDir);
+      const { undoToken } = await api.fs.deletePath(entry.path, projectDir);
+      toast?.success(`Deleted “${entry.name}”`, 8000, {
+        label: "Undo",
+        onClick: () => void undoDelete(undoToken, entry.name, parentDir),
+      });
       if (entry.isDir) {
         childrenByPath = invalidateSubtree(childrenByPath, entry.path);
         expanded = collapseDir(expanded, entry.path);
@@ -393,6 +399,16 @@
       deleteError = e instanceof Error ? e.message : String(e);
     } finally {
       deleteBusy = null;
+    }
+  }
+
+  async function undoDelete(token: string, name: string, parentDir: string): Promise<void> {
+    try {
+      await api.fs.undoDelete(token);
+      await afterMutateDir(parentDir);
+      toast?.success(`Restored “${name}”`);
+    } catch (e) {
+      toast?.error(e instanceof Error ? e.message : String(e));
     }
   }
 

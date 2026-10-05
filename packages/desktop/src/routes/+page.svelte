@@ -2902,6 +2902,7 @@
       onBeforeDeleteOpenFile={onTreeBeforeDelete}
       onFileRenamed={onTreeFileRenamed}
       onFileDeleted={onTreeFileDeleted}
+      {toast}
       onInsertImage={(payload) => insertImageIntoChapter(payload)}
       onProjectChosen={(path) => void openProjectPath(path)}
       onOpenUrl={openUrl}

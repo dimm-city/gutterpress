@@ -37,6 +37,7 @@
   } from "$lib/routes/toc-tree";
   import type { OutlineEntry } from "$lib/preview-client";
   import type { ProjectCapabilities } from "$lib/platform/contract";
+  import type { ToastController } from "$lib/components/Toast.svelte";
 
   export type PanelTab = "projects" | "toc" | "files" | "media";
 
@@ -61,6 +62,7 @@
     onBeforeDeleteOpenFile,
     onFileRenamed,
     onFileDeleted,
+    toast = null,
     onInsertImage,
     onProjectChosen,
     onOpenUrl,
@@ -92,6 +94,8 @@
     onBeforeDeleteOpenFile?: (path: string) => boolean | void | Promise<boolean | void>;
     onFileRenamed?: (oldPath: string, newPath: string) => void;
     onFileDeleted?: (path: string) => void;
+    /** For FileTree's "Deleted … Undo" toast (#313). */
+    toast?: ToastController | null;
     onInsertImage?: (payload: { src: string; alt?: string }) => void;
     onProjectChosen?: (path: string) => void;
     onOpenUrl?: (url: string) => void;
@@ -419,6 +423,7 @@
             onBeforeDelete={onBeforeDeleteOpenFile}
             {onFileRenamed}
             {onFileDeleted}
+            {toast}
           />
         {/key}
       {/if}

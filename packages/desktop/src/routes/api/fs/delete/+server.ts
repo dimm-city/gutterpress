@@ -1,8 +1,8 @@
 import { error } from '@sveltejs/kit';
-import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import { gitIdentityArgs } from '$lib/server/settings';
 import { scheduleAutoWriteEffects } from '../../../../../electron/server-bridge/write-hooks';
+import { holdDeleted } from '../_shared/recently-deleted';
 import { defineRoute, getHostServices, loadLib, requireAbsolute, requireWithinProjectRoot } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
@@ -17,6 +17,9 @@ import type { RequestHandler } from './$types';
 // version history yet) have no snapshot to take — the inline confirm is
 // their only safety net, same as every other destructive action in the app
 // today (theme Remove, M7).
+//
+// The item is moved aside rather than removed (#313), so the "Deleted … Undo"
+// toast can bring it back through fs/undo-delete — see recently-deleted.ts.
 
 export const POST: RequestHandler = defineRoute<{ path: string; projectDir: string }>({
   validate: async (raw) => {
@@ -61,10 +64,10 @@ export const POST: RequestHandler = defineRoute<{ path: string; projectDir: stri
       }
     }
 
-    await rm(body.path, { recursive: true, force: false });
+    const undoToken = await holdDeleted(body.path);
 
     scheduleAutoWriteEffects(body.path);
 
-    return { ok: true as const };
+    return { ok: true as const, undoToken };
   },
 });
