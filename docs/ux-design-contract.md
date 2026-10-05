@@ -393,8 +393,8 @@ the plan wins.**
   any other external change.
 - Image insertion on mobile: system photo picker + camera (PROPOSED — gate on
   the PWA file-write path).
-- Offline: service worker app-shell precache is SHIPPED
-  (`service-worker.ts`, registered only when `!isDesktop()`). Offline cache
+- Offline: the service worker app-shell precache shipped for #33 and was
+  deleted with the rest of the web target in 0.11.11. Offline cache
   scope (one statement, used everywhere): **app shell + the last-opened
   project (markdown, CSS, and referenced assets)** — "last 5 files" is not
   enough to preview a project. Offline indicator copy: **"Working offline —
@@ -857,13 +857,10 @@ drawer.
 
 ### PWA requirements
 
-**Status: SHIPPED (Phases 1–5) via #33/PR #63; the Safari/OPFS Phase 6 was
-struck 2026-08-23 (Chromium-only), so Phase 5 is the end of the plan.
-Normative: `docs/pwa-webadapter-plan.md` — reconcile against it, don't
-respecify.** Existing pieces: `service-worker.ts` (app-shell precache,
-registered only when `!isDesktop()` — the desktop build must never register
-it), manifest, `WebAdapter` (FSA primitives + IndexedDB persistence),
-capability gating via the platform seam.
+**Status: no web target today.** Phases 1–5 shipped via #33/PR #63 and were
+deleted in 0.11.11 (commit b5e76d06) because no build reached them; see
+CLAUDE.md §8 for how a future browser UI should start. The requirements below
+still describe what that UI must do.
 
 - Installable per the plan; `display: standalone`; theme-color follows the
   app theme.
@@ -871,7 +868,7 @@ capability gating via the platform seam.
   everywhere).
 - File access: File System Access API — present in every supported browser,
   since the PWA targets Chrome/Edge and other Chromium browsers only — with the
-  handles persisted in IndexedDB (both in `WebAdapter`). There is no
+  handles persisted in IndexedDB. There is no
   FSA-absent fallback and none is planned.
 - **PDF export and publishing are desktop/CLI-only** (#33 constraint): the
   affordances are hidden or show "requires desktop" on web/mobile.

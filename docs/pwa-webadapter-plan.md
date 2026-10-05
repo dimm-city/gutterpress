@@ -1,6 +1,14 @@
 # PWA / WebAdapter Implementation Plan (Issue #33)
 
-> Status: **partially shipped, plan revised 2026-08-23.** The FSA folder-open
+> **Superseded 2026-10-05 — the code this plan describes was deleted in
+> 0.11.11 (commit b5e76d06)** on the product owner's ruling (CLAUDE.md §8):
+> nothing could reach it, and it assumed one browser adapter behind
+> `getPlatform()` while the app had moved to `api.*` server routes. A future
+> browser UI should start from the same SvelteKit server and routes served by
+> Node instead. Restore pieces with `git checkout b5e76d06^ -- <path>`. The
+> rest of this document is kept as a record and is not current.
+>
+> Former status: **partially shipped, plan revised 2026-08-23.** The FSA folder-open
 > path, the service worker, and the manifest are implemented (Phases 1 and 4
 > below are marked accordingly). Three changes since the original spike are
 > folded in throughout:

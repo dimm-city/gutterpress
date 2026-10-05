@@ -31,6 +31,11 @@ This project follows [Semantic Versioning](https://semver.org/).
   to icons at 1150px.
 - **Connections** now says to use *Back up now* in the save status, not a
   *Sync Changes* button that no longer exists (#310).
+- **Removed the unreachable browser/PWA code** (about 3,000 lines): the web
+  adapter, its file-access and storage helpers, the service worker, the web
+  manifest, the web-only HTML download, and every "is this the desktop app?"
+  check. No build ever reached it. The node-free `gutterpress/render` entry
+  point is kept for a future browser version.
 - **Removed tooling nothing ran** (about 4,500 lines): `packages/cli/tools/`,
   the desktop drives no CI job ran (`inline-editing`, `electron-driver`,
   `run-ui` and the `test:ui` script), the Windows Docker install test, and the
