@@ -890,8 +890,8 @@ they are validated by usability testing, not by a wall-clock CI gate.
 | Metric | Target | Fixture / condition |
 |---|---|---|
 | Cold launch → editor accepts first keystroke | ≤2s P90 | reference machine (M1 MacBook Air + CI runner) — replaces the undefined "TTI" |
-| Preview re-render after keystroke | ≤300ms | `bench/novel-50p` (text-only) |
-| PDF export | ≤8s | `bench/novel-50p`; image-heavy budget (`bench/zine-24p`) not yet created |
+| Preview re-render after keystroke | ≤300ms | `examples/gutterpress-user-guide` (74 pages, text-heavy) |
+| PDF export | ≤8s | `examples/gutterpress-user-guide`; no image-heavy budget is set |
 | Theme switch (hover sample-spread render) | ≤500ms | sample spread only — full-document re-apply is exempt above N pages and shows progress |
 
 ### Satisfaction

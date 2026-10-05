@@ -431,12 +431,9 @@ export interface HostServices {
 
 /**
  * The complete host surface the desktop app consumes through `getPlatform()`:
- * the file primitives it uses from the lib's `PlatformAdapter`, plus
- * `HostServices`.
+ * the lib's `PlatformAdapter` file primitives plus `HostServices`.
  */
-export interface Platform
-  extends Pick<PlatformAdapter, "readFile" | "writeFile" | "statFile" | "watchFolder">,
-    HostServices {}
+export interface Platform extends PlatformAdapter, HostServices {}
 
 /**
  * The raw `window.electron` bridge shape exposed by `electron/preload.ts`.

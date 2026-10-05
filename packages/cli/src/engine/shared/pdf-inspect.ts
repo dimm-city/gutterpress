@@ -19,8 +19,6 @@ import {
   PDFString,
 } from "pdf-lib";
 
-export const PT_PER_IN = 72;
-
 export interface PageBoxes {
   media: number[];
   crop?: number[];
@@ -160,14 +158,4 @@ export async function inspectPdf(bytes: Uint8Array): Promise<PdfFacts> {
   walkOutline(outlines);
 
   return { pageCount: pages.length, boxes, linkTargets, namedDests, outline };
-}
-
-/** Extract per-page text as a rough sanity channel (not used for measurement). */
-export function ptToIn(pt: number): number {
-  return pt / PT_PER_IN;
-}
-
-export function boxesEqual(a: number[] | undefined, b: number[], tol = 0.05): boolean {
-  if (!a || a.length !== b.length) return false;
-  return a.every((v, i) => Math.abs(v - b[i]!) <= tol);
 }

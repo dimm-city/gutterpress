@@ -346,12 +346,6 @@ export interface LogFileEntry {
   modifiedAt: string;
 }
 
-/** Payload types for the image pick/copy host service (#31). */
-export interface ImagePickResult {
-  /** Absolute path chosen by the user, or null when cancelled. */
-  filePath: string | null;
-}
-
 // ── Media panel (#47) ─────────────────────────────────────────────────────────
 //
 // Mirrors the lib's ImageInfo (packages/cli/src/lib/image-inspect.ts) — defined
