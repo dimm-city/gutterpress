@@ -6,7 +6,7 @@
  * (DriveThruRPG, Amazon KDP), stages a validated upload package and hands the
  * author a checklist + the platform's upload URL ("guided" publishing).
  *
- * Architecture mirrors the remote-auth subsystem (ADR 0006):
+ * Architecture mirrors the remote-auth subsystem:
  *   - The lib NEVER touches OS keychains, the network, or child processes
  *     directly through ambient globals — hosts inject a {@link TokenStore},
  *     and tests inject {@link PublishDeps.fetch} / {@link PublishDeps.runCommand}.

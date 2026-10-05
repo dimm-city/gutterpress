@@ -1,7 +1,7 @@
 /**
  * gutterpress/render — the PURE, node-free render core.
  *
- * §1/§8 / ADR 0004: this entry deliberately exposes ONLY the browser-safe
+ * §1/§8: this entry deliberately exposes ONLY the browser-safe
  * markdown→HTML→book.html pieces. It transitively imports markdown-it + its
  * plugins, Gutterpress's inlined marker parser (`markers.js`), and pure helpers
  * — and NOTHING from `node:*`/`fs`/`path`/`url`. It has no browser consumer

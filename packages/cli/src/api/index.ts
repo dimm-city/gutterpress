@@ -296,7 +296,7 @@ export type {
   AutoSyncPolicy,
 } from "../lib/host-policy.ts";
 
-// ── Remote Git: auth, discovery, clone (#15 / ADR 0006) ──────────────────────
+// ── Remote Git: auth, discovery, clone (#15) ──────────────────────
 export {
   FileTokenStore,
   defaultConfigDir,
@@ -367,7 +367,7 @@ export type {
   CloneProgressEvent,
 } from "../lib/remote-auth/clone.ts";
 
-// ── Advanced Setup: diagnostics + generic token flow (#14 / ADR 0006 D3/D7) ──
+// ── Advanced Setup: diagnostics + generic token flow (#14) ──
 export {
   testRemoteAccess,
   isSshRemoteUrl,
@@ -403,7 +403,7 @@ export type {
   ForgeKind,
 } from "../lib/remote-auth/diagnose.ts";
 
-// ── Sync (#15 sync phase, ADR 0006 D5) ───────────────────────────────────────
+// ── Sync (#15 sync phase) ───────────────────────────────────────
 export {
   syncProject,
   refreshRemoteCopies,

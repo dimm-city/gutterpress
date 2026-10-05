@@ -104,7 +104,7 @@
     return (mode || currentViewMode) === 'single' ? 1 : 2;
   }
 
-  // ── Source-mapping helpers (ADR 0005) ──────────────────────────────────────
+  // ── Source-mapping helpers ──────────────────────────────────────
   // Every block element carries data-source-line (markdown-it-source-map). These
   // map rendered DOM <-> markdown source line and rendered DOM <-> page. The
   // native fragmenter MOVES elements into strips, it does not clone them, so
@@ -1064,7 +1064,7 @@
       return api.notifyPageChange();
     },
 
-    // ── ADR 0005 generic primitives ─────────────────────────────────────────
+    // ── Generic primitives ─────────────────────────────────────────
     // Bumped whenever a command/event is added so a hot-updated SPA can
     // feature-detect against an older bundled lib.
     // v6 (WORK PACKAGE B item 2): getRectsFor()/setEditMask() dropped the
@@ -1360,7 +1360,7 @@
 
   // Click-to-source: emit elementActivated when the user clicks a source-mapped
   // block. Never preventDefault (links/selection keep working); the host decides
-  // whether to act. (ADR 0005)
+  // whether to act.
   if (typeof document.addEventListener === 'function') {
     document.addEventListener('click', function (e) {
       var el = e.target && e.target.closest ? e.target.closest('[data-source-line]') : null;
@@ -1472,7 +1472,7 @@
       currentPage = page;
       if (!silent) api.notifyPageChange();
     }
-    // Emit finer-grained source position for editor sync (ADR 0005).
+    // Emit finer-grained source position for editor sync.
     var pos = visibleSourcePosition();
     var sl = pos ? pos.line : null;
     var chapter = pos ? chapterOf(pos.el) : null;

@@ -1,5 +1,5 @@
 /**
- * Generic token auth provider (#14, ADR 0006 D3 layer 3).
+ * Generic token auth provider (#14).
  *
  * The universal floor for every smart-HTTPS Git host that is not github.com:
  * the user pastes a host URL + (optional) username + access token collected by

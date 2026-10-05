@@ -243,7 +243,7 @@ export class ExportController {
         const exportSource = await lib.detectProjectSource(exportDir);
         this.deps.throwIfCanceled(exportSession);
         if (exportSource.type === "local-git-folder") {
-          // Credential-aware gate (ADR 0006 D4) — NOT capabilitiesFor().canSync,
+          // Credential-aware gate — NOT capabilitiesFor().canSync,
           // which is hasRemote-only and would attempt a pre-export syncProject
           // (returning auth) for SSH or uncredentialed-HTTPS projects on every export.
           const exportDiag = await lib.diagnoseProjectRemote(exportDir, {

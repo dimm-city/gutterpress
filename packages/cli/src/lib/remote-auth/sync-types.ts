@@ -1,6 +1,6 @@
 /**
  * Type/interface declarations for snapshot-first sync
- * (#15, ADR 0006 D5). Shared by the orchestrator, transport and
+ * (#15). Shared by the orchestrator, transport and
  * convergence modules share ONE definition of each result/option shape.
  * Pure type surface — no runtime code.
  */

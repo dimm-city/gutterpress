@@ -1,7 +1,7 @@
 /**
  * Pure (node-free) book-HTML assembly.
  *
- * §1/§8 / ADR 0004: imports ONLY the pure render core (`renderer.ts`,
+ * §1/§8: imports ONLY the pure render core (`renderer.ts`,
  * Gutterpress's marker parser (`markers.js`), and `chapter-id.ts`) — NO
  * `node:*`, NO `fs`/`path`. The
  * caller injects an async `readText(relPath)` so the SAME assembly runs:

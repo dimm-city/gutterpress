@@ -1,5 +1,5 @@
 /**
- * Transport plumbing used by snapshot-first sync (#15, ADR 0006 D5).
+ * Transport plumbing used by snapshot-first sync (#15).
  * Extracted from sync.ts: remote+credential resolution,
  * `onAuth` wiring, the snapshot-if-needed step, branch/tip helpers, the
  * remote-tip fetch (with the singleBranch `have` fix), and the shared
@@ -250,7 +250,7 @@ export function setupErrorMessage(e: unknown): string | null {
 
 /**
  * Snapshot-first step used by syncProject
- * (ADR 0006 D5): commit any unsaved work in the WHOLE repo BEFORE any network
+ *: commit any unsaved work in the WHOLE repo BEFORE any network
  * or merge step, so a forced post-merge checkout can never discard it. The
  * working-tree check runs lazily at action time on the caller's function-scoped
  * object cache (released with the operation).

@@ -1,7 +1,7 @@
 /**
  * Pure (node-free) markdown rendering core.
  *
- * §1/§8 / ADR 0004: this module imports ONLY pure JS — markdown-it and its
+ * §1/§8: this module imports ONLY pure JS — markdown-it and its
  * plugins, Gutterpress's inlined marker parser (`markers.js`), and the node-free
  * leveled logger (console-only). It contains NO `node:*`,
  * NO `fs`/`path`/`url`, and NO filesystem access, so it can be imported by the

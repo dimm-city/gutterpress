@@ -1,9 +1,9 @@
 /**
- * GitHub repo discovery (#15, ADR 0006 D3 layer 4).
+ * GitHub repo discovery (#15).
  *
  * Plain `fetch` against the GitHub REST API — deliberately no `@octokit`
  * dependency. Lists every repository the user can access (`GET /user/repos`,
- * the OAuth `repo`-scope model — ADR 0006 D1 amendment 2026-06-10), the
+ * the OAuth `repo`-scope model), the
  * branches of a chosen repository, and (via the Git Trees API) the gutterpress
  * book projects inside a repo. The two REST listings paginate; the Git Trees
  * call is a single request that handles the API's `truncated` flag instead. All
@@ -41,7 +41,7 @@ export interface GitHubApiOptions {
   fetchImpl?: typeof fetch;
 }
 
-/** "Reconnect" message for revoked/expired tokens (ADR 0006 D7). */
+/** "Reconnect" message for revoked/expired tokens. */
 const RECONNECT_MESSAGE =
   "Your GitHub connection has expired. Reconnect GitHub and try again.";
 
@@ -80,8 +80,8 @@ type UserReposPage = Array<{
 /**
  * List every repository the user can access — own, collaborator, and org
  * member — via `GET /user/repos` (paginated). The OAuth `repo` scope makes
- * the full set visible with zero install/selection steps (ADR 0006 D1
- * amendment). `sort=pushed` puts recently-active books first; callers must
+ * the full set visible with zero install/selection steps. `sort=pushed` puts
+ * recently-active books first; callers must
  * PRESERVE this order (the picker renders it as "most recent first").
  */
 export async function listGitHubRepositories(

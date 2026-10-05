@@ -5,7 +5,7 @@
  * pdfimages, pdftotext) and the general qpdf inspection used by the post-build
  * validation checks. It has ZERO system dependency and — unlike raw pdfjs-dist,
  * whose `legacy` build eagerly evaluates canvas/DOMMatrix code — unpdf bundles
- * cleanly under `bun build --compile` (verified). See ADR 0002.
+ * cleanly under `bun build --compile` (verified).
  *
  * NOT replaced here (still system tools, by design):
  *   - Ghostscript (gs): ink coverage + PDF/X CMYK conversion — no JS equivalent.
@@ -13,7 +13,7 @@
  *     catalog/object access pdfjs has no public API for, and qpdf is already
  *     mandatory whenever PDF/X is produced.
  *
- * Fidelity notes (accepted in ADR 0002):
+ * Fidelity notes (accepted):
  *   - Structural integrity (`isLoadable`) is a "does it parse" gate, not a deep
  *     `qpdf --check` of xref/stream-length integrity.
  *   - Image DPI requires decoding the image to read its pixel dimensions and is
@@ -392,7 +392,7 @@ function multiply(m1: number[], m2: number[]): number[] {
  * PDF source) subsets and embeds every font, so the common case is "true".
  * We only report NOT-embedded on a positive signal (`missingFile` /
  * `isStandardFont`) to avoid false alarms on good output — a deliberate
- * sensitivity trade-off vs `pdffonts` (see ADR 0002).
+ * sensitivity trade-off vs `pdffonts`.
  */
 function fontIsEmbedded(f: {
   missingFile?: boolean;
@@ -561,7 +561,7 @@ export async function getImageResolutions(
 /**
  * "Does it parse" gate: load every page. Returns true if the whole document is
  * traversable. This is NOT a deep xref/stream-length integrity check — it only
- * catches PDFs that are actually broken/unparseable (ADR 0002).
+ * catches PDFs that are actually broken/unparseable.
  */
 export async function isLoadable(doc: PDFDocumentProxy): Promise<boolean> {
   try {

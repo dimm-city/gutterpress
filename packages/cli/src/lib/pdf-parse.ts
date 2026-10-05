@@ -22,7 +22,7 @@ export async function readPdfBytes(pdfPath: string): Promise<string> {
 /**
  * Parse ink coverage from `gs -sDEVICE=inkcov` output.
  *
- * Ghostscript has no pure-JS equivalent (it stays a system tool — see ADR 0002),
+ * Ghostscript has no pure-JS equivalent (it stays a system tool),
  * so the inkcov path remains shell-based here.
  */
 export function parseInkCov(out: string) {

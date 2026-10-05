@@ -1242,7 +1242,7 @@ const vcsHooksImpl: VcsHooks = {
 // Error sanitization for vcs:* lives in the shared server-bridge/friendly-errors
 // module (friendlyVcsError), consumed by the SvelteKit routes.
 
-// ── Managed GitHub integration (#15, ADR 0006) ───────────────────────────────
+// ── Managed GitHub integration (#15) ───────────────────────────────
 // Auth (device flow), connection status, repo/branch discovery, clone-and-open.
 // All real work lives in the lib (CLAUDE.md §7: isomorphic-git + plain fetch —
 // never system git/gh); credentials live in the safeStorage-backed store and
@@ -1289,7 +1289,7 @@ const remoteHooksImpl: RemoteHooks = {
         safeSend("remote:cloneProgress", event);
       },
     });
-    // Multi-book repository: the WHOLE repo is cloned once (ADR 0006 D2);
+    // Multi-book repository: the WHOLE repo is cloned once;
     // the chosen book subfolder opens as the project, which classifies as
     // a subfolder of the enclosing repo and inherits its history/sync.
     const subPath = sanitizeBookSubPath(args.subPath);

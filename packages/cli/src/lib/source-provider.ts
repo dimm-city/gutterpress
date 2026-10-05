@@ -159,7 +159,7 @@ const SNAPSHOT_STAGING_MARKER = "gutterpress-snapshot-staging";
 // the same `.git` (e.g. an auto-snapshot racing a user-initiated restore)
 // interleave index/ref writes and can corrupt the repository. Every public
 // operation on a project dir is therefore serialized through a simple promise
-// chain keyed on the resolved dir. ADR 0006 D2 requires this same queue for
+// chain keyed on the resolved dir. this same queue for
 // the future fetch/push surface (#15/#16), so keep it here, not in callers.
 const repoQueues = new Map<string, Promise<unknown>>();
 
@@ -184,7 +184,7 @@ function repoLockKey(projectDir: string): string {
 /**
  * Run `fn` exclusively per resolved project dir (FIFO promise chaining).
  * Exported for the remote-clone surface (#15) so clone/fetch operations share
- * the SAME queue as snapshot/restore — ADR 0006 D2 requires one per-repo lock.
+ * the SAME queue as snapshot/restore — one per-repo lock.
  */
 export function withRepoLock<T>(projectDir: string, fn: () => Promise<T>): Promise<T> {
   const key = repoLockKey(projectDir);
@@ -381,7 +381,7 @@ export async function stageChanges(
 /**
  * True when the working tree differs from the index (added/modified/deleted
  * files). Used to skip empty snapshots. Exported (lock-free) for the sync
- * surface (#15, ADR 0006 D5) — callers outside a lock should prefer the
+ * surface (#15) — callers outside a lock should prefer the
  * provider operations.
  */
 export async function hasPendingChanges(
@@ -660,7 +660,7 @@ class LocalGitSourceProvider implements SourceProvider {
 /**
  * Lock-free snapshot of the full working tree (stage everything + commit).
  *
- * Exported for the sync surface (#15, ADR 0006 D5): `syncProject` holds
+ * Exported for the sync surface (#15): `syncProject` holds
  * the per-repo lock for snapshot → fetch → merge → push as ONE sequence, so it
  * needs the lock-free internal rather than `provider.snapshot()` (taking the
  * per-method lock inside the sync lock would deadlock the FIFO queue).

@@ -1,5 +1,5 @@
 /**
- * Electron-host credential store (#15, ADR 0006 D3 layer 2).
+ * Electron-host credential store (#15).
  *
  * Implements the lib's `TokenStore` contract (shape mirrored locally — the
  * electron main bundle keeps the lib behind a dynamic import) using Electron's
