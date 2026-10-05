@@ -67,7 +67,7 @@
     "glob": "^13.0.0",
     "htmlhint": "^1.9.2",
     "isomorphic-git": "^1.38.4",
-    "markdown-it": "^14.1.0",
+    "markdown-it": "^14.3.2",
     "markdown-it-abbr": "^2.0.0",
     "markdown-it-attrs": "^4.3.0",
     "markdown-it-deflist": "^3.0.1",
@@ -81,7 +81,7 @@
     "postcss": "^8.5.18",
     "resolve.exports": "2.0.3",
     "semver": "7.8.0",
-    "tar": "7.5.20",
+    "tar": "7.5.22",
     "unpdf": "^1.6.2",
     "ws": "^8.21.0",
     "yaml": "^2.8.2"

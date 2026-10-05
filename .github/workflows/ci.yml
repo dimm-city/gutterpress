@@ -308,16 +308,13 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      # NON-BLOCKING ON PURPOSE. As of 0.10.10 `bun audit` reports 35
-      # advisories (23 high), 24 of them transitive through electron-builder ->
-      # app-builder-lib -> tar/undici, which cannot be fixed from this repo
-      # without a major electron-builder bump. Failing the build on them would
-      # wall off every PR for something no PR author can fix.
-      #
-      # The point of running it anyway is visibility: the number is in the log
-      # of every run, so a NEW advisory is noticed instead of arriving silently.
-      # Flip continue-on-error off once the baseline is clean — that is the
-      # signal this job is meant to earn, not a permanent exemption.
+      # BLOCKING (#287). The baseline was burned down to zero in 0.11.11 (75
+      # advisories before: direct bumps of tar, markdown-it, electron 42.x and
+      # @sveltejs/kit, plus same-major `overrides` in the root package.json for
+      # the transitive rest). A new advisory now fails the build. The usual fix
+      # is a same-major bump or override; if an advisory has no fixed release
+      # and only reaches build tooling, accept it explicitly with
+      # `bun audit --ignore <GHSA-id>` and a comment saying why — never by
+      # making this step non-blocking again.
       - name: Audit dependencies
-        continue-on-error: true
         run: bun audit
