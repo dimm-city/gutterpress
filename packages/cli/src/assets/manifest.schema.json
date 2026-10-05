@@ -424,6 +424,15 @@
       "type": "object",
       "description": "Publish provider settings, keyed by the same provider id `gutterpress publish --provider <id>` takes. Non-secret configuration only — API keys and tokens are stored in the host credential store, never in this file.",
       "properties": {
+        "local": {
+          "type": "object",
+          "description": "A folder on this computer — where the desktop's Publish builds the book before sending it anywhere else (default: `dist` inside the book)",
+          "properties": {
+            "dir": { "type": "string", "description": "Output folder, relative to the book or absolute. Default: dist" },
+            "format": { "type": "string", "enum": ["pdf", "html"], "description": "Which build to save (default: pdf)" }
+          },
+          "additionalProperties": true
+        },
         "itch": {
           "type": "object",
           "description": "itch.io publishing (uploaded with butler)",

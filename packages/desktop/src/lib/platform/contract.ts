@@ -20,8 +20,7 @@
  * reference — the ~30 shapes server routes return (extension manager,
  * style resolver, media panel, problems panel, project
  * classification, …) — live in `./dtos.ts`. IPC payload types shared with the
- * Electron host process (and mirrored into `electron/bridge-types.ts`) live in
- * `./shared-types.ts`. This file re-exports both so existing `$lib/platform/
+ * Electron host process live in `./shared-types.ts`. This file re-exports both so existing `$lib/platform/
  * contract` importers keep resolving; new code should import DTOs from
  * `./dtos` directly.
  */
@@ -36,9 +35,9 @@ import type {
   CreateProjectResult,
 } from "gutterpress";
 
-// Shared IPC payload types — imported from the single source of truth.
-// Both electron/bridge-types.ts and this file reference shared-types.ts,
-// so these types cannot drift between the host and renderer sides.
+// Shared IPC payload types — imported from the single source of truth
+// (shared-types.ts), which the Electron host imports directly too, so these
+// types cannot drift between the host and renderer sides.
 import type {
   UpdaterStatus,
   UpdaterEventPayload,
@@ -224,7 +223,7 @@ export type { SharedProjectRemoteDiagnosis as ProjectRemoteDiagnosis };
  *
  * States:
  *   idle        — no sync scheduled or needed (local-only project, or auto-sync OFF)
- *   syncing     — commit→fetch→merge→push in flight ("Saving changes…")
+ *   syncing     — commit→fetch→merge→push in flight ("Syncing…")
  *   synced      — last sync completed and remote is up to date
  *   up-to-date  — sync ran; nothing needed (no local or remote changes)
  *   offline     — network unavailable; changes are saved locally
@@ -280,6 +279,12 @@ export interface SyncStatus {
    * Timestamped steps, never secrets.
    */
   logFile?: string;
+  /**
+   * Which part of the product this status is about. Absent = the online
+   * backup. "versions" = the automatic-version safety net failed (it reuses
+   * this channel with state "error"), which must NOT read as a backup failure.
+   */
+  source?: "versions";
   /** True when the completed sync changed files in the local worktree. */
   filesChanged?: boolean;
   /**
@@ -365,8 +370,6 @@ export interface PlatformCapabilities {
  * filesystem/secrets primitive surface, so kept separate from PlatformAdapter.
  */
 export interface HostServices {
-  /** Integer IPC-surface version; mirrors DESKTOP_API in electron/preload.ts. */
-  readonly apiVersion: number;
   readonly updater: UpdaterApi;
 
   /**
@@ -528,11 +531,6 @@ export interface ElectronBridge
     | "cloneRemoteRepository"
     | "updater"
   > {
-  // audit D3: openDirectory/readFile/writeFile/listDir/statFile were removed
-  // from here — the real preload bridge migrated them to server routes (the
-  // ElectronAdapter's PlatformAdapter methods call api.dialog.*/api.fs.*, never
-  // bridge().*), so the type promised IPC members that don't exist. Matches the
-  // already-pruned electron/types.d.ts.
   // #49: the IPC layer keeps raw path-string semantics — the ElectronAdapter is
   // the translation seam that unwraps FolderRef.key back into the string `input`
   // the existing IPC expects.

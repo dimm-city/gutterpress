@@ -56,7 +56,7 @@ describe("POST /api/extension/add", () => {
 
   test("rejects an outside directory before showing the trust prompt", async () => {
     const result = await caught(call({ projectDir: outsideDir, specifier: "markdown-it-highlightjs" }));
-    expect(result).toEqual({ status: 403, message: "extension/add: path is outside the open project" });
+    expect(result).toEqual({ status: 403, message: "extension/add: path is outside the open book" });
     expect(confirmations).toEqual([]);
   });
 
@@ -74,15 +74,6 @@ describe("POST /api/extension/add", () => {
     expect(await response.json()).toMatchObject({ use: "markdown-it-mark", kind: "bundled", enabled: true });
     expect(confirmations).toEqual([]);
     expect(await readFile(path.join(projectDir, "manifest.yaml"), "utf8")).toContain("markdown-it-mark");
-  });
-
-  test("fails closed when the native confirmation hook is unavailable", async () => {
-    registerHostServices(makeHostServices({
-      fsGuard: { projectRoots: () => [projectDir] },
-      desktop: undefined,
-    }));
-    const result = await caught(call({ projectDir, specifier: "markdown-it-highlightjs" }));
-    expect(result).toEqual({ status: 503, message: "Desktop hooks not registered" });
   });
 
   test("rejects a blank or unparseable specifier with a 400 that says what to write instead", async () => {
@@ -106,7 +97,7 @@ describe("POST /api/extension/add", () => {
   test("refuses a relative path that escapes the open project (403)", async () => {
     await writeFile(path.join(outsideDir, "plugin.js"), "export default function () {}\n", "utf8");
     const result = await caught(call({ projectDir, specifier: "../outside/plugin.js" }));
-    expect(result).toEqual({ status: 403, message: "extension/add: path is outside the open project" });
+    expect(result).toEqual({ status: 403, message: "extension/add: path is outside the open book" });
   });
 
   test("references an in-project path in place — written relative, nothing copied", async () => {

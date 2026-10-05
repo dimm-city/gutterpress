@@ -116,8 +116,8 @@ directly.
   by path. Git-tracked source; editable in `layout` or `content` scope when
   Markdown rendering behavior genuinely must change.
 - **Managed** — installed by `gutterpress ext add <pkg>@<version> <book>`, which
-  verifies and vendors the exact dependency graph beneath the book's
-  `plugins/npm/` tree with integrity receipts, then pins `name@version` in the
+  integrity-checks and vendors the exact dependency graph beneath the book's
+  `plugins/npm/` tree, then pins `name@version` in the
   manifest's `extensions:` list.
 
 `plugins/npm/**` is machine-owned. Never edit it, move it, or share it between

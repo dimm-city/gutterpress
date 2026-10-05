@@ -9,25 +9,41 @@
  * All methods throw on non-OK responses (with the response body as the message).
  */
 
+/**
+ * The message to throw for a non-OK response. A route's own error is the
+ * `{"message": …}` JSON body (see `$lib/errors`'s `unwrapRouteError`). An
+ * HTML body is not from a route at all: it is the `app://` handler's error
+ * page (electron/sveltekit-host.ts), sent when the server itself could not
+ * answer — so say that in one sentence, with the page's `<code>` detail,
+ * instead of handing a component a page of markup to display.
+ */
+export function hostErrorMessage(contentType: string | null, text: string): string {
+  if (!/text\/html/i.test(contentType ?? '')) return text;
+  const code = /<code>([\s\S]*?)<\/code>/i.exec(text)?.[1]?.trim();
+  const detail = code
+    ? code.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+    : '';
+  return `The app's internal server didn't answer.${detail ? ` (${detail})` : ''}`;
+}
+
+async function failed(r: Response): Promise<Error> {
+  const text = await r.text().catch(() => r.statusText);
+  return new Error(hostErrorMessage(r.headers.get('content-type'), text) || r.statusText);
+}
+
 async function post<T>(url: string, body?: unknown): Promise<T> {
   const r = await fetch(url, {
     method: 'POST',
     headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-  if (!r.ok) {
-    const msg = await r.text().catch(() => r.statusText);
-    throw new Error(msg || r.statusText);
-  }
+  if (!r.ok) throw await failed(r);
   return r.json() as Promise<T>;
 }
 
 async function get<T>(url: string): Promise<T> {
   const r = await fetch(url);
-  if (!r.ok) {
-    const msg = await r.text().catch(() => r.statusText);
-    throw new Error(msg || r.statusText);
-  }
+  if (!r.ok) throw await failed(r);
   return r.json() as Promise<T>;
 }
 
@@ -115,6 +131,8 @@ export type {
   PrintSafeWarning,
   ProblemEntry,
   DoctorDiagnostics,
+  ProblemReport,
+  DoctorInstallResult,
 } from './platform/dtos';
 
 import type {
@@ -137,6 +155,8 @@ import type {
   PrintSafeWarning,
   ProblemEntry,
   DoctorDiagnostics,
+  ProblemReport,
+  DoctorInstallResult,
 } from './platform/dtos';
 
 // Publish-preflight row DTO (#105). Pure `$lib` module — type-only here so the
@@ -248,9 +268,25 @@ export const api = {
   dialog: {
     /** Open native directory picker. Resolves null when cancelled. */
     openDirectory: () => post<string | null>('/api/dialog/open-directory'),
-    /** Open native PDF save dialog. Resolves null when cancelled. */
-    savePdf: (defaultName?: string) =>
-      post<string | null>('/api/dialog/save-pdf', defaultName !== undefined ? { defaultName } : {}),
+    /**
+     * Open native PDF save dialog, optionally opening in `defaultDir`.
+     * Resolves null when cancelled.
+     */
+    savePdf: (defaultName?: string, defaultDir?: string) =>
+      post<string | null>('/api/dialog/save-pdf', {
+        ...(defaultName !== undefined ? { defaultName } : {}),
+        ...(defaultDir !== undefined ? { defaultDir } : {}),
+      }),
+    /**
+     * Native folder picker for a build's output folder (may create one). The
+     * chosen folder becomes a valid `api:build` `out` and publish artifact.
+     * Resolves null when cancelled.
+     */
+    pickOutputFolder: (defaultPath?: string) =>
+      post<string | null>(
+        '/api/dialog/pick-output-folder',
+        defaultPath !== undefined ? { defaultPath } : {},
+      ),
     /** Open native single image file picker. Resolves null when cancelled. */
     pickImageFile: () => post<string | null>('/api/dialog/pick-image-file'),
     /** Native open dialog for the publish artifact (PDF). Null when cancelled. */
@@ -270,11 +306,21 @@ export const api = {
       post<{ ok: boolean }>('/api/shell/show-in-folder', { filePath }),
   },
 
+  report: {
+    /** Build the "Report a problem" bundle for the open book (null = no book). */
+    bundle: (projectDir: string | null) =>
+      post<ProblemReport>('/api/report/bundle', { projectDir }),
+  },
+
   log: {
     /** Read an operation log file. Returns null when the file doesn't exist. */
     read: (logPath: string) => post<string | null>('/api/log/read', { logPath }),
     /** List the app's diagnostic log files (newest first). */
     list: () => post<LogFileEntry[]>('/api/log/list', {}),
+    /** Open the logs folder in the OS file manager. */
+    openFolder: () => post<{ ok: boolean }>('/api/log/open-folder', {}),
+    /** Delete every log file the list shows. */
+    prune: () => post<{ removed: number }>('/api/log/prune', {}),
   },
 
   fs: {
@@ -599,6 +645,9 @@ export const api = {
 
   /** System diagnostics (tool paths, versions, Chromium/Electron info). */
   doctor: () => get<DoctorDiagnostics>('/api/doctor'),
+  /** Install a missing optional tool with the platform's package manager. */
+  doctorInstall: (toolId: string) =>
+    post<DoctorInstallResult>('/api/doctor/install', { toolId }),
 
   recovery: {
     /** Write a debounced crash-recovery snapshot of the open buffer (#44). */
@@ -638,6 +687,11 @@ export const api = {
       post<{ entries: SnapshotEntry[]; hasMore: boolean }>('/api/vcs/list-snapshots-page', { projectDir, ...options }),
     restoreSnapshot: (projectDir: string, id: string) =>
       post<{ restoredId: string; backupId?: string }>('/api/vcs/restore-snapshot', { projectDir, id }),
+    /** Files changed since the last version (saved, but not in a version yet);
+     *  `changedFiles` is null for a plain folder with no version history;
+     *  `stale` = a crashed version attempt may have left staged work. */
+    unversionedChanges: (projectDir: string) =>
+      post<{ changedFiles: number | null; stale: boolean }>('/api/vcs/unversioned-changes', { projectDir }),
     saveSnapshot: (projectDir: string, message?: string) =>
       post<SnapshotEntry>('/api/vcs/save-snapshot', { projectDir, message }),
     /** The project's local copies (git branches) and which one is open;
@@ -717,6 +771,23 @@ export const api = {
         projectDir,
         ...(message ? { message } : {}),
       }),
+
+    /**
+     * "Repair online backup": replace the book's broken history with a fresh
+     * download of the online copy, keep every file on this computer, restore
+     * files that exist only online, then save a version and back up. The old
+     * history is kept aside, never deleted.
+     */
+    repairOnlineBackup: (projectDir: string) =>
+      post<{ outcome: SyncOutcome; restoredFiles: string[] }>('/api/remote/repair', { projectDir }),
+
+    /**
+     * "Scorched earth": copy the folder to a backup, empty it, download a
+     * fresh copy from its online address, then copy the backed-up files (not
+     * the old history) back on top. Nothing is saved or backed up afterwards.
+     */
+    scorchedEarth: (projectDir: string) =>
+      post<{ dir: string; backupDir: string; branch?: string }>('/api/remote/scorched-earth', { projectDir }),
 
     /**
      * Download ("clone") a repository into a new local project folder

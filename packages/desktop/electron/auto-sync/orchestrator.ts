@@ -20,7 +20,7 @@
  *     (AUTO_SYNC_PUSH_INTERVAL_MINUTES) has elapsed passes `push: true` —
  *     the rest run pull-merge-only passes, so remote work keeps arriving
  *     every ~2 minutes while local work uploads in quiet ~15-minute batches
- *     plus one final bounded pass on project close/app exit (runExitPush);
+ *     plus one final pass on project close/app exit (runExitPush);
  *   - outcome → ambient status mapping (conflict arm no longer exists; the
  *     converge report — combinedFiles/keptBothFiles — rides on the payload);
  *
@@ -46,16 +46,6 @@ type VersionHistorySettings = NonNullable<Parameters<LibModule["autoSyncDelayMs"
  * module-level copy.
  */
 export const AUTO_SYNC_OPEN_DELAY_MS = 4_000;
-
-/**
- * Budget for the final exit push (project close / app quit). An app that
- * hangs on quit because the network dropped is worse than an unpushed change:
- * past this, quit proceeds — the underlying sync keeps running if the process
- * stays alive (project switch), and a killed push is harmless server-side
- * (receive-pack applies the ref update only on a complete pack). Whatever the
- * pass could not send, the next launch's first tick pushes.
- */
-export const EXIT_PUSH_BUDGET_MS = 8_000;
 
 /**
  * Per-project state for the auto-sync orchestrator. Keyed by projectDir.
@@ -103,6 +93,8 @@ export interface SyncStatusPayload {
   message?: string;
   /** Operation log path — present on "error". */
   logFile?: string;
+  /** "versions": the automatic-version safety net failed, not the online backup. */
+  source?: "versions";
   /** True when the completed sync changed files in the local worktree. */
   filesChanged?: boolean;
   /** Files whose text now holds BOTH versions inside git conflict markers. */
@@ -352,7 +344,7 @@ export class AutoSyncOrchestrator {
       // failures through its outcome, so anything thrown here is unexpected —
       // a damaged history included. The status pill says so plainly and the
       // periodic timer keeps trying.
-      this.deps.emit({ state: "error", projectDir: dir, lastSyncAt: now });
+      this.deps.emit({ state: "error", projectDir: dir, lastSyncAt: now, logFile });
       releaseFlight();
       return;
     }
@@ -414,6 +406,7 @@ export class AutoSyncOrchestrator {
       default:
         this.deps.emit({
           state: "error",
+          logFile,
           projectDir: dir,
           lastSyncAt: completedAt,
           ...(outcome.message ? { message: outcome.message } : {}),
@@ -440,9 +433,10 @@ export class AutoSyncOrchestrator {
    *   before `cancelAll()` wipes the state bag): an in-flight tick and the
    *   exit pass never overlap — skip rather than wait, the next launch's
    *   first tick pushes whatever was pending.
-   * - BOUNDED by `budgetMs`: past it, quit proceeds. The abandoned sync keeps
-   *   running only if the process stays alive (project switch), where the
-   *   lib's per-repo FIFO lock serializes it against anything that follows.
+   * - Runs to completion — never abandoned on a timer. Quitting while it
+   *   wrote objects and refs is what left 0.11.6 repos with empty object
+   *   files; the host now waits for `lib.whenGitIdle()` before exiting. The
+   *   network legs stay bounded by git-http's own idle/upload timeouts.
    * - No status emits: the pill has moved on with the project (or the window
    *   is gone); the operation log still records the pass.
    */
@@ -469,7 +463,7 @@ export class AutoSyncOrchestrator {
     return { repoRoot: lib.repoRootForSource(source, dir) };
   }
 
-  async runExitPush(dir: string, budgetMs: number = EXIT_PUSH_BUDGET_MS): Promise<void> {
+  async runExitPush(dir: string): Promise<void> {
     if (!this.acquire(dir)) return;
     try {
       const [lib, settings] = await Promise.all([this.deps.loadLib(), this.deps.readSettings()]);
@@ -478,27 +472,17 @@ export class AutoSyncOrchestrator {
       if (!gate) return;
 
       const logFile = this.deps.operationLogPath(operationLogSlug(gate.repoRoot));
-      const sync = lib.syncProject({
+      const outcome = await lib.syncProject({
         projectDir: dir,
         tokenStore: this.deps.tokenStore,
         logFile,
         ...gitIdentityFrom(settings),
         push: true,
       });
-      // A rejection after the budget has expired must not become an unhandled
-      // rejection; before it expires, the race below surfaces it to the catch.
-      sync.catch(() => {});
-      const outcome = await Promise.race([
-        sync,
-        new Promise<null>((resolve) => {
-          const t = setTimeout(() => resolve(null), budgetMs);
-          if (typeof t.unref === "function") t.unref();
-        }),
-      ]);
-      if (outcome && (outcome.status === "synced" || outcome.status === "up-to-date")) {
+      if (outcome.status === "synced" || outcome.status === "up-to-date") {
         this.lastPushAt.set(dir, this.deps.now());
       } else {
-        // Timed out or failed: whatever is unpushed stays safely local — and
+        // Failed: whatever is unpushed stays safely local — and
         // clearing the window makes the next open's FIRST tick push it,
         // instead of waiting out the remainder of a 15-minute window.
         this.lastPushAt.delete(dir);

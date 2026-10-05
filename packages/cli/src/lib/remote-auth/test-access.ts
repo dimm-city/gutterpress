@@ -69,7 +69,7 @@ export const FAILURE_MESSAGES: Record<RemoteAccessFailureReason, string> = {
   unreachable:
     "Couldn't reach the Git server. Check your internet connection (and VPN, if this is a private server), then try again.",
   "ssh-unsupported":
-    "This project's online address uses SSH (git@…), which gutterpress can't check or sync with. Everything on this computer still works — sync with your usual Git tool.",
+    "This book's online address uses SSH (git@…), which gutterpress can't check or sync with. Everything on this computer still works — sync with your usual Git tool.",
   "insecure-transport":
     "This address isn't secure, so the saved connection wasn't sent — connections are never sent over an insecure address. Switch the address to a secure one (starting with https), or to a local loopback address for a server on this computer, to use a saved connection.",
   tls: "The server's security certificate couldn't be verified. If this is a private server with its own certificate, ask its administrator about trusting it (NODE_EXTRA_CA_CERTS).",

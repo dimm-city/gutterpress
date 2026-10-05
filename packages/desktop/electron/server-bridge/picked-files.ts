@@ -50,7 +50,6 @@
  * the user can simply re-open the dialog).
  */
 import path from "node:path";
-import { getHostServices } from "./host-services";
 
 export interface PickedFilesHooks {
   /**
@@ -67,11 +66,6 @@ export interface PickedFilesHooks {
    * picked, already consumed, or expired past the TTL).
    */
   consume(absPath: string): boolean;
-}
-
-/** The live `PickedFilesHooks` slice of the collapsed host object (ARCH #31), or null before `registerHostServices` runs. */
-export function getPickedFilesHooks(): PickedFilesHooks | null {
-  return getHostServices()?.pickedFiles ?? null;
 }
 
 /**
@@ -96,11 +90,6 @@ export interface SavePathHooks {
    * otherwise (never chosen, already consumed, or expired past the TTL).
    */
   consume(absPath: string): boolean;
-}
-
-/** The live `SavePathHooks` slice of the collapsed host object (ARCH #31), or null before `registerHostServices` runs. */
-export function getSavePathsHooks(): SavePathHooks | null {
-  return getHostServices()?.savePaths ?? null;
 }
 
 export interface PickedFilesServiceOptions {

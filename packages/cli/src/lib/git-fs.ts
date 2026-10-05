@@ -11,11 +11,20 @@
  * the write with temp-file + `rename` removes the truncation window entirely
  * — a reader sees either the old file or the new one, never a torn one.
  *
- * SCOPE. Only git's mutable metadata is redirected. Working-tree files and
- * content-addressed objects keep the plain write: objects are written once
- * under a hash of their contents (a torn object is a NEW file that simply
- * fails to inflate, it never destroys a good one), and the working tree is
- * the author's own files, which `rename` semantics would not improve.
+ * SCOPE. Git's mutable metadata AND its object store (loose objects and
+ * packs) are redirected. Objects were once left on the plain write on the
+ * theory that a torn object is a new file that merely fails to inflate — but
+ * isomorphic-git never rewrites an object file that already exists
+ * (`writeObjectLoose` skips it), and it reads a loose object BEFORE the packs,
+ * so one empty object file from a quit mid-write permanently shadows the good
+ * copy and fails every later merge with a masked "buffer error" (0.11.6
+ * field report). The working tree is the author's own files, which `rename`
+ * semantics would not improve, so it keeps the plain write.
+ *
+ * SELF-HEAL. Repositories damaged before this fix still hold such empty loose
+ * objects. A zero-byte loose object carries no data, so `readFile` deletes it
+ * and reports it missing: isomorphic-git then falls through to the packs, and
+ * the next write of that object can recreate it.
  *
  * NOT A DURABILITY BARRIER. There is deliberately no `fsync`: this closes the
  * PROCESS-DEATH window, where the page cache survives and `rename` is atomic
@@ -33,19 +42,64 @@ import * as nodeFs from "node:fs";
  * file that happens to be named `index` or `HEAD` can never match: git does
  * not track files inside `.git`, so this cannot collide with author content.
  */
-const MUTABLE_GIT_METADATA =
-  /(?:^|[\\/])\.git[\\/](?:index|HEAD|packed-refs|refs[\\/].+)$/;
+const ATOMIC_GIT_FILES =
+  /(?:^|[\\/])\.git[\\/](?:index|HEAD|packed-refs|refs[\\/].+|objects[\\/].+)$/;
 
-/** True when `file` is git metadata that must be replaced, never truncated. */
+/** A loose object: `.git/objects/<2 hex>/<38 hex>`. */
+const LOOSE_OBJECT = /(?:^|[\\/])\.git[\\/]objects[\\/][0-9a-f]{2}[\\/][0-9a-f]{38}$/;
+
+/** True when `file` is a git file that must be replaced, never truncated. */
 export function needsAtomicWrite(file: unknown): file is string {
-  return typeof file === "string" && MUTABLE_GIT_METADATA.test(file);
+  return typeof file === "string" && ATOMIC_GIT_FILES.test(file);
 }
 
 let tempCounter = 0;
 
-/** A sibling temp path — same directory, so `rename` stays within one device. */
+/**
+ * A sibling temp path — same directory, so `rename` stays within one device.
+ * Inside the object store it uses git's own `tmp_obj_` prefix: isomorphic-git
+ * lists `objects/<xx>/` to expand short ids, and a non-hex name can never
+ * match one, even if a crash leaves the temp behind.
+ */
 function tempPathFor(file: string): string {
-  return `${file}.gp${process.pid.toString(36)}-${(tempCounter++).toString(36)}.tmp`;
+  const unique = `${process.pid.toString(36)}-${(tempCounter++).toString(36)}`;
+  if (/[\\/]\.git[\\/]objects[\\/]/.test(file)) {
+    return file.replace(/[^\\/]+$/, `tmp_obj_gp${unique}`);
+  }
+  return `${file}.gp${unique}.tmp`;
+}
+
+/** The error `readFile` reports for a missing file. */
+function notFound(file: string): NodeJS.ErrnoException {
+  return Object.assign(new Error(`ENOENT: no such file or directory, open '${file}'`), {
+    code: "ENOENT",
+    errno: -2,
+    syscall: "open",
+    path: file,
+  });
+}
+
+/**
+ * True when `file` is a loose object and `data` is empty: a torn write's
+ * remains. Such a file is removed (best-effort) so the object reads as
+ * missing and can be written again — see SELF-HEAL above.
+ */
+function isTornLooseObject(file: unknown, data: { length: number }): file is string {
+  return typeof file === "string" && data.length === 0 && LOOSE_OBJECT.test(file);
+}
+
+/**
+ * Promise-style `readFile` — reports a torn loose object as missing. This is
+ * the reader isomorphic-git actually binds: `gitFs.promises` is an enumerable
+ * own property, and isomorphic-git prefers an enumerable `promises`.
+ */
+async function readFilePromise(file: never, options?: never): Promise<string | Buffer> {
+  const data = (await nodeFs.promises.readFile(file, options)) as string | Buffer;
+  if (isTornLooseObject(file, data)) {
+    await nodeFs.promises.unlink(file).catch(() => {});
+    throw notFound(file);
+  }
+  return data;
 }
 
 /**
@@ -106,6 +160,7 @@ async function writeFilePromise(
 
 const promises: typeof nodeFs.promises = {
   ...nodeFs.promises,
+  readFile: readFilePromise as typeof nodeFs.promises.readFile,
   writeFile: writeFilePromise as typeof nodeFs.promises.writeFile,
 };
 

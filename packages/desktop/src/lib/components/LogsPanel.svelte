@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * LogsPanel — the start screen's Logs tab: the app's diagnostic logs,
+   * LogsPanel — the start screen's Troubleshooting → Logs tab: the app's diagnostic logs,
    * readable in place and one click away from the clipboard, so a writer can
    * paste them into a chat/issue when something needs investigating. Read-only
    * by design — the host's `log/list` + `log/read` routes are confined to the
@@ -11,6 +11,7 @@
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { api } from "$lib/api";
+  import { cancelInlineConfirm, requestInlineConfirm, type InlineConfirmState } from "$lib/dialog";
   import type { LogFileEntry } from "$lib/platform/dtos";
 
   let files = $state<LogFileEntry[]>([]);
@@ -20,6 +21,7 @@
   let reading = $state(false);
   let copied = $state(false);
   let errorMessage = $state<string | null>(null);
+  let clearConfirm = $state<InlineConfirmState>({});
   let copyTimer: ReturnType<typeof setTimeout> | null = null;
 
   async function loadList(selectFirst = true) {
@@ -68,6 +70,26 @@
     }
   }
 
+  async function openFolder() {
+    try {
+      await api.log.openFolder();
+    } catch {
+      errorMessage = "The logs folder couldn't be opened.";
+    }
+  }
+
+  async function clearLogs() {
+    const { state, confirmed } = requestInlineConfirm(clearConfirm, "clear");
+    clearConfirm = state;
+    if (!confirmed) return;
+    try {
+      await api.log.prune();
+      await loadList();
+    } catch {
+      errorMessage = "The logs couldn't be cleared right now.";
+    }
+  }
+
   function sizeLabel(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -113,6 +135,18 @@
     >
       <Icon name="refresh-cw" size={14} /> Refresh
     </button>
+    <button class="toolbar-btn" onclick={() => void openFolder()} title="Open the logs folder">
+      <Icon name="folder-open" size={14} /> Open folder
+    </button>
+    <button
+      class="toolbar-btn"
+      onclick={() => void clearLogs()}
+      onblur={() => (clearConfirm = cancelInlineConfirm(clearConfirm, "clear"))}
+      disabled={loading || files.length === 0}
+      title="Delete all log files"
+    >
+      <Icon name="trash" size={14} /> {clearConfirm["clear"] ? "Really clear all logs?" : "Clear logs"}
+    </button>
     <button
       class="toolbar-btn primary"
       onclick={() => void copyAll()}
@@ -132,7 +166,7 @@
     <p class="logs-empty" aria-live="polite">Loading logs…</p>
   {:else if files.length === 0}
     <p class="logs-empty">
-      No logs yet — they appear once a project has synced, saved a version, or
+      No logs yet — they appear once a book has synced, saved a version, or
       been repaired.
     </p>
   {:else}

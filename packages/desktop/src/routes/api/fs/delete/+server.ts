@@ -3,8 +3,7 @@ import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import { gitIdentityArgs } from '$lib/server/settings';
 import { scheduleAutoWriteEffects } from '../../../../../electron/server-bridge/write-hooks';
-import { getVcsHooks, type VcsHooks } from '../../../../../electron/server-bridge/vcs-hooks';
-import { defineRoute, requireAbsolute, requireWithinProjectRoot } from '../../_lib/route';
+import { defineRoute, getHostServices, loadLib, requireAbsolute, requireWithinProjectRoot } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 // FileTree row action "Delete" (UX review M9). The destructive path: the
@@ -18,34 +17,8 @@ import type { RequestHandler } from './$types';
 // version history yet) have no snapshot to take — the inline confirm is
 // their only safety net, same as every other destructive action in the app
 // today (theme Remove, M7).
-//
-// Local type — a narrow slice of the lib's real surface, not the full
-// generated type (same rationale as vcs/save-snapshot's own `LibModule`).
-interface ProjectSourceLike {
-  type: string;
-}
-interface LibModule {
-  detectProjectSource: (dir: string) => Promise<ProjectSourceLike>;
-  capabilitiesFor: (source: ProjectSourceLike) => { canSnapshot: boolean };
-  repoRootForSource: (source: ProjectSourceLike, fallbackDir: string) => string;
-  providerFor: (source: ProjectSourceLike) => {
-    snapshot: (opts: {
-      projectDir: string;
-      message: string;
-      logFile?: string;
-      authorName?: string;
-      authorEmail?: string;
-    }) => Promise<unknown>;
-  };
-  isNoChangesError: (e: unknown) => boolean;
-}
 
-export const POST: RequestHandler = defineRoute<
-  { path: string; projectDir: string },
-  VcsHooks<LibModule>
->({
-  hooks: () => getVcsHooks<LibModule>(),
-  hooksUnavailableMessage: 'VCS hooks not registered',
+export const POST: RequestHandler = defineRoute<{ path: string; projectDir: string }>({
   validate: async (raw) => {
     const body = raw as { path?: string; projectDir?: string };
     const projectDir = await requireWithinProjectRoot(
@@ -54,12 +27,12 @@ export const POST: RequestHandler = defineRoute<
     );
     const target = await requireWithinProjectRoot(requireAbsolute(body.path, 'fs:delete'), 'fs:delete');
     if (path.resolve(target) === path.resolve(projectDir)) {
-      error(400, 'fs:delete cannot delete the project root');
+      error(400, 'fs:delete cannot delete the book folder');
     }
     return { path: target, projectDir };
   },
-  call: async ({ body, hooks }) => {
-    const lib = await hooks.loadLib();
+  call: async ({ body }) => {
+    const lib = await loadLib();
     try {
       const source = await lib.detectProjectSource(body.projectDir);
       if (lib.capabilitiesFor(source).canSnapshot) {
@@ -71,7 +44,7 @@ export const POST: RequestHandler = defineRoute<
           projectDir: body.projectDir,
           message: `Before deleting ${path.basename(body.path)}`,
           ...(await gitIdentityArgs()),
-          logFile: hooks.operationLogPath(path.basename(repoRoot)),
+          logFile: getHostServices().vcs.operationLogPath(path.basename(repoRoot)),
         });
       }
     } catch (e) {

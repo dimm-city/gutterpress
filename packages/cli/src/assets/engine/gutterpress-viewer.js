@@ -65,7 +65,26 @@
   overflow: auto;
   /* Standalone pages use \`--gutterpress-fit-zoom\`; embedded previews use the
      host-owned \`--gutterpress-zoom\`. fitZoom() guarantees only one is active. */
-  zoom: calc(var(--gutterpress-zoom, 1) * var(--gutterpress-fit-zoom, 1));
+  --gp-zoom: calc(var(--gutterpress-zoom, 1) * var(--gutterpress-fit-zoom, 1));
+  /* Zoom is a pure paint transform, NEVER CSS \`zoom\`. \`zoom\` changes layout
+     inputs (font sizes and lengths are scaled before text shaping and
+     LayoutUnit snapping), so Chromium's column fragmentation broke lines at
+     different points per zoom level: in the user guide a paragraph sat on
+     page 6 at 50% and page 7 at 25%, and the same book paginated differently
+     at 25/50/75/100/150% (#318). \`transform\` leaves layout untouched, so the
+     pages are the ones print produces at every zoom.
+     Layout width is the visible width / zoom, which is what \`zoom\` gave.
+     A transform does not shrink the parent's layout box, so a scaled-down
+     stage would leave dead scroll space below it. Taking the stage out of
+     flow makes the viewport's scrollable overflow exactly its transformed
+     extent, as \`zoom\` had it. */
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  width: calc(100% / var(--gp-zoom));
+  transform: scale(var(--gp-zoom));
+  transform-origin: 0 0;
 }
 
 /* One flow strip per named-page run. Chromium fragments its content into
@@ -281,7 +300,9 @@
     background: none;
     padding: 0;
     overflow: visible;
-    zoom: 1;
+    position: static;
+    width: auto;
+    transform: none;
   }
   .gp-layer,
   .gp-warning,
@@ -1565,7 +1586,8 @@
     return stripMetrics(strip).stride;
   }
   function cssZoomOf(el) {
-    return el.currentCSSZoom ?? 1;
+    const stage = el.closest(".gp-stage") ?? document.body;
+    return new DOMMatrixReadOnly(getComputedStyle(stage).transform).a || 1;
   }
   function stripMetrics(strip) {
     const cs = getComputedStyle(strip);
@@ -2389,17 +2411,6 @@
         applySpreadMode(layout.strips, spreadOn);
         decoration.redraw();
         emit();
-      },
-      scrollToPage(page) {
-        const clamped = Math.max(1, Math.min(layout.totalPages, Math.round(page)));
-        const sheets = document.querySelectorAll(".gp-sheet[data-page]");
-        for (const sheet of sheets) {
-          if (parseInt(sheet.dataset.page, 10) === clamped) {
-            sheet.scrollIntoView({ block: "start", inline: "start", behavior: "smooth" });
-            return;
-          }
-        }
-        api.goto(clamped);
       }
     });
     let current = 0;

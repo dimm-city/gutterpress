@@ -25,13 +25,9 @@ export interface GutterpressApi extends GutterpressViewerApi {
   currentPage(): number;
   /** re-fragment + redecorate after a content/CSS change (hot reload) */
   refresh(): void;
-   /** two-up/spread view mode (viewer.css's `.gp-strip[data-wrap]`); no-op
-    * to single-row on a browser without `column-wrap: wrap` support. */
-   setSpread(on: boolean): void;
-   /** Smooth-scroll the viewport so that `page` becomes top-visible.
-    * Uses CSS scroll-snap-like snapping via `scrollIntoView`. Clamps to
-    * [1, totalPages]. */
-   scrollToPage(page: number): void;
+  /** two-up/spread view mode (viewer.css's `.gp-strip[data-wrap]`); no-op
+   * to single-row on a browser without `column-wrap: wrap` support. */
+  setSpread(on: boolean): void;
 }
 
 declare global {
@@ -84,18 +80,6 @@ export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
       applySpreadMode(layout.strips, spreadOn);
       decoration.redraw();
       emit();
-    },
-    scrollToPage(page: number) {
-      const clamped = Math.max(1, Math.min(layout.totalPages, Math.round(page)));
-      const sheets = document.querySelectorAll<HTMLElement>(".gp-sheet[data-page]");
-      for (const sheet of sheets) {
-        if (parseInt(sheet.dataset.page!, 10) === clamped) {
-          sheet.scrollIntoView({ block: "start", inline: "start", behavior: "smooth" });
-          return;
-        }
-      }
-      // Fallback to goto() if the sheet element is not yet available.
-      api.goto(clamped);
     },
   });
   let current = 0;

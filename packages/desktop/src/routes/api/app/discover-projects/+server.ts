@@ -1,15 +1,12 @@
-import { getPrefsHooks, type PrefsHooks } from '../../../../../electron/server-bridge/prefs-hooks';
-import { defineRoute } from '../../_lib/route';
+import { defineRoute, getHostServices } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = defineRoute<Record<string, never>, PrefsHooks>({
-  hooks: getPrefsHooks,
-  hooksUnavailableMessage: 'Prefs hooks not registered',
-  call: async ({ hooks }) => {
-    const prefs = await hooks.readPrefs();
+export const POST: RequestHandler = defineRoute<Record<string, never>>({
+  call: async () => {
+    const prefs = await getHostServices().prefs.readPrefs();
     const searchRoots = prefs.projectSearchRoots as string[] | undefined;
     const roots =
-      searchRoots && searchRoots.length > 0 ? searchRoots : hooks.defaultProjectSearchRoots();
+      searchRoots && searchRoots.length > 0 ? searchRoots : getHostServices().prefs.defaultProjectSearchRoots();
     const recentFolders = prefs.recentFolders as
       | Array<{ path: string; lastActiveBook?: string }>
       | undefined;
@@ -29,6 +26,6 @@ export const POST: RequestHandler = defineRoute<Record<string, never>, PrefsHook
     // response, which `api.app.discoverProjects()` (api.ts's `post()`) already
     // turns back into a rejected promise. That existing error/empty
     // discriminant is enough — no bespoke envelope needed.
-    return await hooks.scanForProjects(roots, exclude);
+    return await getHostServices().prefs.scanForProjects(roots, exclude);
   },
 });

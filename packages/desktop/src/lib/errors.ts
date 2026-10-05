@@ -32,10 +32,10 @@ export function friendlyFolderError(msg: string): string {
     /Invalid YAML in [^\n]+ at line (\d+), column (\d+)/i,
   );
   if (yamlPosition) {
-    return `The project manifest has invalid YAML at line ${yamlPosition[1]}, column ${yamlPosition[2]}. Fix that entry and try again.`;
+    return `This book's manifest has invalid YAML at line ${yamlPosition[1]}, column ${yamlPosition[2]}. Fix that entry and try again.`;
   }
   if (/Invalid YAML in /i.test(msg)) {
-    return "The project manifest has invalid YAML. Fix it and try again.";
+    return "This book's manifest has invalid YAML. Fix it and try again.";
   }
   if (/ENOENT|No such file|not found/i.test(msg)) {
     return "The folder couldn't be read. Check that it exists and you have permission to open it.";
@@ -60,7 +60,7 @@ export function friendlyPreviewError(raw: string): FriendlyPreviewError {
   const yamlPosition = details.match(/Invalid YAML in [^\n]+ at line (\d+), column (\d+)/i);
   if (yamlPosition) {
     return {
-      title: "The project manifest has invalid YAML.",
+      title: "This book's manifest has invalid YAML.",
       message: `Fix the entry at line ${yamlPosition[1]}, column ${yamlPosition[2]}, then try the preview again.`,
       details,
     };
@@ -236,12 +236,12 @@ export interface FriendlyPublishError {
  * `{"message": "…"}` JSON (see routes/api/_lib/handler.ts's `jsonRoute`).
  * `$lib/api.ts`'s `post`/`get` helpers read a non-OK response body with
  * `r.text()` and throw `new Error(text)` verbatim — they never JSON.parse
- * it — so every publish `catch (e)` in ProjectConfigPanel sees this raw
- * `{"message": "…"}` envelope as `e.message` instead of the message itself.
- * Peel it back before classifying so neither the summary nor the "Show
- * details" text ever shows an author a bare JSON blob.
+ * it — so a `catch (e)` on any `api.*` call sees this raw `{"message": "…"}`
+ * envelope as `e.message` instead of the message itself. Peel it back before
+ * showing it (publish errors below; Troubleshooting → Sync) so an author is
+ * never shown a bare JSON blob.
  */
-function unwrapPublishErrorEnvelope(text: string): string {
+export function unwrapRouteError(text: string): string {
   const trimmed = text.trim();
   if (!trimmed.startsWith("{")) return text;
   try {
@@ -266,7 +266,7 @@ function unwrapPublishErrorEnvelope(text: string): string {
  */
 export function friendlyPublishError(e: unknown): FriendlyPublishError {
   const raw = e instanceof Error ? e.message : String(e ?? "");
-  const msg = unwrapPublishErrorEnvelope(raw).trim();
+  const msg = unwrapRouteError(raw).trim();
   if (!msg) {
     return { summary: "Publishing failed for an unknown reason." };
   }

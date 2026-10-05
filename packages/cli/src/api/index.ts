@@ -26,9 +26,10 @@ export {
 
 // Host implementations of the EngineBrowser/EngineSession contract (the
 // desktop's Electron host) share these contract-level values with the CLI's
-// own CDP sessions — one definition of "document ready" and one print-quality
-// contract, so the hosts cannot drift.
-export { DEFAULT_PRINT_OPTS, readyProbeExpr } from "../engine/shared/cdp";
+// own CDP sessions — one definition of "document ready", one print-quality
+// contract, and one milestone floor (every Browser producer asserts it at
+// construction), so the hosts cannot drift.
+export { DEFAULT_PRINT_OPTS, readyProbeExpr, assertMilestone } from "../engine/shared/cdp";
 
 export {
   startPreviewServer,
@@ -82,6 +83,7 @@ export type {
 export {
   scaffoldProject,
   adoptFolder,
+  ensureGitignoreHasDist,
   slugifyProjectName,
   escapeYamlScalar,
 } from "../lib/project-scaffold.ts";
@@ -258,6 +260,8 @@ export {
   providerFor,
   restoreVersionWithBackup,
   isNoChangesError,
+  countUnversionedChanges,
+  whenGitIdle,
   AUTO_SNAPSHOT_MESSAGE,
   RESTORE_BACKUP_MESSAGE,
   HISTORY_PAGE_LIMIT,
@@ -269,6 +273,7 @@ export {
 export type {
   ListHistoryOptions,
   HistoryPage,
+  UnversionedChanges,
   LocalBranches,
   SwitchBranchOptions,
   SwitchBranchResult,
@@ -404,6 +409,17 @@ export {
   refreshRemoteCopies,
   SYNC_SNAPSHOT_MESSAGE,
 } from "../lib/remote-auth/sync.ts";
+export {
+  repairOnlineBackup,
+  REPAIR_SNAPSHOT_MESSAGE,
+  type RepairOnlineBackupOptions,
+  type RepairOnlineBackupResult,
+} from "../lib/remote-auth/repair.ts";
+export {
+  scorchedEarth,
+  type ScorchedEarthOptions,
+  type ScorchedEarthResult,
+} from "../lib/remote-auth/scorched-earth.ts";
 
 export type {
   SyncOutcome,

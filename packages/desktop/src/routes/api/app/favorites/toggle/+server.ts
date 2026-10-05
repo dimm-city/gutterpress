@@ -1,22 +1,19 @@
 import { error } from '@sveltejs/kit';
-import { getPrefsHooks, type PrefsHooks } from '../../../../../../electron/server-bridge/prefs-hooks';
-import { defineRoute } from '../../../_lib/route';
+import { defineRoute, getHostServices } from '../../../_lib/route';
 import type { RequestHandler } from './$types';
 
 interface FolderEntry { path: string; title: string }
 
-export const POST: RequestHandler = defineRoute<{ path: string; title: string }, PrefsHooks>({
-  hooks: getPrefsHooks,
-  hooksUnavailableMessage: 'Prefs hooks not registered',
+export const POST: RequestHandler = defineRoute<{ path: string; title: string }>({
   validate: (raw) => {
     const body = raw as { path?: string; title?: string };
     if (!body.path || typeof body.path !== 'string') error(400, 'path is required');
     return { path: body.path, title: body.title ?? '' };
   },
-  call: async ({ body, hooks }) => {
+  call: async ({ body }) => {
     let favorited = false;
-    await hooks.updatePrefs((current) => {
-      const result = hooks.toggleFavoriteFolder(
+    await getHostServices().prefs.updatePrefs((current) => {
+      const result = getHostServices().prefs.toggleFavoriteFolder(
         current.favorites as FolderEntry[] | undefined,
         { path: body.path, title: body.title },
       );

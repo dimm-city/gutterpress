@@ -56,13 +56,13 @@ Three facts make #33 tractable with the **simplest possible** architecture:
 2. **The viewer already paginates client-side in the browser.** Today the
    preview is an `<iframe src="http://127.0.0.1:PORT/book.html">` that loads
    `/engine/gutterpress-viewer.js` and paginates **in the iframe's own browser
-   context**. There is no Chromium/puppeteer in the *preview* path — puppeteer
-   is only in the *PDF build* path. So "live preview without Chromium" is
+   context**. There is no headless Chromium in the *preview* path — the
+   launcher is only in the *PDF build* path. So "live preview without Chromium" is
    already how preview works; we only need to change **where book.html comes
    from** (a Blob URL the WebAdapter builds, instead of a localhost HTTP server).
 
-3. **PDF/build is the only genuinely desktop/CLI-bound capability** (puppeteer
-   on CLI; `webContents.printToPDF` on Electron — ADR 0002). The `capabilities()`
+3. **PDF/build is the only genuinely desktop/CLI-bound capability** (a launched
+   headless Chromium on CLI; `webContents.printToPDF` on Electron — ADR 0002). The `capabilities()`
    seam (#49) + `BuildResult.downloadUrl` field already exist precisely to gate
    this off on web.
 
@@ -203,7 +203,7 @@ All of these stay as-is (reject / `[]`), gated in the UI by
 4. Main returns `{ url: "http://127.0.0.1:PORT/book.html" }`.
 5. The SPA loads it in a sandboxed cross-origin `<iframe src=previewUrl>`.
 6. **The viewer paginates inside the iframe's browser context** — no
-   puppeteer/Chromium-headless involved in preview. (Puppeteer is only in the
+   headless Chromium involved in preview. (The Chromium launcher is only in the
    PDF *build* path.)
 
 ### Key finding: the render is **pure JS**, the *file loader* is Node-coupled
@@ -424,7 +424,7 @@ The seam already exists; wire the UI to it:
   `{ downloadUrl }` (the `BuildResult.downloadUrl` field exists for exactly
   this — a browser download), and the adapter triggers an `<a download>`.
 - `build({format:"pdf"|"pdfx"})` and `savePdf` keep rejecting; the UI never
-  offers them on web. No puppeteer, no `printToPDF` in the browser.
+  offers them on web. No headless Chromium, no `printToPDF` in the browser.
 
 ---
 

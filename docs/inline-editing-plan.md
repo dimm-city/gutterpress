@@ -250,7 +250,7 @@ Still open:
   one is live; the rects/mask commands are gone. Plus bridge forwarding for all
   three new events.
 - **Shell** — `tests/preview-shell-regression.test.mjs`: an open edit holds a
-  `content-update` swap, and closing it applies the revision that arrived
+  hot-reload swap, and closing it applies the revision that arrived
   meanwhile.
 - **End-to-end** — `tests/integration/inline-editing.pw.mjs`: the menu action and
   double-click both edit in the page, under real Electron.

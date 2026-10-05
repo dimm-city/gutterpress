@@ -270,6 +270,36 @@
 }
 
 /**
+ * Sub-tab strip (Settings, Troubleshooting): the underline tab-bar recipe.
+ * Horizontal padding stays with the consumer (the full-window Settings sheet
+ * pads its bar; embedded surfaces don't).
+ */
+.app-tab-bar {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--app-border-subtle);
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+.app-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--app-text-muted);
+  font-size: 12.5px;
+  padding: 8px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.app-tab:hover { color: var(--app-text); }
+.app-tab.active {
+  color: var(--app-text);
+  border-bottom-color: var(--app-accent);
+  font-weight: 600;
+}
+.app-tab:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: -2px; }
+
+/**
  * Reduced motion — ONE global guard (UX contract "Reduced motion": pane
  * transitions and slide-ins are disabled; state changes become instant).
  * Neutralizing durations rather than `animation: none` keeps animation-fill

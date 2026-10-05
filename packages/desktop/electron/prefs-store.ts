@@ -29,7 +29,7 @@ import path from "node:path";
 import type { ProjectStateMap } from "./project-state";
 import type { RecentFolder, FavoriteFolder } from "./recent-folders";
 import type { ProjectSource } from "gutterpress";
-import type { LastFlushFailure } from "./bridge-types";
+import type { LastFlushFailure } from "../src/lib/platform/shared-types";
 
 export interface DesktopPrefs {
   lastProjectDir?: string;
@@ -48,6 +48,8 @@ export interface DesktopPrefs {
    * project B never overwrites project A's page/view/chapter state.
    */
   projectStates?: ProjectStateMap;
+  /** True once the bundled user guide + examples were copied to Documents (seed-samples.ts). */
+  samplesSeeded?: boolean;
   /** Root dirs scanned by app:discoverProjects (#27). Defaults applied below. */
   projectSearchRoots?: string[];
   /**

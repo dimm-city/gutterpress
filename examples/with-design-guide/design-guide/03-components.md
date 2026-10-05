@@ -184,7 +184,6 @@ Full-width tables with a colored header, alternating row fills, and text set at 
 | `preview` | port 3579 | Live preview server with hot reload |
 | `build` | pdf | Renders to HTML, PDF, or PDF/X |
 | `validate` | — | Pre/post-build print compliance checks |
-| `lint` | — | CSS print-safety checks |
 | `doctor` | — | Check system tools (Chromium, Ghostscript, qpdf) |
 
 </div>

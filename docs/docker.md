@@ -40,8 +40,9 @@ docker run --rm -v "$PWD:/work" ghcr.io/dimm-city/gutterpress \
 docker run --rm -v "$PWD:/work" ghcr.io/dimm-city/gutterpress \
     build my-book --out dist/my-book.pdf --format pdfx
 
-# Lint only
-docker run --rm -v "$PWD:/work" ghcr.io/dimm-city/gutterpress lint my-book
+# CSS print-safety check only
+docker run --rm -v "$PWD:/work" ghcr.io/dimm-city/gutterpress \
+    validate my-book --only source.stylelint
 
 # Validate an already-built PDF
 docker run --rm -v "$PWD:/work" ghcr.io/dimm-city/gutterpress \
@@ -102,7 +103,7 @@ build-pdf:
 
 | Dependency | Provides |
 |---|---|
-| gutterpress CLI (Node bundle) | the CLI (lint/build/validate); all in-process checks (page/font/image validation, markdown/HTML/CSS lint) are bundled in |
+| gutterpress CLI (Node bundle) | the CLI (validate/build/publish); all in-process checks (page/font/image validation, markdown/HTML/CSS lint) are bundled in |
 | Chromium | PDF rendering (**required for any PDF**) |
 | Ghostscript | PDF/X CMYK conversion + per-page ink-coverage validation |
 | qpdf | PDF/X annotation stripping + OutputIntent/metadata validation |

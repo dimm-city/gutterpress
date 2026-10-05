@@ -33,7 +33,7 @@ import { fileURLToPath } from "node:url";
 
 import { resolveChromiumExecutable } from "../../lib/chromium.ts";
 import { getAssetPath } from "../../lib/embedded-assets.ts";
-import { closeBrowser, getBrowser } from "../../lib/browser-pool.ts";
+import { closeBrowser, getBrowser } from "./test-support/browser.ts";
 
 const FIXTURES_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 const RENDER_TEST_TIMEOUT_MS = 60_000;
@@ -62,11 +62,11 @@ testIf(
       );
       const { url, close } = await serveDir(dir, "spread-rows.html");
       try {
-        const browser = await getBrowser(RENDER_TEST_TIMEOUT_MS);
+        const browser = await getBrowser();
         const page = await browser.newPage();
         try {
           await page.setViewport({ width: 1280, height: 900 });
-          await page.goto(url, { waitUntil: "networkidle0" });
+          await page.goto(url);
           await page.waitForFunction("window.Gutterpress?.totalPages > 0");
 
           const probeAt = (zoom: string | null) =>
@@ -210,11 +210,11 @@ testIf(
       );
       const { url, close } = await serveDir(dir, "avoid-trailing-margin.html");
       try {
-        const browser = await getBrowser(RENDER_TEST_TIMEOUT_MS);
+        const browser = await getBrowser();
         const page = await browser.newPage();
         try {
           await page.setViewport({ width: 1280, height: 900 });
-          await page.goto(url, { waitUntil: "networkidle0" });
+          await page.goto(url);
           await page.waitForFunction("window.Gutterpress?.totalPages > 0");
           const atZoom1 = await page.evaluate(
             () => (window as unknown as { Gutterpress: { totalPages: number } }).Gutterpress.totalPages,

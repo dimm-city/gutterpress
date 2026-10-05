@@ -2,7 +2,7 @@
   /**
    * ProjectsListBody — the reusable list body for browsing/opening projects.
    * Extracted from OpenLocationDialog for composition into the left panel's
-   * Projects tab and for direct use in the dialog itself.
+   * Books tab and for direct use in the dialog itself.
    *
    * Owns: recents/favorites/discovered data, filter, DISCOVERED_CAP, keyboard nav.
    * The parent passes callback props for actions so this component is purely
@@ -32,9 +32,8 @@
   let {
     onChosen,
     onOpenUrl,
-    onOpenGitHub,
+    onOpenBook,
     onNewProject,
-    onShowWelcome,
     onBrowse,
     currentProjectPath = null,
     currentProjectDisplayName = null,
@@ -46,11 +45,9 @@
     onChosen?: (path: string) => void;
     /** Called when user submits a URL. */
     onOpenUrl?: (url: string) => void;
-    /** Hand off to the GitHub connect flow. */
-    onOpenGitHub?: () => void;
-    /** Show the start screen over the workspace (left-panel mount only —
-     *  the start screen itself never passes this). */
-    onShowWelcome?: () => void;
+    /** Open the "Open a book" source picker (hosted by the page, outside any
+     *  transformed panel, so its fixed-position modal centres on the window). */
+    onOpenBook?: () => void;
     /** Hand off to the new-project wizard. */
     onNewProject?: () => void;
     /** Trigger a native folder picker and call onChosen with the result. */
@@ -73,7 +70,7 @@
   let discovered = $state<DiscoveredProject[]>([]);
   let loading = $state(false);
   // M20: the recents/favorites load used to catch-and-ignore, so a failed
-  // load rendered the exact same "No recent projects yet" copy as a
+  // load rendered the exact same "No recent books yet" copy as a
   // genuinely empty list — a lie that hides a real problem from the writer.
   // Tracked per-surface (this component owns one load surface: recents +
   // favorites, loaded together below) so the empty-state branch can tell
@@ -147,7 +144,7 @@
       // (see projects-discover-cache.ts), so calling this again — e.g. from
       // the Retry button below — genuinely re-runs the scan rather than
       // replaying a stale failure.
-      discoverError = "Couldn't discover projects on disk.";
+      discoverError = "Couldn't discover books on disk.";
     }
   }
 
@@ -295,7 +292,7 @@
       onChosen?.(first.path);
       location = "";
     } else {
-      error = "No matching projects. Type a folder path or web address.";
+      error = "No matching books. Type a folder path or web address.";
     }
   }
 
@@ -473,7 +470,7 @@
             <button type="button" class="retry-btn" onclick={() => loadLists()}>Retry</button>
           </div>
         {:else if !loading}
-          <p class="empty-section-hint">No recent projects yet. Open a folder to get started.</p>
+          <p class="empty-section-hint">No recent books yet. Open a folder to get started.</p>
         {/if}
       </section>
     {/if}
@@ -487,7 +484,7 @@
           {/if}
         </h3>
         {#if filteredDiscovered.length > 0}
-          <ul class="list" aria-label="Discovered projects">
+          <ul class="list" aria-label="Discovered books">
             {#each visibleDiscovered as proj, i}
               {@const rowIndex = filteredFavorites.length + filteredRecents.length + i}
               <li class="list-item">
@@ -527,29 +524,20 @@
     {/if}
 
     {#if !loading && allRows.length === 0 && effectiveFilter}
-      <p class="empty-hint">No projects match "{effectiveFilter}".</p>
+      <p class="empty-hint">No books match "{effectiveFilter}".</p>
     {/if}
   </div>
 
   <!-- Actions footer — omitted entirely when the host provides its own action
        surface (the start screen), so no empty bordered strip renders. -->
-  {#if onOpenGitHub || onNewProject || onShowWelcome}
+  {#if onNewProject}
     <div class="actions-footer">
-      {#if onShowWelcome}
-        <button class="footer-action" onclick={onShowWelcome} title="Show the welcome screen">
-          <Icon name="book-open" size={14} /> Welcome screen
-        </button>
-      {/if}
-      {#if onOpenGitHub}
-        <button class="footer-action" onclick={onOpenGitHub} title="Open a project from GitHub">
-          <Icon name="github" size={14} /> Open from GitHub
-        </button>
-      {/if}
-      {#if onNewProject}
-        <button class="footer-action primary" onclick={onNewProject} title="Create a new book project">
-          <Icon name="plus" size={14} /> New project
-        </button>
-      {/if}
+      <button class="footer-action" onclick={onOpenBook} title="Open a book from this computer or GitHub">
+        <Icon name="folder-open" size={14} /> Open book…
+      </button>
+      <button class="footer-action primary" onclick={onNewProject} title="Create a new book">
+        <Icon name="plus" size={14} /> New book
+      </button>
     </div>
   {/if}
 </div>
@@ -584,7 +572,7 @@
     padding: 6px 8px;
     border-radius: 5px;
     font-size: 12px;
-    font-family: var(--app-font-mono);
+    font-family: inherit;
   }
   .location-input:focus {
     outline: 2px solid var(--app-focus-ring);
@@ -661,7 +649,7 @@
     gap: 4px;
   }
   .list-heading-count { font-weight: 500; letter-spacing: 0; text-transform: none; font-size: 10px; color: var(--app-text-muted); }
-  .empty-section-hint { font-size: 11px; color: var(--app-text-muted); margin: 2px 0 0 2px; font-style: italic; }
+  .empty-section-hint { font-size: 12px; color: var(--app-text-secondary); margin: 2px 0 0 2px; }
   .load-error {
     display: flex;
     align-items: center;
@@ -777,13 +765,13 @@
     flex-shrink: 0;
     display: flex;
     gap: 6px;
-    padding: 6px 10px;
+    padding: 8px 10px;
     border-top: 1px solid var(--app-border-subtle);
-    flex-wrap: wrap;
   }
   .footer-action {
+    flex: 1 1 0; min-width: 0; justify-content: center; white-space: nowrap;
     display: inline-flex; align-items: center; gap: 5px;
-    padding: 5px 10px; border-radius: 5px; font-size: 12px;
+    padding: 7px 10px; border-radius: 5px; font-size: 12px;
     cursor: pointer; background: var(--app-control-bg);
     border: 1px solid var(--app-control-border); color: var(--app-control-text);
   }

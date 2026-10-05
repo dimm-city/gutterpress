@@ -10,5 +10,5 @@ test("PACKAGE_VERSION matches package.json's version field via a static import",
 
 test("PACKAGE_META exposes the dependency versions build-fingerprint needs", () => {
   expect(PACKAGE_META.version).toBe(pkg.version);
-  expect(PACKAGE_META.dependencies["puppeteer-core"]).toBeDefined();
+  expect(PACKAGE_META.dependencies["ws"]).toBeDefined();
 });

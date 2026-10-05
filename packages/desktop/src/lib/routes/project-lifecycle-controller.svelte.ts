@@ -187,6 +187,12 @@ export interface ProjectLifecycleDeps {
    * resets (H5 / M2).
    */
   resetExtras: () => void;
+  /**
+   * Fired once a folder open/switch is committed (the buffer flushed), before
+   * anything is replaced. For session-scoped view state that must not follow
+   * the writer into the next book (Focus). Close/URL paths use `resetExtras`.
+   */
+  onProjectSwitch?: () => void;
 }
 
 export class ProjectLifecycleController {
@@ -296,6 +302,7 @@ export class ProjectLifecycleController {
       // M3: a new project/document session is starting — re-arm the first-render
       // success toast so this session's initial render still gets one.
       d.resetFirstRenderGate();
+      d.onProjectSwitch?.();
       // C2 (book switcher): classify the PICKED folder first, before any
       // content pipeline opens — see ProjectSessionController's C2 note.
       const previousRepoRoot = d.projectSession.repoRoot;
@@ -313,7 +320,7 @@ export class ProjectLifecycleController {
         (targetDir !== dir || dir !== d.projectSession.repoRoot)
       ) {
         d.toast()?.info?.(
-          `This book is part of ${basenameOf(d.projectSession.repoRoot)} — opened the whole project.`,
+          `This book is part of ${basenameOf(d.projectSession.repoRoot)} — opened the whole folder.`,
         );
       }
       // #49: the app-facing contract takes a FolderRef. Once retargeted,

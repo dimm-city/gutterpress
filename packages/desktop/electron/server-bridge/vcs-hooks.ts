@@ -1,15 +1,13 @@
 /**
  * Shared version-history hooks for vcs:* server routes.
- *
- * Storage lives in the single collapsed host object (ARCH review #31,
- * `./host-services.ts`) — `getVcsHooks()` is a thin derived selector over it.
+ * Routes reach them through `getHostServices().vcs` (`./host-services.ts`);
+ * the lib itself comes from `loadLib()` in `src/routes/api/_lib/route.ts`.
  */
 
-import { getHostServices } from './host-services';
-
-export interface VcsHooks<LibModule = unknown> {
-  loadLib: () => Promise<LibModule>;
+export interface VcsHooks {
   operationLogPath: (slug: string) => string;
+  /** A fresh folder for one "Repair online backup" to keep the old `.git` in. */
+  repairBackupDir: (slug: string) => string;
   /**
    * Pause the auto-snapshot debounce and `dir`'s auto-sync periodic timer
    * (#273 — around a copy switch's checkout, so neither fires against the
@@ -21,14 +19,4 @@ export interface VcsHooks<LibModule = unknown> {
   /** Re-arm the timers {@link pauseTimers} paused, once the switch settles
    *  (success or failure) — see its doc comment. */
   resumeTimers?: (dir: string) => void;
-}
-
-/**
- * The live `VcsHooks` slice of the collapsed host object, narrowed to
- * whatever generic view the caller asks for (same "narrow at the point of
- * use" pattern as `getPrefsHooks` — see its doc comment).
- */
-export function getVcsHooks<LibModule = unknown>(): VcsHooks<LibModule> | null {
-  const vcs = getHostServices()?.vcs;
-  return (vcs as unknown as VcsHooks<LibModule> | undefined) ?? null;
 }

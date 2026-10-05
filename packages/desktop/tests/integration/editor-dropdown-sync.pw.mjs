@@ -86,9 +86,14 @@ writeFileSync(
     showLandingAtStartup: false,
   }),
 );
+// A saved Read mode next to a saved narrow-Edit pane: what an existing user's
+// settings file holds. (Edit is the default for a profile with NO saved mode,
+// and that profile legitimately opens the editor in a narrow window when its
+// pane preference is edit — so the mode has to be seeded for the assertion
+// below to keep meaning "a pane preference alone never opens the editor".)
 writeFileSync(
   join(userDataDir, "app-settings.json"),
-  JSON.stringify({ preview: { paneMode: "edit" } }),
+  JSON.stringify({ preview: { mode: "viewer", paneMode: "edit" } }),
 );
 
 log(`launching ${target}`);

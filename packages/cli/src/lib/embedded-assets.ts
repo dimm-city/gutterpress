@@ -43,7 +43,7 @@ import cmykProfile from "../../profiles/CGATS21_CRPC1.icc" with { type: "file" }
 // Prebuilt by `scripts/build-engine-bundles.mjs` (part of `npm run build`)
 // from `src/engine/{viewer,compiler}` — CLAUDE.md §1 bans a live bundler
 // inside packages/cli/src at runtime, so these are ordinary generated/
-// committed assets, embedded the same way as the vendored paged.polyfill.js.
+// committed assets, embedded the same way as the preview scripts above.
 import engineViewerJs from "../assets/engine/gutterpress-viewer.js" with { type: "file" };
 import engineAgentJs from "../assets/engine/gutterpress-agent.js" with { type: "file" };
 

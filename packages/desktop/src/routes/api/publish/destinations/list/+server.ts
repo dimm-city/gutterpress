@@ -1,4 +1,4 @@
-import { getHooks, handlePublishErrors, resolveDestinationProvider, type LibPublishDestination } from '../../_hooks';
+import { handlePublishErrors, resolveDestinationProvider } from '../../_hooks';
 import { defineRoute, requireProjectDir } from '../../../_lib/route';
 import type { RequestHandler } from './$types';
 
@@ -9,12 +9,7 @@ import type { RequestHandler } from './$types';
  * The wizard renders a picker only when `PublishProviderCard.destinations`
  * is present (`publish/list` threads that flag from `info.destinations`).
  */
-export const POST: RequestHandler = defineRoute<
-  { projectDir: string; providerId?: string },
-  NonNullable<ReturnType<typeof getHooks>>
->({
-  hooks: getHooks,
-  hooksUnavailableMessage: 'Publish hooks not available',
+export const POST: RequestHandler = defineRoute<{ projectDir: string; providerId?: string }>({
   // In `validate`, not `call` — see publish/run's note on handlePublishErrors.
   validate: async (raw) => {
     const body = raw as { projectDir?: unknown; providerId?: unknown };
@@ -23,13 +18,12 @@ export const POST: RequestHandler = defineRoute<
       ...(typeof body.providerId === 'string' ? { providerId: body.providerId } : {}),
     };
   },
-  call: async ({ body, hooks }): Promise<LibPublishDestination[]> =>
+  call: async ({ body }) =>
     handlePublishErrors('publish:destinations:list', async () => {
       if (!body.providerId) {
         throw new Error('publish:destinations:list requires { providerId }');
       }
       const { provider, req } = await resolveDestinationProvider(
-        hooks,
         body.projectDir,
         body.providerId,
         'listDestinations',

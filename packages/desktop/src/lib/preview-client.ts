@@ -15,7 +15,9 @@ export interface PreviewEvent {
     | "contextMenuRequested"
     | "blockEditRequested"
     | "blockEditFinished"
-    | "blockEditStateChanged";
+    | "blockEditStateChanged"
+    /** An Esc nothing in the book consumed (the app uses it to leave Focus). */
+    | "escapePressed";
   detail: {
     currentPage?: number;
     totalPages?: number;
@@ -35,8 +37,7 @@ export interface PreviewEvent {
      * `"full-reload"` — the incremental chapter splice was removed, and
      * preview-shell.js has one mint site that hardcodes this. Kept as a field
      * rather than dropped so the host can tell a shell that predates the
-     * change. (The file-watcher's own `chapter-splice` decision kind is a
-     * different, still-live type.) */
+     * change. */
     updateMode?: "full-reload";
     /** elementActivated: clicked element id / tag, if any. */
     id?: string | null;
@@ -400,10 +401,5 @@ export class PreviewClient {
   injectStyles(id: string, css: string) {
     if (!this.win || !this.expectedOrigin) return;
     this.win.postMessage({ type: "gutterpress:inject-styles", id, css }, this.expectedOrigin);
-  }
-
-  /** Smooth-scroll the preview iframe to a specific page number (1-based). */
-  scrollToPage(page: number): Promise<{ ok: true }> {
-    return this.call("scrollToPage", [page]);
   }
 }

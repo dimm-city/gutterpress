@@ -8,38 +8,20 @@
  * pieces a given test genuinely customizes).
  *
  * Each supplied override domain is spread OVER the base domain (so
- * `desktop: { getUserDataPath: () => dir }` keeps the other desktop fakes),
- * and an explicitly-`undefined` domain UN-registers it — how the
- * migrated-ipc/remote-path suites exercise their 503 "hooks not registered"
- * envelopes.
+ * `desktop: { getUserDataPath: () => dir }` keeps the other desktop fakes).
  *
- * Typing: the base object is checked against the real per-domain hook
- * interfaces via `FakeHostServices` below, so drift in any non-generic part
- * of the contract fails typechecking of THIS file instead of compiling
- * silently in ten. The residual gap is the three lib-generic domains:
- * `HostServices` instantiates `PrefsHooks`/`RemoteHooks`/`VcsHooks` with the
- * real `gutterpress` module type, which a fake
- * `loadLib: async () => ({})` can never satisfy — so those three are held at
- * their loose generic defaults and the ONE unavoidable widening cast lives
- * at the end of `makeHostServices`, nowhere else.
+ * The lib itself is not part of this object: routes reach it through
+ * `loadLib()` in `src/routes/api/_lib/route.ts`, which suites substitute with
+ * `setLibForTests()`.
  */
 import type { HostServices } from "../../electron/server-bridge/host-services";
-import type { PrefsHooks } from "../../electron/server-bridge/prefs-hooks";
-import type { RemoteHooks, TokenStore } from "../../electron/server-bridge/remote-hooks";
-import type { VcsHooks } from "../../electron/server-bridge/vcs-hooks";
+import type { TokenStore } from "../../electron/server-bridge/remote-hooks";
 import type { UpdaterStatus } from "../../src/lib/platform/shared-types";
 import type { AppImageStatus } from "../../electron/appimage-integration";
 
-/** `HostServices` with the lib-generic domains at their loose defaults — see the module doc. */
-type FakeHostServices = Omit<HostServices, "prefs" | "remote" | "vcs"> & {
-  prefs: PrefsHooks;
-  remote: RemoteHooks;
-  vcs: VcsHooks;
-};
-
-/** Per-domain overrides, merged over the base domain; `undefined` un-registers the domain. */
+/** Per-domain overrides, merged over the base domain. */
 export type HostServicesOverrides = {
-  [K in keyof FakeHostServices]?: Partial<FakeHostServices[K]> | undefined;
+  [K in keyof HostServices]?: Partial<HostServices[K]>;
 };
 
 const noop = () => {};
@@ -53,7 +35,7 @@ const unsupportedAppImageStatus = (): AppImageStatus => ({
   installed: false,
   needsRepair: false,
   runningManagedCopy: false,
-      staleCopy: null,
+  staleCopy: null,
   paths: {
     appImage: "/fake/home/.local/bin/gutterpress.AppImage",
     desktopEntry: "/fake/home/.local/share/applications/city.dimm.gutterpress.desktop",
@@ -70,8 +52,8 @@ const idleUpdaterStatus = (): UpdaterStatus => ({
 });
 
 export function makeHostServices(overrides: HostServicesOverrides = {}): HostServices {
-  const base = {
-    app: { setRendererDirty: noop, sendToRenderer: noop },
+  const base: HostServices = {
+    app: { setRendererDirty: noop },
     appImage: {
       getStatus: async () => unsupportedAppImageStatus(),
       install: unstubbed("appImage.install"),
@@ -84,6 +66,7 @@ export function makeHostServices(overrides: HostServicesOverrides = {}): HostSer
       confirmUnsavedChanges: async () => "cancel" as const,
       openExternal: async () => {},
       showItemInFolder: noop,
+      openLogsFolder: async () => {},
       getNativeTheme: () => ({ shouldUseDarkColors: false }),
       getUserDataPath: () => "/fake/userData",
     },
@@ -93,10 +76,9 @@ export function makeHostServices(overrides: HostServicesOverrides = {}): HostSer
     pickedFiles: { register: noop, consume: () => false },
     prefs: {
       readPrefs: async () => ({}),
-      writePrefs: async () => {},
       updatePrefs: async (mutate) => mutate({}),
-      readSettings: async () => ({}),
-      updateSettings: async () => ({}),
+      readSettings: async () => ({}) as never,
+      updateSettings: async () => ({}) as never,
       existingDirectory: async () => null,
       readProjectState: () => null,
       writeProjectState: (states) => states,
@@ -104,11 +86,9 @@ export function makeHostServices(overrides: HostServicesOverrides = {}): HostSer
       scanForProjects: async () => [],
       toggleFavoriteFolder: (favorites) => ({ favorites: favorites ?? [], favorited: false }),
       removeRecentFolder: () => [],
-      loadLib: async () => ({}),
     },
     recovery: { write: async () => ({ ok: true }), clear: async () => ({ ok: true }), list: async () => [] },
     remote: {
-      loadLib: async () => ({}),
       tokenStore: {} as TokenStore,
       GITHUB_HOST: "github.com",
       cloneRepository: unstubbed("remote.cloneRepository"),
@@ -123,8 +103,7 @@ export function makeHostServices(overrides: HostServicesOverrides = {}): HostSer
       check: async () => idleUpdaterStatus(),
       download: async () => idleUpdaterStatus(),
     },
-    vcs: { loadLib: async () => ({}), operationLogPath: () => "/fake/log" },
-    watch: { startFolderWatch: noop, stopFolderWatch: noop, getWatchedDir: () => null },
+    vcs: { operationLogPath: () => "/fake/log", repairBackupDir: () => "/fake/repair" },
     write: {
       scheduleAutoSnapshot: noop,
       scheduleAutoSync: noop,
@@ -132,15 +111,11 @@ export function makeHostServices(overrides: HostServicesOverrides = {}): HostSer
       getWatchedDir: () => null,
       getRepositoryRoot: () => null,
     },
-  } satisfies FakeHostServices;
+  };
 
   const services: Record<string, unknown> = { ...base };
   for (const [domain, value] of Object.entries(overrides)) {
-    const baseDomain = services[domain];
-    services[domain] =
-      value !== undefined && baseDomain !== undefined ? { ...baseDomain, ...value } : value;
+    services[domain] = { ...(services[domain] as object), ...(value as object) };
   }
-  // The one place the loose-generic fake widens to the real HostServices —
-  // every suite used to carry its own copy of this cast.
   return services as unknown as HostServices;
 }

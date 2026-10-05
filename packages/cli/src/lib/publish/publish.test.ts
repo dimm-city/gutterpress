@@ -90,9 +90,9 @@ async function withPdfArtifact(dir: string, title = "Test Book"): Promise<string
 
 // ── registry ────────────────────────────────────────────────────────────────
 
-test("registry lists all six providers and resolves by id", () => {
+test("registry lists all seven providers, the local folder first, and resolves by id", () => {
   const ids = listPublishProviders().map((p) => p.id);
-  expect(ids).toEqual(["itch", "drivethrurpg", "kdp", "azure-swa", "shopify", "gdrive"]);
+  expect(ids).toEqual(["local", "itch", "drivethrurpg", "kdp", "azure-swa", "shopify", "gdrive"]);
   expect(publishProviderFor("itch").info.label).toBe("itch.io");
   expect(() => publishProviderFor("nope")).toThrow(/Unknown publish provider/);
 });
@@ -1114,6 +1114,37 @@ test("setPublishProviderConfig round-trips yaml and preserves other sections", a
     expect(raw).toContain("title: Keep Me");
     expect(raw).toContain("# a comment");
     expect(raw).not.toContain("publish:");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ── local folder provider ────────────────────────────────────────────────────
+
+test("local: copies the built PDF into publish.local.dir (relative to the book), creating it", async () => {
+  const dir = await tempProject(`title: Test Book\nauthors: [A]\npublish:\n  local:\n    dir: out/final\n`);
+  try {
+    const pdf = await withPdfArtifact(dir);
+    const result = await runPublish({ projectDir: dir, providerId: "local" }, await depsFor(dir));
+    expect(result.ok).toBe(true);
+    const dest = path.join(dir, "out", "final", path.basename(pdf));
+    expect(await readFile(dest, "utf8")).toBe("%PDF-1.4 fake");
+    expect(result.outcome).toEqual({ kind: "published", detail: `Saved to ${dest}` });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("local: defaults to dist/ inside the book and is a no-op when the artifact already lives there", async () => {
+  const dir = await tempProject(`title: Test Book\nauthors: [A]\n`);
+  try {
+    const pdf = await withPdfArtifact(dir);
+    const result = await runPublish(
+      { projectDir: dir, providerId: "local", artifactPath: path.join(dir, "dist", path.basename(pdf)) },
+      await depsFor(dir),
+    );
+    expect(result.ok).toBe(false); // nothing built at that path yet
+    expect(result.issues.map((i) => i.id)).toContain("publish/artifact-missing");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -249,12 +249,12 @@
     </header>
   {/if}
 
-  <div class="tab-bar" role="tablist" aria-label="Settings sections" onkeydown={onTablistKeydown} tabindex="-1">
+  <div class="tab-bar app-tab-bar" role="tablist" aria-label="Settings sections" onkeydown={onTablistKeydown} tabindex="-1">
     {#each TABS as tab (tab.id)}
       <button
         id="{idPrefix}-tab-{tab.id}"
         role="tab"
-        class="tab"
+        class="app-tab"
         class:active={activeTab === tab.id}
         aria-selected={activeTab === tab.id}
         aria-controls="{idPrefix}-panel"
@@ -564,7 +564,7 @@
         <div class="row row-toggle">
           <div class="row-label">
             <label for="set-auto-snapshot">Keep previous versions</label>
-            <span class="row-hint">Lets you return to earlier versions of the project.</span>
+            <span class="row-hint">Lets you return to earlier versions of the book.</span>
           </div>
           <input
             id="set-auto-snapshot"
@@ -582,11 +582,11 @@
              switch that would do nothing. Disabled when previous versions is
              off: a backup with nothing to push is not a backup. -->
         {#if canSyncLoading}
-          <div class="row"><span class="row-hint">Checking this project's online status…</span></div>
+          <div class="row"><span class="row-hint">Checking this book's online status…</span></div>
         {:else if canSync}
           <div class="row row-toggle">
             <div class="row-label">
-              <label for="set-auto-sync">Keep this project backed up online</label>
+              <label for="set-auto-sync">Keep this book backed up online</label>
               <span class="row-hint">
                 {#if s.versionHistory.autoSnapshot}
                   Sends your previous versions to your connected online service in the background.
@@ -610,7 +610,7 @@
             />
           </div>
         {:else}
-          <div class="row"><span class="row-hint">This project isn't connected to an online service yet. Connect one in Settings &gt; Accounts to back it up.</span></div>
+          <div class="row"><span class="row-hint">This book isn't connected to an online service yet. Connect one in Settings &gt; Accounts to back it up.</span></div>
         {/if}
         <!-- Copy switching (#273): which copy (git branch) the project is on,
              and a way to switch to another. Copies that exist only online are
@@ -627,8 +627,8 @@
           {@const onlineOnly = new Set(copies.remoteOnly ?? [])}
           <div class="row">
             <div class="row-label">
-              <span class="row-title">Copy of this project you're working on</span>
-              <span class="row-hint">{copies.current ?? "Unknown — this project's history looks unusual."}</span>
+              <span class="row-title">Copy of this book you're working on</span>
+              <span class="row-hint">{copies.current ?? "Unknown — this book's history looks unusual."}</span>
             </div>
             {#if otherCopies.length > 0}
               <div class="row-actions">
@@ -739,32 +739,8 @@
   .settings-view.embedded .tab-bar {
     padding: 0;
   }
-  /* ── Tab bar ── */
-  .tab-bar {
-    display: flex;
-    gap: 2px;
-    padding: 0 16px;
-    border-bottom: 1px solid var(--app-border-subtle);
-    flex-shrink: 0;
-    overflow-x: auto;
-  }
-  .tab {
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--app-text-muted);
-    font-size: 12.5px;
-    padding: 8px 10px;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-  .tab:hover { color: var(--app-text); }
-  .tab.active {
-    color: var(--app-text);
-    border-bottom-color: var(--app-accent);
-    font-weight: 600;
-  }
-  .tab:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: -2px; }
+  /* ── Tab bar ── (recipe: .app-tab-bar / .app-tab in theme.css) */
+  .tab-bar { padding: 0 16px; }
   .group { margin-bottom: 20px; }
   .group-head {
     display: flex;

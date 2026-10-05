@@ -10,7 +10,7 @@
  * whole shared test run) and always restored in `afterEach`.
  *
  * `SYSTEM_PATHS` is built ONCE at module-load time from `process.env`
- * (chromium.ts:5-39), so tests that vary `CHROMIUM_PATH` / `PUPPETEER_EXECUTABLE_PATH`
+ * (chromium.ts:5-39), so tests that vary `CHROMIUM_PATH` / its deprecated alias `PUPPETEER_EXECUTABLE_PATH`
  * / `LOCALAPPDATA` must re-import a fresh module instance AFTER setting the
  * env var — a plain `import("./chromium")` would hit Bun's module cache and
  * silently reuse the first test's env snapshot. `freshChromium()` below
@@ -149,7 +149,7 @@ describe("resolveChromiumExecutable — fixed-path probe", () => {
   });
 });
 
-describe("resolveChromiumExecutable — CHROMIUM_PATH / PUPPETEER_EXECUTABLE_PATH env vars", () => {
+describe("resolveChromiumExecutable — CHROMIUM_PATH and its deprecated alias PUPPETEER_EXECUTABLE_PATH", () => {
   test("CHROMIUM_PATH is checked and used when it exists on disk", async () => {
     snapshotEnv();
     process.env.CHROMIUM_PATH = "/opt/my-custom-chrome/chrome";
@@ -162,7 +162,7 @@ describe("resolveChromiumExecutable — CHROMIUM_PATH / PUPPETEER_EXECUTABLE_PAT
     expect(result).toBe("/opt/my-custom-chrome/chrome");
   });
 
-  test("PUPPETEER_EXECUTABLE_PATH is used when CHROMIUM_PATH is unset", async () => {
+  test("the deprecated alias PUPPETEER_EXECUTABLE_PATH is still honoured when CHROMIUM_PATH is unset", async () => {
     snapshotEnv();
     delete process.env.CHROMIUM_PATH;
     process.env.PUPPETEER_EXECUTABLE_PATH = "/opt/puppeteer-chrome/chrome";

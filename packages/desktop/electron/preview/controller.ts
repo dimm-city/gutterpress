@@ -31,7 +31,7 @@ import { operationLogSlug } from "../recovery-paths";
 import { unsyncedStateFor } from "../auto-sync/unsynced-status";
 import { upsertRecentFolder } from "../recent-folders";
 import type { DesktopPrefs } from "../prefs-store";
-import type { PreviewStartResult } from "../bridge-types";
+import type { PreviewStartResult } from "../../src/lib/platform/shared-types";
 import type { TokenStore } from "gutterpress";
 
 type LibModule = typeof import("gutterpress");
@@ -136,10 +136,10 @@ export class PreviewOpenController {
   private async runOpen(args: PreviewOpenArgs): Promise<PreviewStartResult> {
     const input = args?.input;
     if (!input || typeof input !== "string") {
-      throw new Error("Missing 'input' (absolute path to a project directory)");
+      throw new Error("Missing 'input' (absolute path to a book folder)");
     }
     if (!path.isAbsolute(input)) {
-      throw new Error(`Preview input must be an absolute project directory: ${input}`);
+      throw new Error(`Preview input must be an absolute book folder path: ${input}`);
     }
 
     const openedDir = path.resolve(input);

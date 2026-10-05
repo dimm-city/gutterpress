@@ -6,7 +6,7 @@ This repo is a Bun workspace with three packages:
 
 - **`packages/cli/`** (`gutterpress`) — the single published package:
   ALL runtime logic (markdown rendering, preview HTTP server, native-engine PDF
-  generation, lint, validation — under `src/`) **and** the CLI entry
+  generation, validation including CSS print-safety — under `src/`) **and** the CLI entry
   (`src/cli.ts`). It exposes a library (`exports` → `dist/index.js`) and a CLI
   (`bin` → `dist/cli.js`). Built the standard way: `bun build` (the Node
   entrypoints, `--target=node --packages=external --splitting`; `src/render.ts`
@@ -20,12 +20,12 @@ This repo is a Bun workspace with three packages:
   no separate `compile` package.json script or `scripts/compile.ts`. The
   no-bundlers-at-runtime rule (§1 below) applies to this package.
 - **`packages/desktop/`** (`@dimm-city/gutterpress-desktop`) — Electron desktop
-  app with a SvelteKit SPA frontend. The SPA is built with
-  `@sveltejs/adapter-node`, which emits a Node HTTP handler (`build/handler.js`).
-  In production the Electron main process starts that handler on a local
-  `127.0.0.1` server (OS-assigned port) and serves the SPA to the window via a
-  custom `app://` protocol handler that proxies every request to the local
-  server with `fetch`. Host capabilities are exposed as ~100
+  app with a SvelteKit SPA frontend. The SPA is built with the package's own
+  tiny `adapter-electron.js`, which writes the SvelteKit server unbundled to
+  `build/server/` and the browser assets to `build/client/`. In production the
+  Electron main process constructs that server and answers every `app://`
+  request from the window in-process with `Server.respond()` — there is no
+  HTTP server, port, or proxy. Host capabilities are exposed as ~100
   `src/routes/api/**/+server.ts` HTTP routes (status, fs, dialog, theme, plugin,
   remote/sync, vcs, recovery, …) — NOT a handful of `ipcMain.handle()`
   endpoints. The `ipcMain`/preload bridge is deliberately narrow: it carries
@@ -37,8 +37,8 @@ This repo is a Bun workspace with three packages:
   (no CJS→ESM `new Function` bridge — that was removed when the build moved to
   electron-vite + asar). No afterPack hook; electron-builder
   packages the lib + its transitive deps from the workspace `node_modules` via
-  its standard dep walker (puppeteer-core is `asarUnpack`ed; PDF export itself
-  uses Electron's own Chromium via `webContents.printToPDF`).
+  its standard dep walker (nothing is `asarUnpack`ed; PDF export uses
+  Electron's own Chromium via `webContents.printToPDF`).
   See [project_gutterpress_architecture] memory + `packages/desktop/` for the
   full picture.
 
@@ -261,17 +261,18 @@ Monorepo layout section above: no `Bun.serve`/`Bun.file`) so Electron's bundled
 Node can run it in-process; `Bun.serve` would work under Bun but crash the
 packaged desktop app. The actual implementation
 (`packages/cli/src/preview/http-server.ts`) is a `node:http` static file
-server + a `ws` WebSocket server. A single Markdown edit may use the focused
-`content-update` notification and wider changes use `full-reload`, but the
-preview shell handles both by swapping the complete regenerated book. This
-keeps pagination independent of per-source isolation wrappers. The server is
+server + a `ws` WebSocket server. Every change is one `full-reload`
+notification; the preview shell double-buffers the complete regenerated book
+and swaps it in, so pagination never depends on per-source isolation
+wrappers. The server is
 Node-compatible, runs under both Bun (dev / compiled binary) and Node.js
 (Electron), with no bundler involved.
 
 ### 2. Lazy-load heavy optional deps
 
-Anything used by a single subcommand (e.g. `puppeteer-core` in `gutterpress build`)
-should be imported with a dynamic `import()` inside the command handler, not at
+Anything used by a single subcommand (e.g. the engine compiler and
+`engine/shared/cdp.ts`'s `launchChromium` in `gutterpress build`) should be
+imported with a dynamic `import()` inside the command handler, not at
 top-level. This keeps `gutterpress --help` fast and isolates failures to the
 specific command path.
 
@@ -318,20 +319,31 @@ Reasons:
 Plugin loader (`packages/cli/src/lib/markdown/plugins.ts`) does NOT auto-install
 or access the network. Installation is an explicit shared-lib action
 (`addExtension` in `extension-manager.ts`, used by the desktop routes and
-`gutterpress ext add`) that resolves
-the public npm registry to an exact version graph, verifies every tarball,
-safely vendors a complete nested dependency tree under the project, writes a
-whole-tree schema-v2 receipt, load-tests it, and only then atomically records
-the pinned specifier `name@<exact version>` in the manifest's `extensions:`
-list (the object form's `export:` explicitly selects a named plugin function
-for packages without a default export). Reinstall always fetches fresh bytes.
-Package scripts, bundled `node_modules`, native build steps, and non-registry
-dependency selectors are intentionally unsupported. Receipt-backed loads verify
-the full tree from a private snapshot, then rewrite reachable literal ESM and
-CommonJS package requests to receipt-approved private copies; unresolved or
-nonliteral requests fail closed, and an invalid marker never falls back to a
-global cache. Full rationale and optional/peer semantics were captured in ADR 0007,
-removed in the 2026-07-29 docs cleanup.
+`gutterpress ext add`) that resolves the public npm registry to an exact
+version graph, verifies every tarball against the registry's SRI hash, safely
+vendors a complete nested dependency tree under the project's
+`plugins/npm/<name>/<version>/` (a plain npm `node_modules` layout),
+load-tests it, and only then atomically records the pinned specifier
+`name@<exact version>` in the manifest's `extensions:` list (the object form's
+`export:` explicitly selects a named plugin function for packages without a
+default export). Reinstall always fetches fresh bytes. Package scripts,
+bundled `node_modules`, native build steps, and non-registry dependency
+selectors are intentionally unsupported. Loading a pinned entry is a plain
+dynamic `import()` of the vendored package's entry (resolved from its own
+`package.json`); Node's — and Bun's, in the compiled binary — ordinary module
+resolution serves the package's imports from that nested tree. Nothing is
+recorded about the tree and nothing re-verifies it on load: integrity is
+checked once, at install time. One runtime seam remains: a `bun build
+--compile` binary's own resolver cannot find a dependency whose package.json
+carries an `exports` map, so inside the compiled CLI a ~80-line `Bun.plugin`
+resolver (in `plugins.ts`, active only for importers inside a vendored tree)
+answers those bare requests the way Node would; `bun run` and Node never use
+it. A vendored folder that is present but broken
+fails with a reinstall hint; it never falls through to another package. (The
+receipt / snapshot / import-rewriting scheme that preceded this — a tree
+digest re-verified on every load, an acorn + es-module-lexer rewrite of every
+reachable import, a `Module._resolveFilename` hook — was removed in 0.11.10
+as disproportionate for a local authoring tool.)
 The loader has two modes via `loadPlugins(configs, baseDir, onError?)`:
 
   - **Fail-fast (no `onError`)** — build/export/validate. Any load error aborts
@@ -433,15 +445,16 @@ are unaffected by this rule — this rule governs the new Git/source surface onl
 > standard, applied by default.
 
 The desktop app is an Electron shell hosting a **SvelteKit SPA** (built with
-`@sveltejs/adapter-node`). The SPA is written so it could run unchanged in a
+the package's `adapter-electron.js`). The SPA is written so it could run unchanged in a
 browser PWA tomorrow. To make that true — and to keep the desktop build correct
 — the renderer never contains host/Node code; it reaches the host through one
 of two seams, chosen by capability class, and both keep the SPA "PWA-clean."
 
-**Transport.** In production, Electron main starts the adapter-node handler
-(`build/handler.js`) on a local `127.0.0.1` HTTP server and serves the window
-via the `app://` protocol, which proxies each request to that server with
-`fetch`. Host capabilities the renderer needs are reached two ways: the bulk
+**Transport.** In production, Electron main constructs the SvelteKit server
+from `build/server/` and answers each `app://` request from the window
+in-process with `Server.respond()` (`electron/sveltekit-host.ts`); static
+assets come straight from `build/client/`. No HTTP server, no port, no proxy.
+Host capabilities the renderer needs are reached two ways: the bulk
 (status, fs, dialog, theme, plugin, remote/sync, vcs, recovery, …) are ordinary
 `src/routes/api/**/+server.ts` HTTP routes the SPA calls with `fetch("/api/…")`;
 a **narrow** `ipcMain`/preload bridge carries only the things a plain HTTP
@@ -508,8 +521,8 @@ above).
 3. If it's a push stream or must drive a live `BrowserWindow`, also wire the
    **IPC bridge**: `electron/main.ts` — `ipcMain.handle("ns:op", …)` (or a
    `webContents.send` push channel); `electron/preload.ts` — expose it on
-   `contextBridge`; `electron/types.d.ts` — add it to the `Window.electron`
-   shape; `contract.ts` — add it to `ElectronBridge`
+   `contextBridge`; `contract.ts` — add it to `ElectronBridge` (which types
+   `Window.electron` via `src/app.d.ts`)
 
 **The canonical fix when node code is needed by the UI:** don't bundle it into
 the renderer — run it in the host and expose it as a server route (default) or,
@@ -553,8 +566,8 @@ and the browser (`WebAdapter`); on the Electron target, `api.ts` remains the
 correct call site for those capabilities.
 
 **Verification (must pass before any desktop change is "done"):** the client
-SPA bundle must contain no host code — adapter-node emits the browser assets
-to `build/client/`, and this is now **enforced automatically** by ONE script,
+SPA bundle must contain no host code — the SvelteKit build emits the browser
+assets to `build/client/`, and this is now **enforced automatically** by ONE script,
 `tools/check-render-purity.mjs`: CI runs it (`.github/workflows/ci.yml`) and
 the desktop app's `npm run build` runs it with `--strict` (absent dir or zero
 scannable files = failure). It fails on host code — the named leak
@@ -562,8 +575,8 @@ identifiers (`fileURLToPath`/`createRequire`/`isomorphic-git`), any quoted
 `node:*` specifier, or a bare builtin `require()` (generated from
 `builtinModules`, never hand-listed) — anywhere under `build/client/`.
 Two caveats keep this honest:
-(1) the server side — `build/server/`, `build/handler.js`, and the
-`+server.ts` routes compiled into it — is host Node code by design; the check
+(1) the server side — `build/server/` and the `+server.ts` routes compiled
+into it — is host Node code by design; the check
 scopes to `build/client/` only. (2) Rollup tree-shaking can HIDE a leak from
 the production scan while `vite dev` (no tree-shaking) still crashes on it —
 this is exactly how a shared bun-build chunk topped with `createRequire`
@@ -605,6 +618,49 @@ What remains relevant to **this** repo:
   anti-patterns are preserved in AKM
   (`memory:gutterpress-dc-design-guide-frozen-chapter-opener-historical`,
   `memory:print-css-architectural-anti-patterns`).
+
+## Needs review — simplification candidates deferred by the product owner (2026-10-03)
+
+A complexity survey on 2026-10-03 (the same pass that deleted the desktop's
+loopback server + token + app:// proxy, the plugin receipt scheme,
+puppeteer-core, the `lint`/`audit` commands, the source-text tests and the
+superseded analysis docs) found two more candidates. The owner deferred them
+rather than ruling; they are recorded here so the next session does not
+re-survey. Each is a deletion, not a refactor.
+
+1. **Orphaned tooling with no caller in any workflow or package.json script**
+   (about 3,500 lines):
+   - `packages/cli/tools/` — Python/ImageMagick print-prep helpers
+     (`validate-images.py`, `convert-to-cmyk.sh`, `alpha-to-polygon.py`,
+     `set-boxes.py`, `style-diff.mjs`, `debug-manifest.ts`). Not shipped by
+     the package's `files`; `set-boxes.py` is superseded by
+     `engine/compiler/postprocess.ts`'s TrimBox/BleedBox; TAC checking is
+     built in (`checks/asset/image-tac.ts`).
+   - `packages/desktop/tests/integration/inline-editing.pw.mjs`,
+     `electron-driver.pw.mjs`, `run-ui.mjs`, `fixtures/inline-editing/` and
+     the `test:ui` / `test:inline:packaged` scripts — never run by CI
+     (`render-perf-gate.yml` runs seven other drives; keep `app-window.mjs`
+     and `workspace-mode.mjs`, which those import).
+   - `packages/cli/tests/integration/Dockerfile.windows`,
+     `Test-WindowsInstall.ps1`, `run-install-test.ps1`, its README — needs a
+     Windows Docker host; `package-managers.yml`'s `validate-scoop` job
+     already installs the real release on `windows-latest`.
+   - `scripts/gdrive-spike.mjs` and `docs/gdrive-publish-plan.md` — the plan
+     says phases 1–3 shipped in #221; ADR 0011 and `docs/publishing.md` hold
+     the decisions that still matter. Eight source comments cite the plan's
+     D-numbers and would be repointed to ADR 0011.
+2. **The WebAdapter / PWA stack and the one-implementation `Platform` seam**
+   (about 3,200 lines, plus ~400 of `!isDesktop()` branches): §8 above says
+   this is scaffolding to keep, but the survey found no shipped build targets
+   the web (the only adapter is `adapter-electron.js`; `pages.yml` builds the
+   docs site), `web-adapter.ts`'s own header says it is unreachable from the
+   live app, and every book-open path stops with "needs the desktop app"
+   before reaching it. Deleting it would also let `Platform`/`ElectronAdapter`
+   collapse into `api.*` plus a ~40-line typed bridge accessor for the push
+   streams, and remove 81 `isDesktop()` guards. This needs an explicit ruling
+   because it reverses §8's "not dead code to delete" sentence and the
+   "partially shipped" claim about #33, and it drops the `gutterpress/render`
+   subpath whose only consumer is the web adapter.
 
 ## Background reading
 

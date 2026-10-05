@@ -24,7 +24,7 @@ Every feature area below is tagged with its implementation status:
 This contract governs the **desktop application** — the desktop Electron app
 and its PWA/browser target (#33/#34, `docs/pwa-webadapter-plan.md`).
 
-**Out of scope:** the CLI (`gutterpress new/build/preview/lint/publish`). The CLI
+**Out of scope:** the CLI (`gutterpress new/build/preview/validate/publish`). The CLI
 is the power-user and CI surface (see the repo README: "a desktop application
 (with a CLI for power users)") and is governed by `packages/cli/README.md` and
 `docs/publishing.md`. Developer users are expected to move between the app and
@@ -40,7 +40,7 @@ contract and those documents conflict, the architecture documents win.**
 | Renderer stays PWA-clean; host capabilities via server routes (default) or the Platform seam (push streams, BrowserWindow calls, FSA-divergent fs) | `CLAUDE.md` §8 | Theme import file IO, AI/publish network calls, preflight fs checks → server routes. Publish/build **progress streams** → the adapter/IPC push seam. No `node:*` or lib value-imports in the SPA. |
 | Preview bridge protocol | ADR 0005 (removed in the 2026-07-29 docs cleanup) | Sync scroll, page navigation, outline, any preview overlay or overflow probe must go through the bridge. |
 | Plugins are plain markdown-it plugins; no plugin API; loader never auto-installs | `CLAUDE.md` §5 | Constrains §9 (Features) below. |
-| PDF rendering = Electron `printToPDF` (desktop) / puppeteer-core (CLI); pure-JS tooling posture | ADR 0002 (removed in the 2026-07-29 docs cleanup) | Preflight/export UX; "export" not "download". |
+| PDF rendering = Electron `printToPDF` (desktop) / a system Chromium driven over raw CDP (CLI); pure-JS tooling posture | ADR 0002 (removed in the 2026-07-29 docs cleanup) | Preflight/export UX; "export" not "download". |
 | Git/GitHub operations are Node-native pure JS | `CLAUDE.md` §7 | Project source / sync / provider-auth UX. |
 | `$effect` is eslint-banned in the SPA; persisted preferences flow through the settings store's `onSettingsChange()` channel | `CLAUDE.md` §8 | Every persisted preference this contract specs (font size, pane layout, sync toggle, tooltip-seen state). |
 | All changes must REDUCE complexity unless properly justified | `CLAUDE.md` Primary Goals | Every PROPOSED item needs a scoped issue before implementation. |
@@ -750,7 +750,10 @@ a flat columned table), check ids translated to plain-language labels
 Raw rule-ID columns and rule-ID-first presentation are anti-patterns here.
 
 - Bottom drawer, collapsible, badge with error/warning count
-  (`aria-label="3 errors, 2 warnings"`).
+  (`aria-label="Problems: 3 errors, 2 warnings"`). The list is a row of its own
+  above the status bar, in normal flow: opening it pushes the workspace up and
+  never overlays the left panel or the editor (#307). Below 820px it is a
+  full-viewport sheet with its own Close button instead.
 - Click row → jump to location in the editor. PROPOSED: severity filters;
   Arrow-key row navigation with Enter-to-jump; inline "Go to" navigation on
   rows (matching §6's navigate-only remediation — no auto-fix — and required
@@ -764,7 +767,10 @@ Raw rule-ID columns and rule-ID-first presentation are anti-patterns here.
   keystroke): widows/orphans, image aspect-ratio mismatch, page overflow
   (see §5).
 - Rule explanations open the in-app help drawer, not an external browser.
-- Empty state: "No problems found — document looks great."
+- Empty state: nothing to open. The status bar reads "No problems" beside a
+  tick and the toggle gives way to that plain label (#307). A list already open
+  when its last problem is fixed says "No problems found — your project looks
+  good!" until dismissed.
 
 ### 11. Look (the Extensions surface's styles view)
 
@@ -1021,7 +1027,7 @@ device class.
   is typing.** After ~3s idle following a re-render, announce meaningful
   deltas only ("Preview updated — now 52 pages"), max one per idle period,
   via a status node **separate from the re-rendering preview DOM**.
-- Problems badge: `aria-label="3 errors, 2 warnings"`.
+- Problems badge: `aria-label="Problems: 3 errors, 2 warnings"`.
 - Publish/export progress: `role="status"` (shipped, #21).
 - Editor: CodeMirror 6's built-in accessibility tree; do not override
   `aria-multiline`.

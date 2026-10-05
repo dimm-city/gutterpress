@@ -136,7 +136,7 @@ const check: Check = {
             // business to settle, not a broken build.
             severity: "warning",
             code: "kept-both-versions",
-            message: `Two versions of ${withoutOnlineTag(rel)} are in your project — keep the one you want, then delete the other.`,
+            message: `Two versions of ${withoutOnlineTag(rel)} are in your book — keep the one you want, then delete the other.`,
             file: sibling,
           }),
         );

@@ -9,7 +9,7 @@
  * `publish-targets.contract.test.ts` pins these ids/tools against the real
  * registry so the two can't drift.
  *
- * Shared by the new-book wizard and project settings so both surfaces
+ * Shared by the new-book wizard and book settings so both surfaces
  * describe a destination the same way.
  */
 
@@ -74,6 +74,6 @@ export function toolGapMessage(missingNeeded: readonly string[]): string | null 
     `${names} ${plural ? "aren't" : "isn't"} installed on this computer, so a ` +
     `print-compliant (PDF/X) file can't be built or verified until ${plural ? "they are" : "it is"}. ` +
     `You can keep this checked and install ${plural ? "them" : "it"} later ` +
-    `(see System setup in the Help tab), or uncheck it for now.`
+    `(see Troubleshooting → Diagnostics), or uncheck it for now.`
   );
 }

@@ -10,12 +10,11 @@
  * bundle a SECOND, never-initialized copy of that module-level state (the
  * exact reason every other cross-bundle host touch-point in this app goes
  * through the collapsed `__gutterpressHost__` object instead of a static import
- * — see host-services.ts's module doc). `getUpdaterHooks()` is the thin
- * derived selector over it, same pattern as every other domain here.
+ * — see host-services.ts's module doc). Routes reach it through
+ * `getHostServices().updater`.
  */
 
-import { getHostServices } from './host-services';
-import type { UpdaterStatus } from '../bridge-types';
+import type { UpdaterStatus } from '../../src/lib/platform/shared-types';
 
 export interface UpdaterHooks {
   /** Synchronous — mirrors electron/updater.ts's own getStatus() signature. */
@@ -24,9 +23,4 @@ export interface UpdaterHooks {
   check(): Promise<UpdaterStatus>;
   /** Download the update, or open its GitHub page on check-only macOS. */
   download(): Promise<UpdaterStatus>;
-}
-
-/** The live `UpdaterHooks` slice of the collapsed host object, or null before `registerHostServices` runs. */
-export function getUpdaterHooks(): UpdaterHooks | null {
-  return getHostServices()?.updater ?? null;
 }

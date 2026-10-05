@@ -36,12 +36,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { isHttpError } from "@sveltejs/kit";
 import { registerHostServices } from "../../electron/server-bridge/host-services";
+import { setLibForTests, type LibModule } from "../../src/routes/api/_lib/route";
 import { createPickedFilesService } from "../../electron/server-bridge/picked-files";
 import { makeHostServices } from "../support/host-services-fake";
 
 import { POST as vcsSaveSnapshot } from "../../src/routes/api/vcs/save-snapshot/+server";
 import { POST as vcsRestoreSnapshot } from "../../src/routes/api/vcs/restore-snapshot/+server";
 import { POST as vcsListSnapshotsPage } from "../../src/routes/api/vcs/list-snapshots-page/+server";
+import { POST as vcsUnversionedChanges } from "../../src/routes/api/vcs/unversioned-changes/+server";
 import { POST as vcsEnableVersionHistory } from "../../src/routes/api/vcs/enable-version-history/+server";
 import { POST as vcsListBranches } from "../../src/routes/api/vcs/list-branches/+server";
 import { POST as vcsSwitchBranch } from "../../src/routes/api/vcs/switch-branch/+server";
@@ -91,6 +93,7 @@ const ROUTES: Array<{ name: string; handler: RouteHandler; body: (dir: string) =
   { name: "vcs/save-snapshot", handler: vcsSaveSnapshot as RouteHandler, body: (d) => ({ projectDir: d, message: "snap" }) },
   { name: "vcs/restore-snapshot", handler: vcsRestoreSnapshot as RouteHandler, body: (d) => ({ projectDir: d, id: HEX40_A }) },
   { name: "vcs/list-snapshots-page", handler: vcsListSnapshotsPage as RouteHandler, body: (d) => ({ projectDir: d }) },
+  { name: "vcs/unversioned-changes", handler: vcsUnversionedChanges as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "vcs/enable-version-history", handler: vcsEnableVersionHistory as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "vcs/list-branches", handler: vcsListBranches as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "vcs/switch-branch", handler: vcsSwitchBranch as RouteHandler, body: (d) => ({ projectDir: d, branch: "main" }) },
@@ -197,6 +200,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  setLibForTests(null);
   await rm(base, { recursive: true, force: true });
 });
 
@@ -358,13 +362,10 @@ function publishHost(roots: string[], picked: ReturnType<typeof createPickedFile
       desktop: { getUserDataPath: () => base },
       fsGuard: { projectRoots: () => roots, readOnlyRoots: () => [] as string[] },
       pickedFiles: picked,
-      remote: {
-        loadLib: async () => ({ runPublish: async () => ({ ok: true, outcome: { kind: "api" } }) }),
-        tokenStore: {},
-        GITHUB_HOST: "github.com",
-      } as never,
+      remote: { tokenStore: {} as never, GITHUB_HOST: "github.com" },
     }),
   );
+  setLibForTests({ runPublish: async () => ({ ok: true, outcome: { kind: "api" } }) } as unknown as Partial<LibModule>);
 }
 
 test("publish/run: an artifact inside the project is allowed", async () => {

@@ -35,7 +35,7 @@
  */
 
 import { overWideExportMessage } from "../errors";
-import { basenameOf } from "../platform/paths";
+import { basenameOf, isPathAtOrUnder, joinPath } from "../platform/paths";
 
 /** The export pill's FSM state. */
 export type ExportState =
@@ -92,15 +92,24 @@ export interface ExportHostDeps {
   displayName: () => string | null;
   isBusy: () => boolean;
   sourceMode: () => "folder" | "url";
-  /** The native "Save PDF as…" dialog; null/empty means the author canceled. */
-  chooseSavePath: (defaultName: string) => Promise<string | null>;
+  /** The native "Save PDF as…" dialog; null/empty means the author canceled.
+   *  `defaultDir` pre-points it at the folder the author chose earlier. */
+  chooseSavePath: (defaultName: string, defaultDir?: string) => Promise<string | null>;
+  /** The native "choose where to save" folder dialog (website builds outside
+   *  the book); null means the author canceled. */
+  pickOutputFolder: (defaultPath: string) => Promise<string | null>;
   onBuildProgress: (cb: (event: ExportProgressEvent) => void) => (() => void) | undefined;
   buildPdf: (
     input: { key: string; displayName: string },
     outPath: string,
     opts?: { validate?: boolean; allowShrink?: boolean },
   ) => Promise<{ exportId?: string; pdfPath?: string }>;
-  buildHtml: (input: { key: string; displayName: string }) => Promise<{ downloadUrl?: string }>;
+  /** `out` is the destination FOLDER on the desktop; absent on the web, where
+   *  the result is a `downloadUrl` instead. */
+  buildHtml: (
+    input: { key: string; displayName: string },
+    out?: string,
+  ) => Promise<{ downloadUrl?: string; outDir?: string }>;
   cancelExportHost: (exportId: string) => Promise<unknown>;
   /** Turns a `blob:` download URL into a browser download (web HTML export). */
   downloadFile: (url: string, filename: string) => void;
@@ -333,7 +342,74 @@ export class ExportController {
     const defaultName = (h.displayName() ?? basenameOf(inputDir) ?? "book") + ".pdf";
     const outPath = await h.chooseSavePath(defaultName);
     if (!outPath) return;
+    await this.runPdfBuild(inputDir, outPath, opts);
+  }
 
+  /**
+   * Build the book into a FOLDER — the Publish wizard's first step, which
+   * every other destination then uploads from. A folder inside the book
+   * (the default, `dist`) needs no dialog; one outside it is confirmed in
+   * the native dialog each time, pre-pointed at that folder, because the
+   * host only writes outside the book to a destination a dialog returned.
+   * Resolves with the artifact path (the PDF file, or the website folder),
+   * or null when the author canceled or the build failed (already toasted).
+   */
+  async buildTo(opts: {
+    format: "pdf" | "html";
+    dir: string;
+    validate?: boolean;
+  }): Promise<string | null> {
+    const h = this.requireHost();
+    if (this.exporting) return null;
+    const warning = h.checkSaveReadiness();
+    h.setSaveWarning(warning);
+    if (warning) return null;
+    const inputDir = h.currentDir();
+    if (!inputDir) return null;
+    if (!h.isDesktop()) {
+      h.toastError(h.desktopRequiredMessage);
+      return null;
+    }
+    const displayName = h.displayName() ?? basenameOf(inputDir) ?? "book";
+    const insideBook = isPathAtOrUnder(opts.dir, inputDir);
+
+    if (opts.format === "pdf") {
+      let outPath: string | null = joinPath(opts.dir, `${displayName}.pdf`);
+      if (!insideBook) outPath = await h.chooseSavePath(`${displayName}.pdf`, opts.dir);
+      if (!outPath) return null;
+      return this.runPdfBuild(inputDir, outPath, { validate: opts.validate });
+    }
+
+    let out: string | null = opts.dir;
+    if (!insideBook) out = await h.pickOutputFolder(opts.dir);
+    if (!out) return null;
+    this.beginSimpleExport();
+    try {
+      const data = await h.buildHtml({ key: inputDir, displayName }, out);
+      const savedDir = data.outDir ?? out;
+      h.toastSuccess(`Website saved to ${savedDir}`, 8000, {
+        label: "Show in Folder",
+        onClick: () => {
+          void h.showInFolder(savedDir).catch(() => {});
+        },
+      });
+      return savedDir;
+    } catch (e) {
+      h.toastError(h.friendlyPdfError(e) || "Website export failed");
+      return null;
+    } finally {
+      this.endSimpleExport();
+    }
+  }
+
+  /** The PDF build proper, once a destination is known: drive the FSM, toast
+   *  the result. Resolves with the saved PDF path, or null on cancel/failure. */
+  private async runPdfBuild(
+    inputDir: string,
+    outPath: string,
+    opts?: { validate?: boolean; allowShrink?: boolean },
+  ): Promise<string | null> {
+    const h = this.requireHost();
     // Non-blocking: the build runs in a separate render window, so keep the
     // preview interactive and show progress in a corner pill (not the overlay).
     this.start();
@@ -366,10 +442,11 @@ export class ExportController {
         },
       });
       await h.wait(2000);
+      return savedPdfPath;
     } catch (e) {
       if ((e as { code?: string })?.code === "EXPORT_CANCELED") {
         this.reset();
-        return;
+        return null;
       }
       // #163: the engine's over-wide-content check is a hard error whose
       // message tells the author to "pass allowShrink" — an instruction with
@@ -391,6 +468,7 @@ export class ExportController {
       } else {
         h.toastError(h.friendlyPdfError(e));
       }
+      return null;
     } finally {
       offProgress?.();
       this.reset();
@@ -398,8 +476,8 @@ export class ExportController {
   }
 
   /**
-   * #33 Phase 5: HTML export on web. PDF is desktop-only (puppeteer/
-   * printToPDF), so on the web (capabilities().nativeSavePath === false) the
+   * #33 Phase 5: HTML export on web. PDF is desktop-only (a headless Chromium
+   * / printToPDF), so on the web (capabilities().nativeSavePath === false) the
    * export delivers a standalone book.html instead — build() renders it
    * in-browser and returns a blob: downloadUrl, which the host's
    * `downloadFile` turns into a browser download. Desktop is UNCHANGED: it

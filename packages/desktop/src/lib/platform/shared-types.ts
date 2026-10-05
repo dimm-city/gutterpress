@@ -10,12 +10,11 @@
  *     need the exact same value and would otherwise hand-duplicate it (e.g.
  *     `DEFAULT_SETTINGS` below). No imports, still, ever.
  *   - All types must be self-contained (no references to external modules).
- *   - Used by `electron/bridge-types.ts` (host side) and, for most types,
- *     `src/lib/platform/contract.ts` (renderer side).
+ *   - Imported directly by the Electron host (`electron/*.ts`) and, for most
+ *     types, by `src/lib/platform/contract.ts` (renderer side).
  *
- * When you add a new IPC payload type, add it here first, then re-export it
- * in `bridge-types.ts` and consume it in `contract.ts`. No more "Keep them
- * in sync manually" comments.
+ * When you add a new IPC payload type, add it here first, then consume it
+ * from both sides. No more "Keep them in sync manually" comments.
  *
  * CAVEAT (audit D8): `ProjectSource` and `ProjectCapabilities` are the two
  * exceptions — `contract.ts` type-imports those straight from
@@ -106,18 +105,16 @@ export interface ProjectCapabilities {
  * The ONE switch for what the wide workspace shows. Everything else about the
  * layout is derived from it:
  *
- *   viewMode       = mode === "viewer" && !isNarrow ? "two-column" : "single"
- *   previewVisible = mode !== "focus"
- *   editorVisible  = mode !== "viewer"
+ *   viewMode      = mode === "viewer" && !isNarrow ? "two-column" : "single"
+ *   editorVisible = mode !== "viewer"
  *
- * `focus` is editor-only WITH the toolbar and standard chrome kept — it hides
- * the viewer, nothing else. It is transient: `AppSettings.preview.mode` cannot
- * hold it (see that field), so it always persists as `editor`.
+ * Focus (hide the chrome) is deliberately NOT a value here: it is a separate,
+ * session-only boolean layered on top of either mode, never persisted.
  *
  * Orthogonal to `preview.paneMode`, which is the ≤820px single-column tab
  * selector.
  */
-export type WorkspaceMode = "editor" | "viewer" | "focus";
+export type WorkspaceMode = "editor" | "viewer";
 
 // ── User settings (#45) ───────────────────────────────────────────────────
 
@@ -136,11 +133,9 @@ export interface AppSettings {
     defaultZoom: string;
     /**
      * Which panes the wide workspace shows — the ONE workspace-layout switch
-     * (see `WorkspaceMode`). `focus` is transient by construction: it is not
-     * in this type, so entering it persists as `editor` and a restart can
-     * never wake into a viewer-less window.
+     * (see `WorkspaceMode`).
      */
-    mode: Exclude<WorkspaceMode, "focus">;
+    mode: WorkspaceMode;
     /**
      * On small/narrow viewports the editor and preview can't sit side by side,
      * so the workspace collapses to a single pane and this picks which one is
@@ -212,7 +207,7 @@ export interface AppSettings {
  * duplicated between `electron/settings-store.ts` and
  * `src/lib/platform/contract.ts` with "kept in sync manually" comments; both
  * now import this value (contract.ts directly, settings-store.ts via
- * `bridge-types.ts`'s value re-export) instead of redeclaring it.
+ * `electron/settings-store.ts`'s import) instead of redeclaring it.
  */
 export const DEFAULT_SETTINGS: AppSettings = {
   editor: {
@@ -227,8 +222,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   preview: {
     defaultZoom: "fit-width",
-    // Cold start opens on the book, not the editor.
-    mode: "viewer",
+    // A book opens in Edit (editor beside the page) so a first-time writer can
+    // see where to type. Only fills a settings file that has no choice saved.
+    mode: "editor",
     paneMode: "view",
     // Matches DEFAULT_SPLIT_RATIO in src/lib/editor/preview-layout.ts so the
     // durable default and the double-click reset target agree (#103).

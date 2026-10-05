@@ -14,18 +14,15 @@ import {
 } from "electron";
 import path from "node:path";
 import os from "node:os";
-import { randomBytes } from "node:crypto";
 import { appendFile, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import * as fs from "node:fs";
 import { watch } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { scanForProjects, type ScanDeps } from "./discover-projects";
-import {
-  createSettingsStore,
-  type AppSettings,
-} from "./settings-store";
-import { createPrefsStore, type DesktopPrefs } from "./prefs-store";
+import { seedSamples } from "./seed-samples";
+import { createSettingsStore } from "./settings-store";
+import { createPrefsStore } from "./prefs-store";
 // ARCH review #31: the 11 independent `registerXHooks()` service locators
 // have been collapsed into ONE `registerHostServices()` call (below) that
 // writes a single typed `HostServices` object. Each domain module below is
@@ -34,7 +31,6 @@ import { createPrefsStore, type DesktopPrefs } from "./prefs-store";
 // `registerHostServices` together, once, after every dependency exists.
 import { registerHostServices } from "./server-bridge/host-services";
 import type { WriteHooks } from "./server-bridge/write-hooks";
-import type { WatchHooks } from "./server-bridge/watch-hooks";
 import type { AppHooks } from "./server-bridge/app-hooks";
 import type { PrefsHooks } from "./server-bridge/prefs-hooks";
 import type { RecoveryHooks } from "./server-bridge/recovery-hooks";
@@ -46,7 +42,7 @@ import type { RemoteHooks } from "./server-bridge/remote-hooks";
 import type { SyncSettingsHooks } from "./server-bridge/sync-settings-hooks";
 import type { UpdaterHooks } from "./server-bridge/updater-hooks";
 import { handleRemoteErrors, handlePublishErrors } from "./server-bridge/friendly-errors";
-import { isWithinRoot, type FsGuardHooks } from "./server-bridge/fs-guard";
+import { isWithinAnyRootCanonical, isWithinRoot, type FsGuardHooks } from "./server-bridge/fs-guard";
 import { createPickedFilesService, createSavePathsService } from "./server-bridge/picked-files";
 import {
   writeRecovery as writeRecoveryStore,
@@ -62,17 +58,9 @@ import {
   shouldBackgroundCheck,
   getStatus as getUpdaterStatus,
 } from "./updater";
-import type { MarkdownFileLaunchEvent, UpdaterEventPayload } from "./bridge-types";
-import {
-  removeRecentFolder,
-  toggleFavoriteFolder,
-  type RecentFolder,
-} from "./recent-folders";
-import {
-  readProjectState,
-  writeProjectState,
-  type ProjectStateMap,
-} from "./project-state";
+import type { MarkdownFileLaunchEvent, UpdaterEventPayload } from "../src/lib/platform/shared-types";
+import { removeRecentFolder, toggleFavoriteFolder } from "./recent-folders";
+import { readProjectState, writeProjectState } from "./project-state";
 import {
   electronTokenStore,
   markLinuxBasicTextStorageNoticeShown,
@@ -125,6 +113,7 @@ import {
   appLogPath as appLogPathImpl,
   recoveryDir as recoveryDirImpl,
   operationLogPath as operationLogPathImpl,
+  repairBackupDir as repairBackupDirImpl,
   operationLogSlug,
   logsDir as logsDirImpl,
 } from "./recovery-paths";
@@ -140,8 +129,8 @@ import {
 } from "./pdf-export";
 import { createElectronEngineBrowser } from "./engine-browser";
 import {
+  loadSvelteKitServer,
   registerAppProtocol,
-  startSvelteKitServer,
 } from "./sveltekit-host";
 import {
   APP_ORIGIN,
@@ -225,6 +214,24 @@ function loadLib(): Promise<LibModule> {
   return libPromise;
 }
 
+/**
+ * Resolve once no git operation (snapshot, backup, merge, restore, clone) is
+ * queued or running. Quitting mid-operation killed isomorphic-git between its
+ * writes and left empty object files that broke every later merge (0.11.6
+ * field report), so quit waits here — there is deliberately NO timeout. The
+ * operations bound themselves: local git work is short, and the network legs
+ * carry git-http's idle/upload timeouts. Skips the lib import entirely when
+ * the lib was never loaded, since then nothing can be running.
+ */
+async function waitForGitIdle(): Promise<void> {
+  if (!libPromise) return;
+  try {
+    await (await libPromise).whenGitIdle();
+  } catch {
+    // A lib that failed to load has no git work in flight.
+  }
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // PDF export subsystem lives in electron/pdf-export.ts — it owns the single
 // active export session + the Electron-native PDF renderer. Wire its progress
@@ -263,7 +270,7 @@ function setActiveRepositoryRoot(root: string | null): void {
 // discarded (#34).
 // ──────────────────────────────────────────────────────────────────────────
 
-const { readPrefs, writePrefs, updatePrefs, existingDirectory } = createPrefsStore({
+const { readPrefs, updatePrefs, existingDirectory } = createPrefsStore({
   getUserDataDir: () => app.getPath("userData"),
   fs: { readFile, writeFile, mkdir, stat, rename },
 });
@@ -379,9 +386,10 @@ const autoSnapshot = new AutoSnapshotScheduler({
       projectDir: dir,
       lastSyncAt: null,
       logFile: operationLogPathForDir(dir),
+      source: "versions",
       message:
-        "Version history needs attention — the last few automatic backups of this project didn't complete. " +
-        "Try saving a version now; if it keeps failing, make sure no other program has the project folder open or locked.",
+        "Versions need attention — the last few automatic versions of this book didn't complete. " +
+        "Try saving a version now; if it keeps failing, make sure no other program has the book folder open or locked.",
     });
   },
 });
@@ -460,8 +468,7 @@ const autoSync = new AutoSyncOrchestrator({
  * The in-flight final exit push for the project that just closed, or null.
  * Started at the folder watcher's onStop flush point (project switch/close and
  * window close both land there); `window-all-closed` awaits it before quitting
- * so the send is not killed mid-flight. It is BOUNDED inside `runExitPush`, so
- * awaiting it can never hang quit; nulled on settle so a later quit never
+ * so the send is not killed mid-flight. Nulled on settle so a later quit never
  * waits on a stale, already-settled promise.
  */
 let pendingExitSync: Promise<void> | null = null;
@@ -483,8 +490,8 @@ const folderWatch = new FolderWatcher({
     // take it now (fire-and-forget) instead of dropping the timer.
     void flushAutoSnapshot();
     // Final exit push (owner decision 2026-08-23): between push windows the
-    // 2-minute ticks hold local work back, so send it now. `runExitPush` is
-    // bounded internally, skips when a tick is in flight, and syncProject
+    // 2-minute ticks hold local work back, so send it now. `runExitPush`
+    // skips when a tick is in flight, and syncProject
     // itself makes no network push when there is nothing to send. Started
     // BEFORE cancelAll() below, while the single-flight state it consults is
     // still intact. (getWatchedDir() is still the closing project here —
@@ -778,10 +785,10 @@ function createWindow() {
   // SvelteKit DX while still exercising the real Electron preload bridge
   // (window.electron.* IPC) against the same main process used in prod.
   //
-  // Prod mode: adapter-node emits a Node HTTP handler to build/handler.js.
-  // startSvelteKitServer() runs it on a local 127.0.0.1 server and
-  // registerAppProtocol() proxies app:// requests to it via fetch, so the
-  // page has a stable app:// origin. Load the root "/" — NOT "/index.html" —
+  // Prod mode: loadSvelteKitServer() constructs the SvelteKit server from
+  // build/server/ and registerAppProtocol() answers app:// requests with
+  // Server.respond() in-process, so the page has a stable app:// origin and
+  // no HTTP server exists. Load the root "/" — NOT "/index.html" —
   // so SvelteKit's client router sees the root route. (Loading /index.html
   // makes the router try to resolve a page named "index.html" and throw
   // "Not found: /index.html".)
@@ -881,21 +888,14 @@ function createWindow() {
 // ──────────────────────────────────────────────────────────────────────────
 // app:// protocol — serves the static SvelteKit SPA from build/
 //
-// The adapter-node HTTP bridge (startSvelteKitServer) and the app:// protocol
-// proxy (registerAppProtocol) live in electron/sveltekit-host.ts. The privileged-
-// scheme registration stays here so it runs at its original point (before
-// app.whenReady). main.ts calls startSvelteKitServer(slog, skAuthToken) +
-// registerAppProtocol(skAuthToken) from whenReady below.
+// The SvelteKit server (loadSvelteKitServer) and the app:// protocol handler
+// (registerAppProtocol) live in electron/sveltekit-host.ts: the window's
+// requests are answered in-process by Server.respond() — no HTTP server, no
+// port, nothing for another local process to reach. The privileged-scheme
+// registration stays here so it runs at its original point (before
+// app.whenReady). main.ts calls loadSvelteKitServer(slog) +
+// registerAppProtocol() from whenReady below.
 // ──────────────────────────────────────────────────────────────────────────
-
-// P1 review (PR #98, finding #2): a loopback bind (127.0.0.1) is not caller
-// authentication — any other local process that discovers the OS-assigned
-// port could otherwise call the privileged adapter-node API routes directly.
-// Mint a per-session random bearer token once at process start (never
-// persisted, never leaves this process except as the header
-// registerAppProtocol injects into its own proxied requests below); the
-// loopback server rejects any request that doesn't carry it.
-const skAuthToken = randomBytes(32).toString("hex");
 
 // The `VAAPI version is too old` / `MESA-LOADER` lines in the launch log are
 // harmless Chromium GPU-probe noise, NOT the cause of slow launches — the
@@ -936,17 +936,9 @@ const writeHooksImpl: WriteHooks = {
   // write was allowed" and "this write counts as an edit" can never disagree.
   getRepositoryRoot: () => activeRepositoryRoot,
 };
-const watchHooksImpl: WatchHooks = {
-  startFolderWatch,
-  stopFolderWatch,
-  getWatchedDir: () => folderWatch.getWatchedDir(),
-};
 const appHooksImpl: AppHooks = {
   setRendererDirty: (isDirty: boolean) => {
     activeRendererFlush?.session.setReportedDirtyState(!!isDirty);
-  },
-  sendToRenderer: (channel: string, ...args: unknown[]) => {
-    safeSend(channel, ...args);
   },
   // The shared error filters already printed the line to the console; this
   // puts it in the app log the Logs tab shows (file only, no double print).
@@ -1138,12 +1130,16 @@ const desktopHooksImpl: DesktopHooks = {
   showItemInFolder: (filePath: string) => {
     shell.showItemInFolder(filePath);
   },
+  openLogsFolder: async () => {
+    await mkdir(logsDir(), { recursive: true });
+    await shell.openPath(logsDir());
+  },
   getNativeTheme: () => ({ shouldUseDarkColors: nativeTheme.shouldUseDarkColors }),
   getUserDataPath: () => app.getPath('userData'),
 };
 
 // Media thumbnail generation is exposed through a hook instead of importing
-// `electron` from the SvelteKit handler bundle. Packaged adapter-node routes run
+// `electron` from the SvelteKit server build. Packaged +server.ts routes run
 // in a different ESM context, and importing Electron there can fail.
 const mediaHooksImpl: MediaHooks = {
   async createThumbnail(filePath: string, maxPx: number): Promise<string | null> {
@@ -1210,14 +1206,8 @@ const discoverScanDeps: ScanDeps = {
 // this object is no longer registered on its own the moment it's built, so
 // there is nothing to get wrong by reading it before `registerHostServices`
 // runs at the end of this section (ARCH #31).
-//
-// `loadLib` is assigned directly — no cast. `host-services.ts` stores
-// `HostServices.prefs` against the REAL `LibModule` type (this file's own,
-// same type `loadLib` already returns), not a fabricated narrow subset, so
-// `Promise<LibModule>` here needs no narrowing to satisfy the field.
-const prefsHooksImpl: PrefsHooks<LibModule, DesktopPrefs, AppSettings, ProjectStateMap | undefined, RecentFolder> = {
+const prefsHooksImpl: PrefsHooks = {
   readPrefs,
-  writePrefs,
   updatePrefs,
   readSettings,
   updateSettings,
@@ -1228,7 +1218,6 @@ const prefsHooksImpl: PrefsHooks<LibModule, DesktopPrefs, AppSettings, ProjectSt
   scanForProjects: (roots: string[], exclude: Set<string>) => scanForProjects(roots, exclude, discoverScanDeps),
   toggleFavoriteFolder,
   removeRecentFolder,
-  loadLib,
 };
 
 // Doctor-route hooks, exposed through the collapsed host object so the
@@ -1265,10 +1254,10 @@ const appImageHooksImpl: AppImageHooks = {
 // from app:classifyProject. Paths MUST be absolute (trusted SPA, but a relative
 // path could resolve against the main-process CWD by accident).
 
-// loadLib + operationLogPath for VCS SvelteKit server routes.
-const vcsHooksImpl: VcsHooks<LibModule> = {
-  loadLib,
+// operationLogPath + timers for the VCS SvelteKit server routes.
+const vcsHooksImpl: VcsHooks = {
   operationLogPath,
+  repairBackupDir: (slug) => repairBackupDirImpl(app.getPath("userData"), slug),
   // #273: pause both host timers around a copy switch's checkout so neither
   // fires against the mid-switch working tree (an auto-snapshot would commit
   // a half-checked-out tree) or targets the wrong branch (auto-sync pushes
@@ -1285,13 +1274,6 @@ const vcsHooksImpl: VcsHooks<LibModule> = {
     if (folderWatch.getWatchedDir() === dir) autoSync.schedule(dir);
   },
 };
-
-function requireAbsoluteDir(channel: string, projectDir: unknown): string {
-  if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
-    throw new Error(`${channel} requires an absolute project path`);
-  }
-  return projectDir;
-}
 
 // Error sanitization for vcs:* now lives in the shared server-bridge/friendly-errors
 // module (friendlyVcsError), consumed by the SvelteKit routes.
@@ -1314,8 +1296,7 @@ const GITHUB_HOST = "github.com";
 // call, clone-progress push) the old IPC handler used to do inline. Friendly-error sanitization (handleRemoteErrors) stays at the
 // ROUTE, matching every other remote:* route (e.g. remote/sync/+server.ts) —
 // these hooks are the raw operation.
-const remoteHooksImpl: RemoteHooks<LibModule> = {
-  loadLib,
+const remoteHooksImpl: RemoteHooks = {
   tokenStore: electronTokenStore,
   GITHUB_HOST,
   cloneRepository: async (args) => {
@@ -1594,7 +1575,6 @@ registerHostServices({
   sync: syncSettingsHooksImpl,
   updater: updaterHooksImpl,
   vcs: vcsHooksImpl,
-  watch: watchHooksImpl,
   write: writeHooksImpl,
 });
 
@@ -1656,7 +1636,6 @@ const exportController = new ExportController({
   tokenStore: electronTokenStore,
   gitIdentity: async () => gitIdentityFrom(await readSettings()),
   isOnline: () => net.isOnline(),
-  usePuppeteer: () => !!process.env.GUTTERPRESS_PUPPETEER,
   engineBrowser: createElectronEngineBrowser,
   getActiveExportSession,
   setActiveExportSession,
@@ -1666,6 +1645,7 @@ const exportController = new ExportController({
   rename: (from, to) => rename(from, to),
   rm: (p) => rm(p, { force: true }),
   consumeSavePath: (absPath) => savePathsImpl.consume(absPath),
+  isWithinProject: (absPath) => isWithinAnyRootCanonical(absPath, fsGuardImpl.projectRoots()),
   registerPickedPath: (absPath) => pickedFilesImpl.register([absPath]),
 });
 
@@ -1682,9 +1662,8 @@ secureHandle("api:build", (_e, args: ExportBuildArgs) => exportController.build(
 //
 // getStatus/check/download (ARCH review #8) are plain request/response —
 // no push stream, no live-BrowserWindow need — so they're SvelteKit server
-// routes (src/routes/api/updater/*), which import getStatus/checkForUpdates/
-// download from ./updater.ts directly (no hooks bag needed: they're already
-// plain exported functions with no main.ts-only state). applyNow stays on
+// routes (src/routes/api/updater/*), reached through `getHostServices().updater`
+// (updater.ts's state lives in THIS bundle — see updater-hooks.ts). applyNow stays on
 // IPC: it flushes the live renderer's unsaved buffer via
 // `mainWindow.webContents.send` before quitting — a live-BrowserWindow call
 // §8 sanctions.
@@ -1803,31 +1782,39 @@ if (!gotSingleInstanceLock) {
     focusMainWindow();
   });
 
-  // Record a closing line before the app actually exits — registered only in
-  // this branch (the primary instance) so the loser's own app.quit() above
-  // never writes a bogus "closing" entry into the log the PRIMARY instance is
-  // using; that process never reaches here.
+  // Before the app actually exits: record a closing line and wait out any
+  // in-flight git work. Registered only in this branch (the primary instance)
+  // so the loser's own app.quit() above never writes a bogus "closing" entry
+  // into the log the PRIMARY instance is using; that process never reaches
+  // here.
   //
   // before-quit fires before Electron proceeds with its default action, and
   // is NOT awaited by Electron — an async listener's promise is ignored, so
   // the only way to delay real quitting is the standard preventDefault-then-
-  // requeue dance: cancel this attempt synchronously, write the line, then
-  // call app.quit() again once the write settles (or after a short bound, so
-  // a stalled disk can't leave the app unable to quit at all — logAppEvent
-  // itself never rejects, but it can still hang on a wedged filesystem).
-  let closingLogStarted = false;
+  // requeue dance: cancel this attempt synchronously, do the work, then call
+  // app.quit() again once it settles. Every quit path (Cmd+Q, the updater's
+  // quit-and-install, the last window closing) lands here.
+  //
+  // - The log line is bounded (2s): logAppEvent never rejects, but it can hang
+  //   on a wedged filesystem, and a log line is not worth a stuck app.
+  // - Git work is NOT bounded (see waitForGitIdle): killing it mid-write is
+  //   what damaged 0.11.6 repositories.
+  // - Quit triggers arriving while we wait (double Cmd+Q, a second app.quit())
+  //   are cancelled too, not let through — letting one through is exactly
+  //   the mid-write kill this wait exists to prevent.
+  let quitPhase: "running" | "closing" | "ready" = "running";
   app.on("before-quit", (event) => {
-    if (closingLogStarted) return;
-    // Set BEFORE the async work starts, not in .finally() — before-quit
-    // listeners aren't awaited, so a second quit trigger arriving while the
-    // write is still in flight (double Cmd+Q, a second app.quit() call) would
-    // otherwise still see this false and start a duplicate write + timer.
-    closingLogStarted = true;
+    if (quitPhase === "ready") return;
     event.preventDefault();
+    if (quitPhase === "closing") return;
+    quitPhase = "closing";
     const timeout = new Promise<void>((resolve) => setTimeout(resolve, 2_000));
-    Promise.race([logAppEvent("[app] closing"), timeout]).finally(() => {
-      app.quit();
-    });
+    Promise.all([Promise.race([logAppEvent("[app] closing"), timeout]), waitForGitIdle()]).finally(
+      () => {
+        quitPhase = "ready";
+        app.quit();
+      },
+    );
   });
 }
 
@@ -1839,22 +1826,21 @@ app.whenReady().then(async () => {
   void logAppEvent(`[app] started ${app.getVersion()}`);
   app.setAppUserModelId?.(APP_USER_MODEL_ID);
   // In dev mode (VITE_DEV_SERVER_URL set, app NOT packaged) the SvelteKit dev
-  // server is already running externally — skip the local handler.js launch.
+  // server is already running externally — skip loading the built server.
   // In prod (or a packaged build where VITE_DEV_SERVER_URL is set by an
   // attacker — ARCH review finding #1, CRITICAL — resolveDevServerUrl()
-  // ignores it), start the adapter-node HTTP server and wire it to the
+  // ignores it), load the SvelteKit server from build/ and wire it to the
   // app:// protocol so the window only ever loads local content.
   if (!resolveDevServerUrl(app.isPackaged, process.env.VITE_DEV_SERVER_URL)) {
     try {
-      await startSvelteKitServer(slog, skAuthToken);
+      await loadSvelteKitServer(slog);
     } catch (err) {
       console.error("[sk-server] failed to start SvelteKit server:", err);
       // Non-fatal (ARCH review #28): registerAppProtocol still comes up and
-      // serves a styled retry page for every app:// request until
-      // skServerPort is set (corrupt install / port exhaustion / missing
-      // handler.js can all still resolve without a restart — e.g. a later
-      // manual retry). But a console.error alone stranded the author on a
-      // raw "SvelteKit server not started" page with zero explanation, so
+      // serves a styled retry page for every app:// request until the server
+      // has loaded (a corrupt install can still resolve without a restart —
+      // e.g. a later manual retry). But a console.error alone stranded the
+      // author on a raw "server not started" page with zero explanation, so
       // also surface it as a plain-language native dialog right away.
       dialog.showErrorBox(
         "Gutterpress couldn't start",
@@ -1865,7 +1851,7 @@ app.whenReady().then(async () => {
       );
     }
   }
-  registerAppProtocol(skAuthToken);
+  registerAppProtocol();
   registerUrlPreviewHeaderWatch();
   createWindow();
   appShellReady = true;
@@ -1900,6 +1886,19 @@ app.whenReady().then(async () => {
   loadLib().catch((err) => {
     console.warn("[prewarm] loadLib failed (non-fatal):", err);
   });
+
+  // First launch of an installed app: copy the bundled user guide + examples
+  // to ~/Documents/Gutterpress (see seed-samples.ts). Not in dev (no samples).
+  if (app.isPackaged) {
+    void (async () => {
+      if ((await readPrefs()).samplesSeeded) return;
+      await seedSamples(
+        path.join(process.resourcesPath, "samples"),
+        path.join(os.homedir(), "Documents", "Gutterpress"),
+      );
+      await updatePrefs((p) => ({ ...p, samplesSeeded: true }));
+    })().catch((err) => console.warn("[samples] seeding failed (non-fatal):", err));
+  }
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -1948,16 +1947,20 @@ app.on("window-all-closed", async () => {
     if (exportSession.win && !exportSession.win.isDestroyed()) {
       exportSession.win.destroy();
     }
-    await rm(exportSession.tempOutPath, { force: true }).catch(() => {});
+    if (exportSession.tempOutPath) {
+      await rm(exportSession.tempOutPath, { force: true }).catch(() => {});
+    }
     setActiveExportSession(null);
   }
   await previewOpen.stop();
   // Wait for the final exit push (started at the watcher's onStop when the
-  // window closed) so quitting does not kill the send mid-flight. It is
-  // bounded inside runExitPush, so this can delay quit by a few seconds at
-  // most; a pass that could not finish is picked up by the next launch's
-  // first tick, which always pushes. On macOS the app outlives the window,
-  // so the push simply completes in the background instead.
+  // window closed) and every other git operation still queued — the exit
+  // snapshot flush, a tick that was mid-merge — so quitting never kills git
+  // between its object and ref writes (see waitForGitIdle). On macOS the app
+  // outlives the window, so the work simply completes in the background.
   if (pendingExitSync) await pendingExitSync;
-  if (process.platform !== "darwin") app.quit();
+  if (process.platform !== "darwin") {
+    await waitForGitIdle();
+    app.quit();
+  }
 });

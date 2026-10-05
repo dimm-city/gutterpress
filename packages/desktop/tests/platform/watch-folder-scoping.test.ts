@@ -21,8 +21,7 @@
  * `electron/main.ts` is Electron's entry script — module-scope
  * `app.whenReady()`, `app.commandLine.appendSwitch(...)`, etc. — so, matching
  * the established convention for main.ts-only logic in this suite
- * (main-boot-and-splash.test.ts, migrated-ipc-routes.test.ts's "main.ts no
- * longer registers..." test), (a) and (c) below pin the fixed shape of
+ * (migrated-ipc-routes.test.ts's "main.ts no longer registers..." test), (a) and (c) below pin the fixed shape of
  * `fsGuardImpl.projectRoots()` and the `fs:watchFolder` handler via
  * source-text assertions rather than importing/executing main.ts. (b)
  * exercises the REAL `fs/read-file` route + the real project-scoping guard
@@ -129,7 +128,7 @@ test("(b) fs/read-file: a directory merely watched outside the active workspace 
     } as Parameters<typeof readFileRoute>[0]),
   );
   expect(status).toBe(403);
-  expect(message).toBe("fs:readFile: path is outside the open project");
+  expect(message).toBe("fs:readFile: path is outside the open book");
 });
 
 // ── (c) fs:watchFolder rejects a dirPath that isn't the active preview ─────

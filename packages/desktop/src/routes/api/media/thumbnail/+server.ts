@@ -1,8 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { getMediaHooks } from '../../../../../electron/server-bridge/media-hooks';
-import { defineRoute, requireAbsolute, requireWithinProjectRoot } from '../../_lib/route';
+import { defineRoute, getHostServices, requireAbsolute, requireWithinProjectRoot } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 const THUMB_MAX_PX = 192;
@@ -64,9 +63,7 @@ export const POST: RequestHandler = defineRoute<{ imagePath: string }>({
           dataUrl = `data:image/svg+xml;base64,${buf.toString('base64')}`;
         }
       } else {
-        const hooks = getMediaHooks();
-        if (!hooks) error(503, 'Media hooks not registered');
-        dataUrl = await hooks.createThumbnail(filePath, THUMB_MAX_PX);
+        dataUrl = await getHostServices().media.createThumbnail(filePath, THUMB_MAX_PX);
         if (!dataUrl && s.size <= THUMB_FALLBACK_MAX_BYTES && MEDIA_MIME[ext]) {
           const buf = await readFile(filePath);
           dataUrl = `data:${MEDIA_MIME[ext]};base64,${buf.toString('base64')}`;

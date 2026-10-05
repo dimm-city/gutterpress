@@ -142,7 +142,7 @@ test("fs/read-file: a sibling dir with a shared string prefix is rejected (403)"
     readFileRoute({ request: request({ path: path.join(siblingDir, "secret.md") }) } as Parameters<typeof readFileRoute>[0]),
   );
   expect(status).toBe(403);
-  expect(message).toBe("fs:readFile: path is outside the open project");
+  expect(message).toBe("fs:readFile: path is outside the open book");
 });
 
 test("fs/read-file: an unrelated outside path is rejected (403)", async () => {
@@ -201,7 +201,7 @@ test("fs/write-file: a sibling dir with a shared string prefix is rejected (403)
     writeFileRoute({ request: request({ path: target, content: "pwned" }) } as Parameters<typeof writeFileRoute>[0]),
   );
   expect(status).toBe(403);
-  expect(message).toBe("fs:writeFile: path is outside the open project");
+  expect(message).toBe("fs:writeFile: path is outside the open book");
   await expect(readFile(target, "utf8")).rejects.toThrow();
 });
 
@@ -267,7 +267,7 @@ test("fs/copy-file: dest OUTSIDE the project is rejected (403) even with an in-p
     } as Parameters<typeof copyFileRoute>[0]),
   );
   expect(status).toBe(403);
-  expect(message).toBe("fs:copyFile: path is outside the open project");
+  expect(message).toBe("fs:copyFile: path is outside the open book");
 });
 
 // `validate` only confines the DESTINATION DIRECTORY — the FINAL write path
@@ -295,7 +295,7 @@ test.skipIf(!canSymlink)(
       } as Parameters<typeof copyFileRoute>[0]),
     );
     expect(status).toBe(403);
-    expect(message).toBe("fs:copyFile: path is outside the open project");
+    expect(message).toBe("fs:copyFile: path is outside the open book");
     expect(await readFile(outsideTarget, "utf8")).toBe("original outside content");
   },
 );
@@ -304,7 +304,7 @@ test.skipIf(!canSymlink)(
 
 test("fs/read-file: fails closed (403) when no project is open (empty projectRoots)", async () => {
   registerHostServices({
-    ...(await import("../../electron/server-bridge/host-services")).getHostServices()!,
+    ...(await import("../../electron/server-bridge/host-services")).getHostServices(),
     fsGuard: { projectRoots: () => [], readOnlyRoots: () => [] },
   } as HostServices);
   const { status } = await caught(
@@ -329,7 +329,7 @@ test("fs/list-project-files: a directory outside the open project is rejected (4
     listProjectFilesRoute({ request: request({ projectDir: outsideDir }) } as Parameters<typeof listProjectFilesRoute>[0]),
   );
   expect(status).toBe(403);
-  expect(message).toBe("fs:listProjectFiles: path is outside the open project");
+  expect(message).toBe("fs:listProjectFiles: path is outside the open book");
 });
 
 test("fs/list-project-files: a sibling-prefix dir is rejected (403)", async () => {
@@ -354,7 +354,7 @@ test("media/list-images: a directory outside the open project is rejected (403)"
     listImagesRoute({ request: request({ projectDir: outsideDir }) } as Parameters<typeof listImagesRoute>[0]),
   );
   expect(status).toBe(403);
-  expect(message).toBe("media:listImages: path is outside the open project");
+  expect(message).toBe("media:listImages: path is outside the open book");
 });
 
 test("media/inspect: an image path outside the open project is rejected (403)", async () => {
@@ -362,7 +362,7 @@ test("media/inspect: an image path outside the open project is rejected (403)", 
     inspectImageRoute({ request: request({ imagePath: path.join(outsideDir, "secret.txt") }) } as Parameters<typeof inspectImageRoute>[0]),
   );
   expect(status).toBe(403);
-  expect(message).toBe("media:inspect: path is outside the open project");
+  expect(message).toBe("media:inspect: path is outside the open book");
 });
 
 test("media/thumbnail: an image path outside the open project is rejected (403)", async () => {
@@ -370,7 +370,7 @@ test("media/thumbnail: an image path outside the open project is rejected (403)"
     thumbnailRoute({ request: request({ imagePath: path.join(siblingDir, "secret.md") }) } as Parameters<typeof thumbnailRoute>[0]),
   );
   expect(status).toBe(403);
-  expect(message).toBe("media:thumbnail: path is outside the open project");
+  expect(message).toBe("media:thumbnail: path is outside the open book");
 });
 
 // ── log/read (code-review: read any absolute path's full contents) ─────────
@@ -389,7 +389,7 @@ test("log/read: an absolute path outside the read-allow-list is rejected (403)",
     logReadRoute({ request: request({ logPath: path.join(outsideDir, "secret.txt") }) } as Parameters<typeof logReadRoute>[0]),
   );
   expect(status).toBe(403);
-  expect(message).toBe("log:read: path is outside the open project");
+  expect(message).toBe("log:read: path is outside the open book");
 });
 
 // ── symlink escape (P1 review on isWithinRoot): path.resolve() normalizes
@@ -410,7 +410,7 @@ test.skipIf(!canSymlink)(
       } as Parameters<typeof readFileRoute>[0]),
     );
     expect(status).toBe(403);
-    expect(message).toBe("fs:readFile: path is outside the open project");
+    expect(message).toBe("fs:readFile: path is outside the open book");
   },
 );
 
@@ -445,7 +445,7 @@ test.skipIf(!canSymlink)(
       writeFileRoute({ request: request({ path: target, content: "pwned" }) } as Parameters<typeof writeFileRoute>[0]),
     );
     expect(status).toBe(403);
-    expect(message).toBe("fs:writeFile: path is outside the open project");
+    expect(message).toBe("fs:writeFile: path is outside the open book");
     await expect(readFile(path.join(outsideDir, "pwned.txt"), "utf8")).rejects.toThrow();
   },
 );
@@ -488,7 +488,7 @@ test.skipIf(!canSymlink)(
       } as Parameters<typeof writeFileRoute>[0]),
     );
     expect(status).toBe(403);
-    expect(message).toBe("fs:writeFile: path is outside the open project");
+    expect(message).toBe("fs:writeFile: path is outside the open book");
     await expect(readFile(danglingTarget, "utf8")).rejects.toThrow();
   },
 );

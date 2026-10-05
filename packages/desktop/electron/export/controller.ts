@@ -15,7 +15,9 @@
  *
  * The behavior is a faithful move of the original main.ts code: the validation,
  * the safety-gate branches, the temp-file rename, the progress events, and the
- * BuildError/ENOENT/cancel error mapping are preserved verbatim. The live
+ * BuildError/ENOENT/cancel error mapping are preserved verbatim. `format:
+ * "html"` takes a different delivery leg: `out` is a DIRECTORY and the lib's
+ * own directory target writes the bundle into it (no temp file, no rename). The live
  * BrowserWindow interaction lives ENTIRELY in the injected `engineBrowser`
  * (electron/engine-browser.ts) — this controller never touches a window
  * directly.
@@ -71,7 +73,8 @@ export interface ExportBuildResult {
   exportId: string;
   outDir: string;
   htmlPath?: string;
-  pdfPath: string;
+  /** The delivered PDF. Absent for `format: "html"`, which delivers a folder. */
+  pdfPath?: string;
   fingerprintPath?: string;
   diagnostics?: ExportBuildDiagnostic[];
 }
@@ -90,14 +93,12 @@ export interface ExportControllerDeps {
   gitIdentity: () => Promise<GitIdentityArgs>;
   /** Network reachability (Electron net.isOnline in production). */
   isOnline: () => boolean;
-  /** True when GUTTERPRESS_PUPPETEER opts out of the Electron engine browser. */
-  usePuppeteer: () => boolean;
   /**
    * Electron-native engine browser factory (electron/engine-browser.ts).
    * Threaded through to `lib.runBuild` as `engineBrowser` — `build-runner.ts`
-   * only calls it (lazily, one hidden `BrowserWindow` per build). The
-   * `usePuppeteer()` escape hatch falls back to the CLI's pooled external
-   * Chromium (and its usual Chromium-milestone preflight) when set.
+   * calls it in place of its own Chromium launcher (one hidden
+   * `BrowserWindow` per build) and closes what it returns. The desktop has
+   * exactly one PDF path: Electron's bundled Chromium.
    */
   engineBrowser: () => Promise<EngineBrowser>;
   /** Single active export session accessors (electron/pdf-export.ts). */
@@ -125,13 +126,25 @@ export interface ExportControllerDeps {
    */
   consumeSavePath: (absPath: string) => boolean;
   /**
-   * Record the PDF path this export actually WROTE as a picked-path capability
+   * True when `absPath` lies inside one of the fs-guard's `projectRoots()`
+   * (the open book), compared symlink-safely (`isWithinAnyRootCanonical`).
+   * The second way an `out` is authorized: the Publish wizard builds into a
+   * folder inside the book (default `<project>/dist`) with no Save dialog in
+   * the loop. Not an escalation — the fs routes already let the renderer
+   * write anywhere inside the open book.
+   */
+  isWithinProject: (absPath: string) => Promise<boolean>;
+  /**
+   * Record the path this export actually WROTE (the PDF, or the html output
+   * folder) as a picked-path capability
    * (2026-07-29 audit). `shell/show-in-folder` confines its reveal target to
    * the open project plus the read-only roots, but a Save-dialog destination
    * is deliberately outside the project — so the export's "Show in Folder"
    * toast would otherwise be refused. Registering the path the HOST wrote
    * means the reveal never has to trust a renderer-supplied path. Called only
-   * after the atomic rename succeeds: a failed export authorizes nothing.
+   * after the artifact is delivered: a failed export authorizes nothing. For
+   * an html build this is also what lets `publish:run` accept the output
+   * folder as its upload artifact.
    */
   registerPickedPath: (absPath: string) => void;
 }
@@ -159,20 +172,27 @@ export class ExportController {
     }
     const requestedOutPath = args.out;
     if (!requestedOutPath) {
-      throw new Error("Missing 'out' for PDF export");
+      throw new Error("Missing 'out' for export");
     }
-    // Finding #4 (2026-07-13 maintainer review): `out` must be a path the
-    // native Save dialog itself just returned (registered as a one-time
-    // capability by the `dialog:savePdf` route), not merely any absolute
-    // path the renderer happens to send. Checked BEFORE the session is
-    // minted below, so an unauthorized `out` never occupies the single-export
-    // slot or emits a progress event. Consuming here (not just checking) means
-    // a second `api:build` call replaying the same `out` — without a fresh
-    // Save dialog round-trip — is rejected too.
-    if (!this.deps.consumeSavePath(requestedOutPath)) {
+    // Finding #4 (2026-07-13 maintainer review): `out` must be a path a
+    // native dialog itself just returned (registered as a one-time
+    // capability by the `dialog:savePdf` / `dialog:pickOutputFolder`
+    // routes), not merely any absolute path the renderer happens to send —
+    // OR a path inside the open book. The latter is not an escalation: the
+    // fs routes already let the renderer write anywhere inside the open book,
+    // so building into `<project>/dist` grants nothing new. Checked BEFORE
+    // the session is minted below, so an unauthorized `out` never occupies
+    // the single-export slot or emits a progress event. Consuming here (not
+    // just checking) means a second `api:build` call replaying the same
+    // out-of-project `out` — without a fresh dialog round-trip — is rejected
+    // too.
+    if (
+      !this.deps.consumeSavePath(requestedOutPath) &&
+      !(await this.deps.isWithinProject(requestedOutPath))
+    ) {
       const err = new Error(
-        "The PDF's save location wasn't chosen via the Save dialog. " +
-        "Use \"Save PDF\" and pick a destination, then try again.",
+        "The save location wasn't chosen in a dialog and isn't inside your book. " +
+        "Pick a destination in the dialog, then try again.",
       );
       (err as Error & { code?: string }).code = "OUT_NOT_AUTHORIZED";
       throw err;
@@ -188,7 +208,15 @@ export class ExportController {
     // unchanged end-to-end) lets the renderer adopt the id — lighting up
     // Cancel immediately — and label the pill "Syncing latest changes…" for
     // as long as the gate takes.
-    const tempOutPath = `${requestedOutPath}.Gutterpress.tmp.pdf`;
+
+    // HTML takes none of the temp/workspace machinery below: `out` is a
+    // DIRECTORY the author chose (or one inside the book) and IS the
+    // delivery target — the lib's directory target stages the bundle in a
+    // sibling work dir and copies book.html/index.html/assets/fingerprint
+    // into it only once the build succeeds, so there is no partial output to
+    // rename into place or clean up.
+    const isHtml = format === "html";
+    const tempOutPath = isHtml ? undefined : `${requestedOutPath}.Gutterpress.tmp.pdf`;
     // WORKSPACE vs DESTINATION split (bug fix). `runBuild` writes book.html,
     // build-fingerprint.json, and every asset the book references into
     // `outDir` — that used to be derived from `path.dirname(tempOutPath)` via
@@ -202,9 +230,11 @@ export class ExportController {
     // is removed in the outer `finally`, alongside the temp PDF, regardless of
     // which path below the export exits through (including the sync gate's
     // own early throws).
-    const workspaceDir = await fsp.mkdtemp(path.join(os.tmpdir(), "Gutterpress-export-"));
-    const outDir = workspaceDir;
-    const pdfFileOverride = path.resolve(tempOutPath);
+    const workspaceDir = isHtml
+      ? null
+      : await fsp.mkdtemp(path.join(os.tmpdir(), "Gutterpress-export-"));
+    const outDir = workspaceDir ?? requestedOutPath;
+    const pdfFileOverride = tempOutPath ? path.resolve(tempOutPath) : undefined;
     const exportSession: ExportSession = {
       id: randomUUID(),
       canceled: false,
@@ -289,12 +319,30 @@ export class ExportController {
           skipPreValidate: args.skipPreValidate,
           skipPostValidate: args.skipPostValidate,
           allowShrink: args.allowShrink,
-          // Render with Electron's own Chromium unless explicitly opted out.
-          engineBrowser: this.deps.usePuppeteer() ? undefined : this.deps.engineBrowser,
+          // Render with Electron's own Chromium.
+          engineBrowser: this.deps.engineBrowser,
           rawArgs: { input: args.input, format, out: args.out },
         });
         this.deps.throwIfCanceled(exportSession);
-        await this.deps.rename(exportSession.tempOutPath, exportSession.outPath);
+        if (isHtml) {
+          // The lib already delivered the bundle into `out`. Authorize
+          // revealing it and publishing it as an upload artifact.
+          this.deps.registerPickedPath(requestedOutPath);
+          this.deps.sendProgress({
+            exportId: exportSession.id,
+            state: "success",
+            message: requestedOutPath,
+          });
+          return {
+            exportId: exportSession.id,
+            outDir: requestedOutPath,
+            htmlPath: result.htmlPath ?? undefined,
+            pdfPath: undefined,
+            fingerprintPath: result.fingerprintPath ?? undefined,
+            diagnostics: result.diagnostics,
+          };
+        }
+        await this.deps.rename(tempOutPath!, exportSession.outPath);
         // The PDF now exists at the author's chosen destination — authorize
         // revealing it (see `registerPickedPath`'s doc comment). After the
         // rename, so nothing is authorized unless a file was really written.
@@ -354,12 +402,14 @@ export class ExportController {
         throw e;
       } finally {
         this.deps.setActiveExportSession(null);
-        await this.deps.rm(exportSession.tempOutPath).catch(() => {});
+        if (tempOutPath) await this.deps.rm(tempOutPath).catch(() => {});
       }
     } finally {
       // The workspace is scratch space — only the PDF (renamed into place
       // above) may survive in the author's chosen folder.
-      await fsp.rm(workspaceDir, { recursive: true, force: true }).catch(() => {});
+      if (workspaceDir) {
+        await fsp.rm(workspaceDir, { recursive: true, force: true }).catch(() => {});
+      }
     }
   }
 }

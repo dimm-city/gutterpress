@@ -5,6 +5,268 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.10] - 2026-10-03
+
+### Added
+
+- **Troubleshooting → Report a problem.** Builds everything we need to look
+  into a bug — app and system versions, how the open book is set up (never
+  its text), and the app's recent log, with your home folder redacted —
+  shows it in full, and copies it or opens a prefilled GitHub issue. Nothing
+  is sent until you submit the issue. Every error toast and the
+  unsaved-changes dialog link to it.
+- **Troubleshooting → Sync.** A new tab for a book whose online backup keeps
+  failing. It leads with *Reconnect GitHub* for the expired login that makes
+  every backup fail with a sign-in error (signs you in again; books and
+  history untouched), then, for the open book:
+  - *Repair online backup* — the same repair offered in "Where your work is
+    kept".
+  - *Scorched earth* — the last resort. Copies the whole folder to a backup in
+    the app's data folder (kept, never deleted), deletes everything in the
+    folder, downloads a fresh copy from online, then copies your files from the
+    backup back on top (everything except the old history). Your files win;
+    files only the online copy has stay. The book is closed as the final step.
+    Asks once before it runs.
+
+### Changed
+
+- **Troubleshooting opens on Logs.** Logs is now the first and default tab,
+  ahead of Diagnostics and Sync.
+- **The desktop app serves itself in-process.** The window's requests are
+  answered by the app directly; there is no longer a local HTTP server, port,
+  session token or proxy. Nothing else on the computer can reach the app's
+  internals, and long operations such as downloading a large book from GitHub
+  no longer time out after five minutes.
+- **One Chromium launcher.** `gutterpress build` finds Chrome through
+  `CHROMIUM_PATH` (or the usual install locations) and launches it itself;
+  `puppeteer-core` is no longer a dependency. `PUPPETEER_EXECUTABLE_PATH`
+  still works as a deprecated alias.
+- **Plugins load with a plain import.** Installing an extension still pins an
+  exact version, verifies every tarball and vendors its full dependency tree;
+  loading it is now an ordinary `import()` of that vendored copy. The receipt,
+  snapshot and import-rewriting scheme that re-verified the tree on every
+  load is gone.
+
+### Removed
+
+- **`gutterpress lint` and `gutterpress audit`.** Both duplicated `validate`:
+  use `gutterpress validate <dir> --only source.stylelint` and
+  `gutterpress validate <dir> --category asset --phase pre`. The library no
+  longer exports `runLint`.
+- The `GUTTERPRESS_CHROMIUM` and `GUTTERPRESS_PREVIEW_INCREMENTAL`
+  environment variables (undocumented).
+
+### Fixed
+
+- **Open book from GitHub** no longer fails on a large repository with
+  "A request to the app's internal server failed. TypeError: fetch failed".
+- **Sync tools work.** Repair and Scorched earth used to be refused with
+  "path is outside the open book"; they now act on the open book.
+- Errors from the app's own routes read as a sentence instead of a raw
+  `{"message": …}` blob.
+- **Book settings fills the window.** Like the start screen, it takes over
+  the whole app view instead of squeezing into a side panel; close it with
+  the X or Esc to return to your book exactly as you left it.
+
+## [0.11.9] - 2026-10-01
+
+### Added
+
+- **Export is part of Publish.** The Export button is gone; *Publish* is the
+  one blue action. Its wizard starts with the format (PDF or website), then
+  always saves to a folder on this computer first — `dist` inside your book
+  by default, or any folder you choose, remembered in the manifest — and
+  only then sends that same file to the online destinations you pick. A
+  website export now really writes a folder on the desktop. "Save as
+  template" moved to *Setup → Details*.
+- **Page navigation and zoom live on the preview.** The preview pane has its
+  own strip, like the editor's, with the page picker and a zoom menu that
+  shows the current level. The top toolbar keeps only Edit/Read, Focus,
+  Setup and Publish.
+- **One-click tool installs.** *Troubleshooting → Diagnostics* now offers an
+  Install button for Ghostscript and qpdf wherever the computer has a
+  package manager Gutterpress can drive (apt, dnf or pacman via the system
+  password prompt; Homebrew; winget), and a Download button otherwise. The
+  manual commands stay under "Install manually".
+- **Logs tab actions.** *Open folder* reveals the log folder in your file
+  manager; *Clear logs* (asks once) deletes every log file.
+- **About is its own tab** on the start screen, between Help and
+  Troubleshooting, with the versions and the update check.
+- **Repair online backup.** When online backup keeps failing, *Where your
+  work is kept* now offers one button that fixes it. Repair downloads a fresh
+  copy of your book's online history and puts it under the files on this
+  computer: your files here stay exactly as they are and win over the online
+  copy, anything only the online copy has is brought back, and the old history
+  is kept aside (never deleted) in the app's data folder. Then a version is
+  saved and backed up. It asks once before it runs and says exactly what it
+  will do.
+
+### Fixed
+
+- **Picking a chapter moves the preview too.** Choosing a file from the
+  Chapter list in Focus, or from the Files tab, now scrolls the preview to
+  that chapter's first page instead of leaving it where it was.
+- **A damaged version only this computer had now says so.** Sync reported it
+  as "didn't complete — please try again", which could never help. It now
+  says the history can't be read and points at Repair online backup.
+
+## [0.11.8] - 2026-10-01
+
+### Changed
+
+- **Save lives in the editor.** The Save button left the top toolbar; the
+  editor toolbar's Save is now a labelled button that turns blue when you have
+  unsaved changes and quietly says "Saved" when you don't. Ctrl/Cmd+S still
+  saves.
+- **Book settings is now "Setup".** The toolbar button has a tools icon and
+  the word Setup, so it's easier to find.
+- **A quieter problems indicator.** The status bar shows a small badge — an
+  icon and a count — instead of the PROBLEMS strip. Click it to open the same
+  problems panel as before.
+- **Pick a chapter while focusing.** In Focus while editing, the slim bar has a
+  Chapter list of your book's files, so you can switch without leaving Focus.
+- **Open book… replaces the old Books tab buttons.** The bottom of the Books tab
+  now has just Open book… and New book. Open book… asks where the book is —
+  on this computer or on GitHub — and takes you to the right place. The
+  welcome screen is still one click away from Help.
+- **Help is just help; Troubleshooting has the rest.** The start screen's Help
+  tab now holds only how-to guidance and keyboard shortcuts. A new
+  Troubleshooting tab has three sections: Diagnostics (what your computer has,
+  and a button to copy the details when you ask for help), Logs, and About
+  (version and update check). The separate Logs tab is gone.
+- **The user guide and examples come with the app.** On first launch the
+  desktop app copies the Gutterpress User Guide (with Getting Started) and the
+  example books to Documents/Gutterpress, where they show up under Discovered
+  books. Your copies are never overwritten.
+
+## [0.11.7] - 2026-10-01
+
+### Changed
+
+- **Focus works while writing and while reading.** Focus is now an on/off
+  switch beside Edit and Read. It hides the left panel, the status bar and the
+  toolbars, leaving only your writing and pages plus a slim bar with Edit/Read,
+  Exit focus and (while reading) page navigation. After a few seconds the bar
+  slides up until only its edge peeks out at the top of the window; point at
+  it and it slides back down. Press Esc to leave Focus — it works even after
+  you've clicked into the pages — and your layout comes back exactly as it
+  was. The Ctrl+Shift+F shortcut is gone; use the Focus button and Esc.
+- **Back up now and Save a version now live in "Where your work is kept".**
+  The separate backup button in the status bar is gone. Open the dialog from
+  the save status to back up online or save a version. Save a version now is
+  always beside See previous versions, and saving when nothing changed simply
+  says there's nothing new to save.
+
+### Fixed
+
+- **Online backup no longer gets stuck failing with "merge failed".**
+  Closing Gutterpress while a backup was saving could leave an empty file in
+  the book's version history. Every later backup then failed the same way,
+  because the damaged file was never rewritten. Gutterpress now waits for
+  version-history work to finish before it quits, and writes those files in a
+  way an interrupted save can't damage. Books already affected repair
+  themselves on the next backup. If a damaged file can't be repaired, the
+  message now says the version history can't be read instead of asking you to
+  try again.
+
+## [0.11.6] - 2026-09-30
+
+### Changed
+
+- **"Where your work is kept" explains saving, versions and online backup.**
+  Clicking the save status now opens a short dialog in plain words: your
+  writing is saved on this computer as you type; a version is a saved copy
+  you can go back to (and how many files changed since the last one); and
+  whether the book is backed up online. Each part has the one button that
+  helps, such as Save a version now, Start keeping versions or Set up online
+  backup. The status bar and backup messages use the same words, and a
+  manual "Back up online now" updates the dialog right away.
+- **Books open ready to write.** Opening a book for the first time now shows
+  Edit — the editor beside the page — with the left panel open, instead of a
+  lone cover page. A layout or panel choice you have already made still wins.
+- **Book settings sits beside your book.** It docks on the right, so the
+  preview stays in view and updates as you change fonts and colors. Design
+  settings have plain names ("Text color", "Code font", "Line spacing") with
+  the CSS variable shown underneath, and the font pickers match the other
+  fields. On a window narrower than 900px it still covers the window.
+- **A clearer toolbar.** The Edit, Read or Focus button you picked stays
+  highlighted — it used to look disabled right after you clicked it — and
+  each one says what it shows. Export is the one main button, with Publish
+  beside it as a secondary one. The first time you enter Focus in a session,
+  a note says how to get back.
+- **Formatting extras in plain words.** The Features tab leads with the
+  built-in extras and what to type for each. npm packages and plugin files
+  are under Advanced, and npm is only searched once you open it.
+- **Turn on version history from Connections.** A book kept in a plain folder
+  now gets a button to start keeping previous versions on this computer.
+- **A steadier editor toolbar.** Every insert action is in one Insert menu, so
+  the toolbar keeps its shape when the left panel opens, and "…" appears only
+  for what doesn't fit.
+- **Creating a book takes three short steps** — name, template, then print
+  and save — with the Create button always in view and a check mark on the
+  cards you chose.
+- **Left-panel tabs show their names,** and a file's rename and delete buttons
+  appear when you point at or tab to its row.
+- **It's called a book everywhere.** Book settings, New book, the Books tab and
+  the app's messages now say "book" instead of mixing in "project".
+- **The name-and-email notice waits until it matters.** It appears for books
+  with version history once you save a version or start a sync, and says what
+  it is for in plain words.
+
+### Fixed
+
+- **The preview no longer re-breaks pages when you zoom.** Zooming used to
+  move some paragraphs onto a different page at certain zoom levels (for
+  example 50% versus 25%). Zoom now only changes how big the pages look, never
+  where they break (#318).
+- **Clearer save status.** The status popover now separates your edits
+  ("Saved on this computer"), version history ("Last version saved 3 days
+  ago") and the online backup, instead of "Saved" next to "Latest version 3
+  days ago". The status bar says "Edits saved".
+- **Readable editor suggestions.** The list that opens when you type `@` (and
+  in CSS files) follows the light or dark theme, keeps text readable on every
+  row and no longer cuts labels off.
+- **The zoom and view menus look like menus** — one panel with plain rows and
+  a quiet check on the current choice, in light and dark themes.
+- **Messages from version history, sync, GitHub and new-book creation say
+  "book" too.**
+- **The Problems list no longer covers the left panel.** It opens as a row of
+  its own above the status bar, keyboard focus moves into it, and a book with
+  no problems just says so — after it has been checked, not before.
+- **The toolbar and status bar narrow gracefully.** Publish and Export keep
+  their labels on a 900px window, previous and next page stay available at
+  800px, and the save status stays visible.
+- **The preview stays fitted to its pane.** A slow page measurement no longer
+  resets the zoom to 100% about ten seconds after a book opens.
+- **On a narrow window the left panel stops at the status bar,** so its New
+  book button is no longer hidden, and closing the panel with Esc is
+  remembered.
+- **Esc closes the Settings, Help and Logs page.** It could only be closed with
+  its X button. Esc still does nothing while you are typing in a field.
+- **In-app Help matches the app.** It no longer points at a toolbar Open
+  button, a Single / Two-page toggle or a Ctrl+O shortcut that do not exist.
+- **Easier to read and click.** Editor line numbers have enough contrast to
+  read comfortably, the status-bar settings and help buttons are larger click
+  targets, and the status-bar gear is now named "App preferences" so it is
+  not confused with the toolbar's Book settings gear.
+- **Welcome screen polish.** The book search box uses the normal font, the
+  "No recent books" hint is easier to read, and the version label is hidden
+  instead of showing "vunknown" when the version is unavailable.
+
+## [0.11.5] - 2026-09-29
+
+### Fixed
+
+- **Sync failures record the step and original cause.** Technical details now
+  include a run ID, runtime version, push mode, elapsed time, and a final
+  outcome for every completed attempt. Merge, checkout, snapshot, and fetch
+  errors retain their diagnostic details with credentials removed. Background
+  errors also carry the log path to the status pill.
+- **Unreadable conflict files no longer disappear into another merge error.**
+  Sync preserves the original read failure. Unsupported merges are only
+  reported as unrelated histories after checking that no common history exists.
+  Invalid retry settings cannot create an unbounded retry loop.
+
 ## [0.11.4] - 2026-09-28
 
 ### Fixed

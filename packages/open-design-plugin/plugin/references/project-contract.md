@@ -91,7 +91,7 @@ model.
 
 ```bash
 gutterpress preview ./books/core-book      # live paginated preview, default port 3579
-gutterpress lint    ./books/core-book      # print-safety CSS checks
+gutterpress validate ./books/core-book     # print-safety CSS + source checks
 gutterpress build   ./books/core-book --format pdf
 gutterpress doctor                         # environment diagnosis
 ```

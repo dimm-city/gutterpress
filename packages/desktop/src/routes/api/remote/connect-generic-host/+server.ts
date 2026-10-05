@@ -1,14 +1,9 @@
-import { getHooks, handleRemoteErrors, type LibModule, type RemoteHooks, type TokenStore } from '../_hooks';
-import { defineRoute } from '../../_lib/route';
+import { handleRemoteErrors } from '../../../../../electron/server-bridge/friendly-errors';
+import { defineRoute, getHostServices, loadLib } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = defineRoute<
-  { host?: string; username?: string; token?: string; repoUrl?: string },
-  RemoteHooks<LibModule, TokenStore>
->({
-  hooks: getHooks,
-  hooksUnavailableMessage: 'Remote hooks not available',
-  call: async ({ body, hooks }) =>
+export const POST: RequestHandler = defineRoute<{ host?: string; username?: string; token?: string; repoUrl?: string }>({
+  call: async ({ body }) =>
     handleRemoteErrors('remote:connectGenericHost', async () => {
       if (
         !body ||
@@ -19,10 +14,7 @@ export const POST: RequestHandler = defineRoute<
       ) {
         throw new Error('remote:connectGenericHost requires { host, token }');
       }
-      const lib = await hooks.loadLib();
-      if (!lib.connectGenericHost) {
-        throw new Error('connectGenericHost not available in this version of the lib');
-      }
+      const lib = await loadLib();
       // Validates with a refs probe BEFORE returning — a bad paste never
       // reaches the credential store.
       const credential = await lib.connectGenericHost({
@@ -31,7 +23,7 @@ export const POST: RequestHandler = defineRoute<
         token: body.token,
         ...(body.repoUrl ? { repoUrl: body.repoUrl } : {}),
       });
-      await hooks.tokenStore.set(credential.host, credential);
+      await getHostServices().remote.tokenStore.set(credential.host, credential);
       // Response must NOT include the token — only redacted status.
       return {
         connected: true,

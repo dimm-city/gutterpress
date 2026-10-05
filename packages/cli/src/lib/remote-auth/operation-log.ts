@@ -9,8 +9,8 @@
  * it survives even if the process crashes mid-operation.
  *
  * SECURITY INVARIANT: this logger NEVER writes secrets, tokens, credentials,
- * or full remote URLs with embedded auth. Callers must pass only sanitized
- * data (repo slug, branch name, short OIDs, error codes, outcome status).
+ * or full remote URLs with embedded auth. All fields are sanitized at the
+ * write boundary; callers must still avoid supplying arbitrary request data.
  *
  * The logger is injectable: callers pass a `logFile` path and get a file
  * logger; omit it and a no-op logger is used (backward compatible — existing
@@ -27,8 +27,7 @@
  *
  * Cross-platform: uses `node:fs` appendFileSync + `node:path`. The caller
  * is responsible for providing a valid directory (the logger creates the
- * file but NOT the parent directory — that's the caller's job, e.g. the
- * desktop ensures `userData/logs/` exists before passing the path).
+ * file and its parent directory when needed).
  *
  * Compatible with `bun build --compile`: no runtime package.json reads, no
  * computed-path dynamic imports, no native bindings — just `fs.appendFileSync`.
@@ -50,6 +49,65 @@ export interface OperationLogger {
 
 /** Structured key-value fields appended after the step. No secrets. */
 export type LogData = Record<string, string | number | boolean | string[] | undefined>;
+
+interface LogOptions {
+  context?: LogData;
+  /** Mutable per-operation list; credentials may be resolved after logging starts. */
+  secrets?: readonly string[];
+}
+
+/** One line, bounded, with credentials removed BEFORE truncation. */
+export function sanitizeLogText(value: string, secrets: readonly string[] = []): string {
+  let text = value;
+  for (const secret of secrets) {
+    if (!secret) continue;
+    for (const form of [secret, encodeURIComponent(secret)]) {
+      text = text.split(form).join("[redacted]");
+    }
+  }
+  return text
+    .replace(/\/\/[^/\s]*@/g, "//")
+    .replace(/([?&](?:access_token|token|password|secret|key|code)=)[^&#\s]*/gi, "$1[redacted]")
+    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9+/_.=~-]+/gi, "$1 [redacted]")
+    .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)/g, "[redacted]")
+    .replace(/[\s\x00-\x1f\x7f]+/g, " ")
+    .trim()
+    .slice(0, 6000);
+}
+
+/** Allowlist Git/OS diagnostic fields; never serialize request/config/credential objects. */
+export function errorLogData(error: unknown): LogData {
+  const out: LogData = { error: error == null ? String(error) : undefined };
+  let current = error;
+  const seen = new Set<unknown>();
+  for (let depth = 0; depth < 3 && current != null && !seen.has(current); depth++) {
+    seen.add(current);
+    const prefix = depth === 0 ? "" : `cause${depth}_`;
+    if (typeof current !== "object") {
+      out[`${prefix}error`] = String(current);
+      break;
+    }
+    const err = current as Record<string, unknown>;
+    out[`${prefix}error`] = typeof err.message === "string" ? err.message : "Unknown error";
+    for (const key of ["code", "name", "caller", "stack", "syscall", "path"]) {
+      if (typeof err[key] === "string") out[`${prefix}${key}`] = err[key] as string;
+    }
+    const data = err.data as Record<string, unknown> | undefined;
+    if (data && typeof data === "object") {
+      for (const key of ["statusCode", "reason", "prettyDetails", "oid", "ref", "what", "filepath",
+        "filepaths", "bothModified", "deleteByUs", "deleteByTheirs"]) {
+        const value = data[key];
+        if (typeof value === "string" || typeof value === "number") out[`${prefix}${key}`] = value;
+        else if (Array.isArray(value)) {
+          out[`${prefix}${key}`] = value.filter((v): v is string => typeof v === "string").slice(0, 50);
+          if (value.length > 50) out[`${prefix}${key}Count`] = value.length;
+        }
+      }
+    }
+    current = err.cause;
+  }
+  return out;
+}
 
 // ── No-op logger (default when logFile is not configured) ────────────────────
 
@@ -78,6 +136,7 @@ export function createFileLogger(
   logFile: string,
   operation: string,
   minLevel: LogLevel = "debug",
+  options: LogOptions = {},
 ): OperationLogger {
   // Ensure the parent directory exists so the first appendFileSync doesn't
   // throw ENOENT. The caller SHOULD have done this, but defense in depth.
@@ -94,8 +153,9 @@ export function createFileLogger(
   function write(level: LogLevel, step: string, message: string, data?: LogData): void {
     if (LEVEL_ORDER[level] < LEVEL_ORDER[minLevel]) return;
     const ts = new Date().toISOString();
-    const fields = formatData(data);
-    const line = `[${ts}] ${level.toUpperCase().padEnd(5)} ${operation}: step=${step}${fields} | ${message}\n`;
+    const clean = (value: string) => sanitizeLogText(value, options.secrets);
+    const fields = formatData({ ...options.context, ...data }, clean);
+    const line = `[${ts}] ${level.toUpperCase().padEnd(5)} ${clean(operation)}: step=${clean(step)}${fields} | ${clean(message)}\n`;
     try {
       appendFileSync(logFile, line, "utf8");
     } catch {
@@ -121,22 +181,23 @@ export function createFileLogger(
 export function resolveLogger(
   logFile: string | undefined,
   operation: string,
+  options: LogOptions = {},
 ): OperationLogger {
   if (!logFile) return noop;
-  return createFileLogger(logFile, operation);
+  return createFileLogger(logFile, operation, "debug", options);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function formatData(data?: LogData): string {
+function formatData(data: LogData | undefined, clean: (value: string) => string): string {
   if (!data) return "";
   const parts: string[] = [];
   for (const [key, value] of Object.entries(data)) {
     if (value === undefined) continue;
     if (Array.isArray(value)) {
-      parts.push(`${key}=${value.join(",")}`);
+      parts.push(`${clean(key)}=${clean(value.join(","))}`);
     } else {
-      parts.push(`${key}=${String(value)}`);
+      parts.push(`${clean(key)}=${clean(String(value))}`);
     }
   }
   return parts.length > 0 ? " " + parts.join(" ") : "";

@@ -73,7 +73,7 @@ async function makeProjectDir(manifestYaml?: string): Promise<string> {
 
 // ── M46: uniform optional positional [input-dir] ────────────────────────────
 
-describe("M46: validate/preflight/audit accept a positional project directory", () => {
+describe("M46: validate/preflight accept a positional project directory", () => {
   test("`gutterpress validate <dir>` validates the given dir, not cwd", async () => {
     // A manifest with an unknown preset makes resolution fail loudly and
     // distinctly for THIS directory — proof the positional was actually used
@@ -113,17 +113,6 @@ describe("M46: validate/preflight/audit accept a positional project directory", 
     }
   }, 30000);
 
-  test("`gutterpress audit <dir>` uses the real citty positional (not a hand-rolled args._ read)", async () => {
-    const dir = await makeProjectDir("preset: totally-bogus-preset\n");
-    try {
-      const { exitCode, stderr } = runCli(["audit", dir]);
-      expect(exitCode).toBe(2);
-      expect(stderr).toContain("totally-bogus-preset");
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  }, 30000);
-
   test("`gutterpress preflight <dir> --pdf <missing.pdf>` accepts the positional project directory", async () => {
     const dir = await makeProjectDir("preset: totally-bogus-preset\n");
     try {
@@ -155,18 +144,6 @@ describe("M46: unexpected extra positionals are a UsageError (exit 2), uniformly
     expect(stderr).toContain("gutterpress validate");
   }, 30000);
 
-  test("`gutterpress audit a b` rejects the extra positional", async () => {
-    const { exitCode, stderr } = runCli(["audit", "a", "b"]);
-    expect(exitCode).toBe(2);
-    expect(stderr).toContain("gutterpress audit");
-  }, 30000);
-
-  test("`gutterpress lint a b` rejects the extra positional", async () => {
-    const { exitCode, stderr } = runCli(["lint", "a", "b"]);
-    expect(exitCode).toBe(2);
-    expect(stderr).toContain("gutterpress lint");
-  }, 30000);
-
   test("`gutterpress new Name Extra` rejects the extra positional before touching disk", async () => {
     const dir = await makeTempDir("gutterpress-cli-contract-new-");
     try {
@@ -185,7 +162,7 @@ describe("M46: unexpected extra positionals are a UsageError (exit 2), uniformly
 // ── M47: one exit-code contract ─────────────────────────────────────────────
 
 describe("M47: exit-code contract (0 clean / 1 findings / 2 usage / 3 pipeline)", () => {
-  test("`gutterpress lint` exits 1 (not 2) on CSS findings", async () => {
+  test("`gutterpress validate --only source.stylelint` exits 1 (not 2) on CSS findings", async () => {
     const dir = await makeTempDir("gutterpress-cli-contract-lint-");
     try {
       await mkdir(path.join(dir, "css"), { recursive: true });
@@ -200,14 +177,14 @@ describe("M47: exit-code contract (0 clean / 1 findings / 2 usage / 3 pipeline)"
         "preset: dtrpg\nstyles:\n  - css/print.css\n",
         "utf8"
       );
-      const { exitCode } = runCli(["lint", dir]);
+      const { exitCode } = runCli(["validate", dir, "--only", "source.stylelint"]);
       expect(exitCode).toBe(1);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   }, 30000);
 
-  test("`gutterpress lint` on clean CSS exits 0", async () => {
+  test("`gutterpress validate --only source.stylelint` on clean CSS exits 0", async () => {
     const dir = await makeTempDir("gutterpress-cli-contract-lint-clean-");
     try {
       await mkdir(path.join(dir, "css"), { recursive: true });
@@ -217,7 +194,7 @@ describe("M47: exit-code contract (0 clean / 1 findings / 2 usage / 3 pipeline)"
         "preset: dtrpg\nstyles:\n  - css/print.css\n",
         "utf8"
       );
-      const { exitCode } = runCli(["lint", dir]);
+      const { exitCode } = runCli(["validate", dir, "--only", "source.stylelint"]);
       expect(exitCode).toBe(0);
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -283,9 +260,7 @@ describe("C7: every command rejects unknown flags", () => {
     ["preview", ["preview"]],
     ["build", ["build"]],
     ["publish", ["publish"]],
-    ["lint", ["lint"]],
     ["validate", ["validate"]],
-    ["audit", ["audit"]],
     ["preflight", ["preflight", "--pdf", "missing.pdf"]],
     ["doctor", ["doctor"]],
     ["ext parent", ["ext"]],
@@ -341,9 +316,7 @@ describe("strict value-option handling", () => {
     ["preview", ["preview", "--port"]],
     ["build", ["build", "--title"]],
     ["publish", ["publish", "--provider"]],
-    ["lint", ["lint", "--manifest"]],
     ["validate", ["validate", "--input"]],
-    ["audit", ["audit", "--only"]],
     ["preflight", ["preflight", "--pdf"]],
   ];
 
@@ -394,7 +367,7 @@ describe("ext add usage errors", () => {
       ]);
 
       expect(exitCode).toBe(2);
-      expect(stderr).toContain(`Project directory does not exist: ${missing}`);
+      expect(stderr).toContain(`Book folder does not exist: ${missing}`);
       expect(fs.existsSync(missing)).toBe(false);
     } finally {
       await rm(parent, { recursive: true, force: true });

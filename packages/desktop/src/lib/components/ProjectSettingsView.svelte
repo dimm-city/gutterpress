@@ -1,10 +1,14 @@
 <script lang="ts">
   /**
-   * ProjectSettingsView — the full-window "Project settings" surface, patterned
-   * after the app SettingsView (header + close, tab bar, one cohesive slice per
-   * tab). It replaced the left-sidebar Config tab (and with it the retired
+   * ProjectSettingsView — the "Book settings" surface, patterned after the
+   * app SettingsView (header + close, tab bar, one cohesive slice per tab). It
+   * replaced the left-sidebar Config tab (and with it the retired
    * ProjectConfigPanel): the sidebar's 260px column was a cramped frame for
    * manifest editing, theme browsing, and plugin management.
+   *
+   * +page.svelte mounts it as a full-window layer, like the start screen: the
+   * workspace is inert underneath until the writer closes it with the X or
+   * Esc (Esc defers to any dialog open on top, e.g. "Save as template…").
    *
    * This is the COMPOSITION ROOT for the per-domain section controllers
    * (UX review M14): it instantiates one `*SectionController` per domain and
@@ -60,19 +64,24 @@
   import DesignSection from "$lib/components/config/DesignSection.svelte";
   import FeaturesSection from "$lib/components/config/FeaturesSection.svelte";
   import ProjectConnectionsSection from "$lib/components/ProjectConnectionsSection.svelte";
+  import SaveTemplateDialog from "$lib/components/SaveTemplateDialog.svelte";
   import { PRINT_TOOL_IDS } from "$lib/publish-targets";
 
   let {
     projectDir,
     repoRoot = null,
+    initialTab = "details",
     toast = null,
     onEditRawCss,
     onClose,
     onOpenAccounts,
+    onVersionHistoryEnabled,
   }: {
     projectDir: string | null;
     /** The repo the open book belongs to — lets the pickers offer SHARED styles. */
     repoRoot?: string | null;
+    /** Tab to open on. Read once at mount (the view is keyed per open). */
+    initialTab?: "details" | "connections";
     toast?: ToastController | null;
     /** Escape hatch: open a stylesheet in the raw-CSS editor (the parent
      *  closes this view first). */
@@ -82,14 +91,12 @@
     /** Open the app Settings view on the Accounts tab (the parent closes
      *  this view first). Used by the Connections tab's guidance. */
     onOpenAccounts?: () => void;
+    /** The Connections tab just turned on version history: re-read the project's classification. */
+    onVersionHistoryEnabled?: (projectDir: string) => void;
   } = $props();
 
   // Covers the initial parallel load of all sections.
   let loadingAll = $state(true);
-  // Focus target on open: opening the view makes the whole workspace (and the
-  // toolbar button that opened it) inert, which would drop keyboard focus to
-  // <body> — so the close button takes it, mirroring dialog behavior.
-  let closeBtnEl = $state<HTMLButtonElement | undefined>(undefined);
 
   const projectDirAccessor = () => projectDir;
 
@@ -127,7 +134,7 @@
         .listDir(dir)
         .then((entries) => entries.filter((e) => !e.isDir && /\.md$/i.test(e.name)).map((e) => e.name)),
     // Which print tools are absent, for the publish-targets note — the same
-    // /api/doctor data the Help tab shows.
+    // /api/doctor data Troubleshooting → Diagnostics shows.
     listMissingPrintTools: () =>
       api
         .doctor()
@@ -136,7 +143,7 @@
             .filter((t) => !t.found && PRINT_TOOL_IDS.includes(t.id))
             .map((t) => t.id),
         ),
-    onSaved: () => toast?.success?.("Project details saved."),
+    onSaved: () => toast?.success?.("Book details saved."),
     onError: (msg) => toast?.error?.(msg),
   });
 
@@ -159,7 +166,7 @@
     importFromFile: (dir) => api.extension.importFromFile(dir),
     importFromUrl: (dir, url) => api.extension.importFromUrl(dir, url),
     onLookAdded: (label) => {
-      toast?.success?.(`${label} added — close Project settings to see it in the preview. Use Design to fine-tune.`);
+      toast?.success?.(`${label} added — it now shows in the preview. Use Design to fine-tune.`);
     },
     afterLookChange: async () => {
       await Promise.all([styles.loadStyles(), design.loadDesign()]);
@@ -168,7 +175,6 @@
 
   // ── Lifecycle: load every section's data on mount ────────────────────────
   onMount(() => {
-    closeBtnEl?.focus();
     let cancelled = false;
     void loadAll().finally(() => {
       if (!cancelled) loadingAll = false;
@@ -206,7 +212,8 @@
     { id: "features", label: "Features" },
     { id: "connections", label: "Connections" },
   ];
-  let activeTab = $state<ProjectSettingsTab>("details");
+  // svelte-ignore state_referenced_locally
+  let activeTab = $state<ProjectSettingsTab>(initialTab);
   let tabEls = $state<Record<ProjectSettingsTab, HTMLButtonElement | undefined>>({
     details: undefined,
     look: undefined,
@@ -231,15 +238,36 @@
   function close() {
     onClose?.();
   }
+
+  // Esc closes the layer, like the start screen — unless a dialog on top of
+  // it (Save as template…) is the one that should take the key.
+  function onWindowKeydown(e: KeyboardEvent) {
+    if (e.key !== "Escape" || e.defaultPrevented) return;
+    if (document.querySelector('[role="dialog"]')) return;
+    e.preventDefault();
+    close();
+  }
+
+  // Move focus into the layer when it appears, so Esc and Tab start here and
+  // not on the inert workspace behind it.
+  function focusOnShow(el: HTMLElement) {
+    el.focus();
+  }
+
+  // "Save as template…" (Details tab) — mounted fresh per open so its form
+  // resets; the opening button is remembered for focus restore.
+  let templateDialogTrigger = $state<HTMLButtonElement | null>(null);
 </script>
 
-<div class="settings-view" aria-busy={loadingAll}>
+<svelte:window onkeydown={onWindowKeydown} />
+
+<div class="settings-view" aria-busy={loadingAll} tabindex="-1" use:focusOnShow>
   <header class="settings-header">
-    <h2 id="project-settings-title">Project settings</h2>
-    <button bind:this={closeBtnEl} class="settings-close" onclick={close} title="Close project settings (Esc)" aria-label="Close project settings"><Icon name="x" size={16} /></button>
+    <h2 id="project-settings-title">Book settings</h2>
+    <button class="settings-close" onclick={close} title="Close book settings (Esc)" aria-label="Close book settings"><Icon name="x" size={16} /></button>
   </header>
 
-  <div class="tab-bar" role="tablist" aria-label="Project settings sections" onkeydown={onTablistKeydown} tabindex="-1">
+  <div class="tab-bar" role="tablist" aria-label="Book settings sections" onkeydown={onTablistKeydown} tabindex="-1">
     {#each TABS as tab (tab.id)}
       <button
         id="project-settings-tab-{tab.id}"
@@ -263,13 +291,13 @@
   >
     {#if !hasProject}
       <div class="empty">
-        <p>Open a project folder to configure it.</p>
+        <p>Open a book to configure it.</p>
       </div>
     {:else if loadingAll}
       <p class="loading">Loading…</p>
     {:else}
       {#if activeTab === "details"}
-        <DetailsSection controller={details} />
+        <DetailsSection controller={details} onSaveAsTemplate={(el) => (templateDialogTrigger = el)} />
       {/if}
 
       {#if activeTab === "look"}
@@ -277,7 +305,7 @@
              merged under one writer-shaped "Look & style" heading (the tab
              button itself is shortened to "Look", #243 — see the header
              comment). The stylesheet list is a plain always-visible section
-             - project settings has no collapsible sections. -->
+             - book settings has no collapsible sections. -->
         <section class="block look-style">
           <h3>Look &amp; style</h3>
           <LookSection controller={extensions} />
@@ -299,10 +327,18 @@
         <!-- This project's connection details (moved from the app Settings'
              Connections tab, 2026-07-30). Accounts/credentials stay global in
              Settings → Accounts; onOpenAccounts routes there. -->
-        <ProjectConnectionsSection {projectDir} {onOpenAccounts} />
+        <ProjectConnectionsSection {projectDir} {onOpenAccounts} {onVersionHistoryEnabled} />
       {/if}
     {/if}
   </div>
+{#if templateDialogTrigger && projectDir}
+    <SaveTemplateDialog
+      {projectDir}
+      {toast}
+      triggerEl={templateDialogTrigger}
+      onClose={() => (templateDialogTrigger = null)}
+    />
+  {/if}
 </div>
 
 <style>
@@ -318,15 +354,23 @@
     min-height: 0;
     background: var(--app-bg);
     color: var(--app-text-secondary);
+    outline: none;
+  }
+  /* Header and tab bar share the body's reading measure, so the whole view
+     reads as one centred column on a wide window — the start screen's shape. */
+  .settings-header,
+  .tab-bar {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 860px;
+    margin: 0 auto;
   }
   .settings-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-shrink: 0;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--app-border);
-    background: var(--app-surface-raised);
+    padding: clamp(16px, 5vh, 40px) 18px 12px;
   }
   .settings-header h2 {
     margin: 0;

@@ -282,7 +282,7 @@ export async function scaffoldProject(
   if (!name) {
     throw new CreateProjectErrorImpl(
       "invalid-name",
-      "A project name is required.",
+      "A book name is required.",
     );
   }
 
@@ -383,7 +383,7 @@ export async function scaffoldProject(
   } catch (e) {
     throw new CreateProjectErrorImpl(
       "scaffold-io",
-      `Could not create the project files: ${e instanceof Error ? e.message : String(e)}`,
+      `Could not create the book files: ${e instanceof Error ? e.message : String(e)}`,
     );
   }
 
@@ -446,7 +446,7 @@ export async function scaffoldProject(
   } catch (e) {
     throw new CreateProjectErrorImpl(
       "scaffold-io",
-      `Could not finalise the project files: ${e instanceof Error ? e.message : String(e)}`,
+      `Could not finalize the book files: ${e instanceof Error ? e.message : String(e)}`,
     );
   }
 
@@ -543,7 +543,7 @@ export async function adoptFolder(options: AdoptFolderOptions): Promise<CreatePr
   if (MANIFEST_FILENAMES.some((name) => existsSync(path.join(dir, name)))) {
     throw new CreateProjectErrorImpl(
       "target-exists",
-      "This folder is already a Gutterpress project.",
+      "This folder is already a Gutterpress book.",
     );
   }
 
@@ -655,7 +655,7 @@ export async function adoptFolder(options: AdoptFolderOptions): Promise<CreatePr
  * APPENDED, not prepended or reformatted, so any content the author already
  * has stays exactly as they wrote it.
  */
-async function ensureGitignoreHasDist(projectDir: string): Promise<void> {
+export async function ensureGitignoreHasDist(projectDir: string): Promise<void> {
   const gitignorePath = path.join(projectDir, ".gitignore");
 
   let existing: string | null = null;

@@ -136,7 +136,7 @@ bookDir = mkdtempSync(join(tmpdir(), "gutterpress-editoropens-"));
 cpSync(srcFixture, bookDir, { recursive: true });
 log(`fixture: ${bookDir}`);
 
-// ── 2. launch, with Edit mode ALREADY selected before the book opens ─────────
+// ── 2. launch a fresh profile — Edit mode is already the default ─────────────
 const target = exeArg ? resolve(exeArg) : join(desktopDir, "out", "main", "main.js");
 if (!existsSync(target)) fail(`no ${target} — run \`npm run build && npm run electron:build\` first`);
 const isMainJs = target.endsWith(".js");
@@ -150,12 +150,11 @@ writeFileSync(
   join(userDataDir, "gutterpress-prefs.json"),
   JSON.stringify({ lastProjectDir: bookDir, leftPanel: { open: true, activeTab: "toc", width: 300 } }),
 );
-// `preview.mode: "editor"` is the whole point: the workspace is in Edit mode
-// BEFORE any book is open, which is the state the toggle path never reaches.
-writeFileSync(
-  join(userDataDir, "app-settings.json"),
-  JSON.stringify({ settingsSchemaVersion: 2, preview: { mode: "editor" } }),
-);
+// No app-settings.json on purpose: this drive used to seed `preview.mode:
+// "editor"`, but Edit is now the default for a profile with no saved choice, so
+// leaving it unseeded drives exactly what a first-time writer gets — the
+// workspace in Edit mode BEFORE any book is open, the state the toggle path
+// never reaches (and the CONTROL below fails if that default regresses).
 appArgv.push(`--user-data-dir=${userDataDir}`);
 
 const useXvfb = process.platform === "linux" && !process.env.DISPLAY;
@@ -275,7 +274,7 @@ log("project opened");
 // CONTROL — the app really is in Edit mode with the pane rendered. If either of
 // these fails the harness is wrong (bad settings key), not the product.
 if (await evalJs(`document.querySelector('button[aria-label="Edit"]')?.getAttribute('aria-pressed')`) !== "true") {
-  fail("CONTROL: workspace is not in Edit mode — the preview.mode setting did not apply");
+  fail("CONTROL: workspace is not in Edit mode — a fresh profile must open in Edit (DEFAULT_SETTINGS.preview.mode)");
 }
 if (!(await evalJs(`!!document.querySelector('.editor-pane')`))) {
   fail("CONTROL: no .editor-pane rendered in Edit mode");

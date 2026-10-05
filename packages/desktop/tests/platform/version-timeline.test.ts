@@ -39,21 +39,21 @@ describe("versionKind / versionLabel — writer-facing classification from messa
   test("every backup-style machine message (old and new spellings) is automatic", () => {
     for (const m of AUTOMATIC_MESSAGES) {
       expect(versionKind(m)).toBe("automatic");
-      expect(versionLabel(m)).toBe("Automatic backup");
+      expect(versionLabel(m)).toBe("Automatic version");
     }
   });
 
   test("the converge commits read as combined-with-the-online-copy", () => {
     for (const m of COMBINED_MESSAGES) {
       expect(versionKind(m)).toBe("combined");
-      expect(versionLabel(m)).toBe("Combined with the online copy");
+      expect(versionLabel(m)).toBe("Combined with the online backup");
     }
   });
 
-  test("history-start commits read as project creation", () => {
+  test("history-start commits read as book creation", () => {
     for (const m of CREATED_MESSAGES) {
       expect(versionKind(m)).toBe("created");
-      expect(versionLabel(m)).toBe("Project created");
+      expect(versionLabel(m)).toBe("Book created");
     }
   });
 
@@ -150,7 +150,7 @@ describe("autoRunSummary — the collapsed row's one-line story", () => {
       snap({ timestamp: 1_000_000, message: "Automatic snapshot" }),
     ];
     expect(autoRunSummary(entries)).toBe(
-      `Backed up automatically · ${at(1_000_000)}–${at(4_000_000)} · 3 times`,
+      `Versions made automatically · ${at(1_000_000)}–${at(4_000_000)} · 3 times`,
     );
   });
 
@@ -159,7 +159,7 @@ describe("autoRunSummary — the collapsed row's one-line story", () => {
       snap({ timestamp: 1_000_500, message: "Automatic snapshot" }),
       snap({ timestamp: 1_000_000, message: "Automatic snapshot" }),
     ];
-    expect(autoRunSummary(entries)).toBe(`Backed up automatically · ${at(1_000_000)} · 2 times`);
+    expect(autoRunSummary(entries)).toBe(`Versions made automatically · ${at(1_000_000)} · 2 times`);
   });
 
   test("never says snapshot/commit/git", () => {

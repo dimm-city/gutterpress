@@ -30,6 +30,15 @@ export function logsDir(userDataDir: string): string {
   return path.join(userDataDir, "logs");
 }
 
+// Where "Repair online backup" moves a book's old `.git` (lib repair.ts). Under
+// userData — never inside the book, where it would be committed — one folder
+// per repair so nothing is ever overwritten, and kept indefinitely: it is the
+// only copy of versions that were never backed up online.
+export function repairBackupDir(userDataDir: string, repoSlug: string, when: Date = new Date()): string {
+  const stamp = when.toISOString().replace(/[:.]/g, "-");
+  return path.join(userDataDir, "repair-backups", slugifyRepo(repoSlug), stamp);
+}
+
 // The sync/recovery operation log lives under userData/logs/. One file per
 // project slug so logs from different projects don't interleave. The file is
 // appended to (not truncated) so a user can see history across sessions.
@@ -43,8 +52,9 @@ export function operationLogPath(userDataDir: string, repoSlug: string): string 
 // The SPACE in the name is what keeps it distinguishable from a project's log
 // at a glance: slugifyRepo maps every char outside [A-Za-z0-9_-] to "_", so no
 // project log's name can ever contain one.
+export const APP_LOG_FILENAME = "Gutterpress app.log";
 export function appLogPath(userDataDir: string): string {
-  return path.join(logsDir(userDataDir), "Gutterpress app.log");
+  return path.join(logsDir(userDataDir), APP_LOG_FILENAME);
 }
 
 /**

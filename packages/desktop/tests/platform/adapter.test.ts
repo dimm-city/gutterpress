@@ -14,7 +14,6 @@ function makeBridge() {
       return ret;
     };
   const bridge = {
-    apiVersion: 1,
     updater: { getStatus: rec("updater.getStatus", Promise.resolve({})) },
     onNativeThemeUpdated: rec("onNativeThemeUpdated", () => {}),
     onOpenMarkdownFile: rec("onOpenMarkdownFile", () => {}),
@@ -93,7 +92,6 @@ test("ElectronAdapter maps openFolder → openDirectory and delegates 1:1", asyn
 
   await p.build({ input: { key: "/proj", displayName: "proj" }, format: "pdf" });
   await p.startPreview({ input: { key: "/proj", displayName: "proj" } });
-  expect(p.apiVersion).toBe(1);
 
   const methods = calls.map((c) => c.method);
   expect(methods).toContain("build");

@@ -1,14 +1,13 @@
 import { DEFAULT_SETTINGS } from "$lib/platform/contract";
 import type { AppSettings, DeepPartial } from "$lib/platform/contract";
 import { deepMergeSettings } from "$lib/settings-merge";
-import { getPrefsHooks } from '../../../electron/server-bridge/prefs-hooks';
+import { getHostServices } from '../../../electron/server-bridge/host-services';
 import { gitIdentityFrom, type GitIdentityArgs } from '../../../electron/git-identity';
 
 async function readAppSettings(): Promise<AppSettings> {
   try {
-    const hooks = getPrefsHooks();
-    if (!hooks) return DEFAULT_SETTINGS;
-    return deepMergeSettings(DEFAULT_SETTINGS, await hooks.readSettings() as DeepPartial<AppSettings>);
+    const stored = await getHostServices().prefs.readSettings();
+    return deepMergeSettings(DEFAULT_SETTINGS, stored as DeepPartial<AppSettings>);
   } catch {
     return DEFAULT_SETTINGS;
   }

@@ -33,6 +33,11 @@ interface HarnessOpts {
    */
   consumeSavePath?: (absPath: string) => boolean;
   /**
+   * Fake for the in-project containment check. Defaults to "never inside",
+   * so the save-path capability alone decides, as before.
+   */
+  isWithinProject?: (absPath: string) => Promise<boolean>;
+  /**
    * Flips the (by-then-minted) active session's `canceled` flag while
    * syncProject is in flight — simulates a Cancel click landing during the
    * pre-export sync gate (M28).
@@ -56,7 +61,7 @@ interface Harness {
   syncArgs: unknown[];
   /** Args of every fake runBuild() call, in order — lets tests assert on the
    * resolved `outDir`/`pdfFileOverride` (the workspace/destination split). */
-  buildArgs: Array<{ outDir?: string; pdfFileOverride?: string | null; allowShrink?: boolean }>;
+  buildArgs: Array<{ outDir?: string; pdfFileOverride?: string | null; allowShrink?: boolean; format?: string }>;
   /** Paths handed to `registerPickedPath`, in order (the reveal capability). */
   registeredPicks: string[];
 }
@@ -68,7 +73,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
   const removed: string[] = [];
   const latched = new Set<string>();
   const syncArgs: unknown[] = [];
-  const buildArgs: Array<{ outDir?: string; pdfFileOverride?: string | null; allowShrink?: boolean }> = [];
+  const buildArgs: Array<{ outDir?: string; pdfFileOverride?: string | null; allowShrink?: boolean; format?: string }> = [];
   const registeredPicks: string[] = [];
   const counters = { sync: 0, build: 0 };
   let session: ExportSession | null = opts.activeSession ?? null;
@@ -82,7 +87,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
       if (opts.cancelDuringSync && session) session.canceled = true;
       return opts.syncProject ? opts.syncProject() : { status: "up-to-date" };
     },
-    runBuild: async (buildOpts: { outDir?: string; pdfFileOverride?: string | null; allowShrink?: boolean }) => {
+    runBuild: async (buildOpts: { outDir?: string; pdfFileOverride?: string | null; allowShrink?: boolean; format?: string }) => {
       counters.build += 1;
       buildArgs.push(buildOpts);
       const r = opts.runBuild ? opts.runBuild() : { outDir: "/out", htmlPath: "/out/x.html", fingerprintPath: "/out/fp.json" };
@@ -96,7 +101,6 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     tokenStore: {} as ExportControllerDeps["tokenStore"],
     gitIdentity: async () => opts.gitIdentity ?? {},
     isOnline: () => opts.isOnline ?? true,
-    usePuppeteer: () => false,
     pdfRenderer: (async () => {}) as ExportControllerDeps["pdfRenderer"],
     engineBrowser: (async () => ({}) as never) as ExportControllerDeps["engineBrowser"],
     getActiveExportSession: () => session,
@@ -116,6 +120,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
       removed.push(p);
     },
     consumeSavePath: opts.consumeSavePath ?? (() => true),
+    isWithinProject: opts.isWithinProject ?? (async () => false),
     registerPickedPath: (absPath: string) => {
       registeredPicks.push(absPath);
     },
@@ -243,6 +248,73 @@ test("an 'out' the Save dialog registered is consumed exactly once — a replay 
     .build({ input: "/book", out: "/out/book.pdf" })
     .catch((e) => e);
   expect((err as Error & { code?: string }).code).toBe("OUT_NOT_AUTHORIZED");
+});
+
+// ── Publish wizard: building into a folder inside the open book ────────────
+
+test("an 'out' inside the open book builds without any save-path grant", async () => {
+  const h = makeHarness({
+    consumeSavePath: () => false,
+    isWithinProject: async (p) => p.startsWith("/book/"),
+  });
+  const res = await h.controller.build({ input: "/book", format: "pdf", out: "/book/dist/book.pdf" });
+  expect(res.pdfPath).toBe("/book/dist/book.pdf");
+  expect(h.runBuildCalls).toBe(1);
+});
+
+test("an 'out' outside the open book with no grant is refused with OUT_NOT_AUTHORIZED", async () => {
+  const h = makeHarness({
+    consumeSavePath: () => false,
+    isWithinProject: async (p) => p.startsWith("/book/"),
+  });
+  const err = await h.controller
+    .build({ input: "/book", format: "html", out: "/home/author/elsewhere" })
+    .catch((e) => e);
+  expect((err as Error & { code?: string }).code).toBe("OUT_NOT_AUTHORIZED");
+  expect(h.getSession()).toBeNull();
+  expect(h.progress.length).toBe(0);
+  expect(h.runBuildCalls).toBe(0);
+});
+
+// ── format: "html" — `out` is a directory the lib delivers the bundle into ──
+
+test("an html build targets the out directory directly: no temp PDF, no rename, folder registered", async () => {
+  const h = makeHarness({
+    runBuild: () => ({
+      outDir: "/book/dist",
+      htmlPath: "/book/dist/book.html",
+      pdfPath: null,
+      fingerprintPath: "/book/dist/build-fingerprint.json",
+    }),
+  });
+  const res = await h.controller.build({ input: "/book", format: "html", out: "/book/dist" });
+
+  expect(h.buildArgs.length).toBe(1);
+  expect(h.buildArgs[0]!.format).toBe("html");
+  expect(h.buildArgs[0]!.outDir).toBe("/book/dist");
+  expect(h.buildArgs[0]!.pdfFileOverride).toBeUndefined();
+  expect(h.renamed).toEqual([]);
+  expect(h.removed).toEqual([]);
+  // The folder is what was written — reveal/publish may use it.
+  expect(h.registeredPicks).toEqual(["/book/dist"]);
+  expect(res.outDir).toBe("/book/dist");
+  expect(res.htmlPath).toBe("/book/dist/book.html");
+  expect(res.fingerprintPath).toBe("/book/dist/build-fingerprint.json");
+  expect(res.pdfPath).toBeUndefined();
+  expect(res.exportId).toBeTruthy();
+  expect(h.progress.some((p) => p.state === "success" && p.message === "/book/dist")).toBe(true);
+  expect(h.getSession()).toBeNull();
+});
+
+test("a failed html build registers nothing", async () => {
+  const h = makeHarness({
+    runBuild: () => {
+      throw new Error("render blew up");
+    },
+  });
+  await h.controller.build({ input: "/book", format: "html", out: "/book/dist" }).catch(() => {});
+  expect(h.registeredPicks).toEqual([]);
+  expect(h.progress.some((p) => p.state === "error")).toBe(true);
 });
 
 // ── 2026-07-29 audit: the reveal capability for the written PDF ────────────

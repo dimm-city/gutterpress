@@ -110,6 +110,13 @@ writeFileSync(
     showLandingAtStartup: false,
   }),
 );
+// Inline editing happens in the viewer, and this drive asserts the editor pane
+// stays closed around it (assertEditorClosed) — so start in Read; a profile with
+// no saved mode opens in Edit.
+writeFileSync(
+  join(userDataDir, "app-settings.json"),
+  JSON.stringify({ settingsSchemaVersion: 2, preview: { mode: "viewer" } }),
+);
 
 const packaged = /(?:\.AppImage|\.exe)$/i.test(launchTarget) || launchTarget.includes(".app/");
 if (requirePackaged && !packaged) {
@@ -152,6 +159,32 @@ try {
   const page = await waitForAppWindow(electronApp);
   log(`window at ${page.url()}`);
 
+  // Renders follow file writes a beat later (watcher debounce), often more than
+  // one per write. Keys sent while the book frame is being swapped go to a frame
+  // that is about to be replaced and are lost, so remember when the preview last
+  // rendered and let a step wait for quiet instead of racing it.
+  await page.evaluate(() => {
+    window.__etestRenderAt = 0;
+    window.addEventListener("message", (e) => {
+      const d = e.data;
+      if (d && d.type === "gutterpress:event" && (d.name === "renderingStarted" || d.name === "renderingComplete")) {
+        window.__etestRenderAt = performance.now();
+      }
+    });
+  });
+  async function waitForQuietPreview(quietMs = 1500) {
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
+      const quiet = await page.evaluate(
+        (ms) => performance.now() - window.__etestRenderAt > ms && !document.querySelector(".preview-updating-pill"),
+        quietMs,
+      );
+      if (quiet) return;
+      await sleep(100);
+    }
+    throw new Error("the preview was still re-rendering after 20s");
+  }
+
   // Test-side-only instrumentation: an ADDITIONAL listener on the real
   // `webContents` "context-menu" event, alongside the app's own handler
   // (electron/main.ts ~L731). This does not modify, remove, or race the
@@ -186,7 +219,7 @@ try {
   const marginBox = book.locator('.gp-marginbox[data-box="top-center"]');
 
   function isFrameSwapError(error) {
-    return /Cannot find context|Execution context was destroyed|Frame was detached/i.test(
+    return /Cannot find context|Execution context was destroyed|Frame was detached|Unable to adopt element handle from a different document/i.test(
       error?.message || String(error),
     );
   }
@@ -298,8 +331,9 @@ try {
     // known-inert point in the MAIN document (never inside either iframe:
     // mousedown inside an iframe does not bubble to the top document's
     // `window` listener that ContextMenu.svelte relies on for outside-click
-    // dismissal). (5,5) resolves to the static `.identity-banner` status
-    // strip, confirmed to have no click handler.
+    // dismissal). (5,5) resolves to the toolbar's own padding, confirmed to
+    // have no click handler. (It used to be the `.identity-banner` strip, which
+    // now only appears once a version is saved or a sync starts.)
     await page.mouse.click(5, 5, { button: "left" });
     await page.waitForTimeout(150);
   }
@@ -411,6 +445,9 @@ try {
   // ── 4. Shift+F10 opens the menu too (keyboard path, listener lives in the
   //      cross-origin book iframe) ────────────────────────────────────────────
   await step("4. Shift+F10 opens the context menu (keyboard path)", async () => {
+    // Step 3d ends by restoring the fixture on disk, which triggers hot reloads
+    // that can still be landing here. A key pressed mid-swap is lost.
+    await waitForQuietPreview();
     // Left-click a NEUTRAL point first — the margin box has no
     // data-source-line, so this cannot trigger elementActivated/click-to-
     // source (which would steal focus back into the editor and confound the
@@ -980,49 +1017,84 @@ try {
     }
   });
 
-  // ── 13. The workspace mode has TWO writers, and they must not race ────────
-  // `setMode` assigns the live mode; `settings.set` notifies synchronously and
-  // echoes the persisted value back through the settings sink. Focus persists
-  // as "editor" (waking into a viewer-less window would be hostile), so
-  // entering Focus FROM Read writes a value the sink has not seen — its dedupe
-  // misses it and the echo assigns `mode = "editor"`. With the assignment
-  // first, that echo landed last and Ctrl+Shift+F from Read opened Edit with
-  // the viewer still up. Only Read → Focus reaches it: from Edit the echo is
-  // the value the sink already holds, so the dedupe swallows it.
-  await step("13. Ctrl+Shift+F enters Focus from Read, on both round trips", async () => {
-    // `aria-pressed` is the app's own signal (same source workspace-mode.mjs
-    // reads), and the buttons stay in the DOM at every width — CSS only
-    // decides which form is visible.
+  // ── 13. Focus is a toggle on top of Edit AND Read, not a third mode ───────
+  // The toolbar's Focus toggle hides the chrome (app toolbar, left panel,
+  // status bar, editor toolbar) behind a minimal bar and leaves the persisted
+  // mode alone; Esc restores exactly the mode that was active — including an
+  // Esc pressed with the keyboard inside the preview iframe (forwarded by
+  // preview-bridge.js), which is where a Read-mode click leaves it.
+  await step("13. The Focus toggle works over Read and over Edit; Esc (even from the preview) restores the mode", async () => {
     const modeActive = async (label) =>
       (await page.locator(`.mode-group button[aria-label="${label}"]`).getAttribute("aria-pressed")) === "true";
-    const previewHidden = async () =>
-      (await page.locator(".preview-pane").getAttribute("aria-hidden")) === "true";
+    const inFocus = async () => (await page.locator(".focus-bar").count()) > 0;
 
-    // Picking Read while ALREADY in Read is this action performed as a no-op:
-    // it must leave the live mode and its persisted echo agreeing, so the
-    // Ctrl+Shift+F below starts from a genuine Read.
-    await setWorkspaceMode(page, "Read");
-    await setWorkspaceMode(page, "Read");
-    if (!(await modeActive("Read"))) throw new Error("the toolbar does not report Read before Ctrl+Shift+F");
-    if (await previewHidden()) throw new Error("the viewer is already hidden in Read mode");
+    for (const mode of ["Read", "Edit"]) {
+      await setWorkspaceMode(page, mode);
+      if (!(await modeActive(mode))) throw new Error(`the toolbar does not report ${mode} before Focus`);
+      const statusBarBefore = await page.locator(".status-bar").count();
 
-    for (const round of [1, 2]) {
-      await page.keyboard.press("Control+Shift+F");
-      await page.waitForTimeout(300);
-      if (!(await modeActive("Focus"))) {
-        throw new Error(
-          `round ${round}: Ctrl+Shift+F from Read did not land in Focus ` +
-          `(Edit=${await modeActive("Edit")}, Read=${await modeActive("Read")}, ` +
-          `viewer hidden=${await previewHidden()})`,
-        );
+      for (const round of [1, 2]) {
+        await page.locator("#focus-toggle-btn").click();
+        await page.waitForTimeout(300);
+        if (!(await inFocus())) throw new Error(`${mode} round ${round}: the Focus toggle did not enter Focus`);
+        if ((await page.locator(".toolbar").count()) > 0) throw new Error(`${mode} round ${round}: app toolbar still present in Focus`);
+        // Round 2 presses Esc with the keyboard inside the preview iframe.
+        if (round === 2) await page.locator("iframe").first().click({ position: { x: 40, y: 40 } });
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(300);
+        if (await inFocus()) throw new Error(`${mode} round ${round}: Esc did not leave Focus`);
+        if (!(await modeActive(mode))) throw new Error(`${mode} round ${round}: leaving Focus did not restore ${mode}`);
+        if ((await page.locator(".status-bar").count()) !== statusBarBefore) {
+          throw new Error(`${mode} round ${round}: status bar not restored after Focus`);
+        }
       }
-      if (!(await previewHidden())) throw new Error(`round ${round}: Focus left the viewer on screen`);
-
-      await page.keyboard.press("Control+Shift+F");
-      await page.waitForTimeout(300);
-      if (!(await modeActive("Read"))) throw new Error(`round ${round}: leaving Focus did not return to Read`);
-      if (await previewHidden()) throw new Error(`round ${round}: leaving Focus left the viewer hidden`);
     }
+  });
+
+  // ── 14. Edit+Focus carries a file switcher (Read+Focus keeps page nav) ─────
+  await step("14. Edit+Focus shows a chapter <select>; switching changes the editor's file and Focus stays on", async () => {
+    writeFileSync(join(fixturePath, "02-second.md"), "# Second\n\nFOCUS-SWITCH-MARKER paragraph.\n");
+    // Pad the first chapter so the second starts several pages in: choosing it must scroll the preview there.
+    writeFileSync(chapterPath, `${readFileSync(chapterPath, "utf8")}\n${Array.from({ length: 60 }, (_, i) => `Padding paragraph ${i + 1} so the first chapter spans several preview pages and the second begins on a later one.\n`).join("\n")}`);
+    // The fixture manifest pins `source.files`; the switcher follows it (book order).
+    const manifestPath = join(fixturePath, "manifest.yaml");
+    writeFileSync(manifestPath, readFileSync(manifestPath, "utf8").replace("    - 01-chapter.md\n", "    - 01-chapter.md\n    - 02-second.md\n"));
+    await setWorkspaceMode(page, "Edit");
+    await page.locator("#focus-toggle-btn").click();
+    await page.waitForTimeout(300);
+    const select = page.locator('.focus-bar select[aria-label="Chapter"]');
+    await select.waitFor({ state: "attached", timeout: 10_000 });
+    const opts = await select.locator("option").evaluateAll((os) => os.map((o) => o.value));
+    if (opts.join() !== "01-chapter.md,02-second.md") throw new Error(`unexpected options: ${opts}`);
+    await page.mouse.move(400, 1); // reveal the tucked bar for the screenshot
+    await page.waitForTimeout(400);
+    if (process.env.GP_SHOTS) await page.screenshot({ path: `${process.env.GP_SHOTS}/edit-focus-select.png` });
+    await waitForQuietPreview();
+    const currentPage = () => book.locator("body").evaluate(() => window.previewAPI.getCurrentPage());
+    const pageBefore = await currentPage();
+    await select.selectOption("02-second.md");
+    await page.waitForFunction(
+      () => document.querySelector(".cm-content")?.textContent?.includes("FOCUS-SWITCH-MARKER"),
+      null,
+      { timeout: 10_000 },
+    );
+    if ((await page.locator(".focus-bar").count()) === 0) throw new Error("selecting a file left Focus");
+    if ((await select.inputValue()) !== "02-second.md") throw new Error("select does not show the open file");
+    // The preview follows a user-initiated file switch to the new chapter's first page.
+    const deadline = Date.now() + 10_000;
+    let pageAfter = pageBefore;
+    while (Date.now() < deadline && !(pageAfter > pageBefore)) {
+      await sleep(200);
+      pageAfter = await currentPage();
+    }
+    if (!(pageAfter > pageBefore)) throw new Error(`preview stayed on page ${pageBefore} after choosing 02-second.md (now ${pageAfter})`);
+    if (process.env.GP_SHOTS) await page.screenshot({ path: `${process.env.GP_SHOTS}/edit-focus-switched.png` });
+    // Read+Focus: page nav only, no file select.
+    await page.locator('.focus-bar button[title^="Read"]').click();
+    await page.waitForTimeout(300);
+    if ((await page.locator('.focus-bar select[aria-label="Chapter"]').count()) !== 0) throw new Error("file select present in Read+Focus");
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
   });
 } catch (err) {
   console.error("[etest] uncaught:", err);

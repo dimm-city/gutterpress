@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 import { resolveChromiumExecutable } from "../../lib/chromium.ts";
 import { getAssetPath } from "../../lib/embedded-assets.ts";
-import { closeBrowser, getBrowser } from "../../lib/browser-pool.ts";
+import { closeBrowser, getBrowser } from "./test-support/browser.ts";
 
 /**
  * Two-up/spread view mode (`applySpreadMode`) must RE-PRESENT the pages the
@@ -117,7 +117,7 @@ testIf(
       );
       const { url, close } = await serveDir(dir, fixture);
       try {
-        const browser = await getBrowser(RENDER_TEST_TIMEOUT_MS);
+        const browser = await getBrowser();
         const page = await browser.newPage();
         let report: SpreadReport;
         try {
@@ -125,7 +125,7 @@ testIf(
           // would make every rectangle below a scaled number and hide a real
           // misalignment behind rounding.
           await page.setViewport({ width: 1600, height: 1200 });
-          await page.goto(url, { waitUntil: "networkidle0" });
+          await page.goto(url);
           await page.waitForFunction("window.Gutterpress && window.Gutterpress.totalPages > 0");
 
           report = await page.evaluate(() => {

@@ -113,7 +113,7 @@ never an accident of omission. The preset-derived fallback in
   Custom page sizes are chosen from common trim sizes (exact point values —
   A4/A5 are not round inch numbers) or typed in **inches**, converted to
   points on write. When a checked destination's tools are missing (from the
-  same `/api/doctor` data the Help tab shows), the tool-gap explanation
+  same `/api/doctor` data Troubleshooting → Diagnostics shows), the tool-gap explanation
   appears inline, so opting out of print checks is an informed choice rather
   than a surprise error later.
 - **Saved custom templates pre-fill rather than hide.** A template saved

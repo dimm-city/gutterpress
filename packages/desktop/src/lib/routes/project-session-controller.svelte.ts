@@ -143,7 +143,7 @@ export class ProjectSessionController {
    * regardless of whether Gutterpress can auto-sync to it. Distinguishes a project
    * that HAS an online copy but isn't Gutterpress-synced (SSH remote, or an HTTPS
    * remote with no stored credential) from a purely local one — so the status
-   * bar's "Online copy" row never wrongly reads "Kept on this computer" when a
+   * bar's "Online backup" row never wrongly reads "Not set up" when a
    * remote is in fact configured (user feedback). False for non-git folders.
    */
   projectHasRemote = $state(false);

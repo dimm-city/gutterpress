@@ -1,14 +1,8 @@
 import { join } from 'node:path';
-import { getDesktopHooks, type DesktopHooks } from '$lib/server/host-hooks.js';
-import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
+import { defineRoute, getHostServices, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = defineRoute<
-  { projectDir: string; name: string; sharedRefs?: 'vendor' | 'exclude' },
-  DesktopHooks
->({
-  hooks: getDesktopHooks,
-  hooksUnavailableMessage: 'Desktop hooks not registered',
+export const POST: RequestHandler = defineRoute<{ projectDir: string; name: string; sharedRefs?: 'vendor' | 'exclude' }>({
   validate: async (raw) => {
     const body = raw as Record<string, unknown>;
     const projectDir = await requireProjectDir(body.projectDir, 'tpl/save-as-template');
@@ -18,8 +12,8 @@ export const POST: RequestHandler = defineRoute<
     const sharedRefs = body.sharedRefs === 'exclude' ? 'exclude' : 'vendor';
     return { projectDir, name, sharedRefs };
   },
-  call: async ({ body, hooks }) => {
-    const templatesRoot = join(hooks.getUserDataPath(), 'templates');
+  call: async ({ body }) => {
+    const templatesRoot = join(getHostServices().desktop.getUserDataPath(), 'templates');
     const lib = await loadLib();
     return lib.saveProjectAsTemplate({
       projectDir: body.projectDir,

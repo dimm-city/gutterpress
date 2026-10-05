@@ -1,4 +1,4 @@
-import { getHooks, handlePublishErrors, resolveDestinationProvider, type LibPublishDestination } from '../../_hooks';
+import { handlePublishErrors, resolveDestinationProvider } from '../../_hooks';
 import { defineRoute, requireProjectDir } from '../../../_lib/route';
 import type { RequestHandler } from './$types';
 
@@ -7,12 +7,7 @@ import type { RequestHandler } from './$types';
  * root). Provider-neutral, same rationale as destinations/list — see that
  * route's header.
  */
-export const POST: RequestHandler = defineRoute<
-  { projectDir: string; providerId?: string; name?: string },
-  NonNullable<ReturnType<typeof getHooks>>
->({
-  hooks: getHooks,
-  hooksUnavailableMessage: 'Publish hooks not available',
+export const POST: RequestHandler = defineRoute<{ projectDir: string; providerId?: string; name?: string }>({
   // In `validate`, not `call` — see publish/run's note on handlePublishErrors.
   validate: async (raw) => {
     const body = raw as { projectDir?: unknown; providerId?: unknown; name?: unknown };
@@ -22,13 +17,12 @@ export const POST: RequestHandler = defineRoute<
       ...(typeof body.name === 'string' ? { name: body.name } : {}),
     };
   },
-  call: async ({ body, hooks }): Promise<LibPublishDestination> =>
+  call: async ({ body }) =>
     handlePublishErrors('publish:destinations:create', async () => {
       if (!body.providerId || typeof body.name !== 'string' || !body.name.trim()) {
         throw new Error('publish:destinations:create requires { providerId, name }');
       }
       const { provider, req } = await resolveDestinationProvider(
-        hooks,
         body.projectDir,
         body.providerId,
         'createDestination',

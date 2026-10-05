@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import { resolveChromiumExecutable } from "../../lib/chromium.ts";
 import { getAssetPath } from "../../lib/embedded-assets.ts";
-import { closeBrowser, getBrowser } from "../../lib/browser-pool.ts";
+import { closeBrowser, getBrowser } from "./test-support/browser.ts";
 
 /**
  * `@page { background }` paints the whole SHEET — margins included — in
@@ -67,11 +67,11 @@ testIf(
       );
       const { url: root, close } = await serveDir(dir, "page-background.html");
       try {
-        const browser = await getBrowser(RENDER_TEST_TIMEOUT_MS);
+        const browser = await getBrowser();
         const page = await browser.newPage();
         let sheets: Array<{ page: string; side: string; bg: string }>;
         try {
-          await page.goto(`${root}page-background.html`, { waitUntil: "networkidle0" });
+          await page.goto(`${root}page-background.html`);
           await page.waitForFunction(
             "window.Gutterpress && window.Gutterpress.totalPages > 0",
           );

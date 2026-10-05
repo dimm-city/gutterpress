@@ -538,14 +538,17 @@ export function isDownstream(d: Divergence, boundaryPage: number): boolean {
  * `--gp-content-h` directly.
  */
 export const EXACT_FIT_BROWSER_JS = String.raw`window.__gpExactFit = function (api) {
-  const BLOCK = "p,pre,li,h1,h2,h3,h4,h5,h6,td,th,dt,dd,figcaption,blockquote,div";
+  // A table row is the block, not its cells: print's text runs make one line
+  // per baseline across the row, and linesOf reads a row the same way.
+  const BLOCK = "p,pre,li,h1,h2,h3,h4,h5,h6,tr,dt,dd,figcaption,blockquote,div";
   const AVOID = /^avoid/;
+  // groupTextRuns' rule, in CSS px: runs within 0.5pt of a baseline share a line.
+  const SAME_BASELINE_PX = 0.5 * 96 / 72;
   const norm = (t) => t.replace(/\s+/g, "").replace(/[-‐­]+$/, "");
   // How well two normalised lines agree: the shorter's length when one
   // contains the other (3 characters or more), else 0. Containment rather
   // than equality because generated content (chapter numbers, list markers)
-  // is in the PDF but not in the DOM text, and a table row is one PDF line
-  // but one DOM line per cell.
+  // is in the PDF but not in the DOM text.
   const score = (a, b) =>
     a.length >= 3 && b.length >= 3 && (a.includes(b) || b.includes(a)) ? Math.min(a.length, b.length) : 0;
   const zoomOf = (el) => el.currentCSSZoom ?? 1;
@@ -597,8 +600,10 @@ export const EXACT_FIT_BROWSER_JS = String.raw`window.__gpExactFit = function (a
 
   // Every rendered line of a block, in flow order: text, page (1-based),
   // line-box top/bottom and baseline. A line box is the union of the block's
-  // own strut on the baseline and every character's extent.
+  // own strut on the baseline and every character's extent. A table row's
+  // lines are its cells' lines merged by baseline (rowLinesOf).
   function linesOf(block) {
+    if (block.tagName === "TR") return rowLinesOf(block);
     const si = stripOf(block);
     const bm = metricsOf(block, si.zoom);
     const lines = [];
@@ -623,7 +628,7 @@ export const EXACT_FIT_BROWSER_JS = String.raw`window.__gpExactFit = function (a
         // edge, into the next column's x-range, and that is still this line.
         if (!(cur && top < cur.glyphBottom - 0.5 && bottom > cur.glyphTop + 0.5 && left >= cur.lastLeft - 0.5)) {
           cur = { text: "", page: si.offset + Math.floor((left + 1) / si.stride) + 1, glyphTop: top, glyphBottom: bottom,
-                  lastLeft: left, baseline: NaN, top: Infinity, bottom: -Infinity };
+                  left, lastLeft: left, baseline: NaN, top: Infinity, bottom: -Infinity };
           lines.push(cur);
         }
         cur.text += node.data[i];
@@ -640,6 +645,47 @@ export const EXACT_FIT_BROWSER_JS = String.raw`window.__gpExactFit = function (a
       }
     }
     return lines.filter((l) => norm(l.text) && !Number.isNaN(l.baseline));
+  }
+  // The bottom of el's fragment on a page, in strip px (the fragment whose
+  // x-range is that page's column).
+  function fragmentBottom(si, el, page) {
+    const col = page - si.offset - 1;
+    const frag = Array.from(el.getClientRects()).find(
+      (r) => Math.floor(((r.left - si.rect.left) / si.zoom + si.el.scrollLeft + 1) / si.stride) === col);
+    return frag ? (frag.bottom - si.rect.top) / si.zoom : -Infinity;
+  }
+  // A row's lines: its cells' lines merged where they share a page and a
+  // baseline (within the same 0.5pt the print side uses), text joined left
+  // to right, the box the union — so a row's last line reads as print's
+  // does. A cell line on its own baseline (a one-line cell centred beside a
+  // two-line one) stays its own line, as it is in the PDF. The last line's
+  // box reaches the row's bottom edge — cell padding and borders, and the
+  // table's own for its last row — because that edge, not the text's, is
+  // what has to fit for the row to stay on the page.
+  function rowLinesOf(row) {
+    const merged = [];
+    for (const cell of row.cells) {
+      for (const line of linesOf(cell)) {
+        const m = merged.find((l) => l.page === line.page && Math.abs(l.baseline - line.baseline) <= SAME_BASELINE_PX);
+        if (!m) { merged.push({ ...line, parts: [line] }); continue; }
+        m.parts.push(line);
+        m.top = Math.min(m.top, line.top);
+        m.bottom = Math.max(m.bottom, line.bottom);
+        m.glyphTop = Math.min(m.glyphTop, line.glyphTop);
+        m.glyphBottom = Math.max(m.glyphBottom, line.glyphBottom);
+      }
+    }
+    const lines = merged
+      .sort((a, b) => a.page - b.page || a.baseline - b.baseline)
+      .map(({ parts, ...l }) => ({ ...l, text: parts.sort((a, b) => a.left - b.left).map((p) => p.text).join("") }));
+    const last = lines[lines.length - 1];
+    if (last) {
+      const si = stripOf(row);
+      const table = row.closest("table");
+      const edge = table && row.rowIndex === table.rows.length - 1 ? table : row;
+      last.bottom = Math.max(last.bottom, fragmentBottom(si, edge, last.page));
+    }
+    return lines;
   }
 
   const leafBlocks = (si) => Array.from(si.el.querySelectorAll(BLOCK)).filter((el) => !el.querySelector(BLOCK));
@@ -666,8 +712,12 @@ export const EXACT_FIT_BROWSER_JS = String.raw`window.__gpExactFit = function (a
     let best = null;
     for (const block of leafBlocks(si)) {
       if (!onPages(block, lo, hi)) continue;
-      const whole = norm(block.textContent);
-      if (!(whole.includes(want) || want.includes(whole))) continue;
+      // A row's cells interleave in a print line, so no DOM text contains
+      // it; every other block is skipped unless its text could.
+      if (block.tagName !== "TR") {
+        const whole = norm(block.textContent);
+        if (!(whole.includes(want) || want.includes(whole))) continue;
+      }
       const lines = linesOf(block);
       lines.forEach((line, k) => {
         const s = score(norm(line.text), want);
@@ -748,7 +798,13 @@ export const EXACT_FIT_BROWSER_JS = String.raw`window.__gpExactFit = function (a
         return { error: "neutralising the pushed chain moved heading " + id + " upstream of p" + b };
     }
     const si = stripFor(b);
-    const Dl = linesOf(D.block)[D.k];
+    // The block's lines again, by text rather than index: a row whose break
+    // rules are neutralised may now split across the page, and a cell line
+    // that was on its own baseline can then share one.
+    const want = norm(D.line.text);
+    const relaid = linesOf(D.block);
+    const Dl = (relaid[D.k] && score(norm(relaid[D.k].text), want) > 0 ? relaid[D.k] : null) ??
+      relaid.find((l) => score(norm(l.text), want) > 0);
     if (!Dl) return { error: "the disputed line vanished on relayout" };
     if (Dl.page <= b)
       return { error: "the viewer fits " + JSON.stringify(Dl.text.trim().slice(0, 40)) + " on p" + b + " once its break rules are neutralised — a break-rule disagreement, not geometry" };
@@ -760,10 +816,7 @@ export const EXACT_FIT_BROWSER_JS = String.raw`window.__gpExactFit = function (a
       // between two blocks: the kept block's bottom padding/border on page
       // b, then the collapsed margin; the first block's top padding/border
       // is already inside Dl.bottom, its top margin truncated at the break
-      const col = b - si.offset - 1;
-      const frag = Array.from(kept.block.getClientRects()).find(
-        (r) => Math.floor(((r.left - si.rect.left) / si.zoom + si.el.scrollLeft + 1) / si.stride) === col);
-      const fragBottom = ((frag || kept.block.getBoundingClientRect()).bottom - si.rect.top) / si.zoom;
+      const fragBottom = Math.max(fragmentBottom(si, kept.block, b), kept.line.bottom);
       gap = fragBottom - kept.line.bottom +
         Math.max(parseFloat(getComputedStyle(kept.block).marginBottom), parseFloat(getComputedStyle(first.block).marginTop));
     }

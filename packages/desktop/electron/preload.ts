@@ -5,9 +5,6 @@ import type {
   RemoteConnection,
   GoogleConnectStartResult,
   GoogleConnectResult,
-  RemoteRepository,
-  RemoteBranch,
-  RepoBook,
   CloneProgressEvent,
   RawPreviewStartArgs,
   PreviewStartResult,
@@ -16,54 +13,18 @@ import type {
   ExportProgressEvent,
   UrlPreviewBlockedEvent,
   MarkdownFileLaunchEvent,
-} from "./bridge-types";
-/**
- * Integer IPC-surface contract version shared between the Electron shell and
- * the SvelteKit SPA. Bump ONLY when an ipcMain.handle() method that the SPA
- * calls is added or removed. With full-app updates (electron-updater) the
- * shell and SPA always ship together, so this is a sanity check rather than a
- * version-skew gate.
- *
- * 3 -> 4 (ARCH review #8): removed updater:getStatus/check/download,
- * sync:setAutoSync, remote:cloneRepository —
- * migrated to SvelteKit server routes (plain request/response, no push
- * stream or live-BrowserWindow need).
- * 4 -> 5 (public seams V3): added the `.md` launch ready handshake; the file
- * events themselves are a main→renderer push stream.
- * 5 -> 6 (#221): added connectGoogleStart/connectGoogleWait/connectGoogleCancel
- * (the Google Drive publish provider's OAuth connect trio, mirroring
- * connectGitHubStart/Wait/Cancel).
- */
-const DESKTOP_API = 6;
+} from "../src/lib/platform/shared-types";
 
 /**
  * Bridge exposed to the SvelteKit renderer as window.electron.
  * Renderer never imports node:* or electron itself — all native work
  * happens here, in the preload, or in main via ipcRenderer.invoke.
  *
- * Shared IPC payload types (UpdaterStatus, SyncOutcome, AppSettings, etc.)
- * are imported from ./bridge-types (which re-exports from
- * src/lib/platform/shared-types.ts). No more duplicate type declarations.
+ * The bridge is deliberately narrow (CLAUDE.md §8): it carries only the
+ * main→renderer push streams and the calls that need a live BrowserWindow.
+ * Everything else is a `src/routes/api/**` server route. Shared payload
+ * types live in src/lib/platform/shared-types.ts.
  */
-
-// ── Types used only in preload (not shared with the renderer contract) ────
-
-// New-project scaffold types (CreateProjectOptions/AdoptFolderOptions/
-// CreateProjectResult) removed — app:createProject/app:adoptFolder migrated
-// to server routes (Phase 2B), leaving the local mirrors unreferenced; the
-// real shapes live in the lib's project-scaffold.ts.
-
-// plugin:*, theme:*, project:listStyles types removed — migrated to server
-// routes (Phase 2E). This block used to also declare module-local
-// `StyleToken`/`RecentFolderEntry`/`FavoriteEntry`/`DiscoveredProject`
-// interfaces left behind by that migration and never referenced anywhere in
-// this file — the real shapes live in src/lib/platform/dtos.ts. Removed in
-// the 2026-07-28 duplication audit; see
-// docs/reviews/duplication-audit-2026-07-28.md.
-
-// Local version history (#13): `SnapshotEntry` / `RestoreVersionResult` /
-// `ProjectClassification` are defined in `src/lib/platform/shared-types.ts`
-// and re-exported here via `electron/bridge-types.ts`.
 
 // ──────────────────────────────────────────────────────────────────────────
 // Safe push-event forwarding (main → renderer).
@@ -106,21 +67,10 @@ function forwardPush<T>(channel: string, cb: (data: T) => void): () => void {
 
 contextBridge.exposeInMainWorld("electron", {
   // ──────────────────────────────────────────────────────────────────────
-  // API version contract, exposed for a future renderer-vs-shell version check
-  // (audit D4). NOTE: no renderer code reads this yet — the previous comment
-  // claimed the renderer "checks this to refuse running against a stale shell,"
-  // but that check was never implemented. Kept as the plumbing that check will
-  // use; read it in the renderer before relying on it to gate anything.
-  // ──────────────────────────────────────────────────────────────────────
-  apiVersion: DESKTOP_API,
-
-  // ──────────────────────────────────────────────────────────────────────
-  // Desktop update surface (electron-updater + macOS check-only notifier)
-  // getStatus/check/download migrated to server routes (api.updater.*) —
-  // ARCH review #8: plain request/response, no push stream or
-  // live-BrowserWindow need. applyNow stays IPC: it flushes the live
-  // renderer's unsaved buffer via `mainWindow.webContents.send` before
-  // quitting — a live-BrowserWindow call §8 sanctions.
+  // Desktop update surface (electron-updater + macOS check-only notifier).
+  // applyNow stays IPC: it flushes the live renderer's unsaved buffer via
+  // `mainWindow.webContents.send` before quitting — a live-BrowserWindow
+  // call §8 sanctions. getStatus/check/download are server routes.
   // ──────────────────────────────────────────────────────────────────────
   updater: {
     applyNow: (): Promise<{ applied: boolean; version?: string; error?: string }> =>
@@ -130,16 +80,6 @@ contextBridge.exposeInMainWorld("electron", {
       forwardPush("updater:event", cb),
   },
 
-  // Dialogs
-  // savePdf, pickImageFile, pickImageFiles, copyFile migrated to server routes
-  // openDirectory migrated to server route (api.dialog.openDirectory)
-  // openExternal, showInFolder, readLogFile migrated to server routes
-  // listProjectImages, imageThumbnail, inspectImage migrated to server routes (Phase 2C)
-
-  // Filesystem primitives migrated to SvelteKit server routes (api.fs.*)
-  // readFile, writeFile, listDir, statFile migrated to server routes
-  // listProjectFiles migrated to server route
-  // checkCss, lintProject migrated to server routes (Phase 2C)
   /**
    * Watch a project folder for changes (#44). Subscribes to debounced
    * `fs:folderChanged` events for `dirPath` and returns an unsubscribe fn that
@@ -154,15 +94,7 @@ contextBridge.exposeInMainWorld("electron", {
     };
   },
 
-  // getStatus migrated to server route (Phase 2C)
-  // app:getLastProject, app:getDesktopPrefs,
-  // app:setDesktopPrefs, app:getDesktopProjectState, app:setDesktopProjectState,
-  // app:getSettings, app:setSettings, app:getNativeTheme, app:getRecentFolders,
-  // app:getFavorites, app:toggleFavorite, app:removeRecent, app:discoverProjects,
-  // app:classifyProject, app:createProject, app:adoptFolder
-  // — migrated to SvelteKit server routes (Phase 2B). No IPC bridge needed.
-
-  // Native (OS) theme surface (#48) — push channel kept as IPC (main→renderer)
+  // Native (OS) theme surface (#48) — push channel (main→renderer)
   /** Subscribe to OS theme changes from main. Returns an unsubscribe fn. */
   onNativeThemeUpdated: (
     cb: (data: { shouldUseDarkColors: boolean }) => void
@@ -188,14 +120,7 @@ contextBridge.exposeInMainWorld("electron", {
     return off;
   },
 
-  // tpl:* and snip:* migrated to server routes (Phase 2D) — removed from contextBridge.
-
-  // plugin:*, theme:*, project:listStyles migrated to server routes (Phase 2E) — removed from contextBridge.
-
-  // Local version history (#13) — all migrated to SvelteKit server routes (src/routes/api/vcs/*):
-  // enableVersionHistory, listSnapshots, listSnapshotsPage, restoreSnapshot, saveSnapshot.
-
-  // ── Managed GitHub integration (#15) — device flow + repo picker + clone ──
+  // ── Managed GitHub integration (#15) — device flow ───────────────────────
   // Two-phase connect: Start returns the user code to display; Wait resolves
   // when the user approves in the browser. Tokens never cross this bridge.
   connectGitHubStart: (): Promise<DeviceCodeInfo> =>
@@ -215,33 +140,17 @@ contextBridge.exposeInMainWorld("electron", {
   connectGoogleCancel: (): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("publish:connectGoogleCancel"),
 
-  // disconnectGitHub, getRemoteConnection, listRemoteRepositories, listRemoteBranches,
-  // listRepoBooks — migrated to server routes (Phase 2F).
-  // cloneRemoteRepository migrated to server route (api.remote.cloneRepository)
-  // — ARCH review #8: plain request/response, no push stream involved itself.
   /** Subscribe to clone progress from main. Returns an unsubscribe fn. */
   onCloneProgress: (cb: (data: CloneProgressEvent) => void): (() => void) =>
     forwardPush("remote:cloneProgress", cb),
 
-  // diagnoseProjectRemote, testRemoteAccess, connectGenericHost, disconnectHost,
-  // listHostConnections, forgeTokenUrl — migrated to server routes (Phase 2F).
-
   // ── Auto-sync orchestrator seam (transparent sync, §4.4 integration plan) ─
   // Main emits `sync:status` push events whenever the orchestrator state machine
   // transitions. The renderer subscribes via onSyncStatus to drive the ambient
-  // pill without polling. setAutoSync migrated to server route
-  // (api.sync.setAutoSync) — ARCH review #8: a pure settings write, no push
-  // stream or live-BrowserWindow need.
-
+  // pill without polling.
   /** Subscribe to ambient sync-status push events. Returns an unsubscribe fn. */
   onSyncStatus: (cb: (data: unknown) => void): (() => void) =>
     forwardPush("sync:status", cb),
-
-  // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
-
-  // syncChanges — migrated to server route (Phase 2F).
-  // resolveSyncConflicts migrated to server route (api.remote.resolveSyncConflicts)
-  // — ARCH review #8: plain request/response.
 
   startPreview: (args: RawPreviewStartArgs): Promise<PreviewStartResult> =>
     ipcRenderer.invoke("api:preview", args),
@@ -251,7 +160,6 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("api:cancelExport", exportId),
   build: (args: RawBuildArgs): Promise<BuildResult> =>
     ipcRenderer.invoke("api:build", args),
-  // doctor migrated to server route (Phase 2C)
 
   // Live PDF-build progress (main → renderer). Returns an unsubscribe fn.
   onBuildProgress: (
@@ -262,10 +170,6 @@ contextBridge.exposeInMainWorld("electron", {
     cb: (data: UrlPreviewBlockedEvent) => void
   ): (() => void) => forwardPush("url-preview:blocked", cb),
 
-  // writeRecovery, clearRecovery, listRecovery — migrated to server routes
-  // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.
-
-  // app:setDirtyState — migrated to server route (Phase 2B).
   /**
    * Subscribe to main's request to flush before the window closes (#44). The
    * renderer flushes, then calls `app:flushDone` with the actual outcome.

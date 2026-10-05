@@ -15,7 +15,7 @@
  *    files (mine, plus theirs as a `.online` sibling); an edit always
  *    survives a deletion. Every version stays in history.
  */
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, spyOn } from "bun:test";
 import * as fs from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -44,63 +44,7 @@ import {
   type GitServer,
 } from "./test-support/git-http-server.ts";
 
-const SERVER_AUTHOR = { name: "Server", email: "server@test.local" };
-
-interface Harness {
-  serverDir: string;
-  server: GitServer;
-  projectDir: string;
-  cleanup(): Promise<void>;
-}
-
-async function setupClone(opts: { requireAuth?: { username: string; password: string } } = {}): Promise<Harness> {
-  const serverDir = await tempDir("gutterpress-sync-server-");
-  await createFixtureRepo(serverDir);
-  const server = await startGitServer(serverDir, opts);
-  const parent = await tempDir("gutterpress-sync-client-");
-  const projectDir = path.join(parent, "project");
-  const credential: HostCredential | undefined = opts.requireAuth
-    ? {
-        host: "127.0.0.1",
-        kind: "token",
-        token: opts.requireAuth.password,
-        username: opts.requireAuth.username,
-        createdAt: Date.now(),
-      }
-    : undefined;
-  await cloneRepository({
-    url: server.url,
-    dir: projectDir,
-    ...(credential ? { credential } : {}),
-  });
-  return {
-    serverDir,
-    server,
-    projectDir,
-    cleanup: async () => {
-      await server.close();
-      await rm(serverDir, { recursive: true, force: true });
-      await rm(parent, { recursive: true, force: true });
-    },
-  };
-}
-
-async function serverCommit(
-  serverDir: string,
-  files: Record<string, string | null>,
-  message: string,
-): Promise<string> {
-  for (const [name, content] of Object.entries(files)) {
-    if (content === null) {
-      await rm(path.join(serverDir, name), { force: true });
-      await git.remove({ fs, dir: serverDir, filepath: name });
-    } else {
-      await writeFile(path.join(serverDir, name), content);
-      await git.add({ fs, dir: serverDir, filepath: name });
-    }
-  }
-  return git.commit({ fs, dir: serverDir, message, author: SERVER_AUTHOR });
-}
+import { SERVER_AUTHOR, serverCommit, setupClone, type Harness } from "./test-support/sync-harness.ts";
 
 async function isClean(dir: string): Promise<boolean> {
   const matrix = await git.statusMatrix({ fs, dir });
@@ -650,6 +594,7 @@ describe("an edit that lands on disk mid-sync is never discarded", () => {
 
   test("a write between the merge and the checkout is refused, never overwritten", async () => {
     const h = await setupClone();
+    const logFile = path.join(path.dirname(h.projectDir), "checkout.log");
     try {
       const file = path.join(h.projectDir, "chapter-01.md");
       // Both sides edit the same file, so the merge genuinely has to write it
@@ -674,11 +619,16 @@ describe("an edit that lands on disk mid-sync is never discarded", () => {
       };
       let outcome;
       try {
-        outcome = await syncProject({ projectDir: h.projectDir });
+        outcome = await syncProject({ projectDir: h.projectDir, logFile });
       } finally {
         (git as unknown as { merge: typeof git.merge }).merge = realMerge;
       }
       expect(merged).toBeGreaterThan(0);
+      const log = await readFile(logFile, "utf8");
+      expect(log).toContain("code=CheckoutConflictError");
+      expect(log).toContain("step=rollback");
+      expect(log).toContain("stage=checkout");
+      expect(log).toContain("chapter-01.md");
 
       // Refused, not forced: the author's newest bytes are untouched on disk.
       expect(await readFile(file, "utf8")).toBe(LATE_EDIT);
@@ -1251,6 +1201,30 @@ describe("binary convergence (keep BOTH, byte-exact)", () => {
       await h.cleanup();
     }
   });
+  test("an unreadable conflict blob retains its original error and leaves the draft intact", async () => {
+    const mine = new Uint8Array(PNG_BYTES);
+    mine[44] = 0x05;
+    const { h } = await setupBinaryClash(mine, undefined, "art/");
+    const logFile = path.join(path.dirname(h.projectDir), "blob.log");
+    const realRead = git.readBlob;
+    const readSpy = spyOn(git, "readBlob").mockImplementation(async args => {
+      if (args.filepath === "art/cover.png") throw Object.assign(new Error("object cannot be read"), {
+        code: "EIO", data: { filepath: args.filepath, oid: args.oid },
+      });
+      return realRead(args);
+    });
+    try {
+      const result = await syncProject({ projectDir: h.projectDir, logFile });
+      expect(result.status).toBe("error");
+      const log = await readFile(logFile, "utf8");
+      expect(log).toContain("stage=read-conflict-blobs");
+      expect(log).toContain("code=EIO");
+      expect(log).toContain("filepath=art/cover.png");
+      expect(new Uint8Array(await readFile(path.join(h.projectDir, "art/cover.png")))).toEqual(mine);
+      expect(log).not.toContain("step=push");
+    } finally { readSpy.mockRestore(); await h.cleanup(); }
+  });
+
 });
 
 // ── BUG 6: configurable, bounded retry with backoff (no false race) ────────────
@@ -1380,7 +1354,7 @@ describe("syncProject — a history that cannot be read", () => {
         // The three things the message promises are all true.
         expect(outcome.message).toContain("version history can't be read");
         expect(outcome.message).toContain("Your writing is safe");
-        expect(outcome.message).toContain("download a fresh copy");
+        expect(outcome.message).toContain("Repair online backup");
         expect(outcome.message).not.toContain("try again");
         // And the book really IS intact — that is what makes it honest.
         expect(await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8")).toContain(
@@ -1390,6 +1364,37 @@ describe("syncProject — a history that cannot be read", () => {
         await h.cleanup();
       }
     });
+  }
+});
+
+test("a damaged object file (masked by isomorphic-git as a TypeError) says the history can't be read", async () => {
+  // 0.11.6 field report: pako throws a STRING for a damaged object and
+  // isomorphic-git's wrapper crashes assigning `err.caller` to it, so the
+  // failure reached the writer as a bare "merge failed". HEAD, its commit
+  // and the index all still read, so only recognising the masked error can
+  // tell this apart from a transient failure.
+  const h = await setupClone();
+  try {
+    await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nLocal work.\n");
+    await git.add({ fs, dir: h.projectDir, filepath: "chapter-01.md" });
+    const local = await git.commit({
+      fs,
+      dir: h.projectDir,
+      message: "local",
+      author: { name: "A", email: "a@example.com" },
+    });
+    await serverCommit(h.serverDir, { "remote.md": "remote\n" }, "remote");
+    const { commit } = await git.readCommit({ fs, dir: h.projectDir, oid: local });
+    const tree = path.join(h.projectDir, ".git", "objects", commit.tree.slice(0, 2), commit.tree.slice(2));
+    fs.writeFileSync(tree, "not a zlib stream"); // non-empty: the self-heal does not apply
+
+    const outcome = await syncProject({ projectDir: h.projectDir });
+
+    expect(outcome.status).toBe("error");
+    if (outcome.status !== "error") throw new Error("unreachable");
+    expect(outcome.message).toBe(MSG_HISTORY_UNREADABLE);
+  } finally {
+    await h.cleanup();
   }
 });
 
@@ -1727,8 +1732,9 @@ describe("isPushRejected", () => {
 });
 
 describe("isUnrelatedHistories", () => {
-  test("MergeNotSupportedError code and message signatures", () => {
-    expect(isUnrelatedHistories({ code: "MergeNotSupportedError" })).toBe(true);
+  test("only proven unrelated histories, not every unsupported merge", () => {
+    expect(isUnrelatedHistories({ code: "MergeNotSupportedError" })).toBe(false);
+    expect(isUnrelatedHistories({ code: "UnrelatedHistoriesError" })).toBe(true);
     expect(isUnrelatedHistories(new Error("refusing to merge unrelated histories"))).toBe(true);
     expect(isUnrelatedHistories(new Error("no common commits"))).toBe(true);
     expect(isUnrelatedHistories(new Error("plain failure"))).toBe(false);
@@ -1804,5 +1810,135 @@ describe("refreshRemoteCopies", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+
+describe("sync diagnostics", () => {
+  test("repeated merge failures retain their cause, stage and separate run IDs", async () => {
+    const h = await setupClone();
+    const logFile = path.join(path.dirname(h.projectDir), "sync.log");
+    const cause = Object.assign(new Error("cannot read historical tree"), { code: "EIO", syscall: "read" });
+    let mergeSpy: ReturnType<typeof spyOn> | undefined;
+    try {
+      await serverCommit(h.serverDir, { "chapter-01.md": "online rewrite" }, "remote edit");
+      await writeFile(path.join(h.projectDir, "local.md"), "local draft");
+      mergeSpy = spyOn(git, "merge").mockRejectedValue(Object.assign(
+        new Error("merge failed", { cause }),
+        { code: "InternalError", caller: "git.merge", data: { filepaths: ["field-guide/chapter-02 7 Technosorcerer.md"] } },
+      ));
+      for (let i = 0; i < 2; i++) {
+        expect((await syncProject({ projectDir: h.projectDir, logFile })).status).toBe("error");
+      }
+      const log = await readFile(logFile, "utf8");
+      expect(log).toContain("step=merge");
+      expect(log).toContain("code=InternalError");
+      expect(log).toContain("cause1_code=EIO");
+      expect(log).toContain("field-guide/chapter-02 7 Technosorcerer.md");
+      expect(log).not.toContain("step=push");
+      const results = log.split("\n").filter(l => l.includes("step=result"));
+      expect(results).toHaveLength(2);
+      expect(new Set(results.map(l => /run=([^ ]+)/.exec(l)?.[1])).size).toBe(2);
+      for (const line of results) {
+        expect(line).toContain("status=error");
+        expect(line).toContain("stage=merge");
+        expect(line).toContain("version=");
+        expect(line).toMatch(/elapsedMs=\d+/);
+      }
+    } finally {
+      mergeSpy?.mockRestore();
+      await h.cleanup();
+    }
+  });
+
+  test("snapshot failure is logged before any network work", async () => {
+    const h = await setupClone();
+    const logFile = path.join(path.dirname(h.projectDir), "sync.log");
+    const commitSpy = spyOn(git, "commit").mockRejectedValue(Object.assign(new Error("disk full"), { code: "ENOSPC" }));
+    try {
+      await writeFile(path.join(h.projectDir, "local.md"), "draft");
+      expect((await syncProject({ projectDir: h.projectDir, logFile })).status).toBe("error");
+      const log = await readFile(logFile, "utf8");
+      expect(log).toContain("stage=snapshot");
+      expect(log).toContain("code=ENOSPC");
+      expect(log).not.toContain("step=fetch");
+      expect(await readFile(path.join(h.projectDir, "local.md"), "utf8")).toBe("draft");
+    } finally { commitSpy.mockRestore(); await h.cleanup(); }
+  });
+
+  test("fetch errors redact credentials resolved from the token store", async () => {
+    const h = await setupClone();
+    const logFile = path.join(path.dirname(h.projectDir), "sync.log");
+    const token = "private/token+value";
+    try {
+      const outcome = await syncProject({
+        projectDir: h.projectDir, logFile,
+        tokenStore: { get: async () => ({ kind: "token", token, username: "writer", host: "127.0.0.1", createdAt: 0 }) } as unknown as import("./token-store.ts").TokenStore,
+        httpClient: { request: async () => { throw Object.assign(
+          new Error(`ECONNRESET ${token} ${encodeURIComponent(token)}`), { code: "ECONNRESET" },
+        ); } } as typeof httpNode,
+      });
+      expect(outcome.status).toBe("offline");
+      const log = await readFile(logFile, "utf8");
+      expect(log).toContain("stage=fetch");
+      expect(log).toContain("code=ECONNRESET");
+      expect(log).not.toContain(token);
+      expect(log).not.toContain(encodeURIComponent(token));
+    } finally { await h.cleanup(); }
+  });
+
+  test("success, pull-only and setup errors each have exactly one terminal result", async () => {
+    const h = await setupClone();
+    const logFile = path.join(path.dirname(h.projectDir), "sync.log");
+    try {
+      await writeFile(path.join(h.projectDir, "local.md"), "draft");
+      expect((await syncProject({ projectDir: h.projectDir, logFile })).status).toBe("synced");
+      await syncProject({ projectDir: h.projectDir, logFile, push: false });
+      await git.deleteRemote({ fs, dir: h.projectDir, remote: "origin" });
+      expect((await syncProject({ projectDir: h.projectDir, logFile })).status).toBe("error");
+      const log = await readFile(logFile, "utf8");
+      const results = log.split("\n").filter(l => l.includes("step=result"));
+      expect(results).toHaveLength(3);
+      expect(results[0]).toContain("status=synced");
+      expect(results[1]).toContain("push=false");
+      expect(results[2]).toContain("stage=transport");
+    } finally { await h.cleanup(); }
+  });
+
+  test("an unsupported related merge does not claim the remote is unrelated", async () => {
+    const h = await setupClone();
+    let mergeSpy: ReturnType<typeof spyOn> | undefined;
+    try {
+      await serverCommit(h.serverDir, { "chapter-01.md": "remote edit" }, "remote edit");
+      mergeSpy = spyOn(git, "merge").mockRejectedValue(Object.assign(new Error("unsupported file type conflict"), { code: "MergeNotSupportedError" }));
+      const result = await syncProject({ projectDir: h.projectDir });
+      expect(result.status).toBe("error");
+      expect(result.message).not.toContain("different");
+      expect(result.message).toContain("Syncing didn't complete");
+    } finally { mergeSpy?.mockRestore(); await h.cleanup(); }
+  });
+
+  test.each([Infinity, NaN, -1, 1.5, 100])("retry budget %s always terminates", async (attempts) => {
+    const h = await setupClone();
+    try {
+      await writeFile(path.join(h.projectDir, "local.md"), "draft");
+      let calls = 0;
+      const sleeps: number[] = [];
+      const result = await syncProject({
+        projectDir: h.projectDir,
+        retry: { attempts, backoffMs: Infinity, sleep: async ms => { sleeps.push(ms); } },
+        httpClient: { request: async (config: Parameters<typeof httpNode.request>[0]) => {
+          if (config.url.includes("service=git-receive-pack")) {
+            calls++;
+            throw Object.assign(new Error("remote moved"), { code: "PushRejectedError", data: { reason: "not-fast-forward" } });
+          }
+          return httpNode.request(config);
+        } } as typeof httpNode,
+      });
+      expect(result.status).toBe("error");
+      expect(calls).toBe(Number.isFinite(attempts) ? Math.min(10, Math.max(1, Math.floor(attempts))) : 3);
+      expect(sleeps).toHaveLength(calls - 1);
+      expect(sleeps.every(ms => ms === 150)).toBe(true);
+    } finally { await h.cleanup(); }
   });
 });

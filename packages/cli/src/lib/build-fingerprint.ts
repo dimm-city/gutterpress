@@ -233,7 +233,6 @@ async function getToolVersions(): Promise<Record<string, string | null>> {
     "gutterpress": PACKAGE_META.version,
     bun: (process.versions as Record<string, string | undefined>).bun ?? null,
     node: process.versions.node,
-    "puppeteer-core": PACKAGE_META.dependencies["puppeteer-core"] ?? null,
     // Content hash of the committed engine bundles — see getEngineBundleHash's
     // docstring.
     engineBundle: engineBundleHash,

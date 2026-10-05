@@ -4,7 +4,7 @@
  * injected-fs store factory `createSettingsStore` (read/write + settingsPath).
  *
  * #29: `AppSettings`/`DEFAULT_SETTINGS` are imported from the shared module
- * (`./bridge-types` → `src/lib/platform/shared-types.ts`) instead of being
+ * (`src/lib/platform/shared-types.ts`) instead of being
  * hand-duplicated here — this file re-imports them from `../../electron/
  * settings-store` (which re-exports them) so a regression that reintroduces
  * a local copy still shows up as a type/value mismatch here.
@@ -237,34 +237,27 @@ test("readSettings fills in preview.splitRatio default for a stored file missing
   expect(s.preview.splitRatio).toBe(DEFAULT_SETTINGS.preview.splitRatio);
 });
 
+test("a profile with no saved mode opens books in Edit; a saved Read mode is never overridden (#304)", async () => {
+  // First run: no settings file at all.
+  expect((await makeStore().store.readSettings()).preview.mode).toBe("editor");
+  // A file that predates the field gets the default too…
+  const legacy = makeStore({
+    readFileImpl: async () => JSON.stringify({ appearance: { theme: "dark" } }),
+  });
+  expect((await legacy.store.readSettings()).preview.mode).toBe("editor");
+  // …but a returning author's saved choice always wins over the default.
+  const saved = makeStore({
+    readFileImpl: async () => JSON.stringify({ preview: { mode: "viewer" } }),
+  });
+  expect((await saved.store.readSettings()).preview.mode).toBe("viewer");
+});
+
 test("readSettings defaults the update channel to stable for existing settings files", async () => {
   const { store } = makeStore({
     readFileImpl: async () => JSON.stringify({ appearance: { theme: "dark" } }),
   });
 
   expect((await store.readSettings()).updates.channel).toBe("stable");
-});
-
-test("readSettings migrates the legacy includePrereleases flag to a channel", async () => {
-  // Pre-0.8.2 files stored a boolean opt-in; true maps to the beta channel.
-  const optedIn = makeStore({
-    readFileImpl: async () => JSON.stringify({ updates: { includePrereleases: true } }),
-  });
-  expect((await optedIn.store.readSettings()).updates.channel).toBe("beta");
-
-  const optedOut = makeStore({
-    readFileImpl: async () => JSON.stringify({ updates: { includePrereleases: false } }),
-  });
-  expect((await optedOut.store.readSettings()).updates.channel).toBe("stable");
-});
-
-test("readSettings prefers an explicit channel over a leftover legacy flag", async () => {
-  const { store } = makeStore({
-    readFileImpl: async () =>
-      JSON.stringify({ updates: { channel: "alpha", includePrereleases: false } }),
-  });
-
-  expect((await store.readSettings()).updates.channel).toBe("alpha");
 });
 
 test("writeSettings mkdirs the userDataDir, writes pretty JSON to <settingsPath>.tmp, then renames over settingsPath", async () => {

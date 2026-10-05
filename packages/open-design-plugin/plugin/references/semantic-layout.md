@@ -78,14 +78,14 @@ that generated structure:
 - **No page-ordinal targeting.** "The third page" is an output of pagination;
   styling it changes pagination, which changes which page is third.
 
-`gutterpress lint` additionally flags, as an error, **remote `url()`** —
+`gutterpress validate` (its `source.stylelint` check) additionally flags, as an error, **remote `url()`** —
 `http(s)://` and protocol-relative references, which may not be reachable at
 print time. And it warns on properties that can force rasterization in print:
 `filter`,
 `backdrop-filter`, `mix-blend-mode`, `background-blend-mode`,
 `animation`, `transition`, `will-change`, `clip-path`.
 
-Ask the user to run `gutterpress lint <book>` after a substantial CSS change.
+Ask the user to run `gutterpress validate <book>` after a substantial CSS change.
 
 ## Ownership
 

@@ -509,6 +509,33 @@ test("TOOLBAR_ITEMS: declares an insert-layout-block control in the insert group
   expect(item?.group).toBe("insert");
 });
 
+// ── Focus lives on the app toolbar, not here ────────────────────────────────
+
+test("TOOLBAR_ITEMS: there is no Focus item (the app toolbar toggle is the entry point)", () => {
+  expect(TOOLBAR_ITEMS.some((i) => i.id === "focus-mode" || (i.action as string) === "focus-mode")).toBe(false);
+});
+
+test("Insert menu rows are unique: Page break is offered once, through the layout picker", () => {
+  // The Insert popup lists each insert item's label, with the layout-block
+  // item expanded into LAYOUT_BLOCK_ITEMS (EditorToolbar's `menuRows`).
+  // A standalone Page break item used to sit beside the layout picker's own
+  // Page break entry, so the menu would have listed it twice.
+  const rows = visibleToolbarItems({ hasSave: true, desktop: true })
+    .filter((i) => i.group === "insert")
+    .flatMap((i) => (i.kind === "layout-block" ? LAYOUT_BLOCK_ITEMS.map((b) => b.label) : [i.label]));
+  expect(new Set(rows).size).toBe(rows.length);
+  expect(rows.filter((label) => label === "Page break")).toHaveLength(1);
+  expect(TOOLBAR_ITEMS.some((i) => i.id === "page-break" || i.action === "page-break")).toBe(false);
+});
+
+test("the Insert menu carries every insert the toolbar used to show as a separate icon", () => {
+  const ids = visibleToolbarItems({ hasSave: true, desktop: true })
+    .filter((i) => i.group === "insert")
+    .map((i) => i.id);
+  // rule, layout blocks (columns, page break, chapter…), table, image, snippet
+  expect(ids).toEqual(["hr", "layout-block", "table", "image", "snippet"]);
+});
+
 // ── M26: image dialog Position must offer the bleed layout ───────────────────
 
 test("toolbar-actions.ts supports bleed as an image position (legacy name canonicalizes)", () => {

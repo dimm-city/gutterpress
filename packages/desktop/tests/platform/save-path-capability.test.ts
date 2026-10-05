@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { registerHostServices, getHostServices, type HostServices } from "../../electron/server-bridge/host-services";
+import { registerHostServices, type HostServices } from "../../electron/server-bridge/host-services";
 import {
   createPickedFilesService,
   createSavePathsService,
@@ -7,6 +7,7 @@ import {
 import { makeHostServices } from "../support/host-services-fake";
 import { ExportController, type ExportControllerDeps } from "../../electron/export/controller";
 import { POST as savePdfRoute } from "../../src/routes/api/dialog/save-pdf/+server";
+import { POST as pickOutputFolderRoute } from "../../src/routes/api/dialog/pick-output-folder/+server";
 
 // Finding #4 (2026-07-13 maintainer review): "PDF export accepts arbitrary
 // output paths. The save dialog does not issue a capability, while api:build
@@ -28,34 +29,45 @@ function request(body: unknown = {}): Request {
   });
 }
 
-let savedHostServices: HostServices | null;
 let savePaths: ReturnType<typeof createSavePathsService>;
 let pickedFiles: ReturnType<typeof createPickedFilesService>;
 /** What the mocked native Save dialog returns on its next call. */
 let nextSaveResult: { canceled: boolean; filePath?: string };
+/** Options the mocked native Save dialog was last opened with. */
+let lastSaveOptions: { defaultPath?: string } | null;
+/** What the mocked native Open dialog returns on its next call. */
+let nextOpenResult: { canceled: boolean; filePaths: string[] };
+/** Options the mocked native Open dialog was last opened with. */
+let lastOpenOptions: { title?: string; properties?: string[]; defaultPath?: string } | null;
 
 beforeEach(() => {
-  // Host services are process-global — save/restore so this file's fixture
-  // never leaks into a sibling test file (same convention as
-  // picked-files-capability.test.ts).
-  savedHostServices = getHostServices();
-
   savePaths = createSavePathsService();
   pickedFiles = createPickedFilesService();
   nextSaveResult = { canceled: true };
+  lastSaveOptions = null;
+  nextOpenResult = { canceled: true, filePaths: [] };
+  lastOpenOptions = null;
   registerHostServices(
     makeHostServices({
       desktop: {
-        showSaveDialog: async () => nextSaveResult,
+        showSaveDialog: async (options: { defaultPath?: string }) => {
+          lastSaveOptions = options;
+          return nextSaveResult;
+        },
+        showOpenDialog: async (options: { title?: string; properties?: string[]; defaultPath?: string }) => {
+          lastOpenOptions = options;
+          return nextOpenResult;
+        },
         getUserDataPath: () => "/fake",
       },
       savePaths,
+      pickedFiles,
     }),
   );
 });
 
 afterEach(() => {
-  registerHostServices(savedHostServices as HostServices);
+  registerHostServices(undefined as unknown as HostServices);
 });
 
 // ── dialog/save-pdf registers what the native dialog returned ──────────────
@@ -78,6 +90,47 @@ test("a cancelled Save dialog registers nothing", async () => {
   expect(savePaths.consume("/home/author/book.pdf")).toBe(false);
 });
 
+test("dialog/save-pdf opens in defaultDir when one is given", async () => {
+  await savePdfRoute({
+    request: request({ defaultName: "MyBook.pdf", defaultDir: "/home/author/book/dist" }),
+  } as Parameters<typeof savePdfRoute>[0]);
+  expect(lastSaveOptions?.defaultPath).toBe("/home/author/book/dist/MyBook.pdf");
+
+  await savePdfRoute({ request: request({ defaultDir: "/home/author/book/dist" }) } as Parameters<typeof savePdfRoute>[0]);
+  expect(lastSaveOptions?.defaultPath).toBe("/home/author/book/dist/book.pdf");
+
+  await savePdfRoute({ request: request({}) } as Parameters<typeof savePdfRoute>[0]);
+  expect(lastSaveOptions?.defaultPath).toBe("book.pdf");
+});
+
+// ── dialog/pick-output-folder: a chosen save DESTINATION folder ────────────
+
+test("dialog/pick-output-folder registers the chosen folder in BOTH the save-path and picked-file pools", async () => {
+  const chosen = "/home/author/Exports";
+  nextOpenResult = { canceled: false, filePaths: [chosen] };
+
+  const res = await pickOutputFolderRoute({
+    request: request({ defaultPath: "/home/author/book/dist" }),
+  } as Parameters<typeof pickOutputFolderRoute>[0]);
+  expect(await res.json()).toBe(chosen);
+  expect(lastOpenOptions?.properties).toEqual(["openDirectory", "createDirectory"]);
+  expect(lastOpenOptions?.defaultPath).toBe("/home/author/book/dist");
+
+  // Write capability: api:build may use it as `out`, once.
+  expect(savePaths.consume(chosen)).toBe(true);
+  expect(savePaths.consume(chosen)).toBe(false);
+  // Read capability: publish:run may read the artifact built there.
+  expect(pickedFiles.consume(chosen)).toBe(true);
+});
+
+test("a cancelled output-folder dialog registers nothing and resolves null", async () => {
+  nextOpenResult = { canceled: true, filePaths: [] };
+  const res = await pickOutputFolderRoute({ request: request({}) } as Parameters<typeof pickOutputFolderRoute>[0]);
+  expect(await res.json()).toBeNull();
+  expect(savePaths.consume("/home/author/Exports")).toBe(false);
+  expect(pickedFiles.consume("/home/author/Exports")).toBe(false);
+});
+
 // ── ExportController.build: the actual bypass, wired to the real capability ─
 
 type LibModule = typeof import("gutterpress");
@@ -98,7 +151,6 @@ function makeController(): ExportController {
     loadLib: async () => lib,
     tokenStore: {} as ExportControllerDeps["tokenStore"],
     isOnline: () => true,
-    usePuppeteer: () => false,
     pdfRenderer: (async () => {}) as ExportControllerDeps["pdfRenderer"],
     sync: { isConflictLatched: () => false, latchConflict: () => {} },
     getActiveExportSession: () => session,
@@ -113,6 +165,8 @@ function makeController(): ExportController {
     // The exact seam finding #4 targets: wired to the REAL savePaths
     // service, exactly as electron/main.ts wires it.
     consumeSavePath: (absPath) => savePaths.consume(absPath),
+    // Nothing is "inside the book" here, so only a dialog grant authorizes.
+    isWithinProject: async () => false,
     // Same faithfulness for the reveal capability (2026-07-29 audit): the
     // written PDF is registered as a picked path so the export's "Show in
     // Folder" action can reveal a destination outside the project.
@@ -142,4 +196,15 @@ test("api:build with an 'out' registered by the save-pdf route is accepted, and 
   // out path, with no fresh Save dialog round-trip, must be rejected.
   const err = await controller.build({ input: "/book", out: chosen }).catch((e) => e);
   expect((err as Error & { code?: string }).code).toBe("OUT_NOT_AUTHORIZED");
+});
+
+test("api:build accepts a folder from pick-output-folder as an html 'out'", async () => {
+  const chosen = "/home/author/Exports";
+  nextOpenResult = { canceled: false, filePaths: [chosen] };
+  await pickOutputFolderRoute({ request: request({}) } as Parameters<typeof pickOutputFolderRoute>[0]);
+
+  const controller = makeController();
+  const res = await controller.build({ input: "/book", format: "html", out: chosen });
+  expect(res.outDir).toBe(chosen);
+  expect(res.pdfPath).toBeUndefined();
 });

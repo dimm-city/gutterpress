@@ -19,7 +19,14 @@
     toolGapMessage,
   } from "$lib/publish-targets";
 
-  let { controller }: { controller: DetailsSectionController } = $props();
+  let {
+    controller,
+    onSaveAsTemplate,
+  }: {
+    controller: DetailsSectionController;
+    /** Open the Save-as-template dialog (owned by ProjectSettingsView). */
+    onSaveAsTemplate?: (triggerEl: HTMLButtonElement) => void;
+  } = $props();
 
   // The tool-gap explanation for the CHECKED destinations (null when nothing
   // checked needs a tool this computer lacks).
@@ -64,13 +71,16 @@
   {#if controller.detailsError}
     <p class="error" role="alert">{controller.detailsError}</p>
   {/if}
-  <label class="field">
+  <!-- Bound by for/id as well as by nesting: a UX review saw this input named
+       after its placeholder ("Untitled book") instead of "Title". -->
+  <label class="field" for="details-title">
     <span class="lbl">Title</span>
     <input
+      id="details-title"
       class="input"
       type="text"
       bind:value={controller.titleDraft}
-      placeholder="Untitled project"
+      placeholder="Untitled book"
     />
   </label>
   <div class="field">
@@ -97,7 +107,7 @@
   <div class="field">
     <span class="lbl">Source files</span>
     {#if controller.sourceFiles.length === 0}
-      <p class="hint">No markdown files found in this project yet.</p>
+      <p class="hint">No markdown files found in this book yet.</p>
     {:else}
       <ul class="source-list" aria-label="Source files (drag to reorder)">
         {#each controller.sourceFiles as entry, i (entry.path)}
@@ -122,7 +132,7 @@
             />
             <span class="source-path" class:mono={true}>{entry.path}</span>
             {#if entry.missing}
-              <span class="missing" title="This manifest entry has no matching file in the project">missing</span>
+              <span class="missing" title="This manifest entry has no matching file in this book">missing</span>
             {/if}
             <span class="row-move">
               <button
@@ -177,9 +187,20 @@
       only the general print checks run.
     </span>
   </div>
-  <button class="primary small app-btn-primary" onclick={controller.saveDetails} disabled={controller.detailsSaving}>
-    {controller.detailsSaving ? "Saving…" : "Save details"}
-  </button>
+  <div class="details-actions">
+    <button class="primary small app-btn-primary" onclick={controller.saveDetails} disabled={controller.detailsSaving}>
+      {controller.detailsSaving ? "Saving…" : "Save details"}
+    </button>
+    {#if onSaveAsTemplate}
+      <button
+        class="ghost small"
+        onclick={(e) => onSaveAsTemplate?.(e.currentTarget as HTMLButtonElement)}
+        title="Save this book as a reusable starter for new books"
+      >
+        Save as template…
+      </button>
+    {/if}
+  </div>
 </section>
 
 <style>
@@ -193,6 +214,7 @@
   .target-desc { font-size: 11px; color: var(--app-text-muted); line-height: 1.35; }
   .tool-note { margin: 4px 0 0; font-size: 11px; line-height: 1.45; color: var(--app-warning-text); }
 
+  .details-actions { display: flex; align-items: center; gap: 8px; }
   .authors { display: flex; flex-direction: column; gap: 4px; }
   .author-row { display: flex; gap: 4px; align-items: center; }
   .author-row .input { flex: 1; }

@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
-import { getFsGuardHooks, isWithinAnyRootCanonical } from '../../../../electron/server-bridge/fs-guard';
-import { getPickedFilesHooks } from '../../../../electron/server-bridge/picked-files';
+import { isWithinAnyRootCanonical } from '../../../../electron/server-bridge/fs-guard';
+import { getHostServices } from '../../../../electron/server-bridge/host-services';
 import { requireAbsolute } from './handler';
 
 // Route-side half of the fs-route project-scoping guard (ARCH review #37).
@@ -40,11 +40,11 @@ export async function requireWithinProjectRoot(
   routeName: string,
   options: { includeReadOnlyRoots?: boolean } = {},
 ): Promise<string> {
-  const guard = getFsGuardHooks();
-  const roots = guard ? guard.projectRoots() : [];
-  const allowed = options.includeReadOnlyRoots && guard ? [...roots, ...guard.readOnlyRoots()] : roots;
+  const guard = getHostServices().fsGuard;
+  const roots = guard.projectRoots();
+  const allowed = options.includeReadOnlyRoots ? [...roots, ...guard.readOnlyRoots()] : roots;
   if (!(await isWithinAnyRootCanonical(absPath, allowed))) {
-    error(403, `${routeName}: path is outside the open project`);
+    error(403, `${routeName}: path is outside the open book`);
   }
   return absPath;
 }
@@ -108,11 +108,11 @@ export async function requireContainedOrPicked(
   try {
     return await requireWithinProjectRoot(absPath, routeName, options);
   } catch {
-    const picked = getPickedFilesHooks();
-    if (picked?.consume(absPath)) {
+    const picked = getHostServices().pickedFiles;
+    if (picked.consume(absPath)) {
       picked.register([absPath]);
       return absPath;
     }
-    error(403, `${routeName}: path is outside the open project and was not chosen from a file dialog`);
+    error(403, `${routeName}: path is outside the open book and was not chosen from a file dialog`);
   }
 }

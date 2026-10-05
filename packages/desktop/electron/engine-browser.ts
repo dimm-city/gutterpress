@@ -35,13 +35,14 @@
  * destinations survived (`{ch1:1, ch2:2, ch3:3}`) — the exact page-map
  * mechanism Tier 3 cross-references and the native-parity gate depend on.
  *
- * ONE Browser per build (`packages/cli/src/lib/engine.ts`'s `buildNativePdf`
- * doc comment): a fresh hidden `BrowserWindow` per call to
- * `createElectronEngineBrowser()`, and `buildNativePdf` always closes
- * whatever browser it ends up with — injected or pooled — in a `finally`, so
- * this window's lifecycle never leaks. Main process only; the SPA must stay
- * PWA-clean (CLAUDE.md §8) — nothing here is reachable from
- * `packages/desktop/src/`.
+ * ONE Browser per build: `build-runner.ts`'s `runBuild` calls
+ * `createElectronEngineBrowser()` in place of its own Chromium launcher
+ * (`engine/shared/cdp.ts`'s `launchChromium`), uses the result for exactly
+ * that build, and closes it in a `finally`, so this module's windows never
+ * leak. Like the launcher, this factory enforces the engine's milestone floor
+ * at construction (`assertMilestone`) — every `Browser` producer does, so the
+ * consumer never has to. Main process only; the SPA must stay PWA-clean
+ * (CLAUDE.md §8) — nothing here is reachable from `packages/desktop/src/`.
  *
  * RESIDUAL RISK — font rendering — MEASURED, not left open: the CDP path
  * (`engine/shared/cdp.ts`'s `launchChromium`) launches its external Chromium
@@ -63,7 +64,7 @@
  * the switches — don't assume the container result generalizes to every host.
  */
 import { BrowserWindow } from "electron";
-import { DEFAULT_PRINT_OPTS, readyProbeExpr } from "gutterpress";
+import { DEFAULT_PRINT_OPTS, readyProbeExpr, assertMilestone } from "gutterpress";
 import type { EngineBrowser, EngineSession } from "gutterpress";
 
 function milestoneFromChromeVersion(v: string): number {
@@ -163,6 +164,10 @@ class ElectronEngineSession implements EngineSession {
  * `close()` destroys every window this Browser ever opened.
  */
 export async function createElectronEngineBrowser(): Promise<EngineBrowser> {
+  const version = `Chrome/${process.versions.chrome}`;
+  // The one floor check for this host, at construction — the same rule, with
+  // the same message, that `launchChromium` applies to the CLI's Chromium.
+  assertMilestone(version, "(Electron's bundled Chromium)");
   const windows: BrowserWindow[] = [];
 
   function newWindow(): BrowserWindow {
@@ -187,7 +192,7 @@ export async function createElectronEngineBrowser(): Promise<EngineBrowser> {
 
   return {
     wsUrl: "electron://engine-browser",
-    version: `Chrome/${process.versions.chrome}`,
+    version,
     milestone: milestoneFromChromeVersion(process.versions.chrome),
     async newPage() {
       const win = newWindow();

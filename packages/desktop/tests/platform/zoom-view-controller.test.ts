@@ -157,12 +157,51 @@ test("applyFitWidthZoom uses scale 1 when dimensions are missing", async () => {
   expect((h.client as FakeClient).callsFor("setZoom")).toEqual([{ cmd: "setZoom", args: [1] }]);
 });
 
-test("applyFitWidthZoom falls back to setZoom 1 when the dimension query rejects", async () => {
+test("applyFitWidthZoom leaves the zoom alone when the dimension query rejects", async () => {
   const h = make();
   (h.client as FakeClient).reject = true;
   await h.ctrl.applyFitWidthZoom();
-  // getPageDimensions rejected → catch → setZoom(1).
-  expect((h.client as FakeClient).callsFor("setZoom")).toEqual([{ cmd: "setZoom", args: [1] }]);
+  // A failed measurement says nothing about the page, so it must not touch the
+  // zoom (it used to reset to 100%).
+  expect((h.client as FakeClient).callsFor("setZoom")).toEqual([]);
+});
+
+/**
+ * The first getPageDimensions never answers until the test "times it out", like
+ * the refit the pane posts at mount before the book frame exists (PreviewClient
+ * rejects such a call after 10s). Later calls behave like FakeClient.
+ */
+class HangingFirstMeasureClient extends FakeClient {
+  private first = true;
+  timeOutFirst: (e: Error) => void = () => {};
+
+  call<T>(cmd: string, args: unknown[] = []): Promise<T> {
+    if (cmd === "getPageDimensions" && this.first) {
+      this.first = false;
+      this.calls.push({ cmd, args });
+      return new Promise<T>((_resolve, reject) => {
+        this.timeOutFirst = reject;
+      });
+    }
+    return super.call<T>(cmd, args);
+  }
+}
+
+test("a stale timed-out fit never clobbers the successful fit that came after it", async () => {
+  const h = make();
+  const client = new HangingFirstMeasureClient();
+  client.dims = { width: 1000, height: 1400 };
+  h.client = client;
+  h.containerWidth = 800;
+
+  const stale = h.ctrl.applyFitWidthZoom(); // its measurement hangs…
+  await h.ctrl.applyFitWidthZoom(); // …a later fit succeeds…
+  client.timeOutFirst(new Error("Command 'getPageDimensions' timed out")); // …then the stale one fails
+  await stale;
+
+  const zooms = client.callsFor("setZoom").map((call) => call.args[0]);
+  expect(zooms).toHaveLength(1);
+  expect(zooms[0]).toBeCloseTo(800 / 1064, 6); // the fit survives; no trailing 100%
 });
 
 test("applyFitWidthZoom no-ops with no client", async () => {

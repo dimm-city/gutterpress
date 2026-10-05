@@ -9,7 +9,7 @@
  * themselves first — `gutterpress publish` has no build flag of its own, and the
  * desktop's export flow builds via its own Save-PDF pipeline before handing the
  * chosen path to this module as an explicit `artifactPath`. This keeps
- * puppeteer-core out of the publish path (CLAUDE.md §2).
+ * the engine (and its Chromium launcher) out of the publish path (CLAUDE.md §2).
  */
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";

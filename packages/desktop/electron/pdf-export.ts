@@ -22,7 +22,8 @@ export interface ExportSession {
   id: string;
   canceled: boolean;
   outPath: string;
-  tempOutPath: string;
+  /** The PDF's temp sibling; absent for an html export (no temp file). */
+  tempOutPath?: string;
   win: BrowserWindow | null;
 }
 

@@ -1,3 +1,12 @@
+/**
+ * The npm extension installer (`gutterpress ext add` / the desktop's
+ * `addExtension`), end to end through `addExtension`: registry resolution to
+ * an exact version, SRI integrity verification, safe extraction, vendoring the
+ * complete nested dependency tree under `plugins/npm/`, the atomic manifest
+ * pin, and the loader reading that tree back through Node's own module
+ * resolution. The registry is a fixture `fetch`; nothing here touches the
+ * network.
+ */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -16,17 +25,10 @@ import {
   finalizeNpmPluginInstall,
   installNpmPlugin,
 } from "./npm-plugin-installer";
-import { __setVendorSnapshotHookForTests, loadPlugin } from "./markdown/plugins";
-import {
-  computeVendorTreeDigest,
-  vendoredNpmPluginPackageDir,
-  vendoredNpmPluginRoot,
-  VENDOR_RECEIPT_FILE,
-  type VendorReceipt,
-} from "./plugin-vendor";
+import { loadPlugin } from "./markdown/plugins";
+import { vendoredNpmPluginPackageDir, vendoredNpmPluginRoot } from "./plugin-vendor";
 
 const TMP_ROOT = path.join(process.cwd(), ".tmp", `npm-plugin-installer-${Date.now()}`);
-const TMP_AMBIENT_PACKAGES = new Set<string>();
 let counter = 0;
 
 interface TarEntry {
@@ -216,12 +218,6 @@ function registryGraphFixture(packages: GraphPackageFixture[]): {
 
 const NPM_REGISTRY_FOR_TESTS = "https://registry.npmjs.org";
 
-async function receipt(projectDir: string, name: string, version: string): Promise<VendorReceipt> {
-  return JSON.parse(
-    await readFile(path.join(vendoredNpmPluginRoot(projectDir, name, version), VENDOR_RECEIPT_FILE), "utf8"),
-  ) as VendorReceipt;
-}
-
 async function projectDir(): Promise<string> {
   const dir = path.join(TMP_ROOT, `project-${counter++}`);
   await mkdir(dir, { recursive: true });
@@ -252,16 +248,26 @@ async function loadedMarker(
   return md[key];
 }
 
+/** The vendored package folder of `name` inside the root plugin's own tree. */
+function vendoredDependencyDir(dir: string, root: string, version: string, ...nested: string[]): string {
+  let current = vendoredNpmPluginPackageDir(vendoredNpmPluginRoot(dir, root, version), root);
+  for (const dependency of nested) current = path.join(current, "node_modules", ...dependency.split("/"));
+  return current;
+}
+
+async function installedVersion(packageDir: string): Promise<string> {
+  const manifest = JSON.parse(await readFile(path.join(packageDir, "package.json"), "utf8")) as {
+    version: string;
+  };
+  return manifest.version;
+}
+
 beforeEach(async () => {
   await mkdir(TMP_ROOT, { recursive: true });
 });
 
 afterEach(async () => {
   await rm(TMP_ROOT, { recursive: true, force: true });
-  await Promise.all(
-    [...TMP_AMBIENT_PACKAGES].map((packageDir) => rm(packageDir, { recursive: true, force: true })),
-  );
-  TMP_AMBIENT_PACKAGES.clear();
 });
 
 describe("npm plugin installation", () => {
@@ -283,6 +289,9 @@ describe("npm plugin installation", () => {
     expect(existsSync(path.join(packageDir, "index.js"))).toBe(true);
     expect(existsSync(path.join(packageDir, "INSTALL_SCRIPT_RAN"))).toBe(false);
     expect(existsSync(path.join(dir, "INSTALL_SCRIPT_RAN"))).toBe(false);
+    // The vendored root is a plain npm layout and nothing else: no marker,
+    // receipt, or lockfile for anything to verify later.
+    expect(await readdir(installRoot)).toEqual(["node_modules"]);
 
     const listed = await listProjectPlugins(dir);
     expect(listed).toHaveLength(1);
@@ -294,14 +303,10 @@ describe("npm plugin installation", () => {
     expect(resolved.extensions[0]?.version).toBe(version);
     expect((await validateProjectPlugins(dir))[0]?.ok).toBe(true);
     expect(await readFile(path.join(dir, "manifest.yaml"), "utf8")).toContain(`${name}@${version}`);
+    expect(await loadedMarker(dir, name, version, "__npmPluginLoaded")).toBe(true);
   });
 
-  test("GUTTERPRESS_NPM_REGISTRY: a package vendored from a private mirror installs AND keeps loading", async () => {
-    // The installer records the mirror's tarball URL in the receipt, and
-    // plugin-vendor.ts re-verifies that receipt on EVERY later load — both
-    // checks must accept the configured registry's origin, or a mirror
-    // install succeeds and then fails at its own load-test (and on every
-    // build after it).
+  test("GUTTERPRESS_NPM_REGISTRY: a package vendored from a private mirror installs and loads", async () => {
     const mirror = "http://127.0.0.1:4873";
     const previous = process.env.GUTTERPRESS_NPM_REGISTRY;
     process.env.GUTTERPRESS_NPM_REGISTRY = mirror;
@@ -399,6 +404,25 @@ describe("npm plugin installation", () => {
     expect(await listProjectPlugins(dir)).toEqual([]);
   });
 
+  test("rejects a root package with no JavaScript entry before anything is published", async () => {
+    const dir = await projectDir();
+    const name = "markdown-it-no-entry-fixture";
+    const fixture = registryGraphFixture([{
+      name,
+      version: "1.0.0",
+      entries: [
+        { name: "package/package.json", body: strToU8(JSON.stringify({ name, version: "1.0.0" })) },
+        { name: "package/README.md", body: strToU8("# nothing to run\n") },
+      ],
+    }]);
+
+    await expect(addNpmPlugin(dir, name, { fetch: fixture.fetch })).rejects.toThrow(
+      /no JavaScript plugin entry/i,
+    );
+    expect(existsSync(vendoredNpmPluginRoot(dir, name, "1.0.0"))).toBe(false);
+    expect(await listProjectPlugins(dir)).toEqual([]);
+  });
+
   test("installs, records, and loads an explicitly selected named export", async () => {
     const dir = await projectDir();
     const name = "markdown-it-named-export-fixture";
@@ -420,7 +444,7 @@ describe("npm plugin installation", () => {
     expect((await validateProjectPlugins(dir))[0]).toMatchObject({ ok: true });
   });
 
-  test("vendors and loads a complete transitive dependency tree", async () => {
+  test("vendors a complete transitive dependency tree that the plugin's own imports resolve through", async () => {
     const dir = await projectDir();
     const name = "markdown-it-transitive-fixture";
     const dependency = "gutterpress-transitive-dependency";
@@ -430,7 +454,7 @@ describe("npm plugin installation", () => {
         version: "1.0.0",
         manifest: { dependencies: { [dependency]: "^2.0.0" } },
         files: {
-          "index.js": `import { answer } from "${dependency}";\nif (answer !== 42) throw new Error("dependency did not load");\nexport default function plugin() {}\n`,
+          "index.js": `import { answer } from "${dependency}";\nif (answer !== 42) throw new Error("dependency did not load");\nexport default function plugin(md) { md.answer = answer; }\n`,
         },
       },
       {
@@ -442,18 +466,15 @@ describe("npm plugin installation", () => {
 
     await addNpmPlugin(dir, name, { fetch: fixture.fetch });
 
-    const installed = await receipt(dir, name, "1.0.0");
-    expect(installed.packages.map((pkg) => `${pkg.name}@${pkg.version}`)).toEqual([
-      `${name}@1.0.0`,
-      `${dependency}@2.1.0`,
-    ]);
-    expect(installed.packages[0]?.dependencies[dependency]).toBe(
-      `node_modules/${name}/node_modules/${dependency}`,
-    );
+    // npm's nested layout: the dependency sits in the plugin's OWN
+    // node_modules, where Node's resolution finds it with no help from us.
+    const dependencyDir = vendoredDependencyDir(dir, name, "1.0.0", dependency);
+    expect(await installedVersion(dependencyDir)).toBe("2.1.0");
     expect((await validateProjectPlugins(dir))[0]).toMatchObject({ ok: true });
+    expect(await loadedMarker(dir, name, "1.0.0", "answer")).toBe(42);
   });
 
-  test("loads CommonJS dependencies through the verified graph resolver", async () => {
+  test("loads a CommonJS plugin and its CommonJS dependencies through a plain import()", async () => {
     const dir = await projectDir();
     const name = "markdown-it-commonjs-graph-fixture";
     const dependency = "gutterpress-commonjs-dependency";
@@ -468,7 +489,7 @@ describe("npm plugin installation", () => {
           dependencies: { [dependency]: "1.0.0" },
         },
         files: {
-          "index.cjs": `const value = require("${dependency}");\nif (value !== 42) throw new Error("dependency did not load");\nmodule.exports = function plugin() {};\n`,
+          "index.cjs": `const value = require("${dependency}");\nif (value !== 42) throw new Error("dependency did not load");\nmodule.exports = function plugin(md) { md.value = value; };\n`,
         },
       },
       {
@@ -481,10 +502,8 @@ describe("npm plugin installation", () => {
 
     await addNpmPlugin(dir, name, { fetch: fixture.fetch });
 
-    const installed = await receipt(dir, name, "1.0.0");
-    expect(installed.root.format).toBe("commonjs");
-    expect(installed.packages[1]?.requireEntry).toEndWith("/index.cjs");
     expect((await validateProjectPlugins(dir))[0]).toMatchObject({ ok: true });
+    expect(await loadedMarker(dir, name, "1.0.0", "value")).toBe(42);
   });
 
   test("honors require conditions, wildcard subpaths, and JSON export targets", async () => {
@@ -505,7 +524,7 @@ describe("npm plugin installation", () => {
           "index.cjs": [
             `const feature = require("${dependency}/features/answer");`,
             `const data = require("${dependency}/data");`,
-            `if (feature !== 42 || data.label !== "receipt-data") throw new Error("exports mismatch");`,
+            `if (feature !== 42 || data.label !== "json-data") throw new Error("exports mismatch");`,
             "module.exports = function plugin() {};",
           ].join("\n"),
         },
@@ -524,7 +543,7 @@ describe("npm plugin installation", () => {
         files: {
           "index.cjs": "module.exports = true;\n",
           "features/answer.cjs": "module.exports = 42;\n",
-          "data.json": JSON.stringify({ label: "receipt-data" }),
+          "data.json": JSON.stringify({ label: "json-data" }),
           "wrong.mjs": "throw new Error('import condition selected for require');\n",
         },
       },
@@ -535,70 +554,7 @@ describe("npm plugin installation", () => {
     expect((await validateProjectPlugins(dir))[0]).toMatchObject({ ok: true });
   });
 
-  test("never substitutes undeclared project packages for vendored ESM or CommonJS imports", async () => {
-    for (const format of ["module", "commonjs"] as const) {
-      const dir = await projectDir();
-      const name = `markdown-it-ambient-${format}-fixture`;
-      const ambient = `gutterpress-ambient-${format}-dependency`;
-      const pluginManifest = format === "module"
-        ? { type: "module", exports: "./index.js" }
-        : { type: "commonjs", main: "index.cjs", exports: "./index.cjs" };
-      const pluginFiles: Record<string, string> = format === "module"
-        ? {
-            "index.js": `import value from "${ambient}";\nexport default function plugin(md) { md.ambient = value; }\n`,
-          }
-        : {
-            "index.cjs": `const value = require("${ambient}");\nmodule.exports = function plugin(md) { md.ambient = value; };\n`,
-          };
-      const fixture = registryGraphFixture([{
-        name,
-        version: "1.0.0",
-        manifest: pluginManifest,
-        files: pluginFiles,
-      }]);
-      await installFixtureOnly(dir, name, fixture.fetch);
-
-      const ambientDir = path.join(dir, "node_modules", ambient);
-      await mkdir(ambientDir, { recursive: true });
-      await writeFile(
-        path.join(ambientDir, "package.json"),
-        JSON.stringify({
-          name: ambient,
-          version: "9.9.9",
-          type: format,
-          main: format === "module" ? "index.js" : "index.cjs",
-          exports: format === "module" ? "./index.js" : "./index.cjs",
-        }),
-      );
-      await writeFile(
-        path.join(ambientDir, format === "module" ? "index.js" : "index.cjs"),
-        format === "module" ? "export default 'ambient';\n" : "module.exports = 'ambient';\n",
-      );
-
-      await expect(
-        loadPlugin({ use: `${name}@1.0.0`, name, version: "1.0.0", options: {} }, dir),
-      ).rejects.toThrow(/ambient|undeclared|Cannot find package/i);
-    }
-  });
-
-  test("only validates imports reachable from the plugin entry", async () => {
-    const dir = await projectDir();
-    const name = "markdown-it-unreachable-test-fixture";
-    const fixture = registryGraphFixture([{
-      name,
-      version: "1.0.0",
-      files: {
-        "index.js": "export default function plugin(md) { md.loaded = true; }\n",
-        "test.js": "import 'chai';\n",
-      },
-    }]);
-
-    await addNpmPlugin(dir, name, { fetch: fixture.fetch });
-
-    expect(await loadedMarker(dir, name, "1.0.0", "loaded")).toBe(true);
-  });
-
-  test("rewrites literal dynamic imports and rejects nonliteral import or require expressions", async () => {
+  test("a plugin's own dynamic import() of a dependency resolves through the vendored tree", async () => {
     const dir = await projectDir();
     const name = "markdown-it-dynamic-import-fixture";
     const dependency = "gutterpress-dynamic-import-dependency";
@@ -614,40 +570,11 @@ describe("npm plugin installation", () => {
       {
         name: dependency,
         version: "1.0.0",
-        files: { "index.js": "export const value = 'receipt-dynamic';\n" },
+        files: { "index.js": "export const value = 'vendored-dynamic';\n" },
       },
     ]);
     await addNpmPlugin(dir, name, { fetch: fixture.fetch });
-    expect(await loadedMarker(dir, name, "1.0.0", "dynamic")).toBe("receipt-dynamic");
-
-    const rejectedDir = await projectDir();
-    const rejectedName = "markdown-it-nonliteral-import-fixture";
-    const rejectedFixture = registryGraphFixture([{
-      name: rejectedName,
-      version: "1.0.0",
-      files: {
-        "index.js": "const target = './local.js';\nawait import(target);\nexport default function plugin() {}\n",
-        "local.js": "export const value = true;\n",
-      },
-    }]);
-    await expect(addNpmPlugin(rejectedDir, rejectedName, {
-      fetch: rejectedFixture.fetch,
-    })).rejects.toThrow(/dynamic import.*string literal/i);
-
-    const cjsDir = await projectDir();
-    const cjsName = "markdown-it-nonliteral-require-fixture";
-    const cjsFixture = registryGraphFixture([{
-      name: cjsName,
-      version: "1.0.0",
-      manifest: { type: "commonjs", main: "index.cjs", exports: "./index.cjs" },
-      files: {
-        "index.cjs": "const target = './local.cjs';\nrequire(target);\nmodule.exports = function plugin() {};\n",
-        "local.cjs": "module.exports = true;\n",
-      },
-    }]);
-    await expect(addNpmPlugin(cjsDir, cjsName, {
-      fetch: cjsFixture.fetch,
-    })).rejects.toThrow(/dynamic require.*string literal/i);
+    expect(await loadedMarker(dir, name, "1.0.0", "dynamic")).toBe("vendored-dynamic");
   });
 
   test("keeps conflicting transitive versions in their parents' nested node_modules", async () => {
@@ -687,187 +614,14 @@ describe("npm plugin installation", () => {
 
     await addNpmPlugin(dir, name, { fetch: fixture.fetch });
 
-    const paths = (await receipt(dir, name, "1.0.0")).packages
-      .filter((pkg) => pkg.name === shared)
-      .map((pkg) => `${pkg.path}:${pkg.version}`);
-    expect(paths).toEqual([
-      `node_modules/${name}/node_modules/${left}/node_modules/${shared}:1.4.0`,
-      `node_modules/${name}/node_modules/${right}/node_modules/${shared}:2.3.0`,
-    ]);
+    expect(await installedVersion(vendoredDependencyDir(dir, name, "1.0.0", left, shared))).toBe("1.4.0");
+    expect(await installedVersion(vendoredDependencyDir(dir, name, "1.0.0", right, shared))).toBe("2.3.0");
+    // Each side's import found its own copy (the throws above would otherwise
+    // have failed the load-test and the validation).
     expect((await validateProjectPlugins(dir))[0]).toMatchObject({ ok: true });
   });
 
-  test("reconciles receipt edges with dependency, optional, peer, name, and semver declarations", async () => {
-    async function expectCorruptReceipt(
-      name: string,
-      packages: GraphPackageFixture[],
-      mutate: (installed: VendorReceipt) => void,
-      expected: RegExp,
-    ): Promise<void> {
-      const dir = await projectDir();
-      const fixture = registryGraphFixture(packages);
-      await addNpmPlugin(dir, name, { fetch: fixture.fetch });
-      const installed = await receipt(dir, name, "1.0.0");
-      mutate(installed);
-      await writeFile(
-        path.join(vendoredNpmPluginRoot(dir, name, "1.0.0"), VENDOR_RECEIPT_FILE),
-        `${JSON.stringify(installed, null, 2)}\n`,
-      );
-      const validation = await validateProjectPlugins(dir);
-      expect(validation[0]).toMatchObject({ ok: false });
-      expect(validation[0]?.error).toMatch(expected);
-    }
-
-    const missingName = "markdown-it-missing-edge-fixture";
-    const required = "gutterpress-required-edge";
-    await expectCorruptReceipt(
-      missingName,
-      [
-        { name: missingName, version: "1.0.0", manifest: { dependencies: { [required]: "^1.0.0" } } },
-        { name: required, version: "1.2.0" },
-      ],
-      (installed) => {
-        delete installed.packages.find((pkg) => pkg.name === missingName)!.dependencies[required];
-      },
-      /missing required dependency edge/i,
-    );
-
-    const undeclaredName = "markdown-it-undeclared-edge-fixture";
-    const parent = "gutterpress-edge-parent";
-    const transitive = "gutterpress-edge-transitive";
-    await expectCorruptReceipt(
-      undeclaredName,
-      [
-        { name: undeclaredName, version: "1.0.0", manifest: { dependencies: { [parent]: "1.0.0" } } },
-        { name: parent, version: "1.0.0", manifest: { dependencies: { [transitive]: "1.0.0" } } },
-        { name: transitive, version: "1.0.0" },
-      ],
-      (installed) => {
-        const root = installed.packages.find((pkg) => pkg.name === undeclaredName)!;
-        root.dependencies[transitive] = installed.packages.find((pkg) => pkg.name === transitive)!.path;
-      },
-      /undeclared dependency edge/i,
-    );
-
-    const wrongName = "markdown-it-wrong-name-edge-fixture";
-    const firstDependency = "gutterpress-first-edge";
-    const secondDependency = "gutterpress-second-edge";
-    await expectCorruptReceipt(
-      wrongName,
-      [
-        {
-          name: wrongName,
-          version: "1.0.0",
-          manifest: { dependencies: { [firstDependency]: "1.0.0", [secondDependency]: "1.0.0" } },
-        },
-        { name: firstDependency, version: "1.0.0" },
-        { name: secondDependency, version: "1.0.0" },
-      ],
-      (installed) => {
-        const root = installed.packages.find((pkg) => pkg.name === wrongName)!;
-        root.dependencies[firstDependency] = installed.packages.find(
-          (pkg) => pkg.name === secondDependency,
-        )!.path;
-      },
-      /broken dependency edge/i,
-    );
-
-    const incompatibleName = "markdown-it-incompatible-edge-fixture";
-    const left = "gutterpress-range-left";
-    const right = "gutterpress-range-right";
-    const shared = "gutterpress-range-shared";
-    await expectCorruptReceipt(
-      incompatibleName,
-      [
-        {
-          name: incompatibleName,
-          version: "1.0.0",
-          manifest: { dependencies: { [left]: "1.0.0", [right]: "1.0.0" } },
-        },
-        { name: left, version: "1.0.0", manifest: { dependencies: { [shared]: "^1.0.0" } } },
-        { name: right, version: "1.0.0", manifest: { dependencies: { [shared]: "^2.0.0" } } },
-        { name: shared, version: "1.5.0" },
-        { name: shared, version: "2.5.0" },
-      ],
-      (installed) => {
-        const leftPackage = installed.packages.find((pkg) => pkg.name === left)!;
-        leftPackage.dependencies[shared] = installed.packages.find(
-          (pkg) => pkg.name === shared && pkg.version === "2.5.0",
-        )!.path;
-      },
-      /does not satisfy/i,
-    );
-
-    const optionalName = "markdown-it-optional-skip-edge-fixture";
-    const optional = "gutterpress-unavailable-edge-optional";
-    await expectCorruptReceipt(
-      optionalName,
-      [{
-        name: optionalName,
-        version: "1.0.0",
-        manifest: { optionalDependencies: { [optional]: "1.0.0" } },
-      }],
-      (installed) => {
-        installed.skipped = [];
-      },
-      /neither installed nor skipped/i,
-    );
-
-    const peerName = "markdown-it-required-peer-edge-fixture";
-    const peer = "gutterpress-required-edge-peer";
-    await expectCorruptReceipt(
-      peerName,
-      [
-        { name: peerName, version: "1.0.0", manifest: { peerDependencies: { [peer]: "^3.0.0" } } },
-        { name: peer, version: "3.1.0" },
-      ],
-      (installed) => {
-        delete installed.packages.find((pkg) => pkg.name === peerName)!.dependencies[peer];
-      },
-      /missing required dependency edge/i,
-    );
-
-    const disconnectedName = "markdown-it-disconnected-edge-fixture";
-    const disconnected = "gutterpress-disconnected-edge";
-    const disconnectedDir = await projectDir();
-    const disconnectedFixture = registryGraphFixture([
-      {
-        name: disconnectedName,
-        version: "1.0.0",
-        manifest: { dependencies: { [disconnected]: "1.0.0" } },
-      },
-      {
-        name: disconnected,
-        version: "1.0.0",
-        manifest: { dependencies: { [disconnected]: "1.0.0" } },
-      },
-    ]);
-    await addNpmPlugin(disconnectedDir, disconnectedName, { fetch: disconnectedFixture.fetch });
-    const installRoot = vendoredNpmPluginRoot(disconnectedDir, disconnectedName, "1.0.0");
-    const rootManifestPath = path.join(
-      vendoredNpmPluginPackageDir(installRoot, disconnectedName),
-      "package.json",
-    );
-    const rootManifest = JSON.parse(await readFile(rootManifestPath, "utf8")) as Record<string, unknown>;
-    delete rootManifest.dependencies;
-    await writeFile(rootManifestPath, JSON.stringify(rootManifest));
-    const disconnectedReceipt = await receipt(disconnectedDir, disconnectedName, "1.0.0");
-    disconnectedReceipt.packages.find((pkg) => pkg.name === disconnectedName)!.dependencies = {};
-    disconnectedReceipt.tree = {
-      algorithm: "sha256",
-      ...await computeVendorTreeDigest(installRoot),
-    };
-    await writeFile(
-      path.join(installRoot, VENDOR_RECEIPT_FILE),
-      `${JSON.stringify(disconnectedReceipt, null, 2)}\n`,
-    );
-
-    const disconnectedValidation = await validateProjectPlugins(disconnectedDir);
-    expect(disconnectedValidation[0]).toMatchObject({ ok: false });
-    expect(disconnectedValidation[0]?.error).toMatch(/not reachable from its root/i);
-  });
-
-  test("records cycles without downloading a duplicate ancestor", async () => {
+  test("handles cycles without downloading or nesting a duplicate ancestor", async () => {
     const dir = await projectDir();
     const name = "markdown-it-cycle-fixture";
     const dependency = "gutterpress-cycle-dependency";
@@ -882,19 +636,20 @@ describe("npm plugin installation", () => {
         name: dependency,
         version: "1.0.0",
         manifest: { dependencies: { [name]: "1.0.0" } },
-        files: { "index.js": "export const loaded = true;\n" },
+        files: { "index.js": `import "${name}";\nexport const loaded = true;\n` },
       },
     ]);
 
     await addNpmPlugin(dir, name, { fetch: fixture.fetch });
 
-    const installed = await receipt(dir, name, "1.0.0");
-    expect(installed.packages).toHaveLength(2);
-    expect(installed.packages[1]?.dependencies[name]).toBe(`node_modules/${name}`);
+    expect(existsSync(vendoredDependencyDir(dir, name, "1.0.0", dependency))).toBe(true);
+    // The ancestor is reached by walking back up the tree, not re-vendored.
+    expect(existsSync(vendoredDependencyDir(dir, name, "1.0.0", dependency, name))).toBe(false);
     expect(fixture.calls.filter((url) => url.endsWith(`${name}-1.0.0.tgz`))).toHaveLength(1);
+    expect((await validateProjectPlugins(dir))[0]).toMatchObject({ ok: true });
   });
 
-  test("selects the import condition for an ESM-only root entry", async () => {
+  test("loads the import condition of an ESM-only root entry", async () => {
     const dir = await projectDir();
     const name = "markdown-it-esm-entry-fixture";
     const fixture = registryGraphFixture([{
@@ -904,19 +659,17 @@ describe("npm plugin installation", () => {
         exports: { ".": { import: "./esm.mjs", require: "./wrong.cjs" } },
       },
       files: {
-        "esm.mjs": "export default function plugin() {}\n",
+        "esm.mjs": "export default function plugin(md) { md.entry = 'esm'; }\n",
         "wrong.cjs": "throw new Error('require entry must not run');\n",
       },
     }]);
 
     await addNpmPlugin(dir, name, { fetch: fixture.fetch });
 
-    expect((await receipt(dir, name, "1.0.0")).root.entry).toBe(
-      `node_modules/${name}/esm.mjs`,
-    );
+    expect(await loadedMarker(dir, name, "1.0.0", "entry")).toBe("esm");
   });
 
-  test("installs required peers and records unavailable optional dependencies and optional peers", async () => {
+  test("installs required peers and leaves out unavailable optional dependencies and optional peers", async () => {
     const dir = await projectDir();
     const name = "markdown-it-peer-fixture";
     const requiredPeer = "gutterpress-required-peer";
@@ -943,14 +696,13 @@ describe("npm plugin installation", () => {
 
     await addNpmPlugin(dir, name, { fetch: fixture.fetch });
 
-    const installed = await receipt(dir, name, "1.0.0");
-    expect(installed.packages.some((pkg) => pkg.name === requiredPeer)).toBe(true);
-    expect(installed.skipped.map((item) => [item.name, item.kind])).toEqual([
-      [optional, "optional"],
-      [optionalParent, "optional"],
-      [optionalPeer, "optional-peer"],
-    ]);
-    expect(installed.packages.some((pkg) => pkg.name === optionalParent)).toBe(false);
+    expect(existsSync(vendoredDependencyDir(dir, name, "1.0.0", requiredPeer))).toBe(true);
+    expect(existsSync(vendoredDependencyDir(dir, name, "1.0.0", optional))).toBe(false);
+    // An optional dependency whose OWN required child is unavailable is
+    // dropped whole, not left half-installed.
+    expect(existsSync(vendoredDependencyDir(dir, name, "1.0.0", optionalParent))).toBe(false);
+    expect(existsSync(vendoredDependencyDir(dir, name, "1.0.0", optionalPeer))).toBe(false);
+    expect((await validateProjectPlugins(dir))[0]).toMatchObject({ ok: true });
   });
 
   test("accepts the legacy package-name tar root used by @types dependencies", async () => {
@@ -981,8 +733,7 @@ describe("npm plugin installation", () => {
 
     await addNpmPlugin(dir, name, { fetch: fixture.fetch });
 
-    const installed = await receipt(dir, name, "1.0.0");
-    expect(installed.packages.some((pkg) => pkg.name === typesName)).toBe(true);
+    expect(await installedVersion(vendoredDependencyDir(dir, name, "1.0.0", typesName))).toBe("14.1.2");
     expect((await validateProjectPlugins(dir))[0]).toMatchObject({ ok: true });
   });
 
@@ -1007,13 +758,13 @@ describe("npm plugin installation", () => {
       manifest: { optionalDependencies: { "gutterpress-local-only": "file:../local" } },
     }]);
     await addNpmPlugin(optionalDir, optionalName, { fetch: optionalFixture.fetch });
-    expect((await receipt(optionalDir, optionalName, "1.0.0")).skipped[0]).toMatchObject({
-      name: "gutterpress-local-only",
-      kind: "optional",
-    });
+    expect(
+      existsSync(vendoredDependencyDir(optionalDir, optionalName, "1.0.0", "gutterpress-local-only")),
+    ).toBe(false);
+    expect((await validateProjectPlugins(optionalDir))[0]).toMatchObject({ ok: true });
   });
 
-  test("records optional network failures and timeouts without hiding required failures", async () => {
+  test("tolerates optional network failures and timeouts without hiding required failures", async () => {
     const dir = await projectDir();
     const name = "markdown-it-optional-network-fixture";
     const offline = "gutterpress-optional-offline";
@@ -1039,10 +790,9 @@ describe("npm plugin installation", () => {
 
     await addNpmPlugin(dir, name, { fetch: optionalFetch });
 
-    const skipped = (await receipt(dir, name, "1.0.0")).skipped;
-    expect(skipped.map((item) => item.name)).toEqual([offline, timedOut]);
-    expect(skipped[0]?.reason).toMatch(/socket unavailable|failed/i);
-    expect(skipped[1]?.reason).toMatch(/timed out/i);
+    expect(existsSync(vendoredDependencyDir(dir, name, "1.0.0", offline))).toBe(false);
+    expect(existsSync(vendoredDependencyDir(dir, name, "1.0.0", timedOut))).toBe(false);
+    expect((await validateProjectPlugins(dir))[0]).toMatchObject({ ok: true });
 
     const requiredDir = await projectDir();
     const requiredName = "markdown-it-required-network-fixture";
@@ -1251,28 +1001,41 @@ describe("npm plugin installation", () => {
     }]);
     const result = await addNpmPlugin(legacyDir, legacyName, { fetch: legacyFixture.fetch });
     expect(result.warnings?.[0]).toMatch(/SHA-1/i);
-    expect((await receipt(legacyDir, legacyName, "1.0.0")).packages[0]).toMatchObject({
-      legacySha1: true,
-      integrity: expect.stringMatching(/^sha1-/),
-    });
+    expect((await validateProjectPlugins(legacyDir))[0]).toMatchObject({ ok: true });
   });
 
-  test("a corrupt receipt-backed tree fails closed instead of using project node_modules", async () => {
+  test("a vendored copy that will not load fails closed instead of using project node_modules", async () => {
     const dir = await projectDir();
     const name = "markdown-it-corrupt-tree-fixture";
     const fixture = registryGraphFixture([{ name, version: "1.0.0" }]);
-    await addNpmPlugin(dir, name, { fetch: fixture.fetch });
+    await installFixtureOnly(dir, name, fixture.fetch);
     const installRoot = vendoredNpmPluginRoot(dir, name, "1.0.0");
-    await writeFile(path.join(vendoredNpmPluginPackageDir(installRoot, name), "index.js"), "corrupt\n");
+    await writeFile(path.join(vendoredNpmPluginPackageDir(installRoot, name), "index.js"), "throw new Error('corrupt');\n");
 
     const fallback = path.join(dir, "node_modules", name);
     await mkdir(fallback, { recursive: true });
     await writeFile(path.join(fallback, "package.json"), JSON.stringify({ name, version: "9.9.9", type: "module" }));
     await writeFile(path.join(fallback, "index.js"), "export default function plugin() {}\n");
 
-    const validation = await validateProjectPlugins(dir);
-    expect(validation[0]).toMatchObject({ ok: false });
-    expect(validation[0]?.error).toMatch(/tree hash|failed verification/i);
+    await expect(
+      loadPlugin({ use: `${name}@1.0.0`, name, version: "1.0.0", options: {} }, dir),
+    ).rejects.toThrow(/corrupt/);
+  });
+
+  test("a vendored copy missing its package.json reports reinstall, not the fallback package", async () => {
+    const dir = await projectDir();
+    const name = "markdown-it-missing-manifest-fixture";
+    const fixture = registryGraphFixture([{ name, version: "1.0.0" }]);
+    await installFixtureOnly(dir, name, fixture.fetch);
+    await rm(path.join(vendoredNpmPluginPackageDir(vendoredNpmPluginRoot(dir, name, "1.0.0"), name), "package.json"));
+    const fallback = path.join(dir, "node_modules", name);
+    await mkdir(fallback, { recursive: true });
+    await writeFile(path.join(fallback, "package.json"), JSON.stringify({ name, version: "9.9.9", type: "module" }));
+    await writeFile(path.join(fallback, "index.js"), "export default function plugin() {}\n");
+
+    await expect(
+      loadPlugin({ use: `${name}@1.0.0`, name, version: "1.0.0", options: {} }, dir),
+    ).rejects.toThrow(/incomplete.*Reinstall it with `gutterpress ext add/i);
   });
 
   test("explicit reinstall downloads fresh bytes and replaces a corrupt same-version tree", async () => {
@@ -1292,118 +1055,6 @@ describe("npm plugin installation", () => {
     expect((await validateProjectPlugins(dir))[0]).toMatchObject({ ok: true });
   });
 
-  test("same-version reinstalls load changed ESM and CommonJS bytes in the same process", async () => {
-    for (const format of ["module", "commonjs"] as const) {
-      const dir = await projectDir();
-      const name = `markdown-it-fresh-${format}-cache-fixture`;
-      const manifest = format === "module"
-        ? { type: "module", exports: "./index.js" }
-        : { type: "commonjs", main: "index.cjs", exports: "./index.cjs" };
-      const file = format === "module" ? "index.js" : "index.cjs";
-      const source = (revision: number) => format === "module"
-        ? `export default function plugin(md) { md.revision = ${revision}; }\n`
-        : `module.exports = function plugin(md) { md.revision = ${revision}; };\n`;
-
-      const first = registryGraphFixture([{
-        name,
-        version: "1.0.0",
-        manifest,
-        files: { [file]: source(1) },
-      }]);
-      await addNpmPlugin(dir, `${name}@1.0.0`, { fetch: first.fetch });
-      expect(await loadedMarker(dir, name, "1.0.0", "revision")).toBe(1);
-
-      const second = registryGraphFixture([{
-        name,
-        version: "1.0.0",
-        manifest,
-        files: { [file]: source(2) },
-      }]);
-      await addNpmPlugin(dir, `${name}@1.0.0`, { fetch: second.fetch });
-      expect(await loadedMarker(dir, name, "1.0.0", "revision")).toBe(2);
-    }
-  });
-
-  test("loads the verified snapshot when the source tree mutates before verification", async () => {
-    const dir = await projectDir();
-    const name = "markdown-it-snapshot-race-fixture";
-    const fixture = registryGraphFixture([{
-      name,
-      version: "1.0.0",
-      files: { "index.js": "export default function plugin(md) { md.revision = 1; }\n" },
-    }]);
-    await installFixtureOnly(dir, name, fixture.fetch);
-    const sourceEntry = path.join(
-      vendoredNpmPluginPackageDir(vendoredNpmPluginRoot(dir, name, "1.0.0"), name),
-      "index.js",
-    );
-
-    __setVendorSnapshotHookForTests(async () => {
-      await writeFile(sourceEntry, "export default function plugin(md) { md.revision = 2; }\n");
-    });
-    try {
-      expect(await loadedMarker(dir, name, "1.0.0", "revision")).toBe(1);
-    } finally {
-      __setVendorSnapshotHookForTests();
-    }
-    expect(await readFile(sourceEntry, "utf8")).toContain("revision = 2");
-  });
-
-  test("rejects a receipt entry that no longer matches verified package.json metadata", async () => {
-    const dir = await projectDir();
-    const name = "markdown-it-entry-reconcile-fixture";
-    const fixture = registryGraphFixture([{ name, version: "1.0.0" }]);
-    await addNpmPlugin(dir, name, { fetch: fixture.fetch });
-
-    const installRoot = vendoredNpmPluginRoot(dir, name, "1.0.0");
-    const packageDir = vendoredNpmPluginPackageDir(installRoot, name);
-    const packageJsonPath = path.join(packageDir, "package.json");
-    const manifest = JSON.parse(await readFile(packageJsonPath, "utf8")) as Record<string, unknown>;
-    manifest.exports = "./replacement.js";
-    await writeFile(packageJsonPath, JSON.stringify(manifest));
-    await writeFile(
-      path.join(packageDir, "replacement.js"),
-      "export default function replacement() {}\n",
-    );
-
-    const installedReceipt = await receipt(dir, name, "1.0.0");
-    installedReceipt.tree = { algorithm: "sha256", ...await computeVendorTreeDigest(installRoot) };
-    await writeFile(
-      path.join(installRoot, VENDOR_RECEIPT_FILE),
-      `${JSON.stringify(installedReceipt, null, 2)}\n`,
-    );
-
-    const validation = await validateProjectPlugins(dir);
-    expect(validation[0]).toMatchObject({ ok: false });
-    expect(validation[0]?.error).toMatch(/entries do not match package\.json/i);
-  });
-
-  test("rejects normalized bundled node_modules content even with a recomputed tree digest", async () => {
-    const dir = await projectDir();
-    const name = "markdown-it-normalized-bundle-fixture";
-    const fixture = registryGraphFixture([{ name, version: "1.0.0" }]);
-    await addNpmPlugin(dir, name, { fetch: fixture.fetch });
-
-    const installRoot = vendoredNpmPluginRoot(dir, name, "1.0.0");
-    const bundled = path.join(
-      vendoredNpmPluginPackageDir(installRoot, name),
-      "lib",
-      "NoDe_MoDuLeS",
-    );
-    await mkdir(bundled, { recursive: true });
-    await writeFile(path.join(bundled, "hidden.js"), "module.exports = 'ambient';\n");
-    const installed = await receipt(dir, name, "1.0.0");
-    installed.tree = { algorithm: "sha256", ...await computeVendorTreeDigest(installRoot) };
-    await writeFile(
-      path.join(installRoot, VENDOR_RECEIPT_FILE),
-      `${JSON.stringify(installed, null, 2)}\n`,
-    );
-
-    const validation = await validateProjectPlugins(dir);
-    expect(validation[0]).toMatchObject({ ok: false });
-    expect(validation[0]?.error).toMatch(/non-canonical node_modules|bundled node_modules/i);
-  });
-
   test("rejects a vendor install root symlink that redirects outside the project", async () => {
     const dir = await projectDir();
     const name = "markdown-it-install-root-symlink-fixture";
@@ -1421,7 +1072,7 @@ describe("npm plugin installation", () => {
 
     const validation = await validateProjectPlugins(dir);
     expect(validation[0]).toMatchObject({ ok: false });
-    expect(validation[0]?.error).toMatch(/install root.*normal directory|outside the project/i);
+    expect(validation[0]?.error).toMatch(/install root.*normal directory|outside the book folder/i);
   });
 
   test("rolls the vendor tree and manifest back when activation fails before commit", async () => {
@@ -1476,7 +1127,49 @@ describe("npm plugin installation", () => {
     expect((await listProjectPlugins(dir)).map((entry) => entry.name)).toEqual([first, second]);
   });
 
-  test("blocks /tmp/node_modules ESM and CommonJS substitution under Node and compiled Bun", async () => {
+  // #262 — validate/preflight must see a vendored plugin's declared styles
+  // exactly as `gutterpress lint` does; before the fix, only lint ever looked
+  // at them. Pinned against a real vendored plugin (a path plugin would pass
+  // through a different code path).
+  test("#262: validate sees a vendored plugin's declared styles file", async () => {
+    const dir = await projectDir();
+    const name = "markdown-it-262-validate-gap-fixture";
+    const fixture = registryGraphFixture([{
+      name,
+      version: "1.0.0",
+      files: {
+        "index.js": "export default function plugin() {}\nexport const styles = ['./plugin.css'];\n",
+        // A print-unsafe rule (checks/source/stylelint.ts's risky-props rule)
+        // so a check that DOES see this file produces a findable effect.
+        "plugin.css": "@page { background-blend-mode: multiply; }\n",
+      },
+    }]);
+    await addNpmPlugin(dir, name, { fetch: fixture.fetch });
+    await mkdir(path.join(dir, "styles"), { recursive: true });
+    await writeFile(path.join(dir, "styles", "book.css"), "body { color: black; }\n", "utf8");
+    await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\n#262 fixture.\n", "utf8");
+    await writeFile(
+      path.join(dir, "manifest.yaml"),
+      `title: validate-gap\nstyles:\n  - styles/book.css\nextensions:\n  - ${name}@1.0.0\n`,
+      "utf8",
+    );
+
+    const { executeValidation } = await import("./validation-exec");
+    const execution = await executeValidation({ input: dir });
+
+    const cssFiles = execution.context.cssFiles ?? [];
+    expect(cssFiles.some((f) => f.endsWith("plugin.css"))).toBe(true);
+    const riskyOnPlugin = execution.report.results.some(
+      (r) => r.checkId === "source.stylelint" && r.file?.endsWith("plugin.css"),
+    );
+    expect(riskyOnPlugin).toBe(true);
+  });
+
+  // The desktop host is Electron's Node, not Bun, and the shipped CLI is a
+  // compiled Bun binary: the vendored tree has to load through BOTH runtimes'
+  // own module resolution — an ESM dependency through its import condition,
+  // a CommonJS one through require conditions, wildcard subpaths and JSON.
+  test("loads vendored ESM and CommonJS dependency graphs under Node and compiled Bun", async () => {
     const runnerDir = path.join(TMP_ROOT, `runtime-runner-${counter++}`);
     await mkdir(runnerDir, { recursive: true });
     const runnerSource = path.join(runnerDir, "runner.ts");
@@ -1491,7 +1184,7 @@ describe("npm plugin installation", () => {
         `import { loadPlugin } from ${JSON.stringify(loaderPath)};`,
         "const [projectDir, name, version] = process.argv.slice(2);",
         "try {",
-        "  const loaded = await loadPlugin({ name, version, priority: 100, options: {} }, projectDir);",
+        "  const loaded = await loadPlugin({ use: `${name}@${version}`, name, version, options: {} }, projectDir);",
         "  const md = {};",
         "  loaded.plugin(md, {});",
         "  process.stdout.write(JSON.stringify(md));",
@@ -1520,118 +1213,101 @@ describe("npm plugin installation", () => {
     interface RuntimeProject {
       dir: string;
       name: string;
-      dependency: string;
-      expected?: string;
+      expected: string;
     }
     const projects: RuntimeProject[] = [];
     for (const format of ["module", "commonjs"] as const) {
-      for (const declared of [true, false]) {
-        const dir = await projectDir();
-        const suffix = `${format}-${declared ? "declared" : "ambient"}`;
-        const name = `markdown-it-runtime-${suffix}-fixture`;
-        const dependency = `gutterpress-runtime-${suffix}-dependency`;
-        const rootManifest = format === "module"
-          ? {
-              type: "module",
-              exports: "./index.js",
-              ...(declared ? { dependencies: { [dependency]: "1.0.0" } } : {}),
-            }
-          : {
-              type: "commonjs",
-              main: "index.cjs",
-              exports: "./index.cjs",
-              ...(declared ? { dependencies: { [dependency]: "1.0.0" } } : {}),
-            };
-        const rootFiles: Record<string, string> = format === "module"
-          ? {
-              "index.js": `import value from "${dependency}";\nexport default function plugin(md) { md.result = value; }\n`,
-            }
-          : declared
-            ? {
+      const dir = await projectDir();
+      const name = `markdown-it-runtime-${format}-fixture`;
+      const dependency = `gutterpress-runtime-${format}-dependency`;
+      const shaped = `gutterpress-runtime-${format}-shaped.js`;
+      const packages: GraphPackageFixture[] = format === "module"
+        ? [
+            {
+              name,
+              version: "1.0.0",
+              // The entry sits in dist/ and imports a second dependency shaped
+              // like highlight.js (commonjs-typed, `main` + an `exports` map
+              // with a leading `types` condition) — exactly the shape the
+              // compiled binary's own resolver fails on (0.11.10-alpha.4).
+              manifest: {
+                type: "module",
+                exports: "./dist/index.js",
+                dependencies: { [dependency]: "1.0.0", [shaped]: "1.0.0" },
+              },
+              files: {
+                "dist/index.js": `import value from "${dependency}";\nimport shaped from "${shaped}";\nexport default function plugin(md) { md.result = value + "+" + shaped; }\n`,
+              },
+            },
+            {
+              name: shaped,
+              version: "1.0.0",
+              manifest: {
+                type: "commonjs",
+                main: "./lib/index.js",
+                exports: { ".": { types: "./types/index.d.ts", require: "./lib/index.js", import: "./es/index.js" } },
+              },
+              files: {
+                // highlight.js marks its ESM build with a nested package.json.
+                "es/package.json": '{"type":"module"}',
+                "es/index.js": "export default 'shaped-esm';\n",
+                "lib/index.js": "module.exports = 'shaped-cjs';\n",
+              },
+            },
+            {
+              name: dependency,
+              version: "1.0.0",
+              manifest: {
+                type: "module",
+                exports: { ".": { import: "./index.js", require: "./wrong.cjs" } },
+              },
+              files: {
+                "index.js": "export default 'esm-declared';\n",
+                "wrong.cjs": "throw new Error('wrong require condition');\n",
+              },
+            },
+          ]
+        : [
+            {
+              name,
+              version: "1.0.0",
+              manifest: {
+                type: "commonjs",
+                main: "index.cjs",
+                exports: "./index.cjs",
+                dependencies: { [dependency]: "1.0.0" },
+              },
+              files: {
                 "index.cjs": [
                   `const feature = require("${dependency}/features/value");`,
                   `const data = require("${dependency}/data");`,
                   "module.exports = function plugin(md) { md.result = `${feature}:${data.label}`; };",
                 ].join("\n"),
-              }
-            : {
-                "index.cjs": `const value = require("${dependency}");\nmodule.exports = function plugin(md) { md.result = value; };\n`,
-              };
-        const packages: GraphPackageFixture[] = [{
-          name,
-          version: "1.0.0",
-          manifest: rootManifest,
-          files: rootFiles,
-        }];
-        if (declared && format === "module") {
-          packages.push({
-            name: dependency,
-            version: "1.0.0",
-            manifest: {
-              type: "module",
-              exports: { ".": { import: "./index.js", require: "./wrong.cjs" } },
-            },
-            files: {
-              "index.js": "export default 'esm-declared';\n",
-              "wrong.cjs": "throw new Error('wrong require condition');\n",
-            },
-          });
-        } else if (declared) {
-          packages.push({
-            name: dependency,
-            version: "1.0.0",
-            manifest: {
-              type: "commonjs",
-              exports: {
-                "./features/*": { import: "./wrong/*.mjs", require: "./features/*.cjs" },
-                "./data": "./data.json",
               },
             },
-            files: {
-              "features/value.cjs": "module.exports = 'cjs-declared';\n",
-              "data.json": JSON.stringify({ label: "json" }),
+            {
+              name: dependency,
+              version: "1.0.0",
+              manifest: {
+                type: "commonjs",
+                exports: {
+                  "./features/*": { import: "./wrong/*.mjs", require: "./features/*.cjs" },
+                  "./data": "./data.json",
+                },
+              },
+              files: {
+                "features/value.cjs": "module.exports = 'cjs-declared';\n",
+                "data.json": JSON.stringify({ label: "json" }),
+              },
             },
-          });
-        }
-        const fixture = registryGraphFixture(packages);
-        await installFixtureOnly(dir, name, fixture.fetch);
-
-        if (!declared) {
-          const ambientManifest = JSON.stringify({
-            name: dependency,
-            version: "9.9.9",
-            type: format,
-            main: format === "module" ? "index.js" : "index.cjs",
-            exports: format === "module" ? "./index.js" : "./index.cjs",
-          });
-          const ambientEntry = format === "module"
-            ? "export default 'ambient-substitution';\n"
-            : "module.exports = 'ambient-substitution';\n";
-          for (const ambientDir of [
-            path.join(dir, "node_modules", dependency),
-            path.join("/tmp", "node_modules", dependency),
-          ]) {
-            await rm(ambientDir, { recursive: true, force: true });
-            await mkdir(ambientDir, { recursive: true });
-            await writeFile(path.join(ambientDir, "package.json"), ambientManifest);
-            await writeFile(
-              path.join(ambientDir, format === "module" ? "index.js" : "index.cjs"),
-              ambientEntry,
-            );
-            if (ambientDir.startsWith("/tmp/node_modules/")) {
-              TMP_AMBIENT_PACKAGES.add(ambientDir);
-            }
-          }
-        }
-        projects.push({
-          dir,
-          name,
-          dependency,
-          ...(declared
-            ? { expected: format === "module" ? "esm-declared" : "cjs-declared:json" }
-            : {}),
-        });
-      }
+          ];
+      const fixture = registryGraphFixture(packages);
+      await installFixtureOnly(dir, name, fixture.fetch);
+      projects.push({
+        dir,
+        name,
+        expected: format === "module" ? "esm-declared+shaped-esm" : "cjs-declared:json",
+      });
     }
 
     for (const runtime of [
@@ -1644,14 +1320,8 @@ describe("npm plugin installation", () => {
           stdout: "pipe",
           stderr: "pipe",
         });
-        if (project.expected) {
-          expect(result.exitCode, `${runtime.label}: ${result.stderr.toString()}`).toBe(0);
-          expect(JSON.parse(result.stdout.toString())).toMatchObject({ result: project.expected });
-        } else {
-          expect(result.exitCode, `${runtime.label} loaded an ambient package`).not.toBe(0);
-          expect(result.stderr.toString()).toContain(project.dependency);
-          expect(result.stdout.toString()).not.toContain("ambient-substitution");
-        }
+        expect(result.exitCode, `${runtime.label}: ${result.stderr.toString()}`).toBe(0);
+        expect(JSON.parse(result.stdout.toString())).toMatchObject({ result: project.expected });
       }
     }
   }, 180_000);

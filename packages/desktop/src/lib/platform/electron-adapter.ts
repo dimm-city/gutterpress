@@ -9,7 +9,6 @@
  * exist but there is no IPC behind them yet, so they throw a descriptive error
  * rather than delegate to a non-existent bridge method. Wire them up (preload +
  * main IPC) when implementing #12.
- * writeRecovery/clearRecovery/listRecovery/getConflictPreview — migrated to server routes.
  */
 import type {
   Platform,
@@ -101,10 +100,6 @@ export class ElectronAdapter implements Platform {
   }
 
   // ── HostServices ────────────────────────────────────────────────────────
-  get apiVersion(): number {
-    return bridge().apiVersion;
-  }
-
   // getStatus/check/download (ARCH review #8) go through the server route
   // client (api.updater.*); applyNow and the onEvent push stream stay on the
   // bridge — applyNow flushes the live renderer buffer via `mainWindow.
@@ -131,16 +126,6 @@ export class ElectronAdapter implements Platform {
     };
   }
 
-  // savePdf, pickImageFile, copyFile, pickImageFiles migrated to server routes
-  // listProjectImages, imageThumbnail, inspectImage migrated to server routes (Phase 2C)
-  // openExternal, showInFolder, readLogFile migrated to server routes
-  // getStatus, checkCss, lintProject migrated to server routes (Phase 2C)
-  // getLastProject, splashStatus, rendererReady — migrated to server routes (Phase 2B)
-  // listProjectFiles migrated to server route
-
-  // getDesktopPrefs, setDesktopPrefs, getDesktopProjectState, setDesktopProjectState,
-  // getSettings, setSettings, getNativeTheme — migrated to server routes (Phase 2B)
-
   onNativeThemeUpdated(cb: (state: NativeThemeState) => void): () => void {
     return bridge().onNativeThemeUpdated(cb);
   }
@@ -148,15 +133,6 @@ export class ElectronAdapter implements Platform {
   onOpenMarkdownFile(cb: (event: MarkdownFileLaunchEvent) => void): () => void {
     return bridge().onOpenMarkdownFile(cb);
   }
-
-  // getRecentFolders, getFavorites, toggleFavorite, removeRecent,
-  // discoverProjects, classifyProject, createProject, adoptFolder
-  // — migrated to server routes (Phase 2B)
-
-  // tpl:* and snip:* migrated to server routes (Phase 2D) — removed from ElectronAdapter.
-  // plugin:*, theme:*, project:listStyles migrated to server routes (Phase 2E) — removed from ElectronAdapter.
-
-  // ── Local version history (#13) — all migrated to SvelteKit server routes (src/routes/api/vcs/*).
 
   saveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry> {
     return api.vcs.saveSnapshot(projectDir, message);
@@ -188,11 +164,6 @@ export class ElectronAdapter implements Platform {
     return bridge().connectGoogleCancel();
   }
 
-  // disconnectGitHub, getRemoteConnection, listRemoteRepositories, listRemoteBranches,
-  // listRepoBooks, diagnoseProjectRemote, testRemoteAccess, connectGenericHost,
-  // disconnectHost, listHostConnections, forgeTokenUrl, syncChanges
-  // — migrated to SvelteKit server routes (Phase 2F).
-
   // ARCH review #8: was IPC despite being a plain request/response — the
   // clone-progress push (onCloneProgress below) stays on the bridge unchanged.
   cloneRemoteRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }> {
@@ -212,8 +183,6 @@ export class ElectronAdapter implements Platform {
   async setAutoSync(enabled: boolean): Promise<void> {
     await api.sync.setAutoSync(enabled);
   }
-
-  // syncChanges — migrated to server route (Phase 2F).
 
   // #49: unwrap FolderRef.key → the string `input` the existing IPC expects.
   startPreview(args: PreviewStartArgs): Promise<PreviewStartResult> {
@@ -235,8 +204,6 @@ export class ElectronAdapter implements Platform {
     return bridge().build({ ...rest, input: input.key });
   }
 
-  // doctor migrated to server route (Phase 2C)
-
   onBuildProgress(cb: (data: ExportProgressEvent) => void): () => void {
     return bridge().onBuildProgress(cb);
   }
@@ -244,11 +211,6 @@ export class ElectronAdapter implements Platform {
   onUrlPreviewBlocked(cb: (data: UrlPreviewBlockedEvent) => void): () => void {
     return bridge().onUrlPreviewBlocked(cb);
   }
-
-  // writeRecovery, clearRecovery, listRecovery — migrated to server routes
-  // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.
-
-  // setDirtyState — migrated to server route (Phase 2B)
 
   onFlushBeforeClose(cb: (mode?: "flush" | "discard") => boolean | void | Promise<boolean | void>): () => void {
     return bridge().onFlushBeforeClose(cb);

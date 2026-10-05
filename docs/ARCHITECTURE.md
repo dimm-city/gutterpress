@@ -21,7 +21,7 @@ This document describes the architecture, design decisions, and implementation d
 
 The repo is a Bun workspace with three packages:
 
-- **`packages/cli/`** (`gutterpress`) — the single published package: all runtime logic (markdown rendering, preview HTTP server, PDF generation, lint, validation) under `src/`, exposed both as a library (`exports` → `dist/index.js`) and a CLI (`bin` → `dist/cli.js`). The standard build compiles `src/index.ts` + `src/api/index.ts`, the node-free `src/render.ts` subpath, and `src/cli.ts` in separate invocations; render purity is enforced by `scripts/check-render-pure.mjs`, then `tsc` emits declarations. It is also distributed as a standalone compiled binary via `bun build --compile`.
+- **`packages/cli/`** (`gutterpress`) — the single published package: all runtime logic (markdown rendering, preview HTTP server, PDF generation, validation) under `src/`, exposed both as a library (`exports` → `dist/index.js`) and a CLI (`bin` → `dist/cli.js`). The standard build compiles `src/index.ts` + `src/api/index.ts`, the node-free `src/render.ts` subpath, and `src/cli.ts` in separate invocations; render purity is enforced by `scripts/check-render-pure.mjs`, then `tsc` emits declarations. It is also distributed as a standalone compiled binary via `bun build --compile`.
 - **`packages/desktop/`** (`@dimm-city/gutterpress-desktop`) — Electron + SvelteKit desktop app. Depends on `gutterpress` (workspace) and loads its library entry in the Electron main process.
 - **`packages/open-design-plugin/`** (`@dimm-city/gutterpress-open-design-plugin`) — a static Open Design plugin (no JavaScript, no MCP server): the `SKILL.md` workflow contract and `open-design.json` metadata that let an agent edit an existing Gutterpress project's Markdown/CSS/manifest files in place, with the running preview as the pagination authority.
 
@@ -79,8 +79,6 @@ packages/cli/src/
 │   ├── preview.ts          # Headless preview server launcher
 │   ├── publish.ts          # Push built output to distribution platforms
 │   ├── validate.ts         # Print validation
-│   ├── lint.ts             # CSS linting
-│   ├── audit.ts            # Asset-only validation
 │   ├── preflight.ts        # Structured CI preflight payload
 │   ├── doctor.ts           # Check system tools used by Gutterpress
 │   └── ext.ts              # List/add/remove/enable/disable the project's extensions
@@ -308,29 +306,40 @@ never a `<link>` — in a fixed cascade order (`markdown/assemble.ts`):
 **Location**: `packages/cli/src/lib/engine.ts` (`buildNativePdf`) and
 `packages/cli/src/engine/compiler/build.ts` (`build`).
 
-`buildNativePdf` attaches the engine's CDP client to the pooled Chromium used by
-the CLI. The desktop may instead inject an engine browser backed by Electron's
-own Chromium. The compiler reads the author's CSS, pins the viewport and print
+`runBuild` (`build-runner.ts`) owns the browser: it starts `launchChromium()`
+(`engine/shared/cdp.ts`) un-awaited while the quality gates run, awaits it
+before rendering, hands it to `buildNativePdf`, and closes it in a `finally`.
+The desktop injects `createElectronEngineBrowser` in the launcher's place — an
+engine browser backed by Electron's own Chromium — and the same lifecycle
+applies. The compiler reads the author's CSS, pins the viewport and print
 media to the resolved sheet, synthesizes the CSS Paged Media features Chromium
 does not provide directly, prints to a fixpoint when generated page references
 require it, runs computed-DOM print-quality audits, and postprocesses the final
 bytes.
 
 ```typescript
-const engineBrowser = await connectChromium((await getBrowser()).wsEndpoint());
-const result = await build({ input: htmlFile, browser: engineBrowser, title, author });
-await writeFile(outPdf, result.bytes);
-return result.diagnostics;
+const browser = await (opts.engineBrowser ?? launchChromium)();
+try {
+  const result = await build({ input: htmlFile, browser, title, author });
+  await writeFile(outPdf, result.bytes);
+  return result.diagnostics;
+} finally {
+  await browser.close();
+}
 ```
 
 **Optional PDF/X conversion**: When `--format pdfx` is specified, the build command runs Ghostscript (`packages/cli/src/lib/ghostscript.ts`) to convert the Chromium PDF to CMYK PDF/X-1a or PDF/X-3, with optional annotation stripping for compliance.
 
 **Design Rationale**:
 - An injectable engine `Browser` lets the CLI and packaged Electron desktop
-  share one compiler while using pooled external Chromium or Electron's own
+  share one compiler while using an external Chromium or Electron's own
   Chromium respectively
-- The engine controls printing through its raw-CDP session (`printToPDF`) while
-  Puppeteer is limited to launching and pooling the CLI browser
+- One Chrome launcher: `engine/shared/cdp.ts`'s `launchChromium()` spawns the
+  system Chromium (resolved by `lib/chromium.ts`, overridable with
+  `CHROMIUM_PATH`), enforces the engine's milestone floor, and drives it over
+  raw CDP (`printToPDF`). The CLI build, the parity gate and the engine tests
+  all launch through it, so they test the browser the product ships with; there
+  is no browser-driver dependency (puppeteer-core was removed in 0.11.10)
 - Ghostscript post-processing handles CMYK conversion separately from rendering
 
 ## Preview Server
@@ -341,10 +350,10 @@ return result.diagnostics;
 
 Preview mode runs a single `node:http` server (plus a `ws` `WebSocketServer`)
 that handles static files, the one `/api/status` route, and a
-`/__gutterpress-hmr` WebSocket. A single Markdown edit may use the focused
-`content-update` notification, while wider changes use `full-reload`; the
-preview shell deliberately handles both by swapping the complete regenerated
-book so pagination never depends on per-source isolation wrappers. It does
+`/__gutterpress-hmr` WebSocket. Every change — a one-word Markdown edit or a
+stylesheet rewrite — is one `full-reload` notification; the preview shell
+double-buffers the complete regenerated book and swaps it in, so pagination
+never depends on per-source isolation wrappers. It does
 **not** use `Bun.serve`: the lib runtime must stay Node-compatible so the
 Electron desktop can run it in-process on Electron's bundled Node (see
 `CLAUDE.md`, Monorepo layout section, and §1). There is no toolbar, page
@@ -678,8 +687,8 @@ The specifier's form picks the branch:
 1. **Bundled** names → `BUILTIN_OPTIONAL_PLUGINS` (`markdown/renderer.ts`),
    before any other lookup
 2. **Paths** → the file or folder, relative to the manifest
-3. **npm** → the receipt-verified project-local package graph
-   (`plugins/npm/`, selected by the pinned `name@version`); an unpinned name
+3. **npm** → the project-local vendored copy
+   (`plugins/npm/<name>/<version>/`, selected by the pinned `name@version`); an unpinned name
    falls back to the project's `node_modules`, then to Gutterpress's own
    dependencies (legacy manifests only — `ext list` flags it as "Not pinned")
 4. **Fail fast** — anything else identifies the manifest entry and points to
@@ -688,20 +697,19 @@ The specifier's form picks the branch:
 The loader does **not** install or access the network. Installation is an
 explicit shared-lib action — `addExtension` (`lib/extension-manager.ts`),
 called by the desktop's routes and by `gutterpress ext add`. Registry metadata
-is resolved to an exact root and dependency graph, each tarball integrity is
-verified, and a bounded nested `node_modules` tree is safely vendored before
-the pinned specifier `name@<exact version>` is written to the manifest (the
-vendor tree is rolled back if the load-test fails).
-A schema-v2 receipt records provenance, dependency
-edges, import/require entries, skipped optional dependencies, and a SHA-256
-whole-tree digest. Before loading, the loader snapshots the vendor tree and
-verifies that private copy, including each package's declared dependency edges
-and export entries. It then copies packages separately into a digest-addressed
-process-local tree with no `node_modules` links. Literal ESM imports and
-CommonJS requires in the reachable module graph are resolved through the
-receipt and rewritten to those private copies; unresolved or nonliteral module
-requests fail closed instead of substituting project or ancestor packages.
-(Full rationale was ADR 0007, removed in the 2026-07-29 docs cleanup.)
+is resolved to an exact root and dependency graph, each tarball's integrity is
+verified against the registry's SRI hash, and a bounded nested `node_modules`
+tree is safely vendored (no package scripts, no bundled `node_modules`, no
+links or path traversal) before the pinned specifier `name@<exact version>` is
+written to the manifest (the vendor tree is rolled back if the load-test
+fails). The vendored tree is an ordinary npm layout and nothing more: the
+loader resolves the package entry from its own `package.json` and `import()`s
+it, and Node's own module resolution serves the package's imports and requires
+from the nested `node_modules`. Nothing is recorded about the tree and nothing
+re-verifies it on load; a vendored folder that is present but incomplete is an
+error pointing at reinstall, never a silent fall-through. (The earlier
+receipt/snapshot/import-rewriting scheme was removed in 0.11.10 as
+disproportionate for a local authoring tool.)
 
 Plugin modules normally expose a default function. An entry's `export`
 selects a named function when a package exposes several plugin variants
@@ -709,7 +717,7 @@ instead.
 
 **Design Rationale**:
 - One manifest list keeps configuration explicit; the specifier's form encodes its source, so no wrapper keys
-- Exact versions, complete project-local dependency trees, and receipts make installs reproducible
+- Exact versions and complete project-local dependency trees make installs reproducible
 - List order is load order and cascade order — reordering is the only ordering control
 - Fail-fast on missing extensions surfaces misconfiguration immediately rather than silently skipping
 - Extension stylesheets (`styles` in metadata; `styles`/`css` module exports) let a plugin or look inject styles into rendered output, always below the author's own `styles:`
@@ -729,15 +737,17 @@ See [User Guide: Chapter 5 — Plugins](../examples/gutterpress-user-guide/05-pl
 - Modern APIs (fetch, WebSocket)
 - Better DX for single-user tools
 
-### 2. Why puppeteer-core + Chromium for PDF?
+### 2. Why raw CDP + the system Chromium for PDF?
 
-**Chosen over**: Prince XML, Playwright
+**Chosen over**: Prince XML, Playwright, puppeteer-core
 
 **Reasons**:
 - Open-source and cross-platform (macOS, Linux, Windows)
 - Chromium supplies native paged layout and PDF printing; the Gutterpress
   engine synthesizes the CSS Paged Media features Chromium does not implement
-- puppeteer-core ships no bundled browser (we resolve a system/bundled Chromium ourselves)
+- No browser driver to download or bundle: the engine resolves a system (or
+  Electron-bundled) Chromium itself and talks to it over `ws` — the whole
+  browser surface is one ~500-line file
 - Direct page rendering eliminates subprocess overhead
 - Direct raw-CDP `printToPDF` generation
 - Better TypeScript support
@@ -771,10 +781,10 @@ See [User Guide: Chapter 5 — Plugins](../examples/gutterpress-user-guide/05-pl
 **Reasons**:
 - Non-technical users need a native-feeling app with folder picker, page
   navigation, and PDF export — not a browser tab.
-- SvelteKit is built with `@sveltejs/adapter-node`, which emits a Node HTTP
-  handler (`build/handler.js`). Electron main starts that handler on a local
-  `127.0.0.1` server and serves the window through a custom `app://` protocol
-  handler that proxies each request to it with `fetch`. Host capabilities are
+- SvelteKit is built with the desktop package's `adapter-electron.js`, which
+  writes the SvelteKit server unbundled to `build/server/`. Electron main
+  constructs that server and answers the window's `app://` requests with
+  `Server.respond()` in-process — no HTTP server or proxy. Host capabilities are
   exposed as `src/routes/api/**/+server.ts` routes the renderer calls with
   `fetch("/api/…")`; a narrow `ipcMain`/preload bridge is reserved for push
   streams and calls that must drive a live `BrowserWindow` (see `CLAUDE.md`

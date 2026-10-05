@@ -1,8 +1,10 @@
 <script lang="ts">
   import PreviewFrame from "$lib/components/PreviewFrame.svelte";
+  import PreviewToolbar from "$lib/components/PreviewToolbar.svelte";
   import FindBar from "$lib/components/FindBar.svelte";
   import ExternalEditBanner from "$lib/components/ExternalEditBanner.svelte";
   import CrashRecoveryDialog from "$lib/components/CrashRecoveryDialog.svelte";
+  import type { TroubleshootingTab } from "$lib/troubleshooting-tabs";
   import { EditorBuffer } from "$lib/editor/buffer-state.svelte";
   import { EditorFileSession } from "$lib/editor/editor-file-session.svelte";
   import { chapterPath, isSafeChapterId } from "$lib/editor/chapter-path";
@@ -17,15 +19,16 @@
   import ProjectActivityView from "$lib/components/ProjectActivityView.svelte";
   import NewProjectWizard from "$lib/components/NewProjectWizard.svelte";
   import GitHubDialog from "$lib/components/GitHubDialog.svelte";
+  import OpenBookDialog from "$lib/components/OpenBookDialog.svelte";
   import PublishWizard from "$lib/components/PublishWizard.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import AppToolbar from "$lib/components/AppToolbar.svelte";
-  import ExportDialog from "$lib/components/ExportDialog.svelte";
+  import FocusBar from "$lib/components/FocusBar.svelte";
   import ProjectSettingsView from "$lib/components/ProjectSettingsView.svelte";
   import EditorToolbar from "$lib/components/EditorToolbar.svelte";
   import type { ToolbarAction, ToolbarPayload } from "$lib/components/EditorToolbar.svelte";
   import SnippetPicker from "$lib/components/SnippetPicker.svelte";
-  import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
+  import { PreviewClient, type OutlineEntry, type PreviewEvent, type PreviewTarget } from "$lib/preview-client";
   import { activeOutlineIndexForLine } from "$lib/routes/outline";
   import { PageNavController } from "$lib/routes/page-nav-controller.svelte";
   import { ZoomViewController } from "$lib/routes/zoom-view-controller.svelte";
@@ -48,6 +51,7 @@
   import { getPlatform, isDesktop } from "$lib/platform";
   import type { WorkspaceMode } from "$lib/platform";
   import { api } from "$lib/api";
+  import { buildSourceList } from "$lib/components/config/source-files";
   import { isEditableTarget } from "$lib/a11y";
   import { invalidateDiscoveredProjects } from "$lib/projects-discover-cache";
   import { basenameOf, joinPath, isPathAtOrUnder } from "$lib/platform/paths";
@@ -61,6 +65,7 @@
   } from "$lib/editor/mobile-layout";
   import { commandForSaveShortcut } from "$lib/editor/save-shortcuts";
   import { resolveGlobalShortcut, resolvePreviewNavCommand } from "$lib/routes/shortcuts";
+  import { escapeExitsFocus } from "$lib/routes/focus-mode";
   import { splitTemplateColumns, shouldRefitPreview } from "$lib/editor/preview-layout";
   import { useSettings, _loadSettings, settingsChangeGuard, onSettingsChange } from "$lib/settings.svelte";
   import { sanitizeSettingsTab, type SettingsTab } from "$lib/settings-tabs";
@@ -152,7 +157,8 @@
     displayName: () => lifecycle.currentFolderDisplayName,
     isBusy: () => lifecycle.busy,
     sourceMode: () => lifecycle.sourceMode,
-    chooseSavePath: (defaultName) => api.dialog.savePdf(defaultName),
+    chooseSavePath: (defaultName, defaultDir) => api.dialog.savePdf(defaultName, defaultDir),
+    pickOutputFolder: (defaultPath) => api.dialog.pickOutputFolder(defaultPath),
     onBuildProgress: (cb) => getPlatform().onBuildProgress(cb),
     buildPdf: (input, outPath, opts) =>
       getPlatform()
@@ -179,7 +185,7 @@
           buildProblemEntries = buildProblems(result.diagnostics ?? []);
           return result;
         }),
-    buildHtml: (input) => getPlatform().build({ input, format: "html" }),
+    buildHtml: (input, out) => getPlatform().build({ input, format: "html", ...(out ? { out } : {}) }),
     cancelExportHost: (exportId) => getPlatform().cancelExport(exportId),
     downloadFile: (url, filename) => {
       const a = document.createElement("a");
@@ -226,8 +232,6 @@
     listDestinations: (dir, providerId) => api.publish.listDestinations(dir, providerId),
     createDestination: (dir, providerId, name) => api.publish.createDestination(dir, providerId, name),
     run: (dir, providerId, options) => api.publish.run(dir, providerId, options),
-    pickPdfFile: () => api.dialog.pickPdfFile(),
-    openDirectory: () => api.dialog.openDirectory(),
     openExternal: (url) => api.shell.openExternal(url),
     onSaved: () => toast?.success?.("Publish settings saved."),
     onConnected: () => toast?.success?.("Connected — the key is stored securely on this computer."),
@@ -239,7 +243,7 @@
   // #33 Phase 4: PDF/build gating via the capabilities() seam (NOT a
   // `platform === "web"` branch). `nativeSavePath` is true on the desktop host
   // (Electron writes the PDF to a chosen path) and false on the web (no
-  // puppeteer / printToPDF in the browser). When false the "Save PDF" control is
+  // headless Chromium / printToPDF in the browser). When false the "Save PDF" control is
   // replaced with a short "requires the desktop app" note (acceptance criterion).
   // Desktop is UNCHANGED: nativeSavePath:true → canSavePdf:true → identical UI.
   const canSavePdf = $derived(getPlatform().capabilities().nativeSavePath);
@@ -395,10 +399,16 @@
     else openSettings();
   }
   /**
-   * No author name/email yet: every version this project saves would be
-   * attributed to a placeholder, so the workspace carries a persistent notice
+   * No author name/email yet: what a project with version history keeps would
+   * be attributed to a placeholder, so the workspace carries a persistent notice
    * with a one-click route to Settings → Accounts. It clears itself the moment
    * both fields are filled.
+   *
+   * It waits until that is about to matter: the open project HAS version
+   * history (`canSnapshot`) and a version was just saved by hand or a sync just
+   * started — the two moments the renderer is told about (`identityNoticeArmed`,
+   * set where they happen). It used to greet every writer the moment any book
+   * opened, plain folders with no history included.
    *
    * Gated on `settings.loaded`: the in-memory defaults ARE empty strings, so an
    * ungated check would flash the banner on every launch in the window before
@@ -417,10 +427,16 @@
    * wrong for silences it, and it returns next launch in case the setting
    * still matters to them.
    */
+  let identityNoticeArmed = $state(false);
   let identityNoticeDismissed = $state(false);
-  const needsGitIdentity = $derived(
-    settings.loaded &&
+  // `$derived.by`: reads `projectSession`, declared further down — a plain
+  // `$derived(expr)` would evaluate it here, before that declaration.
+  const needsGitIdentity = $derived.by(
+    () =>
+      settings.loaded &&
+      identityNoticeArmed &&
       !identityNoticeDismissed &&
+      !!projectSession.projectCapabilities?.canSnapshot &&
       (!settings.current.gitIdentity.authorName.trim() ||
         !settings.current.gitIdentity.authorEmail.trim()),
   );
@@ -459,6 +475,7 @@
 
   // "Open from GitHub" flow (#15)
   let githubOpen = $state(false);
+  let openBookOpen = $state(false);
   // New-project wizard (#25). L4: opening is exclusively via show() below —
   // there is no bindable `open` prop any more (the wizard owns that state).
   let newProjectWizardRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
@@ -472,12 +489,14 @@
   // + buffer).
   const syncController = new SyncController({
     syncChanges: (dir) => api.remote.syncChanges(dir),
+    repair: (dir) => api.remote.repairOnlineBackup(dir),
     diagnose: (dir) => api.remote.diagnoseProjectRemote(dir),
     currentDir: () => lifecycle.currentDir,
     toast: () => toast,
     onSyncCompleted: (mergedRemoteChanges, filesChanged) =>
       onSyncCompleted(mergedRemoteChanges, filesChanged),
     onFilesChanged: () => onSyncFilesChanged(),
+    autoBackup: () => settings.current.versionHistory.autoSync,
   });
 
   // ── Project session capability state (#12) ───────────────────────────────────
@@ -550,6 +569,7 @@
       problemsError = null;
       logFilePath = null;
     },
+    onProjectSwitch: () => setFocus(false),
     resetExtras: () => {
       stopFolderWatch();
       pageNav.totalPages = 0;
@@ -557,7 +577,11 @@
       // A project closed while its settings view was up must not show that
       // view over the next project (or the empty workspace).
       projectSettingsOpen = false;
-      setMode("viewer");
+      // Focus is per-book-session: closing drops it here (switching via
+      // onProjectSwitch), so the next book never opens chromeless. The saved
+      // mode is untouched (a reset is not a choice; forcing Read here once
+      // saved it for good).
+      focus = false;
       // A project closed while activity borrowed the editor must not reopen the
       // next project on that stale view.
       editorView = "editor";
@@ -605,18 +629,17 @@
   // AppToolbar is purely presentational: it receives finished booleans/strings,
   // never lifecycle objects, so its contract stays small and testable.
   let toolbarProjectOpen = $derived(!!lifecycle.currentDir && lifecycle.sourceMode === "folder");
-  let exportDisabled = $derived(
+  let publishDisabled = $derived(
     lifecycle.busy || exportController.exporting || !lifecycle.currentDir || lifecycle.sourceMode === "url",
   );
-  // Why-is-Export-disabled notes (UX-023) + the web-target "desktop app" note.
-  // URL mode wins over the no-folder message (currentDir is null there too,
-  // and "Open a folder first" would be misleading while previewing a URL);
-  // the toolbar hides hints entirely in URL mode anyway.
-  let exportHints = $derived.by(() => {
+  // Why-is-Publish-disabled notes (UX-023). URL mode wins over the no-folder
+  // message (currentDir is null there too, and "Open a folder first" would be
+  // misleading while previewing a URL); the toolbar hides hints entirely in
+  // URL mode anyway.
+  let publishHints = $derived.by(() => {
     const hints: string[] = [];
     if (lifecycle.sourceMode === "url") hints.push("Not available for web previews");
     else if (!lifecycle.currentDir && !lifecycle.busy) hints.push("Open a folder first");
-    if (!canSavePdf) hints.push("PDF export requires the desktop app");
     return hints;
   });
 
@@ -648,7 +671,7 @@
   // the inert workspace, which is a spec no-op).
   let landingRef = $state<{
     focusLayer: () => void;
-    showTab: (tab: "projects" | "settings" | "help") => void;
+    showTab: (tab: "projects" | "settings" | "help" | "about" | "troubleshooting", sub?: TroubleshootingTab) => void;
   } | null>(null);
   /** Sub-tab the start screen's embedded Settings opens on. */
   let landingSettingsTab = $state<SettingsTab>("app");
@@ -692,6 +715,12 @@
   /** Open the start screen on its Help tab (the global help affordance). */
   function openHelp() {
     landingRef?.showTab("help");
+    landingForcedOpen = true;
+  }
+
+  /** Open Troubleshooting → Report a problem (from an error toast or the unsaved-changes dialog). */
+  function openReportProblem() {
+    landingRef?.showTab("troubleshooting", "report");
     landingForcedOpen = true;
   }
 
@@ -758,11 +787,11 @@
   // author's books — the screen's whole job is to pick or continue a book.
   // The missing-identity nudge is the workspace banner (`needsGitIdentity`
   // above), which is where the owner put it on 2026-07-30; the landing opens
-  // on Projects and stays there until the author asks for another tab.
+  // on Books and stays there until the author asks for another tab.
 
   /**
    * The ONE open-a-project-folder pipeline behind the folder picker, the
-   * Projects panel, the start screen, the GitHub dialog, and the new-project
+   * Books panel, the start screen, the GitHub dialog, and the new-book
    * wizard: leave the start screen, restore the folder's saved per-project
    * state (#43), and hand off to startFolderPreview. There is NO await before
    * startFolderPreview, so the open epoch is claimed at user-intent time (last
@@ -869,8 +898,8 @@
   function onSyncCompleted(mergedRemoteChanges: boolean, filesChanged = mergedRemoteChanges) {
     toast?.success(
       mergedRemoteChanges
-        ? "Synced — changes from the online copy were combined in, so the preview will refresh."
-        : "Synced — your changes are online.",
+        ? "Backed up online — changes from the online backup were combined in, so the preview will refresh."
+        : "Backed up online — your changes are online.",
     );
     // A sync may add new commits to the project's version history (both push
     // and pull sides) — refresh the activity view's snapshot list so new
@@ -913,6 +942,7 @@
     const off = getPlatform().onSyncStatus((status) => {
       // Scope to the currently open project.
       if (status.projectDir !== lifecycle.currentDir) return;
+      if (status.state === "syncing") identityNoticeArmed = true;
       if (shouldReconcileAfterSync(status)) {
         onSyncFilesChanged();
       }
@@ -938,16 +968,18 @@
   // reconciliation. The editor owns exactly one file buffer at a time.
   // The ONE workspace-layout switch (see `WorkspaceMode`). Declared here
   // (before the deriveds that read it) so it is initialised ahead of them.
-  // A local $state rather than a settings derived, because `focus` is
-  // deliberately absent from the persisted shape — `setMode` writes the
-  // durable half through and `modeSink` below reads it back on load.
+  // A local $state that `setMode` writes through to settings and `modeSink`
+  // below reads back on load.
   let mode = $state<WorkspaceMode>(settings.current.preview.mode);
-  // The one genuinely ambiguous transition: leaving `focus` could mean either
-  // `editor` or `viewer`. Written ONLY on entering focus.
-  let modeBeforeFocus: "editor" | "viewer" | null = null;
-  /** The viewer is hidden in `focus` and nowhere else. */
-  let previewVisible = $derived(mode !== "focus");
-  /** `focus` is the editor without the viewer, so the editor shows in both. */
+  // Focus: a SESSION-ONLY toggle layered on top of Edit or Read (see
+  // focus-mode.ts). It hides the chrome and nothing else — it never touches
+  // `mode` or the persisted left-panel setting, so leaving it restores exactly
+  // what was there. Not persisted on purpose: a restart never wakes chromeless.
+  let focus = $state(false);
+  // The "how to leave Focus" toast shows the first time Focus is entered in an
+  // app session only — the Focus tooltip carries the same words permanently,
+  // and a writer who lives in Focus should not be told every time.
+  let focusHintShown = false;
   let editorVisible = $derived(mode !== "viewer");
   let workspaceEl = $state<HTMLElement | undefined>(undefined);
   let editorRef = $state<{
@@ -981,27 +1013,34 @@
     snippetPickerRef?.show();
   }
 
-  // ── Project settings view (#PCV → full window) ─────────────────────────────
-  // Project settings live in a full-window view patterned after the app
-  // SettingsView (they used to be a left-sidebar Config tab); activity is the
-  // only alternate editor-pane view.
+  // ── Book settings view ──────────────────────────────────────────────────
+  // Book settings take over the whole window, exactly like the start screen:
+  // the workspace underneath is inert until the writer closes them (X or
+  // Esc). They used to be a left-sidebar Config tab, then a panel docked
+  // beside the workspace; both squeezed manifest editing, theme browsing and
+  // plugin management into a strip. Activity is the only alternate
+  // editor-pane view.
   let editorView = $state<"editor" | "activity">("editor");
   let projectSettingsOpen = $state(false);
 
-  /**
-   * One button → the whole project settings view (manifest details, look &
-   * style, plugins). Full-window like the app settings; the workspace behind
-   * it goes inert and returns untouched on close.
-   */
+  /** One button → the whole book settings view (manifest details, look &
+   *  style, plugins), covering the workspace. */
   function openProjectConfig(): void {
     if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
     if (!isDesktop()) {
-      toast?.info?.("Project configuration is available in the desktop app for now.");
+      toast?.info?.("Book settings are available in the desktop app for now.");
       return;
     }
-    contextMenu.close();
-    void inlineEdit.endActive(true); // opening a dialog commits the in-flow edit
+    projectSettingsTab = "details";
     projectSettingsOpen = true;
+  }
+
+  // Book settings opens on Details; the save-status dialog sends writers to
+  // Connections to see how an online backup gets set up.
+  let projectSettingsTab = $state<"details" | "connections">("details");
+  function openBookConnections(): void {
+    openProjectConfig();
+    projectSettingsTab = "connections";
   }
 
   function closeProjectSettings(): void {
@@ -1028,9 +1067,8 @@
     focusEditorWhenReady();
   }
 
-  // "Save as template" (#29) now lives in the ExportDialog (Template format).
-  let exportOpen = $state(false);
-  let exportBtnEl = $state<HTMLButtonElement | undefined>(undefined);
+  // The Publish button element — the wizard's focus-restore target.
+  let publishBtnEl = $state<HTMLButtonElement | undefined>(undefined);
 
   // True below the single-pane breakpoint. Assigned by the matchMedia
   // subscription further down; declared here so the derived below can read it.
@@ -1060,25 +1098,15 @@
   let findBarRef = $state<{ focusInput: () => void } | null>(null);
   const viewerVisibleForFind = $derived(
     !!lifecycle.previewUrl &&
-      previewVisible &&
       !(isNarrow && (editorPaneOpen || editorView !== "editor")),
   );
 
   let splitGridColumns = $derived(
-    editorPaneOpen && !isNarrow && previewVisible
+    editorPaneOpen && !isNarrow
       ? splitTemplateColumns(zoomView.splitPaneRatio)
       : "",
   );
-  let previewCollapseGridColumns = $derived(
-    editorPaneOpen && !isNarrow && !previewVisible
-      ? "minmax(0, 1fr) 0 minmax(0, 0)"
-      : "",
-  );
 
-  // ── Scroll wheel page-flip (issue #301) ───────────────────────────────────
-  // Timestamps used for cooldown and flick detection on the preview pane.
-  let pageFlipLastAt = $state(0);
-  let pageFlipLastTime = $state(0);
 
   // MarkdownEditor wraps the full CodeMirror 6 stack (+ lang-markdown's
   // code-language loaders), a ~300 KB chunk. The editor pane is closed by
@@ -1301,17 +1329,16 @@
   const contextMenuSettingSink = settingsChangeGuard<boolean>((enabled) => {
     if (!enabled) contextMenu.close();
   });
-  // Workspace mode: the live value is local $state (it can hold `focus`, which
-  // the persisted shape cannot), so the async settings load has to be pushed
-  // into it. The guard dedupes against the last value seen, so setMode's own
-  // write-back cannot bounce back and clobber a live `focus`.
+  // Workspace mode: the live value is local $state, so the async settings load
+  // has to be pushed into it. The guard dedupes against the last value seen,
+  // so setMode's own write-back is a no-op.
   // Restoring a persisted `editor` mode assigns `mode` directly rather than
   // going through setMode, so it has to kick the lazy import the way setMode
   // does. The settings fetch and the auto-open of the last project are
   // independent async starts: when settings land LAST, the project-open path
   // already ran `ensureEditorFile()` while the workspace still looked like
   // viewer mode, and nothing else would ever load the editor component.
-  const modeSink = settingsChangeGuard<Exclude<WorkspaceMode, "focus">>((m) => {
+  const modeSink = settingsChangeGuard<WorkspaceMode>((m) => {
     mode = m;
     if (m !== "viewer") loadEditorModule();
   });
@@ -1421,6 +1448,21 @@
     }
     whenEditorReady(() => {
       if (editorRef?.hasFile(path)) editorRef.revealLine(line, focus);
+    });
+  }
+
+  /**
+   * User-initiated file switch (Focus Chapter select, Files tab): select the
+   * file, then emit one top-of-viewport ("scroll") anchor so the preview follows. Loading a
+   * file emits no anchor of its own, and the editor opens every file at line 1
+   * (no per-file position is restored). Deliberately NOT inside
+   * `selectEditorFile`: go-to-source and other programmatic callers reveal a
+   * specific line afterwards and must not top-scroll first.
+   */
+  async function openChapter(path: string): Promise<void> {
+    if (!(await selectEditorFile(path))) return;
+    whenEditorReady(() => {
+      if (editorRef?.hasFile(path)) editorSync.onEditorAnchorLine(1, "scroll", editorChapter);
     });
   }
 
@@ -1584,8 +1626,8 @@
    * Open the editor pane: mark it open, lazy-load the editor module, ensure a
    * file is loaded, and move focus into it. Centralizes the sequence that was
    * hand-repeated across five call sites (audit E3). `focus` and `ensureFile`
-   * cover the two sites that intentionally differ (togglePreview never steals
-   * focus; the file-tree selection path already has a file).
+   * cover the sites that intentionally differ (the file-tree selection path
+   * already has a file; go-to-source places its own caret).
    */
   function openEditorPane(opts: { focus?: boolean; ensureFile?: boolean } = {}) {
     const { focus = true, ensureFile = true } = opts;
@@ -1681,7 +1723,7 @@
         // distinct error state instead of silently clearing to [].
         if (lifecycle.currentDir === dir) {
           problems = [];
-          problemsError = "We couldn't check your project this time.";
+          problemsError = "We couldn't check your book this time.";
         }
       })
       .finally(() => {
@@ -1783,7 +1825,9 @@
       if (typeof panelPrefs?.width === "number") {
         leftPanelWidth = clampPanelWidth(panelPrefs.width, viewportWidth());
       }
-      leftPanelOpen = panelPrefs?.open ?? false;
+      // No saved choice (first run): show the panel — unless the window is
+      // narrow, where it is an overlay that would cover the page.
+      leftPanelOpen = panelPrefs?.open ?? !isNarrow;
     },
     setLandingShowPref: (show) => {
       landingShowPref = show;
@@ -2057,6 +2101,19 @@
   // throws), and in URL-preview mode the SAME component loads an arbitrary
   // third-party page, which must never get the command/event bridge wired up
   // at all (a locked client's later attach() call is a permanent no-op).
+  /**
+   * Esc pressed inside the preview. The preview is a cross-origin iframe, so
+   * its keystrokes never reach this window; preview-bridge.js forwards an Esc
+   * nothing in the book consumed (in-place block editing keeps its own).
+   * Same rule as the window's Esc: leave Focus only if nothing else owns it.
+   */
+  function onPreviewEscape(e: PreviewEvent): void {
+    if (e.name !== "escapePressed" || !inFocus) return;
+    if (escapeExitsFocus({ key: "Escape", defaultPrevented: false }, document, findBarOpen)) {
+      setFocus(false);
+    }
+  }
+
   function onClientReady(c: PreviewClient) {
     previewUpdating = false;
     if (lifecycle.sourceMode === "url") {
@@ -2067,6 +2124,7 @@
     previewEvents.subscribe(c);
     contextMenu.subscribe(c);
     inlineEdit.subscribe(c);
+    c.on(onPreviewEscape);
   }
 
   // ----------------------------------------------------------------
@@ -2090,41 +2148,8 @@
   // same registration order for the same event; `onKeydown` just calls both
   // from one `addEventListener` instead of two.
   // ----------------------------------------------------------------
-  function handlePreviewWheel(e: WheelEvent) {
-    if (!lifecycle.previewUrl || lifecycle.rendering) return;
-
-    const absDy = Math.abs(e.deltaY);
-    const absDx = Math.abs(e.deltaX);
-    if (absDy < 40 || absDx > absDy * 2) return;
-
-    const now = Date.now();
-    if (now - pageFlipLastAt < 500) return;
-
-    const dir = e.deltaY > 0 ? 1 : -1; // scroll down → next pages, scroll up → prev pages
-    const step = viewMode === "single" ? 1 : 2;
-    const targetPage = Math.max(1, Math.min(pageNav.totalPages, pageNav.currentPage + dir * step));
-
-    if (targetPage !== pageNav.currentPage && client) {
-      e.preventDefault();
-      void client.scrollToPage(targetPage).catch(() => {});
-      pageFlipLastAt = now;
-      pageFlipLastTime = now;
-    }
-  }
-
   onMount(() => {
     function onGlobalKey(e: KeyboardEvent) {
-      // The full-window Project settings view owns the keyboard while it's up:
-      // the workspace behind it is inert, so acting on it (opening Settings
-      // invisibly BENEATH the view, toggling focus mode, exporting, snippet
-      // picker) would mutate UI the user can't see. Escape closes the view.
-      if (projectSettingsOpen) {
-        if (e.key === "Escape") {
-          e.preventDefault();
-          closeProjectSettings();
-        }
-        return;
-      }
       const command = resolveGlobalShortcut({
         ctrlOrMeta: e.ctrlKey || e.metaKey,
         shift: e.shiftKey,
@@ -2140,14 +2165,13 @@
       // Esc handling); workspace shortcuts must not act on the inert UI
       // behind it.
       if (landingVisible) return;
-      // Cmd/Ctrl+Shift+F hides the viewer so the editor has the window
-      // (#104). Esc is deliberately NOT an exit: focus keeps the toolbar, so
-      // the control that entered it is still on screen — and a global Esc
-      // that reshuffles panes mid-sentence is a surprise. Esc stays the
-      // dismiss-the-transient-thing key (find bar, dialogs, menus).
-      if (command === "focus-mode") {
+      // Esc leaves Focus, but ONLY when nothing else wants the key: an open
+      // dialog/menu/popover, the find bar, or a handler that already consumed
+      // it (editor, context menu) keeps Esc. An Esc pressed inside the preview
+      // never reaches this window — see onPreviewEscape.
+      if (inFocus && escapeExitsFocus(e, document, findBarOpen)) {
         e.preventDefault();
-        togglePreview();
+        setFocus(false);
         return;
       }
       // Cmd/Ctrl+F finds in the VIEWER only (owner ruling 2026-08-15): the
@@ -2198,9 +2222,6 @@
       if (e.defaultPrevented) return;
       // Never page/zoom the pre-rendering preview from behind the start screen.
       if (landingVisible) return;
-      // Never page/zoom the hidden preview behind full-window project
-      // settings (PageUp/PageDown must scroll its body, not the preview).
-      if (projectSettingsOpen) return;
       // Don't intercept when focus is in a form control or the CodeMirror
       // editor (#38) — preview-nav keys (arrows, Home/End, +/-/=, f) must
       // never hijack editing. Shared guard: $lib/a11y isEditableTarget.
@@ -2311,7 +2332,7 @@
 
   function getSaveReadinessWarning(): string | null {
     if (lifecycle.sourceMode !== "folder" || !lifecycle.currentDir) {
-      return "Open a project folder before saving a PDF.";
+      return "Open a book before saving a PDF.";
     }
     if (lifecycle.rendering || !lifecycle.previewUrl) {
       return "Your document is still loading. Wait a moment and try again.";
@@ -2486,41 +2507,59 @@
   }
 
   /**
-   * The ONE writer of `mode`. Persists the durable half (`focus` stores as
-   * `editor` — waking into a viewer-less window would be hostile), pushes the
-   * derived page layout into the viewer, and guarantees the editor module is
-   * loading whenever the editor pane is about to be on screen (the pane
-   * renders "Loading editor…" until it is).
-   *
-   * Persist BEFORE assigning. `settings.set` notifies synchronously, so the
-   * write-back reaches `modeSink` inside this call — and entering `focus`
-   * from `viewer` writes "editor", a value the sink has NOT seen, so its
-   * dedupe does not catch it and it assigns `mode = "editor"`. Doing that
-   * echo first and the assignment last keeps the one writer of `mode` the
-   * last word; Read → Focus used to land in Edit with the viewer still up.
+   * The ONE writer of `mode`: persists it, pushes the derived page layout into
+   * the viewer, and guarantees the editor module is loading whenever the
+   * editor pane is about to be on screen (the pane renders "Loading editor…"
+   * until it is).
    */
   function setMode(next: WorkspaceMode): void {
     if (next === mode) return;
-    if (next === "focus") modeBeforeFocus = mode === "viewer" ? "viewer" : "editor";
-    settings.set({ preview: { mode: next === "focus" ? "editor" : next } });
+    settings.set({ preview: { mode: next } });
     mode = next;
     zoomView.applyViewMode(viewMode);
     if (next !== "viewer") loadEditorModule();
   }
 
-  /** Hide/show the viewer — the focus toggle. */
-  function togglePreview() {
-    if (!lifecycle.previewUrl || isNarrow) return;
-    if (mode === "focus") {
-      setMode(modeBeforeFocus ?? "editor");
-      modeBeforeFocus = null;
-      return;
+  /** Focus applies while a project workspace is open; it is never persisted. */
+  let inFocus = $derived(focus && toolbarProjectOpen);
+
+  /**
+   * Edit+Focus file switcher: the book's markdown files in book order — the
+   * manifest's `sourceFiles` when pinned, else every top-level .md in natural
+   * order (the same list the Details section edits, via `buildSourceList`).
+   */
+  let focusFiles = $state<string[]>([]);
+  async function loadFocusFiles(): Promise<void> {
+    const dir = lifecycle.currentDir;
+    if (!dir) return;
+    try {
+      const [{ md }, cfg] = await Promise.all([api.fs.listProjectFiles(dir), api.manifest.read(dir)]);
+      if (dir !== lifecycle.currentDir) return;
+      focusFiles = buildSourceList(md, cfg.sourceFiles ?? null)
+        .filter((e) => e.included && !e.missing)
+        .map((e) => e.path);
+    } catch {
+      focusFiles = [];
     }
-    setMode("focus");
-    // Don't yank focus into the editor — the author asked to hide the preview,
-    // not to start typing.
-    if (lifecycle.currentDir && lifecycle.sourceMode === "folder") {
-      openEditorPane({ focus: false });
+  }
+
+  /**
+   * Turn Focus on/off. It only hides chrome (see `focus`), so neither the mode
+   * nor the left-panel setting is touched and leaving restores exactly what
+   * was visible. `returnFocus` puts keyboard focus back on the toolbar's Focus
+   * button, which the minimal bar's Exit button replaced.
+   */
+  function setFocus(on: boolean, returnFocus = false): void {
+    if (on === focus || (on && !toolbarProjectOpen)) return;
+    contextMenu.close();
+    focus = on;
+    if (on) void loadFocusFiles();
+    if (on && !focusHintShown) {
+      focusHintShown = true;
+      toast?.info?.("Focus: press Esc to exit", 6000);
+    }
+    if (!on && returnFocus) {
+      void tick().then(() => document.getElementById("focus-toggle-btn")?.focus());
     }
   }
 
@@ -2562,7 +2601,7 @@
   // editor and the preview. `editorPaneOpen` is the visible source of truth;
   // the persisted paneMode is only consulted after the editor was explicitly
   // opened. (The defunct CSS/style tab was retired with the toolbar
-  // refactor — project styling lives in the Project settings view.)
+  // refactor — project styling lives in the Book settings view.)
   //
   // M1 (single source of truth): whether the shared editor is on a CSS file is
   // derived SOLELY from the open file's extension (`openFileIsCss`) — no
@@ -2591,6 +2630,15 @@
     }
     setPaneMode(paneModeForTab(tab));
   }
+
+  /** The minimal bar's Edit/Read switch: a mode on wide layouts, a tab on narrow. */
+  function selectFocusView(view: "edit" | "read"): void {
+    if (isNarrow) void selectMobileTab(view === "edit" ? "markdown" : "preview");
+    else setMode(view === "edit" ? "editor" : "viewer");
+  }
+  let focusView = $derived<"edit" | "read">(
+    (isNarrow ? mobileTab === "markdown" : mode !== "viewer") ? "edit" : "read",
+  );
 
   // ── Virtual-keyboard handling (#34) ────────────────────────────────────────
   // When the on-screen keyboard opens on a touch device, the visual viewport
@@ -2667,13 +2715,14 @@
 
 </script>
 
-<Toast bind:api={toast} />
+<Toast bind:api={toast} onReportProblem={openReportProblem} />
 
 <CrashRecoveryDialog
   items={crashRecovery.items}
   onRestore={(item) => crashRecovery.restore(item)}
   onDiscard={(item) => crashRecovery.discard(item)}
   onDismiss={() => crashRecovery.dismiss()}
+  onReportProblem={openReportProblem}
 />
 
 <!-- RC3-1: App-level overlay for the initial "Opening folder…" lifecycle.busy state ONLY
@@ -2711,8 +2760,9 @@
   <title>{lifecycle.docTitle ? `${lifecycle.docTitle} — Gutterpress` : "Gutterpress"}</title>
 </svelte:head>
 
-<!-- inert while the start screen or full-window Settings view is up: the
-      workspace keeps rendering, but never accepts interaction underneath. -->
+<!-- inert while the start screen or Book settings is up: the workspace keeps
+      rendering (a stylesheet written from Book settings re-renders the preview
+      live) but never accepts interaction underneath the layer. -->
 <div class="app-root" inert={landingVisible || projectSettingsOpen}>
 {#if (updateController.readyVersion || updateController.availableVersion) && !updateController.bannerDismissed}
   <div class="update-banner" role="status" aria-live="polite">
@@ -2741,7 +2791,7 @@
 {#if needsGitIdentity}
   <div class="identity-banner" role="status">
     <span class="identity-banner-msg">
-      Add your name and email so the versions you save show who made each change.
+      Add your name and email so the changes you save are credited to you.
     </span>
     <button class="identity-action" onclick={() => openSettings("connections")}>
       Add your name &amp; email
@@ -2753,6 +2803,19 @@
 {/if}
 
 <div class="shell">
+  {#if inFocus}
+    <FocusBar
+      view={focusView}
+      onSelectView={(v) => { contextMenu.close(); selectFocusView(v); }}
+      onExit={() => setFocus(false, true)}
+      {pageNav}
+      showPageNav={focusView === "read" && !!lifecycle.previewUrl}
+      rendering={lifecycle.rendering}
+      files={focusView === "edit" ? focusFiles : []}
+      currentFile={editorFilePath ? basenameOf(editorFilePath) : null}
+      onSelectFile={(name) => lifecycle.currentDir ? openChapter(joinPath(lifecycle.currentDir, name)) : undefined}
+    />
+  {:else}
   <AppToolbar
     bind:panelToggleEl={leftPanelToggleBtn}
     {leftPanelOpen}
@@ -2763,9 +2826,6 @@
     folderTitle={lifecycle.currentDir ? displayTitle : null}
     folderTooltip={lifecycle.currentDir}
     onOpenInBrowser={openInBrowser}
-    {pageNav}
-    rendering={lifecycle.rendering}
-    showPageNav={!!lifecycle.previewUrl && !isNarrow}
     {isNarrow}
     {mobileTab}
     onSelectMobileTab={selectMobileTab}
@@ -2774,30 +2834,27 @@
     hidePreviewControls={isNarrow && editorPaneOpen}
     {mode}
     onSetMode={(next) => { contextMenu.close(); setMode(next); }}
-    {zoom}
-    previewControlsDisabled={!lifecycle.previewUrl}
-    onApplyZoom={(val) => { contextMenu.close(); zoomView.applyZoom(val); }}
     editorToggleDisabled={!toolbarProjectOpen}
-    publishVisible={isDesktop()}
-    publishDisabled={lifecycle.busy || !lifecycle.currentDir || lifecycle.sourceMode === "url"}
-    onPublish={() => (publishOpen = true)}
-    {canSavePdf}
-    exporting={exportController.exporting}
-    {exportDisabled}
-    onOpenExport={() => (exportOpen = true)}
-    bind:exportBtnEl
-    {exportHints}
-    exportWarning={canSavePdf ? lifecycle.saveWarning : null}
-    saving={forceSaving}
-    saveDisabled={!editorFilePath || forceSaving || editorSavePhase === "clean"}
-    savePending={!!editorFilePath && editorSavePhase !== "clean"}
-    onSave={handleForceSave}
+    publishLabel={isDesktop() ? "Publish" : "Download website"}
+    {publishDisabled}
+    onPublish={() => {
+      // The web target has no host to build into a folder or upload from: the
+      // one thing it can do is hand the website over as a download.
+      if (isDesktop()) publishOpen = true;
+      else void exportController.exportHtml();
+    }}
+    bind:publishBtnEl
+    {publishHints}
+    publishWarning={canSavePdf ? lifecycle.saveWarning : null}
     showProjectSettings={toolbarProjectOpen && isDesktop()}
     onOpenProjectSettings={openProjectConfig}
+    {focus}
+    onToggleFocus={() => setFocus(!focus)}
   />
+  {/if}
 
   <!-- Global left panel — available in both preview and edit modes -->
-  <div id="left-panel-region" class="left-panel-region" class:panel-open={leftPanelOpen} style="--left-panel-width: {leftPanelWidth}px">
+  <div id="left-panel-region" class="left-panel-region" class:panel-open={leftPanelOpen} class:in-focus={inFocus} style="--left-panel-width: {leftPanelWidth}px">
     <LeftPanel
       bind:open={leftPanelOpen}
       bind:width={leftPanelWidth}
@@ -2812,7 +2869,7 @@
       toggleBtn={leftPanelToggleBtn}
       onJumpToOutline={jumpToOutline}
       onSelectEditorFile={(path) => {
-        selectEditorFile(path);
+        void openChapter(path);
         if (!editorVisible && lifecycle.currentDir && lifecycle.sourceMode === "folder") {
           // A file was just selected in the tree, so no ensureEditorFile needed.
           openEditorPane({ ensureFile: false });
@@ -2825,13 +2882,8 @@
       onInsertImage={(payload) => insertImageIntoChapter(payload)}
       onProjectChosen={(path) => void openProjectPath(path)}
       onOpenUrl={openUrl}
-      onOpenGitHub={isDesktop() ? () => { contextMenu.close(); void inlineEdit.endActive(true); githubOpen = true; } : undefined}
+      onOpenBook={() => { contextMenu.close(); void inlineEdit.endActive(true); openBookOpen = true; }}
       onNewProject={() => { contextMenu.close(); void inlineEdit.endActive(true); newProjectWizardRef?.show(); }}
-      onShowWelcome={() => {
-        contextMenu.close();
-        landingRef?.showTab("projects");
-        landingForcedOpen = true;
-      }}
       onSyncReconnect={onSyncReconnect}
       onPanelStateChange={persistLeftPanelPrefs}
     />
@@ -2864,10 +2916,8 @@
       class:narrow={isNarrow}
       class:show-edit={isNarrow && editorPaneOpen}
       class:show-view={isNarrow && !editorPaneOpen}
-      class:preview-hidden={!previewVisible}
-      class:preview-collapsed={!previewVisible}
       bind:this={workspaceEl}
-      style="--kbd-offset: {keyboardInset}px; {previewCollapseGridColumns ? `grid-template-columns: ${previewCollapseGridColumns};` : splitGridColumns ? `grid-template-columns: ${splitGridColumns};` : ''}"
+      style="--kbd-offset: {keyboardInset}px; {splitGridColumns ? `grid-template-columns: ${splitGridColumns};` : ''}"
     >
       {#if editorPaneOpen}
         <section
@@ -2900,6 +2950,7 @@
             {/if}
             <!-- Editor toolbar (#31): compact formatting bar, visible only when a
                  markdown file is open. Placed above the editor, within the pane. -->
+            {#if !inFocus}
             <EditorToolbar
               filePath={editorFilePath}
               projectDir={lifecycle.currentDir}
@@ -2908,14 +2959,13 @@
                   openSnippetPicker();
                   return;
                 }
-                if (action === "focus-mode") {
-                  togglePreview();
-                  return;
-                }
                 editorRef?.runToolbarAction(action, payload);
               }}
               onSave={handleForceSave}
+              savePending={editorSavePhase !== "clean"}
+              saving={forceSaving}
             />
+            {/if}
             {#if MarkdownEditor}
               <!-- No per-file `{#key}` remount: MarkdownEditor keeps ONE
                    EditorView, while EditorFileSession gives it exactly ONE
@@ -2941,7 +2991,7 @@
             {/if}
           {/if}
         </section>
-        {#if !isNarrow && previewVisible}
+        {#if !isNarrow}
           <!-- Focusable separator (ARIA window-splitter pattern): drag, or
                Arrow-key resize / double-click reset for the non-drag path
                (#103, WCAG 2.2 SC 2.5.7). A <div>, not a <button> — a button
@@ -2977,10 +3027,20 @@
         id="mobile-panel-preview"
         role={isNarrow ? "tabpanel" : undefined}
         aria-labelledby={isNarrow ? "mobile-tab-preview" : undefined}
-        aria-hidden={!previewVisible}
-        inert={!previewVisible || (isNarrow && (editorPaneOpen || editorView !== "editor")) ? true : undefined}
-        onwheel={handlePreviewWheel}
+        inert={isNarrow && (editorPaneOpen || editorView !== "editor") ? true : undefined}
       >
+        {#if !inFocus && lifecycle.previewUrl}
+          <!-- Page navigation and zoom sit on the pane they act on (the
+               editor pane has its own toolbar the same way). Focus keeps the
+               preview bare: the FocusBar carries page nav for reading. -->
+          <PreviewToolbar
+            {pageNav}
+            rendering={lifecycle.rendering}
+            {zoom}
+            zoomDisabled={!lifecycle.previewUrl}
+            onApplyZoom={(val) => { contextMenu.close(); zoomView.applyZoom(val); }}
+          />
+        {/if}
         <FindBar bind:this={findBarRef} bind:open={findBarOpen} {client} />
         {#if lifecycle.previewUrl}
           {#key lifecycle.previewUrl}
@@ -3054,19 +3114,22 @@
        and problems panel toggle. Sits below the left-panel-region in the
        .shell flex column so it spans the full window width. Never covers
        the preview iframe (normal layout flow). -->
+  {#if !inFocus}
   <StatusBar
     projectDir={lifecycle.currentDir}
     sourceMode={lifecycle.sourceMode}
     canSync={!!(syncController.syncDiag?.canSync)}
     hasRemote={projectSession.projectHasRemote}
-    canSnapshot={!!(projectSession.projectCapabilities?.canSnapshot)}
+    canSnapshot={projectSession.projectCapabilities ? !!projectSession.projectCapabilities.canSnapshot : null}
     savePhase={editorSavePhase}
     autoSave={settings.current.versionHistory.autoSave}
+    autoVersions={settings.current.versionHistory.autoSnapshot}
+    autoBackup={settings.current.versionHistory.autoSync}
     fileOpen={!!editorFilePath}
     {forceSaving}
     forceSyncing={syncController.forceSyncing}
     problems={displayedProblems}
-    problemsLoading={problemsLoading}
+    problemsLoading={problemsLoading || lifecycle.rendering}
     {problemsError}
     bind:problemsOpen={problemsOpen}
     books={projectSession.books}
@@ -3078,21 +3141,44 @@
     onShowLog={showProjectLog}
     onForceSave={handleForceSave}
     onForceSync={() => syncController.handleForceSync()}
+    onRepair={() => syncController.handleRepair()}
+    manualBackup={syncController.lastManual}
     onSaveVersion={async () => {
       const dir = lifecycle.currentDir;
-      if (!dir) return;
+      if (!dir) return "unchanged";
       try {
         await api.vcs.saveSnapshot(dir);
+        identityNoticeArmed = true;
         toast?.success("Saved a version.");
         activityViewRef?.refreshHistory();
+        return "saved";
       } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        // A clean book is not a failure: the dialog says so calmly (no toast).
+        // Local copy of the lib's isNoChangesError (the SPA can't import it).
+        if (/no changes since the last snapshot/i.test(msg)) return "unchanged";
         toast?.error(friendlyHostError(e instanceof Error ? e.message : String(e)));
         throw e;
       }
     }}
+    onEnableVersionHistory={async () => {
+      const dir = lifecycle.currentDir;
+      if (!dir) return;
+      try {
+        await api.vcs.enableVersionHistory(dir);
+        await projectSession.classify(dir);
+        toast?.success("Version history is on.");
+      } catch (e) {
+        toast?.error("Couldn't turn on version history. Your book is unchanged.");
+        throw e;
+      }
+    }}
+    onShowVersions={showActivityView}
+    onOpenBookConnections={openBookConnections}
     onOpenSettings={openSettings}
     onOpenHelp={openHelp}
   />
+  {/if}
 </div>
 </div>
 
@@ -3133,30 +3219,41 @@
   onDismiss={() => dismissLanding()}
   settingsTab={landingSettingsTab}
   onProjectFilesChanged={onSnapshotRestored}
+  onCloseBook={() => lifecycle.stopPreview()}
 />
 {#if projectSettingsOpen}
-  <!-- Project settings (manifest): full-window like the app settings. Keyed by
-       projectDir so a project switch can never leave stale section state
-       (drafts, theme lists) resident under the new project. -->
-  <section class="settings-global-view" aria-label="Project settings">
+  <!-- Book settings (manifest): a full-window layer like the start screen.
+       Keyed by projectDir so a project switch can never leave stale section
+       state (drafts, theme lists) resident under the new project. -->
+  <section class="settings-global-view" aria-label="Book settings">
     {#key lifecycle.currentDir}
       <ProjectSettingsView
         projectDir={lifecycle.currentDir}
         repoRoot={projectSession.repoRoot}
+        initialTab={projectSettingsTab}
         {toast}
         onClose={closeProjectSettings}
         onEditRawCss={(path) => { closeProjectSettings(); openStyleFile(path); }}
         onOpenAccounts={() => { closeProjectSettings(); openSettings("connections"); }}
+        onVersionHistoryEnabled={(dir) => void projectSession.classify(dir)}
       />
     {/key}
   </section>
+{/if}
+
+{#if openBookOpen}
+  <OpenBookDialog
+    onClose={() => (openBookOpen = false)}
+    onLocal={() => { openBookOpen = false; void pickAndOpenFolder(); }}
+    onGitHub={isDesktop() ? () => { openBookOpen = false; githubOpen = true; } : undefined}
+  />
 {/if}
 
 <GitHubDialog
   bind:open={githubOpen}
   onOpened={(projectDir) => {
     invalidateDiscoveredProjects(); // a fresh clone is a new discoverable book
-    return openProjectPath(projectDir, "Opening your project…");
+    return openProjectPath(projectDir, "Opening your book…");
   }}
   onAdvancedSetup={() => openSettings("connections")}
   onClosed={onConnectDialogClosed}
@@ -3167,6 +3264,12 @@
        to step 1 (no $effect, per CLAUDE.md §8). -->
   <PublishWizard
     controller={publishController}
+    projectDir={lifecycle.currentDir ?? ""}
+    {canSavePdf}
+    buildArtifact={(opts) => exportController.buildTo(opts)}
+    pickFolder={(defaultPath) => api.dialog.pickOutputFolder(defaultPath)}
+    onShowInFolder={(path) => void api.shell.showInFolder(path).catch(() => {})}
+    triggerEl={publishBtnEl}
     onClose={() => (publishOpen = false)}
     onNavigate={(entry) => {
       // A preflight "Go to" — close the modal wizard, then reveal the finding
@@ -3195,19 +3298,6 @@
   getSelectionText={() => editorRef?.getSelectionText() ?? ""}
   onInsert={(text) => editorRef?.insertSnippet(text)}
 />
-<!-- Export dialog: format (PDF / HTML / template) + settings for the toolbar
-     Export button. Mounted fresh per open so its state resets. -->
-{#if exportOpen}
-  <ExportDialog
-    projectDir={lifecycle.currentDir}
-    {canSavePdf}
-    {toast}
-    triggerEl={exportBtnEl}
-    onExportPdf={(opts) => void exportController.savePdf(opts)}
-    onExportHtml={() => void exportController.exportHtml()}
-    onClose={() => (exportOpen = false)}
-  />
-{/if}
 {#if textPrompt}
   <TextPromptDialog
     title={textPrompt.title}
@@ -3281,6 +3371,17 @@
   .left-panel-region:not(.panel-open) .main-content {
     margin-left: calc(-1 * var(--left-panel-width, 300px));
   }
+  /* Focus hides the panel WITHOUT touching `leftPanelOpen` (the persisted
+     setting): display:none drops it from layout and the tab order, and
+     main-content takes the full width whether the panel was open or closed.
+     Leaving Focus just removes the class. */
+  .left-panel-region.in-focus > :global(.left-panel),
+  .left-panel-region.in-focus > :global(.panel-scrim) {
+    display: none;
+  }
+  .left-panel-region.in-focus .main-content {
+    margin-left: 0;
+  }
   /* Narrow screens: panel overlays, so main-content never shifts */
   @media screen and (max-width: 820px) {
     .left-panel-region:not(.panel-open) .main-content {
@@ -3313,10 +3414,11 @@
   .editor-pane {
     border-right: 1px solid var(--app-border);
   }
+  /* Book settings covers the whole window, on the start screen's layer. */
   .settings-global-view {
     position: fixed;
     inset: 0;
-    z-index: calc(var(--app-z-sheet) + 1);
+    z-index: var(--app-z-sheet);
     display: flex;
     background: var(--app-bg);
   }
@@ -3359,10 +3461,14 @@
   }
   .preview-pane {
     position: relative;
+    /* Named container for PreviewToolbar's own collapse stages. */
+    container-type: inline-size;
+    container-name: preview-pane;
   }
   .preview-updating-pill {
     position: absolute;
-    top: 10px;
+    /* Below the preview toolbar, which holds the zoom menu on that side. */
+    top: 44px;
     right: 12px;
     z-index: 9;
     display: flex;

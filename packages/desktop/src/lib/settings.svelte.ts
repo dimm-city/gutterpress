@@ -25,9 +25,9 @@
  * Distinct from `DesktopPrefs` (session/per-project state via setDesktopPrefs).
  * Settings are durable user preferences persisted to `userData/app-settings.json`
  * on desktop. `api.app.getSettings`/`setSettings` reach that file through the
- * `api/app/settings` server route, which requires Electron main to have
- * registered its prefs hooks (`getPrefsHooks()`); outside Electron (a plain
- * browser / `vite dev`) that route 503s, `_loadSettings()`'s `.catch()` keeps
+ * `api/app/settings` server route, which reads the host's prefs store through
+ * `getHostServices().prefs`; outside Electron (a plain browser / `vite dev`)
+ * that route fails, `_loadSettings()`'s `.catch()` keeps
  * the in-memory defaults, and `set()`'s `.catch(() => {})` silently drops the
  * write — so today settings do NOT persist on web; they reset every session.
  * `WebAdapter` (web-adapter.ts) already has a real `localStorage`-backed

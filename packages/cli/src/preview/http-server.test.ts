@@ -295,10 +295,10 @@ describe('createPreviewServer', () => {
     expect(body).not.toContain('<h1>Hi</h1>');
   });
 
-  test('serves book.html with the HMR client injected', async () => {
-    // The CLI no longer ships a desktop chrome index.html; the rendered paginated
-    // book lives at /book.html. Any served HTML gets the HMR client injected so
-    // direct embedders (and the shell's inner frame) can hot-reload.
+  test('serves book.html verbatim — live reload belongs to the shell alone', async () => {
+    // The rendered paginated book lives at /book.html and is only ever loaded
+    // by the shell's own iframe. Nothing is injected into it: preview-shell.js
+    // owns the WebSocket, the double-buffered swap and the scroll anchor.
     await writeFile(
       join(tempDir, 'book.html'),
       '<!doctype html><html><body><h1>Hi</h1></body></html>'
@@ -312,14 +312,8 @@ describe('createPreviewServer', () => {
     expect(res.headers.get('content-type')).toContain('text/html');
 
     const body = await res.text();
-    expect(body).toContain('<h1>Hi</h1>');
-    expect(body).toContain('__gutterpress-hmr');
-    expect(body).toContain('full-reload');
-    expect(body).toContain('content-update');
-    expect(body).toContain('reload-state');
-    expect(body).toContain('reload-applied');
-    expect(body).toContain("closest('[data-chapter-src]')");
-    expect(body).toContain('chapterId === a.chapter');
+    expect(body).toBe('<!doctype html><html><body><h1>Hi</h1></body></html>');
+    expect(body).not.toContain('__gutterpress-hmr');
   });
 
   test('returns 404 for missing file', async () => {
@@ -546,27 +540,18 @@ describe('createPreviewServer', () => {
     ws.send(JSON.stringify({ type: 'reload-applied', instance: initial.instance, revision: 1 }));
     await new Promise((resolve) => setTimeout(resolve, 25));
 
-    const chapterMessage = new Promise<string>((resolve) => {
+    // Revisions are cumulative: a second edit is one more full-reload at the
+    // next revision, never a per-file message.
+    const secondMessage = new Promise<string>((resolve) => {
       ws.onmessage = (e) => resolve(typeof e.data === 'string' ? e.data : '');
     });
-    server.broadcastContentUpdate('chapters/one.md');
-    expect(JSON.parse(await chapterMessage)).toEqual({
-      type: 'content-update',
-      instance: initial.instance,
-      revision: 2,
-      file: 'chapters/one.md',
-    });
-
-    const cumulativeMessage = new Promise<string>((resolve) => {
-      ws.onmessage = (e) => resolve(typeof e.data === 'string' ? e.data : '');
-    });
-    server.broadcastContentUpdate('chapters/two.md');
-    expect(JSON.parse(await cumulativeMessage)).toEqual({
+    server.broadcastReload();
+    expect(JSON.parse(await secondMessage)).toEqual({
       type: 'full-reload',
       instance: initial.instance,
-      revision: 3,
+      revision: 2,
     });
-    ws.send(JSON.stringify({ type: 'reload-applied', instance: initial.instance, revision: 3 }));
+    ws.send(JSON.stringify({ type: 'reload-applied', instance: initial.instance, revision: 2 }));
 
     await new Promise<void>((resolve) => {
       ws.onclose = () => resolve();
@@ -575,7 +560,7 @@ describe('createPreviewServer', () => {
 
     // No client receives this edge. A new connection still learns the current
     // revision and can update, which is the stale-view recovery contract.
-    server.broadcastContentUpdate('chapters/three.md');
+    server.broadcastReload();
     const reconnected = new WebSocket(`ws://localhost:${port}/__gutterpress-hmr`);
     const recoveredState = new Promise<string>((resolve) => {
       reconnected.onmessage = (e) => resolve(typeof e.data === 'string' ? e.data : '');
@@ -587,12 +572,12 @@ describe('createPreviewServer', () => {
     expect(JSON.parse(await recoveredState)).toEqual({
       type: 'reload-state',
       instance: initial.instance,
-      revision: 4,
+      revision: 3,
     });
     reconnected.send(JSON.stringify({
       type: 'reload-applied',
       instance: initial.instance,
-      revision: 4,
+      revision: 3,
     }));
     reconnected.close();
   });
@@ -607,109 +592,5 @@ describe('createPreviewServer', () => {
     const res = await fetch(`http://localhost:${port}/sub/data.json`);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
-  });
-});
-
-describe('/__chapter route', () => {
-  let workDir: string;
-  let server: PreviewServer | null;
-  let port: number;
-
-  beforeEach(async () => {
-    workDir = await mkdtemp(join(tmpdir(), 'gutterpress-chapter-test-'));
-    server = null;
-    port = 50000 + Math.floor(Math.random() * 5000);
-  });
-
-  afterEach(async () => {
-    if (server) {
-      await server.close();
-      server = null;
-    }
-    await rm(workDir, { recursive: true, force: true });
-  });
-
-  test('renders one source file with chapter metadata and preview scripts', async () => {
-    const projectDir = join(workDir, 'project');
-    await mkdir(projectDir, { recursive: true });
-    await writeFile(join(projectDir, 'chapter1.md'), '# Hello Chapter');
-    await writeFile(join(projectDir, 'chapter2.md'), '# Other Chapter');
-
-    const state = makeState(projectDir);
-    server = await createPreviewServer(state, port);
-
-    const res = await fetch(
-      `http://localhost:${port}/__chapter?file=${encodeURIComponent('chapter1.md')}`
-        + '&revision=0'
-    );
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).toContain('Hello Chapter');
-    expect(body).toContain('data-chapter-src="chapter1.md"');
-    expect(body).toContain('/engine/gutterpress-viewer.js');
-    expect(body).not.toContain('Other Chapter');
-  });
-
-  test('rejects a source outside the configured file list and a stale revision', async () => {
-    const projectDir = join(workDir, 'project');
-    await mkdir(projectDir, { recursive: true });
-    await writeFile(join(projectDir, 'chapter1.md'), '# Configured');
-    await writeFile(join(projectDir, 'private.md'), '# Not Configured');
-
-    const state = makeState(projectDir);
-    state.config = resolveConfig({}, { source: { files: ['chapter1.md'] } });
-    server = await createPreviewServer(state, port);
-
-    const unconfigured = await fetch(
-      `http://localhost:${port}/__chapter?file=private.md&revision=0`,
-    );
-    expect(unconfigured.status).toBe(400);
-    expect(await unconfigured.text()).not.toContain('Not Configured');
-
-    const stale = await fetch(
-      `http://localhost:${port}/__chapter?file=chapter1.md&revision=1`,
-    );
-    expect(stale.status).toBe(400);
-  });
-
-  test('rejects a path-traversal file param that escapes the project root', async () => {
-    const projectDir = join(workDir, 'project');
-    const outsideDir = join(workDir, 'outside');
-    await mkdir(projectDir, { recursive: true });
-    await mkdir(outsideDir, { recursive: true });
-    await writeFile(join(projectDir, 'chapter1.md'), '# In Project');
-    await writeFile(join(outsideDir, 'secret.md'), '# TOP SECRET DATA');
-
-    const state = makeState(projectDir);
-    server = await createPreviewServer(state, port);
-
-    const res = await fetch(
-      `http://localhost:${port}/__chapter?file=${encodeURIComponent('../outside/secret.md')}`
-    );
-    expect(res.status).not.toBe(200);
-    expect([400, 404]).toContain(res.status);
-    const body = await res.text();
-    expect(body).not.toContain('TOP SECRET DATA');
-  });
-
-  test('rejects a backslash-based path-traversal file param', async () => {
-    // The render sink canonicalizes backslashes before reading the file.
-    const projectDir = join(workDir, 'project');
-    const outsideDir = join(workDir, 'outside');
-    await mkdir(projectDir, { recursive: true });
-    await mkdir(outsideDir, { recursive: true });
-    await writeFile(join(projectDir, 'chapter1.md'), '# In Project');
-    await writeFile(join(outsideDir, 'secret.md'), '# TOP SECRET DATA');
-
-    const state = makeState(projectDir);
-    server = await createPreviewServer(state, port);
-
-    const res = await fetch(
-      `http://localhost:${port}/__chapter?file=${encodeURIComponent('..\\outside\\secret.md')}`
-    );
-    expect(res.status).not.toBe(200);
-    expect([400, 404]).toContain(res.status);
-    const body = await res.text();
-    expect(body).not.toContain('TOP SECRET DATA');
   });
 });

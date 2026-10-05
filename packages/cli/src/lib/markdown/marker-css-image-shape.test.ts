@@ -6,7 +6,7 @@ import path from "node:path";
 import { MARKER_CSS } from "./markers.js";
 import { GUTTERPRESS_CSS } from "./gutterpress-css.ts";
 import { resolveChromiumExecutable } from "../chromium.ts";
-import { closeBrowser, getBrowser } from "../browser-pool.ts";
+import { launchChromium, type Browser } from "../../engine/shared/cdp.ts";
 import { loadPdf, getTextPass } from "../pdf-inspect.ts";
 
 /**
@@ -61,8 +61,11 @@ if (!chromium) {
   );
 }
 
+// One Chromium for the file, launched through the engine's own launcher
+// (the same binary, flags and resolver the CLI builds with).
+let browser: Browser | undefined;
 afterAll(async () => {
-  await closeBrowser();
+  await browser?.close();
 });
 
 testIf(
@@ -72,10 +75,10 @@ testIf(
     try {
       const file = path.join(dir, "fixture.html");
       await fsp.writeFile(file, fixture, "utf8");
-      const browser = await getBrowser(RENDER_TEST_TIMEOUT_MS);
+      browser ??= await launchChromium();
       const page = await browser.newPage();
       try {
-        await page.goto(`file://${file}`, { waitUntil: "networkidle0" });
+        await page.navigate(`file://${file}`);
 
         // Evaluated as a source string, not a closure (DOM-free tsconfig).
         const m = (await page.evaluate(
@@ -92,7 +95,7 @@ testIf(
 
         // Print: text on the shaped page stays extractable text, and the
         // whole PDF stays a few KB — a rasterized page would be neither.
-        const bytes = await page.pdf({ preferCSSPageSize: true, printBackground: true });
+        const bytes = await page.printToPDF();
         expect(bytes.length).toBeLessThan(100_000);
         const pdfPath = path.join(dir, "shape.pdf");
         await fsp.writeFile(pdfPath, bytes);

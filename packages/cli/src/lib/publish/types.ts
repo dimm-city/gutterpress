@@ -36,6 +36,7 @@ export interface PublishConfigField {
 /** Stable provider identifiers: the `--provider` values AND the manifest
  * `publish.<id>` keys — one spelling everywhere. */
 export type PublishProviderId =
+  | "local"
   | "itch"
   | "drivethrurpg"
   | "kdp"

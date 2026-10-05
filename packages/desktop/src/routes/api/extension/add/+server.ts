@@ -1,7 +1,6 @@
 import { error } from '@sveltejs/kit';
 import path from 'node:path';
-import { getDesktopHooks } from '../../../../../electron/server-bridge/host-hooks';
-import { defineRoute, loadLib, requireProjectDir, requireWithinProjectRoot } from '../../_lib/route';
+import { defineRoute, getHostServices, loadLib, requireProjectDir, requireWithinProjectRoot } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 // #265: add ONE extension by specifier — a bundled feature name, an npm
@@ -47,7 +46,7 @@ export const POST: RequestHandler = defineRoute<Body>({
     }
     if (kind === 'path') {
       if (!specifier.startsWith('./') && !specifier.startsWith('../')) {
-        error(400, 'extension/add takes a project-relative path (./x or ../x) — choose an absolute path with extension/add-local');
+        error(400, 'extension/add takes a path relative to the book (./x or ../x) — choose an absolute path with extension/add-local');
       }
       await requireWithinProjectRoot(path.resolve(projectDir, specifier), 'extension/add');
     }
@@ -60,9 +59,7 @@ export const POST: RequestHandler = defineRoute<Body>({
   },
   call: async ({ body }) => {
     if (body.kind === 'npm') {
-      const hooks = getDesktopHooks();
-      if (!hooks) error(503, 'Desktop hooks not registered');
-      if (!(await hooks.confirmNpmPluginInstall(body.specifier))) return null;
+      if (!(await getHostServices().desktop.confirmNpmPluginInstall(body.specifier))) return null;
     }
     const lib = await loadLib();
     return lib.addExtension(body.projectDir, body.specifier, body.exportName ? { exportName: body.exportName } : {});
