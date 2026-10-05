@@ -24,7 +24,9 @@
    *               buttons (Setup included) drop their text labels, path drops
    *      ≤620px   title/path, mode menu, Focus, separators, hints drop
    *    The narrow layout (≤820px window) adds the pane tabs to the end
-   *    cluster.
+   *    cluster and drops the Edit/Read control: the tabs decide which pane
+   *    shows, and a narrow window never lays out two pages side by side, so
+   *    the mode changes nothing visible there.
    *  - `(pointer: coarse)` keeps ≥44×44px touch targets on touch devices
    *    without fattening the desktop layout.
    *
@@ -63,7 +65,6 @@
     onSelectMobileTab,
     editorTabDisabled,
     previewTabDisabled,
-    hidePreviewControls,
     mode,
     onSetMode,
     focus,
@@ -93,8 +94,6 @@
     onSelectMobileTab: (tab: MobileTab) => void;
     editorTabDisabled: boolean;
     previewTabDisabled: boolean;
-    /** Narrow + editor tab: the preview is hidden, so the mode switch is noise. */
-    hidePreviewControls: boolean;
     /** The workspace mode — the ONE layout switch (see `WorkspaceMode`). */
     mode: WorkspaceMode;
     onSetMode: (mode: WorkspaceMode) => void;
@@ -156,7 +155,7 @@
   }
 </script>
 
-<header class="toolbar" class:narrow={isNarrow} class:edit-narrow={hidePreviewControls} class:url-mode={sourceMode === "url"}>
+<header class="toolbar" class:narrow={isNarrow} class:url-mode={sourceMode === "url"}>
   <div class="toolbar-start">
     <!-- Panel toggle — far left, first control in navbar -->
     <button
@@ -649,13 +648,13 @@
     line-height: 1.35;
   }
 
-  /* Narrow + editor tab: the preview is hidden, so the mode switch is noise
-     — hide it so the edit toolbar is just Panel · Tabs · Actions. The
-     separators go too: with the view controls gone they would render as an
-     adjacent double rule. */
-  .toolbar.edit-narrow .mode-group,
-  .toolbar.edit-narrow .mode-menu,
-  .toolbar.edit-narrow .toolbar-sep {
+  /* Narrow: the pane tabs decide what shows and the layout is always a
+     single column, so the Edit/Read control would change nothing — hide it,
+     so the toolbar is Panel · Tabs · Focus · Actions. The separators go too:
+     with the mode control gone they would render as an adjacent double rule. */
+  .toolbar.narrow .mode-group,
+  .toolbar.narrow .mode-menu,
+  .toolbar.narrow .toolbar-sep {
     display: none;
   }
 

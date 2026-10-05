@@ -2726,7 +2726,6 @@
     onSelectMobileTab={selectMobileTab}
     editorTabDisabled={!toolbarProjectOpen}
     previewTabDisabled={!lifecycle.previewUrl && !lifecycle.previewError}
-    hidePreviewControls={isNarrow && editorPaneOpen}
     {mode}
     onSetMode={(next) => { contextMenu.close(); setMode(next); }}
     editorToggleDisabled={!toolbarProjectOpen}

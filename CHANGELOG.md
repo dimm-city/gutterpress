@@ -29,6 +29,9 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **The toolbar keeps its labels longer** (#316). Edit/Read, Setup and
   Publish stay labelled down to a 900px-wide window instead of collapsing
   to icons at 1150px.
+- **Narrow windows no longer show the Edit/Read control.** Below 820px the
+  Markdown/Preview tabs decide what is on screen and pages never sit side by
+  side, so the control changed nothing; it is gone from both tabs.
 - **Connections** now says to use *Back up now* in the save status, not a
   *Sync Changes* button that no longer exists (#310).
 - **Removed the unreachable browser/PWA code** (about 3,000 lines): the web
