@@ -12,7 +12,7 @@ function makeBridge() {
       return ret;
     };
   const bridge = {
-    updater: { getStatus: rec("updater.getStatus", Promise.resolve({})) },
+    updater: { applyNow: rec("updater.applyNow", Promise.resolve()), onEvent: rec("updater.onEvent", () => {}) },
     onNativeThemeUpdated: rec("onNativeThemeUpdated", () => {}),
     onOpenMarkdownFile: rec("onOpenMarkdownFile", () => {}),
     startPreview: rec("startPreview", Promise.resolve({ url: "x" })),
@@ -29,14 +29,9 @@ function makeBridge() {
     connectGitHubStart: rec("connectGitHubStart", Promise.resolve({})),
     connectGitHubWait: rec("connectGitHubWait", Promise.resolve({})),
     connectGitHubCancel: rec("connectGitHubCancel", Promise.resolve({ ok: true })),
-    cloneRemoteRepository: rec("cloneRemoteRepository", Promise.resolve({ projectDir: "/proj" })),
     onCloneProgress: rec("onCloneProgress", () => {}),
     // Sync surface
     onSyncStatus: rec("onSyncStatus", () => {}),
-    setAutoSync: rec("setAutoSync", Promise.resolve()),
-    onRecoveryConfirm: rec("onRecoveryConfirm", () => {}),
-    respondRecoveryConfirm: rec("respondRecoveryConfirm", Promise.resolve()),
-    resolveSyncConflicts: rec("resolveSyncConflicts", Promise.resolve({ status: "synced" })),
   };
   return { bridge, calls };
 }
