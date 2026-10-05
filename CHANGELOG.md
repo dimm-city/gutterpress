@@ -36,6 +36,11 @@ This project follows [Semantic Versioning](https://semver.org/).
   manifest, the web-only HTML download, and every "is this the desktop app?"
   check. No build ever reached it. The node-free `gutterpress/render` entry
   point is kept for a future browser version.
+- **Cleanup of what the removal left behind**: platform methods and
+  capability flags nothing called, error handling for sync-conflict and
+  render-timeout messages nothing produces any more, the obsolete PWA plan
+  and mobile/PWA requirements, and comments and docs that described removed
+  code or no longer matched it.
 - **Removed tooling nothing ran** (about 4,500 lines): `packages/cli/tools/`,
   the desktop drives no CI job ran (`inline-editing`, `electron-driver`,
   `run-ui` and the `test:ui` script), the Windows Docker install test, and the
