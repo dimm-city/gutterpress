@@ -1,7 +1,7 @@
 <script lang="ts">
   import Icon from "$lib/components/Icon.svelte";
   /**
-   * "Open from GitHub" flow (#15, ADR 0006): Connect (device-flow code) →
+   * "Open from GitHub" flow (#15): Connect (device-flow code) →
    * choose repository → choose branch + destination folder → download → the
    * project opens through the same path as any local folder. All copy is
    * author-friendly — no clone/remote/token vocabulary. The renderer never
@@ -130,7 +130,7 @@
         // This path is IPC-bridged (getPlatform() → ipcRenderer.invoke), so
         // unlike the api.remote.* fetch routes (sanitized host-side) the raw
         // "Error invoking remote method '…':" transport prefix can reach here
-        // unscrubbed (L11) — scrub it before it reaches the writer.
+        // unscrubbed — scrub it before it reaches the writer.
         error = friendlyHostError(e instanceof Error ? e.message : String(e));
         step = "connect";
       }
@@ -199,7 +199,7 @@
    * first. More than one → the author picks which book to open ("books"
    * step); exactly one → open it directly; none (or a lookup failure) →
    * open the repository root, exactly as before. The WHOLE repository is
-   * downloaded once either way (ADR 0006 D2) — the chosen folder just
+   * downloaded once either way — the chosen folder just
    * becomes the project that opens.
    */
   async function openProject() {
@@ -263,7 +263,7 @@
       onClosed?.();
       onOpened?.(projectDir);
     } catch (e) {
-      // Also IPC-bridged (platform.cloneRemoteRepository) — same L11 scrub.
+      // Also IPC-bridged (platform.cloneRemoteRepository) — same scrub.
       error = friendlyHostError(e instanceof Error ? e.message : String(e));
       step = "configure";
     } finally {

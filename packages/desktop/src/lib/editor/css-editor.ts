@@ -52,7 +52,7 @@ export function languageForPath(path: string | null): EditorLanguage {
 
 /**
  * A single editor gutter diagnostic, decoupled from CodeMirror's `Diagnostic`
- * type. Phase 2 maps {@link PrintSafeWarning} → `CssDiagnostic` → CodeMirror
+ * type. {@link PrintSafeWarning} maps → `CssDiagnostic` → CodeMirror
  * `Diagnostic`.
  */
 export interface CssDiagnostic {
@@ -137,7 +137,7 @@ export interface PagedMediaCompletion {
 }
 
 /**
- * The curated CSS Paged Media completion table consumed by the Phase 3
+ * The curated CSS Paged Media completion table consumed by the
  * autocompletion source. Covers the constructs the issue calls out: `@page`
  * + pseudo variants, the sixteen margin boxes, and page properties with value
  * hints (`size`, `margin`, `bleed`, `marks`) plus the supported `prince-*`

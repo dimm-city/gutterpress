@@ -1,15 +1,14 @@
 /**
- * Type-level regression guard (work item P1 / api-dto-import-type; extended
- * for ARCH review #40).
+ * Type-level regression guard.
  *
  * `src/lib/api.ts` must consume the shared contract DTOs, not local
  * re-declarations that can silently drift from the host/renderer source of
  * truth, and must not re-loosen a server route's return type to `unknown`/
  * `Record<string, unknown>`/an inline object literal that happens to
  * structurally match today. This file fails `svelte-check` if
- * `ProjectRemoteDiagnosis.classification` regresses back to `any` — the exact
- * drift work item P1 fixed — or if any of the endpoints below drifts away
- * from its DTO (loosens to `any`/`unknown`, or stops matching exactly).
+ * `ProjectRemoteDiagnosis.classification` regresses to `any`, or if any of the
+ * endpoints below drifts away from its DTO (loosens to `any`/`unknown`, or
+ * stops matching exactly).
  *
  * Types only: fully erased at build, no runtime, no `gutterpress` value
  * import (§8 renderer purity). `import type { api }` binds `api` for use only
@@ -53,9 +52,8 @@ export const _classificationIsProjectSource: [ClassificationT] extends [ProjectS
     : never
   : never = true;
 
-// ── ARCH review #40: endpoints that used to return `unknown` /
-// `Record<string, unknown>` / a hand-inlined literal must stay pinned to
-// their real DTO. ─────────────────────────────────────────────────────────
+// ── Endpoints pinned to their real DTO (never `unknown` /
+// `Record<string, unknown>` / a hand-inlined literal). ────────────────────
 
 type ClassifyProjectT = Awaited<ReturnType<typeof api.app.classifyProject>>;
 export const _classifyProjectIsProjectClassification: AssertDto<

@@ -8,7 +8,7 @@
  * Reads are reactive: components that reference `useSettings().current.<...>`
  * inside a `$derived`/`$effect`/template re-run when a setting changes.
  *
- * Notification channels (ARCH #61): rune reactivity serves reads — templates
+ * Notification channels (#61): rune reactivity serves reads — templates
  * and `$derived` re-run when `current` changes. Imperative side-effects
  * (pushing a changed value into a non-reactive sink like the preview client
  * or the editor buffer) go through `onSettingsChange()` below, because this
@@ -19,8 +19,7 @@
  * the single `replaceState()` choke point, which owns the notify. Because
  * `set()` replaces the WHOLE `current` object on every call (not just the
  * touched section), listeners fire on every settings change — use
- * `settingsChangeGuard()` below to dedupe against the value actually read,
- * exactly as the old `lastBg`-style closures did.
+ * `settingsChangeGuard()` below to dedupe against the value actually read.
  *
  * Distinct from `DesktopPrefs` (session/per-project state via setDesktopPrefs).
  * Settings are durable user preferences persisted to `userData/app-settings.json`
@@ -52,7 +51,7 @@ const listeners = new Set<SettingsListener>();
 /**
  * The single choke point every state replacement routes through, so the
  * imperative notification can never be forgotten by a future setter (the
- * dual-write hazard ARCH #61 flagged).
+ * dual-write hazard #61 flagged).
  */
 function replaceState(next: AppSettings): void {
   state.current = next;
@@ -134,7 +133,7 @@ export function useSettings() {
 
 /**
  * Build a guarded settings-change sink for use inside an `onSettingsChange`
- * listener (ARCH #61). `set()` replaces the whole `AppSettings.current`
+ * listener (#61). `set()` replaces the whole `AppSettings.current`
  * object on every call, so a listener that reads one nested field (e.g.
  * `current.appearance.previewBg`) would otherwise re-apply its side effect
  * on every UNRELATED settings change too.
@@ -145,9 +144,7 @@ export function useSettings() {
  * as "seen", so a value that arrives while the guarded resource isn't ready
  * yet (e.g. the preview client hasn't mounted) is not silently dropped —
  * the sink still fires the next time it's called with `ready()` true, even if
- * the value hasn't changed since the skipped attempt. This mirrors the
- * `lastBg`-style closures the manual `subscribe()` consumers used to hand-roll
- * individually.
+ * the value hasn't changed since the skipped attempt.
  *
  * Usage (an `onSettingsChange` listener, registered in `onMount`):
  * ```ts

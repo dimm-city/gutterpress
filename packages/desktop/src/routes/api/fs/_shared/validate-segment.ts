@@ -5,8 +5,7 @@ import { error } from '@sveltejs/kit';
  * Used by the tree CRUD routes (create-file, create-folder, rename) so
  * `path.join(dir, name)` can never escape `dir` via `../` or an absolute
  * override, and so path-joining stays host-side (Node `path.join`) rather
- * than the renderer hand-building paths with `/` (the exact renderer-side
- * path-math mistake UX review M10 flagged for the image-import flows).
+ * than the renderer hand-building paths with `/`.
  *
  * Throws the standard 400 via `error()`; returns the trimmed name otherwise.
  */

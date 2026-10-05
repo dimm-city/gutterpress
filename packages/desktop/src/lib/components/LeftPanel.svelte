@@ -2,15 +2,15 @@
   /**
    * LeftPanel — global left panel with 4 tabs.
    *
-   * Tabs: Books, TOC, Files, Media. (Book settings used to be a fifth
-   * Config tab; they moved to the full-window ProjectSettingsView.)
+   * Tabs: Books, TOC, Files, Media. (Book settings live in the full-window
+   * ProjectSettingsView, not a tab here.)
    *
    * Architecture notes:
    * - Single DOM tree, CSS transform-based slide (never conditionally mounted/unmounted
    *   so tab state is preserved; the iframe constraint doesn't apply here but we follow
    *   the same principle for consistency).
-   * - Panel state (open, activeTab) persisted via platform.getSettings/saveSettings
-   *   under a leftPanel key in DesktopPrefs.
+   * - Panel state (open, activeTab, width) is persisted by +page.svelte under a
+   *   leftPanel key in DesktopPrefs (api.app.setDesktopPrefs).
    * - Focus management: closing returns focus to the toggle button (passed in as prop).
    * - Responsive: at <=820px the panel overlays with a translucent scrim (doesn't
    *   crush the preview).
@@ -87,7 +87,7 @@
     toggleBtn?: HTMLButtonElement | undefined;
     onJumpToOutline?: (entry: OutlineEntry) => void;
     onSelectEditorFile?: (path: string) => void;
-    /** FileTree row actions (UX review M9): forwarded straight to FileTree's
+    /** FileTree row actions: forwarded straight to FileTree's
      *  `onBeforeRename`/`onFileRenamed`/`onFileDeleted` — see +page.svelte's
      *  handlers for why the open-file buffer needs these three hooks. */
     onBeforeRenameOpenFile?: (path: string) => boolean | void | Promise<boolean | void>;
@@ -118,9 +118,9 @@
   const activeAncestorKeys = $derived(new Set(ancestorKeysForActive(outline, activeOutlineIndex)));
   // The author's OWN expand/collapse decisions, keyed by node. Revealing the
   // active item's ancestors is only the DEFAULT for a node the author has not
-  // touched — it used to be OR-ed over this state, which made "Collapse X" a
-  // dead control on every ancestor of the active heading: the second operand
-  // held it open no matter how often the twisty was clicked.
+  // touched — OR-ing it over this state would make "Collapse X" a dead control
+  // on every ancestor of the active heading: the second operand would hold it
+  // open no matter how often the twisty was clicked.
   let tocChoice = $state<Map<string, boolean>>(new Map());
   function tocOpen(key: string): boolean {
     return tocChoice.get(key) ?? activeAncestorKeys.has(key);
@@ -446,7 +446,7 @@
       {:else}
         <!-- Insert is available whenever a folder project is open: the host
              handler opens a chapter first if none is, so the button never
-             dead-ends (UX audit P3#8). -->
+             dead-ends. -->
         {#key projectDir}
           <MediaPanel
             {projectDir}

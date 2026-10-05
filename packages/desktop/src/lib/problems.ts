@@ -19,7 +19,7 @@ export interface ProblemGroup {
  * to the raw id so new checks are never hidden.
  *
  * Coverage against the CLI's registered `source`-category checks is asserted
- * in `tests/platform/problems.test.ts` (M32) — keyed to the live check
+ * in `tests/platform/problems.test.ts` — keyed to the live check
  * registry (`getChecks({ category: "source" })`), not a hand-copied list, so
  * a new check can't silently ship without a label here.
  */
@@ -83,14 +83,13 @@ export function buildProblems(
 }
 
 /**
- * M32: `source.markdownlint` (the one check already fixed for writer-first
- * copy) emits `"<description> (<code>)"` — the human-readable description
- * leads, the rule code is a demotable trailing suffix, not the headline.
- * Splits that suffix out so the Problems panel can render it as secondary
- * text. Messages with no such trailing "(...)" pass through unchanged with
- * `code: null` (this covers one established convention, not a general
- * check-message parser — checks that lead with the code inline, e.g.
- * "rule: message", are unaffected and render as before).
+ * `source.markdownlint` (writer-first copy) emits `"<description> (<code>)"` —
+ * the human-readable description leads, the rule code is a demotable trailing
+ * suffix, not the headline. Splits that suffix out so the Problems panel can
+ * render it as secondary text. Messages with no such trailing "(...)" pass
+ * through unchanged with `code: null` (this covers one established convention,
+ * not a general check-message parser — checks that lead with the code inline,
+ * e.g. "rule: message", are unaffected).
  */
 export function splitProblemMessage(message: string): { text: string; code: string | null } {
   const m = /^(.*\S)\s+\(([A-Za-z0-9][\w./-]*)\)$/.exec(message);
@@ -99,7 +98,7 @@ export function splitProblemMessage(message: string): { text: string; code: stri
 }
 
 /**
- * L9 regression fix: in compact mode (viewport < 820px) the Problems panel's
+ * In compact mode (viewport < 820px) the Problems panel's
  * expanded body is presented as a full-viewport overlay that visually covers
  * the toggle strip which would otherwise collapse it, so ProblemsPanel.svelte
  * drives closing from two other explicit actions instead — picking a result,

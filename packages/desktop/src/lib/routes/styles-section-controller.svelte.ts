@@ -1,7 +1,6 @@
 /**
  * StylesSectionController — the single owner of the Styles section's
- * active-stylesheet toggle state + logic that used to live inline in
- * `ProjectConfigPanel.svelte` (replaces the retired StylePicker chooser).
+ * active-stylesheet toggle state + logic.
  *
  * Centralises the resolved stylesheet list (`styles`), the busy/error flags,
  * and the active-set toggle intent.
@@ -11,7 +10,7 @@
  * rune fields and calls the intent methods.
  *
  * Host coupling is injected so this stays testable with fakes and PWA-clean
- * (§8 / ADR 0004): the reactive `projectDir` accessor, the `listStyles` /
+ * (§8): the reactive `projectDir` accessor, the `listStyles` /
  * `setActive` host calls, the `onToggled` callback (the panel wires this to a
  * toast), the `onEditRawCss` escape hatch, and `afterStyleChange` — a
  * cross-section refresh hook the panel wires to reload the Design section

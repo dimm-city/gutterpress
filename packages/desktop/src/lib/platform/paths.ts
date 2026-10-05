@@ -2,10 +2,9 @@
  * Shared, PWA-clean path helpers (#61).
  *
  * These are pure string operations — NO `node:path` (importing it as a value
- * would drag node code into the SPA and break the renderer/host split, §8 /
- * ADR 0004). They are the single source of truth for basename derivation across
- * the adapter, `+page.svelte`, and the editor/conflict components, replacing the
- * scattered inline `.split(/[\\/]/).pop()` / `.split("/").pop()` derivations.
+ * would drag node code into the SPA and break the renderer/host split, §8).
+ * They are the single source of truth for basename derivation across
+ * the adapter, `+page.svelte`, and the editor/conflict components.
  */
 
 /**
@@ -21,7 +20,7 @@ export function basenameOf(p: string): string {
  * Join a host base path with child segments using the base's native separator
  * (Windows `\` if the base contains one, else POSIX `/`). Pure string op — the
  * single source of truth for the renderer's `base.includes("\\") ? "\\" : "/"`
- * path-building (it had accreted across `+page.svelte`). NOTE: building host
+ * path-building. NOTE: building host
  * paths in the renderer is itself a bandaid the host should remove (#61 —
  * return a ref instead of a path); this just centralizes it until then.
  */

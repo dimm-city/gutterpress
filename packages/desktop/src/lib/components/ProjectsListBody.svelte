@@ -1,8 +1,7 @@
 <script lang="ts">
   /**
-   * ProjectsListBody — the reusable list body for browsing/opening projects.
-   * Extracted from OpenLocationDialog for composition into the left panel's
-   * Books tab and for direct use in the dialog itself.
+   * ProjectsListBody — the reusable list body for browsing/opening projects,
+   * hosted by the left panel's Books tab and the start screen.
    *
    * Owns: recents/favorites/discovered data, filter, DISCOVERED_CAP, keyboard nav.
    * The parent passes callback props for actions so this component is purely
@@ -23,7 +22,7 @@
     title: string;
     openedAt: string;
     exists: boolean;
-    /** C2: absolute folder of the last-active book, for a repo-backed entry. */
+    /** Absolute folder of the last-active book, for a repo-backed entry. */
     lastActiveBook?: string;
   };
   type FavoriteFolder = { key: string; displayName: string; title: string; exists: boolean };
@@ -68,19 +67,19 @@
   let favorites = $state<FavoriteFolder[]>([]);
   let discovered = $state<DiscoveredProject[]>([]);
   let loading = $state(false);
-  // M20: the recents/favorites load used to catch-and-ignore, so a failed
-  // load rendered the exact same "No recent books yet" copy as a
-  // genuinely empty list — a lie that hides a real problem from the writer.
-  // Tracked per-surface (this component owns one load surface: recents +
+  // The recents/favorites load must not catch-and-ignore: a failed load would
+  // render the exact same "No recent books yet" copy as a genuinely empty
+  // list — a lie that hides a real problem from the writer. Tracked
+  // per-surface (this component owns one load surface: recents +
   // favorites, loaded together below) so the empty-state branch can tell
   // "failed" from "empty" apart and offer a working Retry instead of a
   // false all-clear.
   let lastLoadError = $state<string | null>(null);
-  // M20 (surface 3 — discover scan): tracked separately from `lastLoadError`
+  // Discover scan: tracked separately from `lastLoadError`
   // (recents/favorites) because it's a distinct background load with its own
   // section in the list. Without this, a failed scan (e.g. EACCES on a
-  // search root) and a genuinely empty scan both rendered as "no Discovered
-  // section at all" — indistinguishable from each other and, combined with
+  // search root) and a genuinely empty scan would both render as "no
+  // Discovered section at all" — indistinguishable from each other and, combined with
   // empty recents/favorites, from the top-level "no projects yet" empty
   // state too.
   let discoverError = $state<string | null>(null);
@@ -116,7 +115,7 @@
       }));
       lastLoadError = null;
     } catch {
-      // M20: surface this instead of swallowing — the empty-state branch
+      // Surface this instead of swallowing — the empty-state branch
       // below checks `lastLoadError` to avoid rendering the "no projects
       // yet" hint over a load that actually failed.
       lastLoadError = "Couldn't load your books.";
@@ -134,13 +133,13 @@
       discovered = await discoverProjectsCached();
       discoverError = null;
     } catch {
-      // M20: surface this instead of swallowing — a scan failure (e.g.
-      // EACCES on a search root) must render observably differently from a
-      // genuinely empty scan, matching the recents/favorites and template
-      // load fixes. `discoverProjectsCached()` doesn't cache a rejection
-      // (see projects-discover-cache.ts), so calling this again — e.g. from
-      // the Retry button below — genuinely re-runs the scan rather than
-      // replaying a stale failure.
+      // Surface this instead of swallowing — a scan failure (e.g. EACCES on a
+      // search root) must render observably differently from a genuinely empty
+      // scan, like the recents/favorites and template loads.
+      // `discoverProjectsCached()` doesn't cache a rejection (see
+      // projects-discover-cache.ts), so calling this again — e.g. from the
+      // Retry button below — genuinely re-runs the scan rather than replaying a
+      // stale failure.
       discoverError = "Couldn't discover books on disk.";
     }
   }
@@ -204,8 +203,8 @@
   let filteredDiscovered = $derived.by<DiscoveredProject[]>(() => {
     // #49: dedup discovered against recents/favorites by FolderRef.key — plus
     // each recent's `lastActiveBook`. For a repo-backed entry `key` is the REPO
-    // ROOT while discovery returns BOOK folders, so keys alone never matched and
-    // a book already in Recents was listed again below (2026-07-29 audit).
+    // ROOT while discovery returns BOOK folders, so keys alone never match and
+    // a book already in Recents would be listed again below.
     const shown = new Set<string>([
       ...filteredFavorites.map((f) => f.key),
       ...filteredRecents.flatMap((r) => (r.lastActiveBook ? [r.key, r.lastActiveBook] : [r.key])),
@@ -425,7 +424,7 @@
             {#each filteredRecents as recent, i}
               {@const rowIndex = filteredFavorites.length + i}
               {@const favorited = isFavorited(recent.key)}
-              <!-- C2: `key` (repo root for repo-backed entries) is the identity
+              <!-- `key` (repo root for repo-backed entries) is the identity
                    used for favorite/remove; `openPath` — the last-active book
                    when recorded, else `key` — is what actually opens. -->
               {@const openPath = recent.lastActiveBook ?? recent.key}
@@ -720,7 +719,7 @@
   .row-title { font-size: 12px; font-weight: 500; color: var(--app-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .row-path { font-size: 10px; color: var(--app-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--app-font-mono); }
   /* Fixed-width status label, laid out OUTSIDE the ellipsis-truncated .row-path span so
-     it survives regardless of path length (visual-gate round 1 finding). */
+     it survives regardless of path length. */
   .not-found-badge {
     flex-shrink: 0;
     font-size: 9px;

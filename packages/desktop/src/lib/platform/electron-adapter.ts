@@ -60,7 +60,7 @@ export class ElectronAdapter implements Platform {
   }
 
   // ── HostServices ────────────────────────────────────────────────────────
-  // getStatus/check/download (ARCH review #8) go through the server route
+  // getStatus/check/download go through the server route
   // client (api.updater.*); applyNow and the onEvent push stream stay on the
   // bridge — applyNow flushes the live renderer buffer via `mainWindow.
   // webContents.send` before quitting (a live-BrowserWindow call §8
@@ -110,8 +110,8 @@ export class ElectronAdapter implements Platform {
     return bridge().connectGoogleCancel();
   }
 
-  // ARCH review #8: was IPC despite being a plain request/response — the
-  // clone-progress push (onCloneProgress below) stays on the bridge unchanged.
+  // A plain request/response, so a server route — the clone-progress push
+  // (onCloneProgress below) stays on the bridge.
   cloneRemoteRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }> {
     return api.remote.cloneRepository(args);
   }
@@ -120,12 +120,12 @@ export class ElectronAdapter implements Platform {
     return bridge().onCloneProgress(cb);
   }
 
-  // ── Auto-sync orchestrator seam (transparent sync, §4.4 integration plan) ──
+  // ── Auto-sync orchestrator seam (transparent sync) ────────────────────────
   onSyncStatus(handler: (status: SyncStatus) => void): () => void {
     return bridge().onSyncStatus(handler as (data: unknown) => void);
   }
 
-  // ARCH review #8: was IPC despite being a pure settings write.
+  // A pure settings write, so a server route rather than IPC.
   async setAutoSync(enabled: boolean): Promise<void> {
     await api.sync.setAutoSync(enabled);
   }

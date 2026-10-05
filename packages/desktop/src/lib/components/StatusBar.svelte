@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * StatusBar — slim bottom bar hosting the book switcher (C2), sync status
+   * StatusBar — slim bottom bar hosting the book switcher, sync status
    * pill, save indicator, and the Problems badge (VS Code-style).
    *
    * Layout (left → right):
@@ -20,7 +20,7 @@
    * "All changes saved" at rest, never blank), so both pieces of status are
    * readable at a glance — not sporadic or hard to see.
    *
-   * PWA-clean: all host work via api.* routes (CLAUDE.md §8 / ADR 0004).
+   * PWA-clean: all host work via api.* routes (CLAUDE.md §8).
    * No node: builtins or gutterpress value imports.
    */
   import SyncStatusPill from "$lib/components/SyncStatusPill.svelte";
@@ -86,9 +86,9 @@
     problemsLoading = false,
     /** Set when the lint API call itself failed — distinct from a clean run
      *  that found zero problems. Forwarded to ProblemsPanel's neutral (not
-     *  green) error row (#28, M5). */
+     *  green) error row (#28). */
     problemsError = null as string | null,
-    /** Books (C2) in the open project's repo; switcher shows only when > 1. */
+    /** Books in the open project's repo; switcher shows only when > 1. */
     books = [] as ProjectBookEntry[],
     /** The book the session currently targets. */
     activeBookDir = null as string | null,
@@ -464,11 +464,9 @@
     !!projectDir && sourceMode === "folder" && (canSync || canSnapshot),
   );
 
-  // L9: Problems access used to disappear entirely below 820px (isCompact
-  // gated the whole cluster off). It now always renders — below 820px
-  // ProblemsPanel's `compact` prop presents the expanded list as a
-  // full-viewport sheet instead of the row above the bar, which has no room to
-  // be useful at narrow widths.
+  // Problems access always renders — below 820px ProblemsPanel's `compact` prop
+  // presents the expanded list as a full-viewport sheet instead of the row
+  // above the bar, which has no room to be useful at narrow widths.
   let showProblems = $derived(!!projectDir && sourceMode === "folder");
 
   // The list is ProblemsPanel's and sits BEFORE the bar in the DOM, so Tab from
@@ -503,7 +501,7 @@
           : "No problems",
   );
 
-  // Book switcher (C2): only when the open repo actually has more than one book.
+  // Book switcher: only when the open repo actually has more than one book.
   let showBookSwitcher = $derived(!!projectDir && sourceMode === "folder" && books.length > 1);
 
   onMount(updateCompact);
@@ -726,7 +724,7 @@
     align-items: center;
     justify-content: center;
     /* 14px glyph + 5px padding = 24x24 hit area (WCAG 2.5.8); the -3px margin
-       keeps the layout footprint at the old 18x18 so the bar height is unchanged. */
+       keeps the layout footprint at 18x18 so the bar height is unchanged. */
     padding: 5px;
     margin: -3px;
     border: none;

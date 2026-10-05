@@ -1,8 +1,8 @@
 /**
  * Pure `:root` style-token helpers for the guided Design panel.
  *
- * Extracted verbatim from ProjectConfigPanel.svelte so the parse → mutate logic
- * is unit-testable and the component can commit edits in a single, race-free
+ * Kept separate from the component so the parse → mutate logic is
+ * unit-testable and the component can commit edits in a single, race-free
  * read-modify-write. Pure strings (plus a browser-only canvas cache for
  * `toHex`) — no node/svelte imports, §8-clean.
  *

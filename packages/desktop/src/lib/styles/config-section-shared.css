@@ -1,20 +1,13 @@
 /**
- * Shared "chrome" CSS for ProjectSettingsView's section components (UX
- * review M14 — god-file cleanup, mirrors `dialog-shell.css`'s consolidation
- * for the ten modal dialogs). Historically authored for ProjectConfigPanel,
- * the retired sidebar embed; the `.config-panel` ancestor class now lives on
- * ProjectSettingsView's tabpanel body.
+ * Shared "chrome" CSS for ProjectSettingsView's section components (mirrors
+ * `dialog-shell.css`'s consolidation for the modal dialogs). The
+ * `.config-panel` ancestor class lives on ProjectSettingsView's tabpanel body.
  *
- * Every section used to depend on ~150 lines of `.config-panel :global(...)`
- * rules authored in the PARENT (`ProjectConfigPanel.svelte`) — an untyped
- * styling contract where renaming a class in a child silently un-styled it,
- * and `.config-panel :global(button)` restyled every button in the whole
- * subtree with no visibility from any one section's own file. Each section
- * now owns its OWN domain-specific CSS in its own `<style>` block (plain
- * Svelte scoping, no `:global` needed — see e.g. `LookSection.svelte`'s
- * `.theme-grid`/`.theme-card`). Only the primitives multiple sections
- * genuinely share — block/field chrome, buttons, inputs, status pills — live
- * here ONCE, pulled into each section with:
+ * Each section owns its OWN domain-specific CSS in its own `<style>` block
+ * (plain Svelte scoping, no `:global` needed — see e.g. `LookSection.svelte`'s
+ * `.theme-grid`/`.theme-card`). Only the primitives multiple sections genuinely
+ * share — block/field chrome, buttons, inputs, status pills — live here ONCE,
+ * pulled into each section with:
  *
  *   <style>
  *     @import "$lib/styles/config-section-shared.css";
@@ -26,16 +19,15 @@
  * the rules a section's own template happens to use), but because
  * `.config-panel` is the PARENT's root class, never present in any section's
  * own template, so normal per-component scope-matching could never succeed on
- * the ancestor part of the selector. `:global(...)` also opts every rule out
- * of Svelte's per-component unused-CSS-selector pass — exactly like
+ * the ancestor part of the selector. `:global(...)` also opts every rule out of
+ * Svelte's per-component unused-CSS-selector pass — exactly like
  * `dialog-shell.css`'s variant classes — so an @importing section that only
  * uses a SUBSET of these primitives (e.g. StylesSection never renders a
  * `.primary` button) doesn't get flagged for the primitives a SIBLING section
- * uses. The literal `.config-panel` prefix is what keeps this containED to
- * the config panel's own subtree — identical to the pre-split behavior
- * (`.config-panel :global(button)` in the old parent block) — rather than
- * leaking these generic class names (`.primary`, `.error`, `.row`, …)
- * app-wide the way a bare `:global(.primary)` would.
+ * uses. The literal `.config-panel` prefix is what keeps this containED to the
+ * config panel's own subtree rather than leaking these generic class names
+ * (`.primary`, `.error`, `.row`, …) app-wide the way a bare `:global(.primary)`
+ * would.
  *
  * Domain-only primitives (look rows + built-in grid, style list, design
  * tokens, feature list, publish cards, …) are NOT here — they live in each

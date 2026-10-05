@@ -137,8 +137,8 @@
   // quick actions + book list; Settings embeds the WHOLE settings surface,
   // sub-tabs and all; Help carries the how-to guidance; Troubleshooting
   // holds Diagnostics and Logs as sub-tabs; About carries versions + updates. Because
-  // settings and help are tabs here, the brand row no longer needs its own
-  // buttons. The host can land on a specific tab (help button → "help";
+  // settings and help are tabs here, the brand row needs no buttons of its
+  // own. The host can land on a specific tab (help button → "help";
   // missing identity at launch → "settings" on its Accounts sub-tab).
   type LandingTab = "projects" | "settings" | "help" | "about" | "troubleshooting";
   const LANDING_TABS: Array<{ id: LandingTab; label: string }> = [
@@ -271,10 +271,8 @@
   // while the layer is still fading out. `outroend` is a real Svelte 5
   // element event (typed in svelte/elements.d.ts, dispatched by the
   // transition runtime) — but it only fires because this section carries
-  // `transition:fade`. COUPLED ON PURPOSE, and pinned by
-  // tests/platform/welcome-landing-tabs.test.ts: removing the transition
-  // would silently strand the tab on Help, so the test fails if the handler
-  // and the transition stop travelling together.
+  // `transition:fade`. COUPLED ON PURPOSE: removing the transition would
+  // silently strand the tab on Help.
   function onOutroEnd() {
     activeTab = "projects";
   }
@@ -683,9 +681,9 @@
     .cc-spinner { animation-duration: 1.6s; }
   }
 
-  /* Color (gradient fill/hover/border-color/font-weight) now lives in
-     theme.css's `.app-btn-primary` — co-applied in the template (UX review
-     L5: the ONE primary variant, not a third local copy). This class keeps
+  /* Color (gradient fill/hover/border-color/font-weight) lives in
+     theme.css's `.app-btn-primary` — co-applied in the template (the ONE
+     primary variant, not a local copy). This class keeps
      only the start screen's own geometry. */
   .btn-primary {
     border-width: 1px;

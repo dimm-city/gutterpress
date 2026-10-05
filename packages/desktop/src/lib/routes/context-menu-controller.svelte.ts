@@ -8,14 +8,14 @@
  * `zoom-view-controller.svelte.ts`.
  *
  * Subscribes to the preview client via its OWN `client.on()` listener —
- * separate from `PreviewEventController`'s switch (PR 0 already owns the
- * `elementActivated` case there; this controller neither touches nor
- * duplicates it, per the plan's ownership split).
+ * separate from `PreviewEventController`'s switch (which owns the
+ * `elementActivated` case; this controller neither touches nor duplicates
+ * it).
  *
  * Host coupling (the preview client, the buffer/editor accessors, the commit
  * engine, geometry, and the small text-prompt/toast/clipboard/media-panel
- * glue) is injected so this stays testable with fakes and PWA-clean (§8 /
- * ADR 0004): ZERO direct DOM / `node:*` / lib value imports. Menu-item
+ * glue) is injected so this stays testable with fakes and PWA-clean (§8):
+ * ZERO direct DOM / `node:*` / lib value imports. Menu-item
  * parameter resolution (image/link token matching) is delegated to the pure
  * helpers in `$lib/editor/context-menu-actions`; the write path is entirely
  * `commit-engine.ts` — this controller never touches a file directly.

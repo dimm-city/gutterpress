@@ -1,10 +1,9 @@
 /**
  * EditorBuffer (#44) — the single owner of the in-app editor's edit lifecycle.
  *
- * Replaces the loose `editorFilePath` / `editorContent` / `saveDebounce` state
- * that used to live inline in `+page.svelte` and centralises the dirty/save
- * state machine, the debounced disk write, debounced crash-recovery snapshots,
- * the close-flush, and external-edit reconciliation.
+ * Centralises the dirty/save state machine, the debounced disk write,
+ * debounced crash-recovery snapshots, the close-flush, and external-edit
+ * reconciliation.
  *
  * Single-owner discipline: components never read or mutate the raw fields. They
  * read the derived getters (`isDirty`, `phase`, …) and call the intent methods
@@ -49,7 +48,7 @@ export interface EditorBufferOptions {
   /** Called when an external edit is safely auto-reloaded (buffer was clean). */
   onAutoReloaded?: (filePath: string) => void;
   /**
-   * The single content-replacement notification (#H1). Fired synchronously
+   * The single content-replacement notification. Fired synchronously
    * whenever `content` is replaced with a disk version the caller did not
    * type — the clean-buffer auto-reload branches of
    * {@link EditorBuffer.reconcileExternalChange} AND the explicit
@@ -123,10 +122,9 @@ export class EditorBuffer {
    *
    * `filePath` and `content` are set TOGETHER (after the async read resolves)
    * so the parent's `{#key filePath}` remount reads the correct `content`
-   * prop. Setting `filePath` first — as the old code did — caused the remount
-   * to read stale content (the read hadn't resolved yet), and the doc-swap
-   * `$effect` that previously pushed the loaded text afterward was removed
-   * in the $effect elimination pass. A generation counter guards against
+   * prop. Setting `filePath` first makes the remount read stale content (the
+   * read hasn't resolved yet), and no `$effect` pushes the loaded text
+   * afterward. A generation counter guards against
    * stale results when two loads race (e.g. rapid file selection).
    */
   async load(filePath: string): Promise<void> {
@@ -400,7 +398,7 @@ export class EditorBuffer {
     this.setPhase("clean");
     this.externalChange = null;
     if (this.filePath) {
-      // Same notification the silent auto-reload path uses (#H1) — keeps the
+      // Same notification the silent auto-reload path uses — keeps the
       // conflict-banner "Reload" action from needing its own editor-sync call.
       this.opts.onContentReplaced?.(this.filePath, ext.diskContent);
       if (this.opts.recoveryEnabled !== false) {

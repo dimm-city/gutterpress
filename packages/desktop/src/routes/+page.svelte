@@ -110,32 +110,23 @@
   // currentFolderDisplayName/currentUrl/sourceMode/docTitle/busy/busyLabel/
   // rendering/renderProgressPage/renderCompleteOverlay/openError/
   // urlPreviewError/saveWarning/currentFolderHasManifest/
-  // adoptBannerDismissed/adopting) now lives on the ProjectLifecycleController
-  // (Phase 5d, UX H5 / ARCH #10) — see its instantiation below. The template
-  // reads the public rune getters (`lifecycle.previewUrl` etc.) and calls the
-  // intent methods (`lifecycle.startFolderPreview` / `setUpAsBook` /
-  // `stopPreview` / `openUrl` / `cancelOpen`).
+  // adoptBannerDismissed/adopting) lives on the ProjectLifecycleController —
+  // see its instantiation below. The template reads the public rune getters
+  // (`lifecycle.previewUrl` etc.) and calls the intent methods
+  // (`lifecycle.startFolderPreview` / `setUpAsBook` / `stopPreview` /
+  // `openUrl` / `cancelOpen`).
   //
-  // Adapter-precomputed display name for the open folder (#49), when the folder
-  // was opened via a FolderRef-returning path (picker / recents / favorites).
-  // Null when opened by raw key (e.g. reopened-last-project) — folderName then
-  // falls back to deriving the basename from lifecycle.currentDir.
   // Capabilities of the open project's source (#12) live on the
   // ProjectSessionController (projectSession.projectCapabilities), alongside the
   // classification wiring that populates them.
-  // Folder name (basename) for the toolbar label; the full path is the tooltip.
-  // Folder name for the toolbar label (#49): prefer the adapter-precomputed
-  // FolderRef.displayName; fall back to the basename of the key when the folder
-  // was opened by raw key (reopened last project / typed path).
-  // NOTE: this $derived reads lifecycle.* directly (not through a closure), so
-  // it is declared AFTER `lifecycle` further down (right after its
+  // The toolbar's folder-name $derived (#49) reads lifecycle.* directly (not
+  // through a closure), so it is declared AFTER `lifecycle` further down (right after its
   // instantiation) to satisfy TypeScript's block-scoping — svelte2tsx inlines
   // $derived expressions rather than deferring them like a real closure.
   // PDF export runs in a separate render window, so the UI stays usable — track
   // it separately with a NON-blocking status pill instead of the modal overlay.
   // The whole export FSM (state + 1s ticker + progress label) AND the
-  // savePdf/buildTo/cancelExport intents (Phase 5 slice 2, UX H5 / ARCH
-  // #10 — moved from +page.svelte) live in the ExportController; the view
+  // savePdf/buildTo/cancelExport intents live in the ExportController; the view
   // drives it via intent methods and reads its rune getters. Host coupling
   // injected (§8): forward-references to page-local functions/state declared
   // further down (lifecycle, toast, getSaveReadinessWarning, …) are safe
@@ -190,10 +181,8 @@
   });
   let diagnosticsTools = $state<DiagnosticsTool[] | null>(null);
 
-  // Publishing (#35 → toolbar wizard): the same PublishSectionController that
-  // used to live in ProjectConfigPanel's "crammed at the bottom" Publish
-  // section now drives the front-and-centre PublishWizard opened from the
-  // toolbar. Constructed here so the wizard and the toolbar button share one
+  // Publishing (#35): the PublishSectionController drives the PublishWizard
+  // opened from the toolbar. Constructed here so the wizard and the toolbar button share one
   // instance. Host coupling injected (§8) — api.publish.* / api.dialog.* /
   // api.shell.*; toast/lifecycle are safe forward-referenced closures.
   const publishController = new PublishSectionController({
@@ -203,12 +192,12 @@
     setConfig: (dir, providerId, values) => api.publish.setConfig(dir, providerId, values),
     connect: (dir, providerId, token, account) => api.publish.connect(dir, providerId, token, account),
     disconnect: (providerId, account) => api.publish.disconnect(providerId, account),
-    // #221 D10 — oauth connect trio goes through getPlatform() (the narrow
+    // #221 — oauth connect trio goes through getPlatform() (the narrow
     // adapter seam for interactive OAuth connects), not api.publish.*.
     connectGoogleStart: (account) => getPlatform().connectGoogleStart(account),
     connectGoogleWait: () => getPlatform().connectGoogleWait(),
     connectGoogleCancel: () => getPlatform().connectGoogleCancel(),
-    // #221 D9 — provider-neutral destinations picker.
+    // #221 — provider-neutral destinations picker.
     listDestinations: (dir, providerId) => api.publish.listDestinations(dir, providerId),
     createDestination: (dir, providerId, name) => api.publish.createDestination(dir, providerId, name),
     run: (dir, providerId, options) => api.publish.run(dir, providerId, options),
@@ -237,7 +226,7 @@
   // <iframe> element (getBoundingClientRect for context-menu positioning,
   // clientWidth for fit-width zoom) instead of `document.querySelector("iframe")`.
   let previewFrameRef = $state<{ getIframe: () => HTMLIFrameElement | undefined } | null>(null);
-  // Page-navigation FSM (Phase 5): owns currentPage/totalPages/
+  // Page-navigation FSM: owns currentPage/totalPages/
   // restoringSavedState + the host-driven navigation intents (including the
   // toolbar page-select's selectPage).
   // Host coupling is injected so the component stays a thin composition root.
@@ -280,7 +269,7 @@
     },
   });
 
-  // ── Document outline + editor↔preview sync (UX-013, ADR 0005) ─────────────
+  // ── Document outline + editor↔preview sync ────────────────────────────────
   // outline drives the chapter-jump dropdown; activeOutlineIndex tracks the
   // heading the reader is currently within (updated from sourceLineChanged).
   let outline = $state<OutlineEntry[]>([]);
@@ -294,11 +283,10 @@
       pageNav.syncPageState({ currentPage: page, totalPages: pageNav.totalPages }),
   });
   // ── User settings (#45) ────────────────────────────────────────────────
-  // bgColor and zoom are sourced from the persisted settings store (their old
-  // inline defaults #5a5a5a / fit-width now live in DEFAULT_SETTINGS). Local
-  // mutations write back through useSettings().set().
-  // bgColor has no toolbar control (that was removed in the toolbar redesign);
-  // it is set via the Settings panel only.
+  // bgColor and zoom are sourced from the persisted settings store (defaults
+  // in DEFAULT_SETTINGS). Local mutations write back through
+  // useSettings().set(). bgColor has no toolbar control; it is set via the
+  // Settings panel only.
   const settings = useSettings();
   _loadSettings();
   let zoom = $derived(settings.current.preview.defaultZoom);
@@ -308,9 +296,6 @@
   // side-by-side split regardless of this value.
   let paneMode = $derived(settings.current.preview.paneMode);
   let debug = $state(false);
-  // autoOpeningLastProject/lastProjectChecked (Phase 5 slice 2, UX H5 / ARCH
-  // #10) now live on `startup` (StartupController) — see its instantiation
-  // below.
   let pendingRestorePage = $state<number | null>(null);
 
   // Toast controller (populated by Toast.svelte via bind:api)
@@ -318,9 +303,8 @@
   // Operation-log desktop: opened from the StatusBar git/sync pill. Holds the
   // current project's log path (carried on the sync status stream).
   let logFilePath = $state<string | null>(null);
-  // Ref to the mounted ProjectActivityView (H2) so a sync completion can ask
-  // it to reload its snapshot list without a round-trip through LeftPanel's
-  // retired no-op history seam (L8 / ARCH #41). Undefined whenever the
+  // Ref to the mounted ProjectActivityView so a sync completion can ask
+  // it to reload its snapshot list directly. Undefined whenever the
   // activity view isn't the current editor-pane view.
   let activityViewRef = $state<{ refreshHistory: () => void } | undefined>(undefined);
   // The activity view borrows the editor pane and restores the workspace it
@@ -379,8 +363,8 @@
    * It waits until that is about to matter: the open project HAS version
    * history (`canSnapshot`) and a version was just saved by hand or a sync just
    * started — the two moments the renderer is told about (`identityNoticeArmed`,
-   * set where they happen). It used to greet every writer the moment any book
-   * opened, plain folders with no history included.
+   * set where they happen) — not the moment any book opens, plain folders
+   * with no history included.
    *
    * Gated on `settings.loaded`: the in-memory defaults ARE empty strings, so an
    * ungated check would flash the banner on every launch in the window before
@@ -393,7 +377,7 @@
    * `resolveGitAuthor` falls back per field to the project's own
    * `.git/config` before using the placeholder. So an author whose repo
    * already carries a `user.name` / `user.email` is attributed correctly and
-   * does not need this notice (Codex review, PR #134). Rather than teach the
+   * does not need this notice (PR #134). Rather than teach the
    * renderer to resolve the effective identity — a host round-trip per
    * project, for a notice — the notice is simply dismissible: anyone it is
    * wrong for silences it, and it returns next launch in case the setting
@@ -412,7 +396,7 @@
       (!settings.current.gitIdentity.authorName.trim() ||
         !settings.current.gitIdentity.authorEmail.trim()),
   );
-  /** After a successful snapshot restore (H2), or a Saving-tab copy switch
+  /** After a successful snapshot restore, or a Saving-tab copy switch
    * (#273 — passed as `onProjectFilesChanged` to WelcomeLanding/SettingsView):
    * reconcile the open editor buffer against disk — same reconciliation the
    * folder watcher runs for any external change (see
@@ -433,7 +417,7 @@
 
   /** Turn an existing folder into a Gutterpress book (manifest + book.css + git),
    *  then (re)open it. Used by the successful-open no-manifest banner.
-   *  Epoch/busy management moved to ProjectLifecycleController (Phase 5d). */
+   *  Epoch/busy management lives on ProjectLifecycleController. */
   function setUpAsBook(dir: string): Promise<boolean> {
     return lifecycle.setUpAsBook(dir);
   }
@@ -441,19 +425,19 @@
   // ── Auto-update state ──────────────────────────────────────────────────
   // The whole update FSM (banner version state, check/download/apply intents,
   // and the mount-time status peek + event subscription) lives in the
-  // UpdateController (Phase 5); the view drives it via intent methods and reads
+  // UpdateController; the view drives it via intent methods and reads
   // its rune getters. Toast feedback is injected through an accessor seam.
   const updateController = new UpdateController(() => toast);
 
   // "Open from GitHub" flow (#15)
   let githubOpen = $state(false);
   let openBookOpen = $state(false);
-  // New-project wizard (#25). L4: opening is exclusively via show() below —
-  // there is no bindable `open` prop any more (the wizard owns that state).
+  // New-project wizard (#25). Opening is exclusively via show() below — there
+  // is no bindable `open` prop (the wizard owns that state).
   let newProjectWizardRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
   // Manual force-save state for the status bar action button.
   let forceSaving = $state(false);
-  // Sync-outcome routing + diagnosis state (Phase 5b). Owns the syncDiag /
+  // Sync-outcome routing + diagnosis state. Owns the syncDiag /
   // forceSyncing runes (sync always converges — 2026-08-14). Host coupling
   // injected so the routing is
   // unit-testable and PWA-clean (§8). onSyncCompleted / onSyncFilesChanged
@@ -473,24 +457,24 @@
 
   // ── Project session capability state (#12) ───────────────────────────────────
   // The classification wiring (source detection → capabilities → subPath →
-  // prefs hint) lives in the ProjectSessionController (Phase 5c). The
-  // component reset()s it and fires classify(dir) on folder open, and reads
-  // its rune getters. Host coupling injected (§8): the classify round-trip
-  // and the DesktopPrefs writer. The remote-diagnosis refresh moved to the
-  // lifecycle controller (after currentDir is assigned) — see its
-  // refreshSyncDiag dep below.
+  // prefs hint) lives in the ProjectSessionController. The component
+  // reset()s it and fires classify(dir) on folder open, and reads its rune
+  // getters. Host coupling injected (§8): the classify round-trip and the
+  // DesktopPrefs writer. The remote-diagnosis refresh lives on the lifecycle
+  // controller (after currentDir is assigned) — see its refreshSyncDiag dep
+  // below.
   const projectSession = new ProjectSessionController({
     classifyProject: (dir) => api.app.classifyProject(dir),
     setDesktopPrefs: (prefs) => api.app.setDesktopPrefs(prefs),
   });
 
-  // ── Project open/close lifecycle (Phase 5d, UX H5 / ARCH #10) ────────────────
+  // ── Project open/close lifecycle ─────────────────────────────────────────────
   // The folder-open pipeline (startFolderPreview + its epoch/superseded()
   // concurrency guard), setUpAsBook's epoch/busy management, stopPreview,
-  // openUrl's reset path, and cancelOpen (the initial-open Cancel affordance,
-  // M2) all live on ProjectLifecycleController — including the ONE
-  // resetWorkspace() every teardown path now calls (the fix for the divergent
-  // hand-rolled resets that shipped the Cancel-closes-project defect). Fields
+  // openUrl's reset path, and cancelOpen (the initial-open Cancel affordance)
+  // all live on ProjectLifecycleController — including the ONE
+  // resetWorkspace() every teardown path calls (divergent hand-rolled resets
+  // shipped a Cancel-closes-project defect). Fields
   // this controller doesn't own (Problems panel, editor pane/buffer, folder
   // watcher, pageNav counters, crash-recovery scan state) are reset through
   // the single injected `resetExtras` callback below — a registered callback,
@@ -516,8 +500,8 @@
     },
     // Read by the controller for the RESOLVED book dir — the same key every
     // write below uses (`saveDesktopPrefs`/`setDesktopProjectState` are keyed to
-    // `lifecycle.currentDir`). Callers used to fetch this themselves for the dir
-    // the user PICKED, which silently missed on any retargeted open.
+    // `lifecycle.currentDir`). Keying it to the dir the user PICKED would
+    // silently miss on any retargeted open.
     getDesktopProjectState: (dir) => api.app.getDesktopProjectState(dir).catch(() => null),
     resetFirstRenderGate: () => previewEvents.resetFirstRenderGate(),
     flushBuffer: () => flushEditorBuffer(),
@@ -583,8 +567,8 @@
       !lifecycle.currentFolderHasManifest &&
       !lifecycle.adoptBannerDismissed,
   );
-  // C2 (book switcher): the toolbar label shows the active book's own title by
-  // default (unchanged from before repo-root sessions). In a multi-book repo the
+  // Book switcher: the toolbar label shows the active book's own title by
+  // default. In a multi-book repo the
   // book title leads and is suffixed with the repo's folder name so the author
   // sees, at a glance, that switching books (`<BookSwitcher>` below) stays within
   // the same project — book-title-first per author feedback.
@@ -601,7 +585,7 @@
   let publishDisabled = $derived(
     lifecycle.busy || exportController.exporting || !lifecycle.currentDir || lifecycle.sourceMode === "url",
   );
-  // Why-is-Publish-disabled notes (UX-023). URL mode wins over the no-folder
+  // Why-is-Publish-disabled notes. URL mode wins over the no-folder
   // message (currentDir is null there too, and "Open a folder first" would be
   // misleading while previewing a URL); the toolbar hides hints entirely in
   // URL mode anyway.
@@ -613,10 +597,9 @@
   });
 
   // ── Start screen (welcome landing) ──────────────────────────────────────────
-  // The in-window layer that replaced both the old splash window's "wait for the full
-  // render" phase and the old empty-state hero. At launch the previous book
-  // starts PRE-RENDERING in the workspace underneath exactly as it always did
-  // behind the OS splash — the landing is just an interactive cover (frosted,
+  // The in-window start layer, also the app's empty state. At launch the
+  // previous book starts PRE-RENDERING in the workspace underneath — the
+  // landing is just an interactive cover (frosted,
   // translucent: the cross-origin preview iframe must keep visible pixels or
   // Chromium throttles its layout to ~1fps; see PreviewFrame.svelte). Pure
   // decision logic lives in startup-landing.ts.
@@ -750,13 +733,13 @@
     void tick().then(() => leftPanelToggleBtn?.focus());
   }
 
-  // There is deliberately NO launch-time tab hijack here. A missing git
-  // identity used to send the start screen to Settings → Accounts on mount,
-  // which meant EVERY first run opened on account settings instead of the
-  // author's books — the screen's whole job is to pick or continue a book.
-  // The missing-identity nudge is the workspace banner (`needsGitIdentity`
-  // above), which is where the owner put it on 2026-07-30; the landing opens
-  // on Books and stays there until the author asks for another tab.
+  // There is deliberately NO launch-time tab hijack here. Sending the start
+  // screen to Settings → Accounts on a missing git identity would open EVERY
+  // first run on account settings instead of the author's books — the
+  // screen's whole job is to pick or continue a book. The missing-identity
+  // nudge is the workspace banner (`needsGitIdentity` above, owner ruling
+  // 2026-07-30); the landing opens on Books and stays there until the author
+  // asks for another tab.
 
   /**
    * The ONE open-a-project-folder pipeline behind the folder picker, the
@@ -767,7 +750,7 @@
    * click wins, never last-fetch-resolves wins) and `lifecycle.busy` covers the
    * whole span with no dead gap. The per-project restore-state read lives in
    * the lifecycle controller, which is the only place that knows the RESOLVED
-   * book dir it must be keyed to (2026-07-29 audit).
+   * book dir it must be keyed to.
    */
   function openProjectPath(path: string, label = "Opening your book…"): Promise<boolean> {
     dismissLanding(false); // no-op when the start screen is hidden
@@ -781,13 +764,13 @@
   let folderPickerOpen = false;
 
   /**
-   * ARCH #60: the ONE native-folder-picker flow behind both entry points —
-   * the start screen's "Browse" (no workspace yet, the landing screen is
-   * itself the "lifecycle.busy" surface while the OS dialog is up) and the in-workspace
+   * The ONE native-folder-picker flow behind both entry points — the start
+   * screen's "Browse" (no workspace yet, the landing screen is itself the
+   * "lifecycle.busy" surface while the OS dialog is up) and the in-workspace
    * "Open folder" action (a project is already open behind the native
-   * dialog, so it needs its own lifecycle.busy overlay to stay legible while the
-   * picker is up). `showBusyOverlay` is the only real behavioral difference
-   * between the two former hand-rolled copies.
+   * dialog, so it needs its own lifecycle.busy overlay to stay legible while
+   * the picker is up). `showBusyOverlay` is the only behavioral difference
+   * between the two.
    */
   async function pickAndOpenFolder(
     options: { showBusyOverlay?: boolean; label?: string } = {},
@@ -829,8 +812,8 @@
   }
 
   // ── Crash recovery (#44) ──────────────────────────────────────────────────
-  // scanForRecovery/restoreRecovery/discardRecovery (Phase 5 slice 2, UX H5 /
-  // ARCH #10 — moved from +page.svelte) live on CrashRecoveryController; the
+  // scanForRecovery/restoreRecovery/discardRecovery live on
+  // CrashRecoveryController; the
   // template reads `crashRecovery.items` and calls the intent methods
   // (scan/restore/discard/dismiss). Host coupling injected (§8):
   // forward-references to page-local functions/state declared further down
@@ -875,14 +858,14 @@
     if (filesChanged) onSyncFilesChanged();
   }
 
-  // The single Reconnect action (ADR 0006 D7): route to the matching connect
-  // flow — GitHub's device flow, or Advanced Setup for every other server.
+  // The single Reconnect action: route to the matching connect
+  // flow — GitHub's device flow, or Settings → Accounts for every other server.
   function onSyncReconnect() {
     if (syncController.syncDiag?.provider === "github") githubOpen = true;
     else openSettings("connections");
   }
 
-  // Completes the D7 Reconnect journey: a connect dialog closing may mean a
+  // Completes the Reconnect journey: a connect dialog closing may mean a
   // new credential was just stored — re-check syncability so the Sync
   // button and the dialog's auth state reflect it without a project reload.
   // Called by onClosed on GitHubDialog.
@@ -899,7 +882,7 @@
   // ── Converge-report subscription ────────────────────────────────────────────
   // Subscribe to the host's sync:status channel for the converge report —
   // combined-with-markers files and side-by-side pairs each get a review
-  // toast. Per §8 / ADR 0004: runs in the SPA, no lib value imports, all host
+  // toast. Per §8: runs in the SPA, no lib value imports, all host
   // work through getPlatform().
   onMount(() => {
     const off = getPlatform().onSyncStatus((status) => {
@@ -952,7 +935,7 @@
     getSelectionText: () => string;
     insertSnippet: (text: string) => void;
     updateContent: (content: string) => void;
-    /** Switch which file is open (UX review M8) — called explicitly whenever
+    /** Switch which file is open — called explicitly whenever
      * the buffer's open file changes; MarkdownEditor has no reactive effect
      * of its own (this repo bans `$effect`). */
     switchFile: (path: string | null, content: string) => void;
@@ -979,9 +962,8 @@
   // ── Book settings view ──────────────────────────────────────────────────
   // Book settings take over the whole window, exactly like the start screen:
   // the workspace underneath is inert until the writer closes them (X or
-  // Esc). They used to be a left-sidebar Config tab, then a panel docked
-  // beside the workspace; both squeezed manifest editing, theme browsing and
-  // plugin management into a strip. Activity is the only alternate
+  // Esc) — a sidebar tab or docked panel squeezes manifest editing, theme
+  // browsing and plugin management into a strip. Activity is the only alternate
   // editor-pane view.
   let editorView = $state<"editor" | "activity">("editor");
   let projectSettingsOpen = $state(false);
@@ -1125,12 +1107,12 @@
   }
 
   /**
-   * Insert an image even when no chapter is open yet (UX audit P3#8: the Media
-   * "Insert" button used to dead-end behind a disabled state, telling the author
-   * to go open a file first). If no markdown chapter is open, open one and the
-   * editor pane, then insert once the editor has mounted AND loaded that chapter
-   * — a bounded rAF retry, so there's no race (we never insert into an unloaded
-   * doc) and no infinite loop (gives up with a clear toast).
+   * Insert an image even when no chapter is open yet (the Media "Insert" button
+   * must not dead-end behind a disabled state). If no markdown chapter is open,
+   * open one and the editor pane, then insert once the editor has mounted AND
+   * loaded that chapter — a bounded rAF retry, so there's no race (we never
+   * insert into an unloaded doc) and no infinite loop (gives up with a clear
+   * toast).
    */
   function insertImageIntoChapter(payload: { src: string; alt?: string }) {
     const isMd = (p: string | null) => !!p && /\.(md|markdown)$/i.test(p);
@@ -1258,10 +1240,10 @@
     return flushEditorBuffer(target);
   }
 
-  // ARCH #61: imperative settings side-effects go through the store's single
+  // Imperative settings side-effects go through the store's single
   // onSettingsChange channel ($effect is banned in the SPA — see CLAUDE.md and
   // the store header; the store's replaceState choke point owns the notify, so
-  // the old forgot-to-notify hazard is structurally gone). Each sink is
+  // a setter can't forget to notify). Each sink is
   // wrapped in settingsChangeGuard so it fires only when ITS field changed:
   // - previewBg → re-inject desktop canvas styles; initial injection happens in
   //   the renderingComplete handler, this catches live changes. The ready()
@@ -1353,11 +1335,9 @@
    * up after ~2s. Same bounded-rAF pattern as `focusEditorWhenReady` /
    * `insertImageIntoChapter` below.
    *
-   * This replaced the sync controller's cross-chapter poll loop. That loop had
-   * to wait for an async FILE LOAD and then re-issue its reveal five times
-   * because the load reset the editor's scroll underneath it; this waits only
-   * for a component to mount, and once it has, the chapter and the line are
-   * both already in the document.
+   * This waits only for a component to mount, and once it has, the chapter and
+   * the line are both already in the document — no waiting on an async FILE
+   * LOAD that would reset the editor's scroll underneath a reveal.
    */
   function whenEditorReady(fn: () => void): void {
     let tries = 0;
@@ -1436,7 +1416,7 @@
   }
 
   /**
-   * FileTree row actions (UX review M9): the tree performs the actual
+   * FileTree row actions: the tree performs the actual
    * create/rename/delete host calls itself; these three hooks are the ONLY
    * point where the open-file buffer needs to react. The buffer's own
    * external-edit reconciliation is driven by the folder watcher, which is a
@@ -1489,9 +1469,8 @@
 
   /**
    * Called after a successful delete. Drop the deleted file rather than leaving
-   * a buffer pointing at a path that no longer exists — the exact "must not
-   * silently point at a missing path" failure mode M9 calls out (a stray edit
-   * afterward would otherwise silently recreate the deleted file). FileTree can
+   * a buffer pointing at a path that doesn't exist (a stray edit afterward
+   * would otherwise silently recreate the deleted file). FileTree can
    * delete directories recursively, so this must catch every open file at or
    * under the deleted path, not just an exact match.
    */
@@ -1544,7 +1523,7 @@
   function reloadExternal() {
     // acceptExternal() fires the buffer's onContentReplaced callback above,
     // which pushes the reloaded content into the editor — no separate
-    // updateContent call needed here (#H1).
+    // updateContent call needed here.
     buffer?.acceptExternal();
   }
 
@@ -1558,11 +1537,6 @@
   async function restoreRecoveredFile(filePath: string, content: string): Promise<boolean> {
     return editorFiles.restore(filePath, content);
   }
-
-  // scanForRecovery/restoreRecovery/discardRecovery/dismissRecovery (#44,
-  // Phase 5 slice 2 — UX H5 / ARCH #10) now live on `crashRecovery`
-  // (CrashRecoveryController) — see its instantiation above. The template
-  // reads `crashRecovery.items` and calls the intent methods directly.
 
   // ── Persist left panel state on change ────────────────────────────────────
   function persistLeftPanelPrefs() {
@@ -1579,8 +1553,7 @@
 
   /**
    * Open the editor pane: mark it open, lazy-load the editor module, ensure a
-   * file is loaded, and move focus into it. Centralizes the sequence that was
-   * hand-repeated across five call sites (audit E3). `focus` and `ensureFile`
+   * file is loaded, and move focus into it. `focus` and `ensureFile`
    * cover the sites that intentionally differ (the file-tree selection path
    * already has a file; go-to-source places its own caret).
    */
@@ -1633,7 +1606,7 @@
   /** Findings from the last export (see the `buildPdf` wrapper above). */
   let buildProblemEntries = $state<ProblemEntry[]>([]);
   let problemsLoading = $state(false);
-  // M5: distinct from "problems === [] because the project is clean" — set
+  // Distinct from "problems === [] because the project is clean" — set
   // when the lint API call itself failed, so the panel can render a neutral
   // "we couldn't check" row instead of a false green all-clear.
   let problemsError = $state<string | null>(null);
@@ -1674,7 +1647,7 @@
       })
       .catch(() => {
         // Lint failing must never break the preview, but it must also never
-        // present as a false "no problems found" all-clear (M5) — surface a
+        // present as a false "no problems found" all-clear — surface a
         // distinct error state instead of silently clearing to [].
         if (lifecycle.currentDir === dir) {
           problems = [];
@@ -1682,7 +1655,7 @@
         }
       })
       .finally(() => {
-        // M5: without this guard, a stale in-flight lint from a project the
+        // Without this guard, a stale in-flight lint from a project the
         // author has since navigated away from can clear the NEW project's
         // loading indicator out from under it.
         if (lifecycle.currentDir === dir) problemsLoading = false;
@@ -1740,17 +1713,13 @@
     return () => off?.();
   });
 
-  // pageEditInput focus is triggered directly in beginPageEdit() — see below.
-
   // ── Startup: reopen the last project behind the start screen ─────────────────
-  // The ~90-line landing/prefs/last-project continuation (Phase 5 slice 2, UX
-  // H5 / ARCH #10) now lives on `startup` (StartupController) — the pure
-  // predicates it calls (decideStartupScreen) stay in startup-landing.ts.
-  // `revealWindow()`'s one call site is the controller's private `reveal()`;
-  // the four former exit-path duplicates are gone. Host coupling injected
-  // (§8): forward-references to page-local state/functions declared
-  // elsewhere (lifecycle, landing* state, leftPanel* state, startFolderPreview)
-  // are safe closures, the same pattern every other Phase 5 controller uses.
+  // The landing/prefs/last-project continuation lives on `startup`
+  // (StartupController) — the pure predicates it calls (decideStartupScreen)
+  // stay in startup-landing.ts. Host coupling injected (§8):
+  // forward-references to page-local state/functions declared elsewhere
+  // (lifecycle, landing* state, leftPanel* state, startFolderPreview) are safe
+  // closures, the same pattern every other controller uses.
   const startup = new StartupController({
     isWorkspaceEngaged: () =>
       !!(lifecycle.previewUrl || lifecycle.currentDir || lifecycle.currentUrl || lifecycle.busy || lifecycle.openError || lifecycle.urlPreviewError),
@@ -2042,7 +2011,7 @@
   // not $effect). Cleanup is handled when the client is replaced (PreviewFrame
   // remounts on lifecycle.previewUrl change via {#key lifecycle.previewUrl}).
   //
-  // M31: this is also where the client's postMessage security is wired up.
+  // This is also where the client's postMessage security is wired up.
   // PreviewFrame calls attach() itself on the very next line of its own mount,
   // so `setExpectedOrigin`/`lockDown` must
   // happen HERE, synchronously, ahead of that — PreviewFrame cannot read the
@@ -2088,14 +2057,10 @@
   // ----------------------------------------------------------------
   // Keyboard shortcuts: global (available without a loaded document) +
   // preview navigation (active whenever a preview is open). ONE keydown
-  // registration (H5 / ARCH #10 — the review's "two separate global keydown
-  // handlers … both route to savePdf" finding): `onGlobalKey`/
-  // `onPreviewNavKey` keep their original, independently-scoped bodies
-  // (unchanged — each function's own internal `return`s still only skip that
-  // function's remaining checks) so behavior is byte-identical to the two
-  // formerly-separate listeners, which the browser also always ran in this
-  // same registration order for the same event; `onKeydown` just calls both
-  // from one `addEventListener` instead of two.
+  // registration: `onGlobalKey`/`onPreviewNavKey` keep independently-scoped
+  // bodies (each function's own internal `return`s only skip that function's
+  // remaining checks); `onKeydown` calls both, in order, from one
+  // `addEventListener`.
   // ----------------------------------------------------------------
   onMount(() => {
     function onGlobalKey(e: KeyboardEvent) {
@@ -2220,8 +2185,8 @@
           contextMenu.close();
           zoomView.applyZoom("fit-width");
           break;
-        // UX-004: 'D' shortcut for debug removed — non-technical writers should
-        // not accidentally trigger debug mode.
+        // No 'D' shortcut for debug — non-technical writers should not
+        // accidentally trigger debug mode.
       }
     }
 
@@ -2240,8 +2205,8 @@
 
   /**
    * The ONE open-a-project-folder pipeline (epoch/superseded() concurrency
-   * guard included) now lives on ProjectLifecycleController (Phase 5d). Thin
-   * delegate kept so every call site below reads the same as before.
+   * guard included) lives on ProjectLifecycleController; this is a thin
+   * delegate for call sites that pass it as a bare reference.
    */
   function startFolderPreview(
     dir: string,
@@ -2252,9 +2217,9 @@
   }
 
   /**
-   * C2: switch the active book within the open repo (BookSwitcher). A full
-   * re-open at the sibling book's folder — the simplest correct mechanism per
-   * the C2 design note: classify() resolves the same repoRoot/books (it's the
+   * Switch the active book within the open repo (BookSwitcher). A full
+   * re-open at the sibling book's folder — the simplest correct mechanism:
+   * classify() resolves the same repoRoot/books (it's the
    * same repo), so session identity is unchanged; only the content pipeline
    * (preview/editor/watch) retargets to the chosen book.
    */
@@ -2268,7 +2233,7 @@
     await pickAndOpenFolder({ showBusyOverlay: true, label: "Starting preview…" });
   }
 
-  /** Load a URL preview. Reset/epoch-supersede logic now lives on ProjectLifecycleController. */
+  /** Load a URL preview. Reset/epoch-supersede logic lives on ProjectLifecycleController. */
   function openUrl(url: string) {
     void lifecycle.openUrl(url);
   }
@@ -2298,20 +2263,6 @@
     return null;
   }
 
-  // stopPreview (flush + host teardown + the ONE resetWorkspace()) now lives
-  // on ProjectLifecycleController; called directly as lifecycle.stopPreview()
-  // — no page-local wrapper needed since it's never passed as a bare prop
-  // reference (unlike openUrl/startFolderPreview/setUpAsBook above).
-
-  // savePdf/buildTo/cancelExport (Phase 5 slice 2, UX H5 / ARCH #10) now
-  // live on `exportController` (ExportController.savePdf/buildTo/
-  // cancelExport) — called directly from the template/keydown handler as
-  // `exportController.savePdf()` etc.; no page-local wrapper needed since
-  // they're never passed as bare prop references.
-
-  // Page-navigation intents (syncPageState / restoreProjectPage /
-  // runPageCommand / gotoPage / begin|cancel|commitPageEdit /
-  // first|prev|next|lastPage) now live on `pageNav` (PageNavController).
   function saveDesktopPrefs(patch: Partial<PersistedProjectState>) {
     if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder" || lifecycle.rendering || pageNav.restoringSavedState) return;
     // Per-project state (#43): write to the folder-keyed bucket so this never
@@ -2320,7 +2271,7 @@
     trackPersistence(api.app.setDesktopProjectState(lifecycle.currentDir, patch as Record<string, unknown>));
   }
 
-  // ── Document outline + editor↔preview sync (UX-013, ADR 0005) ─────────────
+  // ── Document outline + editor↔preview sync ────────────────────────────────
   function refreshOutline() {
     if (!client) return;
     client
@@ -2388,9 +2339,6 @@
       lifecycle.renderCompleteOverlay = false;
     });
   }
-
-  // Zoom / view-mode intents (applyFitWidthZoom / applyZoom / stepZoom /
-  // applyViewMode / toggleViewMode) now live on `zoomView` (ZoomViewController).
 
   function toggleDebug() {
     debug = !debug;
@@ -2548,10 +2496,9 @@
   // The single-column (narrow) layout switches the one visible pane between the
   // editor and the preview. `editorPaneOpen` is the visible source of truth;
   // the persisted paneMode is only consulted after the editor was explicitly
-  // opened. (The defunct CSS/style tab was retired with the toolbar
-  // refactor — project styling lives in the Book settings view.)
+  // opened. Project styling lives in the Book settings view, not a tab.
   //
-  // M1 (single source of truth): whether the shared editor is on a CSS file is
+  // Single source of truth: whether the shared editor is on a CSS file is
   // derived SOLELY from the open file's extension (`openFileIsCss`) — no
   // parallel state that could get stuck on "css" when no CSS file is open.
   let openFileIsCss = $derived(
@@ -2614,10 +2561,10 @@
   });
 
   /**
-   * M2: Hide the render-progress overlay, and ONLY hide it. This backs the
+   * Hide the render-progress overlay, and ONLY hide it. This backs the
    * pane overlay used for an initial/retry render; save-triggered hot reloads
    * are double-buffered and remain ambient. Routing this through stopPreview()
-   * (as it used to) would silently close the whole project. The render itself
+   * would silently close the whole project. The render itself
    * is NOT aborted: the iframe stays mounted and visible to avoid Chromium's
    * cross-origin throttle. lifecycle.currentDir/editor/buffer stay untouched.
    *
@@ -2631,7 +2578,7 @@
   }
 
   /**
-   * M2: Real cancel-and-close, for the initial open ONLY. Backs the
+   * Real cancel-and-close, for the initial open ONLY. Backs the
    * variant="app" overlay, which by construction only shows before any
    * folder workspace exists (`!lifecycle.currentDir`) — there is no live workspace to interrupt
    * yet, so a full teardown is safe here in a way it is not once the preview
@@ -2673,11 +2620,11 @@
   onReportProblem={openReportProblem}
 />
 
-<!-- RC3-1: App-level overlay for the initial "Opening folder…" lifecycle.busy state ONLY
+<!-- App-level overlay for the initial "Opening folder…" lifecycle.busy state ONLY
      (no preview pane exists yet). Scoped below the toolbar (--app-z-overlay) and
      all dialogs (1000+). This does NOT cover the preview pane or editor during
      layout — that's handled by the pane-scoped overlay inside .preview-pane.
-     M2: this is the ONE place a real cancel-and-close is offered — safe here
+     This is the ONE place a real cancel-and-close is offered — safe here
      because no project session/preview exists yet (see handleCancelOpen). -->
 {#if lifecycle.busy && !!lifecycle.busyLabel && !lifecycle.currentDir && !landingVisible}
   <LoadingOverlay
@@ -2873,7 +2820,7 @@
             <!-- Remount on project switch so a stale snapshot/log list from a
                  previously-open project can never linger under the new one
                  (mirrors LeftPanel's {#key projectDir} FileTree/MediaPanel
-                 pattern) — replaces the retired resetHistoryState no-op (L8). -->
+                 pattern). -->
             {#key lifecycle.currentDir}
               <ProjectActivityView
                 bind:this={activityViewRef}
@@ -3030,11 +2977,11 @@
             Updating preview…
           </div>
         {/if}
-        <!-- RC3-1: Pane-scoped overlay — position:absolute within .preview-pane
+        <!-- Pane-scoped overlay — position:absolute within .preview-pane
              (which has position:relative). Covers ONLY the preview area; the
              editor pane, toolbar, and all dialogs remain fully interactive.
              z-index:10 (above the iframe, below any stacking context above).
-             M2: onCancel (handleCancelRender) only HIDES the overlay; it does
+             onCancel (handleCancelRender) only HIDES the overlay; it does
              NOT tear down the project. Save-triggered reloads use the ambient
              double-buffered shell and do not mount this overlay. -->
         <LoadingOverlay
@@ -3588,8 +3535,8 @@
   /* Neutral fill — NON-primary, NON-active buttons only. The exclusion is
      load-bearing: a bare `button { background }` rule is (0,1,1) once Svelte
      scopes it, which would beat both the global `.app-btn-primary` recipe
-     (0,1,0) and leave primary buttons rendering as neutral controls (the L5
-     convergence's whole point). `.primary` buttons always carry
+     (0,1,0) and leave primary buttons rendering as neutral controls.
+     `.primary` buttons always carry
      `.app-btn-primary`, so excluding that class is the precise gate. */
   button:not(.app-btn-primary):not(.active) {
     background: var(--app-control-bg);
@@ -3601,9 +3548,8 @@
     border-color: var(--app-control-hover-border);
   }
   /* The primary-button color recipe (gradient/hover/border-color/font-weight)
-     used to be duplicated here as `button.primary { ... }`. It now lives in
-     theme.css's `.app-btn-primary` (UX review L5 — the ONE primary variant);
-     every `class="primary"` button in this file's template also carries
+     lives in theme.css's `.app-btn-primary` (the ONE primary variant); every
+     `class="primary"` button in this file's template also carries
      `app-btn-primary`, which supplies the color. `.primary` itself is kept as
      a plain semantic marker class with no CSS of its own. */
   button:disabled {

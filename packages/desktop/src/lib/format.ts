@@ -1,17 +1,14 @@
 /**
  * Shared, PWA-clean formatting helpers.
  *
- * Pure functions — NO `node:*` imports (§8 / ADR 0004).
+ * Pure functions — NO `node:*` imports (§8).
  */
 
 /**
  * Coarse "time ago" rendering for a timestamp (ms since epoch), e.g. snapshot
  * times in the history panel. Rounds to the largest sensible unit and falls back
  * to a locale date once past two weeks. Single source of truth, shared across the
- * renderer — StatusBar.svelte's save-status popover used to hand-roll a second,
- * differently-worded copy of this ("N minute(s) ago", no ≥14-day date fallback);
- * consolidated onto this implementation in the 2026-07-28 duplication audit (see
- * docs/reviews/duplication-audit-2026-07-28.md).
+ * renderer — don't hand-roll a second, differently-worded copy.
  *
  * @param now Reference "current" time (ms since epoch). Defaults to `Date.now()`;
  * callers pass an explicit value only for deterministic tests.

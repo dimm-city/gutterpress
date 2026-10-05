@@ -1,19 +1,18 @@
 <script lang="ts">
   /**
    * SyncToolsPanel — the start screen's Troubleshooting → Sync tab: tools for a
-   * book whose online backup (Git/GitHub sync) is stuck. First the cheapest
-   * fix — Reconnect GitHub, for the expired login that makes every backup
-   * fail with a sign-in error (the device flow's success overwrites the
-   * stale token, so no disconnect step). Then the tools for the OPEN book —
-   * no folder picker: the routes only ever accept the open book, and a
-   * picker that offered any folder was how every button 403'd in
-   * 0.11.10-alpha.3 — either Repair online backup (swap in a fresh history,
-   * keep files, save and back up) or Scorched earth (back up the whole
+   * book whose online backup (Git/GitHub sync) is stuck. First the cheapest fix
+   * — Reconnect GitHub, for the expired login that makes every backup fail with
+   * a sign-in error (the device flow's success overwrites the stale token, so
+   * no disconnect step). Then the tools for the OPEN book — no folder picker:
+   * the routes only ever accept the open book, so a picker offering any folder
+   * would make every button 403 — either Repair online backup (swap in a fresh
+   * history, keep files, save and back up) or Scorched earth (back up the whole
    * folder, empty it, download a fresh copy, copy the backed-up files back on
    * top, and — as the final step, whether or not the reset worked — close the
    * book, so the app holds no stale state from before the reset).
    *
-   * PWA-clean (§8 / ADR 0004): all host work through `api.*`; the GitHub
+   * PWA-clean (§8): all host work through `api.*`; the GitHub
    * device flow through `getPlatform()` (the interactive-connect seam
    * ConnectionsSettings uses).
    */

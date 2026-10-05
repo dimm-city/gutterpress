@@ -1,12 +1,11 @@
 <script lang="ts">
   /**
-   * Details section of ProjectConfigPanel — title, authors, output filename,
+   * Details section of ProjectSettingsView — title, authors, output filename,
    * source files. All state + `api.manifest.*` calls live in
-   * `DetailsSectionController` (passed as the single `controller` prop, per
-   * the design-controller pattern — see M14); this child renders the
-   * controller's rune fields and calls its intent methods directly (plain
-   * text fields bind straight to controller fields via `bind:value`, same as
-   * `pageNav.pageEditValue` in `+page.svelte`). Shared primitives (`.block`,
+   * `DetailsSectionController` (passed as the single `controller` prop); this
+   * child renders the controller's rune fields and calls its intent methods
+   * directly (plain text fields bind straight to controller fields via
+   * `bind:value`). Shared primitives (`.block`,
    * `.field`, `.input`, buttons, …) come from `config-section-shared.css`;
    * the Details-only layout (`.authors`, `.author-row`, `.add`) is scoped
    * here.
@@ -71,8 +70,8 @@
   {#if controller.detailsError}
     <p class="error" role="alert">{controller.detailsError}</p>
   {/if}
-  <!-- Bound by for/id as well as by nesting: a UX review saw this input named
-       after its placeholder ("Untitled book") instead of "Title". -->
+  <!-- Bound by for/id as well as by nesting, so the input is named "Title"
+       rather than after its placeholder ("Untitled book"). -->
   <label class="field" for="details-title">
     <span class="lbl">Title</span>
     <input

@@ -1,7 +1,6 @@
 /**
  * source-files.ts — pure model for the project-settings "Source files" list
- * (the drag-and-drop include/exclude editor that replaced the manifest
- * textarea).
+ * (the drag-and-drop include/exclude editor).
  *
  * The manifest's `sourceFiles` field is EITHER null/absent ("include every
  * markdown file, natural order") OR an ordered list of the included files.

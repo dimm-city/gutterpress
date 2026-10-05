@@ -8,7 +8,7 @@
 
   let { onLocal, onGitHub, onClose }: {
     onLocal: () => void;
-    /** Omitted where GitHub isn't available (browser target). */
+    /** The GitHub choice renders only when this is passed. */
     onGitHub?: () => void;
     onClose: () => void;
   } = $props();

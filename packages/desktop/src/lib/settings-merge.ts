@@ -1,5 +1,5 @@
 /**
- * Shared settings deep-merge (Phase 1b).
+ * Shared settings deep-merge.
  *
  * Arrays are REPLACED wholesale (the outer section spread swaps a nested
  * array field), and a malformed array-valued SECTION patch is ignored rather

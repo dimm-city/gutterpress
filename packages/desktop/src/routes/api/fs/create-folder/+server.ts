@@ -6,7 +6,7 @@ import { defineRoute, requireAbsolute, requireWithinProjectRoot } from '../../_l
 import { requireSegment } from '../_shared/validate-segment';
 import type { RequestHandler } from './$types';
 
-// FileTree row/toolbar "New folder" (UX review M9). Same `dir` + `name`
+// FileTree row/toolbar "New folder". Same `dir` + `name`
 // shape as create-file — see that route's header comment.
 export const POST: RequestHandler = defineRoute<{ dir: string; name: string }>({
   validate: async (raw) => {

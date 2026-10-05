@@ -76,9 +76,8 @@
        pane variant the preview iframe below stays fully visible through the
        translucent scrim, so a user may try to scroll it during an initial or
        retry render. Blocking here is what made "scrolling in the desktop completely
-       broken while everything else works" (scroll-dead-preview regression;
-       pinned by tests/platform/preview-scroll-regression.test.ts). Only the
-       Cancel button below restores pointer-events for itself. */
+       broken while everything else works" (scroll-dead-preview regression). Only
+       the Cancel button below restores pointer-events for itself. */
     pointer-events: none;
     /* Default z-index: below the toolbar and all dialogs so the
        overlay never traps interactive UI elements above it. The pane variant

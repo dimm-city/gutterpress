@@ -1,9 +1,9 @@
 <script lang="ts">
   /**
-   * AppToolbar — the main window toolbar, extracted out of `+page.svelte`
-   * (toolbar refactor). Purely presentational: every piece of state arrives as
-   * a prop and every action leaves through a callback, so the component is
-   * testable in isolation and `+page.svelte` stays a composition root.
+   * AppToolbar — the main window toolbar. Purely presentational: every piece of
+   * state arrives as a prop and every action leaves through a callback, so the
+   * component is testable in isolation and `+page.svelte` stays a composition
+   * root.
    *
    * Page navigation and zoom are NOT here: they live on the preview pane's
    * own strip (PreviewToolbar.svelte), beside the pages they act on, the way
@@ -327,7 +327,7 @@
       </button>
     {/if}
 
-    <!-- Why-is-Publish-disabled notes (UX-023). -->
+    <!-- Why-is-Publish-disabled notes. -->
     {#each publishHints as hint (hint)}
       <span class="save-hint" role="note">{hint}</span>
     {/each}
@@ -543,7 +543,7 @@
   }
   /* :not(.active) — the selected row keeps its selected look under the
      pointer. Unexcluded, the hover fill would repaint it as a plain hover row
-     (the #305 defect, originally white-on-pale text). */
+     (the #305 defect). */
   .toolbar .menu-panel button.menu-item:not(.active):hover:not(:disabled) {
     background: var(--app-control-hover-bg);
   }
@@ -623,7 +623,7 @@
     flex-shrink: 2;
   }
 
-  /* Visual separator between toolbar groups (UX-039) */
+  /* Visual separator between toolbar groups */
   .toolbar-sep {
     width: 1px;
     height: 20px;
@@ -632,7 +632,7 @@
     flex-shrink: 0;
   }
 
-  /* Hint beside the action when disabled (UX-023). Capped so it can never
+  /* Hint beside the action when disabled. Capped so it can never
      starve the identity cluster. */
   .save-hint {
     font-size: 11px;

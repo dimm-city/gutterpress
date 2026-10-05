@@ -49,14 +49,11 @@ async function get<T>(url: string): Promise<T> {
 
 // ── Contract DTOs — the single source of truth ───────────────────────────────
 //
-// These were previously RE-DECLARED here, and one copy had already drifted
-// (`ProjectRemoteDiagnosis.classification` was `any` instead of the typed
-// `ProjectSource`). They are now imported type-only from `./platform/contract`
-// (the seam interfaces + IPC-shared types) and `./platform/dtos` (the plain
-// request/response DTOs, ARCH review #39/#40), so the api client and the
-// host/renderer contract can never disagree again. `import type` is fully
-// erased at build, so the SPA still never value-imports the lib (§8 / ADR
-// 0004 renderer purity). Re-exported so existing `$lib/api` type consumers
+// Imported type-only from `./platform/contract` (the seam interfaces +
+// IPC-shared types) and `./platform/dtos` (the plain request/response DTOs),
+// never re-declared here, so the api client and the host/renderer contract
+// can't drift. `import type` is fully erased at build, so the SPA never
+// value-imports the lib (§8 renderer purity). Re-exported so existing `$lib/api` type consumers
 // keep resolving.
 export type {
   FileWriteResult,
@@ -188,7 +185,7 @@ export interface SavedTemplateInfo extends TemplateInfo {
 }
 
 /**
- * Provenance of one merged snippet entry (#242 — extensions can now ship a
+ * Provenance of one merged snippet entry (#242 — extensions can ship a
  * `snippets` folder declared in their package.json, merged into this SAME picker
  * feed by the lib's `listMergedSnippets`).
  *
@@ -234,7 +231,7 @@ export interface PublishProviderStaticInfo {
   connectKind: 'token' | 'oauth' | null;
 }
 
-// ── Project configuration view (#PCV) — author-facing manifest subset ──────
+// ── Project configuration view — author-facing manifest subset ─────────────
 // Declared locally (mirrors the lib's `ProjectConfigFields`) so the SPA bundle
 // stays free of value imports from `gutterpress` (§8 renderer purity).
 
@@ -337,19 +334,17 @@ export const api = {
     statFile: (filePath: string) => post<FileStat>('/api/fs/stat-file', { path: filePath }),
     /** List the immediate entries of a directory. Path must be absolute. */
     listDir: (dirPath: string) => post<DirEntry[]>('/api/fs/list-dir', { path: dirPath }),
-    // copyFile wrapper deleted (audit D2) — the SPA's image-insert flow calls
-    // api.media.importImage, not this. The /api/fs/copy-file ROUTE is retained
-    // deliberately: it still guards the shared picker-capability + fs-guard
-    // path and carries that mechanism's security regression tests.
-    // watchFolder/unwatchFolder deleted (ARCH review #8) — the folder watch
-    // stays IPC-only (preload.ts / electron-adapter.ts); these client
-    // wrappers and their /api/fs/{watch,unwatch}-folder routes had zero
-    // callers, the IPC path being the live one.
+    // No copyFile wrapper — the SPA's image-insert flow calls
+    // api.media.importImage. The /api/fs/copy-file ROUTE is retained
+    // deliberately: it guards the shared picker-capability + fs-guard path and
+    // carries that mechanism's security regression tests.
+    // No folder-watch wrapper either — the folder watch is IPC-only
+    // (preload.ts / electron-adapter.ts).
     /** List top-level .md and .css files in a project directory. */
     listProjectFiles: (projectDir: string) =>
       post<ProjectFileEntry>('/api/fs/list-project-files', { projectDir }),
 
-    // ── Tree CRUD (UX review M9) ─────────────────────────────────────────
+    // ── Tree CRUD ────────────────────────────────────────────────────────
     // `dir` + `name` (not a full path) so path-joining stays host-side —
     // see create-file/+server.ts's header comment.
     /** Create a new file under `dir`. Fails (409) if a file already exists there. */
@@ -392,7 +387,7 @@ export const api = {
     setSettings: (settings: Record<string, unknown>) => post<{ ok: boolean }>('/api/app/settings', settings),
     /** Get the OS native dark/light theme preference. */
     getNativeTheme: () => get<{ shouldUseDarkColors: boolean }>('/api/app/native-theme'),
-    /** Get the recent folders list (with exists flag). `lastActiveBook` (C2) is
+    /** Get the recent folders list (with exists flag). `lastActiveBook` is
      *  the absolute folder of the book that was active when a repo-backed
      *  entry was recorded — absent for standalone (non-git) entries. */
     getRecentFolders: () =>
@@ -444,9 +439,8 @@ export const api = {
           action: 'remove',
         }),
     },
-    // flushDone deleted (ARCH review #8) — this wrapper (and the
-    // /api/app/flush-done route) had zero callers: the real flush-before-close
-    // reply is fired directly over IPC (preload.ts's onFlushBeforeClose calls
+    // No flushDone wrapper: the flush-before-close reply is fired directly
+    // over IPC (preload.ts's onFlushBeforeClose calls
     // ipcRenderer.invoke("app:flushDone") — it can't route through fetch, since
     // it must resolve synchronously with the renderer's own close-time flush).
   },
@@ -465,7 +459,7 @@ export const api = {
      * Import an author-picked image (absolute path, from anywhere on disk —
      * e.g. a native file dialog) into the given project, returning the
      * project-relative markdown `src` to use. The ONE host-side
-     * implementation of the import policy (UX review M10): already-inside
+     * implementation of the import policy: already-inside
      * the project just computes the relative path; outside the project
      * copies into an existing `images/` dir if present, else `assets/`
      * (created on demand), de-duplicating a colliding basename. Both
@@ -509,7 +503,7 @@ export const api = {
   snip: {
     /** List the open project's snippets, MERGED with every installed, active
      *  extension's own `snippets` folder (#242) — each entry's `source`
-     *  says which. This is what the picker actually renders now; project-
+     *  says which. This is what the picker actually renders; project-
      *  only listing has no separate route (the lib's `listSnippets` is an
      *  internal building block of `listMergedSnippets`, not exposed here). */
     list: (projectDir: string) => post<SnippetEntry[]>('/api/snip/list', { projectDir }),
@@ -612,7 +606,7 @@ export const api = {
      *
      * `repoRoot` (when the open book lives inside a repository) also offers the
      * repo's SHARED stylesheets, so an author can enable or re-enable one from
-     * the UI instead of hand-editing the manifest (2026-07-29 audit).
+     * the UI instead of hand-editing the manifest.
      */
     listStyles: (projectDir: string, repoRoot?: string | null) =>
       post<ProjectStyle[]>('/api/project/list-styles', {
@@ -636,9 +630,7 @@ export const api = {
       post<string[]>('/api/style/set-active', { projectDir, paths }),
   },
 
-  // status() deleted (ARCH review #8) — this wrapper had zero callers.
-  // The /api/status route itself is left in place (a plain health-check GET,
-  // harmless to keep reachable even with no current client).
+  // The /api/status route (a plain health-check GET) has no client wrapper.
 
   /** System diagnostics (tool paths, versions, Chromium/Electron info). */
   doctor: () => get<DoctorDiagnostics>('/api/doctor'),
@@ -660,8 +652,8 @@ export const api = {
 
   sync: {
     /**
-     * Enable or disable the auto-sync master switch (ARCH review #8 — was
-     * IPC despite being a pure settings write).
+     * Enable or disable the auto-sync master switch (a pure settings write,
+     * so a route, not IPC).
      */
     setAutoSync: (enabled: boolean) =>
       post<{ ok: boolean; autoSync: boolean }>('/api/sync/set-auto-sync', { enabled }),
@@ -788,8 +780,8 @@ export const api = {
 
     /**
      * Download ("clone") a repository into a new local project folder
-     * (ARCH review #8 — was IPC despite being a plain request/response; the
-     * clone-progress push stays a separate `onCloneProgress` subscription).
+     * (plain request/response, so a route; the clone-progress push is a
+     * separate `onCloneProgress` subscription).
      */
     cloneRepository: (args: CloneRepositoryArgs) =>
       post<{ projectDir: string }>('/api/remote/clone-repository', args),
@@ -797,9 +789,9 @@ export const api = {
   },
 
   /**
-   * Desktop update surface (ARCH review #8 — getStatus/check/download were IPC
-   * despite being plain request/response; applyNow and the onEvent push
-   * stream stay on the bridge — see electron-adapter.ts's `updater` getter).
+   * Desktop update surface (getStatus/check/download are plain
+   * request/response routes; applyNow and the onEvent push stream stay on the
+   * bridge — see electron-adapter.ts's `updater` getter).
    */
   updater: {
     getStatus: () => get<UpdaterStatus>('/api/updater/get-status'),
@@ -867,7 +859,7 @@ export const api = {
       }),
 
     /**
-     * Existing places a provider can publish into (#221 D9, gdrive: Drive
+     * Existing places a provider can publish into (#221, gdrive: Drive
      * folders) — provider-neutral; the wizard only calls this when the
      * provider's card carries `destinations` (see `listProviders`).
      */

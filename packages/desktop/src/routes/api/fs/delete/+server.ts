@@ -6,9 +6,9 @@ import { holdDeleted } from '../_shared/recently-deleted';
 import { defineRoute, getHostServices, loadLib, requireAbsolute, requireWithinProjectRoot } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-// FileTree row action "Delete" (UX review M9). The destructive path: the
+// FileTree row action "Delete". The destructive path: the
 // CLIENT already requires an inline two-step confirm before calling this
-// (the W4 armed-confirm pattern) — this route owns the SECOND safety net,
+// (the armed-confirm pattern) — this route owns the SECOND safety net,
 // mirroring vcs/restore-snapshot's discipline ("the lib snapshots the
 // current state before restoring, so the operation can never lose author
 // work"): when the project has version history, the working tree is
@@ -16,7 +16,7 @@ import type { RequestHandler } from './$types';
 // History even if the confirm was a mis-click. Local-folder projects (no
 // version history yet) have no snapshot to take — the inline confirm is
 // their only safety net, same as every other destructive action in the app
-// today (theme Remove, M7).
+// (e.g. theme Remove).
 //
 // The item is moved aside rather than removed (#313), so the "Deleted … Undo"
 // toast can bring it back through fs/undo-delete — see recently-deleted.ts.

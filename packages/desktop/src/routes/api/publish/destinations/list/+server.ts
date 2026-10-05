@@ -3,7 +3,7 @@ import { defineRoute, requireProjectDir } from '../../../_lib/route';
 import type { RequestHandler } from './$types';
 
 /**
- * Existing places a provider can publish into (#221 D9, gdrive: app-visible
+ * Existing places a provider can publish into (#221, gdrive: app-visible
  * Drive folders) — provider-neutral by design (precedent: `publish/list`'s
  * `listProducts`), so a future Dropbox/OneDrive provider needs no new route.
  * The wizard renders a picker only when `PublishProviderCard.destinations`

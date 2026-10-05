@@ -1,20 +1,19 @@
 <script lang="ts">
   /**
    * ProjectSettingsView — the "Book settings" surface, patterned after the
-   * app SettingsView (header + close, tab bar, one cohesive slice per tab). It
-   * replaced the left-sidebar Config tab (and with it the retired
-   * ProjectConfigPanel): the sidebar's 260px column was a cramped frame for
-   * manifest editing, theme browsing, and plugin management.
+   * app SettingsView (header + close, tab bar, one cohesive slice per tab) —
+   * a full window because a sidebar column is a cramped frame for manifest
+   * editing, theme browsing, and plugin management.
    *
    * +page.svelte mounts it as a full-window layer, like the start screen: the
    * workspace is inert underneath until the writer closes it with the X or
    * Esc (Esc defers to any dialog open on top, e.g. "Save as template…").
    *
-   * This is the COMPOSITION ROOT for the per-domain section controllers
-   * (UX review M14): it instantiates one `*SectionController` per domain and
-   * renders the presentational sections under `./config/`, passing each ITS
-   * controller as a single prop. The children carry no state and no `api`
-   * value import — all `api.*` calls live in the controllers under
+   * This is the COMPOSITION ROOT for the per-domain section controllers: it
+   * instantiates one `*SectionController` per domain and renders the
+   * presentational sections under `./config/`, passing each ITS controller as a
+   * single prop. The children carry no state and no `api` value import — all
+   * `api.*` calls live in the controllers under
    * `$lib/routes/*-section-controller.svelte.ts`.
    *
    * Four tabs, backed by FOUR controllers (no `$effect`: data loads on mount +
@@ -23,9 +22,8 @@
    *                    (`api.manifest.{read,setFields}`).
    *   2. Look        — the extensions that carry styles (`LookSection`)
    *                    → design tokens (`DesignSection`) → the raw stylesheet
-   *                    list (`StylesSection`) behind an "Advanced" disclosure
-   *                    (UX review M35's writer-shaped merge, unchanged). The
-   *                    heading stays "Look & style" — it still covers all
+   *                    list (`StylesSection`) under a "Stylesheets" heading.
+   *                    The section heading is "Look & style" — it covers all
    *                    three subsections — while the tab button itself is
    *                    shortened to "Look" to pair with "Features" (#243).
    *   3. Features    — the extensions that carry markdown: toggle, remove,
@@ -301,7 +299,7 @@
       {/if}
 
       {#if activeTab === "look"}
-        <!-- UX review M35: the Look grid → design tokens → stylesheet list,
+        <!-- The Look grid → design tokens → stylesheet list,
              merged under one writer-shaped "Look & style" heading (the tab
              button itself is shortened to "Look", #243 — see the header
              comment). The stylesheet list is a plain always-visible section
@@ -324,9 +322,8 @@
       {/if}
 
       {#if activeTab === "connections"}
-        <!-- This project's connection details (moved from the app Settings'
-             Connections tab, 2026-07-30). Accounts/credentials stay global in
-             Settings → Accounts; onOpenAccounts routes there. -->
+        <!-- This project's connection details. Accounts/credentials stay
+             global in Settings → Accounts; onOpenAccounts routes there. -->
         <ProjectConnectionsSection {projectDir} {onOpenAccounts} {onVersionHistoryEnabled} />
       {/if}
     {/if}
@@ -399,7 +396,7 @@
        reason this became a full view; unbounded width is just as unfriendly.
        border-box: there is no global reset, and content-box width:100% plus
        the 18px side padding would overflow the fixed sheet horizontally on
-       windows narrower than ~896px (Codex review, PR #118). */
+       windows narrower than ~896px (PR #118). */
     box-sizing: border-box;
     max-width: 860px;
     width: 100%;

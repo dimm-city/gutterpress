@@ -12,10 +12,9 @@
     toolGapMessage,
   } from "$lib/publish-targets";
 
-  // L4: `open` used to also be an external `$bindable` prop (`bind:open`),
-  // but the host never reads it — the ONLY open protocol is the imperative
-  // `show()` below (reset + template-load + focus work the write-only
-  // binding would silently skip if flipped directly). Purely internal state.
+  // `open` is purely internal state, not a `$bindable` prop: the ONLY open
+  // protocol is the imperative `show()` below (reset + template-load + focus
+  // work a binding would silently skip if flipped directly).
   let open = $state(false);
 
   let {
@@ -34,10 +33,9 @@
     triggerEl?: HTMLButtonElement | undefined;
   } = $props();
 
-  // Three short steps (#312). UX audit P3#10 made this a single screen, but the
-  // template, print target and publish targets (ADR 0008) grew it to seven
-  // questions and pushed Create below the fold. The footer stays pinned, and
-  // each step owns the validation for its own fields.
+  // Three short steps (#312): as one screen, the template, print target and
+  // publish targets (ADR 0008) push Create below the fold. The footer stays
+  // pinned, and each step owns the validation for its own fields.
   const STEPS = ["Name & author", "Template", "Print & save"];
   const LAST_STEP = STEPS.length - 1;
   let step = $state(0);
@@ -168,8 +166,8 @@
   let templates = $state<TemplateInfo[]>([]);
   let selectedTemplate = $state<TemplateInfo | null>(null);
   let importing = $state(false);
-  // M20: a failed listBuiltIn() call used to catch into `templates = []`,
-  // which silently omits the whole "Start from a template" radiogroup — a
+  // A failed listBuiltIn() call must not catch into `templates = []`, which
+  // silently omits the whole "Start from a template" radiogroup — a
   // writer never learns templates exist and creates a bare default book.
   // Tracked separately from `error` (the create-flow error) so a template
   // load failure can render its own Retry without touching the create form.
@@ -307,7 +305,7 @@
   }
 
   /**
-   * Default `parentDir` to a sensible writable location (M21) instead of
+   * Default `parentDir` to a sensible writable location instead of
    * leaving Create dead behind a mandatory native folder picker. Priority:
    *
    *   1. the parent folder the writer last chose HERE (persisted in desktop
@@ -358,12 +356,12 @@
   }
 
   /**
-   * M19 — mid-create dismissal guard: `guardedClose` makes this a no-op
-   * while `creating` is true, so the backdrop click, the header close
-   * button, AND Escape (routed through `dialogBehavior`'s `onClose`) can no
-   * longer dismiss the dialog out from under an in-flight create() — which
-   * used to keep running and silently open (or fail to open) a project the
-   * writer had visibly dismissed.
+   * Mid-create dismissal guard: `guardedClose` makes this a no-op while
+   * `creating` is true, so the backdrop click, the header close button, AND
+   * Escape (routed through `dialogBehavior`'s `onClose`) can't dismiss the
+   * dialog out from under an in-flight create() — which would keep running
+   * and silently open (or fail to open) a project the writer had visibly
+   * dismissed.
    */
   const close = guardedClose(() => {
     open = false;
@@ -450,10 +448,10 @@
           selectedPreset === "custom" && customPagePoints ? customPagePoints : undefined,
         versionHistory: useVersionHistory ? "local-git" : "none",
       });
-      // Remember this location as the default next time (M21) — best-effort,
+      // Remember this location as the default next time — best-effort,
       // never blocks the create flow.
       if (parentDir) void api.app.setDesktopPrefs({ newProjectParentDir: parentDir }).catch(() => {});
-      // `close` is guarded on `creating` (M19) — clear it BEFORE calling
+      // `close` is guarded on `creating` — clear it BEFORE calling
       // close() here, or the guard would treat this as still-in-flight and
       // no-op the close. Successful create goes through close() like every
       // other dismiss path, so the onClosed/triggerEl focus-restore contract
@@ -663,7 +661,7 @@
         <div class="field">
           <span>Where should we save it?</span>
           <div class="location-row">
-            <!-- M21: parentDir is prefilled (last-used parent, else the
+            <!-- parentDir is prefilled (last-used parent, else the
                  folder containing the most recent project) whenever we have
                  one, so this reads as "Change…" — the escape hatch, not the
                  only way in — rather than a dead Create hiding behind a
@@ -760,8 +758,7 @@
   .template-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   /* A card is a <label> around a visually hidden native radio, so the browser
      supplies the radio-group keyboard behaviour (arrows select, one Tab stop).
-     user-select keeps a double-click from highlighting the text, as the old
-     <button> cards never did. */
+     user-select keeps a double-click from highlighting the text. */
   .template-card {
     position: relative; display: flex; flex-direction: column; gap: 3px;
     padding: 8px 10px; border-radius: 6px;
@@ -769,8 +766,8 @@
     color: var(--app-text-secondary); cursor: pointer; user-select: none;
   }
   .template-card:hover { background: var(--app-surface-hover); }
-  /* Selected = accent border + tinted fill (ExportDialog's format cards use the
-     same pair) + a check badge, so it can't be mistaken for hover. */
+  /* Selected = accent border + tinted fill + a check badge, so it can't be
+     mistaken for hover. */
   .template-card.selected { border-color: var(--app-accent-border); background: var(--app-accent-subtle); }
   .template-card:has(input:focus-visible) { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
   .template-check {

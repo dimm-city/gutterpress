@@ -4,9 +4,8 @@
    *
    * The open project's connection details: how the folder is set up, its
    * online repository address, branch, whether a server credential is saved,
-   * plus the explicit-click-only Test Remote Access probe. Moved here from
-   * the app Settings' Connections (now Accounts) tab (2026-07-30) — accounts
-   * are global, but THIS surface is about one project, so it lives with the
+   * plus the explicit-click-only Test Remote Access probe. Accounts are
+   * global (Settings → Accounts), but THIS surface is about one project, so it lives with the
    * rest of the project's settings. Credential management stays in
    * Settings → Accounts; the guidance copy points there.
    *
@@ -226,7 +225,7 @@
   .hint { font-size: 11px; line-height: 1.4; color: var(--app-text-muted); margin: 4px 0 8px; }
   .hint.muted { font-style: italic; }
   .hint.guidance { color: var(--app-text); font-size: 12px; }
-  /* This-project status grid (ported from the former Advanced setup). */
+  /* This-project status grid. */
   .status-grid {
     display: grid;
     grid-template-columns: max-content 1fr;

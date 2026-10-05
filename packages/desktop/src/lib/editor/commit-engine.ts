@@ -11,7 +11,7 @@
  *
  * Pure logic + injected seams (buffer accessor, `selectEditorFile`, editor
  * accessors, `currentDir`, `rendering`) — zero DOM / `node:*` / lib value
- * imports (CLAUDE.md §8 / ADR 0004), unit-tested with fakes
+ * imports (CLAUDE.md §8), unit-tested with fakes
  * (`tests/editor/commit-engine.test.ts`).
  *
  * Every step below is numbered to match the plan's §4.7 pseudocode exactly —

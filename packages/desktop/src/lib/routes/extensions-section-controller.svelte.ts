@@ -40,13 +40,12 @@
  *
  * Removal never touches the author's files (a path entry's folder stays; an
  * npm entry's vendored copy — Gutterpress's own — is deleted), so it is a
- * single click, not the two-step confirm the old rm -rf'ing theme removal
- * needed (UX review M7).
+ * single click, not a two-step confirm.
  *
  * Same single-owner discipline as every other `*SectionController`: the two
  * components read the public rune fields and call the intent methods; host
- * coupling is injected so this stays testable with fakes and PWA-clean (§8 /
- * ADR 0004) — type-only DTO imports plus the pure helpers from
+ * coupling is injected so this stays testable with fakes and PWA-clean (§8)
+ * — type-only DTO imports plus the pure helpers from
  * `config-helpers` / `theme-grid`, ZERO `node:*` / lib value imports.
  * Computed values are plain getters, not `$derived` (mirrors
  * `design-section-controller.svelte.ts`), so bun's unit tests need only the

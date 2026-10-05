@@ -2,7 +2,7 @@
  * Shared, PWA-clean error helpers.
  *
  * Pure string operations — NO `node:*` imports (importing them as a value would
- * drag node code into the SPA and break the renderer/host split, §8 / ADR 0004).
+ * drag node code into the SPA and break the renderer/host split, §8).
  */
 
 /**
@@ -181,8 +181,8 @@ export function friendlyPdfError(e: unknown): string {
     // prefix (shared helper, defined above) before showing it to the author.
     return friendlyHostError(msg);
   }
-  // Render-timeout export blocks (electron/pdf-export.ts's waitForEngineRendered,
-  // ARCH review #27) throw a typed BuildError whose message is already an
+  // Render-timeout export blocks (electron/pdf-export.ts's
+  // waitForEngineRendered) throw a typed BuildError whose message is already an
   // author-friendly sentence. Like SYNC_CONFLICT above, `code` alone isn't
   // reliable across `api:build`'s ipcMain.handle/ipcRenderer.invoke boundary —
   // Electron strips custom Error properties there — so match by the message's
@@ -333,7 +333,7 @@ export function friendlyPublishError(e: unknown): FriendlyPublishError {
   }
 
   // Google Drive (#221): the configured folder was moved to trash or
-  // deleted. providers/gdrive.ts's D5 folderId resolution already writes a
+  // deleted. providers/gdrive.ts's folderId resolution already writes a
   // specific, friendly "pick the folder again" sentence — passed through.
   if (/drive folder.*can.?t be found/i.test(msg)) {
     return { summary: msg };

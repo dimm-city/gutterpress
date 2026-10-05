@@ -6,10 +6,9 @@ import { defineRoute, requireAbsolute, requireWithinProjectRoot } from '../../_l
 import { requireSegment } from '../_shared/validate-segment';
 import type { RequestHandler } from './$types';
 
-// FileTree row/toolbar "New chapter" (UX review M9). `dir` + `name` (not a
-// full path) so path-joining stays host-side (`path.join`) — the renderer
-// never hand-builds a path with `/`, the exact mistake M10 flagged for the
-// image-import flows. Fails (409) rather than silently overwriting when a
+// FileTree row/toolbar "New chapter". `dir` + `name` (not a full path) so
+// path-joining stays host-side (`path.join`) — the renderer never hand-builds
+// a path with `/`. Fails (409) rather than silently overwriting when a
 // file already exists at the target — this is a CREATE, not a save.
 export const POST: RequestHandler = defineRoute<{ dir: string; name: string; content: string }>({
   validate: async (raw) => {

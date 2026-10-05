@@ -7,7 +7,7 @@ export const POST: RequestHandler = defineRoute<{ url: string }>({
   validate: (raw) => {
     const body = raw as { url?: string };
     if (!body.url) error(400, 'url is required');
-    // Only ever hand http(s) URLs to the OS (audit C1): the app's SINGLE
+    // Only ever hand http(s) URLs to the OS: the app's SINGLE
     // http(s)-only gate, shared with decideNavigation/decideWindowOpen and the
     // openExternal hook impl, so the policy can't drift across copies.
     if (!isHttpUrl(body.url)) {

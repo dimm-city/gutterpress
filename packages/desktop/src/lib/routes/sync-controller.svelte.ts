@@ -1,6 +1,5 @@
 /**
- * SyncController (Phase 5b) — the single owner of the sync-outcome routing
- * that used to live inline in `+page.svelte`.
+ * SyncController — the single owner of the sync-outcome routing.
  *
  * Sync ALWAYS converges (no conflict outcome, no choices dialog, no chooser),
  * so this controller is the manual force-sync flow (`handleForceSync`), the
@@ -8,7 +7,7 @@
  * that name whatever the merge had to keep two copies of.
  *
  * Host coupling is injected so this stays testable with fakes and PWA-clean
- * (§8 / ADR 0004). `SyncOutcome` / `ProjectRemoteDiagnosis` / `KeptBothFile`
+ * (§8). `SyncOutcome` / `ProjectRemoteDiagnosis` / `KeptBothFile`
  * are type-only imports — ZERO `node:*` / lib value imports.
  */
 
@@ -160,7 +159,7 @@ export class SyncController {
         // failureOutcome; never raw git text), and some carry the actual fix
         // ("Check the book's online address"), so show them. The fixed
         // fallback covers an empty message and keeps stating what remains
-        // safe (UX follow-up: a sync failure must state what remains safe).
+        // safe (a sync failure must state what remains safe).
         this.deps.toast()?.error(outcome.message || failed);
       }
     } catch {

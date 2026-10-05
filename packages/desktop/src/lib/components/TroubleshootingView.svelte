@@ -6,8 +6,7 @@
    * report), Logs (the app's diagnostic logs) and Sync (repair tools
    * for a stuck online backup) and Report a problem (the diagnostic bundle
    * + prefilled GitHub issue). Versions + updates live in
-   * the landing's About tab. Split out of the old Help screen, which now
-   * carries guidance only.
+   * the landing's About tab; the Help tab carries guidance only.
    *
    * Reuses SettingsView's sub-tab pattern (TABS, tablist keys, tabpanel with
    * `idPrefix`). Owns its api.doctor load for Diagnostics.

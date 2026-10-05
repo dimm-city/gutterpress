@@ -4,10 +4,9 @@ import type { RequestHandler } from './$types';
 /**
  * Reveal a file in the OS file manager.
  *
- * Used to take ANY string and hand it straight to `showItemInFolder` — no
- * containment check, not even `requireAbsolute` (2026-07-29 audit). It has
- * exactly three legitimate callers, and the third is why it can't simply be
- * confined to the project:
+ * Never hand an unchecked string to `showItemInFolder`. It has exactly three
+ * legitimate callers, and the third is why it can't simply be confined to the
+ * project:
  *
  *   1. a project media file (MediaPanel) — inside `projectRoots()`
  *   2. a crash-recovery backup zip under userData — inside `readOnlyRoots()`

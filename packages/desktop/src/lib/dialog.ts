@@ -2,7 +2,7 @@
  * Shared modal-dialog behavior for the desktop SPA.
  *
  * `dialogBehavior` is a Svelte `use:` action that owns the a11y contract every
- * dialog shell in the app used to re-implement by hand:
+ * dialog shell in the app needs:
  *
  *   - the ARIA wiring (`role="dialog"`, `aria-modal`, `tabindex`, and an
  *     optional `aria-labelledby`),
@@ -12,7 +12,7 @@
  *   - and restoring focus to the triggering element when the dialog unmounts.
  *
  * It is pure DOM — no Svelte state, no host imports — so it stays PWA-clean
- * (CLAUDE.md §8 / ADR 0004) and is unit-testable against a bare DOM. All
+ * (CLAUDE.md §8) and is unit-testable against a bare DOM. All
  * dependencies (the close callback, the trigger element, focus targets) are
  * injected through the action's options object.
  *
@@ -31,8 +31,7 @@
  * remaining non-modal caller (EditorToolbar's plain-disclosure popups, which
  * intentionally do NOT use `dialogBehavior` — see its own comments) can reuse
  * this selector for "focus the first focusable child on open" instead of
- * hand-rolling its own copy (ARCH #42 found EditorToolbar's image dialog
- * doing exactly that).
+ * hand-rolling its own copy.
  */
 export const FOCUSABLE =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -43,7 +42,7 @@ export const FOCUSABLE =
  * The browser does not enforce focus containment for `aria-modal` dialogs on
  * keyboard-only navigation, so this must be wired to the dialog container's
  * `onkeydown` event. `dialogBehavior` is the only legitimate caller — every
- * dialog shell in the app goes through the action now (ARCH #42), so this
+ * dialog shell in the app goes through the action, so this
  * stays a private implementation detail of this module rather than a
  * separately-exported utility other components could hand-wire again.
  */
@@ -100,7 +99,7 @@ export function dialogBehavior(node: HTMLElement, options: DialogOptions) {
   const doc = node.ownerDocument;
   const previouslyFocused = doc.activeElement as HTMLElement | null;
 
-  // Own the ARIA contract so individual dialogs no longer re-declare it.
+  // Own the ARIA contract so individual dialogs don't re-declare it.
   node.setAttribute("role", "dialog");
   node.setAttribute("aria-modal", "true");
   if (!node.hasAttribute("tabindex")) node.setAttribute("tabindex", "-1");
@@ -150,13 +149,13 @@ export function dialogBehavior(node: HTMLElement, options: DialogOptions) {
 
 /**
  * Wrap a close handler so it is a no-op while `blocked` is true — the shared
- * guard behind a dialog's mid-operation dismissal rule (UX review M19): the
+ * guard behind a dialog's mid-operation dismissal rule: the
  * backdrop click, the header close button, AND Escape (routed through
  * `dialogBehavior`'s `onClose`) all funnel through the SAME wrapped function,
  * so a dialog can't be dismissed by any of the three gestures while e.g. a
- * create/connect/clone is in flight. Promotes the pattern GitHubDialog
- * already used ad hoc (`closeBlocked`) so NewProjectWizard and other
- * connect-style dialogs don't each hand-roll their own copy.
+ * create/connect/clone is in flight. Shared so GitHubDialog,
+ * NewProjectWizard and other connect-style dialogs don't each hand-roll
+ * their own copy.
  *
  * `blocked` is a getter (not a plain boolean) so callers can pass a reactive
  * accessor (e.g. `() => creating`) and always guard against the CURRENT
@@ -176,8 +175,8 @@ export type InlineConfirmState = Readonly<Record<string, true>>;
 
 /**
  * Two-step inline-confirm state transition for a destructive per-row action
- * (Disconnect, Delete, …), extracted from the pattern CrashRecoveryDialog
- * pioneered for its Discard button: the first call arms `key` (the button's
+ * (Disconnect, Delete, …), the same pattern as CrashRecoveryDialog's Discard
+ * button: the first call arms `key` (the button's
  * label swaps to "Really …?" in place — no second element appears, so
  * focus is never lost); a second call while `key` is already armed reports
  * `confirmed: true` so the caller runs the actual destructive action, and
@@ -185,8 +184,8 @@ export type InlineConfirmState = Readonly<Record<string, true>>;
  *
  * Pure and state-shape-only — the caller owns the actual `$state` and reacts
  * to `confirmed`. Kept in `dialog.ts` (not duplicated per-dialog) so
- * ConnectionsSettings' Remove (L2) and SnippetPicker's delete (M25)
- * share one tested implementation.
+ * ConnectionsSettings' Remove and SnippetPicker's delete share one tested
+ * implementation.
  */
 export function requestInlineConfirm(
   state: InlineConfirmState,

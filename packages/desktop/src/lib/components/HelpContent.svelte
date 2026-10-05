@@ -4,8 +4,7 @@
    * guide, keyboard shortcuts). Diagnostics, logs, versions and updates live
    * in the Troubleshooting tab (TroubleshootingView).
    *
-   * Extracted from the retired HelpDialog modal (2026-07-30): help lives on
-   * the welcome screen's Help tab (WelcomeLanding), opened by the global help
+   * Help lives on the welcome screen's Help tab (WelcomeLanding), opened by the global help
    * button. Static copy — no host calls; the host passes the setup-guide opener.
    */
   let { onOpenGuide }: { onOpenGuide?: () => void } = $props();

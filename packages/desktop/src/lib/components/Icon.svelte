@@ -67,8 +67,7 @@
     | "arrow-down-to-line"
     | "arrow-up-from-line"
     | "star"
-    // Glyph-replacement icons (toolbar refactor): SVG stand-ins for the
-    // retired ✓ / → / 📖 / 💡 text glyphs.
+    // SVG stand-ins for ✓ / → / 📖 / 💡 text glyphs.
     | "check"
     | "arrow-right"
     | "book-open"

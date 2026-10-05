@@ -4,7 +4,7 @@ import { requireContainedOrPicked, requireProjectDir, requireWithinProjectRoot }
 import { getHostServices } from '../../../../electron/server-bridge/host-services';
 
 // The declarative route factory (#35/#36/#38). Composes `jsonRoute` with the
-// boilerplate that used to be hand-copied into every `+server.ts` file:
+// boilerplate every `+server.ts` file would otherwise hand-copy:
 // request-body validation and (via `jsonRoute`'s `onError`) friendly error
 // reclassification.
 //
@@ -75,7 +75,7 @@ export interface DefineRouteOptions<Body> {
    * `error(400, …)` (directly, or via {@link requireAbsolute}) to reject.
    * Omit to pass the parsed body through unchanged. May return `Body`
    * directly or `Promise<Body>` — routes whose validation calls the async
-   * `requireWithinProjectRoot` (symlink-safe containment, P1 review) need
+   * `requireWithinProjectRoot` (symlink-safe containment) need
    * `async`; the factory `await`s either shape the same way.
    */
   validate?: (body: unknown, event: RequestEvent) => Body | Promise<Body>;

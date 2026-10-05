@@ -46,12 +46,11 @@
      * Set when the lint API call itself failed (network/host/hooks-not-
      * registered error), as distinct from a clean run that found zero
      * problems. Rendered as a neutral row — NOT the green "all clear" state
-     * — so a broken checker is never mistaken for a validated project (#28,
-     * M5).
+     * — so a broken checker is never mistaken for a validated project (#28).
      */
     error?: string | null;
     /**
-     * L9: below 820px (the app's single-pane layout) the list has no room to
+     * Below 820px (the app's single-pane layout) the list has no room to
      * grow out of the bar — it is presented as a full-viewport sheet instead
      * (see `.problems-panel.compact` below), with its own Close button.
      */
@@ -80,9 +79,9 @@
   }
 
   /**
-   * L9 regression fix: in compact mode the expanded body is a full-viewport
+   * In compact mode the expanded body is a full-viewport
    * sheet that visually covers the toggle in the bar below it, so the toggle's
-   * own collapse click can no longer reach it (the sheet intercepts the
+   * own collapse click can't reach it (the sheet intercepts the
    * click). Selecting a problem should also return the writer to the
    * now-unobscured editor rather than leaving the sheet open on top of it.
    */
@@ -145,7 +144,7 @@
     tabindex="-1"
   >
     {#if compact}
-      <!-- L9: the compact overlay has no other reachable dismiss control
+      <!-- The compact overlay has no other reachable dismiss control
            (see selectEntry/handleWindowKeydown above) — give it one directly. -->
       <div class="panel-body-bar">
         <span class="panel-body-bar-title">Problems</span>
@@ -249,7 +248,7 @@
     outline-offset: -2px;
   }
 
-  /* L9: below 820px there is no room for a row of its own — the list becomes a
+  /* Below 820px there is no room for a row of its own — the list becomes a
      full-viewport sheet (below the toolbar, above everything else short of app
      dialogs). The toggle in the status bar stays where it is, under the sheet. */
   .problems-panel.compact .panel-body {
@@ -263,7 +262,7 @@
   }
 
   /* ── Panel body ──────────────────────────────────────────────────────────── */
-  /* L9: compact-only header bar with an always-reachable close control. Sticky
+  /* Compact-only header bar with an always-reachable close control. Sticky
      (not static) so it stays visible at the top of the overlay while the
      problems list beneath it scrolls. */
   .panel-body-bar {
@@ -421,7 +420,7 @@
     align-self: center;
   }
 
-  /* M32: the rule code (e.g. "MD013/line-length") is a demoted suffix, not
+  /* The rule code (e.g. "MD013/line-length") is a demoted suffix, not
      part of the headline — small, muted, monospace, never competing with
      .entry-message for attention. */
   .entry-code {

@@ -1,14 +1,14 @@
 <script lang="ts">
   /**
    * PublishWizard — front-and-centre publishing flow opened from the toolbar
-   * Publish button (replaces the old crammed Project-settings section).
+   * Publish button.
    *
    * Flow is DYNAMIC: [format] → [choose destinations] → one setup step PER
    * selected destination → [preflight] → [publish]. No long scrolling form —
    * each destination gets its own focused step.
    *
    * The first destination is always "A folder on this computer" (the lib's
-   * `local` provider): Publish BUILDS the book there first (the old Export),
+   * `local` provider): Publish BUILDS the book there first,
    * then uploads that artifact to every other selected destination. So a
    * publish with no online destination is exactly a plain export, and an
    * online publish never depends on a stale build.
@@ -17,7 +17,7 @@
    * (dialog-shell.css `.dlg-*`, `.field` inputs, `.dlg-primary`/`.dlg-ghost`
    * buttons) exactly like NewProjectWizard, so it matches the rest of the app.
    *
-   * ZERO new backend: it drives the existing PublishSectionController
+   * No backend of its own: it drives PublishSectionController
    * (api.publish.*). Credentials stay in the host store (safeStorage) and are
    * reused across projects; the wizard surfaces connection status and lets the
    * author connect/change a key inline.
@@ -89,7 +89,7 @@
   let overrideConfirm = $state<InlineConfirmState>({});
   // Per-provider: is the "add another account" connect form open?
   let addingAccount = $state<Record<string, boolean>>({});
-  // Per-provider: is the inline "New folder…" name form open (#221 D9)?
+  // Per-provider: is the inline "New folder…" name form open (#221)?
   let addingFolder = $state<Record<string, boolean>>({});
   const ADD = "__add_account__";
   const NEW_FOLDER = "__new_folder__";
@@ -215,9 +215,9 @@
   /** Entering a step may need to react (no $effect — driven by these
    *  step-change event handlers, CLAUDE.md §8): a FORWARD entry into the
    *  Preflight step runs its checks; a connected setup step with a folder
-   *  picker (#221 D9) loads it, so revisiting the step after connecting (or
+   *  picker (#221) loads it, so revisiting the step after connecting (or
    *  coming back to it) shows current folders without a manual refresh.
-   *  `direction` matters ONLY for the preflight rerun (C4 hardening) —
+   *  `direction` matters ONLY for the preflight rerun —
    *  stepping BACK into Preflight from Publish must not re-run it and
    *  silently clear an override the author already granted; see
    *  `entersPreflightForward`'s doc comment for the full story. */
@@ -304,8 +304,7 @@
     {#each stepLabels as label, i (i)}
       <li class:done={stepIndex > i} class:current={stepIndex === i} aria-current={stepIndex === i ? "step" : undefined}>
         <!-- The check Icon is aria-hidden (like every Icon); the sr-only text
-             keeps the completed state announced now that the old "✓" text
-             glyph is gone. -->
+             keeps the completed state announced. -->
         <span class="step-dot">{#if stepIndex > i}<Icon name="check" size={12} /><span class="dlg-sr-only">Completed:</span>{:else}{i + 1}{/if}</span>
         <span class="step-label">{label}</span>
       </li>

@@ -21,7 +21,7 @@
  *      stripped from the search haystack.
  *
  * Pure string functions — zero DOM / `node:*` / lib value imports, testable
- * directly under `bun test` (CLAUDE.md §8 / ADR 0004).
+ * directly under `bun test` (CLAUDE.md §8).
  *
  * FAIL SAFE, NOT FAIL WRONG (plan §1 principle 3): every ambiguous case
  * (zero matches, multiple matches, un-reversible typographer collapses,

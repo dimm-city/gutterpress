@@ -1,5 +1,5 @@
 /**
- * Desktop-facing platform contract (#41, ARCH review #39).
+ * Desktop-facing platform contract (#41).
  *
  * `PlatformAdapter` (the narrow, genuinely host-divergent primitive surface) is
  * the canonical contract and lives in `gutterpress`. The desktop adds
@@ -174,13 +174,13 @@ export interface FolderRef {
 
 export type { SharedDesktopPrefs as DesktopPrefs, LeftPanelPrefs };
 
-// ── Managed GitHub integration (#15, ADR 0006) ────────────────────────────────
+// ── Managed GitHub integration (#15) ──────────────────────────────────────────
 //
 // DeviceCodeInfo, RemoteConnection, RemoteRepository, RemoteBranch, RepoBook,
 // CloneProgressEvent, CloneRepositoryArgs imported from shared-types above
 // (re-exported at the top of this file).
 
-// ── Advanced Setup (#14, ADR 0006 D3/D7) ──────────────────────────────────────
+// ── Advanced Setup (#14) ──────────────────────────────────────────────────────
 //
 // RemoteAccessResult and ProjectRemoteDiagnosis imported from shared-types above
 // (re-exported at the top of this file). Refined ForgeKind / RemoteGuidanceId
@@ -189,10 +189,10 @@ export type { SharedDesktopPrefs as DesktopPrefs, LeftPanelPrefs };
 /** Environment status for the Advanced Setup panel — re-exported from shared-types. */
 export type { SharedProjectRemoteDiagnosis as ProjectRemoteDiagnosis };
 
-// ── Auto-sync orchestrator status (transparent sync, §4.4 integration plan) ──
+// ── Auto-sync orchestrator status (transparent sync) ────────────────────────
 //
 // Defined locally here — decoupled from the lib — so the SPA never
-// value-imports the lib (§8 / ADR 0004). Main emits `sync:status` events with
+// value-imports the lib (§8). Main emits `sync:status` events with
 // this payload; the renderer drives the ambient status pill from it. Kept
 // alongside HostServices (rather than in ./dtos) because `onSyncStatus`
 // references this cluster directly.
@@ -281,7 +281,7 @@ export interface SyncStatus {
   keptBothFiles?: KeptBothFile[];
 }
 
-// ── Sync (#15 sync phase, ADR 0006 D5) ────────────────────────────────────────
+// ── Sync (#15) ────────────────────────────────────────────────────────────────
 //
 // SyncOutcome, KeptBothFile, ConnectGenericHostArgs, HostConnectionInfo
 // imported from shared-types above (re-exported at the top of this file).
@@ -289,8 +289,7 @@ export interface SyncStatus {
 // ── User settings (#45) ──────────────────────────────────────────────────────
 //
 // AppSettings AND DEFAULT_SETTINGS are both imported from shared-types.ts
-// (#29) — no more hand-duplicated copy here or in
-// electron/settings-store.ts. Adding a new setting: add the key + default to
+// (#29), as is electron/settings-store.ts. Adding a new setting: add the key + default to
 // `DEFAULT_SETTINGS` in shared-types.ts (the ONE place); a matching UI
 // control in SettingsView.svelte is the only other change needed.
 export { DEFAULT_SETTINGS } from "./shared-types";
@@ -347,7 +346,7 @@ export interface HostServices {
    */
   onOpenMarkdownFile(cb: (event: MarkdownFileLaunchEvent) => void): () => void;
 
-  // ── Managed GitHub integration (#15, ADR 0006) ────────────────────────────
+  // ── Managed GitHub integration (#15) ──────────────────────────────────────
   // Two-phase connect: `connectGitHubStart` begins the device flow and
   // resolves with the code to show the user; `connectGitHubWait` resolves once
   // the user approves in the browser (the host stores the credential — the
@@ -383,7 +382,7 @@ export interface HostServices {
   /** Subscribe to clone progress events. Returns an unsubscribe fn. */
   onCloneProgress(cb: (data: CloneProgressEvent) => void): () => void;
 
-  // ── Auto-sync orchestrator seam (transparent sync, §4.4 integration plan) ───
+  // ── Auto-sync orchestrator seam (transparent sync) ──────────────────────────
   //
   // The host auto-sync orchestrator (electron/main.ts) emits `sync:status`
   // events whenever its state machine transitions. The renderer subscribes here
@@ -443,7 +442,7 @@ export interface Platform
  * The raw `window.electron` bridge shape exposed by `electron/preload.ts`.
  * Differs from `HostServices` only in the members the adapter maps: the
  * FolderRef translation seam (`startPreview`/`build` keep raw path strings here;
- * #49) and the calls that moved to server routes.
+ * #49) and the calls served by server routes.
  * ONLY `electron-adapter.ts` (and the `Window` global) should reference this —
  * everything else goes through `Platform`.
  */
@@ -452,10 +451,10 @@ export interface ElectronBridge
     HostServices,
     | "startPreview"
     | "build"
-    // ARCH review #8: these moved to server routes (api.sync.setAutoSync
-    // / api.remote.cloneRepository) — the raw bridge no longer exposes them.
+    // These are server routes (api.sync.setAutoSync /
+    // api.remote.cloneRepository) — the raw bridge doesn't expose them.
     // `updater` is narrowed below instead of omitted: applyNow/onEvent stay
-    // on the bridge, only getStatus/check/download moved.
+    // on the bridge, only getStatus/check/download are routes.
     | "setAutoSync"
     | "cloneRemoteRepository"
     | "updater"
@@ -471,8 +470,8 @@ export interface ElectronBridge
    */
   watchFolder(path: string, cb: () => void): () => void;
   /**
-   * ARCH review #8: getStatus/check/download migrated to server routes
-   * (api.updater.*) — the raw bridge only carries applyNow (quit + install,
+   * getStatus/check/download are server routes (api.updater.*) — the raw
+   * bridge only carries applyNow (quit + install,
    * a live-BrowserWindow flush) and the onEvent push subscription.
    */
   updater: Pick<UpdaterApi, "applyNow" | "onEvent">;

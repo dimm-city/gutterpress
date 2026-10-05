@@ -1,4 +1,4 @@
-// Pure keyboard-shortcut resolvers extracted from routes/+page.svelte.
+// Pure keyboard-shortcut resolvers for routes/+page.svelte.
 // Zero deps — mirrors commandForSaveShortcut in src/lib/editor/save-shortcuts.ts.
 // The DOM glue (addEventListener, target/contenteditable/.cm-editor guards,
 // previewUrl/defaultPrevented gate, e.preventDefault) stays in the component;

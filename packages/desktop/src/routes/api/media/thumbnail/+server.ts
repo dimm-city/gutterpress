@@ -27,7 +27,7 @@ export const POST: RequestHandler = defineRoute<{ imagePath: string }>({
     if (!body.imagePath || typeof body.imagePath !== 'string') {
       error(400, "'imagePath' string is required");
     }
-    // Confine to the open project (ARCH #37): a renderer-origin fetch must
+    // Confine to the open project: a renderer-origin fetch must
     // not thumbnail (and thus read the bytes of) arbitrary files on disk. The
     // Media panel only ever passes in-project paths from listImages.
     return {

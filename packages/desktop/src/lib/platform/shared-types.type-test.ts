@@ -1,5 +1,5 @@
 /**
- * Type-level drift guard (audit D8).
+ * Type-level drift guard.
  *
  * `shared-types.ts` hand-mirrors the lib's `ProjectSource` /
  * `ProjectCapabilities` so the SPA never value-imports `gutterpress`
@@ -7,12 +7,11 @@
  * so the mirror and the lib are two independently-editable copies of the same
  * structure. Nothing forced them to stay identical — this file does: it fails
  * `svelte-check` the moment either shape stops being mutually assignable with
- * the other. The same guard now also pins the `RemoteAccessFailureReason`
+ * the other. The same guard also pins the `RemoteAccessFailureReason`
  * mirrors (see the section below).
  *
  * Types only: `import type` is fully erased at build (zero runtime, no
- * `gutterpress` value import, §8-clean), exactly like the sibling
- * `app-settings.type-test.ts`. It reaches into the lib's TYPE surface purely
+ * `gutterpress` value import, §8-clean). It reaches into the lib's TYPE surface purely
  * for the compiler.
  */
 import type {
@@ -38,8 +37,8 @@ export const _mirrorProjectCapabilitiesIsNotAny: IsAny<MirrorProjectCapabilities
   : true = true;
 
 // Mutual assignability: a REQUIRED field added to one side and not the other
-// fails here before it can produce a runtime DTO mismatch. KNOWN LIMIT (review
-// finding): assignability alone cannot catch a drift in OPTIONAL properties
+// fails here before it can produce a runtime DTO mismatch. KNOWN LIMIT:
+// assignability alone cannot catch a drift in OPTIONAL properties
 // (missing vs extra optional props are assignable both ways) — the key-set
 // checks below close that hole where the shapes allow it.
 export const _projectSourceMirrorsLib: [LibProjectSource] extends [MirrorProjectSource]
@@ -72,7 +71,7 @@ export const _projectCapabilitiesKeysMatch: KeysMatch<
   MirrorProjectCapabilities
 > = true;
 
-// ── RemoteAccessFailureReason (audit follow-up) ──────────────────────────────
+// ── RemoteAccessFailureReason ────────────────────────────────────────────────
 // Two hand-mirrored copies of the lib's failure-reason union exist in the
 // desktop: `dtos.ts`'s named `RemoteAccessFailureReason` alias and the inline
 // `reason` union inside `shared-types.ts`'s `RemoteAccessResult`. Both drifted

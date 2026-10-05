@@ -11,8 +11,8 @@
    *   that the parent (+page.svelte) routes into the EditorView transaction. The
    *   toolbar has zero direct knowledge of CodeMirror; it just fires named events.
    * - The Insert Image flow involves host calls (dialog.pickImageFile +
-   *   api.media.importImage — the ONE host-side import-policy route, UX
-   *   review M10), so the toolbar accepts `projectDir` to keep it testable
+   *   api.media.importImage — the ONE host-side import-policy route), so the
+   *   toolbar accepts `projectDir` to keep it testable
    *   without a full Electron environment. The toolbar does no path/fs math
    *   of its own; the route returns the project-relative `src` to insert.
    * - The shape is stable: every insert action lives in ONE Insert menu, so
@@ -94,7 +94,7 @@
     filePath !== null && /\.(md|markdown)$/i.test(filePath),
   );
 
-  // ── M23: single declarative item array drives the grouped toolbar buttons,
+  // ── A single declarative item array drives the grouped toolbar buttons,
   // the Insert menu AND the More menu — see toolbar-actions.ts for rationale. ──
   let visibleItems = $derived(
     visibleToolbarItems({ hasSave: !!onSave }),
@@ -113,7 +113,7 @@
   // comments on their markup), so they don't go through `dialogBehavior` — they
   // only need "focus the first focusable child on open," not a full ARIA/
   // Escape/Tab-trap/restore contract. The table and image dialogs below ARE
-  // modal and use `dialogBehavior` directly (ARCH #42), which owns the trap
+  // modal and use `dialogBehavior` directly, which owns the trap
   // itself; this helper reuses the same shared `FOCUSABLE` selector from
   // dialog.ts rather than hand-rolling its own copy. Hidden elements are
   // skipped: the More popup keeps the sections for groups that are currently
@@ -134,7 +134,7 @@
   function openHeadingPopup(e: MouseEvent) {
     headingTriggerEl = e.currentTarget as HTMLButtonElement;
     openPopup(() => { headingOpen = !headingOpen; insertOpen = moreOpen = false; });
-    // M24 fix round 1: the popup <div> is a SIBLING of this trigger button,
+    // The popup <div> is a SIBLING of this trigger button,
     // not an ancestor, so an Escape keydown whose target is still the
     // trigger (focus left where it was) never bubbles to the popup's own
     // onkeydown handler. Move focus into the popup on open — the same
@@ -166,7 +166,7 @@
   }
 
   // ── Insert menu ──────────────────────────────────────────────────────────
-  // Every insert action (layout blocks — UX M26 — rule, table, image, snippet)
+  // Every insert action (layout blocks, rule, table, image, snippet)
   // behind ONE button, so the toolbar keeps its shape whether or not the left
   // panel is open. Same plain-disclosure pattern as the heading popup above;
   // its rows are rendered by `menuRows`, the same rows the More menu lists when
@@ -192,7 +192,7 @@
     if (e.key === "Escape") closeInsertPopup();
   }
 
-  // ── Table column picker (M11: a fixed-position dialog, like the image
+  // ── Table column picker (a fixed-position dialog, like the image
   // dialog below, so it works regardless of which trigger opened it — the
   // Insert menu row OR the More menu row — and is never nested inside a
   // container that can be `display: none` at the widths where the More menu
@@ -267,7 +267,7 @@
     try {
       // All import policy (inside-project vs. copy-to-images/assets,
       // separator-aware containment, name collisions) lives host-side in
-      // ONE route (UX review M10) — the toolbar just hands it the picked
+      // ONE route — the toolbar just hands it the picked
       // absolute path and gets back a project-relative `src`.
       if (projectDir) {
         const result = await api.media.importImage(projectDir, imageSrc);
@@ -330,7 +330,7 @@
   function openMorePopup(e: MouseEvent) {
     moreTriggerEl = e.currentTarget as HTMLButtonElement;
     openPopup(() => { moreOpen = !moreOpen; headingOpen = insertOpen = false; });
-    // M24 fix round 1: same rationale as openHeadingPopup above — move focus
+    // Same rationale as openHeadingPopup above — move focus
     // into the popup on open so Escape closes it immediately, not only after
     // the user manually Tabs in.
     if (moreOpen) {
@@ -401,7 +401,7 @@
   <!-- Primary group: Save (when wired) + always-visible inline formatting.
        Every group here AND the Insert/More menus below render from
        `visibleItems` (toolbar-actions.ts) so an item can never be listed in
-       one place and silently dropped from another (M23). -->
+       one place and silently dropped from another. -->
   <div class="tb-group primary-group">
     {#each saveItems as item (item.id)}
       <!-- Save: primary while there is something to save, a calm disabled
@@ -440,8 +440,8 @@
       {#if item.kind === "heading"}
         <!-- Heading picker: a plain disclosure, not role=listbox — this
              widget implements neither arrow-key roving focus nor
-             aria-selected, so the listbox contract would be a lie (M24;
-             BookSwitcher.svelte:40-43 documents the same call). Escape closes
+             aria-selected, so the listbox contract would be a lie
+             (BookSwitcher.svelte documents the same call). Escape closes
              and returns focus to the trigger. -->
         <div class="tb-popup-wrap">
           <button
@@ -491,7 +491,7 @@
        rule, table, image, snippet). The table/image rows open the fixed-position
        dialogs below — NOT nested inside this group, so they keep working from
        the More menu even when `.insert-group` is `display: none` at narrow
-       widths (M11). Plain disclosure like the heading picker above (M24). -->
+       widths. Plain disclosure like the heading picker above. -->
   <div class="tb-group insert-group">
     <div class="tb-popup-wrap">
       <button
@@ -521,8 +521,8 @@
        hidden, and each section below only while ITS group is hidden, so the
        popup lists what the toolbar cannot show and never repeats what it does
        (tier comment in the style block). Sections render from the same item
-       arrays as the groups (M23). Plain disclosure, not role=menu — see the
-       heading picker comment above; same rationale (M24). -->
+       arrays as the groups. Plain disclosure, not role=menu — see the
+       heading picker comment above; same rationale. -->
   <div class="tb-more-wrap">
     <button
       class="tb-btn tb-more-btn"
@@ -580,9 +580,9 @@
 
 <!-- Table insert dialog (fixed-position overlay, rendered outside the
      toolbar — same pattern as the image dialog below, and for the same
-     reason: M11 found this popup dead at every width where the More menu
-     exists because it used to live inside `.insert-group`, which
-     `display: none`s at exactly those widths.) -->
+     reason: inside `.insert-group` it would be dead at every width where the
+     More menu exists, since that group is `display: none` at exactly those
+     widths.) -->
 {#if tableOpen}
 <div class="image-dialog-backdrop" role="none" onclick={cancelTable}></div>
 <div
@@ -1176,7 +1176,6 @@
     cursor: not-allowed;
   }
 
-  /* Theme tokens already handle light/dark via :root and :root[data-theme="dark"].
-     The hand-rolled [data-theme="light"] override block was removed because all
-     colour rules now reference app tokens — no hardcoded hex overrides needed. */
+  /* Theme tokens already handle light/dark via :root and :root[data-theme="dark"];
+     all colour rules reference app tokens — no hardcoded hex overrides needed. */
 </style>

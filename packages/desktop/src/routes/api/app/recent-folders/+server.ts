@@ -12,9 +12,9 @@ export const GET: RequestHandler = defineRoute<Record<string, never>>({
       recents.map(async (r) => {
         // `exists` drives whether the row is clickable, so it has to describe
         // the folder the row actually OPENS. For a repo-backed entry that is
-        // `lastActiveBook`, while `path` is the repo root — so checking `path`
-        // alone left a row live and clickable after the recorded book was
-        // deleted or renamed, and the click just failed (2026-07-29 audit).
+        // `lastActiveBook`, while `path` is the repo root — checking `path`
+        // alone would leave a row live and clickable after the recorded book
+        // was deleted or renamed.
         const repoExists = (await getHostServices().prefs.existingDirectory(r.path)) !== null;
         // Repo gone → dead row; the book stat below would be wasted work.
         if (!repoExists) return { ...r, exists: false };

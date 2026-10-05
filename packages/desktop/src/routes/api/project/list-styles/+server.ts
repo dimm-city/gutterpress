@@ -5,10 +5,10 @@ import type { RequestHandler } from './$types';
  * The project's editable stylesheets for the Design panel's picker.
  *
  * `repoRoot` (optional) lets a book that lives inside a repository also offer the
- * repository's SHARED stylesheets. Without it, discovery was book-only, so a
- * `../../shared/...` entry appeared only while it sat in the manifest —
- * unchecking one removed it from the UI permanently, leaving hand-editing
- * `manifest.yaml` as the only way back (2026-07-29 audit).
+ * repository's SHARED stylesheets. Without it, discovery is book-only, so a
+ * `../../shared/...` entry appears only while it sits in the manifest —
+ * unchecking one would remove it from the UI permanently, leaving
+ * hand-editing `manifest.yaml` as the only way back.
  *
  * It is guarded exactly like `projectDir`, so it cannot become a
  * directory-enumeration primitive: only a path inside the host-owned

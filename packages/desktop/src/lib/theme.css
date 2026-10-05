@@ -8,7 +8,7 @@
  * Uses ONLY the standard scrollbar-color/scrollbar-width properties. Do NOT
  * add ::-webkit-scrollbar rules alongside them: since Chromium 121, setting
  * the standard properties DISABLES the webkit pseudo-element styling
- * entirely, so a webkit block here is dead code (judge gate finding).
+ * entirely, so a webkit block here is dead code.
  */
 * {
   scrollbar-width: thin;
@@ -65,9 +65,7 @@
   /* WCAG AA (≥4.5:1) verified on ALL light surfaces incl. interactive states:
      #5f5f68 → 6.32:1 #ffffff, 5.75:1 #f4f4f5, 5.36:1 #ececef (sunken),
      4.98:1 #e4e4e7 (hover). Hover/sunken pairs MUST stay in this audit —
-     the 2026-06 judge gate failed twice on hover surfaces omitted from it.
-     (Absorbed the former --app-text-faint #636370 — the two were visually
-     indistinguishable and this value has the stronger contrast margins.) */
+     the 2026-06 judge gate failed twice on hover surfaces omitted from it. */
   --app-text-muted: #5f5f68;
   --app-text-on-accent: #ffffff;
 
@@ -84,7 +82,7 @@
   /* #0072d6 (not #0077dd): the primary-button gradient's light top stop must
      clear WCAG AA (4.5:1) against white --app-accent-text. #0077dd was 4.48:1;
      #0072d6 is 4.80:1 and stays brighter than --app-accent so hovers still
-     brighten. (Three-judge gate accessibility finding, 2026-06-15.) */
+     brighten. */
   --app-accent-hover: #0072d6;
   --app-accent-bright: #0088ee;
   --app-accent-border: #0055aa;
@@ -175,8 +173,8 @@
   /* Text */
   --app-text: #eeeeee;
   --app-text-secondary: #d0d0d0;
-  /* (Absorbed the former --app-text-faint #9e9e9e — visually indistinguishable;
-     #aaaaaa has the stronger contrast margins on every dark surface.) */
+  /* No separate "faint" tier: #aaaaaa has the stronger contrast margins on
+     every dark surface. */
   --app-text-muted: #aaaaaa;
   --app-text-on-accent: #ffffff;
 
@@ -193,7 +191,7 @@
   /* #0072d6 (not #0077dd): the primary-button gradient's light top stop must
      clear WCAG AA (4.5:1) against white --app-accent-text. #0077dd was 4.48:1;
      #0072d6 is 4.80:1 and stays brighter than --app-accent so hovers still
-     brighten. (Three-judge gate accessibility finding, 2026-06-15.) */
+     brighten. */
   --app-accent-hover: #0072d6;
   --app-accent-bright: #0088ee;
   --app-accent-border: #0055aa;
@@ -242,14 +240,14 @@
 }
 
 /**
- * Primary-button color recipe (UX review L5) — the ONE "primary action"
+ * Primary-button color recipe — the ONE "primary action"
  * gradient fill shared app-wide. Every primary action applies this class
  * alongside its own local, purely-layout class (padding/border-radius/
  * font-size, which legitimately vary by context): `button.primary` in
  * +page.svelte, `.btn-primary` in WelcomeLanding, and every dialog's
  * `.dlg-primary` footer button (dialog-shell.css deliberately carries NO
- * color for `.dlg-primary` — colors come only from here; the convergence
- * closed UX review L5's flat-vs-gradient split).
+ * color for `.dlg-primary` — colors come only from here, so primary
+ * buttons can't split into flat vs. gradient variants).
  *
  * Only the color-bearing declarations live here — background gradient, hover
  * brighten, text/border color, focus ring. Geometry and disabled dimming stay

@@ -12,31 +12,29 @@
    * so switching projects remounts the tree (no `$effect`). Folder expansion is
    * a plain event handler.
    *
-   * ── Staleness fix (UX review M9) ──────────────────────────────────────────
-   * `childrenByPath` used to be a PERMANENT cache — `loadChildren` never
-   * refetched a directory once loaded, so files created/renamed/deleted (in
-   * the app or externally) never appeared until the whole project reopened.
-   * Now: (1) `loadChildren` always refetches on every expand — no cache-hit
-   * short-circuit — so re-expanding a folder is always current; (2) the
-   * component subscribes to the same `onFolderChanged` push MediaPanel uses
+   * ── Staleness ──────────────────────────────────────────────────────────────
+   * `childrenByPath` is NOT a permanent cache (one would hide files
+   * created/renamed/deleted in the app or externally until the project
+   * reopened): (1) `loadChildren` always refetches on every expand — no
+   * cache-hit short-circuit — so re-expanding a folder is always current; (2)
+   * the component subscribes to the same `onFolderChanged` push MediaPanel uses
    * to refresh the ROOT listing on external changes (git pull, an external
-   * editor). The host's folder watcher is a single NON-RECURSIVE `fs.watch`
-   * on the project root (`electron/folder-watch/watcher.ts`), so it can only
-   * ever report root-level changes — nested directories are refreshed
-   * directly by this component's own create/rename/delete calls (via
-   * `afterMutateDir`, `file-tree-cache.ts`'s invalidation helpers), which
-   * know exactly which directory just changed, rather than by that coarse
-   * signal. A nested file changed by something OTHER than this app (with no
-   * tree action to invalidate it) stays stale until its ancestor is
-   * re-expanded or the project reopens — the same watcher-scope limit
-   * `MediaPanel`/the editor's own external-edit reconciliation already live
-   * with.
+   * editor). The host's folder watcher is a single NON-RECURSIVE `fs.watch` on
+   * the project root (`electron/folder-watch/watcher.ts`), so it can only ever
+   * report root-level changes — nested directories are refreshed directly by
+   * this component's own create/rename/delete calls (via `afterMutateDir`,
+   * `file-tree-cache.ts`'s invalidation helpers), which know exactly which
+   * directory just changed, rather than by that coarse signal. A nested file
+   * changed by something OTHER than this app (with no tree action to invalidate
+   * it) stays stale until its ancestor is re-expanded or the project reopens —
+   * the same watcher-scope limit `MediaPanel`/the editor's own external-edit
+   * reconciliation already live with.
    *
-   * ── CRUD (UX review M9 / issue #38) ────────────────────────────────────────
+   * ── CRUD (issue #38) ───────────────────────────────────────────────────────
    * Row/context actions: New folder (root toolbar + per-folder-row "New
    * folder here"), New chapter (root toolbar ONLY — see below), Rename,
    * Delete. Delete uses the same two-step inline "armed" confirm as
-   * LookSection's theme Remove (W4/M7). Create/rename use a small
+   * LookSection's theme Remove. Create/rename use a small
    * inline text input in place of the row's name, not a separate modal.
    * A resting row shows only its name: the row buttons appear while the row is
    * hovered or has focus inside it (#313), while the delete confirm and the
@@ -185,8 +183,8 @@
     };
   });
 
-  /** Always refetches — no permanent cache (UX review M9: re-expanding a
-   *  folder must reflect create/rename/delete since it was last open). */
+  /** Always refetches — no permanent cache (re-expanding a folder must
+   *  reflect create/rename/delete since it was last open). */
   async function loadChildren(dir: string): Promise<void> {
     loadingPaths = new Set(loadingPaths).add(dir);
     const nextErrors = { ...errorByPath };
@@ -355,7 +353,7 @@
   }
 
   // ── Delete (two-step inline confirm — same pattern as LookSection's
-  // theme Remove, W4/M7) ─────────────────────────────────────────────────────
+  // theme Remove) ────────────────────────────────────────────────────────────
   // A delete is undoable (#313): api/fs/delete sets the item aside, and the
   // toast's Undo moves it back. Only the latest delete is held, so the armed
   // confirm stays the first guard.
@@ -785,7 +783,7 @@
     white-space: nowrap;
   }
 
-  /* ── Row actions (rename/delete/new — UX review M9) ───────────────────── */
+  /* ── Row actions (rename/delete/new) ──────────────────────────────────── */
   .row-actions {
     display: flex;
     align-items: center;

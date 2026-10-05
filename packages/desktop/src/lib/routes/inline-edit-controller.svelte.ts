@@ -2,25 +2,20 @@
  * InlineEditController — the SPA half of in-flow block editing
  * (docs/inline-editing-plan.md §3.3, protocol v8).
  *
- * Replaces `BlockOverlayController` + `BlockEditOverlay.svelte`. The editing
- * surface is now the block's OWN element inside the book iframe, so everything
- * those two existed to do — fragment-rect geometry, the dimming mask and
- * scroll lock, iframe-origin translation, pane clamping, `maxHeight` math, a
- * second CodeMirror view with its own focus trap and IME guard, and
- * re-anchoring on every page/viewport change — is gone. The caret lives in the
- * page; the page owns all of it.
+ * The editing surface is the block's OWN element inside the book iframe —
+ * the caret lives in the page, and the page owns geometry, focus, and IME.
  *
- * What is left is the part that was always SPA-side and must stay there: read
+ * This controller is the part that must stay SPA-side: read
  * the block's source from the AUTHORITATIVE buffer (never from the DOM),
  * capture the commit gate's inputs at open time, and hand the returned text to
- * `commitRangePatch`. The commit engine is untouched (ADR 0009 decision 3).
+ * `commitRangePatch` (ADR 0009 decision 3).
  *
  * `.svelte.ts` suffix: `open` is `$state` so the chrome can reflect "an edit is
  * in progress" (e.g. suppressing shortcuts that would fight the in-book
  * caret). No component reads geometry from here, because there is none.
  *
  * Host coupling is injected so this stays testable with fakes and PWA-clean
- * (CLAUDE.md §8 / ADR 0004): ZERO direct DOM / `node:*` / lib value imports.
+ * (CLAUDE.md §8): ZERO direct DOM / `node:*` / lib value imports.
  */
 import type { PreviewEvent, SourceRange } from "$lib/preview-client";
 import type { CommitEngine } from "$lib/editor/commit-engine";

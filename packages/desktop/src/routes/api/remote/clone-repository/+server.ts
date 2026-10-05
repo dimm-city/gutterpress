@@ -4,12 +4,10 @@ import { defineRoute, getHostServices, requireAbsolute } from '../../_lib/route'
 import type { CloneRepositoryArgs } from '$lib/platform/shared-types';
 import type { RequestHandler } from './$types';
 
-// ARCH review #8: remote:cloneRepository was IPC despite being a plain
-// request/response (the only push involved — remote:cloneProgress — is a
-// SEPARATE `mainWindow.webContents.send` event the host's `cloneRepository`
-// closure still fires; it doesn't need this call itself to be IPC). Its
-// remote:* siblings were all already routes. `remote.cloneRepository`
-// (electron/main.ts) does the full original operation.
+// A route, not IPC: this is plain request/response (the only push involved —
+// remote:cloneProgress — is a SEPARATE `mainWindow.webContents.send` event the
+// host's `cloneRepository` closure fires; it doesn't need this call itself to
+// be IPC). `remote.cloneRepository` (electron/main.ts) does the operation.
 export const POST: RequestHandler = defineRoute<CloneRepositoryArgs>({
   validate: (raw) => {
     const body = raw as Partial<CloneRepositoryArgs> | undefined;

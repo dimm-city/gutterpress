@@ -65,7 +65,7 @@
   ];
   // Mounted fresh per open ({#if settingsOpen}) — the initial value is the
   // requested landing tab; navigation from there is user-driven. Sanitized:
-  // an unknown value here used to leave NO tab active (empty settings body).
+  // an unknown value here would leave NO tab active (empty settings body).
   // svelte-ignore state_referenced_locally
   let activeTab = $state<SettingsTab>(sanitizeSettingsTab(initialTab));
   let tabEls = $state<Record<SettingsTab, HTMLButtonElement | undefined>>({
@@ -271,13 +271,8 @@
     aria-labelledby="{idPrefix}-tab-{activeTab}"
   >
       <!-- App appearance (light/dark chrome) --------------------------------
-           UX review M38: named "Appearance" here, but the config panel also
-           used to have its OWN "Appearance" section for the print theme —
-           two different concepts, same word. That panel section is now
-           merged into "Look & style" (M35), so this is the only surviving
-           "Appearance" in the app; the heading is qualified as "App
-           appearance" anyway so the two can never collide again even if a
-           future panel section reintroduces the word. -->
+           Qualified as "App appearance" so it can't be confused with the
+           book's print look ("Look & style" in Book settings). -->
       {#if activeTab === "app"}
       <section class="group">
         <div class="group-head">
@@ -494,9 +489,8 @@
         </div>
       </section>
 
-      <!-- Advanced (for developers) — a section here since the dedicated
-           Advanced tab was retired (2026-07-30): two developer knobs did not
-           justify a whole tab. -->
+      <!-- Advanced (for developers) — a section, not a tab: two developer
+           knobs don't justify a whole tab. -->
       <section class="group advanced">
         <div class="group-head">
           <h3>Advanced <span class="advanced-hint">for developers</span></h3>
@@ -570,7 +564,7 @@
             onchange={(e) => settings.set({ versionHistory: { autoSnapshot: (e.currentTarget as HTMLInputElement).checked } })}
           />
         </div>
-        <!-- Online backup (transparent-sync plan §6 / §8 step 7). Shown only
+        <!-- Online backup. Shown only
              for a project that can sync — canSyncLoading/canSync are read
              once on mount from diagnoseProjectRemote (no live re-check while
              this view stays open, matching ConnectionsSettings/
