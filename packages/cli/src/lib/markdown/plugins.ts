@@ -29,8 +29,7 @@ import {
 } from "../extension-manifest";
 
 // The plugin author API + the markdown-it factory now live in the node-free
-// `renderer.ts` so the browser/PWA WebAdapter can import the pure render core
-// (#33). This node-coupled module is the plugin *loader* (`node:fs`/`node:path`/
+// `renderer.ts` so a browser build can import the pure render core. This node-coupled module is the plugin *loader* (`node:fs`/`node:path`/
 // `node:url`). The types/values are re-exported below so existing
 // callers (`import { applyPlugins, ... } from "./plugins"`) are unaffected.
 import type {

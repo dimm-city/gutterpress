@@ -48,7 +48,7 @@
   import { CrashRecoveryController } from "$lib/routes/crash-recovery-controller.svelte";
   import { PublishSectionController } from "$lib/routes/publish-section-controller.svelte";
   import { buildCanvasBackgroundStyles } from "$lib/iframe-styles";
-  import { getPlatform, isDesktop } from "$lib/platform";
+  import { getPlatform } from "$lib/platform";
   import type { WorkspaceMode } from "$lib/platform";
   import { api } from "$lib/api";
   import { buildSourceList } from "$lib/components/config/source-files";
@@ -91,12 +91,6 @@
     PersistedProjectState,
   } from "$lib/routes/page-types";
 
-  // L1: one writer-facing constant for the "no Electron bridge" gate — this
-  // developer-jargon toast ("Electron bridge unavailable — run via the desktop
-  // app") was copy-pasted verbatim 4x. Phrasing follows NewProjectWizard's
-  // existing writer-appropriate copy for the same gate ("Creating a project
-  // needs the desktop app.").
-  const DESKTOP_APP_REQUIRED = "This needs the desktop app to continue.";
   const persistenceFailures = new PersistenceFailureNotifier();
 
   function reportIgnoredPersistenceFailure(): void {
@@ -140,15 +134,13 @@
   // PDF export runs in a separate render window, so the UI stays usable — track
   // it separately with a NON-blocking status pill instead of the modal overlay.
   // The whole export FSM (state + 1s ticker + progress label) AND the
-  // savePdf/exportHtml/cancelExport intents (Phase 5 slice 2, UX H5 / ARCH
+  // savePdf/buildTo/cancelExport intents (Phase 5 slice 2, UX H5 / ARCH
   // #10 — moved from +page.svelte) live in the ExportController; the view
   // drives it via intent methods and reads its rune getters. Host coupling
   // injected (§8): forward-references to page-local functions/state declared
   // further down (lifecycle, toast, getSaveReadinessWarning, …) are safe
   // closures, the same pattern pageNav's deps use below.
   const exportController = new ExportController(undefined, {
-    isDesktop: () => isDesktop(),
-    desktopRequiredMessage: DESKTOP_APP_REQUIRED,
     checkSaveReadiness: () => getSaveReadinessWarning(),
     setSaveWarning: (message) => {
       lifecycle.saveWarning = message;
@@ -187,18 +179,6 @@
         }),
     buildHtml: (input, out) => getPlatform().build({ input, format: "html", ...(out ? { out } : {}) }),
     cancelExportHost: (exportId) => getPlatform().cancelExport(exportId),
-    downloadFile: (url, filename) => {
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      // Revoke after the click has handed the URL to the browser's download.
-      // The adapter transfers object-URL ownership here (it does NOT revoke
-      // build() download URLs), so the SPA owns the lifecycle.
-      setTimeout(() => URL.revokeObjectURL(url), 0);
-    },
     showInFolder: (path) => api.shell.showInFolder(path),
     toastSuccess: (message, durationMs, action) => toast?.success(message, durationMs, action),
     // `show` rather than `error`: the over-wide "Build anyway" offer (#163)
@@ -527,8 +507,6 @@
   // startFolderWatch, crashRecovery, dismissLanding, …) are safe closures,
   // the same pattern `pageNav`'s `savePrefs` already uses above.
   const lifecycle: ProjectLifecycleController = new ProjectLifecycleController({
-    isDesktop: () => isDesktop(),
-    desktopRequiredMessage: DESKTOP_APP_REQUIRED,
     startPreviewHost: (input) => getPlatform().startPreview({ input }),
     stopPreviewHost: () => getPlatform().stopPreview(),
     adoptFolder: (dir) => api.app.adoptFolder({ dir }),
@@ -608,8 +586,7 @@
   // editable styles or version history. When the OPENED folder has no
   // manifest, offer a non-blocking "set it up as a book" affordance.
   let showAdoptBanner = $derived(
-    isDesktop() &&
-      !!lifecycle.currentDir &&
+    !!lifecycle.currentDir &&
       lifecycle.sourceMode === "folder" &&
       !lifecycle.currentFolderHasManifest &&
       !lifecycle.adoptBannerDismissed,
@@ -651,7 +628,7 @@
   // translucent: the cross-origin preview iframe must keep visible pixels or
   // Chromium throttles its layout to ~1fps; see PreviewFrame.svelte). Pure
   // decision logic lives in startup-landing.ts.
-  let landingReady = $state(!isDesktop());
+  let landingReady = $state(false);
   // Explicit "stay up over a live workspace" flag: set when the startup
   // decision shows the landing over the pre-rendering previous book, cleared
   // by dismissLanding. Everything else about visibility is DERIVED from
@@ -823,10 +800,6 @@
   async function pickAndOpenFolder(
     options: { showBusyOverlay?: boolean; label?: string } = {},
   ): Promise<boolean> {
-    if (!isDesktop()) {
-      toast?.error(DESKTOP_APP_REQUIRED);
-      return false;
-    }
     if (folderPickerOpen) return false;
     folderPickerOpen = true;
     const { showBusyOverlay = false, label = "Opening your book…" } = options;
@@ -872,7 +845,6 @@
   // (ensureBuffer, editorRef, mode, …) are safe closures, the same
   // pattern `lifecycle`'s deps use.
   const crashRecovery = new CrashRecoveryController({
-    isDesktop: () => isDesktop(),
     listRecovery: (dir) => api.recovery.list(dir),
     clearRecovery: (filePath) => api.recovery.clear(filePath),
     readRecoveryFile: (path) => api.fs.readFile(path),
@@ -938,7 +910,6 @@
   // toast. Per §8 / ADR 0004: runs in the SPA, no lib value imports, all host
   // work through getPlatform().
   onMount(() => {
-    if (!isDesktop()) return;
     const off = getPlatform().onSyncStatus((status) => {
       // Scope to the currently open project.
       if (status.projectDir !== lifecycle.currentDir) return;
@@ -1007,7 +978,7 @@
   let snippetPickerOpen = $state(false);
 
   function openSnippetPicker() {
-    if (!isDesktop() || !lifecycle.currentDir) return;
+    if (!lifecycle.currentDir) return;
     contextMenu.close();
     void inlineEdit.endActive(true); // opening a dialog commits the in-flow edit
     snippetPickerRef?.show();
@@ -1027,10 +998,6 @@
    *  style, plugins), covering the workspace. */
   function openProjectConfig(): void {
     if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
-    if (!isDesktop()) {
-      toast?.info?.("Book settings are available in the desktop app for now.");
-      return;
-    }
     projectSettingsTab = "details";
     projectSettingsOpen = true;
   }
@@ -1201,7 +1168,7 @@
     flush: (target) => leaveEditorBuffer(target),
     onActivate: (target) => {
       if (target.filePath) showEditorContent(target.filePath, target.content);
-      if (isDesktop()) trackPersistence(api.app.setDirtyState(target.hasPendingSave));
+      trackPersistence(api.app.setDirtyState(target.hasPendingSave));
     },
     onClear: () => editorRef?.switchFile(null, ""),
     onSelectionError: () => toast?.error("Could not open that file."),
@@ -1241,7 +1208,7 @@
         if (editorFiles.isActive(instance)) toast?.info?.("Reloaded from disk");
       },
       onDirty: (pending) => {
-        if (editorFiles.isActive(instance) && isDesktop()) {
+        if (editorFiles.isActive(instance)) {
           trackPersistence(api.app.setDirtyState(pending));
         }
       },
@@ -1282,7 +1249,7 @@
    * save fails, which stops the switch.
    */
   async function leaveEditorBuffer(target: EditorBuffer | null = buffer): Promise<boolean> {
-    if (!target?.filePath || !target.isDirty || settings.current.versionHistory.autoSave || !isDesktop()) {
+    if (!target?.filePath || !target.isDirty || settings.current.versionHistory.autoSave) {
       return flushEditorBuffer(target);
     }
     let choice: "save" | "discard" | "cancel";
@@ -1364,7 +1331,6 @@
   // Managed imperatively: started in startFolderPreview, stopped in stopPreview / openUrl.
   let _watchFolderOff: (() => void) | undefined;
   function startFolderWatch(dir: string) {
-    if (!isDesktop()) return;
     _watchFolderOff?.();
     _watchFolderOff = getPlatform().watchFolder(dir, () => {
       buffer?.reconcileExternalChange().catch(() => {});
@@ -1380,7 +1346,6 @@
   // close prompt main showed, discard it. The preload wrapper signals main
   // when done.
   onMount(() => {
-    if (!isDesktop()) return;
     const off = getPlatform().onFlushBeforeClose(async (mode) => {
       if (mode === "discard") {
         await buffer?.discard();
@@ -1475,7 +1440,6 @@
   async function selectEditorFile(
     path: string,
   ): Promise<boolean> {
-    if (!isDesktop()) return false;
     return editorFiles.select(path);
   }
 
@@ -1546,7 +1510,6 @@
   }
 
   function onEditorChange(value: string) {
-    if (!isDesktop()) return;
     ensureBuffer().edit(value);
   }
 
@@ -1570,7 +1533,7 @@
   // `loadEditorModule()` self-guards on `editorVisible`, so this stays a no-op
   // while the book is being previewed in viewer mode.
   async function ensureEditorFile() {
-    if (!lifecycle.currentDir || !isDesktop()) return;
+    if (!lifecycle.currentDir) return;
     loadEditorModule();
     // Fire-and-forget continuation: capture the dir and bail if a different
     // project took over during the listing, or this would load the OLD
@@ -1706,7 +1669,7 @@
   }
 
   function refreshProblems() {
-    if (!isDesktop() || !lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
+    if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
     const dir = lifecycle.currentDir;
     problemsLoading = true;
     api.lint.project(dir)
@@ -1797,7 +1760,6 @@
   // elsewhere (lifecycle, landing* state, leftPanel* state, startFolderPreview)
   // are safe closures, the same pattern every other Phase 5 controller uses.
   const startup = new StartupController({
-    isDesktop: () => isDesktop(),
     isWorkspaceEngaged: () =>
       !!(lifecycle.previewUrl || lifecycle.currentDir || lifecycle.currentUrl || lifecycle.busy || lifecycle.openError || lifecycle.urlPreviewError),
     isSomethingOpen: () =>
@@ -1890,11 +1852,6 @@
   }
 
   onMount(() => {
-    if (!isDesktop()) {
-      void startup.run();
-      return;
-    }
-
     // Main replays every path queued before hydration, then emits `ready`.
     // Only fall back to last-project startup when that replay was empty, so a
     // double-clicked chapter always wins over the previous-session project.
@@ -2355,8 +2312,8 @@
   // — no page-local wrapper needed since it's never passed as a bare prop
   // reference (unlike openUrl/startFolderPreview/setUpAsBook above).
 
-  // savePdf/exportHtml/cancelExport (Phase 5 slice 2, UX H5 / ARCH #10) now
-  // live on `exportController` (ExportController.savePdf/exportHtml/
+  // savePdf/buildTo/cancelExport (Phase 5 slice 2, UX H5 / ARCH #10) now
+  // live on `exportController` (ExportController.savePdf/buildTo/
   // cancelExport) — called directly from the template/keydown handler as
   // `exportController.savePdf()` etc.; no page-local wrapper needed since
   // they're never passed as bare prop references.
@@ -2835,18 +2792,12 @@
     {mode}
     onSetMode={(next) => { contextMenu.close(); setMode(next); }}
     editorToggleDisabled={!toolbarProjectOpen}
-    publishLabel={isDesktop() ? "Publish" : "Download website"}
     {publishDisabled}
-    onPublish={() => {
-      // The web target has no host to build into a folder or upload from: the
-      // one thing it can do is hand the website over as a download.
-      if (isDesktop()) publishOpen = true;
-      else void exportController.exportHtml();
-    }}
+    onPublish={() => (publishOpen = true)}
     bind:publishBtnEl
     {publishHints}
     publishWarning={canSavePdf ? lifecycle.saveWarning : null}
-    showProjectSettings={toolbarProjectOpen && isDesktop()}
+    showProjectSettings={toolbarProjectOpen}
     onOpenProjectSettings={openProjectConfig}
     {focus}
     onToggleFocus={() => setFocus(!focus)}
@@ -3101,9 +3052,7 @@
           onCancel={lifecycle.rendering ? handleCancelRender : undefined}
           variant="pane"
         />
-        {#if isDesktop()}
-          <ContextMenu controller={contextMenu} />
-        {/if}
+        <ContextMenu controller={contextMenu} />
       </section>
     </div>
   {/if}
@@ -3210,7 +3159,7 @@
   onOpenUrl={openUrl}
   onBrowse={() => void browseFromLanding()}
   onNewProject={() => newProjectWizardRef?.show()}
-  onOpenGitHub={isDesktop() ? () => (githubOpen = true) : undefined}
+  onOpenGitHub={() => (githubOpen = true)}
   onOpenGuide={openSetupGuide}
   onWhatsNew={openReleaseNotes}
   onToggleShowAtStartup={setLandingStartupPref}
@@ -3246,7 +3195,7 @@
   <OpenBookDialog
     onClose={() => (openBookOpen = false)}
     onLocal={() => { openBookOpen = false; void pickAndOpenFolder(); }}
-    onGitHub={isDesktop() ? () => { openBookOpen = false; githubOpen = true; } : undefined}
+    onGitHub={() => { openBookOpen = false; githubOpen = true; }}
   />
 {/if}
 

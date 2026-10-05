@@ -24,7 +24,6 @@
    */
   import Icon from "$lib/components/Icon.svelte";
   import type { ComponentProps } from "svelte";
-  import { getPlatform, isDesktop } from "$lib/platform";
   import { basenameOf } from "$lib/platform/paths";
   import { api } from "$lib/api";
   import { dialogBehavior, FOCUSABLE } from "$lib/dialog";
@@ -98,7 +97,7 @@
   // ── M23: single declarative item array drives the grouped toolbar buttons,
   // the Insert menu AND the More menu — see toolbar-actions.ts for rationale. ──
   let visibleItems = $derived(
-    visibleToolbarItems({ hasSave: !!onSave, desktop: isDesktop() }),
+    visibleToolbarItems({ hasSave: !!onSave }),
   );
   let saveItems = $derived(visibleItems.filter((i) => i.group === "save"));
   let primaryItems = $derived(visibleItems.filter((i) => i.group === "primary"));
@@ -243,7 +242,6 @@
   let imageDialogTriggerEl = $state<HTMLButtonElement | undefined>(undefined);
 
   async function pickImage() {
-    if (!isDesktop()) return;
     imageError = "";
     imageBusy = true;
     try {
@@ -271,7 +269,7 @@
       // separator-aware containment, name collisions) lives host-side in
       // ONE route (UX review M10) — the toolbar just hands it the picked
       // absolute path and gets back a project-relative `src`.
-      if (projectDir && isDesktop()) {
+      if (projectDir) {
         const result = await api.media.importImage(projectDir, imageSrc);
         finalSrc = result.src;
       }

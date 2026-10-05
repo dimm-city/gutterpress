@@ -38,7 +38,6 @@ export interface StartupPrefs {
 }
 
 export interface StartupControllerDeps {
-  isDesktop: () => boolean;
   /**
    * Entry guard: true when the workspace already has something open,
    * opening, or erroring (preview/dir/url/busy/openError/urlPreviewError) —
@@ -91,7 +90,6 @@ export class StartupController {
    */
   async run(reopenLastProject = true): Promise<void> {
     const d = this.deps;
-    if (!d.isDesktop()) return;
     if (this.lastProjectChecked) return;
     if (d.isWorkspaceEngaged()) return;
     if (this.autoOpeningLastProject) return;

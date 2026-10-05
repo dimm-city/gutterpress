@@ -19,7 +19,7 @@
    */
   import { onMount } from "svelte";
   import { api } from "$lib/api";
-  import { getPlatform, isDesktop } from "$lib/platform";
+  import { getPlatform } from "$lib/platform";
   import { friendlyHostError, unwrapRouteError } from "$lib/errors";
   import type { DeviceCodeInfo, RemoteConnection } from "$lib/platform/contract";
   import { cancelInlineConfirm, requestInlineConfirm, type InlineConfirmState } from "$lib/dialog";
@@ -42,7 +42,6 @@
   let ghError = $state<string | null>(null);
 
   async function loadGitHub() {
-    if (!isDesktop()) return;
     try {
       github = await api.remote.getRemoteConnection();
     } catch {

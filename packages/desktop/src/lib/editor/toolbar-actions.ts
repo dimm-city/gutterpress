@@ -511,8 +511,6 @@ export interface ToolbarItemDef {
   /** Plain-text label shown for this item inside the Insert and More menus. */
   label: string;
   group: ToolbarGroup;
-  /** Only shown when isDesktop() — image insert and snippet need host IPCs. */
-  desktopOnly?: boolean;
 }
 
 export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
@@ -650,7 +648,6 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
     ariaLabel: "Insert image",
     label: "Insert image…",
     group: "insert",
-    desktopOnly: true,
   },
   {
     id: "snippet",
@@ -661,7 +658,6 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
     ariaLabel: "Insert snippet",
     label: "Insert snippet",
     group: "insert",
-    desktopOnly: true,
   },
 ];
 
@@ -671,13 +667,6 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
  * menu (rendered unfiltered) must be derived from this same list so neither
  * surface can omit an item the other one shows.
  */
-export function visibleToolbarItems(opts: {
-  hasSave: boolean;
-  desktop: boolean;
-}): ToolbarItemDef[] {
-  return TOOLBAR_ITEMS.filter((item) => {
-    if (item.kind === "save" && !opts.hasSave) return false;
-    if (item.desktopOnly && !opts.desktop) return false;
-    return true;
-  });
+export function visibleToolbarItems(opts: { hasSave: boolean }): ToolbarItemDef[] {
+  return TOOLBAR_ITEMS.filter((item) => item.kind !== "save" || opts.hasSave);
 }

@@ -16,7 +16,7 @@
    * seam) plus an api.sync.getStatus() seed fetch (CLAUDE.md §8 / ADR 0004).
    */
   import { onMount } from "svelte";
-  import { getPlatform, isDesktop } from "$lib/platform";
+  import { getPlatform } from "$lib/platform";
   import { api } from "$lib/api";
   import type { SyncStatus, SyncState } from "$lib/platform/contract";
 
@@ -82,9 +82,7 @@
     logFilePath = null;
     liveMessage = null;
     statusMessage = null;
-    // Only subscribe when running in the desktop host (the WebAdapter stub is a
-    // safe no-op but we skip the wiring on the web path for clarity).
-    if (!isDesktop() || !projectDir) {
+    if (!projectDir) {
       syncState = "idle";
       onSyncState?.("idle");
       return;

@@ -345,13 +345,7 @@ export const api = {
     // stays IPC-only (preload.ts / electron-adapter.ts); these client
     // wrappers and their /api/fs/{watch,unwatch}-folder routes had zero
     // callers, the IPC path being the live one.
-    /**
-     * List top-level .md and .css files in a project directory. No SPA caller
-     * on the Electron target today (audit D6): retained as staging for the PWA
-     * WebAdapter plan's Phase 1 (docs/pwa-webadapter-plan.md lists
-     * listProjectFiles), whose WebAdapter.listProjectFiles is the live browser
-     * implementation.
-     */
+    /** List top-level .md and .css files in a project directory. */
     listProjectFiles: (projectDir: string) =>
       post<ProjectFileEntry>('/api/fs/list-project-files', { projectDir }),
 

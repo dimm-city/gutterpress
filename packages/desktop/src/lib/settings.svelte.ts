@@ -29,11 +29,7 @@
  * `getHostServices().prefs`; outside Electron (a plain browser / `vite dev`)
  * that route fails, `_loadSettings()`'s `.catch()` keeps
  * the in-memory defaults, and `set()`'s `.catch(() => {})` silently drops the
- * write — so today settings do NOT persist on web; they reset every session.
- * `WebAdapter` (web-adapter.ts) already has a real `localStorage`-backed
- * `getSettings`/`setSettings` implementation, but it is dormant (unreachable
- * from here) until the #33 PWA milestone wires this store onto
- * `getPlatform()` for the web target — see `CLAUDE.md` §8.
+ * write.
  */
 import { DEFAULT_SETTINGS } from "$lib/platform";
 import type { AppSettings, DeepPartial } from "$lib/platform";

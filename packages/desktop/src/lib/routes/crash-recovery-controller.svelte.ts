@@ -35,7 +35,6 @@ export interface CrashRecoveryEntry {
 }
 
 export interface CrashRecoveryDeps {
-  isDesktop: () => boolean;
   listRecovery: (dir: string) => Promise<CrashRecoveryEntry[]>;
   clearRecovery: (filePath: string) => Promise<unknown>;
   readRecoveryFile: (recoveryPath: string) => Promise<string>;
@@ -68,7 +67,6 @@ export class CrashRecoveryController {
    */
   async scan(dir: string): Promise<void> {
     const d = this.deps;
-    if (!d.isDesktop()) return;
     if (this.scanDir === dir) return;
     this.scanDir = dir;
     const generation = ++this.generation;
@@ -98,7 +96,6 @@ export class CrashRecoveryController {
     const generation = this.generation;
     const itemIndex = Math.max(0, this.items.findIndex((i) => i.filePath === item.filePath));
     this.items = this.items.filter((i) => i.filePath !== item.filePath);
-    if (!d.isDesktop()) return;
     try {
       const recovered = await d.readRecoveryFile(item.recoveryPath);
       if (generation !== this.generation) return;
@@ -129,9 +126,7 @@ export class CrashRecoveryController {
   discard(item: RecoveryItem): void {
     const d = this.deps;
     this.items = this.items.filter((i) => i.filePath !== item.filePath);
-    if (d.isDesktop()) {
-      d.clearRecovery(item.filePath).catch(() => {});
-    }
+    d.clearRecovery(item.filePath).catch(() => {});
   }
 
   /** "Decide later" — hide the dialog without resolving any entry. */

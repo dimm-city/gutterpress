@@ -1,7 +1,6 @@
 <script lang="ts">
   import { tick } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
-  import { isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
   import type { TemplateInfo } from "$lib/api";
   import { dialogBehavior, guardedClose, FOCUSABLE } from "$lib/dialog";
@@ -150,7 +149,6 @@
   // Best-effort: a failed probe just shows no note.
   let missingTools = $state<string[]>([]);
   async function loadToolStatus(): Promise<void> {
-    if (!isDesktop()) return;
     try {
       const doctor = await api.doctor();
       missingTools = (doctor.tools ?? [])
@@ -219,7 +217,6 @@
   }
 
   async function importTemplate() {
-    if (!isDesktop()) return;
     importing = true;
     error = null;
     try {
@@ -329,7 +326,6 @@
    * returning writer, which is the common case.
    */
   async function loadDefaultParentDir() {
-    if (!isDesktop()) return;
     try {
       const prefs = await api.app.getDesktopPrefs();
       // The writer may have already used "Choose folder…" while this was in
@@ -376,10 +372,6 @@
   }, () => creating);
 
   async function chooseLocation() {
-    if (!isDesktop()) {
-      error = "Creating a book needs the desktop app.";
-      return;
-    }
     error = null;
     try {
       const pathStr = await api.dialog.openDirectory();
@@ -430,10 +422,6 @@
   }
 
   async function create() {
-    if (!isDesktop()) {
-      error = "Creating a book needs the desktop app.";
-      return;
-    }
     if (!parentDir) {
       error = "Choose where to save your book first.";
       return;
@@ -569,11 +557,9 @@
                 </label>
               {/each}
             </div>
-            {#if isDesktop()}
-              <button type="button" class="dlg-ghost body-btn" onclick={importTemplate} disabled={importing}>
-                {importing ? "Importing…" : "Import template from folder…"}
-              </button>
-            {/if}
+            <button type="button" class="dlg-ghost body-btn" onclick={importTemplate} disabled={importing}>
+              {importing ? "Importing…" : "Import template from folder…"}
+            </button>
           </div>
         {:else if templatesError}
           <div class="field">

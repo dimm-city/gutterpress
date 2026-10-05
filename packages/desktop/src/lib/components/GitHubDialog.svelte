@@ -8,7 +8,7 @@
    * sees a token: connection status is redacted by the host.
    */
   import { tick } from "svelte";
-  import { getPlatform, isDesktop } from "$lib/platform";
+  import { getPlatform } from "$lib/platform";
   import { api } from "$lib/api";
   import { basenameOf } from "$lib/platform/paths";
   import { friendlyHostError } from "$lib/errors";
@@ -99,7 +99,6 @@
   }
 
   async function init() {
-    if (!isDesktop()) return;
     try {
       const conn = await api.remote.getRemoteConnection();
       if (conn.connected) {

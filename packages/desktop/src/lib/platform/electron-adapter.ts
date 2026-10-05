@@ -1,6 +1,6 @@
 /**
  * ElectronAdapter — the ONLY module permitted to CALL methods on
- * `window.electron`. (`isDesktop()` in index.ts may test for its presence.)
+ * `window.electron`.
  *
  * Every implemented method delegates 1:1 to the preload bridge, so behaviour is
  * identical to the pre-#41 direct calls. The #44 surface is wired (statFile via

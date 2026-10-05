@@ -751,7 +751,6 @@ export interface BuildResult {
   htmlPath?: string;
   pdfPath?: string;
   fingerprintPath?: string;
-  downloadUrl?: string;
   /**
    * Print-quality findings the render produced (native engine only). Defined
    * locally, decoupled from the lib (§8) — the renderer never value-imports

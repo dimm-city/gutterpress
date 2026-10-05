@@ -1,15 +1,9 @@
 /**
  * Shared settings deep-merge (Phase 1b).
  *
- * Previously this logic was duplicated inline in both `platform/web-adapter.ts`
- * (localStorage persistence) and `settings.svelte.ts` (the reactive store). The
- * two copies DISAGREED on array handling — the web-adapter guarded
- * `!Array.isArray(value)`, the store did not — a latent settings-corruption bug
- * (an array-valued section patch would spread into an object as numeric index
- * keys in the store copy). This is the single reconciled implementation, using
- * the web-adapter's correct behaviour: arrays are REPLACED wholesale (the outer
- * section spread swaps a nested array field), and a malformed array-valued
- * SECTION patch is ignored rather than index-spread.
+ * Arrays are REPLACED wholesale (the outer section spread swaps a nested
+ * array field), and a malformed array-valued SECTION patch is ignored rather
+ * than spread into an object as numeric index keys.
  *
  * Pure — no `node:*`/`fs`/`path`/`url`/`postcss` imports — so it stays
  * PWA-clean in the renderer bundle (CLAUDE.md §8).

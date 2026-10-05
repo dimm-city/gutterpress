@@ -69,7 +69,6 @@
     focus,
     onToggleFocus,
     editorToggleDisabled,
-    publishLabel = "Publish",
     publishDisabled,
     onPublish,
     publishBtnEl = $bindable(undefined),
@@ -104,8 +103,6 @@
     onToggleFocus: () => void;
     /** No project open — the whole mode control has nothing to switch. */
     editorToggleDisabled: boolean;
-    /** "Publish" on the desktop; the web target downloads the website instead. */
-    publishLabel?: string;
     publishDisabled: boolean;
     onPublish: () => void;
     /** The Publish button element — the wizard's focus-restore target. */
@@ -348,10 +345,10 @@
       onclick={onPublish}
       disabled={publishDisabled}
       title="Publish — save as PDF or a website, and send it to itch.io, Google Drive and more"
-      aria-label={publishLabel}
+      aria-label="Publish"
     >
       <Icon name="cloud-upload" />
-      <span class="btn-label">{publishLabel}</span>
+      <span class="btn-label">Publish</span>
     </button>
   </div>
 </header>

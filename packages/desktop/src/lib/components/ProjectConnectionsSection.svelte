@@ -23,7 +23,6 @@
   import { api } from "$lib/api";
   import { friendlyHostError } from "$lib/errors";
   import type { ProjectRemoteDiagnosis, RemoteAccessResult } from "$lib/platform/contract";
-  import { isDesktop } from "$lib/platform";
 
   let {
     projectDir,
@@ -54,7 +53,7 @@
   });
 
   async function load() {
-    if (!isDesktop() || !projectDir) {
+    if (!projectDir) {
       loading = false;
       return;
     }
@@ -157,9 +156,7 @@
 
 <section class="block project-connections" aria-label="Book connections">
   <h3>Connections</h3>
-  {#if !isDesktop()}
-    <p class="hint">Connection details are available in the desktop app.</p>
-  {:else if loading}
+  {#if loading}
     <p class="hint">Reading this book's connection status…</p>
   {:else if !diag}
     <p class="hint muted">Could not read this folder's status.</p>

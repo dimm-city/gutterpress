@@ -6,8 +6,7 @@
    * author expand any subfolder to reach files nested anywhere in the project
    * (e.g. `extensions/<id>/theme.css`, `styles/print.css`, `css/…`). Folder
    * children are loaded via `api.fs.listDir` (server route in Electron main).
-   * There is no `isDesktop()` gate on the root load; the parent only mounts
-   * this when a folder project is open (`sourceMode === "folder"`).
+   * The parent only mounts this when a folder project is open (`sourceMode === "folder"`).
    *
    * The root load runs in `onMount`; the parent wraps this in `{#key projectDir}`
    * so switching projects remounts the tree (no `$effect`). Folder expansion is
@@ -66,7 +65,7 @@
    */
   import { onMount } from "svelte";
   import { api } from "$lib/api";
-  import { getPlatform, isDesktop } from "$lib/platform";
+  import { getPlatform } from "$lib/platform";
   import Icon from "$lib/components/Icon.svelte";
   import type { ToastController } from "$lib/components/Toast.svelte";
   import {
@@ -168,7 +167,6 @@
     const dir = projectDir;
     if (!dir) return;
     void refreshRoot(dir);
-    if (!isDesktop()) return;
     // Debounced (matches MediaPanel): the host already debounces
     // fs:folderChanged, this merges bursts while a refresh is in flight.
     const off = getPlatform().onFolderChanged(() => {

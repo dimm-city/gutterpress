@@ -41,7 +41,7 @@
  * own PWA-clean header) and is safe to import directly, matching how
  * `+page.svelte` used it inline.
  *
- * NOTE (slice 1 of 2, per the H5 fix roadmap): `savePdf` / `exportHtml` /
+ * NOTE (slice 1 of 2, per the H5 fix roadmap): `savePdf` / `buildTo` /
  * `cancelExport` (→ `ExportController`) and the crash-recovery scan block
  * (→ `CrashRecoveryController`, added in Phase 5 slice 2) are NOT moved
  * here — this slice is scoped to the open/reset lifecycle only. `resetExtras`
@@ -97,9 +97,6 @@ interface ProjectLifecycleZoomView {
 }
 
 export interface ProjectLifecycleDeps {
-  isDesktop: () => boolean;
-  /** Copy shown when an open/adopt action needs the desktop app (page-local constant). */
-  desktopRequiredMessage: string;
   /** Host round-trip: start the preview server for a folder. */
   startPreviewHost: (input: {
     key: string;
@@ -284,10 +281,6 @@ export class ProjectLifecycleController {
     this.busy = true;
     this.busyLabel = label;
     try {
-      if (!d.isDesktop()) {
-        d.toast()?.error(d.desktopRequiredMessage);
-        return false;
-      }
       // Flush before classification resets the current ProjectSession. The
       // dirty-state POST to main is only best-effort; this direct result is the
       // authority for whether replacing the workspace is safe.
@@ -488,7 +481,7 @@ export class ProjectLifecycleController {
    */
   async setUpAsBook(dir: string): Promise<boolean> {
     const d = this.deps;
-    if (!dir || !d.isDesktop()) return false;
+    if (!dir) return false;
     const epoch = ++this.folderOpenEpoch;
     const flushed = await (d.leaveBuffer ?? d.flushBuffer)();
     if (epoch !== this.folderOpenEpoch || !flushed) return false;

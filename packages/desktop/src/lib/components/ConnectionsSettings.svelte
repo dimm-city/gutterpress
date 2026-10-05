@@ -35,7 +35,7 @@
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { api, type PublishProviderStaticInfo } from "$lib/api";
-  import { getPlatform, isDesktop } from "$lib/platform";
+  import { getPlatform } from "$lib/platform";
   import { friendlyHostError } from "$lib/errors";
   import type {
     HostConnectionInfo,
@@ -102,10 +102,6 @@
   });
 
   async function load() {
-    if (!isDesktop()) {
-      loading = false;
-      return;
-    }
     loading = true;
     loadError = null;
     try {
@@ -352,9 +348,7 @@
 </script>
 
 <div class="connections">
-  {#if !isDesktop()}
-    <p class="hint">Connections are managed in the desktop app.</p>
-  {:else if loading}
+  {#if loading}
     <p class="hint">Loading your connections…</p>
   {:else}
     {#if loadError}<p class="error" role="alert">{loadError}</p>{/if}

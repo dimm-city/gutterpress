@@ -5,7 +5,7 @@
   import GitIdentitySection from "$lib/components/GitIdentitySection.svelte";
   import { useSettings } from "$lib/settings.svelte";
   import { setThemeMode } from "$lib/theme.svelte";
-  import { getPlatform, isDesktop } from "$lib/platform";
+  import { getPlatform } from "$lib/platform";
   import { sanitizeSettingsTab, type SettingsTab } from "$lib/settings-tabs";
   import { api, type AppImageIntegrationStatus } from "$lib/api";
   import { friendlyHostError } from "$lib/errors";
@@ -101,7 +101,6 @@
   let appImageError = $state("");
 
   onMount(() => {
-    if (!isDesktop()) return;
     api.app.appImageIntegration
       .getStatus()
       .then((status) => {
@@ -125,7 +124,7 @@
   let canSync = $state(false);
 
   onMount(() => {
-    if (!isDesktop() || !projectDir) {
+    if (!projectDir) {
       canSyncLoading = false;
       return;
     }
@@ -165,7 +164,7 @@
    * unconnected simply lists what is already on disk.
    */
   async function loadCopies(options: { refresh?: boolean } = {}) {
-    if (!isDesktop() || !projectDir) {
+    if (!projectDir) {
       copies = null;
       copiesLoading = false;
       return;
@@ -344,7 +343,6 @@
         </div>
       </section>
 
-      {#if isDesktop()}
       <section class="group">
         <div class="group-head">
           <h3>Updates</h3>
@@ -366,7 +364,6 @@
           </select>
         </div>
       </section>
-      {/if}
 
       <!-- Desktop integration (Linux AppImage only, #119) -------------------
            Rendered ONLY when the host reports the environment as supported:
@@ -605,7 +602,7 @@
                 settings.set({ versionHistory: { autoSync: enabled } });
                 // Notify the host orchestrator immediately so the change takes effect
                 // without waiting for a settings reload cycle (§4.3).
-                if (isDesktop()) getPlatform().setAutoSync(enabled).catch(() => {});
+                getPlatform().setAutoSync(enabled).catch(() => {});
               }}
             />
           </div>
@@ -622,7 +619,7 @@
              no project open, the browser target, or `copies` is null (a plain
              local-folder has no repository to have copies of). Vocabulary:
              "copy", never "branch", in every string below. -->
-        {#if isDesktop() && projectDir && !copiesLoading && copies}
+        {#if projectDir && !copiesLoading && copies}
           {@const otherCopies = copies.branches.filter((name) => name !== copies?.current)}
           {@const onlineOnly = new Set(copies.remoteOnly ?? [])}
           <div class="row">

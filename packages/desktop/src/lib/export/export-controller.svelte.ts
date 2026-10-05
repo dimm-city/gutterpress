@@ -1,6 +1,6 @@
 /**
  * ExportController (Phase 4b; host intents added Phase 5 slice 2) — the single
- * owner of the PDF-export finite state machine AND the `savePdf`/`exportHtml`/
+ * owner of the PDF-export finite state machine AND the `savePdf`/`buildTo`/
  * `cancelExport` intents that used to live inline in `+page.svelte` (UX H5 /
  * ARCH #10).
  *
@@ -12,7 +12,7 @@
  * the component reads the public rune getters (`exporting`, `pdfProgress`,
  * `state`, `activeExportId`, …) and calls the intent methods (`start`,
  * `syncProgress`, `markCanceling`, `markSuccess`, `reset`, `savePdf`,
- * `exportHtml`, `cancelExport`, …).
+ * `buildTo`, `cancelExport`, …).
  *
  * The FSM half stays pure UI/timer state (ZERO `node:*` / lib value imports);
  * the 1-second ticker is injected through a timer seam so it's unit-testable
@@ -20,11 +20,9 @@
  * (the save dialog, the build, the toast surface, …), so — like
  * `ProjectLifecycleController` — that coupling is injected through the
  * optional second constructor argument, `ExportHostDeps`, keeping this module
- * itself PWA-clean (§8 / ADR 0004): DOM manipulation for the HTML download
- * (`document.createElement("a")`, …) stays in `+page.svelte` behind the
- * `downloadFile` dep, not here. `host` is optional so the pure-FSM
+ * itself PWA-clean (§8 / ADR 0004). `host` is optional so the pure-FSM
  * constructor shape existing tests use (`new ExportController(timers)`) is
- * unchanged; `savePdf`/`exportHtml`/`cancelExport` throw a clear error if
+ * unchanged; `savePdf`/`buildTo`/`cancelExport` throw a clear error if
  * called without it (a programming error, not a reachable runtime state —
  * `+page.svelte` always constructs its one instance with host deps).
  *
@@ -70,14 +68,12 @@ export interface ExportTimerSeam {
 }
 
 /**
- * Host coupling for `savePdf`/`exportHtml`/`cancelExport` (moved from
+ * Host coupling for `savePdf`/`buildTo`/`cancelExport` (moved from
  * `+page.svelte` in the H5/#10 slice-2 extraction). All host work — the save
  * dialog, the build round-trip, the toast surface, the download — goes
  * through this seam so the controller stays testable with fakes and PWA-clean.
  */
 export interface ExportHostDeps {
-  isDesktop: () => boolean;
-  desktopRequiredMessage: string;
   /**
    * Compute the plain-language reason PDF export isn't ready yet (or null
    * when ready) — `+page.svelte`'s existing `getSaveReadinessWarning()`.
@@ -104,15 +100,12 @@ export interface ExportHostDeps {
     outPath: string,
     opts?: { validate?: boolean; allowShrink?: boolean },
   ) => Promise<{ exportId?: string; pdfPath?: string }>;
-  /** `out` is the destination FOLDER on the desktop; absent on the web, where
-   *  the result is a `downloadUrl` instead. */
+  /** `out` is the destination FOLDER. */
   buildHtml: (
     input: { key: string; displayName: string },
     out?: string,
-  ) => Promise<{ downloadUrl?: string; outDir?: string }>;
+  ) => Promise<{ outDir?: string }>;
   cancelExportHost: (exportId: string) => Promise<unknown>;
-  /** Turns a `blob:` download URL into a browser download (web HTML export). */
-  downloadFile: (url: string, filename: string) => void;
   showInFolder: (path: string) => Promise<unknown>;
   toastSuccess: (
     message: string,
@@ -161,7 +154,7 @@ export class ExportController {
    */
   private pendingMessage: string | null = null;
 
-  /** Host coupling for `savePdf`/`exportHtml`/`cancelExport` — see `ExportHostDeps`. */
+  /** Host coupling for `savePdf`/`buildTo`/`cancelExport` — see `ExportHostDeps`. */
   private host?: ExportHostDeps;
 
   constructor(timers?: Partial<ExportTimerSeam>, host?: ExportHostDeps) {
@@ -176,7 +169,7 @@ export class ExportController {
 
   private requireHost(): ExportHostDeps {
     if (!this.host) {
-      throw new Error("ExportController: host deps required for savePdf/exportHtml/cancelExport");
+      throw new Error("ExportController: host deps required for savePdf/buildTo/cancelExport");
     }
     return this.host;
   }
@@ -333,10 +326,6 @@ export class ExportController {
     if (warning) return;
     const inputDir = h.currentDir();
     if (!inputDir) return;
-    if (!h.isDesktop()) {
-      h.toastError(h.desktopRequiredMessage);
-      return;
-    }
     // #49: use the adapter-precomputed displayName for the default filename,
     // falling back to the basename of the key.
     const defaultName = (h.displayName() ?? basenameOf(inputDir) ?? "book") + ".pdf";
@@ -366,10 +355,6 @@ export class ExportController {
     if (warning) return null;
     const inputDir = h.currentDir();
     if (!inputDir) return null;
-    if (!h.isDesktop()) {
-      h.toastError(h.desktopRequiredMessage);
-      return null;
-    }
     const displayName = h.displayName() ?? basenameOf(inputDir) ?? "book";
     const insideBook = isPathAtOrUnder(opts.dir, inputDir);
 
@@ -472,43 +457,6 @@ export class ExportController {
     } finally {
       offProgress?.();
       this.reset();
-    }
-  }
-
-  /**
-   * #33 Phase 5: HTML export on web. PDF is desktop-only (a headless Chromium
-   * / printToPDF), so on the web (capabilities().nativeSavePath === false) the
-   * export delivers a standalone book.html instead — build() renders it
-   * in-browser and returns a blob: downloadUrl, which the host's
-   * `downloadFile` turns into a browser download. Desktop is UNCHANGED: it
-   * never reaches here (canSavePdf gates the Save PDF button and build()
-   * returns a path-based result there, handled by `savePdf`). Moved verbatim
-   * from `+page.svelte`'s `exportHtml()`.
-   */
-  async exportHtml(): Promise<void> {
-    const h = this.requireHost();
-    const inputDir = h.currentDir();
-    if (!inputDir || h.isBusy() || this.exporting || h.sourceMode() === "url") return;
-    this.beginSimpleExport();
-    try {
-      const displayName = h.displayName() ?? basenameOf(inputDir) ?? "book";
-      const data = await h.buildHtml({ key: inputDir, displayName });
-      // The web delivery is a downloadUrl (blob:); the host turns it into a
-      // download via a transient <a download> click. Gate on its presence so
-      // a path-based (desktop) result would never trigger this branch.
-      if (data.downloadUrl) {
-        h.downloadFile(data.downloadUrl, `${displayName}.html`);
-        h.toastSuccess("HTML exported");
-      } else {
-        // M22: build() resolving without a downloadUrl used to be a silent
-        // no-op — the button flashed "Exporting…" then went quiet with no
-        // file and no explanation.
-        h.toastError("HTML export failed: no file was produced.");
-      }
-    } catch (e) {
-      h.toastError(h.friendlyPdfError(e) || "HTML export failed");
-    } finally {
-      this.endSimpleExport();
     }
   }
 

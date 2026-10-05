@@ -378,28 +378,20 @@ test("applyBold: empty selection NOT between markers still inserts a fresh pair"
 // not the other (the bug: Save and Snippet were hand-omitted from the old
 // hand-duplicated More menu list).
 
-test("visibleToolbarItems: includes save and desktop-only items when both flags are true", () => {
-  const items = visibleToolbarItems({ hasSave: true, desktop: true });
+test("visibleToolbarItems: includes save, image and snippet when hasSave is true", () => {
+  const items = visibleToolbarItems({ hasSave: true });
   expect(items.some((i) => i.id === "save")).toBe(true);
   expect(items.some((i) => i.id === "snippet")).toBe(true);
   expect(items.some((i) => i.id === "image")).toBe(true);
 });
 
 test("visibleToolbarItems: drops save item when hasSave is false", () => {
-  const items = visibleToolbarItems({ hasSave: false, desktop: true });
+  const items = visibleToolbarItems({ hasSave: false });
   expect(items.some((i) => i.id === "save")).toBe(false);
 });
 
-test("visibleToolbarItems: drops desktop-only items (image, snippet) when desktop is false", () => {
-  const items = visibleToolbarItems({ hasSave: true, desktop: false });
-  expect(items.some((i) => i.id === "image")).toBe(false);
-  expect(items.some((i) => i.id === "snippet")).toBe(false);
-  // Non-desktop-only items are unaffected.
-  expect(items.some((i) => i.id === "bold")).toBe(true);
-});
-
 test("visibleToolbarItems: every visible item belongs to exactly one known group (no orphans dropped from the More menu)", () => {
-  const items = visibleToolbarItems({ hasSave: true, desktop: true });
+  const items = visibleToolbarItems({ hasSave: true });
   const groups = ["save", "primary", "block", "insert"];
   for (const item of items) {
     expect(groups).toContain(item.group);
@@ -520,7 +512,7 @@ test("Insert menu rows are unique: Page break is offered once, through the layou
   // item expanded into LAYOUT_BLOCK_ITEMS (EditorToolbar's `menuRows`).
   // A standalone Page break item used to sit beside the layout picker's own
   // Page break entry, so the menu would have listed it twice.
-  const rows = visibleToolbarItems({ hasSave: true, desktop: true })
+  const rows = visibleToolbarItems({ hasSave: true })
     .filter((i) => i.group === "insert")
     .flatMap((i) => (i.kind === "layout-block" ? LAYOUT_BLOCK_ITEMS.map((b) => b.label) : [i.label]));
   expect(new Set(rows).size).toBe(rows.length);
@@ -529,7 +521,7 @@ test("Insert menu rows are unique: Page break is offered once, through the layou
 });
 
 test("the Insert menu carries every insert the toolbar used to show as a separate icon", () => {
-  const ids = visibleToolbarItems({ hasSave: true, desktop: true })
+  const ids = visibleToolbarItems({ hasSave: true })
     .filter((i) => i.group === "insert")
     .map((i) => i.id);
   // rule, layout blocks (columns, page break, chapter…), table, image, snippet

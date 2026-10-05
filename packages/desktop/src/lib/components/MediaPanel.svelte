@@ -16,7 +16,7 @@
    * project can't balloon memory.
    */
   import { onMount } from "svelte";
-  import { getPlatform, isDesktop } from "$lib/platform";
+  import { getPlatform } from "$lib/platform";
   import { api } from "$lib/api";
   import type { MediaImageEntry, MediaImageDetails } from "$lib/platform/dtos";
   import {
@@ -82,7 +82,7 @@
 
   async function refresh(): Promise<void> {
     const dir = projectDir;
-    if (!dir || !isDesktop()) {
+    if (!dir) {
       images = [];
       thumbs = {};
       return;
@@ -123,7 +123,7 @@
     details = null;
     notice = null;
     void refresh();
-    if (!projectDir || !isDesktop()) return;
+    if (!projectDir) return;
     const off = getPlatform().onFolderChanged(() => {
       if (refreshTimer) clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => {

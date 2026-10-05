@@ -9,10 +9,6 @@
  * Single-owner discipline: components never read or mutate the raw fields. They
  * read the derived getters (`isDirty`, `phase`, …) and call the intent methods
  * (`load`, `edit`, `flush`, `acceptExternal`, `keepMine`, `reset`).
- *
- * Desktop-only: the editor is gated behind `isDesktop()` in `+page.svelte`, so
- * every platform call here runs against the ElectronAdapter. On web the buffer
- * is simply never constructed/used.
  */
 import type { Platform } from "$lib/platform/contract";
 import { api } from "$lib/api";

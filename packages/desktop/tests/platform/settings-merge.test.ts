@@ -1,9 +1,6 @@
 /**
- * Unit tests for `deepMergeSettings` (Phase 1b) — the single shared settings
- * deep-merge that replaces the two inline copies previously duplicated in
- * `web-adapter.ts` (guarded `!Array.isArray`) and `settings.svelte.ts` (did
- * NOT). The copies DISAGREED on array handling; the reconciled copy REPLACES
- * arrays wholesale rather than spreading them into an object.
+ * Unit tests for `deepMergeSettings` (Phase 1b): it REPLACES arrays wholesale
+ * rather than spreading them into an object.
  */
 import { test, expect } from "bun:test";
 import { deepMergeSettings } from "../../src/lib/settings-merge";
