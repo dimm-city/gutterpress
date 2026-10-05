@@ -1022,6 +1022,16 @@
   // editor-pane view.
   let editorView = $state<"editor" | "activity">("editor");
   let projectSettingsOpen = $state(false);
+  // "Show book" (#308): Book settings hides — still mounted, so the tab,
+  // scroll and drafts survive — and the book (already re-rendered with the
+  // changes) is in view, with one button back. Live feedback without the
+  // docked layout that 0.11.10 deliberately replaced.
+  let projectSettingsPeek = $state(false);
+  // The peek bar's button takes focus when it appears, so Enter or Esc goes
+  // straight back to the settings.
+  function focusOnMount(node: HTMLElement): void {
+    node.focus();
+  }
 
   /** One button → the whole book settings view (manifest details, look &
    *  style, plugins), covering the workspace. */
@@ -1032,6 +1042,7 @@
       return;
     }
     projectSettingsTab = "details";
+    projectSettingsPeek = false;
     projectSettingsOpen = true;
   }
 
@@ -1045,6 +1056,7 @@
 
   function closeProjectSettings(): void {
     projectSettingsOpen = false;
+    projectSettingsPeek = false;
   }
 
   /**
@@ -2108,7 +2120,13 @@
    * Same rule as the window's Esc: leave Focus only if nothing else owns it.
    */
   function onPreviewEscape(e: PreviewEvent): void {
-    if (e.name !== "escapePressed" || !inFocus) return;
+    if (e.name !== "escapePressed") return;
+    // Esc from inside the book while peeking returns to Book settings.
+    if (projectSettingsPeek) {
+      projectSettingsPeek = false;
+      return;
+    }
+    if (!inFocus) return;
     if (escapeExitsFocus({ key: "Escape", defaultPrevented: false }, document, findBarOpen)) {
       setFocus(false);
     }
@@ -2150,6 +2168,11 @@
   // ----------------------------------------------------------------
   onMount(() => {
     function onGlobalKey(e: KeyboardEvent) {
+      if (projectSettingsPeek && e.key === "Escape" && !e.defaultPrevented) {
+        e.preventDefault();
+        projectSettingsPeek = false;
+        return;
+      }
       const command = resolveGlobalShortcut({
         ctrlOrMeta: e.ctrlKey || e.metaKey,
         shift: e.shiftKey,
@@ -2763,7 +2786,7 @@
 <!-- inert while the start screen or Book settings is up: the workspace keeps
       rendering (a stylesheet written from Book settings re-renders the preview
       live) but never accepts interaction underneath the layer. -->
-<div class="app-root" inert={landingVisible || projectSettingsOpen}>
+<div class="app-root" inert={landingVisible || (projectSettingsOpen && !projectSettingsPeek)}>
 {#if (updateController.readyVersion || updateController.availableVersion) && !updateController.bannerDismissed}
   <div class="update-banner" role="status" aria-live="polite">
     {#if updateController.readyVersion}
@@ -3225,13 +3248,15 @@
   <!-- Book settings (manifest): a full-window layer like the start screen.
        Keyed by projectDir so a project switch can never leave stale section
        state (drafts, theme lists) resident under the new project. -->
-  <section class="settings-global-view" aria-label="Book settings">
+  <section class="settings-global-view" aria-label="Book settings" hidden={projectSettingsPeek}>
     {#key lifecycle.currentDir}
       <ProjectSettingsView
         projectDir={lifecycle.currentDir}
         repoRoot={projectSession.repoRoot}
         initialTab={projectSettingsTab}
         {toast}
+        peeking={projectSettingsPeek}
+        onPeek={() => (projectSettingsPeek = true)}
         onClose={closeProjectSettings}
         onEditRawCss={(path) => { closeProjectSettings(); openStyleFile(path); }}
         onOpenAccounts={() => { closeProjectSettings(); openSettings("connections"); }}
@@ -3239,6 +3264,14 @@
       />
     {/key}
   </section>
+  {#if projectSettingsPeek}
+    <div class="settings-peek-bar" role="status">
+      <span>Looking at your book</span>
+      <button class="app-btn-primary" use:focusOnMount onclick={() => (projectSettingsPeek = false)} title="Back to Book settings (Esc)">
+        Back to Book settings
+      </button>
+    </div>
+  {/if}
 {/if}
 
 {#if openBookOpen}
@@ -3421,6 +3454,35 @@
     z-index: var(--app-z-sheet);
     display: flex;
     background: var(--app-bg);
+  }
+  .settings-global-view[hidden] {
+    display: none;
+  }
+  /* "Show book": one bar back to the still-mounted settings. */
+  .settings-peek-bar {
+    position: fixed;
+    left: 50%;
+    bottom: 40px;
+    transform: translateX(-50%);
+    z-index: var(--app-z-sheet);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 8px 8px 16px;
+    border: 1px solid var(--app-border);
+    border-radius: 8px;
+    background: var(--app-surface-raised);
+    box-shadow: 0 4px 16px var(--app-shadow-md);
+    color: var(--app-text-secondary);
+    font-size: 13px;
+  }
+  .settings-peek-bar button {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-style: solid;
+    font-size: 13px;
+    cursor: pointer;
   }
   .splitter {
     width: 6px;

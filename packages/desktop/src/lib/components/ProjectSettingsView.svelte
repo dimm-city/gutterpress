@@ -76,6 +76,8 @@
     onClose,
     onOpenAccounts,
     onVersionHistoryEnabled,
+    peeking = false,
+    onPeek,
   }: {
     projectDir: string | null;
     /** The repo the open book belongs to — lets the pickers offer SHARED styles. */
@@ -93,6 +95,11 @@
     onOpenAccounts?: () => void;
     /** The Connections tab just turned on version history: re-read the project's classification. */
     onVersionHistoryEnabled?: (projectDir: string) => void;
+    /** The view is hidden (still mounted) while the writer looks at the book. */
+    peeking?: boolean;
+    /** "Show book": hide this view to see the book with the changes made so
+     *  far, keeping the tab, scroll and drafts for coming back. */
+    onPeek?: () => void;
   } = $props();
 
   // Covers the initial parallel load of all sections.
@@ -242,7 +249,8 @@
   // Esc closes the layer, like the start screen — unless a dialog on top of
   // it (Save as template…) is the one that should take the key.
   function onWindowKeydown(e: KeyboardEvent) {
-    if (e.key !== "Escape" || e.defaultPrevented) return;
+    // While peeking, the host's "Back to Book settings" bar owns Esc.
+    if (peeking || e.key !== "Escape" || e.defaultPrevented) return;
     if (document.querySelector('[role="dialog"]')) return;
     e.preventDefault();
     close();
@@ -264,7 +272,14 @@
 <div class="settings-view" aria-busy={loadingAll} tabindex="-1" use:focusOnShow>
   <header class="settings-header">
     <h2 id="project-settings-title">Book settings</h2>
-    <button class="settings-close" onclick={close} title="Close book settings (Esc)" aria-label="Close book settings"><Icon name="x" size={16} /></button>
+    <div class="header-actions">
+      {#if onPeek}
+        <button class="settings-peek" onclick={onPeek} title="See your book with the changes so far, then come back here">
+          <Icon name="eye" size={14} /> Show book
+        </button>
+      {/if}
+      <button class="settings-close" onclick={close} title="Close book settings (Esc)" aria-label="Close book settings"><Icon name="x" size={16} /></button>
+    </div>
   </header>
 
   <div class="tab-bar" role="tablist" aria-label="Book settings sections" onkeydown={onTablistKeydown} tabindex="-1">
@@ -389,6 +404,21 @@
     cursor: pointer;
   }
   .settings-close:hover { background: var(--app-control-hover-bg); color: var(--app-text); }
+  .header-actions { display: flex; align-items: center; gap: 8px; }
+  .settings-peek {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border: 1px solid var(--app-border);
+    border-radius: 5px;
+    background: transparent;
+    color: var(--app-text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .settings-peek:hover { background: var(--app-control-hover-bg); color: var(--app-text); }
+  .settings-peek:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
   .settings-close:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
   .settings-body {
     flex: 1;
