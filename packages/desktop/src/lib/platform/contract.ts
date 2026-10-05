@@ -409,7 +409,7 @@ export interface HostServices {
   /** Cancel an in-flight device flow (user closed the dialog). */
   connectGitHubCancel(): Promise<{ ok: boolean }>;
 
-  // ── Google Drive publish connect (#221, docs/gdrive-publish-plan.md D10) ──
+  // ── Google Drive publish connect (#221, ADR 0011) ──
   // Same two-phase shape as the GitHub trio above, mirrored deliberately (the
   // recorded alternative — a route trio on the publish hooks bridge — was
   // passed over so the app keeps ONE pattern for interactive OAuth connects).

@@ -1,5 +1,5 @@
 /**
- * Google Drive publish provider (#221, docs/gdrive-publish-plan.md).
+ * Google Drive publish provider (#221, ADR 0011).
  *
  * Uploads the finished PDF — or, when the manifest selects the HTML format
  * (phase 3, D8), the website export packaged as a single ZIP — to a folder

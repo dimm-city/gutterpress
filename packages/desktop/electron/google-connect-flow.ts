@@ -1,7 +1,7 @@
 /**
  * google-connect-flow.ts — the Google Drive OAuth "one connect at a time"
  * state trio behind publish:connectGoogleStart / publish:connectGoogleWait /
- * publish:connectGoogleCancel (#221, docs/gdrive-publish-plan.md D10),
+ * publish:connectGoogleCancel (#221, ADR 0011),
  * mirroring `electron/github-device-flow.ts` exactly.
  *
  * Unlike the GitHub device flow there is no user code to display — Google's

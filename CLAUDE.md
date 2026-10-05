@@ -624,32 +624,13 @@ What remains relevant to **this** repo:
 A complexity survey on 2026-10-03 (the same pass that deleted the desktop's
 loopback server + token + app:// proxy, the plugin receipt scheme,
 puppeteer-core, the `lint`/`audit` commands, the source-text tests and the
-superseded analysis docs) found two more candidates. The owner deferred them
-rather than ruling; they are recorded here so the next session does not
-re-survey. Each is a deletion, not a refactor.
+superseded analysis docs) found two more candidates. The first — about 4,500
+lines of tooling no workflow or script ran (`packages/cli/tools/`, the
+uncalled desktop drives and `test:ui`, the Windows Docker install test, the
+Google Drive spike and its plan) — was deleted in 0.11.11. The other is
+recorded here so the next session does not re-survey it.
 
-1. **Orphaned tooling with no caller in any workflow or package.json script**
-   (about 3,500 lines):
-   - `packages/cli/tools/` — Python/ImageMagick print-prep helpers
-     (`validate-images.py`, `convert-to-cmyk.sh`, `alpha-to-polygon.py`,
-     `set-boxes.py`, `style-diff.mjs`, `debug-manifest.ts`). Not shipped by
-     the package's `files`; `set-boxes.py` is superseded by
-     `engine/compiler/postprocess.ts`'s TrimBox/BleedBox; TAC checking is
-     built in (`checks/asset/image-tac.ts`).
-   - `packages/desktop/tests/integration/inline-editing.pw.mjs`,
-     `electron-driver.pw.mjs`, `run-ui.mjs`, `fixtures/inline-editing/` and
-     the `test:ui` / `test:inline:packaged` scripts — never run by CI
-     (`render-perf-gate.yml` runs seven other drives; keep `app-window.mjs`
-     and `workspace-mode.mjs`, which those import).
-   - `packages/cli/tests/integration/Dockerfile.windows`,
-     `Test-WindowsInstall.ps1`, `run-install-test.ps1`, its README — needs a
-     Windows Docker host; `package-managers.yml`'s `validate-scoop` job
-     already installs the real release on `windows-latest`.
-   - `scripts/gdrive-spike.mjs` and `docs/gdrive-publish-plan.md` — the plan
-     says phases 1–3 shipped in #221; ADR 0011 and `docs/publishing.md` hold
-     the decisions that still matter. Eight source comments cite the plan's
-     D-numbers and would be repointed to ADR 0011.
-2. **The WebAdapter / PWA stack and the one-implementation `Platform` seam**
+1. **The WebAdapter / PWA stack and the one-implementation `Platform` seam**
    (about 3,200 lines, plus ~400 of `!isDesktop()` branches): §8 above says
    this is scaffolding to keep, but the survey found no shipped build targets
    the web (the only adapter is `adapter-electron.js`; `pages.yml` builds the

@@ -253,6 +253,7 @@ Still open:
   hot-reload swap, and closing it applies the revision that arrived
   meanwhile.
 - **End-to-end** — `tests/integration/inline-editing.pw.mjs`: the menu action and
-  double-click both edit in the page, under real Electron.
+  double-click both edit in the page, under real Electron. (Removed in
+  0.11.11: no CI job ever ran it.)
 - **Parity** — `scripts/native-parity-gate.ts` must stay green with an empty
   allowlist.

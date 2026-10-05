@@ -364,8 +364,8 @@ if (cmHasContent) {
   targetDiag = { stage: "outline", secondChapter };
 
   if (secondChapter) {
-    // 2. Bring it on screen (same reason inline-editing.pw.mjs scrolls before
-    //    reading a box: absolute click coords are only meaningful in view).
+    // 2. Bring it on screen: absolute click coords are only meaningful in
+    //    view.
     await evalJs(
       `window.__ask('scrollTo', [{ line: ${secondChapter.line}, chapter: ${JSON.stringify(secondChapter.chapter)} }, { block: 'start' }])`,
     );

@@ -50,8 +50,7 @@ if (!existsSync(target)) fail(`desktop target not found at ${target}`);
 // CI behaviour job builds — same `isMainJs ? require_("electron") : target`
 // pattern problems-last-hop.pw.mjs already uses, so this drive's unique
 // outline<->editor sync coverage can run in that job instead of needing its
-// own AppImage packaging step. Packaged-binary mode keeps working unchanged
-// for run-ui.mjs / `bun run test:ui`.
+// own AppImage packaging step. Packaged-binary mode keeps working unchanged.
 const isMainJs = target.endsWith(".js");
 const executablePath = isMainJs ? require_("electron") : target;
 

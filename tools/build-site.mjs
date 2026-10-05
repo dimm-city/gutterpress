@@ -8,8 +8,8 @@
  * The site is two things: `site/` copied as-is (the landing page and its
  * stylesheet), and markdown documents from the repository root rendered into
  * the shared page template. The privacy policy is the reason the site exists
- * — Google's OAuth consent screen needs it at a stable public URL (ADR 0011,
- * docs/gdrive-publish-plan.md D11) — and the root `PRIVACY.md` stays its ONE
+ * — Google's OAuth consent screen needs it at a stable public URL (ADR 0011)
+ * — and the root `PRIVACY.md` stays its ONE
  * source: this script renders it, so the published page can never drift from
  * the file the repository, README and changelog all link to.
  *

@@ -1402,7 +1402,7 @@ secureHandle("remote:connectGitHubWait", () =>
 secureHandle("remote:connectGitHubCancel", async () => githubDeviceFlow.cancel());
 
 // The Google Drive OAuth "one connect at a time" state trio (#221,
-// docs/gdrive-publish-plan.md D10) — same shape as githubDeviceFlow above,
+// ADR 0011) — same shape as githubDeviceFlow above,
 // electron/google-connect-flow.ts. Opens the auth URL via the app's single
 // http(s)-only shell.openExternal gate (desktopHooksImpl.openExternal,
 // defined above — the same one `api/shell/open-external` calls); the

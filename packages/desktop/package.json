@@ -23,9 +23,7 @@
     "dist:mac": "npm run dist -- --mac --arm64 --x64",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "lint": "eslint 'src/**/*.svelte' 'src/**/*.svelte.ts' && node tools/check-app-tokens.mjs",
-    "typecheck": "tsc -p electron/tsconfig.json",
-    "test:ui": "node tests/integration/run-ui.mjs",
-    "test:inline:packaged": "node tests/integration/inline-editing.pw.mjs --require-packaged"
+    "typecheck": "tsc -p electron/tsconfig.json"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.4",

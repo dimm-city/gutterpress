@@ -125,7 +125,7 @@ export async function handleRemoteErrors<T>(
 // "Install the Azure SWA CLI…" style hints behind an "online repository"
 // message from the wrong domain. Token values never appear in publish lib
 // messages by construction (publish redaction invariant).
-// Google Drive (#221, docs/gdrive-publish-plan.md D10) adds its own
+// Google Drive (#221, ADR 0011) adds its own
 // vocabulary: `\bgoogle\b` covers every author-facing message
 // google-auth.ts/google-drive.ts throw (not-configured, reconnect,
 // sign-in declined/canceled/timed out/state-mismatch, HTTP failures) since
