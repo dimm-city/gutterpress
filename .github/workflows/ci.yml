@@ -174,6 +174,11 @@ jobs:
             node packages/cli/dist/cli.js build "$fixture" --format pdf --out "/tmp/render-parity/head/$slug.pdf"
           done
 
+      # --raster (#295) also compares every page as pixels, so a colour change
+      # that moves no text run still fails; it needs poppler's pdftoppm.
+      - name: Install pdftoppm for the raster compare
+        run: sudo apt-get update -q && sudo apt-get install -y -q poppler-utils
+
       # Runs every fixture even if an earlier one fails, so one PR gets the
       # full picture instead of stopping at the first offender; the job still
       # fails overall on any unwaived diff.
@@ -187,6 +192,7 @@ jobs:
               "/tmp/render-parity/base/$fixture.pdf" \
               "/tmp/render-parity/head/$fixture.pdf" \
               --waive scripts/render-parity-waivers.json \
+              --raster "/tmp/render-parity/$fixture-raster" \
               --out "/tmp/render-parity/$fixture-diff.json" || status=$?
           done
           exit $status

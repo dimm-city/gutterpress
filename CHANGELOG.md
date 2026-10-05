@@ -18,6 +18,12 @@ This project follows [Semantic Versioning](https://semver.org/).
   "Deleted … — Undo"; Undo puts the file or folder back. The latest delete
   can be undone.
 
+- **Render-parity raster mode** (#295). `scripts/render-parity.ts compare
+  --raster <dir>` also compares every page as pixels, so a colour-only change
+  that moves no text no longer passes; each differing page gets a
+  `diff-NNN.png` with the changed pixels in red and is waivable per page. CI
+  runs it on every public fixture.
+
 ### Changed
 
 - **The toolbar keeps its labels longer** (#316). Edit/Read, Setup and
@@ -25,6 +31,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   to icons at 1150px.
 - **Connections** now says to use *Back up now* in the save status, not a
   *Sync Changes* button that no longer exists (#310).
+- **Removed tooling nothing ran** (about 4,500 lines): `packages/cli/tools/`,
+  the desktop drives no CI job ran (`inline-editing`, `electron-driver`,
+  `run-ui` and the `test:ui` script), the Windows Docker install test, and the
+  Google Drive spike and its plan.
 - **Dependencies** (#287): all 75 reported security advisories fixed (Electron
   42.11.10, SvelteKit, markdown-it, tar and transitive packages), and the
   security audit now blocks CI.
