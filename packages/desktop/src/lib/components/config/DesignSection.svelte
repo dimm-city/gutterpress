@@ -59,7 +59,7 @@
   {:else if controller.tokens.length === 0}
     <p class="muted">{controller.cssName} doesn't expose any settings yet. Use “Edit raw CSS” to add <code>:root</code> custom properties.</p>
   {:else}
-    <p class="hint">Editing {controller.cssName} — changes are saved as you go and your book updates behind this screen. Use “Show book” at the top to look at it, then come back.</p>
+    <p class="hint">Editing {controller.cssName} — changes are saved as you go and the preview updates live.</p>
     {#each controller.customGroups as g (g.name)}
       <h4 class="subhead">{g.name}</h4>
       {#each g.tokens as t (t.name)}{@render tokenRow(t)}{/each}

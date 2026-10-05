@@ -17,9 +17,6 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **Undo after deleting a file** (#313). Deleting from the Files tab shows
   "Deleted … — Undo"; Undo puts the file or folder back. The latest delete
   can be undone.
-- **Show book from Book settings** (#308). Book settings fills the window;
-  *Show book* steps aside so you can see your changes, and *Back to Book
-  settings* (or Esc) returns.
 
 ### Changed
 
