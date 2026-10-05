@@ -26,7 +26,7 @@ When you want it in the application menu, turn it on explicitly:
 **Settings → App → Desktop integration → Add to application menu**
 
 The action appears **only** in a packaged Linux AppImage build (it is hidden on
-Windows, macOS, in development, and in the browser build). It needs no
+Windows, macOS, and in development). It needs no
 administrator access, no `sudo`, and no extra packages — no
 `update-desktop-database`, `kbuildsycoca6`, or AppImageLauncher. KDE and GNOME
 watch the per-user directories below, so the entry usually appears within a few

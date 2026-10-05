@@ -87,8 +87,8 @@ Three dev modes, pick by what you're iterating on:
 ```bash
 # SvelteKit only (no Electron — runs in a regular browser tab at
 # http://localhost:5173). HMR works, but window.electron is undefined
-# so any IPC-driven feature (Open Folder, Save PDF) will toast
-# "Electron bridge unavailable". Good for pure UI/CSS iteration.
+# so any IPC-driven feature (Open Folder, Save PDF) fails with
+# "ElectronAdapter used outside Electron". Good for pure UI/CSS iteration.
 bun --cwd packages/desktop run dev
 
 # Full Electron with SvelteKit HMR — RECOMMENDED for most desktop dev.
@@ -260,7 +260,7 @@ packages/desktop/
 │                            #   server/ (host, unbundled) + client/ (SPA)
 ├── tests/                   # Bun unit/contract tests + Playwright integration tests
 ├── electron-builder.yml     # Packaging config (Linux AppImage, Windows installer/zip, macOS dmg)
-├── adapter-electron.js      # the ~20-line SvelteKit adapter: unbundled server + client
+├── adapter-electron.js      # the ~30-line SvelteKit adapter: unbundled server + client
 ├── svelte.config.js         # adapter-electron (out: build), paths.relative
 └── package.json
 ```
@@ -326,8 +326,7 @@ never touches electron-updater directly.
 - **fetch for routes, IPC for the rest** — most host calls are
   `fetch("/api/…")` to `+server.ts` routes; the `window.electron` bridge
   (`preload.ts`) is reserved for push-event streams and the preview/build
-  pipeline (e.g. `window.electron.startPreview({input})`). The renderer only
-  ever calls `getPlatform().X(...)`.
+  pipeline (e.g. `window.electron.startPreview({input})`).
 - **Build** — `electron-vite` builds the ESM main + preload into `out/`
   (externalizing electron + the lib); SvelteKit builds the renderer + host
   routes into `build/`. No CJS↔ESM interop trick: the ESM main just does

@@ -21,7 +21,7 @@ Gutterpress does almost everything in-process. It needs only a Chromium-based br
 > **Why so few tools?** Page size, fonts, images/DPI, bookmarks, links, page
 > labels, text density, structure, image color/alpha, and markdown/HTML/CSS
 > linting all run **in-process** — no Poppler, ImageMagick, `markdownlint-cli2`,
-> `htmlhint`, or stylelint to install (see ADR 0002). A plain RGB `build` needs
+> `htmlhint`, or stylelint to install. A plain RGB `build` needs
 > only a browser; Ghostscript and qpdf exist solely to enable PDF/X checks and
 > conversion.
 
@@ -168,7 +168,7 @@ everywhere, including from the standalone binary, with zero system tools.
 
 > Fidelity note: structural validation is a "does it parse cleanly" gate rather
 > than a deep `qpdf --check`, and image DPI is derived from the rendered placed
-> size (best-effort). See ADR 0002 for details.
+> size (best-effort).
 
 ### Image asset checks — built in (no ImageMagick)
 

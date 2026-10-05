@@ -365,12 +365,12 @@ User Browser / Electron Desktop → http://127.0.0.1:{port}
     ↓
 http.createServer (packages/cli/src/preview/http-server.ts) + ws WebSocketServer
     ├─→ /__gutterpress-hmr  WebSocket upgrade → broadcastReload()
-    │    (subscribers receive a content update or {type:"full-reload"};
-    │     both replace the complete generated book)
+    │    (subscribers receive {type:"full-reload"}, which replaces the
+    │     complete generated book)
     ├─→ GET /api/status  inlined handler — reports hasInput + currentPath
     │    (the only API route; a separate route-table module was removed as
     │    unneeded scaffolding for one hard-coded endpoint)
-    ├─→ /vendor/*, /preview/scripts/*, /favicon.ico
+    ├─→ /engine/*, /preview/scripts/*, /favicon.ico
     │                    the process-wide embedded-assets dir, with a
     │                    version ETag (the native viewer bundle is never
     │                    copied per project)
@@ -851,7 +851,7 @@ export function resolveWithinRoot(relPath: string, root: string): string | null 
 
 `resolveStaticPath` decodes a URL pathname and delegates to
 `resolveWithinRoot`; the preview server (`preview/http-server.ts`) uses both to
-confine author assets and chapter-update requests to the selected project.
+confine author asset requests to the selected project.
 
 ### Input Sanitization
 

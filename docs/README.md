@@ -131,9 +131,9 @@ See the [Gutterpress User Guide](../examples/gutterpress-user-guide/) for all to
 ```markdown
 > [!note]      Blue - General information
 > [!tip]       Green - Helpful advice
+> [!important] Purple - Key information
 > [!warning]   Orange - Important cautions
-> [!danger]    Red - Critical warnings
-> [!info]      Gray - Neutral information
+> [!caution]   Red - Critical warnings
 ```
 
 ## Documentation Structure
