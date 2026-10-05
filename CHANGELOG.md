@@ -5,6 +5,39 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.11] - Unreleased
+
+### Added
+
+- **The mouse wheel turns pages in the preview** (#301, #302). A flick over
+  the preview turns one page, or one spread in Read; one gesture never turns
+  two. A page taller than the window is scrolled through first and turns
+  only once you reach its end. Ctrl+wheel and sideways scrolling are left
+  alone.
+- **Undo after deleting a file** (#313). Deleting from the Files tab shows
+  "Deleted … — Undo"; Undo puts the file or folder back. The latest delete
+  can be undone.
+- **Show book from Book settings** (#308). Book settings fills the window;
+  *Show book* steps aside so you can see your changes, and *Back to Book
+  settings* (or Esc) returns.
+
+### Changed
+
+- **The toolbar keeps its labels longer** (#316). Edit/Read, Setup and
+  Publish stay labelled down to a 900px-wide window instead of collapsing
+  to icons at 1150px.
+- **Connections** now says to use *Back up now* in the save status, not a
+  *Sync Changes* button that no longer exists (#310).
+- **Dependencies** (#287): all 75 reported security advisories fixed (Electron
+  42.11.10, SvelteKit, markdown-it, tar and transitive packages), and the
+  security audit now blocks CI.
+
+### Fixed
+
+- **Zoom never re-paginates** (#318). Pages could not be reproduced breaking
+  differently by zoom level; a new CI check re-paginates the user guide at
+  several zooms in Edit and Read and fails if any block moves page.
+
 ## [0.11.10] - 2026-10-03
 
 ### Added
