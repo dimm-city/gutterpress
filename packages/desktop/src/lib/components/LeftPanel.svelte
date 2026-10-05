@@ -44,6 +44,7 @@
   let {
     open = $bindable(false),
     activeTab = $bindable<PanelTab>("projects"),
+    readerMode = false,
     width = $bindable(300),
     // Project context
     projectDir = null,
@@ -73,6 +74,9 @@
   }: {
     open?: boolean;
     activeTab?: PanelTab;
+    /** Reader (Settings → App): only Books and TOC — Files and Media are for
+     *  editing. A remembered Files/Media tab shows Books instead. */
+    readerMode?: boolean;
     /** Panel width in px, user-resizable (clamped 300–480, narrowed only when
      *  the window can't spare that — see widthBounds()), persisted. */
     width?: number;
@@ -225,16 +229,22 @@
     { id: "media", label: "Media", icon: "image", title: "Media library" },
   ];
 
+  const visibleTabs = $derived(readerMode ? TABS.filter((t) => t.id === "projects" || t.id === "toc") : TABS);
+  /** The tab actually shown: the active one, unless reader mode hides it. */
+  const shownTab = $derived<PanelTab>(
+    readerMode && (activeTab === "files" || activeTab === "media") ? "projects" : activeTab,
+  );
+
   // ── APG tabs keyboard pattern ─────────────────────────────────────────────
   // Roving tabindex: active tab = 0, others = -1, all = -1 when panel is closed.
   let tabEls = $state<Record<string, HTMLButtonElement>>({});
   function getTabIndex(tabId: PanelTab): number {
     if (!open) return -1;
-    return activeTab === tabId ? 0 : -1;
+    return shownTab === tabId ? 0 : -1;
   }
   function onTablistKeydown(e: KeyboardEvent) {
-    const ids = TABS.map((t) => t.id);
-    const current = ids.indexOf(activeTab);
+    const ids = visibleTabs.map((t) => t.id);
+    const current = ids.indexOf(shownTab);
     if (e.key === "ArrowRight") {
       e.preventDefault();
       const next = (current + 1) % ids.length;
@@ -298,13 +308,13 @@
   ></div>
   <!-- Tab list — APG tabs pattern: roving tabindex, ArrowLeft/Right/Home/End -->
   <div class="panel-tabs" role="tablist" aria-label="Panel tabs" onkeydown={onTablistKeydown} tabindex="-1">
-    {#each TABS as tab (tab.id)}
+    {#each visibleTabs as tab (tab.id)}
       <button
         id="panel-tab-{tab.id}"
         role="tab"
         class="panel-tab"
-        class:active={activeTab === tab.id}
-        aria-selected={activeTab === tab.id}
+        class:active={shownTab === tab.id}
+        aria-selected={shownTab === tab.id}
         aria-controls="panel-content-{tab.id}"
         aria-label={tab.label}
         title={tab.title}
@@ -328,10 +338,10 @@
     <div
       id="panel-content-toc"
       class="tab-panel"
-      class:visible={activeTab === "toc"}
+      class:visible={shownTab === "toc"}
       role="tabpanel"
       aria-labelledby="panel-tab-toc"
-      aria-hidden={activeTab !== "toc"}
+      aria-hidden={shownTab !== "toc"}
     >
       <h2 class="panel-heading">Table of contents</h2>
       {#if outline.length === 0}
@@ -402,10 +412,10 @@
     <div
       id="panel-content-files"
       class="tab-panel"
-      class:visible={activeTab === "files"}
+      class:visible={shownTab === "files"}
       role="tabpanel"
       aria-labelledby="panel-tab-files"
-      aria-hidden={activeTab !== "files"}
+      aria-hidden={shownTab !== "files"}
     >
       <h2 class="panel-heading">Files</h2>
       {#if !projectDir || sourceMode !== "folder"}
@@ -433,10 +443,10 @@
     <div
       id="panel-content-media"
       class="tab-panel"
-      class:visible={activeTab === "media"}
+      class:visible={shownTab === "media"}
       role="tabpanel"
       aria-labelledby="panel-tab-media"
-      aria-hidden={activeTab !== "media"}
+      aria-hidden={shownTab !== "media"}
     >
       {#if !projectDir || sourceMode !== "folder"}
         <div class="empty-tab">
@@ -462,10 +472,10 @@
     <div
       id="panel-content-projects"
       class="tab-panel"
-      class:visible={activeTab === "projects"}
+      class:visible={shownTab === "projects"}
       role="tabpanel"
       aria-labelledby="panel-tab-projects"
-      aria-hidden={activeTab !== "projects"}
+      aria-hidden={shownTab !== "projects"}
     >
       <h2 class="panel-heading">Books</h2>
       <ProjectsListBody

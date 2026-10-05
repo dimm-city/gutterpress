@@ -71,6 +71,7 @@
     onClose,
     onOpenAccounts,
     onVersionHistoryEnabled,
+    triggerEl,
   }: {
     projectDir: string | null;
     /** The repo the open book belongs to — lets the pickers offer SHARED styles. */
@@ -88,6 +89,8 @@
     onOpenAccounts?: () => void;
     /** The Connections tab just turned on version history: re-read the project's classification. */
     onVersionHistoryEnabled?: (projectDir: string) => void;
+    /** The control that opened the view, for focus restore on close. */
+    triggerEl?: HTMLElement | null;
   } = $props();
 
   // Covers the initial parallel load of all sections.
@@ -239,7 +242,7 @@
   let templateDialogTrigger = $state<HTMLButtonElement | null>(null);
 </script>
 
-<AppView title="Book settings" measure={860} onClose={close}>
+<AppView title="Book settings" icon="wrench" measure={860} onClose={close} {triggerEl}>
   <div class="tab-bar" role="tablist" aria-label="Book settings sections" onkeydown={onTablistKeydown} tabindex="-1">
     {#each TABS as tab (tab.id)}
       <button

@@ -73,6 +73,7 @@
     publishDisabled,
     onPublish,
     publishBtnEl = $bindable(undefined),
+    projectSettingsBtnEl = $bindable(undefined),
     publishHints = [],
     publishWarning = null,
     showProjectSettings,
@@ -107,6 +108,8 @@
     onPublish: () => void;
     /** The Publish button element — the wizard's focus-restore target. */
     publishBtnEl?: HTMLButtonElement | undefined;
+    /** The Setup button — Book settings restores focus to it on close. */
+    projectSettingsBtnEl?: HTMLButtonElement | undefined;
     /** Why Publish is unavailable right now (rendered as quiet notes). */
     publishHints?: string[];
     /** Save-readiness warning (rendered as role="alert"). */
@@ -321,6 +324,7 @@
            ≤875px stage with the action buttons'; aria-label and tooltip stay. -->
       <button
         class="icon-btn icon-text project-settings-btn"
+        bind:this={projectSettingsBtnEl}
         onclick={onOpenProjectSettings}
         title="Book setup"
         aria-label="Book setup"

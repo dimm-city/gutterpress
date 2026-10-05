@@ -34,7 +34,8 @@ This project follows [Semantic Versioning](https://semver.org/).
   dialogs before.
 - **Reader or author** (Settings → App). Gutterpress now asks how you use
   it. A reader sees just the pages: Edit/Read, Setup and Publish are gone
-  from the toolbar and the book opens in Read. An author gets everything.
+  from the toolbar, the left panel offers only Books and TOC, and the book
+  opens in Read. An author gets everything.
   New installs start as a reader; the choice is remembered.
 - **Problems and the save state belong to editing.** The Problems badge and
   the "Edits saved" indicator moved from the status bar to the editor

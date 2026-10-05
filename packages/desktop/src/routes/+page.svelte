@@ -1017,6 +1017,7 @@
 
   // The Publish button element — the wizard's focus-restore target.
   let publishBtnEl = $state<HTMLButtonElement | undefined>(undefined);
+  let projectSettingsBtnEl = $state<HTMLButtonElement | undefined>(undefined);
 
   // True below the single-pane breakpoint. Assigned by the matchMedia
   // subscription further down; declared here so the derived below can read it.
@@ -2756,6 +2757,7 @@
     {publishDisabled}
     onPublish={() => (publishOpen = true)}
     bind:publishBtnEl
+    bind:projectSettingsBtnEl
     {publishHints}
     publishWarning={lifecycle.saveWarning}
     showProjectSettings={toolbarProjectOpen}
@@ -2772,6 +2774,7 @@
       bind:open={leftPanelOpen}
       bind:width={leftPanelWidth}
       bind:activeTab={leftPanelTab}
+      {readerMode}
       projectDir={lifecycle.currentDir}
       projectDisplayName={lifecycle.currentFolderDisplayName}
       projectCapabilities={projectSession.projectCapabilities}
@@ -3149,21 +3152,22 @@
   onCloseBook={() => lifecycle.stopPreview()}
 />
 {#if projectSettingsOpen}
-  <!-- Book settings (manifest), in the shared AppView layer. Keyed by
-       projectDir so a project switch can never leave stale section state
-       (drafts, theme lists) resident under the new project. -->
-  {#key lifecycle.currentDir}
-    <ProjectSettingsView
-      projectDir={lifecycle.currentDir}
-      repoRoot={projectSession.repoRoot}
-      initialTab={projectSettingsTab}
-      {toast}
-      onClose={closeProjectSettings}
-      onEditRawCss={(path) => { closeProjectSettings(); openStyleFile(path); }}
-      onOpenAccounts={() => { closeProjectSettings(); openSettings("connections"); }}
-      onVersionHistoryEnabled={(dir) => void projectSession.classify(dir)}
-    />
-  {/key}
+  <!-- Book settings (manifest), in the shared AppView layer. Mounted fresh per
+       open; a project switch closes it (lifecycle resetExtras), so no stale
+       section state can outlive its project. No {#key} wrapper: Svelte 5
+       transitions are local, and a key block between the {#if} and the view
+       would swallow AppView's fade in both directions. -->
+  <ProjectSettingsView
+    projectDir={lifecycle.currentDir}
+    repoRoot={projectSession.repoRoot}
+    initialTab={projectSettingsTab}
+    {toast}
+    triggerEl={projectSettingsBtnEl}
+    onClose={closeProjectSettings}
+    onEditRawCss={(path) => { closeProjectSettings(); openStyleFile(path); }}
+    onOpenAccounts={() => { closeProjectSettings(); openSettings("connections"); }}
+    onVersionHistoryEnabled={(dir) => void projectSession.classify(dir)}
+  />
 {/if}
 
 {#if openBookOpen}
