@@ -222,6 +222,73 @@ async function main() {
 
   console.log("[desktop-test] PASS native-engine page navigation");
 
+  // ── Wheel page flip (#301) ─────────────────────────────────────────────────
+  {
+    const wheel = (windowObj, init) => {
+      const e = { type: "wheel", deltaX: 0, deltaY: 0, deltaMode: 0, ctrlKey: false, defaultPrevented: false, ...init };
+      e.preventDefault = () => { e.defaultPrevented = true; };
+      windowObj.dispatchEvent(e);
+      return e;
+    };
+    const quiet = () => new Promise((r) => setTimeout(r, 260));
+
+    // Spread (two-column) view: one flick turns two pages, smoothly.
+    {
+      const sheets = [1, 2, 3, 4, 5, 6].map((n) => makeSheet(n));
+      const { api, windowObj } = loadNativePreviewApi(sheets);
+      api.setViewMode("two-column", true);
+      api.getTotalPages();
+      const first = wheel(windowObj, { deltaY: 100 });
+      assert.equal(first.defaultPrevented, true, "a page that fits: the wheel is taken over");
+      assert.equal(api.getCurrentPage(), 3, "spread: one flick turns two pages");
+      assert.deepEqual(sheets[2].scrollIntoViewCalls.at(-1).behavior, "smooth", "the flip animates");
+      // The rest of the same gesture (a fast spin, or a trackpad's inertia) is swallowed.
+      wheel(windowObj, { deltaY: 100 });
+      wheel(windowObj, { deltaY: 100 });
+      assert.equal(api.getCurrentPage(), 3, "one gesture turns one step");
+      await quiet();
+      wheel(windowObj, { deltaY: -120 });
+      assert.equal(api.getCurrentPage(), 1, "scrolling back flips back");
+    }
+
+    // Single view: one page per flick; small trackpad deltas accumulate.
+    {
+      const sheets = [1, 2, 3].map((n) => makeSheet(n));
+      const { api, windowObj } = loadNativePreviewApi(sheets);
+      api.setViewMode("single", true);
+      api.getTotalPages();
+      wheel(windowObj, { deltaY: 20 });
+      wheel(windowObj, { deltaY: 20 });
+      assert.equal(api.getCurrentPage(), 1, "below the threshold nothing turns yet");
+      wheel(windowObj, { deltaY: 20 });
+      assert.equal(api.getCurrentPage(), 2, "single: accumulated deltas turn one page");
+      await quiet();
+      wheel(windowObj, { deltaY: 4, deltaMode: 1 }); // 4 lines = 64px
+      assert.equal(api.getCurrentPage(), 3, "line-mode deltas count as lines");
+    }
+
+    // Left alone: pinch/Ctrl+wheel zoom, sideways swipes, and pages taller
+    // than the viewport (high zoom), where the wheel must scroll normally.
+    {
+      const sheets = [1, 2, 3].map((n) => makeSheet(n));
+      const { api, windowObj } = loadNativePreviewApi(sheets);
+      api.setViewMode("single", true);
+      api.getTotalPages();
+      assert.equal(wheel(windowObj, { deltaY: 200, ctrlKey: true }).defaultPrevented, false, "Ctrl+wheel is zoom");
+      assert.equal(wheel(windowObj, { deltaX: 300, deltaY: 50 }).defaultPrevented, false, "a sideways swipe scrolls sideways");
+      assert.equal(api.getCurrentPage(), 1);
+
+      const tall = [1, 2].map((n) => makeSheet(n, 400, 1400));
+      const big = loadNativePreviewApi(tall);
+      big.api.setViewMode("single", true);
+      big.api.getTotalPages();
+      const e = wheel(big.windowObj, { deltaY: 200 });
+      assert.equal(e.defaultPrevented, false, "a page taller than the viewport scrolls normally");
+      assert.equal(big.api.getCurrentPage(), 1);
+    }
+    console.log("[desktop-test] PASS wheel page flip (#301)");
+  }
+
   // ── getContextTargetAt: kind precedence + payload shape (protocol v4,
   // docs/inline-editing-plan.md §3.1) ────────────────────────────────────────
   const contextHtml = `

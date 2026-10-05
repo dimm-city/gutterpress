@@ -82,16 +82,18 @@
     return (bestArea > 0 ? best : nearest) + 1;
   }
 
-  function scrollToCurrentPage() {
+  function scrollToCurrentPage(smooth) {
     if (pages.length === 0) return;
     var page = clampPage(currentPage);
     currentPage = page;
-    ignoreScrollUntil = Date.now() + 300;
+    // A smooth scroll is still moving when the plain 300ms guard expires, and
+    // detectVisiblePage would then report the page it is passing through.
+    ignoreScrollUntil = Date.now() + (smooth ? 700 : 300);
     // Native's rows can be wider than the viewport (a long chapter scrolls
     // horizontally within its own row) — align the target sheet's left edge
     // to the viewport's left edge (matching detectVisiblePage's `refX`).
     pages[page - 1].scrollIntoView({
-      behavior: 'instant',
+      behavior: smooth ? 'smooth' : 'instant',
       block: 'start',
       inline: 'start'
     });
@@ -1504,6 +1506,55 @@
     scrollTimer = setTimeout(publishScrollPosition, 150);
   });
   window.addEventListener('resize', scheduleViewportChanged);
+
+  // Wheel / trackpad page flip (#301). Viewer tooling, not pagination: it
+  // only chooses which already-laid-out page to show. It lives here, in the
+  // book document, because wheel events over a cross-origin iframe never
+  // reach the host page.
+  //
+  // One flick turns one step — the same 1 page (single view) or 2 pages
+  // (spread) the arrow keys move. A gesture is every wheel event until the
+  // wheel has been quiet for WHEEL_GESTURE_IDLE_MS, so a fast mouse spin or a
+  // trackpad's inertia tail turns exactly one step. It applies only while the
+  // current page fits the viewport: when a page is taller (high zoom), the
+  // wheel scrolls normally so the author can read all of it. Pinch / Ctrl+
+  // wheel (zoom), sideways swipes and in-place editing are left alone.
+  var WHEEL_FLIP_PX = 50;
+  var WHEEL_GESTURE_IDLE_MS = 220;
+  var wheelAccum = 0;
+  var wheelTurned = false;
+  var wheelIdleTimer = null;
+  function wheelDeltaPx(e) {
+    if (e.deltaMode === 1) return e.deltaY * 16; // lines
+    if (e.deltaMode === 2) return e.deltaY * window.innerHeight; // pages
+    return e.deltaY;
+  }
+  function currentPageFitsViewport() {
+    if (pages.length === 0) refreshPages();
+    var sheet = pages[clampPage(currentPage) - 1];
+    return !!sheet && sheet.getBoundingClientRect().height <= window.innerHeight + 1;
+  }
+  window.addEventListener('wheel', function (e) {
+    if (e.ctrlKey || edit || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+    if (!currentPageFitsViewport()) return;
+    e.preventDefault();
+    if (wheelIdleTimer) clearTimeout(wheelIdleTimer);
+    wheelIdleTimer = setTimeout(function () {
+      wheelIdleTimer = null;
+      wheelAccum = 0;
+      wheelTurned = false;
+    }, WHEEL_GESTURE_IDLE_MS);
+    if (wheelTurned) return;
+    wheelAccum += wheelDeltaPx(e);
+    if (Math.abs(wheelAccum) < WHEEL_FLIP_PX) return;
+    wheelTurned = true;
+    refreshPages();
+    var target = clampPage(currentPage + (wheelAccum > 0 ? 1 : -1) * pageStep());
+    if (target === currentPage) return;
+    currentPage = target;
+    scrollToCurrentPage(true);
+    api.notifyPageChange();
+  }, { passive: false });
 
   // Reset to page 1, scroll to top, and announce completion once the native
   // viewer's pagination finishes.

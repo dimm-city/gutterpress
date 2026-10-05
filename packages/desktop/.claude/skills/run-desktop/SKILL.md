@@ -44,7 +44,7 @@ btns
 EOF2
 ```
 Then Read the PNGs (`/tmp/shots/editor.png`, ...). Look at them; a blank frame is a failure.
-Commands: `shot name`, `click sel`, `fill sel | value`, `press Key`, `move x y` (hover), `size w h`, `wait ms`,
+Commands: `shot name`, `click sel`, `fill sel | value`, `press Key`, `move x y` (hover), `wheel dx dy` (a real wheel at the pointer — `move` there first), `size w h`, `wait ms`,
 `text` (dump body text), `btns` (visible controls with x,y,w,h), `eval js`.
 Failed commands print `FAIL ...` and the script continues. Pass `""` as the book dir to stay on the welcome screen.
 Useful selectors: `[aria-label='Book setup']` (toolbar button; the panel it opens is `[aria-label='Book settings']`), `[aria-label='Close book settings']`,
