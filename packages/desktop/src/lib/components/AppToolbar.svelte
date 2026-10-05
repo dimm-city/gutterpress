@@ -19,9 +19,9 @@
    *    Least important goes first, and every control that turns icon-only
    *    keeps its aria-label and tooltip. The container is the toolbar's
    *    content box (window width − 24px), so a 900px window measures 876px:
-   *      ≤1150px  Edit/Read segmented group → dropdown menu, publish
-   *               hints and the Setup label drop
-   *      ≤875px   the action buttons drop their text labels, path trims
+   *      ≤1150px  publish hints drop, title/path cap
+   *      ≤875px   Edit/Read segmented group → dropdown menu, the action
+   *               buttons (Setup included) drop their text labels, path drops
    *      ≤620px   title/path, mode menu, Focus, separators, hints drop
    *    The narrow layout (≤820px window) adds the pane tabs to the end
    *    cluster.
@@ -318,7 +318,7 @@
       <!-- Book setup (manifest) — beside the mode control. Rendered on
            narrow layouts too (the tab bar replaces the mode control there,
            but book setup must stay reachable). Its text label yields at the
-           ≤1150px stage, before the action buttons'; aria-label and tooltip stay. -->
+           ≤875px stage with the action buttons'; aria-label and tooltip stay. -->
       <button
         class="icon-btn icon-text project-settings-btn"
         onclick={onOpenProjectSettings}
@@ -679,13 +679,9 @@
 
   /* ---- Collapse stages (see the header comment for the full table) ---- */
   @container (max-width: 1150px) {
-    /* Swap the inline view-mode buttons for the compact menu button; Setup
-       drops its text label (icon, tooltip and aria-label stay) and the
-       hints yield from here down. */
-    .mode-group { display: none; }
-    details.mode-menu { display: inline-block; }
+    /* The hints yield from here down: the full bar is ~650px wide, but two
+       hints beside a disabled Publish can add ~460px more. */
     .save-hint { display: none; }
-    .project-settings-btn .btn-label { display: none; }
     /* The title ellipsizes (full text in its tooltip). */
     .doc-title { max-width: 120px; }
     .path { max-width: 100px; }
@@ -693,7 +689,10 @@
   @container (max-width: 875px) {
     /* Icon-only action buttons (aria-label/title keep them accessible; 875
        is what keeps their labels on a 900px window); the path (URL mode)
-       yields entirely, the URL title with it. */
+       yields entirely, the URL title with it. The inline view-mode buttons
+       swap for the compact menu button (#316: kept visible at 1024px). */
+    .mode-group { display: none; }
+    details.mode-menu { display: inline-block; }
     .view-label { display: none; }
     .btn-label { display: none; }
     .path { display: none; }
