@@ -129,7 +129,7 @@
       case "https-connect-server":
         return "This book's online repository is on a Git server Gutterpress doesn't know yet. Connect that server in Settings > Accounts to prepare it for syncing.";
       case "ready-to-sync":
-        return "This server is connected. Use Sync Changes in the toolbar to send your work to the online repository.";
+        return "This server is connected. To back up your work online, click the save status at the bottom of the window and choose Back up now.";
       case "ssh-use-own-tools":
         return "This book's online address uses SSH (git@…). Everything on this computer works — preview, versions, history, restore. To sync, use your usual Git tool.";
     }
