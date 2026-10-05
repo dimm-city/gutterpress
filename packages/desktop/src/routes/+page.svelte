@@ -1287,8 +1287,12 @@
   // independent async starts: when settings land LAST, the project-open path
   // already ran `ensureEditorFile()` while the workspace still looked like
   // viewer mode, and nothing else would ever load the editor component.
+  // A role change (Settings → App) arrives here too, and it changes the
+  // derived view mode: push it to the viewer the way setMode does, or the
+  // pages stay in the old column count until the next full render.
   const modeSink = settingsChangeGuard<WorkspaceMode>((m) => {
     mode = m;
+    zoomView.applyViewMode(viewMode);
     if (m !== "viewer") loadEditorModule();
   });
   // Autosave: the buffer reads the setting per edit, so turning it back ON
