@@ -1515,12 +1515,17 @@
   // One flick turns one step — the same 1 page (single view) or 2 pages
   // (spread) the arrow keys move. A gesture is every wheel event until the
   // wheel has been quiet for WHEEL_GESTURE_IDLE_MS, so a fast mouse spin or a
-  // trackpad's inertia tail turns exactly one step. It applies only while the
-  // current page fits the viewport: when a page is taller (high zoom), the
-  // wheel scrolls normally so the author can read all of it. Pinch / Ctrl+
-  // wheel (zoom), sideways swipes and in-place editing are left alone.
+  // trackpad's inertia tail turns exactly one step.
+  //
+  // A page taller than the viewport (fit-width on a short window, high zoom)
+  // is READ first: while there is more of it in the wheel's direction, the
+  // wheel scrolls normally, and only a gesture that starts at its edge turns
+  // the page. The choice is made once per gesture, so the momentum of reading
+  // down to a page's end never turns the page by itself. Pinch / Ctrl+wheel
+  // (zoom), sideways swipes and in-place editing are left alone.
   var WHEEL_FLIP_PX = 50;
   var WHEEL_GESTURE_IDLE_MS = 220;
+  var wheelGesture = null; // null | 'scroll' | 'flip'
   var wheelAccum = 0;
   var wheelTurned = false;
   var wheelIdleTimer = null;
@@ -1529,21 +1534,28 @@
     if (e.deltaMode === 2) return e.deltaY * window.innerHeight; // pages
     return e.deltaY;
   }
-  function currentPageFitsViewport() {
+  // More of the current page lies beyond the viewport edge in direction `dir`.
+  function pageContinuesPastViewport(dir) {
     if (pages.length === 0) refreshPages();
     var sheet = pages[clampPage(currentPage) - 1];
-    return !!sheet && sheet.getBoundingClientRect().height <= window.innerHeight + 1;
+    if (!sheet) return false;
+    var r = sheet.getBoundingClientRect();
+    return dir > 0 ? r.bottom > window.innerHeight + 1 : r.top < -1;
   }
   window.addEventListener('wheel', function (e) {
-    if (e.ctrlKey || edit || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
-    if (!currentPageFitsViewport()) return;
-    e.preventDefault();
+    if (e.ctrlKey || edit || e.deltaY === 0 || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
     if (wheelIdleTimer) clearTimeout(wheelIdleTimer);
     wheelIdleTimer = setTimeout(function () {
       wheelIdleTimer = null;
+      wheelGesture = null;
       wheelAccum = 0;
       wheelTurned = false;
     }, WHEEL_GESTURE_IDLE_MS);
+    if (wheelGesture === null) {
+      wheelGesture = pageContinuesPastViewport(e.deltaY > 0 ? 1 : -1) ? 'scroll' : 'flip';
+    }
+    if (wheelGesture === 'scroll') return;
+    e.preventDefault();
     if (wheelTurned) return;
     wheelAccum += wheelDeltaPx(e);
     if (Math.abs(wheelAccum) < WHEEL_FLIP_PX) return;

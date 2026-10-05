@@ -91,6 +91,13 @@ function loadNativePreviewApi(sheets, runs = []) {
   };
 
   for (const [i, s] of sheets.entries()) {
+    // A real scrollIntoView moves the viewport to the sheet; the wheel flip
+    // reads the landed page's edges, so the stub must too.
+    const recordScroll = s.scrollIntoView;
+    s.scrollIntoView = (opts) => {
+      recordScroll.call(s, opts);
+      windowObj.scrollY = i * 900;
+    };
     s.getBoundingClientRect = () => ({
       top: i * 900 - windowObj.scrollY,
       bottom: i * 900 - windowObj.scrollY + s.offsetHeight,
@@ -267,8 +274,7 @@ async function main() {
       assert.equal(api.getCurrentPage(), 3, "line-mode deltas count as lines");
     }
 
-    // Left alone: pinch/Ctrl+wheel zoom, sideways swipes, and pages taller
-    // than the viewport (high zoom), where the wheel must scroll normally.
+    // Left alone: pinch/Ctrl+wheel zoom and sideways swipes.
     {
       const sheets = [1, 2, 3].map((n) => makeSheet(n));
       const { api, windowObj } = loadNativePreviewApi(sheets);
@@ -277,14 +283,32 @@ async function main() {
       assert.equal(wheel(windowObj, { deltaY: 200, ctrlKey: true }).defaultPrevented, false, "Ctrl+wheel is zoom");
       assert.equal(wheel(windowObj, { deltaX: 300, deltaY: 50 }).defaultPrevented, false, "a sideways swipe scrolls sideways");
       assert.equal(api.getCurrentPage(), 1);
+    }
 
-      const tall = [1, 2].map((n) => makeSheet(n, 400, 1400));
-      const big = loadNativePreviewApi(tall);
-      big.api.setViewMode("single", true);
-      big.api.getTotalPages();
-      const e = wheel(big.windowObj, { deltaY: 200 });
-      assert.equal(e.defaultPrevented, false, "a page taller than the viewport scrolls normally");
-      assert.equal(big.api.getCurrentPage(), 1);
+    // A page taller than the viewport is read first: the wheel scrolls
+    // normally while more of the page lies ahead, and only a NEW gesture that
+    // starts at the page's edge turns it.
+    {
+      const tall = [1, 2, 3].map((n) => makeSheet(n, 400, 1400)); // viewport is 900
+      const { api, windowObj } = loadNativePreviewApi(tall);
+      api.setViewMode("single", true);
+      api.getTotalPages();
+      const reading = wheel(windowObj, { deltaY: 200 });
+      assert.equal(reading.defaultPrevented, false, "more of the page below: the wheel scrolls normally");
+      assert.equal(api.getCurrentPage(), 1);
+      // The same gesture reaches the bottom of the page: its momentum must not turn it.
+      windowObj.scrollY = 500; // page 1 now ends exactly at the viewport's bottom
+      assert.equal(wheel(windowObj, { deltaY: 200 }).defaultPrevented, false, "the reading gesture keeps scrolling");
+      assert.equal(api.getCurrentPage(), 1, "reading to the end of a page never turns it in the same gesture");
+      await quiet();
+      const flick = wheel(windowObj, { deltaY: 200 });
+      assert.equal(flick.defaultPrevented, true, "a new gesture at the page's end turns it");
+      assert.equal(api.getCurrentPage(), 2);
+      // Back up: page 2's top is in view, so a gesture upward turns back.
+      await quiet();
+      windowObj.scrollY = 900;
+      wheel(windowObj, { deltaY: -200 });
+      assert.equal(api.getCurrentPage(), 1, "at the top of a page, scrolling up turns back");
     }
     console.log("[desktop-test] PASS wheel page flip (#301)");
   }
