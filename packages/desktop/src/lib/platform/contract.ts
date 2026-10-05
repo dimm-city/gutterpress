@@ -3,18 +3,17 @@
  *
  * `PlatformAdapter` (the narrow, genuinely host-divergent primitive surface) is
  * the canonical contract and lives in `gutterpress`. The desktop adds
- * `HostServices` — the host RPC surface (preview/build/doctor/prefs/updater/
- * dialogs) that is *also* host-divergent (Electron IPC today, HTTP in a future
- * PWA) but is desktop-specific, so it is defined here rather than in the lib.
+ * `HostServices` — the host RPC surface (preview/build/updater/push events)
+ * that is desktop-specific, so it is defined here rather than in the lib.
  *
- * The app consumes `Platform` = `PlatformAdapter & HostServices` via
+ * The app consumes `Platform` (part of `PlatformAdapter` + `HostServices`) via
  * `getPlatform()`. It must NOT touch `window.electron` directly — that access
  * is confined to `electron-adapter.ts`.
  *
  * This file is the SEAM-INTERFACE file: `HostServices`, `ElectronBridge`,
  * `Platform`, and the small cluster of types those interfaces' members
- * reference directly (`UpdaterApi`, `FolderRef`/`FileRef`, `PreviewStartArgs`/
- * `BuildArgs`, `PlatformCapabilities`, `NativeThemeState`,
+ * reference directly (`UpdaterApi`, `FolderRef`, `PreviewStartArgs`/
+ * `BuildArgs`, `NativeThemeState`,
  * `FolderChangedEvent`, and the sync status vocabulary —
  * `SyncStatus`/`SyncState`). Plain request/response DTOs that the seam does NOT
  * reference — the ~30 shapes server routes return (extension manager,
@@ -158,35 +157,16 @@ export interface UpdaterApi {
 /**
  * A host-neutral reference to a project folder (#49).
  *
- * The app-facing contract deals in `FolderRef`, never raw path strings, so the
- * UI makes no assumptions about path-string semantics. On Electron the `key` is
- * the folder's absolute path; on a future PWA (File System Access API) it will
- * be a serialized FSA handle id. The `displayName` is precomputed by the adapter
- * (the folder basename) so the UI never has to split a path itself.
+ * `key` is the folder's absolute path; `displayName` is its basename,
+ * precomputed so the UI never has to split a path itself.
  */
 export interface FolderRef {
-  /** Stable key for equality / dedup / persistence. Electron: absolute path. PWA: serialized FSA handle id. */
+  /** Stable key for equality / dedup / persistence: the absolute path. */
   key: string;
   /** Human-readable basename, precomputed by the adapter. */
   displayName: string;
 }
 
-/**
- * A host-neutral reference to a FILE (#61), analogous to {@link FolderRef}.
- *
- * The app-facing contract returns a `FileRef` from the native file picker
- * instead of a raw path string, so the UI makes no assumptions about path-string
- * semantics. On Electron the `key` is the file's absolute path; on a future PWA
- * (File System Access API) it will be a serialized FSA file-handle id. The
- * `displayName` is precomputed by the adapter (the file basename) so the UI never
- * has to split a path itself.
- */
-export interface FileRef {
-  /** Stable key for IPC / persistence. Electron: absolute path. PWA: serialized FSA handle id. */
-  key: string;
-  /** Human-readable basename, precomputed by the adapter. */
-  displayName: string;
-}
 
 // ProjectState and DesktopPrefs are imported from shared-types above
 // (re-exported at the top of this file). DesktopPrefs.leftPanel is typed as
@@ -350,28 +330,12 @@ export interface NativeThemeState {
   shouldUseDarkColors: boolean;
 }
 
-/** Coarse host capability flags (#49). Electron returns all-true. */
-export interface PlatformCapabilities {
-  /** The host can write build output to a real, user-chosen filesystem path. */
-  nativeSavePath: boolean;
-  /** The host can reveal a file/folder in the OS file manager. */
-  showInFolder: boolean;
-  /** The host can persist a folder handle across sessions. */
-  persistentFolderAccess: boolean;
-}
-
 /**
  * Host RPC services. Host-divergent (IPC vs HTTP) but not part of the narrow
  * filesystem/secrets primitive surface, so kept separate from PlatformAdapter.
  */
 export interface HostServices {
   readonly updater: UpdaterApi;
-
-  /**
-   * Coarse host capability flags (#49). Lets the UI degrade gracefully
-   * without branching on the platform name. Electron: all-true.
-   */
-  capabilities(): PlatformCapabilities;
 
   // Native (OS) theme (#48) — push channel kept (main→renderer push, not request/reply)
   onNativeThemeUpdated(cb: (state: NativeThemeState) => void): () => void;
@@ -382,14 +346,6 @@ export interface HostServices {
    * through the same callback.
    */
   onOpenMarkdownFile(cb: (event: MarkdownFileLaunchEvent) => void): () => void;
-
-  // ── Local version history (#13) ───────────────────────────────────────────
-  /**
-   * Save an explicit snapshot of the project's current state. `message` is
-   * optional author text; the host substitutes a default when blank. Rejects
-   * with a friendly message when nothing has changed since the last snapshot.
-   */
-  saveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry>;
 
   // ── Managed GitHub integration (#15, ADR 0006) ────────────────────────────
   // Two-phase connect: `connectGitHubStart` begins the device flow and
@@ -475,30 +431,19 @@ export interface HostServices {
 }
 
 /**
- * The complete host surface the desktop app consumes through `getPlatform()`.
- *
- * `openFolder` is overridden here (#49) to return a host-neutral `FolderRef`
- * instead of the lib `PlatformAdapter`'s raw `string` path — so the renderer
- * never assumes path-string semantics; the Electron adapter wraps the
- * picker's path. Every other `PlatformAdapter` primitive is inherited
- * unchanged.
+ * The complete host surface the desktop app consumes through `getPlatform()`:
+ * the file primitives it uses from the lib's `PlatformAdapter`, plus
+ * `HostServices`.
  */
-export interface Platform extends Omit<PlatformAdapter, "openFolder">, HostServices {
-  /**
-   * Open a native folder picker. Resolves with a {@link FolderRef} (key +
-   * precomputed displayName), or null when the user cancels.
-   */
-  openFolder(): Promise<FolderRef | null>;
-
-}
+export interface Platform
+  extends Pick<PlatformAdapter, "readFile" | "writeFile" | "statFile" | "watchFolder">,
+    HostServices {}
 
 /**
  * The raw `window.electron` bridge shape exposed by `electron/preload.ts`.
- * Differs from `Platform` only in the members the adapter maps/owns: the fs IPC
- * (`openDirectory` → `Platform.openFolder`, `readFile`, `writeFile`), the
+ * Differs from `HostServices` only in the members the adapter maps: the
  * FolderRef translation seam (`startPreview`/`build` keep raw path strings here;
- * #49), and `capabilities()` (synthesised by the adapter, not an IPC — Omitted
- * so it can't be called on the raw bridge).
+ * #49) and the calls that moved to server routes.
  * ONLY `electron-adapter.ts` (and the `Window` global) should reference this —
  * everything else goes through `Platform`.
  */
@@ -507,7 +452,6 @@ export interface ElectronBridge
     HostServices,
     | "startPreview"
     | "build"
-    | "capabilities"
     // ARCH review #8: these moved to server routes (api.sync.setAutoSync
     // / api.remote.cloneRepository) — the raw bridge no longer exposes them.
     // `updater` is narrowed below instead of omitted: applyNow/onEvent stay

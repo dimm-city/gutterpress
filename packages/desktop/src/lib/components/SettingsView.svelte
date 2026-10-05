@@ -94,7 +94,7 @@
   // installed until the user presses the button here. The status query is
   // harmless everywhere (it reports `supported: false` off-Linux, in dev, and
   // outside an AppImage) — the whole section stays hidden unless supported, so
-  // Windows/macOS/PWA users never see a Linux-only control.
+  // Windows/macOS users never see a Linux-only control.
   let appImage = $state<AppImageIntegrationStatus | null>(null);
   let appImageBusy = $state(false);
   let appImageNotice = $state("");
@@ -145,8 +145,8 @@
   // Every copy is listed, including ones that so far exist only online;
   // switching to one of those creates it locally first. Hidden entirely — not
   // shown with an error — when there's nothing to switch between: no project
-  // open, the browser target (no local git access at all), or `listBranches`
-  // reports `null` (a plain local-folder, which has no repository). Loaded
+  // open, or `listBranches` reports `null` (a plain local-folder, which has no
+  // repository). Loaded
   // once on mount, reloaded after a switch; no `$effect` (CLAUDE.md §8).
   let copies = $state<{ current: string | null; branches: string[]; remoteOnly: string[] } | null>(null);
   let copiesLoading = $state(true);
@@ -616,7 +616,7 @@
              broken: the copy you went looking for was simply missing, with
              nothing to tell that apart from a bug. Hidden entirely, never
              shown as a dead control, when there's nothing to switch between:
-             no project open, the browser target, or `copies` is null (a plain
+             no project open, or `copies` is null (a plain
              local-folder has no repository to have copies of). Vocabulary:
              "copy", never "branch", in every string below. -->
         {#if projectDir && !copiesLoading && copies}

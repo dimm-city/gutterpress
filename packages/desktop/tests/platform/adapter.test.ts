@@ -58,27 +58,15 @@ test("getPlatform() returns the memoised ElectronAdapter", () => {
   // @ts-expect-error test global
   globalThis.window = { electron: bridge };
   const p = getPlatform();
-  expect(p.platform).toBe("electron");
   expect(p).toBeInstanceOf(ElectronAdapter);
   expect(getPlatform()).toBe(p); // memoised
 });
 
-test("ElectronAdapter maps openFolder → openDirectory and delegates 1:1", async () => {
+test("ElectronAdapter unwraps FolderRef for build/startPreview and delegates 1:1", async () => {
   const { bridge, calls } = makeBridge();
   // @ts-expect-error test global
   globalThis.window = { electron: bridge };
   const p = new ElectronAdapter();
-
-  // openFolder now calls api.dialog.openDirectory() (a fetch POST), not bridge().openDirectory()
-  const origFetch = globalThis.fetch;
-  // @ts-expect-error test global
-  globalThis.fetch = async (_url: string) => ({ ok: true, json: async () => "/proj" });
-  try {
-    // #49: openFolder wraps the path string into a host-neutral FolderRef.
-    await expect(p.openFolder()).resolves.toEqual({ key: "/proj", displayName: "proj" });
-  } finally {
-    globalThis.fetch = origFetch;
-  }
 
   await p.build({ input: { key: "/proj", displayName: "proj" }, format: "pdf" });
   await p.startPreview({ input: { key: "/proj", displayName: "proj" } });
@@ -95,16 +83,6 @@ test("ElectronAdapter maps openFolder → openDirectory and delegates 1:1", asyn
   ]);
 });
 
-
-test("ElectronAdapter throws for scaffold-only methods (no IPC behind them)", () => {
-  const { bridge } = makeBridge();
-  // @ts-expect-error test global
-  globalThis.window = { electron: bridge };
-  const p = new ElectronAdapter();
-  // #12 secrets — still scaffolded; must throw a clear not-implemented error.
-  expect(() => p.getSecret("k")).toThrow(/not implemented/i);
-  expect(() => p.setSecret("k", "v")).toThrow(/not implemented/i);
-});
 
 test("ElectronAdapter delegates the #44 unsaved-changes surface 1:1 to the bridge", async () => {
   const { bridge, calls } = makeBridge();

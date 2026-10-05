@@ -7,7 +7,6 @@
  * the adapter, `+page.svelte`, and the editor/conflict components, replacing the
  * scattered inline `.split(/[\\/]/).pop()` / `.split("/").pop()` derivations.
  */
-import type { FileRef } from "./contract";
 
 /**
  * Last non-empty path segment, splitting on both POSIX and Windows separators.
@@ -45,13 +44,4 @@ export function isPathAtOrUnder(child: string, ancestor: string): boolean {
     child.startsWith(ancestor + "/") ||
     child.startsWith(ancestor + "\\")
   );
-}
-
-/**
- * Wrap a host file path into a host-neutral {@link FileRef} (#61), analogous to
- * the adapter's FolderRef wrapping (#49). `key` is the host path / FSA handle id;
- * `displayName` is the precomputed basename so the UI never splits a path itself.
- */
-export function fileRef(key: string): FileRef {
-  return { key, displayName: basenameOf(key) };
 }

@@ -21,8 +21,8 @@ Every feature area below is tagged with its implementation status:
 
 ## Scope
 
-This contract governs the **desktop application** — the desktop Electron app
-and its PWA/browser target (#33/#34, `docs/pwa-webadapter-plan.md`).
+This contract governs the **desktop application** (the Electron app). There
+is no browser/PWA target (CLAUDE.md §8).
 
 **Out of scope:** the CLI (`gutterpress new/build/preview/validate/publish`). The CLI
 is the power-user and CI surface (see the repo README: "a desktop application
@@ -37,7 +37,7 @@ contract and those documents conflict, the architecture documents win.**
 
 | Rule | Source | UX consequence |
 |---|---|---|
-| Renderer stays PWA-clean; host capabilities via server routes (default) or the Platform seam (push streams, BrowserWindow calls, FSA-divergent fs) | `CLAUDE.md` §8 | Theme import file IO, AI/publish network calls, preflight fs checks → server routes. Publish/build **progress streams** → the adapter/IPC push seam. No `node:*` or lib value-imports in the SPA. |
+| Renderer stays PWA-clean; host capabilities via server routes (default) or the Platform seam (push streams, BrowserWindow calls, host fs primitives) | `CLAUDE.md` §8 | Theme import file IO, AI/publish network calls, preflight fs checks → server routes. Publish/build **progress streams** → the adapter/IPC push seam. No `node:*` or lib value-imports in the SPA. |
 | Preview bridge protocol | ADR 0005 (removed in the 2026-07-29 docs cleanup) | Sync scroll, page navigation, outline, any preview overlay or overflow probe must go through the bridge. |
 | Plugins are plain markdown-it plugins; no plugin API; loader never auto-installs | `CLAUDE.md` §5 | Constrains §9 (Features) below. |
 | PDF rendering = Electron `printToPDF` (desktop) / a system Chromium driven over raw CDP (CLI); pure-JS tooling posture | ADR 0002 (removed in the 2026-07-29 docs cleanup) | Preflight/export UX; "export" not "download". |
@@ -50,8 +50,8 @@ contract and those documents conflict, the architecture documents win.**
 ## Vision Statement
 
 Gutterpress transforms markdown into beautifully paginated PDFs with zero layout
-friction. It meets authors where they work — in prose, in code, and (via the
-PWA) on mobile for writing and previewing — and stays invisible until they
+friction. It meets authors where they work — in prose and in code — and
+stays invisible until they
 need it. The interface disappears into the writing; the print engine makes the
 result look professional without requiring design expertise.
 
@@ -148,11 +148,6 @@ print theme are deliberately separated concepts; do not merge them back.
   single column with a **Markdown / CSS / Preview** tab bar, keyboard-aware
   via `visualViewport`. Any multi-tier breakpoint proposal is a PROPOSED
   change to this shipped behavior and needs an issue.
-- **Mobile primary navigation (PWA):** Write, Preview, Files, Settings.
-  **Publish is not a mobile tab** — PDF export/publish is capability-gated
-  off on web/mobile per #33's constraints ("PDF export stays desktop/CLI
-  only") and `docs/pwa-webadapter-plan.md`; where referenced on mobile it
-  shows "requires desktop".
 
 ### Keyboard shortcut map
 
@@ -351,24 +346,8 @@ Rules (shipped + refinements):
 Anti-patterns: toolbars that obscure content on scroll; unlabeled icon-only
 buttons.
 
-### 3. Mobile / PWA editor UX
+### 3. Saving and copies
 
-**Status: PARTIAL** — tracked in **#33 (closed, PR #63; the Safari/OPFS
-Phase 6 was struck 2026-08-23 — Gutterpress is Chromium-only)** and
-**#34 (closed)**. Normative implementation detail lives in
-`docs/pwa-webadapter-plan.md`; **where this section and that plan disagree,
-the plan wins.**
-
-- Write-first: single column, Markdown / CSS / Preview tabs (shipped 820px
-  behavior), bottom-reachable tab bar.
-- Keyboard toolbar (PROPOSED refinement — spec corrected):
-  - **Chromium (desktop and Android):** opt in with
-    `navigator.virtualKeyboard.overlaysContent = true`, then pin with
-    `position: fixed; bottom: env(keyboard-inset-height, 0px)`. This is the
-    whole spec — the VirtualKeyboard API exists in every supported browser, so
-    there is no engine without it to write a `visualViewport` fallback for
-    (the iOS Safari branch was struck 2026-08-23 with the Chromium-only ruling).
-  - `position: sticky` cannot pin above a keyboard; do not spec it.
 - **Auto-save is SHIPPED and works as follows** (do not respecify): a FIXED
   debounced disk save 500ms after the last edit (`EditorBuffer`) and an
   ALWAYS-ON crash-recovery draft 1000ms after the last edit, plus explicit
@@ -391,17 +370,6 @@ the plan wins.**
   in-progress edit first, so nothing is lost and nothing is ever forced; the
   editor/file tree/preview then show the new copy the same way they pick up
   any other external change.
-- Image insertion on mobile: system photo picker + camera (PROPOSED — gate on
-  the PWA file-write path).
-- Offline: the service worker app-shell precache shipped for #33 and was
-  deleted with the rest of the web target in 0.11.11. Offline cache
-  scope (one statement, used everywhere): **app shell + the last-opened
-  project (markdown, CSS, and referenced assets)** — "last 5 files" is not
-  enough to preview a project. Offline indicator copy: **"Working offline —
-  your files are saved locally."** There is no cloud sync; if the project
-  has a git remote, a separate conditional indicator reads "remote sync
-  paused — will resume when online."
-
 ### 4. Onboarding — progressive disclosure
 
 **Status: PARTIAL** (#25 wizard + templates, #27 project finder,
@@ -855,24 +823,6 @@ drawer.
   keys) is the SC 2.5.7 non-drag alternative.
 - Context menus: long-press on touch, right-click + `Shift+F10` on desktop.
 
-### PWA requirements
-
-**Status: no web target today.** Phases 1–5 shipped via #33/PR #63 and were
-deleted in 0.11.11 (commit b5e76d06) because no build reached them; see
-CLAUDE.md §8 for how a future browser UI should start. The requirements below
-still describe what that UI must do.
-
-- Installable per the plan; `display: standalone`; theme-color follows the
-  app theme.
-- Offline cache scope and indicator copy: see §3 (one definition, used
-  everywhere).
-- File access: File System Access API — present in every supported browser,
-  since the PWA targets Chrome/Edge and other Chromium browsers only — with the
-  handles persisted in IndexedDB. There is no
-  FSA-absent fallback and none is planned.
-- **PDF export and publishing are desktop/CLI-only** (#33 constraint): the
-  affordances are hidden or show "requires desktop" on web/mobile.
-
 ---
 
 ## Measurable quality gates
@@ -944,10 +894,6 @@ they are validated by usability testing, not by a wall-clock CI gate.
 | PDF export | ≤8s | `bench/novel-50p`; image-heavy budget (`bench/zine-24p`) not yet created |
 | Theme switch (hover sample-spread render) | ≤500ms | sample spread only — full-document re-apply is exempt above N pages and shows progress |
 
-Mobile/PWA performance targets are set in `docs/pwa-webadapter-plan.md`
-follow-ups with a named reference device — "mid-range Android" is not a
-device class.
-
 ### Satisfaction
 
 - SUS ≥80; task satisfaction ≥4.0/5 — measured in the quarterly usability
@@ -969,13 +915,9 @@ device class.
   sticky/keyboard toolbars must not cover the focused element.
 - Keyboard-only operability for every mouse-accessible feature.
 - Screen reader matrix (matches the real platforms — the app is Chromium on
-  every desktop OS and the PWA is Chromium-only, so no non-Chromium engine is
-  ever a test target):
+  every desktop OS, so no non-Chromium engine is ever a test target):
   - Windows: **NVDA + the app**;
   - macOS: **VoiceOver + the app**;
-  - PWA: NVDA + Chrome/Edge (Windows), VoiceOver + Chrome (macOS),
-    TalkBack + Chrome (Android). iOS is not a PWA target — its only engine is
-    WebKit.
 - Shipped precedent to match, not reinvent: **#22** (focus trap,
   WCAG SC 2.1.2) and **#21** (export-progress announcements, cancel,
   elapsed time).
@@ -1173,8 +1115,6 @@ Obsidian (panel flexibility, community themes) · Bear · Ulysses.
 
 **Publish:** Netlify (preflight + deploy log drawer) · Shopify (provider
 cards) · Leanpub (author-centric flow).
-
-**Mobile editors:** iA Writer iOS · 1Writer · Drafts.
 
 **Accessibility:** [WCAG 2.2 quick reference](https://www.w3.org/WAI/WCAG22/quickref/)
 · [Inclusive Components](https://inclusive-components.design/) (Heydon

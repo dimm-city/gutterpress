@@ -2,13 +2,8 @@
  * ElectronAdapter — the ONLY module permitted to CALL methods on
  * `window.electron`.
  *
- * Every implemented method delegates 1:1 to the preload bridge, so behaviour is
- * identical to the pre-#41 direct calls. The #44 surface is wired (statFile via
- * the fs server route; watchFolder/onFlushBeforeClose/onFolderChanged via the
- * bridge). Only getSecret/setSecret (#12) remain SCAFFOLDED — the contract/types
- * exist but there is no IPC behind them yet, so they throw a descriptive error
- * rather than delegate to a non-existent bridge method. Wire them up (preload +
- * main IPC) when implementing #12.
+ * Every method delegates 1:1 to the preload bridge or to an `api.*` server
+ * route.
  */
 import type {
   Platform,
@@ -21,13 +16,9 @@ import type {
   UrlPreviewBlockedEvent,
   UpdaterApi,
   NativeThemeState,
-  // PrintSafeWarning, ProblemEntry, MediaImageEntry, MediaImageDetails — removed (Phase 2C)
-  // TemplateInfo, SnippetEntry — removed (Phase 2D)
-  // ProjectExtensionEntry, ExtensionValidationResult, RecommendedExtension, ProjectStyle — route DTOs in dtos.ts, not seam types (Phase 2E)
   FileStat,
   FileWriteResult,
   FolderChangedEvent,
-  SnapshotEntry,
   DeviceCodeInfo,
   RemoteConnection,
   GoogleConnectStartResult,
@@ -36,11 +27,8 @@ import type {
   CloneRepositoryArgs,
   SyncOutcome,
   SyncStatus,
-  FolderRef,
-  PlatformCapabilities,
   MarkdownFileLaunchEvent,
 } from "./contract";
-import { basenameOf } from "./paths";
 import { api } from "$lib/api";
 
 function bridge(): ElectronBridge {
@@ -48,25 +36,13 @@ function bridge(): ElectronBridge {
   if (!b) {
     throw new Error(
       "ElectronAdapter used outside Electron (window.electron is undefined). " +
-        "Use getPlatform() so the correct adapter is selected.",
+        "The desktop app's preload script did not load.",
     );
   }
   return b;
 }
 
 export class ElectronAdapter implements Platform {
-  readonly platform = "electron" as const;
-
-  // ── PlatformAdapter primitives ──────────────────────────────────────────
-  // #49: translation seam — the bridge returns the chosen absolute path (a
-  // string); wrap it into a host-neutral FolderRef (key = path, displayName =
-  // basename) so the renderer never assumes path-string semantics.
-  async openFolder(): Promise<FolderRef | null> {
-    const path = await api.dialog.openDirectory();
-    if (path == null) return null;
-    return { key: path, displayName: basenameOf(path) };
-  }
-
   readFile(path: string): Promise<string> {
     return api.fs.readFile(path);
   }
@@ -75,28 +51,12 @@ export class ElectronAdapter implements Platform {
     return api.fs.writeFile(path, content);
   }
 
-  listDir(path: string): Promise<Array<{ name: string; path: string; isDir: boolean }>> {
-    return api.fs.listDir(path);
-  }
-
   statFile(path: string): Promise<FileStat> {
     return api.fs.statFile(path);
   }
 
   watchFolder(path: string, cb: () => void): () => void {
     return bridge().watchFolder(path, cb);
-  }
-
-  getSecret(_key: string): Promise<string | null> {
-    throw new Error(
-      "getSecret is not implemented yet — OS keychain support lands with source modes (#12).",
-    );
-  }
-
-  setSecret(_key: string, _value: string): Promise<void> {
-    throw new Error(
-      "setSecret is not implemented yet — OS keychain support lands with source modes (#12).",
-    );
   }
 
   // ── HostServices ────────────────────────────────────────────────────────
@@ -116,26 +76,12 @@ export class ElectronAdapter implements Platform {
     };
   }
 
-  // #49: Electron is the full-capability host — native save paths, OS file
-  // manager reveal, and persistent folder access are all available.
-  capabilities(): PlatformCapabilities {
-    return {
-      nativeSavePath: true,
-      showInFolder: true,
-      persistentFolderAccess: true,
-    };
-  }
-
   onNativeThemeUpdated(cb: (state: NativeThemeState) => void): () => void {
     return bridge().onNativeThemeUpdated(cb);
   }
 
   onOpenMarkdownFile(cb: (event: MarkdownFileLaunchEvent) => void): () => void {
     return bridge().onOpenMarkdownFile(cb);
-  }
-
-  saveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry> {
-    return api.vcs.saveSnapshot(projectDir, message);
   }
 
   // ── Managed GitHub integration (#15) — delegate 1:1 to the bridge ─────────

@@ -220,14 +220,6 @@
   });
   let publishOpen = $state(false);
 
-  // #33 Phase 4: PDF/build gating via the capabilities() seam (NOT a
-  // `platform === "web"` branch). `nativeSavePath` is true on the desktop host
-  // (Electron writes the PDF to a chosen path) and false on the web (no
-  // headless Chromium / printToPDF in the browser). When false the "Save PDF" control is
-  // replaced with a short "requires the desktop app" note (acceptance criterion).
-  // Desktop is UNCHANGED: nativeSavePath:true → canSavePdf:true → identical UI.
-  const canSavePdf = $derived(getPlatform().capabilities().nativeSavePath);
-
   // ── Left panel (#workspace-restructure) ───────────────────────────────────
   // State persisted via DesktopPrefs. Keyed separately from per-project state.
   let leftPanelOpen = $state(false);
@@ -2164,7 +2156,6 @@
         ctrlOrMeta: e.ctrlKey || e.metaKey,
         shift: e.shiftKey,
         editorFileOpen: !!editorFilePath,
-        canSavePdf,
       });
       if (saveCommand !== "none") {
         e.preventDefault();
@@ -2196,7 +2187,7 @@
         // open, so it never surprises writers by opening PDF export.
         case "export-pdf":
           e.preventDefault();
-          if (canSavePdf) exportController.savePdf();
+          exportController.savePdf();
           return;
         case "next":
           e.preventDefault();
@@ -2796,7 +2787,7 @@
     onPublish={() => (publishOpen = true)}
     bind:publishBtnEl
     {publishHints}
-    publishWarning={canSavePdf ? lifecycle.saveWarning : null}
+    publishWarning={lifecycle.saveWarning}
     showProjectSettings={toolbarProjectOpen}
     onOpenProjectSettings={openProjectConfig}
     {focus}
@@ -3215,7 +3206,6 @@
   <PublishWizard
     controller={publishController}
     projectDir={lifecycle.currentDir ?? ""}
-    {canSavePdf}
     buildArtifact={(opts) => exportController.buildTo(opts)}
     pickFolder={(defaultPath) => api.dialog.pickOutputFolder(defaultPath)}
     onShowInFolder={(path) => void api.shell.showInFolder(path).catch(() => {})}

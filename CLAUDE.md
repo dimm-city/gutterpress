@@ -477,9 +477,8 @@ the client bundle.
   in the SPA. Node-oriented libraries (postcss included) belong in the host.
 
 **Two seams, not one.** The route-first split (server route + `fetch()`) is
-the **default path** and the one most of the app actually uses today: 26
-files call `src/lib/api.ts` directly (`+page.svelte` alone has 39 `api.*`
-call sites), not through `getPlatform()`. The `Platform`/`HostServices` seam
+the **default path** and the one most of the app uses: components call
+`src/lib/api.ts` directly, not through `getPlatform()`. The `Platform`/`HostServices` seam
 (`src/lib/platform/contract.ts` + `ElectronAdapter`, reached via
 `import { getPlatform } from "$lib/platform"`) is real and still owns three
 narrower capability classes a plain route can't cover:
@@ -527,10 +526,7 @@ the renderer — run it in the host and expose it as a server route (default) or
 for the three narrower classes, through `getPlatform()`. Example: CSS
 print-safety linting (`checkCss`) is postcss-based, so it runs host-side (the
 `api/lint/check-css` server route) and the editor's lint gutter calls
-`getPlatform().checkCss(...)` — routed through the adapter here because
-CodeMirror's lint-source contract expects one async function to hand it, not
-because every route needs a `Platform` method; the route itself is still the
-(A) path.
+`api.lint.checkCss(...)`.
 
 **Svelte 5 conventions: `$effect` is banned in the SPA.** The rule exists in
 eslint (`no-restricted-syntax` in `packages/desktop/eslint.config.*`) — the
@@ -554,7 +550,7 @@ behind `getPlatform()`, a design the app had already left for `api.*` routes.
 A browser UI is still wanted later. When it is built, start from the same
 SvelteKit server and `/api` routes served by Node (e.g. adapter-node) rather
 than reviving a parallel browser adapter, and restore only what that design
-needs from history (`docs/pwa-webadapter-plan.md` names the commit). What was
+needs from history (`git checkout b5e76d06^ -- <path>`). What was
 deliberately KEPT for that day: the PWA-clean rule above, the node-free
 `gutterpress/render` subpath and both purity gates, and the shared DTO/type
 modules.

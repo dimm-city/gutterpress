@@ -10,7 +10,6 @@
    *   lib is pulled into the SPA bundle (§8 / ADR 0004).
    * - The component owns no editor knowledge: it calls `onInsert(text)` with the
    *   final text and `getSelectionText()` to seed "Save selection as snippet".
-   * - Desktop-only in v1 (file IO host gate); the trigger is hidden on web.
    *
    * Delete (M25) is a two-step inline confirm — the trash button arms on the
    * first click ("Delete?" in place, no separate element popping up under

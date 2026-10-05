@@ -252,8 +252,5 @@ Still open:
 - **Shell** — `tests/preview-shell-regression.test.mjs`: an open edit holds a
   hot-reload swap, and closing it applies the revision that arrived
   meanwhile.
-- **End-to-end** — `tests/integration/inline-editing.pw.mjs`: the menu action and
-  double-click both edit in the page, under real Electron. (Removed in
-  0.11.11: no CI job ever ran it.)
 - **Parity** — `scripts/native-parity-gate.ts` must stay green with an empty
   allowlist.

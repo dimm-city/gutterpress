@@ -50,7 +50,6 @@
   let {
     controller,
     projectDir,
-    canSavePdf,
     buildArtifact,
     pickFolder,
     onShowInFolder,
@@ -60,8 +59,6 @@
   }: {
     controller: PublishSectionController;
     projectDir: string;
-    /** PDF needs the desktop host; the web target offers the website only. */
-    canSavePdf: boolean;
     /** Build the book into `dir` (ExportController.buildTo): resolves with the
      *  artifact path, or null when canceled/failed (already toasted). */
     buildArtifact: (opts: { format: "pdf" | "html"; dir: string; validate: boolean }) => Promise<string | null>;
@@ -81,8 +78,7 @@
   let stepIndex = $state(0);
   // The local folder is always selected: it is where the book gets built.
   let selected = $state<Set<string>>(new Set([LOCAL]));
-  // svelte-ignore state_referenced_locally
-  let format = $state<"pdf" | "html">(canSavePdf ? "pdf" : "html");
+  let format = $state<"pdf" | "html">("pdf");
   let validate = $state(false);
   // The artifact the Publish step built (the PDF file or the website folder).
   let builtArtifact = $state<string | null>(null);
@@ -328,17 +324,15 @@
     {#if stepKind === "format"}
       <p class="lead">What to make of your book.</p>
       <ul class="dest-list">
-        {#if canSavePdf}
-          <li>
-            <label class="dest" class:selected={format === "pdf"}>
-              <input type="radio" name="pw-format" value="pdf" checked={format === "pdf"} onchange={() => setFormat("pdf")} />
-              <span class="dest-main">
-                <span class="dest-name">PDF</span>
-                <span class="dest-desc">Print-ready PDF using your book's page settings. (Ctrl+Shift+E saves one directly.)</span>
-              </span>
-            </label>
-          </li>
-        {/if}
+        <li>
+          <label class="dest" class:selected={format === "pdf"}>
+            <input type="radio" name="pw-format" value="pdf" checked={format === "pdf"} onchange={() => setFormat("pdf")} />
+            <span class="dest-main">
+              <span class="dest-name">PDF</span>
+              <span class="dest-desc">Print-ready PDF using your book's page settings. (Ctrl+Shift+E saves one directly.)</span>
+            </span>
+          </label>
+        </li>
         <li>
           <label class="dest" class:selected={format === "html"}>
             <input type="radio" name="pw-format" value="html" checked={format === "html"} onchange={() => setFormat("html")} />
@@ -349,9 +343,6 @@
           </label>
         </li>
       </ul>
-      {#if !canSavePdf}
-        <p class="muted small" role="note">PDF export requires the desktop app.</p>
-      {/if}
       {#if format === "pdf"}
         <label class="setting">
           <input type="checkbox" bind:checked={validate} />

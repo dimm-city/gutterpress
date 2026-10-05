@@ -11,7 +11,6 @@ export { DEFAULT_SETTINGS } from "./contract";
 
 export type {
   Platform,
-  PlatformAdapter,
   HostServices,
   ElectronBridge,
   UpdaterApi,
@@ -22,8 +21,6 @@ export type {
   AppSettings,
   DeepPartial,
   FolderRef,
-  FileRef,
-  PlatformCapabilities,
   PreviewStartArgs,
   PreviewStartResult,
   BuildArgs,

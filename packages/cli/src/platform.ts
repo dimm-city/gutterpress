@@ -14,9 +14,8 @@
  */
 
 /**
- * The narrow set of capabilities whose implementation genuinely differs between
- * a desktop (Electron) host and a browser (PWA) host: native dialogs, raw file
- * IO, filesystem watching, and OS-keychain-backed secrets.
+ * The narrow set of host primitives: native dialogs, raw file IO, filesystem
+ * watching, and OS-keychain-backed secrets.
  *
  * Host RPC services that are *also* host-divergent (preview/build/doctor/prefs/
  * updater) are modelled separately as {@link HostServices} so this primitive
@@ -52,13 +51,11 @@ export interface PlatformAdapter {
   /**
    * Prompt the user to choose a project folder.
    * @returns the absolute path, or `null` if the user cancelled.
-   * Electron: native directory dialog. Web: File System Access API.
    */
   openFolder(): Promise<string | null>;
 
   /**
    * Read a UTF-8 text file by absolute path.
-   * Editor seam for #38/#39 — no current consumer in 0.4.0.
    */
   readFile(path: string): Promise<string>;
 
@@ -73,8 +70,7 @@ export interface PlatformAdapter {
   /**
    * List the immediate entries of a directory (single level, no recursion).
    * @returns each entry's `name`, absolute `path`, and whether it `isDir`.
-   * Editor seam for #38 (file-tree sidebar). Electron: `node:fs/promises`
-   * `readdir`. Web: File System Access API (0.6.0).
+   * Editor seam for #38 (file-tree sidebar).
    */
   listDir(path: string): Promise<Array<{ name: string; path: string; isDir: boolean }>>;
 
