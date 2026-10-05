@@ -960,7 +960,7 @@
   }
 
   // ── Book settings view ──────────────────────────────────────────────────
-  // Book settings take over the whole window, exactly like the start screen:
+  // Book settings open in the shared AppView layer, like every task screen:
   // the workspace underneath is inert until the writer closes them (X or
   // Esc) — a sidebar tab or docked panel squeezes manifest editing, theme
   // browsing and plugin management into a strip. Activity is the only alternate
@@ -2658,7 +2658,7 @@
 <!-- inert while the start screen or Book settings is up: the workspace keeps
       rendering (a stylesheet written from Book settings re-renders the preview
       live) but never accepts interaction underneath the layer. -->
-<div class="app-root" inert={landingVisible || projectSettingsOpen}>
+<div class="app-root" inert={landingVisible || projectSettingsOpen || publishOpen}>
 {#if (updateController.readyVersion || updateController.availableVersion) && !updateController.bannerDismissed}
   <div class="update-banner" role="status" aria-live="polite">
     {#if updateController.readyVersion}
@@ -3109,23 +3109,21 @@
   onCloseBook={() => lifecycle.stopPreview()}
 />
 {#if projectSettingsOpen}
-  <!-- Book settings (manifest): a full-window layer like the start screen.
-       Keyed by projectDir so a project switch can never leave stale section
-       state (drafts, theme lists) resident under the new project. -->
-  <section class="settings-global-view" aria-label="Book settings">
-    {#key lifecycle.currentDir}
-      <ProjectSettingsView
-        projectDir={lifecycle.currentDir}
-        repoRoot={projectSession.repoRoot}
-        initialTab={projectSettingsTab}
-        {toast}
-        onClose={closeProjectSettings}
-        onEditRawCss={(path) => { closeProjectSettings(); openStyleFile(path); }}
-        onOpenAccounts={() => { closeProjectSettings(); openSettings("connections"); }}
-        onVersionHistoryEnabled={(dir) => void projectSession.classify(dir)}
-      />
-    {/key}
-  </section>
+  <!-- Book settings (manifest), in the shared AppView layer. Keyed by
+       projectDir so a project switch can never leave stale section state
+       (drafts, theme lists) resident under the new project. -->
+  {#key lifecycle.currentDir}
+    <ProjectSettingsView
+      projectDir={lifecycle.currentDir}
+      repoRoot={projectSession.repoRoot}
+      initialTab={projectSettingsTab}
+      {toast}
+      onClose={closeProjectSettings}
+      onEditRawCss={(path) => { closeProjectSettings(); openStyleFile(path); }}
+      onOpenAccounts={() => { closeProjectSettings(); openSettings("connections"); }}
+      onVersionHistoryEnabled={(dir) => void projectSession.classify(dir)}
+    />
+  {/key}
 {/if}
 
 {#if openBookOpen}
@@ -3158,7 +3156,7 @@
     triggerEl={publishBtnEl}
     onClose={() => (publishOpen = false)}
     onNavigate={(entry) => {
-      // A preflight "Go to" — close the modal wizard, then reveal the finding
+      // A preflight "Go to" — close the wizard, then reveal the finding
       // in the editor via the shared Problems-panel navigation affordance.
       publishOpen = false;
       openProblem(entry);
@@ -3299,14 +3297,6 @@
   }
   .editor-pane {
     border-right: 1px solid var(--app-border);
-  }
-  /* Book settings covers the whole window, on the start screen's layer. */
-  .settings-global-view {
-    position: fixed;
-    inset: 0;
-    z-index: var(--app-z-sheet);
-    display: flex;
-    background: var(--app-bg);
   }
   .splitter {
     width: 6px;

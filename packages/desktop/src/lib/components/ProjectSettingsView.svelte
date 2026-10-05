@@ -1,13 +1,10 @@
 <script lang="ts">
   /**
-   * ProjectSettingsView — the "Book settings" surface, patterned after the
-   * app SettingsView (header + close, tab bar, one cohesive slice per tab) —
-   * a full window because a sidebar column is a cramped frame for manifest
-   * editing, theme browsing, and plugin management.
-   *
-   * +page.svelte mounts it as a full-window layer, like the start screen: the
-   * workspace is inert underneath until the writer closes it with the X or
-   * Esc (Esc defers to any dialog open on top, e.g. "Save as template…").
+   * ProjectSettingsView — the "Book settings" surface (tab bar, one cohesive
+   * slice per tab), opened in the shared AppView layer because a sidebar
+   * column is a cramped frame for manifest editing, theme browsing, and
+   * plugin management. AppView owns the frame, the close control, Escape and
+   * focus (a dialog on top, e.g. "Save as template…", takes Escape first).
    *
    * This is the COMPOSITION ROOT for the per-domain section controllers: it
    * instantiates one `*SectionController` per domain and renders the
@@ -55,7 +52,7 @@
   import { ExtensionsSectionController } from "$lib/routes/extensions-section-controller.svelte";
   import { StylesSectionController } from "$lib/routes/styles-section-controller.svelte";
   import { DesignSectionController } from "$lib/routes/design-section-controller.svelte";
-  import Icon from "$lib/components/Icon.svelte";
+  import AppView from "$lib/components/AppView.svelte";
   import DetailsSection from "$lib/components/config/DetailsSection.svelte";
   import LookSection from "$lib/components/config/LookSection.svelte";
   import StylesSection from "$lib/components/config/StylesSection.svelte";
@@ -237,34 +234,12 @@
     onClose?.();
   }
 
-  // Esc closes the layer, like the start screen — unless a dialog on top of
-  // it (Save as template…) is the one that should take the key.
-  function onWindowKeydown(e: KeyboardEvent) {
-    if (e.key !== "Escape" || e.defaultPrevented) return;
-    if (document.querySelector('[role="dialog"]')) return;
-    e.preventDefault();
-    close();
-  }
-
-  // Move focus into the layer when it appears, so Esc and Tab start here and
-  // not on the inert workspace behind it.
-  function focusOnShow(el: HTMLElement) {
-    el.focus();
-  }
-
   // "Save as template…" (Details tab) — mounted fresh per open so its form
   // resets; the opening button is remembered for focus restore.
   let templateDialogTrigger = $state<HTMLButtonElement | null>(null);
 </script>
 
-<svelte:window onkeydown={onWindowKeydown} />
-
-<div class="settings-view" aria-busy={loadingAll} tabindex="-1" use:focusOnShow>
-  <header class="settings-header">
-    <h2 id="project-settings-title">Book settings</h2>
-    <button class="settings-close" onclick={close} title="Close book settings (Esc)" aria-label="Close book settings"><Icon name="x" size={16} /></button>
-  </header>
-
+<AppView title="Book settings" measure={860} onClose={close}>
   <div class="tab-bar" role="tablist" aria-label="Book settings sections" onkeydown={onTablistKeydown} tabindex="-1">
     {#each TABS as tab (tab.id)}
       <button
@@ -284,6 +259,7 @@
   <div
     id="project-settings-panel"
     class="settings-body config-panel"
+    aria-busy={loadingAll}
     role="tabpanel"
     aria-labelledby="project-settings-tab-{activeTab}"
   >
@@ -336,80 +312,22 @@
       onClose={() => (templateDialogTrigger = null)}
     />
   {/if}
-</div>
+</AppView>
 
 <style>
-  /* Frame CSS mirrors SettingsView so the two settings surfaces read as one
-     family; section chrome comes from config-section-shared.css via the
-     `.config-panel` class on the body (see the header comment). */
-  .settings-view {
-    display: flex;
-    flex: 1 1 auto;
-    flex-direction: column;
-    width: 100%;
-    height: 100%;
-    min-height: 0;
-    background: var(--app-bg);
-    color: var(--app-text-secondary);
-    outline: none;
-  }
-  /* Header and tab bar share the body's reading measure, so the whole view
-     reads as one centred column on a wide window — the start screen's shape. */
-  .settings-header,
-  .tab-bar {
-    box-sizing: border-box;
-    width: 100%;
-    max-width: 860px;
-    margin: 0 auto;
-  }
-  .settings-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-shrink: 0;
-    padding: clamp(16px, 5vh, 40px) 18px 12px;
-  }
-  .settings-header h2 {
-    margin: 0;
-    color: var(--app-text);
-    font-size: 15px;
-  }
-  .settings-close {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 4px;
-    border: 1px solid var(--app-border);
-    border-radius: 5px;
-    background: transparent;
-    color: var(--app-text-muted);
-    cursor: pointer;
-  }
-  .settings-close:hover { background: var(--app-control-hover-bg); color: var(--app-text); }
-  .settings-close:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
+  /* Section chrome comes from config-section-shared.css via the
+     `.config-panel` class on the body (see the header comment); the frame,
+     title and close control are AppView's. */
   .settings-body {
-    flex: 1;
-    min-height: 0;
-    padding: 16px 18px;
-    overflow-y: auto;
-    /* A comfortable reading measure — the sidebar's 260px column was the whole
-       reason this became a full view; unbounded width is just as unfriendly.
-       border-box: there is no global reset, and content-box width:100% plus
-       the 18px side padding would overflow the fixed sheet horizontally on
-       windows narrower than ~896px (PR #118). */
-    box-sizing: border-box;
-    max-width: 860px;
-    width: 100%;
-    margin: 0 auto;
     display: flex;
     flex-direction: column;
     gap: 16px;
+    color: var(--app-text-secondary);
   }
   /* ── Tab bar (SettingsView pattern) ── */
   .tab-bar {
     display: flex;
     gap: 2px;
-    padding: 0 16px;
     border-bottom: 1px solid var(--app-border-subtle);
     flex-shrink: 0;
     overflow-x: auto;

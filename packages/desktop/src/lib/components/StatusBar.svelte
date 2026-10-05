@@ -28,7 +28,7 @@
   import BookSwitcher from "$lib/components/BookSwitcher.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { api } from "$lib/api";
-  import SaveStatusDialog from "$lib/components/SaveStatusDialog.svelte";
+  import SaveStatusView from "$lib/components/SaveStatusView.svelte";
   import { saveStatusCopy, type SaveStatusActionId } from "$lib/save-status";
   import { canExpandProblems, problemCounts, problemsSummary } from "$lib/problems";
   import { onDestroy, onMount, tick } from "svelte";
@@ -633,7 +633,7 @@
 </div>
 
 {#if summaryOpen}
-  <SaveStatusDialog {copy} triggerEl={saveBtnEl ?? undefined} onAction={onSummaryAction} onClose={closeSummary} />
+  <SaveStatusView {copy} triggerEl={saveBtnEl ?? undefined} onAction={onSummaryAction} onClose={closeSummary} />
 {/if}
 
 <style>

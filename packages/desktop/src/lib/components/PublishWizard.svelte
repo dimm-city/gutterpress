@@ -13,9 +13,8 @@
    * publish with no online destination is exactly a plain export, and an
    * online publish never depends on a stale build.
    *
-   * Chrome + form controls follow the shared dialog conventions
-   * (dialog-shell.css `.dlg-*`, `.field` inputs, `.dlg-primary`/`.dlg-ghost`
-   * buttons) exactly like NewProjectWizard, so it matches the rest of the app.
+   * Opens in the shared AppView layer like Book settings; form controls and
+   * the `.app-btn-*` buttons follow the rest of the app.
    *
    * No backend of its own: it drives PublishSectionController
    * (api.publish.*). Credentials stay in the host store (safeStorage) and are
@@ -27,8 +26,9 @@
    * step/selection are plain local state driven by event handlers.
    */
   import Icon from "$lib/components/Icon.svelte";
+  import AppView from "$lib/components/AppView.svelte";
   import { onMount } from "svelte";
-  import { dialogBehavior, requestInlineConfirm, cancelInlineConfirm, type InlineConfirmState } from "$lib/dialog";
+  import { requestInlineConfirm, cancelInlineConfirm, type InlineConfirmState } from "$lib/dialog";
   import { friendlyPublishError } from "$lib/errors";
   import {
     groupPreflight,
@@ -291,13 +291,7 @@
   }
 </script>
 
-<div class="dlg-backdrop" onclick={close} role="presentation"></div>
-
-<div class="dlg-shell wizard" use:dialogBehavior={{ onClose: close, triggerEl, labelledBy: "publish-wizard-title" }}>
-  <header class="dlg-header">
-    <h2 id="publish-wizard-title"><Icon name="cloud-upload" size={18} /> Publish your book</h2>
-    <button class="dlg-close" onclick={close} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
-  </header>
+<AppView class="wizard" title="Publish your book" icon="cloud-upload" onClose={close} {triggerEl}>
 
   <!-- Dynamic step indicator: Choose → each destination → Publish -->
   <ol class="steps" aria-label="Publishing steps">
@@ -305,7 +299,7 @@
       <li class:done={stepIndex > i} class:current={stepIndex === i} aria-current={stepIndex === i ? "step" : undefined}>
         <!-- The check Icon is aria-hidden (like every Icon); the sr-only text
              keeps the completed state announced. -->
-        <span class="step-dot">{#if stepIndex > i}<Icon name="check" size={12} /><span class="dlg-sr-only">Completed:</span>{:else}{i + 1}{/if}</span>
+        <span class="step-dot">{#if stepIndex > i}<Icon name="check" size={12} /><span class="sr-only">Completed:</span>{:else}{i + 1}{/if}</span>
         <span class="step-label">{label}</span>
       </li>
     {/each}
@@ -391,7 +385,7 @@
         <span>Folder</span>
         <div class="key-row">
           <input type="text" readonly value={localDir} aria-label="Folder" />
-          <button class="dlg-ghost" onclick={chooseLocalFolder} disabled={busy}>Choose…</button>
+          <button class="app-btn app-btn-ghost" onclick={chooseLocalFolder} disabled={busy}>Choose…</button>
         </div>
       </div>
       <p class="field-hint">
@@ -415,7 +409,7 @@
             />
           </label>
         {/each}
-        <button class="dlg-ghost self-start" onclick={() => controller.savePublishConfig(card.id)} disabled={busy}>Save settings</button>
+        <button class="app-btn app-btn-ghost self-start" onclick={() => controller.savePublishConfig(card.id)} disabled={busy}>Save settings</button>
       {/if}
 
       {#if card.credentialRequired}
@@ -467,11 +461,11 @@
                 <button class="link" onclick={() => controller.reopenGoogleAuthUrl(card.id)}>
                   Open the sign-in page again <Icon name="external-link" size={12} />
                 </button>
-                <button class="dlg-ghost" onclick={() => controller.cancelGoogleOAuth(card.id)}>Cancel</button>
+                <button class="app-btn app-btn-ghost" onclick={() => controller.cancelGoogleOAuth(card.id)}>Cancel</button>
               </div>
             {:else}
               <button
-                class="dlg-primary app-btn-primary dlg-primary-inline self-start"
+                class="app-btn app-btn-primary self-start"
                 onclick={() => controller.connectGoogleOAuth(card.id)}
                 disabled={busy}
               >
@@ -490,7 +484,7 @@
                   oninput={(e) => controller.setPublishTokenDraft(card.id, e.currentTarget.value)}
                   onkeydown={(e) => { if (e.key === "Enter") doConnect(card); }}
                 />
-                <button class="dlg-primary app-btn-primary dlg-primary-inline" onclick={() => doConnect(card)} disabled={busy}>Connect</button>
+                <button class="app-btn app-btn-primary" onclick={() => doConnect(card)} disabled={busy}>Connect</button>
               </div>
               {#if card.tokenUrl}
                 <button class="link" onclick={() => controller.openPublishUrl(card.tokenUrl!)}>Create an API key <Icon name="external-link" size={12} /></button>
@@ -504,7 +498,7 @@
               <Icon name="circle-check" size={14} />
               {#if card.connectKind === "oauth" && savedLabel}Connected — {savedLabel}.{:else}Connected — reusing your saved key.{/if}
             </span>
-            <button class="dlg-ghost" onclick={() => controller.disconnectPublish(card.id, card.selectedAccount || undefined)} disabled={busy}>Remove this key</button>
+            <button class="app-btn app-btn-ghost" onclick={() => controller.disconnectPublish(card.id, card.selectedAccount || undefined)} disabled={busy}>Remove this key</button>
           </div>
           {#if card.destinations}
             {@const destBusy = controller.destinationsBusyId[card.id] === true}
@@ -536,7 +530,7 @@
                   oninput={(e) => controller.setNewDestinationDraft(card.id, e.currentTarget.value)}
                   onkeydown={(e) => { if (e.key === "Enter") doCreateDestination(card); }}
                 />
-                <button class="dlg-primary app-btn-primary dlg-primary-inline" onclick={() => doCreateDestination(card)} disabled={busy}>Create</button>
+                <button class="app-btn app-btn-primary" onclick={() => doCreateDestination(card)} disabled={busy}>Create</button>
               </div>
             {/if}
             {#if controller.destinationsError[card.id]}<p class="error">{controller.destinationsError[card.id]}</p>{/if}
@@ -581,7 +575,7 @@
             {/if}
           </span>
         </span>
-        <button class="dlg-ghost" onclick={runPreflightNow} disabled={controller.preflightBusy}>
+        <button class="app-btn app-btn-ghost" onclick={runPreflightNow} disabled={controller.preflightBusy}>
           <Icon name="refresh-cw" size={13} /> Re-run
         </button>
       </div>
@@ -616,7 +610,7 @@
                       </div>
                     </div>
                     {#if row.fixable === "navigate"}
-                      <button class="dlg-ghost pf-goto" onclick={() => goTo(row)}>Go to</button>
+                      <button class="app-btn app-btn-ghost pf-goto" onclick={() => goTo(row)}>Go to</button>
                     {/if}
                   </li>
                 {/each}
@@ -711,7 +705,7 @@
               {:else}
                 <p class="success-line"><Icon name="circle-check" size={13} /> {outcome.detail ?? "Upload package prepared."}</p>
                 <p class="muted small">Package folder: <code>{outcome.packageDir}</code></p>
-                <button class="dlg-primary app-btn-primary dlg-primary-inline" onclick={() => controller.openPublishUrl(outcome.openUrl)}>Open upload page <Icon name="external-link" size={12} /></button>
+                <button class="app-btn app-btn-primary" onclick={() => controller.openPublishUrl(outcome.openUrl)}>Open upload page <Icon name="external-link" size={12} /></button>
                 <ol class="checklist">{#each outcome.checklist as s, i (i)}<li>{s}</li>{/each}</ol>
               {/if}
             </div>
@@ -720,22 +714,22 @@
       {/each}
     {/if}
 
-    <footer class="dlg-actions">
+    <footer class="view-actions">
       {#if stepIndex > 0}
-        <button class="dlg-ghost" onclick={back}>Back</button>
+        <button class="app-btn app-btn-ghost" onclick={back}>Back</button>
       {:else}
-        <button class="dlg-ghost" onclick={close}>Cancel</button>
+        <button class="app-btn app-btn-ghost" onclick={close}>Cancel</button>
       {/if}
       <div class="spacer"></div>
       {#if stepKind === "format" || stepKind === "choose"}
-        <button class="dlg-primary app-btn-primary" onclick={next}>Next</button>
+        <button class="app-btn app-btn-primary" onclick={next}>Next</button>
       {:else if stepKind === "setup"}
-        <button class="dlg-primary app-btn-primary" onclick={next}>Next</button>
+        <button class="app-btn app-btn-primary" onclick={next}>Next</button>
       {:else if stepKind === "preflight"}
-        <button class="dlg-primary app-btn-primary" onclick={next} disabled={controller.preflightBusy}>Next</button>
+        <button class="app-btn app-btn-primary" onclick={next} disabled={controller.preflightBusy}>Next</button>
       {:else}
         <button
-          class="dlg-primary app-btn-primary"
+          class="app-btn app-btn-primary"
           onclick={publishAll}
           disabled={publishing || controller.publishBusyId !== null || publishGated}
           title={preflightMissing
@@ -746,19 +740,16 @@
         >
           {publishing ? "Publishing…" : onlineCards.length > 0 ? "Publish" : "Save"}
         </button>
-        <button class="dlg-ghost" onclick={close} disabled={publishing}>Done</button>
+        <button class="app-btn app-btn-ghost" onclick={close} disabled={publishing}>Done</button>
       {/if}
     </footer>
   </div>
-</div>
+</AppView>
 
 <style>
-  @import "$lib/styles/dialog-shell.css";
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
-  .wizard { width: min(560px, 94vw); max-height: 84vh; }
-  .dlg-header h2 { color: var(--app-text); }
-
-  .steps { list-style: none; display: flex; gap: 4px; margin: 0; padding: 10px 16px; border-bottom: 1px solid var(--app-border-subtle); overflow-x: auto; }
+  .steps { list-style: none; display: flex; gap: 4px; margin: 0; padding: 0 0 10px; border-bottom: 1px solid var(--app-border-subtle); overflow-x: auto; }
   .steps li { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--app-text-muted); white-space: nowrap; flex-shrink: 0; }
   .steps li.current { color: var(--app-text); font-weight: 600; }
   .steps li.done { color: var(--app-text-muted); }
@@ -766,7 +757,7 @@
   .steps li.current .step-dot { background: var(--app-accent); color: var(--app-accent-text); border-color: var(--app-accent-border); }
   .steps li.done .step-dot { background: var(--app-surface-hover); }
 
-  .dialog-body { padding: 18px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; flex: 1; }
+  .dialog-body { display: flex; flex-direction: column; gap: 14px; color: var(--app-text-secondary); }
   .lead { margin: 0; font-size: 13px; color: var(--app-text-muted); }
   .muted { color: var(--app-text-muted); font-size: 12px; margin: 0; }
   .muted.small { font-size: 11px; }
@@ -803,16 +794,6 @@
   .field select:focus { outline: none; border-color: var(--app-focus-ring); }
   .optional { font-style: italic; color: var(--app-text-muted); font-weight: 400; }
   .key-row { display: flex; gap: 8px; }
-  /* In-body primary buttons (Connect / Publish / Open upload page) sit outside
-     the .dlg-actions footer, so they restate its geometry; colors come from
-     .app-btn-primary. In-body ghost buttons (Save settings / Cancel / Re-run)
-     likewise need it — dialog-shell.css only gives them colors. */
-  .dlg-primary-inline,
-  .dialog-body .dlg-ghost {
-    padding: 6px 14px; font-size: 13px; border-radius: 4px;
-    border-width: 1px; border-style: solid; cursor: pointer;
-  }
-  .dialog-body .dlg-ghost:disabled { opacity: 0.45; cursor: default; }
   .key-row input { flex: 1; min-width: 0; }
   .self-start { align-self: flex-start; }
 
@@ -855,9 +836,9 @@
 
   button.link { background: none; border: none; padding: 0; font-size: 11px; color: var(--app-focus-ring); cursor: pointer; display: inline-flex; align-items: center; gap: 3px; }
 
-  /* In-flow footer inside the scrolling body (matches NewProjectWizard). */
-  .dlg-actions { display: flex; align-items: center; gap: 8px; padding: 14px 0 0; margin-top: 4px; }
-  .dlg-actions .spacer { flex: 1; }
+  /* In-flow footer at the end of the step's content. */
+  .view-actions { display: flex; align-items: center; gap: 8px; padding: 14px 0 0; margin-top: 4px; border-top: 1px solid var(--app-border-subtle); }
+  .view-actions .spacer { flex: 1; }
 
   /* ── Preflight step (#105) ────────────────────────────────────────────── */
   .pf-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }

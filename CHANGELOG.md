@@ -26,6 +26,13 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **One kind of screen for every task.** Book settings, Publish and *Where
+  your work is kept* now open the same way the start screen does: a full
+  window with the same fade, the same centred column and the same close
+  control in the top-right corner, with the workspace out of sight until you
+  close it (Esc or the X). Publish and *Where your work is kept* were pop-up
+  dialogs before.
+- **Problems panel has a close button** in its top-right corner.
 - **The toolbar keeps its labels longer** (#316). Edit/Read, Setup and
   Publish stay labelled down to a 900px-wide window instead of collapsing
   to icons at 1150px.

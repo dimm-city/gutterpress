@@ -143,22 +143,21 @@
     aria-hidden={!open}
     tabindex="-1"
   >
-    {#if compact}
-      <!-- The compact overlay has no other reachable dismiss control
-           (see selectEntry/handleWindowKeydown above) — give it one directly. -->
-      <div class="panel-body-bar">
-        <span class="panel-body-bar-title">Problems</span>
-        <button
-          class="panel-close-btn"
-          onclick={closeToToggle}
-          aria-label="Close problems panel"
-          title="Close problems panel"
-        >
-          <Icon name="x" size={15} />
-          Close
-        </button>
-      </div>
-    {/if}
+    <!-- A close control in the panel's own top-right corner, so it can be
+         dismissed from where the writer is looking (the status-bar toggle is
+         the other way; in compact mode the sheet covers that toggle, so this
+         is the only one). -->
+    <div class="panel-body-bar">
+      <span class="panel-body-bar-title">Problems</span>
+      <button
+        class="panel-close-btn"
+        onclick={closeToToggle}
+        aria-label="Close problems panel"
+        title="Close problems panel (Esc)"
+      >
+        <Icon name="x" size={15} />
+      </button>
+    </div>
     {#if error}
       <div class="empty-state" role="status">
         <span class="empty-icon neutral-icon"><Icon name="info" size={18} /></span>
@@ -262,9 +261,8 @@
   }
 
   /* ── Panel body ──────────────────────────────────────────────────────────── */
-  /* Compact-only header bar with an always-reachable close control. Sticky
-     (not static) so it stays visible at the top of the overlay while the
-     problems list beneath it scrolls. */
+  /* Header bar with the close control. Sticky (not static) so it stays
+     visible at the top while the problems list beneath it scrolls. */
   .panel-body-bar {
     display: flex;
     align-items: center;
@@ -273,7 +271,7 @@
     position: sticky;
     top: 0;
     z-index: 1;
-    padding: 10px 12px;
+    padding: 6px 8px 6px 12px;
     background: var(--app-surface-raised);
     border-bottom: 1px solid var(--app-border);
   }
@@ -287,17 +285,19 @@
   .panel-close-btn {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 6px 10px;
-    border: 1px solid var(--app-border-strong);
+    justify-content: center;
+    padding: 4px;
+    min-width: 28px;
+    min-height: 28px;
+    border: 1px solid transparent;
     border-radius: 4px;
     background: transparent;
-    color: var(--app-text);
-    font-size: 12px;
+    color: var(--app-text-secondary);
     cursor: pointer;
   }
   .panel-close-btn:hover {
     background: var(--app-control-hover-bg);
+    color: var(--app-text);
   }
   .panel-close-btn:focus-visible {
     outline: 2px solid var(--app-focus-ring);
