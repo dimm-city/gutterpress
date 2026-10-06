@@ -1,5 +1,14 @@
 # Gutterpress Source-First Rich Editor and Enterprise Architecture Simplification — Implementation Wrap-Up
 
+> **Outcome (2026-10-06).** The program's branch was not merged as it
+> stood. Its editor work was brought onto `main` by `release/0.12.0`
+> ([PR #330](https://github.com/dimm-city/gutterpress/pull/330)), with
+> main's route-first desktop architecture kept and the branch's IPC
+> transport, read-only preview and adapter-static build dropped. PR #214
+> is closed as superseded. What shipped, and what did not, is in
+> `docs/releases/0.12.0.md`; the figures and "remaining stakeholder
+> actions" below describe the branch as it was at close-out.
+
 ## Result
 
 **Complete**, with one measured performance criterion failed and carried
