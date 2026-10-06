@@ -5,6 +5,14 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.12] - 2026-10-06
+
+### Fixed
+
+- **A reader can still open a book.** 0.11.11 hid the Books tab's *Open
+  book…* button along with *New book* for a reader; only *New book* was
+  meant to go.
+
 ## [0.11.11] - 2026-10-06
 
 ### Added

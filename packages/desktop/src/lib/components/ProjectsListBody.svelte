@@ -525,14 +525,19 @@
 
   <!-- Actions footer — omitted entirely when the host provides its own action
        surface (the start screen), so no empty bordered strip renders. -->
-  {#if onNewProject}
+  {#if onOpenBook || onNewProject}
     <div class="actions-footer">
-      <button class="footer-action" onclick={onOpenBook} title="Open a book from this computer or GitHub">
-        <Icon name="folder-open" size={14} /> Open book…
-      </button>
-      <button class="footer-action primary" onclick={onNewProject} title="Create a new book">
-        <Icon name="plus" size={14} /> New book
-      </button>
+      {#if onOpenBook}
+        <button class="footer-action" onclick={onOpenBook} title="Open a book from this computer or GitHub">
+          <Icon name="folder-open" size={14} /> Open book…
+        </button>
+      {/if}
+      <!-- A reader (Settings → App) gets no New book; Open book stays. -->
+      {#if onNewProject}
+        <button class="footer-action primary" onclick={onNewProject} title="Create a new book">
+          <Icon name="plus" size={14} /> New book
+        </button>
+      {/if}
     </div>
   {/if}
 </div>
