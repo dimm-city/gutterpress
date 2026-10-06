@@ -18,6 +18,7 @@
   var exports_fragment = {};
   __export(exports_fragment, {
     wrapGeometry: () => wrapGeometry,
+    withLayoutReadCache: () => withLayoutReadCache,
     waitForLayoutReady: () => waitForLayoutReady,
     synthesizeColumnBreaks: () => synthesizeColumnBreaks,
     stripMetrics: () => stripMetrics,
@@ -1605,15 +1606,37 @@
   }
   function cssZoomOf(el) {
     const stage = el.closest(".gp-stage") ?? document.body;
-    return new DOMMatrixReadOnly(getComputedStyle(stage).transform).a || 1;
+    const cached = readCache?.zoom.get(stage);
+    if (cached !== undefined)
+      return cached;
+    const zoom = new DOMMatrixReadOnly(getComputedStyle(stage).transform).a || 1;
+    readCache?.zoom.set(stage, zoom);
+    return zoom;
+  }
+  var readCache = null;
+  function withLayoutReadCache(fn) {
+    if (readCache)
+      return fn();
+    readCache = { metrics: new Map, zoom: new Map };
+    try {
+      return fn();
+    } finally {
+      readCache = null;
+    }
   }
   function stripMetrics(strip) {
+    const cached = readCache?.metrics.get(strip);
+    if (cached)
+      return cached;
     const cs = getComputedStyle(strip);
     const w = parseFloat(cs.getPropertyValue("--gp-content-w"));
     const colGap = parseFloat(cs.columnGap) || 0;
     const h = parseFloat(cs.getPropertyValue("--gp-content-h"));
     const rowGap = parseFloat(cs.rowGap) || 0;
-    return { stride: w + colGap, rowStride: h + rowGap };
+    const sheetGap = parseFloat(cs.getPropertyValue("--gp-sheet-gap")) || 0;
+    const metrics = { stride: w + colGap, rowStride: h + rowGap, sheetGap };
+    readCache?.metrics.set(strip, metrics);
+    return metrics;
   }
   function rowStrideOf(strip) {
     return stripMetrics(strip).rowStride;
@@ -1710,22 +1733,24 @@
   function paginate(model, opts = {}) {
     const authoring = [];
     const strips = buildStrips(model, opts, authoring);
-    makeOverflowFragmentable(strips);
-    stabilizeFullHeightPageRoots(model, strips);
-    synthesizeColumnBreaks(model);
-    measure(strips);
-    const blanks = compensateRectoBreaks(model, strips);
-    if (blanks)
+    const { blanks, headers, totalPages, blankPageIndices: blankIndices } = withLayoutReadCache(() => {
+      makeOverflowFragmentable(strips);
+      stabilizeFullHeightPageRoots(model, strips);
+      synthesizeColumnBreaks(model);
       measure(strips);
-    const headers = opts.compensateHeaders === false ? { tables: 0, passes: 0, warnings: [] } : compensateRepeatedHeaders(strips);
-    const { totalPages } = measure(strips);
+      const blanks2 = compensateRectoBreaks(model, strips);
+      if (blanks2)
+        measure(strips);
+      const headers2 = opts.compensateHeaders === false ? { tables: 0, passes: 0, warnings: [] } : compensateRepeatedHeaders(strips);
+      return { blanks: blanks2, headers: headers2, totalPages: measure(strips).totalPages, blankPageIndices: blankPageIndices(strips) };
+    });
     const api = {
       model,
       strips,
       totalPages,
       warnings: [...new Set([...authoring, ...headers.warnings])],
       blankPages: blanks,
-      blankPageIndices: blankPageIndices(strips),
+      blankPageIndices: blankIndices,
       pageOf: (sel) => pageOf(typeof sel === "string" ? document.querySelector(sel) : sel, strips),
       pageRangeOf: (sel) => pageRangeOf(typeof sel === "string" ? document.querySelector(sel) : sel, strips),
       relayout: () => {
@@ -1737,19 +1762,21 @@
         const rebuilt = buildStrips(model, opts, authoring);
         strips.length = 0;
         strips.push(...rebuilt);
-        makeOverflowFragmentable(strips);
-        stabilizeFullHeightPageRoots(model, strips);
-        synthesizeColumnBreaks(model);
-        measure(strips);
-        api.blankPages = compensateRectoBreaks(model, strips);
-        if (opts.compensateHeaders !== false)
-          api.warnings = [
-            ...new Set([...authoring, ...compensateRepeatedHeaders(strips).warnings])
-          ];
-        const r = measure(strips);
-        api.totalPages = r.totalPages;
-        api.blankPageIndices = blankPageIndices(strips);
-        return r;
+        return withLayoutReadCache(() => {
+          makeOverflowFragmentable(strips);
+          stabilizeFullHeightPageRoots(model, strips);
+          synthesizeColumnBreaks(model);
+          measure(strips);
+          api.blankPages = compensateRectoBreaks(model, strips);
+          if (opts.compensateHeaders !== false)
+            api.warnings = [
+              ...new Set([...authoring, ...compensateRepeatedHeaders(strips).warnings])
+            ];
+          const r = measure(strips);
+          api.totalPages = r.totalPages;
+          api.blankPageIndices = blankPageIndices(strips);
+          return r;
+        });
       }
     };
     return api;
@@ -2192,7 +2219,9 @@
         style.id = "gp-xref-style";
         document.head.appendChild(style);
       }
-      style.textContent = generatedContentCss(model.xrefs.map((x) => x.selector));
+      const css = generatedContentCss(model.xrefs.map((x) => x.selector));
+      if (style.textContent !== css)
+        style.textContent = css;
     }
     function fillLeaders() {
       const marked = [];
@@ -2224,56 +2253,59 @@
       }
     }
     function draw() {
-      sheets.clear();
-      warnings.length = 0;
-      blankPages = new Set(layout.blankPageIndices);
-      buildMaps();
-      fillXrefs();
-      let prevPageH = 0;
-      let first = true;
-      for (const strip of layout.strips) {
-        const run = ensureRun(strip);
-        const { stride, rowStride } = stripMetrics(strip.el);
-        const sheetGap = parseFloat(getComputedStyle(strip.el).getPropertyValue("--gp-sheet-gap")) || 0;
-        run.style.setProperty("--gp-sheet-gap", `${sheetGap}px`);
-        const { perRow, shift } = wrapGeometry(strip);
-        const layer = run.querySelector(".gp-layer");
-        layer.textContent = "";
-        const g = strip.geometry;
-        for (let i = 0;i < strip.pages; i++) {
-          const bookIndex = strip.offset + i;
-          const ctx = pageContext(strip, i, bookIndex);
-          const slot = i + shift;
-          const row = Math.floor(slot / perRow);
-          const colVisual = slot % perRow;
-          const sheetLeft = colVisual * stride;
-          const sheetTop = row * rowStride;
-          const sheet = document.createElement("div");
-          sheet.className = "gp-sheet";
-          sheet.dataset.page = String(bookIndex + 1 + pageOffset);
-          sheet.dataset.side = bookIndex % 2 === 0 ? "recto" : "verso";
-          sheet.style.left = `${sheetLeft}px`;
-          sheet.style.top = `${sheetTop}px`;
-          sheet.style.setProperty("--gp-page-w", px(ctx.geometry.width));
-          sheet.style.setProperty("--gp-page-h", px(ctx.geometry.height));
-          applyPageBackground(sheet, ctx.decls);
-          for (const [prop, value] of canvasBg)
-            sheet.style.setProperty(prop, value);
-          layer.appendChild(sheet);
-          sheets.set(bookIndex, sheet);
-          drawMarginBoxes(sheet, ctx, layout.totalPages);
-          drawGuides(sheet, ctx);
-          drawCropMarks(sheet, ctx);
+      withLayoutReadCache(() => {
+        for (const strip of layout.strips)
+          stripMetrics(strip.el);
+        sheets.clear();
+        warnings.length = 0;
+        blankPages = new Set(layout.blankPageIndices);
+        buildMaps();
+        fillXrefs();
+        let prevPageH = 0;
+        let first = true;
+        for (const strip of layout.strips) {
+          const run = ensureRun(strip);
+          const { stride, rowStride, sheetGap } = stripMetrics(strip.el);
+          run.style.setProperty("--gp-sheet-gap", `${sheetGap}px`);
+          const { perRow, shift } = wrapGeometry(strip);
+          const layer = run.querySelector(".gp-layer");
+          layer.textContent = "";
+          const g = strip.geometry;
+          for (let i = 0;i < strip.pages; i++) {
+            const bookIndex = strip.offset + i;
+            const ctx = pageContext(strip, i, bookIndex);
+            const slot = i + shift;
+            const row = Math.floor(slot / perRow);
+            const colVisual = slot % perRow;
+            const sheetLeft = colVisual * stride;
+            const sheetTop = row * rowStride;
+            const sheet = document.createElement("div");
+            sheet.className = "gp-sheet";
+            sheet.dataset.page = String(bookIndex + 1 + pageOffset);
+            sheet.dataset.side = bookIndex % 2 === 0 ? "recto" : "verso";
+            sheet.style.left = `${sheetLeft}px`;
+            sheet.style.top = `${sheetTop}px`;
+            sheet.style.setProperty("--gp-page-w", px(ctx.geometry.width));
+            sheet.style.setProperty("--gp-page-h", px(ctx.geometry.height));
+            applyPageBackground(sheet, ctx.decls);
+            for (const [prop, value] of canvasBg)
+              sheet.style.setProperty(prop, value);
+            layer.appendChild(sheet);
+            sheets.set(bookIndex, sheet);
+            drawMarginBoxes(sheet, ctx, layout.totalPages);
+            drawGuides(sheet, ctx);
+            drawCropMarks(sheet, ctx);
+          }
+          const rows = Math.max(1, Math.ceil((strip.pages + shift) / perRow));
+          run.style.height = `${rowStride * (rows - 1) + PX_PER_PT * g.height}px`;
+          run.style.width = `${stride * perRow}px`;
+          run.style.marginTop = strip.wrapCols && shift === 1 && !first ? `${-(prevPageH + sheetGap)}px` : "";
+          prevPageH = PX_PER_PT * g.height;
+          first = false;
+          if (opts.designer)
+            checkOverflow(strip, warnings);
         }
-        const rows = Math.max(1, Math.ceil((strip.pages + shift) / perRow));
-        run.style.height = `${rowStride * (rows - 1) + PX_PER_PT * g.height}px`;
-        run.style.width = `${stride * perRow}px`;
-        run.style.marginTop = strip.wrapCols && shift === 1 && !first ? `${-(prevPageH + sheetGap)}px` : "";
-        prevPageH = PX_PER_PT * g.height;
-        first = false;
-        if (opts.designer)
-          checkOverflow(strip, warnings);
-      }
+      });
     }
     function drawMarginBoxes(sheet, ctx, totalPages) {
       const g = ctx.geometry;

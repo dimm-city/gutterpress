@@ -23,7 +23,7 @@
    * PWA-clean (§8): type-only imports, zero host/Node code.
    */
   import Icon from "$lib/components/Icon.svelte";
-  import type { PageNavController } from "$lib/routes/page-nav-controller.svelte";
+  import type { PageNavSurface } from "$lib/routes/page-nav-controller.svelte";
 
   let {
     pageNav,
@@ -32,7 +32,7 @@
     zoomDisabled,
     onApplyZoom,
   }: {
-    pageNav: PageNavController;
+    pageNav: PageNavSurface;
     rendering: boolean;
     zoom: string;
     zoomDisabled: boolean;

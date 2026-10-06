@@ -14,7 +14,7 @@
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { createIdleReveal, type IdleReveal } from "$lib/routes/focus-mode";
-  import type { PageNavController } from "$lib/routes/page-nav-controller.svelte";
+  import type { PageNavSurface } from "$lib/routes/page-nav-controller.svelte";
 
   let {
     view,
@@ -31,7 +31,7 @@
     view: "edit" | "read";
     onSelectView: (view: "edit" | "read") => void;
     onExit: () => void;
-    pageNav: PageNavController;
+    pageNav: PageNavSurface;
     /** Page navigation shows in Read only (and only once a preview exists). */
     showPageNav: boolean;
     rendering: boolean;

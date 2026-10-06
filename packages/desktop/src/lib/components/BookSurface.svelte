@@ -77,6 +77,7 @@
     onSnapshotChange,
     onActivate,
     onDiagnostic,
+    onPageState,
   }: {
     /** The book's chapter files, absolute paths, in book order. */
     chapters: readonly string[];
@@ -94,6 +95,8 @@
     /** The author pressed into a chapter: make it the workspace's open file. */
     onActivate?: (path: string) => void;
     onDiagnostic?: (diagnostic: Diagnostic) => void;
+    /** The page at the top of the view and the book's page count changed (a scroll, a chapter laying out). */
+    onPageState?: (state: { currentPage: number; totalPages: number }) => void;
   } = $props();
 
   const baseName = (path: string): string => path.replace(/\\/g, "/").split("/").pop() ?? path;
@@ -209,6 +212,7 @@
     const slot = slotOf(path);
     if (slot && !slot.laidOut) patch(path, { laidOut: true });
     applyOffsets();
+    announcePageState();
     const list = waiters.get(path) ?? [];
     waiters.delete(path);
     for (const resolve of list) resolve();
@@ -217,6 +221,53 @@
       if (el) scroller.scrollTop = el.offsetTop + restore.delta;
       restore = null;
     }
+  }
+
+  // ── Page state: which sheet is at the top, how many pages the book has ──
+  // Every sheet carries its book-wide folio (`data-page`, continuing across
+  // chapters), so the page in view is the first sheet whose bottom edge is
+  // below the top of the scroller. Chapters still queued count by estimate.
+  const bookPageCount = (): number =>
+    slots.reduce((n, slot) => n + (pagesByPath.get(slot.path) ?? pageEstimates[slot.path] ?? 1), 0);
+
+  function pageAtTop(): number {
+    if (!scroller) return 1;
+    const top = scroller.getBoundingClientRect().top + 1;
+    for (const sheet of scroller.querySelectorAll<HTMLElement>(".gp-sheet[data-page]")) {
+      if (sheet.getBoundingClientRect().bottom > top) return Number(sheet.dataset["page"]) || 1;
+    }
+    return 1;
+  }
+
+  let pageStateFrame = 0;
+  /** Report the page state once per frame, however many scroll events or layouts arrive. */
+  function announcePageState(): void {
+    if (!onPageState || pageStateFrame) return;
+    pageStateFrame = requestAnimationFrame(() => {
+      pageStateFrame = 0;
+      if (!disposed) onPageState?.({ currentPage: pageAtTop(), totalPages: bookPageCount() });
+    });
+  }
+
+  /** Scroll a book-wide page into view, mounting its chapter first if it is still queued. */
+  export async function goToPage(page: number): Promise<void> {
+    if (!scroller) return;
+    let sheet = scroller.querySelector<HTMLElement>(`.gp-sheet[data-page="${page}"]`);
+    if (!sheet) {
+      // The chapter that owns this page, by the running page count.
+      let offset = 0;
+      for (const slot of slots) {
+        const pages = pagesByPath.get(slot.path) ?? pageEstimates[slot.path] ?? 1;
+        if (page <= offset + pages) {
+          await scrollToChapter(slot.path);
+          break;
+        }
+        offset += pages;
+      }
+      sheet = scroller.querySelector<HTMLElement>(`.gp-sheet[data-page="${page}"]`);
+    }
+    sheet?.scrollIntoView({ block: "start" });
+    announcePageState();
   }
 
   /** A Letter sheet plus its gap at 1:1; only a chapter that has never laid out needs the guess. */
@@ -311,6 +362,7 @@
       unsubscribe.clear();
       for (const timer of refreshTimers.values()) clearTimeout(timer);
       refreshTimers.clear();
+      cancelAnimationFrame(pageStateFrame);
     };
   });
 
@@ -413,7 +465,7 @@
   }
 </script>
 
-<div class="book-surface" bind:this={scroller}>
+<div class="book-surface" bind:this={scroller} onscroll={announcePageState}>
   {#each slots as slot (slot.path)}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="book-chapter" data-chapter-path={slot.path} style={settlingStyle(slot)} bind:this={els[slot.path]} onpointerdowncapture={() => activate(slot.path)}>

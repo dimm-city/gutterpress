@@ -1206,7 +1206,45 @@ export function strideOf(strip: HTMLElement): number {
  */
 function cssZoomOf(el: Element): number {
   const stage = el.closest(".gp-stage") ?? document.body;
-  return new DOMMatrixReadOnly(getComputedStyle(stage).transform).a || 1;
+  const cached = readCache?.zoom.get(stage);
+  if (cached !== undefined) return cached;
+  const zoom = new DOMMatrixReadOnly(getComputedStyle(stage).transform).a || 1;
+  readCache?.zoom.set(stage, zoom);
+  return zoom;
+}
+
+/**
+ * One layout pass's computed-style reads, so `pageOf()` on the Nth element
+ * of a pass does not ask the browser for the strip's pitch and the stage's
+ * zoom again. Every value cached here is constant for the life of a strip
+ * (`buildStrips` sets the pitch; the zoom is one paint transform on the
+ * stage), and the cache lives only as long as the pass that opened it, so
+ * nothing outside a pass can read a stale value.
+ *
+ * Measured on the desktop's paged editor, which paginates a chapter on
+ * every keystroke: with the string-set, counter-reset and cross-reference
+ * maps calling `pageRangeOf()` per element, `getPropertyValue` alone was
+ * half of all CPU while typing — each read after a DOM write is a forced
+ * style recalculation of the whole chapter.
+ */
+let readCache: { metrics: Map<Element, StripMetrics>; zoom: Map<Element, number> } | null = null;
+
+/** Run `fn` with the computed-style read cache open; nested calls share the outer pass. */
+export function withLayoutReadCache<T>(fn: () => T): T {
+  if (readCache) return fn();
+  readCache = { metrics: new Map(), zoom: new Map() };
+  try {
+    return fn();
+  } finally {
+    readCache = null;
+  }
+}
+
+interface StripMetrics {
+  stride: number;
+  rowStride: number;
+  /** `--gp-sheet-gap`: the gap between sheets, which decorate copies to the run. */
+  sheetGap: number;
 }
 
 /**
@@ -1216,13 +1254,18 @@ function cssZoomOf(el: Element): number {
  * and vertical pitch together halves that cost without any caching to
  * invalidate.
  */
-export function stripMetrics(strip: HTMLElement): { stride: number; rowStride: number } {
+export function stripMetrics(strip: HTMLElement): StripMetrics {
+  const cached = readCache?.metrics.get(strip);
+  if (cached) return cached;
   const cs = getComputedStyle(strip);
   const w = parseFloat(cs.getPropertyValue("--gp-content-w"));
   const colGap = parseFloat(cs.columnGap) || 0;
   const h = parseFloat(cs.getPropertyValue("--gp-content-h"));
   const rowGap = parseFloat(cs.rowGap) || 0;
-  return { stride: w + colGap, rowStride: h + rowGap };
+  const sheetGap = parseFloat(cs.getPropertyValue("--gp-sheet-gap")) || 0;
+  const metrics = { stride: w + colGap, rowStride: h + rowGap, sheetGap };
+  readCache?.metrics.set(strip, metrics);
+  return metrics;
 }
 
 /**
@@ -1489,24 +1532,27 @@ export function waitForLayoutReady(doc: Document = document): Promise<void> {
 export function paginate(model: GcpmModel, opts: LayoutOptions = {}): GutterpressViewerApi {
   const authoring: string[] = [];
   const strips = buildStrips(model, opts, authoring);
-  makeOverflowFragmentable(strips);
-  stabilizeFullHeightPageRoots(model, strips);
-  synthesizeColumnBreaks(model);
-  measure(strips);
-  const blanks = compensateRectoBreaks(model, strips);
-  if (blanks) measure(strips);
-  const headers =
-    opts.compensateHeaders === false
-      ? { tables: 0, passes: 0, warnings: [] }
-      : compensateRepeatedHeaders(strips);
-  const { totalPages } = measure(strips);
+  // The strips' pitch is set; every read below may share one answer.
+  const { blanks, headers, totalPages, blankPageIndices: blankIndices } = withLayoutReadCache(() => {
+    makeOverflowFragmentable(strips);
+    stabilizeFullHeightPageRoots(model, strips);
+    synthesizeColumnBreaks(model);
+    measure(strips);
+    const blanks = compensateRectoBreaks(model, strips);
+    if (blanks) measure(strips);
+    const headers =
+      opts.compensateHeaders === false
+        ? { tables: 0, passes: 0, warnings: [] }
+        : compensateRepeatedHeaders(strips);
+    return { blanks, headers, totalPages: measure(strips).totalPages, blankPageIndices: blankPageIndices(strips) };
+  });
   const api: GutterpressViewerApi = {
     model,
     strips,
     totalPages,
     warnings: [...new Set([...authoring, ...headers.warnings])],
     blankPages: blanks,
-    blankPageIndices: blankPageIndices(strips),
+    blankPageIndices: blankIndices,
     pageOf: (sel) =>
       pageOf(typeof sel === "string" ? document.querySelector(sel)! : sel, strips),
     pageRangeOf: (sel) =>
@@ -1527,19 +1573,21 @@ export function paginate(model: GcpmModel, opts: LayoutOptions = {}): Gutterpres
       const rebuilt = buildStrips(model, opts, authoring);
       strips.length = 0;
       strips.push(...rebuilt);
-      makeOverflowFragmentable(strips);
-      stabilizeFullHeightPageRoots(model, strips);
-      synthesizeColumnBreaks(model);
-      measure(strips);
-      api.blankPages = compensateRectoBreaks(model, strips);
-      if (opts.compensateHeaders !== false)
-        api.warnings = [
-          ...new Set([...authoring, ...compensateRepeatedHeaders(strips).warnings]),
-        ];
-      const r = measure(strips);
-      api.totalPages = r.totalPages;
-      api.blankPageIndices = blankPageIndices(strips);
-      return r;
+      return withLayoutReadCache(() => {
+        makeOverflowFragmentable(strips);
+        stabilizeFullHeightPageRoots(model, strips);
+        synthesizeColumnBreaks(model);
+        measure(strips);
+        api.blankPages = compensateRectoBreaks(model, strips);
+        if (opts.compensateHeaders !== false)
+          api.warnings = [
+            ...new Set([...authoring, ...compensateRepeatedHeaders(strips).warnings]),
+          ];
+        const r = measure(strips);
+        api.totalPages = r.totalPages;
+        api.blankPageIndices = blankPageIndices(strips);
+        return r;
+      });
     },
   };
   return api;

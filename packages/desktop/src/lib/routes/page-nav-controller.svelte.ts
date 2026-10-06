@@ -43,7 +43,24 @@ export interface PageNavDeps {
   savePageDirect: (page: number) => void;
 }
 
-export class PageNavController {
+/**
+ * What the page-navigation toolbar needs from a controller: the live page
+ * state and the five navigation intents. `PageNavController` (the preview)
+ * and `BookPageNav` (the unlocked book, `book-page-nav.svelte.ts`) both
+ * provide it, so one toolbar serves both.
+ */
+export interface PageNavSurface {
+  readonly currentPage: number;
+  readonly totalPages: number;
+  readonly pageOptions: number[];
+  firstPage(): void;
+  prevPage(): void;
+  nextPage(): void;
+  lastPage(): void;
+  selectPage(value: number | string): void;
+}
+
+export class PageNavController implements PageNavSurface {
   // ── Public rune state (read by the template; mutated only via methods) ──────
   /** The 1-based page currently shown in the preview. */
   currentPage = $state(1);

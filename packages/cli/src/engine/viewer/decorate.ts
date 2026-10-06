@@ -38,6 +38,7 @@ import {
   wrapGeometry,
   type GutterpressViewerApi,
   type StripInfo,
+  withLayoutReadCache,
 } from "./fragment.ts";
 
 const px = (v: number) => `${v * PX_PER_PT}px`;
@@ -329,7 +330,12 @@ export function decorate(
       style.id = "gp-xref-style";
       document.head.appendChild(style);
     }
-    style.textContent = generatedContentCss(model.xrefs.map((x) => x.selector));
+    // Only when it changed: replacing a stylesheet's text invalidates the
+    // style of EVERY element in the document, and this runs on each draw —
+    // every keystroke of the desktop's paged editor, where the selectors it
+    // names are the same from one draw to the next.
+    const css = generatedContentCss(model.xrefs.map((x) => x.selector));
+    if (style.textContent !== css) style.textContent = css;
   }
 
   /**
@@ -365,129 +371,133 @@ export function decorate(
   }
 
   function draw() {
-    sheets.clear();
-    warnings.length = 0;
-    blankPages = new Set(layout.blankPageIndices);
-    buildMaps();
-    fillXrefs();
+    // One pass's computed-style reads are shared (see `withLayoutReadCache`).
+    withLayoutReadCache(() => {
+      // Every strip's pitch and gap, read before this pass writes anything:
+      // a read after a write is a forced style recalculation of the whole
+      // document, once per strip, on every mount, hot reload and keystroke
+      // of the desktop's paged editor.
+      for (const strip of layout.strips) stripMetrics(strip.el);
+      sheets.clear();
+      warnings.length = 0;
+      blankPages = new Set(layout.blankPageIndices);
+      buildMaps();
+      fillXrefs();
 
-    // Cross-run spread composition. Strip offsets are consecutive, so parity
-    // interlocks: a run whose first page is a RECTO (wrapGeometry shift 1) always
-    // follows a run whose last page was a solo VERSO sitting in the LEFT
-    // slot of its final row (proof: offsets B = A.offset + A.pages; B even
-    // forces A.pages-1+A.shift even in both A-parity cases). The recto run's
-    // leading spacer keeps its first row right-slot-only, so pulling the run
-    // UP by one row makes the two boxes overlap without the slots ever
-    // colliding — the verso and recto compose one visual spread. This is
-    // placement arithmetic on boxes we already position; content and sheets
-    // stay in the same box, and pagination is untouched.
-    let prevPageH = 0;
-    let first = true;
+      // Cross-run spread composition. Strip offsets are consecutive, so parity
+      // interlocks: a run whose first page is a RECTO (wrapGeometry shift 1) always
+      // follows a run whose last page was a solo VERSO sitting in the LEFT
+      // slot of its final row (proof: offsets B = A.offset + A.pages; B even
+      // forces A.pages-1+A.shift even in both A-parity cases). The recto run's
+      // leading spacer keeps its first row right-slot-only, so pulling the run
+      // UP by one row makes the two boxes overlap without the slots ever
+      // colliding — the verso and recto compose one visual spread. This is
+      // placement arithmetic on boxes we already position; content and sheets
+      // stay in the same box, and pagination is untouched.
+      let prevPageH = 0;
+      let first = true;
 
-    for (const strip of layout.strips) {
-      const run = ensureRun(strip);
-      // One computed-style read per strip, BEFORE the sheet-append loop
-      // below mutates the DOM — reading after those writes forces a
-      // synchronous style recalc per strip on every mount and hot reload.
-      const { stride, rowStride } = stripMetrics(strip.el);
-      const sheetGap =
-        parseFloat(getComputedStyle(strip.el).getPropertyValue("--gp-sheet-gap")) || 0;
-      // The gap originates on the strip because it also drives multicol's
-      // row/column pitch. The run owns spacing BETWEEN named-page runs, so
-      // copy that one value up instead of giving both elements a margin.
-      run.style.setProperty("--gp-sheet-gap", `${sheetGap}px`);
-      // `wrapCols` unset (view mode off, or the browser lacks
-      // `column-wrap: wrap`) ⇒ every page sits in one row, exactly the
-      // pre-wrap layout — `perRow = strip.pages` makes the row/col math
-      // below degrade to that single-row case for free.
-      const { perRow, shift } = wrapGeometry(strip);
-      const layer = run.querySelector<HTMLElement>(".gp-layer")!;
-      layer.textContent = "";
-      const g = strip.geometry;
+      for (const strip of layout.strips) {
+        const run = ensureRun(strip);
+        // From the pass's read cache (filled above, before any write).
+        const { stride, rowStride, sheetGap } = stripMetrics(strip.el);
+        // The gap originates on the strip because it also drives multicol's
+        // row/column pitch. The run owns spacing BETWEEN named-page runs, so
+        // copy that one value up instead of giving both elements a margin.
+        run.style.setProperty("--gp-sheet-gap", `${sheetGap}px`);
+        // `wrapCols` unset (view mode off, or the browser lacks
+        // `column-wrap: wrap`) ⇒ every page sits in one row, exactly the
+        // pre-wrap layout — `perRow = strip.pages` makes the row/col math
+        // below degrade to that single-row case for free.
+        const { perRow, shift } = wrapGeometry(strip);
+        const layer = run.querySelector<HTMLElement>(".gp-layer")!;
+        layer.textContent = "";
+        const g = strip.geometry;
 
-      for (let i = 0; i < strip.pages; i++) {
-        const bookIndex = strip.offset + i;
-        const ctx = pageContext(strip, i, bookIndex);
+        for (let i = 0; i < strip.pages; i++) {
+          const bookIndex = strip.offset + i;
+          const ctx = pageContext(strip, i, bookIndex);
 
-        // Sheets are painted exactly where Chromium put the matching
-        // fragment — the ONLY layout that is guaranteed to agree with where
-        // the strip's real content actually is. Column-wrap (§ view modes)
-        // moves CONTENT with the columns, so this is real 2-D positioning,
-        // not the retired chrome-only two-up where sheet chrome moved but
-        // Chromium-rendered content stayed at its native single-row offset.
-        const slot = i + shift;
-        const row = Math.floor(slot / perRow);
-        const colVisual = slot % perRow;
-        // Keep paper geometry stable. Chromium multicol gives every fragment
-        // in a run one fixed content-column origin; moving the paper around
-        // that origin to mimic page-specific mirrored margins made single
-        // sheets wobble and facing sheets touch. The PDF remains the exact
-        // page-margin contract; the interactive viewer keeps equal paper gaps.
-        const sheetLeft = colVisual * stride;
-        const sheetTop = row * rowStride;
+          // Sheets are painted exactly where Chromium put the matching
+          // fragment — the ONLY layout that is guaranteed to agree with where
+          // the strip's real content actually is. Column-wrap (§ view modes)
+          // moves CONTENT with the columns, so this is real 2-D positioning,
+          // not the retired chrome-only two-up where sheet chrome moved but
+          // Chromium-rendered content stayed at its native single-row offset.
+          const slot = i + shift;
+          const row = Math.floor(slot / perRow);
+          const colVisual = slot % perRow;
+          // Keep paper geometry stable. Chromium multicol gives every fragment
+          // in a run one fixed content-column origin; moving the paper around
+          // that origin to mimic page-specific mirrored margins made single
+          // sheets wobble and facing sheets touch. The PDF remains the exact
+          // page-margin contract; the interactive viewer keeps equal paper gaps.
+          const sheetLeft = colVisual * stride;
+          const sheetTop = row * rowStride;
 
-        const sheet = document.createElement("div");
-        sheet.className = "gp-sheet";
-        sheet.dataset.page = String(bookIndex + 1 + pageOffset);
-        // Recto = odd 1-based page (page 1 is a recto).
-        sheet.dataset.side = bookIndex % 2 === 0 ? "recto" : "verso";
-        sheet.style.left = `${sheetLeft}px`;
-        sheet.style.top = `${sheetTop}px`;
-        sheet.style.setProperty("--gp-page-w", px(ctx.geometry.width));
-        sheet.style.setProperty("--gp-page-h", px(ctx.geometry.height));
-        applyPageBackground(sheet, ctx.decls);
-        for (const [prop, value] of canvasBg) sheet.style.setProperty(prop, value);
-        layer.appendChild(sheet);
-        sheets.set(bookIndex, sheet);
+          const sheet = document.createElement("div");
+          sheet.className = "gp-sheet";
+          sheet.dataset.page = String(bookIndex + 1 + pageOffset);
+          // Recto = odd 1-based page (page 1 is a recto).
+          sheet.dataset.side = bookIndex % 2 === 0 ? "recto" : "verso";
+          sheet.style.left = `${sheetLeft}px`;
+          sheet.style.top = `${sheetTop}px`;
+          sheet.style.setProperty("--gp-page-w", px(ctx.geometry.width));
+          sheet.style.setProperty("--gp-page-h", px(ctx.geometry.height));
+          applyPageBackground(sheet, ctx.decls);
+          for (const [prop, value] of canvasBg) sheet.style.setProperty(prop, value);
+          layer.appendChild(sheet);
+          sheets.set(bookIndex, sheet);
 
-        drawMarginBoxes(sheet, ctx, layout.totalPages);
-        drawGuides(sheet, ctx);
-        drawCropMarks(sheet, ctx);
+          drawMarginBoxes(sheet, ctx, layout.totalPages);
+          drawGuides(sheet, ctx);
+          drawCropMarks(sheet, ctx);
+        }
+
+        // Reserve the full row width even for a solo page in a wrapped run
+        // (`perRow` can exceed `strip.pages`) — matches the CSS width
+        // `.gp-strip[data-wrap]` reserves, and is what leaves a wrapped
+        // run's empty slot visibly empty instead of collapsed. `+ shift`
+        // counts the leading spacer's own grid slot toward row count.
+        const rows = Math.max(1, Math.ceil((strip.pages + shift) / perRow));
+        // `rowStride` is the PITCH between wrapped rows (`--gp-content-h` +
+        // row-gap — see `rowStrideOf`), not a row's own full height: multicol
+        // lays each wrapped row's content out at `column-height`, but the
+        // SHEET drawn around it is the full page box (content + margins).
+        // Sizing the run box at `rowStride * rows` therefore left the box
+        // short by exactly (margin-top + margin-bottom) for its own last row —
+        // harmless for a wrapped multi-row run (the shortfall was inside the
+        // box, absorbed by the next row's margin), but for the common
+        // unwrapped case (`rows` always 1) it shrank the WHOLE run to content
+        // height, so the next sibling run's box started before this run's
+        // sheet visually ended: sheets stacked in document flow overlapped by
+        // that same margin gap. Reserve `rowStride` pitch only BETWEEN rows,
+        // and the sheet's real full height (`g.height`) for the last row.
+        run.style.height = `${rowStride * (rows - 1) + PX_PER_PT * g.height}px`;
+        run.style.width = `${stride * perRow}px`;
+
+        // A recto-starting wrapped run overlaps the previous run's last row
+        // (see the parity proof above). The sibling margins collapse: prev's
+        // bottom margin (sheet-gap G) + this negative top margin pulls this
+        // run's first row up onto the previous run's last-row top. The pull
+        // distance is prev's own box height MINUS the offset of its last row
+        // from its own top — i.e. exactly prev's full sheet height
+        // (`prevPageH`, content + margins), not `rowStride` (content only):
+        // since the fix above, a run's box height is
+        // `rowStride*(rows-1) + pageH`, and its last row sits at
+        // `rowStride*(rows-1)` from the top, so bottom-of-box minus
+        // top-of-last-row is `pageH` regardless of row count. The very first
+        // run keeps the solo-cover convention.
+        run.style.marginTop =
+          strip.wrapCols && shift === 1 && !first
+            ? `${-(prevPageH + sheetGap)}px`
+            : "";
+        prevPageH = PX_PER_PT * g.height;
+        first = false;
+
+        if (opts.designer) checkOverflow(strip, warnings);
       }
-
-      // Reserve the full row width even for a solo page in a wrapped run
-      // (`perRow` can exceed `strip.pages`) — matches the CSS width
-      // `.gp-strip[data-wrap]` reserves, and is what leaves a wrapped
-      // run's empty slot visibly empty instead of collapsed. `+ shift`
-      // counts the leading spacer's own grid slot toward row count.
-      const rows = Math.max(1, Math.ceil((strip.pages + shift) / perRow));
-      // `rowStride` is the PITCH between wrapped rows (`--gp-content-h` +
-      // row-gap — see `rowStrideOf`), not a row's own full height: multicol
-      // lays each wrapped row's content out at `column-height`, but the
-      // SHEET drawn around it is the full page box (content + margins).
-      // Sizing the run box at `rowStride * rows` therefore left the box
-      // short by exactly (margin-top + margin-bottom) for its own last row —
-      // harmless for a wrapped multi-row run (the shortfall was inside the
-      // box, absorbed by the next row's margin), but for the common
-      // unwrapped case (`rows` always 1) it shrank the WHOLE run to content
-      // height, so the next sibling run's box started before this run's
-      // sheet visually ended: sheets stacked in document flow overlapped by
-      // that same margin gap. Reserve `rowStride` pitch only BETWEEN rows,
-      // and the sheet's real full height (`g.height`) for the last row.
-      run.style.height = `${rowStride * (rows - 1) + PX_PER_PT * g.height}px`;
-      run.style.width = `${stride * perRow}px`;
-
-      // A recto-starting wrapped run overlaps the previous run's last row
-      // (see the parity proof above). The sibling margins collapse: prev's
-      // bottom margin (sheet-gap G) + this negative top margin pulls this
-      // run's first row up onto the previous run's last-row top. The pull
-      // distance is prev's own box height MINUS the offset of its last row
-      // from its own top — i.e. exactly prev's full sheet height
-      // (`prevPageH`, content + margins), not `rowStride` (content only):
-      // since the fix above, a run's box height is
-      // `rowStride*(rows-1) + pageH`, and its last row sits at
-      // `rowStride*(rows-1)` from the top, so bottom-of-box minus
-      // top-of-last-row is `pageH` regardless of row count. The very first
-      // run keeps the solo-cover convention.
-      run.style.marginTop =
-        strip.wrapCols && shift === 1 && !first
-          ? `${-(prevPageH + sheetGap)}px`
-          : "";
-      prevPageH = PX_PER_PT * g.height;
-      first = false;
-
-      if (opts.designer) checkOverflow(strip, warnings);
-    }
+    });
   }
 
   function drawMarginBoxes(sheet: HTMLElement, ctx: PageCtx, totalPages: number) {

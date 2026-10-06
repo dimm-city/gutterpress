@@ -32,6 +32,7 @@
   import { PreviewClient, type ChapterStart, type OutlineEntry, type PreviewEvent, type PreviewTarget } from "$lib/preview-client";
   import { activeOutlineIndexForLine } from "$lib/routes/outline";
   import { PageNavController } from "$lib/routes/page-nav-controller.svelte";
+  import { BookPageNav } from "$lib/routes/book-page-nav.svelte";
   import { ZoomViewController } from "$lib/routes/zoom-view-controller.svelte";
   import { PreviewEventController } from "$lib/routes/preview-event-controller";
   import { EditorPreviewSyncController } from "$lib/routes/editor-preview-sync-controller";
@@ -54,7 +55,7 @@
   } from "$lib/editor/rich-commands";
   import { findImageTokenAtOffset } from "$lib/editor/context-menu-actions";
   import { bookOrder } from "$lib/routes/book-order";
-  import { reportError } from "$lib/diagnostics/report";
+  import { installErrorReporting, reportError } from "$lib/diagnostics/report";
   import type { Diagnostic } from "@dimm-city/gutterpress-editor/core";
   // The browser-safe render subpath: the one place the renderer builds a
   // projection itself (the plugin-less fallback when the host call fails).
@@ -910,6 +911,10 @@
   // combined-with-markers files and side-by-side pairs each get a review
   // toast. Per §8: runs in the SPA, no lib value imports, all host
   // work through getPlatform().
+  // Uncaught errors, unhandled rejections and console.error reach the app
+  // log from here on (`$lib/diagnostics/report`).
+  onMount(() => installErrorReporting());
+
   onMount(() => {
     const off = getPlatform().onSyncStatus((status) => {
       // Scope to the currently open project.
@@ -1285,6 +1290,7 @@
   let bookRef = $state<{
     setReadonly: (locked: boolean) => void;
     setZoom: (zoom: string) => void;
+    goToPage: (page: number) => Promise<void>;
     scrollToChapter: (path: string, line?: number) => Promise<void>;
     revealLine: (path: string, line: number) => void;
     activePath: () => string | null;
@@ -1300,6 +1306,9 @@
   function richHost(): DesktopDocumentHost | null {
     return bookRef?.activeHost() ?? null;
   }
+
+  /** Page navigation for the unlocked book: the preview's toolbar, driving the editor's pages. */
+  const bookPageNav = new BookPageNav((page) => void bookRef?.goToPage(page));
 
   /**
    * The book's chapters in book order, with a page estimate each: as the
@@ -3507,8 +3516,16 @@
       >
         {#if !inFocus && lifecycle.previewUrl}
           {#if richEditing}
-            <!-- Unlocked Read: the formatting bar drives the paged editor
-                 (the page itself has no caret-relative controls of its own). -->
+            <!-- Unlocked Read: page navigation and zoom stay, now driving the
+                 editor's pages, and the formatting bar joins them (the page
+                 itself has no caret-relative controls of its own). -->
+            <PreviewToolbar
+              pageNav={bookPageNav}
+              rendering={false}
+              {zoom}
+              zoomDisabled={false}
+              onApplyZoom={(val) => { zoomView.applyZoom(val); bookRef?.setZoom(val); }}
+            />
             <EditorToolbar
               filePath={editorFilePath}
               projectDir={lifecycle.currentDir}
@@ -3588,6 +3605,7 @@
                     chapters={bookChapters}
                     initialPath={editorFilePath}
                     readonly={richLocked}
+                    {zoom}
                     projectDir={lifecycle.currentDir}
                     pageEstimates={book.estimates}
                     readChapter={(path) => api.fs.readFile(path)}
@@ -3595,6 +3613,7 @@
                     onSnapshotChange={onBookSnapshotChange}
                     onActivate={onBookActivate}
                     onDiagnostic={showRichDiagnostic}
+                    onPageState={(state) => bookPageNav.sync(state)}
                   />
                 {/key}
               {:else if bookModuleFailed}

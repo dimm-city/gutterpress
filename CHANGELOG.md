@@ -34,6 +34,21 @@ This project follows [Semantic Versioning](https://semver.org/).
   stylesheet assets inside the editor document), and
   `/api/log/renderer-error`. The preview protocol gains `getChapters()`
   (v9).
+- **Page navigation and zoom stay while editing on the page.** Unlocking
+  keeps the preview's page picker, first/previous/next/last and zoom menu
+  above the formatting bar; they drive the editor's pages (the folios
+  continue across chapters, so the numbers are the book's).
+- **Errors the app shows are in its log.** Every error toast, and every
+  uncaught error in the window, is recorded in the app log the Logs tab
+  shows, so a problem seen once can be handed over.
+
+### Fixed
+
+- **Typing on the page is faster.** The paged layout rewrote a stylesheet
+  on every pass, which made the browser restyle the whole book on each
+  keystroke, and asked for each page's geometry once per element; both
+  are gone from the per-keystroke path (the preview's hot reload gains the
+  same).
 
 ## [0.11.13] - 2026-10-06
 

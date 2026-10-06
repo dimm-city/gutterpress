@@ -325,6 +325,11 @@
     height: auto;
   }
   .rich-editor-host--stacked :global(.md-editor-content) {
+    /* The fork pins its content box to the editor's box (position: absolute,
+       inset: 0) so the editor fills a pane. A stacked chapter has no pane:
+       its box must be as tall as its pages, in the book's flow, or every
+       chapter lands at the same top and the book is a pile, not a scroll. */
+    position: static;
     max-height: none;
     overflow: visible;
   }
