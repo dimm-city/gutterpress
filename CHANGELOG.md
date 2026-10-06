@@ -5,6 +5,15 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.13] - Unreleased
+
+### Changed
+
+- **Faster, bounded releases.** The release workflow no longer repeats the
+  test suite when CI is already green on the commit being released, caches
+  Electron and its Windows packaging tools between runs, and gives every job
+  a timeout so a hung step fails in minutes instead of hours.
+
 ## [0.11.12] - 2026-10-06
 
 ### Fixed

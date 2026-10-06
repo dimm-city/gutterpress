@@ -29,12 +29,33 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       # Test the branch the release is dispatched from (default branch for a
       # stable release, or a release/* branch for a prerelease).
       - uses: actions/checkout@v5
         with:
           ref: ${{ github.ref_name }}
+
+      # CI (ci.yml) runs this same `bun --filter '*' test` on every push to the
+      # default and release/* branches. When a completed, successful CI run
+      # exists for the exact commit being released, the tests are not repeated
+      # here; the release-tooling check at the end still runs (CI has no
+      # equivalent). A commit CI never saw, or saw red, is gated as before.
+      - name: Look for a green CI run on this commit
+        id: ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          n=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=$SHA&status=success&per_page=1" --jq '.workflow_runs | length')
+          if [ "$n" -gt 0 ]; then
+            echo "CI is green on $SHA — not repeating the test run."
+            echo "passed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No green CI run for $SHA — running the tests here."
+            echo "passed=false" >> "$GITHUB_OUTPUT"
+          fi
 
       # Ghostscript rasterises PDFs for the pixel-diff suites, INCLUDING
       # page-background-chromium-bug.canary.test.ts — the expiry trigger that
@@ -44,7 +65,8 @@ jobs:
       # the run when Ghostscript is missing, because a skipped removal trigger
       # and a passing one look identical in CI output. Do not remove this step
       # without removing that guard's reason for existing.
-      - name: Install PDF tooling (Ghostscript, qpdf)
+      - if: steps.ci.outputs.passed != 'true'
+        name: Install PDF tooling (Ghostscript, qpdf)
         run: |
           sudo apt-get update
           sudo apt-get install -y ghostscript qpdf
@@ -71,7 +93,8 @@ jobs:
       # release.yml is workflow_dispatch-only, so no PR run will catch a bad
       # pin for you.
 
-      - name: Build package dist
+      - if: steps.ci.outputs.passed != 'true'
+        name: Build package dist
         run: bun run build
         working-directory: packages/cli
 
@@ -81,7 +104,8 @@ jobs:
       # aborts with "FATAL: No usable sandbox!" under this runner's AppArmor
       # policy, c4be60e) — add the flag only alongside such a pin, never
       # speculatively.
-      - name: Run tests
+      - if: steps.ci.outputs.passed != 'true'
+        name: Run tests
         run: bun --filter '*' test
 
       - name: Check release distribution tooling and metadata
@@ -101,6 +125,7 @@ jobs:
     name: Bump Version
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: write
     outputs:
@@ -262,6 +287,7 @@ jobs:
           - target: bun-windows-x64
             artifact: gutterpress-cli-windows-x64.exe
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
         with:
@@ -321,6 +347,7 @@ jobs:
     name: Gutterpress desktop / Linux AppImage
     needs: version
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
         with:
@@ -357,12 +384,23 @@ jobs:
     # No afterPack hook: the lib ships as a normal node_modules dependency that
     # electron-builder walks automatically (see electron-builder.yml).
     runs-on: windows-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
         with:
           ref: ${{ needs.version.outputs.sha }}
 
       - uses: ./.github/actions/bun
+
+      # electron-builder downloads Electron, NSIS and the winCodeSign tools on
+      # every run — the slowest part of the slowest job. Keep them between
+      # runs, keyed on the desktop manifest (which pins the Electron version).
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/AppData/Local/electron/Cache
+            ~/AppData/Local/electron-builder/Cache
+          key: electron-win-${{ hashFiles('packages/desktop/package.json') }}
 
       # See build-desktop-linux — one packaging path, every
       # platform, release and debug workflows alike.
@@ -388,6 +426,7 @@ jobs:
     name: Gutterpress desktop / macOS DMG
     needs: version
     runs-on: macos-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
         with:
@@ -425,6 +464,7 @@ jobs:
       [version, build-cli, build-desktop-linux, build-desktop-windows, build-desktop-mac]
     if: ${{ !inputs.skip_npm_publish }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       id-token: write
@@ -516,6 +556,7 @@ jobs:
        needs.build-desktop-mac.result == 'success' &&
       (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
       # Needed to dispatch Docker and package-manager follow-up workflows.
