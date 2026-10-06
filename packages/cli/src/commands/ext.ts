@@ -6,6 +6,7 @@ import {
   addBuiltInStyleSet,
   addExtension,
   BUILT_IN_STYLE_SET_IDS,
+  checkExtensionUpdates,
   importExtensionFromFile,
   importExtensionFromUrl,
   isPathSpecifier,
@@ -14,6 +15,7 @@ import {
   removeExtension,
   searchNpmExtensions,
   setExtensionEnabled,
+  updateExtensions,
 } from "../index.ts";
 import type { NpmExtensionMatch, ProjectExtensionEntry } from "../index.ts";
 import {
@@ -35,6 +37,14 @@ import {
  *   gutterpress ext enable <specifier> [dir]
  *   gutterpress ext disable <specifier> [dir]
  *   gutterpress ext search [query]
+ *   gutterpress ext outdated [dir]
+ *   gutterpress ext update [name] [dir]
+ *
+ * `outdated` and `update` are the only two that reach npm for a project:
+ * each pinned npm entry is compared with npm's `latest`, and `update` re-pins
+ * the outdated ones (or just `name`) through the same install path as `add`,
+ * old version folders removed. A build never checks — a book pins exact
+ * versions and builds offline.
  *
  * `search` (#246) is the one command not scoped to a project: it searches the
  * npm registry for packages tagged `gutterpress` (Gutterpress extensions) or
@@ -95,7 +105,18 @@ export const extSearchArgs = {
   },
 } as const;
 
-export const EXT_SUBCOMMANDS = ["list", "add", "remove", "enable", "disable", "search"] as const;
+export const extOutdatedArgs = { dir: dirArg } as const;
+
+export const extUpdateArgs = {
+  name: {
+    type: "positional",
+    description: "The npm package to update; omit to update every pinned npm extension",
+    required: false,
+  },
+  dir: dirArg,
+} as const;
+
+export const EXT_SUBCOMMANDS = ["list", "add", "remove", "enable", "disable", "search", "outdated", "update"] as const;
 
 const parentArgs = {} as const;
 
@@ -362,14 +383,101 @@ const search = defineCommand({
   },
 });
 
+const outdated = defineCommand({
+  meta: {
+    name: "outdated",
+    description: "Compare each pinned npm extension with npm's latest (network); exit 1 when one is behind",
+  },
+  args: extOutdatedArgs,
+  async run({ args, rawArgs }) {
+    let projectDir = "";
+    try {
+      rejectUnknownFlags(rawArgs, extOutdatedArgs, "ext outdated");
+      rejectExtraPositionals(args._, 1, "ext outdated");
+      projectDir = await requireProjectDir(args.dir, "outdated");
+    } catch (error) {
+      exitForUsage(error);
+    }
+    try {
+      const checks = await checkExtensionUpdates(projectDir);
+      if (checks.length === 0) {
+        console.log("No pinned npm extensions to check.");
+        return;
+      }
+      const behind = checks.filter((c) => c.outdated);
+      if (behind.length === 0) {
+        console.log(`Every pinned npm extension is at its latest version (${checks.map((c) => c.use).join(", ")}).`);
+        return;
+      }
+      console.log("Extensions with a newer version on npm:");
+      for (const c of behind) console.log(`  ${c.name}  ${c.current} -> ${c.latest}`);
+      for (const c of checks) if (!c.outdated) console.log(`  ${c.name}  ${c.current} (latest)`);
+      console.log("Update with: gutterpress ext update [name] [dir]");
+      process.exit(EXIT_CODES.FINDINGS);
+    } catch (error) {
+      failPipeline("Could not check npm for updates", error);
+    }
+  },
+});
+
+const update = defineCommand({
+  meta: {
+    name: "update",
+    description: "Re-pin every outdated npm extension (or one, by name) to npm's latest: download, verify, vendor, load-test",
+  },
+  args: extUpdateArgs,
+  async run({ args, rawArgs }) {
+    let projectDir = "";
+    let only: string | undefined;
+    try {
+      rejectUnknownFlags(rawArgs, extUpdateArgs, "ext update");
+      rejectExtraPositionals(args._, 2, "ext update");
+      let name = typeof args.name === "string" ? args.name.trim() : "";
+      let dir = args.dir;
+      // One positional that names a folder is the project, not a package:
+      // `ext update ./my-book` and `ext update` behave alike.
+      if (name && dir === undefined) {
+        const looksLikePath = path.isAbsolute(name) || isPathSpecifier(name);
+        const isDir = await stat(path.resolve(process.cwd(), name)).then((s) => s.isDirectory()).catch(() => false);
+        if (looksLikePath || isDir) {
+          dir = name;
+          name = "";
+        }
+      }
+      projectDir = await requireProjectDir(dir, "update");
+      only = name || undefined;
+    } catch (error) {
+      exitForUsage(error);
+    }
+    try {
+      const updated = await updateExtensions(projectDir, { only });
+      if (updated.length === 0) {
+        console.log(
+          only
+            ? `${only} is already at its latest version.`
+            : "Every pinned npm extension is already at its latest version.",
+        );
+        return;
+      }
+      for (const u of updated) console.log(`Updated ${u.name}  ${u.from} -> ${u.to}`);
+      console.log(`  project: ${projectDir}`);
+      console.log("  vendored under: plugins/npm (previous version removed)");
+      console.log("  manifest: exact version re-pinned");
+    } catch (error) {
+      failPipeline("Could not update extensions", error);
+    }
+  },
+});
+
 export default defineCommand({
   meta: {
     name: "ext",
-    description: "List, add, remove, enable, disable the project's extensions, or search npm",
+    description:
+      "List, add, remove, enable, disable or update the project's extensions, or search npm",
   },
   args: parentArgs,
   setup({ rawArgs }) {
     rejectParentFlags(rawArgs);
   },
-  subCommands: { list, add, remove, enable, disable, search },
+  subCommands: { list, add, remove, enable, disable, search, outdated, update },
 });

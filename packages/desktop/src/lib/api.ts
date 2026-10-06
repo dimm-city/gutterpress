@@ -120,6 +120,7 @@ export type {
   ExtensionImportWarning,
   NpmExtensionMatch,
   ExtensionSearchResult,
+  ExtensionUpdatesResult,
   ProjectStyle,
   RecoveryEntry,
   ProjectClassification,
@@ -144,6 +145,7 @@ import type {
   BuiltInStyleSet,
   ExtensionImportResult,
   ExtensionSearchResult,
+  ExtensionUpdatesResult,
   ProjectStyle,
   RecoveryEntry,
   ProjectClassification,
@@ -597,6 +599,9 @@ export const api = {
     recommended: () => get<RecommendedExtension[]>('/api/extension/recommended'),
     /** Search npm for extensions (#246), on demand. A network/parse failure is data (`ok: false`), never a thrown error. */
     search: (query: string) => post<ExtensionSearchResult>('/api/extension/search', { query }),
+    /** Each pinned npm extension against npm's latest, on demand (the Features tab, never project load). A network failure is data (`ok: false`). */
+    outdated: (projectDir: string) =>
+      post<ExtensionUpdatesResult>('/api/extension/outdated', { projectDir }),
     /** The built-in looks (static metadata). */
     listBuiltIn: () => get<BuiltInStyleSet[]>('/api/extension/built-in'),
     /** Copy a built-in look into `extensions/<id>/` and add it as `./extensions/<id>`. */

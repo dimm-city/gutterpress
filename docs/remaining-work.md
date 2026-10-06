@@ -5,8 +5,9 @@ let it drift into a historical record. The 0.10.0 native-engine migration
 (Paged.js removal) is complete and its planning docs are gone from the repo
 (`chore: eradicate Paged.js from the repo`, 2026-08-25); this document now
 tracks ratified engine/tooling decisions, open verification/cleanup/
-engineering work, and known upstream Chromium gaps. Spans two repos:
-`gutterpress` (this one) and `dc-op-manual` (DC design guide + field guide).
+engineering work, and known upstream Chromium gaps. Spans three repos:
+`gutterpress` (this one), `gp-dimm-city` (the DC design system and its design
+guide) and `dc-op-manual` (the field guide).
 
 Last updated 2026-09-19.
 

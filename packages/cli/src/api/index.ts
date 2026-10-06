@@ -161,6 +161,8 @@ export {
   listProjectExtensions,
   describeExtension,
   addExtension,
+  checkExtensionUpdates,
+  updateExtensions,
   removeExtension,
   setExtensionEnabled,
   reorderExtensions,
@@ -182,6 +184,10 @@ export type {
   BuiltInStyleSet,
   BuiltInStyleSetId,
   AddExtensionOptions,
+  ExtensionUpdateCheck,
+  ExtensionUpdateResult,
+  CheckExtensionUpdatesOptions,
+  UpdateExtensionsOptions,
 } from "../lib/extension-manager.ts";
 export {
   BUNDLED_EXTENSIONS,

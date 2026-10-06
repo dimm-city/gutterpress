@@ -20,7 +20,13 @@
    * tagged `gutterpress` or `markdown-it-plugin` — searches the first time
    * Advanced is opened (see `onAdvancedToggle`), never at project load and
    * never while it stays closed.
+   *
+   * Updates: opening this tab (its mount — never project load) asks npm once
+   * for each pinned entry's latest; an entry that is behind shows the newer
+   * version with an Update button, and *Check for updates* asks again. A
+   * failed check is one quiet line under the list.
    */
+  import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { api } from "$lib/api";
   import { extensionStatus, extensionSourceLabel, describeSegments } from "./config-helpers";
@@ -37,6 +43,12 @@
       void controller.runSearch("");
     }
   }
+
+  onMount(() => {
+    if (controller.updates.status === "idle" && controller.entries.some((e) => e.kind === "npm")) {
+      void controller.checkUpdates();
+    }
+  });
 </script>
 
 <!-- A built-in feature's one line, its "what to type" spans set in code type —
@@ -48,9 +60,14 @@
 <section class="block">
   <div class="block-head">
     <h3>Features</h3>
-    <button class="ghost small" onclick={controller.validateExtensions} disabled={controller.validating} title="Re-check that each feature loads">
-      <Icon name="refresh-cw" size={13} /> Re-check
-    </button>
+    <span class="head-actions">
+      <button class="ghost small" onclick={() => controller.checkUpdates()} disabled={controller.updates.status === "loading"} title="Ask npm whether a newer version of any installed package exists">
+        <Icon name="refresh-cw" size={13} /> {controller.updates.status === "loading" ? "Checking npm…" : "Check for updates"}
+      </button>
+      <button class="ghost small" onclick={controller.validateExtensions} disabled={controller.validating} title="Re-check that each feature loads">
+        <Icon name="refresh-cw" size={13} /> Re-check
+      </button>
+    </span>
   </div>
   {#if controller.error}
     <p class="error" role="alert">{controller.error}</p>
@@ -77,6 +94,9 @@
               {#if e.carries.styles}
                 <span class="badge" title="This extension also carries a look — see the Look tab.">+ look</span>
               {/if}
+              {#if controller.updateFor(e)}
+                <span class="badge update-badge" title={`npm has ${e.name}@${controller.updateFor(e)}; this book pins ${e.version}.`}>{controller.updateFor(e)} available</span>
+              {/if}
               <span class={`status ${st.kind}`} class:stale-status={st.kind === "stale"}>
                 {#if st.kind === "ok"}<Icon name="circle-check" size={12} />
                 {:else if st.kind === "error"}<Icon name="triangle-alert" size={12} />
@@ -90,6 +110,11 @@
               <details class="status-raw"><summary>Show details</summary><pre>{st.raw}</pre></details>
             {/if}
           </div>
+          {#if controller.updateFor(e)}
+            <button class="primary small app-btn-primary" onclick={() => controller.update(e)} disabled={controller.busy !== null} title={`Update to ${e.name}@${controller.updateFor(e)}`} aria-label={`Update ${e.label} to ${controller.updateFor(e)}`}>
+              {controller.busy === e.use ? "Updating…" : "Update"}
+            </button>
+          {/if}
           <button class="toggle" class:on={e.enabled} role="switch" aria-checked={e.enabled} aria-label={`${e.enabled ? "Disable" : "Enable"} ${e.label}`} disabled={controller.busy !== null} onclick={() => controller.toggle(e)}>
             <span class="knob"></span>
           </button>
@@ -99,6 +124,11 @@
         </li>
       {/each}
     </ul>
+    {#if controller.updates.status === "error"}
+      <p class="muted search-status">Couldn't check npm for updates: {controller.updates.message}</p>
+    {:else if controller.updates.status === "ready" && controller.updates.checks.length > 0 && !controller.updates.checks.some((c) => c.outdated)}
+      <p class="muted search-status">Every installed package is at its latest version.</p>
+    {/if}
   {/if}
 
   {#if controller.availableRecommended.length > 0}
@@ -188,6 +218,8 @@
   /* The "what to type" spans in a feature's one-liner (describeSegments). */
   .rec-desc code { font-family: var(--app-font-mono); font-size: 11px; color: var(--app-text); }
   .search-status { font-size: 12px; }
+  .head-actions { display: flex; align-items: center; gap: 6px; }
+  .update-badge { color: var(--app-accent); }
   /* Opens via api.shell.openExternal (never a bare `<a target="_blank">` in
      the Electron shell — see ConnectionsSettings.svelte for the pattern). */
   button.inline-link {

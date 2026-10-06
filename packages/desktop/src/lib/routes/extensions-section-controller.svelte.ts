@@ -60,6 +60,8 @@ import type {
   ExtensionImportResult,
   NpmExtensionMatch,
   ExtensionSearchResult,
+  ExtensionUpdateCheck,
+  ExtensionUpdatesResult,
 } from "$lib/platform/dtos";
 import {
   orderAfterMove,
@@ -77,6 +79,8 @@ export interface ExtensionsSectionDeps {
   listBuiltIn: () => Promise<BuiltInStyleSet[]>;
   /** Search npm for extensions (#246). A fetch/parse failure comes back as `{ ok: false }` data, never a rejection. */
   search: (query: string) => Promise<ExtensionSearchResult>;
+  /** Each pinned npm entry against npm's latest. Same data-not-rejection contract as `search`. */
+  outdated: (projectDir: string) => Promise<ExtensionUpdatesResult>;
   validate: (projectDir: string) => Promise<ExtensionValidationResult[]>;
   /** Add by specifier. Null when the author cancelled the native npm trust gate. */
   add: (
@@ -134,6 +138,16 @@ export class ExtensionsSectionController {
   }>({ status: "idle", query: "", matches: [], total: 0, message: null });
   /** The search box's draft text (bound by the Features view). */
   searchQuery = $state("");
+  /**
+   * Update check — each pinned npm entry against npm's latest. Run when the
+   * Features view mounts (an explicit tab open, never project load) and on
+   * *Check for updates*; a failure is one quiet `message`, never a modal.
+   */
+  updates = $state<{
+    status: "idle" | "loading" | "ready" | "error";
+    checks: ExtensionUpdateCheck[];
+    message: string | null;
+  }>({ status: "idle", checks: [], message: null });
   /** Last load-test result per `use`. */
   validation = $state<Record<string, ExtensionValidationResult>>({});
   validating = $state(false);
@@ -196,6 +210,12 @@ export class ExtensionsSectionController {
   }
   /** True when the built-in look `id` is already in the list as `./extensions/<id>`. */
   isBuiltInAdded = (id: string): boolean => addedBuiltInIds(this.entries).has(id);
+  /** The newer version npm has for an entry, or null (not npm, not checked, or current). */
+  updateFor = (entry: ProjectExtensionEntry): string | null => {
+    if (entry.kind !== "npm") return null;
+    const check = this.updates.checks.find((c) => c.name === entry.name && c.outdated);
+    return check && check.current === entry.version ? check.latest : null;
+  };
 
   // ── Load ────────────────────────────────────────────────────────────────────
   loadExtensions = async (): Promise<void> => {
@@ -266,6 +286,34 @@ export class ExtensionsSectionController {
         message: e instanceof Error ? e.message : String(e),
       };
     }
+  };
+
+  /**
+   * Ask npm for each pinned entry's latest. Refuses to pile up a second
+   * in-flight check; a failure lands in `updates.message`, not `this.error`.
+   */
+  checkUpdates = async (): Promise<void> => {
+    const projectDir = this.deps.projectDir();
+    if (!projectDir || this.updates.status === "loading") return;
+    this.updates = { status: "loading", checks: this.updates.checks, message: null };
+    try {
+      const result = await this.deps.outdated(projectDir);
+      this.updates = result.ok
+        ? { status: "ready", checks: result.checks, message: null }
+        : { status: "error", checks: [], message: result.message };
+    } catch (e) {
+      this.updates = { status: "error", checks: [], message: e instanceof Error ? e.message : String(e) };
+    }
+  };
+
+  /** Re-pin one npm entry to the version `checkUpdates` found: `add(name@latest)`, behind the same trust gate as any install. */
+  update = async (entry: ProjectExtensionEntry): Promise<void> => {
+    const latest = this.updateFor(entry);
+    if (!latest) return;
+    const added = await this.mutate(entry.use, (dir) => this.deps.add(dir, `${entry.name}@${latest}`, entry.export), carriesStyles);
+    if (!added) return;
+    this.updates = { ...this.updates, checks: this.updates.checks.filter((c) => c.name !== entry.name) };
+    this.announceAdded(added);
   };
 
   private async loadThumb(entry: ProjectExtensionEntry): Promise<void> {
