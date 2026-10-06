@@ -32,7 +32,7 @@
  * round-trip (the same dep `manifest.ts` parses with). Host-side (node:fs);
  * the desktop reaches it through thin SvelteKit server routes.
  */
-import { cp, mkdir, readFile, rm, stat } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { isSeq, isMap, isScalar, YAMLMap, YAMLSeq, Scalar } from "yaml";
@@ -47,10 +47,14 @@ import {
   type NpmPluginInstallOptions,
 } from "./npm-plugin-installer.ts";
 import {
+  isExactNpmVersion,
   resolveVendoredPluginInstallRoot,
   vendoredNpmPluginPackageDir,
   vendoredNpmPluginRoot,
 } from "./plugin-vendor.ts";
+import { FriendlyHttpError, withFetchTimeout } from "./fetch-timeout.ts";
+import { npmRegistryUrl } from "./npm-registry.ts";
+import { gt as semverGt } from "semver";
 import {
   isPathSpecifier,
   parseExtensionSpecifier,
@@ -697,8 +701,172 @@ async function addExtensionUnlocked(
         `${error instanceof Error ? error.message : String(error)}`,
     );
   });
+  await pruneOtherVersions(projectDir, installed.name, installed.version).catch((error) => {
+    warnings.push(
+      `The extension was installed, but a previous version's vendored copy could not be removed: ` +
+        `${error instanceof Error ? error.message : String(error)}`,
+    );
+  });
   const entry = (await describeExtension(projectDir, use))!;
   return warnings.length > 0 ? { ...entry, warnings: [...(entry.warnings ?? []), ...warnings] } : entry;
+}
+
+/**
+ * Delete every vendored version of `name` other than `keep`. A re-pin
+ * (`ext add name@new`, `ext update`) vendors the new version beside the old
+ * one, and the manifest can name only one version of a package, so the others
+ * are dead weight the author used to have to `rm -r` by hand. Only exact
+ * version folders are touched: the installer's `.install-*` staging and
+ * `<version>.backup-*` folders are its own to manage.
+ */
+async function pruneOtherVersions(projectDir: string, name: string, keep: string): Promise<void> {
+  const parent = path.dirname(vendoredNpmPluginRoot(projectDir, name, keep));
+  let entries;
+  try {
+    entries = await readdir(parent, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name === keep || !isExactNpmVersion(entry.name)) continue;
+    await rm(path.join(parent, entry.name), { recursive: true, force: true });
+  }
+}
+
+// ── Updates ──────────────────────────────────────────────────────────────────
+//
+// A book pins exact versions and builds offline; nothing here runs from the
+// loader, build or preview. Checking is ON DEMAND — `gutterpress ext outdated`,
+// `ext update`, and the desktop's Features tab when it is opened — and an
+// update is the same `addExtension` an author would run by hand, so the new
+// version is downloaded, verified, vendored, load-tested and re-pinned in
+// place (and the old version's folder removed) exactly as `ext add` does.
+
+/** One pinned npm extension against npm's `latest` tag. */
+export interface ExtensionUpdateCheck {
+  /** The specifier as written in the manifest (`name@current`). */
+  use: string;
+  name: string;
+  /** The pinned version. */
+  current: string;
+  /** npm's `latest` dist-tag. */
+  latest: string;
+  /** `latest` is newer than `current` (semver). */
+  outdated: boolean;
+}
+
+export interface CheckExtensionUpdatesOptions {
+  /** Dependency injection for tests; production uses global fetch. */
+  fetch?: typeof globalThis.fetch;
+  signal?: AbortSignal;
+}
+
+const LATEST_LOOKUP_TIMEOUT_MS = 30_000;
+const MAX_PACKUMENT_BYTES = 15 * 1024 * 1024;
+
+/** npm's `latest` for one package, from the abbreviated packument. */
+async function latestNpmVersion(name: string, options: CheckExtensionUpdatesOptions): Promise<string> {
+  const fetchImpl = options.fetch ?? globalThis.fetch;
+  return withFetchTimeout(
+    {
+      timeoutMs: LATEST_LOOKUP_TIMEOUT_MS,
+      signal: options.signal,
+      timeoutMessage: `Looking up ${name} on npm timed out. Check your connection and try again.`,
+      offlineMessage: (cause) =>
+        `Looking up ${name} on npm failed (${cause instanceof Error ? cause.message : String(cause)}).`,
+    },
+    async (signal) => {
+      const response = await fetchImpl(`${npmRegistryUrl()}/${encodeURIComponent(name)}`, {
+        signal,
+        redirect: "error",
+        headers: { accept: "application/vnd.npm.install-v1+json" },
+      });
+      if (response.status === 404) throw new FriendlyHttpError(`npm package "${name}" was not found.`);
+      if (!response.ok) throw new FriendlyHttpError(`Looking up ${name} on npm failed (HTTP ${response.status}).`);
+      const bytes = await response.arrayBuffer();
+      if (bytes.byteLength > MAX_PACKUMENT_BYTES) {
+        throw new FriendlyHttpError(`npm metadata for "${name}" is too large to read.`);
+      }
+      let latest: unknown;
+      try {
+        latest = (JSON.parse(Buffer.from(bytes).toString("utf8")) as { "dist-tags"?: Record<string, unknown> })[
+          "dist-tags"
+        ]?.latest;
+      } catch {
+        throw new FriendlyHttpError(`npm metadata for "${name}" is not valid JSON.`);
+      }
+      if (typeof latest !== "string" || !isExactNpmVersion(latest)) {
+        throw new FriendlyHttpError(`npm metadata for "${name}" has no latest version.`);
+      }
+      return latest;
+    },
+  );
+}
+
+/**
+ * Every pinned npm extension of the book against npm's `latest`, in manifest
+ * order. Bundled, path and unpinned entries are not npm's to answer for and
+ * are skipped. One lookup per package, in parallel; a failed lookup throws
+ * with the package named.
+ */
+export async function checkExtensionUpdates(
+  projectDir: string,
+  options: CheckExtensionUpdatesOptions = {},
+): Promise<ExtensionUpdateCheck[]> {
+  const entries = await listProjectExtensions(projectDir);
+  const pinned = entries.filter((e) => e.kind === "npm" && e.version);
+  return Promise.all(
+    pinned.map(async (e) => {
+      const current = e.version!;
+      const latest = await latestNpmVersion(e.name, options);
+      return { use: e.use, name: e.name, current, latest, outdated: semverGt(latest, current) };
+    }),
+  );
+}
+
+/** One extension `updateExtensions` moved. */
+export interface ExtensionUpdateResult {
+  name: string;
+  from: string;
+  to: string;
+}
+
+export interface UpdateExtensionsOptions extends CheckExtensionUpdatesOptions {
+  /** Update only this package (its npm name); default every pinned npm entry. */
+  only?: string;
+  /** Test/specialized-host install limits — see `NpmPluginInstallOptions`. */
+  limits?: NpmPluginInstallOptions["limits"];
+}
+
+/**
+ * Re-pin every outdated npm extension (or just `only`) to npm's `latest`,
+ * one `addExtension(name@latest)` each — the same download, verification,
+ * vendoring, load test and in-place re-pin as `ext add`, keeping the entry's
+ * `export:` and `enabled:` as written and removing the old version's folder.
+ * Returns what moved; an up-to-date book returns `[]`.
+ */
+export async function updateExtensions(
+  projectDir: string,
+  options: UpdateExtensionsOptions = {},
+): Promise<ExtensionUpdateResult[]> {
+  let checks = await checkExtensionUpdates(projectDir, options);
+  if (options.only) {
+    checks = checks.filter((c) => c.name === options.only);
+    if (checks.length === 0) {
+      throw new Error(`"${options.only}" is not a pinned npm extension of this book.`);
+    }
+  }
+  const updated: ExtensionUpdateResult[] = [];
+  for (const check of checks) {
+    if (!check.outdated) continue;
+    await addExtension(projectDir, pinnedNpmSpecifier(check.name, check.latest), {
+      fetch: options.fetch,
+      signal: options.signal,
+      limits: options.limits,
+    });
+    updated.push({ name: check.name, from: check.current, to: check.latest });
+  }
+  return updated;
 }
 
 // ── Built-in looks ───────────────────────────────────────────────────────────

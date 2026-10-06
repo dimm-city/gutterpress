@@ -8,6 +8,7 @@ import type {
   ExtensionImportResult,
   NpmExtensionMatch,
   ExtensionSearchResult,
+  ExtensionUpdatesResult,
 } from "../../src/lib/platform/dtos";
 import { sampleSrcdoc, hoverPreviewSrcdoc } from "../../src/lib/components/config/config-helpers";
 
@@ -82,6 +83,7 @@ interface Harness {
   onLookAdded: ReturnType<typeof spy>;
   afterLookChange: ReturnType<typeof spy>;
   searchResult: ExtensionSearchResult;
+  updatesResult: ExtensionUpdatesResult;
 }
 
 function make(
@@ -91,6 +93,7 @@ function make(
     recommended: RecommendedExtension[];
     builtIns: BuiltInStyleSet[];
     searchResult: ExtensionSearchResult;
+    updatesResult: ExtensionUpdatesResult;
   }> = {},
 ): Harness {
   const onLookAdded = spy();
@@ -111,6 +114,7 @@ function make(
     addLocalResult: null,
     importFileResult: null,
     searchResult: over.searchResult ?? { ok: true, matches: [FOUND_DC, FOUND_OTHER], total: 42 },
+    updatesResult: over.updatesResult ?? { ok: true, checks: [] },
   } as Harness;
   const record = (name: string, ...args: unknown[]) => h.calls.push({ name, args });
   const named = (n: string) => h.calls.filter((c) => c.name === n);
@@ -127,6 +131,10 @@ function make(
     search: (query) => {
       record("search", query);
       return Promise.resolve(h.searchResult);
+    },
+    outdated: (dir) => {
+      record("outdated", dir);
+      return Promise.resolve(h.updatesResult);
     },
     validate: () => {
       if (h.failValidate) return Promise.reject(new Error("validate failed"));
@@ -564,4 +572,62 @@ test("showHoverPreview has nothing to render for an entry without a folder", asy
   expect(h.ctrl.hoverUse).toBeNull();
   expect(h.ctrl.hoverPreview).toBeNull();
   expect(named(h, "readCss")).toEqual([]);
+});
+
+// ── Updates ──────────────────────────────────────────────────────────────────
+
+const PINNED_DC = entry({ use: "dimm-city-components@1.1.0", kind: "npm", name: "dimm-city-components", version: "1.1.0", export: "full", carries: MARKDOWN });
+const DC_BEHIND: ExtensionUpdatesResult = {
+  ok: true,
+  checks: [{ use: "dimm-city-components@1.1.0", name: "dimm-city-components", current: "1.1.0", latest: "1.2.0", outdated: true }],
+};
+
+test("checkUpdates asks the host once for the project and exposes the newer version per entry", async () => {
+  const h = make({ entries: [PINNED_DC, FEATURE], updatesResult: DC_BEHIND });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.checkUpdates();
+  expect(named(h, "outdated").map((c) => c.args)).toEqual([["/proj"]]);
+  expect(h.ctrl.updates.status).toBe("ready");
+  expect(h.ctrl.updateFor(PINNED_DC)).toBe("1.2.0");
+  expect(h.ctrl.updateFor(FEATURE)).toBeNull(); // bundled: npm has nothing to say
+});
+
+test("checkUpdates surfaces an `ok: false` result as updates.message, not ctrl.error", async () => {
+  const h = make({ entries: [PINNED_DC], updatesResult: { ok: false, message: "Looking up dimm-city-components on npm failed." } });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.checkUpdates();
+  expect(h.ctrl.updates).toEqual({ status: "error", checks: [], message: "Looking up dimm-city-components on npm failed." });
+  expect(h.ctrl.error).toBeNull();
+  expect(h.ctrl.updateFor(PINNED_DC)).toBeNull();
+});
+
+test("checkUpdates refuses a second concurrent call while one is loading", async () => {
+  const h = make({ entries: [PINNED_DC], updatesResult: DC_BEHIND });
+  const first = h.ctrl.checkUpdates();
+  expect(h.ctrl.updates.status).toBe("loading");
+  await Promise.all([first, h.ctrl.checkUpdates()]);
+  expect(named(h, "outdated").length).toBe(1);
+});
+
+test("update re-pins through add(name@latest) keeping the export, reloads, and clears the entry's update", async () => {
+  const h = make({ entries: [PINNED_DC], updatesResult: DC_BEHIND });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.checkUpdates();
+  await h.ctrl.update(PINNED_DC);
+  expect(named(h, "add").map((c) => c.args)).toEqual([["/proj", "dimm-city-components@1.2.0", "full"]]);
+  expect(named(h, "list").length).toBeGreaterThan(1); // reloaded after the re-pin
+  expect(h.ctrl.updateFor(PINNED_DC)).toBeNull();
+  expect(h.ctrl.busy).toBeNull();
+});
+
+test("update is a no-op for an entry with nothing newer, and a cancelled trust gate changes nothing", async () => {
+  const h = make({ entries: [PINNED_DC], updatesResult: DC_BEHIND });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.update(PINNED_DC); // before any check: no known update
+  expect(named(h, "add").length).toBe(0);
+  await h.ctrl.checkUpdates();
+  h.cancelAdd = true;
+  await h.ctrl.update(PINNED_DC);
+  expect(named(h, "add").length).toBe(1);
+  expect(h.ctrl.updateFor(PINNED_DC)).toBe("1.2.0"); // still offered
 });

@@ -3,8 +3,8 @@
 Field notes from styling a 300-page book against the Gutterpress engine
 (Chromium print pagination). Every claim below was **measured** against real
 builds, not inferred from specs. Where a fix lives in a real stylesheet, the
-canonical example is `dc-op-manual/dc-design-guide/css/page.css` (the
-page-furniture sections at the end of the file).
+canonical example is the `gp-dimm-city` package's `styles/page-rules.css` and
+`styles/dc-native.css` (the page-furniture sheets).
 
 > **Several of these gotchas no longer bite** — the engine now defends
 > against them by default (marked **[handled]** below). They stay documented
