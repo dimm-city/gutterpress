@@ -78,6 +78,18 @@ jobs:
       - name: Run tests
         run: bun --filter '*' test
 
+      # The vendored @vscode/markdown-editor fork: its PATCHES.md must match
+      # the diff against the pinned upstream (packages/vscode-markdown-editor).
+      - name: Check vendored editor fork integrity
+        run: bun run check:vendored
+
+      # The shared editor's browser suites run under the runner's Chrome.
+      - name: Run browser tests (shared editor package)
+        working-directory: packages/editor
+        env:
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome-stable
+        run: bun run test:browser
+
       - name: Test Open Design plugin contract
         working-directory: packages/open-design-plugin
         run: bun test
@@ -282,6 +294,14 @@ jobs:
       # merges green.
       - name: Run TypeScript compiler (desktop Electron main/preload)
         working-directory: packages/desktop
+        run: bun run typecheck
+
+      - name: Run TypeScript compiler (shared editor package)
+        working-directory: packages/editor
+        run: bun run typecheck
+
+      - name: Run TypeScript compiler (VS Code extension)
+        working-directory: packages/vscode-extension
         run: bun run typecheck
 
   security-audit:

@@ -18,7 +18,7 @@ export type {
   ReadText,
 } from "./lib/markdown/assemble";
 
-export { createMarkdownRenderer, collectPluginCss, applyPlugins } from "./lib/markdown/renderer";
+export { createMarkdownRenderer, collectPluginCss, applyPlugins, layerExtensionCss } from "./lib/markdown/renderer";
 export type {
   LoadedPlugin,
   GutterpressPlugin,
@@ -26,4 +26,29 @@ export type {
   GutterpressPluginExport,
 } from "./lib/markdown/renderer";
 
-export { MARKER_CSS } from "./lib/markdown/markers.js";
+export { MARKER_CSS, KNOWN_KINDS, parseMarkerLine, markerElementAttributes } from "./lib/markdown/markers.js";
+
+export { sourceTokenOccurrenceAt, inlineSourceMetaOf } from "./lib/markdown/inline-source";
+export type { InlineSourceMeta } from "./lib/markdown/inline-source";
+
+export {
+  createEditorProjection,
+  htmlFragmentNesting,
+  PROJECTION_SCHEMA_VERSION,
+  RICH_MODE_MAX_CONTENT_BYTES,
+} from "./lib/markdown/editor-projection";
+export type {
+  GutterpressProjection,
+  ProjectedBlock,
+  ProjectedBlockKind,
+  ProjectionEditMode,
+  GeneratedView,
+  ProjectionDiagnostic,
+  ProjectionDiagnosticCategory,
+  CreateEditorProjectionOptions,
+  HtmlFragmentNesting,
+  PluginContainer,
+  BlockAnchor,
+  BlockAttributes,
+  InlineWrapper,
+} from "./lib/markdown/editor-projection";

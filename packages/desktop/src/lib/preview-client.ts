@@ -139,6 +139,14 @@ export interface BlockEditEnded {
 }
 
 /** A heading from getOutline(). */
+/** Where a chapter the preview paginated starts - see getChapters(). */
+export interface ChapterStart {
+  /** Source filename (data-chapter-src) of the chapter. */
+  chapter: string;
+  /** 1-based page of its first block; 0 when the viewer has not placed it. */
+  page: number;
+}
+
 export interface OutlineEntry {
   level: number;
   text: string;
@@ -300,6 +308,15 @@ export class PreviewClient {
   }
 
   /** Heading tree with page + source line. */
+  /**
+   * The chapters the preview paginated, in book order, with the page each
+   * starts on (protocol v9). The outline names only headings, so a chapter
+   * without one is absent from it; this names every source file in the book.
+   */
+  getChapters(): Promise<ChapterStart[]> {
+    return this.call<ChapterStart[]>("getChapters");
+  }
+
   getOutline(): Promise<OutlineEntry[]> {
     return this.call<OutlineEntry[]>("getOutline");
   }

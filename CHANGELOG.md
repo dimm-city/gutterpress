@@ -5,6 +5,61 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.12.0] - Unreleased
+
+### Added
+
+- **Edit on the page.** In Read, an author now sees a lock pill over the
+  pages. Locked is the preview as it prints. Unlocking swaps in the paged
+  editor — the book laid out by the same engine — and edits land in the
+  chapter's Markdown exactly as typed (the source stays the only
+  authoritative document; nothing is rewritten on the way through). The
+  formatting bar, Insert menu, image properties and snippets work on the
+  page; right-click offers Image properties, Reveal in Media panel, Copy,
+  Edit in source and Lock. Read opens locked every time, and a reader
+  (Settings → App) never sees the pill. Edit mode is unchanged.
+- **A shared editor core** (`@dimm-city/gutterpress-editor`, private) that
+  the paged editor is built on, with a vendored fork of the VS Code
+  markdown editor it renders through, and an Experimental VS Code
+  extension (`@dimm-city/gutterpress-vscode`, published separately) that
+  mounts the same editor as an optional custom editor for a book's
+  Markdown. See `docs/architecture/source-first-editor.md`.
+- **Library:** `gutterpress/plugins` (the build/preview plugin loader, for
+  any host) and `gutterpress/viewer` (the paged layout engine for a
+  browser), plus the projection surface on `gutterpress/render` the editor
+  consumes (`createEditorProjection` and friends).
+- **Desktop host routes** for the editor: `/api/editor/projection` (the
+  book's plugins and CSS applied host-side), `/api/editor/asset/[name]`
+  and `/api/editor/project-file/[...path]` (the book's own art and
+  stylesheet assets inside the editor document), and
+  `/api/log/renderer-error`. The preview protocol gains `getChapters()`
+  (v9).
+- **Page navigation and zoom stay while editing on the page.** Unlocking
+  keeps the preview's page picker, first/previous/next/last and zoom menu
+  above the formatting bar; they drive the editor's pages (the folios
+  continue across chapters, so the numbers are the book's).
+- **Errors the app shows are in its log.** Every error toast, and every
+  uncaught error in the window, is recorded in the app log the Logs tab
+  shows, so a problem seen once can be handed over.
+
+### Fixed
+
+- **Typing on the page is faster.** The paged layout rewrote a stylesheet
+  on every pass, which made the browser restyle the whole book on each
+  keystroke, and asked for each page's geometry once per element; both
+  are gone from the per-keystroke path (the preview's hot reload gains the
+  same).
+- **Editing on the page, smoothed.** The unlocked book's chapters flow one
+  after another (they had all landed at the same top). Enter in a marker
+  line (`@section .lede`) now finishes the edit instead of splitting the
+  marker across two lines. Clicking an `@end-…` tag opens that line, not
+  the paragraph above it. An image's properties open on a double-click;
+  a single click only selects it. The lock pill sits at the right end of
+  the page-navigation strip instead of over the formatting bar. A part of
+  the book the editor shows as its Markdown (a plugin block whose source
+  range cannot be verified) is one quiet notice per unlock, with the
+  details in Logs, rather than an error for every chapter.
+
 ## [0.11.14] - 2026-10-06
 
 ### Added

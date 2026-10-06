@@ -12,9 +12,109 @@
  * - Block-level actions (headings, blockquote, lists, hr, page-break) operate
  *   on the CURRENT line(s), not just the caret offset.
  * - The functions are pure CodeMirror state mutations — zero Svelte imports.
+ *
+ * Desktop -> shared-command mapping (SFE-P2a; `@dimm-city/gutterpress-editor
+ * /standard`'s `applyCommand`/`commandState` — see that package's `web/
+ * standard/**` for the pure transform math): `applyBold`, `applyStrikethrough`,
+ * `applyInlineCode`, `applyHeading`, `applyBlockquote`, `applyUnorderedList`,
+ * `applyOrderedList`, `applyHr`, `applyTable`, and `applyLink` below now
+ * COMPUTE their edit by calling `applyCommand` and dispatch the returned
+ * `SourceEdit` as this file's own CodeMirror transaction — same public
+ * signature.
+ *
+ * This is NOT byte-identical output for every possible input (an earlier
+ * version of this comment claimed "byte-identical output" / "strict
+ * behavioral superset" — false; a round-1 repair caught the gap and this
+ * paragraph replaces that claim with the actual, measured list). Every case
+ * this run's PINNED tests exercise matches — that is what "mapped" means
+ * here — but pinned tests do not cover every input, and for a handful of
+ * INPUTS OUTSIDE the pinned set the shared command's answer differs from
+ * this file's pre-mapping standalone logic. Two kinds of difference:
+ *
+ * FIXED this round (were unintended regressions, now restored to parity —
+ * see the referenced functions for how):
+ *   - `applyHeading`'s caret placement for a DIFFERENT-level rewrite (e.g.
+ *     H2 -> H3 on `"## Old heading"`) used to land the caret INSIDE the new
+ *     `"###"` run instead of after it, because `computeSetHeading`'s edit is
+ *     a MINIMAL diff (D3) whose `insert` length is not the full prefix
+ *     length. Fixed by computing the caret from the target level's own
+ *     known prefix length instead of `edit.insert.length`.
+ *   - `applyBlockquote`/`applyUnorderedList`/`applyOrderedList` used to
+ *     leave the selection in a different place than before mapping (e.g.
+ *     `"a\nb\nc"` with `[0,3)` selected, blockquote-toggled, used to leave
+ *     `[0,7]` instead of the pre-mapping `[2,7]`) because dispatching ONE
+ *     combined whole-span replacement maps a selection contained inside it
+ *     differently than N narrow per-line changes do. Fixed by re-splitting
+ *     the shared command's edit into minimal per-line changes
+ *     (`minimalLineChange`), restoring the original per-line dispatch shape.
+ *
+ * INTENTIONAL, still-standing divergences (the shared command's answer is
+ * MORE correct than this file's old standalone regex logic, and is kept —
+ * restoring the old behavior would be a regression, not a fix; each is
+ * pinned by a test in `tests/editor/toolbar-actions.test.ts` asserting the
+ * CURRENT, shared-command answer):
+ *   - `applyHeading` on a line with MORE than 6 leading `#` (e.g.
+ *     `"####### seven"`, level 2) used to silently strip the whole
+ *     (invalid) run and replace it with a clean `"## "` prefix
+ *     (`"## seven"`). 7+ `#` is not a valid ATX heading under CommonMark;
+ *     the shared command correctly leaves it untouched as plain text and
+ *     PREPENDS the new prefix (`"## ####### seven"`) rather than guessing
+ *     that the invalid run was meant as a heading marker.
+ *   - `applyUnorderedList` on an ALREADY-task-marked line (e.g.
+ *     `"- [ ] task"`) used to strip the leading `"- "` as if it were a
+ *     plain bullet, corrupting the line into `"[ ] task"` with no marker at
+ *     all. The shared command distinguishes task items from bullets and
+ *     prepends a fresh bullet marker instead (`"- - [ ] task"` — visually
+ *     odd, but the original task marker survives).
+ *   - `applyUnorderedList` on an INDENTED bullet (e.g. `"  - item"`) used to
+ *     prepend `"- "` before the existing indentation regardless
+ *     (`"-   - item"`, doubled and misplaced); this file's own toggle
+ *     detection never looked past column 0. The shared command preserves
+ *     indentation and correctly toggles the existing marker off
+ *     (`"  item"`).
+ *   - `applyBold` on text already wrapped in `__..._` (e.g. `"__x__"`) used
+ *     to treat `__` as unrelated to bold (this file only ever checked for
+ *     `"**"`) and WRAP inside it (`"__**x**__"`). The shared `toggle-bold`
+ *     command recognizes `__` as bold's documented alternate spelling (run
+ *     spec "Toggle semantics": remove whichever spelling is present) and
+ *     correctly toggles it off (`"x"`).
+ *   - `applyHeading` on a SETEXT heading, same-level toggle (e.g.
+ *     `"Title\n---\n\nbody"`, H2 pressed on a line `commandState` already
+ *     reports as level 2) used to PREPEND a fresh `"## "` ATX prefix onto
+ *     the existing text/underline pair, leaving the `"---"` underline
+ *     behind untouched (`"## Title\n---\n\nbody"`, caret 3). A setext
+ *     heading IS a heading, so the same-level rule correctly flips the
+ *     target to `"none"` and `computeSetHeading` collapses the whole
+ *     text+underline pair into the bare text line, exactly like an ATX
+ *     same-level toggle-off does (`"Title\n\nbody"`, caret 0) — this is the
+ *     underline getting cleaned up alongside the prefix, not data loss.
+ *
+ * Two actions are deliberately LEFT UNMAPPED entirely, with the divergence
+ * recorded here rather than silently accepted (run spec: "if any pinned
+ * behavior differs from your command semantics ... leave that action
+ * unmapped with a documented divergence note"):
+ *   - `applyItalic` — this file's own canonical italic spelling is `_..._`
+ *     (pinned: "applyItalic: wraps selection with underscores"). The shared
+ *     `toggle-italic` command's spec-mandated canonical spelling is `*...*`
+ *     (run spec "Command list": wrap the selection with bold/italic/strike
+ *     /code delimiters respectively).
+ *     Mapping would change desktop's canonical output, so `applyItalic`
+ *     keeps its own `toggleInlineWrap(view, "_")` call unchanged.
+ *   - `applyImage` — the shared `insert-image` command's shape is the run
+ *     spec's minimal `{src, alt?}`; this file's `applyImage` additionally
+ *     supports width/position/size/shape attributes via
+ *     `buildImageAttrsString` (pinned tests exercise all four). The shared
+ *     command has no room for them without exceeding this run's bounded
+ *     12-command union, so `applyImage` is unchanged.
+ * Layout/marker actions (`applyPageBreak`, `applyChapterBlock`,
+ * `applySectionBlock`, `applyTwoColumnBlock`, `applySpreadBlock`,
+ * `applyLayoutBlock`) are OUT OF SCOPE for the shared vocabulary this run
+ * (run spec: "NO layout/marker/plugin commands (P2b+)") and are unchanged.
  */
 import type { EditorView } from "@codemirror/view";
-import { EditorSelection } from "@codemirror/state";
+import { EditorSelection, type Text } from "@codemirror/state";
+import type { Diagnostic, EditorCommand, LayoutBlockKind } from "@dimm-city/gutterpress-editor/core";
+import { applyCommand, currentHeadingLevel, minimalReplacement } from "@dimm-city/gutterpress-editor/standard";
 import {
   IMAGE_POSITION_OPTIONS,
   IMAGE_SIZE_OPTIONS,
@@ -24,7 +124,21 @@ import {
   setShapeClass,
   setSizeClass,
   setWidth,
+  type ImagePropertiesValue,
 } from "./image-classes";
+// SFE-P3d-parity, Lane D — the shared pure locate/compute core for the
+// caret-driven image-properties/image-unwrap/link-edit commands below (see
+// caret-token-commands.ts's header for the full division of labor between
+// it and this file).
+import {
+  computeImagePropertiesEdit,
+  computeLinkEditEdit,
+  locateImageAtCaret,
+  locateImageUnwrapEdit,
+  locateLinkAtCaret,
+  type LocateResult,
+} from "./caret-token-commands";
+import type { ImageTokenMatch, LinkTokenMatch } from "./context-menu-actions";
 
 // ── Helper: single-range accessor ────────────────────────────────────────────
 
@@ -44,6 +158,108 @@ function insertionPointAfterCurrentLine(view: EditorView): number {
 function selectedText(view: EditorView): string {
   const { from, to } = mainSel(view);
   return view.state.doc.sliceString(from, to);
+}
+
+// ── Shared-command dispatch helpers (SFE-P2a) ────────────────────────────────
+// Every mapped action below computes its edit via `applyCommand` (pure,
+// host-free — see `@dimm-city/gutterpress-editor/standard`) and dispatches
+// the result as ONE CodeMirror transaction here, preserving this file's own
+// "every action is a SINGLE transaction" rule. `applyCommand` never refuses
+// for any command these helpers drive except `set-heading` (fenced-code-
+// block refusal) — the `"refused" in result` check exists for type
+// narrowing and as a safe no-op fallback, not because refusal is expected
+// on the other paths.
+
+/**
+ * Dispatches a wrap/unwrap toggle (`toggle-bold`/`toggle-strike`/
+ * `toggle-inline-code`), replicating this file's PRE-EXISTING
+ * `toggleInlineWrap` cursor-placement convention exactly, computed
+ * GENERICALLY from the edit's own shape rather than re-deriving wrap-vs-
+ * unwrap detection a second time:
+ *   - `edit.insert.length > originalLen` (the selected/caret span grew) is
+ *     a toggle-ON: select the ORIGINAL content at its new offset —
+ *     `[edit.from + canonicalLen, edit.from + canonicalLen + originalLen)`.
+ *   - otherwise (shrank or unchanged) is a toggle-OFF: select
+ *     `[edit.from, edit.from + edit.insert.length)` — the whole remaining
+ *     unwrapped text.
+ * Both formulas reduce, algebraically, to `toggleInlineWrap`'s own
+ * `EditorSelection.range(from ± mLen, to ± mLen)` / `cursor(...)` calls in
+ * every case (caret-only and partial-selection, both directions) — see
+ * this run's report for the worked-out equivalence proof.
+ */
+function applyWrapCommand(view: EditorView, command: EditorCommand, canonicalLen: number): void {
+  const { from, to } = mainSel(view);
+  const text = view.state.doc.toString();
+  const result = applyCommand({ text, version: 0 }, { start: from, endExclusive: to }, command);
+  if ("refused" in result) return;
+  const { edit } = result;
+  const originalLen = to - from;
+  const selection =
+    edit.insert.length > originalLen
+      ? EditorSelection.range(edit.from + canonicalLen, edit.from + canonicalLen + originalLen)
+      : EditorSelection.range(edit.from, edit.from + edit.insert.length);
+  view.dispatch({ changes: { from: edit.from, to: edit.to, insert: edit.insert }, selection });
+}
+
+/**
+ * Dispatches a multi-line block toggle (`toggle-blockquote`/
+ * `toggle-list`) as N PER-LINE MINIMAL changes — this file's own
+ * pre-mapping convention for these three actions (a zero-width marker
+ * insertion at each line's own start on toggle-ON, a narrow marker removal
+ * on toggle-OFF) — rather than the ONE combined whole-span replacement
+ * `applyCommand` computes, so CodeMirror's default "map the existing
+ * selection through the dispatched changes" keeps producing the SAME
+ * mapped selection it always did. A change that REPLACES each line's
+ * entire text (even with per-line boundaries) still maps a selection
+ * CONTAINED INSIDE that wide replacement differently than a narrow,
+ * prefix-only insertion/deletion does (CodeMirror's position mapping snaps
+ * an interior position to one edge of a wholesale replacement) — this was
+ * a real, unintended selection-placement divergence the mapping introduced
+ * (measured: "a\nb\nc" with [0,3) selected, blockquote-toggled, used to
+ * leave the selection at [2,7]; a whole-line-replacement dispatch left it
+ * at [0,7] instead — `minimalLineChange` per line is what restores [2,7]).
+ *
+ * Re-splitting `edit.insert` per line is safe: it is
+ * `lines.map(transform).join("\n")` and never touches the newlines BETWEEN
+ * touched lines (see `blockquote.ts`/`list.ts`'s own header comments), so
+ * pairing each `"\n"`-split piece back with its ORIGINAL line reproduces
+ * the exact same resulting text as the one combined edit, byte-for-byte —
+ * holds for `toggle-list ordered`'s contiguous-neighbor extension too,
+ * since `edit.from`/`edit.to` already span the FULL (possibly extended)
+ * block either way.
+ */
+function applyBlockLevelCommand(view: EditorView, command: EditorCommand): void {
+  const { from, to } = mainSel(view);
+  const text = view.state.doc.toString();
+  const result = applyCommand({ text, version: 0 }, { start: from, endExclusive: to }, command);
+  if ("refused" in result) return;
+  const { edit } = result;
+
+  const startLine = view.state.doc.lineAt(edit.from).number;
+  const endLine = view.state.doc.lineAt(edit.to).number;
+  const insertedLines = edit.insert.split("\n");
+  const changes = [];
+  for (let n = startLine; n <= endLine; n++) {
+    const l = view.state.doc.line(n);
+    changes.push(minimalReplacement(l.from, l.text, insertedLines[n - startLine] ?? ""));
+  }
+  view.dispatch({ changes });
+}
+
+/** Dispatches an insert-only command (`insert-horizontal-rule`/
+ *  `insert-table`) at the caret, placing the cursor right after the
+ *  inserted text — matches `applyHr`/`applyTable`'s pre-existing
+ *  `cursor(insertAt + snippet.length)` convention exactly. */
+function applyInsertAtCaretCommand(view: EditorView, command: EditorCommand): void {
+  const { from } = mainSel(view);
+  const text = view.state.doc.toString();
+  const result = applyCommand({ text, version: 0 }, { start: from, endExclusive: from }, command);
+  if ("refused" in result) return;
+  const { edit } = result;
+  view.dispatch({
+    changes: { from: edit.from, to: edit.to, insert: edit.insert },
+    selection: EditorSelection.cursor(edit.from + edit.insert.length),
+  });
 }
 
 // ── Inline wrap helpers ───────────────────────────────────────────────────────
@@ -106,165 +322,149 @@ function toggleInlineWrap(view: EditorView, marker: string): void {
 }
 
 // ── Bold ─────────────────────────────────────────────────────────────────────
+// Mapped to the shared `toggle-bold` command (SFE-P2a) — canonical `**`
+// matches this file's own pre-existing marker exactly.
 
 export function applyBold(view: EditorView): void {
-  toggleInlineWrap(view, "**");
+  applyWrapCommand(view, { kind: "toggle-bold" }, 2);
 }
 
 // ── Italic ───────────────────────────────────────────────────────────────────
+// NOT mapped — see this file's header ("desktop -> shared-command mapping")
+// for why: canonical spelling diverges (`_` here vs the shared command's
+// `*`).
 
 export function applyItalic(view: EditorView): void {
   toggleInlineWrap(view, "_");
 }
 
 // ── Strikethrough ─────────────────────────────────────────────────────────────
+// Mapped to the shared `toggle-strike` command — canonical `~~` matches.
 
 export function applyStrikethrough(view: EditorView): void {
-  toggleInlineWrap(view, "~~");
+  applyWrapCommand(view, { kind: "toggle-strike" }, 2);
 }
 
 // ── Inline code ───────────────────────────────────────────────────────────────
+// Mapped to the shared `toggle-inline-code` command — canonical `` ` ``
+// matches.
 
 export function applyInlineCode(view: EditorView): void {
-  toggleInlineWrap(view, "`");
+  applyWrapCommand(view, { kind: "toggle-inline-code" }, 1);
 }
 
 // ── Link ─────────────────────────────────────────────────────────────────────
+// Mapped to the shared `insert-link` command. Desktop's own placeholder
+// href (`"url"`) and no-selection text placeholder (`"link text"`) are
+// supplied explicitly as this file's own arguments — the shared command's
+// OWN default placeholder (`"text"`) is never exercised here, only used by
+// callers that pass no override at all.
 
 export function applyLink(view: EditorView): void {
   const { from, to } = mainSel(view);
+  const text = view.state.doc.toString();
   const sel = selectedText(view);
+  const overrideText = from === to ? "link text" : undefined;
 
-  if (from === to) {
-    // No selection: insert template [text](url) and select "text".
-    const insert = "[link text](url)";
-    view.dispatch({
-      changes: { from, to, insert },
-      selection: EditorSelection.range(from + 1, from + 10),
-    });
-    return;
-  }
+  const result = applyCommand(
+    { text, version: 0 },
+    { start: from, endExclusive: to },
+    { kind: "insert-link", href: "url", text: overrideText },
+  );
+  if ("refused" in result) return;
+  const { edit } = result;
 
-  // Selection becomes the link text: [selected](url), cursor on "url".
-  const insert = `[${sel}](url)`;
-  const urlStart = from + sel.length + 3;
-  view.dispatch({
-    changes: { from, to, insert },
-    selection: EditorSelection.range(urlStart, urlStart + 3),
-  });
+  const linkText = overrideText ?? sel;
+  const textStart = edit.from + 1;
+  const hrefStart = textStart + linkText.length + 2;
+  const selection =
+    from === to
+      ? EditorSelection.range(textStart, textStart + linkText.length)
+      : EditorSelection.range(hrefStart, hrefStart + "url".length);
+
+  view.dispatch({ changes: { from: edit.from, to: edit.to, insert: edit.insert }, selection });
 }
 
 // ── Blockquote ───────────────────────────────────────────────────────────────
+// Mapped to the shared `toggle-blockquote` command — same all-or-nothing
+// `"> "`-prefix detection/toggle this file used before mapping.
 
 /** Toggle `> ` prefix on every selected line. */
 export function applyBlockquote(view: EditorView): void {
-  const { from, to } = mainSel(view);
-  const doc = view.state.doc;
-  const startLine = doc.lineAt(from).number;
-  const endLine = doc.lineAt(to).number;
-
-  const lines = [];
-  for (let n = startLine; n <= endLine; n++) {
-    lines.push(doc.line(n));
-  }
-
-  const allQuoted = lines.every((l) => l.text.startsWith("> "));
-  const changes = lines.map((l) =>
-    allQuoted
-      ? { from: l.from, to: l.from + 2, insert: "" }
-      : { from: l.from, to: l.from, insert: "> " },
-  );
-  view.dispatch({ changes });
+  applyBlockLevelCommand(view, { kind: "toggle-blockquote" });
 }
 
 // ── Unordered list ────────────────────────────────────────────────────────────
+// Mapped to the shared `toggle-list` (`variant: "bullet"`) command — same
+// `"- "`/`"* "` detection and canonical `"- "` this file used before
+// mapping, plus indentation preservation the shared command adds on top
+// (no pinned test exercises an indented line, so this is additive).
 
 export function applyUnorderedList(view: EditorView): void {
-  const { from, to } = mainSel(view);
-  const doc = view.state.doc;
-  const startLine = doc.lineAt(from).number;
-  const endLine = doc.lineAt(to).number;
-
-  const lines = [];
-  for (let n = startLine; n <= endLine; n++) {
-    lines.push(doc.line(n));
-  }
-
-  const allListed = lines.every((l) => /^[*-] /.test(l.text));
-  const changes = lines.map((l) =>
-    allListed
-      ? { from: l.from, to: l.from + 2, insert: "" }
-      : { from: l.from, to: l.from, insert: "- " },
-  );
-  view.dispatch({ changes });
+  applyBlockLevelCommand(view, { kind: "toggle-list", variant: "bullet" });
 }
 
 // ── Ordered list ─────────────────────────────────────────────────────────────
+// Mapped to the shared `toggle-list` (`variant: "ordered"`) command — same
+// digit-prefix detection/renumbering this file used before mapping for the
+// pinned single-line case, plus the "touched contiguous list" renumbering
+// extension the shared command adds for a selection adjacent to an
+// existing numbered list (no pinned test has an adjacent list, so this is
+// additive too).
 
 export function applyOrderedList(view: EditorView): void {
-  const { from, to } = mainSel(view);
-  const doc = view.state.doc;
-  const startLine = doc.lineAt(from).number;
-  const endLine = doc.lineAt(to).number;
-
-  const lines = [];
-  for (let n = startLine; n <= endLine; n++) {
-    lines.push(doc.line(n));
-  }
-
-  const allListed = lines.every((l) => /^\d+\. /.test(l.text));
-  const changes = lines.map((l, i) =>
-    allListed
-      ? { from: l.from, to: l.from + (l.text.match(/^\d+\. /)?.[0].length ?? 3), insert: "" }
-      : { from: l.from, to: l.from, insert: `${i + 1}. ` },
-  );
-  view.dispatch({ changes });
+  applyBlockLevelCommand(view, { kind: "toggle-list", variant: "ordered" });
 }
 
 // ── Heading ───────────────────────────────────────────────────────────────────
+// Mapped to the shared `set-heading` command. The shared command SETS a
+// specific level (or strips via `level: "none"`) — it does not itself
+// toggle "same level pressed again removes it" the way this file's old
+// inline logic did, so that toggle DECISION is made here, via
+// `commandState`'s reported active level, before delegating the actual
+// line rewrite to `applyCommand`.
 
 export function applyHeading(view: EditorView, level: 1 | 2 | 3 | 4): void {
   const { from } = mainSel(view);
-  const line = view.state.doc.lineAt(from);
-  const prefix = "#".repeat(level) + " ";
+  const text = view.state.doc.toString();
+  const snapshot = { text, version: 0 };
+  const selection = { start: from, endExclusive: from };
 
-  // If the line already has a heading prefix, replace it; otherwise prepend.
-  const existingMatch = line.text.match(/^(#+) /);
-  if (existingMatch) {
-    const existingLen = existingMatch[0].length;
-    if (existingMatch[1].length === level) {
-      // Same level — remove the heading.
-      view.dispatch({
-        changes: { from: line.from, to: line.from + existingLen, insert: "" },
-        selection: EditorSelection.cursor(line.from),
-      });
-      return;
-    }
-    // Different level — replace.
-    view.dispatch({
-      changes: { from: line.from, to: line.from + existingLen, insert: prefix },
-      selection: EditorSelection.cursor(line.from + prefix.length),
-    });
-    return;
-  }
+  const active = currentHeadingLevel(text, from);
+  const targetLevel = active === level ? "none" : level;
 
+  const result = applyCommand(snapshot, selection, { kind: "set-heading", level: targetLevel });
+  if ("refused" in result) return;
+  const { edit } = result;
+
+  // Caret lands at the END of the rewritten heading prefix — NOT at
+  // `edit.from + edit.insert.length`. `computeSetHeading`'s edit is a
+  // MINIMAL diff (D3): rewriting "## " to "### " is a single "#" INSERTED
+  // between the existing "##" and the trailing space, not a full-prefix
+  // replacement, so `edit.from + edit.insert.length` lands INSIDE the new
+  // "###" run (before the space) instead of after the whole prefix — a
+  // caret regression from this file's pre-mapping behavior, which always
+  // placed the caret at `line.from + prefix.length`. `view.state.doc`
+  // still reflects the PRE-dispatch document here, and `lineAt(edit.from)`
+  // always resolves to the heading's own resulting line — whether the
+  // caret was originally on a setext text line or its underline — because
+  // `computeSetHeading` never touches any OTHER line (run spec: "ONLY the
+  // targeted heading's lines change").
+  const lineStart = view.state.doc.lineAt(edit.from).from;
+  const targetPrefixLength = targetLevel === "none" ? 0 : targetLevel + 1; // "#".repeat(n) + " "
   view.dispatch({
-    changes: { from: line.from, to: line.from, insert: prefix },
-    selection: EditorSelection.cursor(line.from + prefix.length),
+    changes: { from: edit.from, to: edit.to, insert: edit.insert },
+    selection: EditorSelection.cursor(lineStart + targetPrefixLength),
   });
 }
 
 // ── Horizontal rule ───────────────────────────────────────────────────────────
+// Mapped to the shared `insert-horizontal-rule` command — same
+// `"\n\n---\n\n"` snippet at the same line-boundary insertion point this
+// file used before mapping.
 
 export function applyHr(view: EditorView): void {
-  // Insert after the current line (blank line before and after for correct
-  // markdown parsing).
-  const insertAt = insertionPointAfterCurrentLine(view);
-  const nl = "\n\n---\n\n";
-  view.dispatch({
-    changes: { from: insertAt, to: insertAt, insert: nl },
-    selection: EditorSelection.cursor(insertAt + nl.length),
-  });
+  applyInsertAtCaretCommand(view, { kind: "insert-horizontal-rule" });
 }
 
 // ── Page break ───────────────────────────────────────────────────────────────
@@ -272,33 +472,17 @@ export function applyHr(view: EditorView): void {
 // Source: packages/cli/src/lib/markdown/markers.js line 13.
 
 export function applyPageBreak(view: EditorView): void {
-  const insertAt = insertionPointAfterCurrentLine(view);
-  const insert = "\n\n@page-break\n\n";
-  view.dispatch({
-    changes: { from: insertAt, to: insertAt, insert },
-    selection: EditorSelection.cursor(insertAt + insert.length),
-  });
+  dispatchLayoutDescriptor(view, pageBreakDescriptor());
 }
 
 // ── Table ─────────────────────────────────────────────────────────────────────
+// Mapped to the shared `insert-table` command with `rows: 1` — this file's
+// skeleton has always been exactly one body row, so `rows: 1` reproduces it
+// byte-for-byte (including the `[1, 10]` column clamp, which the shared
+// command's own implementation preserves).
 
 export function applyTable(view: EditorView, cols: number): void {
-  const safeCols = Math.max(1, Math.min(10, cols));
-
-  const header = Array.from({ length: safeCols }, (_, i) => `Header ${i + 1}`);
-  const sep = Array.from({ length: safeCols }, () => "------");
-  const row = Array.from({ length: safeCols }, () => "Cell");
-
-  const headerRow = "| " + header.join(" | ") + " |";
-  const sepRow = "| " + sep.join(" | ") + " |";
-  const dataRow = "| " + row.join(" | ") + " |";
-
-  const insert = "\n\n" + [headerRow, sepRow, dataRow].join("\n") + "\n\n";
-  const insertAt = insertionPointAfterCurrentLine(view);
-  view.dispatch({
-    changes: { from: insertAt, to: insertAt, insert },
-    selection: EditorSelection.cursor(insertAt + insert.length),
-  });
+  applyInsertAtCaretCommand(view, { kind: "insert-table", rows: 1, cols });
 }
 
 // ── Image ─────────────────────────────────────────────────────────────────────
@@ -366,72 +550,127 @@ export function applyImage(
 // (CLAUDE.md §5/§6) and have no helper here; a project plugin that wants a
 // picker entry should contribute its own toolbar item, not extend this one.
 
-/** Which layout skeleton `applyLayoutBlock` inserts. */
-export type LayoutBlockKind = "chapter" | "section" | "two-column" | "page-break" | "spread";
+/** Which layout skeleton `applyLayoutBlock` inserts — re-exported from the
+ *  shared `@dimm-city/gutterpress-editor/core` command vocabulary
+ *  (`commands.ts`, SFE-P1c) rather than declared locally, so there is
+ *  exactly one definition of this union (D1 vocabulary; D4: "Svelte
+ *  components do not define core editor command or protocol types" — this
+ *  module is CodeMirror/desktop code, not a Svelte component, but the same
+ *  one-vocabulary rule applies to it as the union's other consumer). */
+export type { LayoutBlockKind };
 
-/** `@chapter` + a nested `@page`, with the title placeholder selected so
- *  typing immediately replaces it (mirrors applyLink's "select link text"
- *  placeholder pattern above).
+/**
+ * A layout-block insertion, decoupled from ANY editing surface (SFE-P3ab).
+ * `insert` is the exact text to splice in; `selectFrom`/`selectTo` are
+ * OFFSETS RELATIVE TO THE INSERTION POINT (not absolute document offsets —
+ * the caller adds its own `insertAt`) marking the range a caller should
+ * place the selection/caret over afterward (`selectFrom === selectTo` is a
+ * collapsed cursor, matching `EditorSelection.range(x, x)` === `cursor(x)`).
  *
- *  The placeholder is QUOTED (`@chapter "Chapter Title"`), not bare. A bare
+ * Split out of `applyChapterBlock`/`applySectionBlock`/`applyTwoColumnBlock`/
+ * `applySpreadBlock`/`applyPageBreak` below (byte-identical templates, only
+ * the CARET MATH was hoisted into a documented `{insert, selectFrom,
+ * selectTo}` shape) so `rich-commands.ts` — which has no `EditorView` to
+ * dispatch a transaction against — can compute the exact same `@marker`
+ * skeletons via {@link descriptorForLayoutBlock} and apply them through
+ * `EditorDocumentHost.applyEdit` instead (G-09: one template, two thin
+ * per-surface appliers, not two copies of the marker text).
+ */
+export interface LayoutInsertDescriptor {
+  readonly insert: string;
+  readonly selectFrom: number;
+  readonly selectTo: number;
+}
+
+function pageBreakDescriptor(): LayoutInsertDescriptor {
+  const insert = "\n\n@page-break\n\n";
+  return { insert, selectFrom: insert.length, selectTo: insert.length };
+}
+
+/** The placeholder is QUOTED (`@chapter "Chapter Title"`), not bare. A bare
  *  multi-word label tokenizes into more than one bare token in
  *  `parseMarkerLine`, which fails its "exactly one bare token" name rule and
  *  silently degrades to no `data-chapter-label` / no `.chapter-opener` —
  *  exactly the opposite of what this control advertises. Quoting collapses
  *  the label to a single token regardless of internal spaces, so it actually
  *  produces the label + chapter-opener (verified against the core marker
- *  renderer). See marker-completions.ts's
- *  `applyChapterCompletion` for the identical fix applied to the completion
- *  source's `@chapter` template. */
-export function applyChapterBlock(view: EditorView): void {
-  const insertAt = insertionPointAfterCurrentLine(view);
+ *  renderer). See marker-completions.ts's `applyChapterCompletion` for the
+ *  identical fix applied to the completion source's `@chapter` template. */
+function chapterBlockDescriptor(): LayoutInsertDescriptor {
   const label = "Chapter Title";
   const prefix = '\n\n@chapter "';
   const suffix = '"';
-  const labelStart = insertAt + prefix.length;
   const insert = `${prefix}${label}${suffix}\n\n@page\n\n`;
+  return { insert, selectFrom: prefix.length, selectTo: prefix.length + label.length };
+}
+
+function sectionBlockDescriptor(): LayoutInsertDescriptor {
+  const prefix = "\n\n@section\n";
+  const insert = `${prefix}\n@end-section\n\n`;
+  return { insert, selectFrom: prefix.length, selectTo: prefix.length };
+}
+
+/** A working two-column section: core's `.gp-columns-2` (styled by core, so
+ *  it lays out in every project), with `@column-break` as the forced break
+ *  between the two columns. */
+function twoColumnBlockDescriptor(): LayoutInsertDescriptor {
+  const prefix = "\n\n@section .gp-columns-2\n";
+  const insert = `${prefix}\n@column-break\n\nRight column content.\n\n@end-section\n\n`;
+  return { insert, selectFrom: prefix.length, selectTo: prefix.length };
+}
+
+function spreadBlockDescriptor(): LayoutInsertDescriptor {
+  const insert = "\n\n@spread\n\n@page\n\n";
+  return { insert, selectFrom: insert.length, selectTo: insert.length };
+}
+
+/** The single source of truth for every `@marker` skeleton `applyLayoutBlock`
+ *  (this file, CodeMirror) and `applyRichLayoutBlock` (`rich-commands.ts`,
+ *  the rich surface) insert. `"page-break"` reuses {@link pageBreakDescriptor}
+ *  — one canonical `@page-break` token, not a second copy. */
+export function descriptorForLayoutBlock(kind: LayoutBlockKind): LayoutInsertDescriptor {
+  switch (kind) {
+    case "chapter":     return chapterBlockDescriptor();
+    case "section":     return sectionBlockDescriptor();
+    case "two-column":  return twoColumnBlockDescriptor();
+    case "page-break":  return pageBreakDescriptor();
+    case "spread":      return spreadBlockDescriptor();
+  }
+}
+
+/** Dispatches one {@link LayoutInsertDescriptor} as a single CodeMirror
+ *  transaction, inserted after the current line (this file's own
+ *  `insertionPointAfterCurrentLine` convention). */
+function dispatchLayoutDescriptor(view: EditorView, d: LayoutInsertDescriptor): void {
+  const insertAt = insertionPointAfterCurrentLine(view);
   view.dispatch({
-    changes: { from: insertAt, to: insertAt, insert },
-    selection: EditorSelection.range(labelStart, labelStart + label.length),
+    changes: { from: insertAt, to: insertAt, insert: d.insert },
+    selection: EditorSelection.range(insertAt + d.selectFrom, insertAt + d.selectTo),
   });
+}
+
+/** `@chapter` + a nested `@page`, with the title placeholder selected so
+ *  typing immediately replaces it (mirrors applyLink's "select link text"
+ *  placeholder pattern above). */
+export function applyChapterBlock(view: EditorView): void {
+  dispatchLayoutDescriptor(view, chapterBlockDescriptor());
 }
 
 /** `@section` / `@end-section` pair, cursor left on the blank line between
  *  them (same shape as the marker-completions.ts inline template, just
  *  block-inserted after the current line instead of typed in place). */
 export function applySectionBlock(view: EditorView): void {
-  const insertAt = insertionPointAfterCurrentLine(view);
-  const prefix = "\n\n@section\n";
-  const insert = `${prefix}\n@end-section\n\n`;
-  const cursorPos = insertAt + prefix.length;
-  view.dispatch({
-    changes: { from: insertAt, to: insertAt, insert },
-    selection: EditorSelection.cursor(cursorPos),
-  });
+  dispatchLayoutDescriptor(view, sectionBlockDescriptor());
 }
 
-/** A working two-column section: core's `.gp-columns-2` (styled by core, so
- *  it lays out in every project), with `@column-break` as the forced break
- *  between the two columns. */
+/** A working two-column section — see {@link twoColumnBlockDescriptor}. */
 export function applyTwoColumnBlock(view: EditorView): void {
-  const insertAt = insertionPointAfterCurrentLine(view);
-  const prefix = "\n\n@section .gp-columns-2\n";
-  const insert = `${prefix}\n@column-break\n\nRight column content.\n\n@end-section\n\n`;
-  const cursorPos = insertAt + prefix.length;
-  view.dispatch({
-    changes: { from: insertAt, to: insertAt, insert },
-    selection: EditorSelection.cursor(cursorPos),
-  });
+  dispatchLayoutDescriptor(view, twoColumnBlockDescriptor());
 }
 
 /** `@spread` with a first nested `@page`, cursor left ready to write. */
 export function applySpreadBlock(view: EditorView): void {
-  const insertAt = insertionPointAfterCurrentLine(view);
-  const insert = "\n\n@spread\n\n@page\n\n";
-  view.dispatch({
-    changes: { from: insertAt, to: insertAt, insert },
-    selection: EditorSelection.cursor(insertAt + insert.length),
-  });
+  dispatchLayoutDescriptor(view, spreadBlockDescriptor());
 }
 
 /** Dispatches to the right layout-block helper for `kind`. `"page-break"`
@@ -462,6 +701,33 @@ export const LAYOUT_BLOCK_ITEMS: readonly LayoutBlockItem[] = [
   { kind: "page-break", label: "Page break", detail: "@page-break — hard break, no page wrapper" },
   { kind: "spread", label: "Spread", detail: "@spread — a two-page facing spread" },
 ] as const;
+
+// Named edit actions the toolbar fires. Defined here (not in
+// EditorToolbar.svelte, which re-exports them) because rich-commands.ts, a
+// plain .ts module, needs them under bun test where *.svelte exposes only its
+// default export.
+/** The set of named edit actions the toolbar can fire. */
+export type ToolbarAction =
+  | "bold"
+  | "italic"
+  | "strikethrough"
+  | "code"
+  | "link"
+  | "blockquote"
+  | "ul"
+  | "ol"
+  | "heading"
+  | "hr"
+  | "table"
+  | "image"
+  | "snippet"
+  | "layout-block";
+
+export type ToolbarPayload =
+  | { level: 1 | 2 | 3 | 4 }           // heading
+  | { cols: number }                    // table
+  | { src: string; alt: string; width?: string; position?: string; size?: string; shape?: boolean } // image
+  | { kind: LayoutBlockKind };          // layout-block
 
 // ── Toolbar item declarations (single source of truth) ──────────────────────
 //
@@ -664,6 +930,18 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
  * menu (rendered unfiltered) must be derived from this same list so neither
  * surface can omit an item the other one shows.
  */
-export function visibleToolbarItems(opts: { hasSave: boolean }): ToolbarItemDef[] {
-  return TOOLBAR_ITEMS.filter((item) => item.kind !== "save" || opts.hasSave);
+export function visibleToolbarItems(opts: {
+  hasSave: boolean;
+  /**
+   * Whether the PAGED editor is the surface this toolbar drives. Focus mode
+   * hides the preview beside the SOURCE editor; the paged editor has no
+   * preview beside it (Read is that editor alone), so the item is dropped.
+   */
+  richMode?: boolean;
+}): ToolbarItemDef[] {
+  return TOOLBAR_ITEMS.filter((item) => {
+    if (item.kind === "save" && !opts.hasSave) return false;
+    if (item.id === "focus-mode" && opts.richMode) return false;
+    return true;
+  });
 }

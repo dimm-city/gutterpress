@@ -219,7 +219,7 @@
   .rec-desc code { font-family: var(--app-font-mono); font-size: 11px; color: var(--app-text); }
   .search-status { font-size: 12px; }
   .head-actions { display: flex; align-items: center; gap: 6px; }
-  .update-badge { color: var(--app-accent, var(--app-text)); }
+  .update-badge { color: var(--app-accent); }
   /* Opens via api.shell.openExternal (never a bare `<a target="_blank">` in
      the Electron shell — see ConnectionsSettings.svelte for the pattern). */
   button.inline-link {

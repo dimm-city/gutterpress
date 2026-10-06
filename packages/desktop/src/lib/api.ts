@@ -162,6 +162,7 @@ import type {
 // client bundle still never value-imports it through the api client.
 export type { PreflightRow } from './preflight';
 import type { PreflightRow } from './preflight';
+import type { EditorProjectionOutcome } from '$lib/server/editor-projection';
 
 // ── Genuinely api-local shapes (no canonical twin in the contract) ───────────
 
@@ -311,7 +312,19 @@ export const api = {
       post<ProblemReport>('/api/report/bundle', { projectDir }),
   },
 
+  editor: {
+    /**
+     * The plugin-aware rich-editor projection of one chapter's text for the
+     * open book, with the book's CSS scoped for the editor document. `ok:false`
+     * outcomes (file too large, plugin load failed) are data, not errors.
+     */
+    projection: (args: { projectDir: string; content: string; sourceVersion: number }) =>
+      post<EditorProjectionOutcome>('/api/editor/projection', args),
+  },
+
   log: {
+    /** Record a renderer-side error in the app log. */
+    rendererError: (message: string) => post<{ ok: boolean }>('/api/log/renderer-error', { message }),
     /** Read an operation log file. Returns null when the file doesn't exist. */
     read: (logPath: string) => post<string | null>('/api/log/read', { logPath }),
     /** List the app's diagnostic log files (newest first). */

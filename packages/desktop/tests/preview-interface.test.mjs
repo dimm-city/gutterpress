@@ -1136,10 +1136,11 @@ async function main() {
     assert.equal(requests.length, 0);
   }
 
-  // getProtocolVersion() bumped to 8 (in-flow editing; rects/mask removed).
+  // getProtocolVersion() bumped to 9 (getChapters() added; 8 was in-flow
+  // editing with rects/mask removed).
   {
     const { api } = loadInterfaceWithDom("<p>x</p>");
-    assert.equal(api.getProtocolVersion(), 8);
+    assert.equal(api.getProtocolVersion(), 9);
     assert.equal(typeof api.beginBlockEdit, "function");
     assert.equal(typeof api.endBlockEdit, "function");
     assert.equal(api.getRectsFor, undefined, "geometry command removed with the panel");

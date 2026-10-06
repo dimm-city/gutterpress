@@ -33,6 +33,14 @@ async function readFingerprint(outPath: string): Promise<{
   return JSON.parse(await readFile(outPath, "utf8"));
 }
 
+// This one runs against the REAL environment: with no `sourceDir` the
+// fingerprint falls back to `process.cwd()`, so it resolves Chromium, spawns
+// Ghostscript and qpdf for their versions, hashes the engine bundles, and
+// walks this repository's whole working tree for the dirty flag. Several
+// seconds of real I/O, and bun's 5s default is not enough for it while the
+// rest of the workspace's suites run alongside it (observed: a 5001ms timeout
+// under a parallel run). The budget below is the test's real cost, not a
+// weakened assertion - every expectation is unchanged.
 test("writeBuildFingerprint records the real lib version via the shared PACKAGE_META, not 'unknown'", async () => {
   const dir = await mkdtemp(join(tmpdir(), "gutterpress-fingerprint-"));
   try {
@@ -57,7 +65,7 @@ test("writeBuildFingerprint records the real lib version via the shared PACKAGE_
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
-});
+}, 60_000);
 
 test("writeBuildFingerprint degrades to sourceRevision: null for a non-git directory (no system git spawn involved)", async () => {
   // getGitRevision tries [sourceDir, process.cwd()] as candidates, so a

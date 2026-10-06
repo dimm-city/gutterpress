@@ -50,7 +50,7 @@
     applyImage,
     applyLayoutBlock,
   } from "$lib/editor/toolbar-actions";
-  import type { ToolbarAction, ToolbarPayload } from "$lib/components/EditorToolbar.svelte";
+  import type { ToolbarAction, ToolbarPayload } from "$lib/editor/toolbar-actions";
   import { markdown } from "@codemirror/lang-markdown";
   import { css } from "@codemirror/lang-css";
   import { languages } from "@codemirror/language-data";

@@ -6,7 +6,7 @@ import { canonicalChapterId } from "./chapter-id";
 import { assembleBookHtml, type LayoutWarning } from "./assemble";
 import { resolveActiveStyles } from "../style-resolver";
 import { inlineStyles, type AssetCopy } from "../asset-inline";
-import type { LoadedPlugin, PluginStyleGroup } from "./renderer";
+import { layerExtensionCss, type LoadedPlugin, type PluginStyleGroup } from "./renderer";
 
 export type { LayoutWarning } from "./assemble";
 
@@ -101,8 +101,7 @@ export async function renderChapters(
   // (fonts/images embedded, print-safety lintable; `inlineStyles` leaves
   // their absolute paths alone). A module's `css` string export follows its
   // files, inside the same layer.
-  const blocks: string[] = [];
-  const layers: string[] = [];
+  const groups: Array<{ name: string; layer: string; css: string }> = [];
   const styleWarnings: string[] = [];
   const cssAssetCopies: AssetCopy[] = [];
   for (const group of opts.pluginStyles ?? []) {
@@ -112,15 +111,13 @@ export async function renderChapters(
     const css = [groupInlined.css, group.css]
       .filter((s): s is string => !!s && s.trim().length > 0)
       .join("\n\n");
-    if (!css) continue;
-    layers.push(group.layer);
-    blocks.push(`/* ${group.name} */\n@layer ${group.layer} {\n${css.trim()}\n}`);
+    groups.push({ name: group.name, layer: group.layer, css });
   }
   styleWarnings.push(...inlined.warnings);
   if (styleWarnings.length > 0) opts.onStyleWarnings?.(styleWarnings);
   cssAssetCopies.push(...inlined.copies);
   if (cssAssetCopies.length > 0) opts.onCssAssets?.(cssAssetCopies);
-  const pluginCss = blocks.length > 0 ? [`@layer ${layers.join(", ")};`, ...blocks].join("\n\n") : "";
+  const pluginCss = layerExtensionCss(groups);
 
   // Determine which files to process (manifest `source.files` in order, else
   // every root-level .md file alphabetically) — see resolveActiveMarkdownFiles.

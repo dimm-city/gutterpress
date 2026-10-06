@@ -1,0 +1,60 @@
+@import '@vscode/codicons/dist/codicon.css';
+
+.md-comment-widget {
+	box-sizing: border-box;
+	display: flex;
+	align-items: flex-start;
+	width: max-content;
+	min-width: min(165px, var(--md-comment-available-width, 100%));
+	max-width: min(400px, var(--md-comment-available-width, 100%));
+	min-height: 24px;
+	padding: 3px 4px 3px 7px;
+	background-color: var(--vscode-menu-background);
+	color: var(--vscode-foreground);
+	border: 1px solid var(--vscode-menu-border);
+	border-radius: 6px;
+	box-shadow: 0 0 12px var(--vscode-widget-shadow);
+	font-family: var(--vscode-font-family);
+	font-size: var(--vscode-font-size);
+}
+
+.md-comment-widget:hover,
+.md-comment-widget--hover {
+	background-color: var(--vscode-list-hoverBackground);
+}
+
+.md-comment-widget-text {
+	flex: 1 1 auto;
+	min-width: 0;
+	line-height: 16px;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.md-comment-widget-delete {
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+	margin: 0 0 0 4px;
+	padding: 0;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--vscode-icon-foreground);
+	cursor: pointer;
+}
+
+.md-comment-widget-delete:hover,
+.md-comment-widget-delete--hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.md-comment-widget .md-comment-widget-delete .codicon {
+	display: block;
+	flex: none;
+	font-size: 12px;
+	line-height: 12px;
+}

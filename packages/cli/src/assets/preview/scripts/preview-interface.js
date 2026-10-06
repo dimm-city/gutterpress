@@ -1082,7 +1082,10 @@
     // floating edit panel this replaces. A v8 lib with a pre-v8 SPA loses the
     // "Edit this block" action and nothing else; a v8 SPA feature-detects on
     // the version before offering it.
-    getProtocolVersion: function () { return 8; },
+    // 9: getChapters() added - the chapters the preview paginated, in book
+    // order, so the desktop's Read can mount a chapter that has no heading
+    // (getOutline() never names one).
+    getProtocolVersion: function () { return 9; },
 
     // Resolve the annotated element/selection at a viewport point (protocol
     // v4). Pure read; see buildContextTarget() above for the full contract.
@@ -1128,6 +1131,23 @@
     // Heading tree with page + source line — powers chapter jump (UX-013), TOC,
     // minimap, scrollspy. Page math needs same-origin engine access, so it
     // lives here rather than being derived host-side.
+    // The chapters the preview paginated, in book order, with the 1-based page
+    // each starts on (0 while the viewer has not placed it). The outline below
+    // names only headings; this names every source file in the book.
+    getChapters: function () {
+      refreshPages();
+      var seen = {};
+      var out = [];
+      var els = document.querySelectorAll('[data-chapter-src]');
+      for (var i = 0; i < els.length; i++) {
+        var chapter = els[i].getAttribute('data-chapter-src');
+        if (!chapter || seen[chapter]) continue;
+        seen[chapter] = true;
+        out.push({ chapter: chapter, page: pageIndexOf(els[i]) });
+      }
+      return out;
+    },
+
     getOutline: function () {
       refreshPages();
       var hs = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6'));

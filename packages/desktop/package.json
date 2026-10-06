@@ -1,7 +1,7 @@
 {
   "name": "@dimm-city/gutterpress-desktop",
   "private": true,
-  "version": "0.11.14",
+  "version": "0.12.0-alpha.1",
   "type": "module",
   "main": "out/main/main.js",
   "desktopName": "city.dimm.gutterpress.desktop",
@@ -22,7 +22,8 @@
     "dist:mac": "npm run dist -- --mac --arm64 --x64",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "lint": "eslint 'src/**/*.svelte' 'src/**/*.svelte.ts' && node tools/check-app-tokens.mjs",
-    "typecheck": "tsc -p electron/tsconfig.json"
+    "typecheck": "tsc -p electron/tsconfig.json",
+    "parity:gate": "node tests/integration/editor-preview-parity.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.4",
@@ -34,6 +35,7 @@
     "@codemirror/lint": "^6.8.4",
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.36.2",
+    "@dimm-city/gutterpress-editor": "workspace:*",
     "@lezer/highlight": "^1.2.3",
     "@sveltejs/kit": "^2.70.3",
     "electron-updater": "^6.6.2",

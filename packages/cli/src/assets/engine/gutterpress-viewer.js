@@ -18,6 +18,7 @@
   var exports_fragment = {};
   __export(exports_fragment, {
     wrapGeometry: () => wrapGeometry,
+    withLayoutReadCache: () => withLayoutReadCache,
     waitForLayoutReady: () => waitForLayoutReady,
     synthesizeColumnBreaks: () => synthesizeColumnBreaks,
     stripMetrics: () => stripMetrics,
@@ -26,6 +27,7 @@
     spreadModeSupported: () => spreadModeSupported,
     runPageBox: () => runPageBox,
     rowStrideOf: () => rowStrideOf,
+    paginate: () => paginate,
     pageRangeOf: () => pageRangeOf,
     pageOf: () => pageOf,
     measure: () => measure,
@@ -502,7 +504,7 @@
     }
     return out;
   }
-  function extract(css) {
+  function extract(css, options = {}) {
     const model = {
       pageRules: [],
       stringSets: [],
@@ -514,7 +516,7 @@
       warnings: []
     };
     walk(css, model);
-    resolveGeometryVars(model, collectRootCustomProperties(css));
+    resolveGeometryVars(model, collectRootCustomProperties(css, options.rootSelectors ?? [":root"]));
     const names = new Set;
     for (const r of model.pageRules)
       if (r.name)
@@ -534,7 +536,7 @@
     "bleed",
     "marks"
   ];
-  function collectRootCustomProperties(css) {
+  function collectRootCustomProperties(css, rootSelectors) {
     const props = new Map;
     const walkForRoot = (body) => {
       for (const rule of scanRules(body)) {
@@ -547,7 +549,7 @@
         }
         if (!prelude.startsWith("@")) {
           const selectors = splitTopLevel(prelude, ",");
-          if (selectors.some((s) => s.trim() === ":root")) {
+          if (selectors.some((s) => rootSelectors.includes(s.trim()))) {
             const decls = parseDeclarations(ruleBody);
             for (const [k, v] of Object.entries(decls)) {
               if (k.startsWith("--"))
@@ -1216,7 +1218,7 @@
         pushRun(runs, last.page, held, last.flushEdges);
         return [];
       }
-      if (held.some((n) => (n.textContent ?? "").trim() !== "")) {
+      if (held.some((n) => n.nodeType !== 1 && (n.textContent ?? "").trim() !== "")) {
         pushRun(runs, undefined, held);
         return [];
       }
@@ -1237,6 +1239,10 @@
         continue;
       }
       if (!hasDescendantPageAssignment(kid, model)) {
+        if (getComputedStyle(kid).display === "none") {
+          pending.push(node);
+          continue;
+        }
         pushRun(runs, undefined, [...carry(), kid], flush);
         continue;
       }
@@ -1263,10 +1269,16 @@
   }
   var FORCED_BREAK = /^(column|page|left|right|recto|verso|always)$/;
   function clearLeadingForcedBreaks(strip) {
-    for (let el = strip.firstElementChild;el; el = el.firstElementChild) {
+    let el = strip.firstElementChild;
+    while (el) {
       const cs = getComputedStyle(el);
+      if (cs.display === "none") {
+        el = el.nextElementSibling;
+        continue;
+      }
       if (FORCED_BREAK.test(cs.breakBefore))
         el.style.breakBefore = "auto";
+      el = el.firstElementChild;
     }
   }
   function stabilizeFullHeightPageRoots(model, strips) {
@@ -1277,9 +1289,16 @@
       const stripHeight = parseFloat(getComputedStyle(strip.el).getPropertyValue("--gp-content-h"));
       if (!(stripHeight > 0))
         continue;
-      for (let el = strip.el.firstElementChild;el; el = el.firstElementChild) {
-        if (directPageName(el, model) !== strip.page)
+      let el = strip.el.firstElementChild;
+      while (el) {
+        if (getComputedStyle(el).display === "none") {
+          el = el.nextElementSibling;
           continue;
+        }
+        if (directPageName(el, model) !== strip.page) {
+          el = el.firstElementChild;
+          continue;
+        }
         const cs = getComputedStyle(el);
         const height = parseFloat(cs.height);
         const rootRects = el.getClientRects();
@@ -1587,15 +1606,37 @@
   }
   function cssZoomOf(el) {
     const stage = el.closest(".gp-stage") ?? document.body;
-    return new DOMMatrixReadOnly(getComputedStyle(stage).transform).a || 1;
+    const cached = readCache?.zoom.get(stage);
+    if (cached !== undefined)
+      return cached;
+    const zoom = new DOMMatrixReadOnly(getComputedStyle(stage).transform).a || 1;
+    readCache?.zoom.set(stage, zoom);
+    return zoom;
+  }
+  var readCache = null;
+  function withLayoutReadCache(fn) {
+    if (readCache)
+      return fn();
+    readCache = { metrics: new Map, zoom: new Map };
+    try {
+      return fn();
+    } finally {
+      readCache = null;
+    }
   }
   function stripMetrics(strip) {
+    const cached = readCache?.metrics.get(strip);
+    if (cached)
+      return cached;
     const cs = getComputedStyle(strip);
     const w = parseFloat(cs.getPropertyValue("--gp-content-w"));
     const colGap = parseFloat(cs.columnGap) || 0;
     const h = parseFloat(cs.getPropertyValue("--gp-content-h"));
     const rowGap = parseFloat(cs.rowGap) || 0;
-    return { stride: w + colGap, rowStride: h + rowGap };
+    const sheetGap = parseFloat(cs.getPropertyValue("--gp-sheet-gap")) || 0;
+    const metrics = { stride: w + colGap, rowStride: h + rowGap, sheetGap };
+    readCache?.metrics.set(strip, metrics);
+    return metrics;
   }
   function rowStrideOf(strip) {
     return stripMetrics(strip).rowStride;
@@ -1689,39 +1730,27 @@
       return;
     });
   }
-  async function fragmentDocument(opts = {}) {
-    const layoutReady = waitForLayoutReady();
-    const css = await loadStyleSources();
-    injectViewerCss();
-    const printOnly = mediaPrintBodies(css).join(`
-`);
-    if (printOnly && !document.getElementById("gp-media-print")) {
-      const style = document.createElement("style");
-      style.id = "gp-media-print";
-      style.textContent = printOnly;
-      document.head.appendChild(style);
-    }
-    const model = extract(css);
-    injectBreakMapping(model);
+  function paginate(model, opts = {}) {
     const authoring = [];
     const strips = buildStrips(model, opts, authoring);
-    await layoutReady;
-    makeOverflowFragmentable(strips);
-    stabilizeFullHeightPageRoots(model, strips);
-    synthesizeColumnBreaks(model);
-    measure(strips);
-    const blanks = compensateRectoBreaks(model, strips);
-    if (blanks)
+    const { blanks, headers, totalPages, blankPageIndices: blankIndices } = withLayoutReadCache(() => {
+      makeOverflowFragmentable(strips);
+      stabilizeFullHeightPageRoots(model, strips);
+      synthesizeColumnBreaks(model);
       measure(strips);
-    const headers = opts.compensateHeaders === false ? { tables: 0, passes: 0, warnings: [] } : compensateRepeatedHeaders(strips);
-    const { totalPages } = measure(strips);
+      const blanks2 = compensateRectoBreaks(model, strips);
+      if (blanks2)
+        measure(strips);
+      const headers2 = opts.compensateHeaders === false ? { tables: 0, passes: 0, warnings: [] } : compensateRepeatedHeaders(strips);
+      return { blanks: blanks2, headers: headers2, totalPages: measure(strips).totalPages, blankPageIndices: blankPageIndices(strips) };
+    });
     const api = {
       model,
       strips,
       totalPages,
       warnings: [...new Set([...authoring, ...headers.warnings])],
       blankPages: blanks,
-      blankPageIndices: blankPageIndices(strips),
+      blankPageIndices: blankIndices,
       pageOf: (sel) => pageOf(typeof sel === "string" ? document.querySelector(sel) : sel, strips),
       pageRangeOf: (sel) => pageRangeOf(typeof sel === "string" ? document.querySelector(sel) : sel, strips),
       relayout: () => {
@@ -1733,22 +1762,41 @@
         const rebuilt = buildStrips(model, opts, authoring);
         strips.length = 0;
         strips.push(...rebuilt);
-        makeOverflowFragmentable(strips);
-        stabilizeFullHeightPageRoots(model, strips);
-        synthesizeColumnBreaks(model);
-        measure(strips);
-        api.blankPages = compensateRectoBreaks(model, strips);
-        if (opts.compensateHeaders !== false)
-          api.warnings = [
-            ...new Set([...authoring, ...compensateRepeatedHeaders(strips).warnings])
-          ];
-        const r = measure(strips);
-        api.totalPages = r.totalPages;
-        api.blankPageIndices = blankPageIndices(strips);
-        return r;
+        return withLayoutReadCache(() => {
+          makeOverflowFragmentable(strips);
+          stabilizeFullHeightPageRoots(model, strips);
+          synthesizeColumnBreaks(model);
+          measure(strips);
+          api.blankPages = compensateRectoBreaks(model, strips);
+          if (opts.compensateHeaders !== false)
+            api.warnings = [
+              ...new Set([...authoring, ...compensateRepeatedHeaders(strips).warnings])
+            ];
+          const r = measure(strips);
+          api.totalPages = r.totalPages;
+          api.blankPageIndices = blankPageIndices(strips);
+          return r;
+        });
       }
     };
     return api;
+  }
+  async function fragmentDocument(opts = {}) {
+    const layoutReady = waitForLayoutReady();
+    const css = opts.css ?? await loadStyleSources();
+    injectViewerCss();
+    const printOnly = mediaPrintBodies(css).join(`
+`);
+    if (printOnly && !document.getElementById("gp-media-print")) {
+      const style = document.createElement("style");
+      style.id = "gp-media-print";
+      style.textContent = printOnly;
+      document.head.appendChild(style);
+    }
+    const model = extract(css);
+    injectBreakMapping(model);
+    await layoutReady;
+    return paginate(model, opts);
   }
 
   // src/engine/shared/content-value.ts
@@ -2033,6 +2081,7 @@
   }
   function decorate(layout, opts = {}) {
     const model = layout.model;
+    let pageOffset = opts.pageOffset ?? 0;
     const sheets = new Map;
     let blankPages = new Set;
     const warnings = [];
@@ -2043,12 +2092,18 @@
       targets: new Map,
       pageNumbers: [],
       warnings,
+      setPageOffset(offset) {
+        if (offset === pageOffset)
+          return;
+        pageOffset = offset;
+        draw();
+      },
       setDesigner(on) {
         document.body.dataset.designer = on ? "on" : "off";
       }
     };
-    const canvasBg = captureCanvasBackground();
-    document.body.classList.add("gp-stage");
+    const canvasBg = captureCanvasBackground(opts.canvasRoots);
+    (opts.stage ?? document.body).classList.add("gp-stage");
     if (document.body.dataset.designer === undefined)
       api.setDesigner(!!opts.designer);
     function pageContext(strip, indexInStrip2, bookIndex) {
@@ -2087,7 +2142,7 @@
           entries.push({
             page,
             value: evaluate(decl.value, {
-              text: (el.textContent ?? "").trim(),
+              text: (el.innerText ?? el.textContent ?? "").trim(),
               attr: (n) => el.getAttribute(n) ?? undefined
             })
           });
@@ -2109,7 +2164,8 @@
             resets.push({ page: page + 1, start: r.start });
         }
       }
-      api.pageNumbers = resets.length ? pageCounterValues(resets, layout.totalPages) : [];
+      const firstReset = resets.length ? Math.min(...resets.map((r) => r.page)) : Number.POSITIVE_INFINITY;
+      api.pageNumbers = resets.length ? pageCounterValues(resets, layout.totalPages).map((value, i) => i + 1 < firstReset ? value + pageOffset : value) : [];
       const pageValues = api.pageNumbers.length ? api.pageNumbers : null;
       const linked = new Set;
       for (const a of Array.from(document.querySelectorAll("a[href^='#']")))
@@ -2120,7 +2176,7 @@
           continue;
         const [page] = pageRangeOf(el, layout.strips);
         if (page >= 0)
-          api.targets.set(href, toFolioPage(page + 1, pageValues));
+          api.targets.set(href, pageValues ? toFolioPage(page + 1, pageValues) : page + 1 + pageOffset);
       }
     }
     function stringAt(name, which, page) {
@@ -2163,7 +2219,9 @@
         style.id = "gp-xref-style";
         document.head.appendChild(style);
       }
-      style.textContent = generatedContentCss(model.xrefs.map((x) => x.selector));
+      const css = generatedContentCss(model.xrefs.map((x) => x.selector));
+      if (style.textContent !== css)
+        style.textContent = css;
     }
     function fillLeaders() {
       const marked = [];
@@ -2195,56 +2253,59 @@
       }
     }
     function draw() {
-      sheets.clear();
-      warnings.length = 0;
-      blankPages = new Set(layout.blankPageIndices);
-      buildMaps();
-      fillXrefs();
-      let prevPageH = 0;
-      let first = true;
-      for (const strip of layout.strips) {
-        const run = ensureRun(strip);
-        const { stride, rowStride } = stripMetrics(strip.el);
-        const sheetGap = parseFloat(getComputedStyle(strip.el).getPropertyValue("--gp-sheet-gap")) || 0;
-        run.style.setProperty("--gp-sheet-gap", `${sheetGap}px`);
-        const { perRow, shift } = wrapGeometry(strip);
-        const layer = run.querySelector(".gp-layer");
-        layer.textContent = "";
-        const g = strip.geometry;
-        for (let i = 0;i < strip.pages; i++) {
-          const bookIndex = strip.offset + i;
-          const ctx = pageContext(strip, i, bookIndex);
-          const slot = i + shift;
-          const row = Math.floor(slot / perRow);
-          const colVisual = slot % perRow;
-          const sheetLeft = colVisual * stride;
-          const sheetTop = row * rowStride;
-          const sheet = document.createElement("div");
-          sheet.className = "gp-sheet";
-          sheet.dataset.page = String(bookIndex + 1);
-          sheet.dataset.side = bookIndex % 2 === 0 ? "recto" : "verso";
-          sheet.style.left = `${sheetLeft}px`;
-          sheet.style.top = `${sheetTop}px`;
-          sheet.style.setProperty("--gp-page-w", px(ctx.geometry.width));
-          sheet.style.setProperty("--gp-page-h", px(ctx.geometry.height));
-          applyPageBackground(sheet, ctx.decls);
-          for (const [prop, value] of canvasBg)
-            sheet.style.setProperty(prop, value);
-          layer.appendChild(sheet);
-          sheets.set(bookIndex, sheet);
-          drawMarginBoxes(sheet, ctx, layout.totalPages);
-          drawGuides(sheet, ctx);
-          drawCropMarks(sheet, ctx);
+      withLayoutReadCache(() => {
+        for (const strip of layout.strips)
+          stripMetrics(strip.el);
+        sheets.clear();
+        warnings.length = 0;
+        blankPages = new Set(layout.blankPageIndices);
+        buildMaps();
+        fillXrefs();
+        let prevPageH = 0;
+        let first = true;
+        for (const strip of layout.strips) {
+          const run = ensureRun(strip);
+          const { stride, rowStride, sheetGap } = stripMetrics(strip.el);
+          run.style.setProperty("--gp-sheet-gap", `${sheetGap}px`);
+          const { perRow, shift } = wrapGeometry(strip);
+          const layer = run.querySelector(".gp-layer");
+          layer.textContent = "";
+          const g = strip.geometry;
+          for (let i = 0;i < strip.pages; i++) {
+            const bookIndex = strip.offset + i;
+            const ctx = pageContext(strip, i, bookIndex);
+            const slot = i + shift;
+            const row = Math.floor(slot / perRow);
+            const colVisual = slot % perRow;
+            const sheetLeft = colVisual * stride;
+            const sheetTop = row * rowStride;
+            const sheet = document.createElement("div");
+            sheet.className = "gp-sheet";
+            sheet.dataset.page = String(bookIndex + 1 + pageOffset);
+            sheet.dataset.side = bookIndex % 2 === 0 ? "recto" : "verso";
+            sheet.style.left = `${sheetLeft}px`;
+            sheet.style.top = `${sheetTop}px`;
+            sheet.style.setProperty("--gp-page-w", px(ctx.geometry.width));
+            sheet.style.setProperty("--gp-page-h", px(ctx.geometry.height));
+            applyPageBackground(sheet, ctx.decls);
+            for (const [prop, value] of canvasBg)
+              sheet.style.setProperty(prop, value);
+            layer.appendChild(sheet);
+            sheets.set(bookIndex, sheet);
+            drawMarginBoxes(sheet, ctx, layout.totalPages);
+            drawGuides(sheet, ctx);
+            drawCropMarks(sheet, ctx);
+          }
+          const rows = Math.max(1, Math.ceil((strip.pages + shift) / perRow));
+          run.style.height = `${rowStride * (rows - 1) + PX_PER_PT * g.height}px`;
+          run.style.width = `${stride * perRow}px`;
+          run.style.marginTop = strip.wrapCols && shift === 1 && !first ? `${-(prevPageH + sheetGap)}px` : "";
+          prevPageH = PX_PER_PT * g.height;
+          first = false;
+          if (opts.designer)
+            checkOverflow(strip, warnings);
         }
-        const rows = Math.max(1, Math.ceil((strip.pages + shift) / perRow));
-        run.style.height = `${rowStride * (rows - 1) + PX_PER_PT * g.height}px`;
-        run.style.width = `${stride * perRow}px`;
-        run.style.marginTop = strip.wrapCols && shift === 1 && !first ? `${-(prevPageH + sheetGap)}px` : "";
-        prevPageH = PX_PER_PT * g.height;
-        first = false;
-        if (opts.designer)
-          checkOverflow(strip, warnings);
-      }
+      });
     }
     function drawMarginBoxes(sheet, ctx, totalPages) {
       const g = ctx.geometry;
@@ -2253,7 +2314,7 @@
         if (!decls?.content)
           continue;
         const text = evaluate(decls.content, {
-          page: api.pageNumbers[ctx.index] ?? ctx.index + 1,
+          page: api.pageNumbers[ctx.index] ?? ctx.index + 1 + pageOffset,
           pages: totalPages,
           strings: (n, w) => stringAt(n, w, ctx.index),
           targetPage: (url) => api.targets.get(url)
@@ -2349,14 +2410,14 @@
     "background-clip",
     "background-blend-mode"
   ];
-  function captureCanvasBackground() {
-    for (const el of [document.documentElement, document.body]) {
+  function captureCanvasBackground(roots) {
+    for (const el of roots ?? [document.documentElement, document.body]) {
       const cs = getComputedStyle(el);
       const transparent = /^(transparent|rgba\(0, ?0, ?0, ?0\))$/.test(cs.backgroundColor);
       if (cs.backgroundImage === "none" && transparent)
         continue;
       const captured = CANVAS_BG_PROPS.map((p) => [p, cs.getPropertyValue(p)]);
-      if (el === document.documentElement)
+      if (el === document.documentElement || roots)
         el.style.background = "none";
       return captured;
     }

@@ -59,6 +59,14 @@ export interface LayoutOptions {
   root?: HTMLElement;
   /** reserve (and draw) repeated table headers on continuation pages; default true */
   compensateHeaders?: boolean;
+  /**
+   * The book's CSS, when the flow root is NOT the whole document — the
+   * desktop's paged editor paginates one editor document inside the app,
+   * where `document.styleSheets` is the APP's CSS, not the book's. Supplied,
+   * it replaces the `loadStyleSources()` read entirely: the GCPM model
+   * (`@page` geometry, margin boxes, `string-set`) comes from this string.
+   */
+  css?: string;
 }
 
 const pt = (v: number) => v * PX_PER_PT;
@@ -447,8 +455,10 @@ function explodeChildren(container: Element, model: GcpmModel): Run[] {
     }
     // Nothing precedes it: text with real content opens its own default-page
     // run (print puts it on the default page, then the named element breaks
-    // to its own). Whitespace generates no box, so it just rides along.
-    if (held.some((n) => (n.textContent ?? "").trim() !== "")) {
+    // to its own). Whitespace generates no box, so it just rides along — and
+    // so does an element node, which reaches `pending` only when it generates
+    // no boxes either (see the loop below).
+    if (held.some((n) => n.nodeType !== 1 && (n.textContent ?? "").trim() !== "")) {
       pushRun(runs, undefined, held);
       return [];
     }
@@ -469,6 +479,19 @@ function explodeChildren(container: Element, model: GcpmModel): Run[] {
       continue;
     }
     if (!hasDescendantPageAssignment(kid, model)) {
+      // A `display: none` element generates no boxes anywhere in its subtree,
+      // so print cannot start a page at it. It therefore rides along with a
+      // neighbouring run exactly as whitespace does, instead of opening a run
+      // — and a page — of its own. Read after the page checks above, so an
+      // element that DOES carry page context is never treated this way.
+      //
+      // The editor's locked view hides its marker chips like this, and a
+      // hidden chip sitting ahead of a chapter opener manufactured a whole
+      // blank leading page there.
+      if (getComputedStyle(kid).display === "none") {
+        pending.push(node);
+        continue;
+      }
       pushRun(runs, undefined, [...carry(), kid], flush);
       continue;
     }
@@ -539,9 +562,21 @@ const FORCED_BREAK = /^(column|page|left|right|recto|verso|always)$/;
  * Guarded by `spread-leading-break.test.ts`, which fails without this.
  */
 function clearLeadingForcedBreaks(strip: HTMLElement) {
-  for (let el = strip.firstElementChild; el; el = el.firstElementChild) {
+  let el: Element | null = strip.firstElementChild;
+  while (el) {
     const cs = getComputedStyle(el);
+    // An element that generates no box cannot be what a column starts with,
+    // so the leading chain continues at its next SIBLING. The rich editor
+    // mounts a marker's chip ahead of the container it opens and hides it in
+    // the reader's view, which put exactly such an element at the head of the
+    // strip: the run stopped there, the container's own forced break survived,
+    // and the chapter opened on a blank page.
+    if (cs.display === "none") {
+      el = el.nextElementSibling;
+      continue;
+    }
     if (FORCED_BREAK.test(cs.breakBefore)) (el as HTMLElement).style.breakBefore = "auto";
+    el = el.firstElementChild;
   }
 }
 
@@ -577,12 +612,18 @@ export function stabilizeFullHeightPageRoots(model: GcpmModel, strips: StripInfo
     // explodeChildren() may leave shallow author shells around the element
     // that directly owns `page:`. Only the leading chain can collapse a margin
     // through the run's block-start edge.
-    for (
-      let el = strip.el.firstElementChild as HTMLElement | null;
-      el;
-      el = el.firstElementChild as HTMLElement | null
-    ) {
-      if (directPageName(el, model) !== strip.page) continue;
+    let el = strip.el.firstElementChild as HTMLElement | null;
+    while (el) {
+      // Box-less shells are not part of the leading chain — see
+      // `clearLeadingForcedBreaks` for the same rule and why it is needed.
+      if (getComputedStyle(el).display === "none") {
+        el = el.nextElementSibling as HTMLElement | null;
+        continue;
+      }
+      if (directPageName(el, model) !== strip.page) {
+        el = el.firstElementChild as HTMLElement | null;
+        continue;
+      }
       const cs = getComputedStyle(el);
       const height = parseFloat(cs.height);
       const rootRects = el.getClientRects();
@@ -1165,7 +1206,45 @@ export function strideOf(strip: HTMLElement): number {
  */
 function cssZoomOf(el: Element): number {
   const stage = el.closest(".gp-stage") ?? document.body;
-  return new DOMMatrixReadOnly(getComputedStyle(stage).transform).a || 1;
+  const cached = readCache?.zoom.get(stage);
+  if (cached !== undefined) return cached;
+  const zoom = new DOMMatrixReadOnly(getComputedStyle(stage).transform).a || 1;
+  readCache?.zoom.set(stage, zoom);
+  return zoom;
+}
+
+/**
+ * One layout pass's computed-style reads, so `pageOf()` on the Nth element
+ * of a pass does not ask the browser for the strip's pitch and the stage's
+ * zoom again. Every value cached here is constant for the life of a strip
+ * (`buildStrips` sets the pitch; the zoom is one paint transform on the
+ * stage), and the cache lives only as long as the pass that opened it, so
+ * nothing outside a pass can read a stale value.
+ *
+ * Measured on the desktop's paged editor, which paginates a chapter on
+ * every keystroke: with the string-set, counter-reset and cross-reference
+ * maps calling `pageRangeOf()` per element, `getPropertyValue` alone was
+ * half of all CPU while typing — each read after a DOM write is a forced
+ * style recalculation of the whole chapter.
+ */
+let readCache: { metrics: Map<Element, StripMetrics>; zoom: Map<Element, number> } | null = null;
+
+/** Run `fn` with the computed-style read cache open; nested calls share the outer pass. */
+export function withLayoutReadCache<T>(fn: () => T): T {
+  if (readCache) return fn();
+  readCache = { metrics: new Map(), zoom: new Map() };
+  try {
+    return fn();
+  } finally {
+    readCache = null;
+  }
+}
+
+interface StripMetrics {
+  stride: number;
+  rowStride: number;
+  /** `--gp-sheet-gap`: the gap between sheets, which decorate copies to the run. */
+  sheetGap: number;
 }
 
 /**
@@ -1175,13 +1254,18 @@ function cssZoomOf(el: Element): number {
  * and vertical pitch together halves that cost without any caching to
  * invalidate.
  */
-export function stripMetrics(strip: HTMLElement): { stride: number; rowStride: number } {
+export function stripMetrics(strip: HTMLElement): StripMetrics {
+  const cached = readCache?.metrics.get(strip);
+  if (cached) return cached;
   const cs = getComputedStyle(strip);
   const w = parseFloat(cs.getPropertyValue("--gp-content-w"));
   const colGap = parseFloat(cs.columnGap) || 0;
   const h = parseFloat(cs.getPropertyValue("--gp-content-h"));
   const rowGap = parseFloat(cs.rowGap) || 0;
-  return { stride: w + colGap, rowStride: h + rowGap };
+  const sheetGap = parseFloat(cs.getPropertyValue("--gp-sheet-gap")) || 0;
+  const metrics = { stride: w + colGap, rowStride: h + rowGap, sheetGap };
+  readCache?.metrics.set(strip, metrics);
+  return metrics;
 }
 
 /**
@@ -1434,44 +1518,41 @@ export function waitForLayoutReady(doc: Document = document): Promise<void> {
 }
 
 /** Fragment the current document. Decoration is a separate layer (decorate.ts). */
-export async function fragmentDocument(opts: LayoutOptions = {}): Promise<GutterpressViewerApi> {
-  // Kick off alongside the stylesheet fetches below so a cold cache's font/
-  // image load overlaps network time instead of adding to it.
-  const layoutReady = waitForLayoutReady();
-  const css = await loadStyleSources();
-  injectViewerCss();
-  // the preview renders the PRINT stylesheet: re-inject `@media print` bodies
-  // as screen rules, since the browser won't apply them outside print emulation
-  const printOnly = mediaPrintBodies(css).join("\n");
-  if (printOnly && !document.getElementById("gp-media-print")) {
-    const style = document.createElement("style");
-    style.id = "gp-media-print";
-    style.textContent = printOnly;
-    document.head.appendChild(style);
-  }
-  const model = extract(css);
-  injectBreakMapping(model);
+/**
+ * The SYNCHRONOUS half of {@link fragmentDocument}: everything from "I have a
+ * GCPM model and a flow root" to a measured {@link GutterpressViewerApi}.
+ *
+ * Split out for the desktop's paged editor, which paginates a flow root it
+ * owns (the live editor's document element) on every editor render: it has
+ * the model already (a book's CSS changes far less often than its text) and
+ * cannot await anything, because the editor measures caret geometry
+ * immediately after the synchronous render it calls this from.
+ * {@link fragmentDocument} is this function plus the async style/image reads.
+ */
+export function paginate(model: GcpmModel, opts: LayoutOptions = {}): GutterpressViewerApi {
   const authoring: string[] = [];
   const strips = buildStrips(model, opts, authoring);
-  await layoutReady;
-  makeOverflowFragmentable(strips);
-  stabilizeFullHeightPageRoots(model, strips);
-  synthesizeColumnBreaks(model);
-  measure(strips);
-  const blanks = compensateRectoBreaks(model, strips);
-  if (blanks) measure(strips);
-  const headers =
-    opts.compensateHeaders === false
-      ? { tables: 0, passes: 0, warnings: [] }
-      : compensateRepeatedHeaders(strips);
-  const { totalPages } = measure(strips);
+  // The strips' pitch is set; every read below may share one answer.
+  const { blanks, headers, totalPages, blankPageIndices: blankIndices } = withLayoutReadCache(() => {
+    makeOverflowFragmentable(strips);
+    stabilizeFullHeightPageRoots(model, strips);
+    synthesizeColumnBreaks(model);
+    measure(strips);
+    const blanks = compensateRectoBreaks(model, strips);
+    if (blanks) measure(strips);
+    const headers =
+      opts.compensateHeaders === false
+        ? { tables: 0, passes: 0, warnings: [] }
+        : compensateRepeatedHeaders(strips);
+    return { blanks, headers, totalPages: measure(strips).totalPages, blankPageIndices: blankPageIndices(strips) };
+  });
   const api: GutterpressViewerApi = {
     model,
     strips,
     totalPages,
     warnings: [...new Set([...authoring, ...headers.warnings])],
     blankPages: blanks,
-    blankPageIndices: blankPageIndices(strips),
+    blankPageIndices: blankIndices,
     pageOf: (sel) =>
       pageOf(typeof sel === "string" ? document.querySelector(sel)! : sel, strips),
     pageRangeOf: (sel) =>
@@ -1492,20 +1573,43 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
       const rebuilt = buildStrips(model, opts, authoring);
       strips.length = 0;
       strips.push(...rebuilt);
-      makeOverflowFragmentable(strips);
-      stabilizeFullHeightPageRoots(model, strips);
-      synthesizeColumnBreaks(model);
-      measure(strips);
-      api.blankPages = compensateRectoBreaks(model, strips);
-      if (opts.compensateHeaders !== false)
-        api.warnings = [
-          ...new Set([...authoring, ...compensateRepeatedHeaders(strips).warnings]),
-        ];
-      const r = measure(strips);
-      api.totalPages = r.totalPages;
-      api.blankPageIndices = blankPageIndices(strips);
-      return r;
+      return withLayoutReadCache(() => {
+        makeOverflowFragmentable(strips);
+        stabilizeFullHeightPageRoots(model, strips);
+        synthesizeColumnBreaks(model);
+        measure(strips);
+        api.blankPages = compensateRectoBreaks(model, strips);
+        if (opts.compensateHeaders !== false)
+          api.warnings = [
+            ...new Set([...authoring, ...compensateRepeatedHeaders(strips).warnings]),
+          ];
+        const r = measure(strips);
+        api.totalPages = r.totalPages;
+        api.blankPageIndices = blankPageIndices(strips);
+        return r;
+      });
     },
   };
   return api;
+}
+
+export async function fragmentDocument(opts: LayoutOptions = {}): Promise<GutterpressViewerApi> {
+  // Kick off alongside the stylesheet fetches below so a cold cache's font/
+  // image load overlaps network time instead of adding to it.
+  const layoutReady = waitForLayoutReady();
+  const css = opts.css ?? (await loadStyleSources());
+  injectViewerCss();
+  // the preview renders the PRINT stylesheet: re-inject `@media print` bodies
+  // as screen rules, since the browser won't apply them outside print emulation
+  const printOnly = mediaPrintBodies(css).join("\n");
+  if (printOnly && !document.getElementById("gp-media-print")) {
+    const style = document.createElement("style");
+    style.id = "gp-media-print";
+    style.textContent = printOnly;
+    document.head.appendChild(style);
+  }
+  const model = extract(css);
+  injectBreakMapping(model);
+  await layoutReady;
+  return paginate(model, opts);
 }

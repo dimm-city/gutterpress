@@ -8,9 +8,10 @@
  * `executeValidation({ category: "source", phase: "pre-build" })` and no
  * source check produced marker findings.
  *
- * Running them AS A CHECK is what closes that gap, and it needs no new IPC
- * channel or renderer code (§8): the desktop's `/api/lint/project` route
- * already maps every `CheckResult` to a `ProblemEntry`.
+ * Running them AS A CHECK is what closes that gap, and it needs no new
+ * route or renderer code (§8): the desktop's `lint/project` route
+ * already maps every `CheckResult` to a
+ * `ProblemEntry`.
  *
  * Severity is always `warning` — these are "your markup did not mean what you
  * think", never a reason to abort a build (only `error` results set ok=false).
