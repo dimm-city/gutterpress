@@ -144,7 +144,18 @@ const startedWholeRun = Date.now();
 const rows = [];
 let failures = 0;
 try {
-  const page = await app.firstWindow();
+  // The APP window, not whichever window happens to be first: the app also
+  // opens a hidden engine window per render pass (electron/engine-browser.ts),
+  // and a drive that lands on it finds every element and none of them visible.
+  let page = await app.firstWindow();
+  for (let attempt = 0; attempt < 60 && !page.url().startsWith("app://"); attempt++) {
+    const appWindow = app.windows().find((w) => w.url().startsWith("app://"));
+    if (appWindow) {
+      page = appWindow;
+      break;
+    }
+    await sleep(500);
+  }
   page.setDefaultTimeout(60_000);
   await app.evaluate(({ BrowserWindow }) => {
     // The app window, not whichever window happens to be first: the app
@@ -165,6 +176,14 @@ try {
   } catch (e) {
     // Say what the window shows instead of leaving the next hour to guessing.
     const text = await page.evaluate(() => document.body.innerText.slice(0, 1200)).catch(() => "(no body)");
+    const geometry = await page
+      .evaluate(() => {
+        const r = (sel) => { const el = document.querySelector(sel); if (!el) return null; const b = el.getBoundingClientRect(); const cs = getComputedStyle(el); return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height), display: cs.display, visibility: cs.visibility, opacity: cs.opacity }; };
+        return { window: [window.innerWidth, window.innerHeight], tocItem: r(".toc-item"), panel: r(".left-panel"), body: r("body"), hidden: document.hidden, url: location.href };
+      })
+      .catch((err) => String(err));
+    console.error(`[parity] geometry: ${JSON.stringify(geometry)}`);
+    await page.screenshot({ path: join(tmpdir(), "parity-never-opened.png") }).catch(() => {});
     const prefs = await page
       .evaluate(() => fetch("/api/app/gutterpress-prefs").then((r) => r.text()))
       .catch((err) => `(prefs route failed: ${err})`);

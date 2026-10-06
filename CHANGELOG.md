@@ -49,6 +49,16 @@ This project follows [Semantic Versioning](https://semver.org/).
   keystroke, and asked for each page's geometry once per element; both
   are gone from the per-keystroke path (the preview's hot reload gains the
   same).
+- **Editing on the page, smoothed.** The unlocked book's chapters flow one
+  after another (they had all landed at the same top). Enter in a marker
+  line (`@section .lede`) now finishes the edit instead of splitting the
+  marker across two lines. Clicking an `@end-…` tag opens that line, not
+  the paragraph above it. An image's properties open on a double-click;
+  a single click only selects it. The lock pill sits at the right end of
+  the page-navigation strip instead of over the formatting bar. A part of
+  the book the editor shows as its Markdown (a plugin block whose source
+  range cannot be verified) is one quiet notice per unlock, with the
+  details in Logs, rather than an error for every chapter.
 
 ## [0.11.13] - 2026-10-06
 

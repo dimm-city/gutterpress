@@ -161,6 +161,8 @@ export interface EditorMount {
   revealRange(from: number, to?: number): void;
   /** See `VscodeEditorAdapter.setSelection` - places the caret as a click there would. */
   setSelection(from: number, to?: number): void;
+  /** See `VscodeEditorAdapter.clearSelection` - drops the caret, leaving no block active. */
+  clearSelection(): void;
 
   /** Lock or unlock the mounted editor (the host's Read/Edit decision). */
   setReadonly(readonly: boolean): void;
@@ -265,6 +267,7 @@ export function mountEditor(
     getSelection: (): { readonly from: number; readonly to: number } | undefined => adapter.getSelection(),
     revealRange: (from: number, to?: number): void => adapter.revealRange(from, to),
     setSelection: (from: number, to?: number): void => adapter.setSelection(from, to),
+    clearSelection: (): void => adapter.clearSelection(),
     setReadonly: (readonly: boolean): void => adapter.setReadonly(readonly),
     rerender: (): void => adapter.rerender(),
   };

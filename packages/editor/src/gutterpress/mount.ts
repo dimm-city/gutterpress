@@ -70,6 +70,8 @@ export interface GutterpressEditorMount {
   setReadonly(readonly: boolean): void;
   /** See `EditorMount.setSelection` - places the caret as a click there would. */
   setSelection(from: number, to?: number): void;
+  /** See `EditorMount.clearSelection` - drops the caret, leaving no block active. */
+  clearSelection(): void;
   /**
    * Swap in a projection built for the document's CURRENT text and rebuild
    * every block view against it, keeping the caret, the scroll and the
@@ -173,13 +175,16 @@ export function mountGutterpressEditor(
         // needs an offset INSIDE the marker line to open it on a click. The
         // block's own start may be the blank line before the marker, and a
         // caret there belongs to the block above. The END of the marker's
-        // first line is where an author adds to a marker, and it keeps the
-        // caret off the newline after it: typing past that newline puts the
-        // text on the next line, under the marker instead of in it.
+        // first line is where an author adds to an opener (`@section .lede`
+        // gets another class), and it keeps the caret off the newline after
+        // it. A closer (`@end-section`) takes nothing, and its end offset
+        // resolved into the block it closes - the tag opened the paragraph
+        // above instead - so a closer opens at its first character.
         if (element.classList.contains("gp-block-chip")) {
           const lead = sourceText.length - sourceText.trimStart().length;
           const firstLine = sourceText.trimStart().split("\n")[0] ?? "";
-          element.setAttribute(CHIP_CARET_ATTR, String(absoluteStart + lead + firstLine.length));
+          const closer = /^@end-/.test(firstLine);
+          element.setAttribute(CHIP_CARET_ATTR, String(absoluteStart + lead + (closer ? 0 : firstLine.length)));
         }
         // Every inactive block carries its source range too, so a host can
         // map a right-click or an image click on any block back to source.
@@ -238,6 +243,7 @@ export function mountGutterpressEditor(
     getSelection: (): { readonly from: number; readonly to: number } | undefined => mount.getSelection(),
     revealRange: (from: number, to?: number): void => mount.revealRange(from, to),
     setSelection: (from: number, to?: number): void => mount.setSelection(from, to),
+    clearSelection: (): void => mount.clearSelection(),
     refreshProjection: (next: GutterpressProjection): void => {
       projection = next;
       const text = host.getSnapshot().text;

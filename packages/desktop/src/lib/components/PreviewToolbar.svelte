@@ -25,18 +25,23 @@
   import Icon from "$lib/components/Icon.svelte";
   import type { PageNavSurface } from "$lib/routes/page-nav-controller.svelte";
 
+  import type { Snippet } from "svelte";
+
   let {
     pageNav,
     rendering,
     zoom,
     zoomDisabled,
     onApplyZoom,
+    children,
   }: {
     pageNav: PageNavSurface;
     rendering: boolean;
     zoom: string;
     zoomDisabled: boolean;
     onApplyZoom: (zoom: string) => void;
+    /** Controls the pane adds at the strip's right end (Read's lock pill). */
+    children?: Snippet;
   } = $props();
 
   const ZOOM_LEVELS: Array<[string, string]> = [
@@ -119,9 +124,17 @@
       {/each}
     </div>
   </details>
+  {#if children}
+    <div class="trailing">{@render children()}</div>
+  {/if}
 </div>
 
 <style>
+  .trailing {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+  }
   /* Same chrome as EditorToolbar so the two panes read as one pair. */
   .preview-toolbar {
     display: flex;

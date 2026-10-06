@@ -225,6 +225,13 @@ export interface VscodeEditorAdapter {
    * page-shaped view (a marker's margin tag, `../gutterpress/marker-tags.ts`).
    */
   setSelection(from: number, to?: number): void;
+  /**
+   * Drop the caret: no block is active afterwards and the document shows
+   * every block the way the page does. The source is untouched. A host uses
+   * it to let an author say "done" with a block they opened (Enter in a
+   * marker line) without moving the caret into the block below.
+   */
+  clearSelection(): void;
 
   /**
    * Lock or unlock the mounted editor. The host owns this decision (the
@@ -548,6 +555,14 @@ export function createVscodeEditorAdapter(
       model.selection.set(new Selection(from, to), undefined, undefined);
       view.focus();
       view.revealRangeInCenterIfOutsideViewport(OffsetRange.fromTo(Math.min(from, to), Math.max(from, to)));
+    },
+
+    clearSelection(): void {
+      if (disposed) return;
+      // No selection, no active block: the controller derives the active
+      // set from this observable (`activeBlocks`), exactly as setSelection
+      // relies on above.
+      model.selection.set(undefined, undefined, undefined);
     },
   };
 }

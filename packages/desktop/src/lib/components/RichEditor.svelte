@@ -127,6 +127,7 @@
         revealRange(from: number, to?: number): void;
         setReadonly(readonly: boolean): void;
         setSelection(from: number, to?: number): void;
+        clearSelection(): void;
         refreshProjection(projection: GutterpressProjection): void;
       }
     | undefined;
@@ -199,13 +200,36 @@
           refreshProjection: () => {},
         };
     mountHandle = mount;
+    // Enter in a marker line (`@section .lede`, `@page-break`, ...) confirms
+    // it: the edit is already in the source, and a newline would split the
+    // marker - its attributes dropped to the next line stop being its
+    // attributes. Dropping the caret leaves the block, which is what
+    // "done" means here; the fork never sees the key. Capture phase, so
+    // this runs before the editor's own key handling. Shift+Enter still
+    // inserts a newline for anyone who means one.
+    const confirmMarkerOnEnter = (event: KeyboardEvent): void => {
+      if (event.key !== "Enter" || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
+      const active = container?.querySelector<HTMLElement>(".md-block-active");
+      // The active block shows its source with a visible newline glyph at the end.
+      const text = (active?.textContent ?? "").replace(/\u21B5/g, "").trim();
+      if (!active || !MARKER_LINE_RE.test(text) || text.includes("\n")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      mountHandle?.clearSelection();
+    };
+    container.addEventListener("keydown", confirmMarkerOnEnter, true);
+    const containerEl = container;
     return () => {
+      containerEl.removeEventListener("keydown", confirmMarkerOnEnter, true);
       mountHandle = undefined;
       surfaceHandle = undefined;
       mount.dispose();
       surface?.dispose();
     };
   });
+
+  /** A block whose source is a Gutterpress or plugin marker line: `@word`, then that line's attributes. */
+  const MARKER_LINE_RE = /^@[a-z][a-z0-9-]*(?:[ \t{.#]|$)/i;
 
   /** The mounted surface's LIVE caret/selection (D3 source offsets), or
    *  `undefined` when there is no caret AT THIS INSTANT — this component

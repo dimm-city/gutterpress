@@ -1457,31 +1457,47 @@
   /**
    * Every diagnostic from editing on the page funnels through here: an edit
    * this page pushed through a chapter's host, or one the mounted editor
-   * reported itself. A projection's own notices arrive together when a
-   * document mounts, so they fold into one toast per mount.
+   * reported itself.
+   *
+   * A projection's own notices (a plugin block the editor shows as its
+   * Markdown instead of as the page shows it) are not errors: nothing
+   * failed, the content is there and editable, it only looks different
+   * here. Every chapter reports them when it mounts, and every unlock and
+   * every rebuilt projection mounts again, so shown as they arrive they are
+   * a wall of toasts. They are logged in full, and the author sees one
+   * quiet notice per unlock, counting what is affected.
    */
   function showRichDiagnostic(diagnostic: Diagnostic): void {
     if (diagnostic.category === "EDITOR_UNSUPPORTED_PROJECTION" || diagnostic.category === "EDITOR_PROJECTION_LIMIT") {
-      pendingProjectionDiagnostics.push(diagnostic);
-      if (pendingProjectionDiagnostics.length === 1) queueMicrotask(flushProjectionDiagnostics);
+      if (!loggedProjectionNotices.has(diagnostic.message)) {
+        loggedProjectionNotices.add(diagnostic.message);
+        reportError(`rich projection: ${diagnostic.message}`);
+      }
+      pendingProjectionNotices += 1;
+      if (pendingProjectionNotices === 1) queueMicrotask(flushProjectionNotices);
       return;
     }
     showDiagnosticToast(diagnostic.message, diagnostic.safeAction);
   }
 
-  const pendingProjectionDiagnostics: Diagnostic[] = [];
+  /** Notice texts already written to the log this session: each is logged once, however many chapters repeat it. */
+  const loggedProjectionNotices = new Set<string>();
+  let pendingProjectionNotices = 0;
+  /** True once this unlock has shown its notice; reset when the book is relocked. */
+  let projectionNoticeShown = false;
 
-  function flushProjectionDiagnostics(): void {
-    const batch = pendingProjectionDiagnostics.splice(0);
-    if (batch.length === 0) return;
-    for (const d of batch) reportError(`rich projection: ${d.message}`);
-    const first = batch[0]!;
-    const more = batch.length - 1;
-    const message =
-      more === 0
-        ? first.message
-        : `${batch.length} parts of this document cannot be shown here the way the page shows them; they render as the Markdown they were written from. First: ${first.message}`;
-    showDiagnosticToast(message, first.safeAction);
+  function flushProjectionNotices(): void {
+    const count = pendingProjectionNotices;
+    pendingProjectionNotices = 0;
+    if (count === 0 || projectionNoticeShown) return;
+    projectionNoticeShown = true;
+    const parts = count === 1 ? "One part of this book" : `${count} parts of this book`;
+    toast?.show(
+      `${parts} cannot be shown here the way the page shows ${count === 1 ? "it" : "them"}, so ${count === 1 ? "it renders" : "they render"} as the Markdown ${count === 1 ? "it was" : "they were"} written from. The details are in Logs.`,
+      "info",
+      8000,
+      { label: "Edit in source", onClick: () => setMode("editor") },
+    );
   }
 
   /** The one toast shape every rich diagnostic takes: the message, and its safe action as a button that opens Edit. */
@@ -1565,6 +1581,7 @@
   function setRichLocked(locked: boolean): void {
     if (locked === richLocked) return;
     richLocked = locked;
+    if (locked) projectionNoticeShown = false;
     if (!locked) {
       loadBookSurfaceModule();
       void loadBookFiles();
@@ -1699,7 +1716,8 @@
   }
 
   /** A click on an image selects it and opens its properties: an image has no text to put a caret in, so the dialog IS the way to edit one. */
-  function onRichPointerDown(e: PointerEvent): void {
+  /** Double-click an image to open its properties; a single click only selects, as anywhere else on the page. */
+  function onRichImageDoubleClick(e: MouseEvent): void {
     if (!richEditing || !(e.target instanceof HTMLImageElement) || e.button !== 0) return;
     const block = richBlockAt(e.target);
     if (!block) return;
@@ -1803,6 +1821,7 @@
     // A settings-driven mode change (a role switch, a restored preference) is
     // a fresh Read, so it opens locked like setMode's does.
     richLocked = true;
+    projectionNoticeShown = false;
     zoomView.applyViewMode(viewMode);
     if (m !== "viewer") loadEditorModule();
   });
@@ -2982,6 +3001,7 @@
     mode = next;
     // Read opens locked, every time: coming back to Read is coming back to read.
     richLocked = true;
+    projectionNoticeShown = false;
     zoomView.applyViewMode(viewMode);
     if (next !== "viewer") loadEditorModule();
   }
@@ -3179,6 +3199,26 @@
   }
 
 </script>
+
+{#snippet lockPill()}
+  {#if richSurfaceActive}
+    <!-- The lock pill: Read's one editing control, for authors. Locked is the
+         preview as it prints; unlocked edits the same pages in place. It
+         lives at the right end of the page-navigation strip, never over it. -->
+    <button
+      class="rich-lock"
+      class:unlocked={!richLocked}
+      onclick={() => setRichLocked(!richLocked)}
+      aria-pressed={!richLocked}
+      aria-label={richLocked ? "Unlock to edit" : "Lock"}
+      title={richLocked ? "Unlock to edit the book on the page" : "Lock the book for reading"}
+    >
+      <Icon name={richLocked ? "lock" : "unlock"} size={14} />
+      <span>{richLocked ? "Locked" : "Editing"}</span>
+    </button>
+  {/if}
+{/snippet}
+
 
 <Toast bind:api={toast} onReportProblem={openReportProblem} />
 
@@ -3525,7 +3565,9 @@
               {zoom}
               zoomDisabled={false}
               onApplyZoom={(val) => { zoomView.applyZoom(val); bookRef?.setZoom(val); }}
-            />
+            >
+              {@render lockPill()}
+            </PreviewToolbar>
             <EditorToolbar
               filePath={editorFilePath}
               projectDir={lifecycle.currentDir}
@@ -3563,23 +3605,9 @@
               {zoom}
               zoomDisabled={!lifecycle.previewUrl}
               onApplyZoom={(val) => { contextMenu.close(); zoomView.applyZoom(val); }}
-            />
-          {/if}
-          {#if richSurfaceActive}
-            <!-- The lock pill: Read's one editing control, for authors. Locked
-                 is the preview as it prints; unlocked edits the same pages in
-                 place. -->
-            <button
-              class="rich-lock"
-              class:unlocked={!richLocked}
-              onclick={() => setRichLocked(!richLocked)}
-              aria-pressed={!richLocked}
-              aria-label={richLocked ? "Unlock to edit" : "Lock"}
-              title={richLocked ? "Unlock to edit the book on the page" : "Lock the book for reading"}
             >
-              <Icon name={richLocked ? "lock" : "unlock"} size={14} />
-              <span>{richLocked ? "Locked" : "Editing"}</span>
-            </button>
+              {@render lockPill()}
+            </PreviewToolbar>
           {/if}
         {/if}
         <FindBar bind:this={findBarRef} bind:open={findBarOpen} {client} />
@@ -3595,7 +3623,7 @@
             <div
               class="rich-host"
               oncontextmenu={onRichContextMenu}
-              onpointerdowncapture={onRichPointerDown}
+              ondblclick={onRichImageDoubleClick}
             >
               {#if BookSurfaceComponent && bookChapters.length}
                 <!-- Keyed on the chapter list: a chapter added or removed is a new book. -->
@@ -4050,22 +4078,19 @@
   }
   /* Read's lock pill floats over the top-right of the pages, under the toolbar. */
   .rich-lock {
-    position: absolute;
-    top: 52px;
-    right: 18px;
-    z-index: 5;
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 5px 12px 5px 10px;
+    padding: 3px 10px 3px 8px;
+    margin-left: 6px;
     border: 1px solid var(--app-control-border);
     border-radius: 999px;
     background: var(--app-control-bg);
     color: var(--app-control-text);
     font: inherit;
-    font-size: 12.5px;
+    font-size: 12px;
+    white-space: nowrap;
     cursor: pointer;
-    box-shadow: var(--app-shadow-md);
   }
   .rich-lock.unlocked { border-color: var(--app-accent-border); }
   .rich-lock:hover { background: var(--app-control-hover-bg); border-color: var(--app-control-hover-border); }
