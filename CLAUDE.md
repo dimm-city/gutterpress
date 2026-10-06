@@ -592,9 +592,10 @@ The Dimm City design guide — the seven-file CSS layer contract, the
 DC-specific application, the specialty variant system, the frozen chapter-opener
 composite, and the R1–R12 print-CSS anti-patterns — used to live in
 `examples/dc-design-guide/` here. That example was removed
-and the full design guide now lives in the **`dc-op-manual`** repo
-(`dc-op-manual/dc-design-guide/`). Do that work there, against that repo's
-own guidance.
+and the full design guide now lives in the **`gp-dimm-city`** repo
+(`gp-dimm-city/design-guide/`), beside the plugin and stylesheets it
+documents, as that package's test fixture. Do that work there, against that
+repo's own guidance.
 
 What remains relevant to **this** repo:
 
@@ -604,7 +605,7 @@ What remains relevant to **this** repo:
 - The frozen chapter-opener's **plugin** half still lives in this repo at
   `packages/cli/src/lib/markdown/markers.js` (`@chapter` parsing,
   `data-chapter-label` propagation, `.chapter-opener` injection); its CSS half
-  moved to dc-op-manual. The full frozen contract and the print-CSS
+  moved to gp-dimm-city. The full frozen contract and the print-CSS
   anti-patterns are preserved in AKM
   (`memory:gutterpress-dc-design-guide-frozen-chapter-opener-historical`,
   `memory:print-css-architectural-anti-patterns`).

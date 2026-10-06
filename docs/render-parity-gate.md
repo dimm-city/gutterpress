@@ -206,8 +206,7 @@ error (exit 2), never a silent pass.
 `packages/cli/scripts/render-parity-waivers.json` (committed as `[]`) is
 gutterpress's own waivers file for the CI job below — add an entry there only
 for a genuine, reviewed, intentional change to one of the public fixtures'
-rendered output. The book repo keeps its own separate waivers file for its
-own gate (dc-op-manual's `dc#49`).
+rendered output. A book repo that runs this tool keeps its own waivers file.
 
 ## CI: same-job A/B, and why
 
@@ -230,26 +229,27 @@ out from under the comparison.
 
 This job gates the two public example books shipped in this repo — the floor
 every core PR must clear. The real subject of the 0.10.6 milestone, the Dimm
-City field guide, lives in the private `dc-op-manual` repo and is gated by
-that repo's own CI, which runs this same tool against its own committed
-baseline reports (`dc-op-manual#49`).
+City field guide, lives in the private `dc-op-manual` repo; the Dimm City
+design system and the design guide that renders it live in `gp-dimm-city`,
+whose CI builds that guide's PDF against each PR's plugin and CSS. Neither
+repo runs this tool in CI today.
 
-## Running it from the book repo
+## Running it from a book or extension repo
 
-`dc-op-manual` installs `gutterpress` from npm and cannot import a script out
-of that package — this tool ships as a script in the gutterpress repo, not a
+A repo that installs `gutterpress` from npm cannot import a script out of
+that package — this tool ships as a script in the gutterpress repo, not a
 published subcommand (a deliberate 0.10.6 scope decision: no beta channel).
-To run it, check out gutterpress alongside the book repo and invoke the
+To run it, check out gutterpress alongside the other repo and invoke the
 script directly:
 
 ```bash
-git clone --depth 1 --branch v0.10.10 https://github.com/dimm-city/gutterpress.git ../gutterpress
+git clone --depth 1 --branch v0.11.13 https://github.com/dimm-city/gutterpress.git ../gutterpress
 cd ../gutterpress && bun install
 
 bun packages/cli/scripts/render-parity.ts compare \
-  /path/to/baseline-report.json /path/to/candidate.pdf \
-  --waive /path/to/dc-op-manual/waivers.json
+  /path/to/before.pdf /path/to/after.pdf \
+  --waive /path/to/your-repo/waivers.json
 ```
 
-The book's own build keeps using its pinned `gutterpress` npm dependency —
-only the parity tool itself runs from a separate checkout.
+The other repo's own build keeps using its pinned `gutterpress` npm
+dependency — only the parity tool itself runs from a separate checkout.
