@@ -224,6 +224,31 @@ export type ExtensionSearchResult =
   | { ok: true; matches: NpmExtensionMatch[]; total: number }
   | { ok: false; message: string };
 
+// ── Extension updates — npm ──────────────────────────────────────────────────
+// Mirrors the lib's `ExtensionUpdateCheck` (packages/cli/src/lib/
+// extension-manager.ts) — defined locally so the SPA never value-imports the
+// lib (§8).
+
+/** One pinned npm extension against npm's `latest` tag. */
+export interface ExtensionUpdateCheck {
+  /** The specifier as written in the manifest (`name@current`). */
+  use: string;
+  name: string;
+  current: string;
+  latest: string;
+  /** `latest` is newer than `current`. */
+  outdated: boolean;
+}
+
+/**
+ * Result of checking npm for updates. As with search, a fetch failure is DATA
+ * (`ok: false`): the Features tab shows `message` as one quiet line and the
+ * list itself is never blocked by the network.
+ */
+export type ExtensionUpdatesResult =
+  | { ok: true; checks: ExtensionUpdateCheck[] }
+  | { ok: false; message: string };
+
 // ── Style resolver (CSS editor) ───────────────────────────────────────────────
 //
 // Mirrors the lib's `ProjectStyle` (packages/cli/src/lib/style-resolver.ts) —

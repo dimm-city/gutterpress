@@ -153,6 +153,7 @@
     recommended: () => api.extension.recommended(),
     listBuiltIn: () => api.extension.listBuiltIn(),
     search: (query) => api.extension.search(query),
+    outdated: (dir) => api.extension.outdated(dir),
     validate: (dir) => api.extension.validate(dir),
     add: (dir, specifier, exportName) => api.extension.add(dir, specifier, exportName),
     addLocal: (dir) => api.extension.addLocal(dir),

@@ -18,6 +18,8 @@ import { gzipSync, strToU8 } from "fflate";
 import { loadManifest, resolveConfig } from "./manifest";
 import {
   addExtension as addNpmPlugin,
+  checkExtensionUpdates,
+  updateExtensions,
   listProjectExtensions as listProjectPlugins,
   validateProjectExtensions as validateProjectPlugins,
 } from "./extension-manager";
@@ -1411,4 +1413,88 @@ describe("npm plugin installation", () => {
     });
   });
 
+});
+
+describe("updates", () => {
+  const name = "markdown-it-gutterpress-updating";
+  const twoVersions = () =>
+    registryGraphFixture([
+      { name, version: "1.0.0" },
+      { name, version: "1.1.0" }, // the group's last entry is the fixture's `latest`
+    ]);
+
+  test("re-pinning to a newer version removes the old version's vendored folder", async () => {
+    const dir = await projectDir();
+    const fixture = twoVersions();
+    await addNpmPlugin(dir, `${name}@1.0.0`, { fetch: fixture.fetch });
+    expect(existsSync(vendoredNpmPluginRoot(dir, name, "1.0.0"))).toBe(true);
+
+    await addNpmPlugin(dir, `${name}@1.1.0`, { fetch: fixture.fetch });
+
+    expect(existsSync(vendoredNpmPluginRoot(dir, name, "1.1.0"))).toBe(true);
+    expect(existsSync(vendoredNpmPluginRoot(dir, name, "1.0.0"))).toBe(false);
+    expect(await readdir(path.dirname(vendoredNpmPluginRoot(dir, name, "1.1.0")))).toEqual(["1.1.0"]);
+    const listed = await listProjectPlugins(dir);
+    expect(listed.map((e) => e.use)).toEqual([`${name}@1.1.0`]);
+  });
+
+  test("checkExtensionUpdates compares each pin with npm's latest, skipping what npm cannot answer for", async () => {
+    const dir = await projectDir();
+    const fixture = twoVersions();
+    await addNpmPlugin(dir, `${name}@1.0.0`, { fetch: fixture.fetch });
+    await addNpmPlugin(dir, "markdown-it-mark", { fetch: fixture.fetch }); // bundled: not npm's
+
+    const checks = await checkExtensionUpdates(dir, { fetch: fixture.fetch });
+    expect(checks).toEqual([
+      { use: `${name}@1.0.0`, name, current: "1.0.0", latest: "1.1.0", outdated: true },
+    ]);
+  });
+
+  test("checkExtensionUpdates names the package a lookup fails for", async () => {
+    const dir = await projectDir();
+    const fixture = twoVersions();
+    await addNpmPlugin(dir, `${name}@1.0.0`, { fetch: fixture.fetch });
+    const offline = (async () => {
+      throw new Error("ECONNREFUSED");
+    }) as unknown as typeof globalThis.fetch;
+    await expect(checkExtensionUpdates(dir, { fetch: offline })).rejects.toThrow(
+      `Looking up ${name} on npm failed (ECONNREFUSED).`,
+    );
+  });
+
+  test("updateExtensions re-pins what is behind, keeps the entry's export, and reports the move", async () => {
+    const dir = await projectDir();
+    const fixture = registryGraphFixture([
+      {
+        name,
+        version: "1.0.0",
+        files: { "index.js": "export function full(md) { md.__v = 1; }\n" },
+      },
+      {
+        name,
+        version: "1.1.0",
+        files: { "index.js": "export function full(md) { md.__v = 2; }\n" },
+      },
+    ]);
+    await addNpmPlugin(dir, `${name}@1.0.0`, { fetch: fixture.fetch, exportName: "full" });
+
+    expect(await updateExtensions(dir, { fetch: fixture.fetch })).toEqual([
+      { name, from: "1.0.0", to: "1.1.0" },
+    ]);
+    const [entry] = await listProjectPlugins(dir);
+    expect(entry).toMatchObject({ use: `${name}@1.1.0`, version: "1.1.0", export: "full" });
+    expect(existsSync(vendoredNpmPluginRoot(dir, name, "1.0.0"))).toBe(false);
+    // Idempotent: nothing left to move.
+    expect(await updateExtensions(dir, { fetch: fixture.fetch })).toEqual([]);
+    expect((await checkExtensionUpdates(dir, { fetch: fixture.fetch }))[0]!.outdated).toBe(false);
+  });
+
+  test("updateExtensions --only refuses a package the book does not pin", async () => {
+    const dir = await projectDir();
+    const fixture = twoVersions();
+    await addNpmPlugin(dir, `${name}@1.0.0`, { fetch: fixture.fetch });
+    await expect(updateExtensions(dir, { fetch: fixture.fetch, only: "something-else" })).rejects.toThrow(
+      '"something-else" is not a pinned npm extension of this book.',
+    );
+  });
 });

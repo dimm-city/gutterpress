@@ -159,6 +159,33 @@ sandboxed: they run in-process with the app's full filesystem and network
 privileges. The desktop app shows this warning in a native confirmation before
 downloading a third-party plugin.
 
+## Updating a Pinned Extension
+
+A book pins an exact version and builds from its vendored copy, so nothing
+moves until you say so. Two commands cover the rest. Both reach npm — the only
+project commands that do — and neither runs during a build or preview:
+
+```bash
+gutterpress ext outdated ./my-book            # each pinned package against npm's latest; exit 1 if any is behind
+gutterpress ext update ./my-book              # re-pin every outdated package to npm's latest
+gutterpress ext update gp-dimm-city ./my-book # just one
+```
+
+`update` is `ext add name@latest` for each outdated entry: the new version is
+downloaded, verified against the registry hash, vendored, load-tested, and
+re-pinned in place — the entry's `export:` and `enabled:` stay as written —
+and the previous version's folder under `plugins/npm/` is removed (a re-pin
+with `ext add` does the same). Commit the manifest and the new vendored tree
+together. To move to a specific version instead of the latest, or to go back,
+run `ext add name@x.y.z`.
+
+The desktop app does the same under **Project settings → Features**: opening
+the tab checks npm once, an entry with a newer version shows it with an
+**Update** button, and *Check for updates* re-checks.
+
+`ext outdated` exits 1 when a package is behind, so a CI step can watch a
+book's pins without updating anything.
+
 ## Writing a Plugin
 
 ### Start from the scaffold
