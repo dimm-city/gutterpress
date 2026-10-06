@@ -54,13 +54,14 @@ desktop does for the same operation.
 
 ### 3. The desktop renderer (the SPA) — `packages/desktop/src/`
 
-The Svelte/SvelteKit single-page app, built statically via
-`@sveltejs/adapter-static` (ADR 0016). Contains zero host/platform code by
-architectural requirement (root `CLAUDE.md` §8): no runtime `gutterpress`
-value-imports, no `node:*`/`fs`/`path`/`url`/`child_process`/`postcss`
-imports, and every host capability is reached through exactly one seam —
-the typed IPC capability modules under `src/lib/*/*-capability.ts` over the
-shared `src/lib/platform/bridge.ts` accessor (ADR 0017).
+The Svelte/SvelteKit single-page app, built with the package's own
+`adapter-electron.js` and served in-process over `app://`. Contains zero
+host/platform code by architectural requirement (root `CLAUDE.md` §8): no
+runtime `gutterpress` value-imports, no `node:*`/`fs`/`path`/`url`/
+`child_process`/`postcss` imports, and every host capability is reached
+through the typed `src/lib/api.ts` wrapper over `src/routes/api/**/+server.ts`
+routes, with a narrow `ipcMain`/preload bridge for push streams and
+live-window calls (`src/lib/platform/`).
 
 **Review expectation:** the one non-negotiable check for any change here is
 the renderer-purity boundary — does this PR add a value import that pulls
@@ -68,30 +69,28 @@ Node-oriented code into the browser bundle? `tools/check-render-purity.mjs`
 enforces this in CI and in `npm run build --strict`, but a reviewer should
 still ask the question directly, since the gate catches the *symptom*
 (a Node builtin or `createRequire` reaching `build/`) after the fact. A new
-host capability should arrive as a typed IPC channel plus a capability
-module (see boundary 4's "Adding a new host capability" walkthrough in
-`CLAUDE.md` §8), never as a new runtime import of `gutterpress` or a
-`node:*` module directly in `src/`.
+host capability should arrive as a `+server.ts` route plus an `api.ts`
+wrapper (see "Adding a new host capability" in `CLAUDE.md` §8), never as a
+new runtime import of `gutterpress` or a `node:*` module directly in `src/`.
 
 ### 4. The Electron host — `packages/desktop/electron/`
 
 The main process and preload bridge: lifecycle, windows, OS integration,
 security policy (CSP, origin/navigation policy, the `app://` protocol
-handler), and typed IPC registration (`electron/api/*.ts` plus a handful of
-bespoke per-context registrars — ADR 0016, ADR 0017). `main.ts` is a
+handler that serves the SvelteKit server in-process —
+`electron/sveltekit-host.ts`), and the narrow IPC bridge. `main.ts` is a
 composition root — it constructs services and registers handlers, and
-should not grow new domain workflow logic of its own (plan D10/P6b).
+should not grow new domain workflow logic of its own.
 
 **Review expectation:** changes to `electron/main.ts`,
-`electron/app-protocol.ts`, or `electron/preload.ts` touch the app's
+`electron/sveltekit-host.ts`, or `electron/preload.ts` touch the app's
 security boundary directly (CSP, navigation policy, what `app://` will
 serve, what the renderer can reach through `window.electron`) and should be
 reviewed with that lens specifically, not just for correctness of the
-immediate feature. A new IPC channel should be a `secureHandle(...)`
-registration with runtime-validated arguments in a per-context registrar
-module (matching the existing `electron/api/*.ts` pattern), not an inline
-addition to `main.ts` itself — see `docs/ARCHITECTURE.md`'s composition-root
-section for the current registrar list.
+immediate feature. Host work belongs in a `src/routes/api/**/+server.ts`
+route validated through `_lib/route.ts` and the fs guards, not in
+`main.ts`; the IPC bridge grows only for a push stream or a call that must
+drive a live `BrowserWindow`.
 
 ## Cross-boundary changes
 

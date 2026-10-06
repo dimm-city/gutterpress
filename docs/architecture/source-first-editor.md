@@ -1,7 +1,7 @@
 # Source-first editor architecture
 
 > Plan: [`docs/plans/source-first-editor-enterprise-refactor.md`](../plans/source-first-editor-enterprise-refactor.md)
-> Decision records: [ADR 0012](../adr/0012-source-first-editor-sparse-projection.md)–[0017](../adr/0017-narrow-feature-owned-capabilities.md)
+> Decision records: [ADR 0012](../adr/0012-source-first-editor-sparse-projection.md), [0014](../adr/0014-shared-editor-package-and-fork.md), [0015](../adr/0015-future-web-product-is-a-separate-package.md)
 > VS Code extension detail: [`docs/vscode-extension.md`](../vscode-extension.md)
 
 This document describes the source-first rich-editing architecture as it
@@ -161,77 +161,66 @@ projection cannot prove editable stays read-only with an explicit
 
 ## The desktop host
 
-The Electron shell is a single process talking to itself over one
-validated boundary — no local HTTP server, no proxy, no bearer token
-([ADR 0016](../adr/0016-electron-single-ipc-transport.md)):
+The Electron shell serves the SvelteKit SPA in-process over `app://` and
+exposes host capabilities as `src/routes/api/**/+server.ts` routes the SPA
+calls through the typed `src/lib/api.ts` wrapper, with a narrow
+`ipcMain`/preload bridge for push streams and calls that must drive a live
+`BrowserWindow` (root `CLAUDE.md` §8). The editor adds four routes and
+nothing to the bridge:
 
-- **Renderer** — `packages/desktop/src/` is a SvelteKit SPA built statically
-  via `@sveltejs/adapter-static` (`build/index.html`, `build/_app/**`, no
-  server bundle). It contains no Node/platform code; `tools/check-render-purity.mjs`
-  enforces that over the whole `build/` tree in CI. Every host capability it
-  needs is reached through exactly one seam — typed IPC — surfaced as
-  plain-function **capability modules**, one per bounded context, each
-  going through the single shared accessor
-  `packages/desktop/src/lib/platform/bridge.ts`:
-  `app-lifecycle/app-lifecycle-capability.ts`,
-  `doctor/doctor-capability.ts`, `editor-host/editor-projection-capability.ts`,
-  `export/build-preview-capability.ts`, `files/files-capability.ts`,
-  `lint/lint-capability.ts`, `project-config/project-config-capability.ts`,
-  `publish/publish-capability.ts`, `recovery/recovery-capability.ts`,
-  `remote/remote-capability.ts`, `update/updater-capability.ts`, and
-  `vcs/vcs-capability.ts`. There is no broad `Platform`/`HostServices`
-  locator and no `getPlatform()` — see
-  [ADR 0017](../adr/0017-narrow-feature-owned-capabilities.md) for why the
-  locator was deleted rather than trimmed, and
-  [ADR 0015](../adr/0015-future-web-product-is-a-separate-package.md) for
-  why no PWA/browser host lives here either.
-- **Host** — `packages/desktop/electron/app-protocol.ts` registers a
-  custom `app://` protocol handler that reads the static build tree
-  straight off disk — including out of the packaged asar — and returns
-  file bytes directly. Every request/reply host capability is a
-  runtime-validated `secureHandle(...)` IPC channel (~120 registrations),
-  built by the one shared wrapper
-  `packages/desktop/electron/server-bridge/secure-handle.ts`'s
-  `createSecureHandle(...)` and organized into 26 registrar modules: 21
-  under `electron/api/*.ts` (fs, fs-watch, dialog, shell, log, app,
-  project, manifest, tpl, snip, media, plugin, theme, vcs, style, updater,
-  recovery, doctor, lint, remote, publish) plus five bespoke registrars
-  colocated with handler logic that needs a live object
-  (`electron/export/controller.ts`, `electron/preview/controller.ts`,
-  `electron/editor-projection.ts`, `electron/pdf-export.ts`,
-  `electron/github-device-flow-registrar.ts`). A narrow separate set of
-  `ipcMain`/preload push channels (build progress, folder-changed, sync
-  status, updater events) covers what request/reply cannot.
-  `electron/main.ts` is the composition root: lifecycle, window
-  management, security policy, and OS integration stay inline; it
-  constructs the objects each registrar needs and calls every
-  `register*Handlers(...)` function once.
+- `POST /api/editor/projection` — the plugin-aware projection of one
+  chapter's text for the open book, built host-side by
+  `packages/desktop/src/lib/server/editor-projection.ts` through the same
+  `gutterpress/plugins` loader and `createMarkdownRenderer`/
+  `createEditorProjection` the CLI's build and preview path use, with the
+  book's stylesheets and the plugins' CSS inlined and scoped to the editor
+  document (`composeEditorCss`). A chapter over the rich-mode ceiling and a
+  plugin-load failure come back as `ok:false` outcomes, data the renderer
+  acts on (fall back to the plugin-less local projection with a
+  diagnostic), never as transport errors. `projectDir` is confined to the
+  open book by the same guard every other route uses.
+- `GET /api/editor/asset/[name]` — one file a book stylesheet references,
+  by the hashed name `inlineStyles` gave its copy; the registry the
+  projection route fills is the authorization.
+- `GET /api/editor/project-file/[...path]` — one file of the open book for
+  the editor document (`<base64url(projectDir)>/<relative path>`), so a
+  chapter's `images/art.png` resolves the way the book does
+  (`$lib/editor/project-assets`). Canonically contained in the open book
+  before a byte is read.
+- `POST /api/log/renderer-error` — renderer-side errors into the app log
+  (`$lib/diagnostics/report`).
+
+The SPA side reaches the projection through
+`src/lib/editor-host/editor-projection-capability.ts` (`api.editor.projection`).
 
 ### Rich-mode wiring on the desktop
 
+Read keeps the real preview — the print path's own pages — while it is
+LOCKED. Unlocking (the pill over the preview pane) lays the paged editor
+over that pane; the preview iframe stays mounted and visible underneath,
+because the outline, the page count and the chapter order still come from
+it, and a hidden cross-origin frame would be throttled. Read opens locked
+every time; a reader (Settings → App) never sees the pill; Edit mode's
+preview is untouched (its ADR 0009 in-place block editing remains).
+
 - `packages/desktop/src/lib/components/RichEditor.svelte` — the thin Svelte
   shell around `mountGutterpressEditor`/`mountEditor`; the host owns
-  iframe/document creation, CSP, and project CSS injection.
-- `packages/desktop/src/lib/editor/rich-mode.svelte.ts` - the
-  mounted-surface invariant: exactly one editing surface (CodeMirror or the
-  paged editor) is registered live at a time, and the controller is told
-  which one by `+page.svelte`'s `syncRichSurface()` (Read mounts the paged
-  editor, Edit and Focus the source editor).
-- `packages/desktop/src/lib/components/BookSurface.svelte` - the whole
-  book in Read: one `DesktopDocumentHost` per chapter (constructed in its
-  `load()`), edits routed out through `onSnapshotChange`, external changes
-  routed in through `+page.svelte`'s `onContentReplaced` (the
-  `bookRef?.replaceText` call - the one path by which text reaches a
-  mounted chapter from outside its editor); a file switch never pushes
-  text into a host.
+  document creation and project CSS injection.
+- `packages/desktop/src/lib/components/BookSurface.svelte` — the whole book
+  in an unlocked Read: one `DesktopDocumentHost` per chapter (constructed in
+  its `load()`), edits routed out through `onSnapshotChange` to that file's
+  `EditorBuffer` (autosave, snapshots and external-change reconciliation
+  unchanged), external changes routed in through `+page.svelte`'s
+  `onContentReplaced` (`bookRef?.replaceText`), chapter order from the
+  preview's `getChapters()` (protocol v9) via `$lib/routes/book-order`.
 - `packages/desktop/src/lib/editor/rich-commands.ts` — the desktop's
   binding from toolbar/context actions to the shared `EditorCommand`
-  vocabulary (`packages/editor/src/core/commands.ts`); there is no
-  desktop-private command implementation.
-
-See the full detail (module counts, registration-liveness proof, IPC
-byte-identity across the P6 refactor) in the deletion ledger's P6
-Checkpoint D section.
+  vocabulary; there is no desktop-private command implementation.
+- `+page.svelte` — the lock pill, the paged editor's toolbar (main's
+  `EditorToolbar`, routed through `rich-commands`), its context menu
+  (`PopupMenuController` + the shared `ContextMenu`), the projection build
+  with its diagnostics, and the lock state (`richLocked`, reset on every
+  mode change).
 
 ## The VS Code extension
 
@@ -259,43 +248,28 @@ this section is the map into the source:
 - `src/commands/` — `build.ts`, `preview.ts`, `open-source.ts`, the
   commands the extension contributes outside the editor surface itself.
 
-## Read-only preview and the parity gate
+## The preview and the parity gate
 
-The paginated preview is the print/layout authority and carries no editing
-affordances after `0.12.0` (ADR 0013). Preview navigation, selection/copy,
-open link/image, diagnostics, and page controls remain; in-flow
-`contenteditable`, block-edit commands, and preview-specific source
-rewriting were deleted in P4 (protocol v8→v9) — see the deletion ledger's
-`SFE-P4` section for the search proofs.
+The paginated preview is the print/layout authority. Its navigation,
+selection/copy, open link/image, diagnostics, page controls and in-place
+block editing (ADR 0009) are unchanged by the editor: the paged editor is a
+second surface over the same source, offered in Read behind the lock, not a
+replacement for the preview.
 
 Preview↔print agreement is CI-wired to be proven by
 `packages/cli/scripts/native-parity-gate.ts` (`bun run parity:gate` in
 `packages/cli`), which compares the live viewer's rendering against the
 same document's printed output with an empty allowlist — the preview may
 re-present the author's document, but per the project's architecture rules
-(`CLAUDE.md`) it may never re-decide what the document means. It must stay
-green there; it could not be run in this program's sandbox (Chromium 148+
-required, sandbox has 141.0.7390.37 — see `p7-sweeps.md` §1.1), so no green
-run of this script is recorded in this program's own evidence. This is a
-distinct gate from `tools/check-parity.mjs`, which proved a different
-property (that every preview mutation action reachable before P4 had a
-replacement editor command) and was deleted in `SFE-P3e`, before P4 removed
-the mutation surface it audited, once that run's replacement parity
-evidence landed (acceptance.md's SFE-P3e record: "tools/check-parity.mjs +
-check-parity.test.mjs + root script + 2 CI steps deleted (-2,142 LOC)").
-The editor<->preview page-count gate is a third, separate script:
+(`CLAUDE.md`) it may never re-decide what the document means. The
+editor<->preview page-count check is a separate drive,
 `packages/desktop/tests/integration/editor-preview-parity.mjs` (`bun run
-parity:gate` in `packages/desktop`), which opens the real app in Read mode
-and checks that the paged editor breaks every chapter into the same number
-of pages as the preview, locked and unlocked.
+parity:gate` in `packages/desktop`).
 
 ## Where each binding decision is recorded
 
 | Decision | ADR |
 |---|---|
 | Exact source + sparse projection is the document model | [0012](../adr/0012-source-first-editor-sparse-projection.md) |
-| The paginated preview is read-only | [0013](../adr/0013-preview-read-only.md) |
 | One shared, framework-free editor package (and the fork) | [0014](../adr/0014-shared-editor-package-and-fork.md) |
 | A future web product is a separate package | [0015](../adr/0015-future-web-product-is-a-separate-package.md) |
-| Electron converges on one transport: typed IPC | [0016](../adr/0016-electron-single-ipc-transport.md) |
-| Narrow, feature-owned capabilities replace the `Platform` locator | [0017](../adr/0017-narrow-feature-owned-capabilities.md) |

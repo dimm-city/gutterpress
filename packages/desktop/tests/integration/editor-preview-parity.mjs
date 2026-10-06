@@ -26,8 +26,10 @@
  * actually makes, and measuring it through each side's own authority is what
  * makes the number trustworthy.
  *
- * It compares BOTH shapes of the paged editor (Read mode): locked, which is
- * the reader's view, and unlocked, which is the same pages made editable in
+ * It compares the paged editor as it is reached in the app: Read, as an
+ * author, UNLOCKED through the lock pill (a locked Read is the preview
+ * itself, so there is nothing to compare there). Unlocking lays the editor
+ * over the preview, the same pages made editable in
  * place. A marker chip hangs its tag in the page margin and keeps no height
  * in the text flow, so unlocked has no excuse to paginate differently.
  *
@@ -107,13 +109,16 @@ const userDataDir = join(fakeHome, "userData");
 mkdirSync(userDataDir, { recursive: true });
 writeFileSync(
   join(userDataDir, "gutterpress-prefs.json"),
-  JSON.stringify({ lastProjectDir: bookDir, leftPanel: { open: true, activeTab: "files", width: 260 } }),
+  JSON.stringify({ lastProjectDir: bookDir, showLandingAtStartup: false, leftPanel: { open: true, activeTab: "files", width: 260 } }),
 );
 writeFileSync(
   join(userDataDir, "app-settings.json"),
-  JSON.stringify({ settingsSchemaVersion: 2, preview: { mode: "editor", defaultZoom: "1" } }),
+  // An author: the app defaults to a reader, who has no Files tab, no editor
+  // and no lock pill to unlock.
+  JSON.stringify({ settingsSchemaVersion: 2, workspace: { role: "author" }, preview: { mode: "editor", defaultZoom: "1" } }),
 );
 
+log(`book: ${bookDir} (exists: ${existsSync(bookDir)}; prefs at ${join(userDataDir, "gutterpress-prefs.json")})`);
 const mainJs = join(desktopDir, "out", "main", "main.js");
 if (!existsSync(mainJs)) {
   console.error(`[parity] FAIL: no ${mainJs} — run \`npm run build && npm run electron:build\` first`);
@@ -155,7 +160,17 @@ try {
     // longer than it does at 1:1.
     w.setSize(2560, 1400);
   });
-  await page.waitForSelector(".file-item, .toc-item", { timeout: 120_000 });
+  try {
+    await page.waitForSelector(".file-item, .toc-item", { timeout: 120_000 });
+  } catch (e) {
+    // Say what the window shows instead of leaving the next hour to guessing.
+    const text = await page.evaluate(() => document.body.innerText.slice(0, 1200)).catch(() => "(no body)");
+    const prefs = await page
+      .evaluate(() => fetch("/api/app/gutterpress-prefs").then((r) => r.text()))
+      .catch((err) => `(prefs route failed: ${err})`);
+    console.error(`[parity] the book never opened; the window shows:\n${text}\n[parity] prefs: ${prefs}`);
+    throw e;
+  }
   const close = page.locator('button[aria-label="Close this screen"]');
   if (await close.count()) await close.first().click().catch(() => {});
 
@@ -299,12 +314,12 @@ try {
   }
 
   // The book's own page counts were read above, while Edit had the preview
-  // on screen. Read is the whole book in one scroll: every chapter mounts
-  // in book order, each paginated on its own, and the folios run on from
-  // one chapter to the next. The gate waits for all of them, reads each
-  // chapter's sheets inside its own wrapper, then unlocks - which remounts
-  // every chapter editable - and reads them again.
+  // on screen. Read, unlocked, is the whole book in one scroll: every
+  // chapter mounts in book order, each paginated on its own, and the folios
+  // run on from one chapter to the next. The gate waits for all of them and
+  // reads each chapter's sheets inside its own wrapper.
   await page.click('button[aria-label="Read"]');
+  await page.click('button[aria-label="Unlock to edit"]');
   try {
     await page.waitForSelector(".book-surface", { timeout: 120_000 });
   } catch (e) {
@@ -414,10 +429,10 @@ try {
     throw new Error(`the book did not finish laying out ${lockState ? "locked" : "unlocked"} within ${timeoutMs}ms`);
   }
 
-  const lockedAt = Date.now();
-  let locked;
+  const unlockedAt = Date.now();
+  let unlocked;
   try {
-    locked = await allSettled(true);
+    unlocked = await allSettled(false);
   } catch (e) {
     // A gate that only reports "never laid out" sends the next hour to
     // guessing why. Say what the editor pane actually contains.
@@ -452,33 +467,25 @@ try {
     }
     throw e;
   }
-  log(`locked: ${expected.length} chapter(s) laid out in ${Date.now() - lockedAt}ms`);
-
-  // The whole book unlocked: every chapter remounts editable, and no count
-  // may move.
-  await page.click('button[aria-label="Unlock"]');
-  const unlockedAt = Date.now();
-  const unlocked = await allSettled(false);
   log(`unlocked: ${expected.length} chapter(s) laid out in ${Date.now() - unlockedAt}ms`);
 
   for (const chapter of expected) {
     const book = bookPages[chapter];
-    const editorPages = locked.byName[chapter]?.sheets ?? 0;
-    const unlockedPages = unlocked.byName[chapter]?.sheets ?? 0;
-    const ok = editorPages === book.pages && unlockedPages === book.pages;
-    rows.push({ chapter, editorPages, unlockedPages, bookPages: book.pages, ok });
-    if (ok) log(`ok   ${chapter}: ${editorPages} page(s), unlocked ${unlockedPages}`);
+    const editorPages = unlocked.byName[chapter]?.sheets ?? 0;
+    const ok = editorPages === book.pages;
+    rows.push({ chapter, editorPages, bookPages: book.pages, ok });
+    if (ok) log(`ok   ${chapter}: ${editorPages} page(s)`);
     else {
       failures += 1;
       console.error(
-        `[parity] FAIL ${chapter}: editor paginates it into ${editorPages} page(s) locked and ${unlockedPages} unlocked, the book into ${book.pages}`,
+        `[parity] FAIL ${chapter}: editor paginates it into ${editorPages} page(s), the book into ${book.pages}`,
       );
     }
   }
 
   // The folios run on through the book: each chapter's first sheet is
   // numbered one past the last sheet of the chapter before it.
-  for (const state of [locked, unlocked]) {
+  for (const state of [unlocked]) {
     let offset = 0;
     for (const name of state.order) {
       const chapter = state.byName[name];
@@ -490,7 +497,7 @@ try {
       offset += chapter.sheets;
     }
   }
-  log(`folios run 1..${Object.values(locked.byName).reduce((n, c) => n + c.sheets, 0)} through the book`);
+  log(`folios run 1..${Object.values(unlocked.byName).reduce((n, c) => n + c.sheets, 0)} through the book`);
 } finally {
   await app.close().catch(() => {});
   if (!inPlace) rmSync(bookDir, { recursive: true, force: true });

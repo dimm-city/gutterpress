@@ -5,6 +5,36 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.12.0] - Unreleased
+
+### Added
+
+- **Edit on the page.** In Read, an author now sees a lock pill over the
+  pages. Locked is the preview as it prints. Unlocking swaps in the paged
+  editor — the book laid out by the same engine — and edits land in the
+  chapter's Markdown exactly as typed (the source stays the only
+  authoritative document; nothing is rewritten on the way through). The
+  formatting bar, Insert menu, image properties and snippets work on the
+  page; right-click offers Image properties, Reveal in Media panel, Copy,
+  Edit in source and Lock. Read opens locked every time, and a reader
+  (Settings → App) never sees the pill. Edit mode is unchanged.
+- **A shared editor core** (`@dimm-city/gutterpress-editor`, private) that
+  the paged editor is built on, with a vendored fork of the VS Code
+  markdown editor it renders through, and an Experimental VS Code
+  extension (`@dimm-city/gutterpress-vscode`, published separately) that
+  mounts the same editor as an optional custom editor for a book's
+  Markdown. See `docs/architecture/source-first-editor.md`.
+- **Library:** `gutterpress/plugins` (the build/preview plugin loader, for
+  any host) and `gutterpress/viewer` (the paged layout engine for a
+  browser), plus the projection surface on `gutterpress/render` the editor
+  consumes (`createEditorProjection` and friends).
+- **Desktop host routes** for the editor: `/api/editor/projection` (the
+  book's plugins and CSS applied host-side), `/api/editor/asset/[name]`
+  and `/api/editor/project-file/[...path]` (the book's own art and
+  stylesheet assets inside the editor document), and
+  `/api/log/renderer-error`. The preview protocol gains `getChapters()`
+  (v9).
+
 ## [0.11.13] - 2026-10-06
 
 ### Changed

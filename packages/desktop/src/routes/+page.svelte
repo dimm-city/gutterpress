@@ -29,13 +29,36 @@
   import EditorToolbar from "$lib/components/EditorToolbar.svelte";
   import type { ToolbarAction, ToolbarPayload } from "$lib/editor/toolbar-actions";
   import SnippetPicker from "$lib/components/SnippetPicker.svelte";
-  import { PreviewClient, type OutlineEntry, type PreviewEvent, type PreviewTarget } from "$lib/preview-client";
+  import { PreviewClient, type ChapterStart, type OutlineEntry, type PreviewEvent, type PreviewTarget } from "$lib/preview-client";
   import { activeOutlineIndexForLine } from "$lib/routes/outline";
   import { PageNavController } from "$lib/routes/page-nav-controller.svelte";
   import { ZoomViewController } from "$lib/routes/zoom-view-controller.svelte";
   import { PreviewEventController } from "$lib/routes/preview-event-controller";
   import { EditorPreviewSyncController } from "$lib/routes/editor-preview-sync-controller";
-  import { ContextMenuController } from "$lib/routes/context-menu-controller.svelte";
+  import { ContextMenuController, type ContextMenuItem } from "$lib/routes/context-menu-controller.svelte";
+  import { PopupMenuController } from "$lib/routes/popup-menu-controller.svelte";
+  // Rich editing in Read (authors only) — the paged editor and its host call.
+  import type { DesktopDocumentHost } from "$lib/editor-host/desktop-document-host";
+  import { buildEditorProjection, type EditorProjectionPluginError } from "$lib/editor-host/editor-projection-capability";
+  import {
+    routeToolbarAction,
+    applyRichCommand,
+    applyRichLayoutBlock,
+    applyRichImageInsert,
+    captureRichSelection,
+    validateImageProperties,
+    locateRichImagePropertiesAtCaret,
+    applyRichImagePropertiesEdit,
+    type RichSelectionCapture,
+    type RichCommandOutcome,
+  } from "$lib/editor/rich-commands";
+  import { findImageTokenAtOffset } from "$lib/editor/context-menu-actions";
+  import { bookOrder } from "$lib/routes/book-order";
+  import { reportError } from "$lib/diagnostics/report";
+  import type { Diagnostic } from "@dimm-city/gutterpress-editor/core";
+  // The browser-safe render subpath: the one place the renderer builds a
+  // projection itself (the plugin-less fallback when the host call fails).
+  import { createEditorProjection, type GutterpressProjection } from "gutterpress/render";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
   import { InlineEditController } from "$lib/routes/inline-edit-controller.svelte";
   import TextPromptDialog from "$lib/components/TextPromptDialog.svelte";
@@ -274,6 +297,8 @@
   // outline drives the chapter-jump dropdown; activeOutlineIndex tracks the
   // heading the reader is currently within (updated from sourceLineChanged).
   let outline = $state<OutlineEntry[]>([]);
+  /** The chapters the preview paginated, in book order, with their first page (protocol v9). */
+  let bookStarts = $state<ChapterStart[]>([]);
   let activeOutlineIndex = $state(0);
   // One-way editor→preview anchor sync. Ordinary preview scrolling never moves
   // the editor; the explicit Go to source action owns that reverse direction.
@@ -934,6 +959,22 @@
   // and a writer who lives in Focus should not be told every time.
   let focusHintShown = false;
   let editorVisible = $derived(mode !== "viewer");
+
+  // ── Rich editing in Read (authors only) ─────────────────────────────────
+  // Read keeps the real preview — the print path's own pages — while it is
+  // LOCKED. Unlocking (the pill over the preview pane) swaps the paged editor
+  // into that pane: the book laid out by the same engine, edited in place,
+  // each chapter writing through its file's own buffer (autosave, snapshots
+  // and external-change reconciliation unchanged). Read opens locked every
+  // time; a reader (Settings → App) never sees the pill. Edit mode is
+  // untouched: its preview stays the preview.
+  let richLocked = $state(true);
+  /** Read, as an author, with a folder book open: the pill is offered. */
+  let richSurfaceActive = $derived(
+    mode === "viewer" && !readerMode && !!lifecycle.currentDir && lifecycle.sourceMode === "folder",
+  );
+  /** The paged editor is on screen (unlocked Read). */
+  let richEditing = $derived(richSurfaceActive && !richLocked);
   let workspaceEl = $state<HTMLElement | undefined>(undefined);
   let editorRef = $state<{
     focus: () => void;
@@ -1184,7 +1225,12 @@
         if (editorFiles.isActive(instance)) toast?.error(msg);
       },
       onContentReplaced: (path, content) => {
-        if (editorFiles.isActive(instance) && instance.filePath === path) showEditorContent(path, content);
+        if (editorFiles.isActive(instance) && instance.filePath === path) {
+          showEditorContent(path, content);
+          // The one path by which text reaches a mounted chapter from outside
+          // its editor: an external change accepted from disk.
+          bookRef?.replaceText(path, content);
+        }
       },
       onAutoReloaded: () => {
         if (editorFiles.isActive(instance)) toast?.info?.("Reloaded from disk");
@@ -1200,6 +1246,459 @@
 
   function ensureBuffer(): EditorBuffer {
     return editorFiles.ensure();
+  }
+
+  // ── The paged editor (BookSurface) ──────────────────────────────────────
+  // Loaded the way the source editor is: its chunk (the vendored markdown
+  // editor, its adapter and the paged surface) is real weight, imported the
+  // first time the book is unlocked, never at page load.
+  let BookSurfaceComponent = $state<typeof import("$lib/components/BookSurface.svelte")["default"] | null>(null);
+  let bookModuleLoading = $state(false);
+  let bookModuleFailed = $state(false);
+
+  function loadBookSurfaceModule() {
+    if (BookSurfaceComponent || bookModuleLoading || bookModuleFailed) return;
+    bookModuleLoading = true;
+    import("$lib/components/BookSurface.svelte")
+      .then((m) => {
+        BookSurfaceComponent = m.default;
+      })
+      .catch((e) => {
+        bookModuleFailed = true;
+        toast?.error(`Could not open the book for editing: ${e instanceof Error ? e.message : String(e)}`);
+      })
+      .finally(() => {
+        bookModuleLoading = false;
+      });
+  }
+
+  function retryBookSurfaceLoad() {
+    bookModuleFailed = false;
+    loadBookSurfaceModule();
+  }
+
+  /**
+   * The mounted book while it is unlocked, else null: Svelte binds it on
+   * mount and clears it on unmount. Every chapter is mounted inside it, each
+   * with its own host; the rich commands act on the chapter the author is in.
+   */
+  let bookRef = $state<{
+    setReadonly: (locked: boolean) => void;
+    setZoom: (zoom: string) => void;
+    scrollToChapter: (path: string, line?: number) => Promise<void>;
+    revealLine: (path: string, line: number) => void;
+    activePath: () => string | null;
+    hostOf: (path: string) => DesktopDocumentHost | null;
+    activeHost: () => DesktopDocumentHost | null;
+    getSelection: () => { readonly from: number; readonly to: number } | undefined;
+    setSelection: (path: string, from: number, to?: number) => Promise<void>;
+    replaceText: (path: string, text: string) => void;
+    rebuildDegraded: () => void;
+  } | null>(null);
+
+  /** The host of the chapter the author is in, or null while the book is locked. */
+  function richHost(): DesktopDocumentHost | null {
+    return bookRef?.activeHost() ?? null;
+  }
+
+  /**
+   * The book's chapters in book order, with a page estimate each: as the
+   * preview paginated them (every source file, heading or not), else the
+   * project's markdown files by name until the preview has rendered once.
+   */
+  let bookFiles = $state<string[]>([]);
+  let book = $derived(
+    lifecycle.currentDir ? bookOrder(lifecycle.currentDir, bookStarts, pageNav.totalPages) : { chapters: [], estimates: {} },
+  );
+  let bookChapters = $derived(book.chapters.length ? book.chapters : bookFiles);
+
+  async function loadBookFiles(): Promise<void> {
+    const dir = lifecycle.currentDir;
+    if (!dir) return;
+    try {
+      const files = (await api.fs.listDir(dir)).filter((entry) => !entry.isDir && /\.(md|markdown)$/i.test(entry.name));
+      if (dir !== lifecycle.currentDir) return;
+      bookFiles = files.map((entry) => entry.path).sort((a, b) => a.localeCompare(b));
+    } catch {
+      /* the outline names the chapters once the preview renders */
+    }
+  }
+
+  /** The chapter the book is making the open file right now, so a press and an edit in it share one switch. */
+  let bookActivation: { readonly path: string; readonly done: Promise<void> } | null = null;
+
+  async function activateBookChapter(path: string): Promise<void> {
+    if (editorFilePath === path) return;
+    if (bookActivation?.path === path) return bookActivation.done;
+    const done = editorFiles.select(path).then(
+      () => undefined,
+      () => undefined,
+    );
+    const activation = { path, done };
+    bookActivation = activation;
+    try {
+      await done;
+    } finally {
+      if (bookActivation === activation) bookActivation = null;
+    }
+  }
+
+  /** The author pressed into a chapter: it becomes the open file, so the file list follows. */
+  function onBookActivate(path: string): void {
+    void activateBookChapter(path);
+  }
+
+  /**
+   * A chapter's text changed through its editor: route it to that file's
+   * buffer, which is what autosaves, snapshots and reconciles external
+   * changes. A chapter that is not yet the open file becomes it first (the
+   * outgoing buffer is flushed on the way), then takes the host's latest
+   * text — never the copy read from disk during the switch.
+   */
+  function onBookSnapshotChange(path: string, text: string): void {
+    if (editorFilePath === path) {
+      ensureBuffer().edit(text);
+      return;
+    }
+    void activateBookChapter(path).then(() => {
+      const host = bookRef?.hostOf(path);
+      if (host && editorFilePath === path) ensureBuffer().edit(host.getSnapshot().text);
+    });
+  }
+
+  // ── Projection: host-built with the book's plugins and CSS, else local ──
+  const RICH_MODE_FILE_TOO_LARGE_DIAGNOSTIC: Diagnostic = {
+    category: "EDITOR_FILE_TOO_LARGE",
+    message: "This file is too large to edit on the page. Switch to Edit to keep working on it.",
+    safeAction: "Switch to Edit",
+  };
+
+  function projectionFailedDiagnostic(reason: string): Diagnostic {
+    return {
+      category: "EDITOR_PLUGIN_LOAD_FAILED",
+      message:
+        `The page could not be read with the book's plugins, so plugin regions show as plain text and the book's own styling is not applied here. ${reason}`.trim(),
+    };
+  }
+
+  function pluginLoadFailedDiagnostic(error: EditorProjectionPluginError): Diagnostic {
+    const needsInstall = /\bnot found\b/i.test(error.message) || /vendored plugin .*\bis missing\b/i.test(error.message);
+    return {
+      category: "EDITOR_PLUGIN_LOAD_FAILED",
+      message: needsInstall
+        ? `The plugin "${error.pluginRef}" isn't installed, so its content shows as plain text here. Install it from Book settings > Features, then reopen this file.`
+        : `The plugin "${error.pluginRef}" couldn't load, so its content shows as plain text here. Check it in Book settings > Features, then reopen this file.`,
+    };
+  }
+
+  /** The open project's directory, waiting for an open in flight to land. */
+  async function projectDirWhenReady(timeoutMs = 30_000): Promise<string | null> {
+    const deadline = Date.now() + timeoutMs;
+    while (!lifecycle.currentDir && lifecycle.busy && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return lifecycle.currentDir;
+  }
+
+  async function buildRichProjection(
+    content: string,
+    sourceVersion: number,
+  ): Promise<{ projection: GutterpressProjection; editorCss: string | undefined }> {
+    const projectDir = await projectDirWhenReady();
+    if (projectDir) {
+      try {
+        const outcome = await buildEditorProjection({ projectDir, content, sourceVersion });
+        if (outcome.ok) {
+          for (const pluginError of outcome.pluginErrors) showRichDiagnostic(pluginLoadFailedDiagnostic(pluginError));
+          return { projection: outcome.projection, editorCss: outcome.bookCss || undefined };
+        }
+        if (outcome.code === "EDITOR_FILE_TOO_LARGE") {
+          showRichDiagnostic(RICH_MODE_FILE_TOO_LARGE_DIAGNOSTIC);
+        } else {
+          reportError(`rich projection failed: ${outcome.message}`);
+          showRichDiagnostic(projectionFailedDiagnostic(outcome.message));
+        }
+      } catch (e) {
+        console.warn("buildEditorProjection failed; falling back to the local projection:", e);
+      }
+    } else {
+      reportError(`rich projection built with no project (currentDir=${lifecycle.currentDir}, busy=${lifecycle.busy})`);
+    }
+    // Plugin-less and unstyled, but fully editable — never a blank document.
+    return { projection: createEditorProjection(content, { sourceVersion }), editorCss: undefined };
+  }
+
+  // ── Rich commands and their diagnostics ─────────────────────────────────
+  /** The paged editor's live caret, or undefined when there is none at this instant. */
+  function richLiveSelection(): { readonly from: number; readonly to: number } | undefined {
+    return bookRef?.getSelection();
+  }
+
+  /** The live selection paired with the document identity it was read against, for commands that await a dialog first. */
+  function richCapture(): RichSelectionCapture | undefined {
+    const host = richHost();
+    return host ? captureRichSelection(host, richLiveSelection()) : undefined;
+  }
+
+  const NO_LIVE_CARET_DIAGNOSTIC: Diagnostic = {
+    category: "EDITOR_INVALID_RANGE",
+    message: "Place the cursor in the document, then try that again.",
+  };
+
+  /**
+   * Every diagnostic from editing on the page funnels through here: an edit
+   * this page pushed through a chapter's host, or one the mounted editor
+   * reported itself. A projection's own notices arrive together when a
+   * document mounts, so they fold into one toast per mount.
+   */
+  function showRichDiagnostic(diagnostic: Diagnostic): void {
+    if (diagnostic.category === "EDITOR_UNSUPPORTED_PROJECTION" || diagnostic.category === "EDITOR_PROJECTION_LIMIT") {
+      pendingProjectionDiagnostics.push(diagnostic);
+      if (pendingProjectionDiagnostics.length === 1) queueMicrotask(flushProjectionDiagnostics);
+      return;
+    }
+    showDiagnosticToast(diagnostic.message, diagnostic.safeAction);
+  }
+
+  const pendingProjectionDiagnostics: Diagnostic[] = [];
+
+  function flushProjectionDiagnostics(): void {
+    const batch = pendingProjectionDiagnostics.splice(0);
+    if (batch.length === 0) return;
+    for (const d of batch) reportError(`rich projection: ${d.message}`);
+    const first = batch[0]!;
+    const more = batch.length - 1;
+    const message =
+      more === 0
+        ? first.message
+        : `${batch.length} parts of this document cannot be shown here the way the page shows them; they render as the Markdown they were written from. First: ${first.message}`;
+    showDiagnosticToast(message, first.safeAction);
+  }
+
+  /** The one toast shape every rich diagnostic takes: the message, and its safe action as a button that opens Edit. */
+  function showDiagnosticToast(message: string, safeAction: string | undefined): void {
+    toast?.show(message, "error", undefined, safeAction ? { label: safeAction, onClick: () => setMode("editor") } : undefined);
+  }
+
+  function reportRichOutcome(outcome: RichCommandOutcome): void {
+    if (!outcome.ok) showRichDiagnostic(outcome.diagnostic);
+  }
+
+  /** Routes one toolbar action through the paged editor — the mirror of `editorRef?.runToolbarAction` for Edit. */
+  function handleRichToolbarAction(action: ToolbarAction, payload?: ToolbarPayload): void {
+    const host = richHost();
+    if (!host || action === "image") return;
+    const route = routeToolbarAction(action, payload);
+    const live = richLiveSelection();
+    if (!live) {
+      showRichDiagnostic(NO_LIVE_CARET_DIAGNOSTIC);
+      return;
+    }
+    if (route.kind === "command") reportRichOutcome(applyRichCommand(host, route.command, live));
+    else if (route.kind === "layout") reportRichOutcome(applyRichLayoutBlock(host, route.layout, live));
+  }
+
+  async function promptValidatedImageProperties(initial: ImagePropertiesValue): Promise<ImagePropertiesValue | null> {
+    const next = await promptImageProperties(initial);
+    if (!next) return null;
+    const error = validateImageProperties(next);
+    if (error) {
+      toast?.error(error);
+      return null;
+    }
+    return next;
+  }
+
+  /** "Insert image" from the toolbar on the page: the toolbar's own image dialog collected the value; apply it at the caret (or the document end). */
+  function insertRichImageFromToolbar(payload: ToolbarPayload | undefined): void {
+    const capture = richCapture();
+    if (!capture || !payload || !("src" in payload)) return;
+    const value: ImagePropertiesValue = {
+      src: payload.src,
+      alt: payload.alt,
+      width: payload.width ?? "",
+      position: payload.position ?? "",
+      pinAlignment: "center",
+      size: payload.size ?? "",
+      spacing: "",
+      shape: payload.shape ?? false,
+      flush: false,
+      layer: "",
+    };
+    const error = validateImageProperties(value);
+    if (error) {
+      toast?.error(error);
+      return;
+    }
+    reportRichOutcome(applyRichImageInsert(richHost(), capture, value));
+  }
+
+  /** Edit the properties of the image the caret is in. */
+  async function editRichImageAtCaret(): Promise<void> {
+    const capture = richCapture();
+    if (!capture) return;
+    if (!capture.selection) {
+      showRichDiagnostic(NO_LIVE_CARET_DIAGNOSTIC);
+      return;
+    }
+    const located = locateRichImagePropertiesAtCaret(capture.host, capture.selection);
+    if (!located.ok) {
+      showRichDiagnostic(located.diagnostic);
+      return;
+    }
+    const next = await promptValidatedImageProperties(located.value.initial);
+    if (!next) return;
+    reportRichOutcome(applyRichImagePropertiesEdit(richHost(), capture, located.value, next));
+  }
+
+  // ── Lock / unlock ───────────────────────────────────────────────────────
+  /** Lock or unlock the book in place — the pill over the preview pane. */
+  function setRichLocked(locked: boolean): void {
+    if (locked === richLocked) return;
+    richLocked = locked;
+    if (!locked) {
+      loadBookSurfaceModule();
+      void loadBookFiles();
+      // An author wants a page in front of them, not a "select a file" notice.
+      if (!editorFilePath) void ensureEditorFile();
+    }
+    bookRef?.setReadonly(locked);
+  }
+
+  /** Unlock with the caret at `offset` in `chapter` (an image click). */
+  async function unlockRichAt(chapter: string, offset: number): Promise<void> {
+    setRichLocked(false);
+    await bookRef?.setSelection(chapter, offset);
+  }
+
+  /** Put the caret in an image's token, unlocking first if needed, and open Image properties. */
+  function openRichImageAt(chapter: string, offset: number): void {
+    void (async () => {
+      await unlockRichAt(chapter, offset);
+      await editRichImageAtCaret();
+    })();
+  }
+
+  // ── The paged editor's own context menu and image selection ─────────────
+  // The preview's menu is fed by events from the book's iframe; the paged
+  // editor lives in this document, so its menu reads the element under the
+  // pointer directly. Every inactive block carries the source range the
+  // mount stamped on it (data-gp-start / data-gp-length).
+  let previewPaneEl = $state<HTMLElement | undefined>(undefined);
+  const richContextMenu = new PopupMenuController(() => {
+    const rect = previewPaneEl?.getBoundingClientRect();
+    return rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null;
+  });
+
+  interface RichBlockHit {
+    readonly el: HTMLElement;
+    readonly chapter: string;
+    readonly start: number;
+    readonly length: number;
+  }
+
+  function richChapterOf(target: EventTarget | null): string | null {
+    const el = target instanceof Element ? target.closest<HTMLElement>("[data-chapter-path]") : null;
+    return el?.dataset["chapterPath"] ?? null;
+  }
+
+  function richBlockAt(target: EventTarget | null): RichBlockHit | null {
+    const el = target instanceof Element ? target.closest<HTMLElement>(".rich-editor-host .md-block[data-gp-start]") : null;
+    const chapter = richChapterOf(el);
+    if (!el || !chapter) return null;
+    const start = Number(el.dataset["gpStart"]);
+    const length = Number(el.dataset["gpLength"]);
+    return Number.isFinite(start) && Number.isFinite(length) ? { el, chapter, start, length } : null;
+  }
+
+  /** A caret offset inside the image token `img` was rendered from, or null for art the source has no token for. */
+  function richImageOffset(img: HTMLImageElement, block: RichBlockHit): number | null {
+    const text = bookRef?.hostOf(block.chapter)?.getSnapshot().text;
+    if (!text) return null;
+    const blockText = text.slice(block.start, block.start + block.length);
+    const index = Array.from(block.el.querySelectorAll("img")).indexOf(img);
+    if (index < 0) return null;
+    let pos = 0;
+    let seen = 0;
+    while (pos < blockText.length) {
+      const at = blockText.indexOf("![", pos);
+      if (at < 0) break;
+      const token = findImageTokenAtOffset(blockText, at + 1);
+      if (!token) {
+        pos = at + 2;
+        continue;
+      }
+      if (seen === index) return block.start + token.altStart;
+      seen += 1;
+      pos = token.end;
+    }
+    return null;
+  }
+
+  function lineOfOffset(chapter: string, offset: number): number {
+    const text = bookRef?.hostOf(chapter)?.getSnapshot().text ?? "";
+    let line = 1;
+    const end = Math.min(offset, text.length);
+    for (let i = 0; i < end; i++) if (text.charCodeAt(i) === 10) line += 1;
+    return line;
+  }
+
+  /** Open Edit on the line the block at `offset` of `chapter` starts at. */
+  function editInSourceAt(chapter: string, offset: number): void {
+    const line = lineOfOffset(chapter, offset);
+    editorView = "editor";
+    openEditorPane({ focus: false, ensureFile: false });
+    if (isNarrow && paneMode !== "edit") setPaneMode("edit");
+    void selectEditorFile(chapter).then((selected) => {
+      if (selected) whenEditorReady(() => editorRef?.hasFile(chapter) && editorRef.revealLine(line, true));
+    });
+  }
+
+  function onRichContextMenu(e: MouseEvent): void {
+    if (!richEditing) return;
+    const block = richBlockAt(e.target);
+    const chapter = block?.chapter ?? richChapterOf(e.target) ?? bookRef?.activePath() ?? null;
+    const img = e.target instanceof HTMLImageElement ? e.target : null;
+    const imageOffset = img && block ? richImageOffset(img, block) : null;
+    const items: ContextMenuItem[] = [];
+    if (block && imageOffset !== null) {
+      items.push({
+        id: "image-properties",
+        label: "Image properties...",
+        enabled: true,
+        run: () => {
+          richContextMenu.close();
+          openRichImageAt(block.chapter, imageOffset);
+        },
+      });
+    }
+    if (img) {
+      items.push({ id: "image-reveal", label: "Reveal in Media panel", enabled: true, run: () => { richContextMenu.close(); openMediaPanel(); } });
+    }
+    const selected = window.getSelection()?.toString() ?? "";
+    if (selected) {
+      items.push({ id: "copy", label: "Copy", enabled: true, run: async () => { richContextMenu.close(); await copyToClipboard(selected); } });
+    }
+    if (chapter) {
+      const caret = chapter === bookRef?.activePath() ? bookRef?.getSelection()?.from : undefined;
+      const sourceOffset = block?.start ?? caret ?? 0;
+      items.push({ id: "edit-in-source", label: "Edit in source", enabled: true, run: () => { richContextMenu.close(); editInSourceAt(chapter, sourceOffset); } });
+    }
+    items.push({ id: "lock", label: "Lock", enabled: true, run: () => { richContextMenu.close(); setRichLocked(true); } });
+    e.preventDefault();
+    richContextMenu.openAt(e.clientX, e.clientY, items);
+  }
+
+  /** A click on an image selects it and opens its properties: an image has no text to put a caret in, so the dialog IS the way to edit one. */
+  function onRichPointerDown(e: PointerEvent): void {
+    if (!richEditing || !(e.target instanceof HTMLImageElement) || e.button !== 0) return;
+    const block = richBlockAt(e.target);
+    if (!block) return;
+    const offset = richImageOffset(e.target, block);
+    if (offset === null) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openRichImageAt(block.chapter, offset);
   }
 
   function resetEditorBuffer(): void {
@@ -1292,6 +1791,9 @@
   // pages stay in the old column count until the next full render.
   const modeSink = settingsChangeGuard<WorkspaceMode>((m) => {
     mode = m;
+    // A settings-driven mode change (a role switch, a restored preference) is
+    // a fresh Read, so it opens locked like setMode's does.
+    richLocked = true;
     zoomView.applyViewMode(viewMode);
     if (m !== "viewer") loadEditorModule();
   });
@@ -1382,9 +1884,7 @@
     if (!chapter) {
       const path = editorFilePath;
       if (path) {
-        whenEditorReady(() => {
-          if (editorRef?.hasFile(path)) editorRef.revealLine(line, focus);
-        });
+        whenEditorReady(() => revealLineInLiveEditor(path, line, focus));
       }
       return;
     }
@@ -1395,9 +1895,20 @@
     if (path !== editorFilePath) {
       if (!(await selectEditorFile(path))) return;
     }
-    whenEditorReady(() => {
-      if (editorRef?.hasFile(path)) editorRef.revealLine(line, focus);
-    });
+    whenEditorReady(() => revealLineInLiveEditor(path, line, focus));
+  }
+
+  /**
+   * Scroll the open document to `line` on whichever editing surface is
+   * mounted: the paged editor (unlocked Read) or CodeMirror. `focus` places
+   * the caret, which only CodeMirror does.
+   */
+  function revealLineInLiveEditor(path: string, line: number, focus: boolean): void {
+    if (editorRef?.hasFile(path)) {
+      editorRef.revealLine(line, focus);
+      return;
+    }
+    bookRef?.revealLine(path, line);
   }
 
   /**
@@ -1424,7 +1935,11 @@
   async function selectEditorFile(
     path: string,
   ): Promise<boolean> {
-    return editorFiles.select(path);
+    const ok = await editorFiles.select(path);
+    // In an unlocked Read the whole book is already on screen: opening a
+    // file is going to its chapter.
+    if (ok && richEditing) void bookRef?.scrollToChapter(path);
+    return ok;
   }
 
   /**
@@ -2020,6 +2535,7 @@
     resetOutline: () => {
       outline = [];
       activeOutlineIndex = 0;
+      bookStarts = [];
     },
     consumePendingRestore: () => {
       const restore = { page: pendingRestorePage };
@@ -2027,7 +2543,12 @@
       return restore;
     },
     refreshOutline: () => refreshOutline(),
-    refreshProblems: () => refreshProblems(),
+    refreshProblems: () => {
+      refreshProblems();
+      // The preview has rendered, so the project is genuinely up. A chapter
+      // opened on the page before that is missing its plugins and book CSS.
+      bookRef?.rebuildDegraded();
+    },
     revealSettledPages: () => revealSettledPages(),
     toastSuccess: (message) => toast?.success(message),
     scheduleMicrotask: (fn) => queueMicrotask(fn),
@@ -2310,6 +2831,16 @@
       .catch(() => {
         outline = [];
       });
+    // Read's chapter list comes from the same render: the chapters the
+    // preview paginated, not the headings it found in them.
+    client
+      .getChapters()
+      .then((starts) => {
+        bookStarts = starts ?? [];
+      })
+      .catch(() => {
+        bookStarts = [];
+      });
   }
 
   // Mark the deepest heading at/above the given source line as active (drives
@@ -2440,6 +2971,8 @@
     if (next === "editor" && readerMode) return;
     settings.set({ preview: { mode: next } });
     mode = next;
+    // Read opens locked, every time: coming back to Read is coming back to read.
+    richLocked = true;
     zoomView.applyViewMode(viewMode);
     if (next !== "viewer") loadEditorModule();
   }
@@ -2964,6 +3497,8 @@
       {/if}
       <section
         class="pane preview-pane"
+        class:rich-editing={richEditing}
+        bind:this={previewPaneEl}
         use:previewPaneResize
         id="mobile-panel-preview"
         role={isNarrow ? "tabpanel" : undefined}
@@ -2971,19 +3506,108 @@
         inert={isNarrow && (editorPaneOpen || editorView !== "editor") ? true : undefined}
       >
         {#if !inFocus && lifecycle.previewUrl}
-          <!-- Page navigation and zoom sit on the pane they act on (the
-               editor pane has its own toolbar the same way). Focus keeps the
-               preview bare: the FocusBar carries page nav for reading. -->
-          <PreviewToolbar
-            {pageNav}
-            rendering={lifecycle.rendering}
-            {zoom}
-            zoomDisabled={!lifecycle.previewUrl}
-            onApplyZoom={(val) => { contextMenu.close(); zoomView.applyZoom(val); }}
-          />
+          {#if richEditing}
+            <!-- Unlocked Read: the formatting bar drives the paged editor
+                 (the page itself has no caret-relative controls of its own). -->
+            <EditorToolbar
+              filePath={editorFilePath}
+              projectDir={lifecycle.currentDir}
+              onAction={(action, payload) => {
+                if (action === "snippet") {
+                  openSnippetPicker();
+                  return;
+                }
+                if (action === "image") {
+                  insertRichImageFromToolbar(payload);
+                  return;
+                }
+                handleRichToolbarAction(action, payload);
+              }}
+              onSave={handleForceSave}
+              savePending={editorSavePhase !== "clean"}
+              saving={forceSaving}
+              savePhase={editorSavePhase}
+              autoSave={settings.current.versionHistory.autoSave}
+              {forceSaving}
+              onSaveStatus={(el) => statusBarRef?.toggleSummary(el)}
+              problems={displayedProblems}
+              problemsLoading={problemsLoading || lifecycle.rendering}
+              {problemsError}
+              {problemsOpen}
+              onToggleProblems={toggleProblems}
+            />
+          {:else}
+            <!-- Page navigation and zoom sit on the pane they act on (the
+                 editor pane has its own toolbar the same way). Focus keeps the
+                 preview bare: the FocusBar carries page nav for reading. -->
+            <PreviewToolbar
+              {pageNav}
+              rendering={lifecycle.rendering}
+              {zoom}
+              zoomDisabled={!lifecycle.previewUrl}
+              onApplyZoom={(val) => { contextMenu.close(); zoomView.applyZoom(val); }}
+            />
+          {/if}
+          {#if richSurfaceActive}
+            <!-- The lock pill: Read's one editing control, for authors. Locked
+                 is the preview as it prints; unlocked edits the same pages in
+                 place. -->
+            <button
+              class="rich-lock"
+              class:unlocked={!richLocked}
+              onclick={() => setRichLocked(!richLocked)}
+              aria-pressed={!richLocked}
+              aria-label={richLocked ? "Unlock to edit" : "Lock"}
+              title={richLocked ? "Unlock to edit the book on the page" : "Lock the book for reading"}
+            >
+              <Icon name={richLocked ? "lock" : "unlock"} size={14} />
+              <span>{richLocked ? "Locked" : "Editing"}</span>
+            </button>
+          {/if}
         {/if}
         <FindBar bind:this={findBarRef} bind:open={findBarOpen} {client} />
         {#if lifecycle.previewUrl}
+          <!-- The stage: the preview iframe, and over it — never instead of
+               it — the paged editor while the book is unlocked. The iframe
+               stays mounted and visible underneath (outline, page count and
+               chapter order still come from it, and a hidden cross-origin
+               frame would be throttled — see PreviewFrame). -->
+          <div class="preview-stage">
+          {#if richEditing}
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div
+              class="rich-host"
+              oncontextmenu={onRichContextMenu}
+              onpointerdowncapture={onRichPointerDown}
+            >
+              {#if BookSurfaceComponent && bookChapters.length}
+                <!-- Keyed on the chapter list: a chapter added or removed is a new book. -->
+                {#key bookChapters.join("\n")}
+                  <BookSurfaceComponent
+                    bind:this={bookRef}
+                    chapters={bookChapters}
+                    initialPath={editorFilePath}
+                    readonly={richLocked}
+                    projectDir={lifecycle.currentDir}
+                    pageEstimates={book.estimates}
+                    readChapter={(path) => api.fs.readFile(path)}
+                    buildProjection={buildRichProjection}
+                    onSnapshotChange={onBookSnapshotChange}
+                    onActivate={onBookActivate}
+                    onDiagnostic={showRichDiagnostic}
+                  />
+                {/key}
+              {:else if bookModuleFailed}
+                <div class="editor-loading" role="alert">
+                  <p>The book failed to load.</p>
+                  <button class="primary app-btn-primary" onclick={retryBookSurfaceLoad}>Retry</button>
+                </div>
+              {:else}
+                <div class="editor-loading" role="status" aria-live="polite">Loading the book…</div>
+              {/if}
+            </div>
+            <ContextMenu controller={richContextMenu} />
+          {/if}
           {#key lifecycle.previewUrl}
             <PreviewFrame
               bind:this={previewFrameRef}
@@ -2999,6 +3623,7 @@
               }}
             />
           {/key}
+          </div>
         {:else if previewErrorDisplay}
           <div class="preview-error-view" role="alert">
             <div class="preview-error-card">
@@ -3383,6 +4008,49 @@
     color: var(--app-text-muted);
     font-size: 13px;
   }
+  /* The stage holds the preview iframe (a flex child, as before) and, while
+     the book is unlocked, the paged editor laid over it. */
+  .preview-stage {
+    position: relative;
+    flex: 1 1 auto;
+    /* The pane centres its children; the stage takes the whole width. */
+    align-self: stretch;
+    width: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .rich-host {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #4a4a52;
+  }
+  /* Read's lock pill floats over the top-right of the pages, under the toolbar. */
+  .rich-lock {
+    position: absolute;
+    top: 52px;
+    right: 18px;
+    z-index: 5;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px 5px 10px;
+    border: 1px solid var(--app-control-border);
+    border-radius: 999px;
+    background: var(--app-control-bg);
+    color: var(--app-control-text);
+    font: inherit;
+    font-size: 12.5px;
+    cursor: pointer;
+    box-shadow: var(--app-shadow-md);
+  }
+  .rich-lock.unlocked { border-color: var(--app-accent-border); }
+  .rich-lock:hover { background: var(--app-control-hover-bg); border-color: var(--app-control-hover-border); }
+  .rich-lock:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
   .preview-pane {
     position: relative;
     /* Named container for PreviewToolbar's own collapse stages. */
