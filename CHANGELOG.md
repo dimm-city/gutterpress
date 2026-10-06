@@ -5,6 +5,28 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.14] - 2026-10-06
+
+### Added
+
+- **`gutterpress ext outdated` and `gutterpress ext update`.** `outdated`
+  compares every pinned npm extension with npm's `latest` and exits 1 when
+  one is behind; `update` re-pins the outdated ones — or one, by name — to
+  the latest through the same download, verification, vendoring and
+  load-test path as `ext add`, keeping the entry's `export:` and `enabled:`.
+  Neither runs during a build or preview; a book still builds offline from
+  its vendored copy. The desktop's Features tab checks npm when it is
+  opened, shows the newer version beside an entry with an **Update** button,
+  and has *Check for updates*.
+
+### Fixed
+
+- **Re-pinning an npm extension removes the previous version's folder.**
+  `ext add name@new` (and now `ext update`) vendored the new version beside
+  the old one and left `plugins/npm/<name>/<old>/` for the author to delete
+  by hand; the manifest can name only one version, so the others are now
+  removed once the new pin is written.
+
 ## [0.11.13] - 2026-10-06
 
 ### Changed

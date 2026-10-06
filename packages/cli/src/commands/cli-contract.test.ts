@@ -270,6 +270,8 @@ describe("C7: every command rejects unknown flags", () => {
     ["ext enable", ["ext", "enable", "some-id"]],
     ["ext disable", ["ext", "disable", "some-id"]],
     ["ext search", ["ext", "search"]],
+    ["ext outdated", ["ext", "outdated"]],
+    ["ext update", ["ext", "update"]],
   ];
 
   test.each(invocations)("%s rejects an unknown option with exit 2", (_name, args) => {
@@ -440,7 +442,8 @@ describe("parse-time usage errors keep the documented exit code", () => {
   test("bare ext shows its subcommand help and exits successfully", () => {
     const { exitCode, stdout, stderr } = runCli(["ext"]);
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("List, add, remove, enable, disable the project's extensions, or search npm");
+    expect(stdout).toContain("List, add, remove, enable, disable or update the project's extensions, or search npm");
+    expect(stdout).toContain("outdated");
     expect(stdout).toContain("add");
     expect(stderr).toBe("");
   });
