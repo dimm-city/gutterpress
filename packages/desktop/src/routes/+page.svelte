@@ -2804,7 +2804,7 @@
       onProjectChosen={(path) => void openProjectPath(path)}
       onOpenUrl={openUrl}
       onOpenBook={() => { contextMenu.close(); void inlineEdit.endActive(true); openBookOpen = true; }}
-      onNewProject={() => { contextMenu.close(); void inlineEdit.endActive(true); newProjectWizardRef?.show(); }}
+      onNewProject={readerMode ? undefined : () => { contextMenu.close(); void inlineEdit.endActive(true); newProjectWizardRef?.show(); }}
       onSyncReconnect={onSyncReconnect}
       onPanelStateChange={persistLeftPanelPrefs}
     />
@@ -3142,7 +3142,7 @@
   onSwitchBook={(path) => void switchBook(path)}
   onOpenUrl={openUrl}
   onBrowse={() => void browseFromLanding()}
-  onNewProject={() => newProjectWizardRef?.show()}
+  onNewProject={readerMode ? undefined : () => newProjectWizardRef?.show()}
   onOpenGitHub={() => (githubOpen = true)}
   onOpenGuide={openSetupGuide}
   onWhatsNew={openReleaseNotes}

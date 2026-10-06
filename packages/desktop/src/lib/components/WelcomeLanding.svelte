@@ -416,11 +416,14 @@
       {/if}
 
       <section class="quick-actions" aria-label="Quick actions">
-        <button type="button" class="action-card" class:featured={!continueTitle && !errorTitle} onclick={onNewProject}>
-          <span class="ac-icon"><Icon name="plus" size={18} /></span>
-          <span class="ac-title">Create a new book</span>
-          <span class="ac-sub">Start from a ready-made template</span>
-        </button>
+        {#if onNewProject}
+          <!-- Absent for a reader (Settings → App): reading needs no new book. -->
+          <button type="button" class="action-card" class:featured={!continueTitle && !errorTitle} onclick={onNewProject}>
+            <span class="ac-icon"><Icon name="plus" size={18} /></span>
+            <span class="ac-title">Create a new book</span>
+            <span class="ac-sub">Start from a ready-made template</span>
+          </button>
+        {/if}
         <button type="button" class="action-card" onclick={onBrowse}>
           <span class="ac-icon"><Icon name="folder-open" size={18} /></span>
           <span class="ac-title">Open a folder</span>
