@@ -303,4 +303,7 @@ jobs:
       # `bun audit --ignore <GHSA-id>` and a comment saying why — never by
       # making this step non-blocking.
       - name: Audit dependencies
-        run: bun audit
+        # GHSA-hp3w-g68c-fv3c (sprintf-js <=1.1.3, moderate DoS): no patched
+        # release exists; it is reached only through electron / electron-builder
+        # build tooling. Drop the ignore once sprintf-js ships a fix.
+        run: bun audit --ignore=GHSA-hp3w-g68c-fv3c

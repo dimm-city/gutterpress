@@ -66,7 +66,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   Google Drive spike and its plan.
 - **Dependencies** (#287): all 75 reported security advisories fixed (Electron
   42.11.10, SvelteKit, markdown-it, tar and transitive packages), and the
-  security audit now blocks CI.
+  security audit now blocks CI. Three advisories published since are fixed
+  the same way (katex, postcss-selector-parser, source-map-js); one in
+  sprintf-js, a build-tooling dependency with no patched release, is ignored
+  by id until one exists.
 
 ### Fixed
 

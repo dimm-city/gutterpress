@@ -35,6 +35,9 @@
     "http-cache-semantics": "^4.3.0",
     "joi": "^18.2.9",
     "js-yaml": "^4.3.2",
-    "nanoid": "^3.3.19"
+    "nanoid": "^3.3.19",
+    "postcss-selector-parser": "^7.1.6",
+    "katex": "^0.18.2",
+    "source-map-js": "^1.2.2"
   }
 }
