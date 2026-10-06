@@ -1,5 +1,6 @@
 // ──────────────────────────────────────────────────────────────────────────
-// recent-folders.ts — pure persistence transforms for the Open Location modal.
+// recent-folders.ts — pure persistence transforms for the recent/favorite
+// project lists.
 //
 // These operate on the recentFolders / favorites arrays stored in
 // gutterpress-prefs.json. They are intentionally side-effect-free (no electron, no

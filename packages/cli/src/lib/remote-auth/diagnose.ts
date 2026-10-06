@@ -1,5 +1,5 @@
 /**
- * Project remote diagnostics (#14, ADR 0006 D7).
+ * Project remote diagnostics (#14).
  *
  * Pure-lib replacement for the issue's original shell diagnostics
  * (`git status` / `git remote -v` / `git branch --show-current` — all
@@ -46,7 +46,7 @@ export type ForgeKind =
  * - `ready-to-sync` — HTTPS remote with a stored credential (sync lands
  *   with #15's sync phase; the plumbing is in place).
  * - `ssh-use-own-tools` — SSH remote: full local features, sync externally
- *   (ADR 0006 D6). The UI layers the "switch to HTTPS" hint on recognized hosts.
+ *  . The UI layers the "switch to HTTPS" hint on recognized hosts.
  */
 export type RemoteGuidanceId =
   | "local-only"
@@ -71,7 +71,7 @@ export interface ProjectRemoteDiagnosis {
   /** Token-settings deep link for recognized non-GitHub forges. */
   tokenSettingsUrl: string | null;
   /**
-   * ADR 0006 D4: hasRemote && smart-HTTPS && credential stored. The sync
+   * hasRemote && smart-HTTPS && credential stored. The sync
    * flow (#15 D5) is live, so this is the real "offer the Sync action"
    * gate, not a future-capability hint.
    */

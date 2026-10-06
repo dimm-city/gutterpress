@@ -2,7 +2,7 @@
  * Shared, PWA-clean error helpers.
  *
  * Pure string operations — NO `node:*` imports (importing them as a value would
- * drag node code into the SPA and break the renderer/host split, §8 / ADR 0004).
+ * drag node code into the SPA and break the renderer/host split, §8).
  */
 
 /**
@@ -166,31 +166,6 @@ export function friendlyPdfError(e: unknown): string {
   if (isMissingManifestError(msg)) {
     return 'PDF export needs manifest.yaml. Choose "Set up as a book" first, then try again.';
   }
-  // Sync-conflict export blocks throw a deliberately author-friendly message
-  // from the host (electron/export/controller.ts) — pass it through (scrubbed
-  // of IPC plumbing, see below) rather than overwriting it with the generic
-  // fallback below. `code` alone isn't reliable: `ipcRenderer.invoke` does not
-  // preserve custom Error properties across the IPC boundary, so also match
-  // the host's known conflict copy in the message text (both conflict
-  // messages share "two places" — see electron/export/controller.ts and
-  // other error surfaces).
-  if (code === "SYNC_CONFLICT" || /two places/i.test(msg)) {
-    // `api:build` goes through ipcMain.handle with no re-serialization, so the
-    // renderer sees Electron's own `Error invoking remote method '<ns:op>':
-    // Error: <cause>` wrapper around the host's sentence. Scrub that transport
-    // prefix (shared helper, defined above) before showing it to the author.
-    return friendlyHostError(msg);
-  }
-  // Render-timeout export blocks (electron/pdf-export.ts's waitForEngineRendered,
-  // ARCH review #27) throw a typed BuildError whose message is already an
-  // author-friendly sentence. Like SYNC_CONFLICT above, `code` alone isn't
-  // reliable across `api:build`'s ipcMain.handle/ipcRenderer.invoke boundary —
-  // Electron strips custom Error properties there — so match by the message's
-  // stable, distinctive phrase instead. Keep this phrase in sync with the exact
-  // string thrown in waitForEngineRendered.
-  if (/did not finish/i.test(msg)) {
-    return friendlyHostError(msg);
-  }
   // Over-wide content (#163) — the engine's own message ends in advice only a
   // CLI user can take ("pass allowShrink"). Say what the author can act on
   // instead; the "Build anyway" offer that goes with it lives in
@@ -333,7 +308,7 @@ export function friendlyPublishError(e: unknown): FriendlyPublishError {
   }
 
   // Google Drive (#221): the configured folder was moved to trash or
-  // deleted. providers/gdrive.ts's D5 folderId resolution already writes a
+  // deleted. providers/gdrive.ts's folderId resolution already writes a
   // specific, friendly "pick the folder again" sentence — passed through.
   if (/drive folder.*can.?t be found/i.test(msg)) {
     return { summary: msg };

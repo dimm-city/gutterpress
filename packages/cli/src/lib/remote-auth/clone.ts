@@ -1,5 +1,5 @@
 /**
- * Clone-and-open for remote-backed projects (#15, ADR 0006 D2).
+ * Clone-and-open for remote-backed projects (#15).
  *
  * A managed remote project IS a local clone: after `cloneRepository`, the
  * folder classifies as a plain `local-git-folder` (hasRemote: true) and every
@@ -140,9 +140,9 @@ function friendlyCloneError(e: unknown): Error {
 }
 
 /**
- * Clone a remote repository over smart HTTPS into `dir` (ADR 0006 D2).
+ * Clone a remote repository over smart HTTPS into `dir`.
  *
- * - HTTPS only (isomorphic-git has no SSH — ADR 0006 D6).
+ * - HTTPS only (isomorphic-git has no SSH).
  * - `singleBranch` always; `depth` opts into shallow (full by default — see
  *   the WHY on {@link CloneRepositoryOptions.depth}).
  * - Tokens embedded in the URL are stripped and (when a `tokenStore` is

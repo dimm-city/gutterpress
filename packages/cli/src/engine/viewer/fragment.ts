@@ -150,12 +150,9 @@ const FRAGMENT_EPSILON_PX = 1;
  * or ends (`atEnd` true).
  *
  * A multicol box spanning a column boundary reports one rect per fragment,
- * so the first (or last) rect is the edge. This used to skip sub-pixel
- * "hairline" fragments first: Gecko strands a ~0.3px sliver at the tail of
- * the previous column when a box moves, and reading it as the content edge
- * cost two blank pages. Blink emits no such fragment, and Gutterpress is
- * Chromium-only (CLAUDE.md), so the filter was removed — verified against the
- * full parity gate, 11 books, 0 divergences.
+ * so the first (or last) rect is the edge. Blink emits no sub-pixel
+ * "hairline" fragment at a column tail, so no filtering is needed (verified
+ * against the full parity gate, 11 books, 0 divergences).
  */
 export function contentEdgeRect(site: Element, atEnd: boolean): DOMRect | undefined {
   const rects = Array.from(site.getClientRects());
@@ -205,11 +202,10 @@ export function columnReserve(offset: number, columnHeight: number): number | nu
  *
  * Scoped to the OUTER strip only (`FORCED_PAGE_LIKE` values — the ones
  * `injectBreakMapping` maps to `column`), because that is what the
- * cross-browser page COUNT depends on. A break already authored as `column`
+ * page COUNT depends on. A break already authored as `column`
  * directly (`.gp-column-break`, used for a nested in-page `.section`
  * multicol) targets an auto-height BALANCED multicol context with no fixed
- * column height to reserve against — out of scope here, a known remaining
- * Firefox cosmetic limitation (docs/native-engine-acceptance-gate.md).
+ * column height to reserve against — out of scope here.
  *
  * Processed in document order, remeasuring between insertions: an insertion
  * shifts every later break site, and a site that already lands at the top of
@@ -253,7 +249,7 @@ export function synthesizeColumnBreaks(model: GcpmModel): void {
     // `buildStrips()` already ran `clearLeadingForcedBreaks()`, which sets
     // this exact inline style on a break-before element sitting on the
     // strip's leading in-flow chain — a forced break there is spec-ignorable
-    // (CSS Fragmentation Module Level 3), and Chromium/WebKit already ignore
+    // (CSS Fragmentation Module Level 3), and Chromium already ignores
     // it. Honour the same call here instead of re-deriving it from geometry,
     // which a chapter opener with a non-zero margin-top would get wrong (see
     // `clearLeadingForcedBreaks`'s own doc comment).
@@ -331,7 +327,7 @@ export function synthesizeColumnBreaks(model: GcpmModel): void {
  *     right there: return `site` unpropagated (print splits the parent
  *     between its leading text and `site`);
  *   - `site` out of flow (absolute/fixed/floated — print ignores its
- *     break-* entirely) returns null, the old skip;
+ *     break-* entirely) returns null;
  *   - a parent that is not a plain block container, or is itself a multicol
  *     container (a nested fragmentation context does not propagate page
  *     breaks out into the strip's own flow), returns null likewise.
@@ -1066,8 +1062,8 @@ export function compensateRectoBreaks(
     // `break-after` would sit at the break point the site's OWN
     // `break-before: recto` also occupies, where the two values combine, the
     // author's `recto` wins, and multicol (which has no pages) discards the
-    // lot. That is why the old `break-before + break-after` spacer produced
-    // one break instead of two and no blank page at all.
+    // lot: a `break-before + break-after` spacer produces one break instead
+    // of two and no blank page at all.
     //
     // Chromium ignores a forced break that would leave a fragmentainer empty,
     // so a spacer that is the FIRST box in its column breaks nothing. That is
@@ -1274,8 +1270,7 @@ export function pageOf(el: Element, strips: StripInfo[]): number {
  * Whether this browser can lay multicol columns out in wrapping ROWS
  * (CSS Multicol L2's `column-wrap: wrap` + `column-height`, shipped
  * unflagged in Chrome/Edge 145). Gates two-up/spread view mode — the
- * published `book.html` runs in the READER's browser, and Firefox/Safari
- * don't have this yet (docs/native-engine-acceptance-gate.md 08-09/08-10).
+ * published `book.html` runs in the READER's browser, which may predate it.
  */
 export function spreadModeSupported(): boolean {
   return (
@@ -1302,7 +1297,7 @@ export function spreadModeSupported(): boolean {
  * unchanged, and only two-up takes the recto/verso slot shift below.
  *
  * No-ops to the pre-wrap single-row layout when the browser lacks the
- * capability (`spreadModeSupported()` — Firefox/Safari today).
+ * capability (`spreadModeSupported()`).
  *
  * CROSS-RUN CORRECTNESS: each run starts its own fresh 2-column grid at grid
  * slot 0, so a run whose first physical page is a RECTO would otherwise land

@@ -1,13 +1,13 @@
 /**
  * gutterpress/render — the PURE, node-free render core.
  *
- * §1/§8 / ADR 0004: this entry deliberately exposes ONLY the browser-safe
+ * §1/§8: this entry deliberately exposes ONLY the browser-safe
  * markdown→HTML→book.html pieces. It transitively imports markdown-it + its
  * plugins, Gutterpress's inlined marker parser (`markers.js`), and pure helpers
- * — and NOTHING from `node:*`/`fs`/`path`/`url`. This is what the desktop's WebAdapter imports
- * (a *value* import that stays PWA-clean), so the in-browser live preview (#33)
- * can render the opened project entirely client-side with no localhost server
- * and no headless Chromium.
+ * — and NOTHING from `node:*`/`fs`/`path`/`url`. It has no browser consumer
+ * today; it is kept node-free (scripts/check-render-pure.mjs) because any
+ * future browser build of the app needs to render a book client-side, and that
+ * discipline is far harder to restore than to keep.
  *
  * The CLI build path keeps using `renderChapters` / `renderChaptersToFile` from
  * `./lib/markdown/index.ts` (the node wrapper around this same core).

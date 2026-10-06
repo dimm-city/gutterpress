@@ -162,12 +162,11 @@ test("happy path builds, renames temp→out, emits started+success, clears sessi
   expect(h.removed.length).toBe(1);
 });
 
-// ── workspace/destination split (bug fix) ───────────────────────────────────
-// Previously `outDir` (where `runBuild` writes book.html, assets, and
-// build-fingerprint.json) was derived from the SAME folder as the user's
-// chosen Save path via `lib.splitOutPath`, so a PDF export silently dropped
-// the whole build workspace next to it (e.g. onto the Desktop), overwriting
-// same-named files. `outDir` must now be an OS-temp workspace, decoupled from
+// ── workspace/destination split ─────────────────────────────────────────────
+// `outDir` (where `runBuild` writes book.html, assets, and
+// build-fingerprint.json) must not be the user's chosen Save folder, or a PDF
+// export drops the whole build workspace next to it (e.g. onto the Desktop),
+// overwriting same-named files. `outDir` must be an OS-temp workspace, decoupled from
 // the Save folder, cleaned up once the export settles; only the PDF
 // (`pdfFileOverride`, which sits next to the chosen destination for an
 // atomic same-filesystem rename) may end up in the folder the user picked.
@@ -215,9 +214,8 @@ test("missing out is rejected", async () => {
   await expect(h.controller.build({ input: "/book" })).rejects.toThrow(/Missing 'out'/);
 });
 
-// ── finding #4 (2026-07-13 maintainer review): PDF export accepts arbitrary
-//    output paths — `out` must be a one-time capability the Save dialog
-//    itself registered, not merely any renderer-supplied absolute path ──────
+// ── `out` must be a one-time capability the Save dialog itself registered,
+//    not merely any renderer-supplied absolute path ──────────────────────────
 
 test("an 'out' never issued by the Save dialog is rejected with OUT_NOT_AUTHORIZED, before any work happens", async () => {
   const h = makeHarness({ consumeSavePath: () => false });
@@ -317,7 +315,7 @@ test("a failed html build registers nothing", async () => {
   expect(h.progress.some((p) => p.state === "error")).toBe(true);
 });
 
-// ── 2026-07-29 audit: the reveal capability for the written PDF ────────────
+// ── the reveal capability for the written PDF ────────────
 
 test("a successful export registers the written PDF so 'Show in Folder' can reveal it", async () => {
   // `shell/show-in-folder` confines its target to the open project plus the

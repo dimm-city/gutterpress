@@ -1,6 +1,6 @@
 /**
- * UpdateController (Phase 5) — the single owner of the auto-update banner state
- * and actions that used to live inline in `+page.svelte`.
+ * UpdateController — the single owner of the auto-update banner state and
+ * actions.
  *
  * Centralises the update surface: the staged/available version banner state, the
  * "dismissed" flag, the in-flight check/download flags, the mount-time status
@@ -12,13 +12,13 @@
  * `bannerDismissed`, `checking`, `downloading`) and calls the intent methods
  * (`init`, `check`, `download`, `applyNow`, `dismissBanner`).
  *
- * PWA-clean (§8 / ADR 0004): pure UI state driven through the platform adapter
- * (`getPlatform()` / `isDesktop()`), ZERO `node:*` imports and no lib value
+ * PWA-clean (§8): pure UI state driven through the platform adapter
+ * (`getPlatform()`), ZERO `node:*` imports and no lib value
  * imports. Toast feedback is injected through an accessor seam so this stays
  * decoupled from the Toast component's late (bind:api) initialisation.
  */
 
-import { getPlatform, isDesktop } from "$lib/platform";
+import { getPlatform } from "$lib/platform";
 import type {
   UpdaterAvailableAction,
   UpdaterEvent,
@@ -63,7 +63,6 @@ export class UpdateController {
    * subscribe to future events. Returns a teardown for the subscription.
    */
   init(): (() => void) | void {
-    if (!isDesktop()) return;
     const platform = getPlatform();
 
     // Peek at current status so we can surface a banner immediately if an
@@ -120,7 +119,6 @@ export class UpdateController {
   }
 
   async check(): Promise<void> {
-    if (!isDesktop()) return;
     this.checking = true;
     this.toast()?.info?.("Checking for updates…");
     try {
@@ -168,7 +166,6 @@ export class UpdateController {
   }
 
   async download(): Promise<void> {
-    if (!isDesktop()) return;
     const action = this.availableAction;
     this.downloading = true;
     try {
@@ -196,7 +193,6 @@ export class UpdateController {
   }
 
   async applyNow(): Promise<void> {
-    if (!isDesktop()) return;
     const platform = getPlatform();
     try {
       const result = await platform.updater.applyNow();

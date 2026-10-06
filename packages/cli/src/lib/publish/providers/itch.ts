@@ -167,7 +167,7 @@ export const itchProvider: PublishProvider = {
       {
         env: { BUTLER_API_KEY: resolved.credential.token },
         onOutput: req.deps.onProgress,
-        // Idle timeout (audit B2): the runner defaults timeoutMs to
+        // Idle timeout: the runner defaults timeoutMs to
         // PUBLISH_IDLE_TIMEOUT_MS — only total output silence kills the upload.
       },
     );

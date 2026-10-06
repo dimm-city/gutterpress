@@ -4,9 +4,8 @@
    *
    * The open project's connection details: how the folder is set up, its
    * online repository address, branch, whether a server credential is saved,
-   * plus the explicit-click-only Test Remote Access probe. Moved here from
-   * the app Settings' Connections (now Accounts) tab (2026-07-30) — accounts
-   * are global, but THIS surface is about one project, so it lives with the
+   * plus the explicit-click-only Test Remote Access probe. Accounts are
+   * global (Settings → Accounts), but THIS surface is about one project, so it lives with the
    * rest of the project's settings. Credential management stays in
    * Settings → Accounts; the guidance copy points there.
    *
@@ -23,7 +22,6 @@
   import { api } from "$lib/api";
   import { friendlyHostError } from "$lib/errors";
   import type { ProjectRemoteDiagnosis, RemoteAccessResult } from "$lib/platform/contract";
-  import { isDesktop } from "$lib/platform";
 
   let {
     projectDir,
@@ -54,7 +52,7 @@
   });
 
   async function load() {
-    if (!isDesktop() || !projectDir) {
+    if (!projectDir) {
       loading = false;
       return;
     }
@@ -129,7 +127,7 @@
       case "https-connect-server":
         return "This book's online repository is on a Git server Gutterpress doesn't know yet. Connect that server in Settings > Accounts to prepare it for syncing.";
       case "ready-to-sync":
-        return "This server is connected. Use Sync Changes in the toolbar to send your work to the online repository.";
+        return "This server is connected. To back up your work online, click the save status at the bottom of the window and choose Back up now.";
       case "ssh-use-own-tools":
         return "This book's online address uses SSH (git@…). Everything on this computer works — preview, versions, history, restore. To sync, use your usual Git tool.";
     }
@@ -157,9 +155,7 @@
 
 <section class="block project-connections" aria-label="Book connections">
   <h3>Connections</h3>
-  {#if !isDesktop()}
-    <p class="hint">Connection details are available in the desktop app.</p>
-  {:else if loading}
+  {#if loading}
     <p class="hint">Reading this book's connection status…</p>
   {:else if !diag}
     <p class="hint muted">Could not read this folder's status.</p>
@@ -229,7 +225,7 @@
   .hint { font-size: 11px; line-height: 1.4; color: var(--app-text-muted); margin: 4px 0 8px; }
   .hint.muted { font-style: italic; }
   .hint.guidance { color: var(--app-text); font-size: 12px; }
-  /* This-project status grid (ported from the former Advanced setup). */
+  /* This-project status grid. */
   .status-grid {
     display: grid;
     grid-template-columns: max-content 1fr;

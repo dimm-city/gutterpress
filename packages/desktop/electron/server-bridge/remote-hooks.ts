@@ -22,7 +22,7 @@ export interface RemoteHooks {
   /**
    * Clone a repo into `${parentDir}/${sanitized folderName}` and resolve to the
    * dir to open (the repo root, or a chosen book subPath inside it). Bound in
-   * main.ts (ARCH review #8): the closure does the folder-name sanitization,
+   * main.ts: the closure does the folder-name sanitization,
    * credential lookup, and `mainWindow.webContents.send("remote:cloneProgress",
    * …)` progress push internally, so the route (a separate Vite bundle with no
    * `mainWindow` reference) only ever calls this one method.

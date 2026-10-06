@@ -1,8 +1,8 @@
 /**
  * Canonical file-extension sets shared by every asset check.
  *
- * Keeping these in ONE place prevents the divergent glob lists that previously
- * let some formats be size-checked but silently skipped by the header-reader
+ * Keeping these in ONE place prevents divergent glob lists that would let
+ * some formats be size-checked but silently skipped by the header-reader
  * checks. Divergence here is a validation-coverage bug, so the sets and their
  * relationship are pinned by image-extension-coverage.test.ts.
  */

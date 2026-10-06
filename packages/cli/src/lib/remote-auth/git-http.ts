@@ -1,5 +1,5 @@
 /**
- * Timeout wrapper for the isomorphic-git HTTP client (audit B1).
+ * Timeout wrapper for the isomorphic-git HTTP client.
  *
  * Every git transport call in this subsystem (`git.fetch`/`git.push`/
  * `git.clone`) is invoked with no timeout: if the TCP connection succeeds but
@@ -11,7 +11,7 @@
  * guard every fetch with `AbortSignal.timeout`; this brings the same discipline
  * to the git transport, at the one place a default client is chosen.
  *
- * Design (review finding: a naive deadline on `request()` is WRONG for pushes):
+ * Design (a naive deadline on `request()` is WRONG for pushes):
  * isomorphic-git passes upload bodies as an ARRAY of buffers, which the node
  * client collects and sends with Content-Length — `request()` then resolves
  * only when the response HEADERS arrive, i.e. after the ENTIRE pack upload.
@@ -71,9 +71,9 @@ export const SMALL_BODY_MAX_BYTES = 256 * 1024;
  * {@link SMALL_BODY_MAX_BYTES}. isomorphic-git always passes bodies as arrays
  * of byte chunks, so small ones are sizable synchronously. Any chunk WITHOUT
  * a numeric byteLength makes the body unsizable → NOT small, so it gets the
- * long upload backstop rather than the idle deadline as a total cap (review
- * finding: the old reduce counted unsizable chunks as 0 bytes — the exact
- * opposite of that intent).
+ * long upload backstop rather than the idle deadline as a total cap (do not
+ * count unsizable chunks as 0 bytes — that is the exact opposite of that
+ * intent).
  */
 export function isSmallBody(body: unknown): boolean {
   if (!Array.isArray(body)) return false;
@@ -139,8 +139,8 @@ export function withIdleTimeout(
       // the long backstop — a pull's fetch-negotiation POST carries just a few
       // KB of want/have lines that upload instantly, so its wait-for-headers is
       // exactly the "connected but silent" stall the short idle deadline exists
-      // for (gap-sweep finding: treating every body-carrying request as an
-      // upload let a stalled pull wedge the repo lock for the full backstop).
+      // for (treating every body-carrying request as an upload would let a
+      // stalled pull wedge the repo lock for the full backstop).
       // Anything unsizable is conservatively treated as a large upload — see
       // isSmallBody.
       const body: unknown = options.body;

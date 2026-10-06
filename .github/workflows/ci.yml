@@ -27,12 +27,9 @@ jobs:
       # silently, the exact risk that test's header names. So this job must
       # always leave SOME
       # Chromium and SOME Ghostscript resolvable. Removing either tool entirely
-      # means deleting that test and its shim in the same change.
-      #
-      # That sentence used to end "(which of the two Chromes it resolves does
-      # not matter — both track stable)". There is now exactly one: the runner
-      # image's, at /usr/bin/google-chrome-stable. See the note above the
-      # CHROMIUM_PATH step below for why the second one went away.
+      # means deleting that test and its shim in the same change. (The one
+      # Chromium is the runner image's, at /usr/bin/google-chrome-stable — see
+      # the CHROMIUM_PATH step below.)
       - name: Install PDF tooling (Ghostscript, qpdf)
         run: |
           sudo apt-get update
@@ -45,25 +42,21 @@ jobs:
         run: bun install --frozen-lockfile
 
       # NO `browser-actions/setup-chrome` step, on purpose — do not re-add one.
-      # It used to sit directly after `checkout`, downloading ~150MB of Chrome
-      # for Testing to /opt/hostedtoolcache/setup-chrome/..., which nothing then
-      # used: this step pins CHROMIUM_PATH to the runner IMAGE's Chrome
+      # Its ~150MB Chrome for Testing download would go unused: this step pins
+      # CHROMIUM_PATH to the runner IMAGE's Chrome
       # (/usr/bin/google-chrome-stable), and the one resolver
       # (lib/chromium.ts's SYSTEM_PATHS, which the one launcher
       # engine/shared/cdp.ts's launchChromium uses) checks that env var before
-      # any other candidate. setup-chrome's binary is named `chrome`, so it was
+      # any other candidate. setup-chrome's binary is named `chrome`, so it is
       # not reachable via the PATH probe either — that runs only once every
-      # fixed path misses. Run 32812569951 shows both halves: "Google Chrome
-      # for Testing 152.0.7977.54" installed, then the env override pointing
-      # at /usr/bin/google-chrome-stable on every step after it, the parity
-      # gate and the canary included.
+      # fixed path misses.
       #
-      # Deleted rather than adopted: `chrome-version: stable` pins nothing, so
-      # the action bought no reproducibility the runner image doesn't already
-      # give — it only made the version LOOK controlled. If a SPECIFIC Chromium
-      # is ever needed (e.g. to hold the engine's REQUIRED_MILESTONE floor,
-      # cdp.ts:67), add it back with an EXACT version and delete this override —
-      # one or the other, never both, or the pin is a no-op again.
+      # `chrome-version: stable` pins nothing, so the action buys no
+      # reproducibility the runner image doesn't already give — it only makes
+      # the version LOOK controlled. If a SPECIFIC Chromium is ever needed
+      # (e.g. to hold the engine's REQUIRED_MILESTONE floor in cdp.ts), add it
+      # with an EXACT version and delete this override — one or the other,
+      # never both, or the pin is a no-op.
       - name: Point Gutterpress at the runner's system Chrome
         run: |
           echo "CHROMIUM_PATH=$(which google-chrome-stable)" >> $GITHUB_ENV
@@ -80,9 +73,8 @@ jobs:
       # launch timeout both failed RELEASE dispatches after ci was green,
       # because ci ran `--filter gutterpress` while release ran `--filter '*'`.
       # One command, run at PR time, means anything that would fail the
-      # release gate fails here first. This also replaced the separate
-      # "Desktop Test" job (2026-08-30): same coverage, one fewer runner, one
-      # fewer duplicated install/build, and no second surface to drift.
+      # release gate fails here first. It covers the desktop suite too, so
+      # there is no separate desktop test job to drift.
       - name: Run tests
         run: bun --filter '*' test
 
@@ -91,7 +83,7 @@ jobs:
         run: bun test
 
       # Preview<->print parity is the invariant this project treats as most
-      # important, and until now the gate ran only when a human remembered.
+      # important.
       - name: Preview/print parity gate
         working-directory: packages/cli
         run: bun scripts/native-parity-gate.ts
@@ -174,6 +166,11 @@ jobs:
             node packages/cli/dist/cli.js build "$fixture" --format pdf --out "/tmp/render-parity/head/$slug.pdf"
           done
 
+      # --raster (#295) also compares every page as pixels, so a colour change
+      # that moves no text run still fails; it needs poppler's pdftoppm.
+      - name: Install pdftoppm for the raster compare
+        run: sudo apt-get update -q && sudo apt-get install -y -q poppler-utils
+
       # Runs every fixture even if an earlier one fails, so one PR gets the
       # full picture instead of stopping at the first offender; the job still
       # fails overall on any unwaived diff.
@@ -187,6 +184,7 @@ jobs:
               "/tmp/render-parity/base/$fixture.pdf" \
               "/tmp/render-parity/head/$fixture.pdf" \
               --waive scripts/render-parity-waivers.json \
+              --raster "/tmp/render-parity/$fixture-raster" \
               --out "/tmp/render-parity/$fixture-diff.json" || status=$?
           done
           exit $status
@@ -217,20 +215,13 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      # knip was dropped 2026-08-30 (owner's call). Its lifetime as a gate: 4
-      # days; 3 failures, all its own wiring bug (missing svelte-kit sync),
-      # which blocked the 0.10.2 release PR; 0 real catches while gating. Its
-      # 3 real findings all came at setup time (91af058) — one-time value,
-      # already banked.
-
       - name: Build CLI npm bundle
         working-directory: packages/cli
         run: bun run build
 
       # NOTE: never use `bun --cwd <pkg> run <script>` in workflows — on Bun
       # 1.3.x that form prints `bun run` usage and EXITS 0 without running the
-      # script, so the step passes while doing nothing (review finding: this
-      # made the desktop-build and type-check steps silent no-ops).
+      # script, so the step passes while doing nothing.
       # `working-directory` + `bun run <script>` is the robust form.
       - name: Build desktop (static SPA + Electron main)
         working-directory: packages/desktop
@@ -249,8 +240,7 @@ jobs:
       # build/server/ (the compiled host routes) is host Node code by design
       # (§8). --strict: the build step above just ran, so an absent
       # build/client means the build silently did nothing — that must FAIL,
-      # not skip (review finding: the non-strict form passed vacuously while
-      # the broken `bun --cwd` build step produced no output at all).
+      # not pass vacuously.
       - name: Check renderer purity (CLAUDE.md §8)
         run: node tools/check-render-purity.mjs packages/desktop/build/client --strict
 
@@ -269,13 +259,12 @@ jobs:
 
       # NOTE: `working-directory` + `bun run <script>`, never
       # `bun --cwd <pkg> run <script>` — on Bun 1.3.x the latter prints usage
-      # and exits 0 WITHOUT running the script. Review finding: every step in
-      # this job used that broken form, so the whole Type Check job was a
-      # silent no-op that always passed.
+      # and exits 0 WITHOUT running the script, so the job would be a silent
+      # no-op that always passes.
       #
       # svelte-check and the electron tsc resolve gutterpress's types
       # to packages/cli/dist/*.d.ts (gitignored), so build the CLI dist first —
-      # same prerequisite the desktop-test job already documents.
+      # same prerequisite as the Test job.
       - name: Build package dist (types for the desktop checks)
         working-directory: packages/cli
         run: bun run build:library
@@ -288,10 +277,9 @@ jobs:
         working-directory: packages/desktop
         run: bun run check
 
-      # audit F1: `check` above is svelte-check (SPA only). The Electron
-      # main/preload TS was never type-checked in CI — its `typecheck` script
-      # existed but nothing ran it, so a type error in electron/main.ts merged
-      # green. Run it too.
+      # `check` above is svelte-check (SPA only); the Electron main/preload TS
+      # needs its own `typecheck` run, or a type error in electron/main.ts
+      # merges green.
       - name: Run TypeScript compiler (desktop Electron main/preload)
         working-directory: packages/desktop
         run: bun run typecheck
@@ -308,16 +296,14 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      # NON-BLOCKING ON PURPOSE. As of 0.10.10 `bun audit` reports 35
-      # advisories (23 high), 24 of them transitive through electron-builder ->
-      # app-builder-lib -> tar/undici, which cannot be fixed from this repo
-      # without a major electron-builder bump. Failing the build on them would
-      # wall off every PR for something no PR author can fix.
-      #
-      # The point of running it anyway is visibility: the number is in the log
-      # of every run, so a NEW advisory is noticed instead of arriving silently.
-      # Flip continue-on-error off once the baseline is clean — that is the
-      # signal this job is meant to earn, not a permanent exemption.
+      # BLOCKING (#287): a new advisory fails the build. The usual fix is a
+      # same-major bump, or a same-major `overrides` entry in the root
+      # package.json for a transitive dep; if an advisory has no fixed release
+      # and only reaches build tooling, accept it explicitly with
+      # `bun audit --ignore <GHSA-id>` and a comment saying why — never by
+      # making this step non-blocking.
       - name: Audit dependencies
-        continue-on-error: true
-        run: bun audit
+        # GHSA-hp3w-g68c-fv3c (sprintf-js <=1.1.3, moderate DoS): no patched
+        # release exists; it is reached only through electron / electron-builder
+        # build tooling. Drop the ignore once sprintf-js ships a fix.
+        run: bun audit --ignore=GHSA-hp3w-g68c-fv3c

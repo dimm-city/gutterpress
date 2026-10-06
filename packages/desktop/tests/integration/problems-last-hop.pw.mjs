@@ -173,6 +173,9 @@ try {
       showLandingAtStartup: false,
     }),
   );
+  // The drives write and publish, so they run as an author (the app defaults
+  // to a reader, who has no editor).
+  writeFileSync(join(userDataDir, "app-settings.json"), JSON.stringify({ workspace: { role: "author" } }));
 
   const args = [
     ...(isMainJs ? [target] : []),
@@ -266,18 +269,18 @@ try {
   // folder is `dist` inside the book, so the real build path runs end to end
   // with no native dialog to stub.
   await page.locator("button.publish-btn").click();
-  const wizard = page.locator(".dlg-shell.wizard");
+  const wizard = page.locator(".app-view.wizard");
   await wizard.waitFor({ state: "visible", timeout: 5_000 });
   const nextStep = async (label) => {
     await wizard.locator(".steps li.current").filter({ hasText: label }).waitFor({ timeout: 10_000 });
-    await wizard.locator(".dlg-actions .dlg-primary").click();
+    await wizard.locator(".view-actions .app-btn-primary").click();
   };
   await nextStep("Format");
   await nextStep("Choose");
   await nextStep("Folder");
   await nextStep("Preflight");
   await wizard.locator(".steps li.current").filter({ hasText: "Publish" }).waitFor({ timeout: 10_000 });
-  await wizard.locator(".dlg-actions .dlg-primary").click();
+  await wizard.locator(".view-actions .app-btn-primary").click();
   await waitUntil(
     () => existsSync(outputPath) && statSync(outputPath).size > 1_000,
     120_000,

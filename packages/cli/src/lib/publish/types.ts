@@ -6,7 +6,7 @@
  * (DriveThruRPG, Amazon KDP), stages a validated upload package and hands the
  * author a checklist + the platform's upload URL ("guided" publishing).
  *
- * Architecture mirrors the remote-auth subsystem (ADR 0006):
+ * Architecture mirrors the remote-auth subsystem:
  *   - The lib NEVER touches OS keychains, the network, or child processes
  *     directly through ambient globals — hosts inject a {@link TokenStore},
  *     and tests inject {@link PublishDeps.fetch} / {@link PublishDeps.runCommand}.
@@ -101,7 +101,7 @@ export interface PublishProviderInfo {
      * browser consent flow (see `google-auth.ts`'s `GoogleAuthProvider` for
      * the gdrive precedent). UIs branch on this to swap the paste-a-key form
      * for a "Connect …" button; {@link connectPublishProvider} REJECTS oauth
-     * providers outright so the old paste-a-token path can never store an
+     * providers outright so the paste-a-token path can never store an
      * unverifiable credential for one (#221).
      */
     connect?: "token" | "oauth";
@@ -154,7 +154,7 @@ export type CommandRunner = (
     /** Called once per output line — drives live progress logs. */
     onOutput?: (line: string) => void;
     /**
-     * Idle-kill budget in ms (audit B2). If the child produces no output and
+     * Idle-kill budget in ms. If the child produces no output and
      * has not exited within this window, it is SIGKILL'd and the run rejects
      * with a timeout error, so a stalled upload can't hang publish forever.
      * Omitted / undefined = the runner's default (defaultCommandRunner applies

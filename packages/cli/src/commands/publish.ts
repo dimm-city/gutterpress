@@ -265,16 +265,16 @@ export default defineCommand({
       if (provider.info.credential.connect === "oauth") {
         // No key to paste — an interactive browser consent flow instead.
         // Today gdrive is the only oauth provider; connectGoogleDrive() is
-        // the shared implementation (CLI here, desktop in Phase 2).
+        // the shared implementation (CLI here, and the desktop).
         //
-        // B1: an author who reaches for --token out of habit (it works for
+        // An author who reaches for --token out of habit (it works for
         // every other provider) — or who has the provider's env var set, or
-        // pipes a key via stdin — gets no explanation today: this branch
-        // used to return before connectPublishProvider's own oauth rejection
-        // could ever run. Catch the same three signals here and fail with
-        // the same guidance, WITHOUT starting the browser flow. When none of
-        // the three are present, fall through to the browser flow exactly as
-        // before — no opt-out flag required for the common case.
+        // pipes a key via stdin — must get an explanation: this branch
+        // returns before connectPublishProvider's own oauth rejection could
+        // ever run. Catch the same three signals here and fail with the same
+        // guidance, WITHOUT starting the browser flow. When none of the three
+        // are present, fall through to the browser flow — no opt-out flag
+        // required for the common case.
         const envVar = provider.info.credential.envVar;
         const tokenGiven = typeof args.token === "string" && args.token.trim().length > 0;
         const envGiven = !!(envVar && process.env[envVar]?.trim());

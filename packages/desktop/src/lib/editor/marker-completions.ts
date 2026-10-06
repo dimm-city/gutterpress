@@ -1,5 +1,5 @@
 /**
- * marker-completions.ts (UX review M26)
+ * marker-completions.ts
  *
  * CodeMirror completion source for Gutterpress's CORE `@marker` family — the
  * core layout markers (`@chapter`, `@spread`, `@page`,
@@ -12,8 +12,7 @@
  * maintained static table (no generated schema, no runtime data read) plus a
  * small completion-source function. The CSS editor already gets a 38-entry
  * curated Paged Media table; this gives markdown authors the same assistance
- * for Gutterpress's own layout syntax (UX finding M26 — CSS authors previously
- * got more help than markdown authors in a markdown-first product).
+ * for Gutterpress's own layout syntax.
  *
  * IMPORTANT — core only (CLAUDE.md §5/§6): `@sidebar`, `@callout`, and the
  * rest of the DC plugin's `@marker` family are PROJECT-PLUGIN markers, not

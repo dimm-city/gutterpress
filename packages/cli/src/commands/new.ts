@@ -412,8 +412,7 @@ export default defineCommand({
       // "invalid-name" / "parent-not-writable" are all bad-input preconditions
       // the author chose (a usage error, code 2); "scaffold-io" is an
       // operational I/O failure during the scaffold itself (a pipeline
-      // failure, code 3) — previously inverted (target-exists got the
-      // "pipeline" code 3, everything else including scaffold-io got 2).
+      // failure, code 3).
       process.exit(code === "scaffold-io" ? EXIT_CODES.PIPELINE : EXIT_CODES.USAGE);
     }
   },

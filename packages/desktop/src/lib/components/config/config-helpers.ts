@@ -14,8 +14,7 @@ import type {
 } from "$lib/platform/dtos";
 
 /**
- * Build the srcdoc for a look thumbnail iframe (ported verbatim from the
- * retired ThemeManager).
+ * Build the srcdoc for a look thumbnail iframe.
  */
 export function sampleSrcdoc(css: string): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
@@ -153,7 +152,7 @@ const NEEDS_INSTALL_RE = /^not (installed|pinned)\b/i;
  * with the in-app fix (ahead of any load-test result, which for such an entry
  * is only ever a less specific failure); then the load-test result.
  *
- * Tri-state (M34): `validating` is true only while a validate round-trip is
+ * Tri-state: `validating` is true only while a validate round-trip is
  * in flight. If it is `false` and there is still no result for this `use`,
  * the validate call threw (or never ran) — that must NOT read the same as "in
  * progress", since it will never resolve on its own. It gets its own "stale"

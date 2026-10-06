@@ -10,7 +10,7 @@
    * at the ends) and scrolls the match into view.
    *
    * Enter → next, Shift+Enter → previous, Escape/✕ → close (clears the
-   * selection). PWA-clean (§8 / ADR 0004): everything goes through the
+   * selection). PWA-clean (§8): everything goes through the
    * PreviewClient postMessage bridge — no host code at all.
    */
   import { onMount } from "svelte";

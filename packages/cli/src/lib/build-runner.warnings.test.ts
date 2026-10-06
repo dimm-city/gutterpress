@@ -1,5 +1,5 @@
 /**
- * ARCH finding #4 — build-log surfacing.
+ * Marker-warning build-log surfacing.
  *
  * `markers.js` computes typed, line-numbered author-mistake warnings
  * (`env.layoutWarnings`) — e.g. a stray `@continue` with no open `@section`.

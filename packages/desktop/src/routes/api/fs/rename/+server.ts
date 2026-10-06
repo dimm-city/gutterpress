@@ -6,13 +6,13 @@ import { defineRoute, requireAbsolute, requireWithinProjectRoot } from '../../_l
 import { requireSegment } from '../_shared/validate-segment';
 import type { RequestHandler } from './$types';
 
-// FileTree row action "Rename" (UX review M9). Renames WITHIN the same
+// FileTree row action "Rename". Renames WITHIN the same
 // parent directory only (a new name, never a new location) — `newName` is a
 // single segment, not a path, so this can never become a move-to-arbitrary-
 // destination primitive. Returns 409 when a same-named entry already exists at
 // the check point — best-effort, NOT atomic: POSIX rename() replaces the
 // destination with no error, so a file created in the tiny window between the
-// stat() check and rename() can still be clobbered (audit A5). Acceptable for
+// stat() check and rename() can still be clobbered. Acceptable for
 // a single-desktop-user tool; POSIX offers no atomic no-clobber rename for
 // directories without extra syscalls.
 export const POST: RequestHandler = defineRoute<{ path: string; newName: string }>({

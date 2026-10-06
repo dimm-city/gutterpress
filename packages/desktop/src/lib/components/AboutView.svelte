@@ -5,7 +5,6 @@
    * itself on mount; desktop-only, like Troubleshooting → Diagnostics.
    * The host passes only the update-check wiring.
    */
-  import { isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
   import type { DoctorDiagnostics } from "$lib/api";
   import Icon from "$lib/components/Icon.svelte";
@@ -33,10 +32,6 @@
     loading = true;
     error = null;
     try {
-      if (!isDesktop()) {
-        error = "Desktop system details are only available in the desktop app.";
-        return;
-      }
       data = await api.doctor();
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
@@ -64,7 +59,7 @@
       <div><strong>Lib:</strong> {data.libVersion}</div>
     </section>
 
-    {#if isDesktop() && onCheckForUpdates}
+    {#if onCheckForUpdates}
       <section class="updates">
         <h3>Updates</h3>
         <p class="updates-note">

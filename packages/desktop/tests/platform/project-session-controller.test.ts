@@ -360,7 +360,7 @@ test("resolveActiveBookDir: multiple books, bare repo root picked → first LIST
   expect(resolveActiveBookDir("/repo", "/repo", sorted)).toBe("/repo/alpha");
 });
 
-// ── 2026-07-29 audit: the books[0] fallback was too eager ────────────────────
+// ── the books[0] fallback was too eager ────────────────────
 //
 // The fallback's own doc comment scopes it to "the bare repo root was picked",
 // but the condition was an exact `===` string compare against each book path

@@ -1,13 +1,12 @@
 /**
  * Shared network deadline + author-friendly error mapping for the CLI's
  * direct `fetch` call sites (GitHub auth/API, the butler download). ONE copy
- * of the policy, so a fix here reaches every site (the old per-site clones
- * let the dropped-timeout bug below survive in two of three copies):
+ * of the policy, so a fix here reaches every site:
  *
  *  - The deadline is a TOTAL budget (`AbortSignal.timeout` keeps ticking
  *    through any body read done inside `run`), COMPOSED with the caller's
- *    cancellation signal via `AbortSignal.any` — the old
- *    `signal ?? AbortSignal.timeout(...)` pattern silently DROPPED the
+ *    cancellation signal via `AbortSignal.any` — a
+ *    `signal ?? AbortSignal.timeout(...)` pattern would silently DROP the
  *    timeout whenever a caller passed a signal.
  *  - A caller abort ("AbortError") is rethrown untouched, so cancellation
  *    keeps its site-specific handling.

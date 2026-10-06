@@ -2,7 +2,7 @@
   /**
    * PreviewToolbar — the preview pane's own control strip, the mirror of
    * EditorToolbar above the editor pane: page navigation and zoom live HERE,
-   * next to the pages they act on, not in the main app toolbar (which now
+   * next to the pages they act on, not in the main app toolbar (which
    * carries only app-level controls: mode, focus, setup, publish).
    *
    * The page picker is a native <select> — one option per page, the current
@@ -176,7 +176,7 @@
     outline-offset: 1px;
   }
 
-  /* Page select — the former toolbar pill, with a custom chevron (the native
+  /* Page select — with a custom chevron (the native
      GTK/OS select chrome ignores `background` on some platforms). */
   .page-select {
     /* Component-private palette (single consumer — stays out of theme.css per

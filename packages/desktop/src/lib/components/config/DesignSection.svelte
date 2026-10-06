@@ -1,23 +1,21 @@
 <script lang="ts">
   /**
-   * Design-tokens sub-section of the merged "Look & style" section (UX review
-   * M35 — see LookSection's header comment for the merge rationale).
+   * Design-tokens sub-section of the merged "Look & style" section (see
+   * LookSection's header comment for the merge rationale).
    * The guided `:root` custom-property editor (theme-curated groups, then
    * fonts + colors + sizes/numbers + other) is the SECOND of the three panes
-   * ProjectConfigPanel composes under one "Look & style" heading, after the
-   * theme grid and before the stylesheet list (now behind Advanced). No
-   * section wrapper or `<h3>` of its own anymore; the parent owns the outer
-   * `.block`/heading. All token state, the debounced read-modify-write token
-   * machinery, and `api.fs.*` calls live in `DesignSectionController` (passed
-   * as the single `controller` prop — this was the first section to get the
-   * controller extraction; see M14 for the other four). `toHex` is a pure
-   * browser-only helper (§8-clean).
+   * ProjectSettingsView composes under one "Look & style" heading, after the
+   * theme grid and before the stylesheet list. No section
+   * wrapper or `<h3>` of its own; the parent owns the outer `.block`/heading.
+   * All token state, the debounced read-modify-write token machinery, and
+   * `api.fs.*` calls live in `DesignSectionController` (passed as the single
+   * `controller` prop). `toHex` is a pure browser-only helper (§8-clean).
    *
    * Token annotations (issue #244): `controller.customGroups` (theme-author
    * `@group` headings, rendered first) and the four kind-based getters
    * (`fontTokens`/`colorTokens`/`sizeTokens`/`otherTokens`, each excluding
-   * anything already claimed by a custom group) are ALL controller getters
-   * now, so this template doesn't need to know the grouping rule — it just
+   * anything already claimed by a custom group) are ALL controller getters,
+   * so this template doesn't need to know the grouping rule — it just
    * renders whatever lists it's handed, in order. Every list renders through
    * the one `tokenRow` snippet below, which switches on `t.kind` for the
    * control — needed once a `@group` can mix kinds (a "Colors" group could

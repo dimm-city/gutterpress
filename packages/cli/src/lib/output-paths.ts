@@ -2,11 +2,10 @@
  * Output location + artifact naming, by convention rather than configuration.
  *
  * A book builds to `<manifestDir>/dist/<title-slug>/`, and its artifacts are
- * `<title-slug>-<format>.pdf`. This replaces the manifest's `output.dir` /
- * `output.filename` / `output.html` block: the slug keeps several books in one
- * tree apart, and the format is in the artifact name because the extension
- * cannot tell a PDF from a PDF/X one (they previously shared a single
- * configured filename, so building both left only the last).
+ * `<title-slug>-<format>.pdf` — a convention, not manifest configuration: the
+ * slug keeps several books in one tree apart, and the format is in the
+ * artifact name because the extension cannot tell a PDF from a PDF/X one (a
+ * shared filename would leave only the last one built).
  *
  * `--out` remains for per-invocation placement (CI, one-offs).
  */

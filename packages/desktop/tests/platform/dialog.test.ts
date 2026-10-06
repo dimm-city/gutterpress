@@ -1,10 +1,8 @@
 /**
  * Unit tests for the shared `dialogBehavior` action (src/lib/dialog.ts) — the
- * one modal-dialog a11y primitive the desktop's dialog shells now share.
+ * one modal-dialog a11y primitive the desktop's dialog shells share.
  *
- * TDD Stage 1: these fail until src/lib/dialog.ts exists.
- *
- * Covers the contract every dialog used to re-implement by hand:
+ * Covers the contract every dialog shell relies on:
  *   1. ARIA — sets role="dialog", aria-modal="true", tabindex, aria-labelledby.
  *   2. Focus-on-open — moves focus to the first focusable descendant (or the
  *      container when asked).

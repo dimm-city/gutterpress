@@ -12,7 +12,8 @@
  * Consumers:
  *   - `lib/markdown/plugins.ts`'s `loadPlugin` — a plugin's `styles` export,
  *     relative to the plugin's own module/package directory.
- *   - `lib/extension-manager.ts`'s `addExtension` and `readExtensionCss` — an
+ *   - `lib/extension-manifest.ts`'s `resolveExtension` (behind
+ *     `extension-manager.ts`'s `addExtension` and `readExtensionCss`) — an
  *     extension's `styles`, relative to the extension folder.
  *   - `lib/extension-import.ts`'s zip/css/URL import — the same declared-sheet
  *     list, ahead of its own additional print-safety pass (an import-

@@ -174,7 +174,7 @@ export function rejectUnknownFlags(
 }
 
 /**
- * Reject CLI positionals beyond the ones a command declares (UX finding M46).
+ * Reject CLI positionals beyond the ones a command declares.
  *
  * Citty's parser keeps every raw positional token in `args._` even after
  * `type: "positional"` args have claimed their share — it shifts values off a

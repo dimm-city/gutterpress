@@ -16,8 +16,8 @@ const check: Check = {
     const doc = await loadPdf(ctx.pdfPath);
     if (!doc) return [];
 
-    // Effective DPI is derived from pixel size ÷ placed size (best-effort; see
-    // ADR 0002). Round to tolerate sub-pixel placement noise near the threshold.
+    // Effective DPI is derived from pixel size ÷ placed size (best-effort).
+    // Round to tolerate sub-pixel placement noise near the threshold.
     const resolutions = await getImageResolutions(doc);
     const lowResPages: number[] = [];
     for (const r of resolutions) {

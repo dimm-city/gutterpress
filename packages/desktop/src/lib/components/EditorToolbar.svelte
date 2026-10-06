@@ -11,8 +11,8 @@
    *   that the parent (+page.svelte) routes into the EditorView transaction. The
    *   toolbar has zero direct knowledge of CodeMirror; it just fires named events.
    * - The Insert Image flow involves host calls (dialog.pickImageFile +
-   *   api.media.importImage — the ONE host-side import-policy route, UX
-   *   review M10), so the toolbar accepts `projectDir` to keep it testable
+   *   api.media.importImage — the ONE host-side import-policy route), so the
+   *   toolbar accepts `projectDir` to keep it testable
    *   without a full Electron environment. The toolbar does no path/fs math
    *   of its own; the route returns the project-relative `src` to insert.
    * - The shape is stable: every insert action lives in ONE Insert menu, so
@@ -23,8 +23,10 @@
    *   of what shows.
    */
   import Icon from "$lib/components/Icon.svelte";
+  import type { ProblemEntry } from "$lib/platform/dtos";
+  import { canExpandProblems, problemCounts, problemsSummary } from "$lib/problems";
+  import { saveIndicator } from "$lib/save-status";
   import type { ComponentProps } from "svelte";
-  import { getPlatform, isDesktop } from "$lib/platform";
   import { basenameOf } from "$lib/platform/paths";
   import { api } from "$lib/api";
   import { dialogBehavior, FOCUSABLE } from "$lib/dialog";
@@ -58,6 +60,15 @@
     saving = false,
     /** Absolute path to the open project, used to compute assets/ destination. */
     projectDir = null,
+    savePhase = "clean",
+    autoSave = true,
+    forceSaving = false,
+    onSaveStatus,
+    problems = [],
+    problemsLoading = false,
+    problemsError = null,
+    problemsOpen = false,
+    onToggleProblems,
   }: {
     filePath?: string | null;
     onAction: (action: ToolbarAction, payload?: ToolbarPayload) => void;
@@ -65,7 +76,37 @@
     savePending?: boolean;
     saving?: boolean;
     projectDir?: string | null;
+    // ── Status cluster (right end): the save state and the Problems badge.
+    //    Both are about the text being edited, so they live here rather than
+    //    in the status bar; their lists/views are the page's. ──
+    savePhase?: "clean" | "dirty" | "saving" | "error";
+    autoSave?: boolean;
+    forceSaving?: boolean;
+    /** Opens "Where your work is kept"; the indicator renders only when set. */
+    onSaveStatus?: (trigger: HTMLButtonElement) => void;
+    problems?: ProblemEntry[];
+    problemsLoading?: boolean;
+    problemsError?: string | null;
+    problemsOpen?: boolean;
+    /** Toggles the Problems list (rendered by the page at the bottom of the
+     *  editor pane); the badge renders only when set. */
+    onToggleProblems?: (trigger: HTMLButtonElement) => void;
   } = $props();
+
+  let indicator = $derived(saveIndicator({ savePhase, autoSave, forceSaving }));
+  let counts = $derived(problemCounts(problems));
+  let canExpand = $derived(canExpandProblems(problems, problemsError, problemsOpen));
+  let stripLabel = $derived(
+    problemsLoading
+      ? "Problems: checking"
+      : problemsError
+        ? "Problems: couldn't check"
+        : counts.badge > 0
+          ? `Problems: ${problemsSummary(counts)}`
+          : "No problems",
+  );
+  let saveStatusEl = $state<HTMLButtonElement | null>(null);
+  let problemsToggleEl = $state<HTMLButtonElement | null>(null);
 
   /** The set of named edit actions the toolbar can fire. */
   export type ToolbarAction =
@@ -95,10 +136,10 @@
     filePath !== null && /\.(md|markdown)$/i.test(filePath),
   );
 
-  // ── M23: single declarative item array drives the grouped toolbar buttons,
+  // ── A single declarative item array drives the grouped toolbar buttons,
   // the Insert menu AND the More menu — see toolbar-actions.ts for rationale. ──
   let visibleItems = $derived(
-    visibleToolbarItems({ hasSave: !!onSave, desktop: isDesktop() }),
+    visibleToolbarItems({ hasSave: !!onSave }),
   );
   let saveItems = $derived(visibleItems.filter((i) => i.group === "save"));
   let primaryItems = $derived(visibleItems.filter((i) => i.group === "primary"));
@@ -114,7 +155,7 @@
   // comments on their markup), so they don't go through `dialogBehavior` — they
   // only need "focus the first focusable child on open," not a full ARIA/
   // Escape/Tab-trap/restore contract. The table and image dialogs below ARE
-  // modal and use `dialogBehavior` directly (ARCH #42), which owns the trap
+  // modal and use `dialogBehavior` directly, which owns the trap
   // itself; this helper reuses the same shared `FOCUSABLE` selector from
   // dialog.ts rather than hand-rolling its own copy. Hidden elements are
   // skipped: the More popup keeps the sections for groups that are currently
@@ -135,7 +176,7 @@
   function openHeadingPopup(e: MouseEvent) {
     headingTriggerEl = e.currentTarget as HTMLButtonElement;
     openPopup(() => { headingOpen = !headingOpen; insertOpen = moreOpen = false; });
-    // M24 fix round 1: the popup <div> is a SIBLING of this trigger button,
+    // The popup <div> is a SIBLING of this trigger button,
     // not an ancestor, so an Escape keydown whose target is still the
     // trigger (focus left where it was) never bubbles to the popup's own
     // onkeydown handler. Move focus into the popup on open — the same
@@ -167,7 +208,7 @@
   }
 
   // ── Insert menu ──────────────────────────────────────────────────────────
-  // Every insert action (layout blocks — UX M26 — rule, table, image, snippet)
+  // Every insert action (layout blocks, rule, table, image, snippet)
   // behind ONE button, so the toolbar keeps its shape whether or not the left
   // panel is open. Same plain-disclosure pattern as the heading popup above;
   // its rows are rendered by `menuRows`, the same rows the More menu lists when
@@ -193,7 +234,7 @@
     if (e.key === "Escape") closeInsertPopup();
   }
 
-  // ── Table column picker (M11: a fixed-position dialog, like the image
+  // ── Table column picker (a fixed-position dialog, like the image
   // dialog below, so it works regardless of which trigger opened it — the
   // Insert menu row OR the More menu row — and is never nested inside a
   // container that can be `display: none` at the widths where the More menu
@@ -243,7 +284,6 @@
   let imageDialogTriggerEl = $state<HTMLButtonElement | undefined>(undefined);
 
   async function pickImage() {
-    if (!isDesktop()) return;
     imageError = "";
     imageBusy = true;
     try {
@@ -269,9 +309,9 @@
     try {
       // All import policy (inside-project vs. copy-to-images/assets,
       // separator-aware containment, name collisions) lives host-side in
-      // ONE route (UX review M10) — the toolbar just hands it the picked
+      // ONE route — the toolbar just hands it the picked
       // absolute path and gets back a project-relative `src`.
-      if (projectDir && isDesktop()) {
+      if (projectDir) {
         const result = await api.media.importImage(projectDir, imageSrc);
         finalSrc = result.src;
       }
@@ -332,7 +372,7 @@
   function openMorePopup(e: MouseEvent) {
     moreTriggerEl = e.currentTarget as HTMLButtonElement;
     openPopup(() => { moreOpen = !moreOpen; headingOpen = insertOpen = false; });
-    // M24 fix round 1: same rationale as openHeadingPopup above — move focus
+    // Same rationale as openHeadingPopup above — move focus
     // into the popup on open so Escape closes it immediately, not only after
     // the user manually Tabs in.
     if (moreOpen) {
@@ -403,7 +443,7 @@
   <!-- Primary group: Save (when wired) + always-visible inline formatting.
        Every group here AND the Insert/More menus below render from
        `visibleItems` (toolbar-actions.ts) so an item can never be listed in
-       one place and silently dropped from another (M23). -->
+       one place and silently dropped from another. -->
   <div class="tb-group primary-group">
     {#each saveItems as item (item.id)}
       <!-- Save: primary while there is something to save, a calm disabled
@@ -442,8 +482,8 @@
       {#if item.kind === "heading"}
         <!-- Heading picker: a plain disclosure, not role=listbox — this
              widget implements neither arrow-key roving focus nor
-             aria-selected, so the listbox contract would be a lie (M24;
-             BookSwitcher.svelte:40-43 documents the same call). Escape closes
+             aria-selected, so the listbox contract would be a lie
+             (BookSwitcher.svelte documents the same call). Escape closes
              and returns focus to the trigger. -->
         <div class="tb-popup-wrap">
           <button
@@ -493,7 +533,7 @@
        rule, table, image, snippet). The table/image rows open the fixed-position
        dialogs below — NOT nested inside this group, so they keep working from
        the More menu even when `.insert-group` is `display: none` at narrow
-       widths (M11). Plain disclosure like the heading picker above (M24). -->
+       widths. Plain disclosure like the heading picker above. -->
   <div class="tb-group insert-group">
     <div class="tb-popup-wrap">
       <button
@@ -523,8 +563,8 @@
        hidden, and each section below only while ITS group is hidden, so the
        popup lists what the toolbar cannot show and never repeats what it does
        (tier comment in the style block). Sections render from the same item
-       arrays as the groups (M23). Plain disclosure, not role=menu — see the
-       heading picker comment above; same rationale (M24). -->
+       arrays as the groups. Plain disclosure, not role=menu — see the
+       heading picker comment above; same rationale. -->
   <div class="tb-more-wrap">
     <button
       class="tb-btn tb-more-btn"
@@ -548,6 +588,56 @@
           {@render menuRows(insertItems, moreMenu)}
         </div>
       </div>
+    {/if}
+  </div>
+
+  <div class="tb-group status-group">
+    {#if onToggleProblems}
+      <!-- Problems: a compact badge — status icon + count. A button only while
+           there is something to list; otherwise the same badge, inert. The
+           accessible name carries what the badge only shows as icons. -->
+      {#if canExpand}
+        <button
+          bind:this={problemsToggleEl}
+          class="toggle-strip"
+          onclick={() => problemsToggleEl && onToggleProblems(problemsToggleEl)}
+          aria-expanded={problemsOpen}
+          aria-controls="problems-body"
+          aria-label={stripLabel}
+          title={`${stripLabel} — ${problemsOpen ? "click to collapse" : "click to expand"}`}
+        >
+          {#if counts.badge > 0}
+            {#if counts.errors > 0}
+              <span class="strip-count error-count"><Icon name="circle-x" size={13} />{counts.errors}</span>
+            {/if}
+            {#if counts.warnings > 0}
+              <span class="strip-count warning-count"><Icon name="triangle-alert" size={13} />{counts.warnings}</span>
+            {/if}
+          {:else}
+            <span class="strip-count" class:ok={!problemsError && !problemsLoading}>
+              <Icon name={problemsError ? "info" : problemsLoading ? "refresh-cw" : "circle-check"} size={13} />
+              {#if !problemsError && !problemsLoading}0{/if}
+            </span>
+          {/if}
+        </button>
+      {:else}
+        <span class="strip-idle" role="img" aria-label={stripLabel} title={stripLabel}>
+          <span class="strip-count" class:ok={!problemsLoading}>
+            <Icon name={problemsLoading ? "refresh-cw" : "circle-check"} size={13} />
+            {#if !problemsLoading}0{/if}
+          </span>
+        </span>
+      {/if}
+    {/if}
+    {#if onSaveStatus}
+      <button
+        bind:this={saveStatusEl}
+        type="button"
+        class="save-indicator {indicator.cls}"
+        aria-haspopup="dialog"
+        onclick={() => saveStatusEl && onSaveStatus(saveStatusEl)}
+        title={indicator.title}
+      ><Icon name={indicator.icon} size={13} /><span class="save-text" aria-live="polite" aria-atomic="true">{indicator.label}</span></button>
     {/if}
   </div>
 </div>
@@ -582,9 +672,9 @@
 
 <!-- Table insert dialog (fixed-position overlay, rendered outside the
      toolbar — same pattern as the image dialog below, and for the same
-     reason: M11 found this popup dead at every width where the More menu
-     exists because it used to live inside `.insert-group`, which
-     `display: none`s at exactly those widths.) -->
+     reason: inside `.insert-group` it would be dead at every width where the
+     More menu exists, since that group is `display: none` at exactly those
+     widths.) -->
 {#if tableOpen}
 <div class="image-dialog-backdrop" role="none" onclick={cancelTable}></div>
 <div
@@ -944,7 +1034,6 @@
   /* ── More overflow button ─────────────────────────────────────────────────── */
   .tb-more-wrap {
     position: relative;
-    margin-left: auto;
     /* Hidden by default; shown only while a group is hidden (tiers below). */
     display: none;
   }
@@ -955,6 +1044,56 @@
     flex-direction: column;
     gap: 1px;
   }
+
+  /* ── Status cluster (right end): Problems badge + save indicator ────────── */
+  .status-group {
+    margin-left: auto;
+    gap: 2px;
+  }
+  .toggle-strip,
+  .strip-idle {
+    display: inline-flex;
+    box-sizing: border-box;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 6px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    font-size: 11px;
+    color: var(--app-text-secondary);
+  }
+  .toggle-strip { cursor: pointer; }
+  .toggle-strip:hover { background: var(--app-control-hover-bg); }
+  .toggle-strip:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: -2px; }
+  .strip-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-variant-numeric: tabular-nums;
+  }
+  .error-count { color: var(--app-error-text); }
+  .warning-count { color: var(--app-warning-text); }
+  .strip-count.ok { color: var(--app-success-text); }
+  /* The save state: a button that opens "Where your work is kept". Resting
+     is calm but readable; in flight is italic; an error uses the error token. */
+  .save-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    white-space: nowrap;
+    background: transparent;
+    border: none;
+    padding: 3px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--app-text-secondary);
+  }
+  .save-indicator:hover { background: var(--app-control-hover-bg); }
+  .save-indicator:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
+  .save-indicator.saving { font-style: italic; }
+  .save-indicator.save-error { color: var(--app-error-text); font-weight: 600; }
 
   /*
    * Overflow tiers, by the toolbar's own width (a container query: the pane
@@ -970,8 +1109,10 @@
    * matching group, so the popup never repeats a visible button.
    */
   @container editor-toolbar (max-width: 479px) {
-    /* The Save label (the widest always-on control) yields first. */
-    .save-label {
+    /* The Save label (the widest always-on control) yields first, with the
+       save-state text beside the Problems badge. */
+    .save-label,
+    .save-text {
       display: none;
     }
     .save-btn {
@@ -1178,7 +1319,6 @@
     cursor: not-allowed;
   }
 
-  /* Theme tokens already handle light/dark via :root and :root[data-theme="dark"].
-     The hand-rolled [data-theme="light"] override block was removed because all
-     colour rules now reference app tokens — no hardcoded hex overrides needed. */
+  /* Theme tokens already handle light/dark via :root and :root[data-theme="dark"];
+     all colour rules reference app tokens — no hardcoded hex overrides needed. */
 </style>

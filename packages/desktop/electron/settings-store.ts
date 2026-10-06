@@ -2,12 +2,10 @@
 // User settings (#45) — persisted, section-organised user preferences in a
 // SEPARATE file from gutterpress-prefs.json so session/per-project state and durable
 // user settings don't collide. The AppSettings shape and DEFAULT_SETTINGS
-// (#29) are no longer hand-duplicated here — both are imported from
-// `src/lib/platform/shared-types.ts`, the single shared module both the host
-// and the renderer side consume.
+// (#29) are imported from `src/lib/platform/shared-types.ts`, the single
+// shared module both the host and the renderer side consume.
 //
-// Phase 5b: extracted (behavior-identical) from electron/main.ts. The pure
-// merge helpers live here alongside an injected-fs store factory so the
+// The pure merge helpers live here alongside an injected-fs store factory so the
 // read/write path can be unit-tested with fakes (tests/platform/settings-store).
 // Writes are atomic (write `<file>.tmp` then rename) and a parse failure
 // preserves the corrupt file as `<file>.corrupt-<ts>` instead of silently
@@ -17,13 +15,11 @@
 import path from "node:path";
 import type { AppSettings } from "../src/lib/platform/shared-types";
 import { DEFAULT_SETTINGS } from "../src/lib/platform/shared-types";
-// Audit A1 / conf-27: the settings merge lives in exactly ONE place now — the
-// reconciled, array-safe `deepMergeSettings` in the pure (PWA-clean) renderer
-// module. This host store used to carry a THIRD, divergent copy that lacked the
-// `!Array.isArray(value)` guard, so an array-shaped section patch spread into
-// `{0:…,1:…}` and corrupted app-settings.json on the LIVE desktop path (the POST
-// /api/app/settings route runs this copy). `mergeSettings` stays as a thin,
-// same-signature delegator so every caller is unchanged.
+// The settings merge lives in exactly ONE place — the array-safe
+// `deepMergeSettings` in the pure (PWA-clean) renderer module. Do not add a
+// host-side copy: a divergent one without the `!Array.isArray(value)` guard
+// spread an array-shaped section patch into `{0:…,1:…}` and corrupted
+// app-settings.json. `mergeSettings` is a thin, same-signature delegator.
 import { deepMergeSettings } from "../src/lib/settings-merge";
 
 export type { AppSettings };
@@ -71,7 +67,7 @@ export function createSettingsStore(deps: SettingsStoreDeps): {
       // EIO, EMFILE) is TRANSIENT: returning defaults here would let
       // updateSettings merge its patch over DEFAULT_SETTINGS and rename-write
       // the result, silently wiping every other customized setting. Rethrow so
-      // the write aborts — same standard as FileTokenStore.read (audit G3).
+      // the write aborts — same standard as FileTokenStore.read.
       if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return DEFAULT_SETTINGS;
       throw err;
     }
@@ -140,11 +136,11 @@ export function createSettingsStore(deps: SettingsStoreDeps): {
   }
 
   /**
-   * Atomic read-modify-write (audit A2 / conf-14): the read, merge, and write
-   * all happen inside ONE queue slot, so two settings patches fired close
-   * together compose instead of the second silently reverting the first. The
-   * POST /api/app/settings route previously did readSettings()+writeSettings()
-   * as two unserialized steps — a lost update. Mirrors prefs-store.updatePrefs.
+   * Atomic read-modify-write: the read, merge, and write all happen inside
+   * ONE queue slot, so two settings patches fired close together compose
+   * instead of the second silently reverting the first (a separate
+   * readSettings()+writeSettings() pair is a lost update). Mirrors
+   * prefs-store.updatePrefs.
    */
   function updateSettings(patch: DeepPartialSettings): Promise<AppSettings> {
     return enqueue(async () => {

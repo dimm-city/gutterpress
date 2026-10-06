@@ -39,7 +39,7 @@ const platform = {
 // this one, and `bun test --isolate` does NOT sandbox it (same caveat already
 // called out for `mock.module("electron", …)` in tests/platform/
 // sveltekit-host.ts and friends). Its replacement object only had
-// `getPlatform`/`isDesktop`, so any later file statically importing
+// `getPlatform`, so any later file statically importing
 // `DEFAULT_SETTINGS` or `__resetPlatform` from platform/index died with a
 // misleading "Export named 'X' not found" SyntaxError.
 //
@@ -56,11 +56,9 @@ const platform = {
 // deterministically. Same discipline
 // packages/cli/src/checks/pdf/structured-check-result.test.ts documents.
 spyOn(platformModule, "getPlatform").mockImplementation(() => platform as never);
-spyOn(platformModule, "isDesktop").mockImplementation(() => true);
 
 afterAll(() => {
   (platformModule.getPlatform as unknown as { mockRestore: () => void }).mockRestore();
-  (platformModule.isDesktop as unknown as { mockRestore: () => void }).mockRestore();
 });
 
 const { UpdateController } = await import("../../src/lib/update/update-controller.svelte");

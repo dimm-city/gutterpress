@@ -1,7 +1,7 @@
 /**
  * Line→offset resolution for `data-source-range` (inline-editing plan §2.3).
  *
- * PWA-clean (CLAUDE.md §8 / ADR 0004): zero `node:*` / `fs` / `path` / `url`
+ * PWA-clean (CLAUDE.md §8): zero `node:*` / `fs` / `path` / `url`
  * imports, zero runtime imports from `gutterpress`. This is a pure, unit-
  * testable module the SPA resolves a rendered block's `data-source-range`
  * against `buffer.content` at the moment it needs character offsets (menu

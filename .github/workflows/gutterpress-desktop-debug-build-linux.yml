@@ -9,9 +9,7 @@ name: Gutterpress desktop debug build (Linux AppImage)
 #
 #   - Actions -> this workflow -> "Run workflow" -> pick the branch -> Run.
 #   - Put `[appimage]` in a commit message. That push builds; every other
-#     push skips in a second without starting a runner. (A `build-appimage-*`
-#     tag trigger also existed; removed 2026-08-30 with zero lifetime uses —
-#     the marker covered every real case.)
+#     push skips in a second without starting a runner.
 #
 # When it finishes, download the artifact from the run's summary page and
 # `chmod +x` the AppImage before running it.

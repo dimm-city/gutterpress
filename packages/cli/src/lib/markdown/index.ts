@@ -15,10 +15,7 @@ export type { LayoutWarning } from "./assemble";
  * THE canonical "which markdown files make up this book, and in what order?"
  * resolver — markdown's counterpart to `resolveActiveStyles` (style-resolver.ts).
  * Both `renderChapters` below AND validation (validation-exec.ts) call this,
- * so what gets checked is always what gets rendered
- * (2026-07-28 duplication audit — those two used to each re-derive their own
- * recursive-glob approximation of "the book's markdown files" instead of
- * calling this):
+ * so what gets checked is always what gets rendered:
  *   1. `configuredFiles` (the manifest `source.files` list), if it has entries,
  *      in that order; else
  *   2. every `.md` file directly inside `inputDir` — NOT recursive, since a
@@ -50,8 +47,8 @@ export async function resolveActiveMarkdownFiles(
  * This is the thin **Node wrapper** around the pure `assembleBookHtml`
  * (`./assemble.ts`): it resolves the CSS list + the file list off disk and
  * supplies a `node:fs/promises`-backed `readText`. The pure assembler owns the
- * markdown→HTML→book.html work, so the browser/PWA WebAdapter can reuse the
- * exact same render path with a File System Access reader (#33).
+ * markdown→HTML→book.html work, so a future browser build can reuse the
+ * exact same render path with its own file reader.
  */
 export async function renderChapters(
   inputDir: string,
@@ -71,10 +68,9 @@ export async function renderChapters(
     /** Add source-file ids to source-mapped preview blocks without wrappers. */
     annotateSourceChapters?: boolean;
     /**
-     * ARCH finding #4: per-chapter author-mistake warnings computed by
-     * Gutterpress's marker parser (`env.layoutWarnings`), forwarded straight
-     * through from {@link assembleBookHtml}. See that option's docstring — omitting
-     * it is fully backward compatible.
+     * Per-chapter author-mistake warnings computed by Gutterpress's marker
+     * parser (`env.layoutWarnings`), forwarded straight through from
+     * {@link assembleBookHtml}. See that option's docstring. Optional.
      */
     onChapterWarnings?: (file: string, warnings: LayoutWarning[]) => void;
     /** See {@link assembleBookHtml}'s option of the same name. */
@@ -174,7 +170,7 @@ export async function renderChaptersToFile(
     plugins?: LoadedPlugin[];
     /** See {@link renderChapters}'s option of the same name. */
     pluginStyles?: PluginStyleGroup[];
-    /** ARCH finding #4 — see {@link renderChapters}'s option of the same name. */
+    /** See {@link renderChapters}'s option of the same name. */
     onChapterWarnings?: (file: string, warnings: LayoutWarning[]) => void;
     /** See {@link renderChapters}'s options of the same names. */
     onImageRefs?: (refs: string[]) => void;

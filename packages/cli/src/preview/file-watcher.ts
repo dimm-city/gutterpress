@@ -51,13 +51,13 @@ const EMPTY_BOOK_HTML = `<!doctype html>
 /**
  * Shared preview render path. renderChapters() does all Markdown + CSS work.
  *
- * Named `renderPreviewBook` (ARCH finding #53) to distinguish it from
+ * Named `renderPreviewBook` to distinguish it from
  * build-runner.ts's `renderBook` — same name, different module, and a
  * genuinely different contract: this one is degrade-and-report (a plugin the
  * author enabled but hasn't installed yet is skipped with a loud warning so
  * the rest of the live preview still renders); build-runner.ts's is
  * fail-fast, because a final artifact must never silently drop a plugin.
- * Both preambles now share {@link loadPluginsWithCss}.
+ * Both preambles share {@link loadPluginsWithCss}.
  */
 async function renderPreviewBook(
   inputPath: string,
@@ -85,10 +85,9 @@ async function renderPreviewBook(
     pluginStyles,
     annotateSourceChapters: true,
     ...(opts.onCssAssets ? { onCssAssets: opts.onCssAssets } : {}),
-    // ARCH finding #4: Gutterpress's typed, line-numbered marker warnings
-    // (env.layoutWarnings) used to be discarded here too — this is the
-    // ONE preview render path, so wiring it here surfaces a marker mistake live
-    // in the terminal on both startup and every rebuild.
+    // Gutterpress's typed, line-numbered marker warnings (env.layoutWarnings):
+    // this is the ONE preview render path, so wiring it here surfaces a marker
+    // mistake live in the terminal on both startup and every rebuild.
     onChapterWarnings: (file, warnings) => {
       for (const w of warnings) {
         warn(`  ${file}, line ${w.line}: ${w.message}`);
@@ -464,11 +463,9 @@ async function addAndAwaitWatch(watcher: FSWatcher, roots: string[]): Promise<vo
  * Create and configure a file watcher for the project's input directory plus
  * the book's declared external dependencies (see {@link externalWatchTargets}).
  *
- * Nothing is mirrored anywhere: the old external-asset-root watching (a sibling
- * `../_shared` directory copied under its own name into the temp dir) went away
- * with `copyAssets` and the manifest's `source.assets` field it depended on.
- * The project is served straight from disk and stylesheets are inlined at
- * render time, so an external dependency needs watching, not staging.
+ * Nothing is mirrored anywhere: the project is served straight from disk and
+ * stylesheets are inlined at render time, so an external dependency needs
+ * watching, not staging.
  */
 export function createFileWatcher(state: ServerState): FSWatcher {
   const inputResolved = path.resolve(state.currentInputPath);
@@ -675,8 +672,8 @@ export function createFileWatcher(state: ServerState): FSWatcher {
 
         // One broadcast kind, whatever changed: the shell double-buffers the
         // complete regenerated book and swaps it in, so a one-word edit and a
-        // stylesheet rewrite take the same path (preview-shell.js's header
-        // records why the per-chapter splice was removed).
+        // stylesheet rewrite take the same path (preview-shell.js records why
+        // there is no per-chapter splice).
         state.previewServer?.broadcastReload();
         info(
           changes.length > 1

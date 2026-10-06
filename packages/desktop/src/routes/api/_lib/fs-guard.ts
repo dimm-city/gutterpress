@@ -3,7 +3,7 @@ import { isWithinAnyRootCanonical } from '../../../../electron/server-bridge/fs-
 import { getHostServices } from '../../../../electron/server-bridge/host-services';
 import { requireAbsolute } from './handler';
 
-// Route-side half of the fs-route project-scoping guard (ARCH review #37).
+// Route-side half of the fs-route project-scoping guard (#37).
 // The policy itself — what `projectRoots()`/`readOnlyRoots()` mean and why —
 // is documented on `electron/server-bridge/fs-guard.ts`'s `FsGuardHooks`.
 // This file owns the one thing that belongs in the SvelteKit host layer: the
@@ -18,7 +18,7 @@ import { requireAbsolute } from './handler';
  * validation — e.g. a join of an already-validated dir + a name segment),
  * after `requireAbsolute` — so the check runs before the path is ever handed
  * to a real fs op, on the same fail-before-the-service-call footing every
- * other `defineRoute` check uses. ASYNC (P1 review): the containment check
+ * other `defineRoute` check uses. ASYNC: the containment check
  * canonicalizes `absPath` and every allowed root with `realpath` first (see
  * `electron/server-bridge/fs-guard.ts`'s `isWithinAnyRootCanonical`) — plain
  * `path.resolve` normalizes lexical segments (`..`, `.`) but leaves symlinks
@@ -54,10 +54,9 @@ export async function requireWithinProjectRoot(
  * not) AND inside the open project (403 if not) in one call.
  *
  * Every route that does filesystem, git, or credentialed-network work against
- * a `projectDir` uses this — the 2026-07-29 audit found ~36 of them
- * (vcs/*, remote/sync, publish/*, theme/*, style/*, manifest/*, plugin/*,
- * snip/*, tpl/save-as-template, lint/project) validating the parameter with
- * `requireAbsolute` alone, i.e. accepting ANY absolute path on disk. Having
+ * a `projectDir` uses this (vcs/*, remote/sync, publish/*, theme/*, style/*,
+ * manifest/*, plugin/*, snip/*, tpl/save-as-template, lint/project);
+ * `requireAbsolute` alone would accept ANY absolute path on disk. Having
  * ONE named check instead of a two-call idiom is what makes the invariant
  * greppable: a `projectDir` route that doesn't call this is the exception and
  * has to say why.

@@ -1,5 +1,5 @@
 /**
- * Host-keyed credential store for remote Git providers (#15, ADR 0006 D3 L2).
+ * Host-keyed credential store for remote Git providers (#15).
  *
  * Credentials are keyed by REMOTE HOST (e.g. "github.com"), not by project: a
  * credential for a host makes every project whose origin points at that host
@@ -10,7 +10,7 @@
  * packages/desktop/electron/credential-store.ts). The one concrete
  * implementation here, {@link FileTokenStore}, is the CLI's store: a `0600`
  * JSON file under the user config dir (the `gh` CLI model — encrypted-at-rest
- * is explicitly not required for the CLI per ADR 0006 D3).
+ * is explicitly not required for the CLI).
  *
  * SECURITY INVARIANT: token values must never be logged or embedded in error
  * messages — mask them at the point of use.
@@ -36,7 +36,7 @@ export interface HostCredential {
 }
 
 /**
- * Host-keyed credential vault contract (ADR 0006 D3 layer 2). Implementations
+ * Host-keyed credential vault contract. Implementations
  * are provided by the HOST APP (Electron safeStorage, CLI 0600 file); the lib
  * only consumes this interface.
  */
@@ -230,7 +230,7 @@ function normalizeHost(host: string): string {
   return host.trim().toLowerCase();
 }
 
-// ── Embedded-credential URL migration (ADR 0006 D7) ──────────────────────────
+// ── Embedded-credential URL migration ──────────────────────────
 
 /** Result of {@link extractUrlCredential}. */
 export interface UrlCredentialExtraction {

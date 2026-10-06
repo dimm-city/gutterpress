@@ -7,9 +7,8 @@ name: Preview smoke
 # uncaught page errors.
 #
 # Chromium is the only engine tested — Gutterpress supports Chrome and other
-# Chromium-based browsers and nothing else (CLAUDE.md, ratified 2026-08-23).
-# The firefox/webkit legs, and the cross-engine page-count comparison that was
-# their whole point, were removed with that ruling.
+# Chromium-based browsers and nothing else (CLAUDE.md, ratified 2026-08-23),
+# so there are no firefox/webkit legs or cross-engine comparisons.
 
 on:
   pull_request:

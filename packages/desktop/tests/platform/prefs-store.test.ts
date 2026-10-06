@@ -1,17 +1,15 @@
 /**
- * Unit tests for the `prefs-store` host module (Phase 5b extraction from
- * electron/main.ts). Covers the injected-fs store factory `createPrefsStore`:
- * readPrefs (missing/corrupt file), writePrefs (atomic tmp+rename write),
- * prefsPath, and existingDirectory.
+ * Unit tests for the `prefs-store` host module. Covers the injected-fs store
+ * factory `createPrefsStore`: readPrefs (missing/corrupt file), writePrefs
+ * (atomic tmp+rename write), prefsPath, and existingDirectory.
  *
  * #34: writes are atomic (`<file>.tmp` then `rename`) and a JSON-parse
  * failure preserves the corrupt file as `<file>.corrupt-<ts>` instead of
- * silently resetting to `{}` — the old behavior that discarded recents,
- * favorites, and per-project state on any truncated/corrupted write.
+ * silently resetting to `{}`, which would discard recents, favorites, and
+ * per-project state on any truncated/corrupted write.
  *
- * #30: the legacy top-level `currentPage`/`viewMode` migration fallback
- * (`migrateLegacyProjectState`) is deleted — `DesktopPrefs` no longer has
- * those fields, so there is nothing left to migrate.
+ * #30: a file still carrying the pre-#43 top-level `currentPage`/`viewMode`
+ * fields (no longer part of `DesktopPrefs`) must read without losing anything.
  */
 import { expect, test } from "bun:test";
 import path from "node:path";

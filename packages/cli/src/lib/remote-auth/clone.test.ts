@@ -1,5 +1,5 @@
 /**
- * cloneRepository tests (#15, ADR 0006 D2) — including the SHALLOW-CLONE SPIKE.
+ * cloneRepository tests (#15) — including the SHALLOW-CLONE SPIKE.
  *
  * These tests run against a REAL git smart-HTTP wire-protocol exchange: a tiny
  * in-test `node:http` server implements `git-upload-pack` (ref advertisement +
@@ -323,7 +323,7 @@ test("clone into a non-empty folder fails with a friendly message", async () => 
   }
 });
 
-test("SSH URLs are rejected with author-friendly guidance (ADR 0006 D6)", async () => {
+test("SSH URLs are rejected with author-friendly guidance", async () => {
   const workDir = await tempDir("gutterpress-ssh-");
   try {
     await expect(

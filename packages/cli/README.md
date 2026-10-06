@@ -170,9 +170,9 @@ gutterpress new <name> [--kind <id>] [options]
 
 ### `gutterpress preview`
 
-Live HTML preview server by default. A single Markdown edit is rendered and
-spliced as one chapter over WebSocket; CSS, manifest, multi-file, deletion, and
-other structural changes reload the full document. This path is pure JS and
+Live HTML preview server by default. Every change — a single Markdown edit,
+CSS, manifest, multi-file, deletion, or other structural change — reloads the
+full document over WebSocket. This path is pure JS and
 needs no external tools. Pass `--format pdf` or `--format pdfx` for a one-shot
 build-and-open instead. `--manifest` applies only to those one-shot PDF/PDF-X
 modes; live HTML preview discovers the project manifest from its input

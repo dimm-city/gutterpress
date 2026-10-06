@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Committed regression tests for the preview-bridge primitives (ADR 0005) that
+// Committed regression tests for the preview-bridge primitives that
 // power the chapter-jump dropdown and editor↔preview sync. These run the REAL
 // lib script (preview-interface.js) against a real DOM (happy-dom), so they
 // exercise the actual querySelector/closest/getBoundingClientRect logic — not a

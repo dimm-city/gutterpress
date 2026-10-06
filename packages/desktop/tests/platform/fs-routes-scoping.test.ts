@@ -18,9 +18,8 @@ import { POST as inspectImageRoute } from "../../src/routes/api/media/inspect/+s
 import { POST as thumbnailRoute } from "../../src/routes/api/media/thumbnail/+server";
 import { POST as logReadRoute } from "../../src/routes/api/log/read/+server";
 
-// ARCH review #37: `/api/fs/{read-file,write-file,list-dir,stat-file,
-// copy-file}` used to accept ANY absolute path (only guard: isAbsolute).
-// These pin the project-scoping guard: inside the open project is allowed,
+// `/api/fs/{read-file,write-file,list-dir,stat-file,copy-file}` must not
+// accept just any absolute path. These pin the project-scoping guard: inside the open project is allowed,
 // a sibling directory with a shared string prefix is rejected (the
 // "/home/u/proj" vs "/home/u/proj2" regression), anything else outside is
 // rejected, and read-file's crash-recovery sidecar allowance is locked in

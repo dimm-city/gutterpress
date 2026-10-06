@@ -11,6 +11,7 @@ import { POST as createFileRoute } from "../../src/routes/api/fs/create-file/+se
 import { POST as createFolderRoute } from "../../src/routes/api/fs/create-folder/+server";
 import { POST as renameRoute } from "../../src/routes/api/fs/rename/+server";
 import { POST as deleteRoute } from "../../src/routes/api/fs/delete/+server";
+import { POST as undoDeleteRoute } from "../../src/routes/api/fs/undo-delete/+server";
 
 // UX review M9 (WP FT): route-level coverage for the FileTree CRUD routes —
 // project-scoping (inside root allowed; sibling-prefix and outside-root
@@ -47,10 +48,11 @@ async function exists(p: string): Promise<boolean> {
 let projectDir: string;
 let siblingDir: string;
 let outsideDir: string;
+let userDataDir: string;
 
 function baseServices(overrides: HostServicesOverrides = {}): HostServices {
   return makeHostServices({
-    desktop: { getUserDataPath: () => tmpdir() },
+    desktop: { getUserDataPath: () => userDataDir },
     fsGuard: { projectRoots: () => [projectDir], readOnlyRoots: () => [] },
     ...overrides,
   });
@@ -77,6 +79,7 @@ beforeEach(async () => {
   projectDir = path.join(base, "proj");
   siblingDir = path.join(base, "proj2");
   outsideDir = path.join(base, "elsewhere");
+  userDataDir = path.join(base, "user-data");
   await mkdir(projectDir, { recursive: true });
   await mkdir(siblingDir, { recursive: true });
   await mkdir(outsideDir, { recursive: true });
@@ -268,6 +271,48 @@ test("fs/delete: cannot delete the project root itself (400)", async () => {
   );
   expect(status).toBe(400);
   expect(await exists(projectDir)).toBe(true);
+});
+
+// ── undo-delete (#313) ─────────────────────────────────────────────────────
+
+async function deleteForUndo(target: string): Promise<string> {
+  const res = await deleteRoute({ request: request({ path: target, projectDir }) } as Parameters<typeof deleteRoute>[0]);
+  return ((await res.json()) as { undoToken: string }).undoToken;
+}
+
+function undo(token: string) {
+  return undoDeleteRoute({ request: request({ token }) } as Parameters<typeof undoDeleteRoute>[0]);
+}
+
+test("fs/undo-delete: puts a deleted folder back, contents intact", async () => {
+  const dir = path.join(projectDir, "part-1");
+  await mkdir(dir);
+  await writeFile(path.join(dir, "ch.md"), "# Ch", "utf8");
+  const token = await deleteForUndo(dir);
+  expect(await exists(dir)).toBe(false);
+  const res = await undo(token);
+  expect(res.status).toBe(200);
+  expect(await readFile(path.join(dir, "ch.md"), "utf8")).toBe("# Ch");
+});
+
+test("fs/undo-delete: only the latest delete is held — an earlier token is gone (410)", async () => {
+  const first = await deleteForUndo(path.join(projectDir, "chapter-01.md"));
+  await writeFile(path.join(projectDir, "chapter-02.md"), "# Two", "utf8");
+  await deleteForUndo(path.join(projectDir, "chapter-02.md"));
+  expect((await caught(undo(first))).status).toBe(410);
+  expect(await exists(path.join(projectDir, "chapter-01.md"))).toBe(false);
+});
+
+test("fs/undo-delete: never restores over a file that has taken its place (409)", async () => {
+  const target = path.join(projectDir, "chapter-01.md");
+  const token = await deleteForUndo(target);
+  await writeFile(target, "# New", "utf8");
+  expect((await caught(undo(token))).status).toBe(409);
+  expect(await readFile(target, "utf8")).toBe("# New");
+});
+
+test("fs/undo-delete: a token that is not one of ours is refused (410)", async () => {
+  expect((await caught(undo("../../etc"))).status).toBe(410);
 });
 
 // ── delete: snapshot-before-delete discipline ─────────────────────────────

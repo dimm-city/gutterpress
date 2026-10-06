@@ -9,7 +9,7 @@ export const POST: RequestHandler = defineRoute<{ imagePath: string }>({
     if (!body.imagePath || typeof body.imagePath !== 'string') {
       error(400, "'imagePath' string is required");
     }
-    // Confine to the open project (ARCH #37) — see media/thumbnail.
+    // Confine to the open project — see media/thumbnail.
     return {
       imagePath: await requireWithinProjectRoot(
         requireAbsolute(body.imagePath, 'media:inspect'),

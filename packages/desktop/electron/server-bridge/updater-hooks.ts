@@ -1,7 +1,7 @@
 /**
  * Shared updater hooks for the updater:getStatus/check/download server routes
- * (ARCH review #8 — migrated off IPC; they were plain request/response with
- * no push stream or live-BrowserWindow need).
+ * (routes, not IPC: plain request/response with no push stream or
+ * live-BrowserWindow need).
  *
  * `electron/updater.ts`'s mutable state (phase/lastError/downloadedVersion/
  * activeAutoUpdater) lives inside main.ts's bundle, populated by the ONE

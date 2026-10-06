@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Phase 5 parity gate — native-only migration plan.
+ * Preview↔print parity gate.
  *
  * The desktop preview and the shipped PDF use DIFFERENT fragmenters: the
  * in-browser viewer (`src/engine/viewer/fragment.ts`, what an author sees
@@ -133,7 +133,7 @@ const DEFAULT_FIXTURES = [
   join(REPO, "examples", "with-design-guide", "book-01"),
   join(REPO, "examples", "with-design-guide", "book-02"),
   join(REPO, "examples", "with-design-guide", "design-guide"),
-  // The three-repro spike fixture (committed): it pinned the running-heads
+  // The css-authoring fixture (committed): it pinned the running-heads
   // regression where `<gp-anchor>`'s zero-size `position:absolute` first
   // child, sitting immediately after a forced `break-before: page`, measured
   // one page late in print (headingPageMap divergence on pages 2-3) — see
@@ -978,8 +978,7 @@ async function runFixture(
   // print-quality. A pre-existing width-overflow in a fixture book is a real
   // (separate) finding, not this gate's concern; downgrading it to a warning
   // (never rewriting the fixture's content) lets both fragmenters run so
-  // their page maps can still be compared, exactly like the migration
-  // spike's `--skip-pre-validate` on the same class of pre-existing issue.
+  // their page maps can still be compared.
   const result: BuildResult = await build({ input: htmlPath, browser, allowShrink: true });
   // …but say so loudly: a shrunk print is laid out at the OFFENDING width and
   // scaled to fit, so it fits ~1/scale² more content per page than the viewer,

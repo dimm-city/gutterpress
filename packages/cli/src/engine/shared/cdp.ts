@@ -42,11 +42,9 @@ import { requireChromiumExecutable } from "../../lib/chromium.ts";
  * `getComputedStyle(el, '::after').content` instead of trusting
  * `CSS.supports` — i.e. the thing that actually defends against this class of
  * silent-content-loss regression is the probe, not the milestone pin. Measured
- * 148 vs 151 head-to-head: the spike suite differs in exactly 2 checks (both
- * assertions ABOUT Chromium's parse-vs-drop behaviour, now written to accept
- * either regime — see spike/native-engine s0/s2), the parity gate output is
- * byte-identical, and real 34pp/53pp book builds produce identical page counts
- * and sizes on both milestones. So 151 was a *floor for the incident's
+ * 148 vs 151 head-to-head: the parity gate output is byte-identical, and real
+ * 34pp/53pp book builds produce identical page counts and sizes on both
+ * milestones. So 151 was a *floor for the incident's
  * discovery*, not a requirement of the fix. It is pinned rather than probed —
  * running on anything below 148 is still an error rather than a guess — but
  * 148 is the honestly-supported floor because it's also what Electron's
@@ -54,10 +52,8 @@ import { requireChromiumExecutable } from "../../lib/chromium.ts";
  * desktop app needs to drive its own Chromium for native-engine PDF export
  * (see packages/desktop/electron's engine-browser module). Raising or
  * lowering this floor again means re-measuring and treating every changed
- * measurement as a finding, same as before — but the `spike/folio/spikes/`
- * harness that produced these numbers (`bun run spikes`) was deleted with
- * the rest of the pre-native-engine scaffolding and no command in this repo
- * re-runs it, so it would have to be rebuilt first. See the provenance note
+ * measurement as a finding. No command in this repo re-runs that
+ * measurement, so it would have to be rebuilt first. See the provenance note
  * at the top of docs/engine/ENGINE.md.
  */
 export const REQUIRED_MILESTONE = 148;

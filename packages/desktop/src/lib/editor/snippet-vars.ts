@@ -3,7 +3,7 @@
  * `snippets` functions.
  *
  * These are intentionally duplicated (a handful of lines, zero node deps) rather
- * than value-imported from `gutterpress`: §8 / ADR 0004 keeps the SPA
+ * than value-imported from `gutterpress`: §8 keeps the SPA
  * bundle free of the Node-target lib. The host (electron/main.ts) uses the lib's
  * copy for `listSnippets`; the renderer uses this copy to substitute values the
  * author typed into the prompt dialog before inserting at the cursor.

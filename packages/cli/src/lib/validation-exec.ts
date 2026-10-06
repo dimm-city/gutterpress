@@ -31,8 +31,8 @@ import {
 } from "./targets";
 import type { GutterpressManifest, ResolvedConfig } from "../schema/manifest.types";
 
-// Trigger built-in check self-registration (audit B5: one shared entry point,
-// also imported by checks/runner.ts so the registry is never empty).
+// Trigger built-in check self-registration (one shared entry point, also
+// imported by checks/runner.ts so the registry is never empty).
 import "../checks/register-builtins";
 
 export interface ValidationExecutionArgs {
@@ -61,10 +61,9 @@ export interface ValidationExecutionArgs {
    * only, without touching the manifest's `validate.source.stylelint`
    * setting on disk (#272 — one CSS gate, not two). Set by the build
    * pipeline's `runQualityGates` (build-runner.ts) from `--skip-lint` /
-   * `config.lint.enabled: false`, so that flag disables just the one check
-   * it always meant to gate rather than a whole separate lint pass. Every
-   * other caller (`gutterpress validate`/`preflight`, the desktop Problems
-   * panel) leaves this unset and gets the manifest's own setting.
+   * `config.lint.enabled: false`, so that flag disables just this one check.
+   * Every other caller (`gutterpress validate`/`preflight`, the desktop
+   * Problems panel) leaves this unset and gets the manifest's own setting.
    */
   skipStylelint?: boolean;
   /**
@@ -159,12 +158,11 @@ function resolvePhaseArg(raw: string): CheckPhase | undefined {
 }
 
 /**
- * Resolve `--category` (CSV) to validated {@link CheckCategory} values. This
- * mirrors {@link resolvePhaseArg}'s bug shape: `args.category` was previously
- * cast straight to `CheckCategory` (`s as CheckCategory`) with no validation,
- * so a typo like `--category asset,srouce` silently produced a category that
- * matches zero registered checks instead of failing loudly. Unknown values
- * now throw `UsageError`, same as an unrecognized `--phase`.
+ * Resolve `--category` (CSV) to validated {@link CheckCategory} values, like
+ * {@link resolvePhaseArg}: a bare `s as CheckCategory` cast would let a typo
+ * like `--category asset,srouce` silently produce a category that matches
+ * zero registered checks instead of failing loudly. Unknown values throw
+ * `UsageError`, same as an unrecognized `--phase`.
  */
 function resolveCategoryArg(raw?: string): CheckCategory[] | undefined {
   const parsed = parseCsv(raw);
@@ -457,32 +455,26 @@ export async function executeValidation(
   if (inputDir) {
     // THE canonical file-set resolvers — the SAME ones the renderer uses
     // (renderChapters, lib/markdown/index.ts / renderBook, build-runner.ts) —
-    // instead of an independent recursive glob across the whole project.
-    // Before this (2026-07-28 duplication audit), a manifest with no
-    // `source.files`/`styles` made validation glob `**/*.md` / `**/*.css`
-    // project-wide: an unused theme, a drafts folder, or a design system's own
-    // docs got linted/validated even though the book never references them,
-    // and the print-safety `checkCss` gate ran on stylesheets that don't ship.
+    // instead of an independent recursive glob across the whole project. A
+    // project-wide `**/*.md` / `**/*.css` glob would lint an unused theme, a
+    // drafts folder, or a design system's own docs that the book never
+    // references, and run the print-safety `checkCss` gate on stylesheets
+    // that don't ship.
     //
     // Anchored on `manifestDir` — the SAME single anchor the build resolves
-    // every manifest-relative path against (`BuildContext.renderDir`). This
-    // used to say `inputDir` "to match what the build anchors renderChapters on",
-    // which was true at the time and wrong in the same way the build was: the
-    // two differ only under an explicit `--manifest` outside `--input`, and the
-    // docs are unambiguous that `source.files` and `styles:` are BOTH
-    // manifest-relative (2026-07-29 audit).
+    // every manifest-relative path against (`BuildContext.renderDir`), not
+    // `inputDir`: the two differ under an explicit `--manifest` outside
+    // `--input`, and `source.files` and `styles:` are BOTH manifest-relative.
     const relMarkdown = await resolveActiveMarkdownFiles(manifestDir, config.source.files);
     markdownFiles = relMarkdown.map((f) => join(manifestDir, canonicalChapterId(f)));
 
-    // stylelint (source.stylelint) skips minified CSS, since line/column
-    // findings on a minified file are meaningless; it still ships via
-    // resolveActiveStyles/inlineStyles regardless.
+    // The print-safety check (source.stylelint) skips minified CSS, since
+    // line/column findings on a minified file are meaningless; it still ships
+    // via resolveActiveStyles/inlineStyles regardless.
     //
-    // #262: since #238 a plugin's file-based `styles` are a real,
-    // lintable/ownership-checked CSS surface, and for a while only the (since
-    // deleted) standalone `gutterpress lint` folded them in — a plugin's CSS
-    // was never checked by `validate`/`preflight` or the desktop Problems
-    // panel, the surfaces people actually use. `pluginStylePaths` is either
+    // #262: a plugin's file-based `styles` are a real, lintable/ownership-
+    // checked CSS surface, so `validate`/`preflight` and the desktop Problems
+    // panel check them too. `pluginStylePaths` is either
     // the build's preValidate gate handing in its own already-loaded plugins
     // (build-runner.ts's loadBuildPlugins — this run is then free: no plugin
     // load happens here at all), or, for a standalone `validate`/`preflight`
@@ -510,7 +502,7 @@ export async function executeValidation(
     // all for a project whose only subdirectory was `dist`.
     //
     // Plus the directories holding the ACTIVE stylesheets' out-of-book asset
-    // closure (2026-07-29 audit). A shared repo-root theme's own `url()`
+    // closure. A shared repo-root theme's own `url()`
     // targets are embedded into the built PDF — fonts always, images under the
     // inline cap — so a scan limited to the book folder never checked shipped
     // shared fonts or art for resolution, colour space, TAC, file size, alpha,

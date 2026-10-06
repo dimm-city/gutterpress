@@ -288,27 +288,16 @@
     armPendingSwap();
   }
 
-  // Incremental chapter splice used to live here (spliceChapter): it grafted
-  // a freshly-paginated replacement into a chapter's live page range. It was
-  // tried and removed (2026-08-08 review), and the standing reason is
-  // PERFORMANCE, not soundness: measured end-to-end (file write -> change
-  // visible, 5 samples, 34pp field guide) the plain full reload (`swap`,
-  // below) is 509ms avg vs the incremental splice's 998ms avg. The server
-  // now sends ONE update kind, `full-reload`, and every one goes straight to
-  // `swap()`; the `/__chapter` route and `content-update` message that fed
-  // the splice were deleted with it.
+  // The server sends ONE update kind, `full-reload`, and every one goes
+  // straight to `swap()` (below). An incremental chapter splice was measured
+  // SLOWER, not unsound: end-to-end (file write -> change visible, 5 samples,
+  // 34pp field guide) the full reload is 509ms avg vs the splice's 998ms avg.
   //
-  // CORRECTED 2026-08-24: the 2026-08-08 review ALSO recorded a soundness
-  // objection — that `refresh()` -> `relayout()` "only re-measures the
-  // EXISTING strips", silently dropping any page context the edit
-  // introduces. That is false against the current `fragment.ts`, whose
-  // `relayout()` unwraps the strips and re-runs `buildStrips()` from
-  // scratch before re-measuring, precisely so a mutation that adds or
-  // removes a page-context run is seen. Do not cite the old objection as a
-  // reason a DOM mutation cannot be re-paginated — it can, and the inline
+  // A DOM mutation CAN be re-paginated: `refresh()` -> `relayout()` unwraps
+  // the strips and re-runs `buildStrips()` from scratch before re-measuring,
+  // so a mutation that adds or removes a page-context run is seen. The inline
   // editing work depends on it (docs/inline-editing-plan.md, ADR 0009
-  // decision 4 as revised). The perf comparison above still stands on its
-  // own for the full-document reload path.
+  // decision 4).
 
   function markActiveReady() {
     onReady(active, function () {

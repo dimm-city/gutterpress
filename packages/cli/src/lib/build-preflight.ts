@@ -7,12 +7,11 @@ import { log } from "../utils/logger";
 import type { BuildFormat } from "./build-runner";
 
 /**
- * Tool preflight + gate computation (ARCH finding #9, extracted from
- * build-runner.ts): decide, BEFORE the pipeline starts doing real work,
- * whether every external tool a build will spawn is actually available, and
- * which of the lint/pre-validate/post-validate gates apply for the requested
- * format + CLI flags. Both are pure decisions over the resolved format/config
- * — no rendering, no staging.
+ * Tool preflight + gate computation: decide, BEFORE the pipeline starts doing
+ * real work, whether every external tool a build will spawn is actually
+ * available, and which of the CSS-check/pre-validate/post-validate gates
+ * apply for the requested format + CLI flags. Both are pure decisions over the
+ * resolved format/config — no rendering, no staging.
  */
 
 interface MissingTool {
@@ -98,12 +97,10 @@ export interface Gates {
   /**
    * Disable the `source.stylelint` check (CSS print-safety: remote urls,
    * risky print effects, page-containment) for this run, without touching
-   * `preValidate` itself (#272 — one CSS gate, not two: this used to be a
-   * whole second gate, a separate lint-runner, that duplicated `source.stylelint`'s own
-   * `checkCss` pass one phase later). `true` when `--skip-lint` was passed or
-   * `config.lint.enabled === false`; consulted only when `preValidate` is
-   * also true — with `preValidate` off, no pre-build check (CSS included)
-   * runs at all, `--skip-lint` or not.
+   * `preValidate` itself (#272 — one CSS gate, not two). `true` when
+   * `--skip-lint` was passed or `config.lint.enabled === false`; consulted
+   * only when `preValidate` is also true — with `preValidate` off, no
+   * pre-build check (CSS included) runs at all, `--skip-lint` or not.
    */
   skipStylelint: boolean;
   preValidate: boolean;

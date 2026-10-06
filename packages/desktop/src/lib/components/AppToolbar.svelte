@@ -1,9 +1,9 @@
 <script lang="ts">
   /**
-   * AppToolbar — the main window toolbar, extracted out of `+page.svelte`
-   * (toolbar refactor). Purely presentational: every piece of state arrives as
-   * a prop and every action leaves through a callback, so the component is
-   * testable in isolation and `+page.svelte` stays a composition root.
+   * AppToolbar — the main window toolbar. Purely presentational: every piece of
+   * state arrives as a prop and every action leaves through a callback, so the
+   * component is testable in isolation and `+page.svelte` stays a composition
+   * root.
    *
    * Page navigation and zoom are NOT here: they live on the preview pane's
    * own strip (PreviewToolbar.svelte), beside the pages they act on, the way
@@ -19,12 +19,14 @@
    *    Least important goes first, and every control that turns icon-only
    *    keeps its aria-label and tooltip. The container is the toolbar's
    *    content box (window width − 24px), so a 900px window measures 876px:
-   *      ≤1150px  Edit/Read segmented group → dropdown menu, publish
-   *               hints and the Setup label drop
-   *      ≤875px   the action buttons drop their text labels, path trims
+   *      ≤1150px  publish hints drop, title/path cap
+   *      ≤875px   Edit/Read segmented group → dropdown menu, the action
+   *               buttons (Setup included) drop their text labels, path drops
    *      ≤620px   title/path, mode menu, Focus, separators, hints drop
    *    The narrow layout (≤820px window) adds the pane tabs to the end
-   *    cluster.
+   *    cluster and drops the Edit/Read control: the tabs decide which pane
+   *    shows, and a narrow window never lays out two pages side by side, so
+   *    the mode changes nothing visible there.
    *  - `(pointer: coarse)` keeps ≥44×44px touch targets on touch devices
    *    without fattening the desktop layout.
    *
@@ -63,20 +65,20 @@
     onSelectMobileTab,
     editorTabDisabled,
     previewTabDisabled,
-    hidePreviewControls,
     mode,
     onSetMode,
     focus,
     onToggleFocus,
     editorToggleDisabled,
-    publishLabel = "Publish",
     publishDisabled,
     onPublish,
     publishBtnEl = $bindable(undefined),
+    projectSettingsBtnEl = $bindable(undefined),
     publishHints = [],
     publishWarning = null,
     showProjectSettings,
     onOpenProjectSettings,
+    readerMode = false,
   }: {
     leftPanelOpen: boolean;
     onToggleLeftPanel: () => void;
@@ -94,8 +96,6 @@
     onSelectMobileTab: (tab: MobileTab) => void;
     editorTabDisabled: boolean;
     previewTabDisabled: boolean;
-    /** Narrow + editor tab: the preview is hidden, so the mode switch is noise. */
-    hidePreviewControls: boolean;
     /** The workspace mode — the ONE layout switch (see `WorkspaceMode`). */
     mode: WorkspaceMode;
     onSetMode: (mode: WorkspaceMode) => void;
@@ -104,18 +104,21 @@
     onToggleFocus: () => void;
     /** No project open — the whole mode control has nothing to switch. */
     editorToggleDisabled: boolean;
-    /** "Publish" on the desktop; the web target downloads the website instead. */
-    publishLabel?: string;
     publishDisabled: boolean;
     onPublish: () => void;
     /** The Publish button element — the wizard's focus-restore target. */
     publishBtnEl?: HTMLButtonElement | undefined;
+    /** The Setup button — Book settings restores focus to it on close. */
+    projectSettingsBtnEl?: HTMLButtonElement | undefined;
     /** Why Publish is unavailable right now (rendered as quiet notes). */
     publishHints?: string[];
     /** Save-readiness warning (rendered as role="alert"). */
     publishWarning?: string | null;
     showProjectSettings: boolean;
     onOpenProjectSettings: () => void;
+    /** Reader (Settings → App): only reading controls — Edit/Read, the pane
+     *  tabs, Setup and Publish are hidden; Focus stays. */
+    readerMode?: boolean;
   } = $props();
 
   // The collapsed menu's summary reports the mode it stands in for.
@@ -159,7 +162,7 @@
   }
 </script>
 
-<header class="toolbar" class:narrow={isNarrow} class:edit-narrow={hidePreviewControls} class:url-mode={sourceMode === "url"}>
+<header class="toolbar" class:narrow={isNarrow} class:reader={readerMode} class:url-mode={sourceMode === "url"}>
   <div class="toolbar-start">
     <!-- Panel toggle — far left, first control in navbar -->
     <button
@@ -318,9 +321,10 @@
       <!-- Book setup (manifest) — beside the mode control. Rendered on
            narrow layouts too (the tab bar replaces the mode control there,
            but book setup must stay reachable). Its text label yields at the
-           ≤1150px stage, before the action buttons'; aria-label and tooltip stay. -->
+           ≤875px stage with the action buttons'; aria-label and tooltip stay. -->
       <button
         class="icon-btn icon-text project-settings-btn"
+        bind:this={projectSettingsBtnEl}
         onclick={onOpenProjectSettings}
         title="Book setup"
         aria-label="Book setup"
@@ -330,7 +334,7 @@
       </button>
     {/if}
 
-    <!-- Why-is-Publish-disabled notes (UX-023). -->
+    <!-- Why-is-Publish-disabled notes. -->
     {#each publishHints as hint (hint)}
       <span class="save-hint" role="note">{hint}</span>
     {/each}
@@ -348,10 +352,10 @@
       onclick={onPublish}
       disabled={publishDisabled}
       title="Publish — save as PDF or a website, and send it to itch.io, Google Drive and more"
-      aria-label={publishLabel}
+      aria-label="Publish"
     >
       <Icon name="cloud-upload" />
-      <span class="btn-label">{publishLabel}</span>
+      <span class="btn-label">Publish</span>
     </button>
   </div>
 </header>
@@ -546,7 +550,7 @@
   }
   /* :not(.active) — the selected row keeps its selected look under the
      pointer. Unexcluded, the hover fill would repaint it as a plain hover row
-     (the #305 defect, originally white-on-pale text). */
+     (the #305 defect). */
   .toolbar .menu-panel button.menu-item:not(.active):hover:not(:disabled) {
     background: var(--app-control-hover-bg);
   }
@@ -626,7 +630,7 @@
     flex-shrink: 2;
   }
 
-  /* Visual separator between toolbar groups (UX-039) */
+  /* Visual separator between toolbar groups */
   .toolbar-sep {
     width: 1px;
     height: 20px;
@@ -635,7 +639,7 @@
     flex-shrink: 0;
   }
 
-  /* Hint beside the action when disabled (UX-023). Capped so it can never
+  /* Hint beside the action when disabled. Capped so it can never
      starve the identity cluster. */
   .save-hint {
     font-size: 11px;
@@ -652,13 +656,25 @@
     line-height: 1.35;
   }
 
-  /* Narrow + editor tab: the preview is hidden, so the mode switch is noise
-     — hide it so the edit toolbar is just Panel · Tabs · Actions. The
-     separators go too: with the view controls gone they would render as an
-     adjacent double rule. */
-  .toolbar.edit-narrow .mode-group,
-  .toolbar.edit-narrow .mode-menu,
-  .toolbar.edit-narrow .toolbar-sep {
+  /* Narrow: the pane tabs decide what shows and the layout is always a
+     single column, so the Edit/Read control would change nothing — hide it,
+     so the toolbar is Panel · Tabs · Focus · Actions. The separators go too:
+     with the mode control gone they would render as an adjacent double rule. */
+  .toolbar.narrow .mode-group,
+  .toolbar.narrow .mode-menu,
+  .toolbar.narrow .toolbar-sep {
+    display: none;
+  }
+
+  /* Reader: nothing but reading. The authoring controls go (not disabled —
+     a reader has no use for them), leaving Focus beside the title. */
+  .toolbar.reader .pane-toggle,
+  .toolbar.reader .mode-group,
+  .toolbar.reader .mode-menu,
+  .toolbar.reader .project-settings-btn,
+  .toolbar.reader .publish-btn,
+  .toolbar.reader .save-hint,
+  .toolbar.reader .toolbar-sep {
     display: none;
   }
 
@@ -679,13 +695,9 @@
 
   /* ---- Collapse stages (see the header comment for the full table) ---- */
   @container (max-width: 1150px) {
-    /* Swap the inline view-mode buttons for the compact menu button; Setup
-       drops its text label (icon, tooltip and aria-label stay) and the
-       hints yield from here down. */
-    .mode-group { display: none; }
-    details.mode-menu { display: inline-block; }
+    /* The hints yield from here down: the full bar is ~650px wide, but two
+       hints beside a disabled Publish can add ~460px more. */
     .save-hint { display: none; }
-    .project-settings-btn .btn-label { display: none; }
     /* The title ellipsizes (full text in its tooltip). */
     .doc-title { max-width: 120px; }
     .path { max-width: 100px; }
@@ -693,7 +705,10 @@
   @container (max-width: 875px) {
     /* Icon-only action buttons (aria-label/title keep them accessible; 875
        is what keeps their labels on a 900px window); the path (URL mode)
-       yields entirely, the URL title with it. */
+       yields entirely, the URL title with it. The inline view-mode buttons
+       swap for the compact menu button (#316: kept visible at 1024px). */
+    .mode-group { display: none; }
+    details.mode-menu { display: inline-block; }
     .view-label { display: none; }
     .btn-label { display: none; }
     .path { display: none; }

@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 // tools/check-render-purity.mjs — §8 renderer-purity guardrail.
 //
-// CLAUDE.md §8 requires the desktop renderer bundle to stay "PWA-clean": it may
-// value-import exactly one lib entry (`gutterpress/render`), and that
-// entry MUST remain free of host/node code. This script scans the built desktop
+// CLAUDE.md §8 requires the desktop renderer bundle to stay "PWA-clean": it
+// must contain no host/node code. This script scans the built desktop
 // SPA output and FAILS (exit 1) if any forbidden host/node marker appears in
 // it. It is the ONE implementation of the client-bundle check — CI runs it
 // (.github/workflows/ci.yml) and the desktop app's `npm run build` runs it with

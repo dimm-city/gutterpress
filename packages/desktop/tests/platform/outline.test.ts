@@ -1,10 +1,8 @@
 import { test, expect } from "bun:test";
-// RED: this module does not exist yet — extraction pending.
 import { activeOutlineIndexForLine } from "../../src/lib/routes/outline";
 import type { OutlineEntry } from "../../src/lib/preview-client";
 
-// activeOutlineIndexForLine is the pure port of +page.svelte's
-// updateActiveOutline loop: find the deepest heading whose sourceLine is
+// activeOutlineIndexForLine backs +page.svelte's updateActiveOutline: find the deepest heading whose sourceLine is
 // non-null and <= line, breaking at the first sourceLine > line. Entries with
 // a null sourceLine are skipped (they neither advance the index nor break).
 // The caller keeps the `if (outline.length === 0) return;` guard, so the

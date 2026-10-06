@@ -7,19 +7,18 @@
    * - Snippets live in the open project's `snippets/` folder. The host does the
    *   file IO via `api.snip.*` server routes. The
    *   variable substitution is pure renderer code (`snippet-vars.ts`) so no Node
-   *   lib is pulled into the SPA bundle (§8 / ADR 0004).
+   *   lib is pulled into the SPA bundle (§8).
    * - The component owns no editor knowledge: it calls `onInsert(text)` with the
    *   final text and `getSelectionText()` to seed "Save selection as snippet".
-   * - Desktop-only in v1 (file IO host gate); the trigger is hidden on web.
    *
-   * Delete (M25) is a two-step inline confirm — the trash button arms on the
+   * Delete is a two-step inline confirm — the trash button arms on the
    * first click ("Delete?" in place, no separate element popping up under
    * the cursor) and a Cancel button appears alongside it; a second click on
    * the (now armed) trash button actually deletes. Mirrors
    * CrashRecoveryDialog's Discard button via the shared
    * `requestInlineConfirm`/`cancelInlineConfirm` helpers (`$lib/dialog`).
    *
-   * #242 — `api.snip.list` now returns the project's own snippets MERGED with
+   * #242 — `api.snip.list` returns the project's own snippets MERGED with
    * every installed, active extension's declared `snippets` folder (the host
    * side lives in `snippets.ts`'s `listMergedSnippets`); each entry carries a
    * `source` saying which. This component's job with that field is entirely
@@ -245,7 +244,7 @@
     }
   }
 
-  // ── Two-step delete confirm (M25) ───────────────────────────────────────
+  // ── Two-step delete confirm ─────────────────────────────────────────────
   let confirmDelete = $state<InlineConfirmState>({});
 
   function requestDelete(entry: SnippetEntry) {
@@ -332,7 +331,7 @@
                      silently modify a file inside an installed extension's
                      folder — see this file's header comment). -->
                 {#if entry.source.kind === "project"}
-                  <!-- Single persistent button (M25) — arming the confirm only
+                  <!-- Single persistent button — arming the confirm only
                        swaps its label/class in place so the first click never
                        loses focus. -->
                   <button

@@ -67,7 +67,7 @@
   window.addEventListener('renderingComplete', function (e) {
     post({ type: 'gutterpress:event', name: 'renderingComplete', detail: e.detail });
   });
-  // ADR 0005: source-position sync + click-to-source.
+  // source-position sync + click-to-source.
   window.addEventListener('sourceLineChanged', function (e) {
     post({ type: 'gutterpress:event', name: 'sourceLineChanged', detail: e.detail });
   });

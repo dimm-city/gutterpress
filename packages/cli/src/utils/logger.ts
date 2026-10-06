@@ -10,8 +10,7 @@
  *   - The `log` facade object (`log.info`/`log.warn`/`log.error`/`log.success`)
  *     — clean, prefix-styled command output used by the CLI commands and
  *     re-exported from `index.ts` for the desktop. Always emitted (it carries
- *     user-facing command results, not diagnostic chatter), preserving the
- *     historical `lib/logger` behavior verbatim.
+ *     user-facing command results, not diagnostic chatter).
  */
 
 export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';

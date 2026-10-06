@@ -218,13 +218,13 @@
   .export-input { max-width: 130px; }
   button.full { width: 100%; justify-content: center; }
 
-  /* Friendly label (M33) — the lib's `label` (the recommended list's
+  /* Friendly label — the lib's `label` (the recommended list's
      plain-language name for a bundled feature, an extension's declared name
      otherwise). The raw `use` (`.plugin-name`, muted) only renders as a
      secondary line for a package or folder; a bundled feature shows its
      one-liner instead and keeps the name as a tooltip on the label. */
   .plugin-label { font-size: 12px; font-weight: 600; color: var(--app-text); }
-  /* Distinct from `.status.checking` (M34) — a stalled/failed check, not one
+  /* Distinct from `.status.checking` — a stalled/failed check, not one
      in flight. A new class (not an override of `.status.error`) so it reads
      as its own state rather than reusing the error color. */
   .stale-status { color: var(--app-warning-text); }

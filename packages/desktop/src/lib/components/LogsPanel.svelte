@@ -6,7 +6,7 @@
    * by design — the host's `log/list` + `log/read` routes are confined to the
    * fs-guard's read-only roots (userData/logs).
    *
-   * PWA-clean (§8 / ADR 0004): all host work through `api.log.*`.
+   * PWA-clean (§8): all host work through `api.log.*`.
    */
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";

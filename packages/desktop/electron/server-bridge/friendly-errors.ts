@@ -2,12 +2,10 @@
  * Shared security/UX error filters for the version-history (vcs:*) and online
  * repository (remote:*) surfaces.
  *
- * These filters were previously copy-pasted across electron/main.ts,
- * routes/api/remote/_hooks.ts, and the four routes/api/vcs/*​/+server.ts
- * handlers. They live here so both the Electron main process and the SvelteKit
- * +server.ts routes (both host-side Node code) import one implementation.
+ * Both the Electron main process and the SvelteKit +server.ts routes (both
+ * host-side Node code) import this one implementation.
  *
- * SECURITY / UX invariants preserved verbatim:
+ * SECURITY / UX invariants:
  *  - The lib's own author-friendly messages pass through to the renderer.
  *  - Any other (unexpected, internal) failure is logged in full here and
  *    replaced with a terse, author-safe message — no raw isomorphic-git
@@ -28,9 +26,9 @@ import { getHostServices } from "./host-services";
  * the "See the app log for details" every filter below promises is TRUE from
  * this module's SvelteKit-bundle copy too, not only main.ts's own. (The two
  * bundles share nothing but globalThis, which is how `getHostServices` reaches
- * main's writer.) A packaged app never shows its stderr, so before this the
- * details the message pointed at existed nowhere an author could look — the
- * 0.10.5 Google Drive bring-up hit exactly that. Logging must never throw, so
+ * main's writer.) A packaged app never shows its stderr, so without this the
+ * details the message points at would exist nowhere an author could look.
+ * Logging must never throw, so
  * before registration (`bun test`) this stays console-only.
  */
 function logFailure(line: string): void {
@@ -125,7 +123,7 @@ export async function handleRemoteErrors<T>(
 // "Install the Azure SWA CLI…" style hints behind an "online repository"
 // message from the wrong domain. Token values never appear in publish lib
 // messages by construction (publish redaction invariant).
-// Google Drive (#221, docs/gdrive-publish-plan.md D10) adds its own
+// Google Drive (#221, ADR 0011) adds its own
 // vocabulary: `\bgoogle\b` covers every author-facing message
 // google-auth.ts/google-drive.ts throw (not-configured, reconnect,
 // sign-in declined/canceled/timed out/state-mismatch, HTTP failures) since

@@ -44,8 +44,7 @@
  * check out WITHOUT `force` (so a write that arrives later is left alone or
  * loudly refused, never silently replaced). Both are marked in the body.
  *
- * Used by `syncProject` — every sync. (It also served `repairRepo`'s salvage
- * step until the repair subsystem was deleted.)
+ * Used by `syncProject` — every sync.
  */
 // Atomic writes for git metadata — see git-fs.ts. Drop-in for node:fs.
 import { gitFs as fs } from "../git-fs.ts";
@@ -114,7 +113,7 @@ export const CONVERGE_PREPARE_MESSAGE =
 /** Snapshot message for the post-merge restore commit (kept-both/edits). */
 export const CONVERGE_RESTORE_MESSAGE =
   "Kept both versions of the files that can't be combined";
-/** The merge commit message (same wording the old sync used). */
+/** The merge commit message. */
 export const CONVERGE_MERGE_MESSAGE =
   "Combined your changes with the online version";
 
@@ -282,8 +281,7 @@ export async function convergeMerge(params: {
       theirs,
       author,
       message: CONVERGE_MERGE_MESSAGE,
-      // Always false: syncProject merges two views of ONE history. The
-      // option existed only for repairRepo's salvage step, which is gone.
+      // Always false: syncProject merges two views of ONE history.
       allowUnrelatedHistories: false,
       // `path` is only the file's BASENAME (isomorphic-git never passes the
       // repo-relative path), so it can't be matched against the conflict

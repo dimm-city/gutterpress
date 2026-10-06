@@ -9,7 +9,7 @@ import { inlineStyles } from "../asset-inline";
 import { renderChapters } from "./index";
 
 /**
- * STEP A parity test (#33 Phase 2): the pure, node-free `assembleBookHtml`
+ * Parity test: the pure, node-free `assembleBookHtml`
  * (browser-usable) must produce the EXACT same book.html as the node
  * `renderChapters` wrapper for the same inputs — proving the refactor split the
  * file-reading concern out without changing the rendered HTML.

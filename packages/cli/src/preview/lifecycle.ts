@@ -69,9 +69,8 @@ async function cleanupOrphanTempDirs(): Promise<void> {
 /**
  * Initialize the preview's temp directory.
  *
- * SERVE-IN-PLACE (this replaces the old whole-tree `copyDirectory(inputPath,
- * tempDir)` + manifest-asset `copyAssets` call): the temp dir is no longer a
- * mirror of the project. It holds ONLY files gutterpress itself generates — right
+ * SERVE-IN-PLACE: the temp dir is not a mirror of the project. It holds ONLY
+ * files gutterpress itself generates — right
  * now that's `book.html` (written later by {@link generateAndWriteHtml}) and
  * the PID marker file below. Every other path the served HTML asks for
  * (images, anything else under the project) is read straight from the
@@ -83,12 +82,8 @@ async function cleanupOrphanTempDirs(): Promise<void> {
  * so there is no separate copy step that can drift from what a build actually
  * ships (the "works in preview, broken in the PDF" bug class). It also means
  * a project's `.env`, `.git`, or any other dotfile is never duplicated into a
- * world-readable temp dir the way the old whole-tree copy did — see
- * http-server.ts's dotfile guard, which is what stands between a request and
- * the project's real dotfiles now that the project is served directly.
- *
- * No longer takes `inputPath`/`config` — both were needed only for the copy
- * steps removed above, and there is nothing left to configure here.
+ * world-readable temp dir — see http-server.ts's dotfile guard, which is what
+ * stands between a request and the project's real dotfiles.
  */
 export async function initializePreviewDirectories(): Promise<string> {
   // Reap any orphan temp dirs from previous runs before creating ours.
@@ -140,14 +135,11 @@ export async function initializeConfiguration(inputPath: string): Promise<Resolv
 /**
  * Restart the preview server with a new input directory.
  *
- * SERVE-IN-PLACE makes this trivially correct where the old copy-based
- * version was not: the HTTP server (http-server.ts) reads `state.
- * currentInputPath` fresh on every request instead of serving a stale mirror,
- * so repointing that one field IS the switch — there is no per-project copy
- * to redo, and therefore no old project's files left behind in the (now
- * shared-nothing, generated-files-only) temp dir the way the previous
- * `copyDirectory(newInputPath, state.tempDir)` could leave a stale mix of two
- * projects' content if it partially failed.
+ * SERVE-IN-PLACE makes this trivially correct: the HTTP server
+ * (http-server.ts) reads `state.currentInputPath` fresh on every request
+ * instead of serving a mirror, so repointing that one field IS the switch —
+ * there is no per-project copy to redo, and no old project's files left
+ * behind in the generated-files-only temp dir.
  */
 export async function restartPreview(newInputPath: string, state: ServerState): Promise<void> {
   info(`Restarting preview for: ${newInputPath}`);

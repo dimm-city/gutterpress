@@ -6,23 +6,19 @@
    * the next debounce) or Discard (delete the sidecar only — never the real
    * file). One dialog covers all pending entries; the author resolves each.
    *
-   * UX review M38: this dialog is the writer-facing surface for the CRASH-DRAFT
-   * subsystem — a different concept from the sync-repair "recovery" flows
-   * (RecoveryConfirmDialog/RecoveryGuidanceDialog/RecoveryOverlay). The two
-   * subsystems share the word "recovery" internally (this file's name,
-   * `electron/recovery.ts`, the `RecoveryItem`/`recoveryPath` identifiers
-   * below) but writer-facing copy in THIS dialog must stay inside the
-   * "unsaved changes" vocabulary and never say "recovery" — see the naming-map
-   * comments at `electron/recovery.ts` / `electron/recovery-bridge.ts` for the
-   * full two-domain split.
+   * This dialog is the writer-facing surface for the CRASH-DRAFT subsystem —
+   * a different concept from the sync-repair flows. The word "recovery" is
+   * used internally (this file's name, `electron/recovery.ts`, the
+   * `RecoveryItem`/`recoveryPath` identifiers below) but writer-facing copy
+   * in THIS dialog must stay inside the "unsaved changes" vocabulary and
+   * never say "recovery".
    *
-   * M12 fix (dialog-system migration pilot): adopts the shared `dialogBehavior`
-   * action (Escape → "Decide later", ARIA contract owned by the action on the
-   * dialog element itself, focus trap + initial focus + focus restore), adds a
-   * recovered-vs-on-disk "Compare versions" disclosure per item (mirrors
-   * the old compare-versions pattern) so the writer can see what they're
-   * about to restore or discard, and makes Discard two-step (an inline confirm
-   * swap on the button, matching the "blind destructive action" fix).
+   * Uses the shared `dialogBehavior` action (Escape → "Decide later", ARIA
+   * contract owned by the action on the dialog element itself, focus trap +
+   * initial focus + focus restore), shows a recovered-vs-on-disk "Compare
+   * versions" disclosure per item so the writer can see what they're about
+   * to restore or discard, and makes Discard two-step (an inline confirm swap
+   * on the button).
    */
   import Icon from "$lib/components/Icon.svelte";
   import { api } from "$lib/api";
@@ -54,7 +50,7 @@
     }
   }
 
-  // ── "Compare versions" preview (M12) ───────────────────────────────────────
+  // ── "Compare versions" preview ─────────────────────────────────────────────
   // Track which items' disclosure is expanded (path → boolean).
   let previewExpanded = $state<Record<string, boolean>>({});
   /**
@@ -70,8 +66,7 @@
   /**
    * Toggle the "Compare versions" disclosure for one recovery entry. On first
    * expand, lazily fetches the recovered sidecar text and the current on-disk
-   * text and memoises the result so re-toggling doesn't re-fetch (mirrors
-   * the old compare-versions disclosure).
+   * text and memoises the result so re-toggling doesn't re-fetch.
    */
   async function togglePreview(item: RecoveryItem) {
     const wasExpanded = previewExpanded[item.filePath] ?? false;
@@ -95,7 +90,7 @@
     }
   }
 
-  // ── Two-step Discard (M12) ─────────────────────────────────────────────────
+  // ── Two-step Discard ───────────────────────────────────────────────────────
   // The first click arms an inline confirm on the SAME button instead of
   // immediately firing the destructive action; a second click while armed
   // confirms. Each item's armed state is independent.
@@ -172,7 +167,7 @@
             </div>
           </div>
 
-          <!-- "Compare versions" disclosure (M12) — recovered vs on-disk text,
+          <!-- "Compare versions" disclosure — recovered vs on-disk text,
                so the writer can see what they're restoring/discarding. -->
           <div class="cr-preview-disclosure">
             <button
@@ -227,9 +222,9 @@
     z-index: var(--app-z-modal);
     background: var(--app-backdrop);
   }
-  /* Dialog is now a sibling of the backdrop (not a child), so the dialog
+  /* Dialog is a sibling of the backdrop (not a child), so the dialog
      element itself can own the ARIA dialog role/aria-modal via the shared
-     action (M12) instead of the backdrop owning them — matches the
+     action instead of the backdrop owning them — matches the
      shared dialog centering pattern. */
   .cr-dialog {
     position: fixed;
@@ -345,7 +340,7 @@
   .cr-btn-neutral:hover {
     background: var(--app-control-hover-bg);
   }
-  /* Armed "really discard?" confirm button (M12 two-step Discard). */
+  /* Armed "really discard?" confirm button (two-step Discard). */
   .cr-btn-danger {
     background: var(--app-error-bg);
     border-color: var(--app-error-border);
@@ -355,7 +350,7 @@
     background: var(--app-error-border);
   }
 
-  /* "Compare versions" disclosure — recovered vs on-disk preview panes (M12) */
+  /* "Compare versions" disclosure — recovered vs on-disk preview panes */
   .cr-preview-disclosure {
     display: flex;
     flex-direction: column;

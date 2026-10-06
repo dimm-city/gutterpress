@@ -1,10 +1,8 @@
 #!/usr/bin/env bun
 /**
- * Standalone dev CLI for the Gutterpress engine (formerly the `folio` spike
- * CLI — promoted 2026-08-06 from `spike/folio/src/cli.ts`, ARCHITECTURE.md §1).
- * Not wired into the `gutterpress` command; a manual tool for exercising the
- * engine directly against a plain HTML file, independent of the CLI's own
- * preview server.
+ * Standalone dev CLI for the Gutterpress engine. Not wired into the
+ * `gutterpress` command; a manual tool for exercising the engine directly
+ * against a plain HTML file, independent of the CLI's own preview server.
  *
  *   bun src/engine/dev-cli.ts build book.html -o book.pdf [--signature 4] [--marks] [--slug 0.25in]
  *   bun src/engine/dev-cli.ts dev   book.html [--port 4321]     static serve + hot reload + warm /proof.pdf

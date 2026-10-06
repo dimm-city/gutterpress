@@ -2,7 +2,6 @@ import { test, expect } from "bun:test";
 import {
   canExpandProblems,
   closesPanelOnEscape,
-  closesPanelOnSelect,
   buildProblems,
   friendlySource,
   groupProblems,
@@ -113,41 +112,17 @@ test("splitProblemMessage passes plain messages through with code: null", () => 
   });
 });
 
-// L9 regression fix: the compact overlay has no reachable toggle-strip to
-// close it (the overlay itself covers the strip), so closing is driven by
-// selecting a result or pressing Escape instead. These predicates are the
-// shared decision logic — asserted directly so the fix is verified by
-// behavior, not just by grepping the component's markup.
-test("closesPanelOnSelect: only compact mode closes the panel on selection", () => {
-  expect(closesPanelOnSelect(true)).toBe(true);
-  expect(closesPanelOnSelect(false)).toBe(false);
-});
-
-test("closesPanelOnEscape: only Escape, while compact AND open, closes the panel", () => {
-  expect(closesPanelOnEscape(true, true, "Escape")).toBe(true);
-  // Not compact — the normal expanded panel isn't a covering overlay, so
-  // Escape must not silently collapse it out from under an unrelated keypress.
-  expect(closesPanelOnEscape(false, true, "Escape")).toBe(false);
-  // Not open — nothing to close.
-  expect(closesPanelOnEscape(true, false, "Escape")).toBe(false);
-  // Any other key is ignored.
-  expect(closesPanelOnEscape(true, true, "Enter")).toBe(false);
-});
-
 // Keyboard access to the in-flow list (#307): opening it moves focus inside,
 // and Escape from inside closes it — but only from inside, so an unrelated
 // Escape elsewhere in the app can't collapse it.
-test("closesPanelOnEscape: the in-flow row closes on Escape only from inside the list", () => {
-  expect(closesPanelOnEscape(false, true, "Escape", true)).toBe(true);
-  // Focus anywhere else (editor, a dialog, the toolbar): leave the row alone.
-  expect(closesPanelOnEscape(false, true, "Escape", false)).toBe(false);
+test("closesPanelOnEscape: closes on Escape only while open and from inside the list", () => {
+  expect(closesPanelOnEscape(true, "Escape", true)).toBe(true);
+  // Focus anywhere else (editor, a dialog, the toolbar): leave the list alone.
+  expect(closesPanelOnEscape(true, "Escape", false)).toBe(false);
   // Nothing to close, or some other key — even with focus inside. Tab in
   // particular is never swallowed: the list is a panel, not a modal.
-  expect(closesPanelOnEscape(false, false, "Escape", true)).toBe(false);
-  expect(closesPanelOnEscape(false, true, "Tab", true)).toBe(false);
-  // The compact sheet covers the toggle, so it closes from anywhere.
-  expect(closesPanelOnEscape(true, true, "Escape", false)).toBe(true);
-  expect(closesPanelOnEscape(true, true, "Escape", true)).toBe(true);
+  expect(closesPanelOnEscape(false, "Escape", true)).toBe(false);
+  expect(closesPanelOnEscape(true, "Tab", true)).toBe(false);
 });
 
 // M32: SOURCE_LABELS must cover every check the CLI actually registers under

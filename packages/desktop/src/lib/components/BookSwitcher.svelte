@@ -1,13 +1,13 @@
 <script lang="ts">
   /**
-   * BookSwitcher (C2) — quiet toggle+list disclosure for switching the active
+   * BookSwitcher — quiet toggle+list disclosure for switching the active
    * book inside a multi-book repo. Shown ONLY when there is more than one book
    * (the parent guards with `books.length > 1`; the caller decides visibility).
    *
    * Presentational: the parent owns `books`/`activeBookDir` (from
    * ProjectSessionController) and re-opens the project at the chosen book's
-   * folder — the same full open path a fresh folder-open uses (C2 design:
-   * "session identity pinned to repoRoot", switching is a full retarget).
+   * folder — the same full open path a fresh folder-open uses ("session
+   * identity pinned to repoRoot", switching is a full retarget).
    *
    * A minimal disclosure: a toggle and an absolutely-positioned list, with no
    * outside-click handling.
@@ -38,7 +38,7 @@
 <div class="book-switcher">
   <!-- Plain disclosure of tab-navigable buttons — deliberately NOT
        listbox/menu roles, which promise arrow-key/roving-focus interactions
-       this minimal widget doesn't implement (PR #92 review). -->
+       this minimal widget doesn't implement (PR #92). -->
   <button
     type="button"
     class="book-switcher-toggle"

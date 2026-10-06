@@ -1,8 +1,8 @@
 /**
  * Previous-versions timeline — every message the app records into history
  * must read as writer copy once fed through the classifier the view renders
- * with (the old guard never did this, which is how machine messages shipped
- * rendering as bold "Version saved by you" + raw text). Superseded spellings
+ * with (otherwise machine messages render as bold "Version saved by you" +
+ * raw text). Superseded spellings
  * stay listed forever: existing history keeps them.
  */
 import { expect, test, describe } from "bun:test";
@@ -14,8 +14,8 @@ import {
 
 describe("Previous versions timeline — machine history entries read as writer copy", () => {
   // Every message the app records into history, fed THROUGH the classifier the
-  // view renders with (the old guard never did this, which is how machine
-  // messages shipped rendering as bold "Version saved by you" + raw text).
+  // view renders with (otherwise machine messages render as bold "Version
+  // saved by you" + raw text).
   // Superseded spellings stay listed forever: existing history keeps them.
   const MACHINE_MESSAGES = [
     "Automatic snapshot",

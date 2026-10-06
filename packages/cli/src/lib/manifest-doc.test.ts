@@ -88,9 +88,7 @@ describe("manifest-doc", () => {
     });
   });
 
-  // ARCH finding #25: scalarString is the ONE shared unwrap helper consumed by
-  // both manifest-config.ts (was `unwrapScalar`) and theme-manager.ts (was
-  // `styleHrefOf`) instead of two near-duplicate copies.
+  // scalarString is the ONE shared unwrap helper every manifest reader uses.
   describe("scalarString", () => {
     test("unwraps a Scalar node's .value", () => {
       expect(scalarString(new Scalar("styles/book.css"))).toBe("styles/book.css");

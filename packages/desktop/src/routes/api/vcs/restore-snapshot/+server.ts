@@ -18,7 +18,7 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; id: string
   },
   call: async ({ body }) => {
     const lib = await loadLib();
-    // Safety contract (#13 / ADR 0006 §D5): the lib snapshots the current
+    // Safety contract (#13): the lib snapshots the current
     // state before restoring, so a restore can never lose author work. That
     // backup is a commit like any other — attribute it to the author.
     return lib.restoreVersionWithBackup({

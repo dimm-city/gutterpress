@@ -87,7 +87,7 @@ test("a scan failure propagates as an error response — NOT a silent [] indisti
   expect(message).toBe("EACCES: permission denied");
 });
 
-// ── 2026-07-29 audit: exclude a recent's ACTIVE BOOK, not just its key ───────
+// ── exclude a recent's ACTIVE BOOK, not just its key ───────
 //
 // For a repo-backed entry `recentFolders[].path` is the REPO ROOT, while
 // discovery returns BOOK folders (any dir holding a manifest). Excluding by

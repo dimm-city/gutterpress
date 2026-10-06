@@ -306,9 +306,9 @@ test("manifest/read returns the open book's manifest fields", async () => {
 });
 
 test("project/list-styles offers the repo's shared stylesheets for a nested book", async () => {
-  // 2026-07-29 audit: shared stylesheets were only listable while they sat in
-  // the manifest, so unchecking one removed it from the UI for good. The route
-  // now forwards the session's repo root — guarded exactly like projectDir, so a
+  // Shared stylesheets must stay listable when they are not in the manifest,
+  // or unchecking one removes it from the UI for good. The route forwards the
+  // session's repo root — guarded exactly like projectDir, so a
   // renderer cannot turn it into a directory-enumeration primitive.
   await writeFile(path.join(repoRoot, "shared", "styles", "components.css"), "body{}", "utf8");
   const res = (await projectListStyles({

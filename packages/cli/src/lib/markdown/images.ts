@@ -4,13 +4,6 @@ import type MarkdownIt from "markdown-it";
  * Markdown-it `image` renderer rule that RECORDS every image reference the
  * document emits, on `env.imageRefs`.
  *
- * This replaces the previous `normalizeImageSrc` rewriter, which collapsed
- * `temp/images/…` and `./images/…` to `images/…`. That rewrite had zero
- * producers anywhere in the codebase or its history, and it silently broke any
- * author who kept art in a folder literally named `temp/images/` — the HTML
- * pointed at `images/<file>`, which no code path ever created, and adding the
- * folder to the old `source.assets` list could not fix it.
- *
  * Recording instead of rewriting is what lets the build copy exactly the files
  * the book references (`lib/asset-inline.ts` → `planImageCopies`), so the
  * author's own folder layout is the layout that ships. Paths are emitted

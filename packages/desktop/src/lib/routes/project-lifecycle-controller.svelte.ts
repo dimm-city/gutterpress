@@ -1,53 +1,42 @@
 /**
- * ProjectLifecycleController (Phase 5d) — the single owner of the open/close
- * project lifecycle that used to live inline in `+page.svelte`, extracted per
- * UX review H5 / ARCH review #10 (both confirmed; appendix item 4's
- * controller-thunk claim was REFUTED — this continues the established
- * rune-class-controller pattern, e.g. `ProjectSessionController` /
- * `SyncController` / `PageNavController`, rather than redesigning it).
+ * ProjectLifecycleController — the single owner of the open/close project
+ * lifecycle, following the rune-class-controller pattern of
+ * `ProjectSessionController` / `SyncController` / `PageNavController`.
  *
  * Owns the folder-open pipeline (`startFolderPreview` and its
  * `folderOpenEpoch`/`superseded()` concurrency guard), `setUpAsBook`'s
  * epoch/busy management, `stopPreview`, `openUrl`'s reset path, and
- * `cancelOpen` (the initial-open "Cancel" affordance, M2) — every call site
- * that used to increment `folderOpenEpoch` directly.
+ * `cancelOpen` (the initial-open "Cancel" affordance) — every call site that
+ * touches `folderOpenEpoch`.
  *
- * THE FIX (H5's "worst structural defect"): `stopPreview`, `openUrl`, and
- * `startFolderPreview`'s catch used to each hand-list a *different* subset of
- * the same 30+ `$state` fields — `openUrl` missed `recoveryScanDir` /
- * `recoveryItems` / `previewHidden` / `pageNav.pageEditing`; the catch missed
- * `problems` / pageNav / the editor pane / the buffer / the folder watcher
- * entirely. That divergence is exactly how the Cancel-closes-project defect
- * (M2) slipped in. All three teardown paths now funnel through ONE
- * `resetWorkspace()`: it directly resets the session-identity fields this
- * controller owns, then calls the single injected `deps.resetExtras()` for
- * state that must stay page-local (the Problems panel, the editor pane/
- * buffer, the folder watcher, pageNav's counters, and the crash-recovery scan
- * state) — a single registered callback, not a hand-list. Fields that are
- * genuinely NOT part of "workspace reset" (`openError` /
- * `urlPreviewError` / `saveWarning` / `busy` / `busyLabel`) are deliberately
- * left OUT of `resetWorkspace()` — they are set explicitly by whichever flow
- * needs them, exactly as before; unifying them here would blur error-display
- * state with workspace-empty state, which was never the divergence bug.
+ * `stopPreview`, `openUrl`, and `startFolderPreview`'s catch all funnel through
+ * ONE `resetWorkspace()` — teardown paths that each hand-list a subset of the
+ * same 30+ `$state` fields diverge (that is how a Cancel-closes-project defect
+ * slipped in). It directly resets the session-identity fields this controller
+ * owns, then calls the single injected `deps.resetExtras()` for state that must
+ * stay page-local (the Problems panel, the editor pane/buffer, the folder
+ * watcher, pageNav's counters, and the crash-recovery scan state) — a single
+ * registered callback, not a hand-list. Fields that are genuinely NOT part of
+ * "workspace reset" (`openError` / `urlPreviewError` / `saveWarning` / `busy` /
+ * `busyLabel`) are deliberately left OUT of `resetWorkspace()` — they are set
+ * explicitly by whichever flow needs them; unifying them here would blur
+ * error-display state with workspace-empty state.
  *
- * Host coupling is injected (mirroring every other Phase 5 controller) so
- * this stays testable with fakes and PWA-clean (§8 / ADR 0004): the preview
+ * Host coupling is injected (mirroring every other controller) so
+ * this stays testable with fakes and PWA-clean (§8): the preview
  * start/stop round-trips, `ProjectSessionController` (composed by reference,
  * not duplicated), the shared `pageNav` / `zoomView` controller instances,
  * the editor buffer's flush/reset, the folder watcher, the crash-recovery
  * scan trigger, and the toast surface. `PersistedProjectState` /
  * `ProjectBookEntry` are type-only imports — ZERO `node:*` / lib value
  * imports. `basenameOf` is a pure string helper (see `platform/paths.ts`'s
- * own PWA-clean header) and is safe to import directly, matching how
- * `+page.svelte` used it inline.
+ * own PWA-clean header) and is safe to import directly.
  *
- * NOTE (slice 1 of 2, per the H5 fix roadmap): `savePdf` / `exportHtml` /
- * `cancelExport` (→ `ExportController`) and the crash-recovery scan block
- * (→ `CrashRecoveryController`, added in Phase 5 slice 2) are NOT moved
- * here — this slice is scoped to the open/reset lifecycle only. `resetExtras`
- * still reaches into the crash-recovery reset (`crashRecovery.reset()`) and
- * `pendingRecoveryScanDir` because they are part of the reset-divergence bug
- * this slice fixes, even though the scan *trigger* functions stay page-local.
+ * Export (`ExportController`) and the crash-recovery scan
+ * (`CrashRecoveryController`) are NOT owned here — this controller is scoped
+ * to the open/reset lifecycle only. `resetExtras` still reaches into the
+ * crash-recovery reset (`crashRecovery.reset()`) and
+ * `pendingRecoveryScanDir` so every teardown clears them.
  */
 
 import { basenameOf } from "../platform/paths";
@@ -97,9 +86,6 @@ interface ProjectLifecycleZoomView {
 }
 
 export interface ProjectLifecycleDeps {
-  isDesktop: () => boolean;
-  /** Copy shown when an open/adopt action needs the desktop app (page-local constant). */
-  desktopRequiredMessage: string;
   /** Host round-trip: start the preview server for a folder. */
   startPreviewHost: (input: {
     key: string;
@@ -119,8 +105,8 @@ export interface ProjectLifecycleDeps {
    * Refresh the composed SyncController's remote diagnosis for the opened
    * project. MUST be called only after `currentDir` is assigned (the
    * SyncController's stale-guard compares the diagnosed dir against
-   * currentDir, so an earlier call — as the classify() chain used to make —
-   * is deterministically discarded on every open) and keyed to the SAME
+   * currentDir, so an earlier call — e.g. from the classify() chain — is
+   * deterministically discarded on every open) and keyed to the SAME
    * targetDir that currentDir was assigned (the picked dir may have been
    * retargeted to a book).
    */
@@ -138,13 +124,12 @@ export interface ProjectLifecycleDeps {
   /**
    * Read the per-project page/split state for a directory.
    *
-   * Owned by this controller rather than passed in by the caller (2026-07-29
-   * audit): the state is WRITTEN under the RESOLVED book dir, but every caller
-   * fetched it under the dir the user PICKED — which differ exactly when the
-   * session retargets (an open keyed to the repo root, or to a folder inside a
-   * book), so the read missed and the book opened at page 1 with the default
-   * view mode. Only this controller knows the resolved target, so only it can
-   * key the read correctly.
+   * Owned by this controller rather than passed in by the caller: the state is
+   * WRITTEN under the RESOLVED book dir, while a caller only knows the dir the
+   * user PICKED — which differ exactly when the session retargets (an open
+   * keyed to the repo root, or to a folder inside a book), so a caller-keyed
+   * read misses and the book opens at page 1. Only this controller knows the
+   * resolved target, so only it can key the read correctly.
    */
   getDesktopProjectState: (dir: string) => Promise<PersistedProjectState | null>;
   /** Re-arm PreviewEventController's first-render-only success toast gate. */
@@ -180,11 +165,10 @@ export interface ProjectLifecycleDeps {
    * The single page-local reset hook for state this controller does not own:
    * the Problems panel (`problems`/`problemsError`/`problemsOpen`), the
    * workspace `mode` switch, the
-   * editor buffer, the folder watcher, `pageNav`'s counters + edit mode, and
+   * editor buffer, the folder watcher, `pageNav`'s counters, and
    * the crash-recovery scan state (`crashRecovery.reset()` and
    * `pendingRecoveryScanDir`). Called once from `resetWorkspace()` so every
-   * teardown path clears the SAME set — the fix for the divergent hand-rolled
-   * resets (H5 / M2).
+   * teardown path clears the SAME set.
    */
   resetExtras: () => void;
   /**
@@ -221,13 +205,12 @@ export class ProjectLifecycleController {
 
   private deps: ProjectLifecycleDeps;
 
-  // Single-flight guard for the open pipeline (moved verbatim from
-  // +page.svelte): every open intent (startFolderPreview's default param,
-  // setUpAsBook, openUrl, cancelOpen) claims the epoch synchronously at its
-  // entry point with no await before the claim, so "last user action wins" is
-  // guaranteed at the intent boundary, never "last fetch to resolve wins". A
-  // superseded call's continuations bail after every await instead of
-  // overwriting the newer open's state.
+  // Single-flight guard for the open pipeline: every open intent
+  // (startFolderPreview's default param, setUpAsBook, openUrl, cancelOpen)
+  // claims the epoch synchronously at its entry point with no await before the
+  // claim, so "last user action wins" is guaranteed at the intent boundary,
+  // never "last fetch to resolve wins". A superseded call's continuations bail
+  // after every await instead of overwriting the newer open's state.
   private folderOpenEpoch = 0;
 
   constructor(deps: ProjectLifecycleDeps) {
@@ -235,13 +218,12 @@ export class ProjectLifecycleController {
   }
 
   /**
-   * ONE workspace-reset function every teardown path calls (H5 fix). Resets
-   * the session-identity state this controller owns, then delegates to the
-   * single injected `resetExtras()` for the page-local state that used to be
-   * hand-listed differently at each call site. Deliberately does NOT touch
-   * `openError`/`urlPreviewError`/`saveWarning`/`busy`/
-   * `busyLabel` — those are error/busy signals each flow sets explicitly, not
-   * "workspace" state, and were never part of the divergence bug.
+   * ONE workspace-reset function every teardown path calls. Resets the
+   * session-identity state this controller owns, then delegates to the single
+   * injected `resetExtras()` for the page-local state. Deliberately does NOT
+   * touch `openError`/`urlPreviewError`/`saveWarning`/`busy`/`busyLabel` —
+   * those are error/busy signals each flow sets explicitly, not "workspace"
+   * state.
    */
   private resetWorkspace(): void {
     this.previewUrl = null;
@@ -262,13 +244,12 @@ export class ProjectLifecycleController {
    * The ONE open-a-project-folder pipeline.
    *
    * The per-project restore state is fetched HERE, keyed to the RESOLVED book
-   * dir, instead of being handed in by the caller. Callers used to start that
-   * read at intent time and pass the promise so it overlapped
-   * classify/startPreview — but they could only key it to the dir the user
-   * PICKED, which is the wrong key whenever classification retargets (see
-   * `getDesktopProjectState`'s doc comment). The read is a local prefs file;
-   * doing it after classify costs a millisecond and is correct. The epoch is
-   * still claimed synchronously at call time, so "last click wins" is unchanged.
+   * dir, instead of being handed in by the caller — a caller could only key
+   * it to the dir the user PICKED, which is the wrong key whenever
+   * classification retargets (see `getDesktopProjectState`'s doc comment).
+   * The read is a local prefs file; doing it after classify costs a
+   * millisecond and is correct. The epoch is
+   * claimed synchronously at call time, so "last click wins" holds.
    *
    * `epoch` defaults to claiming a fresh epoch; callers with work between their
    * intent and this call (setUpAsBook's adopt) pass their pre-claimed epoch.
@@ -284,10 +265,6 @@ export class ProjectLifecycleController {
     this.busy = true;
     this.busyLabel = label;
     try {
-      if (!d.isDesktop()) {
-        d.toast()?.error(d.desktopRequiredMessage);
-        return false;
-      }
       // Flush before classification resets the current ProjectSession. The
       // dirty-state POST to main is only best-effort; this direct result is the
       // authority for whether replacing the workspace is safe.
@@ -299,12 +276,12 @@ export class ProjectLifecycleController {
       this.urlPreviewError = null;
       this.saveWarning = null;
       this.renderCompleteOverlay = false;
-      // M3: a new project/document session is starting — re-arm the first-render
+      // A new project/document session is starting — re-arm the first-render
       // success toast so this session's initial render still gets one.
       d.resetFirstRenderGate();
       d.onProjectSwitch?.();
-      // C2 (book switcher): classify the PICKED folder first, before any
-      // content pipeline opens — see ProjectSessionController's C2 note.
+      // Book switcher: classify the PICKED folder first, before any content
+      // pipeline opens — see ProjectSessionController's book-switcher note.
       const previousRepoRoot = d.projectSession.repoRoot;
       d.projectSession.reset();
       d.clearSyncDiag();
@@ -353,12 +330,12 @@ export class ProjectLifecycleController {
       this.currentUrl = null;
       // Refresh the remote diagnosis for any local-git project — NOW, after
       // currentDir is assigned and keyed to the same targetDir, so the
-      // SyncController's stale-guard accepts the result. (This used to fire
-      // from projectSession.classify() with the PICKED dir before currentDir
-      // was set — deterministically discarded on every open, leaving syncDiag
-      // null all session: Sync-now hidden and reconnect routing broken even
-      // for fully-connected projects.) Gated on canSnapshot — true exactly
-      // for local-git-folder sources; the diagnosis itself decides syncability.
+      // SyncController's stale-guard accepts the result. (Fired from
+      // projectSession.classify() with the PICKED dir before currentDir is set,
+      // it would be discarded on every open, leaving syncDiag null all session:
+      // Sync-now hidden and reconnect routing broken.) Gated on canSnapshot —
+      // true exactly for local-git-folder sources; the diagnosis itself decides
+      // syncability.
       if (d.projectSession.projectCapabilities?.canSnapshot) {
         d.refreshSyncDiag(targetDir);
       }
@@ -415,11 +392,10 @@ export class ProjectLifecycleController {
       // A superseded open must not clear the newer open's state or surface
       // its own stale error.
       if (superseded()) return false;
-      // H5 fix: route through the SAME resetWorkspace() the other two
-      // teardown paths use, instead of a narrower hand-list — this is what
-      // now also clears Problems/pageNav/the editor pane/the buffer/the
-      // folder watcher/the crash-recovery scan state on a failed open,
-      // closing the exact divergence the review flagged.
+      // Route through the SAME resetWorkspace() the other two teardown paths
+      // use, never a narrower hand-list — so a failed open also clears
+      // Problems/pageNav/the editor pane/the buffer/the folder watcher/the
+      // crash-recovery scan state.
       this.resetWorkspace();
       this.openError = e instanceof Error ? e.message : String(e);
       // The start screen re-appears on its own (landingVisible derived: the
@@ -488,7 +464,7 @@ export class ProjectLifecycleController {
    */
   async setUpAsBook(dir: string): Promise<boolean> {
     const d = this.deps;
-    if (!dir || !d.isDesktop()) return false;
+    if (!dir) return false;
     const epoch = ++this.folderOpenEpoch;
     const flushed = await (d.leaveBuffer ?? d.flushBuffer)();
     if (epoch !== this.folderOpenEpoch || !flushed) return false;
@@ -525,7 +501,7 @@ export class ProjectLifecycleController {
    * Load a URL preview. A URL preview is an open intent: bump the epoch so an
    * in-flight folder open (e.g. the startup pre-render) is superseded and
    * can't resolve later and silently replace this preview with the old book.
-   * The superseded open's `finally` no longer owns busy, so clear it here.
+   * The superseded open's `finally` doesn't own busy, so clear it here.
    */
   async openUrl(url: string): Promise<boolean> {
     const d = this.deps;
@@ -541,11 +517,8 @@ export class ProjectLifecycleController {
     this.previewError = null;
     this.urlPreviewError = null;
     this.saveWarning = null;
-    // H5 fix: the SAME resetWorkspace() stopPreview/the catch use — this is
-    // what now also clears the crash-recovery scan state/workspace mode/
-    // pageNav's counters here, closing the exact divergence the review
-    // flagged (openUrl used to miss them; pageEditing itself was later
-    // retired entirely with the toolbar refactor — see PageNavController).
+    // The SAME resetWorkspace() stopPreview/the catch use — so this also
+    // clears the crash-recovery scan state/workspace mode/pageNav's counters.
     await d.stopPreviewHost().catch(() => {});
     if (epoch !== this.folderOpenEpoch) return false;
     this.resetWorkspace();
@@ -572,13 +545,13 @@ export class ProjectLifecycleController {
     if (!(await (d.leaveBuffer ?? d.flushBuffer)())) return false;
     await d.stopPreviewHost().catch(() => {});
     this.resetWorkspace();
-    // The start screen is the app's empty state — it returns on its own now
-    // that the workspace is empty (landingVisible derived).
+    // The start screen is the app's empty state — it returns on its own once
+    // the workspace is empty (landingVisible derived).
     return true;
   }
 
   /**
-   * M2: real cancel-and-close, for the initial open ONLY (the caller only
+   * Real cancel-and-close, for the initial open ONLY (the caller only
    * offers this before any preview exists — there is no live workspace to
    * interrupt yet). Bumping the epoch supersedes whatever `startFolderPreview`
    * call is in flight, the same mechanism `openUrl` uses to abort an in-flight

@@ -1,7 +1,7 @@
 import { defineRoute, getHostServices, loadLib, requireAbsolute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-/** A book found inside the classified project's repo (C1: repo-root sessions). */
+/** A book found inside the classified project's repo (repo-root sessions). */
 interface RepoBookEntry {
   path: string;
   title: string;
@@ -19,7 +19,7 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
     const capabilities = lib.capabilitiesFor(source);
     const hasManifest = lib.hasProjectManifest(folderPath);
 
-    // C1 (repo-root sessions): a `local-git-folder` source's `repoRoot` may hold
+    // Repo-root sessions: a `local-git-folder` source's `repoRoot` may hold
     // several books (folders directly containing a manifest). Reuse the same
     // BFS scan the Books tab's background discovery already uses, rooted at
     // just this one repo — the desktop decides which book is "active" from this

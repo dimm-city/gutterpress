@@ -1,5 +1,5 @@
 /**
- * Snapshot-first, ALWAYS-CONVERGING sync (#15, ADR 0006 D5; converge ruling
+ * Snapshot-first, ALWAYS-CONVERGING sync (#15; converge ruling
  * 2026-08-14 — see converge-merge.ts).
  *
  * ONE operation: `syncProject` = snapshot-if-needed → `git.fetch` +
@@ -19,7 +19,7 @@
  * (`push: false` = pull-merge-only pass; owner decision 2026-08-23), so the
  * desktop's frequent ticks keep pulling while pushes batch up quietly.
  *
- * Snapshot-first invariant (ADR 0006 D5): sync commits any unsaved work
+ * Snapshot-first invariant: sync commits any unsaved work
  * BEFORE any network or merge step can touch it.
  *
  * There is NO conflict outcome and NO interactive resolution. The merge
@@ -30,7 +30,7 @@
  * deletion. Every version is reachable in history — "Previous versions" IS
  * the safety net.
  *
- * Failure model (ADR 0006 D5/D7): offline → friendly retry-later (the snapshot
+ * Failure model: offline → friendly retry-later (the snapshot
  * already saved the work locally); 401/403 → `{ status: "auth" }` for the
  * single "Reconnect" action; anything else → a friendly, jargon-free message.
  * Token values never appear in messages (transport errors are mapped, and the
@@ -192,7 +192,7 @@ function defaultSleep(ms: number): Promise<void> {
 }
 
 /**
- * Snapshot-first sync (ADR 0006 D5). Serialized on the per-repo lock; one
+ * Snapshot-first sync. Serialized on the per-repo lock; one
  * function-scoped object cache, released on return.
  *
  * If someone pushes between our fetch and our push, the push is rejected and

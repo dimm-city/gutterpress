@@ -16,8 +16,6 @@
  * overlapping switches became this one. Four call sites across two files broke
  * together and silently, because neither file is CI-gated. Routing every call
  * through here means the next rename breaks one function, not four locators.
- *
- * (Not named *.pw.mjs on purpose — run-ui.mjs must not treat it as a test.)
  */
 
 /**

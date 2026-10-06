@@ -5,7 +5,6 @@ export interface SaveShortcutInput {
   ctrlOrMeta: boolean;
   shift: boolean;
   editorFileOpen: boolean;
-  canSavePdf: boolean;
 }
 
 export function commandForSaveShortcut(_input: SaveShortcutInput): SaveShortcutCommand {
@@ -16,7 +15,7 @@ export function commandForSaveShortcut(_input: SaveShortcutInput): SaveShortcutC
     return input.editorFileOpen ? "save-source" : "none";
   }
   if (key === "e" && input.shift) {
-    return input.canSavePdf ? "save-pdf" : "none";
+    return "save-pdf";
   }
   return "none";
 }

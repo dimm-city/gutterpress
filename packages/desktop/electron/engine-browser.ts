@@ -99,7 +99,7 @@ class ElectronEngineSession implements EngineSession {
   /** Reuses the already-attached debugger — same CDP call cdp.ts's own
    * setContent makes, so behaviour matches the external-Chromium path
    * exactly. Not on the native engine's real build path (which only ever
-   * calls `navigate`), kept for interface parity + spike/tooling callers. */
+   * calls `navigate`), kept for interface parity. */
   async setContent(html: string, _baseUrl = "http://gutterpress.spike/"): Promise<void> {
     const { frameTree } = await this.send<any>("Page.getFrameTree");
     await this.send("Page.setDocumentContent", { frameId: frameTree.frame.id, html });
@@ -125,7 +125,7 @@ class ElectronEngineSession implements EngineSession {
   /**
    * Mirrors `cdp.ts`'s `Target.closeTarget` — really closes THIS page, not
    * just the debugger connection to it, since (per this module's `newPage()`
-   * doc comment) every session now owns its own window, not a shared one.
+   * doc comment) every session owns its own window, not a shared one.
    */
   async close(): Promise<void> {
     if (this.closed) return;
@@ -150,15 +150,13 @@ class ElectronEngineSession implements EngineSession {
  * SECOND time while the FIRST page (the one about to print) is still open,
  * specifically so the prediction runs "on a separate page/tab... so it
  * cannot perturb the document the compiler ships" (that function's own doc
- * comment). An earlier version of this module memoized a single session and
- * returned it for every `newPage()` call — the predict pass then navigated
- * and ran `Emulation.*`/`Page.*` commands against the SAME window the main
- * pass was using, and its `finally { page.close() }` detached that shared
- * debugger out from under the still-running main pass, which then hung
- * forever waiting on a CDP response that was never coming (reproduced with a
- * real 34pp book: `Rendering HTML to PDF via the Gutterpress engine` printed,
- * then nothing — no error, no completion, indefinitely). Each `newPage()`
- * getting its OWN window/debugger fixes this: the two pages genuinely don't
+ * comment). A single memoized session would let the predict pass navigate
+ * and run `Emulation.*`/`Page.*` commands against the SAME window the main
+ * pass is using, and its `finally { page.close() }` would detach that shared
+ * debugger out from under the still-running main pass, which then hangs
+ * forever waiting on a CDP response (reproduced with a real 34pp book: no
+ * error, no completion). Each `newPage()` getting its OWN window/debugger
+ * avoids this: the two pages genuinely don't
  * share any state, same as two CDP targets under `cdp.ts` don't.
  *
  * `close()` destroys every window this Browser ever opened.

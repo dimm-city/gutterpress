@@ -1,6 +1,6 @@
 /**
- * Tests for the dependency-free image header reader (Phase 3 of ADR 0002,
- * replacing ImageMagick `identify`). Fixtures are constructed as byte buffers
+ * Tests for the dependency-free image header reader (replacing ImageMagick
+ * `identify`). Fixtures are constructed as byte buffers
  * in-test so the suite needs no ImageMagick and no committed binaries. Parser
  * output was cross-checked against real `identify` during development.
  */

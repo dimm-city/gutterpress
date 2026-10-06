@@ -145,7 +145,7 @@ test("listRecovery prunes entries whose snapshot already matches disk", async ()
   expect(await readIndex(recDir)).toEqual([]);
 });
 
-// ── 2026-07-29 audit: crash drafts for NESTED files must be offered ──────────
+// ── crash drafts for NESTED files must be offered ──────────
 //
 // The filter was `path.dirname(entry.filePath) !== projectDir` — immediate
 // children only. So a crash draft for `styles/book.css`, `extensions/<id>/theme.css`,

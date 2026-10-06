@@ -9,7 +9,7 @@ import type { RequestHandler } from './$types';
  * panel can show the butler/swa log. Long-running by design — the client
  * awaits the response (same model as remote:sync).
  *
- * `artifactPath` is the UPLOAD SOURCE (2026-07-29 audit, Theme 1) —
+ * `artifactPath` is the UPLOAD SOURCE —
  * `lib.runPublish` uploads it with the author's stored credential, so an
  * unchecked value is a local-file-to-network exfiltration primitive, not just
  * an out-of-project read. It can't be confined to the project either: a desktop

@@ -34,8 +34,7 @@ function mainSel(view: EditorView) {
 
 /**
  * The document offset just after the line the cursor is on — the insertion
- * point every "insert a block after the current line" action uses (audit E4:
- * this three-statement idiom was hand-repeated in 8 functions below).
+ * point every "insert a block after the current line" action uses.
  */
 function insertionPointAfterCurrentLine(view: EditorView): number {
   const { from } = mainSel(view);
@@ -63,7 +62,7 @@ function toggleInlineWrap(view: EditorView, marker: string): void {
     // Empty selection: if the cursor already sits directly between an
     // existing marker pair, remove it (toggle off) instead of inserting a
     // nested pair. Without this check, repeated Ctrl+B on an empty selection
-    // piled up marker debris: "" -> "****" -> "******" -> "********" ... (L6).
+    // piles up marker debris: "" -> "****" -> "******" -> "********" ...
     const existingBefore = view.state.doc.sliceString(Math.max(0, from - mLen), from);
     const existingAfter = view.state.doc.sliceString(to, to + mLen);
     if (existingBefore === marker && existingAfter === marker) {
@@ -313,7 +312,7 @@ export function applyTable(view: EditorView, cols: number): void {
  * dialog's width/position/size/shape picks (empty string when none are
  * set). Position/size inputs are canonicalized through the option tables,
  * so a caller still holding a removed legacy name ("full-bleed") writes the
- * live gp-* class, never a dead one. Extracted out of `applyImage` below
+ * live gp-* class, never a dead one. Separate from `applyImage` below
  * (inline-editing plan §4.4) so the context menu's image actions can share
  * the exact same suffix rule — though for EXISTING tokens they go through
  * image-classes' tokenize → set-facet → serialize instead, which preserves
@@ -357,9 +356,8 @@ export function applyImage(
   });
 }
 
-// ── Insert layout block (UX M26) ─────────────────────────────────────────────
-// The toolbar previously exposed none of Gutterpress's own layout primitives
-// beyond @page-break (UX finding M26). These helpers insert a correct core
+// ── Insert layout block ──────────────────────────────────────────────────────
+// These helpers insert a correct core
 // `@marker` skeleton (the core marker whitelist — chapter/spread/
 // page/section/continue/page-break/column-break/end-section; see the
 // plugin's own header comment) as its own block after the CURRENT line,
@@ -465,16 +463,15 @@ export const LAYOUT_BLOCK_ITEMS: readonly LayoutBlockItem[] = [
   { kind: "spread", label: "Spread", detail: "@spread — a two-page facing spread" },
 ] as const;
 
-// ── Toolbar item declarations (single source of truth — M23) ────────────────
+// ── Toolbar item declarations (single source of truth) ──────────────────────
 //
 // EditorToolbar renders the always-visible toolbar groups, the Insert menu AND
-// the narrow-width "More" overflow menu from this ONE array. Previously the
-// More menu was a hand-duplicated second list of buttons that had already
-// drifted from the toolbar — it silently omitted Save and Snippet, so Save
-// vanished entirely once the container narrowed enough to hide the primary
-// group. Deriving every surface from the same filtered list makes that class
-// of drift structurally impossible: an item is either in this array (and
-// shows up everywhere it should) or it isn't declared at all.
+// the narrow-width "More" overflow menu from this ONE array. A hand-duplicated
+// More list drifts from the toolbar (it once silently omitted Save, so Save
+// vanished once the container narrowed). Deriving every surface from the same
+// filtered list makes that class of drift structurally impossible: an item is
+// either in this array (and shows up everywhere it should) or it isn't declared
+// at all.
 //
 // Pure data + a pure filter function — zero Svelte imports, so it is testable
 // the same way the transaction helpers above are.
@@ -511,8 +508,6 @@ export interface ToolbarItemDef {
   /** Plain-text label shown for this item inside the Insert and More menus. */
   label: string;
   group: ToolbarGroup;
-  /** Only shown when isDesktop() — image insert and snippet need host IPCs. */
-  desktopOnly?: boolean;
 }
 
 export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
@@ -650,7 +645,6 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
     ariaLabel: "Insert image",
     label: "Insert image…",
     group: "insert",
-    desktopOnly: true,
   },
   {
     id: "snippet",
@@ -661,7 +655,6 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
     ariaLabel: "Insert snippet",
     label: "Insert snippet",
     group: "insert",
-    desktopOnly: true,
   },
 ];
 
@@ -671,13 +664,6 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
  * menu (rendered unfiltered) must be derived from this same list so neither
  * surface can omit an item the other one shows.
  */
-export function visibleToolbarItems(opts: {
-  hasSave: boolean;
-  desktop: boolean;
-}): ToolbarItemDef[] {
-  return TOOLBAR_ITEMS.filter((item) => {
-    if (item.kind === "save" && !opts.hasSave) return false;
-    if (item.desktopOnly && !opts.desktop) return false;
-    return true;
-  });
+export function visibleToolbarItems(opts: { hasSave: boolean }): ToolbarItemDef[] {
+  return TOOLBAR_ITEMS.filter((item) => item.kind !== "save" || opts.hasSave);
 }

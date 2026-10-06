@@ -17,7 +17,7 @@
    * `filePath`/`content` props reactively — this repo bans `$effect` (see
    * eslint.config.js), so the parent calls exported imperative methods
    * instead: `switchFile()` when it changes which file is open, and
-   * `updateContent()` for the #H1 same-file auto-reload path. Reading
+   * `updateContent()` for the same-file auto-reload path. Reading
    * `content` reactively here would also fire on every keystroke's
    * onChange→buffer round trip, fighting the user's own typing — so the
    * explicit-call design is the right one independent of the lint rule.
@@ -157,7 +157,7 @@
     return autocompletion({ override: [pagedMediaCompletionSource] });
   }
 
-  /** Core `@marker` completions (UX M26) — active only for markdown docs. */
+  /** Core `@marker` completions — active only for markdown docs. */
   function markdownCompletionExtensions(lang: EditorLanguage): Extension {
     if (lang !== "markdown") return [];
     return autocompletion({ override: [markerCompletionSource] });
@@ -166,9 +166,8 @@
   // Theme-aware syntax highlighting. Every colour is a CSS custom property
   // (defined per app theme in the style block below), so the SAME highlight
   // style is legible in both light and dark mode and switches instantly with the
-  // app's [data-theme] — no second editor, no rebuild. Replaces CodeMirror's
-  // light-tuned defaultHighlightStyle, which rendered as low-contrast mush on the
-  // dark background.
+  // app's [data-theme] — no second editor, no rebuild. (CodeMirror's light-tuned
+  // defaultHighlightStyle renders as low-contrast mush on the dark background.)
   const gutterpressHighlight = HighlightStyle.define([
     { tag: [t.heading, t.heading1, t.heading2, t.heading3, t.heading4, t.heading5, t.heading6], color: "var(--cm-heading)", fontWeight: "700" },
     { tag: t.strong, color: "var(--cm-strong)", fontWeight: "700" },
@@ -220,8 +219,8 @@
       color: "var(--cm-gutter-text)",
       border: "none",
     },
-    // Subtle active-line tint — must NOT wash out the text on that line (the old
-    // --app-control-hover-bg was far too strong).
+    // Subtle active-line tint — must NOT wash out the text on that line
+    // (--app-control-hover-bg is far too strong).
     ".cm-activeLine": { backgroundColor: "var(--cm-active-line)" },
     ".cm-activeLineGutter": {
       backgroundColor: "var(--cm-active-line)",
@@ -542,7 +541,7 @@
     // (sourceLineChanged) and editor→preview scroll sync anchors the resolved
     // block to the preview's top — anchoring the revealed line to the editor's
     // top keeps both panes agreeing on the same anchor point. Centering here
-    // gave a constant ~half-viewport disagreement (QA finding RC1-5).
+    // gives a constant ~half-viewport disagreement.
     view.dispatch({
       selection: focusEditor ? { anchor: pos } : undefined,
       effects: EditorView.scrollIntoView(pos, { y: "start" }),

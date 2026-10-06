@@ -12,7 +12,6 @@
    */
   import { onMount } from "svelte";
   import { api } from "$lib/api";
-  import { isDesktop } from "$lib/platform";
   import type { ProblemReport } from "$lib/platform/dtos";
 
   let { projectDir = null }: { projectDir?: string | null } = $props();
@@ -27,10 +26,6 @@
     loading = true;
     errorMessage = null;
     try {
-      if (!isDesktop()) {
-        errorMessage = "Problem reports are only available in the desktop app.";
-        return;
-      }
       bundle = await api.report.bundle(projectDir);
     } catch (e) {
       errorMessage = e instanceof Error ? e.message : String(e);

@@ -1,5 +1,5 @@
 /**
- * Desktop-facing DTOs (ARCH review #39) — plain data shapes returned by the
+ * Desktop-facing DTOs — plain data shapes returned by the
  * server routes under `src/routes/api/**`, plus a handful of app-local view
  * types (extension manager, style resolver, media panel, …).
  *
@@ -7,7 +7,7 @@
  * (that lives in `./contract.ts`) — they are the request/response payload
  * shapes `$lib/api.ts` and its consumers use. Most mirror an equivalent type
  * in `gutterpress` (the lib) and are defined locally here so the SPA
- * never value-imports the lib into the renderer bundle (§8 / ADR 0004).
+ * never value-imports the lib into the renderer bundle (§8).
  *
  * Pure type/interface/type-alias declarations ONLY — no runtime values, no
  * imports from `./contract` (that would create a cycle; `contract.ts` is the
@@ -17,10 +17,9 @@ import type { ProjectSource, ProjectCapabilities, NpmExtensionMatch } from "gutt
 
 // ── Unsaved-changes / recovery types (#44) ────────────────────────────────────
 //
-// #44 has since shipped in full (EditorBuffer in editor/buffer-state.svelte.ts,
-// CrashRecoveryController, the /api/recovery/* routes below). `RecoveryEntry`
-// is the live DTO those routes return. `EditorBufferPhase` predates that work
-// and has no importers — EditorBuffer declares its own identical copy of the
+// `RecoveryEntry` is the DTO the /api/recovery/* routes return.
+// `EditorBufferPhase` has no importers — EditorBuffer
+// (editor/buffer-state.svelte.ts) declares its own identical copy of the
 // union locally instead of importing this one.
 
 /** Lifecycle of the in-app editor buffer relative to disk (#44). Unused here —
@@ -40,9 +39,9 @@ export interface RecoveryEntry {
   baseMtimeMs: number;
 }
 
-// ── Project classification (#12, C1 repo-root sessions) ──────────────────────
+// ── Project classification (#12, repo-root sessions) ─────────────────────────
 
-/** One book (manifest-containing folder) found inside a classified repo (C1). */
+/** One book (manifest-containing folder) found inside a classified repo. */
 export interface ProjectClassificationBook {
   /** Absolute path to the book folder. */
   path: string;
@@ -55,7 +54,7 @@ export interface ProjectClassificationBook {
 /**
  * Result of classifying an opened folder (#12). `repoRoot`/`books` are
  * present only when `source` is a `local-git-folder` with discoverable
- * sibling books (C1 — repo-root sessions): the host BFS-scans the repo root
+ * sibling books (repo-root sessions): the host BFS-scans the repo root
  * for manifest-containing folders so the desktop can decide which book is
  * "active" (see `project-session-controller.svelte.ts`'s
  * `resolveActiveBookDir`).
@@ -65,9 +64,9 @@ export interface ProjectClassification {
   capabilities: ProjectCapabilities;
   /** Whether the folder passed to classification contains a recognized manifest. */
   hasManifest: boolean;
-  /** Repo root, present when `source.type === "local-git-folder"` (C1). */
+  /** Repo root, present when `source.type === "local-git-folder"`. */
   repoRoot?: string;
-  /** Sibling books inside `repoRoot`, sorted by `subPath` (C1). */
+  /** Sibling books inside `repoRoot`, sorted by `subPath`. */
   books?: ProjectClassificationBook[];
 }
 
@@ -101,7 +100,7 @@ export interface PrintSafeWarning {
 /**
  * One row in the Problems panel (#28). Mirrors the lib's `CheckResult`
  * (packages/cli/src/checks/types.ts) plus a resolved absolute path — defined
- * locally so the SPA never value-imports the lib (§8 / ADR 0004).
+ * locally so the SPA never value-imports the lib (§8).
  */
 export interface ProblemEntry {
   /** Absolute path of the offending file, when the check reported one. */
@@ -120,7 +119,7 @@ export interface ProblemEntry {
 // ── Extension manager (#265) — the one rail ──────────────────────────────────
 //
 // Mirror the lib's extension-manager / extension-import types — defined
-// locally so the SPA never value-imports the lib (§8 / ADR 0004). A look is
+// locally so the SPA never value-imports the lib (§8). A look is
 // an extension that carries styles; a feature is one that carries markdown;
 // a component library carries both — ONE list, ONE entry shape.
 
@@ -225,10 +224,10 @@ export type ExtensionSearchResult =
   | { ok: true; matches: NpmExtensionMatch[]; total: number }
   | { ok: false; message: string };
 
-// ── Style resolver (CSS editor; audit B2/G1) ──────────────────────────────────
+// ── Style resolver (CSS editor) ───────────────────────────────────────────────
 //
 // Mirrors the lib's `ProjectStyle` (packages/cli/src/lib/style-resolver.ts) —
-// defined locally so the SPA never value-imports the lib (§8 / ADR 0004).
+// defined locally so the SPA never value-imports the lib (§8).
 
 /** One resolvable project stylesheet surfaced to the CSS-editor picker. */
 export interface ProjectStyle {
@@ -240,9 +239,8 @@ export interface ProjectStyle {
   active: boolean;
 }
 
-// Mirrors the lib's `StyleToken` (packages/cli/src/lib/style-tokens.ts) —
-// defined locally so the SPA never value-imports the lib (§8 / ADR 0004). One
-// editable `:root` custom property surfaced to the guided Design panel.
+// Produced by `$lib/style-tokens`' `parseStyleTokens`. One editable `:root`
+// custom property surfaced to the guided Design panel.
 // `font` = a font-family stack (curated dropdown + free text); `number` = a
 // unitless number (e.g. `--leading: 1.55`) — same numeric control as `length`,
 // just with no unit suffix.
@@ -294,7 +292,7 @@ export interface DiscoveredProject {
   title: string;
 }
 
-// ── Advanced Setup (#14, ADR 0006 D3/D7) ──────────────────────────────────────
+// ── Advanced Setup (#14) ──────────────────────────────────────────────────────
 //
 // RemoteAccessResult and ProjectRemoteDiagnosis are IPC-shared and live in
 // shared-types.ts (re-exported by contract.ts). The refined ForgeKind /
@@ -348,16 +346,10 @@ export interface LogFileEntry {
   modifiedAt: string;
 }
 
-/** Payload types for the image pick/copy host service (#31). */
-export interface ImagePickResult {
-  /** Absolute path chosen by the user, or null when cancelled. */
-  filePath: string | null;
-}
-
 // ── Media panel (#47) ─────────────────────────────────────────────────────────
 //
 // Mirrors the lib's ImageInfo (packages/cli/src/lib/image-inspect.ts) — defined
-// locally so the SPA never value-imports the lib (§8 / ADR 0004).
+// locally so the SPA never value-imports the lib (§8).
 
 /** One image file found under the open project folder. */
 export interface MediaImageEntry {
@@ -430,7 +422,7 @@ export interface DoctorDiagnostics {
 // ── Linux AppImage application-menu integration (#119) ───────────────────────
 //
 // Mirrors `electron/appimage-integration.ts`'s result shapes — declared here so
-// the SPA never imports host code (§8 / ADR 0004), even type-only.
+// the SPA never imports host code (§8), even type-only.
 
 /** The three fixed per-user destinations the integration manages. */
 export interface AppImageIntegrationPaths {

@@ -1,5 +1,5 @@
 /**
- * README <-> `--help` drift test (UX finding M18).
+ * README <-> `--help` drift test.
  *
  * packages/cli/README.md's "## Commands" section documents each subcommand's
  * usage line and flags in a fenced ```sh block right after a

@@ -28,9 +28,9 @@ import {
   resolveExtension,
 } from "../extension-manifest";
 
-// The plugin author API + the markdown-it factory now live in the node-free
-// `renderer.ts` so the browser/PWA WebAdapter can import the pure render core
-// (#33). This node-coupled module is the plugin *loader* (`node:fs`/`node:path`/
+// The plugin author API + the markdown-it factory live in the node-free
+// `renderer.ts` so a future browser build can import the pure render core.
+// This node-coupled module is the plugin *loader* (`node:fs`/`node:path`/
 // `node:url`). The types/values are re-exported below so existing
 // callers (`import { applyPlugins, ... } from "./plugins"`) are unaffected.
 import type {
@@ -390,14 +390,12 @@ function extractPluginExports(
 /**
  * Path-plugin ESM cache — keyed by resolved absolute file path, and only
  * reused while the file's mtime matches the cached entry. Bun/Node never
- * evict ESM module-map entries, so unconditionally busting on every load (the
- * previous `?v=${Date.now()}` behavior) reloaded every path-plugin on every
- * preview render and leaked a fresh module instance forever in the
- * long-lived Electron host (ARCH finding #5). Keying on mtime means an
- * untouched file is served from cache (bounded growth, proportional to
- * distinct plugin paths — not load count) while an edited file is still
- * always reloaded (the stale-plugin bug the original bust existed to fix
- * stays fixed).
+ * evict ESM module-map entries, so unconditionally busting on every load
+ * (`?v=${Date.now()}`) would reload every path-plugin on every preview render
+ * and leak a fresh module instance forever in the long-lived Electron host.
+ * Keying on mtime means an untouched file is served from cache (bounded
+ * growth, proportional to distinct plugin paths — not load count) while an
+ * edited file is still always reloaded.
  */
 interface CachedPathPlugin {
   mtimeMs: number;
@@ -445,14 +443,14 @@ function ensureExitCleanupRegistered(): void {
 /**
  * The shadow-link name carries the PROCESS id, not just the plugin's mtime.
  *
- * With an mtime-only name (2026-07-29 audit) the path was fully deterministic, so
- * two preview processes rendering different books that SHARE one authored plugin
- * — `path: ../../shared/plugins/x.js`, the normative multi-book layout — computed
- * the SAME shadow path. The first `link()` won; the loser hit EEXIST and fell
- * through to a plain `import(pluginPath)`, then cached whatever that returned
- * under the NEW mtime so it was never retried. The ESM registry never evicts, so
- * from the second collision onward that fallback answers with the PREVIOUS
- * module: the author edits a shared plugin and one of their two open books keeps
+ * With an mtime-only name the path would be fully deterministic, so two
+ * preview processes rendering different books that SHARE one authored plugin
+ * — `path: ../../shared/plugins/x.js`, the normative multi-book layout — would
+ * compute the SAME shadow path. The first `link()` wins; the loser hits EEXIST
+ * and falls through to a plain `import(pluginPath)`, cached under the NEW
+ * mtime so it is never retried. The ESM registry never evicts, so from the
+ * second collision onward that fallback answers with the PREVIOUS module: the
+ * author edits a shared plugin and one of their two open books keeps
  * rendering the old one, silently and permanently.
  */
 function shadowPathFor(pluginPath: string, mtimeMs: number): string {
@@ -868,7 +866,7 @@ export async function loadPlugin(
  *     shows the plugin error with fix instructions).
  *
  * Path plugins are loaded through the mtime cache in `loadPlugin` regardless
- * of mode (finding #5): an edited plugin reloads across renders while an
+ * of mode: an edited plugin reloads across renders while an
  * unedited one is never re-imported, correct in both a one-shot CLI build and
  * the long-lived Electron host.
  */
@@ -916,19 +914,16 @@ export interface LoadedPluginsWithCss {
 }
 
 /**
- * Shared "load plugins -> collect their CSS" preamble (ARCH finding #53).
- * Both real render paths — build/export's fail-fast `renderBook`
- * (build-runner.ts) and the live preview's degrade-and-report
- * `renderPreviewBook` (preview/file-watcher.ts) — did this in lockstep,
- * differing ONLY in whether `onError` was supplied. `onError` presence still
- * selects fail-fast vs degrade-and-report (see {@link loadPlugins}) and the
- * matching path-plugin cache mode; this helper just removes the duplicated
- * wiring around it.
+ * Shared "load plugins -> collect their CSS" preamble for both real render
+ * paths — build/export's fail-fast `renderBook` (build-runner.ts) and the
+ * live preview's degrade-and-report `renderPreviewBook`
+ * (preview/file-watcher.ts), which differ ONLY in whether `onError` is
+ * supplied. `onError` presence selects fail-fast vs degrade-and-report (see
+ * {@link loadPlugins}).
  *
  * A `configs` of `undefined`/empty short-circuits WITHOUT calling
- * `loadPlugins` at all (`plugins: undefined`, `pluginStyles: []`) — matching
- * both call sites' prior behavior of never plugin-loading when the manifest
- * declares no plugins.
+ * `loadPlugins` at all (`plugins: undefined`, `pluginStyles: []`): nothing is
+ * plugin-loaded when the manifest declares no plugins.
  */
 export async function loadPluginsWithCss(
   configs: ResolvedExtensionConfig[] | undefined | null,

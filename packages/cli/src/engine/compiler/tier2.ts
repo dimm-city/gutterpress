@@ -242,10 +242,9 @@ export function synthesize(input: Tier2Input): Tier2Output {
       );
   }
 
-  // Running heads are NOT synthesized here. They used to be: each run got a
-  // generated `@page <name>--N` carrying literal text, which meant the compiler
-  // had to re-implement the `@page` cascade (four separate bugs). They are
-  // now produced by the Tier 3 counter-style map,
+  // Running heads are NOT synthesized here. Synthesizing them (a generated
+  // `@page <name>--N` per run carrying literal text) means re-implementing
+  // the `@page` cascade. They are produced by the Tier 3 counter-style map,
   // which leaves the author's `@page` rules exactly as written. Measured on the
   // Gutterpress user guide: identical output, 64.5 KB of generated CSS down to
   // 4.7 KB, at the cost of one extra print pass.

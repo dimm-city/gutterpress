@@ -9,18 +9,17 @@ import { createPickedFilesService } from "../../electron/server-bridge/picked-fi
 import { makeHostServices } from "../support/host-services-fake";
 import { POST as importImageRoute } from "../../src/routes/api/media/import-image/+server";
 
-// UX review M10: EditorToolbar's "Insert Image" dialog and MediaPanel's "Add
-// images…" used to each hand-roll project-relative path math in the
-// renderer, disagreed on destination (`assets/` vs `images/`), and the
-// toolbar's "already inside the project" check was a raw `startsWith` prefix
-// match — so a SIBLING directory that merely shares a string prefix
-// (`/tmp/x/proj2` vs `/tmp/x/proj`) was wrongly treated as "inside" and
-// silently skipped the copy, producing a src that pointed at a nonexistent
-// file. These tests pin the ONE host-side route that now owns that policy:
+// M10: EditorToolbar's "Insert Image" dialog and MediaPanel's "Add images…"
+// share ONE host-side route for project-relative path math and destination
+// choice. A raw `startsWith` "already inside the project" check would treat a
+// SIBLING directory that merely shares a string prefix (`/tmp/x/proj2` vs
+// `/tmp/x/proj`) as "inside" and silently skip the copy, producing a src that
+// pointed at a nonexistent file. These tests pin the route that owns that
+// policy:
 // inside/outside/sibling-prefix containment, images/-vs-assets/ destination
 // selection, and name-collision de-duplication.
 //
-// P1 review: a `src` OUTSIDE the project must now be a one-time picked-file
+// A `src` OUTSIDE the project must be a one-time picked-file
 // capability (`electron/server-bridge/picked-files.ts`) — see
 // picked-files-capability.test.ts for the tests pinning that requirement
 // itself (an un-picked src is rejected, a picked one is consumed on first

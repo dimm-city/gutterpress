@@ -474,7 +474,7 @@ describe("plugin loader", () => {
       ).rejects.toThrow(/gutterpress ext add this-package-does-not-exist-xyz.*Book settings > Features > Advanced/);
     });
 
-    // ARCH finding #57 near-miss: a bare filename with a JS extension but no
+    // Near-miss: a bare filename with a JS extension but no
     // path separator (e.g. `my-plugin.js`, unlike `plugins/my-plugin.js`
     // which isFilePath now catches directly, see manifest.test.ts) still
     // reaches npm resolution and fails. The suggested local-file fix must be
@@ -881,7 +881,7 @@ describe("plugin loader", () => {
       expect(loadCount(id)).toBe(2);
     });
 
-    // ── 2026-07-29 audit: the shadow link must be per-PROCESS ────────────────
+    // ── the shadow link must be per-PROCESS ──────────────────────────────────
     //
     // The hot-reload shadow hard link was named purely from the plugin's mtime,
     // in the plugin's own directory — deterministic, with nothing identifying
@@ -1084,7 +1084,7 @@ describe("plugin loader", () => {
     });
   });
 
-  // ARCH finding #53: the "load plugins -> collectPluginCss" preamble was
+  // The "load plugins -> collectPluginCss" preamble was
   // duplicated between preview/file-watcher.ts's renderBook and
   // build-runner.ts's renderBook, differing ONLY in whether onError was
   // supplied. These characterize the extracted helper against both call

@@ -893,7 +893,7 @@ test("a clean tree with no stale marker still reports 'no changes'", async () =>
 });
 
 // ── withRepoLock: FIFO serialization + B4 map reclamation ────────────────────
-// Core git-recovery infrastructure (ADR 0006 D2): isomorphic-git has no repo
+// Core git-recovery infrastructure: isomorphic-git has no repo
 // locking, so every op on a project dir is serialized through this per-repo
 // FIFO queue. These tests are deterministic (no timing races) — they gate on
 // the observable ordering the lock guarantees, plus the audit-B4 reclamation.

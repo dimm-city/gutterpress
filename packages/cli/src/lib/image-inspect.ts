@@ -1,10 +1,10 @@
 /**
  * Dependency-free raster image header reader — the in-process replacement for
- * ImageMagick `identify` used by the asset checks (Phase 3 of ADR 0002).
+ * ImageMagick `identify` used by the asset checks.
  *
  * Why not `sharp`? sharp is the most capable option but is a native addon whose
  * platform binaries are resolved through `node_modules` at runtime — exactly the
- * pattern that breaks `bun build --compile` (ADR 0001 §1/§3). A small header
+ * pattern that breaks `bun build --compile` (CLAUDE.md §1/§3). A small header
  * parser for the formats print authors actually use (PNG, JPEG, TIFF) keeps a
  * single code path that bundles into the standalone binary AND runs in the
  * Electron desktop, with zero system/native dependency.

@@ -12,9 +12,8 @@ const check: Check = {
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
 
-    // Raw byte scan — in-process replacement for the previous `grep -ao` usage.
-    // Note: /Lab uses a \b boundary (matching the old grep pattern) so the
-    // "/Label" key and similar do not false-positive as the Lab color space.
+    // Raw byte scan. /Lab uses a \b boundary so the "/Label" key and similar
+    // do not false-positive as the Lab color space.
     const bytes = await readPdfBytes(ctx.pdfPath).catch(() => "");
 
     const results: CheckResult[] = [];

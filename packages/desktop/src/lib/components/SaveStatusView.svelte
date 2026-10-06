@@ -1,6 +1,7 @@
 <script lang="ts">
   /**
-   * SaveStatusDialog — the status bar's "Where your work is kept" modal.
+   * SaveStatusView — the status bar's "Where your work is kept" screen, a
+   * full task view (AppView) like Book settings and Publish.
    *
    * Explains, for a writer who has never heard of git, the three separate
    * things that all sound like "saved": Saving (your edits, on this computer),
@@ -11,16 +12,15 @@
    * `saveStatusCopy` mapping (`$lib/save-status`) — this component only renders
    * them, so it holds no state logic of its own.
    *
-   * Mounted fresh per open ({#if} in StatusBar); `dialogBehavior` owns
-   * ARIA/Escape/focus-trap/focus-restore (initial focus: the primary action,
-   * else the dialog itself). It portals to <body>: the status bar is its own
-   * stacking context (z-index) and would otherwise trap the backdrop below the
-   * toolbar's menus. One visually-hidden `role="status"` region announces the
-   * dynamic lines; the visible text carries no live-region of its own.
+   * Mounted fresh per open ({#if} in StatusBar); AppView owns the frame,
+   * Escape, focus trap and focus restore (initial focus: the primary action,
+   * else the layer itself). One visually-hidden `role="status"` region
+   * announces the dynamic lines; the visible text carries no live-region of
+   * its own.
    * PWA-clean (§8): props only.
    */
   import Icon from "$lib/components/Icon.svelte";
-  import { dialogBehavior } from "$lib/dialog";
+  import AppView from "$lib/components/AppView.svelte";
   import type { SaveStatusActionId, SaveStatusCopy, SaveStatusTone } from "$lib/save-status";
 
   let {
@@ -30,17 +30,11 @@
     onClose,
   }: {
     copy: SaveStatusCopy;
-    /** The status-bar button that opened the dialog, for focus restore. */
+    /** The status-bar button that opened the view, for focus restore. */
     triggerEl?: HTMLElement | undefined;
     onAction: (id: SaveStatusActionId) => void;
     onClose: () => void;
   } = $props();
-
-  /** Move the node under <body> so no ancestor stacking context clips it. */
-  function portal(node: HTMLElement) {
-    document.body.appendChild(node);
-    return { destroy: () => node.remove() };
-  }
 
   // Shape, not only colour, tells the tones apart: a neutral circle-i, an arrow
   // where an action is suggested.
@@ -73,79 +67,56 @@
   );
 </script>
 
-<div use:portal>
-  <div class="dlg-backdrop" onclick={onClose} role="presentation"></div>
-  <div
-    class="dlg-shell save-dialog"
-    use:dialogBehavior={{
-      onClose,
-      triggerEl,
-      labelledBy: "save-dialog-title",
-      initialFocus: ".dlg-primary:not(:disabled)",
-    }}
-  >
-    <header class="dlg-header">
-      <h2 id="save-dialog-title">Where your work is kept</h2>
-      <button class="dlg-close" onclick={onClose} title="Close (Esc)" aria-label="Close"><Icon name="x" size={14} /></button>
-    </header>
+<AppView title="Where your work is kept" icon="save" onClose={onClose} {triggerEl} initialFocus=".app-btn-primary:not(:disabled)">
+  <div class="view-body">
+    <div class="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</div>
 
-    <div class="dlg-body">
-      <div class="dlg-sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</div>
+    <p class="summary tone-{copy.summary.tone}">
+      <span class="state-icon" class:spin={copy.summary.tone === "pending"}>
+        <Icon name={TONE_ICON[copy.summary.tone]} size={15} />
+      </span>
+      {copy.summary.text}
+    </p>
 
-      <p class="summary tone-{copy.summary.tone}">
-        <span class="state-icon" class:spin={copy.summary.tone === "pending"}>
-          <Icon name={TONE_ICON[copy.summary.tone]} size={15} />
-        </span>
-        {copy.summary.text}
-      </p>
-
-      {#each SECTIONS as sec (sec.key)}
-        {@const s = copy[sec.key]}
-        <section class="block" aria-labelledby="save-dialog-{sec.key}">
-          <h3 id="save-dialog-{sec.key}"><Icon name={sec.icon} size={13} /> {sec.title}</h3>
-          <p class="state tone-{s.tone}">
-            <span class="state-icon" class:spin={s.tone === "pending"}><Icon name={TONE_ICON[s.tone]} size={13} /></span>
-            <span class="state-text">
-              <span class="state-line">{s.status}</span>
-              {#if s.detail}<span class="state-detail">{s.detail}</span>{/if}
-            </span>
-          </p>
-          {#if s.alert}
-            <p class="alert tone-warn"><span class="state-icon"><Icon name="triangle-alert" size={13} /></span>{s.alert}</p>
-          {/if}
-          <p class="explain">{s.explain}</p>
-          {#if s.note}<p class="note">{s.note}</p>{/if}
-          {#if s.notice}<p class="notice">{s.notice}</p>{/if}
-          {#if s.actions.length > 0}
-            <div class="dlg-actions section-actions">
-              {#each s.actions as a (a.id)}
-                <button
-                  class={a.primary ? "dlg-primary app-btn-primary" : "dlg-ghost"}
-                  disabled={a.disabled}
-                  onclick={() => onAction(a.id)}
-                >{a.label}</button>
-              {/each}
-            </div>
-          {/if}
-        </section>
-      {/each}
-    </div>
-
-    <footer class="dlg-actions">
-      <button class="dlg-ghost" onclick={onClose}>Close</button>
-    </footer>
+    {#each SECTIONS as sec (sec.key)}
+      {@const s = copy[sec.key]}
+      <section class="block" aria-labelledby="save-dialog-{sec.key}">
+        <h3 id="save-dialog-{sec.key}"><Icon name={sec.icon} size={13} /> {sec.title}</h3>
+        <p class="state tone-{s.tone}">
+          <span class="state-icon" class:spin={s.tone === "pending"}><Icon name={TONE_ICON[s.tone]} size={13} /></span>
+          <span class="state-text">
+            <span class="state-line">{s.status}</span>
+            {#if s.detail}<span class="state-detail">{s.detail}</span>{/if}
+          </span>
+        </p>
+        {#if s.alert}
+          <p class="alert tone-warn"><span class="state-icon"><Icon name="triangle-alert" size={13} /></span>{s.alert}</p>
+        {/if}
+        <p class="explain">{s.explain}</p>
+        {#if s.note}<p class="note">{s.note}</p>{/if}
+        {#if s.notice}<p class="notice">{s.notice}</p>{/if}
+        {#if s.actions.length > 0}
+          <div class="section-actions">
+            {#each s.actions as a (a.id)}
+              <button
+                class={a.primary ? "app-btn app-btn-primary" : "app-btn app-btn-ghost"}
+                disabled={a.disabled}
+                onclick={() => onAction(a.id)}
+              >{a.label}</button>
+            {/each}
+          </div>
+        {/if}
+      </section>
+    {/each}
   </div>
-</div>
+</AppView>
 
 <style>
-  @import "$lib/styles/dialog-shell.css";
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
-  .save-dialog { width: min(560px, 94vw); }
-  .dlg-body {
+  .view-body {
     display: flex;
     flex-direction: column;
-    padding: 4px 18px 8px;
-    overflow-y: auto;
   }
 
   .summary {
@@ -206,13 +177,10 @@
   .notice { font-size: 12px; line-height: 1.4; font-weight: 600; color: var(--app-text); }
   .note { font-size: 12px; line-height: 1.4; color: var(--app-text-muted); }
 
-  /* The shared .dlg-actions footer, reused inline for a section's buttons:
-     same button sizes and radius, without the footer's rule and padding. */
   .section-actions {
-    justify-content: flex-start;
+    display: flex;
     flex-wrap: wrap;
+    gap: 8px;
     padding: 4px 0 0;
-    border-top: 0;
-    background: transparent;
   }
 </style>

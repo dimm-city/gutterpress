@@ -52,8 +52,8 @@ const check: Check = {
     if (rasterizedPages.length === 0) return [];
     rasterizedPages.sort((a, b) => a - b);
 
-    // One finding = one result. The explanatory sentences that used to be
-    // emitted as sibling rows now live in `detail`; the page list is in `data`.
+    // One finding = one result. The explanatory sentences live in `detail`,
+    // not sibling rows; the page list is in `data`.
     return [
       {
         checkId: check.id,

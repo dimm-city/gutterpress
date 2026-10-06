@@ -6,13 +6,11 @@
    * report), Logs (the app's diagnostic logs) and Sync (repair tools
    * for a stuck online backup) and Report a problem (the diagnostic bundle
    * + prefilled GitHub issue). Versions + updates live in
-   * the landing's About tab. Split out of the old Help screen, which now
-   * carries guidance only.
+   * the landing's About tab; the Help tab carries guidance only.
    *
    * Reuses SettingsView's sub-tab pattern (TABS, tablist keys, tabpanel with
    * `idPrefix`). Owns its api.doctor load for Diagnostics.
    */
-  import { isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
   import type { DoctorDiagnostics } from "$lib/api";
   import LogsPanel from "$lib/components/LogsPanel.svelte";
@@ -92,10 +90,6 @@
     loading = true;
     error = null;
     try {
-      if (!isDesktop()) {
-        error = "Desktop system details are only available in the desktop app.";
-        return;
-      }
       data = await api.doctor();
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);

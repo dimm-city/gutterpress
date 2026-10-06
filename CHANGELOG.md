@@ -5,6 +5,78 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.11] - 2026-10-06
+
+### Added
+
+- **The mouse wheel turns pages in the preview** (#301, #302). A flick over
+  the preview turns one page, or one spread in Read; one gesture never turns
+  two. A page taller than the window is scrolled through first and turns
+  only once you reach its end. Ctrl+wheel and sideways scrolling are left
+  alone.
+- **Undo after deleting a file** (#313). Deleting from the Files tab shows
+  "Deleted … — Undo"; Undo puts the file or folder back. The latest delete
+  can be undone.
+
+- **Render-parity raster mode** (#295). `scripts/render-parity.ts compare
+  --raster <dir>` also compares every page as pixels, so a colour-only change
+  that moves no text no longer passes; each differing page gets a
+  `diff-NNN.png` with the changed pixels in red and is waivable per page. CI
+  runs it on every public fixture.
+
+### Changed
+
+- **One kind of screen for every task.** Book settings, Publish and *Where
+  your work is kept* now open the same way the start screen does: a full
+  window with the same fade, the same centred column and the same close
+  control in the top-right corner, with the workspace out of sight until you
+  close it (Esc or the X). Publish and *Where your work is kept* were pop-up
+  dialogs before.
+- **Reader or author** (Settings → App). Gutterpress now asks how you use
+  it. A reader sees just the pages: Edit/Read, Setup and Publish are gone
+  from the toolbar, the left panel offers only Books and TOC, New book is
+  not offered, and the book opens in Read. An author gets everything.
+  New installs start as a reader; the choice is remembered.
+- **Problems and the save state belong to editing.** The Problems badge and
+  the "Edits saved" indicator moved from the status bar to the editor
+  toolbar, and the Problems list opens at the bottom of the editor pane,
+  never over the preview. The panel has a close button in its top-right
+  corner.
+- **The toolbar keeps its labels longer** (#316). Edit/Read, Setup and
+  Publish stay labelled down to a 900px-wide window instead of collapsing
+  to icons at 1150px.
+- **Narrow windows no longer show the Edit/Read control.** Below 820px the
+  Markdown/Preview tabs decide what is on screen and pages never sit side by
+  side, so the control changed nothing; it is gone from both tabs.
+- **Connections** now says to use *Back up now* in the save status, not a
+  *Sync Changes* button that no longer exists (#310).
+- **Removed the unreachable browser/PWA code** (about 3,000 lines): the web
+  adapter, its file-access and storage helpers, the service worker, the web
+  manifest, the web-only HTML download, and every "is this the desktop app?"
+  check. No build ever reached it. The node-free `gutterpress/render` entry
+  point is kept for a future browser version.
+- **Cleanup of what the removal left behind**: platform methods and
+  capability flags nothing called, error handling for sync-conflict and
+  render-timeout messages nothing produces any more, the obsolete PWA plan
+  and mobile/PWA requirements, and comments and docs that described removed
+  code or no longer matched it.
+- **Removed tooling nothing ran** (about 4,500 lines): `packages/cli/tools/`,
+  the desktop drives no CI job ran (`inline-editing`, `electron-driver`,
+  `run-ui` and the `test:ui` script), the Windows Docker install test, and the
+  Google Drive spike and its plan.
+- **Dependencies** (#287): all 75 reported security advisories fixed (Electron
+  42.11.10, SvelteKit, markdown-it, tar and transitive packages), and the
+  security audit now blocks CI. Three advisories published since are fixed
+  the same way (katex, postcss-selector-parser, source-map-js); one in
+  sprintf-js, a build-tooling dependency with no patched release, is ignored
+  by id until one exists.
+
+### Fixed
+
+- **Zoom never re-paginates** (#318). Pages could not be reproduced breaking
+  differently by zoom level; a new CI check re-paginates the user guide at
+  several zooms in Edit and Read and fails if any block moves page.
+
 ## [0.11.10] - 2026-10-03
 
 ### Added

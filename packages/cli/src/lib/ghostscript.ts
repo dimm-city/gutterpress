@@ -286,7 +286,7 @@ ${docInfoConformance}/DOCINFO pdfmark
  *
  * Uses pdf-lib (pure JS, MIT) rather than Ghostscript, so the plain-PDF build
  * path needs no system tool at all — gs is now required only for PDF/X CMYK
- * conversion (ADR 0002). `updateMetadata: false` keeps pdf-lib from rewriting
+ * conversion. `updateMetadata: false` keeps pdf-lib from rewriting
  * the ModDate/Producer so the only change is the /Creator field.
  */
 export async function stampCreator(pdfPath: string): Promise<void> {

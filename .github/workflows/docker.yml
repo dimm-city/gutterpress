@@ -6,11 +6,10 @@ name: Docker image
 # workflow_dispatch is the ONLY trigger: release.yml's github-release job
 # dispatches this workflow at the release tag after creating the GitHub
 # release (an explicit dispatch because GitHub suppresses workflow-triggering
-# events from anything created with a workflow's own GITHUB_TOKEN). The former
-# `release: published` trigger could only ever fire for a hand-published
-# release, which shouldn't exist — release.yml is the single publish path —
-# so it was removed rather than left as a way to push a container by
-# accident.
+# events from anything created with a workflow's own GITHUB_TOKEN). Do not
+# add a `release: published` trigger: it could only ever fire for a
+# hand-published release, which shouldn't exist — release.yml is the single
+# publish path — so it would only be a way to push a container by accident.
 
 on:
   workflow_dispatch:

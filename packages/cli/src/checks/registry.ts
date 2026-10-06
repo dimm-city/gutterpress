@@ -61,7 +61,7 @@ export function getAllCheckIds(): string[] {
  * Derived from the registry (rather than a hand-maintained literal list) so
  * it can never drift from `CheckCategory`'s real members — used to validate
  * `--category` input against something other than a bare `as CheckCategory`
- * cast, which previously accepted any string.
+ * cast, which would accept any string.
  */
 export function getKnownCategories(): CheckCategory[] {
   const categories = new Set<CheckCategory>();

@@ -3,7 +3,7 @@ import { defineRoute, requireProjectDir } from '../../../_lib/route';
 import type { RequestHandler } from './$types';
 
 /**
- * Create a new destination (#221 D9, gdrive: a Drive folder at My Drive
+ * Create a new destination (#221, gdrive: a Drive folder at My Drive
  * root). Provider-neutral, same rationale as destinations/list — see that
  * route's header.
  */

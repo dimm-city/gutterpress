@@ -28,7 +28,7 @@
  * Exit 0 on pass, 1 on fail.
  */
 import { spawn } from "node:child_process";
-import { cpSync, mkdtempSync, rmSync, existsSync, appendFileSync, writeFileSync, readFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, rmSync, existsSync, appendFileSync, writeFileSync, readFileSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -91,9 +91,14 @@ const target = exeArg ? resolve(exeArg) : join(desktopDir, "out", "main", "main.
 if (!existsSync(target)) fail(`no ${target} — run \`npm run build && npm run electron:build\` first`);
 const isMainJs = target.endsWith(".js");
 const electronBin = isMainJs ? require_("electron") : target;
-const appArgv = [...(isMainJs ? [target] : []), `--remote-debugging-port=${PORT}`, "--no-sandbox"];
-
  fakeHome = mkdtempSync(join(tmpdir(), "gutterpress-problems-home-"));
+// The drive edits, so it runs as an author (the app defaults to a reader, who
+// has no editor and so no Problems badge).
+const userDataDir = join(fakeHome, "user-data");
+mkdirSync(userDataDir, { recursive: true });
+writeFileSync(join(userDataDir, "app-settings.json"), JSON.stringify({ workspace: { role: "author" } }));
+const appArgv = [...(isMainJs ? [target] : []), `--remote-debugging-port=${PORT}`, `--user-data-dir=${userDataDir}`, "--no-sandbox"];
+
 // xvfb is a Linux-only headless fallback; Windows/macOS never have DISPLAY.
 const useXvfb = process.platform === "linux" && !process.env.DISPLAY;
 const cmd = useXvfb ? "xvfb-run" : electronBin;
@@ -228,21 +233,19 @@ if (!projectOpen) fail("project never opened — no TOC items or file items appe
 log("project opened");
 
 // ── 5. counts on the problems strip ──────────────────────────────────────────
-// The strip sits in the status bar at the bottom of the screen (not in the
-// navbar) and shows error/warning counts without a dedicated badge element. It
-// is a button only while there is something to list (#307) — a clean project
-// shows the same badge, inert — so it appears with the counts.
+// The strip sits on the editor toolbar (problems are an editing concern) and
+// shows error/warning counts without a dedicated badge element. It is a
+// button only while there is something to list (#307) — a clean project shows
+// the same badge, inert — so it appears with the counts.
 //
 // Those counts are downstream of the FIRST FULL RENDER, not of the project-open
 // gate above: the app calls refreshProblems() from its renderingComplete
-// handler, while that gate fires as soon as the sources are parsed. Measured on
-// a green CI run the counts land ~9s after "project opened", so the old 30s was
-// sized for the lint round-trip alone and left the rest of the render ~3x
-// headroom — which is what ran out on 5 of 40 CI runs. Budget it like the
-// project-open gate above, since it waits on the same pipeline, and report what
-// the strip actually showed on the way out: a render that never finished, a
-// lint that errored, and a lint that found nothing were indistinguishable
-// before, and only one of the three is fixed by waiting longer.
+// handler, while that gate fires as soon as the sources are parsed (measured on
+// a green CI run: ~9s after "project opened"). Budget it like the project-open
+// gate above, since it waits on the same pipeline, and report what the strip
+// actually showed on the way out: a render that never finished, a lint that
+// errored, and a lint that found nothing must be distinguishable, and only one
+// of the three is fixed by waiting longer.
 const readStrip = () => evalJs(`(() => {
   const strip = document.querySelector('.toggle-strip');
   if (!strip) return { strip: false };
@@ -305,25 +308,29 @@ if (!risky) fail("risky print-property (filter) finding not listed");
 if (risky.file !== "extra.css") fail(`risky finding grouped under ${risky.file}, expected extra.css`);
 if (!/warning/.test(risky.severity)) fail(`risky severity class ${risky.severity}, expected sev-warning`);
 log("both seeded findings listed with correct file/severity");
-// #307: the list is a row of its own between the workspace and the status bar.
-// It used to be an absolutely-positioned overlay that covered the bottom of the
-// left panel (hiding its buttons) and of the editor/preview.
+// The list lives at the bottom of the editor pane, in normal flow: inside the
+// editor's column, never over the preview, never over the status bar (#307).
 const rows = await evalJs(`(() => {
   const body = document.querySelector('.problems-panel .panel-body').getBoundingClientRect();
+  const editor = document.querySelector('.editor-pane').getBoundingClientRect();
+  const preview = document.querySelector('.preview-pane')?.getBoundingClientRect() ?? null;
   return {
-    bodyTop: body.top,
-    bodyBottom: body.bottom,
-    workspaceBottom: document.querySelector('.left-panel-region').getBoundingClientRect().bottom,
+    bodyLeft: body.left, bodyRight: body.right, bodyTop: body.top, bodyBottom: body.bottom,
+    editorLeft: editor.left, editorRight: editor.right, editorBottom: editor.bottom,
+    previewLeft: preview?.left ?? null,
     barTop: document.querySelector('.status-bar').getBoundingClientRect().top,
   };
 })()`);
-if (rows.bodyTop < rows.workspaceBottom - 1) {
-  fail(`problems list overlaps the workspace: list top ${rows.bodyTop} < workspace bottom ${rows.workspaceBottom}`);
+if (rows.bodyLeft < rows.editorLeft - 1 || rows.bodyRight > rows.editorRight + 1) {
+  fail(`problems list is not inside the editor pane: ${JSON.stringify(rows)}`);
+}
+if (rows.previewLeft !== null && rows.bodyRight > rows.previewLeft + 1) {
+  fail(`problems list covers the preview: ${JSON.stringify(rows)}`);
 }
 if (rows.bodyBottom > rows.barTop + 1) {
   fail(`problems list overlaps the status bar: list bottom ${rows.bodyBottom} > bar top ${rows.barTop}`);
 }
-log(`list sits between workspace and bar: ${JSON.stringify(rows)}`);
+log(`list sits inside the editor pane: ${JSON.stringify(rows)}`);
 // #307 keyboard access: the list comes BEFORE the bar in the DOM, so a keyboard
 // user who opens it from the toggle could not Tab into it. Opening therefore
 // moves focus into the list, and Escape from inside closes it and hands focus
@@ -443,33 +450,38 @@ if (audit.overlaps.length > 0) fail(`toolbar overlaps at 700px: ${JSON.stringify
 if (audit.overflow.length > 0) fail(`toolbar controls overflow at 700px: ${JSON.stringify(audit.overflow)}`);
 await screenshot(join(tmpdir(), "problems-panel-narrow.png"));
 
-// ── 9. #316: the status bar keeps its words at 700px ─────────────────────────
-// "Edits saved" used to collapse to a bare icon below 820px. The save text now
-// stays at every width; the Problems control is a compact badge (icon + count,
-// no text label) with an accessible name that carries the breakdown.
+// Below 820px the editor is a tab; the save state and the Problems badge live
+// on its toolbar, so bring the Markdown tab forward first.
+await evalJs(`document.querySelector('#mobile-tab-markdown')?.click(); true`);
+await sleep(600);
+
+// ── 9. #316: the editor toolbar keeps the save state's words at 700px ────────
+// "Edits saved" must not collapse to a bare icon at this width; the Problems
+// control is a compact badge (icon + count, no text label) with an accessible
+// name that carries the breakdown. Both sit on the editor toolbar now.
 const bar = await evalJs(`(() => {
   const shown = (sel) => {
     const el = document.querySelector(sel);
     return !!el && el.getClientRects().length > 0 && getComputedStyle(el).display !== 'none';
   };
   return {
-    saveText: document.querySelector('.save-text')?.textContent?.trim() ?? null,
-    saveTextShown: shown('.save-text'),
+    saveText: document.querySelector('.editor-toolbar .save-text')?.textContent?.trim() ?? null,
+    saveTextShown: shown('.editor-toolbar .save-text'),
     stripShown: shown('.toggle-strip'),
     stripCountShown: shown('.toggle-strip .error-count, .toggle-strip .warning-count'),
     stripHasText: /problems/i.test(document.querySelector('.toggle-strip')?.textContent ?? ''),
     stripLabel: document.querySelector('.toggle-strip')?.getAttribute('aria-label') ?? null,
   };
 })()`);
-console.log(`[problems-panel] 700px status bar: ${JSON.stringify(bar)}`);
+console.log(`[problems-panel] 700px editor toolbar: ${JSON.stringify(bar)}`);
 if (!bar.saveTextShown || !bar.saveText) fail(`save-state text is not visible at 700px: ${JSON.stringify(bar)}`);
 if (!bar.stripShown || !bar.stripCountShown) fail(`Problems badge (icon + count) is not visible at 700px: ${JSON.stringify(bar)}`);
 if (bar.stripHasText) fail(`Problems badge should carry no visible text label: ${JSON.stringify(bar)}`);
 if (!/^Problems: .*(error|warning)/.test(bar.stripLabel ?? "")) fail(`Problems badge accessible name is wrong: ${JSON.stringify(bar)}`);
 
 // ── 10. #307: at 700px the left-panel drawer overlays the workspace but stops
-// at the status bar's top edge. It used to be viewport-fixed with bottom:0, so
-// it ran underneath the bar and hid its own footer buttons (New book).
+// at the status bar's top edge — viewport-fixed with bottom:0 it would run
+// underneath the bar and hide its own footer buttons (New book).
 await evalJs(`(() => {
   if (!document.querySelector('.left-panel.open')) {
     document.querySelector('button[aria-label="Toggle left panel"]').click();

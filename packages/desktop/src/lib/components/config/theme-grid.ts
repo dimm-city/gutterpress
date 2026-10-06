@@ -1,9 +1,8 @@
 /**
  * Pure built-in-look grid helper for LookSection.svelte.
  *
- * Extracted so the "already added" rule is unit-testable without a Svelte
- * component test harness (none exists in this repo — see CLAUDE.md test
- * conventions). `import type` only, so this stays PWA-clean (§8).
+ * Kept separate so the "already added" rule is unit-testable without a
+ * Svelte component test harness. `import type` only, so this stays PWA-clean (§8).
  */
 import type { ProjectExtensionEntry } from "$lib/platform/dtos";
 

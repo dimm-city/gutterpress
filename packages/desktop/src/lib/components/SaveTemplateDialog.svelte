@@ -1,10 +1,9 @@
 <script lang="ts">
   /**
    * SaveTemplateDialog — capture the open book as a reusable starter template
-   * (Book setup → Details → "Save as template…"). Formerly a format of the
-   * toolbar's Export dialog, which was folded into the Publish wizard; a
-   * template is a book-setup action, not a publishing destination, so it
-   * lives with the book's details now.
+   * (Book setup → Details → "Save as template…"). A template is a book-setup
+   * action, not a publishing destination, so it lives with the book's
+   * details.
    *
    * Mounted fresh per open ({#if} in ProjectSettingsView) so state resets;
    * dialogBehavior owns ARIA/Escape/focus-trap/restore. PWA-clean (§8):

@@ -1,5 +1,5 @@
 /**
- * Sync / convergence tests (#15 sync phase, ADR 0006 D5; converge ruling
+ * Sync / convergence tests (#15 sync phase; converge ruling
  * 2026-08-14).
  *
  * These run against the REAL in-process smart-HTTP server (upload-pack AND

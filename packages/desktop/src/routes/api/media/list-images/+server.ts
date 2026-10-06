@@ -16,7 +16,7 @@ const MEDIA_SCAN_MAX_FILES = 2000;
 
 export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
   validate: async (raw) => ({
-    // Confine to the open project (ARCH #37): this walk (depth 6, up to 2000
+    // Confine to the open project: this walk (depth 6, up to 2000
     // entries) must not enumerate arbitrary directory trees for renderer-origin
     // callers.
     projectDir: await requireWithinProjectRoot(

@@ -1,5 +1,5 @@
 /**
- * Google Drive publish provider (#221, docs/gdrive-publish-plan.md).
+ * Google Drive publish provider (#221, ADR 0011).
  *
  * Uploads the finished PDF — or, when the manifest selects the HTML format
  * (phase 3, D8), the website export packaged as a single ZIP — to a folder
@@ -182,8 +182,7 @@ function yieldToEventLoop(): Promise<void> {
  * archive's whole build time — and WITHOUT ever touching fflate's
  * worker-based async API.
  *
- * This replaced a call to fflate's async `zip()` after a review finding
- * (#221 group A, A7 follow-up) showed that API is non-blocking only because
+ * Not fflate's async `zip()` (#221): that API is non-blocking only because
  * it hands any entry >= ~156 KB (`size < 160000` in fflate's own source) off
  * to a `worker_threads` Worker running an eval'd copy of fflate's source
  * (fflate's `wrk()`/`astrmify`, `node-worker.cjs`). That works under plain
@@ -191,15 +190,15 @@ function yieldToEventLoop(): Promise<void> {
  * project's actual shipped artifact, see CLAUDE.md "What Gutterpress ships"
  * — the eval'd worker throws `TypeError: undefined is not an object
  * (evaluating 'dat.length')` for any such entry. Every real book's
- * `book.html` exceeds that threshold, so gdrive's HTML publish was broken in
- * the shipped CLI binary despite being claimed fixed. `zipSync()` doesn't
+ * `book.html` exceeds that threshold, so gdrive's HTML publish would break in
+ * the shipped CLI binary. `zipSync()` doesn't
  * hit this — it never spawns a worker — but it blocks the event loop for the
  * archive's whole build, which is what non-blocking exists to avoid in the
  * first place (Electron MAIN process, desktop publish: a synchronous zip of
  * a large website export freezes the app UI and stalls the `onProgress`
  * stream for as long as the archive takes to build).
  *
- * The fix streams each entry through fflate's fully SYNCHRONOUS `ZipDeflate`
+ * Instead, each entry streams through fflate's fully SYNCHRONOUS `ZipDeflate`
  * (backed by fflate's in-thread `Deflate` stream — no worker, ever, at any
  * size) in `ZIP_CHUNK_BYTES` pieces, yielding one event-loop turn between
  * chunks. That keeps the event loop responsive — the same goal the worker

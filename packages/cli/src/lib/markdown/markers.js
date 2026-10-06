@@ -794,7 +794,7 @@ function scanForUnknownDeclaredMarkers(state, declaredMarkers) {
 
 export default function plugin(md, pluginOptions = {}) {
   const options = {
-    // `implicitPage` was removed 2026-08-12 — see the @section branch below.
+    // No `implicitPage` option — see the @section branch below.
     preferPagesInSpreads: false,
     ...pluginOptions,
   };
@@ -1778,10 +1778,9 @@ export default function plugin(md, pluginOptions = {}) {
  * `text-align: center` still centers it — `display: block` would not).
  *
  * #231 — two engine-generic print fixes adopted from a real book's own
- * engine sheet (2026-09-01 CSS architecture review, finding C8), because
- * both are written entirely in terms of core's own published contract and
- * fix a failure every book with big art or a `<figure>` hits, not a
- * DC-brand-specific one:
+ * engine sheet, because both are written entirely in terms of core's own
+ * published contract and fix a failure every book with big art or a
+ * `<figure>` hits, not a DC-brand-specific one:
  *
  *   - A bare markdown placard (`![Alt](art.jpg)`, no class) taller than the
  *     page content box is monolithic replaced content, and the fragmenter

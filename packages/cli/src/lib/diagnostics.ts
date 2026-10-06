@@ -98,12 +98,9 @@ const TOOLS_TO_PROBE: Array<{
 // Hard 2s ceiling — a broken binary that hangs shouldn't block the dialog.
 const GET_VERSION_TIMEOUT_MS = 2000;
 
-// Delegates to exec.ts's shared execCapture (see its docstring for why this
-// is one implementation instead of one of four parallel copies). Note this
-// now requires a zero exit code to report a version string — gs/qpdf both
-// exit 0 on `--version` — whereas the old bespoke spawn here ignored the
-// exit code entirely and would happily surface stderr from a failing
-// invocation as if it were a version string.
+// Delegates to exec.ts's shared execCapture. Requires a zero exit code to
+// report a version string — gs/qpdf both exit 0 on `--version` — so stderr
+// from a failing invocation is never surfaced as if it were a version string.
 async function getVersion(bin: string, args: string[] = ["--version"]): Promise<string | undefined> {
   try {
     const { stdout, stderr } = await execCapture(bin, args, { timeoutMs: GET_VERSION_TIMEOUT_MS });

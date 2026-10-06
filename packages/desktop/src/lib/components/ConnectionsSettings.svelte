@@ -4,16 +4,14 @@
    * stored credential. Section order (owner request 2026-07-30): GitHub
    * first — it sits directly under the author's name & email, the identity
    * it carries — then publishing accounts, then other Git servers. The open
-   * project's sync diagnostics (the "This project" section) moved to
-   * Book settings → Connections (ProjectConnectionsSection.svelte,
-   * 2026-07-30); the diagnosis is still fetched here because the Git-server
-   * connect form uses it for host prefill and repo-scoped validation.
+   * project's sync diagnostics live in Book settings → Connections
+   * (ProjectConnectionsSection.svelte); the diagnosis is still fetched here
+   * because the Git-server connect form uses it for host prefill and
+   * repo-scoped validation.
    *
-   * The former Advanced Setup dialog (#14, ADR 0006) is consolidated here:
-   * its duplicate connect-a-Git-server form and connected-servers list are
-   * gone; its unique pieces live on in the single Git-servers section (the
-   * debounced token-URL helper, the repo-scoped validation against the open
-   * project's remote, the host prefill, the provider guidance).
+   * The Git-servers section (#14) carries the debounced token-URL helper,
+   * the repo-scoped validation against the open project's remote, the host
+   * prefill, and the provider guidance.
    *
    * Everything here reads REDACTED entries only (host/username/label —
    * never token values). Removal deletes by the entry's RAW store key via
@@ -35,7 +33,7 @@
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { api, type PublishProviderStaticInfo } from "$lib/api";
-  import { getPlatform, isDesktop } from "$lib/platform";
+  import { getPlatform } from "$lib/platform";
   import { friendlyHostError } from "$lib/errors";
   import type {
     HostConnectionInfo,
@@ -84,7 +82,7 @@
   let pubOauthAuthUrl = $state<string | null>(null);
   let pubOauthInFlight = $state(false);
 
-  // Two-step Remove confirm (L2 — a stored token is the most painful thing
+  // Two-step Remove confirm (a stored token is the most painful thing
   // to re-acquire, so removal arms in place and confirms on a second click).
   let confirmRemove = $state<InlineConfirmState>({});
   let removing = $state<string | null>(null);
@@ -102,10 +100,6 @@
   });
 
   async function load() {
-    if (!isDesktop()) {
-      loading = false;
-      return;
-    }
     loading = true;
     loadError = null;
     try {
@@ -352,9 +346,7 @@
 </script>
 
 <div class="connections">
-  {#if !isDesktop()}
-    <p class="hint">Connections are managed in the desktop app.</p>
-  {:else if loading}
+  {#if loading}
     <p class="hint">Loading your connections…</p>
   {:else}
     {#if loadError}<p class="error" role="alert">{loadError}</p>{/if}
@@ -462,8 +454,7 @@
       {#if pubError}<p class="error" role="alert">{pubError}</p>{/if}
     </section>
 
-    <!-- Other Git servers — the ONE connect-a-server surface (the former
-         Advanced-setup duplicate form/list are consolidated here). -->
+    <!-- Other Git servers — the ONE connect-a-server surface. -->
     <section class="conn-group">
       <h4>Git servers</h4>
       <p class="hint">Access tokens for Gitea, Forgejo, GitLab, Bitbucket, Azure Repos, and other servers your books sync with. The token is checked with the server before it is saved.</p>

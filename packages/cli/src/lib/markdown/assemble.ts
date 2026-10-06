@@ -1,17 +1,18 @@
 /**
  * Pure (node-free) book-HTML assembly.
  *
- * §1/§8 / ADR 0004: imports ONLY the pure render core (`renderer.ts`,
+ * §1/§8: imports ONLY the pure render core (`renderer.ts`,
  * Gutterpress's marker parser (`markers.js`), and `chapter-id.ts`) — NO
  * `node:*`, NO `fs`/`path`. The
  * caller injects an async `readText(relPath)` so the SAME assembly runs:
  *   - on the CLI / preview server with a `node:fs/promises`-backed reader
  *     (see `renderChapters` in `./index.ts`); and
- *   - in the browser (the PWA WebAdapter, #33) with a File System Access reader.
+ *   - in a future browser build, with a reader over whatever file access it
+ *     has (none ships today — see `render.ts`).
  *
- * This is the "fix the core primitive" split (CLAUDE.md §0/§6): the file-reading
- * wrapper is the ONLY node-coupled part of the old `renderChapters`, so the pure
- * markdown→HTML→book.html work lives here and the wrapper just supplies inputs.
+ * The file-reading wrapper is the ONLY node-coupled part of `renderChapters`,
+ * so the pure markdown→HTML→book.html work lives here and the wrapper just
+ * supplies inputs.
  */
 import { MARKER_CSS } from "./markers.js";
 import { GUTTERPRESS_CSS } from "./gutterpress-css.ts";
@@ -23,7 +24,7 @@ import { collectHtmlImageRefs, type ImageRefEnv } from "./images";
 export type ReadText = (relPath: string) => Promise<string>;
 
 /**
- * One author-mistake warning emitted by Gutterpress's marker parser (ARCH finding #4).
+ * One author-mistake warning emitted by Gutterpress's marker parser.
  * Mirrors the shape `markers.js`'s `warn()` pushes onto
  * `env.layoutWarnings` — see that file's header comment for the warning
  * `type`s (`ambiguous_marker_token`, `unrecognized_marker_token`,
@@ -45,10 +46,8 @@ export type ReadText = (relPath: string) => Promise<string>;
  * same type, via a second, unconditional check modeled on `unknown_gp_class`
  * rather than the core-only `scanForMistypedMarkers`.
  *
- * `section_without_page` and `implicit_page` were REMOVED 2026-08-12: a
- * @section with no open @page is valid authoring (audited, 17/17 false
- * positives across two real books), and the `implicitPage` option that
- * produced the latter was unreachable and latently broken.
+ * There is deliberately no `section_without_page`: a @section with no open
+ * @page is valid authoring (17/17 false positives across two real books).
  */
 export interface LayoutWarning {
   line: number;
@@ -136,14 +135,11 @@ export interface AssembleBookHtmlOptions {
   /** Add a layout-neutral source-file id to source-mapped preview blocks. */
   annotateSourceChapters?: boolean;
   /**
-   * ARCH finding #4: per-chapter callback receiving any `env.layoutWarnings`
+   * Per-chapter callback receiving any `env.layoutWarnings`
    * Gutterpress's marker parser computed while rendering `file` (only called
    * when that chapter produced at least one). `file` is the same canonical
    * chapter id used for `data-chapter-src`, so a host can attribute a warning
-   * to the exact source file. Additive/optional — omitting it reproduces the
-   * prior throwaway-env behavior exactly, so this cannot change output for
-   * existing callers (e.g. the desktop's WebAdapter, which still gets a plain
-   * `Promise<string>` back).
+   * to the exact source file. Optional, and it never changes output.
    */
   onChapterWarnings?: (file: string, warnings: LayoutWarning[]) => void;
   /**
@@ -162,9 +158,8 @@ export interface AssembleBookHtmlOptions {
  * Assemble a single `book.html` string from the given markdown files.
  *
  * Pure: every input (the file list, their contents via `readText`, the resolved
- * CSS hrefs) is supplied by the caller. Mirrors the exact `<head>`/body/CSS
- * emission the old `renderChapters` produced, so the CLI output is byte-identical
- * for identical inputs.
+ * CSS hrefs) is supplied by the caller, so the output is byte-identical for
+ * identical inputs.
  */
 export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<string> {
   const title = opts.title ?? "Document";
@@ -198,12 +193,10 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
       const errorMsg = err instanceof Error ? err.message : String(err);
       throw new Error(`Failed to read file ${file}: ${errorMsg}`);
     }
-    // Thread a per-chapter env through md.render (ARCH #4): previously this was
-    // a bare `md.render(content)`, so every marker warning computed into
-    // `env.layoutWarnings` landed in markdown-it's own throwaway internal env and was
-    // discarded the instant this call returned. Passing our own env here is the
-    // ONLY change needed to make ~150 lines of already-written, already-tested
-    // author-mistake diagnostics (§6: the marker parser still owns computing them)
+    // Thread a per-chapter env through md.render: a bare `md.render(content)`
+    // would compute every marker warning into markdown-it's own throwaway
+    // internal env and discard it the instant this call returned. Passing our
+    // own env is what makes the marker parser's author-mistake diagnostics
     // observable to a caller.
     const env: { layoutWarnings?: LayoutWarning[]; sourceChapter?: string } & ImageRefEnv = {};
     if (opts.annotateSourceChapters) env.sourceChapter = chapterId;

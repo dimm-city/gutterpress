@@ -6,7 +6,7 @@ import type { SnapshotEntry } from "$lib/api";
  * `message` string is the ONLY discriminator the renderer has. The machine
  * messages below are produced by the CLI lib and the vcs routes; they are
  * matched as LITERAL strings — never imported — both because the SPA never
- * value-imports the lib (§8 / ADR 0004) and because superseded spellings live
+ * value-imports the lib (§8) and because superseded spellings live
  * in existing project history forever, so every spelling ever shipped stays
  * listed. Anything unrecognized is a version the author saved by hand. Pure,
  * no runes — mirrors outline.ts / toc-tree.ts and is unit-tested directly.

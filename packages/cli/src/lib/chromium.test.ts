@@ -1,6 +1,6 @@
 /**
- * ARCH finding #49: `chromium.ts` (Chromium discovery — the thing most likely
- * to fail on a non-technical author's machine) had no direct tests.
+ * Direct tests for `chromium.ts` (Chromium discovery — the thing most likely
+ * to fail on a non-technical author's machine).
  *
  * These tests exercise the full discovery matrix — env-var override, the
  * fixed-path scan, and the PATH probe fallback — WITHOUT requiring a real
@@ -307,7 +307,7 @@ describe("requireChromiumExecutable — error message quality", () => {
     } catch (err) {
       const message = (err as Error).message;
       expect(message).toContain("CHROMIUM_PATH=/path/to/chrome");
-      // Sourced from the single INSTALL_HINTS registry (ARCH finding #15) —
+      // Sourced from the single INSTALL_HINTS registry —
       // not a hand-copied duplicate that could drift.
       expect(message).toContain(INSTALL_HINTS.chromium.body);
       // The desktop app renders with its own bundled Electron Chromium (it

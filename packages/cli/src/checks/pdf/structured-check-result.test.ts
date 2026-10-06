@@ -18,7 +18,7 @@ import * as pdfInspect from "../../lib/pdf-inspect";
 
 type InkPage = { page: number; c: number; m: number; y: number; k: number; tac: number };
 
-// Mirrors pdf-parse.ts's InkCoverageResult discriminated union (finding #51):
+// Mirrors pdf-parse.ts's InkCoverageResult discriminated union:
 // a gs failure must be distinguishable from a legitimately empty result, so
 // the mock — like the real function — returns one shape or the other rather
 // than always succeeding with an array.

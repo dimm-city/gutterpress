@@ -37,12 +37,12 @@ let uid = 0;
  * Measurement id for an element, WITHOUT mutating the element itself.
  *
  * Assigning an id to an author element is not inert — `h1[id]
- * { counter-increment: chapter }` is real theme CSS, and the old design had to
- * strip its ids and reprint, praying the clean document paginated identically
- * to the measured one. Instead: an element that already has an id is measured
- * through it (no mutation at all); one that doesn't gets a zero-size
- * `<gp-anchor id=…>` injected as its first child. Custom tag + an EMPTY
- * inline box keep it invisible to layout, `::first-letter`, and (verified
+ * { counter-increment: chapter }` is real theme CSS, and stripping the ids
+ * again before printing would mean hoping the clean document paginates
+ * identically to the measured one. Instead: an element that already has an id
+ * is measured through it (no mutation at all); one that doesn't gets a
+ * zero-size `<gp-anchor id=…>` injected as its first child. Custom tag + an
+ * EMPTY inline box keep it invisible to layout, `::first-letter`, and (verified
  * against hostile `[id]`/`::before`/counter CSS) to author selectors — so the
  * instrumented document IS the shipped document and no final reprint exists.
  *

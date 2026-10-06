@@ -16,7 +16,7 @@
    * project can't balloon memory.
    */
   import { onMount } from "svelte";
-  import { getPlatform, isDesktop } from "$lib/platform";
+  import { getPlatform } from "$lib/platform";
   import { api } from "$lib/api";
   import type { MediaImageEntry, MediaImageDetails } from "$lib/platform/dtos";
   import {
@@ -82,7 +82,7 @@
 
   async function refresh(): Promise<void> {
     const dir = projectDir;
-    if (!dir || !isDesktop()) {
+    if (!dir) {
       images = [];
       thumbs = {};
       return;
@@ -123,7 +123,7 @@
     details = null;
     notice = null;
     void refresh();
-    if (!projectDir || !isDesktop()) return;
+    if (!projectDir) return;
     const off = getPlatform().onFolderChanged(() => {
       if (refreshTimer) clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => {
@@ -140,7 +140,7 @@
     };
   });
 
-  // L7: rapid tile clicks each kick off an `api.media.inspect` call; without
+  // Rapid tile clicks each kick off an `api.media.inspect` call; without
   // a sequence guard an earlier click's response can resolve AFTER a later
   // click's and overwrite `details`/`selected` with the wrong image's
   // DPI/print-readiness data. Same pattern `refresh()`'s `loadSeq` already
@@ -192,7 +192,7 @@
       const picked = await api.dialog.pickImageFiles();
       if (picked.length === 0) return;
       // Destination policy + path math live in the ONE host-side import
-      // route (UX review M10) — same one the editor toolbar's Insert Image
+      // route — same one the editor toolbar's Insert Image
       // dialog calls — so this panel does zero path/fs logic of its own.
       let destName: string | null = null;
       for (const src of picked) {

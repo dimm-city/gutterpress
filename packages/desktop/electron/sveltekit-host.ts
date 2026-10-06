@@ -8,11 +8,11 @@
 // constructs that Server once; registerAppProtocol() answers each
 // app://local/* request by serving the file under build/client/ when one
 // exists at that path, and otherwise handing the Request to Server.respond(),
-// the same call adapter-node's handler made behind an HTTP server.
+// the same call adapter-node's handler makes behind an HTTP server.
 //
 // No HTTP server: nothing listens on a port, so there is no port for another
-// local process to discover, no bearer token to guard it, and no proxy hop
-// (whose fetch gave up on any route slower than five minutes — a long clone).
+// local process to discover and no proxy hop to time out a slow route (a
+// long clone).
 // The scheme stays `app://local` (registered privileged in main.ts): a stable
 // origin for the SPA's origin-bound storage, and a secure context.
 // ──────────────────────────────────────────────────────────────────────────

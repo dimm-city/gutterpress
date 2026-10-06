@@ -412,9 +412,8 @@ export async function createPreviewServer(
     // 2. API routes. The preview server is headless (desktop chrome — folder
     // picker, GitHub clone — lives in the desktop app), so GET /api/status is
     // the only endpoint: kept for backwards compatibility with any external
-    // tooling that checks server liveness. Inlined directly (finding #54) —
-    // a two-module Web-Request/Response dispatcher was retained scaffolding
-    // for exactly one hard-coded route.
+    // tooling that checks server liveness. Inlined directly: one hard-coded
+    // route needs no dispatcher.
     if (url.pathname === '/api/status' && req.method === 'GET') {
       const body = JSON.stringify({
         hasInput: !!state.currentInputPath,
@@ -481,16 +480,14 @@ export async function createPreviewServer(
     // real project tree, so nothing can drift between "works in preview" and
     // "shipped in the PDF".
     //
-    // Serving the project root for the first time means its OWN dotfiles are
-    // now in the request path too (the old whole-tree copy leaked `.env` and
-    // an external `.git` into a throwaway dir; this reads the real thing), so
-    // `hasDotSegment` (lib/static-serve.ts — shared with the containment
-    // guard it must accompany) is a hard requirement here, not a nicety: a
-    // request for `/.env` or anything under a dot-directory must 404, never
-    // read through, INCLUDING the `%5C`-spelled separator that `path.resolve`
-    // honors on Windows. No-input mode (`state.currentInputPath === ''`) has
-    // no project to serve from either, so every non-book.html path 404s there
-    // too.
+    // Serving the project root means its OWN dotfiles are in the request path
+    // too, so `hasDotSegment` (lib/static-serve.ts — shared with the
+    // containment guard it must accompany) is a hard requirement here, not a
+    // nicety: a request for `/.env` or anything under a dot-directory must 404,
+    // never read through, INCLUDING the `%5C`-spelled separator that
+    // `path.resolve` honors on Windows. No-input mode (`state.currentInputPath
+    // === ''`) has no project to serve from either, so every non-book.html path
+    // 404s there too.
     const pathname = url.pathname;
 
     // 5a. Inlined-CSS assets the render could not embed. `asset-inline.ts`
@@ -498,8 +495,9 @@ export async function createPreviewServer(
     // OUTSIDE the book — art referenced from a repo-root shared stylesheet,
     // the normative multi-book layout — and returns a copy plan. The build
     // executes that plan into its output dir; the preview serves the project
-    // in place and has no such dir, so the rewritten URL used to 404 and
-    // shared art rendered broken in the live preview while building fine.
+    // in place and has no such dir, so without this the rewritten URL would
+    // 404 and shared art would render broken in the live preview while
+    // building fine.
     //
     // `state.cssAssets` IS that plan (see ServerState.cssAssets): an exact
     // URL→source map rebuilt on every render. Looked up by exact key, so it

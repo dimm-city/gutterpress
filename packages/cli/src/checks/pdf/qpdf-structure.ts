@@ -6,7 +6,7 @@ import { loadPdf, isLoadable } from "../../lib/pdf-inspect";
 const check: Check = {
   // Id retained for config/back-compat; implementation is now an in-process
   // parse gate, not `qpdf --check`. This catches PDFs that fail to parse but
-  // does NOT validate xref/stream-length integrity the way qpdf did (ADR 0002).
+  // does NOT validate xref/stream-length integrity the way qpdf did.
   id: "pdf.structure.qpdf",
   name: "PDF Structure",
   description: "Validates the PDF parses and every page is traversable",

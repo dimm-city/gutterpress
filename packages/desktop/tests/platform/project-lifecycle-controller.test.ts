@@ -43,7 +43,6 @@ interface Harness {
     activeBookDir: string | null;
   };
   deps: {
-    isDesktop: Spy<[]> & { value: boolean };
     startPreviewHost: Spy<[{ key: string; displayName: string }]>;
     stopPreviewHost: Spy<[]>;
     adoptFolder: Spy<[string]>;
@@ -86,7 +85,6 @@ interface Harness {
 }
 
 function make(): Harness {
-  const isDesktop = Object.assign(spy<[]>(), { value: true });
   const startPreviewHost = spy<[{ key: string; displayName: string }]>();
   const stopPreviewHost = spy<[]>();
   const adoptFolder = spy<[string]>();
@@ -111,7 +109,6 @@ function make(): Harness {
   const getDesktopProjectState = spy<[string]>();
 
   const state: Harness["deps"] = {
-    isDesktop,
     startPreviewHost,
     stopPreviewHost,
     adoptFolder,
@@ -159,8 +156,6 @@ function make(): Harness {
   };
 
   const deps: ProjectLifecycleDeps = {
-    isDesktop: () => isDesktop.value,
-    desktopRequiredMessage: "This needs the desktop app to continue.",
     startPreviewHost: (input) => {
       startPreviewHost(input);
       return state.startPreviewImpl
@@ -470,8 +465,6 @@ test("failed open: flushes the buffer BEFORE resetWorkspace, mirroring stopPrevi
   // must do the same.
   const order: string[] = [];
   const ctrl = new ProjectLifecycleController({
-    isDesktop: () => true,
-    desktopRequiredMessage: "needs desktop",
     // The intent-boundary flush runs first; a later host-open rejection must
     // reset only after that successful flush.
     startPreviewHost: () => Promise.reject(new Error("preview failed")),
@@ -530,8 +523,6 @@ test("a supersession landing DURING the outgoing-buffer pre-flush (before startP
   let startCall = 0;
   let flushCall = 0;
   const ctrl = new ProjectLifecycleController({
-    isDesktop: () => true,
-    desktopRequiredMessage: "needs desktop",
     startPreviewHost: () => {
       startCall++;
       return Promise.resolve({ previewStarted: true as const, url: "preview://ok", title: "Ok", engine: "paged" as const });
@@ -647,8 +638,6 @@ test("startFolderPreview: switching projects flushes the OUTGOING project's dirt
   // complete before startPreviewHost is ever called.
   const order: string[] = [];
   const ctrl = new ProjectLifecycleController({
-    isDesktop: () => true,
-    desktopRequiredMessage: "needs desktop",
     startPreviewHost: () => {
       order.push("startPreviewHost");
       return Promise.resolve({ previewStarted: true as const, url: "preview://b", title: "B", engine: "paged" as const });
@@ -723,8 +712,6 @@ test("setUpAsBook: adopt failure sets openError and clears busy without opening"
   // rejects, so the failure path is exercised in isolation.
   const adoptFolder = spy<[string]>();
   const rejectingCtrl = new ProjectLifecycleController({
-    isDesktop: () => true,
-    desktopRequiredMessage: "needs desktop",
     startPreviewHost: () => Promise.resolve({ previewStarted: true, url: "x", title: null, engine: "paged" }),
     stopPreviewHost: () => Promise.resolve({}),
     adoptFolder: (dir) => {
@@ -865,13 +852,13 @@ test("all three teardown paths (stopPreview, openUrl, failed-open catch) call th
   expect(depsC.resetExtras.calls.length).toBe(1);
 });
 
-// ── 2026-07-29 audit: the restore-state key must be the RESOLVED book ─────────
+// ── the restore-state key must be the RESOLVED book ─────────
 //
 // The per-project page/split state is WRITTEN under the resolved book dir
-// (`lifecycle.currentDir`), but every caller used to READ it under the dir the
-// user PICKED — and those differ exactly when the session retargets: an open
-// keyed to the repo root, or to a folder inside a book. So the read missed and
-// the book silently opened at page 1.
+// (`lifecycle.currentDir`), so every caller must READ it under that key, not
+// the dir the user PICKED — those differ exactly when the session retargets:
+// an open keyed to the repo root, or to a folder inside a book. A read under
+// the picked dir misses and the book silently opens at page 1.
 //
 // Switching books had a second form of the same bug: `switchBook` passed no
 // restore state at all, so the target book ALWAYS opened at page 1 even when it

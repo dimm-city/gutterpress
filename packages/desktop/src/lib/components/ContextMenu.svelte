@@ -87,9 +87,8 @@
 
   /**
    * Svelte ACTION (not `onMount`), deliberately: `<ContextMenu>` itself is
-   * mounted once, unconditionally, for the app's whole lifetime — it's
-   * `+page.svelte`'s `{#if isDesktop()}` guard, not `controller.open`, that
-   * gates it. `onMount` therefore only ever fires once, at app boot, long
+   * mounted once, unconditionally, for the app's whole lifetime, and
+   * `controller.open` does not gate the mount. `onMount` therefore only ever fires once, at app boot, long
    * before any real menu ever opens — its `requestAnimationFrame` capture
    * of `document.activeElement` and its own `.focus()` call were running
    * against an EMPTY, not-yet-open menu and then never running again for any

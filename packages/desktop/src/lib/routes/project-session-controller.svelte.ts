@@ -1,12 +1,11 @@
 /**
- * ProjectSessionController (Phase 5c) — the single owner of the open project's
- * capability-classification session state that used to live inline in
- * `+page.svelte`.
+ * ProjectSessionController — the single owner of the open project's
+ * capability-classification session state.
  *
  * Centralises the `#12` classification wiring: on folder open the component
- * `reset()`s this state and awaits `classify(dir)` (C2: awaited so a picked
+ * `reset()`s this state and awaits `classify(dir)` (awaited so a picked
  * folder that isn't itself a book can retarget before any content surface
- * opens — see the C2 note below), whose chain never rejects and
+ * opens — see the book-switcher note below), whose chain never rejects and
  * populates `projectCapabilities`, derives `projectSubPath` (a book's path
  * relative to its repo root; "" when the book IS the repo root), and persists
  * the re-detected source hint via DesktopPrefs. The template reads the public
@@ -21,23 +20,16 @@
  * intent methods.
  *
  * Host coupling is injected so this stays testable with fakes and PWA-clean
- * (§8 / ADR 0004): the host classify round-trip and the DesktopPrefs writer.
+ * (§8): the host classify round-trip and the DesktopPrefs writer.
  * `ProjectCapabilities` is a type-only import — ZERO `node:*` / lib value
  * imports.
  *
- * NOTE (deferred): the broader open/stop lifecycle and the rest of the session
- * runes (`currentDir` / `sourceMode` / `docTitle` / `currentFolderDisplayName` /
- * `currentUrl`) still live in `+page.svelte` — those ~130 references are
- * interleaved with buffer/leftPanel/pageNav side effects, so moving them
- * behaviour-preservingly is a separate item. This controller extracts the
- * cohesive, self-contained classification slice.
- *
- * C1 (repo-root sessions) added `repoRoot` / `books` / `activeBookDir`: when
+ * Repo-root sessions: `repoRoot` / `books` / `activeBookDir` — when
  * the classified source is a `local-git-folder`, the host also returns the
  * list of books (manifest-containing folders) found inside that repo.
  * `activeBookDir` is derived from that list by {@link resolveActiveBookDir}.
  *
- * C2 (book switcher) makes `+page.svelte` `await` {@link classify} BEFORE
+ * The book switcher has `+page.svelte` `await` {@link classify} BEFORE
  * starting the preview/editor/watch pipeline, so a picked folder that isn't
  * itself a book (e.g. a bare multi-book repo root) retargets to
  * `activeBookDir` before any content surface opens. Switching books reuses
@@ -83,10 +75,9 @@ function isSameOrInside(candidate: string, root: string): boolean {
 
 /**
  * Resolve which book is "active" after opening `pickedDir` inside a repo whose
- * books (already sorted by `subPath`) are `books`. Mirrors the C1 design
- * decisions:
+ * books (already sorted by `subPath`) are `books`:
  *  - No repo, or the repo has no books at all: the picked folder stays active
- *    (today's single-folder behaviour, unchanged — no redirect).
+ *    (single-folder behaviour — no redirect).
  *  - Exactly one book in the repo: that book is always active, regardless of
  *    which folder was picked (a single-book repo, including a book living at
  *    the repo root, behaves identically to opening it directly today).
@@ -94,13 +85,13 @@ function isSameOrInside(candidate: string, root: string): boolean {
  *    deepest one, so nested books resolve to the innermost; otherwise (the bare
  *    repo root, or a repo-level folder like `shared/` that belongs to no book)
  *    the first book alphabetically by `subPath` is active until the user
- *    switches (#C2).
+ *    switches (via the book switcher).
  *
- * The containment match replaced an exact `===` compare (2026-07-29 audit).
- * That compare made the `books[0]` fallback — documented as "the bare repo root
- * was picked" — fire for ANY non-identical string, so opening a folder INSIDE
- * book B, or B's own path spelled with a trailing slash, silently opened book A
- * instead of the book the author pointed at. Matching is separator-aware, so a
+ * A containment match, not an exact `===` compare: with `===` the `books[0]`
+ * fallback — meant for "the bare repo root was picked" — fires for ANY
+ * non-identical string, so opening a folder INSIDE book B, or B's own path
+ * spelled with a trailing slash, silently opens book A instead of the book
+ * the author pointed at. Matching is separator-aware, so a
  * prefix sibling (`/repo/beta2` against a `/repo/beta` book) is not "inside" it.
  */
 export function resolveActiveBookDir(
@@ -170,7 +161,7 @@ export class ProjectSessionController {
 
   /**
    * Reset capability session state for a fresh open, before {@link classify}
-   * repopulates it (mirrors the old inline reset at folder-open time). Also
+   * repopulates it. Also
    * invalidates any in-flight classify so its late result is dropped.
    */
   reset(): void {
@@ -186,7 +177,7 @@ export class ProjectSessionController {
 
   /**
    * Classify the opened folder (#12) so capability-gated actions (#13/#25) can
-   * render, and (C2) resolve which book is active before any content pipeline
+   * render, and resolve which book is active before any content pipeline
    * targets a folder. Returns the settled promise so a caller that needs the
    * resolved `activeBookDir` before opening the preview/editor/watch pipeline
    * (the folder picked may not itself be a book) can await it; a failure must
@@ -211,14 +202,14 @@ export class ProjectSessionController {
           (this.activeBookDir === dir && result.hasManifest);
         this.deps.setDesktopPrefs({ projectSource: result.source }).catch(() => {});
         // NOTE: the remote diagnosis (SyncController.refreshSyncDiag) is NOT
-        // fired from here anymore. It used to be, and was silently discarded
-        // on essentially every open: refreshSyncDiag's stale-guard compares
+        // fired from here. Fired here it would be silently discarded on
+        // essentially every open: refreshSyncDiag's stale-guard compares
         // against lifecycle.currentDir, which is only assigned AFTER the
         // (seconds-long) preview start — while the diagnosis (millisecond fs
-        // reads) resolved first and failed the compare. Worse, it was keyed to
-        // the PICKED dir while currentDir becomes the retargeted activeBookDir.
-        // The lifecycle controller now refreshes it right after currentDir is
-        // assigned, keyed to the same targetDir (see openFolder).
+        // reads) resolves first and fails the compare. It would also be keyed
+        // to the PICKED dir while currentDir becomes the retargeted
+        // activeBookDir. The lifecycle controller refreshes it right after
+        // currentDir is assigned, keyed to the same targetDir (see openFolder).
       })
       .catch(() => {
         if (gen !== this.classifyGen) return;

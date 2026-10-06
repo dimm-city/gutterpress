@@ -1,8 +1,6 @@
 /**
- * ExportController (Phase 4b; host intents added Phase 5 slice 2) — the single
- * owner of the PDF-export finite state machine AND the `savePdf`/`exportHtml`/
- * `cancelExport` intents that used to live inline in `+page.svelte` (UX H5 /
- * ARCH #10).
+ * ExportController — the single owner of the PDF-export finite state machine
+ * AND the `savePdf`/`buildTo`/`cancelExport` intents.
  *
  * Centralises the export status pill's state: the FSM state
  * (idle → started → rendering → finalizing → success / canceling), the running
@@ -12,26 +10,24 @@
  * the component reads the public rune getters (`exporting`, `pdfProgress`,
  * `state`, `activeExportId`, …) and calls the intent methods (`start`,
  * `syncProgress`, `markCanceling`, `markSuccess`, `reset`, `savePdf`,
- * `exportHtml`, `cancelExport`, …).
+ * `buildTo`, `cancelExport`, …).
  *
  * The FSM half stays pure UI/timer state (ZERO `node:*` / lib value imports);
  * the 1-second ticker is injected through a timer seam so it's unit-testable
- * without a DOM or real clock. The host-intent half needs real round-trips
- * (the save dialog, the build, the toast surface, …), so — like
- * `ProjectLifecycleController` — that coupling is injected through the
- * optional second constructor argument, `ExportHostDeps`, keeping this module
- * itself PWA-clean (§8 / ADR 0004): DOM manipulation for the HTML download
- * (`document.createElement("a")`, …) stays in `+page.svelte` behind the
- * `downloadFile` dep, not here. `host` is optional so the pure-FSM
- * constructor shape existing tests use (`new ExportController(timers)`) is
- * unchanged; `savePdf`/`exportHtml`/`cancelExport` throw a clear error if
- * called without it (a programming error, not a reachable runtime state —
- * `+page.svelte` always constructs its one instance with host deps).
+ * without a DOM or real clock. The host-intent half needs real round-trips (the
+ * save dialog, the build, the toast surface, …), so — like
+ * `ProjectLifecycleController` — that coupling is injected through the optional
+ * second constructor argument, `ExportHostDeps`, keeping this module itself
+ * PWA-clean (§8). `host` is optional so the pure-FSM tests can construct it
+ * with timers only (`new ExportController(timers)`);
+ * `savePdf`/`buildTo`/`cancelExport` throw a clear error if called without it
+ * (a programming error, not a reachable runtime state — `+page.svelte` always
+ * constructs its one instance with host deps).
  *
- * M27's "one guard covering every entry point" (`if (this.exporting) return`)
- * moved here verbatim as `savePdf`'s first line — every caller (toolbar
- * button, both keyboard shortcuts) now goes through this one method instead
- * of each re-implementing the guard.
+ * The "one guard covering every entry point" (`if (this.exporting) return`)
+ * is `savePdf`'s first line — every caller (toolbar button, both keyboard
+ * shortcuts) goes through this one method instead of each re-implementing
+ * the guard.
  */
 
 import { overWideExportMessage } from "../errors";
@@ -49,13 +45,11 @@ export type ExportState =
 /**
  * Progress event shape emitted by the host build over `onBuildProgress`.
  *
- * M29 (2026-07-10 UX review): this used to be a byte-identical SECOND copy of
- * `shared-types.ts`'s `ExportProgressEvent`, justified by a PWA-cleanliness
- * comment that didn't actually apply — `shared-types.ts` is itself renderer-
- * local (no `node:*` / lib value imports) and a `import type` re-export here
- * is erased at build time, so it stays §8-clean. Re-exported (not just
- * imported) so existing consumers (`+page.svelte`, this file's own tests)
- * don't need their import path to change.
+ * Re-exported from `shared-types.ts` rather than copied: that module is
+ * renderer-local (no `node:*` / lib value imports) and an `import type`
+ * re-export is erased at build time, so it stays §8-clean. Re-exported (not
+ * just imported) so consumers (`+page.svelte`, this file's own tests) can
+ * import it from here.
  */
 export type { ExportProgressEvent } from "../platform/shared-types";
 import type { ExportProgressEvent } from "../platform/shared-types";
@@ -70,14 +64,11 @@ export interface ExportTimerSeam {
 }
 
 /**
- * Host coupling for `savePdf`/`exportHtml`/`cancelExport` (moved from
- * `+page.svelte` in the H5/#10 slice-2 extraction). All host work — the save
+ * Host coupling for `savePdf`/`buildTo`/`cancelExport`. All host work — the save
  * dialog, the build round-trip, the toast surface, the download — goes
  * through this seam so the controller stays testable with fakes and PWA-clean.
  */
 export interface ExportHostDeps {
-  isDesktop: () => boolean;
-  desktopRequiredMessage: string;
   /**
    * Compute the plain-language reason PDF export isn't ready yet (or null
    * when ready) — `+page.svelte`'s existing `getSaveReadinessWarning()`.
@@ -104,15 +95,12 @@ export interface ExportHostDeps {
     outPath: string,
     opts?: { validate?: boolean; allowShrink?: boolean },
   ) => Promise<{ exportId?: string; pdfPath?: string }>;
-  /** `out` is the destination FOLDER on the desktop; absent on the web, where
-   *  the result is a `downloadUrl` instead. */
+  /** `out` is the destination FOLDER. */
   buildHtml: (
     input: { key: string; displayName: string },
     out?: string,
-  ) => Promise<{ downloadUrl?: string; outDir?: string }>;
+  ) => Promise<{ outDir?: string }>;
   cancelExportHost: (exportId: string) => Promise<unknown>;
-  /** Turns a `blob:` download URL into a browser download (web HTML export). */
-  downloadFile: (url: string, filename: string) => void;
   showInFolder: (path: string) => Promise<unknown>;
   toastSuccess: (
     message: string,
@@ -152,7 +140,7 @@ export class ExportController {
   private timer: unknown = null;
   private timers: ExportTimerSeam;
   /**
-   * Host-supplied label override for the pre-build phase (M28) — e.g. "Syncing
+   * Host-supplied label override for the pre-build phase — e.g. "Syncing
    * latest changes…" while the pre-export sync safety gate runs. Set from a
    * "started" event that carries a `message`; cleared once a normal FSM state
    * (or another "started" with no message) arrives. Kept separate from
@@ -161,7 +149,7 @@ export class ExportController {
    */
   private pendingMessage: string | null = null;
 
-  /** Host coupling for `savePdf`/`exportHtml`/`cancelExport` — see `ExportHostDeps`. */
+  /** Host coupling for `savePdf`/`buildTo`/`cancelExport` — see `ExportHostDeps`. */
   private host?: ExportHostDeps;
 
   constructor(timers?: Partial<ExportTimerSeam>, host?: ExportHostDeps) {
@@ -176,7 +164,7 @@ export class ExportController {
 
   private requireHost(): ExportHostDeps {
     if (!this.host) {
-      throw new Error("ExportController: host deps required for savePdf/exportHtml/cancelExport");
+      throw new Error("ExportController: host deps required for savePdf/buildTo/cancelExport");
     }
     return this.host;
   }
@@ -186,11 +174,11 @@ export class ExportController {
     this.exporting = true;
     this.state = "started";
     this.pages = 0;
-    // M27: a second export (either keyboard shortcut, uncaught by savePdf()'s
-    // own guard) used to inherit the FIRST export's activeExportId here — its
-    // own "started" event then never matched (syncProgress ignores non-
-    // matching ids) and its Cancel targeted the wrong export. start() must be
-    // as much a full reset as reset() is for this one field.
+    // A second export (either keyboard shortcut, uncaught by savePdf()'s own
+    // guard) must not inherit the FIRST export's activeExportId here — its own
+    // "started" event would then never match (syncProgress ignores non-
+    // matching ids) and its Cancel would target the wrong export. start() must
+    // be as much a full reset as reset() is for this one field.
     this.activeExportId = null;
     this.pendingMessage = null;
     this.pdfProgress = "Preparing PDF…";
@@ -199,7 +187,8 @@ export class ExportController {
 
   /**
    * Mark the simple (HTML) export busy WITHOUT entering the PDF FSM/timer —
-   * the web HTML export shows only the "Exporting…" button label, no pill.
+   * the HTML (website) export shows only the "Exporting…" button label, no
+   * pill.
    */
   beginSimpleExport(): void {
     this.exporting = true;
@@ -240,7 +229,7 @@ export class ExportController {
 
   /** Recompute `pdfProgress` from the current FSM state + counters. */
   updateLabel(): void {
-    // M28: a host-supplied pre-build label (e.g. "Syncing latest changes…")
+    // A host-supplied pre-build label (e.g. "Syncing latest changes…")
     // wins over the normal FSM label until it is cleared — re-asserted here
     // so the 1s ticker doesn't overwrite it with "Preparing PDF… Ns".
     if (this.pendingMessage) {
@@ -273,14 +262,14 @@ export class ExportController {
   syncProgress(event: ExportProgressEvent): void {
     if (this.activeExportId && event.exportId !== this.activeExportId) return;
     // Adopting the id here (not only from the "real" started event) is what
-    // makes M28's pre-gate event light up Cancel immediately — Cancel is
+    // makes the pre-gate event light up Cancel immediately — Cancel is
     // gated on `activeExportId` alone (+page.svelte), and this is the
     // earliest event the host can send.
     if (!this.activeExportId) this.activeExportId = event.exportId;
     if (event.pages) this.pages = event.pages;
     if (event.state === "started") {
       this.state = "started";
-      // Pre-export sync safety gate (M28, electron/export/controller.ts):
+      // Pre-export sync safety gate (electron/export/controller.ts):
       // the host sends this SAME wire state early — before it even knows
       // whether a sync is needed — carrying a descriptive `message`. Reusing
       // "started" + the existing free-text `message` field (instead of a new
@@ -314,29 +303,24 @@ export class ExportController {
     this.updateLabel();
   }
 
-  // ── Host intents (moved from +page.svelte, Phase 5 slice 2) ────────────────
+  // ── Host intents ───────────────────────────────────────────────────────────
 
   /**
    * Save the open project as a PDF: pick a destination, drive the FSM through
-   * the build, and show the resulting toast. Moved verbatim from
-   * `+page.svelte`'s `savePdf()`.
+   * the build, and show the resulting toast.
    */
   async savePdf(opts?: { validate?: boolean; allowShrink?: boolean }): Promise<void> {
     const h = this.requireHost();
-    // M27: one guard covering every entry point (toolbar button, both
-    // keyboard shortcuts) — previously only the toolbar button's `disabled`
-    // attribute checked `exporting`, so either keyboard shortcut could start
-    // a second concurrent export and cross-wire the two exports' pill/Cancel.
+    // One guard covering every entry point (toolbar button, both keyboard
+    // shortcuts) — a `disabled` attribute alone leaves either keyboard
+    // shortcut free to start a second concurrent export and cross-wire the
+    // two exports' pill/Cancel.
     if (this.exporting) return;
     const warning = h.checkSaveReadiness();
     h.setSaveWarning(warning);
     if (warning) return;
     const inputDir = h.currentDir();
     if (!inputDir) return;
-    if (!h.isDesktop()) {
-      h.toastError(h.desktopRequiredMessage);
-      return;
-    }
     // #49: use the adapter-precomputed displayName for the default filename,
     // falling back to the basename of the key.
     const defaultName = (h.displayName() ?? basenameOf(inputDir) ?? "book") + ".pdf";
@@ -366,10 +350,6 @@ export class ExportController {
     if (warning) return null;
     const inputDir = h.currentDir();
     if (!inputDir) return null;
-    if (!h.isDesktop()) {
-      h.toastError(h.desktopRequiredMessage);
-      return null;
-    }
     const displayName = h.displayName() ?? basenameOf(inputDir) ?? "book";
     const insideBook = isPathAtOrUnder(opts.dir, inputDir);
 
@@ -460,7 +440,7 @@ export class ExportController {
         h.toastError(overWide, 0, {
           label: "Build anyway",
           // The host consumes the Save-dialog capability for `out` on every
-          // build (electron/export/controller.ts, finding #4), so the retry
+          // build (electron/export/controller.ts), so the retry
           // goes back through the dialog rather than replaying a path this
           // failed export already spent.
           onClick: () => this.savePdf({ validate: opts?.validate, allowShrink: true }),
@@ -475,44 +455,7 @@ export class ExportController {
     }
   }
 
-  /**
-   * #33 Phase 5: HTML export on web. PDF is desktop-only (a headless Chromium
-   * / printToPDF), so on the web (capabilities().nativeSavePath === false) the
-   * export delivers a standalone book.html instead — build() renders it
-   * in-browser and returns a blob: downloadUrl, which the host's
-   * `downloadFile` turns into a browser download. Desktop is UNCHANGED: it
-   * never reaches here (canSavePdf gates the Save PDF button and build()
-   * returns a path-based result there, handled by `savePdf`). Moved verbatim
-   * from `+page.svelte`'s `exportHtml()`.
-   */
-  async exportHtml(): Promise<void> {
-    const h = this.requireHost();
-    const inputDir = h.currentDir();
-    if (!inputDir || h.isBusy() || this.exporting || h.sourceMode() === "url") return;
-    this.beginSimpleExport();
-    try {
-      const displayName = h.displayName() ?? basenameOf(inputDir) ?? "book";
-      const data = await h.buildHtml({ key: inputDir, displayName });
-      // The web delivery is a downloadUrl (blob:); the host turns it into a
-      // download via a transient <a download> click. Gate on its presence so
-      // a path-based (desktop) result would never trigger this branch.
-      if (data.downloadUrl) {
-        h.downloadFile(data.downloadUrl, `${displayName}.html`);
-        h.toastSuccess("HTML exported");
-      } else {
-        // M22: build() resolving without a downloadUrl used to be a silent
-        // no-op — the button flashed "Exporting…" then went quiet with no
-        // file and no explanation.
-        h.toastError("HTML export failed: no file was produced.");
-      }
-    } catch (e) {
-      h.toastError(h.friendlyPdfError(e) || "HTML export failed");
-    } finally {
-      this.endSimpleExport();
-    }
-  }
-
-  /** Cancel the in-flight PDF export. Moved verbatim from `+page.svelte`'s `cancelExport()`. */
+  /** Cancel the in-flight PDF export. */
   async cancelExport(): Promise<void> {
     const h = this.requireHost();
     if (!this.activeExportId) return;

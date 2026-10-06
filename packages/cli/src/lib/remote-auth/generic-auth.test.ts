@@ -1,5 +1,5 @@
 /**
- * Generic token provider tests (#14, ADR 0006 D3) — validate-before-save
+ * Generic token provider tests (#14) — validate-before-save
  * against the real smart-HTTP test server, plus the forge token-URL helper.
  */
 import { test, expect } from "bun:test";

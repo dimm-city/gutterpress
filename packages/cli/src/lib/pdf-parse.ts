@@ -22,7 +22,7 @@ export async function readPdfBytes(pdfPath: string): Promise<string> {
 /**
  * Parse ink coverage from `gs -sDEVICE=inkcov` output.
  *
- * Ghostscript has no pure-JS equivalent (it stays a system tool — see ADR 0002),
+ * Ghostscript has no pure-JS equivalent (it stays a system tool),
  * so the inkcov path remains shell-based here.
  */
 export function parseInkCov(out: string) {
@@ -54,12 +54,11 @@ interface InkCoveragePage {
 }
 
 /**
- * Discriminated result for {@link getPerPageInkCoverage} (finding #51).
- * Ghostscript failing (crash, corrupt PDF, missing binary, a Windows PATH
- * mismatch — see finding #3) must be distinguishable from a legitimately
- * measured, empty-pages result: both used to collapse to the same `[]`,
- * which let the ink-coverage check silently PASS a book it never actually
- * measured.
+ * Discriminated result for {@link getPerPageInkCoverage}. Ghostscript failing
+ * (crash, corrupt PDF, missing binary, a Windows PATH mismatch) must be
+ * distinguishable from a legitimately measured, empty-pages result:
+ * collapsing both to the same `[]` would let the ink-coverage check silently
+ * PASS a book it never actually measured.
  */
 export type InkCoverageResult =
   | { ok: true; pages: InkCoveragePage[] }

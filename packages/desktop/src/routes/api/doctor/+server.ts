@@ -9,7 +9,7 @@ export const GET: RequestHandler = defineRoute({
 
     // Filter on the stable machine id, not the human-readable `bin` display
     // string — rewording the label must not silently stop excluding the
-    // bundled-Chromium entry from the "external tools" list (UX L10).
+    // bundled-Chromium entry from the "external tools" list.
     const externalTools = diag.tools.filter((tool) => tool.id !== 'chromium');
 
     return {

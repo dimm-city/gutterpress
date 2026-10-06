@@ -1,5 +1,5 @@
 /**
- * "Test Remote Access" diagnostic (#14, ADR 0006 D7).
+ * "Test Remote Access" diagnostic (#14).
  *
  * A single refs probe (isomorphic-git `listServerRefs` over smart HTTPS — the
  * node-native replacement for `git ls-remote origin`, CLAUDE.md §7) that
@@ -8,7 +8,7 @@
  * of raw transport errors.
  *
  * SSH URLs short-circuit to `ssh-unsupported` WITHOUT any network call —
- * isomorphic-git has no SSH transport and we never shell out (ADR 0006 D6).
+ * isomorphic-git has no SSH transport and we never shell out.
  *
  * SECURITY INVARIANT: token values (explicit credential or embedded in the
  * URL) never appear in result messages.
@@ -114,7 +114,7 @@ function classifyRemoteAccessError(e: unknown): RemoteAccessResult {
  * - Never throws — every outcome is a classified {@link RemoteAccessResult}.
  * - SSH URLs return `ssh-unsupported` with zero network traffic.
  * - Credentials embedded in the URL are stripped and used for auth when no
- *   explicit credential is supplied (ADR 0006 D7) — they never leak onward.
+ *   explicit credential is supplied — they never leak onward.
  * - `defaultBranch` comes from the server's `HEAD` symref when advertised.
  */
 export async function testRemoteAccess(

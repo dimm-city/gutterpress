@@ -477,21 +477,20 @@ the client bundle.
   in the SPA. Node-oriented libraries (postcss included) belong in the host.
 
 **Two seams, not one.** The route-first split (server route + `fetch()`) is
-the **default path** and the one most of the app actually uses today: 26
-files call `src/lib/api.ts` directly (`+page.svelte` alone has 39 `api.*`
-call sites), not through `getPlatform()`. The `Platform`/`HostServices` seam
-(`src/lib/platform/contract.ts` + `ElectronAdapter`/`WebAdapter`, reached via
-`import { getPlatform, isDesktop } from "$lib/platform"`) is real and still
-owns three narrower capability classes a plain route can't cover:
+the **default path** and the one most of the app uses: components call
+`src/lib/api.ts` directly, not through `getPlatform()`. The `Platform`/`HostServices` seam
+(`src/lib/platform/contract.ts` + `ElectronAdapter`, reached via
+`import { getPlatform } from "$lib/platform"`) is real and still owns three
+narrower capability classes a plain route can't cover:
 
 1. **Push streams** the renderer subscribes to (build progress,
    folder-changed, sync status, updater events) — an `onX(cb) => unsubscribe`
    shape needs a live event channel, not request/response.
 2. **Calls that must drive a live `BrowserWindow`** — preview/build
    orchestration, PDF export via `webContents.printToPDF`.
-3. **FSA-divergent fs primitives** — the handful of file operations where the
-   web implementation is a genuinely different algorithm (File System Access
-   API handles) rather than a thin `fetch()` wrapper.
+3. **Host-divergent fs primitives** — the handful of file operations (folder
+   picker, read/write) a browser build would implement over File System
+   Access API handles rather than a thin `fetch()` wrapper.
 
 Everything else — status, dialog, theme, plugin, remote/sync, vcs, recovery,
 settings, recents/favorites, and so on — is a server route + a typed
@@ -515,9 +514,7 @@ above).
 
 1. `src/lib/platform/contract.ts` — add it to `HostServices` (define payload
    types **locally**, decoupled from the lib)
-2. `ElectronAdapter` (call through the `api` wrapper, or IPC — next step) and
-   `WebAdapter` (a real implementation, or an explicit reject/no-op if the
-   capability has no web behavior yet — see "Dormant PWA scaffolding" below)
+2. `ElectronAdapter` (call through the `api` wrapper, or IPC — next step)
 3. If it's a push stream or must drive a live `BrowserWindow`, also wire the
    **IPC bridge**: `electron/main.ts` — `ipcMain.handle("ns:op", …)` (or a
    `webContents.send` push channel); `electron/preload.ts` — expose it on
@@ -529,10 +526,7 @@ the renderer — run it in the host and expose it as a server route (default) or
 for the three narrower classes, through `getPlatform()`. Example: CSS
 print-safety linting (`checkCss`) is postcss-based, so it runs host-side (the
 `api/lint/check-css` server route) and the editor's lint gutter calls
-`getPlatform().checkCss(...)` — routed through the adapter here because
-CodeMirror's lint-source contract expects one async function to hand it, not
-because every route needs a `Platform` method; the route itself is still the
-(A) path.
+`api.lint.checkCss(...)`.
 
 **Svelte 5 conventions: `$effect` is banned in the SPA.** The rule exists in
 eslint (`no-restricted-syntax` in `packages/desktop/eslint.config.*`) — the
@@ -547,23 +541,19 @@ settings store's `onSettingsChange()` channel with `settingsChangeGuard()`
 (see `src/lib/settings.svelte.ts`'s header) — every state replacement flows
 through one choke point, so the notify cannot be forgotten by a new setter.
 
-**PWA scaffolding (`WebAdapter`, #33 — partially shipped).** Issue #33 closed
-as completed (PR #63): the FSA folder-open path, in-browser preview,
-IndexedDB persistence, and the service worker + manifest offline app shell
-shipped; Phase 6 (Safari/OPFS) is **struck**, not deferred — the Chromium-only
-ruling above means the web target is Chrome/Edge and other Chromium browsers,
-where the File System Access API is always present. Normative status and
-remaining work live in `docs/pwa-webadapter-plan.md` ("partially shipped, plan
-revised 2026-08-23") — defer to that plan, not this paragraph. `WebAdapter`
-(`src/lib/platform/web-adapter.ts`) is live on the browser target for the
-shipped capabilities; the rest (e.g. the `localStorage` settings fallback —
-today's live settings path is still `api.app.getSettings`/`setSettings`, a
-server route, `isDesktop()`-gated) remains **scaffolding for the remaining
-phases, not dead code to delete**. As migration continues per the plan,
-expect more `api.ts` call sites to move to `getPlatform()` so the same UI
-code serves both Electron (`ElectronAdapter` → the existing server routes)
-and the browser (`WebAdapter`); on the Electron target, `api.ts` remains the
-correct call site for those capabilities.
+**No browser/PWA target today. Ruled by the product owner, 2026-10-05.** The
+`WebAdapter`, its File System Access / IndexedDB helpers, the service worker,
+the web manifest and every `isDesktop()` guard were deleted in 0.11.11
+(commit b5e76d06): no build targeted the web, every book-open path stopped
+before the adapter could run, and the adapter bet on one browser adapter
+behind `getPlatform()`, a design the app had already left for `api.*` routes.
+A browser UI is still wanted later. When it is built, start from the same
+SvelteKit server and `/api` routes served by Node (e.g. adapter-node) rather
+than reviving a parallel browser adapter, and restore only what that design
+needs from history (`git checkout b5e76d06^ -- <path>`). What was
+deliberately KEPT for that day: the PWA-clean rule above, the node-free
+`gutterpress/render` subpath and both purity gates, and the shared DTO/type
+modules.
 
 **Verification (must pass before any desktop change is "done"):** the client
 SPA bundle must contain no host code — the SvelteKit build emits the browser
@@ -618,49 +608,6 @@ What remains relevant to **this** repo:
   anti-patterns are preserved in AKM
   (`memory:gutterpress-dc-design-guide-frozen-chapter-opener-historical`,
   `memory:print-css-architectural-anti-patterns`).
-
-## Needs review — simplification candidates deferred by the product owner (2026-10-03)
-
-A complexity survey on 2026-10-03 (the same pass that deleted the desktop's
-loopback server + token + app:// proxy, the plugin receipt scheme,
-puppeteer-core, the `lint`/`audit` commands, the source-text tests and the
-superseded analysis docs) found two more candidates. The owner deferred them
-rather than ruling; they are recorded here so the next session does not
-re-survey. Each is a deletion, not a refactor.
-
-1. **Orphaned tooling with no caller in any workflow or package.json script**
-   (about 3,500 lines):
-   - `packages/cli/tools/` — Python/ImageMagick print-prep helpers
-     (`validate-images.py`, `convert-to-cmyk.sh`, `alpha-to-polygon.py`,
-     `set-boxes.py`, `style-diff.mjs`, `debug-manifest.ts`). Not shipped by
-     the package's `files`; `set-boxes.py` is superseded by
-     `engine/compiler/postprocess.ts`'s TrimBox/BleedBox; TAC checking is
-     built in (`checks/asset/image-tac.ts`).
-   - `packages/desktop/tests/integration/inline-editing.pw.mjs`,
-     `electron-driver.pw.mjs`, `run-ui.mjs`, `fixtures/inline-editing/` and
-     the `test:ui` / `test:inline:packaged` scripts — never run by CI
-     (`render-perf-gate.yml` runs seven other drives; keep `app-window.mjs`
-     and `workspace-mode.mjs`, which those import).
-   - `packages/cli/tests/integration/Dockerfile.windows`,
-     `Test-WindowsInstall.ps1`, `run-install-test.ps1`, its README — needs a
-     Windows Docker host; `package-managers.yml`'s `validate-scoop` job
-     already installs the real release on `windows-latest`.
-   - `scripts/gdrive-spike.mjs` and `docs/gdrive-publish-plan.md` — the plan
-     says phases 1–3 shipped in #221; ADR 0011 and `docs/publishing.md` hold
-     the decisions that still matter. Eight source comments cite the plan's
-     D-numbers and would be repointed to ADR 0011.
-2. **The WebAdapter / PWA stack and the one-implementation `Platform` seam**
-   (about 3,200 lines, plus ~400 of `!isDesktop()` branches): §8 above says
-   this is scaffolding to keep, but the survey found no shipped build targets
-   the web (the only adapter is `adapter-electron.js`; `pages.yml` builds the
-   docs site), `web-adapter.ts`'s own header says it is unreachable from the
-   live app, and every book-open path stops with "needs the desktop app"
-   before reaching it. Deleting it would also let `Platform`/`ElectronAdapter`
-   collapse into `api.*` plus a ~40-line typed bridge accessor for the push
-   streams, and remove 81 `isDesktop()` guards. This needs an explicit ruling
-   because it reverses §8's "not dead code to delete" sentence and the
-   "partially shipped" claim about #33, and it drops the `gutterpress/render`
-   subpath whose only consumer is the web adapter.
 
 ## Background reading
 

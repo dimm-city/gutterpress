@@ -16,7 +16,7 @@
  * When you add a new IPC payload type, add it here first, then consume it
  * from both sides. No more "Keep them in sync manually" comments.
  *
- * CAVEAT (audit D8): `ProjectSource` and `ProjectCapabilities` are the two
+ * CAVEAT: `ProjectSource` and `ProjectCapabilities` are the two
  * exceptions — `contract.ts` type-imports those straight from
  * `gutterpress`, NOT from this mirror, so for those two shapes the lib
  * IS the source of truth and the copy below merely shadows it for the host/
@@ -60,7 +60,7 @@ export type UpdaterEventPayload =
 // ── Project source classification (#12) ───────────────────────────────────
 //
 // Mirrors gutterpress — defined locally so the SPA never
-// value-imports the lib (§8 / ADR 0004).
+// value-imports the lib (§8).
 
 export type ProjectSource =
   | { type: "local-folder"; path: string }
@@ -92,9 +92,9 @@ export interface ProjectCapabilities {
   canRestoreSnapshot: boolean;
   // Deliberately NO canSync — syncability is credential-aware and answered
   // ONLY by diagnoseProjectRemote().canSync (cached renderer-side as the
-  // SyncController's syncDiag). The old capability-level canSync (= hasRemote,
-  // any protocol, no credential check) was a second, weaker gate with the same
-  // name, and the divergence produced contradictory sync UI. Remote PRESENCE
+  // SyncController's syncDiag). A capability-level canSync (= hasRemote, any
+  // protocol, no credential check) would be a second, weaker gate with the
+  // same name, and that divergence produced contradictory sync UI. Remote PRESENCE
   // for display lives on `source.hasRemote`.
   authManagedByApp: boolean;
 }
@@ -118,7 +118,17 @@ export type WorkspaceMode = "editor" | "viewer";
 
 // ── User settings (#45) ───────────────────────────────────────────────────
 
+export type WorkspaceRole = "reader" | "author";
+
 export interface AppSettings {
+  /**
+   * Reader or author (Settings → App). A reader only reads: the workspace
+   * stays in Read and the toolbar hides Edit/Read, Setup and Publish. Default
+   * reader — everyone starts with the simplest screen and opts into writing.
+   */
+  workspace: {
+    role: WorkspaceRole;
+  };
   editor: {
     fontFamily: string;
     fontSize: number;
@@ -172,7 +182,7 @@ export interface AppSettings {
      */
     autoSave: boolean;
     /**
-     * Save automatic snapshots while the author works (RC1-3): the host arms a
+     * Save automatic snapshots while the author works: the host arms a
      * quiet-period timer (fixed at 10 minutes, see `host-policy.ts`'s
      * `AUTO_SNAPSHOT_DEFAULT_MINUTES`) on every save and snapshots when edits
      * settle, plus on project close / app quit. Only for projects that
@@ -182,9 +192,8 @@ export interface AppSettings {
     autoSnapshot: boolean;
     /**
      * Automatically sync to the remote in the background when a remote is
-     * configured (transparent-sync plan §6). Defaults ON for projects with
-     * canSync; local-only projects are never auto-synced regardless of this
-     * setting.
+     * configured. Defaults ON for projects with canSync; local-only projects
+     * are never auto-synced regardless of this setting.
      */
     autoSync: boolean;
     /** Periodic safety-sync cadence in minutes (clamped to [1, 1440]). */
@@ -203,13 +212,14 @@ export interface AppSettings {
 }
 
 /**
- * Canonical settings defaults (#29/#45) — the ONE copy. Previously hand-
- * duplicated between `electron/settings-store.ts` and
- * `src/lib/platform/contract.ts` with "kept in sync manually" comments; both
- * now import this value (contract.ts directly, settings-store.ts via
- * `electron/settings-store.ts`'s import) instead of redeclaring it.
+ * Canonical settings defaults (#29/#45) — the ONE copy. Both
+ * `electron/settings-store.ts` and `src/lib/platform/contract.ts` import this
+ * value instead of redeclaring it.
  */
 export const DEFAULT_SETTINGS: AppSettings = {
+  workspace: {
+    role: "reader",
+  },
   editor: {
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
     fontSize: 14,
@@ -237,7 +247,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   versionHistory: {
     autoSave: true,
     autoSnapshot: true,
-    autoSync: true, // transparent-sync plan §6: ON by default when canSync
+    autoSync: true, // ON by default when canSync
     autoSyncMinutes: 2, // ~2 min periodic safety cadence
   },
   gitIdentity: {
@@ -261,12 +271,8 @@ export type DeepPartialSettings = DeepPartial<AppSettings>;
 // ── Per-project editor/preview state (#43) ────────────────────────────────
 
 /**
- * `currentPage` and `splitPaneRatio` are the live fields (#30 removed
- * `lastChapter`/`sidebarOpen`/`cursorLine`/`editorScroll` — declared for a
- * forthcoming in-app editor/chapter-list that never consumed them, so they
- * carried through JSON as permanently-unread dead schema). A per-project
- * `viewMode` snapshot lived here too until view mode stopped being a stored
- * value at all: it is now derived from `AppSettings.preview.mode`.
+ * `currentPage` and `splitPaneRatio` are the only per-project fields. View
+ * mode is not stored here: it is derived from `AppSettings.preview.mode`.
  */
 export interface ProjectState {
   currentPage?: number;
@@ -285,14 +291,14 @@ export interface LastFlushFailure {
 export interface DesktopPrefs {
   lastProjectDir?: string | null;
   /**
-   * Show the start screen (welcome landing) at launch. Default true; when
-   * false the app opens straight into the last book behind the splash (the
-   * pre-landing behavior). Toggled from the start screen's own checkbox.
+   * Show the start screen (welcome landing) at launch. Default true; when false
+   * the app opens straight into the last book. Toggled from the start screen's
+   * own checkbox.
    */
   showLandingAtStartup?: boolean;
   /**
    * Parent folder the writer last chose in the "Create a new book" wizard
-   * (M21) — read/written as a shallow-merge patch key, so it needs no
+   * — read/written as a shallow-merge patch key, so it needs no
    * dedicated route (`NewProjectWizard.svelte`'s `loadDefaultParentDir`).
    */
   newProjectParentDir?: string;
@@ -341,10 +347,10 @@ export type MarkdownFileLaunchEvent =
   | { type: "error"; filePath: string; message: string }
   | { type: "ready" };
 
-// ── Managed GitHub integration (#15, ADR 0006) ────────────────────────────
+// ── Managed GitHub integration (#15) ──────────────────────────────────────
 //
 // Mirrors the lib's remote-auth types — defined locally so the SPA never
-// value-imports the lib (§8 / ADR 0004). Tokens NEVER reach the renderer.
+// value-imports the lib (§8). Tokens NEVER reach the renderer.
 
 /** What the UI shows during the GitHub device flow (code + where to enter it). */
 export interface DeviceCodeInfo {
@@ -363,8 +369,8 @@ export interface RemoteConnection {
 
 // ── Google Drive publish connect (#221) ────────────────────────────────────
 //
-// Mirrors the lib's connect-google.ts shapes — defined locally (§8 / ADR
-// 0004) so the SPA never value-imports the lib. Parallel to DeviceCodeInfo/
+// Mirrors the lib's connect-google.ts shapes — defined locally (§8) so the
+// SPA never value-imports the lib. Parallel to DeviceCodeInfo/
 // RemoteConnection above, but Google's loopback+PKCE flow has no user code to
 // display — only the auth URL the browser was (or should be) sent to.
 
@@ -426,7 +432,7 @@ export interface CloneRepositoryArgs {
   subPath?: string;
 }
 
-// ── Advanced Setup (#14, ADR 0006 D3/D7) ─────────────────────────────────
+// ── Advanced Setup (#14) ─────────────────────────────────────────────────
 
 /** Outcome of the explicit "Test Remote Access" probe (a refs listing). */
 export type RemoteAccessResult =
@@ -473,10 +479,10 @@ export interface ProjectRemoteDiagnosis {
     | "ssh-use-own-tools";
 }
 
-// ── Sync (#15 sync phase, ADR 0006 D5; converge ruling 2026-08-14) ───────
+// ── Sync (#15; converge ruling 2026-08-14) ───────────────────────────────
 //
 // Mirrors the lib's sync types — defined locally so the SPA never
-// value-imports the lib (§8 / ADR 0004). Sync ALWAYS converges: there is no
+// value-imports the lib (§8). Sync ALWAYS converges: there is no
 // "conflict" arm, no per-file choices, and no resolve call. Overlapping text
 // edits land in the file inside standard git conflict markers
 // (`combinedFiles`); a clashing binary keeps BOTH versions as two files
@@ -547,7 +553,7 @@ export interface HostConnectionInfo {
 // ── Publish providers (#35) ────────────────────────────────────────────────
 //
 // Mirrors the lib's publish types — defined locally so the SPA never
-// value-imports the lib into the renderer bundle (§8 / ADR 0004).
+// value-imports the lib into the renderer bundle (§8).
 
 /** One author-editable settings field a provider declares (data-driven UI). */
 export interface PublishConfigFieldInfo {
@@ -566,8 +572,8 @@ export interface PublishProviderCard {
    *  `formats` below, the only one it ever publishes). */
   format: "pdf" | "html";
   /**
-   * Present only for a provider that supports more than one format (#221
-   * phase 3, D8 — currently only gdrive: `["pdf", "html"]`). The wizard
+   * Present only for a provider that supports more than one format (#221 —
+   * currently only gdrive: `["pdf", "html"]`). The wizard
    * renders a PDF/Website choice for the card only when this is set; every
    * other provider stays fixed on `format` above.
    */
@@ -675,7 +681,7 @@ export interface PublishRunResult {
 //
 // Mirrors the lib's source-provider types — defined locally so the SPA never
 // value-imports the lib (and its isomorphic-git/node deps) into the renderer
-// bundle (§8 / ADR 0004).
+// bundle (§8).
 
 /** One entry in a project's version history (a Git commit, abstracted). */
 export interface SnapshotEntry {
@@ -751,7 +757,6 @@ export interface BuildResult {
   htmlPath?: string;
   pdfPath?: string;
   fingerprintPath?: string;
-  downloadUrl?: string;
   /**
    * Print-quality findings the render produced (native engine only). Defined
    * locally, decoupled from the lib (§8) — the renderer never value-imports
