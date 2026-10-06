@@ -8,21 +8,15 @@
 // no filesystem) so main.ts reuses its readPrefs()/writePrefs() helpers AND so
 // the logic is unit-testable in isolation (mirrors recent-folders.ts).
 //
-// #30: `lastChapter`/`sidebarOpen`/`cursorLine`/`editorScroll` were removed —
-// they were speculative dead schema for an in-app editor (#38) and chapter
-// list (#42) that never landed a consumer for them; they round-tripped
-// through JSON but nothing ever read them back. Re-add a field here only when
-// a real feature is about to read it.
+// Add a field here only when a real feature is about to read it — fields
+// nothing reads back just round-trip through JSON as dead schema (#30).
 // ──────────────────────────────────────────────────────────────────────────
 
 /**
  * State persisted for a single project, keyed by its folder path.
  *
- * A per-project `viewMode` snapshot lived here too, as the last of the three
- * places view mode was stored (#30 deleted the legacy top-level `viewMode` in
- * DesktopPrefs; `AppSettings.preview.viewMode` was the durable default). The
- * fragmentation is now fully resolved by not storing view mode anywhere: it
- * is derived from the workspace mode, so nothing has a snapshot to restore.
+ * View mode is deliberately not stored anywhere: it is derived from the
+ * workspace mode, so nothing has a snapshot to restore.
  */
 export interface ProjectState {
   /** Current preview page (1-based). */
@@ -75,9 +69,3 @@ export function writeProjectState(
   }
   return { ...(states ?? {}), [projectDir]: merged };
 }
-
-// `migrateLegacyProjectState` (the one-time pre-#43 top-level
-// currentPage/viewMode → projectStates[dir] seeding) is deleted (#30): the
-// release that carried the migration fallback has shipped, and
-// `DesktopPrefs` no longer has top-level `currentPage`/`viewMode` fields to
-// migrate from (prefs-store.ts).

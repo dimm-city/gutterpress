@@ -1,20 +1,15 @@
 /**
- * CrashRecoveryController (Phase 5 slice 2) — the single owner of the
- * crash-recovery scan/restore/discard flow (#44) that used to live inline in
- * `+page.svelte`, extracted per UX review H5 / ARCH review #10. Mirrors
- * `RecoveryUiController` (the sibling transparent-sync recovery machine) in
- * spirit, but this one drives host round-trips of its own rather than only
- * reacting to already-computed events, so — like `ProjectLifecycleController`
- * — its host coupling is injected (§8 / ADR 0004): the recovery-list/clear
- * round-trips, the sidecar file read, the buffer restore, the editor-pane
- * open, and the toast surface. `RecoveryItem` is a type-only import
- * from `CrashRecoveryDialog.svelte` (already how `+page.svelte` imports it) —
- * zero `node:*` / lib value imports.
+ * CrashRecoveryController — the single owner of the crash-recovery
+ * scan/restore/discard flow (#44). It drives host round-trips of its own, so —
+ * like `ProjectLifecycleController` — its host coupling is injected (§8): the
+ * recovery-list/clear round-trips, the sidecar file read, the buffer restore,
+ * the editor-pane open, and the toast surface. `RecoveryItem` is a type-only
+ * import from `../components/crash-recovery-types` — zero `node:*` / lib value
+ * imports.
  *
- * Preserves W4's M12 two-step-Discard / recovered-vs-on-disk-preview UI
- * (that lives in the dialog component itself, unaffected by this move) and
- * M22's routed-through-`friendlyHostError` restore-failure toast — both
- * injected here as `friendlyHostError` / `toast`.
+ * The two-step Discard / recovered-vs-on-disk preview UI lives in the dialog
+ * component itself; the restore-failure toast is routed through
+ * `friendlyHostError` — both injected here as `friendlyHostError` / `toast`.
  */
 
 import { basenameOf } from "../platform/paths";
@@ -35,7 +30,6 @@ export interface CrashRecoveryEntry {
 }
 
 export interface CrashRecoveryDeps {
-  isDesktop: () => boolean;
   listRecovery: (dir: string) => Promise<CrashRecoveryEntry[]>;
   clearRecovery: (filePath: string) => Promise<unknown>;
   readRecoveryFile: (recoveryPath: string) => Promise<string>;
@@ -52,7 +46,7 @@ export class CrashRecoveryController {
   items = $state<RecoveryItem[]>([]);
 
   private deps: CrashRecoveryDeps;
-  /** Guards against re-scanning the same folder twice (moved verbatim). */
+  /** Guards against re-scanning the same folder twice. */
   private scanDir: string | null = null;
   /** Invalidates async scan/restore continuations on project teardown. */
   private generation = 0;
@@ -68,7 +62,6 @@ export class CrashRecoveryController {
    */
   async scan(dir: string): Promise<void> {
     const d = this.deps;
-    if (!d.isDesktop()) return;
     if (this.scanDir === dir) return;
     this.scanDir = dir;
     const generation = ++this.generation;
@@ -98,7 +91,6 @@ export class CrashRecoveryController {
     const generation = this.generation;
     const itemIndex = Math.max(0, this.items.findIndex((i) => i.filePath === item.filePath));
     this.items = this.items.filter((i) => i.filePath !== item.filePath);
-    if (!d.isDesktop()) return;
     try {
       const recovered = await d.readRecoveryFile(item.recoveryPath);
       if (generation !== this.generation) return;
@@ -129,9 +121,7 @@ export class CrashRecoveryController {
   discard(item: RecoveryItem): void {
     const d = this.deps;
     this.items = this.items.filter((i) => i.filePath !== item.filePath);
-    if (d.isDesktop()) {
-      d.clearRecovery(item.filePath).catch(() => {});
-    }
+    d.clearRecovery(item.filePath).catch(() => {});
   }
 
   /** "Decide later" — hide the dialog without resolving any entry. */
@@ -141,9 +131,8 @@ export class CrashRecoveryController {
 
   /**
    * Full teardown for a project-close/reset (called from
-   * `ProjectLifecycleController`'s single `resetExtras` hook, replacing the
-   * hand-listed `recoveryScanDir = null; recoveryItems = [];` that used to
-   * live at each of the divergent teardown sites — see H5).
+   * `ProjectLifecycleController`'s single `resetExtras` hook, so every
+   * teardown path clears the same state).
    */
   reset(): void {
     this.generation++;

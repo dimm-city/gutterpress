@@ -22,8 +22,8 @@ import { defaultConfigDir } from "../remote-auth/token-store.ts";
 import { commandExists, defaultCommandRunner } from "./command-runner.ts";
 import type { PublishDeps } from "./types.ts";
 
-/** Total deadline for the one-time butler binary download (audit B2; a TOTAL
- * budget, not idle — must cover the full archive on a slow link). */
+/** Total deadline for the one-time butler binary download (a TOTAL budget,
+ * not idle — must cover the full archive on a slow link). */
 const BUTLER_DOWNLOAD_TIMEOUT_MS = 300_000;
 
 /** broth channel for the running platform; null when unsupported. */
@@ -93,7 +93,7 @@ export async function ensureButler(deps: PublishDeps): Promise<string> {
   deps.onProgress?.("Downloading itch.io's butler upload tool (one-time setup)…");
   const fetchFn = deps.fetch ?? globalThis.fetch;
   const hint = "Check your connection, or install butler manually and set BUTLER_PATH.";
-  // Bound the one-time download (audit B2): without a deadline a stalled CDN
+  // Bound the one-time download: without a deadline a stalled CDN
   // connection hangs the whole publish. The deadline is TOTAL (fetch-timeout.ts)
   // and keeps ticking through the body read, so the budget must cover the whole
   // ~25MB archive on a slow link — 5 minutes ≈ works down to ~0.7 Mbit/s — and

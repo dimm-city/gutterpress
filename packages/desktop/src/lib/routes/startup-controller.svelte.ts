@@ -1,23 +1,17 @@
 /**
- * StartupController (Phase 5 slice 2) — the single owner of the launch-time
- * "reopen the last project behind the start screen" continuation that used to
- * live inline in `+page.svelte`'s startup `onMount`, extracted per UX review
- * H5 / ARCH review #10.
+ * StartupController — the single owner of the launch-time "reopen the last
+ * project behind the start screen" continuation.
  *
  * `startup-landing.ts` already holds the pure predicates (`decideStartupScreen`
  * / `continueStatus` / `shouldReshowLanding`); this controller adds the
  * STATEFUL machine around them — the re-entrancy guards and the prefs
  * round-trip.
  *
- * HISTORY: this controller used to also own "when to reveal the window" —
- * the external splash window covered the main window at launch, and four
- * branches here decided when to dismiss it (`revealWindow()`/`reveal()`).
- * The splash was removed in favour of the in-window start screen
- * (WelcomeLanding): the window is simply visible from launch, so the whole
- * reveal seam is gone and this controller only decides what the first
- * SCREEN is (landing vs. reopened project).
+ * There is no splash window: the window is visible from launch with the
+ * in-window start screen (WelcomeLanding), so this controller only decides
+ * what the first SCREEN is (landing vs. reopened project).
  *
- * Host coupling is injected (§8 / ADR 0004): the prefs round-trip, the
+ * Host coupling is injected (§8): the prefs round-trip, the
  * left-panel-prefs application, the landing `$state` setters (still owned by
  * `+page.svelte` — they are read by `dismissLanding` / `landingVisible` /
  * `setLandingStartupPref` elsewhere on the page, so moving only their WRITERS
@@ -38,7 +32,6 @@ export interface StartupPrefs {
 }
 
 export interface StartupControllerDeps {
-  isDesktop: () => boolean;
   /**
    * Entry guard: true when the workspace already has something open,
    * opening, or erroring (preview/dir/url/busy/openError/urlPreviewError) —
@@ -91,7 +84,6 @@ export class StartupController {
    */
   async run(reopenLastProject = true): Promise<void> {
     const d = this.deps;
-    if (!d.isDesktop()) return;
     if (this.lastProjectChecked) return;
     if (d.isWorkspaceEngaged()) return;
     if (this.autoOpeningLastProject) return;
@@ -137,7 +129,7 @@ export class StartupController {
       // openProjectPath (whose first act is dismissLanding). Raise busy so the
       // epoch is claimed at intent time with no await in between. The
       // per-project restore read (#43) lives in the lifecycle controller, keyed
-      // to the RESOLVED book dir (2026-07-29 audit).
+      // to the RESOLVED book dir.
       d.setBusy(true, "Reopening previous folder…");
       await d.startFolderPreview(dir, "Reopening previous folder…");
       // If the saved project no longer opens (moved/renamed/deleted),

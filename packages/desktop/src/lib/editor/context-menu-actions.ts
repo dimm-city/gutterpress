@@ -35,6 +35,8 @@
  * full CommonMark fidelity.
  */
 
+import type { InlineSourceToken } from "$lib/preview-client";
+
 export interface ImageTokenMatch {
   start: number;
   end: number;
@@ -347,3 +349,99 @@ export function findLinkTokenAtOffset(text: string, offset: number): LinkTokenMa
   }
   return null;
 }
+
+// ── Preview-driven finders (main's preview context menu) ─────────────────────
+// The rendered element's own alt/src/href plus the `InlineSourceToken` threaded
+// through `data-source-range` locate an already-known token in its block.
+
+function findOccurrence(text: string, source: InlineSourceToken): number {
+  if (!source.token || !Number.isInteger(source.occurrence) || source.occurrence < 0) return -1;
+  let from = 0;
+  for (let current = 0; current <= source.occurrence; current++) {
+    const found = text.indexOf(source.token, from);
+    if (found < 0) return -1;
+    if (current === source.occurrence) return found;
+    from = found + source.token.length;
+  }
+  return -1;
+}
+
+
+export function findImageToken(
+  blockSlice: string,
+  image: { src: string | null; alt: string | null; source: InlineSourceToken | null },
+): ImageTokenMatch | null {
+  if (!image.source) return null;
+  const start = findOccurrence(blockSlice, image.source);
+  if (start < 0) return null;
+  const tokenRaw = image.source.token;
+  if (!tokenRaw.startsWith("![")) return null;
+  const label = scanBracket(tokenRaw, 1);
+  if (!label || tokenRaw[label.close + 1] !== "(") return null;
+  const destination = scanDestination(tokenRaw, label.close + 1);
+  if (!destination || destination.close !== tokenRaw.length - 1) return null;
+  const attrs = scanAttrs(blockSlice, start + tokenRaw.length);
+  return {
+    start,
+    end: attrs.end,
+    alt: image.alt ?? "",
+    src: image.src ?? "",
+    tokenRaw,
+    attrsRaw: attrs.raw,
+    altStart: 2,
+    altEnd: label.close,
+    destinationStart: destination.start,
+    destinationEnd: destination.end,
+  };
+}
+
+
+export type LinkResolution =
+  | { kind: "found"; match: LinkTokenMatch }
+  | { kind: "reference-style" }
+  | { kind: "linkified" }
+  | { kind: "not-found" };
+
+
+export function resolveLinkToken(
+  blockSlice: string,
+  link: { href: string | null; text: string; source: InlineSourceToken | null },
+): LinkResolution {
+  if (!link.source) {
+    return link.href && blockSlice.includes(link.href) ? { kind: "linkified" } : { kind: "not-found" };
+  }
+  const start = findOccurrence(blockSlice, link.source);
+  if (start < 0) return { kind: "not-found" };
+  const tokenRaw = link.source.token;
+  const label = scanBracket(tokenRaw, 0);
+  if (!label || tokenRaw[label.close + 1] !== "(") return { kind: "reference-style" };
+  const destination = scanDestination(tokenRaw, label.close + 1);
+  if (!destination || destination.close !== tokenRaw.length - 1) return { kind: "not-found" };
+  return {
+    kind: "found",
+    match: {
+      start,
+      end: start + tokenRaw.length,
+      href: link.href ?? "",
+      tokenRaw,
+      destinationStart: destination.start,
+      destinationEnd: destination.end,
+    },
+  };
+}
+
+
+function escapeLabel(value: string): string {
+  let escaped = "";
+  for (const char of value) {
+    if (char === "\\" || char === "[" || char === "]") escaped += "\\";
+    escaped += char;
+  }
+  return escaped;
+}
+
+
+export function makeLinkToken(label: string, href: string): string {
+  return `[${escapeLabel(label)}](${serializeDestination(href)})`;
+}
+

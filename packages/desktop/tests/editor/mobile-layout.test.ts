@@ -20,8 +20,8 @@ test("isNarrowWidth mirrors layoutModeFor", () => {
 });
 
 // ── tab model: exactly two tabs (editor + desktop) ─────────────────────────────
-// The defunct "css"/style tab was removed from the small-screen tab bar —
-// project styling now lives in the full-screen Project settings view.
+// No "css"/style tab — project styling lives in the full-screen Book
+// settings view.
 
 test("the mobile tab bar has exactly the markdown and preview tabs", () => {
   expect(MOBILE_TABS).toEqual(["markdown", "preview"]);

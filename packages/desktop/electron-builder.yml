@@ -4,8 +4,8 @@ productName: Gutterpress
 # The ESM Electron main (out/main/main.js, built by electron-vite) dynamic-
 # imports gutterpress from node_modules at runtime (electron/main.ts
 # loadLib() → its dist/index.js). That package's `files` field ships dist/;
-# electron-builder copies it and its transitive deps (puppeteer-core,
-# markdown-it, isomorphic-git, etc.) automatically from the workspace
+# electron-builder copies it and its transitive deps (markdown-it,
+# isomorphic-git, postcss, etc.) automatically from the workspace
 # node_modules via package.json `dependencies` — no manual list, no afterPack.
 files:
   - out/**
@@ -16,6 +16,14 @@ files:
 extraResources:
   - from: build-resources/icon.png
     to: build-resources/icon.png
+  # First-launch samples (electron/seed-samples.ts): the user guide + examples,
+  # copied as-is from the repo's examples/ — one source, no duplicate assets.
+  - from: ../../examples/gutterpress-user-guide
+    to: samples/gutterpress-user-guide
+  - from: ../../examples/with-design-guide
+    to: samples/with-design-guide
+  - from: ../../examples/with-validation
+    to: samples/with-validation
 
 extraMetadata:
   main: out/main/main.js
@@ -26,7 +34,7 @@ extraMetadata:
 fileAssociations:
   - ext: md
     name: Gutterpress Markdown chapter
-    description: Markdown chapter in a Gutterpress project
+    description: Markdown chapter in a Gutterpress book
     mimeType: text/markdown
     role: Editor
 
@@ -39,11 +47,10 @@ npmRebuild: false
 
 # asar (Electron's default) — smaller, faster to scan on Windows. The package
 # reads its embedded assets (favicon, engine viewer bundle, ICC) via fs from inside the
-# archive, which Electron's patched fs handles. puppeteer-core is unpacked so it
-# has real on-disk paths when driving system Chrome.
+# archive, which Electron's patched fs handles. Nothing needs unpacking: PDF
+# export drives Electron's own Chromium (electron/engine-browser.ts), so no
+# dependency has to spawn a binary from a real on-disk path.
 asar: true
-asarUnpack:
-  - "**/node_modules/puppeteer-core/**"
 
 directories:
   output: dist

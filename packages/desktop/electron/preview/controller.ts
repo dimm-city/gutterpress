@@ -1,26 +1,15 @@
 /**
  * preview/controller.ts — the preview-open pipeline behind the `api:preview`
- * IPC channel, extracted from electron/main.ts as an injectable,
- * unit-testable class (ARCH review finding #6).
+ * IPC channel, as an injectable, unit-testable class.
  *
- * WHY THIS EXISTS
- * ---------------
- * `api:preview` used to be a ~300-line god-handler in main.ts (start the
- * preview server, detect the manifest title, upsert recents, arm auto-sync,
- * emit a one-shot "local" status for remote-less repos, and kick off
- * preflight recovery) closing over module
- * globals. That made the recents/local-status ordering impossible
- * to unit-test without a full Electron + lib + network stack. This class owns
- * the exact same control flow, but every external touch-point is INJECTED via
- * `deps`, so tests drive it with fakes — mirrors export/controller.ts.
- *
- * The behavior is a faithful move of the original main.ts code: the
- * serialization of overlapping `api:preview` invocations (see `open()`), the
- * recents-upsert shape, the local-status/preflight fire-and-forget
- * triggers, and their relative order are preserved verbatim. Preflight repo
- * recovery itself is NOT reimplemented here — it is owned end-to-end by
- * AutoSyncOrchestrator.scheduleInitialSync (electron/auto-sync/orchestrator.ts,
- * finding #7); this class only calls it.
+ * It starts the preview server, detects the manifest title, upserts recents,
+ * arms auto-sync, and emits a one-shot "connect"/"local" status for repos
+ * that won't sync. Every external touch-point is INJECTED via `deps`, so
+ * tests drive the serialization of overlapping `api:preview` invocations
+ * (see `open()`), the recents-upsert shape, and the ordering of the
+ * fire-and-forget triggers with fakes — mirrors export/controller.ts. The
+ * initial sync itself is owned by AutoSyncOrchestrator.scheduleInitialSync
+ * (electron/auto-sync/orchestrator.ts); this class only calls it.
  *
  * Node/lib-side ONLY — never imported by the renderer.
  */
@@ -31,9 +20,8 @@ import { operationLogSlug } from "../recovery-paths";
 import { unsyncedStateFor } from "../auto-sync/unsynced-status";
 import { upsertRecentFolder } from "../recent-folders";
 import type { DesktopPrefs } from "../prefs-store";
-import type { PreviewStartResult } from "../bridge-types";
+import type { PreviewStartResult } from "../../src/lib/platform/shared-types";
 import type { TokenStore } from "gutterpress";
-import type { SecureHandle } from "../server-bridge/secure-handle";
 
 type LibModule = typeof import("gutterpress");
 type ProjectSourceResult = Awaited<ReturnType<LibModule["detectProjectSource"]>>;
@@ -137,10 +125,10 @@ export class PreviewOpenController {
   private async runOpen(args: PreviewOpenArgs): Promise<PreviewStartResult> {
     const input = args?.input;
     if (!input || typeof input !== "string") {
-      throw new Error("Missing 'input' (absolute path to a project directory)");
+      throw new Error("Missing 'input' (absolute path to a book folder)");
     }
     if (!path.isAbsolute(input)) {
-      throw new Error(`Preview input must be an absolute project directory: ${input}`);
+      throw new Error(`Preview input must be an absolute book folder path: ${input}`);
     }
 
     const openedDir = path.resolve(input);
@@ -218,8 +206,7 @@ export class PreviewOpenController {
     // C2 (book switcher): the desktop always opens an actual book folder (never a
     // bare multi-book repo root — the renderer retargets to a resolved book
     // before calling here), so `openedDir` is the active book. Detected once and
-    // reused below (recents + the local-status/preflight blocks) instead of each
-    // re-deriving it.
+    // reused below (recents + the local-status/initial-sync blocks).
     let source: ProjectSourceResult | null = null;
     if (lib) {
       try {
@@ -248,25 +235,20 @@ export class PreviewOpenController {
       }))
       .catch((e) => console.warn("[api:preview] failed to persist opened workspace:", e));
 
-    // Trigger auto-sync once after the first auto-snapshot has had time to settle
-    // (§4.2 project-open trigger). The snapshot debounce fires after N minutes of
-    // quiet, so we wait for the snapshot delay + the extra sync gap before the
-    // initial sync. If no edits have happened the project may already be clean, and
-    // syncProject will return "up-to-date" quickly — still worth running once on
-    // open to pull any teammate changes that arrived since last session.
-    // Start the periodic safety-sync interval now (idempotent) so incoming changes
-    // pull even in a view-only session with no edits — it must NOT wait for the
-    // first file change. Then do a PROMPT initial pull a few seconds after open
-    // (not coupled to the 10-min snapshot debounce — that delayed it ~10.5 min and
-    // hid teammate changes). syncProject snapshots-first, so a prompt run is safe.
+    // §4.2 project-open trigger. Start the periodic safety-sync interval now
+    // (idempotent) so incoming changes pull even in a view-only session with no
+    // edits — it must NOT wait for the first file change. Then do a PROMPT
+    // initial pull a few seconds after open (not coupled to the 10-min snapshot
+    // debounce, which would hide teammate changes for ~10.5 min). syncProject
+    // snapshots-first, so a prompt run is safe.
     if (source) void this.deps.armSyncInterval(openedDir);
 
     // Local-git projects the auto-sync engine won't sync still need an ambient
     // status (the pill would otherwise stay blank): "connect" when an HTTPS
     // remote merely lacks a Gutterpress credential (the renderer offers a Connect
     // action), or "local" when there is no usable remote (version history
-    // only). Isolated from the sync/recovery flow below; canSync projects get
-    // their status from runAutoSync and ignore this branch.
+    // only). Isolated from the initial-sync flow below; canSync projects get
+    // their status from AutoSyncOrchestrator.run and ignore this branch.
     if (lib && source) void this.emitLocalStatusIfUnsynced(lib, openedDir, source);
 
     // Arm the initial sync for a classified project — see
@@ -306,8 +288,6 @@ export class PreviewOpenController {
         // "connect" for an HTTPS remote Gutterpress just isn't connected to (one
         // step from syncing — the renderer offers a Connect action); "local"
         // only when there is genuinely no usable remote (none / SSH-only).
-        // Collapsing both into "local" made a connectable repo read as "kept
-        // on this computer" — reported in the field as a remote-detection bug.
         state: unsyncedStateFor(diag),
         projectDir: openedDir,
         lastSyncAt: null,
@@ -327,10 +307,4 @@ export class PreviewOpenController {
       // Non-fatal: the pill simply stays hidden if detection/diagnosis fails.
     }
   }
-}
-
-/** Register `api:preview` / `api:stopPreview` (SFE-P6b, extracted from electron/main.ts). */
-export function registerPreviewHandlers(secureHandle: SecureHandle, previewOpen: PreviewOpenController): void {
-  secureHandle("api:preview", (_e, args: { input?: string }) => previewOpen.open(args));
-  secureHandle("api:stopPreview", () => previewOpen.stop());
 }

@@ -4,12 +4,12 @@ Date: 2026-08-31 · Status: accepted
 
 ## Context
 
-The `gdrive` publish provider (#221, `docs/gdrive-publish-plan.md`) connects
+The `gdrive` publish provider (#221) connects
 via an OAuth 2.0 authorization-code flow for installed apps: a loopback
-redirect on `127.0.0.1` with PKCE S256 (D2). Google's token endpoint, however,
+redirect on `127.0.0.1` with PKCE S256. Google's token endpoint, however,
 requires a `client_secret` for a **Desktop app** OAuth client even when PKCE
 is used — this was not assumed, it was tested live against a real Desktop
-client (`docs/gdrive-publish-plan.md` Appendix B, spike assumption **P2**):
+client (the #221 spike, assumption **P2**):
 a PKCE-only exchange returned `invalid_request`; adding `client_secret`
 returned `200`. Google's own installed-app documentation states that in this
 context the "secret" is not treated as confidential — every installed
@@ -86,7 +86,7 @@ connect for every user of that build:
 2. **OAuth consent screen** (External), scopes:
    `https://www.googleapis.com/auth/drive.file` only.
    `drive.file` is Google's *non-sensitive* scope tier — confirmed against a
-   real account (`docs/gdrive-publish-plan.md` Appendix B, spike **P13**:
+   real account (the #221 spike, **P13**:
    Cloud Console's Data Access page lists it under "Your non-sensitive
    scopes," with "Your sensitive scopes: No rows to display"). No restricted-
    scope verification, no CASA third-party security assessment, no annual
@@ -109,7 +109,7 @@ connect for every user of that build:
    is required here in the first place — Google's Desktop-app client type
    does not support a secret-less (`none`) token-auth method.
 4. **Homepage + privacy policy URLs**, required before the consent screen
-   can be submitted for production review (D11 of the plan) — the existing
+   can be submitted for production review  — the existing
    project README as homepage, and a new `PRIVACY.md` (published via GitHub
    Pages) as the privacy policy, covering the `drive.file` scope, local-only
    token storage, and the absence of any Gutterpress server in the data path.
@@ -135,6 +135,5 @@ connect for every user of that build:
 - The GitHub-scoped "no client secret" rule remains intact and is now
   explicitly bounded to GitHub, rather than silently contradicted.
 - Registering (or re-registering) the production OAuth client is a
-  release-blocking prerequisite, tracked by this ADR and by
-  `docs/gdrive-publish-plan.md`'s Phase 0 — not something an implementer can
+  release-blocking prerequisite, tracked by this ADR and #255 — not something an implementer can
   quietly work around by inventing a placeholder id/secret.

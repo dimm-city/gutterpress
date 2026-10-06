@@ -1,4 +1,4 @@
-// Self-populate the check registry (audit B5 / review): this module is
+// Self-populate the check registry: this module is
 // reachable without ever importing checks/runner (its own bootstrap), and an
 // empty registry here would silently report "no tools needed".
 import "./register-builtins";
@@ -30,7 +30,7 @@ export async function checkToolAvailability(
   opts: RunnerOptions = {}
 ): Promise<ToolCheckResult> {
   // Get the same set of checks the runner would use (before tool filtering),
-  // via the SHARED selector (audit E10) so tool probing can never drift from
+  // via the SHARED selector so tool probing can never drift from
   // execution. Unmatched (mistyped) selectors are deliberately NOT surfaced
   // here: this function is always paired with runChecks (see validation-exec.ts),
   // which owns selector validation and emits a `selector.unmatched` error for

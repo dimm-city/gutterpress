@@ -6,7 +6,7 @@
  *   1. Opening a book while the workspace is ALREADY in Edit mode left the
  *      editor pane stuck on "Loading editor…" forever. The project-open
  *      pipeline called `ensureEditorFile()` (filling the buffer) but never
- *      `loadEditorModule()`, so the lazy editor chunk was never imported.
+ *      `loadEditorModule()`, so the lazy CodeMirror chunk was never imported.
  *      Only the *toggle* path called it — which is why
  *      editor-toggle-loads-module.pw.mjs stayed green through the bug.
  *
@@ -50,8 +50,8 @@
  *
  *   (runs 1 and 2 of a leg: 0 failures in 19 attempts each)
  *
- * That is also why the flake looked worst here: the CI behaviour job runs five
- * drives back to back and this one is LAST, so it inherited four leaked apps.
+ * That is also why the flake looked worst here: the CI behaviour job runs its
+ * drives back to back, so a later drive inherited every earlier leaked app.
  * The fix is in `cleanup()` below — SIGKILL, which cannot be caught.
  *
  * RULED OUT, with evidence — do not re-derive these:
@@ -103,16 +103,6 @@ const require_ = createRequire(join(desktopDir, "package.json"));
 const PORT = 9600 + Math.floor(Math.random() * 250);
 
 const log = (m) => console.log(`[editor-opens] ${m}`);
-
-/**
- * The workspace has two editing surfaces and either may be the live one: the
- * paged editor (Read on a markdown file) or CodeMirror (Edit, Focus, and any
- * non-markdown file). Every check below is about the EDITOR PANE — that it
- * mounted, and what document it is showing — never about which surface won,
- * so they address whichever is mounted rather than pinning the drive to one.
- */
-const EDITOR_MOUNTED = `!!document.querySelector('.cm-editor, .rich-editor-host .md-editor')`;
-const EDITOR_TEXT = `(document.querySelector('.cm-content, .rich-editor-host .md-document')?.textContent ?? '')`;
 let child = null;
 let fakeHome = null;
 let bookDir = null;
@@ -146,7 +136,7 @@ bookDir = mkdtempSync(join(tmpdir(), "gutterpress-editoropens-"));
 cpSync(srcFixture, bookDir, { recursive: true });
 log(`fixture: ${bookDir}`);
 
-// ── 2. launch, with Edit mode ALREADY selected before the book opens ─────────
+// ── 2. launch a fresh profile — Edit mode is already the default ─────────────
 const target = exeArg ? resolve(exeArg) : join(desktopDir, "out", "main", "main.js");
 if (!existsSync(target)) fail(`no ${target} — run \`npm run build && npm run electron:build\` first`);
 const isMainJs = target.endsWith(".js");
@@ -160,12 +150,13 @@ writeFileSync(
   join(userDataDir, "gutterpress-prefs.json"),
   JSON.stringify({ lastProjectDir: bookDir, leftPanel: { open: true, activeTab: "toc", width: 300 } }),
 );
-// `preview.mode: "editor"` is the whole point: the workspace is in Edit mode
-// BEFORE any book is open, which is the state the toggle path never reaches.
-writeFileSync(
-  join(userDataDir, "app-settings.json"),
-  JSON.stringify({ settingsSchemaVersion: 2, preview: { mode: "editor" } }),
-);
+// The drives write and publish, so they run as an author (the app defaults
+// to a reader, who has no editor).
+writeFileSync(join(userDataDir, "app-settings.json"), JSON.stringify({ workspace: { role: "author" } }));
+// No app-settings.json on purpose: Edit is the default for a profile with no
+// saved choice, so leaving it unseeded drives exactly what a first-time writer gets — the
+// workspace in Edit mode BEFORE any book is open, the state the toggle path
+// never reaches (and the CONTROL below fails if that default regresses).
 appArgv.push(`--user-data-dir=${userDataDir}`);
 
 const useXvfb = process.platform === "linux" && !process.env.DISPLAY;
@@ -219,22 +210,6 @@ function send(method, params = {}) {
     ws.send(JSON.stringify({ id, method, params }));
   });
 }
-/**
- * A deterministic viewport, because CHECK 2 clicks the book at real
- * coordinates. Without one the drive inherits whatever size the host window
- * happens to get — and below the 820px narrow breakpoint the workspace shows
- * ONE pane, so in Edit mode the book is not on screen at all: the in-frame
- * probe still finds a target (it queries the preview's own DOM) while the
- * mouse click lands on whatever is actually painted there. That is a check
- * that fails for a reason having nothing to do with what it tests.
- */
-await send("Emulation.setDeviceMetricsOverride", {
-  width: 1400,
-  height: 900,
-  deviceScaleFactor: 1,
-  mobile: false,
-});
-
 async function evalJs(expression) {
   const r = await send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
   if (r.result?.exceptionDetails) {
@@ -301,7 +276,7 @@ log("project opened");
 // CONTROL — the app really is in Edit mode with the pane rendered. If either of
 // these fails the harness is wrong (bad settings key), not the product.
 if (await evalJs(`document.querySelector('button[aria-label="Edit"]')?.getAttribute('aria-pressed')`) !== "true") {
-  fail("CONTROL: workspace is not in Edit mode — the preview.mode setting did not apply");
+  fail("CONTROL: workspace is not in Edit mode — a fresh profile must open in Edit (DEFAULT_SETTINGS.preview.mode)");
 }
 if (!(await evalJs(`!!document.querySelector('.editor-pane')`))) {
   fail("CONTROL: no .editor-pane rendered in Edit mode");
@@ -330,15 +305,15 @@ await evalJs(`(() => {
 })()`);
 
 // ── CHECK 1 — the editor loads its module AND the first chapter's content ────
-const cmMounted = await poll(EDITOR_MOUNTED, 25000);
+const cmMounted = await poll(`!!document.querySelector('.cm-editor')`, 25000);
 check(cmMounted,
-  'DEFECT 1: opening a book in Edit mode must mount an editor — pane stayed on "Loading editor…"');
+  'DEFECT 1: opening a book in Edit mode must mount CodeMirror — pane stayed on "Loading editor…"');
 const cmHasContent = cmMounted &&
-  await poll(`${EDITOR_TEXT}.includes('Alpha')`, 15000);
+  await poll(`(document.querySelector('.cm-content')?.textContent ?? '').includes('Alpha')`, 15000);
 check(cmHasContent,
   "DEFECT 1: the editor must open showing the book's first chapter");
 if (cmMounted && await evalJs(`[...document.querySelectorAll('.editor-loading')].some(e => e.textContent.includes('Loading editor'))`)) {
-  check(false, '"Loading editor…" still visible alongside the mounted editor');
+  check(false, '"Loading editor…" still visible alongside .cm-editor');
 }
 
 // ── CHECK 2 — a single click on viewer content reveals it in the editor ─────
@@ -360,10 +335,9 @@ if (cmHasContent) {
   //    reproduced under CPU load, the band below came back at y=82 instead of
   //    the settled y=66, the layout moved 0.8s later, and the click landed on
   //    the wrong block — CHECK 2 went red for a reason it does not test.
-  //    This also puts the wait where its budget makes sense. It used to sit
-  //    AFTER the measuring below, with 30s, and the measuring had already
-  //    burned ~14s of the render by then; the overlay is up for the WHOLE
-  //    initial pagination, which the gates above budget 90-120s for.
+  //    This also puts the wait where its budget makes sense: the overlay is
+  //    up for the WHOLE initial pagination, which the gates above budget
+  //    90-120s for.
   //    The overlay's own label says which half is still running, so a stalled
   //    pagination and a stalled post-render reveal no longer look alike.
   if (!(await poll(`!document.querySelector('.loading-overlay')`, 90000))) {
@@ -391,8 +365,8 @@ if (cmHasContent) {
   targetDiag = { stage: "outline", secondChapter };
 
   if (secondChapter) {
-    // 2. Bring it on screen (same reason inline-editing.pw.mjs scrolls before
-    //    reading a box: absolute click coords are only meaningful in view).
+    // 2. Bring it on screen: absolute click coords are only meaningful in
+    //    view.
     await evalJs(
       `window.__ask('scrollTo', [{ line: ${secondChapter.line}, chapter: ${JSON.stringify(secondChapter.chapter)} }, { block: 'start' }])`,
     );
@@ -470,48 +444,24 @@ if (!cmHasContent) {
     `CONTROL: no source-mapped block from a second chapter was reachable in the viewer — ${JSON.stringify(targetDiag)}`,
   );
 } else {
-  const before = await evalJs(`${EDITOR_TEXT}.slice(0, 60)`);
+  const before = await evalJs(`document.querySelector('.cm-content')?.textContent?.slice(0, 60) ?? ''`);
   const cx = Math.round(clickTarget.frame.left + clickTarget.rect.left + Math.min(40, clickTarget.rect.width / 2));
   const cy = Math.round(clickTarget.frame.top + clickTarget.rect.top + Math.min(10, clickTarget.rect.height / 2));
   await send("Input.dispatchMouseEvent", { type: "mousePressed", button: "left", clickCount: 1, x: cx, y: cy });
   await send("Input.dispatchMouseEvent", { type: "mouseReleased", button: "left", clickCount: 1, x: cx, y: cy });
   const marker = clickTarget.chapter.replace(/^\d+-|\.md$/g, "");
-  // 25s, not 10s: a file switch on the paged editor rebuilds the document
-  // host, builds a fresh projection and re-paginates the chapter before the
-  // new text is on screen — strictly more work than CodeMirror's swap, which
-  // is what the original 10s budget was written for. The elapsed time is
-  // logged so a run that creeps toward the limit is visible before it fails.
-  const startedAt = Date.now();
   const moved = await poll(
-    `${EDITOR_TEXT}.toLowerCase().includes(${JSON.stringify(marker.toLowerCase())})`,
-    25000,
+    `(document.querySelector('.cm-content')?.textContent ?? '').toLowerCase().includes(${JSON.stringify(marker.toLowerCase())})`,
+    10000,
   );
-  // A coordinate-driven click that misses says nothing about the behaviour
-  // under test, so a failure reports where it actually landed: the point, the
-  // frame it was computed from, the workspace layout, and whether the FILE
-  // followed even though the text did not (which would separate "the click
-  // never arrived" from "the editor did not reload").
-  const landing = moved ? null : await evalJs(`(() => {
-    const f = document.querySelector('iframe');
-    const r = f ? f.getBoundingClientRect() : null;
-    const hit = document.elementFromPoint(${cx}, ${cy});
-    return {
-      win: { w: window.innerWidth, h: window.innerHeight },
-      frame: r ? { l: Math.round(r.left), t: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) } : null,
-      activeFile: document.querySelector('.file-item.active .file-name')?.textContent?.trim() ?? null,
-      hitAtClick: hit ? hit.tagName + '.' + String(hit.className).slice(0, 40) : null,
-    };
-  })()`);
   check(moved,
-    `DEFECT 2: a single click on content from ${clickTarget.chapter} must load that file into the editor ` +
-    `(it still showed "${before.slice(0, 34)}…"; clicked ${cx},${cy} — ${JSON.stringify(landing)})`);
-  if (moved) log(`the click moved the editor to ${clickTarget.chapter} in ${Date.now() - startedAt}ms`);
+    `DEFECT 2: a single click on content from ${clickTarget.chapter} must load that file into the editor (it still showed "${before.slice(0, 34)}…")`);
 }
 // ── CHECK 3 — a TOC click navigates BOTH panes ──────────────────────────────
 await evalJs(`document.querySelector('#panel-tab-toc')?.click(); true`);
 await waitFor(`document.querySelectorAll('.toc-item').length > 0`, 20000, "CONTROL: TOC tab never listed any headings");
 const tocPick = await evalJs(`(() => {
-  const cur = document.querySelector('.cm-content, .rich-editor-host .md-document')?.textContent ?? '';
+  const cur = document.querySelector('.cm-content')?.textContent ?? '';
   const items = [...document.querySelectorAll('.toc-item')];
   const wanted = cur.includes('Gamma') ? 'Beta' : 'Gamma';
   const hit = items.find(b => b.textContent.includes(wanted));
@@ -539,7 +489,7 @@ await evalJs(`(() => {
   return true;
 })()`);
 const tocMovedEditor = await poll(
-  `${EDITOR_TEXT}.includes(${JSON.stringify(tocPick.wanted)})`,
+  `(document.querySelector('.cm-content')?.textContent ?? '').includes(${JSON.stringify(tocPick.wanted)})`,
   10000,
 );
 check(tocMovedEditor,
@@ -580,7 +530,7 @@ const parentName = await evalJs(`(() => {
   return li.querySelector(':scope > .toc-row > .toc-item > .toc-text')?.textContent ?? null;
 })()`);
 if (!parentName) fail("CONTROL: no expandable TOC row in this book");
-// Wait for the actual condition the fixed 800ms sleep used to approximate: if
+// Wait for the actual condition rather than a fixed sleep: if
 // the row above was just expanded, its nested <ul> needs a Svelte flush before
 // a child exists to query. Polling proceeds the instant it's ready and still
 // survives a flush slower than 800ms under CI load, instead of guessing.
@@ -611,8 +561,7 @@ const parentExpandedIs = (state) => `[...document.querySelectorAll('.toc-list li
   ?.querySelector(':scope > .toc-row > .toc-item')?.getAttribute('aria-expanded') === ${JSON.stringify(state)}`;
 // Selecting the child sets `activeOutlineIndex` synchronously (jumpToOutline in
 // +page.svelte), but the parent's aria-expanded still needs a Svelte flush to
-// reflect it — poll for that instead of the fixed 2500ms this used to sleep,
-// which was only ever a guess at how long the flush takes.
+// reflect it — poll for that rather than guessing how long the flush takes.
 await poll(parentExpandedIs("true"), 10000);
 const parentBefore = await readParent();
 if (parentBefore?.exp !== "true") {

@@ -98,13 +98,11 @@ gutterpress build field-guide --format pdfx --out .gutterpress/build/field-guide
   --pdfx-flavor x1a --icc .gutterpress/profiles/CGATS21_CRPC1.icc
 ```
 
-### gutterpress lint / validate / audit / preflight
+### gutterpress validate / preflight
 
 | Command | Description |
 |---------|-------------|
-| `lint [DIR]` | Check CSS for print-safety issues |
 | `validate [FILE]` | Validate source files or a built PDF for print compliance |
-| `audit [DIR]` | Asset-only validation checks |
 | `preflight [FILE]` | Deterministic print preflight for a built PDF |
 
 ---
@@ -113,9 +111,9 @@ gutterpress build field-guide --format pdfx --out .gutterpress/build/field-guide
 
 The design guide is a first-class output target, the same as any book project.
 `build --format html` produces a complete deployable directory with no backing
-server or toolbar chrome. `book.html` is pre-paginated with stylesheets and fonts
-inlined; serve it together with the generated navigation scripts and any copied
-images in the output directory.
+server or toolbar chrome. `book.html` has stylesheets and fonts inlined and is
+paginated by the viewer script when it loads; serve it together with that
+script and any copied images in the output directory.
 
 ### Build the static site
 
@@ -128,9 +126,9 @@ Output structure:
 ```
 design-guide-site/
 ├── index.html       ← redirects to book.html (a default entry point for static hosts)
-├── book.html        ← the rendered guide, CSS + fonts inlined, pre-paginated
-└── preview/
-    └── scripts/      ← preview-interface.js and preview-bridge.js (page nav, zoom)
+├── book.html        ← the rendered guide, CSS + fonts inlined
+└── engine/
+    └── gutterpress-viewer.js ← the viewer that paginates book.html on load
 ```
 
 There's no `css/` or `fonts/` folder in the output — stylesheets are read and
@@ -140,9 +138,7 @@ path (or under `assets/` for one that lives outside the project).
 
 Open `book.html` directly in a browser — no server needed. The desktop app's
 toolbar (page nav, zoom, print, folder picker) is a separate application
-(`packages/desktop`) and is not part of this static build output; the nav
-scripts here only let *your own* embedding page drive `window.previewAPI` if
-you build one, similar to how the Electron desktop app does.
+(`packages/desktop`) and is not part of this static build output.
 
 ### npm scripts (optional)
 

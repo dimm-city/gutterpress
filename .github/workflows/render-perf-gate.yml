@@ -6,17 +6,10 @@ name: Gutterpress desktop app gates
 # user-facing defects passed 2117 desktop + 1845 CLI unit tests in one cycle
 # and were caught only by driving the app.
 #
-# The render-perf job (render-gate.mjs pages-per-second + rerender-latency-gate
-# --strict) was REMOVED 2026-08-30 on the owner's call. Its record over its
-# lifetime: the render-speed gate's failures were 100% infrastructure — the
-# regression signature it existed to catch ("render rate 0.00 pp/s") appeared
-# in NONE of its 8 recorded failures — and the rerender gate never fired once
-# in 577 runs. Both consumed a runner per PR and a recurring flake surface.
-# Do not resurrect a wall-clock performance gate on shared CI runners without
-# a record of a real regression it would have caught.
-#
-# The file keeps its render-perf-gate.yml name because drive scripts and docs
-# cite it by path.
+# Do not add a wall-clock performance gate on shared CI runners without a
+# record of a real regression it would have caught: past render-speed and
+# rerender-latency gates here failed only on infrastructure, never on the
+# regression they existed to catch, while costing a runner per PR.
 
 on:
   pull_request:
@@ -37,14 +30,9 @@ on:
       # run when the desktop app's renderer changes.
       - "packages/cli/src/engine/viewer/**"
       - "packages/cli/src/assets/engine/**"
-      - "packages/desktop/static/engine/**"
       - "packages/desktop/tests/integration/**"
       - ".github/workflows/render-perf-gate.yml"
   workflow_dispatch:
-
-env:
-  PUPPETEER_SKIP_DOWNLOAD: "true"
-  PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
 
 jobs:
   behaviour:
@@ -72,11 +60,12 @@ jobs:
       - name: Install xvfb
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
-      # One xvfb-run per drive. The two CDP drives fall back to wrapping
+      # One xvfb-run per drive. The CDP drives fall back to wrapping
       # themselves in xvfb-run when DISPLAY is unset; wrapping them here sets
       # DISPLAY, so that fallback stays dormant and every drive launches the
-      # same way. problems-last-hop and editor-dropdown-sync drive Playwright's
-      # _electron, which has no such fallback and need the wrapper.
+      # same way. problems-last-hop, app-lifecycle-log, editor-dropdown-sync
+      # and preview-zoom-wheel drive Playwright's _electron, which has no such
+      # fallback and need the wrapper.
       - name: Drive the built app (behaviour)
         working-directory: packages/desktop
         run: |
@@ -87,3 +76,4 @@ jobs:
           xvfb-run -a node tests/integration/problems-panel.pw.mjs
           xvfb-run -a node tests/integration/editor-opens-with-content.pw.mjs
           xvfb-run -a node tests/integration/editor-dropdown-sync.pw.mjs out/main/main.js
+          xvfb-run -a node tests/integration/preview-zoom-wheel.pw.mjs out/main/main.js

@@ -445,20 +445,7 @@ describe("preview-shell.js + preview-bridge.js + preview-interface.js: the FULL 
     expect(h.getFocusCalls()).toBe(0);
   });
 
-  // SFE-P4: in-flow block editing is deleted, and with it preview-shell.js's
-  // ONLY `active.focus()` call site (the `beginBlockEdit`-only special case).
-  // This is the permanent post-deletion truth, replacing the old "G-12
-  // contrast" positive control: sending the exact command name the special
-  // case used to key on triggers nothing — `beginBlockEdit` is now just an
-  // unknown command name to the shell relay (previewAPI itself has no such
-  // method any more either; see preview-interface.test.mjs).
-  test("post-deletion: a beginBlockEdit command through the SAME harness no longer triggers ANY focus special case", () => {
-    const h = loadShellWithBook();
-    h.fromHost({ type: "gutterpress:cmd", id: 1, cmd: "beginBlockEdit", args: [{ chapter: "a.md", range: [0, 1], text: "x" }] });
-    expect(h.getFocusCalls()).toBe(0);
-  });
-
-  // G-12 liveness control for the assertion above: the `getFocusCalls()` spy
+  // G-12 liveness control: the `getFocusCalls()` spy
   // itself is proven capable of a nonzero result by calling `active.focus()`
   // directly, so "0" above is a genuine "nothing calls this" result and not
   // a harness that is stuck at 0 no matter what happens.

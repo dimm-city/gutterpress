@@ -14,8 +14,7 @@ import type {
 } from "$lib/platform/dtos";
 
 /**
- * Build the srcdoc for a look thumbnail iframe (ported verbatim from the
- * retired ThemeManager).
+ * Build the srcdoc for a look thumbnail iframe.
  */
 export function sampleSrcdoc(css: string): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
@@ -95,6 +94,18 @@ export function extensionSourceLabel(entry: ProjectExtensionEntry): string {
 }
 
 /**
+ * Split a feature description on its backtick spans — the lib writes "what to
+ * type" that way ("Subscript text with `H~2~O`.") — so the template can set
+ * those spans in code type instead of showing the raw backticks.
+ */
+export function describeSegments(description: string): Array<{ text: string; code: boolean }> {
+  return description
+    .split("`")
+    .map((text, i) => ({ text, code: i % 2 === 1 }))
+    .filter((segment) => segment.text !== "");
+}
+
+/**
  * The full `use` order after moving `entry` one slot up (`delta` -1) or down
  * (+1) WITHIN `view` — a filtered projection of `entries`, such as the looks.
  * The Look and Features views each show a subset of the one list, so "move
@@ -141,7 +152,7 @@ const NEEDS_INSTALL_RE = /^not (installed|pinned)\b/i;
  * with the in-app fix (ahead of any load-test result, which for such an entry
  * is only ever a less specific failure); then the load-test result.
  *
- * Tri-state (M34): `validating` is true only while a validate round-trip is
+ * Tri-state: `validating` is true only while a validate round-trip is
  * in flight. If it is `false` and there is still no result for this `use`,
  * the validate call threw (or never ran) — that must NOT read the same as "in
  * progress", since it will never resolve on its own. It gets its own "stale"
@@ -158,7 +169,7 @@ export function extensionStatus(
     return {
       label: "Needs install",
       kind: "error",
-      detail: `This project's downloaded copy is missing. Enter ${entry.use} under Install from npm below, then click Re-check.`,
+      detail: `This book's downloaded copy is missing. Open Advanced on the Features tab, enter ${entry.use} under Install from npm, then click Re-check.`,
       raw: needsInstall,
     };
   }

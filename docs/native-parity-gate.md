@@ -105,7 +105,10 @@ walked the heading onto the next page in the preview only.
 - **Viewer side** — a fresh viewer mount of the same document. Lines are read
   from per-character `Range` rects; line-box extents and baselines come from
   font metrics measured on a probe outside the document flow, so nothing in
-  the book moves. When print kept the line, the chain the viewer pushed has
+  the book moves. A table row is read as print reads it: its cells' lines
+  merged where they share a baseline, left to right, and its last line's box
+  reaching the row's edge (cell padding and borders, the table's own for its
+  last row), since that edge is what has to fit. When print kept the line, the chain the viewer pushed has
   its `avoid` values and `orphans`/`widows` neutralised and is relaid out, so
   the projection reads where the viewer's geometry puts the line rather than
   where its break rules moved it. When the viewer kept the line, print's

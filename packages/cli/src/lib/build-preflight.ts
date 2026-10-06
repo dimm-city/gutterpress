@@ -4,17 +4,14 @@ import { resolveGhostscript } from "./ghostscript";
 import { INSTALL_HINTS as CANONICAL_INSTALL_HINTS } from "./install-hints";
 import { BuildError } from "./build-error";
 import { log } from "../utils/logger";
-import { getBrowser, closeBrowser, RENDER_TIMEOUT_MS } from "./browser-pool";
-import { REQUIRED_MILESTONE } from "../engine/shared/cdp";
 import type { BuildFormat } from "./build-runner";
 
 /**
- * Tool preflight + gate computation (ARCH finding #9, extracted from
- * build-runner.ts): decide, BEFORE the pipeline starts doing real work,
- * whether every external tool a build will spawn is actually available, and
- * which of the lint/pre-validate/post-validate gates apply for the requested
- * format + CLI flags. Both are pure decisions over the resolved format/config
- * — no rendering, no staging.
+ * Tool preflight + gate computation: decide, BEFORE the pipeline starts doing
+ * real work, whether every external tool a build will spawn is actually
+ * available, and which of the CSS-check/pre-validate/post-validate gates
+ * apply for the requested format + CLI flags. Both are pure decisions over the
+ * resolved format/config — no rendering, no staging.
  */
 
 interface MissingTool {
@@ -47,19 +44,6 @@ const INSTALL_HINTS: Record<"gs" | "qpdf", string> = {
  * stampCreator) and needs no system tool at all.
  * qpdf is REQUIRED for pdfx + stripAnnotations (default true).
  */
-/**
- * Does this build render in the POOLED/external Chromium? The one rule,
- * defined once: HTML builds never paginate here; an injected `engineBrowser`
- * (the desktop's Electron host) replaces the pool. Every caller that gates
- * preflight, prewarm, or the milestone check derives from THIS predicate.
- */
-export function rendersInPooledChromium(
-  format: BuildFormat,
-  opts: { engineBrowser?: unknown }
-): boolean {
-  return format !== "html" && !opts.engineBrowser;
-}
-
 export async function preflightBuildTools(
   format: BuildFormat,
   opts: { stripAnnotations?: boolean; engineBrowser?: unknown },
@@ -67,10 +51,15 @@ export async function preflightBuildTools(
 ): Promise<void> {
   const missing: MissingTool[] = [];
 
-  // Chromium — required exactly when the build renders in the pooled/external
-  // Chromium (see rendersInPooledChromium's doc for the injection cases).
+  // Chromium — required exactly when the build will LAUNCH an external
+  // Chromium: a pdf/pdfx build with no injected `engineBrowser` (the desktop
+  // supplies Electron's own). This is the 50ms "is there a binary at all"
+  // check; the version floor is enforced by the launch itself
+  // (`engine/shared/cdp.ts`'s `launchChromium`), which `runBuild` awaits
+  // before rendering.
   if (
-    rendersInPooledChromium(format, opts) &&
+    format !== "html" &&
+    !opts.engineBrowser &&
     !(await resolveChromiumExecutable())
   ) {
     // requireChromiumExecutable() throws with multi-line install instructions
@@ -104,70 +93,14 @@ export async function preflightBuildTools(
   );
 }
 
-/**
- * Native engine only: verify the browser-pool's Chromium meets
- * `engine/shared/cdp.ts`'s `REQUIRED_MILESTONE`, with an early, actionable
- * error instead of the late, cryptic one `connectChromium` throws from deep
- * inside `buildNativePdf` (reached only after quality gates + the markdown
- * render have already run). `preflightBuildTools`'s presence check
- * (`resolveChromiumExecutable`) doesn't catch a resolved-but-too-old binary —
- * this does.
- *
- * Deliberately NOT called from `preflightBuildTools` itself: that would
- * force `runBuild` to await a full Chromium cold start (~1-2s) BEFORE
- * lint/validate even start, defeating the whole point of `prewarmBrowser()`
- * firing in parallel with them. Call this instead right after quality gates
- * finish and before rendering — by then the prewarmed browser is usually
- * already warm, and any quality-gate failure (the common case) never pays
- * this cost at all. Reuses `getBrowser()` (the same cached instance
- * `buildNativePdf`'s `connectChromium` will reuse), so this is one cold
- * start, not two.
- *
- * Not reached by the desktop: it injects its own `engineBrowser` (Electron's
- * bundled Chromium, 148 as of Electron 42.1.0 = `REQUIRED_MILESTONE`), which
- * `runBuild` skips this check for and `buildNativePdf` milestone-checks
- * directly instead. This is the pooled/external-Chromium path only.
- */
-export async function verifyNativeChromiumMilestone(): Promise<void> {
-  let version: string;
-  try {
-    const browser = await getBrowser(RENDER_TIMEOUT_MS);
-    version = await browser.version();
-  } catch (err) {
-    throw new BuildError(
-      `Could not launch a Chromium browser for the PDF build: ` +
-        `${err instanceof Error ? err.message : String(err)}`,
-      2
-    );
-  }
-  const milestone = Number(/Chrome\/(\d+)/.exec(version)?.[1] ?? 0);
-  if (milestone < REQUIRED_MILESTONE) {
-    await closeBrowser();
-    throw new BuildError(
-      `The Gutterpress native engine requires Chromium ${REQUIRED_MILESTONE}+; found ${version}.\n\n` +
-        `Install a newer Chrome, Chromium, or Edge, or point CHROMIUM_PATH ` +
-        `(or PUPPETEER_EXECUTABLE_PATH) at a ${REQUIRED_MILESTONE}+ binary.\n\n` +
-        // No doc path in this string on purpose: `.reviews/` is gitignored and
-        // `docs/adr/0002` is not published either, so either pointer would send
-        // a user of the shipped binary to a file that does not exist.
-        `Note: this applies to the CLI's own Chromium only — the desktop app ` +
-        `renders PDFs with its own bundled browser and needs no ` +
-        `separate install.`,
-      2
-    );
-  }
-}
-
 export interface Gates {
   /**
    * Disable the `source.stylelint` check (CSS print-safety: remote urls,
    * risky print effects, page-containment) for this run, without touching
-   * `preValidate` itself (#272 — one CSS gate, not two: this used to be a
-   * whole second gate, `runLint`, that duplicated `source.stylelint`'s own
-   * `checkCss` pass one phase later). `true` when `--skip-lint` was passed or
-   * `config.lint.enabled === false`; consulted only when `preValidate` is
-   * also true — with `preValidate` off, no pre-build check (CSS included)
-   * runs at all, `--skip-lint` or not.
+   * `preValidate` itself (#272 — one CSS gate, not two). `true` when
+   * `--skip-lint` was passed or `config.lint.enabled === false`; consulted
+   * only when `preValidate` is also true — with `preValidate` off, no
+   * pre-build check (CSS included) runs at all, `--skip-lint` or not.
    */
   skipStylelint: boolean;
   preValidate: boolean;

@@ -122,7 +122,7 @@ export function serializeReport(report: Report): string {
 // Compare
 // ---------------------------------------------------------------------------
 
-export type WaiverKind = "page-count" | "page-size" | "text" | "image";
+export type WaiverKind = "page-count" | "page-size" | "text" | "image" | "raster";
 
 export interface Waiver {
   /** 1-based page number. Omit for kind "page-count" (there is no page). */
@@ -154,6 +154,9 @@ export interface CompareOptions {
   /** Points. Applies to text run and image extents (x/y/w/h). Default 0.5. */
   tolerance?: number;
   waivers?: Waiver[];
+  /** Diffs found outside the report — the `raster` diffs of `compare
+   *  --raster` (render-parity-raster.ts) — waived like every other kind. */
+  extraDiffs?: Diff[];
 }
 
 export interface CompareResult {
@@ -346,7 +349,7 @@ export function compareReports(
   const waivers = options.waivers ?? [];
   assertValidWaivers(waivers);
 
-  const raw = computeRawDiffs(base, cand, tolerance);
+  const raw = [...computeRawDiffs(base, cand, tolerance), ...(options.extraDiffs ?? [])];
 
   const diffs: Diff[] = [];
   const waived: Diff[] = [];

@@ -1,23 +1,21 @@
 /**
- * "Bun.serve" doc-drift guard (ARCH finding #13).
+ * "Bun.serve" doc-drift guard.
  *
- * CLAUDE.md §1 used to instruct `Bun.serve` for the preview dev server,
- * directly contradicting both the actual implementation
- * (`packages/cli/src/preview/http-server.ts` uses `node:http` + `ws` so it
- * can run under Electron's bundled Node in the packaged desktop) and
- * CLAUDE.md's own Node-compatibility requirement (Monorepo layout section:
- * "no `Bun.serve`/`Bun.file`/runtime Bun APIs"). CONTRIBUTING.md and
- * docs/ARCHITECTURE.md repeated the same dead story. All three now describe
- * `node:http` + `ws` instead; any remaining "Bun.serve" mention in them is a
- * CONTRASTIVE/historical one (explaining what it was replaced with and why),
- * never an instruction to use it.
+ * CLAUDE.md, CONTRIBUTING.md and docs/ARCHITECTURE.md must never instruct
+ * `Bun.serve` for the preview dev server: that would contradict both the
+ * actual implementation (`packages/cli/src/preview/http-server.ts` uses
+ * `node:http` + `ws` so it can run under Electron's bundled Node in the
+ * packaged desktop) and CLAUDE.md's own Node-compatibility requirement
+ * (Monorepo layout section: "no `Bun.serve`/`Bun.file`/runtime Bun APIs").
+ * Any "Bun.serve" mention in them must be a CONTRASTIVE one, never an
+ * instruction to use it.
  *
  * This test does not fully parse prose. It requires every line mentioning
  * "Bun.serve" in the three docs to also carry a recognizable negation/
  * contrast cue (not/no/instead of/unlike/earlier/replaced/chosen over/
  * crash/...) on the SAME line, so a future edit that reintroduces an
  * affirmative "use Bun.serve" instruction fails loudly instead of silently
- * regressing this finding. It also asserts the actual preview server module
+ * regressing. It also asserts the actual preview server module
  * still doesn't call `Bun.serve(...)`, so the docs and the code can't drift
  * apart again without one of these tests catching it.
  */

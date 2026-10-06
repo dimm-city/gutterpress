@@ -51,7 +51,7 @@ test("manifest.schema.json is valid JSON with a gdrive publish entry matching th
   const schema = JSON.parse(raw) as { properties: { publish: JsonSchemaNode } };
 
   const publishProps = schema.properties.publish.properties!;
-  for (const id of ["itch", "drivethrurpg", "kdp", "azure-swa", "shopify", "gdrive"]) {
+  for (const id of ["local", "itch", "drivethrurpg", "kdp", "azure-swa", "shopify", "gdrive"]) {
     expect(publishProps[id]).toBeDefined();
     expect(publishProps[id]!.type).toBe("object");
   }

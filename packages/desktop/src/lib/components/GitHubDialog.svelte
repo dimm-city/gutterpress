@@ -1,27 +1,15 @@
 <script lang="ts">
   import Icon from "$lib/components/Icon.svelte";
   /**
-   * "Open from GitHub" flow (#15, ADR 0006): Connect (device-flow code) →
+   * "Open from GitHub" flow (#15): Connect (device-flow code) →
    * choose repository → choose branch + destination folder → download → the
    * project opens through the same path as any local folder. All copy is
    * author-friendly — no clone/remote/token vocabulary. The renderer never
    * sees a token: connection status is redacted by the host.
    */
   import { tick } from "svelte";
-  import { isDesktop } from "$lib/platform";
-  import {
-    cloneRemoteRepository,
-    connectGitHubCancel,
-    connectGitHubStart,
-    connectGitHubWait,
-    disconnectGitHub as disconnectGitHubRemote,
-    getRemoteConnection,
-    listRemoteBranches,
-    listRemoteRepositories,
-    listRepoBooks as listRemoteRepoBooks,
-    onCloneProgress,
-  } from "$lib/remote/remote-capability";
-  import { openDirectory, openExternal } from "$lib/files/files-capability";
+  import { getPlatform } from "$lib/platform";
+  import { api } from "$lib/api";
   import { basenameOf } from "$lib/platform/paths";
   import { friendlyHostError } from "$lib/errors";
   import type {
@@ -111,9 +99,8 @@
   }
 
   async function init() {
-    if (!isDesktop()) return;
     try {
-      const conn = await getRemoteConnection();
+      const conn = await api.remote.getRemoteConnection();
       if (conn.connected) {
         username = conn.username ?? null;
         await loadRepos();
@@ -126,24 +113,24 @@
   async function connect() {
     error = null;
     busy = true;
+    const platform = getPlatform();
     try {
-      const info = await connectGitHubStart();
+      const info = await platform.connectGitHubStart();
       code = info;
       step = "code";
       // Open the verification page for the user; the code stays visible here.
-      openExternal(info.verificationUri).catch(() => {});
-      const conn = await connectGitHubWait();
+      api.shell.openExternal(info.verificationUri).catch(() => {});
+      const conn = await platform.connectGitHubWait();
       username = conn.username ?? null;
       await loadRepos();
     } catch (e) {
       // The user may have closed the dialog mid-flow — only surface errors
       // while it is still open.
       if (open) {
-        // remote-capability's functions already scrub the Electron IPC
-        // transport prefix (SFE-P5c3) — this is a harmless defense-in-depth
-        // second pass (a caught, already-scrubbed message doesn't match the
-        // prefix pattern again), kept so this catch reads the same as every
-        // other error surface in this file.
+        // This path is IPC-bridged (getPlatform() → ipcRenderer.invoke), so
+        // unlike the api.remote.* fetch routes (sanitized host-side) the raw
+        // "Error invoking remote method '…':" transport prefix can reach here
+        // unscrubbed — scrub it before it reaches the writer.
         error = friendlyHostError(e instanceof Error ? e.message : String(e));
         step = "connect";
       }
@@ -165,7 +152,7 @@
     await tick();
     dialogEl?.focus();
     try {
-      repos = await listRemoteRepositories();
+      repos = await api.remote.listRemoteRepositories() as RemoteRepository[];
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     } finally {
@@ -194,15 +181,16 @@
     destination = null;
     step = "configure";
     // Branch list loads in the background; the default is already selected.
-    listRemoteBranches(repo.owner, repo.name)
+    api.remote
+      .listRemoteBranches(repo.owner, repo.name)
       .then((list) => {
-        if (list.length > 0) branches = list;
+        if (list.length > 0) branches = list as RemoteBranch[];
       })
       .catch(() => {});
   }
 
   async function pickDestination() {
-    const pathStr = await openDirectory();
+    const pathStr = await api.dialog.openDirectory();
     if (pathStr) destination = pathStr;
   }
 
@@ -211,7 +199,7 @@
    * first. More than one → the author picks which book to open ("books"
    * step); exactly one → open it directly; none (or a lookup failure) →
    * open the repository root, exactly as before. The WHOLE repository is
-   * downloaded once either way (ADR 0006 D2) — the chosen folder just
+   * downloaded once either way — the chosen folder just
    * becomes the project that opens.
    */
   async function openProject() {
@@ -222,11 +210,11 @@
     const gen = ++loadGen;
     let found: RepoBook[] = [];
     try {
-      found = await listRemoteRepoBooks(
+      found = await api.remote.listRepoBooks(
         selectedRepo.owner,
         selectedRepo.name,
         branch,
-      );
+      ) as RepoBook[];
     } catch {
       // Book discovery is best-effort — fall back to the repository root.
       found = [];
@@ -251,16 +239,17 @@
     step = "cloning";
     cloneProgress = null;
     closeBlocked = false;
+    const platform = getPlatform();
     // NOTE: block body on purpose — an expression body `(p) => (cloneProgress = p)`
     // implicitly RETURNS the Svelte $state proxy, which contextBridge then tries
     // (and fails) to structured-clone back to the preload: one uncaught
     // "An object could not be cloned" per progress event (0.5.0-rc.3 storm).
     // Push-channel callbacks must never return a value.
-    const unsubscribe = onCloneProgress((p) => {
+    const unsubscribe = platform.onCloneProgress((p) => {
       cloneProgress = p;
     });
     try {
-      const { projectDir } = await cloneRemoteRepository({
+      const { projectDir } = await platform.cloneRemoteRepository({
         url: `${selectedRepo.htmlUrl}.git`,
         parentDir: destination,
         folderName: folderName.trim() || selectedRepo.name,
@@ -274,7 +263,7 @@
       onClosed?.();
       onOpened?.(projectDir);
     } catch (e) {
-      // Also IPC-bridged (cloneRemoteRepository) — same L11 scrub.
+      // Also IPC-bridged (platform.cloneRemoteRepository) — same scrub.
       error = friendlyHostError(e instanceof Error ? e.message : String(e));
       step = "configure";
     } finally {
@@ -284,7 +273,7 @@
 
   async function disconnect() {
     try {
-      await disconnectGitHubRemote();
+      await api.remote.disconnectGitHub();
     } catch {
       /* non-fatal */
     }
@@ -301,7 +290,7 @@
       return;
     }
     if (step === "code") {
-      connectGitHubCancel().catch(() => {});
+      getPlatform().connectGitHubCancel().catch(() => {});
     }
     open = false;
     // Focus restoration to `triggerEl` is handled by the dialogBehavior action.
@@ -312,9 +301,9 @@
     if (!p) return "Starting download…";
     if (p.total) {
       const pct = Math.min(100, Math.round((p.loaded / p.total) * 100));
-      return `Downloading your project… ${pct}%`;
+      return `Downloading your book… ${pct}%`;
     }
-    return "Downloading your project…";
+    return "Downloading your book…";
   }
 
 </script>
@@ -330,7 +319,7 @@
   >
     <header class="dlg-header">
       <h2 id="github-dialog-title">
-        {#if step === "connect" || step === "code"}Connect GitHub{:else if step === "repos"}Choose a repository{:else if step === "configure"}Open project{:else if step === "books"}Choose a book{:else}Downloading…{/if}
+        {#if step === "connect" || step === "code"}Connect GitHub{:else if step === "repos"}Choose a repository{:else if step === "configure"}Open book{:else if step === "books"}Choose a book{:else}Downloading…{/if}
       </h2>
       <button
         class="dlg-close"
@@ -355,7 +344,7 @@
 
       {#if step === "connect"}
         <p class="hint">
-          Connect your GitHub account to open the book projects stored there.
+          Connect your GitHub account to open the books stored there.
           A browser window will ask you to enter a short code — that's it.
         </p>
         {#if onAdvancedSetup}
@@ -384,7 +373,7 @@
             <button
               type="button"
               class="link-btn"
-              onclick={() => code && openExternal(code.verificationUri).catch(() => {})}
+              onclick={() => code && api.shell.openExternal(code.verificationUri).catch(() => {})}
             >{code.verificationUri}</button>
           {/if}
         </p>
@@ -481,7 +470,7 @@
             class="dlg-primary app-btn-primary"
             onclick={openProject}
             disabled={!destination || !folderName.trim() || busy}
-          >{booksLoading ? "Looking inside…" : "Open project"}</button>
+          >{booksLoading ? "Looking inside…" : "Open book"}</button>
         </footer>
       {:else if step === "books" && selectedRepo}
         <p class="hint">

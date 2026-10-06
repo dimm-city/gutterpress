@@ -1,45 +1,29 @@
 /**
- * Shared fs-authorization guard (ARCH review #37).
+ * Shared fs-route project-scoping guard.
  *
- * Before this module existed, `/api/fs/{read-file,write-file,list-dir,
- * stat-file,copy-file}` (SvelteKit `+server.ts` routes, deleted in SFE-P5c/
- * P5d) accepted any absolute path — the only guard was `isAbsolute`. Any
- * code that could issue a same-origin fetch inside the renderer (a preview
+ * Any code that can issue a same-origin fetch inside the renderer (a preview
  * XSS, a malicious plugin-injected script, a compromised dependency) could
- * read or overwrite arbitrary files on disk. `write-file` already computed a
- * `path.resolve(watchedDir)` + `startsWith(root + sep)` containment test, but
- * only to decide whether to schedule an auto-snapshot — never to authorize
- * the write. This module promotes that same containment test to a shared
- * authorization guard. `requireWithinProjectRoot` — the one place that
- * actually throws — now lives in `electron/api/validation.ts`, called from
- * the typed `fs:*`/`log:*` IPC handlers (SFE-P5c1 moved it off the deleted
- * `src/routes/api/_lib/fs-guard.ts`; see that module's header for the full
- * transport-migration history). This module's containment primitives
- * (`isWithinRoot`/`isWithinAnyRootCanonical`) are unchanged by any of that —
- * they are consumed by `electron/api/validation.ts` exactly as they were by
- * the route layer.
+ * otherwise read or overwrite arbitrary files on disk through
+ * `/api/fs/{read-file,write-file,list-dir,stat-file,copy-file}`. This module
+ * is the containment test those routes authorize against (see
+ * `src/routes/api/_lib/fs-guard.ts`'s `requireWithinProjectRoot`, the one
+ * place that actually throws).
  *
  * ## Policy
  *
  * `projectRoots()` is the currently-open book plus its host-detected enclosing
  * repository (when it is nested in one). The book root is established before
  * preview generation; the repository root comes from the host's
- * `detectProjectSource`, never from a renderer-supplied path. It used to also
- * union in the folder watcher's tracked dir
- * (`folderWatch.getWatchedDir()`, set once the renderer calls
- * `fs:watchFolder`), but `fs:watchFolder` accepted any absolute path from the
- * renderer, so that union let a same-origin script call
- * `fs:watchFolder("/home/user/.ssh")` and have THAT directory authorized for
- * direct fs-route reads/writes (P1 review, PR #98). `fs:watchFolder` now
- * rejects any `dirPath` that isn't the active book root
- * (main.ts), so the watcher can no longer diverge from it — but authorization
- * itself derives only from host-owned roots, on principle: the watcher is
- * host-authorized input, not an independent authorization source. The SPA's
- * own open-project sequence (`routes/+page.svelte`) already awaits
+ * `detectProjectSource`, never from a renderer-supplied path. The folder
+ * watcher's tracked dir is deliberately NOT a root: the watcher is
+ * host-authorized input, not an independent authorization source, and a
+ * renderer `fs:watchFolder` call must never be able to authorize a directory
+ * such as `/home/user/.ssh` for fs-route reads/writes (PR #98; main.ts's
+ * `fs:watchFolder` also rejects any `dirPath` that isn't the active book
+ * root). The SPA's open-project sequence (`routes/+page.svelte`) awaits
  * `startPreviewHost` (which sets the roots) BEFORE it lists/reads the
- * NEW project's files (`ensureEditorFile`, the manifest-detection `listDir`)
- * and before it calls `startFolderWatch`, so dropping the watcher union does
- * not 403 that legitimate "open a different project" window. Once a project
+ * NEW project's files and before it calls `startFolderWatch`, so a
+ * legitimate open is never 403'd. Once a project
  * closes, both roots go back to null and `projectRoots()` to empty, so
  * a stray fs-route call from the SPA with no project open is rejected rather
  * than falling back to "anywhere".
@@ -59,11 +43,9 @@
  * than the read-only exemptions above: the editor's "insert image" /
  * media-panel "import" flows need to copy an author-picked file from
  * ANYWHERE on disk INTO the project, so `src` can't be confined to a project
- * root the way `dest` is. That used to be "enforced" by nothing but a
- * docstring asserting `src` "came from a native file dialog" — a same-origin
- * script could just POST an arbitrary `src` and the route would copy it in
- * no questions asked (P1 review). `src` outside the project is now gated by
- * a SEPARATE mechanism, not this module's root allow-lists: `fs/copy-file`
+ * root the way `dest` is — yet a same-origin script must not be able to POST
+ * an arbitrary `src` and have it copied in. `src` outside the project is
+ * gated by a SEPARATE mechanism, not this module's root allow-lists: `fs/copy-file`
  * (and `media/import-image`, the other route with the same shape) require a
  * `src` outside the project to be a one-time "picked-file" capability —
  * registered ONLY when `dialog:pickImageFile[s]` hands back a path the
@@ -73,7 +55,6 @@
  */
 import path from "node:path";
 import { realpath, lstat, readlink } from "node:fs/promises";
-import { getHostServices } from "./host-services";
 
 /**
  * True if `candidate` (an absolute path) IS `root`, or is nested under it.
@@ -194,7 +175,7 @@ async function realpathTolerantAt(
  * Symlink-safe version of {@link isWithinAnyRoot}: canonicalizes `candidate`
  * and each `root` (see {@link realpathTolerant}) before the separator-aware
  * containment compare, so a project-local symlink aliasing an outside
- * directory — or a symlinked project root itself — can no longer pass as
+ * directory — or a symlinked project root itself — cannot pass as
  * "inside". Use for any check that GATES a filesystem read/write; use the
  * plain lexical {@link isWithinAnyRoot} only for non-authorization decisions
  * (e.g. "should this write trigger an auto-snapshot debounce").
@@ -230,9 +211,4 @@ export interface FsGuardHooks {
    * copy-file-`dest` target.
    */
   readOnlyRoots(): string[];
-}
-
-/** The live `FsGuardHooks` slice of the collapsed host object (ARCH #31), or null before `registerHostServices` runs. */
-export function getFsGuardHooks(): FsGuardHooks | null {
-  return getHostServices()?.fsGuard ?? null;
 }

@@ -40,10 +40,9 @@ export type BuildFingerprintInput = {
    * These are the same for a caller that writes straight to its destination, but
    * a build always assembles into a scratch work dir and only then publishes it
    * atomically — so the file must be created in the work dir while the value
-   * anyone later reads has to be the delivered destination. One field served both
-   * roles, so shipped fingerprints recorded a scratch path
-   * (`.dist-build-a1b2c3…`, or an OS temp dir) that no longer existed
-   * (2026-07-29 audit).
+   * anyone later reads has to be the delivered destination. One field for both
+   * roles would make shipped fingerprints record a scratch path
+   * (`.dist-build-a1b2c3…`, or an OS temp dir) that no longer exists.
    */
   recordedOutputDir?: string;
   sourceDir?: string;
@@ -123,14 +122,13 @@ async function getFirstLineVersion(
 /**
  * Resolve the fingerprint's `sourceRevision` block via the pure-JS
  * `isomorphic-git` provider layer (CLAUDE.md §7) — NEVER the system `git`
- * binary. Tries `sourceDir` then `process.cwd()`, same fallback order and
- * graceful-null degradation the old `git rev-parse`-spawning implementation
- * had, but now works identically whether or not a `git` executable exists on
- * the host (arch finding #20).
+ * binary. Tries `sourceDir` then `process.cwd()`, degrading gracefully to
+ * null, and works identically whether or not a `git` executable exists on
+ * the host.
  *
  * `detectProjectSource` (project-source.ts, pure `node:fs`) finds the repo
  * root for BOTH "this dir IS the repo" and "this dir is a subfolder of an
- * enclosing repo" the same way `git rev-parse --show-toplevel` did.
+ * enclosing repo" the same way `git rev-parse --show-toplevel` does.
  * `hasUncommittedChanges` (source-provider.ts) is the lock-free dirty check:
  * a `WORKDIR`-vs-`STAGE` walk PLUS a `STAGE`-vs-`HEAD` compare, matching
  * `git status --porcelain`'s notion of dirty (a `git add`-ed but uncommitted
@@ -233,7 +231,6 @@ async function getToolVersions(): Promise<Record<string, string | null>> {
     "gutterpress": PACKAGE_META.version,
     bun: (process.versions as Record<string, string | undefined>).bun ?? null,
     node: process.versions.node,
-    "puppeteer-core": PACKAGE_META.dependencies["puppeteer-core"] ?? null,
     // Content hash of the committed engine bundles — see getEngineBundleHash's
     // docstring.
     engineBundle: engineBundleHash,

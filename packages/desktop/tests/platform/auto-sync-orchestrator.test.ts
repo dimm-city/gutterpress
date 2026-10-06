@@ -258,7 +258,7 @@ test("a successful run emits syncing then synced with a fake-clock timestamp", a
 });
 
 test("an 'up-to-date' outcome emits the same 'synced' state as a sending sync", async () => {
-  // The pill draws both identically ("Everything is in sync"), so there is
+  // The pill draws both identically ("Online backup in sync"), so there is
   // ONE wire state. The lib's SyncOutcome still distinguishes them — that is
   // what the manual-sync toast reads.
   const h = makeHarness({
@@ -278,7 +278,7 @@ test("an 'up-to-date' outcome emits the same 'synced' state as a sending sync", 
 // while auto-sync users only ever see a generic error pill.
 
 const INSECURE_MSG =
-  "This project's online address isn't secure, so the saved connection wasn't sent — connections are never sent over an insecure address. Switch the address to a secure one (starting with https) to sync.";
+  "This book's online address isn't secure, so the saved connection wasn't sent — connections are never sent over an insecure address. Switch the address to a secure one (starting with https) to sync.";
 
 test("an 'error' outcome carries the outcome's plain-language message on the emit", async () => {
   const h = makeHarness({
@@ -319,7 +319,7 @@ test("scheduleInitialSync never holds the single-flight lock", () => {
   expect(h.orch.acquire(DIR)).toBe(true);
 });
 
-// ── 2026-07-29 audit: the operation log identifies the REPO, not the book ─────
+// ── the operation log identifies the REPO, not the book ─────
 //
 // A sync is a whole-repository operation (R9), so its log is the repository's
 // log. Keying it on `path.basename(dir)` — the opened BOOK — split one repo's
@@ -443,24 +443,27 @@ test("runExitPush skips while a tick is in flight (single-flight, never overlap)
   await p1;
 });
 
-test("runExitPush is BOUNDED: a hung network cannot hang quit, and the slot is released", async () => {
-  let calls = 0;
+test("runExitPush runs the sync to completion — never abandoned on a timer", async () => {
+  // Abandoning the exit pass let quit kill git between its object and ref
+  // writes, which left empty object files that broke every later merge.
+  let finish!: () => void;
   const h = makeHarness({
-    syncProject: () => {
-      calls++;
-      // Only the exit pass hangs; a later tick behaves normally.
-      return calls === 1 ? new Promise(() => {}) : { status: "synced" };
-    },
+    syncProject: () =>
+      new Promise((resolve) => {
+        finish = () => resolve({ status: "synced" });
+      }),
   });
-  const started = performance.now();
-  await h.orch.runExitPush(DIR, 50);
-  expect(performance.now() - started).toBeLessThan(1_500);
-  // The single-flight slot is free again despite the hung sync…
+  let settled = false;
+  const exit = h.orch.runExitPush(DIR).then(() => {
+    settled = true;
+  });
+  await new Promise((r) => setTimeout(r, 100));
+  expect(settled).toBe(false);
+  // The single-flight slot stays held while the pass is still writing.
+  expect(h.orch.getState(DIR)?.inFlight ?? false).toBe(true);
+  finish();
+  await exit;
   expect(h.orch.getState(DIR)?.inFlight ?? false).toBe(false);
-  // …and the timed-out send left the push window ARMED: the next session's
-  // first tick pushes the work this pass could not.
-  await h.orch.run(DIR);
-  expect(pushFlagOf(h, 1)).toBe(true);
 });
 
 test("runExitPush does nothing when the project cannot sync", async () => {
@@ -487,4 +490,18 @@ test("a failed exit push re-arms the push for the next session's first tick", as
   h.setClock(T0 + 2 * 60_000);
   await h.orch.run(DIR); // "reopen": first tick pushes again, not in 13 minutes
   expect([pushFlagOf(h, 0), pushFlagOf(h, 1), pushFlagOf(h, 2)]).toEqual([true, true, true]);
+});
+
+
+test("background sync errors include the technical log path", async () => {
+  for (const throws of [false, true]) {
+    const h = makeHarness({ syncProject: () => {
+      if (throws) throw new Error("unexpected sync failure");
+      return { status: "error", message: "Sync did not complete" };
+    } });
+    await h.orch.run(DIR);
+    const failure = h.emitted.find(p => p.state === "error");
+    expect(failure?.logFile).toBe(h.syncArgs[0]?.logFile);
+    expect(failure?.logFile).toMatch(/^\/logs\/.+\.log$/);
+  }
 });

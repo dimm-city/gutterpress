@@ -43,7 +43,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { buildHostEditorProjection } from "../../electron/editor-projection";
+import { buildHostEditorProjection } from "../../src/lib/server/editor-projection";
 import { PLUGIN_BOOK_ROOT, loadPluginBookChapters, type PluginBookChapter } from "../fixtures/plugin-book/support";
 
 const LOADED: readonly PluginBookChapter[] = loadPluginBookChapters();
@@ -188,7 +188,7 @@ describe("degradation (a): a manifest naming an UNINSTALLED npm plugin", () => {
     expect(pluginErrors[0]!.message).toBe(
       'Failed to load plugin "gutterpress-plugin-definitely-not-installed": ' +
         'Extension "gutterpress-plugin-definitely-not-installed" not found. Install it with ' +
-        "`gutterpress ext add gutterpress-plugin-definitely-not-installed` (or Project settings > Extensions),\n" +
+        "`gutterpress ext add gutterpress-plugin-definitely-not-installed` (or Book settings > Features > Advanced in the desktop app),\n" +
         "or reference a local file under `extensions:`:\n" +
         "  extensions:\n" +
         "    - ./plugins/gutterpress-plugin-definitely-not-installed.js",

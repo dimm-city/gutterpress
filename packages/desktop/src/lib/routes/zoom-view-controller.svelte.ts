@@ -1,6 +1,6 @@
 /**
  * ZoomViewController — the single owner of the preview zoom / view-mode /
- * fit-width / split-pane-drag state that used to live inline in `+page.svelte`.
+ * fit-width / split-pane-drag state.
  *
  * Centralises the preview layout surface: the numeric-vs-fit-width zoom intents
  * (`applyZoom` / `stepZoom` / `applyFitWidthZoom`), pushing the single/
@@ -18,7 +18,7 @@
  * getters and calls the intent methods.
  *
  * Host coupling is injected so this stays testable with fakes and PWA-clean
- * (§8 / ADR 0004): the live preview client, the `zoom` / `isNarrow`
+ * (§8): the live preview client, the `zoom` / `isNarrow`
  * accessors, the persist sinks (`persistZoom` / `persistSplitRatio` = the
  * durable settings-store writers, `saveDesktopPrefs` = the guarded per-project
  * writer), and the two DOM measurements (`measureContainerWidth` = the preview
@@ -96,7 +96,12 @@ export class ZoomViewController {
         : 1;
       await client.call("setZoom", [scale]);
     } catch {
-      await client.call("setZoom", [1]).catch(() => {});
+      // Leave the zoom alone. A failed or timed-out measurement says nothing
+      // about the page: PreviewClient gives up on a call after 10s (a refit
+      // posted before the book frame exists never gets a reply), and resetting
+      // to 100% here would land ~10s after the first render, on top of the
+      // fit it had already applied. The viewer's own initial zoom covers "never
+      // fitted".
     }
   }
 

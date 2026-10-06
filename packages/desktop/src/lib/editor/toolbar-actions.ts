@@ -148,8 +148,7 @@ function mainSel(view: EditorView) {
 
 /**
  * The document offset just after the line the cursor is on — the insertion
- * point every "insert a block after the current line" action uses (audit E4:
- * this three-statement idiom was hand-repeated in 8 functions below).
+ * point every "insert a block after the current line" action uses.
  */
 function insertionPointAfterCurrentLine(view: EditorView): number {
   const { from } = mainSel(view);
@@ -279,7 +278,7 @@ function toggleInlineWrap(view: EditorView, marker: string): void {
     // Empty selection: if the cursor already sits directly between an
     // existing marker pair, remove it (toggle off) instead of inserting a
     // nested pair. Without this check, repeated Ctrl+B on an empty selection
-    // piled up marker debris: "" -> "****" -> "******" -> "********" ... (L6).
+    // piles up marker debris: "" -> "****" -> "******" -> "********" ...
     const existingBefore = view.state.doc.sliceString(Math.max(0, from - mLen), from);
     const existingAfter = view.state.doc.sliceString(to, to + mLen);
     if (existingBefore === marker && existingAfter === marker) {
@@ -497,11 +496,11 @@ export function applyTable(view: EditorView, cols: number): void {
  * dialog's width/position/size/shape picks (empty string when none are
  * set). Position/size inputs are canonicalized through the option tables,
  * so a caller still holding a removed legacy name ("full-bleed") writes the
- * live gp-* class, never a dead one. Extracted out of `applyImage` below
- * (inline-editing plan §4.4) so the preview context menu's image actions
- * (deleted in SFE-P4) could share the exact same suffix rule — though for
- * EXISTING tokens they went through image-classes' tokenize → set-facet →
- * serialize instead, which preserves attrs this builder doesn't know about.
+ * live gp-* class, never a dead one. Separate from `applyImage` below
+ * (inline-editing plan §4.4) so the context menu's image actions can share
+ * the exact same suffix rule — though for EXISTING tokens they go through
+ * image-classes' tokenize → set-facet → serialize instead, which preserves
+ * attrs this builder doesn't know about.
  */
 export function buildImageAttrsString(
   width?: string,
@@ -541,9 +540,8 @@ export function applyImage(
   });
 }
 
-// ── Insert layout block (UX M26) ─────────────────────────────────────────────
-// The toolbar previously exposed none of Gutterpress's own layout primitives
-// beyond @page-break (UX finding M26). These helpers insert a correct core
+// ── Insert layout block ──────────────────────────────────────────────────────
+// These helpers insert a correct core
 // `@marker` skeleton (the core marker whitelist — chapter/spread/
 // page/section/continue/page-break/column-break/end-section; see the
 // plugin's own header comment) as its own block after the CURRENT line,
@@ -704,210 +702,10 @@ export const LAYOUT_BLOCK_ITEMS: readonly LayoutBlockItem[] = [
   { kind: "spread", label: "Spread", detail: "@spread — a two-page facing spread" },
 ] as const;
 
-// ── Image properties / unwrap / link edit at the caret (SFE-P3d-parity, Lane D) ──
-//
-// Closes the parity-matrix's former `image-properties`/`image-unwrap`/
-// `link-edit` waiver rows: before SFE-P3d-parity, no command in either
-// surface edited an EXISTING image or link in place — `applyImage` above and
-// `applyLink` only ever INSERT a new one. The ONE path that edited an
-// existing image/link was the preview context menu, deleted in SFE-P4.
-//
-// Each function below resolves its target from the CURRENT CARET
-// (`mainSel(view).from`) rather than a payload, delegating the entire
-// locate/compute decision to `caret-token-commands.ts`'s pure functions
-// (the same ones the preview context menu's "Set properties…"/"Unwrap
-// image"/"Edit link…" logic, deleted in SFE-P4, used to be built from) —
-// this file only supplies the CodeMirror read/dispatch, matching every
-// other function above's `(view: EditorView, …)` shape.
-//
-// image-properties and link-edit are each split into a LOCATE step and an
-// APPLY step, rather than one function owning an internal
-// `promptImageProperties`/`promptText` await, so `+page.svelte` — which
-// owns both dialogs AND `validateImageProperties` (image-properties only) —
-// can inject validation and re-verify the target between them; the CALLER
-// awaits its own dialog and re-checks staleness itself (mirroring
-// `openRichImageProperties`'s existing shape) rather than this file
-// swallowing that orchestration. image-unwrap has no dialog, so locate and
-// apply happen back to back in one function with no staleness window to
-// guard. Refusals are D14 `Diagnostic`s, never a generic "failed" —
-// `CaretTokenCommandOutcome` mirrors `rich-commands.ts`'s own
-// `RichCommandOutcome` shape so a caller reports both surfaces' refusals
-// identically.
-
-/** The uniform result of a caret-driven token command: `ok:true` covers
- *  BOTH "applied an edit" and "nothing changed" — callers that need to
- *  distinguish those can inspect the dispatched transaction themselves;
- *  every refusal carries a specific D14 `Diagnostic`, never a bare
- *  boolean. */
-export type CaretTokenCommandOutcome =
-  | { readonly ok: true }
-  | { readonly ok: false; readonly diagnostic: Diagnostic };
-
-/**
- * D14 diagnostic for a caret-token command whose target document changed
- * underneath it between locating the token and applying the edit — an
- * intervening dialog (`promptImageProperties`/`promptText`, owned by the
- * caller) gives real time for an external reload, a FILE SWITCH, or the
- * author's own typing to land. CodeMirror's `view.dispatch` has no
- * staleness check of its own (unlike the rich surface's
- * `EditorDocumentHost.applyEdit`, which is versioned — see
- * `rich-commands.ts`'s equivalent functions), so this is the proportionate
- * replacement: re-verify DOCUMENT IDENTITY, not just the target span's own
- * bytes, immediately before dispatching. "Must never guess a range" (this
- * run's own instruction) is exactly what this check prevents.
- *
- * SFE-P3d-parity repair round 1 (CONFIRMED finding): a bare byte compare at
- * the ORIGINAL offsets (`sliceString(match.start, match.end) !==
- * originalSpan`) has no notion of document identity. This desktop app keeps
- * ONE `EditorView` alive across every open file — `MarkdownEditor.svelte`'s
- * own header: "the view itself is never torn down between files" — and
- * `switchFile()` replaces the view's state via `view.setState(...)`, a
- * WHOLESALE state replacement, not an incremental edit. So while a dialog
- * is open the author (or an external reload) can switch to a DIFFERENT
- * file entirely; the byte-compare alone could pass if the new file happens
- * to have the SAME bytes at the SAME offsets (two chapters sharing a
- * boilerplate `![Logo](logo.png)` at the same position is entirely
- * plausible in a book), silently writing the edit into the WRONG document.
- * `EditorState` in CodeMirror 6 is immutable and the `doc` (`Text`) field is
- * REPLACED — not merely mutated — by any accepted transaction OR by
- * `setState()`, and is reference-EQUAL to its prior value only when the
- * document truly did not change (a selection-only transaction reuses the
- * same `Text`). Capturing `view.state.doc` at locate time and comparing by
- * REFERENCE at apply time is therefore both a document-identity check (a
- * file switch always produces a brand-new `Text`) and a strictly stronger
- * substitute for the byte compare (any accepted edit anywhere in the
- * document invalidates the capture) — the SAME strictness the rich
- * surface's `captureRichSelection`/`isRichCaptureFresh` (rich-commands.ts)
- * already applies via the host's `getSnapshot().version`, just proven a different
- * way on this surface's plain `EditorView` (no `DocumentSnapshot.version`
- * to compare here). The original exact-span byte compare is KEPT alongside
- * it as defense in depth (belt and suspenders — a future change to either
- * surface's identity semantics should not silently reopen this gap).
- */
-function staleCaretTokenSpanDiagnostic(): Diagnostic {
-  return {
-    category: "EDITOR_STALE_EDIT",
-    message: "This part of the document changed before the edit could be applied. Try again.",
-  };
-}
-
-/** Locate step for "Image properties…": resolves the image at the caret
- *  and seeds an {@link ImagePropertiesValue} from its current token, ready
- *  for the caller to hand to `ImagePropertiesDialog`. `originalSpan` is the
- *  exact text, and `capturedDoc` the exact document IDENTITY,
- *  {@link applyImagePropertiesEdit} re-verifies before dispatching (see
- *  {@link staleCaretTokenSpanDiagnostic}'s header). */
-export interface ImagePropertiesAtCaret {
-  readonly match: ImageTokenMatch;
-  readonly initial: ImagePropertiesValue;
-  readonly originalSpan: string;
-  readonly capturedDoc: Text;
-}
-
-export function locateImagePropertiesAtCaret(view: EditorView): LocateResult<ImagePropertiesAtCaret> {
-  const { from } = mainSel(view);
-  const text = view.state.doc.toString();
-  const located = locateImageAtCaret(text, from);
-  if (!located.ok) return located;
-  const { match, initial } = located.value;
-  return {
-    ok: true,
-    value: { match, initial, originalSpan: text.slice(match.start, match.end), capturedDoc: view.state.doc },
-  };
-}
-
-/** Apply step for "Image properties…": re-verifies `located`'s document
- *  identity AND its span's exact bytes, then computes and dispatches the
- *  diff between `located.initial` and `next`
- *  (`caret-token-commands.ts#computeImagePropertiesEdit` — the exact same
- *  diff rule `context-menu-controller.svelte.ts`'s "Set properties…" uses).
- *  Caller is expected to have already validated `next`
- *  (`validateImageProperties`). */
-export function applyImagePropertiesEdit(
-  view: EditorView,
-  located: ImagePropertiesAtCaret,
-  next: ImagePropertiesValue,
-): CaretTokenCommandOutcome {
-  if (
-    view.state.doc !== located.capturedDoc ||
-    view.state.doc.sliceString(located.match.start, located.match.end) !== located.originalSpan
-  ) {
-    return { ok: false, diagnostic: staleCaretTokenSpanDiagnostic() };
-  }
-  const edit = computeImagePropertiesEdit(located.match, located.initial, next);
-  if (!edit) return { ok: true }; // nothing actually changed
-  view.dispatch({ changes: { from: edit.from, to: edit.to, insert: edit.insert } });
-  return { ok: true };
-}
-
-/** "Unwrap image" — removes an existing image's enclosing link wrapper at
- *  the caret, leaving the image itself untouched. No dialog, so no
- *  intervening staleness window: locate and dispatch happen back to back
- *  against the SAME live `view`. */
-export function applyImageUnwrapAtCaret(view: EditorView): CaretTokenCommandOutcome {
-  const { from } = mainSel(view);
-  const text = view.state.doc.toString();
-  const located = locateImageUnwrapEdit(text, from);
-  if (!located.ok) return { ok: false, diagnostic: located.diagnostic };
-  const { from: editFrom, to: editTo, insert } = located.value;
-  view.dispatch({ changes: { from: editFrom, to: editTo, insert } });
-  return { ok: true };
-}
-
-/** Locate step for "Edit link…": resolves the link at the caret, ready to
- *  seed a text prompt with its current target. `originalSpan` is the exact
- *  text, and `capturedDoc` the exact document IDENTITY,
- *  {@link applyLinkEditEdit} re-verifies before dispatching (see
- *  {@link staleCaretTokenSpanDiagnostic}'s header). */
-export interface LinkEditAtCaret {
-  readonly match: LinkTokenMatch;
-  readonly initialHref: string;
-  readonly originalSpan: string;
-  readonly capturedDoc: Text;
-}
-
-export function locateLinkEditAtCaret(view: EditorView): LocateResult<LinkEditAtCaret> {
-  const { from } = mainSel(view);
-  const text = view.state.doc.toString();
-  const located = locateLinkAtCaret(text, from);
-  if (!located.ok) return located;
-  const { match, initialHref } = located.value;
-  return {
-    ok: true,
-    value: { match, initialHref, originalSpan: text.slice(match.start, match.end), capturedDoc: view.state.doc },
-  };
-}
-
-/** Apply step for "Edit link…": re-verifies `located`'s document identity
- *  AND its span's exact bytes, then computes and dispatches the new href
- *  (`caret-token-commands.ts#computeLinkEditEdit` — `rewriteLinkToken`
- *  unchanged). */
-export function applyLinkEditEdit(view: EditorView, located: LinkEditAtCaret, href: string): CaretTokenCommandOutcome {
-  if (
-    view.state.doc !== located.capturedDoc ||
-    view.state.doc.sliceString(located.match.start, located.match.end) !== located.originalSpan
-  ) {
-    return { ok: false, diagnostic: staleCaretTokenSpanDiagnostic() };
-  }
-  const edit = computeLinkEditEdit(located.match, href);
-  view.dispatch({ changes: { from: edit.from, to: edit.to, insert: edit.insert } });
-  return { ok: true };
-}
-
-// ── Toolbar action vocabulary (SFE-P3ab) ─────────────────────────────────────
-//
-// Declared HERE (a plain `.ts` module) rather than inside `EditorToolbar.svelte`
-// (where they used to live) because `rich-commands.ts` — also a plain `.ts`
-// module, so it runs under `bun test` without svelte-check's preprocessing —
-// needs them too: TypeScript's ambient `*.svelte` declaration exposes only a
-// component's default export, so `import type { ToolbarAction } from
-// "….svelte"` fails to typecheck outside svelte-check (see
-// `components/crash-recovery-types.ts`'s header for the same rule applied to
-// an earlier case). `EditorToolbar.svelte` now imports and re-exports these
-// two names so its own existing public contract (`import type { ToolbarAction,
-// ToolbarPayload } from "$lib/components/EditorToolbar.svelte"`, used by
-// `+page.svelte`) is unchanged.
-
+// Named edit actions the toolbar fires. Defined here (not in
+// EditorToolbar.svelte, which re-exports them) because rich-commands.ts, a
+// plain .ts module, needs them under bun test where *.svelte exposes only its
+// default export.
 /** The set of named edit actions the toolbar can fire. */
 export type ToolbarAction =
   | "bold"
@@ -920,47 +718,35 @@ export type ToolbarAction =
   | "ol"
   | "heading"
   | "hr"
-  | "page-break"
   | "table"
   | "image"
   | "snippet"
-  | "focus-mode"
-  | "layout-block"
-  // SFE-P3d-parity, Lane D: replacements for the three preview context-menu
-  // actions that edit an EXISTING image/link in place (parity-matrix.md's
-  // former waiver rows `image-properties`/`image-unwrap`/`link-edit`) — as
-  // opposed to "link"/"image" above, which only ever INSERT a NEW one. All
-  // three resolve their target from the CURRENT CARET rather than a
-  // payload; `+page.svelte`'s `onAction` intercepts them before they would
-  // otherwise reach `runToolbarAction`/`handleRichToolbarAction` (the same
-  // interception "snippet"/"focus-mode" already get), so neither this
-  // module's `TOOLBAR_ITEMS` entry below nor `MarkdownEditor.svelte`'s
-  // switch needs a case for the actual edit — only the vocabulary.
-  | "image-properties"
-  | "image-unwrap"
-  | "link-edit";
+  | "layout-block";
 
 export type ToolbarPayload =
-  | { level: 1 | 2 | 3 | 4 } // heading
-  | { cols: number } // table
+  | { level: 1 | 2 | 3 | 4 }           // heading
+  | { cols: number }                    // table
   | { src: string; alt: string; width?: string; position?: string; size?: string; shape?: boolean } // image
-  | { kind: LayoutBlockKind }; // layout-block
+  | { kind: LayoutBlockKind };          // layout-block
 
-// ── Toolbar item declarations (single source of truth — M23) ────────────────
+// ── Toolbar item declarations (single source of truth) ──────────────────────
 //
-// EditorToolbar renders BOTH the always-visible toolbar groups AND the
-// narrow-width "More" overflow menu from this ONE array. Previously the More
-// menu was a hand-duplicated second list of buttons that had already drifted
-// from the toolbar — it silently omitted Save and Snippet, so Save vanished
-// entirely once the container narrowed enough to hide the primary group.
-// Deriving both surfaces from the same filtered list makes that class of
-// drift structurally impossible: an item is either in this array (and shows
-// up everywhere it should) or it isn't declared at all.
+// EditorToolbar renders the always-visible toolbar groups, the Insert menu AND
+// the narrow-width "More" overflow menu from this ONE array. A hand-duplicated
+// More list drifts from the toolbar (it once silently omitted Save, so Save
+// vanished once the container narrowed). Deriving every surface from the same
+// filtered list makes that class of drift structurally impossible: an item is
+// either in this array (and shows up everywhere it should) or it isn't declared
+// at all.
 //
 // Pure data + a pure filter function — zero Svelte imports, so it is testable
 // the same way the transaction helpers above are.
 
-/** Which visually-grouped section of the always-visible toolbar an item renders in. */
+/**
+ * Which section of the toolbar an item belongs to (the UX contract's
+ * Format / Insert): "save", "primary" and "block" are the always-there
+ * format controls; "insert" items live together in the Insert menu.
+ */
 type ToolbarGroup = "save" | "primary" | "block" | "insert";
 
 /**
@@ -985,11 +771,9 @@ export interface ToolbarItemDef {
   title: string;
   /** aria-label for the icon-only toolbar button (may differ from the More-menu label). */
   ariaLabel: string;
-  /** Plain-text label shown for this item inside the More menu. */
+  /** Plain-text label shown for this item inside the Insert and More menus. */
   label: string;
   group: ToolbarGroup;
-  /** Only shown when isDesktop() — image insert and snippet need host IPCs. */
-  desktopOnly?: boolean;
 }
 
 export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
@@ -1111,16 +895,6 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
     group: "insert",
   },
   {
-    id: "page-break",
-    kind: "action",
-    action: "page-break",
-    icon: "file-separator",
-    title: "Page break (@page-break)",
-    ariaLabel: "Insert page break",
-    label: "Page break",
-    group: "insert",
-  },
-  {
     id: "table",
     kind: "table",
     icon: "table",
@@ -1137,7 +911,6 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
     ariaLabel: "Insert image",
     label: "Insert image…",
     group: "insert",
-    desktopOnly: true,
   },
   {
     id: "snippet",
@@ -1147,61 +920,6 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
     title: "Insert snippet (Ctrl/Cmd+Shift+S)",
     ariaLabel: "Insert snippet",
     label: "Insert snippet",
-    group: "insert",
-    desktopOnly: true,
-  },
-  // SFE-P3d-parity, Lane D: replacements for the preview context menu's
-  // "Set properties…"/"Unwrap image"/"Edit link…" (that context menu was
-  // itself deleted in SFE-P4; these toolbar items are the surviving
-  // replacements) — each resolves its
-  // target from the CURRENT CARET (place the cursor on an existing image or
-  // link first) rather than a dialog-collected payload, so — like every
-  // other `kind: "action"` item — no bespoke template branch is needed in
-  // EditorToolbar.svelte; `+page.svelte`'s `onAction` intercepts these
-  // three by name before the generic `runToolbarAction`/
-  // `handleRichToolbarAction` fallback (the same interception
-  // "snippet"/"focus-mode" already get).
-  {
-    id: "image-properties",
-    kind: "action",
-    action: "image-properties",
-    icon: "settings",
-    title: "Edit image properties (place cursor on an existing image)",
-    ariaLabel: "Edit image properties",
-    label: "Image properties…",
-    group: "insert",
-  },
-  {
-    id: "image-unwrap",
-    kind: "action",
-    action: "image-unwrap",
-    icon: "external-link",
-    title: "Remove this image's link wrapper (place cursor on a wrapped image)",
-    ariaLabel: "Unwrap image",
-    label: "Unwrap image",
-    group: "insert",
-  },
-  {
-    id: "link-edit",
-    kind: "action",
-    action: "link-edit",
-    icon: "link-2",
-    title: "Edit this link's target (place cursor on an existing link)",
-    ariaLabel: "Edit link target",
-    label: "Edit link…",
-    group: "insert",
-  },
-  {
-    // Focus mode lives on the EDITOR toolbar (not the main toolbar): it is an
-    // editing posture, and this bar stays visible inside focus mode so the
-    // same button toggles back out (Esc works too).
-    id: "focus-mode",
-    kind: "action",
-    action: "focus-mode",
-    icon: "maximize",
-    title: "Focus mode (Ctrl+Shift+F)",
-    ariaLabel: "Toggle focus mode",
-    label: "Focus mode",
     group: "insert",
   },
 ];
@@ -1214,7 +932,6 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
  */
 export function visibleToolbarItems(opts: {
   hasSave: boolean;
-  desktop: boolean;
   /**
    * Whether the PAGED editor is the surface this toolbar drives. Focus mode
    * hides the preview beside the SOURCE editor; the paged editor has no
@@ -1224,7 +941,6 @@ export function visibleToolbarItems(opts: {
 }): ToolbarItemDef[] {
   return TOOLBAR_ITEMS.filter((item) => {
     if (item.kind === "save" && !opts.hasSave) return false;
-    if (item.desktopOnly && !opts.desktop) return false;
     if (item.id === "focus-mode" && opts.richMode) return false;
     return true;
   });

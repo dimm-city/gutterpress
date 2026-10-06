@@ -20,7 +20,7 @@
    *
    * The host page owns all state; this component is presentational + focus
    * management. Recents/favorites/discovered reuse ProjectsListBody — the
-   * exact list the left panel's Projects tab shows, so there is ONE browsing
+   * exact list the left panel's Books tab shows, so there is ONE browsing
    * surface to maintain.
    */
   import { fade } from "svelte/transition";
@@ -30,7 +30,9 @@
   import SettingsView from "$lib/components/SettingsView.svelte";
   import BrandMark from "$lib/components/BrandMark.svelte";
   import HelpContent from "$lib/components/HelpContent.svelte";
-  import LogsPanel from "$lib/components/LogsPanel.svelte";
+  import TroubleshootingView from "$lib/components/TroubleshootingView.svelte";
+  import AboutView from "$lib/components/AboutView.svelte";
+  import { sanitizeTroubleshootingTab, type TroubleshootingTab } from "$lib/troubleshooting-tabs";
   import { isEditableTarget } from "$lib/a11y";
   import type { ContinueStatus } from "$lib/routes/startup-landing";
   import type { UpdaterAvailableAction } from "$lib/platform";
@@ -86,6 +88,7 @@
     onCheckForUpdates,
     onDismiss,
     onProjectFilesChanged,
+    onCloseBook,
   }: {
     visible?: boolean;
     inactive?: boolean;
@@ -120,6 +123,8 @@
     onUpdateDownload?: () => void;
     onCheckForUpdates?: () => void;
     onDismiss?: () => void;
+    /** Close the open book (Troubleshooting → Sync's Scorched earth ends with it). */
+    onCloseBook?: () => Promise<boolean>;
     /** Forwarded to the embedded Settings view's Saving tab (#273): fires
      *  after its copy switcher checks out another local copy of the open
      *  project, so the workspace behind this layer can reconcile the open
@@ -127,31 +132,39 @@
     onProjectFilesChanged?: () => void;
   } = $props();
 
-  // ── Tabs (Projects / Settings / Help / Logs) ──────────────────────────────
-  // The landing is the app's front door: Projects carries the continue card +
+  // ── Tabs (Books / Settings / Help / About / Troubleshooting) ───────────────────
+  // The landing is the app's front door: Books carries the continue card +
   // quick actions + book list; Settings embeds the WHOLE settings surface,
-  // sub-tabs and all; Help carries the former help modal's content; Logs
-  // shows the app's diagnostic logs for easy copy/paste sharing. Because
-  // settings and help are tabs here, the brand row no longer needs its own
-  // buttons. The host can land on a specific tab (help button → "help";
+  // sub-tabs and all; Help carries the how-to guidance; Troubleshooting
+  // holds Diagnostics and Logs as sub-tabs; About carries versions + updates. Because
+  // settings and help are tabs here, the brand row needs no buttons of its
+  // own. The host can land on a specific tab (help button → "help";
   // missing identity at launch → "settings" on its Accounts sub-tab).
-  type LandingTab = "projects" | "settings" | "help" | "logs";
+  type LandingTab = "projects" | "settings" | "help" | "about" | "troubleshooting";
   const LANDING_TABS: Array<{ id: LandingTab; label: string }> = [
-    { id: "projects", label: "Projects" },
+    { id: "projects", label: "Books" },
     { id: "settings", label: "Settings" },
     { id: "help", label: "Help" },
-    { id: "logs", label: "Logs" },
+    { id: "about", label: "About" },
+    { id: "troubleshooting", label: "Troubleshooting" },
   ];
   let activeTab = $state<LandingTab>("projects");
   let tabEls = $state<Record<LandingTab, HTMLButtonElement | undefined>>({
     projects: undefined,
     settings: undefined,
     help: undefined,
-    logs: undefined,
+    about: undefined,
+    troubleshooting: undefined,
   });
 
-  /** Host-driven tab switch (help button, launch-time identity nudge). */
-  export function showTab(tab: LandingTab) {
+  /** Sub-tab the Troubleshooting tab opens on (deep link or its default). */
+  let troubleshootingTab = $state<TroubleshootingTab>("logs");
+
+  /** Tab switch — host-driven (help button) and user-driven alike, so a plain
+   *  switch drops any earlier deep link (`sub` omitted → the default sub-tab).
+   *  `sub` deep-links a Troubleshooting sub-tab: showTab("troubleshooting", "logs"). */
+  export function showTab(tab: LandingTab, sub?: TroubleshootingTab) {
+    troubleshootingTab = sanitizeTroubleshootingTab(sub);
     activeTab = tab;
   }
 
@@ -165,7 +178,7 @@
     else if (e.key === "End") next = ids.length - 1;
     if (next === undefined) return;
     e.preventDefault();
-    activeTab = ids[next]!;
+    showTab(ids[next]!);
     tabEls[activeTab]?.focus();
   }
 
@@ -217,7 +230,10 @@
   }
 
   function onKeydown(e: KeyboardEvent) {
-    if (e.key !== "Escape") return;
+    if (e.key !== "Escape" || !visible || e.defaultPrevented) return;
+    // Window-level (focus can sit on <body> when a dialog element defeated
+    // focusOnShow): yield to any open dialog that is not part of this layer.
+    if (document.querySelector('[role="dialog"]:not(.landing *)')) return;
     // Esc inside a field means "cancel my typing", not "leave the start
     // screen" — never hijack it from form controls (e.g. the books search).
     if (isEditableTarget(e.target)) return;
@@ -255,19 +271,16 @@
   // while the layer is still fading out. `outroend` is a real Svelte 5
   // element event (typed in svelte/elements.d.ts, dispatched by the
   // transition runtime) — but it only fires because this section carries
-  // `transition:fade`. COUPLED ON PURPOSE, and pinned by
-  // tests/platform/welcome-landing-tabs.test.ts: removing the transition
-  // would silently strand the tab on Help, so the test fails if the handler
-  // and the transition stop travelling together.
+  // `transition:fade`. COUPLED ON PURPOSE: removing the transition would
+  // silently strand the tab on Help.
   function onOutroEnd() {
     activeTab = "projects";
   }
 </script>
 
+<svelte:window onkeydown={onKeydown} />
+
 {#if visible}
-  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -- the keydown
-       is a layer-scoped Esc convenience (never required: Continue is a real
-       button); the section is the focus root while the workspace is inert. -->
   <section
     class="landing"
     bind:this={rootEl}
@@ -275,7 +288,6 @@
     tabindex="-1"
     inert={inactive || undefined}
     aria-label="Start screen"
-    onkeydown={onKeydown}
     transition:fade={{ duration: 180 }}
     onoutrostart={onOutroStart}
     onoutroend={onOutroEnd}
@@ -284,7 +296,7 @@
       <header class="brand-row">
         <div class="brand-left">
           <BrandMark size={64} />
-          {#if version}<span class="brand-version">v{version}</span>{/if}
+          {#if version && version !== "unknown"}<span class="brand-version">v{version}</span>{/if}
         </div>
         <div class="brand-right">
           {#if updateReadyVersion && onUpdateApply}
@@ -343,7 +355,7 @@
             aria-controls="landing-panel"
             tabindex={activeTab === tab.id ? 0 : -1}
             bind:this={tabEls[tab.id]}
-            onclick={() => (activeTab = tab.id)}
+            onclick={() => showTab(tab.id)}
           >{tab.label}</button>
         {/each}
       </div>
@@ -388,7 +400,7 @@
           </div>
           {#if otherBooks.length > 0}
             <div class="cc-books">
-              <span class="cc-books-label">Other books in this project:</span>
+              <span class="cc-books-label">Other books in this folder:</span>
               {#each otherBooks as book (book.path)}
                 <button
                   type="button"
@@ -404,11 +416,14 @@
       {/if}
 
       <section class="quick-actions" aria-label="Quick actions">
-        <button type="button" class="action-card" class:featured={!continueTitle && !errorTitle} onclick={onNewProject}>
-          <span class="ac-icon"><Icon name="plus" size={18} /></span>
-          <span class="ac-title">Create a new book</span>
-          <span class="ac-sub">Start from a ready-made template</span>
-        </button>
+        {#if onNewProject}
+          <!-- Absent for a reader (Settings → App): reading needs no new book. -->
+          <button type="button" class="action-card" class:featured={!continueTitle && !errorTitle} onclick={onNewProject}>
+            <span class="ac-icon"><Icon name="plus" size={18} /></span>
+            <span class="ac-title">Create a new book</span>
+            <span class="ac-sub">Start from a ready-made template</span>
+          </button>
+        {/if}
         <button type="button" class="action-card" onclick={onBrowse}>
           <span class="ac-icon"><Icon name="folder-open" size={18} /></span>
           <span class="ac-title">Open a folder</span>
@@ -450,21 +465,27 @@
           {onProjectFilesChanged}
         />
       </section>
-      {:else if activeTab === "logs"}
-      <section class="logs-sec" aria-label="Diagnostic logs">
-        <!-- Keyed so each visit re-lists (a sync may have written since). -->
-        {#key activeTab}
-          <LogsPanel />
-        {/key}
+      {:else if activeTab === "help"}
+      <section class="help-sec" aria-label="Help">
+        <HelpContent {onOpenGuide} />
       </section>
-      {:else}
-      <section class="help-sec" aria-label="Help and about">
-        <HelpContent
+      {:else if activeTab === "about"}
+      <section class="about-sec" aria-label="About">
+        <AboutView
           {onCheckForUpdates}
           {checkingUpdates}
           {updateReadyVersion}
           {updateAvailableVersion}
           {updateAvailableAction}
+        />
+      </section>
+      {:else}
+      <section class="troubleshooting-sec" aria-label="Troubleshooting">
+        <TroubleshootingView
+          idPrefix="landing-troubleshooting"
+          initialTab={troubleshootingTab}
+          {projectDir}
+          {onCloseBook}
         />
       </section>
       {/if}
@@ -606,7 +627,7 @@
     gap: 22px;
     min-height: 0;
   }
-  .settings-sec, .help-sec, .logs-sec { display: flex; flex-direction: column; gap: 14px; }
+  .settings-sec, .help-sec, .about-sec, .troubleshooting-sec { display: flex; flex-direction: column; gap: 14px; }
 
   /* ── Continue card ─────────────────────────────────────────────────── */
   .continue-sec { display: flex; flex-direction: column; gap: 10px; }
@@ -663,9 +684,9 @@
     .cc-spinner { animation-duration: 1.6s; }
   }
 
-  /* Color (gradient fill/hover/border-color/font-weight) now lives in
-     theme.css's `.app-btn-primary` — co-applied in the template (UX review
-     L5: the ONE primary variant, not a third local copy). This class keeps
+  /* Color (gradient fill/hover/border-color/font-weight) lives in
+     theme.css's `.app-btn-primary` — co-applied in the template (the ONE
+     primary variant, not a local copy). This class keeps
      only the start screen's own geometry. */
   .btn-primary {
     border-width: 1px;

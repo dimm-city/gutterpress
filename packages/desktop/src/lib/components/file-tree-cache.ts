@@ -1,12 +1,10 @@
 /**
- * Pure helpers for FileTree's per-directory children cache (UX review M9).
+ * Pure helpers for FileTree's per-directory children cache.
  *
- * `childrenByPath` used to be a PERMANENT cache — `loadChildren` early-
- * returned whenever a directory had already been fetched once, so a folder
- * created/renamed/deleted (from inside the app OR externally — a git pull,
- * an external editor) never showed up again until the whole project was
- * reopened. FileTree.svelte now always refetches on expand (no cache-hit
- * short-circuit) and calls the invalidation helpers below right after its
+ * `childrenByPath` is NOT a permanent cache: FileTree.svelte always refetches
+ * on expand (no cache-hit short-circuit, which would hide folders
+ * created/renamed/deleted in the app or externally until the project
+ * reopened) and calls the invalidation helpers below right after its
  * own create/rename/delete calls so an EXPANDED folder updates immediately
  * without waiting for a re-toggle.
  *
@@ -15,7 +13,7 @@
  * particular the folder-subtree prefix match, which is easy to get subtly
  * wrong — see the sibling-prefix bug class CLAUDE.md's fs-guard work fixed
  * for path containment) is unit-testable in isolation from rendering and
- * host `$lib/files/files-capability` calls.
+ * host `api.fs.*` calls.
  */
 
 import { isPathAtOrUnder } from "$lib/platform/paths";

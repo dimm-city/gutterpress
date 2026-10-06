@@ -1,5 +1,5 @@
 /**
- * Unit tests for electron/credential-store.ts (ARCH review #34).
+ * Unit tests for electron/credential-store.ts.
  *
  * credential-store.ts talks to `node:fs/promises` directly (not
  * dependency-injected like prefs-store.ts/settings-store.ts), so these tests
@@ -10,7 +10,7 @@
  *   - writes are atomic: no `.tmp` file is left behind after a successful
  *     write,
  *   - a corrupt `credentials.json` is preserved as `<path>.corrupt-<ts>`
- *     instead of silently resetting to empty (which used to silently
+ *     instead of silently resetting to empty (which would silently
  *     disconnect every stored Git/GitHub credential).
  *
  * `electron`'s real package throws outside an actual Electron process (see
@@ -32,7 +32,7 @@ let currentUserDataDir = "";
 // NOTE: `bun test --isolate` does not fully sandbox `mock.module("electron", …)`
 // registrations between files that all touch the "electron" specifier — other
 // electron-mocking suites in this run (tests/updater/electron-updater.test.ts,
-// tests/platform/pdf-export.test.ts, tests/platform/app-protocol.test.ts)
+// tests/platform/pdf-export.test.ts, tests/platform/sveltekit-host.test.ts)
 // can end up "winning" the shared registration for this specifier. So every
 // such suite mocks the SAME superset of keys every electron/*.ts production
 // module statically imports from "electron" (app.getPath, protocol,

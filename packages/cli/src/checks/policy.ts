@@ -43,13 +43,11 @@ export interface CheckSelection {
 
 /**
  * The check-selection sequence shared by {@link runChecks} and
- * {@link checkToolAvailability} (audit E10): resolve `only`/`skip` selectors,
- * then drop manifest-disabled checks via {@link isCheckEnabled}. Extracted so
- * the two callers can never disagree on WHICH checks are in scope — previously
- * this exact three-step sequence was hand-copied in both, kept in sync only by
- * a comment. Returns `unmatched` selectors so each caller decides whether to
- * surface them (the runner errors on them; tool probing deliberately ignores
- * them to avoid double-warning).
+ * {@link checkToolAvailability}: resolve `only`/`skip` selectors, then drop
+ * manifest-disabled checks via {@link isCheckEnabled}. Shared so the two
+ * callers can never disagree on WHICH checks are in scope. Returns `unmatched`
+ * selectors so each caller decides whether to surface them (the runner errors
+ * on them; tool probing deliberately ignores them to avoid double-warning).
  */
 export function selectChecks(
   opts: CheckSelectionOptions,

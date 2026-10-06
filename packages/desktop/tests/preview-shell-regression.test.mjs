@@ -12,17 +12,17 @@ const interfaceSource = readFileSync(path.join(scriptDir, "preview-interface.js"
 const bridgeSource = readFileSync(path.join(scriptDir, "preview-bridge.js"), "utf8");
 
 // `.gp-sheet` elements (the viewer's page unit — see
-// engine/viewer/decorate.ts). Every content-update goes through the same
-// full-reload swap as a geometry-wide change (see preview-shell.js's header
-// comment on the removed spliceChapter()).
+// engine/viewer/decorate.ts). Every update is a `full-reload` message and goes
+// through the same double-buffered swap (see preview-shell.js's header comment
+// on the removed spliceChapter()).
 const BOOK_NATIVE = `
-  <div class="gp-sheet" data-page="1"><div class="gutterpress-chapter" data-chapter-src="chapter-1.md">
+  <div class="gp-sheet" data-page="1"><div data-chapter-src="chapter-1.md">
     <p data-source-line="1">Chapter one</p>
   </div></div>
-  <div class="gp-sheet" data-page="2"><div class="gutterpress-chapter" data-chapter-src="chapter-2.md">
+  <div class="gp-sheet" data-page="2"><div data-chapter-src="chapter-2.md">
     <p data-source-line="1">Chapter two start</p>
   </div></div>
-  <div class="gp-sheet" data-page="3"><div class="gutterpress-chapter" data-chapter-src="chapter-2.md">
+  <div class="gp-sheet" data-page="3"><div data-chapter-src="chapter-2.md">
     <p data-source-line="20">Chapter two anchor</p>
   </div></div>`;
 
@@ -481,11 +481,11 @@ async function runTopLevelScrollIdleRegression() {
   };
 
   dispatchViewportChanged();
-  onChange?.({ type: "content-update", instance: "cli", revision: 1, file: "chapter-1.md" });
+  onChange?.({ type: "full-reload", instance: "cli", revision: 1 });
   const firstTimer = [...idleTimers.keys()].at(-1);
   assert.equal(typeof firstTimer, "number", "CLI top-level: active scrolling defers the first revision");
 
-  onChange?.({ type: "content-update", instance: "cli", revision: 2, file: "chapter-2.md" });
+  onChange?.({ type: "full-reload", instance: "cli", revision: 2 });
   const secondTimer = [...idleTimers.keys()].at(-1);
   assert.notEqual(secondTimer, firstTimer, "CLI top-level: a newer revision replaces the pending timer");
   assert.equal(clearedTimers.includes(firstTimer), true, "CLI top-level: the superseded timer is cancelled");
@@ -796,21 +796,19 @@ async function main() {
   );
   flushAnimationFrames();
 
-  // A `content-update` message goes through the exact same full-reload swap
-  // as `full-reload` (see preview-shell.js's header comment on the removed
-  // spliceChapter()).
+  // A second revision goes through the exact same swap as the first (see
+  // preview-shell.js's header comment on the removed spliceChapter()).
   const beforeUpdate = document.getElementById("gutterpress-active");
   const beforeUpdateEvents = hostEvents.length;
   onChange?.({
-    type: "content-update",
+    type: "full-reload",
     instance: "instance-b",
     revision: 2,
-    file: "chapter-2.md",
   });
   const afterUpdate = document.getElementById("gutterpress-active");
-  assert.notEqual(afterUpdate, beforeUpdate, "a content-update triggers a full swap, same as full-reload");
+  assert.notEqual(afterUpdate, beforeUpdate, "a later revision triggers a full swap");
   assert.equal(acknowledgedRevisions.at(-1), "instance-b:2");
-  // A content-update swap reports completion the same way a full-reload does.
+  // Every swap reports completion the same way.
   const updateComplete = hostEvents.slice(beforeUpdateEvents).find(
     (message) => message?.name === "renderingComplete",
   );
@@ -823,18 +821,16 @@ async function main() {
   // apply both in sequence.
   deferNextFrameLoad = true;
   onChange?.({
-    type: "content-update",
+    type: "full-reload",
     instance: "instance-b",
     revision: 3,
-    file: "chapter-2.md",
   });
   assert.ok(deferredFrame?.isConnected, "the first rapid update is still paginating");
   const beforeOverlapRecovery = document.getElementById("gutterpress-active");
   onChange?.({
-    type: "content-update",
+    type: "full-reload",
     instance: "instance-b",
     revision: 4,
-    file: "chapter-1.md",
   });
   assert.equal(deferredFrame.isConnected, false, "the superseded frame is discarded");
   assert.notEqual(
@@ -1036,16 +1032,11 @@ async function runNativeCoreRegression() {
   console.log("[desktop-test] PASS native-engine preview-shell double-buffer swap + anchor preservation");
 }
 
-// SFE-P4 deleted in-flow block editing, and with it the shell's
-// `blockEditOpen` gate that used to hold a hot-reload swap open while a
-// caret was live (docs/inline-editing-plan.md §3.2, historical). This is the
-// post-deletion truth that replaces the old "swap deferred while edit open"
-// pin: a swap is never held on a `blockEditStateChanged` message any more —
-// the shell does not special-case that event name at all — because live
-// in-flow edits no longer exist for a swap to destroy. The swap MACHINERY
-// itself (armPendingSwap/beginPendingSwap/swap) is untouched; only the gate
-// is gone, which this proves by showing the message has no effect.
-async function runNoBlockEditGateRegression() {
+// A hot-reload swap replaces the whole book iframe, so one arriving while an
+// in-flow block editor is open would destroy the caret AND the author's
+// uncommitted typing with it (docs/inline-editing-plan.md §3.2). The shell
+// holds the swap until preview-interface.js reports the edit closed.
+async function runBlockEditHoldRegression() {
   const outer = new Window({ url: "http://localhost/" });
   const document = outer.document;
   Object.defineProperty(outer, "parent", { configurable: true, value: outer });
@@ -1094,26 +1085,28 @@ async function runNoBlockEditGateRegression() {
     outer.dispatchEvent(event);
   };
 
-  // A stray `blockEditStateChanged{open: true}` — the exact message name and
-  // shape the shell used to gate on — is sent first. It must have NO effect:
-  // the shell no longer recognizes this event name, so the swap proceeds
-  // immediately and synchronously (no viewport activity in this test means
-  // the scroll-idle gate never defers either — "nothing held it" is only a
-  // meaningful assertion because of that).
   fromBook("blockEditStateChanged", { open: true });
-  onChange?.({ type: "content-update", instance: "cli", revision: 1, file: "chapter-1.md" });
-  const promoted = document.getElementById("gutterpress-active");
-  assert.notEqual(
-    promoted,
-    active,
-    "the swap promoted a freshly built replacement frame: never held open pending a second",
+  onChange?.({ type: "full-reload", instance: "cli", revision: 1 });
+  assert.equal(
+    document.querySelectorAll("iframe").length,
+    1,
+    "an open in-flow edit holds the swap: no replacement frame is built",
   );
   assert.equal(
-    promoted.__gutterpressRevision,
-    1,
-    "the revision applied immediately — no gate exists to hold it on blockEditStateChanged any more",
+    document.getElementById("gutterpress-active").__gutterpressRevision,
+    undefined,
+    "and nothing is applied while the caret is live",
   );
-  console.log("[desktop-test] PASS no blockEditOpen gate remains: swaps are never held on blockEditStateChanged");
+
+  // Closing releases the hold and the queued revision goes through — the
+  // author's edit is not silently dropped, it is merely deferred.
+  fromBook("blockEditStateChanged", { open: false });
+  assert.equal(
+    document.getElementById("gutterpress-active").__gutterpressRevision,
+    1,
+    "closing the edit applies the revision that arrived during it",
+  );
+  console.log("[desktop-test] PASS in-flow edit holds hot-reload swaps");
 }
 
 main()
@@ -1123,7 +1116,7 @@ main()
   .then(runPartialHorizontalAnchorRegression)
   .then(runTopLevelScrollIdleRegression)
   .then(runReplacementTimeoutRegression)
-  .then(runNoBlockEditGateRegression)
+  .then(runBlockEditHoldRegression)
   .catch((error) => {
     console.error("[desktop-test] FAIL", error);
     process.exit(1);

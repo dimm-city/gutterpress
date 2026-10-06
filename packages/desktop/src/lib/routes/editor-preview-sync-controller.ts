@@ -1,14 +1,14 @@
 /**
- * EditorPreviewSyncController — the editor↔preview scroll/anchor timing machine
- * that used to live inline in `+page.svelte`.
+ * EditorPreviewSyncController — the editor↔preview scroll/anchor timing
+ * machine.
  *
  * Sync is intentionally one-way: the editor can position the preview, while
  * ordinary preview scrolling never moves the editor. "Go to source" owns the
  * reverse direction. This controller therefore needs only a latest-request
- * guard; the former echo-suppression clock and feedback loop are gone.
+ * guard — no echo suppression.
  *
  * Host coupling (the preview client and page-sync sink) is injected,
- * which keeps this PWA-clean (§8 / ADR 0004): ZERO direct DOM / `node:*` / lib
+ * which keeps this PWA-clean (§8): ZERO direct DOM / `node:*` / lib
  * value imports.
  *
  * Single-owner discipline mirrors `PreviewEventController`
@@ -65,8 +65,8 @@ export class EditorPreviewSyncController {
     // Scroll-driven anchors are the editor's TOP visible line → anchor the
     // preview block to the TOP so the panes agree. Caret-driven anchors carry
     // no viewport position (the caret sits anywhere), so CENTER the target —
-    // top-anchoring it disagreed with the editor by the caret's distance from
-    // the editor top (QA finding RC1-5).
+    // top-anchoring it disagrees with the editor by the caret's distance from
+    // the editor top.
     client
       .scrollTo({ line, chapter }, { block: origin === "caret" ? "center" : "start" })
       .then((res) => {

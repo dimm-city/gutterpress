@@ -5,7 +5,7 @@
  * pdfimages, pdftotext) and the general qpdf inspection used by the post-build
  * validation checks. It has ZERO system dependency and — unlike raw pdfjs-dist,
  * whose `legacy` build eagerly evaluates canvas/DOMMatrix code — unpdf bundles
- * cleanly under `bun build --compile` (verified). See ADR 0002.
+ * cleanly under `bun build --compile` (verified).
  *
  * NOT replaced here (still system tools, by design):
  *   - Ghostscript (gs): ink coverage + PDF/X CMYK conversion — no JS equivalent.
@@ -13,7 +13,7 @@
  *     catalog/object access pdfjs has no public API for, and qpdf is already
  *     mandatory whenever PDF/X is produced.
  *
- * Fidelity notes (accepted in ADR 0002):
+ * Fidelity notes (accepted):
  *   - Structural integrity (`isLoadable`) is a "does it parse" gate, not a deep
  *     `qpdf --check` of xref/stream-length integrity.
  *   - Image DPI requires decoding the image to read its pixel dimensions and is
@@ -50,10 +50,10 @@ interface CacheEntry {
 const docCache = new Map<string, CacheEntry>();
 
 /**
- * Cap on distinct cached documents (audit B3). One validation run touches a
+ * Cap on distinct cached documents. One validation run touches a
  * single PDF across ~13 checks (one entry), so this only bounds accumulation
  * ACROSS runs in a long-lived host (the Electron desktop validating many
- * projects over a session). Without it, `docCache` grew one never-freed parsed
+ * projects over a session). Without it, `docCache` grows one never-freed parsed
  * document per distinct path ever validated. LRU eviction destroys the evicted
  * document so its decoded pages/fonts/images are released, not just unreferenced.
  * (Exported so tests derive their eviction fixtures from the real cap.)
@@ -65,13 +65,13 @@ function destroyEntry(entry: CacheEntry): void {
 }
 
 /**
- * Grace period before an LRU-evicted document is destroyed (review finding):
+ * Grace period before an LRU-evicted document is destroyed:
  * a caller that obtained the proxy from `loadPdf` may still be mid-check when
  * the entry gets evicted by unrelated loads — destroying immediately would
  * make its in-flight page reads throw "Transport destroyed". Individual
  * checks complete in seconds; a minute of grace lets them drain while still
- * bounding memory. (Same-path stale replacement keeps immediate destroy —
- * that behavior predates the LRU and the superseded doc's file has changed.)
+ * bounding memory. (Same-path stale replacement destroys immediately — the
+ * superseded doc's file has changed.)
  */
 const EVICT_DESTROY_GRACE_MS = 60_000;
 
@@ -143,7 +143,7 @@ export async function loadPdf(path: string): Promise<PDFDocumentProxy | null> {
   try {
     return await docPromise;
   } catch {
-    // Identity guard (review finding): only drop OUR entry — a concurrent
+    // Identity guard: only drop OUR entry — a concurrent
     // caller may have re-inserted a newer one for this path after an eviction,
     // and an unguarded delete would silently discard their live document.
     if (docCache.get(path)?.doc === docPromise) docCache.delete(path);
@@ -392,7 +392,7 @@ function multiply(m1: number[], m2: number[]): number[] {
  * PDF source) subsets and embeds every font, so the common case is "true".
  * We only report NOT-embedded on a positive signal (`missingFile` /
  * `isStandardFont`) to avoid false alarms on good output — a deliberate
- * sensitivity trade-off vs `pdffonts` (see ADR 0002).
+ * sensitivity trade-off vs `pdffonts`.
  */
 function fontIsEmbedded(f: {
   missingFile?: boolean;
@@ -561,7 +561,7 @@ export async function getImageResolutions(
 /**
  * "Does it parse" gate: load every page. Returns true if the whole document is
  * traversable. This is NOT a deep xref/stream-length integrity check — it only
- * catches PDFs that are actually broken/unparseable (ADR 0002).
+ * catches PDFs that are actually broken/unparseable.
  */
 export async function isLoadable(doc: PDFDocumentProxy): Promise<boolean> {
   try {

@@ -5,12 +5,11 @@
 // window.Gutterpress.pageOf(el) (0-based); it fires 'gp:layout' when its
 // pagination completes.
 //
-// Blocks are addressed by `{chapter, range}` (data-source-range), read by
-// sourceRangeOf()/chapterOf() below and surfaced through getContextTargetAt()
-// for the read-only context menu, source reveal, and editor threading (ADR
-// 0009). The native viewer never clones an element across pages (an element
-// that visually spans pages is still ONE element), so such a spec resolves to
-// AT MOST ONE element.
+// Blocks are addressed by `{chapter, range}` (data-source-range) — see
+// blocksMatchingRange below. The native viewer never clones an element across
+// pages (an element that visually spans pages is still ONE element), so such a
+// spec resolves to AT MOST ONE element. That is what lets in-flow editing put
+// a single contenteditable on a block that spans a page break.
 
 (function () {
   'use strict';
@@ -83,16 +82,18 @@
     return (bestArea > 0 ? best : nearest) + 1;
   }
 
-  function scrollToCurrentPage() {
+  function scrollToCurrentPage(smooth) {
     if (pages.length === 0) return;
     var page = clampPage(currentPage);
     currentPage = page;
-    ignoreScrollUntil = Date.now() + 300;
+    // A smooth scroll is still moving when the plain 300ms guard expires, and
+    // detectVisiblePage would then report the page it is passing through.
+    ignoreScrollUntil = Date.now() + (smooth ? 700 : 300);
     // Native's rows can be wider than the viewport (a long chapter scrolls
     // horizontally within its own row) — align the target sheet's left edge
     // to the viewport's left edge (matching detectVisiblePage's `refX`).
     pages[page - 1].scrollIntoView({
-      behavior: 'instant',
+      behavior: smooth ? 'smooth' : 'instant',
       block: 'start',
       inline: 'start'
     });
@@ -103,7 +104,7 @@
     return (mode || currentViewMode) === 'single' ? 1 : 2;
   }
 
-  // ── Source-mapping helpers (ADR 0005) ──────────────────────────────────────
+  // ── Source-mapping helpers ──────────────────────────────────────
   // Every block element carries data-source-line (markdown-it-source-map). These
   // map rendered DOM <-> markdown source line and rendered DOM <-> page. The
   // native fragmenter MOVES elements into strips, it does not clone them, so
@@ -361,7 +362,7 @@
   // plate UNDER the page's own text (gutterpress-css.ts's depth ladder) —
   // hit-tests beneath the covering paragraph boxes and the annotated
   // `.page`/`.section` containers too, so document.elementFromPoint() can
-  // NEVER return it. Every right-click used to resolve the covering element
+  // NEVER return it: a right-click would resolve the covering element
   // instead, leaving the image's context menu unreachable at EVERY point.
   // Probe the full hit stack for the first (= top-most in paint order, so
   // the upper of two overlapping plates wins) image layered at negative z.
@@ -626,6 +627,341 @@
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
   }
 
+  // ── In-flow block editing (protocol v8) ────────────────────────────────────
+  // docs/inline-editing-plan.md §3.1 / ADR 0009 decision 4 (as revised).
+  //
+  // The block's OWN element becomes the editing surface: its rendered HTML is
+  // swapped for that block's markdown source under
+  // `contenteditable="plaintext-only"`, so the caret sits in the real page, in
+  // the book's own typography, and Chromium's fragmenter re-flows the pages
+  // around it as the author types.
+  //
+  // Three properties of the native viewer are what make this work, each
+  // verified rather than assumed (plan §2) — none of them can be assumed of
+  // a paginator that pre-cuts the DOM:
+  //   1. A block spanning a page break is ONE element with several client
+  //      rects, so it takes ONE contenteditable and the caret crosses the
+  //      break natively (ArrowDown walks into the next page).
+  //   2. `white-space: pre-wrap` + `plaintext-only` round-trips multi-line
+  //      markdown EXACTLY through `textContent` (lists, tables, fences); Enter
+  //      inserts a real "\n" rather than a <div>/<br>, and a rich-HTML paste
+  //      is stripped to text by the browser. So there is no serializer and no
+  //      sanitiser here — text in, text out.
+  //   3. `Gutterpress.refresh()` -> `relayout()` rebuilds the strips from
+  //      scratch and re-measures, so a growing block gets a correct page
+  //      count. This is MANDATORY, not cosmetic: `.gp-strip` is
+  //      `column-fill: auto` and its `.gp-run` clips to the last measured page,
+  //      so content that grows past that is silently invisible rather than
+  //      overlapping (measured: a strip needing 2400px still clipped at its
+  //      900px run width). Never mutate this DOM without scheduling a refresh.
+  //
+  // Nothing here writes to disk. `endBlockEdit()` hands text back and the SPA
+  // decides whether it becomes a patch, behind the commit engine's clean-buffer
+  // gate (ADR 0009 decision 3, unchanged).
+
+  function rangedBlocks() {
+    return Array.from(document.querySelectorAll('[data-source-range]'));
+  }
+
+  function rangedBlocksInChapter(chapter) {
+    if (!chapter) return rangedBlocks();
+    return rangedBlocks().filter(function (el) { return chapterOf(el) === chapter; });
+  }
+
+  // The native viewer never clones, so a `{chapter, range}` spec resolves to AT
+  // MOST ONE element — this returns an array only because callers still guard
+  // on emptiness (a range that no longer matches anything: block deleted or
+  // moved since the target was captured).
+  function blocksMatchingRange(chapter, range) {
+    if (!range) return [];
+    return rangedBlocksInChapter(chapter).filter(function (el) {
+      var r = sourceRangeOf(el);
+      return r && r[0] === range[0] && r[1] === range[1];
+    });
+  }
+
+  // Re-pagination debounce while typing. Tuned by measurement, not taste:
+  // `relayout()` costs "the same order as mount (tens of ms on a real book)"
+  // per fragment.ts, so it cannot run per keystroke on a long book.
+  var EDIT_REFRESH_MS = 120;
+
+  // The one live edit, or null. At most one at a time — `beginBlockEdit`
+  // commits any predecessor before opening (an author double-clicking straight
+  // from one block to another must not silently drop the first edit).
+  var edit = null;
+  var editRefreshTimer = null;
+
+  function scheduleEditRefresh() {
+    if (editRefreshTimer !== null) clearTimeout(editRefreshTimer);
+    editRefreshTimer = setTimeout(function () {
+      editRefreshTimer = null;
+      repaginate();
+    }, EDIT_REFRESH_MS);
+  }
+
+  // Character offset of the caret within the edit box, or null when the caret
+  // is not in it. Text-space, not node-space, so it survives the box being
+  // re-parented and its text nodes being renormalized.
+  function caretOffset() {
+    if (!edit) return null;
+    var sel = typeof window.getSelection === 'function' ? window.getSelection() : null;
+    if (!sel || sel.rangeCount === 0) return null;
+    var r = sel.getRangeAt(0);
+    if (!edit.el.contains(r.startContainer)) return null;
+    var pre = document.createRange();
+    pre.selectNodeContents(edit.el);
+    pre.setEnd(r.startContainer, r.startOffset);
+    return pre.toString().length;
+  }
+
+  // Depth-first text nodes, by `nodeType === 3` rather than TreeWalker +
+  // NodeFilter: the preview scripts run in hosts that do not expose every DOM
+  // global (the iframe test harness evaluates this file with an explicit,
+  // small global list), and a caret helper is not worth a host requirement.
+  function textNodesIn(root) {
+    var out = [];
+    var stack = [root];
+    while (stack.length) {
+      var node = stack.pop();
+      if (node.nodeType === 3) { out.push(node); continue; }
+      for (var i = node.childNodes.length - 1; i >= 0; i--) stack.push(node.childNodes[i]);
+    }
+    return out;
+  }
+
+  function restoreCaret(offset) {
+    if (!edit || offset === null || offset === undefined) return;
+    var nodes = textNodesIn(edit.el);
+    var seen = 0;
+    for (var n = 0; n < nodes.length; n++) {
+      var node = nodes[n];
+      var len = node.nodeValue ? node.nodeValue.length : 0;
+      if (seen + len >= offset) {
+        var range = document.createRange();
+        range.setStart(node, Math.max(0, Math.min(len, offset - seen)));
+        range.collapse(true);
+        var sel = typeof window.getSelection === 'function' ? window.getSelection() : null;
+        if (!sel) return;
+        try { sel.removeAllRanges(); sel.addRange(range); } catch (_e) { /* best effort */ }
+        return;
+      }
+      seen += len;
+    }
+    // Offset past the end (the text shrank): land at the end.
+    var end = document.createRange();
+    end.selectNodeContents(edit.el);
+    end.collapse(false);
+    var sel2 = typeof window.getSelection === 'function' ? window.getSelection() : null;
+    if (!sel2) return;
+    try { sel2.removeAllRanges(); sel2.addRange(end); } catch (_e) { /* best effort */ }
+  }
+
+  function repaginate() {
+    if (!window.Gutterpress || typeof window.Gutterpress.refresh !== 'function') return;
+    // `relayout()` unwraps every strip and rebuilds it, which RE-PARENTS the
+    // edit box — and re-parenting a focused element drops both its focus and
+    // the selection. Unhandled, that means the caret dies on the first
+    // debounced refresh after the author starts typing and every keystroke
+    // after it goes nowhere. Capture in text space, restore after.
+    var offset = caretOffset();
+    try {
+      window.Gutterpress.refresh();
+    } catch (_e) {
+      // A refresh failure must not trap the author inside a broken edit; the
+      // authoritative render still arrives on commit.
+    }
+    // The strips are rebuilt, so cached sheet nodes are stale.
+    pages = [];
+    if (edit && offset !== null) {
+      try { edit.el.focus({ preventScroll: true }); } catch (_e2) { /* best effort */ }
+      restoreCaret(offset);
+    }
+  }
+
+  // Place the caret from the click point, on the SOURCE text now in the box.
+  // Approximate by construction (the point was measured against the RENDERED
+  // text) and that is fine — it puts the caret near what the author aimed at,
+  // which is the whole affordance. Falls back to end-of-block.
+  function placeCaret(el, point) {
+    var range = null;
+    if (point && typeof document.caretRangeFromPoint === 'function') {
+      try {
+        var hit = document.caretRangeFromPoint(point.x, point.y);
+        if (hit && el.contains(hit.startContainer)) range = hit;
+      } catch (_e) { /* fall through to end-of-block */ }
+    }
+    if (!range) {
+      range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+    }
+    try {
+      var sel = typeof window.getSelection === 'function' ? window.getSelection() : null;
+      if (!sel) return;
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch (_e) {
+      // Focus is already set, so the box is usable even if seating the caret
+      // failed (a detached selection, a host without Selection support). The
+      // author clicks once more; nothing is lost.
+    }
+  }
+
+  function finishEdit(commit, notify) {
+    if (!edit) return { ended: false, text: null, commit: false };
+    if (editRefreshTimer !== null) {
+      clearTimeout(editRefreshTimer);
+      editRefreshTimer = null;
+    }
+    var el = edit.el;
+    var text = el.textContent || '';
+    var done = { ended: true, text: text, commit: commit === true, chapter: edit.chapter, range: edit.range };
+
+    // Restore the rendered HTML on BOTH paths. On cancel it is the final
+    // state; on commit it avoids showing raw markdown for the ~500ms until the
+    // authoritative re-render swaps the frame.
+    el.removeAttribute('contenteditable');
+    if (edit.hadWhiteSpace) el.style.whiteSpace = edit.whiteSpace;
+    else el.style.removeProperty('white-space');
+    if (!el.getAttribute('style')) el.removeAttribute('style');
+    el.classList.remove('gutterpress-editing');
+    el.innerHTML = edit.html;
+    el.removeEventListener('input', onEditInput);
+    document.removeEventListener('mousedown', onDocumentPointerDown, true);
+    window.removeEventListener('focus', onWindowFocus);
+    edit = null;
+    repaginate();
+
+    if (notify) {
+      window.dispatchEvent(new CustomEvent('blockEditFinished', { detail: done }));
+    }
+    // ALWAYS emitted, on both paths, unlike blockEditFinished above — the
+    // shell holds hot-reload swaps on this and a missed close would freeze the
+    // preview until the next manual action.
+    window.dispatchEvent(new CustomEvent('blockEditStateChanged', { detail: { open: false } }));
+    return done;
+  }
+
+  function onEditInput() {
+    scheduleEditRefresh();
+  }
+
+  // "Clicked away" commits — driven by a POINTER PRESS in the book, never by
+  // `blur`.
+  //
+  // Blur was the obvious signal and it is the wrong one here. The open request
+  // arrives by postMessage from a click in the host SPA (the context menu's
+  // "Edit this block"), so this frame does not hold browsing-context focus when
+  // `startEdit` runs. Focusing the box then races the frame-focus transition:
+  // Chromium settles `activeElement` back to BODY and the element receives a
+  // blur it never earned. Measured end-to-end in the packaged app — the editor
+  // opened and closed 7ms later, committing content the author never saw, so
+  // both entry points looked like they did nothing at all. Guarding on
+  // `document.hasFocus()` does not separate the two cases either: a real click
+  // on another paragraph ALSO lands on BODY with the document focused.
+  //
+  // A pointer press outside the box is unambiguous and needs no focus
+  // bookkeeping. Focus leaving the frame entirely (the author reaches for the
+  // editor pane or another window) is deliberately NOT a commit — the host
+  // drives those ends explicitly through `endBlockEdit`, and the box stays
+  // visibly open meanwhile, which is honest about the state.
+  function onDocumentPointerDown(e) {
+    if (!edit) return;
+    if (e.target && edit.el.contains(e.target)) return;
+    finishEdit(true, true);
+  }
+
+  // Put the caret in the box, and KEEP putting it there until it sticks.
+  //
+  // Opening from the context menu is a postMessage with no user activation, so
+  // this frame cannot focus itself; the host focuses the preview and
+  // preview-shell.js hands that down to this frame (see both). That transition
+  // lands AFTER `startEdit` runs, and Chromium resets `activeElement` to BODY
+  // as it completes — so the `el.focus()` inside `startEdit` is silently undone
+  // and the author's keystrokes go to the app behind the preview. Measured
+  // end-to-end in the packaged app: the box opened with the whole frame chain
+  // focused, `document.activeElement` sat on `BODY.gp-stage`, and typing landed
+  // outside the book. The same `el.focus()` issued a moment later worked, which
+  // is what makes this a race rather than a permission problem.
+  //
+  // So: seat it now, then re-seat across the transition until `activeElement`
+  // IS the box. Bounded and idempotent — it stops on the first success, when
+  // the edit closes, or after the last attempt, and never fights the author
+  // (any element inside the box already counts as seated).
+  var SEAT_DELAYS_MS = [0, 16, 50, 150];
+
+  function seated() {
+    return !!edit && (document.activeElement === edit.el || edit.el.contains(document.activeElement));
+  }
+
+  function seatCaret() {
+    if (!edit || seated()) return;
+    try { edit.el.focus({ preventScroll: true }); } catch (_e) { /* best effort */ }
+    placeCaret(edit.el, edit.caret);
+  }
+
+  function seatCaretRepeatedly() {
+    var target = edit;
+    SEAT_DELAYS_MS.forEach(function (ms) {
+      setTimeout(function () {
+        if (edit !== target) return;
+        seatCaret();
+      }, ms);
+    });
+  }
+
+  // Whenever this frame gains focus while an edit is open, the caret belongs in
+  // the box — covers orderings where focus arrives later still.
+  function onWindowFocus() {
+    seatCaret();
+  }
+
+  function startEdit(spec) {
+    var el = blocksMatchingRange(spec.chapter, spec.range)[0] || null;
+    if (!el) return { ok: false, reason: 'unresolved' };
+    if (edit) finishEdit(true, true);
+
+    var style = el.style;
+    edit = {
+      el: el,
+      chapter: spec.chapter,
+      range: spec.range,
+      caret: spec.caret,
+      html: el.innerHTML,
+      hadWhiteSpace: !!style.whiteSpace,
+      whiteSpace: style.whiteSpace
+    };
+    // pre-wrap is load-bearing, not cosmetic: without it the source's newlines
+    // collapse and a multi-line block (list, table, fence) is unreadable AND
+    // uneditable line-by-line.
+    style.whiteSpace = 'pre-wrap';
+    el.classList.add('gutterpress-editing');
+    el.setAttribute('contenteditable', 'plaintext-only');
+    el.textContent = typeof spec.text === 'string' ? spec.text : '';
+    el.addEventListener('input', onEditInput);
+    document.addEventListener('mousedown', onDocumentPointerDown, true);
+    window.addEventListener('focus', onWindowFocus);
+    // Pull browsing-context focus into THIS frame first. Without it the caret
+    // is nowhere the author can type: the open request came from a click in
+    // the host document, so focus is still there.
+    try { window.focus(); } catch (_e) { /* focus stays with the host */ }
+    // Focus and caret seating are best-effort. A throw here must not escape:
+    // the edit state is already installed, so an exception would leave the
+    // block stuck in editing mode with the host believing nothing opened.
+    try {
+      el.focus({ preventScroll: true });
+    } catch (_e) {
+      try { el.focus(); } catch (_e2) { /* unfocusable host; the box still edits */ }
+    }
+    placeCaret(el, spec.caret);
+    // The swap from rendered HTML to source text changes the block's extent
+    // immediately, so pagination is already stale before a single keystroke.
+    // This re-parents the box, so seat the caret AFTER it, never before.
+    repaginate();
+    seatCaretRepeatedly();
+    window.dispatchEvent(new CustomEvent('blockEditStateChanged', { detail: { open: true } }));
+    return { ok: true };
+  }
 
   var api = {
     getTotalPages: function () { refreshPages(); return pages.length; },
@@ -728,7 +1064,7 @@
       return api.notifyPageChange();
     },
 
-    // ── ADR 0005 generic primitives ─────────────────────────────────────────
+    // ── Generic primitives ─────────────────────────────────────────
     // Bumped whenever a command/event is added so a hot-updated SPA can
     // feature-detect against an older bundled lib.
     // v6 (WORK PACKAGE B item 2): getRectsFor()/setEditMask() dropped the
@@ -743,18 +1079,13 @@
     // blockEditRequested/blockEditFinished/blockEditStateChanged events;
     // REMOVED getRectsFor() and
     // setEditMask(), which existed only to place and de-clutter behind the
-    // floating edit panel this replaces.
-    // v9 (SFE-P4): in-flow block editing REMOVED. The preview is read-only —
-    // beginBlockEdit()/endBlockEdit() and the blockEditRequested/
-    // blockEditFinished/blockEditStateChanged events are gone, along with the
-    // contenteditable authoring path and the double-click-to-edit listener
-    // they drove. A v9 SPA that still offers "Edit this block" has nothing to
-    // call; a pre-v9 SPA feature-detecting on the version simply stops
-    // offering it.
-    // 10: getChapters() added - the chapters the preview paginated, in book
+    // floating edit panel this replaces. A v8 lib with a pre-v8 SPA loses the
+    // "Edit this block" action and nothing else; a v8 SPA feature-detects on
+    // the version before offering it.
+    // 9: getChapters() added - the chapters the preview paginated, in book
     // order, so the desktop's Read can mount a chapter that has no heading
     // (getOutline() never names one).
-    getProtocolVersion: function () { return 10; },
+    getProtocolVersion: function () { return 9; },
 
     // Resolve the annotated element/selection at a viewport point (protocol
     // v4). Pure read; see buildContextTarget() above for the full contract.
@@ -764,6 +1095,28 @@
     getContextTargetAt: function (spec) {
       spec = spec || {};
       return buildContextTarget(contextPointEl(spec.x, spec.y, spec.topmostOnly));
+    },
+
+    // Open the in-flow editor on one block (protocol v8). `text` is that
+    // block's markdown source, read SPA-side from the authoritative buffer —
+    // this function never derives source from the DOM. `caret` is the optional
+    // viewport point to seat the caret near. Returns
+    // `{ok: false, reason: 'unresolved'}` when the range no longer matches a
+    // live block, so the SPA can drop the request instead of hanging.
+    beginBlockEdit: function (spec) {
+      spec = spec || {};
+      return startEdit(spec);
+    },
+
+    // Close it and hand back the current text (protocol v8). Idempotent:
+    // `{ended: false}` when nothing is open. The SPA calls this to force an end
+    // it initiated (a dialog opening over the workspace); ends the author
+    // initiates from inside the book — Escape, Cmd/Ctrl+Enter, blur — arrive
+    // as the `blockEditFinished` event instead, so a keystroke the SPA cannot
+    // see still resolves the edit. Both paths restore the rendered HTML.
+    endBlockEdit: function (spec) {
+      spec = spec || {};
+      return finishEdit(spec.commit !== false, false);
     },
 
     // Publish any debounced reader movement before a host atomically replaces
@@ -778,6 +1131,23 @@
     // Heading tree with page + source line — powers chapter jump (UX-013), TOC,
     // minimap, scrollspy. Page math needs same-origin engine access, so it
     // lives here rather than being derived host-side.
+    // The chapters the preview paginated, in book order, with the 1-based page
+    // each starts on (0 while the viewer has not placed it). The outline below
+    // names only headings; this names every source file in the book.
+    getChapters: function () {
+      refreshPages();
+      var seen = {};
+      var out = [];
+      var els = document.querySelectorAll('[data-chapter-src]');
+      for (var i = 0; i < els.length; i++) {
+        var chapter = els[i].getAttribute('data-chapter-src');
+        if (!chapter || seen[chapter]) continue;
+        seen[chapter] = true;
+        out.push({ chapter: chapter, page: pageIndexOf(els[i]) });
+      }
+      return out;
+    },
+
     getOutline: function () {
       refreshPages();
       var hs = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6'));
@@ -795,25 +1165,6 @@
           page: pageIndexOf(h),
           index: i
         });
-      }
-      return out;
-    },
-
-    // The chapters the preview paginated, in book order, each with the page
-    // it starts on. data-chapter-src is stamped on every source-mapped block
-    // (lib/markdown/source-range.ts), so the first block carrying a file's id
-    // is where that chapter starts - heading or no heading, which is what the
-    // outline above cannot say.
-    getChapters: function () {
-      refreshPages();
-      var seen = {};
-      var out = [];
-      var els = document.querySelectorAll('[data-chapter-src]');
-      for (var i = 0; i < els.length; i++) {
-        var chapter = els[i].getAttribute('data-chapter-src');
-        if (!chapter || seen[chapter]) continue;
-        seen[chapter] = true;
-        out.push({ chapter: chapter, page: pageIndexOf(els[i]) });
       }
       return out;
     },
@@ -1002,9 +1353,34 @@
     } catch (_e) { /* non-fatal: highlight just renders unstyled */ }
   }
 
+  // In-flow editing style (protocol v8, plan §3.1).
+  // Preview-only, never part of the PDF build path. Marks the block being
+  // edited without moving it: `outline` and `box-shadow` are chosen because
+  // they take NO space in layout — a border or padding here would change the
+  // block's extent and repaginate the book on entering edit mode, which is
+  // exactly the divergence this project cares most about. Nothing in this
+  // rule may become layout-affecting.
+  //
+  // No scroll lock and no dimming of the surrounding page: the caret is in the
+  // flow now, so the page can scroll freely and the neighbouring text stays
+  // legible while the author works. Both existed only to prop up the floating
+  // panel this replaced. Exact visual treatment is a design-review item
+  // (plan §6), same as the mask treatment was.
+  if (typeof document.createElement === 'function') {
+    try {
+      var editStyle = document.createElement('style');
+      editStyle.textContent =
+        '.gutterpress-editing{outline:2px solid Highlight;outline-offset:2px;' +
+        'box-shadow:0 0 0 2px color-mix(in srgb, Highlight 25%, transparent);' +
+        'border-radius:2px;caret-color:currentColor;}' +
+        '.gutterpress-editing:focus{outline-style:solid;}';
+      (document.head || document.documentElement).appendChild(editStyle);
+    } catch (_e) { /* non-fatal: the edit box just renders unmarked */ }
+  }
+
   // Click-to-source: emit elementActivated when the user clicks a source-mapped
   // block. Never preventDefault (links/selection keep working); the host decides
-  // whether to act. (ADR 0005)
+  // whether to act.
   if (typeof document.addEventListener === 'function') {
     document.addEventListener('click', function (e) {
       var el = e.target && e.target.closest ? e.target.closest('[data-source-line]') : null;
@@ -1025,6 +1401,10 @@
     // with no replacement menu would be a strict regression. No event is
     // dispatched for 'none' either.
     document.addEventListener('contextmenu', function (e) {
+      // Inside the live in-flow editor the native menu is the useful one
+      // (cut/copy/paste on the source text). Ours offers block actions that
+      // make no sense mid-edit.
+      if (edit && edit.el.contains(e.target)) return;
       var detail = api.getContextTargetAt({ x: e.clientX, y: e.clientY });
       if (detail.kind === 'none') return;
       e.preventDefault();
@@ -1032,6 +1412,47 @@
       detail.y = e.clientY;
       detail.via = 'mouse';
       window.dispatchEvent(new CustomEvent('contextMenuRequested', { detail: detail }));
+    }, true);
+
+    // Double-click to edit (protocol v8, plan §6). The SECOND entry point
+    // alongside the context menu's "Edit this block" — both land on the same
+    // SPA handler, which reads the source slice and calls beginBlockEdit().
+    // Requesting rather than starting is deliberate: only the SPA can read the
+    // authoritative buffer, so the book document never sources its own text.
+    //
+    // Bails while an edit is live so a double-click INSIDE the box keeps its
+    // native meaning (select word). Never preventDefault: on a block that does
+    // not resolve, double-click must keep selecting text as it always has.
+    document.addEventListener('dblclick', function (e) {
+      if (edit) return;
+      var el = e.target && e.target.closest ? e.target.closest('[data-source-range]') : null;
+      if (!el) return;
+      var range = sourceRangeOf(el);
+      var chapter = chapterOf(el);
+      if (!range || !chapter) return;
+      window.dispatchEvent(new CustomEvent('blockEditRequested', {
+        detail: { chapter: chapter, range: range, x: e.clientX, y: e.clientY, via: 'dblclick' }
+      }));
+    }, true);
+
+    // Edit-mode keys. These MUST live inside the book iframe for the same
+    // physical reason the Shift+F10 listener below does: the caret is in a
+    // cross-origin document, so its keystrokes never reach the SPA.
+    // Cmd/Ctrl+Enter commits (Enter alone is a newline — a markdown block can
+    // be multi-line); Escape cancels and restores.
+    document.addEventListener('keydown', function (e) {
+      if (!edit) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        finishEdit(false, true);
+        return;
+      }
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        e.stopPropagation();
+        finishEdit(true, true);
+      }
     }, true);
 
     // Shift+F10 / the dedicated ContextMenu key. This listener MUST live
@@ -1071,7 +1492,7 @@
       currentPage = page;
       if (!silent) api.notifyPageChange();
     }
-    // Emit finer-grained source position for editor sync (ADR 0005).
+    // Emit finer-grained source position for editor sync.
     var pos = visibleSourcePosition();
     var sl = pos ? pos.line : null;
     var chapter = pos ? chapterOf(pos.el) : null;
@@ -1103,6 +1524,67 @@
     scrollTimer = setTimeout(publishScrollPosition, 150);
   });
   window.addEventListener('resize', scheduleViewportChanged);
+
+  // Wheel / trackpad page flip (#301). Viewer tooling, not pagination: it
+  // only chooses which already-laid-out page to show. It lives here, in the
+  // book document, because wheel events over a cross-origin iframe never
+  // reach the host page.
+  //
+  // One flick turns one step — the same 1 page (single view) or 2 pages
+  // (spread) the arrow keys move. A gesture is every wheel event until the
+  // wheel has been quiet for WHEEL_GESTURE_IDLE_MS, so a fast mouse spin or a
+  // trackpad's inertia tail turns exactly one step.
+  //
+  // A page taller than the viewport (fit-width on a short window, high zoom)
+  // is READ first: while there is more of it in the wheel's direction, the
+  // wheel scrolls normally, and only a gesture that starts at its edge turns
+  // the page. The choice is made once per gesture, so the momentum of reading
+  // down to a page's end never turns the page by itself. Pinch / Ctrl+wheel
+  // (zoom), sideways swipes and in-place editing are left alone.
+  var WHEEL_FLIP_PX = 50;
+  var WHEEL_GESTURE_IDLE_MS = 220;
+  var wheelGesture = null; // null | 'scroll' | 'flip'
+  var wheelAccum = 0;
+  var wheelTurned = false;
+  var wheelIdleTimer = null;
+  function wheelDeltaPx(e) {
+    if (e.deltaMode === 1) return e.deltaY * 16; // lines
+    if (e.deltaMode === 2) return e.deltaY * window.innerHeight; // pages
+    return e.deltaY;
+  }
+  // More of the current page lies beyond the viewport edge in direction `dir`.
+  function pageContinuesPastViewport(dir) {
+    if (pages.length === 0) refreshPages();
+    var sheet = pages[clampPage(currentPage) - 1];
+    if (!sheet) return false;
+    var r = sheet.getBoundingClientRect();
+    return dir > 0 ? r.bottom > window.innerHeight + 1 : r.top < -1;
+  }
+  window.addEventListener('wheel', function (e) {
+    if (e.ctrlKey || edit || e.deltaY === 0 || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+    if (wheelIdleTimer) clearTimeout(wheelIdleTimer);
+    wheelIdleTimer = setTimeout(function () {
+      wheelIdleTimer = null;
+      wheelGesture = null;
+      wheelAccum = 0;
+      wheelTurned = false;
+    }, WHEEL_GESTURE_IDLE_MS);
+    if (wheelGesture === null) {
+      wheelGesture = pageContinuesPastViewport(e.deltaY > 0 ? 1 : -1) ? 'scroll' : 'flip';
+    }
+    if (wheelGesture === 'scroll') return;
+    e.preventDefault();
+    if (wheelTurned) return;
+    wheelAccum += wheelDeltaPx(e);
+    if (Math.abs(wheelAccum) < WHEEL_FLIP_PX) return;
+    wheelTurned = true;
+    refreshPages();
+    var target = clampPage(currentPage + (wheelAccum > 0 ? 1 : -1) * pageStep());
+    if (target === currentPage) return;
+    currentPage = target;
+    scrollToCurrentPage(true);
+    api.notifyPageChange();
+  }, { passive: false });
 
   // Reset to page 1, scroll to top, and announce completion once the native
   // viewer's pagination finishes.

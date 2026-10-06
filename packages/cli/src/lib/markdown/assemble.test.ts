@@ -9,7 +9,7 @@ import { inlineStyles } from "../asset-inline";
 import { renderChapters } from "./index";
 
 /**
- * STEP A parity test (#33 Phase 2): the pure, node-free `assembleBookHtml`
+ * Parity test: the pure, node-free `assembleBookHtml`
  * (browser-usable) must produce the EXACT same book.html as the node
  * `renderChapters` wrapper for the same inputs — proving the refactor split the
  * file-reading concern out without changing the rendered HTML.
@@ -67,37 +67,6 @@ test("assembleBookHtml (pure, in-memory readText) === renderChapters (node, on d
   }
 });
 
-test("assembleBookHtml wrapChapters parity with renderChapters", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "gutterpress-assemble-wrap-"));
-  try {
-    await mkdir(join(dir, "css"), { recursive: true });
-    await writeFile(join(dir, "css/print.css"), "body{}", "utf-8");
-    for (const [name, body] of Object.entries(FILES)) {
-      await writeFile(join(dir, name), body, "utf-8");
-    }
-    const files = ["01-intro.md", "02-body.md"];
-    const nodeHtml = await renderChapters(dir, {
-      title: "Doc",
-      styles: ["css/print.css"],
-      files,
-      wrapChapters: true,
-    });
-    const { css: wrapCss } = await inlineStyles(dir, ["css/print.css"]);
-    const pureHtml = await assembleBookHtml({
-      files,
-      readText: (rel) => Promise.resolve(FILES[rel]!),
-      projectCss: wrapCss,
-      title: "Doc",
-      wrapChapters: true,
-    });
-    expect(pureHtml).toBe(nodeHtml);
-    expect(pureHtml).toContain('data-chapter-src="01-intro.md"');
-    expect(pureHtml).toContain('class="gutterpress-chapter"');
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
 test("chapter metadata preserves plugins that wrap md.render", async () => {
   const html = await assembleBookHtml({
     files: ["chapter.md"],
@@ -111,11 +80,13 @@ test("chapter metadata preserves plugins that wrap md.render", async () => {
           `<section data-plugin-render>${render(source, env)}</section>`;
       },
     }],
-    wrapChapters: true,
+    annotateSourceChapters: true,
   });
 
   expect(html).toContain("<section data-plugin-render>");
-  expect(html).toContain('<div class="gutterpress-chapter" data-chapter-src="chapter.md">');
+  // The chapter id is threaded through `env`, so a plugin that wraps
+  // md.render() must still see it land on the source-mapped block.
+  expect(html).toMatch(/<h1[^>]*data-chapter-src="chapter.md"/);
 });
 
 test("assembleBookHtml throws on empty file list", async () => {

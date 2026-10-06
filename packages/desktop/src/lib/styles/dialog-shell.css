@@ -1,11 +1,7 @@
 /**
- * Shared modal-dialog "chrome" CSS for the desktop SPA (UX review M1 / ARCH #42
- * — dialog-system consolidation).
- *
- * Every dialog in the app used to carry a near-verbatim copy of this block —
- * `.backdrop`/`.dialog`/`.dialog-header`/`.close`/`.sr-only`/`.actions`/
- * `.primary`/`.ghost` — hand-pasted ~100-150 lines apiece (10 dialogs). It is
- * now defined ONCE here and pulled into each dialog with:
+ * Shared modal-dialog "chrome" CSS for the desktop SPA — backdrop, frame,
+ * header, close button, footer actions — defined ONCE here and pulled into
+ * each dialog with:
  *
  *   <style>
  *     @import "$lib/styles/dialog-shell.css";
@@ -29,14 +25,13 @@
  *
  * Geometry + one-off modifiers stay LOCAL to each dialog: a dialog sets its
  * own width/max-height (they intentionally vary — 480px for the small
- * confirm, 720px for Help/the log desktop, …) or a modifier like
- * RecoveryConfirmDialog's high-risk accent with a normal rule targeting
+ * confirm, 720px for Help/the log desktop, …) with a normal rule targeting
  * `.dlg-shell` in its OWN <style> block, below the @import. Svelte attaches
  * its scoping hash to that selector (the element is authored in that
  * component's template), so the two-class scoped rule naturally wins the
  * cascade over this file's one-class default — no `!important` needed.
  *
- * Primary-button COLOR is not defined here (UX review L5, resolved): every
+ * Primary-button COLOR is not defined here: every
  * `.dlg-primary` button also carries the global `.app-btn-primary` class
  * (theme.css), which owns the one shared gradient fill, hover brighten, and
  * focus ring app-wide. `.dlg-primary` remains as the footer-geometry hook
@@ -49,11 +44,11 @@
  * `:global(...)` on the variant/state classes below (`.dlg-close`,
  * `.dlg-actions`, `.dlg-primary`, `.dlg-ghost`, `.dlg-danger-armed`, and
  * their pseudo-states): each consuming dialog only renders a SUBSET of these
- * (no dialog uses every variant — e.g. AdvancedSetupDialog has no `.dlg-actions`
- * footer, SettingsDialog never arms `.dlg-danger-armed`). Because `@import`ed
+ * (no dialog uses every variant — e.g. only SnippetPicker arms
+ * `.dlg-danger-armed`). Because `@import`ed
  * content is checked per consumer, Svelte's per-component unused-CSS-selector
- * pass flagged whichever subset a given dialog's markup doesn't render — 38
- * warnings across 9 dialogs (2026-07-11), even though every one of those
+ * pass would flag whichever subset a given dialog's markup doesn't render,
+ * even though every one of those
  * selectors IS used, just by a sibling dialog that also imports this file.
  * `:global(...)` only makes explicit what was already true (see the
  * "applies globally" note above): it opts these rules out of per-component
@@ -188,7 +183,7 @@
 }
 :global(.dlg-actions button:disabled) { opacity: 0.45; cursor: default; }
 
-/* `.dlg-primary` colors live in theme.css's `.app-btn-primary` (see the L5
+/* `.dlg-primary` colors live in theme.css's `.app-btn-primary` (see the
    note above) — every primary button carries both classes. Nothing to define
    here: geometry comes from `.dlg-actions button`, colors from the shared
    recipe. */
@@ -208,8 +203,8 @@
 /* Two-step inline-confirm treatment for a destructive action rendered as a
    single persistent button whose label/class swap in place (never a pair of
    buttons that appear/disappear, so arming the confirm never steals focus).
-   Mirrors CrashRecoveryDialog's Discard button; used by AdvancedSetupDialog's
-   Disconnect (L2) and SnippetPicker's delete (M25). */
+   Mirrors CrashRecoveryDialog's Discard button; used by SnippetPicker's
+   delete. */
 :global(.dlg-danger-armed) {
   background: var(--app-error-bg);
   border-color: var(--app-error-border);

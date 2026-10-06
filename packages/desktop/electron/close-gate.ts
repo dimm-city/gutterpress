@@ -1,15 +1,13 @@
 /**
  * close-gate.ts — the window-close flush→snapshot→destroy orchestration,
- * extracted from createWindow's "close" handler as an injectable, unit-testable
- * function (R25). main.ts wires the real deps (RendererFlushSession.request,
+ * as an injectable, unit-testable function (R25). main.ts wires the real deps (RendererFlushSession.request,
  * flushAutoSnapshot, win.destroy).
  *
- * SINGLE-OWNER, PER-PHASE WATCHDOGS (R25). The old shape armed an outer 5s
- * destroy timer at the same instant as the flush's own 5s watchdog and never
- * cancelled it when the flush settled — a renderer replying just under the
- * budget (large-doc autosave) let the snapshot's git commit START and then the
- * outer timer destroyed the window mid-object-write, leaving a stale
- * index.lock/partial commit for the next launch to repair. Now each phase owns
+ * SINGLE-OWNER, PER-PHASE WATCHDOGS (R25). Do not add an outer destroy timer
+ * alongside the flush's own watchdog: a renderer replying just under the
+ * budget (large-doc autosave) lets the snapshot's git commit START, and an
+ * outer timer would then destroy the window mid-object-write, leaving a stale
+ * index.lock/partial commit for the next launch to repair. Each phase owns
  * exactly one budget:
  *
  * - Phase 1 (flush): `flush()`'s OWN internal watchdog is the budget — it
@@ -194,8 +192,8 @@ export async function runCloseGate(deps: CloseGateDeps): Promise<void> {
     // DELIBERATE POLICY: on a FAILED flush (watchdog fired on a hung renderer,
     // or the flush itself rejected) skip the snapshot and just close — starting
     // a git commit for a renderer that never confirmed its buffers hit disk
-    // would snapshot half-written state; the old behavior of dropping the
-    // snapshot cleanly is the safe one. (The pending snapshot may also be
+    // would snapshot half-written state; dropping the snapshot cleanly is the
+    // safe choice. (The pending snapshot may also be
     // silently dropped when the per-repo FIFO lock is held by a sync/restore
     // that outlasts the backstop — never blocking quit wins over guaranteeing
     // the last snapshot; the edits themselves are already on disk, only the

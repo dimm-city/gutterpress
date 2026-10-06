@@ -351,7 +351,7 @@ A useful guide covers typography, palette, reusable components, tables, callouts
 4. Run the normal Gutterpress checks.
 
 ```bash
-gutterpress lint ./books/core-book
+gutterpress validate ./books/core-book
 gutterpress build ./books/core-book --format pdf
 ```
 

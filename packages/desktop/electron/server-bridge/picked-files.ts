@@ -1,18 +1,14 @@
 /**
- * One-time "picked path" capability (P1 review on `media:importImage` and
- * `fs:copyFile`; extended for finding #4 of the 2026-07-13 maintainer review
- * to cover `api:build`'s PDF `out` path).
+ * One-time "picked path" capability for `media:importImage` / `fs:copyFile`'s
+ * `src`, and its save-side mirror for `api:build`'s PDF `out` path.
  *
  * `media:importImage` and `fs:copyFile` accept a `src` path that is
  * DELIBERATELY allowed to point anywhere on disk — the whole point is
- * copying a file the author picked from outside the project INTO it. Before
- * this module, the only thing standing behind that was a docstring claiming
- * `src` "came from a native file dialog" — nothing actually enforced it. Any
- * same-origin script (a compromised plugin, a preview XSS) could POST an
- * arbitrary absolute `src` straight to either route, have it copied into the
- * open project, then read it back out through the scoped `fs:readFile`
- * route: an unscoped-source read primitive hiding behind two routes whose
- * docstrings merely asserted honesty.
+ * copying a file the author picked from outside the project INTO it. Without
+ * enforcement, any same-origin script (a compromised plugin, a preview XSS)
+ * could POST an arbitrary absolute `src` straight to either route, have it
+ * copied into the open project, then read it back out through the scoped
+ * `fs:readFile` route: an unscoped-source read primitive.
  *
  * `api:build`'s `out` path has the mirror-image shape: it's a WRITE target
  * that is deliberately allowed to point anywhere on disk (the whole point of
@@ -20,8 +16,8 @@
  * controller atomically renames the finished PDF onto it — an arbitrary-file
  * overwrite primitive if `out` were trusted from the renderer alone.
  *
- * Both are fixed the same way — the maintainer's "exchange the picker/dialog
- * result for a one-time opaque capability" option — via the two factories
+ * Both are guarded the same way — the picker/dialog result is exchanged for
+ * a one-time opaque capability — via the two factories
  * below, which share the same bounded one-time-token set implementation
  * (`createCapabilitySet`):
  *
@@ -31,8 +27,8 @@
  *     (one-time) a `src` from that set before copying anything from OUTSIDE
  *     the project — a `src` that wasn't registered by a recent pick (or was
  *     already consumed) is rejected with 403.
- *   - `dialog:savePdf` REGISTERS the absolute path the native SAVE dialog
- *     itself just returned; `api:build`'s export controller must CONSUME
+ *   - `dialog:savePdf` / `dialog:pickOutputFolder` REGISTER the absolute
+ *     path the native dialog itself just returned; `api:build`'s export controller must CONSUME
  *     that path as `out` before writing/renaming anything onto it — an
  *     `out` the Save dialog never returned (or one already consumed) is
  *     rejected.
@@ -50,7 +46,6 @@
  * the user can simply re-open the dialog).
  */
 import path from "node:path";
-import { getHostServices } from "./host-services";
 
 export interface PickedFilesHooks {
   /**
@@ -69,14 +64,8 @@ export interface PickedFilesHooks {
   consume(absPath: string): boolean;
 }
 
-/** The live `PickedFilesHooks` slice of the collapsed host object (ARCH #31), or null before `registerHostServices` runs. */
-export function getPickedFilesHooks(): PickedFilesHooks | null {
-  return getHostServices()?.pickedFiles ?? null;
-}
-
 /**
- * One-time "save path" capability (finding #4, 2026-07-13 maintainer
- * review): the write-side mirror of {@link PickedFilesHooks}, guarding
+ * One-time "save path" capability: the write-side mirror of {@link PickedFilesHooks}, guarding
  * `api:build`'s `out` instead of `media:importImage`/`fs:copyFile`'s `src`.
  * Kept as a distinct interface/instance (not a reuse of `pickedFiles`) so a
  * path a native OPEN dialog returned (source-read intent) can never
@@ -96,11 +85,6 @@ export interface SavePathHooks {
    * otherwise (never chosen, already consumed, or expired past the TTL).
    */
   consume(absPath: string): boolean;
-}
-
-/** The live `SavePathHooks` slice of the collapsed host object (ARCH #31), or null before `registerHostServices` runs. */
-export function getSavePathsHooks(): SavePathHooks | null {
-  return getHostServices()?.savePaths ?? null;
 }
 
 export interface PickedFilesServiceOptions {

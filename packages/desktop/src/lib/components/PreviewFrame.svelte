@@ -31,16 +31,16 @@
     // Attach NOW, not on the iframe's "load" event. `contentWindow` is the
     // frame's WindowProxy, which is created with the element and survives
     // every navigation of it — so binding it here is the same window the
-    // shell posts from, just bound sooner. Waiting for "load" opened a real
+    // shell posts from, just bound sooner. Waiting for "load" opens a real
     // drop window: the outer load event waits for the shell's whole subtree
     // (the book iframe and all its subresources), while the book paginates on
     // its own DOMContentLoaded and posts `ready`/`renderingComplete` straight
-    // away. Every event in that gap hit `PreviewClient`'s `!this.win` guard
-    // and was discarded with no replay, leaving a permanent "Rendering…"
+    // away. Every event in that gap would hit `PreviewClient`'s `!this.win`
+    // guard and be discarded with no replay, leaving a permanent "Rendering…"
     // scrim over a finished book, a page count stuck at 0, and no re-lint.
     // preview-shell.js latches the identical race one hop down
-    // (`__GUTTERPRESS_RENDERED__`); this hop had nothing.
-    // M31 is untouched: `attach()` only names the window, and messages are
+    // (`__GUTTERPRESS_RENDERED__`).
+    // The origin pin still holds: `attach()` only names the window, and messages are
     // still accepted only when BOTH the source is this frame and the origin
     // is the one `onClientReady` pinned above (and a URL-preview client has
     // already called `lockDown()`, which makes this a permanent no-op).
@@ -58,18 +58,18 @@
 </script>
 
 <!--
-  ARCH review finding #1: the preview is cross-origin (http://127.0.0.1 inside
+  The preview is cross-origin (http://127.0.0.1 inside
   app://local) and renders author markdown with html:true, so a raw
   `<a target="_top">` in a shared project could otherwise navigate the top
-  frame straight to a remote origin (which then inherits the live preload
-  bridge via main.ts's — now closed — will-navigate hole). `sandbox` denies
+  frame straight to a remote origin (which would then inherit the live preload
+  bridge). `sandbox` denies
   top-navigation and popups outright, as defense in depth alongside the host's
   will-navigate/setWindowOpenHandler policy.
   allow-scripts is required: the preview-bridge.js running inside the frame
   drives native viewer layout and the postMessage command bridge (preview-client.ts).
   allow-same-origin is required too: without it the sandboxed frame gets an
   opaque origin, which breaks its own same-origin resource fetches (fonts,
-  images, the CLI preview server's own routes it's served from) — normally allow-scripts +
+  images, the preview server it's served from) — normally allow-scripts +
   allow-same-origin together would let a same-origin frame strip its own
   sandbox, but that escape needs the frame's real origin to match the
   embedding document's, and this frame's real origin (http://127.0.0.1:<port>)

@@ -1,41 +1,42 @@
 import { afterEach, expect, test } from "bun:test";
 import { buildEditorProjection } from "../../src/lib/editor-host/editor-projection-capability";
-import { DesktopHostRequiredError } from "../../src/lib/platform/bridge";
 
-// SFE-P5b: `buildEditorProjection` (SFE-P3e) is a pure 1:1 forward to the
-// bridge, kept as its own small capability module (see that file's header
-// for why) rather than folded into `+page.svelte`. This proves the
-// delegation and the shared fail-loudly behavior.
+// The rich editor's one host call goes through the `api` wrapper like every
+// other capability: a POST to `/api/editor/projection` carrying the args as
+// JSON, whose JSON reply IS the outcome (ok:true with the projection, or
+// ok:false with a classified code) — never a rejection for a classified
+// failure.
 
+const realFetch = globalThis.fetch;
 afterEach(() => {
-  // @ts-expect-error test global
-  globalThis.window = undefined;
+  globalThis.fetch = realFetch;
 });
 
-test("buildEditorProjection delegates 1:1 to the bridge", async () => {
-  const calls: unknown[] = [];
-  const outcome = { ok: true, projection: { schemaVersion: 1, sourceVersion: 1, blocks: [], generated: [], diagnostics: [] }, pluginCss: "", pluginErrors: [] };
-  // @ts-expect-error test global
-  globalThis.window = {
-    electron: {
-      buildEditorProjection: async (args: unknown) => {
-        calls.push(args);
-        return outcome;
-      },
-    },
-  };
-  const args = { projectDir: "/book", content: "# Hi", sourceVersion: 1 };
-  await expect(buildEditorProjection(args)).resolves.toEqual(outcome as never);
-  expect(calls).toEqual([args]);
+test("buildEditorProjection posts the args to /api/editor/projection and resolves the reply", async () => {
+  const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
+  const reply = { ok: true, projection: { blocks: [] }, pluginCss: "", pluginErrors: [], bookCss: "" };
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    calls.push({ url: String(url), init });
+    return new Response(JSON.stringify(reply), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  const out = await buildEditorProjection({ projectDir: "/book", content: "# Hi", sourceVersion: 3 });
+
+  expect(calls.length).toBe(1);
+  expect(calls[0]!.url).toBe("/api/editor/projection");
+  expect(calls[0]!.init?.method).toBe("POST");
+  expect(JSON.parse(String(calls[0]!.init?.body))).toEqual({ projectDir: "/book", content: "# Hi", sourceVersion: 3 });
+  expect(out).toEqual(reply);
 });
 
-test("buildEditorProjection fails loudly off-Electron", () => {
-  // @ts-expect-error test global
-  globalThis.window = {};
-  // bridge() throws SYNCHRONOUSLY (matching the deleted getPlatform()'s own
-  // synchronous fail-loudly behavior) — buildEditorProjection is not itself
-  // `async`, so the throw happens before a promise is ever returned.
-  expect(() => buildEditorProjection({ projectDir: "/book", content: "", sourceVersion: 0 })).toThrow(
-    DesktopHostRequiredError,
-  );
+test("a classified failure is a resolved ok:false outcome, not a rejection", async () => {
+  const reply = { ok: false, code: "EDITOR_FILE_TOO_LARGE", message: "too big" };
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify(reply), { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
+  await expect(buildEditorProjection({ projectDir: "/book", content: "x", sourceVersion: 0 })).resolves.toEqual(reply);
+});
+
+test("a transport failure rejects with the host's message", async () => {
+  globalThis.fetch = (async () => new Response("editor/projection: path is outside the open book", { status: 403 })) as typeof fetch;
+  await expect(buildEditorProjection({ projectDir: "/elsewhere", content: "x", sourceVersion: 0 })).rejects.toThrow(/outside the open book/);
 });

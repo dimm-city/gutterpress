@@ -1,11 +1,11 @@
 /**
  * Pure (node-free) markdown rendering core.
  *
- * §1/§8 / ADR 0004: this module imports ONLY pure JS — markdown-it and its
+ * §1/§8: this module imports ONLY pure JS — markdown-it and its
  * plugins, Gutterpress's inlined marker parser (`markers.js`), and the node-free
  * leveled logger (console-only). It contains NO `node:*`,
- * NO `fs`/`path`/`url`, and NO filesystem access, so it can be imported in the
- * browser (via `gutterpress/render`) AND bundled into the
+ * NO `fs`/`path`/`url`, and NO filesystem access, so it can be imported by the
+ * browser AND bundled into the
  * `bun build --compile` CLI binary alike.
  *
  * The plugin *author* types and the markdown-it factory live here (not in
@@ -248,22 +248,18 @@ export const BUILTIN_OPTIONAL_PLUGINS: Record<string, GutterpressPlugin> = {
  * `<dl><dt><dd>`. It is not in CommonMark/markdown-it core; this is the
  * canonical markdown-it plugin for it.
  *
- * Block container syntax (`:::name ... :::`) was removed 2026-05-17 in favor
- * of the @marker family. See docs/migrations/2026-05-removing-container-syntax.md
- * for the migration mapping.
+ * There is no block container syntax (`:::name ... :::`): the @marker family
+ * is the wrapped-block surface. See
+ * docs/migrations/2026-05-removing-container-syntax.md for the mapping.
  *
- * GFM-style `> [!NOTE]` alerts were also moved into the DC plugin on the
- * same date because the emitted classes (dc-alert, dc-vibe-callout, etc.)
- * were DC-branded — core should not leak DC identifiers. #237 (0.10.7)
- * restored a core-owned, unbranded equivalent as an OPT-IN bundled feature —
+ * GFM-style `> [!NOTE]` alerts are an OPT-IN bundled feature (#237) —
  * `gfm-alerts.ts`, registered below as `gutterpress-gfm-alerts` — emitting
  * only the standard GitHub five (NOTE/TIP/IMPORTANT/WARNING/CAUTION) as
  * neutral `gp-alert`/`gp-alert-<type>` structure (see that file's header).
- * This does not re-converge with the DC plugin: DC's branded extra types
- * (`[!DM]`/`[!VIBE]`/`[!ORIGIN]`, etc.) and its own class names stay exactly
- * where they were moved to, layered on top of (or independent from) this
- * primitive. A project using neither plugin still renders `> [!NOTE]` as a
- * literal blockquote, unchanged — this feature is opt-in, not a default.
+ * Core emits no branded identifiers: branded extra types (e.g. DC's
+ * `[!DM]`/`[!VIBE]`/`[!ORIGIN]`) and their class names belong in project
+ * plugins, layered on top of (or independent from) this primitive. A project
+ * using neither renders `> [!NOTE]` as a literal blockquote.
  *
  * #240 — before `gutterpressMarkers` is applied, every loaded plugin's
  * declared `markers` table (if any) is merged into ONE registry via

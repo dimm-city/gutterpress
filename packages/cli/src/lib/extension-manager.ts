@@ -15,7 +15,7 @@
  *     offline;
  *   - a PATH (`./x`, `../x`) is referenced IN PLACE. The author put that
  *     folder there; Gutterpress reads it. Nothing is copied;
- *   - an NPM specifier is downloaded, verified, vendored with a receipt under
+ *   - an NPM specifier is downloaded, integrity-checked, vendored under
  *     `plugins/npm/` (`npm-plugin-installer.ts`) and written back pinned, as
  *     `name@version`.
  *
@@ -38,7 +38,7 @@ import path from "node:path";
 import { isSeq, isMap, isScalar, YAMLMap, YAMLSeq, Scalar } from "yaml";
 import type { Node } from "yaml";
 
-import { clearVendoredPluginResolver, loadPlugin } from "./markdown/plugins.ts";
+import { loadPlugin } from "./markdown/plugins.ts";
 import { loadManifestDoc, ensureSeq, writeManifestDoc } from "./manifest-doc.ts";
 import {
   finalizeNpmPluginInstall,
@@ -133,7 +133,9 @@ export interface RecommendedExtension {
   use: string;
   /** Short, plain-language feature name shown as the row title. */
   label: string;
-  /** One-line author-friendly description. */
+  /** One-line author-friendly description in plain words. Backtick spans mark
+   *  "what to type" (the desktop sets them in code type), so keep them paired
+   *  and keep HTML tag names out of the prose. */
   description: string;
 }
 
@@ -148,29 +150,29 @@ export const RECOMMENDED_EXTENSIONS: RecommendedExtension[] = [
   {
     use: "markdown-it-mark",
     label: "Highlight",
-    description: "Highlighted text with `==marked==` -> `<mark>`.",
+    description: "Highlight text by wrapping it in `==double equals==`.",
   },
   {
     use: "markdown-it-sub",
     label: "Subscript",
-    description: "Subscript text with `H~2~O`.",
+    description: "Lower text below the line, like the 2 in `H~2~O`.",
   },
   {
     use: "markdown-it-sup",
     label: "Superscript",
-    description: "Superscript text with `29^th^`.",
+    description: "Raise text above the line, like the th in `29^th^`.",
   },
   {
     use: "markdown-it-abbr",
     label: "Abbreviations",
-    description: "Define `*[HTML]: Hyper Text...` and get `<abbr>` tooltips.",
+    description: "Explain an abbreviation when readers hover over it. Define it once, like `*[GPS]: Global Positioning System`.",
   },
   {
     // Not a real npm package — Gutterpress's own code (#237), named to fit
     // the "keyed by npm name" shape. See BUILTIN_OPTIONAL_PLUGINS (renderer.ts).
     use: "gutterpress-gfm-alerts",
     label: "Callouts",
-    description: "GitHub-style `> [!NOTE]` alert boxes (Note/Tip/Important/Warning/Caution).",
+    description: "Turn a quote into a boxed note: start it with `> [!NOTE]` (or `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`).",
   },
 ];
 
@@ -268,7 +270,7 @@ function indexOfUse(seq: YAMLSeq, use: string): number {
 function manifestPathFor(projectDir: string, abs: string): string {
   const rel = path.relative(path.resolve(projectDir), abs).split(path.sep).join("/");
   if (rel === "") {
-    throw new Error("An extension cannot be the project folder itself.");
+    throw new Error("An extension cannot be the book folder itself.");
   }
   if (isPathSpecifier(rel)) return rel; // `../x`, or an absolute path on another drive
   return `./${rel}`;
@@ -550,7 +552,6 @@ export async function removeExtension(projectDir: string, use: string): Promise<
         recursive: true,
         force: true,
       });
-      clearVendoredPluginResolver(projectDir, parsed.name, parsed.version);
     }
   });
 }
@@ -619,8 +620,8 @@ async function addPathExtension(
  *   - a bundled name is written as-is;
  *   - a path (`./x`, `../x`, or absolute) is load-tested and written relative
  *     to the project, referenced in place;
- *   - an npm specifier (`name`, `name@version`) is downloaded, verified,
- *     vendored with a receipt, load-tested, and written back as
+ *   - an npm specifier (`name`, `name@version`) is downloaded,
+ *     integrity-checked, vendored, load-tested, and written back as
  *     `name@<exact version>`. On any failure the vendor tree is rolled back.
  *
  * Idempotent: adding what is already listed re-pins/updates that entry.
@@ -676,7 +677,6 @@ async function addExtensionUnlocked(
   } catch (cause) {
     try {
       await rollbackNpmPluginInstall(installed);
-      clearVendoredPluginResolver(projectDir, installed.name, installed.version);
     } catch (rollbackError) {
       throw new Error(
         `Extension install failed and its previous vendor tree could not be restored: ` +

@@ -2,7 +2,7 @@
 # =============================================================================
 # Gutterpress CLI container
 #
-# A self-contained image with EVERYTHING the lint → build → validate pipeline
+# A self-contained image with EVERYTHING the validate → build → validate pipeline
 # needs to turn a markdown project into a validated, print-ready PDF — including
 # the full PDF/X (CMYK) pre-print path:
 #   - the Gutterpress CLI (Node bundle: src + gutterpress compiled in)
@@ -29,9 +29,7 @@
 FROM oven/bun:1 AS builder
 
 # The builder only needs the CLI + lib graph to bundle; skip heavy optionals.
-ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1 \
-    PUPPETEER_SKIP_DOWNLOAD=1 \
-    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=1
+ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
 
 WORKDIR /src
 COPY . .
@@ -88,7 +86,7 @@ bun /tmp/pin-runtime-deps.mjs
 rm /tmp/pin-runtime-deps.mjs
 DOCKER_EOF
 
-# ── Stage 2: runtime with all OS + lint dependencies ─────────────────────────
+# ── Stage 2: runtime with all OS + validation dependencies ───────────────────
 # node:20-bookworm-slim gives us Node on Debian 12, whose apt has a real
 # `chromium` package (Ubuntu's is a snap, which doesn't work in containers).
 FROM node:22-bookworm-slim AS runtime
@@ -107,13 +105,10 @@ RUN set -eux; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*
 
-ENV PUPPETEER_SKIP_DOWNLOAD=1 \
-    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=1
-
 WORKDIR /app
 
 # Install the package's runtime deps. dist/ is built with `--packages=external`,
-# so all `dependencies` (markdown-it*, puppeteer-core, isomorphic-git,
+# so all `dependencies` (markdown-it*, ws, isomorphic-git,
 # markdownlint, postcss, …) are resolved here from the pinned minimal
 # package.json the builder stage emitted (name/version/dependencies, exact
 # versions from bun.lock — see finding #47 — dropping devDependencies).

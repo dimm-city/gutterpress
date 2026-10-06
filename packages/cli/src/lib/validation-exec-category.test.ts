@@ -1,6 +1,6 @@
 /**
  * Tests for `--category` validation and the phase/category zero-match guard
- * (UX review finding #13, a residual of the earlier H4 `--phase` fix).
+ * (the same bug shape as the `--phase` fix).
  *
  * `validation-exec.ts` cast every `--category` CSV entry straight to
  * `CheckCategory` with `s as CheckCategory` — no validation, mirroring the

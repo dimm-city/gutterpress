@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Committed regression tests for the preview-bridge primitives (ADR 0005) that
+// Committed regression tests for the preview-bridge primitives that
 // power the chapter-jump dropdown and editor↔preview sync. These run the REAL
 // lib script (preview-interface.js) against a real DOM (happy-dom), so they
 // exercise the actual querySelector/closest/getBoundingClientRect logic — not a
@@ -42,7 +42,7 @@ function chapterHtml() {
   return (
     pageWrap(
       1,
-      `<div class="gutterpress-chapter" data-chapter-src="a.md">
+      `<div data-chapter-src="a.md">
         <h1 data-source-line="1" id="a-title">Alpha Title</h1>
         <p data-source-line="4">alpha body</p>
         <h2 data-source-line="9">Alpha Section</h2>
@@ -50,7 +50,7 @@ function chapterHtml() {
     ) +
     pageWrap(
       2,
-      `<div class="gutterpress-chapter" data-chapter-src="b.md">
+      `<div data-chapter-src="b.md">
         <h1 data-source-line="1" id="b-title">Beta Title</h1>
         <p data-source-line="4">beta body</p>
         <h2 data-source-line="9">Beta Section</h2>
@@ -464,48 +464,6 @@ async function main() {
 
    api.setZoom("0.8");
    assert.equal(scrolls.at(-1)?.top, 20, "zoom preserves the same source fragment index");
- }
-
- // -- 9. getChapters names every chapter, heading or not --------------------
- // Read mounts the chapters getChapters() reports. The outline is headings
- // only, so a chapter that opens with a marker and body text (the plugin-book
- // fixture's introduction) is absent from it; getChapters() lists it, at the
- // page its first block is on, in book order. data-chapter-src is stamped on
- // every source-mapped block, so a chapter's later blocks add nothing.
- {
-   const markup =
-     pageWrap(
-       1,
-       `<div class="chapter" data-chapter-src="intro.md" data-source-range="1-1">
-          <div class="chapter-opener">Introduction</div>
-          <p data-chapter-src="intro.md" data-source-line="3">no heading here</p>
-        </div>`,
-     ) +
-     pageWrap(
-       2,
-       `<div class="gutterpress-chapter" data-chapter-src="a.md">
-          <h1 data-source-line="1" id="a-title">Alpha Title</h1>
-          <h2 data-source-line="9">Alpha Section</h2>
-        </div>`,
-     ) +
-     pageWrap(
-       3,
-       `<div class="gutterpress-chapter" data-chapter-src="b.md">
-          <h1 data-source-line="1" id="b-title">Beta Title</h1>
-          <h2 data-source-line="9">Beta Section</h2>
-        </div>`,
-     );
-   const { api } = setup(markup);
-   assert.deepEqual(api.getChapters(), [
-     { chapter: "intro.md", page: 1 },
-     { chapter: "a.md", page: 2 },
-     { chapter: "b.md", page: 3 },
-   ]);
-   assert.deepEqual(
-     api.getOutline().map((o) => o.chapter),
-     ["a.md", "a.md", "b.md", "b.md"],
-     "the outline stays a heading tree: the heading-less chapter is not in it",
-   );
  }
 
  console.log("preview-bridge.test.mjs: all assertions passed");

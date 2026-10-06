@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 import { resolveChromiumExecutable } from "../../lib/chromium.ts";
 import { getAssetPath } from "../../lib/embedded-assets.ts";
-import { closeBrowser, getBrowser } from "../../lib/browser-pool.ts";
+import { closeBrowser, getBrowser } from "./test-support/browser.ts";
 
 /**
  * Phase 4b regression: a hand-authored HTML file with bare body children (no
@@ -55,14 +55,14 @@ testIf(
       );
       const { url, close } = await serveDir(dir, "standalone-hand.html");
       try {
-        const browser = await getBrowser(RENDER_TEST_TIMEOUT_MS);
+        const browser = await getBrowser();
         const page = await browser.newPage();
         try {
           // Wide enough that every column of the fixture's one run sits
           // inside the viewport simultaneously — the check below must not
           // depend on scrolling to reach a later page.
           await page.setViewport({ width: 3000, height: 1200 });
-          await page.goto(url, { waitUntil: "networkidle0" });
+          await page.goto(url);
           await page.waitForFunction(
             "window.Gutterpress && window.Gutterpress.totalPages > 0"
           );
@@ -146,10 +146,10 @@ testIf(
           // second scale into the host's fit-width calculation.
           const zoom = await page.evaluate(() => {
             document.documentElement.style.setProperty("--gutterpress-zoom", "2");
-            const wide = getComputedStyle(document.body).zoom;
+            const wide = new DOMMatrixReadOnly(getComputedStyle(document.body).transform).a;
             return { wide, fitWide: document.body.style.getPropertyValue("--gutterpress-fit-zoom") };
           });
-          expect(parseFloat(zoom.wide)).toBeCloseTo(2, 2);
+          expect(zoom.wide).toBeCloseTo(2, 2);
           expect(zoom.fitWide).toBe("");
 
           await page.setViewport({ width: 320, height: 900 });
@@ -158,7 +158,7 @@ testIf(
             await new Promise((r) => setTimeout(r, 100));
             return {
               fit: document.body.style.getPropertyValue("--gutterpress-fit-zoom"),
-              zoom: parseFloat(getComputedStyle(document.body).zoom),
+              zoom: new DOMMatrixReadOnly(getComputedStyle(document.body).transform).a,
             };
           });
           expect(narrow.fit).toBe("");
@@ -191,11 +191,11 @@ testIf(
       );
       const { url, close } = await serveDir(dir, "named-page-runs.html");
       try {
-        const browser = await getBrowser(RENDER_TEST_TIMEOUT_MS);
+        const browser = await getBrowser();
         const page = await browser.newPage();
         try {
           await page.setViewport({ width: 3000, height: 1200 });
-          await page.goto(url, { waitUntil: "networkidle0" });
+          await page.goto(url);
           await page.waitForFunction(
             "window.Gutterpress && window.Gutterpress.totalPages > 0"
           );
@@ -248,11 +248,11 @@ testIf(
       );
       const { url, close } = await serveDir(dir, "canvas-bg.html");
       try {
-        const browser = await getBrowser(RENDER_TEST_TIMEOUT_MS);
+        const browser = await getBrowser();
         const page = await browser.newPage();
         try {
           await page.setViewport({ width: 1400, height: 1000 });
-          await page.goto(url, { waitUntil: "networkidle0" });
+          await page.goto(url);
           await page.waitForFunction(
             "window.Gutterpress && window.Gutterpress.totalPages > 0"
           );

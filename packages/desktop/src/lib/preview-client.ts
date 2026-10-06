@@ -12,7 +12,12 @@ export interface PreviewEvent {
     | "viewportChanged"
     | "sourceLineChanged"
     | "elementActivated"
-    | "contextMenuRequested";
+    | "contextMenuRequested"
+    | "blockEditRequested"
+    | "blockEditFinished"
+    | "blockEditStateChanged"
+    /** An Esc nothing in the book consumed (the app uses it to leave Focus). */
+    | "escapePressed";
   detail: {
     currentPage?: number;
     totalPages?: number;
@@ -29,11 +34,8 @@ export interface PreviewEvent {
     /** renderingComplete: acknowledged preview content revision. */
     revision?: number;
     /** renderingComplete: how the shell applied the update. Always
-     * `"full-reload"` — the incremental chapter splice was removed, and
-     * preview-shell.js has one mint site that hardcodes this. Kept as a field
-     * rather than dropped so the host can tell a shell that predates the
-     * change. (The file-watcher's own `chapter-splice` decision kind is a
-     * different, still-live type.) */
+     * `"full-reload"` — preview-shell.js has one mint site that hardcodes
+     * this. Kept as a field so the host can tell a shell that predates it. */
     updateMode?: "full-reload";
     /** elementActivated: clicked element id / tag, if any. */
     id?: string | null;
@@ -54,12 +56,18 @@ export interface PreviewEvent {
     link?: { href: string | null; text: string; source: InlineSourceToken | null } | null;
     /** contextMenuRequested: populated whenever a non-collapsed selection exists, regardless of `kind`. */
     selection?: ContextTargetSelection | null;
-    /** contextMenuRequested: viewport point the request was made at. */
+    /** contextMenuRequested / blockEditRequested: viewport point the request was made at. */
     x?: number;
-    /** contextMenuRequested: viewport point the request was made at. */
+    /** contextMenuRequested / blockEditRequested: viewport point the request was made at. */
     y?: number;
-    /** contextMenuRequested: how the menu was invoked. */
-    via?: "mouse" | "keyboard";
+    /** contextMenuRequested: how the menu was invoked. blockEditRequested: always "dblclick". */
+    via?: "mouse" | "keyboard" | "dblclick";
+    /** blockEditFinished: the block's edited markdown source, verbatim. */
+    text?: string | null;
+    /** blockEditFinished: true when the author committed (Cmd/Ctrl+Enter, blur) rather than cancelled. */
+    commit?: boolean;
+    /** blockEditStateChanged: whether an in-flow editor is now open. */
+    open?: boolean;
   };
 }
 
@@ -109,6 +117,28 @@ export interface ContextTarget {
   selection: ContextTargetSelection | null;
 }
 
+/**
+ * `beginBlockEdit()`'s result (protocol v8). `ok: false` with
+ * `reason: "unresolved"` means the range no longer matches a live block — it
+ * was deleted or moved since the target was captured — so the caller should
+ * drop the request rather than wait.
+ */
+export interface BlockEditStarted {
+  ok: boolean;
+  reason?: string;
+}
+
+/**
+ * `endBlockEdit()`'s result (protocol v8). `ended: false` means nothing was
+ * open (the call is idempotent). `text` is the block's edited markdown source,
+ * verbatim — it is NOT a rendered projection, so no serializer is involved.
+ */
+export interface BlockEditEnded {
+  ended: boolean;
+  text: string | null;
+}
+
+/** A heading from getOutline(). */
 /** Where a chapter the preview paginated starts - see getChapters(). */
 export interface ChapterStart {
   /** Source filename (data-chapter-src) of the chapter. */
@@ -117,7 +147,6 @@ export interface ChapterStart {
   page: number;
 }
 
-/** A heading from getOutline() — see ADR 0005. */
 export interface OutlineEntry {
   level: number;
   text: string;
@@ -146,16 +175,16 @@ export class PreviewClient {
   private listeners = new Set<(e: PreviewEvent) => void>();
   private win: Window | null = null;
   /**
-   * The exact origin `attach()`-ed messages are accepted from and posted to
-   * (M31, 2026-07-10 UX review). Pinned via `setExpectedOrigin()` — NOT read
-   * from the iframe's own `window.location`, which throws for a cross-origin
-   * frame (the preview iframe always is: http://127.0.0.1 inside app://).
-   * Null means "no origin pinned yet" and every message is rejected /
-   * `call()` refuses to send — fail closed, never fall back to `'*'`.
+   * The exact origin `attach()`-ed messages are accepted from and posted to.
+   * Pinned via `setExpectedOrigin()` — NOT read from the iframe's own
+   * `window.location`, which throws for a cross-origin frame (the preview
+   * iframe always is: http://127.0.0.1 inside app://). Null means "no origin
+   * pinned yet" and every message is rejected / `call()` refuses to send — fail
+   * closed, never fall back to `'*'`.
    */
   private expectedOrigin: string | null = null;
   /**
-   * Once true, `attach()` is a permanent no-op (M31). Set for URL-preview
+   * Once true, `attach()` is a permanent no-op. Set for URL-preview
    * mode, where the SAME PreviewFrame+Client loads an arbitrary third-party
    * page — that page must never be allowed to drive render state, page
    * counts, or toasts via a spoofed `gutterpress:event`/`gutterpress:reply` message.
@@ -165,7 +194,7 @@ export class PreviewClient {
 
   constructor() {
     this.handler = (e: MessageEvent) => {
-      // M31: only accept messages from the exact window this client is
+      // Only accept messages from the exact window this client is
       // attached to, at the exact origin pinned via setExpectedOrigin(). The
       // preview iframe is cross-origin by design, and in URL-preview mode
       // shows an arbitrary third-party page — without this check any page
@@ -192,7 +221,7 @@ export class PreviewClient {
 
   /**
    * Pin the exact origin this client will accept messages from / target with
-   * postMessage (M31). Callers know the iframe's destination URL up front
+   * postMessage. Callers know the iframe's destination URL up front
    * (PreviewFrame's `url` prop / +page.svelte's `previewUrl`/`currentUrl`)
    * well before the iframe's "load" event calls attach() — pass that URL
    * here first. A no-op after lockDown().
@@ -211,7 +240,7 @@ export class PreviewClient {
   }
 
   /**
-   * Permanently refuse to attach / exchange messages (M31). Call this instead
+   * Permanently refuse to attach / exchange messages. Call this instead
    * of attach() in URL-preview mode — the frame shows an arbitrary
    * third-party page, so the command/event bridge must never be wired up at
    * all, not merely restricted to an origin (a page can't be trusted to not
@@ -244,7 +273,7 @@ export class PreviewClient {
   }
 
   async call<T = unknown>(cmd: string, args: unknown[] = []): Promise<T> {
-    // M31: require a pinned origin, not just an attached window — never fall
+    // Require a pinned origin, not just an attached window — never fall
     // back to '*'. `setExpectedOrigin` must run before this can send.
     if (!this.win || !this.expectedOrigin) throw new Error("Preview frame not attached");
     const id = this.nextId++;
@@ -264,11 +293,12 @@ export class PreviewClient {
     });
   }
 
-  // ── ADR 0005 typed convenience wrappers ──────────────────────────────────
+  // ── Typed convenience wrappers ───────────────────────────────────────────
   // Thin sugar over call(); features compose these host-side so the lib bridge
   // never needs a feature-specific command.
 
-  /** Protocol version of the bundled lib bridge (feature-detect). 1 = pre-ADR-0005. */
+  /** Protocol version of the bundled lib bridge (feature-detect). 1 = a bridge
+   *  without this command. */
   async getProtocolVersion(): Promise<number> {
     try {
       return await this.call<number>("getProtocolVersion");
@@ -278,17 +308,17 @@ export class PreviewClient {
   }
 
   /** Heading tree with page + source line. */
-  getOutline(): Promise<OutlineEntry[]> {
-    return this.call<OutlineEntry[]>("getOutline");
-  }
-
   /**
    * The chapters the preview paginated, in book order, with the page each
-   * starts on. The outline above names only headings, so a chapter without
-   * one is absent from it; this names every source file in the book.
+   * starts on (protocol v9). The outline names only headings, so a chapter
+   * without one is absent from it; this names every source file in the book.
    */
   getChapters(): Promise<ChapterStart[]> {
     return this.call<ChapterStart[]>("getChapters");
+  }
+
+  getOutline(): Promise<OutlineEntry[]> {
+    return this.call<OutlineEntry[]>("getOutline");
   }
 
   /** Scroll the preview to a line / id / selector / page. */
@@ -306,6 +336,41 @@ export class PreviewClient {
     page: number;
   } | null> {
     return this.call("getVisibleSource");
+  }
+
+  /** Resolve the annotated element/selection at a viewport point (protocol v4, context menu). */
+  getContextTargetAt(point: { x: number; y: number }): Promise<ContextTarget> {
+    return this.call<ContextTarget>("getContextTargetAt", [point]);
+  }
+
+  /**
+   * Open the in-flow editor on one block (protocol v8, inline-editing plan
+   * §3.1). `text` is that block's markdown SOURCE, read host-side from the
+   * authoritative buffer — the book document never sources its own text.
+   * `caret` seats the caret near a click point, in iframe viewport
+   * coordinates. The editing surface is the block's own element, so there is
+   * no geometry to fetch and nothing to mask.
+   */
+  beginBlockEdit(spec: {
+    chapter: string;
+    range: SourceRange;
+    text: string;
+    caret?: { x: number; y: number };
+  }): Promise<BlockEditStarted> {
+    return this.call<BlockEditStarted>("beginBlockEdit", [spec]);
+  }
+
+  /**
+   * Close the in-flow editor and read back its text (protocol v8). Idempotent.
+   *
+   * Use this only for an end the HOST initiated (a dialog opening over the
+   * workspace). Ends the author initiates inside the book — Escape,
+   * Cmd/Ctrl+Enter, blur — arrive as the `blockEditFinished` event carrying the
+   * same text, because a keystroke in a cross-origin document is invisible
+   * here.
+   */
+  endBlockEdit(spec: { commit: boolean }): Promise<BlockEditEnded> {
+    return this.call<BlockEditEnded>("endBlockEdit", [spec]);
   }
 
   /** Read-only DOM extraction (figures, links, footnotes, search candidates…). */

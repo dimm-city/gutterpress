@@ -11,8 +11,8 @@
  * panel says nothing, and a build/export completes and PRINTS the garbage.
  *
  * Running the detection AS A CHECK is what closes that gap, exactly like
- * layout-markers.ts: no new IPC, no new UI — the desktop's `lint:project`
- * typed IPC channel already maps every `CheckResult` into the Problems panel
+ * layout-markers.ts: no new route, no new UI — the desktop's `lint/project`
+ * route already maps every `CheckResult` into the Problems panel
  * and the pre-export list, and the finding self-clears when the writer
  * resolves it.
  *
@@ -137,7 +137,7 @@ const check: Check = {
             // business to settle, not a broken build.
             severity: "warning",
             code: "kept-both-versions",
-            message: `Two versions of ${withoutOnlineTag(rel)} are in your project — keep the one you want, then delete the other.`,
+            message: `Two versions of ${withoutOnlineTag(rel)} are in your book — keep the one you want, then delete the other.`,
             file: sibling,
           }),
         );

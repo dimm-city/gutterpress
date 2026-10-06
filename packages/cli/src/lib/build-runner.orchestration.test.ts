@@ -21,9 +21,9 @@ import { getAssetPath } from "./embedded-assets.ts";
  * (shipRuntimePaginatedHtml): markdown -> book.html + index.html + fingerprint,
  * and the returned BuildRunnerResult shape. It runs unconditionally. An html
  * build never paginates in Chromium regardless of whether one is resolvable —
- * `rendersInPooledChromium()` in build-preflight.ts is
- * `format !== "html" && !opts.engineBrowser` — so there is no second code path
- * for a Chromium-present run to take, and nothing to gate on. This test was
+ * `runBuild` only starts a browser for `format !== "html"` — so there is no
+ * second code path for a Chromium-present run to take, and nothing to gate
+ * on. This test was
  * previously skipped whenever a Chromium resolved, which is every CI run.
  * The ICC-resolver tests below are pure and always run.
  */

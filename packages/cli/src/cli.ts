@@ -8,8 +8,8 @@ import { EXIT_CODES, rejectUnknownFlags, UsageError } from "./lib/cli-args.ts";
 
 // Subcommands are loaded lazily so `--version` and `--help` (and any single
 // subcommand) only pay the import cost of what they actually use — e.g.
-// puppeteer-core (the biggest dep) stays out of the startup path and only
-// loads on `build`/`preview`.
+// the engine compiler and its Chromium launcher stay out of the startup path
+// and only load on `build`/`preview`.
 const SUBCOMMANDS = {
   // Primary author commands:
   new: () => import("./commands/new").then((m) => m.default),
@@ -17,9 +17,7 @@ const SUBCOMMANDS = {
   build: () => import("./commands/build").then((m) => m.default),
   publish: () => import("./commands/publish").then((m) => m.default),
   // CI / advanced:
-  lint: () => import("./commands/lint").then((m) => m.default),
   validate: () => import("./commands/validate").then((m) => m.default),
-  audit: () => import("./commands/audit").then((m) => m.default),
   preflight: () => import("./commands/preflight").then((m) => m.default),
   doctor: () => import("./commands/doctor").then((m) => m.default),
   ext: () => import("./commands/ext").then((m) => m.default),

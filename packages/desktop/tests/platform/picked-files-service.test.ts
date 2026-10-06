@@ -60,7 +60,7 @@ test("TTL: an entry within ttlMs is still consumable", () => {
   expect(svc.consume("/a")).toBe(true);
 });
 
-// Regression (fix-round-1 review finding): dialog/pick-image-files enables
+// Regression: dialog/pick-image-files enables
 // `multiSelections`, so a single native-dialog bulk pick can register far
 // more than the default 64-entry cap in ONE register() call. The old
 // oldest-first eviction ran per-path against the fixed `maxEntries`, so

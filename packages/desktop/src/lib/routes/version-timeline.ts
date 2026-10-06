@@ -1,4 +1,4 @@
-import type { SnapshotEntry } from "$lib/platform/contract";
+import type { SnapshotEntry } from "$lib/api";
 
 /**
  * Writer-facing view helpers for the "Previous versions" timeline
@@ -6,7 +6,7 @@ import type { SnapshotEntry } from "$lib/platform/contract";
  * `message` string is the ONLY discriminator the renderer has. The machine
  * messages below are produced by the CLI lib and the vcs routes; they are
  * matched as LITERAL strings — never imported — both because the SPA never
- * value-imports the lib (§8 / ADR 0004) and because superseded spellings live
+ * value-imports the lib (§8) and because superseded spellings live
  * in existing project history forever, so every spelling ever shipped stays
  * listed. Anything unrecognized is a version the author saved by hand. Pure,
  * no runes — mirrors outline.ts / toc-tree.ts and is unit-tested directly.
@@ -55,11 +55,11 @@ export function versionKind(message: string): VersionKind {
 export function versionLabel(message: string): string {
   switch (versionKind(message)) {
     case "automatic":
-      return "Automatic backup";
+      return "Automatic version";
     case "combined":
-      return "Combined with the online copy";
+      return "Combined with the online backup";
     case "created":
-      return "Project created";
+      return "Book created";
     case "manual":
       return "Version saved by you";
   }
@@ -158,7 +158,7 @@ export function collapseAutomaticRuns(entries: SnapshotEntry[]): TimelineRow[] {
   return rows;
 }
 
-/** "Backed up automatically · 9:02 AM–1:14 PM · 84 times" (entries newest-first). */
+/** "Versions made automatically · 9:02 AM–1:14 PM · 84 times" (entries newest-first). */
 export function autoRunSummary(entries: SnapshotEntry[]): string {
   const at = (ms: number): string => {
     try {
@@ -170,5 +170,5 @@ export function autoRunSummary(entries: SnapshotEntry[]): string {
   const newest = at(entries[0]!.timestamp);
   const oldest = at(entries[entries.length - 1]!.timestamp);
   const span = oldest === newest ? newest : `${oldest}–${newest}`;
-  return `Backed up automatically · ${span} · ${entries.length} times`;
+  return `Versions made automatically · ${span} · ${entries.length} times`;
 }

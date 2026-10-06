@@ -8,9 +8,8 @@
  * Storage model mirrors {@link extension-manager.ts}:
  * the yaml `Document` API is used so existing comments + formatting round-trip
  * cleanly, and writes go to `manifest.yaml` — the ONE recognized filename
- * (`MANIFEST_FILENAMES`). This used to claim a `.yml` fallback; there is none.
- * Host-side (node:fs); the renderer reaches it through the `manifest:read`/
- * `manifest:setFields` typed IPC channels (`electron/api/manifest.ts`).
+ * (`MANIFEST_FILENAMES`); there is no `.yml` fallback.
+ * Host-side (node:fs); the renderer reaches it through SvelteKit server routes.
  *
  * Bundle-safe (CLAUDE.md §1/§3): no runtime package.json reads, no computed
  * dynamic imports, no bundlers.
@@ -112,9 +111,8 @@ export async function setManifestFields(
 /**
  * Read the author-facing manifest subset for the Config view's Details section.
  * Loads via the same shared {@link loadManifestDoc} every other manifest reader/
- * writer in this module uses (ARCH finding #25 — this used to re-implement
- * loadManifestDoc's read-and-parse inline) and surfaces empty/absent fields as
- * empty strings so the form inputs are editable.
+ * writer in this module uses and surfaces empty/absent fields as empty
+ * strings so the form inputs are editable.
  */
 export async function readManifestFields(projectDir: string): Promise<ProjectConfigFields> {
   try {

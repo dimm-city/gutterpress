@@ -207,13 +207,13 @@ describe("planImageCopies", () => {
     const { copies, errors } = await planImageCopies(dir, ["file:///etc/passwd"]);
     expect(copies).toEqual([]);
     expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain("must be relative to the project");
+    expect(errors[0]).toContain("must be relative to the book folder");
   });
 
   test("rejects a reference that escapes the project, with actionable advice", async () => {
     const { errors } = await planImageCopies(dir, ["../outside/a.png"]);
     expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain("outside the project");
+    expect(errors[0]).toContain("outside the book folder");
   });
 
   test("rejects an absolute reference", async () => {
@@ -447,7 +447,7 @@ describe("collectStyleDependencies", () => {
   });
 });
 
-// ── 2026-07-29 audit: a bare startsWith("..") over-rejects ───────────────────
+// ── a bare startsWith("..") over-rejects ─────────────────────────────────────
 //
 // The escape test was `path.relative(projectDir, abs).startsWith("..")`, which
 // also matches a legitimate project-root file whose NAME begins with two dots
@@ -476,7 +476,7 @@ test("planImageCopies still rejects a real parent-directory escape", async () =>
     const { copies, errors } = await planImageCopies(book, ["../outside.png"]);
     expect(copies).toEqual([]);
     expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain("outside the project");
+    expect(errors[0]).toContain("outside the book folder");
   } finally {
     await rm(base, { recursive: true, force: true });
   }

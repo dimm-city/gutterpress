@@ -9,7 +9,7 @@
  * themselves first — `gutterpress publish` has no build flag of its own, and the
  * desktop's export flow builds via its own Save-PDF pipeline before handing the
  * chosen path to this module as an explicit `artifactPath`. This keeps
- * puppeteer-core out of the publish path (CLAUDE.md §2).
+ * the engine (and its Chromium launcher) out of the publish path (CLAUDE.md §2).
  */
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
@@ -241,10 +241,10 @@ async function htmlDirIssues(dir: string): Promise<PreflightIssue[]> {
       severity: "warning",
       id: "publish/html-dir-extras",
       // This check is shared by every "publish an html export directory"
-      // provider (originally azure-swa alone; gdrive's zip-upload joined in
-      // Phase 3) — the wording must hold for BOTH "deployed as a live site"
-      // and "zipped and uploaded" without assuming either one specifically,
-      // rather than being fixed here per new consumer.
+      // provider (azure-swa and gdrive's zip-upload) — the wording must hold
+      // for BOTH "deployed as a live site" and "zipped and uploaded" without
+      // assuming either one specifically, rather than being fixed here per new
+      // consumer.
       message:
         `${dir} also contains ${extras.join(" and ")} — everything in the folder gets bundled and published along with the website. ` +
         "Use a dedicated output folder for the website (gutterpress build --format html --out <dir>) if that isn't intended.",

@@ -1,6 +1,6 @@
 /**
  * Google Drive REST client for the `gdrive` publish provider (#221,
- * docs/gdrive-publish-plan.md D7). Plain `fetch` (injected — no SDK, per the
+ * ADR 0011). Plain `fetch` (injected — no SDK, per the
  * ratified D7 decision), wrapped in the shared `withFetchTimeout` /
  * `FriendlyHttpError` policy (../fetch-timeout.ts) exactly like
  * `providers/shopify.ts`. No module-level state — every function takes the

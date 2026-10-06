@@ -1,20 +1,17 @@
 /**
- * The CLI's exit-code contract (UX finding M47) — ONE place the numbers are
+ * The CLI's exit-code contract — ONE place the numbers are
  * defined. Every command's process exit code means the same thing across
- * `build`/`preview`/`lint`/`validate`/`preflight`/`audit`/`repair`/`publish`/
- * `new`, so CI can branch on it without parsing output:
+ * `build`/`preview`/`validate`/`preflight`/`publish`/`ext`/`new`/`doctor`,
+ * so CI can branch on it without parsing output:
  *
  *   0  OK        — clean run, nothing to fix.
  *   1  FINDINGS  — the command completed but reported findings/validation
- *                  failures (validate/preflight/audit findings, a build's
+ *                  failures (validate/preflight findings, a build's
  *                  quality-gate rejection). The invocation itself was fine;
- *                  the content wasn't. Standalone `gutterpress lint` uses this
- *                  code for CSS lint failures too. `gutterpress build`'s CSS
- *                  print-safety check (`source.stylelint`) now runs as one
- *                  of pre-build validation's checks (#272 — one CSS gate,
- *                  not two) and fails the build through this same code; the
- *                  `build` pipeline's former separate CSS-lint gate, and its
- *                  own exit code 2, are gone.
+ *                  the content wasn't. `gutterpress build`'s CSS
+ *                  print-safety check (`source.stylelint`) runs as one of
+ *                  pre-build validation's checks (#272 — one CSS gate, not
+ *                  two) and fails the build through this same code.
  *   2  USAGE     — the invocation itself was wrong: a bad flag, positional,
  *                  preset, or value. See {@link UsageError} in ./cli-args.ts.
  *   3  PIPELINE  — the build/render/export pipeline failed for a reason

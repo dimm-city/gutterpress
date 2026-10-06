@@ -25,6 +25,7 @@ import {
   findEnclosingRepoDir,
 } from "./project-source.ts";
 import { createFileLogger } from "./remote-auth/operation-log.ts";
+import { PLUGINS_DIR, VENDORED_NPM_DIR } from "./plugin-vendor.ts";
 
 const noopLogger: { debug(): void; info(): void; warn(): void; error(): void } = {
   debug: () => {},
@@ -158,7 +159,7 @@ const SNAPSHOT_STAGING_MARKER = "gutterpress-snapshot-staging";
 // the same `.git` (e.g. an auto-snapshot racing a user-initiated restore)
 // interleave index/ref writes and can corrupt the repository. Every public
 // operation on a project dir is therefore serialized through a simple promise
-// chain keyed on the resolved dir. ADR 0006 D2 requires this same queue for
+// chain keyed on the resolved dir. this same queue for
 // the future fetch/push surface (#15/#16), so keep it here, not in callers.
 const repoQueues = new Map<string, Promise<unknown>>();
 
@@ -183,7 +184,7 @@ function repoLockKey(projectDir: string): string {
 /**
  * Run `fn` exclusively per resolved project dir (FIFO promise chaining).
  * Exported for the remote-clone surface (#15) so clone/fetch operations share
- * the SAME queue as snapshot/restore — ADR 0006 D2 requires one per-repo lock.
+ * the SAME queue as snapshot/restore — one per-repo lock.
  */
 export function withRepoLock<T>(projectDir: string, fn: () => Promise<T>): Promise<T> {
   const key = repoLockKey(projectDir);
@@ -198,9 +199,9 @@ export function withRepoLock<T>(projectDir: string, fn: () => Promise<T>): Promi
   );
   repoQueues.set(key, tail);
   // Reclaim the entry once this tail settles IF nothing newer was chained after
-  // it (audit B4). Without this, `repoQueues` kept one permanent entry per
+  // it. Without this, `repoQueues` keeps one permanent entry per
   // distinct project dir ever opened for the life of a long-running host. The
-  // identity guard is the same pattern browser-pool.ts uses: a concurrent
+  // identity guard is the usual promise-cache pattern: a concurrent
   // withRepoLock for the same key replaces the map value, so `get(key) === tail`
   // is only true when this was the last queued op. A still-queued op holds its
   // OWN `prev` reference captured above, so deleting the map entry never affects
@@ -210,6 +211,20 @@ export function withRepoLock<T>(projectDir: string, fn: () => Promise<T>): Promi
     if (repoQueues.get(key) === tail) repoQueues.delete(key);
   });
   return run;
+}
+
+/**
+ * Resolve once NO git operation is queued or running on any repo — including
+ * ones chained while waiting. The desktop host awaits this before quitting so
+ * an exit snapshot, backup or merge finishes instead of being killed between
+ * its object and ref writes. Never rejects.
+ */
+export async function whenGitIdle(): Promise<void> {
+  while (repoQueues.size > 0) {
+    await Promise.all(repoQueues.values());
+    // Let the settle handlers above reclaim their entries before re-checking.
+    await Promise.resolve();
+  }
 }
 
 /**
@@ -366,7 +381,7 @@ export async function stageChanges(
 /**
  * True when the working tree differs from the index (added/modified/deleted
  * files). Used to skip empty snapshots. Exported (lock-free) for the sync
- * surface (#15, ADR 0006 D5) — callers outside a lock should prefer the
+ * surface (#15) — callers outside a lock should prefer the
  * provider operations.
  */
 export async function hasPendingChanges(
@@ -386,8 +401,7 @@ export async function hasPendingChanges(
  * sync-check path per the sync-simplicity mandate): this is for build
  * *provenance* — the build fingerprint records whether the tree was clean at
  * build time, where a `git add`-ed-but-not-committed change must still count
- * as dirty (the old `git status --porcelain` fingerprint reported it; the
- * WORKDIR-vs-STAGE-only check silently dropped it).
+ * as dirty (the WORKDIR-vs-STAGE-only check silently drops it).
  */
 export async function hasUncommittedChanges(
   dir: string,
@@ -467,7 +481,7 @@ class LocalFolderSourceProvider implements SourceProvider {
     // source must still never nest a repo.
     if ((await findEnclosingRepoDir(dir)) !== undefined) {
       throw new Error(
-        "This folder is already inside a versioned project, so gutterpress " +
+        "This folder is already inside a versioned book, so gutterpress " +
           "won't create a separate history here.",
       );
     }
@@ -496,7 +510,7 @@ class LocalFolderSourceProvider implements SourceProvider {
   snapshot(): Promise<SnapshotEntry> {
     return Promise.reject(
       new Error(
-        "This project has no version history yet. Enable version history first.",
+        "This book has no version history yet. Enable version history first.",
       ),
     );
   }
@@ -512,7 +526,7 @@ class LocalFolderSourceProvider implements SourceProvider {
   restore(): Promise<void> {
     return Promise.reject(
       new Error(
-        "This project has no version history yet. Enable version history first.",
+        "This book has no version history yet. Enable version history first.",
       ),
     );
   }
@@ -570,7 +584,7 @@ class LocalGitSourceProvider implements SourceProvider {
    * LOCK-FREE by design: `git.log` is a pure read (refs resolved once, then
    * an object walk over immutable commits/trees), so it can never corrupt
    * the repo and doesn't need the per-repo write queue. Taking the lock here
-   * used to queue the History dialog behind a running auto-snapshot of a
+   * would queue the History dialog behind a running auto-snapshot of a
    * large working tree — a multi-second stall for a read-only view.
    */
   async listHistoryPage(
@@ -646,7 +660,7 @@ class LocalGitSourceProvider implements SourceProvider {
 /**
  * Lock-free snapshot of the full working tree (stage everything + commit).
  *
- * Exported for the sync surface (#15, ADR 0006 D5): `syncProject` holds
+ * Exported for the sync surface (#15): `syncProject` holds
  * the per-repo lock for snapshot → fetch → merge → push as ONE sequence, so it
  * needs the lock-free internal rather than `provider.snapshot()` (taking the
  * per-method lock inside the sync lock would deadlock the FIFO queue).
@@ -743,6 +757,47 @@ export function isNoChangesError(e: unknown): boolean {
   return e instanceof Error && /no changes since the last snapshot/i.test(e.message);
 }
 
+/** What "Save a version" would capture in the open book right now. */
+export interface UnversionedChanges {
+  /**
+   * Files of THIS book (its folder inside the repo) that changed since the
+   * last version — writer work only: app-written files (the vendored plugin
+   * folder) are not counted.
+   */
+  changedFiles: number;
+  /**
+   * A previous version attempt died after staging (its crash marker is still
+   * present), so the index may hold work HEAD doesn't have even when the
+   * working tree looks clean. The count can't be trusted to be 0 then.
+   */
+  stale: boolean;
+}
+
+/**
+ * How many files of the open book changed since the last version (snapshot).
+ * `null` when the project has no version history (a plain folder). Uses the
+ * same workdir-vs-index walk a snapshot uses to decide "nothing new to save".
+ * A book inside a larger repo (`subPath`) is counted on its own folder only.
+ * Queued behind the repo lock so it never reads the index mid-snapshot;
+ * otherwise a lock-free walk that reads no history.
+ */
+export async function countUnversionedChanges(
+  projectDir: string,
+): Promise<UnversionedChanges | null> {
+  const source = await detectProjectSource(projectDir);
+  if (source.type !== "local-git-folder") return null;
+  const dir = gitScopeFor(source);
+  const bookPrefix = source.subPath ? `${source.subPath.replace(/\/+$/, "")}/` : "";
+  const appWritten = `${bookPrefix}${PLUGINS_DIR}/${VENDORED_NPM_DIR}/`;
+  return withRepoLock(dir, async () => {
+    const { adds, removes } = await listWorkdirChanges(dir);
+    const mine = new Set(
+      [...adds, ...removes].filter((f) => f.startsWith(bookPrefix) && !f.startsWith(appWritten)),
+    );
+    return { changedFiles: mine.size, stale: fs.existsSync(snapshotStagingMarkerPath(dir)) };
+  });
+}
+
 /**
  * Select the {@link SourceProvider} implementation for a classified source.
  * `managed-github` (#15/#16) is not implemented yet — it throws if reached.
@@ -755,7 +810,7 @@ export function providerFor(source: ProjectSource): SourceProvider {
       return new LocalGitSourceProvider(source);
     case "managed-github":
       throw new Error(
-        "Managed GitHub projects are not supported yet (#15/#16).",
+        "Managed GitHub books are not supported yet (#15/#16).",
       );
   }
 }
@@ -829,7 +884,7 @@ export async function restoreVersionWithBackup(
   const source = await detectProjectSource(projectDir);
   if (source.type !== "local-git-folder") {
     throw new Error(
-      "This project has no version history yet. Enable version history first.",
+      "This book has no version history yet. Enable version history first.",
     );
   }
   const provider = new LocalGitSourceProvider(source);
@@ -860,7 +915,7 @@ export async function restoreVersionWithBackup(
           ? "The restore could not be completed, but your work is safe — it was " +
             `automatically saved as a backup snapshot (${backupId.slice(0, 7)}) ` +
             "and appears in your version history."
-          : "The restore could not be completed. Your project files were not changed.",
+          : "The restore could not be completed. Your book files were not changed.",
         { cause },
       );
     }
@@ -974,8 +1029,7 @@ export async function listLocalBranches(dir: string): Promise<LocalBranches | nu
  * `resolveRef`'s search path is `<ref>`, `refs/<ref>`, `refs/tags/<ref>`,
  * `refs/heads/<ref>`, `refs/remotes/<ref>`, `refs/remotes/<ref>/HEAD` — note
  * that it never reaches `refs/remotes/<remote>/<ref>`. A copy that has only
- * ever existed online therefore has to be looked up per-remote, which is the
- * lookup the copy picker used to be missing.
+ * ever existed online therefore has to be looked up per-remote.
  */
 async function resolveCopy(
   repoDir: string,
@@ -1071,7 +1125,7 @@ export async function switchBranch(
   const source = await detectProjectSource(projectDir);
   if (source.type !== "local-git-folder") {
     throw new Error(
-      "This project has no version history yet. Enable version history first.",
+      "This book has no version history yet. Enable version history first.",
     );
   }
   const repoDir = gitScopeFor(source);

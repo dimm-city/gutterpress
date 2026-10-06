@@ -1,6 +1,6 @@
 /**
  * Google OAuth loopback+PKCE auth provider for the `gdrive` publish provider
- * (#221, docs/gdrive-publish-plan.md D2/D3).
+ * (#221, ADR 0011).
  *
  * OAuth 2.0 authorization-code flow for installed apps: bind an ephemeral
  * `node:http` listener on `127.0.0.1`, open the system browser at
@@ -23,7 +23,7 @@
  *   1. OAuth consent screen (External), ONE scope:
  *        https://www.googleapis.com/auth/drive.file
  *      `drive.file` is Google's *non-sensitive* tier (confirmed against a
- *      real account, docs/gdrive-publish-plan.md Appendix B P13) — no
+ *      real account, ADR 0011) — no
  *      restricted-scope verification, no CASA assessment. Not `openid`/
  *      `email` alongside it: the account email comes from Drive's about.get,
  *      and a second scope makes the consent screen granular (see

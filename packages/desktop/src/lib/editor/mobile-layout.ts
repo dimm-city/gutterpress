@@ -13,8 +13,8 @@
  */
 
 /** The responsive breakpoint (px). At/below this width the workspace collapses
- * to a single column with a Markdown/CSS/Preview tab bar; above it the existing
- * side-by-side split is used. Matches the historical NARROW_QUERY (820px). */
+ * to a single column with a Markdown/Preview tab bar; above it the
+ * side-by-side split is used. */
 export const NARROW_BREAKPOINT = 820;
 
 /** Workspace layout mode derived purely from the viewport width. */
@@ -45,9 +45,8 @@ export function isNarrowWidth(
 
 /**
  * The two tabs shown in the single-column mobile layout: "markdown" surfaces
- * the editor pane, "preview" the live preview pane. (A third "css"/style tab
- * used to sit between them; it was retired with the toolbar refactor —
- * project styling lives in the full-screen Project settings view now.)
+ * the editor pane, "preview" the live preview pane. Project styling lives in
+ * the full-screen Book settings view, not a tab here.
  */
 export type MobileTab = "markdown" | "preview";
 

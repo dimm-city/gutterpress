@@ -502,10 +502,6 @@ describe("routeToolbarAction", () => {
     });
   });
 
-  test("page-break routes as a layout insertion, not a plain EditorCommand", () => {
-    expect(routeToolbarAction("page-break")).toEqual({ kind: "layout", layout: "page-break" });
-  });
-
   test("layout-block routes using the payload's kind", () => {
     expect(routeToolbarAction("layout-block", { kind: "spread" })).toEqual({ kind: "layout", layout: "spread" });
   });
@@ -518,9 +514,8 @@ describe("routeToolbarAction", () => {
     expect(routeToolbarAction("image")).toEqual({ kind: "image" });
   });
 
-  test("snippet and focus-mode are unsupported here (handled at the page level before routing)", () => {
+  test("snippet is unsupported here (handled at the page level before routing)", () => {
     expect(routeToolbarAction("snippet")).toEqual({ kind: "unsupported" });
-    expect(routeToolbarAction("focus-mode")).toEqual({ kind: "unsupported" });
   });
 });
 

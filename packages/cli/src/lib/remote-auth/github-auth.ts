@@ -1,5 +1,5 @@
 /**
- * GitHub device-flow auth provider (#15, ADR 0006 D1/D3 layer 3).
+ * GitHub device-flow auth provider (#15).
  *
  * OAuth Device Authorization Grant against a registered OAuth App: POST the
  * PUBLIC client id (plus `scope: "repo"`) to `login/device/code`, surface the
@@ -26,7 +26,7 @@ export interface DeviceCodeInfo {
   interval: number;
 }
 
-/** Host-supplied callbacks for the interactive connect flow (ADR 0006 D3). */
+/** Host-supplied callbacks for the interactive connect flow. */
 export interface HostCallbacks {
   /** Called once with the code/URL so the UI can display them. */
   onUserCode(info: DeviceCodeInfo): void;
@@ -37,9 +37,8 @@ export interface HostCallbacks {
 /**
  * Default client id for the registered "gutterpress" OAuth App (registered
  * 2026-06-10 under the dimm-city org; switched from the original GitHub App
- * the same day — see ADR 0006 D1 amendment). Client IDs are public by design
- * (ADR 0006 D1); never put a client SECRET anywhere in this codebase — the
- * device flow needs none.
+ * the same day). Client IDs are public by design; never put a client SECRET
+ * anywhere in this codebase — the device flow needs none.
  *
  * Registration settings the app relies on (release blocking if the app is
  * ever re-registered):
@@ -51,8 +50,7 @@ export interface HostCallbacks {
  *
  * There is no token-expiration concept to configure: OAuth device-flow
  * tokens (`gho_…`) are long-lived by default and revocable by the user from
- * GitHub → Settings → Applications. (The old GitHub-App "user-to-server
- * token expiration" foot-gun no longer applies.)
+ * GitHub → Settings → Applications.
  *
  * Override order: explicit option → GUTTERPRESS_GITHUB_CLIENT_ID env var → this
  * default (see {@link resolveGitHubClientId}). The env var exists so a
@@ -66,7 +64,7 @@ const DEFAULT_GITHUB_CLIENT_ID = "Ov23lijTeMEmkkZW2Mlt";
 /**
  * OAuth scope requested in the device flow. `repo` grants read/write to every
  * repository the user can access (public + private) — accepted as the
- * trade-off for the zero-install UX (ADR 0006 D1 amendment, 2026-06-10).
+ * trade-off for the zero-install UX.
  */
 const GITHUB_OAUTH_SCOPE = "repo";
 
@@ -90,7 +88,7 @@ const ACCESS_TOKEN_URL = "https://github.com/login/oauth/access_token";
 const API_BASE = "https://api.github.com";
 const REQUEST_TIMEOUT_MS = 15_000;
 
-/** Author-friendly message for connectivity failures (ADR 0006 D7). */
+/** Author-friendly message for connectivity failures. */
 export const OFFLINE_MESSAGE =
   "Couldn't reach GitHub. Check your connection and try again.";
 
@@ -144,7 +142,7 @@ interface TokenPollResponse {
   interval?: number;
 }
 
-/** GitHub device-flow credential acquisition (ADR 0006 D1). */
+/** GitHub device-flow credential acquisition. */
 export class GitHubAuthProvider {
   private readonly clientId: string;
   private readonly fetchImpl: typeof fetch;

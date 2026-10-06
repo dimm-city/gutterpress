@@ -35,8 +35,7 @@ const check: Check = {
         // silent skip (#272) — this is now the ONLY CSS print-safety gate a
         // build runs, so a missing/unreadable file must fail loudly here
         // rather than let the build report "validated" having inspected
-        // nothing. Mirrors lint-runner.ts's own unreadable-stylesheet
-        // handling.
+        // nothing.
         results.push({
           checkId: check.id,
           severity: "error",

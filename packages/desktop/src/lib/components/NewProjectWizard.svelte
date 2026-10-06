@@ -1,16 +1,9 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
-  import { isDesktop } from "$lib/platform";
-  import { getDoctorDiagnostics } from "$lib/doctor/doctor-capability";
-  import { tplListBuiltIn, tplListCustom, tplImportFromFolder } from "$lib/project-config/project-config-capability";
-  import type { TemplateInfo } from "$lib/platform/dtos";
-  import {
-    getDesktopPrefs,
-    setDesktopPrefs,
-    createProject,
-  } from "$lib/app-lifecycle/app-lifecycle-capability";
-  import { openDirectory } from "$lib/files/files-capability";
-  import { dialogBehavior, guardedClose } from "$lib/dialog";
+  import { api } from "$lib/api";
+  import type { TemplateInfo } from "$lib/api";
+  import { dialogBehavior, guardedClose, FOCUSABLE } from "$lib/dialog";
   import { useSettings } from "$lib/settings.svelte";
   import {
     PUBLISH_TARGET_CHOICES,
@@ -19,10 +12,9 @@
     toolGapMessage,
   } from "$lib/publish-targets";
 
-  // L4: `open` used to also be an external `$bindable` prop (`bind:open`),
-  // but the host never reads it — the ONLY open protocol is the imperative
-  // `show()` below (reset + template-load + focus work the write-only
-  // binding would silently skip if flipped directly). Purely internal state.
+  // `open` is purely internal state, not a `$bindable` prop: the ONLY open
+  // protocol is the imperative `show()` below (reset + template-load + focus
+  // work a binding would silently skip if flipped directly).
   let open = $state(false);
 
   let {
@@ -41,8 +33,12 @@
     triggerEl?: HTMLButtonElement | undefined;
   } = $props();
 
-  // Single screen (UX audit P3#10): name, author, preset, template, folder and
-  // history are one short form — no Continue/Back step split.
+  // Three short steps (#312): as one screen, the template, print target and
+  // publish targets (ADR 0008) push Create below the fold. The footer stays
+  // pinned, and each step owns the validation for its own fields.
+  const STEPS = ["Name & author", "Template", "Print & save"];
+  const LAST_STEP = STEPS.length - 1;
+  let step = $state(0);
   let name = $state("");
   let author = $state("");
   let parentDir = $state<string | null>(null);
@@ -146,14 +142,13 @@
     checkedTargets = base.includes(id) ? base.filter((t) => t !== id) : [...base, id];
   }
 
-  // qpdf/Ghostscript availability on this computer (from the same
-  // diagnostics data the Help tab shows), for the can't-build-compliant-PDFs
-  // note below. Best-effort: a failed probe just shows no note.
+  // qpdf/Ghostscript availability on this computer (from the same /api/doctor
+  // data Troubleshooting → Diagnostics shows), for the can't-build-compliant-PDFs note below.
+  // Best-effort: a failed probe just shows no note.
   let missingTools = $state<string[]>([]);
   async function loadToolStatus(): Promise<void> {
-    if (!isDesktop()) return;
     try {
-      const doctor = await getDoctorDiagnostics();
+      const doctor = await api.doctor();
       missingTools = (doctor.tools ?? [])
         .filter((t) => !t.found && PRINT_TOOL_IDS.includes(t.id))
         .map((t) => t.id);
@@ -162,7 +157,7 @@
     }
   }
   // The explanation for tools a CHECKED destination needs but this computer
-  // lacks — shared verbatim with project settings.
+  // lacks — shared verbatim with book settings.
   let targetToolGap = $derived(
     toolGapMessage(missingToolsForTargets(effectiveTargets, missingTools))
   );
@@ -171,8 +166,8 @@
   let templates = $state<TemplateInfo[]>([]);
   let selectedTemplate = $state<TemplateInfo | null>(null);
   let importing = $state(false);
-  // M20: a failed listBuiltIn() call used to catch into `templates = []`,
-  // which silently omits the whole "Start from a template" radiogroup — a
+  // A failed listBuiltIn() call must not catch into `templates = []`, which
+  // silently omits the whole "Start from a template" radiogroup — a
   // writer never learns templates exist and creates a bare default book.
   // Tracked separately from `error` (the create-flow error) so a template
   // load failure can render its own Retry without touching the create form.
@@ -183,10 +178,10 @@
   async function loadTemplates() {
     templatesError = null;
     try {
-      const builtins = await tplListBuiltIn();
+      const builtins = await api.tpl.listBuiltIn();
       let customs: TemplateInfo[] = [];
       try {
-        customs = await tplListCustom();
+        customs = await api.tpl.listCustom();
       } catch {
         customs = [];
       }
@@ -220,11 +215,10 @@
   }
 
   async function importTemplate() {
-    if (!isDesktop()) return;
     importing = true;
     error = null;
     try {
-      const imported = await tplImportFromFolder();
+      const imported = await api.tpl.importFromFolder();
       if (imported) {
         await loadTemplates();
         selectTemplate(templates.find((t) => t.id === imported.id) ?? imported);
@@ -268,6 +262,7 @@
   let canCreate = $derived(nameValid && !!parentDir && presetValid && !creating);
 
   function reset() {
+    step = 0;
     name = "";
     // Prefilled from the author's own name setting below (loadAuthorDefault).
     author = "";
@@ -310,11 +305,11 @@
   }
 
   /**
-   * Default `parentDir` to a sensible writable location (M21) instead of
+   * Default `parentDir` to a sensible writable location instead of
    * leaving Create dead behind a mandatory native folder picker. Priority:
    *
    *   1. the parent folder the writer last chose HERE (persisted in desktop
-   *      prefs under `newProjectParentDir` — `setDesktopPrefs`/`getDesktopPrefs`
+   *      prefs under `newProjectParentDir` — `api.app.set/getDesktopPrefs`
    *      already exist and merge shallowly, so this needs no new route);
    *   2. the folder containing the most recently opened project
    *      (`lastProjectDir`, already returned — and existence-checked — by
@@ -324,14 +319,13 @@
    *
    * A true first-run default (an OS Documents folder via the host's
    * `defaultProjectSearchRoots()`, already used by discover-projects) needs
-   * a renderer-reachable IPC channel that does not exist yet — out of scope
-   * here (no new `electron/api/*.ts` handlers in this change); (1)/(2) cover
-   * every returning writer, which is the common case.
+   * a renderer-reachable route that does not exist yet — out of scope here
+   * (no new `src/routes/api/**` files in this change); (1)/(2) cover every
+   * returning writer, which is the common case.
    */
   async function loadDefaultParentDir() {
-    if (!isDesktop()) return;
     try {
-      const prefs = await getDesktopPrefs();
+      const prefs = await api.app.getDesktopPrefs();
       // The writer may have already used "Choose folder…" while this was in
       // flight — never clobber a choice they already made.
       if (parentDir) return;
@@ -362,12 +356,12 @@
   }
 
   /**
-   * M19 — mid-create dismissal guard: `guardedClose` makes this a no-op
-   * while `creating` is true, so the backdrop click, the header close
-   * button, AND Escape (routed through `dialogBehavior`'s `onClose`) can no
-   * longer dismiss the dialog out from under an in-flight create() — which
-   * used to keep running and silently open (or fail to open) a project the
-   * writer had visibly dismissed.
+   * Mid-create dismissal guard: `guardedClose` makes this a no-op while
+   * `creating` is true, so the backdrop click, the header close button, AND
+   * Escape (routed through `dialogBehavior`'s `onClose`) can't dismiss the
+   * dialog out from under an in-flight create() — which would keep running
+   * and silently open (or fail to open) a project the writer had visibly
+   * dismissed.
    */
   const close = guardedClose(() => {
     open = false;
@@ -376,24 +370,56 @@
   }, () => creating);
 
   async function chooseLocation() {
-    if (!isDesktop()) {
-      error = "Creating a project needs the desktop app.";
-      return;
-    }
     error = null;
     try {
-      const pathStr = await openDirectory();
+      const pathStr = await api.dialog.openDirectory();
       if (pathStr) parentDir = pathStr;
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     }
   }
 
-  async function create() {
-    if (!isDesktop()) {
-      error = "Creating a project needs the desktop app.";
+  let bodyEl: HTMLElement | undefined = $state();
+
+  /**
+   * Move to another step. The control that held focus (the title field after
+   * Enter, the Back button) unmounts with its step, which would drop focus out
+   * of the modal — past its Escape and Tab handling — so focus lands on the
+   * new step's selected card, or else its first control.
+   */
+  async function goTo(target: number): Promise<void> {
+    error = null;
+    step = target;
+    await tick();
+    const selected = bodyEl?.querySelector<HTMLElement>("input[type=radio]:checked");
+    (selected ?? bodyEl?.querySelector<HTMLElement>(FOCUSABLE))?.focus();
+  }
+
+  function next(): void {
+    // The title is the one field before the last step with a validity rule
+    // (Create checks the rest), so it alone gates step 1 — and says why here.
+    if (step === 0 && !nameValid) {
+      error = name.trim()
+        ? "The title needs at least one letter or number."
+        : "Give your book a title to continue.";
+      bodyEl?.querySelector<HTMLElement>("#np-name")?.focus();
       return;
     }
+    void goTo(step + 1);
+  }
+
+  function back(): void {
+    void goTo(step - 1);
+  }
+
+  /** Enter in a step-1 field means Next — Create lives on the last step. */
+  function advanceOnEnter(e: KeyboardEvent): void {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    next();
+  }
+
+  async function create() {
     if (!parentDir) {
       error = "Choose where to save your book first.";
       return;
@@ -402,7 +428,7 @@
     error = null;
     try {
       const tpl = selectedTemplate;
-      const result = await createProject({
+      const result = await api.app.createProject({
         name: name.trim(),
         author: author.trim() || undefined,
         parentDir,
@@ -422,10 +448,10 @@
           selectedPreset === "custom" && customPagePoints ? customPagePoints : undefined,
         versionHistory: useVersionHistory ? "local-git" : "none",
       });
-      // Remember this location as the default next time (M21) — best-effort,
+      // Remember this location as the default next time — best-effort,
       // never blocks the create flow.
-      if (parentDir) void setDesktopPrefs({ newProjectParentDir: parentDir }).catch(() => {});
-      // `close` is guarded on `creating` (M19) — clear it BEFORE calling
+      if (parentDir) void api.app.setDesktopPrefs({ newProjectParentDir: parentDir }).catch(() => {});
+      // `close` is guarded on `creating` — clear it BEFORE calling
       // close() here, or the guard would treat this as still-in-flight and
       // no-op the close. Successful create goes through close() like every
       // other dismiss path, so the onClosed/triggerEl focus-restore contract
@@ -464,203 +490,222 @@
       <button class="dlg-close" onclick={close} disabled={creating} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
     </header>
 
-    <div class="dialog-body">
-      <p class="lead">Let's set up your book. You can change any of this later.</p>
+    <ol class="steps" aria-label="New book steps">
+      {#each STEPS as label, i (label)}
+        <li class:done={step > i} class:current={step === i} aria-current={step === i ? "step" : undefined}>
+          <span class="step-dot">{#if step > i}<Icon name="check" size={12} /><span class="dlg-sr-only">Completed:</span>{:else}{i + 1}{/if}</span>
+          <span class="step-label">{label}</span>
+        </li>
+      {/each}
+    </ol>
 
-      <label class="field" for="np-name">
-        <span>What's your book called?</span>
-        <input
-          id="np-name"
-          bind:value={name}
-          type="text"
-          placeholder="My First Book"
-          autocomplete="off"
-          spellcheck="false"
-          onkeydown={(e) => { if (e.key === "Enter" && canCreate) { e.preventDefault(); void create(); } }}
-        />
-      </label>
+    <div class="dialog-body" bind:this={bodyEl}>
+      {#if step === 0}
+        <p class="lead">Let's set up your book. You can change any of this later.</p>
 
-      <label class="field" for="np-author">
-        <span>Who's writing it? <em class="optional">(optional)</em></span>
-        <input
-          id="np-author"
-          bind:value={author}
-          type="text"
-          placeholder="Your name"
-          autocomplete="off"
-          onkeydown={(e) => { if (e.key === "Enter" && canCreate) { e.preventDefault(); void create(); } }}
-        />
-      </label>
+        <label class="field" for="np-name">
+          <span>What's your book called?</span>
+          <input
+            id="np-name"
+            bind:value={name}
+            type="text"
+            placeholder="My First Book"
+            autocomplete="off"
+            spellcheck="false"
+            oninput={() => (error = null)}
+            onkeydown={advanceOnEnter}
+          />
+        </label>
 
-      <!-- The template comes FIRST: it is the decision the two sections
-           below start from (selectTemplate seeds the preset and the publish
-           targets from the template's own manifest). -->
-      {#if templates.length > 0}
-        <div class="field">
-          <span>Start from a template</span>
-          <ul class="template-list" role="radiogroup" aria-label="Project template">
-            {#each templates as tpl (tpl.kind + ":" + tpl.id)}
-              <li>
-                <button
-                  type="button"
-                  class="template-card"
-                  class:selected={selectedTemplate?.id === tpl.id && selectedTemplate?.kind === tpl.kind}
-                  role="radio"
-                  aria-checked={selectedTemplate?.id === tpl.id && selectedTemplate?.kind === tpl.kind}
-                  onclick={() => selectTemplate(tpl)}
-                >
+        <label class="field" for="np-author">
+          <span>Who's writing it? <em class="optional">(optional)</em></span>
+          <input
+            id="np-author"
+            bind:value={author}
+            type="text"
+            placeholder="Your name"
+            autocomplete="off"
+            onkeydown={advanceOnEnter}
+          />
+        </label>
+      {:else if step === 1}
+        <!-- The template comes BEFORE the print and publish choices: it is the
+             decision they start from (selectTemplate seeds the preset and the
+             publish targets from the template's own manifest). -->
+        {#if templates.length > 0}
+          <div class="field">
+            <span>Start from a template</span>
+            <div class="template-list" role="radiogroup" aria-label="Book template">
+              {#each templates as tpl (tpl.kind + ":" + tpl.id)}
+                {@const picked = selectedTemplate?.id === tpl.id && selectedTemplate?.kind === tpl.kind}
+                <label class="template-card" class:selected={picked}>
+                  <input
+                    type="radio"
+                    class="dlg-sr-only"
+                    name="np-template"
+                    checked={picked}
+                    onchange={() => selectTemplate(tpl)}
+                  />
                   <span class="template-label">
                     {tpl.label}
                     {#if tpl.kind === "custom"}<em class="template-tag">custom</em>{/if}
                   </span>
                   <span class="template-desc">{tpl.description}</span>
-                </button>
+                  {#if picked}<span class="template-check"><Icon name="check" size={12} /></span>{/if}
+                </label>
+              {/each}
+            </div>
+            <button type="button" class="dlg-ghost body-btn" onclick={importTemplate} disabled={importing}>
+              {importing ? "Importing…" : "Import template from folder…"}
+            </button>
+          </div>
+        {:else if templatesError}
+          <div class="field">
+            <span>Start from a template</span>
+            <div class="load-error" role="alert">
+              <span>{templatesError}</span>
+              <button type="button" class="retry-btn" onclick={loadTemplates}>Retry</button>
+            </div>
+          </div>
+        {/if}
+      {:else}
+        <div class="field">
+          <span>What are you designing it for?</span>
+          <div class="template-list preset-list" role="radiogroup" aria-label="Book preset">
+            {#each PRESET_CHOICES as choice (choice.id)}
+              {@const picked = selectedPreset === choice.id}
+              <label class="template-card" class:selected={picked}>
+                <input
+                  type="radio"
+                  class="dlg-sr-only"
+                  name="np-preset"
+                  checked={picked}
+                  onchange={() => (selectedPreset = choice.id)}
+                />
+                <span class="template-label">{choice.label}</span>
+                <span class="template-desc">{choice.description}</span>
+                {#if picked}<span class="template-check"><Icon name="check" size={12} /></span>{/if}
+              </label>
+            {/each}
+          </div>
+          {#if selectedPreset === "custom"}
+            <label class="field size-field" for="np-page-size">
+              <span>Page size</span>
+              <select id="np-page-size" bind:value={sizeChoice}>
+                {#each COMMON_SIZES as size (size.id)}
+                  <option value={size.id}>{size.label}</option>
+                {/each}
+              </select>
+            </label>
+            {#if sizeChoice === "custom"}
+              <div class="custom-page" role="group" aria-label="Page size in inches">
+                <label class="page-field" for="np-page-width">
+                  <span>Width (in)</span>
+                  <input
+                    id="np-page-width"
+                    bind:value={widthIn}
+                    type="number"
+                    min="0.1"
+                    step="0.25"
+                    placeholder="8.5"
+                    autocomplete="off"
+                  />
+                </label>
+                <span class="page-times" aria-hidden="true">×</span>
+                <label class="page-field" for="np-page-height">
+                  <span>Height (in)</span>
+                  <input
+                    id="np-page-height"
+                    bind:value={heightIn}
+                    type="number"
+                    min="0.1"
+                    step="0.25"
+                    placeholder="11"
+                    autocomplete="off"
+                  />
+                </label>
+              </div>
+            {/if}
+            <p class="page-hint">
+              This is the page size your finished book is checked against; keep it
+              matching the <code>@page</code> size in your stylesheet.
+            </p>
+          {/if}
+        </div>
+
+        <div class="field">
+          <span>Where will you publish it? <em class="optional">(you can change this later)</em></span>
+          <ul class="target-list" aria-label="Publish targets">
+            {#each TARGET_CHOICES as choice (choice.id)}
+              <li>
+                <label class="target-row">
+                  <input
+                    type="checkbox"
+                    checked={effectiveTargets.includes(choice.id)}
+                    onchange={() => toggleTarget(choice.id)}
+                    disabled={creating}
+                  />
+                  <span class="target-copy">
+                    <span class="target-label">{choice.label}</span>
+                    <span class="target-desc">{choice.description}</span>
+                  </span>
+                </label>
               </li>
             {/each}
           </ul>
-          {#if isDesktop()}
-            <button type="button" class="import-tpl" onclick={importTemplate} disabled={importing}>
-              {importing ? "Importing…" : "Import template from folder…"}
-            </button>
+          {#if targetToolGap}
+            <p class="tool-note" role="note">{targetToolGap}</p>
           {/if}
         </div>
-      {:else if templatesError}
+
         <div class="field">
-          <span>Start from a template</span>
-          <div class="load-error" role="alert">
-            <span>{templatesError}</span>
-            <button type="button" class="retry-btn" onclick={loadTemplates}>Retry</button>
+          <span>Where should we save it?</span>
+          <div class="location-row">
+            <!-- parentDir is prefilled (last-used parent, else the
+                 folder containing the most recent project) whenever we have
+                 one, so this reads as "Change…" — the escape hatch, not the
+                 only way in — rather than a dead Create hiding behind a
+                 mandatory folder picker. -->
+            <button class="dlg-ghost body-btn browse" onclick={chooseLocation} disabled={creating}>
+              {parentDir ? "Change…" : "Choose folder…"}
+            </button>
+            {#if parentDir}
+              <span class="location-path" title={parentDir}>{parentDir}{folderPreview ? `/${folderPreview}` : ""}</span>
+            {:else}
+              <span class="location-empty">No folder chosen yet</span>
+            {/if}
           </div>
         </div>
+
+        <label class="checkbox">
+          <input type="checkbox" bind:checked={useVersionHistory} disabled={creating} />
+          <span>
+            Keep a history of my changes
+            <em class="optional">(lets you go back to earlier versions — recommended)</em>
+          </span>
+        </label>
       {/if}
+    </div>
 
-      <div class="field">
-        <span>What are you designing it for?</span>
-        <ul class="template-list preset-list" role="radiogroup" aria-label="Book preset">
-          {#each PRESET_CHOICES as choice (choice.id)}
-            <li>
-              <button
-                type="button"
-                class="template-card"
-                class:selected={selectedPreset === choice.id}
-                role="radio"
-                aria-checked={selectedPreset === choice.id}
-                onclick={() => (selectedPreset = choice.id)}
-              >
-                <span class="template-label">{choice.label}</span>
-                <span class="template-desc">{choice.description}</span>
-              </button>
-            </li>
-          {/each}
-        </ul>
-        {#if selectedPreset === "custom"}
-          <label class="field size-field" for="np-page-size">
-            <span>Page size</span>
-            <select id="np-page-size" bind:value={sizeChoice}>
-              {#each COMMON_SIZES as size (size.id)}
-                <option value={size.id}>{size.label}</option>
-              {/each}
-            </select>
-          </label>
-          {#if sizeChoice === "custom"}
-            <div class="custom-page" role="group" aria-label="Page size in inches">
-              <label class="page-field" for="np-page-width">
-                <span>Width (in)</span>
-                <input
-                  id="np-page-width"
-                  bind:value={widthIn}
-                  type="number"
-                  min="0.1"
-                  step="0.25"
-                  placeholder="8.5"
-                  autocomplete="off"
-                />
-              </label>
-              <span class="page-times" aria-hidden="true">×</span>
-              <label class="page-field" for="np-page-height">
-                <span>Height (in)</span>
-                <input
-                  id="np-page-height"
-                  bind:value={heightIn}
-                  type="number"
-                  min="0.1"
-                  step="0.25"
-                  placeholder="11"
-                  autocomplete="off"
-                />
-              </label>
-            </div>
-          {/if}
-          <p class="page-hint">
-            This is the page size your finished book is checked against; keep it
-            matching the <code>@page</code> size in your stylesheet.
-          </p>
-        {/if}
-      </div>
+    {#if error}
+      <p class="error" role="alert">{error}</p>
+    {/if}
 
-      <div class="field">
-        <span>Where will you publish it? <em class="optional">(you can change this later)</em></span>
-        <ul class="target-list" aria-label="Publish targets">
-          {#each TARGET_CHOICES as choice (choice.id)}
-            <li>
-              <label class="target-row">
-                <input
-                  type="checkbox"
-                  checked={effectiveTargets.includes(choice.id)}
-                  onchange={() => toggleTarget(choice.id)}
-                  disabled={creating}
-                />
-                <span class="target-copy">
-                  <span class="target-label">{choice.label}</span>
-                  <span class="target-desc">{choice.description}</span>
-                </span>
-              </label>
-            </li>
-          {/each}
-        </ul>
-        {#if targetToolGap}
-          <p class="tool-note" role="note">{targetToolGap}</p>
-        {/if}
-      </div>
-
-      <div class="field">
-        <span>Where should we save it?</span>
-        <div class="location-row">
-          <!-- M21: parentDir is prefilled (last-used parent, else the
-               folder containing the most recent project) whenever we have
-               one, so this reads as "Change…" — the escape hatch, not the
-               only way in — rather than a dead Create hiding behind a
-               mandatory folder picker. -->
-          <button class="dlg-ghost browse" onclick={chooseLocation} disabled={creating}>
-            {parentDir ? "Change…" : "Choose folder…"}
-          </button>
-          {#if parentDir}
-            <span class="location-path" title={parentDir}>{parentDir}{folderPreview ? `/${folderPreview}` : ""}</span>
-          {:else}
-            <span class="location-empty">No folder chosen yet</span>
-          {/if}
-        </div>
-      </div>
-
-      <label class="checkbox">
-        <input type="checkbox" bind:checked={useVersionHistory} disabled={creating} />
-        <span>
-          Keep a history of my changes
-          <em class="optional">(lets you go back to earlier versions — recommended)</em>
-        </span>
-      </label>
-
-      {#if error}
-        <p class="error" role="alert">{error}</p>
-      {/if}
-
-      <footer class="dlg-actions">
+    <footer class="dlg-actions">
+      {#if step > 0}
+        <button class="dlg-ghost" onclick={back} disabled={creating}>Back</button>
+      {:else}
         <button class="dlg-ghost" onclick={close} disabled={creating}>Cancel</button>
+      {/if}
+      <div class="spacer"></div>
+      {#if step < LAST_STEP}
+        <button class="dlg-primary app-btn-primary" onclick={next}>Next</button>
+      {:else}
         <button class="dlg-primary app-btn-primary" onclick={create} disabled={!canCreate}>
           {creating ? "Creating…" : "Create book"}
         </button>
-      </footer>
-    </div>
+      {/if}
+    </footer>
   </div>
 {/if}
 
@@ -669,8 +714,23 @@
 
   .dlg-shell {
     width: min(520px, 94vw);
+    /* The min height (about the tallest default step) keeps the footer, and so
+       the Next button, from jumping as the writer steps through; the taller
+       custom-size layout still grows the dialog up to max-height. */
+    min-height: min(540px, 80vh);
     max-height: 80vh;
   }
+  /* Step indicator — same look as PublishWizard's. */
+  .steps {
+    list-style: none; margin: 0; padding: 10px 18px;
+    display: flex; gap: 16px;
+    border-bottom: 1px solid var(--app-border-subtle);
+  }
+  .steps li { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--app-text-muted); white-space: nowrap; }
+  .steps li.current { color: var(--app-text); font-weight: 600; }
+  .step-dot { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--app-border-strong); font-size: 11px; }
+  .steps li.current .step-dot { background: var(--app-accent); color: var(--app-accent-text); border-color: var(--app-accent-border); }
+  .steps li.done .step-dot { background: var(--app-surface-hover); }
   .dialog-body {
     padding: 18px;
     display: flex;
@@ -695,19 +755,26 @@
     outline: none;
     border-color: var(--app-focus-ring);
   }
-  .template-list {
-    list-style: none; margin: 0; padding: 0;
-    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
-  }
+  .template-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  /* A card is a <label> around a visually hidden native radio, so the browser
+     supplies the radio-group keyboard behaviour (arrows select, one Tab stop).
+     user-select keeps a double-click from highlighting the text. */
   .template-card {
-    display: flex; flex-direction: column; gap: 3px; width: 100%;
-    text-align: left; padding: 8px 10px; border-radius: 6px;
+    position: relative; display: flex; flex-direction: column; gap: 3px;
+    padding: 8px 10px; border-radius: 6px;
     background: var(--app-surface-sunken); border: 1px solid var(--app-border);
-    color: var(--app-text-secondary); cursor: pointer;
+    color: var(--app-text-secondary); cursor: pointer; user-select: none;
   }
   .template-card:hover { background: var(--app-surface-hover); }
-  .template-card.selected { border-color: var(--app-focus-ring); background: var(--app-surface-hover); }
-  .template-card:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
+  /* Selected = accent border + tinted fill + a check badge, so it can't be
+     mistaken for hover. */
+  .template-card.selected { border-color: var(--app-accent-border); background: var(--app-accent-subtle); }
+  .template-card:has(input:focus-visible) { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
+  .template-check {
+    position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--app-accent); color: var(--app-accent-text);
+  }
   .preset-list { grid-template-columns: 1fr 1fr 1fr; }
   .target-list {
     list-style: none; margin: 0; padding: 0;
@@ -766,13 +833,15 @@
   .template-label { font-size: 13px; font-weight: 600; color: var(--app-text); display: flex; align-items: center; gap: 6px; }
   .template-tag { font-size: 10px; font-style: normal; text-transform: uppercase; letter-spacing: 0.04em; color: var(--app-text-muted); border: 1px solid var(--app-border); border-radius: 3px; padding: 0 4px; }
   .template-desc { font-size: 11px; color: var(--app-text-muted); line-height: 1.35; }
-  .import-tpl {
-    align-self: flex-start; margin-top: 2px; background: transparent;
-    border: 1px solid var(--app-border); border-radius: 5px; cursor: pointer;
-    color: var(--app-text-muted); font-size: 12px; padding: 5px 10px;
+  /* In-body ghost buttons (Import…, Change…) sit outside .dlg-actions, so they
+     restate its border geometry; colours, hover and focus ring come from
+     .dlg-ghost. */
+  .body-btn {
+    padding: 5px 10px; font-size: 12px; border-width: 1px; border-style: solid;
+    border-radius: 5px; cursor: pointer;
   }
-  .import-tpl:hover:not(:disabled) { background: var(--app-surface-hover); color: var(--app-text); }
-  .import-tpl:disabled { opacity: 0.5; cursor: default; }
+  .body-btn:disabled { opacity: 0.5; cursor: default; }
+  .field > .body-btn { align-self: flex-start; margin-top: 2px; }
 
   .load-error {
     display: flex;
@@ -800,7 +869,8 @@
   .retry-btn:hover { background: var(--app-surface-hover); }
   .retry-btn:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
 
-  .error { color: var(--app-error-text); font-size: 12px; margin: 0; }
+  /* Sits between the scrolling body and the pinned footer so it is always in view. */
+  .error { color: var(--app-error-text); font-size: 12px; margin: 0; padding: 0 18px 12px; }
 
   .location-row {
     display: flex;
@@ -830,14 +900,6 @@
   }
   .checkbox input { margin-top: 2px; flex-shrink: 0; }
 
-  /* In-flow footer (last item inside the scrolling body) — restore its
-     original spacing + button padding; the shared default assumes a pinned
-     bar with slightly tighter buttons. */
-  .dlg-actions {
-    padding: 14px 0 0;
-    margin-top: 4px;
-  }
-  .dlg-actions button {
-    padding: 7px 16px;
-  }
+  /* Back/Cancel on the left, Next/Create on the right of the shared pinned bar. */
+  .dlg-actions .spacer { flex: 1; }
 </style>

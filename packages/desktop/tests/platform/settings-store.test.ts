@@ -1,11 +1,10 @@
 /**
- * Unit tests for the `settings-store` host module (Phase 5b extraction from
- * electron/main.ts). Covers the pure `mergeSettings` deep-merge and the
- * injected-fs store factory `createSettingsStore` (read/write + settingsPath).
+ * Unit tests for the `settings-store` host module. Covers the pure
+ * `mergeSettings` deep-merge and the injected-fs store factory
+ * `createSettingsStore` (read/write + settingsPath).
  *
  * #29: `AppSettings`/`DEFAULT_SETTINGS` are imported from the shared module
- * (`./bridge-types` → `src/lib/platform/shared-types.ts`) instead of being
- * hand-duplicated here — this file re-imports them from `../../electron/
+ * (`src/lib/platform/shared-types.ts`) — this file re-imports them from `../../electron/
  * settings-store` (which re-exports them) so a regression that reintroduces
  * a local copy still shows up as a type/value mismatch here.
  *
@@ -82,9 +81,9 @@ test("mergeSettings does not mutate the base object", () => {
 });
 
 test("mergeSettings ignores an ARRAY-valued section patch (audit A1 array guard)", () => {
-  // The host copy used to lack the `!Array.isArray` guard, so an array-shaped
-  // section patch spread into `{0:…,1:…}` and corrupted the section. The single
-  // reconciled implementation ignores it, leaving the section untouched.
+  // Without the `!Array.isArray` guard an array-shaped section patch spreads
+  // into `{0:…,1:…}` and corrupts the section; the guard ignores it, leaving
+  // the section untouched.
   const merged = mergeSettings(DEFAULT_SETTINGS, {
     editor: [1, 2, 3],
   } as unknown as DeepPartialSettings);
@@ -237,34 +236,27 @@ test("readSettings fills in preview.splitRatio default for a stored file missing
   expect(s.preview.splitRatio).toBe(DEFAULT_SETTINGS.preview.splitRatio);
 });
 
+test("a profile with no saved mode opens books in Edit; a saved Read mode is never overridden (#304)", async () => {
+  // First run: no settings file at all.
+  expect((await makeStore().store.readSettings()).preview.mode).toBe("editor");
+  // A file that predates the field gets the default too…
+  const legacy = makeStore({
+    readFileImpl: async () => JSON.stringify({ appearance: { theme: "dark" } }),
+  });
+  expect((await legacy.store.readSettings()).preview.mode).toBe("editor");
+  // …but a returning author's saved choice always wins over the default.
+  const saved = makeStore({
+    readFileImpl: async () => JSON.stringify({ preview: { mode: "viewer" } }),
+  });
+  expect((await saved.store.readSettings()).preview.mode).toBe("viewer");
+});
+
 test("readSettings defaults the update channel to stable for existing settings files", async () => {
   const { store } = makeStore({
     readFileImpl: async () => JSON.stringify({ appearance: { theme: "dark" } }),
   });
 
   expect((await store.readSettings()).updates.channel).toBe("stable");
-});
-
-test("readSettings migrates the legacy includePrereleases flag to a channel", async () => {
-  // Pre-0.8.2 files stored a boolean opt-in; true maps to the beta channel.
-  const optedIn = makeStore({
-    readFileImpl: async () => JSON.stringify({ updates: { includePrereleases: true } }),
-  });
-  expect((await optedIn.store.readSettings()).updates.channel).toBe("beta");
-
-  const optedOut = makeStore({
-    readFileImpl: async () => JSON.stringify({ updates: { includePrereleases: false } }),
-  });
-  expect((await optedOut.store.readSettings()).updates.channel).toBe("stable");
-});
-
-test("readSettings prefers an explicit channel over a leftover legacy flag", async () => {
-  const { store } = makeStore({
-    readFileImpl: async () =>
-      JSON.stringify({ updates: { channel: "alpha", includePrereleases: false } }),
-  });
-
-  expect((await store.readSettings()).updates.channel).toBe("alpha");
 });
 
 test("writeSettings mkdirs the userDataDir, writes pretty JSON to <settingsPath>.tmp, then renames over settingsPath", async () => {
@@ -294,7 +286,7 @@ test("writeSettings mkdirs the userDataDir, writes pretty JSON to <settingsPath>
   expect(renames[0]!.to).toBe(store.settingsPath());
 });
 
-// ── write serialization (code-review finding: concurrent writers) ──────────
+// ── write serialization (concurrent writers) ──────────
 // Two writers share app-settings.json (the main-process open flow and the
 // app/* settings routes). Without serialization they race on the shared
 // `<file>.tmp` path — the second writeFile truncates the tmp the first is
@@ -349,7 +341,7 @@ test("writeSettings serializes overlapping writers (no interleaved tmp writes)",
   expect(order).toEqual(["write:1", "rename", "write:2", "rename"]);
 });
 
-// ── updateSettings (atomic read-merge-write, audit A2) ────────────────────
+// ── updateSettings (atomic read-merge-write) ────────────────────
 
 test("updateSettings composes concurrent patches instead of dropping one", async () => {
   // Two patches to DIFFERENT fields fired back-to-back. A readSettings()+
@@ -392,7 +384,7 @@ test("updateSettings composes concurrent patches instead of dropping one", async
   expect(a.editor.fontSize).toBe(21);
 });
 
-// ── transient read errors must not wipe settings (audit G3 parity) ─────────
+// ── transient read errors must not wipe settings ─────────
 // Only ENOENT means "no file yet" (first run). Any OTHER read error (EACCES
 // from an AV/backup tool holding the file, EIO, EMFILE) is transient: if
 // readSettings returned DEFAULT_SETTINGS for it, updateSettings would merge

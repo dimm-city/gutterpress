@@ -1,8 +1,6 @@
 /**
  * DetailsSectionController — the single owner of the Details section's state
- * + logic that used to live inline in `ProjectConfigPanel.svelte` (title,
- * authors, output filename, source files — manifest fields with no prior
- * writer before #PCV).
+ * + logic (title, authors, output filename, source files).
  *
  * Centralises the read manifest subset (`fields`), the four editable drafts
  * (`titleDraft` / `authorsDraft` / `sourceDraft`), the
@@ -15,13 +13,13 @@
  * for the plain-text drafts) and calls the intent methods.
  *
  * Host coupling is injected so this stays testable with fakes and PWA-clean
- * (§8 / ADR 0004): the reactive `projectDir` accessor, the `readManifest` /
+ * (§8): the reactive `projectDir` accessor, the `readManifest` /
  * `writeManifest` host calls, and the `onSaved` / `onError` (toast) hooks.
  * `ProjectConfigFields` is a type-only import — ZERO `node:*` / lib value
  * imports.
  */
 
-import type { ProjectConfigFields } from "$lib/platform/dtos";
+import type { ProjectConfigFields } from "$lib/api";
 import {
   buildSourceList,
   moveEntry,

@@ -1,6 +1,6 @@
 // ──────────────────────────────────────────────────────────────────────────
 // recovery-paths.test.ts — unit tests for the pure userData path builders +
-// repo-slug sanitizer extracted from electron/main.ts.
+// repo-slug sanitizer.
 //
 // Side-effect-free (no electron, no fs), so we exercise the builders directly
 // with an arbitrary userDataDir string.

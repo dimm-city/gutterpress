@@ -3,7 +3,7 @@
 //
 // The discover scan is a depth-3 filesystem BFS in the Electron main process
 // — the most expensive call ProjectsListBody makes. Two instances of that
-// component can mount at once (the start screen and the left panel's Projects
+// component can mount at once (the start screen and the left panel's Books
 // tab), and the start screen remounts on every re-show, so without this
 // module every launch ran two concurrent scans and every landing re-show ran
 // another. One module-level cache means: concurrent callers share a single
@@ -13,8 +13,7 @@
 // uncached — they are cheap single-file reads and must reflect the open that
 // just happened.
 // ──────────────────────────────────────────────────────────────────────────
-import { discoverProjects } from "$lib/app-lifecycle/app-lifecycle-capability";
-import type { DiscoveredProject } from "$lib/platform/dtos";
+import { api, type DiscoveredProject } from "$lib/api";
 
 export type { DiscoveredProject };
 
@@ -28,7 +27,8 @@ export function discoverProjectsCached(): Promise<DiscoveredProject[]> {
   if (cache && Date.now() - cachedAt < TTL_MS) return Promise.resolve(cache);
   if (inflight) return inflight;
 
-  const p = discoverProjects()
+  const p = api.app
+    .discoverProjects()
     .then((r) => {
       // If the cache was invalidated (or a newer scan started) while this scan
       // was in flight, don't repopulate the module cache with stale results.

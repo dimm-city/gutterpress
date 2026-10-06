@@ -1,18 +1,8 @@
 /**
- * Shared media hooks for the `media:*` typed IPC channels
- * (`electron/api/media.ts`).
- *
- * Storage lives in the single collapsed host object (ARCH review #31,
- * `./host-services.ts`) — `getMediaHooks()` is a thin derived selector over it.
+ * Shared media hooks for media:* server routes.
+ * Routes reach them through `getHostServices().media` (`./host-services.ts`).
  */
-
-import { getHostServices } from './host-services';
 
 export interface MediaHooks {
   createThumbnail: (filePath: string, maxPx: number) => Promise<string | null>;
-}
-
-/** The live `MediaHooks` slice of the collapsed host object, or null before `registerHostServices` runs. */
-export function getMediaHooks(): MediaHooks | null {
-  return getHostServices()?.media ?? null;
 }

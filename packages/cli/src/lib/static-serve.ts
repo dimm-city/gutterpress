@@ -7,20 +7,15 @@ import { readFile } from "node:fs/promises";
  * in this package: the build-time pagination server and PDF-render server
  * (build-runner.ts) and the live preview server (preview/http-server.ts).
  *
- * Previously two independent 17-entry tables that had to be edited in lockstep
- * (finding #17) — a new asset type added to only one would render differently
- * in preview vs build-time pagination with no error, a silent divergence
- * class. One table now; add a new extension once.
+ * One table for every server: a type added to only one would render
+ * differently in preview vs build-time pagination with no error.
  *
- * That same divergence class recurred once more (2026-07-28 duplication
- * audit): this table and `asset-inline.ts`'s `MIME_BY_EXT` — a separate table
- * answering a separate question, "what Content-Type does a data: URI need
- * when embedding this file inline," vs. this table's "what Content-Type does
- * an HTTP response need" — had drifted again, missing `.webp`/`.avif` here.
- * A copied WebP/AVIF image was served as `application/octet-stream` by both
- * servers above. Added below; if a third image format shows up, add it to
- * BOTH tables in the same commit (asset-inline.ts is out of scope for this
- * PR — see docs/reviews/duplication-audit-2026-07-28.md).
+ * `asset-inline.ts`'s `MIME_BY_EXT` is a separate table answering a separate
+ * question ("what Content-Type does a data: URI need when embedding this file
+ * inline" vs. this table's "what Content-Type does an HTTP response need"). A
+ * new image format must be added to BOTH tables in the same commit, or (as
+ * once happened with `.webp`/`.avif`) a copied image is served as
+ * `application/octet-stream`.
  */
 export const STATIC_MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",

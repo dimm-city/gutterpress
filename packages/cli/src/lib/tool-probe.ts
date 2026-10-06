@@ -19,9 +19,8 @@
  *
  * One implementation; one place to fix bugs. Spawning goes through
  * exec.ts's `execCapture`, which also owns the shared, correctly
- * delimiter-joined `enhancedPath` (this file used to keep its own copy of
- * that PATH construction, and exec.ts's copy hardcoded `:` — see
- * docs/reviews 2026-07-10-architecture-critical-review.md, finding #3).
+ * delimiter-joined `enhancedPath` — do not keep a second copy of that PATH
+ * construction here.
  */
 
 import { platform } from "node:os";

@@ -1,5 +1,5 @@
 /**
- * Shared "electron" module mock for `bun test` (audit E7).
+ * Shared "electron" module mock for `bun test`.
  *
  * Importing the real "electron" package outside an actual Electron process
  * throws (it tries to locate/download the Electron binary), so every suite
@@ -9,16 +9,17 @@
  * serves every other suite's static `from "electron"` imports too. So every
  * such mock must expose the SAME superset of keys every electron/*.ts module
  * imports (app.getPath/isPackaged/getVersion/single-instance lock methods/quit,
- * protocol, BrowserWindow, safeStorage).
+ * protocol, net, BrowserWindow, safeStorage).
  *
- * This helper owns that superset in ONE place. The five suites used to hand-copy
- * it, kept in sync only by a comment. Add a new `from "electron"` import in
+ * This helper owns that superset in ONE place. Add a new `from "electron"` import in
  * production? Extend the default here and every suite gets it. Pass per-suite
  * overrides for the pieces a given test genuinely customizes (a mutable
  * getPath, a capturing protocol.handle, a custom BrowserWindow).
  */
 
 import { EventEmitter } from "node:events";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 
 /** Reversible fake "encryption" — proves round-trip plumbing without an OS keyring. */
 let fakeSelectedStorageBackend = "gnome_libsecret";
@@ -39,6 +40,7 @@ export interface ElectronMockOverrides {
   app?: Record<string, unknown>;
   autoUpdater?: unknown;
   protocol?: unknown;
+  net?: unknown;
   BrowserWindow?: unknown;
   safeStorage?: unknown;
 }
@@ -60,6 +62,13 @@ export function electronMock(overrides: ElectronMockOverrides = {}) {
     },
     autoUpdater: overrides.autoUpdater ?? new EventEmitter(),
     protocol: overrides.protocol ?? {},
+    // sveltekit-host.ts serves build/client files with net.fetch(file URL);
+    // the default fake reads the file the same way, so the handler's
+    // static-file path is testable without Electron.
+    net: overrides.net ?? {
+      fetch: async (url: string) =>
+        new Response(await readFile(fileURLToPath(url), "utf8"), { status: 200 }),
+    },
     BrowserWindow: overrides.BrowserWindow ?? class {},
     safeStorage: overrides.safeStorage ?? fakeSafeStorage,
   };

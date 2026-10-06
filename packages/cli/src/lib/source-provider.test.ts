@@ -13,6 +13,8 @@ import {
   RESTORE_BACKUP_MESSAGE,
   AUTO_SNAPSHOT_MESSAGE,
   isNoChangesError,
+  countUnversionedChanges,
+  snapshotStagingMarkerPath,
   resolveGitAuthor,
   listLocalBranches,
   switchBranch,
@@ -371,6 +373,60 @@ test("automatic snapshot on a clean tree rejects with an isNoChangesError error"
   }
 });
 
+test("countUnversionedChanges counts book files since the last version and is null for a plain folder", async () => {
+  const plain = await tempDir();
+  const dir = await tempDir();
+  try {
+    await writeFile(path.join(plain, "a.md"), "# A\n");
+    expect(await countUnversionedChanges(plain)).toBeNull();
+
+    const provider = await initProject(dir);
+    expect(await countUnversionedChanges(dir)).toEqual({ changedFiles: 0, stale: false });
+    await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\nSecond draft.\n");
+    await writeFile(path.join(dir, "chapter-02.md"), "# Two\n");
+    expect((await countUnversionedChanges(dir))!.changedFiles).toBe(2);
+    await rm(path.join(dir, "chapter-01.md"));
+    expect((await countUnversionedChanges(dir))!.changedFiles).toBe(2); // one deleted + one new
+    await provider.snapshot({ projectDir: dir, message: "next" });
+    expect((await countUnversionedChanges(dir))!.changedFiles).toBe(0);
+  } finally {
+    await rm(plain, { recursive: true, force: true });
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("countUnversionedChanges ignores app-written plugin files and reports a stale staging marker", async () => {
+  const dir = await tempDir();
+  try {
+    await initProject(dir);
+    await mkdir(path.join(dir, "plugins", "npm", "x", "1.0.0"), { recursive: true });
+    await writeFile(path.join(dir, "plugins", "npm", "x", "1.0.0", "index.js"), "1");
+    expect(await countUnversionedChanges(dir)).toEqual({ changedFiles: 0, stale: false });
+    fs.writeFileSync(snapshotStagingMarkerPath(dir), "");
+    expect(await countUnversionedChanges(dir)).toEqual({ changedFiles: 0, stale: true });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("countUnversionedChanges counts only the open book's folder inside a larger repo", async () => {
+  const repo = await tempDir();
+  try {
+    await mkdir(path.join(repo, "book-a"));
+    await mkdir(path.join(repo, "book-b"));
+    await writeFile(path.join(repo, "book-a", "one.md"), "# 1\n");
+    await writeFile(path.join(repo, "book-b", "two.md"), "# 2\n");
+    await providerFor({ type: "local-folder", path: repo }).initVersionHistory({ projectDir: repo });
+    await writeFile(path.join(repo, "book-a", "one.md"), "# 1 edited\n");
+    await writeFile(path.join(repo, "book-b", "two.md"), "# 2 edited\n");
+    await writeFile(path.join(repo, "book-b", "three.md"), "# 3\n");
+    expect((await countUnversionedChanges(path.join(repo, "book-a")))!.changedFiles).toBe(1);
+    expect((await countUnversionedChanges(path.join(repo, "book-b")))!.changedFiles).toBe(2);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
 test("isNoChangesError is false for other errors", () => {
   expect(isNoChangesError(new Error("repository is corrupt"))).toBe(false);
   expect(isNoChangesError("no changes since the last snapshot")).toBe(false);
@@ -398,7 +454,7 @@ test("initVersionHistory never git-inits inside an existing repo (hand-built sou
     const provider = providerFor({ type: "local-folder", path: inner });
     await expect(
       provider.initVersionHistory({ projectDir: inner }),
-    ).rejects.toThrow(/already inside a versioned project/i);
+    ).rejects.toThrow(/already inside a versioned book/i);
     // No shadow repo was created.
     await expect(stat(gitDirFor(inner))).rejects.toThrow();
   } finally {
@@ -837,13 +893,14 @@ test("a clean tree with no stale marker still reports 'no changes'", async () =>
 });
 
 // ── withRepoLock: FIFO serialization + B4 map reclamation ────────────────────
-// Core git-recovery infrastructure (ADR 0006 D2): isomorphic-git has no repo
+// Core git-recovery infrastructure: isomorphic-git has no repo
 // locking, so every op on a project dir is serialized through this per-repo
 // FIFO queue. These tests are deterministic (no timing races) — they gate on
 // the observable ordering the lock guarantees, plus the audit-B4 reclamation.
 
 import {
   withRepoLock,
+  whenGitIdle,
   __repoLockQueueSizeForTests,
 } from "./source-provider";
 
@@ -1194,4 +1251,30 @@ test("switchBranch surfaces a checkout conflict as a friendly error and never fo
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("whenGitIdle waits for running AND later-chained git work on every repo", async () => {
+  const gates: Array<() => void> = [];
+  const op = () => new Promise<void>((r) => gates.push(r));
+  void withRepoLock("/tmp/gp-idle-a", op);
+  void withRepoLock("/tmp/gp-idle-b", op);
+  let idle = false;
+  const waiting = whenGitIdle().then(() => {
+    idle = true;
+  });
+  await flushMicrotasks();
+  gates.shift()!(); // repo A's op finishes…
+  void withRepoLock("/tmp/gp-idle-a", op); // …and a new op is chained while waiting.
+  await flushMicrotasks();
+  expect(idle).toBe(false);
+  while (gates.length) {
+    gates.shift()!();
+    await flushMicrotasks();
+  }
+  await waiting;
+  expect(idle).toBe(true);
+});
+
+test("whenGitIdle resolves at once when nothing is queued", async () => {
+  await whenGitIdle();
 });

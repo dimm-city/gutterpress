@@ -1,85 +1,43 @@
 /**
- * Shared prefs/settings hooks for the `app:*` typed IPC channels
- * (`electron/api/app.ts`, `electron/api/git-identity-args.ts`).
- *
- * Storage lives in the single collapsed host object (ARCH review #31,
- * `./host-services.ts`) — `getPrefsHooks()` is a thin derived selector over
- * it. main.ts builds ONE concrete `PrefsHooks<LibModule, DesktopPrefs,
- * AppSettings, ProjectStateMap | undefined, RecentFolder>` object and passes
- * it as the `prefs` field to a single `registerHostServices()` call.
- *
- * `getPrefsHooks<...>()` keeps its own generic parameters so call sites can
- * ask for a narrower view (e.g. `getPrefsHooks<ProjectSourceLibModule>()`) —
- * that's a safe, intentional narrowing at the point of USE, unlike the old
- * per-hook registration's `as`-cast at the point of REGISTRATION, which threw
- * real type information away before it ever reached the seam.
+ * Shared prefs/settings hooks for app:* server routes. main.ts builds ONE
+ * `PrefsHooks` object and passes it as the `prefs` field to
+ * `registerHostServices()`; routes reach it through `getHostServices().prefs`
+ * (`./host-services.ts`). The lib itself comes from `loadLib()` in
+ * `src/routes/api/_lib/route.ts`.
  */
 
-import { getHostServices } from './host-services';
+import type { DesktopPrefs } from '../prefs-store';
+import type { AppSettings } from '../settings-store';
+import type { ProjectStateMap } from '../project-state';
+import type { RecentFolder } from '../recent-folders';
 
-export interface PrefsHooks<
-  LibModule = unknown,
-  Prefs = Record<string, unknown>,
-  Settings = Record<string, unknown>,
-  ProjectStates = Record<string, unknown> | undefined,
-  RecentFolderEntry extends { path: string } = { path: string; [k: string]: unknown },
-> {
-  readPrefs: () => Promise<Prefs>;
-  writePrefs: (prefs: Prefs) => Promise<void>;
+export interface PrefsHooks {
+  readPrefs: () => Promise<DesktopPrefs>;
   /**
    * Atomic read-modify-write on the prefs store's write queue. Use this for
-   * every patch-style mutation — a bare readPrefs()+writePrefs() pair races
-   * the other prefs writers (api:preview's recents stamp, the start screen's
-   * startup toggle) and silently reverts their changes.
+   * every patch-style mutation — a bare read+write pair races the other prefs
+   * writers (api:preview's recents stamp, the start screen's startup toggle)
+   * and silently reverts their changes.
    */
-  updatePrefs: (mutate: (prefs: Prefs) => Prefs) => Promise<Prefs>;
-  readSettings: () => Promise<Settings>;
-  // writeSettings/mergeSettings were removed from this seam (review finding):
-  // after the app/settings POST route moved to updateSettings, no route
-  // consumed them — and advertising the racy read+merge+write building blocks
-  // here invites reintroducing the exact lost-update audit A2 fixed. The store
-  // still has writeSettings internally; routes get only the atomic op.
+  updatePrefs: (mutate: (prefs: DesktopPrefs) => DesktopPrefs) => Promise<DesktopPrefs>;
+  readSettings: () => Promise<AppSettings>;
   /**
    * Atomic read-merge-write of a settings patch on the store's write queue
-   * (audit A2): the only way a route mutates settings.
+   * — the only way a route mutates settings.
    */
-  updateSettings: (patch: Record<string, unknown>) => Promise<Settings>;
+  updateSettings: (patch: Record<string, unknown>) => Promise<AppSettings>;
   existingDirectory: (dir: string | undefined) => Promise<string | null>;
-  readProjectState: (states: ProjectStates, dir: string) => unknown;
-  writeProjectState: (states: ProjectStates, dir: string, patch: Record<string, unknown>) => ProjectStates;
+  readProjectState: (states: ProjectStateMap | undefined, dir: string) => unknown;
+  writeProjectState: (
+    states: ProjectStateMap | undefined,
+    dir: string,
+    patch: Record<string, unknown>,
+  ) => ProjectStateMap | undefined;
   defaultProjectSearchRoots: () => string[];
   scanForProjects: (roots: string[], exclude: Set<string>) => Promise<unknown[]>;
   toggleFavoriteFolder: (
     favorites: Array<{ path: string; title: string }> | undefined,
     entry: { path: string; title: string }
   ) => { favorites: Array<{ path: string; title: string }>; favorited: boolean };
-  removeRecentFolder: (
-    recents: RecentFolderEntry[] | undefined,
-    targetPath: string
-  ) => RecentFolderEntry[];
-  loadLib: () => Promise<LibModule>;
-}
-
-/**
- * The live `PrefsHooks` slice of the collapsed host object, narrowed to
- * whatever generic view the caller asks for. The cast here is the same
- * "downcast to a narrower view" every call site already relied on before
- * #31 — it is unrelated to (and does not reintroduce) the registration-side
- * cast the ARCH review flagged, which has been eliminated: `host-services.ts`
- * now stores the REAL concrete types, so `registerHostServices()` itself
- * needs no cast at all.
- */
-export function getPrefsHooks<
-  LibModule = unknown,
-  Prefs = Record<string, unknown>,
-  Settings = Record<string, unknown>,
-  ProjectStates = Record<string, unknown> | undefined,
-  RecentFolderEntry extends { path: string } = { path: string; [k: string]: unknown },
->(): PrefsHooks<LibModule, Prefs, Settings, ProjectStates, RecentFolderEntry> | null {
-  const prefs = getHostServices()?.prefs;
-  return (
-    (prefs as unknown as
-      | PrefsHooks<LibModule, Prefs, Settings, ProjectStates, RecentFolderEntry>
-      | undefined) ?? null
-  );
+  removeRecentFolder: (recents: RecentFolder[] | undefined, targetPath: string) => RecentFolder[];
 }

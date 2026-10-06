@@ -21,15 +21,10 @@ Every feature area below is tagged with its implementation status:
 
 ## Scope
 
-This contract governs the **desktop application** — the Electron app. There
-is no PWA/browser target inside this package: the browser host (#33/#34,
-`docs/pwa-webadapter-plan.md`) shipped partially, then was deleted rather
-than completed (0.12, SFE-P5a, plan D10; see CLAUDE.md §8 and the deletion
-ledger's SFE-P5a entry). A future web product would be a separate package
-consuming `@dimm-city/gutterpress-editor` and `gutterpress/render`, not a
-mode of this application — this contract does not govern it.
+This contract governs the **desktop application** (the Electron app). There
+is no browser/PWA target (CLAUDE.md §8).
 
-**Out of scope:** the CLI (`gutterpress new/build/preview/lint/publish`). The CLI
+**Out of scope:** the CLI (`gutterpress new/build/preview/validate/publish`). The CLI
 is the power-user and CI surface (see the repo README: "a desktop application
 (with a CLI for power users)") and is governed by `packages/cli/README.md` and
 `docs/publishing.md`. Developer users are expected to move between the app and
@@ -42,10 +37,10 @@ contract and those documents conflict, the architecture documents win.**
 
 | Rule | Source | UX consequence |
 |---|---|---|
-| Renderer stays PWA-clean; host capabilities via server routes (default) or the Platform seam (push streams, BrowserWindow calls) | `CLAUDE.md` §8 | Theme import file IO, AI/publish network calls, preflight fs checks → server routes. Publish/build **progress streams** → the adapter/IPC push seam. No `node:*` or lib value-imports in the SPA. |
-| Preview bridge protocol | ADR 0005 (removed in the 2026-07-29 docs cleanup) | Sync scroll, page navigation, outline, any preview overlay or overflow probe must go through the bridge. |
+| Renderer stays PWA-clean; host capabilities via server routes (default) or the Platform seam (push streams, BrowserWindow calls, host fs primitives) | `CLAUDE.md` §8 | Theme import file IO, AI/publish network calls, preflight fs checks → server routes. Publish/build **progress streams** → the adapter/IPC push seam. No `node:*` or lib value-imports in the SPA. |
+| Preview bridge protocol | `docs/inline-editing-plan.md` | Sync scroll, page navigation, outline, any preview overlay or overflow probe must go through the bridge. |
 | Plugins are plain markdown-it plugins; no plugin API; loader never auto-installs | `CLAUDE.md` §5 | Constrains §9 (Features) below. |
-| PDF rendering = Electron `printToPDF` (desktop) / puppeteer-core (CLI); pure-JS tooling posture | ADR 0002 (removed in the 2026-07-29 docs cleanup) | Preflight/export UX; "export" not "download". |
+| PDF rendering = Electron `printToPDF` (desktop) / a system Chromium driven over raw CDP (CLI); pure-JS tooling posture | `CLAUDE.md` §1/§3 | Preflight/export UX; "export" not "download". |
 | Git/GitHub operations are Node-native pure JS | `CLAUDE.md` §7 | Project source / sync / provider-auth UX. |
 | `$effect` is eslint-banned in the SPA; persisted preferences flow through the settings store's `onSettingsChange()` channel | `CLAUDE.md` §8 | Every persisted preference this contract specs (font size, pane layout, sync toggle, tooltip-seen state). |
 | All changes must REDUCE complexity unless properly justified | `CLAUDE.md` Primary Goals | Every PROPOSED item needs a scoped issue before implementation. |
@@ -55,10 +50,10 @@ contract and those documents conflict, the architecture documents win.**
 ## Vision Statement
 
 Gutterpress transforms markdown into beautifully paginated PDFs with zero layout
-friction. It meets authors where they work — in prose and in code — and stays
-invisible until they need it. The interface disappears into the writing; the
-print engine makes the result look professional without requiring design
-expertise.
+friction. It meets authors where they work — in prose and in code — and
+stays invisible until they
+need it. The interface disappears into the writing; the print engine makes the
+result look professional without requiring design expertise.
 
 **Design north star:** a non-technical author can open a folder, write in
 markdown, and export a print-ready PDF with **P50 time-to-first-PDF ≤ 5
@@ -153,10 +148,6 @@ print theme are deliberately separated concepts; do not merge them back.
   single column with a **Markdown / CSS / Preview** tab bar, keyboard-aware
   via `visualViewport`. Any multi-tier breakpoint proposal is a PROPOSED
   change to this shipped behavior and needs an issue.
-- **Mobile primary navigation (PWA) — REMOVED (0.12, SFE-P5a, plan D10):**
-  described a Write/Preview/Files/Settings tab set for the now-deleted
-  browser host. No PWA/browser target exists in this package (see Scope
-  above); a future web product would define its own navigation model.
 
 ### Keyboard shortcut map
 
@@ -175,8 +166,7 @@ New bindings must not conflict with this table. (Shipped source:
 | Arrows / Home / End / `+` / `-` (preview) | Page nav / zoom | SHIPPED |
 | `Cmd/Ctrl+K` | Insert link | PROPOSED (reserved; the markdown-editor convention) |
 | `Cmd/Ctrl+Shift+P` | Command palette | NOT PLANNED (evaluated 2026-07-14; stays reserved if it returns) |
-| `Cmd/Ctrl+Shift+F` | Focus mode | SHIPPED (0.12; **#104**) - Edit without the preview, standard chrome kept; also the focus toggle on the source editor's toolbar. **Not** F11: F11 is OS/Chromium fullscreen on Win/Linux and Show Desktop on macOS |
-| `Cmd/Ctrl+Z`, `Cmd/Ctrl+Y` / `Cmd/Ctrl+Shift+Z` (editor focused) | Undo, redo | SHIPPED (0.12) - the focused editor's own history: CodeMirror's in Edit and Focus; in Read, unlocked, the chapter's history kept by the desktop host. The two are separate (D7) |
+| `Cmd/Ctrl+Shift+F` | Focus mode | PROPOSED — **#104** (**not** F11: F11 is OS/Chromium fullscreen on Win/Linux and Show Desktop on macOS) |
 
 ---
 
@@ -213,11 +203,6 @@ Shipped baseline:
     headers) falls back to the nearest mapped ancestor.
 - PDF export via `Cmd/Ctrl+Shift+E` → native save dialog →
   `webContents.printToPDF`.
-- **Auto-save is SHIPPED and works as follows** (do not respecify): debounced
-  disk save 500ms after the last edit (`EditorBuffer`), crash-recovery
-  snapshots at 1000ms, a user setting ("Save edits automatically",
-  default 500ms), plus explicit `Cmd/Ctrl+S` / toolbar Save. The save
-  indicator is subtle (no modal) — see Anti-Patterns.
 
 Proposed refinements:
 
@@ -226,85 +211,25 @@ Proposed refinements:
   reset-to-default. Gutter is keyboard-adjustable (Arrow keys when focused)
   — this is also the WCAG 2.2 SC 2.5.7 single-pointer alternative.
   Tracked in **#103**.
-- Focus mode - SHIPPED in 0.12 (**#104**), not as proposed: it hides only
-  the viewer (`mode: "focus"` is Edit without the preview pane; the
-  toolbar, panels and status bar stay), is toggled by `Cmd/Ctrl+Shift+F`
-  or the source editor's toolbar, and is persisted as `editor`, so it
-  never outlives the session (`shared-types.ts`'s `WorkspaceMode` doc).
-  See "Workspace modes" below.
+- Focus mode (`Cmd/Ctrl+Shift+F` / dedicated button): hides all chrome except
+  the editor; must compose with the existing pane/panel toggles.
+  Tracked in **#104**.
 - Typora-style seamless WYSIWYG as an opt-in toggle — never the default;
   explicit source/preview is the default because print layout fidelity
   matters.
 - Avoid: forcing permanent single-pane mode; auto-hiding scrollbars that
   cause layout shift.
 
-#### Workspace modes (SHIPPED 0.12, bcfb002)
-
-There is ONE workspace control with two segments, Edit and Read, plus a
-toggle on the source editor's toolbar, Focus
-(`packages/desktop/tests/integration/workspace-mode.mjs`:4-7 is the
-helper's own statement of it):
-
-- **Edit** (`mode: "editor"`) is the source editor (CodeMirror) with the
-  paginated preview beside it - `previewVisible = mode === "editor"`
-  (`+page.svelte`:1042).
-- **Read** (`mode: "viewer"`) is the paged editor alone: the whole book,
-  paginated by the same engine that paginates the preview, so no preview
-  sits beside it - the two paginate alike, locked and unlocked, and
-  `tests/integration/editor-preview-parity.mjs`:29-33 is the proof. Read
-  opens LOCKED (`richLocked` starts `true`, `+page.svelte`:1050); the
-  lock pill in the pane (and right-click > Unlock to edit) unlocks the
-  same pages in place, and coming back to Read is coming back to read.
-  `editorEditable = mode !== "viewer"` (`+page.svelte`:1046) and
-  `richSurfaceActive = mode === "viewer"` (`+page.svelte`:2065);
-  `shared-types.ts`:109-112 is the derivation table the tests pin
-  (`tests/platform/gutterpress-ui-regressions.test.ts`:21-40).
-- **Focus** (`mode: "focus"`) is Edit without the preview pane, standard
-  chrome kept; `Cmd/Ctrl+Shift+F` or the source toolbar's toggle. It is
-  persisted as `editor`, so it never survives a restart
-  (`shared-types.ts`:118-121).
-- Cold start opens on the book: the default is `preview.mode: "viewer"`
-  (`shared-types.ts`:236).
-- A non-Markdown file (CSS, YAML) opens on the source editor in every
-  mode: only a Markdown path stays in the reader
-  (`staysInReader = mode === "viewer" && isMarkdownPath(path)`,
-  `+page.svelte`:3994).
-- The unlocked paged editor is the fork's HYBRID model - the active block
-  is edited as source while every other block stays rendered - not a
-  Typora-style seamless WYSIWYG. The rule above ("never the default")
-  therefore stays true: Read opens locked, and unlocking is an explicit,
-  per-session act on the page.
-- External changes reach a mounted chapter through one path only,
-  `onContentReplaced` -> `bookRef?.replaceText` (`+page.svelte`:2092-2097);
-  a file switch never pushes text into a chapter's host.
-
 ### 1b. Inline editing in the preview
 
-**Status: SHIPPED in 0.10.0, then PARTIALLY REMOVED in 0.12 (SFE-P4,
-2026-09-01).** Originally tracked by **#135** Tier 0 and **#136** Tier 1;
+**Status: SHIPPED** (0.10.0 — tracked by **#135** Tier 0 and **#136** Tier 1;
 implementation plan `docs/inline-editing-plan.md`, rationale
-`docs/adr/0009-inline-editing-source-ranges.md`.
-**Correction 2026-09-01:** the source-mutating half of this section —
-the context menu's mutation items (image properties/unwrap, link edit,
-marker/page-marker edit, block-break before/after, selection formatting,
-make-link) and the "Block overlay" ("Edit this block", double-click-to-edit)
-described below — was **deleted** in SFE-P4; see the deletion ledger
-(`docs/plans/source-first-editor/deletion-ledger.md`, "SFE-P4" entry) for
-the measured proof. The preview is now **read-only**: navigation
-(click-to-source), selection/copy, open link/image, diagnostics, page
-controls, and source reveal only (plan D8). Those mutation affordances'
-replacements live in the source and shared rich editor commands, not the
-preview. The rest of this section (click-to-source, the read-only context
-menu items) remains current; do not treat the mutation items or the block
-overlay below as live product behavior.
+`docs/adr/0009-inline-editing-source-ranges.md`).
 
-Since the 2026-09-01 correction the paginated preview is a viewer only.
-The sentence this paragraph used to open with ("an editing surface, not
-only a viewer") described the deleted mutation half; what remains true is
-that nothing here supersedes the opt-in WYSIWYG rule above - the preview
-takes no typing at all, and the editing surfaces are the source editor
-(Edit, Focus) and the paged editor (Read, unlocked), per "Workspace
-modes" above.
+The paginated preview is an editing surface, not only a viewer. This does
+**not** supersede the opt-in WYSIWYG rule above: these are explicit,
+user-invoked actions on a specific target, not a seamless typing surface.
+The source pane remains the default editing model.
 
 Shipped behavior:
 
@@ -421,52 +346,30 @@ Rules (shipped + refinements):
 Anti-patterns: toolbars that obscure content on scroll; unlabeled icon-only
 buttons.
 
-### 3. Mobile / PWA editor UX
-
-**Status: REMOVED (0.12, SFE-P5a, plan D10).** Previously tracked in #33
-(closed, PR #63) and #34 (closed), with normative implementation detail in
-`docs/pwa-webadapter-plan.md`. That implementation — the `WebAdapter` browser
-host this section specified against (write-first tab layout, keyboard
-toolbar, offline app-shell precache via `service-worker.ts`) — shipped
-partially, then was **deleted rather than completed**: `packages/desktop` is
-an Electron-only product now, with no dormant browser host inside it. A
-future web product is not a mode of this package — it is a **separate
-package** consuming `@dimm-city/gutterpress-editor` and `gutterpress/render`,
-built new against those public surfaces rather than by finishing this
-deleted adapter. `docs/pwa-webadapter-plan.md` is closed and kept as
-history, not as a normative spec to reconcile against; the deletion itself
-is recorded in the deletion ledger's SFE-P5a entry
-(`docs/plans/source-first-editor/deletion-ledger.md`). The narrow/mobile
-**desktop** window layout (820px breakpoint, §1 above) is unaffected — it is
-shipped Electron behavior, not PWA-specific.
-
-Two saving-flow facts that this section used to carry are shipped DESKTOP
-behavior, not PWA-specific, and survive its removal:
+### 3. Saving and copies
 
 - **Auto-save is SHIPPED and works as follows** (do not respecify): a FIXED
   debounced disk save 500ms after the last edit (`EditorBuffer`) and an
   ALWAYS-ON crash-recovery draft 1000ms after the last edit, plus explicit
   `Cmd/Ctrl+S` / toolbar Save. Neither delay is a user setting (#274), but
-  auto-save itself is an on/off switch, default on: Settings -> Saving, "Save
-  edits automatically" (owner request 2026-09-25 - with no way to turn it
+  auto-save itself is an on/off switch, default on: Settings → Saving, "Save
+  edits automatically" (owner request 2026-09-25 — with no way to turn it
   off, the Save button had nothing to do). Off, edits wait for Save /
   `Cmd/Ctrl+S`, the toolbar Save stays lit while anything is unsaved, the
   status bar reads "Unsaved changes", and the preview updates on save.
   Leaving a file with unsaved edits (switching files, books or projects,
   closing the project or the window) asks a native Save / Don't Save /
-  Cancel - the one modal in the saving flow, and only when auto-save is
-  off. The save indicator itself stays subtle (no modal) - see
+  Cancel — the one modal in the saving flow, and only when auto-save is
+  off. The save indicator itself stays subtle (no modal) — see
   Anti-Patterns.
-- **Switching copies is SHIPPED in Settings -> Saving** (#273): the Saving &
-  recovery group names the copy (git branch) the open project is on and,
-  when other copies exist, offers a picker to switch. Copies that so far
-  exist only online are listed too, marked "(online only)", and created
-  locally on the way in; the picker never creates a new copy. Author-facing
+- **Switching copies is SHIPPED in Settings → Saving** (#273): the Saving &
+  recovery group names the local copy (git branch) the open project is on
+  and, only when more than one exists locally, offers a picker to switch —
+  local copies only, never a remote checkout or a create. Author-facing
   vocabulary says "copy", never "branch". The switch takes a version of any
   in-progress edit first, so nothing is lost and nothing is ever forced; the
   editor/file tree/preview then show the new copy the same way they pick up
   any other external change.
-
 ### 4. Onboarding — progressive disclosure
 
 **Status: PARTIAL** (#25 wizard + templates, #27 project finder,
@@ -815,7 +718,10 @@ a flat columned table), check ids translated to plain-language labels
 Raw rule-ID columns and rule-ID-first presentation are anti-patterns here.
 
 - Bottom drawer, collapsible, badge with error/warning count
-  (`aria-label="3 errors, 2 warnings"`).
+  (`aria-label="Problems: 3 errors, 2 warnings"`). The list is a row of its own
+  above the status bar, in normal flow: opening it pushes the workspace up and
+  never overlays the left panel or the editor (#307). Below 820px it is a
+  full-viewport sheet with its own Close button instead.
 - Click row → jump to location in the editor. PROPOSED: severity filters;
   Arrow-key row navigation with Enter-to-jump; inline "Go to" navigation on
   rows (matching §6's navigate-only remediation — no auto-fix — and required
@@ -829,7 +735,10 @@ Raw rule-ID columns and rule-ID-first presentation are anti-patterns here.
   keystroke): widows/orphans, image aspect-ratio mismatch, page overflow
   (see §5).
 - Rule explanations open the in-app help drawer, not an external browser.
-- Empty state: "No problems found — document looks great."
+- Empty state: nothing to open. The status bar reads "No problems" beside a
+  tick and the toggle gives way to that plain label (#307). A list already open
+  when its last problem is fixed says "No problems found — your project looks
+  good!" until dismissed.
 
 ### 11. Look (the Extensions surface's styles view)
 
@@ -914,23 +823,6 @@ drawer.
   keys) is the SC 2.5.7 non-drag alternative.
 - Context menus: long-press on touch, right-click + `Shift+F10` on desktop.
 
-### PWA requirements
-
-**Status: REMOVED (0.12, SFE-P5a, plan D10).** Previously shipped (Phases
-1–5) via #33/PR #63, normative in `docs/pwa-webadapter-plan.md`. That
-implementation — `service-worker.ts` (app-shell precache), the web app
-manifest, and `WebAdapter` (FSA primitives + IndexedDB persistence) — was
-**deleted rather than completed**: `packages/desktop` is an Electron-only
-product now, with no dormant browser host inside it. A future web product is
-not a mode of this package — it is a **separate package** consuming
-`@dimm-city/gutterpress-editor` and `gutterpress/render`, built new against
-those public surfaces rather than by finishing this deleted adapter.
-`docs/pwa-webadapter-plan.md` is closed and kept as history; the deletion
-itself is recorded in the deletion ledger's SFE-P5a entry
-(`docs/plans/source-first-editor/deletion-ledger.md`). PDF export and
-publishing remain desktop/CLI-only, unconditionally — there is no web/mobile
-target left to gate them off for.
-
 ---
 
 ## Measurable quality gates
@@ -998,15 +890,9 @@ they are validated by usability testing, not by a wall-clock CI gate.
 | Metric | Target | Fixture / condition |
 |---|---|---|
 | Cold launch → editor accepts first keystroke | ≤2s P90 | reference machine (M1 MacBook Air + CI runner) — replaces the undefined "TTI" |
-| Preview re-render after keystroke | ≤300ms | `bench/novel-50p` (text-only) |
-| PDF export | ≤8s | `bench/novel-50p`; image-heavy budget (`bench/zine-24p`) not yet created |
+| Preview re-render after keystroke | ≤300ms | `examples/gutterpress-user-guide` (74 pages, text-heavy) |
+| PDF export | ≤8s | `examples/gutterpress-user-guide`; no image-heavy budget is set |
 | Theme switch (hover sample-spread render) | ≤500ms | sample spread only — full-document re-apply is exempt above N pages and shows progress |
-
-Mobile/PWA performance targets are historical: `docs/pwa-webadapter-plan.md`
-is closed (0.12, SFE-P5a, plan D10) and its follow-ups do not apply — there
-is no PWA/browser target in this package (see "PWA requirements" above). A
-future web product would define its own performance targets against a named
-reference device.
 
 ### Satisfaction
 
@@ -1031,9 +917,7 @@ reference device.
 - Screen reader matrix (matches the real platforms — the app is Chromium on
   every desktop OS, so no non-Chromium engine is ever a test target):
   - Windows: **NVDA + the app**;
-  - macOS: **VoiceOver + the app**.
-  - (There is no PWA/browser target in this package — see Scope above — so
-    no browser/mobile screen-reader row applies.)
+  - macOS: **VoiceOver + the app**;
 - Shipped precedent to match, not reinvent: **#22** (focus trap,
   WCAG SC 2.1.2) and **#21** (export-progress announcements, cancel,
   elapsed time).
@@ -1082,7 +966,7 @@ reference device.
   is typing.** After ~3s idle following a re-render, announce meaningful
   deltas only ("Preview updated — now 52 pages"), max one per idle period,
   via a status node **separate from the re-rendering preview DOM**.
-- Problems badge: `aria-label="3 errors, 2 warnings"`.
+- Problems badge: `aria-label="Problems: 3 errors, 2 warnings"`.
 - Publish/export progress: `role="status"` (shipped, #21).
 - Editor: CodeMirror 6's built-in accessibility tree; do not override
   `aria-multiline`.
@@ -1199,7 +1083,7 @@ explicit width/height (never scaled by `font-size`). Icon-only buttons:
 | Anti-pattern | Why | Alternative |
 |---|---|---|
 | Full-screen onboarding carousel | Hides the actual app | Annotated starter template (shipped wizard) |
-| Save-confirmation modal/toast ("Saved!") | Interrupts writing | Subtle indicator; auto-save is shipped (§1) |
+| Save-confirmation modal/toast ("Saved!") | Interrupts writing | Subtle indicator; auto-save is shipped (§3) |
 | Blocking publish modal with progress | Forces spinner-watching | Side-drawer progress log (§6) |
 | Floating panels that reset position | Lost state | Docked panels, persisted layout |
 | Color-only state indication | WCAG / color-blind users | Icon + color + label |
@@ -1232,8 +1116,6 @@ Obsidian (panel flexibility, community themes) · Bear · Ulysses.
 **Publish:** Netlify (preflight + deploy log drawer) · Shopify (provider
 cards) · Leanpub (author-centric flow).
 
-**Mobile editors:** iA Writer iOS · 1Writer · Drafts.
-
 **Accessibility:** [WCAG 2.2 quick reference](https://www.w3.org/WAI/WCAG22/quickref/)
 · [Inclusive Components](https://inclusive-components.design/) (Heydon
 Pickering) · bits-ui accessibility docs.
@@ -1261,7 +1143,7 @@ before implementation** (Primary Goals: unscoped mandated work is prohibited)
 - ✅ Editor (#38) · ✅ CSS language mode (#39) · ✅ Toolbar (#31) · ✅ Snippets (#29)
 - ✅ Synchronized scroll (EditorPreviewSyncController) · 🆕 user toggle to disable
 - ⏳ Resizable gutter with snap points + keyboard adjustment — **#103**
-- ✅ Focus mode (`Cmd/Ctrl+Shift+F`, 0.12: Edit without the preview) — **#104**
+- ⏳ Focus mode (`Cmd/Ctrl+Shift+F`) — **#104**
 - ❌ Command palette — evaluated, not planned (shortcut stays reserved)
 
 ### Onboarding

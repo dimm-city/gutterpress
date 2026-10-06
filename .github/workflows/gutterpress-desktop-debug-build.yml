@@ -2,8 +2,7 @@ name: Gutterpress desktop debug build (Windows)
 
 # Builds the Windows desktop installer + portable zip from any branch and uploads them as an
 # artifact you can download from the Actions tab. Use this for testing
-# in-progress branches (like fix/first-render-perf) without cutting a
-# release.
+# in-progress branches without cutting a release.
 
 on:
   workflow_dispatch:

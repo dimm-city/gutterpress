@@ -8,8 +8,8 @@
  * `manifestPathFor` + `loadDoc`, and plugin/theme carried a copy of the
  * "ensure this seq exists" helper differing only by key.
  *
- * Host-side (node:fs); the renderer reaches these through the `manifest:*`/
- * `plugin:*`/`theme:*` typed IPC channels (`electron/api/*.ts`).
+ * Host-side (node:fs); the renderer reaches these through the desktop's
+ * manifest/plugin/theme server routes (`src/routes/api/**`).
  * Bundle-safe (CLAUDE.md §1/§3): no runtime package.json reads,
  * no computed dynamic imports, no bundlers.
  */
@@ -88,9 +88,8 @@ export function ensureSeq(doc: Document.Parsed, key: string): YAMLSeq {
  * plain JS string (as a freshly-constructed `Scalar`'s `.value` or a raw
  * array entry would be).
  *
- * ARCH finding #25: this was two near-duplicate helpers — `unwrapScalar`
- * (manifest-config.ts) and `styleHrefOf` (the theme manager, since retired) — with the same
- * shape-sniffing logic. One implementation here, consumed by both.
+ * One implementation of this shape-sniffing, shared by every manifest
+ * reader (manifest-config.ts, project-templates.ts).
  */
 export function scalarString(item: unknown): string | null {
   if (item && typeof item === "object" && "value" in (item as object)) {

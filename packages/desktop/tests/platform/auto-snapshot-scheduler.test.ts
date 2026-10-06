@@ -162,7 +162,7 @@ test("(c) run() snapshots with message + log path derived from basename", async 
 //
 // The automatic snapshot must be committed as the author, exactly like the
 // manual "Save a version" path (which goes through gitIdentityArgs() in
-// electron/api/git-identity-args.ts, SFE-P5c3). Before this was wired, run() called
+// src/lib/server/settings.ts). Before this was wired, run() called
 // provider.snapshot() with no author fields at all, so every automatic snapshot
 // was silently attributed to the lib's "Gutterpress <noreply@Gutterpress.local>"
 // default while manual saves carried the configured name/email.
@@ -321,7 +321,7 @@ test("(j) onPendingChanged fires dir on arm and null on clear", async () => {
   expect(h.pendingChanges[h.pendingChanges.length - 1]).toBeNull();
 });
 
-// ── onSnapshotFailed threshold signal (M39 — UX critical review) ────────────────
+// ── onSnapshotFailed threshold signal (M39) ────────────────
 //
 // AutoSnapshotScheduler.run's catch used to only console.error and return — a
 // persistently failing safety net gave zero signal. onSnapshotFailed fires once
@@ -435,7 +435,7 @@ test("(n) onSnapshotFailed is optional — a missing dep never throws from run()
   }
 });
 
-// ── 2026-07-29 audit: the operation log identifies the REPO, not the book ─────
+// ── the operation log identifies the REPO, not the book ─────
 //
 // The log filename was keyed on `path.basename(dir)` — the OPENED BOOK. In a
 // multi-book repo that fragments one repository's sync/snapshot history across

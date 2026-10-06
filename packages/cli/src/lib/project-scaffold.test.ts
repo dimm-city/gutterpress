@@ -538,7 +538,7 @@ test("adoptFolder: scaffolds a chapter when the folder has no markdown", async (
 test("adoptFolder: refuses a folder that is already a project", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-adopt-existing-"));
   await writeFile(path.join(dir, "manifest.yaml"), "title: x\n", "utf8");
-  await expect(adoptFolder({ dir, versionHistory: "none" })).rejects.toThrow(/already a Gutterpress project/i);
+  await expect(adoptFolder({ dir, versionHistory: "none" })).rejects.toThrow(/already a Gutterpress book/i);
   await rm(dir, { recursive: true, force: true });
 });
 

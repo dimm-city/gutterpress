@@ -1,6 +1,6 @@
 /**
- * ARCH finding #49: `chromium.ts` (Chromium discovery — the thing most likely
- * to fail on a non-technical author's machine) had no direct tests.
+ * Direct tests for `chromium.ts` (Chromium discovery — the thing most likely
+ * to fail on a non-technical author's machine).
  *
  * These tests exercise the full discovery matrix — env-var override, the
  * fixed-path scan, and the PATH probe fallback — WITHOUT requiring a real
@@ -10,7 +10,7 @@
  * whole shared test run) and always restored in `afterEach`.
  *
  * `SYSTEM_PATHS` is built ONCE at module-load time from `process.env`
- * (chromium.ts:5-39), so tests that vary `CHROMIUM_PATH` / `PUPPETEER_EXECUTABLE_PATH`
+ * (chromium.ts:5-39), so tests that vary `CHROMIUM_PATH` / its deprecated alias `PUPPETEER_EXECUTABLE_PATH`
  * / `LOCALAPPDATA` must re-import a fresh module instance AFTER setting the
  * env var — a plain `import("./chromium")` would hit Bun's module cache and
  * silently reuse the first test's env snapshot. `freshChromium()` below
@@ -149,7 +149,7 @@ describe("resolveChromiumExecutable — fixed-path probe", () => {
   });
 });
 
-describe("resolveChromiumExecutable — CHROMIUM_PATH / PUPPETEER_EXECUTABLE_PATH env vars", () => {
+describe("resolveChromiumExecutable — CHROMIUM_PATH and its deprecated alias PUPPETEER_EXECUTABLE_PATH", () => {
   test("CHROMIUM_PATH is checked and used when it exists on disk", async () => {
     snapshotEnv();
     process.env.CHROMIUM_PATH = "/opt/my-custom-chrome/chrome";
@@ -162,7 +162,7 @@ describe("resolveChromiumExecutable — CHROMIUM_PATH / PUPPETEER_EXECUTABLE_PAT
     expect(result).toBe("/opt/my-custom-chrome/chrome");
   });
 
-  test("PUPPETEER_EXECUTABLE_PATH is used when CHROMIUM_PATH is unset", async () => {
+  test("the deprecated alias PUPPETEER_EXECUTABLE_PATH is still honoured when CHROMIUM_PATH is unset", async () => {
     snapshotEnv();
     delete process.env.CHROMIUM_PATH;
     process.env.PUPPETEER_EXECUTABLE_PATH = "/opt/puppeteer-chrome/chrome";
@@ -307,7 +307,7 @@ describe("requireChromiumExecutable — error message quality", () => {
     } catch (err) {
       const message = (err as Error).message;
       expect(message).toContain("CHROMIUM_PATH=/path/to/chrome");
-      // Sourced from the single INSTALL_HINTS registry (ARCH finding #15) —
+      // Sourced from the single INSTALL_HINTS registry —
       // not a hand-copied duplicate that could drift.
       expect(message).toContain(INSTALL_HINTS.chromium.body);
       // The desktop app renders with its own bundled Electron Chromium (it

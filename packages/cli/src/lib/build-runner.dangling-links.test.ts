@@ -4,7 +4,6 @@ import path from "node:path";
 
 import { runBuild } from "./build-runner.ts";
 import { resolveChromiumExecutable } from "./chromium.ts";
-import { closeBrowser } from "./browser-pool.ts";
 import { clearPdfCache, loadPdf } from "./pdf-inspect.ts";
 import { extractReport, serializeReport } from "./render-parity.ts";
 import { makeTempDir, pngRgb } from "../test-helpers/testkit.ts";
@@ -30,7 +29,6 @@ if (!chromium) {
 const TIMEOUT_MS = 90_000;
 const dirs: string[] = [];
 afterAll(async () => {
-  if (chromium) await closeBrowser();
   clearPdfCache();
   for (const d of dirs.splice(0)) await rm(d, { recursive: true, force: true });
 });
@@ -73,7 +71,6 @@ async function build(inputDir: string, format: "pdf" | "html", tag: string): Pro
     outDir,
     skipLint: true,
     skipPreValidate: true,
-    keepBrowserAlive: true,
     rawArgs: {},
   });
   if (format === "html") return path.join(outDir, "book.html");

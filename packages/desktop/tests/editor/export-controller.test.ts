@@ -209,8 +209,7 @@ test("markCanceling during the syncing phase shows Canceling…, not the stale s
 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Host intents: savePdf / exportHtml / cancelExport (Phase 5 slice 2 — moved
-// from +page.svelte, UX H5 / ARCH #10).
+// Host intents: savePdf / buildTo / cancelExport.
 // ─────────────────────────────────────────────────────────────────────────────
 
 type Spy<A extends unknown[] = unknown[]> = ((...a: A) => void) & { calls: A[] };
@@ -226,14 +225,14 @@ interface HostHarness {
   ctrl: ExportController;
   host: ExportHostDeps;
   deps: {
-    isDesktop: Spy<[]> & { value: boolean };
     checkSaveReadiness: Spy<[]> & { value: string | null };
     setSaveWarning: Spy<[string | null]>;
     currentDir: Spy<[]> & { value: string | null };
     displayName: Spy<[]> & { value: string | null };
     isBusy: Spy<[]> & { value: boolean };
     sourceMode: Spy<[]> & { value: "folder" | "url" };
-    chooseSavePath: Spy<[string]> & { value: string | null };
+    chooseSavePath: Spy<[string, (string | undefined)?]> & { value: string | null };
+    pickOutputFolder: Spy<[string]> & { value: string | null };
     buildPdf: Spy<
       [
         { key: string; displayName: string },
@@ -243,11 +242,10 @@ interface HostHarness {
     > & {
       impl: () => Promise<{ exportId?: string; pdfPath?: string }>;
     };
-    buildHtml: Spy<[{ key: string; displayName: string }]> & {
-      impl: () => Promise<{ downloadUrl?: string }>;
+    buildHtml: Spy<[{ key: string; displayName: string }, (string | undefined)?]> & {
+      impl: () => Promise<{ outDir?: string }>;
     };
     cancelExportHost: Spy<[string]>;
-    downloadFile: Spy<[string, string]>;
     showInFolder: Spy<[string]>;
     toastSuccess: Spy<[string, (number | undefined)?, ({ label: string; onClick: () => void } | undefined)?]>;
     toastError: Spy<
@@ -262,14 +260,14 @@ interface HostHarness {
 }
 
 function makeHostController(): HostHarness {
-  const isDesktop = Object.assign(hspy<[]>(), { value: true });
   const checkSaveReadiness = Object.assign(hspy<[]>(), { value: null as string | null });
   const setSaveWarning = hspy<[string | null]>();
   const currentDir = Object.assign(hspy<[]>(), { value: "/proj" as string | null });
   const displayName = Object.assign(hspy<[]>(), { value: "My Book" as string | null });
   const isBusy = Object.assign(hspy<[]>(), { value: false });
   const sourceMode = Object.assign(hspy<[]>(), { value: "folder" as "folder" | "url" });
-  const chooseSavePath = Object.assign(hspy<[string]>(), { value: "/out/book.pdf" as string | null });
+  const chooseSavePath = Object.assign(hspy<[string, (string | undefined)?]>(), { value: "/out/book.pdf" as string | null });
+  const pickOutputFolder = Object.assign(hspy<[string]>(), { value: "/out/site" as string | null });
   const buildPdf = Object.assign(
     hspy<
       [
@@ -280,11 +278,10 @@ function makeHostController(): HostHarness {
     >(),
     { impl: async () => ({ exportId: "exp-1", pdfPath: "/out/book.pdf" }) },
   );
-  const buildHtml = Object.assign(hspy<[{ key: string; displayName: string }]>(), {
-    impl: async () => ({ downloadUrl: "blob:abc" }),
+  const buildHtml = Object.assign(hspy<[{ key: string; displayName: string }, (string | undefined)?]>(), {
+    impl: async (): Promise<{ outDir?: string }> => ({ outDir: "/proj/dist" }),
   });
   const cancelExportHost = hspy<[string]>();
-  const downloadFile = hspy<[string, string]>();
   const showInFolder = hspy<[string]>();
   const toastSuccess = hspy<[string, (number | undefined)?, ({ label: string; onClick: () => void } | undefined)?]>();
   const toastError = hspy<
@@ -297,11 +294,6 @@ function makeHostController(): HostHarness {
   const wait = hspy<[number]>();
 
   const host: ExportHostDeps = {
-    isDesktop: () => {
-      isDesktop();
-      return isDesktop.value;
-    },
-    desktopRequiredMessage: "This needs the desktop app to continue.",
     checkSaveReadiness: () => {
       checkSaveReadiness();
       return checkSaveReadiness.value;
@@ -323,24 +315,27 @@ function makeHostController(): HostHarness {
       sourceMode();
       return sourceMode.value;
     },
-    chooseSavePath: (defaultName) => {
-      chooseSavePath(defaultName);
+    chooseSavePath: (defaultName, defaultDir) => {
+      chooseSavePath(defaultName, defaultDir);
       return Promise.resolve(chooseSavePath.value);
+    },
+    pickOutputFolder: (defaultPath) => {
+      pickOutputFolder(defaultPath);
+      return Promise.resolve(pickOutputFolder.value);
     },
     onBuildProgress: () => undefined,
     buildPdf: (input, outPath, opts) => {
       buildPdf(input, outPath, opts);
       return buildPdf.impl();
     },
-    buildHtml: (input) => {
-      buildHtml(input);
+    buildHtml: (input, out) => {
+      buildHtml(input, out);
       return buildHtml.impl();
     },
     cancelExportHost: (id) => {
       cancelExportHost(id);
       return Promise.resolve();
     },
-    downloadFile: (url, filename) => downloadFile(url, filename),
     showInFolder: (path) => {
       showInFolder(path);
       return Promise.resolve();
@@ -358,7 +353,6 @@ function makeHostController(): HostHarness {
     ctrl: new ExportController(undefined, host),
     host,
     deps: {
-      isDesktop,
       checkSaveReadiness,
       setSaveWarning,
       currentDir,
@@ -366,10 +360,10 @@ function makeHostController(): HostHarness {
       isBusy,
       sourceMode,
       chooseSavePath,
+      pickOutputFolder,
       buildPdf,
       buildHtml,
       cancelExportHost,
-      downloadFile,
       showInFolder,
       toastSuccess,
       toastError,
@@ -405,14 +399,6 @@ test("savePdf() with no current dir stops after clearing the warning", async () 
   deps.currentDir.value = null;
   await ctrl.savePdf();
   expect(deps.setSaveWarning.calls).toEqual([[null]]);
-  expect(deps.chooseSavePath.calls.length).toBe(0);
-});
-
-test("savePdf() on the web shows the desktop-required toast instead of exporting", async () => {
-  const { ctrl, deps } = makeHostController();
-  deps.isDesktop.value = false;
-  await ctrl.savePdf();
-  expect(deps.toastError.calls).toEqual([["This needs the desktop app to continue."]]);
   expect(deps.chooseSavePath.calls.length).toBe(0);
 });
 
@@ -562,48 +548,6 @@ test("savePdf() EXPORT_CANCELED resets quietly without an error toast", async ()
   expect(ctrl.state).toBe("idle");
 });
 
-// ── exportHtml ───────────────────────────────────────────────────────────────
-
-test("exportHtml() no-ops with no current dir, while busy, while already exporting, or in URL mode", async () => {
-  const cases: Array<(d: HostHarness["deps"], c: ExportController) => void> = [
-    (d) => (d.currentDir.value = null),
-    (d) => (d.isBusy.value = true),
-    (_d, c) => c.beginSimpleExport(),
-    (d) => (d.sourceMode.value = "url"),
-  ];
-  for (const setup of cases) {
-    const { ctrl, deps } = makeHostController();
-    setup(deps, ctrl);
-    const before = deps.buildHtml.calls.length;
-    await ctrl.exportHtml();
-    expect(deps.buildHtml.calls.length).toBe(before);
-  }
-});
-
-test("exportHtml() happy path: downloads the file and toasts success, then clears the busy flag", async () => {
-  const { ctrl, deps } = makeHostController();
-  await ctrl.exportHtml();
-  expect(deps.downloadFile.calls).toEqual([["blob:abc", "My Book.html"]]);
-  expect(deps.toastSuccess.calls).toEqual([["HTML exported"]]);
-  expect(ctrl.exporting).toBe(false);
-});
-
-test("exportHtml() with no downloadUrl toasts a specific failure instead of silently no-opping (M22)", async () => {
-  const { ctrl, deps } = makeHostController();
-  deps.buildHtml.impl = async () => ({});
-  await ctrl.exportHtml();
-  expect(deps.toastError.calls).toEqual([["HTML export failed: no file was produced."]]);
-  expect(deps.downloadFile.calls.length).toBe(0);
-});
-
-test("exportHtml() build failure toasts the friendly error", async () => {
-  const { ctrl, deps } = makeHostController();
-  deps.buildHtml.impl = () => Promise.reject(new Error("network down"));
-  await ctrl.exportHtml();
-  expect(deps.toastError.calls).toEqual([["friendly: network down"]]);
-  expect(ctrl.exporting).toBe(false);
-});
-
 // ── cancelExport ─────────────────────────────────────────────────────────────
 
 test("cancelExport() no-ops when there is no active export id", async () => {
@@ -628,4 +572,72 @@ test("cancelExport() swallows a host cancel failure", async () => {
   ctrl2.start();
   ctrl2.syncProgress({ exportId: "exp-9", state: "rendering" });
   await expect(ctrl2.cancelExport()).resolves.toBeUndefined();
+});
+
+// ── buildTo (the Publish wizard's "build into a folder" step) ────────────────
+
+test("buildTo() PDF inside the book builds straight into the folder with no dialog and resolves with the saved path", async () => {
+  const { ctrl, deps } = makeHostController();
+  deps.buildPdf.impl = async () => ({ exportId: "exp-1", pdfPath: "/proj/dist/My Book.pdf" });
+  const result = await ctrl.buildTo({ format: "pdf", dir: "/proj/dist", validate: true });
+  expect(deps.chooseSavePath.calls.length).toBe(0);
+  expect(deps.buildPdf.calls[0]![1]).toBe("/proj/dist/My Book.pdf");
+  expect(deps.buildPdf.calls[0]![2]).toEqual({ validate: true, allowShrink: false });
+  expect(result).toBe("/proj/dist/My Book.pdf");
+  expect(ctrl.state).toBe("idle");
+});
+
+test("buildTo() PDF outside the book confirms the destination in the Save dialog, pre-pointed at that folder", async () => {
+  const { ctrl, deps } = makeHostController();
+  deps.chooseSavePath.value = "/elsewhere/My Book.pdf";
+  deps.buildPdf.impl = async () => ({ exportId: "exp-1", pdfPath: "/elsewhere/My Book.pdf" });
+  const result = await ctrl.buildTo({ format: "pdf", dir: "/elsewhere", validate: false });
+  expect(deps.chooseSavePath.calls).toEqual([["My Book.pdf", "/elsewhere"]]);
+  expect(deps.buildPdf.calls[0]![1]).toBe("/elsewhere/My Book.pdf");
+  expect(result).toBe("/elsewhere/My Book.pdf");
+});
+
+test("buildTo() resolves null (no build) when the author cancels the dialog, and when a build fails", async () => {
+  const { ctrl, deps } = makeHostController();
+  deps.chooseSavePath.value = null;
+  expect(await ctrl.buildTo({ format: "pdf", dir: "/elsewhere" })).toBeNull();
+  expect(deps.buildPdf.calls.length).toBe(0);
+  deps.buildPdf.impl = async () => {
+    throw new Error("boom");
+  };
+  expect(await ctrl.buildTo({ format: "pdf", dir: "/proj/dist" })).toBeNull();
+  expect(deps.toastError.calls[0]![0]).toBe("friendly: boom");
+});
+
+test("buildTo() website builds the folder and offers Show in Folder", async () => {
+  const { ctrl, deps } = makeHostController();
+  deps.buildHtml.impl = async () => ({ outDir: "/proj/dist" });
+  const result = await ctrl.buildTo({ format: "html", dir: "/proj/dist" });
+  expect(deps.buildHtml.calls[0]).toEqual([{ key: "/proj", displayName: "My Book" }, "/proj/dist"]);
+  expect(deps.pickOutputFolder.calls.length).toBe(0);
+  expect(result).toBe("/proj/dist");
+  expect(deps.toastSuccess.calls[0]![0]).toBe("Website saved to /proj/dist");
+  deps.toastSuccess.calls[0]![2]?.onClick();
+  expect(deps.showInFolder.calls).toEqual([["/proj/dist"]]);
+  expect(ctrl.exporting).toBe(false);
+});
+
+test("buildTo() website outside the book confirms the folder in the folder dialog first", async () => {
+  const { ctrl, deps } = makeHostController();
+  deps.buildHtml.impl = async () => ({ outDir: "/out/site" });
+  const result = await ctrl.buildTo({ format: "html", dir: "/out/site" });
+  expect(deps.pickOutputFolder.calls).toEqual([["/out/site"]]);
+  expect(deps.buildHtml.calls[0]![1]).toBe("/out/site");
+  expect(result).toBe("/out/site");
+});
+
+test("buildTo() honours the readiness warning and the one in-flight guard like savePdf", async () => {
+  const { ctrl, deps } = makeHostController();
+  deps.checkSaveReadiness.value = "Still loading";
+  expect(await ctrl.buildTo({ format: "pdf", dir: "/proj/dist" })).toBeNull();
+  expect(deps.setSaveWarning.calls).toEqual([["Still loading"]]);
+  deps.checkSaveReadiness.value = null;
+  ctrl.start();
+  expect(await ctrl.buildTo({ format: "pdf", dir: "/proj/dist" })).toBeNull();
+  expect(deps.buildPdf.calls.length).toBe(0);
 });

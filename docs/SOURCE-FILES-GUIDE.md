@@ -186,24 +186,6 @@ gutterpress build ./my-book --format html --out ./_site
 
 ## Debugging
 
-### Check What Files Are Being Used
-
-```bash
-# Use the debug script
-bun packages/cli/tools/debug-manifest.ts ./my-book
-
-# Output will show:
-# 🔍 Source configuration analysis:
-#   files: ✅ Specified
-#   file count: 5
-#   files in order:
-#     1. intro.md
-#     2. chapter-01.md
-#     3. chapter-02.md
-#     4. chapter-03.md
-#     5. appendix.md
-```
-
 ### File Not Found Error
 
 ```
@@ -253,4 +235,3 @@ Or just omit `source.files` to get all `.md` files alphabetically.
 
 - [Schema autocomplete & manifest reference](./schema-autocomplete.md)
 - [Example Manifest](../examples/gutterpress-user-guide/manifest.yaml)
-- [Debug Script](../packages/cli/tools/debug-manifest.ts)

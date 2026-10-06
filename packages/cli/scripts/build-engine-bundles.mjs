@@ -9,7 +9,7 @@
 // compiled `bun build --compile` binary cannot carry a live bundler. So the
 // bundles are produced HERE, at package build time (wired into the `build`
 // script in package.json), and committed as ordinary generated assets under
-// `src/assets/engine/`, exactly like the vendored `paged.polyfill.js`.
+// `src/assets/engine/`, alongside the preview scripts in `src/assets/preview/`.
 // `src/lib/embedded-assets.ts` then embeds them via `with { type: "file" }`
 // (CLAUDE.md §4) so both `bun packages/cli/src/cli.ts` (source checkout —
 // the files are already on disk, no build step required) and the compiled
@@ -90,13 +90,6 @@ async function buildEngineBundlesHere(force, outDir) {
     }
     built.push(target.outName);
   }
-  // No desktop static mirror to refresh: the desktop package's only two
-  // consumers of a `packages/desktop/static/engine/` copy (the dormant
-  // browser host's `WebAdapter.renderBookHtml` and the service worker's
-  // precache list) were both deleted in SFE-P5a (D10). The desktop preview
-  // iframe is served from the CLI preview server origin, which injects this
-  // same bundle from these embedded assets directly — never a static mirror.
-  // See docs/plans/source-first-editor/deletion-ledger.md's SFE-P5a entry.
   return built;
 }
 

@@ -23,7 +23,6 @@ const spy = <A extends unknown[] = unknown[]>(): Spy<A> => {
 interface Harness {
   ctrl: CrashRecoveryController;
   deps: {
-    isDesktop: Spy<[]> & { value: boolean };
     listRecovery: Spy<[string]> & { impl: (dir: string) => Promise<CrashRecoveryEntry[]> };
     clearRecovery: Spy<[string]>;
     readRecoveryFile: Spy<[string]> & { impl: (path: string) => Promise<string> };
@@ -34,7 +33,6 @@ interface Harness {
 }
 
 function make(): Harness {
-  const isDesktop = Object.assign(spy<[]>(), { value: true });
   const listRecovery = Object.assign(spy<[string]>(), {
     impl: async (): Promise<CrashRecoveryEntry[]> => [],
   });
@@ -49,10 +47,6 @@ function make(): Harness {
   const toastError = spy<[string]>();
 
   const deps: CrashRecoveryDeps = {
-    isDesktop: () => {
-      isDesktop();
-      return isDesktop.value;
-    },
     listRecovery: (dir) => {
       listRecovery(dir);
       return listRecovery.impl(dir);
@@ -77,7 +71,6 @@ function make(): Harness {
   return {
     ctrl: new CrashRecoveryController(deps),
     deps: {
-      isDesktop,
       listRecovery,
       clearRecovery,
       readRecoveryFile,
@@ -89,13 +82,6 @@ function make(): Harness {
 }
 
 // ── scan ─────────────────────────────────────────────────────────────────────
-
-test("scan() no-ops on the web", async () => {
-  const { ctrl, deps } = make();
-  deps.isDesktop.value = false;
-  await ctrl.scan("/proj");
-  expect(deps.listRecovery.calls.length).toBe(0);
-});
 
 test("scan() guards against re-scanning the same folder twice", async () => {
   const { ctrl, deps } = make();
@@ -162,15 +148,6 @@ test("restore() removes the item, restores the session, and opens the editor", a
   expect(deps.showEditor.calls.length).toBe(1);
 });
 
-test("restore() no-ops on the web after removing the item", async () => {
-  const { ctrl, deps } = make();
-  deps.isDesktop.value = false;
-  ctrl.items = [ITEM];
-  await ctrl.restore(ITEM);
-  expect(ctrl.items).toEqual([]);
-  expect(deps.readRecoveryFile.calls.length).toBe(0);
-});
-
 test("restore() read failure toasts and re-offers the still-safe recovery item", async () => {
   const { ctrl, deps } = make();
   deps.readRecoveryFile.impl = () => Promise.reject(new Error("disk error"));
@@ -222,15 +199,6 @@ test("discard() removes the item and clears the sidecar on desktop", () => {
   ctrl.discard(ITEM);
   expect(ctrl.items).toEqual([]);
   expect(deps.clearRecovery.calls).toEqual([[ITEM.filePath]]);
-});
-
-test("discard() removes the item but does not call clearRecovery on the web", () => {
-  const { ctrl, deps } = make();
-  deps.isDesktop.value = false;
-  ctrl.items = [ITEM];
-  ctrl.discard(ITEM);
-  expect(ctrl.items).toEqual([]);
-  expect(deps.clearRecovery.calls.length).toBe(0);
 });
 
 // ── dismiss / reset ──────────────────────────────────────────────────────────

@@ -1,7 +1,6 @@
 /**
  * DesignSectionController — the single owner of the guided Design section's
- * state + logic that used to live inline in `ProjectConfigPanel.svelte` (the
- * `:root` custom-property editor "ported verbatim from the retired DesignPanel").
+ * state + logic (the `:root` custom-property editor).
  *
  * Centralises the active-stylesheet resolution (`cssPath` / `cssName`), the
  * parsed editable `tokens`, the load/error flags, the `designSaveStatus` badge,
@@ -18,7 +17,7 @@
  * `DesignSection.svelte` are arrow fields so `this` survives prop passing.
  *
  * Host coupling is injected so this stays testable with fakes and PWA-clean
- * (§8 / ADR 0004): the reactive `projectDir` accessor, the `listStyles` /
+ * (§8): the reactive `projectDir` accessor, the `listStyles` /
  * `readFile` / `writeFile` host calls, the `onError` (toast) + `onEditRawCss`
  * hooks, and the debounce timer primitives. Only type-only lib-shaped imports
  * (`ProjectStyle` / `StyleToken` from the local contract) plus the pure
@@ -245,7 +244,7 @@ export class DesignSectionController {
   }
 
   private async commitPendingTokens(): Promise<void> {
-    // Capture the target path BEFORE any await (finding #10): a concurrent
+    // Capture the target path BEFORE any await: a concurrent
     // loadDesign() — a stylesheet/theme switch — can reassign `this.cssPath`
     // while we're parked on the read below. Reading `this.cssPath` again after
     // the await for the write would fold the OLD sheet's tokens into the NEWLY

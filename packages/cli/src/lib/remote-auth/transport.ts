@@ -1,5 +1,5 @@
 /**
- * Transport plumbing used by snapshot-first sync (#15, ADR 0006 D5).
+ * Transport plumbing used by snapshot-first sync (#15).
  * Extracted from sync.ts: remote+credential resolution,
  * `onAuth` wiring, the snapshot-if-needed step, branch/tip helpers, the
  * remote-tip fetch (with the singleBranch `have` fix), and the shared
@@ -73,8 +73,8 @@ export function isCredentialTransmissionSafe(url: string): boolean {
 /**
  * Thrown by {@link onAuthFor} when a stored credential EXISTS but the remote
  * URL fails {@link isCredentialTransmissionSafe} (non-loopback http). Loud and
- * typed on purpose: the old behavior (silently withholding the credential)
- * surfaced as a 401 → "auth" → "reconnect" loop. The `code` string is the
+ * typed on purpose: silently withholding the credential surfaces as a 401 →
+ * "auth" → "reconnect" loop. The `code` string is the
  * STABLE contract (matchable across dynamic-import boundaries).
  */
 export class InsecureTransportError extends Error {
@@ -250,7 +250,7 @@ export function setupErrorMessage(e: unknown): string | null {
 
 /**
  * Snapshot-first step used by syncProject
- * (ADR 0006 D5): commit any unsaved work in the WHOLE repo BEFORE any network
+ *: commit any unsaved work in the WHOLE repo BEFORE any network
  * or merge step, so a forced post-merge checkout can never discard it. The
  * working-tree check runs lazily at action time on the caller's function-scoped
  * object cache (released with the operation).
@@ -398,6 +398,7 @@ export async function fetchRemoteTip(
     ) {
       const err = new Error(
         "The online repository couldn't be accessed with the saved connection. Reconnect and try again.",
+        { cause: e },
       ) as Error & { code: string; data: { statusCode: number } };
       err.code = "HttpError";
       err.data = { statusCode: 401 };

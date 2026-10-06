@@ -5,8 +5,6 @@
  * `electronApp.firstWindow()` returns the SPLASH, which never navigates to
  * the SPA — every test that used firstWindow() broke silently when the
  * splash landed. Poll for the window on the app:// origin instead.
- *
- * (Not named *.pw.mjs on purpose — run-ui.mjs must not treat it as a test.)
  */
 export async function waitForAppWindow(electronApp, timeoutMs = 90_000) {
   const deadline = Date.now() + timeoutMs;

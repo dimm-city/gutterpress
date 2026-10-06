@@ -1,6 +1,5 @@
 /**
- * Regression test for ARCH finding #12 (PR #98, maintainer HIGH,
- * manifest.ts:36-50):
+ * Regression test for PR #98:
  *
  * "explicit missing manifests silently fall back to defaults. A typo in
  * --manifest can create output beneath a directory named after the missing
@@ -94,7 +93,7 @@ test("resolveBuildContext rejects a build when project discovery finds no manife
       rawArgs: {},
     })
   ).rejects.toThrow(
-    `No project manifest found in ${projNoManifest}`
+    `No book manifest found in ${projNoManifest}`
   );
   await expect(
     resolveBuildContext({
@@ -102,5 +101,5 @@ test("resolveBuildContext rejects a build when project discovery finds no manife
       format: "html",
       rawArgs: {},
     })
-  ).rejects.toThrow("gutterpress build <project-dir>");
+  ).rejects.toThrow("gutterpress build <book-dir>");
 });

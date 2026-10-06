@@ -1,12 +1,11 @@
 /**
  * Publish preflight helpers (#105). Pure, host-agnostic result-shaping over the
- * raw check results the `publish:preflight` IPC handler
- * (`electron/api/publish.ts`'s `publishPreflight`) resolves — so the
+ * raw check results the `/api/publish/preflight` route resolves — so the
  * "registry result → author-facing row" mapping (label lookup, code demotion,
  * `fixable` derivation, severity roll-up, grouping) is unit-testable outside
  * both Svelte AND Node.
  *
- * PWA-clean (§8 / ADR 0004): imports only the shared `problems.ts` label +
+ * PWA-clean (§8): imports only the shared `problems.ts` label +
  * message helpers — NO `node:*`, NO lib value import. Labels come from
  * `friendlySource` (the ONE plain-language label table); we never hardcode a
  * second table here.
@@ -70,17 +69,16 @@ export interface PreflightRow {
   provider?: string;
 }
 
-// ── Wizard step-navigation decision (#221 C4) ───────────────────────────────
+// ── Wizard step-navigation decision (#221) ──────────────────────────────────
 
 /**
  * Whether stepping INTO the wizard's Preflight step should (re)run the
  * checks. Only FORWARD navigation counts as "entering" it for rerun purposes
  * (first arrival via Next, mirrored by the explicit Re-run button which calls
  * the run directly) — stepping BACK into Preflight from the Publish step must
- * leave any "publish anyway" override the author already granted alone. A
- * shared `back()`/`next()` → `enterStep()` path (added for the #221 D9
- * destinations-refresh-on-enter behavior) had made BOTH directions rerun and
- * silently clear that override; this is the pure decision the wizard's
+ * leave any "publish anyway" override the author already granted alone. The
+ * shared `back()`/`next()` → `enterStep()` path would otherwise make BOTH
+ * directions rerun and silently clear that override; this is the pure decision the wizard's
  * `enterStep` defers to, so the direction rule is unit-testable without a
  * Svelte render harness.
  */

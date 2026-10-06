@@ -5,12 +5,9 @@
   import GitIdentitySection from "$lib/components/GitIdentitySection.svelte";
   import { useSettings } from "$lib/settings.svelte";
   import { setThemeMode } from "$lib/theme.svelte";
-  import { isDesktop } from "$lib/platform";
-  import { diagnoseProjectRemote, refreshCopies, setAutoSync } from "$lib/remote/remote-capability";
-  import { vcsListBranches, vcsSwitchBranch } from "$lib/vcs/vcs-capability";
+  import { getPlatform } from "$lib/platform";
   import { sanitizeSettingsTab, type SettingsTab } from "$lib/settings-tabs";
-  import type { AppImageIntegrationStatus } from "$lib/platform/dtos";
-  import { appImageIntegration } from "$lib/app-lifecycle/app-lifecycle-capability";
+  import { api, type AppImageIntegrationStatus } from "$lib/api";
   import { friendlyHostError } from "$lib/errors";
 
   let {
@@ -68,7 +65,7 @@
   ];
   // Mounted fresh per open ({#if settingsOpen}) — the initial value is the
   // requested landing tab; navigation from there is user-driven. Sanitized:
-  // an unknown value here used to leave NO tab active (empty settings body).
+  // an unknown value here would leave NO tab active (empty settings body).
   // svelte-ignore state_referenced_locally
   let activeTab = $state<SettingsTab>(sanitizeSettingsTab(initialTab));
   let tabEls = $state<Record<SettingsTab, HTMLButtonElement | undefined>>({
@@ -97,15 +94,14 @@
   // installed until the user presses the button here. The status query is
   // harmless everywhere (it reports `supported: false` off-Linux, in dev, and
   // outside an AppImage) — the whole section stays hidden unless supported, so
-  // Windows/macOS/PWA users never see a Linux-only control.
+  // Windows/macOS users never see a Linux-only control.
   let appImage = $state<AppImageIntegrationStatus | null>(null);
   let appImageBusy = $state(false);
   let appImageNotice = $state("");
   let appImageError = $state("");
 
   onMount(() => {
-    if (!isDesktop()) return;
-    appImageIntegration
+    api.app.appImageIntegration
       .getStatus()
       .then((status) => {
         appImage = status;
@@ -128,11 +124,12 @@
   let canSync = $state(false);
 
   onMount(() => {
-    if (!isDesktop() || !projectDir) {
+    if (!projectDir) {
       canSyncLoading = false;
       return;
     }
-    diagnoseProjectRemote(projectDir)
+    api.remote
+      .diagnoseProjectRemote(projectDir)
       .then((diag) => {
         canSync = diag.canSync;
       })
@@ -148,8 +145,8 @@
   // Every copy is listed, including ones that so far exist only online;
   // switching to one of those creates it locally first. Hidden entirely — not
   // shown with an error — when there's nothing to switch between: no project
-  // open, the browser target (no local git access at all), or `listBranches`
-  // reports `null` (a plain local-folder, which has no repository). Loaded
+  // open, or `listBranches` reports `null` (a plain local-folder, which has no
+  // repository). Loaded
   // once on mount, reloaded after a switch; no `$effect` (CLAUDE.md §8).
   let copies = $state<{ current: string | null; branches: string[]; remoteOnly: string[] } | null>(null);
   let copiesLoading = $state(true);
@@ -167,7 +164,7 @@
    * unconnected simply lists what is already on disk.
    */
   async function loadCopies(options: { refresh?: boolean } = {}) {
-    if (!isDesktop() || !projectDir) {
+    if (!projectDir) {
       copies = null;
       copiesLoading = false;
       return;
@@ -175,13 +172,14 @@
     copiesLoading = true;
     try {
       if (options.refresh) {
-        const r = await refreshCopies(projectDir)
+        const r = await api.remote
+          .refreshCopies(projectDir)
           .catch(() => ({ refreshed: false, reason: "offline" as const }));
         // "no-remote" is not a problem — a project with no online copy has
         // nothing to check for. The other two mean the list may be short.
         copiesStale = !r.refreshed && r.reason !== "no-remote";
       }
-      copies = await vcsListBranches(projectDir);
+      copies = await api.vcs.listBranches(projectDir);
     } catch {
       copies = null;
     } finally {
@@ -199,7 +197,7 @@
     copySwitching = true;
     copySwitchError = null;
     try {
-      await vcsSwitchBranch(projectDir, target);
+      await api.vcs.switchBranch(projectDir, target);
       selectedCopy = "";
       await loadCopies();
       // The files under projectDir just changed out from under the open
@@ -227,8 +225,8 @@
     try {
       const result =
         action === "install"
-          ? await appImageIntegration.install()
-          : await appImageIntegration.remove();
+          ? await api.app.appImageIntegration.install()
+          : await api.app.appImageIntegration.remove();
       appImage = result.status;
       appImageNotice = result.message;
     } catch (e) {
@@ -250,12 +248,12 @@
     </header>
   {/if}
 
-  <div class="tab-bar" role="tablist" aria-label="Settings sections" onkeydown={onTablistKeydown} tabindex="-1">
+  <div class="tab-bar app-tab-bar" role="tablist" aria-label="Settings sections" onkeydown={onTablistKeydown} tabindex="-1">
     {#each TABS as tab (tab.id)}
       <button
         id="{idPrefix}-tab-{tab.id}"
         role="tab"
-        class="tab"
+        class="app-tab"
         class:active={activeTab === tab.id}
         aria-selected={activeTab === tab.id}
         aria-controls="{idPrefix}-panel"
@@ -273,14 +271,33 @@
     aria-labelledby="{idPrefix}-tab-{activeTab}"
   >
       <!-- App appearance (light/dark chrome) --------------------------------
-           UX review M38: named "Appearance" here, but the config panel also
-           used to have its OWN "Appearance" section for the print theme —
-           two different concepts, same word. That panel section is now
-           merged into "Look & style" (M35), so this is the only surviving
-           "Appearance" in the app; the heading is qualified as "App
-           appearance" anyway so the two can never collide again even if a
-           future panel section reintroduces the word. -->
+           Qualified as "App appearance" so it can't be confused with the
+           book's print look ("Look & style" in Book settings). -->
       {#if activeTab === "app"}
+      <!-- Reader or author: the one switch that decides how much of the app
+           shows. Reader is the default; the choice is remembered. -->
+      <section class="group">
+        <div class="group-head">
+          <h3>How you use Gutterpress</h3>
+        </div>
+        <div class="role-options" role="radiogroup" aria-label="How you use Gutterpress">
+          <label class="role-option" class:selected={s.workspace.role === "reader"}>
+            <input type="radio" name="set-role" value="reader" checked={s.workspace.role === "reader"} onchange={() => settings.set({ workspace: { role: "reader" } })} />
+            <span class="role-text">
+              <span class="role-title">Reader</span>
+              <span class="role-desc">Just the pages. Edit, Setup and Publish stay out of the way.</span>
+            </span>
+          </label>
+          <label class="role-option" class:selected={s.workspace.role === "author"}>
+            <input type="radio" name="set-role" value="author" checked={s.workspace.role === "author"} onchange={() => settings.set({ workspace: { role: "author" } })} />
+            <span class="role-text">
+              <span class="role-title">Author</span>
+              <span class="role-desc">Write and set up your book, then publish it.</span>
+            </span>
+          </label>
+        </div>
+      </section>
+
       <section class="group">
         <div class="group-head">
           <h3>App appearance</h3>
@@ -345,7 +362,6 @@
         </div>
       </section>
 
-      {#if isDesktop()}
       <section class="group">
         <div class="group-head">
           <h3>Updates</h3>
@@ -367,7 +383,6 @@
           </select>
         </div>
       </section>
-      {/if}
 
       <!-- Desktop integration (Linux AppImage only, #119) -------------------
            Rendered ONLY when the host reports the environment as supported:
@@ -498,9 +513,8 @@
         </div>
       </section>
 
-      <!-- Advanced (for developers) — a section here since the dedicated
-           Advanced tab was retired (2026-07-30): two developer knobs did not
-           justify a whole tab. -->
+      <!-- Advanced (for developers) — a section, not a tab: two developer
+           knobs don't justify a whole tab. -->
       <section class="group advanced">
         <div class="group-head">
           <h3>Advanced <span class="advanced-hint">for developers</span></h3>
@@ -565,7 +579,7 @@
         <div class="row row-toggle">
           <div class="row-label">
             <label for="set-auto-snapshot">Keep previous versions</label>
-            <span class="row-hint">Lets you return to earlier versions of the project.</span>
+            <span class="row-hint">Lets you return to earlier versions of the book.</span>
           </div>
           <input
             id="set-auto-snapshot"
@@ -574,7 +588,7 @@
             onchange={(e) => settings.set({ versionHistory: { autoSnapshot: (e.currentTarget as HTMLInputElement).checked } })}
           />
         </div>
-        <!-- Online backup (transparent-sync plan §6 / §8 step 7). Shown only
+        <!-- Online backup. Shown only
              for a project that can sync — canSyncLoading/canSync are read
              once on mount from diagnoseProjectRemote (no live re-check while
              this view stays open, matching ConnectionsSettings/
@@ -583,11 +597,11 @@
              switch that would do nothing. Disabled when previous versions is
              off: a backup with nothing to push is not a backup. -->
         {#if canSyncLoading}
-          <div class="row"><span class="row-hint">Checking this project's online status…</span></div>
+          <div class="row"><span class="row-hint">Checking this book's online status…</span></div>
         {:else if canSync}
           <div class="row row-toggle">
             <div class="row-label">
-              <label for="set-auto-sync">Keep this project backed up online</label>
+              <label for="set-auto-sync">Keep this book backed up online</label>
               <span class="row-hint">
                 {#if s.versionHistory.autoSnapshot}
                   Sends your previous versions to your connected online service in the background.
@@ -606,12 +620,12 @@
                 settings.set({ versionHistory: { autoSync: enabled } });
                 // Notify the host orchestrator immediately so the change takes effect
                 // without waiting for a settings reload cycle (§4.3).
-                if (isDesktop()) setAutoSync(enabled).catch(() => {});
+                getPlatform().setAutoSync(enabled).catch(() => {});
               }}
             />
           </div>
         {:else}
-          <div class="row"><span class="row-hint">This project isn't connected to an online service yet. Connect one in Settings &gt; Accounts to back it up.</span></div>
+          <div class="row"><span class="row-hint">This book isn't connected to an online service yet. Connect one in Settings &gt; Accounts to back it up.</span></div>
         {/if}
         <!-- Copy switching (#273): which copy (git branch) the project is on,
              and a way to switch to another. Copies that exist only online are
@@ -620,16 +634,16 @@
              broken: the copy you went looking for was simply missing, with
              nothing to tell that apart from a bug. Hidden entirely, never
              shown as a dead control, when there's nothing to switch between:
-             no project open, the browser target, or `copies` is null (a plain
+             no project open, or `copies` is null (a plain
              local-folder has no repository to have copies of). Vocabulary:
              "copy", never "branch", in every string below. -->
-        {#if isDesktop() && projectDir && !copiesLoading && copies}
+        {#if projectDir && !copiesLoading && copies}
           {@const otherCopies = copies.branches.filter((name) => name !== copies?.current)}
           {@const onlineOnly = new Set(copies.remoteOnly ?? [])}
           <div class="row">
             <div class="row-label">
-              <span class="row-title">Copy of this project you're working on</span>
-              <span class="row-hint">{copies.current ?? "Unknown — this project's history looks unusual."}</span>
+              <span class="row-title">Copy of this book you're working on</span>
+              <span class="row-hint">{copies.current ?? "Unknown — this book's history looks unusual."}</span>
             </div>
             {#if otherCopies.length > 0}
               <div class="row-actions">
@@ -740,32 +754,8 @@
   .settings-view.embedded .tab-bar {
     padding: 0;
   }
-  /* ── Tab bar ── */
-  .tab-bar {
-    display: flex;
-    gap: 2px;
-    padding: 0 16px;
-    border-bottom: 1px solid var(--app-border-subtle);
-    flex-shrink: 0;
-    overflow-x: auto;
-  }
-  .tab {
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--app-text-muted);
-    font-size: 12.5px;
-    padding: 8px 10px;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-  .tab:hover { color: var(--app-text); }
-  .tab.active {
-    color: var(--app-text);
-    border-bottom-color: var(--app-accent);
-    font-weight: 600;
-  }
-  .tab:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: -2px; }
+  /* ── Tab bar ── (recipe: .app-tab-bar / .app-tab in theme.css) */
+  .tab-bar { padding: 0 16px; }
   .group { margin-bottom: 20px; }
   .group-head {
     display: flex;
@@ -866,4 +856,22 @@
     color: var(--app-text-muted);
     font-weight: 400;
   }
+  /* Reader / Author choice */
+  .role-options { display: flex; flex-direction: column; gap: 8px; }
+  .role-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px;
+    border: 1px solid var(--app-border);
+    border-radius: 6px;
+    background: var(--app-surface-sunken);
+    cursor: pointer;
+  }
+  .role-option:hover { background: var(--app-surface-hover); }
+  .role-option.selected { border-color: var(--app-focus-ring); background: var(--app-surface-hover); }
+  .role-option input { margin-top: 2px; flex-shrink: 0; }
+  .role-text { display: flex; flex-direction: column; gap: 2px; }
+  .role-title { font-size: 13px; font-weight: 600; color: var(--app-text); }
+  .role-desc { font-size: 11px; color: var(--app-text-muted); line-height: 1.35; }
 </style>

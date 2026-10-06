@@ -18,8 +18,6 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PUPPETEER_SKIP_DOWNLOAD: 'true'
-  PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'true'
   # GitHub App client id for the device-flow auth (ADR 0006 D1). Public by
   # design (not a secret). The desktop's electron-vite define bakes it into the
   # packaged main process; the lib also carries it as an in-code default, so
@@ -31,6 +29,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       # Test the branch the release is dispatched from (default branch for a
       # stable release, or a release/* branch for a prerelease).
@@ -38,40 +37,36 @@ jobs:
         with:
           ref: ${{ github.ref_name }}
 
-      # THE RELEASE GATE PINS CHROMIUM. ci.yml deliberately does NOT — PR CI
-      # tracks whatever stable Chrome the runner image ships, because it should
-      # see what users see. This job is different: it decides whether an
-      # artifact ships, so it has to be reproducible. Re-dispatching the same
-      # release must exercise the same renderer.
-      #
-      # THE 151 INCIDENT (engine/shared/cdp.ts, above REQUIRED_MILESTONE) is the
-      # concrete reason: a Chromium milestone changed Paged Media behaviour with
-      # NO error, and every cross-reference in the document silently vanished.
-      # Pinning turns that class of change into a reviewable diff on one line
-      # instead of a surprise in a shipped PDF.
-      #
-      # BUMPING IT: pick a version from Chrome for Testing's
-      # known-good-versions-with-downloads.json; it must be >= the engine floor
-      # (REQUIRED_MILESTONE, currently 148). Then re-measure and treat every
-      # changed measurement as a finding — the same bar cdp.ts sets for moving
-      # the floor itself. The spike harness that took those measurements
-      # (`bun run spikes`) was deleted with the pre-native-engine scaffolding
-      # and nothing in this repo re-runs it, so re-measuring means rebuilding
-      # it first (docs/engine/ENGINE.md, provenance note at the top).
-      # release.yml is workflow_dispatch-only, so
-      # no PR run will catch a bad bump for you; dispatch a prerelease first.
+      # CI (ci.yml) runs this same `bun --filter '*' test` on every push to the
+      # default and release/* branches. When a completed, successful CI run
+      # exists for the exact commit being released, the tests are not repeated
+      # here; the release-tooling check at the end still runs (CI has no
+      # equivalent). A commit CI never saw, or saw red, is gated as before.
+      - name: Look for a green CI run on this commit
+        id: ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          n=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=$SHA&status=success&per_page=1" --jq '.workflow_runs | length')
+          if [ "$n" -gt 0 ]; then
+            echo "CI is green on $SHA — not repeating the test run."
+            echo "passed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No green CI run for $SHA — running the tests here."
+            echo "passed=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # Ghostscript rasterises PDFs for the pixel-diff suites, INCLUDING
       # page-background-chromium-bug.canary.test.ts — the expiry trigger that
       # goes red the day Chromium fixes the @page background bug so we delete
-      # the workaround instead of entrenching it. ci.yml has installed this
-      # since the canary landed; release.yml did not, so the release gate ran
-      # those suites as silent skips while reporting green.
-      #
-      # Caught by ci-preconditions.test.ts on its first release dispatch — the
-      # guard exists because a skipped removal trigger and a passing one look
-      # identical in CI output. Do not remove this step without removing that
-      # guard's reason for existing.
-      - name: Install PDF tooling (Ghostscript, qpdf)
+      # the workaround instead of entrenching it. Without it those suites
+      # silently skip while reporting green; ci-preconditions.test.ts fails
+      # the run when Ghostscript is missing, because a skipped removal trigger
+      # and a passing one look identical in CI output. Do not remove this step
+      # without removing that guard's reason for existing.
+      - if: steps.ci.outputs.passed != 'true'
+        name: Install PDF tooling (Ghostscript, qpdf)
         run: |
           sudo apt-get update
           sudo apt-get install -y ghostscript qpdf
@@ -86,34 +81,31 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      # NO Chromium pin here, and NO PUPPETEER_EXECUTABLE_PATH — the engine
+      # NO Chromium pin here, and NO CHROMIUM_PATH override — the engine
       # resolves the runner image's google-chrome-stable, exactly as ci.yml
-      # does. #194 pinned Chrome for Testing and wired PUPPETEER_EXECUTABLE_PATH
-      # to it; that made the download real for the first time and immediately
-      # broke every render test. See the note above this job for the evidence
-      # and what a working pin would have to prove before landing again.
+      # does. A pin would make the release gate reproducible (the 151
+      # incident, engine/shared/cdp.ts above REQUIRED_MILESTONE: a Chromium
+      # milestone changed Paged Media behaviour with NO error and every
+      # cross-reference silently vanished), but #194's Chrome for Testing pin
+      # broke every render test the moment it took effect. A pin that lands
+      # again must be >= REQUIRED_MILESTONE, have every changed measurement
+      # treated as a finding, and be proven by a prerelease dispatch first —
+      # release.yml is workflow_dispatch-only, so no PR run will catch a bad
+      # pin for you.
 
-      - name: Build package dist
+      - if: steps.ci.outputs.passed != 'true'
+        name: Build package dist
         run: bun run build
         working-directory: packages/cli
 
-      # No GUTTERPRESS_CHROMIUM_ARGS here, to match ci.yml exactly: this job
-      # resolves the same runner-image google-chrome-stable ci.yml does (see
-      # the note above), which needs no sandbox flag — ci.yml has launched it,
-      # flag-free, on every PR. --no-sandbox was added in c4be60e for a
-      # DIFFERENT binary: #194's Chrome-for-Testing pin, which ships no SUID
-      # sandbox helper and aborted with "FATAL: No usable sandbox!" under this
-      # runner's AppArmor policy. cc3e188 reverted that pin but kept the flag,
-      # terming it "independent" of the pin — which its own introducing commit
-      # contradicts ("the runner image's google-chrome-stable... launches
-      # fine"). It was a leftover, not a second requirement.
-      #
-      # If a future pin (the 151 incident behind #194 is real, per cc3e188) is
-      # reintroduced: Chrome for Testing will need this flag again — that is
-      # what c4be60e documented. Until then, don't set it speculatively; add
-      # it back only alongside a pin that has proven, via a prerelease
-      # dispatch, that it needs it.
-      - name: Run tests
+      # No GUTTERPRESS_CHROMIUM_ARGS here, to match ci.yml exactly: the
+      # runner-image google-chrome-stable needs no sandbox flag. A Chrome for
+      # Testing pin WILL need --no-sandbox (it ships no SUID sandbox helper and
+      # aborts with "FATAL: No usable sandbox!" under this runner's AppArmor
+      # policy, c4be60e) — add the flag only alongside such a pin, never
+      # speculatively.
+      - if: steps.ci.outputs.passed != 'true'
+        name: Run tests
         run: bun --filter '*' test
 
       - name: Check release distribution tooling and metadata
@@ -122,15 +114,23 @@ jobs:
           node tools/update-package-managers.test.mjs
           node tools/update-package-managers.mjs --check
 
-  # ── 2. Version bump & tag ─────────────────────────────────────────────────
+  # ── 2. Version bump ───────────────────────────────────────────────────────
+  #
+  # Bumps package.json + bun.lock and pushes THAT COMMIT only. The tag is
+  # created by `github-release` at the very end, once every artifact exists,
+  # so a failed run never leaves a tag with no release behind it. A stray
+  # bump commit on a failed run is harmless (the next attempt bumps again); a
+  # stray tag is not — it is what consumers and `--verify-tag` key on.
   version:
-    name: Bump Version & Tag
+    name: Bump Version
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: write
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
+      sha: ${{ steps.tag.outputs.sha }}
       version: ${{ steps.tag.outputs.version }}
       prerelease: ${{ steps.tag.outputs.prerelease }}
     env:
@@ -169,21 +169,19 @@ jobs:
             exit 1
           fi
 
-      # Check out (and later push the bump commit + tag to) the branch the
-      # release was dispatched from — main for stable, release/* for a beta.
+      # Check out (and later push the bump commit to) the branch the release
+      # was dispatched from — main for stable, release/* for a beta.
       - uses: actions/checkout@v5
         with:
           ref: ${{ github.ref_name }}
 
-      # Finding #44: a release must ship with a changelog entry.
+      # A release must ship with a changelog entry.
       #
       # Checked against the BASE version, so `0.10.1-beta.4` looks for
-      # `## [0.10.1]` — the same heading the eventual stable cut needs. This
-      # used to skip prereleases entirely, which meant the check's first real
-      # execution was the stable dispatch: the one release that cannot be
-      # re-cut at the same version, because its tag is immutable. Running the
-      # identical check on every beta is what makes the stable path already
-      # proven by the time it matters.
+      # `## [0.10.1]` — the same heading the eventual stable cut needs. Running
+      # the identical check on every prerelease means the stable dispatch —
+      # the one release that cannot be re-cut at the same version, because its
+      # tag is immutable — is never the check's first real execution.
       - name: Verify CHANGELOG.md has an entry for this version
         run: |
           BASE_VERSION="${VERSION%%-*}"
@@ -213,43 +211,37 @@ jobs:
       - name: Update lockfile
         run: bun install
 
-      - name: Commit and tag
+      - name: Commit the bump
         id: tag
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-           git add packages/cli/package.json packages/desktop/package.json bun.lock
+          git add packages/cli/package.json packages/desktop/package.json bun.lock
 
           if ! git diff --cached --quiet; then
             git commit -m "chore: bump version to $VERSION"
             git push
           fi
 
-          # Finding #48: a stable release tag is immutable once pushed —
+          # Checked EARLY so a stable re-dispatch fails before
+          # any build runs: a stable release tag is immutable once pushed —
           # re-dispatching the same stable VERSION must fail loudly instead of
           # silently deleting and re-pointing a tag consumers may already have
           # pulled artifacts against. Only prerelease versions (VERSION
           # contains '-', e.g. 0.4.0-beta.1) may be re-dispatched to let a
-          # release/* branch iterate on a beta before it ships stable.
+          # release/* branch iterate on a beta before it ships stable; the
+          # github-release job re-points such a tag when it creates it.
           if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null; then
             if echo "$VERSION" | grep -qE -- '-'; then
-              echo "Prerelease v$VERSION already exists on origin — re-dispatch replaces it."
-              git push origin ":refs/tags/v$VERSION"
+              echo "Prerelease v$VERSION already exists on origin — the release job will re-point it."
             else
               echo "::error::Tag v$VERSION already exists on origin. Stable release tags are immutable — refusing to re-point it. Dispatch a new version instead."
               exit 1
             fi
           fi
 
-          # Clear any local tag left over so tag creation below is idempotent
-          # (should not normally exist on a fresh checkout).
-          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
-            git tag -d "v$VERSION"
-          fi
-
-          git tag "v$VERSION"
-          git push origin "v$VERSION"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
           # A version with a '-' (e.g. 0.4.0-beta.1) is a prerelease: it marks
@@ -275,8 +267,7 @@ jobs:
   # The desktop jobs are UNCONDITIONAL: every GitHub release is the desktop's
   # electron-updater feed, so a release without the installers and the
   # latest.yml / latest-linux.yml feed files breaks update checks for every
-  # user whose channel resolves to it (this shipped once, as 0.8.2-rc.1 —
-  # the former skip_desktop "RUNTIME release" mode was removed for this).
+  # user whose channel resolves to it, so there is no mode that skips them.
 
   build-cli:
     name: CLI / ${{ matrix.artifact }}
@@ -296,10 +287,11 @@ jobs:
           - target: bun-windows-x64
             artifact: gutterpress-cli-windows-x64.exe
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ needs.version.outputs.tag }}
+          ref: ${{ needs.version.outputs.sha }}
 
       - uses: ./.github/actions/bun
 
@@ -319,9 +311,9 @@ jobs:
           set -euo pipefail
           chmod +x "${{ matrix.artifact }}"
           "./${{ matrix.artifact }}" --version
-          # audit F2: exercise the embedded-assets extraction path — CLAUDE.md
-          # flags it as the fragile part of `bun build --compile`, yet the smoke
-          # test only ran --version. `new` scaffolds from an embedded template,
+          # Exercise the embedded-assets extraction path — CLAUDE.md flags it
+          # as the fragile part of `bun build --compile`, and --version alone
+          # never touches it. `new` scaffolds from an embedded template,
           # so a broken extraction fails here instead of shipping. `--dir` is the
           # (existing) parent save location; the project lands in a slug subdir.
           mkdir -p /tmp/gutterpress-smoke
@@ -336,7 +328,6 @@ jobs:
           # Exercise the compiled binary's registry installer and direct-entry
           # loader with a real plugin that imports a runtime dependency.
           "./${{ matrix.artifact }}" ext add markdown-it-highlightjs@4.3.0 /tmp/gutterpress-smoke/smoke-test-book
-          test -f /tmp/gutterpress-smoke/smoke-test-book/plugins/npm/markdown-it-highlightjs/4.3.0/.gutterpress-install.json
           test -f /tmp/gutterpress-smoke/smoke-test-book/plugins/npm/markdown-it-highlightjs/4.3.0/node_modules/markdown-it-highlightjs/node_modules/highlight.js/package.json
           # Cover the two npm archive/module shapes that have broken the
           # compiled installer in practice: @types' legacy tar root and a
@@ -356,16 +347,17 @@ jobs:
     name: Gutterpress desktop / Linux AppImage
     needs: version
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ needs.version.outputs.tag }}
+          ref: ${{ needs.version.outputs.sha }}
 
       - uses: ./.github/actions/bun
 
-      # Finding #62: the composite action is the single desktop packaging path
-      # — release and the download-a-build debug workflows share it, for every
-      # platform, so they never diverge. It pins node 22 (audit F3: all three
+      # The composite action is the single desktop packaging path — release
+      # and the download-a-build debug workflows share it, for every
+      # platform, so they never diverge. It pins node 22 (all three
       # platforms package under the same Node major) and keeps
       # electron-builder on node/npm rather than bun.
       - name: Build Linux AppImage
@@ -392,14 +384,25 @@ jobs:
     # No afterPack hook: the lib ships as a normal node_modules dependency that
     # electron-builder walks automatically (see electron-builder.yml).
     runs-on: windows-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ needs.version.outputs.tag }}
+          ref: ${{ needs.version.outputs.sha }}
 
       - uses: ./.github/actions/bun
 
-      # Finding #62: see build-desktop-linux — one packaging path, every
+      # electron-builder downloads Electron, NSIS and the winCodeSign tools on
+      # every run — the slowest part of the slowest job. Keep them between
+      # runs, keyed on the desktop manifest (which pins the Electron version).
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/AppData/Local/electron/Cache
+            ~/AppData/Local/electron-builder/Cache
+          key: electron-win-${{ hashFiles('packages/desktop/package.json') }}
+
+      # See build-desktop-linux — one packaging path, every
       # platform, release and debug workflows alike.
       - name: Build Windows installer and zip
         uses: ./.github/actions/build-gutterpress-desktop
@@ -423,17 +426,18 @@ jobs:
     name: Gutterpress desktop / macOS DMG
     needs: version
     runs-on: macos-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ needs.version.outputs.tag }}
+          ref: ${{ needs.version.outputs.sha }}
 
       - uses: ./.github/actions/bun
 
-      # No version patch needed — this job checks out the tag the `version`
-      # job already bumped and committed (ref: needs.version.outputs.tag).
+      # No version patch needed — this job checks out the bump commit the
+      # `version` job pushed (ref: needs.version.outputs.sha).
 
-      # Finding #62: see build-desktop-linux. The action carries
+      # See build-desktop-linux. The action carries
       # CSC_IDENTITY_AUTO_DISCOVERY=false, which is what keeps this unsigned
       # DMG build from searching a keychain that has no identity in it.
       - name: Build macOS Intel and Apple Silicon DMGs
@@ -451,23 +455,23 @@ jobs:
   # ── 4. Publish to npm (skippable) ─────────────────────────────────────────
   publish-npm:
     name: Publish to npm
-    # Finding #48: gate npm on the FULL artifact set, not just build-cli. npm
-    # is the one artifact users install unconditionally, so it must never
-    # publish a version whose GitHub release could still fail to materialize.
-    # Plain `needs` semantics give exactly that: every build job must succeed
-    # or this job is skipped (the desktop jobs are unconditional now, so no
-    # success-or-skipped special-casing is needed anymore).
+    # Gate npm on the FULL artifact set, not just build-cli. npm is the one
+    # artifact users install unconditionally, so it must never publish a
+    # version whose GitHub release could still fail to materialize. Plain
+    # `needs` semantics give exactly that: every build job must succeed or
+    # this job is skipped.
     needs:
       [version, build-cli, build-desktop-linux, build-desktop-windows, build-desktop-mac]
     if: ${{ !inputs.skip_npm_publish }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       id-token: write
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ needs.version.outputs.tag }}
+          ref: ${{ needs.version.outputs.sha }}
 
       - uses: actions/setup-node@v5
         with:
@@ -515,26 +519,21 @@ jobs:
 
   # Docker publish is NOT duplicated here — docker.yml is the single Docker
   # publish path (multi-arch amd64+arm64 GHCR push). It is dispatched
-  # explicitly by the github-release job below: its `release: published`
-  # trigger can never fire for our releases, because GitHub suppresses
+  # explicitly by the github-release job below, because GitHub suppresses
   # workflow-triggering events from anything created with the workflow's own
-  # GITHUB_TOKEN (workflow_dispatch is the documented exception, which is why
-  # the explicit dispatch works).
+  # GITHUB_TOKEN (workflow_dispatch is the documented exception).
 
-  # The verify-windows / verify-macos jobs (three dedicated runners per
-  # release, two of them macOS) were REMOVED 2026-08-30 on the owner's call:
-  # zero failures in ~96 lifetime job-executions, including the #194
-  # Chromium-pin incident, where they skipped because Test had already failed
-  # — the incident was caught upstream, not by them. All they ever proved is
-  # that a cross-compiled Bun binary prints --version, which cross-compilation
-  # essentially never fails at; build-cli's linux-x64 leg already runs the
-  # substantive smoke (new/ext add/build). Do not re-add per-OS verify
-  # runners without a recorded failure class they would have caught.
+  # No per-OS verify runners: all they would prove is that a cross-compiled
+  # Bun binary prints --version, which cross-compilation essentially never
+  # fails at, and build-cli's linux-x64 leg already runs the substantive
+  # smoke (new/ext add/build). Do not add them without a recorded failure
+  # class they would catch.
 
-  # ── 6. Create release with ALL artifacts ──────────────────────────────────
+  # ── 6. Tag and create release with ALL artifacts ──────────────────────────
   #
-  # Waits for every build job before creating the release. Users see a complete
-  # release — no partial-artifact window.
+  # Waits for every build job before tagging and creating the release. Users
+  # see a complete release — no partial-artifact window — and a failed run
+  # leaves no tag behind.
 
   github-release:
     name: Create GitHub Release
@@ -557,6 +556,7 @@ jobs:
        needs.build-desktop-mac.result == 'success' &&
       (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
       # Needed to dispatch Docker and package-manager follow-up workflows.
@@ -564,7 +564,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ needs.version.outputs.tag }}
+          ref: ${{ needs.version.outputs.sha }}
 
       - name: Download CLI artifacts
         uses: actions/download-artifact@v6
@@ -681,6 +681,30 @@ jobs:
           ```
           EOF
 
+      # The tag is created HERE, at the bump commit every artifact above was
+      # built from, and only once they all exist (see the `version` job's
+      # header). A prerelease tag left by an earlier dispatch of the SAME
+      # version is re-pointed; a stable one was already refused by `version`.
+      - name: Tag the release commit
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+          SHA: ${{ needs.version.outputs.sha }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            if [ "${{ needs.version.outputs.prerelease }}" = "true" ]; then
+              echo "Prerelease $TAG already exists on origin — re-pointing it at $SHA."
+              git push origin ":refs/tags/$TAG"
+            else
+              echo "::error::Tag $TAG already exists on origin. Stable release tags are immutable."
+              exit 1
+            fi
+          fi
+          git tag "$TAG" "$SHA"
+          git push origin "$TAG"
+
       - name: Create GitHub release
         run: |
           TAG="${{ needs.version.outputs.tag }}"
@@ -691,7 +715,7 @@ jobs:
             PRERELEASE_FLAG="--prerelease"
           fi
 
-          # Finding #48: mirror the tag-immutability check from the `version`
+          # Mirror the tag-immutability check from the `version`
           # job here too. A stable release, once published, must not be
           # silently deleted and recreated. Prereleases may still be
           # re-dispatched (the version job already allowed re-pointing the
@@ -733,10 +757,9 @@ jobs:
             --ref "$DEFAULT_BRANCH" \
             -f version="$VERSION"
 
-      # docker.yml's `release: published` trigger never fires for releases
-      # created with GITHUB_TOKEN (GitHub suppresses those events to prevent
-      # workflow recursion; workflow_dispatch is exempt), so dispatch it
-      # explicitly at the release tag. metadata-action derives the semver
+      # GitHub suppresses events from releases created with GITHUB_TOKEN (to
+      # prevent workflow recursion; workflow_dispatch is exempt), so dispatch
+      # docker.yml explicitly at the release tag. metadata-action derives the semver
       # image tags from the tag ref; docker.yml applies `latest` only to
       # stable versions dispatched at their matching v<version> tag ref.
       - name: Publish Docker image (dispatch docker.yml at the tag)

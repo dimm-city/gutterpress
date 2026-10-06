@@ -2,7 +2,7 @@
  * Shared, PWA-clean error helpers.
  *
  * Pure string operations — NO `node:*` imports (importing them as a value would
- * drag node code into the SPA and break the renderer/host split, §8 / ADR 0004).
+ * drag node code into the SPA and break the renderer/host split, §8).
  */
 
 /**
@@ -14,21 +14,6 @@
  */
 export function friendlyHostError(msg: string): string {
   return msg.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/, "");
-}
-
-/**
- * Awaits one bridge (IPC) call, re-throwing any rejection with the Electron
- * transport prefix scrubbed off its message (`friendlyHostError`) — the one
- * wrapper every `$lib/*\/*-capability.ts` module applies to its calls, so
- * the author-facing text a host handler threw is what a caller's own
- * `e.message` handling sees.
- */
-export async function hostCall<T>(op: Promise<T>): Promise<T> {
-  try {
-    return await op;
-  } catch (e) {
-    throw new Error(friendlyHostError(e instanceof Error ? e.message : String(e)));
-  }
 }
 
 function isMissingManifestError(msg: string): boolean {
@@ -47,10 +32,10 @@ export function friendlyFolderError(msg: string): string {
     /Invalid YAML in [^\n]+ at line (\d+), column (\d+)/i,
   );
   if (yamlPosition) {
-    return `The project manifest has invalid YAML at line ${yamlPosition[1]}, column ${yamlPosition[2]}. Fix that entry and try again.`;
+    return `This book's manifest has invalid YAML at line ${yamlPosition[1]}, column ${yamlPosition[2]}. Fix that entry and try again.`;
   }
   if (/Invalid YAML in /i.test(msg)) {
-    return "The project manifest has invalid YAML. Fix it and try again.";
+    return "This book's manifest has invalid YAML. Fix it and try again.";
   }
   if (/ENOENT|No such file|not found/i.test(msg)) {
     return "The folder couldn't be read. Check that it exists and you have permission to open it.";
@@ -75,7 +60,7 @@ export function friendlyPreviewError(raw: string): FriendlyPreviewError {
   const yamlPosition = details.match(/Invalid YAML in [^\n]+ at line (\d+), column (\d+)/i);
   if (yamlPosition) {
     return {
-      title: "The project manifest has invalid YAML.",
+      title: "This book's manifest has invalid YAML.",
       message: `Fix the entry at line ${yamlPosition[1]}, column ${yamlPosition[2]}, then try the preview again.`,
       details,
     };
@@ -181,31 +166,6 @@ export function friendlyPdfError(e: unknown): string {
   if (isMissingManifestError(msg)) {
     return 'PDF export needs manifest.yaml. Choose "Set up as a book" first, then try again.';
   }
-  // Sync-conflict export blocks throw a deliberately author-friendly message
-  // from the host (electron/export/controller.ts) — pass it through (scrubbed
-  // of IPC plumbing, see below) rather than overwriting it with the generic
-  // fallback below. `code` alone isn't reliable: `ipcRenderer.invoke` does not
-  // preserve custom Error properties across the IPC boundary, so also match
-  // the host's known conflict copy in the message text (both conflict
-  // messages share "two places" — see electron/export/controller.ts and
-  // other error surfaces).
-  if (code === "SYNC_CONFLICT" || /two places/i.test(msg)) {
-    // `api:build` goes through ipcMain.handle with no re-serialization, so the
-    // renderer sees Electron's own `Error invoking remote method '<ns:op>':
-    // Error: <cause>` wrapper around the host's sentence. Scrub that transport
-    // prefix (shared helper, defined above) before showing it to the author.
-    return friendlyHostError(msg);
-  }
-  // Render-timeout export blocks (electron/pdf-export.ts's waitForEngineRendered,
-  // ARCH review #27) throw a typed BuildError whose message is already an
-  // author-friendly sentence. Like SYNC_CONFLICT above, `code` alone isn't
-  // reliable across `api:build`'s ipcMain.handle/ipcRenderer.invoke boundary —
-  // Electron strips custom Error properties there — so match by the message's
-  // stable, distinctive phrase instead. Keep this phrase in sync with the exact
-  // string thrown in waitForEngineRendered.
-  if (/did not finish/i.test(msg)) {
-    return friendlyHostError(msg);
-  }
   // Over-wide content (#163) — the engine's own message ends in advice only a
   // CLI user can take ("pass allowShrink"). Say what the author can act on
   // instead; the "Build anyway" offer that goes with it lives in
@@ -247,7 +207,30 @@ export interface FriendlyPublishError {
 }
 
 /**
- * Map a raw publish error (from a publish IPC handler's rejected message, or
+ * SvelteKit's `error(status, message)` serializes a thrown route error as
+ * `{"message": "…"}` JSON (see routes/api/_lib/handler.ts's `jsonRoute`).
+ * `$lib/api.ts`'s `post`/`get` helpers read a non-OK response body with
+ * `r.text()` and throw `new Error(text)` verbatim — they never JSON.parse
+ * it — so a `catch (e)` on any `api.*` call sees this raw `{"message": "…"}`
+ * envelope as `e.message` instead of the message itself. Peel it back before
+ * showing it (publish errors below; Troubleshooting → Sync) so an author is
+ * never shown a bare JSON blob.
+ */
+export function unwrapRouteError(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{")) return text;
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    const message = (parsed as { message?: unknown } | null)?.message;
+    if (typeof message === "string" && message) return message;
+  } catch {
+    // Not JSON (or not the expected shape) — treat the original text as the message.
+  }
+  return text;
+}
+
+/**
+ * Map a raw publish error (from a publish route's thrown/rejected message, or
  * a `PublishRunResult.error` string) to plain-language guidance, mirroring
  * `friendlyPdfError`'s approach: recognized technical shapes get a short
  * author-facing summary with the raw text preserved as `details`; messages
@@ -255,19 +238,10 @@ export interface FriendlyPublishError {
  * in electron/server-bridge/friendly-errors.ts — e.g. "No itch.io API key
  * found…", "Install the Azure SWA CLI first…", manifest-key guidance) pass
  * through unchanged with no details to hide.
- *
- * Through SFE-P5c3, this also unwrapped a `{"message": "…"}` JSON envelope
- * SvelteKit's `error(status, message)` produced (`$lib/api.ts`'s `post`/`get`
- * threw the raw response body verbatim). SFE-P5c4 deleted the last publish
- * route, `$lib/api.ts`, and the JSON-serializing route handler together —
- * `publish-capability.ts`'s `call()` now throws a plain, already-unwrapped
- * `Error`, so no producer of that envelope remains on any live path. The
- * unwrap step (`unwrapPublishErrorEnvelope`) was removed in the round-1
- * repair that caught it surviving past its own deletion phase (AP-32).
  */
 export function friendlyPublishError(e: unknown): FriendlyPublishError {
   const raw = e instanceof Error ? e.message : String(e ?? "");
-  const msg = raw.trim();
+  const msg = unwrapRouteError(raw).trim();
   if (!msg) {
     return { summary: "Publishing failed for an unknown reason." };
   }
@@ -334,7 +308,7 @@ export function friendlyPublishError(e: unknown): FriendlyPublishError {
   }
 
   // Google Drive (#221): the configured folder was moved to trash or
-  // deleted. providers/gdrive.ts's D5 folderId resolution already writes a
+  // deleted. providers/gdrive.ts's folderId resolution already writes a
   // specific, friendly "pick the folder again" sentence — passed through.
   if (/drive folder.*can.?t be found/i.test(msg)) {
     return { summary: msg };

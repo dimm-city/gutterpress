@@ -10,11 +10,16 @@
  *      source.links.local-refs) and a `filter:` declaration in a CSS file
  *      (warning, source.stylelint / printsafe risky-props).
  *   2. After the preview renders, the toolbar Problems button shows badge "2".
- *   3. Opening the panel lists both findings (file, line, message).
+ *   3. Opening the panel lists both findings (file, line, message), in a row of
+ *      its own between the workspace and the status bar (never over either, #307).
+ *      Keyboard: opening moves focus into the list, Escape closes it and puts
+ *      focus back on the toggle, Enter on the toggle re-opens it (#307).
  *   4. Clicking the broken-ref entry opens the editor on 01-alpha.md with the
  *      offending line scrolled into view.
  *   5. At 700px window width the toolbar still has zero pairwise overlaps
- *      (getBoundingClientRect audit of every visible toolbar control).
+ *      (getBoundingClientRect audit of every visible toolbar control), and the
+ *      status bar still shows its save-state text and the Problems badge (#316),
+ *      and the left-panel drawer stops at the status bar's top edge (#307).
  *
  * Screenshots: <os tmpdir>/problems-panel-{wide,narrow}.png.
  * Prints the audit JSON for the report.
@@ -23,7 +28,7 @@
  * Exit 0 on pass, 1 on fail.
  */
 import { spawn } from "node:child_process";
-import { cpSync, mkdtempSync, rmSync, existsSync, appendFileSync, writeFileSync, readFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, rmSync, existsSync, appendFileSync, writeFileSync, readFileSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -86,9 +91,14 @@ const target = exeArg ? resolve(exeArg) : join(desktopDir, "out", "main", "main.
 if (!existsSync(target)) fail(`no ${target} — run \`npm run build && npm run electron:build\` first`);
 const isMainJs = target.endsWith(".js");
 const electronBin = isMainJs ? require_("electron") : target;
-const appArgv = [...(isMainJs ? [target] : []), `--remote-debugging-port=${PORT}`, "--no-sandbox"];
-
  fakeHome = mkdtempSync(join(tmpdir(), "gutterpress-problems-home-"));
+// The drive edits, so it runs as an author (the app defaults to a reader, who
+// has no editor and so no Problems badge).
+const userDataDir = join(fakeHome, "user-data");
+mkdirSync(userDataDir, { recursive: true });
+writeFileSync(join(userDataDir, "app-settings.json"), JSON.stringify({ workspace: { role: "author" } }));
+const appArgv = [...(isMainJs ? [target] : []), `--remote-debugging-port=${PORT}`, `--user-data-dir=${userDataDir}`, "--no-sandbox"];
+
 // xvfb is a Linux-only headless fallback; Windows/macOS never have DISPLAY.
 const useXvfb = process.platform === "linux" && !process.env.DISPLAY;
 const cmd = useXvfb ? "xvfb-run" : electronBin;
@@ -157,9 +167,20 @@ async function screenshot(file) {
   writeFileSync(file, Buffer.from(r.result.data, "base64"));
   log(`screenshot: ${file}`);
 }
+// A real key press through CDP (not a synthetic DOM event), so a focused
+// button activates on Enter the way it does for a person at the keyboard.
+const KEYS = {
+  Enter: { key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, text: "\r" },
+  Escape: { key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 },
+};
+async function press(name) {
+  const { text, ...k } = KEYS[name];
+  await send("Input.dispatchKeyEvent", { type: text ? "keyDown" : "rawKeyDown", text, ...k });
+  await send("Input.dispatchKeyEvent", { type: "keyUp", ...k });
+}
 await send("Page.bringToFront");
 
-// ── 4. open the seeded fixture via the left panel Projects tab ───────────────
+// ── 4. open the seeded fixture via the left panel Books tab ──────────────────
 let spaReady = false;
 for (let i = 0; i < 60; i++) {
   if (await evalJs(`!!document.querySelector('button[aria-label="Toggle left panel"]')`)) { spaReady = true; break; }
@@ -167,7 +188,7 @@ for (let i = 0; i < 60; i++) {
 }
 if (!spaReady) fail("SPA never became interactive (left panel toggle not found in 60s)");
 
-// Wait for the Projects tab to auto-open (it opens when no project is loaded)
+// Wait for the Books tab to auto-open (it opens when no book is loaded)
 let panelReady = false;
 for (let i = 0; i < 20; i++) {
   const hasInput = await evalJs(`!!document.querySelector('.projects-body .location-input')`);
@@ -179,7 +200,7 @@ if (!panelReady) {
   await sleep(500);
   await evalJs(`(() => {
     const tabs = [...document.querySelectorAll('.panel-tab')];
-    const t = tabs.find(b => b.textContent.trim().toUpperCase().includes('PROJECTS'));
+    const t = tabs.find(b => b.textContent.trim().toUpperCase().includes('BOOKS'));
     if (t) t.click();
     return !!t;
   })()`);
@@ -197,7 +218,7 @@ await evalJs(`(async () => {
   inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   return true;
 })()`);
-log("projects panel driven; waiting for project to open…");
+log("books panel driven; waiting for book to open…");
 
 // Wait for the Contents outline to populate — same signal the editor-dropdown-sync
 // test uses (120s). This fires once markdown-it has parsed the files and the
@@ -212,19 +233,19 @@ if (!projectOpen) fail("project never opened — no TOC items or file items appe
 log("project opened");
 
 // ── 5. counts on the problems strip ──────────────────────────────────────────
-// The strip is always visible at the bottom of the screen (not in the navbar)
-// and shows error/warning counts without a dedicated badge element.
+// The strip sits on the editor toolbar (problems are an editing concern) and
+// shows error/warning counts without a dedicated badge element. It is a
+// button only while there is something to list (#307) — a clean project shows
+// the same badge, inert — so it appears with the counts.
 //
 // Those counts are downstream of the FIRST FULL RENDER, not of the project-open
 // gate above: the app calls refreshProblems() from its renderingComplete
-// handler, while that gate fires as soon as the sources are parsed. Measured on
-// a green CI run the counts land ~9s after "project opened", so the old 30s was
-// sized for the lint round-trip alone and left the rest of the render ~3x
-// headroom — which is what ran out on 5 of 40 CI runs. Budget it like the
-// project-open gate above, since it waits on the same pipeline, and report what
-// the strip actually showed on the way out: a render that never finished, a
-// lint that errored, and a lint that found nothing were indistinguishable
-// before, and only one of the three is fixed by waiting longer.
+// handler, while that gate fires as soon as the sources are parsed (measured on
+// a green CI run: ~9s after "project opened"). Budget it like the project-open
+// gate above, since it waits on the same pipeline, and report what the strip
+// actually showed on the way out: a render that never finished, a lint that
+// errored, and a lint that found nothing must be distinguishable, and only one
+// of the three is fixed by waiting longer.
 const readStrip = () => evalJs(`(() => {
   const strip = document.querySelector('.toggle-strip');
   if (!strip) return { strip: false };
@@ -232,7 +253,7 @@ const readStrip = () => evalJs(`(() => {
     strip: true,
     errs: strip.querySelector('.error-count')?.textContent?.trim() ?? null,
     warns: strip.querySelector('.warning-count')?.textContent?.trim() ?? null,
-    status: strip.querySelector('.strip-status')?.textContent?.trim() ?? null,
+    status: /couldn't check/.test(strip.getAttribute('aria-label') ?? '') ? "Couldn't check" : null,
     stillRendering: !!document.querySelector('.loading-overlay'),
   };
 })()`);
@@ -287,6 +308,61 @@ if (!risky) fail("risky print-property (filter) finding not listed");
 if (risky.file !== "extra.css") fail(`risky finding grouped under ${risky.file}, expected extra.css`);
 if (!/warning/.test(risky.severity)) fail(`risky severity class ${risky.severity}, expected sev-warning`);
 log("both seeded findings listed with correct file/severity");
+// The list lives at the bottom of the editor pane, in normal flow: inside the
+// editor's column, never over the preview, never over the status bar (#307).
+const rows = await evalJs(`(() => {
+  const body = document.querySelector('.problems-panel .panel-body').getBoundingClientRect();
+  const editor = document.querySelector('.editor-pane').getBoundingClientRect();
+  const preview = document.querySelector('.preview-pane')?.getBoundingClientRect() ?? null;
+  return {
+    bodyLeft: body.left, bodyRight: body.right, bodyTop: body.top, bodyBottom: body.bottom,
+    editorLeft: editor.left, editorRight: editor.right, editorBottom: editor.bottom,
+    previewLeft: preview?.left ?? null,
+    barTop: document.querySelector('.status-bar').getBoundingClientRect().top,
+  };
+})()`);
+if (rows.bodyLeft < rows.editorLeft - 1 || rows.bodyRight > rows.editorRight + 1) {
+  fail(`problems list is not inside the editor pane: ${JSON.stringify(rows)}`);
+}
+if (rows.previewLeft !== null && rows.bodyRight > rows.previewLeft + 1) {
+  fail(`problems list covers the preview: ${JSON.stringify(rows)}`);
+}
+if (rows.bodyBottom > rows.barTop + 1) {
+  fail(`problems list overlaps the status bar: list bottom ${rows.bodyBottom} > bar top ${rows.barTop}`);
+}
+log(`list sits inside the editor pane: ${JSON.stringify(rows)}`);
+// #307 keyboard access: the list comes BEFORE the bar in the DOM, so a keyboard
+// user who opens it from the toggle could not Tab into it. Opening therefore
+// moves focus into the list, and Escape from inside closes it and hands focus
+// back to the toggle (the way the editor toolbar's popups behave).
+const focusState = () => evalJs(`(() => {
+  const toggle = document.querySelector('.toggle-strip');
+  const list = document.getElementById('problems-body');
+  return {
+    expanded: toggle?.getAttribute('aria-expanded') ?? null,
+    inList: !!list && list.contains(document.activeElement),
+    onToggle: !!toggle && document.activeElement === toggle,
+    active: (document.activeElement?.className ?? '').toString().slice(0, 60),
+  };
+})()`);
+let keyboard = await focusState();
+// The click that opened the list above must already have put focus inside it.
+if (keyboard.expanded !== "true" || !keyboard.inList) {
+  fail(`opening the list did not move focus into it: ${JSON.stringify(keyboard)}`);
+}
+await press("Escape");
+await sleep(300);
+keyboard = await focusState();
+if (keyboard.expanded !== "false" || !keyboard.onToggle) {
+  fail(`Escape did not close the list and return focus to the toggle: ${JSON.stringify(keyboard)}`);
+}
+await press("Enter"); // focus is on the toggle: re-open it the way a keyboard user does
+await sleep(500);
+keyboard = await focusState();
+if (keyboard.expanded !== "true" || !keyboard.inList) {
+  fail(`Enter on the toggle did not open the list with focus inside: ${JSON.stringify(keyboard)}`);
+}
+log("keyboard: opening puts focus in the list; Escape closes it back to the toggle");
 await screenshot(join(tmpdir(), "problems-panel-wide.png"));
 
 // ── 7. click the broken-ref entry → editor opens 01-alpha.md at the line ────
@@ -374,6 +450,59 @@ if (audit.overlaps.length > 0) fail(`toolbar overlaps at 700px: ${JSON.stringify
 if (audit.overflow.length > 0) fail(`toolbar controls overflow at 700px: ${JSON.stringify(audit.overflow)}`);
 await screenshot(join(tmpdir(), "problems-panel-narrow.png"));
 
-log("PASS: badge, panel contents, click-through navigation, and 700px toolbar audit all verified");
+// Below 820px the editor is a tab; the save state and the Problems badge live
+// on its toolbar, so bring the Markdown tab forward first.
+await evalJs(`document.querySelector('#mobile-tab-markdown')?.click(); true`);
+await sleep(600);
+
+// ── 9. #316: the editor toolbar keeps the save state's words at 700px ────────
+// "Edits saved" must not collapse to a bare icon at this width; the Problems
+// control is a compact badge (icon + count, no text label) with an accessible
+// name that carries the breakdown. Both sit on the editor toolbar now.
+const bar = await evalJs(`(() => {
+  const shown = (sel) => {
+    const el = document.querySelector(sel);
+    return !!el && el.getClientRects().length > 0 && getComputedStyle(el).display !== 'none';
+  };
+  return {
+    saveText: document.querySelector('.editor-toolbar .save-text')?.textContent?.trim() ?? null,
+    saveTextShown: shown('.editor-toolbar .save-text'),
+    stripShown: shown('.toggle-strip'),
+    stripCountShown: shown('.toggle-strip .error-count, .toggle-strip .warning-count'),
+    stripHasText: /problems/i.test(document.querySelector('.toggle-strip')?.textContent ?? ''),
+    stripLabel: document.querySelector('.toggle-strip')?.getAttribute('aria-label') ?? null,
+  };
+})()`);
+console.log(`[problems-panel] 700px editor toolbar: ${JSON.stringify(bar)}`);
+if (!bar.saveTextShown || !bar.saveText) fail(`save-state text is not visible at 700px: ${JSON.stringify(bar)}`);
+if (!bar.stripShown || !bar.stripCountShown) fail(`Problems badge (icon + count) is not visible at 700px: ${JSON.stringify(bar)}`);
+if (bar.stripHasText) fail(`Problems badge should carry no visible text label: ${JSON.stringify(bar)}`);
+if (!/^Problems: .*(error|warning)/.test(bar.stripLabel ?? "")) fail(`Problems badge accessible name is wrong: ${JSON.stringify(bar)}`);
+
+// ── 10. #307: at 700px the left-panel drawer overlays the workspace but stops
+// at the status bar's top edge — viewport-fixed with bottom:0 it would run
+// underneath the bar and hide its own footer buttons (New book).
+await evalJs(`(() => {
+  if (!document.querySelector('.left-panel.open')) {
+    document.querySelector('button[aria-label="Toggle left panel"]').click();
+  }
+  return true;
+})()`);
+await sleep(600);
+const drawer = await evalJs(`(() => {
+  const panel = document.querySelector('.left-panel.open');
+  if (!panel) return null;
+  return {
+    bottom: panel.getBoundingClientRect().bottom,
+    barTop: document.querySelector('.status-bar').getBoundingClientRect().top,
+  };
+})()`);
+if (!drawer) fail("left panel did not open at 700px");
+console.log(`[problems-panel] 700px drawer: ${JSON.stringify(drawer)}`);
+if (Math.abs(drawer.bottom - drawer.barTop) > 1) {
+  fail(`left-panel drawer does not stop at the status bar's top edge: ${JSON.stringify(drawer)}`);
+}
+
+log("PASS: badge, panel contents, click-through navigation, keyboard focus, 700px toolbar audit, status-bar text and drawer edge all verified");
 cleanup();
 process.exit(0);

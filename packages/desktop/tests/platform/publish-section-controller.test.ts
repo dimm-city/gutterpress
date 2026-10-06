@@ -85,8 +85,6 @@ function make(over: Partial<{ noProject: boolean; cards: PublishProviderCard[] }
       return Promise.resolve({ ok: true });
     },
     run: () => Promise.resolve(h.runResult),
-    pickPdfFile: () => Promise.resolve("/picked/book.pdf"),
-    openDirectory: () => Promise.resolve("/picked/dist"),
     openExternal: () => Promise.resolve({ ok: true }),
     onSaved: () => onSaved(),
     onConnected: () => onConnected(),
@@ -103,7 +101,6 @@ test("initial public rune state matches the panel defaults", () => {
   expect(ctrl.publishResults).toEqual({});
   expect(ctrl.publishConfigDrafts).toEqual({});
   expect(ctrl.publishTokenDrafts).toEqual({});
-  expect(ctrl.publishArtifactDrafts).toEqual({});
 });
 
 test("loadPublish populates the provider cards", async () => {
@@ -170,9 +167,8 @@ test("a failed connect resyncs cards from disk (the resync's own loadPublish cle
   // `catch` sets publishError, then immediately calls loadPublish() as a
   // resync — and loadPublish unconditionally resets publishError=null before
   // its own (successful) fetch. The "bad key" message is therefore
-  // clobbered by the time this settles. This mirrors the original inline
-  // `catch (e) { publishError = ...; await refresh("publish"); }` exactly —
-  // characterizing it here rather than silently fixing it in the extraction.
+  // clobbered by the time this settles. This characterizes that behavior
+  // rather than asserting the ideal one.
   expect(h.ctrl.publishError).toBeNull();
   expect(h.onConnected.calls.length).toBe(0);
   expect(h.ctrl.publishCards).toEqual([CARD]); // resynced, still disconnected
@@ -222,9 +218,9 @@ test("runPublish does not fire onPublished when the run failed", async () => {
   expect(h.onPublished.calls.length).toBe(0);
 });
 
-test("runPublish includes the artifact draft path only when set", async () => {
+test("runPublish forwards the artifact the wizard just built, and omits it when none is given", async () => {
   const h = make();
-  let capturedOptions: { dryRun?: boolean; artifactPath?: string } | undefined;
+  let capturedOptions: unknown;
   h.ctrl = new PublishSectionController({
     projectDir: () => h.projectDir,
     listProviders: () => Promise.resolve(h.cards),
@@ -232,29 +228,21 @@ test("runPublish includes the artifact draft path only when set", async () => {
     setConfig: () => Promise.resolve({}),
     connect: () => Promise.resolve({ connected: true, providerId: "itch" }),
     disconnect: () => Promise.resolve({ ok: true }),
-    run: (dir, providerId, options) => {
+    connectGoogleStart: () => Promise.resolve({ authUrl: "https://x" }),
+    connectGoogleWait: () => Promise.resolve({ ok: true }),
+    connectGoogleCancel: () => Promise.resolve({ ok: true }),
+    listDestinations: () => Promise.resolve([]),
+    createDestination: () => Promise.resolve({ id: "d", title: "d" }),
+    run: (_dir, _providerId, options) => {
       capturedOptions = options;
       return Promise.resolve(h.runResult);
     },
-    pickPdfFile: () => Promise.resolve(null),
-    openDirectory: () => Promise.resolve(null),
     openExternal: () => Promise.resolve({ ok: true }),
   });
   await h.ctrl.runPublish("itch", true);
   expect(capturedOptions).toEqual({ dryRun: true });
-  h.ctrl.publishArtifactDrafts = { itch: "/book.pdf" };
-  await h.ctrl.runPublish("itch", true);
-  expect(capturedOptions).toEqual({ dryRun: true, artifactPath: "/book.pdf" });
-});
-
-test("pickPublishArtifact uses the PDF picker for a pdf-format card and the directory picker otherwise", async () => {
-  const h = make();
-  await h.ctrl.pickPublishArtifact(CARD);
-  expect(h.ctrl.publishArtifactDrafts).toEqual({ itch: "/picked/book.pdf" });
-
-  const htmlCard: PublishProviderCard = { ...CARD, id: "pages", format: "html" };
-  await h.ctrl.pickPublishArtifact(htmlCard);
-  expect(h.ctrl.publishArtifactDrafts.pages).toBe("/picked/dist");
+  await h.ctrl.runPublish("itch", false, "/proj/dist/book.pdf");
+  expect(capturedOptions).toEqual({ dryRun: false, artifactPath: "/proj/dist/book.pdf" });
 });
 
 // ── Multi-format providers (#221 phase 3, D8 — gdrive) ──────────────────────
@@ -307,21 +295,6 @@ test("selectFormat writes publish.<id>.format via setConfig and reloads the card
   expect(h.setConfigCalls).toEqual([{ dir: "/proj", providerId: "gdrive", values: { format: "html" } }]);
   expect(h.ctrl.publishBusyId).toBeNull();
 });
-
-test("pickPublishArtifact branches on the EFFECTIVE format for a multi-format card, not its static default", async () => {
-  const h = make();
-  // Still "pdf" by default → the PDF picker.
-  await h.ctrl.pickPublishArtifact(GDRIVE_CARD);
-  expect(h.ctrl.publishArtifactDrafts.gdrive).toBe("/picked/book.pdf");
-
-  // Selected "html" → the directory picker, even though card.format itself
-  // is still the fixed "pdf" default.
-  const htmlSelected = { ...GDRIVE_CARD, config: { format: "html" } };
-  await h.ctrl.pickPublishArtifact(htmlSelected);
-  expect(h.ctrl.publishArtifactDrafts.gdrive).toBe("/picked/dist");
-});
-
-// ── Preflight (#105) ──────────────────────────────────────────────────────────
 
 const PF_ROW = (over: Partial<PreflightRow>): PreflightRow => ({
   id: "source.markdownlint",

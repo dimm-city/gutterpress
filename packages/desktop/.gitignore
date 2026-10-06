@@ -11,3 +11,4 @@ vite.config.ts.timestamp-*
 
 # render-perf gate generated fixture (tests/perf/make-fixture-book.mjs)
 .fixture-book/
+

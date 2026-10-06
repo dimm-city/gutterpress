@@ -6,11 +6,6 @@
 
   let { children } = $props();
 
-  // SFE-P5a (D10): the PWA service worker registration that used to live here
-  // was deleted along with `src/service-worker.ts` and the dormant WebAdapter
-  // it supported — a future web product is a separate package, not a second
-  // host inside this Electron-only SPA.
-
   // Kick off the settings load so the theme controller can read the persisted
   // appearance.theme. (Idempotent — +page.svelte also calls it.)
   _loadSettings();

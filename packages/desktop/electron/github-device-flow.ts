@@ -1,8 +1,7 @@
 /**
  * github-device-flow.ts — the GitHub OAuth device-flow "one connect at a
  * time" state trio behind remote:connectGitHubStart / remote:connectGitHubWait
- * / remote:connectGitHubCancel, extracted from electron/main.ts (ARCH review
- * finding #6).
+ * / remote:connectGitHubCancel.
  *
  * `codePromise` resolves with the user code (phase 1 of the two-phase
  * invoke, shown in the connect dialog); `donePromise` resolves once the user

@@ -133,9 +133,9 @@ The full configuration cascade is `CLI flags > manifest.yaml > preset defaults`.
 
 ## Commands
 
-Gutterpress has 10 subcommands. `new`, `preview`, `build`, and `publish` are the
-primary author commands; `lint`, `validate`, `audit`, and `preflight` are
-CI / advanced checks; `doctor` reports system readiness; and `ext` manages the
+Gutterpress has 8 subcommands. `new`, `preview`, `build`, and `publish` are the
+primary author commands; `validate` and `preflight` are CI / advanced
+checks; `doctor` reports system readiness; and `ext` manages the
 project's extensions (plugins, looks, component libraries). Every
 command also accepts `--help` for the authoritative, always-current flag list
 (`gutterpress <command> --help`) — this section is regenerated from the same
@@ -170,9 +170,9 @@ gutterpress new <name> [--kind <id>] [options]
 
 ### `gutterpress preview`
 
-Live HTML preview server by default. A single Markdown edit is rendered and
-spliced as one chapter over WebSocket; CSS, manifest, multi-file, deletion, and
-other structural changes reload the full document. This path is pure JS and
+Live HTML preview server by default. Every change — a single Markdown edit,
+CSS, manifest, multi-file, deletion, or other structural change — reloads the
+full document over WebSocket. This path is pure JS and
 needs no external tools. Pass `--format pdf` or `--format pdfx` for a one-shot
 build-and-open instead. `--manifest` applies only to those one-shot PDF/PDF-X
 modes; live HTML preview discovers the project manifest from its input
@@ -237,12 +237,12 @@ plus the PDF from the second — the pdf build never overwrites `book.html`.
 
 ### `gutterpress publish`
 
-Push a built PDF/HTML artifact to a publishing platform (itch.io, DriveThruRPG, Amazon KDP, Azure Static Web Apps, Shopify, Google Drive), headlessly and CI-safely. Credentials live in a 0600 user-config store (never in the project); provider env vars override it for CI. Most providers connect with a pasted API key; Google Drive connects through your browser instead (`--connect` opens the sign-in page — nothing to paste).
+Push a built PDF/HTML artifact to a publishing platform (itch.io, DriveThruRPG, Amazon KDP, Azure Static Web Apps, Shopify, Google Drive) or copy it to a local folder (`local`, the desktop's default first destination), headlessly and CI-safely. Credentials live in a 0600 user-config store (never in the project); provider env vars override it for CI. Most providers connect with a pasted API key; Google Drive connects through your browser instead (`--connect` opens the sign-in page — nothing to paste).
 
 ```sh
 gutterpress publish [project] [options]
 
-  --provider <id>     itch | drivethrurpg | kdp | azure-swa | shopify | gdrive
+  --provider <id>     local | itch | drivethrurpg | kdp | azure-swa | shopify | gdrive
   --list               List providers and connection status
   --connect            Store an API key for --provider (from --token, the provider's env var, or piped stdin) — or, for gdrive, open the browser to connect
   --disconnect         Forget the stored key for --provider
@@ -267,28 +267,6 @@ gutterpress publish --provider itch ./my-book
 gutterpress publish --provider gdrive --connect
 gutterpress publish --provider gdrive ./my-book
 ```
-
-### `gutterpress lint`
-
-Run Gutterpress's PostCSS-based print-safety checks, including remote URLs,
-rasterizing effects, and source-level page-containment risks, against the
-project's CSS files.
-
-```sh
-gutterpress lint [files] [options]
-
-  --manifest <path>    Path to manifest.yaml
-```
-
-`files` is a positional: either a project directory containing `manifest.yaml` (its configured stylesheets are linted), or a glob pattern for CSS files to lint directly. There is no `--files` flag — pass the directory/glob as the positional.
-
-Common findings include remote `url(...)` references, effects that rasterize
-print text, and declarations on core page wrappers that could clip or trap
-out-of-flow art. Each finding is listed with its file and `line:col`, so you
-can see exactly which selectors rasterize text; a property at its initial value
-(`filter: none`, `will-change: auto`) is not a finding. The source-level
-containment check is an early signal; the build-time `engine.layer.trapped`
-diagnostic inspects the authoritative live ancestor chain.
 
 ### `gutterpress validate`
 
@@ -324,18 +302,17 @@ It writes only when `source.markdownlint` is actually part of the run, so
 markdown untouched — `--fix` can never rewrite a file for a check the report
 does not mention.
 
-### `gutterpress audit`
-
-Run asset-only validation checks (image DPI/format/color-space, print-readiness) without the rest of the validation pipeline.
+Two narrowed runs replace the former `lint` and `audit` commands (removed in
+0.11.10 — each was a thin alias over this same pipeline):
 
 ```sh
-gutterpress audit [dir] [options]
+# CSS print-safety only — remote url(), rasterizing effects, page containment
+# (the check `gutterpress lint <dir>` used to run; findings list file and line:col)
+gutterpress validate my-book --only source.stylelint
 
-  --input <dir>        Asset directory (overrides the positional directory)
-  --manifest <path>    Path to manifest.yaml
-  --only <ids>         Run only these check IDs/selectors (comma-separated)
-  --skip <ids>         Skip these check IDs/selectors (comma-separated)
-  --format <fmt>       text (default) | json
+# Asset checks only — image DPI / format / color space, fonts
+# (what `gutterpress audit <dir>` used to run)
+gutterpress validate my-book --category asset --phase pre
 ```
 
 ### `gutterpress preflight`
@@ -398,9 +375,9 @@ Add an extension. What `SOURCE` is decides what happens:
 
 - an **npm package** (`name` or `name@version`) is downloaded straight from
   the registry along with its runtime dependencies, hash-verified, vendored
-  into the project under `plugins/npm/` with a receipt, load-tested, and
-  written back pinned as `name@<exact version>`. This does not invoke npm,
-  Bun, Node.js tooling, or package install scripts;
+  into the project under `plugins/npm/`, load-tested, and written back pinned
+  as `name@<exact version>`. This does not invoke npm, Bun, Node.js tooling,
+  or package install scripts;
 - a **bundled feature** (`markdown-it-mark`, `markdown-it-sub`,
   `markdown-it-sup`, `markdown-it-abbr`, `gutterpress-gfm-alerts`) is simply
   listed — nothing to install, works offline;
@@ -488,11 +465,11 @@ Every command follows the same exit-code contract, so CI can branch on the resul
 | Code | Meaning |
 |---|---|
 | `0` | Clean — no findings, nothing to fix. |
-| `1` | Findings — the command ran fine but reported findings/validation failures (`lint` CSS errors, `validate`/`preflight`/`audit` findings, a `build` quality-gate rejection). |
+| `1` | Findings — the command ran fine but reported findings/validation failures (`validate`/`preflight` findings, a `build` quality-gate rejection). |
 | `2` | Usage — the invocation itself was wrong: a bad flag, positional argument, preset, or value. |
 | `3` | Pipeline — the build/render/export pipeline itself failed for a reason unrelated to usage or findings (I/O error, missing tool, renderer crash). |
 
-This applies uniformly across `build`, `preview`, `lint`, `validate`, `preflight`, `audit`, `publish`, `ext`, `new`, and `doctor`.
+This applies uniformly across `build`, `preview`, `validate`, `preflight`, `publish`, `ext`, `new`, and `doctor`.
 
 ## Extensions
 
@@ -539,13 +516,14 @@ An extension folder (or npm package) describes itself in its **`package.json`** 
 
 Order is load order: a later entry's markdown runs after earlier entries' (and sees their output) and its CSS wins ties — each extension's stylesheets are wrapped in their own cascade layer (`@layer ext.<name>`), declared in list order, so this holds however an extension writes its CSS; the project's own `styles:` stay unlayered and load after every extension, beating all of them at any specificity. There is no `priority` and no `path:`/`name:` wrapper — a manifest still carrying `plugins:` fails with a message that prints the same entries rewritten as `extensions:`. The `engine:` and `engineStyles:` keys are gone too (there is one engine; move any `engineStyles` entries to the end of `styles:`).
 
-Pinned npm packages and their runtime dependencies live under `plugins/npm/`,
-with a receipt that records the exact graph and hashes the complete tree. They
-travel with the project and builds never fetch from the registry. Install/build
-scripts, native addon compilation, bundled `node_modules`, and non-registry
-dependency selectors are intentionally unsupported. Only install packages you
-trust: extensions run unsandboxed with the process's full filesystem and network
-privileges.
+Pinned npm packages and their runtime dependencies live under `plugins/npm/`
+as a plain nested `node_modules` tree, which Node's own module resolution loads.
+They travel with the project and builds never fetch from the registry; each
+tarball's integrity is checked against the registry's hash when it is
+installed. Install/build scripts, native addon compilation, bundled
+`node_modules`, and non-registry dependency selectors are intentionally
+unsupported. Only install packages you trust: extensions run unsandboxed with
+the process's full filesystem and network privileges.
 
 Use the entry's `export` field, or `ext add --export <name>`, for packages
 that expose a named plugin function instead of a default export.

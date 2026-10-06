@@ -1,11 +1,12 @@
 import { test, expect } from "bun:test";
 import {
+  canExpandProblems,
   closesPanelOnEscape,
-  closesPanelOnSelect,
   buildProblems,
   friendlySource,
   groupProblems,
   problemCounts,
+  problemsSummary,
   splitProblemMessage,
 } from "../../src/lib/problems";
 import type { ProblemEntry } from "../../src/lib/platform/dtos";
@@ -28,12 +29,37 @@ test("problemCounts: badge = errors + warnings; infos listed separately", () => 
   expect(problemCounts([])).toEqual({ errors: 0, warnings: 0, infos: 0, badge: 0 });
 });
 
+test("problemsSummary: the badge counts in words, singular/plural, empty when neither", () => {
+  expect(problemsSummary({ errors: 1, warnings: 3 })).toBe("1 error, 3 warnings");
+  expect(problemsSummary({ errors: 2, warnings: 1 })).toBe("2 errors, 1 warning");
+  expect(problemsSummary({ errors: 0, warnings: 4 })).toBe("4 warnings");
+  expect(problemsSummary({ errors: 1, warnings: 0 })).toBe("1 error");
+  expect(problemsSummary({ errors: 0, warnings: 0 })).toBe("");
+});
+
+// #307: a clean project must not offer an expander — the empty "No problems
+// found" strip used to open over the left panel's buttons.
+test("canExpandProblems: nothing to list means nothing to expand", () => {
+  // The #307 case: a clean, closed list offers no expander.
+  expect(canExpandProblems([], null, false)).toBe(false);
+  // Entries to list (an info-only list still has entries).
+  expect(canExpandProblems([make({ severity: "error" })], null, false)).toBe(true);
+  expect(canExpandProblems([make({ severity: "info" })], null, false)).toBe(true);
+  // A failed check has a message to show — never mistaken for a clean run.
+  expect(canExpandProblems([], "We couldn't check your book this time.", false)).toBe(true);
+  // Already open (e.g. the writer just fixed the last problem): stays closable.
+  expect(canExpandProblems([], null, true)).toBe(true);
+});
+
 test("friendlySource maps known check ids to plain language, passes unknown through", () => {
   expect(friendlySource("source.links.local-refs")).toBe("Broken link");
   expect(friendlySource("source.links.dangling")).toBe("Unopenable link");
   expect(friendlySource("source.stylelint")).toBe("Print-safety (CSS)");
   expect(friendlySource("source.accessibility.alt-text")).toBe("Image description");
   expect(friendlySource("desktop.preview")).toBe("Preview");
+  // US spelling, like every other label in the app.
+  expect(friendlySource("asset.image.color-space")).toBe("Image color space");
+  expect(friendlySource("asset.font.license")).toBe("Font license");
   expect(friendlySource("some.future.check")).toBe("some.future.check");
 });
 
@@ -44,10 +70,10 @@ test("groupProblems groups by file, sorts groups by name and entries by line", (
     make({ file: "b.md", filePath: "/p/b.md", line: 2, severity: "error" }),
     make({ message: "project-level finding" }), // no file
   ]);
-  expect(groups.map((g) => g.file)).toEqual(["a.md", "b.md", "Project"]);
+  expect(groups.map((g) => g.file)).toEqual(["a.md", "b.md", "Book"]);
   const b = groups[1]!;
   expect(b.entries.map((e) => e.line)).toEqual([2, 9]);
-  // Project-level group renders last and keeps its entries.
+  // The file-less ("Book") group renders last and keeps its entries.
   expect(groups[2]!.entries[0]!.message).toBe("project-level finding");
   expect(groups[2]!.filePath).toBeUndefined();
 });
@@ -86,25 +112,17 @@ test("splitProblemMessage passes plain messages through with code: null", () => 
   });
 });
 
-// L9 regression fix: the compact overlay has no reachable toggle-strip to
-// close it (the overlay itself covers the strip), so closing is driven by
-// selecting a result or pressing Escape instead. These predicates are the
-// shared decision logic — asserted directly so the fix is verified by
-// behavior, not just by grepping the component's markup.
-test("closesPanelOnSelect: only compact mode closes the panel on selection", () => {
-  expect(closesPanelOnSelect(true)).toBe(true);
-  expect(closesPanelOnSelect(false)).toBe(false);
-});
-
-test("closesPanelOnEscape: only Escape, while compact AND open, closes the panel", () => {
-  expect(closesPanelOnEscape(true, true, "Escape")).toBe(true);
-  // Not compact — the normal expanded panel isn't a covering overlay, so
-  // Escape must not silently collapse it out from under an unrelated keypress.
-  expect(closesPanelOnEscape(false, true, "Escape")).toBe(false);
-  // Not open — nothing to close.
-  expect(closesPanelOnEscape(true, false, "Escape")).toBe(false);
-  // Any other key is ignored.
-  expect(closesPanelOnEscape(true, true, "Enter")).toBe(false);
+// Keyboard access to the in-flow list (#307): opening it moves focus inside,
+// and Escape from inside closes it — but only from inside, so an unrelated
+// Escape elsewhere in the app can't collapse it.
+test("closesPanelOnEscape: closes on Escape only while open and from inside the list", () => {
+  expect(closesPanelOnEscape(true, "Escape", true)).toBe(true);
+  // Focus anywhere else (editor, a dialog, the toolbar): leave the list alone.
+  expect(closesPanelOnEscape(true, "Escape", false)).toBe(false);
+  // Nothing to close, or some other key — even with focus inside. Tab in
+  // particular is never swallowed: the list is a panel, not a modal.
+  expect(closesPanelOnEscape(false, "Escape", true)).toBe(false);
+  expect(closesPanelOnEscape(true, "Tab", true)).toBe(false);
 });
 
 // M32: SOURCE_LABELS must cover every check the CLI actually registers under

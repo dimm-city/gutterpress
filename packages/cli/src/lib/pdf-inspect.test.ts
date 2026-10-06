@@ -1,7 +1,7 @@
 /**
  * Integration tests for the in-process PDF reader (unpdf/PDF.js) against a real
  * Chromium-generated PDF fixture. These exercise the pure-JS replacements for
- * Poppler + general qpdf inspection (Phase 2 of ADR 0002).
+ * Poppler + general qpdf inspection.
  *
  * The document is loaded once and shared via pdf-inspect's internal cache, so
  * the expensive operator-list pass is paid a single time across all assertions.

@@ -24,7 +24,6 @@ const spy = <A extends unknown[] = unknown[]>(): Spy<A> => {
 interface Harness {
   ctrl: StartupController;
   deps: {
-    isDesktop: Spy<[]> & { value: boolean };
     isWorkspaceEngaged: Spy<[]> & { value: boolean };
     isSomethingOpen: Spy<[]> & { value: boolean };
     revealWindow: Spy<[]>;
@@ -44,7 +43,6 @@ interface Harness {
 }
 
 function make(): Harness {
-  const isDesktop = Object.assign(spy<[]>(), { value: true });
   const isWorkspaceEngaged = Object.assign(spy<[]>(), { value: false });
   const isSomethingOpen = Object.assign(spy<[]>(), { value: false });
   const getDesktopPrefs = Object.assign(spy<[]>(), {
@@ -65,10 +63,6 @@ function make(): Harness {
   });
 
   const deps: StartupControllerDeps = {
-    isDesktop: () => {
-      isDesktop();
-      return isDesktop.value;
-    },
     isWorkspaceEngaged: () => {
       isWorkspaceEngaged();
       return isWorkspaceEngaged.value;
@@ -112,7 +106,6 @@ function make(): Harness {
   return {
     ctrl: new StartupController(deps),
     deps: {
-      isDesktop,
       isWorkspaceEngaged,
       isSomethingOpen,
       getDesktopPrefs,
@@ -132,14 +125,6 @@ function make(): Harness {
 }
 
 // ── Entry guards ──────────────────────────────────────────────────────────────
-
-test("run() no-ops on the web (not desktop)", async () => {
-  const { ctrl, deps } = make();
-  deps.isDesktop.value = false;
-  await ctrl.run();
-  expect(deps.getDesktopPrefs.calls.length).toBe(0);
-  expect(ctrl.lastProjectChecked).toBe(false);
-});
 
 test("run() no-ops once lastProjectChecked is already true", async () => {
   const { ctrl, deps } = make();

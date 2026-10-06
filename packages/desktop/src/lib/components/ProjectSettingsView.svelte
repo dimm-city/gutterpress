@@ -1,27 +1,26 @@
 <script lang="ts">
   /**
-   * ProjectSettingsView — the full-window "Project settings" surface, patterned
-   * after the app SettingsView (header + close, tab bar, one cohesive slice per
-   * tab). It replaced the left-sidebar Config tab (and with it the retired
-   * ProjectConfigPanel): the sidebar's 260px column was a cramped frame for
-   * manifest editing, theme browsing, and plugin management.
+   * ProjectSettingsView — the "Book settings" surface (tab bar, one cohesive
+   * slice per tab), opened in the shared AppView layer because a sidebar
+   * column is a cramped frame for manifest editing, theme browsing, and
+   * plugin management. AppView owns the frame, the close control, Escape and
+   * focus (a dialog on top, e.g. "Save as template…", takes Escape first).
    *
-   * This is the COMPOSITION ROOT for the per-domain section controllers
-   * (UX review M14): it instantiates one `*SectionController` per domain and
-   * renders the presentational sections under `./config/`, passing each ITS
-   * controller as a single prop. The children carry no state and no host
-   * call of their own - every typed-IPC call is handed to the controllers
-   * under `$lib/routes/*-section-controller.svelte.ts`.
+   * This is the COMPOSITION ROOT for the per-domain section controllers: it
+   * instantiates one `*SectionController` per domain and renders the
+   * presentational sections under `./config/`, passing each ITS controller as a
+   * single prop. The children carry no state and no `api` value import — all
+   * `api.*` calls live in the controllers under
+   * `$lib/routes/*-section-controller.svelte.ts`.
    *
    * Four tabs, backed by FOUR controllers (no `$effect`: data loads on mount +
    * after mutations, mirroring SettingsView/History):
    *   1. Details     — title, authors, output filename, source files
-   *                    (`manifestRead`/`manifestSetFields`).
+   *                    (`api.manifest.{read,setFields}`).
    *   2. Look        — the extensions that carry styles (`LookSection`)
    *                    → design tokens (`DesignSection`) → the raw stylesheet
-   *                    list (`StylesSection`) behind an "Advanced" disclosure
-   *                    (UX review M35's writer-shaped merge, unchanged). The
-   *                    heading stays "Look & style" — it still covers all
+   *                    list (`StylesSection`) under a "Stylesheets" heading.
+   *                    The section heading is "Look & style" — it covers all
    *                    three subsections — while the tab button itself is
    *                    shortened to "Look" to pair with "Features" (#243).
    *   3. Features    — the extensions that carry markdown: toggle, remove,
@@ -33,8 +32,7 @@
    *
    * #243/#265 — Look and Features are two VIEWS over ONE `extensions:` list
    * and one verb set, owned by the single `ExtensionsSectionController`
-   * instance (`extensions` below; the `extension*` functions of
-   * `$lib/project-config/project-config-capability`). `afterLookChange`
+   * instance (`extensions` below; `api.extension.*`). `afterLookChange`
    * (a styles-carrying extension was added/removed/toggled/moved → reload
    * Styles + Design) and `afterStyleChange` (a stylesheet was toggled →
    * reload Design) are the cross-section refresh hooks; every other refresh
@@ -45,58 +43,41 @@
    * every rule under that ancestor class.
    *
    * PWA-clean (§8): only `import type` from the lib; everything value-bearing
-   * goes through `$lib/files/files-capability`'s / `$lib/project-config/
-   * project-config-capability`'s / `$lib/doctor/doctor-capability`'s typed
-   * IPC inside the controllers.
+   * goes through `api.*` HTTP routes inside the controllers.
    */
   import { onMount } from "svelte";
-  import { getDoctorDiagnostics } from "$lib/doctor/doctor-capability";
-  import { readFile, writeFile, listDir } from "$lib/files/files-capability";
-  import {
-    projectListStyles,
-    styleSetActive,
-    manifestRead,
-    manifestSetFields,
-    extensionList,
-    extensionSearch,
-    extensionRecommended,
-    extensionListBuiltIn,
-    extensionValidate,
-    extensionAdd,
-    extensionAddLocal,
-    extensionAddBuiltIn,
-    extensionRemove,
-    extensionSetEnabled,
-    extensionReorder,
-    extensionReadCss,
-    extensionImportFromFile,
-    extensionImportFromUrl,
-  } from "$lib/project-config/project-config-capability";
+  import { api } from "$lib/api";
   import type { ToastController } from "$lib/components/Toast.svelte";
   import { DetailsSectionController } from "$lib/routes/details-section-controller.svelte";
   import { ExtensionsSectionController } from "$lib/routes/extensions-section-controller.svelte";
   import { StylesSectionController } from "$lib/routes/styles-section-controller.svelte";
   import { DesignSectionController } from "$lib/routes/design-section-controller.svelte";
-  import Icon from "$lib/components/Icon.svelte";
+  import AppView from "$lib/components/AppView.svelte";
   import DetailsSection from "$lib/components/config/DetailsSection.svelte";
   import LookSection from "$lib/components/config/LookSection.svelte";
   import StylesSection from "$lib/components/config/StylesSection.svelte";
   import DesignSection from "$lib/components/config/DesignSection.svelte";
   import FeaturesSection from "$lib/components/config/FeaturesSection.svelte";
   import ProjectConnectionsSection from "$lib/components/ProjectConnectionsSection.svelte";
+  import SaveTemplateDialog from "$lib/components/SaveTemplateDialog.svelte";
   import { PRINT_TOOL_IDS } from "$lib/publish-targets";
 
   let {
     projectDir,
     repoRoot = null,
+    initialTab = "details",
     toast = null,
     onEditRawCss,
     onClose,
     onOpenAccounts,
+    onVersionHistoryEnabled,
+    triggerEl,
   }: {
     projectDir: string | null;
     /** The repo the open book belongs to — lets the pickers offer SHARED styles. */
     repoRoot?: string | null;
+    /** Tab to open on. Read once at mount (the view is keyed per open). */
+    initialTab?: "details" | "connections";
     toast?: ToastController | null;
     /** Escape hatch: open a stylesheet in the raw-CSS editor (the parent
      *  closes this view first). */
@@ -106,14 +87,14 @@
     /** Open the app Settings view on the Accounts tab (the parent closes
      *  this view first). Used by the Connections tab's guidance. */
     onOpenAccounts?: () => void;
+    /** The Connections tab just turned on version history: re-read the project's classification. */
+    onVersionHistoryEnabled?: (projectDir: string) => void;
+    /** The control that opened the view, for focus restore on close. */
+    triggerEl?: HTMLElement | null;
   } = $props();
 
   // Covers the initial parallel load of all sections.
   let loadingAll = $state(true);
-  // Focus target on open: opening the view makes the whole workspace (and the
-  // toolbar button that opened it) inert, which would drop keyboard focus to
-  // <body> — so the close button takes it, mirroring dialog behavior.
-  let closeBtnEl = $state<HTMLButtonElement | undefined>(undefined);
 
   const projectDirAccessor = () => projectDir;
 
@@ -121,10 +102,10 @@
   //    so it's constructed first. ─────────────────────────────────────────
   const design = new DesignSectionController({
     projectDir: projectDirAccessor,
-    listStyles: (dir) => projectListStyles(dir, repoRoot),
-    listExtensions: (dir) => extensionList(dir),
-    readFile: (path) => readFile(path),
-    writeFile: (path, content) => writeFile(path, content),
+    listStyles: (dir) => api.project.listStyles(dir, repoRoot),
+    listExtensions: (dir) => api.extension.list(dir),
+    readFile: (path) => api.fs.readFile(path),
+    writeFile: (path, content) => api.fs.writeFile(path, content),
     onError: (msg) => toast?.error?.(msg),
     onEditRawCss: (path) => onEditRawCss?.(path),
   });
@@ -132,8 +113,8 @@
   // ── Styles — refreshes Design after a toggle. ──────────────────────────
   const styles = new StylesSectionController({
     projectDir: projectDirAccessor,
-    listStyles: (dir) => projectListStyles(dir, repoRoot),
-    setActive: (dir, paths) => styleSetActive(dir, paths),
+    listStyles: (dir) => api.project.listStyles(dir, repoRoot),
+    setActive: (dir, paths) => api.style.setActive(dir, paths),
     onToggled: (on) => toast?.success?.(on ? "Stylesheet enabled." : "Stylesheet disabled."),
     onEditRawCss: (path) => onEditRawCss?.(path),
     afterStyleChange: () => design.loadDesign(),
@@ -142,23 +123,25 @@
   // ── Details ─────────────────────────────────────────────────────────────
   const details = new DetailsSectionController({
     projectDir: projectDirAccessor,
-    readManifest: (dir) => manifestRead(dir),
-    writeManifest: (dir, updates) => manifestSetFields(dir, updates),
+    readManifest: (dir) => api.manifest.read(dir),
+    writeManifest: (dir, updates) => api.manifest.setFields(dir, updates),
     // The source-files list universe: top-level markdown files (the same set
     // the render pipeline includes when the manifest lists none).
     listMarkdownFiles: (dir) =>
-      listDir(dir).then((entries) =>
-        entries.filter((e) => !e.isDir && /\.md$/i.test(e.name)).map((e) => e.name),
-      ),
+      api.fs
+        .listDir(dir)
+        .then((entries) => entries.filter((e) => !e.isDir && /\.md$/i.test(e.name)).map((e) => e.name)),
     // Which print tools are absent, for the publish-targets note — the same
-    // diagnostics data the Help tab shows.
+    // /api/doctor data Troubleshooting → Diagnostics shows.
     listMissingPrintTools: () =>
-      getDoctorDiagnostics().then((d) =>
-        (d.tools ?? [])
-          .filter((t) => !t.found && PRINT_TOOL_IDS.includes(t.id))
-          .map((t) => t.id),
-      ),
-    onSaved: () => toast?.success?.("Project details saved."),
+      api
+        .doctor()
+        .then((d) =>
+          (d.tools ?? [])
+            .filter((t) => !t.found && PRINT_TOOL_IDS.includes(t.id))
+            .map((t) => t.id),
+        ),
+    onSaved: () => toast?.success?.("Book details saved."),
     onError: (msg) => toast?.error?.(msg),
   });
 
@@ -166,22 +149,22 @@
   //    refreshes Styles + Design. ─────────────────────────────────────────
   const extensions = new ExtensionsSectionController({
     projectDir: projectDirAccessor,
-    list: (dir) => extensionList(dir),
-    recommended: () => extensionRecommended(),
-    listBuiltIn: () => extensionListBuiltIn(),
-    search: (query) => extensionSearch(query),
-    validate: (dir) => extensionValidate(dir),
-    add: (dir, specifier, exportName) => extensionAdd(dir, specifier, exportName),
-    addLocal: (dir) => extensionAddLocal(dir),
-    addBuiltIn: (dir, id) => extensionAddBuiltIn(dir, id),
-    remove: (dir, use) => extensionRemove(dir, use),
-    setEnabled: (dir, use, enabled) => extensionSetEnabled(dir, use, enabled),
-    reorder: (dir, order) => extensionReorder(dir, order),
-    readCss: (dir, use) => extensionReadCss(dir, use),
-    importFromFile: (dir) => extensionImportFromFile(dir),
-    importFromUrl: (dir, url) => extensionImportFromUrl(dir, url),
+    list: (dir) => api.extension.list(dir),
+    recommended: () => api.extension.recommended(),
+    listBuiltIn: () => api.extension.listBuiltIn(),
+    search: (query) => api.extension.search(query),
+    validate: (dir) => api.extension.validate(dir),
+    add: (dir, specifier, exportName) => api.extension.add(dir, specifier, exportName),
+    addLocal: (dir) => api.extension.addLocal(dir),
+    addBuiltIn: (dir, id) => api.extension.addBuiltIn(dir, id),
+    remove: (dir, use) => api.extension.remove(dir, use),
+    setEnabled: (dir, use, enabled) => api.extension.setEnabled(dir, use, enabled),
+    reorder: (dir, order) => api.extension.reorder(dir, order),
+    readCss: (dir, use) => api.extension.readCss(dir, use),
+    importFromFile: (dir) => api.extension.importFromFile(dir),
+    importFromUrl: (dir, url) => api.extension.importFromUrl(dir, url),
     onLookAdded: (label) => {
-      toast?.success?.(`${label} added — close Project settings to see it in the preview. Use Design to fine-tune.`);
+      toast?.success?.(`${label} added — it now shows in the preview. Use Design to fine-tune.`);
     },
     afterLookChange: async () => {
       await Promise.all([styles.loadStyles(), design.loadDesign()]);
@@ -190,7 +173,6 @@
 
   // ── Lifecycle: load every section's data on mount ────────────────────────
   onMount(() => {
-    closeBtnEl?.focus();
     let cancelled = false;
     void loadAll().finally(() => {
       if (!cancelled) loadingAll = false;
@@ -228,7 +210,8 @@
     { id: "features", label: "Features" },
     { id: "connections", label: "Connections" },
   ];
-  let activeTab = $state<ProjectSettingsTab>("details");
+  // svelte-ignore state_referenced_locally
+  let activeTab = $state<ProjectSettingsTab>(initialTab);
   let tabEls = $state<Record<ProjectSettingsTab, HTMLButtonElement | undefined>>({
     details: undefined,
     look: undefined,
@@ -253,15 +236,14 @@
   function close() {
     onClose?.();
   }
+
+  // "Save as template…" (Details tab) — mounted fresh per open so its form
+  // resets; the opening button is remembered for focus restore.
+  let templateDialogTrigger = $state<HTMLButtonElement | null>(null);
 </script>
 
-<div class="settings-view" aria-busy={loadingAll}>
-  <header class="settings-header">
-    <h2 id="project-settings-title">Project settings</h2>
-    <button bind:this={closeBtnEl} class="settings-close" onclick={close} title="Close project settings (Esc)" aria-label="Close project settings"><Icon name="x" size={16} /></button>
-  </header>
-
-  <div class="tab-bar" role="tablist" aria-label="Project settings sections" onkeydown={onTablistKeydown} tabindex="-1">
+<AppView title="Book settings" icon="wrench" measure={860} onClose={close} {triggerEl}>
+  <div class="tab-bar" role="tablist" aria-label="Book settings sections" onkeydown={onTablistKeydown} tabindex="-1">
     {#each TABS as tab (tab.id)}
       <button
         id="project-settings-tab-{tab.id}"
@@ -280,26 +262,27 @@
   <div
     id="project-settings-panel"
     class="settings-body config-panel"
+    aria-busy={loadingAll}
     role="tabpanel"
     aria-labelledby="project-settings-tab-{activeTab}"
   >
     {#if !hasProject}
       <div class="empty">
-        <p>Open a project folder to configure it.</p>
+        <p>Open a book to configure it.</p>
       </div>
     {:else if loadingAll}
       <p class="loading">Loading…</p>
     {:else}
       {#if activeTab === "details"}
-        <DetailsSection controller={details} />
+        <DetailsSection controller={details} onSaveAsTemplate={(el) => (templateDialogTrigger = el)} />
       {/if}
 
       {#if activeTab === "look"}
-        <!-- UX review M35: the Look grid → design tokens → stylesheet list,
+        <!-- The Look grid → design tokens → stylesheet list,
              merged under one writer-shaped "Look & style" heading (the tab
              button itself is shortened to "Look", #243 — see the header
              comment). The stylesheet list is a plain always-visible section
-             - project settings has no collapsible sections. -->
+             - book settings has no collapsible sections. -->
         <section class="block look-style">
           <h3>Look &amp; style</h3>
           <LookSection controller={extensions} />
@@ -318,79 +301,36 @@
       {/if}
 
       {#if activeTab === "connections"}
-        <!-- This project's connection details (moved from the app Settings'
-             Connections tab, 2026-07-30). Accounts/credentials stay global in
-             Settings → Accounts; onOpenAccounts routes there. -->
-        <ProjectConnectionsSection {projectDir} {onOpenAccounts} />
+        <!-- This project's connection details. Accounts/credentials stay
+             global in Settings → Accounts; onOpenAccounts routes there. -->
+        <ProjectConnectionsSection {projectDir} {onOpenAccounts} {onVersionHistoryEnabled} />
       {/if}
     {/if}
   </div>
-</div>
+{#if templateDialogTrigger && projectDir}
+    <SaveTemplateDialog
+      {projectDir}
+      {toast}
+      triggerEl={templateDialogTrigger}
+      onClose={() => (templateDialogTrigger = null)}
+    />
+  {/if}
+</AppView>
 
 <style>
-  /* Frame CSS mirrors SettingsView so the two settings surfaces read as one
-     family; section chrome comes from config-section-shared.css via the
-     `.config-panel` class on the body (see the header comment). */
-  .settings-view {
-    display: flex;
-    flex: 1 1 auto;
-    flex-direction: column;
-    width: 100%;
-    height: 100%;
-    min-height: 0;
-    background: var(--app-bg);
-    color: var(--app-text-secondary);
-  }
-  .settings-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-shrink: 0;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--app-border);
-    background: var(--app-surface-raised);
-  }
-  .settings-header h2 {
-    margin: 0;
-    color: var(--app-text);
-    font-size: 15px;
-  }
-  .settings-close {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 4px;
-    border: 1px solid var(--app-border);
-    border-radius: 5px;
-    background: transparent;
-    color: var(--app-text-muted);
-    cursor: pointer;
-  }
-  .settings-close:hover { background: var(--app-control-hover-bg); color: var(--app-text); }
-  .settings-close:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
+  /* Section chrome comes from config-section-shared.css via the
+     `.config-panel` class on the body (see the header comment); the frame,
+     title and close control are AppView's. */
   .settings-body {
-    flex: 1;
-    min-height: 0;
-    padding: 16px 18px;
-    overflow-y: auto;
-    /* A comfortable reading measure — the sidebar's 260px column was the whole
-       reason this became a full view; unbounded width is just as unfriendly.
-       border-box: there is no global reset, and content-box width:100% plus
-       the 18px side padding would overflow the fixed sheet horizontally on
-       windows narrower than ~896px (Codex review, PR #118). */
-    box-sizing: border-box;
-    max-width: 860px;
-    width: 100%;
-    margin: 0 auto;
     display: flex;
     flex-direction: column;
     gap: 16px;
+    color: var(--app-text-secondary);
   }
   /* ── Tab bar (SettingsView pattern) ── */
   .tab-bar {
     display: flex;
     gap: 2px;
-    padding: 0 16px;
     border-bottom: 1px solid var(--app-border-subtle);
     flex-shrink: 0;
     overflow-x: auto;

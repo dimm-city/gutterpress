@@ -1,6 +1,4 @@
 import { expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import {
   PersistenceFailureNotifier,
   createLastFlushFailure,
@@ -64,36 +62,6 @@ test("notice degrades safely when project or date context is unavailable", () =>
       { failedAt: "not-a-date" },
       () => "must not run",
     ),
-  ).toBe("Your last edit in your project during your previous session may not have been saved.");
+  ).toBe("Your last edit in your book during your previous session may not have been saved.");
 });
 
-test("the page routes every destructive buffer transition and close through the failure-aware flush", () => {
-  const page = readFileSync(
-    path.resolve(import.meta.dir, "../../src/routes/+page.svelte"),
-    "utf8",
-  );
-
-  expect(page).not.toMatch(/\.flush\(\)\.catch\(\(\) => \{\}\)/);
-  expect(page).toContain("flushBuffer: () => flushEditorBuffer()"); // project close/switch lifecycle
-  // Leaving a file asks first when autosave is off, then saves through the
-  // same failure-aware flush (or discards, on Don't Save).
-  expect(page).toContain("leaveBuffer: () => leaveEditorBuffer()");
-  expect(page).toContain("flush: (target) => leaveEditorBuffer(target)");
-  const leave = page.slice(page.indexOf("async function leaveEditorBuffer"), page.indexOf("// ARCH #61"));
-  expect(leave).toContain("return flushEditorBuffer(target);");
-  expect(leave).toContain("await target.discard();");
-  expect(page).toContain("onFlushBeforeClose(async (mode) => {");
-  expect(page).toContain("return flushEditorBuffer(buffer, false);");
-  expect(page).toContain("return flushEditorBuffer(buffer);"); // tree rename/delete
-
-  // File replacement is delegated to the behavior-tested editor session,
-  // which flushes the outgoing one-file buffer before atomic activation.
-  expect(page).not.toContain("flushEditorBuffer(buf)");
-
-  const fileTree = readFileSync(
-    path.resolve(import.meta.dir, "../../src/lib/components/FileTree.svelte"),
-    "utf8",
-  );
-  expect(fileTree).toContain("(await onBeforeRename?.(oldPath)) === false");
-  expect(fileTree).toContain("(await onBeforeDelete?.(entry.path)) === false");
-});

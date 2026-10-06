@@ -1,20 +1,12 @@
 // ──────────────────────────────────────────────────────────────────────────
 // recovery.ts — crash-recovery sidecar store (#44).
 //
-// NAMING MAP (UX review M38): "recovery" names TWO unrelated subsystems in
-// this codebase, and they must not be confused:
-//   1. CRASH-DRAFT recovery (THIS FILE + its `recovery:*` IPC handlers
-//      (electron/api/recovery.ts) + CrashRecoveryDialog.svelte) — an
-//      in-editor unsaved-changes sidecar.
-//      Writer-facing vocabulary: "unsaved changes" only, never "recovery".
-//   2. SYNC-REPAIR recovery (recovery-bridge.ts + RecoveryOverlay /
-//      RecoveryConfirmDialog / RecoveryGuidanceDialog) — git-repair machinery
-//      for a broken local-git project. Writer-facing vocabulary: "backup" /
-//      "repair", also never the bare word "recovery" in visible copy.
-// Internal identifiers (this file's name, `RecoveryEntry`, the route paths)
-// keep the word "recovery" — renaming them broadly is out of scope (churn
-// with no writer-facing value); only each domain's writer-facing dialog copy
-// is disambiguated.
+// NAMING (M38): "recovery" here means CRASH-DRAFT recovery only (THIS FILE +
+// its `/api/recovery/*` routes + CrashRecoveryDialog.svelte) — an in-editor
+// unsaved-changes sidecar. Writer-facing vocabulary: "unsaved changes", never
+// "recovery". (The git repair tools under `/api/remote/*` say "backup" /
+// "repair".) Internal identifiers (this file's name, `RecoveryEntry`, the
+// route paths) keep the word "recovery".
 //
 // The in-app editor (#38) auto-saves on a debounce — or, with Settings →
 // Saving's "Save edits automatically" off, only when the author saves;
@@ -172,13 +164,11 @@ export async function clearRecovery(
  * snapshot's `savedAt` avoids a fractional-`mtimeMs` vs integer-`Date.now()`
  * collision when the snapshot and the disk write land in the same millisecond.)
  *
- * The filter used to be `dirname(entry.filePath) !== projectDir` — immediate
- * children only (2026-07-29 audit). A crash draft for `styles/book.css`,
- * `extensions/<id>/theme.css`, an explicitly-listed `chapters/ch01.md`, or an
- * authorized repo-root shared file was written on every edit and then never
- * offered back after a crash — and, being unoffered, was swept as stale on the
- * next listing. Silent loss of exactly the files a multi-book project shares.
- * Matching is separator-aware, so a prefix-sibling project (`<proj>2`) is not
+ * "Under" means at any depth, not immediate children only: a crash draft for
+ * `styles/book.css`, `extensions/<id>/theme.css`, `chapters/ch01.md`, or an
+ * authorized repo-root shared file must be offered back after a crash, or it
+ * is swept as stale on the next listing — silent loss of exactly the files a
+ * multi-book project shares. Matching is separator-aware, so a prefix-sibling project (`<proj>2`) is not
  * "under" this one.
  */
 export async function listRecovery(

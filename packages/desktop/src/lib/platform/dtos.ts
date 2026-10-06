@@ -1,36 +1,25 @@
 /**
- * Desktop-facing DTOs (ARCH review #39) — plain data shapes the typed IPC
- * capability modules (`$lib/*-capability.ts`) return, plus a handful of
- * app-local view types (extension manager, style resolver, media panel,
- * ...).
+ * Desktop-facing DTOs — plain data shapes returned by the
+ * server routes under `src/routes/api/**`, plus a handful of app-local view
+ * types (extension manager, style resolver, media panel, …).
  *
  * These are NOT part of the `HostServices`/`ElectronBridge`/`Platform` seam
  * (that lives in `./contract.ts`) — they are the request/response payload
- * shapes the capability modules and their consumers use (through SFE-P5c,
- * `src/routes/api/**`'s now-deleted `+server.ts` routes and `$lib/api.ts`'s
- * typed fetch client returned these same shapes). Most mirror an equivalent
- * type in `gutterpress` (the lib) and are defined locally here so the SPA
- * never value-imports the lib into the renderer bundle (§8 / ADR 0004).
+ * shapes `$lib/api.ts` and its consumers use. Most mirror an equivalent type
+ * in `gutterpress` (the lib) and are defined locally here so the SPA
+ * never value-imports the lib into the renderer bundle (§8).
  *
  * Pure type/interface/type-alias declarations ONLY — no runtime values, no
  * imports from `./contract` (that would create a cycle; `contract.ts` is the
  * one that imports FROM this file, not the reverse).
  */
-import type {
-  ProjectSource,
-  ProjectCapabilities,
-  NpmExtensionMatch,
-  LocalBranches,
-  SwitchBranchResult,
-} from "gutterpress";
+import type { ProjectSource, ProjectCapabilities, NpmExtensionMatch } from "gutterpress";
 
 // ── Unsaved-changes / recovery types (#44) ────────────────────────────────────
 //
-// #44 has since shipped in full (EditorBuffer in editor/buffer-state.svelte.ts,
-// CrashRecoveryController, the `recovery:write`/`recovery:clear`/`recovery:list`
-// typed IPC channels below). `RecoveryEntry` is the live DTO those channels
-// return. `EditorBufferPhase` predates that work
-// and has no importers — EditorBuffer declares its own identical copy of the
+// `RecoveryEntry` is the DTO the /api/recovery/* routes return.
+// `EditorBufferPhase` has no importers — EditorBuffer
+// (editor/buffer-state.svelte.ts) declares its own identical copy of the
 // union locally instead of importing this one.
 
 /** Lifecycle of the in-app editor buffer relative to disk (#44). Unused here —
@@ -50,9 +39,9 @@ export interface RecoveryEntry {
   baseMtimeMs: number;
 }
 
-// ── Project classification (#12, C1 repo-root sessions) ──────────────────────
+// ── Project classification (#12, repo-root sessions) ─────────────────────────
 
-/** One book (manifest-containing folder) found inside a classified repo (C1). */
+/** One book (manifest-containing folder) found inside a classified repo. */
 export interface ProjectClassificationBook {
   /** Absolute path to the book folder. */
   path: string;
@@ -65,7 +54,7 @@ export interface ProjectClassificationBook {
 /**
  * Result of classifying an opened folder (#12). `repoRoot`/`books` are
  * present only when `source` is a `local-git-folder` with discoverable
- * sibling books (C1 — repo-root sessions): the host BFS-scans the repo root
+ * sibling books (repo-root sessions): the host BFS-scans the repo root
  * for manifest-containing folders so the desktop can decide which book is
  * "active" (see `project-session-controller.svelte.ts`'s
  * `resolveActiveBookDir`).
@@ -75,9 +64,9 @@ export interface ProjectClassification {
   capabilities: ProjectCapabilities;
   /** Whether the folder passed to classification contains a recognized manifest. */
   hasManifest: boolean;
-  /** Repo root, present when `source.type === "local-git-folder"` (C1). */
+  /** Repo root, present when `source.type === "local-git-folder"`. */
   repoRoot?: string;
-  /** Sibling books inside `repoRoot`, sorted by `subPath` (C1). */
+  /** Sibling books inside `repoRoot`, sorted by `subPath`. */
   books?: ProjectClassificationBook[];
 }
 
@@ -87,7 +76,7 @@ export interface ProjectClassification {
 // shared-types.ts (re-exported by contract.ts). ListSnapshotsOptions is a
 // renderer-only request shape, so it stays here.
 
-/** Paging inputs for `vcs:listSnapshotsPage` (`ElectronBridge.vcs.listSnapshotsPage` in `contract.ts`, called from `$lib/vcs/vcs-capability.ts`). */
+/** Paging inputs for {@link HostServices.listSnapshotsPage}. */
 export interface ListSnapshotsOptions {
   /** Max entries per page (host default: 100). */
   limit?: number;
@@ -111,7 +100,7 @@ export interface PrintSafeWarning {
 /**
  * One row in the Problems panel (#28). Mirrors the lib's `CheckResult`
  * (packages/cli/src/checks/types.ts) plus a resolved absolute path — defined
- * locally so the SPA never value-imports the lib (§8 / ADR 0004).
+ * locally so the SPA never value-imports the lib (§8).
  */
 export interface ProblemEntry {
   /** Absolute path of the offending file, when the check reported one. */
@@ -130,7 +119,7 @@ export interface ProblemEntry {
 // ── Extension manager (#265) — the one rail ──────────────────────────────────
 //
 // Mirror the lib's extension-manager / extension-import types — defined
-// locally so the SPA never value-imports the lib (§8 / ADR 0004). A look is
+// locally so the SPA never value-imports the lib (§8). A look is
 // an extension that carries styles; a feature is one that carries markdown;
 // a component library carries both — ONE list, ONE entry shape.
 
@@ -235,30 +224,10 @@ export type ExtensionSearchResult =
   | { ok: true; matches: NpmExtensionMatch[]; total: number }
   | { ok: false; message: string };
 
-// -- Saving flow and copy switching (#273 / #274) ----------------------------
-// Re-exported from the lib (type-only, erased at build) rather than
-// re-declared, same as `NpmExtensionMatch` above: the copy picker's list
-// shape and the switch outcome (`changedFiles`, which the host uses to drop
-// stale crash-recovery drafts) are the lib's own contract.
-export type { LocalBranches, SwitchBranchResult };
-
-/**
- * Outcome of asking the remote for copies made elsewhere before listing them.
- * Best-effort: `refreshed: false` carries WHY, so the picker can say the list
- * may be incomplete ("no-remote" is not a problem - nothing to check for).
- */
-export interface RefreshCopiesResult {
-  refreshed: boolean;
-  reason?: "no-remote" | "auth" | "offline";
-}
-
-/** The author's answer to the native Save / Don't Save / Cancel prompt. */
-export type UnsavedChoice = "save" | "discard" | "cancel";
-
-// ── Style resolver (CSS editor; audit B2/G1) ──────────────────────────────────
+// ── Style resolver (CSS editor) ───────────────────────────────────────────────
 //
 // Mirrors the lib's `ProjectStyle` (packages/cli/src/lib/style-resolver.ts) —
-// defined locally so the SPA never value-imports the lib (§8 / ADR 0004).
+// defined locally so the SPA never value-imports the lib (§8).
 
 /** One resolvable project stylesheet surfaced to the CSS-editor picker. */
 export interface ProjectStyle {
@@ -270,78 +239,8 @@ export interface ProjectStyle {
   active: boolean;
 }
 
-// ── Templates (#29) — SFE-P5c2 ────────────────────────────────────────────
-//
-// Moved here from `$lib/api.ts` (its "genuinely api-local shapes" section)
-// when `tpl` migrated off HTTP routes to typed IPC — these have no canonical
-// twin in the lib (a starter-template listing is a desktop-only view), so
-// they join the rest of this bounded context's DTOs instead of living only
-// in the now-deleted `api.tpl` namespace.
-
-/** One starter template offered by the New Project wizard. */
-export interface TemplateInfo {
-  id: string;
-  label: string;
-  description: string;
-  kind: "builtin" | "custom";
-  dir?: string;
-  /** The `preset:` this template's manifest declares — the starting point
-   *  the new-book wizard seeds its preset choice from (ADR 0008). */
-  preset?: string;
-  /** The `targets:` this template's manifest declares, if any. */
-  targets?: string[];
-}
-
-/** {@link TemplateInfo} plus what save-as-template did with out-of-book refs. */
-export interface SavedTemplateInfo extends TemplateInfo {
-  /** Book-local paths the `../../shared/...` refs were vendored to (vendor mode). */
-  vendoredRefs?: string[];
-  /** Manifest entries dropped because they pointed outside the book (exclude mode). */
-  excludedRefs?: string[];
-}
-
-// ── Snippets (#29) — SFE-P5c2 ─────────────────────────────────────────────
-//
-// Moved here from `$lib/api.ts` alongside `TemplateInfo` (see that section's
-// note) when `snip` migrated to typed IPC.
-
-/**
- * Where a listed snippet comes from (#242): the project's own `snippets/`
- * folder, or an installed extension's - `ref` is that extension's manifest
- * specifier, handed back to `snipReadExtension` so the host can re-locate
- * the folder itself (never a filesystem path from the renderer). Mirrors
- * the lib's `SnippetSource` by hand (CLAUDE.md section 8: no type import from `gutterpress`).
- */
-export type SnippetSource = { kind: "project" } | { kind: "extension"; ref: string; name: string };
-
-/** One reusable markdown snippet - the project's own or an extension's (see `source`). */
-export interface SnippetEntry {
-  name: string;
-  fileName: string;
-  variables: string[];
-  source: SnippetSource;
-}
-
-// ── Project configuration view (#PCV) — SFE-P5c2 ──────────────────────────
-//
-// Moved here from `$lib/api.ts` (mirrors the lib's `ProjectConfigFields`)
-// when `manifest` migrated to typed IPC — declared locally so the SPA bundle
-// stays free of value imports from `gutterpress` (§8 renderer purity).
-
-/** The author-facing manifest subset the Details section reads/writes. */
-export interface ProjectConfigFields {
-  title?: string;
-  authors?: string[];
-  /** `source.files` — null is the deliberate "all chapter files" sentinel. */
-  sourceFiles?: string[] | null;
-  /** `targets:` — the publish destinations this book is validated against
-   *  (ADR 0008). `[]` is the explicit "no destination policies" opt-out. */
-  targets?: string[];
-}
-
-// Mirrors the lib's `StyleToken` (packages/cli/src/lib/style-tokens.ts) —
-// defined locally so the SPA never value-imports the lib (§8 / ADR 0004). One
-// editable `:root` custom property surfaced to the guided Design panel.
+// Produced by `$lib/style-tokens`' `parseStyleTokens`. One editable `:root`
+// custom property surfaced to the guided Design panel.
 // `font` = a font-family stack (curated dropdown + free text); `number` = a
 // unitless number (e.g. `--leading: 1.55`) — same numeric control as `length`,
 // just with no unit suffix.
@@ -393,7 +292,7 @@ export interface DiscoveredProject {
   title: string;
 }
 
-// ── Advanced Setup (#14, ADR 0006 D3/D7) ──────────────────────────────────────
+// ── Advanced Setup (#14) ──────────────────────────────────────────────────────
 //
 // RemoteAccessResult and ProjectRemoteDiagnosis are IPC-shared and live in
 // shared-types.ts (re-exported by contract.ts). The refined ForgeKind /
@@ -427,11 +326,19 @@ export type RemoteGuidanceId =
   | "ready-to-sync"
   | "ssh-use-own-tools";
 
+/** "Report a problem" bundle (`api.report.bundle`). Mirrors `$lib/server/problem-report.ts`. */
+export interface ProblemReport {
+  /** Full Markdown report (system + book summary + app-log tail) for the clipboard. */
+  report: string;
+  /** GitHub `issues/new` URL with the system + book sections prefilled. */
+  issueUrl: string;
+}
+
 /** One diagnostic log file the host can list (userData/logs, newest first). */
 export interface LogFileEntry {
   /** File name (e.g. "my-book.log"). */
   name: string;
-  /** Absolute path — feed to `$lib/app-lifecycle/app-lifecycle-capability`'s `readLog`. */
+  /** Absolute path — feed to `api.log.read`. */
   path: string;
   /** File size in bytes. */
   sizeBytes: number;
@@ -439,16 +346,10 @@ export interface LogFileEntry {
   modifiedAt: string;
 }
 
-/** Payload types for the image pick/copy host service (#31). */
-export interface ImagePickResult {
-  /** Absolute path chosen by the user, or null when cancelled. */
-  filePath: string | null;
-}
-
 // ── Media panel (#47) ─────────────────────────────────────────────────────────
 //
 // Mirrors the lib's ImageInfo (packages/cli/src/lib/image-inspect.ts) — defined
-// locally so the SPA never value-imports the lib (§8 / ADR 0004).
+// locally so the SPA never value-imports the lib (§8).
 
 /** One image file found under the open project folder. */
 export interface MediaImageEntry {
@@ -495,9 +396,18 @@ export interface DoctorToolStatus {
   version?: string;
   usedBy: Array<{ feature: string; severity: "required" | "optional" }>;
   installHint: string;
+  /** Set for missing optional tools: how the UI can offer to fix it. */
+  install?: { kind: "run"; label: string } | { kind: "download"; url: string };
 }
 
-/** Full `doctor:getDiagnostics` IPC response — system + tool diagnostics for the Help dialog. */
+/** `POST /api/doctor/install` result. */
+export interface DoctorInstallResult {
+  ok: boolean;
+  exitCode: number | null;
+  output: string;
+}
+
+/** Full `/api/doctor` response — system + tool diagnostics for the Help dialog. */
 export interface DoctorDiagnostics {
   libVersion: string;
   desktopVersion: string;
@@ -512,7 +422,7 @@ export interface DoctorDiagnostics {
 // ── Linux AppImage application-menu integration (#119) ───────────────────────
 //
 // Mirrors `electron/appimage-integration.ts`'s result shapes — declared here so
-// the SPA never imports host code (§8 / ADR 0004), even type-only.
+// the SPA never imports host code (§8), even type-only.
 
 /** The three fixed per-user destinations the integration manages. */
 export interface AppImageIntegrationPaths {
@@ -521,7 +431,7 @@ export interface AppImageIntegrationPaths {
   icon: string;
 }
 
-/** `app:appImageIntegrationStatus` typed IPC channel — supported/installed/repair state. */
+/** `GET /api/app/appimage-integration` — supported/installed/repair state. */
 export interface AppImageIntegrationStatus {
   /** Linux + packaged + running from an AppImage. The Settings action renders only when true. */
   supported: boolean;

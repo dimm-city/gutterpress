@@ -5,40 +5,40 @@
    * Browsable project tree: lists folders AND editable files, and lets the
    * author expand any subfolder to reach files nested anywhere in the project
    * (e.g. `extensions/<id>/theme.css`, `styles/print.css`, `css/…`). Folder
-   * children are loaded via `$lib/files/files-capability`'s `listDir` (typed IPC).
-   * There is no `isDesktop()` gate on the root load; the parent only mounts
-   * this when a folder project is open (`sourceMode === "folder"`).
+   * children are loaded via `api.fs.listDir` (server route in Electron main).
+   * The parent only mounts this when a folder project is open (`sourceMode === "folder"`).
    *
    * The root load runs in `onMount`; the parent wraps this in `{#key projectDir}`
    * so switching projects remounts the tree (no `$effect`). Folder expansion is
    * a plain event handler.
    *
-   * ── Staleness fix (UX review M9) ──────────────────────────────────────────
-   * `childrenByPath` used to be a PERMANENT cache — `loadChildren` never
-   * refetched a directory once loaded, so files created/renamed/deleted (in
-   * the app or externally) never appeared until the whole project reopened.
-   * Now: (1) `loadChildren` always refetches on every expand — no cache-hit
-   * short-circuit — so re-expanding a folder is always current; (2) the
-   * component subscribes to the same `onFolderChanged` push MediaPanel uses
+   * ── Staleness ──────────────────────────────────────────────────────────────
+   * `childrenByPath` is NOT a permanent cache (one would hide files
+   * created/renamed/deleted in the app or externally until the project
+   * reopened): (1) `loadChildren` always refetches on every expand — no
+   * cache-hit short-circuit — so re-expanding a folder is always current; (2)
+   * the component subscribes to the same `onFolderChanged` push MediaPanel uses
    * to refresh the ROOT listing on external changes (git pull, an external
-   * editor). The host's folder watcher is a single NON-RECURSIVE `fs.watch`
-   * on the project root (`electron/folder-watch/watcher.ts`), so it can only
-   * ever report root-level changes — nested directories are refreshed
-   * directly by this component's own create/rename/delete calls (via
-   * `afterMutateDir`, `file-tree-cache.ts`'s invalidation helpers), which
-   * know exactly which directory just changed, rather than by that coarse
-   * signal. A nested file changed by something OTHER than this app (with no
-   * tree action to invalidate it) stays stale until its ancestor is
-   * re-expanded or the project reopens — the same watcher-scope limit
-   * `MediaPanel`/the editor's own external-edit reconciliation already live
-   * with.
+   * editor). The host's folder watcher is a single NON-RECURSIVE `fs.watch` on
+   * the project root (`electron/folder-watch/watcher.ts`), so it can only ever
+   * report root-level changes — nested directories are refreshed directly by
+   * this component's own create/rename/delete calls (via `afterMutateDir`,
+   * `file-tree-cache.ts`'s invalidation helpers), which know exactly which
+   * directory just changed, rather than by that coarse signal. A nested file
+   * changed by something OTHER than this app (with no tree action to invalidate
+   * it) stays stale until its ancestor is re-expanded or the project reopens —
+   * the same watcher-scope limit `MediaPanel`/the editor's own external-edit
+   * reconciliation already live with.
    *
-   * ── CRUD (UX review M9 / issue #38) ────────────────────────────────────────
+   * ── CRUD (issue #38) ───────────────────────────────────────────────────────
    * Row/context actions: New folder (root toolbar + per-folder-row "New
    * folder here"), New chapter (root toolbar ONLY — see below), Rename,
    * Delete. Delete uses the same two-step inline "armed" confirm as
-   * LookSection's theme Remove (W4/M7). Create/rename use a small
+   * LookSection's theme Remove. Create/rename use a small
    * inline text input in place of the row's name, not a separate modal.
+   * A resting row shows only its name: the row buttons appear while the row is
+   * hovered or has focus inside it (#313), while the delete confirm and the
+   * inline inputs are never hidden.
    *
    * "New chapter" is deliberately ROOT-ONLY, not a per-folder action: the
    * default chapter build (`renderChapters` in the lib, when a manifest
@@ -62,16 +62,10 @@
    * explicitly out of scope regardless.
    */
   import { onMount } from "svelte";
-  import {
-    listDir,
-    createFile,
-    createFolder,
-    renamePath,
-    deletePath,
-  } from "$lib/files/files-capability";
-  import { isDesktop } from "$lib/platform";
-  import { onFolderChanged } from "$lib/app-lifecycle/app-lifecycle-capability";
+  import { api } from "$lib/api";
+  import { getPlatform } from "$lib/platform";
   import Icon from "$lib/components/Icon.svelte";
+  import type { ToastController } from "$lib/components/Toast.svelte";
   import {
     invalidateDir,
     invalidateSubtree,
@@ -87,6 +81,7 @@
     onBeforeDelete,
     onFileRenamed,
     onFileDeleted,
+    toast = null,
   }: {
     projectDir: string | null;
     selectedPath?: string | null;
@@ -104,6 +99,8 @@
     onFileRenamed?: (oldPath: string, newPath: string) => void;
     /** Called after a successful delete with the deleted absolute path. */
     onFileDeleted?: (path: string) => void;
+    /** Shows "Deleted … — Undo" after a delete (#313). */
+    toast?: ToastController | null;
   } = $props();
 
   type Entry = { name: string; path: string; isDir: boolean };
@@ -151,7 +148,7 @@
     loading = true;
     error = null;
     try {
-      const entries = await listDir(dir);
+      const entries = await api.fs.listDir(dir);
       if (seq !== rootLoadSeq) return;
       rootEntries = visibleEntries(entries);
     } catch (e) {
@@ -168,10 +165,9 @@
     const dir = projectDir;
     if (!dir) return;
     void refreshRoot(dir);
-    if (!isDesktop()) return;
     // Debounced (matches MediaPanel): the host already debounces
     // fs:folderChanged, this merges bursts while a refresh is in flight.
-    const off = onFolderChanged(() => {
+    const off = getPlatform().onFolderChanged(() => {
       if (rootRefreshTimer) clearTimeout(rootRefreshTimer);
       rootRefreshTimer = setTimeout(() => {
         rootRefreshTimer = null;
@@ -187,15 +183,15 @@
     };
   });
 
-  /** Always refetches — no permanent cache (UX review M9: re-expanding a
-   *  folder must reflect create/rename/delete since it was last open). */
+  /** Always refetches — no permanent cache (re-expanding a folder must
+   *  reflect create/rename/delete since it was last open). */
   async function loadChildren(dir: string): Promise<void> {
     loadingPaths = new Set(loadingPaths).add(dir);
     const nextErrors = { ...errorByPath };
     delete nextErrors[dir];
     errorByPath = nextErrors;
     try {
-      const entries = await listDir(dir);
+      const entries = await api.fs.listDir(dir);
       childrenByPath = { ...childrenByPath, [dir]: visibleEntries(entries) };
     } catch (e) {
       errorByPath = {
@@ -287,12 +283,12 @@
     try {
       if (kind === "file") {
         const fileName = EDITABLE_EXT.test(name) ? name : `${name}.md`;
-        const result = await createFile(dir, fileName, chapterTemplate(fileName));
+        const result = await api.fs.createFile(dir, fileName, chapterTemplate(fileName));
         creating = null;
         await afterMutateDir(dir);
         onSelectFile?.(result.path);
       } else {
-        await createFolder(dir, name);
+        await api.fs.createFolder(dir, name);
         creating = null;
         await afterMutateDir(dir);
       }
@@ -339,7 +335,7 @@
     const { path: oldPath, parentDir, isDir } = renaming;
     try {
       if ((await onBeforeRename?.(oldPath)) === false) return;
-      const result = await renamePath(oldPath, newName);
+      const result = await api.fs.renamePath(oldPath, newName);
       renaming = null;
       if (isDir) {
         const wasExpanded = expanded.has(oldPath);
@@ -357,7 +353,10 @@
   }
 
   // ── Delete (two-step inline confirm — same pattern as LookSection's
-  // theme Remove, W4/M7) ─────────────────────────────────────────────────────
+  // theme Remove) ────────────────────────────────────────────────────────────
+  // A delete is undoable (#313): api/fs/delete sets the item aside, and the
+  // toast's Undo moves it back. Only the latest delete is held, so the armed
+  // confirm stays the first guard.
   let deleteArmedPath = $state<string | null>(null);
   let deleteBusy = $state<string | null>(null);
   let deleteError = $state<string | null>(null);
@@ -381,7 +380,11 @@
     deleteError = null;
     try {
       if ((await onBeforeDelete?.(entry.path)) === false) return;
-      await deletePath(entry.path, projectDir);
+      const { undoToken } = await api.fs.deletePath(entry.path, projectDir);
+      toast?.success(`Deleted “${entry.name}”`, 8000, {
+        label: "Undo",
+        onClick: () => void undoDelete(undoToken, entry.name, parentDir),
+      });
       if (entry.isDir) {
         childrenByPath = invalidateSubtree(childrenByPath, entry.path);
         expanded = collapseDir(expanded, entry.path);
@@ -392,6 +395,16 @@
       deleteError = e instanceof Error ? e.message : String(e);
     } finally {
       deleteBusy = null;
+    }
+  }
+
+  async function undoDelete(token: string, name: string, parentDir: string): Promise<void> {
+    try {
+      await api.fs.undoDelete(token);
+      await afterMutateDir(parentDir);
+      toast?.success(`Restored “${name}”`);
+    } catch (e) {
+      toast?.error(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -525,7 +538,7 @@
           <Icon name="folder" />
           <span class="file-name">{entry.name}</span>
         </button>
-        <div class="row-actions">
+        <div class="row-actions hover-only">
           <button
             class="inline-btn"
             onclick={() => startCreate(entry.path, "folder")}
@@ -588,7 +601,7 @@
           <Icon name="file-text" />
           <span class="file-name">{entry.name}</span>
         </button>
-        <div class="row-actions">
+        <div class="row-actions hover-only">
           <button
             class="inline-btn"
             onclick={() => startRename(entry, parentDir)}
@@ -613,7 +626,7 @@
   </li>
 {/snippet}
 
-<nav class="file-tree" aria-label="Project files">
+<nav class="file-tree" aria-label="Book files">
   {#if projectDir}
     <div class="tree-toolbar">
       <button
@@ -770,13 +783,26 @@
     white-space: nowrap;
   }
 
-  /* ── Row actions (rename/delete/new — UX review M9) ───────────────────── */
+  /* ── Row actions (rename/delete/new) ──────────────────────────────────── */
   .row-actions {
     display: flex;
     align-items: center;
     gap: 1px;
     flex: 0 0 auto;
     padding-right: 4px;
+  }
+  /* Resting rows show only their names (#313: a pencil and trash on every row
+     was noise, and an always-visible trash made a mis-click on delete easy).
+     The buttons appear while the row is hovered or focus is inside it.
+     Opacity, not display/visibility, so they stay in the tab order: Tab onto
+     the row's file button and :focus-within reveals the rest. The inline-edit
+     and delete-confirm groups share .row-actions but not .hover-only, so they
+     never hide. Touch has no hover, so it keeps them visible. */
+  .row-actions.hover-only { opacity: 0; }
+  .tree-row:hover .row-actions.hover-only,
+  .tree-row:focus-within .row-actions.hover-only { opacity: 1; }
+  @media (hover: none) {
+    .row-actions.hover-only { opacity: 1; }
   }
   .inline-btn {
     display: inline-flex;

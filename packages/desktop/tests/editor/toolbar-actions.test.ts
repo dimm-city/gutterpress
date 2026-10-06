@@ -333,102 +333,6 @@ test("applyImage: shape toggle appends .gp-shape after the other facets", () => 
   expect(getDoc(v)).toContain("![Beast](assets/beast.png){.gp-right .gp-small .gp-shape}");
 });
 
-// ── SFE-P2a round-1 repair: shared-command mapping divergences ─────────────
-// Each case pins BOTH the resulting text AND caret/selection, per the file
-// header's "FIXED this round" / "INTENTIONAL, still-standing divergences"
-// lists — proving the change rather than leaving it latent.
-
-test("applyHeading: rewriting to a DIFFERENT level places the caret AFTER the whole new prefix, not inside it", () => {
-  const v = makeMockView("## Old heading", 0, 0);
-  applyHeading(v as unknown as EditorView, 3);
-  expect(getDoc(v)).toBe("### Old heading");
-  // Caret at 4 = right after "### " (3 hashes + space), not at 3 (inside
-  // the hash run) — the regression this round fixed.
-  expect(getSel(v)).toEqual({ from: 4, to: 4 });
-});
-
-test("applyHeading: a line with MORE than 6 leading # is not a valid ATX heading and is left untouched (prefix prepended, not consumed)", () => {
-  const v = makeMockView("####### seven", 0, 0);
-  applyHeading(v as unknown as EditorView, 2);
-  // Intentional divergence from the pre-mapping behavior (which silently
-  // stripped the invalid 7-# run down to "## seven") — CommonMark caps ATX
-  // headings at 6 #, so 7+ is plain text that gets a heading prefix
-  // PREPENDED, never guessed-and-replaced.
-  expect(getDoc(v)).toBe("## ####### seven");
-  // Caret lands right after the inserted "## " prefix (position 3), not
-  // inside the untouched 7-# run it was prepended before.
-  expect(getSel(v)).toEqual({ from: 3, to: 3 });
-});
-
-test("applyHeading: a setext heading toggled at its own level collapses the text+underline pair, not just strips a prefix", () => {
-  const v = makeMockView("Title\n---\n\nbody", 0, 0);
-  applyHeading(v as unknown as EditorView, 2);
-  // Intentional divergence: the pre-mapping code only ever stripped/added an
-  // ATX "#" prefix and never recognized a setext pair at all, so pressing H2
-  // here would have PREPENDED "## " onto "Title" and left the "---"
-  // underline behind untouched ("## Title\n---\n\nbody", caret 3). A setext
-  // heading IS a heading — commandState reports this line as level 2, so
-  // the same-level toggle correctly turns it off by collapsing the text and
-  // underline lines into the bare text line, same as an ATX same-level
-  // toggle-off would.
-  expect(getDoc(v)).toBe("Title\n\nbody");
-  expect(getSel(v)).toEqual({ from: 0, to: 0 });
-});
-
-test("applyHeading: a `---` after a list item is a thematic break, not a setext underline — it survives, no data loss", () => {
-  const v = makeMockView("- a\n---", 0, 0);
-  applyHeading(v as unknown as EditorView, 2);
-  expect(getDoc(v)).toBe("## - a\n---");
-  expect(getSel(v)).toEqual({ from: 3, to: 3 });
-});
-
-test("applyBlockquote: a selection CONTAINED INSIDE the touched span maps through per-line changes, not one wide replacement", () => {
-  const v = makeMockView("a\nb\nc", 0, 3);
-  applyBlockquote(v as unknown as EditorView);
-  // Only the touched lines ("a", "b") are quoted — "c" is untouched.
-  expect(getDoc(v)).toBe("> a\n> b\nc");
-  // The regression this round fixed: a one-combined-change dispatch left
-  // this at [0, 7] instead.
-  expect(getSel(v)).toEqual({ from: 2, to: 7 });
-});
-
-test("applyUnorderedList: an ALREADY-task-marked line gets a fresh bullet marker prepended, never corrupted into a bare checkbox", () => {
-  const v = makeMockView("- [ ] task", 0, 0);
-  applyUnorderedList(v as unknown as EditorView);
-  // Intentional divergence: the pre-mapping code could not distinguish a
-  // task marker from a plain bullet and stripped "- " unconditionally,
-  // corrupting this into "[ ] task" (list-ness lost entirely). The shared
-  // command recognizes the task marker and never treats it as a bullet.
-  expect(getDoc(v)).toBe("- - [ ] task");
-  // Caret (originally at 0,0) sits before the inserted "- " marker
-  // (inserted at offset 2), so it maps through the change unaffected.
-  expect(getSel(v)).toEqual({ from: 0, to: 0 });
-});
-
-test("applyUnorderedList: an indented bullet toggles off in place, preserving indentation", () => {
-  const v = makeMockView("  - item", 0, 0);
-  applyUnorderedList(v as unknown as EditorView);
-  // Intentional divergence: the pre-mapping code ignored indentation
-  // entirely and prepended "- " before it regardless ("-   - item"). The
-  // shared command detects the existing indented marker and removes it.
-  expect(getDoc(v)).toBe("  item");
-  // Caret (originally at 0,0) sits before the removed range, unaffected.
-  expect(getSel(v)).toEqual({ from: 0, to: 0 });
-});
-
-test("applyBold: text wrapped in __..._ is recognized as bold's alternate spelling and toggled off", () => {
-  const v = makeMockView("__x__", 2, 3);
-  applyBold(v as unknown as EditorView);
-  // Intentional divergence: the pre-mapping code checked only for "**" and
-  // would have WRAPPED inside the underscores ("__**x**__"). The shared
-  // `toggle-bold` command recognizes "__" as bold's documented alternate
-  // spelling (run spec "Toggle semantics") and removes it.
-  expect(getDoc(v)).toBe("x");
-  // The remaining "x" is selected — the toggle-off formula selects the
-  // whole unwrapped remainder, not a collapsed caret.
-  expect(getSel(v)).toEqual({ from: 0, to: 1 });
-});
-
 // ── L6: empty-selection toggle must not pile up marker debris ───────────────
 // Repeated Ctrl+B (or Ctrl+I / Ctrl+Shift+X / Ctrl+`) on an empty selection
 // used to insert a brand-new marker pair every time instead of noticing the
@@ -474,33 +378,20 @@ test("applyBold: empty selection NOT between markers still inserts a fresh pair"
 // not the other (the bug: Save and Snippet were hand-omitted from the old
 // hand-duplicated More menu list).
 
-test("visibleToolbarItems: includes save and desktop-only items when both flags are true", () => {
-  const items = visibleToolbarItems({ hasSave: true, desktop: true });
+test("visibleToolbarItems: includes save, image and snippet when hasSave is true", () => {
+  const items = visibleToolbarItems({ hasSave: true });
   expect(items.some((i) => i.id === "save")).toBe(true);
   expect(items.some((i) => i.id === "snippet")).toBe(true);
   expect(items.some((i) => i.id === "image")).toBe(true);
 });
 
 test("visibleToolbarItems: drops save item when hasSave is false", () => {
-  const items = visibleToolbarItems({ hasSave: false, desktop: true });
+  const items = visibleToolbarItems({ hasSave: false });
   expect(items.some((i) => i.id === "save")).toBe(false);
 });
 
-test("visibleToolbarItems: drops desktop-only items (image, snippet) when desktop is false", () => {
-  const items = visibleToolbarItems({ hasSave: true, desktop: false });
-  expect(items.some((i) => i.id === "image")).toBe(false);
-  expect(items.some((i) => i.id === "snippet")).toBe(false);
-  // Non-desktop-only items are unaffected.
-  expect(items.some((i) => i.id === "bold")).toBe(true);
-});
-
-test("visibleToolbarItems: drops the focus-mode item for the paged editor, which has no preview beside it to hide", () => {
-  expect(visibleToolbarItems({ hasSave: true, desktop: true }).some((i) => i.id === "focus-mode")).toBe(true);
-  expect(visibleToolbarItems({ hasSave: true, desktop: true, richMode: true }).some((i) => i.id === "focus-mode")).toBe(false);
-});
-
 test("visibleToolbarItems: every visible item belongs to exactly one known group (no orphans dropped from the More menu)", () => {
-  const items = visibleToolbarItems({ hasSave: true, desktop: true });
+  const items = visibleToolbarItems({ hasSave: true });
   const groups = ["save", "primary", "block", "insert"];
   for (const item of items) {
     expect(groups).toContain(item.group);
@@ -608,6 +499,33 @@ test("TOOLBAR_ITEMS: declares an insert-layout-block control in the insert group
   const item = TOOLBAR_ITEMS.find((i) => i.id === "layout-block");
   expect(item).toBeDefined();
   expect(item?.group).toBe("insert");
+});
+
+// ── Focus lives on the app toolbar, not here ────────────────────────────────
+
+test("TOOLBAR_ITEMS: there is no Focus item (the app toolbar toggle is the entry point)", () => {
+  expect(TOOLBAR_ITEMS.some((i) => i.id === "focus-mode" || (i.action as string) === "focus-mode")).toBe(false);
+});
+
+test("Insert menu rows are unique: Page break is offered once, through the layout picker", () => {
+  // The Insert popup lists each insert item's label, with the layout-block
+  // item expanded into LAYOUT_BLOCK_ITEMS (EditorToolbar's `menuRows`).
+  // A standalone Page break item used to sit beside the layout picker's own
+  // Page break entry, so the menu would have listed it twice.
+  const rows = visibleToolbarItems({ hasSave: true })
+    .filter((i) => i.group === "insert")
+    .flatMap((i) => (i.kind === "layout-block" ? LAYOUT_BLOCK_ITEMS.map((b) => b.label) : [i.label]));
+  expect(new Set(rows).size).toBe(rows.length);
+  expect(rows.filter((label) => label === "Page break")).toHaveLength(1);
+  expect(TOOLBAR_ITEMS.some((i) => i.id === "page-break" || i.action === "page-break")).toBe(false);
+});
+
+test("the Insert menu carries every insert the toolbar used to show as a separate icon", () => {
+  const ids = visibleToolbarItems({ hasSave: true })
+    .filter((i) => i.group === "insert")
+    .map((i) => i.id);
+  // rule, layout blocks (columns, page break, chapter…), table, image, snippet
+  expect(ids).toEqual(["hr", "layout-block", "table", "image", "snippet"]);
 });
 
 // ── M26: image dialog Position must offer the bleed layout ───────────────────

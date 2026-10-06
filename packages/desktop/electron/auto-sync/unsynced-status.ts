@@ -2,14 +2,12 @@
  * unsynced-status.ts — the ONE rule for which ambient sync state a
  * local-git project that is NOT auto-syncing should surface.
  *
- * The old behavior collapsed three different situations into a single
- * `"local"` emit ("kept on this computer"): no remote at all, an SSH-only
- * remote, and — the modal case for repos cloned outside Gutterpress — an HTTPS
- * remote that Gutterpress simply holds no credential for. The last one is a
- * single connect step away from syncing, and telling that writer their book
- * is "kept on this computer" misread as a remote-detection bug (it was
- * reported as exactly that). The `"connect"` state lets the renderer surface
- * a Connect action instead.
+ * Three situations are not syncing: no remote at all, an SSH-only remote,
+ * and — the modal case for repos cloned outside Gutterpress — an HTTPS remote
+ * that Gutterpress simply holds no credential for. The last one is a single
+ * connect step away from syncing, and telling that writer their book is "kept
+ * on this computer" reads as a remote-detection bug, so it gets its own
+ * `"connect"` state and the renderer surfaces a Connect action instead.
  *
  * Shared by the preview-open one-shot status emit (preview/controller.ts) and
  * the credential-change re-diagnosis (main.ts) so the two emit sites cannot

@@ -4,7 +4,8 @@ import {
   keptBothMessage,
   SyncController,
 } from "../../src/lib/routes/sync-controller.svelte";
-import type { SyncOutcome, KeptBothFile, ProjectRemoteDiagnosis } from "../../src/lib/platform/contract";
+import type { SyncOutcome } from "../../src/lib/api";
+import type { KeptBothFile, ProjectRemoteDiagnosis } from "../../src/lib/platform/contract";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
 // these unit tests. The production compiler replaces $state; the class only
@@ -77,6 +78,7 @@ function make(): Harness {
   };
   h.ctrl = new SyncController({
     syncChanges: (d) => sync.fn(d),
+    repair: () => Promise.reject(new Error("not wired in this test")),
     diagnose: () =>
       h.diagnose.throws
         ? Promise.reject(new Error("diag down"))
@@ -133,7 +135,7 @@ test("up-to-date without changes -> info toast only", async () => {
   const h = make();
   h.sync.next = { status: "up-to-date", message: "" };
   await h.ctrl.handleForceSync();
-  expect(h.toast.info.calls).toEqual([["Already up to date — no changes to sync."]]);
+  expect(h.toast.info.calls).toEqual([["Already up to date — nothing new to back up."]]);
   expect(h.onSyncCompleted.calls).toEqual([]);
 });
 
@@ -149,7 +151,7 @@ test("auth -> error toast; onFilesChanged only when filesChanged", async () => {
   noChange.sync.next = { status: "auth", message: "" };
   await noChange.ctrl.handleForceSync();
   expect(noChange.toast.error.calls).toEqual([
-    ["Not connected. Use Connect in the sidebar to set up syncing."],
+    ["Not signed in to online backup. Use the button in Where your work is kept to sign in."],
   ]);
   expect(noChange.onFilesChanged.calls.length).toBe(0);
 
@@ -163,7 +165,7 @@ test("offline -> info toast", async () => {
   const h = make();
   h.sync.next = { status: "offline", message: "" };
   await h.ctrl.handleForceSync();
-  expect(h.toast.info.calls).toEqual([["You appear to be offline. Try again when connected."]]);
+  expect(h.toast.info.calls).toEqual([["You're offline. Try the online backup again when you're connected."]]);
 });
 
 test("error -> the outcome's authored guidance is shown, not a false 'we'll try again later'", async () => {
@@ -174,12 +176,12 @@ test("error -> the outcome's authored guidance is shown, not a false 'we'll try 
   h.sync.next = {
     status: "error",
     message:
-      "The online address points at a different project's files, so the two can't be combined. Check the project's online address.",
+      "The online address points at a different book's files, so the two can't be combined. Check the book's online address.",
   };
   await h.ctrl.handleForceSync();
   expect(h.toast.error.calls).toEqual([
     [
-      "The online address points at a different project's files, so the two can't be combined. Check the project's online address.",
+      "The online address points at a different book's files, so the two can't be combined. Check the book's online address.",
     ],
   ]);
 });
@@ -189,7 +191,7 @@ test("error with no message -> the fixed reassuring fallback", async () => {
   h.sync.next = { status: "error", message: "" };
   await h.ctrl.handleForceSync();
   expect(h.toast.error.calls).toEqual([
-    ["Couldn't update the online copy. Your work is saved on this computer — we'll try again later."],
+    ["Couldn't finish the online backup. Your work is saved on this computer — we'll try again later."],
   ]);
 });
 
@@ -205,7 +207,7 @@ test("rejection -> reassuring toast (no raw message); clears forceSyncing", asyn
   });
   await ctrl.handleForceSync();
   expect(toast.error.calls).toEqual([
-    ["Couldn't update the online copy. Your work is saved on this computer — we'll try again later."],
+    ["Couldn't finish the online backup. Your work is saved on this computer — we'll try again later."],
   ]);
   expect(ctrl.forceSyncing).toBe(false);
 });
@@ -286,4 +288,92 @@ test("refreshSyncDiag nulls syncDiag on a thrown diagnosis", async () => {
   h.diagnose.throws = true;
   await h.ctrl.refreshSyncDiag("/proj");
   expect(h.ctrl.syncDiag).toBe(null);
+});
+
+test("a manual backup publishes its outcome for the status dialog (state + finish time)", async () => {
+  const h = make();
+  expect(h.ctrl.lastManual).toBeNull();
+  h.sync.next = { status: "offline", message: "" };
+  await h.ctrl.handleForceSync();
+  expect(h.ctrl.lastManual).toMatchObject({ state: "offline" });
+  expect(Number.isNaN(Date.parse(h.ctrl.lastManual!.at))).toBe(false);
+  h.sync.next = { status: "up-to-date", message: "" };
+  await h.ctrl.handleForceSync();
+  expect(h.ctrl.lastManual!.state).toBe("synced");
+  h.sync.next = { status: "auth", message: "" };
+  await h.ctrl.handleForceSync();
+  expect(h.ctrl.lastManual!.state).toBe("auth");
+  h.sync.next = { status: "error", message: "" };
+  await h.ctrl.handleForceSync();
+  expect(h.ctrl.lastManual!.state).toBe("error");
+});
+
+test("with automatic online backup off, a failure never promises an automatic retry", async () => {
+  const toast = makeToast();
+  const ctrl = new SyncController({
+    syncChanges: () => Promise.reject(new Error("net down")),
+    diagnose: () => Promise.resolve(DIAG),
+    currentDir: () => "/proj",
+    toast: () => toast,
+    onSyncCompleted: () => {},
+    onFilesChanged: () => {},
+    autoBackup: () => false,
+  });
+  await ctrl.handleForceSync();
+  expect(toast.error.calls).toEqual([
+    ["Couldn't finish the online backup. Your work is saved on this computer — try again when you're ready."],
+  ]);
+  expect(ctrl.lastManual!.state).toBe("error");
+});
+
+// ── Repair online backup ─────────────────────────────────────────────────────
+
+function makeWithRepair(result: { outcome: SyncOutcome; restoredFiles: string[] } | Error) {
+  const h = make() as Harness & { calls: string[] };
+  const calls: string[] = [];
+  h.calls = calls;
+  h.ctrl = new SyncController({
+    syncChanges: (d) => h.sync.fn(d),
+    repair: (d) => {
+      calls.push(d);
+      return result instanceof Error ? Promise.reject(result) : Promise.resolve(result);
+    },
+    diagnose: () => Promise.resolve(DIAG),
+    currentDir: () => h.dir,
+    toast: () => h.toast,
+    onSyncCompleted: (m, f) => h.onSyncCompleted(m, f),
+    onFilesChanged: () => h.onFilesChanged(),
+  });
+  return h;
+}
+
+test("handleRepair: a repaired book reports synced, toasts once, and reloads the files", async () => {
+  const h = makeWithRepair({ outcome: { status: "synced", message: "", mergedRemoteChanges: false }, restoredFiles: ["b.md"] });
+  await h.ctrl.handleRepair();
+  expect(h.calls).toEqual(["/proj"]);
+  expect(h.ctrl.lastManual?.state).toBe("synced");
+  expect(h.toast.success.calls[0][0]).toContain("repaired");
+  expect(h.toast.success.calls[0][0]).toContain("1 file");
+  expect(h.onSyncCompleted.calls[0]).toEqual([true, true]);
+});
+
+test("handleRepair: a repair whose closing backup failed shows the lib's message and records error", async () => {
+  const h = makeWithRepair({ outcome: { status: "error", message: "Everything is in sync." }, restoredFiles: [] });
+  await h.ctrl.handleRepair();
+  expect(h.ctrl.lastManual?.state).toBe("error");
+  expect(h.toast.error.calls[0][0]).toBe("Everything is in sync.");
+});
+
+test("handleRepair: a thrown repair toasts the fixed failure line and records error", async () => {
+  const h = makeWithRepair(new Error("ENOSPC"));
+  await h.ctrl.handleRepair();
+  expect(h.toast.error.calls[0][0]).toContain("The repair didn't finish");
+  expect(h.ctrl.lastManual?.state).toBe("error");
+});
+
+test("handleRepair: a no-op when no project is open", async () => {
+  const h = makeWithRepair({ outcome: { status: "synced", message: "", mergedRemoteChanges: false }, restoredFiles: [] });
+  h.dir = null;
+  await h.ctrl.handleRepair();
+  expect(h.calls).toEqual([]);
 });

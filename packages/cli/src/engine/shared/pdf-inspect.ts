@@ -3,7 +3,7 @@
  *
  * Two jobs:
  *  1. Verification: page count, page boxes, embedded fonts — the evidence the
- *     spikes assert on.
+ *     tests assert on.
  *  2. Tier 3 measurement channel (§8): harvest Chromium's own link annotations
  *     and document outline to learn "which page is element X on", with no text
  *     heuristics.
@@ -18,8 +18,6 @@ import {
   PDFRef,
   PDFString,
 } from "pdf-lib";
-
-export const PT_PER_IN = 72;
 
 export interface PageBoxes {
   media: number[];
@@ -160,14 +158,4 @@ export async function inspectPdf(bytes: Uint8Array): Promise<PdfFacts> {
   walkOutline(outlines);
 
   return { pageCount: pages.length, boxes, linkTargets, namedDests, outline };
-}
-
-/** Extract per-page text as a rough sanity channel (not used for measurement). */
-export function ptToIn(pt: number): number {
-  return pt / PT_PER_IN;
-}
-
-export function boxesEqual(a: number[] | undefined, b: number[], tol = 0.05): boolean {
-  if (!a || a.length !== b.length) return false;
-  return a.every((v, i) => Math.abs(v - b[i]!) <= tol);
 }

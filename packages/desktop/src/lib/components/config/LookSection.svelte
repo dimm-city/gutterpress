@@ -36,8 +36,8 @@
 
   function removeTitle(e: ProjectExtensionEntry): string {
     return e.kind === "npm"
-      ? "Remove from this project (deletes its downloaded copy)"
-      : "Remove from this project (the folder stays on disk)";
+      ? "Remove from this book (deletes its downloaded copy)"
+      : "Remove from this book (the folder stays on disk)";
   }
 </script>
 
@@ -113,7 +113,7 @@
   {/if}
 
   <h4 class="subhead">Built-in looks</h4>
-  <p class="hint">Use one and it's copied into your project's <code>extensions</code> folder as your own files, ready to fine-tune under Design.</p>
+  <p class="hint">Use one and it's copied into your book's <code>extensions</code> folder as your own files, ready to fine-tune under Design.</p>
   <ul class="theme-grid">
     {#each controller.builtIns as b (b.id)}
       <li class="theme-card">
@@ -134,7 +134,7 @@
   </ul>
 
   <div class="actions row">
-    <button class="ghost small" onclick={controller.importFile} disabled={controller.busy !== null} title="Import an extension package (.zip) or a stylesheet (.css) into this project">
+    <button class="ghost small" onclick={controller.importFile} disabled={controller.busy !== null} title="Import an extension package (.zip) or a stylesheet (.css) into this book">
       <Icon name="cloud-upload" size={13} /> Import a look (.zip/.css)...
     </button>
     <button class="ghost small" onclick={controller.addLocal} disabled={controller.busy !== null} title="Add a folder on disk — it is used where it is, not copied">
@@ -230,9 +230,10 @@
   .theme-warnings li { font-size: 11px; line-height: 1.4; }
 
   /* #106: enlarged fixed 2-page sample spread shown while hovering a row. It is
-     a decorative overlay (pointer-events:none) pinned to the desktop's right edge. */
+     a decorative overlay (pointer-events:none) pinned to the right edge of the
+     Book settings layer, in the space beside its centred column. */
   .hover-preview {
-    position: fixed; right: 16px; top: 50%; transform: translateY(-50%);
+    position: fixed; right: 24px; top: 50%; transform: translateY(-50%);
     width: 360px; max-width: 42vw; aspect-ratio: 3 / 2;
     z-index: 40; pointer-events: none;
     border-radius: 8px; overflow: hidden;
@@ -241,11 +242,10 @@
   }
   .hover-preview iframe { width: 100%; height: 100%; border: 0; background: #fff; }
 
-  /* The viewport-pinned flyout needs true free space RIGHT of the settings
-     view's centered 860px column: its left edge (100vw - 376px) crosses the
-     column's right edge ((100vw + 860px) / 2) below ~1620px, where it would
-     cover the very rows being hovered. Below that, the row's own thumbnail is
-     the preview. */
+  /* Wide windows only: the layer's column is centred at up to 860px, so the
+     flyout clears it only from ~1620px; narrower than that it would cover the
+     very rows being hovered. Below that, the row's own thumbnail is the
+     preview. */
   @media (max-width: 1620px) {
     .hover-preview { display: none; }
   }

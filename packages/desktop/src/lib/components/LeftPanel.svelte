@@ -2,15 +2,15 @@
   /**
    * LeftPanel — global left panel with 4 tabs.
    *
-   * Tabs: Projects, TOC, Files, Media. (Project settings used to be a fifth
-   * Config tab; they moved to the full-window ProjectSettingsView.)
+   * Tabs: Books, TOC, Files, Media. (Book settings live in the full-window
+   * ProjectSettingsView, not a tab here.)
    *
    * Architecture notes:
    * - Single DOM tree, CSS transform-based slide (never conditionally mounted/unmounted
    *   so tab state is preserved; the iframe constraint doesn't apply here but we follow
    *   the same principle for consistency).
-   * - Panel state (open, activeTab) persisted via platform.getSettings/saveSettings
-   *   under a leftPanel key in DesktopPrefs.
+   * - Panel state (open, activeTab, width) is persisted by +page.svelte under a
+   *   leftPanel key in DesktopPrefs (api.app.setDesktopPrefs).
    * - Focus management: closing returns focus to the toggle button (passed in as prop).
    * - Responsive: at <=820px the panel overlays with a translucent scrim (doesn't
    *   crush the preview).
@@ -29,7 +29,6 @@
   import FileTree from "$lib/components/FileTree.svelte";
   import MediaPanel from "$lib/components/MediaPanel.svelte";
   import ProjectsListBody from "$lib/components/ProjectsListBody.svelte";
-  import { isDesktop } from "$lib/platform";
   import {
     buildTocTree,
     ancestorKeysForActive,
@@ -38,12 +37,14 @@
   } from "$lib/routes/toc-tree";
   import type { OutlineEntry } from "$lib/preview-client";
   import type { ProjectCapabilities } from "$lib/platform/contract";
+  import type { ToastController } from "$lib/components/Toast.svelte";
 
   export type PanelTab = "projects" | "toc" | "files" | "media";
 
   let {
     open = $bindable(false),
     activeTab = $bindable<PanelTab>("projects"),
+    readerMode = false,
     width = $bindable(300),
     // Project context
     projectDir = null,
@@ -62,17 +63,20 @@
     onBeforeDeleteOpenFile,
     onFileRenamed,
     onFileDeleted,
+    toast = null,
     onInsertImage,
     onProjectChosen,
     onOpenUrl,
-    onOpenGitHub,
+    onOpenBook,
     onNewProject,
-    onShowWelcome,
     onSyncReconnect,
     onPanelStateChange,
   }: {
     open?: boolean;
     activeTab?: PanelTab;
+    /** Reader (Settings → App): only Books and TOC — Files and Media are for
+     *  editing. A remembered Files/Media tab shows Books instead. */
+    readerMode?: boolean;
     /** Panel width in px, user-resizable (clamped 300–480, narrowed only when
      *  the window can't spare that — see widthBounds()), persisted. */
     width?: number;
@@ -87,22 +91,23 @@
     toggleBtn?: HTMLButtonElement | undefined;
     onJumpToOutline?: (entry: OutlineEntry) => void;
     onSelectEditorFile?: (path: string) => void;
-    /** FileTree row actions (UX review M9): forwarded straight to FileTree's
+    /** FileTree row actions: forwarded straight to FileTree's
      *  `onBeforeRename`/`onFileRenamed`/`onFileDeleted` — see +page.svelte's
      *  handlers for why the open-file buffer needs these three hooks. */
     onBeforeRenameOpenFile?: (path: string) => boolean | void | Promise<boolean | void>;
     onBeforeDeleteOpenFile?: (path: string) => boolean | void | Promise<boolean | void>;
     onFileRenamed?: (oldPath: string, newPath: string) => void;
     onFileDeleted?: (path: string) => void;
+    /** For FileTree's "Deleted … Undo" toast (#313). */
+    toast?: ToastController | null;
     onInsertImage?: (payload: { src: string; alt?: string }) => void;
     onProjectChosen?: (path: string) => void;
     onOpenUrl?: (url: string) => void;
-    onOpenGitHub?: () => void;
+    onOpenBook?: () => void;
     onNewProject?: () => void;
-    /** Show the start screen over the workspace. */
-    onShowWelcome?: () => void;
     onSyncReconnect?: () => void;
-    /** Called whenever tab or width changes so the parent can persist the state. */
+    /** Called whenever tab or width changes, or the panel closes itself (Esc,
+     *  scrim), so the parent can persist the state. */
     onPanelStateChange?: () => void;
   } = $props();
 
@@ -117,9 +122,9 @@
   const activeAncestorKeys = $derived(new Set(ancestorKeysForActive(outline, activeOutlineIndex)));
   // The author's OWN expand/collapse decisions, keyed by node. Revealing the
   // active item's ancestors is only the DEFAULT for a node the author has not
-  // touched — it used to be OR-ed over this state, which made "Collapse X" a
-  // dead control on every ancestor of the active heading: the second operand
-  // held it open no matter how often the twisty was clicked.
+  // touched — OR-ing it over this state would make "Collapse X" a dead control
+  // on every ancestor of the active heading: the second operand would hold it
+  // open no matter how often the twisty was clicked.
   let tocChoice = $state<Map<string, boolean>>(new Map());
   function tocOpen(key: string): boolean {
     return tocChoice.get(key) ?? activeAncestorKeys.has(key);
@@ -156,9 +161,13 @@
   }
 
   // ── Panel close ──────────────────────────────────────────────────────────
+  // Escape and the scrim both close through here, so this is where the choice
+  // is remembered — the panel opens by default, and a close that wasn't saved
+  // came back on every launch. The toolbar toggle persists the same way.
   function close() {
     open = false;
     toggleBtn?.focus();
+    onPanelStateChange?.();
   }
 
   // ── Keyboard: close on Escape ─────────────────────────────────────────────
@@ -211,25 +220,31 @@
     else if (e.key === "End") { e.preventDefault(); width = clampWidth(PANEL_MAX_W); onPanelStateChange?.(); }
   }
 
-  // Projects first (user request): opening/switching books is the entry-point
+  // Books first (user request): opening/switching books is the entry-point
   // action, so it gets the left-most tab.
   const TABS: Array<{ id: PanelTab; label: string; icon: IconName; title: string }> = [
-    { id: "projects", label: "Projects", icon: "folder-open", title: "Open projects" },
+    { id: "projects", label: "Books", icon: "folder-open", title: "Your books" },
     { id: "toc", label: "TOC", icon: "list", title: "Table of contents" },
-    { id: "files", label: "Files", icon: "files", title: "Project files" },
+    { id: "files", label: "Files", icon: "files", title: "Book files" },
     { id: "media", label: "Media", icon: "image", title: "Media library" },
   ];
+
+  const visibleTabs = $derived(readerMode ? TABS.filter((t) => t.id === "projects" || t.id === "toc") : TABS);
+  /** The tab actually shown: the active one, unless reader mode hides it. */
+  const shownTab = $derived<PanelTab>(
+    readerMode && (activeTab === "files" || activeTab === "media") ? "projects" : activeTab,
+  );
 
   // ── APG tabs keyboard pattern ─────────────────────────────────────────────
   // Roving tabindex: active tab = 0, others = -1, all = -1 when panel is closed.
   let tabEls = $state<Record<string, HTMLButtonElement>>({});
   function getTabIndex(tabId: PanelTab): number {
     if (!open) return -1;
-    return activeTab === tabId ? 0 : -1;
+    return shownTab === tabId ? 0 : -1;
   }
   function onTablistKeydown(e: KeyboardEvent) {
-    const ids = TABS.map((t) => t.id);
-    const current = ids.indexOf(activeTab);
+    const ids = visibleTabs.map((t) => t.id);
+    const current = ids.indexOf(shownTab);
     if (e.key === "ArrowRight") {
       e.preventDefault();
       const next = (current + 1) % ids.length;
@@ -293,13 +308,13 @@
   ></div>
   <!-- Tab list — APG tabs pattern: roving tabindex, ArrowLeft/Right/Home/End -->
   <div class="panel-tabs" role="tablist" aria-label="Panel tabs" onkeydown={onTablistKeydown} tabindex="-1">
-    {#each TABS as tab (tab.id)}
+    {#each visibleTabs as tab (tab.id)}
       <button
         id="panel-tab-{tab.id}"
         role="tab"
         class="panel-tab"
-        class:active={activeTab === tab.id}
-        aria-selected={activeTab === tab.id}
+        class:active={shownTab === tab.id}
+        aria-selected={shownTab === tab.id}
         aria-controls="panel-content-{tab.id}"
         aria-label={tab.label}
         title={tab.title}
@@ -323,16 +338,16 @@
     <div
       id="panel-content-toc"
       class="tab-panel"
-      class:visible={activeTab === "toc"}
+      class:visible={shownTab === "toc"}
       role="tabpanel"
       aria-labelledby="panel-tab-toc"
-      aria-hidden={activeTab !== "toc"}
+      aria-hidden={shownTab !== "toc"}
     >
       <h2 class="panel-heading">Table of contents</h2>
       {#if outline.length === 0}
         <div class="empty-tab">
           <Icon name="list" size={24} />
-          <p>{projectDir ? "No outline — render the book to see chapters." : "Open a project to see its table of contents."}</p>
+          <p>{projectDir ? "No outline — render the book to see chapters." : "Open a book to see its table of contents."}</p>
         </div>
       {:else}
         <ul class="toc-list" aria-label="Table of contents">
@@ -397,16 +412,16 @@
     <div
       id="panel-content-files"
       class="tab-panel"
-      class:visible={activeTab === "files"}
+      class:visible={shownTab === "files"}
       role="tabpanel"
       aria-labelledby="panel-tab-files"
-      aria-hidden={activeTab !== "files"}
+      aria-hidden={shownTab !== "files"}
     >
       <h2 class="panel-heading">Files</h2>
       {#if !projectDir || sourceMode !== "folder"}
         <div class="empty-tab">
           <Icon name="files" size={24} />
-          <p>Open a project folder to see its files.</p>
+          <p>Open a book to see its files.</p>
         </div>
       {:else}
         {#key projectDir}
@@ -418,6 +433,7 @@
             onBeforeDelete={onBeforeDeleteOpenFile}
             {onFileRenamed}
             {onFileDeleted}
+            {toast}
           />
         {/key}
       {/if}
@@ -427,20 +443,20 @@
     <div
       id="panel-content-media"
       class="tab-panel"
-      class:visible={activeTab === "media"}
+      class:visible={shownTab === "media"}
       role="tabpanel"
       aria-labelledby="panel-tab-media"
-      aria-hidden={activeTab !== "media"}
+      aria-hidden={shownTab !== "media"}
     >
       {#if !projectDir || sourceMode !== "folder"}
         <div class="empty-tab">
           <Icon name="image" size={24} />
-          <p>Open a project folder to browse media.</p>
+          <p>Open a book to browse media.</p>
         </div>
       {:else}
         <!-- Insert is available whenever a folder project is open: the host
              handler opens a chapter first if none is, so the button never
-             dead-ends (UX audit P3#8). -->
+             dead-ends. -->
         {#key projectDir}
           <MediaPanel
             {projectDir}
@@ -452,25 +468,24 @@
       {/if}
     </div>
 
-    <!-- Projects tab -->
+    <!-- Books tab -->
     <div
       id="panel-content-projects"
       class="tab-panel"
-      class:visible={activeTab === "projects"}
+      class:visible={shownTab === "projects"}
       role="tabpanel"
       aria-labelledby="panel-tab-projects"
-      aria-hidden={activeTab !== "projects"}
+      aria-hidden={shownTab !== "projects"}
     >
-      <h2 class="panel-heading">Projects</h2>
+      <h2 class="panel-heading">Books</h2>
       <ProjectsListBody
         compact
         currentProjectPath={sourceMode === "folder" ? projectDir : null}
         currentProjectDisplayName={sourceMode === "folder" ? projectDisplayName : null}
         onChosen={(path) => { onProjectChosen?.(path); }}
         onOpenUrl={(url) => { onOpenUrl?.(url); }}
-        onOpenGitHub={isDesktop() ? onOpenGitHub : undefined}
+        {onOpenBook}
         onNewProject={onNewProject}
-        onShowWelcome={onShowWelcome}
       />
     </div>
 
@@ -516,11 +531,15 @@
   .left-panel.open {
     transform: translateX(0);
   }
-  /* Narrow: overlay mode — panel floats over content, not part of flex flow */
+  /* Narrow: overlay mode — panel floats over content, not part of flex flow.
+     Positioned against .left-panel-region (relative, overflow hidden) rather
+     than the viewport, so it spans exactly the workspace: it starts under the
+     toolbar and stops at the status bar's top edge, instead of running
+     underneath the bar and hiding the footer buttons (New book). */
   @media screen and (max-width: 820px) {
     .left-panel {
-      position: fixed;
-      top: 56px; /* toolbar height */
+      position: absolute;
+      top: 0;
       left: 0;
       bottom: 0;
       z-index: var(--app-z-panel);
@@ -575,14 +594,17 @@
     outline: 2px solid var(--app-focus-ring);
     outline-offset: -2px;
   }
-  /* Tab labels are intentionally icon-only at every panel width (user
-     request) — icons + title tooltips + aria-label keep the tabs
-     identifiable without a visible label. (Decided once here: no
-     width-conditional toggle — a prior version had a full label typography
-     ruleset immediately followed by an unconditional `display: none`, plus a
-     redundant `@container` rule repeating the same hide.) */
+  /* Each tab names itself under its icon (#313: four bare glyphs were hard to
+     learn). The four labels are short enough to share the row at the 300px
+     panel minimum; on a narrower overlay panel a label ellipsizes rather than
+     disappears, and the title tooltip carries the long form. Decided once
+     here: no width-conditional toggle — a prior version had a label ruleset
+     immediately undone by an unconditional `display: none`, plus a redundant
+     `@container` rule repeating the same hide. */
   .tab-label {
-    display: none;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .resize-handle {
     position: absolute;

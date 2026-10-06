@@ -17,7 +17,7 @@
    * `filePath`/`content` props reactively — this repo bans `$effect` (see
    * eslint.config.js), so the parent calls exported imperative methods
    * instead: `switchFile()` when it changes which file is open, and
-   * `updateContent()` for the #H1 same-file auto-reload path. Reading
+   * `updateContent()` for the same-file auto-reload path. Reading
    * `content` reactively here would also fire on every keystroke's
    * onChange→buffer round trip, fighting the user's own typing — so the
    * explicit-call design is the right one independent of the lint rule.
@@ -46,12 +46,11 @@
     applyOrderedList,
     applyHeading,
     applyHr,
-    applyPageBreak,
     applyTable,
     applyImage,
     applyLayoutBlock,
   } from "$lib/editor/toolbar-actions";
-  import type { ToolbarAction, ToolbarPayload } from "$lib/components/EditorToolbar.svelte";
+  import type { ToolbarAction, ToolbarPayload } from "$lib/editor/toolbar-actions";
   import { markdown } from "@codemirror/lang-markdown";
   import { css } from "@codemirror/lang-css";
   import { languages } from "@codemirror/language-data";
@@ -70,7 +69,6 @@
     type EditorLanguage,
   } from "$lib/editor/css-editor";
   import { markerCompletionSource } from "$lib/editor/marker-completions";
-  import { basenameOf } from "$lib/platform/paths";
   import { onMount } from "svelte";
 
   let {
@@ -159,7 +157,7 @@
     return autocompletion({ override: [pagedMediaCompletionSource] });
   }
 
-  /** Core `@marker` completions (UX M26) — active only for markdown docs. */
+  /** Core `@marker` completions — active only for markdown docs. */
   function markdownCompletionExtensions(lang: EditorLanguage): Extension {
     if (lang !== "markdown") return [];
     return autocompletion({ override: [markerCompletionSource] });
@@ -168,9 +166,8 @@
   // Theme-aware syntax highlighting. Every colour is a CSS custom property
   // (defined per app theme in the style block below), so the SAME highlight
   // style is legible in both light and dark mode and switches instantly with the
-  // app's [data-theme] — no second editor, no rebuild. Replaces CodeMirror's
-  // light-tuned defaultHighlightStyle, which rendered as low-contrast mush on the
-  // dark background.
+  // app's [data-theme] — no second editor, no rebuild. (CodeMirror's light-tuned
+  // defaultHighlightStyle renders as low-contrast mush on the dark background.)
   const gutterpressHighlight = HighlightStyle.define([
     { tag: [t.heading, t.heading1, t.heading2, t.heading3, t.heading4, t.heading5, t.heading6], color: "var(--cm-heading)", fontWeight: "700" },
     { tag: t.strong, color: "var(--cm-strong)", fontWeight: "700" },
@@ -222,8 +219,8 @@
       color: "var(--cm-gutter-text)",
       border: "none",
     },
-    // Subtle active-line tint — must NOT wash out the text on that line (the old
-    // --app-control-hover-bg was far too strong).
+    // Subtle active-line tint — must NOT wash out the text on that line
+    // (--app-control-hover-bg is far too strong).
     ".cm-activeLine": { backgroundColor: "var(--cm-active-line)" },
     ".cm-activeLineGutter": {
       backgroundColor: "var(--cm-active-line)",
@@ -235,6 +232,64 @@
     },
     ".cm-selectionMatch": { backgroundColor: "var(--cm-selection)" },
     "&.cm-focused": { outline: "none" },
+    // Autocomplete popup — shared by the markdown `@marker` list and the CSS
+    // editor's Paged Media list (both use this one theme). CodeMirror's stock
+    // popup is a light-only palette (white panel, pale grey text, solid blue
+    // selection), so it is re-skinned here from app tokens for both themes.
+    ".cm-tooltip": {
+      backgroundColor: "var(--app-surface-raised)",
+      color: "var(--app-text)",
+      border: "1px solid var(--app-border-strong)",
+      borderRadius: "6px",
+      boxShadow: "0 6px 18px var(--app-shadow-lg)",
+      overflow: "hidden",
+    },
+    ".cm-tooltip.cm-tooltip-autocomplete > ul": {
+      fontFamily: "var(--app-font-mono)",
+      fontSize: "13px",
+      minWidth: "340px",
+      maxWidth: "min(680px, 90vw)",
+    },
+    ".cm-tooltip.cm-tooltip-autocomplete > ul > li": {
+      display: "flex",
+      alignItems: "baseline",
+      gap: "14px",
+      padding: "3px 10px",
+      color: "var(--app-text)",
+      borderLeft: "3px solid transparent",
+    },
+    ".cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]": {
+      backgroundColor: "color-mix(in srgb, var(--app-accent-bright) 26%, var(--app-surface-raised))",
+      color: "var(--app-text)",
+      borderLeftColor: "var(--app-accent-bright)",
+    },
+    // The label never truncates; the description takes the leftover width and
+    // clamps with an ellipsis.
+    ".cm-completionLabel": { flex: "none" },
+    ".cm-completionMatchedText": {
+      textDecoration: "none",
+      fontWeight: "700",
+      color: "var(--app-text)",
+    },
+    // On the tinted selected row the muted description would drop to ~4.6:1,
+    // so it steps up one text tier there.
+    ".cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected] .cm-completionDetail": {
+      color: "var(--app-text-secondary)",
+    },
+    ".cm-completionDetail": {
+      flex: "1 1 auto",
+      minWidth: "0",
+      marginLeft: "0",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+      fontStyle: "normal",
+      fontFamily: "system-ui, sans-serif",
+      fontSize: "11.5px",
+      color: "var(--app-text-muted)",
+    },
+    // The type glyph (a key for every marker) says nothing to authors.
+    ".cm-completionIcon": { display: "none" },
   });
 
   // `forPath` is passed explicitly rather than read off the `filePath` prop:
@@ -267,13 +322,6 @@
         ]),
         editableTheme,
         EditorView.lineWrapping,
-        // CodeMirror already emits role=textbox and aria-multiline on
-        // `.cm-content`; only the name is added, so the textbox announces by
-        // the file it shows (the same naming the rich editor's textbox uses)
-        // rather than as an anonymous textbox inside the editor pane's
-        // landmark. Built from `forPath`, not the `filePath` prop, for the
-        // reason the comment above `buildState` gives.
-        EditorView.contentAttributes.of({ "aria-label": forPath ? `${lang === "css" ? "CSS" : "Markdown"} source of ${basenameOf(forPath)}` : "Markdown source" }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged && !applyingExternal) {
             onChange?.(update.state.doc.toString());
@@ -462,7 +510,6 @@
         break;
       }
       case "hr":             applyHr(view); break;
-      case "page-break":     applyPageBreak(view); break;
       case "table": {
         const cols = (payload as { cols: number } | undefined)?.cols ?? 3;
         applyTable(view, cols);
@@ -494,7 +541,7 @@
     // (sourceLineChanged) and editor→preview scroll sync anchors the resolved
     // block to the preview's top — anchoring the revealed line to the editor's
     // top keeps both panes agreeing on the same anchor point. Centering here
-    // gave a constant ~half-viewport disagreement (QA finding RC1-5).
+    // gives a constant ~half-viewport disagreement.
     view.dispatch({
       selection: focusEditor ? { anchor: pos } : undefined,
       effects: EditorView.scrollIntoView(pos, { y: "start" }),
@@ -580,7 +627,7 @@
     --cm-selection: light-dark(rgba(9, 105, 218, 0.18), rgba(92, 179, 255, 0.28));
     --cm-active-line: light-dark(rgba(27, 31, 36, 0.045), rgba(255, 255, 255, 0.05));
     --cm-gutter-bg: var(--app-surface);
-    --cm-gutter-text: light-dark(#8c959f, #6b7280);
+    --cm-gutter-text: var(--app-text-muted);
     --cm-bracket-bg: light-dark(rgba(9, 105, 218, 0.14), rgba(92, 179, 255, 0.18));
     --cm-bracket-outline: light-dark(rgba(9, 105, 218, 0.45), rgba(92, 179, 255, 0.5));
   }

@@ -3,26 +3,25 @@
  *
  * The CSS editor is a LANGUAGE-MODE layer on the existing #38 editor, not a
  * new editor or a new platform capability. File load/save already go through
- * `$lib/files/files-capability`'s `readFile`/`writeFile` (`fs:*` typed IPC)
- * in `+page.svelte`.
+ * `PlatformAdapter.readFile`/`writeFile` in `+page.svelte`.
  *
  *  - {@link languageForPath} picks the CodeMirror language from a file's
  *    extension. The editor holds the language in a `Compartment` so switching
  *    files reconfigures the language without recreating the EditorView.
  *  - {@link cssDiagnosticsSource} runs the print-safety lint via
- *    `$lib/lint/lint-capability`'s `checkCss` (typed IPC into the Electron
- *    main process), NOT by importing the lib. `checkCss` is postcss-based
- *    and postcss's `node:url` usage crashes the renderer if bundled into
- *    the SPA — so the UI stays clean of platform/node code and the host
- *    runs it. Same check `Gutterpress validate` uses, so the gutter and CLI
- *    never disagree. (Async — CodeMirror's linter accepts a Promise source.)
+ *    `api.lint.checkCss(...)` (a server route running in the Electron main process),
+ *    NOT by importing the lib. `checkCss` is postcss-based and postcss's `node:url`
+ *    usage crashes the renderer if bundled into the SPA — so the UI stays clean
+ *    of platform/node code and the host runs it. Same check `Gutterpress validate`
+ *    uses, so the gutter and CLI never disagree. (Async — CodeMirror's linter
+ *    accepts a Promise source.)
  *  - {@link pagedMediaCompletions} is a curated, static table — no generated
  *    schema, no runtime data read.
  *  - No Git/GitHub surface is touched (CLAUDE.md §7 is N/A to this issue).
  */
 
 import type { PrintSafeWarning } from "$lib/platform";
-import { checkCss as checkCssCapability } from "$lib/lint/lint-capability";
+import { api } from "$lib/api";
 import type { Diagnostic } from "@codemirror/lint";
 import type { EditorState } from "@codemirror/state";
 import type {
@@ -53,7 +52,7 @@ export function languageForPath(path: string | null): EditorLanguage {
 
 /**
  * A single editor gutter diagnostic, decoupled from CodeMirror's `Diagnostic`
- * type. Phase 2 maps {@link PrintSafeWarning} → `CssDiagnostic` → CodeMirror
+ * type. {@link PrintSafeWarning} maps → `CssDiagnostic` → CodeMirror
  * `Diagnostic`.
  */
 export interface CssDiagnostic {
@@ -101,12 +100,11 @@ export function toCssDiagnostic(
 
 /**
  * Map an EditorState's CSS document through `checkCss` into CodeMirror
- * diagnostics. Async — delegates to the host via `$lib/lint/lint-capability`
- * (typed IPC).
+ * diagnostics. Async — delegates to the host via `api.lint.checkCss` (server route).
  */
 export async function cssDiagnosticsSource(state: EditorState): Promise<Diagnostic[]> {
   const doc = state.doc;
-  const warnings = await checkCssCapability('', doc.toString());
+  const warnings = await api.lint.checkCss('', doc.toString());
   return warnings.map((w) => {
     const d = toCssDiagnostic(
       w,
@@ -139,7 +137,7 @@ export interface PagedMediaCompletion {
 }
 
 /**
- * The curated CSS Paged Media completion table consumed by the Phase 3
+ * The curated CSS Paged Media completion table consumed by the
  * autocompletion source. Covers the constructs the issue calls out: `@page`
  * + pseudo variants, the sixteen margin boxes, and page properties with value
  * hints (`size`, `margin`, `bleed`, `marks`) plus the supported `prince-*`

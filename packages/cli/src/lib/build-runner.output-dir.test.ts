@@ -128,7 +128,7 @@ test("a manifest still carrying the removed `output` block fails loudly", async 
   ).rejects.toThrow(/`output`/);
 });
 
-// ── 2026-07-29 audit: ONE anchor for every manifest-relative path ────────────
+// ── ONE anchor for every manifest-relative path ──────────────────────────────
 //
 // Within one build, the same manifest's relative entries resolved against two
 // different roots: plugin paths, the lint gate, and the output dir used

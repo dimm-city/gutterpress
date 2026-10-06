@@ -1,12 +1,12 @@
 /**
- * ARCH finding #49: `validation-exec.ts` (292 lines) previously had only its
- * pure `buildPdfSummaryLines` formatter tested (validation-exec-summary.test.ts)
- * and its `--phase` alias resolution tested against the REAL check registry
- * (validation-exec-phase.test.ts). This file covers the remaining execution
- * paths: manifest/input resolution, the `--pdf` existence guard, publish-target
- * handling (including the `withTargetRequiredCheckErrors` synthetic-error
- * injection, ADR 0008), phase auto-detection, `htmlPath`
- * detection, and `executeAndReport`'s ok/format branching.
+ * `validation-exec.ts`'s pure `buildPdfSummaryLines` formatter is tested in
+ * validation-exec-summary.test.ts and its `--phase` alias resolution against
+ * the REAL check registry in validation-exec-phase.test.ts. This file covers
+ * the remaining execution paths: manifest/input resolution, the `--pdf`
+ * existence guard, publish-target handling (including the
+ * `withTargetRequiredCheckErrors` synthetic-error injection, ADR 0008), phase
+ * auto-detection, `htmlPath` detection, and `executeAndReport`'s ok/format
+ * branching.
  *
  * `checkToolAvailability` (checks/tool-check) and `runChecks` (checks/runner)
  * are `spyOn`-stubbed so these tests are deterministic regardless of which
@@ -380,7 +380,7 @@ describe("executeValidation context derived from --input", () => {
   });
 });
 
-// ── file-set resolvers match the renderer's (2026-07-28 duplication audit) ─
+// ── file-set resolvers match the renderer's ────────────────────────────────
 //
 // Before this, an inputDir run with no manifest `source.files`/`styles`
 // globbed `**/*.md`/`**/*.css` across the WHOLE project — so validation/lint
@@ -487,10 +487,10 @@ describe("executeValidation markdown/css file-set resolvers", () => {
   });
 });
 
-// #262 — cssFiles now folds in a plugin's declared `styles`, mirroring
-// lint-runner.ts exactly: a plugin's CSS was print-safety/ownership checked
-// by `gutterpress lint` and never by `validate`/`preflight`/the desktop
-// Problems panel. `build-runner.plugin-load-count.test.ts` proves a REAL
+// #262 — cssFiles now folds in a plugin's declared `styles`: before this a
+// plugin's CSS was print-safety/ownership checked only by the (since deleted)
+// standalone `gutterpress lint` and never by `validate`/`preflight`/the
+// desktop Problems panel. `build-runner.plugin-load-count.test.ts` proves a REAL
 // check (source.stylelint) actually inspects the plugin's file, end to end;
 // these pin just executeValidation's own cssFiles wiring.
 describe("executeValidation folds in plugin styles (#262)", () => {
@@ -594,7 +594,7 @@ describe("executeValidation folds in plugin styles (#262)", () => {
   });
 });
 
-// ── 2026-07-29 audit: shared assets that SHIP must be scanned ────────────────
+// ── shared assets that SHIP must be scanned ──────────────────────────────────
 //
 // `assetDirs = [inputDir]` scanned only the book folder, but a shared repo-root
 // stylesheet's own `url()` closure is embedded into the built PDF (fonts always,

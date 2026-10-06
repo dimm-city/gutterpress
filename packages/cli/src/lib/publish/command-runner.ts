@@ -4,8 +4,7 @@
  * error — butler/swa diagnostics live in the captured output).
  *
  * A thin adapter over exec.ts's shared {@link spawnCapture} core — the
- * spawn/buffer/timeout/settle machinery lives THERE, once (arch finding #16;
- * this file previously kept a drifting mirror of it). What this seam adds:
+ * spawn/buffer/timeout/settle machinery lives THERE, once. What this seam adds:
  * an env override (publish providers pass secrets — BUTLER_API_KEY,
  * SWA_CLI_DEPLOYMENT_TOKEN — through the environment, NEVER through argv,
  * which is world-readable in process lists), per-line output streaming, and
@@ -22,7 +21,7 @@ import type { CommandResult, CommandRunner } from "./types.ts";
 const CAPTURE_LIMIT = 64 * 1024;
 
 /**
- * Default idle budget (audit B2 / review): applied BY THE RUNNER whenever
+ * Default idle budget: applied BY THE RUNNER whenever
  * `timeoutMs` is omitted, so no call site (a provider upload, a
  * `commandExists` probe) can silently regain hang-forever behavior by
  * forgetting to pass it. `timeoutMs: 0` is the explicit opt-out. Idle, not
@@ -57,7 +56,7 @@ function lineEmitter(onOutput: (line: string) => void) {
 // StaticSitesClient) is captured, not truncated, and a silent detached
 // daemon can't hang the runner.
 //
-// KNOWN LIMIT (review): the idle-timeout SIGKILL reaches the direct child
+// KNOWN LIMIT: the idle-timeout SIGKILL reaches the direct child
 // only; a grandchild can be left briefly orphaned. The fix — detached
 // process groups + negative-pid kill — would stop Ctrl+C from reaching the
 // child in normal CLI use, a worse trade for a rarer case.

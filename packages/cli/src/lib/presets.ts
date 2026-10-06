@@ -28,12 +28,12 @@ export type PresetId = (typeof PRESET_IDS)[number];
 export const DTRPG_PRESET: VendorPreset = {
   // Books designed for DriveThruRPG validate against it by default.
   defaultTargets: ["dtrpg"],
-  // No default `styles:` (ARCH finding #2) — `resolveActiveStyles`
+  // No default `styles:` — `resolveActiveStyles`
   // (style-resolver.ts) is the SINGLE source of default-stylesheet truth: the
   // manifest `styles:` list, else `styles/book.css`, else the first
-  // discovered `.css`, else `[]`. A preset default here defeated that
-  // documented fallback chain and made every styles:-less project silently
-  // link a phantom `css/print.css`, whether or not it existed on disk.
+  // discovered `.css`, else `[]`. A preset default here would defeat that
+  // documented fallback chain and make every styles:-less project silently
+  // link a phantom stylesheet, whether or not it existed on disk.
   extensions: [],
   // No `assets` list and no `output` block: assets are discovered from the
   // book's own references (lib/asset-inline.ts) and the output location is a
@@ -112,7 +112,7 @@ export const DTRPG_PRESET: VendorPreset = {
 
 /**
  * A neutral, vendor-agnostic default for authors who aren't targeting a
- * specific print vendor (UX finding M48). Standard 6x9in trade-book trim size,
+ * specific print vendor. Standard 6x9in trade-book trim size,
  * no vendor total-area-coverage (TAC) cap, and no PDF/X forcing:
  *
  * - `page`: 6in x 9in (432 x 648pt) — the common generic trade paperback trim.
@@ -136,7 +136,7 @@ export const BOOK_PRESET: VendorPreset = {
   // A neutral trade book has no default publish target; add `targets:` when
   // a destination's requirements should be validated.
   defaultTargets: [],
-  // No default `styles:` — see the matching comment on DTRPG_PRESET (ARCH #2).
+  // No default `styles:` — see the matching comment on DTRPG_PRESET.
   extensions: [],
   // No `assets` list and no `output` block: assets are discovered from the
   // book's own references (lib/asset-inline.ts) and the output location is a
@@ -228,14 +228,12 @@ export const PRESETS: Record<PresetId, VendorPreset> = {
 /**
  * Warn-once registry for one-line deprecation/defaulting notices that would
  * otherwise spam stderr on every `resolveConfig`/`resolvePreset` call (e.g.
- * every live-preview regen). ARCH finding #24: this replaces what used to be
- * separate anonymous module-level `let warned = false` booleans in this file
- * AND in manifest.ts — the §6-banned module-closure-state pattern — with one
- * shared, explicitly-keyed registry that:
+ * every live-preview regen). One shared, explicitly-keyed registry rather
+ * than per-file module-level `let warned = false` booleans, so it:
  *   - lets tests reset dedup state between cases (`resetWarnOnce()`) instead
  *     of having no way to touch a private per-file boolean; and
  *   - lets a caller swap in its own sink instead of `console.warn` (the
- *     optional 3rd arg), the "pass a warn sink" half of the fix.
+ *     optional 3rd arg).
  */
 const warnedIds = new Set<string>();
 
@@ -260,8 +258,7 @@ export function resetWarnOnce(): void {
 }
 
 /**
- * Resolve a manifest/CLI `preset` value to the {@link VendorPreset} it names
- * (UX finding M48).
+ * Resolve a manifest/CLI `preset` value to the {@link VendorPreset} it names.
  *
  * - Unset (`undefined`): defaults to `dtrpg`. That is the PRODUCT default,
  *   not a compatibility accident (ADR 0008): Gutterpress's primary audience

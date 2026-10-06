@@ -109,7 +109,7 @@ export async function startPreviewServer(
   // Stage 9: Register signal handlers for Ctrl+C and SIGTERM (CLI usage).
   const installSignals = options.installSignalHandlers !== false;
   // Signal handlers terminate the process after cleanup. shutdownServer()
-  // itself no longer calls process.exit() — that's the signal handler's job.
+  // itself never calls process.exit() — that's the signal handler's job.
   const handleShutdown = async () => {
     await shutdownServer(state);
     process.exit(0);

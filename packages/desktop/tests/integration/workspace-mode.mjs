@@ -1,10 +1,14 @@
 /**
  * Shared test helper: pick the workspace mode from the toolbar.
  *
- * There is ONE workspace switch - `mode: "editor" | "viewer" | "focus"` - with
- * two segments: **Edit** (the source editor with the paginated preview beside
- * it) and **Read** (the paged editor alone). `focus` is Edit without the
- * preview, toggled from the source editor's toolbar, and shows as Edit here.
+ * There is ONE workspace switch — `mode: "editor" | "viewer"` (Focus is a separate session toggle on top) — and
+ * the page count follows from it rather than being chosen directly:
+ *
+ *   viewMode = mode === "viewer" && !isNarrow ? "two-column" : "single"
+ *
+ * So "show me one page" is **Edit** (the editor with one page beside it) and
+ * "show me two" is **Read**, at a window wider than NARROW_BREAKPOINT (820px)
+ * — below that `isNarrow` clamps Read back to a single page.
  *
  * This helper exists because the tests drifted: they still drove the
  * `summary[aria-label="Page view mode"]` dropdown and its "Single page view" /
@@ -12,8 +16,6 @@
  * overlapping switches became this one. Four call sites across two files broke
  * together and silently, because neither file is CI-gated. Routing every call
  * through here means the next rename breaks one function, not four locators.
- *
- * (Not named *.pw.mjs on purpose — run-ui.mjs must not treat it as a test.)
  */
 
 /**

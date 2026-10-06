@@ -106,11 +106,10 @@ const check: Check = {
         out.push({
           checkId: check.id,
           severity: "warning",
-          // UX finding M32: writers saw the rule-code jargon FIRST (the old
-          // format mirrored markdownlint-cli2's "rule/alias description"
-          // text output). Lead with the human-readable description instead
-          // and demote the rule names to a parenthesized suffix — still
-          // present for anyone grepping logs, but no longer the headline.
+          // Writers should not see rule-code jargon FIRST: lead with the
+          // human-readable description and demote the rule names to a
+          // parenthesized suffix — still present for anyone grepping logs,
+          // but not the headline.
           message: `${v.ruleDescription} (${v.ruleNames.join("/")})`,
           file,
           line: v.lineNumber,

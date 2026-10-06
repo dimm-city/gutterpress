@@ -46,16 +46,13 @@ export async function loadManifest(
 /**
  * Load a recognized manifest and return its contents, directory, and resolved path.
  * Returns an empty manifest, a null path, and the current working directory if none is found —
- * UNLESS `explicit` is set (ARCH finding #12/PR #98): a caller that resolved
+ * UNLESS `explicit` is set (PR #98): a caller that resolved
  * `pathOrDir` from a user-supplied `--manifest` flag (as opposed to a project
  * directory being scanned for a manifest that may legitimately not exist) must
  * pass `{ explicit: true }` so a missing/typo'd path throws instead of
- * silently resolving to an empty manifest. A typo like `--manifest
- * ./typo.yaml` previously fell through to the "no manifest" default AND left
- * `manifestDir` pointing at the nonexistent path itself
- * (`resolve("./typo.yaml")`), so a later `path.resolve(manifestDir,
- * config.output.dir)` could create build output beneath a directory named
- * after the missing file.
+ * silently resolving to an empty manifest whose `manifestDir` is the
+ * nonexistent path itself, which later path resolution would then build
+ * beneath.
  */
 export async function loadManifestWithPath(
   pathOrDir?: string,
@@ -228,30 +225,23 @@ function isPlainObject(v: unknown): v is PlainObject {
  * `validate.heuristics.textDensityRange.min`, three levels deep). Keys always
  * come from `preset`'s own shape, NOT the union with `cli`/`manifest`, so a
  * key the manifest type happens to carry alongside real ones but `preset`
- * (and `ResolvedConfig`) doesn't declare — e.g. the deprecated `output.html`
- * — can never leak into the resolved result; deprecated fields get their own
- * explicit warn-and-ignore check instead (see `resolveConfig` below).
+ * (and `ResolvedConfig`) doesn't declare can never leak into the resolved
+ * result; deprecated fields get their own explicit warn-and-ignore check
+ * instead (see `resolveConfig` below).
  *
  * A leaf value (anything that isn't a plain object — string, number,
- * boolean, array, or `null`) resolves with the same `??` precedence the old
- * hand-written chain used almost everywhere: the first of (cli, manifest,
- * preset) that isn't `null`/`undefined` wins. The old code special-cased four
- * fields (`lint.configPath`, `validate.source.{markdownlint,htmlhint,
- * stylelint}`) with a `!== undefined` ternary instead of `??`, so an explicit
- * manifest `null` would win over the preset default rather than falling
- * through to it — but every preset default for those four fields is already
- * `null`, so `??` resolves to the exact same value for every preset in this
- * codebase. `??` is also the right behavior for `styles` (ARCH #2): a
- * manifest author who writes `styles:` with nothing under it gets `null` from
- * the yaml parser, and that must fall through to `resolveActiveStyles`'s own
- * discovery, not crash trying to `.filter()` a `null`.
+ * boolean, array, or `null`) resolves with `??` precedence: the first of
+ * (cli, manifest, preset) that isn't `null`/`undefined` wins. `??` is also
+ * the right behavior for `styles`: a manifest author who writes `styles:`
+ * with nothing under it gets `null` from the yaml parser, and that must fall
+ * through to `resolveActiveStyles`'s own discovery, not crash trying to
+ * `.filter()` a `null`.
  *
- * ARCH finding #24: replaces ~40 hand-written `c.x ?? m.x ?? preset.x` lines
- * with this one small typed deep-merge. `validate.checks` — an OPEN
- * dictionary keyed by check id, where a manifest can introduce ids the preset
- * never declared — is intentionally NOT run through this (a closed-shape
- * merge would silently drop custom check ids); it keeps its own one-line
- * `{...preset, ...manifest, ...cli}` union merge in `resolveConfig`.
+ * `validate.checks` — an OPEN dictionary keyed by check id, where a manifest
+ * can introduce ids the preset never declared — is intentionally NOT run
+ * through this (a closed-shape merge would silently drop custom check ids); it
+ * keeps its own one-line `{...preset, ...manifest, ...cli}` union merge in
+ * `resolveConfig`.
  */
 function mergeShape<T extends PlainObject>(
   cli: DeepPartial<T> | null | undefined,
@@ -342,7 +332,7 @@ function resolveWithPreset(
   const m = manifest;
   const c = cliOverrides;
 
-  // Deprecated-keys table (ARCH #24): manifest/CLI fields that still parse
+  // Deprecated-keys table: manifest/CLI fields that still parse
   // (so old manifests don't break) but no longer affect resolution — each
   // gets a one-line once-per-process notice instead of being threaded
   // through the merge above.
@@ -416,10 +406,10 @@ function resolveWithPreset(
   return {
     title: c.title ?? m.title ?? "Document",
     authors: c.authors ?? m.authors ?? [],
-    // ARCH #2: no preset fallback here — resolveActiveStyles (style-resolver.ts)
+    // No preset fallback here — resolveActiveStyles (style-resolver.ts)
     // is the single source of default-stylesheet truth (styles/book.css, else
     // the first discovered .css, else []). Baking a preset default in here
-    // defeated that documented fallback chain on every real render path.
+    // would defeat that documented fallback chain on every real render path.
     styles: c.styles ?? m.styles,
     extensions,
     targets: resolveTargets(c.targets ?? m.targets, preset.defaultTargets),

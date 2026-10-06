@@ -1,5 +1,5 @@
 /**
- * "Test Remote Access" diagnostic (#14, ADR 0006 D7).
+ * "Test Remote Access" diagnostic (#14).
  *
  * A single refs probe (isomorphic-git `listServerRefs` over smart HTTPS — the
  * node-native replacement for `git ls-remote origin`, CLAUDE.md §7) that
@@ -8,7 +8,7 @@
  * of raw transport errors.
  *
  * SSH URLs short-circuit to `ssh-unsupported` WITHOUT any network call —
- * isomorphic-git has no SSH transport and we never shell out (ADR 0006 D6).
+ * isomorphic-git has no SSH transport and we never shell out.
  *
  * SECURITY INVARIANT: token values (explicit credential or embedded in the
  * URL) never appear in result messages.
@@ -69,7 +69,7 @@ export const FAILURE_MESSAGES: Record<RemoteAccessFailureReason, string> = {
   unreachable:
     "Couldn't reach the Git server. Check your internet connection (and VPN, if this is a private server), then try again.",
   "ssh-unsupported":
-    "This project's online address uses SSH (git@…), which gutterpress can't check or sync with. Everything on this computer still works — sync with your usual Git tool.",
+    "This book's online address uses SSH (git@…), which gutterpress can't check or sync with. Everything on this computer still works — sync with your usual Git tool.",
   "insecure-transport":
     "This address isn't secure, so the saved connection wasn't sent — connections are never sent over an insecure address. Switch the address to a secure one (starting with https), or to a local loopback address for a server on this computer, to use a saved connection.",
   tls: "The server's security certificate couldn't be verified. If this is a private server with its own certificate, ask its administrator about trusting it (NODE_EXTRA_CA_CERTS).",
@@ -114,7 +114,7 @@ function classifyRemoteAccessError(e: unknown): RemoteAccessResult {
  * - Never throws — every outcome is a classified {@link RemoteAccessResult}.
  * - SSH URLs return `ssh-unsupported` with zero network traffic.
  * - Credentials embedded in the URL are stripped and used for auth when no
- *   explicit credential is supplied (ADR 0006 D7) — they never leak onward.
+ *   explicit credential is supplied — they never leak onward.
  * - `defaultBranch` comes from the server's `HEAD` symref when advertised.
  */
 export async function testRemoteAccess(

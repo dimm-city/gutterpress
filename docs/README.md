@@ -131,9 +131,9 @@ See the [Gutterpress User Guide](../examples/gutterpress-user-guide/) for all to
 ```markdown
 > [!note]      Blue - General information
 > [!tip]       Green - Helpful advice
+> [!important] Purple - Key information
 > [!warning]   Orange - Important cautions
-> [!danger]    Red - Critical warnings
-> [!info]      Gray - Neutral information
+> [!caution]   Red - Critical warnings
 ```
 
 ## Documentation Structure
@@ -157,11 +157,19 @@ docs/
 ├── design-guides.md                       # Companion design-guide projects
 ├── open-design/                           # Open Design workflow and plugin guides
 ├── desktop-shortcut.md                    # OS desktop shortcuts for the desktop app
-└── [remaining files are point-in-time audits/plans, kept for history — not
-     part of the current documentation set]
+├── css-ownership-contract.md              # Rules for themes with several CSS files
+├── native-engine-styling-guide.md         # Field notes on styling for the engine
+├── filing-upstream-chromium-bugs.md       # How to file the known-limitations bugs
+├── sync-diagnostics.md                    # Diagnosing a failed sync
+├── remaining-work.md                      # Engine/tooling work tracker (living)
+├── ux-design-contract.md                  # Desktop app UX contract
+├── inline-editing-plan.md                 # Inline editing design as built (ADR 0009)
+├── adr/                                   # Architecture decision records
+├── engine/                                # Engine design rules and internals
+└── fixtures/                              # Public parity/regression fixture books
 ```
 
-All authoring documentation lives in the **[Gutterpress User Guide](../examples/gutterpress-user-guide/)** (in `examples/`). This directory contains developer/architect reference materials — some current (the files listed above), some historical audit/planning artifacts kept for the record.
+All authoring documentation lives in the **[Gutterpress User Guide](../examples/gutterpress-user-guide/)** (in `examples/`). This directory contains developer/architect reference materials — the files listed above. Superseded plans, analyses and audits are deleted rather than kept; their GitHub issue/PR is the record.
 
 ## Contributing
 

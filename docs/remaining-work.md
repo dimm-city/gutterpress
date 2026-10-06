@@ -63,35 +63,12 @@ Last updated 2026-09-19.
       local 292-page field-guide baseline cannot masquerade as the release gate.
       **Unverified (external to this repo)**: no `book-diff.sh` or
       `.book-baseline/` exists in this repo's tree.
-- [x] **Desktop problems panel**: real Electron E2E proves malformed marker
-      file/line navigation and an exported `engine.multicol.dead-column`
-      finding through the Problems panel. Confirmed at
-      `packages/desktop/tests/integration/problems-last-hop.pw.mjs` (launches
-      the packaged app via Playwright's `_electron`).
 
 ### Cleanup (mechanical)
-- [x] Stale `.two-column` vocabulary in non-built files (`docs/`,
-      `.archive/`, `.backup/`, `README.md`) and the design guide's own markdown
-      reference updated to the core vocabulary; distinct `.two-column-list`
-      and `.two-column-grid` component names were preserved. Confirmed clean
-      in `README.md`/`CLAUDE.md` today; the design guide itself has since
-      moved to dc-op-manual and its current state is unverified from here.
-- [x] Core documents `.gp-columns-2/3`, `{.class}` marker spelling, and valid
-      bare `@section` authoring in `CLAUDE.md` §6 and the user guide. Confirmed
-      at `CLAUDE.md` §6 and `examples/gutterpress-user-guide/02-writing-content.md`.
-- [x] Duplicate marker warnings suppressed on a pre-validated PDF build without
-      hiding warnings when no prevalidation result exists. Confirmed by
-      `packages/cli/src/lib/build-runner.warnings.test.ts`.
 - [ ] Dead `data-break-inside="avoid"` removed from skill-card wrappers; CSS is
       the authoritative card break policy. **Unverified (external to this
       repo)**: skill-card markup lives in dc-op-manual; the attribute's
       absence from this repo is not proof of that removal.
-- [x] Failsafe tests clean their repository and isolated backup fixtures.
-      Superseded, not regressed: the `failsafe.ts` subsystem this covered was
-      itself deleted in `f5370db` per the convergent-sync decision above.
-- [x] Stale tracked `.claude/worktrees/` copy and plugin hot-reload snapshot
-      removed (recoverable from git). Confirmed: zero files tracked under
-      `.claude/worktrees/` today, and `.gitignore` blanket-ignores `.claude/`.
 
 ### Engineering
 - [ ] **Split card corner notch**: fragmentable cards use final-slice decoration;
@@ -110,14 +87,6 @@ Last updated 2026-09-19.
       retains author-supplied display labels over the same fixed five tiers.
       **Unverified (external to this repo)**: same as above — `@outcome` is
       not implemented in this repo.
-- [x] **Placeholder PNG path**: missing images now point to generated `.png`
-      assets; real CSS contexts are rewritten without mutating code/script
-      specimens. Confirmed at `packages/cli/src/lib/missing-asset-placeholder.ts`.
-- [x] **#151 — authoritative build-time DOM check**: `engine.layer.trapped`
-      inspects computed live ancestors. The fast CSS-source lint remains with
-      an explicit limited-scope message. Confirmed at
-      `packages/cli/src/engine/compiler/build.ts` and its
-      `build.layer-trapped.test.ts`.
 - [ ] **Audit categories B/C/E reconciled** against current source and the
       rendered gallery. Earlier panel/column/dead-rule findings have landed;
       fresh built-DOM counts are recorded in the audit. The two live
@@ -149,16 +118,6 @@ still 148.
 - [ ] **#150** margin boxes drop every stacking-context / outside-the-box
       property — `box-shadow`, `transform`, `opacity`, `outline`, `filter`,
       `mix-blend-mode`; `text-shadow` and `border-radius` on the same box paint
-- [x] **#152** `@page { background: url() }` used to be dropped for a
-      **fetched URL** that no unconsumed `<link rel="preload">` names; a
-      `data:` URI paints. Not image dimensions — `asset-inline.ts` used to
-      inline images ≤512 KB, so assets under that threshold painted and
-      larger ones did not, which is what the old "450×582 paints / 638×825
-      dropped" bound was really measuring. **Fixed upstream in Chrome 152.**
-      The build already preloads every staged CSS image as the workaround
-      for older Chromium; the canary
-      `page-background-chromium-bug.canary.test.ts` goes red — the removal
-      trigger — once `REQUIRED_MILESTONE` reaches 152
 - [ ] A maintainer with a Google account should file the two that still
       reproduce (#149, #150) against Chromium — #152 is fixed upstream in
       Chrome 152 and must not be filed; our issues stay open as the citable reference and re-test

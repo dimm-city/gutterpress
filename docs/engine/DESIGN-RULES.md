@@ -291,7 +291,7 @@ print. If not, the loop's existing pass-2 body runs exactly as it always did,
 using the just-measured real map — today's two-print cost, no worse. Nothing
 about the loop's shape changed; only what seeds `previous` before it starts.
 
-**Measured** on `examples/gutterpress-user-guide` (`compare/stage-book.ts`
+**Measured** on `examples/gutterpress-user-guide` (staged
 input, warm browser): content is byte-identical to the un-predicted baseline —
 61 pages, 9,699 words, 0 pages with differing text, 0 words added or dropped
 either direction (poppler-backed `pdfText`). Print count is now instrumented

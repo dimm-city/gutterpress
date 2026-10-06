@@ -6,8 +6,8 @@ import { fileURLToPath } from "node:url";
 import { Window } from "happy-dom";
 
 // Resolve relative to THIS FILE, not process.cwd() — the test must pass no
-// matter where bun/node is invoked from (zero-tolerance: bare `bun test`
-// from the repo root previously failed on this).
+// matter where bun/node is invoked from (bare `bun test` from the repo root
+// fails otherwise).
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const scriptPath = path.resolve(
@@ -91,6 +91,13 @@ function loadNativePreviewApi(sheets, runs = []) {
   };
 
   for (const [i, s] of sheets.entries()) {
+    // A real scrollIntoView moves the viewport to the sheet; the wheel flip
+    // reads the landed page's edges, so the stub must too.
+    const recordScroll = s.scrollIntoView;
+    s.scrollIntoView = (opts) => {
+      recordScroll.call(s, opts);
+      windowObj.scrollY = i * 900;
+    };
     s.getBoundingClientRect = () => ({
       top: i * 900 - windowObj.scrollY,
       bottom: i * 900 - windowObj.scrollY + s.offsetHeight,
@@ -221,6 +228,90 @@ async function main() {
   }
 
   console.log("[desktop-test] PASS native-engine page navigation");
+
+  // ── Wheel page flip (#301) ─────────────────────────────────────────────────
+  {
+    const wheel = (windowObj, init) => {
+      const e = { type: "wheel", deltaX: 0, deltaY: 0, deltaMode: 0, ctrlKey: false, defaultPrevented: false, ...init };
+      e.preventDefault = () => { e.defaultPrevented = true; };
+      windowObj.dispatchEvent(e);
+      return e;
+    };
+    const quiet = () => new Promise((r) => setTimeout(r, 260));
+
+    // Spread (two-column) view: one flick turns two pages, smoothly.
+    {
+      const sheets = [1, 2, 3, 4, 5, 6].map((n) => makeSheet(n));
+      const { api, windowObj } = loadNativePreviewApi(sheets);
+      api.setViewMode("two-column", true);
+      api.getTotalPages();
+      const first = wheel(windowObj, { deltaY: 100 });
+      assert.equal(first.defaultPrevented, true, "a page that fits: the wheel is taken over");
+      assert.equal(api.getCurrentPage(), 3, "spread: one flick turns two pages");
+      assert.deepEqual(sheets[2].scrollIntoViewCalls.at(-1).behavior, "smooth", "the flip animates");
+      // The rest of the same gesture (a fast spin, or a trackpad's inertia) is swallowed.
+      wheel(windowObj, { deltaY: 100 });
+      wheel(windowObj, { deltaY: 100 });
+      assert.equal(api.getCurrentPage(), 3, "one gesture turns one step");
+      await quiet();
+      wheel(windowObj, { deltaY: -120 });
+      assert.equal(api.getCurrentPage(), 1, "scrolling back flips back");
+    }
+
+    // Single view: one page per flick; small trackpad deltas accumulate.
+    {
+      const sheets = [1, 2, 3].map((n) => makeSheet(n));
+      const { api, windowObj } = loadNativePreviewApi(sheets);
+      api.setViewMode("single", true);
+      api.getTotalPages();
+      wheel(windowObj, { deltaY: 20 });
+      wheel(windowObj, { deltaY: 20 });
+      assert.equal(api.getCurrentPage(), 1, "below the threshold nothing turns yet");
+      wheel(windowObj, { deltaY: 20 });
+      assert.equal(api.getCurrentPage(), 2, "single: accumulated deltas turn one page");
+      await quiet();
+      wheel(windowObj, { deltaY: 4, deltaMode: 1 }); // 4 lines = 64px
+      assert.equal(api.getCurrentPage(), 3, "line-mode deltas count as lines");
+    }
+
+    // Left alone: pinch/Ctrl+wheel zoom and sideways swipes.
+    {
+      const sheets = [1, 2, 3].map((n) => makeSheet(n));
+      const { api, windowObj } = loadNativePreviewApi(sheets);
+      api.setViewMode("single", true);
+      api.getTotalPages();
+      assert.equal(wheel(windowObj, { deltaY: 200, ctrlKey: true }).defaultPrevented, false, "Ctrl+wheel is zoom");
+      assert.equal(wheel(windowObj, { deltaX: 300, deltaY: 50 }).defaultPrevented, false, "a sideways swipe scrolls sideways");
+      assert.equal(api.getCurrentPage(), 1);
+    }
+
+    // A page taller than the viewport is read first: the wheel scrolls
+    // normally while more of the page lies ahead, and only a NEW gesture that
+    // starts at the page's edge turns it.
+    {
+      const tall = [1, 2, 3].map((n) => makeSheet(n, 400, 1400)); // viewport is 900
+      const { api, windowObj } = loadNativePreviewApi(tall);
+      api.setViewMode("single", true);
+      api.getTotalPages();
+      const reading = wheel(windowObj, { deltaY: 200 });
+      assert.equal(reading.defaultPrevented, false, "more of the page below: the wheel scrolls normally");
+      assert.equal(api.getCurrentPage(), 1);
+      // The same gesture reaches the bottom of the page: its momentum must not turn it.
+      windowObj.scrollY = 500; // page 1 now ends exactly at the viewport's bottom
+      assert.equal(wheel(windowObj, { deltaY: 200 }).defaultPrevented, false, "the reading gesture keeps scrolling");
+      assert.equal(api.getCurrentPage(), 1, "reading to the end of a page never turns it in the same gesture");
+      await quiet();
+      const flick = wheel(windowObj, { deltaY: 200 });
+      assert.equal(flick.defaultPrevented, true, "a new gesture at the page's end turns it");
+      assert.equal(api.getCurrentPage(), 2);
+      // Back up: page 2's top is in view, so a gesture upward turns back.
+      await quiet();
+      windowObj.scrollY = 900;
+      wheel(windowObj, { deltaY: -200 });
+      assert.equal(api.getCurrentPage(), 1, "at the top of a page, scrolling up turns back");
+    }
+    console.log("[desktop-test] PASS wheel page flip (#301)");
+  }
 
   // ── getContextTargetAt: kind precedence + payload shape (protocol v4,
   // docs/inline-editing-plan.md §3.1) ────────────────────────────────────────
@@ -790,21 +881,273 @@ async function main() {
 
   console.log("[desktop-test] PASS contextMenuRequested mouse + keyboard listeners");
 
-  // getProtocolVersion() bumped to 9 (SFE-P4: in-flow block editing deleted;
-  // beginBlockEdit/endBlockEdit no longer exist on previewAPI at all — this is
-  // the permanent post-deletion shape, not a feature-detect fallback), then
-  // to 10 when getChapters() was added for the desktop's Read chapter list.
+  // ── In-flow block editing (protocol v8) ─────────────────────────────────────
+  // docs/inline-editing-plan.md §3.1. beginBlockEdit()/endBlockEdit() replaced
+  // getRectsFor()/setEditMask(), which existed only to place and de-clutter
+  // behind a floating edit panel.
+  const editHtml = `
+    <div class="chapter" data-chapter-src="a.md" data-source-range="0:10">
+      <p id="p1" data-source-range="0:1">Untouched block</p>
+      <p id="target" data-source-range="2:4">rendered <em>text</em> here</p>
+    </div>`;
+
+  // Opening: exactly ONE element becomes editable, its rendered HTML is
+  // replaced by the SOURCE the host supplied, and pre-wrap is applied (without
+  // it a multi-line block's newlines collapse and it cannot be edited by line).
+  {
+    const { document, window, api } = loadInterfaceWithDom(editHtml, { native: true, pageOf: () => 0 });
+    const states = [];
+    window.addEventListener("blockEditStateChanged", (e) => states.push(e.detail.open));
+
+    const result = api.beginBlockEdit({ chapter: "a.md", range: [2, 4], text: "source *markdown* here" });
+    assert.deepEqual(result, { ok: true });
+
+    const target = document.getElementById("target");
+    assert.equal(target.getAttribute("contenteditable"), "plaintext-only");
+    assert.equal(target.style.whiteSpace, "pre-wrap");
+    assert.equal(target.textContent, "source *markdown* here");
+    assert.ok(target.classList.contains("gutterpress-editing"));
+    // The neighbour is untouched: one edit, one element.
+    const p1 = document.getElementById("p1");
+    assert.equal(p1.hasAttribute("contenteditable"), false);
+    assert.equal(p1.textContent, "Untouched block");
+    // The shell holds hot-reload swaps on this event, so it must fire on open.
+    assert.deepEqual(states, [true]);
+  }
+
+  // Repagination is MANDATORY on open, not cosmetic: swapping rendered HTML for
+  // source text changes the block's extent before a single keystroke, and
+  // `.gp-run` clips to the last measured page — unmeasured growth is silently
+  // invisible rather than overlapping (ADR 0009 decision 4, as revised).
+  {
+    let refreshes = 0;
+    const { api } = loadInterfaceWithDom(editHtml, {
+      native: true,
+      pageOf: () => 0,
+      refresh: () => { refreshes += 1; },
+    });
+    api.beginBlockEdit({ chapter: "a.md", range: [2, 4], text: "x" });
+    assert.equal(refreshes, 1, "opening re-measures");
+    api.endBlockEdit({ commit: true });
+    assert.equal(refreshes, 2, "closing re-measures");
+  }
+
+  // Round-trip: multi-line markdown survives EXACTLY through textContent, which
+  // is what lets this design carry lists, tables and fences with no serializer.
+  {
+    const { document, api } = loadInterfaceWithDom(editHtml, { native: true, pageOf: () => 0 });
+    const src = "- item one\n- item two\n  - nested\n\n| a | b |\n|---|---|\n| 1 | 2 |";
+    api.beginBlockEdit({ chapter: "a.md", range: [2, 4], text: src });
+    assert.equal(document.getElementById("target").textContent, src);
+    const ended = api.endBlockEdit({ commit: true });
+    assert.deepEqual(ended.text, src, "source round-trips byte-for-byte");
+    assert.equal(ended.ended, true);
+    assert.equal(ended.commit, true);
+  }
+
+  // Closing restores the rendered HTML byte-for-byte, on BOTH paths — on commit
+  // too, so raw markdown is not left on screen for the ~500ms until the
+  // authoritative re-render swaps the frame.
+  for (const commit of [true, false]) {
+    const { document, api } = loadInterfaceWithDom(editHtml, { native: true, pageOf: () => 0 });
+    const before = document.getElementById("target").innerHTML;
+    api.beginBlockEdit({ chapter: "a.md", range: [2, 4], text: "typed over it" });
+    api.endBlockEdit({ commit });
+    const target = document.getElementById("target");
+    assert.equal(target.innerHTML, before, `rendered HTML restored (commit: ${commit})`);
+    assert.equal(target.hasAttribute("contenteditable"), false);
+    assert.equal(target.classList.contains("gutterpress-editing"), false);
+    // No inline-style residue: the attribute itself is dropped when it would
+    // otherwise be left empty.
+    assert.equal(target.hasAttribute("style"), false, "no leftover inline style");
+  }
+
+  // A pre-existing inline white-space value is restored, not clobbered.
+  {
+    const html = `<div data-chapter-src="a.md"><p id="t" data-source-range="0:1" style="white-space: nowrap">x</p></div>`;
+    const { document, api } = loadInterfaceWithDom(html, { native: true, pageOf: () => 0 });
+    api.beginBlockEdit({ chapter: "a.md", range: [0, 1], text: "y" });
+    api.endBlockEdit({ commit: false });
+    assert.equal(document.getElementById("t").style.whiteSpace, "nowrap");
+  }
+
+  // Unresolved range: a clean refusal the host can act on, never a throw and
+  // never a silent no-op that leaves the author waiting.
+  {
+    const { api } = loadInterfaceWithDom(editHtml, { native: true, pageOf: () => 0 });
+    assert.deepEqual(api.beginBlockEdit({ chapter: "a.md", range: [99, 100] }), {
+      ok: false,
+      reason: "unresolved",
+    });
+  }
+
+  // endBlockEdit is idempotent — nothing open is `{ended: false}`, not an error.
+  {
+    const { api } = loadInterfaceWithDom(editHtml, { native: true, pageOf: () => 0 });
+    const result = api.endBlockEdit({ commit: true });
+    assert.equal(result.ended, false);
+    assert.equal(result.text, null);
+  }
+
+  // A second beginBlockEdit commits its predecessor rather than dropping the
+  // author's typing, and reports the close so the shell releases its hold.
+  {
+    const { document, window, api } = loadInterfaceWithDom(editHtml, { native: true, pageOf: () => 0 });
+    const finished = [];
+    const states = [];
+    window.addEventListener("blockEditFinished", (e) => finished.push(e.detail));
+    window.addEventListener("blockEditStateChanged", (e) => states.push(e.detail.open));
+    api.beginBlockEdit({ chapter: "a.md", range: [2, 4], text: "first" });
+    document.getElementById("target").textContent = "first edited";
+    api.beginBlockEdit({ chapter: "a.md", range: [0, 1], text: "second" });
+    assert.equal(finished.length, 1, "predecessor was finished, not dropped");
+    assert.equal(finished[0].text, "first edited");
+    assert.equal(finished[0].commit, true);
+    assert.deepEqual(states, [true, false, true]);
+  }
+
+  // Escape cancels and Cmd/Ctrl+Enter commits, both from INSIDE the book
+  // document — these keystrokes never reach the host SPA (cross-origin), so the
+  // outcome has to arrive as an event carrying the text.
+  for (const [key, mods, expectCommit] of [
+    ["Escape", {}, false],
+    ["Enter", { metaKey: true }, true],
+    ["Enter", { ctrlKey: true }, true],
+  ]) {
+    const { document, window, api } = loadInterfaceWithDom(editHtml, { native: true, pageOf: () => 0 });
+    const finished = [];
+    window.addEventListener("blockEditFinished", (e) => finished.push(e.detail));
+    api.beginBlockEdit({ chapter: "a.md", range: [2, 4], text: "seed" });
+    document.getElementById("target").textContent = "edited by hand";
+    document.dispatchEvent(new window.KeyboardEvent("keydown", { key, ...mods, bubbles: true, cancelable: true }));
+    assert.equal(finished.length, 1, `${key} resolved the edit`);
+    assert.equal(finished[0].commit, expectCommit);
+    assert.equal(finished[0].text, "edited by hand", "the text rides along on both paths");
+    assert.equal(finished[0].chapter, "a.md");
+    assert.deepEqual(finished[0].range, [2, 4]);
+  }
+
+  // Plain Enter is a NEWLINE, not a commit: a markdown block is multi-line.
+  {
+    const { document, window, api } = loadInterfaceWithDom(editHtml, { native: true, pageOf: () => 0 });
+    const finished = [];
+    window.addEventListener("blockEditFinished", (e) => finished.push(e.detail));
+    api.beginBlockEdit({ chapter: "a.md", range: [2, 4], text: "seed" });
+    document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    assert.equal(finished.length, 0);
+  }
+
+  // "Clicked away" is a POINTER PRESS outside the box — never `blur`.
+  //
+  // Blur is the regression this guards: opening from the context menu is a
+  // postMessage with no user activation, so the frame takes focus a moment
+  // later and Chromium settles activeElement back to BODY, firing a blur the
+  // box never earned. In the packaged app that committed and closed the editor
+  // 7ms after it opened, so both entry points looked like they did nothing.
+  {
+    const { document, window, api } = loadInterfaceWithDom(editHtml, { native: true, pageOf: () => 0 });
+    const finished = [];
+    window.addEventListener("blockEditFinished", (e) => finished.push(e.detail));
+    api.beginBlockEdit({ chapter: "a.md", range: [2, 4], text: "seed" });
+    const target = document.getElementById("target");
+
+    // A blur on its own must NOT end the edit.
+    target.dispatchEvent(new window.FocusEvent("blur", { bubbles: false }));
+    assert.equal(finished.length, 0, "blur alone does not commit");
+    assert.equal(target.getAttribute("contenteditable"), "plaintext-only", "the edit is still open");
+
+    // A press INSIDE the box is the author working, not leaving.
+    target.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true }));
+    assert.equal(finished.length, 0, "a press inside the box does not commit");
+
+    // A press anywhere else in the book commits.
+    document.getElementById("p1").dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true }));
+    assert.equal(finished.length, 1, "a press outside the box commits");
+    assert.equal(finished[0].commit, true);
+  }
+
+  // The caret survives re-pagination. `relayout()` re-parents the edit box, and
+  // re-parenting a focused element drops focus AND the selection — so without
+  // this the caret died on the first debounced refresh after the author started
+  // typing and every keystroke after it went nowhere.
+  {
+    const { document, api } = loadInterfaceWithDom(editHtml, {
+      native: true,
+      pageOf: () => 0,
+      // A refresh that actually moves the element, like the real relayout.
+      refresh: () => {
+        const el = document.getElementById("target");
+        const parent = el.parentElement;
+        parent.removeChild(el);
+        parent.appendChild(el);
+      },
+    });
+    api.beginBlockEdit({ chapter: "a.md", range: [2, 4], text: "abcdefghij" });
+    const target = document.getElementById("target");
+    // Seat the caret mid-text, then force the re-parenting refresh.
+    const range = document.createRange();
+    range.setStart(target.firstChild, 4);
+    range.collapse(true);
+    const sel = document.defaultView.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    api.endBlockEdit({ commit: false });
+    // The text is what matters here: a lost caret in the real app meant lost
+    // keystrokes, and the round-trip must still be exact either way.
+    assert.equal(target.innerHTML, "rendered <em>text</em> here", "restored after a moving refresh");
+  }
+
+  // Double-click REQUESTS an edit (it never starts one): only the host can read
+  // the authoritative buffer, so the book document must not source its own text.
+  {
+    const { document, window, api } = loadInterfaceWithDom(editHtml, { native: true, pageOf: () => 0 });
+    const requests = [];
+    window.addEventListener("blockEditRequested", (e) => requests.push(e.detail));
+    const target = document.getElementById("target");
+    target.dispatchEvent(new window.MouseEvent("dblclick", { bubbles: true, clientX: 40, clientY: 60 }));
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].chapter, "a.md");
+    assert.deepEqual(requests[0].range, [2, 4]);
+    assert.equal(requests[0].x, 40);
+    assert.equal(requests[0].y, 60);
+    assert.equal(requests[0].via, "dblclick");
+    // Nothing became editable off the double-click alone.
+    assert.equal(target.hasAttribute("contenteditable"), false);
+
+    // While an edit IS open, double-click keeps its native meaning (select
+    // word) inside the box rather than re-requesting.
+    api.beginBlockEdit({ chapter: "a.md", range: [2, 4], text: "seed" });
+    target.dispatchEvent(new window.MouseEvent("dblclick", { bubbles: true, clientX: 40, clientY: 60 }));
+    assert.equal(requests.length, 1, "no re-request while editing");
+  }
+
+  // Double-click on unannotated furniture (a running header, a margin box) is
+  // not an edit request.
+  {
+    const { document, window } = loadInterfaceWithDom(
+      `<div class="gp-margin-box"><span id="folio">12</span></div>`,
+      { native: true, pageOf: () => 0 },
+    );
+    const requests = [];
+    window.addEventListener("blockEditRequested", (e) => requests.push(e.detail));
+    document
+      .getElementById("folio")
+      .dispatchEvent(new window.MouseEvent("dblclick", { bubbles: true, clientX: 1, clientY: 1 }));
+    assert.equal(requests.length, 0);
+  }
+
+  // getProtocolVersion() bumped to 9 (getChapters() added; 8 was in-flow
+  // editing with rects/mask removed).
   {
     const { api } = loadInterfaceWithDom("<p>x</p>");
-    assert.equal(api.getProtocolVersion(), 10);
-    assert.equal(typeof api.getChapters, "function", "the Read chapter list's command");
-    assert.equal(api.beginBlockEdit, undefined, "in-flow block editing command removed");
-    assert.equal(api.endBlockEdit, undefined, "in-flow block editing command removed");
+    assert.equal(api.getProtocolVersion(), 9);
+    assert.equal(typeof api.beginBlockEdit, "function");
+    assert.equal(typeof api.endBlockEdit, "function");
     assert.equal(api.getRectsFor, undefined, "geometry command removed with the panel");
     assert.equal(api.setEditMask, undefined, "mask command removed with the panel");
   }
 
-  console.log("[desktop-test] PASS protocol version 10 / block-edit commands absent");
+  console.log("[desktop-test] PASS in-flow block editing / protocol v8");
 
   // The cross-origin bridge must forward the immediate viewport invalidation,
   // not merely emit it inside the iframe where desktop controllers cannot see it.
@@ -831,7 +1174,26 @@ async function main() {
       message.name === "viewportChanged" &&
       message.detail.reason === "resize"
     ));
-    console.log("[desktop-test] PASS bridge forwards viewportChanged");
+
+    // The three in-flow editing events (protocol v8) are useless unless they
+    // cross the origin boundary: blockEditRequested is the double-click entry
+    // point, blockEditFinished carries the edited text to the only code that
+    // can write it, and blockEditStateChanged is what preview-shell.js holds
+    // hot-reload swaps on. A missed forward on the last one freezes the
+    // preview, so assert all three rather than trusting the pattern.
+    const forwarded = [
+      ["blockEditRequested", { chapter: "a.md", range: [2, 4], x: 5, y: 6, via: "dblclick" }],
+      ["blockEditFinished", { text: "edited", commit: true, chapter: "a.md", range: [2, 4] }],
+      ["blockEditStateChanged", { open: true }],
+    ];
+    for (const [name, detail] of forwarded) {
+      posted.length = 0;
+      windowObj.dispatchEvent({ type: name, detail });
+      const hit = posted.find((m) => m.type === "gutterpress:event" && m.name === name);
+      assert.ok(hit, `bridge forwards ${name}`);
+      assert.deepEqual(hit.detail, detail, `${name} detail crosses intact`);
+    }
+    console.log("[desktop-test] PASS bridge forwards protocol v8 edit events");
   }
 }
 

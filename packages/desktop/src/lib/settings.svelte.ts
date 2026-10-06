@@ -2,15 +2,13 @@
  * useSettings() — the reactive, persisted user-settings store (#45).
  *
  * A Svelte 5 `$state`-backed module store (not a class, no legacy Svelte
- * stores). It loads `AppSettings` from the host (via `getSettings`) once
- * at first access and writes every change back through `setSettings()`
- * (both from `$lib/app-lifecycle/app-lifecycle-capability` — SFE-P5c1: typed
- * IPC, not `api.app.*`).
+ * stores). It loads `AppSettings` from the host (via `api.app.getSettings`) once
+ * at first access and writes every change back through `api.app.setSettings()`.
  *
  * Reads are reactive: components that reference `useSettings().current.<...>`
  * inside a `$derived`/`$effect`/template re-run when a setting changes.
  *
- * Notification channels (ARCH #61): rune reactivity serves reads — templates
+ * Notification channels (#61): rune reactivity serves reads — templates
  * and `$derived` re-run when `current` changes. Imperative side-effects
  * (pushing a changed value into a non-reactive sink like the preview client
  * or the editor buffer) go through `onSettingsChange()` below, because this
@@ -21,24 +19,20 @@
  * the single `replaceState()` choke point, which owns the notify. Because
  * `set()` replaces the WHOLE `current` object on every call (not just the
  * touched section), listeners fire on every settings change — use
- * `settingsChangeGuard()` below to dedupe against the value actually read,
- * exactly as the old `lastBg`-style closures did.
+ * `settingsChangeGuard()` below to dedupe against the value actually read.
  *
  * Distinct from `DesktopPrefs` (session/per-project state via setDesktopPrefs).
  * Settings are durable user preferences persisted to `userData/app-settings.json`
- * on desktop. `getSettings`/`setSettings` reach that file over IPC
- * (`app:getSettings`/`app:setSettings`), which requires Electron main to have
- * registered its prefs hooks (`getPrefsHooks()`); outside Electron (a plain
- * browser / `vite dev`) `bridge()` throws, `_loadSettings()`'s `.catch()` keeps
+ * on desktop. `api.app.getSettings`/`setSettings` reach that file through the
+ * `api/app/settings` server route, which reads the host's prefs store through
+ * `getHostServices().prefs`; outside Electron (a plain browser / `vite dev`)
+ * that route fails, `_loadSettings()`'s `.catch()` keeps
  * the in-memory defaults, and `set()`'s `.catch(() => {})` silently drops the
- * write. SFE-P5a (D10): there is no other host to fall back to — a
- * `localStorage`-backed browser settings store used to exist on the dormant
- * `WebAdapter`, but that adapter was deleted; a future web product is a
- * separate package, not a second host wired onto this store.
+ * write.
  */
 import { DEFAULT_SETTINGS } from "$lib/platform";
 import type { AppSettings, DeepPartial } from "$lib/platform";
-import { getSettings, setSettings } from "$lib/app-lifecycle/app-lifecycle-capability";
+import { api } from "$lib/api";
 import { deepMergeSettings } from "$lib/settings-merge";
 
 // The single reactive settings object. Seeded with defaults so reads are valid
@@ -57,7 +51,7 @@ const listeners = new Set<SettingsListener>();
 /**
  * The single choke point every state replacement routes through, so the
  * imperative notification can never be forgotten by a future setter (the
- * dual-write hazard ARCH #61 flagged).
+ * dual-write hazard #61 flagged).
  */
 function replaceState(next: AppSettings): void {
   state.current = next;
@@ -90,7 +84,8 @@ function isAppSettings(value: unknown): value is AppSettings {
  */
 export function _loadSettings(): Promise<void> {
   if (loadPromise) return loadPromise;
-  loadPromise = getSettings()
+  loadPromise = api.app
+    .getSettings()
     .then((loaded) => {
       if (isAppSettings(loaded)) {
         replaceState(loaded);
@@ -110,7 +105,7 @@ export function _loadSettings(): Promise<void> {
  */
 function set(patch: DeepPartial<AppSettings>): void {
   replaceState(deepMergeSettings(state.current, patch));
-  setSettings(patch as Record<string, unknown>).catch(() => {});
+  api.app.setSettings(patch as Record<string, unknown>).catch(() => {});
 }
 
 /** Reset one section to its defaults and persist. */
@@ -138,7 +133,7 @@ export function useSettings() {
 
 /**
  * Build a guarded settings-change sink for use inside an `onSettingsChange`
- * listener (ARCH #61). `set()` replaces the whole `AppSettings.current`
+ * listener (#61). `set()` replaces the whole `AppSettings.current`
  * object on every call, so a listener that reads one nested field (e.g.
  * `current.appearance.previewBg`) would otherwise re-apply its side effect
  * on every UNRELATED settings change too.
@@ -149,9 +144,7 @@ export function useSettings() {
  * as "seen", so a value that arrives while the guarded resource isn't ready
  * yet (e.g. the preview client hasn't mounted) is not silently dropped —
  * the sink still fires the next time it's called with `ready()` true, even if
- * the value hasn't changed since the skipped attempt. This mirrors the
- * `lastBg`-style closures the manual `subscribe()` consumers used to hand-roll
- * individually.
+ * the value hasn't changed since the skipped attempt.
  *
  * Usage (an `onSettingsChange` listener, registered in `onMount`):
  * ```ts

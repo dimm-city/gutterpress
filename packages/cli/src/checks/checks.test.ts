@@ -650,7 +650,7 @@ describe("Manifest validate section", () => {
       enabled: true,
       severity: "error",
     });
-    // ARCH #24: allowedCallouts was deprecated-and-ignored (::: syntax
+    // allowedCallouts was deprecated-and-ignored (::: syntax
     // removed 2026-05-17) yet still fully resolved into ResolvedConfig — it
     // has since been deleted from ResolvedConfig and the presets
     // entirely; the manifest field still parses (for backward compat) but no
@@ -674,7 +674,7 @@ describe("Manifest validate section", () => {
     );
     expect(config.validate.enabled).toBe(false);
     expect(config.validate.assets.maxImageSize).toBe(5_000_000);
-    // ARCH #24: a manifest-set allowedCallouts still parses (deprecated field
+    // A manifest-set allowedCallouts still parses (deprecated field
     // kept on GutterpressManifest for compatibility) but is dropped, not
     // resolved — it no longer appears anywhere on ResolvedConfig.
     expect((config.validate.source as Record<string, unknown>).allowedCallouts).toBeUndefined();
@@ -875,7 +875,7 @@ describe("Local markdown refs check", () => {
           (result) =>
             result.line === 1 &&
             result.severity === "error" &&
-            result.message.includes("must be relative to the project"),
+            result.message.includes("must be relative to the book folder"),
         ),
       ).toBe(true);
       expect(
@@ -1272,7 +1272,7 @@ describe("Local markdown refs check", () => {
     }
   });
 
-  // ARCH: local-refs previously called existsSync on the still-percent-encoded
+  // local-refs previously called existsSync on the still-percent-encoded
   // destination, so a correct `![](my%20photo.png)` — the only bracket-less
   // spelling CommonMark renders for a space in a filename — was reported as
   // missing and hard-failed `gutterpress build`. Fixed by decoding (via
@@ -1290,7 +1290,7 @@ describe("Local markdown refs check", () => {
     expect(results).toHaveLength(0);
   });
 
-  // ── 2026-07-29 audit: the check must agree with the build on R5 ────────────
+  // ── the check must agree with the build on R5 ──────────────────────────────
   //
   // A prose image must live inside the book folder; `planImageCopies`
   // (lib/asset-inline.ts) fails the BUILD on a `../` or absolute ref, telling
@@ -1363,7 +1363,7 @@ describe("Local markdown refs check", () => {
     expect(results).toHaveLength(0);
   });
 
-  // ARCH: the build resolves an IMAGE ref against the PROJECT ROOT
+  // The build resolves an IMAGE ref against the PROJECT ROOT
   // (planImageCopies, lib/asset-inline.ts — book.html itself sits at the
   // output root), not against the chapter file's own directory. A chapter one
   // folder deep referencing a root-relative image was previously checked

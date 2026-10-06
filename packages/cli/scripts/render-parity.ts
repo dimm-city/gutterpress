@@ -11,6 +11,11 @@
  *   bun scripts/render-parity.ts extract <book.pdf> --out <report.json>
  *   bun scripts/render-parity.ts compare <baseline.json|.pdf> <candidate.json|.pdf>
  *                                [--tolerance 0.5] [--waive waivers.json] [--out diff.json]
+ *                                [--raster <diff-dir>]
+ *
+ * --raster (both sides must be PDFs) also compares every page as pixels with
+ * poppler's pdftoppm, catching colour changes the text/image report cannot
+ * see (#295), and writes a diff-NNN.png per differing page into <diff-dir>.
  *
  * Exit codes: 0 clean (or fully waived), 1 unwaived diff, 2 usage/IO error.
  */
@@ -24,11 +29,13 @@ import {
   WaiverValidationError,
   type Report,
   type Waiver,
+  type Diff,
 } from "../src/lib/render-parity.ts";
+import { rasterDiffs } from "../src/lib/render-parity-raster.ts";
 
 const USAGE = `Usage:
   bun scripts/render-parity.ts extract <book.pdf> --out <report.json>
-  bun scripts/render-parity.ts compare <baseline.json|.pdf> <candidate.json|.pdf> [--tolerance 0.5] [--waive waivers.json] [--out diff.json]
+  bun scripts/render-parity.ts compare <baseline.json|.pdf> <candidate.json|.pdf> [--tolerance 0.5] [--waive waivers.json] [--out diff.json] [--raster <diff-dir>]
 
 Exit codes: 0 clean (or fully waived), 1 unwaived diff, 2 usage/IO error.`;
 
@@ -172,9 +179,27 @@ async function runCompare(args: string[]): Promise<void> {
     process.exit(2);
   }
 
+  let extraDiffs: Diff[] = [];
+  if (flags.raster) {
+    if (extname(basePath).toLowerCase() !== ".pdf" || extname(candPath).toLowerCase() !== ".pdf") {
+      usageError("--raster compares pixels, so both sides must be .pdf files.");
+    }
+    try {
+      extraDiffs = await rasterDiffs(
+        resolve(basePath),
+        resolve(candPath),
+        Math.min(base.pageCount, cand.pageCount),
+        resolve(flags.raster),
+      );
+    } catch (err) {
+      console.error(`Raster compare failed: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(2);
+    }
+  }
+
   let result;
   try {
-    result = compareReports(base, cand, { tolerance, waivers });
+    result = compareReports(base, cand, { tolerance, waivers, extraDiffs });
   } catch (err) {
     if (err instanceof WaiverValidationError) {
       console.error(`Invalid waiver: ${err.message}`);

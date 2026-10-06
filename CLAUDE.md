@@ -6,7 +6,7 @@ This repo is a Bun workspace with three packages:
 
 - **`packages/cli/`** (`gutterpress`) — the single published package:
   ALL runtime logic (markdown rendering, preview HTTP server, native-engine PDF
-  generation, lint, validation — under `src/`) **and** the CLI entry
+  generation, validation including CSS print-safety — under `src/`) **and** the CLI entry
   (`src/cli.ts`). It exposes a library (`exports` → `dist/index.js`) and a CLI
   (`bin` → `dist/cli.js`). Built the standard way: `bun build` (the Node
   entrypoints, `--target=node --packages=external --splitting`; `src/render.ts`
@@ -20,32 +20,25 @@ This repo is a Bun workspace with three packages:
   no separate `compile` package.json script or `scripts/compile.ts`. The
   no-bundlers-at-runtime rule (§1 below) applies to this package.
 - **`packages/desktop/`** (`@dimm-city/gutterpress-desktop`) — Electron desktop
-  app with a SvelteKit SPA frontend. The SPA is built with
-  `@sveltejs/adapter-static`, which emits a plain static file tree
-  (`build/index.html`, `build/_app/**`, …) with no server bundle at all
-  (SFE-P5d deleted the prior `@sveltejs/adapter-node` + local-HTTP-server
-  design). In production the Electron main process registers a custom
-  `app://` protocol handler (`electron/app-protocol.ts`) that reads that
-  static tree straight off disk — out of the packaged asar in a built app —
-  and serves it to the window directly: no loopback server, no proxy, no
-  bearer token. Host capabilities are exposed as ~120 typed,
-  runtime-validated IPC request/reply channels (`secureHandle(...)` in
-  `electron/main.ts`, implemented in `electron/api/*.ts` — status, fs,
-  dialog, theme, plugin, remote/sync, vcs, recovery, lint, media, …) — NOT
-  `src/routes/api/**/+server.ts` HTTP routes, which do not exist anywhere in
-  this codebase (SFE-P5c migrated every route to IPC group by group down to
-  zero; SFE-P5d then deleted the server those routes would have run inside).
-  The `ipcMain`/preload bridge also carries the push-event streams (build
-  progress, folder-changed, sync status, updater events) and the
-  build/preview pipeline calls that need a live BrowserWindow. The Electron
-  main + preload are
+  app with a SvelteKit SPA frontend. The SPA is built with the package's own
+  tiny `adapter-electron.js`, which writes the SvelteKit server unbundled to
+  `build/server/` and the browser assets to `build/client/`. In production the
+  Electron main process constructs that server and answers every `app://`
+  request from the window in-process with `Server.respond()` — there is no
+  HTTP server, port, or proxy. Host capabilities are exposed as ~100
+  `src/routes/api/**/+server.ts` HTTP routes (status, fs, dialog, theme, plugin,
+  remote/sync, vcs, recovery, …) — NOT a handful of `ipcMain.handle()`
+  endpoints. The `ipcMain`/preload bridge is deliberately narrow: it carries
+  only the push-event streams (build progress, folder-changed, sync status,
+  updater events) and the build/preview pipeline calls that need a live
+  BrowserWindow. The Electron main + preload are
   built by **electron-vite** to `out/main/main.js` + `out/preload/`; the main
   is ESM and loads the lib with a plain dynamic `import("gutterpress")`
   (no CJS→ESM `new Function` bridge — that was removed when the build moved to
   electron-vite + asar). No afterPack hook; electron-builder
   packages the lib + its transitive deps from the workspace `node_modules` via
-  its standard dep walker (puppeteer-core is `asarUnpack`ed; PDF export itself
-  uses Electron's own Chromium via `webContents.printToPDF`).
+  its standard dep walker (nothing is `asarUnpack`ed; PDF export uses
+  Electron's own Chromium via `webContents.printToPDF`).
   See [project_gutterpress_architecture] memory + `packages/desktop/` for the
   full picture.
 
@@ -268,17 +261,18 @@ Monorepo layout section above: no `Bun.serve`/`Bun.file`) so Electron's bundled
 Node can run it in-process; `Bun.serve` would work under Bun but crash the
 packaged desktop app. The actual implementation
 (`packages/cli/src/preview/http-server.ts`) is a `node:http` static file
-server + a `ws` WebSocket server. A single Markdown edit may use the focused
-`content-update` notification and wider changes use `full-reload`, but the
-preview shell handles both by swapping the complete regenerated book. This
-keeps pagination independent of per-source isolation wrappers. The server is
+server + a `ws` WebSocket server. Every change is one `full-reload`
+notification; the preview shell double-buffers the complete regenerated book
+and swaps it in, so pagination never depends on per-source isolation
+wrappers. The server is
 Node-compatible, runs under both Bun (dev / compiled binary) and Node.js
 (Electron), with no bundler involved.
 
 ### 2. Lazy-load heavy optional deps
 
-Anything used by a single subcommand (e.g. `puppeteer-core` in `gutterpress build`)
-should be imported with a dynamic `import()` inside the command handler, not at
+Anything used by a single subcommand (e.g. the engine compiler and
+`engine/shared/cdp.ts`'s `launchChromium` in `gutterpress build`) should be
+imported with a dynamic `import()` inside the command handler, not at
 top-level. This keeps `gutterpress --help` fast and isolates failures to the
 specific command path.
 
@@ -325,20 +319,31 @@ Reasons:
 Plugin loader (`packages/cli/src/lib/markdown/plugins.ts`) does NOT auto-install
 or access the network. Installation is an explicit shared-lib action
 (`addExtension` in `extension-manager.ts`, used by the desktop routes and
-`gutterpress ext add`) that resolves
-the public npm registry to an exact version graph, verifies every tarball,
-safely vendors a complete nested dependency tree under the project, writes a
-whole-tree schema-v2 receipt, load-tests it, and only then atomically records
-the pinned specifier `name@<exact version>` in the manifest's `extensions:`
-list (the object form's `export:` explicitly selects a named plugin function
-for packages without a default export). Reinstall always fetches fresh bytes.
-Package scripts, bundled `node_modules`, native build steps, and non-registry
-dependency selectors are intentionally unsupported. Receipt-backed loads verify
-the full tree from a private snapshot, then rewrite reachable literal ESM and
-CommonJS package requests to receipt-approved private copies; unresolved or
-nonliteral requests fail closed, and an invalid marker never falls back to a
-global cache. Full rationale and optional/peer semantics were captured in ADR 0007,
-removed in the 2026-07-29 docs cleanup.
+`gutterpress ext add`) that resolves the public npm registry to an exact
+version graph, verifies every tarball against the registry's SRI hash, safely
+vendors a complete nested dependency tree under the project's
+`plugins/npm/<name>/<version>/` (a plain npm `node_modules` layout),
+load-tests it, and only then atomically records the pinned specifier
+`name@<exact version>` in the manifest's `extensions:` list (the object form's
+`export:` explicitly selects a named plugin function for packages without a
+default export). Reinstall always fetches fresh bytes. Package scripts,
+bundled `node_modules`, native build steps, and non-registry dependency
+selectors are intentionally unsupported. Loading a pinned entry is a plain
+dynamic `import()` of the vendored package's entry (resolved from its own
+`package.json`); Node's — and Bun's, in the compiled binary — ordinary module
+resolution serves the package's imports from that nested tree. Nothing is
+recorded about the tree and nothing re-verifies it on load: integrity is
+checked once, at install time. One runtime seam remains: a `bun build
+--compile` binary's own resolver cannot find a dependency whose package.json
+carries an `exports` map, so inside the compiled CLI a ~80-line `Bun.plugin`
+resolver (in `plugins.ts`, active only for importers inside a vendored tree)
+answers those bare requests the way Node would; `bun run` and Node never use
+it. A vendored folder that is present but broken
+fails with a reinstall hint; it never falls through to another package. (The
+receipt / snapshot / import-rewriting scheme that preceded this — a tree
+digest re-verified on every load, an acorn + es-module-lexer rewrite of every
+reachable import, a `Module._resolveFilename` hook — was removed in 0.11.10
+as disproportionate for a local authoring tool.)
 The loader has two modes via `loadPlugins(configs, baseDir, onError?)`:
 
   - **Fail-fast (no `onError`)** — build/export/validate. Any load error aborts
@@ -440,32 +445,24 @@ are unaffected by this rule — this rule governs the new Git/source surface onl
 > standard, applied by default.
 
 The desktop app is an Electron shell hosting a **SvelteKit SPA** (built with
-`@sveltejs/adapter-static`). The renderer contains ZERO host/Node code — that
-renderer/host split is what would let a future, separate web package reuse
-this SPA without a rewrite (see "PWA scaffolding" below for why that future
-package is not a mode of this one). To keep the desktop build correct, the
-renderer reaches the host through exactly one seam — typed IPC over the
-`window.electron` bridge — which keeps the SPA "PWA-clean."
+the package's `adapter-electron.js`). The SPA is written so it could run unchanged in a
+browser PWA tomorrow. To make that true — and to keep the desktop build correct
+— the renderer never contains host/Node code; it reaches the host through one
+of two seams, chosen by capability class, and both keep the SPA "PWA-clean."
 
-**Transport.** In production, Electron main registers a custom `app://`
-protocol handler (`electron/app-protocol.ts`) that reads the adapter-static
-build directory straight off disk — out of the asar in a packaged build —
-and returns file bytes with the right `Content-Type`: no local HTTP server,
-no proxy, no bearer token (SFE-P5d deleted the prior adapter-node +
-loopback-server design; `app-protocol.ts`'s own header carries the
-security-equivalence statement for what replaced the deleted bearer token).
-Every host capability the renderer needs — status, fs, dialog, theme,
-plugin, remote/sync, vcs, recovery, lint, media, and the rest — is typed,
-runtime-validated IPC: ~120 `secureHandle(...)` request/reply channels
-(`electron/api/*.ts`) cover everything a `+server.ts` route used to, plus a
-**narrow** `ipcMain`/preload push-channel set for the things request/reply
-can't do — build progress, folder-changed, sync status, updater events — and
-the preview/build pipeline calls that drive a live BrowserWindow. There is
-no `src/routes/api/**` route tree and no `fetch("/api/…")` call site
-anywhere in the SPA (SFE-P5c migrated every route to IPC; SFE-P5d then
-deleted the server those routes would have run inside). The renderer stays
-PWA-clean regardless — `electron/api/*.ts` is host Node code that runs in
-the main process only, and it never leaks into the client bundle.
+**Transport.** In production, Electron main constructs the SvelteKit server
+from `build/server/` and answers each `app://` request from the window
+in-process with `Server.respond()` (`electron/sveltekit-host.ts`); static
+assets come straight from `build/client/`. No HTTP server, no port, no proxy.
+Host capabilities the renderer needs are reached two ways: the bulk
+(status, fs, dialog, theme, plugin, remote/sync, vcs, recovery, …) are ordinary
+`src/routes/api/**/+server.ts` HTTP routes the SPA calls with `fetch("/api/…")`;
+a **narrow** `ipcMain`/preload bridge carries only the things a plain HTTP
+request can't — the push-event streams (build progress, folder-changed, sync
+status, updater events) and the preview/build pipeline calls that drive a live
+BrowserWindow. Either way the renderer stays PWA-clean — a `+server.ts` route is
+host Node code that happens to live under `src/routes/`, and it never leaks into
+the client bundle.
 
 **The renderer (the SPA, everything under `packages/desktop/src/`) MUST stay
 "PWA-clean": it contains ZERO platform/host code.**
@@ -479,66 +476,57 @@ the main process only, and it never leaks into the client bundle.
 - **No `node:*` / `fs` / `path` / `url` / `child_process` / `postcss` imports**
   in the SPA. Node-oriented libraries (postcss included) belong in the host.
 
-**One seam: typed IPC.** There is no route seam left to choose between — every
-host capability the renderer needs is typed, runtime-validated IPC
-(SFE-P5c migrated every `+server.ts` route to IPC group by group; SFE-P5d
-then deleted the local server those routes ran inside, along with
-`src/routes/api/**` and `src/lib/api.ts` themselves). The renderer reaches
-`window.electron` through **feature-owned capability modules** over the
-preload bridge (SFE-P5b replaced the old `Platform`/`HostServices` service
-locator — `getPlatform()`, `ElectronAdapter` and the broad contract are
-deleted): `src/lib/update/updater-capability.ts`,
-`src/lib/remote/remote-capability.ts`,
-`src/lib/export/build-preview-capability.ts`,
-`src/lib/editor-host/editor-projection-capability.ts`,
-`src/lib/app-lifecycle/app-lifecycle-capability.ts`, and one per other
-bounded context that needs it (e.g. `src/lib/lint/lint-capability.ts`) —
-plain module functions plus their own DTO types, each owning its slice of
-`window.electron` through the ONE shared accessor
-`src/lib/platform/bridge.ts` (which does the presence check and throws
-`DesktopHostRequiredError` off-Electron). A capability module wraps either
-shape IPC offers:
+**Two seams, not one.** The route-first split (server route + `fetch()`) is
+the **default path** and the one most of the app uses: components call
+`src/lib/api.ts` directly, not through `getPlatform()`. The `Platform`/`HostServices` seam
+(`src/lib/platform/contract.ts` + `ElectronAdapter`, reached via
+`import { getPlatform } from "$lib/platform"`) is real and still owns three
+narrower capability classes a plain route can't cover:
 
-1. **Request/reply** — a `secureHandle("ns:op", …)` channel
-   (`electron/api/*.ts`), covering everything a `+server.ts` route used to
-   (status, fs, dialog, theme, plugin, remote/sync, vcs, recovery, lint,
-   media, …), including calls that must drive a live `BrowserWindow`
-   (preview/build orchestration, PDF export via `webContents.printToPDF`) —
-   those are request/reply channels like any other, not a separate shape.
-2. **Push streams** the renderer subscribes to (build progress,
+1. **Push streams** the renderer subscribes to (build progress,
    folder-changed, sync status, updater events) — an `onX(cb) => unsubscribe`
-   shape a plain request/reply call can't give.
+   shape needs a live event channel, not request/response.
+2. **Calls that must drive a live `BrowserWindow`** — preview/build
+   orchestration, PDF export via `webContents.printToPDF`.
+3. **Host-divergent fs primitives** — the handful of file operations (folder
+   picker, read/write) a browser build would implement over File System
+   Access API handles rather than a thin `fetch()` wrapper.
 
-(A third class, FSA-divergent fs primitives, existed only to justify the
-now-deleted `WebAdapter`'s File System Access implementation — see "PWA
-scaffolding" below. There is no surviving host-divergent fs primitive; if one
-appears, name it here concretely rather than reopening this class generically.)
-
-App code never touches `window.electron`/`ipcRenderer` directly (only
-`platform/bridge.ts` may). A capability with a single consumer and zero
-marshalling logic gets NO module — it collapses into its consumer (the theme
-stream and the editor buffer's fs trio are the worked examples), per the
-SFE-P3e product-owner ruling against forwarding ceremony.
+Everything else — status, dialog, theme, plugin, remote/sync, vcs, recovery,
+settings, recents/favorites, and so on — is a server route + a typed
+`api.ts` wrapper, called directly as `api.<ns>.<op>(...)`. Whichever seam a
+capability uses, app code never touches `window.electron`/`ipcRenderer`
+directly (only `electron-adapter.ts` may).
 
 **Adding a new host capability.**
 
-1. Wire the **IPC bridge**: `electron/main.ts` — `secureHandle("ns:op", …)`
-   with runtime-validated arguments (or a `webContents.send` push channel);
-   `electron/preload.ts` — expose it on `contextBridge`;
-   `electron/types.d.ts` — the `Window.electron` shape; `contract.ts` — the
-   `ElectronBridge` type.
-2. Add the operation to the bounded context's capability module (or create
-   one if a genuinely new context appears — payload types live IN the
-   module, decoupled from the lib); components import the module directly.
+**(A) Default: a server route.** Covers essentially everything (see the list
+above).
 
-**The canonical fix when node code is needed by the UI:** don't bundle it
-into the renderer — run it in the host and expose it as a typed IPC channel
-behind a capability module. Example: CSS print-safety linting (`checkCss`) is
-postcss-based, so it runs host-side (`lint:checkCss`) and the editor's lint
-gutter calls `$lib/lint/lint-capability.ts`'s `checkCss(...)` — routed
-through the shared bridge accessor because CodeMirror's lint-source contract
-expects one async function to hand it, not because every capability needs
-its own module.
+1. `src/routes/api/<ns>/<op>/+server.ts` — the real Node work (may `import`
+   `gutterpress`, `node:*`, postcss, isomorphic-git — it runs in main,
+   never in the client bundle)
+2. `src/lib/api.ts` — the typed `fetch("/api/<ns>/<op>")` wrapper; components
+   call `api.<ns>.<op>(...)` directly. No `contract.ts` / `HostServices` /
+   adapter changes needed.
+
+**(B) Platform adapter — only for the three capability classes above.**
+
+1. `src/lib/platform/contract.ts` — add it to `HostServices` (define payload
+   types **locally**, decoupled from the lib)
+2. `ElectronAdapter` (call through the `api` wrapper, or IPC — next step)
+3. If it's a push stream or must drive a live `BrowserWindow`, also wire the
+   **IPC bridge**: `electron/main.ts` — `ipcMain.handle("ns:op", …)` (or a
+   `webContents.send` push channel); `electron/preload.ts` — expose it on
+   `contextBridge`; `contract.ts` — add it to `ElectronBridge` (which types
+   `Window.electron` via `src/app.d.ts`)
+
+**The canonical fix when node code is needed by the UI:** don't bundle it into
+the renderer — run it in the host and expose it as a server route (default) or,
+for the three narrower classes, through `getPlatform()`. Example: CSS
+print-safety linting (`checkCss`) is postcss-based, so it runs host-side (the
+`api/lint/check-css` server route) and the editor's lint gutter calls
+`api.lint.checkCss(...)`.
 
 **Svelte 5 conventions: `$effect` is banned in the SPA.** The rule exists in
 eslint (`no-restricted-syntax` in `packages/desktop/eslint.config.*`) — the
@@ -553,41 +541,36 @@ settings store's `onSettingsChange()` channel with `settingsChangeGuard()`
 (see `src/lib/settings.svelte.ts`'s header) — every state replacement flows
 through one choke point, so the notify cannot be forgotten by a new setter.
 
-**PWA scaffolding — REMOVED (0.12, SFE-P5a, plan D10).** Issue #33's
-`WebAdapter` (the FSA folder-open path, in-browser preview, IndexedDB
-persistence, the service worker, and the web app manifest) shipped
-partially, then was **deleted rather than completed**: `packages/desktop`
-is an Electron-only product now, with no dormant browser host inside it. A
-future web product is not a mode of this package — it is a **separate
-package** consuming `@dimm-city/gutterpress-editor` and `gutterpress/render`,
-built new against those public surfaces rather than by finishing this
-deleted adapter. `docs/pwa-webadapter-plan.md` is closed and kept as
-history; the deletion itself is recorded in the deletion ledger's SFE-P5a
-entry (`docs/plans/source-first-editor/deletion-ledger.md`). This does not
-touch the rule the rest of this section states: the renderer stays
-PWA-clean as an architecture requirement about the **renderer/host split**
-(no Node/platform code in the SPA), independent of whether a PWA ever
-ships from this package — that requirement is what would let a future web
-package reuse this renderer without a rewrite, and it is unaffected by
-`WebAdapter`'s removal.
+**No browser/PWA target today. Ruled by the product owner, 2026-10-05.** The
+`WebAdapter`, its File System Access / IndexedDB helpers, the service worker,
+the web manifest and every `isDesktop()` guard were deleted in 0.11.11
+(commit b5e76d06): no build targeted the web, every book-open path stopped
+before the adapter could run, and the adapter bet on one browser adapter
+behind `getPlatform()`, a design the app had already left for `api.*` routes.
+A browser UI is still wanted later. When it is built, start from the same
+SvelteKit server and `/api` routes served by Node (e.g. adapter-node) rather
+than reviving a parallel browser adapter, and restore only what that design
+needs from history (`git checkout b5e76d06^ -- <path>`). What was
+deliberately KEPT for that day: the PWA-clean rule above, the node-free
+`gutterpress/render` subpath and both purity gates, and the shared DTO/type
+modules.
 
-**Verification (must pass before any desktop change is "done"):** the SPA
-bundle must contain no host code — adapter-static emits the entire renderer
-build straight to `build/` (`build/index.html`, `build/_app/**`, …), with no
-server bundle and no `+server.ts` route compiled in anywhere (SFE-P5d deleted
-the prior adapter-node split). This is now **enforced automatically** by ONE
-script, `tools/check-render-purity.mjs`: CI runs it (`.github/workflows/ci.yml`)
-and the desktop app's `npm run build` runs it with `--strict` (absent dir or
-zero scannable files = failure), both against the **whole** `build/` tree —
-there is no `build/client/`-only carve-out to make, because there is no
-`build/server/`/`build/handler.js` sibling left to exclude. It fails on host
-code — the named leak identifiers (`fileURLToPath`/`createRequire`/
-`isomorphic-git`), any quoted `node:*` specifier, or a bare builtin
-`require()` (generated from `builtinModules`, never hand-listed) — anywhere
-under `build/`. One caveat keeps this honest: Rollup tree-shaking can HIDE a
-leak from the production scan while `vite dev` (no tree-shaking) still
-crashes on it — this is exactly how a shared bun-build chunk topped with
-`createRequire` leaked through `gutterpress/render` in 2026-07. The lib side
+**Verification (must pass before any desktop change is "done"):** the client
+SPA bundle must contain no host code — the SvelteKit build emits the browser
+assets to `build/client/`, and this is now **enforced automatically** by ONE script,
+`tools/check-render-purity.mjs`: CI runs it (`.github/workflows/ci.yml`) and
+the desktop app's `npm run build` runs it with `--strict` (absent dir or zero
+scannable files = failure). It fails on host code — the named leak
+identifiers (`fileURLToPath`/`createRequire`/`isomorphic-git`), any quoted
+`node:*` specifier, or a bare builtin `require()` (generated from
+`builtinModules`, never hand-listed) — anywhere under `build/client/`.
+Two caveats keep this honest:
+(1) the server side — `build/server/` and the `+server.ts` routes compiled
+into it — is host Node code by design; the check
+scopes to `build/client/` only. (2) Rollup tree-shaking can HIDE a leak from
+the production scan while `vite dev` (no tree-shaking) still crashes on it —
+this is exactly how a shared bun-build chunk topped with `createRequire`
+leaked through `gutterpress/render` in 2026-07. The lib side
 therefore has its own gate: `packages/cli`'s build compiles `src/render.ts`
 as a separate non-split `bun build` graph and runs
 `packages/cli/scripts/check-render-pure.mjs`, which fails if the `dist/render.js` closure
@@ -599,8 +582,8 @@ lib's Node code on purpose; §1/§3 govern it. This rule governs the renderer.)
 Why this is the default for new Electron apps: the renderer/host split is the
 only thing that keeps an Electron UI portable to web, testable without a host,
 and free of the "works in `vite dev`, crashes in the packaged app" trap. Build
-the typed IPC channel + capability module **first**, before the first feature
-adds a host call.
+the typed route + wrapper (or, for the three narrower classes, the adapter
+seam) **first**, before the first feature adds a host call.
 
 ## Design-guide / DC-brand work has moved out of this repo
 

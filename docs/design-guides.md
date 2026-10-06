@@ -88,9 +88,7 @@ gutterpress preview ./design-guide
 ```
 
 Opens the live preview server with hot reload. Edits to the design guide
-or to `shared/styles/main.css` reflect immediately. The toolbar's print
-button, page nav, zoom, debug overlay, and background color picker all
-work — they're the same UI you ship in the published static site.
+or to `shared/styles/main.css` reflect immediately.
 
 ## What to cover in the guide
 
@@ -120,20 +118,16 @@ Produces a complete deployable directory:
 
 ```text
 _site/
-├── book.html               ← the rendered guide, CSS + fonts inlined (pre-paginated)
+├── book.html               ← the rendered guide, CSS + fonts inlined
 ├── index.html              ← redirects to book.html, for hosts that need a default entry point
-└── preview/
-    └── scripts/            ← preview-interface.js and preview-bridge.js (page nav, zoom, toolbar)
+└── engine/
+    └── gutterpress-viewer.js ← the viewer that paginates book.html on load
 ```
 
 There's no `shared/` or `styles/` in the output: your stylesheets are read and
 inlined straight into `book.html`, not copied. Any images the guide actually
 references travel with it too, at the relative path you authored them at (or
 under `assets/` for a CSS-referenced image that lives outside the project).
-If no Chromium is available at build time, the build fails with a hard error
-(`No Chrome or Chromium binary found` — see
-[CLI README: Troubleshooting](../packages/cli/README.md#troubleshooting))
-rather than falling back to client-side pagination.
 
 Open `_site/book.html` directly in Chrome, Edge, or another Chromium-based
 browser to view the paginated guide — the viewer is Chromium-only, like the

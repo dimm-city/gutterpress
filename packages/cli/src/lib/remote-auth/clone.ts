@@ -1,5 +1,5 @@
 /**
- * Clone-and-open for remote-backed projects (#15, ADR 0006 D2).
+ * Clone-and-open for remote-backed projects (#15).
  *
  * A managed remote project IS a local clone: after `cloneRepository`, the
  * folder classifies as a plain `local-git-folder` (hasRemote: true) and every
@@ -93,7 +93,7 @@ async function assertCloneTarget(dir: string): Promise<void> {
     const entries = await readdir(dir);
     if (entries.length > 0) {
       throw new Error(
-        "That folder already has files in it. Choose an empty folder for the project.",
+        "That folder already has files in it. Choose an empty folder for the book.",
       );
     }
   } catch (e) {
@@ -134,15 +134,15 @@ function friendlyCloneError(e: unknown): Error {
     return e;
   }
   return new Error(
-    "The project couldn't be downloaded from GitHub. Please try again.",
+    "The book couldn't be downloaded from GitHub. Please try again.",
     { cause: e },
   );
 }
 
 /**
- * Clone a remote repository over smart HTTPS into `dir` (ADR 0006 D2).
+ * Clone a remote repository over smart HTTPS into `dir`.
  *
- * - HTTPS only (isomorphic-git has no SSH — ADR 0006 D6).
+ * - HTTPS only (isomorphic-git has no SSH).
  * - `singleBranch` always; `depth` opts into shallow (full by default — see
  *   the WHY on {@link CloneRepositoryOptions.depth}).
  * - Tokens embedded in the URL are stripped and (when a `tokenStore` is

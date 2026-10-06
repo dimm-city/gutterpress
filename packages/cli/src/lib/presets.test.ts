@@ -21,7 +21,7 @@ import {
   resetWarnOnce,
 } from "./presets";
 
-// ── resolvePreset (UX finding M48) ──────────────────────────────────────────
+// ── resolvePreset ───────────────────────────────────────────────────────────
 
 test("resolvePreset defaults to dtrpg when no preset is set", () => {
   expect(resolvePreset(undefined)).toBe(DTRPG_PRESET);
@@ -103,7 +103,7 @@ test("resolveConfig with no preset set still resolves to dtrpg geometry (unchang
   expect(config.ink.maxTac).toBe(240);
 });
 
-// ── book preset geometry (UX finding M48) ───────────────────────────────────
+// ── book preset geometry ────────────────────────────────────────────────────
 
 test("book preset uses standard 6x9in trade geometry (432x648pt)", () => {
   expect(BOOK_PRESET.page!.width).toBe(432);
@@ -144,16 +144,16 @@ test("book preset differs from dtrpg on the vendor-specific fields (sanity check
   expect(BOOK_PRESET.ink.maxTac).not.toBe(DTRPG_PRESET.ink.maxTac);
 });
 
-// ── ARCH finding #2 — no more preset-level styles default ──────────────────
+// ── no preset-level styles default ─────────────────────────────────────────
 
 test("neither preset declares a `styles` default (resolveActiveStyles owns that fallback chain now)", () => {
   expect((DTRPG_PRESET as unknown as Record<string, unknown>).styles).toBeUndefined();
   expect((BOOK_PRESET as unknown as Record<string, unknown>).styles).toBeUndefined();
 });
 
-// ── ARCH finding #24 — warnOnce / resetWarnOnce replace raw module-level
-// mutable booleans, so dedup state is both resettable (a "reset hook") and
-// redirectable to a caller-supplied sink instead of `console.warn` ─────────
+// ── warnOnce / resetWarnOnce: dedup state is both resettable (a "reset
+// hook") and redirectable to a caller-supplied sink instead of
+// `console.warn` ───────────────────────────────────────────────────────────
 
 test("warnOnce fires the sink exactly once per id, even across repeated calls", () => {
   const seen: string[] = [];
@@ -262,23 +262,12 @@ describe("built-in template manifests declare an explicit preset (maintainer rev
   });
 });
 
-// ── Maintainer P1 (presets.ts:115) — BOOK_PRESET/DTRPG_PRESET.source.assets
-// omitted "styles" and "assets", the two directories `gutterpress new` actually
-// scaffolds (a starter `styles/book.css` theme + an `assets/` dir the user
-// guide tells authors to put images in). Every built-in template's manifest
-// references `styles/book.css` and resolves to one of these two presets, so a
-// fresh project's theme CSS and any `assets/*` media were never copied into
-// build output even though the rendered HTML/PDF references them.
+// ── a scaffolded project's theme and media reach the build output ──────────
 /**
- * The guarantee this block protects has not changed, but its MECHANISM has.
- *
- * Historically a fresh project's `styles/book.css` and `assets/*` media were
- * referenced by the rendered HTML but never copied into the output, because
- * copying was driven by a hand-maintained `source.assets` list that did not
- * cover what `gutterpress new` actually scaffolds. The list is gone: CSS is now
- * inlined into `book.html` at render time and media is copied from what the
- * book actually references, so "scaffolded, therefore shipped" holds by
- * construction rather than by keeping two lists in sync.
+ * CSS is inlined into `book.html` at render time and media is copied from
+ * what the book actually references, so "scaffolded, therefore shipped"
+ * holds by construction rather than by keeping a hand-maintained asset list
+ * in sync with what `gutterpress new` scaffolds.
  *
  * These tests assert the OUTCOME (a scaffolded project's theme reaches the
  * built book) so they keep protecting the same regression.

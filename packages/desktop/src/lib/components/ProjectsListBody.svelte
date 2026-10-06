@@ -1,8 +1,7 @@
 <script lang="ts">
   /**
-   * ProjectsListBody — the reusable list body for browsing/opening projects.
-   * Extracted from OpenLocationDialog for composition into the left panel's
-   * Projects tab and for direct use in the dialog itself.
+   * ProjectsListBody — the reusable list body for browsing/opening projects,
+   * hosted by the left panel's Books tab and the start screen.
    *
    * Owns: recents/favorites/discovered data, filter, DISCOVERED_CAP, keyboard nav.
    * The parent passes callback props for actions so this component is purely
@@ -10,15 +9,8 @@
    */
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
-  import { isDesktop } from "$lib/platform";
   import { basenameOf } from "$lib/platform/paths";
-  import {
-    getRecentFolders,
-    getFavorites,
-    removeRecent as removeRecentCapability,
-    toggleFavorite as toggleFavoriteCapability,
-  } from "$lib/app-lifecycle/app-lifecycle-capability";
-  import { openDirectory } from "$lib/files/files-capability";
+  import { api } from "$lib/api";
   import { discoverProjectsCached, type DiscoveredProject } from "$lib/projects-discover-cache";
 
   // #49: recents/favorites are FolderRef-shaped (key + precomputed displayName)
@@ -30,7 +22,7 @@
     title: string;
     openedAt: string;
     exists: boolean;
-    /** C2: absolute folder of the last-active book, for a repo-backed entry. */
+    /** Absolute folder of the last-active book, for a repo-backed entry. */
     lastActiveBook?: string;
   };
   type FavoriteFolder = { key: string; displayName: string; title: string; exists: boolean };
@@ -38,9 +30,8 @@
   let {
     onChosen,
     onOpenUrl,
-    onOpenGitHub,
+    onOpenBook,
     onNewProject,
-    onShowWelcome,
     onBrowse,
     currentProjectPath = null,
     currentProjectDisplayName = null,
@@ -52,11 +43,9 @@
     onChosen?: (path: string) => void;
     /** Called when user submits a URL. */
     onOpenUrl?: (url: string) => void;
-    /** Hand off to the GitHub connect flow. */
-    onOpenGitHub?: () => void;
-    /** Show the start screen over the workspace (left-panel mount only —
-     *  the start screen itself never passes this). */
-    onShowWelcome?: () => void;
+    /** Open the "Open a book" source picker (hosted by the page, outside any
+     *  transformed panel, so its fixed-position modal centres on the window). */
+    onOpenBook?: () => void;
     /** Hand off to the new-project wizard. */
     onNewProject?: () => void;
     /** Trigger a native folder picker and call onChosen with the result. */
@@ -78,19 +67,19 @@
   let favorites = $state<FavoriteFolder[]>([]);
   let discovered = $state<DiscoveredProject[]>([]);
   let loading = $state(false);
-  // M20: the recents/favorites load used to catch-and-ignore, so a failed
-  // load rendered the exact same "No recent projects yet" copy as a
-  // genuinely empty list — a lie that hides a real problem from the writer.
-  // Tracked per-surface (this component owns one load surface: recents +
+  // The recents/favorites load must not catch-and-ignore: a failed load would
+  // render the exact same "No recent books yet" copy as a genuinely empty
+  // list — a lie that hides a real problem from the writer. Tracked
+  // per-surface (this component owns one load surface: recents +
   // favorites, loaded together below) so the empty-state branch can tell
   // "failed" from "empty" apart and offer a working Retry instead of a
   // false all-clear.
   let lastLoadError = $state<string | null>(null);
-  // M20 (surface 3 — discover scan): tracked separately from `lastLoadError`
+  // Discover scan: tracked separately from `lastLoadError`
   // (recents/favorites) because it's a distinct background load with its own
   // section in the list. Without this, a failed scan (e.g. EACCES on a
-  // search root) and a genuinely empty scan both rendered as "no Discovered
-  // section at all" — indistinguishable from each other and, combined with
+  // search root) and a genuinely empty scan would both render as "no
+  // Discovered section at all" — indistinguishable from each other and, combined with
   // empty recents/favorites, from the top-level "no projects yet" empty
   // state too.
   let discoverError = $state<string | null>(null);
@@ -104,12 +93,11 @@
   }
 
   async function loadLists() {
-    if (!isDesktop()) return;
     loading = true;
     try {
       const [rawR, rawF] = await Promise.all([
-        getRecentFolders(),
-        getFavorites(),
+        api.app.getRecentFolders(),
+        api.app.getFavorites(),
       ]);
       recents = rawR.map((r) => ({
         key: r.path,
@@ -127,7 +115,7 @@
       }));
       lastLoadError = null;
     } catch {
-      // M20: surface this instead of swallowing — the empty-state branch
+      // Surface this instead of swallowing — the empty-state branch
       // below checks `lastLoadError` to avoid rendering the "no projects
       // yet" hint over a load that actually failed.
       lastLoadError = "Couldn't load your books.";
@@ -141,19 +129,18 @@
   }
 
   async function loadDiscovered() {
-    if (!isDesktop()) return;
     try {
       discovered = await discoverProjectsCached();
       discoverError = null;
     } catch {
-      // M20: surface this instead of swallowing — a scan failure (e.g.
-      // EACCES on a search root) must render observably differently from a
-      // genuinely empty scan, matching the recents/favorites and template
-      // load fixes. `discoverProjectsCached()` doesn't cache a rejection
-      // (see projects-discover-cache.ts), so calling this again — e.g. from
-      // the Retry button below — genuinely re-runs the scan rather than
-      // replaying a stale failure.
-      discoverError = "Couldn't discover projects on disk.";
+      // Surface this instead of swallowing — a scan failure (e.g. EACCES on a
+      // search root) must render observably differently from a genuinely empty
+      // scan, like the recents/favorites and template loads.
+      // `discoverProjectsCached()` doesn't cache a rejection (see
+      // projects-discover-cache.ts), so calling this again — e.g. from the
+      // Retry button below — genuinely re-runs the scan rather than replaying a
+      // stale failure.
+      discoverError = "Couldn't discover books on disk.";
     }
   }
 
@@ -216,8 +203,8 @@
   let filteredDiscovered = $derived.by<DiscoveredProject[]>(() => {
     // #49: dedup discovered against recents/favorites by FolderRef.key — plus
     // each recent's `lastActiveBook`. For a repo-backed entry `key` is the REPO
-    // ROOT while discovery returns BOOK folders, so keys alone never matched and
-    // a book already in Recents was listed again below (2026-07-29 audit).
+    // ROOT while discovery returns BOOK folders, so keys alone never match and
+    // a book already in Recents would be listed again below.
     const shown = new Set<string>([
       ...filteredFavorites.map((f) => f.key),
       ...filteredRecents.flatMap((r) => (r.lastActiveBook ? [r.key, r.lastActiveBook] : [r.key])),
@@ -269,13 +256,13 @@
 
   async function removeRecent(path: string, e: MouseEvent | KeyboardEvent) {
     e.stopPropagation();
-    await removeRecentCapability(path).catch(() => {});
+    await api.app.removeRecent(path).catch(() => {});
     await loadLists();
   }
 
   async function toggleFavorite(path: string, title: string, e: MouseEvent | KeyboardEvent) {
     e.stopPropagation();
-    await toggleFavoriteCapability(path, title).catch(() => {});
+    await api.app.toggleFavorite(path, title).catch(() => {});
     await loadLists();
   }
 
@@ -301,7 +288,7 @@
       onChosen?.(first.path);
       location = "";
     } else {
-      error = "No matching projects. Type a folder path or web address.";
+      error = "No matching books. Type a folder path or web address.";
     }
   }
 
@@ -310,8 +297,7 @@
       onBrowse();
       return;
     }
-    if (!isDesktop()) return;
-    const pathStr = await openDirectory();
+    const pathStr = await api.dialog.openDirectory();
     if (!pathStr) return;
     onChosen?.(pathStr);
   }
@@ -438,7 +424,7 @@
             {#each filteredRecents as recent, i}
               {@const rowIndex = filteredFavorites.length + i}
               {@const favorited = isFavorited(recent.key)}
-              <!-- C2: `key` (repo root for repo-backed entries) is the identity
+              <!-- `key` (repo root for repo-backed entries) is the identity
                    used for favorite/remove; `openPath` — the last-active book
                    when recorded, else `key` — is what actually opens. -->
               {@const openPath = recent.lastActiveBook ?? recent.key}
@@ -479,7 +465,7 @@
             <button type="button" class="retry-btn" onclick={() => loadLists()}>Retry</button>
           </div>
         {:else if !loading}
-          <p class="empty-section-hint">No recent projects yet. Open a folder to get started.</p>
+          <p class="empty-section-hint">No recent books yet. Open a folder to get started.</p>
         {/if}
       </section>
     {/if}
@@ -493,7 +479,7 @@
           {/if}
         </h3>
         {#if filteredDiscovered.length > 0}
-          <ul class="list" aria-label="Discovered projects">
+          <ul class="list" aria-label="Discovered books">
             {#each visibleDiscovered as proj, i}
               {@const rowIndex = filteredFavorites.length + filteredRecents.length + i}
               <li class="list-item">
@@ -533,27 +519,23 @@
     {/if}
 
     {#if !loading && allRows.length === 0 && effectiveFilter}
-      <p class="empty-hint">No projects match "{effectiveFilter}".</p>
+      <p class="empty-hint">No books match "{effectiveFilter}".</p>
     {/if}
   </div>
 
   <!-- Actions footer — omitted entirely when the host provides its own action
        surface (the start screen), so no empty bordered strip renders. -->
-  {#if onOpenGitHub || onNewProject || onShowWelcome}
+  {#if onOpenBook || onNewProject}
     <div class="actions-footer">
-      {#if onShowWelcome}
-        <button class="footer-action" onclick={onShowWelcome} title="Show the welcome screen">
-          <Icon name="book-open" size={14} /> Welcome screen
+      {#if onOpenBook}
+        <button class="footer-action" onclick={onOpenBook} title="Open a book from this computer or GitHub">
+          <Icon name="folder-open" size={14} /> Open book…
         </button>
       {/if}
-      {#if onOpenGitHub}
-        <button class="footer-action" onclick={onOpenGitHub} title="Open a project from GitHub">
-          <Icon name="github" size={14} /> Open from GitHub
-        </button>
-      {/if}
+      <!-- A reader (Settings → App) gets no New book; Open book stays. -->
       {#if onNewProject}
-        <button class="footer-action primary" onclick={onNewProject} title="Create a new book project">
-          <Icon name="plus" size={14} /> New project
+        <button class="footer-action primary" onclick={onNewProject} title="Create a new book">
+          <Icon name="plus" size={14} /> New book
         </button>
       {/if}
     </div>
@@ -590,7 +572,7 @@
     padding: 6px 8px;
     border-radius: 5px;
     font-size: 12px;
-    font-family: var(--app-font-mono);
+    font-family: inherit;
   }
   .location-input:focus {
     outline: 2px solid var(--app-focus-ring);
@@ -667,7 +649,7 @@
     gap: 4px;
   }
   .list-heading-count { font-weight: 500; letter-spacing: 0; text-transform: none; font-size: 10px; color: var(--app-text-muted); }
-  .empty-section-hint { font-size: 11px; color: var(--app-text-muted); margin: 2px 0 0 2px; font-style: italic; }
+  .empty-section-hint { font-size: 12px; color: var(--app-text-secondary); margin: 2px 0 0 2px; }
   .load-error {
     display: flex;
     align-items: center;
@@ -742,7 +724,7 @@
   .row-title { font-size: 12px; font-weight: 500; color: var(--app-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .row-path { font-size: 10px; color: var(--app-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--app-font-mono); }
   /* Fixed-width status label, laid out OUTSIDE the ellipsis-truncated .row-path span so
-     it survives regardless of path length (visual-gate round 1 finding). */
+     it survives regardless of path length. */
   .not-found-badge {
     flex-shrink: 0;
     font-size: 9px;
@@ -783,13 +765,13 @@
     flex-shrink: 0;
     display: flex;
     gap: 6px;
-    padding: 6px 10px;
+    padding: 8px 10px;
     border-top: 1px solid var(--app-border-subtle);
-    flex-wrap: wrap;
   }
   .footer-action {
+    flex: 1 1 0; min-width: 0; justify-content: center; white-space: nowrap;
     display: inline-flex; align-items: center; gap: 5px;
-    padding: 5px 10px; border-radius: 5px; font-size: 12px;
+    padding: 7px 10px; border-radius: 5px; font-size: 12px;
     cursor: pointer; background: var(--app-control-bg);
     border: 1px solid var(--app-control-border); color: var(--app-control-text);
   }

@@ -43,8 +43,7 @@ test("STATIC_MIME covers the shared extension table", () => {
   expect(STATIC_MIME[".css"]).toBe("text/css");
   expect(STATIC_MIME[".js"]).toBe("application/javascript");
   expect(STATIC_MIME[".woff2"]).toBe("font/woff2");
-  // 2026-07-28 duplication audit: added to close the divergence with
-  // asset-inline.ts's MIME_BY_EXT, which already had both (see static-serve.ts's
+  // Kept in step with asset-inline.ts's MIME_BY_EXT (see static-serve.ts's
   // header comment).
   expect(STATIC_MIME[".webp"]).toBe("image/webp");
   expect(STATIC_MIME[".avif"]).toBe("image/avif");

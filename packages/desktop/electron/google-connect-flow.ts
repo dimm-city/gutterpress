@@ -1,7 +1,7 @@
 /**
  * google-connect-flow.ts — the Google Drive OAuth "one connect at a time"
  * state trio behind publish:connectGoogleStart / publish:connectGoogleWait /
- * publish:connectGoogleCancel (#221, docs/gdrive-publish-plan.md D10),
+ * publish:connectGoogleCancel (#221, ADR 0011),
  * mirroring `electron/github-device-flow.ts` exactly.
  *
  * Unlike the GitHub device flow there is no user code to display — Google's
@@ -19,8 +19,7 @@
  *
  * `GoogleAuthProvider.connect()` would ALSO best-effort open the URL itself
  * by default (via the lib's own spawn-based `openPath()`). That is suppressed
- * here — `connectGoogleDrive`'s `openBrowser` override (added alongside this
- * fix) is passed a no-op — because Electron's `shell.openExternal` (via the
+ * here — `connectGoogleDrive`'s `openBrowser` override is passed a no-op — because Electron's `shell.openExternal` (via the
  * `openExternal` dep below, wired to `main.ts`'s existing http(s)-only gate)
  * is the reliable, sandboxed, already-validated path the rest of the app
  * uses for external links, and D10 specifies it explicitly. This class is
@@ -35,9 +34,8 @@ import type { TokenStore } from "gutterpress";
 // "gutterpress" — GoogleAuthProvider.connect()'s onAuthUrl callback just
 // takes a bare `url: string`, and the lib's own connectGoogleDrive() result
 // shape is `{ connected: true; email? }`, not what the IPC bridge returns).
-// These two are desktop-local wire shapes (shared-types.ts), reached here via
-// the single-import re-export convention bridge-types.ts documents.
-import type { GoogleConnectResult, GoogleConnectStartResult } from "./bridge-types";
+// These two are desktop-local wire shapes (shared-types.ts).
+import type { GoogleConnectResult, GoogleConnectStartResult } from "../src/lib/platform/shared-types";
 
 type LibModule = typeof import("gutterpress");
 
@@ -53,7 +51,7 @@ export interface GoogleConnectFlowDeps {
   /** Credential store the approved connection is written to. */
   tokenStore: TokenStore;
   /** Opens a URL in the system browser (host-side; validated http(s)-only —
-   *  see main.ts's `appHooksImpl.openExternal`). Failure is non-fatal: the
+   *  see main.ts's `desktopHooksImpl.openExternal`). Failure is non-fatal: the
    *  auth URL is already handed back from `start()` as a fallback link. */
   openExternal: (url: string) => Promise<void>;
 }

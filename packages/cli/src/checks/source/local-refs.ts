@@ -26,9 +26,7 @@ const check: Check = {
 
       // R5: a prose IMAGE must live inside the book. `proseImageRefError`
       // is the SAME predicate the build's `planImageCopies` rejects with,
-      // so this pre-build check can't drift from what the build enforces
-      // — it used to green-light an escaping ref that happened to exist and
-      // let the build fail later instead.
+      // so this pre-build check can't drift from what the build enforces.
       const escape = kind === "image" ? proseImageRefError(ref, ctx.inputDir) : null;
       if (escape) {
         results.push(
@@ -87,18 +85,17 @@ function filesystemRef(ref: string): string {
 /**
  * Does `ref` resolve to a real file on disk?
  *
- * TWO fixes over the previous version:
+ * Two rules:
  *
  * 1. **Percent-decode before probing.** `![](images/my%20photo.png)` is the
  *    only bracket-less spelling CommonMark actually renders for a filename
  *    containing a space, and `caf%C3%A9.png` is the standard escape for a
- *    non-ASCII name — both are correct references to real files, but
- *    `existsSync` was previously called on the still-encoded string, which
- *    never matches a real path. `static-serve.ts` already decodes on the
- *    serving side, so the check was failing builds over references the
- *    preview happily served. `decodeRef` (lib/asset-inline.ts) is reused
- *    rather than re-implemented — same bundle-safe pure string work the CSS
- *    `url()` resolver already relies on.
+ *    non-ASCII name — both are correct references to real files, but the
+ *    still-encoded string never matches a real path. `static-serve.ts`
+ *    decodes on the serving side, so probing undecoded would fail builds
+ *    over references the preview happily serves. `decodeRef`
+ *    (lib/asset-inline.ts) is reused rather than re-implemented — same
+ *    bundle-safe pure string work the CSS `url()` resolver already relies on.
  *
  * 2. **Resolve in the frame the BUILD actually uses**, which differs by ref
  *    kind:
@@ -106,9 +103,9 @@ function filesystemRef(ref: string): string {
  *        against the PROJECT ROOT by `planImageCopies` (book.html itself sits
  *        at the output root — see lib/asset-inline.ts). A chapter in a
  *        subfolder that writes `![cover](art/cover.png)` meaning
- *        "`<projectRoot>/art/cover.png`" was previously checked against
- *        `<chapterDir>/art/cover.png` instead, and a correct reference was
- *        reported as a build-failing error.
+ *        "`<projectRoot>/art/cover.png`" must not be checked against
+ *        `<chapterDir>/art/cover.png`, or a correct reference is reported as
+ *        a build-failing error.
  *      - A non-image LINK (e.g. one chapter linking to another markdown file)
  *        is probed relative to the LINKING file — an "author's intent exists
  *        on disk" check. The build concatenates every chapter into one

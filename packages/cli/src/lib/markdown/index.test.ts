@@ -12,13 +12,12 @@ import {
 } from "./index";
 
 /**
- * ARCH finding #2 — integration test REQUIRED by the work package: a manifest
- * with no `styles:` plus `styles/book.css` on disk must link `book.css` in a
- * real build, exercising the EXACT call chain `renderBook()` in
- * build-runner.ts uses (`resolveConfig` -> `renderChaptersToFile` ->
- * `renderChapters` -> `resolveActiveStyles` -> `assembleBookHtml`'s `<link>`
- * emission) — no puppeteer/Chromium needed since this is the HTML-assembly
- * stage, not pagination/PDF.
+ * Integration test: a manifest with no `styles:` plus `styles/book.css` on disk
+ * must link `book.css` in a real build, exercising the EXACT call chain
+ * `renderBook()` in build-runner.ts uses (`resolveConfig` ->
+ * `renderChaptersToFile` -> `renderChapters` -> `resolveActiveStyles` ->
+ * `assembleBookHtml`'s `<link>` emission) — no Chromium needed since this is
+ * the HTML-assembly stage, not pagination/PDF.
  *
  * Before the fix, `DTRPG_PRESET.styles` (`["css/print.css"]`) made
  * `resolveConfig` return a non-empty `styles` array for EVERY styles:-less
@@ -206,9 +205,9 @@ describe("renderChapters plugin styles (#238)", () => {
 });
 
 /**
- * resolveActiveMarkdownFiles (2026-07-28 duplication audit) — extracted out of
- * renderChapters's own inline fallback so validation-exec.ts and
- * lint-runner.ts can resolve "the book's markdown files" with the exact same
+ * resolveActiveMarkdownFiles — extracted out of
+ * renderChapters's own inline fallback so validation-exec.ts can resolve
+ * "the book's markdown files" with the exact same
  * logic renderChapters uses, instead of a separately-maintained recursive
  * glob. These pin down the two branches directly.
  */
@@ -260,8 +259,8 @@ test("resolveActiveMarkdownFiles: an empty configured-files array still falls ba
 });
 
 /**
- * ARCH finding #4 — `assemble.ts`'s render loop previously called
- * `md.render(content)` with NO env, so every `env.layoutWarnings`
+ * `assemble.ts`'s render loop once called `md.render(content)` with NO env,
+ * so every `env.layoutWarnings`
  * the marker plugin computed (8 typed, line-numbered author-mistake classes —
  * see markers.js's header) landed in markdown-it's own throwaway
  * internal env and was discarded before `renderChapters` ever returned.

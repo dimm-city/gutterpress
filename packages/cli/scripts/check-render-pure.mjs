@@ -2,9 +2,9 @@
 // ──────────────────────────────────────────────────────────────────────────
 // Purity gate for `gutterpress/render` (dist/render.js).
 //
-// The desktop's SPA (root CLAUDE.md §8 / ADR 0004) VALUE-imports this subpath
-// into the browser bundle — it must therefore contain zero Node-only code.
-// The 2026-07 regression this guards against: building render.ts in the same
+// This subpath is kept browser-safe for a future browser build (root
+// CLAUDE.md §8, src/render.ts) — it must therefore contain zero Node-only
+// code. The 2026-07 regression this guards against: building render.ts in the same
 // `bun build --splitting` invocation as the Node entrypoints let a shared
 // helper chunk (topped with `createRequire(import.meta.url)`) leak into the
 // render graph. Production survived only via rollup tree-shaking; `vite dev`
@@ -22,7 +22,7 @@
 //   - createRequire anywhere in the text.
 // Bare external package specifiers are left external by `--packages=external`
 // and cannot be inspected here; a node-only dependency would surface the
-// moment `vite dev` resolves it in the desktop, and keeping render.ts's
+// moment a browser bundler resolves it, and keeping render.ts's
 // dependency list tiny is the real control for that class. (The specifier
 // regexes are textual: a string literal that LOOKS like an import could
 // false-positive — acceptable for a loud, build-time gate on a 23KB file.)

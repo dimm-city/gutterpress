@@ -1,5 +1,5 @@
 /**
- * Snapshot-first, ALWAYS-CONVERGING sync (#15, ADR 0006 D5; converge ruling
+ * Snapshot-first, ALWAYS-CONVERGING sync (#15; converge ruling
  * 2026-08-14 — see converge-merge.ts).
  *
  * ONE operation: `syncProject` = snapshot-if-needed → `git.fetch` +
@@ -19,7 +19,7 @@
  * (`push: false` = pull-merge-only pass; owner decision 2026-08-23), so the
  * desktop's frequent ticks keep pulling while pushes batch up quietly.
  *
- * Snapshot-first invariant (ADR 0006 D5): sync commits any unsaved work
+ * Snapshot-first invariant: sync commits any unsaved work
  * BEFORE any network or merge step can touch it.
  *
  * There is NO conflict outcome and NO interactive resolution. The merge
@@ -30,7 +30,7 @@
  * deletion. Every version is reachable in history — "Previous versions" IS
  * the safety net.
  *
- * Failure model (ADR 0006 D5/D7): offline → friendly retry-later (the snapshot
+ * Failure model: offline → friendly retry-later (the snapshot
  * already saved the work locally); 401/403 → `{ status: "auth" }` for the
  * single "Reconnect" action; anything else → a friendly, jargon-free message.
  * Token values never appear in messages (transport errors are mapped, and the
@@ -40,10 +40,12 @@
 import { gitFs as fs } from "../git-fs.ts";
 
 import git from "isomorphic-git";
+import { randomUUID } from "node:crypto";
+import pkg from "../../../package.json" with { type: "json" };
 import { defaultGitHttp } from "./git-http.ts";
 
 import { resolveGitAuthor, withRepoLock } from "../source-provider.ts";
-import { resolveLogger } from "./operation-log.ts";
+import { errorLogData, type LogData, resolveLogger } from "./operation-log.ts";
 import { convergeMerge } from "./converge-merge.ts";
 import {
   MSG_BUSY,
@@ -127,8 +129,29 @@ export function isUnrelatedHistories(e: unknown): boolean {
   const code = (e as { code?: string })?.code;
   const msg = (e as Error)?.message ?? String(e);
   return (
-    code === "MergeNotSupportedError" ||
+    code === "UnrelatedHistoriesError" ||
     /unrelated histories|no common commits|refusing to merge unrelated/i.test(msg)
+  );
+}
+
+/**
+ * A damaged object file, seen through isomorphic-git's error masking: pako
+ * (its zlib) throws a plain STRING ("buffer error", "incorrect header
+ * check"), and isomorphic-git's command wrapper then crashes assigning
+ * `err.caller` to it — so the only trace is this TypeError, worded by the
+ * engine: V8 (Electron, Node) says "Cannot create property 'caller' on string
+ * …", JavaScriptCore (Bun: the CLI binary, the tests) says "Attempted to
+ * assign to readonly property." Retrying can never fix it, so it is reported
+ * as a damaged history, not a transient failure.
+ */
+function isDamagedObjectError(e: unknown): boolean {
+  return (
+    (e instanceof TypeError &&
+      /property 'caller' on string|^Attempted to assign to readonly property\.$/.test(e.message)) ||
+    // An object the history refers to is gone — e.g. an empty loose object
+    // git-fs removed that no pack held a copy of (a version only this
+    // computer ever had). The caller applies this only past the fetch stage.
+    (e as { code?: string })?.code === "NotFoundError"
   );
 }
 
@@ -136,7 +159,7 @@ export function isUnrelatedHistories(e: unknown): boolean {
  * Can this repo's history be read at all? Asked only AFTER a sync has already
  * failed, to tell a transient failure ("try again") apart from a damaged
  * history (trying again will never work). Deliberately a plain read of the
- * three things every sync needs — the branch tip, its commit, and the index —
+ * things every sync needs — the branch tip, its commit, its tree, and the index —
  * rather than a health taxonomy: the answer only has to pick the message.
  */
 async function historyUnreadable(dir: string): Promise<boolean> {
@@ -144,6 +167,8 @@ async function historyUnreadable(dir: string): Promise<boolean> {
     const oid = await git.resolveRef({ fs, dir, ref: "HEAD" });
     await git.readCommit({ fs, dir, oid });
     await git.listFiles({ fs, dir });
+    // The tip's tree as well as the index: a sync's merge reads it.
+    await git.listFiles({ fs, dir, ref: "HEAD" });
     return false;
   } catch {
     return true;
@@ -167,7 +192,7 @@ function defaultSleep(ms: number): Promise<void> {
 }
 
 /**
- * Snapshot-first sync (ADR 0006 D5). Serialized on the per-repo lock; one
+ * Snapshot-first sync. Serialized on the per-repo lock; one
  * function-scoped object cache, released on return.
  *
  * If someone pushes between our fetch and our push, the push is rejected and
@@ -185,239 +210,277 @@ export async function syncProject(
   const push = options.push ?? true;
   // Bounded, defaulted retry policy. attempts ≥ 1, backoffMs ≥ 0 (clamped so a
   // caller can never request an unbounded or negative-delay loop).
-  const attempts = Math.max(1, options.retry?.attempts ?? DEFAULT_SYNC_RETRY.attempts);
-  const backoffMs = Math.max(0, options.retry?.backoffMs ?? DEFAULT_SYNC_RETRY.backoffMs);
+  const requestedAttempts = options.retry?.attempts;
+  const attempts = Number.isFinite(requestedAttempts)
+    ? Math.min(10, Math.max(1, Math.floor(requestedAttempts!)))
+    : DEFAULT_SYNC_RETRY.attempts;
+  const requestedBackoff = options.retry?.backoffMs;
+  const backoffMs = Number.isFinite(requestedBackoff)
+    ? Math.min(30_000, Math.max(0, requestedBackoff!))
+    : DEFAULT_SYNC_RETRY.backoffMs;
   const sleep = options.retry?.sleep ?? defaultSleep;
   // A project is its git repo: sync operates on the enclosing repo root
   // (opening a subfolder syncs the whole repo — that is what Git does).
-  const dir = await repoDirFor(options.projectDir);
-
-  return withRepoLock(dir, async (): Promise<SyncOutcome> => {
-    // One logger per locked operation.
-    const logger = resolveLogger(options.logFile, "sync");
-    // One object cache for this sync only — released with it.
-    const cache: GitCache = {};
-    let snapshotId: string | undefined;
-    // Accumulated across passes: a pass that converged files keeps its report
-    // even if a later pass merges more.
-    let pulled = false;
-    let filesChanged = false;
-    const combinedFiles = new Set<string>();
-    const keptBothFiles: KeptBothFile[] = [];
-    const base = () => ({
-      ...(filesChanged ? { filesChanged: true } : {}),
-      ...(snapshotId ? { snapshotId } : {}),
+  const secrets = options.credential ? [options.credential.token] : [];
+  const logger = resolveLogger(options.logFile, "sync", {
+    context: { run: randomUUID(), version: pkg.version, platform: process.platform, node: process.version }, secrets,
+  });
+  const started = performance.now();
+  let stage = "repo";
+  const step = (next: string, data?: LogData) => {
+    stage = next;
+    logger.info(stage, "starting", data);
+  };
+  const finish = (outcome: SyncOutcome): SyncOutcome => {
+    logger.info("result", "sync complete", {
+      status: outcome.status, stage, push, elapsedMs: Math.round(performance.now() - started),
+      snapshot: outcome.snapshotId ?? "none", filesChanged: outcome.filesChanged ?? false,
     });
-    // The converge report rides on every arm that can have combined something:
-    // the "synced" arm, the exhausted-retries error, and a pull-merge-only
-    // pass's deferred-push return (it can merge overlapping edits and then
-    // hold the push). The plain `tip === remoteTip` up-to-date return cannot —
-    // reaching it means the merge fast-forwarded or no-op'd, combining nothing.
-    const convergeExtras = () => ({
-      ...(combinedFiles.size > 0 ? { combinedFiles: [...combinedFiles].sort() } : {}),
-      ...(keptBothFiles.length > 0 ? { keptBothFiles } : {}),
-    });
+    return outcome;
+  };
+  logger.info("sync", "starting sync", { push, attempts });
+  const run = async (): Promise<SyncOutcome> => {
+    step("repo");
+    const dir = await repoDirFor(options.projectDir);
+    step("lock");
+    return withRepoLock(dir, async (): Promise<SyncOutcome> => {
+      // One object cache for this sync only — released with it.
+      const cache: GitCache = {};
+      let snapshotId: string | undefined;
+      // Accumulated across passes: a pass that converged files keeps its report
+      // even if a later pass merges more.
+      let pulled = false;
+      let filesChanged = false;
+      const combinedFiles = new Set<string>();
+      const keptBothFiles: KeptBothFile[] = [];
+      const base = () => ({
+        ...(filesChanged ? { filesChanged: true } : {}),
+        ...(snapshotId ? { snapshotId } : {}),
+      });
+      // The converge report rides on every arm that can have combined something:
+      // the "synced" arm, the exhausted-retries error, and a pull-merge-only
+      // pass's deferred-push return (it can merge overlapping edits and then
+      // hold the push). The plain `tip === remoteTip` up-to-date return cannot —
+      // reaching it means the merge fast-forwarded or no-op'd, combining nothing.
+      const convergeExtras = () => ({
+        ...(combinedFiles.size > 0 ? { combinedFiles: [...combinedFiles].sort() } : {}),
+        ...(keptBothFiles.length > 0 ? { keptBothFiles } : {}),
+      });
 
-    try {
-      const branch = await currentBranchOrThrow(dir);
-      const transport = await resolveTransport(dir, options);
+      try {
+        step("branch");
+        const branch = await currentBranchOrThrow(dir);
+        step("transport");
+        const transport = await resolveTransport(dir, options);
+        if (transport.credential) {
+          secrets.push(transport.credential.token);
+          const username = transport.credential.kind === "github-oauth"
+            ? "x-access-token" : transport.credential.username || transport.credential.token;
+          secrets.push(Buffer.from(`${username}:${transport.credential.token}`).toString("base64"));
+        }
+        logger.info("transport", "resolved", { branch, remote: transport.remote, host: transport.host,
+          credential: Boolean(transport.credential) });
 
-      // Snapshot FIRST (D5) — commit the whole working tree before any network
-      // or merge step can touch it. A pull-merge-only pass defers this to the
-      // post-fetch snapshot below: nothing in that pass touches the working
-      // tree unless the remote moved (the fetch only writes under .git), and
-      // the merge-guard snapshot always runs before any merge does. That is
-      // what lets a quiet pull-only tick mint NO commit while the author
-      // types, instead of a snapshot per tick (the F4 "commit wall").
-      if (push) {
-        snapshotId = await snapshotBeforeAction({
-          projectDir: options.projectDir,
-          dir,
-          message: options.message,
-          authorName: options.authorName,
-          authorEmail: options.authorEmail,
-          cache,
-        });
-      }
-
-      for (let attempt = 0; attempt < attempts; attempt++) {
-        logger.info("sync", `sync pass ${attempt + 1}/${attempts}`);
-        const remoteTip = await fetchRemoteTip(dir, branch, transport, http, cache);
-
-        let localTip = await git.resolveRef({ fs, dir, ref: branch });
-        // …AND SNAPSHOT AGAIN, because the fetch above is a network round-trip
-        // and the author never stopped typing: the desktop editor's autosave
-        // fires 500 ms after the last keystroke, so an edit routinely reaches
-        // disk between the snapshot and the merge. It is in NO commit, and the
-        // merge ends in a checkout — leave it uncommitted and it is what the
-        // author just wrote AND the version that disappears. Committing it
-        // here makes it ordinary local work: the merge below combines it
-        // (markers if an online edit overlaps) instead of overwriting it, and
-        // the "did anything change?" reporting below is computed from a tip
-        // that already includes it, so a solo author's racing sync still
-        // reports plainly up-to-date. Reported as THE snapshot for this sync —
-        // it holds strictly more of the author's work than the earlier one.
-        // On a pull-merge-only pass this is the ONLY snapshot, taken exactly
-        // when it is needed: a merge (which ends in a checkout) is coming.
-        if (push || (remoteTip !== null && remoteTip !== localTip)) {
-          const lateSnapshot = await snapshotBeforeAction({
+        // Snapshot FIRST (D5) — commit the whole working tree before any network
+        // or merge step can touch it. A pull-merge-only pass defers this to the
+        // post-fetch snapshot below: nothing in that pass touches the working
+        // tree unless the remote moved (the fetch only writes under .git), and
+        // the merge-guard snapshot always runs before any merge does. That is
+        // what lets a quiet pull-only tick mint NO commit while the author
+        // types, instead of a snapshot per tick (the F4 "commit wall").
+        if (push) {
+          step("snapshot");
+          snapshotId = await snapshotBeforeAction({
             projectDir: options.projectDir,
             dir,
-            message: SYNC_LATE_EDIT_MESSAGE,
+            message: options.message,
             authorName: options.authorName,
             authorEmail: options.authorEmail,
             cache,
           });
-          if (lateSnapshot) {
-            snapshotId = lateSnapshot;
-            localTip = await git.resolveRef({ fs, dir, ref: branch });
-          }
         }
-        logger.info(
-          "sync",
-          `branch=${branch} local=${short(localTip)} fetched=${short(remoteTip)} snapshot=${snapshotId ? short(snapshotId) : "none"}`,
-        );
 
-        // The converge-merge ALWAYS lands: fast-forward when local is behind,
-        // no-op when already ahead, and a fixed-policy combine when both sides
-        // moved (markers for text, keep-both for binary, edit-beats-delete).
-        let tip = localTip;
-        if (remoteTip && remoteTip !== localTip) {
-          let converge;
-          try {
-            converge = await convergeMerge({
+        for (let attempt = 0; attempt < attempts; attempt++) {
+          logger.info("sync", `sync pass ${attempt + 1}/${attempts}`);
+          step("fetch", { attempt: attempt + 1, branch, remote: transport.remote });
+          const remoteTip = await fetchRemoteTip(dir, branch, transport, http, cache);
+
+          step("local-ref", { fetched: remoteTip ?? "none" });
+          let localTip = await git.resolveRef({ fs, dir, ref: branch });
+          // …AND SNAPSHOT AGAIN, because the fetch above is a network round-trip
+          // and the author never stopped typing: the desktop editor's autosave
+          // fires 500 ms after the last keystroke, so an edit routinely reaches
+          // disk between the snapshot and the merge. It is in NO commit, and the
+          // merge ends in a checkout — leave it uncommitted and it is what the
+          // author just wrote AND the version that disappears. Committing it
+          // here makes it ordinary local work: the merge below combines it
+          // (markers if an online edit overlaps) instead of overwriting it, and
+          // the "did anything change?" reporting below is computed from a tip
+          // that already includes it, so a solo author's racing sync still
+          // reports plainly up-to-date. Reported as THE snapshot for this sync —
+          // it holds strictly more of the author's work than the earlier one.
+          // On a pull-merge-only pass this is the ONLY snapshot, taken exactly
+          // when it is needed: a merge (which ends in a checkout) is coming.
+          if (push || (remoteTip !== null && remoteTip !== localTip)) {
+            step("snapshot-after-fetch");
+            const lateSnapshot = await snapshotBeforeAction({
+              projectDir: options.projectDir,
               dir,
-              cache,
-              branch,
-              theirs: remoteTip,
-              author: await resolveGitAuthor(dir, options.authorName, options.authorEmail),
+              message: SYNC_LATE_EDIT_MESSAGE,
               authorName: options.authorName,
               authorEmail: options.authorEmail,
+              cache,
+            });
+            if (lateSnapshot) {
+              snapshotId = lateSnapshot;
+              localTip = await git.resolveRef({ fs, dir, ref: branch });
+            }
+          }
+          logger.info(
+            "sync",
+            `branch=${branch} local=${short(localTip)} fetched=${short(remoteTip)} snapshot=${snapshotId ? short(snapshotId) : "none"}`,
+          );
+
+          // The converge-merge ALWAYS lands: fast-forward when local is behind,
+          // no-op when already ahead, and a fixed-policy combine when both sides
+          // moved (markers for text, keep-both for binary, edit-beats-delete).
+          let tip = localTip;
+          if (remoteTip && remoteTip !== localTip) {
+            let converge;
+            step("author");
+            const author = await resolveGitAuthor(dir, options.authorName, options.authorEmail);
+            try {
+              step("merge", { local: localTip, fetched: remoteTip });
+              converge = await convergeMerge({
+                dir,
+                cache,
+                branch,
+                theirs: remoteTip,
+                author,
+                onStep: step,
+                logger,
+                authorName: options.authorName,
+                authorEmail: options.authorEmail,
+              });
+            } catch (e) {
+              // Two unrelated projects must never be silently spliced together.
+              // NOTE the message names both causes: a destroyed ref store also
+              // lands here (sync's snapshot restarts the branch from nothing, so
+              // by this point the repo reads fine — it is simply unrelated now).
+              if (isUnrelatedHistories(e)) {
+                logger.warn(stage, "unrelated histories — refusing to combine", errorLogData(e));
+                return { status: "error", message: MSG_UNRELATED, ...base() };
+              }
+              throw e;
+            }
+            tip = converge.oid;
+            // `tip === localTip` is the no-op (`alreadyMerged`) case: we were
+            // already ahead of the online tip, so nothing came DOWN.
+            if (tip !== localTip) {
+              pulled = true;
+              // "Did the content change?" — compare the commits' tree ids
+              // (cheap, commit objects only). A merge that nets out to the same
+              // tree (e.g. both sides made the identical edit) needs no preview
+              // reload.
+              step("compare-trees");
+              const [before, after] = await Promise.all([
+                git.readCommit({ fs, dir, cache, oid: localTip }),
+                git.readCommit({ fs, dir, cache, oid: tip }),
+              ]);
+              filesChanged = filesChanged || before.commit.tree !== after.commit.tree;
+              for (const f of converge.combinedFiles) combinedFiles.add(f);
+              keptBothFiles.push(...converge.keptBothFiles);
+              if (converge.combinedFiles.length > 0) {
+                logger.info("sync", `combined with markers`, { files: converge.combinedFiles });
+              }
+            }
+          }
+
+          if (tip === remoteTip) {
+            logger.info("sync", `up-to-date`, { pulled });
+            return {
+              status: "up-to-date",
+              message: pulled ? MSG_UP_TO_DATE_PULLED : MSG_UP_TO_DATE,
+              ...base(),
+            };
+          }
+
+          // Pull-merge-only pass: local commits the remote lacks stay local —
+          // the next push-enabled pass sends them. Everything this pass was
+          // asked to do is done (remote work merged in, local work committed
+          // and safe), so it reports through the up-to-date arm; the converge
+          // report rides along because a pull-only merge CAN combine files.
+          if (!push) {
+            logger.info("sync", `pull-only pass complete — push deferred`, { pulled });
+            return {
+              status: "up-to-date",
+              message: pulled ? MSG_UP_TO_DATE_PULLED : MSG_UP_TO_DATE,
+              ...convergeExtras(),
+              ...base(),
+            };
+          }
+
+          // No pre-push "is the remote ahead?" history walk here: on a large
+          // repository an isDescendent walk over old history loads entire
+          // packfiles (gigabytes of RSS). The push rejection below is the
+          // authoritative guard — isomorphic-git refuses a non-fast-forward
+          // client-side against the fresh ref advertisement, and the server
+          // rejects any race after that.
+          step("push", { branch, local: tip, fetched: remoteTip ?? "none" });
+          try {
+            await git.push({
+              fs,
+              http,
+              dir,
+              cache,
+              remote: transport.remote,
+              ref: branch,
+              ...onAuthFor(transport.credential),
             });
           } catch (e) {
-            // Two unrelated projects must never be silently spliced together.
-            // NOTE the message names both causes: a destroyed ref store also
-            // lands here (sync's snapshot restarts the branch from nothing, so
-            // by this point the repo reads fine — it is simply unrelated now).
-            if (isUnrelatedHistories(e)) {
-              logger.warn("sync", "unrelated histories — refusing to combine");
-              return { status: "error", message: MSG_UNRELATED, ...base() };
-            }
-            throw e;
+            // Someone pushed between our fetch and our push. Re-run the pass:
+            // the next fetch brings their commits down and the merge converges
+            // them in. Back off briefly first (skip the sleep after the final
+            // attempt, since the loop is about to exit). Anything that is NOT a
+            // non-fast-forward rejection — a permission decline, a pre-receive
+            // hook — is NOT a race and must surface to the failure classifier.
+            if (!isPushRejected(e)) throw e;
+            logger.info("push", `push rejected (non-fast-forward) — retrying`, errorLogData(e));
+            if (attempt < attempts - 1 && backoffMs > 0) await sleep(backoffMs);
+            continue;
           }
-          tip = converge.oid;
-          // `tip === localTip` is the no-op (`alreadyMerged`) case: we were
-          // already ahead of the online tip, so nothing came DOWN.
-          if (tip !== localTip) {
-            pulled = true;
-            // "Did the content change?" — compare the commits' tree ids
-            // (cheap, commit objects only). A merge that nets out to the same
-            // tree (e.g. both sides made the identical edit) needs no preview
-            // reload.
-            const [before, after] = await Promise.all([
-              git.readCommit({ fs, dir, cache, oid: localTip }),
-              git.readCommit({ fs, dir, cache, oid: tip }),
-            ]);
-            filesChanged = filesChanged || before.commit.tree !== after.commit.tree;
-            for (const f of converge.combinedFiles) combinedFiles.add(f);
-            keptBothFiles.push(...converge.keptBothFiles);
-            if (converge.combinedFiles.length > 0) {
-              logger.info("sync", `combined with markers`, { files: converge.combinedFiles });
-            }
-          }
-        }
-
-        if (tip === remoteTip) {
-          logger.info("sync", `up-to-date`, { pulled });
+          logger.info("sync", `synced`, { pulled });
           return {
-            status: "up-to-date",
-            message: pulled ? MSG_UP_TO_DATE_PULLED : MSG_UP_TO_DATE,
-            ...base(),
-          };
-        }
-
-        // Pull-merge-only pass: local commits the remote lacks stay local —
-        // the next push-enabled pass sends them. Everything this pass was
-        // asked to do is done (remote work merged in, local work committed
-        // and safe), so it reports through the up-to-date arm; the converge
-        // report rides along because a pull-only merge CAN combine files.
-        if (!push) {
-          logger.info("sync", `pull-only pass complete — push deferred`, { pulled });
-          return {
-            status: "up-to-date",
-            message: pulled ? MSG_UP_TO_DATE_PULLED : MSG_UP_TO_DATE,
+            status: "synced",
+            message: pulled ? MSG_SYNCED_MERGED : MSG_SYNCED,
+            mergedRemoteChanges: pulled,
             ...convergeExtras(),
             ...base(),
           };
         }
 
-        // No pre-push "is the remote ahead?" history walk here: on a large
-        // repository an isDescendent walk over old history loads entire
-        // packfiles (gigabytes of RSS). The push rejection below is the
-        // authoritative guard — isomorphic-git refuses a non-fast-forward
-        // client-side against the fresh ref advertisement, and the server
-        // rejects any race after that.
-        try {
-          await git.push({
-            fs,
-            http,
-            dir,
-            cache,
-            remote: transport.remote,
-            ref: branch,
-            ...onAuthFor(transport.credential),
-          });
-        } catch (e) {
-          // Someone pushed between our fetch and our push. Re-run the pass:
-          // the next fetch brings their commits down and the merge converges
-          // them in. Back off briefly first (skip the sleep after the final
-          // attempt, since the loop is about to exit). Anything that is NOT a
-          // non-fast-forward rejection — a permission decline, a pre-receive
-          // hook — is NOT a race and must surface to the failure classifier.
-          if (!isPushRejected(e)) {
-            // Log WHY first: the classifier folds anything it doesn't know
-            // into a generic "try again", and an online copy's refusal reason
-            // (e.g. "push declined due to email privacy restrictions") exists
-            // only in this error's message. One line, and any URL's
-            // `user:token@` stripped — the operation log never holds secrets.
-            const err = e as { code?: string; name?: string; message?: string };
-            logger.warn("sync", "push failed", {
-              code: err?.code ?? err?.name,
-              error: String(err?.message ?? e)
-                .replace(/\s+/g, " ")
-                .trim()
-                .replace(/\/\/[^/\s]*@/g, "//"),
-            });
-            throw e;
-          }
-          logger.info("sync", `push rejected (non-fast-forward) — retrying`);
-          if (attempt < attempts - 1 && backoffMs > 0) await sleep(backoffMs);
-          continue;
+        logger.error("sync", `exhausted ${attempts} retry attempts (race)`);
+        return { status: "error", message: MSG_BUSY, ...convergeExtras(), ...base() };
+      } catch (e) {
+        logger.warn(stage, `${stage} failed`, errorLogData(e));
+        const setupMsg = setupErrorMessage(e);
+        if (setupMsg) return { status: "error", message: setupMsg, ...base() };
+        // A damaged history must not be reported as a transient failure: "please
+        // try again" is false when trying again can never work.
+        if ((stage !== "fetch" && isDamagedObjectError(e)) || (await historyUnreadable(dir))) {
+          logger.error("sync", "the book's history could not be read");
+          return { status: "error", message: MSG_HISTORY_UNREADABLE, ...base() };
         }
-        logger.info("sync", `synced`, { pulled });
-        return {
-          status: "synced",
-          message: pulled ? MSG_SYNCED_MERGED : MSG_SYNCED,
-          mergedRemoteChanges: pulled,
-          ...convergeExtras(),
-          ...base(),
-        };
+        return { ...failureOutcome(e, snapshotId), ...(filesChanged ? { filesChanged: true } : {}) };
       }
-
-      logger.error("sync", `exhausted ${attempts} retry attempts (race)`);
-      return { status: "error", message: MSG_BUSY, ...convergeExtras(), ...base() };
-    } catch (e) {
-      const setupMsg = setupErrorMessage(e);
-      if (setupMsg) return { status: "error", message: setupMsg, ...base() };
-      // A damaged history must not be reported as a transient failure: "please
-      // try again" is false when trying again can never work.
-      if (await historyUnreadable(dir)) {
-        logger.error("sync", "the project's history could not be read");
-        return { status: "error", message: MSG_HISTORY_UNREADABLE, ...base() };
-      }
-      return { ...failureOutcome(e, snapshotId), ...(filesChanged ? { filesChanged: true } : {}) };
-    }
-  });
+    });
+  };
+  try {
+    return finish(await run());
+  } catch (e) {
+    logger.warn(stage, `${stage} failed`, errorLogData(e));
+    return finish(failureOutcome(e));
+  }
 }
 
 /**

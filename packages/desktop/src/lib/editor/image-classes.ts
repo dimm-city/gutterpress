@@ -16,15 +16,15 @@
  * position facet, so "Set position…" rewrites it to the live `gp-*` name
  * in place instead of appending a second class beside a dead one.
  *
- * The tokenizer/facet-setter pairs below exist for one reason: the old
- * `parsePosition`-regex + rebuild-from-scratch write path silently DROPPED
- * every token it didn't recognize (`.gp-small`, `.my-note`, `#fig`,
- * `key=val`) whenever the user edited width or position. All editing is
- * therefore token-preserving: parse the `{…}` suffix into verbatim tokens,
+ * The tokenizer/facet-setter pairs below exist for one reason: a
+ * regex + rebuild-from-scratch write path silently DROPS every token it
+ * doesn't recognize (`.gp-small`, `.my-note`, `#fig`, `key=val`) whenever
+ * the user edits width or position. All editing is therefore
+ * token-preserving: parse the `{…}` suffix into verbatim tokens,
  * replace only the facet being changed (in place, order kept), serialize
  * the rest untouched.
  *
- * PWA-clean and Svelte-free (ADR 0004): pure data + pure string functions,
+ * PWA-clean and Svelte-free (CLAUDE.md §8): pure data + pure string functions,
  * directly `bun test`-able — same posture as `context-menu-actions.ts`.
  */
 
@@ -203,8 +203,8 @@ export function getWidth(tokens: readonly string[]): string {
  * flow floats on their own, pin edges once `.gp-pin` is present. So which
  * tokens make up "the position" depends on whether the image is pinned,
  * and treating position as a single token silently corrupts pinned images
- * (clearing `{.gp-pin .gp-bottom .gp-right}` used to drop only `.gp-pin`,
- * leaving `.gp-right` as a live right float instead of an inline image).
+ * (clearing `{.gp-pin .gp-bottom .gp-right}` by dropping only `.gp-pin`
+ * leaves `.gp-right` as a live right float instead of an inline image).
  */
 export const IMAGE_PIN_CLASS = "gp-pin";
 const PIN_EDGE_CLASSES: readonly string[] = ["gp-top", "gp-bottom", "gp-left", "gp-right"];

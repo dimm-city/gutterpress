@@ -362,7 +362,7 @@ export default defineCommand({
 
       const effectiveTargets = targets ?? [...PRESETS[preset as PresetId].defaultTargets];
 
-      console.log(`Created project: ${result.projectDir}`);
+      console.log(`Created book: ${result.projectDir}`);
       console.log(`  manifest: ${result.manifestPath}`);
       console.log(`  publish targets: ${effectiveTargets.length > 0 ? effectiveTargets.join(", ") : "none"}`);
       console.log(`  start writing in: ${result.openFile}`);
@@ -407,13 +407,12 @@ export default defineCommand({
     } catch (e) {
       const err = e as CreateProjectError;
       const code = err && typeof err.code === "string" ? err.code : "scaffold-io";
-      console.error(`Could not create project: ${err?.message ?? String(e)}`);
+      console.error(`Could not create book: ${err?.message ?? String(e)}`);
       // M47: map onto the one exit-code contract. "target-exists" /
       // "invalid-name" / "parent-not-writable" are all bad-input preconditions
       // the author chose (a usage error, code 2); "scaffold-io" is an
       // operational I/O failure during the scaffold itself (a pipeline
-      // failure, code 3) — previously inverted (target-exists got the
-      // "pipeline" code 3, everything else including scaffold-io got 2).
+      // failure, code 3).
       process.exit(code === "scaffold-io" ? EXIT_CODES.PIPELINE : EXIT_CODES.USAGE);
     }
   },

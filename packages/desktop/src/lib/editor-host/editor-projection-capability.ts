@@ -1,33 +1,16 @@
 /**
- * Editor-projection capability (SFE-P5b/SFE-P3e). Replaces
- * `getPlatform().buildEditorProjection`, `+page.svelte`'s only call site.
+ * The rich editor's one host call: the plugin-aware projection of a chapter,
+ * built host-side by `routes/api/editor/projection` (see
+ * `$lib/server/editor-projection`) and reached through the `api` wrapper like
+ * every other host capability (CLAUDE.md §8).
  *
- * Kept as its own small module even though the forwarding itself is a pure
- * 1:1 delegation with no marshalling: this capability's D14 diagnostic
- * contract (`EditorProjectionOutcome`) is worth a stable, independently
- * discoverable/testable seam of its own, next to `desktop-document-host.ts`
- * in this same directory — the one deliberate exception to "pure forwarding
- * dies" (capability-map.md §3).
- *
- * Because this is the declared exception, its DTOs live here too, not in
- * `platform/contract.ts` — the run specification's "DTOs move to their
- * owning capability" constraint applied literally, not just the forwarding
- * function. `contract.ts`'s `ElectronBridge.buildEditorProjection` imports
- * `EditorProjectionArgs`/`EditorProjectionOutcome` back from here with a
- * type-only import; that is a circular *module* reference (this file also
- * imports the value `bridge` from `./bridge`, which imports the type
- * `ElectronBridge` from `contract.ts`) but not a circular *runtime*
- * reference — `import type` is erased before bundling, so no runtime cycle
- * exists.
+ * The DTOs live here, renderer-side (D4: renderer types are decoupled from
+ * the lib/host); the route module carries the same shapes, kept in sync by
+ * hand.
  */
-// Relative import, not the `$lib/platform/bridge` alias every other
-// capability module uses: `contract.ts` type-imports this file's DTOs back
-// (see this file's own header), and `contract.ts` is transitively pulled
-// into `electron/tsconfig.json`'s separate TS program (via
-// `electron/main.ts` → `persistence-failures.ts` → `platform/contract.ts`),
-// which has no `$lib` path mapping. A relative import resolves in both
-// programs; `$lib/...` only resolves in the SvelteKit/SPA one.
-import { bridge } from "../platform/bridge";
+// Relative import (not `$lib/api`): this file is also reachable from
+// `electron/tsconfig.json`'s separate TS program, which has no `$lib` mapping.
+import { api } from "../api";
 import type { GutterpressProjection } from "gutterpress/render";
 
 /** Arguments for {@link buildEditorProjection} (SFE-P3e). No `FolderRef`
@@ -87,5 +70,5 @@ export type EditorProjectionOutcome =
  * hard-failure shapes, never a rejection for either.
  */
 export function buildEditorProjection(args: EditorProjectionArgs): Promise<EditorProjectionOutcome> {
-  return bridge().buildEditorProjection(args);
+  return api.editor.projection({ ...args }) as Promise<EditorProjectionOutcome>;
 }

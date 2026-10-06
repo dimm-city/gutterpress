@@ -121,16 +121,10 @@ describe("removed manifest shapes fail with the rewrite spelled out (#265)", () 
   });
 });
 
-// ── ARCH finding #24 — characterization tests for resolveConfig's three-way
-// merge (cli > manifest > preset), written BEFORE collapsing the ~40
-// hand-written `c.x ?? m.x ?? preset.x` lines into a small typed deep-merge.
-// These pin the MERGE PRECEDENCE at every nesting depth resolveConfig
-// supports today (top-level scalar, one level deep, two levels deep, and the
-// `validate.checks` dictionary) so the refactor is provably
-// behavior-preserving. Fields that finding #2/#24 deliberately CHANGE
-// (`styles`'s preset default, `allowedCallouts`) are characterized
-// separately, below, as "before" (bug) / "after" (fix) pairs — not locked in
-// here.
+// ── Characterization tests for resolveConfig's three-way merge (cli >
+// manifest > preset). These pin the MERGE PRECEDENCE at every nesting depth
+// resolveConfig supports (top-level scalar, one level deep, two levels deep,
+// and the `validate.checks` dictionary).
 describe("resolveConfig — the removed `engine` and `engineStyles` fields fail, naming the replacement (#266)", () => {
   // Stale manifests are the input here, so the fixtures deliberately carry
   // fields the type no longer declares.
@@ -323,7 +317,7 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
   });
 });
 
-// ── ARCH finding #24 — deprecated-field warnings fire once per process and
+// ── Deprecated-field warnings fire once per process and
 // don't affect the resolved config's shape ──────────────────────────────────
 describe("resolveConfig deprecation warnings (finding #24)", () => {
   test("a manifest `output.html` triggers exactly one warning across repeated resolveConfig calls", () => {
@@ -347,7 +341,7 @@ describe("resolveConfig deprecation warnings (finding #24)", () => {
   });
 });
 
-// ── ARCH finding #12 (PR #98, maintainer HIGH) — an EXPLICIT --manifest path
+// ── PR #98 — an EXPLICIT --manifest path
 // that doesn't exist is a user error (typo) and must fail loudly, unlike the
 // legitimate "no --manifest given, scan the project dir" case, which remains
 // available to tolerant callers such as live preview ─────────────────────────

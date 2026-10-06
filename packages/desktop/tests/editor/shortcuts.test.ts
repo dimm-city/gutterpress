@@ -65,19 +65,12 @@ test("Cmd/Ctrl+S (no shift) is NOT a snippet shortcut", () => {
   ).toBe("none");
 });
 
-test("Cmd/Ctrl+Shift+F toggles focus mode (lowercase)", () => {
-  expect(
-    resolveGlobalShortcut({ ctrlOrMeta: true, shift: true, key: "f" }),
-  ).toBe<GlobalShortcutCommand>("focus-mode");
+test("Cmd/Ctrl+Shift+F is plain find now — Focus is the toolbar toggle and Esc (0.11.7)", () => {
+  expect(resolveGlobalShortcut({ ctrlOrMeta: true, shift: true, key: "f" })).toBe("find");
+  expect(resolveGlobalShortcut({ ctrlOrMeta: true, shift: true, key: "F" })).toBe("find");
 });
 
-test("Cmd/Ctrl+Shift+F toggles focus mode (uppercase)", () => {
-  expect(
-    resolveGlobalShortcut({ ctrlOrMeta: true, shift: true, key: "F" }),
-  ).toBe("focus-mode");
-});
-
-test("Cmd/Ctrl+F (no shift) is NOT focus mode — it is the global find (2026-08-15)", () => {
+test("Cmd/Ctrl+F is not a preview-nav command — it is the global find (2026-08-15)", () => {
   expect(
     resolveGlobalShortcut({ ctrlOrMeta: true, shift: false, key: "f" }),
   ).toBe("find");
@@ -174,7 +167,7 @@ test("Cmd/Ctrl+F is NOT fit-width (browser find is left alone)", () => {
   ).toBe("none");
 });
 
-test("Cmd/Ctrl+Shift+F is NOT a preview-nav command (no fit-width collision with focus mode)", () => {
+test("Cmd/Ctrl+Shift+F is NOT a preview-nav command (no fit-width collision)", () => {
   expect(
     resolvePreviewNavCommand({ ctrlOrMeta: true, shift: true, key: "f" }),
   ).toBe("none");
@@ -192,30 +185,11 @@ test("unknown keys resolve to none", () => {
   ).toBe("none");
 });
 
-test("Cmd/Ctrl+F resolves to find; Ctrl+Shift+F stays focus-mode (global find, 2026-08-15)", () => {
+test("Cmd/Ctrl+F resolves to find (global find, 2026-08-15)", () => {
   expect(resolveGlobalShortcut({ ctrlOrMeta: true, shift: false, key: "f" })).toBe("find");
   expect(resolveGlobalShortcut({ ctrlOrMeta: true, shift: false, key: "F" })).toBe("find");
-  expect(resolveGlobalShortcut({ ctrlOrMeta: true, shift: true, key: "f" })).toBe("focus-mode");
 });
 
 test("bare f (preview fit-width) stays untouched by the find shortcut", () => {
   expect(resolveGlobalShortcut({ ctrlOrMeta: false, shift: false, key: "f" })).toBe("none");
-});
-
-// The browser's zoom keys are the app's: they zoom the surface on screen
-// (preview or paged editor), and the Electron menu no longer carries the
-// roles that would have zoomed the whole window.
-test("Cmd/Ctrl+= and Cmd/Ctrl++ zoom in", () => {
-  expect(resolveGlobalShortcut({ ctrlOrMeta: true, shift: false, key: "=" })).toBe("zoom-in");
-  expect(resolveGlobalShortcut({ ctrlOrMeta: true, shift: true, key: "+" })).toBe("zoom-in");
-});
-
-test("Cmd/Ctrl+- zooms out and Cmd/Ctrl+0 resets to fit-width", () => {
-  expect(resolveGlobalShortcut({ ctrlOrMeta: true, shift: false, key: "-" })).toBe("zoom-out");
-  expect(resolveGlobalShortcut({ ctrlOrMeta: true, shift: false, key: "0" })).toBe("zoom-reset");
-});
-
-test("the zoom keys without the modifier are not global shortcuts", () => {
-  expect(resolveGlobalShortcut({ ctrlOrMeta: false, shift: false, key: "=" })).toBe("none");
-  expect(resolveGlobalShortcut({ ctrlOrMeta: false, shift: false, key: "0" })).toBe("none");
 });

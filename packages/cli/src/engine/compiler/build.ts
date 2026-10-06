@@ -370,7 +370,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // Viewport-relative units (vw/vh — 143 uses in one real book) resolve
     // against the LAYOUT viewport even in print, so print output silently
     // depends on whatever window/emulation state the browser happens to be
-    // in: an engine-launched window, a pooled puppeteer default, or the
+    // in: an engine-launched window, a host-launched browser's default, or the
     // width check's cleared override each gave DIFFERENT sizes — measured
     // as a 0.84x shrink-to-fit on one path and none on another, for the
     // same document. Pin the viewport to the author's page size before
@@ -386,15 +386,16 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // The pinned viewport is a MEASUREMENT device: every audit, the width
     // check and the viewer prediction read boxes laid out inside it, so it
     // must be the sheet — not the sheet minus a scrollbar. Chromium only
-    // hides scrollbars if something asks, and until this line nothing in the
-    // print path did: the CLI's browser is launched by puppeteer, which
-    // passes `--hide-scrollbars` in its defaults, and the desktop's Electron
-    // `BrowserWindow` is not. Measured 2026-08-24, same staged bytes: 576px
+    // hides scrollbars if something asks: the CLI's browser is launched by
+    // `launchChromium` with `--hide-scrollbars` among its default flags, and
+    // the desktop's Electron `BrowserWindow` is not. Measured 2026-08-24,
+    // same staged bytes: 576px
     // on the CLI and 561px on the desktop, and one box that measured 450px
     // against a 442px limit on the CLI measured 435px on the desktop — a hard
     // error on one host, a shipped book on the other, and 8 of 21 low-DPI
     // warnings on a real book that the desktop author never saw. Owned here
-    // so no host can contribute it (docs/analysis/cli-desktop-print-parity.md).
+    // so no host can contribute it (build.measurement-viewport.test.ts asserts
+    // the invariant; the CLI↔desktop measurement is recorded in PR #186/#187).
     await page.send("Emulation.setScrollbarsHidden", { hidden: true });
     await page.send("Emulation.setDeviceMetricsOverride", sheetViewport);
 
@@ -654,8 +655,8 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       if (opts.allowShrink) {
         // The measured numbers have to travel on the DIAGNOSTICS channel, not
         // `log`: `log` is `opts.onProgress`, which the product build paths
-        // (`buildNativePdf`) never supply — opting IN used to make the report
-        // strictly less informative than the error it replaced.
+        // (`buildNativePdf`) never supply, so `log` would make opting IN
+        // strictly less informative than the error it replaces.
         if (scale !== null) diagnose("engine.width.overflow", `${headline}.`);
         for (const o of widthOffenders.boxes)
           diagnose(
@@ -1118,8 +1119,8 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // this pipeline's PDF rasterized at 96dpi, solid-color pin + text block):
     // a within-bounds pin under `.page { overflow-x: clip }` (a real book's
     // declaration) printed pixel-identical to the uncontained page — image
-    // whole, still under the text — while the old any-clipping-ancestor test
-    // warned on it. What DOES cut art, all measured to the pixel: an
+    // whole, still under the text — so "any clipping ancestor" is the wrong
+    // test. What DOES cut art, all measured to the pixel: an
     // ancestor in the element's containing-block chain cuts exactly the part
     // of the border box past its padding-box edge on an axis whose overflow
     // is not `visible` (a mid-page clip edge at x=54 cut a 20px overhang at
@@ -1134,7 +1135,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     //
     // Unreferenced @page image: Chromium fetches a `url()` referenced only
     // from inside an `@page` rule and then paints nothing — the sheet prints
-    // with its background colour alone (docs/known-limitations.md §3, #152).
+    // with its background color alone (docs/known-limitations.md §3, #152).
     // MEASURED on Chrome 151.0.7922.75, 96dpi raster, mean absolute pixel
     // difference against the same page with no background image: the sole
     // reference scores 0.0000, and a `<link rel="preload" as="image">` or an
@@ -1370,7 +1371,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       for (const hit of pageBackgrounds)
         diagnose(
           "engine.page-background.unreferenced",
-          `"${hit.url}" is only referenced from "${hit.where}", and Chromium will not print an image referenced nowhere else — the page prints with its background colour alone, with no error. Gutterpress stages and preloads every image your project stylesheets reference, so this one is outside that: it is remote (a url(https://...), which is never staged), or it comes from CSS that does not pass through your stylesheets, or an element in the document uses the same URL as its src, which drops it on its own. Use a local image, referenced from one of your project stylesheets, and not also used as an <img>.`,
+          `"${hit.url}" is only referenced from "${hit.where}", and Chromium will not print an image referenced nowhere else — the page prints with its background color alone, with no error. Gutterpress stages and preloads every image your book's stylesheets reference, so this one is outside that: it is remote (a url(https://...), which is never staged), or it comes from CSS that does not pass through your stylesheets, or an element in the document uses the same URL as its src, which drops it on its own. Use a local image, referenced from one of your book's stylesheets, and not also used as an <img>.`,
         );
       if (pageBackgrounds.length)
         log(`audit: ${pageBackgrounds.length} unreferenced @page background image(s)`);
@@ -1544,13 +1545,11 @@ async function findWidthOffenders(
   // Each page context gets its OWN limit, and elements are compared against
   // the page they actually land on.
   //
-  // This used to be one document-wide `Math.max`, which meant a single
-  // `@page full { margin: 0 }` — the ordinary way to author a full-bleed art
-  // plate — lifted the bar to the whole sheet for EVERY page, so over-wide
-  // content on ordinary margined pages went unreported. That is precisely
-  // what hid the field guide's 696 -> 697px overflow (its real limit became
-  // the 828px sheet, leaving the offense 131px under the bar) for the four
-  // months it took to find it the expensive way. The plate is legitimate ON
+  // Not one document-wide `Math.max`: a single `@page full { margin: 0 }` —
+  // the ordinary way to author a full-bleed art plate — would lift the bar to
+  // the whole sheet for EVERY page, so over-wide content on ordinary margined
+  // pages would go unreported (that hid the field guide's 696 -> 697px
+  // overflow for four months). The plate is legitimate ON
   // ITS OWN page; the point is that its page's width is not every page's
   // width.
   const contentPxOf = (c: (typeof contexts)[number]) =>

@@ -1,6 +1,6 @@
 /**
  * Unit tests for pdf-parse.ts's Ghostscript-backed ink coverage reader
- * (finding #51): `getPerPageInkCoverage` must return a discriminated result
+ * `getPerPageInkCoverage` must return a discriminated result
  * (`{ ok: true, pages }` | `{ ok: false, error }`) instead of swallowing every
  * gs failure (crash, corrupt PDF, missing binary) into an indistinguishable
  * empty array — which previously made the ink-coverage check silently PASS a
@@ -84,10 +84,9 @@ test("getPerPageInkCoverage returns ok:false (not an empty ok:true) when gs exit
 
   const result = await getPerPageInkCoverage("/fake/corrupt.pdf");
 
-  // The old behavior returned [] here — indistinguishable from a
-  // legitimately empty (0-page) PDF. That silent pass is exactly what
-  // finding #51 flags: this MUST be a distinguishable failure, not a
-  // same-shape empty success.
+  // Returning [] here would be indistinguishable from a legitimately empty
+  // (0-page) PDF — a silent pass. This MUST be a distinguishable failure,
+  // not a same-shape empty success.
   expect(result).not.toEqual({ ok: true, pages: [] });
   expect(result.ok).toBe(false);
 });

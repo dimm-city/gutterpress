@@ -24,8 +24,6 @@
  * that's what it has access to in the real app).
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { Window } from "happy-dom";
 import { PreviewClient } from "../../src/lib/preview-client";
 
@@ -166,21 +164,56 @@ describe("PreviewClient postMessage origin/source validation (M31)", () => {
 });
 
 /**
- * Bridge protocol v4 (docs/inline-editing-plan.md §3.4): the
- * contextMenuRequested event round-trip through PreviewClient, following the
- * M31 origin/source-gated pattern above.
- *
- * SFE-P4: this describe block used to also cover `PreviewClient
- * .getContextTargetAt()` — a command WRAPPER with no production caller
- * (`ContextMenuController` reads its target from `contextMenuRequested`'s
- * own event detail, assembled book-side; see
- * docs/plans/source-first-editor/mutation-inventory.md §1.5). Deleted along
- * with the rest of the block-edit/mutation surface; the book-side
- * `getContextTargetAt` COMMAND itself is untouched and still produces
- * `contextMenuRequested`'s payload — this file's remaining test proves that
- * payload still reaches `PreviewClient.on()` listeners correctly.
+ * Bridge protocol v4 (docs/inline-editing-plan.md §3.4): getContextTargetAt()
+ * command wrapper + the contextMenuRequested event round-trip through
+ * PreviewClient, following the M31 origin/source-gated pattern above.
  */
 describe("PreviewClient context-menu bridge (protocol v4)", () => {
+  test("getContextTargetAt() sends the command with its point argument", () => {
+    const c = new PreviewClient();
+    const frameWin = fakeFrameWindow();
+    c.setExpectedOrigin("http://127.0.0.1:3579/");
+    c.attach(frameWin as unknown as Window);
+
+    c.getContextTargetAt({ x: 12, y: 34 }).catch(() => {});
+    expect(frameWin.calls.length).toBe(1);
+    const sent = frameWin.calls[0]!.msg as { cmd: string; args: unknown[] };
+    expect(sent.cmd).toBe("getContextTargetAt");
+    expect(sent.args).toEqual([{ x: 12, y: 34 }]);
+
+    c.detach();
+  });
+
+  test("getContextTargetAt() resolves with the reply's ContextTarget payload", async () => {
+    const c = new PreviewClient();
+    const frameWin = fakeFrameWindow();
+    c.setExpectedOrigin("http://127.0.0.1:3579/");
+    c.attach(frameWin as unknown as Window);
+
+    const payload = {
+      kind: "block" as const,
+      chapter: "a.md",
+      range: [4, 5] as [number, number],
+      blockTag: "p",
+      split: false,
+      ref: "p-ref",
+      rect: { top: 1, left: 2, width: 3, height: 4 },
+      image: null,
+      link: null,
+      selection: null,
+    };
+    const p = c.getContextTargetAt({ x: 1, y: 1 });
+    const id = 1; // first call() in a fresh client always gets id 1
+    dispatchMessage(
+      { type: "gutterpress:reply", id, ok: true, result: payload },
+      "http://127.0.0.1:3579",
+      frameWin,
+    );
+
+    c.detach();
+    await expect(p).resolves.toEqual(payload);
+  });
+
   test("a genuine contextMenuRequested event round-trips through on() with its full detail", () => {
     const c = new PreviewClient();
     const frameWin = fakeFrameWindow();
@@ -223,57 +256,5 @@ describe("PreviewClient context-menu bridge (protocol v4)", () => {
     expect(received[0]).toEqual({ name: "contextMenuRequested", detail });
 
     c.detach();
-  });
-});
-
-/**
- * The frame must be attached at MOUNT, not on the iframe's `load` event.
- *
- * `PreviewClient`'s M31 guard drops every message until `attach()` has named a
- * window — with no replay. Gating that on the outer iframe's `load` left a real
- * window in which the host discarded the frame's own lifecycle events: `load`
- * waits for the preview shell's whole subtree (the book iframe and all its
- * subresources), while the book paginates on its own DOMContentLoaded and posts
- * `ready` / `renderingComplete` immediately. Instrumented on a fast dev machine,
- * `ready` landed 17ms BEFORE attach (dropped) and `renderingComplete` only 49ms
- * after it — a 66ms margin that a loaded CI runner routinely lost, and when it
- * did the author was left with a permanent "Rendering…" scrim over a finished
- * book, a page count stuck at 0, and a Problems panel that never re-linted
- * (`editor-opens-with-content.pw.mjs`, ~15% of runs). preview-shell.js latches
- * the identical race one hop down via `__GUTTERPRESS_RENDERED__`; this hop had
- * nothing, so the fix is to remove the gate rather than add a second latch:
- * `contentWindow` is the frame's WindowProxy, created with the element and
- * stable across every navigation of it, so it can be bound before the frame has
- * loaded anything.
- *
- * Source-text pins, per this repo's convention for component wiring (see
- * welcome-landing-tabs.test.ts / settings-connections.test.ts): bun resolves
- * `.svelte` imports as assets, so a mount-lifecycle ordering cannot be observed
- * from a unit test. The behavioural gate is
- * `tests/integration/editor-opens-with-content.pw.mjs`.
- */
-describe("PreviewFrame attaches the client before the frame can post (0.10.2 flake)", () => {
-  const previewFrame = readFileSync(
-    join(import.meta.dir, "../../src/lib/components/PreviewFrame.svelte"),
-    "utf8",
-  );
-
-  test("attach() is not deferred to a 'load' listener", () => {
-    expect(previewFrame).not.toMatch(/addEventListener\(\s*["']load["']/);
-  });
-
-  test("attach() names the frame's WindowProxy straight from the mount body", () => {
-    const mountBody = previewFrame.slice(previewFrame.indexOf("onMount("));
-    expect(mountBody).toMatch(/c\.attach\(frame\.contentWindow\)/);
-  });
-
-  test("the origin is still pinned (or the client locked down) BEFORE attach", () => {
-    // `onClientReady` is where +page.svelte calls setExpectedOrigin()/lockDown().
-    // Attaching ahead of it would arm the source check against an unpinned
-    // origin and hand a URL-preview frame the bridge M31 exists to deny it.
-    const pin = previewFrame.indexOf("onClientReady?.(c)");
-    const attach = previewFrame.indexOf("c.attach(");
-    expect(pin).toBeGreaterThan(-1);
-    expect(attach).toBeGreaterThan(pin);
   });
 });

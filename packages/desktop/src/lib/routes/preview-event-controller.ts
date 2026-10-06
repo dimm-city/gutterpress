@@ -1,9 +1,8 @@
 /**
- * PreviewEventController — the single owner of the PreviewClient event router
- * that used to live inline as the `onClientReady` closure in `+page.svelte`.
+ * PreviewEventController — the single owner of the PreviewClient event router.
  *
- * It reduces over preview-frame lifecycle/navigation/source events and drives the post-render *settle
- * sequence*: pushing the derived view mode into the fresh frame, the
+ * It reduces over preview-frame lifecycle/navigation/source events and drives
+ * the post-render *settle sequence*: pushing the derived view mode into the fresh frame, the
  * fit-width-vs-numeric-zoom reveal race, page restore, outline rebuild, and
  * re-lint.
  *
@@ -16,7 +15,7 @@
  *
  * Host coupling is injected (mirroring `PageNavController` /
  * `ZoomViewController`) so this stays testable with fakes and PWA-clean
- * (§8 / ADR 0004): the live preview client, the composed page-nav / zoom-view
+ * (§8): the live preview client, the composed page-nav / zoom-view
  * controllers, the render-phase state sinks, the editor-sync seams, and the
  * toast / outline / lint callbacks. ZERO direct DOM / `node:*` / lib
  * value imports — the one lib touch is the pure `$lib/iframe-styles` CSS
@@ -94,7 +93,7 @@ export interface PreviewEventDeps {
 
 export class PreviewEventController {
   private deps: PreviewEventDeps;
-  // First-render-only success-toast gate (M3). `renderingComplete` fires for
+  // First-render-only success-toast gate. `renderingComplete` fires for
   // BOTH the initial render of a project AND every watcher-triggered rebuild
   // (the 500ms auto-save debounce), so toasting unconditionally stacks
   // "Your book is ready — N pages" toasts nearly permanently on screen while
@@ -205,8 +204,8 @@ export class PreviewEventController {
         d.scheduleMicrotask(() => d.pageNav.restoreProjectPage(restorePage));
       }
     }
-    // UX-011: improved success toast copy. M3: only the FIRST render of a
-    // session toasts — later watcher-triggered rebuilds stay ambient.
+    // Only the FIRST render of a session toasts — later watcher-triggered
+    // rebuilds stay ambient.
     if (!this.toastedThisSession) {
       this.toastedThisSession = true;
       d.toastSuccess(`Your book is ready — ${n} ${n === 1 ? "page" : "pages"}`);

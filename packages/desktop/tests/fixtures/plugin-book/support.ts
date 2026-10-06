@@ -50,7 +50,7 @@ import { createMarkdownRenderer, type GutterpressPlugin, type LoadedPlugin } fro
 import {
   buildHostEditorProjection,
   type EditorProjectionHostResult,
-} from "../../../electron/editor-projection";
+} from "../../../src/lib/server/editor-projection";
 
 /**
  * `MarkdownIt`'s own type, derived structurally from `GutterpressPlugin`

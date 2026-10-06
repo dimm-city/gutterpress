@@ -1,28 +1,23 @@
 /**
- * auto-sync/orchestrator.ts — the automatic-sync state machine, extracted from
- * electron/main.ts as an injectable, unit-testable class.
+ * auto-sync/orchestrator.ts — the automatic-sync state machine, as an
+ * injectable, unit-testable class.
  *
- * WHY THIS EXISTS
- * ---------------
- * The auto-sync engine used to live in main.ts as a set of free functions over
- * module globals. This class owns the same control logic, but every external
- * touch-point — the lib, the credential/token store, settings, the status
- * emit, the clock, the watched-dir guard, and the operation-log path — is
- * INJECTED via `deps`, so tests drive it with fakes.
+ * Every external touch-point — the lib, the credential/token store, settings,
+ * the status emit, the clock, the watched-dir guard, and the operation-log
+ * path — is INJECTED via `deps`, so tests drive it with fakes.
  *
- * 2026-08-14 simplification (owner directive): sync ALWAYS converges, so the
- * conflict latch, the per-kind recovery routing, and the confirmation
- * plumbing are gone. What remains:
+ * Sync ALWAYS converges, so there is no conflict latch or per-kind recovery
+ * routing. The class owns:
  *
  *   - the single-flight + runAgain guards and the periodic safety interval;
- *   - the PUSH CADENCE gate (owner decision 2026-08-23): every tick calls
+ *   - the PUSH CADENCE gate: every tick calls
  *     `lib.syncProject`, but only a tick whose push window
  *     (AUTO_SYNC_PUSH_INTERVAL_MINUTES) has elapsed passes `push: true` —
  *     the rest run pull-merge-only passes, so remote work keeps arriving
  *     every ~2 minutes while local work uploads in quiet ~15-minute batches
- *     plus one final bounded pass on project close/app exit (runExitPush);
- *   - outcome → ambient status mapping (conflict arm no longer exists; the
- *     converge report — combinedFiles/keptBothFiles — rides on the payload);
+ *     plus one final pass on project close/app exit (runExitPush);
+ *   - outcome → ambient status mapping (no conflict arm; the converge
+ *     report — combinedFiles/keptBothFiles — rides on the payload).
  *
  * Node/lib-side ONLY — never imported by the renderer.
  */
@@ -38,24 +33,12 @@ type LibModule = typeof import("gutterpress");
  *  from main.ts's full AppSettings shape yet satisfies the callee. */
 type VersionHistorySettings = NonNullable<Parameters<LibModule["autoSyncDelayMs"]>[0]>;
 
-/** The classification `lib.detectProjectSource` returns. */
 /**
  * Prompt-pull delay after a project opens — seconds, NOT coupled to the
- * (much longer) snapshot debounce. Exported so main.ts's unrelated "local
- * status" re-emit timer uses the same constant instead of a second
- * module-level copy.
+ * (much longer) snapshot debounce. Exported so the preview-open controller's
+ * "local status" re-emit timer uses the same constant.
  */
 export const AUTO_SYNC_OPEN_DELAY_MS = 4_000;
-
-/**
- * Budget for the final exit push (project close / app quit). An app that
- * hangs on quit because the network dropped is worse than an unpushed change:
- * past this, quit proceeds — the underlying sync keeps running if the process
- * stays alive (project switch), and a killed push is harmless server-side
- * (receive-pack applies the ref update only on a complete pack). Whatever the
- * pass could not send, the next launch's first tick pushes.
- */
-export const EXIT_PUSH_BUDGET_MS = 8_000;
 
 /**
  * Per-project state for the auto-sync orchestrator. Keyed by projectDir.
@@ -73,9 +56,8 @@ interface AutoSyncState {
 
 /**
  * Payload emitted on the `sync:status` channel. Must match the `SyncStatus`
- * shape in contract.ts EXACTLY — the preload bridge forwards the raw push
- * payload to the renderer (subscribed via `$lib/remote/remote-capability.ts`)
- * typed as SyncStatus with no transform.
+ * shape in contract.ts EXACTLY — ElectronAdapter.onSyncStatus forwards the raw
+ * push payload to the renderer typed as SyncStatus with no transform.
  */
 export interface SyncStatusPayload {
   state:
@@ -104,6 +86,8 @@ export interface SyncStatusPayload {
   message?: string;
   /** Operation log path — present on "error". */
   logFile?: string;
+  /** "versions": the automatic-version safety net failed, not the online backup. */
+  source?: "versions";
   /** True when the completed sync changed files in the local worktree. */
   filesChanged?: boolean;
   /** Files whose text now holds BOTH versions inside git conflict markers. */
@@ -262,12 +246,11 @@ export class AutoSyncOrchestrator {
    * Public "an edit happened" trigger: ensure the periodic safety interval is
    * running (idempotent). Fire-and-forget.
    *
-   * There is deliberately NO file-change debounce. The one that used to live
-   * here waited `autoSnapshotDelayMs + 30 s` — 10 min + 30 s = 10.5 min at
-   * defaults — while this interval already ticks every `autoSyncMinutes`
-   * (2 min at defaults) for as long as the project is open. Five interval
-   * ticks fit inside one debounce window, so it could never cause a sync the
-   * interval had not already caused. Raising `autoSyncMinutes` past 10.5 min
+   * There is deliberately NO file-change debounce. One keyed to the snapshot
+   * delay (`autoSnapshotDelayMs + 30 s` — 10.5 min at defaults) would sit
+   * under an interval that already ticks every `autoSyncMinutes` (2 min at
+   * defaults) for as long as the project is open, so it could never cause a
+   * sync the interval had not already caused. Raising `autoSyncMinutes` past 10.5 min
    * is the only way it would fire first, and that is a writer explicitly
    * asking to sync LESS often.
    */
@@ -353,7 +336,7 @@ export class AutoSyncOrchestrator {
       // failures through its outcome, so anything thrown here is unexpected —
       // a damaged history included. The status pill says so plainly and the
       // periodic timer keeps trying.
-      this.deps.emit({ state: "error", projectDir: dir, lastSyncAt: now });
+      this.deps.emit({ state: "error", projectDir: dir, lastSyncAt: now, logFile });
       releaseFlight();
       return;
     }
@@ -415,6 +398,7 @@ export class AutoSyncOrchestrator {
       default:
         this.deps.emit({
           state: "error",
+          logFile,
           projectDir: dir,
           lastSyncAt: completedAt,
           ...(outcome.message ? { message: outcome.message } : {}),
@@ -430,23 +414,6 @@ export class AutoSyncOrchestrator {
     }
   }
 
-  /**
-   * The exit pass (owner decision 2026-08-23): one final PUSH-ENABLED sync at
-   * the host's existing project-close/app-quit flush point, so work held back
-   * by pull-only ticks goes online before the app goes away. Not `run()`:
-   * that method is guarded on `dir` still being the watched project, and by
-   * exit time the watcher has moved on (or is about to).
-   *
-   * - Respects the single-flight SYNCHRONOUSLY (main.ts calls this right
-   *   before `cancelAll()` wipes the state bag): an in-flight tick and the
-   *   exit pass never overlap — skip rather than wait, the next launch's
-   *   first tick pushes whatever was pending.
-   * - BOUNDED by `budgetMs`: past it, quit proceeds. The abandoned sync keeps
-   *   running only if the process stays alive (project switch), where the
-   *   lib's per-repo FIFO lock serializes it against anything that follows.
-   * - No status emits: the pill has moved on with the project (or the window
-   *   is gone); the operation log still records the pass.
-   */
   /**
    * "Can this project sync right now?" — the gate `run()` and `runExitPush()
    * must agree on. Kept in one place because the exit pass is the copy that
@@ -470,7 +437,25 @@ export class AutoSyncOrchestrator {
     return { repoRoot: lib.repoRootForSource(source, dir) };
   }
 
-  async runExitPush(dir: string, budgetMs: number = EXIT_PUSH_BUDGET_MS): Promise<void> {
+  /**
+   * The exit pass: one final PUSH-ENABLED sync at
+   * the host's existing project-close/app-quit flush point, so work held back
+   * by pull-only ticks goes online before the app goes away. Not `run()`:
+   * that method is guarded on `dir` still being the watched project, and by
+   * exit time the watcher has moved on (or is about to).
+   *
+   * - Respects the single-flight SYNCHRONOUSLY (main.ts calls this right
+   *   before `cancelAll()` wipes the state bag): an in-flight tick and the
+   *   exit pass never overlap — skip rather than wait, the next launch's
+   *   first tick pushes whatever was pending.
+   * - Runs to completion — never abandoned on a timer. Quitting while it
+   *   wrote objects and refs is what left 0.11.6 repos with empty object
+   *   files; the host waits for `lib.whenGitIdle()` before exiting. The
+   *   network legs stay bounded by git-http's own idle/upload timeouts.
+   * - No status emits: the pill has moved on with the project (or the window
+   *   is gone); the operation log still records the pass.
+   */
+  async runExitPush(dir: string): Promise<void> {
     if (!this.acquire(dir)) return;
     try {
       const [lib, settings] = await Promise.all([this.deps.loadLib(), this.deps.readSettings()]);
@@ -479,27 +464,17 @@ export class AutoSyncOrchestrator {
       if (!gate) return;
 
       const logFile = this.deps.operationLogPath(operationLogSlug(gate.repoRoot));
-      const sync = lib.syncProject({
+      const outcome = await lib.syncProject({
         projectDir: dir,
         tokenStore: this.deps.tokenStore,
         logFile,
         ...gitIdentityFrom(settings),
         push: true,
       });
-      // A rejection after the budget has expired must not become an unhandled
-      // rejection; before it expires, the race below surfaces it to the catch.
-      sync.catch(() => {});
-      const outcome = await Promise.race([
-        sync,
-        new Promise<null>((resolve) => {
-          const t = setTimeout(() => resolve(null), budgetMs);
-          if (typeof t.unref === "function") t.unref();
-        }),
-      ]);
-      if (outcome && (outcome.status === "synced" || outcome.status === "up-to-date")) {
+      if (outcome.status === "synced" || outcome.status === "up-to-date") {
         this.lastPushAt.set(dir, this.deps.now());
       } else {
-        // Timed out or failed: whatever is unpushed stays safely local — and
+        // Failed: whatever is unpushed stays safely local — and
         // clearing the window makes the next open's FIRST tick push it,
         // instead of waiting out the remainder of a 15-minute window.
         this.lastPushAt.delete(dir);

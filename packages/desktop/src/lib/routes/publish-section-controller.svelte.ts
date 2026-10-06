@@ -1,7 +1,6 @@
 /**
  * PublishSectionController — the single owner of the Publish section's (#35)
- * provider-card state + logic that used to live inline in
- * `ProjectConfigPanel.svelte`.
+ * provider-card state + logic.
  *
  * Centralises the provider cards, the per-provider settings/token/artifact
  * drafts, the busy/error flags, and the run results. Credentials go straight
@@ -14,11 +13,9 @@
  * rune fields and calls the intent methods.
  *
  * Host coupling is injected so this stays testable with fakes and PWA-clean
- * (§8 / ADR 0004): the reactive `projectDir` accessor, the
- * `$lib/publish/publish-capability` typed-IPC calls (SFE-P5c3) and
- * `$lib/files/files-capability`'s dialog/shell IPC calls (SFE-P5c1), and the
- * `onSaved` / `onConnected` / `onPublished` callbacks (the panel wires these
- * to toasts).
+ * (§8): the reactive `projectDir` accessor, the `api.publish.*` /
+ * `api.dialog.*` / `api.shell.*` host calls, and the `onSaved` / `onConnected`
+ * / `onPublished` callbacks (the panel wires these to toasts).
  * `PublishProviderCard` / `PublishRunResult` are type-only imports — ZERO
  * `node:*` / lib value imports.
  */
@@ -61,7 +58,7 @@ export interface PublishSectionDeps {
   connectGoogleStart: (account?: string) => Promise<GoogleConnectStartResult>;
   connectGoogleWait: () => Promise<GoogleConnectResult>;
   connectGoogleCancel: () => Promise<{ ok: boolean }>;
-  /** #221 D9 — provider-neutral destination (folder) picker. */
+  /** #221 — provider-neutral destination (folder) picker. */
   listDestinations: (projectDir: string, providerId: string) => Promise<PublishDestination[]>;
   createDestination: (
     projectDir: string,
@@ -73,10 +70,6 @@ export interface PublishSectionDeps {
     providerId: string,
     options?: { dryRun?: boolean; artifactPath?: string },
   ) => Promise<PublishRunResult>;
-  /** Native open dialog for a PDF artifact. Null when cancelled. */
-  pickPdfFile: () => Promise<string | null>;
-  /** Native directory picker for a website-folder artifact. Null when cancelled. */
-  openDirectory: () => Promise<string | null>;
   openExternal: (url: string) => Promise<unknown>;
   /** Fired after Save settings succeeds (the panel wires this to a toast). */
   onSaved?: () => void;
@@ -97,9 +90,6 @@ export class PublishSectionController {
   // Account-label draft when ADDING a new named credential (the picker's
   // "Add another account" flow). Empty stores/uses the default credential.
   publishAccountDrafts = $state<Record<string, string>>({});
-  // Explicit artifact path per provider — desktop PDF exports go wherever the
-  // author chose in the save dialog, so the manifest-default rarely exists.
-  publishArtifactDrafts = $state<Record<string, string>>({});
 
   // ── OAuth connect (#221 D10, gdrive) ─────────────────────────────────────
   // The auth URL the browser was (or should be) sent to, per provider — set
@@ -109,10 +99,10 @@ export class PublishSectionController {
   // lock every other publish intent already uses).
   googleAuthUrls = $state<Record<string, string>>({});
 
-  // ── Destinations picker (#221 D9) — provider-neutral (gdrive: folders) ───
+  // ── Destinations picker (#221) — provider-neutral (gdrive: folders) ──────
   publishDestinations = $state<Record<string, PublishDestination[]>>({});
-  // C3 — keyed per-provider like publishDestinations/newDestinationDrafts
-  // beside them: a global string/id let one provider's busy state or error
+  // Keyed per-provider like publishDestinations/newDestinationDrafts
+  // beside them: a global string/id would let one provider's busy state or error
   // render under a completely different provider's picker (harmless only
   // while gdrive is the sole destinations-capable provider).
   destinationsBusyId = $state<Record<string, boolean>>({});
@@ -129,7 +119,7 @@ export class PublishSectionController {
 
   private readonly deps: PublishSectionDeps;
   /**
-   * Generation counter for `connectGoogleOAuth` (C1 hardening). Cancelling an
+   * Generation counter for `connectGoogleOAuth`. Cancelling an
    * in-flight attempt clears `publishBusyId` right away, but that attempt's own
    * await on `connectGoogleWait()` is still pending — its `catch`/`finally`
    * settle LATE. Without this guard, a cancel immediately followed by a fresh
@@ -173,7 +163,7 @@ export class PublishSectionController {
   };
 
   /**
-   * The EFFECTIVE selected format for a card (#221 phase 3, D8): an unsaved
+   * The EFFECTIVE selected format for a card (#221): an unsaved
    * draft wins, then the saved `publish.<id>.format`, then the card's fixed
    * default — mirrors the lib's `resolvePublishFormat` (run-publish.ts) so
    * the wizard can never show/act on a choice the lib itself wouldn't honor.
@@ -223,7 +213,7 @@ export class PublishSectionController {
 
   /**
    * Choose which format this book publishes to a multi-format provider
-   * (#221 phase 3, D8 — gdrive only), written immediately to
+   * (#221 — gdrive only), written immediately to
    * `publish.<id>.format` the same way `selectCredential` writes the
    * credential choice, so the wizard's other format-dependent UI (the
    * folder picker step, the artifact picker) sees it right away.
@@ -245,7 +235,7 @@ export class PublishSectionController {
     try {
       await this.deps.setConfig(projectDir, providerId, { credential: account });
       await this.loadPublish();
-      // C2 — switching the saved account this book uses must refresh the
+      // Switching the saved account this book uses must refresh the
       // destinations picker the same way connectPublish/connectGoogleOAuth do,
       // or the PREVIOUS account's folder list keeps showing until the wizard
       // step is re-entered.
@@ -326,7 +316,7 @@ export class PublishSectionController {
   };
 
   /** After a successful connect, populate the folder picker immediately
-   *  (#221 D9) so the wizard doesn't need a manual step-revisit to show it —
+   *  (#221) so the wizard doesn't need a manual step-revisit to show it —
    *  provider-neutral: a no-op for any provider without `destinations`. */
   private async loadDestinationsIfPickerAvailable(providerId: string): Promise<void> {
     const card = this.publishCards.find((c) => c.id === providerId);
@@ -359,7 +349,7 @@ export class PublishSectionController {
     const projectDir = this.deps.projectDir();
     if (!projectDir || this.publishBusyId) return;
     const account = (this.publishAccountDrafts[providerId] ?? "").trim();
-    // C1 hardening: this attempt owns `generation` for its whole lifetime.
+    // This attempt owns `generation` for its whole lifetime.
     // Cancel clears `publishBusyId` right away while this same await chain is
     // still pending — if a NEW connect starts before this one settles, every
     // side effect below (including the catch/finally) must become a no-op
@@ -418,7 +408,7 @@ export class PublishSectionController {
     });
   };
 
-  // ── Destinations picker (#221 D9) ────────────────────────────────────────
+  // ── Destinations picker (#221) ───────────────────────────────────────────
   /** Load the folder list for a provider's picker (called on entering setup
    *  once connected, and after a successful connect). */
   loadDestinations = async (providerId: string): Promise<void> => {
@@ -470,7 +460,9 @@ export class PublishSectionController {
     });
   };
 
-  runPublish = async (providerId: string, dryRun: boolean): Promise<void> => {
+  /** Run one provider. `artifactPath` is the file/folder the wizard just
+   *  built (the lib's manifest-default location is used when absent). */
+  runPublish = async (providerId: string, dryRun: boolean, artifactPath = ""): Promise<void> => {
     const projectDir = this.deps.projectDir();
     if (!projectDir || this.publishBusyId) return;
     this.publishBusyId = providerId;
@@ -480,7 +472,6 @@ export class PublishSectionController {
       // sees; a dry run ("Check readiness") must have NO side effects, so it
       // checks what's on disk.
       if (!dryRun) await this.flushPublishDraft(providerId);
-      const artifactPath = (this.publishArtifactDrafts[providerId] ?? "").trim();
       const result = await this.deps.run(projectDir, providerId, {
         dryRun,
         ...(artifactPath ? { artifactPath } : {}),
@@ -493,25 +484,6 @@ export class PublishSectionController {
       this.publishError = e instanceof Error ? e.message : String(e);
     } finally {
       this.publishBusyId = null;
-    }
-  };
-
-  pickPublishArtifact = async (card: PublishProviderCard): Promise<void> => {
-    try {
-      // #221 phase 3, D8: a gdrive card set to "html" must offer the
-      // directory picker, matching what azure-swa (fixed html) already does
-      // — branch on the EFFECTIVE selected format, not the card's static
-      // default, which stays "pdf" for gdrive regardless of the author's
-      // choice.
-      const picked =
-        this.effectiveFormat(card) === "pdf"
-          ? await this.deps.pickPdfFile()
-          : await this.deps.openDirectory();
-      if (picked) {
-        this.publishArtifactDrafts = { ...this.publishArtifactDrafts, [card.id]: picked };
-      }
-    } catch (e) {
-      this.publishError = e instanceof Error ? e.message : String(e);
     }
   };
 

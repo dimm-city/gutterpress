@@ -1,6 +1,5 @@
 /**
- * Pure navigation / origin policy decisions for the Electron main process
- * (Phase 0 security hardening — ARCH review findings #1 (critical) and #33).
+ * Pure navigation / origin policy decisions for the Electron main process.
  *
  * Deliberately dependency-free (no `electron` import) so the policy can be
  * unit-tested with plain `bun test` and reasoned about without a live
@@ -57,9 +56,8 @@ export function isTrustedAppUrl(url: string, config: OriginPolicyConfig): boolea
 
 /**
  * Resolve the trusted dev-server URL for `mainWindow.loadURL`, the
- * origin-policy config, and the "does the static build directory need to be
- * valid" check — the ONE gate all three call sites in main.ts must share
- * (ARCH review finding #1, CRITICAL).
+ * origin-policy config, and the "is the built SvelteKit server needed"
+ * check — the ONE gate all three call sites in main.ts must share.
  *
  * A packaged build must NEVER honor `VITE_DEV_SERVER_URL`. Without this
  * gate, an attacker who launches the packaged binary with that env var set
@@ -100,10 +98,10 @@ export function decideNavigation(url: string, config: OriginPolicyConfig): Navig
 }
 
 /**
- * The app's ONE http(s)-only gate for URLs that leave the app for the OS
- * (review finding: this policy existed in three drifting copies —
- * decideNavigation, decideWindowOpen, and the shell/open-external route).
- * Everything that ends in `shell.openExternal` must pass this.
+ * The app's ONE http(s)-only gate for URLs that leave the app for the OS,
+ * shared by decideNavigation, decideWindowOpen, and the shell/open-external
+ * route so the policy cannot drift. Everything that ends in
+ * `shell.openExternal` must pass this.
  */
 export function isHttpUrl(url: string): boolean {
   return /^https?:\/\//i.test(url);

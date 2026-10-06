@@ -9,10 +9,9 @@ import {
   type OriginPolicyConfig,
 } from "../../electron/navigation-policy";
 
-// Phase 0 security hardening (ARCH review findings #1 + #33). These are pure
-// decisions with no Electron dependency, so main.ts's will-navigate handler,
-// setWindowOpenHandler, and the ipcMain.handle sender-validation wrapper can
-// all defer to the same tested logic instead of 19 hand-rolled checks.
+// These are pure decisions with no Electron dependency, so main.ts's
+// will-navigate handler, setWindowOpenHandler, and the ipcMain.handle
+// sender-validation wrapper all defer to the same tested logic.
 
 const PROD_CONFIG: OriginPolicyConfig = { appOrigin: APP_ORIGIN, devServerOrigin: null };
 const DEV_CONFIG: OriginPolicyConfig = {
@@ -120,7 +119,7 @@ test("isTrustedIpcSender rejects a missing/undefined senderFrame url", () => {
   expect(isTrustedIpcSender("", PROD_CONFIG)).toBe(false);
 });
 
-// ── resolveDevServerUrl (ARCH review finding #1, CRITICAL) ─────────────────
+// ── resolveDevServerUrl ─────────────────────────────────────────────────────
 //
 // A packaged app must NEVER trust VITE_DEV_SERVER_URL. Without this gate, an
 // attacker who launches the packaged binary with that env var set (e.g.

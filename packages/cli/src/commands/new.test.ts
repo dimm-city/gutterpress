@@ -1,5 +1,5 @@
 /**
- * ARCH finding #49: command-level smoke test for `new.ts`'s citty dispatch —
+ * Command-level smoke test for `new.ts`'s citty dispatch —
  * arg-to-`scaffoldProject`-options mapping, the unknown-`--template` guard,
  * and the `CreateProjectError.code` → exit-code mapping (M47: `scaffold-io`
  * is a pipeline failure (3); every other code is a usage error (2)).

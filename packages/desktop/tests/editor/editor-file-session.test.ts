@@ -1,13 +1,12 @@
 import { expect, test } from "bun:test";
-import { EditorBuffer, type EditorBufferFs } from "../../src/lib/editor/buffer-state.svelte";
+import { EditorBuffer } from "../../src/lib/editor/buffer-state.svelte";
 import { EditorFileSession } from "../../src/lib/editor/editor-file-session.svelte";
-import type { FileStat, FileWriteResult } from "../../src/lib/platform/contract";
+import type { FileStat, FileWriteResult, Platform } from "../../src/lib/platform/contract";
 
 (globalThis as unknown as { $state?: <T>(value: T) => T }).$state ??= (value) => value;
 
-// SFE-P5b: EditorBuffer takes the narrow EditorBufferFs slice, not the whole
-// (now-deleted) Platform locator — same injected-fake pattern, narrower type.
-class TestPlatform implements EditorBufferFs {
+class TestPlatform implements Partial<Platform> {
+  readonly platform = "electron" as const;
   files = new Map<string, string>();
   failWrites = false;
   private clock = 1;
@@ -52,7 +51,7 @@ function harness(files: Record<string, string>, saveDelayMs = 60_000) {
   const platform = new TestPlatform(files);
   const activated: string[] = [];
   const create = () => new EditorBuffer({
-    fs: platform,
+    platform: platform as Platform,
     saveDelayMs,
     recoveryEnabled: false,
   });

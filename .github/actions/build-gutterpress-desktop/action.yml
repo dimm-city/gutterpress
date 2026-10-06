@@ -6,7 +6,7 @@ description: >
   runner matching the requested platform (electron-builder does not
   cross-compile these targets).
 
-  Finding #62: this is the SINGLE desktop packaging path — the release
+  This is the SINGLE desktop packaging path — the release
   workflow's three platform jobs and the download-a-build debug workflows all
   come through here, so none of them can drift from the others.
 inputs:
@@ -19,7 +19,7 @@ inputs:
 runs:
   using: composite
   steps:
-    # audit F3: pin Node rather than take the runner's ambient default, so all
+    # Pin Node rather than take the runner's ambient default, so all
     # three platforms package under the same Node major. electron-builder runs
     # under node/npm (see the packaging step below).
     - uses: actions/setup-node@v5

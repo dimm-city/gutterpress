@@ -1,5 +1,5 @@
 /**
- * testRemoteAccess tests (#14, ADR 0006 D7) — run against the same real git
+ * testRemoteAccess tests (#14) — run against the same real git
  * smart-HTTP wire-protocol server the clone tests use. No transport mocking.
  */
 import { test, expect } from "bun:test";

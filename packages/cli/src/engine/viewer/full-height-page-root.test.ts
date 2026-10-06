@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import { resolveChromiumExecutable } from "../../lib/chromium.ts";
 import { getAssetPath } from "../../lib/embedded-assets.ts";
-import { closeBrowser, getBrowser } from "../../lib/browser-pool.ts";
+import { closeBrowser, getBrowser } from "./test-support/browser.ts";
 
 const FIXTURES_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 const RENDER_TEST_TIMEOUT_MS = 60_000;
@@ -32,10 +32,10 @@ testIf(
       );
       const { url, close } = await serveDir(dir, "full-height-abspos.html");
       try {
-        const browser = await getBrowser(RENDER_TEST_TIMEOUT_MS);
+        const browser = await getBrowser();
         const page = await browser.newPage();
         try {
-          await page.goto(url, { waitUntil: "networkidle0" });
+          await page.goto(url);
           await page.waitForFunction("window.Gutterpress?.totalPages > 0");
           const result = await page.evaluate(() => {
             const root = document.querySelector<HTMLElement>(".art-page")!;
@@ -116,10 +116,10 @@ testIf(
       );
       const { url, close } = await serveDir(dir, "break-cascade.html");
       try {
-        const browser = await getBrowser(RENDER_TEST_TIMEOUT_MS);
+        const browser = await getBrowser();
         const page = await browser.newPage();
         try {
-          await page.goto(url, { waitUntil: "networkidle0" });
+          await page.goto(url);
           await page.waitForFunction("window.Gutterpress?.totalPages > 0");
           const result = await page.evaluate(() => ({
             computed: {
@@ -168,10 +168,10 @@ testIf(
       );
       const { url, close } = await serveDir(dir, "break-propagation.html");
       try {
-        const browser = await getBrowser(RENDER_TEST_TIMEOUT_MS);
+        const browser = await getBrowser();
         const page = await browser.newPage();
         try {
-          await page.goto(url, { waitUntil: "networkidle0" });
+          await page.goto(url);
           await page.waitForFunction("window.Gutterpress?.totalPages > 0");
           // Print ground truth (Chromium printToPDF named destinations,
           // measured on this same document shape): lead-chapter p1 (a forced
@@ -264,7 +264,7 @@ testIf(
       );
       const { url, close } = await serveDir(dir, "avoid-trailing-margin.html");
       try {
-        const browser = await getBrowser(RENDER_TEST_TIMEOUT_MS);
+        const browser = await getBrowser();
 
         // ── PRINT: the same markup with the viewer script removed, so this is
         // Chromium's own paged-media fragmenter and nothing else.
@@ -274,7 +274,6 @@ testIf(
           const raw = await fsp.readFile(fixture, "utf8");
           await printPage.setContent(
             raw.replace('<script src="gutterpress-viewer.js"></script>', ""),
-            { waitUntil: "load" },
           );
           const pdf = await printPage.pdf({ preferCSSPageSize: true });
           // Page count is enough to catch the shim: it removes exactly the
@@ -287,7 +286,7 @@ testIf(
         // ── VIEWER: the same fixture through the engine.
         const page = await browser.newPage();
         try {
-          await page.goto(url, { waitUntil: "networkidle0" });
+          await page.goto(url);
           await page.waitForFunction("window.Gutterpress?.totalPages > 0");
           const result = await page.evaluate(() => {
             const api = (window as any).Gutterpress;

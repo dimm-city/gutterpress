@@ -1,18 +1,14 @@
 /**
- * IPC-handler contract for the AppImage application-menu integration (#119):
- * `app:appImageIntegrationStatus`/`Install`/`Remove` (SFE-P5c1 — migrated off
- * `GET`/`POST /api/app/appimage-integration`, which took NO path input, only
- * a fixed `action` string, so a renderer could never redirect the install;
- * the IPC migration goes further — each operation is now its own channel
- * with zero renderer-suppliable arguments at all, not even an `action`
- * string to validate). These tests exercise `electron/api/app.ts`'s
- * `appImageIntegrationStatus`/`Install`/`Remove` functions directly (hooks
- * wiring + the not-registered/friendly-error envelopes), not
- * electron/main.ts's secureHandle registration.
+ * Route-level contract for the AppImage application-menu integration (#119):
+ * `GET /api/app/appimage-integration` and its validated `POST` action.
+ *
+ * The route must accept NO path input — only a fixed `action` string — so a
+ * renderer can never redirect the install. These tests exercise the route
+ * factory (validate() + host wiring + the 400 envelope), not
+ * electron/main.ts.
  */
 import { afterEach, describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import path from "node:path";
+import { isHttpError } from "@sveltejs/kit";
 import {
   registerHostServices,
   type HostServices,
@@ -20,17 +16,27 @@ import {
 import { makeHostServices } from "../support/host-services-fake";
 import type { AppImageStatus } from "../../electron/appimage-integration";
 import {
-  appImageIntegrationInstall,
-  appImageIntegrationRemove,
-  appImageIntegrationStatus,
-} from "../../electron/api/app";
+  GET as statusRoute,
+  POST as actionRoute,
+} from "../../src/routes/api/app/appimage-integration/+server";
 
-async function caught(p: Promise<unknown>): Promise<{ message: unknown }> {
+function request(body?: unknown): Request {
+  return body === undefined
+    ? new Request("http://local.test")
+    : new Request("http://local.test", {
+        method: "POST",
+        body: JSON.stringify(body),
+        headers: { "content-type": "application/json" },
+      });
+}
+
+async function caught(p: Promise<unknown>): Promise<{ status: number; message: unknown }> {
   try {
     await p;
     throw new Error("expected the promise to reject, but it resolved");
   } catch (e) {
-    return { message: e instanceof Error ? e.message : String(e) };
+    if (!isHttpError(e)) throw e;
+    return { status: e.status, message: (e.body as { message?: unknown }).message };
   }
 }
 
@@ -54,22 +60,17 @@ afterEach(() => {
   registerHostServices(undefined as unknown as HostServices);
 });
 
-describe("app:appImageIntegrationStatus", () => {
-  test("rejects (host-disconnected) when the hooks are not registered", async () => {
-    registerHostServices(makeHostServices({ appImage: undefined }));
-    const { message } = await caught(appImageIntegrationStatus());
-    expect(message).toBe("AppImage integration hooks not registered");
-  });
-
+describe("GET /api/app/appimage-integration", () => {
   test("returns the host status verbatim", async () => {
     registerHostServices(
       makeHostServices({ appImage: { getStatus: async () => supportedStatus } }),
     );
-    expect(await appImageIntegrationStatus()).toEqual(supportedStatus);
+    const res = await statusRoute({ request: request() } as never);
+    expect(await res.json()).toEqual(supportedStatus);
   });
 });
 
-describe("app:appImageIntegrationInstall / app:appImageIntegrationRemove", () => {
+describe("POST /api/app/appimage-integration", () => {
   const calls: string[] = [];
 
   function services(): HostServices {
@@ -88,20 +89,31 @@ describe("app:appImageIntegrationInstall / app:appImageIntegrationRemove", () =>
     });
   }
 
-  test("routes each action to its own hook — no renderer-suppliable argument at all (stronger than the deleted route's action-string validation)", async () => {
-    calls.length = 0;
+  test("400 on a missing, unknown, or non-string action", async () => {
     registerHostServices(services());
-    const installResult = await appImageIntegrationInstall();
-    const removeResult = await appImageIntegrationRemove();
-    expect(installResult).toMatchObject({ ok: true, message: "added" });
-    expect(removeResult).toMatchObject({ ok: true, message: "removed" });
-    expect(calls).toEqual(["install", "remove"]);
+    for (const body of [{}, { action: "uninstall" }, { action: 7 }, { action: null }]) {
+      const { status, message } = await caught(actionRoute({ request: request(body) } as never));
+      expect(status).toBe(400);
+      expect(message).toBe("action must be one of: install, remove");
+    }
   });
 
-  test("rejects (host-disconnected) when the hooks are not registered", async () => {
-    registerHostServices(makeHostServices({ appImage: undefined }));
-    const { message } = await caught(appImageIntegrationInstall());
-    expect(message).toBe("AppImage integration hooks not registered");
+  test("ignores any renderer-supplied path — only the action is read", async () => {
+    calls.length = 0;
+    registerHostServices(services());
+    const res = await actionRoute({
+      request: request({ action: "install", appImage: "/etc/evil", paths: { icon: "/etc/evil" } }),
+    } as never);
+    expect(await res.json()).toMatchObject({ ok: true, message: "added" });
+    expect(calls).toEqual(["install"]);
+  });
+
+  test("routes each valid action to its hook", async () => {
+    calls.length = 0;
+    registerHostServices(services());
+    await actionRoute({ request: request({ action: "install" }) } as never);
+    await actionRoute({ request: request({ action: "remove" }) } as never);
+    expect(calls).toEqual(["install", "remove"]);
   });
 
   // Every realistic failure here is a raw node:fs error. A non-technical
@@ -116,7 +128,8 @@ describe("app:appImageIntegrationInstall / app:appImageIntegrationRemove", () =>
         appImage: { getStatus: async () => supportedStatus, install: async () => { throw fsError; } },
       }),
     );
-    const { message } = await caught(appImageIntegrationInstall());
+    const { status, message } = await caught(actionRoute({ request: request({ action: "install" }) } as never));
+    expect(status).toBe(500);
     expect(message).toBe(
       "Gutterpress doesn't have permission to write to your home folder, so it couldn't add the menu entry.",
     );
@@ -133,12 +146,13 @@ describe("app:appImageIntegrationInstall / app:appImageIntegrationRemove", () =>
         },
       }),
     );
-    const { message } = await caught(appImageIntegrationRemove());
+    const { status, message } = await caught(actionRoute({ request: request({ action: "remove" }) } as never));
+    expect(status).toBe(500);
     expect(message).toBe("The application menu entry could not be updated. See the app log for details.");
     expect(String(message)).not.toContain("secret-path");
   });
 
-  test("the service's own environment guard passes through with its friendly text (path-invalid equivalent)", async () => {
+  test("the service's own environment guard passes through as a 409 with its friendly text", async () => {
     registerHostServices(
       makeHostServices({
         appImage: {
@@ -149,55 +163,9 @@ describe("app:appImageIntegrationInstall / app:appImageIntegrationRemove", () =>
         },
       }),
     );
-    const { message } = await caught(appImageIntegrationInstall());
+    const { status, message } = await caught(actionRoute({ request: request({ action: "install" }) } as never));
+    expect(status).toBe(409);
     expect(message).toBe("Application-menu integration is only available on Linux.");
   });
 });
 
-// ── UI wiring (source pins, per the repo convention — see settings-connections.test.ts) ──
-
-describe("Settings → App — the action is supported-only", () => {
-  const view = readFileSync(
-    path.join(import.meta.dir, "../../src/lib/components/SettingsView.svelte"),
-    "utf8",
-  );
-
-  test("the whole section is gated on the host's `supported` flag, inside the App tab", () => {
-    expect(view).toContain("{#if appImage?.supported}");
-    // Nested inside the App tab's block, so it can never leak into another tab.
-    expect(view.indexOf("{#if appImage?.supported}")).toBeGreaterThan(
-      view.indexOf('{#if activeTab === "app"}'),
-    );
-  });
-
-  test("status is fetched once on mount (no $effect — banned in this SPA) and never blocks on failure", () => {
-    expect(view).toContain("onMount(");
-    expect(view).not.toContain("$effect(");
-    expect(view).toContain("appImageIntegration");
-    expect(view).toMatch(/\.catch\(\(\) => \{[\s\S]*?appImage = null;/);
-  });
-
-  test("both actions render busy, success, and inline error states", () => {
-    expect(view).toContain("appImageBusy");
-    expect(view).toContain('disabled={appImageBusy}');
-    expect(view).toContain('runAppImageAction("install")');
-    expect(view).toContain('runAppImageAction("remove")');
-    expect(view).toContain('class="row-notice"');
-    expect(view).toContain('class="row-error"');
-    expect(view).toContain('role="alert"');
-  });
-
-  test("the repair affordance is surfaced when the host reports stale managed files", () => {
-    expect(view).toContain("appImage.needsRepair");
-    expect(view).toContain("Repair menu entry");
-  });
-
-  test("the row title is NOT a `label for` the action button — that would click-forward into a silent install", () => {
-    // A <label for> synthesizes a click on its control, so labelling the row
-    // heading would run the install when a user clicks what reads as a title.
-    expect(view).not.toMatch(/<label for="appimage/);
-    expect(view).toContain('<span class="row-title">Application menu</span>');
-    // The hint is still tied to the button for assistive tech.
-    expect(view).toContain('aria-describedby="appimage-hint"');
-  });
-});

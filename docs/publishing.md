@@ -13,7 +13,7 @@ app's toolbar.
 | Amazon KDP | `kdp` | **Guided** | PDF | Amazon has no KDP API (automation violates its ToS). Gutterpress stages a KDP-ready package and opens kdp.amazon.com with a checklist. |
 | Azure Static Web Apps | `azure-swa` | **API** | HTML | Deploys the static-site export via the [SWA CLI](https://learn.microsoft.com/azure/static-web-apps/static-web-apps-cli-deploy) (`swa deploy`). Requires the SWA CLI installed (`npm i -g @azure/static-web-apps-cli`). |
 | Shopify | `shopify` | **API** (partial) | PDF | Creates/updates the product via the Admin GraphQL API. File attachment is a follow-up step in the Shopify admin (digital delivery has no public API). |
-| Google Drive | `gdrive` | **API** | PDF or HTML (zipped) | Uploads to a Drive folder the app created (`drive.file` scope) via a plain-`fetch` resumable upload. Connects with browser OAuth, not a pasted key (#221, `docs/gdrive-publish-plan.md`). Re-publishing updates the same file in place, so a shared link stays valid. |
+| Google Drive | `gdrive` | **API** | PDF or HTML (zipped) | Uploads to a Drive folder the app created (`drive.file` scope) via a plain-`fetch` resumable upload. Connects with browser OAuth, not a pasted key (#221, [ADR 0011](adr/0011-google-oauth-client-credentials.md)). Re-publishing updates the same file in place, so a shared link stays valid. |
 
 "Guided" providers still do real work: they validate the artifact, stage an
 upload package (`<output dir>/publish/<provider>/` with the PDF and a

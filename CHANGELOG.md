@@ -5,151 +5,356 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-- Read: right-click > Unlock to edit now places the caret in the block you
-  right-clicked (a marker chip opens on its marker line), instead of leaving
-  the caret wherever it was.
-- Accessibility: the paged editor's root (one per chapter mounted in Read)
-  now carries `role="textbox"`, `aria-multiline="true"`, `aria-readonly`
-  (true while locked, false once unlocked) and an `aria-label` naming the
-  chapter file; the app shell wraps its content in a `<main id="main-content">`
-  landmark with a skip link as the first focusable element; and the source
-  editor's CodeMirror textbox is named "Markdown source of <file>" (or
-  "CSS source of <file>") through `EditorView.contentAttributes`.
-
-## [0.12.0]
-
-An alpha: the paged editor is new, and editor↔page agreement is still being
-worked on real books. The preview remains the print authority — where the two
-disagree, the preview is right.
-
-### Added
-
-- **A paginated, source-first editor in the desktop app, and an Experimental
-  VS Code extension.** Both are built on the same shared, framework-free
-  editor package (`@dimm-city/gutterpress-editor`), so a chapter edits the
-  same way wherever you open it. On desktop a Markdown chapter now edits ON
-  THE PAGE: the editor lays your document out with your book's own `@page`
-  geometry and your own stylesheets, paginated by the same engine that
-  paginates the preview, so you write inside the pages you are going to
-  print. Your layout markers (`@chapter`, `@page`, `@spread`, `@section`,
-  page and column breaks) show up as chips rather than raw `@` syntax, and
-  project-plugin regions render the way your plugin actually presents them,
-  with an "Edit source" fallback for any region the editor cannot map back
-  to your Markdown safely rather than guessing. An edit only ever changes
-  the exact text you touched — opening and closing a document, or switching
-  modes, changes zero bytes. A document over 2 MiB opens in the raw-Markdown
-  surface automatically rather than loading the paged one slowly or
-  unreliably.
-- **One mode control: Edit, Read, Focus.** Edit is the source editor
-  (CodeMirror) with the paginated preview beside it (Ctrl+E); Read is the
-  paged editor alone, opening locked and paginating exactly like the
-  printed page, with an in-pane Unlock pill that edits the same pages in
-  place; Focus (Ctrl+Shift+F or the source toolbar) is Edit without the
-  preview and never persists. A non-Markdown file (CSS, YAML) always opens
-  on the source editor in every mode. There is no second Rich/Source toggle
-  beside the editor toolbar any more.
-- **Undo and redo on the page.** In Read, unlocked, Ctrl+Z takes back the
-  last edit and Ctrl+Y (or Ctrl+Shift+Z; Cmd on macOS) puts it back, one
-  chapter at a time, with a run of typing as one step. The page's history
-  is the chapter's own: it stays through locking and unlocking, it is
-  cleared when the file changes on disk, and it is separate from the
-  source editor's - switching modes starts fresh, as it always has.
-- **The Gutterpress VS Code extension** (`@dimm-city/gutterpress-vscode`,
-  published separately, Experimental). It registers an optional
-  "Gutterpress Markdown Editor" — reachable via *Reopen With…*, never the
-  default for `.md` files — built on the same shared editor as the desktop
-  app, with its own **Gutterpress: Build**, **Gutterpress: Preview**, and
-  **Gutterpress: Open Source** commands. It works on a plain Markdown file
-  with no Gutterpress project nearby (ordinary rich editing only); open it
-  inside a Gutterpress project and layout markers and plugin regions come
-  alive the same way they do on desktop. In an untrusted VS Code workspace,
-  ordinary Markdown editing still works but project plugins do not execute
-  and unsafe raw HTML is not rendered. See `docs/vscode-extension.md`.
-- **`gutterpress/plugins`** — a new public subpath export exposing the same
-  plugin loader the CLI's own build and preview already use
-  (`loadPlugins`/`loadPluginsWithCss`), for hosts (the VS Code extension,
-  and now the desktop app itself) that need to load a project's plugins
-  without going through the CLI. `gutterpress` and `gutterpress/api` are
-  unchanged; `gutterpress/render` gained the projection surface the shared
-  editor consumes (`createEditorProjection`, `PROJECTION_SCHEMA_VERSION`,
-  `inlineSourceMetaOf`, `sourceTokenOccurrenceAt` and their types).
+## [0.11.13] - 2026-10-06
 
 ### Changed
 
-- **Reconciled with 0.10.9's extension rail.** A book's `manifest.yaml`
-  lists its plugins and looks under `extensions:` now (0.10.9 replaced
-  `plugins:`, themes and `engineStyles`); the paged editor's host-side
-  projection and the VS Code extension load a project through that same
-  list. The desktop's Look and Features tabs, and extension-provided
-  snippets, run over typed IPC (`extension:*`, `snip:readExtension`) like
-  every other host capability - the `plugin:*`/`theme:*` channels they
-  replace are gone.
-- **A plugin's declared container (`markers` export, 0.10.7) edits on the
-  page.** The `@callout` line is a chip, its label shows with it, and the
-  element it declares wraps the blocks inside it in the editor exactly as
-  on the page - closing at `@end-callout` or the enclosing scope's boundary
-  - instead of the "unrecognized layout token" notice it used to raise.
-- **Breaking: the preview no longer edits your document.** Right-click →
-  "Edit this block", the click-to-edit overlay, and the image/link
-  properties dialogs reachable from the preview's context menu are gone —
-  edit in the paged or raw-Markdown editor instead, both of which now cover
-  everything those preview actions used to do (including changing an
-  *existing* image's or link's properties, which neither editor could do
-  before this release). Everything else about the preview is unchanged:
-  click a block to jump to it in the editor, click-to-source, text
-  selection and copy, opening a link or image, page navigation, and the
-  Problems panel. The preview remains the print/layout authority — what you
-  see there is still what `gutterpress build` prints.
-- **The desktop app is a single process again.** Earlier builds ran a small
-  local HTTP server inside Electron (with its own session token) alongside
-  the app's IPC bridge, to serve the app's own interface and handle some
-  requests. That server, its token, and the request-forwarding proxy in
-  front of it are gone: the packaged app now serves its interface directly
-  off disk and every host operation — files, dialogs, project data, build,
-  preview, plugins, sync, publishing, and the rest — goes through one typed,
-  validated channel. Nothing you do in the app changes; this removes a
-  local network listener from the packaged app entirely.
+- **Faster, bounded releases.** The release workflow no longer repeats the
+  test suite when CI is already green on the commit being released, caches
+  Electron and its Windows packaging tools between runs, and gives every job
+  a timeout so a hung step fails in minutes instead of hours.
 
-### Removed
-
-- **The floating "future PWA" groundwork inside the desktop package is
-  gone.** It was never a shipped feature — an in-browser folder-open path,
-  in-browser preview, and browser-storage persistence, dormant since it was
-  first scaffolded — and has been deleted rather than finished. A future
-  web version of Gutterpress, if built, will be its own package built
-  against the same shared editor and rendering libraries this release
-  introduces, not a mode hiding inside the desktop app.
+## [0.11.12] - 2026-10-06
 
 ### Fixed
 
-- **A marker's chip no longer stands between the block above it and the
-  scope it opens.** The page has no element for a marker line, so a book's
-  `h2 + .section` rule matched there and not in the paged editor, where the
-  `@section` chip sat between the heading and the section; the section lost
-  its top margin and chapter-01 of the field guide paginated a page short.
-  The chip now mounts after the group it opened (where the closer's chip
-  already stood), and its margin tag still hangs beside that group.
-- **A `@page`, `@section`, `@spread` or `@chapter` opened inside a plugin's
-  own wrapper (a `@specialty-intro`, say) now ends where that wrapper ends
-  in the paged editor.** It used to run on to the next marker of its kind,
-  a range crossing the wrapper's that the editor could not nest and dropped
-  whole - so the page break went with it and the chapter paginated a page
-  short of the book.
-- **The paged editor keeps the page's cascade after 0.11.0's extension
-  layers.** 0.11.0 put each extension's CSS in its own cascade layer in the
-  built document, below the book's own stylesheets. The editor now composes
-  its book CSS through the same helper, with core in the same `gp.marker` /
-  `gp.vocab` layers, so an extension beats core and the book beats every
-  extension on the page and in the editor alike. An extension's stylesheet
-  files reach the editor too, inlined the way the book's own are.
-- **A book rule that gives a tight list item's paragraph a box of its own
-  now wins in the paged editor.** The editor renders a tight item's paragraph
-  inline (the page has no paragraph element there), and that rule outranked
-  every book rule on the paragraph; the design guide's ability rows, which
-  lay the item out as a chip beside its text, kept their inline shape in the
-  editor and two field guide chapters paginated a page off the book. The
-  emulation now sits at zero specificity, above the user-agent default and
-  below any book rule.
+- **A reader can still open a book.** 0.11.11 hid the Books tab's *Open
+  book…* button along with *New book* for a reader; only *New book* was
+  meant to go.
+
+## [0.11.11] - 2026-10-06
+
+### Added
+
+- **The mouse wheel turns pages in the preview** (#301, #302). A flick over
+  the preview turns one page, or one spread in Read; one gesture never turns
+  two. A page taller than the window is scrolled through first and turns
+  only once you reach its end. Ctrl+wheel and sideways scrolling are left
+  alone.
+- **Undo after deleting a file** (#313). Deleting from the Files tab shows
+  "Deleted … — Undo"; Undo puts the file or folder back. The latest delete
+  can be undone.
+
+- **Render-parity raster mode** (#295). `scripts/render-parity.ts compare
+  --raster <dir>` also compares every page as pixels, so a colour-only change
+  that moves no text no longer passes; each differing page gets a
+  `diff-NNN.png` with the changed pixels in red and is waivable per page. CI
+  runs it on every public fixture.
+
+### Changed
+
+- **One kind of screen for every task.** Book settings, Publish and *Where
+  your work is kept* now open the same way the start screen does: a full
+  window with the same fade, the same centred column and the same close
+  control in the top-right corner, with the workspace out of sight until you
+  close it (Esc or the X). Publish and *Where your work is kept* were pop-up
+  dialogs before.
+- **Reader or author** (Settings → App). Gutterpress now asks how you use
+  it. A reader sees just the pages: Edit/Read, Setup and Publish are gone
+  from the toolbar, the left panel offers only Books and TOC, New book is
+  not offered, and the book opens in Read. An author gets everything.
+  New installs start as a reader; the choice is remembered.
+- **Problems and the save state belong to editing.** The Problems badge and
+  the "Edits saved" indicator moved from the status bar to the editor
+  toolbar, and the Problems list opens at the bottom of the editor pane,
+  never over the preview. The panel has a close button in its top-right
+  corner.
+- **The toolbar keeps its labels longer** (#316). Edit/Read, Setup and
+  Publish stay labelled down to a 900px-wide window instead of collapsing
+  to icons at 1150px.
+- **Narrow windows no longer show the Edit/Read control.** Below 820px the
+  Markdown/Preview tabs decide what is on screen and pages never sit side by
+  side, so the control changed nothing; it is gone from both tabs.
+- **Connections** now says to use *Back up now* in the save status, not a
+  *Sync Changes* button that no longer exists (#310).
+- **Removed the unreachable browser/PWA code** (about 3,000 lines): the web
+  adapter, its file-access and storage helpers, the service worker, the web
+  manifest, the web-only HTML download, and every "is this the desktop app?"
+  check. No build ever reached it. The node-free `gutterpress/render` entry
+  point is kept for a future browser version.
+- **Cleanup of what the removal left behind**: platform methods and
+  capability flags nothing called, error handling for sync-conflict and
+  render-timeout messages nothing produces any more, the obsolete PWA plan
+  and mobile/PWA requirements, and comments and docs that described removed
+  code or no longer matched it.
+- **Removed tooling nothing ran** (about 4,500 lines): `packages/cli/tools/`,
+  the desktop drives no CI job ran (`inline-editing`, `electron-driver`,
+  `run-ui` and the `test:ui` script), the Windows Docker install test, and the
+  Google Drive spike and its plan.
+- **Dependencies** (#287): all 75 reported security advisories fixed (Electron
+  42.11.10, SvelteKit, markdown-it, tar and transitive packages), and the
+  security audit now blocks CI. Three advisories published since are fixed
+  the same way (katex, postcss-selector-parser, source-map-js); one in
+  sprintf-js, a build-tooling dependency with no patched release, is ignored
+  by id until one exists.
+
+### Fixed
+
+- **Zoom never re-paginates** (#318). Pages could not be reproduced breaking
+  differently by zoom level; a new CI check re-paginates the user guide at
+  several zooms in Edit and Read and fails if any block moves page.
+
+## [0.11.10] - 2026-10-03
+
+### Added
+
+- **Troubleshooting → Report a problem.** Builds everything we need to look
+  into a bug — app and system versions, how the open book is set up (never
+  its text), and the app's recent log, with your home folder redacted —
+  shows it in full, and copies it or opens a prefilled GitHub issue. Nothing
+  is sent until you submit the issue. Every error toast and the
+  unsaved-changes dialog link to it.
+- **Troubleshooting → Sync.** A new tab for a book whose online backup keeps
+  failing. It leads with *Reconnect GitHub* for the expired login that makes
+  every backup fail with a sign-in error (signs you in again; books and
+  history untouched), then, for the open book:
+  - *Repair online backup* — the same repair offered in "Where your work is
+    kept".
+  - *Scorched earth* — the last resort. Copies the whole folder to a backup in
+    the app's data folder (kept, never deleted), deletes everything in the
+    folder, downloads a fresh copy from online, then copies your files from the
+    backup back on top (everything except the old history). Your files win;
+    files only the online copy has stay. The book is closed as the final step.
+    Asks once before it runs.
+
+### Changed
+
+- **Troubleshooting opens on Logs.** Logs is now the first and default tab,
+  ahead of Diagnostics and Sync.
+- **The desktop app serves itself in-process.** The window's requests are
+  answered by the app directly; there is no longer a local HTTP server, port,
+  session token or proxy. Nothing else on the computer can reach the app's
+  internals, and long operations such as downloading a large book from GitHub
+  no longer time out after five minutes.
+- **One Chromium launcher.** `gutterpress build` finds Chrome through
+  `CHROMIUM_PATH` (or the usual install locations) and launches it itself;
+  `puppeteer-core` is no longer a dependency. `PUPPETEER_EXECUTABLE_PATH`
+  still works as a deprecated alias.
+- **Plugins load with a plain import.** Installing an extension still pins an
+  exact version, verifies every tarball and vendors its full dependency tree;
+  loading it is now an ordinary `import()` of that vendored copy. The receipt,
+  snapshot and import-rewriting scheme that re-verified the tree on every
+  load is gone.
+
+### Removed
+
+- **`gutterpress lint` and `gutterpress audit`.** Both duplicated `validate`:
+  use `gutterpress validate <dir> --only source.stylelint` and
+  `gutterpress validate <dir> --category asset --phase pre`. The library no
+  longer exports `runLint`.
+- The `GUTTERPRESS_CHROMIUM` and `GUTTERPRESS_PREVIEW_INCREMENTAL`
+  environment variables (undocumented).
+
+### Fixed
+
+- **Open book from GitHub** no longer fails on a large repository with
+  "A request to the app's internal server failed. TypeError: fetch failed".
+- **Sync tools work.** Repair and Scorched earth used to be refused with
+  "path is outside the open book"; they now act on the open book.
+- Errors from the app's own routes read as a sentence instead of a raw
+  `{"message": …}` blob.
+- **Book settings fills the window.** Like the start screen, it takes over
+  the whole app view instead of squeezing into a side panel; close it with
+  the X or Esc to return to your book exactly as you left it.
+
+## [0.11.9] - 2026-10-01
+
+### Added
+
+- **Export is part of Publish.** The Export button is gone; *Publish* is the
+  one blue action. Its wizard starts with the format (PDF or website), then
+  always saves to a folder on this computer first — `dist` inside your book
+  by default, or any folder you choose, remembered in the manifest — and
+  only then sends that same file to the online destinations you pick. A
+  website export now really writes a folder on the desktop. "Save as
+  template" moved to *Setup → Details*.
+- **Page navigation and zoom live on the preview.** The preview pane has its
+  own strip, like the editor's, with the page picker and a zoom menu that
+  shows the current level. The top toolbar keeps only Edit/Read, Focus,
+  Setup and Publish.
+- **One-click tool installs.** *Troubleshooting → Diagnostics* now offers an
+  Install button for Ghostscript and qpdf wherever the computer has a
+  package manager Gutterpress can drive (apt, dnf or pacman via the system
+  password prompt; Homebrew; winget), and a Download button otherwise. The
+  manual commands stay under "Install manually".
+- **Logs tab actions.** *Open folder* reveals the log folder in your file
+  manager; *Clear logs* (asks once) deletes every log file.
+- **About is its own tab** on the start screen, between Help and
+  Troubleshooting, with the versions and the update check.
+- **Repair online backup.** When online backup keeps failing, *Where your
+  work is kept* now offers one button that fixes it. Repair downloads a fresh
+  copy of your book's online history and puts it under the files on this
+  computer: your files here stay exactly as they are and win over the online
+  copy, anything only the online copy has is brought back, and the old history
+  is kept aside (never deleted) in the app's data folder. Then a version is
+  saved and backed up. It asks once before it runs and says exactly what it
+  will do.
+
+### Fixed
+
+- **Picking a chapter moves the preview too.** Choosing a file from the
+  Chapter list in Focus, or from the Files tab, now scrolls the preview to
+  that chapter's first page instead of leaving it where it was.
+- **A damaged version only this computer had now says so.** Sync reported it
+  as "didn't complete — please try again", which could never help. It now
+  says the history can't be read and points at Repair online backup.
+
+## [0.11.8] - 2026-10-01
+
+### Changed
+
+- **Save lives in the editor.** The Save button left the top toolbar; the
+  editor toolbar's Save is now a labelled button that turns blue when you have
+  unsaved changes and quietly says "Saved" when you don't. Ctrl/Cmd+S still
+  saves.
+- **Book settings is now "Setup".** The toolbar button has a tools icon and
+  the word Setup, so it's easier to find.
+- **A quieter problems indicator.** The status bar shows a small badge — an
+  icon and a count — instead of the PROBLEMS strip. Click it to open the same
+  problems panel as before.
+- **Pick a chapter while focusing.** In Focus while editing, the slim bar has a
+  Chapter list of your book's files, so you can switch without leaving Focus.
+- **Open book… replaces the old Books tab buttons.** The bottom of the Books tab
+  now has just Open book… and New book. Open book… asks where the book is —
+  on this computer or on GitHub — and takes you to the right place. The
+  welcome screen is still one click away from Help.
+- **Help is just help; Troubleshooting has the rest.** The start screen's Help
+  tab now holds only how-to guidance and keyboard shortcuts. A new
+  Troubleshooting tab has three sections: Diagnostics (what your computer has,
+  and a button to copy the details when you ask for help), Logs, and About
+  (version and update check). The separate Logs tab is gone.
+- **The user guide and examples come with the app.** On first launch the
+  desktop app copies the Gutterpress User Guide (with Getting Started) and the
+  example books to Documents/Gutterpress, where they show up under Discovered
+  books. Your copies are never overwritten.
+
+## [0.11.7] - 2026-10-01
+
+### Changed
+
+- **Focus works while writing and while reading.** Focus is now an on/off
+  switch beside Edit and Read. It hides the left panel, the status bar and the
+  toolbars, leaving only your writing and pages plus a slim bar with Edit/Read,
+  Exit focus and (while reading) page navigation. After a few seconds the bar
+  slides up until only its edge peeks out at the top of the window; point at
+  it and it slides back down. Press Esc to leave Focus — it works even after
+  you've clicked into the pages — and your layout comes back exactly as it
+  was. The Ctrl+Shift+F shortcut is gone; use the Focus button and Esc.
+- **Back up now and Save a version now live in "Where your work is kept".**
+  The separate backup button in the status bar is gone. Open the dialog from
+  the save status to back up online or save a version. Save a version now is
+  always beside See previous versions, and saving when nothing changed simply
+  says there's nothing new to save.
+
+### Fixed
+
+- **Online backup no longer gets stuck failing with "merge failed".**
+  Closing Gutterpress while a backup was saving could leave an empty file in
+  the book's version history. Every later backup then failed the same way,
+  because the damaged file was never rewritten. Gutterpress now waits for
+  version-history work to finish before it quits, and writes those files in a
+  way an interrupted save can't damage. Books already affected repair
+  themselves on the next backup. If a damaged file can't be repaired, the
+  message now says the version history can't be read instead of asking you to
+  try again.
+
+## [0.11.6] - 2026-09-30
+
+### Changed
+
+- **"Where your work is kept" explains saving, versions and online backup.**
+  Clicking the save status now opens a short dialog in plain words: your
+  writing is saved on this computer as you type; a version is a saved copy
+  you can go back to (and how many files changed since the last one); and
+  whether the book is backed up online. Each part has the one button that
+  helps, such as Save a version now, Start keeping versions or Set up online
+  backup. The status bar and backup messages use the same words, and a
+  manual "Back up online now" updates the dialog right away.
+- **Books open ready to write.** Opening a book for the first time now shows
+  Edit — the editor beside the page — with the left panel open, instead of a
+  lone cover page. A layout or panel choice you have already made still wins.
+- **Book settings sits beside your book.** It docks on the right, so the
+  preview stays in view and updates as you change fonts and colors. Design
+  settings have plain names ("Text color", "Code font", "Line spacing") with
+  the CSS variable shown underneath, and the font pickers match the other
+  fields. On a window narrower than 900px it still covers the window.
+- **A clearer toolbar.** The Edit, Read or Focus button you picked stays
+  highlighted — it used to look disabled right after you clicked it — and
+  each one says what it shows. Export is the one main button, with Publish
+  beside it as a secondary one. The first time you enter Focus in a session,
+  a note says how to get back.
+- **Formatting extras in plain words.** The Features tab leads with the
+  built-in extras and what to type for each. npm packages and plugin files
+  are under Advanced, and npm is only searched once you open it.
+- **Turn on version history from Connections.** A book kept in a plain folder
+  now gets a button to start keeping previous versions on this computer.
+- **A steadier editor toolbar.** Every insert action is in one Insert menu, so
+  the toolbar keeps its shape when the left panel opens, and "…" appears only
+  for what doesn't fit.
+- **Creating a book takes three short steps** — name, template, then print
+  and save — with the Create button always in view and a check mark on the
+  cards you chose.
+- **Left-panel tabs show their names,** and a file's rename and delete buttons
+  appear when you point at or tab to its row.
+- **It's called a book everywhere.** Book settings, New book, the Books tab and
+  the app's messages now say "book" instead of mixing in "project".
+- **The name-and-email notice waits until it matters.** It appears for books
+  with version history once you save a version or start a sync, and says what
+  it is for in plain words.
+
+### Fixed
+
+- **The preview no longer re-breaks pages when you zoom.** Zooming used to
+  move some paragraphs onto a different page at certain zoom levels (for
+  example 50% versus 25%). Zoom now only changes how big the pages look, never
+  where they break (#318).
+- **Clearer save status.** The status popover now separates your edits
+  ("Saved on this computer"), version history ("Last version saved 3 days
+  ago") and the online backup, instead of "Saved" next to "Latest version 3
+  days ago". The status bar says "Edits saved".
+- **Readable editor suggestions.** The list that opens when you type `@` (and
+  in CSS files) follows the light or dark theme, keeps text readable on every
+  row and no longer cuts labels off.
+- **The zoom and view menus look like menus** — one panel with plain rows and
+  a quiet check on the current choice, in light and dark themes.
+- **Messages from version history, sync, GitHub and new-book creation say
+  "book" too.**
+- **The Problems list no longer covers the left panel.** It opens as a row of
+  its own above the status bar, keyboard focus moves into it, and a book with
+  no problems just says so — after it has been checked, not before.
+- **The toolbar and status bar narrow gracefully.** Publish and Export keep
+  their labels on a 900px window, previous and next page stay available at
+  800px, and the save status stays visible.
+- **The preview stays fitted to its pane.** A slow page measurement no longer
+  resets the zoom to 100% about ten seconds after a book opens.
+- **On a narrow window the left panel stops at the status bar,** so its New
+  book button is no longer hidden, and closing the panel with Esc is
+  remembered.
+- **Esc closes the Settings, Help and Logs page.** It could only be closed with
+  its X button. Esc still does nothing while you are typing in a field.
+- **In-app Help matches the app.** It no longer points at a toolbar Open
+  button, a Single / Two-page toggle or a Ctrl+O shortcut that do not exist.
+- **Easier to read and click.** Editor line numbers have enough contrast to
+  read comfortably, the status-bar settings and help buttons are larger click
+  targets, and the status-bar gear is now named "App preferences" so it is
+  not confused with the toolbar's Book settings gear.
+- **Welcome screen polish.** The book search box uses the normal font, the
+  "No recent books" hint is easier to read, and the version label is hidden
+  instead of showing "vunknown" when the version is unavailable.
+
+## [0.11.5] - 2026-09-29
+
+### Fixed
+
+- **Sync failures record the step and original cause.** Technical details now
+  include a run ID, runtime version, push mode, elapsed time, and a final
+  outcome for every completed attempt. Merge, checkout, snapshot, and fetch
+  errors retain their diagnostic details with credentials removed. Background
+  errors also carry the log path to the status pill.
+- **Unreadable conflict files no longer disappear into another merge error.**
+  Sync preserves the original read failure. Unsupported merges are only
+  reported as unrelated histories after checking that no common history exists.
+  Invalid retry settings cannot create an unbounded retry loop.
 
 ## [0.11.4] - 2026-09-28
 

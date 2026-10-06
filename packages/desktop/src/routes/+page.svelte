@@ -1,8 +1,10 @@
 <script lang="ts">
   import PreviewFrame from "$lib/components/PreviewFrame.svelte";
+  import PreviewToolbar from "$lib/components/PreviewToolbar.svelte";
   import FindBar from "$lib/components/FindBar.svelte";
   import ExternalEditBanner from "$lib/components/ExternalEditBanner.svelte";
   import CrashRecoveryDialog from "$lib/components/CrashRecoveryDialog.svelte";
+  import type { TroubleshootingTab } from "$lib/troubleshooting-tabs";
   import { EditorBuffer } from "$lib/editor/buffer-state.svelte";
   import { EditorFileSession } from "$lib/editor/editor-file-session.svelte";
   import { chapterPath, isSafeChapterId } from "$lib/editor/chapter-path";
@@ -12,141 +14,45 @@
   import type { MarkdownFileLaunchEvent } from "$lib/platform/contract";
   import type { ProblemEntry } from "$lib/platform/dtos";
   import { buildProblems, problemCounts } from "$lib/problems";
-  import { installErrorReporting, reportError } from "$lib/diagnostics/report";
   import StatusBar from "$lib/components/StatusBar.svelte";
+  import ProblemsPanel from "$lib/components/ProblemsPanel.svelte";
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
   import ProjectActivityView from "$lib/components/ProjectActivityView.svelte";
   import NewProjectWizard from "$lib/components/NewProjectWizard.svelte";
   import GitHubDialog from "$lib/components/GitHubDialog.svelte";
+  import OpenBookDialog from "$lib/components/OpenBookDialog.svelte";
   import PublishWizard from "$lib/components/PublishWizard.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import AppToolbar from "$lib/components/AppToolbar.svelte";
-  import ExportDialog from "$lib/components/ExportDialog.svelte";
+  import FocusBar from "$lib/components/FocusBar.svelte";
   import ProjectSettingsView from "$lib/components/ProjectSettingsView.svelte";
   import EditorToolbar from "$lib/components/EditorToolbar.svelte";
-  import type { ToolbarAction, ToolbarPayload } from "$lib/components/EditorToolbar.svelte";
-  // SFE-P3ab, Lane A - the shared rich editor. The paged surface is what
-  // Read mounts; which surface is live is derived from the workspace mode
-  // via `syncRichSurface` below. See rich-mode.svelte.ts's own header for
-  // the mode-selection contract.
-  import { createRichModeController, trackSurfaceMount } from "$lib/editor/rich-mode.svelte";
-  import { DesktopDocumentHost } from "$lib/editor-host/desktop-document-host";
-  // SFE-P6a — the rich-mode document-host + D6 projection lifecycle (owns
-  // what used to be this page's own richDocHost/richProjection/richPluginCss
-  // state and its rebuild/dispose functions). See that module's own header.
-  // SFE-P3ab, Lane B — the adapter that lets the shared P2a command
-  // vocabulary drive the rich surface (rich-commands.ts's own header has
-  // the full design, including the confirmed-missing selection accessor).
-  import {
-    routeToolbarAction,
-    applyRichCommand,
-    applyRichLayoutBlock,
-    applyRichImageInsert,
-    applyRichAppend,
-    captureRichSelection,
-    type RichSelectionCapture,
-    applyBlockMove,
-    blockIndexAtOffset,
-    validateImageProperties,
-    // SFE-P3d-parity, Lane D — rich-mode replacements for the
-    // image-properties/image-unwrap/link-edit parity-matrix waiver rows.
-    locateRichImagePropertiesAtCaret,
-    applyRichImagePropertiesEdit,
-    applyRichImageUnwrapAtCaret,
-    locateRichLinkEditAtCaret,
-    applyRichLinkEditEdit,
-    type RichCommandOutcome,
-  } from "$lib/editor/rich-commands";
-  import { diagnosticForEditRejection, type Diagnostic } from "@dimm-city/gutterpress-editor/core";
-  // SFE-P3d-parity, Lane D — the SOURCE-mode counterparts of the same three
-  // commands, and `findMountedSourceView`, needed to hand them a live
-  // `EditorView` from outside `MarkdownEditor.svelte` — see
-  // `source-editor-access.ts`'s header for why (that component is outside
-  // this lane's write ownership).
-  import { findMountedSourceView } from "$lib/editor/source-editor-access";
-  import {
-    locateImagePropertiesAtCaret,
-    applyImagePropertiesEdit,
-    applyImageUnwrapAtCaret,
-    locateLinkEditAtCaret,
-    applyLinkEditEdit,
-  } from "$lib/editor/toolbar-actions";
-  // SFE-P3ab review round 1 (CONFIRMED finding) — the browser-safe render
-  // subpath (CLAUDE.md monorepo layout: "browser-safe public subpath:
-  // gutterpress/render"): this is the ONE place D4 lets the renderer build a
-  // D6 projection without any Node-side work.
-  import { createEditorProjection } from "gutterpress/render";
-  import type { GutterpressProjection } from "gutterpress/render";
+  import type { ToolbarAction, ToolbarPayload } from "$lib/editor/toolbar-actions";
   import SnippetPicker from "$lib/components/SnippetPicker.svelte";
-  import { PreviewClient, type ChapterStart, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
+  import { PreviewClient, type OutlineEntry, type PreviewEvent, type PreviewTarget } from "$lib/preview-client";
   import { activeOutlineIndexForLine } from "$lib/routes/outline";
-  import { bookOrder } from "$lib/routes/book-order";
   import { PageNavController } from "$lib/routes/page-nav-controller.svelte";
   import { ZoomViewController } from "$lib/routes/zoom-view-controller.svelte";
   import { PreviewEventController } from "$lib/routes/preview-event-controller";
   import { EditorPreviewSyncController } from "$lib/routes/editor-preview-sync-controller";
-  import { ContextMenuController, type ContextMenuItem } from "$lib/routes/context-menu-controller.svelte";
-  import { PopupMenuController } from "$lib/routes/popup-menu-controller.svelte";
-  import { findImageTokenAtOffset } from "$lib/editor/context-menu-actions";
+  import { ContextMenuController } from "$lib/routes/context-menu-controller.svelte";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
+  import { InlineEditController } from "$lib/routes/inline-edit-controller.svelte";
   import TextPromptDialog from "$lib/components/TextPromptDialog.svelte";
   import ImagePropertiesDialog from "$lib/components/ImagePropertiesDialog.svelte";
   import type { ImagePropertiesValue } from "$lib/editor/image-classes";
+  import { CommitEngine } from "$lib/editor/commit-engine";
   import { SyncController } from "$lib/routes/sync-controller.svelte";
   import { ProjectSessionController } from "$lib/routes/project-session-controller.svelte";
   import { ProjectLifecycleController } from "$lib/routes/project-lifecycle-controller.svelte";
   import { StartupController } from "$lib/routes/startup-controller.svelte";
   import { CrashRecoveryController } from "$lib/routes/crash-recovery-controller.svelte";
-  import { ProblemsController } from "$lib/routes/problems-controller.svelte";
   import { PublishSectionController } from "$lib/routes/publish-section-controller.svelte";
   import { buildCanvasBackgroundStyles } from "$lib/iframe-styles";
-  import { isDesktop } from "$lib/platform";
+  import { getPlatform } from "$lib/platform";
   import type { WorkspaceMode } from "$lib/platform";
-  import {
-    build,
-    cancelExport,
-    getPlatformCapabilities,
-    onBuildProgress,
-    onUrlPreviewBlocked,
-    startPreview,
-    stopPreview,
-  } from "$lib/export/build-preview-capability";
-  // SFE-P3e — the desktop rich editor's host-built projection call and its
-  // degrade-and-report plugin-error payload shape (both now owned by this
-  // module — SFE-P5b review round 1).
-  import { buildEditorProjection, type EditorProjectionPluginError } from "$lib/editor-host/editor-projection-capability";
-  import { vcsSaveSnapshot } from "$lib/vcs/vcs-capability";
-  import {
-    onFlushBeforeClose,
-    onOpenMarkdownFile,
-    watchFolder,
-    acknowledgeFlushFailure as acknowledgeFlushFailureCapability,
-    adoptFolder as adoptFolderCapability,
-    classifyProject as classifyProjectCapability,
-    getDesktopPrefs as getDesktopPrefsCapability,
-    getDesktopProjectState as getDesktopProjectStateCapability,
-    recordFlushFailure as recordFlushFailureCapability,
-    setDesktopPrefs as setDesktopPrefsCapability,
-    setDesktopProjectState as setDesktopProjectStateCapability,
-    setDirtyState as setDirtyStateCapability,
-  } from "$lib/app-lifecycle/app-lifecycle-capability";
-  import { diagnoseProjectRemote, onSyncStatus, syncChanges } from "$lib/remote/remote-capability";
-  import * as publish from "$lib/publish/publish-capability";
-  import {
-    readFile as readFileCapability,
-    writeFile as writeFileCapability,
-    statFile as statFileCapability,
-    listDir as listDirCapability,
-    openDirectory as openDirectoryCapability,
-    savePdf as savePdfCapability,
-    pickPdfFile as pickPdfFileCapability,
-    confirmUnsaved as confirmUnsavedCapability,
-    openExternal as openExternalCapability,
-    showInFolder as showInFolderCapability,
-  } from "$lib/files/files-capability";
-  import { listRecovery, clearRecovery } from "$lib/recovery/recovery-capability";
-  import { lintProject } from "$lib/lint/lint-capability";
-  import { getDoctorDiagnostics } from "$lib/doctor/doctor-capability";
+  import { api } from "$lib/api";
+  import { buildSourceList } from "$lib/components/config/source-files";
   import { isEditableTarget } from "$lib/a11y";
   import { invalidateDiscoveredProjects } from "$lib/projects-discover-cache";
   import { basenameOf, joinPath, isPathAtOrUnder } from "$lib/platform/paths";
@@ -160,6 +66,7 @@
   } from "$lib/editor/mobile-layout";
   import { commandForSaveShortcut } from "$lib/editor/save-shortcuts";
   import { resolveGlobalShortcut, resolvePreviewNavCommand } from "$lib/routes/shortcuts";
+  import { escapeExitsFocus } from "$lib/routes/focus-mode";
   import { splitTemplateColumns, shouldRefitPreview } from "$lib/editor/preview-layout";
   import { useSettings, _loadSettings, settingsChangeGuard, onSettingsChange } from "$lib/settings.svelte";
   import { sanitizeSettingsTab, type SettingsTab } from "$lib/settings-tabs";
@@ -185,12 +92,6 @@
     PersistedProjectState,
   } from "$lib/routes/page-types";
 
-  // L1: one writer-facing constant for the "no Electron bridge" gate — this
-  // developer-jargon toast ("Electron bridge unavailable — run via the desktop
-  // app") was copy-pasted verbatim 4x. Phrasing follows NewProjectWizard's
-  // existing writer-appropriate copy for the same gate ("Creating a project
-  // needs the desktop app.").
-  const DESKTOP_APP_REQUIRED = "This needs the desktop app to continue.";
   const persistenceFailures = new PersistenceFailureNotifier();
 
   function reportIgnoredPersistenceFailure(): void {
@@ -210,39 +111,28 @@
   // currentFolderDisplayName/currentUrl/sourceMode/docTitle/busy/busyLabel/
   // rendering/renderProgressPage/renderCompleteOverlay/openError/
   // urlPreviewError/saveWarning/currentFolderHasManifest/
-  // adoptBannerDismissed/adopting) now lives on the ProjectLifecycleController
-  // (Phase 5d, UX H5 / ARCH #10) — see its instantiation below. The template
-  // reads the public rune getters (`lifecycle.previewUrl` etc.) and calls the
-  // intent methods (`lifecycle.startFolderPreview` / `setUpAsBook` /
-  // `stopPreview` / `openUrl` / `cancelOpen`).
+  // adoptBannerDismissed/adopting) lives on the ProjectLifecycleController —
+  // see its instantiation below. The template reads the public rune getters
+  // (`lifecycle.previewUrl` etc.) and calls the intent methods
+  // (`lifecycle.startFolderPreview` / `setUpAsBook` / `stopPreview` /
+  // `openUrl` / `cancelOpen`).
   //
-  // Adapter-precomputed display name for the open folder (#49), when the folder
-  // was opened via a FolderRef-returning path (picker / recents / favorites).
-  // Null when opened by raw key (e.g. reopened-last-project) — folderName then
-  // falls back to deriving the basename from lifecycle.currentDir.
   // Capabilities of the open project's source (#12) live on the
   // ProjectSessionController (projectSession.projectCapabilities), alongside the
   // classification wiring that populates them.
-  // Folder name (basename) for the toolbar label; the full path is the tooltip.
-  // Folder name for the toolbar label (#49): prefer the adapter-precomputed
-  // FolderRef.displayName; fall back to the basename of the key when the folder
-  // was opened by raw key (reopened last project / typed path).
-  // NOTE: this $derived reads lifecycle.* directly (not through a closure), so
-  // it is declared AFTER `lifecycle` further down (right after its
+  // The toolbar's folder-name $derived (#49) reads lifecycle.* directly (not
+  // through a closure), so it is declared AFTER `lifecycle` further down (right after its
   // instantiation) to satisfy TypeScript's block-scoping — svelte2tsx inlines
   // $derived expressions rather than deferring them like a real closure.
   // PDF export runs in a separate render window, so the UI stays usable — track
   // it separately with a NON-blocking status pill instead of the modal overlay.
   // The whole export FSM (state + 1s ticker + progress label) AND the
-  // savePdf/exportHtml/cancelExport intents (Phase 5 slice 2, UX H5 / ARCH
-  // #10 — moved from +page.svelte) live in the ExportController; the view
+  // savePdf/buildTo/cancelExport intents live in the ExportController; the view
   // drives it via intent methods and reads its rune getters. Host coupling
   // injected (§8): forward-references to page-local functions/state declared
   // further down (lifecycle, toast, getSaveReadinessWarning, …) are safe
   // closures, the same pattern pageNav's deps use below.
   const exportController = new ExportController(undefined, {
-    isDesktop: () => isDesktop(),
-    desktopRequiredMessage: DESKTOP_APP_REQUIRED,
     checkSaveReadiness: () => getSaveReadinessWarning(),
     setSaveWarning: (message) => {
       lifecycle.saveWarning = message;
@@ -251,10 +141,12 @@
     displayName: () => lifecycle.currentFolderDisplayName,
     isBusy: () => lifecycle.busy,
     sourceMode: () => lifecycle.sourceMode,
-    chooseSavePath: (defaultName) => savePdfCapability(defaultName),
-    onBuildProgress,
+    chooseSavePath: (defaultName, defaultDir) => api.dialog.savePdf(defaultName, defaultDir),
+    pickOutputFolder: (defaultPath) => api.dialog.pickOutputFolder(defaultPath),
+    onBuildProgress: (cb) => getPlatform().onBuildProgress(cb),
     buildPdf: (input, outPath, opts) =>
-      build({
+      getPlatform()
+        .build({
         input,
         format: "pdf",
         out: outPath,
@@ -274,24 +166,12 @@
         // fills the panel. Held separately (see `buildProblems`) so the next
         // lint refresh — any file save — does not wipe them.
         .then((result) => {
-          problemsController.recordBuildEntries(buildProblems(result.diagnostics ?? []));
+          buildProblemEntries = buildProblems(result.diagnostics ?? []);
           return result;
         }),
-    buildHtml: (input) => build({ input, format: "html" }),
-    cancelExportHost: (exportId) => cancelExport(exportId),
-    downloadFile: (url, filename) => {
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      // Revoke after the click has handed the URL to the browser's download.
-      // The adapter transfers object-URL ownership here (it does NOT revoke
-      // build() download URLs), so the SPA owns the lifecycle.
-      setTimeout(() => URL.revokeObjectURL(url), 0);
-    },
-    showInFolder: (path) => showInFolderCapability(path),
+    buildHtml: (input, out) => getPlatform().build({ input, format: "html", ...(out ? { out } : {}) }),
+    cancelExportHost: (exportId) => getPlatform().cancelExport(exportId),
+    showInFolder: (path) => api.shell.showInFolder(path),
     toastSuccess: (message, durationMs, action) => toast?.success(message, durationMs, action),
     // `show` rather than `error`: the over-wide "Build anyway" offer (#163)
     // needs a duration and an action button, which `error()` does not take.
@@ -302,47 +182,33 @@
   });
   let diagnosticsTools = $state<DiagnosticsTool[] | null>(null);
 
-  // Publishing (#35 → toolbar wizard): the same PublishSectionController that
-  // used to live in ProjectConfigPanel's "crammed at the bottom" Publish
-  // section now drives the front-and-centre PublishWizard opened from the
-  // toolbar. Constructed here so the wizard and the toolbar button share one
-  // instance. Host coupling injected (§8) — the publish capability module /
-  // $lib/files/files-capability's dialog/shell functions; toast/lifecycle
-  // are safe forward-referenced closures.
+  // Publishing (#35): the PublishSectionController drives the PublishWizard
+  // opened from the toolbar. Constructed here so the wizard and the toolbar button share one
+  // instance. Host coupling injected (§8) — api.publish.* / api.dialog.* /
+  // api.shell.*; toast/lifecycle are safe forward-referenced closures.
   const publishController = new PublishSectionController({
     projectDir: () => lifecycle.currentDir,
-    listProviders: (dir) => publish.listProviders(dir),
-    preflight: (dir, providerIds) => publish.preflight(dir, providerIds),
-    setConfig: (dir, providerId, values) => publish.setConfig(dir, providerId, values),
-    connect: (dir, providerId, token, account) => publish.connect(dir, providerId, token, account),
-    disconnect: (providerId, account) => publish.disconnect(providerId, account),
-    // #221 D10 — the Google Drive OAuth connect trio (publish-capability's
-    // own members over the bridge's connectGoogle* trio).
-    connectGoogleStart: (account) => publish.connectGoogleStart(account),
-    connectGoogleWait: () => publish.connectGoogleWait(),
-    connectGoogleCancel: () => publish.connectGoogleCancel(),
-    // #221 D9 — provider-neutral destinations picker.
-    listDestinations: (dir, providerId) => publish.listDestinations(dir, providerId),
-    createDestination: (dir, providerId, name) => publish.createDestination(dir, providerId, name),
-    run: (dir, providerId, options) => publish.run(dir, providerId, options),
-    pickPdfFile: () => pickPdfFileCapability(),
-    openDirectory: () => openDirectoryCapability(),
-    openExternal: (url) => openExternalCapability(url),
+    listProviders: (dir) => api.publish.listProviders(dir),
+    preflight: (dir, providerIds) => api.publish.preflight(dir, providerIds),
+    setConfig: (dir, providerId, values) => api.publish.setConfig(dir, providerId, values),
+    connect: (dir, providerId, token, account) => api.publish.connect(dir, providerId, token, account),
+    disconnect: (providerId, account) => api.publish.disconnect(providerId, account),
+    // #221 — oauth connect trio goes through getPlatform() (the narrow
+    // adapter seam for interactive OAuth connects), not api.publish.*.
+    connectGoogleStart: (account) => getPlatform().connectGoogleStart(account),
+    connectGoogleWait: () => getPlatform().connectGoogleWait(),
+    connectGoogleCancel: () => getPlatform().connectGoogleCancel(),
+    // #221 — provider-neutral destinations picker.
+    listDestinations: (dir, providerId) => api.publish.listDestinations(dir, providerId),
+    createDestination: (dir, providerId, name) => api.publish.createDestination(dir, providerId, name),
+    run: (dir, providerId, options) => api.publish.run(dir, providerId, options),
+    openExternal: (url) => api.shell.openExternal(url),
     onSaved: () => toast?.success?.("Publish settings saved."),
     onConnected: () => toast?.success?.("Connected — the key is stored securely on this computer."),
     onPublished: (guided) =>
       toast?.success?.(guided ? "Upload package ready — follow the checklist to finish." : "Published!"),
   });
   let publishOpen = $state(false);
-
-  // PDF/build gating via the getPlatformCapabilities() seam. `nativeSavePath`
-  // is true on the desktop host (Electron writes the PDF to a chosen path via
-  // puppeteer / printToPDF). SFE-P5a (D10): the capability still fails
-  // loudly off-Electron rather than resolving a degraded host (see that
-  // function's own doc comment), so this derived only ever evaluates true
-  // here — the "requires the desktop app" hint below is defensive UI copy,
-  // not a reachable web branch.
-  const canSavePdf = $derived(getPlatformCapabilities().nativeSavePath);
 
   // ── Left panel (#workspace-restructure) ───────────────────────────────────
   // State persisted via DesktopPrefs. Keyed separately from per-project state.
@@ -361,7 +227,7 @@
   // <iframe> element (getBoundingClientRect for context-menu positioning,
   // clientWidth for fit-width zoom) instead of `document.querySelector("iframe")`.
   let previewFrameRef = $state<{ getIframe: () => HTMLIFrameElement | undefined } | null>(null);
-  // Page-navigation FSM (Phase 5): owns currentPage/totalPages/
+  // Page-navigation FSM: owns currentPage/totalPages/
   // restoringSavedState + the host-driven navigation intents (including the
   // toolbar page-select's selectPage).
   // Host coupling is injected so the component stays a thin composition root.
@@ -378,7 +244,7 @@
     savePrefs: (patch) => saveDesktopPrefs(patch),
     savePageDirect: (page) => {
       if (lifecycle.currentDir) {
-        trackPersistence(setDesktopProjectStateCapability(lifecycle.currentDir, { currentPage: page }));
+        trackPersistence(api.app.setDesktopProjectState(lifecycle.currentDir, { currentPage: page }));
       }
     },
   });
@@ -404,7 +270,7 @@
     },
   });
 
-  // ── Document outline + editor↔preview sync (UX-013, ADR 0005) ─────────────
+  // ── Document outline + editor↔preview sync ────────────────────────────────
   // outline drives the chapter-jump dropdown; activeOutlineIndex tracks the
   // heading the reader is currently within (updated from sourceLineChanged).
   let outline = $state<OutlineEntry[]>([]);
@@ -418,11 +284,10 @@
       pageNav.syncPageState({ currentPage: page, totalPages: pageNav.totalPages }),
   });
   // ── User settings (#45) ────────────────────────────────────────────────
-  // bgColor and zoom are sourced from the persisted settings store (their old
-  // inline defaults #5a5a5a / fit-width now live in DEFAULT_SETTINGS). Local
-  // mutations write back through useSettings().set().
-  // bgColor has no toolbar control (that was removed in the toolbar redesign);
-  // it is set via the Settings panel only.
+  // bgColor and zoom are sourced from the persisted settings store (defaults
+  // in DEFAULT_SETTINGS). Local mutations write back through
+  // useSettings().set(). bgColor has no toolbar control; it is set via the
+  // Settings panel only.
   const settings = useSettings();
   _loadSettings();
   let zoom = $derived(settings.current.preview.defaultZoom);
@@ -432,9 +297,6 @@
   // side-by-side split regardless of this value.
   let paneMode = $derived(settings.current.preview.paneMode);
   let debug = $state(false);
-  // autoOpeningLastProject/lastProjectChecked (Phase 5 slice 2, UX H5 / ARCH
-  // #10) now live on `startup` (StartupController) — see its instantiation
-  // below.
   let pendingRestorePage = $state<number | null>(null);
 
   // Toast controller (populated by Toast.svelte via bind:api)
@@ -442,9 +304,8 @@
   // Operation-log desktop: opened from the StatusBar git/sync pill. Holds the
   // current project's log path (carried on the sync status stream).
   let logFilePath = $state<string | null>(null);
-  // Ref to the mounted ProjectActivityView (H2) so a sync completion can ask
-  // it to reload its snapshot list without a round-trip through LeftPanel's
-  // retired no-op history seam (L8 / ARCH #41). Undefined whenever the
+  // Ref to the mounted ProjectActivityView so a sync completion can ask
+  // it to reload its snapshot list directly. Undefined whenever the
   // activity view isn't the current editor-pane view.
   let activityViewRef = $state<{ refreshHistory: () => void } | undefined>(undefined);
   // The activity view borrows the editor pane and restores the workspace it
@@ -462,8 +323,10 @@
     const restore = paneViewRestore;
     paneViewRestore = null;
     if (restore) setMode(restore.mode);
-    void ensureEditorFile();
-    focusEditorWhenReady();
+    if (editorVisible) {
+      void ensureEditorFile();
+      focusEditorWhenReady();
+    }
   }
   function showProjectLog(filePath: string | null): void {
     logFilePath = filePath;
@@ -493,10 +356,16 @@
     else openSettings();
   }
   /**
-   * No author name/email yet: every version this project saves would be
-   * attributed to a placeholder, so the workspace carries a persistent notice
+   * No author name/email yet: what a project with version history keeps would
+   * be attributed to a placeholder, so the workspace carries a persistent notice
    * with a one-click route to Settings → Accounts. It clears itself the moment
    * both fields are filled.
+   *
+   * It waits until that is about to matter: the open project HAS version
+   * history (`canSnapshot`) and a version was just saved by hand or a sync just
+   * started — the two moments the renderer is told about (`identityNoticeArmed`,
+   * set where they happen) — not the moment any book opens, plain folders
+   * with no history included.
    *
    * Gated on `settings.loaded`: the in-memory defaults ARE empty strings, so an
    * ungated check would flash the banner on every launch in the window before
@@ -509,20 +378,26 @@
    * `resolveGitAuthor` falls back per field to the project's own
    * `.git/config` before using the placeholder. So an author whose repo
    * already carries a `user.name` / `user.email` is attributed correctly and
-   * does not need this notice (Codex review, PR #134). Rather than teach the
+   * does not need this notice (PR #134). Rather than teach the
    * renderer to resolve the effective identity — a host round-trip per
    * project, for a notice — the notice is simply dismissible: anyone it is
    * wrong for silences it, and it returns next launch in case the setting
    * still matters to them.
    */
+  let identityNoticeArmed = $state(false);
   let identityNoticeDismissed = $state(false);
-  const needsGitIdentity = $derived(
-    settings.loaded &&
+  // `$derived.by`: reads `projectSession`, declared further down — a plain
+  // `$derived(expr)` would evaluate it here, before that declaration.
+  const needsGitIdentity = $derived.by(
+    () =>
+      settings.loaded &&
+      identityNoticeArmed &&
       !identityNoticeDismissed &&
+      !!projectSession.projectCapabilities?.canSnapshot &&
       (!settings.current.gitIdentity.authorName.trim() ||
         !settings.current.gitIdentity.authorEmail.trim()),
   );
-  /** After a successful snapshot restore (H2), or a Saving-tab copy switch
+  /** After a successful snapshot restore, or a Saving-tab copy switch
    * (#273 — passed as `onProjectFilesChanged` to WelcomeLanding/SettingsView):
    * reconcile the open editor buffer against disk — same reconciliation the
    * folder watcher runs for any external change (see
@@ -530,7 +405,7 @@
    * problems, since either operation can rewrite many files at once. */
   function onSnapshotRestored(): void {
     void buffer?.reconcileExternalChange();
-    problemsController.refresh();
+    refreshProblems();
   }
   // A loose markdown folder opens fine (no manifest = defaults), but has no
   // editable styles or version history. When the OPENED folder has no manifest,
@@ -543,7 +418,7 @@
 
   /** Turn an existing folder into a Gutterpress book (manifest + book.css + git),
    *  then (re)open it. Used by the successful-open no-manifest banner.
-   *  Epoch/busy management moved to ProjectLifecycleController (Phase 5d). */
+   *  Epoch/busy management lives on ProjectLifecycleController. */
   function setUpAsBook(dir: string): Promise<boolean> {
     return lifecycle.setUpAsBook(dir);
   }
@@ -551,53 +426,56 @@
   // ── Auto-update state ──────────────────────────────────────────────────
   // The whole update FSM (banner version state, check/download/apply intents,
   // and the mount-time status peek + event subscription) lives in the
-  // UpdateController (Phase 5); the view drives it via intent methods and reads
+  // UpdateController; the view drives it via intent methods and reads
   // its rune getters. Toast feedback is injected through an accessor seam.
   const updateController = new UpdateController(() => toast);
 
   // "Open from GitHub" flow (#15)
   let githubOpen = $state(false);
-  // New-project wizard (#25). L4: opening is exclusively via show() below —
-  // there is no bindable `open` prop any more (the wizard owns that state).
+  let openBookOpen = $state(false);
+  // New-project wizard (#25). Opening is exclusively via show() below — there
+  // is no bindable `open` prop (the wizard owns that state).
   let newProjectWizardRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
   // Manual force-save state for the status bar action button.
   let forceSaving = $state(false);
-  // Sync-outcome routing + diagnosis state (Phase 5b). Owns the syncDiag /
+  // Sync-outcome routing + diagnosis state. Owns the syncDiag /
   // forceSyncing runes (sync always converges — 2026-08-14). Host coupling
   // injected so the routing is
   // unit-testable and PWA-clean (§8). onSyncCompleted / onSyncFilesChanged
   // stay component methods (they touch toast + activityViewRef.refreshHistory
   // + buffer).
   const syncController = new SyncController({
-    syncChanges: (dir) => syncChanges(dir),
-    diagnose: (dir) => diagnoseProjectRemote(dir),
+    syncChanges: (dir) => api.remote.syncChanges(dir),
+    repair: (dir) => api.remote.repairOnlineBackup(dir),
+    diagnose: (dir) => api.remote.diagnoseProjectRemote(dir),
     currentDir: () => lifecycle.currentDir,
     toast: () => toast,
     onSyncCompleted: (mergedRemoteChanges, filesChanged) =>
       onSyncCompleted(mergedRemoteChanges, filesChanged),
     onFilesChanged: () => onSyncFilesChanged(),
+    autoBackup: () => settings.current.versionHistory.autoSync,
   });
 
   // ── Project session capability state (#12) ───────────────────────────────────
   // The classification wiring (source detection → capabilities → subPath →
-  // prefs hint) lives in the ProjectSessionController (Phase 5c). The
-  // component reset()s it and fires classify(dir) on folder open, and reads
-  // its rune getters. Host coupling injected (§8): the classify round-trip
-  // and the DesktopPrefs writer. The remote-diagnosis refresh moved to the
-  // lifecycle controller (after currentDir is assigned) — see its
-  // refreshSyncDiag dep below.
+  // prefs hint) lives in the ProjectSessionController. The component
+  // reset()s it and fires classify(dir) on folder open, and reads its rune
+  // getters. Host coupling injected (§8): the classify round-trip and the
+  // DesktopPrefs writer. The remote-diagnosis refresh lives on the lifecycle
+  // controller (after currentDir is assigned) — see its refreshSyncDiag dep
+  // below.
   const projectSession = new ProjectSessionController({
-    classifyProject: (dir) => classifyProjectCapability(dir),
-    setDesktopPrefs: (prefs) => setDesktopPrefsCapability(prefs),
+    classifyProject: (dir) => api.app.classifyProject(dir),
+    setDesktopPrefs: (prefs) => api.app.setDesktopPrefs(prefs),
   });
 
-  // ── Project open/close lifecycle (Phase 5d, UX H5 / ARCH #10) ────────────────
+  // ── Project open/close lifecycle ─────────────────────────────────────────────
   // The folder-open pipeline (startFolderPreview + its epoch/superseded()
   // concurrency guard), setUpAsBook's epoch/busy management, stopPreview,
-  // openUrl's reset path, and cancelOpen (the initial-open Cancel affordance,
-  // M2) all live on ProjectLifecycleController — including the ONE
-  // resetWorkspace() every teardown path now calls (the fix for the divergent
-  // hand-rolled resets that shipped the Cancel-closes-project defect). Fields
+  // openUrl's reset path, and cancelOpen (the initial-open Cancel affordance)
+  // all live on ProjectLifecycleController — including the ONE
+  // resetWorkspace() every teardown path calls (divergent hand-rolled resets
+  // shipped a Cancel-closes-project defect). Fields
   // this controller doesn't own (Problems panel, editor pane/buffer, folder
   // watcher, pageNav counters, crash-recovery scan state) are reset through
   // the single injected `resetExtras` callback below — a registered callback,
@@ -606,11 +484,9 @@
   // startFolderWatch, crashRecovery, dismissLanding, …) are safe closures,
   // the same pattern `pageNav`'s `savePrefs` already uses above.
   const lifecycle: ProjectLifecycleController = new ProjectLifecycleController({
-    isDesktop: () => isDesktop(),
-    desktopRequiredMessage: DESKTOP_APP_REQUIRED,
-    startPreviewHost: (input) => startPreview({ input }),
-    stopPreviewHost: () => stopPreview(),
-    adoptFolder: (dir) => adoptFolderCapability({ dir }),
+    startPreviewHost: (input) => getPlatform().startPreview({ input }),
+    stopPreviewHost: () => getPlatform().stopPreview(),
+    adoptFolder: (dir) => api.app.adoptFolder({ dir }),
     invalidateDiscoveredProjects: () => invalidateDiscoveredProjects(),
     projectSession,
     clearSyncDiag: () => {
@@ -625,9 +501,9 @@
     },
     // Read by the controller for the RESOLVED book dir — the same key every
     // write below uses (`saveDesktopPrefs`/`setDesktopProjectState` are keyed to
-    // `lifecycle.currentDir`). Callers used to fetch this themselves for the dir
-    // the user PICKED, which silently missed on any retargeted open.
-    getDesktopProjectState: (dir) => getDesktopProjectStateCapability(dir).catch(() => null),
+    // `lifecycle.currentDir`). Keying it to the dir the user PICKED would
+    // silently miss on any retargeted open.
+    getDesktopProjectState: (dir) => api.app.getDesktopProjectState(dir).catch(() => null),
     resetFirstRenderGate: () => previewEvents.resetFirstRenderGate(),
     flushBuffer: () => flushEditorBuffer(),
     leaveBuffer: () => leaveEditorBuffer(),
@@ -642,9 +518,13 @@
     dismissLanding: (runPendingRecoveryScan) => dismissLanding(runPendingRecoveryScan),
     toast: () => toast,
     clearStaleProjectState: () => {
-      problemsController.reset();
+      problems = [];
+      buildProblemEntries = [];
+      problemsLoading = false;
+      problemsError = null;
       logFilePath = null;
     },
+    onProjectSwitch: () => setFocus(false),
     resetExtras: () => {
       stopFolderWatch();
       pageNav.totalPages = 0;
@@ -652,7 +532,11 @@
       // A project closed while its settings view was up must not show that
       // view over the next project (or the empty workspace).
       projectSettingsOpen = false;
-      setMode("viewer");
+      // Focus is per-book-session: closing drops it here (switching via
+      // onProjectSwitch), so the next book never opens chromeless. The saved
+      // mode is untouched (a reset is not a choice; forcing Read here once
+      // saved it for good).
+      focus = false;
       // A project closed while activity borrowed the editor must not reopen the
       // next project on that stale view.
       editorView = "editor";
@@ -660,7 +544,10 @@
       resetEditorBuffer();
       crashRecovery.reset();
       pendingRecoveryScanDir = null;
-      problemsController.reset();
+      problems = [];
+      buildProblemEntries = [];
+      problemsLoading = false;
+      problemsError = null;
       problemsOpen = false;
     },
   });
@@ -676,14 +563,13 @@
   // editable styles or version history. When the OPENED folder has no
   // manifest, offer a non-blocking "set it up as a book" affordance.
   let showAdoptBanner = $derived(
-    isDesktop() &&
-      !!lifecycle.currentDir &&
+    !!lifecycle.currentDir &&
       lifecycle.sourceMode === "folder" &&
       !lifecycle.currentFolderHasManifest &&
       !lifecycle.adoptBannerDismissed,
   );
-  // C2 (book switcher): the toolbar label shows the active book's own title by
-  // default (unchanged from before repo-root sessions). In a multi-book repo the
+  // Book switcher: the toolbar label shows the active book's own title by
+  // default. In a multi-book repo the
   // book title leads and is suffixed with the repo's folder name so the author
   // sees, at a glance, that switching books (`<BookSwitcher>` below) stays within
   // the same project — book-title-first per author feedback.
@@ -697,30 +583,28 @@
   // AppToolbar is purely presentational: it receives finished booleans/strings,
   // never lifecycle objects, so its contract stays small and testable.
   let toolbarProjectOpen = $derived(!!lifecycle.currentDir && lifecycle.sourceMode === "folder");
-  let exportDisabled = $derived(
+  let publishDisabled = $derived(
     lifecycle.busy || exportController.exporting || !lifecycle.currentDir || lifecycle.sourceMode === "url",
   );
-  // Why-is-Export-disabled notes (UX-023) + the web-target "desktop app" note.
-  // URL mode wins over the no-folder message (currentDir is null there too,
-  // and "Open a folder first" would be misleading while previewing a URL);
-  // the toolbar hides hints entirely in URL mode anyway.
-  let exportHints = $derived.by(() => {
+  // Why-is-Publish-disabled notes. URL mode wins over the no-folder
+  // message (currentDir is null there too, and "Open a folder first" would be
+  // misleading while previewing a URL); the toolbar hides hints entirely in
+  // URL mode anyway.
+  let publishHints = $derived.by(() => {
     const hints: string[] = [];
     if (lifecycle.sourceMode === "url") hints.push("Not available for web previews");
     else if (!lifecycle.currentDir && !lifecycle.busy) hints.push("Open a folder first");
-    if (!canSavePdf) hints.push("PDF export requires the desktop app");
     return hints;
   });
 
   // ── Start screen (welcome landing) ──────────────────────────────────────────
-  // The in-window layer that replaced both the old splash window's "wait for the full
-  // render" phase and the old empty-state hero. At launch the previous book
-  // starts PRE-RENDERING in the workspace underneath exactly as it always did
-  // behind the OS splash — the landing is just an interactive cover (frosted,
+  // The in-window start layer, also the app's empty state. At launch the
+  // previous book starts PRE-RENDERING in the workspace underneath — the
+  // landing is just an interactive cover (frosted,
   // translucent: the cross-origin preview iframe must keep visible pixels or
   // Chromium throttles its layout to ~1fps; see PreviewFrame.svelte). Pure
   // decision logic lives in startup-landing.ts.
-  let landingReady = $state(!isDesktop());
+  let landingReady = $state(false);
   // Explicit "stay up over a live workspace" flag: set when the startup
   // decision shows the landing over the pre-rendering previous book, cleared
   // by dismissLanding. Everything else about visibility is DERIVED from
@@ -740,7 +624,7 @@
   // the inert workspace, which is a spec no-op).
   let landingRef = $state<{
     focusLayer: () => void;
-    showTab: (tab: "projects" | "settings" | "help") => void;
+    showTab: (tab: "projects" | "settings" | "help" | "about" | "troubleshooting", sub?: TroubleshootingTab) => void;
   } | null>(null);
   /** Sub-tab the start screen's embedded Settings opens on. */
   let landingSettingsTab = $state<SettingsTab>("app");
@@ -784,6 +668,12 @@
   /** Open the start screen on its Help tab (the global help affordance). */
   function openHelp() {
     landingRef?.showTab("help");
+    landingForcedOpen = true;
+  }
+
+  /** Open Troubleshooting → Report a problem (from an error toast or the unsaved-changes dialog). */
+  function openReportProblem() {
+    landingRef?.showTab("troubleshooting", "report");
     landingForcedOpen = true;
   }
 
@@ -844,24 +734,24 @@
     void tick().then(() => leftPanelToggleBtn?.focus());
   }
 
-  // There is deliberately NO launch-time tab hijack here. A missing git
-  // identity used to send the start screen to Settings → Accounts on mount,
-  // which meant EVERY first run opened on account settings instead of the
-  // author's books — the screen's whole job is to pick or continue a book.
-  // The missing-identity nudge is the workspace banner (`needsGitIdentity`
-  // above), which is where the owner put it on 2026-07-30; the landing opens
-  // on Projects and stays there until the author asks for another tab.
+  // There is deliberately NO launch-time tab hijack here. Sending the start
+  // screen to Settings → Accounts on a missing git identity would open EVERY
+  // first run on account settings instead of the author's books — the
+  // screen's whole job is to pick or continue a book. The missing-identity
+  // nudge is the workspace banner (`needsGitIdentity` above, owner ruling
+  // 2026-07-30); the landing opens on Books and stays there until the author
+  // asks for another tab.
 
   /**
    * The ONE open-a-project-folder pipeline behind the folder picker, the
-   * Projects panel, the start screen, the GitHub dialog, and the new-project
+   * Books panel, the start screen, the GitHub dialog, and the new-book
    * wizard: leave the start screen, restore the folder's saved per-project
    * state (#43), and hand off to startFolderPreview. There is NO await before
    * startFolderPreview, so the open epoch is claimed at user-intent time (last
    * click wins, never last-fetch-resolves wins) and `lifecycle.busy` covers the
    * whole span with no dead gap. The per-project restore-state read lives in
    * the lifecycle controller, which is the only place that knows the RESOLVED
-   * book dir it must be keyed to (2026-07-29 audit).
+   * book dir it must be keyed to.
    */
   function openProjectPath(path: string, label = "Opening your book…"): Promise<boolean> {
     dismissLanding(false); // no-op when the start screen is hidden
@@ -875,21 +765,17 @@
   let folderPickerOpen = false;
 
   /**
-   * ARCH #60: the ONE native-folder-picker flow behind both entry points —
-   * the start screen's "Browse" (no workspace yet, the landing screen is
-   * itself the "lifecycle.busy" surface while the OS dialog is up) and the in-workspace
+   * The ONE native-folder-picker flow behind both entry points — the start
+   * screen's "Browse" (no workspace yet, the landing screen is itself the
+   * "lifecycle.busy" surface while the OS dialog is up) and the in-workspace
    * "Open folder" action (a project is already open behind the native
-   * dialog, so it needs its own lifecycle.busy overlay to stay legible while the
-   * picker is up). `showBusyOverlay` is the only real behavioral difference
-   * between the two former hand-rolled copies.
+   * dialog, so it needs its own lifecycle.busy overlay to stay legible while
+   * the picker is up). `showBusyOverlay` is the only behavioral difference
+   * between the two.
    */
   async function pickAndOpenFolder(
     options: { showBusyOverlay?: boolean; label?: string } = {},
   ): Promise<boolean> {
-    if (!isDesktop()) {
-      toast?.error(DESKTOP_APP_REQUIRED);
-      return false;
-    }
     if (folderPickerOpen) return false;
     folderPickerOpen = true;
     const { showBusyOverlay = false, label = "Opening your book…" } = options;
@@ -899,7 +785,7 @@
     }
     let handedOff = false;
     try {
-      const pathStr = await openDirectoryCapability().catch(() => null);
+      const pathStr = await api.dialog.openDirectory().catch(() => null);
       if (!pathStr) return false; // cancelled — stay where we were
       handedOff = true;
       return await openProjectPath(pathStr, label);
@@ -918,27 +804,26 @@
 
   const RELEASE_NOTES_URL = "https://github.com/dimm-city/Gutterpress/releases";
   function openReleaseNotes() {
-    openExternalCapability(RELEASE_NOTES_URL).catch(() => {});
+    api.shell.openExternal(RELEASE_NOTES_URL).catch(() => {});
   }
 
   function setLandingStartupPref(show: boolean) {
     landingShowPref = show;
-    trackPersistence(setDesktopPrefsCapability({ showLandingAtStartup: show }));
+    trackPersistence(api.app.setDesktopPrefs({ showLandingAtStartup: show }));
   }
 
   // ── Crash recovery (#44) ──────────────────────────────────────────────────
-  // scanForRecovery/restoreRecovery/discardRecovery (Phase 5 slice 2, UX H5 /
-  // ARCH #10 — moved from +page.svelte) live on CrashRecoveryController; the
+  // scanForRecovery/restoreRecovery/discardRecovery live on
+  // CrashRecoveryController; the
   // template reads `crashRecovery.items` and calls the intent methods
   // (scan/restore/discard/dismiss). Host coupling injected (§8):
   // forward-references to page-local functions/state declared further down
   // (ensureBuffer, editorRef, mode, …) are safe closures, the same
   // pattern `lifecycle`'s deps use.
   const crashRecovery = new CrashRecoveryController({
-    isDesktop: () => isDesktop(),
-    listRecovery: (dir) => listRecovery(dir),
-    clearRecovery: (filePath) => clearRecovery(filePath),
-    readRecoveryFile: (path) => readFileCapability(path),
+    listRecovery: (dir) => api.recovery.list(dir),
+    clearRecovery: (filePath) => api.recovery.clear(filePath),
+    readRecoveryFile: (path) => api.fs.readFile(path),
     restoreIntoBuffer: (filePath, content) => restoreRecoveredFile(filePath, content),
     showEditor: () => {
       editorView = "editor";
@@ -952,7 +837,7 @@
 
   function onSyncFilesChanged() {
     void buffer?.reconcileExternalChange();
-    problemsController.refresh();
+    refreshProblems();
   }
 
   // Sync completed. Online changes may land on disk even when the final outcome
@@ -961,8 +846,8 @@
   function onSyncCompleted(mergedRemoteChanges: boolean, filesChanged = mergedRemoteChanges) {
     toast?.success(
       mergedRemoteChanges
-        ? "Synced — changes from the online copy were combined in, so the preview will refresh."
-        : "Synced — your changes are online.",
+        ? "Backed up online — changes from the online backup were combined in, so the preview will refresh."
+        : "Backed up online — your changes are online.",
     );
     // A sync may add new commits to the project's version history (both push
     // and pull sides) — refresh the activity view's snapshot list so new
@@ -974,14 +859,14 @@
     if (filesChanged) onSyncFilesChanged();
   }
 
-  // The single Reconnect action (ADR 0006 D7): route to the matching connect
-  // flow — GitHub's device flow, or Advanced Setup for every other server.
+  // The single Reconnect action: route to the matching connect
+  // flow — GitHub's device flow, or Settings → Accounts for every other server.
   function onSyncReconnect() {
     if (syncController.syncDiag?.provider === "github") githubOpen = true;
     else openSettings("connections");
   }
 
-  // Completes the D7 Reconnect journey: a connect dialog closing may mean a
+  // Completes the Reconnect journey: a connect dialog closing may mean a
   // new credential was just stored — re-check syncability so the Sync
   // button and the dialog's auth state reflect it without a project reload.
   // Called by onClosed on GitHubDialog.
@@ -998,13 +883,13 @@
   // ── Converge-report subscription ────────────────────────────────────────────
   // Subscribe to the host's sync:status channel for the converge report —
   // combined-with-markers files and side-by-side pairs each get a review
-  // toast. Per §8 / ADR 0004: runs in the SPA, no lib value imports, all host
-  // work through the remote capability module.
+  // toast. Per §8: runs in the SPA, no lib value imports, all host
+  // work through getPlatform().
   onMount(() => {
-    if (!isDesktop()) return;
-    const off = onSyncStatus((status) => {
+    const off = getPlatform().onSyncStatus((status) => {
       // Scope to the currently open project.
       if (status.projectDir !== lifecycle.currentDir) return;
+      if (status.state === "syncing") identityNoticeArmed = true;
       if (shouldReconcileAfterSync(status)) {
         onSyncFilesChanged();
       }
@@ -1018,7 +903,7 @@
     "https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/01-getting-started.md";
 
   function openSetupGuide() {
-    openExternalCapability(SETUP_GUIDE_URL).catch(() => {});
+    api.shell.openExternal(SETUP_GUIDE_URL).catch(() => {});
   }
 
   // ── In-app markdown editor (#38) + unsaved-changes (#44) ──────────────────
@@ -1030,31 +915,26 @@
   // reconciliation. The editor owns exactly one file buffer at a time.
   // The ONE workspace-layout switch (see `WorkspaceMode`). Declared here
   // (before the deriveds that read it) so it is initialised ahead of them.
-  // A local $state rather than a settings derived, because `focus` is
-  // deliberately absent from the persisted shape — `setMode` writes the
-  // durable half through and `modeSink` below reads it back on load.
-  let mode = $state<WorkspaceMode>(settings.current.preview.mode);
-  // The preview pane shows beside the SOURCE editor only. Edit is the source
-  // editor with the paginated preview beside it; `focus` is Edit without the
-  // preview; Read is the paged editor alone (`$lib/editor/paged-surface`),
-  // which renders the book the way the preview does and needs no second copy
-  // of it beside it (`tests/integration/editor-preview-parity.mjs` proves the
-  // two paginate alike, locked and unlocked).
-  let previewVisible = $derived(mode === "editor");
-  // The editor pane is mounted in EVERY mode - it is both the editor and the
-  // reader - so what varies with mode is which surface it holds: the source
-  // editor (Edit, Focus) or the paged one (Read).
-  let editorEditable = $derived(mode !== "viewer");
-  // Read opens locked. Unlocking is the reader's own move, made on the page
-  // (the lock pill in the editor pane), and it does not outlive the mode:
-  // coming back to Read is coming back to read.
-  let richLocked = $state(true);
-  /** The paged editor's zoom (`"fit-width"` or a scale); Read opens at fit-width. */
-  let richZoom = $state("fit-width");
-  let editorPaneEl = $state<HTMLElement | undefined>(undefined);
+  // A local $state that `setMode` writes through to settings and `modeSink`
+  // below reads back on load.
+  // Reader or author (Settings → App). A reader only reads: the workspace
+  // stays in Read, and the toolbar hides Edit/Read, Setup and Publish. The
+  // author's saved Edit/Read choice is kept untouched underneath.
+  let readerMode = $derived(settings.current.workspace.role === "reader");
+  const effectiveMode = (s: typeof settings.current): WorkspaceMode =>
+    s.workspace.role === "reader" ? "viewer" : s.preview.mode;
+  let mode = $state<WorkspaceMode>(effectiveMode(settings.current));
+  // Focus: a SESSION-ONLY toggle layered on top of Edit or Read (see
+  // focus-mode.ts). It hides the chrome and nothing else — it never touches
+  // `mode` or the persisted left-panel setting, so leaving it restores exactly
+  // what was there. Not persisted on purpose: a restart never wakes chromeless.
+  let focus = $state(false);
+  // The "how to leave Focus" toast shows the first time Focus is entered in an
+  // app session only — the Focus tooltip carries the same words permanently,
+  // and a writer who lives in Focus should not be told every time.
+  let focusHintShown = false;
+  let editorVisible = $derived(mode !== "viewer");
   let workspaceEl = $state<HTMLElement | undefined>(undefined);
-  /** The main-content landmark element; the skip link moves focus here. */
-  let mainContentEl = $state<HTMLElement | undefined>(undefined);
   let editorRef = $state<{
     focus: () => void;
     revealLine: (line: number, focusEditor?: boolean) => void;
@@ -1062,80 +942,53 @@
     getSelectionText: () => string;
     insertSnippet: (text: string) => void;
     updateContent: (content: string) => void;
-    /** Switch which file is open (UX review M8) — called explicitly whenever
+    /** Switch which file is open — called explicitly whenever
      * the buffer's open file changes; MarkdownEditor has no reactive effect
      * of its own (this repo bans `$effect`). */
     switchFile: (path: string | null, content: string) => void;
-    /** Whether the live document is this file. Originally added for
-     * `CommitEngine` (inline-editing plan §4.7 Step 4, removed 0.12
-     * SFE-P4); its surviving callers are the `updateContent`/`revealLine`
-     * gates below, which still need to confirm the editor is showing the
-     * right file before acting on it. */
+    /** Whether the live document is this file
+     * (inline-editing plan §4.7 Step 4 — commit-engine.ts). */
     hasFile: (path: string) => boolean;
     /** Apply a `[from, to)` character-range edit to one file as a single
-     * undoable transaction. Offsets are into THAT FILE, not into the
-     * document. Added for `CommitEngine` (inline-editing plan §4.7 Step 4);
-     * `CommitEngine` was removed in 0.12 (SFE-P4) and no other caller has
-     * taken this over — kept on the exported surface as a documented,
-     * currently-unused capability rather than deleted, since removing it is
-     * outside a comment-only fix. */
+     * undoable transaction (inline-editing plan §4.7 Step 4 — commit-engine.ts).
+     * Offsets are into THAT FILE, not into the document. */
     applyRangeEditIn: (path: string, from: number, to: number, insert: string) => void;
   } | null>(null);
-  /** The DOM node wrapping the mounted `MarkdownEditor` (SFE-P3d-parity,
-   *  Lane D) — see that binding's own template comment and
-   *  `source-editor-access.ts`'s header for why this reads the live caret
-   *  via CodeMirror's `EditorView.findFromDOM` instead of a new
-   *  `MarkdownEditor.svelte` export. */
-  let sourceEditorHostEl = $state<HTMLDivElement | undefined>(undefined);
 
   // Snippet picker (#29) — opened via the toolbar button or Ctrl/Cmd+Shift+S.
   let snippetPickerRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
   let snippetPickerOpen = $state(false);
 
-  // SFE-P3ab, Lane A — the rich-mode document identity + caret at the
-  // moment the snippet picker opened, captured BEFORE the picker's own UI
-  // steals focus (same rationale as `openRichImageProperties`'s `capture`
-  // below: reading it from inside `onInsert`, after the picker has had
-  // focus, would see whatever — if anything — the mount still reports once
-  // focus has moved away, not the position the author actually meant when
-  // they invoked the picker). SFE-P3ab review round 1 (CONFIRMED finding):
-  // a plain selection offset with no document identity attached was
-  // silently re-applied even after an external reload replaced the
-  // document underneath the open dialog - `RichSelectionCapture`
-  // (rich-commands.ts) pairs the offsets with the exact host + version they
-  // were read against, so `applyRichAppend` (from `onInsert`, near the
-  // bottom of this file) refuses instead of splicing into the wrong
-  // document. `undefined` in source mode or with no rich document open at
-  // all.
-  let richSnippetCapture: RichSelectionCapture | undefined;
-
   function openSnippetPicker() {
-    if (!isDesktop() || !lifecycle.currentDir) return;
+    if (!lifecycle.currentDir) return;
     contextMenu.close();
-    richSnippetCapture = richCapture();
+    void inlineEdit.endActive(true); // opening a dialog commits the in-flow edit
     snippetPickerRef?.show();
   }
 
-  // ── Project settings view (#PCV → full window) ─────────────────────────────
-  // Project settings live in a full-window view patterned after the app
-  // SettingsView (they used to be a left-sidebar Config tab); activity is the
-  // only alternate editor-pane view.
+  // ── Book settings view ──────────────────────────────────────────────────
+  // Book settings open in the shared AppView layer, like every task screen:
+  // the workspace underneath is inert until the writer closes them (X or
+  // Esc) — a sidebar tab or docked panel squeezes manifest editing, theme
+  // browsing and plugin management into a strip. Activity is the only alternate
+  // editor-pane view.
   let editorView = $state<"editor" | "activity">("editor");
   let projectSettingsOpen = $state(false);
 
-  /**
-   * One button → the whole project settings view (manifest details, look &
-   * style, plugins). Full-window like the app settings; the workspace behind
-   * it goes inert and returns untouched on close.
-   */
+  /** One button → the whole book settings view (manifest details, look &
+   *  style, plugins), covering the workspace. */
   function openProjectConfig(): void {
     if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
-    if (!isDesktop()) {
-      toast?.info?.("Project configuration is available in the desktop app for now.");
-      return;
-    }
-    contextMenu.close();
+    projectSettingsTab = "details";
     projectSettingsOpen = true;
+  }
+
+  // Book settings opens on Details; the save-status dialog sends writers to
+  // Connections to see how an online backup gets set up.
+  let projectSettingsTab = $state<"details" | "connections">("details");
+  function openBookConnections(): void {
+    openProjectConfig();
+    projectSettingsTab = "connections";
   }
 
   function closeProjectSettings(): void {
@@ -1162,9 +1015,9 @@
     focusEditorWhenReady();
   }
 
-  // "Save as template" (#29) now lives in the ExportDialog (Template format).
-  let exportOpen = $state(false);
-  let exportBtnEl = $state<HTMLButtonElement | undefined>(undefined);
+  // The Publish button element — the wizard's focus-restore target.
+  let publishBtnEl = $state<HTMLButtonElement | undefined>(undefined);
+  let projectSettingsBtnEl = $state<HTMLButtonElement | undefined>(undefined);
 
   // True below the single-pane breakpoint. Assigned by the matchMedia
   // subscription further down; declared here so the derived below can read it.
@@ -1183,6 +1036,7 @@
     editorView === "activity" ||
       (!!lifecycle.currentDir &&
         lifecycle.sourceMode === "folder" &&
+        editorVisible &&
         (!isNarrow || paneMode === "edit")),
   );
   // ── Global find (Ctrl+F) — VIEWER only (owner ruling 2026-08-15) ──────────
@@ -1193,18 +1047,12 @@
   let findBarRef = $state<{ focusInput: () => void } | null>(null);
   const viewerVisibleForFind = $derived(
     !!lifecycle.previewUrl &&
-      previewVisible &&
       !(isNarrow && (editorPaneOpen || editorView !== "editor")),
   );
 
   let splitGridColumns = $derived(
-    editorPaneOpen && !isNarrow && previewVisible
+    editorPaneOpen && !isNarrow
       ? splitTemplateColumns(zoomView.splitPaneRatio)
-      : "",
-  );
-  let previewCollapseGridColumns = $derived(
-    editorPaneOpen && !isNarrow && !previewVisible
-      ? "minmax(0, 1fr) 0 minmax(0, 0)"
       : "",
   );
 
@@ -1228,7 +1076,7 @@
   /** Kick off the lazy MarkdownEditor import if needed. Guards against duplicate
    * loads: no-ops when it's already loading, loaded, or failed. */
   function loadEditorModule() {
-    if (!lifecycle.currentDir || MarkdownEditor || editorModuleLoading || editorModuleFailed) return;
+    if (!editorVisible || !lifecycle.currentDir || MarkdownEditor || editorModuleLoading || editorModuleFailed) return;
     editorModuleLoading = true;
     import("$lib/components/MarkdownEditor.svelte")
       .then((m) => {
@@ -1266,725 +1114,23 @@
     requestAnimationFrame(tryFocus);
   }
 
-  // ── Rich mode (SFE-P3ab, Lane A) ────────────────────────────────────────
-  // An ADDITIONAL editing surface layered over the SAME EditorBuffer session
-  // MarkdownEditor above already drives — see rich-mode.svelte.ts's header
-  // for the mode-selection / exactly-one-mounted-surface contract this
-  // wiring proves, and desktop-document-host.ts's header for why rich mode
-  // mounts against a `DesktopDocumentHost`, not the buffer directly.
-  const richMode = createRichModeController({ initialSurface: "rich" });
-
   /**
-   * Whether `path` is a Markdown source the rich surface can mount against
-   * — the ONLY file type it supports (D2: "source mode remains available
-   * for every document"; the plan's own out-of-scope note keeps CSS/YAML/
-   * JS/plugin/manifest editing CodeMirror-only). SFE-P3ab review round 1
-   * (CONFIRMED finding): `showEditorContent`/`setRichMode` used to rebuild
-   * `richHost()` - and the template used to mount the rich surface - for
-   * ANY open file while the controller's surface was "rich", so a CSS file clicked
-   * from the tree opened silently inside the Markdown rich surface with no
-   * visible way back (the toolbar's mode toggle only renders for markdown
-   * files). Hoisted so every gate below (`showEditorContent`, `setRichMode`,
-   * `insertImageIntoChapter`, `richSurfaceActive`) shares one definition.
-   */
-  function isMarkdownPath(path: string | null): boolean {
-    return !!path && /\.(md|markdown)$/i.test(path);
-  }
-
-  // The book (Read) is loaded the way the source editor is: its chunk (the
-  // `@vscode/markdown-editor` fork, its adapter and the paged surface) is
-  // real weight, imported the first time Read is entered, never at page load.
-  let BookSurfaceComponent = $state<
-    typeof import("$lib/components/BookSurface.svelte")["default"] | null
-  >(null);
-  let bookModuleLoading = $state(false);
-  let bookModuleFailed = $state(false);
-
-  function loadBookSurfaceModule() {
-    if (BookSurfaceComponent || bookModuleLoading || bookModuleFailed) return;
-    bookModuleLoading = true;
-    import("$lib/components/BookSurface.svelte")
-      .then((m) => {
-        BookSurfaceComponent = m.default;
-      })
-      .catch((e) => {
-        bookModuleFailed = true;
-        toast?.error(
-          `Could not open the book: ${e instanceof Error ? e.message : String(e)}`,
-        );
-      })
-      .finally(() => {
-        bookModuleLoading = false;
-      });
-  }
-
-  function retryBookSurfaceLoad() {
-    bookModuleFailed = false;
-    loadBookSurfaceModule();
-  }
-
-  /**
-   * The mounted book (`BookSurface.svelte`) while Read is up, else null:
-   * Svelte binds it on mount and clears it on unmount. Every chapter of the
-   * book is mounted inside it, each with its own host; the rich commands
-   * below act on the chapter the author is in (`richHost`).
-   */
-  let bookRef = $state<{
-    setReadonly: (locked: boolean) => void;
-    setZoom: (zoom: string) => void;
-    scrollToChapter: (path: string, line?: number) => Promise<void>;
-    revealLine: (path: string, line: number) => void;
-    activePath: () => string | null;
-    hostOf: (path: string) => DesktopDocumentHost | null;
-    activeHost: () => DesktopDocumentHost | null;
-    getSelection: () => { readonly from: number; readonly to: number } | undefined;
-    setSelection: (path: string, from: number, to?: number) => Promise<void>;
-    replaceText: (path: string, text: string) => void;
-    rebuildDegraded: () => void;
-  } | null>(null);
-
-  /** The host of the chapter the author is in, or null while Read is not up. */
-  function richHost(): DesktopDocumentHost | null {
-    return bookRef?.activeHost() ?? null;
-  }
-
-  /**
-   * The book's chapters in book order, with a page estimate each: as the
-   * preview paginated them (it names every source file in the book,
-   * heading or not - see `bookOrder`), else the project's markdown files
-   * by name until the preview has rendered once.
-   */
-  let bookFiles = $state<string[]>([]);
-  let bookStarts = $state<ChapterStart[]>([]);
-  let book = $derived(
-    lifecycle.currentDir ? bookOrder(lifecycle.currentDir, bookStarts, pageNav.totalPages) : { chapters: [], estimates: {} },
-  );
-  let bookChapters = $derived(book.chapters.length ? book.chapters : bookFiles);
-
-  /** The project's markdown files by name: the book's order until the preview has rendered once. */
-  async function loadBookFiles(): Promise<void> {
-    const dir = lifecycle.currentDir;
-    if (!dir || !isDesktop()) return;
-    try {
-      const files = (await listDirCapability(dir)).filter((entry) => !entry.isDir && /\.(md|markdown)$/i.test(entry.name));
-      if (dir !== lifecycle.currentDir) return;
-      bookFiles = files.map((entry) => entry.path).sort((a, b) => a.localeCompare(b));
-    } catch {
-      /* the outline names the chapters once the preview renders */
-    }
-  }
-
-  /** The chapter the book is making the open file right now, so a press and an edit in it share one switch. */
-  let bookActivation: { readonly path: string; readonly done: Promise<void> } | null = null;
-
-  async function activateBookChapter(path: string): Promise<void> {
-    if (editorFilePath === path || !isDesktop()) return;
-    if (bookActivation?.path === path) return bookActivation.done;
-    const done = editorFiles.select(path).then(
-      () => undefined,
-      () => undefined,
-    );
-    const activation = { path, done };
-    bookActivation = activation;
-    try {
-      await done;
-    } finally {
-      if (bookActivation === activation) bookActivation = null;
-    }
-  }
-
-  /** The author pressed into a chapter: it becomes the open file, so the file list, the toolbar and "Edit in source" follow. */
-  function onBookActivate(path: string): void {
-    void activateBookChapter(path);
-  }
-
-  /**
-   * A chapter's text changed through its editor: route it to that file's
-   * buffer, which is what autosaves, snapshots and reconciles external
-   * changes. A chapter that is not yet the open file becomes it first (the
-   * outgoing buffer is flushed on the way), then takes the host's latest
-   * text - never the copy read from disk during the switch.
-   */
-  function onBookSnapshotChange(path: string, text: string): void {
-    if (!isDesktop()) return;
-    if (editorFilePath === path) {
-      ensureBuffer().edit(text);
-      return;
-    }
-    void activateBookChapter(path).then(() => {
-      const host = bookRef?.hostOf(path);
-      if (host && editorFilePath === path) ensureBuffer().edit(host.getSnapshot().text);
-    });
-  }
-
-  /** D14 `EDITOR_FILE_TOO_LARGE` for the HOST projection call specifically —
-   *  shown when the resolved `EditorProjectionOutcome` names this code
-   *  (`electron/editor-projection.ts`'s `resolveEditorProjection`, once
-   *  `content` exceeds D13's 2 MiB rich-mode ceiling). SFE-P3e review round 1
-   *  (CONFIRMED finding): this used to vanish into a `console.warn` only —
-   *  the ceiling existed but had no user-visible effect. SFE-P3e review
-   *  round 2 (CONFIRMED finding): round 1's own fix branched on a thrown
-   *  error's `.code`, which Electron's IPC boundary never actually
-   *  delivers (a rejected `ipcMain.handle` handler is serialized to
-   *  `message`/`stack` only — custom own-properties do not survive), so
-   *  this branch was STILL unreachable after round 1 — see
-   *  `EditorProjectionOutcome`'s own doc comment
-   *  (`editor-host/editor-projection-capability.ts`)
-   *  for the full account and the fix: classification now travels in a
-   *  RESOLVED value. Unlike {@link RICH_MODE_PROJECTION_FAILED_DIAGNOSTIC}
-   *  below, switching to source mode IS a real fix here (the document keeps
-   *  editing, just without the rich surface), so this gets the `safeAction`
-   *  `showRichDiagnostic`'s existing toast-with-action pattern turns into a
-   *  working "switch to source mode" button. */
-  const RICH_MODE_FILE_TOO_LARGE_DIAGNOSTIC: Diagnostic = {
-    category: "EDITOR_FILE_TOO_LARGE",
-    message: "This file is too large for the rich editor. Switch to source mode to keep editing it.",
-    safeAction: "Switch to source mode",
-  };
-
-  /** D14 `EDITOR_PLUGIN_LOAD_FAILED` for the HOST projection call failing
-   *  OUTRIGHT — the manifest itself could not be read/resolved. Distinct
-   *  from the PER-PLUGIN `pluginLoadFailedDiagnostic` below, which never
-   *  produces this outcome (a per-plugin degrade never fails the whole
-   *  call). SFE-P3e review round 1 (CONFIRMED finding): this used to vanish
-   *  into a `console.warn` only, same as the file-too-large case above.
-   *  SFE-P3e review round 2 (CONFIRMED finding): same unreachable-`.code`
-   *  defect as {@link RICH_MODE_FILE_TOO_LARGE_DIAGNOSTIC} above — see that
-   *  doc comment. No `safeAction`: the rest of the document already fell
-   *  back to the local, plugin-less projection below (still fully
-   *  editable), and switching to source mode would not fix a broken
-   *  manifest — a heads-up notice, not an action prompt, matching
-   *  `pluginLoadFailedDiagnostic`'s own reasoning. */
-  function projectionFailedDiagnostic(reason: string): Diagnostic {
-    return {
-      category: "EDITOR_PLUGIN_LOAD_FAILED",
-      message:
-        `The rich editor could not read this file with the project's plugins, so plugin regions show as plain text and the book's own styling is not applied here. ${reason}`.trim(),
-    };
-  }
-
-  /**
-   * The open project's directory, waiting for it if an open is in flight.
-   *
-   * A file can be chosen while the project is still opening — the file list
-   * is on screen before `startFolderPreview` resolves, and clicking a
-   * chapter then built its projection with no project to build it against.
-   * That produced a plugin-less, book-CSS-less document, which never
-   * rebuilds: the editor showed an unstyled, unpaginated chapter for the
-   * rest of the session, and only switching files fixed it. Waiting is the
-   * whole fix — the projection belongs to a project, so it waits for one.
-   */
-  async function projectDirWhenReady(timeoutMs = 30_000): Promise<string | null> {
-    const deadline = Date.now() + timeoutMs;
-    while (!lifecycle.currentDir && lifecycle.busy && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-    return lifecycle.currentDir;
-  }
-
-  async function buildRichProjection(
-    content: string,
-    sourceVersion: number,
-  ): Promise<{ projection: GutterpressProjection; editorCss: string | undefined }> {
-    const projectDir = isDesktop() ? await projectDirWhenReady() : null;
-    if (!projectDir) {
-      // Worth a log line: everything downstream of this — the book's CSS, its
-      // plugins, and therefore pagination — is absent, and the document looks
-      // merely "plain" rather than broken.
-      reportError(
-        `rich projection built with no project (desktop=${isDesktop()}, currentDir=${lifecycle.currentDir}, busy=${lifecycle.busy})`,
-      );
-    }
-    if (projectDir) {
-      try {
-        const outcome = await buildEditorProjection({
-          projectDir,
-          content,
-          sourceVersion,
-        });
-        if (outcome.ok) {
-          for (const pluginError of outcome.pluginErrors) {
-            showRichDiagnostic(pluginLoadFailedDiagnostic(pluginError));
-          }
-          return { projection: outcome.projection, editorCss: outcome.bookCss || undefined };
-        }
-        // The host call itself failed outright (e.g. a malformed
-        // manifest.yaml, or content over D13's rich-mode ceiling) — never a
-        // per-plugin degrade, which never produces `outcome.ok === false`
-        // (see the `outcome.ok` branch above). SFE-P3e review round 1
-        // (CONFIRMED finding): this used to vanish into a console.warn
-        // only, so neither failure had any user-visible effect and D13's
-        // ceiling had nothing to reuse. SFE-P3e review round 2 (CONFIRMED
-        // finding): round 1's fix branched on a THROWN error's `.code`,
-        // which Electron's IPC boundary strips — `outcome.code` here is a
-        // field on a RESOLVED value instead, which does survive (see
-        // `EditorProjectionOutcome`'s own doc comment in
-        // `editor-host/editor-projection-capability.ts`). Classified by
-        // `outcome.code`, so this
-        // branches on data, not on English prose (D14: "generic 'failed'
-        // errors at a boundary are a confirmed review finding unless no
-        // more specific classification is possible"). Either
-        // classification still falls through to the same local,
-        // plugin-less build the no-project path already uses below, so the
-        // document stays fully editable rather than getting stuck with no
-        // projection at all (D14: unsupported rich behavior falls back, it
-        // never blanks the document) — the diagnostic is purely the "state
-        // the safe next action" half D14 also requires.
-        if (outcome.code === "EDITOR_FILE_TOO_LARGE") {
-          showRichDiagnostic(RICH_MODE_FILE_TOO_LARGE_DIAGNOSTIC);
-        } else {
-          // The host's own message, not a guess about it. This branch used
-          // to tell every author their manifest.yaml might be invalid — the
-          // real failure was a plugin token the projection could not read,
-          // and the wrong message sent the search to the wrong file.
-          reportError(`rich projection failed: ${outcome.message}`);
-          showRichDiagnostic(projectionFailedDiagnostic(outcome.message));
-        }
-      } catch (e) {
-        // Anything else — a genuinely unexpected IPC/contract failure, not
-        // one of the two named classifications resolved above (a malformed
-        // `args` shape or mismatched `projectDir`, which the host still
-        // rejects rather than classifies — see `resolveEditorProjection`'s
-        // own doc comment for why: those are contract violations with no
-        // more specific D14 category to give). Still falls back to the
-        // local, plugin-less projection below rather than blanking the
-        // document.
-        console.warn("buildEditorProjection failed; falling back to the local projection:", e);
-      }
-    }
-    return { projection: createEditorProjection(content, { sourceVersion }), editorCss: undefined };
-  }
-
-
-  /** The rich mount's LIVE caret, or `undefined` when there is none. SFE-P3ab
-   *  review round 1 (CONFIRMED finding): `undefined` does NOT mean "never
-   *  focused" — the fork's own selection observable goes empty again after
-   *  real interaction too (e.g. clicking the mount's own left gutter), so
-   *  this must be treated as "no caret AT THIS INSTANT", never as proof the
-   *  surface was never touched (see `rich-commands.ts`'s header for the full
-   *  verified reproduction). Every rich-mode command below reads this fresh
-   *  at the moment it fires rather than caching it. */
-  function richLiveSelection(): { readonly from: number; readonly to: number } | undefined {
-    return bookRef?.getSelection();
-  }
-
-  /** A rich-mode selection paired with the document IDENTITY it was read
-   *  against — SFE-P3ab review round 1 (CONFIRMED finding): a caller that
-   *  captures `richLiveSelection()` and then `await`s something (a dialog)
-   *  before applying an edit must be able to tell whether the document
-   *  changed underneath it (an external reload landed, rebuilding
-   *  `richHost()` at a fresh version 0 with different text) - a captured
-   *  offset with no identity attached was silently re-applied to whatever
-   *  document happened to be live when the dialog resolved. */
-  /** {@link richLiveSelection} captured with `richHost()` and its CURRENT
-   *  version (`captureRichSelection`, rich-commands.ts); `undefined` when
-   *  no rich document is open at all. Every `applyRich*` call made after a
-   *  dialog's await passes `richHost()` beside this capture, and refuses
-   *  itself when the document was replaced or edited meanwhile. */
-  function richCapture(): RichSelectionCapture | undefined {
-    const host = richHost();
-    return host ? captureRichSelection(host, richLiveSelection()) : undefined;
-  }
-
-  /** D14 diagnostic for a caret-relative rich command invoked with NO live
-   *  caret at all — the "stop failing open" half of the same review finding
-   *  above: a toolbar click or keyboard shortcut is an explicit, caret-
-   *  relative user gesture, so silently reusing `documentEndSelection` when
-   *  there happens to be no caret right now (one stray gutter click since
-   *  the last keystroke) would format or insert text somewhere the author
-   *  never asked for. `documentEndSelection` remains the correct, DOCUMENTED
-   *  fallback only for a genuinely anchorless gesture: image insertion from
-   *  the Media panel's Insert button - a sidebar gesture with no caret of
-   *  its own, which uses the editor's live caret when one exists and the
-   *  document end otherwise - or before the surface has ever been focused.
-   *  See `openRichImageProperties`/`insertImageIntoChapter` below, which do
-   *  NOT use this diagnostic. (A media tile dragged onto the paged surface
-   *  is not inserted: only CodeMirror accepts the drop.) */
-  const NO_LIVE_CARET_DIAGNOSTIC: Diagnostic = {
-    category: "EDITOR_INVALID_RANGE",
-    message: "Place the cursor in the document, then try that again.",
-  };
-
-  /** The one place rich mode is entered/exited (today: the hidden keyboard
-   * shortcut below; a visible toggle is chrome for another lane to add).
-   * Keeps `richHost()` in lockstep with `richMode.mode` so it is never
-   * stale while `"rich"` is selected, and never lingers once it is not.
-   * SFE-P3ab review round 1 (CONFIRMED finding): only builds the host for a
-   * MARKDOWN file (`isMarkdownPath`) — rich mode has no surface for
-   * anything else (D2). `richMode.mode` itself is still recorded as the
-   * user's PREFERENCE even when the current file can't use it, so returning
-   * to a markdown file resumes rich mode automatically. */
-  function setRichMode(next: "source" | "rich"): void {
-    if (next === richMode.mode) return;
-    if (next === "rich") {
-      loadBookSurfaceModule();
-      void loadBookFiles();
-    }
-    richMode.switchTo(next);
-  }
-
-  /**
-   * Keep the surface controller in step with the ONE mode control.
-   *
-   * `RichModeController` still exists for the invariant it asserts — exactly
-   * one editing surface mounted at a time (see its header) — but it no
-   * longer holds a user PREFERENCE anyone can set independently: which
-   * surface is live is derived from Edit/Read/Focus and the open file's
-   * type, and this is the single place that tells the controller so.
-   */
-  function syncRichSurface(): void {
-    setRichMode(richSurfaceActive ? "rich" : "source");
-  }
-
-  // ── Rich-mode command wiring (SFE-P3ab, Lane B) ──────────────────────────
-  //
-  // Diagnostics reaching this app from rich mode come from two places: an
-  // edit THIS page pushes through `richHost().applyEdit` directly (a
-  // rejected/refused `RichCommandOutcome` from `rich-commands.ts`), and one
-  // the mounted adapter reports on its own via `RichEditor`'s `onDiagnostic`
-  // prop below (a typed rejection from the live view, or a P2c projection
-  // diagnostic surfaced at mount time). Both funnel through this one
-  // function so they render identically (deliverable 5: "surface them ...
-  // with their safeAction text") — reusing the existing toast/action-button
-  // pattern (`ExportController`'s "Build anyway" offer above is the other
-  // toast-with-action precedent in this file) rather than inventing a new
-  // banner. The action button's label is the diagnostic's OWN `safeAction`
-  // text verbatim; its handler always switches to source mode — the one
-  // concrete, always-available recovery this app can offer today regardless
-  // of which D14 category produced the diagnostic (deliverable "Source
-  // reveal": "An explicit 'edit in source' path from rich mode for any
-  // unsupported/refused region").
-  function showRichDiagnostic(diagnostic: Diagnostic): void {
-    // A projection's own notices arrive together, synchronously, when the
-    // document mounts -  one per region the editor cannot show the way the
-    // page does. Shown one toast each, a chapter with a dozen such regions
-    // opened under a wall of red. They are folded into ONE notice per mount:
-    // the first reason in full, the count of the rest, and the same "edit in
-    // source mode" action. Every reason still reaches the app log.
-    if (diagnostic.category === "EDITOR_UNSUPPORTED_PROJECTION" || diagnostic.category === "EDITOR_PROJECTION_LIMIT") {
-      pendingProjectionDiagnostics.push(diagnostic);
-      if (pendingProjectionDiagnostics.length === 1) queueMicrotask(flushProjectionDiagnostics);
-      return;
-    }
-    showDiagnosticToast(diagnostic.message, diagnostic.safeAction);
-  }
-
-  const pendingProjectionDiagnostics: Diagnostic[] = [];
-
-  function flushProjectionDiagnostics(): void {
-    const batch = pendingProjectionDiagnostics.splice(0);
-    if (batch.length === 0) return;
-    for (const d of batch) reportError(`rich projection: ${d.message}`);
-    const first = batch[0]!;
-    const more = batch.length - 1;
-    const message =
-      more === 0
-        ? first.message
-        : `${batch.length} parts of this document cannot be shown here the way the page shows them; they render as the Markdown they were written from. First: ${first.message}`;
-    showDiagnosticToast(message, first.safeAction);
-  }
-
-  /** The one toast shape every rich-mode diagnostic takes: the message, and its safe action as a button that opens the source editor. */
-  function showDiagnosticToast(message: string, safeAction: string | undefined): void {
-    toast?.show(
-      message,
-      "error",
-      undefined,
-      safeAction ? { label: safeAction, onClick: () => setMode("editor") } : undefined,
-    );
-  }
-
-  /**
-   * SFE-P3e — D14 `EDITOR_PLUGIN_LOAD_FAILED` for one project plugin
-   * `buildEditorProjection` reported as failed to load. Wording mirrors the
-   * desktop Plugins panel's own "Needs install" vs generic-error distinction
-   * (`$lib/components/config/config-helpers.ts`'s `pluginStatus`), adapted
-   * for the rich editor: there is no "Install npm plugin below"/"Re-check"
-   * affordance HERE, so the message points the author at the Plugins panel
-   * by name instead. No `safeAction` — unlike the projection/edit-rejection
-   * diagnostics above, switching to source mode fixes nothing here (the rest
-   * of the document already rendered fine; only this one plugin's regions
-   * show as plain text), so the toast is a heads-up notice, not an action
-   * prompt.
-   */
-  function pluginLoadFailedDiagnostic(error: EditorProjectionPluginError): Diagnostic {
-    const needsInstall =
-      /\bnot found\b/i.test(error.message) || /vendored plugin .*\bis missing\b/i.test(error.message);
-    return {
-      category: "EDITOR_PLUGIN_LOAD_FAILED",
-      message: needsInstall
-        ? `The plugin "${error.pluginRef}" isn't installed, so its content shows as plain text here instead of a formatted region. Install it from the Plugins panel, then reopen this file.`
-        : `The plugin "${error.pluginRef}" couldn't load, so its content shows as plain text here instead of a formatted region. Check it in the Plugins panel, then reopen this file.`,
-    };
-  }
-
-  function reportRichOutcome(outcome: RichCommandOutcome): void {
-    if (!outcome.ok) showRichDiagnostic(outcome.diagnostic);
-  }
-
-  /**
-   * Routes one `EditorToolbar` action through the RICH path — the mirror of
-   * `editorRef?.runToolbarAction(action, payload)` for source mode. Called
-   * only while `richSurfaceActive`; "image" is excluded (handled by
-   * `openRichImageProperties` below via the `ImagePropertiesDialog` flow,
-   * not a plain `EditorCommand`).
-   *
-   * SFE-P3ab review round 1 (CONFIRMED finding): refuses when there is no
-   * LIVE caret rather than letting `applyRichCommand`/`applyRichLayoutBlock`
-   * silently fall back to the document end — a toolbar click is an
-   * explicit, caret-relative gesture (`NO_LIVE_CARET_DIAGNOSTIC`'s header
-   * has the full rationale, including why image insertion is exempt).
-   */
-  function handleRichToolbarAction(action: ToolbarAction, payload?: ToolbarPayload): void {
-    const host = richHost();
-    if (!host || action === "image") return;
-    const route = routeToolbarAction(action, payload);
-    const live = richLiveSelection();
-    if (!live) {
-      showRichDiagnostic(NO_LIVE_CARET_DIAGNOSTIC);
-      return;
-    }
-    if (route.kind === "command") {
-      reportRichOutcome(applyRichCommand(host, route.command, live));
-    } else if (route.kind === "layout") {
-      reportRichOutcome(applyRichLayoutBlock(host, route.layout, live));
-    }
-    // "unsupported" ("snippet"/"focus-mode") never reaches here — the
-    // toolbar's onAction below special-cases both before routing.
-  }
-
-  /**
-   * "Insert image" while rich mode is active (G-10/AP-17): opens the SAME
-   * `ImagePropertiesDialog` the preview context menu's "Set properties…"
-   * used before SFE-P4 deleted that context menu item, seeded blank (a
-   * brand-new image has no existing token set to seed from), and applies
-   * the confirmed value at the document end.
-   *
-   * SFE-P3ab review round 1 (CONFIRMED finding): the selection is captured
-   * TOGETHER with the document identity it was read against
-   * (`richCapture`) - the dialog's `await` gives an external
-   * reload (or a file switch) time to rebuild `richHost()` entirely, and a
-   * captured offset with no identity attached used to be silently applied
-   * to whatever document happened to be live once the dialog resolved. A
-   * missing LIVE CARET at capture time is left to `applyRichImageInsert`'s
-   * own `documentEndSelection` fallback - image insertion is also reachable
-   * from the Media panel's Insert button, a sidebar gesture with no caret of
-   * its own, which uses the editor's live caret when one exists and the
-   * document end otherwise (`insertImageIntoChapter` below), so this toolbar
-   * path stays consistent with that one behavior rather than refusing only
-   * when invoked from the toolbar.
-   */
-  async function openRichImageProperties(): Promise<void> {
-    // Captured BEFORE the dialog opens and steals focus — the dialog is a
-    // separate surface, so the caret the author actually meant is whatever
-    // it was the moment they invoked "Insert image", not whatever (if
-    // anything) the mount still reports once focus has moved away.
-    const capture = richCapture();
-    if (!capture) return;
-    const blank: ImagePropertiesValue = {
-      src: "",
-      alt: "",
-      width: "",
-      position: "",
-      pinAlignment: "center",
-      size: "",
-      spacing: "",
-      shape: false,
-      flush: false,
-      layer: "",
-    };
-    const value = await promptValidatedImageProperties(blank);
-    if (!value) return;
-    reportRichOutcome(applyRichImageInsert(richHost(), capture, value));
-  }
-
-  /** The image dialog followed by `validateImageProperties`: the value, or
-   *  null when the author cancelled or the value was refused (toasted). */
-  async function promptValidatedImageProperties(initial: ImagePropertiesValue): Promise<ImagePropertiesValue | null> {
-    const next = await promptImageProperties(initial);
-    if (next == null) return null;
-    const error = validateImageProperties(next);
-    if (error) {
-      toast?.error(error);
-      return null;
-    }
-    return next;
-  }
-
-  // ── Caret-driven image/link commands (SFE-P3d-parity, Lane D) ────────────
-  //
-  // Closes the three former parity-matrix waiver rows condition 2 names —
-  // `image-properties`/`image-unwrap`/`link-edit` — by making the shared
-  // computation (`caret-token-commands.ts`, built on the pre-existing,
-  // tested `context-menu-actions.ts`/`image-classes.ts` primitives)
-  // reachable from BOTH editing surfaces via the CURRENT CARET, instead of
-  // only from the preview context menu SFE-P4 deleted. The actual per-surface
-  // commands live in `toolbar-actions.ts` (source — takes the live
-  // `EditorView`) and `rich-commands.ts` (rich - takes `richHost()` +
-  // `live: LiveSelection`); this page's only job is routing to whichever
-  // surface is active, reading what each command needs from it, and
-  // reporting a refusal — the SAME shape `handleRichToolbarAction`/
-  // `editorRef?.runToolbarAction` already have for every other action.
-
-  /**
-   * "Image properties…" — edits an EXISTING image's attrs/src/alt at the
-   * caret, via the SAME `ImagePropertiesDialog` the preview context menu's
-   * "Set properties..." used before SFE-P4 deleted that item. Rich mode
-   * captures before the dialog (`richCapture`) and lets
-   * `applyRichImagePropertiesEdit` refuse a stale capture - the SAME
-   * document-identity guard `openRichImageProperties` above relies on for
-   * its own `promptImageProperties` await, not a second mechanism - because
-   * `locateRichImagePropertiesAtCaret`'s result is only safe to apply
-   * against the EXACT `richHost()` it was read from; source mode's
-   * `applyImagePropertiesEdit` re-verifies its own span directly against
-   * the live `view` instead (see its own doc comment for why the two
-   * surfaces' staleness guards differ).
-   */
-  function handleImagePropertiesAtCaret(): void {
-    if (richSurfaceActive) {
-      const capture = richCapture();
-      if (!capture || !capture.selection) {
-        showRichDiagnostic(NO_LIVE_CARET_DIAGNOSTIC);
-        return;
-      }
-      const located = locateRichImagePropertiesAtCaret(capture.host, capture.selection);
-      if (!located.ok) {
-        showRichDiagnostic(located.diagnostic);
-        return;
-      }
-      void (async () => {
-        const next = await promptValidatedImageProperties(located.value.initial);
-        if (!next) return;
-        reportRichOutcome(applyRichImagePropertiesEdit(richHost(), capture, located.value, next));
-      })();
-      return;
-    }
-    void (async () => {
-      const view = await findMountedSourceView(sourceEditorHostEl);
-      if (!view) {
-        showRichDiagnostic(NO_LIVE_CARET_DIAGNOSTIC);
-        return;
-      }
-      const located = locateImagePropertiesAtCaret(view);
-      if (!located.ok) {
-        showRichDiagnostic(located.diagnostic);
-        return;
-      }
-      const next = await promptValidatedImageProperties(located.value.initial);
-      if (!next) return;
-      const outcome = applyImagePropertiesEdit(view, located.value, next);
-      if (!outcome.ok) showRichDiagnostic(outcome.diagnostic);
-    })();
-  }
-
-  /** "Unwrap image" — removes an existing image's enclosing link wrapper at
-   *  the caret, leaving the image itself untouched. No dialog, so no
-   *  intervening staleness window on either surface. */
-  function handleImageUnwrapAtCaret(): void {
-    if (richSurfaceActive) {
-      const host = richHost();
-      if (!host) return;
-      const live = richLiveSelection();
-      if (!live) {
-        showRichDiagnostic(NO_LIVE_CARET_DIAGNOSTIC);
-        return;
-      }
-      reportRichOutcome(applyRichImageUnwrapAtCaret(host, live));
-      return;
-    }
-    void (async () => {
-      const view = await findMountedSourceView(sourceEditorHostEl);
-      if (!view) {
-        showRichDiagnostic(NO_LIVE_CARET_DIAGNOSTIC);
-        return;
-      }
-      const outcome = applyImageUnwrapAtCaret(view);
-      if (!outcome.ok) showRichDiagnostic(outcome.diagnostic);
-    })();
-  }
-
-  /** "Edit link…" — edits an EXISTING link's target at the caret, via the
-   *  same `promptText` flow the preview context menu's "Edit link…" used
-   *  before SFE-P4 deleted that item.
-   *  Same staleness-guard split as `handleImagePropertiesAtCaret` above. */
-  function handleLinkEditAtCaret(): void {
-    if (richSurfaceActive) {
-      const capture = richCapture();
-      if (!capture || !capture.selection) {
-        showRichDiagnostic(NO_LIVE_CARET_DIAGNOSTIC);
-        return;
-      }
-      const located = locateRichLinkEditAtCaret(capture.host, capture.selection);
-      if (!located.ok) {
-        showRichDiagnostic(located.diagnostic);
-        return;
-      }
-      void (async () => {
-        const next = await promptText({
-          title: "Edit link",
-          label: "Web address",
-          initialValue: located.value.initialHref,
-        });
-        if (next == null) return; // cancelled
-        reportRichOutcome(applyRichLinkEditEdit(richHost(), capture, located.value, next));
-      })();
-      return;
-    }
-    void (async () => {
-      const view = await findMountedSourceView(sourceEditorHostEl);
-      if (!view) {
-        showRichDiagnostic(NO_LIVE_CARET_DIAGNOSTIC);
-        return;
-      }
-      const located = locateLinkEditAtCaret(view);
-      if (!located.ok) {
-        showRichDiagnostic(located.diagnostic);
-        return;
-      }
-      const next = await promptText({
-        title: "Edit link",
-        label: "Web address",
-        initialValue: located.value.initialHref,
-      });
-      if (next == null) return; // cancelled
-      const outcome = applyLinkEditEdit(view, located.value, next);
-      if (!outcome.ok) showRichDiagnostic(outcome.diagnostic);
-    })();
-  }
-
-  /**
-   * Insert an image even when no chapter is open yet (UX audit P3#8: the Media
-   * "Insert" button used to dead-end behind a disabled state, telling the author
-   * to go open a file first). If no markdown chapter is open, open one and the
-   * editor pane, then insert once EITHER surface has mounted AND loaded that
-   * chapter — a bounded rAF retry, so there's no race (we never insert into an
-   * unloaded doc) and no infinite loop (gives up with a clear toast). Routes
-   * to whichever surface is active (SFE-P3ab: this used to be CodeMirror-only
-   * - a G-10 gap the Media panel's Insert-button path shared with the
-   * toolbar's own "Insert image" button before this run). A media tile
-   * dragged from the panel still reaches CodeMirror only: the paged surface
-   * registers no drop handler.
+   * Insert an image even when no chapter is open yet (the Media "Insert" button
+   * must not dead-end behind a disabled state). If no markdown chapter is open,
+   * open one and the editor pane, then insert once the editor has mounted AND
+   * loaded that chapter — a bounded rAF retry, so there's no race (we never
+   * insert into an unloaded doc) and no infinite loop (gives up with a clear
+   * toast).
    */
   function insertImageIntoChapter(payload: { src: string; alt?: string }) {
-    if (!isMarkdownPath(editorFilePath)) {
+    const isMd = (p: string | null) => !!p && /\.(md|markdown)$/i.test(p);
+    if (!isMd(editorFilePath)) {
       if (mode === "viewer") setMode("editor");
       void ensureEditorFile();
     }
     let tries = 0;
     const tryInsert = () => {
-      if (richSurfaceActive) {
-        const host = richHost();
-        if (host) {
-          reportRichOutcome(
-            applyRichCommand(
-              host,
-              { kind: "insert-image", src: payload.src, alt: payload.alt },
-              richLiveSelection(),
-            ),
-          );
-          return;
-        }
-      } else if (editorRef && isMarkdownPath(editorFilePath)) {
+      if (editorRef && isMd(editorFilePath)) {
         editorRef.runToolbarAction("image", { src: payload.src, alt: payload.alt ?? "" });
         focusEditorWhenReady();
         return;
@@ -2004,7 +1150,7 @@
     flush: (target) => leaveEditorBuffer(target),
     onActivate: (target) => {
       if (target.filePath) showEditorContent(target.filePath, target.content);
-      if (isDesktop()) trackPersistence(setDirtyStateCapability(target.hasPendingSave));
+      trackPersistence(api.app.setDirtyState(target.hasPendingSave));
     },
     onClear: () => editorRef?.switchFile(null, ""),
     onSelectionError: () => toast?.error("Could not open that file."),
@@ -2024,65 +1170,28 @@
   let externalChange = $derived(buffer?.externalChange ?? null);
   let externalFileName = $derived(editorFilePath ? basenameOf(editorFilePath) : "");
 
-  // Whether the RICH surface is the one that should actually be mounted
-  // right now. Every decision about which surface is ACTUALLY live, and
-  // which write-path an action should take, keys off THIS, not the
-  // controller's own `richMode.mode` (SFE-P3ab review round 1, CONFIRMED
-  // finding) - the controller is told this value by `syncRichSurface`.
-  //
-  // ONE mode control decides the surface, and it is the workspace's own
-  // Edit / Read. Edit (and Focus, which is Edit without the preview) is the
-  // raw-Markdown surface: CodeMirror, with the paginated preview beside it.
-  // Read is the paged editor -  the book as it prints, locked until the
-  // reader unlocks it to edit in place. A second "Rich / Source" toggle used
-  // to sit in the editor toolbar on top of this, so the same document had
-  // two independent mode axes and six reachable combinations to reason
-  // about; it is gone, and this derivation is what replaced it.
-  //
-  // A non-markdown file (CSS, YAML) has no paged surface at all and always
-  // opens on CodeMirror, whatever the workspace mode says.
-  /** Read shows the whole book, whatever file happens to be open. */
-  let richSurfaceActive = $derived(mode === "viewer");
-
   function showEditorContent(path: string, content: string): void {
     if (editorRef?.hasFile(path)) editorRef.updateContent(content);
     else editorRef?.switchFile(path, content);
-    // Same choke point covers BOTH a real file switch and a same-file
-    // external replacement landing (acceptExternal's onContentReplaced) —
-    // D7 groups both under "not undoable into the prior file", so rich
-    // mode responds to either the same way: a fresh epoch, fresh host.
-    if (richSurfaceActive || richMode.mode === "rich") {
-      // The book is mounted whole, so a file switch changes nothing in it.
-      // The text just read from disk is never pushed into the chapter's host
-      // from here: the host's own text may be newer (an edit that made this
-      // chapter the open file is what triggered the switch). An external
-      // change reaches the host through `onContentReplaced` instead.
-      richMode.onFileSwitch();
-    }
   }
 
   function createEditorBuffer(): EditorBuffer {
     let instance: EditorBuffer;
     instance = new EditorBuffer({
-      fs: { readFile: readFileCapability, writeFile: writeFileCapability, statFile: statFileCapability },
+      platform: getPlatform(),
       autoSave: () => settings.current.versionHistory.autoSave,
       onError: (msg) => {
         if (editorFiles.isActive(instance)) toast?.error(msg);
       },
       onContentReplaced: (path, content) => {
-        if (editorFiles.isActive(instance) && instance.filePath === path) {
-          showEditorContent(path, content);
-          // The one path by which text reaches a mounted chapter from outside
-          // its editor: an external change accepted from disk.
-          bookRef?.replaceText(path, content);
-        }
+        if (editorFiles.isActive(instance) && instance.filePath === path) showEditorContent(path, content);
       },
       onAutoReloaded: () => {
         if (editorFiles.isActive(instance)) toast?.info?.("Reloaded from disk");
       },
       onDirty: (pending) => {
-        if (editorFiles.isActive(instance) && isDesktop()) {
-          trackPersistence(setDirtyStateCapability(pending));
+        if (editorFiles.isActive(instance)) {
+          trackPersistence(api.app.setDirtyState(pending));
         }
       },
     });
@@ -2109,7 +1218,7 @@
     } catch {
       reportIgnoredPersistenceFailure();
       if (recordMarker) {
-        void recordFlushFailureCapability(projectDir).catch(() => {});
+        void api.app.recordFlushFailure(projectDir).catch(() => {});
       }
       return false;
     }
@@ -2122,12 +1231,12 @@
    * save fails, which stops the switch.
    */
   async function leaveEditorBuffer(target: EditorBuffer | null = buffer): Promise<boolean> {
-    if (!target?.filePath || !target.isDirty || settings.current.versionHistory.autoSave || !isDesktop()) {
+    if (!target?.filePath || !target.isDirty || settings.current.versionHistory.autoSave) {
       return flushEditorBuffer(target);
     }
     let choice: "save" | "discard" | "cancel";
     try {
-      choice = await confirmUnsavedCapability(basenameOf(target.filePath));
+      choice = await api.dialog.confirmUnsaved(basenameOf(target.filePath));
     } catch {
       choice = "save"; // no prompt available: keep the edits
     }
@@ -2139,10 +1248,10 @@
     return flushEditorBuffer(target);
   }
 
-  // ARCH #61: imperative settings side-effects go through the store's single
+  // Imperative settings side-effects go through the store's single
   // onSettingsChange channel ($effect is banned in the SPA — see CLAUDE.md and
   // the store header; the store's replaceState choke point owns the notify, so
-  // the old forgot-to-notify hazard is structurally gone). Each sink is
+  // a setter can't forget to notify). Each sink is
   // wrapped in settingsChangeGuard so it fires only when ITS field changed:
   // - previewBg → re-inject desktop canvas styles; initial injection happens in
   //   the renderingComplete handler, this catches live changes. The ready()
@@ -2169,20 +1278,22 @@
   const contextMenuSettingSink = settingsChangeGuard<boolean>((enabled) => {
     if (!enabled) contextMenu.close();
   });
-  // Workspace mode: the live value is local $state (it can hold `focus`, which
-  // the persisted shape cannot), so the async settings load has to be pushed
-  // into it. The guard dedupes against the last value seen, so setMode's own
-  // write-back cannot bounce back and clobber a live `focus`.
+  // Workspace mode: the live value is local $state, so the async settings load
+  // has to be pushed into it. The guard dedupes against the last value seen,
+  // so setMode's own write-back is a no-op.
   // Restoring a persisted `editor` mode assigns `mode` directly rather than
   // going through setMode, so it has to kick the lazy import the way setMode
   // does. The settings fetch and the auto-open of the last project are
   // independent async starts: when settings land LAST, the project-open path
   // already ran `ensureEditorFile()` while the workspace still looked like
   // viewer mode, and nothing else would ever load the editor component.
-  const modeSink = settingsChangeGuard<Exclude<WorkspaceMode, "focus">>((m) => {
+  // A role change (Settings → App) arrives here too, and it changes the
+  // derived view mode: push it to the viewer the way setMode does, or the
+  // pages stay in the old column count until the next full render.
+  const modeSink = settingsChangeGuard<WorkspaceMode>((m) => {
     mode = m;
+    zoomView.applyViewMode(viewMode);
     if (m !== "viewer") loadEditorModule();
-    else loadBookSurfaceModule();
   });
   // Autosave: the buffer reads the setting per edit, so turning it back ON
   // would otherwise leave edits made while it was off unsaved until the next
@@ -2196,7 +1307,7 @@
       previewBgSink(s.appearance.previewBg);
       splitRatioSink(s.preview.splitRatio);
       contextMenuSettingSink(s.preview.contextMenu);
-      modeSink(s.preview.mode);
+      modeSink(effectiveMode(s));
       autoSaveSink(s.versionHistory.autoSave);
     }),
   );
@@ -2206,9 +1317,8 @@
   // Managed imperatively: started in startFolderPreview, stopped in stopPreview / openUrl.
   let _watchFolderOff: (() => void) | undefined;
   function startFolderWatch(dir: string) {
-    if (!isDesktop()) return;
     _watchFolderOff?.();
-    _watchFolderOff = watchFolder(dir, () => {
+    _watchFolderOff = getPlatform().watchFolder(dir, () => {
       buffer?.reconcileExternalChange().catch(() => {});
     }) ?? undefined;
   }
@@ -2222,8 +1332,7 @@
   // close prompt main showed, discard it. The preload wrapper signals main
   // when done.
   onMount(() => {
-    if (!isDesktop()) return;
-    const off = onFlushBeforeClose(async (mode) => {
+    const off = getPlatform().onFlushBeforeClose(async (mode) => {
       if (mode === "discard") {
         await buffer?.discard();
         return true;
@@ -2238,38 +1347,17 @@
    * up after ~2s. Same bounded-rAF pattern as `focusEditorWhenReady` /
    * `insertImageIntoChapter` below.
    *
-   * This replaced the sync controller's cross-chapter poll loop. That loop had
-   * to wait for an async FILE LOAD and then re-issue its reveal five times
-   * because the load reset the editor's scroll underneath it; this waits only
-   * for a component to mount, and once it has, the chapter and the line are
-   * both already in the document.
+   * This waits only for a component to mount, and once it has, the chapter and
+   * the line are both already in the document — no waiting on an async FILE
+   * LOAD that would reset the editor's scroll underneath a reveal.
    */
   function whenEditorReady(fn: () => void): void {
     let tries = 0;
     const attempt = () => {
-      if (editorRef || bookRef) fn();
+      if (editorRef) fn();
       else if (tries++ < 120) requestAnimationFrame(attempt);
     };
     requestAnimationFrame(attempt);
-  }
-
-  /**
-   * Scroll the open document to `line`, on whichever editing surface is
-   * mounted: the paged editor (Read) or CodeMirror (Edit, Focus, and any
-   * non-markdown file). Both address the same source, so navigation is a
-   * property of the workspace, not of one surface — before this, every
-   * "take me there" (an outline row, a click in the book, a diagnostic)
-   * silently did nothing whenever the paged editor was the live surface.
-   *
-   * `focus` places the caret, which only CodeMirror does; the paged editor
-   * scrolls without disturbing the caret or the selection either way.
-   */
-  function revealLineInLiveEditor(path: string, line: number, focus: boolean): void {
-    if (editorRef?.hasFile(path)) {
-      editorRef.revealLine(line, focus);
-      return;
-    }
-    bookRef?.revealLine(path, line);
   }
 
   /**
@@ -2294,7 +1382,9 @@
     if (!chapter) {
       const path = editorFilePath;
       if (path) {
-        whenEditorReady(() => revealLineInLiveEditor(path, line, focus));
+        whenEditorReady(() => {
+          if (editorRef?.hasFile(path)) editorRef.revealLine(line, focus);
+        });
       }
       return;
     }
@@ -2305,28 +1395,40 @@
     if (path !== editorFilePath) {
       if (!(await selectEditorFile(path))) return;
     }
-    whenEditorReady(() => revealLineInLiveEditor(path, line, focus));
+    whenEditorReady(() => {
+      if (editorRef?.hasFile(path)) editorRef.revealLine(line, focus);
+    });
+  }
+
+  /**
+   * User-initiated file switch (Focus Chapter select, Files tab): select the
+   * file, then emit one top-of-viewport ("scroll") anchor so the preview follows. Loading a
+   * file emits no anchor of its own, and the editor opens every file at line 1
+   * (no per-file position is restored). Deliberately NOT inside
+   * `selectEditorFile`: go-to-source and other programmatic callers reveal a
+   * specific line afterwards and must not top-scroll first.
+   */
+  async function openChapter(path: string): Promise<void> {
+    if (!(await selectEditorFile(path))) return;
+    whenEditorReady(() => {
+      if (editorRef?.hasFile(path)) editorSync.onEditorAnchorLine(1, "scroll", editorChapter);
+    });
   }
 
   /**
    * Make `path` the file the author is working in.
    *
    * The session keeps the outgoing file active while the target reads and
-   * performs one atomic handoff after any required flush succeeds. In Read
-   * the whole book is already on screen, so opening a file is going to its
-   * chapter.
+   * performs one atomic handoff after any required flush succeeds.
    */
   async function selectEditorFile(
     path: string,
   ): Promise<boolean> {
-    if (!isDesktop()) return false;
-    const ok = await editorFiles.select(path);
-    if (ok && richSurfaceActive) void bookRef?.scrollToChapter(path);
-    return ok;
+    return editorFiles.select(path);
   }
 
   /**
-   * FileTree row actions (UX review M9): the tree performs the actual
+   * FileTree row actions: the tree performs the actual
    * create/rename/delete host calls itself; these three hooks are the ONLY
    * point where the open-file buffer needs to react. The buffer's own
    * external-edit reconciliation is driven by the folder watcher, which is a
@@ -2379,9 +1481,8 @@
 
   /**
    * Called after a successful delete. Drop the deleted file rather than leaving
-   * a buffer pointing at a path that no longer exists — the exact "must not
-   * silently point at a missing path" failure mode M9 calls out (a stray edit
-   * afterward would otherwise silently recreate the deleted file). FileTree can
+   * a buffer pointing at a path that doesn't exist (a stray edit afterward
+   * would otherwise silently recreate the deleted file). FileTree can
    * delete directories recursively, so this must catch every open file at or
    * under the deleted path, not just an exact match.
    */
@@ -2392,12 +1493,11 @@
   }
 
   function onEditorChange(value: string) {
-    if (!isDesktop()) return;
     ensureBuffer().edit(value);
   }
 
   async function defaultEditorFile(dir: string, markdownOnly = false): Promise<string | null> {
-    const files = (await listDirCapability(dir)).filter((entry) => !entry.isDir);
+    const files = (await api.fs.listDir(dir)).filter((entry) => !entry.isDir);
     const markdown = files
       .filter((entry) => /\.md$/i.test(entry.name))
       .sort((a, b) => a.name.localeCompare(b.name))[0];
@@ -2413,10 +1513,10 @@
   // called only this function, so a book opened while the workspace was
   // already in Edit mode filled the buffer behind a pane still showing
   // "Loading editor…" — nothing on that path ever imported the component.
-  // `loadEditorModule()` self-guards on an already-loaded module, so repeat
-  // calls are free.
+  // `loadEditorModule()` self-guards on `editorVisible`, so this stays a no-op
+  // while the book is being previewed in viewer mode.
   async function ensureEditorFile() {
-    if (!lifecycle.currentDir || !isDesktop()) return;
+    if (!lifecycle.currentDir) return;
     loadEditorModule();
     // Fire-and-forget continuation: capture the dir and bail if a different
     // project took over during the listing, or this would load the OLD
@@ -2435,7 +1535,7 @@
   function reloadExternal() {
     // acceptExternal() fires the buffer's onContentReplaced callback above,
     // which pushes the reloaded content into the editor — no separate
-    // updateContent call needed here (#H1).
+    // updateContent call needed here.
     buffer?.acceptExternal();
   }
 
@@ -2450,16 +1550,11 @@
     return editorFiles.restore(filePath, content);
   }
 
-  // scanForRecovery/restoreRecovery/discardRecovery/dismissRecovery (#44,
-  // Phase 5 slice 2 — UX H5 / ARCH #10) now live on `crashRecovery`
-  // (CrashRecoveryController) — see its instantiation above. The template
-  // reads `crashRecovery.items` and calls the intent methods directly.
-
   // ── Persist left panel state on change ────────────────────────────────────
   function persistLeftPanelPrefs() {
     if (!leftPanelPrefsLoaded) return;
     trackPersistence(
-      setDesktopPrefsCapability({ leftPanel: { open: leftPanelOpen, activeTab: leftPanelTab, width: leftPanelWidth } } as Record<string, unknown>),
+      api.app.setDesktopPrefs({ leftPanel: { open: leftPanelOpen, activeTab: leftPanelTab, width: leftPanelWidth } } as Record<string, unknown>),
     );
   }
 
@@ -2470,12 +1565,12 @@
 
   /**
    * Open the editor pane: mark it open, lazy-load the editor module, ensure a
-   * file is loaded, and move focus into it. Centralizes the sequence that was
-   * hand-repeated across five call sites (audit E3). `focus` and `ensureFile`
-   * cover the two sites that intentionally differ (togglePreview never steals
-   * focus; the file-tree selection path already has a file).
+   * file is loaded, and move focus into it. `focus` and `ensureFile`
+   * cover the sites that intentionally differ (the file-tree selection path
+   * already has a file; go-to-source places its own caret).
    */
   function openEditorPane(opts: { focus?: boolean; ensureFile?: boolean } = {}) {
+    if (readerMode) return;
     const { focus = true, ensureFile = true } = opts;
     if (mode === "viewer") setMode("editor");
     loadEditorModule();
@@ -2504,7 +1599,7 @@
     }
     // Closing the editor always lands on the viewer — there is no stored
     // "what was showing before" to consult, and nothing else it could mean.
-    if (editorEditable) {
+    if (editorVisible) {
       setMode("viewer");
       return;
     }
@@ -2515,22 +1610,31 @@
   }
 
   // ── Problems panel (#28) ───────────────────────────────────────────────────
+  // The list sits at the bottom of the editor pane; its badge is on the editor
+  // toolbar. Opening moves focus into the list, which hands it back to the badge.
+  let problemsPanelRef = $state<{ focusList: () => void } | null>(null);
+  let problemsToggleEl = $state<HTMLButtonElement | null>(null);
+  function toggleProblems(trigger: HTMLButtonElement): void {
+    problemsToggleEl = trigger;
+    problemsOpen = !problemsOpen;
+    if (problemsOpen) void tick().then(() => problemsPanelRef?.focusList());
+  }
+  // The status bar owns "Where your work is kept"; the editor toolbar's save
+  // indicator opens it.
+  let statusBarRef = $state<{ toggleSummary: (trigger?: HTMLElement) => void } | null>(null);
   // Lint findings for the open project, refreshed after every live-preview
   // rebuild (the renderingComplete event — which fires for the initial render
   // AND every watcher-triggered re-render). The toggle button lives in the
-  // toolbar with an errors+warnings count badge. The findings themselves
-  // (SFE-P6a) live on `problemsController` (ProblemsController) — this page
-  // keeps only the panel's open/closed UI toggle (two-way bound to
-  // StatusBar) and the cross-feature composition its own header explains
-  // stays at the root: merging findings with `lifecycle.previewError` (a
-  // DIFFERENT feature's state) and navigating the editor to a finding.
+  // toolbar with an errors+warnings count badge.
   let problemsOpen = $state(false);
-  const problemsController = new ProblemsController({
-    isDesktop: () => isDesktop(),
-    currentDir: () => lifecycle.currentDir,
-    sourceMode: () => lifecycle.sourceMode,
-    lintProject: (dir) => lintProject(dir),
-  });
+  let problems = $state<ProblemEntry[]>([]);
+  /** Findings from the last export (see the `buildPdf` wrapper above). */
+  let buildProblemEntries = $state<ProblemEntry[]>([]);
+  let problemsLoading = $state(false);
+  // Distinct from "problems === [] because the project is clean" — set
+  // when the lint API call itself failed, so the panel can render a neutral
+  // "we couldn't check" row instead of a false green all-clear.
+  let problemsError = $state<string | null>(null);
   let previewErrorDisplay = $derived(
     lifecycle.previewError ? friendlyPreviewError(lifecycle.previewError) : null,
   );
@@ -2542,10 +1646,10 @@
             message: `${previewErrorDisplay.title} ${previewErrorDisplay.message}`,
             source: "desktop.preview",
           },
-          ...problemsController.entries,
-          ...problemsController.buildEntries,
+          ...problems,
+          ...buildProblemEntries,
         ]
-      : [...problemsController.entries, ...problemsController.buildEntries],
+      : [...problems, ...buildProblemEntries],
   );
   let problemBadge = $derived(problemCounts(displayedProblems).badge);
 
@@ -2554,30 +1658,56 @@
     leftPanelTab = "files";
   }
 
+  function refreshProblems() {
+    if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
+    const dir = lifecycle.currentDir;
+    problemsLoading = true;
+    api.lint.project(dir)
+      .then((entries) => {
+        // The project may have changed while the lint was in flight.
+        if (lifecycle.currentDir === dir) {
+          problems = entries;
+          problemsError = null;
+        }
+      })
+      .catch(() => {
+        // Lint failing must never break the preview, but it must also never
+        // present as a false "no problems found" all-clear — surface a
+        // distinct error state instead of silently clearing to [].
+        if (lifecycle.currentDir === dir) {
+          problems = [];
+          problemsError = "We couldn't check your book this time.";
+        }
+      })
+      .finally(() => {
+        // Without this guard, a stale in-flight lint from a project the
+        // author has since navigated away from can clear the NEW project's
+        // loading indicator out from under it.
+        if (lifecycle.currentDir === dir) problemsLoading = false;
+      });
+  }
+
   // Problems are cleared in stopPreview() and openUrl() — no reactive effect needed.
 
   /**
    * Open the problem's file in the editor at the offending line. Reuses the
    * existing file-selection + reveal path — no new navigation machinery.
-   *
-   * It lands in EDIT mode, the raw-Markdown surface, because that is the
-   * only surface a diagnostic's line number addresses: a problem is reported
-   * against a source line, and the paged editor shows the book, not the
-   * source. Edit is also the surface `revealLine` exists on
-   * (MarkdownEditor/CodeMirror) — asking for it anywhere else reveals
-   * nothing at all. A Focus session (Edit without the preview) is left as
-   * it is: the source editor is on screen either way.
    */
   function openProblem(p: ProblemEntry) {
     if (!p.filePath || !lifecycle.currentDir) return;
     // Make sure the editor pane is visible first (narrow = Edit mode pane;
     // wide = the editor split).
-    if (isNarrow) setPaneMode("edit");
-    if (mode === "viewer") setMode("editor");
+    if (isNarrow) {
+      setPaneMode("edit");
+    } else if (!editorVisible) {
+      setMode("editor");
+    }
     void selectEditorFile(p.filePath).then((selected) => {
       if (selected && p.line) {
         const path = p.filePath!;
-        whenEditorReady(() => revealLineInLiveEditor(path, p.line!, true));
+        whenEditorReady(() => {
+          if (editorRef?.hasFile(path)) editorRef.revealLine(p.line!, true);
+        });
       }
     });
     focusEditorWhenReady();
@@ -2587,11 +1717,7 @@
   // calls client.injectStyles).
 
   onMount(() => {
-    // Before anything else can fail: from here on an uncaught error, an
-    // unhandled rejection and every console.error land in the app's own log
-    // file, which is the file an author can actually hand over.
-    installErrorReporting();
-    getDoctorDiagnostics()
+    api.doctor()
       .then((data) => {
         diagnosticsTools = data.tools ?? [];
         appVersion = data.desktopVersion ?? null;
@@ -2603,7 +1729,7 @@
   // in the renderingComplete handler. No reactive effect needed.
 
   onMount(() => {
-    const off = onUrlPreviewBlocked((event: UrlPreviewBlockedEvent) => {
+    const off = getPlatform().onUrlPreviewBlocked((event: UrlPreviewBlockedEvent) => {
       if (lifecycle.sourceMode !== "url") return;
       if (!lifecycle.previewUrl) return;
       lifecycle.previewUrl = null;
@@ -2612,30 +1738,25 @@
     return () => off?.();
   });
 
-  // pageEditInput focus is triggered directly in beginPageEdit() — see below.
-
   // ── Startup: reopen the last project behind the start screen ─────────────────
-  // The ~90-line landing/prefs/last-project continuation (Phase 5 slice 2, UX
-  // H5 / ARCH #10) now lives on `startup` (StartupController) — the pure
-  // predicates it calls (decideStartupScreen) stay in startup-landing.ts.
-  // `revealWindow()`'s one call site is the controller's private `reveal()`;
-  // the four former exit-path duplicates are gone. Host coupling injected
-  // (§8): forward-references to page-local state/functions declared
-  // elsewhere (lifecycle, landing* state, leftPanel* state, startFolderPreview)
-  // are safe closures, the same pattern every other Phase 5 controller uses.
+  // The landing/prefs/last-project continuation lives on `startup`
+  // (StartupController) — the pure predicates it calls (decideStartupScreen)
+  // stay in startup-landing.ts. Host coupling injected (§8):
+  // forward-references to page-local state/functions declared elsewhere
+  // (lifecycle, landing* state, leftPanel* state, startFolderPreview) are safe
+  // closures, the same pattern every other controller uses.
   const startup = new StartupController({
-    isDesktop: () => isDesktop(),
     isWorkspaceEngaged: () =>
       !!(lifecycle.previewUrl || lifecycle.currentDir || lifecycle.currentUrl || lifecycle.busy || lifecycle.openError || lifecycle.urlPreviewError),
     isSomethingOpen: () =>
       !!(lifecycle.previewUrl || lifecycle.currentDir || lifecycle.currentUrl || lifecycle.busy),
-    getDesktopPrefs: () => getDesktopPrefsCapability(),
+    getDesktopPrefs: () => api.app.getDesktopPrefs(),
     showLastFlushFailure: (marker) => {
       if (!toast) return false;
       toast.warning(formatLastFlushFailureNotice(marker), 0);
       return true;
     },
-    acknowledgeFlushFailure: (failedAt) => acknowledgeFlushFailureCapability(failedAt),
+    acknowledgeFlushFailure: (failedAt) => api.app.acknowledgeFlushFailure(failedAt),
     isLeftPanelPrefsLoaded: () => leftPanelPrefsLoaded,
     applyLeftPanelPrefs: (panelPrefs) => {
       leftPanelPrefsLoaded = true;
@@ -2652,7 +1773,9 @@
       if (typeof panelPrefs?.width === "number") {
         leftPanelWidth = clampPanelWidth(panelPrefs.width, viewportWidth());
       }
-      leftPanelOpen = panelPrefs?.open ?? false;
+      // No saved choice (first run): show the panel — unless the window is
+      // narrow, where it is an overlay that would cover the page.
+      leftPanelOpen = panelPrefs?.open ?? !isNarrow;
     },
     setLandingShowPref: (show) => {
       landingShowPref = show;
@@ -2715,21 +1838,18 @@
   }
 
   onMount(() => {
-    if (!isDesktop()) {
-      void startup.run();
-      return;
-    }
-
     // Main replays every path queued before hydration, then emits `ready`.
     // Only fall back to last-project startup when that replay was empty, so a
     // double-clicked chapter always wins over the previous-session project.
     let initialFileLaunchSeen = false;
     let initialFileLaunchSetup: Promise<void> | null = null;
     let initialReplayComplete = false;
-    const off = onOpenMarkdownFile((event) => {
+    const off = getPlatform().onOpenMarkdownFile((event) => {
       if (event.type === "ready") {
         initialReplayComplete = true;
-        if (!initialFileLaunchSeen) void startup.run();
+        // Settings first: whether the editor opens with the book depends on
+        // the saved reader/author choice, not the in-memory default.
+        if (!initialFileLaunchSeen) void _loadSettings().then(() => startup.run());
         return;
       }
       initialFileLaunchSeen = true;
@@ -2742,6 +1862,24 @@
       void initialFileLaunchSetup.then(() => handleMarkdownFileLaunch(event, generation));
     });
     return () => off?.();
+  });
+
+  // ----------------------------------------------------------------
+  // Commit engine — the single write path for context-menu AND in-flow
+  // block-edit mutations (docs/inline-editing-plan.md §3). Pure logic + injected
+  // seams; never writes a file itself (buffer.edit/flush + applyRangeEdit do
+  // that, exactly like every other write path in the app).
+  // ----------------------------------------------------------------
+  const commitEngine = new CommitEngine({
+    currentDir: () => lifecycle.currentDir,
+    rendering: () => lifecycle.rendering,
+    buffer: () => buffer,
+    // reveal:false — a committed menu action must not also scroll the author's
+    // editor to the top of the chapter it happened to touch.
+    selectEditorFile: (path) => selectEditorFile(path),
+    editorHasFile: (path) => editorRef?.hasFile(path) ?? false,
+    applyRangeEdit: (path, from, to, insert) =>
+      editorRef?.applyRangeEditIn(path, from, to, insert),
   });
 
   let textPrompt = $state<{
@@ -2802,19 +1940,39 @@
   }
 
   // ----------------------------------------------------------------
+  // In-flow block editing (docs/inline-editing-plan.md §3.3, protocol v8).
+  // Two entry points, both landing here: the "Edit this block" context-menu
+  // item (below) and double-click in the preview (which arrives as the
+  // blockEditRequested event on the controller's own subscription).
+  //
+  // No geometry deps: the editing surface is the block's own element inside
+  // the book iframe, so there is no panel to position over it.
+  // ----------------------------------------------------------------
+  const inlineEdit = new InlineEditController({
+    client: () => client,
+    currentDir: () => lifecycle.currentDir,
+    openContent: (path) => (buffer?.filePath === path ? buffer.content : null),
+    readFile: (path) => getPlatform().readFile(path),
+    commitEngine,
+    focusPreview: () => previewFrameRef?.getIframe()?.focus(),
+    toastError: (message) => toast?.error(message),
+    toastInfo: (message) => toast?.info?.(message),
+  });
+
+  // ----------------------------------------------------------------
   // Preview right-click / Shift+F10 context menu (inline-editing plan
   // §4.1-4.5). Subscribes to the preview client via its OWN client.on()
   // listener — separate from previewEvents' switch below (PR 0 already owns
-  // the elementActivated case there). SFE-P4: read-only — go-to-source,
-  // selection-copy, link-copy, image-reveal. The mutation half (and with it
-  // the commit-write engine and "start an in-flow edit" callback as
-  // constructor dependencies) was deleted; see
-  // context-menu-controller.svelte.ts's own header.
+  // the elementActivated case there).
   // ----------------------------------------------------------------
   const contextMenu = new ContextMenuController({
     client: () => client,
     enabled: () => settings.current.preview.contextMenu,
     rendering: () => lifecycle.rendering,
+    currentDir: () => lifecycle.currentDir,
+    openContent: (path) => (buffer?.filePath === path ? buffer.content : null),
+    readFile: (path) => getPlatform().readFile(path),
+    commitEngine,
     getIframeOrigin: () => {
       const rect = previewFrameRef?.getIframe()?.getBoundingClientRect();
       return rect ? { left: rect.left, top: rect.top } : null;
@@ -2824,9 +1982,14 @@
       const rect = workspaceEl.getBoundingClientRect();
       return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
     },
+    promptText,
+    promptImageProperties,
     goToSource,
     openMediaPanel,
     copyToClipboard,
+    toastSuccess: (message) => toast?.success(message),
+    toastError: (message) => toast?.error(message),
+    openInlineEdit: (chapter, range, caret) => void inlineEdit.show({ chapter, range, caret }),
   });
 
   // ----------------------------------------------------------------
@@ -2857,7 +2020,6 @@
     resetOutline: () => {
       outline = [];
       activeOutlineIndex = 0;
-      bookStarts = [];
     },
     consumePendingRestore: () => {
       const restore = { page: pendingRestorePage };
@@ -2865,14 +2027,7 @@
       return restore;
     },
     refreshOutline: () => refreshOutline(),
-    refreshProblems: () => {
-      problemsController.refresh();
-      // The preview has rendered, so the project is genuinely up. If the open
-      // document was built before that — a chapter chosen while the project
-      // was still opening — it is missing its plugins and its book CSS, and
-      // nothing else would ever ask for them again.
-      bookRef?.rebuildDegraded();
-    },
+    refreshProblems: () => refreshProblems(),
     revealSettledPages: () => revealSettledPages(),
     toastSuccess: (message) => toast?.success(message),
     scheduleMicrotask: (fn) => queueMicrotask(fn),
@@ -2883,7 +2038,7 @@
   // not $effect). Cleanup is handled when the client is replaced (PreviewFrame
   // remounts on lifecycle.previewUrl change via {#key lifecycle.previewUrl}).
   //
-  // M31: this is also where the client's postMessage security is wired up.
+  // This is also where the client's postMessage security is wired up.
   // PreviewFrame calls attach() itself on the very next line of its own mount,
   // so `setExpectedOrigin`/`lockDown` must
   // happen HERE, synchronously, ahead of that — PreviewFrame cannot read the
@@ -2891,6 +2046,19 @@
   // throws), and in URL-preview mode the SAME component loads an arbitrary
   // third-party page, which must never get the command/event bridge wired up
   // at all (a locked client's later attach() call is a permanent no-op).
+  /**
+   * Esc pressed inside the preview. The preview is a cross-origin iframe, so
+   * its keystrokes never reach this window; preview-bridge.js forwards an Esc
+   * nothing in the book consumed (in-place block editing keeps its own).
+   * Same rule as the window's Esc: leave Focus only if nothing else owns it.
+   */
+  function onPreviewEscape(e: PreviewEvent): void {
+    if (e.name !== "escapePressed" || !inFocus) return;
+    if (escapeExitsFocus({ key: "Escape", defaultPrevented: false }, document, findBarOpen)) {
+      setFocus(false);
+    }
+  }
+
   function onClientReady(c: PreviewClient) {
     previewUpdating = false;
     if (lifecycle.sourceMode === "url") {
@@ -2900,6 +2068,8 @@
     c.setExpectedOrigin(lifecycle.previewUrl);
     previewEvents.subscribe(c);
     contextMenu.subscribe(c);
+    inlineEdit.subscribe(c);
+    c.on(onPreviewEscape);
   }
 
   // ----------------------------------------------------------------
@@ -2914,28 +2084,13 @@
   // ----------------------------------------------------------------
   // Keyboard shortcuts: global (available without a loaded document) +
   // preview navigation (active whenever a preview is open). ONE keydown
-  // registration (H5 / ARCH #10 — the review's "two separate global keydown
-  // handlers … both route to savePdf" finding): `onGlobalKey`/
-  // `onPreviewNavKey` keep their original, independently-scoped bodies
-  // (unchanged — each function's own internal `return`s still only skip that
-  // function's remaining checks) so behavior is byte-identical to the two
-  // formerly-separate listeners, which the browser also always ran in this
-  // same registration order for the same event; `onKeydown` just calls both
-  // from one `addEventListener` instead of two.
+  // registration: `onGlobalKey`/`onPreviewNavKey` keep independently-scoped
+  // bodies (each function's own internal `return`s only skip that function's
+  // remaining checks); `onKeydown` calls both, in order, from one
+  // `addEventListener`.
   // ----------------------------------------------------------------
   onMount(() => {
     function onGlobalKey(e: KeyboardEvent) {
-      // The full-window Project settings view owns the keyboard while it's up:
-      // the workspace behind it is inert, so acting on it (opening Settings
-      // invisibly BENEATH the view, toggling focus mode, exporting, snippet
-      // picker) would mutate UI the user can't see. Escape closes the view.
-      if (projectSettingsOpen) {
-        if (e.key === "Escape") {
-          e.preventDefault();
-          closeProjectSettings();
-        }
-        return;
-      }
       const command = resolveGlobalShortcut({
         ctrlOrMeta: e.ctrlKey || e.metaKey,
         shift: e.shiftKey,
@@ -2951,21 +2106,13 @@
       // Esc handling); workspace shortcuts must not act on the inert UI
       // behind it.
       if (landingVisible) return;
-      // Cmd/Ctrl+Shift+F hides the viewer so the editor has the window
-      // (#104). Esc is deliberately NOT an exit: focus keeps the toolbar, so
-      // the control that entered it is still on screen — and a global Esc
-      // that reshuffles panes mid-sentence is a surprise. Esc stays the
-      // dismiss-the-transient-thing key (find bar, dialogs, menus).
-      if (command === "focus-mode") {
+      // Esc leaves Focus, but ONLY when nothing else wants the key: an open
+      // dialog/menu/popover, the find bar, or a handler that already consumed
+      // it (editor, context menu) keeps Esc. An Esc pressed inside the preview
+      // never reaches this window — see onPreviewEscape.
+      if (inFocus && escapeExitsFocus(e, document, findBarOpen)) {
         e.preventDefault();
-        togglePreview();
-        return;
-      }
-      // The browser's zoom keys zoom the surface on screen, never the window.
-      if (command === "zoom-in" || command === "zoom-out" || command === "zoom-reset") {
-        e.preventDefault();
-        if (command === "zoom-reset") applyZoomToVisibleSurface("fit-width");
-        else stepVisibleZoom(command === "zoom-in" ? 0.25 : -0.25);
+        setFocus(false);
         return;
       }
       // Cmd/Ctrl+F finds in the VIEWER only (owner ruling 2026-08-15): the
@@ -2985,38 +2132,6 @@
         e.preventDefault();
         toggleEditor();
       }
-      // Block movement (SFE-P3ab, Lane A) — Alt+Shift+ArrowUp/Down moves
-      // the block the live rich-mode caret is currently in
-      // (`blockIndexAtOffset` + `applyBlockMove`, rich-commands.ts). Rich
-      // mode only: source mode keeps its own untouched CodeMirror keymap
-      // (`toolbar-actions.ts`, another lane's file). This was Lane B's one
-      // unwired deliverable from the prior run, blocked on exactly the
-      // selection accessor this run added — a keyboard shortcut, not a
-      // toolbar button, because `EditorToolbar.svelte`/`toolbar-actions.ts`
-      // are also another lane's files. Not part of resolveGlobalShortcut's
-      // vocabulary — checked directly, the same pattern the rich-mode
-      // toggle above uses.
-      if (
-        richSurfaceActive &&
-        e.altKey &&
-        e.shiftKey &&
-        (e.key === "ArrowUp" || e.key === "ArrowDown")
-      ) {
-        e.preventDefault();
-        const blockMoveHost = richHost();
-        if (blockMoveHost) {
-          const live = richLiveSelection();
-          const blockIndex = live
-            ? blockIndexAtOffset(blockMoveHost.getSnapshot().text, live.from)
-            : undefined;
-          if (blockIndex !== undefined) {
-            reportRichOutcome(
-              applyBlockMove(blockMoveHost, blockIndex, e.key === "ArrowUp" ? "up" : "down"),
-            );
-          }
-        }
-        return;
-      }
       // Cmd/Ctrl+\ toggles the left panel
       if (command === "toggle-left-panel") {
         e.preventDefault();
@@ -3033,7 +2148,6 @@
         ctrlOrMeta: e.ctrlKey || e.metaKey,
         shift: e.shiftKey,
         editorFileOpen: !!editorFilePath,
-        canSavePdf,
       });
       if (saveCommand !== "none") {
         e.preventDefault();
@@ -3043,15 +2157,11 @@
     }
 
     function onPreviewNavKey(e: KeyboardEvent) {
-      // Only active when a preview URL is loaded, and the preview is what is
-      // on screen: in Read the book's own scroller answers PageDown and End.
-      if (!lifecycle.previewUrl || !previewVisible) return;
+      // Only active when a preview URL is loaded.
+      if (!lifecycle.previewUrl) return;
       if (e.defaultPrevented) return;
       // Never page/zoom the pre-rendering preview from behind the start screen.
       if (landingVisible) return;
-      // Never page/zoom the hidden preview behind full-window project
-      // settings (PageUp/PageDown must scroll its body, not the preview).
-      if (projectSettingsOpen) return;
       // Don't intercept when focus is in a form control or the CodeMirror
       // editor (#38) — preview-nav keys (arrows, Home/End, +/-/=, f) must
       // never hijack editing. Shared guard: $lib/a11y isEditableTarget.
@@ -3069,7 +2179,7 @@
         // open, so it never surprises writers by opening PDF export.
         case "export-pdf":
           e.preventDefault();
-          if (canSavePdf) exportController.savePdf();
+          exportController.savePdf();
           return;
         case "next":
           e.preventDefault();
@@ -3102,8 +2212,8 @@
           contextMenu.close();
           zoomView.applyZoom("fit-width");
           break;
-        // UX-004: 'D' shortcut for debug removed — non-technical writers should
-        // not accidentally trigger debug mode.
+        // No 'D' shortcut for debug — non-technical writers should not
+        // accidentally trigger debug mode.
       }
     }
 
@@ -3122,8 +2232,8 @@
 
   /**
    * The ONE open-a-project-folder pipeline (epoch/superseded() concurrency
-   * guard included) now lives on ProjectLifecycleController (Phase 5d). Thin
-   * delegate kept so every call site below reads the same as before.
+   * guard included) lives on ProjectLifecycleController; this is a thin
+   * delegate for call sites that pass it as a bare reference.
    */
   function startFolderPreview(
     dir: string,
@@ -3134,9 +2244,9 @@
   }
 
   /**
-   * C2: switch the active book within the open repo (BookSwitcher). A full
-   * re-open at the sibling book's folder — the simplest correct mechanism per
-   * the C2 design note: classify() resolves the same repoRoot/books (it's the
+   * Switch the active book within the open repo (BookSwitcher). A full
+   * re-open at the sibling book's folder — the simplest correct mechanism:
+   * classify() resolves the same repoRoot/books (it's the
    * same repo), so session identity is unchanged; only the content pipeline
    * (preview/editor/watch) retargets to the chosen book.
    */
@@ -3150,19 +2260,19 @@
     await pickAndOpenFolder({ showBusyOverlay: true, label: "Starting preview…" });
   }
 
-  /** Load a URL preview. Reset/epoch-supersede logic now lives on ProjectLifecycleController. */
+  /** Load a URL preview. Reset/epoch-supersede logic lives on ProjectLifecycleController. */
   function openUrl(url: string) {
     void lifecycle.openUrl(url);
   }
 
   function openInBrowser() {
     if (!lifecycle.currentUrl) return;
-    openExternalCapability(lifecycle.currentUrl).catch(() => {});
+    api.shell.openExternal(lifecycle.currentUrl).catch(() => {});
   }
 
   function getSaveReadinessWarning(): string | null {
     if (lifecycle.sourceMode !== "folder" || !lifecycle.currentDir) {
-      return "Open a project folder before saving a PDF.";
+      return "Open a book before saving a PDF.";
     }
     if (lifecycle.rendering || !lifecycle.previewUrl) {
       return "Your document is still loading. Wait a moment and try again.";
@@ -3180,29 +2290,15 @@
     return null;
   }
 
-  // stopPreview (flush + host teardown + the ONE resetWorkspace()) now lives
-  // on ProjectLifecycleController; called directly as lifecycle.stopPreview()
-  // — no page-local wrapper needed since it's never passed as a bare prop
-  // reference (unlike openUrl/startFolderPreview/setUpAsBook above).
-
-  // savePdf/exportHtml/cancelExport (Phase 5 slice 2, UX H5 / ARCH #10) now
-  // live on `exportController` (ExportController.savePdf/exportHtml/
-  // cancelExport) — called directly from the template/keydown handler as
-  // `exportController.savePdf()` etc.; no page-local wrapper needed since
-  // they're never passed as bare prop references.
-
-  // Page-navigation intents (syncPageState / restoreProjectPage /
-  // runPageCommand / gotoPage / begin|cancel|commitPageEdit /
-  // first|prev|next|lastPage) now live on `pageNav` (PageNavController).
   function saveDesktopPrefs(patch: Partial<PersistedProjectState>) {
     if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder" || lifecycle.rendering || pageNav.restoringSavedState) return;
     // Per-project state (#43): write to the folder-keyed bucket so this never
     // overwrites another project's saved page/view. The main process also
     // updates lastProjectDir, so reopening lands on this project.
-    trackPersistence(setDesktopProjectStateCapability(lifecycle.currentDir, patch as Record<string, unknown>));
+    trackPersistence(api.app.setDesktopProjectState(lifecycle.currentDir, patch as Record<string, unknown>));
   }
 
-  // ── Document outline + editor↔preview sync (UX-013, ADR 0005) ─────────────
+  // ── Document outline + editor↔preview sync ────────────────────────────────
   function refreshOutline() {
     if (!client) return;
     client
@@ -3213,16 +2309,6 @@
       })
       .catch(() => {
         outline = [];
-      });
-    // Read's chapter list comes from the same render: the chapters the
-    // preview paginated, not the headings it found in them.
-    client
-      .getChapters()
-      .then((starts) => {
-        bookStarts = starts ?? [];
-      })
-      .catch(() => {
-        bookStarts = [];
       });
   }
 
@@ -3280,9 +2366,6 @@
       lifecycle.renderCompleteOverlay = false;
     });
   }
-
-  // Zoom / view-mode intents (applyFitWidthZoom / applyZoom / stepZoom /
-  // applyViewMode / toggleViewMode) now live on `zoomView` (ZoomViewController).
 
   function toggleDebug() {
     debug = !debug;
@@ -3342,339 +2425,65 @@
       // Only steal focus if the editor was previously closed.
       // Callers that need a default file request it explicitly; navigation
       // callers already have a target and must not race a background default.
-      openEditorPane({ focus: !editorEditable, ensureFile: false });
+      openEditorPane({ focus: !editorVisible, ensureFile: false });
     }
   }
 
   /**
-   * The ONE writer of `mode`. Persists the durable half (`focus` stores as
-   * `editor` — waking into a viewer-less window would be hostile), pushes the
-   * derived page layout into the viewer, and guarantees the editor module is
-   * loading whenever the editor pane is about to be on screen (the pane
-   * renders "Loading editor…" until it is).
-   *
-   * Persist BEFORE assigning. `settings.set` notifies synchronously, so the
-   * write-back reaches `modeSink` inside this call — and entering `focus`
-   * from `viewer` writes "editor", a value the sink has NOT seen, so its
-   * dedupe does not catch it and it assigns `mode = "editor"`. Doing that
-   * echo first and the assignment last keeps the one writer of `mode` the
-   * last word; Read → Focus used to land in Edit with the viewer still up.
+   * The ONE writer of `mode`: persists it, pushes the derived page layout into
+   * the viewer, and guarantees the editor module is loading whenever the
+   * editor pane is about to be on screen (the pane renders "Loading editor…"
+   * until it is).
    */
   function setMode(next: WorkspaceMode): void {
     if (next === mode) return;
-    settings.set({ preview: { mode: next === "focus" ? "editor" : next } });
+    if (next === "editor" && readerMode) return;
+    settings.set({ preview: { mode: next } });
     mode = next;
-    // Read opens locked, every time (see `richLocked`). The mount reads
-    // `readonly` once, so a mounted paged editor has to be told, not derived.
-    if (next === "viewer") {
-      richLocked = true;
-      bookRef?.setReadonly(true);
-      loadBookSurfaceModule();
-      void loadBookFiles();
-      // A reader wants a page in front of them, not a "select a file" notice.
-      if (!editorFilePath) void ensureEditorFile();
-    }
-    // Entering or leaving Read changes WHICH surface is mounted.
-    syncRichSurface();
     zoomView.applyViewMode(viewMode);
     if (next !== "viewer") loadEditorModule();
   }
 
-  /**
-   * Lock or unlock the paged editor in place - the pill in the editor pane.
-   * BookSurface remounts each chapter slot on the toggle (`{#key slot.epoch}`
-   * with `readonly` fixed at mount; BookSurface.svelte's `setReadonly`), so
-   * the mount-level `setReadonly` of `mountGutterpressEditor` is not on this
-   * path. Both shapes paginate like the page.
-   */
-  function setRichLocked(locked: boolean): void {
-    if (locked === richLocked) return;
-    richLocked = locked;
-    bookRef?.setReadonly(locked);
-  }
+  /** Focus applies while a project workspace is open; it is never persisted. */
+  let inFocus = $derived(focus && toolbarProjectOpen);
 
   /**
-   * Zoom whichever surface is on screen: the preview beside the source
-   * editor, or the paged editor in Read. The paged editor's zoom is the
-   * workspace's own state; it opens each document at fit-width.
+   * Edit+Focus file switcher: the book's markdown files in book order — the
+   * manifest's `sourceFiles` when pinned, else every top-level .md in natural
+   * order (the same list the Details section edits, via `buildSourceList`).
    */
-  function applyZoomToVisibleSurface(value: string): void {
-    if (previewVisible) {
-      zoomView.applyZoom(value);
-      return;
+  let focusFiles = $state<string[]>([]);
+  async function loadFocusFiles(): Promise<void> {
+    const dir = lifecycle.currentDir;
+    if (!dir) return;
+    try {
+      const [{ md }, cfg] = await Promise.all([api.fs.listProjectFiles(dir), api.manifest.read(dir)]);
+      if (dir !== lifecycle.currentDir) return;
+      focusFiles = buildSourceList(md, cfg.sourceFiles ?? null)
+        .filter((e) => e.included && !e.missing)
+        .map((e) => e.path);
+    } catch {
+      focusFiles = [];
     }
-    richZoom = value;
-    bookRef?.setZoom(value);
-  }
-
-  function stepVisibleZoom(delta: number): void {
-    if (previewVisible) {
-      zoomView.stepZoom(delta);
-      return;
-    }
-    const current = richZoom === "fit-width" ? 1 : parseFloat(richZoom) || 1;
-    const next = Math.max(0.25, Math.min(4, current + delta));
-    applyZoomToVisibleSurface(String(Math.round(next * 100) / 100));
-  }
-
-  // -- The paged editor's own context menu and image selection ---------------
-  //
-  // The preview's menu is fed by events from the book's iframe; the paged
-  // editor lives in this document, so its menu reads the element under the
-  // pointer directly. Every inactive block carries the source range the mount
-  // stamped on it (data-gp-start / data-gp-length), which is what maps a
-  // click back to the author's text: a right-click offers "Edit in source" at
-  // that line, and an image click (unlocked) puts the caret inside the
-  // image's own token so the toolbar's Image properties, and a double-click,
-  // act on that image.
-  const richContextMenu = new PopupMenuController(() => {
-    const rect = editorPaneEl?.getBoundingClientRect();
-    return rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null;
-  });
-
-  interface RichBlockHit {
-    readonly el: HTMLElement;
-    /** The chapter file the block belongs to. */
-    readonly chapter: string;
-    readonly start: number;
-    readonly length: number;
-  }
-
-  /** The chapter file an element of the book belongs to (each chapter's wrapper carries its path). */
-  function richChapterOf(target: EventTarget | null): string | null {
-    const el = target instanceof Element ? target.closest<HTMLElement>("[data-chapter-path]") : null;
-    return el?.dataset["chapterPath"] ?? null;
-  }
-
-  function richBlockAt(target: EventTarget | null): RichBlockHit | null {
-    const el = target instanceof Element ? target.closest<HTMLElement>(".rich-editor-host .md-block[data-gp-start]") : null;
-    const chapter = richChapterOf(el);
-    if (!el || !chapter) return null;
-    const start = Number(el.dataset["gpStart"]);
-    const length = Number(el.dataset["gpLength"]);
-    return Number.isFinite(start) && Number.isFinite(length) ? { el, chapter, start, length } : null;
-  }
-
-  /** A caret offset inside the image token `img` was rendered from, or null when the block's source has no such image (a plugin's own art). */
-  function richImageOffset(img: HTMLImageElement, block: RichBlockHit): number | null {
-    const text = bookRef?.hostOf(block.chapter)?.getSnapshot().text;
-    if (!text) return null;
-    const blockText = text.slice(block.start, block.start + block.length);
-    const index = Array.from(block.el.querySelectorAll("img")).indexOf(img);
-    if (index < 0) return null;
-    let pos = 0;
-    let seen = 0;
-    while (pos < blockText.length) {
-      const at = blockText.indexOf("![", pos);
-      if (at < 0) break;
-      const token = findImageTokenAtOffset(blockText, at + 1);
-      if (!token) {
-        pos = at + 2;
-        continue;
-      }
-      if (seen === index) return block.start + token.altStart;
-      seen += 1;
-      pos = token.end;
-    }
-    return null;
-  }
-
-  /** The source start of the last stamped block of `chapter` whose top is above `clientY`, in document order. */
-  function richBlockStartAbove(chapter: string, clientY: number): number | null {
-    let best: number | null = null;
-    let bestTop = Number.NEGATIVE_INFINITY;
-    for (const el of document.querySelectorAll<HTMLElement>(".rich-editor-host .md-block[data-gp-start]")) {
-      if (richChapterOf(el) !== chapter) continue;
-      const rect = el.getBoundingClientRect();
-      if (rect.height === 0 || rect.top > clientY || rect.top < bestTop) continue;
-      const start = Number(el.dataset["gpStart"]);
-      if (!Number.isFinite(start)) continue;
-      best = start;
-      bestTop = rect.top;
-    }
-    return best;
-  }
-
-  function lineOfOffset(chapter: string, offset: number): number {
-    const text = bookRef?.hostOf(chapter)?.getSnapshot().text ?? "";
-    let line = 1;
-    const end = Math.min(offset, text.length);
-    for (let i = 0; i < end; i++) if (text.charCodeAt(i) === 10) line += 1;
-    return line;
-  }
-
-  /** Open the source editor on the line the block at `offset` of `chapter` starts at. */
-  function editInSourceAt(chapter: string, offset: number): void {
-    const path = chapter;
-    const line = lineOfOffset(chapter, offset);
-    if (isNarrow) setPaneMode("edit");
-    setMode("editor");
-    void selectEditorFile(path).then((selected) => {
-      if (selected) whenEditorReady(() => revealLineInLiveEditor(path, line, true));
-    });
-    focusEditorWhenReady();
   }
 
   /**
-   * Unlock the book with the caret at `offset` in `chapter`. Unlocking
-   * remounts the chapters, so the caret waits for this one. The one
-   * implementation behind both the image click and the context menu's
-   * "Unlock to edit".
+   * Turn Focus on/off. It only hides chrome (see `focus`), so neither the mode
+   * nor the left-panel setting is touched and leaving restores exactly what
+   * was visible. `returnFocus` puts keyboard focus back on the toolbar's Focus
+   * button, which the minimal bar's Exit button replaced.
    */
-  async function unlockRichAt(chapter: string, offset: number): Promise<void> {
-    setRichLocked(false);
-    await bookRef?.setSelection(chapter, offset);
-  }
-
-  /** Put the caret in an image's token, unlocking first if needed, and open Image properties. */
-  function openRichImageAt(chapter: string, offset: number): void {
-    void (async () => {
-      await unlockRichAt(chapter, offset);
-      handleImagePropertiesAtCaret();
-    })();
-  }
-
-  /**
-   * Where the caret lands when the reader unlocks from a right-click. A
-   * marker chip carries its own caret offset (`data-gp-caret`, CHIP_CARET_ATTR
-   * in mount.ts: the block's own start may be the blank line before the
-   * marker, and a caret there activates the block above); any other block
-   * places it at its first non-blank character; the page margin at the
-   * nearest block above the pointer. Null when nothing is known - never 0,
-   * which would yank the reader to the chapter top and defeat the remount's
-   * place-keeping.
-   */
-  function richUnlockOffset(target: EventTarget | null, block: RichBlockHit | null, chapter: string | null, clientY: number): number | null {
-    const chip = target instanceof Element ? target.closest<HTMLElement>("[data-gp-caret]") : null;
-    const chipCaret = chip ? Number(chip.getAttribute("data-gp-caret")) : Number.NaN;
-    if (Number.isFinite(chipCaret)) return chipCaret;
-    if (block) {
-      const text = bookRef?.hostOf(block.chapter)?.getSnapshot().text ?? "";
-      const blockText = text.slice(block.start, block.start + block.length);
-      return block.start + (blockText.length - blockText.trimStart().length);
+  function setFocus(on: boolean, returnFocus = false): void {
+    if (on === focus || (on && !toolbarProjectOpen)) return;
+    contextMenu.close();
+    focus = on;
+    if (on) void loadFocusFiles();
+    if (on && !focusHintShown) {
+      focusHintShown = true;
+      toast?.info?.("Focus: press Esc to exit", 6000);
     }
-    return chapter ? richBlockStartAbove(chapter, clientY) : null;
-  }
-
-  function onRichContextMenu(e: MouseEvent): void {
-    if (!richSurfaceActive) return;
-    const block = richBlockAt(e.target);
-    const chapter = block?.chapter ?? richChapterOf(e.target) ?? bookRef?.activePath() ?? null;
-    const img = e.target instanceof HTMLImageElement ? e.target : null;
-    const imageOffset = img && block ? richImageOffset(img, block) : null;
-    const unlockAt = richUnlockOffset(e.target, block, chapter, e.clientY);
-    const items: ContextMenuItem[] = [];
-    if (block && imageOffset !== null) {
-      items.push({
-        id: "image-properties",
-        label: richLocked ? "Unlock and edit image..." : "Image properties...",
-        enabled: true,
-        run: () => {
-          richContextMenu.close();
-          openRichImageAt(block.chapter, imageOffset);
-        },
-      });
-    }
-    if (img) {
-      items.push({
-        id: "image-reveal",
-        label: "Reveal in Media panel",
-        enabled: true,
-        run: () => {
-          richContextMenu.close();
-          openMediaPanel();
-        },
-      });
-    }
-    const selected = window.getSelection()?.toString() ?? "";
-    if (selected) {
-      items.push({
-        id: "copy",
-        label: "Copy",
-        enabled: true,
-        run: async () => {
-          richContextMenu.close();
-          await copyToClipboard(selected);
-        },
-      });
-    }
-    // Always: on a block, at its start; elsewhere (the page margin, an
-    // active block) at the caret if there is one, else at the nearest block
-    // above the pointer, else at the top of the chapter.
-    if (chapter) {
-      const caret = chapter === bookRef?.activePath() ? bookRef?.getSelection()?.from : undefined;
-      const sourceOffset = block?.start ?? caret ?? richBlockStartAbove(chapter, e.clientY) ?? 0;
-      items.push({
-        id: "edit-in-source",
-        label: "Edit in source",
-        enabled: true,
-        run: () => {
-          richContextMenu.close();
-          editInSourceAt(chapter, sourceOffset);
-        },
-      });
-    }
-    items.push(
-      richLocked
-        ? {
-            id: "unlock",
-            label: "Unlock to edit",
-            enabled: true,
-            run: () => {
-              richContextMenu.close();
-              // The caret goes where the reader right-clicked; with nothing to
-              // place it at, unlock in place and leave the caret alone.
-              if (chapter && unlockAt !== null) void unlockRichAt(chapter, unlockAt);
-              else setRichLocked(false);
-            },
-          }
-        : { id: "lock", label: "Lock", enabled: true, run: () => { richContextMenu.close(); setRichLocked(true); } },
-    );
-    e.preventDefault();
-    richContextMenu.openAt(e.clientX, e.clientY, items);
-  }
-
-  /**
-   * A click on an image selects that image and opens its properties, in the
-   * locked view too (unlocking first): an image has no text to place a
-   * caret in, so the dialog IS the way to edit one. Taken at capture time
-   * and stopped, because the fork places the caret by coordinates and a
-   * pinned image (absolutely positioned art) sits over a different block
-   * than the one it was written in; the fork would activate that one.
-   */
-  function onRichPointerDown(e: PointerEvent): void {
-    if (!richSurfaceActive || !(e.target instanceof HTMLImageElement) || e.button !== 0) return;
-    const block = richBlockAt(e.target);
-    if (!block) return;
-    const offset = richImageOffset(e.target, block);
-    if (offset === null) return;
-    e.preventDefault();
-    e.stopPropagation();
-    openRichImageAt(block.chapter, offset);
-  }
-
-  function onRichDoubleClick(e: MouseEvent): void {
-    if (!richSurfaceActive || !(e.target instanceof HTMLImageElement)) return;
-    const block = richBlockAt(e.target);
-    if (!block) return;
-    const offset = richImageOffset(e.target, block);
-    if (offset === null) return;
-    e.preventDefault();
-    openRichImageAt(block.chapter, offset);
-  }
-
-  /** Hide/show the viewer - the focus toggle on the source editor's toolbar (and Ctrl+Shift+F). */
-  function togglePreview() {
-    if (!lifecycle.previewUrl || isNarrow) return;
-    if (mode === "focus") {
-      setMode("editor");
-      return;
-    }
-    setMode("focus");
-    // Don't yank focus into the editor — the author asked to hide the preview,
-    // not to start typing.
-    if (lifecycle.currentDir && lifecycle.sourceMode === "folder") {
-      openEditorPane({ focus: false });
+    if (!on && returnFocus) {
+      void tick().then(() => document.getElementById("focus-toggle-btn")?.focus());
     }
   }
 
@@ -3715,10 +2524,9 @@
   // The single-column (narrow) layout switches the one visible pane between the
   // editor and the preview. `editorPaneOpen` is the visible source of truth;
   // the persisted paneMode is only consulted after the editor was explicitly
-  // opened. (The defunct CSS/style tab was retired with the toolbar
-  // refactor — project styling lives in the Project settings view.)
+  // opened. Project styling lives in the Book settings view, not a tab.
   //
-  // M1 (single source of truth): whether the shared editor is on a CSS file is
+  // Single source of truth: whether the shared editor is on a CSS file is
   // derived SOLELY from the open file's extension (`openFileIsCss`) — no
   // parallel state that could get stuck on "css" when no CSS file is open.
   let openFileIsCss = $derived(
@@ -3746,6 +2554,15 @@
     setPaneMode(paneModeForTab(tab));
   }
 
+  /** The minimal bar's Edit/Read switch: a mode on wide layouts, a tab on narrow. */
+  function selectFocusView(view: "edit" | "read"): void {
+    if (isNarrow) void selectMobileTab(view === "edit" ? "markdown" : "preview");
+    else setMode(view === "edit" ? "editor" : "viewer");
+  }
+  let focusView = $derived<"edit" | "read">(
+    (isNarrow ? mobileTab === "markdown" : mode !== "viewer") ? "edit" : "read",
+  );
+
   // ── Virtual-keyboard handling (#34) ────────────────────────────────────────
   // When the on-screen keyboard opens on a touch device, the visual viewport
   // shrinks while the layout viewport stays put — pushing the editor toolbar
@@ -3772,10 +2589,10 @@
   });
 
   /**
-   * M2: Hide the render-progress overlay, and ONLY hide it. This backs the
+   * Hide the render-progress overlay, and ONLY hide it. This backs the
    * pane overlay used for an initial/retry render; save-triggered hot reloads
    * are double-buffered and remain ambient. Routing this through stopPreview()
-   * (as it used to) would silently close the whole project. The render itself
+   * would silently close the whole project. The render itself
    * is NOT aborted: the iframe stays mounted and visible to avoid Chromium's
    * cross-origin throttle. lifecycle.currentDir/editor/buffer stay untouched.
    *
@@ -3789,7 +2606,7 @@
   }
 
   /**
-   * M2: Real cancel-and-close, for the initial open ONLY. Backs the
+   * Real cancel-and-close, for the initial open ONLY. Backs the
    * variant="app" overlay, which by construction only shows before any
    * folder workspace exists (`!lifecycle.currentDir`) — there is no live workspace to interrupt
    * yet, so a full teardown is safe here in a way it is not once the preview
@@ -3821,20 +2638,21 @@
 
 </script>
 
-<Toast bind:api={toast} />
+<Toast bind:api={toast} onReportProblem={openReportProblem} />
 
 <CrashRecoveryDialog
   items={crashRecovery.items}
   onRestore={(item) => crashRecovery.restore(item)}
   onDiscard={(item) => crashRecovery.discard(item)}
   onDismiss={() => crashRecovery.dismiss()}
+  onReportProblem={openReportProblem}
 />
 
-<!-- RC3-1: App-level overlay for the initial "Opening folder…" lifecycle.busy state ONLY
+<!-- App-level overlay for the initial "Opening folder…" lifecycle.busy state ONLY
      (no preview pane exists yet). Scoped below the toolbar (--app-z-overlay) and
      all dialogs (1000+). This does NOT cover the preview pane or editor during
      layout — that's handled by the pane-scoped overlay inside .preview-pane.
-     M2: this is the ONE place a real cancel-and-close is offered — safe here
+     This is the ONE place a real cancel-and-close is offered — safe here
      because no project session/preview exists yet (see handleCancelOpen). -->
 {#if lifecycle.busy && !!lifecycle.busyLabel && !lifecycle.currentDir && !landingVisible}
   <LoadingOverlay
@@ -3865,18 +2683,10 @@
   <title>{lifecycle.docTitle ? `${lifecycle.docTitle} — Gutterpress` : "Gutterpress"}</title>
 </svelte:head>
 
-<!-- inert while the start screen or full-window Settings view is up: the
-      workspace keeps rendering, but never accepts interaction underneath. -->
-<div class="app-root" inert={landingVisible || projectSettingsOpen}>
-<!-- Skip link: the first Tab stop in the workspace. Inert exactly when the
-     workspace is, since `.app-root` carries `inert`. -->
-<a
-  class="skip-link"
-  href="#main-content"
-  onclick={(e) => {
-    e.preventDefault();
-    mainContentEl?.focus();
-  }}>Skip to content</a>
+<!-- inert while the start screen or Book settings is up: the workspace keeps
+      rendering (a stylesheet written from Book settings re-renders the preview
+      live) but never accepts interaction underneath the layer. -->
+<div class="app-root" inert={landingVisible || projectSettingsOpen || publishOpen}>
 {#if (updateController.readyVersion || updateController.availableVersion) && !updateController.bannerDismissed}
   <div class="update-banner" role="status" aria-live="polite">
     {#if updateController.readyVersion}
@@ -3904,7 +2714,7 @@
 {#if needsGitIdentity}
   <div class="identity-banner" role="status">
     <span class="identity-banner-msg">
-      Add your name and email so the versions you save show who made each change.
+      Add your name and email so the changes you save are credited to you.
     </span>
     <button class="identity-action" onclick={() => openSettings("connections")}>
       Add your name &amp; email
@@ -3916,6 +2726,20 @@
 {/if}
 
 <div class="shell">
+  {#if inFocus}
+    <FocusBar
+      view={focusView}
+      {readerMode}
+      onSelectView={(v) => { contextMenu.close(); selectFocusView(v); }}
+      onExit={() => setFocus(false, true)}
+      {pageNav}
+      showPageNav={focusView === "read" && !!lifecycle.previewUrl}
+      rendering={lifecycle.rendering}
+      files={focusView === "edit" ? focusFiles : []}
+      currentFile={editorFilePath ? basenameOf(editorFilePath) : null}
+      onSelectFile={(name) => lifecycle.currentDir ? openChapter(joinPath(lifecycle.currentDir, name)) : undefined}
+    />
+  {:else}
   <AppToolbar
     bind:panelToggleEl={leftPanelToggleBtn}
     {leftPanelOpen}
@@ -3926,45 +2750,35 @@
     folderTitle={lifecycle.currentDir ? displayTitle : null}
     folderTooltip={lifecycle.currentDir}
     onOpenInBrowser={openInBrowser}
-    {pageNav}
-    rendering={lifecycle.rendering}
-    showPageNav={!!lifecycle.previewUrl && !isNarrow && previewVisible}
     {isNarrow}
     {mobileTab}
     onSelectMobileTab={selectMobileTab}
     editorTabDisabled={!toolbarProjectOpen}
     previewTabDisabled={!lifecycle.previewUrl && !lifecycle.previewError}
-    hidePreviewControls={isNarrow && editorPaneOpen}
     {mode}
     onSetMode={(next) => { contextMenu.close(); setMode(next); }}
-    zoom={previewVisible ? zoom : richZoom}
-    previewControlsDisabled={!lifecycle.previewUrl}
-    onApplyZoom={(val) => { contextMenu.close(); applyZoomToVisibleSurface(val); }}
     editorToggleDisabled={!toolbarProjectOpen}
-    publishVisible={isDesktop()}
-    publishDisabled={lifecycle.busy || !lifecycle.currentDir || lifecycle.sourceMode === "url"}
+    {publishDisabled}
     onPublish={() => (publishOpen = true)}
-    {canSavePdf}
-    exporting={exportController.exporting}
-    {exportDisabled}
-    onOpenExport={() => (exportOpen = true)}
-    bind:exportBtnEl
-    {exportHints}
-    exportWarning={canSavePdf ? lifecycle.saveWarning : null}
-    saving={forceSaving}
-    saveDisabled={!editorFilePath || forceSaving || editorSavePhase === "clean"}
-    savePending={!!editorFilePath && editorSavePhase !== "clean"}
-    onSave={handleForceSave}
-    showProjectSettings={toolbarProjectOpen && isDesktop()}
+    bind:publishBtnEl
+    bind:projectSettingsBtnEl
+    {publishHints}
+    publishWarning={lifecycle.saveWarning}
+    showProjectSettings={toolbarProjectOpen}
+    {readerMode}
     onOpenProjectSettings={openProjectConfig}
+    {focus}
+    onToggleFocus={() => setFocus(!focus)}
   />
+  {/if}
 
   <!-- Global left panel — available in both preview and edit modes -->
-  <div id="left-panel-region" class="left-panel-region" class:panel-open={leftPanelOpen} style="--left-panel-width: {leftPanelWidth}px">
+  <div id="left-panel-region" class="left-panel-region" class:panel-open={leftPanelOpen} class:in-focus={inFocus} style="--left-panel-width: {leftPanelWidth}px">
     <LeftPanel
       bind:open={leftPanelOpen}
       bind:width={leftPanelWidth}
       bind:activeTab={leftPanelTab}
+      {readerMode}
       projectDir={lifecycle.currentDir}
       projectDisplayName={lifecycle.currentFolderDisplayName}
       projectCapabilities={projectSession.projectCapabilities}
@@ -3975,15 +2789,8 @@
       toggleBtn={leftPanelToggleBtn}
       onJumpToOutline={jumpToOutline}
       onSelectEditorFile={(path) => {
-        selectEditorFile(path);
-        // Reading stays reading. The paged surface already shows whichever
-        // Markdown file is selected, so picking the next chapter in the tree
-        // is a reader's move, not an editing one - dropping them into Edit
-        // for it would fight the choice they made. A non-Markdown file (a
-        // stylesheet) has no paged view of its own, so that still opens the
-        // source editor.
-        const staysInReader = mode === "viewer" && isMarkdownPath(path);
-        if (!staysInReader && !editorEditable && lifecycle.currentDir && lifecycle.sourceMode === "folder") {
+        void openChapter(path);
+        if (!editorVisible && lifecycle.currentDir && lifecycle.sourceMode === "folder") {
           // A file was just selected in the tree, so no ensureEditorFile needed.
           openEditorPane({ ensureFile: false });
         }
@@ -3992,22 +2799,18 @@
       onBeforeDeleteOpenFile={onTreeBeforeDelete}
       onFileRenamed={onTreeFileRenamed}
       onFileDeleted={onTreeFileDeleted}
+      {toast}
       onInsertImage={(payload) => insertImageIntoChapter(payload)}
       onProjectChosen={(path) => void openProjectPath(path)}
       onOpenUrl={openUrl}
-      onOpenGitHub={isDesktop() ? () => { contextMenu.close(); githubOpen = true; } : undefined}
-      onNewProject={() => { contextMenu.close(); newProjectWizardRef?.show(); }}
-      onShowWelcome={() => {
-        contextMenu.close();
-        landingRef?.showTab("projects");
-        landingForcedOpen = true;
-      }}
+      onOpenBook={() => { contextMenu.close(); void inlineEdit.endActive(true); openBookOpen = true; }}
+      onNewProject={readerMode ? undefined : () => { contextMenu.close(); void inlineEdit.endActive(true); newProjectWizardRef?.show(); }}
       onSyncReconnect={onSyncReconnect}
       onPanelStateChange={persistLeftPanelPrefs}
     />
 
     <!-- Main content area (preview + editor) -->
-    <main class="main-content" id="main-content" tabindex="-1" bind:this={mainContentEl}>
+    <div class="main-content">
 
   <!-- Loose-folder nudge: a plain folder renders fine but has no manifest,
        editable styles, or version history. Offer a one-click setup (adopt). -->
@@ -4034,15 +2837,12 @@
       class:narrow={isNarrow}
       class:show-edit={isNarrow && editorPaneOpen}
       class:show-view={isNarrow && !editorPaneOpen}
-      class:preview-hidden={!previewVisible}
-      class:preview-collapsed={!previewVisible}
       bind:this={workspaceEl}
-      style="--kbd-offset: {keyboardInset}px; {previewCollapseGridColumns ? `grid-template-columns: ${previewCollapseGridColumns};` : splitGridColumns ? `grid-template-columns: ${splitGridColumns};` : ''}"
+      style="--kbd-offset: {keyboardInset}px; {splitGridColumns ? `grid-template-columns: ${splitGridColumns};` : ''}"
     >
       {#if editorPaneOpen}
         <section
           class="pane editor-pane"
-          bind:this={editorPaneEl}
           id="mobile-panel-editor"
           role={isNarrow ? "tabpanel" : undefined}
           aria-label={openFileIsCss ? "CSS editor" : "Markdown editor"}
@@ -4051,7 +2851,7 @@
             <!-- Remount on project switch so a stale snapshot/log list from a
                  previously-open project can never linger under the new one
                  (mirrors LeftPanel's {#key projectDir} FileTree/MediaPanel
-                 pattern) — replaces the retired resetHistoryState no-op (L8). -->
+                 pattern). -->
             {#key lifecycle.currentDir}
               <ProjectActivityView
                 bind:this={activityViewRef}
@@ -4069,134 +2869,46 @@
                 onKeepMine={keepMineExternal}
               />
             {/if}
-            <!-- The lock pill: Read's one control. Locked is reading; unlocked
-                 is editing the book in place, on the same pages. -->
-            {#if richSurfaceActive && editorFilePath}
-              <button
-                class="rich-lock"
-                class:unlocked={!richLocked}
-                onclick={() => setRichLocked(!richLocked)}
-                aria-pressed={!richLocked}
-                aria-label={richLocked ? "Unlock" : "Lock"}
-                title={richLocked ? "Unlock to edit the book in place" : "Lock the book for reading"}
-              >
-                <Icon name={richLocked ? "lock" : "unlock"} size={14} />
-                <span>{richLocked ? "Locked" : "Editing"}</span>
-              </button>
-            {/if}
             <!-- Editor toolbar (#31): compact formatting bar, visible only when a
-                 markdown file is open. Placed above the editor, within the pane.
-                 A locked book has no formatting to do, so the bar waits for the
-                 unlock. -->
-            {#if !(richSurfaceActive && richLocked)}
+                 markdown file is open. Placed above the editor, within the pane. -->
+            {#if !inFocus}
             <EditorToolbar
               filePath={editorFilePath}
               projectDir={lifecycle.currentDir}
-              richMode={richSurfaceActive}
-              onOpenImageProperties={() => void openRichImageProperties()}
               onAction={(action, payload) => {
                 if (action === "snippet") {
                   openSnippetPicker();
                   return;
                 }
-                if (action === "focus-mode") {
-                  togglePreview();
-                  return;
-                }
-                // SFE-P3d-parity, Lane D — each handler below branches on
-                // richSurfaceActive itself, so intercepted here BEFORE the
-                // richSurfaceActive/runToolbarAction split below, same as
-                // "snippet"/"focus-mode" above.
-                if (action === "image-properties") {
-                  void handleImagePropertiesAtCaret();
-                  return;
-                }
-                if (action === "image-unwrap") {
-                  void handleImageUnwrapAtCaret();
-                  return;
-                }
-                if (action === "link-edit") {
-                  void handleLinkEditAtCaret();
-                  return;
-                }
-                if (richSurfaceActive) {
-                  handleRichToolbarAction(action, payload);
-                  return;
-                }
                 editorRef?.runToolbarAction(action, payload);
               }}
               onSave={handleForceSave}
+              savePending={editorSavePhase !== "clean"}
+              saving={forceSaving}
+              savePhase={editorSavePhase}
+              autoSave={settings.current.versionHistory.autoSave}
+              {forceSaving}
+              onSaveStatus={(el) => statusBarRef?.toggleSummary(el)}
+              problems={displayedProblems}
+              problemsLoading={problemsLoading || lifecycle.rendering}
+              {problemsError}
+              {problemsOpen}
+              onToggleProblems={toggleProblems}
             />
             {/if}
-            {#if richSurfaceActive}
-              <!-- SFE-P3ab, Lane A — rich mode's own DOM subtree. The
-                   wrapper's `use:trackSurfaceMount` and this branch's
-                   exclusivity with the MarkdownEditor branch below TOGETHER
-                   give D7's "exactly one editing surface mounted" invariant
-                   both its structural guarantee (this {#if}/{:else}) and its
-                   asserted one (the controller throws on a violation). -->
-              <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
-              <div
-                style="display:contents"
-                use:trackSurfaceMount={{ controller: richMode, surface: "rich" }}
-                oncontextmenu={onRichContextMenu}
-                onpointerdowncapture={onRichPointerDown}
-                ondblclick={onRichDoubleClick}
-              >
-                {#if BookSurfaceComponent && bookChapters.length}
-                  <!-- Keyed on the chapter list: a chapter added or removed is a new book. -->
-                  {#key bookChapters.join("\n")}
-                    <BookSurfaceComponent
-                      bind:this={bookRef}
-                      chapters={bookChapters}
-                      initialPath={editorFilePath}
-                      readonly={richLocked}
-                      zoom={richZoom}
-                      projectDir={lifecycle.currentDir}
-                      pageEstimates={book.estimates}
-                      readChapter={readFileCapability}
-                      buildProjection={buildRichProjection}
-                      onSnapshotChange={onBookSnapshotChange}
-                      onActivate={onBookActivate}
-                      onDiagnostic={showRichDiagnostic}
-                    />
-                  {/key}
-                {:else if bookModuleFailed}
-                  <div class="editor-loading" role="alert">
-                    <p>The book failed to load.</p>
-                    <button class="primary app-btn-primary" onclick={retryBookSurfaceLoad}>Retry</button>
-                  </div>
-                {:else}
-                  <div class="editor-loading" role="status" aria-live="polite">
-                    Loading the book...
-                  </div>
-                {/if}
-              </div>
-            {:else if MarkdownEditor}
+            {#if MarkdownEditor}
               <!-- No per-file `{#key}` remount: MarkdownEditor keeps ONE
                    EditorView, while EditorFileSession gives it exactly ONE
-                   source file via a synchronous switchFile() handoff.
-                   `bind:this={sourceEditorHostEl}` (SFE-P3d-parity, Lane D)
-                   is this wrapper's own DOM node, used ONLY to locate the
-                   mounted CodeMirror view from outside the component via
-                   `source-editor-access.ts`'s `EditorView.findFromDOM` —
-                   see that module's header for why (MarkdownEditor.svelte
-                   is outside this lane's write ownership). -->
-              <div
-                bind:this={sourceEditorHostEl}
-                style="display:contents"
-                use:trackSurfaceMount={{ controller: richMode, surface: "source" }}
-              >
-                <MarkdownEditor
-                  bind:this={editorRef}
-                  filePath={editorFilePath}
-                  content={editorContent}
-                  onChange={onEditorChange}
-                  onSave={() => void handleForceSave()}
-                  onAnchorLine={(line, origin) =>
-                    editorSync.onEditorAnchorLine(line, origin, editorChapter)}
-                />
-              </div>
+                   source file via a synchronous switchFile() handoff. -->
+              <MarkdownEditor
+                bind:this={editorRef}
+                filePath={editorFilePath}
+                content={editorContent}
+                onChange={onEditorChange}
+                onSave={() => void handleForceSave()}
+                onAnchorLine={(line, origin) =>
+                  editorSync.onEditorAnchorLine(line, origin, editorChapter)}
+              />
             {:else if editorModuleFailed}
               <div class="editor-loading" role="alert">
                 <p>The editor failed to load.</p>
@@ -4207,12 +2919,20 @@
                 Loading editor…
               </div>
             {/if}
-          {/if}
-          {#if isDesktop()}
-            <ContextMenu controller={richContextMenu} />
+            {#if !inFocus}
+              <ProblemsPanel
+                bind:this={problemsPanelRef}
+                problems={displayedProblems}
+                loading={problemsLoading || lifecycle.rendering}
+                error={problemsError}
+                bind:open={problemsOpen}
+                onSelect={openProblem}
+                toggleEl={problemsToggleEl}
+              />
+            {/if}
           {/if}
         </section>
-        {#if !isNarrow && previewVisible}
+        {#if !isNarrow}
           <!-- Focusable separator (ARIA window-splitter pattern): drag, or
                Arrow-key resize / double-click reset for the non-drag path
                (#103, WCAG 2.2 SC 2.5.7). A <div>, not a <button> — a button
@@ -4248,9 +2968,20 @@
         id="mobile-panel-preview"
         role={isNarrow ? "tabpanel" : undefined}
         aria-labelledby={isNarrow ? "mobile-tab-preview" : undefined}
-        aria-hidden={!previewVisible}
-        inert={!previewVisible || (isNarrow && (editorPaneOpen || editorView !== "editor")) ? true : undefined}
+        inert={isNarrow && (editorPaneOpen || editorView !== "editor") ? true : undefined}
       >
+        {#if !inFocus && lifecycle.previewUrl}
+          <!-- Page navigation and zoom sit on the pane they act on (the
+               editor pane has its own toolbar the same way). Focus keeps the
+               preview bare: the FocusBar carries page nav for reading. -->
+          <PreviewToolbar
+            {pageNav}
+            rendering={lifecycle.rendering}
+            {zoom}
+            zoomDisabled={!lifecycle.previewUrl}
+            onApplyZoom={(val) => { contextMenu.close(); zoomView.applyZoom(val); }}
+          />
+        {/if}
         <FindBar bind:this={findBarRef} bind:open={findBarOpen} {client} />
         {#if lifecycle.previewUrl}
           {#key lifecycle.previewUrl}
@@ -4297,11 +3028,11 @@
             Updating preview…
           </div>
         {/if}
-        <!-- RC3-1: Pane-scoped overlay — position:absolute within .preview-pane
+        <!-- Pane-scoped overlay — position:absolute within .preview-pane
              (which has position:relative). Covers ONLY the preview area; the
              editor pane, toolbar, and all dialogs remain fully interactive.
              z-index:10 (above the iframe, below any stacking context above).
-             M2: onCancel (handleCancelRender) only HIDES the overlay; it does
+             onCancel (handleCancelRender) only HIDES the overlay; it does
              NOT tear down the project. Save-triggered reloads use the ambient
              double-buffered shell and do not mount this overlay. -->
         <LoadingOverlay
@@ -4310,59 +3041,78 @@
           onCancel={lifecycle.rendering ? handleCancelRender : undefined}
           variant="pane"
         />
-        {#if isDesktop()}
-          <ContextMenu controller={contextMenu} />
-        {/if}
+        <ContextMenu controller={contextMenu} />
       </section>
     </div>
   {/if}
 
-    </main> <!-- /main-content -->
+    </div> <!-- /main-content -->
   </div> <!-- /left-panel-region -->
 
-  <!-- StatusBar: always-visible bottom bar with sync pill, save indicator,
-       and problems panel toggle. Sits below the left-panel-region in the
-       .shell flex column so it spans the full window width. Never covers
-       the preview iframe (normal layout flow). -->
+  <!-- StatusBar: always-visible bottom bar with the book switcher, sync pill
+       and app actions. Sits below the left-panel-region in the .shell flex
+       column so it spans the full window width. Never covers the preview
+       iframe (normal layout flow). -->
+  {#if !inFocus}
   <StatusBar
+    bind:this={statusBarRef}
     projectDir={lifecycle.currentDir}
     sourceMode={lifecycle.sourceMode}
     canSync={!!(syncController.syncDiag?.canSync)}
     hasRemote={projectSession.projectHasRemote}
-    canSnapshot={!!(projectSession.projectCapabilities?.canSnapshot)}
+    canSnapshot={projectSession.projectCapabilities ? !!projectSession.projectCapabilities.canSnapshot : null}
     savePhase={editorSavePhase}
     autoSave={settings.current.versionHistory.autoSave}
-    fileOpen={!!editorFilePath}
+    autoVersions={settings.current.versionHistory.autoSnapshot}
+    autoBackup={settings.current.versionHistory.autoSync}
     {forceSaving}
     forceSyncing={syncController.forceSyncing}
-    problems={displayedProblems}
-    problemsLoading={problemsController.loading}
-    problemsError={problemsController.error}
-    bind:problemsOpen={problemsOpen}
     books={projectSession.books}
     activeBookDir={projectSession.activeBookDir}
     onSwitchBook={(path) => void switchBook(path)}
-    onProblemSelect={openProblem}
     onReconnect={onSyncReconnect}
     onConnectOnline={onSyncReconnect}
     onShowLog={showProjectLog}
     onForceSave={handleForceSave}
     onForceSync={() => syncController.handleForceSync()}
+    onRepair={() => syncController.handleRepair()}
+    manualBackup={syncController.lastManual}
     onSaveVersion={async () => {
       const dir = lifecycle.currentDir;
-      if (!dir) return;
+      if (!dir) return "unchanged";
       try {
-        await vcsSaveSnapshot(dir);
+        await api.vcs.saveSnapshot(dir);
+        identityNoticeArmed = true;
         toast?.success("Saved a version.");
         activityViewRef?.refreshHistory();
+        return "saved";
       } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        // A clean book is not a failure: the dialog says so calmly (no toast).
+        // Local copy of the lib's isNoChangesError (the SPA can't import it).
+        if (/no changes since the last snapshot/i.test(msg)) return "unchanged";
         toast?.error(friendlyHostError(e instanceof Error ? e.message : String(e)));
         throw e;
       }
     }}
+    onEnableVersionHistory={async () => {
+      const dir = lifecycle.currentDir;
+      if (!dir) return;
+      try {
+        await api.vcs.enableVersionHistory(dir);
+        await projectSession.classify(dir);
+        toast?.success("Version history is on.");
+      } catch (e) {
+        toast?.error("Couldn't turn on version history. Your book is unchanged.");
+        throw e;
+      }
+    }}
+    onShowVersions={showActivityView}
+    onOpenBookConnections={openBookConnections}
     onOpenSettings={openSettings}
     onOpenHelp={openHelp}
   />
+  {/if}
 </div>
 </div>
 
@@ -4392,8 +3142,8 @@
   onSwitchBook={(path) => void switchBook(path)}
   onOpenUrl={openUrl}
   onBrowse={() => void browseFromLanding()}
-  onNewProject={() => newProjectWizardRef?.show()}
-  onOpenGitHub={isDesktop() ? () => (githubOpen = true) : undefined}
+  onNewProject={readerMode ? undefined : () => newProjectWizardRef?.show()}
+  onOpenGitHub={() => (githubOpen = true)}
   onOpenGuide={openSetupGuide}
   onWhatsNew={openReleaseNotes}
   onToggleShowAtStartup={setLandingStartupPref}
@@ -4403,30 +3153,40 @@
   onDismiss={() => dismissLanding()}
   settingsTab={landingSettingsTab}
   onProjectFilesChanged={onSnapshotRestored}
+  onCloseBook={() => lifecycle.stopPreview()}
 />
 {#if projectSettingsOpen}
-  <!-- Project settings (manifest): full-window like the app settings. Keyed by
-       projectDir so a project switch can never leave stale section state
-       (drafts, theme lists) resident under the new project. -->
-  <section class="settings-global-view" aria-label="Project settings">
-    {#key lifecycle.currentDir}
-      <ProjectSettingsView
-        projectDir={lifecycle.currentDir}
-        repoRoot={projectSession.repoRoot}
-        {toast}
-        onClose={closeProjectSettings}
-        onEditRawCss={(path) => { closeProjectSettings(); openStyleFile(path); }}
-        onOpenAccounts={() => { closeProjectSettings(); openSettings("connections"); }}
-      />
-    {/key}
-  </section>
+  <!-- Book settings (manifest), in the shared AppView layer. Mounted fresh per
+       open; a project switch closes it (lifecycle resetExtras), so no stale
+       section state can outlive its project. No {#key} wrapper: Svelte 5
+       transitions are local, and a key block between the {#if} and the view
+       would swallow AppView's fade in both directions. -->
+  <ProjectSettingsView
+    projectDir={lifecycle.currentDir}
+    repoRoot={projectSession.repoRoot}
+    initialTab={projectSettingsTab}
+    {toast}
+    triggerEl={projectSettingsBtnEl}
+    onClose={closeProjectSettings}
+    onEditRawCss={(path) => { closeProjectSettings(); openStyleFile(path); }}
+    onOpenAccounts={() => { closeProjectSettings(); openSettings("connections"); }}
+    onVersionHistoryEnabled={(dir) => void projectSession.classify(dir)}
+  />
+{/if}
+
+{#if openBookOpen}
+  <OpenBookDialog
+    onClose={() => (openBookOpen = false)}
+    onLocal={() => { openBookOpen = false; void pickAndOpenFolder(); }}
+    onGitHub={() => { openBookOpen = false; githubOpen = true; }}
+  />
 {/if}
 
 <GitHubDialog
   bind:open={githubOpen}
   onOpened={(projectDir) => {
     invalidateDiscoveredProjects(); // a fresh clone is a new discoverable book
-    return openProjectPath(projectDir, "Opening your project…");
+    return openProjectPath(projectDir, "Opening your book…");
   }}
   onAdvancedSetup={() => openSettings("connections")}
   onClosed={onConnectDialogClosed}
@@ -4437,9 +3197,14 @@
        to step 1 (no $effect, per CLAUDE.md §8). -->
   <PublishWizard
     controller={publishController}
+    projectDir={lifecycle.currentDir ?? ""}
+    buildArtifact={(opts) => exportController.buildTo(opts)}
+    pickFolder={(defaultPath) => api.dialog.pickOutputFolder(defaultPath)}
+    onShowInFolder={(path) => void api.shell.showInFolder(path).catch(() => {})}
+    triggerEl={publishBtnEl}
     onClose={() => (publishOpen = false)}
     onNavigate={(entry) => {
-      // A preflight "Go to" — close the modal wizard, then reveal the finding
+      // A preflight "Go to" — close the wizard, then reveal the finding
       // in the editor via the shared Problems-panel navigation affordance.
       publishOpen = false;
       openProblem(entry);
@@ -4463,37 +3228,8 @@
   bind:open={snippetPickerOpen}
   projectDir={lifecycle.currentDir}
   getSelectionText={() => editorRef?.getSelectionText() ?? ""}
-  onInsert={(text) => {
-    if (richSurfaceActive) {
-      // SFE-P3ab review round 1 (CONFIRMED finding): refuse rather than
-      // silently insert against an absent capture or one without a caret;
-      // `applyRichAppend` refuses a stale one itself - see
-      // `richSnippetCapture`'s and `NO_LIVE_CARET_DIAGNOSTIC`'s own headers.
-      if (!richSnippetCapture) {
-        showRichDiagnostic(diagnosticForEditRejection("stale"));
-      } else if (!richSnippetCapture.selection) {
-        showRichDiagnostic(NO_LIVE_CARET_DIAGNOSTIC);
-      } else {
-        reportRichOutcome(applyRichAppend(richHost(), richSnippetCapture, text));
-      }
-      return;
-    }
-    editorRef?.insertSnippet(text);
-  }}
+  onInsert={(text) => editorRef?.insertSnippet(text)}
 />
-<!-- Export dialog: format (PDF / HTML / template) + settings for the toolbar
-     Export button. Mounted fresh per open so its state resets. -->
-{#if exportOpen}
-  <ExportDialog
-    projectDir={lifecycle.currentDir}
-    {canSavePdf}
-    {toast}
-    triggerEl={exportBtnEl}
-    onExportPdf={(opts) => void exportController.savePdf(opts)}
-    onExportHtml={() => void exportController.exportHtml()}
-    onClose={() => (exportOpen = false)}
-  />
-{/if}
 {#if textPrompt}
   <TextPromptDialog
     title={textPrompt.title}
@@ -4518,21 +3254,6 @@
     background: var(--app-bg);
     color: var(--app-text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-  }
-
-  .skip-link {
-    position: absolute;
-    left: -9999px;
-    top: 8px;
-    z-index: var(--app-z-toast);
-  }
-  .skip-link:focus-visible,
-  .skip-link:focus {
-    left: 8px;
-    padding: 6px 10px;
-    background: var(--app-surface-raised);
-    color: var(--app-text);
-    outline: 2px solid var(--app-focus-ring);
   }
 
   .app-root {
@@ -4582,6 +3303,17 @@
   .left-panel-region:not(.panel-open) .main-content {
     margin-left: calc(-1 * var(--left-panel-width, 300px));
   }
+  /* Focus hides the panel WITHOUT touching `leftPanelOpen` (the persisted
+     setting): display:none drops it from layout and the tab order, and
+     main-content takes the full width whether the panel was open or closed.
+     Leaving Focus just removes the class. */
+  .left-panel-region.in-focus > :global(.left-panel),
+  .left-panel-region.in-focus > :global(.panel-scrim) {
+    display: none;
+  }
+  .left-panel-region.in-focus .main-content {
+    margin-left: 0;
+  }
   /* Narrow screens: panel overlays, so main-content never shifts */
   @media screen and (max-width: 820px) {
     .left-panel-region:not(.panel-open) .main-content {
@@ -4612,45 +3344,7 @@
     flex-direction: column;
   }
   .editor-pane {
-    position: relative;
     border-right: 1px solid var(--app-border);
-  }
-  /* Read's lock pill floats over the top-right of the pages. */
-  .rich-lock {
-    position: absolute;
-    top: 12px;
-    right: 18px;
-    z-index: 5;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 5px 12px 5px 10px;
-    border: 1px solid var(--app-control-border);
-    border-radius: 999px;
-    background: var(--app-control-bg);
-    color: var(--app-control-text);
-    font: inherit;
-    font-size: 12.5px;
-    cursor: pointer;
-    box-shadow: var(--app-shadow-md);
-  }
-  .rich-lock.unlocked {
-    border-color: var(--app-accent-border);
-  }
-  .rich-lock:hover {
-    background: var(--app-control-hover-bg);
-    border-color: var(--app-control-hover-border);
-  }
-  .rich-lock:focus-visible {
-    outline: 2px solid var(--app-focus-ring);
-    outline-offset: 2px;
-  }
-  .settings-global-view {
-    position: fixed;
-    inset: 0;
-    z-index: calc(var(--app-z-sheet) + 1);
-    display: flex;
-    background: var(--app-bg);
   }
   .splitter {
     width: 6px;
@@ -4691,10 +3385,14 @@
   }
   .preview-pane {
     position: relative;
+    /* Named container for PreviewToolbar's own collapse stages. */
+    container-type: inline-size;
+    container-name: preview-pane;
   }
   .preview-updating-pill {
     position: absolute;
-    top: 10px;
+    /* Below the preview toolbar, which holds the zoom menu on that side. */
+    top: 44px;
     right: 12px;
     z-index: 9;
     display: flex;
@@ -4874,8 +3572,8 @@
   /* Neutral fill — NON-primary, NON-active buttons only. The exclusion is
      load-bearing: a bare `button { background }` rule is (0,1,1) once Svelte
      scopes it, which would beat both the global `.app-btn-primary` recipe
-     (0,1,0) and leave primary buttons rendering as neutral controls (the L5
-     convergence's whole point). `.primary` buttons always carry
+     (0,1,0) and leave primary buttons rendering as neutral controls.
+     `.primary` buttons always carry
      `.app-btn-primary`, so excluding that class is the precise gate. */
   button:not(.app-btn-primary):not(.active) {
     background: var(--app-control-bg);
@@ -4887,9 +3585,8 @@
     border-color: var(--app-control-hover-border);
   }
   /* The primary-button color recipe (gradient/hover/border-color/font-weight)
-     used to be duplicated here as `button.primary { ... }`. It now lives in
-     theme.css's `.app-btn-primary` (UX review L5 — the ONE primary variant);
-     every `class="primary"` button in this file's template also carries
+     lives in theme.css's `.app-btn-primary` (the ONE primary variant); every
+     `class="primary"` button in this file's template also carries
      `app-btn-primary`, which supplies the color. `.primary` itself is kept as
      a plain semantic marker class with no CSS of its own. */
   button:disabled {

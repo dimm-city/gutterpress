@@ -259,7 +259,7 @@ const check: Check = {
 
     for (const absFile of files) {
       // Defense in depth: every production caller already drops minified CSS
-      // when it builds `cssFiles` (lib/validation-exec.ts, lib/lint-runner.ts),
+      // when it builds `cssFiles` (lib/validation-exec.ts),
       // so this only bites a direct caller that passes an unfiltered list.
       if (absFile.endsWith(".min.css")) continue;
       let css: string;

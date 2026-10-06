@@ -122,9 +122,9 @@ gutterpress ext add markdown-it-emoji@3.0.0 ./my-book --export full
 
 Gutterpress resolves the npm registry metadata to exact versions, verifies each
 registry integrity hash, and vendors the plugin's complete runtime dependency
-tree under the project's `plugins/npm/` folder. A receipt records the package
-graph and a hash of every file. Gutterpress then writes the pinned specifier —
-`markdown-it-highlightjs@4.3.0` — into `extensions:`, so the vendored graph
+tree under the project's `plugins/npm/` folder as a plain `node_modules`
+layout. Gutterpress then writes the pinned specifier —
+`markdown-it-highlightjs@4.3.0` — into `extensions:`, so the vendored tree
 travels with the project and later builds do not access the network. Explicit
 reinstall always downloads fresh bytes rather than trusting the existing folder.
 
@@ -255,7 +255,7 @@ export const styles = ["./styles/components.css", "./styles/callouts.css"];
 
 A `styles` file is treated exactly like one of your project's own stylesheets:
 a `url()` to a font or image next to it is embedded in the build, a local
-`@import` is followed, and `gutterpress lint` checks it for print-safety
+`@import` is followed, and `gutterpress validate` checks it for print-safety
 problems — none of which a `css` string gets, because a string is opaque to
 every other part of the tool. The files land in the same cascade position as
 `css` (the entry's position in `extensions:`, before your stylesheets), in the
@@ -366,16 +366,6 @@ extensions:
 > `styles/guide.css`), not something core renders — use
 > `@section .callout-tip` … `@end-section` (see
 > [Chapter 8 — Publishing](#ch-publishing)) if you want that look.
-
-## Plugins and the Editor
-
-The desktop app's rich editor and the VS Code extension render a document from its markdown source, block by block, and dress each block with what the pipeline knows about it. A plugin decides how much of that the editor can show:
-
-- **Keep the author's tokens.** A plugin that adds a class or a `data-*` attribute to the author's own heading, list, table or blockquote leaves the editor a block it can find in the source. Those attributes reach the editor -  on the block itself and on the elements inside it, such as a class on a list item or a `data-tier` on a table row -  so the book's CSS styles the editor's block exactly as it styles the page.
-- **Wrap, don't rewrite.** Generated wrapper HTML (`<div class="card">` ... `</div>`) emitted as `html_block` tokens *between* authored blocks is mounted in the editor around the same blocks it holds on the page. A plugin that instead *replaces* an authored block with generated HTML leaves the editor nothing to edit there: the region renders as an inert preview of the plugin's output, with a chip in the source-only view, and can only be changed in the code editor.
-- **Set `token.map` on tokens you build.** The pipeline stamps each surviving block with its source line range, and a token created with `new state.Token(...)` has none. Copy the `map` of the token it replaces (`open.map = consumed.map`) so the editor can still place it.
-
-The Dimm City design-guide plugin is the worked example: its skill card leaves the `####` heading a heading (adding `.dc-card-tab` and `data-tier`), the `>` quote a blockquote (`.dc-flavor`), the ability list a list (`.dc-abilities`, `data-ap` per item) and the outcomes table a table (`.dc-outcome-table`, `data-tier` per row), and generates only the card shell around them.
 
 ## Error Handling
 

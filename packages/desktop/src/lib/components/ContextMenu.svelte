@@ -11,11 +11,9 @@
    * the menu opened. App design tokens only — no hardcoded colors
    * (`npm run lint` enforces this via `tools/check-app-tokens.mjs`).
    */
-  import type { ContextMenuItem, MenuSurface } from "$lib/routes/context-menu-controller.svelte";
+  import type { ContextMenuController, ContextMenuItem } from "$lib/routes/context-menu-controller.svelte";
 
-  // Either menu owner: the preview's `ContextMenuController` or the paged
-  // editor's `PopupMenuController`; both present `MenuSurface`.
-  let { controller }: { controller: MenuSurface } = $props();
+  let { controller }: { controller: ContextMenuController } = $props();
 
   let menuEl = $state<HTMLDivElement | undefined>(undefined);
   let previouslyFocused: HTMLElement | null = null;
@@ -89,9 +87,8 @@
 
   /**
    * Svelte ACTION (not `onMount`), deliberately: `<ContextMenu>` itself is
-   * mounted once, unconditionally, for the app's whole lifetime — it's
-   * `+page.svelte`'s `{#if isDesktop()}` guard, not `controller.open`, that
-   * gates it. `onMount` therefore only ever fires once, at app boot, long
+   * mounted once, unconditionally, for the app's whole lifetime, and
+   * `controller.open` does not gate the mount. `onMount` therefore only ever fires once, at app boot, long
    * before any real menu ever opens — its `requestAnimationFrame` capture
    * of `document.activeElement` and its own `.focus()` call were running
    * against an EMPTY, not-yet-open menu and then never running again for any
@@ -121,10 +118,7 @@
     requestAnimationFrame(() => focusFirstEnabled(node));
     return {
       destroy() {
-        // Without preventScroll, giving focus back to the paged editor
-        // scrolled it to its caret: a right-click on the third page and an
-        // Escape put the reader back on the first.
-        previouslyFocused?.focus?.({ preventScroll: true });
+        previouslyFocused?.focus?.();
       },
     };
   }

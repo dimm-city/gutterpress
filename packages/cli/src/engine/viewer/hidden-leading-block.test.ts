@@ -24,7 +24,7 @@ import { fileURLToPath } from "node:url";
 
 import { resolveChromiumExecutable } from "../../lib/chromium.ts";
 import { getAssetPath } from "../../lib/embedded-assets.ts";
-import { closeBrowser, getBrowser } from "../../lib/browser-pool.ts";
+import { closeBrowser, getBrowser } from "./test-support/browser.ts";
 
 const FIXTURES_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 const RENDER_TEST_TIMEOUT_MS = 60_000;
@@ -50,7 +50,7 @@ testIf(
       );
       const { url, close } = await serveDir(dir, "hidden-leading-block.html");
       try {
-        const browser = await getBrowser(RENDER_TEST_TIMEOUT_MS);
+        const browser = await getBrowser();
         const page = await browser.newPage();
         try {
           await page.goto(url, { waitUntil: "networkidle0" });

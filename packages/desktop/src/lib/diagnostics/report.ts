@@ -15,10 +15,10 @@
  * degrades the UI is invisible to the global handlers and is precisely what
  * a log is for.
  *
- * Off-Electron (no bridge) every function here is a no-op that still prints
+ * Off-Electron (no host) every function here is a no-op that still prints
  * to the console: this module must never be the reason a page fails to load.
  */
-import { bridge } from "$lib/platform/bridge";
+import { api } from "$lib/api";
 
 /** Reentrancy guard: forwarding is itself allowed to fail, and a failure that logged itself would loop. */
 let forwarding = false;
@@ -27,13 +27,11 @@ function forward(message: string): void {
   if (forwarding) return;
   forwarding = true;
   try {
-    void bridge()
-      .logRendererError(message)
-      .catch(() => {
-        // The log is a diagnostic, never a dependency.
-      });
+    void api.log.rendererError(message).catch(() => {
+      // The log is a diagnostic, never a dependency.
+    });
   } catch {
-    // No host bridge (or it threw synchronously) — the console line stands.
+    // No host (or fetch threw synchronously) — the console line stands.
   } finally {
     forwarding = false;
   }

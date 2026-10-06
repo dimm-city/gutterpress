@@ -1,22 +1,20 @@
 <script lang="ts">
   /**
    * ProjectActivityView — the writer-facing view of a project's version
-   * history and operation log (UX review M37: the ONE log/activity surface).
+   * history and operation log (the ONE log/activity surface).
    *
-   * Restore (H2): the host's `vcs:restoreSnapshot` handler validates the
-   * snapshot id and snapshots the current state before restoring (ADR 0006
-   * D5), so restoring can never lose the author's in-progress work. This view
-   * still asks for a plain-language confirmation before calling it, shows a
+   * Restore: the host's `/api/vcs/restore-snapshot` route validates the
+   * snapshot id and snapshots the current state before restoring, so
+   * restoring can never lose the author's in-progress work. This view still
+   * asks for a plain-language confirmation before calling it, shows a
    * busy state per row, and — on success — asks the parent to reconcile the
    * open editor buffer/preview against the (now-changed) files on disk via
    * `onRestored` (the same reconciliation the folder watcher runs for any
-   * other external change, per #44/H1).
+   * other external change, per #44).
    */
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
-  import { vcsRestoreSnapshot, vcsListSnapshotsPage } from "$lib/vcs/vcs-capability";
-  import type { SnapshotEntry } from "$lib/platform/contract";
-  import { readLog } from "$lib/app-lifecycle/app-lifecycle-capability";
+  import { api, type SnapshotEntry } from "$lib/api";
   import { friendlyHostError } from "$lib/errors";
   import {
     versionLabel,
@@ -52,7 +50,7 @@
   let logContent = $state("");
   let error = $state<string | null>(null);
 
-  // ── Restore (H2) ────────────────────────────────────────────────────────────
+  // ── Restore ─────────────────────────────────────────────────────────────────
   // Two-step inline confirm per row (never a pair of buttons that appear/
   // disappear elsewhere — the row's own button swaps in place, so arming the
   // confirm never steals focus). Only one row can be armed/restoring at a time.
@@ -74,7 +72,7 @@
     restoringId = id;
     restoreError = null;
     try {
-      await vcsRestoreSnapshot(projectDir, id);
+      await api.vcs.restoreSnapshot(projectDir, id);
       restoreConfirmId = null;
       // Reload so the new "restored to <version>" safety snapshot (and any
       // remote-side commits) appear immediately.
@@ -91,7 +89,7 @@
     if (!projectDir) return;
     historyLoading = true;
     try {
-      const page = await vcsListSnapshotsPage(projectDir);
+      const page = await api.vcs.listSnapshotsPage(projectDir);
       entries = page.entries;
       hasMore = page.hasMore;
     } catch (e) {
@@ -102,7 +100,7 @@
   }
 
   /** Re-fetch the snapshot list (called by the parent after a sync completes
-   * — H2/L8 — so newly-created snapshots appear without reopening the view). */
+   * — so newly-created snapshots appear without reopening the view). */
   export function refreshHistory() {
     void loadHistory();
   }
@@ -112,7 +110,7 @@
     const last = entries[entries.length - 1]!;
     loadingOlder = true;
     try {
-      const page = await vcsListSnapshotsPage(projectDir, { before: last.id });
+      const page = await api.vcs.listSnapshotsPage(projectDir, { before: last.id });
       entries = [...entries, ...page.entries];
       hasMore = page.hasMore;
     } catch (e) {
@@ -126,7 +124,7 @@
     if (!logFilePath) return;
     logLoading = true;
     try {
-      logContent = (await readLog(logFilePath)) ?? "";
+      logContent = (await api.log.read(logFilePath)) ?? "";
     } catch (e) {
       error = friendlyHostError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -179,7 +177,7 @@
           class="ghost small"
           onclick={() => armRestore(entry.id)}
           disabled={restoringId !== null}
-          title="Restore the project to this version"
+          title="Restore the book to this version"
         >
           Restore this version
         </button>

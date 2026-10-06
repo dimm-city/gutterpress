@@ -22,6 +22,8 @@
   //              toast?.success("Done");
   interface Props {
     api?: ToastController | null;
+    /** When set, every error toast without its own action offers "Report a problem". */
+    onReportProblem?: () => void;
   }
 
   export interface ToastController {
@@ -32,7 +34,7 @@
     info(message: string, duration?: number): void;
   }
 
-  let { api = $bindable(null) }: Props = $props();
+  let { api = $bindable(null), onReportProblem }: Props = $props();
 
   let toasts = $state<ToastItem[]>([]);
   let nextId = 1;
@@ -60,6 +62,9 @@
 
   function show(message: string, type: ToastType = "info", duration?: number, action?: ToastItem["action"]): void {
     const id = nextId++;
+    if (!action && type === "error" && onReportProblem) {
+      action = { label: "Report a problem", onClick: onReportProblem };
+    }
     toasts = [...toasts, { id, message, type, action }];
     const ms = duration ?? DURATIONS[type];
     if (ms > 0) setTimeout(() => dismiss(id), ms);

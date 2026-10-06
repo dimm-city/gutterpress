@@ -1,8 +1,13 @@
 /**
- * Explicit npm plugin installer. Every required production dependency is
- * resolved to an exact registry version and extracted into a private nested
- * node_modules tree. Downloads, integrity, archive paths, and total expansion
- * are bounded; package scripts are never run.
+ * Explicit npm plugin installer (`gutterpress ext add` / the desktop's
+ * `addExtension`). Every required production dependency is resolved to an
+ * exact registry version, its tarball is checked against the registry's SRI
+ * integrity hash, and it is extracted into a plain nested `node_modules` tree
+ * under the project's `plugins/npm/<name>/<version>/`. Downloads, archive
+ * paths, file sizes and total expansion are bounded; package scripts are never
+ * run and bundled `node_modules` are refused. Once published, the tree is an
+ * ordinary npm layout that Node's own module resolution loads — nothing is
+ * recorded about it and nothing re-verifies it afterwards.
  */
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { createReadStream } from "node:fs";
@@ -30,22 +35,13 @@ import {
 } from "./fetch-timeout.ts";
 import {
   assertWindowsSafeRelativePath,
-  computeVendorTreeDigest,
   isExactNpmVersion,
-  packageEntryFormat,
   parseNpmPluginSpec,
   PLUGINS_DIR,
   resolvePackageEntry,
-  toPosixPath,
   VENDORED_NPM_DIR,
-  VENDOR_RECEIPT_FILE,
-  VENDOR_RECEIPT_VERSION,
-  vendoredNpmPluginPackageDir,
   vendoredNpmPluginRoot,
   windowsPathKey,
-  type VendorPackageReceipt,
-  type VendorReceipt,
-  type VendorSkippedDependency,
 } from "./plugin-vendor.ts";
 import { npmRegistryUrl } from "./npm-registry.ts";
 
@@ -107,7 +103,11 @@ interface SelectedPackage {
   integrity: Integrity;
 }
 
-interface InstalledRecord extends VendorPackageReceipt {
+/** One package placed in the staged tree, by its tree-relative POSIX path. */
+interface InstalledRecord {
+  path: string;
+  name: string;
+  version: string;
   packageDir: string;
   manifest: Record<string, unknown>;
 }
@@ -120,7 +120,6 @@ interface InstallContext {
   downloadsDir: string;
   packuments: Map<string, Promise<Record<string, unknown>>>;
   records: InstalledRecord[];
-  skipped: VendorSkippedDependency[];
   warnings: Set<string>;
   totalNetworkBytes: number;
   totalUnpackedBytes: number;
@@ -590,21 +589,6 @@ async function readInstalledManifest(
   return manifest;
 }
 
-async function optionalPackageEntry(
-  packageDir: string,
-  manifest: Record<string, unknown>,
-  condition: "import" | "require",
-): Promise<string | undefined> {
-  try {
-    return await resolvePackageEntry(packageDir, manifest, condition);
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("no contained JavaScript entry point")) {
-      return undefined;
-    }
-    throw error;
-  }
-}
-
 /**
  * npm's platform gate for a package's `os`/`cpu` field. Mirrors
  * npm-install-checks' `checkList` so a package that installs under npm is not
@@ -653,11 +637,9 @@ async function installPackage(
   optional: boolean,
 ): Promise<InstalledDependency> {
   const recordStart = ctx.records.length;
-  const skippedStart = ctx.skipped.length;
   const warningsBefore = new Set(ctx.warnings);
   const discardOptionalSubtree = (): void => {
     ctx.records.splice(recordStart);
-    ctx.skipped.splice(skippedStart);
     ctx.warnings = warningsBefore;
   };
   if (depth > ctx.limits.dependencyDepth) {
@@ -700,21 +682,22 @@ async function installPackage(
       throw new PackageUnavailableError(reason);
     }
 
-    const importEntry = await optionalPackageEntry(packageDir, manifest, "import");
-    const requireEntry = await optionalPackageEntry(packageDir, manifest, "require");
-    if (parentPackagePath === null && !importEntry && !requireEntry) {
-      throw new SecurityInstallError(`${name}@${selected.version} has no JavaScript plugin entry.`);
+    // Only the ROOT package has to be loadable as a plugin; a dependency's
+    // entry is Node's business at import time (the loader never looks at it).
+    if (parentPackagePath === null) {
+      try {
+        await resolvePackageEntry(packageDir, manifest);
+      } catch (cause) {
+        throw new SecurityInstallError(
+          `${name}@${selected.version} has no JavaScript plugin entry.`,
+          { cause },
+        );
+      }
     }
     const record: InstalledRecord = {
       path: relativePath,
       name,
       version: selected.version,
-      tarball: selected.tarball,
-      integrity: selected.integrity.label,
-      legacySha1: selected.integrity.legacySha1,
-      ...(importEntry ? { entry: `${relativePath}/${importEntry}` } : {}),
-      ...(requireEntry ? { requireEntry: `${relativePath}/${requireEntry}` } : {}),
-      dependencies: {},
       packageDir,
       manifest,
     };
@@ -722,7 +705,7 @@ async function installPackage(
     if (selected.integrity.legacySha1) {
       ctx.warnings.add(
         `${name}@${selected.version} is an old npm release with only SHA-1 registry integrity. ` +
-          "It was accepted for compatibility and recorded as legacy SHA-1 in the vendor receipt.",
+          "It was accepted for compatibility.",
       );
     }
 
@@ -753,35 +736,15 @@ async function installPackage(
         false,
       );
       if (!child.path) throw new Error(`Required dependency ${dependency} was unexpectedly skipped.`);
-      record.dependencies[dependency] = child.path;
     }
 
+    // An optional dependency that cannot be installed (unpublished, wrong
+    // platform, unsupported selector, network failure) is simply left out —
+    // the package is written to cope without it. Optional PEERS are never
+    // auto-installed, matching npm.
     const optionalEntries = Object.entries(optionalDependencies).sort(([a], [b]) => a.localeCompare(b));
     for (const [dependency, range] of optionalEntries) {
-      const child = await installPackage(
-        ctx,
-        dependency,
-        range,
-        relativePath,
-        nextAncestors,
-        depth + 1,
-        true,
-      );
-      if (child.path) record.dependencies[dependency] = child.path;
-      else if (child.skipped) {
-        ctx.skipped.push({ from: relativePath, name: dependency, selector: range, kind: "optional", reason: child.skipped });
-      }
-    }
-    for (const [dependency, range] of Object.entries(peerDependencies)) {
-      if (object(peerMeta[dependency])?.optional === true) {
-        ctx.skipped.push({
-          from: relativePath,
-          name: dependency,
-          selector: range,
-          kind: "optional-peer",
-          reason: "Optional peer dependencies are not auto-installed.",
-        });
-      }
+      await installPackage(ctx, dependency, range, relativePath, nextAncestors, depth + 1, true);
     }
     return { path: relativePath };
   } catch (error) {
@@ -824,26 +787,17 @@ async function prepareVendorParent(projectDir: string, name: string): Promise<st
     realpath(packageParent),
   ]);
   if (!isContained(projectDir, realNpm) || !isContained(projectDir, realPackageParent)) {
-    throw new Error("Plugin install path resolves outside the project.");
+    throw new Error("Plugin install path resolves outside the book folder.");
   }
   return realNpm;
 }
 
-function publicReceipt(record: InstalledRecord): VendorPackageReceipt {
-  return {
-    path: record.path,
-    name: record.name,
-    version: record.version,
-    tarball: record.tarball,
-    integrity: record.integrity,
-    legacySha1: record.legacySha1,
-    ...(record.entry ? { entry: record.entry } : {}),
-    ...(record.requireEntry ? { requireEntry: record.requireEntry } : {}),
-    dependencies: record.dependencies,
-  };
-}
-
-/** Download and publish a fresh, receipt-backed vendor tree. Never reuses bytes. */
+/**
+ * Download and publish a fresh vendor tree for one npm plugin. Never reuses
+ * bytes: a same-version reinstall downloads again and replaces the tree (the
+ * previous one is held as a backup until the manifest commits — see
+ * {@link finalizeNpmPluginInstall} / {@link rollbackNpmPluginInstall}).
+ */
 export async function installNpmPlugin(
   projectDirInput: string,
   packageSpec: string,
@@ -866,7 +820,6 @@ export async function installNpmPlugin(
     downloadsDir,
     packuments: new Map(),
     records: [],
-    skipped: [],
     warnings: new Set(),
     totalNetworkBytes: 0,
     totalUnpackedBytes: 0,
@@ -889,39 +842,11 @@ export async function installNpmPlugin(
     if (!rootResult.path) throw new Error("Root plugin package was unexpectedly skipped.");
     const rootRecord = ctx.records.find((record) => record.path === rootResult.path);
     if (!rootRecord) throw new Error("Root plugin package is missing from the dependency graph.");
-    const importEntry = rootRecord.entry ?? rootRecord.requireEntry;
-    if (!importEntry) throw new Error("Root plugin package has no recorded JavaScript entry.");
-    const importFormat = packageEntryFormat(rootRecord.manifest, importEntry);
-    const entry = importFormat === "commonjs"
-      ? rootRecord.requireEntry ?? importEntry
-      : importEntry;
-    const format = packageEntryFormat(rootRecord.manifest, entry);
-    const tree = await computeVendorTreeDigest(stageRoot);
-    const receipt: VendorReceipt = {
-      schemaVersion: VENDOR_RECEIPT_VERSION,
-      root: {
-        name: rootRecord.name,
-        version: rootRecord.version,
-        packagePath: rootRecord.path,
-        entry,
-        format,
-      },
-      packages: ctx.records.map(publicReceipt).sort((a, b) => a.path.localeCompare(b.path)),
-      skipped: ctx.skipped,
-      tree: { algorithm: "sha256", ...tree },
-    };
-    const receiptFile = await open(path.join(stageRoot, VENDOR_RECEIPT_FILE), "wx");
-    try {
-      await receiptFile.writeFile(`${JSON.stringify(receipt, null, 2)}\n`, "utf8");
-      await receiptFile.sync();
-    } finally {
-      await receiptFile.close();
-    }
 
     finalRoot = vendoredNpmPluginRoot(projectDir, rootRecord.name, rootRecord.version);
     const realFinalParent = await realpath(path.dirname(finalRoot));
     if (!isContained(projectDir, realFinalParent)) {
-      throw new Error("Plugin install destination resolves outside the project.");
+      throw new Error("Plugin install destination resolves outside the book folder.");
     }
     try {
       await lstat(finalRoot);

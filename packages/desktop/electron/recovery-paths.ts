@@ -18,7 +18,7 @@ export function recoveryDir(userDataDir: string): string {
 // [A-Za-z0-9_-] becomes '_', and an EMPTY result falls back to the literal
 // "repo". Because the replace only substitutes (never removes) characters, the
 // only input that yields "" is the empty string — so "repo" fires solely for an
-// empty slug, matching the original `... || "repo"` in main.ts exactly. A
+// empty slug. A
 // non-empty all-separator slug (e.g. "///" → "___", "-" → "-") is preserved.
 export function slugifyRepo(repoSlug: string): string {
   return repoSlug.replace(/[^a-zA-Z0-9_-]/g, "_") || "repo";
@@ -28,6 +28,15 @@ export function slugifyRepo(repoSlug: string): string {
 // project slug so logs from different projects don't interleave.
 export function logsDir(userDataDir: string): string {
   return path.join(userDataDir, "logs");
+}
+
+// Where "Repair online backup" moves a book's old `.git` (lib repair.ts). Under
+// userData — never inside the book, where it would be committed — one folder
+// per repair so nothing is ever overwritten, and kept indefinitely: it is the
+// only copy of versions that were never backed up online.
+export function repairBackupDir(userDataDir: string, repoSlug: string, when: Date = new Date()): string {
+  const stamp = when.toISOString().replace(/[:.]/g, "-");
+  return path.join(userDataDir, "repair-backups", slugifyRepo(repoSlug), stamp);
 }
 
 // The sync/recovery operation log lives under userData/logs/. One file per
@@ -43,8 +52,9 @@ export function operationLogPath(userDataDir: string, repoSlug: string): string 
 // The SPACE in the name is what keeps it distinguishable from a project's log
 // at a glance: slugifyRepo maps every char outside [A-Za-z0-9_-] to "_", so no
 // project log's name can ever contain one.
+export const APP_LOG_FILENAME = "Gutterpress app.log";
 export function appLogPath(userDataDir: string): string {
-  return path.join(logsDir(userDataDir), "Gutterpress app.log");
+  return path.join(logsDir(userDataDir), APP_LOG_FILENAME);
 }
 
 /**
@@ -52,12 +62,10 @@ export function appLogPath(userDataDir: string): string {
  *
  * Every operation the log records — snapshot, sync, pull, push, restore — acts
  * on the whole repository (R9: "a project is its git repo"), so the log is the
- * repository's log. Callers used to pass `path.basename(openedDir)`, i.e. the
- * opened BOOK, which split one repo's history across a file per book and made
- * two same-named books in different repos share one file — breaking this
- * module's own "one file per project" guarantee and diverging from the lib's
- * `buildRecoveryContext`, which slugs `path.basename(repoDir)` (2026-07-29
- * audit).
+ * repository's log. Slugging the opened BOOK instead would split one repo's
+ * history across a file per book and make two same-named books in different
+ * repos share one file — and diverge from the lib's `buildRecoveryContext`,
+ * which slugs `path.basename(repoDir)`.
  *
  * Pass the repo root when the project has one; for a plain (non-git) folder
  * there is no repo and the folder itself is the unit.

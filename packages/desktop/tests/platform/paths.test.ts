@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { basenameOf, fileRef, isPathAtOrUnder } from "../../src/lib/platform/paths";
+import { basenameOf, isPathAtOrUnder } from "../../src/lib/platform/paths";
 
 // basenameOf is the single shared, PWA-clean (no node:path) basename helper used
 // by the adapter, +page.svelte, and the editor/conflict components (#61). It must
@@ -22,20 +22,6 @@ test("basenameOf ignores trailing separators (filter(Boolean))", () => {
 test("basenameOf falls back to the input when there is no segment", () => {
   expect(basenameOf("")).toBe("");
   expect(basenameOf("/")).toBe("/");
-});
-
-// fileRef is the host-neutral file-identity factory (#61), analogous to the
-// FolderRef wrapping in the adapter: key = the host path/handle id, displayName =
-// the precomputed basename so the UI never splits a path itself.
-test("fileRef wraps a path into { key, displayName: basename }", () => {
-  expect(fileRef("/proj/assets/cover.png")).toEqual({
-    key: "/proj/assets/cover.png",
-    displayName: "cover.png",
-  });
-  expect(fileRef("C:\\proj\\assets\\cover.png")).toEqual({
-    key: "C:\\proj\\assets\\cover.png",
-    displayName: "cover.png",
-  });
 });
 
 // isPathAtOrUnder underpins +page.svelte's FileTree rename/delete handlers

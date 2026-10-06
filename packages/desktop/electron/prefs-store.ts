@@ -4,19 +4,7 @@
 // Holds the last open project, sidebar/panel state, recent/favorite folders,
 // and per-project editor/preview state.
 //
-// #30: the pre-#43 top-level `currentPage`/`viewMode` migration-fallback
-// fields (and their `migrateLegacyProjectState` seeding logic) are removed —
-// the one release that carried the fallback has shipped, so every active
-// user's `projectStates` bucket is already populated from ordinary use.
-// `ProjectState.viewMode` (project-state.ts) and `AppSettings.preview.viewMode`
-// (settings-store.ts) are the two remaining, INTENTIONALLY distinct homes:
-// AppSettings is the durable value the UI reads/writes at all times;
-// ProjectState is a per-project snapshot applied only when a project opens,
-// to override the durable value with that project's last-used mode. See the
-// doc comment on `ProjectState` (shared-types.ts) for the full resolution.
-//
-// Phase 5b: extracted (behavior-identical) from electron/main.ts. The
-// DesktopPrefs shape + the prefsPath/readPrefs/writePrefs/existingDirectory
+// The DesktopPrefs shape + the prefsPath/readPrefs/writePrefs/existingDirectory
 // read/write path live here behind an injected-fs store factory so they can be
 // unit-tested with fakes (tests/platform/prefs-store). main.ts instantiates the
 // store with the live Electron userData dir + node:fs/promises. Writes are
@@ -29,7 +17,7 @@ import path from "node:path";
 import type { ProjectStateMap } from "./project-state";
 import type { RecentFolder, FavoriteFolder } from "./recent-folders";
 import type { ProjectSource } from "gutterpress";
-import type { LastFlushFailure } from "./bridge-types";
+import type { LastFlushFailure } from "../src/lib/platform/shared-types";
 
 export interface DesktopPrefs {
   lastProjectDir?: string;
@@ -45,9 +33,11 @@ export interface DesktopPrefs {
   favorites?: FavoriteFolder[];
   /**
    * Per-project editor/preview state keyed by folder path (#43). Opening
-   * project B never overwrites project A's page/view/chapter state.
+   * project B never overwrites project A's page/split-pane state.
    */
   projectStates?: ProjectStateMap;
+  /** True once the bundled user guide + examples were copied to Documents (seed-samples.ts). */
+  samplesSeeded?: boolean;
   /** Root dirs scanned by app:discoverProjects (#27). Defaults applied below. */
   projectSearchRoots?: string[];
   /**
@@ -103,7 +93,7 @@ export function createPrefsStore(deps: PrefsStoreDeps): {
       return JSON.parse(raw) as DesktopPrefs;
     } catch (err) {
       // The file exists but isn't valid JSON. Preserve it instead of
-      // silently resetting to {} — that used to discard recents, favorites,
+      // silently resetting to {}, which would discard recents, favorites,
       // per-project state, and the last-open-project pointer (#34).
       await preserveCorruptFile(prefsPath(), err).catch(() => {});
       return {};
@@ -138,8 +128,8 @@ export function createPrefsStore(deps: PrefsStoreDeps): {
   }
 
   // All mutations are serialized on one chain. Several writers share this
-  // file concurrently (the api:preview open flow in main, and the `app:*`
-  // typed IPC handlers the renderer calls — including the start screen's
+  // file concurrently (the api:preview open flow in main, and the app/*
+  // server routes the renderer calls — including the start screen's
   // "show at startup" toggle firing exactly while the startup open runs),
   // and each does a read-modify-write; without serialization the last
   // writer silently reverts the other's change.

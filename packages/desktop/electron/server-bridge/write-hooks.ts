@@ -1,11 +1,9 @@
 /**
- * Shared write-side-effect hooks for the `fs:writeFile` typed IPC channel
- * (`electron/api/fs.ts`).
+ * Shared write-side-effect hooks for fs:writeFile server route.
  *
- * Storage lives in the single collapsed host object (ARCH review #31,
- * `./host-services.ts`) — `getWriteHooks()` is a thin derived selector over
- * it, retrieving the live reference the handler uses to trigger the
- * auto-snapshot/sync debounce that lives in main.
+ * Reached through `getHostServices().write` (`./host-services.ts`): the live
+ * reference the route uses to trigger the auto-snapshot/sync debounce that
+ * lives in main.
  */
 
 import { getHostServices } from './host-services';
@@ -20,16 +18,11 @@ export interface WriteHooks {
    * The repository the open book belongs to, or null for a plain folder.
    *
    * A write anywhere in that repository is a change to the project's history —
-   * see {@link scheduleAutoWriteEffects} for why the watcher's dir alone was
+   * see {@link scheduleAutoWriteEffects} for why the watcher's dir alone is
    * too narrow. Host-detected (`detectProjectSource`), never renderer-supplied,
    * exactly like the fs-guard's own repo root.
    */
   getRepositoryRoot: () => string | null;
-}
-
-/** The live `WriteHooks` slice of the collapsed host object, or null before `registerHostServices` runs. */
-export function getWriteHooks(): WriteHooks | null {
-  return getHostServices()?.write ?? null;
 }
 
 /**
@@ -40,28 +33,22 @@ export function getWriteHooks(): WriteHooks | null {
  * inside that project's WRITE SCOPE: the watched book, or the repository that
  * book belongs to.
  *
- * The repository half was missing (2026-07-29 audit). fs-route authorization
- * was widened to the opened book PLUS its enclosing repo root (commit c310e2)
- * precisely so a multi-book project can edit repo-root shared styles and
- * assets — but this gate still asked only about the watched book, so those
- * writes succeeded and then armed NOTHING: a shared-stylesheet edit never
- * entered version history and never synced until some later in-book save
- * happened to arm the timer. Writes were allowed under the repo root while only
- * book writes counted as edits — two halves of one feature disagreeing.
+ * fs-route authorization covers the opened book PLUS its enclosing repo root
+ * so a multi-book project can edit repo-root shared styles and assets; this
+ * gate must match it, or such a write succeeds and arms NOTHING — a
+ * shared-stylesheet edit would never enter version history or sync until some
+ * later in-book save happened to arm the timer.
  *
  * The debounce is still SCHEDULED for the watched dir, not for whatever root
  * matched: the scheduler's own `getWatchedDir() !== dir` guard would drop any
- * other key, and a snapshot commits the whole repository regardless (R9). What
- * widens here is which writes COUNT as an edit, not what gets committed.
+ * other key, and a snapshot commits the whole repository regardless (R9). The
+ * repo root widens which writes COUNT as an edit, not what gets committed.
  *
- * Extracted (audit E2) from the five mutating fs/* routes (write-file,
- * create-file, create-folder, rename, delete) that hand-copied this exact
- * eight-line block — the `writeHooks` vs `hooks` naming drift between copies
- * confirmed it was pasted, not shared.
+ * Shared by the five mutating fs/* routes (write-file, create-file,
+ * create-folder, rename, delete).
  */
 export function scheduleAutoWriteEffects(targetPath: string): void {
-  const hooks = getWriteHooks();
-  if (!hooks) return;
+  const hooks = getHostServices().write;
   const watchedDir = hooks.getWatchedDir();
   if (!watchedDir) return;
   const repositoryRoot = hooks.getRepositoryRoot();
@@ -75,5 +62,5 @@ export function scheduleAutoWriteEffects(targetPath: string): void {
 
 /** Start preview regeneration immediately after the route's awaited write. */
 export function notifyPreviewSettledWrite(targetPath: string, writtenContent: string): void {
-  getWriteHooks()?.notifyPreviewSettledWrite(targetPath, writtenContent);
+  getHostServices().write.notifyPreviewSettledWrite(targetPath, writtenContent);
 }

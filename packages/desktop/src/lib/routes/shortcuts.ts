@@ -1,4 +1,4 @@
-// Pure keyboard-shortcut resolvers extracted from routes/+page.svelte.
+// Pure keyboard-shortcut resolvers for routes/+page.svelte.
 // Zero deps — mirrors commandForSaveShortcut in src/lib/editor/save-shortcuts.ts.
 // The DOM glue (addEventListener, target/contenteditable/.cm-editor guards,
 // previewUrl/defaultPrevented gate, e.preventDefault) stays in the component;
@@ -9,11 +9,7 @@ export type GlobalShortcutCommand =
   | "toggle-editor"
   | "toggle-left-panel"
   | "snippet"
-  | "focus-mode"
   | "find"
-  | "zoom-in"
-  | "zoom-out"
-  | "zoom-reset"
   | "none";
 
 export interface ShortcutInput {
@@ -33,17 +29,7 @@ export function resolveGlobalShortcut(i: ShortcutInput): GlobalShortcutCommand {
   if (i.ctrlOrMeta && (i.key === "e" || i.key === "E")) return "toggle-editor";
   if (i.ctrlOrMeta && i.key === "\\") return "toggle-left-panel";
   if (i.ctrlOrMeta && i.shift && (i.key === "s" || i.key === "S")) return "snippet";
-  // Cmd/Ctrl+Shift+F toggles focus mode; plain Cmd/Ctrl+F is find. The
-  // shift guard is what keeps the two apart (and the preview's bare "f"
-  // fit-width stays untouched by both).
-  if (i.ctrlOrMeta && i.shift && (i.key === "f" || i.key === "F")) return "focus-mode";
   if (i.ctrlOrMeta && (i.key === "f" || i.key === "F")) return "find";
-  // The browser's own zoom keys, taken over: the app zooms the surface on
-  // screen (preview or paged editor), never the whole window. The app menu
-  // no longer carries Electron's zoom roles for the same reason.
-  if (i.ctrlOrMeta && (i.key === "=" || i.key === "+")) return "zoom-in";
-  if (i.ctrlOrMeta && (i.key === "-" || i.key === "_")) return "zoom-out";
-  if (i.ctrlOrMeta && i.key === "0") return "zoom-reset";
   return "none";
 }
 

@@ -17,7 +17,7 @@
     <h3>Your name &amp; email</h3>
     <button class="reset" onclick={() => settings.resetSection("gitIdentity")} title="Reset your name and email to defaults">Reset</button>
   </div>
-  <p class="hint">Recorded on every version you save, so your project's history shows who made each change.</p>
+  <p class="hint">The changes you save are credited to you, so your book's history shows who made each one.</p>
   <div class="row">
     <label for="set-git-author-name">Name</label>
     <input

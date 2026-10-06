@@ -1,6 +1,5 @@
 /**
- * PageNavController (Phase 5) — the single owner of the page-navigation FSM that
- * used to live inline in `+page.svelte`.
+ * PageNavController — the single owner of the page-navigation FSM.
  *
  * Centralises the paged-preview toolbar surface: the live `currentPage` /
  * `totalPages`, the `restoringSavedState` persist guard, and every intent that
@@ -8,10 +7,8 @@
  * navigation, direct goto, the page `<select>`'s `selectPage`, and the
  * per-project saved-page restore.
  *
- * The old inline page-number edit cycle (`pageEditing`/`pageEditValue` +
- * begin/cancel/commit) was retired with the toolbar refactor: the toolbar now
- * renders a native `<select>` with one option per page (`pageOptions`), so the
- * only "edit" intent left is `selectPage`.
+ * The toolbar renders a native `<select>` with one option per page
+ * (`pageOptions`), so the only "edit" intent is `selectPage`.
  *
  * Single-owner discipline mirrors `ExportController`
  * (`export/export-controller.svelte.ts`) and `UpdateController`
@@ -19,7 +16,7 @@
  * getters and calls the intent methods.
  *
  * Host coupling is injected so this stays testable with fakes and PWA-clean
- * (§8 / ADR 0004): the live preview client, the `isRendering` / `viewMode`
+ * (§8): the live preview client, the `isRendering` / `viewMode`
  * accessors, and the two persist sinks (`savePrefs` = the guarded component
  * writer used by `syncPageState`; `savePageDirect` = the unguarded per-project
  * write used only by `restoreProjectPage`). Type-only import of `PageState`

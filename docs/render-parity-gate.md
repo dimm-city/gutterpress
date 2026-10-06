@@ -7,7 +7,9 @@ every image's placement — and fails loudly on anything an author would
 actually see move, at a configurable tolerance.
 
 Built directly over `packages/cli/src/lib/pdf-inspect.ts`'s existing PDF.js
-primitives. No new dependency, no rasterization (CLAUDE.md §1/§3).
+primitives. No new dependency. The optional `--raster` mode (below) also
+compares pages as pixels with poppler's `pdftoppm`, a dev-tool dependency of
+this script only — nothing in the published CLI rasterizes (CLAUDE.md §1/§3).
 
 - Pure logic: `packages/cli/src/lib/render-parity.ts` (`extractReport`,
   `compareReports`, `formatDiffs`, `serializeReport`).
@@ -89,6 +91,27 @@ report with reflow noise. A page whose diff count exceeds 12 lines is
 truncated in the printed output (`...N more`) — the full set still decides
 the exit code; only the printed report is capped for readability.
 
+## Raster mode (`--raster <diff-dir>`, #295)
+
+The report above is colour-blind: a divider turning from blue to magenta, a
+label changing hue, or a `@page` background that stops painting moves no text
+run and passes. `compare --raster <diff-dir>` (both sides must be PDFs) also
+rasterizes every page with `pdftoppm` at 72 dpi, one process per CPU, and
+compares them pixel for pixel. A pixel differs when any channel moves by more
+than 1% of 255. Each differing page is one `raster` diff — waivable per page
+(`{ "page": 7, "kind": "raster", "reason": "…" }`) — and gets a
+`diff-NNN.png` in `<diff-dir>` with the changed pixels painted red. Two PDFs
+printed by the same Chromium in one job rasterize identically, so a clean
+same-vs-same run reports no raster diffs.
+
+Needs `pdftoppm` on PATH (`apt install poppler-utils`, `brew install
+poppler`). The CI job installs it and runs every fixture with `--raster`; the
+diff images are in the job's uploaded artifact.
+
+Raster mode also sees the `filter` blind spot below as pixels: a change to
+text Chromium flattened into an image fails the raster compare even though
+the report cannot read it.
+
 ## Known blind spot: `filter` rasterizes text out of reach
 
 Investigated in issue #259, filed after `.dc-specialty-intro` body text and
@@ -135,9 +158,9 @@ remember it: `packages/cli/src/lib/printsafe.ts`'s
 declaration, and its message names this exact consequence ("text becomes
 unselectable, unsearchable, and inaccessible") and points back here. Run
 it — `gutterpress build`'s pre-build validation (`source.stylelint`),
-standalone `gutterpress lint`, and the desktop Problems panel all call
-`checkCss` — over any stylesheet you're about to trust render-parity to
-cover; `gutterpress lint` lists each finding with its file and `line:col`,
+standalone `gutterpress validate --only source.stylelint`, and the desktop
+Problems panel all call `checkCss` — over any stylesheet you're about to trust
+render-parity to cover; each finding is listed with its file and `line:col`,
 and `filter: none` (a suppressed filter) is not one. **If a text-bearing
 element or one of its ancestors trips that `filter` warning, render-parity
 cannot see a text-only change confined to it — verify such a change by other

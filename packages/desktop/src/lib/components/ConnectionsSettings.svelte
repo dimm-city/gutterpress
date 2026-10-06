@@ -4,16 +4,14 @@
    * stored credential. Section order (owner request 2026-07-30): GitHub
    * first — it sits directly under the author's name & email, the identity
    * it carries — then publishing accounts, then other Git servers. The open
-   * project's sync diagnostics (the "This project" section) moved to
-   * Project settings → Connections (ProjectConnectionsSection.svelte,
-   * 2026-07-30); the diagnosis is still fetched here because the Git-server
-   * connect form uses it for host prefill and repo-scoped validation.
+   * project's sync diagnostics live in Book settings → Connections
+   * (ProjectConnectionsSection.svelte); the diagnosis is still fetched here
+   * because the Git-server connect form uses it for host prefill and
+   * repo-scoped validation.
    *
-   * The former Advanced Setup dialog (#14, ADR 0006) is consolidated here:
-   * its duplicate connect-a-Git-server form and connected-servers list are
-   * gone; its unique pieces live on in the single Git-servers section (the
-   * debounced token-URL helper, the repo-scoped validation against the open
-   * project's remote, the host prefill, the provider guidance).
+   * The Git-servers section (#14) carries the debounced token-URL helper,
+   * the repo-scoped validation against the open project's remote, the host
+   * prefill, and the provider guidance.
    *
    * Everything here reads REDACTED entries only (host/username/label —
    * never token values). Removal deletes by the entry's RAW store key via
@@ -30,33 +28,12 @@
    * providers needs the open project's manifest — so that form asks for an
    * open project when none is.
    *
-   * PWA-clean (§8): the remote/publish/files capability modules only
-   * (SFE-P5c3: remote/sync/publish moved off `api.*` HTTP routes to typed IPC).
+   * PWA-clean (§8): api.* routes + getPlatform() only.
    */
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
-  import { openExternal } from "$lib/files/files-capability";
-  import { isDesktop } from "$lib/platform";
-  import {
-    connectGenericHost,
-    connectGitHubCancel,
-    connectGitHubStart,
-    connectGitHubWait,
-    diagnoseProjectRemote,
-    disconnectGitHub as disconnectGitHubRemote,
-    disconnectHost,
-    forgeTokenUrl,
-    getRemoteConnection,
-    listHostConnections,
-  } from "$lib/remote/remote-capability";
-  import {
-    connect as connectPublishProvider,
-    connectGoogleCancel,
-    connectGoogleStart,
-    connectGoogleWait,
-    providers as fetchPublishProviders,
-    type PublishProviderStaticInfo,
-  } from "$lib/publish/publish-capability";
+  import { api, type PublishProviderStaticInfo } from "$lib/api";
+  import { getPlatform } from "$lib/platform";
   import { friendlyHostError } from "$lib/errors";
   import type {
     HostConnectionInfo,
@@ -105,7 +82,7 @@
   let pubOauthAuthUrl = $state<string | null>(null);
   let pubOauthInFlight = $state(false);
 
-  // Two-step Remove confirm (L2 — a stored token is the most painful thing
+  // Two-step Remove confirm (a stored token is the most painful thing
   // to re-acquire, so removal arms in place and confirms on a second click).
   let confirmRemove = $state<InlineConfirmState>({});
   let removing = $state<string | null>(null);
@@ -117,24 +94,22 @@
       clearTimeout(serverInputTimer);
       serverInputTimer = undefined;
       // A device flow left mid-poll must not keep polling after the tab closes.
-      if (ghBusy) connectGitHubCancel().catch(() => {});
-      if (pubOauthInFlight) connectGoogleCancel().catch(() => {});
+      if (ghBusy) getPlatform().connectGitHubCancel().catch(() => {});
+      if (pubOauthInFlight) getPlatform().connectGoogleCancel().catch(() => {});
     };
   });
 
   async function load() {
-    if (!isDesktop()) {
-      loading = false;
-      return;
-    }
     loading = true;
     loadError = null;
     try {
       const [conn, list, provs, d] = await Promise.all([
-        getRemoteConnection().catch(() => null),
-        listHostConnections().catch(() => [] as HostConnectionInfo[]),
-        fetchPublishProviders().catch(() => [] as PublishProviderStaticInfo[]),
-        projectDir ? diagnoseProjectRemote(projectDir).catch(() => null) : Promise.resolve(null),
+        api.remote.getRemoteConnection().catch(() => null),
+        api.remote.listHostConnections().catch(() => [] as HostConnectionInfo[]),
+        api.publish.providers().catch(() => [] as PublishProviderStaticInfo[]),
+        projectDir
+          ? (api.remote.diagnoseProjectRemote(projectDir) as Promise<ProjectRemoteDiagnosis>).catch(() => null)
+          : Promise.resolve(null),
       ]);
       github = conn;
       entries = list as HostConnectionInfo[];
@@ -157,7 +132,7 @@
 
   async function refreshDiag() {
     if (!projectDir) return;
-    diag = await diagnoseProjectRemote(projectDir).catch(() => diag);
+    diag = await (api.remote.diagnoseProjectRemote(projectDir) as Promise<ProjectRemoteDiagnosis>).catch(() => diag);
   }
 
   // ── Classification: publishing accounts vs Git servers ─────────────────────
@@ -200,10 +175,10 @@
     ghBusy = true;
     ghError = null;
     try {
-      const info = await connectGitHubStart();
+      const info = await getPlatform().connectGitHubStart();
       ghCode = info;
-      openExternal(info.verificationUri).catch(() => {});
-      await connectGitHubWait();
+      api.shell.openExternal(info.verificationUri).catch(() => {});
+      await getPlatform().connectGitHubWait();
       ghCode = null;
       await load();
     } catch (e) {
@@ -216,7 +191,7 @@
 
   async function disconnectGitHub() {
     try {
-      await disconnectGitHubRemote();
+      await api.remote.disconnectGitHub();
       await load();
     } catch (e) {
       removeError = friendlyHostError(e instanceof Error ? e.message : String(e));
@@ -238,7 +213,8 @@
       return;
     }
     serverInputTimer = setTimeout(() => {
-      forgeTokenUrl(value)
+      api.remote
+        .forgeTokenUrl(value)
         .then((url) => {
           if (serverInput.trim() === value) tokenUrl = url;
         })
@@ -258,7 +234,7 @@
     serverError = null;
     serverNotice = null;
     try {
-      const result = await connectGenericHost({
+      const result = await api.remote.connectGenericHost({
         host: serverInput,
         ...(serverUser.trim() ? { username: serverUser.trim() } : {}),
         token: serverToken,
@@ -288,7 +264,7 @@
     pubError = null;
     pubNotice = null;
     try {
-      await connectPublishProvider(projectDir, pubProviderId, pubToken, pubAccount.trim() || undefined);
+      await api.publish.connect(projectDir, pubProviderId, pubToken, pubAccount.trim() || undefined);
       pubToken = "";
       pubAccount = "";
       const label = providers.find((p) => p.id === pubProviderId)?.label ?? pubProviderId;
@@ -311,9 +287,9 @@
     pubError = null;
     pubNotice = null;
     try {
-      const { authUrl } = await connectGoogleStart(pubAccount.trim() || undefined);
+      const { authUrl } = await getPlatform().connectGoogleStart(pubAccount.trim() || undefined);
       pubOauthAuthUrl = authUrl;
-      await connectGoogleWait();
+      await getPlatform().connectGoogleWait();
       pubAccount = "";
       const label = providers.find((p) => p.id === pubProviderId)?.label ?? pubProviderId;
       pubNotice = `Connected ${label}.`;
@@ -329,7 +305,7 @@
 
   async function cancelPublishOAuth() {
     try {
-      await connectGoogleCancel();
+      await getPlatform().connectGoogleCancel();
     } finally {
       pubBusy = false;
       pubOauthInFlight = false;
@@ -338,7 +314,7 @@
   }
 
   function reopenPublishOAuthUrl() {
-    if (pubOauthAuthUrl) openExternal(pubOauthAuthUrl).catch(() => {});
+    if (pubOauthAuthUrl) api.shell.openExternal(pubOauthAuthUrl).catch(() => {});
   }
 
   // ── Removal (raw store key — works for bare-host AND compound keys) ─────────
@@ -355,7 +331,7 @@
     removing = key;
     removeError = null;
     try {
-      await disconnectHost(key);
+      await api.remote.disconnectHost(key);
       entries = entries.filter((c) => c.host !== key);
       // A removed server credential changes the project's sync readiness.
       await refreshDiag();
@@ -370,9 +346,7 @@
 </script>
 
 <div class="connections">
-  {#if !isDesktop()}
-    <p class="hint">Connections are managed in the desktop app.</p>
-  {:else if loading}
+  {#if loading}
     <p class="hint">Loading your connections…</p>
   {:else}
     {#if loadError}<p class="error" role="alert">{loadError}</p>{/if}
@@ -418,7 +392,7 @@
     <!-- Publishing accounts -->
     <section class="conn-group">
       <h4>Publishing accounts</h4>
-      <p class="hint">Accounts used to publish your books (itch.io, Azure Static Web Apps, Shopify, Google Drive…). Connected once and available to every project.</p>
+      <p class="hint">Accounts used to publish your books (itch.io, Azure Static Web Apps, Shopify, Google Drive…). Connected once and available to every book.</p>
       {#each publishEntries as entry (entry.host)}
         <div class="conn-row">
           <span class="conn-name">
@@ -471,17 +445,16 @@
           </p>
         {/if}
       {:else if !projectDir}
-        <p class="hint muted">Open a project to add a publishing key — the key is checked with the platform first, and some checks read the project's settings. Saved keys work across all projects.</p>
+        <p class="hint muted">Open a book to add a publishing key — the key is checked with the platform first, and some checks read the book's settings. Saved keys work across all books.</p>
       {/if}
       {#if selectedProvider?.tokenUrl}
-        <p class="hint">Create a key at: <button class="inline-link" onclick={() => selectedProvider?.tokenUrl && openExternal(selectedProvider.tokenUrl).catch(() => {})}>{selectedProvider.tokenUrl}</button></p>
+        <p class="hint">Create a key at: <button class="inline-link" onclick={() => selectedProvider?.tokenUrl && api.shell.openExternal(selectedProvider.tokenUrl).catch(() => {})}>{selectedProvider.tokenUrl}</button></p>
       {/if}
       {#if pubNotice}<p class="notice">{pubNotice}</p>{/if}
       {#if pubError}<p class="error" role="alert">{pubError}</p>{/if}
     </section>
 
-    <!-- Other Git servers — the ONE connect-a-server surface (the former
-         Advanced-setup duplicate form/list are consolidated here). -->
+    <!-- Other Git servers — the ONE connect-a-server surface. -->
     <section class="conn-group">
       <h4>Git servers</h4>
       <p class="hint">Access tokens for Gitea, Forgejo, GitLab, Bitbucket, Azure Repos, and other servers your books sync with. The token is checked with the server before it is saved.</p>
@@ -516,7 +489,7 @@
       {#if tokenUrl}
         <p class="hint">
           Create a token on your server:
-          <button class="inline-link" onclick={() => tokenUrl && openExternal(tokenUrl).catch(() => {})}>open the token settings page</button>
+          <button class="inline-link" onclick={() => tokenUrl && api.shell.openExternal(tokenUrl).catch(() => {})}>open the token settings page</button>
         </p>
       {/if}
       {#if serverNotice}<p class="notice">{serverNotice}</p>{/if}
@@ -557,9 +530,9 @@
           </dd>
           <dt>SSH addresses (git@…)</dt>
           <dd>
-            Projects opened from an SSH clone keep every local feature —
-            preview, snapshots, history, restore. Gutterpress can't sync over
-            SSH, so sync with your usual Git tool, or switch the project to
+            Books opened from an SSH clone keep every local feature —
+            preview, versions, history, restore. Gutterpress can't sync over
+            SSH, so sync with your usual Git tool, or switch the book to
             the web (HTTPS) address and connect the server here.
           </dd>
         </dl>

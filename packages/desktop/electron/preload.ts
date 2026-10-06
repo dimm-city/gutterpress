@@ -1,19 +1,10 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
-  ExtensionSearchResult,
-  LocalBranches,
-  RefreshCopiesResult,
-  SwitchBranchResult,
-  UnsavedChoice,
   UpdaterEventPayload,
-  UpdaterStatus,
   DeviceCodeInfo,
   RemoteConnection,
   GoogleConnectStartResult,
   GoogleConnectResult,
-  RemoteRepository,
-  RemoteBranch,
-  RepoBook,
   CloneProgressEvent,
   RawPreviewStartArgs,
   PreviewStartResult,
@@ -22,120 +13,18 @@ import type {
   ExportProgressEvent,
   UrlPreviewBlockedEvent,
   MarkdownFileLaunchEvent,
-  EditorProjectionHostArgs,
-  EditorProjectionOutcome,
-  DirEntry,
-  FileStat,
-  FileWriteResult,
-  ProjectFileEntry,
-  LogFileEntry,
-  DesktopPrefs,
-  ProjectState,
-  DiscoveredProject,
-  ProjectClassification,
-  AppImageStatus,
-  AppImageInstallResult,
-  AppImageRemoveResult,
-  SnapshotEntry,
-  SnapshotPage,
-  RestoreVersionResult,
-  TemplateInfo,
-  SavedTemplateInfo,
-  SnippetEntry,
-  ProjectConfigFields,
-  ProjectExtensionEntry,
-  ExtensionValidationResult,
-  RecommendedExtension,
-  BuiltInStyleSet,
-  ExtensionImportResult,
-  ProjectStyle,
-  MediaImageEntry,
-  MediaImageDetails,
-  RemoteAccessResult,
-  ProjectRemoteDiagnosis,
-  ConnectGenericHostArgs,
-  HostConnectionInfo,
-  PublishProviderCard,
-  PublishDestination,
-  PublishRunResult,
-  PublishProviderStaticInfo,
-  PreflightRow,
-  CloneRepositoryArgs,
-  SyncOutcome,
-  RecoveryEntry,
-  PrintSafeWarning,
-  ProblemEntry,
-  DoctorDiagnostics,
-} from "./bridge-types";
-/**
- * Integer IPC-surface contract version shared between the Electron shell and
- * the SvelteKit SPA. Bump ONLY when an ipcMain.handle() method that the SPA
- * calls is added or removed. With full-app updates (electron-updater) the
- * shell and SPA always ship together, so this is a sanity check rather than a
- * version-skew gate.
- *
- * 3 -> 4 (ARCH review #8): removed updater:getStatus/check/download,
- * sync:setAutoSync, remote:cloneRepository —
- * migrated to SvelteKit server routes (plain request/response, no push
- * stream or live-BrowserWindow need).
- * 4 -> 5 (public seams V3): added the `.md` launch ready handshake; the file
- * events themselves are a main→renderer push stream.
- * 5 -> 6 (SFE-P3e): added `api:editorProjection` — the desktop rich editor's
- * host-built, plugin-aware projection call.
- */
-// 6 -> 7 (SFE-P5c1): added `fs`, `dialog`, `shell`, `log`, `app` -- the five
-// route groups migrated from SvelteKit HTTP routes to typed IPC. The routes
-// and their `api.ts` client methods are deleted in the same run.
-// 7 -> 8 (SFE-P5c2): added `project`, `manifest`, `tpl`, `snip`, `media`,
-// `plugin`, `theme`, `vcs`, `style` -- the nine route groups migrated from
-// SvelteKit HTTP routes to typed IPC in the same run.
-// 8 -> 9 (SFE-P5c3): added `remote`, `sync`, `publish` -- the credentials-
-// sensitive group restored from SvelteKit HTTP routes to typed IPC in the
-// same run. connectGitHubStart/Wait/Cancel, onCloneProgress, onSyncStatus
-// were already on this bridge and are unchanged.
-// 9 -> 10 (SFE-P5c4): added `updater.getStatus/check/download`, `recovery`,
-// `doctor`, `lint` -- the LAST four route groups, taking the desktop HTTP
-// route count to zero. `updater.applyNow`/`onEvent` were already on this
-// bridge and are unchanged.
-// 10 -> 11 (#221, merged from 0.10.5): added connectGoogleStart/Wait/Cancel
-// (the Google Drive publish provider's OAuth connect trio, mirroring
-// connectGitHubStart/Wait/Cancel) and `publish.listDestinations`/
-// `publish.createDestination` (the provider-neutral destinations picker).
-// 0.10.5 shipped the trio at its API 6 and the destinations pair as HTTP
-// routes; here the pair is typed IPC like the rest of `publish`.
-const DESKTOP_API = 11;
+} from "../src/lib/platform/shared-types";
 
 /**
  * Bridge exposed to the SvelteKit renderer as window.electron.
  * Renderer never imports node:* or electron itself — all native work
  * happens here, in the preload, or in main via ipcRenderer.invoke.
  *
- * Shared IPC payload types (UpdaterStatus, SyncOutcome, AppSettings, etc.)
- * are imported from ./bridge-types (which re-exports from
- * src/lib/platform/shared-types.ts). No more duplicate type declarations.
+ * The bridge is deliberately narrow (CLAUDE.md §8): it carries only the
+ * main→renderer push streams and the calls that need a live BrowserWindow.
+ * Everything else is a `src/routes/api/**` server route. Shared payload
+ * types live in src/lib/platform/shared-types.ts.
  */
-
-// ── Types used only in preload (not shared with the renderer contract) ────
-
-// New-project scaffold types (CreateProjectOptions/AdoptFolderOptions/
-// CreateProjectResult) removed — app:createProject/app:adoptFolder migrated
-// to server routes (Phase 2B), leaving the local mirrors unreferenced; the
-// real shapes live in the lib's project-scaffold.ts.
-
-// extension:*, project:listStyles types were removed here when that
-// surface migrated to server routes (Phase 2E) and are back as of SFE-P5c2
-// (imported from ./bridge-types at the top of this file, same as every
-// other IPC payload type). This block used to also declare module-local
-// `StyleToken`/`RecentFolderEntry`/`FavoriteEntry`/`DiscoveredProject`
-// interfaces left behind by that migration and never referenced anywhere in
-// this file — those (StyleToken excepted — SPA-only, never crossed the
-// bridge) live in src/lib/platform/dtos.ts. Removed in the 2026-07-28
-// duplication audit; see docs/reviews/duplication-audit-2026-07-28.md.
-
-// Local version history (#13): `SnapshotEntry` / `SnapshotPage` /
-// `RestoreVersionResult` / `ProjectClassification` are defined in
-// `src/lib/platform/shared-types.ts` (or dtos.ts for `ProjectClassification`)
-// and re-exported here via `electron/bridge-types.ts`.
 
 // ──────────────────────────────────────────────────────────────────────────
 // Safe push-event forwarding (main → renderer).
@@ -178,314 +67,17 @@ function forwardPush<T>(channel: string, cb: (data: T) => void): () => void {
 
 contextBridge.exposeInMainWorld("electron", {
   // ──────────────────────────────────────────────────────────────────────
-  // API version contract, exposed for a future renderer-vs-shell version check
-  // (audit D4). NOTE: no renderer code reads this yet — the previous comment
-  // claimed the renderer "checks this to refuse running against a stale shell,"
-  // but that check was never implemented. Kept as the plumbing that check will
-  // use; read it in the renderer before relying on it to gate anything.
-  // ──────────────────────────────────────────────────────────────────────
-  apiVersion: DESKTOP_API,
-
-  // ──────────────────────────────────────────────────────────────────────
-  // Desktop update surface (electron-updater + macOS check-only notifier)
-  // getStatus/check/download joined applyNow/onEvent on typed IPC in
-  // SFE-P5c4 (ARCH review #8's HTTP+IPC fan-out is gone). applyNow flushes
-  // the live renderer's unsaved buffer via `mainWindow.webContents.send`
-  // before quitting — a live-BrowserWindow call §8 sanctions.
+  // Desktop update surface (electron-updater + macOS check-only notifier).
+  // applyNow stays IPC: it flushes the live renderer's unsaved buffer via
+  // `mainWindow.webContents.send` before quitting — a live-BrowserWindow
+  // call §8 sanctions. getStatus/check/download are server routes.
   // ──────────────────────────────────────────────────────────────────────
   updater: {
-    getStatus: (): Promise<UpdaterStatus> => ipcRenderer.invoke("updater:getStatus"),
-    check: (): Promise<UpdaterStatus> => ipcRenderer.invoke("updater:check"),
-    download: (): Promise<UpdaterStatus> => ipcRenderer.invoke("updater:download"),
     applyNow: (): Promise<{ applied: boolean; version?: string; error?: string }> =>
       ipcRenderer.invoke("updater:applyNow"),
     /** Subscribe to updater events from main. Returns an unsubscribe fn. */
     onEvent: (cb: (data: UpdaterEventPayload) => void): (() => void) =>
       forwardPush("updater:event", cb),
-  },
-
-  // ── fs / dialog / shell / log / app — typed IPC (SFE-P5c1) ────────────────
-  // media:* moved to typed IPC too, but in SFE-P5c2 — see the `media` block
-  // below. checkCss/lintProject/doctor/recovery moved to typed IPC in
-  // SFE-P5c4 — see the `lint`/`doctor`/`recovery` blocks further below.
-  fs: {
-    readFile: (path: string): Promise<string> => ipcRenderer.invoke("fs:readFile", path),
-    writeFile: (path: string, content: string): Promise<FileWriteResult> =>
-      ipcRenderer.invoke("fs:writeFile", path, content),
-    statFile: (path: string): Promise<FileStat> => ipcRenderer.invoke("fs:statFile", path),
-    listDir: (path: string): Promise<DirEntry[]> => ipcRenderer.invoke("fs:listDir", path),
-    listProjectFiles: (projectDir: string): Promise<ProjectFileEntry> =>
-      ipcRenderer.invoke("fs:listProjectFiles", projectDir),
-    createFile: (dir: string, name: string, content: string): Promise<{ path: string; mtimeMs: number }> =>
-      ipcRenderer.invoke("fs:createFile", dir, name, content),
-    createFolder: (dir: string, name: string): Promise<{ path: string }> =>
-      ipcRenderer.invoke("fs:createFolder", dir, name),
-    renamePath: (path: string, newName: string): Promise<{ path: string }> =>
-      ipcRenderer.invoke("fs:rename", path, newName),
-    deletePath: (path: string, projectDir: string): Promise<{ ok: true }> =>
-      ipcRenderer.invoke("fs:delete", path, projectDir),
-  },
-
-  dialog: {
-    openDirectory: (): Promise<string | null> => ipcRenderer.invoke("dialog:openDirectory"),
-    savePdf: (defaultName?: string): Promise<string | null> =>
-      ipcRenderer.invoke("dialog:savePdf", defaultName),
-    pickImageFile: (): Promise<string | null> => ipcRenderer.invoke("dialog:pickImageFile"),
-    pickPdfFile: (): Promise<string | null> => ipcRenderer.invoke("dialog:pickPdfFile"),
-    pickImageFiles: (): Promise<string[]> => ipcRenderer.invoke("dialog:pickImageFiles"),
-    /** Native Save / Don't Save / Cancel prompt for a file with unsaved edits (#274). */
-    confirmUnsaved: (fileName: string): Promise<UnsavedChoice> =>
-      ipcRenderer.invoke("dialog:confirmUnsaved", fileName),
-  },
-
-  shell: {
-    openExternal: (url: string): Promise<{ ok: true }> => ipcRenderer.invoke("shell:openExternal", url),
-    showInFolder: (filePath: string): Promise<{ ok: true }> =>
-      ipcRenderer.invoke("shell:showInFolder", filePath),
-  },
-
-  log: {
-    read: (logPath: string): Promise<string | null> => ipcRenderer.invoke("log:read", logPath),
-    list: (): Promise<LogFileEntry[]> => ipcRenderer.invoke("log:list"),
-  },
-
-  app: {
-    getDesktopPrefs: (): Promise<DesktopPrefs> => ipcRenderer.invoke("app:getDesktopPrefs"),
-    setDesktopPrefs: (prefs: Record<string, unknown>): Promise<{ ok: true }> =>
-      ipcRenderer.invoke("app:setDesktopPrefs", prefs),
-    getDesktopProjectState: (projectDir: string): Promise<ProjectState | null> =>
-      ipcRenderer.invoke("app:getDesktopProjectState", projectDir),
-    setDesktopProjectState: (projectDir: string, state: Record<string, unknown>): Promise<{ ok: true }> =>
-      ipcRenderer.invoke("app:setDesktopProjectState", projectDir, state),
-    getSettings: (): Promise<Record<string, unknown>> => ipcRenderer.invoke("app:getSettings"),
-    setSettings: (settings: Record<string, unknown>): Promise<{ ok: true }> =>
-      ipcRenderer.invoke("app:setSettings", settings),
-    getNativeTheme: (): Promise<{ shouldUseDarkColors: boolean }> =>
-      ipcRenderer.invoke("app:getNativeTheme"),
-    getRecentFolders: (): Promise<
-      Array<{ path: string; title: string; exists: boolean; lastActiveBook?: string }>
-    > => ipcRenderer.invoke("app:getRecentFolders"),
-    getFavorites: (): Promise<Array<{ path: string; title: string; exists: boolean }>> =>
-      ipcRenderer.invoke("app:getFavorites"),
-    toggleFavorite: (path: string, title: string): Promise<{ favorited: boolean }> =>
-      ipcRenderer.invoke("app:toggleFavorite", path, title),
-    removeRecent: (path: string): Promise<{ ok: true }> => ipcRenderer.invoke("app:removeRecent", path),
-    discoverProjects: (): Promise<DiscoveredProject[]> => ipcRenderer.invoke("app:discoverProjects"),
-    classifyProject: (projectDir: string): Promise<ProjectClassification> =>
-      ipcRenderer.invoke("app:classifyProject", projectDir),
-    createProject: (options: Record<string, unknown>): Promise<unknown> =>
-      ipcRenderer.invoke("app:createProject", options),
-    adoptFolder: (options: Record<string, unknown>): Promise<unknown> =>
-      ipcRenderer.invoke("app:adoptFolder", options),
-    setDirtyState: (dirty: boolean): Promise<{ ok: true }> => ipcRenderer.invoke("app:setDirtyState", dirty),
-    recordFlushFailure: (projectDir: string | null): Promise<{ failedAt: string; projectDir?: string }> =>
-      ipcRenderer.invoke("app:recordFlushFailure", projectDir),
-    acknowledgeFlushFailure: (failedAt: string): Promise<{ acknowledged: boolean }> =>
-      ipcRenderer.invoke("app:acknowledgeFlushFailure", failedAt),
-    appImageIntegration: {
-      getStatus: (): Promise<AppImageStatus> => ipcRenderer.invoke("app:appImageIntegrationStatus"),
-      install: (): Promise<AppImageInstallResult> => ipcRenderer.invoke("app:appImageIntegrationInstall"),
-      remove: (): Promise<AppImageRemoveResult> => ipcRenderer.invoke("app:appImageIntegrationRemove"),
-    },
-  },
-
-  // ── project / manifest / tpl / snip / media / plugin / theme / vcs / style
-  // — typed IPC (SFE-P5c2) ──────────────────────────────────────────────────
-  // checkCss / lintProject moved to typed IPC too, but in SFE-P5c4 — see
-  // the `lint` block further below.
-
-  project: {
-    listStyles: (projectDir: string, repoRoot?: string | null): Promise<ProjectStyle[]> =>
-      ipcRenderer.invoke("project:listStyles", projectDir, repoRoot ?? undefined),
-  },
-
-  manifest: {
-    read: (projectDir: string): Promise<ProjectConfigFields> => ipcRenderer.invoke("manifest:read", projectDir),
-    setFields: (projectDir: string, updates: ProjectConfigFields): Promise<ProjectConfigFields> =>
-      ipcRenderer.invoke("manifest:setFields", projectDir, updates),
-  },
-
-  tpl: {
-    listBuiltIn: (): Promise<TemplateInfo[]> => ipcRenderer.invoke("tpl:listBuiltIn"),
-    listCustom: (): Promise<TemplateInfo[]> => ipcRenderer.invoke("tpl:listCustom"),
-    saveAsTemplate: (opts: {
-      projectDir: string;
-      name: string;
-      sharedRefs?: "vendor" | "exclude";
-    }): Promise<SavedTemplateInfo> =>
-      ipcRenderer.invoke("tpl:saveAsTemplate", opts.projectDir, opts.name, opts.sharedRefs),
-    importFromFolder: (): Promise<TemplateInfo | null> => ipcRenderer.invoke("tpl:importFromFolder"),
-  },
-
-  snip: {
-    list: (projectDir: string): Promise<SnippetEntry[]> => ipcRenderer.invoke("snip:list", projectDir),
-    read: (projectDir: string, fileName: string): Promise<string> =>
-      ipcRenderer.invoke("snip:read", projectDir, fileName),
-    readExtension: (projectDir: string, source: { kind: "extension"; ref: string }, fileName: string): Promise<string> =>
-      ipcRenderer.invoke("snip:readExtension", projectDir, source, fileName),
-    save: (projectDir: string, name: string, body: string): Promise<SnippetEntry> =>
-      ipcRenderer.invoke("snip:save", projectDir, name, body),
-    delete: (projectDir: string, fileName: string): Promise<{ ok: boolean }> =>
-      ipcRenderer.invoke("snip:delete", projectDir, fileName),
-  },
-
-  media: {
-    listImages: (projectDir: string): Promise<MediaImageEntry[]> =>
-      ipcRenderer.invoke("media:listImages", projectDir),
-    thumbnail: (imagePath: string): Promise<string | null> => ipcRenderer.invoke("media:thumbnail", imagePath),
-    inspect: (imagePath: string): Promise<MediaImageDetails | null> =>
-      ipcRenderer.invoke("media:inspect", imagePath),
-    importImage: (projectDir: string, src: string): Promise<{ src: string; copied: boolean }> =>
-      ipcRenderer.invoke("media:importImage", projectDir, src),
-  },
-
-  extension: {
-    list: (projectDir: string): Promise<ProjectExtensionEntry[]> => ipcRenderer.invoke("extension:list", projectDir),
-    recommended: (): Promise<RecommendedExtension[]> => ipcRenderer.invoke("extension:recommended"),
-    listBuiltIn: (): Promise<BuiltInStyleSet[]> => ipcRenderer.invoke("extension:listBuiltIn"),
-    /** Search npm for extensions (#246); a network/parse failure is data (`ok: false`), never a rejection. */
-    search: (query: string): Promise<ExtensionSearchResult> => ipcRenderer.invoke("extension:search", query),
-    validate: (projectDir: string): Promise<ExtensionValidationResult[]> =>
-      ipcRenderer.invoke("extension:validate", projectDir),
-    add: (projectDir: string, specifier: string, exportName?: string): Promise<ProjectExtensionEntry | null> =>
-      ipcRenderer.invoke("extension:add", projectDir, specifier, exportName),
-    addLocal: (projectDir: string): Promise<ProjectExtensionEntry | null> =>
-      ipcRenderer.invoke("extension:addLocal", projectDir),
-    addBuiltIn: (projectDir: string, id: string): Promise<ProjectExtensionEntry> =>
-      ipcRenderer.invoke("extension:addBuiltIn", projectDir, id),
-    remove: (projectDir: string, use: string): Promise<{ ok: true }> =>
-      ipcRenderer.invoke("extension:remove", projectDir, use),
-    setEnabled: (projectDir: string, use: string, enabled: boolean): Promise<{ ok: true }> =>
-      ipcRenderer.invoke("extension:setEnabled", projectDir, use, enabled),
-    reorder: (projectDir: string, order: string[]): Promise<{ ok: true }> =>
-      ipcRenderer.invoke("extension:reorder", projectDir, order),
-    readCss: (projectDir: string, use: string): Promise<string> =>
-      ipcRenderer.invoke("extension:readCss", projectDir, use),
-    importFromFile: (projectDir: string): Promise<ExtensionImportResult | null> =>
-      ipcRenderer.invoke("extension:importFromFile", projectDir),
-    importFromUrl: (projectDir: string, url: string): Promise<ExtensionImportResult> =>
-      ipcRenderer.invoke("extension:importFromUrl", projectDir, url),
-  },
-
-  vcs: {
-    enableVersionHistory: (projectDir: string): Promise<unknown> =>
-      ipcRenderer.invoke("vcs:enableVersionHistory", projectDir),
-    listSnapshotsPage: (
-      projectDir: string,
-      options?: { limit?: number; before?: string },
-    ): Promise<SnapshotPage> =>
-      ipcRenderer.invoke("vcs:listSnapshotsPage", projectDir, options?.limit, options?.before),
-    restoreSnapshot: (projectDir: string, id: string): Promise<RestoreVersionResult> =>
-      ipcRenderer.invoke("vcs:restoreSnapshot", projectDir, id),
-    saveSnapshot: (projectDir: string, message?: string): Promise<SnapshotEntry> =>
-      ipcRenderer.invoke("vcs:saveSnapshot", projectDir, message),
-    /** The project's local copies (git branches) and which one is open; null when there is nothing to switch between (#273). */
-    listBranches: (projectDir: string): Promise<LocalBranches | null> =>
-      ipcRenderer.invoke("vcs:listBranches", projectDir),
-    /** Switch the project's working tree to another local copy (#273). */
-    switchBranch: (projectDir: string, branch: string): Promise<SwitchBranchResult> =>
-      ipcRenderer.invoke("vcs:switchBranch", projectDir, branch),
-  },
-
-  style: {
-    setActive: (projectDir: string, paths: string[]): Promise<string[]> =>
-      ipcRenderer.invoke("style:setActive", projectDir, paths),
-  },
-
-  // ── recovery / doctor / lint — typed IPC (SFE-P5c4, the LAST route
-  // group) ───────────────────────────────────────────────────────────────
-  recovery: {
-    write: (filePath: string, content: string, baseMtimeMs: number): Promise<{ ok: boolean }> =>
-      ipcRenderer.invoke("recovery:write", filePath, content, baseMtimeMs),
-    clear: (filePath: string): Promise<{ ok: boolean }> => ipcRenderer.invoke("recovery:clear", filePath),
-    list: (projectDir: string): Promise<RecoveryEntry[]> => ipcRenderer.invoke("recovery:list", projectDir),
-  },
-
-  doctor: {
-    getDiagnostics: (): Promise<DoctorDiagnostics> => ipcRenderer.invoke("doctor:getDiagnostics"),
-  },
-
-  lint: {
-    checkCss: (cssPath: string, content: string): Promise<PrintSafeWarning[]> =>
-      ipcRenderer.invoke("lint:checkCss", cssPath, content),
-    project: (projectDir: string): Promise<ProblemEntry[]> => ipcRenderer.invoke("lint:project", projectDir),
-  },
-
-  // ── remote / sync / publish — typed IPC (SFE-P5c3, the credentials-
-  // sensitive group) ────────────────────────────────────────────────────────
-  // connectGitHubStart/Wait/Cancel, onCloneProgress, onSyncStatus are the
-  // top-level flat members further below (predate the namespaced-object
-  // convention P5c1/P5c2 established) — unchanged by this run.
-
-  remote: {
-    disconnectGitHub: (): Promise<{ ok: boolean }> => ipcRenderer.invoke("remote:disconnectGitHub"),
-    getConnection: (host?: string): Promise<{ connected: boolean; username?: string; label?: string }> =>
-      ipcRenderer.invoke("remote:getConnection", host),
-    listRepositories: (): Promise<RemoteRepository[]> => ipcRenderer.invoke("remote:listRepositories"),
-    listBranches: (owner: string, repo: string): Promise<RemoteBranch[]> =>
-      ipcRenderer.invoke("remote:listBranches", owner, repo),
-    listRepoBooks: (owner: string, repo: string, branch: string): Promise<RepoBook[]> =>
-      ipcRenderer.invoke("remote:listRepoBooks", owner, repo, branch),
-    diagnoseProject: (projectDir: string): Promise<ProjectRemoteDiagnosis> =>
-      ipcRenderer.invoke("remote:diagnoseProject", projectDir),
-    testRemoteAccess: (url: string): Promise<RemoteAccessResult> =>
-      ipcRenderer.invoke("remote:testRemoteAccess", url),
-    /** Fetch every remote branch so the copy picker sees copies made elsewhere (#273); best-effort. */
-    refreshCopies: (projectDir: string): Promise<RefreshCopiesResult> =>
-      ipcRenderer.invoke("remote:refreshCopies", projectDir),
-    connectGenericHost: (
-      args: ConnectGenericHostArgs,
-    ): Promise<{ connected: boolean; host: string; username?: string }> =>
-      ipcRenderer.invoke("remote:connectGenericHost", args),
-    disconnectHost: (host: string): Promise<{ ok: boolean }> =>
-      ipcRenderer.invoke("remote:disconnectHost", host),
-    listConnections: (): Promise<HostConnectionInfo[]> => ipcRenderer.invoke("remote:listConnections"),
-    forgeTokenUrl: (host: string): Promise<string | null> => ipcRenderer.invoke("remote:forgeTokenUrl", host),
-    sync: (projectDir: string, message?: string): Promise<SyncOutcome> =>
-      ipcRenderer.invoke("remote:sync", projectDir, message),
-    cloneRepository: (args: CloneRepositoryArgs): Promise<{ projectDir: string }> =>
-      ipcRenderer.invoke("remote:cloneRepository", args),
-  },
-
-  sync: {
-    setAutoSync: (enabled: boolean): Promise<{ ok: boolean; autoSync: boolean }> =>
-      ipcRenderer.invoke("sync:setAutoSync", enabled),
-    /** The last "sync:status" payload emitted for `projectDir`, or null. */
-    getStatus: (projectDir: string): Promise<object | null> => ipcRenderer.invoke("sync:getStatus", projectDir),
-  },
-
-  publish: {
-    listProviders: (projectDir: string): Promise<PublishProviderCard[]> =>
-      ipcRenderer.invoke("publish:list", projectDir),
-    providers: (): Promise<PublishProviderStaticInfo[]> => ipcRenderer.invoke("publish:providers"),
-    connect: (
-      projectDir: string,
-      providerId: string,
-      token: string,
-      account?: string,
-    ): Promise<{ connected: boolean; providerId: string }> =>
-      ipcRenderer.invoke("publish:connect", projectDir, providerId, token, account),
-    disconnect: (providerId: string, account?: string): Promise<{ ok: boolean }> =>
-      ipcRenderer.invoke("publish:disconnect", providerId, account),
-    setConfig: (
-      projectDir: string,
-      providerId: string,
-      values: Record<string, string>,
-    ): Promise<Record<string, Record<string, unknown>>> =>
-      ipcRenderer.invoke("publish:setConfig", projectDir, providerId, values),
-    preflight: (projectDir: string, providerIds: string[]): Promise<PreflightRow[]> =>
-      ipcRenderer.invoke("publish:preflight", projectDir, providerIds),
-    run: (
-      projectDir: string,
-      providerId: string,
-      options?: { dryRun?: boolean; artifactPath?: string },
-    ): Promise<PublishRunResult> =>
-      ipcRenderer.invoke("publish:run", projectDir, providerId, options?.artifactPath, options?.dryRun),
-    // #221 D9 — provider-neutral destinations picker (gdrive: Drive folders).
-    listDestinations: (projectDir: string, providerId: string): Promise<PublishDestination[]> =>
-      ipcRenderer.invoke("publish:listDestinations", projectDir, providerId),
-    createDestination: (projectDir: string, providerId: string, name: string): Promise<PublishDestination> =>
-      ipcRenderer.invoke("publish:createDestination", projectDir, providerId, name),
   },
 
   /**
@@ -502,9 +94,7 @@ contextBridge.exposeInMainWorld("electron", {
     };
   },
 
-  // app:getLastProject has no route/IPC — never implemented as a distinct op.
-
-  // Native (OS) theme surface (#48) — push channel kept as IPC (main→renderer)
+  // Native (OS) theme surface (#48) — push channel (main→renderer)
   /** Subscribe to OS theme changes from main. Returns an unsubscribe fn. */
   onNativeThemeUpdated: (
     cb: (data: { shouldUseDarkColors: boolean }) => void
@@ -530,13 +120,7 @@ contextBridge.exposeInMainWorld("electron", {
     return off;
   },
 
-  // tpl:*, snip:*, extension:*, project:listStyles, and local version
-  // history (#13) round-tripped through SvelteKit server routes (Phase
-  // 2D/2E) and are back on this bridge as of SFE-P5c2 — see the `project`/
-  // `manifest`/`tpl`/`snip`/`media`/`plugin`/`theme`/`vcs`/`style` blocks
-  // above.
-
-  // ── Managed GitHub integration (#15) — device flow + repo picker + clone ──
+  // ── Managed GitHub integration (#15) — device flow ───────────────────────
   // Two-phase connect: Start returns the user code to display; Wait resolves
   // when the user approves in the browser. Tokens never cross this bridge.
   connectGitHubStart: (): Promise<DeviceCodeInfo> =>
@@ -545,12 +129,6 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("remote:connectGitHubWait"),
   connectGitHubCancel: (): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("remote:connectGitHubCancel"),
-  // disconnectGitHub, getConnection, listRepositories, listBranches,
-  // listRepoBooks, diagnoseProject, testRemoteAccess, connectGenericHost,
-  // disconnectHost, listConnections, forgeTokenUrl, sync, cloneRepository —
-  // SFE-P5c3: restored to typed IPC on the `remote` namespaced block above
-  // (request/reply operations only — the push channel below is unaffected,
-  // run rule 8).
 
   // ── Google Drive publish connect (#221) — same two-phase shape, no user
   // code to display (Start resolves with the auth URL instead; Wait resolves
@@ -569,14 +147,10 @@ contextBridge.exposeInMainWorld("electron", {
   // ── Auto-sync orchestrator seam (transparent sync, §4.4 integration plan) ─
   // Main emits `sync:status` push events whenever the orchestrator state machine
   // transitions. The renderer subscribes via onSyncStatus to drive the ambient
-  // pill without polling. setAutoSync/getStatus are the `sync` namespaced
-  // block above (SFE-P5c3: restored to typed IPC).
-
+  // pill without polling.
   /** Subscribe to ambient sync-status push events. Returns an unsubscribe fn. */
   onSyncStatus: (cb: (data: unknown) => void): (() => void) =>
     forwardPush("sync:status", cb),
-
-  // resolveSyncConflicts — dead (removed before this run; sync always converges).
 
   startPreview: (args: RawPreviewStartArgs): Promise<PreviewStartResult> =>
     ipcRenderer.invoke("api:preview", args),
@@ -587,20 +161,6 @@ contextBridge.exposeInMainWorld("electron", {
   build: (args: RawBuildArgs): Promise<BuildResult> =>
     ipcRenderer.invoke("api:build", args),
 
-  // SFE-P3e: the desktop rich editor's plugin-aware projection, built
-  // host-side (real manifest + real loaded plugins) — see
-  // electron/editor-projection.ts and main.ts's "api:editorProjection"
-  // handler for the validated boundary. Resolves to a discriminated
-  // `EditorProjectionOutcome`, never a `.code`-tagged rejection (SFE-P3e
-  // review round 2 — see editor-projection.ts's header for why).
-  buildEditorProjection: (args: EditorProjectionHostArgs): Promise<EditorProjectionOutcome> =>
-    ipcRenderer.invoke("api:editorProjection", args),
-
-  // One renderer-side fault, into the app's own log file — the one the Logs
-  // tab shows and an author can hand over. See `appLogRendererError`.
-  logRendererError: (message: string): Promise<void> =>
-    ipcRenderer.invoke("app:logRendererError", message),
-
   // Live PDF-build progress (main → renderer). Returns an unsubscribe fn.
   onBuildProgress: (
     cb: (data: ExportProgressEvent) => void
@@ -609,9 +169,6 @@ contextBridge.exposeInMainWorld("electron", {
   onUrlPreviewBlocked: (
     cb: (data: UrlPreviewBlockedEvent) => void
   ): (() => void) => forwardPush("url-preview:blocked", cb),
-
-  // writeRecovery/clearRecovery/listRecovery — the `recovery` namespaced
-  // block above (SFE-P5c4: typed IPC).
 
   /**
    * Subscribe to main's request to flush before the window closes (#44). The
@@ -622,7 +179,7 @@ contextBridge.exposeInMainWorld("electron", {
     cb: (mode?: "flush" | "discard") => boolean | void | Promise<boolean | void>,
   ): (() => void) =>
     // `mode` is "discard" when the author chose Don't Save in main's close
-    // prompt; anything else means flush as before.
+    // prompt; anything else means flush.
     forwardPush<"flush" | "discard" | undefined>("app:flushBeforeClose", (mode) => {
       // The renderer flushes its buffer, then signals completion so main can
       // destroy the window. Signal failure even if the callback throws so quit
@@ -640,7 +197,7 @@ contextBridge.exposeInMainWorld("electron", {
     }),
   /**
    * Subscribe to debounced folder-change notifications carrying the changed
-   * file's basename (#44). Returns an unsubscribe fn.
+   * file's path relative to the watched folder (#44). Returns an unsubscribe fn.
    */
   onFolderChanged: (cb: (data: { filename: string }) => void): (() => void) =>
     forwardPush("fs:folderChanged", cb),

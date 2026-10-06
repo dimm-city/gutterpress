@@ -492,8 +492,6 @@ export function routeToolbarAction(action: ToolbarAction, payload?: ToolbarPaylo
       const cols = (payload as { cols: number } | undefined)?.cols ?? 3;
       return { kind: "command", command: { kind: "insert-table", rows: 1, cols } };
     }
-    case "page-break":
-      return { kind: "layout", layout: "page-break" };
     case "layout-block": {
       const kind = (payload as { kind: LayoutBlockKind } | undefined)?.kind;
       return kind ? { kind: "layout", layout: kind } : { kind: "unsupported" };
@@ -501,29 +499,10 @@ export function routeToolbarAction(action: ToolbarAction, payload?: ToolbarPaylo
     case "image":
       return { kind: "image" };
     case "snippet":
-    case "focus-mode":
       // Page-level actions — `+page.svelte` handles both before this
       // function is ever called for either surface. Reachable only if a
       // caller skips that pre-check, so treated as a safe no-op rather than
       // an error.
-      return { kind: "unsupported" };
-    case "image-properties":
-    case "image-unwrap":
-    case "link-edit":
-      // These three DO have real rich-mode replacements — below:
-      // `locateRichImagePropertiesAtCaret`/`applyRichImagePropertiesEdit`,
-      // `applyRichImageUnwrapAtCaret`, and `locateRichLinkEditAtCaret`/
-      // `applyRichLinkEditEdit` (SFE-P3d-parity repair round 1: this
-      // comment used to name `applyRichImagePropertiesAtCaret`/
-      // `applyRichLinkEditAtCaret`, which do not exist — see the real
-      // locate/apply split documented in this file's next section header)
-      // — but the image-properties/link-edit pair needs a dialog `await`
-      // this function's synchronous `RichToolbarRoute` return shape has no
-      // room for, so
-      // `+page.svelte`'s `onAction` calls them directly instead of routing
-      // through here (same pre-check pattern "snippet"/"focus-mode" already
-      // use above, for a different reason). Reachable here only if a caller
-      // skips that pre-check, so treated the same safe no-op way.
       return { kind: "unsupported" };
   }
 }

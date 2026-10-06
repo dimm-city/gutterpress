@@ -190,7 +190,7 @@ describe("resolveActiveStyles (the one resolver the renderer + editor share)", (
     expect(active).toEqual(await resolveActiveStyles(dir, undefined));
   });
 
-  // ARCH finding #2 — the actual reported bug, reconciled end-to-end: a
+  // The actual reported bug, reconciled end-to-end: a
   // styles:-less manifest used to resolve (via resolveConfig -> the DTRPG
   // preset's `styles: ["css/print.css"]` default) to a stylesheet the CSS
   // editor's listProjectStyles (reading the raw, unresolved manifest) never
@@ -215,7 +215,7 @@ describe("resolveActiveStyles (the one resolver the renderer + editor share)", (
   });
 });
 
-// ── 2026-07-29 audit: shared stylesheets must stay listable ──────────────────
+// ── shared stylesheets must stay listable ────────────────────────────────────
 //
 // Discovery scanned only inside the book, so a `../../shared/...` entry appeared
 // in the desktop Styles picker ONLY while it was in the manifest. Unchecking it

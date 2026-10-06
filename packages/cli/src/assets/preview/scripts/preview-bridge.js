@@ -1,9 +1,7 @@
 // Cross-origin postMessage bridge for window.previewAPI.
 //
 // The desktop (Svelte toolbar) and this iframe are on different origins
-// (the packaged app's toolbar is served from the app:// origin, or a
-// SvelteKit dev-server port in development; this gutterpress preview iframe
-// is always its own http://localhost:PORT), so the toolbar can't
+// (SvelteKit on port A, gutterpress preview on port B), so the toolbar can't
 // reach window.previewAPI directly. This bridge listens for command
 // messages, calls the local previewAPI, and posts results / events back to
 // the parent window.
@@ -12,7 +10,7 @@
 //   parent -> iframe: { type: 'gutterpress:cmd', id: <number>, cmd: <string>, args?: [...] }
 //   iframe -> parent: { type: 'gutterpress:reply', id: <number>, ok: true, result: <any> }
 //                  or { type: 'gutterpress:reply', id: <number>, ok: false, error: <string> }
-//   iframe -> parent: { type: 'gutterpress:event', name: 'pageChanged'|'renderingComplete'|'ready', detail }
+//   iframe -> parent: { type: 'gutterpress:event', name: 'pageChanged'|'renderingComplete'|'ready'|'escapePressed'|…, detail }
 //
 // Commands map 1:1 to previewAPI methods: getTotalPages, getCurrentPage,
 // goToPage, firstPage, prevPage, nextPage, lastPage, setViewMode, setZoom,
@@ -69,7 +67,7 @@
   window.addEventListener('renderingComplete', function (e) {
     post({ type: 'gutterpress:event', name: 'renderingComplete', detail: e.detail });
   });
-  // ADR 0005: source-position sync + click-to-source.
+  // source-position sync + click-to-source.
   window.addEventListener('sourceLineChanged', function (e) {
     post({ type: 'gutterpress:event', name: 'sourceLineChanged', detail: e.detail });
   });
@@ -83,6 +81,30 @@
   // context-menu target request.
   window.addEventListener('contextMenuRequested', function (e) {
     post({ type: 'gutterpress:event', name: 'contextMenuRequested', detail: e.detail });
+  });
+  // In-flow block editing (protocol v8). `Requested` is the double-click entry
+  // point — the SPA answers it with a beginBlockEdit command. `Finished`
+  // carries the edited text back for an end the AUTHOR initiated inside the
+  // book (Escape / Cmd+Enter / blur), which the SPA cannot observe. `State`
+  // fires on every open and close, including SPA-initiated ones, and is what
+  // preview-shell.js holds hot-reload swaps on.
+  window.addEventListener('blockEditRequested', function (e) {
+    post({ type: 'gutterpress:event', name: 'blockEditRequested', detail: e.detail });
+  });
+  window.addEventListener('blockEditFinished', function (e) {
+    post({ type: 'gutterpress:event', name: 'blockEditFinished', detail: e.detail });
+  });
+  window.addEventListener('blockEditStateChanged', function (e) {
+    post({ type: 'gutterpress:event', name: 'blockEditStateChanged', detail: e.detail });
+  });
+
+  // Esc pressed inside the book. Keystrokes in this cross-origin document
+  // never reach the app, so an Esc nothing here consumed is forwarded (the app
+  // uses it to leave Focus). Bubble phase on window, so in-book handlers that
+  // own Esc — in-place block editing stops it at the document — run first.
+  window.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    post({ type: 'gutterpress:event', name: 'escapePressed', detail: {} });
   });
 
   // Announce readiness as soon as previewAPI is defined.

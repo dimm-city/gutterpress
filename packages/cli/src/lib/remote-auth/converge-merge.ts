@@ -44,8 +44,7 @@
  * check out WITHOUT `force` (so a write that arrives later is left alone or
  * loudly refused, never silently replaced). Both are marked in the body.
  *
- * Used by `syncProject` — every sync. (It also served `repairRepo`'s salvage
- * step until the repair subsystem was deleted.)
+ * Used by `syncProject` — every sync.
  */
 // Atomic writes for git metadata — see git-fs.ts. Drop-in for node:fs.
 import { gitFs as fs } from "../git-fs.ts";
@@ -68,6 +67,7 @@ import {
   snapshotWorkingTreeUnlocked,
 } from "../source-provider.ts";
 import type { GitCache, KeptBothFile } from "./sync-types.ts";
+import { errorLogData, resolveLogger, type LogData, type OperationLogger } from "./operation-log.ts";
 
 export type { KeptBothFile };
 
@@ -113,7 +113,7 @@ export const CONVERGE_PREPARE_MESSAGE =
 /** Snapshot message for the post-merge restore commit (kept-both/edits). */
 export const CONVERGE_RESTORE_MESSAGE =
   "Kept both versions of the files that can't be combined";
-/** The merge commit message (same wording the old sync used). */
+/** The merge commit message. */
 export const CONVERGE_MERGE_MESSAGE =
   "Combined your changes with the online version";
 
@@ -166,18 +166,10 @@ export function mergeWithMarkers(
   return merged;
 }
 
-async function readBlobOrNull(
-  dir: string,
-  cache: GitCache,
-  oid: string,
-  filepath: string,
-): Promise<{ oid: string; blob: Uint8Array } | null> {
-  try {
-    const r = await git.readBlob({ fs, dir, cache, oid, filepath });
-    return { oid: r.oid, blob: r.blob };
-  } catch {
-    return null;
-  }
+/** Conflict lists name blobs that must exist. Preserve read errors instead of
+ * silently skipping a file and reporting another conflict on the next attempt. */
+async function readBlob(dir: string, cache: GitCache, oid: string, filepath: string) {
+  return git.readBlob({ fs, dir, cache, oid, filepath });
 }
 
 async function writeTreeFile(dir: string, filepath: string, content: Uint8Array): Promise<void> {
@@ -251,8 +243,12 @@ export async function convergeMerge(params: {
   author: { name: string; email: string };
   authorName?: string;
   authorEmail?: string;
+  onStep?: (stage: string, data?: LogData) => void;
+  logger?: OperationLogger;
 }): Promise<ConvergeResult> {
   const { dir, cache, branch, theirs, author } = params;
+  const step = params.onStep ?? (() => {});
+  const logger = params.logger ?? resolveLogger(undefined, "sync");
 
   const snapshot = (message: string) =>
     snapshotWorkingTreeUnlocked({
@@ -276,6 +272,7 @@ export async function convergeMerge(params: {
   let tipBeforeMerge = ourTip;
   const attempt = async () => {
     tipBeforeMerge = await git.resolveRef({ fs, dir, ref: branch });
+    step("merge", { local: tipBeforeMerge, fetched: theirs });
     return git.merge({
       fs,
       dir,
@@ -284,8 +281,7 @@ export async function convergeMerge(params: {
       theirs,
       author,
       message: CONVERGE_MERGE_MESSAGE,
-      // Always false: syncProject merges two views of ONE history. The
-      // option existed only for repairRepo's salvage step, which is gone.
+      // Always false: syncProject merges two views of ONE history.
       allowUnrelatedHistories: false,
       // `path` is only the file's BASENAME (isomorphic-git never passes the
       // repo-relative path), so it can't be matched against the conflict
@@ -324,17 +320,19 @@ export async function convergeMerge(params: {
     deleteByUs: string[];
     deleteByTheirs: string[];
   }): Promise<void> => {
+    step("equalize", { binary: paths.binary, deleteByUs: paths.deleteByUs, deleteByTheirs: paths.deleteByTheirs });
     for (const p of paths.binary) {
+      step("read-conflict-blobs", { filepath: p });
       const [ourBlob, theirBlob] = await Promise.all([
-        readBlobOrNull(dir, cache, ourTip, p),
-        readBlobOrNull(dir, cache, theirs, p),
+        readBlob(dir, cache, ourTip, p),
+        readBlob(dir, cache, theirs, p),
       ]);
-      if (!ourBlob || !theirBlob) continue; // settled by a delete list instead
       // Equalize to THEIR bytes (makes both sides identical → clean merge),
       // then after the merge put OUR bytes back at `p` and drop THEIR bytes
       // beside it as the `.online` sibling: a file that can't carry conflict
       // markers keeps both versions as two files instead. Never route binary
       // bytes through the string driver.
+      step("write-conflict-file", { filepath: p });
       await writeTreeFile(dir, p, theirBlob.blob);
       const onlinePath = onlineSiblingPath(p);
       postRestore.push({ path: p, bytes: ourBlob.blob });
@@ -343,18 +341,23 @@ export async function convergeMerge(params: {
     }
     for (const p of paths.deleteByUs) {
       // We deleted it; the online copy edited it → the EDIT survives.
-      const theirBlob = await readBlobOrNull(dir, cache, theirs, p);
-      if (theirBlob) await writeTreeFile(dir, p, theirBlob.blob);
+      step("read-conflict-blobs", { filepath: p });
+      const theirBlob = await readBlob(dir, cache, theirs, p);
+      step("write-conflict-file", { filepath: p });
+      await writeTreeFile(dir, p, theirBlob.blob);
     }
     for (const p of paths.deleteByTheirs) {
       // We edited it; the online copy deleted it → agree to the deletion so
       // the merge is clean, then restore our EDIT right after it.
-      const ourBlob = await readBlobOrNull(dir, cache, ourTip, p);
+      step("read-conflict-blobs", { filepath: p });
+      const ourBlob = await readBlob(dir, cache, ourTip, p);
+      step("delete-conflict-file", { filepath: p });
       await unlink(path.join(dir, p)).catch((e: unknown) => {
         if ((e as NodeJS.ErrnoException)?.code !== "ENOENT") throw e;
       });
-      if (ourBlob) postRestore.push({ path: p, bytes: ourBlob.blob });
+      postRestore.push({ path: p, bytes: ourBlob.blob });
     }
+    step("snapshot-equalized");
     if (await hasPendingChanges(dir)) await snapshot(CONVERGE_PREPARE_MESSAGE);
   };
 
@@ -362,6 +365,7 @@ export async function convergeMerge(params: {
     await attempt();
   } catch (e) {
     if (isMergeConflictError(e)) {
+      logger.info("merge", "resolving conflicts", errorLogData(e));
       // Text clashes were already converged by the driver (cleanMerge:true),
       // so ONLY binaries and delete-vs-edit remain in the lists —
       // `bothModified` is exactly the binaries, by repo-relative path.
@@ -376,6 +380,7 @@ export async function convergeMerge(params: {
       // driver to work from. Keep BOTH: ours stays at the path, theirs lands
       // at the `.online` sibling, same as any file markers would corrupt.
       // (null = truly unrelated histories → rethrow untouched.)
+      step("merge-base");
       const added = await bothAddedPaths(
         dir,
         cache,
@@ -383,7 +388,12 @@ export async function convergeMerge(params: {
         theirs,
         false,
       );
-      if (added === null || added.length === 0) throw e; // unmergeable — surface it
+      if (added === null) {
+        throw Object.assign(new Error("No common commits between local and online histories", { cause: e }), {
+          code: "UnrelatedHistoriesError",
+        });
+      }
+      if (added.length === 0) throw e; // unsupported merge, not unrelated histories
       await equalize({ binary: added, deleteByUs: [], deleteByTheirs: [] });
       await attempt();
     } else {
@@ -404,6 +414,7 @@ export async function convergeMerge(params: {
   // REFUSES — before writing anything — on a file the merge changed that also
   // moved on disk. That refusal is handled below; it is never a silent
   // overwrite.
+  step("checkout");
   try {
     await git.checkout({ fs, dir, cache, ref: branch, force: false });
   } catch (e) {
@@ -417,6 +428,8 @@ export async function convergeMerge(params: {
     // "try again in two minutes" is always better than a lost paragraph.
     // `writeRef` does NOT expand a short name (it would create `.git/main`),
     // so expand it the way `git.merge` did when it moved the ref.
+    logger.warn("checkout", "checkout refused; restoring branch", errorLogData(e));
+    step("rollback", { local: tipBeforeMerge });
     await git.writeRef({
       fs,
       dir,
@@ -424,6 +437,7 @@ export async function convergeMerge(params: {
       value: tipBeforeMerge,
       force: true,
     });
+    step("checkout");
     throw e;
   }
 
@@ -431,10 +445,15 @@ export async function convergeMerge(params: {
   // binaries plus their `.online` siblings, edits that beat a deletion) as a
   // visible, honestly-labeled snapshot on top of the merge.
   if (postRestore.length > 0) {
-    for (const r of postRestore) await writeTreeFile(dir, r.path, r.bytes);
+    for (const r of postRestore) {
+      step("restore-conflict-file", { filepath: r.path });
+      await writeTreeFile(dir, r.path, r.bytes);
+    }
+    step("snapshot-restored");
     if (await hasPendingChanges(dir)) await snapshot(CONVERGE_RESTORE_MESSAGE);
   }
 
+  step("merged-ref");
   return {
     oid: await git.resolveRef({ fs, dir, ref: branch }),
     combinedFiles: [...combined].sort(),
