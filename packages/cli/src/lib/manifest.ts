@@ -415,8 +415,9 @@ function resolveWithPreset(
     targets: resolveTargets(c.targets ?? m.targets, preset.defaultTargets),
     source: mergeShape(c.source, m.source, preset.source),
     pdfx: mergeShape(c.pdfx, m.pdfx, preset.pdfx),
-    // Default (both presets) is signature: 1 = no padding — postprocess only
-    // pads when > 1, so a book that never asks for one gets none.
+    // `book` defaults to signature: 1 = no padding (postprocess only pads
+    // when > 1). `dtrpg` defaults to signature 4 + reserveLastPage so the
+    // interior ends on a blank page, which DriveThruRPG reserves for printer info.
     print: mergeShape(c.print, m.print, preset.print),
     page: preset.page ? mergeShape(c.page, m.page, preset.page) : resolveCustomPage(c, m),
     ink: mergeShape(c.ink, m.ink, preset.ink),

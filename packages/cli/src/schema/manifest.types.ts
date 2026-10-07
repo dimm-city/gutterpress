@@ -127,6 +127,12 @@ export interface GutterpressManifest {
   print?: {
     /** Pad the PDF with blank pages until pageCount is a multiple of this. */
     signature?: number;
+    /**
+     * Guarantee the interior's final page is a blank page appended by the
+     * build (no content, no folio). Print-on-demand services such as
+     * DriveThruRPG reserve the last page for printer info.
+     */
+    reserveLastPage?: boolean;
   };
   page?: {
     width?: number;
@@ -232,6 +238,7 @@ export interface ResolvedConfig {
   };
   print: {
     signature: number;
+    reserveLastPage: boolean;
   };
   page: {
     width: number;
