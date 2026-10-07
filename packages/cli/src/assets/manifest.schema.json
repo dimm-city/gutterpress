@@ -148,6 +148,12 @@
           "type": "boolean",
           "description": "Strip annotations (links, comments) during PDF/X conversion — PDF/X-1a does not permit them.",
           "default": true
+        },
+        "blackText": {
+          "type": "string",
+          "description": "How near-black text is separated. `icc` converts it through the ICC profile (rich, four-colour black). `k-only` prints it on the black plate alone (100% K), which print vendors such as DriveThruRPG require for small text. Non-text black (rules, panels) is unaffected. Preset defaults: dtrpg `k-only`, book `icc`.",
+          "enum": ["icc", "k-only"],
+          "default": "icc"
         }
       }
     },

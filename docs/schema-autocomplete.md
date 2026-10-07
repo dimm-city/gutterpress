@@ -319,6 +319,7 @@ PDF/X conversion settings, used by `gutterpress build --format pdfx`.
 - `flavor` (string) - `x1a` (default) or `x3`.
 - `icc` (string) - Path to the ICC output-intent profile. Default `profiles/CGATS21_CRPC1.icc`.
 - `stripAnnotations` (boolean) - Strip links/comments, which PDF/X-1a forbids. Default `true`.
+- `blackText` (string) - `icc` converts near-black text through the ICC profile (rich four-colour black); `k-only` prints it on the black plate alone (100% K), as DriveThruRPG requires for small text. Non-text black is unaffected. Preset defaults: `dtrpg` `k-only`, `book`/`custom` `icc`.
 
 #### `ink` (object)
 - `maxTac` (number) - Maximum total area coverage, summed across C+M+Y+K. Preset defaults: `dtrpg` 240, `book` 400 (the physical ceiling, i.e. effectively no cap).

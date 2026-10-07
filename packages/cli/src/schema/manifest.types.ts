@@ -118,6 +118,8 @@ export interface GutterpressManifest {
     flavor?: "x1a" | "x3";
     icc?: string;
     stripAnnotations?: boolean;
+    /** `k-only` prints near-black text on the black plate alone (#331). */
+    blackText?: "icc" | "k-only";
   };
   /**
    * Native-engine print-production options with no other manifest home
@@ -235,6 +237,7 @@ export interface ResolvedConfig {
     flavor: "x1a" | "x3";
     icc: string;
     stripAnnotations: boolean;
+    blackText: "icc" | "k-only";
   };
   print: {
     signature: number;
