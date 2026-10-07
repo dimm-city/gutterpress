@@ -26,6 +26,7 @@ export interface NativePdfOptions {
   title?: string;
   author?: string;
   signature?: number;
+  reserveLastPage?: boolean;
   /**
    * Downgrade the engine's over-wide-content hard error to a warning +
    * diagnostic. The engine's message tells the author to "pass allowShrink to

@@ -14,6 +14,12 @@ export interface PostprocessOptions {
   geometry: PageTrim;
   /** append blank pages until pageCount % signature === 0 */
   signature?: number;
+  /**
+   * Guarantee the last page is a blank page added here. If signature padding
+   * would add nothing, append one full signature of blank pages (one page when
+   * signature <= 1).
+   */
+  reserveLastPage?: boolean;
   title?: string;
   author?: string;
   subject?: string;
@@ -55,14 +61,10 @@ export async function postprocess(
   ];
 
   // ---- signature padding -------------------------------------------------
-  let padded = 0;
-  if (opts.signature && opts.signature > 1) {
-    const remainder = doc.getPageCount() % opts.signature;
-    if (remainder !== 0) {
-      padded = opts.signature - remainder;
-      for (let i = 0; i < padded; i++) doc.addPage([g.media.width, g.media.height]);
-    }
-  }
+  const signature = opts.signature && opts.signature > 1 ? opts.signature : 1;
+  let padded = (signature - (doc.getPageCount() % signature)) % signature;
+  if (padded === 0 && opts.reserveLastPage) padded = signature;
+  for (let i = 0; i < padded; i++) doc.addPage([g.media.width, g.media.height]);
 
   const wantMarks = opts.marks || g.marks.includes("crop") || g.marks.includes("cross");
 

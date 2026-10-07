@@ -791,6 +791,7 @@ class PdfOutput implements OutputStrategy {
           title: config.title,
           author: config.authors.length > 0 ? config.authors.join(", ") : undefined,
           signature: config.print.signature,
+          reserveLastPage: config.print.reserveLastPage,
           allowShrink: opts.allowShrink,
         },
         browser

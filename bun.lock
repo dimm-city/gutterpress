@@ -10,7 +10,7 @@
     },
     "packages/cli": {
       "name": "gutterpress",
-      "version": "0.11.13",
+      "version": "0.11.14",
       "bin": {
         "gutterpress": "./dist/cli.js",
       },
@@ -54,7 +54,7 @@
     },
     "packages/desktop": {
       "name": "@dimm-city/gutterpress-desktop",
-      "version": "0.11.13",
+      "version": "0.11.14",
       "dependencies": {
         "@codemirror/autocomplete": "^6.18.4",
         "@codemirror/commands": "^6.8.0",
