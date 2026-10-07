@@ -46,6 +46,7 @@ export const DTRPG_PRESET: VendorPreset = {
     flavor: "x1a",
     icc: "profiles/CGATS21_CRPC1.icc",
     stripAnnotations: true,
+    blackText: "k-only",
   },
   page: {
     width: 621,
@@ -149,6 +150,7 @@ export const BOOK_PRESET: VendorPreset = {
     flavor: "x1a",
     icc: "profiles/CGATS21_CRPC1.icc",
     stripAnnotations: true,
+    blackText: "icc",
   },
   page: {
     width: 432,
