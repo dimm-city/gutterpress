@@ -321,6 +321,18 @@ PDF/X conversion settings, used by `gutterpress build --format pdfx`.
 - `stripAnnotations` (boolean) - Strip links/comments, which PDF/X-1a forbids. Default `true`.
 - `blackText` (string) - `icc` converts near-black text through the ICC profile (rich four-colour black); `k-only` prints it on the black plate alone (100% K), as DriveThruRPG requires for small text. Non-text black is unaffected. Preset defaults: `dtrpg` `k-only`, `book`/`custom` `icc`.
 
+#### `print` (object)
+Page-count rules applied when the PDF is built.
+
+- `signature` (number) - Pad the PDF with blank pages until the page count is a multiple of this; `1` means no padding. Preset defaults: `dtrpg` 4, `book` 1.
+- `reserveLastPage` (boolean) - Guarantee the final page is a blank page added by the build (no background, no page number). When the content already fills a signature exactly, a full signature of blank pages is added. DriveThruRPG reserves the last page for printer information. Preset defaults: `dtrpg` `true`, `book` `false`.
+
+```yaml
+# Opt a dtrpg book out of the reserved blank page
+print:
+  reserveLastPage: false
+```
+
 #### `ink` (object)
 - `maxTac` (number) - Maximum total area coverage, summed across C+M+Y+K. Preset defaults: `dtrpg` 240, `book` 400 (the physical ceiling, i.e. effectively no cap).
 - `tacTolerance` (number) - Percentage of sampled pixels allowed to exceed `maxTac`. Default `0.5`.
