@@ -157,6 +157,22 @@
         }
       }
     },
+    "print": {
+      "type": "object",
+      "description": "Page-count rules applied when the PDF is built.",
+      "properties": {
+        "signature": {
+          "type": "integer",
+          "description": "Pad the PDF with blank pages until the page count is a multiple of this. `1` means no padding. Preset defaults: dtrpg 4, book 1.",
+          "minimum": 1,
+          "examples": [1, 4, 6]
+        },
+        "reserveLastPage": {
+          "type": "boolean",
+          "description": "Guarantee the final page is a blank page added by the build (no background, no page number). When the content already fills a signature exactly, a full signature of blank pages is added. DriveThruRPG reserves the last page for printer information. Preset defaults: dtrpg true, book false."
+        }
+      }
+    },
     "page": {
       "type": "object",
       "description": "Expected page geometry, in POINTS. VALIDATION BOUNDS ONLY — these values do NOT set the trim size. The real PDF page size comes from the CSS `@page` rule in your stylesheet; these numbers are only what the `pdf.print.page-size` check compares the produced PDF against. Set them to the trim size you expect so a CSS mistake gets caught — and note that a bleed-inclusive @page size will legitimately differ from the trim size recorded here.",

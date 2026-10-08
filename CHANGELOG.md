@@ -7,6 +7,16 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [0.11.15] - 2026-10-07
 
+### Changed
+
+- **Existing `dtrpg` books build differently.** Both fixes below are on by
+  default for the `dtrpg` preset, so rebuilding a book that hasn't changed
+  gives a PDF with 1–4 extra blank pages at the end, and, for `--format pdfx`,
+  black text on the black plate only. To keep the old output, set
+  `print.reserveLastPage: false` and `pdfx.blackText: icc` in `manifest.yaml`.
+  Books that already end on a blank printer page of their own still end
+  blank. The build may add more padding pages after it.
+
 ### Fixed
 
 - **Black PDF/X text prints on the black plate only** (#331). Chromium
