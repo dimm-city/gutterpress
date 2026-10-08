@@ -205,6 +205,12 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
     expect(config.page.tolerance).toBe(DTRPG_PRESET.page!.tolerance);
   });
 
+  test("pdfx.blackText: dtrpg defaults to k-only, book to icc, manifest overrides", () => {
+    expect(resolveConfig({}, {}).pdfx.blackText).toBe("k-only");
+    expect(resolveConfig({}, { preset: "book" }).pdfx.blackText).toBe("icc");
+    expect(resolveConfig({}, { pdfx: { blackText: "icc" } }).pdfx.blackText).toBe("icc");
+  });
+
   test("one-level-deep object (pdfx): manifest overrides flavor only, icc/stripAnnotations keep preset defaults", () => {
     const config = resolveConfig({}, { pdfx: { flavor: "x3" } });
     expect(config.pdfx.flavor).toBe("x3");

@@ -314,7 +314,7 @@ Before final print submission:
 - [ ] All fonts embed correctly in the PDF
 - [ ] Page size matches the printer's required trim size
 - [ ] Bleed extends 0.125in beyond the trim edge on full-bleed pages
-- [ ] No unexpected blank pages
+- [ ] No unexpected blank pages (the blank pages at the end of a `dtrpg` book are intentional)
 - [ ] Running headers are correct on all pages
 - [ ] Page numbers start at the right page and run correctly
 - [ ] Validate passes for every destination you publish to (`--target dtrpg,itch`, or your manifest's `targets:` list)
@@ -326,6 +326,11 @@ Before final print submission:
 ### Blank pages
 
 Caused by excess `@page` markers. Audit your source files for unnecessary page breaks — bare `@page` between short adjacent sections is the most common culprit.
+
+Blank pages at the very end of a `dtrpg` book are expected: the build pads the
+book to a multiple of 4 pages and keeps the last page empty for DriveThruRPG's
+printer information. To turn that off, set `print.reserveLastPage: false` in
+`manifest.yaml`.
 
 ### Page break issues
 

@@ -118,6 +118,8 @@ export interface GutterpressManifest {
     flavor?: "x1a" | "x3";
     icc?: string;
     stripAnnotations?: boolean;
+    /** `k-only` prints near-black text on the black plate alone (#331). */
+    blackText?: "icc" | "k-only";
   };
   /**
    * Native-engine print-production options with no other manifest home
@@ -127,6 +129,12 @@ export interface GutterpressManifest {
   print?: {
     /** Pad the PDF with blank pages until pageCount is a multiple of this. */
     signature?: number;
+    /**
+     * Guarantee the interior's final page is a blank page appended by the
+     * build (no content, no folio). Print-on-demand services such as
+     * DriveThruRPG reserve the last page for printer info.
+     */
+    reserveLastPage?: boolean;
   };
   page?: {
     width?: number;
@@ -229,9 +237,11 @@ export interface ResolvedConfig {
     flavor: "x1a" | "x3";
     icc: string;
     stripAnnotations: boolean;
+    blackText: "icc" | "k-only";
   };
   print: {
     signature: number;
+    reserveLastPage: boolean;
   };
   page: {
     width: number;

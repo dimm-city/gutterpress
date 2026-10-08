@@ -73,6 +73,20 @@ test("each preset carries its default publish targets into the resolved config",
   expect(resolveConfig({}, { preset: "book" }).targets).toEqual([]);
 });
 
+test("dtrpg pads to a 4-page signature and reserves a blank last page; book does not", () => {
+  expect(resolveConfig({}, { preset: "dtrpg" }).print).toEqual({
+    signature: 4,
+    reserveLastPage: true,
+  });
+  expect(resolveConfig({}, { preset: "book" }).print).toEqual({
+    signature: 1,
+    reserveLastPage: false,
+  });
+  expect(
+    resolveConfig({ print: { reserveLastPage: false } }, { preset: "dtrpg" }).print,
+  ).toEqual({ signature: 4, reserveLastPage: false });
+});
+
 test("manifest targets override the preset's defaults and are validated", () => {
   const config = resolveConfig({}, { preset: "book", targets: ["dtrpg", "itch"] });
   expect(config.targets).toEqual(["dtrpg", "itch"]);

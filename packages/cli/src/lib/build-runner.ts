@@ -15,6 +15,7 @@ import {
   stripAnnotations,
 } from "./ghostscript";
 import { writeBuildFingerprint, type BuildFingerprintInput } from "./build-fingerprint";
+import { blackTextToGray } from "./black-text-gray";
 import { getAssetPath } from "./embedded-assets";
 import { executeAndReport } from "./validation-exec";
 import { log } from "../utils/logger";
@@ -791,6 +792,7 @@ class PdfOutput implements OutputStrategy {
           title: config.title,
           author: config.authors.length > 0 ? config.authors.join(", ") : undefined,
           signature: config.print.signature,
+          reserveLastPage: config.print.reserveLastPage,
           allowShrink: opts.allowShrink,
         },
         browser
@@ -847,6 +849,11 @@ class PdfOutput implements OutputStrategy {
         if (shouldStrip) {
           log.info("Stripping annotations for PDF/X compliance");
           await stripAnnotations(rawPdf, stage);
+        }
+
+        if (config.pdfx.blackText === "k-only") {
+          log.info("Rewriting near-black text to K-only gray");
+          await fsp.writeFile(rawPdf, await blackTextToGray(await fsp.readFile(rawPdf)));
         }
 
         log.info(`Converting to CMYK PDF/X (${pdfxMode})`);

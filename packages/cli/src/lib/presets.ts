@@ -41,11 +41,12 @@ export const DTRPG_PRESET: VendorPreset = {
   source: {
     files: null,
   },
-  print: { signature: 1 },
+  print: { signature: 4, reserveLastPage: true },
   pdfx: {
     flavor: "x1a",
     icc: "profiles/CGATS21_CRPC1.icc",
     stripAnnotations: true,
+    blackText: "k-only",
   },
   page: {
     width: 621,
@@ -144,11 +145,12 @@ export const BOOK_PRESET: VendorPreset = {
   source: {
     files: null,
   },
-  print: { signature: 1 },
+  print: { signature: 1, reserveLastPage: false },
   pdfx: {
     flavor: "x1a",
     icc: "profiles/CGATS21_CRPC1.icc",
     stripAnnotations: true,
+    blackText: "icc",
   },
   page: {
     width: 432,

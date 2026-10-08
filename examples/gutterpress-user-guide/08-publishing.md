@@ -99,6 +99,17 @@ gutterpress publish --provider itch
 bleed, ink density and more. Without `--pdf`, there's no built PDF to inspect,
 so those checks silently pass without measuring anything.
 
+Books using the `dtrpg` preset are already set up for DriveThruRPG's print
+rules:
+
+- **The last page is left blank.** DriveThruRPG prints its own information on
+  a book's final page, so Gutterpress pads the book to a multiple of 4 pages
+  and makes sure the last one is empty. The page count the build reports is
+  the number to enter in DriveThruRPG's cover Template Generator.
+- **Black text prints in black ink only.** In a `--format pdfx` build, black
+  and near-black text goes on the black plate alone, as DriveThruRPG requires
+  for small text. Coloured text is printed as designed.
+
 @end-section
 
 ## Sharing a Folder Between Formats

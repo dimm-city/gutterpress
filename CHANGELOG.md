@@ -5,6 +5,34 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.15] - 2026-10-07
+
+### Changed
+
+- **Existing `dtrpg` books build differently.** Both fixes below are on by
+  default for the `dtrpg` preset, so rebuilding a book that hasn't changed
+  gives a PDF with 1–4 extra blank pages at the end, and, for `--format pdfx`,
+  black text on the black plate only. To keep the old output, set
+  `print.reserveLastPage: false` and `pdfx.blackText: icc` in `manifest.yaml`.
+  Books that already end on a blank printer page of their own still end
+  blank. The build may add more padding pages after it.
+
+### Fixed
+
+- **Black PDF/X text prints on the black plate only** (#331). Chromium
+  writes text colour as RGB, so the PDF/X conversion turned black text into
+  four-colour black, which DriveThruRPG rejects for text at 24pt and below.
+  The new `pdfx.blackText` option (`icc` or `k-only`) controls this; the
+  `dtrpg` preset uses `k-only`, which prints black and near-black text
+  (warm inks such as `#1a1512` included) at 100% K. Coloured text, and black
+  rules and panels, are unchanged.
+- **DriveThruRPG interiors end on a blank page** (#332). The `dtrpg` preset
+  now pads to 4-page signatures, and the new `print.reserveLastPage` option
+  (on for `dtrpg`) adds a full signature of blank pages when the content
+  already fills one exactly, so the final page — reserved for printer
+  information — is always blank. The build log's page count is the number
+  to enter in DriveThruRPG's cover Template Generator.
+
 ## [0.11.14] - 2026-10-06
 
 ### Added
