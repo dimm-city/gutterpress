@@ -316,6 +316,14 @@ Reasons:
      (`GutterpressPlugin`, `GutterpressPluginMetadata`, `GutterpressPluginExport`) for
      TypeScript plugin authors. Types only — zero runtime coupling.
 
+The `markers` export (declarative components) is DATA the loader reads, and
+that stays true of its two optional component fields: `snippet` (a path the
+desktop's component listing reads) and `validate(component)`. `validate` is
+not a hook API — it receives a plain Gutterpress-owned object (`attrs`,
+`variant`, `text`, `blocks`), never markdown-it tokens or a host `ctx`, and
+returns problem messages that core reports on the existing
+`env.layoutWarnings` channel (`markers.js`'s `runComponentValidate`).
+
 Plugin loader (`packages/cli/src/lib/markdown/plugins.ts`) does NOT auto-install
 or access the network. Installation is an explicit shared-lib action
 (`addExtension` in `extension-manager.ts`, used by the desktop routes and

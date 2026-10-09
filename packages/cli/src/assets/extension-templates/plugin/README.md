@@ -110,6 +110,20 @@ Marker names are global across every plugin a book loads. Two plugins
 declaring `@callout` is a hard load error naming both — which is a good
 outcome, and another reason to prefix.
 
+**Show authors the structure.** A marker's example content lives in
+`snippets/<marker>.md` — `snippets/term-box.md` here. When an author picks
+`@term-box` from the editor's `@` autocomplete or the snippet picker, that
+file is what gets inserted. To keep the example somewhere else, set
+`snippet: "path/inside/this/folder.md"` on the marker.
+
+**Check the structure (optional).** Add `validate(component)` to a marker and
+Gutterpress runs it on every use of the component whenever it checks a book
+— the desktop Problems panel, `gutterpress validate`, and builds. It receives
+a plain object (`attrs`, `variant`, `text`, and `blocks` such as
+`{ type: "paragraph", text, line }`) and returns problem messages. No
+markdown-it knowledge needed; `plugin.js` documents every field and
+`test/plugin.test.js` shows how to test one with a hand-written component.
+
 ### 5. Leave the cascade to Gutterpress
 
 Gutterpress wraps every extension's CSS in a cascade layer of its own

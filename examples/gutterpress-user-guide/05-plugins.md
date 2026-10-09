@@ -195,7 +195,7 @@ gutterpress new "Field Notes" --kind plugin
 cd field-notes && bun install && bun test
 ```
 
-That produces a complete, runnable package: `package.json`, a `plugin.js` with one declarative container and one hand-written rule, component CSS with public `:root` tokens, an insertable snippet, and a fixture test you run with `bun test`. Its README explains which conventions are load-bearing and why — class prefixing, why you cannot import `gutterpress` at runtime, and where your CSS belongs in the cascade. Add it to a book with `gutterpress ext add ./field-notes <book>`, which lists the folder under `extensions:` and references it in place.
+That produces a complete, runnable package: `package.json`, a `plugin.js` with one declarative container and one hand-written rule, component CSS with public `:root` tokens, an insertable snippet, and a fixture test you run with `bun test`. Its `@term-box` component shows both component helpers — an example snippet the editor inserts and an opt-in `validate` check (see [Components](#plugin-components) below). Its README explains which conventions are load-bearing and why — class prefixing, why you cannot import `gutterpress` at runtime, and where your CSS belongs in the cascade. Add it to a book with `gutterpress ext add ./field-notes <book>`, which lists the folder under `extensions:` and references it in place.
 
 Use `--prefix` to choose the class prefix it claims (it defaults to the package slug):
 
@@ -327,6 +327,107 @@ plugin` scaffolds.
 
 Older packages carried a separate `gutterpress.json` or `theme.json`. Neither
 is read any more: move their fields into `package.json` as above.
+
+### Components: a marker, its snippet and its checks {#plugin-components}
+
+A **component** is a container your plugin declares in `export const markers`
+— the scaffold's `term-box`, used as `@term-box … @end-term-box`. Two optional
+fields on that declaration help the authors who use it.
+
+**`snippet` — show the structure.** When an author picks a component in the
+desktop editor — typing `@` at the start of a line, or from the snippet picker
+(Ctrl/Cmd+Shift+S), where components are listed first — Gutterpress inserts
+its example snippet, so the author starts from the structure the component
+expects. By default the snippet is `<snippets folder>/<marker name>.md`
+inside your package (the scaffold's `snippets/term-box.md`; the folder is the
+one `gutterpress.snippets` names, or `snippets`). To keep it somewhere else,
+point at any `.md` file inside your package:
+
+```js
+export const markers = {
+  "term-box": { class: "fn-term-box", snippet: "examples/term-box.md" },
+};
+```
+
+A snippet can use `{{fields}}`: the picker asks for them, and `@` autocomplete
+selects the first one so the author can type straight over it. A component
+without a snippet still autocompletes, as an empty marker pair. A project's
+own `snippets/term-box.md` replaces the extension's copy in the picker.
+
+**`validate` — check the structure (opt-in).** Add a `validate` function and
+Gutterpress runs it for every use of the component whenever it checks the
+book: the desktop Problems panel, `gutterpress validate`, and builds. You don't
+need to know anything about markdown-it or Gutterpress internals — the
+function receives a plain description of what the author wrote:
+
+```js
+export const markers = {
+  "term-box": {
+    class: "fn-term-box",
+    validate(box) {
+      const problems = [];
+      if (!box.attrs.label) problems.push('Give the term box a label: @term-box label="…"');
+      if (!box.blocks.some((block) => block.type === "paragraph")) {
+        problems.push("Add a paragraph explaining the term.");
+      }
+      return problems;
+    },
+  },
+};
+```
+
+What `validate` receives:
+
+- `name` — the marker as typed (`"term-box"`)
+- `variant` — the bare word after it (`@term-box note` → `"note"`), or `null`
+- `attrs` — its attributes (`{ label: "…" }`)
+- `line` — the marker's line in the file
+- `text` — the raw markdown inside the component
+- `blocks` — the content, in order. Each block has a `type` and a `line`:
+  `heading` (`level`, `text`), `paragraph` (`text`), `image` (`alt`, `src` —
+  a paragraph holding only an image), `list` (`ordered`, `items`), `quote`
+  (`text`), `code` (`lang`, `text`), `table`, `rule`, `html` (`text`), and
+  `component` (`name`) for a component nested inside — which its own
+  `validate` checks. `text` is the block's raw markdown.
+
+What it returns: nothing when the content is fine, or a list of problems. A
+problem is a message, or `{ message, line, severity }` to point at a specific
+line or choose `"error"`, `"warning"` (the default) or `"info"`. Each one
+appears as `@term-box: <message>` at that line. Use `"error"` sparingly: it
+fails `gutterpress validate` and stops a build, though a book can downgrade
+the whole check with `validate.checks."source.markdown.layout-markers"`.
+`validate` must be synchronous; if it throws, the author sees that as a
+problem instead of a broken preview.
+
+A few recipes:
+
+```js
+// The first thing inside must be a heading.
+if (box.blocks[0]?.type !== "heading") problems.push("Start with a heading.");
+
+// No more than two paragraphs.
+const paragraphs = box.blocks.filter((b) => b.type === "paragraph");
+if (paragraphs.length > 2) problems.push({ message: "Keep it to two paragraphs.", line: paragraphs[2].line });
+
+// Every image needs alt text.
+for (const b of box.blocks) {
+  if (b.type === "image" && !b.alt.trim()) problems.push({ message: "Describe this image.", line: b.line });
+}
+
+// A list of at least two items.
+const list = box.blocks.find((b) => b.type === "list");
+if (!list || list.items.length < 2) problems.push("List at least two options.");
+
+// Only known variants.
+if (box.variant && !["note", "warning"].includes(box.variant)) problems.push(`Unknown variant "${box.variant}".`);
+```
+
+Because `validate` takes a plain object, you test it with plain objects too
+— the scaffold's `test/plugin.test.js` shows how.
+
+This is unrelated to the `gutterpress.components` catalog file, which nothing
+reads yet. Looks (CSS-only packages) have no JavaScript, so their components
+cannot carry `validate`.
 
 ## Built-in Plugins
 

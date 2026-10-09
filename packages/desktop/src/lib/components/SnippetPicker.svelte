@@ -31,10 +31,16 @@
    * an extension entry's body is the one operation that DOES branch by
    * source (`choose()`, below) — project reads still go through `api.snip.
    * read`, extension reads go through the new `api.snip.readExtension`.
+   *
+   * Components — the project's plugin components (`components` prop, from
+   * `api.snip.components`) that have an example snippet are listed first, as
+   * `@name` rows; their body is already in hand, so choosing one goes
+   * straight to the same `{{variable}}` prompt. When that snippet file is
+   * also an extension snippet, its duplicate row is hidden.
    */
   import Icon from "$lib/components/Icon.svelte";
   import { api } from "$lib/api";
-  import type { SnippetEntry } from "$lib/api";
+  import type { MarkerComponent, SnippetEntry } from "$lib/api";
   import { extractVariables, substituteVariables } from "$lib/editor/snippet-vars";
   import {
     dialogBehavior,
@@ -50,9 +56,12 @@
     onInsert,
     /** Read the editor's current selection (for "Save as snippet"). */
     getSelectionText,
+    /** The project's plugin components; those with a snippet are listed. */
+    components = [],
   }: {
     open?: boolean;
     projectDir: string | null;
+    components?: readonly MarkerComponent[];
     onInsert: (text: string) => void;
     getSelectionText?: () => string;
   } = $props();
@@ -108,13 +117,26 @@
    * name — so "did the group change since the last row" is all the grouping
    * this needs; there is no separate tree-shaped list to keep in sync.
    */
-  let hasExtensionEntries = $derived(snippets.some((s) => s.source.kind !== "project"));
+  let snippetComponents = $derived(components.filter((c) => c.snippet));
+  /** Extension snippets that are a listed component's snippet show once, as the component. */
+  let visibleSnippets = $derived(
+    snippets.filter(
+      (entry) =>
+        entry.source.kind === "project" ||
+        !snippetComponents.some(
+          (c) => c.source.ref === (entry.source as { ref: string }).ref && c.snippetFileName === entry.fileName,
+        ),
+    ),
+  );
+  let hasExtensionEntries = $derived(
+    snippetComponents.length > 0 || visibleSnippets.some((s) => s.source.kind !== "project"),
+  );
   let groupedRows = $derived.by(() => {
     if (!hasExtensionEntries) {
-      return snippets.map((entry) => ({ entry, header: undefined as string | undefined }));
+      return visibleSnippets.map((entry) => ({ entry, header: undefined as string | undefined }));
     }
     let lastKey: string | null = null;
-    return snippets.map((entry) => {
+    return visibleSnippets.map((entry) => {
       const key = groupKey(entry);
       const header = key === lastKey ? undefined : groupLabel(entry);
       lastKey = key;
@@ -182,22 +204,27 @@
         entry.source.kind === "project"
           ? await api.snip.read(projectDir, entry.fileName)
           : await api.snip.readExtension(projectDir, entry.source, entry.fileName);
-      const vars = extractVariables(body);
-      if (vars.length === 0) {
-        onInsert(body);
-        close();
-        return;
-      }
-      activeBody = body;
-      activeVars = vars;
-      varValues = Object.fromEntries(vars.map((v) => [v, ""]));
-      mode = "vars";
-      queueMicrotask(() =>
-        dialogEl?.querySelector<HTMLInputElement>("input.var-input")?.focus(),
-      );
+      insertBody(body);
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     }
+  }
+
+  /** Insert `body` now, or prompt for its `{{variables}}` first. */
+  function insertBody(body: string) {
+    const vars = extractVariables(body);
+    if (vars.length === 0) {
+      onInsert(body);
+      close();
+      return;
+    }
+    activeBody = body;
+    activeVars = vars;
+    varValues = Object.fromEntries(vars.map((v) => [v, ""]));
+    mode = "vars";
+    queueMicrotask(() =>
+      dialogEl?.querySelector<HTMLInputElement>("input.var-input")?.focus(),
+    );
   }
 
   function confirmVars() {
@@ -288,13 +315,32 @@
       {#if mode === "list"}
         {#if loading}
           <p class="muted">Loading…</p>
-        {:else if snippets.length === 0}
+        {:else if visibleSnippets.length === 0 && snippetComponents.length === 0}
           <p class="muted">
             No snippets yet. Select some text in the editor and choose
             “Save selection as snippet” to create one.
           </p>
         {:else}
           <ul class="snippet-list">
+            {#if snippetComponents.length > 0}
+              <li class="snippet-group-header">Components</li>
+            {/if}
+            {#each snippetComponents as component (`${component.source.ref}:${component.name}`)}
+              <li>
+                <button
+                  class="snippet-row"
+                  onclick={() => insertBody(component.snippet ?? "")}
+                  title={`Insert the @${component.name} component at the cursor`}
+                >
+                  <span class="snippet-name">@{component.name}</span>
+                  <span class="snippet-row-end">
+                    <span class="snippet-vars">{component.source.name}</span>
+                    <span class="snippet-insert">Insert</span>
+                    <Icon name="chevron-right" size={14} />
+                  </span>
+                </button>
+              </li>
+            {/each}
             {#each groupedRows as { entry, header } (rowKey(entry))}
               <!-- The two-step delete confirm stays keyed by `fileName` alone
                    (unchanged from pre-#242) — it is only ever armed for a

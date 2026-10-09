@@ -12,8 +12,11 @@
  * channel or renderer code (§8): the desktop's `/api/lint/project` route
  * already maps every `CheckResult` to a `ProblemEntry`.
  *
- * Severity is always `warning` — these are "your markup did not mean what you
+ * Severity is `warning` — these are "your markup did not mean what you
  * think", never a reason to abort a build (only `error` results set ok=false).
+ * The one exception is a plugin component's opt-in `validate`: its designer
+ * may mark a problem `error` or `info`, and that severity is kept. An author
+ * can still downgrade the whole check via `validate.checks` in the manifest.
  */
 import { readFile } from "node:fs/promises";
 import { registerCheck } from "../registry";
@@ -21,12 +24,8 @@ import type { Check, CheckContext, CheckResult } from "../types";
 import { finding, inspectionFailed } from "../policy";
 import { createMarkdownRenderer } from "../../lib/markdown/renderer";
 import { loadPlugins } from "../../lib/markdown/plugins";
+import type { LayoutWarning } from "../../lib/markdown/assemble";
 
-interface LayoutWarning {
-  line: number;
-  type: string;
-  message: string;
-}
 
 const check: Check = {
   id: "source.markdown.layout-markers",
@@ -63,7 +62,7 @@ const check: Check = {
         for (const w of env.layoutWarnings ?? []) {
           results.push(
             finding(check.id, {
-              severity: "warning",
+              severity: w.severity ?? "warning",
               message: w.message,
               file,
               // `line: 0` is the parser's "no line" sentinel (e.g. the EOF

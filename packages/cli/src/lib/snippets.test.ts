@@ -12,6 +12,7 @@ import {
   deleteSnippet,
   listMergedSnippets,
   readExtensionSnippet,
+  listMarkerComponents,
   SNIPPETS_DIR,
 } from "./snippets.ts";
 
@@ -550,6 +551,118 @@ test("readExtensionSnippet refuses path traversal in fileName", async () => {
         "../../../../etc/passwd",
       ),
     ).rejects.toThrow();
+  } finally {
+    await rm(proj, { recursive: true, force: true });
+  }
+});
+
+// ── listMarkerComponents ────────────────────────────────────────────────────
+
+/** A plugin extension folder whose `plugin.js` declares `markersSource` (a JS object literal). */
+async function makeComponentPlugin(
+  projectDir: string,
+  folderName: string,
+  markersSource: string,
+  files: Record<string, string>,
+  gutterpress: Record<string, unknown> = { snippets: "snippets" },
+): Promise<void> {
+  const dir = path.join(projectDir, "plugins", folderName);
+  await mkdir(dir, { recursive: true });
+  // The loader requires a declared snippets folder to exist.
+  if (typeof gutterpress.snippets === "string") await mkdir(path.join(dir, gutterpress.snippets), { recursive: true });
+  await writeFile(
+    path.join(dir, "package.json"),
+    JSON.stringify({ name: folderName, main: "plugin.js", gutterpress }),
+    "utf8",
+  );
+  await writeFile(
+    path.join(dir, "plugin.js"),
+    `export default function () {}\nexport const markers = ${markersSource};\n`,
+    "utf8",
+  );
+  for (const [rel, body] of Object.entries(files)) {
+    await mkdir(path.dirname(path.join(dir, rel)), { recursive: true });
+    await writeFile(path.join(dir, rel), body, "utf8");
+  }
+}
+
+test("listMarkerComponents links each marker to its snippet: default name, explicit path, or none", async () => {
+  const proj = await tmpProject();
+  try {
+    await makeComponentPlugin(
+      proj,
+      "boxes",
+      `{
+        "term-box": {},
+        figure: { snippet: "examples/figure.md" },
+        bare: {},
+        escape: { snippet: "../outside.md" },
+        tip: { alias: "term-box" },
+        old: { deprecated: "gone" },
+      }`,
+      {
+        "snippets/term-box.md": "@term-box\n{{body}}\n@end-term-box\n",
+        "examples/figure.md": "@figure\n![alt](src.png)\n@end-figure\n",
+      },
+    );
+    await writeFile(path.join(proj, "plugins", "outside.md"), "nope", "utf8");
+    await writeManifest(proj, ["extensions:", "  - ./plugins/boxes", ""].join("\n"));
+
+    const source = { kind: "extension" as const, ref: "./plugins/boxes", name: "Boxes" };
+    expect(await listMarkerComponents(proj)).toEqual([
+      { name: "bare", source },
+      { name: "escape", source },
+      { name: "figure", source, snippet: "@figure\n![alt](src.png)\n@end-figure\n" },
+      {
+        name: "term-box",
+        source,
+        snippet: "@term-box\n{{body}}\n@end-term-box\n",
+        snippetFileName: "term-box.md",
+      },
+      { name: "tip", source },
+    ]);
+  } finally {
+    await rm(proj, { recursive: true, force: true });
+  }
+});
+
+test("listMarkerComponents defaults to snippets/ when the extension declares no snippets folder", async () => {
+  const proj = await tmpProject();
+  try {
+    await makeComponentPlugin(proj, "boxes", `{ box: {} }`, { "snippets/box.md": "@box\n@end-box\n" }, {});
+    await writeManifest(proj, ["extensions:", "  - ./plugins/boxes", ""].join("\n"));
+    const [box] = await listMarkerComponents(proj);
+    // Not listed by the picker (no declared folder), so no snippetFileName.
+    expect(box).toEqual({ name: "box", source: expect.anything(), snippet: "@box\n@end-box\n" });
+  } finally {
+    await rm(proj, { recursive: true, force: true });
+  }
+});
+
+test("listMarkerComponents skips disabled extensions and tolerates one that fails to load", async () => {
+  const proj = await tmpProject();
+  try {
+    await makeComponentPlugin(proj, "off", `{ off: {} }`, {});
+    await makeComponentPlugin(proj, "good", `{ good: {} }`, {});
+    await mkdir(path.join(proj, "plugins", "broken"), { recursive: true });
+    await writeFile(
+      path.join(proj, "plugins", "broken", "package.json"),
+      JSON.stringify({ name: "broken", main: "plugin.js" }),
+      "utf8",
+    );
+    await writeFile(path.join(proj, "plugins", "broken", "plugin.js"), "throw new Error('nope');\n", "utf8");
+    await writeManifest(
+      proj,
+      [
+        "extensions:",
+        "  - use: ./plugins/off",
+        "    enabled: false",
+        "  - ./plugins/broken",
+        "  - ./plugins/good",
+        "",
+      ].join("\n"),
+    );
+    expect((await listMarkerComponents(proj)).map((c) => c.name)).toEqual(["good"]);
   } finally {
     await rm(proj, { recursive: true, force: true });
   }

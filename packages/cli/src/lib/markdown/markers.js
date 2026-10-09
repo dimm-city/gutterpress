@@ -34,7 +34,9 @@
  *   If no markers are present, plugin does nothing.
  *
  * Validation:
- *   Warnings are pushed into env.layoutWarnings: Array<{ line, type, message, marker? }>
+ *   Warnings are pushed into env.layoutWarnings: Array<{ line, type, message, marker?, severity? }>
+ *   (`severity` is only ever set by a declared marker's `validate` result —
+ *   see runComponentValidate; consumers treat its absence as "warning").
  *
  * Source line threading (token.meta.line):
  *   Every layout_*_open token (chapter/spread/page/section, including the
@@ -61,7 +63,9 @@
  *                   variants: { note: 'dc-note', warning: 'dc-note warning' },
  *                   label: { class: 'dc-alert-label', from: 'attr:label' },
  *                   autoCloseAt: ['eof'] },
- *       sidebar:  { tag: 'aside', class: 'dc-sidebar' },
+ *       sidebar:  { tag: 'aside', class: 'dc-sidebar',
+ *                   snippet: 'examples/sidebar.md',
+ *                   validate: (box) => box.blocks.length ? [] : ['Add some content.'] },
  *       'dm-note': { alias: 'callout', preset: { variant: 'dm' } },
  *       'roll-table': { deprecated: 'Removed in 17.3.0 — use @outcome.' },
  *     };
@@ -365,9 +369,177 @@ function parseMarkerLine(line, declaredWords) {
   return marker;
 }
 
-function warn(env, line, type, message, marker) {
+function warn(env, line, type, message, marker, severity) {
   if (!env.layoutWarnings) env.layoutWarnings = [];
-  env.layoutWarnings.push({ line, type, message, marker });
+  const entry = { line, type, message, marker };
+  if (severity) entry.severity = severity;
+  env.layoutWarnings.push(entry);
+}
+
+// ── Component validation (opt-in, per declared marker) ─────────────────────
+//
+// A declared marker may carry `validate(component)`. Plugin authors write it
+// against the small plain object built here — never against markdown-it
+// tokens or core internals — so the authoring surface stays a few fields:
+// { name, variant, attrs, line, text, blocks }. Results land on the same
+// env.layoutWarnings channel as every other marker warning, which is what
+// carries them to `gutterpress validate`, the desktop Problems panel, the
+// build log and the preview terminal with no further plumbing.
+
+const COMPONENT_SEVERITIES = ['error', 'warning', 'info'];
+
+/** `![alt](src "title"){attrs}` filling a whole paragraph. */
+const IMAGE_ONLY_RE = /^!\[([^\]]*)\]\(\s*<?([^\s)>]+)>?(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)(?:\s*\{[^}]*\})?$/;
+
+function tokenLine(tok, fallback) {
+  if (tok.map) return tok.map[0] + 1;
+  if (tok.meta && Number.isFinite(tok.meta.line)) return tok.meta.line;
+  return fallback;
+}
+
+/** Index of the token closing the block opened at `i` (or `i` for a nesting-0 token). */
+function blockEnd(tokens, i) {
+  if (tokens[i].nesting !== 1) return i;
+  let depth = 0;
+  for (let j = i; j < tokens.length; j++) {
+    depth += tokens[j].nesting;
+    if (depth === 0) return j;
+  }
+  return tokens.length - 1;
+}
+
+/** Raw markdown of every inline token in tokens[from..to], one per line. */
+function inlineText(tokens, from, to) {
+  const parts = [];
+  for (let k = from; k <= to; k++) if (tokens[k].type === 'inline') parts.push(tokens[k].content);
+  return parts.join('\n');
+}
+
+/**
+ * Map a component's content tokens to the plain `blocks` list its `validate`
+ * receives. Top level only: a nested list, quote or component is ONE block
+ * (a nested component is checked by its own `validate`). Runs right after
+ * block parsing, so text is each block's raw markdown — inline formatting
+ * is not parsed yet, which a structure check does not need.
+ */
+function toComponentBlocks(tokens, fallbackLine) {
+  const blocks = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i];
+    if (tok.nesting === -1) continue;
+    const end = blockEnd(tokens, i);
+    const line = tokenLine(tok, fallbackLine);
+    switch (tok.type) {
+      case 'heading_open':
+        blocks.push({ type: 'heading', level: Number(tok.tag.slice(1)), text: inlineText(tokens, i, end), line });
+        break;
+      case 'paragraph_open': {
+        const text = inlineText(tokens, i, end);
+        const image = IMAGE_ONLY_RE.exec(text.trim());
+        blocks.push(image ? { type: 'image', alt: image[1], src: image[2], line } : { type: 'paragraph', text, line });
+        break;
+      }
+      case 'bullet_list_open':
+      case 'ordered_list_open': {
+        const items = [];
+        for (let k = i + 1; k < end; k++) {
+          if (tokens[k].type !== 'list_item_open' || tokens[k].level !== tok.level + 1) continue;
+          const itemEnd = blockEnd(tokens, k);
+          let first = '';
+          for (let m = k + 1; m < itemEnd; m++) {
+            if (tokens[m].type === 'inline') {
+              first = tokens[m].content;
+              break;
+            }
+          }
+          items.push(first);
+          k = itemEnd;
+        }
+        blocks.push({ type: 'list', ordered: tok.type === 'ordered_list_open', items, line });
+        break;
+      }
+      case 'blockquote_open':
+        blocks.push({ type: 'quote', text: inlineText(tokens, i, end), line });
+        break;
+      case 'fence':
+      case 'code_block':
+        blocks.push({ type: 'code', lang: (tok.info || '').trim().split(/\s+/)[0] || '', text: tok.content, line });
+        break;
+      case 'table_open':
+        blocks.push({ type: 'table', line });
+        break;
+      case 'hr':
+        blocks.push({ type: 'rule', line });
+        break;
+      case 'html_block':
+        blocks.push({ type: 'html', text: tok.content, line });
+        break;
+      case 'layout_component_open':
+        blocks.push({ type: 'component', name: tok.meta && tok.meta.component, line });
+        break;
+      default:
+        blocks.push({ type: tok.type.replace(/_open$/, ''), line });
+    }
+    i = end;
+  }
+  return blocks;
+}
+
+/**
+ * Run one closed component's opt-in `validate` and report its results.
+ * Never throws and never touches the token stream: a broken validator is a
+ * `component_validate_failed` warning, and the document renders exactly as
+ * it would without one.
+ *
+ * @param {object} state markdown-it core state
+ * @param {object} frame the closed DeclaredFrame
+ * @param {object[]} tokens the component's content tokens (label excluded)
+ * @param {number} endLine 1-based line of whatever closed it (EOF: lines + 1)
+ */
+function runComponentValidate(state, frame, tokens, endLine) {
+  const { decl, name } = frame;
+  const line = frame.line || 0;
+  const failed = (why) =>
+    warn(state.env, line, 'component_validate_failed', `@${name}: plugin "${decl.validateOwner}"'s validate() ${why}`, null);
+
+  const lines = state.src.split('\n');
+  const component = {
+    name,
+    variant: frame.variant || null,
+    attrs: { ...frame.attrs },
+    line,
+    text: lines.slice(line, Math.max(line, endLine - 1)).join('\n'),
+    blocks: toComponentBlocks(tokens, line),
+  };
+
+  let result;
+  try {
+    result = decl.validate(component);
+  } catch (error) {
+    failed(`threw: ${error instanceof Error ? error.message : String(error)}`);
+    return;
+  }
+  if (result === undefined || result === null) return;
+  if (typeof result === 'string') result = [result];
+  if (!Array.isArray(result)) {
+    failed(
+      result && typeof result.then === 'function'
+        ? 'returned a Promise — validate must be synchronous.'
+        : 'must return a message, an array of problems, or nothing.'
+    );
+    return;
+  }
+
+  for (const entry of result) {
+    const problem = typeof entry === 'string' ? { message: entry } : entry;
+    if (!problem || typeof problem.message !== 'string' || !problem.message.trim()) {
+      failed('returned a problem without a message.');
+      continue;
+    }
+    const at = Number.isInteger(problem.line) && problem.line > 0 ? problem.line : line;
+    const severity = COMPONENT_SEVERITIES.includes(problem.severity) ? problem.severity : undefined;
+    warn(state.env, at, 'component_invalid', `@${name}: ${problem.message}`, null, severity);
+  }
 }
 
 /**
@@ -566,7 +738,14 @@ function resolveContainerShape(name, pluginName, decl) {
     autoCloseAtEof = decl.autoCloseAt.includes('eof');
   }
 
-  return { tag, classBase, variants, label, autoCloseAtEof };
+  // Opt-in structure check — see runComponentValidate. Owned by the plugin
+  // that declared the container, so an alias reports its TARGET's plugin.
+  if (decl.validate !== undefined && typeof decl.validate !== 'function') {
+    throw new Error(`Plugin "${pluginName}"'s marker "@${name}" has a \`validate\` that is not a function.`);
+  }
+  const check = decl.validate ? { validate: decl.validate, validateOwner: pluginName } : {};
+
+  return { tag, classBase, variants, label, autoCloseAtEof, ...check };
 }
 
 /**
@@ -596,6 +775,13 @@ function resolveMarkerDeclaration(name, rawDecl, rawRegistry, originOf) {
 
   if (typeof rawDecl !== 'object' || rawDecl === null || Array.isArray(rawDecl)) {
     throw new Error(`Plugin "${pluginName}"'s marker "@${name}" is not a plain object.`);
+  }
+
+  // `snippet` is read only by the host's component listing (snippets.ts
+  // `listMarkerComponents`) — core just rejects a malformed value at load
+  // time, like every other field, instead of letting it fail silently later.
+  if (rawDecl.snippet !== undefined && (typeof rawDecl.snippet !== 'string' || !rawDecl.snippet.trim())) {
+    throw new Error(`Plugin "${pluginName}"'s marker "@${name}" has a \`snippet\` that is not a non-empty path string.`);
   }
 
   if (rawDecl.deprecated !== undefined) {
@@ -987,9 +1173,32 @@ export default function plugin(md, pluginOptions = {}) {
      * @property {object} decl - the resolved declaration, for autoCloseAtEof.
      * @property {number} line - the marker's own 1-based line, for the
      *   eof-close warning.
+     * @property {string} name - the marker name as the author typed it (an
+     *   alias's own name, not its target), for `validate` messages.
+     * @property {string|null} variant - the resolved variant selector.
+     * @property {Record<string,string>} attrs - the marker's attributes.
+     * @property {number} start - index in `out` of the first content token
+     *   (after the label), so `validate` sees only the author's content.
      */
     /** @type {DeclaredFrame[]} */
     const declaredFrames = [];
+
+    /**
+     * Line of whatever is closing declared frames right now: the marker
+     * being processed (an `@end-x`, a boundary like `@page`, or a second
+     * same-kind opener), or one past the last line at EOF. Every declared
+     * close happens in one of those two places, so this is all
+     * runComponentValidate needs to slice the component's source text.
+     */
+    let closingLine = 0;
+
+    /** Pop the innermost declared frame, run its opt-in `validate`, and emit its close token. */
+    function popDeclaredFrame() {
+      const frame = declaredFrames.pop();
+      if (frame.decl.validate) runComponentValidate(state, frame, out.slice(frame.start), closingLine);
+      out.push(new state.Token('layout_component_close', frame.tag, -1));
+      return frame;
+    }
 
     /** Index (from the top) of the most-recently-opened frame of `kind`, or -1. */
     function declaredFrameIndex(kind) {
@@ -1009,10 +1218,7 @@ export default function plugin(md, pluginOptions = {}) {
     function closeDeclaredFrame(kind) {
       const at = declaredFrameIndex(kind);
       if (at === -1) return false;
-      while (declaredFrames.length > at) {
-        const frame = declaredFrames.pop();
-        out.push(new state.Token('layout_component_close', frame.tag, -1));
-      }
+      while (declaredFrames.length > at) popDeclaredFrame();
       return true;
     }
 
@@ -1024,10 +1230,7 @@ export default function plugin(md, pluginOptions = {}) {
      * explicitly" as @section is, from a page/chapter/spread's point of view.
      */
     function drainDeclaredFrames() {
-      while (declaredFrames.length) {
-        const frame = declaredFrames.pop();
-        out.push(new state.Token('layout_component_close', frame.tag, -1));
-      }
+      while (declaredFrames.length) popDeclaredFrame();
     }
 
     /**
@@ -1042,7 +1245,7 @@ export default function plugin(md, pluginOptions = {}) {
      */
     function drainDeclaredFramesAtEof() {
       while (declaredFrames.length) {
-        const frame = declaredFrames.pop();
+        const frame = popDeclaredFrame();
         if (!frame.decl.autoCloseAtEof) {
           warn(
             state.env,
@@ -1054,7 +1257,6 @@ export default function plugin(md, pluginOptions = {}) {
             null
           );
         }
-        out.push(new state.Token('layout_component_close', frame.tag, -1));
       }
     }
 
@@ -1074,7 +1276,9 @@ export default function plugin(md, pluginOptions = {}) {
       // out of the EXISTING, unconditional source_range core rule with zero
       // extra plumbing (isAnnotationTarget keys on token.nesting === 1, not
       // on any particular token TYPE).
-      t.meta = { line: meta.__line };
+      // `component` names this container for an enclosing component's
+      // `validate` (toComponentBlocks reports it as a nested component).
+      t.meta = { line: meta.__line, component: meta.kind };
 
       // The variant selector: the marker's own bare name/argument
       // (`@callout warning` -> "warning"), falling back to an alias's
@@ -1088,7 +1292,6 @@ export default function plugin(md, pluginOptions = {}) {
       attachDataAttrs(t, decl.baseKind, variant, meta.attrs || {});
 
       out.push(t);
-      declaredFrames.push({ kind: decl.baseKind, tag: decl.tag, decl, line: meta.__line });
 
       // Label injection (#240) — the same "structural element carrying the
       // data as both text content and an attribute" recipe as @chapter's
@@ -1107,6 +1310,17 @@ export default function plugin(md, pluginOptions = {}) {
           out.push(labelToken);
         }
       }
+
+      declaredFrames.push({
+        kind: decl.baseKind,
+        tag: decl.tag,
+        decl,
+        line: meta.__line,
+        name: meta.kind,
+        variant,
+        attrs: meta.attrs || {},
+        start: out.length,
+      });
     }
 
     /**
@@ -1439,6 +1653,7 @@ export default function plugin(md, pluginOptions = {}) {
       const meta = tok.meta || {};
       const kind = meta.kind;
       const line = meta.__line || 0;
+      closingLine = line;
 
       if (kind === 'chapter') {
         // #240: a declared container can never straddle a chapter boundary —
@@ -1636,6 +1851,7 @@ export default function plugin(md, pluginOptions = {}) {
     // comment above), so they must drain — and emit their close tokens —
     // BEFORE the core scopes below close, or their close divs would land
     // outside their own page/section/chapter wrapper.
+    closingLine = state.src.split('\n').length + 1;
     drainDeclaredFramesAtEof();
     stack.closeAll();
     state.tokens = out;

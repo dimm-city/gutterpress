@@ -42,7 +42,8 @@ import path from "node:path";
 
 import { slugify, prettify } from "./slug.ts";
 import { pathEscapesFolder, readExtensionMeta } from "./extension-manifest.ts";
-import { listProjectExtensions } from "./extension-manager.ts";
+import { extensionConfigFor, listProjectExtensions } from "./extension-manager.ts";
+import { loadPlugin } from "./markdown/plugins.ts";
 
 /** Folder (relative to the project root) snippets live in. */
 export const SNIPPETS_DIR = "snippets";
@@ -398,4 +399,78 @@ export async function readExtensionSnippet(
     throw new Error(`Extension "${source.ref}" does not declare a usable snippets folder.`);
   }
   return readFile(resolveSafeChildFile(dir, fileName), "utf8");
+}
+
+// ── Component snippets ──────────────────────────────────────────────────────
+
+/**
+ * One plugin-declared marker (a "component", `export const markers`) the
+ * project can use, with the example content the editor inserts for it.
+ * Unrelated to the `gutterpress.components` catalog file, which nothing reads.
+ */
+export interface MarkerComponent {
+  /** The marker name, without `@` — e.g. `term-box`. */
+  name: string;
+  /** The extension that declares it (same shape as {@link SnippetSource}'s extension arm). */
+  source: { kind: "extension"; ref: string; name: string };
+  /** The component's example snippet body, when its file exists. */
+  snippet?: string;
+  /** Set when that snippet file sits directly in the extension's declared
+   *  snippets folder — the picker already lists it there under this file
+   *  name, so it can show the row once instead of twice. */
+  snippetFileName?: string;
+}
+
+/**
+ * Every component the project's enabled extensions declare, with each one's
+ * example snippet: the marker's own `snippet` path (relative to the
+ * extension folder) when it sets one, otherwise `<snippets folder>/<name>.md`
+ * (the folder package.json's `gutterpress.snippets` names, default
+ * `snippets`). A missing file just means no snippet; a path escaping the
+ * extension folder is ignored. Deprecated markers are left out; aliases are
+ * listed (they are real markers to type).
+ *
+ * Tolerant like every other list surface here: an extension that fails to
+ * load contributes nothing — its load error is already reported by the
+ * Features tab and the Problems panel.
+ */
+export async function listMarkerComponents(projectDir: string): Promise<MarkerComponent[]> {
+  const out: MarkerComponent[] = [];
+  for (const entry of await listProjectExtensions(projectDir)) {
+    if (!entry.enabled || !entry.carries.markdown) continue;
+    let markers: Record<string, { deprecated?: unknown; snippet?: unknown }> | undefined;
+    try {
+      markers = (await loadPlugin(extensionConfigFor(entry), projectDir)).markers;
+    } catch {
+      continue;
+    }
+    if (!markers) continue;
+
+    const declaredSnippets = entry.dir ? (await readExtensionMeta(entry.dir)).snippets?.trim() : undefined;
+    const source = { kind: "extension" as const, ref: entry.use, name: entry.label };
+    for (const [name, decl] of Object.entries(markers)) {
+      if (decl.deprecated !== undefined) continue;
+      const component: MarkerComponent = { name, source };
+      if (entry.dir) {
+        const rel = typeof decl.snippet === "string" && decl.snippet.trim()
+          ? decl.snippet.trim()
+          : path.join(declaredSnippets || SNIPPETS_DIR, `${name}.md`);
+        if (!pathEscapesFolder(rel)) {
+          const file = path.join(entry.dir, rel);
+          try {
+            component.snippet = await readFile(file, "utf8");
+            if (declaredSnippets && !pathEscapesFolder(declaredSnippets)
+                && path.dirname(file) === path.join(entry.dir, declaredSnippets)
+                && file.toLowerCase().endsWith(".md")) {
+              component.snippetFileName = path.basename(file);
+            }
+          } catch {
+            // No file: the component simply has no snippet.
+          }
+        }
+      }
+      out.push(component);
+    }
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
 }

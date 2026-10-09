@@ -211,6 +211,27 @@ describe("scaffoldExtension --kind plugin", () => {
     expect(html).toContain('<span class="fn-term">a term</span>');
   });
 
+  test("its component validator flags a bad @term-box, and its own snippet passes", async () => {
+    const parent = await tmpParent();
+    const result = await scaffoldExtension({ name: "Field Notes", kind: "plugin", parentDir: parent });
+    const md = createMarkdownRenderer(await loadPlugins([pluginCfg(result.slug)], parent));
+    const problems = (src: string) => {
+      const env: { layoutWarnings?: Array<{ type: string; line: number }> } = {};
+      md.render(src, env);
+      return (env.layoutWarnings ?? []).filter((w) => w.type.startsWith("component_"));
+    };
+
+    expect(problems("@term-box\n### A heading\n@end-term-box\n")).toEqual([
+      expect.objectContaining({ type: "component_invalid", line: 1 }),
+      expect.objectContaining({ type: "component_invalid", line: 1 }),
+      expect.objectContaining({ type: "component_invalid", line: 2 }),
+    ]);
+
+    // The snippet the editor inserts, filled in, is a valid term box.
+    const snippet = await readFile(path.join(result.extensionDir, "snippets", "term-box.md"), "utf8");
+    expect(problems(snippet.replace("{{label}}", "Gutter").replace("{{body}}", "The inner margin."))).toEqual([]);
+  });
+
   test("the scaffolded test suite's fixture matches its expected output", async () => {
     // The fixture/expected pair the author runs `bun test` on is generated
     // from the template, so a change to plugin.js that forgets expected.html

@@ -217,6 +217,21 @@ export interface SnippetEntry {
   source: SnippetSource;
 }
 
+/**
+ * A plugin component (a declared marker such as `@term-box`) with the example
+ * snippet the editor inserts for it. Mirrors the lib's `MarkerComponent` by
+ * hand, like {@link SnippetSource} (CLAUDE.md §8).
+ */
+export interface MarkerComponent {
+  /** Marker name without `@`. */
+  name: string;
+  source: { kind: 'extension'; ref: string; name: string };
+  /** The example snippet body, when the component has one. */
+  snippet?: string;
+  /** Set when the snippet is also listed as an extension snippet under this file name. */
+  snippetFileName?: string;
+}
+
 /** Static publish-provider metadata (no project needed) — used by the
  *  Settings → Connections tab to classify + label stored credentials. */
 export interface PublishProviderStaticInfo {
@@ -509,6 +524,8 @@ export const api = {
      *  only listing has no separate route (the lib's `listSnippets` is an
      *  internal building block of `listMergedSnippets`, not exposed here). */
     list: (projectDir: string) => post<SnippetEntry[]>('/api/snip/list', { projectDir }),
+    /** The project's plugin components, each with its example snippet. */
+    components: (projectDir: string) => post<MarkerComponent[]>('/api/snip/components', { projectDir }),
     /** Read one PROJECT snippet's raw body (`source.kind === 'project'`
      *  entries only — see {@link readExtension} for the other kind). */
     read: (projectDir: string, fileName: string) =>

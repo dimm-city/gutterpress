@@ -40,6 +40,9 @@ import type {
   LoadedPlugin,
 } from "./renderer";
 export type {
+  GutterpressComponent,
+  GutterpressComponentBlock,
+  GutterpressComponentProblem,
   GutterpressMarkerDeclaration,
   GutterpressMarkerLabel,
   GutterpressMarkerTable,

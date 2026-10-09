@@ -51,7 +51,7 @@
   import { buildCanvasBackgroundStyles } from "$lib/iframe-styles";
   import { getPlatform } from "$lib/platform";
   import type { WorkspaceMode } from "$lib/platform";
-  import { api } from "$lib/api";
+  import { api, type MarkerComponent } from "$lib/api";
   import { buildSourceList } from "$lib/components/config/source-files";
   import { isEditableTarget } from "$lib/a11y";
   import { invalidateDiscoveredProjects } from "$lib/projects-discover-cache";
@@ -519,6 +519,7 @@
     toast: () => toast,
     clearStaleProjectState: () => {
       problems = [];
+      projectComponents = [];
       buildProblemEntries = [];
       problemsLoading = false;
       problemsError = null;
@@ -545,6 +546,7 @@
       crashRecovery.reset();
       pendingRecoveryScanDir = null;
       problems = [];
+      projectComponents = [];
       buildProblemEntries = [];
       problemsLoading = false;
       problemsError = null;
@@ -1658,9 +1660,26 @@
     leftPanelTab = "files";
   }
 
+  /** The project's plugin components for `@` autocomplete and the snippet
+   *  picker — refreshed alongside problems, after every render, so enabling
+   *  or editing an extension shows up without another event. */
+  let projectComponents = $state<MarkerComponent[]>([]);
+
+  function refreshComponents(dir: string) {
+    api.snip.components(dir)
+      .then((list) => {
+        if (lifecycle.currentDir === dir) projectComponents = list;
+      })
+      .catch(() => {
+        // Autocomplete just loses the components; Problems reports load errors.
+        if (lifecycle.currentDir === dir) projectComponents = [];
+      });
+  }
+
   function refreshProblems() {
     if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
     const dir = lifecycle.currentDir;
+    refreshComponents(dir);
     problemsLoading = true;
     api.lint.project(dir)
       .then((entries) => {
@@ -2908,6 +2927,7 @@
                 onSave={() => void handleForceSave()}
                 onAnchorLine={(line, origin) =>
                   editorSync.onEditorAnchorLine(line, origin, editorChapter)}
+                components={projectComponents}
               />
             {:else if editorModuleFailed}
               <div class="editor-loading" role="alert">
@@ -3227,6 +3247,7 @@
   bind:this={snippetPickerRef}
   bind:open={snippetPickerOpen}
   projectDir={lifecycle.currentDir}
+  components={projectComponents}
   getSelectionText={() => editorRef?.getSelectionText() ?? ""}
   onInsert={(text) => editorRef?.insertSnippet(text)}
 />

@@ -2270,7 +2270,7 @@ describe("declared markers — parsing & rendering (#240)", () => {
   test("token.meta.line threading matches every core layout_*_open token (source-range primitive)", () => {
     const { tokens } = parsePaged("Intro\n\n@sidebar\nHi\n@end-sidebar\n", { declaredMarkers });
     const t = findToken(tokens, "layout_component_open")!;
-    expect(t.meta).toEqual({ line: 3 });
+    expect(t.meta).toEqual({ line: 3, component: "sidebar" });
     // Do NOT set token.map — see openChapter's identical comment (ADR 0009).
     // This is what lets the UNCHANGED, unconditional source_range core rule
     // (source-range.ts) annotate a declared marker's wrapper with ZERO
@@ -2326,5 +2326,164 @@ describe("createMarkdownRenderer wiring (#240)", () => {
     expect(html).toContain('<aside class="dc-sidebar"');
     expect(html).toContain(">HELLO GALAXY</p>");
     expect(html).not.toContain("WORLD<");
+  });
+});
+
+describe("declared marker `snippet` / `validate` (opt-in component checks)", () => {
+  type Seen = { name: string; variant: string | null; attrs: Record<string, string>; line: number; text: string; blocks: Array<Record<string, unknown>> };
+
+  /** Render `src` with one plugin declaring `markers`; returns warnings plus every component `validate` saw. */
+  function run(markers: Record<string, unknown>, src: string) {
+    const md = createMarkdownRenderer([{ name: "demo-plugin", plugin: () => {}, options: {}, markers } as LoadedPlugin]);
+    const env: { layoutWarnings?: Array<{ line: number; type: string; message: string; marker?: unknown; severity?: string }> } = {};
+    const html = md.render(src, env);
+    return { html, warnings: env.layoutWarnings ?? [] };
+  }
+
+  function recorder(result: unknown = []) {
+    const seen: Seen[] = [];
+    return { seen, validate: (c: Seen) => (seen.push(c), result) };
+  }
+
+  describe("load-time validation", () => {
+    test("rejects a `validate` that is not a function, naming plugin and marker", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { box: { validate: "yes" } } }])
+      ).toThrow(/Plugin "p"'s marker "@box" has a `validate` that is not a function/);
+    });
+
+    test("rejects a `snippet` that is not a non-empty string", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { box: { snippet: 3 } } }])
+      ).toThrow(/`snippet`/);
+      expect(() =>
+        buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { box: { snippet: "  " } } }])
+      ).toThrow(/`snippet`/);
+    });
+
+    test("a valid `snippet` path does not change rendering", () => {
+      const plain = run({ box: { class: "b" } }, "@box\nHi\n@end-box\n");
+      const withSnippet = run({ box: { class: "b", snippet: "examples/box.md" } }, "@box\nHi\n@end-box\n");
+      expect(withSnippet.html).toBe(plain.html);
+    });
+  });
+
+  describe("the component object", () => {
+    test("maps each block type, excludes the label, and reports 1-based file lines", () => {
+      const { seen, validate } = recorder();
+      const src = [
+        "# Outside", //                          1
+        "", //                                    2
+        '@box note label="Read me"', //          3
+        "### Head", //                            4
+        "", //                                    5
+        "Body *text*.", //                        6
+        "", //                                    7
+        "1. one", //                              8
+        "2. two", //                              9
+        "", //                                    10
+        '![A map](map.png "title")', //           11
+        "", //                                    12
+        "> quoted", //                            13
+        "", //                                    14
+        "```js", //                               15
+        "x()", //                                 16
+        "```", //                                 17
+        "---", //                                 18
+        "| a |", //                               19
+        "| - |", //                               20
+        "| 1 |", //                               21
+        "", //                                    22
+        "@inner", //                              23
+        "nested", //                              24
+        "@end-inner", //                          25
+        "@end-box", //                            26
+      ].join("\n");
+      run(
+        { box: { class: "b", label: { class: "l", from: "attr:label" }, validate }, inner: { class: "i" } },
+        src
+      );
+      expect(seen).toHaveLength(1);
+      const c = seen[0]!;
+      expect(c.name).toBe("box");
+      expect(c.variant).toBe("note");
+      expect(c.attrs).toEqual({ label: "Read me" });
+      expect(c.line).toBe(3);
+      expect(c.text).toBe(src.split("\n").slice(3, 25).join("\n"));
+      expect(c.blocks).toEqual([
+        { type: "heading", level: 3, text: "Head", line: 4 },
+        { type: "paragraph", text: "Body *text*.", line: 6 },
+        { type: "list", ordered: true, items: ["one", "two"], line: 8 },
+        { type: "image", alt: "A map", src: "map.png", line: 11 },
+        { type: "quote", text: "quoted", line: 13 },
+        { type: "code", lang: "js", text: "x()\n", line: 15 },
+        { type: "rule", line: 18 },
+        { type: "table", line: 19 },
+        { type: "component", name: "inner", line: 23 },
+      ]);
+    });
+
+    test("text ends where the component closes: boundary marker, re-entrant opener, and EOF", () => {
+      const { seen, validate } = recorder();
+      run({ box: { validate, autoCloseAt: ["eof"] } }, "@box\na\n@page\n@box\nb\n@box\nc\n\n");
+      expect(seen.map((c) => [c.line, c.text])).toEqual([
+        [1, "a"],
+        [4, "b"],
+        [6, "c\n\n"],
+      ]);
+    });
+
+    test("an alias runs its target's validator, named as the author typed it, with the preset variant", () => {
+      const { seen, validate } = recorder(["needs work"]);
+      const { warnings } = run(
+        { box: { validate }, tip: { alias: "box", preset: { variant: "hint" } } },
+        "@tip\nx\n@end-box\n"
+      );
+      expect(seen[0]).toMatchObject({ name: "tip", variant: "hint" });
+      expect(warnings).toEqual([expect.objectContaining({ type: "component_invalid", message: "@tip: needs work", line: 1 })]);
+    });
+  });
+
+  describe("results become layout warnings", () => {
+    test("strings default to the marker line; objects keep line and severity; a bogus severity is dropped", () => {
+      const { validate } = recorder([
+        "plain",
+        { message: "pinned", line: 3, severity: "error" },
+        { message: "soft", severity: "info" },
+        { message: "odd", severity: "fatal" },
+      ]);
+      const { warnings } = run({ box: { validate } }, "\n@box\nx\n@end-box\n");
+      expect(warnings).toEqual([
+        { line: 2, type: "component_invalid", message: "@box: plain", marker: null },
+        { line: 3, type: "component_invalid", message: "@box: pinned", marker: null, severity: "error" },
+        { line: 2, type: "component_invalid", message: "@box: soft", marker: null, severity: "info" },
+        { line: 2, type: "component_invalid", message: "@box: odd", marker: null },
+      ]);
+    });
+
+    test("a single string result is one problem; nothing or [] is no problem", () => {
+      expect(run({ box: { validate: () => "one" } }, "@box\nx\n@end-box\n").warnings).toHaveLength(1);
+      expect(run({ box: { validate: () => undefined } }, "@box\nx\n@end-box\n").warnings).toEqual([]);
+      expect(run({ box: { validate: () => [] } }, "@box\nx\n@end-box\n").warnings).toEqual([]);
+    });
+
+    test("a broken validator is reported and never changes the rendered HTML", () => {
+      const src = "@box\nx\n@end-box\n";
+      const clean = run({ box: { class: "b" } }, src).html;
+      const cases: Array<[() => unknown, RegExp]> = [
+        [() => { throw new Error("boom"); }, /threw: boom/],
+        [() => Promise.resolve([]), /must be synchronous/],
+        [() => 42, /must return/],
+        [() => [{ line: 2 }], /without a message/],
+      ];
+      for (const [validate, why] of cases) {
+        const { html, warnings } = run({ box: { class: "b", validate } }, src);
+        expect(html).toBe(clean);
+        expect(warnings).toHaveLength(1);
+        expect(warnings[0]!.type).toBe("component_validate_failed");
+        expect(warnings[0]!.message).toMatch(/^@box: plugin "demo-plugin"'s validate\(\) /);
+        expect(warnings[0]!.message).toMatch(why);
+      }
+    });
   });
 });

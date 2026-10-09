@@ -52,6 +52,46 @@ describe("source.markdown.layout-markers", () => {
     expect(await runOn("@page cover .a #id\n\ntext\n\n@section {.two-column}\n\ntext\n")).toEqual([]);
   });
 
+  test("a plugin component's validate() results become findings, keeping its line and severity", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-markers-check-"));
+    try {
+      await writeFile(
+        join(dir, "plugin.js"),
+        [
+          "export default function () {}",
+          "export const markers = {",
+          "  box: {",
+          "    validate(box) {",
+          "      const problems = [];",
+          "      if (!box.attrs.label) problems.push('Add a label.');",
+          "      const h = box.blocks.find((b) => b.type === 'heading');",
+          "      if (h) problems.push({ message: 'No headings.', line: h.line, severity: 'error' });",
+          "      return problems;",
+          "    },",
+          "  },",
+          "};",
+        ].join("\n")
+      );
+      const mdFile = join(dir, "ch1.md");
+      await writeFile(mdFile, "Intro\n\n@box\n## Title\n\nBody\n@end-box\n");
+      const base = makeCtx();
+      const check = getCheckById("source.markdown.layout-markers")!;
+      const results = await check.run(
+        makeCtx({
+          inputDir: dir,
+          markdownFiles: [mdFile],
+          config: { ...base.config, extensions: [{ use: "./plugin.js", path: "./plugin.js", options: {} }] },
+        })
+      );
+      expect(results.map((r) => [r.code, r.severity, r.line, r.message])).toEqual([
+        ["component_invalid", "warning", 3, "@box: Add a label."],
+        ["component_invalid", "error", 4, "@box: No headings."],
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("no markdown files: no findings, no crash", async () => {
     const check = getCheckById("source.markdown.layout-markers")!;
     expect(await check.run(makeCtx({ inputDir: tmpdir(), markdownFiles: [] }))).toEqual([]);

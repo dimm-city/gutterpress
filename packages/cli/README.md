@@ -528,6 +528,12 @@ the process's full filesystem and network privileges.
 Use the entry's `export` field, or `ext add --export <name>`, for packages
 that expose a named plugin function instead of a default export.
 
+A plugin's declared markers (`export const markers`) are its components. Each
+one's example snippet — `snippets/<marker>.md` by default, or the marker's own
+`snippet:` path — is what the desktop editor inserts for it, and an optional
+`validate(component)` function on the marker checks what authors put inside;
+its problems appear in `gutterpress validate` and the desktop Problems panel.
+
 See [User Guide: Chapter 5 — Plugins](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/05-plugins.md) for the full list contract and for authoring custom plugins, and [Chapter 4 — Styling & Theming](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/04-styling-theming.md) for looks.
 
 ## CI / scripting

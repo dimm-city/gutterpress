@@ -75,6 +75,7 @@ import { POST as snipSave } from "../../src/routes/api/snip/save/+server";
 import { POST as snipRead } from "../../src/routes/api/snip/read/+server";
 import { POST as snipDelete } from "../../src/routes/api/snip/delete/+server";
 import { POST as snipList } from "../../src/routes/api/snip/list/+server";
+import { POST as snipComponents } from "../../src/routes/api/snip/components/+server";
 import { POST as tplSaveAsTemplate } from "../../src/routes/api/tpl/save-as-template/+server";
 import { POST as lintProject } from "../../src/routes/api/lint/project/+server";
 import { POST as showInFolder } from "../../src/routes/api/shell/show-in-folder/+server";
@@ -125,6 +126,8 @@ const ROUTES: Array<{ name: string; handler: RouteHandler; body: (dir: string) =
   { name: "snip/read", handler: snipRead as RouteHandler, body: (d) => ({ projectDir: d, fileName: "snip.md" }) },
   { name: "snip/delete", handler: snipDelete as RouteHandler, body: (d) => ({ projectDir: d, fileName: "snip.md" }) },
   { name: "snip/list", handler: snipList as RouteHandler, body: (d) => ({ projectDir: d }) },
+  // Loads the project's plugin JS to read its declared markers.
+  { name: "snip/components", handler: snipComponents as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "tpl/save-as-template", handler: tplSaveAsTemplate as RouteHandler, body: (d) => ({ projectDir: d, name: "tpl" }) },
   { name: "lint/project", handler: lintProject as RouteHandler, body: (d) => ({ projectDir: d }) },
 ];
