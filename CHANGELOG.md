@@ -5,6 +5,36 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.16] - 2026-10-09
+
+### Added
+
+- **Components show authors the structure they expect** (#338). When an
+  author picks a plugin component — typing `@` at the start of a line, or
+  from the snippet picker — the editor inserts the component's example
+  snippet: `snippets/<marker>.md` in its extension by default, or the path
+  the marker names with `snippet:`.
+- **Components can check their content** (#338). A marker may declare
+  `validate(component)`. It receives a plain description of the content
+  (`attrs`, `variant`, `text` and `blocks` such as headings, paragraphs,
+  images and lists) and returns problems, which appear in the Problems panel,
+  `gutterpress validate` and builds at the right line. Problems are warnings
+  unless the plugin marks one `error` or `info`. The plugin scaffold's
+  `term-box` ships an example.
+
+### Changed
+
+- **Snippets come from levels: your book, extensions and Gutterpress** (#338).
+  The snippet picker now lists every snippet, grouped by level, even when two
+  share a name; before, a book snippet hid an extension's snippet of the same
+  name. Where a component needs one snippet, the book's
+  `snippets/<marker>.md` wins over the extension's.
+
+### Fixed
+
+- **A freshly scaffolded plugin passes its own tests** (#338). Its "no
+  cascade layer" check matched `@layer` inside a stylesheet comment.
+
 ## [0.11.15] - 2026-10-07
 
 ### Changed
