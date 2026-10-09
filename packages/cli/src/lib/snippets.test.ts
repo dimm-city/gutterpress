@@ -7,11 +7,9 @@ import {
   extractVariables,
   substituteVariables,
   listSnippets,
-  readSnippet,
   saveSnippet,
   deleteSnippet,
   listMergedSnippets,
-  readExtensionSnippet,
   listMarkerComponents,
   SNIPPETS_DIR,
 } from "./snippets.ts";
@@ -130,7 +128,7 @@ test("listSnippets returns [] when there is no snippets folder", async () => {
   }
 });
 
-test("saveSnippet then listSnippets / readSnippet round-trips", async () => {
+test("saveSnippet then listSnippets round-trips, bodies included", async () => {
   const proj = await tmpProject();
   try {
     await saveSnippet(proj, "Callout", "> **Note:** {{text}}\n");
@@ -144,8 +142,7 @@ test("saveSnippet then listSnippets / readSnippet round-trips", async () => {
     const callout = list.find((s) => s.name === "Callout")!;
     expect(callout.variables).toEqual(["text"]);
 
-    const body = await readSnippet(proj, callout.fileName);
-    expect(body).toContain("{{text}}");
+    expect(callout.body).toContain("{{text}}");
 
     // Stored under the snippets/ folder as a .md file.
     const onDisk = await readFile(
@@ -206,10 +203,9 @@ test("deleteSnippet removes the file", async () => {
   }
 });
 
-test("readSnippet / deleteSnippet refuse path traversal", async () => {
+test("deleteSnippet refuses path traversal", async () => {
   const proj = await tmpProject();
   try {
-    await expect(readSnippet(proj, "../secret.md")).rejects.toThrow();
     await expect(deleteSnippet(proj, "../../etc/passwd")).rejects.toThrow();
   } finally {
     await rm(proj, { recursive: true, force: true });
@@ -387,7 +383,7 @@ test("listMergedSnippets excludes a look that is on disk but not in extensions:"
   }
 });
 
-test("listMergedSnippets: project-local wins on a filename collision, case-insensitively; the extension copy is dropped, not renamed", async () => {
+test("listMergedSnippets keeps same-named snippets from every level, each tagged with its own level", async () => {
   const proj = await tmpProject();
   try {
     await saveSnippet(proj, "Callout", "PROJECT VERSION {{text}}");
@@ -403,11 +399,10 @@ test("listMergedSnippets: project-local wins on a filename collision, case-insen
 
     const merged = await listMergedSnippets(proj);
     const calloutEntries = merged.filter((e) => e.fileName.toLowerCase() === "callout.md");
-    expect(calloutEntries).toHaveLength(1);
-    expect(calloutEntries[0]!.source).toEqual({ kind: "project" });
-
-    const body = await readSnippet(proj, calloutEntries[0]!.fileName);
-    expect(body).toContain("PROJECT VERSION");
+    expect(calloutEntries.map((e) => [e.source.kind, e.body])).toEqual([
+      ["project", "PROJECT VERSION {{text}}"],
+      ["extension", "EXTENSION VERSION"],
+    ]);
   } finally {
     await rm(proj, { recursive: true, force: true });
   }
@@ -483,7 +478,7 @@ test("listMergedSnippets stops surfacing an extension's snippets once it is remo
   }
 });
 
-test("readExtensionSnippet reads a plugin-sourced entry's body", async () => {
+test("listMergedSnippets entries carry their body, for plugin and theme snippets alike", async () => {
   const proj = await tmpProject();
   try {
     await makePluginExtensionFolder(
@@ -493,66 +488,19 @@ test("readExtensionSnippet reads a plugin-sourced entry's body", async () => {
       { "skill-card.md": "**{{name}}**\n" },
     );
     await writeManifest(proj, ["extensions:", "  - ./plugins/dc-components", ""].join("\n"));
-
-    const [entry] = await listMergedSnippets(proj);
-    if (entry!.source.kind === "project") throw new Error("expected a plugin-sourced entry");
-    const body = await readExtensionSnippet(proj, entry!.source, entry!.fileName);
-    expect(body).toBe("**{{name}}**\n");
+    expect((await listMergedSnippets(proj))[0]!.body).toBe("**{{name}}**\n");
   } finally {
     await rm(proj, { recursive: true, force: true });
   }
-});
 
-test("readExtensionSnippet reads a theme-sourced entry's body", async () => {
-  const proj = await tmpProject();
+  const themed = await tmpProject();
   try {
-    await makeActiveThemeFixture(proj, "dc-theme", { name: "Dimm City" }, {
+    await makeActiveThemeFixture(themed, "dc-theme", { name: "Dimm City" }, {
       "chapter-opener.md": "# {{title}}\n",
     });
-
-    const [entry] = await listMergedSnippets(proj);
-    if (entry!.source.kind === "project") throw new Error("expected a theme-sourced entry");
-    const body = await readExtensionSnippet(proj, entry!.source, entry!.fileName);
-    expect(body).toBe("# {{title}}\n");
+    expect((await listMergedSnippets(themed))[0]!.body).toBe("# {{title}}\n");
   } finally {
-    await rm(proj, { recursive: true, force: true });
-  }
-});
-
-test("readExtensionSnippet throws when the extension is no longer installed/active", async () => {
-  const proj = await tmpProject();
-  try {
-    await expect(
-      readExtensionSnippet(proj, { kind: "extension", ref: "./plugins/gone" }, "x.md"),
-    ).rejects.toThrow();
-    await expect(
-      readExtensionSnippet(proj, { kind: "extension", ref: "./extensions/no-such-look" }, "x.md"),
-    ).rejects.toThrow();
-  } finally {
-    await rm(proj, { recursive: true, force: true });
-  }
-});
-
-test("readExtensionSnippet refuses path traversal in fileName", async () => {
-  const proj = await tmpProject();
-  try {
-    await makePluginExtensionFolder(
-      proj,
-      "dc-components",
-      { name: "Dimm City Components" },
-      { "x.md": "x" },
-    );
-    await writeManifest(proj, ["extensions:", "  - ./plugins/dc-components", ""].join("\n"));
-
-    await expect(
-      readExtensionSnippet(
-        proj,
-        { kind: "extension", ref: "./plugins/dc-components" },
-        "../../../../etc/passwd",
-      ),
-    ).rejects.toThrow();
-  } finally {
-    await rm(proj, { recursive: true, force: true });
+    await rm(themed, { recursive: true, force: true });
   }
 });
 
@@ -613,13 +561,14 @@ test("listMarkerComponents links each marker to its snippet: default name, expli
       { name: "bare", source },
       { name: "escape", source },
       { name: "figure", source, snippet: "@figure\n![alt](src.png)\n@end-figure\n" },
-      {
-        name: "term-box",
-        source,
-        snippet: "@term-box\n{{body}}\n@end-term-box\n",
-        snippetFileName: "term-box.md",
-      },
+      { name: "term-box", source, snippet: "@term-box\n{{body}}\n@end-term-box\n" },
       { name: "tip", source },
+    ]);
+    // Each component snippet is listed once, tagged — including the one at
+    // an explicit path outside the snippets folder.
+    expect((await listMergedSnippets(proj)).map((e) => [e.fileName, e.component])).toEqual([
+      ["examples/figure.md", "figure"],
+      ["term-box.md", "term-box"],
     ]);
   } finally {
     await rm(proj, { recursive: true, force: true });
@@ -632,7 +581,6 @@ test("listMarkerComponents defaults to snippets/ when the extension declares no 
     await makeComponentPlugin(proj, "boxes", `{ box: {} }`, { "snippets/box.md": "@box\n@end-box\n" }, {});
     await writeManifest(proj, ["extensions:", "  - ./plugins/boxes", ""].join("\n"));
     const [box] = await listMarkerComponents(proj);
-    // Not listed by the picker (no declared folder), so no snippetFileName.
     expect(box).toEqual({ name: "box", source: expect.anything(), snippet: "@box\n@end-box\n" });
   } finally {
     await rm(proj, { recursive: true, force: true });
@@ -663,6 +611,26 @@ test("listMarkerComponents skips disabled extensions and tolerates one that fail
       ].join("\n"),
     );
     expect((await listMarkerComponents(proj)).map((c) => c.name)).toEqual(["good"]);
+  } finally {
+    await rm(proj, { recursive: true, force: true });
+  }
+});
+
+test("the book's snippets/<component>.md wins over the extension's, and both stay listed", async () => {
+  const proj = await tmpProject();
+  try {
+    await makeComponentPlugin(proj, "boxes", `{ "term-box": {} }`, {
+      "snippets/term-box.md": "@term-box\nEXTENSION\n@end-term-box\n",
+    });
+    await saveSnippet(proj, "Term box", "@term-box\nBOOK\n@end-term-box\n");
+    await writeManifest(proj, ["extensions:", "  - ./plugins/boxes", ""].join("\n"));
+
+    const [component] = await listMarkerComponents(proj);
+    expect(component!.snippet).toContain("BOOK");
+    expect((await listMergedSnippets(proj)).map((e) => [e.source.kind, e.component, e.body.split("\n")[1]])).toEqual([
+      ["project", "term-box", "BOOK"],
+      ["extension", "term-box", "EXTENSION"],
+    ]);
   } finally {
     await rm(proj, { recursive: true, force: true });
   }

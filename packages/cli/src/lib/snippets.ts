@@ -10,32 +10,17 @@
  * pure functions (`extractVariables`, `substituteVariables`) carry no IO and are
  * directly unit-tested; the fs helpers are thin wrappers used by the host IPC.
  *
- * #242 — an installed extension may now ALSO contribute snippets, declared as
- * package.json's `gutterpress.snippets` field (`extension-manifest.ts`). This
- * module — "the snippet host" the issue names — is deliberately the ONE place
- * that merge happens: `listMergedSnippets` is the sole new entry point the
- * picker calls; `readExtensionSnippet` is its lazy-body-read counterpart.
- * Everything below `extractVariables`/`substituteVariables`/`listSnippets`/
- * `readSnippet`/`saveSnippet`/`deleteSnippet` is UNCHANGED — the author's own
- * `snippets/` folder is still read, written, and deleted exactly as before,
- * by the exact same functions, so nothing about the existing project-snippet
- * flow can regress. This is a second READ path layered on top, not a second
- * snippet subsystem: no new storage format, no new substitution rules, no
- * change to what `saveSnippet`/`deleteSnippet` are allowed to touch (still
- * only ever `<projectDir>/snippets/`).
+ * Snippets come from three LEVELS — the book (`<projectDir>/snippets/`), its
+ * installed extensions (package.json's `gutterpress.snippets` folder, #242),
+ * and core (reserved: Gutterpress ships none yet). Every entry says which
+ * level it came from (`source`), and same-named snippets at different levels
+ * all stay listed. Where only ONE copy can be used — a component's example
+ * snippet, inserted by `@` autocomplete — the book's copy wins, then the
+ * extension's, then core's ({@link listMarkerComponents}).
  *
- * Where an extension's snippets are discovered — and where they deliberately
- * are NOT — is documented on {@link listInstalledExtensions}. The three
- * questions #242 asks every implementer to settle are answered right where
- * the code makes each call:
- *
- *   - PRECEDENCE / collision  → {@link listMergedSnippets}'s doc comment.
- *   - PROVENANCE in the UI    → {@link SnippetEntry.source}'s doc comment
- *     (the picker reads this field; nothing here renders UI).
- *   - REMOVAL                 → {@link listInstalledExtensions}'s doc comment
- *     ("removal" needs no delete code of its own: the merge is recomputed
- *     from scratch on every call, so an uninstalled extension's snippets
- *     simply stop being enumerated on the very next list).
+ * Writes stay book-only: `saveSnippet`/`deleteSnippet` only ever touch
+ * `<projectDir>/snippets/`. The library is recomputed from scratch on every
+ * call, so a removed or disabled extension's snippets simply stop appearing.
  */
 import { readdir, readFile, writeFile, mkdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
@@ -49,41 +34,35 @@ import { loadPlugin } from "./markdown/plugins.ts";
 export const SNIPPETS_DIR = "snippets";
 
 /**
- * Where a merged-list entry came from (#242).
- *
- * `{ kind: "project" }` — the author's own snippet, from `<projectDir>/
- * snippets/`. This is the ONLY provenance `saveSnippet`/`deleteSnippet` ever
- * produce or touch, and therefore the ONLY provenance the picker may offer to
- * edit or delete — a `source` this shape is the single flag the UI needs to
- * gate those actions, so "can this be deleted" never drifts out of sync with
- * "where did this come from" (one field, not two that could disagree).
- *
- * `{ kind: "extension", ref, name }` — a READ-ONLY snippet merged in from an
- * installed, ENABLED extension (see {@link listInstalledExtensions}). `name`
- * is the extension's display name — the picker's group label, so an author
- * always sees WHICH extension a snippet came from, never just "not mine".
- * `ref` is the extension's manifest specifier (`ProjectExtensionEntry.use`);
- * it is round-tripped back into {@link readExtensionSnippet} so that function
- * can re-derive the extension's folder itself from a small, validated
- * identifier instead of trusting a filesystem path a caller could construct.
+ * Which level a snippet comes from. `project` is the book's own (the only
+ * level `saveSnippet`/`deleteSnippet` touch, so the only one the picker offers
+ * to delete); `extension` is read-only, from an enabled extension — `name` is
+ * its display name, `ref` its manifest specifier; `core` is reserved for
+ * snippets Gutterpress itself will ship.
  */
 export type SnippetSource =
   | { kind: "project" }
-  | { kind: "extension"; ref: string; name: string };
+  | { kind: "extension"; ref: string; name: string }
+  | { kind: "core" };
 
-/** One snippet's metadata for the picker (no body — read lazily). */
+/** Precedence when one copy must be chosen: book, then extension, then core. */
+const LEVEL_RANK: Record<SnippetSource["kind"], number> = { project: 0, extension: 1, core: 2 };
+
+/** One snippet, as the picker lists it. */
 export interface SnippetEntry {
-  /** Display name (derived from the `.md` filename stem, prettified). */
+  /** Display name (derived from the filename stem, prettified). */
   name: string;
-  /** The on-disk filename, e.g. `callout.md`. Stable id for read/delete
-   *  WITHIN its own source — an extension entry's `fileName` is only ever
-   *  resolved back to a file via {@link readExtensionSnippet} (which also
-   *  needs `source`), never via the project-only {@link readSnippet}. */
+  /** The file, relative to its level's snippets folder (an extension
+   *  component's explicit `snippet:` path is relative to the extension). */
   fileName: string;
   /** Distinct `{{variable}}` names parsed from the body, in first-seen order. */
   variables: string[];
-  /** Provenance (#242) — see {@link SnippetSource}. */
+  /** The snippet's text. */
+  body: string;
+  /** Which level it comes from — see {@link SnippetSource}. */
   source: SnippetSource;
+  /** Set when this is the example snippet for that component (marker name). */
+  component?: string;
 }
 
 const PLACEHOLDER_RE = /\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g;
@@ -120,13 +99,9 @@ export function substituteVariables(
   );
 }
 
-/**
- * Resolve `fileName` safely as a DIRECT (non-nested, non-traversing) child of
- * `dir`. Shared by the project's own `snippets/` resolution and (#242) an
- * extension's declared snippets folder — the identical "no slashes, no `..`"
- * shape either root needs, written once rather than copied.
- */
-function resolveSafeChildFile(dir: string, fileName: string): string {
+/** Resolve a snippet filename safely as a direct child of the project's snippets/ dir. */
+function resolveSnippetPath(projectDir: string, fileName: string): string {
+  const dir = path.resolve(projectDir, SNIPPETS_DIR);
   const full = path.resolve(dir, fileName);
   if (full !== path.join(dir, path.basename(fileName)) || path.dirname(full) !== dir) {
     throw new Error(`Unsafe snippet filename: ${fileName}`);
@@ -134,12 +109,7 @@ function resolveSafeChildFile(dir: string, fileName: string): string {
   return full;
 }
 
-/** Resolve a snippet filename safely inside the project's snippets/ dir. */
-function resolveSnippetPath(projectDir: string, fileName: string): string {
-  return resolveSafeChildFile(path.resolve(projectDir, SNIPPETS_DIR), fileName);
-}
-
-/** Bare `{name, fileName, variables}` for every `.md` file directly inside
+/** `{name, fileName, variables, body}` for every `.md` file directly inside
  *  `dir` (newest-filesystem-order is not guaranteed; sorted for the picker).
  *  Returns `[]` when `dir` doesn't exist, or (silently) can't be read — the
  *  SAME tolerant shape `listSnippets` always had for a project with no
@@ -149,14 +119,14 @@ function resolveSnippetPath(projectDir: string, fileName: string): string {
  *  way, not fatal to the rest of the listing. */
 async function scanSnippetFiles(
   dir: string,
-): Promise<Array<{ name: string; fileName: string; variables: string[] }>> {
+): Promise<Array<{ name: string; fileName: string; variables: string[]; body: string }>> {
   let names: string[];
   try {
     names = await readdir(dir);
   } catch {
     return [];
   }
-  const entries: Array<{ name: string; fileName: string; variables: string[] }> = [];
+  const entries: Array<{ name: string; fileName: string; variables: string[]; body: string }> = [];
   for (const fileName of names) {
     if (!fileName.toLowerCase().endsWith(".md")) continue;
     let body = "";
@@ -169,33 +139,17 @@ async function scanSnippetFiles(
       name: prettify(fileName.replace(/\.md$/i, "")),
       fileName,
       variables: extractVariables(body),
+      body,
     });
   }
   entries.sort((a, b) => a.name.localeCompare(b.name));
   return entries;
 }
 
-/**
- * List the project's OWN snippets only — `<projectDir>/snippets/`, exactly as
- * before #242. The picker itself now calls {@link listMergedSnippets} (which
- * calls this as its first step); this stays exported and unchanged in
- * behavior because it is independently useful (and independently tested) as
- * "just the author's own snippets", with no extension-discovery cost paid by
- * a caller that doesn't need it.
- */
+/** The book's own snippets only — `<projectDir>/snippets/`. */
 export async function listSnippets(projectDir: string): Promise<SnippetEntry[]> {
   const files = await scanSnippetFiles(path.join(projectDir, SNIPPETS_DIR));
   return files.map((file) => ({ ...file, source: { kind: "project" } as const }));
-}
-
-/** Read one snippet's raw body. Refuses path traversal. Project snippets
- *  only — see {@link readExtensionSnippet} for the merged-list counterpart
- *  that reads an extension-provided entry instead. */
-export async function readSnippet(
-  projectDir: string,
-  fileName: string,
-): Promise<string> {
-  return readFile(resolveSnippetPath(projectDir, fileName), "utf8");
 }
 
 /**
@@ -221,7 +175,7 @@ export async function saveSnippet(
   const dir = path.join(projectDir, SNIPPETS_DIR);
   await mkdir(dir, { recursive: true });
   await writeFile(resolveSnippetPath(projectDir, fileName), body, "utf8");
-  return { name, fileName, variables: extractVariables(body), source: { kind: "project" } };
+  return { name, fileName, variables: extractVariables(body), body, source: { kind: "project" } };
 }
 
 /**
@@ -242,176 +196,11 @@ export async function deleteSnippet(
   await rm(resolveSnippetPath(projectDir, fileName), { force: true });
 }
 
-// ── Extension snippet merge (#242) ──────────────────────────────────────────
-
-/** One installed extension folder that declares a (trimmed, non-empty)
- *  `snippets` path — everything {@link listMergedSnippets}/
- *  {@link readExtensionSnippet} need to enumerate or re-locate it. Module-
- *  private: callers only ever see the merged {@link SnippetEntry} list, never
- *  this intermediate shape. */
-interface InstalledExtension {
-  /** Stable identifier round-tripped through {@link SnippetSource.ref}: the
-   *  extension's manifest specifier. Used ONLY to re-find this same
-   *  extension later — never written to disk, never itself a filesystem
-   *  path. */
-  ref: string;
-  /** Absolute path to the extension's OWN folder (where its package.json
-   *  lives) — may lie outside `projectDir` for a plugin `path:`
-   *  entry shared across a multi-book repo, exactly as `loadPlugin` already
-   *  allows (see this interface's doc comment on trust below). */
-  dir: string;
-  /** Display name for the picker's group header. */
-  name: string;
-  /** The metadata's OWN `snippets` field, trimmed and confirmed non-empty —
-   *  still relative, NOT yet existence- or containment-checked (that is
-   *  {@link extensionSnippetsDir}'s job, done tolerantly at each use). */
-  snippetsRel: string;
-}
-
-/**
- * The extensions whose snippets THIS project actually loads (#242, #265):
- * every ENABLED `extensions:` entry whose folder — a path folder, or a
- * vendored npm package — declares `snippets`. A disabled entry is skipped
- * because `loadPlugins` never loads it, so nothing it declares is live; a
- * bundled name or a bare `.js` plugin has no folder to read.
- *
- * REMOVAL needs no dedicated cleanup here: the list is re-derived from the
- * manifest on every call, so an entry removed from `extensions:` simply
- * stops being returned, taking its snippets with it.
- *
- * Tolerant throughout, like every other "list installed X" surface: a
- * missing folder, an unparseable metadata file, or a `snippets` path that
- * escapes its own folder is skipped rather than thrown — one misconfigured
- * extension must not blank the picker for the others, or for the author's
- * own snippets.
- */
-async function listInstalledExtensions(projectDir: string): Promise<InstalledExtension[]> {
-  const out: InstalledExtension[] = [];
-  for (const entry of await listProjectExtensions(projectDir)) {
-    const ext = await installedExtension(entry);
-    if (ext) out.push(ext);
-  }
-  return out;
-}
-
-/** One manifest entry as an {@link InstalledExtension}, or null when it
- *  contributes no snippets folder (disabled, folderless, or none declared). */
-async function installedExtension(entry: ProjectExtensionEntry): Promise<InstalledExtension | null> {
-  if (!entry.enabled || !entry.dir || !entry.carries.snippets) return null;
-  const snippetsRel = (await readExtensionMeta(entry.dir)).snippets?.trim();
-  if (!snippetsRel) return null;
-  return { ref: entry.use, dir: entry.dir, name: entry.label, snippetsRel };
-}
-
-/**
- * Resolve one installed extension's snippets folder to an absolute path, or
- * `null` when its declared `snippets` value escapes its own folder — a
- * TOLERANT sibling of `extension-manifest.ts`'s `resolveExtension` (which
- * would throw), for the same reason {@link listInstalledExtensions} is
- * tolerant throughout: this is a read/list path, not the write-boundary
- * guard `assertExtensionContained` exists for.
- */
-function extensionSnippetsDir(ext: InstalledExtension): string | null {
-  if (pathEscapesFolder(ext.snippetsRel)) return null;
-  return path.join(ext.dir, ext.snippetsRel);
-}
-
-/**
- * The project's own snippets, merged with every installed-and-active
- * extension's (#242) — this is "the snippet host" the picker actually calls;
- * `listSnippets` above is now just its first ingredient.
- *
- * PRECEDENCE / collision (issue's suggested shape, point 2): when an
- * extension snippet's FILENAME — the slugified identity `saveSnippet` itself
- * derives a name into, so two different-cased spellings of the same name
- * collide exactly as they would on a real re-save — matches a project
- * snippet's, the project one wins outright and the extension's copy is
- * dropped from this call's result. It is not renamed, not kept reachable
- * under a second key, and nothing on disk is touched: the comparison and the
- * drop happen freshly on every call, so the instant the author renames (or
- * deletes) their colliding snippet, the extension's becomes visible again
- * with no separate "restore" step. Rationale: the moment an author saves
- * their own snippet under a name an extension already used, the natural
- * reading is "I'm overriding this one for my project" — a picker entry that
- * silently stays inserted from the extension forever after would contradict
- * that, and a picker entry that just isn't there is a far smaller surprise
- * than two identically-named rows the author has to guess between.
- *
- * This precedence rule is PROJECT-vs-EXTENSION only. Two different
- * extensions that each happen to ship a same-named snippet are NOT
- * deduplicated against each other — both survive, each under its own group
- * header (see GROUPING below), because there is no ambiguity to resolve:
- * unlike the project-vs-extension case, neither copy could be mistaken for
- * "the author's own", so there is nothing here for one to silently win over.
- *
- * GROUPING: the result is ordered project-first (`listSnippets`'s own
- * alphabetical order), then one contiguous run per extension — extensions
- * alphabetical by display name, each run alphabetical by snippet name. The
- * picker groups purely by noticing `source` change between consecutive
- * entries; there is no separate grouped/tree shape to keep in sync with this
- * flat list.
- */
-export async function listMergedSnippets(projectDir: string): Promise<SnippetEntry[]> {
-  const project = await listSnippets(projectDir);
-  const projectFileNames = new Set(project.map((entry) => entry.fileName.toLowerCase()));
-  const merged: SnippetEntry[] = [...project];
-
-  const extensions = (await listInstalledExtensions(projectDir)).sort((a, b) =>
-    a.name.localeCompare(b.name),
-  );
-  for (const ext of extensions) {
-    const dir = extensionSnippetsDir(ext);
-    if (!dir) continue;
-    for (const file of await scanSnippetFiles(dir)) {
-      if (projectFileNames.has(file.fileName.toLowerCase())) continue; // project wins
-      merged.push({ ...file, source: { kind: "extension", ref: ext.ref, name: ext.name } });
-    }
-  }
-  return merged;
-}
-
-/**
- * Read one extension-provided snippet's raw body (#242) — the read-only
- * counterpart to `readSnippet` for entries `listMergedSnippets` tagged with
- * an extension `source`.
- *
- * Deliberately NOT a raw-path read: `source` carries only the same small,
- * stable `{ kind, ref }` pair `listMergedSnippets` already handed back (see
- * {@link SnippetSource}), and this function re-runs the EXACT SAME discovery
- * {@link listMergedSnippets} used ({@link listInstalledExtensions}) to find
- * the matching extension's folder again, rather than trusting any path a
- * caller could construct directly — the same defense-in-depth stance
- * `resolveSnippetPath` already takes for the project's own snippets, now
- * extended to a second, per-extension root instead of a single project one.
- *
- * Throws when `source` no longer resolves to an installed, active extension
- * (it was disabled or removed since the list was fetched — the picker's existing `error` display already handles a
- * thrown read the same way a vanished project snippet would) or when
- * `fileName` escapes that extension's snippets folder.
- */
-export async function readExtensionSnippet(
-  projectDir: string,
-  source: { kind: "extension"; ref: string },
-  fileName: string,
-): Promise<string> {
-  const ext = (await listInstalledExtensions(projectDir)).find(
-    (candidate) => candidate.ref === source.ref,
-  );
-  if (!ext) {
-    throw new Error(`Extension "${source.ref}" is not installed or is no longer active.`);
-  }
-  const dir = extensionSnippetsDir(ext);
-  if (!dir) {
-    throw new Error(`Extension "${source.ref}" does not declare a usable snippets folder.`);
-  }
-  return readFile(resolveSafeChildFile(dir, fileName), "utf8");
-}
-
-// ── Component snippets ──────────────────────────────────────────────────────
+// ── The snippet library: book, extension and core levels ───────────────────
 
 /**
  * One plugin-declared marker (a "component", `export const markers`) the
- * project can use, with the example content the editor inserts for it.
+ * project can use, with the example snippet the editor inserts for it.
  * Unrelated to the `gutterpress.components` catalog file, which nothing reads.
  */
 export interface MarkerComponent {
@@ -419,68 +208,121 @@ export interface MarkerComponent {
   name: string;
   /** The extension that declares it. */
   source: Extract<SnippetSource, { kind: "extension" }>;
-  /** The component's example snippet body, when its file exists. */
+  /** The winning example snippet's body (book, then extension, then core). */
   snippet?: string;
-  /** Set when that snippet file sits directly in the extension's declared
-   *  snippets folder — the picker already lists it there under this file
-   *  name, so it can show the row once instead of twice. */
-  snippetFileName?: string;
+}
+
+/** An extension's declared snippets folder, relative to the extension, or
+ *  null when it declares none (or one that escapes its folder). */
+async function declaredSnippetsFolder(entry: ProjectExtensionEntry): Promise<string | null> {
+  if (!entry.dir || !entry.carries.snippets) return null;
+  const rel = (await readExtensionMeta(entry.dir)).snippets?.trim();
+  return rel && !pathEscapesFolder(rel) ? rel : null;
+}
+
+/** An extension's declared markers, or undefined when it has none or fails
+ *  to load (load errors are reported by the Features tab and Problems). */
+async function declaredMarkers(
+  entry: ProjectExtensionEntry,
+  projectDir: string,
+): Promise<Record<string, { deprecated?: unknown; snippet?: unknown }> | undefined> {
+  if (!entry.carries.markdown) return undefined;
+  try {
+    return (await loadPlugin(extensionConfigFor(entry), projectDir)).markers;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
- * Every component the project's enabled extensions declare, with each one's
- * example snippet: the marker's own `snippet` path (relative to the
- * extension folder) when it sets one, otherwise `<snippets folder>/<name>.md`
- * (the folder package.json's `gutterpress.snippets` names, default
- * `snippets`). A missing file just means no snippet; a path escaping the
- * extension folder is ignored. Deprecated markers are left out; aliases are
- * listed (they are real markers to type).
+ * Every snippet at every level, plus every component with its winning
+ * snippet. Order: the book's snippets, then each extension's (alphabetical by
+ * display name), each run alphabetical by snippet name.
  *
- * Tolerant like every other list surface here: an extension that fails to
- * load contributes nothing — its load error is already reported by the
- * Features tab and the Problems panel.
+ * A component's snippet is, at the extension level, the marker's own
+ * `snippet:` path (relative to the extension folder) or by default
+ * `<snippets folder>/<name>.md` (folder: `gutterpress.snippets`, else
+ * `snippets`); at the book level, `snippets/<name>.md`. Each match is tagged
+ * `component` in the list; the highest level wins for the component.
  */
-export async function listMarkerComponents(projectDir: string): Promise<MarkerComponent[]> {
-  const out: MarkerComponent[] = [];
+async function collectLibrary(
+  projectDir: string,
+): Promise<{ snippets: SnippetEntry[]; components: MarkerComponent[] }> {
+  const groups: Array<{ label: string; snippets: SnippetEntry[] }> = [];
+  const components: MarkerComponent[] = [];
+
   for (const entry of await listProjectExtensions(projectDir)) {
-    if (!entry.enabled || !entry.carries.markdown) continue;
-    let markers: Record<string, { deprecated?: unknown; snippet?: unknown }> | undefined;
-    try {
-      markers = (await loadPlugin(extensionConfigFor(entry), projectDir)).markers;
-    } catch {
-      continue;
-    }
-    if (!markers) continue;
-
+    if (!entry.enabled) continue;
     const source: MarkerComponent["source"] = { kind: "extension", ref: entry.use, name: entry.label };
-    const names = Object.keys(markers).filter((name) => markers[name]!.deprecated === undefined);
-    const dir = entry.dir;
-    if (!dir) {
-      out.push(...names.map((name) => ({ name, source })));
-      continue;
-    }
-    // The same folder rule the picker's own listing uses (listMergedSnippets).
-    const ext = await installedExtension(entry);
-    const listedDir = ext && extensionSnippetsDir(ext);
-    const snippetsRel = ext?.snippetsRel ?? SNIPPETS_DIR;
+    const folder = await declaredSnippetsFolder(entry);
+    const snippets: SnippetEntry[] = folder
+      ? (await scanSnippetFiles(path.join(entry.dir!, folder))).map((file) => ({ ...file, source }))
+      : [];
 
-    out.push(
-      ...(await Promise.all(
-        names.map(async (name): Promise<MarkerComponent> => {
-          const own = markers[name]!.snippet;
-          const rel = typeof own === "string" && own.trim() ? own.trim() : path.join(snippetsRel, `${name}.md`);
-          if (pathEscapesFolder(rel)) return { name, source };
-          const file = path.join(dir, rel);
-          try {
-            const snippet = await readFile(file, "utf8");
-            const listed = path.dirname(file) === listedDir && file.toLowerCase().endsWith(".md");
-            return { name, source, snippet, ...(listed ? { snippetFileName: path.basename(file) } : {}) };
-          } catch {
-            return { name, source }; // No file: the component simply has no snippet.
-          }
-        }),
-      )),
-    );
+    for (const [name, decl] of Object.entries((await declaredMarkers(entry, projectDir)) ?? {})) {
+      if (decl.deprecated !== undefined) continue;
+      components.push({ name, source });
+      if (!entry.dir) continue;
+      const own = typeof decl.snippet === "string" && decl.snippet.trim() ? decl.snippet.trim() : null;
+      const rel = own ?? path.join(folder ?? SNIPPETS_DIR, `${name}.md`);
+      if (pathEscapesFolder(rel)) continue;
+      const listed =
+        folder && path.dirname(path.join(entry.dir, rel)) === path.join(entry.dir, folder)
+          ? snippets.find((s) => s.fileName === path.basename(rel))
+          : undefined;
+      if (listed) {
+        listed.component = name;
+        continue;
+      }
+      const body = await readFile(path.join(entry.dir, rel), "utf8").catch(() => null);
+      if (body === null) continue;
+      snippets.push({
+        name: prettify(path.basename(rel).replace(/\.md$/i, "")),
+        fileName: rel.split(path.sep).join("/"),
+        variables: extractVariables(body),
+        body,
+        source,
+        component: name,
+      });
+    }
+
+    if (snippets.length) {
+      snippets.sort((a, b) => a.name.localeCompare(b.name));
+      groups.push({ label: entry.label, snippets });
+    }
   }
-  return out.sort((a, b) => a.name.localeCompare(b.name));
+
+  // The book's own `snippets/<component>.md` is that component's snippet too.
+  const book = await listSnippets(projectDir);
+  const names = new Set(components.map((c) => c.name));
+  for (const s of book) {
+    const stem = s.fileName.replace(/\.md$/i, "").toLowerCase();
+    if (names.has(stem)) s.component = stem;
+  }
+
+  groups.sort((a, b) => a.label.localeCompare(b.label));
+  const snippets = [...book, ...groups.flatMap((g) => g.snippets)];
+
+  for (const component of components) {
+    let best: SnippetEntry | undefined;
+    for (const s of snippets) {
+      if (s.component !== component.name) continue;
+      if (s.source.kind === "extension" && s.source.ref !== component.source.ref) continue;
+      if (!best || LEVEL_RANK[s.source.kind] < LEVEL_RANK[best.source.kind]) best = s;
+    }
+    if (best) component.snippet = best.body;
+  }
+  components.sort((a, b) => a.name.localeCompare(b.name));
+  return { snippets, components };
+}
+
+/** Every snippet the project can insert, from every level — see {@link collectLibrary}. */
+export async function listMergedSnippets(projectDir: string): Promise<SnippetEntry[]> {
+  return (await collectLibrary(projectDir)).snippets;
+}
+
+/** Every component the project's enabled extensions declare, each with its
+ *  winning example snippet (book > extension > core) — see {@link collectLibrary}. */
+export async function listMarkerComponents(projectDir: string): Promise<MarkerComponent[]> {
+  return (await collectLibrary(projectDir)).components;
 }

@@ -3247,7 +3247,6 @@
   bind:this={snippetPickerRef}
   bind:open={snippetPickerOpen}
   projectDir={lifecycle.currentDir}
-  components={projectComponents}
   getSelectionText={() => editorRef?.getSelectionText() ?? ""}
   onInsert={(text) => editorRef?.insertSnippet(text)}
 />

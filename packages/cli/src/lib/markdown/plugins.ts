@@ -628,7 +628,7 @@ function staleManifestHint(dir: string): string {
  * `tokensFile`/`components`/`snippets` are parsed and validated (existence +
  * containment, via `resolveExtension`) but not otherwise consumed HERE —
  * `snippets.ts`'s `listMergedSnippets` (#242) is the actual snippet-picker
- * consumer, reached through its own `listInstalledExtensions` (which reads
+ * consumer, reached through its own `declaredSnippetsFolder` (which reads
  * `extension-manifest.ts`'s `readExtensionMeta` directly, tolerantly, rather
  * than through this throwing `resolveExtension` call); a `components.yaml`
  * catalog reader is the remaining consumer still to be built.

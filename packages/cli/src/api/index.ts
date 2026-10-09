@@ -136,22 +136,15 @@ export type {
   SaveProjectAsTemplateOptions,
 } from "../lib/project-templates.ts";
 
-// ── Snippets (#29) — extension merge (#242) ──────────────────────────────────
-// `listMergedSnippets`/`readExtensionSnippet` are the #242 additions: the
-// merge of an installed, active extension's declared `snippets` folder
-// (package.json's `gutterpress.snippets`) into the SAME picker `listSnippets`/
-// `readSnippet`/`saveSnippet`/`deleteSnippet` already served — see
-// `snippets.ts`'s header for the full design (precedence, provenance,
-// removal) and why this stays one module, not a second snippet subsystem.
+// ── Snippets (#29) — book, extension (#242) and core levels ─────────────────
+// See `snippets.ts`'s header for the levels and their precedence.
 export {
   extractVariables,
   substituteVariables,
   listSnippets,
-  readSnippet,
   saveSnippet,
   deleteSnippet,
   listMergedSnippets,
-  readExtensionSnippet,
   listMarkerComponents,
   SNIPPETS_DIR,
 } from "../lib/snippets.ts";

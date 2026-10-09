@@ -336,7 +336,7 @@ fields on that declaration help the authors who use it.
 
 **`snippet` — show the structure.** When an author picks a component in the
 desktop editor — typing `@` at the start of a line, or from the snippet picker
-(Ctrl/Cmd+Shift+S), where components are listed first — Gutterpress inserts
+(Ctrl/Cmd+Shift+S), where its row is marked `@term-box` — Gutterpress inserts
 its example snippet, so the author starts from the structure the component
 expects. By default the snippet is `<snippets folder>/<marker name>.md`
 inside your package (the scaffold's `snippets/term-box.md`; the folder is the
@@ -351,8 +351,14 @@ export const markers = {
 
 A snippet can use `{{fields}}`: the picker asks for them, and `@` autocomplete
 selects the first one so the author can type straight over it. A component
-without a snippet still autocompletes, as an empty marker pair. A project's
-own `snippets/term-box.md` replaces the extension's copy in the picker.
+without a snippet still autocompletes, as an empty marker pair.
+
+Snippets come from three levels: your book's own `snippets/` folder, each
+extension, and Gutterpress itself (core). The picker lists every one, grouped
+by where it comes from, even when two share a name. When a component needs
+a single snippet, your book's `snippets/term-box.md` wins over the
+extension's copy (and an extension's over core's), so you can change a
+component's starting structure for one book without touching the extension.
 
 **`validate` — check the structure (opt-in).** Add a `validate` function and
 Gutterpress runs it for every use of the component whenever it checks the
