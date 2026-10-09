@@ -30,6 +30,8 @@
  * package cannot import core (see README.md, "Why you cannot import
  * gutterpress"). So the table's CONTRACT is checked here, and the rendered
  * container is checked by running `gutterpress preview` on a real book.
+ * A component's `validate` needs no core at all — it takes a plain object —
+ * so it is tested directly, with hand-written components.
  */
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
@@ -212,6 +214,37 @@ describe("conventions", () => {
     }
   });
 
+  test("each component's snippet opens and closes its own marker", () => {
+    // The editor inserts this file when an author picks the component, so it
+    // is the example of the structure the component expects.
+    for (const [name, decl] of Object.entries(markers)) {
+      if (decl.deprecated !== undefined || decl.alias !== undefined) continue;
+      const rel = decl.snippet ?? `${pkg.gutterpress?.snippets ?? "snippets"}/${name}.md`;
+      if (!existsSync(path.join(root, rel))) continue;
+      const snippet = read(rel);
+      expect(snippet.trimStart().startsWith(`@${name}`)).toBe(true);
+      expect(snippet).toContain(`@end-${name}`);
+    }
+  });
+
+  test("term-box's validate accepts a well-formed box and explains what a bad one is missing", () => {
+    // A component exactly as Gutterpress hands it to `validate`.
+    const good = {
+      name: "term-box",
+      variant: "note",
+      attrs: { label: "Gutter" },
+      line: 1,
+      text: "The space between two facing pages.",
+      blocks: [{ type: "paragraph", text: "The space between two facing pages.", line: 2 }],
+    };
+    expect(markers["term-box"].validate(good)).toEqual([]);
+
+    const bad = { ...good, attrs: {}, blocks: [{ type: "heading", level: 3, text: "Gutter", line: 2 }] };
+    const problems = markers["term-box"].validate(bad);
+    expect(problems).toHaveLength(3);
+    expect(problems).toContainEqual({ message: "Use the label instead of a heading.", line: 2 });
+  });
+
   test("every public custom property carries the prefix too", () => {
     // `--x` declared at :root is global. An unprefixed one would collide with
     // the book's own tokens exactly as an unprefixed class would.
@@ -226,6 +259,7 @@ describe("conventions", () => {
     // Gutterpress wraps this extension's CSS in `@layer ext.<name>` itself,
     // in `extensions:` list order — see the header comment in
     // styles/plugin.css. A layer declared here would only nest inside it.
-    expect(css).not.toMatch(/@layer/);
+    // Rules only: that header comment itself mentions `@layer`.
+    expect(cssRules).not.toMatch(/@layer/);
   });
 });

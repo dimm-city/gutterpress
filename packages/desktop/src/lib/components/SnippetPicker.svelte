@@ -18,19 +18,12 @@
    * CrashRecoveryDialog's Discard button via the shared
    * `requestInlineConfirm`/`cancelInlineConfirm` helpers (`$lib/dialog`).
    *
-   * #242 — `api.snip.list` returns the project's own snippets MERGED with
-   * every installed, active extension's declared `snippets` folder (the host
-   * side lives in `snippets.ts`'s `listMergedSnippets`); each entry carries a
-   * `source` saying which. This component's job with that field is entirely
-   * presentational — group rows by source (`groupedRows`, below) and hide the
-   * delete affordance for anything that isn't `{ kind: "project" }` — because
-   * the WRITE path already can't touch an extension's folder regardless of
-   * what the UI does (`saveSnippet`/`deleteSnippet` only ever resolve inside
-   * `<projectDir>/snippets/`), the UI gate here is about not OFFERING an
-   * action that would be confusing rather than closing a real hole. Reading
-   * an extension entry's body is the one operation that DOES branch by
-   * source (`choose()`, below) — project reads still go through `api.snip.
-   * read`, extension reads go through the new `api.snip.readExtension`.
+   * Levels — `api.snip.list` returns every snippet from every level (the
+   * book's own, each enabled extension's, and core's), bodies included, each
+   * with a `source`. Same-named snippets at different levels are all listed,
+   * grouped by level (`groupedRows`); only the book's can be deleted (the
+   * write path can't touch anything else regardless). A row that is a
+   * component's example snippet shows its `@name`.
    */
   import Icon from "$lib/components/Icon.svelte";
   import { api } from "$lib/api";
@@ -67,56 +60,36 @@
   let loading = $state(false);
   let error = $state<string | null>(null);
 
-  /** Group key for one entry's source — "" for the author's own snippets
-   *  (there is only ever one such group), else `kind:ref` so two same-named
-   *  extensions of different kinds can never collide. */
+  /** Group key for one entry's level — `kind`, plus `ref` for an extension
+   *  so two extensions never share a group. */
   function groupKey(entry: SnippetEntry): string {
-    return entry.source.kind === "project" ? "" : `${entry.source.kind}:${entry.source.ref}`;
+    return entry.source.kind === "extension" ? `extension:${entry.source.ref}` : entry.source.kind;
   }
 
-  /**
-   * `{#each}` identity for one row. `fileName` alone is unique WITHIN a
-   * source (`listMergedSnippets` drops any extension entry that collides
-   * with a project one) but NOT across two different extensions, which may
-   * each happen to ship a same-named snippet — they show under two different
-   * group headers, so their keys must differ too, or Svelte would see a
-   * duplicate `{#each}` key. `groupKey` already carries that disambiguation.
-   */
+  /** `{#each}` identity: a file name is unique within its group only. */
   function rowKey(entry: SnippetEntry): string {
     return `${groupKey(entry)}:${entry.fileName}`;
   }
 
-  /** Group label shown above a run of rows — "Your snippets" for the
-   *  project, otherwise the extension's own display name plus a "read-only"
-   *  hint (#242 — provenance: an author must always be able to tell a
-   *  snippet came from an extension, never mistake it for one of their own). */
+  /** Group label above a run of rows: the book's own, an extension's, or core. */
   function groupLabel(entry: SnippetEntry): string {
-    return entry.source.kind === "project" ? "Your snippets" : `${entry.source.name} · read-only`;
+    if (entry.source.kind === "project") return "Your snippets";
+    if (entry.source.kind === "core") return "Gutterpress · read-only";
+    return `${entry.source.name} · read-only`;
   }
 
   /**
-   * `snippets` paired with a group header string whenever it starts a new
-   * run (undefined otherwise) — computed once here so the template stays a
-   * plain `{#each}` with no grouping logic of its own. Headers are shown
-   * ONLY once at least one extension-provided entry exists in the list
-   * (`hasExtensionEntries`): with nothing installed (by far the common case
-   * today) the picker renders exactly as it always has, a plain flat list
-   * with no "Your snippets" header floating above it for no reason.
-   *
-   * `listMergedSnippets` (the host side) already orders the array
-   * project-first, then one contiguous run per extension alphabetical by
-   * name — so "did the group change since the last row" is all the grouping
-   * this needs; there is no separate tree-shaped list to keep in sync.
+   * `snippets` paired with a group header whenever a new level starts. The
+   * host already orders the list book-first, then one run per extension, then
+   * core, so "did the group change since the last row" is all the grouping
+   * this needs. With only the book's own snippets, no header is shown.
    */
-  let hasExtensionEntries = $derived(snippets.some((s) => s.source.kind !== "project"));
   let groupedRows = $derived.by(() => {
-    if (!hasExtensionEntries) {
-      return snippets.map((entry) => ({ entry, header: undefined as string | undefined }));
-    }
+    const grouped = snippets.some((s) => s.source.kind !== "project");
     let lastKey: string | null = null;
     return snippets.map((entry) => {
       const key = groupKey(entry);
-      const header = key === lastKey ? undefined : groupLabel(entry);
+      const header = grouped && key !== lastKey ? groupLabel(entry) : undefined;
       lastKey = key;
       return { entry, header };
     });
@@ -171,33 +144,23 @@
     open = false;
   }
 
-  async function choose(entry: SnippetEntry) {
-    if (!projectDir) return;
+  /** Insert the snippet now, or prompt for its `{{variables}}` first. */
+  function choose(entry: SnippetEntry) {
     error = null;
-    try {
-      // #242: an extension-sourced entry is read through a different route —
-      // the host re-derives that extension's folder from `source.kind`/
-      // `source.ref` itself rather than trusting a path from here.
-      const body =
-        entry.source.kind === "project"
-          ? await api.snip.read(projectDir, entry.fileName)
-          : await api.snip.readExtension(projectDir, entry.source, entry.fileName);
-      const vars = extractVariables(body);
-      if (vars.length === 0) {
-        onInsert(body);
-        close();
-        return;
-      }
-      activeBody = body;
-      activeVars = vars;
-      varValues = Object.fromEntries(vars.map((v) => [v, ""]));
-      mode = "vars";
-      queueMicrotask(() =>
-        dialogEl?.querySelector<HTMLInputElement>("input.var-input")?.focus(),
-      );
-    } catch (e) {
-      error = e instanceof Error ? e.message : String(e);
+    const body = entry.body;
+    const vars = extractVariables(body);
+    if (vars.length === 0) {
+      onInsert(body);
+      close();
+      return;
     }
+    activeBody = body;
+    activeVars = vars;
+    varValues = Object.fromEntries(vars.map((v) => [v, ""]));
+    mode = "vars";
+    queueMicrotask(() =>
+      dialogEl?.querySelector<HTMLInputElement>("input.var-input")?.focus(),
+    );
   }
 
   function confirmVars() {
@@ -316,6 +279,9 @@
                 <button class="snippet-row" onclick={() => choose(entry)} title={`Insert “${entry.name}” at the cursor`}>
                   <span class="snippet-name">{entry.name}</span>
                   <span class="snippet-row-end">
+                    {#if entry.component}
+                      <span class="snippet-vars" title="The example for the @{entry.component} component">@{entry.component}</span>
+                    {/if}
                     {#if entry.variables.length > 0}
                       <span class="snippet-vars">{entry.variables.length} field{entry.variables.length === 1 ? "" : "s"}</span>
                     {/if}

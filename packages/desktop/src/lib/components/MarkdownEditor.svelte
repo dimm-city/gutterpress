@@ -69,6 +69,8 @@
     type EditorLanguage,
   } from "$lib/editor/css-editor";
   import { markerCompletionSource } from "$lib/editor/marker-completions";
+  import { componentCompletionSource } from "$lib/editor/component-completions";
+  import type { MarkerComponent } from "$lib/api";
   import { onMount } from "svelte";
 
   let {
@@ -77,9 +79,12 @@
     onChange,
     onSave,
     onAnchorLine,
+    components = [],
   }: {
     filePath?: string | null;
     content?: string;
+    /** The project's plugin components, offered by `@` autocomplete. */
+    components?: readonly MarkerComponent[];
     onChange?: (value: string) => void;
     onSave?: () => void;
     /**
@@ -157,10 +162,14 @@
     return autocompletion({ override: [pagedMediaCompletionSource] });
   }
 
-  /** Core `@marker` completions — active only for markdown docs. */
+  /** Core `@marker` and plugin component completions — active only for markdown docs.
+   *  The component source reads the `components` prop at completion time, so
+   *  a refreshed list needs no reconfigure. */
   function markdownCompletionExtensions(lang: EditorLanguage): Extension {
     if (lang !== "markdown") return [];
-    return autocompletion({ override: [markerCompletionSource] });
+    return autocompletion({
+      override: [markerCompletionSource, componentCompletionSource(() => components)],
+    });
   }
 
   // Theme-aware syntax highlighting. Every colour is a CSS custom property

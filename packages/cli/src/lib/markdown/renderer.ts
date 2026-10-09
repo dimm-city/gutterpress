@@ -133,7 +133,67 @@ export interface GutterpressMarkerDeclaration {
   preset?: { variant?: string };
   /** This marker is retired: using it (or its `@end-` form) warns with this message and is otherwise a no-op. */
   deprecated?: string;
+  /**
+   * The example content the desktop editor inserts for this component, as a
+   * path relative to the extension's own folder (where its package.json
+   * lives). Defaults to `<snippets folder>/<marker name>.md`. Read by the
+   * host's component listing only — it never affects rendering.
+   */
+  snippet?: string;
+  /**
+   * Opt-in structure check, run every time the component is rendered
+   * (validate, Problems panel, build, preview). Receives a plain description
+   * of the component's content — see {@link GutterpressComponent} — and
+   * returns its problems. Must be synchronous; ignored on an alias (which
+   * uses its target's) and on a deprecated entry.
+   */
+  validate?: (component: GutterpressComponent) => GutterpressComponentProblems;
 }
+
+/** One top-level block inside a component, as its `validate` sees it. `line` is 1-based in the file. */
+export type GutterpressComponentBlock =
+  | { type: "heading"; level: number; text: string; line: number }
+  | { type: "paragraph"; text: string; line: number }
+  | { type: "image"; alt: string; src: string; line: number }
+  | { type: "list"; ordered: boolean; items: string[]; line: number }
+  | { type: "quote"; text: string; line: number }
+  | { type: "code"; lang: string; text: string; line: number }
+  | { type: "table" | "rule"; line: number }
+  | { type: "html"; text: string; line: number }
+  | { type: "component"; name: string; line: number }
+  /** Any other block (e.g. one another plugin adds), named after its markdown-it block type. */
+  | { type: string; line: number };
+
+/**
+ * What a declared marker's `validate` receives: a fresh, plain copy of one
+ * use of the component (changing it has no effect). `text` fields are raw
+ * markdown — inline formatting is not parsed.
+ */
+export interface GutterpressComponent {
+  /** The marker as the author typed it, e.g. `"term-box"`. */
+  name: string;
+  /** The bare word after the marker (`@term-box note` → `"note"`), or null. */
+  variant: string | null;
+  /** The marker's attributes, e.g. `{ label: "Read this first" }`. */
+  attrs: Record<string, string>;
+  /** The marker's own 1-based line. */
+  line: number;
+  /** The raw markdown inside the component, from the line after the marker through its last line of content. */
+  text: string;
+  /** The component's top-level content, in order. */
+  blocks: GutterpressComponentBlock[];
+}
+
+/**
+ * One problem from `validate`: a message, or a message with a 1-based `line`
+ * (default: the marker's line) and `severity` (default `"warning"`).
+ */
+export type GutterpressComponentProblem =
+  | string
+  | { message: string; line?: number; severity?: "error" | "warning" | "info" };
+
+/** `validate`'s return value: nothing, one message, or a list of problems. */
+export type GutterpressComponentProblems = GutterpressComponentProblem[] | string | void | null | undefined;
 
 /** A plugin's full declared marker table — see {@link GutterpressMarkerDeclaration}. */
 export type GutterpressMarkerTable = Record<string, GutterpressMarkerDeclaration>;

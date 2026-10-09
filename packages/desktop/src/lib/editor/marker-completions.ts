@@ -16,10 +16,10 @@
  *
  * IMPORTANT — core only (CLAUDE.md §5/§6): `@sidebar`, `@callout`, and the
  * rest of the DC plugin's `@marker` family are PROJECT-PLUGIN markers, not
- * core. They MUST NOT be added to this table — a plugin that wants its own
- * marker completions should register its own CodeMirror extension instead of
- * extending this one, exactly as plugins register their own markdown-it
- * rules rather than reaching into the core marker renderer's internals.
+ * core. They MUST NOT be added to this table. The project's plugin
+ * components are offered by `component-completions.ts` instead, from the
+ * markers its loaded plugins actually declare (host data, per project) —
+ * this module only lends it the line-start trigger and the pair insert.
  *
  * Trigger contract: markers are only meaningful as the FIRST token on a line
  * (optionally after leading whitespace) — `parseMarkerLine` trims the raw
@@ -97,24 +97,20 @@ function applyChapterCompletion(
   });
 }
 
-/** `@section` — inserts the `@section` / `@end-section` pair with the
- *  cursor collapsed on the blank line between them, ready for content. */
-function applySectionPairCompletion(
-  view: EditorView,
-  completion: Completion,
-  from: number,
-  to: number,
-): void {
-  const insert = "@section\n\n@end-section";
-  // "@section\n" (one newline) lands exactly on the blank line's start — the
-  // SECOND '\n' is what ends that blank line, so including it in the offset
-  // would overshoot onto "@end-section" itself.
-  const cursorPos = from + "@section\n".length;
-  view.dispatch({
-    changes: { from, to, insert },
-    selection: EditorSelection.cursor(cursorPos),
-    annotations: pickedCompletion.of(completion),
-  });
+/** An `apply` inserting the `open` / `close` marker pair with the cursor
+ *  collapsed on the blank line between them, ready for content. */
+export function markerPairApply(open: string, close: string): MarkerCompletion["apply"] {
+  return (view, completion, from, to) => {
+    const insert = `${open}\n\n${close}`;
+    // `${open}\n` (one newline) lands exactly on the blank line's start — the
+    // SECOND '\n' is what ends that blank line, so including it in the offset
+    // would overshoot onto the closer itself.
+    view.dispatch({
+      changes: { from, to, insert },
+      selection: EditorSelection.cursor(from + open.length + 1),
+      annotations: pickedCompletion.of(completion),
+    });
+  };
 }
 
 /**
@@ -141,7 +137,7 @@ export const markerCompletions: readonly MarkerCompletion[] = [
   {
     label: "@section",
     detail: "Group content to avoid a mid-section break — pairs with @end-section",
-    apply: applySectionPairCompletion,
+    apply: markerPairApply("@section", "@end-section"),
   },
   {
     label: "@continue",
@@ -193,6 +189,17 @@ const LINE_START_MARKER = /^(\s*)(@[\w-]*)?$/;
  * sits at a bare line start, before `@` has been typed.
  */
 export function markerCompletionSource(context: CompletionContext): CompletionResult | null {
+  const from = markerCompletionFrom(context);
+  if (from === null) return null;
+  return { from, options: MARKER_OPTIONS, validFor: /^@[\w-]*$/ };
+}
+
+/**
+ * Where a marker completion starts, or null when the caret is not on a
+ * marker-shaped line start. Shared with `component-completions.ts` so plugin
+ * components follow exactly the same trigger contract as core markers.
+ */
+export function markerCompletionFrom(context: CompletionContext): number | null {
   const line = context.state.doc.lineAt(context.pos);
   const beforeCursor = line.text.slice(0, context.pos - line.from);
   const match = LINE_START_MARKER.exec(beforeCursor);
@@ -204,9 +211,5 @@ export function markerCompletionSource(context: CompletionContext): CompletionRe
   // pagedMediaCompletionSource in css-editor.ts.
   if (!word && !context.explicit) return null;
 
-  return {
-    from: line.from + indent.length,
-    options: MARKER_OPTIONS,
-    validFor: /^@[\w-]*$/,
-  };
+  return line.from + indent.length;
 }

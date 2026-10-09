@@ -67,6 +67,34 @@ const PREFIX = "{{PREFIX}}";
  *   variants    extra classes keyed by the marker's bare word
  *   label       a label element built from one of the marker's attributes
  *   autoCloseAt ["eof"] closes an unclosed container at end of file
+ *   snippet     example content the editor inserts for this component, as a
+ *               path inside this folder (default: snippets/<name>.md — so
+ *               `snippets/term-box.md` is term-box's example already)
+ *   validate    a function that checks what an author put inside the
+ *               component and returns problems — see below
+ *
+ * VALIDATE — opt-in structure checks
+ *
+ *   Gutterpress calls `validate(component)` for every use of the component
+ *   whenever it checks a book (the desktop Problems panel, `gutterpress
+ *   validate`, builds). `component` is a plain object — no markdown-it, no
+ *   Gutterpress internals:
+ *
+ *     component.name     "term-box"
+ *     component.variant  the bare word after the marker ("note"), or null
+ *     component.attrs    the marker's attributes, e.g. { label: "…" }
+ *     component.line     the marker's line in the file
+ *     component.text     the raw markdown inside the component
+ *     component.blocks   its content, in order, each with `type` and `line`:
+ *                        heading {level, text} · paragraph {text} ·
+ *                        image {alt, src} · list {ordered, items} ·
+ *                        quote {text} · code {lang, text} · table · rule ·
+ *                        html {text} · component {name}
+ *
+ *   Return nothing when it is fine, or a list of problems. A problem is a
+ *   message string, or `{ message, line, severity }` to point at a line or
+ *   choose "error" / "warning" (the default) / "info". The function must be
+ *   synchronous; if it throws, the author sees that as a problem too.
  *
  * Names are validated when the book loads: lower-case letters, digits and
  * hyphens; they may not start with `end-`, and they may not shadow a core
@@ -88,6 +116,22 @@ export const markers = {
       from: "attr:label",
     },
     autoCloseAt: ["eof"],
+    // snippet: "examples/term-box.md",  // only needed to override snippets/term-box.md
+    validate(box) {
+      const problems = [];
+      if (!box.attrs.label) {
+        problems.push('Give the term box a label: @term-box note label="Your term"');
+      }
+      if (!box.blocks.some((block) => block.type === "paragraph")) {
+        problems.push("Add a paragraph explaining the term.");
+      }
+      for (const block of box.blocks) {
+        if (block.type === "heading") {
+          problems.push({ message: "Use the label instead of a heading.", line: block.line });
+        }
+      }
+      return problems;
+    },
   },
 };
 

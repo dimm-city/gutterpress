@@ -187,34 +187,37 @@ export interface SavedTemplateInfo extends TemplateInfo {
 }
 
 /**
- * Provenance of one merged snippet entry (#242 — extensions can ship a
- * `snippets` folder declared in their package.json, merged into this SAME picker
- * feed by the lib's `listMergedSnippets`).
- *
- * `{ kind: 'project' }` is the author's own snippet — the only kind
- * `api.snip.save`/`api.snip.delete` ever produce or touch, and therefore the
- * only kind the picker may show a delete affordance for. `{ kind:
- * 'extension', ref, name }` is a READ-ONLY snippet contributed by an
- * installed, enabled extension (#265 — one rail, so one extension kind):
- * `name` is its display name (the picker's group label — see
- * SnippetPicker.svelte), `ref` is the extension's manifest specifier
- * (`ProjectExtensionEntry.use`) passed straight back to
- * `api.snip.readExtension` so the host can re-locate the right extension
- * folder itself — never a filesystem path the client hands the host
- * directly. Kept as its own type (not inlined) so `SnippetPicker.svelte` has
- * one name to import for its `source.kind === 'project'` gating.
- *
- * Decoupled from the lib's own `SnippetSource` type per CLAUDE.md §8 (the SPA
- * never value- or type-imports `gutterpress`) — kept in sync by hand; the two
- * shapes are structurally identical on purpose.
+ * Which level a snippet comes from — mirrors the lib's `SnippetSource` by
+ * hand (CLAUDE.md §8: the SPA never imports `gutterpress`). `project` is the
+ * book's own (the only level `api.snip.save`/`api.snip.delete` touch, so the
+ * only one the picker offers to delete); `extension` is read-only, `name`
+ * being its display name; `core` is reserved for snippets Gutterpress ships.
  */
-export type SnippetSource = { kind: 'project' } | { kind: 'extension'; ref: string; name: string };
+export type SnippetSource =
+  | { kind: 'project' }
+  | { kind: 'extension'; ref: string; name: string }
+  | { kind: 'core' };
 
 export interface SnippetEntry {
   name: string;
   fileName: string;
   variables: string[];
+  body: string;
   source: SnippetSource;
+  /** Set when this is the example snippet for that component (marker name). */
+  component?: string;
+}
+
+/**
+ * A plugin component (a declared marker such as `@term-box`) with the
+ * winning example snippet (book, then extension, then core) the editor
+ * inserts for it. Mirrors the lib's `MarkerComponent` by hand.
+ */
+export interface MarkerComponent {
+  /** Marker name without `@`. */
+  name: string;
+  source: Extract<SnippetSource, { kind: 'extension' }>;
+  snippet?: string;
 }
 
 /** Static publish-provider metadata (no project needed) — used by the
@@ -503,32 +506,11 @@ export const api = {
   },
 
   snip: {
-    /** List the open project's snippets, MERGED with every installed, active
-     *  extension's own `snippets` folder (#242) — each entry's `source`
-     *  says which. This is what the picker actually renders; project-
-     *  only listing has no separate route (the lib's `listSnippets` is an
-     *  internal building block of `listMergedSnippets`, not exposed here). */
+    /** Every snippet the book can insert, from every level (book, extensions,
+     *  core), bodies included — each entry's `source` says which level. */
     list: (projectDir: string) => post<SnippetEntry[]>('/api/snip/list', { projectDir }),
-    /** Read one PROJECT snippet's raw body (`source.kind === 'project'`
-     *  entries only — see {@link readExtension} for the other kind). */
-    read: (projectDir: string, fileName: string) =>
-      post<string>('/api/snip/read', { projectDir, fileName }),
-    /** Read one EXTENSION-provided snippet's raw body (#242) —
-     *  `source.kind === 'extension'` entries. `source` is the exact object
-     *  the list call handed back; the host re-derives the extension's folder
-     *  from `source.ref` (its manifest specifier) itself rather than trusting
-     *  a path from the client. */
-    readExtension: (
-      projectDir: string,
-      source: { kind: 'extension'; ref: string },
-      fileName: string,
-    ) =>
-      post<string>('/api/snip/read-extension', {
-        projectDir,
-        kind: source.kind,
-        ref: source.ref,
-        fileName,
-      }),
+    /** The project's plugin components, each with its winning example snippet. */
+    components: (projectDir: string) => post<MarkerComponent[]>('/api/snip/components', { projectDir }),
     /** Save a snippet body under the project's snippets/ folder. Always
      *  writes to the PROJECT, even when the list currently shown includes
      *  extension-provided entries (#242) — there is no way to target an
