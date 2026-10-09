@@ -259,6 +259,7 @@ describe("conventions", () => {
     // Gutterpress wraps this extension's CSS in `@layer ext.<name>` itself,
     // in `extensions:` list order — see the header comment in
     // styles/plugin.css. A layer declared here would only nest inside it.
-    expect(css).not.toMatch(/@layer/);
+    // Rules only: that header comment itself mentions `@layer`.
+    expect(cssRules).not.toMatch(/@layer/);
   });
 });

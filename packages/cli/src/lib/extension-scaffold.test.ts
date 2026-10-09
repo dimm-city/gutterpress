@@ -248,6 +248,13 @@ describe("scaffoldExtension --kind plugin", () => {
     const expected = await readFile(path.join(result.extensionDir, "test", "expected.html"), "utf8");
     expect(md.render(fixture)).toBe(expected);
   });
+
+  test("its stylesheet declares no cascade layer (the scaffolded suite's own convention test)", async () => {
+    const parent = await tmpParent();
+    const result = await scaffoldExtension({ name: "Field Notes", kind: "plugin", parentDir: parent });
+    const css = await readFile(path.join(result.extensionDir, "styles", "plugin.css"), "utf8");
+    expect(stripCssComments(css)).not.toMatch(/@layer/);
+  });
 });
 
 // ── Theme-specific: the #233 layered stack ─────────────────────────────────
