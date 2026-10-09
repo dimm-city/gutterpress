@@ -42,7 +42,7 @@ import path from "node:path";
 
 import { slugify, prettify } from "./slug.ts";
 import { pathEscapesFolder, readExtensionMeta } from "./extension-manifest.ts";
-import { extensionConfigFor, listProjectExtensions } from "./extension-manager.ts";
+import { extensionConfigFor, listProjectExtensions, type ProjectExtensionEntry } from "./extension-manager.ts";
 import { loadPlugin } from "./markdown/plugins.ts";
 
 /** Folder (relative to the project root) snippets live in. */
@@ -288,13 +288,19 @@ interface InstalledExtension {
 async function listInstalledExtensions(projectDir: string): Promise<InstalledExtension[]> {
   const out: InstalledExtension[] = [];
   for (const entry of await listProjectExtensions(projectDir)) {
-    if (!entry.enabled || !entry.dir || !entry.carries.snippets) continue;
-    const meta = await readExtensionMeta(entry.dir);
-    const snippetsRel = meta.snippets?.trim();
-    if (!snippetsRel) continue;
-    out.push({ ref: entry.use, dir: entry.dir, name: entry.label, snippetsRel });
+    const ext = await installedExtension(entry);
+    if (ext) out.push(ext);
   }
   return out;
+}
+
+/** One manifest entry as an {@link InstalledExtension}, or null when it
+ *  contributes no snippets folder (disabled, folderless, or none declared). */
+async function installedExtension(entry: ProjectExtensionEntry): Promise<InstalledExtension | null> {
+  if (!entry.enabled || !entry.dir || !entry.carries.snippets) return null;
+  const snippetsRel = (await readExtensionMeta(entry.dir)).snippets?.trim();
+  if (!snippetsRel) return null;
+  return { ref: entry.use, dir: entry.dir, name: entry.label, snippetsRel };
 }
 
 /**
@@ -411,8 +417,8 @@ export async function readExtensionSnippet(
 export interface MarkerComponent {
   /** The marker name, without `@` — e.g. `term-box`. */
   name: string;
-  /** The extension that declares it (same shape as {@link SnippetSource}'s extension arm). */
-  source: { kind: "extension"; ref: string; name: string };
+  /** The extension that declares it. */
+  source: Extract<SnippetSource, { kind: "extension" }>;
   /** The component's example snippet body, when its file exists. */
   snippet?: string;
   /** Set when that snippet file sits directly in the extension's declared
@@ -446,31 +452,35 @@ export async function listMarkerComponents(projectDir: string): Promise<MarkerCo
     }
     if (!markers) continue;
 
-    const declaredSnippets = entry.dir ? (await readExtensionMeta(entry.dir)).snippets?.trim() : undefined;
-    const source = { kind: "extension" as const, ref: entry.use, name: entry.label };
-    for (const [name, decl] of Object.entries(markers)) {
-      if (decl.deprecated !== undefined) continue;
-      const component: MarkerComponent = { name, source };
-      if (entry.dir) {
-        const rel = typeof decl.snippet === "string" && decl.snippet.trim()
-          ? decl.snippet.trim()
-          : path.join(declaredSnippets || SNIPPETS_DIR, `${name}.md`);
-        if (!pathEscapesFolder(rel)) {
-          const file = path.join(entry.dir, rel);
-          try {
-            component.snippet = await readFile(file, "utf8");
-            if (declaredSnippets && !pathEscapesFolder(declaredSnippets)
-                && path.dirname(file) === path.join(entry.dir, declaredSnippets)
-                && file.toLowerCase().endsWith(".md")) {
-              component.snippetFileName = path.basename(file);
-            }
-          } catch {
-            // No file: the component simply has no snippet.
-          }
-        }
-      }
-      out.push(component);
+    const source: MarkerComponent["source"] = { kind: "extension", ref: entry.use, name: entry.label };
+    const names = Object.keys(markers).filter((name) => markers[name]!.deprecated === undefined);
+    const dir = entry.dir;
+    if (!dir) {
+      out.push(...names.map((name) => ({ name, source })));
+      continue;
     }
+    // The same folder rule the picker's own listing uses (listMergedSnippets).
+    const ext = await installedExtension(entry);
+    const listedDir = ext && extensionSnippetsDir(ext);
+    const snippetsRel = ext?.snippetsRel ?? SNIPPETS_DIR;
+
+    out.push(
+      ...(await Promise.all(
+        names.map(async (name): Promise<MarkerComponent> => {
+          const own = markers[name]!.snippet;
+          const rel = typeof own === "string" && own.trim() ? own.trim() : path.join(snippetsRel, `${name}.md`);
+          if (pathEscapesFolder(rel)) return { name, source };
+          const file = path.join(dir, rel);
+          try {
+            const snippet = await readFile(file, "utf8");
+            const listed = path.dirname(file) === listedDir && file.toLowerCase().endsWith(".md");
+            return { name, source, snippet, ...(listed ? { snippetFileName: path.basename(file) } : {}) };
+          } catch {
+            return { name, source }; // No file: the component simply has no snippet.
+          }
+        }),
+      )),
+    );
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }

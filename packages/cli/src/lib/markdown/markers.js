@@ -369,11 +369,9 @@ function parseMarkerLine(line, declaredWords) {
   return marker;
 }
 
-function warn(env, line, type, message, marker, severity) {
+function warn(env, line, type, message, marker) {
   if (!env.layoutWarnings) env.layoutWarnings = [];
-  const entry = { line, type, message, marker };
-  if (severity) entry.severity = severity;
-  env.layoutWarnings.push(entry);
+  env.layoutWarnings.push({ line, type, message, marker });
 }
 
 // ── Component validation (opt-in, per declared marker) ─────────────────────
@@ -381,21 +379,14 @@ function warn(env, line, type, message, marker, severity) {
 // A declared marker may carry `validate(component)`. Plugin authors write it
 // against the small plain object built here — never against markdown-it
 // tokens or core internals — so the authoring surface stays a few fields:
-// { name, variant, attrs, line, text, blocks }. Results land on the same
-// env.layoutWarnings channel as every other marker warning, which is what
-// carries them to `gutterpress validate`, the desktop Problems panel, the
-// build log and the preview terminal with no further plumbing.
+// { name, variant, attrs, line, text, blocks }. A separate, read-only core
+// rule (`gp_component_validate`, below) runs it after inline parsing — the
+// same shape as gp-pin-scope.js — so the structural transform carries no
+// validation state. Results land on the same env.layoutWarnings channel as
+// every other marker warning, which carries them to `gutterpress validate`,
+// the desktop Problems panel, the build log and the preview terminal.
 
 const COMPONENT_SEVERITIES = ['error', 'warning', 'info'];
-
-/** `![alt](src "title"){attrs}` filling a whole paragraph. */
-const IMAGE_ONLY_RE = /^!\[([^\]]*)\]\(\s*<?([^\s)>]+)>?(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)(?:\s*\{[^}]*\})?$/;
-
-function tokenLine(tok, fallback) {
-  if (tok.map) return tok.map[0] + 1;
-  if (tok.meta && Number.isFinite(tok.meta.line)) return tok.meta.line;
-  return fallback;
-}
 
 /** Index of the token closing the block opened at `i` (or `i` for a nesting-0 token). */
 function blockEnd(tokens, i) {
@@ -415,28 +406,37 @@ function inlineText(tokens, from, to) {
   return parts.join('\n');
 }
 
+/** The image a paragraph's inline token holds, when that image is all it holds. */
+function soleImage(inline) {
+  const parts = (inline && inline.children || []).filter(
+    (c) => c.type !== 'softbreak' && !(c.type === 'text' && !c.content.trim())
+  );
+  return parts.length === 1 && parts[0].type === 'image' ? parts[0] : null;
+}
+
 /**
  * Map a component's content tokens to the plain `blocks` list its `validate`
  * receives. Top level only: a nested list, quote or component is ONE block
- * (a nested component is checked by its own `validate`). Runs right after
- * block parsing, so text is each block's raw markdown — inline formatting
- * is not parsed yet, which a structure check does not need.
+ * (a nested component is checked by its own `validate`). A block's `text` is
+ * its raw markdown.
  */
 function toComponentBlocks(tokens, fallbackLine) {
   const blocks = [];
   for (let i = 0; i < tokens.length; i++) {
     const tok = tokens[i];
-    if (tok.nesting === -1) continue;
     const end = blockEnd(tokens, i);
-    const line = tokenLine(tok, fallbackLine);
+    const line = tok.map ? tok.map[0] + 1 : (tok.meta && tok.meta.line) || fallbackLine;
     switch (tok.type) {
       case 'heading_open':
         blocks.push({ type: 'heading', level: Number(tok.tag.slice(1)), text: inlineText(tokens, i, end), line });
         break;
       case 'paragraph_open': {
-        const text = inlineText(tokens, i, end);
-        const image = IMAGE_ONLY_RE.exec(text.trim());
-        blocks.push(image ? { type: 'image', alt: image[1], src: image[2], line } : { type: 'paragraph', text, line });
+        const image = soleImage(tokens[i + 1]);
+        blocks.push(
+          image
+            ? { type: 'image', alt: image.content, src: image.attrGet('src') || '', line }
+            : { type: 'paragraph', text: inlineText(tokens, i, end), line }
+        );
         break;
       }
       case 'bullet_list_open':
@@ -445,14 +445,8 @@ function toComponentBlocks(tokens, fallbackLine) {
         for (let k = i + 1; k < end; k++) {
           if (tokens[k].type !== 'list_item_open' || tokens[k].level !== tok.level + 1) continue;
           const itemEnd = blockEnd(tokens, k);
-          let first = '';
-          for (let m = k + 1; m < itemEnd; m++) {
-            if (tokens[m].type === 'inline') {
-              first = tokens[m].content;
-              break;
-            }
-          }
-          items.push(first);
+          const first = tokens.slice(k + 1, itemEnd).find((t) => t.type === 'inline');
+          items.push(first ? first.content : '');
           k = itemEnd;
         }
         blocks.push({ type: 'list', ordered: tok.type === 'ordered_list_open', items, line });
@@ -475,7 +469,7 @@ function toComponentBlocks(tokens, fallbackLine) {
         blocks.push({ type: 'html', text: tok.content, line });
         break;
       case 'layout_component_open':
-        blocks.push({ type: 'component', name: tok.meta && tok.meta.component, line });
+        blocks.push({ type: 'component', name: tok.meta.component, line });
         break;
       default:
         blocks.push({ type: tok.type.replace(/_open$/, ''), line });
@@ -486,29 +480,37 @@ function toComponentBlocks(tokens, fallbackLine) {
 }
 
 /**
- * Run one closed component's opt-in `validate` and report its results.
- * Never throws and never touches the token stream: a broken validator is a
+ * Run one component's opt-in `validate` and report its results. Never
+ * throws and never touches the token stream: a broken validator is a
  * `component_validate_failed` warning, and the document renders exactly as
  * it would without one.
  *
- * @param {object} state markdown-it core state
- * @param {object} frame the closed DeclaredFrame
+ * @param {object} env markdown-it env (receives the warnings)
+ * @param {object} decl the resolved declaration (carries validate/validateOwner)
+ * @param {object} meta the open token's meta: { line, component, variant, attrs }
  * @param {object[]} tokens the component's content tokens (label excluded)
- * @param {number} endLine 1-based line of whatever closed it (EOF: lines + 1)
+ * @param {string[]} lines the source, split once per render
  */
-function runComponentValidate(state, frame, tokens, endLine) {
-  const { decl, name } = frame;
-  const line = frame.line || 0;
+function runComponentValidate(env, decl, meta, tokens, lines) {
+  const name = meta.component;
+  const line = meta.line || 0;
+  const report = (at, type, message, severity) => {
+    if (!env.layoutWarnings) env.layoutWarnings = [];
+    env.layoutWarnings.push(severity ? { line: at, type, message, severity } : { line: at, type, message });
+  };
   const failed = (why) =>
-    warn(state.env, line, 'component_validate_failed', `@${name}: plugin "${decl.validateOwner}"'s validate() ${why}`, null);
+    report(line, 'component_validate_failed', `@${name}: plugin "${decl.validateOwner}"'s validate() ${why}`);
 
-  const lines = state.src.split('\n');
+  // `text` runs from the line after the marker through the component's last
+  // line of content (token maps are 0-based, end-exclusive).
+  let lastLine = line;
+  for (const t of tokens) if (t.map && t.map[1] > lastLine) lastLine = t.map[1];
   const component = {
     name,
-    variant: frame.variant || null,
-    attrs: { ...frame.attrs },
+    variant: meta.variant || null,
+    attrs: { ...meta.attrs },
     line,
-    text: lines.slice(line, Math.max(line, endLine - 1)).join('\n'),
+    text: lines.slice(line, lastLine).join('\n'),
     blocks: toComponentBlocks(tokens, line),
   };
 
@@ -522,11 +524,7 @@ function runComponentValidate(state, frame, tokens, endLine) {
   if (result === undefined || result === null) return;
   if (typeof result === 'string') result = [result];
   if (!Array.isArray(result)) {
-    failed(
-      result && typeof result.then === 'function'
-        ? 'returned a Promise — validate must be synchronous.'
-        : 'must return a message, an array of problems, or nothing.'
-    );
+    failed('must return a message, an array of problems, or nothing (and must not be async).');
     return;
   }
 
@@ -538,7 +536,7 @@ function runComponentValidate(state, frame, tokens, endLine) {
     }
     const at = Number.isInteger(problem.line) && problem.line > 0 ? problem.line : line;
     const severity = COMPONENT_SEVERITIES.includes(problem.severity) ? problem.severity : undefined;
-    warn(state.env, at, 'component_invalid', `@${name}: ${problem.message}`, null, severity);
+    report(at, 'component_invalid', `@${name}: ${problem.message}`, severity);
   }
 }
 
@@ -743,8 +741,9 @@ function resolveContainerShape(name, pluginName, decl) {
   if (decl.validate !== undefined && typeof decl.validate !== 'function') {
     throw new Error(`Plugin "${pluginName}"'s marker "@${name}" has a \`validate\` that is not a function.`);
   }
+  // Only a container that opts in carries these, so every other resolved
+  // shape is unchanged.
   const check = decl.validate ? { validate: decl.validate, validateOwner: pluginName } : {};
-
   return { tag, classBase, variants, label, autoCloseAtEof, ...check };
 }
 
@@ -1173,32 +1172,9 @@ export default function plugin(md, pluginOptions = {}) {
      * @property {object} decl - the resolved declaration, for autoCloseAtEof.
      * @property {number} line - the marker's own 1-based line, for the
      *   eof-close warning.
-     * @property {string} name - the marker name as the author typed it (an
-     *   alias's own name, not its target), for `validate` messages.
-     * @property {string|null} variant - the resolved variant selector.
-     * @property {Record<string,string>} attrs - the marker's attributes.
-     * @property {number} start - index in `out` of the first content token
-     *   (after the label), so `validate` sees only the author's content.
      */
     /** @type {DeclaredFrame[]} */
     const declaredFrames = [];
-
-    /**
-     * Line of whatever is closing declared frames right now: the marker
-     * being processed (an `@end-x`, a boundary like `@page`, or a second
-     * same-kind opener), or one past the last line at EOF. Every declared
-     * close happens in one of those two places, so this is all
-     * runComponentValidate needs to slice the component's source text.
-     */
-    let closingLine = 0;
-
-    /** Pop the innermost declared frame, run its opt-in `validate`, and emit its close token. */
-    function popDeclaredFrame() {
-      const frame = declaredFrames.pop();
-      if (frame.decl.validate) runComponentValidate(state, frame, out.slice(frame.start), closingLine);
-      out.push(new state.Token('layout_component_close', frame.tag, -1));
-      return frame;
-    }
 
     /** Index (from the top) of the most-recently-opened frame of `kind`, or -1. */
     function declaredFrameIndex(kind) {
@@ -1218,7 +1194,10 @@ export default function plugin(md, pluginOptions = {}) {
     function closeDeclaredFrame(kind) {
       const at = declaredFrameIndex(kind);
       if (at === -1) return false;
-      while (declaredFrames.length > at) popDeclaredFrame();
+      while (declaredFrames.length > at) {
+        const frame = declaredFrames.pop();
+        out.push(new state.Token('layout_component_close', frame.tag, -1));
+      }
       return true;
     }
 
@@ -1230,7 +1209,10 @@ export default function plugin(md, pluginOptions = {}) {
      * explicitly" as @section is, from a page/chapter/spread's point of view.
      */
     function drainDeclaredFrames() {
-      while (declaredFrames.length) popDeclaredFrame();
+      while (declaredFrames.length) {
+        const frame = declaredFrames.pop();
+        out.push(new state.Token('layout_component_close', frame.tag, -1));
+      }
     }
 
     /**
@@ -1245,7 +1227,7 @@ export default function plugin(md, pluginOptions = {}) {
      */
     function drainDeclaredFramesAtEof() {
       while (declaredFrames.length) {
-        const frame = popDeclaredFrame();
+        const frame = declaredFrames.pop();
         if (!frame.decl.autoCloseAtEof) {
           warn(
             state.env,
@@ -1257,6 +1239,7 @@ export default function plugin(md, pluginOptions = {}) {
             null
           );
         }
+        out.push(new state.Token('layout_component_close', frame.tag, -1));
       }
     }
 
@@ -1276,22 +1259,23 @@ export default function plugin(md, pluginOptions = {}) {
       // out of the EXISTING, unconditional source_range core rule with zero
       // extra plumbing (isAnnotationTarget keys on token.nesting === 1, not
       // on any particular token TYPE).
-      // `component` names this container for an enclosing component's
-      // `validate` (toComponentBlocks reports it as a nested component).
-      t.meta = { line: meta.__line, component: meta.kind };
-
       // The variant selector: the marker's own bare name/argument
       // (`@callout warning` -> "warning"), falling back to an alias's
       // preset variant (`@dm-note` with no args -> decl.presetVariant, e.g.
       // "dm") when the line supplied none. An explicit name on the line
       // always wins over a preset.
       const variant = meta.name || decl.presetVariant || null;
+      // `component` (the marker name as typed — an alias's own name),
+      // `variant`, `attrs` and `labelled` are read only by the
+      // gp_component_validate rule below.
+      t.meta = { line: meta.__line, component: meta.kind, variant, attrs: meta.attrs || {}, labelled: false };
       const variantClass = (variant && decl.variants && decl.variants[variant]) || '';
       const baseClass = [decl.classBase, variantClass].filter(Boolean).join(' ');
       addClasses(t, baseClass, meta.attrs && meta.attrs.class ? meta.attrs.class : '');
       attachDataAttrs(t, decl.baseKind, variant, meta.attrs || {});
 
       out.push(t);
+      declaredFrames.push({ kind: decl.baseKind, tag: decl.tag, decl, line: meta.__line });
 
       // Label injection (#240) — the same "structural element carrying the
       // data as both text content and an attribute" recipe as @chapter's
@@ -1308,19 +1292,9 @@ export default function plugin(md, pluginOptions = {}) {
             value
           )}</${decl.label.tag}>\n`;
           out.push(labelToken);
+          t.meta.labelled = true;
         }
       }
-
-      declaredFrames.push({
-        kind: decl.baseKind,
-        tag: decl.tag,
-        decl,
-        line: meta.__line,
-        name: meta.kind,
-        variant,
-        attrs: meta.attrs || {},
-        start: out.length,
-      });
     }
 
     /**
@@ -1653,7 +1627,6 @@ export default function plugin(md, pluginOptions = {}) {
       const meta = tok.meta || {};
       const kind = meta.kind;
       const line = meta.__line || 0;
-      closingLine = line;
 
       if (kind === 'chapter') {
         // #240: a declared container can never straddle a chapter boundary —
@@ -1851,11 +1824,30 @@ export default function plugin(md, pluginOptions = {}) {
     // comment above), so they must drain — and emit their close tokens —
     // BEFORE the core scopes below close, or their close divs would land
     // outside their own page/section/chapter wrapper.
-    closingLine = state.src.split('\n').length + 1;
     drainDeclaredFramesAtEof();
     stack.closeAll();
     state.tokens = out;
   });
+
+  // Opt-in component checks (`validate` on a declared marker). Read-only, and
+  // pushed after inline parsing so a component's blocks are fully parsed —
+  // the same shape as gp-pin-scope.js. Registered only when some declared
+  // marker has a `validate`, so every other project pays nothing.
+  if (declaredMarkers && [...declaredMarkers.values()].some((d) => d.validate)) {
+    md.core.ruler.push('gp_component_validate', function (state) {
+      let lines = null;
+      const tokens = state.tokens;
+      for (let i = 0; i < tokens.length; i++) {
+        const tok = tokens[i];
+        if (tok.type !== 'layout_component_open') continue;
+        const decl = declaredMarkers.get(tok.meta.component);
+        if (!decl || !decl.validate) continue;
+        if (!lines) lines = state.src.split('\n');
+        const from = i + (tok.meta.labelled ? 2 : 1);
+        runComponentValidate(state.env, decl, tok.meta, tokens.slice(from, blockEnd(tokens, i)), lines);
+      }
+    });
+  }
 
   // Renderer rules for injected tokens.
   //

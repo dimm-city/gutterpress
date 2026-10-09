@@ -28,7 +28,8 @@ interface LayoutWarning {
   line: number;
   type: string;
   message: string;
-  marker: unknown;
+  marker?: unknown;
+  severity?: string;
 }
 
 interface PagedEnv {
@@ -2270,7 +2271,7 @@ describe("declared markers — parsing & rendering (#240)", () => {
   test("token.meta.line threading matches every core layout_*_open token (source-range primitive)", () => {
     const { tokens } = parsePaged("Intro\n\n@sidebar\nHi\n@end-sidebar\n", { declaredMarkers });
     const t = findToken(tokens, "layout_component_open")!;
-    expect(t.meta).toEqual({ line: 3, component: "sidebar" });
+    expect(t.meta).toEqual({ line: 3, component: "sidebar", variant: null, attrs: {}, labelled: false });
     // Do NOT set token.map — see openChapter's identical comment (ADR 0009).
     // This is what lets the UNCHANGED, unconditional source_range core rule
     // (source-range.ts) annotate a declared marker's wrapper with ZERO
@@ -2335,7 +2336,7 @@ describe("declared marker `snippet` / `validate` (opt-in component checks)", () 
   /** Render `src` with one plugin declaring `markers`; returns warnings plus every component `validate` saw. */
   function run(markers: Record<string, unknown>, src: string) {
     const md = createMarkdownRenderer([{ name: "demo-plugin", plugin: () => {}, options: {}, markers } as LoadedPlugin]);
-    const env: { layoutWarnings?: Array<{ line: number; type: string; message: string; marker?: unknown; severity?: string }> } = {};
+    const env: PagedEnv = {};
     const html = md.render(src, env);
     return { html, warnings: env.layoutWarnings ?? [] };
   }
@@ -2409,7 +2410,8 @@ describe("declared marker `snippet` / `validate` (opt-in component checks)", () 
       expect(c.variant).toBe("note");
       expect(c.attrs).toEqual({ label: "Read me" });
       expect(c.line).toBe(3);
-      expect(c.text).toBe(src.split("\n").slice(3, 25).join("\n"));
+      // Through the last line of content (the nested @inner's paragraph).
+      expect(c.text).toBe(src.split("\n").slice(3, 24).join("\n"));
       expect(c.blocks).toEqual([
         { type: "heading", level: 3, text: "Head", line: 4 },
         { type: "paragraph", text: "Body *text*.", line: 6 },
@@ -2423,13 +2425,13 @@ describe("declared marker `snippet` / `validate` (opt-in component checks)", () 
       ]);
     });
 
-    test("text ends where the component closes: boundary marker, re-entrant opener, and EOF", () => {
+    test("text is the component's content, however it closes: boundary marker, re-entrant opener, EOF", () => {
       const { seen, validate } = recorder();
       run({ box: { validate, autoCloseAt: ["eof"] } }, "@box\na\n@page\n@box\nb\n@box\nc\n\n");
       expect(seen.map((c) => [c.line, c.text])).toEqual([
         [1, "a"],
         [4, "b"],
-        [6, "c\n\n"],
+        [6, "c"],
       ]);
     });
 
@@ -2454,10 +2456,10 @@ describe("declared marker `snippet` / `validate` (opt-in component checks)", () 
       ]);
       const { warnings } = run({ box: { validate } }, "\n@box\nx\n@end-box\n");
       expect(warnings).toEqual([
-        { line: 2, type: "component_invalid", message: "@box: plain", marker: null },
-        { line: 3, type: "component_invalid", message: "@box: pinned", marker: null, severity: "error" },
-        { line: 2, type: "component_invalid", message: "@box: soft", marker: null, severity: "info" },
-        { line: 2, type: "component_invalid", message: "@box: odd", marker: null },
+        { line: 2, type: "component_invalid", message: "@box: plain" },
+        { line: 3, type: "component_invalid", message: "@box: pinned", severity: "error" },
+        { line: 2, type: "component_invalid", message: "@box: soft", severity: "info" },
+        { line: 2, type: "component_invalid", message: "@box: odd" },
       ]);
     });
 
@@ -2472,7 +2474,7 @@ describe("declared marker `snippet` / `validate` (opt-in component checks)", () 
       const clean = run({ box: { class: "b" } }, src).html;
       const cases: Array<[() => unknown, RegExp]> = [
         [() => { throw new Error("boom"); }, /threw: boom/],
-        [() => Promise.resolve([]), /must be synchronous/],
+        [() => Promise.resolve([]), /must not be async/],
         [() => 42, /must return/],
         [() => [{ line: 2 }], /without a message/],
       ];

@@ -178,7 +178,7 @@ export interface GutterpressComponent {
   attrs: Record<string, string>;
   /** The marker's own 1-based line. */
   line: number;
-  /** The raw markdown between the opening marker and whatever closed it. */
+  /** The raw markdown inside the component, from the line after the marker through its last line of content. */
   text: string;
   /** The component's top-level content, in order. */
   blocks: GutterpressComponentBlock[];

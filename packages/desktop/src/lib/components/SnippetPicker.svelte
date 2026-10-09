@@ -119,15 +119,12 @@
    */
   let snippetComponents = $derived(components.filter((c) => c.snippet));
   /** Extension snippets that are a listed component's snippet show once, as the component. */
-  let visibleSnippets = $derived(
-    snippets.filter(
-      (entry) =>
-        entry.source.kind === "project" ||
-        !snippetComponents.some(
-          (c) => c.source.ref === (entry.source as { ref: string }).ref && c.snippetFileName === entry.fileName,
-        ),
-    ),
-  );
+  let visibleSnippets = $derived.by(() => {
+    const shown = new Set(snippetComponents.map((c) => `${c.source.ref}\0${c.snippetFileName}`));
+    return snippets.filter(
+      (entry) => entry.source.kind === "project" || !shown.has(`${entry.source.ref}\0${entry.fileName}`),
+    );
+  });
   let hasExtensionEntries = $derived(
     snippetComponents.length > 0 || visibleSnippets.some((s) => s.source.kind !== "project"),
   );

@@ -19,8 +19,7 @@ import {
 } from "@codemirror/autocomplete";
 import type { MarkerComponent } from "$lib/api";
 import { markerCompletionFrom, markerPairApply, type MarkerCompletion } from "./marker-completions";
-
-const FIRST_VARIABLE = /\{\{\s*[a-zA-Z0-9_.-]+\s*\}\}/;
+import { firstVariable } from "./snippet-vars";
 
 /**
  * Insert a snippet body, selecting its first `{{variable}}` so typing
@@ -28,13 +27,13 @@ const FIRST_VARIABLE = /\{\{\s*[a-zA-Z0-9_.-]+\s*\}\}/;
  * variable); without one, the caret goes to the end.
  */
 function snippetApply(body: string): MarkerCompletion["apply"] {
-  const insert = body.replace(/\s+$/, "");
-  const variable = FIRST_VARIABLE.exec(insert);
+  const insert = body.trimEnd();
+  const variable = firstVariable(insert);
   return (view, completion, from, to) => {
     view.dispatch({
       changes: { from, to, insert },
       selection: variable
-        ? EditorSelection.range(from + variable.index, from + variable.index + variable[0].length)
+        ? EditorSelection.range(from + variable.from, from + variable.to)
         : EditorSelection.cursor(from + insert.length),
       annotations: pickedCompletion.of(completion),
     });
@@ -53,13 +52,20 @@ function toCompletion(component: MarkerComponent): Completion {
   };
 }
 
-/** A completion source over whatever components `getComponents` returns at call time. */
+/** A completion source over whatever components `getComponents` returns at call time.
+ *  Options are rebuilt only when that list changes. */
 export function componentCompletionSource(getComponents: () => readonly MarkerComponent[]) {
+  let built: readonly MarkerComponent[] | null = null;
+  let options: Completion[] = [];
   return (context: CompletionContext): CompletionResult | null => {
     const components = getComponents();
     if (components.length === 0) return null;
     const from = markerCompletionFrom(context);
     if (from === null) return null;
-    return { from, options: components.map(toCompletion), validFor: /^@[\w-]*$/ };
+    if (components !== built) {
+      built = components;
+      options = components.map(toCompletion);
+    }
+    return { from, options, validFor: /^@[\w-]*$/ };
   };
 }

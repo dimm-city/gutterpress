@@ -30,6 +30,7 @@ import {
 } from "./extension-manifest.ts";
 import { loadPlugins } from "./markdown/plugins.ts";
 import { createMarkdownRenderer } from "./markdown/renderer.ts";
+import { substituteVariables } from "./snippets.ts";
 import type { ResolvedExtensionConfig } from "../schema/manifest.types.ts";
 
 async function tmpParent(): Promise<string> {
@@ -229,7 +230,7 @@ describe("scaffoldExtension --kind plugin", () => {
 
     // The snippet the editor inserts, filled in, is a valid term box.
     const snippet = await readFile(path.join(result.extensionDir, "snippets", "term-box.md"), "utf8");
-    expect(problems(snippet.replace("{{label}}", "Gutter").replace("{{body}}", "The inner margin."))).toEqual([]);
+    expect(problems(substituteVariables(snippet, { label: "Gutter", body: "The inner margin." }))).toEqual([]);
   });
 
   test("the scaffolded test suite's fixture matches its expected output", async () => {
