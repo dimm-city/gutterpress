@@ -69,13 +69,22 @@ This project follows [Semantic Versioning](https://semver.org/).
   share a name; before, a book snippet hid an extension's snippet of the same
   name. Where a component needs one snippet, the book's
   `snippets/<marker>.md` wins over the extension's.
-- **Help and book switcher move to the left of the status bar; paging is
-  centered in the preview toolbar.** The help button now sits at the very left
-  of the bottom bar with the book switcher right after it (settings stays at
-  the right). The page controls (first, previous, page picker, next, last) are
-  centered in the preview toolbar with the zoom menu on the right; in a narrow
-  preview pane the zoom label and then the first/last buttons drop out, and
-  below that the paging falls back to the left so nothing overlaps.
+- **The status bar has a Books button, and its pieces are regrouped.** A
+  folder button in the left corner opens the start screen on its Books tab.
+  The book switcher beside it now shows a book icon instead of a folder. The
+  right side reads sync status, the "Edits saved" indicator, a divider, then
+  settings and help (help is back at the right edge). The save indicator moved
+  here from the editor toolbar (the Problems badge stays there) and shows only
+  while a book is open.
+- **Paging is centered in the preview toolbar.** The page controls (first,
+  previous, page picker, next, last) are centered with the zoom menu on the
+  right; in a narrow preview pane the zoom label and then the first/last
+  buttons drop out, and below that the paging falls back to the left so
+  nothing overlaps.
+- **The left panel's Books tab is hidden for now.** The status bar's Books
+  button opens the same list on the start screen, and we are deciding whether
+  it replaces the tab. A remembered Books tab shows Table of contents instead;
+  nothing is deleted, so the tab can come back.
 - **"Needs install" no longer sends you to the terminal.** The desktop row no
   longer tells you to open Advanced or shows the `gutterpress ext add` command
   (the CLI still prints it). `gutterpress ext outdated` and `ext update` are

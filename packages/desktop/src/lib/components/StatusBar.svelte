@@ -1,15 +1,15 @@
 <script lang="ts">
   /**
-   * StatusBar — slim bottom bar hosting the help button, the book switcher,
-   * the sync status pill and the settings button.
+   * StatusBar — slim bottom bar hosting the start-screen (Books) button, the
+   * book switcher, the sync status pill, the save indicator and the settings
+   * and help buttons.
    *
    * Layout (left → right):
-   *   [help] [book switcher] ··· [sync pill] [settings]
+   *   [folder → start screen Books] [book switcher] ··· [sync pill] [save indicator] | [settings] [help]
    *
-   * The save state and the Problems badge are about the text being edited, so
-   * they sit on the editor toolbar instead. This bar still owns the "Where
-   * your work is kept" view the save indicator opens (it needs the sync
-   * pill's live state): the page calls `toggleSummary(trigger)`.
+   * The save indicator opens the "Where your work is kept" view (which needs the
+   * sync pill's live state). It shows only for an open folder book, and the `|`
+   * divider only with it. The Problems badge stays on the editor toolbar.
    *
    * PWA-clean: all host work via api.* routes (CLAUDE.md §8).
    * No node: builtins or gutterpress value imports.
@@ -19,7 +19,7 @@
   import Icon from "$lib/components/Icon.svelte";
   import { api } from "$lib/api";
   import SaveStatusView from "$lib/components/SaveStatusView.svelte";
-  import { saveStatusCopy, type SaveStatusActionId } from "$lib/save-status";
+  import { saveIndicator, saveStatusCopy, type SaveStatusActionId } from "$lib/save-status";
   import { onDestroy, tick } from "svelte";
   import type { SyncState } from "$lib/platform/contract";
   import type { ManualBackup } from "$lib/routes/sync-controller.svelte";
@@ -95,6 +95,8 @@
     onOpenBookConnections = undefined as (() => void) | undefined,
     onOpenSettings = undefined as (() => void) | undefined,
     onOpenHelp = undefined as (() => void) | undefined,
+    /** Called by the folder button: opens the start screen's Books tab. */
+    onOpenBooks = undefined as (() => void) | undefined,
   }: {
     projectDir?: string | null;
     sourceMode?: "folder" | "url";
@@ -123,6 +125,7 @@
     onOpenBookConnections?: () => void;
     onOpenSettings?: () => void;
     onOpenHelp?: () => void;
+    onOpenBooks?: () => void;
   } = $props();
 
   // ── "Where your work is kept" view ──────────────────────────────────────────
@@ -135,7 +138,7 @@
   // $effect: fetches are event-driven (open / after an action / a save landing
   // while open), per CLAUDE.md §8.
   let summaryOpen = $state(false);
-  let saveBtnEl = $state<HTMLElement | null>(null);
+  let saveBtnEl = $state<HTMLButtonElement | null>(null);
   let latestVersionAt = $state<number | null>(null);
   let changedFiles = $state<number | null>(null);
   let stale = $state(false);
@@ -266,10 +269,9 @@
     stopRefresh();
     factsSeq++; // any in-flight lookup is now stale
   }
-  /** Open or close the view from its trigger (the editor toolbar's save
-   *  indicator), which gets focus back when it closes. */
-  export function toggleSummary(trigger?: HTMLElement) {
-    saveBtnEl = trigger ?? null;
+  /** Open or close the view from the save indicator, which gets focus back
+   *  when it closes. */
+  function toggleSummary() {
     if (summaryOpen) closeSummary();
     else openSummary();
   }
@@ -380,23 +382,33 @@
   );
 
   // Book switcher: only when the open repo actually has more than one book.
+  // Save indicator: only for an open folder book (the save state is the editor
+  // buffer's), so with nothing open there is neither it nor its divider.
+  let showSave = $derived(!!projectDir && sourceMode === "folder");
+  let indicator = $derived(saveIndicator({ savePhase, autoSave, forceSaving }));
+
   let showBookSwitcher = $derived(!!projectDir && sourceMode === "folder" && books.length > 1);
 
 </script>
 
 <div class="status-bar" role="status" aria-label="Application status">
-  <!-- Left cluster: [help] [book switcher]; syncing is grouped at the far
-       right, next to the settings button. -->
+  <!-- Left cluster: [folder → start screen Books] [book switcher]. Syncing and
+       saving are grouped at the far right, next to settings and help. -->
   <div class="status-left">
-    <button class="status-icon-btn" onclick={onOpenHelp} title="Help and about" aria-label="Help and about">
-      <Icon name="circle-help" size={14} />
+    <button
+      class="status-icon-btn"
+      onclick={() => onOpenBooks?.()}
+      title="Books — open the start screen"
+      aria-label="Books — open the start screen"
+    >
+      <Icon name="folder" size={14} />
     </button>
     {#if showBookSwitcher}
       <BookSwitcher {books} {activeBookDir} onSelect={(path) => onSwitchBook?.(path)} />
     {/if}
   </div>
 
-  <!-- Right cluster: [sync pill] -->
+  <!-- Right cluster: [sync pill] [save indicator] -->
   <div class="status-right">
     {#if showSync}
       {#key projectDir}
@@ -410,11 +422,24 @@
         />
       {/key}
     {/if}
+    {#if showSave}
+      <button
+        bind:this={saveBtnEl}
+        type="button"
+        class="save-indicator {indicator.cls}"
+        aria-haspopup="dialog"
+        onclick={toggleSummary}
+        title={indicator.title}
+      ><Icon name={indicator.icon} size={13} /><span class="save-text" aria-live="polite" aria-atomic="true">{indicator.label}</span></button>
+    {/if}
   </div>
 
-  <div class="shell-actions" aria-label="Application actions">
+  <div class="shell-actions" class:divided={showSave} aria-label="Application actions">
     <button class="status-icon-btn" onclick={() => onOpenSettings?.()} title="App preferences (Ctrl+,)" aria-label="App preferences">
       <Icon name="settings" size={14} />
+    </button>
+    <button class="status-icon-btn" onclick={onOpenHelp} title="Help and about" aria-label="Help and about">
+      <Icon name="circle-help" size={14} />
     </button>
   </div>
 </div>
@@ -438,7 +463,7 @@
     overflow: visible;
   }
 
-  /* ── Left cluster (help, book switcher) ─────────────────────────────────────── */
+  /* ── Left cluster (Books button, book switcher) ─────────────────────────────────────── */
   .status-left {
     display: flex;
     align-items: center;
@@ -449,7 +474,7 @@
     min-width: 0;
   }
 
-  /* ── Right cluster (sync) ──────────────────────────────────────── */
+  /* ── Right cluster (sync, save) ──────────────────────────────────────── */
   .status-right {
     display: flex;
     align-items: center;
@@ -461,7 +486,7 @@
     margin-left: auto;
   }
 
-  /* ── Bare icon button (help, settings) ───────────────────────────────────── */
+  /* ── Bare icon button (Books, settings, help) ───────────────────────────────────── */
   .status-icon-btn {
     display: inline-flex;
     align-items: center;
@@ -497,12 +522,36 @@
     }
   }
 
+  /* The save state: a button that opens "Where your work is kept". Resting
+     is calm but readable; in flight is italic; an error uses the error token. */
+  .save-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    white-space: nowrap;
+    background: transparent;
+    border: none;
+    padding: 2px 6px;
+    border-radius: 3px;
+    cursor: pointer;
+    color: var(--app-text-secondary);
+  }
+  .save-indicator:hover { color: var(--app-text); background: var(--app-surface-hover); }
+  .save-indicator:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
+  .save-indicator.saving { font-style: italic; }
+  .save-indicator.save-error { color: var(--app-error-text); font-weight: 600; }
+
   .shell-actions {
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 0 8px;
-    border-left: 1px solid var(--app-border);
+    gap: 8px;
+    padding: 0 10px 0 8px;
     flex: 0 0 auto;
+  }
+  /* The `|` between the save indicator and settings/help: only when the
+     indicator is shown, so an empty right side has no stray divider. */
+  .shell-actions.divided {
+    border-left: 1px solid var(--app-border);
   }
 </style>
