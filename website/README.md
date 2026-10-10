@@ -14,7 +14,16 @@ node_modules/unify-docs-template`; `package.json` pins it and the unify CLI).
     npx unify dev                       # build, watch, serve on localhost:3000
     npx unify build --audit --strict    # what CI runs
 
-## It renders the real user guide, not a copy
+## It renders the real docs, not a copy
+
+The docs are split three ways: **Desktop app** (`docs/desktop-guide/`, how-to guides for the
+app, published at `/docs/desktop/`), **Command line** (the user guide's CLI chapters under
+`/docs/cli/`, plus `packages/cli/README.md` as the CLI reference) and **Writing & design** (the
+rest of the user guide). The download tables on `/install/` are written from the latest stable
+release's assets at build time; `release.yml` dispatches the Pages build after each stable
+release so they follow it.
+
+### The user guide
 
 `scripts/gen.mjs` publishes `examples/gutterpress-user-guide/` at every build through the
 docs template's importer: each chapter lands at `docs/<name>` (its number prefix

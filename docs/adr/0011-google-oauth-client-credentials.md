@@ -115,9 +115,10 @@ connect for every user of that build:
    token storage, and the absence of any Gutterpress server in the data path.
    Published by `.github/workflows/pages.yml`, which renders the root
    `PRIVACY.md` (the one source) into
-   <https://dimm-city.github.io/gutterpress/privacy/>; the site's landing
-   page, <https://dimm-city.github.io/gutterpress/>, serves as the homepage
-   URL.
+   <https://gutterpress.dimm.city/privacy/>; the site's landing
+   page, <https://gutterpress.dimm.city/>, serves as the homepage
+   URL. (The site moved to that custom domain from the default project
+   address, `dimm-city.github.io/gutterpress/`, which GitHub redirects.)
 5. **Publish the consent screen to *In production*** once basic (brand)
    verification clears the "unverified app" interstitial. Until then,
    `Testing` mode works for development with two caveats to plan around:

@@ -714,3 +714,19 @@ body.home .hero {
 .card button.more:hover {
   color: var(--accent-bright);
 }
+
+/* ── Download tables ──────────────────────────────────────────────────── */
+.dl-version {
+  font: 400 0.85rem/1.4 var(--pu-type);
+  color: var(--pu-ink-soft);
+}
+
+.dl-size {
+  font: 400 0.75rem/1 var(--pu-type);
+  color: var(--pu-ink-soft);
+  white-space: nowrap;
+}
+
+.downloads td a code {
+  color: var(--pu-red);
+}
