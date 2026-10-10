@@ -61,6 +61,8 @@ export type {
   SnapshotEntry,
   RemoteConnection,
   RemoteRepository,
+  BackupTarget,
+  BackupSetupResult,
   RemoteBranch,
   RepoBook,
   RemoteAccessResult,
@@ -85,6 +87,8 @@ import type {
   SnapshotEntry,
   RemoteConnection,
   RemoteRepository,
+  BackupTarget,
+  BackupSetupResult,
   RemoteBranch,
   RepoBook,
   RemoteAccessResult,
@@ -221,6 +225,8 @@ export interface MarkerComponent {
   source: Extract<SnippetSource, { kind: 'extension' }>;
   /** Variant names accepted as the marker's bare word (`@name <variant>`). */
   variants: string[];
+  /** One element with no body and no `@end-<name>`: inserted without a closing pair. */
+  selfClosing?: true;
   snippet?: string;
 }
 
@@ -252,6 +258,25 @@ export interface ProjectConfigFields {
   /** `targets:` — the publish destinations this book is validated against
    *  (ADR 0008). `[]` is the explicit "no destination policies" opt-out. */
   targets?: string[];
+}
+
+/**
+ * A book's page size as recorded (mirrors the lib's `PageSetup`): the manifest's
+ * preset + validation bounds, and what the stylesheet's plain `@page` prints at.
+ * Sizes are points (72pt = 1in).
+ */
+export interface PageSetup {
+  /** null when the manifest names a preset the app doesn't know. */
+  preset: 'dtrpg' | 'book' | 'custom' | null;
+  bounds: { width: number; height: number; tolerance: number } | null;
+  css: { width: number; height: number; file: string } | null;
+}
+
+/** What the author picks (mirrors the lib's `PageSizeChoice`). */
+export interface PageSizeChoice {
+  preset: 'dtrpg' | 'book' | 'custom';
+  /** Required for `custom`; the other presets own their size. */
+  page?: { width: number; height: number };
 }
 
 export interface DirEntry {
@@ -617,6 +642,15 @@ export const api = {
       post<ProjectConfigFields>('/api/manifest/set-fields', { projectDir, updates }),
   },
 
+  pageSize: {
+    /** Read the book's page size back from its manifest and stylesheet. */
+    read: (projectDir: string) =>
+      post<PageSetup>('/api/page-size/read', { projectDir }),
+    /** Change it: manifest preset + bounds and the stylesheet's `@page` size, together. */
+    set: (projectDir: string, choice: PageSizeChoice) =>
+      post<PageSetup>('/api/page-size/set', { projectDir, choice }),
+  },
+
   style: {
     /** Replace the manifest's active `styles:` list (reorder + toggle). */
     setActive: (projectDir: string, paths: string[]) =>
@@ -699,6 +733,15 @@ export const api = {
     /** Repositories the user granted the Gutterpress GitHub App. */
     listRemoteRepositories: () =>
       post<RemoteRepository[]>('/api/remote/list-repositories'),
+
+    /**
+     * Online backup for a book that started on this computer (#358): create a
+     * GitHub repository (or use an empty one), connect the book to it and push
+     * its history. Resolves with `status: "failed"` + a plain message for
+     * every expected problem; it rejects only on unexpected errors.
+     */
+    setUpBackup: (projectDir: string, target: BackupTarget) =>
+      post<BackupSetupResult>('/api/remote/set-up-backup', { projectDir, target }),
 
     /** Branches of a chosen repository. */
     listRemoteBranches: (owner: string, repo: string) =>

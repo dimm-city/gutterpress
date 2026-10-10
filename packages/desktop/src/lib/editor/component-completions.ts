@@ -6,7 +6,8 @@
  * (`api.snip.components`). Picking one inserts the component's example
  * snippet, so the author starts from the structure the component expects.
  * Each variant is offered too (`@name <variant>`) and lands on the snippet's
- * marker line.
+ * marker line. A `selfClosing` component with no snippet inserts just its
+ * marker (no `@end-` pair).
  *
  * Kept apart from `marker-completions.ts`, whose table is core-only by rule;
  * this source reuses its line-start trigger and pair insert so plugin
@@ -66,7 +67,9 @@ function toCompletion(component: MarkerComponent, variant?: string): Completion 
     detail: `component · ${component.source.name}`,
     apply: component.snippet
       ? snippetApply(variant ? withVariant(component.snippet, component.name, variant) : component.snippet)
-      : markerPairApply(marker, `@end-${component.name}`),
+      : component.selfClosing
+        ? marker
+        : markerPairApply(marker, `@end-${component.name}`),
   };
 }
 

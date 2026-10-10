@@ -8,7 +8,7 @@
  * pdfx pipeline (Ghostscript PDF/X-1a, ICC, ink coverage).
  */
 import { PDFDocument, PDFName, PDFNumber, rgb } from "pdf-lib";
-import { signaturePadding } from "../shared/synthesis.ts";
+import { signaturePadding, type LastPageMode } from "../shared/synthesis.ts";
 import type { PageTrim } from "./tier2.ts";
 
 export interface PostprocessOptions {
@@ -16,11 +16,12 @@ export interface PostprocessOptions {
   /** append blank pages until pageCount % signature === 0 */
   signature?: number;
   /**
-   * Guarantee the last page is a blank page added here. If signature padding
-   * would add nothing, append one full signature of blank pages (one page when
-   * signature <= 1).
+   * `blank`: guarantee the last page is a blank page added here (if signature
+   * padding would add nothing, append one full signature of blank pages — one
+   * page when signature <= 1). `short-by-one`: stop one page short of a
+   * multiple of the signature, for the printer to add the last page.
    */
-  reserveLastPage?: boolean;
+  lastPage?: LastPageMode;
   title?: string;
   author?: string;
   subject?: string;
@@ -62,7 +63,7 @@ export async function postprocess(
   ];
 
   // ---- signature padding -------------------------------------------------
-  const padded = signaturePadding(doc.getPageCount(), opts.signature, opts.reserveLastPage);
+  const padded = signaturePadding(doc.getPageCount(), opts.signature, opts.lastPage);
   for (let i = 0; i < padded; i++) doc.addPage([g.media.width, g.media.height]);
 
   const wantMarks = opts.marks || g.marks.includes("crop") || g.marks.includes("cross");

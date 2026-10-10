@@ -266,7 +266,7 @@ test("inert values are never a rasterization risk (#259)", () => {
   }
   for (const d of [
     "filter: blur(1px)",
-    "clip-path: inset(0)",
+    "clip-path: url(#mask)",
     "will-change: transform",
     "mix-blend-mode: multiply",
   ]) {
@@ -319,4 +319,58 @@ test("overflow at visible or a CSS-wide reset keyword does not clip; any other v
   const clipped = checkCss(`.page { overflow: hidden; }`).filter((x) => x.rule === rulePageContainment);
   expect(clipped).toHaveLength(1);
   expect(clipped[0]!.message).toContain("overflow");
+});
+
+// #339: a basic-shape clip-path is a vector clip in Chromium's PDF output
+// (preflight's pdf.print.rasterized-pages passes), so only an SVG-mask url()
+// reference stays flagged.
+test("clip-path: basic shapes are not flagged, url(...) is", () => {
+  for (const v of [
+    "polygon(0 0, 100% 0, 100% 80%, 0 100%)",
+    "inset(0 round 4px)",
+    "circle(50% at 50% 50%)",
+    "ellipse(40% 30% at 50% 50%)",
+    "path('M0 0 L10 0 L10 10 Z')",
+  ]) {
+    expect(checkCss(`.x { clip-path: ${v}; }`)).toHaveLength(0);
+  }
+  const w = checkCss(`.x { clip-path: url(#m); }`);
+  expect(w).toHaveLength(1);
+  expect(w[0]!.rule).toBe(ruleRiskyProps);
+  // properties that genuinely rasterize are still flagged
+  for (const d of ["filter: blur(1px)", "backdrop-filter: blur(1px)", "mix-blend-mode: multiply"]) {
+    expect(checkCss(`.x { ${d}; }`)).toHaveLength(1);
+  }
+});
+
+test("gutterpress-disable-next-line silences the named rule on the next line only", () => {
+  const css = [
+    "/* gutterpress-disable-next-line printsafe/page-containment -- scoped elsewhere */",
+    ".page { overflow-x: clip; }",
+    ".page { overflow-x: clip; }",
+  ].join("\n");
+  const w = checkCss(css);
+  expect(w).toHaveLength(1);
+  expect(w[0]!.line).toBe(3);
+});
+
+test("gutterpress-disable-next-line only silences the rules it names", () => {
+  const css = [
+    "/* gutterpress-disable-next-line printsafe/page-containment */",
+    ".x { filter: blur(1px); }",
+    "/* gutterpress-disable-next-line printsafe/no-risky-print-effects, printsafe/page-containment -- two ids */",
+    ".x { filter: blur(1px); }",
+  ].join("\n");
+  expect(checkCss(css).map((x) => x.line)).toEqual([2]);
+});
+
+test("lint rules: off drops a rule, warn/error set its severity, unknown ids are ignored", () => {
+  const css = `.x { filter: blur(1px); background: url(https://e.com/a.png); }`;
+  const off = checkCss(css, undefined, { rules: { [ruleRiskyProps]: "off" } });
+  expect(off.map((x) => x.rule)).toEqual(["printsafe/no-remote-urls"]);
+  const levels = checkCss(css, undefined, {
+    rules: { [ruleRiskyProps]: "error", "printsafe/no-remote-urls": "warn", "printsafe/nope": "off" },
+  });
+  expect(levels.map((x) => x.severity).sort()).toEqual(["error", "warning"]);
+  expect(levels).toHaveLength(2);
 });

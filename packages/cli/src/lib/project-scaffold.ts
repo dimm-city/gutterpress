@@ -32,6 +32,7 @@ import { getAssetPath } from "./embedded-assets.ts";
 import { MANIFEST_FILENAMES } from "./manifest.ts";
 import { loadManifestDoc, writeManifestDoc } from "./manifest-doc.ts";
 import { PRESET_IDS, PRESETS, type PresetId } from "./presets.ts";
+import { isPositivePoints, writePageBounds, type CustomPageOptions } from "./page-size.ts";
 import { TARGETS, TARGET_IDS } from "./targets.ts";
 import { ensureProjectGitignore } from "./project-gitignore.ts";
 import { slugify } from "./slug.ts";
@@ -124,15 +125,8 @@ export interface CreateProjectOptions {
   versionHistory?: ProjectVersionHistoryMode;
 }
 
-/** Page bounds for {@link CreateProjectOptions.customPage}. */
-export interface CustomPageOptions {
-  /** Trim width in points (72pt = 1in). */
-  width: number;
-  /** Trim height in points (72pt = 1in). */
-  height: number;
-  /** Allowed deviation in points when validating a built PDF. Default 0.5. */
-  tolerance?: number;
-}
+/** Page bounds for {@link CreateProjectOptions.customPage} (defined in page-size.ts). */
+export type { CustomPageOptions };
 
 /** The result of a successful scaffold. */
 export interface CreateProjectResult {
@@ -201,10 +195,6 @@ export function escapeYamlScalar(value: string): string {
 }
 
 const DEFAULT_AUTHOR = "Anonymous";
-
-function isPositivePoints(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0;
-}
 
 /**
  * Validate the preset + page inputs for a built-in-template scaffold
@@ -426,16 +416,7 @@ export async function scaffoldProject(
       const { doc, file } = await loadManifestDoc(projectDir);
       doc.set("preset", preset);
       doc.set("targets", doc.createNode(targets ?? []));
-      if (options.customPage) {
-        const page: Record<string, number> = {
-          width: options.customPage.width,
-          height: options.customPage.height,
-        };
-        if (options.customPage.tolerance !== undefined) {
-          page.tolerance = options.customPage.tolerance;
-        }
-        doc.set("page", doc.createNode(page));
-      }
+      if (options.customPage) writePageBounds(doc, options.customPage);
       await writeManifestDoc(file, doc);
     }
     const firstSource = await firstSourceFile(manifestPath);

@@ -51,9 +51,14 @@ function applyOption(doc: string, label: string, list: MarkerComponent[] = compo
   const result = complete(doc, list)!;
   const option = result.options.find((o) => o.label === label)!;
   const view = makeMockView(doc);
-  (option.apply as (v: EditorView, c: Completion, from: number, to: number) => void)(
-    view, option, result.from, doc.length,
-  );
+  // A string `apply` is CodeMirror's plain replace-the-typed-prefix insert.
+  if (typeof option.apply === "string") {
+    view.dispatch({ changes: { from: result.from, to: doc.length, insert: option.apply } });
+  } else {
+    (option.apply as (v: EditorView, c: Completion, from: number, to: number) => void)(
+      view, option, result.from, doc.length,
+    );
+  }
   const sel = view.state.selection.main;
   return { doc: view.state.doc.toString(), sel: [sel.from, sel.to] as const, view };
 }
@@ -124,6 +129,12 @@ test("a snippet whose first line is not the marker is inserted unchanged for a v
   expect(applyOption("@no", "@note warn", list).doc).toBe("Intro\n@note\nText\n@end-note");
   // `@notebook-x` is a different word from `@notebook`, so it is not rewritten.
   expect(applyOption("@no", "@notebook warn", list).doc).toBe("@notebook-x\n@end-notebook");
+});
+
+test("a selfClosing component without a snippet inserts the bare marker, with no closing pair", () => {
+  const list: MarkerComponent[] = [{ name: "tape", source, variants: ["wide"], selfClosing: true }];
+  expect(applyOption("@ta", "@tape", list).doc).toBe("@tape");
+  expect(applyOption("@ta", "@tape wide", list).doc).toBe("@tape wide");
 });
 
 test("a variant without a snippet inserts `@name <variant>` / `@end-name` with the caret between", () => {

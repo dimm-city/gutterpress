@@ -12,7 +12,7 @@ import {
   type GcpmModel,
   type PageGeometry,
 } from "../shared/gcpm-extract.ts";
-import { isRectoVersoBreak, planRectoBlanks, signaturePadding, wantsRecto } from "../shared/synthesis.ts";
+import { isRectoVersoBreak, planRectoBlanks, signaturePadding, wantsRecto, type LastPageMode } from "../shared/synthesis.ts";
 import { flushEdgesIn, flushMargins, type FlushEdge } from "../shared/flush.ts";
 
 export const PX_PER_PT = 96 / 72;
@@ -1374,7 +1374,7 @@ export function blankPageIndices(strips: StripInfo[]): number[] {
 
 /**
  * Show the blank pages the PDF build appends after the content
- * (`print.signature` / `print.reserveLastPage`, which `assemble.ts` writes on
+ * (`print.signature` / `print.lastPage`, which `assemble.ts` writes on
  * `<html>`), so the preview and the PDF have the same page count and the same
  * last page. The count is `signaturePadding`, the rule `postprocess.ts` pads
  * the PDF with.
@@ -1389,7 +1389,7 @@ export function blankPageIndices(strips: StripInfo[]): number[] {
 export function padToSignature(strips: StripInfo[], contentPages: number): number {
   for (const spacer of Array.from(document.querySelectorAll(".gp-pad-spacer"))) spacer.remove();
   const data = document.documentElement.dataset;
-  const count = signaturePadding(contentPages, Number(data.gpSignature) || 1, data.gpReserveLastPage !== undefined);
+  const count = signaturePadding(contentPages, Number(data.gpSignature) || 1, data.gpLastPage as LastPageMode | undefined);
   const last = strips[strips.length - 1];
   if (!last || count === 0) return contentPages;
   const target = contentPages + count;

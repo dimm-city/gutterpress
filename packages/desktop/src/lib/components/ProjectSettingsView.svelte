@@ -72,6 +72,7 @@
     onClose,
     onOpenAccounts,
     onVersionHistoryEnabled,
+    onBackupSetUp,
     triggerEl,
   }: {
     projectDir: string | null;
@@ -90,6 +91,8 @@
     onOpenAccounts?: () => void;
     /** The Connections tab just turned on version history: re-read the project's classification. */
     onVersionHistoryEnabled?: (projectDir: string) => void;
+    /** The Connections tab just set up online backup: re-read the project's classification. */
+    onBackupSetUp?: (projectDir: string) => void;
     /** The control that opened the view, for focus restore on close. */
     triggerEl?: HTMLElement | null;
   } = $props();
@@ -126,6 +129,9 @@
     projectDir: projectDirAccessor,
     readManifest: (dir) => api.manifest.read(dir),
     writeManifest: (dir, updates) => api.manifest.setFields(dir, updates),
+    // Page size (#357): read back from the manifest + stylesheet, written to both.
+    readPageSetup: (dir) => api.pageSize.read(dir),
+    writePageSetup: (dir, choice) => api.pageSize.set(dir, choice),
     // The source-files list universe: top-level markdown files (the same set
     // the render pipeline includes when the manifest lists none).
     listMarkdownFiles: (dir) =>
@@ -310,7 +316,7 @@
       {#if activeTab === "connections"}
         <!-- This project's connection details. Accounts/credentials stay
              global in Settings → Accounts; onOpenAccounts routes there. -->
-        <ProjectConnectionsSection {projectDir} {onOpenAccounts} {onVersionHistoryEnabled} />
+        <ProjectConnectionsSection {projectDir} {onOpenAccounts} {onVersionHistoryEnabled} {onBackupSetUp} />
       {/if}
     {/if}
   </div>

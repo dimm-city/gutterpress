@@ -7,6 +7,7 @@ import { assembleBookHtml, type AssembleBookHtmlOptions, type LayoutWarning } fr
 import { resolveActiveStyles } from "../style-resolver";
 import { inlineStyles, type AssetCopy } from "../asset-inline";
 import type { LoadedPlugin, PluginStyleGroup } from "./renderer";
+import type { PrintPadding } from "../../engine/shared/synthesis.ts";
 
 export type { LayoutWarning } from "./assemble";
 
@@ -55,7 +56,7 @@ export async function renderChapters(
   opts: {
     title?: string;
     /** See {@link AssembleBookHtmlOptions.print}. */
-    print?: { signature?: number; reserveLastPage?: boolean };
+    print?: PrintPadding;
     styles?: string[];
     files?: string[] | null;
     plugins?: LoadedPlugin[];
@@ -169,7 +170,7 @@ export async function renderChaptersToFile(
   opts: {
     title?: string;
     /** See {@link AssembleBookHtmlOptions.print}. */
-    print?: { signature?: number; reserveLastPage?: boolean };
+    print?: PrintPadding;
     styles?: string[];
     files?: string[] | null;
     plugins?: LoadedPlugin[];

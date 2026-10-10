@@ -2,6 +2,10 @@
  * DetailsSectionController — the single owner of the Details section's state
  * + logic (title, authors, output filename, source files).
  *
+ * The page size (#357) rides along as drafts: it is read back from the manifest
+ * + stylesheet on load and written (both together) by the same Save button,
+ * only when it actually changed.
+ *
  * Centralises the read manifest subset (`fields`), the four editable drafts
  * (`titleDraft` / `authorsDraft` / `sourceDraft`), the
  * load/save flags, and the author-list array intents (`addAuthor` /
@@ -19,7 +23,13 @@
  * imports.
  */
 
-import type { ProjectConfigFields } from "$lib/api";
+import type { PageSetup, PageSizeChoice, ProjectConfigFields } from "$lib/api";
+import {
+  pointsToInches,
+  sizeChoiceFor,
+  trimPoints,
+  type PresetChoice,
+} from "$lib/page-size-choices";
 import {
   buildSourceList,
   moveEntry,
@@ -44,6 +54,11 @@ export interface DetailsSectionDeps {
   /** Which of the print tools (`qpdf`/`gs`) are missing on this computer.
    *  Best-effort: a rejection just means no tool note is shown. */
   listMissingPrintTools?: () => Promise<string[]>;
+  /** Read the book's page size from its manifest + stylesheet (#357). Optional:
+   *  without it the section simply has no page-size control. */
+  readPageSetup?: (projectDir: string) => Promise<PageSetup>;
+  /** Write the page size to the manifest AND the stylesheet together (#357). */
+  writePageSetup?: (projectDir: string, choice: PageSizeChoice) => Promise<PageSetup>;
   /** Fired after a successful save (the panel wires this to a toast). */
   onSaved?: () => void;
   /** Fired after a load/save failure (the panel wires this to a toast). */
@@ -72,6 +87,15 @@ export class DetailsSectionController {
   /** Tool ids (`qpdf`/`gs`) missing on this computer, for the note beside a
    *  checked destination that needs them. Empty when the probe failed. */
   missingTools = $state<string[]>([]);
+
+  /** The page size as last read/saved, or null before the first read / when unavailable. */
+  pageSetup = $state<PageSetup | null>(null);
+  /** Editable "designed for" choice (the manifest preset). */
+  presetDraft = $state<PresetChoice | null>(null);
+  /** Editable size row + typed inches — meaningful for the `custom` preset. */
+  sizeChoice = $state<string>("letter");
+  widthIn = $state("");
+  heightIn = $state("");
 
   /** The markdown files found on disk at load time (toManifestFiles's
    *  "is this the all-files default?" reference). */
@@ -103,6 +127,7 @@ export class DetailsSectionController {
       this.titleDraft = f.title ?? "";
       this.authorsDraft = f.authors ?? [];
       this.targetsDraft = f.targets ?? [];
+      await this.loadPageSetup(projectDir);
       this.scanOk = scan.ok;
       // Failed scan: fall back to the manifest's own entries as the universe
       // so they stay editable without every row being flagged "missing".
@@ -121,6 +146,64 @@ export class DetailsSectionController {
       this.detailsError = e instanceof Error ? e.message : String(e);
     }
   }
+
+  // ── Page size (#357) ────────────────────────────────────────────────────────
+  /** Best-effort: a failed read just leaves the page-size control out. */
+  private async loadPageSetup(projectDir: string): Promise<void> {
+    if (!this.deps.readPageSetup) return;
+    try {
+      this.applyPageSetup(await this.deps.readPageSetup(projectDir));
+    } catch {
+      this.pageSetup = null;
+    }
+  }
+
+  /** Point the drafts at what is recorded; the size starts from the current bounds. */
+  private applyPageSetup(setup: PageSetup): void {
+    this.pageSetup = setup;
+    this.presetDraft = setup.preset;
+    const b = setup.bounds;
+    this.sizeChoice = b ? sizeChoiceFor(b.width, b.height) : "letter";
+    this.widthIn = b ? pointsToInches(b.width) : "";
+    this.heightIn = b ? pointsToInches(b.height) : "";
+  }
+
+  /** What the drafts mean, or null while nothing is chosen / a custom trim is incomplete. */
+  get pageChoice(): PageSizeChoice | null {
+    if (!this.presetDraft) return null;
+    if (this.presetDraft !== "custom") return { preset: this.presetDraft };
+    const page = trimPoints(this.sizeChoice, this.widthIn, this.heightIn);
+    return page ? { preset: "custom", page } : null;
+  }
+
+  /** True when a custom size was chosen but its width/height aren't both filled in. */
+  get pageIncomplete(): boolean {
+    return this.presetDraft === "custom" && this.pageChoice === null;
+  }
+
+  /**
+   * Whether saving must write the page size: the choice differs from what is
+   * recorded, or the stylesheet prints at a size other than the manifest's
+   * (the two halves drifted — saving puts them back in step).
+   */
+  get pageDirty(): boolean {
+    const setup = this.pageSetup;
+    const choice = this.pageChoice;
+    if (!setup || !choice) return false;
+    if (choice.preset !== setup.preset) return true;
+    const b = setup.bounds;
+    if (choice.preset === "custom" && choice.page) {
+      if (!b || Math.abs(b.width - choice.page.width) >= 0.5 || Math.abs(b.height - choice.page.height) >= 0.5) {
+        return true;
+      }
+    }
+    const css = setup.css;
+    return !!css && !!b && (Math.abs(css.width - b.width) >= 0.5 || Math.abs(css.height - b.height) >= 0.5);
+  }
+
+  setPreset = (preset: PresetChoice): void => {
+    this.presetDraft = preset;
+  };
 
   // ── Publish-target intents (ADR 0008) ───────────────────────────────────────
   toggleTarget = (id: string): void => {
@@ -155,6 +238,10 @@ export class DetailsSectionController {
   saveDetails = async (): Promise<void> => {
     const projectDir = this.deps.projectDir();
     if (!projectDir) return;
+    if (this.pageIncomplete) {
+      this.detailsError = "Enter a width and height for your custom page size.";
+      return;
+    }
     const trimmedAuthors = this.authorsDraft.map((a) => a.trim()).filter((a) => a.length > 0);
     this.detailsSaving = true;
     this.detailsError = null;
@@ -176,6 +263,10 @@ export class DetailsSectionController {
         targets: [...this.targetsDraft],
       });
       this.fields = out;
+      const choice = this.pageChoice;
+      if (choice && this.pageDirty && this.deps.writePageSetup) {
+        this.applyPageSetup(await this.deps.writePageSetup(projectDir, choice));
+      }
       this.deps.onSaved?.();
     } catch (e) {
       this.detailsError = e instanceof Error ? e.message : String(e);

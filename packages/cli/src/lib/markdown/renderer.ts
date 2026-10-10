@@ -91,7 +91,7 @@ export interface GutterpressMarkerLabel {
  * One entry in a plugin's declared `markers` table (#240 — "declarative
  * container components in core"). Exactly one of three shapes:
  *
- *   - a CONTAINER: `section`/`tag`/`class`/`variants`/`label`/`autoCloseAt`, any/all
+ *   - a CONTAINER: `section`/`tag`/`class`/`variants`/`label`/`autoCloseAt`/`selfClosing`, any/all
  *     optional (a bare `{}` is a valid, if pointless, `<div>` wrapper);
  *   - an ALIAS: `alias` (another declared name) + optional `preset`;
  *   - a DEPRECATION: `deprecated` (a human-readable retirement message) —
@@ -161,6 +161,14 @@ export interface GutterpressMarkerDeclaration {
    * warns (the default — most likely a forgotten `@end-<name>`).
    */
   autoCloseAt?: Array<"eof">;
+  /**
+   * The marker is one element with no body and no `@end-<name>`: `@tape
+   * label="..."` emits the element (and its label) and closes it at once, so
+   * nothing that follows is nested inside and `@end-<name>` warns. Cannot be
+   * combined with `section` or `autoCloseAt`. A `validate` on a self-closing
+   * marker always sees empty `blocks` and `text`. Aliases inherit it.
+   */
+  selfClosing?: boolean;
   /** This marker is sugar for another declared marker (must name a non-alias, non-deprecated entry). */
   alias?: string;
   /** With `alias`: defaults applied when the invocation line supplies none. */

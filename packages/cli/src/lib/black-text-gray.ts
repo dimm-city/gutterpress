@@ -1,5 +1,5 @@
 /**
- * K-only black text for PDF/X (#331).
+ * K-only black text for PDF/X (#331, #336).
  *
  * PRINT-SPEC GAP: print vendors (DriveThruRPG) require body text to print on
  * the black plate alone (100% K). Chromium writes every text fill as
@@ -21,12 +21,28 @@
  * scoped to `BT`…`ET`: on entering a text object whose inherited fill/stroke
  * is near-black RGB we emit `0 g`/`0 G`, and at `ET` we put the original RGB
  * back. A near-black `rg`/`RG` set inside the block is rewritten the same way.
- * Page content streams and Form XObjects are both processed; a Form's
- * inherited (pre-`Do`) colour is unknowable from its own stream, so only
- * colours set inside the form are considered.
+ * Page content streams and Form XObjects are both processed.
  *
- * Known limit: text-decoration rectangles (underline/strike) are `re f` after
- * `ET`, i.e. non-text painting, and stay rich black.
+ * Size threshold (#336): DriveThruRPG recommends rich black for text LARGER
+ * than 24pt, so only text at or below {@link LARGE_TEXT_PT} is rewritten. The
+ * effective size is `Tf` size × the text matrix's scale (`Tm`) × the CTM's
+ * scale (`cm`, restored by `q`/`Q`) — each reduced to √|det| of its 2×2, so
+ * rotation and flips do not matter and anisotropic scaling is averaged.
+ * `Tz`/`Ts` are ignored. A Form XObject's stream cannot know the CTM it is
+ * drawn under, so the page pass records the CTM at each `Do` and the form is
+ * sized from that (the smallest, if drawn more than once — K-only large text
+ * is harmless, rich small text is not). A form reached any other way (nested
+ * in another form, unreferenced) has unknown scale and is treated as small.
+ * A `Tf` inside a text object re-evaluates, so one `BT` can switch between
+ * K-only and rich as the size crosses the threshold.
+ *
+ * Underline / strike-through (#336): Chromium (tagged PDF, which the engine
+ * always requests) wraps each text run and its decoration in one marked-content
+ * span (`/NonStruct <</MCID n>> BDC … EMC`) and paints the decoration as a thin
+ * `x y w h re f` outside `BT…ET`. A near-black such rect, thinner than a fifth
+ * of the span's small text, is wrapped `q 0 g … Q` so it prints K-only like the
+ * text it decorates. A rect outside any span, or in a span with no small text
+ * (rules, borders, large headings), is left alone — nothing is guessed.
  */
 
 // Fixed on purpose (no config knob): the reporter's verified test. Warm inks
@@ -107,20 +123,82 @@ function* tokenize(s: string): Generator<Tok> {
 }
 
 /**
- * Rewrite near-black RGB fill/stroke to DeviceGray black inside BT…ET of one
- * content stream. Pure string → string; returns the input when nothing changed.
+ * DriveThruRPG: black text LARGER than this (in points) may be rich black;
+ * at or below it, it must be K-only.
  */
-export function rewriteBlackText(src: string): string {
+export const LARGE_TEXT_PT = 24;
+// Float slack so 32px × 0.75 (= 24pt, give or take a ulp of matrix maths) counts as 24.
+const SIZE_EPS = 0.05;
+
+const area = (m: number[]) => Math.sqrt(Math.abs(m[0]! * m[3]! - m[1]! * m[2]!));
+
+/**
+ * Effective text size in points, from the operators that decide it: `cm`
+ * (nested by `q`/`Q`), `BT`/`Tm` and `Tf`. See the module doc for the model.
+ */
+class TextScale {
+  private font = 0;
+  private tm = 1;
+  private stack: [number, number][] = [];
+  constructor(private ctm: number) {}
+
+  /** The CTM's scale: what a user-space length is worth in points. */
+  get unit(): number { return this.ctm; }
+  /** Effective size of the text being drawn, in points. */
+  get size(): number { return this.font * this.tm * this.ctm; }
+
+  /** Feed one operator; returns true when {@link size} may have changed. */
+  op(op: string, nums: number[]): boolean {
+    switch (op) {
+      case "q": this.stack.push([this.ctm, this.font]); return false;
+      case "Q": { const p = this.stack.pop(); if (p) [this.ctm, this.font] = p; return true; }
+      case "cm": if (nums.length === 6) this.ctm *= area(nums); return true;
+      case "BT": this.tm = 1; return true;
+      case "Tm": if (nums.length === 6) this.tm = area(nums); return true;
+      case "Tf": this.font = Math.abs(nums[nums.length - 1] ?? 0) || 0; return true;
+    }
+    return false;
+  }
+}
+
+/** What a stream's caller knows that the stream itself cannot. */
+export interface ContentContext {
+  /** Scale in effect where the stream starts: 1 for a page, the invoking CTM for a form. 0 = unknown (treated as small). */
+  baseScale?: number;
+  /** Called for each `Do` with the XObject's resource name and the CTM scale there. */
+  onDo?: (name: string, scale: number) => void;
+}
+
+type Edit = { start: number; end: number; text: string };
+
+interface Span {
+  hasSmall: boolean;
+  maxSmall: number;
+  /** thin near-black rects seen in this span: edit positions and thickness (pt) */
+  rects: { start: number; end: number; thickness: number }[];
+}
+
+/**
+ * Rewrite near-black RGB fill/stroke to DeviceGray black inside BT…ET of one
+ * content stream, for text at or below {@link LARGE_TEXT_PT}, plus the thin
+ * decoration rects in that text's marked-content span. Pure string → string;
+ * returns the input when nothing changed.
+ */
+export function rewriteBlackText(src: string, ctx: ContentContext = {}): string {
   // Logical (as authored) colour state; null = not a known DeviceRGB colour.
   let fill: Colour | null = null;
   let stroke: Colour | null = null;
   const stack: [Colour | null, Colour | null][] = [];
+  const scale = new TextScale(ctx.baseScale ?? 1);
   let inText = false;
   // Within a text object: the gray we emitted differs from the logical colour.
   let fillDirty = false;
   let strokeDirty = false;
+  const spans: Span[] = [];
+  let lastOp = "";
+  let rect: { start: number; thickness: number } | null = null;
 
-  const edits: { start: number; end: number; text: string }[] = [];
+  const edits: Edit[] = [];
   let operands: Tok[] = [];
 
   const rgbOf = (): Colour | null => {
@@ -130,22 +208,59 @@ export function rewriteBlackText(src: string): string {
       ? null
       : { rgb: v as Rgb, raw: operands.map((t) => t.text).join(" ") };
   };
+  const isSmall = () => scale.size <= LARGE_TEXT_PT + SIZE_EPS;
+
+  // Make the emitted colour match the logical one for the CURRENT size: gray
+  // while small, the authored RGB once large. `at` is where to insert. The `0 g`
+  // put in at BT (before the Tf that sizes the run is known) is taken back out,
+  // not restored over, if the size turns out large before anything is shown.
+  let fillIns: Edit | null = null;
+  let strokeIns: Edit | null = null;
+  const syncOne = (
+    colour: Colour | null, dirty: boolean, ins: Edit | null, at: number, gray: string, op: string
+  ): [boolean, Edit | null] => {
+    if (!colour || !isNearBlack(colour.rgb)) return [dirty, ins];
+    const small = isSmall();
+    if (small && !dirty) {
+      const e = { start: at, end: at, text: ` ${gray}` };
+      edits.push(e);
+      return [true, e];
+    }
+    if (!small && dirty) {
+      if (ins) ins.text = "";
+      else edits.push({ start: at, end: at, text: ` ${colour.raw} ${op}` });
+      return [false, null];
+    }
+    return [dirty, ins];
+  };
+  const sync = (at: number) => {
+    [fillDirty, fillIns] = syncOne(fill, fillDirty, fillIns, at, "0 g", "rg");
+    [strokeDirty, strokeIns] = syncOne(stroke, strokeDirty, strokeIns, at, "0 G", "RG");
+  };
+
+  const flush = (s: Span) => {
+    for (const r of s.rects) {
+      if (r.thickness > 0.2 * s.maxSmall) continue;
+      edits.push({ start: r.start, end: r.start, text: "q 0 g " }, { start: r.end, end: r.end, text: " Q" });
+    }
+  };
 
   for (const t of tokenize(src)) {
     if (!t.op) { operands.push(t); continue; }
     const op = t.text;
+    const nums = operands.map((o) => Number(o.text));
+    const sizeMayHaveChanged = scale.op(op, nums);
     switch (op) {
       case "q": stack.push([fill, stroke]); break;
       case "Q": { const p = stack.pop(); if (p) [fill, stroke] = p; break; }
       case "BT":
         inText = true;
         fillDirty = strokeDirty = false;
-        {
-          let ins = "";
-          if (fill && isNearBlack(fill.rgb)) { ins += " 0 g"; fillDirty = true; }
-          if (stroke && isNearBlack(stroke.rgb)) { ins += " 0 G"; strokeDirty = true; }
-          if (ins) edits.push({ start: t.end, end: t.end, text: ins });
-        }
+        fillIns = strokeIns = null;
+        sync(t.end);
+        break;
+      case "Tf": case "Tm":
+        if (inText && sizeMayHaveChanged) sync(t.end);
         break;
       case "ET":
         if (inText) {
@@ -155,13 +270,14 @@ export function rewriteBlackText(src: string): string {
           if (ins) edits.push({ start: t.start, end: t.start, text: ins });
         }
         inText = false;
+        fillIns = strokeIns = null;
         break;
       case "rg":
       case "RG": {
         const c = rgbOf();
         const isFill = op === "rg";
         if (isFill) fill = c; else stroke = c;
-        if (inText && c && isNearBlack(c.rgb)) {
+        if (inText && c && isNearBlack(c.rgb) && isSmall()) {
           edits.push({ start: operands[0]!.start, end: t.end, text: isFill ? "0 g" : "0 G" });
           if (isFill) fillDirty = true; else strokeDirty = true;
         } else if (inText) {
@@ -174,14 +290,53 @@ export function rewriteBlackText(src: string): string {
         fill = null; if (inText) fillDirty = false; break;
       case "G": case "K": case "SC": case "SCN": case "CS":
         stroke = null; if (inText) strokeDirty = false; break;
+      case "Do": {
+        const name = operands[operands.length - 1]?.text;
+        if (name?.startsWith("/")) ctx.onDo?.(name.slice(1), scale.unit);
+        break;
+      }
+      case "BDC": case "BMC": spans.push({ hasSmall: false, maxSmall: 0, rects: [] }); break;
+      case "EMC": {
+        const s = spans.pop();
+        if (!s) break;
+        const parent = spans[spans.length - 1];
+        if (s.hasSmall) flush(s); else parent?.rects.push(...s.rects);
+        if (parent && s.hasSmall) {
+          parent.hasSmall = true;
+          parent.maxSmall = Math.max(parent.maxSmall, s.maxSmall);
+        }
+        break;
+      }
+      case "Tj": case "TJ": case "'": case '"': {
+        fillIns = strokeIns = null; // shown: the colour is committed
+        const span = spans[spans.length - 1];
+        if (span && inText && isSmall()) {
+          span.hasSmall = true;
+          span.maxSmall = Math.max(span.maxSmall, scale.size);
+        }
+        break;
+      }
+      case "re":
+        rect = !inText && fill && isNearBlack(fill.rgb) && operands.length === 4 && nums.every((x) => !Number.isNaN(x))
+          ? { start: operands[0]!.start, thickness: Math.min(Math.abs(nums[2]!), Math.abs(nums[3]!)) * scale.unit }
+          : null;
+        break;
+      case "f": case "F": case "f*":
+        // a decoration is exactly `x y w h re f` — anything between disqualifies
+        if (rect && lastOp === "re") spans[spans.length - 1]?.rects.push({ ...rect, end: t.end });
+        break;
     }
+    lastOp = op;
     operands = [];
   }
   return applyEdits(src, edits);
 }
 
-function applyEdits(s: string, edits: { start: number; end: number; text: string }[]): string {
+function applyEdits(s: string, edits: Edit[]): string {
   if (!edits.length) return s;
+  // Decoration edits are decided at EMC, after later positions were recorded.
+  // Array#sort is stable, so same-position insertions keep their order.
+  edits.sort((a, b) => a.start - b.start);
   let out = "";
   let pos = 0;
   for (const e of edits) {
@@ -191,14 +346,21 @@ function applyEdits(s: string, edits: { start: number; end: number; text: string
   return out + s.slice(pos);
 }
 
+// ---------------------------------------------------------------------------
+// PDF traversal
+// ---------------------------------------------------------------------------
+
 /**
- * Apply {@link rewriteBlackText} to every page content stream and Form XObject
- * of a PDF. Returns the input bytes untouched when nothing needed rewriting.
+ * Hand every page content stream, then every Form XObject stream, to `visit`
+ * (which may return replacement text). Pages come first: they record the CTM
+ * each form is drawn under, which {@link rewriteBlackText} needs to size the
+ * form's text. Returns whether any stream was replaced.
  */
-export async function blackTextToGray(pdf: Uint8Array): Promise<Uint8Array> {
-  const { PDFDocument, PDFName, PDFRawStream, PDFArray, PDFRef, decodePDFRawStream } =
-    await import("pdf-lib");
-  const doc = await PDFDocument.load(pdf, { updateMetadata: false });
+async function visitContent(
+  doc: import("pdf-lib").PDFDocument,
+  visit: (src: string, info: ContentContext) => string
+): Promise<boolean> {
+  const { PDFName, PDFRawStream, PDFArray, PDFRef, PDFDict, decodePDFRawStream } = await import("pdf-lib");
   const ctx = doc.context;
   const SKIP = ["Filter", "DecodeParms", "Length"].map((k) => PDFName.of(k));
   let changed = false;
@@ -210,29 +372,26 @@ export async function blackTextToGray(pdf: Uint8Array): Promise<Uint8Array> {
       return null; // unsupported filter: leave the stream alone
     }
   };
-  const replace = (
-    ref: Ref,
-    old: RawStream,
-    text: string
-  ) => {
+  const replace = (ref: Ref, old: RawStream, text: string) => {
     const entries: Record<string, any> = {};
     for (const [k, v] of old.dict.entries()) if (!SKIP.includes(k)) entries[k.decodeText()] = v;
     ctx.assign(ref, ctx.flateStream(Buffer.from(text, "latin1"), entries));
     changed = true;
   };
 
-  // Form XObjects (Chromium/Skia draws much page content through these).
-  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
-    if (!(obj instanceof PDFRawStream)) continue;
-    if (obj.dict.get(PDFName.of("Subtype")) !== PDFName.of("Form")) continue;
-    const text = decode(obj);
-    if (text === null) continue;
-    const next = rewriteBlackText(text);
-    if (next !== text) replace(ref, obj, next);
-  }
+  // form ref -> smallest CTM scale it is drawn under
+  const formScale = new Map<string, number>();
+
+  const formMatrixScale = (form: RawStream): number => {
+    const m = form.dict.lookupMaybe(PDFName.of("Matrix"), PDFArray);
+    const nums = m?.asArray().map((n: any) => Number(n.toString()));
+    return nums?.length === 6 && !nums.some(Number.isNaN) ? area(nums) : 1;
+  };
 
   // Page content: one or many streams, treated as one logical stream.
-  for (const page of doc.getPages()) {
+  const pages = doc.getPages();
+  for (let p = 0; p < pages.length; p++) {
+    const page = pages[p]!;
     const contents = page.node.Contents();
     const refs: Ref[] = [];
     if (contents instanceof PDFArray) {
@@ -247,13 +406,46 @@ export async function blackTextToGray(pdf: Uint8Array): Promise<Uint8Array> {
     const streams = refs.map((r) => ctx.lookup(r));
     if (!refs.length || !streams.every((s) => s instanceof PDFRawStream)) continue;
     const parts = streams.map((s) => decode(s as RawStream));
-    if (parts.some((p) => p === null)) continue;
+    if (parts.some((q) => q === null)) continue;
     const joined = (parts as string[]).join("\n");
-    const next = rewriteBlackText(joined);
+    const xobjects = page.node.Resources()?.lookupMaybe(PDFName.of("XObject"), PDFDict);
+    const next = visit(joined, {
+      baseScale: 1,
+      onDo: (name, scale) => {
+        const ref = xobjects?.get(PDFName.of(name));
+        const form = ref instanceof PDFRef ? ctx.lookup(ref) : undefined;
+        if (!(ref instanceof PDFRef) || !(form instanceof PDFRawStream)) return;
+        if (form.dict.get(PDFName.of("Subtype")) !== PDFName.of("Form")) return;
+        const at = scale * formMatrixScale(form);
+        formScale.set(ref.tag, Math.min(formScale.get(ref.tag) ?? Infinity, at));
+      },
+    });
     if (next === joined) continue;
     replace(refs[0]!, streams[0] as RawStream, next);
     page.node.set(PDFName.of("Contents"), refs[0]!);
   }
 
+  // Form XObjects (Chromium/Skia draws much page content through these).
+  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFRawStream)) continue;
+    if (obj.dict.get(PDFName.of("Subtype")) !== PDFName.of("Form")) continue;
+    const text = decode(obj);
+    if (text === null) continue;
+    const next = visit(text, {
+      baseScale: formScale.get(ref.tag) ?? 0,
+    });
+    if (next !== text) replace(ref, obj, next);
+  }
+  return changed;
+}
+
+/**
+ * Apply {@link rewriteBlackText} to every page content stream and Form XObject
+ * of a PDF. Returns the input bytes untouched when nothing needed rewriting.
+ */
+export async function blackTextToGray(pdf: Uint8Array): Promise<Uint8Array> {
+  const { PDFDocument } = await import("pdf-lib");
+  const doc = await PDFDocument.load(pdf, { updateMetadata: false });
+  const changed = await visitContent(doc, (src, info) => rewriteBlackText(src, info));
   return changed ? doc.save({ updateFieldAppearances: false }) : pdf;
 }

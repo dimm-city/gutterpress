@@ -40,6 +40,7 @@ import {
   stringValueAt,
   toFolioPage,
   wantsRecto,
+  type LastPageMode,
   type StringEntry,
   type StringWhich,
 } from "../shared/synthesis.ts";
@@ -270,8 +271,8 @@ export interface BuildOptions {
   input: string;
   output?: string;
   signature?: number;
-  /** guarantee the final page is a blank page added by postprocess */
-  reserveLastPage?: boolean;
+  /** the printer-reserved last page: see `LastPageMode` in shared/synthesis.ts */
+  lastPage?: LastPageMode;
   marks?: boolean;
   slugPt?: number;
   bleedPt?: number;
@@ -1394,7 +1395,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     const post = await postprocess(bytes, {
       geometry: tier2.geometry,
       signature: opts.signature,
-      reserveLastPage: opts.reserveLastPage,
+      lastPage: opts.lastPage,
       marks: opts.marks,
       title: opts.title,
       author: opts.author,
@@ -1402,7 +1403,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     log(
       `postprocess: ${post.pageCount} pages` +
         (post.padded
-          ? ` (+${post.padded} blank${opts.reserveLastPage ? "; last page reserved blank" : ""})`
+          ? ` (+${post.padded} blank${opts.lastPage ? `; last page: ${opts.lastPage}` : ""})`
           : ""),
     );
 

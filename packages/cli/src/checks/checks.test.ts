@@ -55,6 +55,7 @@ describe("Check Registry", () => {
     expect(pdfIds).toContain("pdf.print.embedded-fonts");
     expect(pdfIds).toContain("pdf.print.ink-coverage");
     expect(pdfIds).toContain("pdf.print.rasterized-pages");
+    expect(pdfIds).toContain("pdf.print.signature");
     expect(pdfIds).toContain("pdf.nav.bookmarks");
     expect(pdfIds).toContain("pdf.nav.toc-links");
     expect(pdfIds).toContain("pdf.nav.cross-refs");
@@ -195,7 +196,7 @@ describe("Check Registry", () => {
     // checks are namespaced by category (pdf/source/asset/heuristic) and never
     // start with `test.`, so excluding those makes the count deterministic.
     const all = getAllCheckIds().filter((id) => !id.startsWith("test."));
-    // 15 pdf + 9 source + 7 asset + 4 heuristic = 35
+    // 16 pdf + 10 source + 7 asset + 4 heuristic = 37
     // (source.sync.merge-markers added 0.10.1 — the converge merge's marker
     // blocks and kept-both `.online` siblings were invisible until print;
     // source.callout-validation removed with ::: container syntax, 2026-05-17;
@@ -209,8 +210,9 @@ describe("Check Registry", () => {
     // source.css-ownership added 0.10.7 (#232) — optional CSS ownership
     // contract, reports nothing without a project-supplied contract file;
     // source.links.dangling added 0.10.9 (#263) — relative links a PDF cannot
-    // open, whose href the print build drops.)
-    expect(all.length).toBe(36);
+    // open, whose href the print build drops;
+    // pdf.print.signature added 0.11.17 (#336).)
+    expect(all.length).toBe(37);
   });
 });
 
@@ -1569,6 +1571,50 @@ describe("Source accessibility checks", () => {
     expect(results).toHaveLength(1);
     expect(results[0]!.severity).toBe("warning");
   });
+
+  test("heading-order honours gutterpress-disable-next-line for the next heading only (#339)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-heading-order-"));
+    const mainFile = join(dir, "main.md");
+    await writeFile(
+      mainFile,
+      [
+        "## H2",
+        "<!-- gutterpress-disable-next-line source.accessibility.heading-order -- example -->",
+        "#### H4 required here",
+        "# H1",
+        "### H3 jump",
+      ].join("\n")
+    );
+    const check = getCheckById("source.accessibility.heading-order")!;
+    const results = await check.run(makeCtx({ markdownFiles: [mainFile] }));
+    expect(results.map((r) => r.line)).toEqual([5]);
+  });
+
+  test("lint.rules turns a check id off or changes its severity via runChecks (#339)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-heading-order-"));
+    const mainFile = join(dir, "main.md");
+    await writeFile(mainFile, ["# H1", "### H3 jump"].join("\n"));
+    const only = ["source.accessibility.heading-order"];
+    const run = (rules: Record<string, "off" | "warn" | "error">) => {
+      const config = makeConfig();
+      config.lint.rules = rules;
+      return runChecks(makeCtx({ config, markdownFiles: [mainFile] }), { only });
+    };
+    expect((await run({})).warnings).toHaveLength(1);
+    expect((await run({ "source.accessibility.heading-order": "off" })).results).toHaveLength(0);
+    expect((await run({ "source.accessibility.heading-order": "error" })).errors).toHaveLength(1);
+  });
+
+  test("lint.rules switches off a printsafe rule in the CSS check (#339)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-printsafe-rules-"));
+    const cssFile = join(dir, "book.css");
+    await writeFile(cssFile, ".x { filter: blur(1px); }\n");
+    const check = getCheckById("source.stylelint")!;
+    const config = makeConfig();
+    expect(await check.run(makeCtx({ config, cssFiles: [cssFile] }))).toHaveLength(1);
+    config.lint.rules = { "printsafe/no-risky-print-effects": "off" };
+    expect(await check.run(makeCtx({ config, cssFiles: [cssFile] }))).toHaveLength(0);
+  });
 });
 
 describe("Image file size check", () => {
@@ -1591,6 +1637,7 @@ describe("PDF checks skip when no pdfPath", () => {
     "pdf.print.embedded-fonts",
     "pdf.print.ink-coverage",
     "pdf.print.rasterized-pages",
+    "pdf.print.signature",
     "pdf.nav.bookmarks",
     "pdf.nav.toc-links",
     "pdf.nav.cross-refs",

@@ -25,6 +25,7 @@ import { BOOK_HTML_FILENAME } from '../lib/desktop';
 import { imageRefKey } from '../lib/static-serve';
 import type { ServerState } from './server-context';
 import type { ResolvedExtensionConfig } from '../schema/manifest.types';
+import type { PrintPadding } from '../engine/shared/synthesis.ts';
 
 /**
  * Tiny placeholder book.html for no-input mode. The desktop's iframe needs a
@@ -66,7 +67,7 @@ async function renderPreviewBook(
     title?: string;
     styles?: string[];
     extensions?: ResolvedExtensionConfig[];
-    print?: { signature?: number; reserveLastPage?: boolean };
+    print?: PrintPadding;
   },
   opts: {
     files: string[] | null;
@@ -152,7 +153,7 @@ export async function generateAndWriteHtml(
     styles?: string[];
     source?: { files?: string[] | null };
     extensions?: ResolvedExtensionConfig[];
-    print?: { signature?: number; reserveLastPage?: boolean };
+    print?: PrintPadding;
   },
   cssAssets: Map<string, string>,
   imageRefs?: Set<string>

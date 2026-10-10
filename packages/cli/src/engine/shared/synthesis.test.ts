@@ -8,6 +8,7 @@ import {
   parseWhich,
   planRectoBlanks,
   restartedPageValues,
+  lastPageMode,
   signaturePadding,
   stringSymbols,
   stringValueAt,
@@ -297,18 +298,49 @@ describe("generatedContentCss — out-specifying the author (Chrome 151 regressi
   });
 });
 
-describe("signaturePadding (print.signature / print.reserveLastPage)", () => {
+describe("signaturePadding (print.signature / print.lastPage)", () => {
   test("pads to the next multiple of the signature", () => {
     expect(signaturePadding(229, 4)).toBe(3);
     expect(signaturePadding(374, 4)).toBe(2);
     expect(signaturePadding(228, 4)).toBe(0);
   });
-  test("reserveLastPage adds a full signature when padding would add none", () => {
-    expect(signaturePadding(228, 4, true)).toBe(4);
-    expect(signaturePadding(229, 4, true)).toBe(3);
+  test("lastPage: blank adds a full signature when padding would add none", () => {
+    expect(signaturePadding(228, 4, "blank")).toBe(4);
+    expect(signaturePadding(229, 4, "blank")).toBe(3);
   });
   test("no signature means no padding, or one blank page when the last page is reserved", () => {
     expect(signaturePadding(229)).toBe(0);
-    expect(signaturePadding(229, 1, true)).toBe(1);
+    expect(signaturePadding(229, 1, "blank")).toBe(1);
+  });
+  test("lastPage: short-by-one pads to one page short of a multiple (k × signature − 1)", () => {
+    expect(signaturePadding(10, 4, "short-by-one")).toBe(1); // 11
+    expect(signaturePadding(11, 4, "short-by-one")).toBe(0); // already 3 × 4 − 1
+    expect(signaturePadding(12, 4, "short-by-one")).toBe(3); // 15
+    expect(signaturePadding(13, 4, "short-by-one")).toBe(2);
+    expect(signaturePadding(14, 4, "short-by-one")).toBe(1);
+    expect(signaturePadding(228, 6, "short-by-one")).toBe(5); // 233 = 39 × 6 − 1
+  });
+  test("every result is a count the mode accepts, for every page count", () => {
+    for (let pages = 1; pages <= 60; pages++) {
+      for (const size of [1, 2, 4, 6]) {
+        expect((pages + signaturePadding(pages, size, "short-by-one") + 1) % size).toBe(0);
+        const blank = pages + signaturePadding(pages, size, "blank");
+        expect(blank % size).toBe(0);
+        expect(blank).toBeGreaterThan(pages); // the last page is always an added one
+      }
+    }
+  });
+  test("signature 1 has nothing to be short of", () => {
+    expect(signaturePadding(229, 1, "short-by-one")).toBe(0);
+  });
+});
+
+describe("lastPageMode", () => {
+  test("reserveLastPage: true means blank; lastPage wins when set", () => {
+    expect(lastPageMode({ reserveLastPage: true })).toBe("blank");
+    expect(lastPageMode({ reserveLastPage: false })).toBeUndefined();
+    expect(lastPageMode({})).toBeUndefined();
+    expect(lastPageMode({ lastPage: "short-by-one", reserveLastPage: true })).toBe("short-by-one");
+    expect(lastPageMode({ lastPage: "blank", reserveLastPage: false })).toBe("blank");
   });
 });

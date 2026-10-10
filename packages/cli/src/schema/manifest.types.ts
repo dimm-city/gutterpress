@@ -1,3 +1,5 @@
+import type { LastPageMode } from "../engine/shared/synthesis";
+
 type CheckSeverity = "error" | "warning" | "info";
 
 /**
@@ -135,6 +137,14 @@ export interface GutterpressManifest {
      * DriveThruRPG reserve the last page for printer info.
      */
     reserveLastPage?: boolean;
+    /**
+     * What the interior's last page is for a printer that reserves it:
+     * `blank` (an empty page the build adds — what `reserveLastPage: true`
+     * means) or `short-by-one` (one page short of a multiple of `signature`,
+     * the printer supplies the last page). When set it wins over
+     * `reserveLastPage`.
+     */
+    lastPage?: LastPageMode;
   };
   page?: {
     width?: number;
@@ -148,6 +158,12 @@ export interface GutterpressManifest {
   lint?: {
     enabled?: boolean;
     configPath?: string | null;
+    /**
+     * Per-rule level overrides, keyed by rule id (`printsafe/*`, or a check id
+     * such as `source.accessibility.heading-order`). `off` silences the rule;
+     * `warn` / `error` set its severity. Unknown ids are ignored.
+     */
+    rules?: Record<string, "off" | "warn" | "error">;
   };
   validate?: {
     enabled?: boolean;
@@ -242,6 +258,7 @@ export interface ResolvedConfig {
   print: {
     signature: number;
     reserveLastPage: boolean;
+    lastPage?: LastPageMode;
   };
   page: {
     width: number;
@@ -255,6 +272,7 @@ export interface ResolvedConfig {
   lint: {
     enabled: boolean;
     configPath: string | null;
+    rules: Record<string, "off" | "warn" | "error">;
   };
   validate: {
     enabled: boolean;

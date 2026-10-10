@@ -39,7 +39,7 @@ policy: what its platform demands of the finished PDF. Targets never change
 how the book renders — only what the validator checks.
 
 - `dtrpg` — DriveThruRPG print-on-demand: PDF/X markers and metadata,
-  CMYK/Grayscale art, the 240% ink limit, embedded fonts.
+  CMYK/Grayscale art, the 240% ink limit, embedded fonts, and a page count that fits the signature.
 - `itch` — itch.io digital release: a well-formed PDF with embedded fonts;
   print-only rules (PDF/X, ink limits, CMYK-only art) don't apply.
 
@@ -226,6 +226,46 @@ ink:
   tacTolerance: 0.5  # allowed overage before a page is flagged, default 0.5
 ```
 
+### Silencing a warning you have decided is fine
+
+Some warnings are known false alarms for a particular book. Turn them off
+without disabling the whole check, either for the whole book or for one spot.
+
+**Whole book** — set a rule's level under the top-level `lint.rules` key.
+`off` silences it; `warn` or `error` changes its severity:
+
+```yaml
+lint:
+  rules:
+    printsafe/no-risky-print-effects: off
+    printsafe/page-containment: warn
+    source.accessibility.heading-order: off
+```
+
+The rule id is the one shown in the warning: `printsafe/…` for CSS print-safety
+rules (`printsafe/no-risky-print-effects`, `printsafe/page-containment`,
+`printsafe/no-remote-urls`), or the check id for the rest (for example
+`source.accessibility.heading-order`). An id that matches no rule is ignored,
+so a typo has no effect — check the spelling against the warning text.
+
+**One spot** — put a `gutterpress-disable-next-line` comment on the line
+directly above it. List several rules with commas, and add a reason after
+`--`:
+
+```css
+/* gutterpress-disable-next-line printsafe/page-containment -- scoped by the rule below */
+.page { overflow-x: clip; }
+```
+
+```markdown
+<!-- gutterpress-disable-next-line source.accessibility.heading-order -- the example needs an h4 -->
+#### Example heading
+```
+
+The comment silences only the next line. (The desktop editor's CSS gutter
+honours these comments too, but not `lint.rules`; the Problems panel honours
+both.)
+
 ## Automatic Tool Detection
 
 Most checks run in-process and never need an external tool. Only a few still
@@ -330,7 +370,10 @@ Caused by excess `@page` markers. Audit your source files for unnecessary page b
 Blank pages at the very end of a `dtrpg` book are expected: the build pads the
 book to a multiple of 4 pages and keeps the last page empty for DriveThruRPG's
 printer information. To turn that off, set `print.reserveLastPage: false` in
-`manifest.yaml`.
+`manifest.yaml`. DriveThruRPG also accepts a book that is one page *short* of a
+multiple of 4 and adds the last page itself; set `print.lastPage: short-by-one`
+for that form (`print.lastPage: blank` is the default behaviour spelled out).
+The preview shows the same pages the PDF gets.
 
 ### Page break issues
 

@@ -213,6 +213,9 @@ export interface MarkerComponent {
    *  as the renderer resolves them — an alias lists its target's. A variant
    *  only adds a class, so one snippet serves them all. */
   variants: string[];
+  /** True for a `selfClosing` marker: one element, no body, no `@end-<name>` —
+   *  the editor inserts the bare marker without a closing pair. */
+  selfClosing?: true;
   /** The winning example snippet's body (book, then extension, then core). */
   snippet?: string;
 }
@@ -279,7 +282,7 @@ async function collectLibrary(
   // (a name two plugins both declare, a malformed declaration) are already
   // reported by validation / Problems, so here they just mean "no components
   // listed" rather than a failed listing; snippet files are still listed.
-  let registry: Map<string, { deprecated?: string; variants?: Record<string, string> }> | undefined;
+  let registry: Map<string, { deprecated?: string; variants?: Record<string, string>; selfClosing?: boolean }> | undefined;
   try {
     registry = buildDeclaredMarkerRegistry(
       loaded.flatMap((l) => (l.markers ? [{ pluginName: l.entry.label, markers: l.markers }] : [])),
@@ -293,7 +296,12 @@ async function collectLibrary(
     for (const [name, decl] of Object.entries(registry ? (markers ?? {}) : {})) {
       const resolved = registry!.get(name);
       if (!resolved || resolved.deprecated !== undefined) continue;
-      components.push({ name, source, variants: Object.keys(resolved.variants ?? {}) });
+      components.push({
+        name,
+        source,
+        variants: Object.keys(resolved.variants ?? {}),
+        ...(resolved.selfClosing ? { selfClosing: true as const } : {}),
+      });
       if (!entry.dir) continue;
       const own = typeof decl.snippet === "string" && decl.snippet.trim() ? decl.snippet.trim() : null;
       const rel = own ?? path.join(folder ?? SNIPPETS_DIR, `${name}.md`);

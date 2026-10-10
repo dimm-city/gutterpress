@@ -56,20 +56,50 @@ export function planRectoBlanks(sites: RectoSite[]): boolean[] {
 }
 
 // ---------------------------------------------------------------------------
-// signature padding (print.signature / print.reserveLastPage)
+// signature padding (print.signature / print.lastPage / print.reserveLastPage)
 // ---------------------------------------------------------------------------
 
 /**
- * How many blank pages the build appends after `pageCount` content pages:
- * enough to reach a multiple of `signature`, and — with `reserveLastPage` — a
- * full extra signature when that would add none, so the last page is always a
- * blank one (one page when `signature` <= 1). `postprocess.ts` pads the PDF by
- * this and the viewer shows the same sheets, so their page counts agree.
+ * How the interior treats its last page for a printer that reserves it
+ * (DriveThruRPG puts its own information there):
+ * - `blank` — the build's last page is an empty one it added (padded to a
+ *   multiple of the signature, plus a whole signature if that added nothing);
+ * - `short-by-one` — the interior is one page short of a multiple of the
+ *   signature (`k × signature − 1`) and the printer supplies the last page.
  */
-export function signaturePadding(pageCount: number, signature = 1, reserveLastPage = false): number {
+export type LastPageMode = "blank" | "short-by-one";
+
+/** The `print` settings that decide how many blank pages the interior gets. */
+export interface PrintPadding {
+  signature?: number;
+  /** older spelling of `lastPage: "blank"` */
+  reserveLastPage?: boolean;
+  lastPage?: LastPageMode;
+}
+
+/**
+ * The effective last-page mode of a resolved `print` block: `lastPage` when
+ * set, else the older `reserveLastPage: true` (which means `blank`). One
+ * place, so the manifest, the viewer's data attribute and the preflight
+ * check cannot disagree about what an existing manifest asks for.
+ */
+export function lastPageMode(print: PrintPadding): LastPageMode | undefined {
+  return print.lastPage ?? (print.reserveLastPage ? "blank" : undefined);
+}
+
+/**
+ * How many blank pages the build appends after `pageCount` content pages:
+ * enough to reach a multiple of `signature` — with `lastPage: "blank"`, a full
+ * extra signature when that would add none, so the last page is always a
+ * blank one (one page when `signature` <= 1); with `"short-by-one"`, enough to
+ * reach one page short of a multiple. `postprocess.ts` pads the PDF by this
+ * and the viewer shows the same sheets, so their page counts agree.
+ */
+export function signaturePadding(pageCount: number, signature = 1, lastPage?: LastPageMode): number {
   const size = signature > 1 ? signature : 1;
+  if (lastPage === "short-by-one") return (size - ((pageCount + 1) % size)) % size;
   const padded = (size - (pageCount % size)) % size;
-  return padded === 0 && reserveLastPage ? size : padded;
+  return padded === 0 && lastPage === "blank" ? size : padded;
 }
 
 // ---------------------------------------------------------------------------

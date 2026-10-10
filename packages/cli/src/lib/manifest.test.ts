@@ -224,6 +224,19 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
     expect(config.lint.enabled).toBe(false);
   });
 
+  test("lint.rules (#339): defaults to {}, manifest sets rule levels, cli wins per key", () => {
+    expect(resolveConfig({}, {}).lint.rules).toEqual({});
+    const config = resolveConfig(
+      { lint: { rules: { "printsafe/page-containment": "error" } } },
+      { lint: { rules: { "printsafe/no-risky-print-effects": "off", "printsafe/page-containment": "off" } } },
+    );
+    expect(config.lint.rules).toEqual({
+      "printsafe/no-risky-print-effects": "off",
+      "printsafe/page-containment": "error",
+    });
+    expect(config.lint.enabled).toBe(true);
+  });
+
   test("validate.source string|false leaves: manifest false wins over preset null, cli false wins over manifest string", () => {
     const withManifestFalse = resolveConfig({}, { validate: { source: { markdownlint: false } } });
     expect(withManifestFalse.validate.source.markdownlint).toBe(false);
