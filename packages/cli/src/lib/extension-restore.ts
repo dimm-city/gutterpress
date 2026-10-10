@@ -174,25 +174,30 @@ export async function restorePinnedExtensions(
 export function restoreFailureMessage(failure: RestoreFailure, manifestFile: string | null): string {
   return (
     `Could not download ${failure.use} (pinned in ${manifestFile ?? "the manifest"}): ${failure.message.replace(/[.\s]+$/, "")}. ` +
-    `Check your connection and run the command again, or install it yourself with \`gutterpress ext add ${failure.use}\`.`
+    `Check your internet connection and try again, or install it yourself with \`gutterpress ext add ${failure.use}\`.`
   );
 }
 
 /**
- * The CLI's restore step, run before a command loads plugins: restore, print
- * one line per downloaded package, and either fail fast (`build`, `validate`:
- * a final artifact must never silently omit author-configured formatting) or,
- * for the live preview, warn and carry on so one missing package cannot blank
- * the whole preview.
+ * The restore step every command and host path that loads a book's plugins
+ * runs first: restore, print one line per downloaded package, and either fail
+ * fast (build, export, validate and the checks: a final artifact must never
+ * silently omit author-configured formatting) or, for the live preview, warn
+ * and carry on so one missing package cannot blank the whole preview.
+ *
+ * It is called from the shared "load the book's plugins" seams themselves
+ * (`loadBuildPlugins`, `executeValidation`), not from each command, so a new
+ * command that builds or checks cannot forget it. The loader stays offline.
  */
 export async function restoreForCommand(
   dir: string,
-  options: { manifestPath?: string; failFast: boolean; quiet?: boolean },
+  options: { manifestPath?: string; failFast: boolean },
 ): Promise<void> {
   const result = await restorePinnedExtensions(dir, { manifestPath: options.manifestPath });
   const file = result.manifestFile ?? "the manifest";
-  // `quiet` keeps stdout clean for machine-readable output (`validate --format json`).
-  if (!options.quiet) for (const spec of result.installed) log.info(`Downloaded ${spec} (pinned in ${file})`);
+  // Progress goes to stderr: stdout belongs to a command's result
+  // (`validate --format json` must stay parseable).
+  for (const spec of result.installed) console.error(`Downloaded ${spec} (pinned in ${file})`);
   for (const warning of result.warnings) log.warn(warning);
   const problems = result.failed.map((f) => restoreFailureMessage(f, result.manifestFile));
   if (problems.length === 0) return;

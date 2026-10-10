@@ -13,7 +13,6 @@ import {
   rejectUnknownFlags,
   UsageError,
 } from "../lib/cli-args.ts";
-import { restoreForCommand } from "../lib/extension-restore.ts";
 
 const commandArgs = {
   input: { type: "positional", description: "Input directory containing markdown files (default: cwd)", required: false },
@@ -51,10 +50,6 @@ export default defineCommand({
       );
       const inputDir = path.resolve((args.input as string | undefined) ?? ".");
       const manifestPath = typeof args.manifest === "string" ? args.manifest : undefined;
-      // A fresh clone has the manifest's pinned extensions but not their
-      // downloaded copies; fetch them BEFORE plugins load, and fail the build
-      // rather than ship a book without its configured formatting.
-      await restoreForCommand(inputDir, { manifestPath, failFast: true });
       await runBuild({
         inputDir,
         format,

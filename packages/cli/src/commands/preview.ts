@@ -76,9 +76,7 @@ export default defineCommand({
         format
       );
 
-      // A one-shot PDF build is a build: fail fast, like `gutterpress build`.
       const manifestPath = typeof args.manifest === "string" ? args.manifest : undefined;
-      await restoreForCommand(inputPath, { manifestPath, failFast: true });
 
       const result = await runBuild({
         inputDir: inputPath,

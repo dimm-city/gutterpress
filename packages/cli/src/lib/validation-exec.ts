@@ -7,6 +7,7 @@ import { log } from "../utils/logger";
 import { BOOK_HTML_FILENAME } from "./desktop";
 import { UsageError } from "./cli-args";
 import { resolveActiveStyles } from "./style-resolver";
+import { restoreForCommand } from "./extension-restore.ts";
 import { loadPluginsWithCss } from "./markdown/plugins";
 import { collectStyleDependencies, escapesProjectRoot } from "./asset-inline";
 import { resolveActiveMarkdownFiles } from "./markdown/index";
@@ -51,8 +52,9 @@ export interface ValidationExecutionArgs {
    * `runQualityGates`, via `loadBuildPlugins`) so this run does not load
    * plugins itself when the build already has. `undefined` (the default —
    * every standalone `validate`/`preflight` invocation, and the desktop
-   * Problems panel) makes {@link executeValidation} load plugins itself,
-   * degrade-and-report. An explicit `[]` is honored as-is, not treated as
+   * Problems panel) makes {@link executeValidation} restore the book's
+   * missing pinned extensions (failing the run if it cannot) and then load
+   * plugins itself, degrade-and-report. An explicit `[]` is honored as-is, not treated as
    * "unset".
    */
   pluginStylePaths?: string[];
@@ -485,6 +487,11 @@ export async function executeValidation(
     const projectCssFiles = relStyles.map((rel) => resolve(manifestDir, rel));
     let pluginStylePaths = args.pluginStylePaths;
     if (pluginStylePaths === undefined) {
+      // A fresh clone has the manifest's pins but not their downloaded copies;
+      // fetch them first and fail the run, like a build (the loader stays
+      // offline). A build's own gate arrives with `pluginStylePaths` already
+      // loaded — and restored — so it never gets here.
+      await restoreForCommand(inputDir, { manifestPath, failFast: true });
       ({ pluginStylePaths } = await loadPluginsWithCss(
         config.extensions,
         manifestDir,

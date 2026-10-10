@@ -31,6 +31,9 @@ import {
   installNpmPlugin,
 } from "./npm-plugin-installer";
 import { loadPlugin } from "./markdown/plugins";
+import { BuildError } from "./build-error";
+import { loadBuildPlugins, resolveBuildContext } from "./build-runner";
+import { executeValidation } from "./validation-exec";
 import { restoreFailureMessage, restoreForCommand, restorePinnedExtensions, type RestoreProgress } from "./extension-restore";
 import { vendoredNpmPluginPackageDir, vendoredNpmPluginRoot } from "./plugin-vendor";
 
@@ -1743,7 +1746,7 @@ describe("restorePinnedExtensions", () => {
     const sentence = restoreFailureMessage(result.failed[0]!, "manifest.yaml");
     expect(sentence).toContain(`Could not download ${name}@1.0.0 (pinned in manifest.yaml)`);
     expect(sentence).toContain("ECONNREFUSED");
-    expect(sentence).toContain(`run the command again`);
+    expect(sentence).toContain(`try again`);
     expect(sentence).toContain(`gutterpress ext add ${name}@1.0.0`);
     expect(existsSync(vendoredNpmPluginRoot(dir, name, "1.0.0"))).toBe(false);
     // No empty plugins/npm/<name>/ folder either: a failed first open leaves the book as it was.
@@ -1842,27 +1845,24 @@ describe("restorePinnedExtensions", () => {
     expect(await readFile(path.join(dir, ".gitignore"), "utf8")).toContain("plugins/npm/");
   });
 
-  test("restoreForCommand prints one line per downloaded package; nothing when everything is present or when quiet", async () => {
+  test("restoreForCommand reports each downloaded package on stderr, and nothing on stdout or when everything is present", async () => {
     const { dir, fixture } = await pinnedBook();
     await rm(path.join(dir, "plugins"), { recursive: true });
-    const lines: string[] = [];
+    const stderr: string[] = [];
+    const stdout: string[] = [];
     const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(fixture.fetch as never);
-    const logSpy = spyOn(console, "log").mockImplementation((...args) => {
-      lines.push(args.join(" "));
-    });
+    const errSpy = spyOn(console, "error").mockImplementation((...args) => void stderr.push(args.join(" ")));
+    const logSpy = spyOn(console, "log").mockImplementation((...args) => void stdout.push(args.join(" ")));
     try {
       await restoreForCommand(dir, { failFast: true });
-      expect(lines).toHaveLength(1);
-      expect(lines[0]).toContain(`Downloaded ${name}@1.0.0 (pinned in manifest.yaml)`);
+      expect(stderr).toHaveLength(1);
+      expect(stderr[0]).toContain(`Downloaded ${name}@1.0.0 (pinned in manifest.yaml)`);
       await restoreForCommand(dir, { failFast: true });
-      expect(lines).toHaveLength(1);
-
-      await rm(path.join(dir, "plugins"), { recursive: true });
-      await restoreForCommand(dir, { failFast: true, quiet: true });
-      expect(lines).toHaveLength(1);
-      expect(existsSync(vendoredNpmPluginRoot(dir, name, "1.0.0"))).toBe(true);
+      expect(stderr).toHaveLength(1);
+      expect(stdout).toEqual([]); // a command's stdout is its result (validate --format json)
     } finally {
       fetchSpy.mockRestore();
+      errSpy.mockRestore();
       logSpy.mockRestore();
     }
   });
@@ -1970,3 +1970,83 @@ describe("restorePinnedExtensions", () => {
     expect(fixture.calls.filter((url) => url.endsWith(".tgz"))).toHaveLength(1);
   });
 });
+
+describe("the shared seams restore before they load plugins", () => {
+  const name = "markdown-it-gutterpress-seam";
+  async function freshClone() {
+    const fixture = registryGraphFixture([{ name, version: "1.0.0" }]);
+    const dir = await projectDir();
+    await addNpmPlugin(dir, `${name}@1.0.0`, { fetch: fixture.fetch });
+    await rm(path.join(dir, "plugins"), { recursive: true });
+    await writeFile(path.join(dir, "chapter.md"), "# Hi\n", "utf8");
+    fixture.calls.length = 0;
+    return { dir, fixture };
+  }
+  const withFetch = async <T>(impl: typeof globalThis.fetch, run: () => Promise<T>): Promise<T> => {
+    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(impl as never);
+    const errSpy = spyOn(console, "error").mockImplementation(() => {});
+    const logSpy = spyOn(console, "log").mockImplementation(() => {});
+    try {
+      return await run();
+    } finally {
+      fetchSpy.mockRestore();
+      errSpy.mockRestore();
+      logSpy.mockRestore();
+    }
+  };
+
+  test("loadBuildPlugins (every build and export) downloads the pin once, then loads it", async () => {
+    const { dir, fixture } = await freshClone();
+    const ctx = await resolveBuildContext({ inputDir: dir, format: "html", rawArgs: {} });
+
+    const loaded = await withFetch(fixture.fetch, () => loadBuildPlugins(ctx));
+
+    expect(loaded.plugins).toHaveLength(1);
+    expect(fixture.calls.filter((url) => url.endsWith(".tgz"))).toHaveLength(1);
+    // Memoized per build: the render stage asking again does not look at the network.
+    await withFetch(noNetworkFetch, () => loadBuildPlugins(ctx));
+  });
+
+  test("loadBuildPlugins fails the build when the download fails, naming the extension and how to retry", async () => {
+    const { dir } = await freshClone();
+    const ctx = await resolveBuildContext({ inputDir: dir, format: "html", rawArgs: {} });
+    const offline = (async () => {
+      throw new Error("ECONNREFUSED");
+    }) as unknown as typeof globalThis.fetch;
+
+    const error = await withFetch(offline, () => loadBuildPlugins(ctx)).catch((e: Error) => e);
+
+    expect(error).toBeInstanceOf(BuildError);
+    expect((error as Error).message).toMatch(/Could not download markdown-it-gutterpress-seam@1\.0\.0 .*ECONNREFUSED.*try again.*gutterpress ext add/s);
+  });
+
+  test("executeValidation (validate, preflight, the desktop's Problems panel) downloads the pin first", async () => {
+    const { dir, fixture } = await freshClone();
+
+    await withFetch(fixture.fetch, () =>
+      executeValidation({ input: dir, category: "source", phase: "pre-build" }),
+    );
+
+    expect(fixture.calls.filter((url) => url.endsWith(".tgz"))).toHaveLength(1);
+    expect(existsSync(vendoredNpmPluginRoot(dir, name, "1.0.0"))).toBe(true);
+  });
+
+  test("executeValidation fails when the download fails; a build's own gate (plugins already loaded) does not restore again", async () => {
+    const { dir } = await freshClone();
+    const offline = (async () => {
+      throw new Error("ECONNREFUSED");
+    }) as unknown as typeof globalThis.fetch;
+
+    await expect(
+      withFetch(offline, () => executeValidation({ input: dir, category: "source", phase: "pre-build" })),
+    ).rejects.toThrow(/Could not download markdown-it-gutterpress-seam@1\.0\.0/);
+
+    await withFetch(noNetworkFetch, () =>
+      executeValidation({ input: dir, category: "source", phase: "pre-build", pluginStylePaths: [] }),
+    );
+  });
+});
+
+const noNetworkFetch = (() => {
+  throw new Error("the network must not be touched");
+}) as unknown as typeof globalThis.fetch;

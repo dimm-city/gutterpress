@@ -9,11 +9,22 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
   call: async ({ body }) => {
     const projectDir = body.projectDir;
     const lib = await loadLib();
-    const execution = await lib.executeValidation({
-      input: projectDir,
-      category: 'source',
-      phase: 'pre-build',
-    });
+    let execution;
+    try {
+      execution = await lib.executeValidation({
+        input: projectDir,
+        category: 'source',
+        phase: 'pre-build',
+      });
+    } catch (e) {
+      // The check run first downloads the book's missing pinned extensions
+      // (like a build does) and cannot go on without them. Say which one and
+      // why as the problem, rather than the panel's generic "couldn't check".
+      if (e instanceof lib.BuildError) {
+        return [{ severity: 'error', message: e.message, source: 'extensions.restore' }];
+      }
+      throw e;
+    }
     const dirPrefix = projectDir.replace(/[\\/]+$/, '') + path.sep;
     return execution.report.results.map((r) => {
       const abs = r.file ? path.resolve(r.file) : undefined;
