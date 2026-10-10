@@ -20,6 +20,8 @@ On the **Details** tab:
 Click **Save details**. **Save as template…** saves this book's setup as a template you can start
 new books from.
 
+![Book settings, Details tab: title, authors, chapter order and publish targets](images/book-settings-details.jpg)
+
 ## Choose a look
 
 A *look* is a complete design for a book. On the **Look** tab, under **Built-in looks**, click
@@ -29,6 +31,8 @@ A *look* is a complete design for a book. On the **Look** tab, under **Built-in 
 To use a look from elsewhere, choose **Import a look (.zip/.css)...**, **Add from folder...**, or
 paste a URL into the URL field and click **Import**. [Find plugins](https://gutterpress.dimm.city/plugins/)
 lists looks and other extensions on npm.
+
+![Book settings, Look tab: built-in looks and design tokens](images/book-settings-look.jpg)
 
 ## Fine-tune fonts, colours and sizes
 

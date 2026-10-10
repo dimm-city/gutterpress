@@ -18,6 +18,8 @@ The gear at the right of the status bar (or Ctrl+,) opens **Settings**; the **?*
 - **Saving** — automatic saving, previous versions and online backup (see
   [Keep versions and back up your work](09-versions-and-backup.md)).
 
+![Settings, App tab: how you use Gutterpress, appearance, preview and updates](images/settings-author.jpg)
+
 ## Updates
 
 Gutterpress checks for updates itself and shows **Update available** with a **Download** button,

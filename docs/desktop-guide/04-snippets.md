@@ -17,8 +17,12 @@ places: your book, the extensions it uses, and Gutterpress itself.
    **Extension** or **Core** snippets, or to **Components only**.
 4. Press **Enter** to insert the first match, or click a card. The arrow keys move between cards.
 
+![The snippet picker, with the book's own snippets](images/snippet-picker.jpg)
+
 If the snippet has fields to fill in, Gutterpress asks for them under **Fill in the snippet**;
 enter the values and click **Insert**.
+
+![Fill in the snippet: one field per placeholder](images/snippet-fill.jpg)
 
 ## Insert a component with @
 

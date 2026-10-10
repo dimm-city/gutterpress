@@ -67,10 +67,84 @@ code {
   background: #e2d6b9;
 }
 
-pre {
-  background: #e9dfc6;
-  border: 1px dashed var(--pu-ink-soft);
-  box-shadow: none;
+/* Code: typed on a ruled index card and taped to the galley. The rules and
+   the red margin line scroll with the text (background-attachment: local),
+   and the line height matches the rule spacing so each line sits on one. */
+pre:not(.term-body) {
+  --card-line: 1.7em;
+  margin: 1.6rem 0 1.5rem;
+  padding: var(--card-line) 1.25rem calc(var(--card-line) * 0.6) 3.25rem;
+  font: 400 0.92rem/var(--card-line) var(--pu-type);
+  color: var(--pu-ink);
+  background:
+    linear-gradient(90deg, transparent 2.35rem, rgb(179 20 27 / 0.45) 2.35rem, rgb(179 20 27 / 0.45) calc(2.35rem + 1px), transparent calc(2.35rem + 1px)),
+    repeating-linear-gradient(transparent 0, transparent calc(var(--card-line) - 1px), rgb(31 111 148 / 0.28) calc(var(--card-line) - 1px), rgb(31 111 148 / 0.28) var(--card-line)),
+    #fbf8ee;
+  background-attachment: local;
+  background-position: 0 0, 0 calc(var(--card-line) * 0.15);
+  border: 0;
+  border-radius: 0;
+  box-shadow: 2px 5px 12px rgb(0 0 0 / 0.28), 0 0 0 1px rgb(26 21 18 / 0.08);
+  transform: rotate(-0.35deg);
+}
+
+pre:not(.term-body) code {
+  font: inherit;
+  line-height: inherit;
+}
+
+/* The tape holding the card down. The template wraps every fenced block in
+   .code-wrap, which is where the tape can sit without being clipped by the
+   card's own scrolling. */
+.code-wrap {
+  position: relative;
+  margin: 1.6rem 0 1.5rem;
+}
+
+.code-wrap > pre:not(.term-body) {
+  margin: 0;
+}
+
+.code-wrap::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: -10px;
+  left: 50%;
+  width: 5.5rem;
+  height: 20px;
+  margin-left: -2.75rem;
+  background: var(--pu-tape);
+  box-shadow: 0 0 0 1px rgb(26 21 18 / 0.06);
+  transform: rotate(2deg);
+  pointer-events: none;
+}
+
+.code-wrap:nth-of-type(even)::before {
+  transform: rotate(-3deg);
+}
+
+.copy-btn {
+  top: 0.4rem;
+  right: 0.4rem;
+  font-family: var(--pu-type);
+  color: var(--pu-ink-soft);
+  background: #fbf8ee;
+  border-color: var(--pu-ink-soft);
+  border-radius: 0;
+}
+
+/* Screenshots in the guides: prints pasted onto the galley. */
+body:not(.home) .shell > main img {
+  display: block;
+  margin: 1.5rem auto;
+  border: 6px solid #fbf8ee;
+  box-shadow: 2px 6px 14px rgb(0 0 0 / 0.35), 0 0 0 1px rgb(26 21 18 / 0.12);
+  transform: rotate(-0.4deg);
+}
+
+body:not(.home) .shell > main p:nth-of-type(even) > img {
+  transform: rotate(0.5deg);
 }
 
 blockquote {
