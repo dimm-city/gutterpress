@@ -30,11 +30,12 @@ Google's OAuth consent screen links to it, ADR 0011).
 ## What is this site's own
 
 - `site/_includes/head.html`, `nav.html` and `footer.html`, the files that name it.
-- `site/assets/theme.css`: the template's custom properties set to the Dimm City palette
-  from [gp-dimm-city](https://github.com/dimm-city/gp-dimm-city).
-- `site/assets/site.css`: the cut-and-paste paper and sticker look (after gp-dimm-city's
-  chrome and card components). It is unlayered, so it wins over the template's layered
-  stylesheet.
+- `site/assets/theme.css`: the template's custom properties, set for the look: a 1920s
+  newsroom paste-up after dark, in the Dimm City inks (riso black and crimson, from
+  [gp-dimm-city](https://github.com/dimm-city/gp-dimm-city)).
+- `site/assets/site.css`: the paste-up itself — galleys of yellowed newsprint pasted up on a
+  dark desk under a lamp, taped down, with typed notes, a rubber stamp and red grease
+  pencil. It is unlayered, so it wins over the template's layered stylesheet.
 - Its own pages: `index.html`, `install.md`, `releases/*.md`, `404.html`.
 - `site/assets/share-placeholder.png`, the share card, at the path the template's layout
   names.
