@@ -1,0 +1,40 @@
+---
+title: "Gutterpress 0.11.14: keep extensions up to date"
+description: "New gutterpress ext outdated and ext update commands, an Update button on the desktop Features tab, and old extension versions cleaned up automatically."
+og:title: "Gutterpress 0.11.14: keep extensions up to date"
+og:description: "New gutterpress ext outdated and ext update commands, and an Update button on the desktop Features tab."
+schema: BlogPosting
+date: 2026-10-06T00:00:00Z
+author: Dimm City
+og:type: article
+---
+
+# Gutterpress 0.11.14: keep extensions up to date
+
+Extensions in Gutterpress are pinned to an exact version and vendored into
+your book, so a book always builds offline from the copy it was tested with.
+This release makes it easy to move those pins forward when you want to.
+
+## Two new commands
+
+- **`gutterpress ext outdated`** compares every pinned npm extension with
+  npm's `latest` and exits 1 when one is behind, so it works as a CI check.
+- **`gutterpress ext update`** re-pins the outdated ones (or one, by name) to
+  the latest version, through the same download, verification, vendoring and
+  load-test path as `ext add`. The entry's `export:` and `enabled:` settings
+  are kept.
+
+Neither command runs during a build or preview.
+
+## In the desktop app
+
+The Features tab checks npm when you open it, shows the newer version beside
+an entry with an **Update** button, and has *Check for updates*.
+
+## Fixed
+
+Re-pinning an extension now removes the previous version's folder under
+`plugins/npm/<name>/` instead of leaving it for you to delete by hand.
+
+See the [full changelog](https://github.com/dimm-city/gutterpress/blob/main/CHANGELOG.md)
+or [download the release](https://github.com/dimm-city/gutterpress/releases/latest).
