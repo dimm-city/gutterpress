@@ -19,7 +19,7 @@
   <section class="getting-started">
     <h3>Getting Started</h3>
     <ol class="steps">
-      <li><strong>Open your book folder</strong> — on the welcome screen, click <em>Open a folder</em> (or pick a book from <em>Your books</em>) and choose the folder that contains your <code>manifest.yaml</code> file. Once a book is open, the <em>Books</em> tab in the left panel lists your other books.</li>
+      <li><strong>Open your book folder</strong> — on the welcome screen, click <em>Open a folder</em> (or pick a book from <em>Your books</em>) and choose the folder that contains your <code>manifest.yaml</code> file. Once a book is open, click the folder button at the left of the status bar (<em>Books — open the start screen</em>) to get back to your list of books.</li>
       <li><strong>Browse your document</strong> — use the arrow keys or Page Up/Down to flip through pages. Click <em>Read</em> in the toolbar to see two pages side by side like an open book, and use the magnifier menu to zoom.</li>
       <li><strong>Edit your pages</strong> — click <em>Edit</em> (or press {modKey}+E) to open the markdown editor beside the preview. By default your changes save automatically, and {modKey}+S or the Save button saves immediately. To save only when you choose, turn off <em>Save edits automatically</em> under Settings &gt; Saving (open Settings with the gear icon in the bottom-right corner).</li>
       <li><strong>Keep versions of your work</strong> — click the save status in the bottom-right corner to open <em>Where your work is kept</em>: save a version, see previous versions, and back up online.</li>
@@ -31,8 +31,8 @@
   <section class="online-copy">
     <h3>Work with an Online Copy</h3>
     <ul class="steps">
-      <li><strong>Open from GitHub</strong> — click <em>Open from GitHub</em> on the welcome screen, or <em>Open book…</em> at the bottom of the left panel's <em>Books</em> tab and choose <em>From GitHub</em>, to connect your GitHub account, choose a repository, and download a copy of the book to your computer.</li>
-      <li><strong>Back up now</strong> — when your book is backed up online, click the save status in the bottom-right corner (it says <em>Saved</em>) to open <em>Where your work is kept</em>, then click <em>Back up now</em> under <em>Online backup</em>. If you're offline, your work stays saved on this computer and the backup catches up when you're back online. If your copy and the online copy both changed, Gutterpress lists each file that differs and lets you choose: keep your version, use the online version, or keep both copies.</li>
+      <li><strong>Open from GitHub</strong> — click <em>Open from GitHub</em> on the welcome screen (from an open book, the folder button at the left of the status bar takes you there) to connect your GitHub account, choose a repository, and download a copy of the book to your computer.</li>
+      <li><strong>Back up now</strong> — when your book is backed up online, click the save status in the bottom-right corner (it says <em>Edits saved</em>) to open <em>Where your work is kept</em>, then click <em>Back up now</em> under <em>Online backup</em>. If you're offline, your work stays saved on this computer and the backup catches up when you're back online. If your copy and the online copy both changed, Gutterpress lists each file that differs and lets you choose: keep your version, use the online version, or keep both copies.</li>
       <li><strong>Other hosting services</strong> — if your book lives somewhere other than GitHub, open the gear icon in the bottom-right corner, then <em>Accounts</em>, to connect a Git server (such as Gitea or Forgejo).</li>
     </ul>
   </section>
