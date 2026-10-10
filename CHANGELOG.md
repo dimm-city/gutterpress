@@ -124,6 +124,11 @@ This project follows [Semantic Versioning](https://semver.org/).
   one no longer nudges the page sideways.
 - **A freshly scaffolded plugin passes its own tests** (#338). Its "no
   cascade layer" check matched `@layer` inside a stylesheet comment.
+- **A variant word that matches a JavaScript built-in name no longer leaks
+  into the page.** `@callout constructor` (and `toString`, `__proto__`, …)
+  emitted `function Object() { [native code] }` as a class. A component's
+  variant is now looked up among its own declared variants only, so these
+  words get the usual "not a variant" warning like any other undeclared word.
 
 ## [0.11.15] - 2026-10-07
 
