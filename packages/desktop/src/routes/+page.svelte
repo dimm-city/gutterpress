@@ -3570,7 +3570,6 @@
      AppToolbar.svelte now (a 3-column grid + container queries). Only the
      generic button primitives shared by the remaining +page surfaces
      (banners, dialogs) stay here. */
-  section { display: flex; align-items: center; gap: 6px; min-width: 0; }
 
   /* ---- Buttons & inputs ---- */
   /* Geometry shared by ALL +page buttons (banner actions, export pill,

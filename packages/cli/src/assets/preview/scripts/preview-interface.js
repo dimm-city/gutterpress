@@ -1027,12 +1027,16 @@
       });
       if (!silent) return api.notifyPageChange();
     },
-    setZoom: function (z, silent) {
+    setZoom: function (z, silent, fit) {
       preserveViewport(function () {
         // Embedded previews have one zoom owner. Clear the standalone
         // viewer's narrow-screen fit before applying the host scale.
         document.body.style.removeProperty('--gutterpress-fit-zoom');
         document.documentElement.style.setProperty('--gutterpress-zoom', z);
+        // A host "fit to width" scale means nothing should scroll sideways.
+        // Device-pixel rounding (fractional OS scaling) or art reaching past
+        // the sheet can still overflow by a hair; clip it in fit mode only.
+        document.documentElement.style.overflowX = fit ? 'hidden' : '';
       });
       if (!silent) api.notifyPageChange();
     },

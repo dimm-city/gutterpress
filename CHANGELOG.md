@@ -111,6 +111,17 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The editor fills its pane again.** A leftover style from the old toolbar
+  centred both panes' contents, so the editor shrank to its longest line and
+  sat in the middle of the pane with an empty strip to its left. It now starts
+  at the pane's edge.
+- **"Fit to width" never scrolls sideways.** On some screens (fractional
+  display scaling) the fitted page could still overflow by a fraction of a
+  pixel and show a horizontal scrollbar. A fit now clips sideways overflow in
+  the preview; any numeric zoom scrolls as before.
+- **Full-screen pages keep still when switching tabs.** Settings, Help and Book
+  settings reserve the scrollbar's space, so going from a short tab to a long
+  one no longer nudges the page sideways.
 - **A freshly scaffolded plugin passes its own tests** (#338). Its "no
   cascade layer" check matched `@layer` inside a stylesheet comment.
 

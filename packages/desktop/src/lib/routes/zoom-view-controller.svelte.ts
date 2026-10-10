@@ -94,7 +94,8 @@ export class ZoomViewController {
       const scale = pageWidth > 0 && containerWidth > 0
         ? Math.max(0.25, Math.min(4, containerWidth / (pageWidth + 64)))
         : 1;
-      await client.call("setZoom", [scale]);
+      // `true` (third arg): a fit — the viewer clips sideways overflow.
+      await client.call("setZoom", [scale, false, true]);
     } catch {
       // Leave the zoom alone. A failed or timed-out measurement says nothing
       // about the page: PreviewClient gives up on a call after 10s (a refit
