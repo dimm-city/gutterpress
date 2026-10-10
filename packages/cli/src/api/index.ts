@@ -197,7 +197,7 @@ export type { ParsedExtensionSpecifier } from "../lib/extension-specifier.ts";
 // pinned version again. Called by build/validate/preview and the desktop's
 // book-open path — never by the (offline) loader.
 export { restorePinnedExtensions, restoreFailureMessage } from "../lib/extension-restore.ts";
-export type { RestorePinnedOptions, RestoreResult, RestoreFailure } from "../lib/extension-restore.ts";
+export type { RestorePinnedOptions, RestoreResult, RestoreFailure, RestoreProgress } from "../lib/extension-restore.ts";
 
 // ── Extension package import — .zip / .css / URL ─────────────────────────────
 // The zip/css sub-importers and pure decision helpers stay module-private

@@ -36,9 +36,20 @@ import {
 export interface RestorePinnedOptions extends NpmPluginInstallOptions {
   /** An explicit `--manifest` file; the book folder is then that file's folder. */
   manifestPath?: string;
-  /** Called with `name@version` just before a download starts (progress). */
-  onRestoring?: (spec: string) => void;
+  /**
+   * Progress for a UI: nothing is reported when every copy is present; else a
+   * `start` (the packages to download), one `package` event as each starts
+   * and ends, and an `end`. A caller that joins a run already in flight for
+   * the same book gets that run's result but no events.
+   */
+  onProgress?: (event: RestoreProgress) => void;
 }
+
+/** One step of a restore, for a progress indicator. `spec` is `name@version`. */
+export type RestoreProgress =
+  | { type: "start"; specs: string[] }
+  | { type: "package"; spec: string; index: number; total: number; state: "downloading" | "done" | "failed"; message?: string }
+  | { type: "end"; installed: string[]; failed: RestoreFailure[] };
 
 export interface RestoreFailure {
   /** `name@version`, as pinned. */
@@ -105,19 +116,30 @@ async function restoreAll(
   options: RestorePinnedOptions,
 ): Promise<RestoreResult> {
   const result: RestoreResult = { manifestFile, installed: [], failed: [], warnings: [] };
-  for (const pin of pins) {
-    const use = `${pin.name}@${pin.version}`;
+  const missing: PinnedNpm[] = [];
+  for (const pin of pins) if (await needsRestore(projectDir, pin)) missing.push(pin);
+  if (missing.length === 0) return result;
+
+  const report = options.onProgress ?? (() => {});
+  const specs = missing.map((pin) => `${pin.name}@${pin.version}`);
+  report({ type: "start", specs });
+  for (const [index, pin] of missing.entries()) {
+    const spec = specs[index]!;
+    const step = { type: "package", spec, index, total: missing.length } as const;
+    report({ ...step, state: "downloading" });
     try {
-      if (!(await needsRestore(projectDir, pin))) continue;
-      options.onRestoring?.(use);
       result.warnings.push(
         ...(await restoreNpmExtension(projectDir, pin.name, pin.version, pin.export, options)),
       );
-      result.installed.push(use);
+      result.installed.push(spec);
+      report({ ...step, state: "done" });
     } catch (error) {
-      result.failed.push({ use, message: error instanceof Error ? error.message : String(error) });
+      const message = error instanceof Error ? error.message : String(error);
+      result.failed.push({ use: spec, message });
+      report({ ...step, state: "failed", message });
     }
   }
+  report({ type: "end", installed: result.installed, failed: result.failed });
   return result;
 }
 

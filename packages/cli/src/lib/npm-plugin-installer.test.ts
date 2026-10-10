@@ -29,7 +29,7 @@ import {
   installNpmPlugin,
 } from "./npm-plugin-installer";
 import { loadPlugin } from "./markdown/plugins";
-import { restoreFailureMessage, restoreForCommand, restorePinnedExtensions } from "./extension-restore";
+import { restoreFailureMessage, restoreForCommand, restorePinnedExtensions, type RestoreProgress } from "./extension-restore";
 import { vendoredNpmPluginPackageDir, vendoredNpmPluginRoot } from "./plugin-vendor";
 
 const TMP_ROOT = path.join(process.cwd(), ".tmp", `npm-plugin-installer-${Date.now()}`);
@@ -1623,15 +1623,20 @@ describe("restorePinnedExtensions", () => {
   test("a missing copy is downloaded at exactly the pinned version, and the manifest is untouched", async () => {
     const { dir, fixture, manifest } = await pinnedBook();
     await rm(path.join(dir, "plugins"), { recursive: true });
-    const starting: string[] = [];
+    const events: RestoreProgress[] = [];
 
     const result = await restorePinnedExtensions(dir, {
       fetch: fixture.fetch,
-      onRestoring: (spec) => starting.push(spec),
+      onProgress: (event) => events.push(event),
     });
 
     expect(result).toMatchObject({ manifestFile: "manifest.yaml", installed: [`${name}@1.0.0`], failed: [] });
-    expect(starting).toEqual([`${name}@1.0.0`]);
+    expect(events).toEqual([
+      { type: "start", specs: [`${name}@1.0.0`] },
+      { type: "package", spec: `${name}@1.0.0`, index: 0, total: 1, state: "downloading" },
+      { type: "package", spec: `${name}@1.0.0`, index: 0, total: 1, state: "done" },
+      { type: "end", installed: [`${name}@1.0.0`], failed: [] },
+    ]);
     // The pinned version, not npm's `latest` (1.1.0).
     expect(fixture.calls).toEqual([
       `https://registry.npmjs.org/${encodeURIComponent(name)}`,
