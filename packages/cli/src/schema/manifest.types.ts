@@ -148,6 +148,12 @@ export interface GutterpressManifest {
   lint?: {
     enabled?: boolean;
     configPath?: string | null;
+    /**
+     * Per-rule level overrides, keyed by rule id (`printsafe/*`, or a check id
+     * such as `source.accessibility.heading-order`). `off` silences the rule;
+     * `warn` / `error` set its severity. Unknown ids are ignored.
+     */
+    rules?: Record<string, "off" | "warn" | "error">;
   };
   validate?: {
     enabled?: boolean;
@@ -255,6 +261,7 @@ export interface ResolvedConfig {
   lint: {
     enabled: boolean;
     configPath: string | null;
+    rules: Record<string, "off" | "warn" | "error">;
   };
   validate: {
     enabled: boolean;

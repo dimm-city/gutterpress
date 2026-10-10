@@ -44,7 +44,7 @@ const check: Check = {
         });
         continue;
       }
-      for (const w of checkCss(css, file)) {
+      for (const w of checkCss(css, file, { rules: ctx.config.lint.rules })) {
         results.push({
           checkId: check.id,
           severity: w.severity,

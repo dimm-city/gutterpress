@@ -1569,6 +1569,50 @@ describe("Source accessibility checks", () => {
     expect(results).toHaveLength(1);
     expect(results[0]!.severity).toBe("warning");
   });
+
+  test("heading-order honours gutterpress-disable-next-line for the next heading only (#339)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-heading-order-"));
+    const mainFile = join(dir, "main.md");
+    await writeFile(
+      mainFile,
+      [
+        "## H2",
+        "<!-- gutterpress-disable-next-line source.accessibility.heading-order -- example -->",
+        "#### H4 required here",
+        "# H1",
+        "### H3 jump",
+      ].join("\n")
+    );
+    const check = getCheckById("source.accessibility.heading-order")!;
+    const results = await check.run(makeCtx({ markdownFiles: [mainFile] }));
+    expect(results.map((r) => r.line)).toEqual([5]);
+  });
+
+  test("lint.rules turns a check id off or changes its severity via runChecks (#339)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-heading-order-"));
+    const mainFile = join(dir, "main.md");
+    await writeFile(mainFile, ["# H1", "### H3 jump"].join("\n"));
+    const only = ["source.accessibility.heading-order"];
+    const run = (rules: Record<string, "off" | "warn" | "error">) => {
+      const config = makeConfig();
+      config.lint.rules = rules;
+      return runChecks(makeCtx({ config, markdownFiles: [mainFile] }), { only });
+    };
+    expect((await run({})).warnings).toHaveLength(1);
+    expect((await run({ "source.accessibility.heading-order": "off" })).results).toHaveLength(0);
+    expect((await run({ "source.accessibility.heading-order": "error" })).errors).toHaveLength(1);
+  });
+
+  test("lint.rules switches off a printsafe rule in the CSS check (#339)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-printsafe-rules-"));
+    const cssFile = join(dir, "book.css");
+    await writeFile(cssFile, ".x { filter: blur(1px); }\n");
+    const check = getCheckById("source.stylelint")!;
+    const config = makeConfig();
+    expect(await check.run(makeCtx({ config, cssFiles: [cssFile] }))).toHaveLength(1);
+    config.lint.rules = { "printsafe/no-risky-print-effects": "off" };
+    expect(await check.run(makeCtx({ config, cssFiles: [cssFile] }))).toHaveLength(0);
+  });
 });
 
 describe("Image file size check", () => {

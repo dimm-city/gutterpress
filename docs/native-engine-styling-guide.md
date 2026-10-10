@@ -236,8 +236,14 @@ fixture — but only when the thing being kept-with can actually be placed:
   nothing for those pages, and it dominates build time (~90% measured; 57 s →
   6 s over 60 pp when scoped down). Scope filters to the smallest possible
   selector, or replace with non-filter equivalents.
-- `clip-path` and friends are also rasterization risks — the CSS lint flags
-  them; take the warnings seriously on text-bearing elements.
+- `backdrop-filter`, `mix-blend-mode` and `background-blend-mode` are also
+  rasterization risks — the CSS lint flags them; take the warnings seriously on
+  text-bearing elements. `clip-path` with a basic shape (`polygon()`,
+  `inset()`, `circle()`, `ellipse()`, `path()`) is a vector clip and is NOT
+  flagged; only `clip-path: url(...)` (an SVG mask) is.
+- To accept a warning you have decided is fine, switch the rule off for the
+  book (`lint.rules` in `manifest.yaml`) or for one line
+  (`/* gutterpress-disable-next-line <rule-id> -- reason */`).
 
 ## 9. Full-bleed art without shrinking the book
 

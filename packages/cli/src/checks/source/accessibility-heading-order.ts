@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { registerCheck } from "../registry";
+import { parseDisableDirective } from "../../lib/lint-rules";
 import type { Check, CheckContext, CheckResult } from "../types";
 
 const check: Check = {
@@ -20,6 +21,9 @@ const check: Check = {
         const lines = content.split("\n");
         let inFence = false;
         let prevLevel: number | undefined;
+        // `<!-- gutterpress-disable-next-line <check-id> -->` silences this
+        // check on the line directly below it.
+        let silencedLine = -1;
 
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i] ?? "";
@@ -29,11 +33,17 @@ const check: Check = {
           }
           if (inFence) continue;
 
+          const comment = /^\s*<!--(.*)-->\s*$/.exec(line);
+          if (comment && parseDisableDirective(comment[1]!)?.includes(check.id)) {
+            silencedLine = i + 1;
+            continue;
+          }
+
           const match = line.match(/^(#{1,6})\s+\S/);
           if (!match) continue;
 
           const level = match[1]!.length;
-          if (prevLevel != null && level > prevLevel + 1) {
+          if (prevLevel != null && level > prevLevel + 1 && i !== silencedLine) {
             results.push({
               checkId: check.id,
               severity: "warning",

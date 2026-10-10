@@ -217,7 +217,7 @@
     },
     "lint": {
       "type": "object",
-      "description": "Markdown linting run before the build.",
+      "description": "Lint settings: whether the pre-build lint runs, the markdownlint config, and per-rule level overrides.",
       "properties": {
         "enabled": {
           "type": "boolean",
@@ -228,6 +228,12 @@
           "type": ["string", "null"],
           "description": "Path to a markdownlint config file, relative to the manifest directory. null uses the built-in defaults.",
           "default": null
+        },
+        "rules": {
+          "type": "object",
+          "description": "Per-rule level overrides, keyed by rule id: a printsafe rule (printsafe/no-risky-print-effects, printsafe/page-containment, printsafe/no-remote-urls) or a check id such as source.accessibility.heading-order. \"off\" silences the rule; \"warn\" / \"error\" set its severity. An id that matches no rule is ignored. To silence one site instead, put a `gutterpress-disable-next-line <rule-id> -- reason` comment (CSS `/* */` or markdown `<!-- -->`) on the line above it.",
+          "additionalProperties": { "enum": ["off", "warn", "error"] },
+          "examples": [{ "printsafe/no-risky-print-effects": "off" }]
         }
       }
     },

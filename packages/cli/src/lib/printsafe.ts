@@ -10,6 +10,7 @@
 
 import postcss from "postcss";
 import { MARGIN_BOX_IGNORED_PROPERTIES } from "../engine/shared/margin-box-support.ts";
+import { parseDisableDirective, ruleLevel, type LintLevel } from "./lint-rules.ts";
 
 export const ruleRemoteUrls = "printsafe/no-remote-urls";
 export const ruleRiskyProps = "printsafe/no-risky-print-effects";
@@ -54,8 +55,16 @@ const riskyProperties = new Set([
   "animation-name",
   "transition",
   "will-change",
-  "clip-path",
+  // NOT `clip-path`: a basic shape (polygon/inset/circle/ellipse/path) is a
+  // vector clip that Chromium prints without rasterizing — only an SVG-mask
+  // `url(...)` reference is risky. See isRasterizingClipPath().
 ]);
+
+/** `clip-path: url(#id)` points at an SVG <clipPath>, which can rasterize;
+ * the basic shapes are vector clips and are fine. */
+function isRasterizingClipPath(decl: postcss.Declaration): boolean {
+  return decl.prop.toLowerCase() === "clip-path" && /\burl\(/i.test(decl.value);
+}
 
 const marginBoxAtRuleNames = new Set([
   "top-left-corner", "top-left", "top-center", "top-right", "top-right-corner",
@@ -241,11 +250,49 @@ function nodeLoc(node: postcss.Node): { line: number; column: number } {
   };
 }
 
+export interface CheckCssOptions {
+  /** The manifest's `lint.rules`: `off` drops a rule, `warn`/`error` set its severity. */
+  rules?: Readonly<Record<string, unknown>>;
+}
+
 /**
  * Run print-safety checks against a CSS string. Returns one warning per finding
  * (errors for remote URLs / syntax errors; warnings for risky print effects).
+ * A `/* gutterpress-disable-next-line <rule-id> *\/` comment silences that
+ * rule on the line directly below it; `options.rules` applies the project's
+ * per-rule levels (see lint-rules.ts).
  */
-export function checkCss(css: string, from?: string): PrintSafeWarning[] {
+export function checkCss(css: string, from?: string, options: CheckCssOptions = {}): PrintSafeWarning[] {
+  return filterFindings(checkCssRaw(css, from), css, options.rules);
+}
+
+function filterFindings(
+  findings: PrintSafeWarning[],
+  css: string,
+  rules: CheckCssOptions["rules"],
+): PrintSafeWarning[] {
+  // line -> rule ids silenced there. Only comments are scanned, so the
+  // parse-failure path (no AST) still honours them.
+  const silenced = new Map<number, Set<string>>();
+  for (const m of css.matchAll(/\/\*([\s\S]*?)\*\//g)) {
+    const ids = parseDisableDirective(m[1]!);
+    if (!ids) continue;
+    const endLine = css.slice(0, m.index + m[0].length).split("\n").length;
+    const set = silenced.get(endLine + 1) ?? new Set<string>();
+    for (const id of ids) set.add(id);
+    silenced.set(endLine + 1, set);
+  }
+  const out: PrintSafeWarning[] = [];
+  for (const f of findings) {
+    if (silenced.get(f.line)?.has(f.rule)) continue;
+    const level: LintLevel | undefined = ruleLevel(rules, f.rule);
+    if (level === "off") continue;
+    out.push(level === "warn" ? { ...f, severity: "warning" } : level === "error" ? { ...f, severity: "error" } : f);
+  }
+  return out;
+}
+
+function checkCssRaw(css: string, from?: string): PrintSafeWarning[] {
   let root: postcss.Root;
   try {
     root = postcss.parse(css, from ? { from } : undefined);
@@ -306,6 +353,13 @@ export function checkCss(css: string, from?: string): PrintSafeWarning[] {
         severity: "warning",
         message:
           "Property is high-risk for print/PDF: 'filter' rasterizes its subtree to a 300 DPI bitmap in the printed PDF (text becomes unselectable, unsearchable, and inaccessible), and it dominates build time (~90% measured; 57.0s -> 6.2s over 60pp when scoped — see ENGINE.md §10). Scope it to the smallest possible selector. It also means the render-parity gate cannot see a text-only change inside it (docs/render-parity-gate.md, \"Known blind spot\").",
+        ...nodeLoc(decl),
+      });
+    } else if (isRasterizingClipPath(decl)) {
+      warnings.push({
+        rule: ruleRiskyProps,
+        severity: "warning",
+        message: `Property is high-risk for print/PDF (can force rasterization): ${decl.prop} with url(...) references an SVG mask. Use a basic shape (polygon(), inset(), circle(), ellipse(), path()) instead — those print as vector clips.`,
         ...nodeLoc(decl),
       });
     } else if (riskyProperties.has(prop)) {

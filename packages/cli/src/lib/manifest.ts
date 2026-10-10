@@ -421,7 +421,12 @@ function resolveWithPreset(
     print: mergeShape(c.print, m.print, preset.print),
     page: preset.page ? mergeShape(c.page, m.page, preset.page) : resolveCustomPage(c, m),
     ink: mergeShape(c.ink, m.ink, preset.ink),
-    lint: mergeShape(c.lint, m.lint, preset.lint),
+    // `rules` is an open dictionary (not a fixed shape), so it merges like
+    // `validate.checks`: cli over manifest, key by key.
+    lint: {
+      ...mergeShape(c.lint, m.lint, preset.lint),
+      rules: { ...preset.lint.rules, ...m.lint?.rules, ...c.lint?.rules },
+    },
     validate: {
       enabled: c.validate?.enabled ?? m.validate?.enabled ?? preset.validate.enabled,
       checks: { ...preset.validate.checks, ...m.validate?.checks, ...c.validate?.checks },

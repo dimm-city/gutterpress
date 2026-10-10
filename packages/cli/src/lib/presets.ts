@@ -60,6 +60,7 @@ export const DTRPG_PRESET: VendorPreset = {
   lint: {
     enabled: true,
     configPath: null,
+    rules: {},
   },
   validate: {
     enabled: true,
@@ -164,6 +165,7 @@ export const BOOK_PRESET: VendorPreset = {
   lint: {
     enabled: true,
     configPath: null,
+    rules: {},
   },
   validate: {
     enabled: true,
