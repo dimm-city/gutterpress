@@ -66,6 +66,8 @@
  *       sidebar:  { tag: 'aside', class: 'dc-sidebar',
  *                   snippet: 'examples/sidebar.md',
  *                   validate: (box) => box.blocks.length ? [] : ['Add some content.'] },
+ *       'npc-stat': { section: true, class: 'dc-npc-stat',
+ *                     variants: { wirephreak: 'dc-wirephreak' } },
  *       'dm-note': { alias: 'callout', preset: { variant: 'dm' } },
  *       'roll-table': { deprecated: 'Removed in 17.3.0 — use @outcome.' },
  *     };
@@ -84,7 +86,10 @@
  *   `openDeclaredMarker`, and the declared-marker branch in `layout_transform`
  *   below. A plugin that needs more than a declarative wrapper still just
  *   writes a plain markdown-it block rule by hand; the declarative path is
- *   an alternative to that, never a replacement for it.
+ *   an alternative to that, never a replacement for it. `section: true`
+ *   makes a marker a core @section (`@npc-stat wirephreak` is
+ *   `@section .dc-npc-stat .dc-wirephreak`); containers also expose their
+ *   tokens (`meta.kind` etc., see renderer.ts) for a plugin's own core rule.
  */
 
 /**
@@ -647,12 +652,30 @@ const TAG_NAME_RE = /^[a-z][a-z0-9-]*$/;
 
 /**
  * Validate + normalize the container-shaped fields common to a direct
- * declaration and an alias's target: `tag`, `class`, `variants`, `label`,
- * `autoCloseAt`. Shared by `resolveMarkerDeclaration` for both cases so an
+ * declaration and an alias's target: `section`, `tag`, `class`, `variants`,
+ * `label`, `autoCloseAt`. Shared by `resolveMarkerDeclaration` for both cases so an
  * alias's target is held to exactly the same contract a directly-declared
  * container is.
  */
 function resolveContainerShape(name, pluginName, decl) {
+  // `section: true` makes the marker a core @section (see `sectionMetaFor`),
+  // which owns its element, label-less and closed by the section rules — so
+  // the container-only fields have nothing to configure and are rejected
+  // rather than silently ignored.
+  if (decl.section !== undefined && typeof decl.section !== 'boolean') {
+    throw new Error(`Plugin "${pluginName}"'s marker "@${name}" has a \`section\` that is not a boolean.`);
+  }
+  if (decl.section) {
+    for (const field of ['tag', 'label', 'autoCloseAt']) {
+      if (decl[field] !== undefined) {
+        throw new Error(
+          `Plugin "${pluginName}"'s marker "@${name}" sets \`section: true\` and \`${field}\` — a section ` +
+            `marker is a core @section, so \`${field}\` does not apply. Remove one of them.`
+        );
+      }
+    }
+  }
+
   const tag = decl.tag !== undefined ? decl.tag : 'div';
   if (typeof tag !== 'string' || !TAG_NAME_RE.test(tag)) {
     throw new Error(
@@ -744,7 +767,7 @@ function resolveContainerShape(name, pluginName, decl) {
   // Only a container that opts in carries these, so every other resolved
   // shape is unchanged.
   const check = decl.validate ? { validate: decl.validate, validateOwner: pluginName } : {};
-  return { tag, classBase, variants, label, autoCloseAtEof, ...check };
+  return { tag, classBase, variants, label, autoCloseAtEof, ...(decl.section ? { section: true } : {}), ...check };
 }
 
 /**
@@ -1265,10 +1288,17 @@ export default function plugin(md, pluginOptions = {}) {
       // "dm") when the line supplied none. An explicit name on the line
       // always wins over a preset.
       const variant = meta.name || decl.presetVariant || null;
-      // `component` (the marker name as typed — an alias's own name),
-      // `variant`, `attrs` and `labelled` are read only by the
-      // gp_component_validate rule below.
-      t.meta = { line: meta.__line, component: meta.kind, variant, attrs: meta.attrs || {}, labelled: false };
+      // Public token contract (see `GutterpressMarkerDeclaration` in
+      // renderer.ts): `component` is the marker name as typed (an alias's own
+      // name), `kind` its resolved base name. Also read by gp_component_validate.
+      t.meta = {
+        line: meta.__line,
+        component: meta.kind,
+        kind: decl.baseKind,
+        variant,
+        attrs: meta.attrs || {},
+        labelled: false,
+      };
       const variantClass = (variant && decl.variants && decl.variants[variant]) || '';
       const baseClass = [decl.classBase, variantClass].filter(Boolean).join(' ');
       addClasses(t, baseClass, meta.attrs && meta.attrs.class ? meta.attrs.class : '');
@@ -1509,21 +1539,48 @@ export default function plugin(md, pluginOptions = {}) {
       }
     }
 
+    /**
+     * Rewrite a `section: true` declared marker into the meta of the core
+     * @section it stands for: the marker's `class`, then its variant's class,
+     * then the author's classes — exactly `@section .<class> .<variant> .extra`.
+     * `component` carries what tooling needs to identify the section (the
+     * public token meta: component, kind, variant, attrs); the variant is NOT
+     * the section's name, so `openSection` emits `data-<kind>="<variant>"`
+     * for it instead of `data-section`.
+     */
+    function sectionMetaFor(meta, decl) {
+      const attrs = meta.attrs || {};
+      const variant = meta.name || decl.presetVariant || null;
+      const variantClass = (variant && decl.variants && decl.variants[variant]) || '';
+      const cls = [decl.classBase, variantClass, attrs.class].filter(Boolean).join(' ');
+      return {
+        kind: 'section',
+        name: null,
+        attrs: cls ? { ...attrs, class: cls } : attrs,
+        __line: meta.__line,
+        __component: { component: meta.kind, kind: decl.baseKind, variant, attrs },
+      };
+    }
+
     function openSection(meta) {
       const t = new state.Token('layout_section_open', 'div', 1);
+      const component = meta.__component || null;
       addClasses(t, 'section', meta.attrs && meta.attrs.class ? meta.attrs.class : '');
-      attachDataAttrs(t, 'section', meta.name, meta.attrs || {});
+      if (component) attachDataAttrs(t, component.kind, component.variant, meta.attrs || {});
+      else attachDataAttrs(t, 'section', meta.name, meta.attrs || {});
       // `line` is the 1-based marker line, threaded for the source-range
       // annotation rule (source-range.ts). Do NOT set token.map here — see
       // the do-not-use-token.map comment in openChapter above (ADR 0009);
       // applies identically here.
-      t.meta = { line: meta.__line };
+      t.meta = component
+        ? { line: meta.__line, ...component, ...(meta.__continued ? { continued: true } : {}) }
+        : { line: meta.__line };
       stack.open(
         {
           kind: 'section',
           classes: (meta.attrs && meta.attrs.class) || '',
           sawContent: false,
-          meta: { name: meta.name || null, attrs: { ...(meta.attrs || {}) } },
+          meta: { name: meta.name || null, attrs: { ...(meta.attrs || {}) }, component },
           openToken: t,
         },
         t
@@ -1624,9 +1681,25 @@ export default function plugin(md, pluginOptions = {}) {
         continue;
       }
 
-      const meta = tok.meta || {};
-      const kind = meta.kind;
+      let meta = tok.meta || {};
+      let kind = meta.kind;
       const line = meta.__line || 0;
+
+      // A `section: true` declared marker IS a core section: rewrite it (and
+      // its closer) into the @section / @end-section it stands for, so every
+      // branch below — closing, @continue, warnings — applies unchanged.
+      if (declaredMarkers) {
+        const closing = kind.startsWith('end-');
+        const sectionDecl = declaredMarkers.get(closing ? kind.slice(4) : kind);
+        if (sectionDecl && sectionDecl.section) {
+          if (closing) {
+            kind = 'end-section';
+          } else {
+            meta = sectionMetaFor(meta, sectionDecl);
+            kind = 'section';
+          }
+        }
+      }
 
       if (kind === 'chapter') {
         // #240: a declared container can never straddle a chapter boundary —
@@ -1709,6 +1782,12 @@ export default function plugin(md, pluginOptions = {}) {
           name: section.meta.name,
           attrs: { ...(section.meta.attrs || {}) },
         };
+        // A declared section marker's continuation is still that component
+        // (same classes via attrs.class, same data-<kind> and token meta).
+        if (section.meta.component) {
+          contMeta.__component = section.meta.component;
+          contMeta.__continued = true;
+        }
         // __line is deliberately re-attached here: contMeta only copies
         // name/attrs from the original section's meta snapshot, and openSection
         // reads meta.__line for the source-range annotation rule. Without this,
@@ -1839,7 +1918,10 @@ export default function plugin(md, pluginOptions = {}) {
       const tokens = state.tokens;
       for (let i = 0; i < tokens.length; i++) {
         const tok = tokens[i];
-        if (tok.type !== 'layout_component_open') continue;
+        // A container, or a `section: true` marker's section (a @continue
+        // continuation is skipped: it holds only the tail of its component).
+        const isSection = tok.type === 'layout_section_open' && tok.meta && tok.meta.component && !tok.meta.continued;
+        if (tok.type !== 'layout_component_open' && !isSection) continue;
         const decl = declaredMarkers.get(tok.meta.component);
         if (!decl || !decl.validate) continue;
         if (!lines) lines = state.src.split('\n');

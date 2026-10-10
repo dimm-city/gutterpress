@@ -431,6 +431,104 @@ if (box.variant && !["note", "warning"].includes(box.variant)) problems.push(`Un
 Because `validate` takes a plain object, you test it with plain objects too
 — the scaffold's `test/plugin.test.js` shows how.
 
+**`section: true` — a component that is a section.** Some components are page
+layouts rather than boxes: a column run, a card grid, a stat block. Declare
+them as sections and they behave exactly like `@section` — they close at the
+next `@section`, `@page`, `@chapter` or `@spread`, `@continue` reopens them
+with the same classes, and `.gp-columns-2` and friends work:
+
+```js
+export const markers = {
+  "npc-stat": {
+    section: true,
+    class: "fn-npc-stat",
+    variants: { wirephreak: "fn-wirephreak" },
+  },
+};
+```
+
+`@npc-stat wirephreak .extra` renders exactly like
+`@section .fn-npc-stat .fn-wirephreak .extra` (classes in that order), and
+`@end-npc-stat` is `@end-section`. The variant is not a section name, so it
+becomes `data-npc-stat="wirephreak"` instead of `data-section`. A section
+marker cannot also set `tag`, `label` or `autoCloseAt`; aliases of it are
+sections too. `validate` works on it as well (a `@continue` continuation is
+not checked separately).
+
+### Components that rebuild their content: declare, then transform
+
+Some components need more than a wrapper and classes — a card that turns its
+list into a grid, a procedure that numbers its steps. You do not need a
+special API for these. **Declare the marker** in `markers` so core parses it
+(autocomplete, closing rules, warnings, source lines), then **rewrite the
+tokens inside it** with an ordinary markdown-it core rule pushed from your
+default export. This is opt-in: a plugin that never declares a marker is a
+plain markdown-it plugin, exactly as before.
+
+A declared container renders as a `layout_component_open` token, its content
+tokens, and a matching `layout_component_close`. The open token's `meta` is a
+stable, public contract:
+
+| Field | Meaning |
+|-------|---------|
+| `line` | the marker's 1-based line |
+| `component` | the marker name as typed (an alias's own name, e.g. `dm-note`) |
+| `kind` | the resolved base marker name (the alias's target, e.g. `callout`) |
+| `variant` | the bare word after the marker (or an alias's preset), or `null` |
+| `attrs` | the marker's attributes as authored (`{ label: "…" }`) |
+| `labelled` | `true` when core injected a label element right after the open token |
+
+Match on `kind` and a rule for `callout` also catches `@dm-note`. The content
+is `tokens[from..close)`, where `from` is the index after the open token (two
+after it when `labelled`). A `section: true` marker produces
+`layout_section_open` / `layout_section_close` instead, with the same `meta`
+minus `labelled` (plus `continued: true` on a `@continue` reopening).
+
+Plugins cannot import from `gutterpress`, so copy this small helper into your
+plugin:
+
+```js
+// Calls fn(open, from, close) for each @<kind> component; the content is
+// tokens[from..close). Walks backwards so a transform can edit the tokens
+// without shifting the components it has yet to visit.
+function forEachComponent(tokens, kind, fn) {
+  for (let i = tokens.length - 1; i >= 0; i--) {
+    const open = tokens[i];
+    if (open.type !== "layout_component_open" || open.meta.kind !== kind) continue;
+    let depth = 0;
+    let close = i;
+    for (; close < tokens.length; close++) {
+      depth += tokens[close].nesting;
+      if (depth === 0) break;
+    }
+    fn(open, i + (open.meta.labelled ? 2 : 1), close);
+  }
+}
+
+export const markers = {
+  steps: { class: "fn-steps" },
+};
+
+export default function fieldNotes(md) {
+  md.core.ruler.push("fn_steps", (state) => {
+    forEachComponent(state.tokens, "steps", (open, from, close) => {
+      let count = 0;
+      for (let i = from; i < close; i++) {
+        const token = state.tokens[i];
+        if (token.type !== "list_item_open") continue;
+        token.attrJoin("class", "fn-step");
+        count++;
+      }
+      open.attrSet("data-steps", String(count));
+    });
+  });
+}
+```
+
+Your rule runs after core has placed the markers and parsed the inline
+content, after `validate` (which therefore sees what the author wrote), and
+before source ranges are attached.
+
 This is unrelated to the `gutterpress.components` catalog file, which nothing
 reads yet. Looks (CSS-only packages) have no JavaScript, so their components
 cannot carry `validate`.

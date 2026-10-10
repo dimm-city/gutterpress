@@ -62,6 +62,7 @@ const PREFIX = "{{PREFIX}}";
  *   @end-term-box
  *
  * Fields, all optional:
+ *   section     true makes the marker a core @section (no tag/label/autoCloseAt)
  *   tag         wrapper element            (default "div")
  *   class       base class on the wrapper
  *   variants    extra classes keyed by the marker's bare word

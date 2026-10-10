@@ -21,6 +21,25 @@ This project follows [Semantic Versioning](https://semver.org/).
   `gutterpress validate` and builds at the right line. Problems are warnings
   unless the plugin marks one `error` or `info`. The plugin scaffold's
   `term-box` ships an example.
+- **Components offer their variants in autocomplete.** Typing `@sk` lists
+  `@skill` and one `@skill <variant>` entry per variant the marker declares
+  (an alias lists its target's). Picking a variant inserts the component's
+  snippet with the variant word added after the marker name. The editor now
+  reads components through the same resolver the renderer uses, so both agree
+  on aliases and variants.
+- **Section markers.** A marker declared with `section: true` is a core
+  `@section` with the marker's classes: `@npc-stat wirephreak` renders
+  exactly like `@section .dc-npc-stat .dc-wirephreak` (plus
+  `data-npc-stat="wirephreak"`) and behaves like one in every way — it closes
+  at the next section or page, `@end-npc-stat` closes it, and `@continue`
+  keeps its classes. It gets autocomplete, snippets and `validate` like any
+  other component.
+- **A documented token contract for components that rebuild their content.**
+  A declared component's open token carries `meta.kind` (the base marker, so
+  an alias is caught too) alongside `component`, `variant`, `attrs` and
+  `line`. A plugin can declare a marker so core parses it, then rewrite the
+  tokens inside it with an ordinary markdown-it rule; the user guide shows
+  how. All of this is opt-in: plain markdown-it plugins are unaffected.
 
 ### Changed
 

@@ -29,6 +29,7 @@ import { slugify, prettify } from "./slug.ts";
 import { pathEscapesFolder, readExtensionMeta } from "./extension-manifest.ts";
 import { extensionConfigFor, listProjectExtensions, type ProjectExtensionEntry } from "./extension-manager.ts";
 import { loadPlugin } from "./markdown/plugins.ts";
+import { buildDeclaredMarkerRegistry } from "./markdown/markers.js";
 
 /** Folder (relative to the project root) snippets live in. */
 export const SNIPPETS_DIR = "snippets";
@@ -208,6 +209,10 @@ export interface MarkerComponent {
   name: string;
   /** The extension that declares it. */
   source: Extract<SnippetSource, { kind: "extension" }>;
+  /** The variant names the marker accepts as its bare word (`@name <variant>`),
+   *  as the renderer resolves them — an alias lists its target's. A variant
+   *  only adds a class, so one snippet serves them all. */
+  variants: string[];
   /** The winning example snippet's body (book, then extension, then core). */
   snippet?: string;
 }
@@ -225,7 +230,7 @@ async function declaredSnippetsFolder(entry: ProjectExtensionEntry): Promise<str
 async function declaredMarkers(
   entry: ProjectExtensionEntry,
   projectDir: string,
-): Promise<Record<string, { deprecated?: unknown; snippet?: unknown }> | undefined> {
+): Promise<Record<string, { snippet?: unknown }> | undefined> {
   if (!entry.carries.markdown) return undefined;
   try {
     return (await loadPlugin(extensionConfigFor(entry), projectDir)).markers;
@@ -251,6 +256,14 @@ async function collectLibrary(
   const groups: Array<{ label: string; snippets: SnippetEntry[] }> = [];
   const components: MarkerComponent[] = [];
 
+  // Pass 1: each enabled, loadable extension's snippet files and raw markers.
+  const loaded: Array<{
+    entry: ProjectExtensionEntry;
+    source: MarkerComponent["source"];
+    folder: string | null;
+    snippets: SnippetEntry[];
+    markers: Record<string, { snippet?: unknown }> | undefined;
+  }> = [];
   for (const entry of await listProjectExtensions(projectDir)) {
     if (!entry.enabled) continue;
     const source: MarkerComponent["source"] = { kind: "extension", ref: entry.use, name: entry.label };
@@ -258,10 +271,29 @@ async function collectLibrary(
     const snippets: SnippetEntry[] = folder
       ? (await scanSnippetFiles(path.join(entry.dir!, folder))).map((file) => ({ ...file, source }))
       : [];
+    loaded.push({ entry, source, folder, snippets, markers: await declaredMarkers(entry, projectDir) });
+  }
 
-    for (const [name, decl] of Object.entries((await declaredMarkers(entry, projectDir)) ?? {})) {
-      if (decl.deprecated !== undefined) continue;
-      components.push({ name, source });
+  // Resolve every declaration through the renderer's own registry, so the
+  // editor and the renderer agree on aliases and variants. Registry errors
+  // (a name two plugins both declare, a malformed declaration) are already
+  // reported by validation / Problems, so here they just mean "no components
+  // listed" rather than a failed listing; snippet files are still listed.
+  let registry: Map<string, { deprecated?: string; variants?: Record<string, string> }> | undefined;
+  try {
+    registry = buildDeclaredMarkerRegistry(
+      loaded.flatMap((l) => (l.markers ? [{ pluginName: l.entry.label, markers: l.markers }] : [])),
+    );
+  } catch {
+    registry = undefined;
+  }
+
+  // Pass 2: components, and the link from each to its snippet file.
+  for (const { entry, source, folder, snippets, markers } of loaded) {
+    for (const [name, decl] of Object.entries(registry ? (markers ?? {}) : {})) {
+      const resolved = registry!.get(name);
+      if (!resolved || resolved.deprecated !== undefined) continue;
+      components.push({ name, source, variants: Object.keys(resolved.variants ?? {}) });
       if (!entry.dir) continue;
       const own = typeof decl.snippet === "string" && decl.snippet.trim() ? decl.snippet.trim() : null;
       const rel = own ?? path.join(folder ?? SNIPPETS_DIR, `${name}.md`);
