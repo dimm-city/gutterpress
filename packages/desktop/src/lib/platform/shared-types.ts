@@ -169,6 +169,13 @@ export interface AppSettings {
   updates: {
     /** Release stream for desktop update checks (see UpdateChannel above). */
     channel: UpdateChannel;
+    /**
+     * Features tab: offer pre-release versions (`-alpha`, `-beta`, `-rc`) of
+     * npm extensions in the version picker, and count them as "newer" in the
+     * update check. An app preference, not per book — it is about which
+     * builds this author wants to see. Default off.
+     */
+    includeExtensionPrereleases: boolean;
   };
   versionHistory: {
     /**
@@ -243,6 +250,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   updates: {
     channel: "stable",
+    includeExtensionPrereleases: false,
   },
   versionHistory: {
     autoSave: true,
