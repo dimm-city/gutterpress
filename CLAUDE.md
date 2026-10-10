@@ -451,9 +451,13 @@ prefixed. The split between the two modules is by ROLE, not owner:
 - `markers.js` (`MARKER_CSS`) — the **structural DOM**: markers → tokens →
   `.page` / `.spread` / `.section` / `.chapter` / `.gp-page-break` /
   `.gp-column-break` / `.gp-continued`, plus the minimal CSS that DOM needs.
+  It also holds core's own DECLARED markers (`CORE_DECLARED_MARKERS`), seeded
+  into the same registry plugins declare into and reserved like the
+  structural kinds: today only `@columns [1-5]`, a plain `div.gp-columns`
+  (+ `.gp-columns-N`) styled by `GUTTERPRESS_CSS`, never a `.section`.
 - `gutterpress-css.ts` (`GUTTERPRESS_CSS`) — the author **utility
   vocabulary**: image flow/size/spacing, `.gp-shape`, `.gp-pin` + edges,
-  `.gp-bleed`, `.gp-columns-2` / `.gp-columns-3`, and the `--gp-z-*` depth
+  `.gp-bleed`, `.gp-columns` / `.gp-columns-1`…`-5`, and the `--gp-z-*` depth
   ladder. Column utilities are core layout vocabulary; themes must not create
   competing generic names such as `.two-column` / `.three-column`.
 - `gp-pin-scope.js` — the `.gp-pin` diagnostic, registered by `renderer.ts`

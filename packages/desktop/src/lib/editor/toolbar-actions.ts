@@ -410,13 +410,14 @@ export function applySectionBlock(view: EditorView): void {
   });
 }
 
-/** A working two-column section: core's `.gp-columns-2` (styled by core, so
- *  it lays out in every project), with `@column-break` as the forced break
- *  between the two columns. */
+/** A working two-column run: core's `@columns 2` (a plain wrapper styled by
+ *  core, so it lays out in every project and a theme's section styling does
+ *  not touch it), with `@column-break` as the forced break between the two
+ *  columns. */
 export function applyTwoColumnBlock(view: EditorView): void {
   const insertAt = insertionPointAfterCurrentLine(view);
-  const prefix = "\n\n@section .gp-columns-2\n";
-  const insert = `${prefix}\n@column-break\n\nRight column content.\n\n@end-section\n\n`;
+  const prefix = "\n\n@columns 2\n";
+  const insert = `${prefix}\n@column-break\n\nRight column content.\n\n@end-columns\n\n`;
   const cursorPos = insertAt + prefix.length;
   view.dispatch({
     changes: { from: insertAt, to: insertAt, insert },
@@ -458,7 +459,7 @@ export interface LayoutBlockItem {
 export const LAYOUT_BLOCK_ITEMS: readonly LayoutBlockItem[] = [
   { kind: "chapter", label: "Chapter", detail: "@chapter — wraps content, auto chapter-opener" },
   { kind: "section", label: "Section", detail: "@section … @end-section — keeps content together" },
-  { kind: "two-column", label: "Two columns", detail: "@section .gp-columns-2 … @column-break … @end-section" },
+  { kind: "two-column", label: "Two columns", detail: "@columns 2 … @column-break … @end-columns" },
   { kind: "page-break", label: "Page break", detail: "@page-break — hard break, no page wrapper" },
   { kind: "spread", label: "Spread", detail: "@spread — a two-page facing spread" },
 ] as const;

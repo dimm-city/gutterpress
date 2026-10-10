@@ -3,10 +3,9 @@
  *
  * CodeMirror completion source for Gutterpress's CORE `@marker` family — the
  * core layout markers (`@chapter`, `@spread`, `@page`,
- * `@section`, `@continue`, `@page-break`, `@column-break`, `@end-section`).
- * The whitelist below is copied verbatim from `parseMarkerLine`'s `.includes`
- * check in `packages/cli/src/lib/markdown/markers.js` — the single
- * source of truth for which `@` tokens are real markers.
+ * `@section`, `@continue`, `@page-break`, `@column-break`, `@end-section`),
+ * copied from `KNOWN_KINDS` in `packages/cli/src/lib/markdown/markers.js`,
+ * plus `@columns`, the one marker core declares (`CORE_DECLARED_MARKERS`).
  *
  * Mirrors css-editor.ts's `pagedMediaCompletions` craftsmanship: a hand-
  * maintained static table (no generated schema, no runtime data read) plus a
@@ -150,8 +149,13 @@ export const markerCompletions: readonly MarkerCompletion[] = [
     apply: "@page-break",
   },
   {
+    label: "@columns",
+    detail: "Lay content out in columns (@columns 1–5, default 2), with no other styling — pairs with @end-columns",
+    apply: markerPairApply("@columns 2", "@end-columns"),
+  },
+  {
     label: "@column-break",
-    detail: "Force a column break inside a multi-column @section",
+    detail: "Force a column break inside @columns or a multi-column @section",
     apply: "@column-break",
   },
   {

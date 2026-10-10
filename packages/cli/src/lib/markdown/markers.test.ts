@@ -1833,6 +1833,13 @@ describe("buildDeclaredMarkerRegistry (#240)", () => {
       expect(build).toThrow(/core Gutterpress marker name/);
     });
 
+    test("core's declared @columns cannot be shadowed by a plugin either", () => {
+      const build = () =>
+        buildDeclaredMarkerRegistry([{ pluginName: "dc-plugin", markers: { columns: { class: "x" } } }]);
+      expect(build).toThrow(/dc-plugin/);
+      expect(build).toThrow(/core Gutterpress marker name/);
+    });
+
     test("every one of the eight core reserved names is rejected", () => {
       // "end-section" hits the earlier, ALSO-correct "end- is reserved for
       // an auto-derived closer" rejection first (validateDeclaredMarkerName
@@ -2061,9 +2068,9 @@ describe("buildDeclaredMarkerRegistry (#240)", () => {
       });
     });
 
-    test("an empty sources list, or a plugin with an empty markers object, resolves to an empty registry", () => {
-      expect(buildDeclaredMarkerRegistry([]).size).toBe(0);
-      expect(buildDeclaredMarkerRegistry([{ pluginName: "p", markers: {} }]).size).toBe(0);
+    test("an empty sources list, or a plugin with an empty markers object, resolves to core's markers only", () => {
+      expect([...buildDeclaredMarkerRegistry([]).keys()]).toEqual(["columns"]);
+      expect([...buildDeclaredMarkerRegistry([{ pluginName: "p", markers: {} }]).keys()]).toEqual(["columns"]);
     });
   });
 });
@@ -2815,5 +2822,48 @@ describe("section markers (`section: true`) and the component token contract", (
       expect(html(markers)).toContain('<div class="section x">');
       expect(html(markers)).toContain('<div class="section x gp-continued">');
     });
+  });
+});
+
+describe("@columns (core declared marker)", () => {
+  const render = (src: string) => {
+    const env: { layoutWarnings?: Array<{ type: string; message: string }> } = {};
+    const html = createMarkdownRenderer([]).render(src, env);
+    return { html, warnings: env.layoutWarnings ?? [] };
+  };
+
+  test("@columns 1-5 is a plain wrapper carrying the matching column class, nothing else", () => {
+    for (const n of [1, 2, 3, 4, 5]) {
+      const { html, warnings } = render(`@columns ${n}\n\nText.\n\n@end-columns\n`);
+      expect(html).toMatch(new RegExp(`^<div class="gp-columns gp-columns-${n}" data-columns="${n}"[^>]*>`));
+      expect(html).not.toContain("section");
+      expect(warnings).toEqual([]);
+    }
+  });
+
+  test("a bare @columns is the two-column default (.gp-columns alone)", () => {
+    expect(render("@columns\n\nText.\n\n@end-columns\n").html).toMatch(/^<div class="gp-columns"[^>]*>/);
+  });
+
+  test("a count outside 1-5 is reported as an unknown variant", () => {
+    const { warnings } = render("@columns 6\n\nText.\n\n@end-columns\n");
+    expect(warnings.map((w) => w.type)).toEqual(["unknown_variant"]);
+    expect(warnings[0]!.message).toContain("Variants: 1, 2, 3, 4, 5.");
+  });
+
+  test("@column-break works inside it, and it nests inside a @section", () => {
+    const { html } = render("@section\n\n@columns 2\n\nA\n\n@column-break\n\nB\n\n@end-columns\n\n@end-section\n");
+    expect(html).toMatch(/<div class="section"[^>]*><div class="gp-columns gp-columns-2"[\s\S]*<div class="gp-column-break"/);
+  });
+
+  test("the marker plugin knows @columns even when no registry is passed", () => {
+    const md = new MarkdownIt().use(markerPlugin);
+    expect(md.render("@columns 3\n\nText.\n\n@end-columns\n")).toContain('class="gp-columns gp-columns-3"');
+  });
+
+  test("the CSS gives .gp-columns two columns and each count its own, with one shared gap", () => {
+    expect(GUTTERPRESS_CSS).toContain(".gp-columns { columns: 2; }");
+    for (const n of [1, 2, 3, 4, 5]) expect(GUTTERPRESS_CSS).toContain(`.gp-columns-${n} { columns: ${n}; }`);
+    expect(GUTTERPRESS_CSS.indexOf(".gp-columns { columns: 2; }")).toBeLessThan(GUTTERPRESS_CSS.indexOf(".gp-columns-1 { columns: 1; }"));
   });
 });
