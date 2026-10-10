@@ -174,7 +174,7 @@ says so and changes nothing. A file with uncommitted changes is rewritten too
 
 Run on markdown source files and assets before the PDF is generated. Catch authoring errors early.
 
-Examples: broken internal links, missing alt text, oversized source images, markdown lint errors, and the structure checks a plugin component opts into with `validate` ([Chapter 5](#ch-plugins)).
+Examples: broken internal links, missing alt text, oversized source images, markdown lint errors, a mistyped marker or a variant word a plugin component does not declare (`@card featuerd`), and the structure checks a plugin component opts into with `validate` ([Chapter 5](#ch-plugins)).
 
 ### PDF checks (post-build)
 

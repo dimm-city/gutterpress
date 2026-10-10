@@ -40,6 +40,14 @@ This project follows [Semantic Versioning](https://semver.org/).
   `line`. A plugin can declare a marker so core parses it, then rewrite the
   tokens inside it with an ordinary markdown-it rule; the user guide shows
   how. All of this is opt-in: plain markdown-it plugins are unaffected.
+- **A mistyped variant is reported.** On a plugin component, `@npc-stat
+  wirephreek` used to be silently ignored when `wirephreek` was not a declared
+  variant. Problems now says `"wirephreek" is not a variant of @npc-stat, so it
+  adds no styling. Variants: wirephreak. Did you mean "wirephreak"?` (or
+  `@npc-stat has no variants`). It is a warning (`unknown_variant`) for container
+  and `section: true` components alike. Nothing is reported for a declared
+  variant, no word, or an alias's preset variant, and the word still lands in
+  `data-<marker>` as before.
 
 ### Changed
 

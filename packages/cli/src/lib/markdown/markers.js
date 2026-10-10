@@ -929,18 +929,19 @@ function declaredKindWords(declaredMarkers) {
 /**
  * Nearest declared marker name to `word`, or null when nothing is close
  * enough — the declared-marker counterpart of `nearestKind` above, used only
- * by `scanForUnknownDeclaredMarkers`. A PROPORTIONAL threshold (matching
+ * by `scanForUnknownDeclaredMarkers` (and, over a marker's variant names, by
+ * `warnUnknownVariant`). A PROPORTIONAL threshold (matching
  * `gp-pin-scope.js`'s `nearestGpClass`, not `nearestKind`'s tighter
  * distance-1-only rule): declared names can be longer/compound
  * ("roll-table", "outcome-ladder"), where a fixed distance-1 threshold would
  * miss realistic typos the way it does for `gp-*` classes.
  */
-function nearestDeclaredMarkerName(word, declaredMarkers) {
+function nearestDeclaredMarkerName(word, names) {
   const w = word.toLowerCase();
   const threshold = Math.max(2, Math.floor(w.length / 3));
   let best = null;
   let bestDistance = Infinity;
-  for (const known of declaredMarkers.keys()) {
+  for (const known of names) {
     const d = editDistance(w, known);
     if (d < bestDistance) {
       bestDistance = d;
@@ -987,7 +988,7 @@ function scanForUnknownDeclaredMarkers(state, declaredMarkers) {
       if (!m) continue;
       const word = m[1];
       if (KNOWN_KINDS.includes(word) || declaredMarkers.has(word)) continue;
-      const suggestion = nearestDeclaredMarkerName(word, declaredMarkers);
+      const suggestion = nearestDeclaredMarkerName(word, declaredMarkers.keys());
       if (!suggestion) continue;
       warn(
         state.env,
@@ -998,6 +999,35 @@ function scanForUnknownDeclaredMarkers(state, declaredMarkers) {
       );
     }
   }
+}
+
+/**
+ * unknown_variant: the bare word after a DECLARED marker (`@card featured`)
+ * selects one of the marker's declared `variants`. A word that is not one of
+ * them styles nothing — it only lands in `data-<kind>` — so a typo
+ * (`@npc-stat wirephreek`) would otherwise fail silently. Warns only for a word
+ * the author typed on the line: an alias's `preset.variant` is the plugin's own
+ * choice and is never reported. Shared by container markers
+ * (`openDeclaredMarker`) and `section: true` markers (`sectionMetaFor`).
+ */
+function warnUnknownVariant(env, meta, decl) {
+  const word = meta.name;
+  if (!word) return;
+  const variants = Object.keys(decl.variants || {});
+  if (variants.includes(word)) return;
+  // Too short a word is within reach of every short variant name — no guess.
+  const near =
+    variants.find((v) => v.toLowerCase() === word.toLowerCase()) ||
+    (word.length >= 3 ? nearestDeclaredMarkerName(word, variants) : null);
+  warn(
+    env,
+    meta.__line,
+    'unknown_variant',
+    `"${word}" is not a variant of @${meta.kind}, so it adds no styling. ` +
+      (variants.length ? `Variants: ${variants.join(', ')}.` : `@${meta.kind} has no variants.`) +
+      (near ? ` Did you mean "${near}"?` : ''),
+    meta
+  );
 }
 
 export default function plugin(md, pluginOptions = {}) {
@@ -1288,6 +1318,7 @@ export default function plugin(md, pluginOptions = {}) {
       // "dm") when the line supplied none. An explicit name on the line
       // always wins over a preset.
       const variant = meta.name || decl.presetVariant || null;
+      warnUnknownVariant(state.env, meta, decl);
       // Public token contract (see `GutterpressMarkerDeclaration` in
       // renderer.ts): `component` is the marker name as typed (an alias's own
       // name), `kind` its resolved base name. Also read by gp_component_validate.
@@ -1551,6 +1582,7 @@ export default function plugin(md, pluginOptions = {}) {
     function sectionMetaFor(meta, decl) {
       const attrs = meta.attrs || {};
       const variant = meta.name || decl.presetVariant || null;
+      warnUnknownVariant(state.env, meta, decl);
       const variantClass = (variant && decl.variants && decl.variants[variant]) || '';
       const cls = [decl.classBase, variantClass, attrs.class].filter(Boolean).join(' ');
       return {
