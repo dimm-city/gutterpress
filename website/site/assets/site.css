@@ -566,3 +566,151 @@ body.home .hero {
   font-family: var(--sans);
   color: var(--pu-ink-soft);
 }
+
+/* ── Plugins page: a search slip and plugin galleys that open ─────────── */
+.plugins-head {
+  padding-bottom: 0.5rem;
+}
+
+.plugins-head .lede {
+  max-width: 44rem;
+}
+
+.plugin-search {
+  margin: 1.25rem 0 0.5rem;
+}
+
+.plugin-search label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font: 600 0.78rem/1.3 var(--pu-gothic);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--pu-ink);
+}
+
+.plugin-search input {
+  width: 100%;
+  max-width: 28rem;
+  padding: 0.65rem 0.8rem;
+  font: 400 1rem/1.2 var(--pu-type);
+  color: var(--pu-ink);
+  background: #fbf6e8;
+  border: 1px solid var(--pu-ink);
+  box-shadow: none;
+}
+
+.plugin-search input:focus-visible {
+  outline: 2px dashed var(--pu-red-bright);
+  outline-offset: 3px;
+}
+
+.plugins-head .note {
+  font: 400 0.85rem/1.4 var(--pu-type);
+  color: var(--pu-ink-soft);
+}
+
+.plugins-section {
+  padding: 1.5rem 0 2.5rem;
+}
+
+.plugins-section h2 {
+  margin: 0 0 1.25rem;
+  padding: 0.4rem 0 0.35rem;
+  font: 600 clamp(1.1rem, 2.4vw, 1.4rem)/1.2 var(--pu-gothic);
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: var(--pu-ink);
+  border-top: 4px double var(--pu-ink);
+  border-bottom: 1px solid var(--pu-ink);
+}
+
+/* Each plugin is a <details> galley: the summary is the face, and opening it
+   shows the command that adds it to a book. A closed card keeps its own
+   height instead of stretching to an open neighbour's. */
+.card.plugin {
+  padding: 0;
+  align-self: start;
+}
+
+.card.plugin summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1.5rem 1.4rem 1.3rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.card.plugin summary::-webkit-details-marker {
+  display: none;
+}
+
+.card.plugin summary h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font: 700 1.1rem/1.2 var(--heading-font);
+  overflow-wrap: anywhere;
+}
+
+.card.plugin .badge {
+  margin-left: 0;
+  color: var(--pu-ink-soft);
+  border-color: var(--pu-ink-soft);
+  font-family: var(--pu-gothic);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.card.plugin .badge-gp {
+  color: var(--pu-red);
+  border-color: var(--pu-red);
+}
+
+.plugin-desc {
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--pu-ink-soft);
+}
+
+.plugin-meta {
+  font: 400 0.75rem/1.3 var(--pu-type);
+  color: var(--pu-ink-soft);
+}
+
+.plugin-cmd {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0 1.4rem 1.4rem;
+  border-top: 1px dashed var(--pu-ink-soft);
+}
+
+.plugin-cmd .term-body {
+  padding: 0.9rem 0 0;
+  line-height: 1.6;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.plugin-cmd .prompt {
+  color: var(--pu-red);
+}
+
+.card button.more {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pu-red);
+  font: 600 0.8rem/1.3 var(--pu-gothic);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.card button.more:hover {
+  color: var(--accent-bright);
+}
