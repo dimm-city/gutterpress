@@ -432,7 +432,7 @@ export class ProjectLifecycleController {
     }
     for (const f of restore.failed) {
       toast?.error(
-        `Couldn't download ${f.use} (${f.message.replace(/[.\s]+$/, "")}). The book still opens — ` +
+        `Couldn't download ${f.use}: ${f.message.replace(/[.\s]+$/, "")}. The book still opens — ` +
           `use Install in Book settings > Features to try again.`,
       );
     }

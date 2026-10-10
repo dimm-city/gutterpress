@@ -962,7 +962,7 @@ test("a failed download is a toast that points at Install, and the book still op
   expect(deps.toastInfo.calls).toHaveLength(0);
   expect(deps.toastError.calls).toHaveLength(1);
   const message = deps.toastError.calls[0]![0];
-  expect(message).toContain("Couldn't download gp-x@1.0.0 (ECONNREFUSED)");
+  expect(message).toContain("Couldn't download gp-x@1.0.0: ECONNREFUSED. The book still opens");
   expect(message).toContain("Install in Book settings > Features");
 });
 
