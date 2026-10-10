@@ -1,0 +1,13 @@
+{
+  "name": "gutterpress-website",
+  "private": true,
+  "description": "The Gutterpress project site, built with unify on its docs template. See README.md.",
+  "scripts": {
+    "dev": "unify dev",
+    "build": "unify build --audit --strict"
+  },
+  "devDependencies": {
+    "@fwdslsh/unify": "0.11.14",
+    "unify-docs-template": "0.4.0"
+  }
+}

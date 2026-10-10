@@ -1,38 +1,40 @@
 # website
 
 The Gutterpress project site, published to <https://dimm-city.github.io/gutterpress/>
-by `.github/workflows/pages.yml` on every merge to `main`.
+by `.github/workflows/pages.yml` on every merge to `main` that touches this folder,
+the user guide or `PRIVACY.md`.
 
-It is built with [unify](https://github.com/fwdslsh/unify) on unify's **docs**
-template. `unify.yaml` says `extends: unify-docs-template@0.4.0`, so the
-template is not copied here: its layout, stylesheet, scripts and All-pages
-directory sit beneath `src/`, and a file in `src/` at the same path replaces
-the template's. Bump the pin to take a new template release.
+It is built with [unify](https://github.com/fwdslsh/unify) on unify's **docs** template,
+laid out the way unify's own documentation site (<https://unify.fwdslsh.dev/>,
+`examples/unify-docs` in the unify repository) is: `site/` beside `scripts/gen.mjs` and
+`unify.yaml`. The template is **extended**, not copied (`extends:
+node_modules/unify-docs-template`; `package.json` pins it and the unify CLI).
 
-    npx @fwdslsh/unify@0.11.14 dev                       # build, watch, serve on localhost:3000
-    npx @fwdslsh/unify@0.11.14 build --audit --strict    # what CI runs (plus --base-url)
+    npm ci
+    npx unify dev                       # build, watch, serve on localhost:3000
+    npx unify build --audit --strict    # what CI runs
 
-## What's here
+## It renders the real user guide, not a copy
 
-The files the template names as a site's own:
+`scripts/gen.mjs` publishes `examples/gutterpress-user-guide/` at every build through the
+docs template's importer: each chapter lands at `docs/<name>` (its number prefix
+dropped), a link leaving the guide goes to GitHub, and the book's cover, table of
+contents and manifest are left out. Edit a chapter and the site changes on the next
+build. Two things that only make sense in one printed book are adapted for web pages:
+Gutterpress layout markers (`@section .lede`, `@end-section`) are dropped, and `{#id}`
+anchors become links to the page and heading unify publishes. The script also writes the
+sidebar (`_includes/docnav.html`), the docs index (`docs/index.md`) and the privacy page
+(`privacy/index.md`, from the root `PRIVACY.md`; it must stay at `/privacy/` because
+Google's OAuth consent screen links to it, ADR 0011).
 
-- `src/_includes/head.html`, `nav.html`, `docnav.html` (the sidebar),
-  `footer.html`.
-- `src/assets/theme.css`: the look, as the template's custom properties. The
-  values are the Dimm City palette from
-  [gp-dimm-city](https://github.com/dimm-city/gp-dimm-city).
-- The pages: `src/index.html` (`class="home"`), `src/guide/*.md`,
-  `src/releases/*.md` and `src/404.html`. Link a new page from
-  `docnav.html`; `unify audit` fails on a page nothing links to.
+## What is this site's own
 
-And two additions:
-
-- `src/assets/paste-up.css`: the cut-and-paste paper and sticker rules
-  (after gp-dimm-city's chrome and card components), in the template's
-  `theme` layer so they win over its `base` rules. `head.html` links it.
-- `src/assets/share-placeholder.png`: the site's share card, at the path the
-  template's layout names for it.
-
-`scripts/gen.mjs` runs before every build and writes `privacy/index.md` from
-the repository's root `PRIVACY.md`. That page must stay at `/privacy/`:
-Google's OAuth consent screen links to it (ADR 0011).
+- `site/_includes/head.html`, `nav.html` and `footer.html`, the files that name it.
+- `site/assets/theme.css`: the template's custom properties set to the Dimm City palette
+  from [gp-dimm-city](https://github.com/dimm-city/gp-dimm-city).
+- `site/assets/site.css`: the cut-and-paste paper and sticker look (after gp-dimm-city's
+  chrome and card components). It is unlayered, so it wins over the template's layered
+  stylesheet.
+- Its own pages: `index.html`, `install.md`, `releases/*.md`, `404.html`.
+- `site/assets/share-placeholder.png`, the share card, at the path the template's layout
+  names.
