@@ -8,6 +8,7 @@
  * pdfx pipeline (Ghostscript PDF/X-1a, ICC, ink coverage).
  */
 import { PDFDocument, PDFName, PDFNumber, rgb } from "pdf-lib";
+import { signaturePadding } from "../shared/synthesis.ts";
 import type { PageTrim } from "./tier2.ts";
 
 export interface PostprocessOptions {
@@ -61,9 +62,7 @@ export async function postprocess(
   ];
 
   // ---- signature padding -------------------------------------------------
-  const signature = opts.signature && opts.signature > 1 ? opts.signature : 1;
-  let padded = (signature - (doc.getPageCount() % signature)) % signature;
-  if (padded === 0 && opts.reserveLastPage) padded = signature;
+  const padded = signaturePadding(doc.getPageCount(), opts.signature, opts.reserveLastPage);
   for (let i = 0; i < padded; i++) doc.addPage([g.media.width, g.media.height]);
 
   const wantMarks = opts.marks || g.marks.includes("crop") || g.marks.includes("cross");

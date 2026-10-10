@@ -456,6 +456,7 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
 
   const htmlFile = await renderChaptersToFile(renderDir, workDir, {
     title: config.title,
+    print: config.print,
     styles: config.styles,
     files: config.source.files,
     plugins,

@@ -140,6 +140,13 @@ export interface AssembleBookHtmlOptions {
    */
   preloadImages?: string[];
   title?: string;
+  /**
+   * The manifest's `print` padding, written on `<html>` as
+   * `data-gp-signature` / `data-gp-reserve-last-page` so the viewer shows the
+   * blank pages the PDF build appends (`signaturePadding` in
+   * engine/shared/synthesis.ts) and the two page counts agree.
+   */
+  print?: { signature?: number; reserveLastPage?: boolean };
   plugins?: LoadedPlugin[];
   pluginCss?: string;
   /** Add a layout-neutral source-file id to source-mapped preview blocks. */
@@ -258,8 +265,12 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
     .map((href) => `\n  <link rel="preload" as="image" href="${href}">`)
     .join("");
 
+  const printAttrs =
+    (opts.print?.signature && opts.print.signature > 1 ? ` data-gp-signature="${opts.print.signature}"` : "") +
+    (opts.print?.reserveLastPage ? " data-gp-reserve-last-page" : "");
+
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en"${printAttrs}>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">

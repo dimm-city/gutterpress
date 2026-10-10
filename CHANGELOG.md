@@ -5,6 +5,17 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The preview shows the blank pages the PDF adds at the end** (#355). With a
+  print signature (`print.signature`, e.g. the `dtrpg` preset's 4) or a
+  reserved last page, the PDF build pads the book with blank pages, but the
+  preview stopped at the last content page, so the two page counts never
+  matched (the Field Guide previewed at 229 pages and exported at 232). The
+  preview now shows those pages as plain white sheets, exactly like the PDF's,
+  and both use one rule for how many there are. `counter(pages)` still counts
+  only the content pages, as print does.
+
 ## [0.11.16] - 2026-10-10
 
 ### Added

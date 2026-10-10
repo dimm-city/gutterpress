@@ -83,6 +83,8 @@ interface PageCtx {
    * (`applyPageBackground`); everything else is already folded into
    * `geometry`/`marginBoxes`. */
   decls: Declarations;
+  /** an appended signature-padding page (`padToSignature`): drawn plain */
+  padded?: boolean;
 }
 
 /**
@@ -124,6 +126,7 @@ export function decorate(
   const model: GcpmModel = layout.model;
   const sheets = new Map<number, HTMLElement>();
   let blankPages = new Set<number>();
+  let paddedPages = new Set<number>();
   const warnings: string[] = [];
   const api: DecorationApi = {
     redraw: () => draw(),
@@ -143,6 +146,13 @@ export function decorate(
   if (document.body.dataset.designer === undefined) api.setDesigner(!!opts.designer);
 
   function pageContext(strip: StripInfo, indexInStrip: number, bookIndex: number): PageCtx {
+    // A signature-padding page is a plain sheet: the PDF build appends it
+    // after printing (pdf-lib `addPage`), with no page background, canvas or
+    // margin boxes — only the page size.
+    if (paddedPages.has(bookIndex)) {
+      const { geometry } = resolvePage(model, { pseudos: [] });
+      return { index: bookIndex, strip, pseudos: [], geometry, marginBoxes: {}, decls: {}, padded: true };
+    }
     // A recto/verso blank spacer is a DOM sibling of whatever it precedes, so
     // it sits inside that element's named-page run — but the compiler gives
     // every blank page its OWN isolated context (`page: gp--blank`,
@@ -320,6 +330,7 @@ export function decorate(
     sheets.clear();
     warnings.length = 0;
     blankPages = new Set(layout.blankPageIndices);
+    paddedPages = new Set(layout.paddedPageIndices);
     buildMaps();
     fillXrefs();
 
@@ -388,11 +399,13 @@ export function decorate(
         sheet.style.setProperty("--gp-page-w", px(ctx.geometry.width));
         sheet.style.setProperty("--gp-page-h", px(ctx.geometry.height));
         applyPageBackground(sheet, ctx.decls);
-        for (const [prop, value] of canvasBg) sheet.style.setProperty(prop, value);
+        if (!ctx.padded) for (const [prop, value] of canvasBg) sheet.style.setProperty(prop, value);
         layer.appendChild(sheet);
         sheets.set(bookIndex, sheet);
 
-        drawMarginBoxes(sheet, ctx, layout.totalPages);
+        // `counter(pages)` is the content page count: print resolves it before
+        // `postprocess.ts` appends the signature padding.
+        drawMarginBoxes(sheet, ctx, layout.totalPages - paddedPages.size);
         drawGuides(sheet, ctx);
         drawCropMarks(sheet, ctx);
       }

@@ -61,7 +61,12 @@ const EMPTY_BOOK_HTML = `<!doctype html>
  */
 async function renderPreviewBook(
   inputPath: string,
-  config: { title?: string; styles?: string[]; extensions?: ResolvedExtensionConfig[] },
+  config: {
+    title?: string;
+    styles?: string[];
+    extensions?: ResolvedExtensionConfig[];
+    print?: { signature?: number; reserveLastPage?: boolean };
+  },
   opts: {
     files: string[] | null;
     /**
@@ -79,6 +84,7 @@ async function renderPreviewBook(
   );
   return renderChapters(inputPath, {
     title: config.title ?? "Document",
+    print: config.print,
     styles: config.styles,
     files: opts.files,
     plugins,
@@ -137,7 +143,13 @@ export function injectPreviewScripts(html: string): string {
 export async function generateAndWriteHtml(
   inputPath: string,
   tempDir: string,
-  config: { title?: string; styles?: string[]; source?: { files?: string[] | null }; extensions?: ResolvedExtensionConfig[] },
+  config: {
+    title?: string;
+    styles?: string[];
+    source?: { files?: string[] | null };
+    extensions?: ResolvedExtensionConfig[];
+    print?: { signature?: number; reserveLastPage?: boolean };
+  },
   cssAssets: Map<string, string>
 ): Promise<void> {
   if (!inputPath) {

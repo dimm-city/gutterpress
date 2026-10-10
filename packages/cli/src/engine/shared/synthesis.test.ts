@@ -8,6 +8,7 @@ import {
   parseWhich,
   planRectoBlanks,
   restartedPageValues,
+  signaturePadding,
   stringSymbols,
   stringValueAt,
   toFolioPage,
@@ -293,5 +294,21 @@ describe("generatedContentCss — out-specifying the author (Chrome 151 regressi
 
   test("ignores selectors with no ::after/::before to target", () => {
     expect(generatedContentCss(["div.plain"]).split("\n")).toHaveLength(2);
+  });
+});
+
+describe("signaturePadding (print.signature / print.reserveLastPage)", () => {
+  test("pads to the next multiple of the signature", () => {
+    expect(signaturePadding(229, 4)).toBe(3);
+    expect(signaturePadding(374, 4)).toBe(2);
+    expect(signaturePadding(228, 4)).toBe(0);
+  });
+  test("reserveLastPage adds a full signature when padding would add none", () => {
+    expect(signaturePadding(228, 4, true)).toBe(4);
+    expect(signaturePadding(229, 4, true)).toBe(3);
+  });
+  test("no signature means no padding, or one blank page when the last page is reserved", () => {
+    expect(signaturePadding(229)).toBe(0);
+    expect(signaturePadding(229, 1, true)).toBe(1);
   });
 });
