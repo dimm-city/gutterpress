@@ -82,6 +82,24 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Loading indicators look and behave the same everywhere, and say what the
+  wait is.** The opening overlay and the two corner pills ("Updating
+  preview…" and the PDF export) now share one card style (light and dark) and
+  one rule: an indicator appears only if the work is still going after about a
+  fifth of a second, and once it appears it stays for at least half a second,
+  so quick opens and edits no longer flash and nothing strobes. They announce
+  changes politely to screen readers, never block the page underneath, and
+  stand still when your system asks for reduced motion. The start screen's
+  status line, the editor placeholder and the Problems panel's "Checking your
+  book…" draw the same spinner. Opening a book now walks through
+  plain stages instead of a generic "Starting preview…": *Opening <book>…* →
+  *Downloading extensions (1 of 2)* with the package name and a progress bar →
+  *Laying out pages…* with a running page count → *Finishing up…*. The
+  download stage is live: a book opened from a fresh clone shows each pinned
+  extension as it arrives, and the notice afterwards just reports the result
+  (several failed downloads are one notice that points at **Install** in Book
+  settings > Features).
+
 - **Snippets come from levels: your book, extensions and Gutterpress** (#338).
   The snippet picker now lists every snippet, grouped by level, even when two
   share a name; before, a book snippet hid an extension's snippet of the same

@@ -29,8 +29,8 @@ This repo is a Bun workspace with three packages:
   `src/routes/api/**/+server.ts` HTTP routes (status, fs, dialog, theme, plugin,
   remote/sync, vcs, recovery, …) — NOT a handful of `ipcMain.handle()`
   endpoints. The `ipcMain`/preload bridge is deliberately narrow: it carries
-  only the push-event streams (build progress, folder-changed, sync status,
-  updater events) and the build/preview pipeline calls that need a live
+  only the push-event streams (build progress, open-time extension
+  download progress, folder-changed, sync status, updater events) and the build/preview pipeline calls that need a live
   BrowserWindow. The Electron main + preload are
   built by **electron-vite** to `out/main/main.js` + `out/preload/`; the main
   is ESM and loads the lib with a plain dynamic `import("gutterpress")`
@@ -516,8 +516,8 @@ Host capabilities the renderer needs are reached two ways: the bulk
 (status, fs, dialog, theme, plugin, remote/sync, vcs, recovery, …) are ordinary
 `src/routes/api/**/+server.ts` HTTP routes the SPA calls with `fetch("/api/…")`;
 a **narrow** `ipcMain`/preload bridge carries only the things a plain HTTP
-request can't — the push-event streams (build progress, folder-changed, sync
-status, updater events) and the preview/build pipeline calls that drive a live
+request can't — the push-event streams (build progress, extension download progress,
+folder-changed, sync status, updater events) and the preview/build pipeline calls that drive a live
 BrowserWindow. Either way the renderer stays PWA-clean — a `+server.ts` route is
 host Node code that happens to live under `src/routes/`, and it never leaks into
 the client bundle.
@@ -541,8 +541,8 @@ the **default path** and the one most of the app uses: components call
 `import { getPlatform } from "$lib/platform"`) is real and still owns three
 narrower capability classes a plain route can't cover:
 
-1. **Push streams** the renderer subscribes to (build progress,
-   folder-changed, sync status, updater events) — an `onX(cb) => unsubscribe`
+1. **Push streams** the renderer subscribes to (build progress, extension
+   download progress, folder-changed, sync status, updater events) — an `onX(cb) => unsubscribe`
    shape needs a live event channel, not request/response.
 2. **Calls that must drive a live `BrowserWindow`** — preview/build
    orchestration, PDF export via `webContents.printToPDF`.
