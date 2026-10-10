@@ -12,7 +12,7 @@ name: Pages
 # The privacy policy is rendered from the root PRIVACY.md by
 # website/scripts/gen.mjs (one source, never a copy), and Google's OAuth
 # consent screen needs it at a stable public URL (ADR 0011):
-#   https://dimm-city.github.io/gutterpress/privacy/
+#   https://gutterpress.dimm.city/privacy/
 
 on:
   push:

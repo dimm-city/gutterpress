@@ -14,7 +14,7 @@ extends: node_modules/unify-docs-template
 generate: scripts/gen.mjs
 
 pretty-urls: true
-base-url: https://dimm-city.github.io/gutterpress/
+base-url: https://gutterpress.dimm.city/
 catalog: true
 search-corpus: true
 

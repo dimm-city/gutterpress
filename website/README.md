@@ -1,6 +1,6 @@
 # website
 
-The Gutterpress project site, published to <https://dimm-city.github.io/gutterpress/>
+The Gutterpress project site, published to <https://gutterpress.dimm.city/>
 by `.github/workflows/pages.yml` on every merge to `main` that touches this folder,
 the user guide or `PRIVACY.md`.
 
@@ -36,6 +36,8 @@ Google's OAuth consent screen links to it, ADR 0011).
 - `site/assets/site.css`: the paste-up itself — galleys of yellowed newsprint pasted up on a
   dark desk under a lamp, taped down, with typed notes, a rubber stamp and red grease
   pencil. It is unlayered, so it wins over the template's layered stylesheet.
-- Its own pages: `index.html`, `install.md`, `releases/*.md`, `404.html`.
+- Its own pages: `index.html`, `install.md`, `about.md`, `releases/*.md`, `404.html`, and
+  `plugins.html`, which searches npm in the browser the way the desktop app does (one query
+  per keyword, `gutterpress` and `markdown-it-plugin`), after unify-docs' templates page.
 - `site/assets/share-placeholder.png`, the share card, at the path the template's layout
   names.

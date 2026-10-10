@@ -20,7 +20,7 @@
  * become links to the page and heading unify publishes.
  *
  * The privacy policy is why the site exists: Google's OAuth consent screen
- * needs it at a stable public URL, https://dimm-city.github.io/gutterpress/privacy/
+ * needs it at a stable public URL, https://gutterpress.dimm.city/privacy/
  * (ADR 0011). The root PRIVACY.md stays its one source.
  */
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -161,6 +161,8 @@ write(
     ]),
     ...group("Project", [
       ["/install.html", "Install"],
+      ["/plugins.html", "Plugins"],
+      ["/about.html", "About"],
       ["/privacy/index.html", "Privacy policy"],
       ["https://github.com/dimm-city/gutterpress/issues", "Issues"],
     ]),
