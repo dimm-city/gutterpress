@@ -309,6 +309,35 @@ describe("npm plugin installation", () => {
     expect(await loadedMarker(dir, name, version, "__npmPluginLoaded")).toBe(true);
   });
 
+  test("keeps downloaded extensions out of the book's version history: appends plugins/npm/ to .gitignore", async () => {
+    const dir = await projectDir();
+    await writeFile(path.join(dir, ".gitignore"), "*.log", "utf8");
+    const name = "markdown-it-ignore-fixture";
+    const fixture = registryFixture(name, "1.0.0", packageEntries(name, "1.0.0"));
+
+    const result = await addNpmPlugin(dir, name, { fetch: fixture.fetch });
+
+    expect(await readFile(path.join(dir, ".gitignore"), "utf8")).toBe("*.log\ndist/\nplugins/npm/\n");
+    expect(result.warnings ?? []).toEqual([]);
+    // A second install finds both covered and writes nothing more.
+    await addNpmPlugin(dir, `${name}@1.0.0`, { fetch: fixture.fetch });
+    expect(await readFile(path.join(dir, ".gitignore"), "utf8")).toBe("*.log\ndist/\nplugins/npm/\n");
+  });
+
+  test("an author's own re-include of plugins/npm/ is respected, and the install warns about it", async () => {
+    const dir = await projectDir();
+    const original = "dist/\n!**/plugins/npm/**\n";
+    await writeFile(path.join(dir, ".gitignore"), original, "utf8");
+    const name = "markdown-it-negated-fixture";
+    const fixture = registryFixture(name, "1.0.0", packageEntries(name, "1.0.0"));
+
+    const result = await addNpmPlugin(dir, name, { fetch: fixture.fetch });
+
+    expect(await readFile(path.join(dir, ".gitignore"), "utf8")).toBe(original);
+    expect(result).toMatchObject({ use: `${name}@1.0.0` });
+    expect(result.warnings?.some((w) => /re-includes plugins\/npm\/.*shouldn't/.test(w))).toBe(true);
+  });
+
   test("GUTTERPRESS_NPM_REGISTRY: a package vendored from a private mirror installs and loads", async () => {
     const mirror = "http://127.0.0.1:4873";
     const previous = process.env.GUTTERPRESS_NPM_REGISTRY;

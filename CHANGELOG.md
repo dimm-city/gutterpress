@@ -108,6 +108,17 @@ This project follows [Semantic Versioning](https://semver.org/).
   (the CLI still prints it). `gutterpress ext outdated` and `ext update` are
   unchanged; the library's update check gained an `includePrerelease` option,
   off by default.
+- **Downloaded extensions stay out of a book's version history.** New and
+  adopted books now ignore `plugins/npm/` (next to `dist/`) in their
+  `.gitignore`, and installing an extension adds the rule to an existing book's
+  `.gitignore`, append-only. The manifest already pins each version, so a
+  fresh clone needs nothing from git. If your `.gitignore` deliberately
+  re-includes `plugins/npm/`, it is left alone and the install warns that
+  downloaded extensions shouldn't be committed. For a book in a subfolder of a
+  larger repository the rule goes in the book's own `.gitignore`, which
+  version history honours. Files already committed stay tracked — ignoring a
+  folder never removes anything from history; remove them yourself when you
+  are ready.
 
 ### Fixed
 

@@ -71,6 +71,7 @@ import {
 } from "./extension-manifest.ts";
 import { getAssetsDir } from "./embedded-assets.ts";
 import { slugify, prettify } from "./slug.ts";
+import { ensureProjectGitignore } from "./project-gitignore.ts";
 import type { ResolvedExtensionConfig } from "../schema/manifest.types.ts";
 
 /** Folder (relative to the project root) extensions this module COPIES land in
@@ -663,6 +664,38 @@ async function addExtensionUnlocked(
 
   const existing = await describeExtension(projectDir, parsed.name);
   const chosenExport = exportName ?? existing?.export;
+  const { name, version, use, warnings } = await vendorNpmExtension(
+    projectDir,
+    input,
+    chosenExport,
+    options,
+    (use) => upsertEntry(projectDir, use, chosenExport),
+  );
+  await pruneOtherVersions(projectDir, name, version).catch((error) => {
+    warnings.push(
+      `The extension was installed, but a previous version's vendored copy could not be removed: ` +
+        `${error instanceof Error ? error.message : String(error)}`,
+    );
+  });
+  const entry = (await describeExtension(projectDir, use))!;
+  return warnings.length > 0 ? { ...entry, warnings: [...(entry.warnings ?? []), ...warnings] } : entry;
+}
+
+/**
+ * The shared npm install transaction behind `addExtension` and the restore of a
+ * pinned extension: download, verify, vendor, load-test, then `commit(use)`
+ * (the manifest write — a no-op for a restore, which never changes the
+ * manifest). On any failure the vendor tree is rolled back. Also makes sure
+ * the book's `.gitignore` keeps what was just downloaded out of its history.
+ * Returns the exact pin and the install's warnings.
+ */
+async function vendorNpmExtension(
+  projectDir: string,
+  input: string,
+  exportName: string | undefined,
+  options: AddExtensionOptions,
+  commit: (use: string) => Promise<void>,
+): Promise<{ name: string; version: string; use: string; warnings: string[] }> {
   const installed = await installNpmPlugin(projectDir, input, options);
   const use = pinnedNpmSpecifier(installed.name, installed.version);
   try {
@@ -672,12 +705,12 @@ async function addExtensionUnlocked(
         kind: "npm",
         name: installed.name,
         version: installed.version,
-        export: chosenExport,
+        export: exportName,
       }),
       projectDir,
     );
     await options.__testFailBeforeManifestCommit?.();
-    await upsertEntry(projectDir, use, chosenExport);
+    await commit(use);
   } catch (cause) {
     try {
       await rollbackNpmPluginInstall(installed);
@@ -701,14 +734,22 @@ async function addExtensionUnlocked(
         `${error instanceof Error ? error.message : String(error)}`,
     );
   });
-  await pruneOtherVersions(projectDir, installed.name, installed.version).catch((error) => {
+  try {
+    const { negated } = await ensureProjectGitignore(projectDir);
+    if (negated.includes("plugins/npm/")) {
+      warnings.push(
+        "Your .gitignore re-includes plugins/npm/, so downloaded extensions will be committed with " +
+          "your book. They shouldn't be: the manifest pins each version and a build downloads a " +
+          "missing copy again.",
+      );
+    }
+  } catch (error) {
     warnings.push(
-      `The extension was installed, but a previous version's vendored copy could not be removed: ` +
+      `The extension was installed, but .gitignore could not be updated to keep it out of version history: ` +
         `${error instanceof Error ? error.message : String(error)}`,
     );
-  });
-  const entry = (await describeExtension(projectDir, use))!;
-  return warnings.length > 0 ? { ...entry, warnings: [...(entry.warnings ?? []), ...warnings] } : entry;
+  }
+  return { name: installed.name, version: installed.version, use, warnings };
 }
 
 /**

@@ -83,10 +83,10 @@ export type {
 export {
   scaffoldProject,
   adoptFolder,
-  ensureGitignoreHasDist,
   slugifyProjectName,
   escapeYamlScalar,
 } from "../lib/project-scaffold.ts";
+export { ensureProjectGitignore } from "../lib/project-gitignore.ts";
 
 export type {
   ProjectTemplateId,
