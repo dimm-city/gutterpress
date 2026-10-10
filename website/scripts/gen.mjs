@@ -223,8 +223,11 @@ write(
 //
 // Real file links, read from the latest stable release when the site builds.
 // The release workflow dispatches this site's build after every stable
-// release, so the links follow it. Offline (a local build with no network),
-// the tables point at the releases page instead, and the build says so.
+// release, so the links follow it. In CI the request is authenticated with
+// the workflow's GITHUB_TOKEN (shared runners exhaust the anonymous rate
+// limit) and a failure fails the build, so the live site keeps its last good
+// links. Locally, offline or rate-limited, the tables point at the releases
+// page instead, and the build says so.
 
 const RELEASES = "https://github.com/dimm-city/gutterpress/releases/latest";
 const DESKTOP = [
@@ -245,12 +248,17 @@ const CLI = [
 let release = null;
 try {
   const res = await fetch("https://api.github.com/repos/dimm-city/gutterpress/releases/latest", {
-    headers: { accept: "application/vnd.github+json", "user-agent": "gutterpress-website" },
+    headers: {
+      accept: "application/vnd.github+json",
+      "user-agent": "gutterpress-website",
+      ...(process.env.GITHUB_TOKEN ? { authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}),
+    },
     signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) throw new Error(`GitHub answered ${res.status}`);
   release = await res.json();
 } catch (error) {
+  if (process.env.GITHUB_ACTIONS) throw new Error(`gen.mjs: could not read the latest release: ${error.message}`);
   console.warn(`gen.mjs: could not read the latest release (${error.message}); download tables link to the releases page`);
 }
 

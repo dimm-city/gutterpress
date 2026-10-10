@@ -7,7 +7,11 @@ name: Pages
 # The site is built by unify (https://github.com/fwdslsh/unify) on its docs
 # template, laid out like unify's own documentation site: website/package.json
 # pins both, and website/scripts/gen.mjs publishes the user guide
-# (examples/gutterpress-user-guide) as the site's docs/ at every build.
+# (examples/gutterpress-user-guide), the desktop how-to guides
+# (docs/desktop-guide) and the CLI reference (packages/cli/README.md) as the
+# site's docs/ at every build, and writes the download links from the latest
+# release. release.yml dispatches this workflow after every stable release so
+# those links follow it.
 #
 # The privacy policy is rendered from the root PRIVACY.md by
 # website/scripts/gen.mjs (one source, never a copy), and Google's OAuth
@@ -20,6 +24,8 @@ on:
     paths:
       - "website/**"
       - "examples/gutterpress-user-guide/**"
+      - "docs/desktop-guide/**"
+      - "packages/cli/README.md"
       - "PRIVACY.md"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
@@ -54,8 +60,12 @@ jobs:
       # --audit publishes nothing unless the composed site passes unify's
       # audit (titles, descriptions, one h1, broken links, orphan pages).
       # The base URL and the rest of the flags are in website/unify.yaml.
+      # gen.mjs reads the latest release for the download links; the token
+      # keeps it clear of the anonymous API rate limit.
       - name: Build site
         run: npx unify build --audit --strict
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - uses: actions/configure-pages@v5
 
