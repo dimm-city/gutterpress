@@ -6,134 +6,79 @@
     <meta property="og:title" content="Gutterpress">
     <meta property="og:description" content="Write a book in Markdown, lay it out with CSS, and export a print-ready PDF.">
   </head>
-  <body>
+  <body class="home">
     <main>
       <section class="hero">
-        <span class="eyebrow">Markdown &amp; CSS, typeset for print</span>
-        <h1>Write a book in Markdown. Lay it out with CSS. Export a <em>print-ready</em> PDF.</h1>
-        <p>
-          Gutterpress turns a folder of markdown files into a professionally typeset PDF: the kind you
-          send to an offset printer or a print-on-demand service. It uses a native Chromium print engine
-          and the W3C CSS Paged Media spec, so page breaks, running headers, columns, page numbers, and
-          bleed are handled for you.
-        </p>
-        <div class="actions">
-          <a class="button primary" href="https://github.com/dimm-city/gutterpress/releases/latest">Download the desktop app</a>
-          <a class="button" href="https://github.com/dimm-city/gutterpress/tree/main/examples/gutterpress-user-guide">Read the user guide</a>
-        </div>
-      </section>
-
-      <section class="band" aria-labelledby="latest">
-        <div class="band-head">
-          <span class="eyebrow">From the blog</span>
-          <h2 id="latest">Latest news</h2>
-          <a class="more" href="/blog.html">All posts →</a>
-        </div>
-        <include src="/_includes/latest-posts.html"></include>
-      </section>
-
-      <section class="band" aria-labelledby="first-book">
-        <span class="eyebrow">Your first book</span>
-        <h2 id="first-book">Three steps, no configuration</h2>
-        <div class="paper">
-        <ol class="steps">
-          <li>
-            <h3>Make a folder</h3>
-            <p>A couple of markdown files is enough.</p>
-            <pre><code>my-book/
-├─ chapter-01.md
-└─ chapter-02.md</code></pre>
-          </li>
-          <li>
-            <h3>Open it in Gutterpress</h3>
-            <p>Click <strong>Open Folder</strong>. A paginated preview updates live as you edit.</p>
-          </li>
-          <li>
-            <h3>Save PDF</h3>
-            <p>Done. Ready for a printer, a print-on-demand service, or publishing straight to Google Drive.</p>
-          </li>
-        </ol>
-        </div>
-      </section>
-
-      <section class="band" aria-labelledby="what">
-        <span class="eyebrow">What it does</span>
-        <h2 id="what">Print production, from a text editor</h2>
-        <div class="paper">
-        <ul class="features">
-          <li><strong>Live preview</strong> with paginated layout: your book renders the way it will print, while you edit.</li>
-          <li><strong>PDF export</strong> from the app, or from the <code>gutterpress</code> CLI in scripts and CI.</li>
-          <li><strong>Print-ready output</strong>: PDF/X with CMYK and an ICC profile for offset printers, PDF/A for archives.</li>
-          <li><strong>Custom CSS for everything</strong>: typography, page size, margins, columns, running headers and footers, page numbers, bleed.</li>
-          <li><strong>Plugins</strong> for custom markdown: use any of hundreds of <code>markdown-it</code> plugins, or write your own.</li>
-          <li><strong>Validation</strong> before and after a build: image DPI, color space, font embedding, structural PDF checks.</li>
-          <li><strong>Publishing</strong> to itch.io, DriveThruRPG, Amazon KDP, Azure Static Web Apps, Shopify, and Google Drive.</li>
-        </ul>
-        </div>
-      </section>
-
-      <section class="band" aria-labelledby="downloads">
-        <span class="eyebrow">Desktop app</span>
-        <h2 id="downloads">Self-contained, nothing else to install</h2>
-        <div class="paper">
-        <p class="note">
-          Every download is on the <a href="https://github.com/dimm-city/gutterpress/releases/latest">latest release</a>,
-          with SHA-256 checksums. The app bundles its own Chromium; no Node, Bun, or browser setup is needed.
-        </p>
-        <div class="table-scroll">
-          <table class="downloads">
-            <thead>
-              <tr><th scope="col">Platform</th><th scope="col">File</th><th scope="col">Notes</th></tr>
-            </thead>
-            <tbody>
-              <tr><td>Windows</td><td><code>Gutterpress-setup-win-x64.exe</code></td><td>Installer. The versioned <code>.zip</code> is a portable extract-and-run copy.</td></tr>
-              <tr><td>macOS, Apple Silicon</td><td><code>Gutterpress-&lt;version&gt;-arm64.dmg</code></td><td>Open the disk image, drag the app to Applications.</td></tr>
-              <tr><td>macOS, Intel</td><td><code>Gutterpress-&lt;version&gt;-x64.dmg</code></td><td>Same as above.</td></tr>
-              <tr><td>Linux</td><td><code>Gutterpress-&lt;version&gt;.AppImage</code></td><td><code>chmod +x</code> the file, then run it.</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <p class="note">
-          The downloads are unsigned for now. Each release includes Gatekeeper and SmartScreen instructions;
-          see <a href="https://github.com/dimm-city/gutterpress/blob/main/docs/installing.md">installing and verifying</a>.
-        </p>
-        </div>
-      </section>
-
-      <section class="band" aria-labelledby="cli">
-        <span class="eyebrow">Command line</span>
-        <h2 id="cli">The same engine, for scripts and CI</h2>
-        <div class="paper">
-        <div class="installs">
-          <div>
-            <h3>Homebrew (macOS and Linux)</h3>
-            <pre><code>brew tap dimm-city/gutterpress https://github.com/dimm-city/gutterpress.git
-brew install dimm-city/gutterpress/gutterpress</code></pre>
-          </div>
-          <div>
-            <h3>Scoop (Windows)</h3>
-            <pre><code>scoop bucket add gutterpress https://github.com/dimm-city/gutterpress.git
-scoop install gutterpress/gutterpress</code></pre>
-          </div>
-          <div>
-            <h3>npm</h3>
-            <pre><code>npm install -g gutterpress</code></pre>
-            <p>Node.js 22 or newer.</p>
-          </div>
-          <div>
-            <h3>Standalone binaries and Docker</h3>
-            <p>
-              Single-file binaries for Linux, macOS, and Windows are on every release, and a
-              <a href="https://github.com/dimm-city/gutterpress/blob/main/docs/docker.md">Docker image</a>
-              ships with all the print tools preinstalled.
+        <div class="hero-grid">
+          <div class="hero-copy">
+            <p class="kicker">Markdown &amp; CSS, typeset for print</p>
+            <h1>Write it in Markdown. Print it <em>for real</em>.</h1>
+            <p class="lede">
+              Gutterpress turns a folder of markdown files into a professionally typeset PDF: the kind you
+              send to an offset printer or a print-on-demand service. It uses a native Chromium print engine
+              and the W3C CSS Paged Media spec, so page breaks, running headers, columns, page numbers, and
+              bleed are handled for you.
             </p>
+            <div class="cta-row">
+              <a class="btn btn-primary" href="https://github.com/dimm-city/gutterpress/releases/latest">Download the desktop app</a>
+              <a class="btn btn-secondary" href="/guide/first-book.html">Make your first book</a>
+            </div>
+          </div>
+          <div class="hero-demo">
+            <div class="term">
+              <div class="term-head">
+                <span class="term-dot red"></span><span class="term-dot amber"></span><span class="term-dot green"></span>
+                <span class="term-title">my-book/</span>
+              </div>
+<pre class="term-body"><span class="prompt">$</span> <span class="cmd">npm install -g gutterpress</span>
+<span class="prompt">$</span> <span class="cmd">ls my-book</span>
+<span class="out">chapter-01.md  chapter-02.md</span>
+<span class="prompt">$</span> <span class="cmd">gutterpress build ./my-book</span></pre>
+            </div>
           </div>
         </div>
-        <p class="note">
-          The CLI renders PDFs through a Chromium-based browser on the machine it runs on; some PDF/X and
-          validation features also use Ghostscript or qpdf. See
-          <a href="https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/07-system-setup.md">System setup</a>.
-        </p>
+      </section>
+
+      <section class="home-section" aria-labelledby="first-book">
+        <div class="inner">
+          <p class="kicker">Your first book</p>
+          <h2 id="first-book">Three steps, no configuration</h2>
+          <div class="card-grid">
+            <div class="card"><h3>01 Make a folder</h3><p>A couple of markdown files is enough.</p></div>
+            <div class="card"><h3>02 Open it</h3><p>Click <strong>Open Folder</strong> in Gutterpress. A paginated preview updates live as you edit.</p></div>
+            <div class="card"><h3>03 Save PDF</h3><p>Ready for a printer, a print-on-demand service, or publishing straight to Google Drive.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="home-section" aria-labelledby="what">
+        <div class="inner">
+          <p class="kicker">What it does</p>
+          <h2 id="what">Print production, from a text editor</h2>
+          <div class="card-grid">
+            <div class="card"><h3>Live preview</h3><p>Paginated layout: your book renders the way it will print, while you edit.</p></div>
+            <div class="card"><h3>PDF export</h3><p>From the app, or from the <code>gutterpress</code> CLI in scripts and CI.</p></div>
+            <div class="card"><h3>Print-ready output</h3><p>PDF/X with CMYK and an ICC profile for offset printers, PDF/A for archives.</p></div>
+            <div class="card"><h3>Custom CSS for everything</h3><p>Typography, page size, margins, columns, running headers and footers, page numbers, bleed.</p></div>
+            <div class="card"><h3>Plugins</h3><p>Use any of hundreds of <code>markdown-it</code> plugins for custom markdown, or write your own.</p></div>
+            <div class="card"><h3>Validation</h3><p>Before and after a build: image DPI, color space, font embedding, structural PDF checks.</p></div>
+            <div class="card"><h3>Publishing</h3><p>To itch.io, DriveThruRPG, Amazon KDP, Azure Static Web Apps, Shopify, and Google Drive.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="home-section" aria-labelledby="releases">
+        <div class="inner">
+          <p class="kicker">Releases</p>
+          <h2 id="releases">What's new</h2>
+          <div class="card-grid">
+            <a class="card" href="/releases/0.11.16.html"><p class="card-meta">2026-10-09</p><h3>0.11.16: smarter components</h3><p>Components that check their own content, a searchable snippet picker, and version pickers for extensions.</p></a>
+            <a class="card" href="/releases/0.11.15.html"><p class="card-meta">2026-10-07</p><h3>0.11.15: DriveThruRPG-ready</h3><p>Black PDF/X text prints on the black plate only, and interiors end on a blank page.</p></a>
+            <a class="card" href="/releases/0.11.14.html"><p class="card-meta">2026-10-06</p><h3>0.11.14: extension updates</h3><p>New <code>ext outdated</code> and <code>ext update</code> commands, and an Update button in the app.</p></a>
+          </div>
+          <div class="cta-row">
+            <a class="btn btn-secondary" href="/guide/install.html">Install Gutterpress</a>
+          </div>
         </div>
       </section>
     </main>

@@ -1,21 +1,12 @@
-/* The look of this site, as custom properties — unify's theme contract. The
-   blog template's assets/style.css imports this file into its `theme` layer,
-   so every value here wins over the template's default for the same property.
+/* The look of this site, as the docs template's custom properties — unify's
+   theme contract. The template's assets/style.css imports this file into its
+   `theme` layer, so every value here wins over the template's default.
 
    The values are the Dimm City palette (gp-dimm-city, styles/dc-palette.css):
    a concrete brick wall, flyer-stock paper pasted on it, warm riso ink, and
    the dimm.city signature colours for stickers and spray banners. */
 :root {
   color-scheme: light;
-
-  /* The blog template's properties */
-  --font-body: 1.0625rem/1.6 "Titillium Web", system-ui, sans-serif;
-  --color-text: var(--dc-ink);
-  --color-background: var(--dc-wall);
-  --color-link: var(--dc-blood);
-  --color-rule: var(--dc-ink);
-  --measure: 72rem;
-  --space: 1rem;
 
   /* Dimm City palette */
   --dc-wall: #c8c5bf;          /* ash-concrete — the brick wall */
@@ -27,19 +18,55 @@
   --dc-ink-smoke: #4d4339;
   --dc-crimson: #e1261c;
   --dc-blood: #901a12;
-  --dc-magenta: #c026d3;
   --dc-magenta-deep: #8a0a9a;
   --dc-cyan: #00bcd4;
   --dc-hud-blue: #1f6f94;
   --dc-hud-blue-dark: #14516e;
   --dc-yellow: #ffd700;
   --dc-fungi: #c8e040;
-
-  /* Paste-up chrome */
-  --dc-font-display: "Tomorrow", "Titillium Web", sans-serif;
-  --dc-font-mono: "Tomorrow", ui-monospace, monospace;
   --dc-shadow-ink: #6b6864;    /* opaque ink-on-wall shadow */
   --dc-shadow-poster: 3px 4px 0 var(--dc-shadow-ink);
-  --dc-clip-tail: 18px;
-  --dc-prose: 44rem;
+
+  /* palette: surfaces */
+  --bg: var(--dc-wall);
+  --bg-panel: var(--dc-ink-dark);
+  --bg-card: var(--dc-paper);
+  --border: var(--dc-ink);
+  --border-faint: var(--dc-paper-aged);
+  --border-strong: var(--dc-ink);
+  /* palette: text */
+  --text: var(--dc-ink);
+  --text-2: var(--dc-ink-dark);
+  --dim: var(--dc-ink-smoke);
+  /* palette: accents */
+  --accent: var(--dc-magenta-deep);
+  --accent-bright: var(--dc-blood);
+  --accent-tint: var(--dc-paper-alt);
+  --accent-2: var(--dc-hud-blue-dark);
+  --code: var(--dc-blood);
+  --code-bg: var(--dc-paper-alt);
+  --focus: var(--dc-magenta-deep);
+  --gradient: var(--dc-crimson);
+  /* page background: the wall itself is drawn by paste-up.css */
+  --glow: none;
+  --grid-lines: transparent;
+  /* type */
+  --sans: "Titillium Web", system-ui, sans-serif;
+  --mono: "Tomorrow", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --display: "Tomorrow", "Titillium Web", sans-serif;
+  --h1-font: var(--display);
+  --heading-font: var(--display);
+  /* shape: cut paper has square corners */
+  --radius-sm: 0;
+  --radius: 0;
+  --radius-lg: 0;
+  --radius-pill: 0;
+  --shadow-pop: var(--dc-shadow-poster);
+  /* syntax colours, on the ink code panel */
+  --syn-cmnt: #a89e92;
+  --syn-str: var(--dc-fungi);
+  --syn-kwd: #ff8b7e;
+  --syn-num: var(--dc-cyan);
+  --syn-class: var(--dc-yellow);
+  --syn-func: #e7a6f0;
 }

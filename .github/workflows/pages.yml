@@ -4,9 +4,8 @@ name: Pages
 # main. The repository's Pages source is "GitHub Actions", so this workflow's
 # deploy job is the publish step; nothing is committed to a branch.
 #
-# The site is built by unify (https://github.com/fwdslsh/unify) on its
-# built-in blog template (website/unify.yaml: extends: blog). Pinning the CLI
-# pins the template.
+# The site is built by unify (https://github.com/fwdslsh/unify) on its docs
+# template, pinned in website/unify.yaml (extends: unify-docs-template@0.4.0).
 #
 # The privacy policy is rendered from the root PRIVACY.md by
 # website/scripts/gen.mjs (one source, never a copy), and Google's OAuth
@@ -54,6 +53,7 @@ jobs:
 
       # --audit publishes nothing unless the composed site passes unify's
       # audit (titles, descriptions, one h1, broken links, orphan pages).
+      # unify.yaml adds --catalog, which the template's All-pages list reads.
       - name: Build site
         run: npx -y "@fwdslsh/unify@${UNIFY_VERSION}" build --audit --strict --base-url "${{ steps.pages.outputs.base_url }}/"
 
