@@ -28,7 +28,6 @@
     rowStrideOf: () => rowStrideOf,
     pageRangeOf: () => pageRangeOf,
     pageOf: () => pageOf,
-    paddedPageIndices: () => paddedPageIndices,
     padToSignature: () => padToSignature,
     measure: () => measure,
     makeOverflowFragmentable: () => makeOverflowFragmentable,
@@ -1678,18 +1677,21 @@
     const count = signaturePadding(contentPages, Number(data.gpSignature) || 1, data.gpReserveLastPage !== undefined);
     const last = strips[strips.length - 1];
     if (!last || count === 0)
-      return 0;
-    for (let n = 0;n < count; n++) {
+      return contentPages;
+    const target = contentPages + count;
+    let total = contentPages;
+    for (let n = 0;n < count + 2 && total < target; n++) {
       const spacer = document.createElement("div");
       spacer.className = "gp-pad-spacer";
       spacer.setAttribute("aria-hidden", "true");
       spacer.style.cssText = "break-before: column; height: 0; margin: 0; padding: 0; border: 0;";
       last.el.appendChild(spacer);
+      total = measure(strips).totalPages;
     }
-    return count;
+    return total;
   }
-  function paddedPageIndices(strips) {
-    return Array.from(document.querySelectorAll(".gp-pad-spacer")).map((el) => pageOf(el, strips));
+  function pagesAfter(contentPages, totalPages) {
+    return Array.from({ length: Math.max(0, totalPages - contentPages) }, (_, i) => contentPages + i);
   }
   function pageRangeOf(el, strips) {
     const strip = strips.find((s) => s.el.contains(el));
@@ -1742,7 +1744,7 @@
       measure(strips);
     const headers = opts.compensateHeaders === false ? { tables: 0, passes: 0, warnings: [] } : compensateRepeatedHeaders(strips);
     const contentPages = measure(strips).totalPages;
-    const { totalPages } = padToSignature(strips, contentPages) ? measure(strips) : { totalPages: contentPages };
+    const totalPages = padToSignature(strips, contentPages);
     const api = {
       model,
       strips,
@@ -1750,7 +1752,7 @@
       warnings: [...new Set([...authoring, ...headers.warnings])],
       blankPages: blanks,
       blankPageIndices: blankPageIndices(strips),
-      paddedPageIndices: paddedPageIndices(strips),
+      paddedPageIndices: pagesAfter(contentPages, totalPages),
       pageOf: (sel) => pageOf(typeof sel === "string" ? document.querySelector(sel) : sel, strips),
       pageRangeOf: (sel) => pageRangeOf(typeof sel === "string" ? document.querySelector(sel) : sel, strips),
       relayout: () => {
@@ -1771,12 +1773,12 @@
           api.warnings = [
             ...new Set([...authoring, ...compensateRepeatedHeaders(strips).warnings])
           ];
-        let r = measure(strips);
-        if (padToSignature(strips, r.totalPages))
-          r = measure(strips);
+        const content = measure(strips).totalPages;
+        padToSignature(strips, content);
+        const r = measure(strips);
         api.totalPages = r.totalPages;
         api.blankPageIndices = blankPageIndices(strips);
-        api.paddedPageIndices = paddedPageIndices(strips);
+        api.paddedPageIndices = pagesAfter(content, r.totalPages);
         return r;
       }
     };

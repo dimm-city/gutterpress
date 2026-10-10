@@ -22,6 +22,7 @@ import {
 } from '../lib/extension-manifest';
 import { loadPluginsWithCss } from '../lib/markdown/plugins';
 import { BOOK_HTML_FILENAME } from '../lib/desktop';
+import { imageRefKey } from '../lib/static-serve';
 import type { ServerState } from './server-context';
 import type { ResolvedExtensionConfig } from '../schema/manifest.types';
 
@@ -75,6 +76,8 @@ async function renderPreviewBook(
      * COPIES these files; the preview serves them from their real location.
      */
     onCssAssets?: (copies: AssetCopy[]) => void;
+    /** Receives every image the render references — see {@link ServerState.imageRefs}. */
+    onImageRefs?: (refs: string[]) => void;
   }
 ): Promise<string> {
   const { plugins, pluginStyles } = await loadPluginsWithCss(
@@ -91,6 +94,7 @@ async function renderPreviewBook(
     pluginStyles,
     annotateSourceChapters: true,
     ...(opts.onCssAssets ? { onCssAssets: opts.onCssAssets } : {}),
+    ...(opts.onImageRefs ? { onImageRefs: opts.onImageRefs } : {}),
     // Gutterpress's typed, line-numbered marker warnings (env.layoutWarnings):
     // this is the ONE preview render path, so wiring it here surfaces a marker
     // mistake live in the terminal on both startup and every rebuild.
@@ -150,10 +154,12 @@ export async function generateAndWriteHtml(
     extensions?: ResolvedExtensionConfig[];
     print?: { signature?: number; reserveLastPage?: boolean };
   },
-  cssAssets: Map<string, string>
+  cssAssets: Map<string, string>,
+  imageRefs?: Set<string>
 ): Promise<void> {
   if (!inputPath) {
     cssAssets.clear();
+    imageRefs?.clear();
     await fsp.writeFile(path.join(tempDir, BOOK_HTML_FILENAME), EMPTY_BOOK_HTML, "utf-8");
     return;
   }
@@ -161,14 +167,22 @@ export async function generateAndWriteHtml(
   // leaves the previous (still-served) book.html's assets resolvable instead
   // of half-clearing them.
   const nextAssets = new Map<string, string>();
+  const nextImageRefs = new Set<string>();
   const html = await renderPreviewBook(inputPath, config, {
     files: config.source?.files ?? null,
     onCssAssets: (copies) => {
       for (const copy of copies) nextAssets.set(copy.to, copy.from);
     },
+    onImageRefs: (refs) => {
+      for (const ref of refs) nextImageRefs.add(imageRefKey(ref));
+    },
   });
   cssAssets.clear();
   for (const [to, from] of nextAssets) cssAssets.set(to, from);
+  if (imageRefs) {
+    imageRefs.clear();
+    for (const ref of nextImageRefs) imageRefs.add(ref);
+  }
   await fsp.writeFile(
     path.join(tempDir, BOOK_HTML_FILENAME),
     injectPreviewScripts(html),
@@ -679,7 +693,7 @@ export function createFileWatcher(state: ServerState): FSWatcher {
         // preview without another manifest edit or a server restart.
         await syncExternalWatches();
         if (closed) return;
-        await generateAndWriteHtml(inputResolved, state.tempDir, updatedConfig, state.cssAssets);
+        await generateAndWriteHtml(inputResolved, state.tempDir, updatedConfig, state.cssAssets, state.imageRefs);
         if (closed) return;
 
         // One broadcast kind, whatever changed: the shell double-buffers the

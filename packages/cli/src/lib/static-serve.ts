@@ -154,3 +154,18 @@ export async function serveFile(
   res.writeHead(200, { "Content-Type": ct });
   res.end(data);
 }
+
+/**
+ * The URL path (no leading slash, decoded, no `./`) an image reference is
+ * served at from book.html — the key `ServerState.imageRefs` is looked
+ * up by. A query or fragment is dropped, as the server's own path is.
+ */
+export function imageRefKey(ref: string): string {
+  let key = ref.split(/[?#]/)[0]!.replace(/^\.\//, "").replace(/^\/+/, "");
+  try {
+    key = decodeURIComponent(key);
+  } catch {
+    // keep the raw spelling when it is not valid percent-encoding
+  }
+  return key;
+}

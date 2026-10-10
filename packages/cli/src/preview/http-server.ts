@@ -17,8 +17,9 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { info } from '../utils/logger.ts';
 import { openPath } from '../lib/open-path.ts';
 import { getAssetPath } from '../lib/embedded-assets.ts';
-import { STATIC_MIME, hasDotSegment, resolveStaticPath } from '../lib/static-serve.ts';
+import { STATIC_MIME, hasDotSegment, imageRefKey, resolveStaticPath } from '../lib/static-serve.ts';
 import { PACKAGE_VERSION } from '../lib/version.ts';
+import { placeholderPng } from '../lib/missing-asset-placeholder.ts';
 import type { ServerState } from './server-context.ts';
 import { resolvePort, UsageError } from '../lib/cli-args.ts';
 import { BuildError } from '../lib/build-error.ts';
@@ -293,6 +294,31 @@ async function serveRevalidatedStatic(
   await serveStatic(absPath, res, PROJECT_ASSET_CACHE_CONTROL, { ETag: validator.etag });
 }
 
+/** The build's stand-in for a missing image (`build-staging.ts`), encoded once. */
+let missingImagePng: Buffer | undefined;
+
+/**
+ * True when `absPath` is an image the current render references
+ * (`state.imageRefs`) and its file does not exist — the case the build fills
+ * with `placeholderPng()`. Serving the same bytes keeps the preview's layout
+ * on the PDF's: a 640×480 box, not a broken-image icon (#354).
+ */
+async function isMissingReferencedImage(pathname: string, absPath: string, refs: Set<string>): Promise<boolean> {
+  if (!refs.has(imageRefKey(pathname))) return false;
+  try {
+    await stat(absPath);
+    return false;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException)?.code === 'ENOENT';
+  }
+}
+
+function serveMissingImage(res: http.ServerResponse): void {
+  missingImagePng ??= Buffer.from(placeholderPng());
+  res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' });
+  res.end(missingImagePng);
+}
+
 function matchesEmbedded(urlPathname: string): boolean {
   if (EMBEDDED_EXACT.has(urlPathname)) return true;
   return EMBEDDED_PREFIXES.some((p) => urlPathname.startsWith(p));
@@ -527,6 +553,10 @@ export async function createPreviewServer(
     if (!absPath) {
       res.writeHead(404);
       res.end('Not Found');
+      return;
+    }
+    if (servingProjectRoot && (await isMissingReferencedImage(pathname, absPath, state.imageRefs))) {
+      serveMissingImage(res);
       return;
     }
     const serve = servingProjectRoot

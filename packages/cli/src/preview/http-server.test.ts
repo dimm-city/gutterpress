@@ -52,6 +52,7 @@ function makeState(currentInputPath: string, tempDir: string = currentInputPath)
     previewServer: null,
     isShuttingDown: false,
     cssAssets: new Map<string, string>(),
+    imageRefs: new Set<string>(),
     tempDir,
     config,
     options,
@@ -459,6 +460,33 @@ describe('createPreviewServer', () => {
       expect((await res.arrayBuffer()).byteLength).toBe(big.byteLength);
     } finally {
       await rm(repoRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('a missing image the book references gets the build placeholder, not a 404 (#354)', async () => {
+    // The build stages a 640x480 magenta placeholder for a referenced image
+    // that does not exist. The preview must lay out the same box, or every
+    // later page moves (a broken-image icon is ~13px tall).
+    const book = await mkdtemp(join(tmpdir(), 'gutterpress-missing-img-'));
+    try {
+      await writeFile(join(book, 'chapter-01.md'), '# One\n\n![alt text](images/gone%20art.png)\n');
+      await writeFile(join(book, 'manifest.yaml'), 'title: Missing\n');
+      const state = makeState(book, tempDir);
+      state.config = resolveConfig({}, { title: 'Missing' });
+      await generateAndWriteHtml(book, tempDir, state.config, state.cssAssets, state.imageRefs);
+      server = await createPreviewServer(state, port);
+
+      const res = await fetch(`http://localhost:${port}/images/gone%20art.png`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toBe('image/png');
+      const png = new Uint8Array(await res.arrayBuffer());
+      const view = new DataView(png.buffer);
+      expect([view.getUint32(16), view.getUint32(20)]).toEqual([640, 480]); // IHDR width/height
+
+      // An image the book does not reference still 404s.
+      expect((await fetch(`http://localhost:${port}/images/other.png`)).status).toBe(404);
+    } finally {
+      await rm(book, { recursive: true, force: true });
     }
   });
 

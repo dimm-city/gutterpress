@@ -1376,30 +1376,38 @@ export function blankPageIndices(strips: StripInfo[]): number[] {
  * Show the blank pages the PDF build appends after the content
  * (`print.signature` / `print.reserveLastPage`, which `assemble.ts` writes on
  * `<html>`), so the preview and the PDF have the same page count and the same
- * last page. One zero-height `break-before: column` spacer per blank page, at
- * the end of the last run: each opens one more column (measured in Chromium:
- * N spacers add exactly N columns). The count is `signaturePadding`, the rule
- * `postprocess.ts` pads the PDF with. Returns how many were added.
+ * last page. The count is `signaturePadding`, the rule `postprocess.ts` pads
+ * the PDF with.
+ *
+ * Each blank page is a zero-height `break-before: column` spacer at the end of
+ * the last run, which opens one more column — except when the last column is
+ * already open but holds nothing with height (a trailing empty block), where
+ * Chromium drops the break as one that would leave a column empty and the
+ * spacer joins that column instead. So spacers go in one at a time until the
+ * page count reaches its target (bounded). Returns the final page count.
  */
 export function padToSignature(strips: StripInfo[], contentPages: number): number {
   for (const spacer of Array.from(document.querySelectorAll(".gp-pad-spacer"))) spacer.remove();
   const data = document.documentElement.dataset;
   const count = signaturePadding(contentPages, Number(data.gpSignature) || 1, data.gpReserveLastPage !== undefined);
   const last = strips[strips.length - 1];
-  if (!last || count === 0) return 0;
-  for (let n = 0; n < count; n++) {
+  if (!last || count === 0) return contentPages;
+  const target = contentPages + count;
+  let total = contentPages;
+  for (let n = 0; n < count + 2 && total < target; n++) {
     const spacer = document.createElement("div");
     spacer.className = "gp-pad-spacer";
     spacer.setAttribute("aria-hidden", "true");
     spacer.style.cssText = "break-before: column; height: 0; margin: 0; padding: 0; border: 0;";
     last.el.appendChild(spacer);
+    total = measure(strips).totalPages;
   }
-  return count;
+  return total;
 }
 
-/** Book-wide (0-based) page index of every signature-padding page (`padToSignature`). */
-export function paddedPageIndices(strips: StripInfo[]): number[] {
-  return Array.from(document.querySelectorAll(".gp-pad-spacer")).map((el) => pageOf(el, strips));
+/** The padding pages: every page after the content (0-based, book-wide). */
+function pagesAfter(contentPages: number, totalPages: number): number[] {
+  return Array.from({ length: Math.max(0, totalPages - contentPages) }, (_, i) => contentPages + i);
 }
 
 /** Page range [firstPage, lastPage] an element spans (0-based, book-wide). */
@@ -1501,7 +1509,7 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
       ? { tables: 0, passes: 0, warnings: [] }
       : compensateRepeatedHeaders(strips);
   const contentPages = measure(strips).totalPages;
-  const { totalPages } = padToSignature(strips, contentPages) ? measure(strips) : { totalPages: contentPages };
+  const totalPages = padToSignature(strips, contentPages);
   const api: GutterpressViewerApi = {
     model,
     strips,
@@ -1509,7 +1517,7 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
     warnings: [...new Set([...authoring, ...headers.warnings])],
     blankPages: blanks,
     blankPageIndices: blankPageIndices(strips),
-    paddedPageIndices: paddedPageIndices(strips),
+    paddedPageIndices: pagesAfter(contentPages, totalPages),
     pageOf: (sel) =>
       pageOf(typeof sel === "string" ? document.querySelector(sel)! : sel, strips),
     pageRangeOf: (sel) =>
@@ -1539,11 +1547,12 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
         api.warnings = [
           ...new Set([...authoring, ...compensateRepeatedHeaders(strips).warnings]),
         ];
-      let r = measure(strips);
-      if (padToSignature(strips, r.totalPages)) r = measure(strips);
+      const content = measure(strips).totalPages;
+      padToSignature(strips, content);
+      const r = measure(strips);
       api.totalPages = r.totalPages;
       api.blankPageIndices = blankPageIndices(strips);
-      api.paddedPageIndices = paddedPageIndices(strips);
+      api.paddedPageIndices = pagesAfter(content, r.totalPages);
       return r;
     },
   };

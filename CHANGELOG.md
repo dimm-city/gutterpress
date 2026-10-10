@@ -14,7 +14,17 @@ This project follows [Semantic Versioning](https://semver.org/).
   matched (the Field Guide previewed at 229 pages and exported at 232). The
   preview now shows those pages as plain white sheets, exactly like the PDF's,
   and both use one rule for how many there are. `counter(pages)` still counts
-  only the content pages, as print does.
+  only the content pages, as print does. The blank pages also come out right
+  when the book ends on a nearly empty page, where the preview used to show
+  one fewer.
+- **A missing image no longer shifts the preview's pages away from the PDF's**
+  (#354). When a book links an image file that does not exist, the PDF build
+  puts a 640×480 magenta placeholder in its place, but the preview showed a
+  small broken-image icon. The space that saved pushed every later page up by
+  one, so in a real book everything after the missing image sat one page
+  earlier in the preview than in the PDF. The preview now shows the same
+  placeholder, so both lay out the same box, and the missing file is just as
+  easy to spot.
 
 ## [0.11.16] - 2026-10-10
 
