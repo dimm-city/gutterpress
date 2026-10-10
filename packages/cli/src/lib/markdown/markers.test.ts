@@ -2271,7 +2271,7 @@ describe("declared markers — parsing & rendering (#240)", () => {
   test("token.meta.line threading matches every core layout_*_open token (source-range primitive)", () => {
     const { tokens } = parsePaged("Intro\n\n@sidebar\nHi\n@end-sidebar\n", { declaredMarkers });
     const t = findToken(tokens, "layout_component_open")!;
-    expect(t.meta).toEqual({ line: 3, component: "sidebar", variant: null, attrs: {}, labelled: false });
+    expect(t.meta).toEqual({ line: 3, component: "sidebar", kind: "sidebar", variant: null, attrs: {}, labelled: false });
     // Do NOT set token.map — see openChapter's identical comment (ADR 0009).
     // This is what lets the UNCHANGED, unconditional source_range core rule
     // (source-range.ts) annotate a declared marker's wrapper with ZERO
@@ -2486,6 +2486,245 @@ describe("declared marker `snippet` / `validate` (opt-in component checks)", () 
         expect(warnings[0]!.message).toMatch(/^@box: plugin "demo-plugin"'s validate\(\) /);
         expect(warnings[0]!.message).toMatch(why);
       }
+    });
+  });
+});
+
+describe("section markers (`section: true`) and the component token contract", () => {
+  const declaredMarkers = buildDeclaredMarkerRegistry([
+    {
+      pluginName: "dc-components",
+      markers: {
+        "npc-stat": {
+          section: true,
+          class: "dc-npc-stat",
+          variants: { wirephreak: "dc-wirephreak" },
+        },
+        "npc-card": { alias: "npc-stat", preset: { variant: "wirephreak" } },
+        callout: { class: "dc-alert", variants: { note: "dc-note" } },
+        "dm-note": { alias: "callout", preset: { variant: "note" } },
+      },
+    },
+  ]);
+  const render = (src: string, env: PagedEnv = {}) => renderPaged(src, { declaredMarkers }, env);
+  /** The variant attribute a section marker adds on top of what `@section` emits. */
+  const withoutVariantAttr = (html: string) => html.replace(/ data-npc-stat="[^"]*"/g, "");
+
+  test("renders exactly what the equivalent @section renders (classes and order)", () => {
+    const marker = render("@npc-stat wirephreak .extra\nText.\n@end-npc-stat\n").html;
+    const core = renderPaged("@section .dc-npc-stat .dc-wirephreak .extra\nText.\n@end-section\n").html;
+    expect(withoutVariantAttr(marker)).toBe(core);
+    expect(classList(marker)).toEqual(["section", "dc-npc-stat", "dc-wirephreak", "extra"]);
+  });
+
+  test("the variant is a variant, not a section name: data-<marker>, never data-section", () => {
+    const { html } = render("@npc-stat wirephreak\nText.\n@end-npc-stat\n");
+    expect(attr(html, "data-npc-stat")).toBe("wirephreak");
+    expect(html).not.toContain("data-section");
+    // No variant, no data attribute.
+    expect(render("@npc-stat\nText.\n").html).not.toContain("data-");
+  });
+
+  test("bare marker, author classes only, braces and key=value attrs behave like @section", () => {
+    const bare = render("@npc-stat\nText.\n").html;
+    expect(bare).toBe(renderPaged("@section .dc-npc-stat\nText.\n").html);
+    const braced = render("@npc-stat {.extra} id=x\nText.\n").html;
+    expect(braced).toBe(renderPaged("@section .dc-npc-stat .extra id=x\nText.\n").html);
+  });
+
+  test("an unknown variant adds no class but still records the variant", () => {
+    const { html } = render("@npc-stat mystery\nText.\n");
+    expect(classList(html)).toEqual(["section", "dc-npc-stat"]);
+    expect(attr(html, "data-npc-stat")).toBe("mystery");
+  });
+
+  test("closes at the next section marker, the next @section, and @page", () => {
+    const again = render("@npc-stat\nA\n@npc-stat wirephreak\nB\n").html;
+    expect(again).toBe(
+      '<div class="section dc-npc-stat"><p>A</p>\n</div>' +
+        '<div class="section dc-npc-stat dc-wirephreak" data-npc-stat="wirephreak"><p>B</p>\n</div>'
+    );
+    const bySection = render("@npc-stat\nA\n@section\nB\n").html;
+    expect(bySection).toBe('<div class="section dc-npc-stat"><p>A</p>\n</div><div class="section"><p>B</p>\n</div>');
+    const byPage = render("@page\n@npc-stat\nA\n@page\nB\n").html;
+    expect(byPage).toBe(
+      '<div class="page"><div class="section dc-npc-stat"><p>A</p>\n</div></div><div class="page"><p>B</p>\n</div>'
+    );
+  });
+
+  test("@end-<name> behaves exactly like @end-section", () => {
+    const marker = render("@npc-stat\nA\n@end-npc-stat\nB\n");
+    expect(marker.html).toBe('<div class="section dc-npc-stat"><p>A</p>\n</div><p>B</p>\n');
+    // ...including closing a section a plain @section opened, and the same empty_section warning.
+    expect(render("@section\nA\n@end-npc-stat\nB\n").html).toBe(renderPaged("@section\nA\n@end-section\nB\n").html);
+    const empty = render("@npc-stat\n@end-npc-stat\n").env.layoutWarnings ?? [];
+    expect(empty.map((w) => w.type)).toEqual(["empty_section"]);
+    // Nothing open: no warning, exactly like a stray @end-section.
+    expect(render("@end-npc-stat\nA\n").env.layoutWarnings ?? []).toEqual([]);
+  });
+
+  test("@continue reopens it with the component's classes and variant", () => {
+    const { html } = render("@npc-stat wirephreak .extra\nA\n@continue\nB\n@end-npc-stat\n");
+    const opens = html.match(/<div class="[^"]*"[^>]*>/g)!;
+    expect(opens).toHaveLength(2);
+    expect(classList(opens[0]!)).toEqual(["section", "dc-npc-stat", "dc-wirephreak", "extra"]);
+    expect(classList(opens[1]!)).toEqual(["section", "dc-npc-stat", "dc-wirephreak", "extra", "gp-continued"]);
+    expect(attr(opens[1]!, "data-npc-stat")).toBe("wirephreak");
+  });
+
+  test("column utilities and empty_section warnings work as on a core section", () => {
+    const { html, env } = render("@npc-stat .gp-columns-2\nText.\n");
+    expect(classList(html)).toEqual(["section", "dc-npc-stat", "gp-columns-2"]);
+    const dup = render("@npc-stat wirephreak\n@npc-stat\nText.\n").env.layoutWarnings ?? [];
+    expect(dup.filter((w) => w.type === "empty_section")).toHaveLength(1);
+    expect(env.layoutWarnings ?? []).toEqual([]);
+  });
+
+  test("an alias of a section marker is a section: classes from the target, preset variant, shared closer", () => {
+    const { html } = render("@npc-card .extra\nText.\n@end-npc-stat\n");
+    expect(classList(html)).toEqual(["section", "dc-npc-stat", "dc-wirephreak", "extra"]);
+    expect(attr(html, "data-npc-stat")).toBe("wirephreak");
+    expect(render("@npc-card\nText.\n@end-npc-card\nAfter\n").html).toBe(
+      render("@npc-stat wirephreak\nText.\n@end-npc-stat\nAfter\n").html
+    );
+  });
+
+  test("the section token meta identifies the component", () => {
+    const { tokens } = parsePaged("@npc-stat wirephreak id=a\nA\n@continue\nB\n@npc-card\nC\n@section\nD\n", { declaredMarkers });
+    const opens = findTokens(tokens, "layout_section_open");
+    expect(opens.map((t) => t.meta)).toEqual([
+      { line: 1, component: "npc-stat", kind: "npc-stat", variant: "wirephreak", attrs: { id: "a" } },
+      { line: 3, component: "npc-stat", kind: "npc-stat", variant: "wirephreak", attrs: { id: "a" }, continued: true },
+      { line: 5, component: "npc-card", kind: "npc-stat", variant: "wirephreak", attrs: {} },
+      { line: 7 },
+    ]);
+  });
+
+  describe("load-time rejections", () => {
+    const build = (decl: Record<string, unknown>) => () =>
+      buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { box: decl } }]);
+
+    test("`section` must be a boolean", () => {
+      expect(build({ section: "yes" })).toThrow(/Plugin "p"'s marker "@box" has a `section` that is not a boolean/);
+    });
+
+    test("`tag`, `label` and `autoCloseAt` cannot be combined with `section: true`, naming plugin and marker", () => {
+      expect(build({ section: true, tag: "aside" })).toThrow(/Plugin "p"'s marker "@box" sets `section: true` and `tag`/);
+      expect(build({ section: true, label: { class: "l", from: "attr:label" } })).toThrow(/@box.*`label`/);
+      expect(build({ section: true, autoCloseAt: ["eof"] })).toThrow(/@box.*`autoCloseAt`/);
+    });
+
+    test("`section: false` and a plain section marker are accepted; the flag only appears when set", () => {
+      const reg = buildDeclaredMarkerRegistry([
+        { pluginName: "p", markers: { a: { section: false, tag: "aside" }, b: { section: true, class: "b" }, c: { class: "c" } } },
+      ]);
+      expect(reg.get("a")).not.toHaveProperty("section");
+      expect(reg.get("b")).toMatchObject({ section: true, classBase: "b" });
+      expect(reg.get("c")).not.toHaveProperty("section");
+    });
+  });
+
+  describe("validate on a section marker", () => {
+    type Seen = { name: string; variant: string | null; line: number; text: string; blocks: Array<Record<string, unknown>> };
+    function run(src: string, result: unknown = []) {
+      const seen: Seen[] = [];
+      const validate = (c: Seen) => (seen.push(c), result);
+      const markers = { stat: { section: true, class: "s", validate }, tip: { alias: "stat", preset: { variant: "t" } } };
+      const md = createMarkdownRenderer([{ name: "demo", plugin: () => {}, options: {}, markers } as LoadedPlugin]);
+      const env: PagedEnv = {};
+      md.render(src, env);
+      return { seen, warnings: env.layoutWarnings ?? [] };
+    }
+
+    test("sees the tokens up to the section's close, like a container", () => {
+      const { seen } = run("@stat wide\n## Head\n\nBody.\n@section\nOther\n");
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).toMatchObject({ name: "stat", variant: "wide", line: 1, text: "## Head\n\nBody." });
+      expect(seen[0]!.blocks.map((b) => b.type)).toEqual(["heading", "paragraph"]);
+    });
+
+    test("reports problems at the right line, and runs through an alias under the typed name", () => {
+      const { seen, warnings } = run("\n@tip\nx\n@end-stat\n", ["bad"]);
+      expect(seen[0]).toMatchObject({ name: "tip", variant: "t", line: 2 });
+      expect(warnings).toEqual([expect.objectContaining({ type: "component_invalid", message: "@tip: bad", line: 2 })]);
+    });
+
+    test("a @continue continuation is not validated on its own", () => {
+      const { seen } = run("@stat\nA\n@continue\nB\n@end-stat\n");
+      expect(seen).toHaveLength(1);
+      expect(seen[0]!.text).toBe("A");
+    });
+  });
+
+  describe("`meta.kind` on layout_component_open", () => {
+    test("is the base marker name, for a direct marker and for an alias (component keeps the typed name)", () => {
+      const { tokens } = parsePaged("@callout note\nA\n@end-callout\n@dm-note\nB\n@end-callout\n", { declaredMarkers });
+      const opens = findTokens(tokens, "layout_component_open");
+      expect(opens.map((t) => [t.meta.component, t.meta.kind, t.meta.variant])).toEqual([
+        ["callout", "callout", "note"],
+        ["dm-note", "callout", "note"],
+      ]);
+      expect(opens[0]!.meta).toEqual({ line: 1, component: "callout", kind: "callout", variant: "note", attrs: {}, labelled: false });
+    });
+
+    test("a plugin's ordinary core rule can transform the tokens between open and close (declare, then transform)", () => {
+      function forEachComponent(
+        tokens: import("markdown-it/lib/token.mjs").default[],
+        kind: string,
+        fn: (open: import("markdown-it/lib/token.mjs").default, from: number, close: number) => void
+      ) {
+        for (let i = tokens.length - 1; i >= 0; i--) {
+          const open = tokens[i]!;
+          if (open.type !== "layout_component_open" || open.meta.kind !== kind) continue;
+          let depth = 0;
+          let close = i;
+          for (; close < tokens.length; close++) {
+            depth += tokens[close]!.nesting;
+            if (depth === 0) break;
+          }
+          fn(open, i + (open.meta.labelled ? 2 : 1), close);
+        }
+      }
+      const plugin: LoadedPlugin = {
+        name: "steps-plugin",
+        plugin: (md) => {
+          md.core.ruler.push("steps", (state) => {
+            forEachComponent(state.tokens, "callout", (open, from, close) => {
+              let count = 0;
+              for (let i = from; i < close; i++) {
+                if (state.tokens[i]!.type === "list_item_open") {
+                  state.tokens[i]!.attrJoin("class", "step");
+                  count++;
+                }
+              }
+              open.attrSet("data-steps", String(count));
+            });
+          });
+        },
+        options: {},
+        markers: { callout: { class: "c" }, "dm-note": { alias: "callout" } },
+      };
+      const md = createMarkdownRenderer([plugin]);
+      const html = md.render("@dm-note\n- a\n- b\n@end-callout\n\n- outside\n", {});
+      expect(html).toContain('data-steps="2"');
+      expect(html.match(/<li class="step"/g)).toHaveLength(2);
+    });
+  });
+
+  describe("opt-in regression", () => {
+    test("markers that don't use the new fields render identically to a registry without them", () => {
+      const markers = {
+        callout: { class: "dc-alert", variants: { note: "dc-note" }, label: { class: "l", from: "attr:label" }, autoCloseAt: ["eof"] },
+        "dm-note": { alias: "callout", preset: { variant: "note" } },
+      };
+      const src = '@page\n@callout note label="Hi"\nA\n@dm-note\nB\n@end-callout\n@section .x\nC\n@continue\nD\n@end-section\n';
+      const sectionFalse = { ...markers, callout: { ...markers.callout, section: false } };
+      const html = (m: Record<string, unknown>) =>
+        renderPaged(src, { declaredMarkers: buildDeclaredMarkerRegistry([{ pluginName: "p", markers: m }]) }).html;
+      expect(html(sectionFalse)).toBe(html(markers));
+      expect(html(markers)).toContain('<div class="dc-alert dc-note" data-callout="note">');
+      expect(html(markers)).toContain('<div class="section x">');
+      expect(html(markers)).toContain('<div class="section x gp-continued">');
     });
   });
 });

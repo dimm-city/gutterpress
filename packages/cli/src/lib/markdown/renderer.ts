@@ -91,12 +91,35 @@ export interface GutterpressMarkerLabel {
  * One entry in a plugin's declared `markers` table (#240 — "declarative
  * container components in core"). Exactly one of three shapes:
  *
- *   - a CONTAINER: `tag`/`class`/`variants`/`label`/`autoCloseAt`, any/all
+ *   - a CONTAINER: `section`/`tag`/`class`/`variants`/`label`/`autoCloseAt`, any/all
  *     optional (a bare `{}` is a valid, if pointless, `<div>` wrapper);
  *   - an ALIAS: `alias` (another declared name) + optional `preset`;
  *   - a DEPRECATION: `deprecated` (a human-readable retirement message) —
  *     wins over every other field on the same entry, per
  *     `markers.js`'s `resolveMarkerDeclaration`.
+ *
+ * A container may instead set `section: true` (below) to be a core `@section`.
+ *
+ * TOKEN CONTRACT (public and stable). A declared container renders as a
+ * `layout_component_open` / `layout_component_close` token pair, so a plugin
+ * can "declare, then transform": declare the marker so core parses it
+ * (autocomplete, closing, warnings, source lines), then rewrite the tokens
+ * between the pair with an ordinary markdown-it core rule. The open token's
+ * `meta` is
+ *
+ *     { line, component, kind, variant, attrs, labelled }
+ *
+ *   - `line`      the marker's 1-based line
+ *   - `component` the marker name as typed (an alias's own name)
+ *   - `kind`      the resolved base marker name (an alias's target)
+ *   - `variant`   the bare word after the marker (or an alias's preset), or null
+ *   - `attrs`     the marker's attributes, as authored
+ *   - `labelled`  true when core injected a label `html_block` right after the open token
+ *
+ * The close token has no meta. A `section: true` marker produces the core
+ * `layout_section_open` / `layout_section_close` pair instead; its open token
+ * carries `{ line, component, kind, variant, attrs }` (plus `continued: true`
+ * on a `@continue` reopening) and a plain `@section`'s carries only `{ line }`.
  *
  * See `markers.js`'s header comment for a worked example and
  * `buildDeclaredMarkerRegistry` for the full validation/resolution contract
@@ -107,6 +130,17 @@ export interface GutterpressMarkerLabel {
  * plugin input.
  */
 export interface GutterpressMarkerDeclaration {
+  /**
+   * This marker IS a core `@section`: `@npc-stat wirephreak .extra` renders
+   * exactly like `@section .<class> .<variants.wirephreak> .extra` (same
+   * classes, same order), closes like one (at the next `@section` / `@page` /
+   * `@chapter` / `@spread`, or `@end-<name>`, which acts as `@end-section`),
+   * and `@continue` reopens it with the same classes. The variant word is a
+   * variant, not a section name: it emits `data-<name>="<variant>"` (the
+   * alias target's name for an alias), never `data-section`. Cannot be combined
+   * with `tag`, `label` or `autoCloseAt`. Aliases of a section marker inherit it.
+   */
+  section?: boolean;
   /** Wrapper element tag. Defaults to `"div"`. */
   tag?: string;
   /** Base class(es) on the wrapper, e.g. `"dc-alert"`. */
@@ -145,7 +179,8 @@ export interface GutterpressMarkerDeclaration {
    * (validate, Problems panel, build, preview). Receives a plain description
    * of the component's content — see {@link GutterpressComponent} — and
    * returns its problems. Must be synchronous; ignored on an alias (which
-   * uses its target's) and on a deprecated entry.
+   * uses its target's) and on a deprecated entry. Works on `section: true`
+   * markers too (a `@continue` continuation is not validated on its own).
    */
   validate?: (component: GutterpressComponent) => GutterpressComponentProblems;
 }
