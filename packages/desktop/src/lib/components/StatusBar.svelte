@@ -1,10 +1,10 @@
 <script lang="ts">
   /**
-   * StatusBar — slim bottom bar hosting the book switcher, the sync status
-   * pill and the app actions (settings, help).
+   * StatusBar — slim bottom bar hosting the help button, the book switcher,
+   * the sync status pill and the settings button.
    *
    * Layout (left → right):
-   *   [book switcher] ··· [sync pill] [settings] [help]
+   *   [help] [book switcher] ··· [sync pill] [settings]
    *
    * The save state and the Problems badge are about the text being edited, so
    * they sit on the editor toolbar instead. This bar still owns the "Where
@@ -385,9 +385,12 @@
 </script>
 
 <div class="status-bar" role="status" aria-label="Application status">
-  <!-- Left cluster: [book switcher]; syncing is grouped at the far right,
-       next to the settings and help buttons. -->
+  <!-- Left cluster: [help] [book switcher]; syncing is grouped at the far
+       right, next to the settings button. -->
   <div class="status-left">
+    <button class="status-icon-btn" onclick={onOpenHelp} title="Help and about" aria-label="Help and about">
+      <Icon name="circle-help" size={14} />
+    </button>
     {#if showBookSwitcher}
       <BookSwitcher {books} {activeBookDir} onSelect={(path) => onSwitchBook?.(path)} />
     {/if}
@@ -413,9 +416,6 @@
     <button class="status-icon-btn" onclick={() => onOpenSettings?.()} title="App preferences (Ctrl+,)" aria-label="App preferences">
       <Icon name="settings" size={14} />
     </button>
-    <button class="status-icon-btn" onclick={onOpenHelp} title="Help and about" aria-label="Help and about">
-      <Icon name="circle-help" size={14} />
-    </button>
   </div>
 </div>
 
@@ -438,7 +438,7 @@
     overflow: visible;
   }
 
-  /* ── Left cluster (book switcher) ─────────────────────────────────────── */
+  /* ── Left cluster (help, book switcher) ─────────────────────────────────────── */
   .status-left {
     display: flex;
     align-items: center;
@@ -447,10 +447,6 @@
     min-height: 28px;
     flex: 0 0 auto;
     min-width: 0;
-  }
-  /* Empty when no book switcher shows — drop its padding. */
-  .status-left:empty {
-    padding: 0;
   }
 
   /* ── Right cluster (sync) ──────────────────────────────────────── */
@@ -465,7 +461,7 @@
     margin-left: auto;
   }
 
-  /* ── Bare icon button (settings, help) ───────────────────────────────────── */
+  /* ── Bare icon button (help, settings) ───────────────────────────────────── */
   .status-icon-btn {
     display: inline-flex;
     align-items: center;

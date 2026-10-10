@@ -2123,6 +2123,61 @@ describe("declared markers — parsing & rendering (#240)", () => {
       expect(html).toContain('class="dc-alert"');
       expect(html).toContain('data-callout="unknown-variant"');
     });
+
+    describe("unknown_variant warning", () => {
+      const variantWarnings = (src: string) =>
+        (renderPaged(src, { declaredMarkers }).env.layoutWarnings ?? []).filter((w) => w.type === "unknown_variant");
+
+      test("a word that is not a declared variant warns at the marker line, listing the variants", () => {
+        const w = variantWarnings("Intro.\n\n@callout mystery\nText.\n@end-callout\n");
+        expect(w).toHaveLength(1);
+        expect(w[0]!.line).toBe(3);
+        expect(w[0]!.message).toBe(
+          '"mystery" is not a variant of @callout, so it adds no styling. Variants: note, warning, dm.'
+        );
+      });
+
+      test("a near miss adds a did-you-mean, including a case-only mismatch", () => {
+        expect(variantWarnings("@callout warnin\nText.\n")[0]!.message).toMatch(/ Did you mean "warning"\?$/);
+        expect(variantWarnings("@callout Warning\nText.\n")[0]!.message).toMatch(/ Did you mean "warning"\?$/);
+      });
+
+      test("a very short word never gets a guess", () => {
+        expect(variantWarnings("@callout x\nText.\n")[0]!.message).not.toContain("Did you mean");
+      });
+
+      test("a marker with no variants says so", () => {
+        const w = variantWarnings("@sidebar wide\nText.\n@end-sidebar\n");
+        expect(w).toHaveLength(1);
+        expect(w[0]!.message).toBe('"wide" is not a variant of @sidebar, so it adds no styling. @sidebar has no variants.');
+      });
+
+      test("an alias reports the name as typed, against its target's variants", () => {
+        const w = variantWarnings("@dm-note mystery\nText.\n");
+        expect(w[0]!.message).toMatch(/^"mystery" is not a variant of @dm-note, .* Variants: note, warning, dm\.$/);
+      });
+
+      test("silent for a declared variant, no word, an alias's preset variant, or an explicit variant on an alias", () => {
+        expect(variantWarnings("@callout warning\nText.\n@end-callout\n")).toEqual([]);
+        expect(variantWarnings("@callout\nText.\n@end-callout\n")).toEqual([]);
+        expect(variantWarnings("@dm-note\nText.\n@end-callout\n")).toEqual([]);
+        expect(variantWarnings("@dm-note warning\nText.\n@end-callout\n")).toEqual([]);
+        expect(variantWarnings("@sidebar .extra\nText.\n@end-sidebar\n")).toEqual([]);
+      });
+
+      test("silent for the label: a label comes from attr:<name>, never the bare word", () => {
+        expect(variantWarnings("@callout label=Heads-up\nText.\n@end-callout\n")).toEqual([]);
+      });
+
+      test("silent for a deprecated marker, which has its own warning", () => {
+        expect(variantWarnings("@roll-table whatever\nText.\n")).toEqual([]);
+      });
+
+      test("the word is still recorded in data-<kind>, and the warning does not change the output", () => {
+        const { html } = renderPaged("@callout mystery\nText.\n@end-callout\n", { declaredMarkers });
+        expect(html).toBe('<div class="dc-alert" data-callout="mystery"><p>Text.</p>\n</div>');
+      });
+    });
   });
 
   describe("label", () => {
@@ -2536,6 +2591,21 @@ describe("section markers (`section: true`) and the component token contract", (
     const { html } = render("@npc-stat mystery\nText.\n");
     expect(classList(html)).toEqual(["section", "dc-npc-stat"]);
     expect(attr(html, "data-npc-stat")).toBe("mystery");
+  });
+
+  test("an unknown variant on a section marker warns, with a suggestion; declared and preset variants stay silent", () => {
+    const typo = render("@npc-stat wirephreek\nText.\n").env.layoutWarnings ?? [];
+    expect(typo).toEqual([
+      expect.objectContaining({
+        type: "unknown_variant",
+        line: 1,
+        message: '"wirephreek" is not a variant of @npc-stat, so it adds no styling. Variants: wirephreak. Did you mean "wirephreak"?',
+      }),
+    ]);
+    // Once per opener: not repeated by @continue, and not for an alias's preset.
+    const quiet = "@npc-stat wirephreak\nA\n@continue\nB\n@end-npc-stat\n@npc-card\nC\n@end-npc-card\n";
+    expect(render(quiet).env.layoutWarnings ?? []).toEqual([]);
+    expect((render("@npc-stat nope\nA\n@continue\nB\n").env.layoutWarnings ?? []).map((w) => w.type)).toEqual(["unknown_variant"]);
   });
 
   test("closes at the next section marker, the next @section, and @page", () => {

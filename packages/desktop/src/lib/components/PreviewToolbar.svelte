@@ -124,9 +124,13 @@
 <style>
   /* Same chrome as EditorToolbar so the two panes read as one pair. */
   .preview-toolbar {
-    display: flex;
+    /* Paging is centered in the toolbar: equal side tracks around the auto
+       middle one, so its position never depends on the zoom menu's width.
+       minmax(0, 1fr) lets the side tracks shrink; the page-nav sits in the
+       middle track and the zoom menu is pinned to the right track. */
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     align-items: center;
-    justify-content: space-between;
     gap: 6px;
     padding: 3px 6px;
     min-height: 32px;
@@ -140,9 +144,14 @@
     z-index: 11;
   }
   .page-nav {
+    grid-column: 2;
     display: flex;
     align-items: center;
     gap: 2px;
+  }
+  .zoom-menu {
+    grid-column: 3;
+    justify-self: end;
   }
 
   .preview-toolbar button,
@@ -271,13 +280,20 @@
   }
 
   /* Narrow preview pane (the editor beside it, or a phone): the zoom label
-     yields first, then the first/last jump buttons. */
+     yields first, then the first/last jump buttons. Below that there is no
+     room to keep paging centered between the side tracks, so it falls back to
+     the left and the zoom menu keeps the remaining space (no overlap). */
   @container preview-pane (max-width: 420px) {
     .zoom-label { display: none; }
   }
-  @container preview-pane (max-width: 300px) {
+  @container preview-pane (max-width: 340px) {
     .page-nav > .icon-btn:first-child,
     .page-nav > .icon-btn:last-child { display: none; }
+  }
+  @container preview-pane (max-width: 270px) {
+    .preview-toolbar { grid-template-columns: auto minmax(0, 1fr); }
+    .page-nav { grid-column: 1; }
+    .zoom-menu { grid-column: 2; }
   }
 
   @media (pointer: coarse) {

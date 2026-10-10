@@ -40,6 +40,14 @@ This project follows [Semantic Versioning](https://semver.org/).
   `line`. A plugin can declare a marker so core parses it, then rewrite the
   tokens inside it with an ordinary markdown-it rule; the user guide shows
   how. All of this is opt-in: plain markdown-it plugins are unaffected.
+- **A mistyped variant is reported.** On a plugin component, `@npc-stat
+  wirephreek` used to be silently ignored when `wirephreek` was not a declared
+  variant. Problems now says `"wirephreek" is not a variant of @npc-stat, so it
+  adds no styling. Variants: wirephreak. Did you mean "wirephreak"?` (or
+  `@npc-stat has no variants`). It is a warning (`unknown_variant`) for container
+  and `section: true` components alike. Nothing is reported for a declared
+  variant, no word, or an alias's preset variant, and the word still lands in
+  `data-<marker>` as before.
 
 ### Changed
 
@@ -48,6 +56,13 @@ This project follows [Semantic Versioning](https://semver.org/).
   share a name; before, a book snippet hid an extension's snippet of the same
   name. Where a component needs one snippet, the book's
   `snippets/<marker>.md` wins over the extension's.
+- **Help and book switcher move to the left of the status bar; paging is
+  centered in the preview toolbar.** The help button now sits at the very left
+  of the bottom bar with the book switcher right after it (settings stays at
+  the right). The page controls (first, previous, page picker, next, last) are
+  centered in the preview toolbar with the zoom menu on the right; in a narrow
+  preview pane the zoom label and then the first/last buttons drop out, and
+  below that the paging falls back to the left so nothing overlaps.
 
 ### Fixed
 

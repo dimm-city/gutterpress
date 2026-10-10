@@ -360,6 +360,17 @@ a single snippet, your book's `snippets/term-box.md` wins over the
 extension's copy (and an extension's over core's), so you can change a
 component's starting structure for one book without touching the extension.
 
+**`variants` — name the choices.** A component's `variants` map each word an
+author can put after the marker to a class: `variants: { note: "fn-note" }`
+makes `@term-box note` add `fn-note`. The word is also kept as
+`data-term-box="note"`. If an author types a word that is not one of the
+variants — `@term-box nots` — it adds no styling, so Gutterpress says so in the
+Problems panel, listing the variants and suggesting the close match: `"nots" is
+not a variant of @term-box, so it adds no styling. Variants: note, warning. Did
+you mean "note"?` A component with no `variants` reports any word the same way
+(`@term-box has no variants`). An alias's `preset: { variant }` is yours, not the
+author's, so it is never reported.
+
 **`validate` — check the structure (opt-in).** Add a `validate` function and
 Gutterpress runs it for every use of the component whenever it checks the
 book: the desktop Problems panel, `gutterpress validate`, and builds. You don't
@@ -424,7 +435,7 @@ for (const b of box.blocks) {
 const list = box.blocks.find((b) => b.type === "list");
 if (!list || list.items.length < 2) problems.push("List at least two options.");
 
-// Only known variants.
+// Variants you check yourself (words missing from `variants` are already reported).
 if (box.variant && !["note", "warning"].includes(box.variant)) problems.push(`Unknown variant "${box.variant}".`);
 ```
 

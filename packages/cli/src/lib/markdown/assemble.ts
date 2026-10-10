@@ -51,6 +51,9 @@ export type ReadText = (relPath: string) => Promise<string>;
  * `severity`) and `component_validate_failed` (the validator threw or
  * returned something unusable).
  *
+ * `unknown_variant` is emitted for a declared marker (container or
+ * `section: true`) whose bare word is not one of its declared `variants`.
+ *
  * There is deliberately no `section_without_page`: a @section with no open
  * @page is valid authoring (17/17 false positives across two real books).
  */
