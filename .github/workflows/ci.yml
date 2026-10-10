@@ -10,6 +10,9 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    # Same ceiling as release.yml's Test job. A normal run takes ~3 min; without a
+    # limit, a test that stalls holds the runner for GitHub's 6-hour default.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
 
@@ -106,6 +109,7 @@ jobs:
   render-parity:
     name: Render parity (public fixtures)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.event_name == 'pull_request'
     steps:
       # Base into its own `base/` checkout so the head checkout's own working
@@ -200,6 +204,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
 
@@ -248,6 +253,7 @@ jobs:
   type-check:
     name: Type Check
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
 
@@ -287,6 +293,7 @@ jobs:
   security-audit:
     name: Security Audit
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
 
