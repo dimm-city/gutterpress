@@ -404,7 +404,9 @@
       <Icon name="folder" size={14} />
     </button>
     {#if showBookSwitcher}
+      <span class="divider" aria-hidden="true"></span>
       <BookSwitcher {books} {activeBookDir} onSelect={(path) => onSwitchBook?.(path)} />
+      <span class="divider" aria-hidden="true"></span>
     {/if}
   </div>
 
@@ -423,6 +425,7 @@
       {/key}
     {/if}
     {#if showSave}
+      <span class="divider" aria-hidden="true"></span>
       <button
         bind:this={saveBtnEl}
         type="button"
@@ -541,6 +544,16 @@
   .save-indicator:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
   .save-indicator.saving { font-style: italic; }
   .save-indicator.save-error { color: var(--app-error-text); font-weight: 600; }
+
+  /* A `|` between status-bar groups: around the book switcher and on both
+     sides of the save indicator. Rendered only beside the item it separates,
+     so a hidden switcher or indicator leaves no stray line. */
+  .divider {
+    align-self: stretch;
+    width: 1px;
+    flex-shrink: 0;
+    background: var(--app-border);
+  }
 
   .shell-actions {
     display: flex;

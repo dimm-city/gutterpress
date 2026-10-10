@@ -70,4 +70,13 @@ describe("status bar structure", () => {
   test("the divider only renders with the save indicator", () => {
     expect(markup).toContain("class:divided={showSave}");
   });
+
+  test("dividers sit on both sides of the book switcher and left of the save indicator", () => {
+    const divider = '<span class="divider" aria-hidden="true"></span>';
+    expect(markup).toMatch(
+      /\{#if showBookSwitcher\}\s*<span class="divider" aria-hidden="true"><\/span>\s*<BookSwitcher[^\n]*\n\s*<span class="divider" aria-hidden="true"><\/span>\s*\{\/if\}/,
+    );
+    const save = markup.indexOf("{#if showSave}");
+    expect(markup.indexOf(divider, save)).toBeLessThan(at('class="save-indicator'));
+  });
 });
