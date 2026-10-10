@@ -183,7 +183,7 @@ test("live preview degrades when a pinned extension cannot be downloaded: warns,
     await runCommand(previewCommand, { rawArgs: [book, "--no-open"] });
 
     expect(serverSpy).toHaveBeenCalledTimes(1);
-    expect(warnings.join("\n")).toMatch(/Could not download gp-restore-missing@1\.0\.0 .*ECONNREFUSED/);
+    expect(warnings.join("\n")).toMatch(/offline.*gp-restore-missing@1\.0\.0/);
   } finally {
     fetchSpy.mockRestore();
     await rm(book, { recursive: true, force: true });

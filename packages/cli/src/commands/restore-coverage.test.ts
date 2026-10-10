@@ -2,7 +2,9 @@
  * Every command that loads a book's plugins for a final artifact or a check
  * run restores the book's missing pinned extensions first, and fails the same
  * way when it cannot: the extension, the reason and how to retry, with the
- * pipeline exit code. The restore lives in the shared seams (`loadBuildPlugins`
+ * pipeline exit code. The network here is down, so the reason is "offline".
+ * (A non-connection failure's own wording is covered in
+ * npm-plugin-installer.test.ts.) The restore lives in the shared seams (`loadBuildPlugins`
  * for builds and exports, `executeValidation` for check runs), so these run
  * the REAL pipelines up to that point — nothing is stubbed but the network.
  */
@@ -45,10 +47,9 @@ afterEach(async () => {
 
 function expectRestoreFailure(): void {
   const message = errors.join("\n");
-  expect(message).toContain("Could not download gp-restore-missing@1.0.0 (pinned in manifest.yaml)");
-  expect(message).toContain("ECONNREFUSED");
-  expect(message).toContain("try again");
-  expect(message).toContain("gutterpress ext add gp-restore-missing@1.0.0");
+  expect(message).toContain("You appear to be offline");
+  expect(message).toContain("gp-restore-missing@1.0.0 (pinned in manifest.yaml)");
+  expect(message).toContain("Connect to the internet and try again");
 }
 
 const exitsWithPipeline = new RegExp(`process\\.exit\\(${EXIT_CODES.PIPELINE}\\)`);
