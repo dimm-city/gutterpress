@@ -2124,6 +2124,16 @@ describe("declared markers — parsing & rendering (#240)", () => {
       expect(html).toContain('data-callout="unknown-variant"');
     });
 
+    test("Object.prototype names are not variants: no inherited value becomes a class, and each warns", () => {
+      for (const word of ["constructor", "toString", "hasOwnProperty", "__proto__", "valueOf"]) {
+        const { html, env } = renderPaged(`@callout ${word}\nText.\n@end-callout\n`, { declaredMarkers });
+        expect(html).not.toContain("native code");
+        expect(html).toContain('class="dc-alert"');
+        expect(html).not.toContain('class="dc-alert ');
+        expect((env.layoutWarnings ?? []).map((w) => w.type)).toEqual(["unknown_variant"]);
+      }
+    });
+
     describe("unknown_variant warning", () => {
       const variantWarnings = (src: string) =>
         (renderPaged(src, { declaredMarkers }).env.layoutWarnings ?? []).filter((w) => w.type === "unknown_variant");
@@ -2591,6 +2601,15 @@ describe("section markers (`section: true`) and the component token contract", (
     const { html } = render("@npc-stat mystery\nText.\n");
     expect(classList(html)).toEqual(["section", "dc-npc-stat"]);
     expect(attr(html, "data-npc-stat")).toBe("mystery");
+  });
+
+  test("Object.prototype names are not variants of a section marker either", () => {
+    for (const word of ["constructor", "toString", "__proto__"]) {
+      const { html, env } = render(`@npc-stat ${word}\nText.\n`);
+      expect(html).not.toContain("native code");
+      expect(classList(html)).toEqual(["section", "dc-npc-stat"]);
+      expect((env.layoutWarnings ?? []).map((w) => w.type)).toEqual(["unknown_variant"]);
+    }
   });
 
   test("an unknown variant on a section marker warns, with a suggestion; declared and preset variants stay silent", () => {

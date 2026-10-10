@@ -688,7 +688,10 @@ The specifier's form picks the branch:
    before any other lookup
 2. **Paths** → the file or folder, relative to the manifest
 3. **npm** → the project-local vendored copy
-   (`plugins/npm/<name>/<version>/`, selected by the pinned `name@version`); an unpinned name
+   (`plugins/npm/<name>/<version>/`, selected by the pinned `name@version`; the
+   copy is gitignored, and every build/export, check run and `preview` and the
+   desktop's book open download a missing one first — `extension-restore.ts`, never the
+   loader); an unpinned name
    falls back to the project's `node_modules`, then to Gutterpress's own
    dependencies (legacy manifests only — `ext list` flags it as "Not pinned")
 4. **Fail fast** — anything else identifies the manifest entry and points to

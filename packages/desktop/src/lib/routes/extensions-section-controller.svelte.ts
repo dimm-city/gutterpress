@@ -138,6 +138,11 @@ export type FeaturesTab = (typeof FEATURES_TABS)[number]["id"];
 // the session. Deliberately not persisted: an app restart starts on Installed.
 let lastFeaturesTab: FeaturesTab = "installed";
 
+/** Make the next Features view open on `tab` (e.g. Installed, where Install is, from a toast). */
+export function openFeaturesOn(tab: FeaturesTab): void {
+  lastFeaturesTab = tab;
+}
+
 /** Does this add/import result carry a look? (`null` = cancelled, nothing changed.) */
 const carriesStyles = (entry: ProjectExtensionEntry | null): boolean => !!entry?.carries.styles;
 

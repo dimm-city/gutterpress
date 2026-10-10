@@ -725,12 +725,47 @@ export interface RawPreviewStartArgs {
   input: string;
 }
 
+/**
+ * What opening a book downloaded: the exact-pinned extensions its manifest
+ * names whose copies were missing (a fresh clone), and any that could not be
+ * downloaded. Present only when something was attempted — the common open
+ * touches nothing and carries no field at all.
+ */
+export interface OpenRestoreSummary {
+  /** `name@version` of each package downloaded. */
+  installed: string[];
+  failed: Array<{ use: string; message: string }>;
+  /** npm could not be reached: everything in `failed` is missing until the author is online. */
+  offline?: boolean;
+}
+
+/**
+ * One step of the open-time download of a book's missing pinned extensions,
+ * pushed from main on `preview:restoreProgress` while `api:preview` is still
+ * working (so a progress indicator can say what the wait is). Mirrors the
+ * lib's `RestoreProgress` but is declared here so the renderer never imports
+ * the lib (§8). `spec` is `name@version`; `index` is 0-based. A book with
+ * nothing to download emits no events at all.
+ */
+export type RestoreProgressEvent =
+  | { type: "start"; specs: string[] }
+  | {
+      type: "package";
+      spec: string;
+      index: number;
+      total: number;
+      state: "downloading" | "done" | "failed";
+      message?: string;
+    }
+  | { type: "end"; installed: string[]; failed: Array<{ use: string; message: string }> };
+
 export interface PreviewStartSuccess {
   previewStarted: true;
   url: string;
   port: number;
   input: string;
   title: string | null;
+  restoredExtensions?: OpenRestoreSummary;
 }
 
 export interface PreviewStartFailure {
@@ -739,6 +774,7 @@ export interface PreviewStartFailure {
   title: string | null;
   /** Actionable preview-generation failure; the folder itself is still open. */
   error: string;
+  restoredExtensions?: OpenRestoreSummary;
 }
 
 export type PreviewStartResult = PreviewStartSuccess | PreviewStartFailure;

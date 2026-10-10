@@ -6,6 +6,7 @@ import type {
   GoogleConnectStartResult,
   GoogleConnectResult,
   CloneProgressEvent,
+  RestoreProgressEvent,
   RawPreviewStartArgs,
   PreviewStartResult,
   RawBuildArgs,
@@ -151,6 +152,14 @@ contextBridge.exposeInMainWorld("electron", {
   /** Subscribe to ambient sync-status push events. Returns an unsubscribe fn. */
   onSyncStatus: (cb: (data: unknown) => void): (() => void) =>
     forwardPush("sync:status", cb),
+
+  /**
+   * Subscribe to the open-time extension download's progress (`api:preview`
+   * emits these while it is still working). No replay: only an open that has
+   * something to download sends any. Returns an unsubscribe fn.
+   */
+  onRestoreProgress: (cb: (data: RestoreProgressEvent) => void): (() => void) =>
+    forwardPush("preview:restoreProgress", cb),
 
   startPreview: (args: RawPreviewStartArgs): Promise<PreviewStartResult> =>
     ipcRenderer.invoke("api:preview", args),

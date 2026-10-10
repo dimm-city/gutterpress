@@ -29,8 +29,8 @@ This repo is a Bun workspace with three packages:
   `src/routes/api/**/+server.ts` HTTP routes (status, fs, dialog, theme, plugin,
   remote/sync, vcs, recovery, …) — NOT a handful of `ipcMain.handle()`
   endpoints. The `ipcMain`/preload bridge is deliberately narrow: it carries
-  only the push-event streams (build progress, folder-changed, sync status,
-  updater events) and the build/preview pipeline calls that need a live
+  only the push-event streams (build progress, open-time extension
+  download progress, folder-changed, sync status, updater events) and the build/preview pipeline calls that need a live
   BrowserWindow. The Electron main + preload are
   built by **electron-vite** to `out/main/main.js` + `out/preload/`; the main
   is ESM and loads the lib with a plain dynamic `import("gutterpress")`
@@ -324,10 +324,10 @@ not a hook API — it receives a plain Gutterpress-owned object (`attrs`,
 returns problem messages that core reports on the existing
 `env.layoutWarnings` channel (`markers.js`'s `runComponentValidate`).
 
-Plugin loader (`packages/cli/src/lib/markdown/plugins.ts`) does NOT auto-install
-or access the network. Installation is an explicit shared-lib action
-(`addExtension` in `extension-manager.ts`, used by the desktop routes and
-`gutterpress ext add`) that resolves the public npm registry to an exact
+Plugin loader (`packages/cli/src/lib/markdown/plugins.ts`) stays OFFLINE: it
+never installs and never touches the network. Downloading is a separate,
+explicit step. `addExtension` in `extension-manager.ts` (used by the desktop
+routes and `gutterpress ext add`) resolves the public npm registry to an exact
 version graph, verifies every tarball against the registry's SRI hash, safely
 vendors a complete nested dependency tree under the project's
 `plugins/npm/<name>/<version>/` (a plain npm `node_modules` layout),
@@ -336,7 +336,60 @@ load-tests it, and only then atomically records the pinned specifier
 `export:` explicitly selects a named plugin function for packages without a
 default export). Reinstall always fetches fresh bytes. Package scripts,
 bundled `node_modules`, native build steps, and non-registry dependency
-selectors are intentionally unsupported. Loading a pinned entry is a plain
+selectors are intentionally unsupported.
+
+**Downloaded copies are not part of a book's git history** (ruled by the
+product owner, 0.11.16). `ensureProjectGitignore` (`project-gitignore.ts`)
+puts `plugins/npm/` next to `dist/` in every new/adopted project's
+`.gitignore`, and the install path appends it to an existing book's, append-only
+(an author's own `!` re-include is respected and surfaces as an install
+warning). The file lives in the PROJECT folder, which is what the desktop's
+isomorphic-git snapshot honours even when the book sits in a subfolder of a
+larger repo (`isIgnored` reads every directory's `.gitignore` down to the
+file). Ignoring never untracks: files a book already committed stay committed
+until its author removes them; nothing here deletes from git.
+
+**A fresh clone therefore has the manifest's pins and none of the files, and a
+separate restore step downloads them.** `restorePinnedExtensions`
+(`extension-restore.ts`) reads the manifest's `extensions:` list and, for each
+enabled npm entry pinned to an exact version whose copy is missing or
+incomplete, installs EXACTLY that version through the same verified path as
+`addExtension` (registry resolution, SRI check, vendor, load-test) — without
+writing the manifest. It never changes a pin or picks another version, ignores
+unpinned/local/bundled/disabled entries, does nothing (no network) when every
+copy is present (so an installed book works offline), stops at the first
+package npm cannot be reached for (`FetchUnavailableError`: the rest are
+reported missing-while-offline untried, `offline: true`, and the error says to
+install them while online), and runs one-at-a-time per book (concurrent callers share one
+run, and the install re-checks under the book's mutation lock so a second
+caller never swaps a tree a first has just put in place). It runs BEFORE
+plugins load, **from the shared seams rather than from each command**
+(`restoreForCommand`): `loadBuildPlugins` (build-runner.ts — every build and
+export, so `build`, one-shot PDF `preview` and the desktop's PDF export) and
+`executeValidation` (validation-exec.ts — `validate`, `preflight`, the
+desktop's Problems and publish-preflight routes; skipped when the caller
+passes `pluginStylePaths`, i.e. a build's own gate that already restored).
+Both fail fast with the extension, the reason and how to retry — a new
+command that builds or checks gets this for free. Only the live HTML preview
+degrades (`preview`'s command and the desktop's `PreviewOpenController` when a
+book is opened — host-side; the result's `restoredExtensions` becomes a toast,
+and the Features tab's "Needs install" row + Install button stay the
+fallback). `publish` loads no plugins and does not restore.
+
+**One pruning rule:** once a package's pinned version is installed — by `ext
+add`/`update` or a restore — every other `plugins/npm/<name>/<version>/`
+folder of THAT package is deleted (`pruneStaleVersions`), except a version an
+enabled manifest entry still pins; other packages, `.install-*` staging and
+non-version folders are never touched. A failed install removes the folders it
+created (`plugins/`, `plugins/npm/`, `plugins/npm/<name>/`) while still empty,
+and nothing else. `project-gitignore.ts` decides "is `plugins/npm/` covered or
+re-included?" with the `ignore` package (gitignore's own matcher, the one
+isomorphic-git uses), not a hand-rolled one. An exact pinned
+version restored on open shows no trust prompt — the author chose it when they
+pinned it; installs the author starts (Search, version switch, install by
+name) keep the prompt.
+
+Loading a pinned entry is a plain
 dynamic `import()` of the vendored package's entry (resolved from its own
 `package.json`); Node's — and Bun's, in the compiled binary — ordinary module
 resolution serves the package's imports from that nested tree. Nothing is
@@ -466,8 +519,8 @@ Host capabilities the renderer needs are reached two ways: the bulk
 (status, fs, dialog, theme, plugin, remote/sync, vcs, recovery, …) are ordinary
 `src/routes/api/**/+server.ts` HTTP routes the SPA calls with `fetch("/api/…")`;
 a **narrow** `ipcMain`/preload bridge carries only the things a plain HTTP
-request can't — the push-event streams (build progress, folder-changed, sync
-status, updater events) and the preview/build pipeline calls that drive a live
+request can't — the push-event streams (build progress, extension download progress,
+folder-changed, sync status, updater events) and the preview/build pipeline calls that drive a live
 BrowserWindow. Either way the renderer stays PWA-clean — a `+server.ts` route is
 host Node code that happens to live under `src/routes/`, and it never leaks into
 the client bundle.
@@ -491,8 +544,8 @@ the **default path** and the one most of the app uses: components call
 `import { getPlatform } from "$lib/platform"`) is real and still owns three
 narrower capability classes a plain route can't cover:
 
-1. **Push streams** the renderer subscribes to (build progress,
-   folder-changed, sync status, updater events) — an `onX(cb) => unsubscribe`
+1. **Push streams** the renderer subscribes to (build progress, extension
+   download progress, folder-changed, sync status, updater events) — an `onX(cb) => unsubscribe`
    shape needs a live event channel, not request/response.
 2. **Calls that must drive a live `BrowserWindow`** — preview/build
    orchestration, PDF export via `webContents.printToPDF`.

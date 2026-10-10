@@ -577,15 +577,16 @@ describe("Check Formatter", () => {
       summary: { total: 1, errors: 0, warnings: 1, infos: 0, passed: 0 },
     });
 
-    // Capture console.log output
-    const originalLog = console.log;
+    // Capture stdout (the JSON report is written there directly, not via console.log)
+    const originalWrite = process.stdout.write;
     let jsonOutput = "";
-    console.log = (msg: string) => {
-      jsonOutput += msg;
-    };
+    process.stdout.write = ((chunk: string) => {
+      jsonOutput += chunk;
+      return true;
+    }) as typeof process.stdout.write;
 
     formatReport(report, "json");
-    console.log = originalLog;
+    process.stdout.write = originalWrite;
 
     const parsed = JSON.parse(jsonOutput);
     expect(parsed.results).toHaveLength(1);

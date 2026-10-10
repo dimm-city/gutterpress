@@ -33,6 +33,7 @@ import { MANIFEST_FILENAMES } from "./manifest.ts";
 import { loadManifestDoc, writeManifestDoc } from "./manifest-doc.ts";
 import { PRESET_IDS, PRESETS, type PresetId } from "./presets.ts";
 import { TARGETS, TARGET_IDS } from "./targets.ts";
+import { ensureProjectGitignore } from "./project-gitignore.ts";
 import { slugify } from "./slug.ts";
 
 /**
@@ -387,12 +388,12 @@ export async function scaffoldProject(
     );
   }
 
-  // 1b. Ensure `dist/` (the build output dir — lib/output-paths.ts) is
-  // gitignored. See `ensureGitignoreHasDist`'s doc comment for why this is a
-  // confirmed-bug fix, not a nicety: without it, auto-snapshot commits and
-  // pushes every build's output by default.
+  // 1b. Ensure `dist/` (the build output dir — lib/output-paths.ts) and
+  // `plugins/npm/` (downloaded extensions) are gitignored. See
+  // `project-gitignore.ts`: without it, auto-snapshot commits and pushes every
+  // build's output by default.
   try {
-    await ensureGitignoreHasDist(projectDir);
+    await ensureProjectGitignore(projectDir);
   } catch (e) {
     throw new CreateProjectErrorImpl(
       "scaffold-io",
@@ -519,8 +520,8 @@ function prettifyFolderName(base: string): string {
  * Adopt an EXISTING folder as a gutterpress project, in place (no new subfolder).
  * Writes a `manifest.yaml` (using the folder's existing top-level `.md` files as
  * `source.files`, or scaffolding a `chapter-01.md` when there are none), copies
- * a starter `styles/book.css`, ensures `dist/` is gitignored (see
- * `ensureGitignoreHasDist`), and optionally initialises local version history.
+ * a starter `styles/book.css`, ensures `dist/` and `plugins/npm/` are gitignored
+ * (see `ensureProjectGitignore`), and optionally initialises local version history.
  *
  * NON-DESTRUCTIVE (global never-overwrite rule): refuses if the folder is
  * already a project, and never overwrites an existing `manifest.yaml`,
@@ -593,11 +594,11 @@ export async function adoptFolder(options: AdoptFolderOptions): Promise<CreatePr
     await writeFile(path.join(dir, MANIFEST_FILENAMES[0]), manifest, "utf8");
     await mkdir(path.join(dir, "assets"), { recursive: true });
 
-    // 4. Ensure `dist/` is gitignored — same reasoning as scaffoldProject's
+    // 4. Ensure `dist/` and `plugins/npm/` are gitignored — same reasoning as scaffoldProject's
     // step 1b. An ADOPTED folder is even more likely to already be under
     // some other version control the author set up by hand, so this is
     // never-overwrite: it only creates or appends, never replaces.
-    await ensureGitignoreHasDist(dir);
+    await ensureProjectGitignore(dir);
   } catch (e) {
     if (e instanceof CreateProjectErrorImpl) throw e;
     throw new CreateProjectErrorImpl(
@@ -634,53 +635,6 @@ export async function adoptFolder(options: AdoptFolderOptions): Promise<CreatePr
   };
   if (versionHistoryError !== undefined) result.versionHistoryError = versionHistoryError;
   return result;
-}
-
-/**
- * Ensure `<projectDir>/.gitignore` excludes the build output directory
- * (`dist/` — lib/output-paths.ts's `DIST_DIRNAME`).
- *
- * Confirmed bug this closes: no scaffolded project ever got a `.gitignore`,
- * and gutterpress's auto-snapshot feature is ON BY DEFAULT and auto-pushes.
- * Every `gutterpress build` writes a fresh, incompressible PDF (plus any copied
- * assets) into `dist/<title-slug>/`; without an ignore rule, the very next
- * snapshot commits and pushes it. That grows `.git` by a full PDF on every
- * build and, once a single artifact crosses GitHub's 100MB per-file limit,
- * the push is rejected outright — for a non-technical author with no way to
- * `git filter-repo` their way out.
- *
- * NEVER overwrites an existing `.gitignore` (global never-delete-user-data
- * rule): if the file already excludes `dist/` in some common spelling
- * (`dist`, `dist/`, `/dist/`, …) it is left untouched; otherwise the line is
- * APPENDED, not prepended or reformatted, so any content the author already
- * has stays exactly as they wrote it.
- */
-export async function ensureGitignoreHasDist(projectDir: string): Promise<void> {
-  const gitignorePath = path.join(projectDir, ".gitignore");
-
-  let existing: string | null = null;
-  try {
-    existing = await readFile(gitignorePath, "utf8");
-  } catch {
-    // No .gitignore yet.
-  }
-
-  if (existing === null) {
-    await writeFile(gitignorePath, "dist/\n", "utf8");
-    return;
-  }
-
-  const alreadyIgnoresDist = existing
-    .split("\n")
-    .some((line) => /^\/?dist\/?$/.test(line.trim()));
-  if (alreadyIgnoresDist) return;
-
-  const needsLeadingNewline = existing.length > 0 && !existing.endsWith("\n");
-  await writeFile(
-    gitignorePath,
-    existing + (needsLeadingNewline ? "\n" : "") + "dist/\n",
-    "utf8",
-  );
 }
 
 /**

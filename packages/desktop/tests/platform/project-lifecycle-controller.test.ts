@@ -65,6 +65,8 @@ interface Harness {
     resetExtras: Spy<[]>;
     toastError: Spy<[string]>;
     toastInfo: Spy<[string]>;
+    toastShow: Spy<[string, string, { label: string; onClick: () => void } | undefined, number | undefined]>;
+    openFeatures: Spy<[]>;
     landingVisible: boolean;
     pageNav: { totalPages: number; currentPage: number };
     zoomView: { restoreSplitRatio: Spy<[number]> };
@@ -106,6 +108,8 @@ function make(): Harness {
   const resetExtras = spy<[]>();
   const toastError = spy<[string]>();
   const toastInfo = spy<[string]>();
+  const toastShow = spy<[string, string, { label: string; onClick: () => void } | undefined, number | undefined]>();
+  const openFeatures = spy<[]>();
   const getDesktopProjectState = spy<[string]>();
 
   const state: Harness["deps"] = {
@@ -130,6 +134,8 @@ function make(): Harness {
     clearStaleProjectState,
     resetExtras,
     toastError,
+    toastShow,
+    openFeatures,
     toastInfo,
     landingVisible: false,
     pageNav: { totalPages: 0, currentPage: 1 },
@@ -202,7 +208,10 @@ function make(): Harness {
     toast: () => ({
       error: (msg: string) => toastError(msg),
       info: (msg: string) => toastInfo(msg),
+      show: (msg: string, type: string, duration?: number, action?: { label: string; onClick: () => void }) =>
+        toastShow(msg, type, action, duration),
     }),
+    openFeatures: () => openFeatures(),
     clearStaleProjectState: () => clearStaleProjectState(),
     resetExtras: () => resetExtras(),
   };
@@ -926,4 +935,164 @@ test("leaving the file asks via leaveBuffer; Cancel keeps the project open; retr
   answer = true;
   expect(await ctrl.stopPreview()).toBe(true);
   expect(leaves).toEqual(["leave", "leave", "leave"]); // open, cancelled close, close
+});
+
+// ── Pinned extensions restored on open ───────────────────────────────────────
+
+test("opening a book that downloaded its pinned extensions says so in one toast", async () => {
+  const { ctrl, deps } = make();
+  deps.startPreviewResult = {
+    previewStarted: true,
+    url: "preview://book",
+    title: "My Book",
+    restoredExtensions: { installed: ["gp-dimm-city@1.2.0-alpha.3"], failed: [] },
+  };
+
+  await ctrl.startFolderPreview("/proj");
+
+  expect(deps.toastInfo.calls).toEqual([
+    ["Downloaded gp-dimm-city@1.2.0-alpha.3, pinned in this book's manifest."],
+  ]);
+  expect(deps.toastError.calls).toHaveLength(0);
+});
+
+test("a failed download is a warning toast with an Open Features button, and the book still opens", async () => {
+  const { ctrl, deps } = make();
+  deps.startPreviewResult = {
+    previewStarted: true,
+    url: "preview://book",
+    title: "My Book",
+    restoredExtensions: { installed: [], failed: [{ use: "gp-x@1.0.0", message: "ECONNREFUSED." }] },
+  };
+
+  expect(await ctrl.startFolderPreview("/proj")).toBe(true);
+
+  expect(ctrl.previewUrl).toBe("preview://book");
+  expect(deps.toastInfo.calls).toHaveLength(0);
+  expect(deps.toastError.calls).toHaveLength(0);
+  expect(deps.toastShow.calls).toHaveLength(1);
+  const [message, type, action, duration] = deps.toastShow.calls[0]!;
+  expect(message).toBe("Couldn't download gp-x@1.0.0 (ECONNREFUSED). The book opened without it.");
+  expect(type).toBe("warning");
+  expect(duration).toBe(0); // stays until dismissed
+  expect(action?.label).toBe("Open Features");
+  action!.onClick();
+  expect(deps.openFeatures.calls).toHaveLength(1);
+});
+
+test("several failed downloads are ONE toast naming them, not a stack of identical advice", async () => {
+  const { ctrl, deps } = make();
+  deps.startPreviewResult = {
+    previewStarted: true,
+    url: "preview://book",
+    title: "My Book",
+    restoredExtensions: {
+      installed: ["gp-ok@1.0.0"],
+      failed: [
+        { use: "gp-x@1.0.0", message: "offline" },
+        { use: "gp-y@2.0.0", message: "offline" },
+      ],
+    },
+  };
+
+  await ctrl.startFolderPreview("/proj");
+
+  expect(deps.toastInfo.calls).toEqual([["Downloaded gp-ok@1.0.0, pinned in this book's manifest."]]);
+  expect(deps.toastShow.calls).toHaveLength(1);
+  expect(deps.toastShow.calls[0]![0]).toBe(
+    "Couldn't download 2 extensions (gp-x@1.0.0, gp-y@2.0.0). The book opened without them.",
+  );
+});
+
+test("offline with extensions missing is an error toast saying to install them while online", async () => {
+  const { ctrl, deps } = make();
+  deps.startPreviewResult = {
+    previewStarted: true,
+    url: "preview://book",
+    title: "My Book",
+    restoredExtensions: {
+      installed: [],
+      failed: [
+        { use: "gp-x@1.0.0", message: "you appear to be offline" },
+        { use: "gp-y@2.0.0", message: "you appear to be offline" },
+      ],
+      offline: true,
+    },
+  };
+
+  expect(await ctrl.startFolderPreview("/proj")).toBe(true); // the book still opens
+
+  expect(deps.toastShow.calls).toHaveLength(1);
+  const [message, type, action, duration] = deps.toastShow.calls[0]!;
+  expect(message).toBe(
+    "You're offline, and this book's extensions aren't installed yet (gp-x@1.0.0, gp-y@2.0.0). " +
+      "Connect to the internet to install them. The book opened without them.",
+  );
+  expect(type).toBe("error");
+  expect(duration).toBe(0);
+  expect(action?.label).toBe("Open Features");
+});
+
+test("an ordinary open shows no extension toast", async () => {
+  const { ctrl, deps } = make();
+  await ctrl.startFolderPreview("/proj");
+  expect(deps.toastInfo.calls).toHaveLength(0);
+  expect(deps.toastError.calls).toHaveLength(0);
+});
+
+// ── Open stage wording and the live download ─────────────────────────────────
+
+test("an open says which book it is opening unless the caller has a better verb", async () => {
+  const { ctrl, deps } = make();
+  let during = "";
+  deps.startPreviewImpl = async () => {
+    during = ctrl.busyLabel;
+    return deps.startPreviewResult;
+  };
+  await ctrl.startFolderPreview("/books/dimm-city");
+  expect(during).toBe("Opening dimm-city…");
+
+  await ctrl.startFolderPreview("/books/dimm-city", "Setting up your book…", "Dimm City");
+  expect(during).toBe("Setting up your book…");
+
+  await ctrl.startFolderPreview("/books/dimm-city", undefined, "Dimm City");
+  expect(during).toBe("Opening Dimm City…");
+  expect(ctrl.busyLabel).toBe("");
+});
+
+test("restore progress pushed during an open is tracked, then cleared when the open ends", async () => {
+  const { ctrl, deps } = make();
+  const seen: Array<{ spec: string; completed: number } | null> = [];
+  deps.startPreviewImpl = async () => {
+    ctrl.onRestoreProgress({ type: "start", specs: ["gp-a@1.0.0", "gp-b@2.0.0"] });
+    seen.push(ctrl.restore && { spec: ctrl.restore.spec, completed: ctrl.restore.completed });
+    ctrl.onRestoreProgress({ type: "package", spec: "gp-a@1.0.0", index: 0, total: 2, state: "done" });
+    seen.push(ctrl.restore && { spec: ctrl.restore.spec, completed: ctrl.restore.completed });
+    ctrl.onRestoreProgress({ type: "end", installed: ["gp-a@1.0.0", "gp-b@2.0.0"], failed: [] });
+    seen.push(ctrl.restore);
+    return deps.startPreviewResult;
+  };
+
+  await ctrl.startFolderPreview("/proj");
+
+  expect(seen).toEqual([{ spec: "gp-a@1.0.0", completed: 0 }, { spec: "gp-a@1.0.0", completed: 1 }, null]);
+  expect(ctrl.restore).toBeNull();
+});
+
+test("a stray restore event with no open in flight paints nothing", () => {
+  const { ctrl } = make();
+  ctrl.onRestoreProgress({ type: "start", specs: ["gp-a@1.0.0"] });
+  expect(ctrl.restore).toBeNull();
+});
+
+test("an open that ends mid-download (cancelled) leaves no stale download stage", async () => {
+  const { ctrl, deps } = make();
+  deps.startPreviewImpl = async () => {
+    ctrl.onRestoreProgress({ type: "start", specs: ["gp-a@1.0.0"] });
+    ctrl.cancelOpen();
+    return deps.startPreviewResult;
+  };
+  await ctrl.startFolderPreview("/proj");
+  expect(ctrl.restore).toBeNull();
+  expect(ctrl.busy).toBe(false);
 });

@@ -1002,6 +1002,16 @@ function scanForUnknownDeclaredMarkers(state, declaredMarkers) {
 }
 
 /**
+ * The class a declared marker's variant word selects, or '' when the word is
+ * not one of its OWN declared variants. An own-property check, not `variants[word]`:
+ * the word is author text, and `@callout constructor` must not resolve to
+ * `Object.prototype.constructor` (nor `toString`, `__proto__`, ...).
+ */
+function variantClassFor(decl, word) {
+  return word && decl.variants && Object.hasOwn(decl.variants, word) ? decl.variants[word] : '';
+}
+
+/**
  * unknown_variant: the bare word after a DECLARED marker (`@card featured`)
  * selects one of the marker's declared `variants`. A word that is not one of
  * them styles nothing — it only lands in `data-<kind>` — so a typo
@@ -1330,7 +1340,7 @@ export default function plugin(md, pluginOptions = {}) {
         attrs: meta.attrs || {},
         labelled: false,
       };
-      const variantClass = (variant && decl.variants && decl.variants[variant]) || '';
+      const variantClass = variantClassFor(decl, variant);
       const baseClass = [decl.classBase, variantClass].filter(Boolean).join(' ');
       addClasses(t, baseClass, meta.attrs && meta.attrs.class ? meta.attrs.class : '');
       attachDataAttrs(t, decl.baseKind, variant, meta.attrs || {});
@@ -1583,7 +1593,7 @@ export default function plugin(md, pluginOptions = {}) {
       const attrs = meta.attrs || {};
       const variant = meta.name || decl.presetVariant || null;
       warnUnknownVariant(state.env, meta, decl);
-      const variantClass = (variant && decl.variants && decl.variants[variant]) || '';
+      const variantClass = variantClassFor(decl, variant);
       const cls = [decl.classBase, variantClass, attrs.class].filter(Boolean).join(' ');
       return {
         kind: 'section',

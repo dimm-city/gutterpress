@@ -40,6 +40,8 @@
  */
 
 import { basenameOf } from "../platform/paths";
+import { reduceRestore, type RestoreView } from "../loading/activity-stage";
+import type { RestoreProgressEvent } from "../platform/shared-types";
 import type { ProjectBookEntry } from "./project-session-controller.svelte";
 import type { PersistedProjectState } from "./page-types";
 
@@ -47,6 +49,7 @@ import type { PersistedProjectState } from "./page-types";
 interface ProjectLifecycleToast {
   info?(message: string): void;
   error(message: string): void;
+  show(message: string, type: "warning" | "error", duration?: number, action?: { label: string; onClick: () => void }): void;
 }
 
 /** The bits of `startPreview`'s result this controller reads. */
@@ -55,12 +58,22 @@ export type ProjectLifecyclePreviewResult =
       previewStarted: true;
       url: string;
       title: string | null;
+      restoredExtensions?: ProjectLifecycleRestore;
     }
   | {
       previewStarted: false;
       title: string | null;
       error: string;
+      restoredExtensions?: ProjectLifecycleRestore;
     };
+
+/** Pinned extensions the host downloaded (or failed to) while opening the book. */
+export interface ProjectLifecycleRestore {
+  installed: string[];
+  failed: Array<{ use: string; message: string }>;
+  /** npm could not be reached, so nothing in `failed` was downloaded. */
+  offline?: boolean;
+}
 
 /** Composed `ProjectSessionController` surface (the bits this controller drives/reads). */
 interface ProjectLifecycleProjectSession {
@@ -159,6 +172,8 @@ export interface ProjectLifecycleDeps {
   dismissLanding: (runPendingRecoveryScan?: boolean) => void;
   /** The live toast surface, or null when unavailable. */
   toast: () => ProjectLifecycleToast | null;
+  /** Open Book settings on its Features tab (where a missing extension's Install button is). */
+  openFeatures?: () => void;
   /** Clear stale problems/log-path state for the project a new open targets. */
   clearStaleProjectState: () => void;
   /**
@@ -190,6 +205,12 @@ export class ProjectLifecycleController {
   docTitle = $state<string | null>(null);
   busy = $state(false);
   busyLabel = $state("");
+  /**
+   * The open-time extension download in flight (pushed from the host while
+   * `startPreviewHost` is still pending), or null. Feeds the open indicator's
+   * "Downloading extensions" stage; the end result still arrives as the toast.
+   */
+  restore = $state<RestoreView | null>(null);
   rendering = $state(false);
   renderProgressPage = $state(0);
   renderCompleteOverlay = $state(false);
@@ -240,6 +261,13 @@ export class ProjectLifecycleController {
     this.deps.resetExtras();
   }
 
+  /** Fold a pushed restore event into `restore` (subscribed once by the page). */
+  onRestoreProgress(event: RestoreProgressEvent): void {
+    // Only an open in flight can be waiting on a download; a stray event from a
+    // superseded or already-finished open must not paint a stale stage.
+    this.restore = this.busy ? reduceRestore(this.restore, event) : null;
+  }
+
   /**
    * The ONE open-a-project-folder pipeline.
    *
@@ -256,14 +284,16 @@ export class ProjectLifecycleController {
    */
   async startFolderPreview(
     dir: string,
-    label = "Starting preview…",
+    label?: string,
     displayName: string | null = null,
     epoch = ++this.folderOpenEpoch,
   ): Promise<boolean> {
     const d = this.deps;
     const superseded = () => epoch !== this.folderOpenEpoch;
     this.busy = true;
-    this.busyLabel = label;
+    // Say WHICH book is opening; callers with a more specific verb pass their own.
+    this.busyLabel = label ?? `Opening ${displayName ?? basenameOf(dir)}…`;
+    this.restore = null;
     try {
       // Flush before classification resets the current ProjectSession. The
       // dirty-state POST to main is only best-effort; this direct result is the
@@ -324,6 +354,7 @@ export class ProjectLifecycleController {
       const restoreState = d.getDesktopProjectState(targetDir).catch(() => null);
       const data = await d.startPreviewHost({ key: targetDir, displayName: targetDisplayName });
       if (superseded()) return false;
+      this.announceRestore(data.restoredExtensions);
       this.sourceMode = "folder";
       this.currentDir = targetDir;
       this.currentFolderDisplayName = targetDisplayName;
@@ -406,7 +437,39 @@ export class ProjectLifecycleController {
       if (!superseded()) {
         this.busy = false;
         this.busyLabel = "";
+        this.restore = null;
       }
+    }
+  }
+
+  /**
+   * Say what opening the book downloaded, through the toast every other
+   * ambient notice uses. A failed download is not an open failure: the book
+   * opens and the Features tab's "Needs install" row is the way to retry.
+   */
+  private announceRestore(restore: ProjectLifecycleRestore | undefined): void {
+    if (!restore) return;
+    const toast = this.deps.toast();
+    if (restore.installed.length > 0) {
+      toast?.info?.(`Downloaded ${restore.installed.join(", ")}, pinned in this book's manifest.`);
+    }
+    // One notice however many failed: the advice is the same for each, so
+    // repeating it per package only stacks identical toasts. It stays until
+    // dismissed (the book is rendering without formatting its author chose,
+    // and a 4-second notice is gone before its button can be reached), with a
+    // button to where Install is. Offline is an error — nothing can be fixed
+    // until the author is online; any other failure is a warning.
+    const [first, ...others] = restore.failed;
+    if (first) {
+      const uses = restore.failed.map((f) => f.use).join(", ");
+      const message = restore.offline
+        ? `You're offline, and this book's ${others.length === 0 ? "extension isn't" : "extensions aren't"} installed yet (${uses}). ` +
+          `Connect to the internet to install ${others.length === 0 ? "it" : "them"}. The book opened without ${others.length === 0 ? "it" : "them"}.`
+        : others.length === 0
+          ? `Couldn't download ${first.use} (${first.message.replace(/[.\s]+$/, "")}). The book opened without it.`
+          : `Couldn't download ${restore.failed.length} extensions (${uses}). The book opened without them.`;
+      const open = this.deps.openFeatures;
+      toast?.show(message, restore.offline ? "error" : "warning", 0, open ? { label: "Open Features", onClick: open } : undefined);
     }
   }
 
@@ -418,6 +481,7 @@ export class ProjectLifecycleController {
     const epoch = ++this.folderOpenEpoch;
     this.busy = true;
     this.busyLabel = "Trying preview again…";
+    this.restore = null;
     try {
       if (!(await d.flushBuffer())) return false;
       if (epoch !== this.folderOpenEpoch) return false;
@@ -427,6 +491,7 @@ export class ProjectLifecycleController {
         displayName: this.currentFolderDisplayName ?? basenameOf(dir),
       });
       if (epoch !== this.folderOpenEpoch) return false;
+      this.announceRestore(data.restoredExtensions);
       this.docTitle = data.title ?? this.docTitle;
       this.previewUrl = null;
       this.renderProgressPage = 0;
@@ -452,6 +517,7 @@ export class ProjectLifecycleController {
       if (epoch === this.folderOpenEpoch) {
         this.busy = false;
         this.busyLabel = "";
+        this.restore = null;
       }
     }
   }
@@ -561,6 +627,7 @@ export class ProjectLifecycleController {
     this.folderOpenEpoch++;
     this.busy = false;
     this.busyLabel = "";
+    this.restore = null;
     void this.stopPreview().catch(() => {});
   }
 }

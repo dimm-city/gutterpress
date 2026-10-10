@@ -565,7 +565,7 @@ test("adoptFolder: never overwrites an existing styles/book.css", async () => {
 // incompressible PDF on every build until GitHub's 100MB limit rejects it.
 // ---------------------------------------------------------------------------
 
-test("scaffoldProject writes a .gitignore excluding dist/", async () => {
+test("scaffoldProject writes a .gitignore excluding dist/ and plugins/npm/", async () => {
   const parent = await tmpParent();
   try {
     const result = await scaffoldProject({
@@ -576,6 +576,7 @@ test("scaffoldProject writes a .gitignore excluding dist/", async () => {
     });
     const gitignore = await readFile(path.join(result.projectDir, ".gitignore"), "utf8");
     expect(gitignore).toContain("dist/");
+    expect(gitignore).toContain("plugins/npm/");
   } finally {
     await rm(parent, { recursive: true, force: true });
   }
@@ -605,13 +606,13 @@ test("scaffoldProject appends dist/ to a custom template's .gitignore without cl
   }
 });
 
-test("scaffoldProject leaves a custom template's .gitignore untouched when it already ignores dist/", async () => {
+test("scaffoldProject leaves a custom template's .gitignore untouched when it already ignores dist/ and plugins/npm/", async () => {
   const templateDir = await mkdtemp(path.join(tmpdir(), "gutterpress-tpl-gitignore-has-dist-"));
   const parent = await tmpParent();
   try {
     await writeFile(path.join(templateDir, "manifest.yaml"), "title: \"{{TITLE}}\"\n", "utf8");
     await writeFile(path.join(templateDir, "chapter-01.md"), "# {{TITLE}}\n", "utf8");
-    const original = "# my ignores\ndist/\n";
+    const original = "# my ignores\ndist/\nplugins/npm/\n";
     await writeFile(path.join(templateDir, ".gitignore"), original, "utf8");
 
     const result = await scaffoldProject({
@@ -635,6 +636,7 @@ test("adoptFolder writes a .gitignore excluding dist/ when the folder has none",
   await adoptFolder({ dir, versionHistory: "none" });
   const gitignore = await readFile(path.join(dir, ".gitignore"), "utf8");
   expect(gitignore).toContain("dist/");
+  expect(gitignore).toContain("plugins/npm/");
   await rm(dir, { recursive: true, force: true });
 });
 

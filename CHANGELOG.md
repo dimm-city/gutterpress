@@ -82,6 +82,25 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Loading indicators look and behave the same everywhere, and say what the
+  wait is.** The opening overlay and the two corner pills ("Updating
+  preview…" and the PDF export) now share one card style (light and dark) and
+  one rule: an indicator appears only if the work is still going after about a
+  fifth of a second, and once it appears it stays for at least half a second,
+  so quick opens and edits no longer flash and nothing strobes. They announce
+  changes politely to screen readers, never block the page underneath, and
+  stand still when your system asks for reduced motion. The start screen's
+  status line, the editor placeholder and the Problems panel's "Checking your
+  book…" draw the same spinner. Opening a book now walks through
+  plain stages instead of a generic "Starting preview…": *Opening <book>…* →
+  *Downloading extensions (1 of 2)* with the package name and a progress bar →
+  *Laying out pages…* with a running page count → *Finishing up…*. The
+  download stage is live: a book opened from a fresh clone shows each pinned
+  extension as it arrives, and the notice afterwards just reports the result
+  (several failed downloads are one notice that points at **Install** in Book
+  settings > Features, and it stays until you close it). A finished PDF export
+  is reported by its "PDF saved to…" notice alone, not a second pill on top of it.
+
 - **Snippets come from levels: your book, extensions and Gutterpress** (#338).
   The snippet picker now lists every snippet, grouped by level, even when two
   share a name; before, a book snippet hid an extension's snippet of the same
@@ -108,9 +127,71 @@ This project follows [Semantic Versioning](https://semver.org/).
   (the CLI still prints it). `gutterpress ext outdated` and `ext update` are
   unchanged; the library's update check gained an `includePrerelease` option,
   off by default.
+- **Downloaded extensions stay out of a book's version history.** New and
+  adopted books now ignore `plugins/npm/` (next to `dist/`) in their
+  `.gitignore`, and installing an extension adds the rule to an existing book's
+  `.gitignore`, append-only. The manifest already pins each version, so a
+  fresh clone needs nothing from git. If your `.gitignore` deliberately
+  re-includes `plugins/npm/`, it is left alone and the install warns that
+  downloaded extensions shouldn't be committed. For a book in a subfolder of a
+  larger repository the rule goes in the book's own `.gitignore`, which
+  version history honours. Files already committed stay tracked — ignoring a
+  folder never removes anything from history; remove them yourself when you
+  are ready.
+
+- **A fresh clone of a book downloads its extensions by itself.** Downloaded
+  extensions are no longer part of a book's history, so a clone has the pins in
+  `manifest.yaml` but not the files. `gutterpress build`, `validate`,
+  `preflight` and `preview` now download any missing pinned version first and
+  print one line per package to stderr (`Downloaded gp-dimm-city@1.2.0-alpha.3
+  (pinned in manifest.yaml)`). The desktop's PDF export and Problems panel do
+  the same before they use your extensions, so no export or check runs without
+  them: a failed download stops an export with the extension and the reason,
+  and Problems lists it as an error. It is the exact version the manifest pins — never a newer
+  one — fetched through the same verified install as `ext add` (registry
+  lookup, integrity check, load test), and it touches nothing else: no
+  network when every copy is present, and local, unpinned and bundled entries
+  are left alone. If the download fails (registry error, integrity
+  mismatch), they stop and say which extension failed, why and how to retry
+  (exit code 3); live `preview` warns and carries on, as before. Offline,
+  nothing is tried package by package: one error names the extensions that
+  are not installed yet and says to try again once online. A book whose
+  extensions are already downloaded is never blocked offline, since nothing is
+  fetched. The plugin
+  loader itself is still offline. The desktop app does the same when you open
+  a book, before its preview loads: a short notice says what it downloaded, no
+  extra confirmation is asked for a version you already pinned, and if the
+  download fails the book still opens with the extension's **Needs install**
+  row and **Install** button as the way to retry (offline, the notice is an
+  error saying to connect to the internet to install them). Opening a book while a build
+  runs never downloads the same package twice.
 
 ### Fixed
 
+- **A failed extension install no longer leaves empty folders behind.** An
+  install that failed (offline, a bad hash, a package that would not load) used
+  to remove its download but leave an empty `plugins/npm/<name>/` folder, or
+  `plugins/npm/` itself, in the book. It now removes exactly the folders it
+  created, and removing an extension removes its package folder once its last
+  version is gone.
+- **Downloaded versions are pruned the same way everywhere.** `ext add` and
+  `ext update` removed a package's old versions, but restoring a pin after a
+  pull or branch switch left the previous version in `plugins/npm/`. Now once a
+  package's pinned version is installed by either route, its other downloaded
+  versions are deleted, unless another enabled manifest entry still pins one.
+  Other packages are never touched.
+- **A `.gitignore` rule with a character class is recognised.** A book whose
+  `.gitignore` said `plugins/[np]pm/` had `plugins/npm/` appended again,
+  because the check understood only `*`, `**` and `?`. It now uses the same
+  gitignore matcher as version history.
+- **An unpinned extension says to pin it.** A manifest entry such as
+  `some-plugin` or `some-plugin@^1` used to fail a build with "not found";
+  it now says the entry is not pinned to an exact version and that
+  `gutterpress ext add` downloads and pins it.
+- **Two restores of one book cannot swap a copy out from under each other.**
+  A restore re-checks, once it is the one holding the book's install lock, that
+  the copy is still missing, and Windows path spellings that differ only in
+  case share one restore.
 - **The editor fills its pane again.** A leftover style from the old toolbar
   centred both panes' contents, so the editor shrank to its longest line and
   sat in the middle of the pane with an empty strip to its left. It now starts
@@ -124,6 +205,11 @@ This project follows [Semantic Versioning](https://semver.org/).
   one no longer nudges the page sideways.
 - **A freshly scaffolded plugin passes its own tests** (#338). Its "no
   cascade layer" check matched `@layer` inside a stylesheet comment.
+- **A variant word that matches a JavaScript built-in name no longer leaks
+  into the page.** `@callout constructor` (and `toString`, `__proto__`, …)
+  emitted `function Object() { [native code] }` as a class. A component's
+  variant is now looked up among its own declared variants only, so these
+  words get the usual "not a variant" warning like any other undeclared word.
 
 ## [0.11.15] - 2026-10-07
 

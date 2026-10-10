@@ -254,7 +254,7 @@ const readStrip = () => evalJs(`(() => {
     errs: strip.querySelector('.error-count')?.textContent?.trim() ?? null,
     warns: strip.querySelector('.warning-count')?.textContent?.trim() ?? null,
     status: /couldn't check/.test(strip.getAttribute('aria-label') ?? '') ? "Couldn't check" : null,
-    stillRendering: !!document.querySelector('.loading-overlay'),
+    stillRendering: !!document.querySelector('.region.overlay .layer'),
   };
 })()`);
 const hasCounts = (s) => !!(s?.errs || s?.warns);

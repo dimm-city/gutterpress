@@ -5,6 +5,7 @@ import os from "node:os";
 import { randomBytes } from "node:crypto";
 import { loadManifestWithPath, MANIFEST_FILENAMES, resolveConfig } from "./manifest";
 import { renderChaptersToFile } from "./markdown/index";
+import { restoreForCommand } from "./extension-restore.ts";
 import { loadPluginsWithCss, type LoadedPluginsWithCss } from "./markdown/plugins";
 import { type AssetCopy } from "./asset-inline";
 import { resolveOutputDir, artifactName, BOOK_HTML } from "./output-paths";
@@ -345,6 +346,12 @@ export async function loadBuildPlugins(ctx: BuildContext): Promise<LoadedPlugins
   if (ctx.plugins) return ctx.plugins;
   const { config, renderDir } = ctx;
   if (config.extensions.length > 0) {
+    // A fresh clone has the manifest's pins but not their downloaded copies:
+    // fetch them first (the loader itself stays offline) and fail the build
+    // rather than ship a book without its configured formatting. Every build
+    // and export (CLI, `preview --format pdf`, the desktop's PDF export)
+    // loads its plugins here, so none of them can skip it.
+    await restoreForCommand(ctx.inputDir, { manifestPath: ctx.opts.manifestPath, failFast: true });
     log.info(`Loading ${config.extensions.length} plugin(s)...`);
   }
   const loaded = await loadPluginsWithCss(config.extensions, renderDir);

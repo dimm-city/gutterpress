@@ -78,7 +78,7 @@
     /** The repo the open book belongs to — lets the pickers offer SHARED styles. */
     repoRoot?: string | null;
     /** Tab to open on. Read once at mount (the view is keyed per open). */
-    initialTab?: "details" | "connections";
+    initialTab?: "details" | "features" | "connections";
     toast?: ToastController | null;
     /** Escape hatch: open a stylesheet in the raw-CSS editor (the parent
      *  closes this view first). */

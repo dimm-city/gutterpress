@@ -8,7 +8,7 @@
    * rendered (or visibly rendering) preview. The continue card mirrors that
    * live progress.
    *
-   * Layer rules (hard constraints, see LoadingOverlay/PreviewFrame):
+   * Layer rules (hard constraints, see ActivityIndicator/PreviewFrame):
    * - The scrim is TRANSLUCENT, never opaque — the preview iframe underneath
    *   is cross-origin and Chromium throttles it to ~1fps when it has no
    *   visible pixels (the 0.4.1 slow-render regression). No backdrop-filter:
@@ -28,6 +28,7 @@
   import Icon from "$lib/components/Icon.svelte";
   import ProjectsListBody from "$lib/components/ProjectsListBody.svelte";
   import SettingsView from "$lib/components/SettingsView.svelte";
+  import Spinner from "$lib/components/Spinner.svelte";
   import BrandMark from "$lib/components/BrandMark.svelte";
   import Tabs from "$lib/components/Tabs.svelte";
   import HelpContent from "$lib/components/HelpContent.svelte";
@@ -349,7 +350,7 @@
                 {#if status.kind === "ready"}
                   <span class="cc-ready-icon"><Icon name="circle-check" size={14} /></span>
                 {:else}
-                  <span class="cc-spinner" aria-hidden="true"></span>
+                  <Spinner size={12} />
                 {/if}
                 <span role="status" aria-live="polite">{status.label}</span>
                 {#if stalled && status.kind !== "ready"}
@@ -610,19 +611,6 @@
   .cc-status[data-kind="ready"] { color: var(--app-success-text); }
   .cc-ready-icon { display: inline-flex; color: var(--app-success-strong); }
   .cc-stalled { color: var(--app-warning-text); }
-  .cc-spinner {
-    width: 12px;
-    height: 12px;
-    border: 2px solid var(--app-spinner-track);
-    border-top-color: var(--app-spinner-head);
-    border-radius: 50%;
-    animation: landing-spin 0.75s linear infinite;
-    flex-shrink: 0;
-  }
-  @keyframes landing-spin { to { transform: rotate(360deg); } }
-  @media (prefers-reduced-motion: reduce) {
-    .cc-spinner { animation-duration: 1.6s; }
-  }
 
   /* Color (gradient fill/hover/border-color/font-weight) lives in
      theme.css's `.app-btn-primary` — co-applied in the template (the ONE

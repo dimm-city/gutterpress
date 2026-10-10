@@ -83,10 +83,10 @@ export type {
 export {
   scaffoldProject,
   adoptFolder,
-  ensureGitignoreHasDist,
   slugifyProjectName,
   escapeYamlScalar,
 } from "../lib/project-scaffold.ts";
+export { ensureProjectGitignore } from "../lib/project-gitignore.ts";
 
 export type {
   ProjectTemplateId,
@@ -191,6 +191,13 @@ export {
   parseExtensionSpecifier,
 } from "../lib/extension-specifier.ts";
 export type { ParsedExtensionSpecifier } from "../lib/extension-specifier.ts";
+
+// ── Restoring pinned extensions ──────────────────────────────────────────────
+// Downloaded copies are not in a book's git history; this downloads a missing
+// pinned version again. Called by build/validate/preview and the desktop's
+// book-open path — never by the (offline) loader.
+export { restorePinnedExtensions, restoreFailureMessage } from "../lib/extension-restore.ts";
+export type { RestorePinnedOptions, RestoreResult, RestoreFailure, RestoreProgress } from "../lib/extension-restore.ts";
 
 // ── Extension package import — .zip / .css / URL ─────────────────────────────
 // The zip/css sub-importers and pure decision helpers stay module-private

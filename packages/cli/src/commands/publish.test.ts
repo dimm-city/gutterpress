@@ -185,7 +185,7 @@ describe("publish --list — B2: effective format resolution", () => {
   test("shows the manifest's effective gdrive format (html) instead of the provider's static default (pdf)", async () => {
     const dir = await tempProjectWithGdriveFormat("html");
     try {
-      consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
+      consoleLogSpy = spyOn(process.stdout, "write").mockImplementation(() => true);
 
       await runCommand(publishCommand, { rawArgs: [dir, "--list", "--json"] });
 
@@ -207,7 +207,7 @@ describe("publish --list — B2: effective format resolution", () => {
   test("providers with no `formats` array are unaffected by manifest resolution (byte-identical static format)", async () => {
     const dir = await tempProjectWithGdriveFormat("html");
     try {
-      consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
+      consoleLogSpy = spyOn(process.stdout, "write").mockImplementation(() => true);
 
       await runCommand(publishCommand, { rawArgs: [dir, "--list", "--json"] });
 
@@ -228,7 +228,7 @@ describe("publish --list — B2: effective format resolution", () => {
   test("with no project manifest available, gdrive still falls back to its static default (pdf)", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-publish-list-empty-"));
     try {
-      consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
+      consoleLogSpy = spyOn(process.stdout, "write").mockImplementation(() => true);
 
       await runCommand(publishCommand, { rawArgs: [dir, "--list", "--json"] });
 
