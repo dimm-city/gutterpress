@@ -11,6 +11,8 @@
    * here.
    */
   import Icon from "$lib/components/Icon.svelte";
+  import PageSizeFields from "$lib/components/PageSizeFields.svelte";
+  import { PRESET_CHOICES, pointsToInches } from "$lib/page-size-choices";
   import type { DetailsSectionController } from "$lib/routes/details-section-controller.svelte";
   import {
     PUBLISH_TARGET_CHOICES,
@@ -34,6 +36,22 @@
       missingToolsForTargets(controller.targetsDraft, controller.missingTools),
     ),
   );
+
+  // The stylesheet and the manifest drifted apart (hand-edited `@page`, or an
+  // older book): say so, since Save puts them back in step.
+  const pageDrift = $derived.by(() => {
+    const css = controller.pageSetup?.css;
+    const bounds = controller.pageSetup?.bounds;
+    if (!css || !bounds) return null;
+    if (Math.abs(css.width - bounds.width) < 0.5 && Math.abs(css.height - bounds.height) < 0.5) {
+      return null;
+    }
+    const inches = (w: number, h: number) => `${pointsToInches(w)} × ${pointsToInches(h)} in`;
+    return (
+      `Your stylesheet (${css.file}) prints at ${inches(css.width, css.height)}, but this book is ` +
+      `checked against ${inches(bounds.width, bounds.height)}. Save to make them match.`
+    );
+  });
 
   // ── Source-files drag-and-drop reorder (HTML5 DnD; the up/down buttons are
   //    the keyboard-accessible equivalent). The pure reorder model lives in
@@ -155,6 +173,48 @@
       <span class="hint">Drag rows (or use the arrows) to set the chapter order. Unchecked files are left out of the book.</span>
     {/if}
   </div>
+  <!-- Page size (#357): the wizard's "What are you designing it for?" choices
+       (shared $lib/page-size-choices), changeable after the book exists. Saved
+       with the rest of the details: the manifest's preset + bounds and the
+       stylesheet's page size are written together. -->
+  {#if controller.pageSetup}
+    <div class="field" role="radiogroup" aria-label="Page size">
+      <span class="lbl">Page size</span>
+      <ul class="target-list">
+        {#each PRESET_CHOICES as choice (choice.id)}
+          <li>
+            <label class="target-row">
+              <input
+                type="radio"
+                name="details-preset"
+                checked={controller.presetDraft === choice.id}
+                onchange={() => controller.setPreset(choice.id)}
+              />
+              <span class="target-copy">
+                <span class="target-label">{choice.label}</span>
+                <span class="target-desc">{choice.description}</span>
+              </span>
+            </label>
+          </li>
+        {/each}
+      </ul>
+      {#if controller.presetDraft === "custom"}
+        <PageSizeFields
+          idPrefix="details"
+          bind:sizeChoice={controller.sizeChoice}
+          bind:widthIn={controller.widthIn}
+          bind:heightIn={controller.heightIn}
+        />
+      {/if}
+      {#if pageDrift}
+        <p class="tool-note" role="note">{pageDrift}</p>
+      {/if}
+      <span class="hint">
+        Saving updates the size your book prints at and the size your finished
+        PDF is checked against, together.
+      </span>
+    </div>
+  {/if}
   <!-- Publish targets (ADR 0008): WHERE this book is published — each one is
        a destination's validation policy. Same choices and wording as the
        new-book wizard (shared $lib/publish-targets), so the two surfaces

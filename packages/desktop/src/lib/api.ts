@@ -256,6 +256,25 @@ export interface ProjectConfigFields {
   targets?: string[];
 }
 
+/**
+ * A book's page size as recorded (mirrors the lib's `PageSetup`): the manifest's
+ * preset + validation bounds, and what the stylesheet's plain `@page` prints at.
+ * Sizes are points (72pt = 1in).
+ */
+export interface PageSetup {
+  /** null when the manifest names a preset the app doesn't know. */
+  preset: 'dtrpg' | 'book' | 'custom' | null;
+  bounds: { width: number; height: number; tolerance: number } | null;
+  css: { width: number; height: number; file: string } | null;
+}
+
+/** What the author picks (mirrors the lib's `PageSizeChoice`). */
+export interface PageSizeChoice {
+  preset: 'dtrpg' | 'book' | 'custom';
+  /** Required for `custom`; the other presets own their size. */
+  page?: { width: number; height: number };
+}
+
 export interface DirEntry {
   name: string;
   path: string;
@@ -617,6 +636,15 @@ export const api = {
     /** Apply the author-facing manifest field updates (one yaml round-trip). */
     setFields: (projectDir: string, updates: ProjectConfigFields) =>
       post<ProjectConfigFields>('/api/manifest/set-fields', { projectDir, updates }),
+  },
+
+  pageSize: {
+    /** Read the book's page size back from its manifest and stylesheet. */
+    read: (projectDir: string) =>
+      post<PageSetup>('/api/page-size/read', { projectDir }),
+    /** Change it: manifest preset + bounds and the stylesheet's `@page` size, together. */
+    set: (projectDir: string, choice: PageSizeChoice) =>
+      post<PageSetup>('/api/page-size/set', { projectDir, choice }),
   },
 
   style: {

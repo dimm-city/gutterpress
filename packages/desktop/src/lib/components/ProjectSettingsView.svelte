@@ -126,6 +126,9 @@
     projectDir: projectDirAccessor,
     readManifest: (dir) => api.manifest.read(dir),
     writeManifest: (dir, updates) => api.manifest.setFields(dir, updates),
+    // Page size (#357): read back from the manifest + stylesheet, written to both.
+    readPageSetup: (dir) => api.pageSize.read(dir),
+    writePageSetup: (dir, choice) => api.pageSize.set(dir, choice),
     // The source-files list universe: top-level markdown files (the same set
     // the render pipeline includes when the manifest lists none).
     listMarkdownFiles: (dir) =>

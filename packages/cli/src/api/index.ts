@@ -264,6 +264,10 @@ export {
 } from "../lib/manifest-config.ts";
 export type { ProjectConfigFields } from "../lib/manifest-config.ts";
 
+// ── Page size (#357) — read/write the manifest bounds + stylesheet `@page` together ──
+export { readPageSetup, setPageSetup } from "../lib/page-size.ts";
+export type { PageSetup, PageSizeChoice, PageSizePoints } from "../lib/page-size.ts";
+
 export {
   providerFor,
   restoreVersionWithBackup,

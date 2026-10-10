@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { DetailsSectionController } from "../../src/lib/routes/details-section-controller.svelte";
-import type { ProjectConfigFields } from "../../src/lib/api";
+import type { PageSetup, PageSizeChoice, ProjectConfigFields } from "../../src/lib/api";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
 // these unit tests (same shim as design-section-controller.test.ts).
@@ -238,4 +238,143 @@ test("saveDetails writes the edited target selection", async () => {
   h.ctrl.toggleTarget("dtrpg");
   await h.ctrl.saveDetails();
   expect(h.writeCalls[0]!.updates.targets).toEqual([]);
+});
+
+// ── Page size (#357) ─────────────────────────────────────────────────────────
+
+function makePage(setup: PageSetup) {
+  const h = make();
+  const writes: PageSizeChoice[] = [];
+  let current = setup;
+  const ctrl = new DetailsSectionController({
+    projectDir: () => "/proj",
+    readManifest: () => Promise.resolve(h.fields),
+    writeManifest: (_d, updates) => Promise.resolve({ ...h.fields, ...updates }),
+    listMarkdownFiles: () => Promise.resolve(h.allFiles),
+    readPageSetup: () => Promise.resolve(current),
+    writePageSetup: (_d, choice) => {
+      writes.push(choice);
+      const page = choice.page ?? (choice.preset === "dtrpg" ? { width: 621, height: 810 } : { width: 432, height: 648 });
+      current = {
+        preset: choice.preset,
+        bounds: { ...page, tolerance: 0.5 },
+        css: { ...page, file: "styles/book.css" },
+      };
+      return Promise.resolve(current);
+    },
+  });
+  return { ctrl, writes };
+}
+
+const BOOK_SETUP: PageSetup = {
+  preset: "book",
+  bounds: { width: 432, height: 648, tolerance: 0.5 },
+  css: { width: 432, height: 648, file: "styles/book.css" },
+};
+
+test("loadDetails reads the page size back into the drafts", async () => {
+  const { ctrl } = makePage(BOOK_SETUP);
+  await ctrl.loadDetails();
+  expect(ctrl.presetDraft).toBe("book");
+  expect(ctrl.sizeChoice).toBe("trade");
+  expect(ctrl.pageDirty).toBe(false);
+
+  const odd = makePage({
+    preset: "custom",
+    bounds: { width: 360, height: 504, tolerance: 0.5 },
+    css: null,
+  });
+  await odd.ctrl.loadDetails();
+  expect(odd.ctrl.presetDraft).toBe("custom");
+  expect(odd.ctrl.sizeChoice).toBe("custom");
+  expect([odd.ctrl.widthIn, odd.ctrl.heightIn]).toEqual(["5", "7"]);
+});
+
+test("saving without touching the page size does not write it", async () => {
+  const { ctrl, writes } = makePage(BOOK_SETUP);
+  await ctrl.loadDetails();
+  await ctrl.saveDetails();
+  expect(writes).toEqual([]);
+});
+
+test("choosing another preset and saving writes the page size once", async () => {
+  const { ctrl, writes } = makePage(BOOK_SETUP);
+  await ctrl.loadDetails();
+  ctrl.setPreset("dtrpg");
+  expect(ctrl.pageDirty).toBe(true);
+  await ctrl.saveDetails();
+  expect(writes).toEqual([{ preset: "dtrpg" }]);
+  expect(ctrl.pageSetup?.preset).toBe("dtrpg");
+  expect(ctrl.pageDirty).toBe(false);
+});
+
+test("a custom size is sent in points, from a named size or typed inches", async () => {
+  const { ctrl, writes } = makePage(BOOK_SETUP);
+  await ctrl.loadDetails();
+  ctrl.setPreset("custom");
+  ctrl.sizeChoice = "a4";
+  await ctrl.saveDetails();
+  ctrl.sizeChoice = "custom";
+  ctrl.widthIn = "7.25";
+  ctrl.heightIn = "10";
+  await ctrl.saveDetails();
+  expect(writes).toEqual([
+    { preset: "custom", page: { width: 595, height: 842 } },
+    { preset: "custom", page: { width: 522, height: 720 } },
+  ]);
+});
+
+test("an incomplete custom size blocks the save and writes nothing", async () => {
+  const h = make();
+  const writes: PageSizeChoice[] = [];
+  const ctrl = new DetailsSectionController({
+    projectDir: () => "/proj",
+    readManifest: () => Promise.resolve(h.fields),
+    writeManifest: (d, u) => {
+      h.writeCalls.push({ dir: d, updates: u });
+      return Promise.resolve(h.fields);
+    },
+    listMarkdownFiles: () => Promise.resolve(h.allFiles),
+    readPageSetup: () => Promise.resolve(BOOK_SETUP),
+    writePageSetup: (_d, c) => {
+      writes.push(c);
+      return Promise.resolve(BOOK_SETUP);
+    },
+  });
+  await ctrl.loadDetails();
+  ctrl.setPreset("custom");
+  ctrl.sizeChoice = "custom";
+  ctrl.widthIn = "";
+  ctrl.heightIn = "9";
+  await ctrl.saveDetails();
+  expect(ctrl.pageIncomplete).toBe(true);
+  expect(ctrl.detailsError).toContain("width and height");
+  expect(h.writeCalls).toEqual([]);
+  expect(writes).toEqual([]);
+});
+
+test("a stylesheet that drifted from the manifest is brought back in step on save", async () => {
+  const { ctrl, writes } = makePage({
+    ...BOOK_SETUP,
+    css: { width: 612, height: 792, file: "styles/book.css" },
+  });
+  await ctrl.loadDetails();
+  expect(ctrl.pageDirty).toBe(true);
+  await ctrl.saveDetails();
+  expect(writes).toEqual([{ preset: "book" }]);
+});
+
+test("a failed page-size read leaves the control out and details still load", async () => {
+  const h = make();
+  const ctrl = new DetailsSectionController({
+    projectDir: () => "/proj",
+    readManifest: () => Promise.resolve(h.fields),
+    writeManifest: () => Promise.resolve(h.fields),
+    listMarkdownFiles: () => Promise.resolve(h.allFiles),
+    readPageSetup: () => Promise.reject(new Error("nope")),
+  });
+  await ctrl.loadDetails();
+  expect(ctrl.detailsError).toBeNull();
+  expect(ctrl.pageSetup).toBeNull();
+  expect(ctrl.titleDraft).toBe("My Book");
 });

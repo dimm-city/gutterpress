@@ -71,6 +71,8 @@ import { POST as styleSetActive } from "../../src/routes/api/style/set-active/+s
 import { POST as projectListStyles } from "../../src/routes/api/project/list-styles/+server";
 import { POST as manifestRead } from "../../src/routes/api/manifest/read/+server";
 import { POST as manifestSetFields } from "../../src/routes/api/manifest/set-fields/+server";
+import { POST as pageSizeRead } from "../../src/routes/api/page-size/read/+server";
+import { POST as pageSizeSet } from "../../src/routes/api/page-size/set/+server";
 import { POST as snipSave } from "../../src/routes/api/snip/save/+server";
 import { POST as snipDelete } from "../../src/routes/api/snip/delete/+server";
 import { POST as snipList } from "../../src/routes/api/snip/list/+server";
@@ -121,6 +123,8 @@ const ROUTES: Array<{ name: string; handler: RouteHandler; body: (dir: string) =
   { name: "project/list-styles", handler: projectListStyles as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "manifest/read", handler: manifestRead as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "manifest/set-fields", handler: manifestSetFields as RouteHandler, body: (d) => ({ projectDir: d, updates: { title: "pwned" } }) },
+  { name: "page-size/read", handler: pageSizeRead as RouteHandler, body: (d) => ({ projectDir: d }) },
+  { name: "page-size/set", handler: pageSizeSet as RouteHandler, body: (d) => ({ projectDir: d, choice: { preset: "book" } }) },
   { name: "snip/save", handler: snipSave as RouteHandler, body: (d) => ({ projectDir: d, name: "snip", body: "text" }) },
   { name: "snip/delete", handler: snipDelete as RouteHandler, body: (d) => ({ projectDir: d, fileName: "snip.md" }) },
   { name: "snip/list", handler: snipList as RouteHandler, body: (d) => ({ projectDir: d }) },
