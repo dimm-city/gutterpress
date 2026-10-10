@@ -319,18 +319,25 @@ PDF/X conversion settings, used by `gutterpress build --format pdfx`.
 - `flavor` (string) - `x1a` (default) or `x3`.
 - `icc` (string) - Path to the ICC output-intent profile. Default `profiles/CGATS21_CRPC1.icc`.
 - `stripAnnotations` (boolean) - Strip links/comments, which PDF/X-1a forbids. Default `true`.
-- `blackText` (string) - `icc` converts near-black text through the ICC profile (rich four-colour black); `k-only` prints it on the black plate alone (100% K), as DriveThruRPG requires for small text. Non-text black is unaffected. Preset defaults: `dtrpg` `k-only`, `book`/`custom` `icc`.
+- `blackText` (string) - `icc` converts near-black text through the ICC profile (rich four-colour black); `k-only` prints it on the black plate alone (100% K), as DriveThruRPG requires for small text: text at or below 24pt, and the underline or strike-through drawn with it. Text larger than 24pt stays rich black, as DriveThruRPG recommends; other black (rules, panels) is unaffected. With `k-only`, `pdf.print.black-text` fails a build whose small text is still four-colour black, and the choice is recorded in `build-fingerprint.json`. Preset defaults: `dtrpg` `k-only`, `book`/`custom` `icc`.
 
 #### `print` (object)
 Page-count rules applied when the PDF is built.
 
 - `signature` (number) - Pad the PDF with blank pages until the page count is a multiple of this; `1` means no padding. Preset defaults: `dtrpg` 4, `book` 1.
-- `reserveLastPage` (boolean) - Guarantee the final page is a blank page added by the build (no background, no page number). When the content already fills a signature exactly, a full signature of blank pages is added. DriveThruRPG reserves the last page for printer information. Preset defaults: `dtrpg` `true`, `book` `false`.
+- `reserveLastPage` (boolean) - Guarantee the final page is a blank page added by the build (no background, no page number). When the content already fills a signature exactly, a full signature of blank pages is added. DriveThruRPG reserves the last page for printer information. Preset defaults: `dtrpg` `true`, `book` `false`. Same as `lastPage: blank`.
+- `lastPage` (string) - `blank` or `short-by-one`; wins over `reserveLastPage`, and no preset sets it. `blank` ends the interior on a blank page the build adds. `short-by-one` pads to one page short of a multiple of `signature` (`k x signature - 1`, e.g. 227 for a signature of 4) and leaves the last page to the printer, DriveThruRPG's other accepted form.
+
+When `signature` is above 1, `pdf.print.signature` fails a PDF whose page count is not a multiple of it (or one short of one), and, for a book that reserves its last page, one whose last page has content. The `dtrpg` default signature of 4 is valid for every trim size DriveThruRPG accepts (it asks for multiples of 4 from 6.69 x 9.61in up, and 4 or 6 below that); set `signature: 6` explicitly if you prefer 6 on a small trim.
 
 ```yaml
 # Opt a dtrpg book out of the reserved blank page
 print:
   reserveLastPage: false
+
+# Or: stop one page short and let DriveThruRPG add the last page
+print:
+  lastPage: short-by-one
 ```
 
 #### `ink` (object)

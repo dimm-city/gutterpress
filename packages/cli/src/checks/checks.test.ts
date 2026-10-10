@@ -55,6 +55,8 @@ describe("Check Registry", () => {
     expect(pdfIds).toContain("pdf.print.embedded-fonts");
     expect(pdfIds).toContain("pdf.print.ink-coverage");
     expect(pdfIds).toContain("pdf.print.rasterized-pages");
+    expect(pdfIds).toContain("pdf.print.black-text");
+    expect(pdfIds).toContain("pdf.print.signature");
     expect(pdfIds).toContain("pdf.nav.bookmarks");
     expect(pdfIds).toContain("pdf.nav.toc-links");
     expect(pdfIds).toContain("pdf.nav.cross-refs");
@@ -195,7 +197,7 @@ describe("Check Registry", () => {
     // checks are namespaced by category (pdf/source/asset/heuristic) and never
     // start with `test.`, so excluding those makes the count deterministic.
     const all = getAllCheckIds().filter((id) => !id.startsWith("test."));
-    // 15 pdf + 9 source + 7 asset + 4 heuristic = 35
+    // 17 pdf + 10 source + 7 asset + 4 heuristic = 38
     // (source.sync.merge-markers added 0.10.1 — the converge merge's marker
     // blocks and kept-both `.online` siblings were invisible until print;
     // source.callout-validation removed with ::: container syntax, 2026-05-17;
@@ -209,8 +211,9 @@ describe("Check Registry", () => {
     // source.css-ownership added 0.10.7 (#232) — optional CSS ownership
     // contract, reports nothing without a project-supplied contract file;
     // source.links.dangling added 0.10.9 (#263) — relative links a PDF cannot
-    // open, whose href the print build drops.)
-    expect(all.length).toBe(36);
+    // open, whose href the print build drops;
+    // pdf.print.black-text and pdf.print.signature added 0.11.17 (#336).)
+    expect(all.length).toBe(38);
   });
 });
 
@@ -1635,6 +1638,8 @@ describe("PDF checks skip when no pdfPath", () => {
     "pdf.print.embedded-fonts",
     "pdf.print.ink-coverage",
     "pdf.print.rasterized-pages",
+    "pdf.print.black-text",
+    "pdf.print.signature",
     "pdf.nav.bookmarks",
     "pdf.nav.toc-links",
     "pdf.nav.cross-refs",

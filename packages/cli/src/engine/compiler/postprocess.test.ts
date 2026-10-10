@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { PDFDocument } from "pdf-lib";
 import { postprocess } from "./postprocess.ts";
 import type { PageTrim } from "./tier2.ts";
+import type { LastPageMode } from "../shared/synthesis.ts";
 
 const geometry: PageTrim = {
   trim: { width: 612, height: 792 },
@@ -26,37 +27,52 @@ async function hasContent(bytes: Uint8Array, index: number): Promise<boolean> {
   return doc.getPage(index).node.Contents() !== undefined;
 }
 
-async function run(pages: number, extra: { signature?: number; reserveLastPage?: boolean }) {
+async function run(pages: number, extra: { signature?: number; lastPage?: LastPageMode }) {
   const r = await postprocess(await contentPdf(pages), { geometry, ...extra });
   return r;
 }
 
-test("reserveLastPage: content already a signature multiple gets a full signature of blanks", async () => {
-  const r = await run(228, { signature: 4, reserveLastPage: true });
+test("lastPage blank: content already a signature multiple gets a full signature of blanks", async () => {
+  const r = await run(228, { signature: 4, lastPage: "blank" });
   expect(r.pageCount).toBe(232);
   expect(r.padded).toBe(4);
   expect(await hasContent(r.bytes, 227)).toBe(true);
   for (let i = 228; i < 232; i++) expect(await hasContent(r.bytes, i)).toBe(false);
 });
 
-test("reserveLastPage: normal padding already ends on a blank page", async () => {
-  const r = await run(229, { signature: 4, reserveLastPage: true });
+test("lastPage blank: normal padding already ends on a blank page", async () => {
+  const r = await run(229, { signature: 4, lastPage: "blank" });
   expect(r.pageCount).toBe(232);
   expect(r.padded).toBe(3);
   expect(await hasContent(r.bytes, 228)).toBe(true);
   expect(await hasContent(r.bytes, 231)).toBe(false);
 });
 
-test("no reserveLastPage: an already-aligned book is unchanged", async () => {
+test("no lastPage: an already-aligned book is unchanged", async () => {
   const r = await run(228, { signature: 4 });
   expect(r.pageCount).toBe(228);
   expect(r.padded).toBe(0);
   expect(await hasContent(r.bytes, 227)).toBe(true);
 });
 
-test("reserveLastPage with signature 1 appends exactly one blank page", async () => {
-  const r = await run(10, { signature: 1, reserveLastPage: true });
+test("lastPage blank with signature 1 appends exactly one blank page", async () => {
+  const r = await run(10, { signature: 1, lastPage: "blank" });
   expect(r.pageCount).toBe(11);
   expect(await hasContent(r.bytes, 9)).toBe(true);
   expect(await hasContent(r.bytes, 10)).toBe(false);
+});
+
+test("lastPage short-by-one: stops one page short of a multiple, so the printer adds the last page", async () => {
+  const r = await run(228, { signature: 4, lastPage: "short-by-one" });
+  expect(r.pageCount).toBe(231);
+  expect(r.padded).toBe(3);
+  expect(await hasContent(r.bytes, 227)).toBe(true);
+  expect(await hasContent(r.bytes, 230)).toBe(false);
+});
+
+test("lastPage short-by-one: a book already k × signature − 1 long is unchanged", async () => {
+  const r = await run(231, { signature: 4, lastPage: "short-by-one" });
+  expect(r.pageCount).toBe(231);
+  expect(r.padded).toBe(0);
+  expect(await hasContent(r.bytes, 230)).toBe(true);
 });

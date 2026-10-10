@@ -39,7 +39,8 @@ policy: what its platform demands of the finished PDF. Targets never change
 how the book renders — only what the validator checks.
 
 - `dtrpg` — DriveThruRPG print-on-demand: PDF/X markers and metadata,
-  CMYK/Grayscale art, the 240% ink limit, embedded fonts.
+  CMYK/Grayscale art, the 240% ink limit, embedded fonts, black text on the
+  black plate alone (24pt and under), and a page count that fits the signature.
 - `itch` — itch.io digital release: a well-formed PDF with embedded fonts;
   print-only rules (PDF/X, ink limits, CMYK-only art) don't apply.
 
@@ -370,7 +371,10 @@ Caused by excess `@page` markers. Audit your source files for unnecessary page b
 Blank pages at the very end of a `dtrpg` book are expected: the build pads the
 book to a multiple of 4 pages and keeps the last page empty for DriveThruRPG's
 printer information. To turn that off, set `print.reserveLastPage: false` in
-`manifest.yaml`.
+`manifest.yaml`. DriveThruRPG also accepts a book that is one page *short* of a
+multiple of 4 and adds the last page itself; set `print.lastPage: short-by-one`
+for that form (`print.lastPage: blank` is the default behaviour spelled out).
+The preview shows the same pages the PDF gets.
 
 ### Page break issues
 

@@ -17,6 +17,7 @@ import {
 } from "./ghostscript";
 import { writeBuildFingerprint, type BuildFingerprintInput } from "./build-fingerprint";
 import { blackTextToGray } from "./black-text-gray";
+import { lastPageMode } from "../engine/shared/synthesis.ts";
 import { getAssetPath } from "./embedded-assets";
 import { executeAndReport } from "./validation-exec";
 import { log } from "../utils/logger";
@@ -742,6 +743,7 @@ class HtmlOutput implements OutputStrategy {
           resolvedFlavor: config.pdfx.flavor,
           iccPath: null,
           stripAnnotations: null,
+          blackText: null,
         },
       },
       `Wrote: ${path.join(outDir, BOOK_HTML)}`,
@@ -800,7 +802,7 @@ class PdfOutput implements OutputStrategy {
           title: config.title,
           author: config.authors.length > 0 ? config.authors.join(", ") : undefined,
           signature: config.print.signature,
-          reserveLastPage: config.print.reserveLastPage,
+          lastPage: lastPageMode(config.print),
           allowShrink: opts.allowShrink,
         },
         browser
@@ -903,6 +905,7 @@ class PdfOutput implements OutputStrategy {
             resolvedFlavor: config.pdfx.flavor,
             iccPath: effectiveIccPath,
             stripAnnotations: shouldStripAnnotations,
+            blackText: pdfxMode ? config.pdfx.blackText : null,
           },
         },
         `Wrote: ${reportedPdf}`,

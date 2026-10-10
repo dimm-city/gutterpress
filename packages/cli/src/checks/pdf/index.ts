@@ -6,6 +6,8 @@ import "./color-spaces";
 import "./embedded-fonts";
 import "./ink-coverage";
 import "./rasterized-pages";
+import "./black-text";
+import "./signature";
 import "./bookmarks";
 import "./toc-links";
 import "./cross-refs";

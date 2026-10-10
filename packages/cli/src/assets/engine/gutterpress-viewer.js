@@ -947,10 +947,12 @@
       return wrong;
     });
   }
-  function signaturePadding(pageCount, signature = 1, reserveLastPage = false) {
+  function signaturePadding(pageCount, signature = 1, lastPage) {
     const size = signature > 1 ? signature : 1;
+    if (lastPage === "short-by-one")
+      return (size - (pageCount + 1) % size) % size;
     const padded = (size - pageCount % size) % size;
-    return padded === 0 && reserveLastPage ? size : padded;
+    return padded === 0 && lastPage === "blank" ? size : padded;
   }
   var WHICH_VALUES = new Set(["first", "start", "last", "first-except"]);
   function parseWhich(raw) {
@@ -1678,7 +1680,7 @@
     for (const spacer of Array.from(document.querySelectorAll(".gp-pad-spacer")))
       spacer.remove();
     const data = document.documentElement.dataset;
-    const count = signaturePadding(contentPages, Number(data.gpSignature) || 1, data.gpReserveLastPage !== undefined);
+    const count = signaturePadding(contentPages, Number(data.gpSignature) || 1, data.gpLastPage);
     const last = strips[strips.length - 1];
     if (!last || count === 0)
       return contentPages;

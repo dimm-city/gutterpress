@@ -19,6 +19,7 @@ import { GUTTERPRESS_CSS } from "./gutterpress-css.ts";
 import { canonicalChapterId } from "./chapter-id";
 import { createMarkdownRenderer, type LoadedPlugin } from "./renderer";
 import { collectHtmlImageRefs, type ImageRefEnv } from "./images";
+import { lastPageMode, type PrintPadding } from "../../engine/shared/synthesis.ts";
 
 /** Reader injected by the host: resolve a project-root-relative file → its text. */
 export type ReadText = (relPath: string) => Promise<string>;
@@ -142,11 +143,11 @@ export interface AssembleBookHtmlOptions {
   title?: string;
   /**
    * The manifest's `print` padding, written on `<html>` as
-   * `data-gp-signature` / `data-gp-reserve-last-page` so the viewer shows the
+   * `data-gp-signature` / `data-gp-last-page` so the viewer shows the
    * blank pages the PDF build appends (`signaturePadding` in
    * engine/shared/synthesis.ts) and the two page counts agree.
    */
-  print?: { signature?: number; reserveLastPage?: boolean };
+  print?: PrintPadding;
   plugins?: LoadedPlugin[];
   pluginCss?: string;
   /** Add a layout-neutral source-file id to source-mapped preview blocks. */
@@ -265,9 +266,10 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
     .map((href) => `\n  <link rel="preload" as="image" href="${href}">`)
     .join("");
 
+  const lastPage = opts.print && lastPageMode(opts.print);
   const printAttrs =
     (opts.print?.signature && opts.print.signature > 1 ? ` data-gp-signature="${opts.print.signature}"` : "") +
-    (opts.print?.reserveLastPage ? " data-gp-reserve-last-page" : "");
+    (lastPage ? ` data-gp-last-page="${lastPage}"` : "");
 
   return `<!DOCTYPE html>
 <html lang="en"${printAttrs}>

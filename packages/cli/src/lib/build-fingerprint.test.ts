@@ -59,6 +59,28 @@ test("writeBuildFingerprint records the real lib version via the shared PACKAGE_
   }
 });
 
+test("writeBuildFingerprint records pdfx.blackText (provenance), null when no PDF/X pass ran", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "gutterpress-fingerprint-"));
+  try {
+    const base = { requestedFlavor: null, resolvedFlavor: "x1a", iccPath: null, stripAnnotations: null } as const;
+    const read = async (blackText?: "icc" | "k-only" | null) =>
+      (
+        JSON.parse(
+          await readFile(
+            await writeBuildFingerprint({ command: "build", outputDir: dir, args: {}, pdfx: { ...base, blackText } }),
+            "utf8",
+          ),
+        ) as { keyConfig: { pdfx: { blackText: unknown } } }
+      ).keyConfig.pdfx.blackText;
+    expect(await read("k-only")).toBe("k-only");
+    expect(await read("icc")).toBe("icc");
+    expect(await read(null)).toBeNull();
+    expect(await read()).toBeNull();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("writeBuildFingerprint degrades to sourceRevision: null for a non-git directory (no system git spawn involved)", async () => {
   // getGitRevision tries [sourceDir, process.cwd()] as candidates, so a
   // naive in-process call here would find THIS repo via the process.cwd()

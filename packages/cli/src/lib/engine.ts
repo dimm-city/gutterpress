@@ -17,6 +17,7 @@
 import { writeFile } from "node:fs/promises";
 import { build, type BuildDiagnostic } from "../engine/compiler/build.ts";
 import type { Browser as EngineBrowser } from "../engine/shared/cdp.ts";
+import type { LastPageMode } from "../engine/shared/synthesis.ts";
 import { BuildError } from "./build-error.ts";
 
 export type { EngineBrowser };
@@ -26,7 +27,7 @@ export interface NativePdfOptions {
   title?: string;
   author?: string;
   signature?: number;
-  reserveLastPage?: boolean;
+  lastPage?: LastPageMode;
   /**
    * Downgrade the engine's over-wide-content hard error to a warning +
    * diagnostic. The engine's message tells the author to "pass allowShrink to

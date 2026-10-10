@@ -521,6 +521,35 @@ function getImagePixelSize(
   });
 }
 
+// Operators that put ink (or a pixel) on the page. Clips, paths that end in
+// `n`, state changes and colour setters do not.
+const PAINT_OPS = new Set<number>(
+  [
+    "stroke", "closeStroke", "fill", "eoFill", "fillStroke", "eoFillStroke",
+    "closeFillStroke", "closeEOFillStroke", "shadingFill",
+    "paintImageXObject", "paintInlineImageXObject", "paintImageXObjectRepeat",
+    "paintImageMaskXObject", "paintImageMaskXObjectGroup", "paintImageMaskXObjectRepeat",
+    "paintSolidColorImageMask", "showText", "showSpacedText", "nextLineShowText",
+    "nextLineSetSpacingShowText",
+  ]
+    .map((name) => OPS[name])
+    .filter((op): op is number => op !== undefined)
+);
+
+/**
+ * Does page `pageNum` (1-based) paint anything at all? False for a page with
+ * no content and for one whose operators only set state or clip. A path op
+ * carries its painting operator as its first argument (`constructPath`).
+ */
+export async function pageHasMarks(doc: PDFDocumentProxy, pageNum: number): Promise<boolean> {
+  const ops = await (await doc.getPage(pageNum)).getOperatorList();
+  return ops.fnArray.some((fn, i) =>
+    fn === OPS.constructPath
+      ? PAINT_OPS.has((ops.argsArray[i] as unknown[])[0] as number)
+      : PAINT_OPS.has(fn)
+  );
+}
+
 /**
  * Per-image effective DPI = pixel dimension ÷ placed size in inches. Decodes
  * each image (best-effort). Used only by the opt-in image-resolution check.

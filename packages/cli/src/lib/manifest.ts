@@ -391,6 +391,13 @@ function resolveWithPreset(
   if (legacyPlugins !== undefined) {
     throw new UsageError(pluginsRemovedMessage(legacyPlugins));
   }
+  // A mistyped `lastPage` would otherwise silently stop reserving the page.
+  const lastPage = c.print?.lastPage ?? m.print?.lastPage;
+  if (lastPage !== undefined && lastPage !== "blank" && lastPage !== "short-by-one") {
+    throw new UsageError(
+      `Manifest field \`print.lastPage\` must be "blank" or "short-by-one", got ${JSON.stringify(lastPage)}.`
+    );
+  }
   // Extensions, in manifest order — which IS the load order and the cascade
   // order; nothing re-sorts them. An entry with `enabled: false` (#30) stays
   // in the manifest but is skipped here so it is never loaded.
@@ -418,6 +425,8 @@ function resolveWithPreset(
     // `book` defaults to signature: 1 = no padding (postprocess only pads
     // when > 1). `dtrpg` defaults to signature 4 + reserveLastPage so the
     // interior ends on a blank page, which DriveThruRPG reserves for printer info.
+    // `print.lastPage` (blank | short-by-one) is absent from both presets: it
+    // only exists when an author writes it, and then wins over reserveLastPage.
     print: mergeShape(c.print, m.print, preset.print),
     page: preset.page ? mergeShape(c.page, m.page, preset.page) : resolveCustomPage(c, m),
     ink: mergeShape(c.ink, m.ink, preset.ink),
