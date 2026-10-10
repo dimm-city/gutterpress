@@ -9,6 +9,15 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **The snippet picker is a searchable card grid.** Snippets now show as cards
+  in a 3-column grid (2 or 1 when the window is narrower) under a heading per
+  level — your book, each extension, core — instead of one long list. A card
+  shows the snippet's name, its level, the `@component` it is the example for,
+  its field count and the first lines of its content. A search box (focused on
+  open) filters by name and content as you type, level chips and "Components
+  only" narrow further, and Enter inserts the first match. Arrow keys move
+  between cards. Choosing a card inserts it exactly as before, including the
+  fill-in step for `{{fields}}`.
 - **Components show authors the structure they expect** (#338). When an
   author picks a plugin component — typing `@` at the start of a line, or
   from the snippet picker — the editor inserts the component's example
