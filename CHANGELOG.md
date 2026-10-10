@@ -7,8 +7,64 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [0.11.17] - 2026-10-10
 
+### Added
+
+- **Change a book's page size in Book settings** (#357). Under **Details →
+  Page size**, pick DriveThruRPG print, Trade book or a custom size (US
+  Letter, Trade paperback, Digest, A4, A5, or your own width and height).
+  **Save details** updates the size your book prints at and the size the
+  finished PDF is checked against, together. The setting shows the size your
+  book currently uses, and says so if the two have drifted apart. Before,
+  the size could only be picked when the book was created.
+- **Set up online backup for a book you started on this computer** (#358).
+  From **Set up online backup…** (or Book settings → **Connections**), with
+  GitHub connected, create a new private repository named after your book or
+  choose an empty one you already made. Gutterpress copies all of the book's
+  earlier versions there and keeps it backed up like a book opened from
+  GitHub. If something goes wrong (no internet, a name already in use, a
+  repository that already has files) you get a plain explanation, and your
+  book is left as it was.
+- **Silence a lint warning you have decided is fine** (#339). Set
+  `lint.rules` in `manifest.yaml` (for example
+  `printsafe/no-risky-print-effects: off`, or `warn` / `error` to change a
+  rule's severity), or silence one spot with a
+  `gutterpress-disable-next-line <rule-id> -- reason` comment on the line
+  above it, as a CSS comment or a markdown `<!-- -->` comment. This works for
+  the CSS print-safety rules and the heading-level check
+  (`source.accessibility.heading-order`). The desktop CSS editor's inline
+  marks honour the comments; the Problems panel and publish checks honour
+  both.
+- **Plugin markers with no body** (#344). A plugin-declared marker can set
+  `selfClosing: true` for a component that is a single element, such as a
+  divider: `@tape label="…"` is the whole component, needs no `@end-tape`,
+  and nothing after it is nested inside. Typing `@end-tape` is reported as a
+  problem, and editor autocomplete inserts just the marker.
+- **`print.lastPage: short-by-one`** (#336). Pads the book to one page short
+  of a multiple of the signature, DriveThruRPG's other accepted form, instead
+  of adding a blank last page (`blank`, which `reserveLastPage: true` still
+  means). The preview shows the same pages as the PDF.
+- **Preflight checks the page count against the signature** (#336). The new
+  `pdf.print.signature` check fails a print PDF whose page count doesn't fit
+  its signature, or whose reserved last page has something on it.
+
+### Changed
+
+- **Only small black text goes on the black plate alone** (#336).
+  DriveThruRPG builds now make black text at or below 24pt K-only, as before,
+  but leave larger text in rich black, as DriveThruRPG recommends. Underlines
+  and strike-throughs on small black text now print K-only along with the
+  text. `build-fingerprint.json` records the `pdfx.blackText` setting.
+- **`clip-path` with a basic shape is no longer a print-safety warning**
+  (#339). `polygon()`, `inset()`, `circle()`, `ellipse()` and `path()` print
+  as vector clips. `clip-path: url(...)` and the properties that really
+  rasterize (`filter`, `backdrop-filter`, blend modes) are still flagged.
+
 ### Fixed
 
+- **The in-app Help no longer points to the hidden Books tab** (#359). It now
+  says to use the folder button at the left of the status bar to get back to
+  your books and to Open from GitHub, and that the save status reads *Edits
+  saved*.
 - **At Fit to width, the preview no longer slides sideways** (#353). A
   sideways trackpad swipe, turning a page or jumping to a page could push the
   book to the left with part of the page cut off, and since no scrollbar was
