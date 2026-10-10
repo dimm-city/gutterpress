@@ -23,60 +23,23 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import ignore from "ignore";
+
 /** What a `.gitignore` says about one entry: covered, re-included by the author, or silent. */
 type IgnoreStatus = "ignored" | "negated" | "open";
 
-interface Rule {
-  negate: boolean;
-  dirOnly: boolean;
-  re: RegExp;
-}
-
-/** One `.gitignore` line as a rule, or null for blanks and comments. The common spellings: `*`, `**`, `?`, `/`-anchoring, trailing `/`, leading `!`. */
-function parseRule(line: string): Rule | null {
-  let pattern = line.trim();
-  if (!pattern || pattern.startsWith("#")) return null;
-  const negate = pattern.startsWith("!");
-  if (negate) pattern = pattern.slice(1);
-  const dirOnly = pattern.endsWith("/");
-  if (dirOnly) pattern = pattern.slice(0, -1);
-  const anchored = pattern.includes("/");
-  if (pattern.startsWith("/")) pattern = pattern.slice(1);
-  const body = pattern
-    .split(/(\*\*\/|\/\*\*|\*|\?)/)
-    .map((part) =>
-      part === "**/" ? "(?:.*/)?"
-        : part === "/**" ? "/.*"
-          : part === "*" ? "[^/]*"
-            : part === "?" ? "[^/]"
-              : part.replace(/[.+^${}()|[\]\\]/g, "\\$&"),
-    )
-    .join("");
-  return { negate, dirOnly, re: new RegExp(`^${anchored ? "" : "(?:.*/)?"}${body}$`) };
-}
-
 /**
- * Would these `.gitignore` lines ignore `<entry>/…`? Walks the entry's
- * ancestors like git does (a directory that is ignored cannot be re-included
- * from inside); within one path the last matching rule wins.
+ * Would these `.gitignore` lines ignore a file inside `<entry>`? The matching
+ * is the `ignore` package's — gitignore's own rules, incl. `[abc]` classes and
+ * the "an ignored directory cannot be re-included from inside" rule — the
+ * same matcher isomorphic-git uses for the desktop's snapshots.
  */
-function ignoreStatus(lines: string[], entry: string): IgnoreStatus {
-  const rules = lines.map(parseRule).filter((r): r is Rule => r !== null);
-  const parts = entry.replace(/\/$/, "").split("/");
-  let negated = false;
-  // The ancestors of the entry, the entry itself (a directory), then a file inside it.
-  const probes = [...parts.map((_, i) => ({ p: parts.slice(0, i + 1).join("/"), dir: true })), { p: `${parts.join("/")}/probe`, dir: false }];
-  for (const { p, dir } of probes) {
-    let verdict: boolean | null = null;
-    for (const rule of rules) {
-      if (rule.dirOnly && !dir) continue;
-      if (!rule.re.test(p)) continue;
-      verdict = !rule.negate;
-      if (rule.negate) negated = true;
-    }
-    if (verdict) return "ignored";
-  }
-  return negated ? "negated" : "open";
+function ignoreStatus(gitignore: string, entry: string): IgnoreStatus {
+  const matcher = ignore().add(gitignore);
+  const dir = matcher.test(entry);
+  const file = matcher.test(`${entry}probe`);
+  if (file.ignored) return "ignored";
+  return dir.unignored || file.unignored ? "negated" : "open";
 }
 
 /** Entries every book ignores, in the order they are appended. */
@@ -96,11 +59,10 @@ export async function ensureProjectGitignore(projectDir: string): Promise<{ nega
     // No .gitignore yet.
   }
 
-  const lines = (existing ?? "").split(/\r?\n/);
   const missing: string[] = [];
   const negated: string[] = [];
   for (const entry of PROJECT_GITIGNORE_ENTRIES) {
-    const status = ignoreStatus(lines, entry);
+    const status = ignoreStatus(existing ?? "", entry);
     if (status === "open") missing.push(entry);
     else if (status === "negated") negated.push(entry);
   }

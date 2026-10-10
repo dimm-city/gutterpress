@@ -50,6 +50,8 @@ describe("ensureProjectGitignore", () => {
     "dist/\nplugins/*\n",
     "dist/\n**/plugins/npm/\n",
     "dist/\nplugins/npm/**\n",
+    "dist/\nplugins/[np]pm/\n",
+    "dist/\nplugins/n?m/\n",
   ])("leaves a file that already covers both entries alone: %j", async (content) => {
     const dir = await tmp();
     await writeFile(path.join(dir, ".gitignore"), content, "utf8");
@@ -74,6 +76,13 @@ describe("ensureProjectGitignore", () => {
     await writeFile(path.join(dir, ".gitignore"), content, "utf8");
     expect(await ensureProjectGitignore(dir)).toEqual({ negated: [] });
     expect(await read(dir)).toBe(content);
+  });
+
+  test("a character class that does not cover the entry does not count", async () => {
+    const dir = await tmp();
+    await writeFile(path.join(dir, ".gitignore"), "dist/\nplugins/[xy]pm/\n", "utf8");
+    await ensureProjectGitignore(dir);
+    expect(await read(dir)).toBe("dist/\nplugins/[xy]pm/\nplugins/npm/\n");
   });
 
   test("an unrelated negation does not count", async () => {
