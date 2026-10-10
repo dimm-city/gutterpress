@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.17] - 2026-10-10
+
 ### Fixed
 
 - **The preview shows the blank pages the PDF adds at the end** (#355). With a
