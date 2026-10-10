@@ -358,12 +358,30 @@ incomplete, installs EXACTLY that version through the same verified path as
 writing the manifest. It never changes a pin or picks another version, ignores
 unpinned/local/bundled/disabled entries, does nothing (no network) when every
 copy is present, and runs one-at-a-time per book (concurrent callers share one
-run). Callers run it BEFORE loading plugins: `gutterpress build`, `validate`
-and `preview` (`restoreForCommand`; build/validate/one-shot PDF preview fail
-fast with the extension, the reason and how to retry, live preview warns and
-carries on), and the desktop's `PreviewOpenController` when a book is opened
-(host-side; the result's `restoredExtensions` becomes a toast, and the Features
-tab's "Needs install" row + Install button stay the fallback). An exact pinned
+run, and the install re-checks under the book's mutation lock so a second
+caller never swaps a tree a first has just put in place). It runs BEFORE
+plugins load, **from the shared seams rather than from each command**
+(`restoreForCommand`): `loadBuildPlugins` (build-runner.ts — every build and
+export, so `build`, one-shot PDF `preview` and the desktop's PDF export) and
+`executeValidation` (validation-exec.ts — `validate`, `preflight`, the
+desktop's Problems and publish-preflight routes; skipped when the caller
+passes `pluginStylePaths`, i.e. a build's own gate that already restored).
+Both fail fast with the extension, the reason and how to retry — a new
+command that builds or checks gets this for free. Only the live HTML preview
+degrades (`preview`'s command and the desktop's `PreviewOpenController` when a
+book is opened — host-side; the result's `restoredExtensions` becomes a toast,
+and the Features tab's "Needs install" row + Install button stay the
+fallback). `publish` loads no plugins and does not restore.
+
+**One pruning rule:** once a package's pinned version is installed — by `ext
+add`/`update` or a restore — every other `plugins/npm/<name>/<version>/`
+folder of THAT package is deleted (`pruneStaleVersions`), except a version an
+enabled manifest entry still pins; other packages, `.install-*` staging and
+non-version folders are never touched. A failed install removes the folders it
+created (`plugins/`, `plugins/npm/`, `plugins/npm/<name>/`) while still empty,
+and nothing else. `project-gitignore.ts` decides "is `plugins/npm/` covered or
+re-included?" with the `ignore` package (gitignore's own matcher, the one
+isomorphic-git uses), not a hand-rolled one. An exact pinned
 version restored on open shows no trust prompt — the author chose it when they
 pinned it; installs the author starts (Search, version switch, install by
 name) keep the prompt.

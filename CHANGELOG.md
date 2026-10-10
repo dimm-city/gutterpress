@@ -122,16 +122,19 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 - **A fresh clone of a book downloads its extensions by itself.** Downloaded
   extensions are no longer part of a book's history, so a clone has the pins in
-  `manifest.yaml` but not the files. `gutterpress build`, `validate` and
-  `preview` now download any missing pinned version first and print one line
-  per package (`Downloaded gp-dimm-city@1.2.0-alpha.3 (pinned in
-  manifest.yaml)`). It is the exact version the manifest pins — never a newer
+  `manifest.yaml` but not the files. `gutterpress build`, `validate`,
+  `preflight` and `preview` now download any missing pinned version first and
+  print one line per package to stderr (`Downloaded gp-dimm-city@1.2.0-alpha.3
+  (pinned in manifest.yaml)`). The desktop's PDF export and Problems panel do
+  the same before they use your extensions, so no export or check runs without
+  them: a failed download stops an export with the extension and the reason,
+  and Problems lists it as an error. It is the exact version the manifest pins — never a newer
   one — fetched through the same verified install as `ext add` (registry
   lookup, integrity check, load test), and it touches nothing else: no
   network when every copy is present, and local, unpinned and bundled entries
   are left alone. If the download fails (offline, registry error, integrity
-  mismatch), `build` and `validate` stop and say which extension failed, why
-  and how to retry; `preview` warns and carries on, as before. The plugin
+  mismatch), they stop and say which extension failed, why and how to retry
+  (exit code 3); live `preview` warns and carries on, as before. The plugin
   loader itself is still offline. The desktop app does the same when you open
   a book, before its preview loads: a short notice says what it downloaded, no
   extra confirmation is asked for a version you already pinned, and if the
@@ -141,6 +144,30 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A failed extension install no longer leaves empty folders behind.** An
+  install that failed (offline, a bad hash, a package that would not load) used
+  to remove its download but leave an empty `plugins/npm/<name>/` folder, or
+  `plugins/npm/` itself, in the book. It now removes exactly the folders it
+  created, and removing an extension removes its package folder once its last
+  version is gone.
+- **Downloaded versions are pruned the same way everywhere.** `ext add` and
+  `ext update` removed a package's old versions, but restoring a pin after a
+  pull or branch switch left the previous version in `plugins/npm/`. Now once a
+  package's pinned version is installed by either route, its other downloaded
+  versions are deleted, unless another enabled manifest entry still pins one.
+  Other packages are never touched.
+- **A `.gitignore` rule with a character class is recognised.** A book whose
+  `.gitignore` said `plugins/[np]pm/` had `plugins/npm/` appended again,
+  because the check understood only `*`, `**` and `?`. It now uses the same
+  gitignore matcher as version history.
+- **An unpinned extension says to pin it.** A manifest entry such as
+  `some-plugin` or `some-plugin@^1` used to fail a build with "not found";
+  it now says the entry is not pinned to an exact version and that
+  `gutterpress ext add` downloads and pins it.
+- **Two restores of one book cannot swap a copy out from under each other.**
+  A restore re-checks, once it is the one holding the book's install lock, that
+  the copy is still missing, and Windows path spellings that differ only in
+  case share one restore.
 - **The editor fills its pane again.** A leftover style from the old toolbar
   centred both panes' contents, so the editor shrank to its longest line and
   sat in the middle of the pane with an empty strip to its left. It now starts
