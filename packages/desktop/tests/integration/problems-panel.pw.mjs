@@ -455,25 +455,26 @@ await screenshot(join(tmpdir(), "problems-panel-narrow.png"));
 await evalJs(`document.querySelector('#mobile-tab-markdown')?.click(); true`);
 await sleep(600);
 
-// ── 9. #316: the editor toolbar keeps the save state's words at 700px ────────
-// "Edits saved" must not collapse to a bare icon at this width; the Problems
-// control is a compact badge (icon + count, no text label) with an accessible
-// name that carries the breakdown. Both sit on the editor toolbar now.
+// ── 9. #316: the save state keeps its words at 700px ─────────────────────────
+// "Edits saved" (in the status bar since 0.11.16) must not collapse to a bare
+// icon at this width; the Problems control on the editor toolbar is a compact
+// badge (icon + count, no text label) with an accessible name that carries the
+// breakdown.
 const bar = await evalJs(`(() => {
   const shown = (sel) => {
     const el = document.querySelector(sel);
     return !!el && el.getClientRects().length > 0 && getComputedStyle(el).display !== 'none';
   };
   return {
-    saveText: document.querySelector('.editor-toolbar .save-text')?.textContent?.trim() ?? null,
-    saveTextShown: shown('.editor-toolbar .save-text'),
+    saveText: document.querySelector('.status-bar .save-text')?.textContent?.trim() ?? null,
+    saveTextShown: shown('.status-bar .save-text'),
     stripShown: shown('.toggle-strip'),
     stripCountShown: shown('.toggle-strip .error-count, .toggle-strip .warning-count'),
     stripHasText: /problems/i.test(document.querySelector('.toggle-strip')?.textContent ?? ''),
     stripLabel: document.querySelector('.toggle-strip')?.getAttribute('aria-label') ?? null,
   };
 })()`);
-console.log(`[problems-panel] 700px editor toolbar: ${JSON.stringify(bar)}`);
+console.log(`[problems-panel] 700px save state + Problems badge: ${JSON.stringify(bar)}`);
 if (!bar.saveTextShown || !bar.saveText) fail(`save-state text is not visible at 700px: ${JSON.stringify(bar)}`);
 if (!bar.stripShown || !bar.stripCountShown) fail(`Problems badge (icon + count) is not visible at 700px: ${JSON.stringify(bar)}`);
 if (bar.stripHasText) fail(`Problems badge should carry no visible text label: ${JSON.stringify(bar)}`);
