@@ -48,6 +48,13 @@ This project follows [Semantic Versioning](https://semver.org/).
   share a name; before, a book snippet hid an extension's snippet of the same
   name. Where a component needs one snippet, the book's
   `snippets/<marker>.md` wins over the extension's.
+- **Help and book switcher move to the left of the status bar; paging is
+  centered in the preview toolbar.** The help button now sits at the very left
+  of the bottom bar with the book switcher right after it (settings stays at
+  the right). The page controls (first, previous, page picker, next, last) are
+  centered in the preview toolbar with the zoom menu on the right; in a narrow
+  preview pane the zoom label and then the first/last buttons drop out, and
+  below that the paging falls back to the left so nothing overlaps.
 
 ### Fixed
 
