@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.17] - 2026-10-10
+
 ### Fixed
 
 - **At Fit to width, the preview no longer slides sideways** (#353). A
@@ -13,11 +15,6 @@ This project follows [Semantic Versioning](https://semver.org/).
   shown there was no way to move it back. Most noticeable with the editor open
   beside the preview and in two-page view. At Fit to width the page now stays
   put; at other zoom levels the preview scrolls sideways as before.
-
-## [0.11.17] - 2026-10-10
-
-### Fixed
-
 - **The preview shows the blank pages the PDF adds at the end** (#355). With a
   print signature (`print.signature`, e.g. the `dtrpg` preset's 4) or a
   reserved last page, the PDF build pads the book with blank pages, but the
