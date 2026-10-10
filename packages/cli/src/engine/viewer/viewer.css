@@ -14,7 +14,11 @@
   background: var(--gp-stage-bg);
   margin: 0;
   padding: 32px;
-  overflow: auto;
+  /* No `overflow` of its own. The page scrolls through the viewport, which
+     scrolls on its own. An `overflow: auto` here only ever reached the
+     viewport by propagation; once a host clips `<html>` (fit-to-width), it
+     stopped propagating and made the body a sideways scroller whose
+     scrollbars sit off-screen (#353). */
   /* Standalone pages use `--gutterpress-fit-zoom`; embedded previews use the
      host-owned `--gutterpress-zoom`. fitZoom() guarantees only one is active. */
   --gp-zoom: calc(var(--gutterpress-zoom, 1) * var(--gutterpress-fit-zoom, 1));

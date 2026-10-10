@@ -14,6 +14,8 @@
  *     turns two (#301). Wheel events over the cross-origin book never reach
  *     the host page, so only a REAL wheel over the frame proves the flip is
  *     wired where the events arrive.
+ *  3. At fit to width nothing scrolls sideways (#353): page turns and a
+ *     sideways swipe leave the current page wholly in view.
  *
  * Runs against the 74-page user guide (examples/gutterpress-user-guide) — the
  * book #318 was reported on: tables, images, spreads.
@@ -134,6 +136,39 @@ try {
     }
   });
 
+  await check("at fit to width the book cannot move sideways, in Edit and Read (#353)", async () => {
+    // At fit the stage used to be its own sideways scroller with off-screen
+    // scrollbars: page turns (scrollIntoView) and a sideways swipe shifted the
+    // page left with no way back. Turn pages and swipe, then the book must
+    // still sit at scrollLeft 0 with the current sheet wholly in view.
+    const frame = await page.locator('iframe[title="Gutterpress preview"]').boundingBox();
+    for (const mode of ["Edit", "Read"]) {
+      await setWorkspaceMode(page, mode);
+      await zoomTo("Fit to width");
+      await book.locator("body").evaluate(async () => {
+        const api = window.previewAPI;
+        api.goToPage(Math.max(1, api.getTotalPages() - 3));
+        api.nextPage();
+        await new Promise((r) => setTimeout(r, 300));
+      });
+      await page.mouse.move(frame.x + frame.width / 2, frame.y + frame.height / 2);
+      await page.mouse.wheel(240, 0);
+      await page.waitForTimeout(400);
+      const got = await book.locator("body").evaluate(() => {
+        const d = document.documentElement;
+        const sheet = document.querySelector(`.gp-sheet[data-page="${window.previewAPI.getCurrentPage()}"]`);
+        const r = sheet.getBoundingClientRect();
+        return {
+          scrollX: window.scrollX, bodyScrollLeft: document.body.scrollLeft,
+          range: d.scrollWidth - d.clientWidth, left: r.left, right: r.right, width: d.clientWidth,
+        };
+      });
+      if (got.scrollX !== 0 || got.bodyScrollLeft !== 0 || got.range > 1 || got.left < -1 || got.right > got.width + 1) {
+        throw new Error(`${mode}: ${JSON.stringify(got)}`);
+      }
+    }
+  });
+
   await check("a wheel flick over the preview turns one spread; one gesture never turns two (#301)", async () => {
     await setWorkspaceMode(page, "Read");
     await zoomTo("50%"); // the whole spread fits, so a flick turns rather than reads down a tall page
@@ -167,4 +202,4 @@ if (failures.length) {
   log(`${failures.length} check(s) failed`);
   process.exit(1);
 }
-log("PASS: zoom never re-paginates; the wheel turns one step per gesture");
+log("PASS: zoom never re-paginates; fit never scrolls sideways; the wheel turns one step per gesture");
