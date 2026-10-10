@@ -21,12 +21,17 @@
  *     pin or a switched branch leaves one copy, not a pile;
  *   - never changes the manifest or a pin, never picks another version, and
  *     never touches unpinned, local-path or bundled entries;
- *   - does nothing — no network — when every copy is present.
+ *   - does nothing — no network — when every copy is present, so a book whose
+ *     extensions are installed works offline;
+ *   - stops at the first package npm cannot be reached for (no connection, DNS,
+ *     timeout): the rest would fail the same way, so they are reported as
+ *     missing-while-offline without being tried, and `offline` is set.
  */
 import path from "node:path";
 
 import { log } from "../utils/logger.ts";
 import { BuildError, EXIT_CODES } from "./build-error.ts";
+import { FetchUnavailableError } from "./fetch-timeout.ts";
 import { projectKey, restoreNpmExtension, vendoredCopyNeedsInstall } from "./extension-manager.ts";
 import { parseExtensionSpecifier } from "./extension-specifier.ts";
 import { loadManifestWithPath } from "./manifest.ts";
@@ -64,7 +69,12 @@ export interface RestoreResult {
   installed: string[];
   failed: RestoreFailure[];
   warnings: string[];
+  /** npm could not be reached, so every package still missing was reported as failed without being tried. */
+  offline: boolean;
 }
+
+/** The reason each still-missing package carries once npm is unreachable. */
+const OFFLINE_REASON = "you appear to be offline (npm can't be reached)";
 
 interface PinnedNpm {
   name: string;
@@ -103,7 +113,7 @@ async function restoreAll(
   pins: PinnedNpm[],
   options: RestorePinnedOptions,
 ): Promise<RestoreResult> {
-  const result: RestoreResult = { manifestFile, installed: [], failed: [], warnings: [] };
+  const result: RestoreResult = { manifestFile, installed: [], failed: [], warnings: [], offline: false };
   const missing: PinnedNpm[] = [];
   for (const pin of pins) if (await vendoredCopyNeedsInstall(projectDir, pin.name, pin.version)) missing.push(pin);
   if (missing.length === 0) return result;
@@ -114,6 +124,11 @@ async function restoreAll(
   for (const [index, pin] of missing.entries()) {
     const spec = specs[index]!;
     const step = { type: "package", spec, index, total: missing.length } as const;
+    if (result.offline) {
+      result.failed.push({ use: spec, message: OFFLINE_REASON });
+      report({ ...step, state: "failed", message: OFFLINE_REASON });
+      continue;
+    }
     report({ ...step, state: "downloading" });
     try {
       result.warnings.push(
@@ -125,7 +140,10 @@ async function restoreAll(
       result.installed.push(spec);
       report({ ...step, state: "done" });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      // A network-level failure (not a 404, integrity or load error) means
+      // npm is unreachable: say so, rather than echo a socket error.
+      if (error instanceof FetchUnavailableError) result.offline = true;
+      const message = result.offline ? OFFLINE_REASON : error instanceof Error ? error.message : String(error);
       result.failed.push({ use: spec, message });
       report({ ...step, state: "failed", message });
     }
@@ -152,12 +170,12 @@ export async function restorePinnedExtensions(
   try {
     loaded = await loadManifestWithPath(options.manifestPath ?? projectDir);
   } catch {
-    return { manifestFile: null, installed: [], failed: [], warnings: [] };
+    return { manifestFile: null, installed: [], failed: [], warnings: [], offline: false };
   }
   const { manifest, manifestDir, manifestPath } = loaded;
   const pins = pinnedEntries(manifest);
   if (manifestPath === null || pins.length === 0) {
-    return { manifestFile: manifestPath && path.basename(manifestPath), installed: [], failed: [], warnings: [] };
+    return { manifestFile: manifestPath && path.basename(manifestPath), installed: [], failed: [], warnings: [], offline: false };
   }
 
   const key = projectKey(manifestDir);
@@ -175,6 +193,20 @@ export function restoreFailureMessage(failure: RestoreFailure, manifestFile: str
   return (
     `Could not download ${failure.use} (pinned in ${manifestFile ?? "the manifest"}): ${failure.message.replace(/[.\s]+$/, "")}. ` +
     `Check your internet connection and try again, or install it yourself with \`gutterpress ext add ${failure.use}\`.`
+  );
+}
+
+/**
+ * One sentence for a restore that could not reach npm: which extensions are
+ * missing, and that they have to be installed while online — after which the
+ * book works offline.
+ */
+export function restoreOfflineMessage(failed: RestoreFailure[], manifestFile: string | null): string {
+  const list = failed.map((f) => f.use).join(", ");
+  return (
+    `You appear to be offline, and this book's extensions are not installed yet: ${list} ` +
+    `(pinned in ${manifestFile ?? "the manifest"}). Connect to the internet and try again to install them; ` +
+    `once installed, they work offline.`
   );
 }
 
@@ -199,7 +231,13 @@ export async function restoreForCommand(
   // (`validate --format json` must stay parseable).
   for (const spec of result.installed) console.error(`Downloaded ${spec} (pinned in ${file})`);
   for (const warning of result.warnings) log.warn(warning);
-  const problems = result.failed.map((f) => restoreFailureMessage(f, result.manifestFile));
+  // Offline: one sentence for all of them (the advice is the same), plus any
+  // that failed for another reason before npm became unreachable.
+  const offline = result.failed.filter((f) => result.offline && f.message === OFFLINE_REASON);
+  const problems = [
+    ...result.failed.filter((f) => !offline.includes(f)).map((f) => restoreFailureMessage(f, result.manifestFile)),
+    ...(offline.length > 0 ? [restoreOfflineMessage(offline, result.manifestFile)] : []),
+  ];
   if (problems.length === 0) return;
   if (options.failFast) throw new BuildError(problems.join("\n"), EXIT_CODES.PIPELINE);
   for (const problem of problems) log.warn(problem);

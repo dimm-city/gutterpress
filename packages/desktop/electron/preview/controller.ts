@@ -298,11 +298,11 @@ export class PreviewOpenController {
       }
     };
     try {
-      const { installed, failed } = await lib.restorePinnedExtensions(openedDir, { onProgress: forward });
+      const { installed, failed, offline } = await lib.restorePinnedExtensions(openedDir, { onProgress: forward });
       if (installed.length === 0 && failed.length === 0) return undefined;
       for (const use of installed) console.log(`[api:preview] downloaded pinned extension ${use}`);
       for (const f of failed) console.warn(`[api:preview] could not download ${f.use}: ${f.message}`);
-      return { installed, failed: failed.map(({ use, message }) => ({ use, message })) };
+      return { installed, failed: failed.map(({ use, message }) => ({ use, message })), offline };
     } catch (e) {
       console.warn("[api:preview] restoring pinned extensions failed (non-fatal):", e);
       // A started download that died without its `end` would leave the

@@ -182,10 +182,12 @@ So a fresh clone has your `manifest.yaml` and its pins but not the downloaded
 files — and it does not need you to do anything:
 
 - **Desktop app** — opening the book downloads any missing pinned version
-  first, with a short notice saying what it fetched. If the download fails (you
-  are offline, say), the book still opens and the extension's row under
-  **Project settings → Features** reads **Needs install**; its **Install**
-  button tries again.
+  first, with a short notice saying what it fetched. If you are offline, an
+  error says the extensions are not installed yet and to connect to the
+  internet; the book still opens without them. If a download fails for another
+  reason, a warning says which one and why. Either way the extension's row
+  under **Project settings → Features** reads **Needs install**, and its
+  **Install** button tries again.
   Exporting a PDF or HTML and the **Problems** panel do the same before they
   use your extensions, so they never run without them: if a download fails, an
   export stops and says which extension and why, and Problems lists that as an
@@ -199,11 +201,15 @@ files — and it does not need you to do anything:
   Downloaded gp-dimm-city@1.2.0-alpha.3 (pinned in manifest.yaml)
   ```
 
-  If it cannot (offline, registry error, failed integrity check), they stop and
-  name the extension, the reason and how to try again — run the command once
-  you are online, or `gutterpress ext add name@version`. A failed attempt
+  If it cannot, they stop. Offline, they say which extensions are not installed
+  yet and to run the command again once you are online. For any other failure
+  (registry error, failed integrity check), they name the extension, the reason
+  and how to try again, or suggest `gutterpress ext add name@version`. A failed attempt
   leaves nothing behind, not even an empty `plugins/npm/` folder. Live
   `preview` only warns and keeps going, like any other plugin it cannot load.
+
+Once your extensions are downloaded, the book works offline: nothing is
+fetched when every pinned copy is already there.
 
 Restoring downloads exactly the version in `manifest.yaml`, never a newer one,
 through the same hash-verified install as `ext add`, and it never edits the

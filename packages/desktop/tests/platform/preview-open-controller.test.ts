@@ -29,7 +29,7 @@ interface HarnessOpts {
   watchedDir?: string | null;
   clearPreviewAssetCacheThrows?: boolean;
   /** What lib.restorePinnedExtensions reports (default: nothing to do). */
-  restore?: { installed: string[]; failed: Array<{ use: string; message: string }> };
+  restore?: { installed: string[]; failed: Array<{ use: string; message: string }>; offline?: boolean };
   restoreThrows?: boolean;
   /** Gate the restore so a test can observe what happens while it is in flight. */
   restoreGate?: Promise<void>;
@@ -604,13 +604,13 @@ test("an open that restores nothing carries no restore field at all", async () =
 });
 
 test("a failed download never blocks the open: the preview starts and the failure is reported", async () => {
-  const failed = [{ use: "gp-x@1.0.0", message: "ECONNREFUSED" }];
-  const h = makeHarness({ restore: { installed: [], failed } });
+  const failed = [{ use: "gp-x@1.0.0", message: "you appear to be offline" }];
+  const h = makeHarness({ restore: { installed: [], failed, offline: true } });
 
   const res = await h.controller.open({ input: "/book" });
 
   expect(res.previewStarted).toBe(true);
-  expect(res.restoredExtensions).toEqual({ installed: [], failed });
+  expect(res.restoredExtensions).toEqual({ installed: [], failed, offline: true });
   expect(h.getActivePreview()?.inputPath).toBe("/book");
 });
 

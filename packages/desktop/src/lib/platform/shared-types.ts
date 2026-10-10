@@ -735,6 +735,8 @@ export interface OpenRestoreSummary {
   /** `name@version` of each package downloaded. */
   installed: string[];
   failed: Array<{ use: string; message: string }>;
+  /** npm could not be reached: everything in `failed` is missing until the author is online. */
+  offline?: boolean;
 }
 
 /**

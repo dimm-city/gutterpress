@@ -49,7 +49,7 @@ import type { PersistedProjectState } from "./page-types";
 interface ProjectLifecycleToast {
   info?(message: string): void;
   error(message: string): void;
-  show(message: string, type: "warning", duration?: number, action?: { label: string; onClick: () => void }): void;
+  show(message: string, type: "warning" | "error", duration?: number, action?: { label: string; onClick: () => void }): void;
 }
 
 /** The bits of `startPreview`'s result this controller reads. */
@@ -71,6 +71,8 @@ export type ProjectLifecyclePreviewResult =
 export interface ProjectLifecycleRestore {
   installed: string[];
   failed: Array<{ use: string; message: string }>;
+  /** npm could not be reached, so nothing in `failed` was downloaded. */
+  offline?: boolean;
 }
 
 /** Composed `ProjectSessionController` surface (the bits this controller drives/reads). */
@@ -452,19 +454,22 @@ export class ProjectLifecycleController {
       toast?.info?.(`Downloaded ${restore.installed.join(", ")}, pinned in this book's manifest.`);
     }
     // One notice however many failed: the advice is the same for each, so
-    // repeating it per package only stacks identical toasts. A warning, not an
-    // error — the book opened — with a button to where Install is. It stays
-    // until dismissed: the book is rendering without formatting its author
-    // chose, and a 4-second notice is gone before the button can be reached.
+    // repeating it per package only stacks identical toasts. It stays until
+    // dismissed (the book is rendering without formatting its author chose,
+    // and a 4-second notice is gone before its button can be reached), with a
+    // button to where Install is. Offline is an error — nothing can be fixed
+    // until the author is online; any other failure is a warning.
     const [first, ...others] = restore.failed;
     if (first) {
-      const message =
-        others.length === 0
+      const uses = restore.failed.map((f) => f.use).join(", ");
+      const message = restore.offline
+        ? `You're offline, and this book's ${others.length === 0 ? "extension isn't" : "extensions aren't"} installed yet (${uses}). ` +
+          `Connect to the internet to install ${others.length === 0 ? "it" : "them"}. The book opened without ${others.length === 0 ? "it" : "them"}.`
+        : others.length === 0
           ? `Couldn't download ${first.use} (${first.message.replace(/[.\s]+$/, "")}). The book opened without it.`
-          : `Couldn't download ${restore.failed.length} extensions (${restore.failed.map((f) => f.use).join(", ")}). ` +
-            `The book opened without them.`;
+          : `Couldn't download ${restore.failed.length} extensions (${uses}). The book opened without them.`;
       const open = this.deps.openFeatures;
-      toast?.show(message, "warning", 0, open ? { label: "Open Features", onClick: open } : undefined);
+      toast?.show(message, restore.offline ? "error" : "warning", 0, open ? { label: "Open Features", onClick: open } : undefined);
     }
   }
 

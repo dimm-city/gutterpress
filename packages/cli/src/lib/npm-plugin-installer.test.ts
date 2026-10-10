@@ -34,7 +34,13 @@ import { loadPlugin } from "./markdown/plugins";
 import { BuildError } from "./build-error";
 import { loadBuildPlugins, resolveBuildContext } from "./build-runner";
 import { executeValidation } from "./validation-exec";
-import { restoreFailureMessage, restoreForCommand, restorePinnedExtensions, type RestoreProgress } from "./extension-restore";
+import {
+  restoreFailureMessage,
+  restoreForCommand,
+  restoreOfflineMessage,
+  restorePinnedExtensions,
+  type RestoreProgress,
+} from "./extension-restore";
 import { vendoredNpmPluginPackageDir, vendoredNpmPluginRoot } from "./plugin-vendor";
 
 const TMP_ROOT = path.join(process.cwd(), ".tmp", `npm-plugin-installer-${Date.now()}`);
@@ -1730,28 +1736,88 @@ describe("restorePinnedExtensions", () => {
     });
   });
 
-  test("a registry failure is reported with the extension and why, leaves no partial copy, and changes nothing", async () => {
+  test("offline: a missing copy is reported as needing the internet, leaves no partial copy, and changes nothing", async () => {
     const { dir, manifest } = await pinnedBook();
     await rm(path.join(dir, "plugins"), { recursive: true });
     const offline = (async () => {
-      throw new Error("ECONNREFUSED");
+      throw new TypeError("fetch failed: ECONNREFUSED");
     }) as unknown as typeof globalThis.fetch;
 
     const result = await restorePinnedExtensions(dir, { fetch: offline });
 
     expect(result.installed).toEqual([]);
-    expect(result.failed).toHaveLength(1);
-    expect(result.failed[0]!.use).toBe(`${name}@1.0.0`);
-    expect(result.failed[0]!.message).toContain("ECONNREFUSED");
-    const sentence = restoreFailureMessage(result.failed[0]!, "manifest.yaml");
-    expect(sentence).toContain(`Could not download ${name}@1.0.0 (pinned in manifest.yaml)`);
-    expect(sentence).toContain("ECONNREFUSED");
-    expect(sentence).toContain(`try again`);
-    expect(sentence).toContain(`gutterpress ext add ${name}@1.0.0`);
+    expect(result.offline).toBe(true);
+    expect(result.failed).toEqual([{ use: `${name}@1.0.0`, message: expect.stringContaining("offline") }]);
+    const sentence = restoreOfflineMessage(result.failed, "manifest.yaml");
+    expect(sentence).toContain("You appear to be offline");
+    expect(sentence).toContain(`${name}@1.0.0 (pinned in manifest.yaml)`);
+    expect(sentence).toContain("Connect to the internet");
     expect(existsSync(vendoredNpmPluginRoot(dir, name, "1.0.0"))).toBe(false);
     // No empty plugins/npm/<name>/ folder either: a failed first open leaves the book as it was.
     expect(existsSync(path.join(dir, "plugins"))).toBe(false);
     expect(await readFile(path.join(dir, "manifest.yaml"), "utf8")).toBe(manifest);
+  });
+
+  test("offline: the first unreachable package stops the rest from being tried", async () => {
+    const other = "markdown-it-gutterpress-restoring-other";
+    const dir = await projectDir();
+    await writeFile(path.join(dir, "manifest.yaml"), manifestOf(`${name}@1.0.0`, `${other}@2.0.0`), "utf8");
+    const calls: string[] = [];
+    const offline = (async (input: string | URL | Request) => {
+      calls.push(String(input));
+      throw new TypeError("fetch failed");
+    }) as unknown as typeof globalThis.fetch;
+    const events: RestoreProgress[] = [];
+
+    const result = await restorePinnedExtensions(dir, { fetch: offline, onProgress: (e) => events.push(e) });
+
+    expect(result.offline).toBe(true);
+    expect(result.failed.map((f) => f.use)).toEqual([`${name}@1.0.0`, `${other}@2.0.0`]);
+    expect(calls).toEqual([`https://registry.npmjs.org/${encodeURIComponent(name)}`]);
+    // The second package is reported failed without a "downloading" step.
+    expect(events.filter((e) => e.type === "package" && e.spec === `${other}@2.0.0`).map((e) => e.type === "package" && e.state)).toEqual(["failed"]);
+  });
+
+  test("offline does not block a book whose extensions are installed", async () => {
+    const { dir } = await pinnedBook();
+    const offline = (async () => {
+      throw new TypeError("fetch failed");
+    }) as unknown as typeof globalThis.fetch;
+    expect(await restorePinnedExtensions(dir, { fetch: offline })).toMatchObject({ installed: [], failed: [], offline: false });
+    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(offline as never);
+    try {
+      await restoreForCommand(dir, { failFast: true }); // resolves: nothing to download, nothing fetched
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  test("offline with a copy missing fails a build fast with one 'install while online' error", async () => {
+    const { dir } = await pinnedBook();
+    await rm(path.join(dir, "plugins"), { recursive: true });
+    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async () => {
+      throw new TypeError("fetch failed");
+    }) as never);
+    try {
+      const error = await restoreForCommand(dir, { failFast: true }).then(() => null, (e: unknown) => e);
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe(restoreOfflineMessage([{ use: `${name}@1.0.0`, message: "" }], "manifest.yaml"));
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  test("a registry error that is not a connection problem keeps its own reason and retry advice", async () => {
+    const dir = await projectDir();
+    await writeFile(path.join(dir, "manifest.yaml"), manifestOf(`${name}@1.0.0`), "utf8");
+    const result = await restorePinnedExtensions(dir, { fetch: registryGraphFixture([]).fetch }); // npm answers: not found
+
+    expect(result.offline).toBe(false);
+    const sentence = restoreFailureMessage(result.failed[0]!, "manifest.yaml");
+    expect(sentence).toContain(`Could not download ${name}@1.0.0 (pinned in manifest.yaml)`);
+    expect(sentence).toContain("was not found");
+    expect(sentence).toContain(`gutterpress ext add ${name}@1.0.0`);
   });
 
   test("an integrity mismatch is a failure, never an install", async () => {
@@ -2007,7 +2073,7 @@ describe("the shared seams restore before they load plugins", () => {
     await withFetch(noNetworkFetch, () => loadBuildPlugins(ctx));
   });
 
-  test("loadBuildPlugins fails the build when the download fails, naming the extension and how to retry", async () => {
+  test("loadBuildPlugins fails the build when npm is unreachable, naming the extension and how to retry", async () => {
     const { dir } = await freshClone();
     const ctx = await resolveBuildContext({ inputDir: dir, format: "html", rawArgs: {} });
     const offline = (async () => {
@@ -2017,7 +2083,7 @@ describe("the shared seams restore before they load plugins", () => {
     const error = await withFetch(offline, () => loadBuildPlugins(ctx)).catch((e: Error) => e);
 
     expect(error).toBeInstanceOf(BuildError);
-    expect((error as Error).message).toMatch(/Could not download markdown-it-gutterpress-seam@1\.0\.0 .*ECONNREFUSED.*try again.*gutterpress ext add/s);
+    expect((error as Error).message).toMatch(/offline.*markdown-it-gutterpress-seam@1\.0\.0.*Connect to the internet and try again/s);
   });
 
   test("executeValidation (validate, preflight, the desktop's Problems panel) downloads the pin first", async () => {
@@ -2039,7 +2105,7 @@ describe("the shared seams restore before they load plugins", () => {
 
     await expect(
       withFetch(offline, () => executeValidation({ input: dir, category: "source", phase: "pre-build" })),
-    ).rejects.toThrow(/Could not download markdown-it-gutterpress-seam@1\.0\.0/);
+    ).rejects.toThrow(/offline.*markdown-it-gutterpress-seam@1\.0\.0/);
 
     await withFetch(noNetworkFetch, () =>
       executeValidation({ input: dir, category: "source", phase: "pre-build", pluginStylePaths: [] }),

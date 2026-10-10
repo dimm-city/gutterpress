@@ -357,7 +357,10 @@ incomplete, installs EXACTLY that version through the same verified path as
 `addExtension` (registry resolution, SRI check, vendor, load-test) — without
 writing the manifest. It never changes a pin or picks another version, ignores
 unpinned/local/bundled/disabled entries, does nothing (no network) when every
-copy is present, and runs one-at-a-time per book (concurrent callers share one
+copy is present (so an installed book works offline), stops at the first
+package npm cannot be reached for (`FetchUnavailableError`: the rest are
+reported missing-while-offline untried, `offline: true`, and the error says to
+install them while online), and runs one-at-a-time per book (concurrent callers share one
 run, and the install re-checks under the book's mutation lock so a second
 caller never swaps a tree a first has just put in place). It runs BEFORE
 plugins load, **from the shared seams rather than from each command**

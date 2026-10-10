@@ -1004,6 +1004,35 @@ test("several failed downloads are ONE toast naming them, not a stack of identic
   );
 });
 
+test("offline with extensions missing is an error toast saying to install them while online", async () => {
+  const { ctrl, deps } = make();
+  deps.startPreviewResult = {
+    previewStarted: true,
+    url: "preview://book",
+    title: "My Book",
+    restoredExtensions: {
+      installed: [],
+      failed: [
+        { use: "gp-x@1.0.0", message: "you appear to be offline" },
+        { use: "gp-y@2.0.0", message: "you appear to be offline" },
+      ],
+      offline: true,
+    },
+  };
+
+  expect(await ctrl.startFolderPreview("/proj")).toBe(true); // the book still opens
+
+  expect(deps.toastShow.calls).toHaveLength(1);
+  const [message, type, action, duration] = deps.toastShow.calls[0]!;
+  expect(message).toBe(
+    "You're offline, and this book's extensions aren't installed yet (gp-x@1.0.0, gp-y@2.0.0). " +
+      "Connect to the internet to install them. The book opened without them.",
+  );
+  expect(type).toBe("error");
+  expect(duration).toBe(0);
+  expect(action?.label).toBe("Open Features");
+});
+
 test("an ordinary open shows no extension toast", async () => {
   const { ctrl, deps } = make();
   await ctrl.startFolderPreview("/proj");
