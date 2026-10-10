@@ -1,7 +1,6 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
   import type { ActivityStage } from "$lib/loading/activity-stage";
-  import Icon from "./Icon.svelte";
   import Spinner from "./Spinner.svelte";
 
   /**
@@ -63,11 +62,7 @@
       out:fade={{ duration: ms(fadeOut ? 300 : 0) }}
     >
       <div class="card">
-        {#if stage.done}
-          <span class="done" aria-hidden="true"><Icon name="check" size={big ? 28 : 14} /></span>
-        {:else}
-          <Spinner size={big ? 40 : 14} />
-        {/if}
+        <Spinner size={big ? 40 : 14} />
         <div class="text">
           <p class="label">{stage.label}</p>
           {#if big || stage.detail}
@@ -202,11 +197,6 @@
   }
   .overlay .text {
     width: 100%;
-  }
-
-  .done {
-    display: inline-flex;
-    color: var(--app-success-text);
   }
 
   .bar,

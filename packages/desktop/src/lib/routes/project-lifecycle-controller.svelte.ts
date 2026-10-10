@@ -453,7 +453,9 @@ export class ProjectLifecycleController {
     }
     // One notice however many failed: the advice is the same for each, so
     // repeating it per package only stacks identical toasts. A warning, not an
-    // error — the book opened — with a button to where Install is.
+    // error — the book opened — with a button to where Install is. It stays
+    // until dismissed: the book is rendering without formatting its author
+    // chose, and a 4-second notice is gone before the button can be reached.
     const [first, ...others] = restore.failed;
     if (first) {
       const message =
@@ -462,7 +464,7 @@ export class ProjectLifecycleController {
           : `Couldn't download ${restore.failed.length} extensions (${restore.failed.map((f) => f.use).join(", ")}). ` +
             `The book opened without them.`;
       const open = this.deps.openFeatures;
-      toast?.show(message, "warning", undefined, open ? { label: "Open Features", onClick: open } : undefined);
+      toast?.show(message, "warning", 0, open ? { label: "Open Features", onClick: open } : undefined);
     }
   }
 

@@ -141,10 +141,10 @@ test("hot-reload and export stages", () => {
   expect(exportStage(null, false)).toBeNull();
   expect(exportStage("Rendering page 3…", "rendering")).toMatchObject({
     id: "exporting",
-    done: false,
     cancelable: true,
   });
-  // Cancel describes the stage on screen: a finished or canceling export offers none.
-  expect(exportStage("PDF saved", "success")).toMatchObject({ done: true, cancelable: false });
-  expect(exportStage("Canceling export…", "canceling")).toMatchObject({ done: false, cancelable: false });
+  // A finished export is reported by its toast, not a second "saved" pill.
+  expect(exportStage("PDF saved", "success")).toBeNull();
+  // Cancel describes the stage on screen: a canceling export offers none.
+  expect(exportStage("Canceling export…", "canceling")).toMatchObject({ cancelable: false });
 });

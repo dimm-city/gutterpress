@@ -65,7 +65,7 @@ interface Harness {
     resetExtras: Spy<[]>;
     toastError: Spy<[string]>;
     toastInfo: Spy<[string]>;
-    toastShow: Spy<[string, string, { label: string; onClick: () => void } | undefined]>;
+    toastShow: Spy<[string, string, { label: string; onClick: () => void } | undefined, number | undefined]>;
     openFeatures: Spy<[]>;
     landingVisible: boolean;
     pageNav: { totalPages: number; currentPage: number };
@@ -108,7 +108,7 @@ function make(): Harness {
   const resetExtras = spy<[]>();
   const toastError = spy<[string]>();
   const toastInfo = spy<[string]>();
-  const toastShow = spy<[string, string, { label: string; onClick: () => void } | undefined]>();
+  const toastShow = spy<[string, string, { label: string; onClick: () => void } | undefined, number | undefined]>();
   const openFeatures = spy<[]>();
   const getDesktopProjectState = spy<[string]>();
 
@@ -208,8 +208,8 @@ function make(): Harness {
     toast: () => ({
       error: (msg: string) => toastError(msg),
       info: (msg: string) => toastInfo(msg),
-      show: (msg: string, type: string, _duration?: number, action?: { label: string; onClick: () => void }) =>
-        toastShow(msg, type, action),
+      show: (msg: string, type: string, duration?: number, action?: { label: string; onClick: () => void }) =>
+        toastShow(msg, type, action, duration),
     }),
     openFeatures: () => openFeatures(),
     clearStaleProjectState: () => clearStaleProjectState(),
@@ -971,9 +971,10 @@ test("a failed download is a warning toast with an Open Features button, and the
   expect(deps.toastInfo.calls).toHaveLength(0);
   expect(deps.toastError.calls).toHaveLength(0);
   expect(deps.toastShow.calls).toHaveLength(1);
-  const [message, type, action] = deps.toastShow.calls[0]!;
+  const [message, type, action, duration] = deps.toastShow.calls[0]!;
   expect(message).toBe("Couldn't download gp-x@1.0.0 (ECONNREFUSED). The book opened without it.");
   expect(type).toBe("warning");
+  expect(duration).toBe(0); // stays until dismissed
   expect(action?.label).toBe("Open Features");
   action!.onClick();
   expect(deps.openFeatures.calls).toHaveLength(1);

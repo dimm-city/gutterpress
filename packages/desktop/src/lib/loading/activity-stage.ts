@@ -20,8 +20,6 @@ export interface ActivityStage {
   detail: string | null;
   /** Known N of M (determinate bar), or null when the amount of work is unknown. */
   progress: { value: number; total: number } | null;
-  /** Finished successfully — the indicator swaps its spinner for a check. */
-  done?: boolean;
   /**
    * Whether Cancel still applies. Carried on the stage (not read live from the
    * controller) because a stage stays on screen for a moment after its work
@@ -133,19 +131,21 @@ export const UPDATING_STAGE: ActivityStage = {
   progress: null,
 };
 
-/** The PDF export stage, from the export controller's own label and FSM state. */
+/**
+ * The PDF export stage, from the export controller's own label and FSM state.
+ * A finished export shows no stage: its "PDF saved to …" toast (with Show in
+ * Folder) is the result, and a pill saying the same thing would sit on it.
+ */
 export function exportStage(
   label: string | null,
   state: string,
 ): ActivityStage | null {
-  if (!label) return null;
-  const done = state === "success";
+  if (!label || state === "success") return null;
   return {
     id: "exporting",
     label,
     detail: null,
     progress: null,
-    done,
-    cancelable: !done && state !== "canceling",
+    cancelable: state !== "canceling",
   };
 }
