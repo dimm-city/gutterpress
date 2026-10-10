@@ -269,9 +269,20 @@ async function loadNpmPackage(
     ? `./${packageName}`
     : `./plugins/${packageName}.js`;
 
+  // An npm entry with no exact version (`name`, `name@^1`, `name@latest`) can
+  // never be downloaded for the author; say what to do about THAT, not just
+  // "not found".
+  if (!looksLikeJsFilename && (!version || !isExactNpmVersion(version))) {
+    throw new Error(
+      `Extension "${packageName}${version ? `@${version}` : ""}" is not pinned to an exact version, so it can't be ` +
+        `downloaded automatically. Run \`gutterpress ext add ${packageName}\` (or use Book settings > ` +
+        `Features in the desktop app) to download it and pin its version in your manifest.`
+    );
+  }
+
   throw new Error(
     `Extension "${packageName}" not found. Install it with ` +
-      `\`gutterpress ext add ${packageName}\` (or Book settings > Features > Advanced in the desktop app),\n` +
+      `\`gutterpress ext add ${version ? `${packageName}@${version}` : packageName}\` (or Book settings > Features > Advanced in the desktop app),\n` +
       `or reference a local file under \`extensions:\`:\n` +
       `  extensions:\n` +
       `    - ${suggestedPath}`
