@@ -14,7 +14,9 @@ Choose **PDF** (a print-ready PDF) or **Website** (a folder with a standalone `b
 
 ## 2. Choose where it goes
 
-**A folder on this computer** is always included. Tick any other destinations:
+**A folder on this computer** is always included. Tick any other destinations. The list shows
+the ones that take the format you chose: Azure Static Web Apps appears for **Website**, and
+Google Drive for both.
 
 | Destination | How it publishes |
 | --- | --- |
@@ -26,6 +28,8 @@ Choose **PDF** (a print-ready PDF) or **Website** (a folder with a standalone `b
 | Azure Static Web Apps | Uploads the website (needs Microsoft's SWA CLI) |
 
 Each destination shows whether it is **Connected**, **Needs a key**, or needs **No account**.
+
+![The Choose step for a PDF: a folder on this computer is always included](images/publish-choose.jpg)
 
 ## 3. Set up each destination
 

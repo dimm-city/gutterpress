@@ -22,12 +22,16 @@ Five extras are built in, with nothing to download. Under **Formatting extras** 
 | Abbreviations | `*[GPS]: Global Positioning System` |
 | Callouts | `> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]` |
 
+![Features, Installed & built-in: the formatting extras, each with Turn on](images/features-installed.jpg)
+
 ## Find and install a plugin
 
 1. Open the **Search** tab ("Find more on npm"). It searches npm for Gutterpress extensions and
    markdown-it plugins.
 2. Type what you are looking for (for example `footnote` or `callout`) and click **Search**.
 3. Click **Add** on the one you want.
+
+![Features, Search: results from npm for "footnote", each with Add](images/features-search.jpg)
 
 Gutterpress downloads it, checks it, keeps a copy inside your book, and lists it under
 **Installed & built-in**. Your book then builds from that copy, even offline. You can also browse

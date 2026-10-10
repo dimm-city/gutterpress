@@ -16,6 +16,8 @@ destinations.
 4. **Preflight** checks the book is ready (see [Publish your book](08-publish.md#preflight)).
 5. Click **Save**. When it finishes, **Show in folder** opens the folder with your PDF.
 
+![Publish your book, Format step: PDF or Website](images/publish-format.jpg)
+
 **Shortcut:** Ctrl+Shift+E (Cmd+Shift+E on a Mac) saves a PDF straight away: choose where in the
 save dialog, and "PDF saved to …" tells you when it's done, with **Show in Folder**.
 

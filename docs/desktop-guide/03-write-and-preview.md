@@ -16,6 +16,8 @@ Across the top of the window, from the left:
 - **Setup** (the wrench) opens [Book settings](05-design.md);
 - **Publish** opens the [Publish](08-publish.md) view.
 
+![Edit mode: the table of contents, the editor and the live preview side by side](images/workspace-edit.jpg)
+
 In a narrow window, Edit and Read become **Markdown** and **Preview** tabs.
 
 ## Write
@@ -44,6 +46,8 @@ The left panel has three tabs:
 - **Media** — your book's images. **Add images…** adds images to the book; select one and
   choose **Insert into document** to put it at the cursor.
 
+![The Files tab, with New chapter and New folder](images/left-panel-files.jpg)
+
 ## Preview
 
 The preview shows your book's pages exactly as they will print, and updates as you type.
@@ -64,10 +68,14 @@ The preview shows your book's pages exactly as they will print, and updates as y
 
 The page keys work when you are not typing in the editor or a field.
 
+![Read mode: the preview on its own, two pages at a time](images/workspace-read.jpg)
+
 ## Fix problems
 
 The **Problems** badge in the editor toolbar checks your book as you work and reads
 **No problems** or a summary. Click it to open the list at the bottom of the editor: problems are
 grouped by file, and clicking one opens the file at the line it is about. Esc closes the list.
+
+![The Problems panel under the editor, reporting a missing image](images/problems-panel.jpg)
 
 Next: [insert snippets and components](04-snippets.md).

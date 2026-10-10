@@ -19,12 +19,16 @@ kept**, which has three parts:
 Next to the indicator, a status shows the online backup: for example **Backed up online**,
 **Backing up…**, **Not backed up online**, or **Offline — edits are saved on this computer**.
 
+![Where your work is kept: Saving, Versions and Online backup](images/where-your-work-is-kept.jpg)
+
 ## Go back to an earlier version
 
 1. Click the save indicator, then **See previous versions**.
 2. Find the version you want and click **Restore this version**.
 3. Confirm with **Yes, restore**. Gutterpress saves your current work as a version first, so
    nothing is lost.
+
+![Previous versions, each with Restore this version](images/previous-versions.jpg)
 
 ## Back up online
 
