@@ -371,6 +371,16 @@ you mean "note"?` A component with no `variants` reports any word the same way
 (`@term-box has no variants`). An alias's `preset: { variant }` is yours, not the
 author's, so it is never reported.
 
+**`closes` — end the previous component without `@end-`.** Authors rarely
+write `@end-skill`. If your components form a hierarchy — a `learning-path`
+that follows `skill`s inside a `specialty` — list the marker it ends:
+`"learning-path": { closes: ["skill"] }`. Opening a `@learning-path` then
+closes the open `@skill` (and anything nested in it) first, so the path sits
+beside the skills instead of inside the last one. Nothing is reported when no
+`@skill` is open. List plugin markers only (an alias name works); core markers
+and the marker itself are rejected, and `closes` cannot be combined with
+`section: true`, because a section already closes by the core rules.
+
 **`validate` — check the structure (opt-in).** Add a `validate` function and
 Gutterpress runs it for every use of the component whenever it checks the
 book: the desktop Problems panel, `gutterpress validate`, and builds. You don't

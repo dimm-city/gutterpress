@@ -62,12 +62,13 @@ const PREFIX = "{{PREFIX}}";
  *   @end-term-box
  *
  * Fields, all optional:
- *   section     true makes the marker a core @section (no tag/label/autoCloseAt)
+ *   section     true makes the marker a core @section (no tag/label/autoCloseAt/closes)
  *   tag         wrapper element            (default "div")
  *   class       base class on the wrapper
  *   variants    extra classes keyed by the marker's bare word
  *   label       a label element built from one of the marker's attributes
  *   autoCloseAt ["eof"] closes an unclosed container at end of file
+ *   closes      marker names this one ends when it opens, e.g. ["skill"]
  *   snippet     example content the editor inserts for this component, as a
  *               path inside this folder (default: snippets/<name>.md — so
  *               `snippets/term-box.md` is term-box's example already)

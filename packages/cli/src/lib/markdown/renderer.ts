@@ -91,7 +91,7 @@ export interface GutterpressMarkerLabel {
  * One entry in a plugin's declared `markers` table (#240 — "declarative
  * container components in core"). Exactly one of three shapes:
  *
- *   - a CONTAINER: `section`/`tag`/`class`/`variants`/`label`/`autoCloseAt`, any/all
+ *   - a CONTAINER: `section`/`tag`/`class`/`variants`/`label`/`autoCloseAt`/`closes`, any/all
  *     optional (a bare `{}` is a valid, if pointless, `<div>` wrapper);
  *   - an ALIAS: `alias` (another declared name) + optional `preset`;
  *   - a DEPRECATION: `deprecated` (a human-readable retirement message) —
@@ -138,7 +138,7 @@ export interface GutterpressMarkerDeclaration {
    * and `@continue` reopens it with the same classes. The variant word is a
    * variant, not a section name: it emits `data-<name>="<variant>"` (the
    * alias target's name for an alias), never `data-section`. Cannot be combined
-   * with `tag`, `label` or `autoCloseAt`. Aliases of a section marker inherit it.
+   * with `tag`, `label`, `autoCloseAt` or `closes`. Aliases of a section marker inherit it.
    */
   section?: boolean;
   /** Wrapper element tag. Defaults to `"div"`. */
@@ -161,6 +161,17 @@ export interface GutterpressMarkerDeclaration {
    * warns (the default — most likely a forgotten `@end-<name>`).
    */
   autoCloseAt?: Array<"eof">;
+  /**
+   * Declared marker names this marker closes when it opens, along with
+   * everything opened after them (innermost first), silently and only when
+   * they are open. Lets a hierarchy go without `@end-` lines: with
+   * `"learning-path": { closes: ["skill"] }`, a `@learning-path` after skills
+   * in a `@specialty` closes the last `@skill` instead of nesting inside it.
+   * An alias name resolves to its target. Core markers and the marker itself
+   * are rejected; names no loaded plugin declares are allowed. Cannot be
+   * combined with `section: true` (core scope rules already close sections).
+   */
+  closes?: string[];
   /** This marker is sugar for another declared marker (must name a non-alias, non-deprecated entry). */
   alias?: string;
   /** With `alias`: defaults applied when the invocation line supplies none. */
