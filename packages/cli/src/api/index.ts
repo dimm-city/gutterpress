@@ -369,6 +369,18 @@ export type {
 } from "../lib/remote-auth/github-repos.ts";
 
 export {
+  setUpOnlineBackup,
+  isValidRepositoryName,
+} from "../lib/remote-auth/online-backup.ts";
+
+export type {
+  BackupTarget,
+  BackupSetupResult,
+  BackupSetupFailureReason,
+  SetUpOnlineBackupOptions,
+} from "../lib/remote-auth/online-backup.ts";
+
+export {
   cloneRepository,
   sanitizeCloneFolderName,
 } from "../lib/remote-auth/clone.ts";

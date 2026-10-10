@@ -61,6 +61,8 @@ export type {
   SnapshotEntry,
   RemoteConnection,
   RemoteRepository,
+  BackupTarget,
+  BackupSetupResult,
   RemoteBranch,
   RepoBook,
   RemoteAccessResult,
@@ -85,6 +87,8 @@ import type {
   SnapshotEntry,
   RemoteConnection,
   RemoteRepository,
+  BackupTarget,
+  BackupSetupResult,
   RemoteBranch,
   RepoBook,
   RemoteAccessResult,
@@ -729,6 +733,15 @@ export const api = {
     /** Repositories the user granted the Gutterpress GitHub App. */
     listRemoteRepositories: () =>
       post<RemoteRepository[]>('/api/remote/list-repositories'),
+
+    /**
+     * Online backup for a book that started on this computer (#358): create a
+     * GitHub repository (or use an empty one), connect the book to it and push
+     * its history. Resolves with `status: "failed"` + a plain message for
+     * every expected problem; it rejects only on unexpected errors.
+     */
+    setUpBackup: (projectDir: string, target: BackupTarget) =>
+      post<BackupSetupResult>('/api/remote/set-up-backup', { projectDir, target }),
 
     /** Branches of a chosen repository. */
     listRemoteBranches: (owner: string, repo: string) =>

@@ -72,6 +72,7 @@
     onClose,
     onOpenAccounts,
     onVersionHistoryEnabled,
+    onBackupSetUp,
     triggerEl,
   }: {
     projectDir: string | null;
@@ -90,6 +91,8 @@
     onOpenAccounts?: () => void;
     /** The Connections tab just turned on version history: re-read the project's classification. */
     onVersionHistoryEnabled?: (projectDir: string) => void;
+    /** The Connections tab just set up online backup: re-read the project's classification. */
+    onBackupSetUp?: (projectDir: string) => void;
     /** The control that opened the view, for focus restore on close. */
     triggerEl?: HTMLElement | null;
   } = $props();
@@ -313,7 +316,7 @@
       {#if activeTab === "connections"}
         <!-- This project's connection details. Accounts/credentials stay
              global in Settings → Accounts; onOpenAccounts routes there. -->
-        <ProjectConnectionsSection {projectDir} {onOpenAccounts} {onVersionHistoryEnabled} />
+        <ProjectConnectionsSection {projectDir} {onOpenAccounts} {onVersionHistoryEnabled} {onBackupSetUp} />
       {/if}
     {/if}
   </div>

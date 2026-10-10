@@ -168,7 +168,12 @@ export async function startGitServer(
         res.end("auth required");
         return;
       }
-      const head = await git.resolveRef({ fs, ...repo, ref: "HEAD" });
+      // A brand-new EMPTY repository (a just-created GitHub repo) has an
+      // unborn HEAD: advertise the zero-id `capabilities^{}` line real servers
+      // send, so clients can still discover receive-pack and push into it.
+      const head = await git
+        .resolveRef({ fs, ...repo, ref: "HEAD" })
+        .catch(() => null);
       const branch = (await git.currentBranch({ fs, ...repo })) ?? "main";
 
       if (
@@ -187,7 +192,9 @@ export async function startGitServer(
             pkt("# service=git-receive-pack\n"),
             FLUSH,
             pkt(
-              `${head} refs/heads/${branch}\0report-status side-band-64k agent=git/test\n`,
+              head
+                ? `${head} refs/heads/${branch}\0report-status side-band-64k agent=git/test\n`
+                : `${ZERO_OID} capabilities^{}\0report-status side-band-64k agent=git/test\n`,
             ),
             FLUSH,
           ]),
@@ -238,7 +245,9 @@ export async function startGitServer(
             pkt("# service=git-upload-pack\n"),
             FLUSH,
             pkt(
-              `${head} HEAD\0side-band-64k shallow symref=HEAD:refs/heads/${branch} agent=git/test\n`,
+              head
+                ? `${head} HEAD\0side-band-64k shallow symref=HEAD:refs/heads/${branch} agent=git/test\n`
+                : `${ZERO_OID} capabilities^{}\0side-band-64k shallow agent=git/test\n`,
             ),
             ...branchLines,
             FLUSH,

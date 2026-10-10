@@ -403,7 +403,28 @@ export interface RemoteRepository {
   private: boolean;
   defaultBranch: string;
   htmlUrl: string;
+  /** Could be an empty repository (a hint; the real check runs on connect). */
+  maybeEmpty?: boolean;
 }
+
+/** Where to back a locally-started book up to (#358). */
+export type BackupTarget =
+  | { kind: "create"; name: string; private?: boolean }
+  | { kind: "existing"; owner: string; name: string };
+
+/** Outcome of setting up online backup; failures carry plain-language text. */
+export type BackupSetupResult =
+  | { status: "connected"; repository: RemoteRepository }
+  | {
+      status: "failed";
+      reason:
+        | "not-connected" | "auth" | "offline" | "no-history" | "already-has-remote"
+        | "invalid-name" | "name-taken" | "not-found" | "no-permission" | "not-empty"
+        | "push-failed";
+      message: string;
+      /** The repository that exists online after a late failure. */
+      repository?: RemoteRepository;
+    };
 
 /** One branch of a remote repository. */
 export interface RemoteBranch {

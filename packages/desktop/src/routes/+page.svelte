@@ -3218,6 +3218,7 @@
     onEditRawCss={(path) => { closeProjectSettings(); openStyleFile(path); }}
     onOpenAccounts={() => { closeProjectSettings(); openSettings("connections"); }}
     onVersionHistoryEnabled={(dir) => void projectSession.classify(dir)}
+    onBackupSetUp={(dir) => void projectSession.classify(dir)}
   />
 {/if}
 
