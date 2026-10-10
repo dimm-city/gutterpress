@@ -48,12 +48,6 @@ This project follows [Semantic Versioning](https://semver.org/).
   and `section: true` components alike. Nothing is reported for a declared
   variant, no word, or an alias's preset variant, and the word still lands in
   `data-<marker>` as before.
-- **A component can end another with `closes`.** A declared marker may list
-  the markers it closes when it opens: with `"learning-path": { closes:
-  ["skill"] }`, a `@learning-path` after skills in a `@specialty` closes the
-  last skill instead of nesting inside it, so authors never need `@end-skill`.
-  Closing is silent when nothing is open, aliases resolve to their target, and
-  core markers, the marker itself and `section: true` are rejected at load.
 
 ### Changed
 

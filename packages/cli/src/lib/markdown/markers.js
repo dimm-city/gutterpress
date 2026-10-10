@@ -666,7 +666,7 @@ function resolveContainerShape(name, pluginName, decl) {
     throw new Error(`Plugin "${pluginName}"'s marker "@${name}" has a \`section\` that is not a boolean.`);
   }
   if (decl.section) {
-    for (const field of ['tag', 'label', 'autoCloseAt', 'closes']) {
+    for (const field of ['tag', 'label', 'autoCloseAt']) {
       if (decl[field] !== undefined) {
         throw new Error(
           `Plugin "${pluginName}"'s marker "@${name}" sets \`section: true\` and \`${field}\` — a section ` +
@@ -759,34 +759,6 @@ function resolveContainerShape(name, pluginName, decl) {
     autoCloseAtEof = decl.autoCloseAt.includes('eof');
   }
 
-  // `closes`: marker names this one closes (with everything opened after
-  // them) when it opens — see the declared-marker branch of layout_transform.
-  // Names no loaded plugin declares are allowed (their plugin may not be
-  // loaded); core markers and the marker itself are rejected.
-  let closes;
-  if (decl.closes !== undefined) {
-    if (!Array.isArray(decl.closes) || decl.closes.some((c) => typeof c !== 'string' || !c)) {
-      throw new Error(
-        `Plugin "${pluginName}"'s marker "@${name}" has a \`closes\` that is not an array of marker names.`
-      );
-    }
-    for (const c of decl.closes) {
-      if (KNOWN_KINDS.includes(c)) {
-        throw new Error(
-          `Plugin "${pluginName}"'s marker "@${name}" lists core marker "@${c}" in \`closes\` — core scopes ` +
-            `close by their own rules. Only plugin-declared markers can be listed.`
-        );
-      }
-      if (c === name) {
-        throw new Error(
-          `Plugin "${pluginName}"'s marker "@${name}" lists itself in \`closes\` — opening a marker ` +
-            `already closes the previous one of its own kind. Remove it.`
-        );
-      }
-    }
-    closes = decl.closes;
-  }
-
   // Opt-in structure check — see runComponentValidate. Owned by the plugin
   // that declared the container, so an alias reports its TARGET's plugin.
   if (decl.validate !== undefined && typeof decl.validate !== 'function') {
@@ -795,16 +767,7 @@ function resolveContainerShape(name, pluginName, decl) {
   // Only a container that opts in carries these, so every other resolved
   // shape is unchanged.
   const check = decl.validate ? { validate: decl.validate, validateOwner: pluginName } : {};
-  return {
-    tag,
-    classBase,
-    variants,
-    label,
-    autoCloseAtEof,
-    ...(closes ? { closes } : {}),
-    ...(decl.section ? { section: true } : {}),
-    ...check,
-  };
+  return { tag, classBase, variants, label, autoCloseAtEof, ...(decl.section ? { section: true } : {}), ...check };
 }
 
 /**
@@ -1922,9 +1885,6 @@ export default function plugin(md, pluginOptions = {}) {
           // Re-entrant: opening a second instance of the SAME declared kind
           // closes the first (and anything nested inside it) — the exact
           // rule @section itself follows (see the section branch above).
-          // `closes`: the kinds this marker ends by opening (an alias name
-          // resolves to its base, like `@end-<alias>`); nothing open is a no-op.
-          for (const name of openDecl.closes || []) closeDeclaredFrame(declaredMarkers.get(name)?.baseKind ?? name);
           closeDeclaredFrame(openDecl.baseKind);
           openDeclaredMarker(meta, openDecl);
           continue;

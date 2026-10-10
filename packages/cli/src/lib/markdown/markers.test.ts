@@ -2545,69 +2545,6 @@ describe("declared marker `snippet` / `validate` (opt-in component checks)", () 
   });
 });
 
-describe("`closes` on a declared marker", () => {
-  const declaredMarkers = buildDeclaredMarkerRegistry([
-    {
-      pluginName: "dc",
-      markers: {
-        specialty: { class: "sp", autoCloseAt: ["eof"] },
-        skill: { class: "sk", autoCloseAt: ["eof"] },
-        "learning-path": { class: "lp", autoCloseAt: ["eof"], closes: ["skill"] },
-        path: { alias: "learning-path" },
-        "quick-skill": { alias: "skill" },
-        "after-quick": { class: "aq", autoCloseAt: ["eof"], closes: ["quick-skill", "not-loaded"] },
-      },
-    },
-  ]);
-  const render = (src: string) => renderPaged(src, { declaredMarkers });
-  const tree = (html: string) => html.replace(/<div class="(\w+)">/g, "<$1>").replace(/<\/div>/g, "</>").replace(/<p>.*?<\/p>\n/g, "");
-
-  test("opening it closes the open skill, so the path sits beside the skills, not inside the last one", () => {
-    const { html, env } = render("@specialty\n@skill\nA\n@skill\nB\n@learning-path\n@skill\nC\n@skill\nD\n");
-    expect(tree(html)).toBe("<sp><sk></><sk></><lp><sk></><sk></></></>");
-    expect(env.layoutWarnings ?? []).toEqual([]);
-  });
-
-  test("without `closes` the same document nests the path inside the skill (what it replaces)", () => {
-    const plain = buildDeclaredMarkerRegistry([
-      { pluginName: "dc", markers: { specialty: { class: "sp" }, skill: { class: "sk" }, "learning-path": { class: "lp" } } },
-    ]);
-    const { html } = renderPaged("@specialty\n@skill\nA\n@learning-path\n", { declaredMarkers: plain });
-    expect(tree(html)).toBe("<sp><sk><lp></></></>");
-  });
-
-  test("it also closes what was opened inside the skill, and is silent when no skill is open", () => {
-    expect(tree(render("@specialty\n@skill\n@learning-path\n").html)).toBe("<sp><sk></><lp></></>");
-    const { html, env } = render("@specialty\n@learning-path\n");
-    expect(tree(html)).toBe("<sp><lp></></>");
-    expect(env.layoutWarnings ?? []).toEqual([]);
-  });
-
-  test("an alias of the closing marker inherits `closes`; a listed alias name closes its target; unknown names are ignored", () => {
-    expect(tree(render("@specialty\n@skill\n@path\n").html)).toBe("<sp><sk></><lp></></>");
-    expect(tree(render("@specialty\n@skill\n@after-quick\n").html)).toBe("<sp><sk></><aq></></>");
-  });
-
-  describe("load-time validation", () => {
-    const build = (decl: Record<string, unknown>) => () =>
-      buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { box: decl } }]);
-
-    test("must be an array of marker-name strings", () => {
-      expect(build({ closes: "skill" })).toThrow(/Plugin "p"'s marker "@box" has a `closes` that is not an array of marker names/);
-      expect(build({ closes: ["skill", 5] })).toThrow(/`closes`/);
-    });
-
-    test("may not list a core marker or the marker itself", () => {
-      expect(build({ closes: ["page"] })).toThrow(/@box.*core marker "@page" in `closes`/);
-      expect(build({ closes: ["box"] })).toThrow(/@box.*lists itself in `closes`/);
-    });
-
-    test("cannot be combined with `section: true`", () => {
-      expect(build({ section: true, closes: ["skill"] })).toThrow(/@box.*`closes`/);
-    });
-  });
-});
-
 describe("section markers (`section: true`) and the component token contract", () => {
   const declaredMarkers = buildDeclaredMarkerRegistry([
     {
