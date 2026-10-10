@@ -365,6 +365,16 @@ main h2::before {
 }
 
 /* ── Sidebar: the "Inside" index box ──────────────────────────────────── */
+/* The template pins the sidebar beside the page as its own scrolling box.
+   This one is taller than a screen, so that box grew scrollbars (the tilted
+   strips added a sideways one). Here it is ordinary page content instead:
+   it scrolls with the page, and nothing in it scrolls on its own. */
+.docnav {
+  position: static;
+  max-height: none;
+  overflow: visible;
+}
+
 .docnav-label {
   padding-bottom: 0.2rem;
   font: 600 0.78rem/1.3 var(--pu-gothic);
