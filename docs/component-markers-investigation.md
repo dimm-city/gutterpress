@@ -1,192 +1,154 @@
-# Component markers: declared and flexible, with variant-aware authoring
+# Component markers: declared, opt-in, with variant-aware authoring
 
-Investigation notes, 2026-10-09. Covers Gutterpress at `v0.11.16-alpha.1` and gp-dimm-city `1.1.5` (commit 80980db).
+Investigation notes, revised 2026-10-10 after review. Covers Gutterpress at `v0.11.16-alpha.1`, gp-dimm-city `1.1.5`, and the books in `dc-op-manual` (Field Guide and SysOps).
 
 ## Goal
 
-Every main Dimm City component, and every main variant of it, should be a marker the Gutterpress core knows about. The author experience we are aiming for:
+Every main Dimm City component should be a marker the Gutterpress core knows about, with variants that add styling. The author experience we are aiming for:
 
-1. Type `@sk`, autocomplete offers `@skill` and its variants, and the author picks one.
-2. That variant's snippet is inserted, with its `{{fields}}` ready to fill in.
-3. Mistakes show in Problems at the right line: unknown variant, missing `@end-…`, wrong structure (`validate`).
+1. Type `@sk`, autocomplete offers `@skill`, `@skill highlight`, … and the author picks one.
+2. The component's snippet is inserted with the chosen variant on its marker line.
+3. Mistakes show in Problems at the right line.
 
-Constraints:
+## Ground rules from review
 
-- Adding a component must stay easy for plugin authors.
-- The core code must stay cohesive and give clear feedback to plugin authors and book authors.
-- Components that rebuild their content (skill, specialty, learning path) must still get all of the above.
+1. **Plain markdown-it plugins stay first-class.** The `markers` table is an optional export. A plugin without one loads and renders exactly as today; core already has a test for this ("a loaded plugin with no `markers` export renders exactly as before #240"). Everything below is opt-in per plugin and per marker. Nothing changes what a plain npm markdown-it plugin can do.
+2. **A variant only adds a class.** `@card featured` is `@card` plus one extra class, which the theme uses to adjust styling. Core already works exactly this way: `variants: { featured: "dc-card-featured" }`, with the variant selected by the bare word. **There is no core change to variants.** The only new work is in the editor: autocomplete lists the variants.
+3. **Section-styled components are real core sections** (decided). `@npc-stat wirephreak` must behave exactly like `@section .dc-npc-stat .dc-wirephreak`, so it gets section breaks, `.gp-columns-2`, `@continue`, and closes at the next `@section`/`@page`.
+4. **Remove buggy legacy behaviour rather than preserve it.** `@end-skills` and "`@end-skill` closes the enclosing `@learning-path`" are dropped (see the evidence section).
+5. **No regressions in the books** (see the regression plan).
 
-## Where things stand
+## Core changes (small)
 
-There are two ways to make a marker. Both live in `plugin.js`.
+### A. Section markers: `section: true`
 
-| | Declared in `export const markers` | Hand-written markdown-it rule |
+A declared marker can say it *is* a section:
+
+```js
+"npc-stat": { section: true, class: "dc-npc-stat", variants: specialtyVariants },
+```
+
+Core turns `@npc-stat wirephreak` into a core `@section` whose classes are the marker's `class` plus the variant's class, plus any author classes. It then runs the existing section code: `openSection`, closing at the next section or page, and `@continue`, which already copies the open section's classes, so a continued `@npc-stat` keeps its look. `@end-npc-stat` acts as `@end-section`.
+
+- **Implementation:** about 20 lines in the declared-marker branch of `layout_transform` (`markers.js`). It rewrites the marker into section metadata and calls the section branch. Validation in `resolveContainerShape`: `section` must be a boolean, and `tag` and `label` don't apply.
+- **Result:** the section marker gets autocomplete, snippets and typo warnings like any other component.
+
+### B. "Declare, then transform" for components that rebuild their content (opt-in)
+
+Some components need more than a wrapper and classes: `@skill`, `@card`, `@outcome`, `@learning-path`, `@procedure`. The plugin declares them in the table, so core parses them and they get autocomplete, closing rules, warnings and source lines. The plugin then rewrites the content between the component's open and close tokens with an **ordinary markdown-it rule**. There is no hook API: the table stays data, and the transform is plain markdown-it.
+
+Core additions:
+
+- **`meta.kind`** on `layout_component_open`. This is the base marker name, so a rule for `callout` also catches the alias `dm-note`. The existing meta (`component`, `variant`, `attrs`, `line`) already carries the rest.
+- **Document** the open/close token meta as a public contract.
+- **Scaffold** a short example with a ~20-line `forEachComponent` helper inlined, because plugins can't import from Gutterpress.
+
+Ordering already works:
+
+- Plugin core rules run after `layout_transform` and inline parsing.
+- They run after `validate`, which therefore sees what the author wrote.
+- They run before `source_range`.
+
+### C. Editor: variant-aware autocomplete
+
+- `MarkerComponent` gains `variants: string[]`, the variant names.
+- Autocomplete lists `@name` and one `@name <variant>` entry per variant, filtering as the author types.
+- Picking a variant inserts the component's snippet (the existing book > extension > core precedence) with the variant word added after `@name` on its first line. There are no per-variant snippet files: a variant only changes styling, so the structure is the same.
+- `listMarkerComponents` should read the resolved registry from `buildDeclaredMarkerRegistry` instead of the raw objects. Then the editor and the renderer agree on aliases, variants and section markers.
+
+### D. Self-closing markers (`selfClosing: true`)
+
+Needed for `@tape label="…"`, which has no `@end-tape`. Optional; without it `@tape` stays hand-written in the plugin.
+
+### Dropped from the earlier draft
+
+- the variant object form (`{ class, label, description }`)
+- per-variant snippet files
+- `variant=` as a second spelling
+- the `unknown_variant` warning
+- marker-first snippets in autocomplete (section components replace them)
+
+## gp-dimm-city refactor
+
+All of this is in gp-dimm-city's own `plugin.js` and stays opt-in. The plugin keeps working as a markdown-it plugin for everything it doesn't declare.
+
+| Group | Markers | How |
 |---|---|---|
-| Who parses `@x … @end-x` | Core | The plugin |
-| What it can emit | A wrapper element with classes, plus an optional label element read from an attribute | Anything |
-| Autocomplete, snippet badge, `validate` | Yes | No |
-| Typo, unclosed and stray-closer warnings, with line numbers | Yes | Only what the plugin writes |
-| Inline editing and scroll sync on the wrapper (`data-source-range`) | Yes | Only if the plugin sets source lines |
-| Collisions detected when the book loads | Yes | No |
+| Section components (new) | DC section styles: today's `@section .dc-column-panel`, `.dc-tabbed`, `.dc-card-grid`, `.dc-npc-stat`, `.dc-fiction-excerpt`, … | `section: true`, with variants such as the specialties (`wirephreak`, `augmerc`, …) where styling differs per specialty |
+| Wrappers | `@sidebar` (`inset`), `@sidebar-box`, `@definition`, `@specialty-intro`, `@specialty-art`, `@gear`, `@toc`, `@lede`, `@glossary`, `@block` (panel/slate/shard/codex), `@specialty-card`, `@specialty` (specialty variants), `@callout` and its alias `@dm-note` | Declared; their branches are deleted from `dimm_city_transform` |
+| Content rewrites | `@skill`, `@card`, `@outcome`, `@learning-path`, `@procedure` | Declared, plus one transform each, run per component |
+| Kept as is | `@continue` bridge, `> [!TYPE]` alerts, `ROLL THE DIE!`, `@tape` (until `selfClosing` exists) | Unchanged |
 
-gp-dimm-city declares nothing. A single core rule, `dimm_city_transform` (`plugin.js:909–2097`), handles every marker:
+Small things the plugin's transforms keep doing:
 
-- It runs as a state machine with about 40 flags and a flat `closeAll()`.
-- It relies on markers being their own paragraphs, with workarounds for when they aren't.
-- It parses attributes with an inlined copy of core's `parseMarkerLine`.
-- It emits one warning, and that warning has no line.
+- the callout's default label per variant
+- `data-position` on specialty cards
+- the learning-path ref, read from the enclosing `@specialty` component instead of a global
 
-None of the declared-marker benefits reach Dimm City books today.
+Book compatibility shims, kept in the plugin:
 
-### Inventory of gp-dimm-city markers
+- `@callout variant=note` is used 9 times in the books. Map `attrs.variant` to the variant inside the callout transform. That's one line, and it can be dropped once the books use `@callout note`.
 
-| Kind | Markers |
-|---|---|
-| Pure wrappers (easy) | `@sidebar` (`.inset`), `@sidebar-box`, `@definition`, `@specialty-intro`, `@specialty-art`, `@gear`, `@toc`, `@lede`, `@glossary` |
-| Wrapper with label or variant (easy–medium) | `@block` (panel/slate/shard/codex, plus `label=` title), `@callout` (note/warning/dm/vibe/origin/visit/gear via `variant=`, with a per-variant default label), `@dm-note` (`callout` with variant `dm`), `@specialty-card` (odd/even counter) |
-| Restructurers (medium–hard) | `@card` (heading, pull, body and footer), `@outcome` (rows rebuilt), `@specialty` (10 classes, plus a code used by learning paths), `@learning-path` (two divs, a ref and a sticker chain), `@procedure` (no wrapper; rebuilds `ol`), `@skill` (no wrapper; one card per `####`; `@end-skills` alias), `@continue` (core-owned; uses the bridge) |
-| Not containers | `@tape` (self-closing leaf), deprecated strippers, `> [!TYPE]` alerts, `ROLL THE DIE!` |
-| "Section variants" | Author classes on core markers, such as `@section .dc-tabbed`, `.dc-npc-stat` or `.dc-card-grid`, and `@page .dc-citizen-file-page`. The plugin has no code for these, and core marker names cannot be declared by plugins. |
+The 40-flag state machine and `closeAll()` go away because core supplies the nesting. Each transform handles one component's token range.
 
-## The core idea: declare, then transform
+## Evidence for dropping `@end-skills` and `@end-skill` → learning-path close
 
-Declare every component in the `markers` table, including the complicated ones. Where a component needs more than a wrapper, the plugin adds an ordinary markdown-it rule that rewrites the tokens between that component's open and close tokens. There is no new hook API: the table stays data, and the transform is a plain markdown-it rule, as CLAUDE.md §5 requires.
+I scanned every `.md` file in `dc-op-manual`, ignoring fenced code, and the gp-dimm-city design guide.
 
-```js
-export const markers = {
-  skill: {
-    class: "dc-skill-group",
-    variants: { highlight: "dc-highlight", split: "dc-allow-split", "two-col": "dc-two-col" },
-    autoCloseAt: ["eof"],
-    validate(skill) { /* plain-object checks */ },
-  },
-  skills: { alias: "skill" },          // makes `@end-skills` a valid closer
-};
+**`@end-skills`:** 0 uses in either. Drop it.
 
-export default function dimmCity(md) {
-  md.core.ruler.push("dc_skill", (state) =>
-    forEachComponent(state.tokens, "skill", (open, inner, close) => buildSkillCards(open, inner, close)));
-}
-```
+**Learning paths:** the books open 143 and explicitly close 85. Here is what closes each one:
 
-What this gives:
+| Closed by | Count | Same result under core? |
+|---|---|---|
+| `@end-learning-path` | 81 | yes |
+| the next `@learning-path` | 41 | yes (re-opening the same marker closes the previous one) |
+| `@section` / `@page` | 9 | yes (skill mode already closes everything at these) |
+| `@specialty` / `@end-specialty` | 7 | yes (closing the specialty closes what's inside it) |
+| `@end-skill`, then a later closer, **with content in between** | 2 | **no** |
+| end of file | 1 | yes |
 
-- **Core owns** marker recognition, nesting, closing, warnings, source lines, autocomplete, snippets and `validate`.
-- **The plugin owns** only the content rewrite. Each handler receives exactly one component's token range, so the `in*` flags and `closeAll()` disappear. Each restructurer becomes a small function with one job.
-- **Ordering is already right.** Plugin core rules run after `layout_transform` and inline parsing, after `gp_component_validate` (so `validate` sees the author's structure, before the rewrite), and before `source_range`.
-- **The rewrite is unconstrained.** A handler can drop the wrapper, for components like `@skill` and `@procedure` that have none today, or rename it.
+The 2 cases where the output would change:
 
-What core must provide is a documented, stable token contract:
+1. **`field-guide/chapter-02 2 Proxy.md:343–347`** (built book):
 
-- `layout_component_open`, with `meta` = `{ kind, component, variant, attrs, line, labelled }`
-- the matching `layout_component_close`
+   ```markdown
+   @end-skill
 
-`meta` already carries everything except `kind`. Add `kind` (the base marker, so a transform for `callout` also catches the alias `dm-note`), and document the contract next to the `markers` docs.
+   ![scavenger](…){.gp-center .fg-art-plate}
 
-`forEachComponent` is about 20 lines. It finds an open token with a given `meta.kind` and its matching close by nesting depth. The plugin scaffold should ship it inline, because plugins can't import from Gutterpress.
+   @end-learning-path
+   ```
 
-## Core changes, all small and general
+   Today `@end-skill` closes the learning path, so the art plate renders outside it, and the author's `@end-learning-path` is silently ignored. Under core the plate sits inside the learning path, which is where the author's own `@end-learning-path` puts it. **This is a bug fix,** and it's visible on one page.
 
-### 1. Variants become first-class
+2. **`adventures/New Specialties/Ability Limbo.md:3330`.** No manifest builds this file (it's a working draft), so it doesn't ship.
 
-**a. Object form for variants.** Today a variant maps to a class string (`variants: { warning: "dc-note warning" }`). Keep that shorthand and add an object form:
+Conclusion: dropping both is safe. The single shipped difference fixes a rendering bug.
 
-```js
-variants: {
-  warning: { class: "dc-note warning", label: "Warning", description: "Something can go wrong" },
-}
-```
+## Regression plan
 
-- `label` is the default label text when the author gives no `label=` attribute. This replaces gp-dimm-city's callout label table.
-- `description` appears beside the variant in autocomplete.
+**Built-in safety net:** both books pin the vendored `gp-dimm-city@1.0.1` (`field-guide/manifest.yaml`, `SysOps/manifest.yaml`). Nothing changes in a book until someone re-pins it on purpose.
 
-Variant snippets come from a naming convention, so they need no field (see 3 below).
+**Proof before re-pinning:**
 
-**b. `variant=` as a second spelling.** Accept `variant=x` as an equivalent of the bare word. This matches how core already treats `.x` and `{.x}` as equivalent. It keeps every existing `@callout variant=note` book working while `@callout note` becomes the documented form.
+1. **Diff harness** (a local script; book content is private, so it doesn't go in the public plugin repo). Render every chapter of both books through the same Gutterpress version, once with the current plugin and once with the refactored one, and diff the HTML.
+2. **Normalise expected noise** before diffing: `data-source-range`, the new `data-<kind>` and `data-label` attributes, and attribute order. The classes must match exactly.
+3. **Review every remaining diff** against the expected list:
+   - the Field Guide ch. 02 art plate moving into its learning path;
+   - containers now closing at `@page`/`@section`, where the plugin used to leave them open across the boundary.
 
-**c. Warn on unknown variants.** When a marker declares `variants` and the author writes a variant that isn't one of them, emit an `unknown_variant` warning such as "did you mean `warning`?". Reuse `editDistance` from `markers.js:161`. Today an unknown variant is silently dropped.
+   Anything else is a regression to fix before release.
+4. **Keep the plugin's design-guide snapshot test green.** Review its categories once, then regenerate. Change its coverage test to read the `markers` keys, and move the tests that use bare markdown-it onto Gutterpress's renderer for the declared markers.
+5. **Visual check:** build the PDF of both books before and after, and compare page counts plus a page-image diff of the changed pages.
+6. **Order:** release gp-dimm-city, then re-pin one book, then the other.
 
-### 2. The token contract
+## Order of work
 
-- Add `meta.kind`, the base marker name.
-- Document the `layout_component_open`/`close` meta as public, the way the `markers` fields are.
-- Show "declare, then transform" in the plugin scaffold, next to `term-box`, with the inline `forEachComponent` helper.
-
-### 3. Editor: variant-aware autocomplete and snippets
-
-- `MarkerComponent` gains `variants: [{ name, description?, snippet? }]`.
-- Autocomplete lists `@skill`, then one entry per variant (`@skill highlight`, `@skill split`, …), each with its description. Typing `@sk` narrows to the skill entries.
-- Each variant's snippet is chosen like this, with the existing level precedence (book, then extension, then core) applied at every step:
-  1. `<snippets>/<name>.<variant>.md`, for example `snippets/callout.warning.md`
-  2. otherwise the base snippet, with the variant word inserted into its first `@name` line
-  3. otherwise an empty `@name variant` / `@end-name` pair
-- The snippet picker groups variant snippets under their component.
-
-### 4. Leaf markers (needed for `@tape`)
-
-Add `selfClosing: true`. It emits the open and close tokens together, with no `@end-…`, and is the one way to declare `@tape label="…"`. Without it, `@tape` stays hand-written, and core's typo check may wrongly flag it once other markers are declared.
-
-### 5. One resolver for everything
-
-`listMarkerComponents` (`snippets.ts`) currently re-reads the raw `markers` objects and re-implements the deprecated and alias rules. It should call the exported, node-free `buildDeclaredMarkerRegistry` and read the resolved shapes. Then the renderer and the editor agree on aliases, variants, labels and descriptions, and a malformed declaration gives the same error in both.
-
-### 6. Variants of core markers ("section variants")
-
-`@section` and `@page` are core-owned and can't be declared by a plugin, and that should stay so. For gp-dimm-city's `@section .dc-tabbed`-style variants there are two options; do both:
-
-- Where the thing is really a Dimm City component, give it a component name, for example `@npc-stat`, `@fiction-excerpt` or `@card-grid`.
-- Let `@` autocomplete offer any snippet whose first line is a marker, for example the extension's `section.tabbed.md` starting `@section .dc-tabbed`, labelled "snippet". This needs no new semantics and works for any extension.
-
-## Feedback
-
-**Book authors, in Problems at the right line:**
-
-- `unknown_variant` (new)
-- the existing `unknown_marker`, unclosed and stray-closer warnings
-- `component_invalid` from `validate`
-
-**Plugin authors:**
-
-- Errors when the book loads (already true for `markers` fields; extend to the variant object form and `selfClosing`).
-- `component_validate_failed` when `validate` breaks.
-- Scaffold tests that check every declared variant has a snippet, or is knowingly skipped.
-
-## gp-dimm-city refactor plan
-
-Work in this order, keeping the design-guide snapshot test green at each step.
-
-1. **Bump `gutterpress`** (devDependency) to the release with the core changes. Move the tests that use bare `markdown-it` onto `createMarkdownRenderer`, because declared markers need core.
-2. **Declare the pure wrappers.** Move `sidebar`, `sidebar-box`, `definition`, `specialty-intro`, `specialty-art`, `gear`, `toc`, `lede`, `glossary` and `block` (`variants` panel/slate/shard/codex, `label` → `dc-block-title`) into the table, and delete their branches from `dimm_city_transform`.
-3. **Callouts.** Declare `callout` with variant objects (class plus default label; `label.tag: "span"`), `dm-note` as an alias with `preset: { variant: "dm" }`, and `specialty-card` with a small transform for `data-position`.
-4. **Restructurers, one handler each:** `card` (heading/pull/body/footer), `outcome` (`flush` variant), `procedure` (handler drops the wrapper), `specialty` (10 variants plus `dc-cards-two-col`; `autoCloseAt: ["eof"]`), `learning-path` (handler reads the specialty code from the enclosing `specialty` open token instead of a global), `skill` (variants highlight/split/two-col; alias `skills`; handler drops the wrapper and builds cards). Keep `@continue` on its existing bridge.
-5. **Snippets:**
-   - one per component, plus `<name>.<variant>.md` where variants differ in structure (callout variants mostly don't; skill highlight and split mostly don't; card flaws/ideals/dreams do);
-   - add the missing `sidebar-box`, `glossary` and `tape`;
-   - add `validate` where it pays off: skill (needs a `####` heading), card, outcome rows, callout.
-6. **Leftovers:** `@tape` uses `selfClosing`. Add Dimm City component names, or marker-first snippets, for the section and page variants.
-
-What it costs:
-
-| Cost | Detail |
-|---|---|
-| Snapshot diffs in migrated wrappers | `data-source-range` appears (wanted: it turns on inline editing), plus `data-<kind>="<variant>"` and `data-label`, and attribute order may change. Review the categories once, then regenerate. CSS is unaffected, because the classes stay the same. |
-| Nesting semantics | Core uses a stack, where today it is "close all". The design guide doesn't depend on the difference. The real books need checking for one case before `@skill` migrates: `@end-skill` closing an enclosing `@learning-path`. Core would close only the skill. |
-| Layout boundaries | Open DC containers now close at `@page`/`@section`. That's an improvement, but the DOM changes. |
-| Removed markers | Core's `deprecated` warns where the plugin silently stripped. Accept the warning, or keep the strippers. |
-| DC coverage test | It extracts `'@name'` literals from `plugin.js`; it must read the `markers` keys instead. |
-
-## Effort, roughly
-
-| Piece | Size |
-|---|---|
-| Core 1–3 and 5: variants, token contract, editor, resolver | Medium (one alpha) |
-| Core 4 and 6: leaf markers, marker-first snippets | Small |
-| gp-dimm-city steps 1–3 | Small–medium; mostly deleting code |
-| gp-dimm-city step 4 | Medium–large; each restructurer becomes a range handler, and the monolith shrinks substantially |
-| gp-dimm-city steps 5–6 | Small, mostly content |
-
-## Not recommended
-
-- **A `transform` or `render` callback in the `markers` table.** It adds a Gutterpress-specific hook API (against CLAUDE.md §5), and it would still have to hand authors markdown-it tokens. "Declare, then transform" gets the same flexibility with a plain markdown-it rule.
-- **Letting plugins redefine `@section`/`@page`.** Core marker names are reserved on purpose, because the page model depends on them.
-- **A two-step variant picker** (pick `@skill`, then a second popup for the variant). A flat list (`@skill`, `@skill highlight`, …) filters as the author types, needs no new interaction, and can be revisited later.
+1. **Gutterpress next alpha:**
+   - A, section markers;
+   - B, `meta.kind` plus the documented token contract;
+   - C, variant autocomplete and the resolver;
+   - optionally D, self-closing markers.
+2. **gp-dimm-city:** section components and wrappers first, then the content-rewrite components one at a time, with the diff harness run at every step.
+3. **Books:** re-pin after the diff review.
