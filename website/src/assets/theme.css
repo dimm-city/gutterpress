@@ -1,0 +1,45 @@
+/* The look of this site, as custom properties — unify's theme contract. The
+   blog template's assets/style.css imports this file into its `theme` layer,
+   so every value here wins over the template's default for the same property.
+
+   The values are the Dimm City palette (gp-dimm-city, styles/dc-palette.css):
+   a concrete brick wall, flyer-stock paper pasted on it, warm riso ink, and
+   the dimm.city signature colours for stickers and spray banners. */
+:root {
+  color-scheme: light;
+
+  /* The blog template's properties */
+  --font-body: 1.0625rem/1.6 "Titillium Web", system-ui, sans-serif;
+  --color-text: var(--dc-ink);
+  --color-background: var(--dc-wall);
+  --color-link: var(--dc-blood);
+  --color-rule: var(--dc-ink);
+  --measure: 72rem;
+  --space: 1rem;
+
+  /* Dimm City palette */
+  --dc-wall: #c8c5bf;          /* ash-concrete — the brick wall */
+  --dc-paper: #f0eee9;         /* flyer stock pasted on the wall */
+  --dc-paper-alt: #e2ded7;     /* layered paper */
+  --dc-paper-aged: #c8c2b8;
+  --dc-ink: #1a1512;           /* riso warm black */
+  --dc-ink-dark: #2b231d;
+  --dc-ink-smoke: #4d4339;
+  --dc-crimson: #e1261c;
+  --dc-blood: #901a12;
+  --dc-magenta: #c026d3;
+  --dc-magenta-deep: #8a0a9a;
+  --dc-cyan: #00bcd4;
+  --dc-hud-blue: #1f6f94;
+  --dc-hud-blue-dark: #14516e;
+  --dc-yellow: #ffd700;
+  --dc-fungi: #c8e040;
+
+  /* Paste-up chrome */
+  --dc-font-display: "Tomorrow", "Titillium Web", sans-serif;
+  --dc-font-mono: "Tomorrow", ui-monospace, monospace;
+  --dc-shadow-ink: #6b6864;    /* opaque ink-on-wall shadow */
+  --dc-shadow-poster: 3px 4px 0 var(--dc-shadow-ink);
+  --dc-clip-tail: 18px;
+  --dc-prose: 44rem;
+}

@@ -1,0 +1,57 @@
+---
+title: "Gutterpress 0.11.16: smarter components and a snippet card grid"
+description: "Components that show authors the structure they expect and check their own content, a searchable snippet picker, version pickers for extensions, and a regrouped status bar."
+og:title: "Gutterpress 0.11.16: smarter components and a snippet card grid"
+og:description: "Components that check their own content, a searchable snippet picker, and version pickers for extensions."
+schema: BlogPosting
+date: 2026-10-09T00:00:00Z
+author: Dimm City
+og:type: article
+---
+
+# Gutterpress 0.11.16: smarter components and a snippet card grid
+
+This release is about plugin components: helping authors write them
+correctly, and letting plugins tell authors when something is off.
+
+## Components guide the author
+
+- **Example snippets.** Pick a plugin component, by typing `@` at the start
+  of a line or from the snippet picker, and the editor inserts the
+  component's example snippet: `snippets/<marker>.md` in its extension, or
+  the path the marker names with `snippet:`.
+- **Variants in autocomplete.** Typing `@sk` lists `@skill` and one
+  `@skill <variant>` entry per variant the marker declares.
+- **Content checks.** A marker may declare `validate(component)`. It gets a
+  plain description of the content and returns problems, which show in the
+  Problems panel, `gutterpress validate` and builds, at the right line.
+- **Mistyped variants are reported.** `@npc-stat wirephreek` used to be
+  ignored silently. Now Problems says it is not a variant and suggests the
+  one you meant.
+- **Section markers.** A marker declared with `section: true` behaves exactly
+  like a core `@section` carrying the marker's classes.
+
+## A searchable snippet picker
+
+Snippets now show as cards in a grid, grouped by level: your book, each
+extension, then core. A search box filters by name and content as you type,
+level chips and "Components only" narrow it further, and Enter inserts the
+first match.
+
+## Extension versions
+
+Each npm extension on the Features tab has a **Version** menu. Choosing one
+installs it the way `gutterpress ext add name@version` does, and the pin
+moves only once the new version has downloaded, verified and loaded. A
+missing or broken copy gets an **Install** (or **Reinstall**) button.
+Book settings → Features is now split into *Installed & built-in*, *Search*
+and *Advanced* tabs.
+
+## Also in this release
+
+The status bar gains a Books button and a regrouped right side, paging is
+centred in the preview toolbar, the editor fills its pane again, and "Fit to
+width" no longer scrolls sideways on fractionally scaled displays.
+
+See the [full changelog](https://github.com/dimm-city/gutterpress/blob/main/CHANGELOG.md)
+or [download the release](https://github.com/dimm-city/gutterpress/releases/latest).

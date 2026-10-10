@@ -1,0 +1,498 @@
+/* The site's rules: Dimm City cut-and-paste paper and skill stickers
+   (after gp-dimm-city's styles/components/chrome.css and cards.css).
+   Everything lives in the blog template's `theme` layer, which it declares
+   ahead of its `base` rules (`@layer base, theme;` in assets/style.css), so
+   these rules win over the template's and read only theme.css's values. */
+@layer theme {
+  /* ── The wall ────────────────────────────────────────────────────────── */
+  body {
+    background: var(--dc-wall) url("images/brick-wall.jpg") repeat;
+    background-size: 160px auto;
+    padding-bottom: 2rem;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--dc-font-display);
+    line-height: 1.15;
+    letter-spacing: 0.02em;
+  }
+
+  code {
+    background: var(--dc-paper-alt);
+    padding: 0.1em 0.35em;
+  }
+
+  pre {
+    background: var(--dc-ink-dark);
+    color: var(--dc-paper);
+    padding: 0.9rem 1rem;
+    overflow-x: auto;
+    border-left: 4px solid var(--dc-cyan);
+  }
+
+  pre code {
+    background: none;
+    padding: 0;
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--dc-magenta);
+    outline-offset: 3px;
+  }
+
+  /* ── Stickers: ink chips, slightly crooked, hard shadow ──────────────── */
+  .sticker,
+  nav a,
+  .card time {
+    display: inline-block;
+    font: 700 0.75rem/1.3 var(--dc-font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    text-decoration: none;
+    padding: 0.3rem 0.7rem;
+    background: var(--dc-ink-dark);
+    color: var(--dc-paper);
+    border: 1px solid var(--dc-hud-blue-dark);
+    box-shadow: 2px 2px 0 var(--dc-shadow-ink);
+    transform: rotate(-0.5deg);
+  }
+
+  nav a:nth-child(4n + 2) {
+    transform: rotate(0.7deg);
+  }
+
+  nav a:nth-child(4n + 3) {
+    transform: rotate(-0.9deg);
+  }
+
+  nav a:hover {
+    background: var(--dc-magenta-deep);
+    transform: rotate(0deg) translateY(-1px);
+  }
+
+  nav .nav-cta {
+    background: var(--dc-yellow);
+    color: var(--dc-ink);
+    border-color: var(--dc-ink);
+  }
+
+  nav .nav-cta:hover {
+    background: var(--dc-fungi);
+  }
+
+  /* The paper tab sticker: cream on a coloured strip, tipped further over. */
+  .eyebrow {
+    display: inline-block;
+    font: 700 0.72rem/1.3 var(--dc-font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    background: var(--dc-paper);
+    color: var(--dc-hud-blue);
+    padding: 0.25rem 0.55rem 0.2rem;
+    border: 1px solid var(--dc-ink);
+    box-shadow: 2px 3px 0 var(--dc-shadow-ink);
+    transform: rotate(-2.5deg);
+  }
+
+  /* ── Masthead: an ink strip with the nav stuck on ─────────────────────── */
+  .masthead {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem 1.5rem;
+    margin: 0.5rem 0 2rem;
+    padding: 0.9rem 1.1rem;
+    background: var(--dc-ink);
+    color: var(--dc-paper);
+    box-shadow: var(--dc-shadow-poster);
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 22px) 100%, 0 100%);
+  }
+
+  .masthead nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+  }
+
+  .masthead nav a {
+    margin: 0;
+  }
+
+  .wordmark {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    color: inherit;
+    text-decoration: none;
+    font: 700 1.35rem/1.1 var(--dc-font-display);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .wordmark small {
+    display: block;
+    font: 400 0.8rem/1.3 "Titillium Web", sans-serif;
+    text-transform: none;
+    letter-spacing: 0.02em;
+    color: var(--dc-paper-aged);
+  }
+
+  /* ── Paper: flyer stock pasted to the wall ────────────────────────────── */
+  .paper,
+  .hero,
+  .page-head,
+  main:not(:has(.hero, .page-head)) {
+    position: relative;
+    background: var(--dc-paper);
+    border: 2px solid var(--dc-ink);
+    box-shadow: var(--dc-shadow-poster);
+    padding: 1.8rem clamp(1rem, 3vw, 2rem);
+  }
+
+  /* A strip of masking tape across the top edge. */
+  .paper::before,
+  .hero::before,
+  .page-head::before,
+  main:not(:has(.hero, .page-head))::before {
+    content: "";
+    position: absolute;
+    top: -12px;
+    left: 50%;
+    width: 7rem;
+    height: 22px;
+    margin-left: -3.5rem;
+    background: color-mix(in srgb, var(--dc-yellow) 35%, var(--dc-paper));
+    border-inline: 2px dotted var(--dc-paper-aged);
+    transform: rotate(-3deg);
+  }
+
+  .band:nth-of-type(even) .paper {
+    transform: rotate(0.35deg);
+  }
+
+  .band:nth-of-type(odd) .paper {
+    transform: rotate(-0.3deg);
+  }
+
+  /* ── Hero ─────────────────────────────────────────────────────────────── */
+  .hero {
+    transform: rotate(-0.6deg);
+    margin: 1rem 0 2.5rem;
+    padding-block: clamp(2rem, 6vw, 3.5rem);
+  }
+
+  .hero h1 {
+    font-size: clamp(2rem, 5.5vw, 3.4rem);
+    text-transform: uppercase;
+    margin: 1rem 0;
+    max-width: 52rem;
+  }
+
+  /* A cut-out word: a scrap of yellow paper glued behind it. */
+  .hero h1 em {
+    font-style: normal;
+    display: inline-block;
+    background: var(--dc-yellow);
+    padding: 0 0.25em;
+    border: 2px solid var(--dc-ink);
+    transform: rotate(-2deg);
+    box-shadow: 3px 3px 0 var(--dc-ink);
+  }
+
+  .hero p {
+    font-size: 1.15rem;
+    max-width: var(--dc-prose);
+    color: var(--dc-ink-smoke);
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 1.8rem;
+  }
+
+  .button {
+    display: inline-block;
+    padding: 0.7rem 1.2rem;
+    border: 2px solid var(--dc-ink);
+    background: var(--dc-paper-alt);
+    color: var(--dc-ink);
+    font: 700 0.9rem/1.2 var(--dc-font-display);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    text-decoration: none;
+    box-shadow: var(--dc-shadow-poster);
+  }
+
+  .button.primary {
+    background: var(--dc-crimson);
+    color: #fff;
+  }
+
+  .button:hover {
+    transform: translate(-1px, -1px) rotate(-0.5deg);
+  }
+
+  /* ── Sections: a spray banner on the wall, then paper ─────────────────── */
+  .band {
+    margin: 0 0 2.75rem;
+  }
+
+  .band > .eyebrow {
+    margin-bottom: 0.4rem;
+  }
+
+  /* The spray banner: magenta, chipped corner, a skewed tab off its end. */
+  .band h2 {
+    position: relative;
+    display: inline-block;
+    margin: 0.3rem 0 1.4rem;
+    padding: 0.6rem 1.3rem 0.7rem;
+    max-width: calc(100% - 18px);
+    background: var(--dc-magenta-deep);
+    color: var(--dc-paper);
+    font-size: clamp(1.3rem, 3vw, 1.8rem);
+    text-transform: uppercase;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 22px 100%, 0 calc(100% - 14px));
+    isolation: isolate;
+  }
+
+  .band:nth-of-type(3n + 2) h2 {
+    background: var(--dc-hud-blue-dark);
+  }
+
+  .band:nth-of-type(3n + 3) h2 {
+    background: var(--dc-blood);
+  }
+
+  .band-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 1.25rem;
+  }
+
+  .band-head .eyebrow {
+    flex-basis: 100%;
+    max-width: max-content;
+    margin-bottom: 0.4rem;
+  }
+
+  .more {
+    font: 700 0.85rem/1 var(--dc-font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--dc-ink);
+    background: var(--dc-paper);
+    padding: 0.35rem 0.6rem;
+    border: 1px solid var(--dc-ink);
+    margin-bottom: 1.4rem;
+    text-decoration: none;
+    transform: rotate(1.5deg);
+  }
+
+  .note {
+    max-width: var(--dc-prose);
+    color: var(--dc-ink-smoke);
+  }
+
+  /* ── Post cards: skill cards with an ink tab ──────────────────────────── */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+    gap: 2rem 1.75rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .card {
+    position: relative;
+    background: var(--dc-paper);
+    border: 2px solid var(--dc-ink);
+    border-top: 6px solid var(--dc-magenta-deep);
+    padding: 1.2rem 1.2rem 1.3rem;
+    box-shadow: var(--dc-shadow-poster);
+    transform: rotate(-0.4deg);
+  }
+
+  .card:nth-child(3n + 2) {
+    border-top-color: var(--dc-hud-blue-dark);
+    transform: rotate(0.5deg);
+  }
+
+  .card:nth-child(3n + 3) {
+    border-top-color: var(--dc-crimson);
+    transform: rotate(-0.2deg);
+  }
+
+  .card time {
+    position: absolute;
+    top: -0.95rem;
+    left: 0.9rem;
+    transform: rotate(-2deg);
+  }
+
+  .card h3 {
+    font-size: 1.15rem;
+    margin: 0.6rem 0 0.5rem;
+  }
+
+  .card h3 a {
+    color: var(--dc-ink);
+    text-decoration: none;
+  }
+
+  .card h3 a:hover {
+    color: var(--dc-magenta-deep);
+    text-decoration: underline 3px var(--dc-yellow);
+  }
+
+  .card p {
+    margin: 0;
+    color: var(--dc-ink-smoke);
+    font-size: 0.97rem;
+  }
+
+  /* ── Steps, features, installs, downloads ─────────────────────────────── */
+  .steps,
+  .features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    gap: 1rem 2rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .steps {
+    counter-reset: step;
+  }
+
+  .steps li {
+    counter-increment: step;
+  }
+
+  .steps h3::before {
+    content: counter(step, decimal-leading-zero);
+    display: inline-block;
+    margin-right: 0.5rem;
+    padding: 0.1rem 0.45rem;
+    background: var(--dc-crimson);
+    color: #fff;
+    font: 700 1rem/1.3 var(--dc-font-mono);
+    transform: rotate(-3deg);
+  }
+
+  .features li {
+    padding-left: 0.9rem;
+    border-left: 4px solid var(--dc-cyan);
+  }
+
+  .installs {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+    gap: 0.5rem 2rem;
+  }
+
+  .installs h3 {
+    font-size: 1rem;
+  }
+
+  .table-scroll {
+    overflow-x: auto;
+    margin-block: 1rem;
+  }
+
+  .downloads {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .downloads th,
+  .downloads td {
+    text-align: left;
+    padding: 0.6rem 0.8rem;
+    border-bottom: 1px solid var(--dc-paper-aged);
+    vertical-align: top;
+  }
+
+  .downloads th {
+    font: 700 0.78rem/1.3 var(--dc-font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    background: var(--dc-ink);
+    color: var(--dc-paper);
+  }
+
+  /* ── Pages and posts (rendered markdown on one sheet of paper) ────────── */
+  .page-head {
+    margin: 1rem 0 2.25rem;
+    transform: rotate(-0.4deg);
+  }
+
+  .page-head h1 {
+    font-size: clamp(1.9rem, 4.5vw, 2.8rem);
+    margin: 0.9rem 0 0.5rem;
+    text-transform: uppercase;
+  }
+
+  .page-head p {
+    max-width: var(--dc-prose);
+    color: var(--dc-ink-smoke);
+  }
+
+  main:not(:has(.hero, .page-head)) {
+    max-width: calc(var(--dc-prose) + 4rem);
+    margin: 1rem auto 2rem;
+  }
+
+  main:not(:has(.hero, .page-head)) h1 {
+    font-size: clamp(1.7rem, 4.5vw, 2.5rem);
+    text-transform: uppercase;
+    padding-bottom: 0.6rem;
+    border-bottom: 4px solid var(--dc-magenta-deep);
+  }
+
+  main:not(:has(.hero, .page-head)) h2 {
+    display: inline-block;
+    margin-top: 2rem;
+    padding: 0.25rem 0.7rem;
+    background: var(--dc-ink-dark);
+    color: var(--dc-paper);
+    font-size: 1.15rem;
+    text-transform: uppercase;
+    transform: rotate(-0.6deg);
+  }
+
+  /* ── Footer: hazard tape ──────────────────────────────────────────────── */
+  .site-footer {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1rem;
+    padding: 0.9rem 1rem;
+    border: 2px solid var(--dc-ink);
+    background: var(--dc-paper);
+    box-shadow: var(--dc-shadow-poster);
+    font: 0.9rem/1.5 "Titillium Web", sans-serif;
+  }
+
+  .site-footer::before,
+  .site-footer::after {
+    content: "";
+    flex: 1 1 2rem;
+    height: 4px;
+    background: repeating-linear-gradient(90deg, var(--dc-crimson) 0 6px, var(--dc-paper) 6px 10px);
+  }
+
+  .site-footer p {
+    margin: 0;
+    flex: 0 1 auto;
+    text-align: center;
+  }
+}
