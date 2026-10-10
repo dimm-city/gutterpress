@@ -9,6 +9,7 @@ import type {
   NpmExtensionMatch,
   ExtensionSearchResult,
   ExtensionUpdatesResult,
+  ExtensionVersionsResult,
 } from "../../src/lib/platform/dtos";
 import { sampleSrcdoc, hoverPreviewSrcdoc } from "../../src/lib/components/config/config-helpers";
 
@@ -84,6 +85,10 @@ interface Harness {
   afterLookChange: ReturnType<typeof spy>;
   searchResult: ExtensionSearchResult;
   updatesResult: ExtensionUpdatesResult;
+  /** What the registry says each package has, by name (a missing name is a failed lookup). */
+  published: Record<string, string[]>;
+  /** The "Include pre-release versions" preference the controller reads and writes. */
+  includePrerelease: boolean;
 }
 
 function make(
@@ -94,6 +99,8 @@ function make(
     builtIns: BuiltInStyleSet[];
     searchResult: ExtensionSearchResult;
     updatesResult: ExtensionUpdatesResult;
+    published: Record<string, string[]>;
+    includePrerelease: boolean;
   }> = {},
 ): Harness {
   const onLookAdded = spy();
@@ -115,6 +122,8 @@ function make(
     importFileResult: null,
     searchResult: over.searchResult ?? { ok: true, matches: [FOUND_DC, FOUND_OTHER], total: 42 },
     updatesResult: over.updatesResult ?? { ok: true, checks: [] },
+    published: over.published ?? {},
+    includePrerelease: over.includePrerelease ?? false,
   } as Harness;
   const record = (name: string, ...args: unknown[]) => h.calls.push({ name, args });
   const named = (n: string) => h.calls.filter((c) => c.name === n);
@@ -132,9 +141,21 @@ function make(
       record("search", query);
       return Promise.resolve(h.searchResult);
     },
-    outdated: (dir) => {
-      record("outdated", dir);
+    outdated: (dir, includePrerelease) => {
+      record("outdated", dir, includePrerelease);
       return Promise.resolve(h.updatesResult);
+    },
+    versions: (name): Promise<ExtensionVersionsResult> => {
+      record("versions", name);
+      const versions = h.published[name];
+      return Promise.resolve(
+        versions ? { ok: true, versions } : { ok: false, message: `npm package "${name}" was not found.` },
+      );
+    },
+    includePrerelease: () => h.includePrerelease,
+    setIncludePrerelease: (on) => {
+      record("setIncludePrerelease", on);
+      h.includePrerelease = on;
     },
     validate: () => {
       if (h.failValidate) return Promise.reject(new Error("validate failed"));
@@ -154,7 +175,13 @@ function make(
         ...(exportName ? { export: exportName } : {}),
         ...(h.addWarnings.length ? { warnings: h.addWarnings } : {}),
       });
-      h.entries = [...h.entries, added];
+      // An npm re-pin replaces the entry for that package (what the host's `upsertEntry` does).
+      const npmAt = added.kind === "npm" ? h.entries.findIndex((e) => e.kind === "npm" && e.name === specifier.replace(/@[^@]*$/, "")) : -1;
+      if (npmAt >= 0) {
+        added.name = h.entries[npmAt]!.name;
+        added.version = specifier.slice(added.name.length + 1);
+        h.entries = h.entries.map((e, i) => (i === npmAt ? added : e));
+      } else h.entries = [...h.entries, added];
       return Promise.resolve(added);
     },
     addLocal: (dir) => {
@@ -586,7 +613,7 @@ test("checkUpdates asks the host once for the project and exposes the newer vers
   const h = make({ entries: [PINNED_DC, FEATURE], updatesResult: DC_BEHIND });
   await h.ctrl.loadExtensions();
   await h.ctrl.checkUpdates();
-  expect(named(h, "outdated").map((c) => c.args)).toEqual([["/proj"]]);
+  expect(named(h, "outdated").map((c) => c.args)).toEqual([["/proj", false]]);
   expect(h.ctrl.updates.status).toBe("ready");
   expect(h.ctrl.updateFor(PINNED_DC)).toBe("1.2.0");
   expect(h.ctrl.updateFor(FEATURE)).toBeNull(); // bundled: npm has nothing to say
@@ -630,4 +657,164 @@ test("update is a no-op for an entry with nothing newer, and a cancelled trust g
   await h.ctrl.update(PINNED_DC);
   expect(named(h, "add").length).toBe(1);
   expect(h.ctrl.updateFor(PINNED_DC)).toBe("1.2.0"); // still offered
+});
+
+
+// ── Install button, version picker, pre-release preference ───────────────────
+
+const PUBLISHED_DC = ["1.3.0-rc.1", "1.2.0", "1.2.0-alpha.2", "1.1.0", "1.0.0"];
+/** The screenshot's state: a pin whose downloaded copy is missing. */
+const MISSING_DC = entry({
+  use: "dimm-city-components@1.2.0-alpha.2",
+  kind: "npm",
+  name: "dimm-city-components",
+  version: "1.2.0-alpha.2",
+  export: "full",
+  carries: MARKDOWN,
+  warnings: ["Not installed — run `gutterpress ext add dimm-city-components@1.2.0-alpha.2`."],
+});
+
+test("versionChoices: stable only by default, pre-releases with the preference, the pin always listed", async () => {
+  const h = make({ entries: [PINNED_DC, MISSING_DC], published: { "dimm-city-components": PUBLISHED_DC } });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.loadVersions("dimm-city-components");
+  expect(h.ctrl.versionChoices(PINNED_DC)).toEqual(["1.2.0", "1.1.0", "1.0.0"]);
+  // A pre-release pin stays visible even with the preference off.
+  expect(h.ctrl.versionChoices(MISSING_DC)).toEqual(["1.2.0", "1.2.0-alpha.2", "1.1.0", "1.0.0"]);
+  h.ctrl.setIncludePrerelease(true);
+  expect(h.ctrl.versionChoices(PINNED_DC)).toEqual(PUBLISHED_DC);
+  // …and flipping it needed no second registry lookup.
+  expect(named(h, "versions").length).toBe(1);
+});
+
+test("versionChoices: before the list loads (or when it fails) the row still offers its pin; non-npm rows get no picker", async () => {
+  const h = make({ entries: [PINNED_DC, FEATURE, BOTH], published: {} });
+  expect(h.ctrl.versionChoices(PINNED_DC)).toEqual(["1.1.0"]);
+  await h.ctrl.loadVersions("dimm-city-components");
+  expect(h.ctrl.versions["dimm-city-components"]).toEqual({ status: "error", versions: [], message: 'npm package "dimm-city-components" was not found.' });
+  expect(h.ctrl.versionChoices(PINNED_DC)).toEqual(["1.1.0"]);
+  expect(h.ctrl.error).toBeNull(); // quiet: never blocks the panel
+  expect(h.ctrl.versionChoices(FEATURE)).toEqual([]);
+  expect(h.ctrl.versionChoices(BOTH)).toEqual([]);
+});
+
+test("loadVersions caches per package for the session, but retries after a failure", async () => {
+  const h = make({ entries: [PINNED_DC], published: {} });
+  await h.ctrl.loadVersions("dimm-city-components"); // fails
+  h.published = { "dimm-city-components": PUBLISHED_DC };
+  await h.ctrl.loadVersions("dimm-city-components"); // retried: picker opened again
+  await h.ctrl.loadVersions("dimm-city-components"); // cached
+  await Promise.all([h.ctrl.loadVersions("dimm-city-components"), h.ctrl.loadVersions("dimm-city-components")]);
+  expect(named(h, "versions").map((c) => c.args)).toEqual([["dimm-city-components"], ["dimm-city-components"]]);
+  expect(h.ctrl.versions["dimm-city-components"]!.status).toBe("ready");
+});
+
+test("install on a Needs-install row calls add with exactly the pinned spec and the entry's export, then refreshes the row", async () => {
+  const h = make({ entries: [MISSING_DC] });
+  await h.ctrl.loadExtensions();
+  const listsBefore = named(h, "list").length;
+  const pending = h.ctrl.install(MISSING_DC);
+  expect(h.ctrl.busy).toBe(MISSING_DC.use); // the row is busy: picker and Install disable
+  await pending;
+  expect(named(h, "add").map((c) => c.args)).toEqual([["/proj", "dimm-city-components@1.2.0-alpha.2", "full"]]);
+  expect(named(h, "list").length).toBeGreaterThan(listsBefore);
+  expect(h.ctrl.busy).toBeNull();
+  expect(h.ctrl.error).toBeNull();
+});
+
+test("install on a book with no pin asks for the bare package name, which the host then pins", async () => {
+  const unpinned = entry({ use: "markdown-it-other", kind: "npm", name: "markdown-it-other", carries: MARKDOWN, warnings: ["Not pinned — run `gutterpress ext add markdown-it-other` to install it and pin an exact version."] });
+  const h = make({ entries: [unpinned] });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.install(unpinned);
+  expect(named(h, "add").map((c) => c.args)).toEqual([["/proj", "markdown-it-other", undefined]]);
+});
+
+test("install does nothing for a row that is not an npm package", async () => {
+  const h = make({ entries: [FEATURE] });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.install(FEATURE);
+  expect(named(h, "add")).toEqual([]);
+});
+
+test("a failed install reports it in plain words and leaves the row, its pin and busy state as they were", async () => {
+  const h = make({ entries: [MISSING_DC] });
+  await h.ctrl.loadExtensions();
+  h.failAdd = true;
+  await h.ctrl.install(MISSING_DC);
+  expect(h.ctrl.error).toBe("Couldn't install dimm-city-components@1.2.0-alpha.2. add failed");
+  expect(h.ctrl.entries).toEqual([MISSING_DC]);
+  expect(h.ctrl.busy).toBeNull(); // the Install button is usable again
+});
+
+test("switchVersion installs name@chosen keeping the export, then the row carries the new pin", async () => {
+  const h = make({ entries: [PINNED_DC], published: { "dimm-city-components": PUBLISHED_DC } });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.switchVersion(PINNED_DC, "1.2.0");
+  expect(named(h, "add").map((c) => c.args)).toEqual([["/proj", "dimm-city-components@1.2.0", "full"]]);
+  expect(h.ctrl.entries.map((e) => [e.use, e.version])).toEqual([["dimm-city-components@1.2.0", "1.2.0"]]);
+  // npm is asked again what "newer" means for the new pin.
+  expect(named(h, "outdated").length).toBe(1);
+});
+
+test("switchVersion to a pre-release works whatever the preference says (the picker only chooses what is offered)", async () => {
+  const h = make({ entries: [PINNED_DC] });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.switchVersion(PINNED_DC, "1.3.0-rc.1");
+  expect(named(h, "add").map((c) => c.args[1])).toEqual(["dimm-city-components@1.3.0-rc.1"]);
+});
+
+test("switchVersion to the pinned version, a blank value, or on a non-npm row calls nothing", async () => {
+  const h = make({ entries: [PINNED_DC, FEATURE] });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.switchVersion(PINNED_DC, "1.1.0");
+  await h.ctrl.switchVersion(PINNED_DC, "");
+  await h.ctrl.switchVersion(FEATURE, "1.0.0");
+  expect(named(h, "add")).toEqual([]);
+});
+
+test("a failed version switch keeps the old pin and says so; the host's rollback is what makes that true", async () => {
+  const h = make({ entries: [PINNED_DC], published: { "dimm-city-components": PUBLISHED_DC } });
+  await h.ctrl.loadExtensions();
+  h.failAdd = true;
+  await h.ctrl.switchVersion(PINNED_DC, "1.2.0");
+  expect(h.ctrl.error).toBe("Couldn't install dimm-city-components@1.2.0. This book still uses 1.1.0. add failed");
+  expect(h.ctrl.entries).toEqual([PINNED_DC]);
+  expect(h.ctrl.entries[0]!.version).toBe("1.1.0");
+  expect(h.ctrl.busy).toBeNull();
+  expect(named(h, "outdated")).toEqual([]); // nothing changed, nothing to re-check
+  // The next attempt starts clean.
+  h.failAdd = false;
+  await h.ctrl.switchVersion(PINNED_DC, "1.2.0");
+  expect(h.ctrl.error).toBeNull();
+  expect(h.ctrl.entries[0]!.version).toBe("1.2.0");
+});
+
+test("a cancelled trust prompt on a switch changes nothing and shows no error", async () => {
+  const h = make({ entries: [PINNED_DC] });
+  await h.ctrl.loadExtensions();
+  h.cancelAdd = true;
+  await h.ctrl.switchVersion(PINNED_DC, "1.2.0");
+  expect(h.ctrl.error).toBeNull();
+  expect(h.ctrl.entries).toEqual([PINNED_DC]);
+  expect(h.ctrl.busy).toBeNull();
+});
+
+test("only one install runs at a time: a second switch while one is in flight is refused", async () => {
+  const h = make({ entries: [PINNED_DC] });
+  await h.ctrl.loadExtensions();
+  const first = h.ctrl.switchVersion(PINNED_DC, "1.2.0");
+  await h.ctrl.switchVersion(PINNED_DC, "1.0.0");
+  await first;
+  expect(named(h, "add").map((c) => c.args[1])).toEqual(["dimm-city-components@1.2.0"]);
+});
+
+test("the pre-release preference is read and written through the settings seam, and re-asks npm with it", async () => {
+  const h = make({ entries: [PINNED_DC] });
+  expect(h.ctrl.includePrerelease).toBe(false);
+  h.ctrl.setIncludePrerelease(true);
+  await flush();
+  expect(h.ctrl.includePrerelease).toBe(true);
+  expect(named(h, "setIncludePrerelease").map((c) => c.args)).toEqual([[true]]);
+  expect(named(h, "outdated").map((c) => c.args)).toEqual([["/proj", true]]);
 });
