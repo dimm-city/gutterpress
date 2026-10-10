@@ -1034,9 +1034,14 @@
         document.body.style.removeProperty('--gutterpress-fit-zoom');
         document.documentElement.style.setProperty('--gutterpress-zoom', z);
         // A host "fit to width" scale means nothing should scroll sideways.
-        // Device-pixel rounding (fractional OS scaling) or art reaching past
-        // the sheet can still overflow by a hair; clip it in fit mode only.
+        // Device-pixel rounding (fractional OS scaling), art reaching past
+        // the sheet, or a run box wider than its sheets can still overflow;
+        // clip it in fit mode only. The body clips (`clip`, unlike `hidden`,
+        // leaves nothing to scroll, so scrollIntoView and a sideways swipe
+        // cannot shift the book either). The root stays `hidden`, which stops
+        // the body's `clip` propagating to the viewport (#353).
         document.documentElement.style.overflowX = fit ? 'hidden' : '';
+        document.body.style.overflowX = fit ? 'clip' : '';
       });
       if (!silent) api.notifyPageChange();
     },

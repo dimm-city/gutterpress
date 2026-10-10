@@ -5,6 +5,15 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **At Fit to width, the preview no longer slides sideways** (#353). A
+  sideways trackpad swipe, turning a page or jumping to a page could push the
+  book to the left with part of the page cut off, and since no scrollbar was
+  shown there was no way to move it back. Most noticeable with the editor open
+  beside the preview and in two-page view. At Fit to width the page now stays
+  put; at other zoom levels the preview scrolls sideways as before.
+
 ## [0.11.17] - 2026-10-10
 
 ### Fixed
