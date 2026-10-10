@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.16] - 2026-10-10
+
 ### Added
 
 - **`@columns` lays content out in columns, and nothing else.** Write
@@ -16,10 +18,6 @@ This project follows [Semantic Versioning](https://semver.org/).
   toolbar's **Two columns** block now inserts `@columns 2`. The count classes
   behind it, `.gp-columns-1` to `.gp-columns-5`, also work on a section
   (`.gp-columns-1`, `-4` and `-5` are new).
-
-## [0.11.16] - 2026-10-09
-
-### Added
 
 - **Book settings → Features is split into three tabs.** *Installed & built-in*
   holds what the book already uses — the version pickers, the pre-release
