@@ -217,6 +217,8 @@ export interface MarkerComponent {
   /** Marker name without `@`. */
   name: string;
   source: Extract<SnippetSource, { kind: 'extension' }>;
+  /** Variant names accepted as the marker's bare word (`@name <variant>`). */
+  variants: string[];
   snippet?: string;
 }
 

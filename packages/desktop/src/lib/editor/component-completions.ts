@@ -5,6 +5,8 @@
  * enabled plugins declare (`export const markers`), listed by the host
  * (`api.snip.components`). Picking one inserts the component's example
  * snippet, so the author starts from the structure the component expects.
+ * Each variant is offered too (`@name <variant>`) and lands on the snippet's
+ * marker line.
  *
  * Kept apart from `marker-completions.ts`, whose table is core-only by rule;
  * this source reuses its line-start trigger and pair insert so plugin
@@ -20,6 +22,20 @@ import {
 import type { MarkerComponent } from "$lib/api";
 import { markerCompletionFrom, markerPairApply, type MarkerCompletion } from "./marker-completions";
 import { firstVariable } from "./snippet-vars";
+
+/**
+ * Put `variant` after `@name` on the snippet's first marker line (a variant
+ * only adds a class, so every variant shares the one snippet). When the first
+ * non-blank line does not start with `@name`, the snippet is returned as is.
+ */
+function withVariant(body: string, name: string, variant: string): string {
+  const lines = body.split("\n");
+  const first = lines.findIndex((line) => line.trim() !== "");
+  const marker = new RegExp(`^(\\s*@${name})(?=\\s|$)`);
+  if (first === -1 || !marker.test(lines[first]!)) return body;
+  lines[first] = lines[first]!.replace(marker, `$1 ${variant}`);
+  return lines.join("\n");
+}
 
 /**
  * Insert a snippet body, selecting its first `{{variable}}` so typing
@@ -40,14 +56,16 @@ function snippetApply(body: string): MarkerCompletion["apply"] {
   };
 }
 
-function toCompletion(component: MarkerComponent): Completion {
-  const marker = `@${component.name}`;
+/** `@name` (variant undefined) or `@name <variant>`: the component's snippet
+ *  with the variant on its marker line, else a bare marker pair. */
+function toCompletion(component: MarkerComponent, variant?: string): Completion {
+  const marker = variant ? `@${component.name} ${variant}` : `@${component.name}`;
   return {
     label: marker,
     type: "keyword",
     detail: `component · ${component.source.name}`,
     apply: component.snippet
-      ? snippetApply(component.snippet)
+      ? snippetApply(variant ? withVariant(component.snippet, component.name, variant) : component.snippet)
       : markerPairApply(marker, `@end-${component.name}`),
   };
 }
@@ -64,7 +82,10 @@ export function componentCompletionSource(getComponents: () => readonly MarkerCo
     if (from === null) return null;
     if (components !== built) {
       built = components;
-      options = components.map(toCompletion);
+      options = components.flatMap((c) => [
+        toCompletion(c),
+        ...c.variants.map((variant) => toCompletion(c, variant)),
+      ]);
     }
     return { from, options, validFor: /^@[\w-]*$/ };
   };

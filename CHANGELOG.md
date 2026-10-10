@@ -21,6 +21,12 @@ This project follows [Semantic Versioning](https://semver.org/).
   `gutterpress validate` and builds at the right line. Problems are warnings
   unless the plugin marks one `error` or `info`. The plugin scaffold's
   `term-box` ships an example.
+- **Components offer their variants in autocomplete.** Typing `@sk` lists
+  `@skill` and one `@skill <variant>` entry per variant the marker declares
+  (an alias lists its target's). Picking a variant inserts the component's
+  snippet with the variant word added after the marker name. The editor now
+  reads components through the same resolver the renderer uses, so both agree
+  on aliases and variants.
 
 ### Changed
 

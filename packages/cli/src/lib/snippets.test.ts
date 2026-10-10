@@ -558,11 +558,11 @@ test("listMarkerComponents links each marker to its snippet: default name, expli
 
     const source = { kind: "extension" as const, ref: "./plugins/boxes", name: "Boxes" };
     expect(await listMarkerComponents(proj)).toEqual([
-      { name: "bare", source },
-      { name: "escape", source },
-      { name: "figure", source, snippet: "@figure\n![alt](src.png)\n@end-figure\n" },
-      { name: "term-box", source, snippet: "@term-box\n{{body}}\n@end-term-box\n" },
-      { name: "tip", source },
+      { name: "bare", source, variants: [] },
+      { name: "escape", source, variants: [] },
+      { name: "figure", source, variants: [], snippet: "@figure\n![alt](src.png)\n@end-figure\n" },
+      { name: "term-box", source, variants: [], snippet: "@term-box\n{{body}}\n@end-term-box\n" },
+      { name: "tip", source, variants: [] },
     ]);
     // Each component snippet is listed once, tagged — including the one at
     // an explicit path outside the snippets folder.
@@ -581,7 +581,7 @@ test("listMarkerComponents defaults to snippets/ when the extension declares no 
     await makeComponentPlugin(proj, "boxes", `{ box: {} }`, { "snippets/box.md": "@box\n@end-box\n" }, {});
     await writeManifest(proj, ["extensions:", "  - ./plugins/boxes", ""].join("\n"));
     const [box] = await listMarkerComponents(proj);
-    expect(box).toEqual({ name: "box", source: expect.anything(), snippet: "@box\n@end-box\n" });
+    expect(box).toEqual({ name: "box", source: expect.anything(), variants: [], snippet: "@box\n@end-box\n" });
   } finally {
     await rm(proj, { recursive: true, force: true });
   }
@@ -631,6 +631,44 @@ test("the book's snippets/<component>.md wins over the extension's, and both sta
       ["project", "term-box", "BOOK"],
       ["extension", "term-box", "EXTENSION"],
     ]);
+  } finally {
+    await rm(proj, { recursive: true, force: true });
+  }
+});
+
+test("listMarkerComponents lists each component's resolved variants; an alias inherits its target's", async () => {
+  const proj = await tmpProject();
+  try {
+    await makeComponentPlugin(
+      proj,
+      "boxes",
+      `{
+        skill: { class: "dc-skill", variants: { highlight: "dc-skill-highlight", muted: "dc-skill-muted" } },
+        ability: { alias: "skill", preset: { variant: "highlight" } },
+        plain: {},
+        old: { deprecated: "use skill" },
+      }`,
+      {},
+    );
+    await writeManifest(proj, ["extensions:", "  - ./plugins/boxes", ""].join("\n"));
+    expect((await listMarkerComponents(proj)).map((c) => [c.name, c.variants])).toEqual([
+      ["ability", ["highlight", "muted"]],
+      ["plain", []],
+      ["skill", ["highlight", "muted"]],
+    ]);
+  } finally {
+    await rm(proj, { recursive: true, force: true });
+  }
+});
+
+test("listMarkerComponents lists no components when two plugins declare the same marker, but still lists snippets", async () => {
+  const proj = await tmpProject();
+  try {
+    await makeComponentPlugin(proj, "one", `{ box: {} }`, { "snippets/box.md": "@box\n@end-box\n" });
+    await makeComponentPlugin(proj, "two", `{ box: {} }`, {});
+    await writeManifest(proj, ["extensions:", "  - ./plugins/one", "  - ./plugins/two", ""].join("\n"));
+    expect(await listMarkerComponents(proj)).toEqual([]);
+    expect((await listMergedSnippets(proj)).map((e) => [e.fileName, e.component])).toEqual([["box.md", undefined]]);
   } finally {
     await rm(proj, { recursive: true, force: true });
   }
