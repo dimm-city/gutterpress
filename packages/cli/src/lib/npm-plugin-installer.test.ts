@@ -22,6 +22,8 @@ import {
   listNpmVersions,
   updateExtensions,
   listProjectExtensions as listProjectPlugins,
+  removeExtension,
+  restoreNpmExtension,
   validateProjectExtensions as validateProjectPlugins,
 } from "./extension-manager";
 import {
@@ -378,8 +380,58 @@ describe("npm plugin installation", () => {
 
     expect(existsSync(vendoredNpmPluginRoot(dir, name, version))).toBe(false);
     expect(await listProjectPlugins(dir)).toEqual([]);
-    const npmEntries = await readdir(path.join(dir, "plugins", "npm"));
-    expect(npmEntries.some((entry) => entry.startsWith(".install-"))).toBe(false);
+    // Nothing of the failed attempt is left: not its staging folder, and not
+    // the empty plugins/npm/<name>/ folders it created.
+    expect(existsSync(path.join(dir, "plugins"))).toBe(false);
+  });
+
+  test("a failed install removes only the folders it created, and nothing that was already there", async () => {
+    const name = "markdown-it-cleanup-fixture";
+    const failing = registryFixture(name, "1.0.0", packageEntries(name, "1.0.0"), { badIntegrity: true });
+
+    // A local plugin already lives in plugins/: it and plugins/ stay, plugins/npm/ goes.
+    const withLocal = await projectDir();
+    await mkdir(path.join(withLocal, "plugins"), { recursive: true });
+    await writeFile(path.join(withLocal, "plugins", "local.js"), "export default () => {};\n", "utf8");
+    await expect(addNpmPlugin(withLocal, name, { fetch: failing.fetch })).rejects.toThrow(/integrity/i);
+    expect(await readdir(path.join(withLocal, "plugins"))).toEqual(["local.js"]);
+
+    // Another package's copy already lives in plugins/npm/: it stays, this package's folder goes.
+    const withOther = await projectDir();
+    const other = "markdown-it-cleanup-other";
+    await addNpmPlugin(withOther, other, { fetch: registryFixture(other, "2.0.0", packageEntries(other, "2.0.0")).fetch });
+    await expect(addNpmPlugin(withOther, name, { fetch: failing.fetch })).rejects.toThrow(/integrity/i);
+    expect(await readdir(path.join(withOther, "plugins", "npm"))).toEqual([other]);
+
+    // A failure to even reach the registry cleans up the same way.
+    const offline = await projectDir();
+    const dead = (async () => {
+      throw new Error("ENOTFOUND");
+    }) as unknown as typeof globalThis.fetch;
+    await expect(addNpmPlugin(offline, name, { fetch: dead })).rejects.toThrow();
+    expect(existsSync(path.join(offline, "plugins"))).toBe(false);
+  });
+
+  test("an install that downloads fine but will not load is rolled back without leaving its folders", async () => {
+    const dir = await projectDir();
+    const name = "markdown-it-rollback-cleanup";
+    const entries = packageEntries(name, "1.0.0");
+    entries[1] = { name: "package/index.js", body: strToU8("export const notAPlugin = true;\n") };
+    const fixture = registryFixture(name, "1.0.0", entries);
+
+    await expect(addNpmPlugin(dir, name, { fetch: fixture.fetch })).rejects.toThrow(/not a loadable markdown-it plugin/i);
+
+    expect(existsSync(path.join(dir, "plugins"))).toBe(false);
+  });
+
+  test("removing the only extension also removes its now-empty package folder", async () => {
+    const dir = await projectDir();
+    const name = "markdown-it-remove-cleanup";
+    await addNpmPlugin(dir, name, { fetch: registryFixture(name, "1.0.0", packageEntries(name, "1.0.0")).fetch });
+
+    await removeExtension(dir, `${name}@1.0.0`);
+
+    expect(await readdir(path.join(dir, "plugins", "npm"))).toEqual([]);
   });
 
   test("rejects path traversal and links and cleans staging", async () => {
@@ -1694,6 +1746,8 @@ describe("restorePinnedExtensions", () => {
     expect(sentence).toContain(`run the command again`);
     expect(sentence).toContain(`gutterpress ext add ${name}@1.0.0`);
     expect(existsSync(vendoredNpmPluginRoot(dir, name, "1.0.0"))).toBe(false);
+    // No empty plugins/npm/<name>/ folder either: a failed first open leaves the book as it was.
+    expect(existsSync(path.join(dir, "plugins"))).toBe(false);
     expect(await readFile(path.join(dir, "manifest.yaml"), "utf8")).toBe(manifest);
   });
 
@@ -1811,5 +1865,108 @@ describe("restorePinnedExtensions", () => {
       fetchSpy.mockRestore();
       logSpy.mockRestore();
     }
+  });
+
+  describe("one pruning rule: a restored package keeps only its pinned version", () => {
+    const versions = () =>
+      registryGraphFixture([
+        { name, version: "1.0.0" },
+        { name, version: "1.1.0" },
+      ]);
+    const folders = async (dir: string, pkg = name) =>
+      (await readdir(path.dirname(vendoredNpmPluginRoot(dir, pkg, "0.0.0")))).sort();
+
+    test("pulling a new pin downloads it and prunes the old version of that package", async () => {
+      const fixture = versions();
+      const dir = await projectDir();
+      await addNpmPlugin(dir, `${name}@1.0.0`, { fetch: fixture.fetch });
+      // A pull moved the pin; the downloaded copy of 1.1.0 is not there yet.
+      await writeFile(path.join(dir, "manifest.yaml"), manifestOf(`${name}@1.1.0`), "utf8");
+
+      const result = await restorePinnedExtensions(dir, { fetch: fixture.fetch });
+
+      expect(result.installed).toEqual([`${name}@1.1.0`]);
+      expect(await folders(dir)).toEqual(["1.1.0"]);
+      expect(result.warnings).toEqual([]);
+    });
+
+    test("never touches another package, a staging folder, or a folder that is not an exact version", async () => {
+      const other = "markdown-it-gutterpress-restoring-neighbour";
+      const fixture = registryGraphFixture([{ name, version: "1.0.0" }, { name: other, version: "3.0.0" }]);
+      const dir = await projectDir();
+      await addNpmPlugin(dir, `${other}@3.0.0`, { fetch: fixture.fetch });
+      await mkdir(path.join(dir, "plugins", "npm", name, "9.9.9"), { recursive: true });
+      await mkdir(path.join(dir, "plugins", "npm", name, "notes"), { recursive: true });
+      await writeFile(path.join(dir, "manifest.yaml"), manifestOf(`${other}@3.0.0`, `${name}@1.0.0`), "utf8");
+
+      await restorePinnedExtensions(dir, { fetch: fixture.fetch });
+
+      expect(await folders(dir)).toEqual(["1.0.0", "notes"]);
+      expect(await folders(dir, other)).toEqual(["3.0.0"]);
+    });
+
+    test("never prunes a version another enabled manifest entry still pins", async () => {
+      const fixture = versions();
+      const dir = await projectDir();
+      await addNpmPlugin(dir, `${name}@1.1.0`, { fetch: fixture.fetch });
+      // Two enabled entries for one package (hand-written); 1.0.0's copy is missing.
+      await writeFile(path.join(dir, "manifest.yaml"), manifestOf(`${name}@1.0.0`, `${name}@1.1.0`), "utf8");
+
+      const result = await restorePinnedExtensions(dir, { fetch: fixture.fetch });
+
+      expect(result.installed).toEqual([`${name}@1.0.0`]);
+      expect(await folders(dir)).toEqual(["1.0.0", "1.1.0"]);
+    });
+
+    test("a disabled entry's pin does not keep its version", async () => {
+      const fixture = versions();
+      const dir = await projectDir();
+      await addNpmPlugin(dir, `${name}@1.0.0`, { fetch: fixture.fetch });
+      await writeFile(
+        path.join(dir, "manifest.yaml"),
+        `title: T\nextensions:\n  - ${name}@1.1.0\n  - use: ${name}@1.0.0\n    enabled: false\n`,
+        "utf8",
+      );
+
+      await restorePinnedExtensions(dir, { fetch: fixture.fetch });
+
+      expect(await folders(dir)).toEqual(["1.1.0"]);
+    });
+
+    test("a failed download prunes nothing: the old copy stays until the new one is in", async () => {
+      const fixture = versions();
+      const dir = await projectDir();
+      await addNpmPlugin(dir, `${name}@1.0.0`, { fetch: fixture.fetch });
+      await writeFile(path.join(dir, "manifest.yaml"), manifestOf(`${name}@1.1.0`), "utf8");
+      const offline = (async () => {
+        throw new Error("ECONNREFUSED");
+      }) as unknown as typeof globalThis.fetch;
+
+      const result = await restorePinnedExtensions(dir, { fetch: offline });
+
+      expect(result.failed).toHaveLength(1);
+      expect(await folders(dir)).toEqual(["1.0.0"]);
+    });
+
+    test("`ext add` keeps the same rule: it prunes the old version but not another enabled pin", async () => {
+      const fixture = versions();
+      const dir = await projectDir();
+      await addNpmPlugin(dir, `${name}@1.0.0`, { fetch: fixture.fetch });
+      await addNpmPlugin(dir, `${name}@1.1.0`, { fetch: fixture.fetch });
+      expect(await folders(dir)).toEqual(["1.1.0"]);
+    });
+  });
+
+  test("two restores of one copy that race through different spellings of the path download it once", async () => {
+    const { dir, fixture } = await pinnedBook();
+    await rm(path.join(dir, "plugins"), { recursive: true });
+
+    // Not the in-flight share (same key): the mutation lock alone must stop the second download.
+    await Promise.all([
+      restoreNpmExtension(dir, name, "1.0.0", undefined, { fetch: fixture.fetch }),
+      restoreNpmExtension(path.join(dir, "."), name, "1.0.0", undefined, { fetch: fixture.fetch }),
+    ]);
+
+    expect(fixture.calls.filter((url) => url.endsWith(".tgz"))).toHaveLength(1);
   });
 });

@@ -43,11 +43,13 @@ import { loadManifestDoc, ensureSeq, writeManifestDoc } from "./manifest-doc.ts"
 import {
   finalizeNpmPluginInstall,
   installNpmPlugin,
+  removeEmptyDirs,
   rollbackNpmPluginInstall,
   type NpmPluginInstallOptions,
 } from "./npm-plugin-installer.ts";
 import {
   isExactNpmVersion,
+  resolvePackageEntry,
   resolveVendoredPluginInstallRoot,
   vendoredNpmPluginPackageDir,
   vendoredNpmPluginRoot,
@@ -196,10 +198,15 @@ export interface BuiltInStyleSet {
 
 const mutationQueues = new Map<string, Promise<void>>();
 
+/** One key per book folder, however the path is spelled (Windows paths are case-insensitive). */
+export function projectKey(projectDir: string): string {
+  const resolved = path.resolve(projectDir);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
 /** Serialize all extension filesystem + manifest mutations for one project. */
 function withMutationLock<T>(projectDir: string, mutation: () => Promise<T>): Promise<T> {
-  const resolved = path.resolve(projectDir);
-  const key = process.platform === "win32" ? resolved.toLowerCase() : resolved;
+  const key = projectKey(projectDir);
   const previous = mutationQueues.get(key) ?? Promise.resolve();
   const run = previous.then(mutation, mutation);
   const tail = run.then(
@@ -553,10 +560,9 @@ export async function removeExtension(projectDir: string, use: string): Promise<
       return;
     }
     if (parsed.kind === "npm" && parsed.version) {
-      await rm(vendoredNpmPluginRoot(projectDir, parsed.name, parsed.version), {
-        recursive: true,
-        force: true,
-      });
+      const root = vendoredNpmPluginRoot(projectDir, parsed.name, parsed.version);
+      await rm(root, { recursive: true, force: true });
+      await removeEmptyDirs([path.dirname(root)]); // the package folder, once its last version is gone
     }
   });
 }
@@ -671,12 +677,7 @@ async function addExtensionUnlocked(
     options,
     (use) => upsertEntry(projectDir, use, chosenExport),
   );
-  await pruneOtherVersions(projectDir, name, version).catch((error) => {
-    warnings.push(
-      `The extension was installed, but a previous version's vendored copy could not be removed: ` +
-        `${error instanceof Error ? error.message : String(error)}`,
-    );
-  });
+  warnings.push(...(await pruneStaleVersions(projectDir, name, [version, ...(await pinnedVersionsOf(projectDir, name))])));
   const entry = (await describeExtension(projectDir, use))!;
   return warnings.length > 0 ? { ...entry, warnings: [...(entry.warnings ?? []), ...warnings] } : entry;
 }
@@ -691,12 +692,31 @@ export function restoreNpmExtension(
   name: string,
   version: string,
   exportName: string | undefined,
-  options: NpmPluginInstallOptions = {},
+  options: NpmPluginInstallOptions & {
+    /** Every version of `name` an enabled manifest entry pins — never pruned. */
+    keepVersions?: readonly string[];
+  } = {},
 ): Promise<string[]> {
   return withMutationLock(projectDir, async () => {
+    // Another caller (a desktop open racing a build, `ext add`) may have
+    // installed it while this one waited its turn; downloading again would
+    // swap the tree out from under whoever is loading it.
+    if (!(await vendoredCopyNeedsInstall(projectDir, name, version))) return [];
     const restored = await vendorNpmExtension(projectDir, `${name}@${version}`, exportName, options, async () => {});
-    return restored.warnings;
+    return [...restored.warnings, ...(await pruneStaleVersions(projectDir, name, [version, ...(options.keepVersions ?? [])]))];
   });
+}
+
+/** True when `plugins/npm/<name>/<version>/` is absent or has no loadable entry — what the loader calls "not installed" or "incomplete". */
+export async function vendoredCopyNeedsInstall(projectDir: string, name: string, version: string): Promise<boolean> {
+  try {
+    const installRoot = await resolveVendoredPluginInstallRoot(projectDir, name, version);
+    if (!installRoot) return true;
+    await resolvePackageEntry(vendoredNpmPluginPackageDir(installRoot, name));
+    return false;
+  } catch {
+    return true;
+  }
 }
 
 /**
@@ -770,26 +790,58 @@ async function vendorNpmExtension(
   return { name: installed.name, version: installed.version, use, warnings };
 }
 
+/** The exact versions of `name` that an enabled manifest entry pins. */
+async function pinnedVersionsOf(projectDir: string, name: string): Promise<string[]> {
+  const { doc } = await loadManifestDoc(projectDir);
+  const seq = doc.get("extensions", true);
+  if (!isSeq(seq)) return [];
+  const versions: string[] = [];
+  for (const item of seq.items as Node[]) {
+    const raw = rawEntry(item);
+    if (!raw?.enabled) continue;
+    try {
+      const parsed = parseExtensionSpecifier(raw.use);
+      if (parsed.kind === "npm" && parsed.name === name && parsed.version) versions.push(parsed.version);
+    } catch {
+      // A malformed specifier pins nothing.
+    }
+  }
+  return versions;
+}
+
 /**
- * Delete every vendored version of `name` other than `keep`. A re-pin
- * (`ext add name@new`, `ext update`) vendors the new version beside the old
- * one, and the manifest can name only one version of a package, so the others
- * are dead weight the author used to have to `rm -r` by hand. Only exact
- * version folders are touched: the installer's `.install-*` staging and
- * `<version>.backup-*` folders are its own to manage.
+ * THE pruning rule, shared by `ext add`/`ext update` and the restore of a
+ * pinned extension: once a package's pinned version is installed, every other
+ * vendored version of THAT package is deleted, except one an enabled manifest
+ * entry still pins (`keep`). The folders are a gitignored cache, and the
+ * manifest can name only one version of a package, so the rest is dead weight —
+ * a re-pin, a pulled pin, or a switched branch used to leave it behind. Only
+ * exact version folders of this one package are touched: the installer's
+ * `.install-*` staging and `<version>.backup-*` folders are its own to manage.
+ * Returns a warning, never throws: the install itself succeeded.
  */
-async function pruneOtherVersions(projectDir: string, name: string, keep: string): Promise<void> {
-  const parent = path.dirname(vendoredNpmPluginRoot(projectDir, name, keep));
-  let entries;
+async function pruneStaleVersions(projectDir: string, name: string, keep: readonly string[]): Promise<string[]> {
+  const parent = path.dirname(vendoredNpmPluginRoot(projectDir, name, "0.0.0"));
   try {
-    entries = await readdir(parent, { withFileTypes: true });
-  } catch {
-    return;
+    for (const entry of await readdir(parent, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      let version: string;
+      try {
+        version = decodeURIComponent(entry.name);
+      } catch {
+        continue;
+      }
+      if (!isExactNpmVersion(version) || keep.includes(version)) continue;
+      await rm(path.join(parent, entry.name), { recursive: true, force: true });
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    return [
+      `The extension was installed, but a previous version's downloaded copy could not be removed: ` +
+        `${error instanceof Error ? error.message : String(error)}`,
+    ];
   }
-  for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name === keep || !isExactNpmVersion(entry.name)) continue;
-    await rm(path.join(parent, entry.name), { recursive: true, force: true });
-  }
+  return [];
 }
 
 // ── Updates ──────────────────────────────────────────────────────────────────

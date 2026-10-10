@@ -5,8 +5,10 @@
  * book's git history (see project-gitignore.ts), so a fresh clone has the
  * manifest's `extensions: [name@1.2.3]` pins and none of the files. This is the
  * one step that downloads them again. It is deliberately SEPARATE from the
- * plugin loader, which stays offline: build, validate and preview call it
- * before loading plugins, and the desktop calls it when a book is opened.
+ * plugin loader, which stays offline: the shared "load the book's plugins"
+ * seams (`loadBuildPlugins` for every build and export, `executeValidation`
+ * for every check run) call it first, the CLI's live preview calls it before
+ * serving, and the desktop calls it when a book is opened.
  *
  * What it does, and nothing more:
  *   - reads the manifest's `extensions:` list;
@@ -14,6 +16,9 @@
  *     copy is missing or incomplete, installs EXACTLY that version through the
  *     same verified path `ext add` uses (registry resolution, SRI check,
  *     vendor, load-test);
+ *   - then removes the package's other downloaded versions (a gitignored
+ *     cache: see `pruneStaleVersions` in extension-manager.ts), so a pulled
+ *     pin or a switched branch leaves one copy, not a pile;
  *   - never changes the manifest or a pin, never picks another version, and
  *     never touches unpinned, local-path or bundled entries;
  *   - does nothing — no network — when every copy is present.
@@ -22,16 +27,11 @@ import path from "node:path";
 
 import { log } from "../utils/logger.ts";
 import { BuildError, EXIT_CODES } from "./build-error.ts";
-import { restoreNpmExtension } from "./extension-manager.ts";
+import { projectKey, restoreNpmExtension, vendoredCopyNeedsInstall } from "./extension-manager.ts";
 import { parseExtensionSpecifier } from "./extension-specifier.ts";
 import { loadManifestWithPath } from "./manifest.ts";
 import type { NpmPluginInstallOptions } from "./npm-plugin-installer.ts";
-import {
-  isExactNpmVersion,
-  resolvePackageEntry,
-  resolveVendoredPluginInstallRoot,
-  vendoredNpmPluginPackageDir,
-} from "./plugin-vendor.ts";
+import { isExactNpmVersion } from "./plugin-vendor.ts";
 
 export interface RestorePinnedOptions extends NpmPluginInstallOptions {
   /** An explicit `--manifest` file; the book folder is then that file's folder. */
@@ -97,18 +97,6 @@ function pinnedEntries(manifest: { extensions?: unknown }): PinnedNpm[] {
   return [...found.values()];
 }
 
-/** True when the downloaded copy is absent or has no loadable entry — what the loader would call "Needs install" or "incomplete". */
-async function needsRestore(projectDir: string, { name, version }: PinnedNpm): Promise<boolean> {
-  const installRoot = await resolveVendoredPluginInstallRoot(projectDir, name, version);
-  if (!installRoot) return true;
-  try {
-    await resolvePackageEntry(vendoredNpmPluginPackageDir(installRoot, name));
-    return false;
-  } catch {
-    return true;
-  }
-}
-
 async function restoreAll(
   projectDir: string,
   manifestFile: string,
@@ -117,7 +105,7 @@ async function restoreAll(
 ): Promise<RestoreResult> {
   const result: RestoreResult = { manifestFile, installed: [], failed: [], warnings: [] };
   const missing: PinnedNpm[] = [];
-  for (const pin of pins) if (await needsRestore(projectDir, pin)) missing.push(pin);
+  for (const pin of pins) if (await vendoredCopyNeedsInstall(projectDir, pin.name, pin.version)) missing.push(pin);
   if (missing.length === 0) return result;
 
   const report = options.onProgress ?? (() => {});
@@ -129,7 +117,10 @@ async function restoreAll(
     report({ ...step, state: "downloading" });
     try {
       result.warnings.push(
-        ...(await restoreNpmExtension(projectDir, pin.name, pin.version, pin.export, options)),
+        ...(await restoreNpmExtension(projectDir, pin.name, pin.version, pin.export, {
+          ...options,
+          keepVersions: pins.filter((other) => other.name === pin.name).map((other) => other.version),
+        })),
       );
       result.installed.push(spec);
       report({ ...step, state: "done" });
@@ -169,7 +160,7 @@ export async function restorePinnedExtensions(
     return { manifestFile: manifestPath && path.basename(manifestPath), installed: [], failed: [], warnings: [] };
   }
 
-  const key = path.resolve(manifestDir);
+  const key = projectKey(manifestDir);
   const running = inFlight.get(key);
   if (running) return running;
   const run = restoreAll(manifestDir, path.basename(manifestPath), pins, options).finally(() => {
