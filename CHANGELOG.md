@@ -98,7 +98,8 @@ This project follows [Semantic Versioning](https://semver.org/).
   download stage is live: a book opened from a fresh clone shows each pinned
   extension as it arrives, and the notice afterwards just reports the result
   (several failed downloads are one notice that points at **Install** in Book
-  settings > Features).
+  settings > Features, and it stays until you close it). A finished PDF export
+  is reported by its "PDF saved to…" notice alone, not a second pill on top of it.
 
 - **Snippets come from levels: your book, extensions and Gutterpress** (#338).
   The snippet picker now lists every snippet, grouped by level, even when two
@@ -150,14 +151,19 @@ This project follows [Semantic Versioning](https://semver.org/).
   one — fetched through the same verified install as `ext add` (registry
   lookup, integrity check, load test), and it touches nothing else: no
   network when every copy is present, and local, unpinned and bundled entries
-  are left alone. If the download fails (offline, registry error, integrity
+  are left alone. If the download fails (registry error, integrity
   mismatch), they stop and say which extension failed, why and how to retry
-  (exit code 3); live `preview` warns and carries on, as before. The plugin
+  (exit code 3); live `preview` warns and carries on, as before. Offline,
+  nothing is tried package by package: one error names the extensions that
+  are not installed yet and says to try again once online. A book whose
+  extensions are already downloaded is never blocked offline, since nothing is
+  fetched. The plugin
   loader itself is still offline. The desktop app does the same when you open
   a book, before its preview loads: a short notice says what it downloaded, no
   extra confirmation is asked for a version you already pinned, and if the
   download fails the book still opens with the extension's **Needs install**
-  row and **Install** button as the way to retry. Opening a book while a build
+  row and **Install** button as the way to retry (offline, the notice is an
+  error saying to connect to the internet to install them). Opening a book while a build
   runs never downloads the same package twice.
 
 ### Fixed
