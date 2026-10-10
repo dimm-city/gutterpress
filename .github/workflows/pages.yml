@@ -5,7 +5,9 @@ name: Pages
 # deploy job is the publish step; nothing is committed to a branch.
 #
 # The site is built by unify (https://github.com/fwdslsh/unify) on its docs
-# template, pinned in website/unify.yaml (extends: unify-docs-template@0.4.0).
+# template, laid out like unify's own documentation site: website/package.json
+# pins both, and website/scripts/gen.mjs publishes the user guide
+# (examples/gutterpress-user-guide) as the site's docs/ at every build.
 #
 # The privacy policy is rendered from the root PRIVACY.md by
 # website/scripts/gen.mjs (one source, never a copy), and Google's OAuth
@@ -17,6 +19,7 @@ on:
     branches: [main]
     paths:
       - "website/**"
+      - "examples/gutterpress-user-guide/**"
       - "PRIVACY.md"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
@@ -30,9 +33,6 @@ permissions:
 concurrency:
   group: pages
   cancel-in-progress: false
-
-env:
-  UNIFY_VERSION: 0.11.14
 
 jobs:
   build:
@@ -48,14 +48,16 @@ jobs:
         with:
           node-version: 22
 
-      - uses: actions/configure-pages@v5
-        id: pages
+      - name: Install unify and the docs template
+        run: npm ci
 
       # --audit publishes nothing unless the composed site passes unify's
       # audit (titles, descriptions, one h1, broken links, orphan pages).
-      # unify.yaml adds --catalog, which the template's All-pages list reads.
+      # The base URL and the rest of the flags are in website/unify.yaml.
       - name: Build site
-        run: npx -y "@fwdslsh/unify@${UNIFY_VERSION}" build --audit --strict --base-url "${{ steps.pages.outputs.base_url }}/"
+        run: npx unify build --audit --strict
+
+      - uses: actions/configure-pages@v5
 
       - name: Check the privacy policy was published
         run: |

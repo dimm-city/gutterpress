@@ -47,7 +47,7 @@
   --code-bg: var(--dc-paper-alt);
   --focus: var(--dc-magenta-deep);
   --gradient: var(--dc-crimson);
-  /* page background: the wall itself is drawn by paste-up.css */
+  /* page background: the wall itself is drawn by site.css */
   --glow: none;
   --grid-lines: transparent;
   /* type */

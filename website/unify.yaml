@@ -1,24 +1,27 @@
-# unify.yaml — saved flags for `unify build`, `audit`, `dev` and `watch`.
-# The source is src/ (unify's fallback when there is no site/); the build
-# writes dist/. The Pages workflow adds --base-url for the published address.
+# unify.yaml — saved flags for `unify build`, `audit`, `dev` and `watch`, laid
+# out like unify's own documentation site (examples/unify-docs in the unify
+# repository): site/ beside scripts/gen.mjs and this file.
 
-# Build on unify's docs template without copying it (unify's `extends`). Its
-# layout, stylesheet, scripts and All-pages directory sit beneath src/; the
-# files the template names as the site's own replace its copies at the same
-# path: the four _includes (head, nav, docnav, footer), assets/theme.css
-# (the look) and the pages.
-extends: unify-docs-template@0.4.0
+# Build on unify's docs template without copying it. It is installed from npm
+# (package.json pins it) rather than named here by version, because
+# scripts/gen.mjs imports the template's importer too, and both must read the
+# same copy. Its layout, stylesheet, scripts and All-pages directory sit
+# beneath site/; a file of ours at the same path replaces the template's.
+extends: node_modules/unify-docs-template
+
+# publishes the user guide as docs/, writes the docs index, the sidebar and
+# the privacy page before every build
+generate: scripts/gen.mjs
+
+pretty-urls: true
+base-url: https://dimm-city.github.io/gutterpress/
+catalog: true
+search-corpus: true
 
 # The template's placeholder icon is not ours to publish; our share card
 # replaces its share-placeholder.png at the path its layout names.
 exclude:
   - _*
   - assets/favicon.svg
-
-# assets/unify/catalog.json, which the template's All-pages directory reads
-catalog: true
-
-# writes privacy/index.md from the repository's PRIVACY.md before every build
-generate: scripts/gen.mjs
 
 clean: true

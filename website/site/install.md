@@ -56,4 +56,4 @@ ships with all the print tools preinstalled.
 
 The CLI renders PDFs through a Chromium-based browser on the machine it runs on; some PDF/X and
 validation features also use Ghostscript or qpdf. See
-[System setup](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/07-system-setup.md).
+[System setup](/docs/system-setup.html).
