@@ -21,14 +21,29 @@
    * Levels — `api.snip.list` returns every snippet from every level (the
    * book's own, each enabled extension's, and core's), bodies included, each
    * with a `source`. Same-named snippets at different levels are all listed,
-   * grouped by level (`groupedRows`); only the book's can be deleted (the
-   * write path can't touch anything else regardless). A row that is a
-   * component's example snippet shows its `@name`.
+   * as cards in a responsive grid under one heading per level (`sections`);
+   * only the book's can be deleted (the write path can't touch anything else
+   * regardless). A card that is a component's example snippet shows its
+   * `@name`.
+   *
+   * Finding one — a search box (focused on open) and level / "Components"
+   * chips narrow the loaded list client-side (`snippet-filter.ts`); Enter in
+   * the box inserts the first match. Arrow keys move between cards by their
+   * on-screen position (`onGridKeydown`); Tab/Enter/Space work natively since
+   * every card is a real button.
    */
   import Icon from "$lib/components/Icon.svelte";
   import { api } from "$lib/api";
   import type { SnippetEntry } from "$lib/api";
   import { extractVariables, substituteVariables } from "$lib/editor/snippet-vars";
+  import {
+    filterSnippets,
+    firstMatch,
+    groupSnippets,
+    snippetPreview,
+    type LevelFilter,
+  } from "$lib/editor/snippet-filter";
+  import { tick } from "svelte";
   import {
     dialogBehavior,
     requestInlineConfirm,
@@ -60,40 +75,26 @@
   let loading = $state(false);
   let error = $state<string | null>(null);
 
-  /** Group key for one entry's level — `kind`, plus `ref` for an extension
-   *  so two extensions never share a group. */
-  function groupKey(entry: SnippetEntry): string {
-    return entry.source.kind === "extension" ? `extension:${entry.source.ref}` : entry.source.kind;
-  }
-
-  /** `{#each}` identity: a file name is unique within its group only. */
+  /** `{#each}` identity: a file name is unique within its level only. */
   function rowKey(entry: SnippetEntry): string {
-    return `${groupKey(entry)}:${entry.fileName}`;
+    return `${entry.source.kind === "extension" ? entry.source.ref : entry.source.kind}:${entry.fileName}`;
   }
 
-  /** Group label above a run of rows: the book's own, an extension's, or core. */
-  function groupLabel(entry: SnippetEntry): string {
-    if (entry.source.kind === "project") return "Your snippets";
-    if (entry.source.kind === "core") return "Gutterpress · read-only";
-    return `${entry.source.name} · read-only`;
-  }
+  // Search + chips. Reset each time the picker opens (`show`).
+  let query = $state("");
+  let level = $state<LevelFilter>("all");
+  let componentsOnly = $state(false);
+  let filter = $derived({ query, level, componentsOnly });
+  let visible = $derived(filterSnippets(snippets, filter));
+  let sections = $derived(groupSnippets(visible));
+  let isFiltered = $derived(query.trim() !== "" || level !== "all" || componentsOnly);
 
-  /**
-   * `snippets` paired with a group header whenever a new level starts. The
-   * host already orders the list book-first, then one run per extension, then
-   * core, so "did the group change since the last row" is all the grouping
-   * this needs. With only the book's own snippets, no header is shown.
-   */
-  let groupedRows = $derived.by(() => {
-    const grouped = snippets.some((s) => s.source.kind !== "project");
-    let lastKey: string | null = null;
-    return snippets.map((entry) => {
-      const key = groupKey(entry);
-      const header = grouped && key !== lastKey ? groupLabel(entry) : undefined;
-      lastKey = key;
-      return { entry, header };
-    });
-  });
+  // Only offer chips the loaded data can satisfy.
+  let levelChips = $derived(
+    (["project", "extension", "core"] as const).filter((k) => snippets.some((s) => s.source.kind === k)),
+  );
+  let hasComponents = $derived(snippets.some((s) => s.component));
+  const LEVEL_LABEL = { project: "Book", extension: "Extension", core: "Core" } as const;
 
   // Variable-prompt step state.
   let activeBody = $state("");
@@ -115,10 +116,78 @@
   export async function show(trigger?: HTMLButtonElement): Promise<void> {
     if (trigger) triggerEl = trigger;
     open = true;
+    query = "";
+    level = "all";
+    componentsOnly = false;
     await refresh();
-    queueMicrotask(() =>
-      dialogEl?.querySelector<HTMLElement>("button, input")?.focus(),
-    );
+    focusSearch();
+  }
+
+  async function focusSearch() {
+    await tick();
+    dialogEl?.querySelector<HTMLInputElement>("input.snippet-search")?.focus();
+  }
+
+  function backToList() {
+    mode = "list";
+    void focusSearch();
+  }
+
+  function clearFilters() {
+    query = "";
+    level = "all";
+    componentsOnly = false;
+    void focusSearch();
+  }
+
+  /** Enter in the search box inserts the first match; ArrowDown enters the grid. */
+  function onSearchKeydown(e: KeyboardEvent) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const first = firstMatch(snippets, filter);
+      if (first) choose(first);
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      cards()[0]?.focus();
+    }
+  }
+
+  function cards(): HTMLButtonElement[] {
+    return Array.from(dialogEl?.querySelectorAll<HTMLButtonElement>("button.snippet-main") ?? []);
+  }
+
+  /**
+   * Arrow-key navigation across the grid, by on-screen position so it follows
+   * however many columns the width gives: Left/Right step through the cards in
+   * reading order; Up/Down go to the nearest card in the adjacent row (Up from
+   * the top row returns to the search box).
+   */
+  function onGridKeydown(e: KeyboardEvent) {
+    const key = e.key;
+    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(key)) return;
+    const current = (e.target as HTMLElement).closest<HTMLButtonElement>("button.snippet-main");
+    if (!current) return;
+    e.preventDefault();
+    const all = cards();
+    const i = all.indexOf(current);
+    if (key === "ArrowLeft" || key === "ArrowRight") {
+      all[i + (key === "ArrowRight" ? 1 : -1)]?.focus();
+      return;
+    }
+    const down = key === "ArrowDown";
+    const here = current.getBoundingClientRect();
+    const rows = all
+      .map((el) => ({ el, r: el.getBoundingClientRect() }))
+      .filter(({ r }) => (down ? r.top > here.top + 1 : r.top < here.top - 1));
+    if (rows.length === 0) {
+      if (!down) dialogEl?.querySelector<HTMLInputElement>("input.snippet-search")?.focus();
+      return;
+    }
+    const rowTop = down ? Math.min(...rows.map(({ r }) => r.top)) : Math.max(...rows.map(({ r }) => r.top));
+    rows
+      .filter(({ r }) => Math.abs(r.top - rowTop) < 1)
+      .sort((a, b) => Math.abs(a.r.left - here.left) - Math.abs(b.r.left - here.left))[0]
+      ?.el.focus();
   }
 
   async function refresh() {
@@ -221,8 +290,8 @@
    *  focus would drop to <body>. */
   function cancelDelete(entry: SnippetEntry, event: MouseEvent) {
     confirmDelete = cancelInlineConfirm(confirmDelete, entry.fileName);
-    const row = (event.currentTarget as HTMLElement).closest("li");
-    queueMicrotask(() => row?.querySelector<HTMLButtonElement>(".snippet-del")?.focus());
+    const card = (event.currentTarget as HTMLElement).closest(".snippet-card");
+    queueMicrotask(() => card?.querySelector<HTMLButtonElement>(".snippet-del")?.focus());
   }
 </script>
 
@@ -232,6 +301,7 @@
   <div
     bind:this={dialogEl}
     class="dlg-shell"
+    class:wide={mode === "list"}
     use:dialogBehavior={{ onClose: close, triggerEl, labelledBy: "snippet-picker-title" }}
   >
     <header class="dlg-header">
@@ -257,69 +327,123 @@
             “Save selection as snippet” to create one.
           </p>
         {:else}
-          <ul class="snippet-list">
-            {#each groupedRows as { entry, header } (rowKey(entry))}
-              <!-- The two-step delete confirm stays keyed by `fileName` alone
-                   (unchanged from pre-#242) — it is only ever armed for a
-                   project-sourced row (see the delete button's own {#if}
-                   below), and project fileNames are already unique among
-                   themselves, so no extra disambiguation is needed here even
-                   though the {#each} identity above (`rowKey`) now also
-                   folds in `source` to stay unique across extensions too. -->
-              {@const armed = confirmDelete[entry.fileName] ?? false}
-              {#if header}
-                <!-- #242 — group header: which extension (or "Your snippets")
-                     these rows came from. Only rendered at all once the list
-                     contains at least one extension entry (see
-                     hasExtensionEntries) so the common, nothing-installed
-                     case stays a plain flat list, unchanged. -->
-                <li class="snippet-group-header">{header}</li>
-              {/if}
-              <li>
-                <button class="snippet-row" onclick={() => choose(entry)} title={`Insert “${entry.name}” at the cursor`}>
-                  <span class="snippet-name">{entry.name}</span>
-                  <span class="snippet-row-end">
-                    {#if entry.component}
-                      <span class="snippet-vars" title="The example for the @{entry.component} component">@{entry.component}</span>
-                    {/if}
-                    {#if entry.variables.length > 0}
-                      <span class="snippet-vars">{entry.variables.length} field{entry.variables.length === 1 ? "" : "s"}</span>
-                    {/if}
-                    <span class="snippet-insert">Insert</span>
-                    <Icon name="chevron-right" size={14} />
-                  </span>
-                </button>
-                <!-- #242: an extension-provided snippet is READ-ONLY in the
-                     picker — no delete affordance at all (there was never an
-                     in-place "edit" affordance for ANY snippet here, only
-                     Insert / Delete / Save-as-new, so omitting Delete is
-                     sufficient to keep the picker from letting an author
-                     silently modify a file inside an installed extension's
-                     folder — see this file's header comment). -->
-                {#if entry.source.kind === "project"}
-                  <!-- Single persistent button — arming the confirm only
-                       swaps its label/class in place so the first click never
-                       loses focus. -->
-                  <button
-                    class="snippet-del"
-                    class:dlg-danger-armed={armed}
-                    title={armed ? "Click again to permanently delete" : "Delete snippet"}
-                    aria-label={armed ? `Really delete ${entry.name}? This can't be undone.` : `Delete ${entry.name}`}
-                    onclick={() => requestDelete(entry)}
-                  >
-                    {#if armed}
-                      <span class="snippet-del-confirm">Delete?</span>
-                    {:else}
-                      <Icon name="trash" size={14} />
-                    {/if}
-                  </button>
-                  {#if armed}
-                    <button class="snippet-del-cancel" onclick={(e) => cancelDelete(entry, e)}>Cancel</button>
-                  {/if}
+          <!-- Search + chips ride at the top of the scrolling body (sticky), so
+               they stay in reach however far the grid is scrolled. -->
+          <div class="snippet-toolbar">
+            <div class="snippet-search-wrap">
+              <Icon name="search" size={14} />
+              <input
+                class="snippet-search"
+                type="text"
+                bind:value={query}
+                onkeydown={onSearchKeydown}
+                placeholder="Search snippets…"
+                aria-label="Search snippets"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <span class="snippet-count" aria-live="polite">
+                {visible.length}{isFiltered ? ` of ${snippets.length}` : ""}
+              </span>
+            </div>
+            {#if levelChips.length > 1 || hasComponents}
+              <div class="snippet-chips" role="group" aria-label="Filter snippets">
+                {#if levelChips.length > 1}
+                  <button class="snippet-chip" aria-pressed={level === "all"} onclick={() => (level = "all")}>All</button>
+                  {#each levelChips as k (k)}
+                    <button class="snippet-chip" aria-pressed={level === k} onclick={() => (level = k)}>{LEVEL_LABEL[k]}</button>
+                  {/each}
                 {/if}
-              </li>
-            {/each}
-          </ul>
+                {#if hasComponents}
+                  <button class="snippet-chip" aria-pressed={componentsOnly} onclick={() => (componentsOnly = !componentsOnly)}>
+                    Components only
+                  </button>
+                {/if}
+              </div>
+            {/if}
+          </div>
+
+          {#if visible.length === 0}
+            <div class="snippet-empty" role="status">
+              <p>
+                Nothing matches{query.trim() ? ` “${query.trim()}”` : " those filters"}.
+                Try a different word, or clear the filters to see every snippet.
+              </p>
+              <button class="snippet-clear" onclick={clearFilters}>Clear filters</button>
+            </div>
+          {:else}
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div class="snippet-sections" onkeydown={onGridKeydown}>
+              {#each sections as section (section.key)}
+                <section aria-labelledby={`snippet-h-${section.key}`}>
+                  <h3 class="snippet-group-header" id={`snippet-h-${section.key}`}>
+                    {section.kind === "extension" ? section.extensionName : LEVEL_LABEL[section.kind]}
+                    <span class="snippet-group-hint">
+                      {#if section.kind === "project"}your book · editable
+                      {:else if section.kind === "extension"}extension · read-only
+                      {:else}Gutterpress · read-only{/if}
+                    </span>
+                  </h3>
+                  <ul class="snippet-grid">
+                    {#each section.entries as entry (rowKey(entry))}
+                      <!-- The two-step delete confirm stays keyed by `fileName`
+                           alone — it is only ever armed for a project-sourced
+                           card (see the delete button's own {#if} below), and
+                           project fileNames are unique among themselves. -->
+                      {@const armed = confirmDelete[entry.fileName] ?? false}
+                      <li class="snippet-card" class:has-del={entry.source.kind === "project"}>
+                        <button class="snippet-main" onclick={() => choose(entry)} title={`Insert “${entry.name}” at the cursor`}>
+                          <span class="snippet-name">{entry.name}</span>
+                          <span class="snippet-meta">
+                            <span class="snippet-level">{LEVEL_LABEL[entry.source.kind]}</span>
+                            {#if entry.component}
+                              <span class="dlg-badge snippet-component" title="The example for the @{entry.component} component">@{entry.component}</span>
+                            {/if}
+                            {#if entry.variables.length > 0}
+                              <span class="snippet-fields">{entry.variables.length} field{entry.variables.length === 1 ? "" : "s"}</span>
+                            {/if}
+                          </span>
+                          <span class="snippet-preview">{snippetPreview(entry.body)}</span>
+                        </button>
+                        <!-- An extension- or core-provided snippet is READ-ONLY
+                             in the picker — no delete affordance at all (there
+                             was never an in-place "edit" affordance for ANY
+                             snippet here, only Insert / Delete / Save-as-new,
+                             so omitting Delete keeps the picker from silently
+                             modifying a file inside an installed extension's
+                             folder — see this file's header comment). -->
+                        {#if entry.source.kind === "project"}
+                          <!-- A sibling of the card button (a button can't nest
+                               a button), pinned to its top-right corner. A single
+                               persistent button — arming the confirm only swaps
+                               its label/class in place so the first click never
+                               loses focus. -->
+                          <div class="snippet-del-wrap" class:armed>
+                            {#if armed}
+                              <button class="snippet-del-cancel" onclick={(e) => cancelDelete(entry, e)}>Cancel</button>
+                            {/if}
+                            <button
+                              class="snippet-del"
+                              class:dlg-danger-armed={armed}
+                              title={armed ? "Click again to permanently delete" : "Delete snippet"}
+                              aria-label={armed ? `Really delete ${entry.name}? This can't be undone.` : `Delete ${entry.name}`}
+                              onclick={() => requestDelete(entry)}
+                            >
+                              {#if armed}
+                                <span class="snippet-del-confirm">Delete?</span>
+                              {:else}
+                                <Icon name="trash" size={14} />
+                              {/if}
+                            </button>
+                          </div>
+                        {/if}
+                      </li>
+                    {/each}
+                  </ul>
+                </section>
+              {/each}
+            </div>
+          {/if}
         {/if}
         <footer class="dlg-actions">
           <button class="dlg-ghost" onclick={close}>Close</button>
@@ -334,7 +458,7 @@
           </label>
         {/each}
         <footer class="dlg-actions">
-          <button class="dlg-ghost" onclick={() => (mode = "list")}>Back</button>
+          <button class="dlg-ghost" onclick={backToList}>Back</button>
           <button class="dlg-primary app-btn-primary" onclick={confirmVars}>Insert</button>
         </footer>
       {:else}
@@ -347,7 +471,7 @@
           <textarea class="save-body" bind:value={saveBody} rows="6"></textarea>
         </label>
         <footer class="dlg-actions">
-          <button class="dlg-ghost" onclick={() => (mode = "list")}>Back</button>
+          <button class="dlg-ghost" onclick={backToList}>Back</button>
           <button class="dlg-primary app-btn-primary" onclick={confirmSave}>Save snippet</button>
         </footer>
       {/if}
@@ -362,52 +486,105 @@
     width: min(480px, 94vw);
     max-height: 80vh;
   }
+  /* The list wants room for a 3-column card grid; the fill-in and save steps
+     are short forms and keep the narrow frame. */
+  .dlg-shell.wide { width: min(860px, 94vw); max-height: 84vh; }
   .dialog-body { padding: 18px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; flex: 1; }
   .muted { margin: 0; font-size: 13px; color: var(--app-text-muted); }
   .error { color: var(--app-error-text); font-size: 12px; margin: 0; }
-  .snippet-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-  .snippet-list li { display: flex; align-items: stretch; gap: 4px; }
-  /* #242 — a group header ("Your snippets" / "<Extension> · read-only") is
-     also an <li> (so it participates in the same list), but reads as a
-     label, not a row: `li.snippet-group-header` matches `.snippet-list li`'s
-     own specificity (class+type vs. class+type) so declaration order alone
-     decides, which is fragile — restate `display: block` explicitly here
-     rather than relying on this rule simply appearing later in the file. */
-  .snippet-list li.snippet-group-header {
-    display: block;
-    margin: 6px 0 2px;
-    padding: 0 2px;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
+
+  /* Search + chips — sticky at the top of the scrolling body (negative margins
+     cancel the body's padding so the bar spans edge to edge). */
+  .snippet-toolbar {
+    position: sticky; top: -18px; z-index: 1;
+    margin: -18px -18px 0; padding: 14px 18px 12px;
+    background: var(--app-surface); border-bottom: 1px solid var(--app-border-subtle);
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .snippet-search-wrap {
+    display: flex; align-items: center; gap: 8px; padding: 0 10px;
+    background: var(--app-surface-sunken); border: 1px solid var(--app-border); border-radius: 6px;
     color: var(--app-text-muted);
   }
-  .snippet-list li.snippet-group-header:first-child { margin-top: 0; }
-  /* A clickable list item, NOT a text input — distinct from the sunken input
+  .snippet-search-wrap:focus-within { border-color: var(--app-focus-ring); }
+  .snippet-search {
+    flex: 1; min-width: 0; padding: 8px 0; border: none; outline: none; background: transparent;
+    color: var(--app-text); font-size: 14px; font-family: inherit;
+  }
+  .snippet-search::placeholder { color: var(--app-text-muted); }
+  .snippet-count { font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .snippet-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .snippet-chip {
+    padding: 3px 11px; border-radius: 999px; font-size: 12px; font-weight: 500; cursor: pointer;
+    background: transparent; border: 1px solid var(--app-border); color: var(--app-text-muted);
+  }
+  .snippet-chip:hover { background: var(--app-surface-hover); color: var(--app-text); }
+  .snippet-chip[aria-pressed="true"] {
+    background: var(--app-surface-hover); border-color: var(--app-accent); color: var(--app-text);
+  }
+  .snippet-chip:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
+
+  .snippet-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 28px 12px; text-align: center; }
+  .snippet-empty p { margin: 0; max-width: 340px; font-size: 13px; line-height: 1.5; color: var(--app-text-muted); }
+
+  .snippet-clear {
+    padding: 5px 14px; border-radius: 6px; font-size: 12px; cursor: pointer;
+    background: transparent; border: 1px solid var(--app-border); color: var(--app-text-muted);
+  }
+  .snippet-clear:hover { background: var(--app-surface-hover); color: var(--app-text); }
+  .snippet-clear:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
+
+  .snippet-sections { display: flex; flex-direction: column; gap: 18px; }
+  /* A level heading ("Book" / "<Extension>" / "Core") over its grid. */
+  .snippet-group-header {
+    margin: 0 0 8px; padding: 0 2px; display: flex; align-items: baseline; gap: 8px;
+    font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--app-text);
+  }
+  .snippet-group-hint { font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--app-text-muted); }
+  /* 3 columns at the full modal width, 2 below ~690px, 1 below ~450px. */
+  .snippet-grid {
+    list-style: none; margin: 0; padding: 0; display: grid; gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr));
+  }
+  .snippet-card { position: relative; display: flex; min-width: 0; }
+  /* A clickable card, NOT a text input — distinct from the sunken input
      styling so authors see it affords "insert at cursor" (the core action). */
-  .snippet-row {
-    flex: 1; display: flex; align-items: center; justify-content: space-between;
-    gap: 10px; text-align: left; padding: 8px 10px; border-radius: 6px;
+  .snippet-main {
+    flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+    text-align: left; padding: 10px 12px; border-radius: 8px; font-family: inherit;
     background: var(--app-surface); border: 1px solid var(--app-border);
-    color: var(--app-text); cursor: pointer; font-size: 13px; font-weight: 500;
+    color: var(--app-text); cursor: pointer;
   }
-  .snippet-row:hover {
-    background: var(--app-surface-hover);
-    border-color: var(--app-accent);
+  .snippet-main:hover { background: var(--app-surface-hover); border-color: var(--app-accent); }
+  .snippet-main:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; border-color: var(--app-accent); }
+  .snippet-name {
+    max-width: 100%; font-size: 13px; font-weight: 600; line-height: 1.3;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .snippet-row:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
-  .snippet-row-end { display: flex; align-items: center; gap: 8px; color: var(--app-text-muted); }
-  /* "Insert" hint stays subtle until hover/focus so the row reads clean at rest. */
-  .snippet-insert { font-size: 11px; font-weight: 600; opacity: 0; transition: opacity 0.12s; }
-  .snippet-row:hover .snippet-insert,
-  .snippet-row:focus-visible .snippet-insert { opacity: 1; color: var(--app-accent); }
-  .snippet-vars { font-size: 11px; color: var(--app-text-muted); }
+  .has-del .snippet-name { padding-right: 26px; }
+  .snippet-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-height: 18px; }
+  .snippet-level { font-size: 11px; color: var(--app-text-muted); }
+  .snippet-component { color: var(--app-text); background: var(--app-surface-hover); border-color: var(--app-accent); text-transform: none; letter-spacing: 0; }
+  .snippet-fields { font-size: 11px; color: var(--app-text-muted); }
+  /* Up to three lines; grid rows stretch, so cards in a row share a height. */
+  .snippet-preview {
+    font-size: 12px; line-height: 1.45; color: var(--app-text-muted);
+    display: -webkit-box; -webkit-box-orient: vertical; line-clamp: 3; -webkit-line-clamp: 3;
+    overflow: hidden; overflow-wrap: anywhere;
+  }
+  .snippet-del-wrap { position: absolute; top: 6px; right: 6px; display: flex; gap: 4px; }
   .snippet-del {
-    background: transparent; border: 1px solid var(--app-border); border-radius: 6px;
-    color: var(--app-text-muted); cursor: pointer; padding: 0 8px; min-width: 32px;
-    font-size: 11px; font-weight: 600; white-space: nowrap;
+    background: transparent; border: 1px solid transparent; border-radius: 6px;
+    color: var(--app-text-muted); cursor: pointer; padding: 3px 6px; min-width: 26px;
+    font-size: 11px; font-weight: 600; white-space: nowrap; line-height: 1;
+    opacity: 0; transition: opacity 0.12s;
   }
+  /* Hidden at rest so the card reads clean; revealed on hover/focus, and kept
+     visible while armed. (`:focus-within` also covers keyboard users.) */
+  .snippet-card:hover .snippet-del,
+  .snippet-card:focus-within .snippet-del,
+  .snippet-del.dlg-danger-armed { opacity: 1; }
   /* FIX ROUND 1: the base `.snippet-del` rule above sets background/border/
      color longhands scoped to this component (Svelte's hash raises it to
      0,2,0), which otherwise outranks the imported `.dlg-danger-armed`
@@ -422,8 +599,8 @@
   .snippet-del:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
   .snippet-del-confirm { padding: 0 2px; }
   .snippet-del-cancel {
-    background: transparent; border: 1px solid var(--app-border); border-radius: 6px;
-    color: var(--app-text-muted); cursor: pointer; padding: 0 10px; font-size: 11px;
+    background: var(--app-surface); border: 1px solid var(--app-border); border-radius: 6px;
+    color: var(--app-text-muted); cursor: pointer; padding: 3px 10px; font-size: 11px; line-height: 1;
   }
   .snippet-del-cancel:hover { background: var(--app-surface-hover); color: var(--app-text); }
   .snippet-del-cancel:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }

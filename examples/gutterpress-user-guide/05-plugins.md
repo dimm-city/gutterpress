@@ -110,7 +110,13 @@ The desktop app shows the same list under **Project settings → Features** (the
 
 ## Installing npm Plugins
 
-Install an npm plugin from the desktop app under **Project settings → Features**, or with the standalone CLI:
+Install an npm plugin from the desktop app under **Project settings → Features**, or with the standalone CLI. Features has three tabs:
+
+- **Installed & built-in** — everything your book already uses (with each package's **Version** menu and **Update** button), and the built-in formatting extras you can turn on.
+- **Search** — packages on npm tagged `gutterpress` or `markdown-it-plugin`. The list loads the first time you open the tab, so it never slows opening a book; type a word and press Enter to narrow it, then **Add** a package. The new entry is listed under **Installed & built-in**.
+- **Advanced** — **Install from npm** by package name (add `@version` for an exact version, and an export name for packages with named plugin functions), and **Add a plugin file or folder…** to use one from disk where it is.
+
+The CLI equivalent:
 
 ```bash
 gutterpress ext add markdown-it-highlightjs ./my-book
@@ -181,7 +187,8 @@ run `ext add name@x.y.z`.
 
 The desktop app does the same under **Project settings → Features**: opening
 the tab checks npm once, an entry with a newer version shows it with an
-**Update** button, and *Check for updates* re-checks.
+**Update** button on the **Installed & built-in** tab, and *Check for updates*
+re-checks.
 
 Every npm package there also has a **Version** menu listing its published
 versions, newest first. Choosing one is `ext add name@version`: Gutterpress

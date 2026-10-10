@@ -9,6 +9,24 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Book settings → Features is split into three tabs.** *Installed & built-in*
+  holds what the book already uses — the version pickers, the pre-release
+  switch, *Check for updates* and the built-in formatting extras. *Search* is
+  the npm search that used to sit behind "Advanced"; it still runs only when
+  you first show it, never when a book opens. *Advanced* keeps install by name
+  and adding a plugin file or folder. The tab you were on is kept while the app
+  is open, and adding something from Search or Advanced stays on that tab and
+  says the new entry is under *Installed & built-in*. The tab strip is the
+  start screen's, now one shared component.
+- **The snippet picker is a searchable card grid.** Snippets now show as cards
+  in a 3-column grid (2 or 1 when the window is narrower) under a heading per
+  level — your book, each extension, core — instead of one long list. A card
+  shows the snippet's name, its level, the `@component` it is the example for,
+  its field count and the first lines of its content. A search box (focused on
+  open) filters by name and content as you type, level chips and "Components
+  only" narrow further, and Enter inserts the first match. Arrow keys move
+  between cards. Choosing a card inserts it exactly as before, including the
+  fill-in step for `{{fields}}`.
 - **Components show authors the structure they expect** (#338). When an
   author picks a plugin component — typing `@` at the start of a line, or
   from the snippet picker — the editor inserts the component's example
@@ -69,13 +87,22 @@ This project follows [Semantic Versioning](https://semver.org/).
   share a name; before, a book snippet hid an extension's snippet of the same
   name. Where a component needs one snippet, the book's
   `snippets/<marker>.md` wins over the extension's.
-- **Help and book switcher move to the left of the status bar; paging is
-  centered in the preview toolbar.** The help button now sits at the very left
-  of the bottom bar with the book switcher right after it (settings stays at
-  the right). The page controls (first, previous, page picker, next, last) are
-  centered in the preview toolbar with the zoom menu on the right; in a narrow
-  preview pane the zoom label and then the first/last buttons drop out, and
-  below that the paging falls back to the left so nothing overlaps.
+- **The status bar has a Books button, and its pieces are regrouped.** A
+  folder button in the left corner opens the start screen on its Books tab.
+  The book switcher beside it now shows a book icon instead of a folder. The
+  right side reads sync status, the "Edits saved" indicator, a divider, then
+  settings and help (help is back at the right edge). The save indicator moved
+  here from the editor toolbar (the Problems badge stays there) and shows only
+  while a book is open.
+- **Paging is centered in the preview toolbar.** The page controls (first,
+  previous, page picker, next, last) are centered with the zoom menu on the
+  right; in a narrow preview pane the zoom label and then the first/last
+  buttons drop out, and below that the paging falls back to the left so
+  nothing overlaps.
+- **The left panel's Books tab is hidden for now.** The status bar's Books
+  button opens the same list on the start screen, and we are deciding whether
+  it replaces the tab. A remembered Books tab shows Table of contents instead;
+  nothing is deleted, so the tab can come back.
 - **"Needs install" no longer sends you to the terminal.** The desktop row no
   longer tells you to open Advanced or shows the `gutterpress ext add` command
   (the CLI still prints it). `gutterpress ext outdated` and `ext update` are
@@ -84,6 +111,17 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The editor fills its pane again.** A leftover style from the old toolbar
+  centred both panes' contents, so the editor shrank to its longest line and
+  sat in the middle of the pane with an empty strip to its left. It now starts
+  at the pane's edge.
+- **"Fit to width" never scrolls sideways.** On some screens (fractional
+  display scaling) the fitted page could still overflow by a fraction of a
+  pixel and show a horizontal scrollbar. A fit now clips sideways overflow in
+  the preview; any numeric zoom scrolls as before.
+- **Full-screen pages keep still when switching tabs.** Settings, Help and Book
+  settings reserve the scrollbar's space, so going from a short tab to a long
+  one no longer nudges the page sideways.
 - **A freshly scaffolded plugin passes its own tests** (#338). Its "no
   cascade layer" check matched `@layer` inside a stylesheet comment.
 

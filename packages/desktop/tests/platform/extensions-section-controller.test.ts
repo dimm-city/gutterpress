@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ExtensionsSectionController } from "../../src/lib/routes/extensions-section-controller.svelte";
+import { ExtensionsSectionController, FEATURES_TABS } from "../../src/lib/routes/extensions-section-controller.svelte";
 import type {
   ProjectExtensionEntry,
   ExtensionValidationResult,
@@ -372,6 +372,86 @@ test("availableSearch hides packages already configured, matching an npm entry b
   await h.ctrl.loadExtensions();
   await h.ctrl.runSearch("");
   expect(h.ctrl.availableSearch).toEqual([FOUND_OTHER]);
+});
+
+// ── Features tabs ────────────────────────────────────────────────────────────
+
+test("the Features tabs are Installed & built-in, Search, Advanced — in that order", () => {
+  expect(FEATURES_TABS.map((t) => t.label)).toEqual(["Installed & built-in", "Search", "Advanced"]);
+});
+
+test("the npm search runs the first time the Search tab is shown — not before, not for other tabs", async () => {
+  const h = make();
+  h.ctrl.showFeaturesTab("installed");
+  h.ctrl.showFeaturesTab("advanced");
+  await flush();
+  expect(named(h, "search")).toEqual([]);
+  expect(h.ctrl.search.status).toBe("idle");
+
+  h.ctrl.showFeaturesTab("search");
+  await flush();
+  expect(named(h, "search").map((c) => c.args)).toEqual([[""]]);
+  expect(h.ctrl.search.status).toBe("ready");
+
+  // Showing it again (a tab round trip) reuses the result instead of asking npm again.
+  h.ctrl.showFeaturesTab("installed");
+  h.ctrl.showFeaturesTab("search");
+  await flush();
+  expect(named(h, "search").length).toBe(1);
+});
+
+test("a remembered Search tab searches when a fresh controller mounts onto it, and the tab outlives the controller", async () => {
+  const first = make();
+  first.ctrl.showFeaturesTab("search");
+  await flush();
+
+  // ProjectSettingsView builds a new controller per open: the selection carries over,
+  // the (per-controller) search state does not — so the view's mount call must search.
+  const second = make();
+  expect(second.ctrl.featuresTab).toBe("search");
+  expect(second.ctrl.search.status).toBe("idle");
+  second.ctrl.showFeaturesTab(second.ctrl.featuresTab);
+  await flush();
+  expect(named(second, "search").length).toBe(1);
+
+  second.ctrl.showFeaturesTab("installed"); // leave module state as a restart would find it
+  expect(make().ctrl.featuresTab).toBe("installed");
+});
+
+test("showFeaturesTab does not re-search while the first search is still in flight", async () => {
+  const h = make();
+  h.ctrl.showFeaturesTab("search");
+  h.ctrl.showFeaturesTab("installed");
+  h.ctrl.showFeaturesTab("search");
+  await flush();
+  expect(named(h, "search").length).toBe(1);
+  h.ctrl.showFeaturesTab("installed");
+});
+
+test("an add from Search stays on its tab and says where the row went", async () => {
+  const h = make();
+  h.ctrl.showFeaturesTab("search");
+  await flush();
+  await h.ctrl.addSearched(FOUND_DC);
+  expect(h.ctrl.featuresTab).toBe("search");
+  expect(h.ctrl.notice).toBe("Added dimm-city-components — find it under Installed & built-in.");
+  expect(h.ctrl.features.some((e) => e.use === "dimm-city-components")).toBe(true);
+  expect(h.ctrl.availableSearch.some((m) => m.name === "dimm-city-components")).toBe(false);
+  h.ctrl.showFeaturesTab("installed");
+});
+
+test("install by name confirms too, and keeps an installer warning after the confirmation", async () => {
+  const h = make({ entries: [] });
+  h.addWarnings = ["Registry provided legacy SHA-1 integrity."];
+  h.ctrl.npmName = "old-plugin";
+  await h.ctrl.addNpm();
+  expect(h.ctrl.notice).toBe("Added old-plugin — find it under Installed & built-in. Registry provided legacy SHA-1 integrity.");
+});
+
+test("turning on a Formatting extra (Installed tab) adds no confirmation — the row appears right there", async () => {
+  const h = make({ entries: [] });
+  await h.ctrl.addRecommended(REC_MARK);
+  expect(h.ctrl.notice).toBeNull();
 });
 
 test("addSearched adds by the package name and reloads the list", async () => {

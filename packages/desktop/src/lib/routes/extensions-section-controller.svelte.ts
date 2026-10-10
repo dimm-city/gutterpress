@@ -33,9 +33,8 @@
  *
  * `search` (#246) is a SEPARATE, quieter load than the three above: an npm
  * registry search for packages tagged `gutterpress` or `markdown-it-plugin`,
- * run over the network only when the Features view's Advanced section is
- * first opened (never at project load) and whenever the author types a
- * query. A fetch/parse failure surfaces as `search.message` — one line,
+ * run over the network only when the Features view's Search tab is first
+ * shown (never at project load) and whenever the author types a query. A fetch/parse failure surfaces as `search.message` — one line,
  * never an error toast — and never blocks `entries`/`recommended`/`builtIns`.
  *
  * Versions: every npm row has a picker over that package's published versions
@@ -126,6 +125,19 @@ export interface ExtensionsSectionDeps {
   afterLookChange?: () => Promise<void>;
 }
 
+/** The Features view's tabs, in order (the labels are what the author reads). */
+export const FEATURES_TABS = [
+  { id: "installed", label: "Installed & built-in" },
+  { id: "search", label: "Search" },
+  { id: "advanced", label: "Advanced" },
+] as const;
+export type FeaturesTab = (typeof FEATURES_TABS)[number]["id"];
+
+// The selected Features tab outlives the controller (ProjectSettingsView makes
+// a fresh one per open), so leaving book settings and coming back keeps it for
+// the session. Deliberately not persisted: an app restart starts on Installed.
+let lastFeaturesTab: FeaturesTab = "installed";
+
 /** Does this add/import result carry a look? (`null` = cancelled, nothing changed.) */
 const carriesStyles = (entry: ProjectExtensionEntry | null): boolean => !!entry?.carries.styles;
 
@@ -137,9 +149,8 @@ export class ExtensionsSectionController {
   builtIns = $state<BuiltInStyleSet[]>([]);
   /**
    * npm search (#246) — the "Find more on npm" list beyond the bundled/
-   * built-in set. Run ON DEMAND the first time the Features view's Advanced
-   * section opens and on every query the author submits, never at project
-   * load; a fetch failure is one quiet `message`, never a modal, and never
+   * built-in set. Run ON DEMAND the first time the Features view's Search tab
+   * is shown and on every query the author submits, never at project load; a fetch failure is one quiet `message`, never a modal, and never
    * blocks the rest of the panel.
    */
   search = $state<{
@@ -153,6 +164,8 @@ export class ExtensionsSectionController {
   }>({ status: "idle", query: "", matches: [], total: 0, message: null });
   /** The search box's draft text (bound by the Features view). */
   searchQuery = $state("");
+  /** The Features view's selected tab (see `showFeaturesTab`). */
+  featuresTab = $state<FeaturesTab>(lastFeaturesTab);
   /**
    * Update check — each pinned npm entry against npm's latest. Run when the
    * Features view mounts (an explicit tab open, never project load) and on
@@ -291,9 +304,20 @@ export class ExtensionsSectionController {
   };
 
   /**
+   * Select a Features tab. Showing Search for the first time is what runs the
+   * npm search (#246) — also when the remembered tab is Search and the view
+   * mounts straight onto it, which is why the view calls this on mount too.
+   */
+  showFeaturesTab = (tab: FeaturesTab): void => {
+    this.featuresTab = tab;
+    lastFeaturesTab = tab;
+    if (tab === "search" && this.search.status === "idle") void this.runSearch("");
+  };
+
+  /**
    * Search npm. Called with an empty query the first time the Features view's
-   * Advanced section opens (never at project load) and with the author's query
-   * when they submit the box. Refuses to pile up a second in-flight search; a
+   * Search tab is shown (`showFeaturesTab`, never at project load) and with the
+   * author's query when they submit the box. Refuses to pile up a second in-flight search; a
    * failure lands in `search.message`, not `this.error` — it must never block
    * or blank the rest of the panel.
    */
@@ -502,6 +526,18 @@ export class ExtensionsSectionController {
     await this.mutate(entry.use, (dir) => this.deps.reorder(dir, order), () => entry.carries.styles);
   };
 
+  /**
+   * `announceAdded`, plus a plain confirmation for the adds that start on the
+   * Search and Advanced tabs (and the Look tab's folder picker): the new row
+   * lives elsewhere — Installed & built-in, or Look — so the author is told
+   * where it went instead of being moved there.
+   */
+  private confirmAdded(entry: ProjectExtensionEntry): void {
+    this.announceAdded(entry);
+    const where = entry.carries.markdown || !entry.carries.styles ? "Installed & built-in" : "the Look tab";
+    this.notice = [`Added ${entry.label} — find it under ${where}.`, this.notice].filter(Boolean).join(" ");
+  }
+
   /** "Install from npm": the drafts → `add`. A cancelled trust gate keeps the draft. */
   addNpm = async (): Promise<void> => {
     const name = this.npmName.trim();
@@ -514,7 +550,7 @@ export class ExtensionsSectionController {
     if (!added) return;
     this.npmName = "";
     this.npmExport = "";
-    this.announceAdded(added);
+    this.confirmAdded(added);
   };
 
   /** Turn on a bundled feature — writes its name, nothing to install. */
@@ -527,13 +563,13 @@ export class ExtensionsSectionController {
    *  `addRecommended`; the package name IS the specifier `ext add` takes. */
   addSearched = async (match: NpmExtensionMatch): Promise<void> => {
     const added = await this.mutate(match.name, (dir) => this.deps.add(dir, match.name), carriesStyles);
-    if (added) this.announceAdded(added);
+    if (added) this.confirmAdded(added);
   };
 
   /** A folder or plugin file from the native picker, referenced in place. */
   addLocal = async (): Promise<void> => {
     const added = await this.mutate("__local__", (dir) => this.deps.addLocal(dir), carriesStyles);
-    if (added) this.announceAdded(added);
+    if (added) this.confirmAdded(added);
   };
 
   /** Copy a built-in look into the project and add it. */

@@ -673,6 +673,12 @@
     landingForcedOpen = true;
   }
 
+  /** Open the start screen on its Books tab (the status bar's folder button). */
+  function openBooks() {
+    landingRef?.showTab("projects");
+    landingForcedOpen = true;
+  }
+
   /** Open Troubleshooting → Report a problem (from an error toast or the unsaved-changes dialog). */
   function openReportProblem() {
     landingRef?.showTab("troubleshooting", "report");
@@ -1621,9 +1627,6 @@
     problemsOpen = !problemsOpen;
     if (problemsOpen) void tick().then(() => problemsPanelRef?.focusList());
   }
-  // The status bar owns "Where your work is kept"; the editor toolbar's save
-  // indicator opens it.
-  let statusBarRef = $state<{ toggleSummary: (trigger?: HTMLElement) => void } | null>(null);
   // Lint findings for the open project, refreshed after every live-preview
   // rebuild (the renderingComplete event — which fires for the initial render
   // AND every watcher-triggered re-render). The toggle button lives in the
@@ -2904,10 +2907,6 @@
               onSave={handleForceSave}
               savePending={editorSavePhase !== "clean"}
               saving={forceSaving}
-              savePhase={editorSavePhase}
-              autoSave={settings.current.versionHistory.autoSave}
-              {forceSaving}
-              onSaveStatus={(el) => statusBarRef?.toggleSummary(el)}
               problems={displayedProblems}
               problemsLoading={problemsLoading || lifecycle.rendering}
               {problemsError}
@@ -3075,7 +3074,6 @@
        iframe (normal layout flow). -->
   {#if !inFocus}
   <StatusBar
-    bind:this={statusBarRef}
     projectDir={lifecycle.currentDir}
     sourceMode={lifecycle.sourceMode}
     canSync={!!(syncController.syncDiag?.canSync)}
@@ -3131,6 +3129,7 @@
     onOpenBookConnections={openBookConnections}
     onOpenSettings={openSettings}
     onOpenHelp={openHelp}
+    onOpenBooks={openBooks}
   />
   {/if}
 </div>
@@ -3571,7 +3570,6 @@
      AppToolbar.svelte now (a 3-column grid + container queries). Only the
      generic button primitives shared by the remaining +page surfaces
      (banners, dialogs) stay here. */
-  section { display: flex; align-items: center; gap: 6px; min-width: 0; }
 
   /* ---- Buttons & inputs ---- */
   /* Geometry shared by ALL +page buttons (banner actions, export pill,
