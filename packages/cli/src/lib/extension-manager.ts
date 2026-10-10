@@ -54,7 +54,7 @@ import {
 } from "./plugin-vendor.ts";
 import { FriendlyHttpError, withFetchTimeout } from "./fetch-timeout.ts";
 import { npmRegistryUrl } from "./npm-registry.ts";
-import { gt as semverGt } from "semver";
+import { gt as semverGt, rcompare as semverRcompare } from "semver";
 import {
   isPathSpecifier,
   parseExtensionSpecifier,
@@ -749,7 +749,7 @@ export interface ExtensionUpdateCheck {
   name: string;
   /** The pinned version. */
   current: string;
-  /** npm's `latest` dist-tag. */
+  /** npm's `latest` dist-tag (the newest of any kind with `includePrerelease`). */
   latest: string;
   /** `latest` is newer than `current` (semver). */
   outdated: boolean;
@@ -759,13 +759,22 @@ export interface CheckExtensionUpdatesOptions {
   /** Dependency injection for tests; production uses global fetch. */
   fetch?: typeof globalThis.fetch;
   signal?: AbortSignal;
+  /**
+   * Compare against the newest published version, pre-releases included
+   * (`-alpha`, `-beta`, `-rc`), instead of npm's `latest` dist-tag. Default
+   * false: the dist-tag, as `ext outdated` has always done.
+   */
+  includePrerelease?: boolean;
 }
 
 const LATEST_LOOKUP_TIMEOUT_MS = 30_000;
 const MAX_PACKUMENT_BYTES = 15 * 1024 * 1024;
 
-/** npm's `latest` for one package, from the abbreviated packument. */
-async function latestNpmVersion(name: string, options: CheckExtensionUpdatesOptions): Promise<string> {
+/** The `latest` dist-tag and every published version of one package, from the abbreviated packument. */
+async function fetchNpmVersions(
+  name: string,
+  options: CheckExtensionUpdatesOptions,
+): Promise<{ latest: unknown; versions: string[] }> {
   const fetchImpl = options.fetch ?? globalThis.fetch;
   return withFetchTimeout(
     {
@@ -787,24 +796,52 @@ async function latestNpmVersion(name: string, options: CheckExtensionUpdatesOpti
       if (bytes.byteLength > MAX_PACKUMENT_BYTES) {
         throw new FriendlyHttpError(`npm metadata for "${name}" is too large to read.`);
       }
-      let latest: unknown;
       try {
-        latest = (JSON.parse(Buffer.from(bytes).toString("utf8")) as { "dist-tags"?: Record<string, unknown> })[
-          "dist-tags"
-        ]?.latest;
+        const packument = JSON.parse(Buffer.from(bytes).toString("utf8")) as {
+          "dist-tags"?: Record<string, unknown>;
+          versions?: Record<string, unknown>;
+        };
+        return {
+          latest: packument["dist-tags"]?.latest,
+          versions: Object.keys(packument.versions ?? {}).filter(isExactNpmVersion),
+        };
       } catch {
         throw new FriendlyHttpError(`npm metadata for "${name}" is not valid JSON.`);
       }
-      if (typeof latest !== "string" || !isExactNpmVersion(latest)) {
-        throw new FriendlyHttpError(`npm metadata for "${name}" has no latest version.`);
-      }
-      return latest;
     },
   );
 }
 
 /**
- * Every pinned npm extension of the book against npm's `latest`, in manifest
+ * npm's newest version of one package: the `latest` dist-tag, or with
+ * `includePrerelease` the highest published version of any kind.
+ */
+async function latestNpmVersion(name: string, options: CheckExtensionUpdatesOptions): Promise<string> {
+  const { latest, versions } = await fetchNpmVersions(name, options);
+  if (options.includePrerelease) {
+    const newest = versions.sort(semverRcompare)[0];
+    if (newest) return newest;
+  }
+  if (typeof latest !== "string" || !isExactNpmVersion(latest)) {
+    throw new FriendlyHttpError(`npm metadata for "${name}" has no latest version.`);
+  }
+  return latest;
+}
+
+/**
+ * Every published version of one npm package, newest first, pre-releases
+ * included — what a version picker chooses from (the caller decides whether to
+ * show pre-releases). One metadata lookup, the same one the update check makes.
+ */
+export async function listNpmVersions(
+  name: string,
+  options: Pick<CheckExtensionUpdatesOptions, "fetch" | "signal"> = {},
+): Promise<string[]> {
+  return (await fetchNpmVersions(name, options)).versions.sort(semverRcompare);
+}
+
+/**
+ * Every pinned npm extension of the book against npm's newest version, in manifest
  * order. Bundled, path and unpinned entries are not npm's to answer for and
  * are skipped. One lookup per package, in parallel; a failed lookup throws
  * with the package named.

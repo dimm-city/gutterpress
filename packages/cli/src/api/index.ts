@@ -156,6 +156,7 @@ export {
   describeExtension,
   addExtension,
   checkExtensionUpdates,
+  listNpmVersions,
   updateExtensions,
   removeExtension,
   setExtensionEnabled,

@@ -48,6 +48,19 @@ This project follows [Semantic Versioning](https://semver.org/).
   and `section: true` components alike. Nothing is reported for a declared
   variant, no word, or an alias's preset variant, and the word still lands in
   `data-<marker>` as before.
+- **Pick the version of any npm extension on the Features tab.** Each npm row
+  has a **Version** menu of the package's published versions, newest first.
+  Choosing one installs it the way `gutterpress ext add name@version` does and
+  moves the pin only once it has downloaded, verified and loaded; if it fails,
+  the book keeps its old version and copy and a message says why. The menu
+  lists stable releases; **Include pre-release versions** (off by default, an
+  app preference shared by all books) adds `-alpha`, `-beta` and `-rc`
+  versions and makes the update check count them as newer. The version a book
+  pins is always listed.
+- **An Install button for a missing or broken copy.** A row whose pinned
+  version has no downloaded copy now offers **Install** (or **Reinstall** when
+  the copy won't load), which fetches exactly the pinned version, shows
+  progress, then refreshes the row.
 
 ### Changed
 
@@ -63,6 +76,11 @@ This project follows [Semantic Versioning](https://semver.org/).
   centered in the preview toolbar with the zoom menu on the right; in a narrow
   preview pane the zoom label and then the first/last buttons drop out, and
   below that the paging falls back to the left so nothing overlaps.
+- **"Needs install" no longer sends you to the terminal.** The desktop row no
+  longer tells you to open Advanced or shows the `gutterpress ext add` command
+  (the CLI still prints it). `gutterpress ext outdated` and `ext update` are
+  unchanged; the library's update check gained an `includePrerelease` option,
+  off by default.
 
 ### Fixed
 

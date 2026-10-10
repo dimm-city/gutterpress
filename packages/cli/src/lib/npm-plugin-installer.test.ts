@@ -19,6 +19,7 @@ import { loadManifest, resolveConfig } from "./manifest";
 import {
   addExtension as addNpmPlugin,
   checkExtensionUpdates,
+  listNpmVersions,
   updateExtensions,
   listProjectExtensions as listProjectPlugins,
   validateProjectExtensions as validateProjectPlugins,
@@ -1460,6 +1461,68 @@ describe("updates", () => {
     await expect(checkExtensionUpdates(dir, { fetch: offline })).rejects.toThrow(
       `Looking up ${name} on npm failed (ECONNREFUSED).`,
     );
+  });
+
+  // Pre-releases: `latest` stays the stable dist-tag unless asked otherwise.
+  const withPrerelease = () =>
+    registryGraphFixture([
+      { name, version: "1.0.0" },
+      { name, version: "1.2.0-alpha.1" },
+      { name, version: "1.2.0-alpha.2" },
+      { name, version: "1.1.0" }, // last = the fixture's `latest` dist-tag
+    ]);
+
+  test("checkExtensionUpdates compares with the newest pre-release only when asked", async () => {
+    const dir = await projectDir();
+    const fixture = withPrerelease();
+    await addNpmPlugin(dir, `${name}@1.0.0`, { fetch: fixture.fetch });
+
+    const stable = await checkExtensionUpdates(dir, { fetch: fixture.fetch });
+    expect(stable[0]).toMatchObject({ latest: "1.1.0", outdated: true });
+    const pre = await checkExtensionUpdates(dir, { fetch: fixture.fetch, includePrerelease: true });
+    expect(pre[0]).toMatchObject({ current: "1.0.0", latest: "1.2.0-alpha.2", outdated: true });
+  });
+
+  test("listNpmVersions lists every published version, newest first", async () => {
+    const fixture = withPrerelease();
+    expect(await listNpmVersions(name, { fetch: fixture.fetch })).toEqual([
+      "1.2.0-alpha.2",
+      "1.2.0-alpha.1",
+      "1.1.0",
+      "1.0.0",
+    ]);
+  });
+
+  test("listNpmVersions names the package a lookup fails for", async () => {
+    const fixture = withPrerelease();
+    await expect(listNpmVersions("markdown-it-not-published", { fetch: fixture.fetch })).rejects.toThrow(
+      'npm package "markdown-it-not-published" was not found.',
+    );
+  });
+
+  test("switching to a version that fails leaves the old pin and its vendored copy in place", async () => {
+    const dir = await projectDir();
+    const broken = "markdown-it-gutterpress-switching";
+    const fixture = registryGraphFixture([
+      { name: broken, version: "1.0.0" },
+      { name: broken, version: "1.1.0", files: { "index.js": "throw new Error('boom');\n" } },
+    ]);
+    await addNpmPlugin(dir, `${broken}@1.0.0`, { fetch: fixture.fetch });
+    const manifestBefore = await readFile(path.join(dir, "manifest.yaml"), "utf8");
+
+    // Loads badly: downloaded, vendored, load-tested, rolled back.
+    await expect(addNpmPlugin(dir, `${broken}@1.1.0`, { fetch: fixture.fetch })).rejects.toThrow(
+      /not a loadable markdown-it plugin/,
+    );
+    // Not published at all: refused before anything is written.
+    await expect(addNpmPlugin(dir, `${broken}@9.9.9`, { fetch: fixture.fetch })).rejects.toThrow();
+
+    expect(await readFile(path.join(dir, "manifest.yaml"), "utf8")).toBe(manifestBefore);
+    expect(existsSync(vendoredNpmPluginRoot(dir, broken, "1.0.0"))).toBe(true);
+    expect(existsSync(vendoredNpmPluginRoot(dir, broken, "1.1.0"))).toBe(false);
+    const [entry] = await listProjectPlugins(dir);
+    expect(entry).toMatchObject({ use: `${broken}@1.0.0`, version: "1.0.0" });
+    expect(entry!.warnings).toBeUndefined();
   });
 
   test("updateExtensions re-pins what is behind, keeps the entry's export, and reports the move", async () => {

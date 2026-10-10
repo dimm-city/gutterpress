@@ -25,11 +25,20 @@
    * for each pinned entry's latest; an entry that is behind shows the newer
    * version with an Update button, and *Check for updates* asks again. A
    * failed check is one quiet line under the list.
+   *
+   * Versions: every npm row has a version picker (published versions, newest
+   * first; stable only unless "Include pre-release versions" is on; the pinned
+   * version always listed). A row's list loads when the row is shown (and again
+   * when its picker is focused after a failed load), cached for the session.
+   * Choosing a version installs it — the pin only moves once the install
+   * succeeded. A row whose downloaded copy is missing or broken shows an
+   * Install button for exactly the pinned version.
    */
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { api } from "$lib/api";
   import { extensionStatus, extensionSourceLabel, describeSegments } from "./config-helpers";
+  import type { ProjectExtensionEntry } from "$lib/platform/dtos";
   import type { ExtensionsSectionController } from "$lib/routes/extensions-section-controller.svelte";
 
   let { controller }: { controller: ExtensionsSectionController } = $props();
@@ -49,6 +58,20 @@
       void controller.checkUpdates();
     }
   });
+
+  // Each npm row loads its package's version list when the row appears — the
+  // tab being shown, or a package added later — never on re-render (a loaded
+  // or in-flight list is cached for the session).
+  function loadVersionsOnShow(_select: HTMLSelectElement, name: string) {
+    void controller.loadVersions(name);
+  }
+
+  // A cancelled trust prompt or a failed install leaves the pin where it was;
+  // the native <select> must show that again, not the version just clicked.
+  async function pickVersion(e: ProjectExtensionEntry, select: HTMLSelectElement) {
+    await controller.switchVersion(e, select.value);
+    select.value = e.version ?? "";
+  }
 </script>
 
 <!-- A built-in feature's one line, its "what to type" spans set in code type —
@@ -74,6 +97,14 @@
   {/if}
   {#if controller.notice}
     <p class="notice" role="status">{controller.notice}</p>
+  {/if}
+  {#if controller.features.some((e) => e.kind === "npm")}
+    <div class="prerelease-row">
+      <span id="prerelease-label">Include pre-release versions</span>
+      <button class="toggle" class:on={controller.includePrerelease} role="switch" aria-checked={controller.includePrerelease} aria-labelledby="prerelease-label" title="Also offer alpha, beta and release-candidate versions in the version lists, and count them as updates" onclick={() => controller.setIncludePrerelease(!controller.includePrerelease)}>
+        <span class="knob"></span>
+      </button>
+    </div>
   {/if}
   {#if controller.features.length === 0}
     <p class="muted">No features turned on yet. Pick one below.</p>
@@ -109,7 +140,30 @@
             {#if st.raw}
               <details class="status-raw"><summary>Show details</summary><pre>{st.raw}</pre></details>
             {/if}
+            {#if e.kind === "npm"}
+              <div class="version-pick">
+                <label for={`version-${e.use}`}>Version</label>
+                <select id={`version-${e.use}`} class="input" use:loadVersionsOnShow={e.name} value={e.version ?? ""} disabled={controller.busy !== null} onfocus={() => controller.loadVersions(e.name)} onchange={(ev) => pickVersion(e, ev.currentTarget)}>
+                  {#if !e.version}<option value="" disabled>Choose a version</option>{/if}
+                  {#each controller.versionChoices(e) as v (v)}
+                    <option value={v}>{v}{v === e.version ? " (current)" : ""}</option>
+                  {/each}
+                </select>
+                {#if controller.busy === e.use}
+                  <span class="muted" role="status">Installing…</span>
+                {:else if controller.versions[e.name]?.status === "loading"}
+                  <span class="muted">Loading versions…</span>
+                {:else if controller.versions[e.name]?.status === "error"}
+                  <span class="muted" title={controller.versions[e.name]?.message ?? ""}>Couldn't load the version list.</span>
+                {/if}
+              </div>
+            {/if}
           </div>
+          {#if st.fix}
+            <button class="primary small app-btn-primary" onclick={() => controller.install(e)} disabled={controller.busy !== null} aria-label={`${st.fix === "install" ? "Install" : "Reinstall"} ${e.label}${e.version ? ` ${e.version}` : ""}`}>
+              {controller.busy === e.use ? "Installing…" : st.fix === "install" ? "Install" : "Reinstall"}
+            </button>
+          {/if}
           {#if controller.updateFor(e)}
             <button class="primary small app-btn-primary" onclick={() => controller.update(e)} disabled={controller.busy !== null} title={`Update to ${e.name}@${controller.updateFor(e)}`} aria-label={`Update ${e.label} to ${controller.updateFor(e)}`}>
               {controller.busy === e.use ? "Updating…" : "Update"}
@@ -219,6 +273,9 @@
   .rec-desc code { font-family: var(--app-font-mono); font-size: 11px; color: var(--app-text); }
   .search-status { font-size: 12px; }
   .head-actions { display: flex; align-items: center; gap: 6px; }
+  .prerelease-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--app-text); margin-bottom: 6px; }
+  .version-pick { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--app-text-muted); margin-top: 4px; }
+  .version-pick select { max-width: 190px; font-size: 11px; padding: 2px 4px; }
   .update-badge { color: var(--app-accent, var(--app-text)); }
   /* Opens via api.shell.openExternal (never a bare `<a target="_blank">` in
      the Electron shell — see ConnectionsSettings.svelte for the pattern). */

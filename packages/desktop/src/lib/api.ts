@@ -121,6 +121,7 @@ export type {
   NpmExtensionMatch,
   ExtensionSearchResult,
   ExtensionUpdatesResult,
+  ExtensionVersionsResult,
   ProjectStyle,
   RecoveryEntry,
   ProjectClassification,
@@ -146,6 +147,7 @@ import type {
   ExtensionImportResult,
   ExtensionSearchResult,
   ExtensionUpdatesResult,
+  ExtensionVersionsResult,
   ProjectStyle,
   RecoveryEntry,
   ProjectClassification,
@@ -570,9 +572,11 @@ export const api = {
     recommended: () => get<RecommendedExtension[]>('/api/extension/recommended'),
     /** Search npm for extensions (#246), on demand. A network/parse failure is data (`ok: false`), never a thrown error. */
     search: (query: string) => post<ExtensionSearchResult>('/api/extension/search', { query }),
-    /** Each pinned npm extension against npm's latest, on demand (the Features tab, never project load). A network failure is data (`ok: false`). */
-    outdated: (projectDir: string) =>
-      post<ExtensionUpdatesResult>('/api/extension/outdated', { projectDir }),
+    /** Each pinned npm extension against npm's latest (the newest of any kind with `includePrerelease`), on demand (the Features tab, never project load). A network failure is data (`ok: false`). */
+    outdated: (projectDir: string, includePrerelease = false) =>
+      post<ExtensionUpdatesResult>('/api/extension/outdated', { projectDir, includePrerelease }),
+    /** Every published version of one npm package, newest first, pre-releases included (the version picker's list). On demand; a network failure is data (`ok: false`). */
+    versions: (name: string) => post<ExtensionVersionsResult>('/api/extension/versions', { name }),
     /** The built-in looks (static metadata). */
     listBuiltIn: () => get<BuiltInStyleSet[]>('/api/extension/built-in'),
     /** Copy a built-in look into `extensions/<id>/` and add it as `./extensions/<id>`. */

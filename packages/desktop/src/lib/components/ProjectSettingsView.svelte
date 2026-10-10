@@ -47,6 +47,7 @@
    */
   import { onMount } from "svelte";
   import { api } from "$lib/api";
+  import { useSettings } from "$lib/settings.svelte";
   import type { ToastController } from "$lib/components/Toast.svelte";
   import { DetailsSectionController } from "$lib/routes/details-section-controller.svelte";
   import { ExtensionsSectionController } from "$lib/routes/extensions-section-controller.svelte";
@@ -145,6 +146,8 @@
     onError: (msg) => toast?.error?.(msg),
   });
 
+  const settings = useSettings();
+
   // ── Extensions — ONE list, two views (#243/#265). A change to a look
   //    refreshes Styles + Design. ─────────────────────────────────────────
   const extensions = new ExtensionsSectionController({
@@ -153,7 +156,10 @@
     recommended: () => api.extension.recommended(),
     listBuiltIn: () => api.extension.listBuiltIn(),
     search: (query) => api.extension.search(query),
-    outdated: (dir) => api.extension.outdated(dir),
+    outdated: (dir, includePrerelease) => api.extension.outdated(dir, includePrerelease),
+    versions: (name) => api.extension.versions(name),
+    includePrerelease: () => settings.current.updates.includeExtensionPrereleases,
+    setIncludePrerelease: (on) => settings.set({ updates: { includeExtensionPrereleases: on } }),
     validate: (dir) => api.extension.validate(dir),
     add: (dir, specifier, exportName) => api.extension.add(dir, specifier, exportName),
     addLocal: (dir) => api.extension.addLocal(dir),
