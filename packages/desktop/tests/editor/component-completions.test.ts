@@ -30,18 +30,25 @@ function makeMockView(docStr: string): EditorView {
 
 const source = { kind: "extension" as const, ref: "./plugins/boxes", name: "Boxes" };
 const components: MarkerComponent[] = [
-  { name: "term-box", source, snippet: '@term-box label="{{label}}"\n\n{{body}}\n\n@end-term-box\n' },
-  { name: "plain", source, snippet: "@plain\nText\n@end-plain\n" },
-  { name: "bare", source },
+  { name: "term-box", source, variants: [], snippet: '@term-box label="{{label}}"\n\n{{body}}\n\n@end-term-box\n' },
+  { name: "plain", source, variants: [], snippet: "@plain\nText\n@end-plain\n" },
+  { name: "bare", source, variants: [] },
 ];
+const skill: MarkerComponent = {
+  name: "skill",
+  source,
+  variants: ["highlight", "muted"],
+  snippet: '@skill label="{{label}}"\n\n{{body}}\n\n@end-skill\n',
+};
+const withVariants = [...components, skill];
 
 function complete(doc: string, list: MarkerComponent[] = components) {
   const state = EditorState.create({ doc });
   return componentCompletionSource(() => list)(new CompletionContext(state, doc.length, false));
 }
 
-function applyOption(doc: string, label: string) {
-  const result = complete(doc)!;
+function applyOption(doc: string, label: string, list: MarkerComponent[] = components) {
+  const result = complete(doc, list)!;
   const option = result.options.find((o) => o.label === label)!;
   const view = makeMockView(doc);
   (option.apply as (v: EditorView, c: Completion, from: number, to: number) => void)(
@@ -82,4 +89,54 @@ test("a component without a snippet inserts its marker pair with the caret betwe
   const { doc, sel } = applyOption("@ba", "@bare");
   expect(doc).toBe("@bare\n\n@end-bare");
   expect(sel).toEqual(["@bare\n".length, "@bare\n".length]);
+});
+
+test("offers @name plus one @name <variant> option per variant, all matching the typed prefix", () => {
+  const result = complete("@sk", withVariants);
+  expect(result?.options.filter((o) => o.label.startsWith("@skill")).map((o) => [o.label, o.detail])).toEqual([
+    ["@skill", "component · Boxes"],
+    ["@skill highlight", "component · Boxes"],
+    ["@skill muted", "component · Boxes"],
+  ]);
+  expect(result?.options.length).toBe(components.length + 3);
+});
+
+test("a variant goes after @name on the snippet's marker line, keeping the first-{{variable}} selection", () => {
+  const { doc, sel } = applyOption("@sk", "@skill highlight", withVariants);
+  expect(doc).toBe('@skill highlight label="{{label}}"\n\n{{body}}\n\n@end-skill');
+  expect(doc.slice(sel[0], sel[1])).toBe("{{label}}");
+});
+
+test("a variant on a bare marker line is appended after @name; leading blank lines are skipped", () => {
+  const list: MarkerComponent[] = [
+    { name: "note", source, variants: ["warn"], snippet: "\n@note\nText\n@end-note\n" },
+  ];
+  const { doc, sel } = applyOption("@no", "@note warn", list);
+  expect(doc).toBe("\n@note warn\nText\n@end-note");
+  expect(sel).toEqual([doc.length, doc.length]);
+});
+
+test("a snippet whose first line is not the marker is inserted unchanged for a variant", () => {
+  const list: MarkerComponent[] = [
+    { name: "note", source, variants: ["warn"], snippet: "Intro\n@note\nText\n@end-note\n" },
+    { name: "notebook", source, variants: ["warn"], snippet: "@notebook-x\n@end-notebook\n" },
+  ];
+  expect(applyOption("@no", "@note warn", list).doc).toBe("Intro\n@note\nText\n@end-note");
+  // `@notebook-x` is a different word from `@notebook`, so it is not rewritten.
+  expect(applyOption("@no", "@notebook warn", list).doc).toBe("@notebook-x\n@end-notebook");
+});
+
+test("a variant without a snippet inserts `@name <variant>` / `@end-name` with the caret between", () => {
+  const list: MarkerComponent[] = [{ name: "box", source, variants: ["wide"] }];
+  const { doc, sel } = applyOption("@bo", "@box wide", list);
+  expect(doc).toBe("@box wide\n\n@end-box");
+  expect(sel).toEqual(["@box wide\n".length, "@box wide\n".length]);
+});
+
+test("options are rebuilt only when the component list changes", () => {
+  const source1 = componentCompletionSource(() => withVariants);
+  const state = EditorState.create({ doc: "@s" });
+  const a = source1(new CompletionContext(state, 2, false))!;
+  const b = source1(new CompletionContext(state, 2, false))!;
+  expect(b.options).toBe(a.options);
 });
