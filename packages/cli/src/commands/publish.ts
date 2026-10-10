@@ -72,7 +72,7 @@ function stdinLooksPiped(): boolean {
 
 function emitResult(result: RunPublishResult, json: boolean): void {
   if (json) {
-    console.log(JSON.stringify(result, null, 2));
+    process.stdout.write(JSON.stringify(result, null, 2) + "\n"); // not console.log: see checks/formatter.ts
     return;
   }
   for (const issue of result.issues) {
@@ -210,7 +210,7 @@ export default defineCommand({
         }),
       );
       if (json) {
-        console.log(JSON.stringify(rows, null, 2));
+        process.stdout.write(JSON.stringify(rows, null, 2) + "\n"); // not console.log: see checks/formatter.ts
       } else {
         for (const r of rows) {
           const status =
