@@ -221,6 +221,8 @@ export interface MarkerComponent {
   source: Extract<SnippetSource, { kind: 'extension' }>;
   /** Variant names accepted as the marker's bare word (`@name <variant>`). */
   variants: string[];
+  /** One element with no body and no `@end-<name>`: inserted without a closing pair. */
+  selfClosing?: true;
   snippet?: string;
 }
 

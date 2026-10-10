@@ -210,6 +210,9 @@ describe("conventions", () => {
       for (const at of decl.autoCloseAt ?? []) {
         expect(at).toBe("eof");
       }
+      expect(typeof decl.selfClosing === "undefined" || typeof decl.selfClosing === "boolean").toBe(true);
+      // A self-closing marker has no frame for autoCloseAt to close.
+      if (decl.selfClosing) expect(decl.autoCloseAt).toBeUndefined();
       expect(name).toBeTruthy();
     }
   });
@@ -218,7 +221,7 @@ describe("conventions", () => {
     // The editor inserts this file when an author picks the component, so it
     // is the example of the structure the component expects.
     for (const [name, decl] of Object.entries(markers)) {
-      if (decl.deprecated !== undefined || decl.alias !== undefined) continue;
+      if (decl.deprecated !== undefined || decl.alias !== undefined || decl.selfClosing) continue;
       const rel = decl.snippet ?? `${pkg.gutterpress?.snippets ?? "snippets"}/${name}.md`;
       if (!existsSync(path.join(root, rel))) continue;
       const snippet = read(rel);

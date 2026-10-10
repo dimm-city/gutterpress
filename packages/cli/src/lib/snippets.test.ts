@@ -661,6 +661,21 @@ test("listMarkerComponents lists each component's resolved variants; an alias in
   }
 });
 
+test("listMarkerComponents flags a selfClosing marker, and its aliases", async () => {
+  const proj = await tmpProject();
+  try {
+    await makeComponentPlugin(proj, "boxes", `{ tape: { selfClosing: true }, tape2: { alias: "tape" }, box: {} }`, {});
+    await writeManifest(proj, ["extensions:", "  - ./plugins/boxes", ""].join("\n"));
+    expect((await listMarkerComponents(proj)).map((c) => [c.name, c.selfClosing])).toEqual([
+      ["box", undefined],
+      ["tape", true],
+      ["tape2", true],
+    ]);
+  } finally {
+    await rm(proj, { recursive: true, force: true });
+  }
+});
+
 test("listMarkerComponents lists no components when two plugins declare the same marker, but still lists snippets", async () => {
   const proj = await tmpProject();
   try {

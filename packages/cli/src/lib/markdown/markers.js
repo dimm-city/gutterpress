@@ -70,6 +70,8 @@
  *                     variants: { wirephreak: 'dc-wirephreak' } },
  *       'dm-note': { alias: 'callout', preset: { variant: 'dm' } },
  *       'roll-table': { deprecated: 'Removed in 17.3.0 — use @outcome.' },
+ *       tape:     { selfClosing: true, class: 'dc-tape',
+ *                   label: { tag: 'span', class: 'dc-tape-label', from: 'attr:label' } },
  *     };
  *
  *   This is DATA the loader (`plugins.ts`) reads off the plugin module —
@@ -665,7 +667,7 @@ function resolveContainerShape(name, pluginName, decl) {
     throw new Error(`Plugin "${pluginName}"'s marker "@${name}" has a \`section\` that is not a boolean.`);
   }
   if (decl.section) {
-    for (const field of ['tag', 'label', 'autoCloseAt']) {
+    for (const field of ['tag', 'label', 'autoCloseAt', 'selfClosing']) {
       if (decl[field] !== undefined) {
         throw new Error(
           `Plugin "${pluginName}"'s marker "@${name}" sets \`section: true\` and \`${field}\` — a section ` +
@@ -758,6 +760,19 @@ function resolveContainerShape(name, pluginName, decl) {
     autoCloseAtEof = decl.autoCloseAt.includes('eof');
   }
 
+  // `selfClosing: true` — the marker emits one element and closes it on the
+  // spot (no body, no `@end-<name>`), so there is no frame for `autoCloseAt`
+  // to apply to.
+  if (decl.selfClosing !== undefined && typeof decl.selfClosing !== 'boolean') {
+    throw new Error(`Plugin "${pluginName}"'s marker "@${name}" has a \`selfClosing\` that is not a boolean.`);
+  }
+  if (decl.selfClosing && decl.autoCloseAt !== undefined) {
+    throw new Error(
+      `Plugin "${pluginName}"'s marker "@${name}" sets \`selfClosing: true\` and \`autoCloseAt\` — a ` +
+        `self-closing marker has no open container to auto-close. Remove one of them.`
+    );
+  }
+
   // Opt-in structure check — see runComponentValidate. Owned by the plugin
   // that declared the container, so an alias reports its TARGET's plugin.
   if (decl.validate !== undefined && typeof decl.validate !== 'function') {
@@ -766,7 +781,16 @@ function resolveContainerShape(name, pluginName, decl) {
   // Only a container that opts in carries these, so every other resolved
   // shape is unchanged.
   const check = decl.validate ? { validate: decl.validate, validateOwner: pluginName } : {};
-  return { tag, classBase, variants, label, autoCloseAtEof, ...(decl.section ? { section: true } : {}), ...check };
+  return {
+    tag,
+    classBase,
+    variants,
+    label,
+    autoCloseAtEof,
+    ...(decl.section ? { section: true } : {}),
+    ...(decl.selfClosing ? { selfClosing: true } : {}),
+    ...check,
+  };
 }
 
 /**
@@ -1364,7 +1388,9 @@ export default function plugin(md, pluginOptions = {}) {
       attachDataAttrs(t, decl.baseKind, variant, meta.attrs || {});
 
       out.push(t);
-      declaredFrames.push({ kind: decl.baseKind, tag: decl.tag, decl, line: meta.__line });
+      // `selfClosing`: closed below, right after the label — never a frame, so
+      // nothing that follows nests inside it and no `@end-<name>` can match.
+      if (!decl.selfClosing) declaredFrames.push({ kind: decl.baseKind, tag: decl.tag, decl, line: meta.__line });
 
       // Label injection (#240) — the same "structural element carrying the
       // data as both text content and an attribute" recipe as @chapter's
@@ -1384,6 +1410,7 @@ export default function plugin(md, pluginOptions = {}) {
           t.meta.labelled = true;
         }
       }
+      if (decl.selfClosing) out.push(new state.Token('layout_component_close', decl.tag, -1));
     }
 
     /**
@@ -1930,7 +1957,9 @@ export default function plugin(md, pluginOptions = {}) {
                 state.env,
                 line,
                 'declared_marker_close_without_open',
-                `@${kind} used without an open @${closeDecl.baseKind}; ignoring marker.`,
+                closeDecl.selfClosing
+                  ? `@${kind} is not a marker: @${closeDecl.baseKind} is self-closing and has nothing to close; ignoring marker.`
+                  : `@${kind} used without an open @${closeDecl.baseKind}; ignoring marker.`,
                 meta
               );
             }

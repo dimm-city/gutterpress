@@ -544,9 +544,31 @@ export const markers = {
 `@section .fn-npc-stat .fn-wirephreak .extra` (classes in that order), and
 `@end-npc-stat` is `@end-section`. The variant is not a section name, so it
 becomes `data-npc-stat="wirephreak"` instead of `data-section`. A section
-marker cannot also set `tag`, `label` or `autoCloseAt`; aliases of it are
+marker cannot also set `tag`, `label`, `autoCloseAt` or `selfClosing`; aliases of it are
 sections too. `validate` works on it as well (a `@continue` continuation is
 not checked separately).
+
+**`selfClosing` — a marker with no body.** Some components are one element and
+nothing else: a divider, a tape strip, a stamp. Set `selfClosing: true` and the
+marker emits its element (with its `label`, if any) and closes it on the spot,
+so there is no `@end-` line to forget and the content after it is never nested
+inside:
+
+```js
+export const markers = {
+  tape: {
+    selfClosing: true,
+    class: "fn-tape",
+    label: { tag: "span", class: "fn-tape-label", from: "attr:label" },
+  },
+};
+```
+
+`@tape label="— § —"` is the whole component. Typing `@end-tape` is reported in
+the Problems panel and ignored, and `@` autocomplete inserts just the marker
+(no closing pair). A self-closing marker cannot also set `section` or
+`autoCloseAt`, and a `validate` on it always sees empty `blocks` and `text` —
+check its `attrs` and `variant` instead.
 
 ### Components that rebuild their content: declare, then transform
 

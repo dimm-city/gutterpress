@@ -2354,6 +2354,104 @@ describe("declared markers — parsing & rendering (#240)", () => {
   });
 });
 
+describe("selfClosing declared markers (#344)", () => {
+  const declaredMarkers = buildDeclaredMarkerRegistry([
+    {
+      pluginName: "dc-components",
+      markers: {
+        tape: {
+          selfClosing: true,
+          class: "dc-tape",
+          variants: { wide: "dc-tape-wide" },
+          label: { tag: "span", class: "dc-tape-label", from: "attr:label" },
+        },
+        "tape-2": { alias: "tape" },
+        sidebar: { tag: "aside", class: "dc-sidebar" },
+      },
+    },
+  ]);
+  const build = (decl: Record<string, unknown>) =>
+    buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { tape: decl } }]);
+
+  test("emits the element and closes it at once: open+close tokens, no body", () => {
+    const { tokens } = parsePaged("@tape\n", { declaredMarkers });
+    const { html } = renderPaged("@tape\n", { declaredMarkers });
+    expect(tokens.map((t) => t.type)).toEqual(["layout_component_open", "layout_component_close"]);
+    expect(html).toBe('<div class="dc-tape"></div>');
+  });
+
+  test("label, variant and attrs work; the label sits inside the element", () => {
+    const { html } = renderPaged('@tape wide .extra label="— § —"\n', { declaredMarkers });
+    expect(html).toBe(
+      '<div class="dc-tape dc-tape-wide extra" data-tape="wide" data-label="— § —">' +
+        '<span class="dc-tape-label">— § —</span>\n</div>'
+    );
+  });
+
+  test("following content is a sibling, never nested, even with no @end", () => {
+    const { html, env } = renderPaged("@tape\n\nAfter.\n", { declaredMarkers });
+    expect(html).toBe('<div class="dc-tape"></div><p>After.</p>\n');
+    expect(env.layoutWarnings ?? []).toEqual([]);
+  });
+
+  test("does not close an enclosing declared container", () => {
+    const { html } = renderPaged("@sidebar\nA\n@tape\nB\n@end-sidebar\n", { declaredMarkers });
+    expect(html).toBe('<aside class="dc-sidebar"><p>A</p>\n<div class="dc-tape"></div><p>B</p>\n</aside>');
+  });
+
+  test("source line is threaded onto the open token like any declared marker", () => {
+    const { tokens } = parsePaged("Intro\n\n@tape label=\"x\"\n", { declaredMarkers });
+    const open = findToken(tokens, "layout_component_open")!;
+    expect(open.meta).toMatchObject({ line: 3, component: "tape", kind: "tape", labelled: true });
+  });
+
+  test("@end-<name> warns and emits nothing", () => {
+    const { html, env } = renderPaged("@tape\n@end-tape\nText.\n", { declaredMarkers });
+    expect(html).toBe('<div class="dc-tape"></div><p>Text.</p>\n');
+    const warnings = (env.layoutWarnings ?? []).filter((w) => w.type === "declared_marker_close_without_open");
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]!.line).toBe(2);
+    expect(warnings[0]!.message).toContain("self-closing");
+  });
+
+  test("an alias inherits selfClosing from its target", () => {
+    const { html } = renderPaged("@tape-2\nText.\n", { declaredMarkers });
+    expect(html).toBe('<div class="dc-tape"></div><p>Text.</p>\n');
+  });
+
+  test("never warns about an unclosed container at end-of-document", () => {
+    expect(renderPaged("@tape\n", { declaredMarkers }).env.layoutWarnings ?? []).toEqual([]);
+  });
+
+  test("selfClosing: false is the ordinary container", () => {
+    const registry = build({ selfClosing: false, class: "x" });
+    expect(renderPaged("@tape\nHi\n@end-tape\n", { declaredMarkers: registry }).html).toBe(
+      '<div class="x"><p>Hi</p>\n</div>'
+    );
+  });
+
+  describe("invalid declarations are rejected at load time", () => {
+    test("not a boolean", () => {
+      expect(() => build({ selfClosing: "yes" })).toThrow(/`selfClosing` that is not a boolean/);
+    });
+    test("combined with autoCloseAt", () => {
+      expect(() => build({ selfClosing: true, autoCloseAt: ["eof"] })).toThrow(/`selfClosing: true` and `autoCloseAt`/);
+    });
+    test("combined with section", () => {
+      expect(() => build({ selfClosing: true, section: true })).toThrow(/`section: true` and `selfClosing`/);
+    });
+  });
+
+  test("a `validate` sees empty blocks and text", () => {
+    const seen: Array<{ blocks: unknown[]; text: string }> = [];
+    const registry = build({ selfClosing: true, validate: (c: { blocks: unknown[]; text: string }) => (seen.push(c), []) });
+    renderPaged("@tape\n\nAfter.\n", { declaredMarkers: registry });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.blocks).toEqual([]);
+    expect(seen[0]!.text).toBe("");
+  });
+});
+
 describe("createMarkdownRenderer wiring (#240)", () => {
   test("throws at renderer-creation time when two loaded plugins declare colliding marker names, naming both", () => {
     const pluginA: LoadedPlugin = { name: "plugin-a", plugin: () => {}, options: {}, markers: { callout: { class: "a" } } };
