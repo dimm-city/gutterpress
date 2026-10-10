@@ -324,10 +324,10 @@ not a hook API — it receives a plain Gutterpress-owned object (`attrs`,
 returns problem messages that core reports on the existing
 `env.layoutWarnings` channel (`markers.js`'s `runComponentValidate`).
 
-Plugin loader (`packages/cli/src/lib/markdown/plugins.ts`) does NOT auto-install
-or access the network. Installation is an explicit shared-lib action
-(`addExtension` in `extension-manager.ts`, used by the desktop routes and
-`gutterpress ext add`) that resolves the public npm registry to an exact
+Plugin loader (`packages/cli/src/lib/markdown/plugins.ts`) stays OFFLINE: it
+never installs and never touches the network. Downloading is a separate,
+explicit step. `addExtension` in `extension-manager.ts` (used by the desktop
+routes and `gutterpress ext add`) resolves the public npm registry to an exact
 version graph, verifies every tarball against the registry's SRI hash, safely
 vendors a complete nested dependency tree under the project's
 `plugins/npm/<name>/<version>/` (a plain npm `node_modules` layout),
@@ -336,7 +336,39 @@ load-tests it, and only then atomically records the pinned specifier
 `export:` explicitly selects a named plugin function for packages without a
 default export). Reinstall always fetches fresh bytes. Package scripts,
 bundled `node_modules`, native build steps, and non-registry dependency
-selectors are intentionally unsupported. Loading a pinned entry is a plain
+selectors are intentionally unsupported.
+
+**Downloaded copies are not part of a book's git history** (ruled by the
+product owner, 0.11.16). `ensureProjectGitignore` (`project-gitignore.ts`)
+puts `plugins/npm/` next to `dist/` in every new/adopted project's
+`.gitignore`, and the install path appends it to an existing book's, append-only
+(an author's own `!` re-include is respected and surfaces as an install
+warning). The file lives in the PROJECT folder, which is what the desktop's
+isomorphic-git snapshot honours even when the book sits in a subfolder of a
+larger repo (`isIgnored` reads every directory's `.gitignore` down to the
+file). Ignoring never untracks: files a book already committed stay committed
+until its author removes them; nothing here deletes from git.
+
+**A fresh clone therefore has the manifest's pins and none of the files, and a
+separate restore step downloads them.** `restorePinnedExtensions`
+(`extension-restore.ts`) reads the manifest's `extensions:` list and, for each
+enabled npm entry pinned to an exact version whose copy is missing or
+incomplete, installs EXACTLY that version through the same verified path as
+`addExtension` (registry resolution, SRI check, vendor, load-test) — without
+writing the manifest. It never changes a pin or picks another version, ignores
+unpinned/local/bundled/disabled entries, does nothing (no network) when every
+copy is present, and runs one-at-a-time per book (concurrent callers share one
+run). Callers run it BEFORE loading plugins: `gutterpress build`, `validate`
+and `preview` (`restoreForCommand`; build/validate/one-shot PDF preview fail
+fast with the extension, the reason and how to retry, live preview warns and
+carries on), and the desktop's `PreviewOpenController` when a book is opened
+(host-side; the result's `restoredExtensions` becomes a toast, and the Features
+tab's "Needs install" row + Install button stay the fallback). An exact pinned
+version restored on open shows no trust prompt — the author chose it when they
+pinned it; installs the author starts (Search, version switch, install by
+name) keep the prompt.
+
+Loading a pinned entry is a plain
 dynamic `import()` of the vendored package's entry (resolved from its own
 `package.json`); Node's — and Bun's, in the compiled binary — ordinary module
 resolution serves the package's imports from that nested tree. Nothing is

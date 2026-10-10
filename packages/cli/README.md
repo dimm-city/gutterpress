@@ -178,6 +178,10 @@ build-and-open instead. `--manifest` applies only to those one-shot PDF/PDF-X
 modes; live HTML preview discovers the project manifest from its input
 directory.
 
+Before it loads plugins, `preview` downloads any pinned npm extension whose
+copy is missing (see [Restoring pinned extensions](#restoring-pinned-extensions)).
+If that fails it warns and previews anyway; the one-shot PDF modes fail fast.
+
 ```sh
 gutterpress preview [input-dir] [options]
 
@@ -203,6 +207,8 @@ gutterpress preview [input-dir] [options]
 ### `gutterpress build`
 
 Build a PDF (default) or HTML output. Pipeline: `validate:pre → convert → assets → build → validate:post`. The CSS print-safety check (remote urls, risky print effects, page-containment) runs once, inside `validate:pre`, as the `source.stylelint` check — there is no separate lint phase.
+
+Before the pipeline starts, `build` downloads any pinned npm extension whose copy is missing — a fresh clone has the pins but not the files — and prints one `Downloaded name@version (pinned in manifest.yaml)` line per package. If a download fails, the build stops and names the extension, why, and how to retry. See [Restoring pinned extensions](#restoring-pinned-extensions).
 
 ```sh
 gutterpress build [input-dir] [options]
@@ -272,7 +278,7 @@ gutterpress publish --provider gdrive ./my-book
 
 Run the validation pipeline (pre-build source checks and/or post-build PDF checks). Tools that aren't installed are skipped with a warning — they don't fail the run. See [User Guide: Chapter 6 — Validation](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/06-validation.md) for the full check list and [User Guide: Chapter 7 — System Setup](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/07-system-setup.md) for which external tools each check needs.
 
-The positional directory and `--pdf`/`--input` are independent: the positional (or `--input`) sets the pre-build source directory, `--pdf` separately points at a built PDF for post-build checks. `--input` overrides the positional if both are given.
+The positional directory and `--pdf`/`--input` are independent: the positional (or `--input`) sets the pre-build source directory, `--pdf` separately points at a built PDF for post-build checks. `--input` overrides the positional if both are given. When a source directory is given, missing pinned npm extensions are downloaded first, as for `build` (a failed download exits 3 with the reason).
 
 ```sh
 gutterpress validate [dir] [options]
@@ -391,6 +397,22 @@ Add an extension. What `SOURCE` is decides what happens:
 
 Adding something already listed re-pins or updates that entry instead of
 adding a second one.
+
+An npm install also makes sure the book's `.gitignore` ignores `plugins/npm/`
+(append-only; an author's own `!plugins/npm/` re-include is respected and the
+install warns that downloaded extensions shouldn't be committed). The manifest
+pin is what travels with the book; the downloaded copy does not.
+
+##### Restoring pinned extensions
+
+A fresh clone has `manifest.yaml`'s `name@version` pins but not the downloaded
+copies under `plugins/npm/`. `build`, `validate` and `preview` download any
+missing (or incomplete) pinned version before they load plugins — exactly the
+pinned version, through the same registry-resolved, hash-verified, load-tested
+install as `ext add`, without touching the manifest. Nothing is downloaded, and
+the network is not used, when every copy is present; unpinned names, local
+paths and bundled features are never touched. The plugin loader itself stays
+offline. The desktop app does the same when it opens a book.
 
 ```sh
 gutterpress ext add <source> [dir] [options]
@@ -518,9 +540,10 @@ Order is load order: a later entry's markdown runs after earlier entries' (and s
 
 Pinned npm packages and their runtime dependencies live under `plugins/npm/`
 as a plain nested `node_modules` tree, which Node's own module resolution loads.
-They travel with the project and builds never fetch from the registry; each
-tarball's integrity is checked against the registry's hash when it is
-installed. Install/build scripts, native addon compilation, bundled
+The pin travels with the project; the downloaded copy is gitignored, and
+`build`, `validate` and `preview` download a missing pinned version first
+(nothing is fetched when every copy is present). Each tarball's integrity is
+checked against the registry's hash when it is installed. Install/build scripts, native addon compilation, bundled
 `node_modules`, and non-registry dependency selectors are intentionally
 unsupported. Only install packages you trust: extensions run unsandboxed with
 the process's full filesystem and network privileges.

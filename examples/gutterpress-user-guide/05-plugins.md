@@ -130,8 +130,10 @@ Gutterpress resolves the npm registry metadata to exact versions, verifies each
 registry integrity hash, and vendors the plugin's complete runtime dependency
 tree under the project's `plugins/npm/` folder as a plain `node_modules`
 layout. Gutterpress then writes the pinned specifier —
-`markdown-it-highlightjs@4.3.0` — into `extensions:`, so the vendored tree
-travels with the project and later builds do not access the network. Explicit
+`markdown-it-highlightjs@4.3.0` — into `extensions:`. The pin is what travels
+with your book; the downloaded copy under `plugins/npm/` does not (see
+[Cloning a book](#cloning-a-book-with-installed-extensions) below), and an
+ordinary build, with every copy present, does not access the network. Explicit
 reinstall always downloads fresh bytes rather than trusting the existing folder.
 
 No Bun, npm, Node.js installation, or package lifecycle script is used.
@@ -165,6 +167,49 @@ sandboxed: they run in-process with the app's full filesystem and network
 privileges. The desktop app shows this warning in a native confirmation before
 downloading a third-party plugin.
 
+## Cloning a Book with Installed Extensions
+
+Downloaded extensions are not part of your book's version history. New books
+(and folders you set up as a book) list `plugins/npm/` in their `.gitignore`
+next to `dist/`, and installing an extension adds that line to an older book's
+`.gitignore` if it is missing. A book inside a larger repository keeps the rule
+in its own folder's `.gitignore`, which version history honours. Nothing else in
+your `.gitignore` is changed, and if you have deliberately re-included
+`plugins/npm/` (a `!` rule) it is left alone and the install tells you
+downloaded extensions shouldn't be committed.
+
+So a fresh clone has your `manifest.yaml` and its pins but not the downloaded
+files — and it does not need you to do anything:
+
+- **Desktop app** — opening the book downloads any missing pinned version
+  first, with a short notice saying what it fetched. If the download fails (you
+  are offline, say), the book still opens and the extension's row under
+  **Project settings → Features** reads **Needs install**; its **Install**
+  button tries again.
+- **CLI** — `gutterpress build`, `validate` and `preview` download a missing
+  pinned version before they start, printing one line per package:
+
+  ```text
+  info  Downloaded gp-dimm-city@1.2.0-alpha.3 (pinned in manifest.yaml)
+  ```
+
+  If it cannot (offline, registry error, failed integrity check), `build` and
+  `validate` stop and name the extension, the reason and how to try again —
+  run the command once you are online, or `gutterpress ext add name@version`.
+  `preview` only warns and keeps going, like any other plugin it cannot load.
+
+Restoring downloads exactly the version in `manifest.yaml`, never a newer one,
+through the same hash-verified install as `ext add`, and it never edits the
+manifest. It does nothing, and uses no network, when every copy is already
+there; local paths, unpinned names and bundled features are never touched.
+Because you pinned that exact version yourself, the desktop app does not ask
+for confirmation again when it restores it.
+
+If an older book already committed `plugins/npm/`, adding the ignore rule does
+not remove those files from its history — git keeps tracking what it already
+tracks. Remove them when you are ready (`git rm -r --cached plugins/npm`);
+Gutterpress never deletes anything from git for you.
+
 ## Updating a Pinned Extension
 
 A book pins an exact version and builds from its vendored copy, so nothing
@@ -181,8 +226,8 @@ gutterpress ext update gp-dimm-city ./my-book # just one
 downloaded, verified against the registry hash, vendored, load-tested, and
 re-pinned in place — the entry's `export:` and `enabled:` stay as written —
 and the previous version's folder under `plugins/npm/` is removed (a re-pin
-with `ext add` does the same). Commit the manifest and the new vendored tree
-together. To move to a specific version instead of the latest, or to go back,
+with `ext add` does the same). Commit the manifest; the new downloaded copy
+stays out of git, and a clone fetches it from the new pin. To move to a specific version instead of the latest, or to go back,
 run `ext add name@x.y.z`.
 
 The desktop app does the same under **Project settings → Features**: opening
@@ -645,13 +690,13 @@ Gutterpress **fails the build** on extension errors — a final PDF must never s
 | `"plugins/x.js" looks like a path — write it as "./plugins/x.js"` | A path must start with `./`, `../` or `/`; anything else is read as an npm name. |
 | `"markdown-it-mark" is bundled with Gutterpress … drop "@3.0.0"` | Bundled names always resolve to the built-in copy and cannot be pinned. |
 | `Plugin file not found: …` | Check the path (relative to `manifest.yaml`) and that the file exists |
-| `` Extension "foo" not found. Install it with `gutterpress ext add foo` `` | Run that, or add it from Project settings → Features; make sure `plugins/npm/` travels with the project |
+| `` Extension "foo" not found. Install it with `gutterpress ext add foo` `` | Run that, or add it from Project settings → Features. A pinned entry whose copy is missing is downloaded automatically by `build`, `validate`, `preview` and when the desktop opens the book; this message is for an unpinned name |
 | `Plugin "foo" does not export a valid plugin function` | Ensure the default export is a function, or select its named function with `export:` |
 | `Plugin "foo" does not export a plugin function named "bar"` | Fix the `export:` name to one the package really exports |
 
 @end-section
 
-`gutterpress ext list` warns about the two states a build will trip over before you build: `Not pinned` (an npm name without a version — run `ext add` to install and pin it) and `Not installed` (a pinned entry whose vendored copy is missing — the same `ext add` reinstalls it).
+`gutterpress ext list` warns about the two states a build will trip over before you build: `Not pinned` (an npm name without a version — run `ext add` to install and pin it) and `Not installed` (a pinned entry whose vendored copy is missing — `build`, `validate` and `preview` download it for you, or `ext add` does it by hand).
 
 ## Reference Example
 
