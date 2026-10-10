@@ -40,6 +40,8 @@
  */
 
 import { basenameOf } from "../platform/paths";
+import { reduceRestore, type RestoreView } from "../loading/activity-stage";
+import type { RestoreProgressEvent } from "../platform/shared-types";
 import type { ProjectBookEntry } from "./project-session-controller.svelte";
 import type { PersistedProjectState } from "./page-types";
 
@@ -198,6 +200,12 @@ export class ProjectLifecycleController {
   docTitle = $state<string | null>(null);
   busy = $state(false);
   busyLabel = $state("");
+  /**
+   * The open-time extension download in flight (pushed from the host while
+   * `startPreviewHost` is still pending), or null. Feeds the open indicator's
+   * "Downloading extensions" stage; the end result still arrives as the toast.
+   */
+  restore = $state<RestoreView | null>(null);
   rendering = $state(false);
   renderProgressPage = $state(0);
   renderCompleteOverlay = $state(false);
@@ -248,6 +256,13 @@ export class ProjectLifecycleController {
     this.deps.resetExtras();
   }
 
+  /** Fold a pushed restore event into `restore` (subscribed once by the page). */
+  onRestoreProgress(event: RestoreProgressEvent): void {
+    // Only an open in flight can be waiting on a download; a stray event from a
+    // superseded or already-finished open must not paint a stale stage.
+    this.restore = this.busy ? reduceRestore(this.restore, event) : null;
+  }
+
   /**
    * The ONE open-a-project-folder pipeline.
    *
@@ -264,14 +279,16 @@ export class ProjectLifecycleController {
    */
   async startFolderPreview(
     dir: string,
-    label = "Starting preview…",
+    label?: string,
     displayName: string | null = null,
     epoch = ++this.folderOpenEpoch,
   ): Promise<boolean> {
     const d = this.deps;
     const superseded = () => epoch !== this.folderOpenEpoch;
     this.busy = true;
-    this.busyLabel = label;
+    // Say WHICH book is opening; callers with a more specific verb pass their own.
+    this.busyLabel = label ?? `Opening ${displayName ?? basenameOf(dir)}…`;
+    this.restore = null;
     try {
       // Flush before classification resets the current ProjectSession. The
       // dirty-state POST to main is only best-effort; this direct result is the
@@ -415,6 +432,7 @@ export class ProjectLifecycleController {
       if (!superseded()) {
         this.busy = false;
         this.busyLabel = "";
+        this.restore = null;
       }
     }
   }
@@ -430,9 +448,16 @@ export class ProjectLifecycleController {
     if (restore.installed.length > 0) {
       toast?.info?.(`Downloaded ${restore.installed.join(", ")}, pinned in this book's manifest.`);
     }
-    for (const f of restore.failed) {
+    // One notice however many failed: the advice is the same for each, so
+    // repeating it per package only stacks identical toasts.
+    const [first, ...others] = restore.failed;
+    if (first) {
+      const what =
+        others.length === 0
+          ? `${first.use}: ${first.message.replace(/[.\s]+$/, "")}`
+          : `${restore.failed.length} extensions: ${restore.failed.map((f) => f.use).join(", ")}`;
       toast?.error(
-        `Couldn't download ${f.use}: ${f.message.replace(/[.\s]+$/, "")}. The book still opens — ` +
+        `Couldn't download ${what}. The book still opens — ` +
           `use Install in Book settings > Features to try again.`,
       );
     }
@@ -446,6 +471,7 @@ export class ProjectLifecycleController {
     const epoch = ++this.folderOpenEpoch;
     this.busy = true;
     this.busyLabel = "Trying preview again…";
+    this.restore = null;
     try {
       if (!(await d.flushBuffer())) return false;
       if (epoch !== this.folderOpenEpoch) return false;
@@ -481,6 +507,7 @@ export class ProjectLifecycleController {
       if (epoch === this.folderOpenEpoch) {
         this.busy = false;
         this.busyLabel = "";
+        this.restore = null;
       }
     }
   }
@@ -590,6 +617,7 @@ export class ProjectLifecycleController {
     this.folderOpenEpoch++;
     this.busy = false;
     this.busyLabel = "";
+    this.restore = null;
     void this.stopPreview().catch(() => {});
   }
 }

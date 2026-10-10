@@ -966,9 +966,90 @@ test("a failed download is a toast that points at Install, and the book still op
   expect(message).toContain("Install in Book settings > Features");
 });
 
+test("several failed downloads are ONE toast naming them, not a stack of identical advice", async () => {
+  const { ctrl, deps } = make();
+  deps.startPreviewResult = {
+    previewStarted: true,
+    url: "preview://book",
+    title: "My Book",
+    restoredExtensions: {
+      installed: ["gp-ok@1.0.0"],
+      failed: [
+        { use: "gp-x@1.0.0", message: "offline" },
+        { use: "gp-y@2.0.0", message: "offline" },
+      ],
+    },
+  };
+
+  await ctrl.startFolderPreview("/proj");
+
+  expect(deps.toastInfo.calls).toEqual([["Downloaded gp-ok@1.0.0, pinned in this book's manifest."]]);
+  expect(deps.toastError.calls).toHaveLength(1);
+  const message = deps.toastError.calls[0]![0];
+  expect(message).toContain("Couldn't download 2 extensions: gp-x@1.0.0, gp-y@2.0.0.");
+  expect(message).toContain("Install in Book settings > Features");
+});
+
 test("an ordinary open shows no extension toast", async () => {
   const { ctrl, deps } = make();
   await ctrl.startFolderPreview("/proj");
   expect(deps.toastInfo.calls).toHaveLength(0);
   expect(deps.toastError.calls).toHaveLength(0);
+});
+
+// ── Open stage wording and the live download ─────────────────────────────────
+
+test("an open says which book it is opening unless the caller has a better verb", async () => {
+  const { ctrl, deps } = make();
+  let during = "";
+  deps.startPreviewImpl = async () => {
+    during = ctrl.busyLabel;
+    return deps.startPreviewResult;
+  };
+  await ctrl.startFolderPreview("/books/dimm-city");
+  expect(during).toBe("Opening dimm-city…");
+
+  await ctrl.startFolderPreview("/books/dimm-city", "Setting up your book…", "Dimm City");
+  expect(during).toBe("Setting up your book…");
+
+  await ctrl.startFolderPreview("/books/dimm-city", undefined, "Dimm City");
+  expect(during).toBe("Opening Dimm City…");
+  expect(ctrl.busyLabel).toBe("");
+});
+
+test("restore progress pushed during an open is tracked, then cleared when the open ends", async () => {
+  const { ctrl, deps } = make();
+  const seen: Array<{ spec: string; completed: number } | null> = [];
+  deps.startPreviewImpl = async () => {
+    ctrl.onRestoreProgress({ type: "start", specs: ["gp-a@1.0.0", "gp-b@2.0.0"] });
+    seen.push(ctrl.restore && { spec: ctrl.restore.spec, completed: ctrl.restore.completed });
+    ctrl.onRestoreProgress({ type: "package", spec: "gp-a@1.0.0", index: 0, total: 2, state: "done" });
+    seen.push(ctrl.restore && { spec: ctrl.restore.spec, completed: ctrl.restore.completed });
+    ctrl.onRestoreProgress({ type: "end", installed: ["gp-a@1.0.0", "gp-b@2.0.0"], failed: [] });
+    seen.push(ctrl.restore);
+    return deps.startPreviewResult;
+  };
+
+  await ctrl.startFolderPreview("/proj");
+
+  expect(seen).toEqual([{ spec: "gp-a@1.0.0", completed: 0 }, { spec: "gp-a@1.0.0", completed: 1 }, null]);
+  expect(ctrl.restore).toBeNull();
+});
+
+test("a stray restore event with no open in flight paints nothing", () => {
+  const { ctrl } = make();
+  ctrl.onRestoreProgress({ type: "start", specs: ["gp-a@1.0.0"] });
+  expect(ctrl.restore).toBeNull();
+});
+
+test("an open that ends mid-download (cancelled) leaves no stale download stage", async () => {
+  const { ctrl, deps } = make();
+  deps.startPreviewImpl = async () => {
+    ctrl.onRestoreProgress({ type: "start", specs: ["gp-a@1.0.0"] });
+    ctrl.cancelOpen();
+    return deps.startPreviewResult;
+  };
+  await ctrl.startFolderPreview("/proj");
+  expect(ctrl.restore).toBeNull();
+  expect(ctrl.busy).toBe(false);
 });

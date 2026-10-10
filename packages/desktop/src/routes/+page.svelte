@@ -16,7 +16,10 @@
   import { buildProblems, problemCounts } from "$lib/problems";
   import StatusBar from "$lib/components/StatusBar.svelte";
   import ProblemsPanel from "$lib/components/ProblemsPanel.svelte";
-  import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
+  import ActivityIndicator from "$lib/components/ActivityIndicator.svelte";
+  import Spinner from "$lib/components/Spinner.svelte";
+  import { ActivityGate } from "$lib/loading/activity-gate.svelte";
+  import { deriveOpenStage, exportStage, UPDATING_STAGE } from "$lib/loading/activity-stage";
   import ProjectActivityView from "$lib/components/ProjectActivityView.svelte";
   import NewProjectWizard from "$lib/components/NewProjectWizard.svelte";
   import GitHubDialog from "$lib/components/GitHubDialog.svelte";
@@ -685,12 +688,38 @@
     landingForcedOpen = true;
   }
 
-  const landingStatus = $derived(
-    continueStatus({
-      hasPreviewUrl: !!lifecycle.previewUrl,
+  // ── Loading indicators ────────────────────────────────────────────────────
+  // ONE vocabulary for every "something is happening" surface: the stage of the
+  // open (opening → downloading extensions → laying out pages → finishing), the
+  // hot-reload update, and the PDF export. `activity` holds what is actually
+  // ON SCREEN — each stage waits a short delay before it shows and stays a
+  // minimum time once shown (so quick work never flashes). The start screen's
+  // continue card reads the raw stage: it is a standing status line, not an
+  // interruption.
+  const openStage = $derived(
+    deriveOpenStage({
+      busy: lifecycle.busy,
+      busyLabel: lifecycle.busyLabel,
+      restore: lifecycle.restore,
       rendering: lifecycle.rendering,
-      renderProgressPage: lifecycle.renderProgressPage,
+      settling: lifecycle.renderCompleteOverlay,
+      pages: lifecycle.renderProgressPage,
     }),
+  );
+  const activity = new ActivityGate();
+  const activityStages = $derived({
+    open: openStage,
+    update: previewUpdating ? UPDATING_STAGE : null,
+    exporting: exportController.exporting
+      ? exportStage(exportController.pdfProgress, exportController.state)
+      : null,
+  });
+  // The extension download is pushed from the host while `startPreview` is
+  // pending (no replay), so subscribe before any open can start.
+  onMount(() => getPlatform().onRestoreProgress((event) => lifecycle.onRestoreProgress(event)));
+
+  const landingStatus = $derived(
+    continueStatus({ hasPreviewUrl: !!lifecycle.previewUrl, stage: openStage }),
   );
   // The continue card only shows while its target is actually open or opening —
   // if the workspace empties without an error (e.g. a canceled render), the
@@ -761,10 +790,11 @@
    * the lifecycle controller, which is the only place that knows the RESOLVED
    * book dir it must be keyed to.
    */
-  function openProjectPath(path: string, label = "Opening your book…"): Promise<boolean> {
+  function openProjectPath(path: string, label?: string): Promise<boolean> {
     dismissLanding(false); // no-op when the start screen is hidden
     lifecycle.busy = true;
-    lifecycle.busyLabel = label;
+    // No label: the lifecycle names the book ("Opening My Book…").
+    lifecycle.busyLabel = label ?? `Opening ${basenameOf(path)}…`;
     return lifecycle.startFolderPreview(path, label, basenameOf(path));
   }
 
@@ -786,7 +816,7 @@
   ): Promise<boolean> {
     if (folderPickerOpen) return false;
     folderPickerOpen = true;
-    const { showBusyOverlay = false, label = "Opening your book…" } = options;
+    const { showBusyOverlay = false, label } = options;
     if (showBusyOverlay) {
       lifecycle.busy = true;
       lifecycle.busyLabel = "Opening folder…";
@@ -2259,7 +2289,7 @@
    */
   function startFolderPreview(
     dir: string,
-    label = "Starting preview…",
+    label?: string,
     displayName: string | null = null,
   ): Promise<boolean> {
     return lifecycle.startFolderPreview(dir, label, displayName);
@@ -2275,11 +2305,11 @@
   async function switchBook(path: string) {
     if (lifecycle.busy || path === lifecycle.currentDir) return;
     dismissLanding(false); // switching from a landing chip enters the workspace
-    await lifecycle.startFolderPreview(path, "Switching book…");
+    await lifecycle.startFolderPreview(path);
   }
 
   async function openFolder(): Promise<void> {
-    await pickAndOpenFolder({ showBusyOverlay: true, label: "Starting preview…" });
+    await pickAndOpenFolder({ showBusyOverlay: true });
   }
 
   /** Load a URL preview. Reset/epoch-supersede logic lives on ProjectLifecycleController. */
@@ -2670,36 +2700,28 @@
   onReportProblem={openReportProblem}
 />
 
-<!-- App-level overlay for the initial "Opening folder…" lifecycle.busy state ONLY
-     (no preview pane exists yet). Scoped below the toolbar (--app-z-overlay) and
-     all dialogs (1000+). This does NOT cover the preview pane or editor during
-     layout — that's handled by the pane-scoped overlay inside .preview-pane.
-     This is the ONE place a real cancel-and-close is offered — safe here
-     because no project session/preview exists yet (see handleCancelOpen). -->
-{#if lifecycle.busy && !!lifecycle.busyLabel && !lifecycle.currentDir && !landingVisible}
-  <LoadingOverlay
-    visible={true}
-    label={lifecycle.busyLabel}
-    onCancel={handleCancelOpen}
-    variant="app"
-  />
-{/if}
+<!-- App-level open overlay: the wait before any workspace exists (no preview
+     pane yet), so it covers the area below the toolbar and sits under every
+     dialog. This is the ONE place a real cancel-and-close is offered — safe
+     here because no project session/preview exists yet (see handleCancelOpen).
+     Once the workspace exists the SAME stage continues in the pane overlay
+     below, so the fade-out is skipped at that hand-off. -->
+<ActivityIndicator
+  stage={activity.open && !lifecycle.currentDir && !landingVisible ? activity.open : null}
+  anchor="app"
+  fadeOut={!activity.open}
+  onCancel={activity.open?.id === "opening" || activity.open?.id === "downloading" ? handleCancelOpen : undefined}
+/>
 
 <!-- Non-blocking PDF export progress: a corner pill that leaves the preview
      fully interactive (the build runs in a separate render window). -->
-{#if exportController.exporting && exportController.pdfProgress}
-  <div class="export-pill" role="status" aria-live="polite" aria-atomic="true">
-    {#if exportController.state === "success"}
-      <span class="export-success" aria-hidden="true"><Icon name="check" size={14} /></span>
-    {:else}
-      <span class="export-spinner" aria-hidden="true"></span>
-    {/if}
-    <span class="export-label">{exportController.pdfProgress}</span>
-    {#if exportController.state !== "success" && exportController.state !== "canceling"}
-      <button class="export-cancel" onclick={() => exportController.cancelExport()} disabled={!exportController.activeExportId}>Cancel</button>
-    {/if}
-  </div>
-{/if}
+<ActivityIndicator
+  stage={activity.exporting}
+  kind="pill"
+  anchor="app"
+  onCancel={activity.exporting?.cancelable ? () => exportController.cancelExport() : undefined}
+  cancelDisabled={!exportController.activeExportId}
+/>
 
 <svelte:head>
   <title>{lifecycle.docTitle ? `${lifecycle.docTitle} — Gutterpress` : "Gutterpress"}</title>
@@ -2708,7 +2730,7 @@
 <!-- inert while the start screen or Book settings is up: the workspace keeps
       rendering (a stylesheet written from Book settings re-renders the preview
       live) but never accepts interaction underneath the layer. -->
-<div class="app-root" inert={landingVisible || projectSettingsOpen || publishOpen}>
+<div class="app-root" inert={landingVisible || projectSettingsOpen || publishOpen} use:activity.track={activityStages}>
 {#if (updateController.readyVersion || updateController.availableVersion) && !updateController.bannerDismissed}
   <div class="update-banner" role="status" aria-live="polite">
     {#if updateController.readyVersion}
@@ -2935,6 +2957,7 @@
               </div>
             {:else}
               <div class="editor-loading" role="status" aria-live="polite">
+                <Spinner size={14} />
                 Loading editor…
               </div>
             {/if}
@@ -3041,24 +3064,17 @@
             </div>
           </div>
         {/if}
-        {#if previewUpdating}
-          <div class="preview-updating-pill" role="status" aria-live="polite">
-            <span aria-hidden="true"></span>
-            Updating preview…
-          </div>
-        {/if}
-        <!-- Pane-scoped overlay — position:absolute within .preview-pane
-             (which has position:relative). Covers ONLY the preview area; the
-             editor pane, toolbar, and all dialogs remain fully interactive.
-             z-index:10 (above the iframe, below any stacking context above).
-             onCancel (handleCancelRender) only HIDES the overlay; it does
-             NOT tear down the project. Save-triggered reloads use the ambient
-             double-buffered shell and do not mount this overlay. -->
-        <LoadingOverlay
-          visible={lifecycle.rendering || lifecycle.renderCompleteOverlay}
-          label={lifecycle.renderCompleteOverlay ? "Rendering complete…" : lifecycle.renderProgressPage > 0 ? `Laying out page ${lifecycle.renderProgressPage}…` : "Rendering…"}
-          onCancel={lifecycle.rendering ? handleCancelRender : undefined}
-          variant="pane"
+        <!-- Pane-scoped indicators — absolutely positioned inside .preview-pane
+             (position:relative), so they cover ONLY the preview area; the
+             editor pane, toolbar, and all dialogs stay fully interactive.
+             The overlay covers the first layout of a book; the pill is the
+             subtle, non-blocking cue for a hot-reload update behind a
+             visible book. onCancel (handleCancelRender) only HIDES the
+             overlay; it does NOT tear down the project. -->
+        <ActivityIndicator stage={activity.update} kind="pill" />
+        <ActivityIndicator
+          stage={activity.open && lifecycle.currentDir ? activity.open : null}
+          onCancel={activity.open?.id === "layout" ? handleCancelRender : undefined}
         />
         <ContextMenu controller={contextMenu} />
       </section>
@@ -3205,7 +3221,7 @@
   bind:open={githubOpen}
   onOpened={(projectDir) => {
     invalidateDiscoveredProjects(); // a fresh clone is a new discoverable book
-    return openProjectPath(projectDir, "Opening your book…");
+    return openProjectPath(projectDir);
   }}
   onAdvancedSetup={() => openSettings("connections")}
   onClosed={onConnectDialogClosed}
@@ -3234,7 +3250,7 @@
   bind:this={newProjectWizardRef}
   onCreated={(projectDir) => {
     invalidateDiscoveredProjects(); // the new book must show up in lists now
-    return openProjectPath(projectDir, "Opening your new book…");
+    return openProjectPath(projectDir);
   }}
   onClosed={() => {
     if (landingVisible) landingRef?.focusLayer();
@@ -3396,8 +3412,10 @@
   }
   .editor-loading {
     flex: 1;
-    display: grid;
-    place-items: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
     padding: 24px;
     color: var(--app-text-muted);
     font-size: 13px;
@@ -3407,34 +3425,6 @@
     /* Named container for PreviewToolbar's own collapse stages. */
     container-type: inline-size;
     container-name: preview-pane;
-  }
-  .preview-updating-pill {
-    position: absolute;
-    /* Below the preview toolbar, which holds the zoom menu on that side. */
-    top: 44px;
-    right: 12px;
-    z-index: 9;
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    padding: 6px 10px;
-    border: 1px solid var(--app-border);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--app-surface-raised) 92%, transparent);
-    box-shadow: 0 2px 8px var(--app-shadow-md);
-    color: var(--app-text-secondary);
-    font-size: 12px;
-    pointer-events: none;
-  }
-  .preview-updating-pill span {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--app-focus-ring);
-    animation: preview-update-pulse 0.9s ease-in-out infinite alternate;
-  }
-  @keyframes preview-update-pulse {
-    to { opacity: 0.35; }
   }
   .preview-error-view {
     flex: 1;
@@ -3507,64 +3497,6 @@
   }
 
   /* ---- Non-blocking PDF export progress pill ---- */
-  .export-pill {
-    position: fixed;
-    right: 16px;
-    bottom: 16px;
-    /* Above the start screen (900): a live export's progress + Cancel must
-       stay reachable when the workspace empties and the landing returns.
-       Still below dialogs (1000+). */
-    z-index: calc(var(--app-z-sheet) + 50);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    max-width: 420px;
-    padding: 10px 14px;
-    border-radius: 8px;
-    background: var(--app-surface-raised);
-    border: 1px solid var(--app-border);
-    box-shadow: 0 4px 16px var(--app-shadow-md);
-    color: var(--app-text);
-    font-size: 13px;
-    pointer-events: auto;
-  }
-  .export-spinner {
-    width: 14px;
-    height: 14px;
-    flex: 0 0 auto;
-    border: 2px solid var(--app-spinner-track);
-    border-top-color: var(--app-spinner-head);
-    border-radius: 50%;
-    animation: export-spin 0.8s linear infinite;
-  }
-  .export-label {
-    flex: 1;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .export-success {
-    display: inline-flex;
-    align-items: center;
-    flex: 0 0 auto;
-    color: var(--app-success-text);
-  }
-  .export-cancel {
-    background: transparent;
-    border: 1px solid var(--app-border-strong);
-    color: var(--app-text-secondary);
-    border-radius: 999px;
-    padding: 4px 10px;
-    font-size: 12px;
-  }
-  .export-cancel:hover:not(:disabled) {
-    background: var(--app-scrim-strong);
-    border-color: var(--app-control-hover-border);
-  }
-  @keyframes export-spin {
-    to { transform: rotate(360deg); }
-  }
-
   /* ---- Toolbar ----
      The toolbar markup, layout, and responsive collapse rules live in
      AppToolbar.svelte now (a 3-column grid + container queries). Only the
@@ -3572,7 +3504,7 @@
      (banners, dialogs) stay here. */
 
   /* ---- Buttons & inputs ---- */
-  /* Geometry shared by ALL +page buttons (banner actions, export pill,
+  /* Geometry shared by ALL +page buttons (banner actions,
      save-as-template dialog), including the primary variants (they inherit
      padding/radius/border box from here; only their COLOUR differs). border
      is split into width/style so a variant's own border-COLOUR isn't

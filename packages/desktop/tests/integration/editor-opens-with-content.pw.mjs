@@ -340,14 +340,21 @@ if (cmHasContent) {
   //    90-120s for.
   //    The overlay's own label says which half is still running, so a stalled
   //    pagination and a stalled post-render reveal no longer look alike.
-  if (!(await poll(`!document.querySelector('.loading-overlay')`, 90000))) {
+  //    The overlay now appears only after a short delay, so its absence alone
+  //    would also read as "settled" in the first moments: require pages too.
+  if (
+    !(await poll(
+      `(async () => !document.querySelector('.region.overlay .layer') && (await window.__ask('getTotalPages', [])) > 0)()`,
+      90000,
+    ))
+  ) {
     // Ask the BOOK how many pages it has, not the host. The two answers
     // disagree exactly when the host never heard the frame's renderingComplete:
     // a paginated book under a stuck "Rendering…" scrim is an event the host
     // lost, which no budget here can wait out, while zero pages is pagination
     // that genuinely never finished.
     const stuck = await evalJs(`(async () => ({
-      overlay: document.querySelector('.loading-overlay .label')?.textContent?.trim() ?? null,
+      overlay: document.querySelector('.region.overlay .label')?.textContent?.trim() ?? null,
       viewerPages: await window.__ask('getTotalPages', []),
     }))()`);
     fail(`CONTROL: the render never settled in 90s — ${JSON.stringify(stuck)}`);
