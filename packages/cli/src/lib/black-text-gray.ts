@@ -347,70 +347,8 @@ function applyEdits(s: string, edits: Edit[]): string {
 }
 
 // ---------------------------------------------------------------------------
-// Audit: four-colour near-black text that is still in a finished (CMYK) PDF
-// ---------------------------------------------------------------------------
-
-/**
- * A CMYK fill that is a four-colour near-black: dark (K ≥ 0.7), all three of
- * C/M/Y carrying real ink, and those three roughly equal (a neutral, not a
- * dark colour). Measured through the shipped CGATS21 profile: `#000` lands at
- * 72/68/67/88, `#1a1512` at 67/68/69/80, the lightest qualifying `#1f1f1f` at
- * 70/66/66/75. K-only text (`0 0 0 1 k`, `0 g`) has no CMY and never matches.
- */
-function isRichBlack(c: number[]): boolean {
-  const [cy, m, y, k] = c as [number, number, number, number];
-  const lo = Math.min(cy, m, y);
-  return k >= 0.7 && lo >= 0.3 && Math.max(cy, m, y) - lo <= 0.25;
-}
-
-/**
- * Count text-show operations at or below {@link LARGE_TEXT_PT} whose fill is a
- * four-colour near-black (`c m y k k`, or a 4-component `sc`/`scn`). Reads the
- * same size model as {@link rewriteBlackText}; used on the FINISHED PDF/X,
- * where `rewriteBlackText` has already run and Ghostscript has made everything
- * CMYK, so what remains is what the printer will see.
- */
-export function countRichBlackText(src: string, ctx: ContentContext = {}): number {
-  const scale = new TextScale(ctx.baseScale ?? 1);
-  let fill: number[] | null = null;
-  const stack: (number[] | null)[] = [];
-  let count = 0;
-  let operands: Tok[] = [];
-  for (const t of tokenize(src)) {
-    if (!t.op) { operands.push(t); continue; }
-    const op = t.text;
-    const nums = operands.map((o) => Number(o.text));
-    scale.op(op, nums);
-    switch (op) {
-      case "q": stack.push(fill); break;
-      case "Q": if (stack.length) fill = stack.pop() ?? null; break;
-      case "k": fill = nums.length === 4 && !nums.some(Number.isNaN) ? nums : null; break;
-      case "sc": case "scn":
-        fill = nums.length === 4 && !nums.some(Number.isNaN) ? nums : null; break;
-      case "g": case "rg": case "cs": fill = null; break;
-      case "Do": {
-        const name = operands[operands.length - 1]?.text;
-        if (name?.startsWith("/")) ctx.onDo?.(name.slice(1), scale.unit);
-        break;
-      }
-      case "Tj": case "TJ": case "'": case '"':
-        if (fill && isRichBlack(fill) && scale.size <= LARGE_TEXT_PT + SIZE_EPS) count++;
-        break;
-    }
-    operands = [];
-  }
-  return count;
-}
-
-// ---------------------------------------------------------------------------
 // PDF traversal
 // ---------------------------------------------------------------------------
-
-/** What {@link visitContent} tells a visitor about the stream it is handed. */
-interface StreamInfo extends ContentContext {
-  /** 1-based pages the stream is drawn on (a form's: every page that draws it) */
-  pages: number[];
-}
 
 /**
  * Hand every page content stream, then every Form XObject stream, to `visit`
@@ -420,7 +358,7 @@ interface StreamInfo extends ContentContext {
  */
 async function visitContent(
   doc: import("pdf-lib").PDFDocument,
-  visit: (src: string, info: StreamInfo) => string
+  visit: (src: string, info: ContentContext) => string
 ): Promise<boolean> {
   const { PDFName, PDFRawStream, PDFArray, PDFRef, PDFDict, decodePDFRawStream } = await import("pdf-lib");
   const ctx = doc.context;
@@ -441,9 +379,8 @@ async function visitContent(
     changed = true;
   };
 
-  // form ref -> smallest CTM scale it is drawn under, and the pages drawing it
+  // form ref -> smallest CTM scale it is drawn under
   const formScale = new Map<string, number>();
-  const formPages = new Map<string, Set<number>>();
 
   const formMatrixScale = (form: RawStream): number => {
     const m = form.dict.lookupMaybe(PDFName.of("Matrix"), PDFArray);
@@ -474,7 +411,6 @@ async function visitContent(
     const xobjects = page.node.Resources()?.lookupMaybe(PDFName.of("XObject"), PDFDict);
     const next = visit(joined, {
       baseScale: 1,
-      pages: [p + 1],
       onDo: (name, scale) => {
         const ref = xobjects?.get(PDFName.of(name));
         const form = ref instanceof PDFRef ? ctx.lookup(ref) : undefined;
@@ -482,7 +418,6 @@ async function visitContent(
         if (form.dict.get(PDFName.of("Subtype")) !== PDFName.of("Form")) return;
         const at = scale * formMatrixScale(form);
         formScale.set(ref.tag, Math.min(formScale.get(ref.tag) ?? Infinity, at));
-        (formPages.get(ref.tag) ?? formPages.set(ref.tag, new Set()).get(ref.tag)!).add(p + 1);
       },
     });
     if (next === joined) continue;
@@ -498,7 +433,6 @@ async function visitContent(
     if (text === null) continue;
     const next = visit(text, {
       baseScale: formScale.get(ref.tag) ?? 0,
-      pages: [...(formPages.get(ref.tag) ?? [])],
     });
     if (next !== text) replace(ref, obj, next);
   }
@@ -514,22 +448,4 @@ export async function blackTextToGray(pdf: Uint8Array): Promise<Uint8Array> {
   const doc = await PDFDocument.load(pdf, { updateMetadata: false });
   const changed = await visitContent(doc, (src, info) => rewriteBlackText(src, info));
   return changed ? doc.save({ updateFieldAppearances: false }) : pdf;
-}
-
-/**
- * The pages (1-based, ascending) carrying text at or below
- * {@link LARGE_TEXT_PT} painted in four-colour near-black, and how many text
- * runs that is. Backs the `pdf.print.black-text` preflight check.
- */
-export async function findRichBlackText(pdf: Uint8Array): Promise<{ runs: number; pages: number[] }> {
-  const { PDFDocument } = await import("pdf-lib");
-  const doc = await PDFDocument.load(pdf, { updateMetadata: false });
-  let runs = 0;
-  const pages = new Set<number>();
-  await visitContent(doc, (src, info) => {
-    const n = countRichBlackText(src, info);
-    if (n) { runs += n; for (const p of info.pages) pages.add(p); }
-    return src;
-  });
-  return { runs, pages: [...pages].sort((a, b) => a - b) };
 }
