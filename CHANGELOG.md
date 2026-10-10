@@ -132,7 +132,12 @@ This project follows [Semantic Versioning](https://semver.org/).
   are left alone. If the download fails (offline, registry error, integrity
   mismatch), `build` and `validate` stop and say which extension failed, why
   and how to retry; `preview` warns and carries on, as before. The plugin
-  loader itself is still offline.
+  loader itself is still offline. The desktop app does the same when you open
+  a book, before its preview loads: a short notice says what it downloaded, no
+  extra confirmation is asked for a version you already pinned, and if the
+  download fails the book still opens with the extension's **Needs install**
+  row and **Install** button as the way to retry. Opening a book while a build
+  runs never downloads the same package twice.
 
 ### Fixed
 

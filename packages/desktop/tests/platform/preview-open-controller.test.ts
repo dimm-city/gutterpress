@@ -27,6 +27,11 @@ interface HarnessOpts {
   statIsDirectory?: boolean;
   watchedDir?: string | null;
   clearPreviewAssetCacheThrows?: boolean;
+  /** What lib.restorePinnedExtensions reports (default: nothing to do). */
+  restore?: { installed: string[]; failed: Array<{ use: string; message: string }> };
+  restoreThrows?: boolean;
+  /** Gate the restore so a test can observe what happens while it is in flight. */
+  restoreGate?: Promise<void>;
 }
 
 interface Harness {
@@ -69,6 +74,12 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
   let watchedDir: string | null = opts.watchedDir ?? null;
 
   const lib = {
+    restorePinnedExtensions: async (dir: string) => {
+      calls.push(`restorePinnedExtensions:${dir}`);
+      await opts.restoreGate;
+      if (opts.restoreThrows) throw new Error("restore blew up");
+      return { manifestFile: "manifest.yaml", warnings: [], ...(opts.restore ?? { installed: [], failed: [] }) };
+    },
     startPreviewServer: async (serverOpts: { input: string }) => {
       startCalls += 1;
       calls.push("startPreviewServer");
@@ -551,4 +562,73 @@ test("stop requested during startup is serialized and tears down the late previe
   expect(stopped).toBe(true);
   expect(h.getActivePreview()).toBeNull();
   expect(h.getActiveWorkspaceRoot()).toBeNull();
+});
+
+// ── Restoring pinned extensions on open ─────────────────────────────────────
+
+test("open restores the book's pinned extensions BEFORE the preview server loads plugins", async () => {
+  const h = makeHarness({ restore: { installed: ["gp-x@1.0.0"], failed: [] } });
+
+  const res = await h.controller.open({ input: "/book" });
+
+  expect(h.calls.indexOf("restorePinnedExtensions:/book")).toBeGreaterThan(-1);
+  expect(h.calls.indexOf("restorePinnedExtensions:/book")).toBeLessThan(h.calls.indexOf("startPreviewServer"));
+  expect(res).toMatchObject({
+    previewStarted: true,
+    restoredExtensions: { installed: ["gp-x@1.0.0"], failed: [] },
+  });
+});
+
+test("an open that restores nothing carries no restore field at all", async () => {
+  const h = makeHarness();
+  const res = await h.controller.open({ input: "/book" });
+  expect(h.calls).toContain("restorePinnedExtensions:/book");
+  expect("restoredExtensions" in res).toBe(false);
+});
+
+test("a failed download never blocks the open: the preview starts and the failure is reported", async () => {
+  const failed = [{ use: "gp-x@1.0.0", message: "ECONNREFUSED" }];
+  const h = makeHarness({ restore: { installed: [], failed } });
+
+  const res = await h.controller.open({ input: "/book" });
+
+  expect(res.previewStarted).toBe(true);
+  expect(res.restoredExtensions).toEqual({ installed: [], failed });
+  expect(h.getActivePreview()?.inputPath).toBe("/book");
+});
+
+test("a restore that throws is swallowed: the book still opens", async () => {
+  const h = makeHarness({ restoreThrows: true });
+  const res = await h.controller.open({ input: "/book" });
+  expect(res.previewStarted).toBe(true);
+  expect("restoredExtensions" in res).toBe(false);
+});
+
+test("the failure result of a preview that cannot start still reports what was restored", async () => {
+  const h = makeHarness({
+    startPreviewServer: () => {
+      throw new Error("Missing stylesheet");
+    },
+    restore: { installed: ["gp-x@1.0.0"], failed: [] },
+  });
+  const res = await h.controller.open({ input: "/book" });
+  expect(res).toMatchObject({ previewStarted: false, restoredExtensions: { installed: ["gp-x@1.0.0"] } });
+});
+
+test("overlapping opens are serialized, so one book's restore never runs twice at once", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const h = makeHarness({ restoreGate: gate });
+
+  const first = h.controller.open({ input: "/book" });
+  const second = h.controller.open({ input: "/book" });
+  await settle();
+  // The second open has not started its own restore while the first is in flight.
+  expect(h.calls.filter((c) => c === "restorePinnedExtensions:/book")).toHaveLength(1);
+  release();
+  await Promise.all([first, second]);
+  expect(h.calls.filter((c) => c === "restorePinnedExtensions:/book")).toHaveLength(2);
+  expect(h.startCalls).toBe(2);
 });

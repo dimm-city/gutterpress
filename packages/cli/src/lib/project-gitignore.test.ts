@@ -6,7 +6,8 @@ import path from "node:path";
 import git from "isomorphic-git";
 
 import { ensureProjectGitignore } from "./project-gitignore.ts";
-import { listWorkdirChanges } from "./source-provider.ts";
+import { detectProjectSource } from "./project-source.ts";
+import { listWorkdirChanges, providerFor } from "./source-provider.ts";
 
 const dirs: string[] = [];
 async function tmp(): Promise<string> {
@@ -113,6 +114,22 @@ describe("ensureProjectGitignore", () => {
       // The sibling folders of the book are untouched by its ignore rules.
       await vendoredFile(path.join(repo, "other-book"));
       expect((await listWorkdirChanges(repo)).adds).toContain("other-book/plugins/npm/gp-x/1.0.0/node_modules/gp-x/index.js");
+    });
+
+    test("a real snapshot commit of a book in a repository leaves plugins/npm/ out", async () => {
+      const repo = await tmp();
+      await git.init({ fs, dir: repo, defaultBranch: "main" });
+      const book = path.join(repo, "field-guide");
+      await vendoredFile(book);
+      await ensureProjectGitignore(book);
+      const source = await detectProjectSource(book);
+      expect(source.type).toBe("local-git-folder");
+
+      await providerFor(source).snapshot({ projectDir: book, message: "snap", authorName: "T", authorEmail: "t@example.com" });
+
+      const tracked = await git.listFiles({ fs, dir: repo });
+      expect(tracked).toContain("field-guide/chapter.md");
+      expect(tracked.filter((p) => p.includes("plugins/npm"))).toEqual([]);
     });
 
     test("files already tracked stay tracked: ignoring does not untrack them", async () => {

@@ -927,3 +927,48 @@ test("leaving the file asks via leaveBuffer; Cancel keeps the project open; retr
   expect(await ctrl.stopPreview()).toBe(true);
   expect(leaves).toEqual(["leave", "leave", "leave"]); // open, cancelled close, close
 });
+
+// ── Pinned extensions restored on open ───────────────────────────────────────
+
+test("opening a book that downloaded its pinned extensions says so in one toast", async () => {
+  const { ctrl, deps } = make();
+  deps.startPreviewResult = {
+    previewStarted: true,
+    url: "preview://book",
+    title: "My Book",
+    restoredExtensions: { installed: ["gp-dimm-city@1.2.0-alpha.3"], failed: [] },
+  };
+
+  await ctrl.startFolderPreview("/proj");
+
+  expect(deps.toastInfo.calls).toEqual([
+    ["Downloaded gp-dimm-city@1.2.0-alpha.3, pinned in this book's manifest."],
+  ]);
+  expect(deps.toastError.calls).toHaveLength(0);
+});
+
+test("a failed download is a toast that points at Install, and the book still opens", async () => {
+  const { ctrl, deps } = make();
+  deps.startPreviewResult = {
+    previewStarted: true,
+    url: "preview://book",
+    title: "My Book",
+    restoredExtensions: { installed: [], failed: [{ use: "gp-x@1.0.0", message: "ECONNREFUSED." }] },
+  };
+
+  expect(await ctrl.startFolderPreview("/proj")).toBe(true);
+
+  expect(ctrl.previewUrl).toBe("preview://book");
+  expect(deps.toastInfo.calls).toHaveLength(0);
+  expect(deps.toastError.calls).toHaveLength(1);
+  const message = deps.toastError.calls[0]![0];
+  expect(message).toContain("Couldn't download gp-x@1.0.0 (ECONNREFUSED)");
+  expect(message).toContain("Install in Book settings > Features");
+});
+
+test("an ordinary open shows no extension toast", async () => {
+  const { ctrl, deps } = make();
+  await ctrl.startFolderPreview("/proj");
+  expect(deps.toastInfo.calls).toHaveLength(0);
+  expect(deps.toastError.calls).toHaveLength(0);
+});

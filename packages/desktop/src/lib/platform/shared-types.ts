@@ -725,12 +725,25 @@ export interface RawPreviewStartArgs {
   input: string;
 }
 
+/**
+ * What opening a book downloaded: the exact-pinned extensions its manifest
+ * names whose copies were missing (a fresh clone), and any that could not be
+ * downloaded. Present only when something was attempted — the common open
+ * touches nothing and carries no field at all.
+ */
+export interface OpenRestoreSummary {
+  /** `name@version` of each package downloaded. */
+  installed: string[];
+  failed: Array<{ use: string; message: string }>;
+}
+
 export interface PreviewStartSuccess {
   previewStarted: true;
   url: string;
   port: number;
   input: string;
   title: string | null;
+  restoredExtensions?: OpenRestoreSummary;
 }
 
 export interface PreviewStartFailure {
@@ -739,6 +752,7 @@ export interface PreviewStartFailure {
   title: string | null;
   /** Actionable preview-generation failure; the folder itself is still open. */
   error: string;
+  restoredExtensions?: OpenRestoreSummary;
 }
 
 export type PreviewStartResult = PreviewStartSuccess | PreviewStartFailure;

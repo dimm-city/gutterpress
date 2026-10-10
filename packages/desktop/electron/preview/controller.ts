@@ -20,7 +20,7 @@ import { operationLogSlug } from "../recovery-paths";
 import { unsyncedStateFor } from "../auto-sync/unsynced-status";
 import { upsertRecentFolder } from "../recent-folders";
 import type { DesktopPrefs } from "../prefs-store";
-import type { PreviewStartResult } from "../../src/lib/platform/shared-types";
+import type { OpenRestoreSummary, PreviewStartResult } from "../../src/lib/platform/shared-types";
 import type { TokenStore } from "gutterpress";
 
 type LibModule = typeof import("gutterpress");
@@ -162,6 +162,7 @@ export class PreviewOpenController {
     let lib: LibModule | null = null;
     let title = path.basename(openedDir);
     let result: PreviewStartResult;
+    let restored: OpenRestoreSummary | undefined;
     try {
       lib = await this.deps.loadLib();
       try {
@@ -170,6 +171,13 @@ export class PreviewOpenController {
       } catch {
         /* malformed/missing manifest is reported by preview generation below */
       }
+
+      // A fresh clone has the manifest's pinned extensions but not their
+      // downloaded copies: fetch them BEFORE the preview loads plugins. The
+      // exact pinned version only, host-side, no prompt (the author chose it
+      // when they pinned it). A failure never blocks the open — the preview
+      // degrades, and the Features tab's "Needs install" row stays the way in.
+      restored = await this.restoreExtensions(lib, openedDir);
 
       const activePreview = await lib.startPreviewServer({
         input: openedDir,
@@ -202,6 +210,8 @@ export class PreviewOpenController {
         error: msg,
       };
     }
+
+    if (restored) result = { ...result, restoredExtensions: restored };
 
     // C2 (book switcher): the desktop always opens an actual book folder (never a
     // bare multi-book repo root — the renderer retargets to a resolved book
@@ -256,6 +266,28 @@ export class PreviewOpenController {
     if (source) this.deps.scheduleInitialSync(openedDir);
 
     return result;
+  }
+
+  /**
+   * Download this book's missing pinned extensions (`lib.restorePinnedExtensions`:
+   * one run per book at a time, so an open racing a build shares one download;
+   * no network when nothing is missing). Returns what it did, or undefined when
+   * it did nothing. Never throws.
+   */
+  private async restoreExtensions(
+    lib: LibModule,
+    openedDir: string,
+  ): Promise<OpenRestoreSummary | undefined> {
+    try {
+      const { installed, failed } = await lib.restorePinnedExtensions(openedDir);
+      if (installed.length === 0 && failed.length === 0) return undefined;
+      for (const use of installed) console.log(`[api:preview] downloaded pinned extension ${use}`);
+      for (const f of failed) console.warn(`[api:preview] could not download ${f.use}: ${f.message}`);
+      return { installed, failed: failed.map(({ use, message }) => ({ use, message })) };
+    } catch (e) {
+      console.warn("[api:preview] restoring pinned extensions failed (non-fatal):", e);
+      return undefined;
+    }
   }
 
   private async emitLocalStatusIfUnsynced(

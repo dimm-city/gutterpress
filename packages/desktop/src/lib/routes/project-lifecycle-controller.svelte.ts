@@ -55,12 +55,20 @@ export type ProjectLifecyclePreviewResult =
       previewStarted: true;
       url: string;
       title: string | null;
+      restoredExtensions?: ProjectLifecycleRestore;
     }
   | {
       previewStarted: false;
       title: string | null;
       error: string;
+      restoredExtensions?: ProjectLifecycleRestore;
     };
+
+/** Pinned extensions the host downloaded (or failed to) while opening the book. */
+export interface ProjectLifecycleRestore {
+  installed: string[];
+  failed: Array<{ use: string; message: string }>;
+}
 
 /** Composed `ProjectSessionController` surface (the bits this controller drives/reads). */
 interface ProjectLifecycleProjectSession {
@@ -324,6 +332,7 @@ export class ProjectLifecycleController {
       const restoreState = d.getDesktopProjectState(targetDir).catch(() => null);
       const data = await d.startPreviewHost({ key: targetDir, displayName: targetDisplayName });
       if (superseded()) return false;
+      this.announceRestore(data.restoredExtensions);
       this.sourceMode = "folder";
       this.currentDir = targetDir;
       this.currentFolderDisplayName = targetDisplayName;
@@ -410,6 +419,25 @@ export class ProjectLifecycleController {
     }
   }
 
+  /**
+   * Say what opening the book downloaded, through the toast every other
+   * ambient notice uses. A failed download is not an open failure: the book
+   * opens and the Features tab's "Needs install" row is the way to retry.
+   */
+  private announceRestore(restore: ProjectLifecycleRestore | undefined): void {
+    if (!restore) return;
+    const toast = this.deps.toast();
+    if (restore.installed.length > 0) {
+      toast?.info?.(`Downloaded ${restore.installed.join(", ")}, pinned in this book's manifest.`);
+    }
+    for (const f of restore.failed) {
+      toast?.error(
+        `Couldn't download ${f.use} (${f.message.replace(/[.\s]+$/, "")}). The book still opens — ` +
+          `use Install in Book settings > Features to try again.`,
+      );
+    }
+  }
+
   /** Retry only preview generation for the already-open folder workspace. */
   async retryPreview(): Promise<boolean> {
     const d = this.deps;
@@ -427,6 +455,7 @@ export class ProjectLifecycleController {
         displayName: this.currentFolderDisplayName ?? basenameOf(dir),
       });
       if (epoch !== this.folderOpenEpoch) return false;
+      this.announceRestore(data.restoredExtensions);
       this.docTitle = data.title ?? this.docTitle;
       this.previewUrl = null;
       this.renderProgressPage = 0;
