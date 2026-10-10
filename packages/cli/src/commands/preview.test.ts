@@ -1,5 +1,8 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { runCommand } from "citty";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import * as buildRunnerModule from "../lib/build-runner.ts";
 import * as openPathModule from "../lib/open-path.ts";
 import * as serverModule from "../server.ts";
@@ -155,4 +158,34 @@ test("preview --format pdf leaves allowShrink off by default", async () => {
   await runCommand(previewCommand, { rawArgs: [".", "--format", "pdf", "--no-open"] });
 
   expect(captured?.allowShrink).toBe(false);
+});
+
+test("live preview degrades when a pinned extension cannot be downloaded: warns, and still starts", async () => {
+  const book = await mkdtemp(path.join(tmpdir(), "gutterpress-preview-restore-"));
+  const fetchSpy = spyOn(globalThis, "fetch").mockRejectedValue(new Error("ECONNREFUSED"));
+  try {
+    await writeFile(path.join(book, "manifest.yaml"), "title: Clone\nextensions:\n  - gp-restore-missing@1.0.0\n", "utf8");
+    const warnings: string[] = [];
+    consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
+    consoleWarnSpy = spyOn(console, "warn").mockImplementation((...args) => {
+      warnings.push(args.join(" "));
+    });
+    serverSpy = spyOn(serverModule, "startPreviewServer").mockResolvedValue({
+      url: "http://127.0.0.1:3579",
+      port: 3579,
+      host: "127.0.0.1",
+      inputPath: "",
+      stop: async () => {},
+      restart: async () => {},
+      notifySettledWrite: () => {},
+    });
+
+    await runCommand(previewCommand, { rawArgs: [book, "--no-open"] });
+
+    expect(serverSpy).toHaveBeenCalledTimes(1);
+    expect(warnings.join("\n")).toMatch(/Could not download gp-restore-missing@1\.0\.0 .*ECONNREFUSED/);
+  } finally {
+    fetchSpy.mockRestore();
+    await rm(book, { recursive: true, force: true });
+  }
 });

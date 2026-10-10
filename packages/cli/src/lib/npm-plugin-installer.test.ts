@@ -7,7 +7,7 @@
  * resolution. The registry is a fixture `fetch`; nothing here touches the
  * network.
  */
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
@@ -29,6 +29,7 @@ import {
   installNpmPlugin,
 } from "./npm-plugin-installer";
 import { loadPlugin } from "./markdown/plugins";
+import { restoreFailureMessage, restoreForCommand, restorePinnedExtensions } from "./extension-restore";
 import { vendoredNpmPluginPackageDir, vendoredNpmPluginRoot } from "./plugin-vendor";
 
 const TMP_ROOT = path.join(process.cwd(), ".tmp", `npm-plugin-installer-${Date.now()}`);
@@ -1588,5 +1589,222 @@ describe("updates", () => {
     await expect(updateExtensions(dir, { fetch: fixture.fetch, only: "something-else" })).rejects.toThrow(
       '"something-else" is not a pinned npm extension of this book.',
     );
+  });
+});
+
+describe("restorePinnedExtensions", () => {
+  const name = "markdown-it-gutterpress-restoring";
+  const manifestOf = (...extensions: string[]) =>
+    `title: Restored\nextensions:\n${extensions.map((e) => `  - ${e}`).join("\n")}\n`;
+  const noNetwork = (() => {
+    throw new Error("the network must not be touched");
+  }) as unknown as typeof globalThis.fetch;
+
+  /** A book that pinned `name@1.0.0` while 1.1.0 is already the registry's latest. */
+  async function pinnedBook() {
+    const fixture = registryGraphFixture([
+      { name, version: "1.0.0" },
+      { name, version: "1.1.0" },
+    ]);
+    const dir = await projectDir();
+    await addNpmPlugin(dir, `${name}@1.0.0`, { fetch: fixture.fetch });
+    fixture.calls.length = 0;
+    const manifest = await readFile(path.join(dir, "manifest.yaml"), "utf8");
+    return { dir, fixture, manifest };
+  }
+
+  test("does nothing, and never touches the network, when every copy is present", async () => {
+    const { dir, manifest } = await pinnedBook();
+    const result = await restorePinnedExtensions(dir, { fetch: noNetwork });
+    expect(result).toMatchObject({ installed: [], failed: [], warnings: [] });
+    expect(await readFile(path.join(dir, "manifest.yaml"), "utf8")).toBe(manifest);
+  });
+
+  test("a missing copy is downloaded at exactly the pinned version, and the manifest is untouched", async () => {
+    const { dir, fixture, manifest } = await pinnedBook();
+    await rm(path.join(dir, "plugins"), { recursive: true });
+    const starting: string[] = [];
+
+    const result = await restorePinnedExtensions(dir, {
+      fetch: fixture.fetch,
+      onRestoring: (spec) => starting.push(spec),
+    });
+
+    expect(result).toMatchObject({ manifestFile: "manifest.yaml", installed: [`${name}@1.0.0`], failed: [] });
+    expect(starting).toEqual([`${name}@1.0.0`]);
+    // The pinned version, not npm's `latest` (1.1.0).
+    expect(fixture.calls).toEqual([
+      `https://registry.npmjs.org/${encodeURIComponent(name)}`,
+      `https://registry.npmjs.org/${name}/-/${name}-1.0.0.tgz`,
+    ]);
+    expect(existsSync(vendoredNpmPluginRoot(dir, name, "1.1.0"))).toBe(false);
+    expect(await readFile(path.join(dir, "manifest.yaml"), "utf8")).toBe(manifest);
+    expect((await validateProjectPlugins(dir))[0]?.ok).toBe(true);
+    expect(await loadedMarker(dir, name, "1.0.0", "__fixtureLoaded")).toBe(true);
+    // And it is a one-time cost: the next call finds everything.
+    expect(await restorePinnedExtensions(dir, { fetch: noNetwork })).toMatchObject({ installed: [], failed: [] });
+  });
+
+  test("an incomplete copy is downloaded again", async () => {
+    const { dir, fixture } = await pinnedBook();
+    await rm(path.join(vendoredNpmPluginPackageDir(vendoredNpmPluginRoot(dir, name, "1.0.0"), name), "package.json"));
+
+    const result = await restorePinnedExtensions(dir, { fetch: fixture.fetch });
+
+    expect(result.installed).toEqual([`${name}@1.0.0`]);
+    expect((await validateProjectPlugins(dir))[0]?.ok).toBe(true);
+  });
+
+  test("honours the entry's named export when it load-tests the download", async () => {
+    const exportName = "markdown-it-gutterpress-restoring-export";
+    const fixture = registryGraphFixture([
+      { name: exportName, version: "1.0.0", files: { "index.js": "export function full(md) { md.__v = 1; }\n" } },
+    ]);
+    const dir = await projectDir();
+    await addNpmPlugin(dir, `${exportName}@1.0.0`, { fetch: fixture.fetch, exportName: "full" });
+    await rm(path.join(dir, "plugins"), { recursive: true });
+
+    expect(await restorePinnedExtensions(dir, { fetch: fixture.fetch })).toMatchObject({
+      installed: [`${exportName}@1.0.0`],
+      failed: [],
+    });
+  });
+
+  test("a registry failure is reported with the extension and why, leaves no partial copy, and changes nothing", async () => {
+    const { dir, manifest } = await pinnedBook();
+    await rm(path.join(dir, "plugins"), { recursive: true });
+    const offline = (async () => {
+      throw new Error("ECONNREFUSED");
+    }) as unknown as typeof globalThis.fetch;
+
+    const result = await restorePinnedExtensions(dir, { fetch: offline });
+
+    expect(result.installed).toEqual([]);
+    expect(result.failed).toHaveLength(1);
+    expect(result.failed[0]!.use).toBe(`${name}@1.0.0`);
+    expect(result.failed[0]!.message).toContain("ECONNREFUSED");
+    const sentence = restoreFailureMessage(result.failed[0]!, "manifest.yaml");
+    expect(sentence).toContain(`Could not download ${name}@1.0.0 (pinned in manifest.yaml)`);
+    expect(sentence).toContain("ECONNREFUSED");
+    expect(sentence).toContain(`run the command again`);
+    expect(sentence).toContain(`gutterpress ext add ${name}@1.0.0`);
+    expect(existsSync(vendoredNpmPluginRoot(dir, name, "1.0.0"))).toBe(false);
+    expect(await readFile(path.join(dir, "manifest.yaml"), "utf8")).toBe(manifest);
+  });
+
+  test("an integrity mismatch is a failure, never an install", async () => {
+    const { dir } = await pinnedBook();
+    await rm(path.join(dir, "plugins"), { recursive: true });
+    const bad = registryFixture(name, "1.0.0", packageEntries(name, "1.0.0"), { badIntegrity: true });
+
+    const result = await restorePinnedExtensions(dir, { fetch: bad.fetch });
+
+    expect(result.installed).toEqual([]);
+    expect(result.failed[0]!.message).toMatch(/integrity check/i);
+    expect(existsSync(vendoredNpmPluginRoot(dir, name, "1.0.0"))).toBe(false);
+  });
+
+  test("one failure does not stop the other packages from being restored", async () => {
+    const other = "markdown-it-gutterpress-restoring-other";
+    const fixture = registryGraphFixture([{ name: other, version: "2.0.0" }]); // `name` is unknown to this registry
+    const dir = await projectDir();
+    await writeFile(path.join(dir, "manifest.yaml"), manifestOf(`${name}@1.0.0`, `${other}@2.0.0`), "utf8");
+
+    const result = await restorePinnedExtensions(dir, { fetch: fixture.fetch });
+
+    expect(result.installed).toEqual([`${other}@2.0.0`]);
+    expect(result.failed.map((f) => f.use)).toEqual([`${name}@1.0.0`]);
+  });
+
+  test("local paths, unpinned names, version ranges, bundled names and disabled entries are never fetched", async () => {
+    const dir = await projectDir();
+    await writeFile(
+      path.join(dir, "manifest.yaml"),
+      "title: Ignored\nextensions:\n" +
+        "  - ./plugins/local.js\n" +
+        "  - some-unpinned-package\n" +
+        "  - some-ranged-package@^1.0.0\n" +
+        "  - some-tagged-package@latest\n" +
+        "  - markdown-it-mark\n" +
+        "  - use: disabled-package@1.0.0\n" +
+        "    enabled: false\n" +
+        "  - not a valid specifier at all\n",
+      "utf8",
+    );
+    expect(await restorePinnedExtensions(dir, { fetch: noNetwork })).toMatchObject({
+      installed: [],
+      failed: [],
+      warnings: [],
+    });
+    expect(existsSync(path.join(dir, "plugins"))).toBe(false);
+  });
+
+  test("no manifest, no extensions list, or an unreadable manifest restores nothing", async () => {
+    const dir = await projectDir();
+    expect(await restorePinnedExtensions(dir, { fetch: noNetwork })).toMatchObject({ manifestFile: null, installed: [] });
+    await writeFile(path.join(dir, "manifest.yaml"), "title: No extensions\n", "utf8");
+    expect(await restorePinnedExtensions(dir, { fetch: noNetwork })).toMatchObject({ installed: [], failed: [] });
+    await writeFile(path.join(dir, "manifest.yaml"), "title: [unclosed\n", "utf8");
+    expect(await restorePinnedExtensions(dir, { fetch: noNetwork })).toMatchObject({ manifestFile: null, installed: [] });
+  });
+
+  test("an explicit manifest file restores into that file's folder", async () => {
+    const { dir, fixture } = await pinnedBook();
+    await rename(path.join(dir, "manifest.yaml"), path.join(dir, "book.yaml"));
+    await rm(path.join(dir, "plugins"), { recursive: true });
+
+    const result = await restorePinnedExtensions(dir, { fetch: fixture.fetch, manifestPath: path.join(dir, "book.yaml") });
+
+    expect(result).toMatchObject({ manifestFile: "book.yaml", installed: [`${name}@1.0.0`] });
+    expect(existsSync(vendoredNpmPluginRoot(dir, name, "1.0.0"))).toBe(true);
+  });
+
+  test("concurrent restores of one book share a single download", async () => {
+    const { dir, fixture } = await pinnedBook();
+    await rm(path.join(dir, "plugins"), { recursive: true });
+
+    const [a, b] = await Promise.all([
+      restorePinnedExtensions(dir, { fetch: fixture.fetch }),
+      restorePinnedExtensions(dir, { fetch: fixture.fetch }),
+    ]);
+
+    expect(a.installed).toEqual([`${name}@1.0.0`]);
+    expect(b).toBe(a);
+    expect(fixture.calls.filter((url) => url.endsWith(".tgz"))).toHaveLength(1);
+  });
+
+  test("restoring keeps the downloaded copy out of git, like any install", async () => {
+    const { dir, fixture } = await pinnedBook();
+    await rm(path.join(dir, "plugins"), { recursive: true });
+    await rm(path.join(dir, ".gitignore"));
+
+    await restorePinnedExtensions(dir, { fetch: fixture.fetch });
+
+    expect(await readFile(path.join(dir, ".gitignore"), "utf8")).toContain("plugins/npm/");
+  });
+
+  test("restoreForCommand prints one line per downloaded package; nothing when everything is present or when quiet", async () => {
+    const { dir, fixture } = await pinnedBook();
+    await rm(path.join(dir, "plugins"), { recursive: true });
+    const lines: string[] = [];
+    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(fixture.fetch as never);
+    const logSpy = spyOn(console, "log").mockImplementation((...args) => {
+      lines.push(args.join(" "));
+    });
+    try {
+      await restoreForCommand(dir, { failFast: true });
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain(`Downloaded ${name}@1.0.0 (pinned in manifest.yaml)`);
+      await restoreForCommand(dir, { failFast: true });
+      expect(lines).toHaveLength(1);
+
+      await rm(path.join(dir, "plugins"), { recursive: true });
+      await restoreForCommand(dir, { failFast: true, quiet: true });
+      expect(lines).toHaveLength(1);
+      expect(existsSync(vendoredNpmPluginRoot(dir, name, "1.0.0"))).toBe(true);
+    } finally {
+      fetchSpy.mockRestore();
+      logSpy.mockRestore();
+    }
   });
 });

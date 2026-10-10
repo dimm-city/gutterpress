@@ -120,6 +120,20 @@ This project follows [Semantic Versioning](https://semver.org/).
   folder never removes anything from history; remove them yourself when you
   are ready.
 
+- **A fresh clone of a book downloads its extensions by itself.** Downloaded
+  extensions are no longer part of a book's history, so a clone has the pins in
+  `manifest.yaml` but not the files. `gutterpress build`, `validate` and
+  `preview` now download any missing pinned version first and print one line
+  per package (`Downloaded gp-dimm-city@1.2.0-alpha.3 (pinned in
+  manifest.yaml)`). It is the exact version the manifest pins — never a newer
+  one — fetched through the same verified install as `ext add` (registry
+  lookup, integrity check, load test), and it touches nothing else: no
+  network when every copy is present, and local, unpinned and bundled entries
+  are left alone. If the download fails (offline, registry error, integrity
+  mismatch), `build` and `validate` stop and say which extension failed, why
+  and how to retry; `preview` warns and carries on, as before. The plugin
+  loader itself is still offline.
+
 ### Fixed
 
 - **The editor fills its pane again.** A leftover style from the old toolbar

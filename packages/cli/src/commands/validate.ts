@@ -1,5 +1,6 @@
 import { defineCommand } from "citty";
-import { log, executeAndReport, type OutputFormat } from "../index.ts";
+import { BuildError, log, executeAndReport, type OutputFormat } from "../index.ts";
+import { restoreForCommand } from "../lib/extension-restore.ts";
 import {
   EXIT_CODES,
   UsageError,
@@ -82,9 +83,16 @@ export default defineCommand({
       rejectUnknownFlags(rawArgs, commandArgs, "validate");
       rejectExtraPositionals((args as { _: unknown[] })._, 1, "validate");
 
+      // Source checks load the book's plugins; fetch any pinned extension a
+      // fresh clone is missing first (fail fast — see restoreForCommand).
+      const manifestPath = typeof args.manifest === "string" ? args.manifest : undefined;
+      if (input !== undefined) {
+        await restoreForCommand(input, { manifestPath, failFast: true, quiet: format === "json" });
+      }
+
       result = await executeAndReport(
         {
-          manifest: typeof args.manifest === "string" ? args.manifest : undefined,
+          manifest: manifestPath,
           pdf: typeof args.pdf === "string" ? args.pdf : undefined,
           input,
           category: typeof args.category === "string" ? args.category : undefined,
@@ -98,7 +106,9 @@ export default defineCommand({
       );
     } catch (error) {
       log.error(error instanceof Error ? error.message : String(error));
-      process.exit(error instanceof UsageError ? error.exitCode : EXIT_CODES.USAGE);
+      process.exit(
+        error instanceof UsageError || error instanceof BuildError ? error.exitCode : EXIT_CODES.USAGE,
+      );
     }
 
     if (!result.ok) {

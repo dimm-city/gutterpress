@@ -19,6 +19,8 @@
  */
 import { describe, test, expect, spyOn, afterEach } from "bun:test";
 import { runCommand } from "citty";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import * as buildRunnerMod from "../lib/build-runner.ts";
 import buildCommand from "./build.ts";
@@ -206,5 +208,57 @@ describe("build command — citty arg parsing → runBuild dispatch", () => {
       "something unrelated broke"
     );
     expect(exitSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("build command — restoring pinned extensions before the build", () => {
+  let book: string | undefined;
+  let fetchSpy: ReturnType<typeof spyOn> | undefined;
+  let errorSpy: ReturnType<typeof spyOn> | undefined;
+  afterEach(async () => {
+    fetchSpy?.mockRestore();
+    errorSpy?.mockRestore();
+    fetchSpy = errorSpy = undefined;
+    if (book) await rm(book, { recursive: true, force: true });
+    book = undefined;
+  });
+
+  /** A fresh clone: the manifest pins an extension whose downloaded copy is absent. */
+  async function freshClone(): Promise<string> {
+    book = await mkdtemp(path.join(tmpdir(), "gutterpress-build-restore-"));
+    await writeFile(path.join(book, "manifest.yaml"), "title: Clone\nextensions:\n  - gp-restore-missing@1.0.0\n", "utf8");
+    return book;
+  }
+
+  test("a failed restore fails the build fast: names the extension and why, says how to retry, never starts the build", async () => {
+    const dir = await freshClone();
+    stubExit();
+    stubRunBuild(async () => ({ pdfPath: null, htmlPath: undefined }));
+    fetchSpy = spyOn(globalThis, "fetch").mockRejectedValue(new Error("ECONNREFUSED"));
+    const errors: string[] = [];
+    errorSpy = spyOn(console, "error").mockImplementation((...args) => {
+      errors.push(args.join(" "));
+    });
+
+    await expect(runCommand(buildCommand, { rawArgs: [dir, "--format", "html"] })).rejects.toThrow(/process\.exit\(3\)/);
+
+    expect(runBuildSpy).not.toHaveBeenCalled();
+    const message = errors.join("\n");
+    expect(message).toContain("gp-restore-missing@1.0.0");
+    expect(message).toContain("ECONNREFUSED");
+    expect(message).toContain("run the command again");
+    expect(message).toContain("gutterpress ext add gp-restore-missing@1.0.0");
+  });
+
+  test("a book with nothing to restore builds without touching the network", async () => {
+    book = await mkdtemp(path.join(tmpdir(), "gutterpress-build-norestore-"));
+    await writeFile(path.join(book, "manifest.yaml"), "title: Plain\nextensions:\n  - markdown-it-mark\n  - ./local.js\n", "utf8");
+    stubRunBuild(async () => ({ pdfPath: null, htmlPath: undefined }));
+    fetchSpy = spyOn(globalThis, "fetch").mockRejectedValue(new Error("the network must not be touched"));
+
+    await runCommand(buildCommand, { rawArgs: [book, "--format", "html"] });
+
+    expect(runBuildSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

@@ -192,6 +192,13 @@ export {
 } from "../lib/extension-specifier.ts";
 export type { ParsedExtensionSpecifier } from "../lib/extension-specifier.ts";
 
+// ── Restoring pinned extensions ──────────────────────────────────────────────
+// Downloaded copies are not in a book's git history; this downloads a missing
+// pinned version again. Called by build/validate/preview and the desktop's
+// book-open path — never by the (offline) loader.
+export { restorePinnedExtensions, restoreFailureMessage } from "../lib/extension-restore.ts";
+export type { RestorePinnedOptions, RestoreResult, RestoreFailure } from "../lib/extension-restore.ts";
+
 // ── Extension package import — .zip / .css / URL ─────────────────────────────
 // The zip/css sub-importers and pure decision helpers stay module-private
 // (extension-import.ts exports them for its own unit tests).

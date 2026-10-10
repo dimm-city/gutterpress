@@ -6,6 +6,9 @@
  */
 import { describe, test, expect, spyOn, afterEach } from "bun:test";
 import { runCommand } from "citty";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import * as validationExecMod from "../lib/validation-exec.ts";
 import type { ValidationExecutionArgs } from "../lib/validation-exec.ts";
 import validateCommand from "./validate.ts";
@@ -185,5 +188,52 @@ describe("validate command — exit-code contract", () => {
       /process\.exit\(2\)/
     );
     expect(execSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("validate command — restoring pinned extensions before source checks", () => {
+  let book: string | undefined;
+  let fetchSpy: ReturnType<typeof spyOn> | undefined;
+  let errorSpy: ReturnType<typeof spyOn> | undefined;
+  afterEach(async () => {
+    fetchSpy?.mockRestore();
+    errorSpy?.mockRestore();
+    fetchSpy = errorSpy = undefined;
+    if (book) await rm(book, { recursive: true, force: true });
+    book = undefined;
+  });
+
+  async function freshClone(): Promise<string> {
+    book = await mkdtemp(path.join(tmpdir(), "gutterpress-validate-restore-"));
+    await writeFile(path.join(book, "manifest.yaml"), "title: Clone\nextensions:\n  - gp-restore-missing@1.0.0\n", "utf8");
+    return book;
+  }
+
+  test("a failed restore stops validation with the pipeline exit code and a message that names the extension", async () => {
+    const dir = await freshClone();
+    stubExit();
+    stubExecuteAndReport(async () => ({ ok: true, execution: {} }));
+    fetchSpy = spyOn(globalThis, "fetch").mockRejectedValue(new Error("ECONNREFUSED"));
+    const errors: string[] = [];
+    errorSpy = spyOn(console, "error").mockImplementation((...args) => {
+      errors.push(args.join(" "));
+    });
+
+    await expect(runCommand(validateCommand, { rawArgs: [dir, "--category", "source"] })).rejects.toThrow(
+      new RegExp(`process\\.exit\\(${EXIT_CODES.PIPELINE}\\)`)
+    );
+
+    expect(execSpy).not.toHaveBeenCalled();
+    expect(errors.join("\n")).toMatch(/Could not download gp-restore-missing@1\.0\.0 .*ECONNREFUSED/);
+  });
+
+  test("without a source directory there are no plugins to load, so nothing is restored", async () => {
+    stubExecuteAndReport(async () => ({ ok: true, execution: {} }));
+    fetchSpy = spyOn(globalThis, "fetch").mockRejectedValue(new Error("the network must not be touched"));
+
+    await runCommand(validateCommand, { rawArgs: ["--pdf", "/tmp/book.pdf"] });
+
+    expect(execSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

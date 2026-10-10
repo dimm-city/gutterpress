@@ -682,6 +682,24 @@ async function addExtensionUnlocked(
 }
 
 /**
+ * Download one pinned npm extension again (`name@<exact version>`): the same
+ * verified transaction as {@link addExtension}, minus the manifest write — the
+ * pin is already there and is never changed. Returns the install's warnings.
+ */
+export function restoreNpmExtension(
+  projectDir: string,
+  name: string,
+  version: string,
+  exportName: string | undefined,
+  options: NpmPluginInstallOptions = {},
+): Promise<string[]> {
+  return withMutationLock(projectDir, async () => {
+    const restored = await vendorNpmExtension(projectDir, `${name}@${version}`, exportName, options, async () => {});
+    return restored.warnings;
+  });
+}
+
+/**
  * The shared npm install transaction behind `addExtension` and the restore of a
  * pinned extension: download, verify, vendor, load-test, then `commit(use)`
  * (the manifest write — a no-op for a restore, which never changes the
