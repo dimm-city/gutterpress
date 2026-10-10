@@ -206,9 +206,8 @@ function escapeAttr(s) {
  * @param {Set<string>|null} [declaredWords] — every declared marker's own
  *   name PLUS its auto-derived `end-<name>` closer (built once per plugin()
  *   call by `declaredKindWords`, from the registry `buildDeclaredMarkerRegistry`
- *   resolved). `null`/omitted for the zero-declared-markers case, which is
- *   every project not using #240 — behavior is then IDENTICAL to before this
- *   parameter existed.
+ *   resolved). The plugin always passes it (core declares `@columns`);
+ *   `null`/omitted means core kinds only.
  */
 function parseMarkerLine(line, declaredWords) {
   const trimmed = line.trim();
@@ -855,6 +854,26 @@ function resolveMarkerDeclaration(name, rawDecl, rawRegistry, originOf) {
 }
 
 /**
+ * Core's own declared markers: plain wrappers that need nothing the declared
+ * container does not already give (a class, variants, `@end-<name>`, LIFO
+ * nesting, the unknown-variant warning), so they are declared here rather
+ * than hand-parsed like the structural kinds above. Their names are reserved
+ * to core exactly like `KNOWN_KINDS`.
+ *
+ *   @columns [1-5] — a multi-column run with no other styling: the
+ *   `.gp-columns*` utilities (gutterpress-css.ts) on a plain `div`, not a
+ *   `.section`, so a book whose theme paints sections does not paint it.
+ *   A bare `@columns` is two columns.
+ */
+const CORE_MARKER_OWNER = 'Gutterpress';
+const CORE_DECLARED_MARKERS = {
+  columns: {
+    class: 'gp-columns',
+    variants: { 1: 'gp-columns-1', 2: 'gp-columns-2', 3: 'gp-columns-3', 4: 'gp-columns-4', 5: 'gp-columns-5' },
+  },
+};
+
+/**
  * Merge every loaded plugin's `markers` export into ONE flat, resolved
  * registry — `Map<name, ResolvedDecl>` — validating collisions at LOAD TIME
  * (#240 / P2): a declared name that shadows a core reserved name, or that
@@ -874,15 +893,16 @@ export function buildDeclaredMarkerRegistry(sources) {
   const rawRegistry = new Map();
   const originOf = new Map();
 
-  for (const { pluginName, markers } of sources) {
+  for (const { pluginName, markers } of [{ pluginName: CORE_MARKER_OWNER, markers: CORE_DECLARED_MARKERS }, ...sources]) {
     if (!markers) continue;
     for (const [name, rawDecl] of Object.entries(markers)) {
       validateDeclaredMarkerName(name, pluginName);
 
-      if (KNOWN_KINDS.includes(name)) {
+      if (KNOWN_KINDS.includes(name) || (pluginName !== CORE_MARKER_OWNER && name in CORE_DECLARED_MARKERS)) {
         throw new Error(
           `Plugin "${pluginName}" declares marker "@${name}", which is a core Gutterpress marker name ` +
-            `(${KNOWN_KINDS.map((k) => `@${k}`).join(', ')}). Core marker names cannot be shadowed — ` +
+            `(${[...KNOWN_KINDS, ...Object.keys(CORE_DECLARED_MARKERS)].map((k) => `@${k}`).join(', ')}). ` +
+            `Core marker names cannot be shadowed — ` +
             `rename the plugin's marker.`
         );
       }
@@ -966,9 +986,9 @@ function nearestDeclaredMarkerName(word, names) {
  * the eight short core keywords), `unknown_gp_class` has no such gate, and a
  * plugin's marker vocabulary deserves the same treatment: a document whose
  * ONLY marker is "@calout" must still be caught. Callers only reach here
- * with a non-empty registry (see the call site in layout_transform below),
- * so a project using no declarative-marker plugin pays nothing and behaves
- * exactly as it did before #240.
+ * with a non-empty registry (see the call site in layout_transform below);
+ * with no plugin markers that registry is core's alone, so it can only point
+ * a near-miss at a core declared name (`@column` → `@columns`).
  *
  * Reuses the exact "unclaimed marker-like line" scan `scanForMistypedMarkers`
  * uses (an inline token whose parent is a paragraph_open, `@word` anchored to
@@ -1049,14 +1069,13 @@ export default function plugin(md, pluginOptions = {}) {
 
   // #240: the already-merged, already-collision-checked registry
   // `renderer.ts`'s `createMarkdownRenderer` builds (via
-  // `buildDeclaredMarkerRegistry`, below) from every loaded plugin's
-  // `markers` export. `null` for the overwhelming common case (no loaded
-  // plugin declares any), normalized here so every call site below can do a
-  // plain truthiness check instead of re-deriving "empty Map vs null" logic.
+  // `buildDeclaredMarkerRegistry`, below) from core's own declared markers
+  // plus every loaded plugin's `markers` export. Never empty — `@columns` is
+  // always in it — so a caller that passes none still gets core's.
   const declaredMarkers =
     options.declaredMarkers instanceof Map && options.declaredMarkers.size > 0
       ? options.declaredMarkers
-      : null;
+      : buildDeclaredMarkerRegistry([]);
   const declaredWords = declaredKindWords(declaredMarkers);
 
   function markerBlock(state, startLine, endLine, silent) {
@@ -1199,8 +1218,7 @@ export default function plugin(md, pluginOptions = {}) {
     // #240: unlike scanForMistypedMarkers below, this runs BEFORE (and
     // regardless of) the __layoutMarkersUsed gate — see
     // scanForUnknownDeclaredMarkers's header for why a declared-marker typo
-    // must be caught even in a document with no OTHER marker at all. It is a
-    // no-op whenever declaredMarkers is null (every project not using #240).
+    // must be caught even in a document with no OTHER marker at all.
     scanForUnknownDeclaredMarkers(state, declaredMarkers);
 
     if (!state.env.__layoutMarkersUsed) return;

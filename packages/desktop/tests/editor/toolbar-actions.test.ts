@@ -461,16 +461,17 @@ test("applySectionBlock: inserts the @section/@end-section pair with cursor on t
   expect(v.state.doc.lineAt(sel.from).text).toBe("");
 });
 
-test("applyTwoColumnBlock: uses core's .gp-columns-2 so the section lays out in every project", () => {
+test("applyTwoColumnBlock: uses core's @columns 2, a plain wrapper that lays out in every project", () => {
   const v = makeMockView("before");
   applyTwoColumnBlock(v as unknown as EditorView);
   const doc = getDoc(v);
-  expect(doc).toContain("@section .gp-columns-2");
+  expect(doc).toContain("@columns 2");
   expect(doc).toContain("@column-break");
-  expect(doc).toContain("@end-section");
-  // Marker order: section open, column-break, section close.
-  expect(doc.indexOf("@section .gp-columns-2")).toBeLessThan(doc.indexOf("@column-break"));
-  expect(doc.indexOf("@column-break")).toBeLessThan(doc.lastIndexOf("@end-section"));
+  expect(doc).toContain("@end-columns");
+  expect(doc).not.toContain("@section");
+  // Marker order: columns open, column-break, columns close.
+  expect(doc.indexOf("@columns 2")).toBeLessThan(doc.indexOf("@column-break"));
+  expect(doc.indexOf("@column-break")).toBeLessThan(doc.lastIndexOf("@end-columns"));
 });
 
 test("applySpreadBlock: inserts @spread with a nested @page", () => {

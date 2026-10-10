@@ -5,9 +5,19 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.11.16] - 2026-10-09
+## [0.11.16] - 2026-10-10
 
 ### Added
+
+- **`@columns` lays content out in columns, and nothing else.** Write
+  `@columns 3` … `@end-columns` (1 to 5 columns; a bare `@columns` is two) and
+  the content flows into that many columns, with `@column-break` to move on
+  to the next one. It is a plain wrapper, not a section, so a theme that
+  styles sections does not give it a border or background. Any other number
+  is reported as a problem. The editor's `@` autocomplete offers it, and the
+  toolbar's **Two columns** block now inserts `@columns 2`. The count classes
+  behind it, `.gp-columns-1` to `.gp-columns-5`, also work on a section
+  (`.gp-columns-1`, `-4` and `-5` are new).
 
 - **Book settings → Features is split into three tabs.** *Installed & built-in*
   holds what the book already uses — the version pickers, the pre-release
