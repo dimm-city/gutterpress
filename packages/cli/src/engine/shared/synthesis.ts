@@ -56,6 +56,23 @@ export function planRectoBlanks(sites: RectoSite[]): boolean[] {
 }
 
 // ---------------------------------------------------------------------------
+// signature padding (print.signature / print.reserveLastPage)
+// ---------------------------------------------------------------------------
+
+/**
+ * How many blank pages the build appends after `pageCount` content pages:
+ * enough to reach a multiple of `signature`, and — with `reserveLastPage` — a
+ * full extra signature when that would add none, so the last page is always a
+ * blank one (one page when `signature` <= 1). `postprocess.ts` pads the PDF by
+ * this and the viewer shows the same sheets, so their page counts agree.
+ */
+export function signaturePadding(pageCount: number, signature = 1, reserveLastPage = false): number {
+  const size = signature > 1 ? signature : 1;
+  const padded = (size - (pageCount % size)) % size;
+  return padded === 0 && reserveLastPage ? size : padded;
+}
+
+// ---------------------------------------------------------------------------
 // GCPM running strings — string(name, which)
 // ---------------------------------------------------------------------------
 
