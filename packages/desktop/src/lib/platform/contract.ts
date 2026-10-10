@@ -73,6 +73,7 @@ import type {
   PreviewStartResult,
   BuildResult,
   ExportProgressEvent,
+  RestoreProgressEvent,
   UrlPreviewBlockedEvent,
   MarkdownFileLaunchEvent,
 } from "./shared-types";
@@ -122,6 +123,7 @@ export type {
   PreviewStartResult,
   BuildResult,
   ExportProgressEvent,
+  RestoreProgressEvent,
   UrlPreviewBlockedEvent,
   MarkdownFileLaunchEvent,
 };
@@ -415,6 +417,14 @@ export interface HostServices {
   // Event subscriptions (return an unsubscribe fn)
   onBuildProgress(cb: (data: ExportProgressEvent) => void): () => void;
   onUrlPreviewBlocked(cb: (data: UrlPreviewBlockedEvent) => void): () => void;
+  /**
+   * Subscribe to the open-time download of a book's missing pinned extensions.
+   * `startPreview` stays pending while main downloads them; these events say
+   * which package is in flight so the open's indicator can show it. NO replay,
+   * and an open with nothing to download emits nothing — subscribe before
+   * calling `startPreview`. The stream ends each run with an `end` event.
+   */
+  onRestoreProgress(cb: (data: RestoreProgressEvent) => void): () => void;
 
   /**
    * Subscribe to the main process's request to flush before the window closes

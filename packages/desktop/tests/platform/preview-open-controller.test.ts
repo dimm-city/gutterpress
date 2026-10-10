@@ -6,6 +6,7 @@ import {
 } from "../../electron/preview/controller";
 import type { SyncStatusPayload } from "../../electron/auto-sync/orchestrator";
 import type { DesktopPrefs } from "../../electron/prefs-store";
+import type { RestoreProgressEvent } from "../../src/lib/platform/shared-types";
 
 type LibModule = typeof import("gutterpress");
 
@@ -32,6 +33,10 @@ interface HarnessOpts {
   restoreThrows?: boolean;
   /** Gate the restore so a test can observe what happens while it is in flight. */
   restoreGate?: Promise<void>;
+  /** Events the fake lib reports through `onProgress` before it settles. */
+  restoreEvents?: RestoreProgressEvent[];
+  /** The progress sink throws (a closed window, a serialization error). */
+  emitRestoreProgressThrows?: boolean;
 }
 
 interface Harness {
@@ -39,6 +44,7 @@ interface Harness {
   calls: string[];
   prefsWrites: Array<(prefs: DesktopPrefs) => DesktopPrefs>;
   emitted: SyncStatusPayload[];
+  restoreEmitted: RestoreProgressEvent[];
   timers: Array<{ cb: () => void; ms: number; unrefed: boolean }>;
   mkdirCalls: string[];
   appendFileCalls: string[];
@@ -63,6 +69,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
   const calls: string[] = [];
   const prefsWrites: Array<(prefs: DesktopPrefs) => DesktopPrefs> = [];
   const emitted: SyncStatusPayload[] = [];
+  const restoreEmitted: RestoreProgressEvent[] = [];
   const timers: Array<{ cb: () => void; ms: number; unrefed: boolean }> = [];
   const mkdirCalls: string[] = [];
   const appendFileCalls: string[] = [];
@@ -74,8 +81,12 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
   let watchedDir: string | null = opts.watchedDir ?? null;
 
   const lib = {
-    restorePinnedExtensions: async (dir: string) => {
+    restorePinnedExtensions: async (
+      dir: string,
+      restoreOpts?: { onProgress?: (event: RestoreProgressEvent) => void },
+    ) => {
       calls.push(`restorePinnedExtensions:${dir}`);
+      for (const event of opts.restoreEvents ?? []) restoreOpts?.onProgress?.(event);
       await opts.restoreGate;
       if (opts.restoreThrows) throw new Error("restore blew up");
       return { manifestFile: "manifest.yaml", warnings: [], ...(opts.restore ?? { installed: [], failed: [] }) };
@@ -148,6 +159,11 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
       calls.push("emitSyncStatus");
       emitted.push(payload);
     },
+    emitRestoreProgress: (event) => {
+      calls.push(`emitRestoreProgress:${event.type}`);
+      restoreEmitted.push(event);
+      if (opts.emitRestoreProgressThrows) throw new Error("window is gone");
+    },
     getWatchedDir: () => watchedDir,
     armSyncInterval: async (dir) => {
       calls.push(`armSyncInterval:${dir}`);
@@ -178,6 +194,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     calls,
     prefsWrites,
     emitted,
+    restoreEmitted,
     timers,
     mkdirCalls,
     appendFileCalls,
@@ -631,4 +648,56 @@ test("overlapping opens are serialized, so one book's restore never runs twice a
   await Promise.all([first, second]);
   expect(h.calls.filter((c) => c === "restorePinnedExtensions:/book")).toHaveLength(2);
   expect(h.startCalls).toBe(2);
+});
+
+// ── Live download progress (push stream to the renderer) ────────────────────
+
+const downloadEvents: RestoreProgressEvent[] = [
+  { type: "start", specs: ["gp-a@1.0.0", "gp-b@2.0.0"] },
+  { type: "package", spec: "gp-a@1.0.0", index: 0, total: 2, state: "downloading" },
+  { type: "package", spec: "gp-a@1.0.0", index: 0, total: 2, state: "done" },
+  { type: "package", spec: "gp-b@2.0.0", index: 1, total: 2, state: "downloading" },
+  { type: "package", spec: "gp-b@2.0.0", index: 1, total: 2, state: "failed", message: "offline" },
+  { type: "end", installed: ["gp-a@1.0.0"], failed: [{ use: "gp-b@2.0.0", message: "offline" }] },
+];
+
+test("restore progress is pushed to the window, in order, BEFORE the preview server starts", async () => {
+  const h = makeHarness({
+    restoreEvents: downloadEvents,
+    restore: { installed: ["gp-a@1.0.0"], failed: [{ use: "gp-b@2.0.0", message: "offline" }] },
+  });
+  await h.controller.open({ input: "/book" });
+
+  expect(h.restoreEmitted).toEqual(downloadEvents);
+  expect(h.calls.lastIndexOf("emitRestoreProgress:end")).toBeLessThan(h.calls.indexOf("startPreviewServer"));
+});
+
+test("an open with nothing to download pushes no progress at all", async () => {
+  const h = makeHarness();
+  await h.controller.open({ input: "/book" });
+  expect(h.restoreEmitted).toEqual([]);
+});
+
+test("a progress sink that throws never breaks the download or the open", async () => {
+  const h = makeHarness({
+    restoreEvents: downloadEvents,
+    emitRestoreProgressThrows: true,
+    restore: { installed: ["gp-a@1.0.0"], failed: [] },
+  });
+  const res = await h.controller.open({ input: "/book" });
+  expect(res.previewStarted).toBe(true);
+  expect(res.restoredExtensions?.installed).toEqual(["gp-a@1.0.0"]);
+});
+
+test("a download that dies mid-way still ends the stream, so the indicator never sticks", async () => {
+  const h = makeHarness({ restoreEvents: downloadEvents.slice(0, 2), restoreThrows: true });
+  const res = await h.controller.open({ input: "/book" });
+  expect(res.previewStarted).toBe(true);
+  expect(h.restoreEmitted.map((e) => e.type)).toEqual(["start", "package", "end"]);
+});
+
+test("a throw before any download began pushes nothing", async () => {
+  const h = makeHarness({ restoreThrows: true });
+  await h.controller.open({ input: "/book" });
+  expect(h.restoreEmitted).toEqual([]);
 });

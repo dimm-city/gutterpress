@@ -737,6 +737,26 @@ export interface OpenRestoreSummary {
   failed: Array<{ use: string; message: string }>;
 }
 
+/**
+ * One step of the open-time download of a book's missing pinned extensions,
+ * pushed from main on `preview:restoreProgress` while `api:preview` is still
+ * working (so a progress indicator can say what the wait is). Mirrors the
+ * lib's `RestoreProgress` but is declared here so the renderer never imports
+ * the lib (§8). `spec` is `name@version`; `index` is 0-based. A book with
+ * nothing to download emits no events at all.
+ */
+export type RestoreProgressEvent =
+  | { type: "start"; specs: string[] }
+  | {
+      type: "package";
+      spec: string;
+      index: number;
+      total: number;
+      state: "downloading" | "done" | "failed";
+      message?: string;
+    }
+  | { type: "end"; installed: string[]; failed: Array<{ use: string; message: string }> };
+
 export interface PreviewStartSuccess {
   previewStarted: true;
   url: string;

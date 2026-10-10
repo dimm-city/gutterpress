@@ -20,7 +20,11 @@ import { operationLogSlug } from "../recovery-paths";
 import { unsyncedStateFor } from "../auto-sync/unsynced-status";
 import { upsertRecentFolder } from "../recent-folders";
 import type { DesktopPrefs } from "../prefs-store";
-import type { OpenRestoreSummary, PreviewStartResult } from "../../src/lib/platform/shared-types";
+import type {
+  OpenRestoreSummary,
+  PreviewStartResult,
+  RestoreProgressEvent,
+} from "../../src/lib/platform/shared-types";
 import type { TokenStore } from "gutterpress";
 
 type LibModule = typeof import("gutterpress");
@@ -63,6 +67,8 @@ export interface PreviewOpenControllerDeps {
   operationLogPath: (repoSlug: string) => string;
   /** Push "sync:status" to the live main window. */
   emitSyncStatus: (payload: SyncStatusPayload) => void;
+  /** Push "preview:restoreProgress" to the live main window (the download stage of an open). */
+  emitRestoreProgress: (event: RestoreProgressEvent) => void;
   /** The folder watcher's currently-tracked dir (electron/folder-watch/watcher.ts). */
   getWatchedDir: () => string | null;
   /** AutoSyncOrchestrator.armInterval — starts the periodic safety-sync timer. */
@@ -278,14 +284,30 @@ export class PreviewOpenController {
     lib: LibModule,
     openedDir: string,
   ): Promise<OpenRestoreSummary | undefined> {
+    // Forward each step to the window so the open's wait is explained as it
+    // happens. A throwing sink must never break the download itself.
+    let started = false;
+    let ended = false;
+    const forward = (event: RestoreProgressEvent) => {
+      if (event.type === "start") started = true;
+      if (event.type === "end") ended = true;
+      try {
+        this.deps.emitRestoreProgress(event);
+      } catch (e) {
+        console.warn("[api:preview] restore progress could not be delivered:", e);
+      }
+    };
     try {
-      const { installed, failed } = await lib.restorePinnedExtensions(openedDir);
+      const { installed, failed } = await lib.restorePinnedExtensions(openedDir, { onProgress: forward });
       if (installed.length === 0 && failed.length === 0) return undefined;
       for (const use of installed) console.log(`[api:preview] downloaded pinned extension ${use}`);
       for (const f of failed) console.warn(`[api:preview] could not download ${f.use}: ${f.message}`);
       return { installed, failed: failed.map(({ use, message }) => ({ use, message })) };
     } catch (e) {
       console.warn("[api:preview] restoring pinned extensions failed (non-fatal):", e);
+      // A started download that died without its `end` would leave the
+      // indicator on "Downloading…" for the rest of the open.
+      if (started && !ended) forward({ type: "end", installed: [], failed: [] });
       return undefined;
     }
   }
