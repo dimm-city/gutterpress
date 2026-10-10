@@ -9,6 +9,15 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Book settings → Features is split into three tabs.** *Installed & built-in*
+  holds what the book already uses — the version pickers, the pre-release
+  switch, *Check for updates* and the built-in formatting extras. *Search* is
+  the npm search that used to sit behind "Advanced"; it still runs only when
+  you first show it, never when a book opens. *Advanced* keeps install by name
+  and adding a plugin file or folder. The tab you were on is kept while the app
+  is open, and adding something from Search or Advanced stays on that tab and
+  says the new entry is under *Installed & built-in*. The tab strip is the
+  start screen's, now one shared component.
 - **The snippet picker is a searchable card grid.** Snippets now show as cards
   in a 3-column grid (2 or 1 when the window is narrower) under a heading per
   level — your book, each extension, core — instead of one long list. A card
