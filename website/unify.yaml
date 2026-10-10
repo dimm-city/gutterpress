@@ -2,21 +2,23 @@
 # The source is src/ (unify's fallback when there is no site/); the build
 # writes dist/. The Pages workflow adds --base-url for the published address.
 
-# Build on unify's built-in blog template without copying it. Its layouts,
-# includes and assets sit beneath ours, and a file of ours at the same path
-# wins: _layout.html, _includes/nav.html, index.html, 404.html and
-# assets/theme.css (the look) are ours; assets/style.css is the template's.
-# The built-in is the one shipped with the unify CLI, which the Pages
-# workflow pins, so the template is pinned with it.
-extends: blog
+# Build on unify's docs template without copying it (unify's `extends`). Its
+# layout, stylesheet, scripts and All-pages directory sit beneath src/; the
+# files the template names as the site's own replace its copies at the same
+# path: the four _includes (head, nav, docnav, footer), assets/theme.css
+# (the look) and the pages.
+extends: unify-docs-template@0.4.0
 
-# The template's share-card placeholder is not ours to publish.
+# The template's placeholder icon is not ours to publish; our share card
+# replaces its share-placeholder.png at the path its layout names.
 exclude:
   - _*
-  - assets/share-placeholder.png
+  - assets/favicon.svg
 
-# writes blog.html, the home page's latest-posts list and privacy/index.md
-# (rendered from the repository's PRIVACY.md) before every build
+# assets/unify/catalog.json, which the template's All-pages directory reads
+catalog: true
+
+# writes privacy/index.md from the repository's PRIVACY.md before every build
 generate: scripts/gen.mjs
 
 clean: true
