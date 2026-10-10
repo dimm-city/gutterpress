@@ -49,6 +49,7 @@ import type { PersistedProjectState } from "./page-types";
 interface ProjectLifecycleToast {
   info?(message: string): void;
   error(message: string): void;
+  show(message: string, type: "warning", duration?: number, action?: { label: string; onClick: () => void }): void;
 }
 
 /** The bits of `startPreview`'s result this controller reads. */
@@ -169,6 +170,8 @@ export interface ProjectLifecycleDeps {
   dismissLanding: (runPendingRecoveryScan?: boolean) => void;
   /** The live toast surface, or null when unavailable. */
   toast: () => ProjectLifecycleToast | null;
+  /** Open Book settings on its Features tab (where a missing extension's Install button is). */
+  openFeatures?: () => void;
   /** Clear stale problems/log-path state for the project a new open targets. */
   clearStaleProjectState: () => void;
   /**
@@ -449,17 +452,17 @@ export class ProjectLifecycleController {
       toast?.info?.(`Downloaded ${restore.installed.join(", ")}, pinned in this book's manifest.`);
     }
     // One notice however many failed: the advice is the same for each, so
-    // repeating it per package only stacks identical toasts.
+    // repeating it per package only stacks identical toasts. A warning, not an
+    // error — the book opened — with a button to where Install is.
     const [first, ...others] = restore.failed;
     if (first) {
-      const what =
+      const message =
         others.length === 0
-          ? `${first.use}: ${first.message.replace(/[.\s]+$/, "")}`
-          : `${restore.failed.length} extensions: ${restore.failed.map((f) => f.use).join(", ")}`;
-      toast?.error(
-        `Couldn't download ${what}. The book still opens — ` +
-          `use Install in Book settings > Features to try again.`,
-      );
+          ? `Couldn't download ${first.use} (${first.message.replace(/[.\s]+$/, "")}). The book opened without it.`
+          : `Couldn't download ${restore.failed.length} extensions (${restore.failed.map((f) => f.use).join(", ")}). ` +
+            `The book opened without them.`;
+      const open = this.deps.openFeatures;
+      toast?.show(message, "warning", undefined, open ? { label: "Open Features", onClick: open } : undefined);
     }
   }
 

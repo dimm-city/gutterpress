@@ -17,6 +17,7 @@
   import StatusBar from "$lib/components/StatusBar.svelte";
   import ProblemsPanel from "$lib/components/ProblemsPanel.svelte";
   import ActivityIndicator from "$lib/components/ActivityIndicator.svelte";
+  import { openFeaturesOn } from "$lib/routes/extensions-section-controller.svelte";
   import Spinner from "$lib/components/Spinner.svelte";
   import { ActivityGate } from "$lib/loading/activity-gate.svelte";
   import { deriveOpenStage, exportStage, UPDATING_STAGE } from "$lib/loading/activity-stage";
@@ -487,6 +488,7 @@
   // startFolderWatch, crashRecovery, dismissLanding, …) are safe closures,
   // the same pattern `pageNav`'s `savePrefs` already uses above.
   const lifecycle: ProjectLifecycleController = new ProjectLifecycleController({
+    openFeatures: () => openBookFeatures(),
     startPreviewHost: (input) => getPlatform().startPreview({ input }),
     stopPreviewHost: () => getPlatform().stopPreview(),
     adoptFolder: (dir) => api.app.adoptFolder({ dir }),
@@ -1024,10 +1026,17 @@
 
   // Book settings opens on Details; the save-status dialog sends writers to
   // Connections to see how an online backup gets set up.
-  let projectSettingsTab = $state<"details" | "connections">("details");
+  let projectSettingsTab = $state<"details" | "features" | "connections">("details");
   function openBookConnections(): void {
     openProjectConfig();
     projectSettingsTab = "connections";
+  }
+  // A failed extension download's toast sends writers to Features, where the
+  // "Needs install" row's Install button retries it.
+  function openBookFeatures(): void {
+    openFeaturesOn("installed");
+    openProjectConfig();
+    projectSettingsTab = "features";
   }
 
   function closeProjectSettings(): void {

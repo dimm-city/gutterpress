@@ -65,6 +65,8 @@ interface Harness {
     resetExtras: Spy<[]>;
     toastError: Spy<[string]>;
     toastInfo: Spy<[string]>;
+    toastShow: Spy<[string, string, { label: string; onClick: () => void } | undefined]>;
+    openFeatures: Spy<[]>;
     landingVisible: boolean;
     pageNav: { totalPages: number; currentPage: number };
     zoomView: { restoreSplitRatio: Spy<[number]> };
@@ -106,6 +108,8 @@ function make(): Harness {
   const resetExtras = spy<[]>();
   const toastError = spy<[string]>();
   const toastInfo = spy<[string]>();
+  const toastShow = spy<[string, string, { label: string; onClick: () => void } | undefined]>();
+  const openFeatures = spy<[]>();
   const getDesktopProjectState = spy<[string]>();
 
   const state: Harness["deps"] = {
@@ -130,6 +134,8 @@ function make(): Harness {
     clearStaleProjectState,
     resetExtras,
     toastError,
+    toastShow,
+    openFeatures,
     toastInfo,
     landingVisible: false,
     pageNav: { totalPages: 0, currentPage: 1 },
@@ -202,7 +208,10 @@ function make(): Harness {
     toast: () => ({
       error: (msg: string) => toastError(msg),
       info: (msg: string) => toastInfo(msg),
+      show: (msg: string, type: string, _duration?: number, action?: { label: string; onClick: () => void }) =>
+        toastShow(msg, type, action),
     }),
+    openFeatures: () => openFeatures(),
     clearStaleProjectState: () => clearStaleProjectState(),
     resetExtras: () => resetExtras(),
   };
@@ -947,7 +956,7 @@ test("opening a book that downloaded its pinned extensions says so in one toast"
   expect(deps.toastError.calls).toHaveLength(0);
 });
 
-test("a failed download is a toast that points at Install, and the book still opens", async () => {
+test("a failed download is a warning toast with an Open Features button, and the book still opens", async () => {
   const { ctrl, deps } = make();
   deps.startPreviewResult = {
     previewStarted: true,
@@ -960,10 +969,14 @@ test("a failed download is a toast that points at Install, and the book still op
 
   expect(ctrl.previewUrl).toBe("preview://book");
   expect(deps.toastInfo.calls).toHaveLength(0);
-  expect(deps.toastError.calls).toHaveLength(1);
-  const message = deps.toastError.calls[0]![0];
-  expect(message).toContain("Couldn't download gp-x@1.0.0: ECONNREFUSED. The book still opens");
-  expect(message).toContain("Install in Book settings > Features");
+  expect(deps.toastError.calls).toHaveLength(0);
+  expect(deps.toastShow.calls).toHaveLength(1);
+  const [message, type, action] = deps.toastShow.calls[0]!;
+  expect(message).toBe("Couldn't download gp-x@1.0.0 (ECONNREFUSED). The book opened without it.");
+  expect(type).toBe("warning");
+  expect(action?.label).toBe("Open Features");
+  action!.onClick();
+  expect(deps.openFeatures.calls).toHaveLength(1);
 });
 
 test("several failed downloads are ONE toast naming them, not a stack of identical advice", async () => {
@@ -984,10 +997,10 @@ test("several failed downloads are ONE toast naming them, not a stack of identic
   await ctrl.startFolderPreview("/proj");
 
   expect(deps.toastInfo.calls).toEqual([["Downloaded gp-ok@1.0.0, pinned in this book's manifest."]]);
-  expect(deps.toastError.calls).toHaveLength(1);
-  const message = deps.toastError.calls[0]![0];
-  expect(message).toContain("Couldn't download 2 extensions: gp-x@1.0.0, gp-y@2.0.0.");
-  expect(message).toContain("Install in Book settings > Features");
+  expect(deps.toastShow.calls).toHaveLength(1);
+  expect(deps.toastShow.calls[0]![0]).toBe(
+    "Couldn't download 2 extensions (gp-x@1.0.0, gp-y@2.0.0). The book opened without them.",
+  );
 });
 
 test("an ordinary open shows no extension toast", async () => {
