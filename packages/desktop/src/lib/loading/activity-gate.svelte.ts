@@ -18,6 +18,8 @@ export interface ActivityStages {
   open: ActivityStage | null;
   update: ActivityStage | null;
   exporting: ActivityStage | null;
+  /** A book's workspace (preview pane) exists — decides where an open's card sits. */
+  workspaceOpen: boolean;
 }
 
 export class ActivityGate {
@@ -27,6 +29,14 @@ export class ActivityGate {
   update = $state.raw<ActivityStage | null>(null);
   /** On screen now: the PDF export pill. */
   exporting = $state.raw<ActivityStage | null>(null);
+  /**
+   * Where the current open's card sits, fixed when the open starts: centred
+   * in the window when it began with no workspace (a first open), in the
+   * preview pane when a book was already showing. Fixed for the whole open,
+   * so the card never jumps when the workspace appears halfway through.
+   */
+  openOnApp = $state(false);
+  private openActive = false;
 
   private readonly openValue: DelayedValue<ActivityStage>;
   private readonly updateValue: DelayedValue<ActivityStage>;
@@ -41,6 +51,8 @@ export class ActivityGate {
   /** `use:gate.track={stages}` — see the file header. */
   track = (_node: Element, stages: ActivityStages) => {
     const apply = (s: ActivityStages) => {
+      if (s.open && !this.openActive) this.openOnApp = !s.workspaceOpen;
+      this.openActive = !!s.open;
       this.openValue.set(s.open);
       this.updateValue.set(s.update);
       this.exportValue.set(s.exporting);

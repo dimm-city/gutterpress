@@ -713,6 +713,7 @@
     exporting: exportController.exporting
       ? exportStage(exportController.pdfProgress, exportController.state)
       : null,
+    workspaceOpen: !!lifecycle.currentDir,
   });
   // The extension download is pushed from the host while `startPreview` is
   // pending (no replay), so subscribe before any open can start.
@@ -2700,17 +2701,19 @@
   onReportProblem={openReportProblem}
 />
 
-<!-- App-level open overlay: the wait before any workspace exists (no preview
-     pane yet), so it covers the area below the toolbar and sits under every
-     dialog. This is the ONE place a real cancel-and-close is offered — safe
-     here because no project session/preview exists yet (see handleCancelOpen).
-     Once the workspace exists the SAME stage continues in the pane overlay
-     below, so the fade-out is skipped at that hand-off. -->
+<!-- App-level open overlay: an open that began with no workspace (no preview
+     pane yet) — a first open. It covers the area below the toolbar, sits under
+     every dialog, and stays centred in the window for the WHOLE open (download,
+     layout, finishing) so the card never jumps when the workspace appears
+     (activity.openOnApp is fixed when the open starts). This is the ONE place a
+     real cancel-and-close is offered — safe while no project session/preview
+     exists yet (see handleCancelOpen); during layout, cancel only hides it. -->
 <ActivityIndicator
-  stage={activity.open && !lifecycle.currentDir && !landingVisible ? activity.open : null}
+  stage={activity.open && activity.openOnApp && !landingVisible ? activity.open : null}
   anchor="app"
-  fadeOut={!activity.open}
-  onCancel={activity.open?.id === "opening" || activity.open?.id === "downloading" ? handleCancelOpen : undefined}
+  onCancel={activity.open?.id === "opening" || activity.open?.id === "downloading"
+    ? handleCancelOpen
+    : activity.open?.id === "layout" ? handleCancelRender : undefined}
 />
 
 <!-- Non-blocking PDF export progress: a corner pill that leaves the preview
@@ -3073,7 +3076,7 @@
              overlay; it does NOT tear down the project. -->
         <ActivityIndicator stage={activity.update} kind="pill" />
         <ActivityIndicator
-          stage={activity.open && lifecycle.currentDir ? activity.open : null}
+          stage={activity.open && !activity.openOnApp && lifecycle.currentDir ? activity.open : null}
           onCancel={activity.open?.id === "layout" ? handleCancelRender : undefined}
         />
         <ContextMenu controller={contextMenu} />

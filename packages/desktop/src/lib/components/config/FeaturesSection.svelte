@@ -282,7 +282,7 @@
   .prerelease-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--app-text); margin-bottom: 6px; }
   .version-pick { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--app-text-muted); margin-top: 4px; }
   .version-pick select { max-width: 190px; font-size: 11px; padding: 2px 4px; }
-  .update-badge { color: var(--app-accent, var(--app-text)); }
+  .update-badge { color: var(--app-accent); }
   /* Opens via api.shell.openExternal (never a bare `<a target="_blank">` in
      the Electron shell — see ConnectionsSettings.svelte for the pattern). */
   button.inline-link {

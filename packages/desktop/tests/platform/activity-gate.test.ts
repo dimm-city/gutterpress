@@ -10,7 +10,7 @@ g.$state ??= Object.assign(<T>(v: T) => v, { raw: <T>(v: T) => v });
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const stage = (label: string): ActivityStage => ({ id: "opening", label, detail: null, progress: null });
-const none = { open: null, update: null, exporting: null };
+const none = { open: null, update: null, exporting: null, workspaceOpen: false };
 
 // Tiny timing so the real clock suffices; the rule itself is covered with a
 // manual clock in delayed-value.test.ts.
@@ -55,6 +55,21 @@ test("destroying the action cancels pending reveals", async () => {
   gate.destroy();
   await sleep(timing.delayMs + 15);
   expect(gate.g.open).toBeNull();
+});
+
+test("an open's card stays where it started: no jump when the workspace appears mid-open", () => {
+  const gate = new GatedHarness();
+  // A first open: no workspace yet → window-centred card…
+  gate.feed({ ...none, open: stage("Opening X…") });
+  expect(gate.g.openOnApp).toBe(true);
+  // …and still window-centred once the workspace exists during layout.
+  gate.feed({ ...none, open: stage("Laying out pages…"), workspaceOpen: true });
+  expect(gate.g.openOnApp).toBe(true);
+  // The next open behind a visible book uses the preview pane.
+  gate.feed({ ...none, workspaceOpen: true });
+  gate.feed({ ...none, open: stage("Opening Y…"), workspaceOpen: true });
+  expect(gate.g.openOnApp).toBe(false);
+  gate.destroy();
 });
 
 /** Drives `track` the way Svelte does: initial param on mount, `update` on change, `destroy` on unmount. */
