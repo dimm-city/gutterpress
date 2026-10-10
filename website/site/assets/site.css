@@ -1,477 +1,568 @@
-/* Gutterpress site: cut-and-paste paper and skill stickers, after
-   gp-dimm-city's styles/components/chrome.css and cards.css, on the docs
-   template's markup. Everything else is the docs template's stylesheet, which
-   this site extends (unify.yaml). This sheet is unlayered, so it wins over
-   the template's layered rules wherever both set a property, and it reads
-   only the values in theme.css. */
+/* Gutterpress site: a 1920s newsroom paste-up, after dark. Galleys of
+   yellowed newsprint are cut and pasted up on the night desk under a single
+   lamp, taped down, and marked up with typed notes and the editor's red
+   grease pencil. Everything else is the docs
+   template's stylesheet, which this site extends (unify.yaml). This sheet is
+   unlayered, so it wins over the template's layered rules wherever both set
+   a property, and it reads only the values in theme.css. */
 
-/* ── The wall ────────────────────────────────────────────────────────── */
+/* ── The night desk ─────────────────────────────────────────────────── */
+/* One lamp over the middle of the desk, falling off into the dark. */
 body {
-  background: var(--dc-wall) url("images/brick-wall.jpg") repeat;
-  background-size: 160px auto;
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 22%, var(--pu-lamp), transparent 70%),
+    radial-gradient(ellipse 120% 90% at 50% 40%, transparent 55%, rgb(0 0 0 / 0.55)),
+    var(--pu-desk);
+  background-attachment: fixed;
+  font-size: 1.05rem;
+}
+
+/* Film grain over everything, fixed like the desk. */
+body::before {
+  mask-image: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.45 0 0 0 0 0.4 0 0 0 0.5 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+  opacity: 0.35;
+}
+
+a {
+  color: var(--pu-red);
+  text-decoration-color: color-mix(in srgb, var(--pu-red) 45%, transparent);
+}
+
+a:hover {
+  color: var(--accent-bright);
 }
 
 :focus-visible {
-  outline: 3px solid var(--dc-magenta-deep);
+  outline: 2px dashed var(--pu-red-bright);
   outline-offset: 3px;
 }
 
-/* Code sits on an ink panel. */
-pre,
-.term .cmd {
-  color: var(--dc-paper);
+/* ── Type: headline face, text face, gothic labels ────────────────────── */
+h1 {
+  font-weight: 900;
+  color: var(--pu-ink);
+  letter-spacing: -0.01em;
+}
+
+h2,
+h3 {
+  color: var(--pu-ink);
+  letter-spacing: 0;
+}
+
+h3 {
+  font: 800 0.95rem/1.3 var(--pu-gothic);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+strong {
+  color: var(--pu-ink);
+}
+
+code {
+  color: var(--pu-ink);
+  background: #e2d6b9;
 }
 
 pre {
-  border: 0;
-  border-left: 4px solid var(--dc-cyan);
+  background: #e9dfc6;
+  border: 1px dashed var(--pu-ink-soft);
+  box-shadow: none;
 }
 
-:not(pre) > code {
-  color: var(--dc-blood);
+blockquote {
+  background: none;
+  border-left: 3px solid var(--pu-red);
+  font-style: italic;
 }
 
-/* ── Masthead: an ink strip with the links stuck on as stickers ───────── */
+table {
+  border-top: 2px solid var(--pu-ink);
+  border-bottom: 2px solid var(--pu-ink);
+}
+
+th {
+  background: none;
+  color: var(--pu-ink);
+  font: 800 0.75rem/1.3 var(--pu-gothic);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid var(--pu-ink);
+}
+
+/* ── The rubber stamp ─────────────────────────────────────────────────── */
+.kicker,
+.head-pill {
+  display: inline-block;
+  max-width: max-content;
+  padding: 0.15rem 0.5rem;
+  font: 800 0.72rem/1.3 var(--pu-gothic);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--pu-red);
+  background: none;
+  border: 2px solid var(--pu-red);
+  border-radius: 3px;
+  transform: rotate(-4deg);
+  opacity: 0.85;
+}
+
+/* ── The nameplate ────────────────────────────────────────────────────── */
 .site-head {
-  background: var(--dc-ink);
+  position: static;
+  background: var(--pu-galley);
   backdrop-filter: none;
-  border-bottom: 4px solid var(--dc-magenta-deep);
-  box-shadow: 0 4px 0 var(--dc-cyan);
+  border-bottom: 0;
+  box-shadow: var(--pu-shadow), inset 0 0 40px var(--pu-galley-edge);
+}
+
+.site-head-bar {
+  height: auto;
+  min-height: var(--head-h);
+  padding-block: 0.6rem;
+  flex-wrap: wrap;
 }
 
 .wordmark-tile {
-  background: none;
   width: 2.25rem;
   height: 2.25rem;
+  background: none;
 }
 
 .wordmark-name {
-  color: var(--dc-paper);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.head-pill {
-  color: var(--dc-ink);
-  background: var(--dc-yellow);
-  border: 0;
-  font-weight: 700;
-  text-transform: uppercase;
-  transform: rotate(-3deg);
+  font: 400 2.1rem/1 var(--pu-nameplate);
+  color: var(--pu-ink);
+  letter-spacing: 0;
 }
 
 .head-links {
-  gap: 0.6rem;
+  gap: 0;
 }
 
-/* A skill sticker: ink chip, crooked, hard shadow. */
-.head-links > a,
-.subnav a,
-.card .card-meta {
-  display: inline-flex;
-  align-items: center;
-  min-height: 0;
-  padding: 0.3rem 0.65rem;
-  font: 700 0.72rem/1.3 var(--mono);
+.head-links > a {
+  min-height: 2rem;
+  padding: 0 0.85rem;
+  font: 600 0.85rem/1 var(--pu-gothic);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--dc-paper);
-  background: var(--dc-ink-dark);
-  border: 1px solid var(--dc-hud-blue);
-  border-radius: 0;
-  box-shadow: 2px 2px 0 #000;
-  transform: rotate(-0.5deg);
+  color: var(--pu-ink);
+  border-left: 1px solid var(--pu-ink);
 }
 
 .head-links > a::before {
   content: none;
 }
 
-.head-links > a:nth-child(4n + 2) {
-  transform: rotate(0.7deg);
+.head-links > a:first-child {
+  border-left: 0;
 }
 
-.head-links > a:nth-child(4n + 3) {
-  transform: rotate(-0.9deg);
-}
-
-.head-links > a:hover,
-.subnav a:hover {
-  color: var(--dc-paper);
-  background: var(--dc-magenta-deep);
-  border-color: var(--dc-paper);
+.head-links > a:hover {
+  color: var(--pu-red);
 }
 
 .head-links > a.head-cta {
-  color: var(--dc-ink);
-  background: var(--dc-yellow);
-  border-color: var(--dc-ink);
+  margin-left: 0.5rem;
+  border: 0;
+  background: var(--pu-ink);
+  color: var(--pu-galley);
 }
 
 .head-links > a.head-cta:hover {
-  color: var(--dc-ink);
-  background: var(--dc-fungi);
+  background: var(--pu-red);
+  color: var(--pu-galley);
+}
+
+/* The folio line under the nameplate, between a thick and a thin rule. */
+.dateline {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  max-width: calc(var(--site) + 2 * var(--gutter));
+  margin: 0 auto;
+  padding: 0.3rem var(--gutter) 0.45rem;
+  font: 600 0.7rem/1.3 var(--pu-gothic);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--pu-ink);
+  border-top: 3px solid var(--pu-ink);
+  box-shadow: inset 0 1px 0 var(--pu-galley), inset 0 2px 0 var(--pu-ink);
+  border-bottom: 1px solid var(--pu-ink);
 }
 
 .subnav {
-  border-top-color: var(--dc-ink-dark);
+  border-top: 0;
 }
 
-.subnav svg {
-  stroke: currentColor;
+.subnav a {
+  background: var(--pu-galley);
+  border-color: var(--pu-ink);
+  font-family: var(--pu-gothic);
+  text-transform: uppercase;
+  color: var(--pu-ink);
 }
 
 @media (max-width: 40rem) {
-  .head-pill {
-    display: none;
-  }
-
+  .head-pill,
   .head-links > a:not(.head-cta) {
     display: none;
   }
+
+  .dateline span:last-child {
+    display: none;
+  }
 }
 
-/* ── Paper: flyer stock pasted to the wall, taped at the top ──────────── */
+/* ── Galleys: type on paper, cut out and pasted down ──────────────────── */
 body:not(.home) .shell > main,
+.hero-copy,
 .card,
-.term {
+.term,
+.docnav ul {
   position: relative;
-  background: var(--dc-paper);
-  border: 2px solid var(--dc-ink);
-  box-shadow: var(--dc-shadow-poster);
+  background: var(--pu-galley);
+  border: 0;
+  box-shadow: var(--pu-shadow), inset 0 0 40px var(--pu-galley-edge);
 }
 
 body:not(.home) .shell > main {
-  padding: 2rem clamp(1rem, 3vw, 2.25rem) 2.5rem;
+  padding: 2.25rem clamp(1rem, 3vw, 2.5rem) 2.75rem;
+  transform: rotate(-0.15deg);
 }
 
-body:not(.home) .shell > main::before {
+/* Tape across the top of the galley. */
+body:not(.home) .shell > main::before,
+.hero-copy::before {
   content: "";
   position: absolute;
-  top: -12px;
+  top: -11px;
   left: 50%;
-  width: 7rem;
+  width: 6.5rem;
   height: 22px;
-  margin-left: -3.5rem;
-  background: color-mix(in srgb, var(--dc-yellow) 35%, var(--dc-paper));
-  border-inline: 2px dotted var(--dc-paper-aged);
-  transform: rotate(-3deg);
+  margin-left: -3.25rem;
+  background: var(--pu-tape);
+  box-shadow: 0 0 0 1px rgb(26 21 18 / 0.06);
+  transform: rotate(-2deg);
 }
 
-/* Page title: uppercase, with a magenta rule under it. */
-h1 {
-  color: var(--dc-ink);
-  font-weight: 700;
-  text-transform: uppercase;
+/* Blue pencil in the margin: a note to the compositor. */
+body:not(.home) .shell > main::after {
+  content: "GALLEY PROOF — CHECK HEDS";
+  position: absolute;
+  top: 0.4rem;
+  right: 0.9rem;
+  font: 400 0.8rem/1 var(--pu-type);
+  color: var(--pu-ink-soft);
+  transform: rotate(-1deg);
+  pointer-events: none;
 }
 
+/* Page headline, with a thick-and-thin rule under it. */
 body:not(.home) .shell > main > h1 {
+  margin-top: 0.75rem;
   padding-bottom: 0.6rem;
-  border-bottom: 4px solid var(--dc-magenta-deep);
+  border-bottom: 4px double var(--pu-ink);
+  font-size: clamp(2.1rem, 5vw, 3.2rem);
+  line-height: 1.05;
 }
 
-/* Section headings: a strip of ink paper stuck on crooked. */
+/* A drop cap on the opening paragraph. */
+body:not(.home) .shell > main > h1 + p::first-letter {
+  float: left;
+  margin: 0.08em 0.1em 0 0;
+  font: 900 3.4em/0.8 var(--display);
+  color: var(--pu-ink);
+}
+
+/* Section heads: a rule across the column, headline face. */
 main > h2 {
-  display: inline-block;
-  max-width: 100%;
-  padding: 0.3rem 0.8rem;
-  border-top: 0;
-  background: var(--dc-ink-dark);
-  color: var(--dc-paper);
-  font-size: 1.15rem;
-  text-transform: uppercase;
-  transform: rotate(-0.6deg);
+  margin-top: 2.75rem;
+  padding-top: 0.5rem;
+  border-top: 3px solid var(--pu-ink);
+  font-size: clamp(1.4rem, 1rem + 1.4vw, 1.8rem);
 }
 
-main > h2::before {
+main h2::before {
   content: none;
 }
 
-main > h2:nth-of-type(3n + 2) {
-  background: var(--dc-hud-blue-dark);
-  transform: rotate(0.5deg);
-}
-
-main > h2:nth-of-type(3n + 3) {
-  background: var(--dc-blood);
-}
-
-.kicker {
-  display: inline-block;
-  max-width: max-content;
-  padding: 0.25rem 0.55rem 0.2rem;
-  font: 700 0.72rem/1.3 var(--mono);
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--dc-hud-blue);
-  background: var(--dc-paper);
-  border: 1px solid var(--dc-ink);
-  box-shadow: 2px 3px 0 var(--dc-shadow-ink);
-  transform: rotate(-2.5deg);
-}
-
-blockquote {
-  border-left-color: var(--dc-crimson);
-}
-
-table {
-  border: 2px solid var(--dc-ink);
-}
-
-th {
-  background: var(--dc-ink);
-  color: var(--dc-paper);
-  font-family: var(--mono);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-td {
-  color: var(--text-2);
-}
-
-/* ── Sidebar: a paper strip of stickers ───────────────────────────────── */
+/* ── Sidebar: the "Inside" index box ──────────────────────────────────── */
 .docnav-label {
-  display: inline-block;
-  padding: 0.15rem 0.5rem;
-  color: var(--dc-paper);
-  background: var(--dc-magenta-deep);
-  transform: rotate(-1.5deg);
-}
-
-.docnav > div:nth-child(2) .docnav-label {
-  background: var(--dc-hud-blue-dark);
-}
-
-.docnav > div:nth-child(3) .docnav-label {
-  background: var(--dc-blood);
+  padding-bottom: 0.2rem;
+  font: 600 0.78rem/1.3 var(--pu-gothic);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--pu-light);
+  border-bottom: 2px solid var(--pu-light);
 }
 
 .docnav ul {
-  background: var(--dc-paper);
-  border: 2px solid var(--dc-ink);
-  box-shadow: var(--dc-shadow-poster);
-  padding: 0.4rem 0;
+  padding: 0.35rem 0;
+  transform: rotate(0.3deg);
+}
+
+.docnav > div:nth-child(2) ul {
+  transform: rotate(-0.4deg);
 }
 
 .docnav li a {
-  color: var(--dc-ink);
+  color: var(--pu-ink);
+  font-family: var(--sans);
 }
 
 .docnav li a:hover,
 .docnav li a[aria-current] {
-  color: var(--dc-magenta-deep);
-  background: var(--dc-paper-alt);
+  color: var(--pu-red);
+  background: var(--pu-newsprint);
 }
 
 .docnav-all a {
-  color: var(--dc-ink);
-  font-weight: 700;
+  font: 400 0.85rem/1 var(--pu-type);
+  color: var(--pu-light);
 }
 
-/* ── Home: a poster wall ──────────────────────────────────────────────── */
+/* ── Home: the front page being laid out ──────────────────────────────── */
 body.home .hero {
   background: none;
 }
 
 .hero-copy {
-  position: relative;
-  padding: 2rem clamp(1rem, 3vw, 2rem);
-  background: var(--dc-paper);
-  border: 2px solid var(--dc-ink);
-  box-shadow: var(--dc-shadow-poster);
-  transform: rotate(-0.8deg);
+  padding: 2.25rem clamp(1rem, 3vw, 2.25rem);
+  transform: rotate(-0.5deg);
 }
 
 .hero h1 {
-  font-size: clamp(2.2rem, 5.5vw, 3.6rem);
-  color: var(--dc-ink);
+  font: 900 clamp(2.5rem, 6vw, 4.2rem)/1 var(--display);
+  color: var(--pu-ink);
   background: none;
   -webkit-text-fill-color: currentColor;
 }
 
-/* A cut-out word: a scrap of yellow paper glued behind it. */
+/* The editor's circle round the word that matters. */
 .hero h1 em {
-  font-style: normal;
-  display: inline-block;
-  padding: 0 0.25em;
-  background: var(--dc-yellow);
-  border: 2px solid var(--dc-ink);
-  box-shadow: 3px 3px 0 var(--dc-ink);
-  transform: rotate(-2deg);
+  font-style: italic;
+  padding: 0 0.15em;
+  border: 2px solid var(--pu-red);
+  border-radius: 50% 45% 55% 48% / 55% 50% 48% 52%;
+}
+
+.hero .lede {
+  color: var(--pu-ink-soft);
 }
 
 .term {
-  background: var(--dc-ink-dark);
-  transform: rotate(1.2deg);
+  transform: rotate(1deg);
+}
+
+.term::after {
+  content: "FIG. 1 — run it from a script, too";
+  position: absolute;
+  bottom: -1.8rem;
+  left: 0.5rem;
+  font: 400 0.85rem/1 var(--pu-type);
+  color: var(--pu-light-soft);
 }
 
 .term-head {
-  background: var(--dc-ink);
-  border-bottom-color: var(--dc-ink);
-}
-
-.term-title,
-.term .out {
-  color: var(--dc-paper-aged);
+  background: var(--pu-newsprint);
+  border-bottom: 1px solid var(--border-faint);
 }
 
 .term .prompt {
-  color: var(--dc-fungi);
+  color: var(--pu-red);
 }
 
-/* Section titles on the wall: the spray banner — chipped corner, a skewed
-   tab off its end. */
+.term .cmd {
+  color: var(--pu-ink);
+}
+
+/* Section flags across the page: gothic caps between a heavy and a light rule. */
 .home-section h2 {
-  position: relative;
-  align-self: flex-start;
-  max-width: calc(100% - 18px);
-  padding: 0.6rem 1.3rem 0.7rem;
-  background: var(--dc-magenta-deep);
-  color: var(--dc-paper);
-  font-size: clamp(1.3rem, 3vw, 1.8rem);
+  width: 100%;
+  padding: 0.4rem 0 0.35rem;
+  font: 600 clamp(1.2rem, 2.6vw, 1.6rem)/1.2 var(--pu-gothic);
   text-transform: uppercase;
-  clip-path: polygon(0 0, 100% 0, 100% 100%, 22px 100%, 0 calc(100% - 14px));
+  letter-spacing: 0.22em;
+  color: var(--pu-light);
+  border-top: 4px double var(--pu-light);
+  border-bottom: 1px solid var(--pu-light);
 }
 
 .home-section h2::before {
   content: none;
 }
 
-.home-section:nth-of-type(3n + 2) h2 {
-  background: var(--dc-hud-blue-dark);
-}
-
-.home-section:nth-of-type(3n) h2 {
-  background: var(--dc-blood);
-}
-
 .home-section .kicker {
-  margin-bottom: -1rem;
-}
-
-/* Cards: skill cards — paper, a coloured top edge, tilted a little. */
-.card-grid {
-  gap: 1.75rem;
-}
-
-.card {
-  overflow: visible;
-  border-top: 6px solid var(--dc-magenta-deep);
-  transform: rotate(-0.4deg);
-}
-
-.card::before {
-  content: none;
-}
-
-.card:nth-child(3n + 2) {
-  border-top-color: var(--dc-hud-blue-dark);
-  transform: rotate(0.5deg);
-}
-
-.card:nth-child(3n + 3) {
-  border-top-color: var(--dc-crimson);
-  transform: rotate(-0.2deg);
-}
-
-a.card:hover {
-  transform: rotate(0deg) translateY(-2px);
-}
-
-.card h3 {
-  color: var(--dc-ink);
-  text-transform: uppercase;
-}
-
-.card p {
-  color: var(--dc-ink-smoke);
-}
-
-.card .card-meta {
-  position: absolute;
-  top: -0.95rem;
-  left: 0.9rem;
-  transform: rotate(-2deg);
-}
-
-/* ── Buttons: paper cut-outs ──────────────────────────────────────────── */
-.btn {
-  border: 2px solid var(--dc-ink);
-  font-family: var(--display);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  box-shadow: var(--dc-shadow-poster);
-}
-
-.btn-primary,
-.btn-primary:hover {
-  background: var(--dc-crimson);
-  color: #fff;
-}
-
-.btn-secondary {
-  background: var(--dc-paper);
-  color: var(--dc-ink);
-  border-color: var(--dc-ink);
-}
-
-.btn-secondary:hover {
-  color: var(--dc-magenta-deep);
-  border-color: var(--dc-ink);
-}
-
-.btn:hover {
-  filter: none;
-  transform: translate(-1px, -1px) rotate(-0.5deg);
-}
-
-/* ── Footer: paper with a strip of hazard tape ────────────────────────── */
-.site-foot {
-  background: var(--dc-paper);
-  border-top: 2px solid var(--dc-ink);
-  box-shadow: 0 -4px 0 var(--dc-crimson);
-}
-
-.site-foot .inner::before {
-  content: "";
-  width: min(20rem, 80%);
-  height: 4px;
-  background: repeating-linear-gradient(90deg, var(--dc-crimson) 0 6px, transparent 6px 10px);
-}
-
-.foot-links a,
-.site-foot p {
-  color: var(--dc-ink-dark);
-}
-
-.foot-links a:hover {
-  color: var(--dc-magenta-deep);
+  margin-bottom: -0.75rem;
+  color: var(--pu-red-bright);
+  border-color: var(--pu-red-bright);
 }
 
 .home-note {
   margin: 0.25rem 0 0;
-  font-size: 0.9rem;
-  color: var(--dc-ink-dark);
+  font-size: 0.95rem;
+  color: var(--pu-light-soft);
 }
 
-.chip-row .label,
+.home-note a {
+  color: var(--pu-light);
+}
+
+/* Type slugs, cut from a proof. */
+.chip-row .label {
+  font-family: var(--pu-gothic);
+  color: var(--pu-light);
+}
+
 .chip-row .aside {
-  color: var(--dc-ink-dark);
+  font: 400 0.85rem/1.2 var(--pu-type);
+  color: var(--pu-light-soft);
 }
 
 .chip {
-  color: var(--dc-paper);
-  background: var(--dc-ink-dark);
-  border-color: var(--dc-hud-blue);
-  box-shadow: 2px 2px 0 #000;
+  color: var(--pu-ink);
+  background: var(--pu-galley);
+  border: 0;
+  box-shadow: 1px 3px 6px rgb(0 0 0 / 0.5);
 }
 
 .chip:nth-child(odd) {
-  transform: rotate(-1deg);
+  transform: rotate(-1.2deg);
 }
 
 .chip:nth-child(even) {
-  transform: rotate(0.8deg);
+  transform: rotate(0.9deg);
+}
+
+/* Cards: column galleys, each numbered in blue pencil. */
+.card-grid {
+  gap: 1.75rem;
+  counter-reset: galley;
+}
+
+.card {
+  overflow: visible;
+  counter-increment: galley;
+  transform: rotate(-0.35deg);
+}
+
+.card::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  left: -10px;
+  width: 3.2rem;
+  height: 16px;
+  background: var(--pu-tape);
+  box-shadow: 0 0 0 1px rgb(26 21 18 / 0.06);
+  transform: rotate(-35deg);
+  transform-origin: center;
+  transition: none;
+}
+
+.card::after {
+  content: "GALLEY " counter(galley, upper-roman);
+  position: absolute;
+  top: 0.45rem;
+  right: 0.7rem;
+  font: 400 0.72rem/1 var(--pu-type);
+  color: var(--pu-ink-soft);
+}
+
+.card:nth-child(3n + 2) {
+  transform: rotate(0.45deg);
+}
+
+.card:nth-child(3n + 3) {
+  transform: rotate(-0.15deg);
+}
+
+.card:hover,
+.card.featured {
+  border: 0;
+}
+
+.card.featured {
+  outline: 2px solid var(--pu-red);
+  outline-offset: 4px;
+}
+
+.card h3 {
+  font: 700 1.3rem/1.2 var(--heading-font);
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--pu-ink);
+}
+
+.card p {
+  color: var(--pu-ink-soft);
+}
+
+.card .card-meta {
+  font: 800 0.7rem/1.3 var(--pu-gothic);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--pu-red);
+}
+
+.card .more {
+  font-family: var(--pu-gothic);
+  color: var(--pu-red);
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────── */
+.btn {
+  border: 2px solid var(--pu-ink);
+  font: 800 0.85rem/1 var(--pu-gothic);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.btn-primary,
+.btn-primary:hover {
+  background: var(--pu-ink);
+  color: var(--pu-galley);
+  filter: none;
+}
+
+.btn-primary:hover {
+  background: var(--pu-red);
+  border-color: var(--pu-red);
+}
+
+.btn-secondary {
+  background: var(--pu-galley);
+  color: var(--pu-ink);
+}
+
+.btn-secondary:hover {
+  color: var(--pu-red);
+  border-color: var(--pu-red);
+}
+
+/* ── Footer: the bottom strip, under a thick-and-thin rule ────────────── */
+.site-foot {
+  background: var(--pu-galley);
+  border-top: 4px double var(--pu-ink);
+  box-shadow: var(--pu-shadow), inset 0 0 40px var(--pu-galley-edge);
+}
+
+.foot-links a {
+  font: 600 0.78rem/1 var(--pu-gothic);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--pu-ink);
+}
+
+.foot-links a:hover {
+  color: var(--pu-red);
+}
+
+.site-foot p {
+  font-family: var(--sans);
+  color: var(--pu-ink-soft);
 }

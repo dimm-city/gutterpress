@@ -2,71 +2,72 @@
    theme contract. The template's assets/style.css imports this file into its
    `theme` layer, so every value here wins over the template's default.
 
-   The values are the Dimm City palette (gp-dimm-city, styles/dc-palette.css):
-   a concrete brick wall, flyer-stock paper pasted on it, warm riso ink, and
-   the dimm.city signature colours for stickers and spray banners. */
+   A 1920s newsroom after dark: galleys of yellowed newsprint cut and pasted
+   up on the night desk under a single lamp, typed notes and the editor's red
+   grease pencil. The inks are the Dimm City palette (gp-dimm-city,
+   styles/dc-palette.css): riso warm black and crimson. */
 :root {
   color-scheme: light;
 
-  /* Dimm City palette */
-  --dc-wall: #c8c5bf;          /* ash-concrete — the brick wall */
-  --dc-paper: #f0eee9;         /* flyer stock pasted on the wall */
-  --dc-paper-alt: #e2ded7;     /* layered paper */
-  --dc-paper-aged: #c8c2b8;
-  --dc-ink: #1a1512;           /* riso warm black */
-  --dc-ink-dark: #2b231d;
-  --dc-ink-smoke: #4d4339;
-  --dc-crimson: #e1261c;
-  --dc-blood: #901a12;
-  --dc-magenta-deep: #8a0a9a;
-  --dc-cyan: #00bcd4;
-  --dc-hud-blue: #1f6f94;
-  --dc-hud-blue-dark: #14516e;
-  --dc-yellow: #ffd700;
-  --dc-fungi: #c8e040;
-  --dc-shadow-ink: #6b6864;    /* opaque ink-on-wall shadow */
-  --dc-shadow-poster: 3px 4px 0 var(--dc-shadow-ink);
+  /* The desk and the paper */
+  --pu-desk: #14110f;          /* the night desk */
+  --pu-lamp: rgb(255 214 150 / 0.16);
+  --pu-galley: #efe6d0;        /* newsprint, gone yellow */
+  --pu-galley-edge: rgb(120 86 40 / 0.28);
+  --pu-newsprint: #e6dbc1;
+  --pu-ink: #1a1512;           /* Dimm City riso warm black */
+  --pu-ink-soft: #4a3f35;
+  --pu-light: #e9dfc8;         /* type set straight on the desk */
+  --pu-light-soft: #a99c86;
+  --pu-red: #b3141b;           /* grease pencil (Dimm City crimson, deepened) */
+  --pu-red-bright: #e1261c;    /* Dimm City crimson, on the dark desk */
+  --pu-tape: rgb(236 226 190 / 0.55);
+  --pu-shadow: 3px 8px 18px rgb(0 0 0 / 0.6), 0 1px 2px rgb(0 0 0 / 0.4);
 
   /* palette: surfaces */
-  --bg: var(--dc-wall);
-  --bg-panel: var(--dc-ink-dark);
-  --bg-card: var(--dc-paper);
-  --border: var(--dc-ink);
-  --border-faint: var(--dc-paper-aged);
-  --border-strong: var(--dc-ink);
-  /* palette: text */
-  --text: var(--dc-ink);
-  --text-2: var(--dc-ink-dark);
-  --dim: var(--dc-ink-smoke);
+  --bg: var(--pu-desk);
+  --bg-panel: #e4d8bc;
+  --bg-card: var(--pu-galley);
+  --border: var(--pu-ink);
+  --border-faint: #cdbf9f;
+  --border-strong: var(--pu-ink);
+  /* palette: text (inside a galley) */
+  --text: var(--pu-ink);
+  --text-2: #2b231d;
+  --dim: var(--pu-ink-soft);
   /* palette: accents */
-  --accent: var(--dc-magenta-deep);
-  --accent-bright: var(--dc-blood);
-  --accent-tint: var(--dc-paper-alt);
-  --accent-2: var(--dc-hud-blue-dark);
-  --code: var(--dc-blood);
-  --code-bg: var(--dc-paper-alt);
-  --focus: var(--dc-magenta-deep);
-  --gradient: var(--dc-crimson);
-  /* page background: the wall itself is drawn by site.css */
+  --accent: var(--pu-red);
+  --accent-bright: #7a0c10;
+  --accent-tint: var(--pu-newsprint);
+  --accent-2: var(--pu-ink-soft);
+  --code: var(--pu-ink);
+  --code-bg: #e4d8bc;
+  --focus: var(--pu-red-bright);
+  --gradient: var(--pu-ink);
+  /* page background: the lamp and the grain are drawn by site.css */
   --glow: none;
   --grid-lines: transparent;
-  /* type */
-  --sans: "Titillium Web", system-ui, sans-serif;
-  --mono: "Tomorrow", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --display: "Tomorrow", "Titillium Web", sans-serif;
+  /* type: period news faces — a fat Didone for heads, a news text face,
+     condensed wood-type gothic for labels, a typewriter for notes */
+  --sans: "Old Standard TT", Georgia, serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --display: "Abril Fatface", "Bodoni Moda", Georgia, serif;
   --h1-font: var(--display);
-  --heading-font: var(--display);
+  --heading-font: "Bodoni Moda", Georgia, serif;
+  --pu-gothic: "Oswald", "Arial Narrow", sans-serif;
+  --pu-nameplate: "UnifrakturMaguntia", "Bodoni Moda", serif;
+  --pu-type: "Special Elite", "Courier New", monospace;
   /* shape: cut paper has square corners */
   --radius-sm: 0;
   --radius: 0;
   --radius-lg: 0;
   --radius-pill: 0;
-  --shadow-pop: var(--dc-shadow-poster);
-  /* syntax colours, on the ink code panel */
-  --syn-cmnt: #a89e92;
-  --syn-str: var(--dc-fungi);
-  --syn-kwd: #ff8b7e;
-  --syn-num: var(--dc-cyan);
-  --syn-class: var(--dc-yellow);
-  --syn-func: #e7a6f0;
+  --shadow-pop: var(--pu-shadow);
+  /* syntax colours, on a newsprint galley */
+  --syn-cmnt: #7a6c5a;
+  --syn-str: #3d5a2a;
+  --syn-kwd: var(--pu-red);
+  --syn-num: #1f4f6e;
+  --syn-class: #7a5a20;
+  --syn-func: #6a1a5a;
 }
