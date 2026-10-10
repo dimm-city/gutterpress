@@ -183,6 +183,20 @@ The desktop app does the same under **Project settings → Features**: opening
 the tab checks npm once, an entry with a newer version shows it with an
 **Update** button, and *Check for updates* re-checks.
 
+Every npm package there also has a **Version** menu listing its published
+versions, newest first. Choosing one is `ext add name@version`: Gutterpress
+downloads, verifies and load-tests it, and only then moves the pin. If that
+fails, a message says why and the book keeps the version — and the downloaded
+copy — it had. The menu lists stable releases only; switch on **Include
+pre-release versions** (`-alpha`, `-beta`, `-rc`) to see the rest and to have
+the update check count them as newer. That switch is an app preference, shared
+by all your books, and off by default. The version a book pins is always
+listed, even a pre-release.
+
+If a book's pin names a version whose downloaded copy is missing — a changed
+`manifest.yaml`, or a copy that was deleted or is broken — its row says **Needs
+install** with an **Install** button that downloads exactly the pinned version.
+
 `ext outdated` exits 1 when a package is behind, so a CI step can watch a
 book's pins without updating anything.
 
