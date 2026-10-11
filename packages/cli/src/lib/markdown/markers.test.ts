@@ -2884,6 +2884,93 @@ describe("@columns (core declared marker)", () => {
     expect(html).toMatch(/<div class="section"[^>]*><div class="gp-columns gp-columns-2"[\s\S]*<div class="gp-column-break"/);
   });
 
+  // Everything between @columns and @end-columns is laid out in its columns, so
+  // a section opened inside the run nests in it instead of closing it.
+  describe("sections nest inside @columns", () => {
+    const markers = { stat: { section: true, class: "s" }, box: { class: "b" } };
+    const renderWith = (src: string) => {
+      const md = createMarkdownRenderer([{ name: "demo", plugin: () => {}, options: {}, markers } as LoadedPlugin]);
+      const env: { layoutWarnings?: Array<{ type: string; message: string }> } = {};
+      // Positions and source ranges are not what these assert.
+      const html = md.render(src, env).replace(/ data-source-(?:range|line)="[^"]*"/g, "");
+      return { html, warnings: (env.layoutWarnings ?? []).map((w) => w.type) };
+    };
+    const COLS = '<div class="gp-columns gp-columns-2" data-columns="2">';
+
+    test("two sections are siblings inside one columns div", () => {
+      const { html, warnings } = renderWith("@page\n\n@columns 2\n\n@section\n\nA\n\n@section\n\nB\n\n@end-columns\n");
+      expect(html).toBe(
+        `<div class="page">${COLS}<div class="section"><p>A</p>\n</div><div class="section"><p>B</p>\n</div></div></div>`
+      );
+      expect(warnings).toEqual([]);
+    });
+
+    test("a section-kind declared marker nests too, and a section marker can follow a plain @section", () => {
+      const { html, warnings } = renderWith("@columns 2\n\n@section\n\nA\n\n@stat\n\nB\n\n@end-stat\n\n@end-columns\n");
+      expect(html).toBe(
+        `${COLS}<div class="section"><p>A</p>\n</div><div class="section s"><p>B</p>\n</div></div>`
+      );
+      expect(warnings).toEqual([]);
+    });
+
+    test("@end-columns closes an open nested section first, with no warning", () => {
+      const { html, warnings } = renderWith("@columns 2\n\n@section\n\nA\n\n@end-columns\n\nAfter\n");
+      expect(html).toBe(`${COLS}<div class="section"><p>A</p>\n</div></div><p>After</p>\n`);
+      expect(warnings).toEqual([]);
+    });
+
+    test("@end-section closes the nested section and leaves the columns open", () => {
+      const { html, warnings } = renderWith("@columns 2\n\n@section\n\nA\n\n@end-section\n\nB\n\n@end-columns\n");
+      expect(html).toBe(`${COLS}<div class="section"><p>A</p>\n</div><p>B</p>\n</div>`);
+      expect(warnings).toEqual([]);
+    });
+
+    test("@page closes the nested section and the columns, and so does end-of-document", () => {
+      const viaPage = renderWith("@page\n\n@columns 2\n\n@section\n\nA\n\n@page\n\nZ\n");
+      expect(viaPage.html).toBe(
+        `<div class="page">${COLS}<div class="section"><p>A</p>\n</div></div></div><div class="page"><p>Z</p>\n</div>`
+      );
+      expect(viaPage.warnings).toEqual([]);
+      const viaEof = renderWith("@page\n\n@columns 2\n\n@section\n\nA\n");
+      expect(viaEof.html).toBe(`<div class="page">${COLS}<div class="section"><p>A</p>\n</div></div></div>`);
+    });
+
+    test("@continue reopens the nested section inside the same columns div", () => {
+      const { html, warnings } = renderWith("@columns 2\n\n@section .x\n\nA\n\n@continue\n\nB\n\n@end-columns\n");
+      expect(html).toBe(
+        `${COLS}<div class="section x"><p>A</p>\n</div><div class="section x gp-continued"><p>B</p>\n</div></div>`
+      );
+      expect(warnings).toEqual([]);
+    });
+
+    test("a plain declared wrapper inside a nested section closes before it, and one opened before it is closed by it", () => {
+      const inside = renderWith("@columns 2\n\n@section\n\n@box\n\nin\n\n@section\n\nB\n\n@end-columns\n");
+      expect(inside.html).toBe(
+        `${COLS}<div class="section"><div class="b"><p>in</p>\n</div></div><div class="section"><p>B</p>\n</div></div>`
+      );
+      const before = renderWith("@columns 2\n\n@box\n\nin\n\n@section\n\nB\n\n@end-columns\n");
+      expect(before.html).toBe(`${COLS}<div class="b"><p>in</p>\n</div><div class="section"><p>B</p>\n</div></div>`);
+      expect(inside.warnings).toEqual([]);
+      expect(before.warnings).toEqual([]);
+    });
+
+    test("@column-break works inside a nested section", () => {
+      const { html } = renderWith("@columns 2\n\n@section\n\nA\n\n@column-break\n\n@section\n\nB\n\n@end-columns\n");
+      expect(html).toBe(
+        `${COLS}<div class="section"><p>A</p>\n<div class="gp-column-break" aria-hidden="true"></div>\n</div><div class="section"><p>B</p>\n</div></div>`
+      );
+    });
+
+    test("columns opened INSIDE a section are unchanged: a later @section closes both", () => {
+      const { html, warnings } = renderWith("@section\n\n@columns 2\n\nA\n\n@section\n\nB\n\n@end-columns\n");
+      expect(html).toBe(`<div class="section">${COLS}<p>A</p>\n</div></div><div class="section"><p>B</p>\n</div>`);
+      expect(warnings).toEqual(["declared_marker_close_without_open"]);
+      const nested = renderWith("@section\n\n@columns 2\n\nA\n\n@end-columns\n\nB\n\n@end-section\n");
+      expect(nested.html).toBe(`<div class="section">${COLS}<p>A</p>\n</div><p>B</p>\n</div>`);
+      expect(nested.warnings).toEqual([]);
+    });
+  });
+
   test("the marker plugin knows @columns even when no registry is passed", () => {
     const md = new MarkdownIt().use(markerPlugin);
     expect(md.render("@columns 3\n\nText.\n\n@end-columns\n")).toContain('class="gp-columns gp-columns-3"');

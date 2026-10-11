@@ -330,8 +330,24 @@ Right column content.
 ```
 
 Any other number (`@columns 6`) is reported as a problem and gives two
-columns. `@columns` closes at the next `@section`, `@page` or `@chapter`, so
-put it inside a section rather than around one.
+columns. `@columns` closes at the next `@page`, `@spread` or `@chapter`.
+
+Sections go inside columns, and columns go inside sections. Each `@section`
+you open between `@columns` and `@end-columns` is a box of its own inside the
+run, and a new `@section` closes the previous one and starts the next in the
+same columns:
+
+```markdown
+@columns 2
+
+@section .note
+First note.
+
+@section .note
+Second note, beside the first.
+
+@end-columns
+```
 
 Want a heading across the full width, or a different number of columns
 halfway down the page? End the run, write the content, and open a new one:

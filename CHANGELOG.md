@@ -14,6 +14,13 @@ This project follows [Semantic Versioning](https://semver.org/).
   partway down, end the run, write the content, and open a new `@columns`.
   The `.gp-columns` / `.gp-columns-N` classes remain as the CSS the marker
   emits but are no longer documented for authors to write by hand.
+- **Sections nest inside `@columns`.** A `@section` (or a plugin marker that is
+  a section, such as `@npc-stat`) opened between `@columns` and `@end-columns`
+  now sits inside the columns instead of silently closing them. Each new
+  section closes the previous one and opens the next in the same run, and
+  `@end-columns` closes any open section first. Before, the columns ended at
+  the first section and the later `@end-columns` was reported as unmatched.
+  Columns opened inside a section work as before.
 - **Themes style columns with a token, not column rules.** Alongside
   `--gp-column-gap`, `--gp-column-rule` (default `none`) now sets the line
   between columns on every `@columns` run. Both are zero-specificity, so any

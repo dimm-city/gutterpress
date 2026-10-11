@@ -1284,6 +1284,14 @@ export default function plugin(md, pluginOptions = {}) {
      * the matching `@end-...`. The EOF drain (`drainDeclaredFramesAtEof`)
      * runs before `stack.closeAll()` for the identical reason.
      *
+     * ONE exception, the `@columns` run: everything between `@columns` and
+     * `@end-columns` is laid out in its columns, so a section opened while a
+     * columns frame is open (and no section already wraps it) nests INSIDE
+     * the columns div instead of closing it. That section is flagged
+     * `inColumns` and conceptually sits just above its columns frame in this
+     * stack: draining past that frame closes the section first
+     * (`sectionAbove`), so the tokens stay well nested however it ends.
+     *
      * @typedef {Object} DeclaredFrame
      * @property {string} kind - the resolved BASE kind (an alias's target,
      *   or its own name) — this is what `@end-<name>` (alias-resolved too)
@@ -1314,11 +1322,30 @@ export default function plugin(md, pluginOptions = {}) {
     function closeDeclaredFrame(kind) {
       const at = declaredFrameIndex(kind);
       if (at === -1) return false;
-      while (declaredFrames.length > at) {
-        const frame = declaredFrames.pop();
-        out.push(new state.Token('layout_component_close', frame.tag, -1));
-      }
+      drainDeclaredFrames(at);
       return true;
+    }
+
+    /**
+     * True when the section nested in a columns run sits directly above the
+     * top `length` declared frames — i.e. it must close before the frame
+     * beneath it (the columns) does.
+     */
+    function sectionAbove(length) {
+      const section = stack.get('section');
+      return !!section && section.inColumns && declaredFrameIndex('columns') === length - 1;
+    }
+
+    /**
+     * How many declared frames a section opened (or closed) now leaves open:
+     * everything above the open columns run drains, the run itself stays and
+     * the section nests in it. 0 (drain all, as before) when no columns run
+     * is open, or when a section already wraps it (columns inside a section).
+     */
+    function sectionHostDepth() {
+      const section = stack.get('section');
+      if (section && !section.inColumns) return 0;
+      return declaredFrameIndex('columns') + 1;
     }
 
     /**
@@ -1328,8 +1355,12 @@ export default function plugin(md, pluginOptions = {}) {
      * call below): a declared container is exactly as "not always closed
      * explicitly" as @section is, from a page/chapter/spread's point of view.
      */
-    function drainDeclaredFrames() {
-      while (declaredFrames.length) {
+    function drainDeclaredFrames(keep = 0) {
+      while (declaredFrames.length > keep) {
+        if (sectionAbove(declaredFrames.length)) {
+          stack.close('section');
+          continue;
+        }
         const frame = declaredFrames.pop();
         out.push(new state.Token('layout_component_close', frame.tag, -1));
       }
@@ -1347,6 +1378,10 @@ export default function plugin(md, pluginOptions = {}) {
      */
     function drainDeclaredFramesAtEof() {
       while (declaredFrames.length) {
+        if (sectionAbove(declaredFrames.length)) {
+          stack.close('section');
+          continue;
+        }
         const frame = declaredFrames.pop();
         if (!frame.decl.autoCloseAtEof) {
           warn(
@@ -1664,7 +1699,7 @@ export default function plugin(md, pluginOptions = {}) {
       };
     }
 
-    function openSection(meta) {
+    function openSection(meta, inColumns = false) {
       const t = new state.Token('layout_section_open', 'div', 1);
       const component = meta.__component || null;
       addClasses(t, 'section', meta.attrs && meta.attrs.class ? meta.attrs.class : '');
@@ -1682,6 +1717,8 @@ export default function plugin(md, pluginOptions = {}) {
           kind: 'section',
           classes: (meta.attrs && meta.attrs.class) || '',
           sawContent: false,
+          // Nested inside an open @columns run (see the declaredFrames comment).
+          ...(inColumns ? { inColumns: true } : {}),
           meta: { name: meta.name || null, attrs: { ...(meta.attrs || {}) }, component },
           openToken: t,
         },
@@ -1786,7 +1823,10 @@ export default function plugin(md, pluginOptions = {}) {
       }
 
       if (kind === 'section') {
-        drainDeclaredFrames(); // #240 — see the chapter branch above.
+        // #240 — see the chapter branch above; an open @columns run is kept
+        // and the section nests inside it.
+        const keep = sectionHostDepth();
+        drainDeclaredFrames(keep);
         warnIfEmptyDecoratedSection('section', line);
         stack.close('section');
 
@@ -1820,7 +1860,7 @@ export default function plugin(md, pluginOptions = {}) {
           );
         }
 
-        openSection(meta);
+        openSection(meta, keep > 0);
         continue;
       }
 
@@ -1834,7 +1874,8 @@ export default function plugin(md, pluginOptions = {}) {
         // #240 — see the chapter branch above: @continue closes and reopens
         // the section, so anything declared-container-shaped nested inside
         // it closes too, same as it would across any other section boundary.
-        drainDeclaredFrames();
+        const keep = sectionHostDepth();
+        drainDeclaredFrames(keep);
 
         const contMeta = {
           name: section.meta.name,
@@ -1858,7 +1899,7 @@ export default function plugin(md, pluginOptions = {}) {
         contMeta.attrs.class = cls.join(' ');
 
         stack.close('section');
-        openSection(contMeta);
+        openSection(contMeta, keep > 0);
         continue;
       }
 
@@ -1887,7 +1928,7 @@ export default function plugin(md, pluginOptions = {}) {
       }
 
       if (kind === 'end-section') {
-        drainDeclaredFrames(); // #240 — see the chapter branch above.
+        drainDeclaredFrames(sectionHostDepth()); // #240 — see the section branch above.
         warnIfEmptyDecoratedSection('end-section', line);
         stack.close('section');
         continue;
