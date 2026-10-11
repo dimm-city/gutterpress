@@ -1,17 +1,24 @@
 <svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" role="img">
 <title>Gutterpress icon</title>
-<desc>Stamped GP monogram, light ink on transparent background, for use on dark surfaces.</desc>
-
-<path d="M0 14 Q4 0 18 0 L200 0 L200 200 L0 200 Z" fill="none" stroke="#e8d9b0" stroke-width="2" opacity="0.55"/>
-<path d="M184 0 L200 0 L200 18" fill="none" stroke="#e8d9b0" stroke-width="2" opacity="0.55"/>
-
-<g transform="translate(40,40) rotate(-3)">
-<text x="0" y="70" font-family="Georgia, serif" font-size="92" font-weight="700" fill="#e8d9b0" opacity="0.94">G</text>
+<desc>Worn, stamped blackletter GP monogram, light ink on transparent background, for use on dark surfaces.</desc>
+<defs>
+  <!-- Worn letterpress: ragged edges (displacement) and specks where the ink
+       did not take (a noise mask). -->
+  <filter id="worn" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
+    <feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="2" seed="11" result="edge"/>
+    <feDisplacementMap in="SourceGraphic" in2="edge" scale="2.6" xChannelSelector="R" yChannelSelector="G" result="rough"/>
+    <feTurbulence type="fractalNoise" baseFrequency="0.045" numOctaves="4" seed="9" result="wear"/>
+    <feColorMatrix in="wear" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -10 0 0 0 7.3" result="wearMask"/>
+    <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="1" seed="2" result="specks"/>
+    <feColorMatrix in="specks" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -16 0 0 0 11.6" result="speckMask"/>
+    <feComposite in="wearMask" in2="speckMask" operator="in" result="mask"/>
+    <feComposite in="rough" in2="mask" operator="in"/>
+  </filter>
+</defs>
+<g filter="url(#worn)" fill="#e9dfc8">
+  <path d="M6 16 Q8 5 18 6 L193 4 L195 194 L5 196 Z" fill="none" stroke="#e9dfc8" stroke-width="5"/>
+  <path d="M16 18 L183 15 L185 183 L15 185 Z" fill="none" stroke="#e9dfc8" stroke-width="1.6" opacity="0.75"/>
+  <g transform="translate(17,150) rotate(-4) scale(0.056,-0.056)"><path d="M1145 1457Q1205 1373 1281.0 1303.5Q1357 1234 1441 1171Q1449 1167 1453 1163Q1463 1144 1447 1133L1207 966Q1176 941 1216 937Q1357 932 1441.0 779.0Q1525 626 1517 505Q1501 289 1311.5 132.0Q1122 -25 870 -38Q546 -56 308.0 160.5Q70 377 61 689Q53 1023 225.5 1244.0Q398 1465 624 1465Q803 1465 875 1311Q883 1294 900 1305L1115 1463Q1132 1474 1145 1457ZM992 800Q965 799 933 792Q910 788 904.0 803.5Q898 819 918 831L1206 1031Q1223 1043 1207 1057Q1055 1174 962 1290Q953 1302 940 1293L826 1210Q718 1130 725.5 1032.0Q733 934 862 794Q1078 556 995.5 433.0Q913 310 727 211Q704 200 693.5 214.5Q683 229 702 246Q746 288 796.0 346.0Q846 404 667 623Q540 778 514.0 871.5Q488 965 523.5 1027.5Q559 1090 637.0 1136.0Q715 1182 797 1242L836 1271Q846 1278 842 1290Q798 1420 638 1417Q495 1413 404.5 1248.5Q314 1084 320 874Q332 480 502.0 255.5Q672 31 928 31Q1102 31 1195.5 161.5Q1289 292 1287 443Q1285 568 1207.5 684.0Q1130 800 992 800Z"/></g>
+  <g transform="translate(87,138) rotate(3) scale(0.056,-0.056)" opacity="0.92"><path d="M575 751Q596 768 611.0 753.0Q626 738 600 711Q560 675 508.0 663.5Q456 652 403 651Q243 647 137.0 746.5Q31 846 31.0 1017.5Q31 1189 164.0 1312.0Q297 1435 525 1435Q663 1432 757.0 1366.0Q851 1300 904 1210Q911 1196 925 1204L1358 1429Q1387 1442 1400.0 1425.5Q1413 1409 1393 1393Q1322 1342 1374.5 1251.5Q1427 1161 1546 1065Q1783 869 1770.5 666.0Q1758 463 1623 277Q1469 68 1319.0 -0.5Q1169 -69 962 46Q954 51 946.5 47.0Q939 43 938 35Q923 -91 886.5 -176.0Q850 -261 775 -332Q761 -345 749.0 -336.0Q737 -327 747 -310Q824 -149 798 121Q798 130 788 134Q588 212 489 116Q472 99 456.5 110.5Q441 122 455 141Q611 344 759 356Q767 357 770.5 361.0Q774 365 774 374Q762 503 749.5 631.5Q737 760 725 889Q710 1035 626.0 1141.5Q542 1248 417 1250Q283 1257 191.0 1184.5Q99 1112 99.0 981.0Q99 850 183.5 774.0Q268 698 409 698Q510 696 575 751ZM938 1137Q955 1091 961.5 1045.0Q968 999 970 958Q976 745 967.5 597.0Q959 449 956 326Q956 314 965 311Q1014 289 1072 255Q1275 138 1394.5 162.0Q1514 186 1586 300Q1744 550 1389 837Q1268 933 1185.5 1022.0Q1103 1111 1097 1209Q1097 1221 1089.0 1224.0Q1081 1227 1073 1223L946 1157Q932 1150 938 1137Z"/></g>
 </g>
-<g transform="translate(100,52) rotate(2)">
-<text x="0" y="70" font-family="Georgia, serif" font-size="92" font-weight="700" fill="#e8d9b0" opacity="0.88">P</text>
-</g>
-
-<rect x="15" y="15" width="170" height="170" fill="none" stroke="#e8d9b0" stroke-width="1.5" opacity="0.3" transform="rotate(-1 100 100)"/>
-
 </svg>

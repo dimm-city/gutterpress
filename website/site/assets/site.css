@@ -168,6 +168,11 @@ th {
 }
 
 /* ── The rubber stamp ─────────────────────────────────────────────────── */
+.head-pill {
+  filter: url(#rubber-stamp);
+  border-width: 2.5px;
+}
+
 .kicker,
 .head-pill {
   display: inline-block;
@@ -207,9 +212,20 @@ th {
 }
 
 .wordmark-name {
-  font: 400 2.1rem/1 var(--pu-nameplate);
+  font: 400 2.2rem/1 var(--pu-nameplate);
   color: var(--pu-ink);
   letter-spacing: 0;
+  /* Worn type, slightly over-inked and a hair out of register. */
+  filter: url(#worn-ink);
+  text-shadow: 0.6px 0.3px 0 rgb(26 21 18 / 0.55);
+  transform: rotate(-0.8deg);
+}
+
+.ink-filters {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
 }
 
 .head-links {
