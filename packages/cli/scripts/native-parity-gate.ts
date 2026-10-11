@@ -146,6 +146,13 @@ const DEFAULT_FIXTURES = [
   // (In-page pin GEOMETRY is asserted by paged-css-image-pin.test.ts — the
   // gate only sees page indices.)
   join(REPO, "docs", "fixtures", "gp-image-positioning", "book"),
+  // The section-break fixture (committed): `break-inside: avoid` boxes
+  // (`@section`) after other boxes, plus a run of them inside `@columns`. Core
+  // once made the break before every section illegal (a first-child
+  // `break-before: avoid` propagates to its parent), so print split boxes the
+  // author said not to; the gate holds print and the viewer to moving them
+  // whole to the same sheets.
+  join(REPO, "docs", "fixtures", "section-break", "book"),
   // The mirrored-margins fixture (committed): `@page :left` / `@page :right`
   // swapping the binding and outer margin — what every bound book does.
   // Chromium honours the pseudo-page margins when it prints; the viewer sized

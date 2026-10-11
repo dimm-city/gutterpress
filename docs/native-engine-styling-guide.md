@@ -170,8 +170,8 @@ oversize child has consequences.
   wrapper can exceed a column's height, give them `break-inside: auto`.
   **[handled]** — core used to ship a blanket `.section { break-inside: avoid }`
   that caused this collapse in books that never wrote the rule. That default
-  is gone (replaced by first-child glue, §6), so a `break-inside: avoid` you
-  see in a computed style is now yours. Still check the computed style rather
+  is gone, so a `break-inside: avoid` you see in a computed style is now
+  yours. Still check the computed style rather
   than only your own sheets when hunting one down.
 - **`column-fill: balance` on a multicol that fragments across pages leaves
   non-final page fragments with a dead second column.** The `@columns` marker
@@ -193,9 +193,16 @@ oversize child has consequences.
 ## 6. Keeping headers with their content
 
 **[handled]** for the common case: core ships `break-after: avoid` on every
-heading and `break-before: avoid` on the first child of a `.section`/`figure`,
-both at `:where()` zero specificity so any rule of yours wins. The mechanics
-below still matter when you override them, or when the glue cannot hold.
+heading, and on a lead-in paragraph ("You will need:") directly above a table
+or list — including one inside the `@section` that follows it — both at
+`:where()` zero specificity so any rule of yours wins. Core does **not** put
+`break-before: avoid` on the first child of a `.section`/`figure`: a first
+child's `break-before` propagates to its parent's start edge (CSS
+Fragmentation), so that glue made the break before the box illegal, and
+Chromium then split a `break-inside: avoid` box that followed other content
+instead of moving it whole (measured in print and multicol; removed). The
+mechanics below still matter when you write such glue yourself, or when it
+cannot hold.
 
 `break-after: avoid` (on the heading) and `break-before: avoid` (on the first
 child of a box) **do work** in Chromium print — verified with a synthetic

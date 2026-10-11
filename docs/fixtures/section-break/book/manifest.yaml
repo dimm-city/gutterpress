@@ -1,0 +1,17 @@
+title: "Section Break"
+authors:
+  - "Gutterpress Fixture"
+
+preset: book
+
+styles:
+  - styles/style.css
+
+source:
+  files:
+    - 01-boxes.md
+
+page:
+  width: 432   # 6in
+  height: 288  # 4in
+  tolerance: 0.5
