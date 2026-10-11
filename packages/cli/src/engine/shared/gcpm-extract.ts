@@ -264,6 +264,19 @@ function indexOfTopLevel(s: string, ch: string): number {
 // extraction
 // ---------------------------------------------------------------------------
 
+export interface ExtractOptions {
+  /**
+   * Selectors that carry the document's root custom properties, for
+   * resolving `var()` in `@page` geometry. Defaults to `[":root"]`.
+   *
+   * A host that re-roots a book's CSS passes what it rewrote `:root` to —
+   * the desktop editor scopes a book into one element as `:scope`, and
+   * without this every `@page { size: var(--trim) }` book failed to
+   * paginate there while printing correctly.
+   */
+  readonly rootSelectors?: readonly string[];
+}
+
 /**
  * The raw bodies of `@media print` blocks. The viewer re-injects these as
  * screen styles: the preview must render the print stylesheet, and the browser
@@ -284,7 +297,7 @@ export function mediaPrintBodies(css: string): string[] {
   return out;
 }
 
-export function extract(css: string): GcpmModel {
+export function extract(css: string, options: ExtractOptions = {}): GcpmModel {
   const model: GcpmModel = {
     pageRules: [],
     stringSets: [],
@@ -296,7 +309,10 @@ export function extract(css: string): GcpmModel {
     warnings: [],
   };
   walk(css, model);
-  resolveGeometryVars(model, collectRootCustomProperties(css));
+  resolveGeometryVars(
+    model,
+    collectRootCustomProperties(css, options.rootSelectors ?? [":root"]),
+  );
   const names = new Set<string>();
   for (const r of model.pageRules) if (r.name) names.add(r.name);
   for (const a of model.pageAssignments) names.add(a.page);
@@ -336,8 +352,17 @@ const GEOMETRY_PROPS = [
 
 /** `:root { --x: ... }` custom properties, gathered from the whole stylesheet
  *  (incl. inside `@media`/`@supports`/etc.) — last declaration wins, same as
- *  the cascade a browser would apply to an unconditional `:root` rule. */
-function collectRootCustomProperties(css: string): Map<string, string> {
+ *  the cascade a browser would apply to an unconditional `:root` rule.
+ *
+ *  `rootSelectors` says which selectors count AS the root. It exists because
+ *  a host may re-root the book's CSS: the desktop editor scopes a book into
+ *  one element and rewrites `:root` to `:scope`, which left the page
+ *  geometry unable to resolve a `@page { margin: var(--page-margin) }` that
+ *  every one of that book's pages depends on. */
+function collectRootCustomProperties(
+  css: string,
+  rootSelectors: readonly string[],
+): Map<string, string> {
   const props = new Map<string, string>();
   const walkForRoot = (body: string) => {
     for (const rule of scanRules(body)) {
@@ -349,7 +374,7 @@ function collectRootCustomProperties(css: string): Map<string, string> {
       }
       if (!prelude.startsWith("@")) {
         const selectors = splitTopLevel(prelude, ",");
-        if (selectors.some((s) => s.trim() === ":root")) {
+        if (selectors.some((s) => rootSelectors.includes(s.trim()))) {
           const decls = parseDeclarations(ruleBody);
           for (const [k, v] of Object.entries(decls)) {
             if (k.startsWith("--")) props.set(k, v);

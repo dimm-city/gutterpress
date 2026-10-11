@@ -12,6 +12,8 @@
  *     (preview/file-watcher.ts)
  *   - the desktop's editor↔preview sync scoping
  *     (packages/desktop +page.svelte editorChapter)
+ *   - the desktop's Read chapter list, one chapter per source file
+ *     (preview-interface.js getChapters -> packages/desktop preview-client.ts)
  *
  * WHY: manifest `source.files` entries are author-written and arrive in many
  * spellings (`./chapters/03.md`, `chapters\03.md` on Windows, `chapters//03.md`),

@@ -45,6 +45,7 @@ Then in a chapter:
 @section .{{PREFIX}}callout
 ### Before you start
 Everything in here stays together on one page.
+
 @end-section
 ```
 

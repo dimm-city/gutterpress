@@ -38,6 +38,7 @@ import {
   wrapGeometry,
   type GutterpressViewerApi,
   type StripInfo,
+  withLayoutReadCache,
 } from "./fragment.ts";
 
 const px = (v: number) => `${v * PX_PER_PT}px`;
@@ -47,7 +48,7 @@ const px = (v: number) => `${v * PX_PER_PT}px`;
  * `querySelector`: markdown-it-footnote emits legal ids that are invalid CSS
  * selectors (`fnref1:1`), and a throw here aborts the whole mount.
  */
-function elementForHref(href: string): Element | null {
+function elementForHref(href: string, scope: ParentNode = document): Element | null {
   const raw = href.replace(/^#/, "");
   if (!raw) return null;
   let id = raw;
@@ -56,7 +57,9 @@ function elementForHref(href: string): Element | null {
   } catch {
     /* not percent-encoded — use the literal */
   }
-  return document.getElementById(id);
+  // A layout scoped to one flow root (a chapter of the paged editor) resolves
+  // only its own ids; the whole-document layout keeps `getElementById`.
+  return scope === document ? document.getElementById(id) : scope.querySelector(`[id="${CSS.escape(id)}"]`);
 }
 
 export interface DecorationApi {
@@ -68,6 +71,21 @@ export interface DecorationApi {
   targets: Map<string, number>;
   /** the restarted `counter(page)` value for each 0-based book page, honoring `counter-reset: page N` */
   pageNumbers: number[];
+  /**
+   * See the `pageOffset` and `bookPages` options: change them and redraw, for
+   * a host whose other chapters just re-paginated. `bookPages` omitted keeps
+   * the current value.
+   */
+  setPageOffset(offset: number, bookPages?: number): void;
+  /**
+   * The page number (`target-counter(…, page)`) of the element `href`
+   * ("#id") names in this layout, or undefined when it is not in it. For a
+   * host that lays a book out a chapter at a time: it asks the chapter that
+   * holds a target, and tells the others with `setExternalTargets`.
+   */
+  pageOfTarget(href: string): number | undefined;
+  /** Page numbers for targets outside this layout ("#id" -> page); redraws when they change. */
+  setExternalTargets(targets: ReadonlyMap<string, number>): void;
   warnings: string[];
   /** show/hide trim, safe, and crop guides on the stage */
   setDesigner(on: boolean): void;
@@ -121,9 +139,52 @@ function applyPageBackground(sheet: HTMLElement, decls: Declarations): void {
 
 export function decorate(
   layout: GutterpressViewerApi,
-  opts: { designer?: boolean } = {},
+  opts: {
+    designer?: boolean;
+    /**
+     * Elements that play the document canvas, innermost first. Defaults to
+     * `[<html>, <body>]` — right for the preview, where the book IS the
+     * document. A host paginating a flow root INSIDE its own app (the
+     * desktop's paged editor) passes that root instead, so the book's page
+     * background is read from the book's own canvas and the app's chrome
+     * is neither read nor cleared.
+     */
+    canvasRoots?: readonly Element[];
+    /**
+     * The element that plays the stage: the scrolling backdrop the sheets
+     * sit on. Defaults to `<body>`, which is the stage in the preview and
+     * the standalone viewer. A host paginating inside its own app (the
+     * desktop's paged editor) passes its scroll container instead;
+     * otherwise the stage's padding, background and scrolling land on the
+     * app's body and the whole window is inset and scrolls.
+     */
+    stage?: HTMLElement;
+    /**
+     * How many book pages come BEFORE this layout's first page. The preview
+     * paginates the whole book as one flow and needs none; a host that
+     * paginates the book chapter by chapter (the desktop's Read view) passes
+     * the page count of the chapters above, so folios, `data-page` and
+     * cross-reference pages continue through the book instead of restarting
+     * at 1 in every chapter. A `counter-reset: page N` inside this layout
+     * still wins from the page it sits on.
+     */
+    pageOffset?: number;
+    /**
+     * The book's page count, for `counter(pages)`, when this layout is one
+     * chapter of it (the desktop's Read view). Omitted, it is this layout's
+     * own count less the signature padding, which is the book's when the
+     * layout is the whole book.
+     */
+    bookPages?: number;
+  } = {},
 ): DecorationApi {
   const model: GcpmModel = layout.model;
+  let pageOffset = opts.pageOffset ?? 0;
+  let bookPages = opts.bookPages;
+  /** Page numbers of targets in the book's other chapters (`setExternalTargets`). */
+  let externalTargets: ReadonlyMap<string, number> = new Map();
+  /** Where this layout's elements live: its flow root when it has one (see `LayoutOptions.root`). */
+  const scope: ParentNode = layout.root ?? document;
   const sheets = new Map<number, HTMLElement>();
   let blankPages = new Set<number>();
   let paddedPages = new Set<number>();
@@ -135,14 +196,28 @@ export function decorate(
     targets: new Map(),
     pageNumbers: [],
     warnings,
+    setPageOffset(offset, pages = bookPages) {
+      if (offset === pageOffset && pages === bookPages) return;
+      pageOffset = offset;
+      bookPages = pages;
+      draw();
+    },
+    pageOfTarget: (href) => targetPage(href),
+    setExternalTargets(targets) {
+      const same =
+        targets.size === externalTargets.size && [...targets].every(([href, page]) => externalTargets.get(href) === page);
+      if (same) return;
+      externalTargets = targets;
+      draw();
+    },
     setDesigner(on) {
       document.body.dataset.designer = on ? "on" : "off";
     },
   };
   // Must run BEFORE `.gp-stage` lands on <body>: after that the stage's own
   // chrome background is indistinguishable from the author's.
-  const canvasBg = captureCanvasBackground();
-  document.body.classList.add("gp-stage");
+  const canvasBg = captureCanvasBackground(opts.canvasRoots);
+  (opts.stage ?? document.body).classList.add("gp-stage");
   if (document.body.dataset.designer === undefined) api.setDesigner(!!opts.designer);
 
   function pageContext(strip: StripInfo, indexInStrip: number, bookIndex: number): PageCtx {
@@ -165,10 +240,13 @@ export function decorate(
       return { index: bookIndex, strip, pseudos, geometry, marginBoxes, decls };
     }
     const pseudos: string[] = [];
-    if (bookIndex === 0) pseudos.push("first");
+    // `:first`, `:left` and `:right` are the BOOK's: a layout that starts
+    // after `pageOffset` pages (a chapter of the paged editor) has neither the
+    // book's first page nor its parity at its own index 0.
+    if (bookIndex + pageOffset === 0) pseudos.push("first");
     if (indexInStrip === 0) pseudos.push("nth-first-of-run");
     // page 1 is a recto
-    pseudos.push(bookIndex % 2 === 0 ? "right" : "left");
+    pseudos.push((bookIndex + pageOffset) % 2 === 0 ? "right" : "left");
     const { geometry, marginBoxes, decls } = resolvePage(model, {
       name: strip.page,
       pseudos,
@@ -183,7 +261,7 @@ export function decorate(
     for (const decl of model.stringSets) {
       let els: Element[] = [];
       try {
-        els = Array.from(document.querySelectorAll(decl.selector));
+        els = Array.from(scope.querySelectorAll(decl.selector));
       } catch {
         continue;
       }
@@ -194,7 +272,12 @@ export function decorate(
         entries.push({
           page,
           value: evaluate(decl.value, {
-            text: (el.textContent ?? "").trim(),
+            // RENDERED text, not `textContent`: an element may carry text that
+            // does not print — the desktop's paged editor keeps a heading's
+            // hidden `#` markdown marker in the DOM, and `textContent` would
+            // put it in the running head. `innerText` is what the reader
+            // sees, which is what `content()` means.
+            text: ((el as HTMLElement).innerText ?? el.textContent ?? "").trim(),
             attr: (n) => el.getAttribute(n) ?? undefined,
           }),
         });
@@ -213,7 +296,7 @@ export function decorate(
     for (const r of model.counterResets) {
       let els: Element[] = [];
       try {
-        els = Array.from(document.querySelectorAll(r.selector));
+        els = Array.from(scope.querySelectorAll(r.selector));
       } catch {
         continue;
       }
@@ -222,19 +305,32 @@ export function decorate(
         if (page >= 0) resets.push({ page: page + 1, start: r.start });
       }
     }
-    api.pageNumbers = resets.length ? pageCounterValues(resets, layout.totalPages) : [];
+    // Pages before the first restart continue from the chapters above
+    // (`pageOffset`); a restart sets the counter absolutely, as on the page.
+    const firstReset = resets.length ? Math.min(...resets.map((r) => r.page)) : Number.POSITIVE_INFINITY;
+    api.pageNumbers = resets.length
+      ? pageCounterValues(resets, layout.totalPages).map((value, i) => (i + 1 < firstReset ? value + pageOffset : value))
+      : [];
     const pageValues = api.pageNumbers.length ? api.pageNumbers : null;
 
-    // cross-reference targets: any id that is linked to
+    // cross-reference targets: any id that is linked to, here or (a chapter
+    // of the paged editor) in another chapter the host resolved
     const linked = new Set<string>();
-    for (const a of Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href^='#']")))
+    for (const a of Array.from(scope.querySelectorAll<HTMLAnchorElement>("a[href^='#']")))
       linked.add(a.getAttribute("href")!);
     for (const href of linked) {
-      const el = elementForHref(href);
-      if (!el) continue;
-      const [page] = pageRangeOf(el, layout.strips);
-      if (page >= 0) api.targets.set(href, toFolioPage(page + 1, pageValues));
+      const page = targetPage(href, pageValues) ?? externalTargets.get(href);
+      if (page !== undefined) api.targets.set(href, page);
     }
+  }
+
+  /** The page number of `href`'s target in this layout, as `target-counter(…, page)` shows it. */
+  function targetPage(href: string, pageValues = api.pageNumbers.length ? api.pageNumbers : null): number | undefined {
+    const el = elementForHref(href, scope);
+    if (!el) return undefined;
+    const [page] = pageRangeOf(el, layout.strips);
+    if (page < 0) return undefined;
+    return pageValues ? toFolioPage(page + 1, pageValues) : page + 1 + pageOffset;
   }
 
   /** Shared GCPM string() semantics — the same function the compiler samples. */
@@ -261,7 +357,7 @@ export function decorate(
       const pseudo = /::?after$/.test(xref.selector) ? "after" : "before";
       let els: Element[] = [];
       try {
-        els = Array.from(document.querySelectorAll(base));
+        els = Array.from(scope.querySelectorAll(base));
       } catch {
         continue;
       }
@@ -274,7 +370,7 @@ export function decorate(
             return page;
           },
           targetText: (url) =>
-            (elementForHref(url)?.textContent ?? "").trim() || undefined,
+            (elementForHref(url, scope)?.textContent ?? "").trim() || undefined,
           leader: leaderMarker,
         });
         el.setAttribute(`data-gp-${pseudo}`, text);
@@ -291,7 +387,12 @@ export function decorate(
       style.id = "gp-xref-style";
       document.head.appendChild(style);
     }
-    style.textContent = generatedContentCss(model.xrefs.map((x) => x.selector));
+    // Only when it changed: replacing a stylesheet's text invalidates the
+    // style of EVERY element in the document, and this runs on each draw —
+    // every keystroke of the desktop's paged editor, where the selectors it
+    // names are the same from one draw to the next.
+    const css = generatedContentCss(model.xrefs.map((x) => x.selector));
+    if (style.textContent !== css) style.textContent = css;
   }
 
   /**
@@ -301,7 +402,7 @@ export function decorate(
   function fillLeaders() {
     const marked: Array<{ el: HTMLElement; attr: string; raw: string }> = [];
     for (const attr of ["data-gp-after", "data-gp-before"]) {
-      for (const el of Array.from(document.querySelectorAll<HTMLElement>(`[${attr}]`))) {
+      for (const el of Array.from(scope.querySelectorAll<HTMLElement>(`[${attr}]`))) {
         const raw = el.getAttribute(attr) ?? "";
         if (LEADER_RE.test(raw)) marked.push({ el, attr, raw });
       }
@@ -327,132 +428,138 @@ export function decorate(
   }
 
   function draw() {
-    sheets.clear();
-    warnings.length = 0;
-    blankPages = new Set(layout.blankPageIndices);
-    paddedPages = new Set(layout.paddedPageIndices);
-    buildMaps();
-    fillXrefs();
+    // One pass's computed-style reads are shared (see `withLayoutReadCache`).
+    withLayoutReadCache(() => {
+      // Every strip's pitch and gap, read before this pass writes anything:
+      // a read after a write is a forced style recalculation of the whole
+      // document, once per strip, on every mount, hot reload and keystroke
+      // of the desktop's paged editor.
+      for (const strip of layout.strips) stripMetrics(strip.el);
+      sheets.clear();
+      warnings.length = 0;
+      blankPages = new Set(layout.blankPageIndices);
+      paddedPages = new Set(layout.paddedPageIndices);
+      buildMaps();
+      fillXrefs();
 
-    // Cross-run spread composition. Strip offsets are consecutive, so parity
-    // interlocks: a run whose first page is a RECTO (wrapGeometry shift 1) always
-    // follows a run whose last page was a solo VERSO sitting in the LEFT
-    // slot of its final row (proof: offsets B = A.offset + A.pages; B even
-    // forces A.pages-1+A.shift even in both A-parity cases). The recto run's
-    // leading spacer keeps its first row right-slot-only, so pulling the run
-    // UP by one row makes the two boxes overlap without the slots ever
-    // colliding — the verso and recto compose one visual spread. This is
-    // placement arithmetic on boxes we already position; content and sheets
-    // stay in the same box, and pagination is untouched.
-    let prevPageH = 0;
-    let first = true;
+      // Cross-run spread composition. Strip offsets are consecutive, so parity
+      // interlocks: a run whose first page is a RECTO (wrapGeometry shift 1) always
+      // follows a run whose last page was a solo VERSO sitting in the LEFT
+      // slot of its final row (proof: offsets B = A.offset + A.pages; B even
+      // forces A.pages-1+A.shift even in both A-parity cases). The recto run's
+      // leading spacer keeps its first row right-slot-only, so pulling the run
+      // UP by one row makes the two boxes overlap without the slots ever
+      // colliding — the verso and recto compose one visual spread. This is
+      // placement arithmetic on boxes we already position; content and sheets
+      // stay in the same box, and pagination is untouched.
+      let prevPageH = 0;
+      let first = true;
 
-    for (const strip of layout.strips) {
-      const run = ensureRun(strip);
-      // One computed-style read per strip, BEFORE the sheet-append loop
-      // below mutates the DOM — reading after those writes forces a
-      // synchronous style recalc per strip on every mount and hot reload.
-      const { stride, rowStride } = stripMetrics(strip.el);
-      const sheetGap =
-        parseFloat(getComputedStyle(strip.el).getPropertyValue("--gp-sheet-gap")) || 0;
-      // The gap originates on the strip because it also drives multicol's
-      // row/column pitch. The run owns spacing BETWEEN named-page runs, so
-      // copy that one value up instead of giving both elements a margin.
-      run.style.setProperty("--gp-sheet-gap", `${sheetGap}px`);
-      // `wrapCols` unset (view mode off, or the browser lacks
-      // `column-wrap: wrap`) ⇒ every page sits in one row, exactly the
-      // pre-wrap layout — `perRow = strip.pages` makes the row/col math
-      // below degrade to that single-row case for free.
-      const { perRow, shift } = wrapGeometry(strip);
-      const layer = run.querySelector<HTMLElement>(".gp-layer")!;
-      layer.textContent = "";
-      const g = strip.geometry;
+      for (const strip of layout.strips) {
+        const run = ensureRun(strip);
+        // From the pass's read cache (filled above, before any write).
+        const { stride, rowStride, sheetGap } = stripMetrics(strip.el);
+        // The gap originates on the strip because it also drives multicol's
+        // row/column pitch. The run owns spacing BETWEEN named-page runs, so
+        // copy that one value up instead of giving both elements a margin.
+        run.style.setProperty("--gp-sheet-gap", `${sheetGap}px`);
+        // `wrapCols` unset (view mode off, or the browser lacks
+        // `column-wrap: wrap`) ⇒ every page sits in one row, exactly the
+        // pre-wrap layout — `perRow = strip.pages` makes the row/col math
+        // below degrade to that single-row case for free.
+        const { perRow, shift } = wrapGeometry(strip);
+        const layer = run.querySelector<HTMLElement>(".gp-layer")!;
+        layer.textContent = "";
+        const g = strip.geometry;
 
-      for (let i = 0; i < strip.pages; i++) {
-        const bookIndex = strip.offset + i;
-        const ctx = pageContext(strip, i, bookIndex);
+        for (let i = 0; i < strip.pages; i++) {
+          const bookIndex = strip.offset + i;
+          const ctx = pageContext(strip, i, bookIndex);
 
-        // Sheets are painted exactly where Chromium put the matching
-        // fragment — the ONLY layout that is guaranteed to agree with where
-        // the strip's real content actually is. Column-wrap (§ view modes)
-        // moves CONTENT with the columns, so this is real 2-D positioning,
-        // not the retired chrome-only two-up where sheet chrome moved but
-        // Chromium-rendered content stayed at its native single-row offset.
-        const slot = i + shift;
-        const row = Math.floor(slot / perRow);
-        const colVisual = slot % perRow;
-        // Keep paper geometry stable. Chromium multicol gives every fragment
-        // in a run one fixed content-column origin; moving the paper around
-        // that origin to mimic page-specific mirrored margins made single
-        // sheets wobble and facing sheets touch. The PDF remains the exact
-        // page-margin contract; the interactive viewer keeps equal paper gaps.
-        const sheetLeft = colVisual * stride;
-        const sheetTop = row * rowStride;
+          // Sheets are painted exactly where Chromium put the matching
+          // fragment — the ONLY layout that is guaranteed to agree with where
+          // the strip's real content actually is. Column-wrap (§ view modes)
+          // moves CONTENT with the columns, so this is real 2-D positioning,
+          // not the retired chrome-only two-up where sheet chrome moved but
+          // Chromium-rendered content stayed at its native single-row offset.
+          const slot = i + shift;
+          const row = Math.floor(slot / perRow);
+          const colVisual = slot % perRow;
+          // Keep paper geometry stable. Chromium multicol gives every fragment
+          // in a run one fixed content-column origin; moving the paper around
+          // that origin to mimic page-specific mirrored margins made single
+          // sheets wobble and facing sheets touch. The PDF remains the exact
+          // page-margin contract; the interactive viewer keeps equal paper gaps.
+          const sheetLeft = colVisual * stride;
+          const sheetTop = row * rowStride;
 
-        const sheet = document.createElement("div");
-        sheet.className = "gp-sheet";
-        sheet.dataset.page = String(bookIndex + 1);
-        // Recto = odd 1-based page (page 1 is a recto).
-        sheet.dataset.side = bookIndex % 2 === 0 ? "recto" : "verso";
-        sheet.style.left = `${sheetLeft}px`;
-        sheet.style.top = `${sheetTop}px`;
-        sheet.style.setProperty("--gp-page-w", px(ctx.geometry.width));
-        sheet.style.setProperty("--gp-page-h", px(ctx.geometry.height));
-        applyPageBackground(sheet, ctx.decls);
-        if (!ctx.padded) for (const [prop, value] of canvasBg) sheet.style.setProperty(prop, value);
-        layer.appendChild(sheet);
-        sheets.set(bookIndex, sheet);
+          const sheet = document.createElement("div");
+          sheet.className = "gp-sheet";
+          sheet.dataset.page = String(bookIndex + 1 + pageOffset);
+          // Recto = odd 1-based page (page 1 is a recto).
+          sheet.dataset.side = (bookIndex + pageOffset) % 2 === 0 ? "recto" : "verso";
+          // A signature-padding sheet, so a host can tell it from content.
+          if (ctx.padded) sheet.dataset.padded = "";
+          sheet.style.left = `${sheetLeft}px`;
+          sheet.style.top = `${sheetTop}px`;
+          sheet.style.setProperty("--gp-page-w", px(ctx.geometry.width));
+          sheet.style.setProperty("--gp-page-h", px(ctx.geometry.height));
+          applyPageBackground(sheet, ctx.decls);
+          if (!ctx.padded) for (const [prop, value] of canvasBg) sheet.style.setProperty(prop, value);
+          layer.appendChild(sheet);
+          sheets.set(bookIndex, sheet);
 
-        // `counter(pages)` is the content page count: print resolves it before
-        // `postprocess.ts` appends the signature padding.
-        drawMarginBoxes(sheet, ctx, layout.totalPages - paddedPages.size);
-        drawGuides(sheet, ctx);
-        drawCropMarks(sheet, ctx);
+          // `counter(pages)` is the content page count: print resolves it before
+          // `postprocess.ts` appends the signature padding.
+          drawMarginBoxes(sheet, ctx, bookPages ?? layout.totalPages - paddedPages.size);
+          drawGuides(sheet, ctx);
+          drawCropMarks(sheet, ctx);
+        }
+
+        // Reserve the full row width even for a solo page in a wrapped run
+        // (`perRow` can exceed `strip.pages`) — matches the CSS width
+        // `.gp-strip[data-wrap]` reserves, and is what leaves a wrapped
+        // run's empty slot visibly empty instead of collapsed. `+ shift`
+        // counts the leading spacer's own grid slot toward row count.
+        const rows = Math.max(1, Math.ceil((strip.pages + shift) / perRow));
+        // `rowStride` is the PITCH between wrapped rows (`--gp-content-h` +
+        // row-gap — see `rowStrideOf`), not a row's own full height: multicol
+        // lays each wrapped row's content out at `column-height`, but the
+        // SHEET drawn around it is the full page box (content + margins).
+        // Sizing the run box at `rowStride * rows` therefore left the box
+        // short by exactly (margin-top + margin-bottom) for its own last row —
+        // harmless for a wrapped multi-row run (the shortfall was inside the
+        // box, absorbed by the next row's margin), but for the common
+        // unwrapped case (`rows` always 1) it shrank the WHOLE run to content
+        // height, so the next sibling run's box started before this run's
+        // sheet visually ended: sheets stacked in document flow overlapped by
+        // that same margin gap. Reserve `rowStride` pitch only BETWEEN rows,
+        // and the sheet's real full height (`g.height`) for the last row.
+        run.style.height = `${rowStride * (rows - 1) + PX_PER_PT * g.height}px`;
+        run.style.width = `${stride * perRow}px`;
+
+        // A recto-starting wrapped run overlaps the previous run's last row
+        // (see the parity proof above). The sibling margins collapse: prev's
+        // bottom margin (sheet-gap G) + this negative top margin pulls this
+        // run's first row up onto the previous run's last-row top. The pull
+        // distance is prev's own box height MINUS the offset of its last row
+        // from its own top — i.e. exactly prev's full sheet height
+        // (`prevPageH`, content + margins), not `rowStride` (content only):
+        // since the fix above, a run's box height is
+        // `rowStride*(rows-1) + pageH`, and its last row sits at
+        // `rowStride*(rows-1)` from the top, so bottom-of-box minus
+        // top-of-last-row is `pageH` regardless of row count. The very first
+        // run keeps the solo-cover convention.
+        run.style.marginTop =
+          strip.wrapCols && shift === 1 && !first
+            ? `${-(prevPageH + sheetGap)}px`
+            : "";
+        prevPageH = PX_PER_PT * g.height;
+        first = false;
+
+        if (opts.designer) checkOverflow(strip, warnings);
       }
-
-      // Reserve the full row width even for a solo page in a wrapped run
-      // (`perRow` can exceed `strip.pages`) — matches the CSS width
-      // `.gp-strip[data-wrap]` reserves, and is what leaves a wrapped
-      // run's empty slot visibly empty instead of collapsed. `+ shift`
-      // counts the leading spacer's own grid slot toward row count.
-      const rows = Math.max(1, Math.ceil((strip.pages + shift) / perRow));
-      // `rowStride` is the PITCH between wrapped rows (`--gp-content-h` +
-      // row-gap — see `rowStrideOf`), not a row's own full height: multicol
-      // lays each wrapped row's content out at `column-height`, but the
-      // SHEET drawn around it is the full page box (content + margins).
-      // Sizing the run box at `rowStride * rows` therefore left the box
-      // short by exactly (margin-top + margin-bottom) for its own last row —
-      // harmless for a wrapped multi-row run (the shortfall was inside the
-      // box, absorbed by the next row's margin), but for the common
-      // unwrapped case (`rows` always 1) it shrank the WHOLE run to content
-      // height, so the next sibling run's box started before this run's
-      // sheet visually ended: sheets stacked in document flow overlapped by
-      // that same margin gap. Reserve `rowStride` pitch only BETWEEN rows,
-      // and the sheet's real full height (`g.height`) for the last row.
-      run.style.height = `${rowStride * (rows - 1) + PX_PER_PT * g.height}px`;
-      run.style.width = `${stride * perRow}px`;
-
-      // A recto-starting wrapped run overlaps the previous run's last row
-      // (see the parity proof above). The sibling margins collapse: prev's
-      // bottom margin (sheet-gap G) + this negative top margin pulls this
-      // run's first row up onto the previous run's last-row top. The pull
-      // distance is prev's own box height MINUS the offset of its last row
-      // from its own top — i.e. exactly prev's full sheet height
-      // (`prevPageH`, content + margins), not `rowStride` (content only):
-      // since the fix above, a run's box height is
-      // `rowStride*(rows-1) + pageH`, and its last row sits at
-      // `rowStride*(rows-1)` from the top, so bottom-of-box minus
-      // top-of-last-row is `pageH` regardless of row count. The very first
-      // run keeps the solo-cover convention.
-      run.style.marginTop =
-        strip.wrapCols && shift === 1 && !first
-          ? `${-(prevPageH + sheetGap)}px`
-          : "";
-      prevPageH = PX_PER_PT * g.height;
-      first = false;
-
-      if (opts.designer) checkOverflow(strip, warnings);
-    }
+    });
   }
 
   function drawMarginBoxes(sheet: HTMLElement, ctx: PageCtx, totalPages: number) {
@@ -461,7 +568,7 @@ export function decorate(
       const decls = ctx.marginBoxes[`@${name}`];
       if (!decls?.content) continue;
       const text = evaluate(decls.content, {
-        page: api.pageNumbers[ctx.index] ?? ctx.index + 1,
+        page: api.pageNumbers[ctx.index] ?? ctx.index + 1 + pageOffset,
         pages: totalPages,
         strings: (n, w) => stringAt(n, w, ctx.index),
         targetPage: (url) => api.targets.get(url),
@@ -597,15 +704,17 @@ const CANVAS_BG_PROPS = [
  * showing viewer chrome. When it came from `body`, no clearing is needed:
  * `.gp-stage` (0-1-0) already outranks the author's `body` rule (0-0-1).
  */
-function captureCanvasBackground(): Array<[string, string]> {
-  for (const el of [document.documentElement, document.body]) {
+function captureCanvasBackground(roots?: readonly Element[]): Array<[string, string]> {
+  for (const el of roots ?? [document.documentElement, document.body]) {
     const cs = getComputedStyle(el);
     const transparent = /^(transparent|rgba\(0, ?0, ?0, ?0\))$/.test(cs.backgroundColor);
     if (cs.backgroundImage === "none" && transparent) continue;
     const captured = CANVAS_BG_PROPS.map(
       (p) => [p, cs.getPropertyValue(p)] as [string, string],
     );
-    if (el === document.documentElement) el.style.background = "none";
+    // The captured background is replayed on every sheet, so the element it
+    // came from must stop painting it behind them.
+    if (el === document.documentElement || roots) (el as HTMLElement).style.background = "none";
     return captured;
   }
   return [];

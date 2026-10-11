@@ -92,8 +92,8 @@ test("a snippet with no variables leaves the caret at its end", () => {
 
 test("a component without a snippet inserts its marker pair with the caret between", () => {
   const { doc, sel } = applyOption("@ba", "@bare");
-  expect(doc).toBe("@bare\n\n@end-bare");
-  expect(sel).toEqual(["@bare\n".length, "@bare\n".length]);
+  expect(doc).toBe("@bare\n\n\n\n@end-bare");
+  expect(sel).toEqual(["@bare\n\n".length, "@bare\n\n".length]);
 });
 
 test("offers @name plus one @name <variant> option per variant, all matching the typed prefix", () => {
@@ -140,8 +140,8 @@ test("a selfClosing component without a snippet inserts the bare marker, with no
 test("a variant without a snippet inserts `@name <variant>` / `@end-name` with the caret between", () => {
   const list: MarkerComponent[] = [{ name: "box", source, variants: ["wide"] }];
   const { doc, sel } = applyOption("@bo", "@box wide", list);
-  expect(doc).toBe("@box wide\n\n@end-box");
-  expect(sel).toEqual(["@box wide\n".length, "@box wide\n".length]);
+  expect(doc).toBe("@box wide\n\n\n\n@end-box");
+  expect(sel).toEqual(["@box wide\n\n".length, "@box wide\n\n".length]);
 });
 
 test("options are rebuilt only when the component list changes", () => {

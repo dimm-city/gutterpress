@@ -455,7 +455,7 @@ test("applySectionBlock: inserts the @section/@end-section pair with cursor on t
   const v = makeMockView("stats");
   applySectionBlock(v as unknown as EditorView);
   const doc = getDoc(v);
-  expect(doc).toBe("stats\n\n@section\n\n@end-section\n\n");
+  expect(doc).toBe("stats\n\n@section\n\n\n\n@end-section\n\n");
   const sel = getSel(v);
   expect(sel.from).toBe(sel.to);
   expect(v.state.doc.lineAt(sel.from).text).toBe("");

@@ -58,7 +58,9 @@ const PREFIX = "{{PREFIX}}";
  * `@end-term-box` closes it — the closer is derived for you, never declared.
  *
  *   @term-box warning label="Read this first"
+ *
  *   Ordinary **markdown** goes here.
+ *
  *   @end-term-box
  *
  * Fields, all optional:

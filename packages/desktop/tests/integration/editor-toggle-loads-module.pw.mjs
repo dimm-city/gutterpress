@@ -329,7 +329,7 @@ if (!sourceSaved) fail("Ctrl+S did not write the CodeMirror edit to disk");
 
 async function queryActivePreviewForMarker() {
   return evalJs(`new Promise((resolve) => {
-  const frame = document.querySelector('.preview-pane > iframe');
+  const frame = document.querySelector('.preview-pane iframe'); // inside .preview-stage since the paged editor shares the pane
   if (!frame?.contentWindow) return resolve({ hasMarker: false, error: 'preview frame missing' });
   const origin = new URL(frame.src).origin;
   const id = 900000000 + Math.floor(Math.random() * 1000000);

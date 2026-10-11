@@ -11,9 +11,10 @@
    * the menu opened. App design tokens only — no hardcoded colors
    * (`npm run lint` enforces this via `tools/check-app-tokens.mjs`).
    */
-  import type { ContextMenuController, ContextMenuItem } from "$lib/routes/context-menu-controller.svelte";
+  import type { ContextMenuItem, MenuSurface } from "$lib/routes/context-menu-controller.svelte";
 
-  let { controller }: { controller: ContextMenuController } = $props();
+  // The preview's `ContextMenuController` or the paged editor's `PopupMenuController`; both present `MenuSurface`.
+  let { controller }: { controller: MenuSurface } = $props();
 
   let menuEl = $state<HTMLDivElement | undefined>(undefined);
   let previouslyFocused: HTMLElement | null = null;

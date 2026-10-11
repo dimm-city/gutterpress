@@ -5,8 +5,11 @@ import type { ActivityStage } from "../../src/lib/loading/activity-stage";
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
 // these unit tests; the production compiler replaces the runes. The class only
 // needs plain values here (same shim as project-lifecycle-controller.test).
-const g = globalThis as unknown as { $state?: unknown };
-g.$state ??= Object.assign(<T>(v: T) => v, { raw: <T>(v: T) => v });
+// Other test files install a plain `$state` shim with `??=`, and Bun runs
+// every file in one process in filesystem order, so a plain shim may already
+// be in place here. Keep it and add `raw`, which this controller uses.
+const g = globalThis as unknown as { $state?: (<T>(v: T) => T) & { raw?: <T>(v: T) => T } };
+g.$state = Object.assign(g.$state ?? (<T>(v: T) => v), { raw: <T>(v: T) => v });
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const stage = (label: string): ActivityStage => ({ id: "opening", label, detail: null, progress: null });

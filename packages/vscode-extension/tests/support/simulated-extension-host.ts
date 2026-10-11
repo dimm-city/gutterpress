@@ -1,0 +1,260 @@
+import {
+  applyEdit as applyEditPure,
+  EDITOR_PROTOCOL_VERSION,
+  type DocumentSnapshot,
+} from "@dimm-city/gutterpress-editor/core";
+import { hostDisconnectedDiagnostic } from "../../src/protocol/diagnostics.ts";
+import { validateWebviewToHostMessage } from "../../src/protocol/validate.ts";
+import type { HostToWebviewMessage } from "../../src/protocol/messages.ts";
+import type { WebviewHostTransport } from "../../src/webview-host/proxy-document-host.ts";
+
+/**
+ * A fake extension-host counterpart for `ProxyDocumentHost` unit tests
+ * (SFE-P3c run spec: "The shared runDocumentHostContractTests suite passes
+ * against ProxyDocumentHost wired to a simulated host with latency and
+ * out-of-order replies"). This is TEST INFRASTRUCTURE, not a production
+ * implementation — the real host-side authority is
+ * `../../src/host/document-gateway.ts`'s `DocumentGateway`; this class
+ * reuses the SAME pure `applyEdit` (`@dimm-city/gutterpress-editor/core`)
+ * for its own document-authority behavior so its accept/reject decisions
+ * match a real host's, but it has none of `DocumentGateway`'s vscode
+ * plumbing.
+ *
+ * LATENCY AND OUT-OF-ORDER DELIVERY, faithfully modeled:
+ *
+ *   - A real message channel (VS Code's `webview.postMessage`, or any
+ *     `postMessage`-based transport) preserves SEND ORDER between one
+ *     sender and one receiver — it does not let a later-posted message
+ *     overtake an earlier one purely due to network jitter. `#reply()`
+ *     below enforces this with a monotonic `#nextDeliveryTime` cursor: no
+ *     reply is ever delivered before one queued earlier, even if its own
+ *     randomized transmission delay would otherwise be shorter.
+ *   - `"ready"` is always the very FIRST message a `ProxyDocumentHost` ever
+ *     sends (its constructor sends it before a caller could reach
+ *     `applyEdit`), and its reply is computed synchronously (no real async
+ *     gap on the host side for it) — delivered with a small FIXED delay,
+ *     not drawn from `options.latencyMs`, so its place at the front of the
+ *     FIFO cursor is never left to chance.
+ *   - `"apply-edit"`'s reply, in contrast, is NOT computed/queued
+ *     synchronously: it goes through a caller-controlled PROCESSING delay
+ *     first (`options.latencyMs`), simulating the real
+ *     `DocumentGateway`'s `await workspace.applyEdit(...)` gap. During
+ *     that gap, an INDEPENDENT event — `externalChange()`, simulating an
+ *     unrelated host-side change — can be queued and delivered FIRST, even
+ *     though the edit was submitted earlier. THIS is the genuine
+ *     out-of-order case the run spec's convergence case (c) needs; it is
+ *     not the same thing as "ready racing behind an edit reply," which the
+ *     fixed small delay above rules out by construction.
+ *
+ * Together these prove `ProxyDocumentHost`'s staleness/first-snapshot
+ * handling (`#lastKnownStamp`, `#hasAppliedLocalEdit`) against realistic
+ * reordering — not an unrealistic one where even causally-ordered replies
+ * from the SAME sender could arrive scrambled, which no real `postMessage`
+ * channel would ever do.
+ *
+ * RECONCILIATION ADDENDUM: this class speaks the STAMPED protocol —
+ * `#stamp` is this fake host's own base stamp (mirroring
+ * `../../src/host/document-gateway.ts`'s `#stamp` field-for-field: starts
+ * at 0, bumped exactly once per genuine state-changing reply — captured at
+ * `#reply()` CALL TIME rather than delivery time — but NOT for the
+ * `"ready"` reply, which reports pre-session state and must not stale-
+ * reject a pre-convergence edit; see `#reply`'s own comment for why), and
+ * `receive()`'s `"apply-edit"` handling accepts an
+ * edit only when its `base` matches `#stamp`, exactly mirroring
+ * `DocumentGateway.applyEdit`'s own check. This is what makes this class a
+ * faithful stand-in for a real `DocumentGateway` rather than a
+ * fake-host-only artifact — the SAME class the formerly-red regression test
+ * (`tests/webview/edit-version-reconciliation.btest.ts`) uses to reproduce
+ * a real gateway's behavior.
+ */
+export interface SimulatedExtensionHostOptions {
+  /** Returns the delay (ms) before the NEXT reply is delivered. Called once
+   *  per reply. Default: `Math.floor(Math.random() * 20)` (0-19ms jitter,
+   *  enough for genuine interleaving across a handful of concurrent
+   *  replies without slowing the suite down). */
+  readonly latencyMs?: () => number;
+}
+
+/** `"ready"`'s reply delay — fixed, not drawn from `options.latencyMs`. See
+ *  this module's header for why. */
+const READY_REPLY_DELAY_MS = 1;
+
+export class SimulatedExtensionHost {
+  #snapshot: DocumentSnapshot;
+  readonly #latencyMs: () => number;
+  #deliver: (message: HostToWebviewMessage) => void = () => {};
+  /** FIFO delivery cursor: no reply is ever scheduled to arrive before this
+   *  point, regardless of its own transmission delay — see this module's
+   *  header. Monotonically non-decreasing. */
+  #nextDeliveryTime = 0;
+  /** The base stamp — see this module's header. Bumped inside `#reply()`,
+   *  at CALL time (not delivery time), for the same reason `#reply()`
+   *  already captures `snapshotAtCallTime` at call time: the stamp
+   *  identifies which authoritative state a reply describes, and that is
+   *  decided when the underlying change actually happens, not by however
+   *  much simulated transmission jitter happens to follow it. */
+  #stamp = 0;
+
+  constructor(initial: DocumentSnapshot, options: SimulatedExtensionHostOptions = {}) {
+    this.#snapshot = initial;
+    this.#latencyMs = options.latencyMs ?? (() => Math.floor(Math.random() * 20));
+  }
+
+  /** Wires this host's outbound replies to `deliver` (called by
+   *  `createSimulatedProxyPair` below, once, at construction). */
+  connect(deliver: (message: HostToWebviewMessage) => void): void {
+    this.#deliver = deliver;
+  }
+
+  /** The receiving end of `WebviewHostTransport.postMessage` — call this
+   *  with whatever the proxy posts. Runs every inbound message through the
+   *  SAME real protocol validator a real host would (a malformed message
+   *  from a broken proxy implementation is simply dropped, matching D12 —
+   *  this harness is not the place to test the validator itself; see
+   *  `tests/protocol/validate.test.ts` for that). */
+  receive(raw: unknown): void {
+    const result = validateWebviewToHostMessage(raw);
+    if (!result.valid) return;
+    const message = result.value;
+
+    if (message.type === "ready") {
+      // Mirrors DocumentGateway.sendInitialSnapshot: does NOT bump the
+      // stamp — see #reply's own doc comment for why.
+      this.#reply(READY_REPLY_DELAY_MS, false);
+      return;
+    }
+    if (message.type === "apply-edit") {
+      // The PROCESSING delay — see this module's header: computing and
+      // queuing this reply is deferred, simulating the real
+      // DocumentGateway's `await workspace.applyEdit(...)` gap, during
+      // which an independent externalChange() can queue and deliver first.
+      const processingDelayMs = this.#latencyMs();
+      setTimeout(() => {
+        // Reconciliation addendum: the SAME base-stamp check
+        // DocumentGateway.applyEdit performs — a stale `base` skips the
+        // apply entirely (no vscode.applyEdit-equivalent attempted) and
+        // falls straight through to the reply below with the UNCHANGED
+        // snapshot; `expectedVersion` is forced to the current real
+        // version for the same reason DocumentGateway forces it (the
+        // `base` check above already decided staleness — this class's own
+        // version space is not `ProxyDocumentHost`'s mirror's).
+        if (message.base === this.#stamp) {
+          const outcome = applyEditPure(this.#snapshot, { ...message.edit, expectedVersion: this.#snapshot.version });
+          if (outcome.ok) this.#snapshot = outcome.snapshot;
+        }
+        // Always reply with the fresh truth, exactly like DocumentGateway's
+        // own single-reply-site design (accept and reject share this same
+        // path, differing only in the snapshot's content).
+        this.#reply(this.#latencyMs());
+      }, processingDelayMs);
+      return;
+    }
+    // "diagnostic-report": no host-side effect in this harness.
+  }
+
+  /** Simulates a host-authoritative external change (undo/redo, another
+   *  extension's edit, ...) — the "External changes are authoritative
+   *  messages too" binding point. Computed and queued SYNCHRONOUSLY
+   *  (unlike "apply-edit"'s reply): a real `onDidChangeTextDocument`
+   *  listener firing has no comparable async gap of its own. */
+  externalChange(text: string): void {
+    this.#snapshot = { text, version: this.#snapshot.version + 1 };
+    this.#reply(this.#latencyMs());
+  }
+
+  /** The host's current authoritative snapshot — read by tests to assert
+   *  the proxy's mirror ends up byte-identical to it (convergence case
+   *  (c)). */
+  currentSnapshot(): DocumentSnapshot {
+    return this.#snapshot;
+  }
+
+  /** The base stamp's CURRENT value — mirrors `DocumentGateway.currentStamp()`
+   *  field-for-field (this class's own header: "mirroring
+   *  ../../src/host/document-gateway.ts's #stamp field-for-field"). Repair
+   *  round 1: exposed so a test can build a projection with a `sourceVersion`
+   *  correctly drawn from the HOST'S stamp space, exactly as a real
+   *  provider.ts's `sendProjection()` does — never a hand-picked literal in
+   *  the proxy's OWN (different) mirror-local version space. */
+  currentStamp(): number {
+    return this.#stamp;
+  }
+
+  /** Simulates the real `DocumentGateway`'s `EDITOR_HOST_DISCONNECTED`
+   *  broadcast (a closed document, in real usage) — delivered immediately,
+   *  bypassing the FIFO cursor entirely, since a real disconnect is not
+   *  something a host would ever queue behind a pending reply. Used by
+   *  convergence case (d)'s test ("a local edit after disconnect is
+   *  refused"). */
+  disconnect(): void {
+    this.#deliver({
+      type: "disconnect",
+      protocolVersion: EDITOR_PROTOCOL_VERSION,
+      diagnostic: hostDisconnectedDiagnostic("document-closed"),
+    });
+  }
+
+  /** Queues a `snapshot` reply with `transmissionDelayMs` latency, but
+   *  never delivers it before `#nextDeliveryTime` — preserving FIFO order
+   *  relative to every reply queued earlier (see this module's header).
+   *  Bumps and captures `#stamp` HERE, at call time — the same reasoning
+   *  as `snapshotAtCallTime` below, and the class header's own note on why
+   *  the stamp identifies the state at the moment of the underlying
+   *  change, not at delivery time.
+   *
+   *  `bump` defaults to `true` (every genuine state-changing reply — an
+   *  edit's accept/reject, an external change — advances the sequence).
+   *  The ONE caller that passes `false` is the `"ready"` handler: it
+   *  reports the document exactly as it stood before this session began —
+   *  nothing has changed yet — mirroring `DocumentGateway.sendInitialSnapshot`'s
+   *  own doc comment on why bumping there would stale-reject an edit
+   *  submitted before this reply arrives, for no reason connected to any
+   *  real state change. */
+  #reply(transmissionDelayMs: number, bump = true): void {
+    const snapshotAtCallTime = this.#snapshot;
+    if (bump) this.#stamp += 1;
+    const stampAtCallTime = this.#stamp;
+    const now = Date.now();
+    const deliverAt = Math.max(now + transmissionDelayMs, this.#nextDeliveryTime);
+    this.#nextDeliveryTime = deliverAt;
+    setTimeout(
+      () => {
+        this.#deliver({
+          type: "snapshot",
+          protocolVersion: EDITOR_PROTOCOL_VERSION,
+          snapshot: snapshotAtCallTime,
+          baseStamp: stampAtCallTime,
+        });
+      },
+      Math.max(0, deliverAt - now),
+    );
+  }
+}
+
+/**
+ * Wires a fresh `SimulatedExtensionHost` to an in-memory
+ * `WebviewHostTransport` — the pairing every test in
+ * `tests/webview-host/proxy-document-host.test.ts` builds a
+ * `ProxyDocumentHost` over.
+ */
+export function createSimulatedProxyPair(
+  initialText: string,
+  options: SimulatedExtensionHostOptions = {},
+): { readonly host: SimulatedExtensionHost; readonly transport: WebviewHostTransport } {
+  const host = new SimulatedExtensionHost({ text: initialText, version: 0 }, options);
+  const listeners = new Set<(message: unknown) => void>();
+
+  const transport: WebviewHostTransport = {
+    postMessage: (message) => host.receive(message),
+    onMessage: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+
+  host.connect((message) => {
+    for (const listener of listeners) listener(message);
+  });
+
+  return { host, transport };
+}

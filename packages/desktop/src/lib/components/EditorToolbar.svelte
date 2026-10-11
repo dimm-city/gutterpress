@@ -41,6 +41,7 @@
     type ToolbarItemDef,
     type LayoutBlockKind,
   } from "$lib/editor/toolbar-actions";
+  import type { ToolbarAction, ToolbarPayload } from "$lib/editor/toolbar-actions";
 
   // toolbar-actions.ts declares item icons as plain strings (it stays
   // Svelte-import-free by design). Narrow to Icon's actual prop type here,
@@ -95,29 +96,6 @@
           : "No problems",
   );
   let problemsToggleEl = $state<HTMLButtonElement | null>(null);
-
-  /** The set of named edit actions the toolbar can fire. */
-  export type ToolbarAction =
-    | "bold"
-    | "italic"
-    | "strikethrough"
-    | "code"
-    | "link"
-    | "blockquote"
-    | "ul"
-    | "ol"
-    | "heading"
-    | "hr"
-    | "table"
-    | "image"
-    | "snippet"
-    | "layout-block";
-
-  export type ToolbarPayload =
-    | { level: 1 | 2 | 3 | 4 }           // heading
-    | { cols: number }                    // table
-    | { src: string; alt: string; width?: string; position?: string; size?: string; shape?: boolean } // image
-    | { kind: LayoutBlockKind };          // layout-block
 
   // The toolbar is only meaningful for markdown files.
   let isMarkdown = $derived(

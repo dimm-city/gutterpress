@@ -16,6 +16,7 @@ Per-book overrides live in a project's **override CSS** (typically `fg-overrides
 
 ```markdown
 @section .dc-citizen-file       ← author opts into the component
+
 | Name | Value |                ← plain markdown table
 |------|-------|
 | Strength | 12 |

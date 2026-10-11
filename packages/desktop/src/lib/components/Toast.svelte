@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { reportError } from "$lib/diagnostics/report";
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
 
@@ -62,6 +63,9 @@
 
   function show(message: string, type: ToastType = "info", duration?: number, action?: ToastItem["action"]): void {
     const id = nextId++;
+    // Every error the author is shown is also in the app log (Logs tab): a
+    // toast is gone in seconds, and the log is what gets handed over.
+    if (type === "error") reportError(`shown to the author: ${message}`);
     if (!action && type === "error" && onReportProblem) {
       action = { label: "Report a problem", onClick: onReportProblem };
     }

@@ -246,7 +246,7 @@ test("@columns completion inserts @columns 2 … @end-columns with the cursor be
   const entry = markerCompletions.find((c) => c.label === "@columns");
   const apply = entry?.apply as (v: EditorView, completion: typeof entry, from: number, to: number) => void;
   apply(view, entry as never, 0, 0);
-  expect(getDoc(view)).toBe("@columns 2\n\n@end-columns");
+  expect(getDoc(view)).toBe("@columns 2\n\n\n\n@end-columns");
   const sel = getSel(view);
   expect(sel.from).toBe(sel.to);
   expect(view.state.doc.lineAt(sel.from).text).toBe("");
@@ -264,7 +264,7 @@ test("@section completion apply inserts the @section/@end-section pair with curs
     to: number,
   ) => void;
   apply(view, entry as never, 0, 0);
-  expect(getDoc(view)).toBe("@section\n\n@end-section");
+  expect(getDoc(view)).toBe("@section\n\n\n\n@end-section");
   const sel = getSel(view);
   // Cursor collapsed on the blank interior line, ready for content.
   expect(sel.from).toBe(sel.to);

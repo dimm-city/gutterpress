@@ -23,7 +23,9 @@
    * PWA-clean (§8): type-only imports, zero host/Node code.
    */
   import Icon from "$lib/components/Icon.svelte";
-  import type { PageNavController } from "$lib/routes/page-nav-controller.svelte";
+  import type { PageNavSurface } from "$lib/routes/page-nav-controller.svelte";
+
+  import type { Snippet } from "svelte";
 
   let {
     pageNav,
@@ -31,12 +33,15 @@
     zoom,
     zoomDisabled,
     onApplyZoom,
+    children,
   }: {
-    pageNav: PageNavController;
+    pageNav: PageNavSurface;
     rendering: boolean;
     zoom: string;
     zoomDisabled: boolean;
     onApplyZoom: (zoom: string) => void;
+    /** Controls the pane adds at the strip's right end (Read's lock pill). */
+    children?: Snippet;
   } = $props();
 
   const ZOOM_LEVELS: Array<[string, string]> = [
@@ -99,6 +104,8 @@
     </button>
   </nav>
 
+  <!-- The right track: the zoom menu, then whatever the pane adds (Read's lock pill). -->
+  <div class="right">
   <details class="menu zoom-menu">
     <summary class="icon-btn menu-summary" title="Zoom level" aria-label="Zoom level">
       <Icon name="zoom-in" size={16} />
@@ -119,9 +126,25 @@
       {/each}
     </div>
   </details>
+  {#if children}
+    <div class="trailing">{@render children()}</div>
+  {/if}
+  </div>
 </div>
 
 <style>
+  .right {
+    grid-column: 3;
+    justify-self: end;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+  }
+  .trailing {
+    display: inline-flex;
+    align-items: center;
+  }
   /* Same chrome as EditorToolbar so the two panes read as one pair. */
   .preview-toolbar {
     /* Paging is centered in the toolbar: equal side tracks around the auto
@@ -149,11 +172,6 @@
     align-items: center;
     gap: 2px;
   }
-  .zoom-menu {
-    grid-column: 3;
-    justify-self: end;
-  }
-
   .preview-toolbar button,
   .menu-summary {
     border: 1px solid transparent;
@@ -293,7 +311,14 @@
   @container preview-pane (max-width: 270px) {
     .preview-toolbar { grid-template-columns: auto minmax(0, 1fr); }
     .page-nav { grid-column: 1; }
-    .zoom-menu { grid-column: 2; }
+    .right { grid-column: 2; }
+  }
+  /* A pane control after the zoom menu (Read's lock pill) needs that
+     fallback sooner. */
+  @container preview-pane (max-width: 340px) {
+    .preview-toolbar:has(.trailing) { grid-template-columns: auto minmax(0, 1fr); }
+    .preview-toolbar:has(.trailing) .page-nav { grid-column: 1; }
+    .preview-toolbar:has(.trailing) .right { grid-column: 2; }
   }
 
   @media (pointer: coarse) {

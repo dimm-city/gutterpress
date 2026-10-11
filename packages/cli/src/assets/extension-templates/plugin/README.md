@@ -41,7 +41,9 @@ Now `gutterpress preview` the book and write:
 
 ```markdown
 @term-box warning label="Read this first"
+
 The rule of three applies here, and [[initiative]] is defined inline.
+
 @end-term-box
 ```
 

@@ -18,6 +18,7 @@
   var exports_fragment = {};
   __export(exports_fragment, {
     wrapGeometry: () => wrapGeometry,
+    withLayoutReadCache: () => withLayoutReadCache,
     waitForLayoutReady: () => waitForLayoutReady,
     synthesizeColumnBreaks: () => synthesizeColumnBreaks,
     stripMetrics: () => stripMetrics,
@@ -26,6 +27,7 @@
     spreadModeSupported: () => spreadModeSupported,
     runPageBox: () => runPageBox,
     rowStrideOf: () => rowStrideOf,
+    paginate: () => paginate,
     pageRangeOf: () => pageRangeOf,
     pageOf: () => pageOf,
     padToSignature: () => padToSignature,
@@ -507,7 +509,7 @@
     }
     return out;
   }
-  function extract(css) {
+  function extract(css, options = {}) {
     const model = {
       pageRules: [],
       stringSets: [],
@@ -519,7 +521,7 @@
       warnings: []
     };
     walk(css, model);
-    resolveGeometryVars(model, collectRootCustomProperties(css));
+    resolveGeometryVars(model, collectRootCustomProperties(css, options.rootSelectors ?? [":root"]));
     const names = new Set;
     for (const r of model.pageRules)
       if (r.name)
@@ -539,7 +541,7 @@
     "bleed",
     "marks"
   ];
-  function collectRootCustomProperties(css) {
+  function collectRootCustomProperties(css, rootSelectors) {
     const props = new Map;
     const walkForRoot = (body) => {
       for (const rule of scanRules(body)) {
@@ -552,7 +554,7 @@
         }
         if (!prelude.startsWith("@")) {
           const selectors = splitTopLevel(prelude, ",");
-          if (selectors.some((s) => s.trim() === ":root")) {
+          if (selectors.some((s) => rootSelectors.includes(s.trim()))) {
             const decls = parseDeclarations(ruleBody);
             for (const [k, v] of Object.entries(decls)) {
               if (k.startsWith("--"))
@@ -1059,6 +1061,9 @@
     style.textContent = viewer_default;
     doc.head.appendChild(style);
   }
+  function layoutScope(opts) {
+    return opts.root ?? document;
+  }
   var pt = (v) => v * PX_PER_PT;
   function collectCssText(doc = document) {
     let out = "";
@@ -1107,7 +1112,7 @@
       return null;
     return Math.ceil(remaining);
   }
-  function synthesizeColumnBreaks(model) {
+  function synthesizeColumnBreaks(model, scope = document) {
     const sites = [];
     const seen = new WeakMap;
     for (const b of model.breaks) {
@@ -1117,7 +1122,7 @@
         continue;
       let els;
       try {
-        els = Array.from(document.querySelectorAll(b.selector));
+        els = Array.from(scope.querySelectorAll(b.selector));
       } catch {
         continue;
       }
@@ -1228,7 +1233,7 @@
         pushRun(runs, last.page, held, last.flushEdges);
         return [];
       }
-      if (held.some((n) => (n.textContent ?? "").trim() !== "")) {
+      if (held.some((n) => n.nodeType !== 1 && (n.textContent ?? "").trim() !== "")) {
         pushRun(runs, undefined, held);
         return [];
       }
@@ -1249,6 +1254,10 @@
         continue;
       }
       if (!hasDescendantPageAssignment(kid, model)) {
+        if (getComputedStyle(kid).display === "none") {
+          pending.push(node);
+          continue;
+        }
         pushRun(runs, undefined, [...carry(), kid], flush);
         continue;
       }
@@ -1275,10 +1284,16 @@
   }
   var FORCED_BREAK = /^(column|page|left|right|recto|verso|always)$/;
   function clearLeadingForcedBreaks(strip) {
-    for (let el = strip.firstElementChild;el; el = el.firstElementChild) {
+    let el = strip.firstElementChild;
+    while (el) {
       const cs = getComputedStyle(el);
+      if (cs.display === "none") {
+        el = el.nextElementSibling;
+        continue;
+      }
       if (FORCED_BREAK.test(cs.breakBefore))
         el.style.breakBefore = "auto";
+      el = el.firstElementChild;
     }
   }
   function stabilizeFullHeightPageRoots(model, strips) {
@@ -1289,9 +1304,16 @@
       const stripHeight = parseFloat(getComputedStyle(strip.el).getPropertyValue("--gp-content-h"));
       if (!(stripHeight > 0))
         continue;
-      for (let el = strip.el.firstElementChild;el; el = el.firstElementChild) {
-        if (directPageName(el, model) !== strip.page)
+      let el = strip.el.firstElementChild;
+      while (el) {
+        if (getComputedStyle(el).display === "none") {
+          el = el.nextElementSibling;
           continue;
+        }
+        if (directPageName(el, model) !== strip.page) {
+          el = el.firstElementChild;
+          continue;
+        }
         const cs = getComputedStyle(el);
         const height = parseFloat(cs.height);
         const rootRects = el.getClientRects();
@@ -1307,8 +1329,8 @@
     }
     return stabilized;
   }
-  function restoreFullHeightPageRoots(doc = document) {
-    for (const el of Array.from(doc.querySelectorAll('[data-gp-leading-page-root="stabilized"]'))) {
+  function restoreFullHeightPageRoots(scope = document) {
+    for (const el of Array.from(scope.querySelectorAll('[data-gp-leading-page-root="stabilized"]'))) {
       const value = el.dataset.gpLeadingPageRootDisplay ?? "";
       const priority = el.dataset.gpLeadingPageRootDisplayPriority ?? "";
       if (value)
@@ -1344,8 +1366,8 @@
         el.style.setProperty("overflow-y", "clip");
     }
   }
-  function restoreScrollContainers(doc = document) {
-    for (const el of Array.from(doc.querySelectorAll('[data-gp-overflow="clipped"]'))) {
+  function restoreScrollContainers(scope = document) {
+    for (const el of Array.from(scope.querySelectorAll('[data-gp-overflow="clipped"]'))) {
       for (const axis of ["x", "y"]) {
         const value = axis === "x" ? el.dataset.gpOverflowX : el.dataset.gpOverflowY;
         const priority = axis === "x" ? el.dataset.gpOverflowXPriority : el.dataset.gpOverflowYPriority;
@@ -1550,9 +1572,9 @@
     }
     return shim;
   }
-  function compensateRectoBreaks(model, strips) {
+  function compensateRectoBreaks(model, strips, scope = document, pageOffset = 0) {
     const decls = model.breaks.filter(isRectoVersoBreak);
-    for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer")))
+    for (const spacer of Array.from(scope.querySelectorAll(".gp-recto-spacer")))
       spacer.remove();
     if (!decls.length)
       return 0;
@@ -1560,7 +1582,7 @@
     for (const d of decls) {
       let els = [];
       try {
-        els = Array.from(document.querySelectorAll(d.selector));
+        els = Array.from(scope.querySelectorAll(d.selector));
       } catch {
         continue;
       }
@@ -1568,7 +1590,10 @@
         sites.push({ el, wantsRecto: wantsRecto(d.value) });
     }
     sites.sort((a, b) => a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
-    const plan = planRectoBlanks(sites.map((site) => ({ page: pageOf(site.el, strips) + 1, wantsRecto: site.wantsRecto })));
+    const plan = planRectoBlanks(sites.map((site) => {
+      const local = pageOf(site.el, strips);
+      return { page: local < 0 ? 0 : local + 1 + pageOffset, wantsRecto: site.wantsRecto };
+    }));
     let inserted = 0;
     for (const [i, site] of sites.entries()) {
       if (!plan[i])
@@ -1617,15 +1642,37 @@
   }
   function cssZoomOf(el) {
     const stage = el.closest(".gp-stage") ?? document.body;
-    return new DOMMatrixReadOnly(getComputedStyle(stage).transform).a || 1;
+    const cached = readCache?.zoom.get(stage);
+    if (cached !== undefined)
+      return cached;
+    const zoom = new DOMMatrixReadOnly(getComputedStyle(stage).transform).a || 1;
+    readCache?.zoom.set(stage, zoom);
+    return zoom;
+  }
+  var readCache = null;
+  function withLayoutReadCache(fn) {
+    if (readCache)
+      return fn();
+    readCache = { metrics: new Map, zoom: new Map };
+    try {
+      return fn();
+    } finally {
+      readCache = null;
+    }
   }
   function stripMetrics(strip) {
+    const cached = readCache?.metrics.get(strip);
+    if (cached)
+      return cached;
     const cs = getComputedStyle(strip);
     const w = parseFloat(cs.getPropertyValue("--gp-content-w"));
     const colGap = parseFloat(cs.columnGap) || 0;
     const h = parseFloat(cs.getPropertyValue("--gp-content-h"));
     const rowGap = parseFloat(cs.rowGap) || 0;
-    return { stride: w + colGap, rowStride: h + rowGap };
+    const sheetGap = parseFloat(cs.getPropertyValue("--gp-sheet-gap")) || 0;
+    const metrics = { stride: w + colGap, rowStride: h + rowGap, sheetGap };
+    readCache?.metrics.set(strip, metrics);
+    return metrics;
   }
   function rowStrideOf(strip) {
     return stripMetrics(strip).rowStride;
@@ -1691,14 +1738,14 @@
       }
     }
   }
-  function blankPageIndices(strips) {
-    return Array.from(document.querySelectorAll(".gp-recto-spacer")).map((el) => pageOf(el, strips));
+  function blankPageIndices(strips, scope = document) {
+    return Array.from(scope.querySelectorAll(".gp-recto-spacer")).map((el) => pageOf(el, strips));
   }
-  function padToSignature(strips, contentPages) {
-    for (const spacer of Array.from(document.querySelectorAll(".gp-pad-spacer")))
+  function padToSignature(strips, contentPages, scope = document, padPages) {
+    for (const spacer of Array.from(scope.querySelectorAll(".gp-pad-spacer")))
       spacer.remove();
     const data = document.documentElement.dataset;
-    const count = signaturePadding(contentPages, Number(data.gpSignature) || 1, data.gpLastPage);
+    const count = padPages ?? signaturePadding(contentPages, Number(data.gpSignature) || 1, data.gpLastPage);
     const last = strips[strips.length - 1];
     if (!last || count === 0)
       return contentPages;
@@ -1742,9 +1789,68 @@
       return;
     });
   }
+  function paginate(model, opts = {}) {
+    const authoring = [];
+    const scope = layoutScope(opts);
+    const strips = buildStrips(model, opts, authoring);
+    const { blanks, headers, contentPages, totalPages, blankPageIndices: blankIndices } = withLayoutReadCache(() => {
+      makeOverflowFragmentable(strips);
+      stabilizeFullHeightPageRoots(model, strips);
+      synthesizeColumnBreaks(model, scope);
+      measure(strips);
+      const blanks2 = compensateRectoBreaks(model, strips, scope, opts.pageOffset ?? 0);
+      if (blanks2)
+        measure(strips);
+      const headers2 = opts.compensateHeaders === false ? { tables: 0, passes: 0, warnings: [] } : compensateRepeatedHeaders(strips);
+      const contentPages2 = measure(strips).totalPages;
+      const totalPages2 = padToSignature(strips, contentPages2, scope, opts.padPages);
+      return { blanks: blanks2, headers: headers2, contentPages: contentPages2, totalPages: totalPages2, blankPageIndices: blankPageIndices(strips, scope) };
+    });
+    const api = {
+      model,
+      strips,
+      totalPages,
+      warnings: [...new Set([...authoring, ...headers.warnings])],
+      blankPages: blanks,
+      blankPageIndices: blankIndices,
+      paddedPageIndices: pagesAfter(contentPages, totalPages),
+      root: opts.root,
+      pageOf: (sel) => pageOf(typeof sel === "string" ? scope.querySelector(sel) : sel, strips),
+      pageRangeOf: (sel) => pageRangeOf(typeof sel === "string" ? scope.querySelector(sel) : sel, strips),
+      relayout: () => {
+        restoreFullHeightPageRoots(scope);
+        restoreScrollContainers(scope);
+        unwrapStrips(strips);
+        for (const spacer of Array.from(scope.querySelectorAll(".gp-recto-spacer, .gp-pad-spacer")))
+          spacer.remove();
+        const rebuilt = buildStrips(model, opts, authoring);
+        strips.length = 0;
+        strips.push(...rebuilt);
+        return withLayoutReadCache(() => {
+          makeOverflowFragmentable(strips);
+          stabilizeFullHeightPageRoots(model, strips);
+          synthesizeColumnBreaks(model, scope);
+          measure(strips);
+          api.blankPages = compensateRectoBreaks(model, strips, scope, opts.pageOffset ?? 0);
+          if (opts.compensateHeaders !== false)
+            api.warnings = [
+              ...new Set([...authoring, ...compensateRepeatedHeaders(strips).warnings])
+            ];
+          const content = measure(strips).totalPages;
+          padToSignature(strips, content, scope, opts.padPages);
+          const r = measure(strips);
+          api.totalPages = r.totalPages;
+          api.blankPageIndices = blankPageIndices(strips, scope);
+          api.paddedPageIndices = pagesAfter(content, r.totalPages);
+          return r;
+        });
+      }
+    };
+    return api;
+  }
   async function fragmentDocument(opts = {}) {
     const layoutReady = waitForLayoutReady();
-    const css = await loadStyleSources();
+    const css = opts.css ?? await loadStyleSources();
     injectViewerCss();
     const printOnly = mediaPrintBodies(css).join(`
 `);
@@ -1756,57 +1862,8 @@
     }
     const model = extract(css);
     injectBreakMapping(model);
-    const authoring = [];
-    const strips = buildStrips(model, opts, authoring);
     await layoutReady;
-    makeOverflowFragmentable(strips);
-    stabilizeFullHeightPageRoots(model, strips);
-    synthesizeColumnBreaks(model);
-    measure(strips);
-    const blanks = compensateRectoBreaks(model, strips);
-    if (blanks)
-      measure(strips);
-    const headers = opts.compensateHeaders === false ? { tables: 0, passes: 0, warnings: [] } : compensateRepeatedHeaders(strips);
-    const contentPages = measure(strips).totalPages;
-    const totalPages = padToSignature(strips, contentPages);
-    const api = {
-      model,
-      strips,
-      totalPages,
-      warnings: [...new Set([...authoring, ...headers.warnings])],
-      blankPages: blanks,
-      blankPageIndices: blankPageIndices(strips),
-      paddedPageIndices: pagesAfter(contentPages, totalPages),
-      pageOf: (sel) => pageOf(typeof sel === "string" ? document.querySelector(sel) : sel, strips),
-      pageRangeOf: (sel) => pageRangeOf(typeof sel === "string" ? document.querySelector(sel) : sel, strips),
-      relayout: () => {
-        restoreFullHeightPageRoots();
-        restoreScrollContainers();
-        unwrapStrips(strips);
-        for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer, .gp-pad-spacer")))
-          spacer.remove();
-        const rebuilt = buildStrips(model, opts, authoring);
-        strips.length = 0;
-        strips.push(...rebuilt);
-        makeOverflowFragmentable(strips);
-        stabilizeFullHeightPageRoots(model, strips);
-        synthesizeColumnBreaks(model);
-        measure(strips);
-        api.blankPages = compensateRectoBreaks(model, strips);
-        if (opts.compensateHeaders !== false)
-          api.warnings = [
-            ...new Set([...authoring, ...compensateRepeatedHeaders(strips).warnings])
-          ];
-        const content = measure(strips).totalPages;
-        padToSignature(strips, content);
-        const r = measure(strips);
-        api.totalPages = r.totalPages;
-        api.blankPageIndices = blankPageIndices(strips);
-        api.paddedPageIndices = pagesAfter(content, r.totalPages);
-        return r;
-      }
-    };
-    return api;
+    return paginate(model, opts);
   }
 
   // src/engine/shared/content-value.ts
@@ -2069,7 +2126,7 @@
 
   // src/engine/viewer/decorate.ts
   var px = (v) => `${v * PX_PER_PT}px`;
-  function elementForHref(href) {
+  function elementForHref(href, scope = document) {
     const raw = href.replace(/^#/, "");
     if (!raw)
       return null;
@@ -2077,7 +2134,7 @@
     try {
       id = decodeURIComponent(raw);
     } catch {}
-    return document.getElementById(id);
+    return scope === document ? document.getElementById(id) : scope.querySelector(`[id="${CSS.escape(id)}"]`);
   }
   function applyPageBackground(sheet, decls) {
     for (const [prop, value] of Object.entries(decls)) {
@@ -2091,6 +2148,10 @@
   }
   function decorate(layout, opts = {}) {
     const model = layout.model;
+    let pageOffset = opts.pageOffset ?? 0;
+    let bookPages = opts.bookPages;
+    let externalTargets = new Map;
+    const scope = layout.root ?? document;
     const sheets = new Map;
     let blankPages = new Set;
     let paddedPages = new Set;
@@ -2102,12 +2163,27 @@
       targets: new Map,
       pageNumbers: [],
       warnings,
+      setPageOffset(offset, pages = bookPages) {
+        if (offset === pageOffset && pages === bookPages)
+          return;
+        pageOffset = offset;
+        bookPages = pages;
+        draw();
+      },
+      pageOfTarget: (href) => targetPage(href),
+      setExternalTargets(targets) {
+        const same = targets.size === externalTargets.size && [...targets].every(([href, page]) => externalTargets.get(href) === page);
+        if (same)
+          return;
+        externalTargets = targets;
+        draw();
+      },
       setDesigner(on) {
         document.body.dataset.designer = on ? "on" : "off";
       }
     };
-    const canvasBg = captureCanvasBackground();
-    document.body.classList.add("gp-stage");
+    const canvasBg = captureCanvasBackground(opts.canvasRoots);
+    (opts.stage ?? document.body).classList.add("gp-stage");
     if (document.body.dataset.designer === undefined)
       api.setDesigner(!!opts.designer);
     function pageContext(strip, indexInStrip2, bookIndex) {
@@ -2121,11 +2197,11 @@
         return { index: bookIndex, strip, pseudos: pseudos2, geometry: geometry2, marginBoxes: marginBoxes2, decls: decls2 };
       }
       const pseudos = [];
-      if (bookIndex === 0)
+      if (bookIndex + pageOffset === 0)
         pseudos.push("first");
       if (indexInStrip2 === 0)
         pseudos.push("nth-first-of-run");
-      pseudos.push(bookIndex % 2 === 0 ? "right" : "left");
+      pseudos.push((bookIndex + pageOffset) % 2 === 0 ? "right" : "left");
       const { geometry, marginBoxes, decls } = resolvePage(model, {
         name: strip.page,
         pseudos
@@ -2138,7 +2214,7 @@
       for (const decl of model.stringSets) {
         let els = [];
         try {
-          els = Array.from(document.querySelectorAll(decl.selector));
+          els = Array.from(scope.querySelectorAll(decl.selector));
         } catch {
           continue;
         }
@@ -2150,7 +2226,7 @@
           entries.push({
             page,
             value: evaluate(decl.value, {
-              text: (el.textContent ?? "").trim(),
+              text: (el.innerText ?? el.textContent ?? "").trim(),
               attr: (n) => el.getAttribute(n) ?? undefined
             })
           });
@@ -2162,7 +2238,7 @@
       for (const r of model.counterResets) {
         let els = [];
         try {
-          els = Array.from(document.querySelectorAll(r.selector));
+          els = Array.from(scope.querySelectorAll(r.selector));
         } catch {
           continue;
         }
@@ -2172,19 +2248,26 @@
             resets.push({ page: page + 1, start: r.start });
         }
       }
-      api.pageNumbers = resets.length ? pageCounterValues(resets, layout.totalPages) : [];
+      const firstReset = resets.length ? Math.min(...resets.map((r) => r.page)) : Number.POSITIVE_INFINITY;
+      api.pageNumbers = resets.length ? pageCounterValues(resets, layout.totalPages).map((value, i) => i + 1 < firstReset ? value + pageOffset : value) : [];
       const pageValues = api.pageNumbers.length ? api.pageNumbers : null;
       const linked = new Set;
-      for (const a of Array.from(document.querySelectorAll("a[href^='#']")))
+      for (const a of Array.from(scope.querySelectorAll("a[href^='#']")))
         linked.add(a.getAttribute("href"));
       for (const href of linked) {
-        const el = elementForHref(href);
-        if (!el)
-          continue;
-        const [page] = pageRangeOf(el, layout.strips);
-        if (page >= 0)
-          api.targets.set(href, toFolioPage(page + 1, pageValues));
+        const page = targetPage(href, pageValues) ?? externalTargets.get(href);
+        if (page !== undefined)
+          api.targets.set(href, page);
       }
+    }
+    function targetPage(href, pageValues = api.pageNumbers.length ? api.pageNumbers : null) {
+      const el = elementForHref(href, scope);
+      if (!el)
+        return;
+      const [page] = pageRangeOf(el, layout.strips);
+      if (page < 0)
+        return;
+      return pageValues ? toFolioPage(page + 1, pageValues) : page + 1 + pageOffset;
     }
     function stringAt(name, which, page) {
       return stringValueAt(api.stringMap.get(name) ?? [], page, parseWhich(which));
@@ -2198,7 +2281,7 @@
         const pseudo = /::?after$/.test(xref.selector) ? "after" : "before";
         let els = [];
         try {
-          els = Array.from(document.querySelectorAll(base));
+          els = Array.from(scope.querySelectorAll(base));
         } catch {
           continue;
         }
@@ -2211,7 +2294,7 @@
                 brokenHrefs.add(url);
               return page;
             },
-            targetText: (url) => (elementForHref(url)?.textContent ?? "").trim() || undefined,
+            targetText: (url) => (elementForHref(url, scope)?.textContent ?? "").trim() || undefined,
             leader: leaderMarker
           });
           el.setAttribute(`data-gp-${pseudo}`, text);
@@ -2226,12 +2309,14 @@
         style.id = "gp-xref-style";
         document.head.appendChild(style);
       }
-      style.textContent = generatedContentCss(model.xrefs.map((x) => x.selector));
+      const css = generatedContentCss(model.xrefs.map((x) => x.selector));
+      if (style.textContent !== css)
+        style.textContent = css;
     }
     function fillLeaders() {
       const marked = [];
       for (const attr of ["data-gp-after", "data-gp-before"]) {
-        for (const el of Array.from(document.querySelectorAll(`[${attr}]`))) {
+        for (const el of Array.from(scope.querySelectorAll(`[${attr}]`))) {
           const raw = el.getAttribute(attr) ?? "";
           if (LEADER_RE.test(raw))
             marked.push({ el, attr, raw });
@@ -2258,58 +2343,63 @@
       }
     }
     function draw() {
-      sheets.clear();
-      warnings.length = 0;
-      blankPages = new Set(layout.blankPageIndices);
-      paddedPages = new Set(layout.paddedPageIndices);
-      buildMaps();
-      fillXrefs();
-      let prevPageH = 0;
-      let first = true;
-      for (const strip of layout.strips) {
-        const run = ensureRun(strip);
-        const { stride, rowStride } = stripMetrics(strip.el);
-        const sheetGap = parseFloat(getComputedStyle(strip.el).getPropertyValue("--gp-sheet-gap")) || 0;
-        run.style.setProperty("--gp-sheet-gap", `${sheetGap}px`);
-        const { perRow, shift } = wrapGeometry(strip);
-        const layer = run.querySelector(".gp-layer");
-        layer.textContent = "";
-        const g = strip.geometry;
-        for (let i = 0;i < strip.pages; i++) {
-          const bookIndex = strip.offset + i;
-          const ctx = pageContext(strip, i, bookIndex);
-          const slot = i + shift;
-          const row = Math.floor(slot / perRow);
-          const colVisual = slot % perRow;
-          const sheetLeft = colVisual * stride;
-          const sheetTop = row * rowStride;
-          const sheet = document.createElement("div");
-          sheet.className = "gp-sheet";
-          sheet.dataset.page = String(bookIndex + 1);
-          sheet.dataset.side = bookIndex % 2 === 0 ? "recto" : "verso";
-          sheet.style.left = `${sheetLeft}px`;
-          sheet.style.top = `${sheetTop}px`;
-          sheet.style.setProperty("--gp-page-w", px(ctx.geometry.width));
-          sheet.style.setProperty("--gp-page-h", px(ctx.geometry.height));
-          applyPageBackground(sheet, ctx.decls);
-          if (!ctx.padded)
-            for (const [prop, value] of canvasBg)
-              sheet.style.setProperty(prop, value);
-          layer.appendChild(sheet);
-          sheets.set(bookIndex, sheet);
-          drawMarginBoxes(sheet, ctx, layout.totalPages - paddedPages.size);
-          drawGuides(sheet, ctx);
-          drawCropMarks(sheet, ctx);
+      withLayoutReadCache(() => {
+        for (const strip of layout.strips)
+          stripMetrics(strip.el);
+        sheets.clear();
+        warnings.length = 0;
+        blankPages = new Set(layout.blankPageIndices);
+        paddedPages = new Set(layout.paddedPageIndices);
+        buildMaps();
+        fillXrefs();
+        let prevPageH = 0;
+        let first = true;
+        for (const strip of layout.strips) {
+          const run = ensureRun(strip);
+          const { stride, rowStride, sheetGap } = stripMetrics(strip.el);
+          run.style.setProperty("--gp-sheet-gap", `${sheetGap}px`);
+          const { perRow, shift } = wrapGeometry(strip);
+          const layer = run.querySelector(".gp-layer");
+          layer.textContent = "";
+          const g = strip.geometry;
+          for (let i = 0;i < strip.pages; i++) {
+            const bookIndex = strip.offset + i;
+            const ctx = pageContext(strip, i, bookIndex);
+            const slot = i + shift;
+            const row = Math.floor(slot / perRow);
+            const colVisual = slot % perRow;
+            const sheetLeft = colVisual * stride;
+            const sheetTop = row * rowStride;
+            const sheet = document.createElement("div");
+            sheet.className = "gp-sheet";
+            sheet.dataset.page = String(bookIndex + 1 + pageOffset);
+            sheet.dataset.side = (bookIndex + pageOffset) % 2 === 0 ? "recto" : "verso";
+            if (ctx.padded)
+              sheet.dataset.padded = "";
+            sheet.style.left = `${sheetLeft}px`;
+            sheet.style.top = `${sheetTop}px`;
+            sheet.style.setProperty("--gp-page-w", px(ctx.geometry.width));
+            sheet.style.setProperty("--gp-page-h", px(ctx.geometry.height));
+            applyPageBackground(sheet, ctx.decls);
+            if (!ctx.padded)
+              for (const [prop, value] of canvasBg)
+                sheet.style.setProperty(prop, value);
+            layer.appendChild(sheet);
+            sheets.set(bookIndex, sheet);
+            drawMarginBoxes(sheet, ctx, bookPages ?? layout.totalPages - paddedPages.size);
+            drawGuides(sheet, ctx);
+            drawCropMarks(sheet, ctx);
+          }
+          const rows = Math.max(1, Math.ceil((strip.pages + shift) / perRow));
+          run.style.height = `${rowStride * (rows - 1) + PX_PER_PT * g.height}px`;
+          run.style.width = `${stride * perRow}px`;
+          run.style.marginTop = strip.wrapCols && shift === 1 && !first ? `${-(prevPageH + sheetGap)}px` : "";
+          prevPageH = PX_PER_PT * g.height;
+          first = false;
+          if (opts.designer)
+            checkOverflow(strip, warnings);
         }
-        const rows = Math.max(1, Math.ceil((strip.pages + shift) / perRow));
-        run.style.height = `${rowStride * (rows - 1) + PX_PER_PT * g.height}px`;
-        run.style.width = `${stride * perRow}px`;
-        run.style.marginTop = strip.wrapCols && shift === 1 && !first ? `${-(prevPageH + sheetGap)}px` : "";
-        prevPageH = PX_PER_PT * g.height;
-        first = false;
-        if (opts.designer)
-          checkOverflow(strip, warnings);
-      }
+      });
     }
     function drawMarginBoxes(sheet, ctx, totalPages) {
       const g = ctx.geometry;
@@ -2318,7 +2408,7 @@
         if (!decls?.content)
           continue;
         const text = evaluate(decls.content, {
-          page: api.pageNumbers[ctx.index] ?? ctx.index + 1,
+          page: api.pageNumbers[ctx.index] ?? ctx.index + 1 + pageOffset,
           pages: totalPages,
           strings: (n, w) => stringAt(n, w, ctx.index),
           targetPage: (url) => api.targets.get(url)
@@ -2414,14 +2504,14 @@
     "background-clip",
     "background-blend-mode"
   ];
-  function captureCanvasBackground() {
-    for (const el of [document.documentElement, document.body]) {
+  function captureCanvasBackground(roots) {
+    for (const el of roots ?? [document.documentElement, document.body]) {
       const cs = getComputedStyle(el);
       const transparent = /^(transparent|rgba\(0, ?0, ?0, ?0\))$/.test(cs.backgroundColor);
       if (cs.backgroundImage === "none" && transparent)
         continue;
       const captured = CANVAS_BG_PROPS.map((p) => [p, cs.getPropertyValue(p)]);
-      if (el === document.documentElement)
+      if (el === document.documentElement || roots)
         el.style.background = "none";
       return captured;
     }

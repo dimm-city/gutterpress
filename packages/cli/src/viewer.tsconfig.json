@@ -1,0 +1,18 @@
+{
+  // Declaration emit for the `gutterpress/viewer` subpath. Its own program
+  // for the same reason `src/engine/browser.tsconfig.json` is: this entry's
+  // graph is DOM code, and `lib` is program-global — adding DOM to the
+  // package's Node program leaks DOM overloads into every Node file (see
+  // that file's header for the measured regression). Runtime JS comes from
+  // the separate `bun build src/viewer.ts` invocation in package.json.
+  "extends": "./engine/browser.tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "rootDir": ".",
+    "outDir": "../dist"
+  },
+  "include": ["viewer.ts", "engine/viewer/**/*.ts", "engine/shared/**/*.ts", "markdown-shims.d.ts"],
+  "exclude": ["**/*.test.ts", "engine/viewer/test-support", "engine/viewer/fixtures"]
+}

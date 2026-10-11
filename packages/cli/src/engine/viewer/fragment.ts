@@ -59,6 +59,44 @@ export interface LayoutOptions {
   root?: HTMLElement;
   /** reserve (and draw) repeated table headers on continuation pages; default true */
   compensateHeaders?: boolean;
+  /**
+   * The book's CSS, when the flow root is NOT the whole document — the
+   * desktop's paged editor paginates one editor document inside the app,
+   * where `document.styleSheets` is the APP's CSS, not the book's. Supplied,
+   * it replaces the `loadStyleSources()` read entirely: the GCPM model
+   * (`@page` geometry, margin boxes, `string-set`) comes from this string.
+   */
+  css?: string;
+  /**
+   * How many pages of the BOOK come before this layout's first page. The
+   * preview paginates the whole book as one flow and needs none; the
+   * desktop's paged editor paginates one chapter at a time and passes the
+   * page count of the chapters above, so a `break-before: recto`/`verso`
+   * blank is decided by the page's parity in the book, as print decides it.
+   * Read on every `relayout()`, so a host may update it in place.
+   */
+  pageOffset?: number;
+  /**
+   * How many signature-padding pages to append after this layout's content,
+   * when this layout is one chapter of a book (the desktop's paged editor):
+   * only the host knows the book's page count, so it decides, and gives the
+   * last chapter the padding and every other chapter none. Omitted, the
+   * document's own `print` settings decide (`padToSignature`), as in the
+   * preview. Read on every `relayout()`, like `pageOffset`.
+   */
+  padPages?: number;
+}
+
+/**
+ * Where a layout's own DOM lives, for every query and clean-up the
+ * fragmenter does outside its strips. The preview owns its whole document:
+ * the document. A host that paginates several flow roots in ONE document
+ * (the desktop's paged editor: one root per chapter) passes `root`, and the
+ * passes must stay inside it, or one chapter's layout removes another's
+ * blank pages and undoes its overflow mapping.
+ */
+function layoutScope(opts: LayoutOptions): ParentNode {
+  return opts.root ?? document;
 }
 
 const pt = (v: number) => v * PX_PER_PT;
@@ -214,7 +252,7 @@ export function columnReserve(offset: number, columnHeight: number): number | nu
  * same forced break) needs no spacer, which is what dedupes those pairs
  * without extra bookkeeping.
  */
-export function synthesizeColumnBreaks(model: GcpmModel): void {
+export function synthesizeColumnBreaks(model: GcpmModel, scope: ParentNode = document): void {
   const sites: Array<{ el: Element; prop: string }> = [];
   const seen = new WeakMap<Element, Set<string>>();
   for (const b of model.breaks) {
@@ -222,7 +260,7 @@ export function synthesizeColumnBreaks(model: GcpmModel): void {
     if (!FORCED_PAGE_LIKE.test(b.value.trim())) continue;
     let els: Element[];
     try {
-      els = Array.from(document.querySelectorAll(b.selector));
+      els = Array.from(scope.querySelectorAll(b.selector));
     } catch {
       continue; // unsupported selector — ignore, never throw on author CSS
     }
@@ -447,8 +485,10 @@ function explodeChildren(container: Element, model: GcpmModel): Run[] {
     }
     // Nothing precedes it: text with real content opens its own default-page
     // run (print puts it on the default page, then the named element breaks
-    // to its own). Whitespace generates no box, so it just rides along.
-    if (held.some((n) => (n.textContent ?? "").trim() !== "")) {
+    // to its own). Whitespace generates no box, so it just rides along — and
+    // so does an element node, which reaches `pending` only when it generates
+    // no boxes either (see the loop below).
+    if (held.some((n) => n.nodeType !== 1 && (n.textContent ?? "").trim() !== "")) {
       pushRun(runs, undefined, held);
       return [];
     }
@@ -469,6 +509,19 @@ function explodeChildren(container: Element, model: GcpmModel): Run[] {
       continue;
     }
     if (!hasDescendantPageAssignment(kid, model)) {
+      // A `display: none` element generates no boxes anywhere in its subtree,
+      // so print cannot start a page at it. It therefore rides along with a
+      // neighbouring run exactly as whitespace does, instead of opening a run
+      // — and a page — of its own. Read after the page checks above, so an
+      // element that DOES carry page context is never treated this way.
+      //
+      // The editor's locked view hides its marker chips like this, and a
+      // hidden chip sitting ahead of a chapter opener manufactured a whole
+      // blank leading page there.
+      if (getComputedStyle(kid).display === "none") {
+        pending.push(node);
+        continue;
+      }
       pushRun(runs, undefined, [...carry(), kid], flush);
       continue;
     }
@@ -539,9 +592,21 @@ const FORCED_BREAK = /^(column|page|left|right|recto|verso|always)$/;
  * Guarded by `spread-leading-break.test.ts`, which fails without this.
  */
 function clearLeadingForcedBreaks(strip: HTMLElement) {
-  for (let el = strip.firstElementChild; el; el = el.firstElementChild) {
+  let el: Element | null = strip.firstElementChild;
+  while (el) {
     const cs = getComputedStyle(el);
+    // An element that generates no box cannot be what a column starts with,
+    // so the leading chain continues at its next SIBLING. The rich editor
+    // mounts a marker's chip ahead of the container it opens and hides it in
+    // the reader's view, which put exactly such an element at the head of the
+    // strip: the run stopped there, the container's own forced break survived,
+    // and the chapter opened on a blank page.
+    if (cs.display === "none") {
+      el = el.nextElementSibling;
+      continue;
+    }
     if (FORCED_BREAK.test(cs.breakBefore)) (el as HTMLElement).style.breakBefore = "auto";
+    el = el.firstElementChild;
   }
 }
 
@@ -577,12 +642,18 @@ export function stabilizeFullHeightPageRoots(model: GcpmModel, strips: StripInfo
     // explodeChildren() may leave shallow author shells around the element
     // that directly owns `page:`. Only the leading chain can collapse a margin
     // through the run's block-start edge.
-    for (
-      let el = strip.el.firstElementChild as HTMLElement | null;
-      el;
-      el = el.firstElementChild as HTMLElement | null
-    ) {
-      if (directPageName(el, model) !== strip.page) continue;
+    let el = strip.el.firstElementChild as HTMLElement | null;
+    while (el) {
+      // Box-less shells are not part of the leading chain — see
+      // `clearLeadingForcedBreaks` for the same rule and why it is needed.
+      if (getComputedStyle(el).display === "none") {
+        el = el.nextElementSibling as HTMLElement | null;
+        continue;
+      }
+      if (directPageName(el, model) !== strip.page) {
+        el = el.firstElementChild as HTMLElement | null;
+        continue;
+      }
       const cs = getComputedStyle(el);
       const height = parseFloat(cs.height);
       const rootRects = el.getClientRects();
@@ -606,9 +677,9 @@ export function stabilizeFullHeightPageRoots(model: GcpmModel, strips: StripInfo
 }
 
 /** Restore the exact authored inline display before a refresh rebuild. */
-function restoreFullHeightPageRoots(doc: Document = document): void {
+function restoreFullHeightPageRoots(scope: ParentNode = document): void {
   for (const el of Array.from(
-    doc.querySelectorAll<HTMLElement>('[data-gp-leading-page-root="stabilized"]'),
+    scope.querySelectorAll<HTMLElement>('[data-gp-leading-page-root="stabilized"]'),
   )) {
     const value = el.dataset.gpLeadingPageRootDisplay ?? "";
     const priority = el.dataset.gpLeadingPageRootDisplayPriority ?? "";
@@ -678,8 +749,8 @@ export function makeOverflowFragmentable(strips: StripInfo[]): void {
   }
 }
 
-function restoreScrollContainers(doc: Document = document): void {
-  for (const el of Array.from(doc.querySelectorAll<HTMLElement>('[data-gp-overflow="clipped"]'))) {
+function restoreScrollContainers(scope: ParentNode = document): void {
+  for (const el of Array.from(scope.querySelectorAll<HTMLElement>('[data-gp-overflow="clipped"]'))) {
     for (const axis of ["x", "y"] as const) {
       const value = axis === "x" ? el.dataset.gpOverflowX : el.dataset.gpOverflowY;
       const priority =
@@ -1062,9 +1133,11 @@ function sectionShim(
 export function compensateRectoBreaks(
   model: GcpmModel,
   strips: StripInfo[],
+  scope: ParentNode = document,
+  pageOffset = 0,
 ): number {
   const decls = model.breaks.filter(isRectoVersoBreak);
-  for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer")))
+  for (const spacer of Array.from(scope.querySelectorAll(".gp-recto-spacer")))
     spacer.remove();
   if (!decls.length) return 0;
 
@@ -1072,7 +1145,7 @@ export function compensateRectoBreaks(
   for (const d of decls) {
     let els: Element[] = [];
     try {
-      els = Array.from(document.querySelectorAll(d.selector));
+      els = Array.from(scope.querySelectorAll(d.selector));
     } catch {
       continue;
     }
@@ -1087,7 +1160,12 @@ export function compensateRectoBreaks(
   // The plan itself is the shared policy the compiler uses on its PDF-measured
   // pages — same input shape, same decision.
   const plan = planRectoBlanks(
-    sites.map((site) => ({ page: pageOf(site.el, strips) + 1, wantsRecto: site.wantsRecto })),
+    // Parity is the BOOK's: a layout that starts after `pageOffset` pages
+    // (one chapter of the paged editor) is a recto where the book is.
+    sites.map((site) => {
+      const local = pageOf(site.el, strips);
+      return { page: local < 0 ? 0 : local + 1 + pageOffset, wantsRecto: site.wantsRecto };
+    }),
   );
   let inserted = 0;
   for (const [i, site] of sites.entries()) {
@@ -1200,7 +1278,45 @@ export function strideOf(strip: HTMLElement): number {
  */
 function cssZoomOf(el: Element): number {
   const stage = el.closest(".gp-stage") ?? document.body;
-  return new DOMMatrixReadOnly(getComputedStyle(stage).transform).a || 1;
+  const cached = readCache?.zoom.get(stage);
+  if (cached !== undefined) return cached;
+  const zoom = new DOMMatrixReadOnly(getComputedStyle(stage).transform).a || 1;
+  readCache?.zoom.set(stage, zoom);
+  return zoom;
+}
+
+/**
+ * One layout pass's computed-style reads, so `pageOf()` on the Nth element
+ * of a pass does not ask the browser for the strip's pitch and the stage's
+ * zoom again. Every value cached here is constant for the life of a strip
+ * (`buildStrips` sets the pitch; the zoom is one paint transform on the
+ * stage), and the cache lives only as long as the pass that opened it, so
+ * nothing outside a pass can read a stale value.
+ *
+ * Measured on the desktop's paged editor, which paginates a chapter on
+ * every keystroke: with the string-set, counter-reset and cross-reference
+ * maps calling `pageRangeOf()` per element, `getPropertyValue` alone was
+ * half of all CPU while typing — each read after a DOM write is a forced
+ * style recalculation of the whole chapter.
+ */
+let readCache: { metrics: Map<Element, StripMetrics>; zoom: Map<Element, number> } | null = null;
+
+/** Run `fn` with the computed-style read cache open; nested calls share the outer pass. */
+export function withLayoutReadCache<T>(fn: () => T): T {
+  if (readCache) return fn();
+  readCache = { metrics: new Map(), zoom: new Map() };
+  try {
+    return fn();
+  } finally {
+    readCache = null;
+  }
+}
+
+interface StripMetrics {
+  stride: number;
+  rowStride: number;
+  /** `--gp-sheet-gap`: the gap between sheets, which decorate copies to the run. */
+  sheetGap: number;
 }
 
 /**
@@ -1210,13 +1326,18 @@ function cssZoomOf(el: Element): number {
  * and vertical pitch together halves that cost without any caching to
  * invalidate.
  */
-export function stripMetrics(strip: HTMLElement): { stride: number; rowStride: number } {
+export function stripMetrics(strip: HTMLElement): StripMetrics {
+  const cached = readCache?.metrics.get(strip);
+  if (cached) return cached;
   const cs = getComputedStyle(strip);
   const w = parseFloat(cs.getPropertyValue("--gp-content-w"));
   const colGap = parseFloat(cs.columnGap) || 0;
   const h = parseFloat(cs.getPropertyValue("--gp-content-h"));
   const rowGap = parseFloat(cs.rowGap) || 0;
-  return { stride: w + colGap, rowStride: h + rowGap };
+  const sheetGap = parseFloat(cs.getPropertyValue("--gp-sheet-gap")) || 0;
+  const metrics = { stride: w + colGap, rowStride: h + rowGap, sheetGap };
+  readCache?.metrics.set(strip, metrics);
+  return metrics;
 }
 
 /**
@@ -1401,8 +1522,8 @@ export function applySpreadMode(strips: StripInfo[], spread: boolean): void {
  * WRONG context's geometry and content — exactly the recto/verso parity class
  * of bug (`ARCHITECTURE.md` §1).
  */
-export function blankPageIndices(strips: StripInfo[]): number[] {
-  return Array.from(document.querySelectorAll(".gp-recto-spacer")).map((el) =>
+export function blankPageIndices(strips: StripInfo[], scope: ParentNode = document): number[] {
+  return Array.from(scope.querySelectorAll(".gp-recto-spacer")).map((el) =>
     pageOf(el, strips),
   );
 }
@@ -1421,10 +1542,16 @@ export function blankPageIndices(strips: StripInfo[]): number[] {
  * spacer joins that column instead. So spacers go in one at a time until the
  * page count reaches its target (bounded). Returns the final page count.
  */
-export function padToSignature(strips: StripInfo[], contentPages: number): number {
-  for (const spacer of Array.from(document.querySelectorAll(".gp-pad-spacer"))) spacer.remove();
+export function padToSignature(
+  strips: StripInfo[],
+  contentPages: number,
+  scope: ParentNode = document,
+  padPages?: number,
+): number {
+  for (const spacer of Array.from(scope.querySelectorAll(".gp-pad-spacer"))) spacer.remove();
   const data = document.documentElement.dataset;
-  const count = signaturePadding(contentPages, Number(data.gpSignature) || 1, data.gpLastPage as LastPageMode | undefined);
+  const count =
+    padPages ?? signaturePadding(contentPages, Number(data.gpSignature) || 1, data.gpLastPage as LastPageMode | undefined);
   const last = strips[strips.length - 1];
   if (!last || count === 0) return contentPages;
   const target = contentPages + count;
@@ -1471,6 +1598,11 @@ export interface GutterpressViewerApi {
    * not counted by `counter(pages)`, which print resolves before padding
    */
   paddedPageIndices: number[];
+  /**
+   * The flow root a host passed (`LayoutOptions.root`), or undefined when the
+   * layout is the whole document. `decorate` scopes its own queries to it.
+   */
+  root?: HTMLElement;
   pageOf(sel: string | Element): number;
   pageRangeOf(sel: string | Element): [number, number];
   relayout(): LayoutResult;
@@ -1513,11 +1645,96 @@ export function waitForLayoutReady(doc: Document = document): Promise<void> {
 }
 
 /** Fragment the current document. Decoration is a separate layer (decorate.ts). */
+/**
+ * The SYNCHRONOUS half of {@link fragmentDocument}: everything from "I have a
+ * GCPM model and a flow root" to a measured {@link GutterpressViewerApi}.
+ *
+ * Split out for the desktop's paged editor, which paginates a flow root it
+ * owns (the live editor's document element) on every editor render: it has
+ * the model already (a book's CSS changes far less often than its text) and
+ * cannot await anything, because the editor measures caret geometry
+ * immediately after the synchronous render it calls this from.
+ * {@link fragmentDocument} is this function plus the async style/image reads.
+ */
+export function paginate(model: GcpmModel, opts: LayoutOptions = {}): GutterpressViewerApi {
+  const authoring: string[] = [];
+  const scope = layoutScope(opts);
+  const strips = buildStrips(model, opts, authoring);
+  // The strips' pitch is set; every read below may share one answer.
+  // (`fragmentDocument` awaits fonts and images before calling this; the
+  // desktop's paged editor calls it synchronously on every render.)
+  const { blanks, headers, contentPages, totalPages, blankPageIndices: blankIndices } = withLayoutReadCache(() => {
+    makeOverflowFragmentable(strips);
+    stabilizeFullHeightPageRoots(model, strips);
+    synthesizeColumnBreaks(model, scope);
+    measure(strips);
+    const blanks = compensateRectoBreaks(model, strips, scope, opts.pageOffset ?? 0);
+    if (blanks) measure(strips);
+    const headers =
+      opts.compensateHeaders === false
+        ? { tables: 0, passes: 0, warnings: [] }
+        : compensateRepeatedHeaders(strips);
+    const contentPages = measure(strips).totalPages;
+    const totalPages = padToSignature(strips, contentPages, scope, opts.padPages);
+    return { blanks, headers, contentPages, totalPages, blankPageIndices: blankPageIndices(strips, scope) };
+  });
+  const api: GutterpressViewerApi = {
+    model,
+    strips,
+    totalPages,
+    warnings: [...new Set([...authoring, ...headers.warnings])],
+    blankPages: blanks,
+    blankPageIndices: blankIndices,
+    paddedPageIndices: pagesAfter(contentPages, totalPages),
+    root: opts.root,
+    pageOf: (sel) =>
+      pageOf(typeof sel === "string" ? scope.querySelector(sel)! : sel, strips),
+    pageRangeOf: (sel) =>
+      pageRangeOf(typeof sel === "string" ? scope.querySelector(sel)! : sel, strips),
+    // Rebuilds the strip structure from scratch instead of only re-measuring
+    // the strips built at mount. A re-measure-only relayout cannot see a DOM
+    // edit that adds or removes a page-context run (e.g. a spliced-in
+    // `page:`-assigned element) — it would silently keep the old strip
+    // boundaries and report the wrong page count. Measured cost of a full
+    // rebuild is the same order as mount (tens of ms on a real book), so
+    // there is no separate "cheap" path to keep.
+    relayout: () => {
+      restoreFullHeightPageRoots(scope);
+      restoreScrollContainers(scope);
+      unwrapStrips(strips);
+      for (const spacer of Array.from(scope.querySelectorAll(".gp-recto-spacer, .gp-pad-spacer")))
+        spacer.remove();
+      const rebuilt = buildStrips(model, opts, authoring);
+      strips.length = 0;
+      strips.push(...rebuilt);
+      return withLayoutReadCache(() => {
+        makeOverflowFragmentable(strips);
+        stabilizeFullHeightPageRoots(model, strips);
+        synthesizeColumnBreaks(model, scope);
+        measure(strips);
+        api.blankPages = compensateRectoBreaks(model, strips, scope, opts.pageOffset ?? 0);
+        if (opts.compensateHeaders !== false)
+          api.warnings = [
+            ...new Set([...authoring, ...compensateRepeatedHeaders(strips).warnings]),
+          ];
+        const content = measure(strips).totalPages;
+        padToSignature(strips, content, scope, opts.padPages);
+        const r = measure(strips);
+        api.totalPages = r.totalPages;
+        api.blankPageIndices = blankPageIndices(strips, scope);
+        api.paddedPageIndices = pagesAfter(content, r.totalPages);
+        return r;
+      });
+    },
+  };
+  return api;
+}
+
 export async function fragmentDocument(opts: LayoutOptions = {}): Promise<GutterpressViewerApi> {
   // Kick off alongside the stylesheet fetches below so a cold cache's font/
   // image load overlaps network time instead of adding to it.
   const layoutReady = waitForLayoutReady();
-  const css = await loadStyleSources();
+  const css = opts.css ?? (await loadStyleSources());
   injectViewerCss();
   // the preview renders the PRINT stylesheet: re-inject `@media print` bodies
   // as screen rules, since the browser won't apply them outside print emulation
@@ -1530,66 +1747,6 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
   }
   const model = extract(css);
   injectBreakMapping(model);
-  const authoring: string[] = [];
-  const strips = buildStrips(model, opts, authoring);
   await layoutReady;
-  makeOverflowFragmentable(strips);
-  stabilizeFullHeightPageRoots(model, strips);
-  synthesizeColumnBreaks(model);
-  measure(strips);
-  const blanks = compensateRectoBreaks(model, strips);
-  if (blanks) measure(strips);
-  const headers =
-    opts.compensateHeaders === false
-      ? { tables: 0, passes: 0, warnings: [] }
-      : compensateRepeatedHeaders(strips);
-  const contentPages = measure(strips).totalPages;
-  const totalPages = padToSignature(strips, contentPages);
-  const api: GutterpressViewerApi = {
-    model,
-    strips,
-    totalPages,
-    warnings: [...new Set([...authoring, ...headers.warnings])],
-    blankPages: blanks,
-    blankPageIndices: blankPageIndices(strips),
-    paddedPageIndices: pagesAfter(contentPages, totalPages),
-    pageOf: (sel) =>
-      pageOf(typeof sel === "string" ? document.querySelector(sel)! : sel, strips),
-    pageRangeOf: (sel) =>
-      pageRangeOf(typeof sel === "string" ? document.querySelector(sel)! : sel, strips),
-    // Rebuilds the strip structure from scratch instead of only re-measuring
-    // the strips built at mount. A re-measure-only relayout cannot see a DOM
-    // edit that adds or removes a page-context run (e.g. a spliced-in
-    // `page:`-assigned element) — it would silently keep the old strip
-    // boundaries and report the wrong page count. Measured cost of a full
-    // rebuild is the same order as mount (tens of ms on a real book), so
-    // there is no separate "cheap" path to keep.
-    relayout: () => {
-      restoreFullHeightPageRoots();
-      restoreScrollContainers();
-      unwrapStrips(strips);
-      for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer, .gp-pad-spacer")))
-        spacer.remove();
-      const rebuilt = buildStrips(model, opts, authoring);
-      strips.length = 0;
-      strips.push(...rebuilt);
-      makeOverflowFragmentable(strips);
-      stabilizeFullHeightPageRoots(model, strips);
-      synthesizeColumnBreaks(model);
-      measure(strips);
-      api.blankPages = compensateRectoBreaks(model, strips);
-      if (opts.compensateHeaders !== false)
-        api.warnings = [
-          ...new Set([...authoring, ...compensateRepeatedHeaders(strips).warnings]),
-        ];
-      const content = measure(strips).totalPages;
-      padToSignature(strips, content);
-      const r = measure(strips);
-      api.totalPages = r.totalPages;
-      api.blankPageIndices = blankPageIndices(strips);
-      api.paddedPageIndices = pagesAfter(content, r.totalPages);
-      return r;
-    },
-  };
-  return api;
+  return paginate(model, opts);
 }

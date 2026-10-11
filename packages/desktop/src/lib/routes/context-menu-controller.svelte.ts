@@ -172,7 +172,22 @@ function linkDisabledReason(kind: LinkResolution["kind"]): string {
   }
 }
 
-export class ContextMenuController {
+/**
+ * What `ContextMenu.svelte` needs from a menu's owner: this controller for
+ * the preview's menu, `PopupMenuController` for the paged editor's.
+ */
+export interface MenuSurface {
+  readonly open: boolean;
+  readonly x: number;
+  readonly y: number;
+  readonly items: ContextMenuItem[];
+  close(): void;
+  runItem(item: ContextMenuItem): Promise<void>;
+  wasJustOpened(): boolean;
+  reportMenuSize(width: number, height: number): void;
+}
+
+export class ContextMenuController implements MenuSurface {
   private deps: ContextMenuDeps;
 
   // ── Public rune state (read by ContextMenu.svelte) ────────────────────────

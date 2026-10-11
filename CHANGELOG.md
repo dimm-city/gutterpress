@@ -18,6 +18,96 @@ This project follows [Semantic Versioning](https://semver.org/).
   column: the label (or a heading) above it moves along instead of staying
   behind.
 
+## [0.12.0] - Unreleased
+
+### Added
+
+- **Edit on the page.** In Read, an author now sees a lock pill over the
+  pages. Locked is the preview as it prints. Unlocking swaps in the paged
+  editor — the book laid out by the same engine — and edits land in the
+  chapter's Markdown exactly as typed (the source stays the only
+  authoritative document; nothing is rewritten on the way through). The
+  formatting bar, Insert menu, image properties and snippets work on the
+  page; right-click offers Image properties, Reveal in Media panel, Copy,
+  Edit in source and Lock. Read opens locked every time, and a reader
+  (Settings → App) never sees the pill. Edit mode is unchanged.
+- **A shared editor core** (`@dimm-city/gutterpress-editor`, private) that
+  the paged editor is built on, with a vendored fork of the VS Code
+  markdown editor it renders through, and an Experimental VS Code
+  extension (`@dimm-city/gutterpress-vscode`, published separately) that
+  mounts the same editor as an optional custom editor for a book's
+  Markdown. See `docs/architecture/source-first-editor.md`.
+- **Library:** `gutterpress/plugins` (the build/preview plugin loader, for
+  any host) and `gutterpress/viewer` (the paged layout engine for a
+  browser), plus the projection surface on `gutterpress/render` the editor
+  consumes (`createEditorProjection` and friends).
+- **Desktop host routes** for the editor: `/api/editor/projection` (the
+  book's plugins and CSS applied host-side), `/api/editor/asset/[name]`
+  and `/api/editor/project-file/[...path]` (the book's own art and
+  stylesheet assets inside the editor document), and
+  `/api/log/renderer-error`. The preview protocol gains `getChapters()`
+  (v9).
+- **Page navigation and zoom stay while editing on the page.** Unlocking
+  keeps the preview's page picker, first/previous/next/last and zoom menu
+  above the formatting bar; they drive the editor's pages (the folios
+  continue across chapters, so the numbers are the book's).
+- **Errors the app shows are in its log.** Every error toast, and every
+  uncaught error in the window, is recorded in the app log the Logs tab
+  shows, so a problem seen once can be handed over.
+
+### Fixed
+
+- **Typing on the page is faster.** The paged layout rewrote a stylesheet
+  on every pass, which made the browser restyle the whole book on each
+  keystroke, and asked for each page's geometry once per element; both
+  are gone from the per-keystroke path (the preview's hot reload gains the
+  same).
+- **Editing on the page, smoothed.** The unlocked book's chapters flow one
+  after another (they had all landed at the same top). Enter in a marker
+  line (`@section .lede`) now finishes the edit instead of splitting the
+  marker across two lines. Clicking an `@end-…` tag opens that line, not
+  the paragraph above it. An image's properties open on a double-click;
+  a single click only selects it. The lock pill sits at the right end of
+  the page-navigation strip instead of over the formatting bar. A part of
+  the book the editor shows as its Markdown (a plugin block whose source
+  range cannot be verified) is one quiet notice per unlock, with the
+  details in Logs, rather than an error for every chapter.
+- **The unlocked book paginates like the preview across chapters.** Laying
+  out one chapter no longer removed another chapter's blank recto pages or
+  its clipping, blank pages before a recto chapter follow the book's page
+  parity instead of the chapter's, and `counter(pages)` counts the whole
+  book ("Page 6 of 10", not "Page 6 of 5").
+- **Plugin and `@columns` markers on the page match the printed page.** A
+  section marker (`section: true`) wraps its content with its declared
+  classes and `@continue` carries it on; a self-closing marker shows its
+  element without swallowing what follows; `@page` on the line above
+  `@columns` holds the columns; text typed right under `@columns` lands
+  inside them; every page repeats its chapter's label; and a stray
+  `@continue`, or prose that starts with `@end-…`, stays as the book
+  prints it. A fenced code block that shows a marker is no longer refused
+  when a plugin renders it.
+- **The unlocked book matches the preview's page count and cross-references.**
+  A book printed in signatures (`print.signature`, `print.lastPage`) gets
+  the same blank pages after its last chapter as the preview and the PDF,
+  so the page count and navigation agree. A table of contents entry that
+  links into another chapter shows that chapter's page number, and an
+  attribute written straight after a link, emphasis or code
+  (`[Alpha](#alpha){.toc}`) styles that element instead of the paragraph
+  around it, or showing up as text.
+- **The glued-marker warning** no longer fires for `@end-columns` written
+  directly above `@page`. The design-guide example, the theme and plugin
+  templates and the docs now write every marker on a line of its own, so
+  nothing they teach trips the warning.
+- **Inserting a section or two columns** leaves the cursor on a line of its
+  own, so what you type is not glued to a marker line.
+- **Unlocked Read, tidied.** Insert snippet works on the page; the Problems
+  badge opens its list; switching books relocks and shows only the new
+  book's chapters; a plugin that fails to load is reported once per unlock
+  instead of once per chapter and edit; in a narrow pane the lock pill
+  shrinks to its icon instead of covering page navigation; the "Updating
+  preview" pill no longer sits over the formatting bar; and editing a
+  stylesheet the book `@import`s restyles the page.
+
 ## [0.11.17] - 2026-10-10
 
 ### Added
