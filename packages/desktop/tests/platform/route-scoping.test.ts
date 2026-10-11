@@ -184,7 +184,16 @@ function openProject(roots: string[]): void {
   );
 }
 
+// The guard is what these tests pin, not the providers behind it: a route
+// that gets past the guard must not reach the network (`publish/connect`
+// verified the token against api.itch.io, `extension/import-from-url`
+// fetched its URL), whose latency on a CI runner timed the loops out.
+const realFetch = globalThis.fetch;
+
 beforeEach(async () => {
+  globalThis.fetch = (async () => {
+    throw new TypeError("network is disabled in route-scoping tests");
+  }) as unknown as typeof fetch;
   base = await mkdtemp(path.join(tmpdir(), "gutterpress-route-scoping-"));
   repoRoot = path.join(base, "repo");
   bookDir = path.join(repoRoot, "books", "field-guide");
@@ -205,6 +214,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  globalThis.fetch = realFetch;
   setLibForTests(null);
   await rm(base, { recursive: true, force: true });
 });
