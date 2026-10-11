@@ -162,9 +162,8 @@ describe.each([...EXTENSION_KINDS])("scaffoldExtension --kind %s", (kind) => {
     expect(css).toContain("--fn-");
     // The prefix rule the scaffolded README calls load-bearing, asserted on
     // the bytes the author actually gets. Comments are stripped first: the
-    // rule is "emit no `gp-` name", not "never mention one" — the theme's
-    // page-templates.css legitimately points authors at core's own
-    // `.gp-columns-2` in prose.
+    // rule is "emit no `gp-` name", not "never mention one" — a scaffolded
+    // comment may legitimately name a core `gp-` vocabulary item in prose.
     const rules = stripCssComments(css);
     expect(rules).not.toMatch(/\.gp-/);
     expect(rules).not.toMatch(/--gp-/);

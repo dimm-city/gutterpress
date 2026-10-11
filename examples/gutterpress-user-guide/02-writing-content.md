@@ -234,7 +234,7 @@ Starts a new page. A **single** bare word names the page; `.class` shorthand (or
 
 Marker classes may also use markdown-it-attrs braces. For example,
 `@page {.cover .sidebar}` is equivalent to `@page .cover .sidebar`, and
-`@section {.gp-columns-2}` is equivalent to `@section .gp-columns-2`.
+`@section {.sidebar}` is equivalent to `@section .sidebar`.
 
 **Two or more bare words with no `.class`/`class=` are all treated as classes, with no name at all** — `@page cover sidebar` renders `<div class="page cover sidebar">`, no `data-page`. For predictable results, always use `.class` shorthand (or `class=...`) when you want a class, and reserve a single bare word for the page's name.
 
@@ -310,11 +310,12 @@ Renders:
 
 ### @columns, @column-break and @spread
 
-`@columns` lays its content out in columns and does nothing else: no border,
-no background, none of the styling your theme gives a section. Give it the
-number of columns, 1 to 5 (a bare `@columns` is two), and close it with
-`@end-columns`. `@column-break` forces the next block into the next column.
-`@spread` groups content into a two-page spread.
+`@columns` is the one way to put content in columns. Give it the number of
+columns, 1 to 5 (a bare `@columns` is `@columns 2`), and everything up to
+`@end-columns` is laid out in that many columns. `@column-break` moves to the
+next column. `@columns` does nothing else: no border, no background, none of
+the styling your theme gives a section. `@spread` groups content into a
+two-page spread.
 
 ```markdown
 @columns 2
@@ -332,61 +333,47 @@ Any other number (`@columns 6`) is reported as a problem and gives two
 columns. `@columns` closes at the next `@section`, `@page` or `@chapter`, so
 put it inside a section rather than around one.
 
-Under the hood `@columns 3` is a plain wrapper with the `.gp-columns` and
-`.gp-columns-3` classes. The count classes, `.gp-columns-1` to
-`.gp-columns-5`, also work on a section when you want its styling as well:
-`@section .gp-columns-2`. They use `--gp-column-gap` for their gutter, and an
-enclosing `@page` is not required. Themes may add decoration to an explicitly
-themed class, but should not redefine generic column vocabulary.
-
-Three more classes name decisions a column run otherwise needs raw CSS for:
-
-| Class | Meaning |
-|-------|---------|
-| `.gp-columns-all` | Spans a heading or block across every column in the run it sits inside. |
-| `.gp-columns-flow` | A run that FRAGMENTS across pages — every page's columns fill (`column-fill: auto`). |
-| `.gp-columns-balanced` | A run that fits on ONE page — its columns end up even (`column-fill: balance`). |
-
-### Grids: .gp-grid-2 and .gp-grid-3
-
-Columns flow; grids place. `@columns 2` pours one run of text
-down the first column and continues it in the second. A `.gp-grid-2` (or
-`.gp-grid-3`) section instead places each block — paragraph, image, card —
-into the next open slot, across then down. Reach for a grid when the pieces
-are separate things that belong in a fixed arrangement (stat blocks,
-image-and-caption pairs, card layouts); reach for columns when it is one
-text that should read continuously.
+Want a heading across the full width, or a different number of columns
+halfway down the page? End the run, write the content, and open a new one:
 
 ```markdown
-@section {.gp-grid-2}
+@columns 3
 
-The first block takes the top-left slot.
+Short entries, three across.
 
-The second block sits beside it.
+@end-columns
 
-The third starts the next row.
+## A heading across the full width
 
-@end-section
+@columns 2
+
+Longer notes, two across.
+
+@end-columns
 ```
 
-The gutter between slots is `--gp-grid-gap` (default `1.5em`) — set it in
-your stylesheet the same way as `--gp-column-gap`. A grid taller than the
-page is safe: rows continue onto the next page identically in the preview
-and the printed PDF.
+A run that crosses a page break fills its columns one page at a time, so a
+long run is best split where the page ends: close it and open a new
+`@columns` on the next page.
 
-Two grid-specific notes:
+Column styling is two settings in your stylesheet (or theme), not extra
+classes:
 
-- On a full-height page (a grid class directly on `@page`), rows spread
-  apart to fill the page by default. If you want them packed at the top,
-  add `align-content: start` to the grid class in your stylesheet.
-- Do not put `@page-break` or `@column-break` directly inside a grid
-  section: the break becomes a grid slot of its own and scrambles the
-  layout (Gutterpress warns when this happens). Close the grid first with
-  `@end-section`, then break.
+| Setting | Default | Meaning |
+|---------|---------|---------|
+| `--gp-column-gap` | `1.5em` | The gutter between columns. |
+| `--gp-column-rule` | `none` | A line between columns, written like `column-rule` (`1px solid #999`). |
+
+```css
+:root {
+  --gp-column-gap: 0.4in;
+  --gp-column-rule: 0.5pt solid #999;
+}
+```
 
 ### Fragmentation: .gp-no-break and .gp-break-before
 
-Two more generic classes, useful with or without columns/grids:
+Two more generic classes, useful anywhere:
 
 | Class | Meaning |
 |-------|---------|

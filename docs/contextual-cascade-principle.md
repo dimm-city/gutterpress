@@ -181,7 +181,9 @@ And the component picks it up the same way.
 The `.dc-citizen-file` section component in the DC design guide demonstrates a section that bundles styling for `h4`, `p`, `table`, `td`, `thead` — all elements inside it adapt:
 
 ```markdown
-@section .gp-columns-2 .dc-citizen-file
+@section .dc-citizen-file
+
+@columns 2
 
 #### Name
 Choose a name.
@@ -193,6 +195,8 @@ You're not human...
 |-------|-------|
 |  | childhood |
 |  | adolescence |
+
+@end-columns
 
 @end-section
 ```
@@ -207,7 +211,7 @@ In `dc-components.css`:
 /* ... etc */
 ```
 
-Authors write `@section .gp-columns-2 .dc-citizen-file` once and **every element inside it** picks up form-styling. The same section component dropped into any other chapter/page/book produces the same character-sheet look — no setup required.
+Authors write `@section .dc-citizen-file` once and **every element inside it** picks up form-styling. The same section component dropped into any other chapter/page/book produces the same character-sheet look — no setup required.
 
 See the [design-guide example](../examples/with-design-guide/design-guide/) for a worked implementation of components and their markdown usage.
 

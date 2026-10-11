@@ -52,7 +52,7 @@ mkdirSync(join(book, "snippets"));
 const snippets = {
   "pull-quote.md": "@section .pull-quote\n\n> {{quote}}\n\n— {{speaker}}\n\n@end-section\n",
   "chapter-opener.md": "@chapter {{number}}\n\n# {{title}}\n\n{{opening paragraph}}\n",
-  "two-columns.md": "@section .gp-columns-2\n\nWrite the first column here. It flows into the second column on its own.\n\n@end-section\n",
+  "two-columns.md": "@columns 2\n\nWrite the first column here. It flows into the second column on its own.\n\n@end-columns\n",
   "tip.md": "> [!TIP]\n> {{tip}}\n",
 };
 for (const [name, body] of Object.entries(snippets)) writeFileSync(join(book, "snippets", name), body);
