@@ -170,6 +170,15 @@ body:not(.home) .shell > main p:nth-of-type(even) > img {
   transform: rotate(0.5deg);
 }
 
+/* Several screenshots in one paragraph (a sequence of steps) sit side by
+   side, smaller. */
+body:not(.home) .shell > main p > img:not(:only-child) {
+  display: inline-block;
+  width: calc(33% - 1rem);
+  margin: 0.75rem 0.4rem;
+  vertical-align: top;
+}
+
 blockquote {
   background: none;
   border-left: 3px solid var(--pu-red);
@@ -255,7 +264,7 @@ th {
   content: "";
   position: absolute;
   top: -4px;
-  left: calc(var(--gutter) + 2.6rem);
+  left: calc(var(--gutter) - 0.4rem); /* from the nameplate's start */
   width: 440px;
   height: 84px;
   background: url("images/ink-splatter.svg") no-repeat;
@@ -408,11 +417,18 @@ body:not(.home) .shell > main > h1 {
 }
 
 /* A drop cap on the opening paragraph. */
+/* A drop cap in the titles' worn blackletter. A ::first-letter cannot take
+   the #worn-ink filter, so the wear is a texture (images/worn-ink.svg, the
+   same noise) clipped to the letter's shape instead. */
 body:not(.home) .shell > main > h1 + p::first-letter {
   float: left;
-  margin: 0.08em 0.1em 0 0;
-  font: 900 3.4em/0.8 var(--display);
-  color: var(--pu-ink);
+  margin: 0.04em 0.12em 0 0;
+  font: 400 3.6em/0.85 var(--h1-font);
+  color: transparent;
+  background: url("images/worn-ink.svg") 0 0 / 240px 240px;
+  -webkit-background-clip: text;
+  background-clip: text;
+  text-shadow: none;
 }
 
 /* Section heads: a rule across the column, headline face. */

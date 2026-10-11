@@ -57,6 +57,26 @@ jobs:
       - name: Install unify and the docs template
         run: npm ci
 
+      # Fresh desktop screenshots for docs/desktop-guide/images/: built and
+      # taken from the real app (website/scripts/desktop-screenshots.mjs).
+      # Only on manual runs and the run release.yml dispatches after a stable
+      # release, so pushes stay fast. Best effort: on failure the committed
+      # images are used and the deploy goes on.
+      - uses: ./.github/actions/bun
+        if: github.event_name == 'workflow_dispatch'
+        continue-on-error: true
+
+      - name: Retake desktop screenshots
+        if: github.event_name == 'workflow_dispatch'
+        continue-on-error: true
+        working-directory: .
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile
+          (cd packages/desktop/node_modules/electron && node install.js)
+          (cd packages/desktop && bun run --cwd ../cli build:library && npx vite build && npx electron-vite build)
+          xvfb-run -a -s "-screen 0 1600x1000x24" node website/scripts/desktop-screenshots.mjs
+
       # --audit publishes nothing unless the composed site passes unify's
       # audit (titles, descriptions, one h1, broken links, orphan pages).
       # The base URL and the rest of the flags are in website/unify.yaml.
