@@ -1041,22 +1041,22 @@ describe("MARKER_CSS export", () => {
   // #6: the old blanket `.section { break-inside: avoid }` produced a
   // taller-than-a-column dead-column collapse in multicol layouts and had to
   // be undone by `.section.col-split { break-inside: auto }`. Both are gone;
-  // keep-together is now only the empty-first-fragment glue, which achieves
-  // the same intent without the collapse.
+  // keep-together is left to the author's own `break-inside`.
   test("no longer sets a blanket break-inside: avoid on .section (or the col-split override that undid it)", () => {
     expect(MARKER_CSS).not.toMatch(/\.section\s*\{[^}]*break-inside/);
     expect(MARKER_CSS).not.toContain(".section.col-split");
   });
 
-  // #7: the safe default reset — heading orphans, image sizing, and the
-  // first-child keep-together glue that replaces #6's blanket rule.
-  test("defines the safe default reset (headings, image sizing, first-child glue), all at zero specificity", () => {
+  // #7: the safe default reset — heading orphans and image sizing. The
+  // first-child keep-together glue that once replaced #6's blanket rule is
+  // gone (marker-css-section-break.test.ts says why).
+  test("defines the safe default reset (headings, image sizing), all at zero specificity", () => {
     expect(MARKER_CSS).toContain(":where(h1,h2,h3,h4,h5,h6) { break-after: avoid; }");
     expect(MARKER_CSS).toContain(":where(img, svg, video) { max-width: 100%; }");
     expect(MARKER_CSS).toContain(
       ":where(p > img:only-child, figure > img) { width: fit-content; max-width: 100%; height: auto; vertical-align: bottom; }"
     );
-    expect(MARKER_CSS).toContain(":where(.section, figure) > :where(:first-child) { break-before: avoid; }");
+    expect(MARKER_CSS).not.toMatch(/:first-child\)?\s*\{\s*break-before/);
   });
 
   // The standalone-image default must bound the PREFERRED width (only an

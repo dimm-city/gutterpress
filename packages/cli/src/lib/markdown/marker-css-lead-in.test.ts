@@ -21,6 +21,12 @@ describe("MARKER_CSS — #370 lead-in paragraph keeps with its table or list", (
       ":where(p):has(+ :where(table, ul, ol)) { break-after: avoid; }"
     );
   });
+
+  test("a second rule sees through a @section that opens with the table or list", () => {
+    expect(MARKER_CSS).toContain(
+      ":where(p):has(+ :where(.section) > :where(table, ul, ol):first-child) { break-after: avoid; }"
+    );
+  });
 });
 
 const RENDER_TEST_TIMEOUT_MS = 60_000;
@@ -37,6 +43,14 @@ ${MARKER_CSS}
 <p id="plain">Plain paragraph.</p>
 <p id="before-pre">Code follows.</p>
 <pre>x</pre>
+<p id="lead-sec-table">Wrapped table.</p>
+<div class="section"><table><tr><td>3</td></tr></table></div>
+<p id="lead-sec-ul">Wrapped list.</p>
+<div class="section"><ul><li>x</li></ul></div>
+<p id="lead-sec-p">Section opens with prose.</p>
+<div class="section"><p>text</p><table><tr><td>4</td></tr></table></div>
+<p id="lead-sec-late">Table is not first.</p>
+<div class="section"><h4>h</h4><table><tr><td>5</td></tr></table></div>
 <div class="author"><p id="overridden">Author opts out.</p><table><tr><td>2</td></tr></table></div>
 <style>.author p { break-after: auto; }</style>`;
 
@@ -65,7 +79,7 @@ testIf(
       const page = await browser.newPage();
       try {
         await page.navigate(`file://${file}`);
-        const ids = ["lead-table", "lead-ul", "lead-ol", "plain", "before-pre", "overridden"];
+        const ids = ["lead-table", "lead-ul", "lead-ol", "plain", "before-pre", "overridden", "lead-sec-table", "lead-sec-ul", "lead-sec-p", "lead-sec-late"];
         // Source string, not a closure: this package's tsconfig is DOM-free.
         const measured = (await page.evaluate(
           `(() => Object.fromEntries(${JSON.stringify(ids)}.map((id) =>
@@ -75,6 +89,11 @@ testIf(
         expect(measured["lead-table"]).toBe("avoid");
         expect(measured["lead-ul"]).toBe("avoid");
         expect(measured["lead-ol"]).toBe("avoid");
+        expect(measured["lead-sec-table"]).toBe("avoid");
+        expect(measured["lead-sec-ul"]).toBe("avoid");
+        // Only a section that OPENS with the table or list; prose in between breaks the link.
+        expect(measured["lead-sec-p"]).toBe("auto");
+        expect(measured["lead-sec-late"]).toBe("auto");
         expect(measured["plain"]).toBe("auto");
         expect(measured["before-pre"]).toBe("auto");
         // :where() = zero specificity, so an author rule wins.

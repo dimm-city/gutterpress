@@ -2148,10 +2148,19 @@ export default function plugin(md, pluginOptions = {}) {
  * pinned foot up by less than a point and absorbs sub-pixel rounding in the
  * published value. Do not "clean it up" — the sheet it costs is silent.
  *
- * The break/orphan rules below (`break-after` on headings, image sizing,
- * first-child glue) are all `:where()` so they carry zero specificity —
+ * The break/orphan rules below (`break-after` on headings, image sizing)
+ * are all `:where()` so they carry zero specificity —
  * author CSS at any specificity wins outright, reusing this same
  * after-author injection point.
+ *
+ * There is deliberately NO `.section > :first-child { break-before: avoid }`
+ * "glue". A first child's break-before propagates to its parent's start
+ * edge, so it made the break BEFORE every section `avoid`: a section after
+ * other content could not move whole to the next page, and Chromium split it
+ * instead, ignoring its own `break-inside: avoid`. Measured with and without
+ * (marker-css-section-break.test.ts): it never prevented a stranded top edge
+ * or heading. Its one useful side effect, a lead-in paragraph travelling with
+ * a following @section that wraps a table, is the explicit rule below.
  *
  * `vertical-align: bottom` on a lone image is a print-correctness rule, not
  * cosmetics. An `<img>` in a `<p>` is inline-level, so its line box adds
@@ -2252,12 +2261,14 @@ body { margin: 0; }
    stays with what follows it -- otherwise the label can end a column or page
    with its table starting on the next (#370). Standard break-after; the
    :has() selector is Chromium's own. :where() keeps specificity at zero so an
-   author rule such as p { break-after: auto } wins. Deliberately table/ul/ol only. */
+   author rule such as p { break-after: auto } wins. Deliberately table/ul/ol only,
+   also when a @section wraps it (the second rule): the lead-in then keeps with
+   the section that opens with the table or list. */
 :where(p):has(+ :where(table, ul, ol)) { break-after: avoid; }
+:where(p):has(+ :where(.section) > :where(table, ul, ol):first-child) { break-after: avoid; }
 :where(img, svg, video) { max-width: 100%; }
 :where(p > img:only-child, figure > img) { width: fit-content; max-width: 100%; height: auto; vertical-align: bottom; }
 :where(p) > :where(img:not([class])) { max-height: calc(var(--gp-content-h) - 4px); object-fit: contain; }
 :where(figure) { break-inside: avoid; }
-:where(.section, figure) > :where(:first-child) { break-before: avoid; }
 
 `;

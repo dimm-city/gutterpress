@@ -1,0 +1,33 @@
+/* style.css — one author declaration carries this fixture: `break-inside:
+   avoid` on a `.box` section that follows other sections.
+
+   Core used to ship `.section > :first-child { break-before: avoid }`, which
+   propagates to the section's own start edge and makes the break before every
+   section illegal, so Chromium split such a box instead of moving it whole.
+   With that rule gone a box that does not fit the room left moves whole to the
+   next page in print AND in the preview; the headings below sit at the top of
+   each box, so the gate pins which sheet every box lands on in both. */
+
+body {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 10.5pt;
+  line-height: 1.5;
+  color: #1a1a1a;
+}
+
+@page {
+  size: 6in 4in;
+  margin: 0.5in;
+}
+
+h1 { font-size: 20pt; margin: 0 0 0.5em; }
+h3 { font-size: 11pt; margin: 0 0 0.3em; }
+p { margin: 0 0 0.5em; }
+
+.box {
+  break-inside: avoid;
+  border: 1px solid #333333;
+  padding: 8px;
+  margin-bottom: 10px;
+}

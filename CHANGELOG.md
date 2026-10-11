@@ -40,6 +40,16 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A box you mark `break-inside: avoid` now moves whole to the next page
+  instead of splitting.** Core used to give the first child of every
+  `@section` and figure a `break-before: avoid`; because a first child's
+  break-before applies to the box around it, that made the break above every
+  section illegal, and a section that followed other content was cut in
+  two even though you had asked for it to stay in one piece (in the PDF and in
+  the preview, including a run of sections inside `@columns`). The rule is
+  gone. A heading still stays with what follows it, and a lead-in line such as
+  "You will need:" now also stays with the `@section` that opens with its
+  table or list. Pages that held a split box reflow.
 - **A lead-in line stays with the table or list it introduces** (#370). A
   label such as **ROLL A DIE!** or "You will need:" written directly above a
   table or a list no longer ends a column or a page with its table starting
