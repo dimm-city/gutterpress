@@ -1437,6 +1437,18 @@
       clearLeadingForcedBreaks(s.el);
     return strips;
   }
+  var AVOID_BREAK = /^avoid(-page|-column)?$/;
+  function keepChainHead(el) {
+    let head = el;
+    for (let prev = head.previousElementSibling;prev instanceof HTMLElement; prev = head.previousElementSibling) {
+      const linked = AVOID_BREAK.test(getComputedStyle(prev).breakAfter) || AVOID_BREAK.test(getComputedStyle(head).breakBefore);
+      if (!linked)
+        break;
+      head = prev;
+    }
+    return head;
+  }
+  var pushTargets = new WeakMap;
   function compensateRepeatedHeaders(strips, maxPasses = 24) {
     const warnings = [];
     let passes = 0;
@@ -1449,6 +1461,10 @@
         for (const shim of Array.from(table.querySelectorAll("tr.gp-thead-shim, tr.gp-tfoot-shim")))
           shim.remove();
         table.style.breakBefore = "";
+        const target = pushTargets.get(table);
+        if (target)
+          target.style.breakBefore = "";
+        pushTargets.delete(table);
       }
       const pushed = new Set;
       const footClaims = new Map;
@@ -1509,7 +1525,9 @@
             shim.remove();
           if (plan.push && !pushed.has(plan.table)) {
             pushed.add(plan.table);
-            plan.table.style.breakBefore = "column";
+            const target = keepChainHead(plan.table);
+            target.style.breakBefore = "column";
+            pushTargets.set(plan.table, target);
             touched++;
             continue;
           }

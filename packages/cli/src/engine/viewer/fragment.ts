@@ -870,6 +870,32 @@ export function buildStrips(
 }
 
 /**
+ * Where a forced break "before `el`" must land so it cannot split a
+ * keep-with-next chain: the earliest immediately preceding sibling reachable
+ * through links that are `avoid` — the previous sibling's `break-after` or
+ * the next one's `break-before` (CSS Fragmentation §3.1: a break between
+ * siblings is avoided when either side says so). Print's fragmenter, asked to
+ * start `el` on a new page, moves the whole chain (a heading or lead-in
+ * paragraph travels with the table under it); a bare forced break on `el`
+ * alone would strand the chain's head at the foot of the previous page.
+ */
+const AVOID_BREAK = /^avoid(-page|-column)?$/;
+function keepChainHead(el: HTMLElement): HTMLElement {
+  let head = el;
+  for (let prev = head.previousElementSibling; prev instanceof HTMLElement; prev = head.previousElementSibling) {
+    const linked =
+      AVOID_BREAK.test(getComputedStyle(prev).breakAfter) ||
+      AVOID_BREAK.test(getComputedStyle(head).breakBefore);
+    if (!linked) break;
+    head = prev;
+  }
+  return head;
+}
+
+/** The element a pushed table's forced break was put on (the table, or the head of its keep chain). */
+const pushTargets = new WeakMap<HTMLTableElement, HTMLElement>();
+
+/**
  * Screen-mode compensation for repeated table headers (S5).
  *
  * Chromium repeats `<thead>`/`<tfoot>` on every PAGE a table spans in print,
@@ -901,6 +927,9 @@ export function compensateRepeatedHeaders(
       ))
         shim.remove();
       table.style.breakBefore = "";
+      const target = pushTargets.get(table);
+      if (target) target.style.breakBefore = "";
+      pushTargets.delete(table);
     }
 
     // Push and foot claims are STICKY for the rest of this run: a fix removes
@@ -1015,7 +1044,13 @@ export function compensateRepeatedHeaders(
           shim.remove();
         if (plan.push && !pushed.has(plan.table)) {
           pushed.add(plan.table);
-          plan.table.style.breakBefore = "column";
+          // A forced break overrides an `avoid` on the sibling above, so put
+          // it on the head of the keep-with-next chain: print moves the whole
+          // chain, and a lone break on the table would strand the heading or
+          // lead-in at the column foot.
+          const target = keepChainHead(plan.table);
+          target.style.breakBefore = "column";
+          pushTargets.set(plan.table, target);
           touched++;
           continue; // its fragments are re-derived next pass, from the new position
         }
