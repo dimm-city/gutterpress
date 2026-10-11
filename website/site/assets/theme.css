@@ -52,7 +52,7 @@
   --sans: "Old Standard TT", Georgia, serif;
   --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --display: "Abril Fatface", "Bodoni Moda", Georgia, serif;
-  --h1-font: var(--display);
+  --h1-font: "UnifrakturMaguntia", Georgia, serif; /* page titles: the nameplate's blackletter, worn (site.css) */
   --heading-font: "Bodoni Moda", Georgia, serif;
   --pu-gothic: "Oswald", "Arial Narrow", sans-serif;
   --pu-nameplate: "UnifrakturMaguntia", "Bodoni Moda", serif;
