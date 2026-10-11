@@ -40,10 +40,32 @@ a:hover {
 }
 
 /* ── Type: headline face, text face, gothic labels ────────────────────── */
+/* Page titles: the nameplate's blackletter off a worn press (the
+   #worn-ink filter is defined in _includes/nav.html), with ink splattered
+   from just outside the first letter across the opening of the line. */
 h1 {
-  font-weight: 700;
+  position: relative;
+  font-weight: 400;
   color: var(--pu-ink);
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
+}
+
+h1,
+.hero h1 {
+  filter: url(#worn-ink);
+  text-shadow: 0.6px 0.3px 0 rgb(26 21 18 / 0.5);
+}
+
+h1::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: -0.75em;
+  left: -2.1rem;
+  width: 300px;
+  height: 120px;
+  background: url("images/ink-splatter-title.svg") no-repeat;
+  pointer-events: none;
 }
 
 h2,
@@ -379,10 +401,9 @@ body:not(.home) .shell > main::after {
 /* Page headline, with a thick-and-thin rule under it. */
 body:not(.home) .shell > main > h1 {
   margin-top: 0.75rem;
-  padding-bottom: 0.6rem;
-  border-bottom: 4px double var(--pu-ink);
-  font-size: clamp(2.1rem, 5vw, 3.2rem);
-  line-height: 1.05;
+  padding-bottom: 0.2rem;
+  font-size: clamp(2.3rem, 5.4vw, 3.5rem);
+  line-height: 1.1;
 }
 
 /* A drop cap on the opening paragraph. */
@@ -461,7 +482,7 @@ body.home .hero {
 }
 
 .hero h1 {
-  font: 700 clamp(2.5rem, 6vw, 4.2rem)/1 var(--h1-font);
+  font: 400 clamp(2.4rem, 5.6vw, 4rem)/1.08 var(--h1-font);
   color: var(--pu-ink);
   background: none;
   -webkit-text-fill-color: currentColor;
