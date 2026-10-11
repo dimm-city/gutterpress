@@ -259,9 +259,9 @@
     surfaceHandle?.setZoom(next);
   }
 
-  /** Book pages before this document's first page, so its folios continue from the chapters above (see `PagedSurface.setPageOffset`). */
-  export function setPageOffset(offset: number): void {
-    surfaceHandle?.setPageOffset(offset);
+  /** Book pages before this document's first page, so its folios continue from the chapters above, and the book's page count for `counter(pages)` (see `PagedSurface.setPageOffset`). */
+  export function setPageOffset(offset: number, bookPages?: number): void {
+    surfaceHandle?.setPageOffset(offset, bookPages);
   }
 
   /**

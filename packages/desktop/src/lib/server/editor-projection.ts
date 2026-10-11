@@ -26,7 +26,7 @@
  */
 import path from "node:path";
 import { stat } from "node:fs/promises";
-import { composeEditorCss, inlineStyles } from "gutterpress";
+import { collectStyleDependencies, composeEditorCss, inlineStyles } from "gutterpress";
 import { loadManifestWithPath, resolveConfig } from "gutterpress/api";
 import { layerExtensionCss, loadPluginsWithCss, type PluginStyleGroup } from "gutterpress/plugins";
 import {
@@ -112,10 +112,10 @@ async function bookCssFor(
   styles: readonly string[],
   pluginStyles: readonly PluginStyleGroup[],
 ): Promise<{ pluginCss: string; css: string }> {
-  const stamps = await Promise.all([
-    ...styles.map((rel) => fileStamp(projectDir, rel)),
-    ...pluginStyles.flatMap((group) => group.paths.map((abs) => fileStamp(projectDir, abs))),
-  ]);
+  // Every file the CSS reads, not just the top-level sheets: an edited
+  // `@import`ed partial or a replaced `url()` font changes the book's CSS too.
+  const files = await collectStyleDependencies(projectDir, [...styles, ...pluginStyles.flatMap((group) => group.paths)]);
+  const stamps = await Promise.all(files.map((file) => fileStamp(projectDir, file)));
   const stamp = JSON.stringify([stamps, pluginStyles.map((group) => [group.layer, group.css ?? ""])]);
   const cached = bookCssCache.get(projectDir);
   if (cached && cached.stamp === stamp) return { pluginCss: cached.pluginCss, css: cached.css };

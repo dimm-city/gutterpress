@@ -48,7 +48,7 @@ const px = (v: number) => `${v * PX_PER_PT}px`;
  * `querySelector`: markdown-it-footnote emits legal ids that are invalid CSS
  * selectors (`fnref1:1`), and a throw here aborts the whole mount.
  */
-function elementForHref(href: string): Element | null {
+function elementForHref(href: string, scope: ParentNode = document): Element | null {
   const raw = href.replace(/^#/, "");
   if (!raw) return null;
   let id = raw;
@@ -57,7 +57,9 @@ function elementForHref(href: string): Element | null {
   } catch {
     /* not percent-encoded — use the literal */
   }
-  return document.getElementById(id);
+  // A layout scoped to one flow root (a chapter of the paged editor) resolves
+  // only its own ids; the whole-document layout keeps `getElementById`.
+  return scope === document ? document.getElementById(id) : scope.querySelector(`[id="${CSS.escape(id)}"]`);
 }
 
 export interface DecorationApi {
@@ -69,8 +71,12 @@ export interface DecorationApi {
   targets: Map<string, number>;
   /** the restarted `counter(page)` value for each 0-based book page, honoring `counter-reset: page N` */
   pageNumbers: number[];
-  /** See the `pageOffset` option: change it and redraw, for a host whose earlier chapters just re-paginated. */
-  setPageOffset(offset: number): void;
+  /**
+   * See the `pageOffset` and `bookPages` options: change them and redraw, for
+   * a host whose other chapters just re-paginated. `bookPages` omitted keeps
+   * the current value.
+   */
+  setPageOffset(offset: number, bookPages?: number): void;
   warnings: string[];
   /** show/hide trim, safe, and crop guides on the stage */
   setDesigner(on: boolean): void;
@@ -154,10 +160,20 @@ export function decorate(
      * still wins from the page it sits on.
      */
     pageOffset?: number;
+    /**
+     * The book's page count, for `counter(pages)`, when this layout is one
+     * chapter of it (the desktop's Read view). Omitted, it is this layout's
+     * own count less the signature padding, which is the book's when the
+     * layout is the whole book.
+     */
+    bookPages?: number;
   } = {},
 ): DecorationApi {
   const model: GcpmModel = layout.model;
   let pageOffset = opts.pageOffset ?? 0;
+  let bookPages = opts.bookPages;
+  /** Where this layout's elements live: its flow root when it has one (see `LayoutOptions.root`). */
+  const scope: ParentNode = layout.root ?? document;
   const sheets = new Map<number, HTMLElement>();
   let blankPages = new Set<number>();
   let paddedPages = new Set<number>();
@@ -169,9 +185,10 @@ export function decorate(
     targets: new Map(),
     pageNumbers: [],
     warnings,
-    setPageOffset(offset) {
-      if (offset === pageOffset) return;
+    setPageOffset(offset, pages = bookPages) {
+      if (offset === pageOffset && pages === bookPages) return;
       pageOffset = offset;
+      bookPages = pages;
       draw();
     },
     setDesigner(on) {
@@ -204,10 +221,13 @@ export function decorate(
       return { index: bookIndex, strip, pseudos, geometry, marginBoxes, decls };
     }
     const pseudos: string[] = [];
-    if (bookIndex === 0) pseudos.push("first");
+    // `:first`, `:left` and `:right` are the BOOK's: a layout that starts
+    // after `pageOffset` pages (a chapter of the paged editor) has neither the
+    // book's first page nor its parity at its own index 0.
+    if (bookIndex + pageOffset === 0) pseudos.push("first");
     if (indexInStrip === 0) pseudos.push("nth-first-of-run");
     // page 1 is a recto
-    pseudos.push(bookIndex % 2 === 0 ? "right" : "left");
+    pseudos.push((bookIndex + pageOffset) % 2 === 0 ? "right" : "left");
     const { geometry, marginBoxes, decls } = resolvePage(model, {
       name: strip.page,
       pseudos,
@@ -222,7 +242,7 @@ export function decorate(
     for (const decl of model.stringSets) {
       let els: Element[] = [];
       try {
-        els = Array.from(document.querySelectorAll(decl.selector));
+        els = Array.from(scope.querySelectorAll(decl.selector));
       } catch {
         continue;
       }
@@ -257,7 +277,7 @@ export function decorate(
     for (const r of model.counterResets) {
       let els: Element[] = [];
       try {
-        els = Array.from(document.querySelectorAll(r.selector));
+        els = Array.from(scope.querySelectorAll(r.selector));
       } catch {
         continue;
       }
@@ -276,10 +296,10 @@ export function decorate(
 
     // cross-reference targets: any id that is linked to
     const linked = new Set<string>();
-    for (const a of Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href^='#']")))
+    for (const a of Array.from(scope.querySelectorAll<HTMLAnchorElement>("a[href^='#']")))
       linked.add(a.getAttribute("href")!);
     for (const href of linked) {
-      const el = elementForHref(href);
+      const el = elementForHref(href, scope);
       if (!el) continue;
       const [page] = pageRangeOf(el, layout.strips);
       if (page >= 0) api.targets.set(href, pageValues ? toFolioPage(page + 1, pageValues) : page + 1 + pageOffset);
@@ -310,7 +330,7 @@ export function decorate(
       const pseudo = /::?after$/.test(xref.selector) ? "after" : "before";
       let els: Element[] = [];
       try {
-        els = Array.from(document.querySelectorAll(base));
+        els = Array.from(scope.querySelectorAll(base));
       } catch {
         continue;
       }
@@ -323,7 +343,7 @@ export function decorate(
             return page;
           },
           targetText: (url) =>
-            (elementForHref(url)?.textContent ?? "").trim() || undefined,
+            (elementForHref(url, scope)?.textContent ?? "").trim() || undefined,
           leader: leaderMarker,
         });
         el.setAttribute(`data-gp-${pseudo}`, text);
@@ -355,7 +375,7 @@ export function decorate(
   function fillLeaders() {
     const marked: Array<{ el: HTMLElement; attr: string; raw: string }> = [];
     for (const attr of ["data-gp-after", "data-gp-before"]) {
-      for (const el of Array.from(document.querySelectorAll<HTMLElement>(`[${attr}]`))) {
+      for (const el of Array.from(scope.querySelectorAll<HTMLElement>(`[${attr}]`))) {
         const raw = el.getAttribute(attr) ?? "";
         if (LEADER_RE.test(raw)) marked.push({ el, attr, raw });
       }
@@ -450,7 +470,7 @@ export function decorate(
           sheet.className = "gp-sheet";
           sheet.dataset.page = String(bookIndex + 1 + pageOffset);
           // Recto = odd 1-based page (page 1 is a recto).
-          sheet.dataset.side = bookIndex % 2 === 0 ? "recto" : "verso";
+          sheet.dataset.side = (bookIndex + pageOffset) % 2 === 0 ? "recto" : "verso";
           sheet.style.left = `${sheetLeft}px`;
           sheet.style.top = `${sheetTop}px`;
           sheet.style.setProperty("--gp-page-w", px(ctx.geometry.width));
@@ -462,7 +482,7 @@ export function decorate(
 
           // `counter(pages)` is the content page count: print resolves it before
           // `postprocess.ts` appends the signature padding.
-          drawMarginBoxes(sheet, ctx, layout.totalPages - paddedPages.size);
+          drawMarginBoxes(sheet, ctx, bookPages ?? layout.totalPages - paddedPages.size);
           drawGuides(sheet, ctx);
           drawCropMarks(sheet, ctx);
         }

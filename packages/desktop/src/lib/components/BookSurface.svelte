@@ -60,7 +60,7 @@
     getSelection(): { readonly from: number; readonly to: number } | undefined;
     setReadonly(next: boolean): void;
     setZoom(next: string): void;
-    setPageOffset(offset: number): void;
+    setPageOffset(offset: number, bookPages?: number): void;
     refreshProjection(next: GutterpressProjection): void;
     setSelection(from: number, to?: number): void;
   }
@@ -182,7 +182,14 @@
       while (!disposed && queue.length) {
         const path = queue.shift()!;
         if (slotOf(path)?.mounted) continue;
-        await load(path);
+        try {
+          await load(path);
+        } catch (e) {
+          // A chapter that cannot be read (moved or deleted meanwhile) stays
+          // unmounted; the rest of the book still mounts.
+          console.warn(`could not load ${path} into the paged editor:`, e);
+          continue;
+        }
         if (disposed || !slotOf(path)?.host || slotOf(path)?.mounted) continue;
         const laidOut = paginationOf(path, 2500);
         patch(path, { mounted: true });
@@ -198,12 +205,38 @@
     void pump();
   }
 
-  /** Folios continue through the book: each chapter is told how many pages come before it. */
+  const pagesOf = (path: string): number => pagesByPath.get(path) ?? pageEstimates[path] ?? 1;
+  let applyingOffsets = false;
+  let offsetsDirty = false;
+
+  /**
+   * Folios continue through the book: each chapter is told how many pages
+   * come before it, and how many the book has (`counter(pages)`). Telling a
+   * chapter its offset can re-paginate it (a parity change in a book with
+   * recto/verso breaks), which reports back here through `paginated`; that
+   * nested report only marks the offsets dirty, and the loop below goes
+   * round again until every chapter has the offset the chapters above it
+   * now add up to. It settles: a chapter's count depends only on the
+   * chapters before it.
+   */
   function applyOffsets(): void {
-    let offset = 0;
-    for (const slot of slots) {
-      if (slot.mounted) refs[slot.path]?.setPageOffset(offset);
-      offset += pagesByPath.get(slot.path) ?? pageEstimates[slot.path] ?? 1;
+    if (applyingOffsets) {
+      offsetsDirty = true;
+      return;
+    }
+    applyingOffsets = true;
+    try {
+      do {
+        offsetsDirty = false;
+        const bookPages = slots.reduce((n, slot) => n + pagesOf(slot.path), 0);
+        let offset = 0;
+        for (const slot of slots) {
+          if (slot.mounted) refs[slot.path]?.setPageOffset(offset, bookPages);
+          offset += pagesOf(slot.path);
+        }
+      } while (offsetsDirty);
+    } finally {
+      applyingOffsets = false;
     }
   }
 
@@ -227,8 +260,7 @@
   // Every sheet carries its book-wide folio (`data-page`, continuing across
   // chapters), so the page in view is the first sheet whose bottom edge is
   // below the top of the scroller. Chapters still queued count by estimate.
-  const bookPageCount = (): number =>
-    slots.reduce((n, slot) => n + (pagesByPath.get(slot.path) ?? pageEstimates[slot.path] ?? 1), 0);
+  const bookPageCount = (): number => slots.reduce((n, slot) => n + pagesOf(slot.path), 0);
 
   function pageAtTop(): number {
     if (!scroller) return 1;
@@ -257,7 +289,7 @@
       // The chapter that owns this page, by the running page count.
       let offset = 0;
       for (const slot of slots) {
-        const pages = pagesByPath.get(slot.path) ?? pageEstimates[slot.path] ?? 1;
+        const pages = pagesOf(slot.path);
         if (page <= offset + pages) {
           await scrollToChapter(slot.path);
           break;

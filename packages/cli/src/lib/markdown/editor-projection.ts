@@ -347,7 +347,7 @@
 import type MarkdownIt from "markdown-it";
 import type Token from "markdown-it/lib/token.mjs";
 import { createMarkdownRenderer } from "./renderer";
-import { CORE_DECLARED_MARKER_NAMES, KNOWN_KINDS } from "./markers.js";
+import { CORE_DECLARED_MARKER_NAMES, KNOWN_KINDS, declaredMarkerVocabulary } from "./markers.js";
 import { SOURCE_CHAPTER_ATTR, SOURCE_RANGE_ATTR } from "./source-range";
 import { registerPluginOriginCapture, resolvePluginTokenOrigin } from "./plugin-origin";
 
@@ -513,6 +513,34 @@ export interface BlockAnchor {
  * A wrapper element a plugin opened around authored blocks -  see
  * {@link collectPluginContainers}.
  */
+/**
+ * One marker the renderer this projection was built with DECLARES (core's
+ * `@columns`, a plugin's `@callout`), as plain data - see
+ * `declaredMarkerVocabulary` in markers.js. A host that classifies marker
+ * lines from text needs it to tell a declared marker from an unknown word,
+ * a `section: true` marker (a `@section` with the marker's classes) from a
+ * container, and a `selfClosing` one (a single element that holds nothing).
+ */
+export interface DeclaredMarkerInfo {
+  readonly name: string;
+  readonly section?: true;
+  readonly selfClosing?: true;
+}
+
+/**
+ * Index of the close token of the declared marker opened at `i` when the
+ * marker holds nothing: a `selfClosing` one (`@tape label="…"`, closed by
+ * markers.js right after its label with no line of its own), or a container
+ * the end of the document closed straight away. Null for any other token.
+ */
+function emptyComponentCloseIndex(tokens: readonly Token[], i: number): number | null {
+  if (tokens[i]?.type !== "layout_component_open") return null;
+  let j = i + 1;
+  if (tokens[j]?.type === "html_block" && !tokens[j]!.map) j += 1;
+  const close = tokens[j];
+  return close?.type === "layout_component_close" && layoutTokenLine(close) === null ? j : null;
+}
+
 export interface PluginContainer {
   readonly tag: string;
   readonly attributes: Readonly<Record<string, string>>;
@@ -675,6 +703,13 @@ function collectPluginContainers(
         // beginning WITH the marker's own block when the container has a
         // label to show there (markers.js emits the label as the very next
         // token), else at the first authored block inside it.
+        // A marker that holds nothing (`selfClosing`) is a single element the
+        // projection shows as a generated view, never a wrapper: mounted as
+        // one, it would hold every block up to the scope's end.
+        if (token.type === "layout_component_open" && emptyComponentCloseIndex(tokens, i) !== null) {
+          depth -= 1;
+          continue;
+        }
         if (token.type === "layout_component_open") {
           const c: Open = { tag: token.tag, attributes: authoredAttributes(token) ?? {}, seq: seq++, depth };
           const next = tokens[i + 1];
@@ -974,6 +1009,16 @@ export interface GutterpressProjection {
    * content is markdown-it's own.
    */
   readonly inlineWrappers: readonly InlineWrapper[];
+  /**
+   * The markers the renderer declares - see {@link DeclaredMarkerInfo}.
+   * Optional so a projection built before it existed still reads.
+   */
+  readonly declaredMarkers?: readonly DeclaredMarkerInfo[];
+}
+
+/** A declared marker's element as the page renders it, without the editor-only source-range plumbing. */
+function renderComponentElement(md: MarkdownIt, env: Record<string, unknown>, tokens: Token[]): string {
+  return md.renderer.render(tokens, md.options, env).replace(/ data-source-range="[^"]*"/g, "");
 }
 
 export interface CreateEditorProjectionOptions {
@@ -1199,9 +1244,24 @@ function pluginRegionLinesLookAuthored(
     lineStartOffset(starts, source, fromLine + 1),
   );
   if (claimed && /^[ \t]*(?:>|[-*+][ \t]|\d{1,9}[.)][ \t])/.test(firstLineText)) return false;
-  for (let line = fromLine + 1; line < toLine; line++) {
+  // A marker-shaped line inside a fenced code block is code, not a marker
+  // the run swallowed: a plugin that renders fences (a `@columns` example in
+  // a ```md block) must not be refused for it.
+  let fence: { char: string; length: number } | null = null;
+  for (let line = fromLine; line < toLine; line++) {
     const lineText = source.slice(lineStartOffset(starts, source, line), lineStartOffset(starts, source, line + 1));
-    if (CORE_MARKER_LINE_RE.test(lineText)) return false;
+    const fenceMark = /^[ ]{0,3}(`{3,}|~{3,})/.exec(lineText)?.[1];
+    if (fence) {
+      // A closing fence is the opening character, at least as long, and nothing else.
+      const closing = /^[ ]{0,3}(`{3,}|~{3,})[ \t]*$/.exec(lineText.replace(/\r?\n$/, ""))?.[1];
+      if (closing && closing[0] === fence.char && closing.length >= fence.length) fence = null;
+      continue;
+    }
+    if (fenceMark) {
+      fence = { char: fenceMark[0]!, length: fenceMark.length };
+      continue;
+    }
+    if (line > fromLine && CORE_MARKER_LINE_RE.test(lineText)) return false;
   }
   return true;
 }
@@ -1681,10 +1741,18 @@ export function createEditorProjection(
       // mapless html_block right after the container's own open token
       // (`openDeclaredMarker`), the same recipe as the chapter-opener below.
       if (tokens[tokenIndex - 1]?.type === "layout_component_open") {
+        // A self-closing marker's label is inside its one element: the view
+        // is that whole element, as the page draws it (see below for one
+        // without a label).
+        const close = emptyComponentCloseIndex(tokens, tokenIndex - 1);
         generated.push({
           id: `generated:component-label:${lastBlockEnd}`,
           anchor: lastBlockEnd,
-          html: capHtmlPayload(token.content, diagnostics, htmlBudget),
+          html: capHtmlPayload(
+            close !== null ? renderComponentElement(md, env, tokens.slice(tokenIndex - 1, close + 1)) : token.content,
+            diagnostics,
+            htmlBudget,
+          ),
         });
         continue;
       }
@@ -1798,6 +1866,16 @@ export function createEditorProjection(
         viewAttributes: extractViewAttributes(token),
       });
       lastBlockEnd = to;
+      // A self-closing marker with no label (`@stamp`) is one empty element
+      // on the page; the labelled case is drawn from its label token above.
+      const emptyClose = emptyComponentCloseIndex(tokens, tokenIndex);
+      if (emptyClose === tokenIndex + 1) {
+        generated.push({
+          id: `generated:component-element:${to}`,
+          anchor: to,
+          html: capHtmlPayload(renderComponentElement(md, env, tokens.slice(tokenIndex, emptyClose + 1)), diagnostics, htmlBudget),
+        });
+      }
       continue;
     }
 
@@ -1980,6 +2058,7 @@ export function createEditorProjection(
     generated,
     diagnostics,
     pluginContainers: collectPluginContainers(tokens, source, starts, recoveredTokens),
+    declaredMarkers: declaredMarkerVocabulary(md),
     blockAttributes: collectBlockAttributes(tokens, source, starts),
     inlineWrappers: collectInlineWrappers(tokens, source, starts, md, env),
     // D13 — omit the key entirely when not limited (optional-field

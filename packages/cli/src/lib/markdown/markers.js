@@ -1144,6 +1144,34 @@ function warnUnknownVariant(env, meta, decl) {
   );
 }
 
+/** The registry each markdown-it instance was built with (see `declaredMarkerVocabulary`). */
+const DECLARED_BY_MD = new WeakMap();
+
+/**
+ * The declared markers a renderer knows - core's (`@columns`) and every
+ * loaded plugin's - as plain data: each name (an alias under its own name)
+ * with whether it is a `section: true` marker or a `selfClosing` one.
+ *
+ * For a host that classifies marker LINES from text without the pipeline
+ * (the desktop's paged editor, which reclassifies on every keystroke): with
+ * this it parses a declared marker as a marker rather than an unknown word,
+ * scopes a section marker as the `@section` it renders as, and lets a
+ * self-closing one hold nothing. Empty for an instance this plugin was not
+ * applied to.
+ *
+ * @param {object} md - a markdown-it instance built by `createMarkdownRenderer`
+ * @returns {{ name: string, section?: true, selfClosing?: true }[]}
+ */
+export function declaredMarkerVocabulary(md) {
+  const registry = DECLARED_BY_MD.get(md);
+  if (!registry) return [];
+  return [...registry].map(([name, decl]) => ({
+    name,
+    ...(decl.section ? { section: true } : {}),
+    ...(decl.selfClosing ? { selfClosing: true } : {}),
+  }));
+}
+
 export default function plugin(md, pluginOptions = {}) {
   const options = {
     // No `implicitPage` option — see the @section branch below.
@@ -1161,6 +1189,7 @@ export default function plugin(md, pluginOptions = {}) {
       ? options.declaredMarkers
       : buildDeclaredMarkerRegistry([]);
   const declaredWords = declaredKindWords(declaredMarkers);
+  DECLARED_BY_MD.set(md, declaredMarkers);
 
   function markerBlock(state, startLine, endLine, silent) {
     const pos = state.bMarks[startLine] + state.tShift[startLine];
@@ -1272,7 +1301,9 @@ export default function plugin(md, pluginOptions = {}) {
   function isBlockBoundaryLine(state, line) {
     const text = state.src.slice(state.bMarks[line] + state.tShift[line], state.eMarks[line]).trim();
     return (
-      parseMarkerLine(text) !== null ||
+      // With the registry's words: a declared marker (`@end-columns`) right
+      // above another marker is two markers, not text glued to one.
+      parseMarkerLine(text, declaredWords) !== null ||
       /^#{1,6}(\s|$)/.test(text) ||
       /^(`{3,}|~{3,})/.test(text) ||
       /^([-*_])(\s*\1){2,}$/.test(text) ||

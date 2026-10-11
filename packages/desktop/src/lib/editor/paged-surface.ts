@@ -22,6 +22,7 @@ import {
   decorate,
   extract,
   injectViewerCss,
+  isRectoVersoBreak,
   paginate,
   PX_PER_PT,
   resolvePage,
@@ -49,10 +50,13 @@ export interface PagedSurface {
   readonly setZoom: (zoom: string) => void;
   /**
    * How many book pages come before this document's first page, so its
-   * folios continue from the chapters above it (see `decorate`'s option of
-   * the same name). Redraws the sheets; the pagination itself is unchanged.
+   * folios continue from the chapters above it, and the book's page count
+   * for `counter(pages)` (see `decorate`'s options of the same names).
+   * Redraws the sheets; when the offset's parity changes in a book with
+   * `recto`/`verso` breaks it re-paginates too, because which of those
+   * breaks need a blank page depends on the page's parity in the BOOK.
    */
-  readonly setPageOffset: (offset: number) => void;
+  readonly setPageOffset: (offset: number, bookPages?: number) => void;
   readonly dispose: () => void;
 }
 
@@ -79,6 +83,8 @@ function modelFor(css: string): GcpmModel {
 export function createPagedSurface(bookCss: string, doc: Document = document): PagedSurface {
   injectViewerCss(doc);
   const model = modelFor(bookCss);
+  /** Whether any `break-before: recto`/`verso` exists: only then does the offset's parity change the pagination. */
+  const rectoVerso = model.breaks.some(isRectoVersoBreak);
   /** The book's default page width in CSS px — known from the model, before anything is laid out. */
   const pageWidthPx = resolvePage(model).geometry.width * PX_PER_PT;
   const listeners = new Set<(totalPages: number) => void>();
@@ -95,6 +101,10 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
   let mounted: HTMLElement | undefined;
   /** Book pages before this document's first page (see `setPageOffset`). */
   let pageOffset = 0;
+  /** The book's page count for `counter(pages)`; undefined until the host says (see `setPageOffset`). */
+  let bookPages: number | undefined;
+  /** The options the current layout was paginated with; `relayout()` reads `pageOffset` from it on every call. */
+  let layoutOpts: { root: HTMLElement; pageOffset: number } | undefined;
 
   /**
    * Scale the whole stage down when a page is wider than the pane, exactly
@@ -139,6 +149,7 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
     }
     const stage = documentElement.parentElement;
     if (stage) fit(stage);
+    if (layoutOpts) layoutOpts.pageOffset = pageOffset;
     layout.relayout();
     applySpreadMode(layout.strips, false);
     decoration?.redraw();
@@ -196,7 +207,8 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
       stage.classList.add(STAGE_CLASS);
       fit(stage);
     }
-    layout = paginate(model, { root: documentElement });
+    layoutOpts = { root: documentElement, pageOffset };
+    layout = paginate(model, layoutOpts);
     // Single-page view is a ONE-COLUMN wrap, not the unwrapped default: the
     // unwrapped strip lays every page out in one long horizontal row. Must
     // run before `decorate`, which positions sheets from the wrap geometry.
@@ -204,7 +216,7 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
     // The stage is the fork's scroll container, never the app's body: the
     // viewer's default put its 32px padding and scrolling on <body>, which
     // inset the whole window and gave it a second scrollbar.
-    decoration = decorate(layout, { canvasRoots: [documentElement], pageOffset, ...(stage ? { stage } : {}) });
+    decoration = decorate(layout, { canvasRoots: [documentElement], pageOffset, bookPages, ...(stage ? { stage } : {}) });
     // A book's own webfonts load asynchronously, and text measured in a
     // fallback face breaks into different pages than the real one — the
     // editor would sit one page long until the next edit re-rendered it.
@@ -252,9 +264,12 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
       userZoom = scale !== null && Number.isFinite(scale) && scale > 0 ? scale : null;
       if (mounted) refresh(mounted);
     },
-    setPageOffset(offset: number): void {
+    setPageOffset(offset: number, total?: number): void {
+      const parityFlipped = (offset - pageOffset) % 2 !== 0;
       pageOffset = offset;
-      decoration?.setPageOffset(offset);
+      bookPages = total;
+      decoration?.setPageOffset(offset, total);
+      if (parityFlipped && rectoVerso && mounted) refresh(mounted);
     },
     onPaginated(listener) {
       listeners.add(listener);

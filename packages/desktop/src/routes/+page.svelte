@@ -50,6 +50,7 @@
     applyRichCommand,
     applyRichLayoutBlock,
     applyRichImageInsert,
+    applyRichAppend,
     captureRichSelection,
     validateImageProperties,
     locateRichImagePropertiesAtCaret,
@@ -556,7 +557,12 @@
       problemsError = null;
       logFilePath = null;
     },
-    onProjectSwitch: () => setFocus(false),
+    onProjectSwitch: () => {
+      setFocus(false);
+      // Another book opens locked, like every fresh Read, and lists its own chapters.
+      setRichLocked(true);
+      bookFiles = [];
+    },
     resetExtras: () => {
       stopFolderWatch();
       pageNav.totalPages = 0;
@@ -582,6 +588,8 @@
       problemsLoading = false;
       problemsError = null;
       problemsOpen = false;
+      setRichLocked(true);
+      bookFiles = [];
     },
   });
 
@@ -1046,11 +1054,33 @@
   let snippetPickerRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
   let snippetPickerOpen = $state(false);
 
+  /** Where a snippet goes on the page: the paged editor's caret, taken before the picker takes focus. */
+  let snippetCapture: RichSelectionCapture | undefined;
+
   function openSnippetPicker() {
     if (!lifecycle.currentDir) return;
     contextMenu.close();
     void inlineEdit.endActive(true); // opening a dialog commits the in-flow edit
+    snippetCapture = richEditing ? richCapture() : undefined;
     snippetPickerRef?.show();
+  }
+
+  function snippetSelectionText(): string {
+    if (!richEditing) return editorRef?.getSelectionText() ?? "";
+    const selection = snippetCapture?.selection;
+    return selection ? snippetCapture!.host.getSnapshot().text.slice(selection.from, selection.to) : "";
+  }
+
+  function insertSnippet(text: string): void {
+    if (!richEditing) {
+      editorRef?.insertSnippet(text);
+      return;
+    }
+    if (!snippetCapture) {
+      showRichDiagnostic(NO_LIVE_CARET_DIAGNOSTIC);
+      return;
+    }
+    reportRichOutcome(applyRichAppend(richHost(), snippetCapture, text));
   }
 
   // ── Book settings view ──────────────────────────────────────────────────
@@ -1466,7 +1496,14 @@
       try {
         const outcome = await buildEditorProjection({ projectDir, content, sourceVersion });
         if (outcome.ok) {
-          for (const pluginError of outcome.pluginErrors) showRichDiagnostic(pluginLoadFailedDiagnostic(pluginError));
+          for (const pluginError of outcome.pluginErrors) {
+            // Every chapter's projection, and every edit's, reports the same
+            // failure again: say it once per unlock.
+            const diagnostic = pluginLoadFailedDiagnostic(pluginError);
+            if (shownPluginErrors.has(diagnostic.message)) continue;
+            shownPluginErrors.add(diagnostic.message);
+            showRichDiagnostic(diagnostic);
+          }
           return { projection: outcome.projection, editorCss: outcome.bookCss || undefined };
         }
         if (outcome.code === "EDITOR_FILE_TOO_LARGE") {
@@ -1533,6 +1570,8 @@
   let pendingProjectionNotices = 0;
   /** True once this unlock has shown its notice; reset when the book is relocked. */
   let projectionNoticeShown = false;
+  /** Plugin-load messages this unlock has shown; cleared with `projectionNoticeShown`. */
+  const shownPluginErrors = new Set<string>();
 
   function flushProjectionNotices(): void {
     const count = pendingProjectionNotices;
@@ -1629,7 +1668,10 @@
   function setRichLocked(locked: boolean): void {
     if (locked === richLocked) return;
     richLocked = locked;
-    if (locked) projectionNoticeShown = false;
+    if (locked) {
+      projectionNoticeShown = false;
+      shownPluginErrors.clear();
+    }
     if (!locked) {
       loadBookSurfaceModule();
       void loadBookFiles();
@@ -1870,6 +1912,7 @@
     // a fresh Read, so it opens locked like setMode's does.
     richLocked = true;
     projectionNoticeShown = false;
+    shownPluginErrors.clear();
     zoomView.applyViewMode(viewMode);
     if (m !== "viewer") loadEditorModule();
   });
@@ -3064,6 +3107,7 @@
     // Read opens locked, every time: coming back to Read is coming back to read.
     richLocked = true;
     projectionNoticeShown = false;
+    shownPluginErrors.clear();
     zoomView.applyViewMode(viewMode);
     if (next !== "viewer") loadEditorModule();
   }
@@ -3744,6 +3788,21 @@
             </div>
           </div>
         {/if}
+        {#if richEditing && !inFocus}
+          <!-- Unlocked Read's formatting bar carries the Problems badge: the
+               list opens at the bottom of this pane, as it does in the editor's. -->
+          <div class="rich-problems">
+            <ProblemsPanel
+              bind:this={problemsPanelRef}
+              problems={displayedProblems}
+              loading={problemsLoading || lifecycle.rendering}
+              error={problemsError}
+              bind:open={problemsOpen}
+              onSelect={openProblem}
+              toggleEl={problemsToggleEl}
+            />
+          </div>
+        {/if}
         <!-- Pane-scoped indicators — absolutely positioned inside .preview-pane
              (position:relative), so they cover ONLY the preview area; the
              editor pane, toolbar, and all dialogs stay fully interactive.
@@ -3751,7 +3810,8 @@
              subtle, non-blocking cue for a hot-reload update behind a
              visible book. onCancel (handleCancelRender) only HIDES the
              overlay; it does NOT tear down the project. -->
-        <ActivityIndicator stage={activity.update} kind="pill" />
+        <!-- Unlocked, the preview being updated is the one under the editor. -->
+        <ActivityIndicator stage={richEditing ? null : activity.update} kind="pill" />
         <ActivityIndicator
           stage={activity.open && !activity.openOnApp && lifecycle.currentDir ? activity.open : null}
           onCancel={activity.open?.id === "layout" ? handleCancelRender : undefined}
@@ -3943,8 +4003,8 @@
   bind:this={snippetPickerRef}
   bind:open={snippetPickerOpen}
   projectDir={lifecycle.currentDir}
-  getSelectionText={() => editorRef?.getSelectionText() ?? ""}
-  onInsert={(text) => editorRef?.insertSnippet(text)}
+  getSelectionText={snippetSelectionText}
+  onInsert={insertSnippet}
 />
 {#if textPrompt}
   <TextPromptDialog
@@ -4141,6 +4201,16 @@
   .rich-lock.unlocked { border-color: var(--app-accent-border); }
   .rich-lock:hover { background: var(--app-control-hover-bg); border-color: var(--app-control-hover-border); }
   .rich-lock:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
+  /* A narrow pane keeps the pill as its icon (the label stays in aria-label). */
+  @container preview-pane (max-width: 420px) {
+    .rich-lock { padding: 3px 7px; }
+    .rich-lock span { display: none; }
+  }
+  .rich-problems {
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+  }
   .preview-pane {
     position: relative;
     /* Named container for PreviewToolbar's own collapse stages. */

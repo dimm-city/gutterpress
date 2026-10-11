@@ -330,6 +330,9 @@ const KNOWN_NON_PLUGIN_CORE_RULE_NAMES = new Set<string>([
   "smartquotes",
   "text_join",
   "gp_pin_scope_check",
+  // markers.js: a declared component's `validate()` (main, #338) reads the
+  // tokens core already built; registered with a marker that declares one.
+  "gp_component_validate",
   "inline_source_raw_html",
   "source_range",
   PLUGIN_ORIGIN_BEFORE_RULE,

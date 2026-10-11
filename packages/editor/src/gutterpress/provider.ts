@@ -142,7 +142,11 @@ const NOT_A_MARKER: MarkerBlock = { markers: [], trailing: null };
  * the pipeline renders under the marker (see `MarkerBlock.trailing`) - the
  * shape an author produces by typing on the line right after a marker.
  */
-function markerBlockOf(node: { readonly kind: string } | undefined, sourceText: string): MarkerBlock {
+function markerBlockOf(
+  node: { readonly kind: string } | undefined,
+  sourceText: string,
+  declaredWords: Set<string> | null,
+): MarkerBlock {
   if (node && node.kind !== "paragraph") return NOT_A_MARKER;
   const lines = sourceText.trim().split("\n");
   if (!lines.length || !lines[0]!.startsWith("@")) return NOT_A_MARKER;
@@ -155,8 +159,16 @@ function markerBlockOf(node: { readonly kind: string } | undefined, sourceText: 
     // it adds a line the printed page does not have. Only core kinds get
     // structure (containers, breaks) below; an unknown kind gets a chip and
     // nothing else, because core cannot know what the plugin did with it.
-    const parsed = parseMarkerLine(lines[i]!.trim(), null, { allowUnknownKinds: true }) as ParsedMarker | null;
+    // `declaredWords`: a marker the project DECLARES (core's `@columns`, a
+    // plugin's `@callout`) is parsed as the pipeline parses it, not as an
+    // unknown word, so text right under it splits off the way it does on
+    // the page.
+    const parsed = parseMarkerLine(lines[i]!.trim(), declaredWords, { allowUnknownKinds: true }) as ParsedMarker | null;
     if (!parsed) break;
+    // The pipeline reads `@end-x` as a closer only when `x` is a section or
+    // a declared marker, and prints any other `@end-…` line (`@end-of-day
+    // we stop.`) as prose. Unknowable without the projection's vocabulary.
+    if (declaredWords && closedKindOf(parsed) !== null && parsed.kind !== "end-section" && !declaredWords.has(parsed.kind)) break;
     markers.push(parsed);
   }
   if (!markers.length) return NOT_A_MARKER;
@@ -168,11 +180,37 @@ function markerBlockOf(node: { readonly kind: string } | undefined, sourceText: 
   return { markers, trailing: lines.slice(i).join("\n") };
 }
 
-const scopeKindOf = (marker: ParsedMarker): string => (marker.kind === "continue" ? "section" : marker.kind);
-
 /** `@end-x` closes `@x` — the closing convention core uses and plugins follow. */
 const closedKindOf = (marker: ParsedMarker): string | null =>
   marker.kind.startsWith("end-") ? marker.kind.slice(4) : null;
+
+/**
+ * What the projection says the project declares (see `DeclaredMarkerInfo`
+ * in gutterpress/render), shaped for classifying lines.
+ */
+interface MarkerVocabulary {
+  /** Every declared name and its `end-` closer, for `parseMarkerLine`; null when the projection predates the list. */
+  readonly words: Set<string> | null;
+  /** Names declared `section: true`: each IS a `@section` with the marker's classes. */
+  readonly sections: ReadonlySet<string>;
+  /** Every declared name. */
+  readonly declared: ReadonlySet<string>;
+}
+
+function vocabularyOf(projection: GutterpressProjection): MarkerVocabulary {
+  const list = projection.declaredMarkers;
+  if (!list) return { words: null, sections: new Set(), declared: new Set() };
+  const words = new Set<string>();
+  for (const { name } of list) {
+    words.add(name);
+    words.add(`end-${name}`);
+  }
+  return {
+    words,
+    sections: new Set(list.filter((m) => m.section).map((m) => m.name)),
+    declared: new Set(list.map((m) => m.name)),
+  };
+}
 
 /**
  * The container an author opened by hand.
@@ -202,6 +240,24 @@ export function createGutterpressBlockProvider(
 ): GutterpressBlockProvider {
   let current = projection;
   let index: BlockIndex = buildBlockIndex(projection, opts.source);
+  let vocabulary = vocabularyOf(projection);
+
+  /**
+   * The scope a marker opens or closes, in core's terms: `@continue` and a
+   * declared section marker are sections, and a section marker's closer is
+   * `end-section`.
+   */
+  const scopeKindOf = (marker: ParsedMarker): string => {
+    if (marker.kind === "continue" || vocabulary.sections.has(marker.kind)) return "section";
+    const closed = closedKindOf(marker);
+    if (closed !== null && vocabulary.sections.has(closed)) return "end-section";
+    return marker.kind;
+  };
+  /** A project's own component marker: a plugin's wrapper, mounted from the projection's containers, never a core scope. */
+  const isComponentMarker = (marker: ParsedMarker): boolean =>
+    !!marker.unknownKind || (vocabulary.declared.has(marker.kind) && !vocabulary.sections.has(marker.kind));
+  const markerBlock = (node: { readonly kind: string } | undefined, sourceText: string): MarkerBlock =>
+    markerBlockOf(node, sourceText, vocabulary.words);
   /** AST ids of this render's top-level blocks, from `groupBlocks`. */
   let topLevel: ReadonlySet<number> = new Set();
 
@@ -222,7 +278,7 @@ export function createGutterpressBlockProvider(
     // lines are two markers — while this editor's parser sees one paragraph.
     // Rejecting a multi-line block left `@page`/`@section` written without a
     // blank line between them printed as body text on the editor's page.
-    const { markers, trailing } = topLevel.has(node.id) ? markerBlockOf(node, sourceText) : NOT_A_MARKER;
+    const { markers, trailing } = topLevel.has(node.id) ? markerBlock(node, sourceText) : NOT_A_MARKER;
     const marker = markers[0];
     if (marker) {
       let rendering: CustomBlockRendering;
@@ -236,7 +292,7 @@ export function createGutterpressBlockProvider(
       // author has just typed or edited — the case the projection cannot
       // describe because it predates the edit.
       const match = matchProjectedBlock(index, sourceText);
-      const kind: ProjectedBlockKind = marker.unknownKind ? "plugin-marker" : (scopeKindOf(marker) as ProjectedBlockKind);
+      const kind: ProjectedBlockKind = isComponentMarker(marker) ? "plugin-marker" : (scopeKindOf(marker) as ProjectedBlockKind);
       const block: ProjectedBlock = match?.block ?? {
         id: `marker:${kind}`,
         kind,
@@ -294,12 +350,12 @@ export function createGutterpressBlockProvider(
    */
   function groupBlocks(blocks: readonly BlockGroupCandidate[]): readonly BlockGroupSpec[] | undefined {
     topLevel = new Set(blocks.map((candidate) => candidate.ast.id));
-    const markerBlocks = blocks.map((candidate) => markerBlockOf(candidate.ast, candidate.sourceText));
+    const markerBlocks = blocks.map((candidate) => markerBlock(candidate.ast, candidate.sourceText));
     /** Every marker each top-level block carries, in source order. */
     const markers = markerBlocks.map((block) => block.markers);
     /** Does any marker in block `i` close a scope of `kind`? */
     const closesAt = (i: number, closers: ReadonlySet<string>): boolean =>
-      markers[i]!.some((m) => !m.unknownKind && closers.has(scopeKindOf(m)));
+      markers[i]!.some((m) => !isComponentMarker(m) && closers.has(scopeKindOf(m)));
     const groups: BlockGroupSpec[] = [];
     /** The wrappers the project's plugins opened, computed first: a scope opened inside one ends where it does. */
     const pluginGroups: BlockGroupSpec[] = [];
@@ -312,7 +368,10 @@ export function createGutterpressBlockProvider(
       let best = -1;
       let bestDistance = Number.POSITIVE_INFINITY;
       blocks.forEach((candidate, i) => {
-        if (candidate.sourceText.trimEnd() !== anchor.text) return;
+        // A marker block holding the paragraph typed right under its marker
+        // is that paragraph's block on the page (see `MarkerBlock.trailing`).
+        const text = markerBlocks[i]!.trailing ?? candidate.sourceText.trimEnd();
+        if (text.trimEnd() !== anchor.text) return;
         const distance = Math.abs(candidate.absoluteStart - anchor.offset);
         if (distance < bestDistance) {
           best = i;
@@ -343,36 +402,56 @@ export function createGutterpressBlockProvider(
     // walking (see `markerElementAttributes`'s doc): pages inherit the open
     // chapter's `.chapter-N`, and `@continue` inherits the previous section.
     let chapterCounterClass = "";
+    /** The open chapter's label, which markers.js repeats on every page inside it. */
+    let chapterLabel: string | undefined;
     let lastSectionAttrs: Record<string, string> | undefined;
+    /** The block the last section's scope ran to: a `@continue` there finds it open. */
+    let openSectionEnd = -1;
 
     markers.forEach((blockMarkers, i) => {
       for (const marker of blockMarkers) {
       // A plugin's own marker opens nothing here: the wrapper the plugin
       // emitted for it is mounted below, anchored to the authored blocks it
       // holds, which is the only evidence of where it really is.
-      if (marker.unknownKind) continue;
+      if (isComponentMarker(marker)) continue;
       const kind = scopeKindOf(marker);
       if (!CONTAINER_KINDS.has(kind)) continue;
 
-      let attrs: Record<string, string> = { ...markerElementAttributes(marker) };
-      if (marker.kind === "continue" && lastSectionAttrs) {
+      // A declared section marker's classes and `data-<name>` come from its
+      // declaration, which only the pipeline holds: the projection's block
+      // for this line carries them. Until the projection catches up with an
+      // edit to the line, the wrapper is a plain section.
+      const sectionMarker = marker.kind !== "continue" && vocabulary.sections.has(marker.kind);
+      let attrs: Record<string, string> = sectionMarker
+        ? { class: "section", ...matchProjectedBlock(index, blocks[i]!.sourceText)?.block.viewAttributes }
+        : { ...markerElementAttributes(marker) };
+      if (marker.kind === "continue") {
+        // Core continues a section only while it is still open here, and
+        // otherwise ignores the marker: nothing is wrapped.
+        if (!lastSectionAttrs || openSectionEnd !== i) continue;
         attrs = { ...lastSectionAttrs, class: mergeClass(lastSectionAttrs["class"], "gp-continued") };
       }
       if (kind === "chapter") {
         const explicit = (attrs["class"] ?? "").match(/(?:^|\s)(chapter-\d+)(?=\s|$)/)?.[1] ?? "";
         chapterCounterClass = explicit || (marker.attrs["ch"] ? `chapter-${marker.attrs["ch"]}` : "");
+        chapterLabel = attrs["data-chapter-label"];
       }
       if (kind === "page" && chapterCounterClass) attrs["class"] = mergeClass(attrs["class"], chapterCounterClass);
+      if (kind === "page" && chapterLabel !== undefined && attrs["data-chapter-label"] === undefined) {
+        attrs["data-chapter-label"] = chapterLabel;
+      }
       if (kind === "section") lastSectionAttrs = attrs;
 
       const closers = CLOSED_BY[kind as ContainerKind];
       let end = i + 1;
       while (end < blocks.length) {
         if (closesAt(end, closers)) break;
-        // `@end-section` closes the section and is not inside it.
-        if (kind === "section" && markers[end]!.some((m) => m.kind === "end-section")) break;
+        // `@end-section` (or a section marker's `@end-<name>`) closes the
+        // section and is not inside it.
+        if (kind === "section" && markers[end]!.some((m) => scopeKindOf(m) === "end-section")) break;
         end += 1;
       }
+      if (kind === "section") openSectionEnd = end;
       const { class: className, ...attributes } = attrs;
       // A marker block that carries the paragraph under its marker is the
       // first block INSIDE the container, as that paragraph is on the page.
@@ -383,8 +462,19 @@ export function createGutterpressBlockProvider(
       // HTML parser resolves it that way), and a group that crossed the
       // wrapper's range is one the fork cannot nest and drops whole - page
       // break and all (a @page inside a @specialty-intro lost its break).
+      //
+      // INSIDE means the scope's marker is: a scope opened on the line above
+      // a wrapper's marker (`@page` then `@columns 2`) holds the wrapper and
+      // runs on past it, as it does on the page. A marker in the block the
+      // wrapper begins at is inside it, and so is one written after the
+      // wrapper's own marker in the same block.
+      const ownAt = blockMarkers.indexOf(marker);
+      const componentAt = blockMarkers.findIndex(isComponentMarker);
       for (const wrapper of pluginGroups) {
-        if (wrapper.start <= start && start < wrapper.end && end > wrapper.end) end = wrapper.end;
+        const inside =
+          (wrapper.start <= i && i < wrapper.end) ||
+          (wrapper.start === i + 1 && componentAt >= 0 && componentAt < ownAt);
+        if (inside && end > wrapper.end) end = wrapper.end;
       }
       // The key carries the KIND as well as the block: one block can open
       // two scopes (`@page` and `@section` on consecutive lines), and two
@@ -410,7 +500,7 @@ export function createGutterpressBlockProvider(
       const block = markerBlocks[i];
       if (!block || block.trailing !== null || block.markers.length !== 1) return null;
       const marker = block.markers[0]!;
-      if (marker.unknownKind) return "plugin";
+      if (isComponentMarker(marker)) return "plugin";
       const kind = scopeKindOf(marker);
       return CONTAINER_KINDS.has(kind) ? kind : null;
     };
@@ -462,6 +552,7 @@ export function createGutterpressBlockProvider(
     update: (next: GutterpressProjection, source: string): void => {
       current = next;
       index = buildBlockIndex(next, source);
+      vocabulary = vocabularyOf(next);
     },
   };
 }

@@ -313,6 +313,13 @@
     .page-nav { grid-column: 1; }
     .right { grid-column: 2; }
   }
+  /* A pane control after the zoom menu (Read's lock pill) needs that
+     fallback sooner. */
+  @container preview-pane (max-width: 340px) {
+    .preview-toolbar:has(.trailing) { grid-template-columns: auto minmax(0, 1fr); }
+    .preview-toolbar:has(.trailing) .page-nav { grid-column: 1; }
+    .preview-toolbar:has(.trailing) .right { grid-column: 2; }
+  }
 
   @media (pointer: coarse) {
     .preview-toolbar .icon-btn,

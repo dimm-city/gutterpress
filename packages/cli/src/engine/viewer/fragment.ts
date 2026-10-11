@@ -67,6 +67,27 @@ export interface LayoutOptions {
    * (`@page` geometry, margin boxes, `string-set`) comes from this string.
    */
   css?: string;
+  /**
+   * How many pages of the BOOK come before this layout's first page. The
+   * preview paginates the whole book as one flow and needs none; the
+   * desktop's paged editor paginates one chapter at a time and passes the
+   * page count of the chapters above, so a `break-before: recto`/`verso`
+   * blank is decided by the page's parity in the book, as print decides it.
+   * Read on every `relayout()`, so a host may update it in place.
+   */
+  pageOffset?: number;
+}
+
+/**
+ * Where a layout's own DOM lives, for every query and clean-up the
+ * fragmenter does outside its strips. The preview owns its whole document:
+ * the document. A host that paginates several flow roots in ONE document
+ * (the desktop's paged editor: one root per chapter) passes `root`, and the
+ * passes must stay inside it, or one chapter's layout removes another's
+ * blank pages and undoes its overflow mapping.
+ */
+function layoutScope(opts: LayoutOptions): ParentNode {
+  return opts.root ?? document;
 }
 
 const pt = (v: number) => v * PX_PER_PT;
@@ -222,7 +243,7 @@ export function columnReserve(offset: number, columnHeight: number): number | nu
  * same forced break) needs no spacer, which is what dedupes those pairs
  * without extra bookkeeping.
  */
-export function synthesizeColumnBreaks(model: GcpmModel): void {
+export function synthesizeColumnBreaks(model: GcpmModel, scope: ParentNode = document): void {
   const sites: Array<{ el: Element; prop: string }> = [];
   const seen = new WeakMap<Element, Set<string>>();
   for (const b of model.breaks) {
@@ -230,7 +251,7 @@ export function synthesizeColumnBreaks(model: GcpmModel): void {
     if (!FORCED_PAGE_LIKE.test(b.value.trim())) continue;
     let els: Element[];
     try {
-      els = Array.from(document.querySelectorAll(b.selector));
+      els = Array.from(scope.querySelectorAll(b.selector));
     } catch {
       continue; // unsupported selector — ignore, never throw on author CSS
     }
@@ -647,9 +668,9 @@ export function stabilizeFullHeightPageRoots(model: GcpmModel, strips: StripInfo
 }
 
 /** Restore the exact authored inline display before a refresh rebuild. */
-function restoreFullHeightPageRoots(doc: Document = document): void {
+function restoreFullHeightPageRoots(scope: ParentNode = document): void {
   for (const el of Array.from(
-    doc.querySelectorAll<HTMLElement>('[data-gp-leading-page-root="stabilized"]'),
+    scope.querySelectorAll<HTMLElement>('[data-gp-leading-page-root="stabilized"]'),
   )) {
     const value = el.dataset.gpLeadingPageRootDisplay ?? "";
     const priority = el.dataset.gpLeadingPageRootDisplayPriority ?? "";
@@ -719,8 +740,8 @@ export function makeOverflowFragmentable(strips: StripInfo[]): void {
   }
 }
 
-function restoreScrollContainers(doc: Document = document): void {
-  for (const el of Array.from(doc.querySelectorAll<HTMLElement>('[data-gp-overflow="clipped"]'))) {
+function restoreScrollContainers(scope: ParentNode = document): void {
+  for (const el of Array.from(scope.querySelectorAll<HTMLElement>('[data-gp-overflow="clipped"]'))) {
     for (const axis of ["x", "y"] as const) {
       const value = axis === "x" ? el.dataset.gpOverflowX : el.dataset.gpOverflowY;
       const priority =
@@ -1068,9 +1089,11 @@ function sectionShim(
 export function compensateRectoBreaks(
   model: GcpmModel,
   strips: StripInfo[],
+  scope: ParentNode = document,
+  pageOffset = 0,
 ): number {
   const decls = model.breaks.filter(isRectoVersoBreak);
-  for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer")))
+  for (const spacer of Array.from(scope.querySelectorAll(".gp-recto-spacer")))
     spacer.remove();
   if (!decls.length) return 0;
 
@@ -1078,7 +1101,7 @@ export function compensateRectoBreaks(
   for (const d of decls) {
     let els: Element[] = [];
     try {
-      els = Array.from(document.querySelectorAll(d.selector));
+      els = Array.from(scope.querySelectorAll(d.selector));
     } catch {
       continue;
     }
@@ -1093,7 +1116,12 @@ export function compensateRectoBreaks(
   // The plan itself is the shared policy the compiler uses on its PDF-measured
   // pages — same input shape, same decision.
   const plan = planRectoBlanks(
-    sites.map((site) => ({ page: pageOf(site.el, strips) + 1, wantsRecto: site.wantsRecto })),
+    // Parity is the BOOK's: a layout that starts after `pageOffset` pages
+    // (one chapter of the paged editor) is a recto where the book is.
+    sites.map((site) => {
+      const local = pageOf(site.el, strips);
+      return { page: local < 0 ? 0 : local + 1 + pageOffset, wantsRecto: site.wantsRecto };
+    }),
   );
   let inserted = 0;
   for (const [i, site] of sites.entries()) {
@@ -1450,8 +1478,8 @@ export function applySpreadMode(strips: StripInfo[], spread: boolean): void {
  * WRONG context's geometry and content — exactly the recto/verso parity class
  * of bug (`ARCHITECTURE.md` §1).
  */
-export function blankPageIndices(strips: StripInfo[]): number[] {
-  return Array.from(document.querySelectorAll(".gp-recto-spacer")).map((el) =>
+export function blankPageIndices(strips: StripInfo[], scope: ParentNode = document): number[] {
+  return Array.from(scope.querySelectorAll(".gp-recto-spacer")).map((el) =>
     pageOf(el, strips),
   );
 }
@@ -1470,8 +1498,8 @@ export function blankPageIndices(strips: StripInfo[]): number[] {
  * spacer joins that column instead. So spacers go in one at a time until the
  * page count reaches its target (bounded). Returns the final page count.
  */
-export function padToSignature(strips: StripInfo[], contentPages: number): number {
-  for (const spacer of Array.from(document.querySelectorAll(".gp-pad-spacer"))) spacer.remove();
+export function padToSignature(strips: StripInfo[], contentPages: number, scope: ParentNode = document): number {
+  for (const spacer of Array.from(scope.querySelectorAll(".gp-pad-spacer"))) spacer.remove();
   const data = document.documentElement.dataset;
   const count = signaturePadding(contentPages, Number(data.gpSignature) || 1, data.gpLastPage as LastPageMode | undefined);
   const last = strips[strips.length - 1];
@@ -1520,6 +1548,11 @@ export interface GutterpressViewerApi {
    * not counted by `counter(pages)`, which print resolves before padding
    */
   paddedPageIndices: number[];
+  /**
+   * The flow root a host passed (`LayoutOptions.root`), or undefined when the
+   * layout is the whole document. `decorate` scopes its own queries to it.
+   */
+  root?: HTMLElement;
   pageOf(sel: string | Element): number;
   pageRangeOf(sel: string | Element): [number, number];
   relayout(): LayoutResult;
@@ -1575,6 +1608,7 @@ export function waitForLayoutReady(doc: Document = document): Promise<void> {
  */
 export function paginate(model: GcpmModel, opts: LayoutOptions = {}): GutterpressViewerApi {
   const authoring: string[] = [];
+  const scope = layoutScope(opts);
   const strips = buildStrips(model, opts, authoring);
   // The strips' pitch is set; every read below may share one answer.
   // (`fragmentDocument` awaits fonts and images before calling this; the
@@ -1582,17 +1616,17 @@ export function paginate(model: GcpmModel, opts: LayoutOptions = {}): Gutterpres
   const { blanks, headers, contentPages, totalPages, blankPageIndices: blankIndices } = withLayoutReadCache(() => {
     makeOverflowFragmentable(strips);
     stabilizeFullHeightPageRoots(model, strips);
-    synthesizeColumnBreaks(model);
+    synthesizeColumnBreaks(model, scope);
     measure(strips);
-    const blanks = compensateRectoBreaks(model, strips);
+    const blanks = compensateRectoBreaks(model, strips, scope, opts.pageOffset ?? 0);
     if (blanks) measure(strips);
     const headers =
       opts.compensateHeaders === false
         ? { tables: 0, passes: 0, warnings: [] }
         : compensateRepeatedHeaders(strips);
     const contentPages = measure(strips).totalPages;
-    const totalPages = padToSignature(strips, contentPages);
-    return { blanks, headers, contentPages, totalPages, blankPageIndices: blankPageIndices(strips) };
+    const totalPages = padToSignature(strips, contentPages, scope);
+    return { blanks, headers, contentPages, totalPages, blankPageIndices: blankPageIndices(strips, scope) };
   });
   const api: GutterpressViewerApi = {
     model,
@@ -1602,10 +1636,11 @@ export function paginate(model: GcpmModel, opts: LayoutOptions = {}): Gutterpres
     blankPages: blanks,
     blankPageIndices: blankIndices,
     paddedPageIndices: pagesAfter(contentPages, totalPages),
+    root: opts.root,
     pageOf: (sel) =>
-      pageOf(typeof sel === "string" ? document.querySelector(sel)! : sel, strips),
+      pageOf(typeof sel === "string" ? scope.querySelector(sel)! : sel, strips),
     pageRangeOf: (sel) =>
-      pageRangeOf(typeof sel === "string" ? document.querySelector(sel)! : sel, strips),
+      pageRangeOf(typeof sel === "string" ? scope.querySelector(sel)! : sel, strips),
     // Rebuilds the strip structure from scratch instead of only re-measuring
     // the strips built at mount. A re-measure-only relayout cannot see a DOM
     // edit that adds or removes a page-context run (e.g. a spliced-in
@@ -1614,10 +1649,10 @@ export function paginate(model: GcpmModel, opts: LayoutOptions = {}): Gutterpres
     // rebuild is the same order as mount (tens of ms on a real book), so
     // there is no separate "cheap" path to keep.
     relayout: () => {
-      restoreFullHeightPageRoots();
-      restoreScrollContainers();
+      restoreFullHeightPageRoots(scope);
+      restoreScrollContainers(scope);
       unwrapStrips(strips);
-      for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer, .gp-pad-spacer")))
+      for (const spacer of Array.from(scope.querySelectorAll(".gp-recto-spacer, .gp-pad-spacer")))
         spacer.remove();
       const rebuilt = buildStrips(model, opts, authoring);
       strips.length = 0;
@@ -1625,18 +1660,18 @@ export function paginate(model: GcpmModel, opts: LayoutOptions = {}): Gutterpres
       return withLayoutReadCache(() => {
         makeOverflowFragmentable(strips);
         stabilizeFullHeightPageRoots(model, strips);
-        synthesizeColumnBreaks(model);
+        synthesizeColumnBreaks(model, scope);
         measure(strips);
-        api.blankPages = compensateRectoBreaks(model, strips);
+        api.blankPages = compensateRectoBreaks(model, strips, scope, opts.pageOffset ?? 0);
         if (opts.compensateHeaders !== false)
           api.warnings = [
             ...new Set([...authoring, ...compensateRepeatedHeaders(strips).warnings]),
           ];
         const content = measure(strips).totalPages;
-        padToSignature(strips, content);
+        padToSignature(strips, content, scope);
         const r = measure(strips);
         api.totalPages = r.totalPages;
-        api.blankPageIndices = blankPageIndices(strips);
+        api.blankPageIndices = blankPageIndices(strips, scope);
         api.paddedPageIndices = pagesAfter(content, r.totalPages);
         return r;
       });

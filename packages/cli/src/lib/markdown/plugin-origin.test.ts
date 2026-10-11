@@ -169,6 +169,18 @@ describe("empirical core-rule chain probe (documents plugin-origin.ts's header P
     expect(names.indexOf(PLUGIN_ORIGIN_AFTER_RULE)).toBeLessThan(names.indexOf("inline_source_raw_html"));
   });
 
+  test("core's own component-validate rule is not mistaken for a plugin rule: a project whose markers declare `validate` keeps the WIDE bracket", () => {
+    const md = createMarkdownRenderer([
+      { name: "validates", options: {}, plugin: () => {}, markers: { card: { class: "card", validate: () => [] } } },
+    ]);
+    registerPluginOriginCapture(md);
+    const names = ruleNames(md);
+    expect(names).toContain("gp_component_validate");
+    expect(names.indexOf(PLUGIN_ORIGIN_BEFORE_RULE)).toBeLessThan(names.indexOf("inline"));
+    expect(names.indexOf(PLUGIN_ORIGIN_AFTER_RULE)).toBeLessThan(names.indexOf("inline_source_raw_html"));
+    expect(names.indexOf(PLUGIN_ORIGIN_AFTER_RULE)).not.toBe(names.indexOf("gp_component_validate") + 1);
+  });
+
   test("a push()-registered plugin rule (landing after gp_pin_scope_check) also gets a TIGHT bracket, not the wide one", () => {
     const md = createMarkdownRenderer([
       {

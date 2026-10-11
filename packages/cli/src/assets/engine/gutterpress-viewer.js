@@ -1061,6 +1061,9 @@
     style.textContent = viewer_default;
     doc.head.appendChild(style);
   }
+  function layoutScope(opts) {
+    return opts.root ?? document;
+  }
   var pt = (v) => v * PX_PER_PT;
   function collectCssText(doc = document) {
     let out = "";
@@ -1109,7 +1112,7 @@
       return null;
     return Math.ceil(remaining);
   }
-  function synthesizeColumnBreaks(model) {
+  function synthesizeColumnBreaks(model, scope = document) {
     const sites = [];
     const seen = new WeakMap;
     for (const b of model.breaks) {
@@ -1119,7 +1122,7 @@
         continue;
       let els;
       try {
-        els = Array.from(document.querySelectorAll(b.selector));
+        els = Array.from(scope.querySelectorAll(b.selector));
       } catch {
         continue;
       }
@@ -1326,8 +1329,8 @@
     }
     return stabilized;
   }
-  function restoreFullHeightPageRoots(doc = document) {
-    for (const el of Array.from(doc.querySelectorAll('[data-gp-leading-page-root="stabilized"]'))) {
+  function restoreFullHeightPageRoots(scope = document) {
+    for (const el of Array.from(scope.querySelectorAll('[data-gp-leading-page-root="stabilized"]'))) {
       const value = el.dataset.gpLeadingPageRootDisplay ?? "";
       const priority = el.dataset.gpLeadingPageRootDisplayPriority ?? "";
       if (value)
@@ -1363,8 +1366,8 @@
         el.style.setProperty("overflow-y", "clip");
     }
   }
-  function restoreScrollContainers(doc = document) {
-    for (const el of Array.from(doc.querySelectorAll('[data-gp-overflow="clipped"]'))) {
+  function restoreScrollContainers(scope = document) {
+    for (const el of Array.from(scope.querySelectorAll('[data-gp-overflow="clipped"]'))) {
       for (const axis of ["x", "y"]) {
         const value = axis === "x" ? el.dataset.gpOverflowX : el.dataset.gpOverflowY;
         const priority = axis === "x" ? el.dataset.gpOverflowXPriority : el.dataset.gpOverflowYPriority;
@@ -1551,9 +1554,9 @@
     }
     return shim;
   }
-  function compensateRectoBreaks(model, strips) {
+  function compensateRectoBreaks(model, strips, scope = document, pageOffset = 0) {
     const decls = model.breaks.filter(isRectoVersoBreak);
-    for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer")))
+    for (const spacer of Array.from(scope.querySelectorAll(".gp-recto-spacer")))
       spacer.remove();
     if (!decls.length)
       return 0;
@@ -1561,7 +1564,7 @@
     for (const d of decls) {
       let els = [];
       try {
-        els = Array.from(document.querySelectorAll(d.selector));
+        els = Array.from(scope.querySelectorAll(d.selector));
       } catch {
         continue;
       }
@@ -1569,7 +1572,10 @@
         sites.push({ el, wantsRecto: wantsRecto(d.value) });
     }
     sites.sort((a, b) => a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
-    const plan = planRectoBlanks(sites.map((site) => ({ page: pageOf(site.el, strips) + 1, wantsRecto: site.wantsRecto })));
+    const plan = planRectoBlanks(sites.map((site) => {
+      const local = pageOf(site.el, strips);
+      return { page: local < 0 ? 0 : local + 1 + pageOffset, wantsRecto: site.wantsRecto };
+    }));
     let inserted = 0;
     for (const [i, site] of sites.entries()) {
       if (!plan[i])
@@ -1714,11 +1720,11 @@
       }
     }
   }
-  function blankPageIndices(strips) {
-    return Array.from(document.querySelectorAll(".gp-recto-spacer")).map((el) => pageOf(el, strips));
+  function blankPageIndices(strips, scope = document) {
+    return Array.from(scope.querySelectorAll(".gp-recto-spacer")).map((el) => pageOf(el, strips));
   }
-  function padToSignature(strips, contentPages) {
-    for (const spacer of Array.from(document.querySelectorAll(".gp-pad-spacer")))
+  function padToSignature(strips, contentPages, scope = document) {
+    for (const spacer of Array.from(scope.querySelectorAll(".gp-pad-spacer")))
       spacer.remove();
     const data = document.documentElement.dataset;
     const count = signaturePadding(contentPages, Number(data.gpSignature) || 1, data.gpLastPage);
@@ -1767,19 +1773,20 @@
   }
   function paginate(model, opts = {}) {
     const authoring = [];
+    const scope = layoutScope(opts);
     const strips = buildStrips(model, opts, authoring);
     const { blanks, headers, contentPages, totalPages, blankPageIndices: blankIndices } = withLayoutReadCache(() => {
       makeOverflowFragmentable(strips);
       stabilizeFullHeightPageRoots(model, strips);
-      synthesizeColumnBreaks(model);
+      synthesizeColumnBreaks(model, scope);
       measure(strips);
-      const blanks2 = compensateRectoBreaks(model, strips);
+      const blanks2 = compensateRectoBreaks(model, strips, scope, opts.pageOffset ?? 0);
       if (blanks2)
         measure(strips);
       const headers2 = opts.compensateHeaders === false ? { tables: 0, passes: 0, warnings: [] } : compensateRepeatedHeaders(strips);
       const contentPages2 = measure(strips).totalPages;
-      const totalPages2 = padToSignature(strips, contentPages2);
-      return { blanks: blanks2, headers: headers2, contentPages: contentPages2, totalPages: totalPages2, blankPageIndices: blankPageIndices(strips) };
+      const totalPages2 = padToSignature(strips, contentPages2, scope);
+      return { blanks: blanks2, headers: headers2, contentPages: contentPages2, totalPages: totalPages2, blankPageIndices: blankPageIndices(strips, scope) };
     });
     const api = {
       model,
@@ -1789,13 +1796,14 @@
       blankPages: blanks,
       blankPageIndices: blankIndices,
       paddedPageIndices: pagesAfter(contentPages, totalPages),
-      pageOf: (sel) => pageOf(typeof sel === "string" ? document.querySelector(sel) : sel, strips),
-      pageRangeOf: (sel) => pageRangeOf(typeof sel === "string" ? document.querySelector(sel) : sel, strips),
+      root: opts.root,
+      pageOf: (sel) => pageOf(typeof sel === "string" ? scope.querySelector(sel) : sel, strips),
+      pageRangeOf: (sel) => pageRangeOf(typeof sel === "string" ? scope.querySelector(sel) : sel, strips),
       relayout: () => {
-        restoreFullHeightPageRoots();
-        restoreScrollContainers();
+        restoreFullHeightPageRoots(scope);
+        restoreScrollContainers(scope);
         unwrapStrips(strips);
-        for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer, .gp-pad-spacer")))
+        for (const spacer of Array.from(scope.querySelectorAll(".gp-recto-spacer, .gp-pad-spacer")))
           spacer.remove();
         const rebuilt = buildStrips(model, opts, authoring);
         strips.length = 0;
@@ -1803,18 +1811,18 @@
         return withLayoutReadCache(() => {
           makeOverflowFragmentable(strips);
           stabilizeFullHeightPageRoots(model, strips);
-          synthesizeColumnBreaks(model);
+          synthesizeColumnBreaks(model, scope);
           measure(strips);
-          api.blankPages = compensateRectoBreaks(model, strips);
+          api.blankPages = compensateRectoBreaks(model, strips, scope, opts.pageOffset ?? 0);
           if (opts.compensateHeaders !== false)
             api.warnings = [
               ...new Set([...authoring, ...compensateRepeatedHeaders(strips).warnings])
             ];
           const content = measure(strips).totalPages;
-          padToSignature(strips, content);
+          padToSignature(strips, content, scope);
           const r = measure(strips);
           api.totalPages = r.totalPages;
-          api.blankPageIndices = blankPageIndices(strips);
+          api.blankPageIndices = blankPageIndices(strips, scope);
           api.paddedPageIndices = pagesAfter(content, r.totalPages);
           return r;
         });
@@ -2100,7 +2108,7 @@
 
   // src/engine/viewer/decorate.ts
   var px = (v) => `${v * PX_PER_PT}px`;
-  function elementForHref(href) {
+  function elementForHref(href, scope = document) {
     const raw = href.replace(/^#/, "");
     if (!raw)
       return null;
@@ -2108,7 +2116,7 @@
     try {
       id = decodeURIComponent(raw);
     } catch {}
-    return document.getElementById(id);
+    return scope === document ? document.getElementById(id) : scope.querySelector(`[id="${CSS.escape(id)}"]`);
   }
   function applyPageBackground(sheet, decls) {
     for (const [prop, value] of Object.entries(decls)) {
@@ -2123,6 +2131,8 @@
   function decorate(layout, opts = {}) {
     const model = layout.model;
     let pageOffset = opts.pageOffset ?? 0;
+    let bookPages = opts.bookPages;
+    const scope = layout.root ?? document;
     const sheets = new Map;
     let blankPages = new Set;
     let paddedPages = new Set;
@@ -2134,10 +2144,11 @@
       targets: new Map,
       pageNumbers: [],
       warnings,
-      setPageOffset(offset) {
-        if (offset === pageOffset)
+      setPageOffset(offset, pages = bookPages) {
+        if (offset === pageOffset && pages === bookPages)
           return;
         pageOffset = offset;
+        bookPages = pages;
         draw();
       },
       setDesigner(on) {
@@ -2159,11 +2170,11 @@
         return { index: bookIndex, strip, pseudos: pseudos2, geometry: geometry2, marginBoxes: marginBoxes2, decls: decls2 };
       }
       const pseudos = [];
-      if (bookIndex === 0)
+      if (bookIndex + pageOffset === 0)
         pseudos.push("first");
       if (indexInStrip2 === 0)
         pseudos.push("nth-first-of-run");
-      pseudos.push(bookIndex % 2 === 0 ? "right" : "left");
+      pseudos.push((bookIndex + pageOffset) % 2 === 0 ? "right" : "left");
       const { geometry, marginBoxes, decls } = resolvePage(model, {
         name: strip.page,
         pseudos
@@ -2176,7 +2187,7 @@
       for (const decl of model.stringSets) {
         let els = [];
         try {
-          els = Array.from(document.querySelectorAll(decl.selector));
+          els = Array.from(scope.querySelectorAll(decl.selector));
         } catch {
           continue;
         }
@@ -2200,7 +2211,7 @@
       for (const r of model.counterResets) {
         let els = [];
         try {
-          els = Array.from(document.querySelectorAll(r.selector));
+          els = Array.from(scope.querySelectorAll(r.selector));
         } catch {
           continue;
         }
@@ -2214,10 +2225,10 @@
       api.pageNumbers = resets.length ? pageCounterValues(resets, layout.totalPages).map((value, i) => i + 1 < firstReset ? value + pageOffset : value) : [];
       const pageValues = api.pageNumbers.length ? api.pageNumbers : null;
       const linked = new Set;
-      for (const a of Array.from(document.querySelectorAll("a[href^='#']")))
+      for (const a of Array.from(scope.querySelectorAll("a[href^='#']")))
         linked.add(a.getAttribute("href"));
       for (const href of linked) {
-        const el = elementForHref(href);
+        const el = elementForHref(href, scope);
         if (!el)
           continue;
         const [page] = pageRangeOf(el, layout.strips);
@@ -2237,7 +2248,7 @@
         const pseudo = /::?after$/.test(xref.selector) ? "after" : "before";
         let els = [];
         try {
-          els = Array.from(document.querySelectorAll(base));
+          els = Array.from(scope.querySelectorAll(base));
         } catch {
           continue;
         }
@@ -2250,7 +2261,7 @@
                 brokenHrefs.add(url);
               return page;
             },
-            targetText: (url) => (elementForHref(url)?.textContent ?? "").trim() || undefined,
+            targetText: (url) => (elementForHref(url, scope)?.textContent ?? "").trim() || undefined,
             leader: leaderMarker
           });
           el.setAttribute(`data-gp-${pseudo}`, text);
@@ -2272,7 +2283,7 @@
     function fillLeaders() {
       const marked = [];
       for (const attr of ["data-gp-after", "data-gp-before"]) {
-        for (const el of Array.from(document.querySelectorAll(`[${attr}]`))) {
+        for (const el of Array.from(scope.querySelectorAll(`[${attr}]`))) {
           const raw = el.getAttribute(attr) ?? "";
           if (LEADER_RE.test(raw))
             marked.push({ el, attr, raw });
@@ -2329,7 +2340,7 @@
             const sheet = document.createElement("div");
             sheet.className = "gp-sheet";
             sheet.dataset.page = String(bookIndex + 1 + pageOffset);
-            sheet.dataset.side = bookIndex % 2 === 0 ? "recto" : "verso";
+            sheet.dataset.side = (bookIndex + pageOffset) % 2 === 0 ? "recto" : "verso";
             sheet.style.left = `${sheetLeft}px`;
             sheet.style.top = `${sheetTop}px`;
             sheet.style.setProperty("--gp-page-w", px(ctx.geometry.width));
@@ -2340,7 +2351,7 @@
                 sheet.style.setProperty(prop, value);
             layer.appendChild(sheet);
             sheets.set(bookIndex, sheet);
-            drawMarginBoxes(sheet, ctx, layout.totalPages - paddedPages.size);
+            drawMarginBoxes(sheet, ctx, bookPages ?? layout.totalPages - paddedPages.size);
             drawGuides(sheet, ctx);
             drawCropMarks(sheet, ctx);
           }

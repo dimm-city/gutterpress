@@ -100,13 +100,13 @@ function applyChapterCompletion(
  *  collapsed on the blank line between them, ready for content. */
 export function markerPairApply(open: string, close: string): MarkerCompletion["apply"] {
   return (view, completion, from, to) => {
-    const insert = `${open}\n\n${close}`;
-    // `${open}\n` (one newline) lands exactly on the blank line's start — the
-    // SECOND '\n' is what ends that blank line, so including it in the offset
-    // would overshoot onto the closer itself.
+    // The caret gets an empty line of its own with a blank line either side,
+    // so what the author types is a paragraph of its own and not text glued
+    // to either marker line (which the pipeline warns about as marker_glued).
+    const insert = `${open}\n\n\n\n${close}`;
     view.dispatch({
       changes: { from, to, insert },
-      selection: EditorSelection.cursor(from + open.length + 1),
+      selection: EditorSelection.cursor(from + open.length + 2),
       annotations: pickedCompletion.of(completion),
     });
   };

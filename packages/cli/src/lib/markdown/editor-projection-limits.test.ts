@@ -378,6 +378,8 @@ describe("D13 caps never throw and never mutate blocks already emitted", () => {
       pluginContainers: [],
       blockAttributes: [],
       inlineWrappers: [],
+      // Core's own declared marker is vocabulary even in an empty document.
+      declaredMarkers: [{ name: "columns" }],
     });
   });
 });

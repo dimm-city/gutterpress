@@ -605,8 +605,8 @@ function chapterBlockDescriptor(): LayoutInsertDescriptor {
 }
 
 function sectionBlockDescriptor(): LayoutInsertDescriptor {
-  const prefix = "\n\n@section\n";
-  const insert = `${prefix}\n@end-section\n\n`;
+  const prefix = "\n\n@section\n\n";
+  const insert = `${prefix}\n\n@end-section\n\n`;
   return { insert, selectFrom: prefix.length, selectTo: prefix.length };
 }
 
@@ -615,8 +615,8 @@ function sectionBlockDescriptor(): LayoutInsertDescriptor {
  *  not touch it), with `@column-break` as the forced break between the two
  *  columns. Shared with the paged editor through {@link descriptorForLayoutBlock}. */
 function twoColumnBlockDescriptor(): LayoutInsertDescriptor {
-  const prefix = "\n\n@columns 2\n";
-  const insert = `${prefix}\n@column-break\n\nRight column content.\n\n@end-columns\n\n`;
+  const prefix = "\n\n@columns 2\n\n";
+  const insert = `${prefix}\n\n@column-break\n\nRight column content.\n\n@end-columns\n\n`;
   return { insert, selectFrom: prefix.length, selectTo: prefix.length };
 }
 

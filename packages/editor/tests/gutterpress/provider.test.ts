@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createEditorProjection, createMarkdownRenderer } from "gutterpress/render";
 import type { BlockAstNode } from "@dimm-city/vscode-markdown-editor";
-import type { GutterpressProjection, ProjectedBlock } from "gutterpress/render";
+import type { GutterpressProjection, LoadedPlugin, ProjectedBlock } from "gutterpress/render";
 import { buildBlockIndex, matchProjectedBlock, projectionNeedsRefresh } from "../../src/gutterpress/match.ts";
 import { buildChipPlan } from "../../src/gutterpress/plan.ts";
 import { createGutterpressBlockProvider } from "../../src/gutterpress/provider.ts";
@@ -591,6 +591,87 @@ describe("createGutterpressBlockProvider — marker scopes from text", () => {
     const provider = createGutterpressBlockProvider(projection, { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
     const groups = provider.groupBlocks(candidates(["#### Kept\n", "Body.\n", "Middle.\n", "Body.\n", "Tail.\n"]))!;
     expect(groups).toEqual([{ start: 3, end: 4, key: "plugin:1", tagName: "div", className: "second", attributes: {} }]);
+  });
+
+  describe("declared markers, from a real projection of the same source", () => {
+    const DECLARING_PLUGIN: LoadedPlugin = {
+      name: "declares",
+      plugin: () => {},
+      options: {},
+      markers: {
+        "npc-stat": { section: true, class: "dc-npc-stat", variants: { wirephreak: "dc-wire" } },
+        tape: { selfClosing: true, class: "dc-tape", label: { tag: "span", class: "dc-tape-label", from: "attr:label" } },
+      },
+    };
+    /** The source's blank-line-separated paragraphs as the fork's top-level blocks, and a provider over its projection. */
+    const groupsOf = (source: string) => {
+      const md = createMarkdownRenderer([DECLARING_PLUGIN]);
+      const projection = createEditorProjection(source, { sourceVersion: 1, md, trusted: true });
+      const provider = createGutterpressBlockProvider(projection, { source, ownerDocument: UNUSED_DOCUMENT });
+      let at = 0;
+      const blocks = source.split(/\n\n+/).filter((text) => text.trim()).map((text, i) => {
+        const absoluteStart = source.indexOf(text, at);
+        at = absoluteStart + text.length;
+        return { ast: { kind: "paragraph", id: i } as unknown as BlockAstNode, sourceText: text, absoluteStart };
+      });
+      return { provider, groups: provider.groupBlocks(blocks)! };
+    };
+    const shape = (groups: readonly { className?: string; start: number; end: number; attributes?: object }[]) =>
+      groups.map((g) => [g.className, g.start, g.end, g.attributes]);
+
+    test("a section marker is a section with its declared classes, closed by its own @end-, and @continue carries it on", () => {
+      const { groups } = groupsOf("@npc-stat wirephreak\n\nPart one.\n\n@continue\n\nPart two.\n\n@end-npc-stat\n\nAfter.\n");
+      expect(shape(groups)).toEqual([
+        ["section dc-npc-stat dc-wire", 1, 2, { "data-npc-stat": "wirephreak" }],
+        ["section dc-npc-stat dc-wire gp-continued", 3, 4, { "data-npc-stat": "wirephreak" }],
+      ]);
+    });
+
+    test("a section marker closes the section open before it, as @section does", () => {
+      const { groups } = groupsOf("@section .a\n\nA.\n\n@npc-stat\n\nStat.\n\n@end-npc-stat\n\nAfter.\n");
+      expect(shape(groups)).toEqual([
+        ["section a", 1, 2, {}],
+        ["section dc-npc-stat", 3, 4, {}],
+      ]);
+    });
+
+    test("@continue with no section open wraps nothing, as the pipeline ignores it", () => {
+      const { groups } = groupsOf("@section .a\n\nx\n\n@end-section\n\n@continue\n\ny\n");
+      expect(shape(groups)).toEqual([["section a", 1, 2, {}]]);
+    });
+
+    test("a self-closing marker wraps nothing: the text after it is outside the element", () => {
+      expect(groupsOf("Intro.\n\n@tape label=X\n\nBody.\n\nMore.\n").groups).toEqual([]);
+    });
+
+    test("@page on the line above @columns holds the columns wrapper and runs on past it", () => {
+      const { groups } = groupsOf("@page\n@columns 2\n\nA.\n\n@end-columns\n\nB.\n");
+      expect(shape(groups)).toEqual([
+        ["page", 1, 4, {}],
+        ["gp-columns gp-columns-2", 1, 2, { "data-columns": "2" }],
+      ]);
+    });
+
+    test("text on the line under @columns is the first paragraph inside its wrapper", () => {
+      const { groups } = groupsOf("@columns 2\nLeft.\n\nRight.\n\n@end-columns\n\nAfter.\n");
+      expect(shape(groups)).toEqual([["gp-columns gp-columns-2", 0, 2, { "data-columns": "2" }]]);
+    });
+
+    test("a chapter's label repeats on every page inside it, unless the page sets its own", () => {
+      const { groups } = groupsOf("@chapter Intro label=C.01\n\n@page\n\nText.\n\n@page\n\nMore.\n");
+      expect(groups.filter((g) => g.className === "page").map((g) => g.attributes)).toEqual([
+        { "data-chapter-label": "Intro" },
+        { "data-chapter-label": "Intro" },
+      ]);
+    });
+
+    test("prose starting with an undeclared @end- word stays prose, as it prints", () => {
+      const { provider, groups } = groupsOf("@section\n\nIntro.\n\n@end-of-day we stop.\n\nAfter.\n");
+      // Not a closer: the section runs on over it to the end.
+      expect(shape(groups)).toEqual([["section", 1, 4, {}]]);
+      // And it is not a marker chip (a chip would need the DOM this suite lacks).
+      expect(provider.renderCustomBlock({ kind: "paragraph", id: 2 } as unknown as BlockAstNode, "@end-of-day we stop.")).toBeUndefined();
+    });
   });
 
   test("needsRefresh() reflects the projection's own sourceVersion", () => {

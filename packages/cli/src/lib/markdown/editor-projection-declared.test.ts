@@ -94,3 +94,44 @@ describe("declared containers (#240)", () => {
     expect(p.pluginContainers).toEqual([]);
   });
 });
+
+describe("section and self-closing markers, and the declared vocabulary", () => {
+  const mdWith = createMarkdownRenderer([
+    {
+      name: "shapes",
+      plugin: () => {},
+      options: {},
+      markers: {
+        "npc-stat": { section: true, class: "dc-npc-stat" },
+        tape: { selfClosing: true, class: "dc-tape", label: { tag: "span", class: "dc-tape-label", from: "attr:label" } },
+        stamp: { selfClosing: true, class: "dc-stamp" },
+      },
+    },
+  ]);
+  const projectWith = (source: string) => createEditorProjection(source, { sourceVersion: 1, md: mdWith, trusted: true });
+
+  test("the projection lists every declared marker, core's own included, with its shape", () => {
+    expect(projectWith("").declaredMarkers).toEqual([
+      { name: "columns" },
+      { name: "npc-stat", section: true },
+      { name: "tape", selfClosing: true },
+      { name: "stamp", selfClosing: true },
+    ]);
+  });
+
+  test("a self-closing marker wraps nothing: its whole element is the chip's generated view", () => {
+    const source = "Intro.\n\n@tape label=X\n\nBody.\n\n@stamp\n\nMore.\n";
+    const p = projectWith(source);
+    expect(p.diagnostics).toEqual([]);
+    expect(p.pluginContainers).toEqual([]);
+    expect(p.generated.map((g) => g.html.trim())).toEqual([
+      '<div class="dc-tape" data-label="X"><span class="dc-tape-label">X</span>\n</div>',
+      '<div class="dc-stamp"></div>',
+    ]);
+  });
+
+  test("a section marker projects as a section carrying its declared classes", () => {
+    const p = projectWith("@npc-stat\n\nStat.\n\n@end-npc-stat\n");
+    expect(p.blocks.map((b) => [b.kind, b.viewAttributes])).toEqual([["section", { class: "section dc-npc-stat" }]]);
+  });
+});

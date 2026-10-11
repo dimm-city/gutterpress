@@ -685,3 +685,40 @@ describe("shape 3 -- uncorroborated plugin-declared map (a plugin sets an out-of
     expect(refusal!.reason).toMatch(/out-of-bounds|corroborate against source/i);
   });
 });
+
+describe("a fenced code block a plugin renders is code, not swallowed markers", () => {
+  // A highlighter's shape: every fence becomes one html_block with no map.
+  const highlighter: LoadedPlugin = {
+    name: "highlighter",
+    options: {},
+    plugin: (m: MarkdownIt) =>
+      m.core.ruler.push("probe_highlight", (state) => {
+        state.tokens = state.tokens.map((t) => {
+          if (t.type !== "fence") return t;
+          const html = new state.Token("html_block", "", 0);
+          html.content = `<pre class="hl">${m.utils.escapeHtml(t.content)}</pre>\n`;
+          return html;
+        });
+      }),
+  };
+
+  for (const inner of ["@columns 2", "@end-columns", "@section .x", "@page"]) {
+    test(`a fence showing "${inner}" projects as one plugin-region, unrefused`, () => {
+      const source = `Intro.\n\n\`\`\`md\n${inner}\nText\n\`\`\`\n\nAfter.\n`;
+      const md = createMarkdownRenderer([highlighter]);
+      const projection = createEditorProjection(source, { sourceVersion: 1, md, trusted: true });
+      expect(projection.diagnostics).toEqual([]);
+      expect(projection.blocks.map((b) => [b.kind, source.slice(b.from, b.to)])).toEqual([
+        ["plugin-region", `\`\`\`md\n${inner}\nText\n\`\`\`\n`],
+      ]);
+    });
+  }
+
+  test("a fence closed by a shorter or different run stays open, so the marker after it is still inside the code", () => {
+    const source = "Intro.\n\n````md\n```\n~~~~\n@page\n````\n\nAfter.\n";
+    const md = createMarkdownRenderer([highlighter]);
+    const projection = createEditorProjection(source, { sourceVersion: 1, md, trusted: true });
+    expect(projection.diagnostics).toEqual([]);
+    expect(projection.blocks.map((b) => b.kind)).toEqual(["plugin-region"]);
+  });
+});

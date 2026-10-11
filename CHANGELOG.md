@@ -59,6 +59,31 @@ This project follows [Semantic Versioning](https://semver.org/).
   the book the editor shows as its Markdown (a plugin block whose source
   range cannot be verified) is one quiet notice per unlock, with the
   details in Logs, rather than an error for every chapter.
+- **The unlocked book paginates like the preview across chapters.** Laying
+  out one chapter no longer removed another chapter's blank recto pages or
+  its clipping, blank pages before a recto chapter follow the book's page
+  parity instead of the chapter's, and `counter(pages)` counts the whole
+  book ("Page 6 of 10", not "Page 6 of 5").
+- **Plugin and `@columns` markers on the page match the printed page.** A
+  section marker (`section: true`) wraps its content with its declared
+  classes and `@continue` carries it on; a self-closing marker shows its
+  element without swallowing what follows; `@page` on the line above
+  `@columns` holds the columns; text typed right under `@columns` lands
+  inside them; every page repeats its chapter's label; and a stray
+  `@continue`, or prose that starts with `@end-…`, stays as the book
+  prints it. A fenced code block that shows a marker is no longer refused
+  when a plugin renders it.
+- **The glued-marker warning** no longer fires for `@end-columns` written
+  directly above `@page`.
+- **Inserting a section or two columns** leaves the cursor on a line of its
+  own, so what you type is not glued to a marker line.
+- **Unlocked Read, tidied.** Insert snippet works on the page; the Problems
+  badge opens its list; switching books relocks and shows only the new
+  book's chapters; a plugin that fails to load is reported once per unlock
+  instead of once per chapter and edit; in a narrow pane the lock pill
+  shrinks to its icon instead of covering page navigation; the "Updating
+  preview" pill no longer sits over the formatting bar; and editing a
+  stylesheet the book `@import`s restyles the page.
 
 ## [0.11.17] - 2026-10-10
 

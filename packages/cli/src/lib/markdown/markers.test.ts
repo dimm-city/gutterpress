@@ -207,6 +207,8 @@ describe("a marker glued to paragraph text warns (marker_glued)", () => {
     expect(glued("@section\n> quote\n")).toEqual([]);
     expect(glued("## Heading\n@section\n\ntext\n")).toEqual([]);
     expect(glued("| a | b |\n| - | - |\n| 1 | 2 |\n@section\n\ntext\n")).toEqual([]);
+    // A core-declared closer is a marker line too, not text glued to the next marker.
+    expect(glued("@columns 2\n\ntext\n\n@end-columns\n@page\n\nmore\n")).toEqual([]);
   });
 
   test("the page still separates them: the marker is a scope, the text its content", () => {
