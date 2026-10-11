@@ -5,6 +5,16 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A lead-in line stays with the table or list it introduces** (#370). A
+  label such as **ROLL A DIE!** or "You will need:" written directly above a
+  table or a list no longer ends a column or a page with its table starting
+  on the next one; the label now moves along with it, the way a heading
+  already stays with what follows. Only a paragraph directly followed by a
+  table or list is affected. To turn it off for your book, add
+  `p { break-after: auto; }` to your stylesheet.
+
 ## [0.11.17] - 2026-10-10
 
 ### Added
