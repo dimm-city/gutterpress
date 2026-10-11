@@ -221,6 +221,31 @@ th {
   transform: rotate(-0.8deg);
 }
 
+/* Ink splattered across the nameplate: a blot past the PROOF stamp and fine
+   drops sprayed back over the lettering. Drawn over the header, but it
+   never takes a click. */
+.site-head-bar {
+  position: relative;
+}
+
+.site-head-bar::after {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: calc(var(--gutter) + 2.6rem);
+  width: 440px;
+  height: 84px;
+  background: url("images/ink-splatter.svg") no-repeat;
+  opacity: 0.88;
+  pointer-events: none;
+}
+
+@media (max-width: 40rem) {
+  .site-head-bar::after {
+    display: none;
+  }
+}
+
 .ink-filters {
   position: absolute;
   width: 0;
