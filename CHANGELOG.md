@@ -58,6 +58,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **A new app icon.** The GP monogram is redrawn as a worn, ink-splattered
+  blackletter stamp on a newsprint tile: in the app's window, the start
+  screen, the app icon on every platform, and the CLI preview's tab.
+
 - **Only small black text goes on the black plate alone** (#336).
   DriveThruRPG builds now make black text at or below 24pt K-only, as before,
   but leave larger text in rich black, as DriveThruRPG recommends. Underlines

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240">
+  <!-- Worn-ink fill for type that cannot take an SVG filter (a drop cap's
+       ::first-letter): solid riso black with patches and specks where the ink
+       did not take, the same noise as #worn-ink in _includes/nav.html. Used as
+       a background clipped to the letter's shape. -->
+  <filter id="w" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+    <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="4" seed="9" stitchTiles="stitch" result="wear"/>
+    <feColorMatrix in="wear" type="matrix" values="0 0 0 0 0.102  0 0 0 0 0.082  0 0 0 0 0.071  -10 0 0 0 7.6" result="worn"/>
+    <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="1" seed="2" stitchTiles="stitch" result="specks"/>
+    <feColorMatrix in="specks" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -16 0 0 0 11.2" result="speckMask"/>
+    <feComposite in="worn" in2="speckMask" operator="in"/>
+  </filter>
+  <rect width="240" height="240" filter="url(#w)"/>
+</svg>

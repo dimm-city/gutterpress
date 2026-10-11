@@ -29,7 +29,7 @@ Creating books is for authors: if you don't see it, [switch to Author](01-instal
      [Keep versions and back up your work](09-versions-and-backup.md)).
 5. Click **Create book**.
 
-![The three steps of Create a new book: Name & author, Template, and Print & save](images/new-book-wizard.jpg)
+![Create a new book, step 1: Name & author](images/new-book-name.jpg) ![Step 2: Template](images/new-book-template.jpg) ![Step 3: Print & save](images/new-book-print.jpg)
 
 ## Open a book on this computer
 

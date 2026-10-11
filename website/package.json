@@ -4,7 +4,8 @@
   "description": "The Gutterpress project site, built with unify on its docs template. See README.md.",
   "scripts": {
     "dev": "unify dev",
-    "build": "unify build --audit --strict"
+    "build": "unify build --audit --strict",
+    "screenshots": "node scripts/desktop-screenshots.mjs"
   },
   "devDependencies": {
     "@fwdslsh/unify": "0.11.14",

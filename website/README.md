@@ -36,6 +36,15 @@ sidebar (`_includes/docnav.html`), the docs index (`docs/index.md`) and the priv
 (`privacy/index.md`, from the root `PRIVACY.md`; it must stay at `/privacy/` because
 Google's OAuth consent screen links to it, ADR 0011).
 
+## Desktop screenshots
+
+`docs/desktop-guide/images/` is taken from the real app by `scripts/desktop-screenshots.mjs`:
+it launches the built desktop app with a throwaway profile, opens a demo copy of the user
+guide, clicks through each screen the guides show and writes the cropped JPEGs. Build the app
+first (see the script's header), then `npm run screenshots` (under `xvfb-run -a` on a
+headless Linux box). The Pages workflow retakes them on manual runs and after every stable
+release; push-triggered deploys use the committed images.
+
 ## What is this site's own
 
 - `site/_includes/head.html`, `nav.html` and `footer.html`, the files that name it.
