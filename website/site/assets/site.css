@@ -41,7 +41,7 @@ a:hover {
 
 /* ── Type: headline face, text face, gothic labels ────────────────────── */
 h1 {
-  font-weight: 900;
+  font-weight: 700;
   color: var(--pu-ink);
   letter-spacing: -0.01em;
 }
@@ -461,7 +461,7 @@ body.home .hero {
 }
 
 .hero h1 {
-  font: 900 clamp(2.5rem, 6vw, 4.2rem)/1 var(--display);
+  font: 700 clamp(2.5rem, 6vw, 4.2rem)/1 var(--h1-font);
   color: var(--pu-ink);
   background: none;
   -webkit-text-fill-color: currentColor;
@@ -469,7 +469,7 @@ body.home .hero {
 
 /* The editor's circle round the word that matters. */
 .hero h1 em {
-  font-style: italic;
+  font-style: normal; /* blackletter has no italic; the circle does the emphasis */
   padding: 0 0.15em;
   border: 2px solid var(--pu-red);
   border-radius: 50% 45% 55% 48% / 55% 50% 48% 52%;
