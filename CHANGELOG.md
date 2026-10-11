@@ -13,7 +13,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   on the next one; the label now moves along with it, the way a heading
   already stays with what follows. Only a paragraph directly followed by a
   table or list is affected. To turn it off for your book, add
-  `p { break-after: auto; }` to your stylesheet.
+  `p { break-after: auto; }` to your stylesheet. The preview now agrees with
+  the PDF when a table with a header row is pushed to the next page or
+  column: the label (or a heading) above it moves along instead of staying
+  behind.
 
 ## [0.11.17] - 2026-10-10
 
