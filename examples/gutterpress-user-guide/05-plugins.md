@@ -528,7 +528,7 @@ Because `validate` takes a plain object, you test it with plain objects too
 layouts rather than boxes: a column run, a card grid, a stat block. Declare
 them as sections and they behave exactly like `@section` — they close at the
 next `@section`, `@page`, `@chapter` or `@spread`, `@continue` reopens them
-with the same classes, and `.gp-columns-2` and friends work:
+with the same classes:
 
 ```js
 export const markers = {

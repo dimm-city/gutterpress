@@ -106,7 +106,7 @@ function elementNameFor(token) {
  * #226: warn on any `gp-`-prefixed class this token carries that is not part
  * of core's published vocabulary (`GP_CLASSES`, gutterpress-css.ts). Before
  * this, a misremembered or misspelled utility class (an author typed
- * `@section .gp-columns-all` when the class did not exist yet) rendered as a
+ * `@section .gp-columns-all`, a class that does not exist) rendered as a
  * silent no-op — the class landed in the DOM, nothing happened, and nothing
  * said why. Runs everywhere (no @page/@spread depth gating, unlike the
  * `.gp-pin` scope check below): an unknown class is a mistake whether or not

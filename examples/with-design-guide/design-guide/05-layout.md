@@ -2,40 +2,40 @@
 
 # Layout
 
-<div class="lede">Utilities for multi-column text, image placement, and page-break control. All are CSS classes applied via markdown attributes or `@section` markers.</div>
+<div class="lede">Utilities for multi-column text, image placement, and page-break control. Applied via markers and markdown attributes.</div>
 
 ---
 
 ## Two-Column Text
 
-The `.gp-columns-2` class divides a container into two equal columns with a hairline column rule. Best for glossaries, reference lists, FAQ sections, and any content with short entries.
+`@columns 2` divides its content into two equal columns with a hairline column rule. Best for glossaries, reference lists, FAQ sections, and any content with short entries.
 
 ```markdown
-@section .gp-columns-2
+@columns 2
 Column content flows left to right automatically.
 Add `@column-break` to force content to the right column.
-@end-section
+@end-columns
 ```
 
-@section .gp-columns-2
+@columns 2
 
 **Column flow** — text runs from the bottom of the left column to the top of the right column automatically, based on the available column height.
 
-**Column break** — add `@column-break` on its own line anywhere inside the section to push subsequent content to the right column unconditionally.
+**Column break** — add `@column-break` on its own line anywhere inside the run to push subsequent content to the right column unconditionally.
 
-**Page breaks** — a two-column block breaks across pages normally. Add `.no-break` to the `@section` classes to keep the entire block on one page.
+**Page breaks** — a two-column block breaks across pages normally. Add `.no-break` to the marker (`@columns 2 .no-break`) to keep the entire block on one page.
 
 **Headings inside** — H3 and H4 headings work inside two-column blocks. H1 and H2 span the full width because they carry a border-bottom that doesn't respect column boundaries.
 
-@end-section
+@end-columns
 
 ---
 
 ## Three-Column Text
 
-`.gp-columns-3` follows the same rules as two-column but divides the content into three narrower columns. Use for very short entries (index items, skill lists) where each entry is two lines or fewer.
+`@columns 3` follows the same rules as two-column but divides the content into three narrower columns. Use for very short entries (index items, skill lists) where each entry is two lines or fewer.
 
-@section .gp-columns-3
+@columns 3
 
 Alpha · first entry in a longer list.
 
@@ -49,7 +49,7 @@ Epsilon · fifth entry showing the automatic flow behavior.
 
 Zeta · sixth entry. Three columns suit dense, short-form reference content.
 
-@end-section
+@end-columns
 
 ---
 
@@ -151,8 +151,8 @@ Content that must not split across a page break.
 <table class="token-table">
 <thead><tr><th>Class / Syntax</th><th>Applied via</th><th>Effect</th></tr></thead>
 <tbody>
-<tr><td>.gp-columns-2</td><td>@section .gp-columns-2</td><td>Two equal CSS columns with column rule</td></tr>
-<tr><td>.gp-columns-3</td><td>@section .gp-columns-3</td><td>Three narrow columns for dense lists</td></tr>
+<tr><td>@columns 2</td><td>@columns 2 … @end-columns</td><td>Two equal CSS columns with column rule</td></tr>
+<tr><td>@columns 3</td><td>@columns 3 … @end-columns</td><td>Three narrow columns for dense lists</td></tr>
 <tr><td>.img-float-right</td><td>![alt](src){.img-float-right}</td><td>Float image right, 44% width, text wraps</td></tr>
 <tr><td>.img-float-left</td><td>![alt](src){.img-float-left}</td><td>Float image left, 44% width, text wraps</td></tr>
 <tr><td>.gp-left / .gp-right / .gp-center / .gp-full / .gp-bleed</td><td>![alt](src){.gp-right}</td><td>Core image positions (no project CSS needed)</td></tr>
@@ -163,7 +163,7 @@ Content that must not split across a page break.
 <tr><td>.break-before</td><td>## Heading {.break-before}</td><td>Force new page before this element</td></tr>
 <tr><td>.keep-next</td><td>@section .keep-next</td><td>Keep block on same page as next element</td></tr>
 <tr><td>.lede</td><td>&lt;div class="lede"&gt;…&lt;/div&gt;</td><td>13pt italic intro paragraph after H1</td></tr>
-<tr><td>@column-break</td><td>Inside a two/three-column @section</td><td>Force remaining content to next column</td></tr>
+<tr><td>@column-break</td><td>Inside @columns</td><td>Force remaining content to next column</td></tr>
 </tbody>
 </table>
 

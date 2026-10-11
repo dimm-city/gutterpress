@@ -186,7 +186,7 @@ Use `@spread` to group content into a logical two-page spread — the left and r
 
 @page .left-page
 
-Left page content goes here. Use `@column-break` for columns within a page.
+Left page content goes here. Use `@columns 2` for columns within a page.
 
 @page .right-page
 

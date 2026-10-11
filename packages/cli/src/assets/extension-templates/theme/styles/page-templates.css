@@ -3,7 +3,7 @@
  *
  * OWNS
  *   The layout of a `@page .name` wrapper — how content is arranged WITHIN
- *   one page of the book. Columns, full-bleed art, a centred opener.
+ *   one page of the book. Full-bleed art, a centred opener.
  *
  *   Authored as:
  *
@@ -43,17 +43,10 @@
     max-width: 24em;
   }
 
-  /* A two-column reference page. Core already ships `.gp-columns-2` as
-     general author vocabulary — reach for that first, and use a named
-     template like this only when the page needs more than the columns. */
-  .page.{{PREFIX}}reference {
-    columns: 2;
-    column-gap: var(--{{PREFIX}}space-4);
-    column-rule: 1px solid var(--{{PREFIX}}rule);
-  }
-
+  /* A reference page. Columns are not a template concern: put the content in
+     core's `@columns 2` ... `@end-columns` (and `@column-break`) and core owns
+     the column geometry. This template only styles what sits around them. */
   .page.{{PREFIX}}reference h2 {
-    column-span: all;
     border-block-end: 1px solid var(--{{PREFIX}}rule);
     padding-block-end: var(--{{PREFIX}}space-1);
   }

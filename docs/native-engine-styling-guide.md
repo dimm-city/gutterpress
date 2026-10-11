@@ -174,22 +174,21 @@ oversize child has consequences.
   see in a computed style is now yours. Still check the computed style rather
   than only your own sheets when hunting one down.
 - **`column-fill: balance` on a multicol that fragments across pages leaves
-  non-final page fragments with a dead second column.** The choice is a
-  one-line author decision, named instead of raw CSS (#225/#228):
-  `.gp-columns-flow` (`column-fill: auto`, sequential fill) for a run that
-  FRAGMENTS across pages — both columns fill on every page; `.gp-columns-balanced`
-  (`column-fill: balance`) for a run that fits on ONE page. Neither is
-  defaulted onto plain `.gp-columns-2`/`.gp-columns-3` — a global
-  `column-fill: auto` would visibly ragged-ify every ordinary single-page
-  two-column layout, and only the author knows which shape a given run is.
-  **[reported]** — the build warns when a balanced multicol actually
-  fragments, names it, and tells you to add `.gp-columns-flow`.
-- **A column-spanning heading (`.gp-columns-all`, i.e. `column-span: all`)
-  followed by an unbreakable box strands the heading**: Chromium emits an
-  EMPTY box fragment (border + padding, zero content) under the spanner at
-  the page bottom, and the content flows headerless onto the next page. Fix:
-  make the box after the spanner fragmentable (`break-inside: auto`) so it
-  starts filling directly under its header.
+  non-final page fragments with a dead second column.** The `@columns` marker
+  does not set `column-fill` (the CSS initial `balance` applies), because a
+  global `column-fill: auto` would visibly ragged-ify every ordinary
+  single-page layout. For a run that crosses a page, end it where the page
+  ends and open a new `@columns` for the next page — each run then fits one
+  page and balances. **[reported]** — the build warns when a balanced
+  multicol actually fragments, and names it.
+- **A column-spanning heading (`column-span: all`) followed by an unbreakable
+  box strands the heading**: Chromium emits an EMPTY box fragment (border +
+  padding, zero content) under the spanner at the page bottom, and the
+  content flows headerless onto the next page. Core ships no spanner class —
+  to put a heading across the full width, end the `@columns` run, write the
+  heading, and open a new `@columns`. If your own CSS spans a heading, make
+  the box after it fragmentable (`break-inside: auto`) so it starts filling
+  directly under its header.
 
 ## 6. Keeping headers with their content
 

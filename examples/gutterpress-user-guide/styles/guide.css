@@ -655,15 +655,6 @@ figcaption,
   margin: 0;
 }
 
-/* ── Grid: two independent columns ── */
-.grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.4in;
-  align-items: start;
-  margin: 0.75em 0 1.1em;
-}
-
 
 /* ─────────────────────────────────────────────────────────────────────────────
    § 6  GUIDE CHROME

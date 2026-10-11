@@ -198,12 +198,13 @@ Full-width tables with a colored header, alternating row fills, and text set at 
 
 ## Two-Column Layout
 
-Dense reference content benefits from a two-column layout. Use `@section .gp-columns-2` to trigger the CSS columns property.
+Dense reference content benefits from a two-column layout. Use `@columns 2` to trigger the CSS columns property.
 
-**Syntax** — `@section .gp-columns-2` … `@column-break` … `@end-section`
+**Syntax** — `@columns 2` … `@column-break` … `@end-columns`
 
 <div class="example">
-<div class="gp-columns-2">
+
+@columns 2
 
 The two-column layout divides the content area into two equal columns with a hairline rule between them. Text flows from the bottom of the left column to the top of the right column automatically.
 
@@ -211,13 +212,14 @@ Use two-column layout for glossaries, index-style reference lists, comparison ta
 
 Avoid using two-column for narrative prose — it creates a choppy reading experience and complicates page breaks. Save it for genuinely list-like or reference content.
 
-Add `@column-break` on its own line anywhere inside the section to force subsequent content into the right column early.
+Add `@column-break` on its own line anywhere inside the run to force subsequent content into the right column early.
 
-</div>
+@end-columns
+
 </div>
 
 ```markdown
-@section .gp-columns-2
+@columns 2
 Left column content flows here until it reaches
 the bottom, then continues in the right column.
 
@@ -225,7 +227,7 @@ the bottom, then continues in the right column.
 
 Content after the break always starts in the
 right column regardless of left column height.
-@end-section
+@end-columns
 ```
 
 ---

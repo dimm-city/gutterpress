@@ -25,7 +25,7 @@ canonical way to wrap a block of markdown in a styled `<div>`.
 | `::: sidebar` … `:::` | `@section .sidebar` … `@end-section` |
 | `::: callout-note` … `:::` | `@section .callout-note` … `@end-section` |
 | `::: pull-quote` … `:::` | `@section .pull-quote` … `@end-section` |
-| `::: two-column` … `:::` | `@section .gp-columns-2` … `@end-section` |
+| `::: two-column` … `:::` | `@columns 2` … `@end-columns` |
 | `::: container` … `:::` (avoid page break) | `@section .no-break` … `@end-section`, plus your own `.no-break { break-inside: avoid }` rule |
 | `::: container {.my-class}` … `:::` | `@section .my-class` … `@end-section` |
 | `---{.column-break}` | `@column-break` |

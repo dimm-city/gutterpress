@@ -682,17 +682,17 @@ figcaption {
    § 5  LAYOUT UTILITIES
    ───────────────────────────────────────────────────────────────────────────── */
 
-/* Project-layer refinement on core's .gp-columns-2/.gp-columns-3 (see
-   gutterpress-css.ts) — layers this guide's hairline column-rule and
-   gutter width onto the core classes. Not a competing class name. */
+/* Project-layer refinement of the column runs @columns emits: this guide's
+   hairline rule and gutter widths, set through core's tokens
+   (--gp-column-gap / --gp-column-rule) rather than column rules of its own. */
 .gp-columns-2 {
-  column-gap: 0.4in;
-  column-rule: var(--border-thin);
+  --gp-column-gap: 0.4in;
+  --gp-column-rule: var(--border-thin);
 }
 
 .gp-columns-3 {
-  column-gap: 0.3in;
-  column-rule: var(--border-thin);
+  --gp-column-gap: 0.3in;
+  --gp-column-rule: var(--border-thin);
 }
 
 .no-break     { break-inside: avoid; page-break-inside: avoid; }
@@ -750,18 +750,6 @@ figcaption {
   letter-spacing: 0.07em;
   text-transform: uppercase;
   margin: 4em 0 0;
-}
-
-/* ── CSS grid — two equal columns, independent flow ── */
-/* Unlike .gp-columns-2 (CSS columns, text flows between), .grid keeps
-   each child independent. Use for side-by-side blocks, comparison tables,
-   or any layout where left and right don't share a single text flow. */
-.grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.4in;
-  align-items: start;
-  margin: 0.8em 0 1.2em;
 }
 
 

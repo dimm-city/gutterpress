@@ -115,7 +115,8 @@ See the [Gutterpress User Guide](../examples/gutterpress-user-guide/) for all to
 @continue                   Continue current @section with a matching new section box
 @end-section                Close current @section
 @spread                     Start a two-page spread
-@section .gp-columns-2       Two-column layout (also .gp-columns-3)
+@columns [1-5]              Columns until @end-columns (bare = 2)
+@end-columns                Close current @columns
 ```
 
 ### Common Callouts

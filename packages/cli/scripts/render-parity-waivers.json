@@ -1,1 +1,27 @@
-[]
+[
+  {
+    "page": 23,
+    "kind": "raster",
+    "reason": "columns-only ruling: design-guide @columns runs now draw the guide.css --gp-column-rule hairline via core's token, which the base CLI ignores (delete once merged)"
+  },
+  {
+    "page": 34,
+    "kind": "raster",
+    "reason": "columns-only ruling: design-guide @columns runs now draw the guide.css --gp-column-rule hairline via core's token, which the base CLI ignores (delete once merged)"
+  },
+  {
+    "page": 43,
+    "kind": "raster",
+    "reason": "columns-only ruling: design-guide @columns runs now draw the guide.css --gp-column-rule hairline via core's token, which the base CLI ignores (delete once merged)"
+  },
+  {
+    "page": 45,
+    "kind": "raster",
+    "reason": "columns-only ruling: design-guide @columns runs now draw the guide.css --gp-column-rule hairline via core's token, which the base CLI ignores (delete once merged)"
+  },
+  {
+    "page": 47,
+    "kind": "raster",
+    "reason": "columns-only ruling: design-guide @columns runs now draw the guide.css --gp-column-rule hairline via core's token, which the base CLI ignores (delete once merged)"
+  }
+]

@@ -188,26 +188,24 @@ export const GUTTERPRESS_CSS = `
 .gp-tight { --gp-gap: 0.5em; }
 .gp-loose { --gp-gap: 2em; }
 
-/* column runs — plain CSS Multi-column, exposed as author vocabulary so
-   "put this in two columns" does not require borrowing a styled container
-   from the book's own component layer. That borrowing is what this exists
-   to prevent: a book whose theme paints .section chrome by default gives
-   every author who opens a section just to start a column run a panel they
-   did not ask for, and the book then needs a reset rule to take it back.
-   With a neutral primitive the author opts into columns and nothing else.
+/* column runs — plain CSS Multi-column, emitted by the core @columns marker
+   (markers.js): @columns [1-5] ... @end-columns is the ONE way to lay
+   content out in columns, and @column-break moves to the next column.
+   The classes below are the CSS that marker emits, not author vocabulary.
 
    Permanent vocabulary, not a shim: Chromium implements multicol natively
    and these rules are the standard properties verbatim, so there is no
    spec gap here to remove later. Deliberately minimal — column-fill is
-   NOT set, because the correct value depends on whether the run fragments
-   across pages (auto packs each page's columns; the CSS initial balance is
-   right for a run that fits on one page) and only the author knows which.
-   --gp-column-gap is author-settable.
-   .gp-columns is what the core @columns marker emits (markers.js); on its
-   own it is two columns, and @columns 1 to 5 add the matching count, which
-   wins because it comes later at the same specificity. */
-.gp-columns, .gp-columns-1, .gp-columns-2, .gp-columns-3, .gp-columns-4, .gp-columns-5 {
+   NOT set (the CSS initial balance applies).
+   Themes style a run through two tokens instead of writing column rules:
+     --gp-column-gap   default 1.5em
+     --gp-column-rule  default none (any column-rule shorthand value)
+   Both hooks sit at zero specificity (:where), so any author rule wins.
+   .gp-columns is two columns on its own; a count class (bare @columns
+   emits gp-columns-2) wins because it comes later at the same specificity. */
+:where(.gp-columns, .gp-columns-1, .gp-columns-2, .gp-columns-3, .gp-columns-4, .gp-columns-5) {
   column-gap: var(--gp-column-gap, 1.5em);
+  column-rule: var(--gp-column-rule, none);
 }
 .gp-columns { columns: 2; }
 .gp-columns-1 { columns: 1; }
@@ -216,54 +214,8 @@ export const GUTTERPRESS_CSS = `
 .gp-columns-4 { columns: 4; }
 .gp-columns-5 { columns: 5; }
 
-/* the per-shape decisions the paragraph above deliberately leaves to the
-   author, named instead of left as raw CSS every book was reinventing
-   (CLAUDE.md §0: "behavior broadly useful to non-technical authors belongs
-   in core").
-   Permanent vocabulary, standard properties verbatim — same rationale as
-   the column/grid runs above. One name each, no aliases:
-     .gp-columns-all       column-span: all      a heading or block that
-                                                  spans every column in the
-                                                  run it sits inside.
-     .gp-columns-flow      column-fill: auto     a run that FRAGMENTS across
-                                                  pages — every page's
-                                                  columns fill instead of
-                                                  only the last one
-                                                  balancing (the dead-column
-                                                  collapse the build's
-                                                  engine.multicol.dead-column
-                                                  warning names this fix
-                                                  for).
-     .gp-columns-balanced  column-fill: balance  a run that fits on ONE
-                                                  page (the CSS initial
-                                                  value — ragged columns
-                                                  would be wrong here). */
-.gp-columns-all { column-span: all; }
-.gp-columns-flow { column-fill: auto; }
-.gp-columns-balanced { column-fill: balance; }
-
-/* grid runs — the SLOTTED counterpart to the column runs above. Grid places
-   each child into the next cell, across then down (deterministic slots: card
-   layouts, stat blocks, image-plus-caption pairs); columns FLOW one text run
-   down then across. Same neutral-primitive rationale as .gp-columns-*, and
-   permanent vocabulary for the same reason: standard CSS Grid verbatim, no
-   spec gap to remove later. MEASURED (Chromium 151, gp-grid evidence pack):
-   grid rows fragment across sheets with EXACT print/viewer parity — 2- and
-   3-col, unequal item heights, mid-row cuts, multi-sheet overflow,
-   break-inside:avoid, gap geometry — so a grid taller than the page is safe,
-   no fit-one-page constraint. Two things to know, not fix:
-     - on a min-height page root (MARKER_CSS), default align-content
-       stretches rows apart to fill the page — identically in both engines.
-       Authors wanting packed rows set align-content: start.
-     - a @page-break / @column-break marker DIRECTLY inside a grid container
-       becomes a grid item and corrupts placement (the one measured parity
-       break); markers.js diagnoses it (break_inside_grid).
-   --gp-grid-gap is author-settable. */
-.gp-grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--gp-grid-gap, 1.5em); }
-.gp-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gp-grid-gap, 1.5em); }
-
 /* fragmentation controls — generic pagination utilities for any element,
-   independent of the column/grid vocabulary above (a book reached for
+   independent of the column vocabulary above (a book reached for
    these just as often outside a multicol run: keeping a card whole,
    forcing a section to start a fresh page). Standard properties only —
    this project is Chromium-only (CLAUDE.md), so there are no legacy
@@ -431,13 +383,10 @@ export const GP_CLASSES: ReadonlySet<string> = new Set([
   "gp-left", "gp-right", "gp-center", "gp-full", "gp-bleed",
   "gp-small", "gp-medium", "gp-large",
   "gp-tight", "gp-loose",
-  // column runs + the column-fill/span vocabulary (#225/#228)
+  // column runs — the CSS the @columns marker emits
   "gp-columns", "gp-columns-1", "gp-columns-2", "gp-columns-3", "gp-columns-4", "gp-columns-5",
-  "gp-columns-all", "gp-columns-flow", "gp-columns-balanced",
   // fragmentation controls (#225/#228)
   "gp-no-break", "gp-break-before",
-  // grid runs
-  "gp-grid-2", "gp-grid-3",
   // shape wrap
   "gp-shape",
   // pin + edge modifiers

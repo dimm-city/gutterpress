@@ -8,27 +8,26 @@ import { resolveChromiumExecutable } from "../chromium.ts";
 import { launchChromium, type Browser } from "../../engine/shared/cdp.ts";
 
 /**
- * #225/#228: the `.gp-columns-all` / `.gp-columns-flow` / `.gp-columns-balanced`
- * / `.gp-no-break` / `.gp-break-before` utilities (2026-09-01 CSS
- * architecture review, findings C1/C7 — an author typed `@section
- * .gp-columns-all` unprompted and got a silent no-op because the class
- * didn't exist).
- *
- * The CSS-text assertions pin the exact one-name-each declarations; the
- * rendered fixture proves `.gp-columns-all` actually reaches Chromium's
- * computed style as `column-span: all` rather than silently doing nothing —
- * exactly the failure mode these classes exist to close.
+ * #225/#228: the `.gp-no-break` / `.gp-break-before` utilities, and the
+ * column hooks the `@columns` marker's output carries. `@columns [1-5]` is
+ * the only column authoring surface (CLAUDE.md §6), so there is no
+ * span/fill class: the CSS-text assertions pin the exact declarations, the
+ * rendered fixtures prove they reach Chromium's computed style.
  */
 
-describe("GUTTERPRESS_CSS — column-fill/span vocabulary", () => {
-  test("column-fill/column-span decisions are named, one rule each", () => {
-    expect(GUTTERPRESS_CSS).toContain(".gp-columns-all { column-span: all; }");
-    expect(GUTTERPRESS_CSS).toContain(".gp-columns-flow { column-fill: auto; }");
-    expect(GUTTERPRESS_CSS).toContain(".gp-columns-balanced { column-fill: balance; }");
+describe("GUTTERPRESS_CSS — column hooks", () => {
+  test("gap and rule tokens apply to .gp-columns and every count class at zero specificity", () => {
+    expect(GUTTERPRESS_CSS).toContain(
+      ":where(.gp-columns, .gp-columns-1, .gp-columns-2, .gp-columns-3, .gp-columns-4, .gp-columns-5) {\n" +
+        "  column-gap: var(--gp-column-gap, 1.5em);\n" +
+        "  column-rule: var(--gp-column-rule, none);\n}"
+    );
   });
 
-  test("no .gp-span-all alias ships alongside .gp-columns-all", () => {
-    expect(GUTTERPRESS_CSS).not.toContain("gp-span-all");
+  test("the removed span/fill/grid classes and tokens are gone", () => {
+    for (const gone of ["gp-columns-all", "gp-columns-flow", "gp-columns-balanced", "gp-grid", "gp-span-all"]) {
+      expect(GUTTERPRESS_CSS).not.toContain(gone);
+    }
   });
 });
 
@@ -52,16 +51,6 @@ describe("GUTTERPRESS_CSS — no .pmd-* names in core", () => {
 
 const RENDER_TEST_TIMEOUT_MS = 60_000;
 
-const fixture = `<!doctype html><meta charset="utf-8"><style>
-${GUTTERPRESS_CSS}
-.wrap { columns: 2; column-gap: 1em; width: 400px; }
-</style>
-<div class="wrap">
-  <h2 class="gp-columns-all" id="spanner">Spanning heading</h2>
-  <p>content one</p>
-  <p>content two</p>
-</div>`;
-
 const chromium = await resolveChromiumExecutable();
 const testIf = chromium ? test : test.skip;
 if (!chromium) {
@@ -79,45 +68,20 @@ afterAll(async () => {
 });
 
 testIf(
-  ".gp-columns-all reaches Chromium's computed style as column-span: all",
-  async () => {
-    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "gp-columns-all-"));
-    try {
-      const file = path.join(dir, "fixture.html");
-      await fsp.writeFile(file, fixture, "utf8");
-      browser ??= await launchChromium();
-      const page = await browser.newPage();
-      try {
-        await page.navigate(`file://${file}`);
-
-        // Source string, not a closure: this package's tsconfig is DOM-free.
-        const columnSpan = (await page.evaluate(
-          `getComputedStyle(document.getElementById("spanner")).columnSpan`
-        )) as string;
-
-        expect(columnSpan).toBe("all");
-      } finally {
-        await page.close();
-      }
-    } finally {
-      await fsp.rm(dir, { recursive: true, force: true });
-    }
-  },
-  RENDER_TEST_TIMEOUT_MS
-);
-
-testIf(
-  "@columns: every count 1-5, and the bare default of 2, reach Chromium's computed column-count",
+  "@columns: every count 1-5 and the bare default of 2 reach Chromium's computed column-count, and the gap/rule tokens apply",
   async () => {
     const { createMarkdownRenderer } = await import("./renderer.ts");
     const md = createMarkdownRenderer([]);
     const body = ["", "1", "2", "3", "4", "5"]
       .map((n) => md.render(`@columns ${n}\n\nText.\n\n@end-columns\n`))
       .join("\n");
+    // A theme sets the tokens on any ancestor (here the run itself, for brevity).
+    const tokened =
+      '<div id="tok" class="gp-columns gp-columns-3" style="--gp-column-rule: 2px solid red; --gp-column-gap: 10px">x</div>';
     const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "gp-columns-marker-"));
     try {
       const file = path.join(dir, "fixture.html");
-      await fsp.writeFile(file, `<!doctype html><meta charset="utf-8"><style>${GUTTERPRESS_CSS}</style>${body}`, "utf8");
+      await fsp.writeFile(file, `<!doctype html><meta charset="utf-8"><style>${GUTTERPRESS_CSS}</style>${body}${tokened}`, "utf8");
       browser ??= await launchChromium();
       const page = await browser.newPage();
       try {
@@ -125,7 +89,13 @@ testIf(
         const counts = (await page.evaluate(
           `[...document.querySelectorAll(".gp-columns")].map((el) => getComputedStyle(el).columnCount)`
         )) as string[];
-        expect(counts).toEqual(["2", "1", "2", "3", "4", "5"]);
+        expect(counts.slice(0, 6)).toEqual(["2", "1", "2", "3", "4", "5"]);
+        // The hooks default to a 1.5em gap and no rule, and the tokens override both.
+        const hooks = (await page.evaluate(
+          `["tok"].map((id) => { const c = getComputedStyle(document.getElementById(id)); return [c.columnGap, c.columnRuleStyle, c.columnRuleWidth].join("|"); }).concat([...document.querySelectorAll(".gp-columns:not(#tok)")].map((el) => getComputedStyle(el).columnRuleStyle))`
+        )) as string[];
+        expect(hooks[0]).toBe("10px|solid|2px");
+        expect(new Set(hooks.slice(1))).toEqual(new Set(["none"]));
       } finally {
         await page.close();
       }

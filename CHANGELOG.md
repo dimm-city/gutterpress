@@ -5,6 +5,39 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **`@columns` is the one way to use columns.** `@columns 1` to `@columns 5`,
+  closed with `@end-columns`, lays its content out in that many columns, and
+  `@column-break` moves to the next column. A bare `@columns` is now exactly
+  `@columns 2`. To get a full-width heading or a different column count
+  partway down, end the run, write the content, and open a new `@columns`.
+  The `.gp-columns` / `.gp-columns-N` classes remain as the CSS the marker
+  emits but are no longer documented for authors to write by hand.
+- **Sections nest inside `@columns`.** A `@section` (or a plugin marker that is
+  a section, such as `@npc-stat`) opened between `@columns` and `@end-columns`
+  now sits inside the columns instead of silently closing them. Each new
+  section closes the previous one and opens the next in the same run, and
+  `@end-columns` closes any open section first. Before, the columns ended at
+  the first section and the later `@end-columns` was reported as unmatched.
+  Columns opened inside a section work as before.
+- **Themes style columns with a token, not column rules.** Alongside
+  `--gp-column-gap`, `--gp-column-rule` (default `none`) now sets the line
+  between columns on every `@columns` run. Both are zero-specificity, so any
+  rule of your own still wins. The scaffolded theme's reference page template
+  no longer sets `columns` itself.
+- The empty-column build warning (`engine.multicol.dead-column`) now tells you
+  to end the `@columns` run where the page ends and open a new one, instead of
+  naming `.gp-columns-flow`.
+
+### Removed
+
+- **`.gp-columns-all`, `.gp-columns-flow`, `.gp-columns-balanced`,
+  `.gp-grid-2`, `.gp-grid-3` and `--gp-grid-gap`**, with the
+  `break_inside_grid` warning that only existed for the grid classes. A book
+  that still writes one of these classes gets the unknown-class warning. Use
+  `@columns N` ... `@end-columns` instead.
+
 ### Fixed
 
 - **A lead-in line stays with the table or list it introduces** (#370). A

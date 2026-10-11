@@ -457,9 +457,14 @@ prefixed. The split between the two modules is by ROLE, not owner:
   (+ `.gp-columns-N`) styled by `GUTTERPRESS_CSS`, never a `.section`.
 - `gutterpress-css.ts` (`GUTTERPRESS_CSS`) — the author **utility
   vocabulary**: image flow/size/spacing, `.gp-shape`, `.gp-pin` + edges,
-  `.gp-bleed`, `.gp-columns` / `.gp-columns-1`…`-5`, and the `--gp-z-*` depth
-  ladder. Column utilities are core layout vocabulary; themes must not create
-  competing generic names such as `.two-column` / `.three-column`.
+  `.gp-bleed`, the `.gp-columns` / `.gp-columns-1`…`-5` CSS the `@columns`
+  marker emits (with the `--gp-column-gap` / `--gp-column-rule` tokens themes
+  set instead of writing column rules), and the `--gp-z-*` depth ladder.
+  Authors reach columns only through the marker, never these classes.
+
+  **Ruled by the product owner, 2026-10-11:** `@columns [1-5]` …
+  `@end-columns` and `@column-break` are the only column authoring surface;
+  other column mechanisms were removed.
 - `gp-pin-scope.js` — the `.gp-pin` diagnostic, registered by `renderer.ts`
   right after the marker plugin (it walks that plugin's `layout_*` tokens and
   reads classes markdown-it-attrs attached, so the order is load-bearing).

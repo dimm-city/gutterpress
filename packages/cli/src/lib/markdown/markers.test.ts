@@ -694,56 +694,6 @@ describe("mis-ordered markers, implicit wrapping, and warnings", () => {
   });
 });
 
-// A break marker's div becomes a grid ITEM when its DIRECT parent is a
-// gp-grid-* container: it takes a cell of its own, corrupts auto-placement
-// in print, and the viewer's break-synthesis spacer (another item) puts
-// content on the WRONG page — the one page-level print/preview parity break
-// the gp-grid evidence pack measured (Chromium 151). The warning fires on
-// the innermost open frame only: a break inside a plain @section on a grid
-// @page is an ordinary block-flow child and stays silent.
-describe("break_inside_grid warning", () => {
-  test("@page-break directly inside a grid @section warns and still emits the break div", () => {
-    const { html, env } = renderPaged("@section .gp-grid-2\nA\n\n@page-break\n\nB\n");
-    expect(env.layoutWarnings).toHaveLength(1);
-    expect(env.layoutWarnings![0]).toMatchObject({
-      line: 4,
-      type: "break_inside_grid",
-      marker: { kind: "page-break", name: null, attrs: {}, __line: 4 },
-    });
-    expect(env.layoutWarnings![0]!.message).toContain(".gp-grid-2");
-    expect(env.layoutWarnings![0]!.message).toContain("@section");
-    // Warn-and-report only — the break still lands where it always did.
-    expect(html).toContain('<div class="gp-page-break" aria-hidden="true"></div>');
-  });
-
-  test("@column-break directly inside a grid @page (no section) warns, naming @page as the host", () => {
-    const { env } = renderPaged("@page .gp-grid-3\nA\n\n@column-break\n\nB\n");
-    expect(env.layoutWarnings).toHaveLength(1);
-    expect(env.layoutWarnings![0]).toMatchObject({ line: 4, type: "break_inside_grid" });
-    expect(env.layoutWarnings![0]!.message).toContain(".gp-grid-3");
-    expect(env.layoutWarnings![0]!.message).toContain("@page");
-  });
-
-  test("@page-break directly inside a grid @spread warns", () => {
-    const { env } = renderPaged("@spread .gp-grid-2\n@page-break\n");
-    // spread_eof_close still fires too — the spread never saw a @page.
-    expect(env.layoutWarnings?.map((w) => w.type)).toEqual([
-      "break_inside_grid",
-      "spread_eof_close",
-    ]);
-  });
-
-  test("near-miss: a break inside a PLAIN @section on a grid @page is silent (block-flow child)", () => {
-    const { env } = renderPaged("@page .gp-grid-2\n@section\nA\n\n@page-break\n\nB\n");
-    expect(env.layoutWarnings).toBeUndefined();
-  });
-
-  test("near-miss: gp-columns-* is multicol, not grid — breaks inside it stay silent", () => {
-    const { env } = renderPaged("@section .gp-columns-2\nA\n\n@column-break\n\nB\n");
-    expect(env.layoutWarnings).toBeUndefined();
-  });
-});
-
 // The exact silent failure that shipped a broken page: a DECORATED @section
 // (classes or attributes) closed by a sibling @section or @end-section with
 // nothing between the two markers — the decoration styles an empty element,
@@ -754,19 +704,19 @@ describe("break_inside_grid warning", () => {
 // not corpus-cleared and stay silent.
 describe("empty_section warning", () => {
   test("a decorated @section immediately closed by a sibling @section warns, anchored at the opener", () => {
-    const { html, env } = renderPaged("@section .gp-grid-2\n@section\nHi\n");
+    const { html, env } = renderPaged("@section .gp-columns-2\n@section\nHi\n");
     expect(env.layoutWarnings).toEqual([
       {
         line: 1,
         type: "empty_section",
         message:
-          "This @section (.gp-grid-2) was closed by the @section on line 2 with no content between the two markers, so its styling applies to an empty element and nothing prints the layout it asked for. Delete one of the two markers, or move the content that belongs inside the section between them.",
+          "This @section (.gp-columns-2) was closed by the @section on line 2 with no content between the two markers, so its styling applies to an empty element and nothing prints the layout it asked for. Delete one of the two markers, or move the content that belongs inside the section between them.",
         marker: null,
       },
     ]);
     // Behavior unchanged: the empty decorated div still renders.
     expect(html).toBe(
-      '<div class="section gp-grid-2"></div><div class="section"><p>Hi</p>\n</div>'
+      '<div class="section gp-columns-2"></div><div class="section"><p>Hi</p>\n</div>'
     );
   });
 
@@ -1310,30 +1260,6 @@ describe("GUTTERPRESS_CSS gp-* vocabulary", () => {
     expect(right).toContain("var(--gp-gap, 1em)");
   });
 
-  test("grid runs declare 2/3 equal tracks with the author-settable --gp-grid-gap", () => {
-    // Plain class selectors, no :where() — like .gp-columns-*, injection
-    // order (core before author CSS) is what lets author rules at equal
-    // specificity win. Measured (Chromium 151): grid rows fragment across
-    // sheets with exact print/viewer parity, so no fit-one-page guard
-    // belongs here.
-    const grid2 = GUTTERPRESS_CSS.match(/\.gp-grid-2\s*\{[^}]*\}/);
-    const grid3 = GUTTERPRESS_CSS.match(/\.gp-grid-3\s*\{[^}]*\}/);
-    expect(grid2).not.toBeNull();
-    expect(grid3).not.toBeNull();
-    expect(grid2![0]).toMatch(/display:\s*grid/);
-    expect(grid2![0]).toContain("grid-template-columns: repeat(2, 1fr)");
-    expect(grid3![0]).toMatch(/display:\s*grid/);
-    expect(grid3![0]).toContain("grid-template-columns: repeat(3, 1fr)");
-    for (const rule of [grid2, grid3]) {
-      expect(rule![0]).toContain("gap: var(--gp-grid-gap, 1.5em)");
-      // align-content is deliberately NOT set: default stretch on a
-      // min-height page root spreads rows identically in both engines (an
-      // authoring choice, not a parity hazard); authors opt into packed
-      // rows with align-content: start.
-      expect(rule![0]).not.toContain("align-content");
-    }
-  });
-
   test(".gp-pin is abspos with inset:0 and EXPLICIT center defaults", () => {
     const pin = GUTTERPRESS_CSS.match(/\.gp-pin\s*\{[^}]*\}/)![0];
     expect(pin).toMatch(/position:\s*absolute/);
@@ -1483,7 +1409,7 @@ describe("pin_outside_page warning (gp_pin_scope_check)", () => {
 
 // unknown_gp_class (#226): a gp-* class that is not part of core's published
 // vocabulary previously rendered as a silent no-op — an author typed
-// `@section .gp-columns-all` before the class existed and nothing said why.
+// `@section .gp-columns-flow` before the class existed and nothing said why.
 // Same gp_pin_scope_check core rule as pin_outside_page, but unconditional
 // (checked everywhere, not gated by @page/@spread depth) and keyed on the
 // `gp-` prefix only: `.dc-*`, `.fg-*`, and unprefixed classes are never this
@@ -1516,7 +1442,7 @@ describe("unknown_gp_class warning (gp_pin_scope_check)", () => {
     const src = [
       "@page",
       "",
-      "@section {.gp-columns-2 .gp-grid-3}",
+      "@section {.gp-columns-2 .gp-columns-3}",
       "",
       "text",
       "",
@@ -2939,8 +2865,12 @@ describe("@columns (core declared marker)", () => {
     }
   });
 
-  test("a bare @columns is the two-column default (.gp-columns alone)", () => {
-    expect(render("@columns\n\nText.\n\n@end-columns\n").html).toMatch(/^<div class="gp-columns"[^>]*>/);
+  test("a bare @columns is exactly @columns 2", () => {
+    const bare = render("@columns\n\nText.\n\n@end-columns\n");
+    const two = render("@columns 2\n\nText.\n\n@end-columns\n");
+    expect(bare.html).toMatch(/^<div class="gp-columns gp-columns-2" data-columns="2"[^>]*>/);
+    expect(bare.html).toBe(two.html);
+    expect(bare.warnings).toEqual([]);
   });
 
   test("a count outside 1-5 is reported as an unknown variant", () => {
@@ -2954,12 +2884,101 @@ describe("@columns (core declared marker)", () => {
     expect(html).toMatch(/<div class="section"[^>]*><div class="gp-columns gp-columns-2"[\s\S]*<div class="gp-column-break"/);
   });
 
+  // Everything between @columns and @end-columns is laid out in its columns, so
+  // a section opened inside the run nests in it instead of closing it.
+  describe("sections nest inside @columns", () => {
+    const markers = { stat: { section: true, class: "s" }, box: { class: "b" } };
+    const renderWith = (src: string) => {
+      const md = createMarkdownRenderer([{ name: "demo", plugin: () => {}, options: {}, markers } as LoadedPlugin]);
+      const env: { layoutWarnings?: Array<{ type: string; message: string }> } = {};
+      // Positions and source ranges are not what these assert.
+      const html = md.render(src, env).replace(/ data-source-(?:range|line)="[^"]*"/g, "");
+      return { html, warnings: (env.layoutWarnings ?? []).map((w) => w.type) };
+    };
+    const COLS = '<div class="gp-columns gp-columns-2" data-columns="2">';
+
+    test("two sections are siblings inside one columns div", () => {
+      const { html, warnings } = renderWith("@page\n\n@columns 2\n\n@section\n\nA\n\n@section\n\nB\n\n@end-columns\n");
+      expect(html).toBe(
+        `<div class="page">${COLS}<div class="section"><p>A</p>\n</div><div class="section"><p>B</p>\n</div></div></div>`
+      );
+      expect(warnings).toEqual([]);
+    });
+
+    test("a section-kind declared marker nests too, and a section marker can follow a plain @section", () => {
+      const { html, warnings } = renderWith("@columns 2\n\n@section\n\nA\n\n@stat\n\nB\n\n@end-stat\n\n@end-columns\n");
+      expect(html).toBe(
+        `${COLS}<div class="section"><p>A</p>\n</div><div class="section s"><p>B</p>\n</div></div>`
+      );
+      expect(warnings).toEqual([]);
+    });
+
+    test("@end-columns closes an open nested section first, with no warning", () => {
+      const { html, warnings } = renderWith("@columns 2\n\n@section\n\nA\n\n@end-columns\n\nAfter\n");
+      expect(html).toBe(`${COLS}<div class="section"><p>A</p>\n</div></div><p>After</p>\n`);
+      expect(warnings).toEqual([]);
+    });
+
+    test("@end-section closes the nested section and leaves the columns open", () => {
+      const { html, warnings } = renderWith("@columns 2\n\n@section\n\nA\n\n@end-section\n\nB\n\n@end-columns\n");
+      expect(html).toBe(`${COLS}<div class="section"><p>A</p>\n</div><p>B</p>\n</div>`);
+      expect(warnings).toEqual([]);
+    });
+
+    test("@page closes the nested section and the columns, and so does end-of-document", () => {
+      const viaPage = renderWith("@page\n\n@columns 2\n\n@section\n\nA\n\n@page\n\nZ\n");
+      expect(viaPage.html).toBe(
+        `<div class="page">${COLS}<div class="section"><p>A</p>\n</div></div></div><div class="page"><p>Z</p>\n</div>`
+      );
+      expect(viaPage.warnings).toEqual([]);
+      const viaEof = renderWith("@page\n\n@columns 2\n\n@section\n\nA\n");
+      expect(viaEof.html).toBe(`<div class="page">${COLS}<div class="section"><p>A</p>\n</div></div></div>`);
+    });
+
+    test("@continue reopens the nested section inside the same columns div", () => {
+      const { html, warnings } = renderWith("@columns 2\n\n@section .x\n\nA\n\n@continue\n\nB\n\n@end-columns\n");
+      expect(html).toBe(
+        `${COLS}<div class="section x"><p>A</p>\n</div><div class="section x gp-continued"><p>B</p>\n</div></div>`
+      );
+      expect(warnings).toEqual([]);
+    });
+
+    test("a plain declared wrapper inside a nested section closes before it, and one opened before it is closed by it", () => {
+      const inside = renderWith("@columns 2\n\n@section\n\n@box\n\nin\n\n@section\n\nB\n\n@end-columns\n");
+      expect(inside.html).toBe(
+        `${COLS}<div class="section"><div class="b"><p>in</p>\n</div></div><div class="section"><p>B</p>\n</div></div>`
+      );
+      const before = renderWith("@columns 2\n\n@box\n\nin\n\n@section\n\nB\n\n@end-columns\n");
+      expect(before.html).toBe(`${COLS}<div class="b"><p>in</p>\n</div><div class="section"><p>B</p>\n</div></div>`);
+      expect(inside.warnings).toEqual([]);
+      expect(before.warnings).toEqual([]);
+    });
+
+    test("@column-break works inside a nested section", () => {
+      const { html } = renderWith("@columns 2\n\n@section\n\nA\n\n@column-break\n\n@section\n\nB\n\n@end-columns\n");
+      expect(html).toBe(
+        `${COLS}<div class="section"><p>A</p>\n<div class="gp-column-break" aria-hidden="true"></div>\n</div><div class="section"><p>B</p>\n</div></div>`
+      );
+    });
+
+    test("columns opened INSIDE a section are unchanged: a later @section closes both", () => {
+      const { html, warnings } = renderWith("@section\n\n@columns 2\n\nA\n\n@section\n\nB\n\n@end-columns\n");
+      expect(html).toBe(`<div class="section">${COLS}<p>A</p>\n</div></div><div class="section"><p>B</p>\n</div>`);
+      expect(warnings).toEqual(["declared_marker_close_without_open"]);
+      const nested = renderWith("@section\n\n@columns 2\n\nA\n\n@end-columns\n\nB\n\n@end-section\n");
+      expect(nested.html).toBe(`<div class="section">${COLS}<p>A</p>\n</div><p>B</p>\n</div>`);
+      expect(nested.warnings).toEqual([]);
+    });
+  });
+
   test("the marker plugin knows @columns even when no registry is passed", () => {
     const md = new MarkdownIt().use(markerPlugin);
     expect(md.render("@columns 3\n\nText.\n\n@end-columns\n")).toContain('class="gp-columns gp-columns-3"');
   });
 
-  test("the CSS gives .gp-columns two columns and each count its own, with one shared gap", () => {
+  test("the CSS gives .gp-columns two columns and each count its own, with shared gap and rule hooks", () => {
+    expect(GUTTERPRESS_CSS).toContain("column-gap: var(--gp-column-gap, 1.5em);");
+    expect(GUTTERPRESS_CSS).toContain("column-rule: var(--gp-column-rule, none);");
     expect(GUTTERPRESS_CSS).toContain(".gp-columns { columns: 2; }");
     for (const n of [1, 2, 3, 4, 5]) expect(GUTTERPRESS_CSS).toContain(`.gp-columns-${n} { columns: ${n}; }`);
     expect(GUTTERPRESS_CSS.indexOf(".gp-columns { columns: 2; }")).toBeLessThan(GUTTERPRESS_CSS.indexOf(".gp-columns-1 { columns: 1; }"));

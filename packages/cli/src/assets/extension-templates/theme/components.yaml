@@ -47,5 +47,5 @@ page_templates:
   - name: reference
     recipe: "@page .{{PREFIX}}reference"
     emits: "div.page.{{PREFIX}}reference"
-    notes: "Two columns with a rule. Prefer core's .gp-columns-2 for plain columns."
+    notes: "Ruled headings for a reference page. For columns, use core's @columns 2 ... @end-columns inside it."
     status: stable

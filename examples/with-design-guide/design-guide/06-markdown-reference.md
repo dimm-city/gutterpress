@@ -148,7 +148,7 @@ Content that must stay on one page.
 
 Flows content in two equal CSS columns.
 
-@section .gp-columns-2
+@columns 2
 
 Left column content. Use `@column-break` to force content into the right column early.
 
@@ -156,16 +156,16 @@ Left column content. Use `@column-break` to force content into the right column 
 
 Right column content. The column rule runs between both columns.
 
-@end-section
+@end-columns
 
 ```markdown
-@section .gp-columns-2
+@columns 2
 Left column content. Use `@column-break` to force content into the right column early.
 
 @column-break
 
 Right column content. The column rule runs between both columns.
-@end-section
+@end-columns
 ```
 
 ### Sidebar
@@ -261,19 +261,21 @@ Accepts classes, IDs, and data attributes.
 @end-section
 ```
 
-For side-by-side blocks that don't share text flow, use `.grid` on a plain `<div>`:
+For side-by-side blocks, open `@columns 2` and end the first block with `@column-break`:
 
-<div class="grid">
+@columns 2
 
 <div class="example">
 **Left block** — independent content, does not flow into the right block.
 </div>
 
+@column-break
+
 <div class="example">
 **Right block** — equal width, aligned to the top of the left block.
 </div>
 
-</div>
+@end-columns
 
 ---
 
@@ -363,11 +365,11 @@ code here
 
 ## Column Break
 
-Forces a column break inside a two- or three-column `@section`.
+Forces a column break inside `@columns`.
 
 **Syntax** — `@column-break` on its own line.
 
-@section .gp-columns-2
+@columns 2
 
 Left column content. The break below pushes everything after it into the right column.
 
@@ -375,16 +377,16 @@ Left column content. The break below pushes everything after it into the right c
 
 Right column content. This paragraph begins here because of the column break directive above it.
 
-@end-section
+@end-columns
 
 ```markdown
-@section .gp-columns-2
+@columns 2
 Left column content. The break below pushes everything after it into the right column.
 
 @column-break
 
 Right column content.
-@end-section
+@end-columns
 ```
 
 ---

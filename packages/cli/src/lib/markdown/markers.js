@@ -793,6 +793,18 @@ function resolveContainerShape(name, pluginName, decl) {
   };
 }
 
+/** Validated `preset.variant` of a raw declaration, or undefined. */
+function presetVariantOf(name, pluginName, rawDecl) {
+  const preset = rawDecl.preset !== undefined ? rawDecl.preset : {};
+  if (typeof preset !== 'object' || preset === null || Array.isArray(preset)) {
+    throw new Error(`Plugin "${pluginName}"'s marker "@${name}" has a \`preset\` that is not a plain object.`);
+  }
+  if (preset.variant !== undefined && typeof preset.variant !== 'string') {
+    throw new Error(`Plugin "${pluginName}"'s marker "@${name}" has a \`preset.variant\` that is not a string.`);
+  }
+  return preset.variant;
+}
+
 /**
  * Resolve one already name-collision-checked registry entry into its final
  * shape, given the FULL raw registry (so an alias can look up a target
@@ -863,18 +875,19 @@ function resolveMarkerDeclaration(name, rawDecl, rawRegistry, originOf) {
           `Chained aliases are not supported — alias the base marker directly.`
       );
     }
-    const preset = rawDecl.preset !== undefined ? rawDecl.preset : {};
-    if (typeof preset !== 'object' || preset === null || Array.isArray(preset)) {
-      throw new Error(`Plugin "${pluginName}"'s marker "@${name}" has a \`preset\` that is not a plain object.`);
-    }
-    if (preset.variant !== undefined && typeof preset.variant !== 'string') {
-      throw new Error(`Plugin "${pluginName}"'s marker "@${name}" has a \`preset.variant\` that is not a string.`);
-    }
     const container = resolveContainerShape(rawDecl.alias, originOf.get(rawDecl.alias), targetRaw);
-    return { name, baseKind: rawDecl.alias, presetVariant: preset.variant, ...container };
+    return { name, baseKind: rawDecl.alias, presetVariant: presetVariantOf(name, pluginName, rawDecl), ...container };
   }
 
-  return { name, baseKind: name, ...resolveContainerShape(name, pluginName, rawDecl) };
+  // A direct declaration may carry `preset.variant` too: the variant a bare
+  // marker line selects (core's `@columns` is two columns this way).
+  const presetVariant = presetVariantOf(name, pluginName, rawDecl);
+  return {
+    name,
+    baseKind: name,
+    ...(presetVariant !== undefined ? { presetVariant } : {}),
+    ...resolveContainerShape(name, pluginName, rawDecl),
+  };
 }
 
 /**
@@ -887,12 +900,14 @@ function resolveMarkerDeclaration(name, rawDecl, rawRegistry, originOf) {
  *   @columns [1-5] — a multi-column run with no other styling: the
  *   `.gp-columns*` utilities (gutterpress-css.ts) on a plain `div`, not a
  *   `.section`, so a book whose theme paints sections does not paint it.
- *   A bare `@columns` is two columns.
+ *   A bare `@columns` is `@columns 2`. This marker (with `@end-columns` and
+ *   `@column-break`) is the ONLY column authoring surface.
  */
 const CORE_MARKER_OWNER = 'Gutterpress';
 const CORE_DECLARED_MARKERS = {
   columns: {
     class: 'gp-columns',
+    preset: { variant: '2' },
     variants: { 1: 'gp-columns-1', 2: 'gp-columns-2', 3: 'gp-columns-3', 4: 'gp-columns-4', 5: 'gp-columns-5' },
   },
 };
@@ -1269,6 +1284,14 @@ export default function plugin(md, pluginOptions = {}) {
      * the matching `@end-...`. The EOF drain (`drainDeclaredFramesAtEof`)
      * runs before `stack.closeAll()` for the identical reason.
      *
+     * ONE exception, the `@columns` run: everything between `@columns` and
+     * `@end-columns` is laid out in its columns, so a section opened while a
+     * columns frame is open (and no section already wraps it) nests INSIDE
+     * the columns div instead of closing it. That section is flagged
+     * `inColumns` and conceptually sits just above its columns frame in this
+     * stack: draining past that frame closes the section first
+     * (`sectionAbove`), so the tokens stay well nested however it ends.
+     *
      * @typedef {Object} DeclaredFrame
      * @property {string} kind - the resolved BASE kind (an alias's target,
      *   or its own name) — this is what `@end-<name>` (alias-resolved too)
@@ -1299,11 +1322,30 @@ export default function plugin(md, pluginOptions = {}) {
     function closeDeclaredFrame(kind) {
       const at = declaredFrameIndex(kind);
       if (at === -1) return false;
-      while (declaredFrames.length > at) {
-        const frame = declaredFrames.pop();
-        out.push(new state.Token('layout_component_close', frame.tag, -1));
-      }
+      drainDeclaredFrames(at);
       return true;
+    }
+
+    /**
+     * True when the section nested in a columns run sits directly above the
+     * top `length` declared frames — i.e. it must close before the frame
+     * beneath it (the columns) does.
+     */
+    function sectionAbove(length) {
+      const section = stack.get('section');
+      return !!section && section.inColumns && declaredFrameIndex('columns') === length - 1;
+    }
+
+    /**
+     * How many declared frames a section opened (or closed) now leaves open:
+     * everything above the open columns run drains, the run itself stays and
+     * the section nests in it. 0 (drain all, as before) when no columns run
+     * is open, or when a section already wraps it (columns inside a section).
+     */
+    function sectionHostDepth() {
+      const section = stack.get('section');
+      if (section && !section.inColumns) return 0;
+      return declaredFrameIndex('columns') + 1;
     }
 
     /**
@@ -1313,8 +1355,12 @@ export default function plugin(md, pluginOptions = {}) {
      * call below): a declared container is exactly as "not always closed
      * explicitly" as @section is, from a page/chapter/spread's point of view.
      */
-    function drainDeclaredFrames() {
-      while (declaredFrames.length) {
+    function drainDeclaredFrames(keep = 0) {
+      while (declaredFrames.length > keep) {
+        if (sectionAbove(declaredFrames.length)) {
+          stack.close('section');
+          continue;
+        }
         const frame = declaredFrames.pop();
         out.push(new state.Token('layout_component_close', frame.tag, -1));
       }
@@ -1332,6 +1378,10 @@ export default function plugin(md, pluginOptions = {}) {
      */
     function drainDeclaredFramesAtEof() {
       while (declaredFrames.length) {
+        if (sectionAbove(declaredFrames.length)) {
+          stack.close('section');
+          continue;
+        }
         const frame = declaredFrames.pop();
         if (!frame.decl.autoCloseAtEof) {
           warn(
@@ -1649,7 +1699,7 @@ export default function plugin(md, pluginOptions = {}) {
       };
     }
 
-    function openSection(meta) {
+    function openSection(meta, inColumns = false) {
       const t = new state.Token('layout_section_open', 'div', 1);
       const component = meta.__component || null;
       addClasses(t, 'section', meta.attrs && meta.attrs.class ? meta.attrs.class : '');
@@ -1667,54 +1717,12 @@ export default function plugin(md, pluginOptions = {}) {
           kind: 'section',
           classes: (meta.attrs && meta.attrs.class) || '',
           sawContent: false,
+          // Nested inside an open @columns run (see the declaredFrames comment).
+          ...(inColumns ? { inColumns: true } : {}),
           meta: { name: meta.name || null, attrs: { ...(meta.attrs || {}) }, component },
           openToken: t,
         },
         t
-      );
-    }
-
-    /**
-     * The innermost open frame an emitted break div becomes a DIRECT child
-     * of: section, else page, else spread. Only the direct parent decides
-     * whether the div is a grid item, so a break inside a plain @section
-     * that sits inside a grid @page is fine — the div is an ordinary
-     * block-flow child there. (@chapter is deliberately not checked: the
-     * ratified gp-grid-* diagnostic covers the frames authors put grid
-     * classes on, and a grid chapter wrapper is not one of them.)
-     */
-    function breakHost() {
-      return stack.get('section') || stack.get('page') || stack.get('spread');
-    }
-
-    /** First gp-grid-* class on a frame's author class list, or null. */
-    function gridClassOf(frame) {
-      if (!frame || !frame.classes) return null;
-      return frame.classes.split(/\s+/).find((c) => c.startsWith('gp-grid-')) || null;
-    }
-
-    /**
-     * break_inside_grid: a @page-break / @column-break whose emitted div
-     * would land DIRECTLY inside a gp-grid-* container. The break marker
-     * renders as a real <div>, and a grid container makes every direct
-     * child a grid ITEM — so the div takes a cell of its own and shifts
-     * every item after it. MEASURED (Chromium 151, grid evidence pack):
-     * this corrupts auto-placement in print itself, AND the live preview's
-     * break synthesis inserts a spacer div — another item — putting content
-     * on the WRONG page: the one page-level print/preview parity break the
-     * gp-grid measurements found. Everything else about grids (row
-     * fragmentation, break-inside:avoid, gap geometry) held exact parity.
-     */
-    function warnBreakInsideGrid(kind, line, meta) {
-      const host = breakHost();
-      const gridClass = gridClassOf(host);
-      if (!gridClass) return;
-      warn(
-        state.env,
-        line,
-        'break_inside_grid',
-        `@${kind} inside a grid container: the enclosing @${host.kind} carries .${gridClass}, so this break's <div> becomes a grid ITEM — it takes a cell of its own, corrupts the grid's placement, and print and the live preview then disagree about which page the content after it lands on. Move the break outside the grid @${host.kind}, or remove it — grid rows already flow and fragment across pages on their own.`,
-        meta
       );
     }
 
@@ -1815,7 +1823,10 @@ export default function plugin(md, pluginOptions = {}) {
       }
 
       if (kind === 'section') {
-        drainDeclaredFrames(); // #240 — see the chapter branch above.
+        // #240 — see the chapter branch above; an open @columns run is kept
+        // and the section nests inside it.
+        const keep = sectionHostDepth();
+        drainDeclaredFrames(keep);
         warnIfEmptyDecoratedSection('section', line);
         stack.close('section');
 
@@ -1849,7 +1860,7 @@ export default function plugin(md, pluginOptions = {}) {
           );
         }
 
-        openSection(meta);
+        openSection(meta, keep > 0);
         continue;
       }
 
@@ -1863,7 +1874,8 @@ export default function plugin(md, pluginOptions = {}) {
         // #240 — see the chapter branch above: @continue closes and reopens
         // the section, so anything declared-container-shaped nested inside
         // it closes too, same as it would across any other section boundary.
-        drainDeclaredFrames();
+        const keep = sectionHostDepth();
+        drainDeclaredFrames(keep);
 
         const contMeta = {
           name: section.meta.name,
@@ -1887,12 +1899,11 @@ export default function plugin(md, pluginOptions = {}) {
         contMeta.attrs.class = cls.join(' ');
 
         stack.close('section');
-        openSection(contMeta);
+        openSection(contMeta, keep > 0);
         continue;
       }
 
       if (kind === 'page-break') {
-        warnBreakInsideGrid('page-break', line, meta);
         const t = new state.Token('layout_page_break', 'div', 0);
         // Thread the 1-based marker line for source-range.ts. Do NOT set
         // token.map — see the do-not-use-token.map comment in openChapter
@@ -1905,7 +1916,6 @@ export default function plugin(md, pluginOptions = {}) {
       }
 
       if (kind === 'column-break') {
-        warnBreakInsideGrid('column-break', line, meta);
         const t = new state.Token('layout_column_break', 'div', 0);
         // Thread the 1-based marker line for source-range.ts. Do NOT set
         // token.map — see the do-not-use-token.map comment in openChapter
@@ -1918,7 +1928,7 @@ export default function plugin(md, pluginOptions = {}) {
       }
 
       if (kind === 'end-section') {
-        drainDeclaredFrames(); // #240 — see the chapter branch above.
+        drainDeclaredFrames(sectionHostDepth()); // #240 — see the section branch above.
         warnIfEmptyDecoratedSection('end-section', line);
         stack.close('section');
         continue;
@@ -2205,8 +2215,7 @@ export default function plugin(md, pluginOptions = {}) {
  * break-inside rule, at ANY specificity, still wins outright.
  *
  * The companion "spanner + unbreakable box" glue pattern (`column-span: all`
- * followed by a `break-inside: avoid` box, native-engine-styling-guide.md
- * §5) was measured for this same adoption pass and DELIBERATELY NOT
+ * followed by a `break-inside: avoid` box) was measured for this same adoption pass and DELIBERATELY NOT
  * adopted: a `:where()`-zero-specificity override can never win against
  * whatever real-specificity rule gave the box its `break-inside: avoid` in
  * the first place (a synthetic 2-column fixture with the candidate
@@ -2216,7 +2225,7 @@ export default function plugin(md, pluginOptions = {}) {
  * a context-blind version of the same idea is actively wrong for at least
  * one real, shipped case (a short, non-fragmenting instance that needed its
  * `avoid` restored after a general fragmenting-context rule took it away).
- * It stays an author remedy, named in the styling guide (`.gp-columns-all`).
+ * Core ships no spanner class: a spanning heading is the end of one @columns run and the start of the next.
  *
  */
 export const MARKER_CSS = `
