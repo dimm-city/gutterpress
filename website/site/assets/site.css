@@ -40,7 +40,7 @@ a:hover {
 }
 
 /* ── Type: headline face, text face, gothic labels ────────────────────── */
-/* Page titles: the nameplate's blackletter off a worn press (the
+/* Page titles: the nameplate's face off a worn press (the
    #worn-ink filter is defined in _includes/nav.html), with ink splattered
    from just outside the first letter across the opening of the line. */
 h1 {
@@ -264,7 +264,7 @@ th {
   content: "";
   position: absolute;
   top: -4px;
-  left: calc(var(--gutter) - 0.4rem); /* from the nameplate's start */
+  left: calc(var(--gutter) + 2rem); /* from the nameplate's start */
   width: 440px;
   height: 84px;
   background: url("images/ink-splatter.svg") no-repeat;
@@ -417,7 +417,7 @@ body:not(.home) .shell > main > h1 {
 }
 
 /* A drop cap on the opening paragraph. */
-/* A drop cap in the titles' worn blackletter. A ::first-letter cannot take
+/* A drop cap in the titles' worn face. A ::first-letter cannot take
    the #worn-ink filter, so the wear is a texture (images/worn-ink.svg, the
    same noise) clipped to the letter's shape instead. */
 body:not(.home) .shell > main > h1 + p::first-letter {
