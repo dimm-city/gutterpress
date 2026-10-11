@@ -65,6 +65,7 @@ h1::before {
   width: 300px;
   height: 120px;
   background: url("images/ink-splatter-title.svg") no-repeat;
+  opacity: 0.7;
   pointer-events: none;
 }
 
