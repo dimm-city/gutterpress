@@ -36,6 +36,8 @@ export interface EditorProjectionResult {
   readonly pluginErrors: readonly EditorProjectionPluginError[];
   /** The book's CSS layers scoped to the editor document — the rich mount's `extraCss`. */
   readonly bookCss: string;
+  /** The manifest's `print` padding (signature, last page), for the book's blank padding pages. */
+  readonly print: { readonly signature?: number; readonly reserveLastPage?: boolean; readonly lastPage?: "blank" | "short-by-one" };
 }
 
 /** D14 classification codes {@link buildEditorProjection} can resolve with

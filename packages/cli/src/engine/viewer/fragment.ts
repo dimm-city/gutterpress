@@ -76,6 +76,15 @@ export interface LayoutOptions {
    * Read on every `relayout()`, so a host may update it in place.
    */
   pageOffset?: number;
+  /**
+   * How many signature-padding pages to append after this layout's content,
+   * when this layout is one chapter of a book (the desktop's paged editor):
+   * only the host knows the book's page count, so it decides, and gives the
+   * last chapter the padding and every other chapter none. Omitted, the
+   * document's own `print` settings decide (`padToSignature`), as in the
+   * preview. Read on every `relayout()`, like `pageOffset`.
+   */
+  padPages?: number;
 }
 
 /**
@@ -1533,10 +1542,16 @@ export function blankPageIndices(strips: StripInfo[], scope: ParentNode = docume
  * spacer joins that column instead. So spacers go in one at a time until the
  * page count reaches its target (bounded). Returns the final page count.
  */
-export function padToSignature(strips: StripInfo[], contentPages: number, scope: ParentNode = document): number {
+export function padToSignature(
+  strips: StripInfo[],
+  contentPages: number,
+  scope: ParentNode = document,
+  padPages?: number,
+): number {
   for (const spacer of Array.from(scope.querySelectorAll(".gp-pad-spacer"))) spacer.remove();
   const data = document.documentElement.dataset;
-  const count = signaturePadding(contentPages, Number(data.gpSignature) || 1, data.gpLastPage as LastPageMode | undefined);
+  const count =
+    padPages ?? signaturePadding(contentPages, Number(data.gpSignature) || 1, data.gpLastPage as LastPageMode | undefined);
   const last = strips[strips.length - 1];
   if (!last || count === 0) return contentPages;
   const target = contentPages + count;
@@ -1660,7 +1675,7 @@ export function paginate(model: GcpmModel, opts: LayoutOptions = {}): Gutterpres
         ? { tables: 0, passes: 0, warnings: [] }
         : compensateRepeatedHeaders(strips);
     const contentPages = measure(strips).totalPages;
-    const totalPages = padToSignature(strips, contentPages, scope);
+    const totalPages = padToSignature(strips, contentPages, scope, opts.padPages);
     return { blanks, headers, contentPages, totalPages, blankPageIndices: blankPageIndices(strips, scope) };
   });
   const api: GutterpressViewerApi = {
@@ -1703,7 +1718,7 @@ export function paginate(model: GcpmModel, opts: LayoutOptions = {}): Gutterpres
             ...new Set([...authoring, ...compensateRepeatedHeaders(strips).warnings]),
           ];
         const content = measure(strips).totalPages;
-        padToSignature(strips, content, scope);
+        padToSignature(strips, content, scope, opts.padPages);
         const r = measure(strips);
         api.totalPages = r.totalPages;
         api.blankPageIndices = blankPageIndices(strips, scope);

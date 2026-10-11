@@ -44,7 +44,7 @@
   import { PopupMenuController } from "$lib/routes/popup-menu-controller.svelte";
   // Rich editing in Read (authors only) — the paged editor and its host call.
   import type { DesktopDocumentHost } from "$lib/editor-host/desktop-document-host";
-  import { buildEditorProjection, type EditorProjectionPluginError } from "$lib/editor-host/editor-projection-capability";
+  import { buildEditorProjection, type EditorProjectionPluginError, type EditorProjectionResult } from "$lib/editor-host/editor-projection-capability";
   import {
     routeToolbarAction,
     applyRichCommand,
@@ -1490,7 +1490,7 @@
   async function buildRichProjection(
     content: string,
     sourceVersion: number,
-  ): Promise<{ projection: GutterpressProjection; editorCss: string | undefined }> {
+  ): Promise<{ projection: GutterpressProjection; editorCss: string | undefined; print?: EditorProjectionResult["print"] }> {
     const projectDir = await projectDirWhenReady();
     if (projectDir) {
       try {
@@ -1504,7 +1504,7 @@
             shownPluginErrors.add(diagnostic.message);
             showRichDiagnostic(diagnostic);
           }
-          return { projection: outcome.projection, editorCss: outcome.bookCss || undefined };
+          return { projection: outcome.projection, editorCss: outcome.bookCss || undefined, print: outcome.print };
         }
         if (outcome.code === "EDITOR_FILE_TOO_LARGE") {
           showRichDiagnostic(RICH_MODE_FILE_TOO_LARGE_DIAGNOSTIC);

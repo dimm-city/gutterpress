@@ -86,7 +86,7 @@
     onDiagnostic?: (diagnostic: Diagnostic) => void;
     /** Paginate the live document with the book's own `@page` geometry (`$lib/editor/paged-surface`). */
     paged?: boolean;
-    onPaginated?: (totalPages: number) => void;
+    onPaginated?: (totalPages: number, contentPages: number) => void;
     /** The open project's root, so the document's own relative art resolves (`$lib/editor/project-assets`). */
     projectDir?: string | null;
     /** The open document's path, so art relative to a chapter in a subfolder resolves the way the book resolves it. */
@@ -259,9 +259,19 @@
     surfaceHandle?.setZoom(next);
   }
 
-  /** Book pages before this document's first page, so its folios continue from the chapters above, and the book's page count for `counter(pages)` (see `PagedSurface.setPageOffset`). */
-  export function setPageOffset(offset: number, bookPages?: number): void {
-    surfaceHandle?.setPageOffset(offset, bookPages);
+  /** Book pages before this document's first page, so its folios continue from the chapters above; the book's page count for `counter(pages)`; and the signature-padding pages after this one (see `PagedSurface.setPageOffset`). */
+  export function setPageOffset(offset: number, bookPages?: number, padPages?: number): void {
+    surfaceHandle?.setPageOffset(offset, bookPages, padPages);
+  }
+
+  /** The book page an in-book link's target is on, when it is in this chapter. */
+  export function pageOfTarget(href: string): number | undefined {
+    return surfaceHandle?.pageOfTarget(href);
+  }
+
+  /** The other chapters' target pages, for this chapter's `target-counter()`s. */
+  export function setExternalTargets(targets: ReadonlyMap<string, number>): void {
+    surfaceHandle?.setExternalTargets(targets);
   }
 
   /**

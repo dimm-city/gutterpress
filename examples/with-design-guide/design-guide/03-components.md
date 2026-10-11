@@ -21,8 +21,10 @@ This is a note callout. Use it for tips, clarifications, or extra context that s
 
 ```markdown
 @section .callout-note
+
 <span class="callout-label">Note</span>
 Your note text here.
+
 @end-section
 ```
 
@@ -43,8 +45,10 @@ This action cannot be undone. Verify all settings before proceeding, and keep a 
 
 ```markdown
 @section .callout-warning
+
 <span class="callout-label">Warning</span>
 Your warning text here.
+
 @end-section
 ```
 
@@ -65,8 +69,10 @@ Run `gutterpress preview` with `--verbose` to see exactly which files are being 
 
 ```markdown
 @section .callout-tip
+
 <span class="callout-label">Tip</span>
 Your tip text here.
+
 @end-section
 ```
 
@@ -91,7 +97,9 @@ Body text flows alongside the sidebar, demonstrating the float behavior. The sid
 
 ```markdown
 @section .sidebar
+
 **Sidebar heading.** Sidebar body text (60–120 words).
+
 @end-section
 
 Body paragraph that flows alongside the sidebar.
@@ -114,6 +122,7 @@ A large-format excerpt from the body text, set off with accent rules above and b
 
 ```markdown
 @section .pull-quote
+
 The measure of good design is whether the reader notices the design at all.
 
 <span class="attribution">— Source, Chapter N</span>
@@ -218,6 +227,7 @@ Add `@column-break` on its own line anywhere inside the section to force subsequ
 
 ```markdown
 @section .gp-columns-2
+
 Left column content flows here until it reaches
 the bottom, then continues in the right column.
 
@@ -225,6 +235,7 @@ the bottom, then continues in the right column.
 
 Content after the break always starts in the
 right column regardless of left column height.
+
 @end-section
 ```
 
@@ -309,8 +320,10 @@ The callout component is designed to be extended. Because `@section` accepts any
 
 ```markdown
 @section .callout-gm
+
 <span class="callout-label">Game Master</span>
 This note is only for the GM. Players should not read past this point.
+
 @end-section
 ```
 

@@ -14,7 +14,7 @@ import { projectionNeedsRefresh } from "./match.ts";
 import { diagnosticForProjection } from "./projection-diagnostics.ts";
 import { createGutterpressBlockProvider } from "./provider.ts";
 import { GUTTERPRESS_EDITOR_CSS } from "./editor-css.ts";
-import { decorateAttrsTrailer } from "./attrs.ts";
+import { decorateAttrsTrailer, decorateInlineAttrs } from "./attrs.ts";
 import { hideInlineHtmlTags } from "./inline-html.ts";
 import { markTightList } from "./tight-list.ts";
 import { promoteTableHeader } from "./table-header.ts";
@@ -164,6 +164,7 @@ export function mountGutterpressEditor(
         stripHiddenMarkup(element);
         promoteTableHeader(element, node);
         applyPipelineAttributes(element, sourceText, pipelineAttributes, absoluteStart);
+        decorateInlineAttrs(element);
         decorateAttrsTrailer(element, node, sourceText);
         // Both halves of "show what the book shows": the attrs trailer applied
         // rather than printed, and raw inline tags hidden rather than wrapped

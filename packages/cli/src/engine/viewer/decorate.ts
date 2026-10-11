@@ -77,6 +77,15 @@ export interface DecorationApi {
    * the current value.
    */
   setPageOffset(offset: number, bookPages?: number): void;
+  /**
+   * The page number (`target-counter(…, page)`) of the element `href`
+   * ("#id") names in this layout, or undefined when it is not in it. For a
+   * host that lays a book out a chapter at a time: it asks the chapter that
+   * holds a target, and tells the others with `setExternalTargets`.
+   */
+  pageOfTarget(href: string): number | undefined;
+  /** Page numbers for targets outside this layout ("#id" -> page); redraws when they change. */
+  setExternalTargets(targets: ReadonlyMap<string, number>): void;
   warnings: string[];
   /** show/hide trim, safe, and crop guides on the stage */
   setDesigner(on: boolean): void;
@@ -172,6 +181,8 @@ export function decorate(
   const model: GcpmModel = layout.model;
   let pageOffset = opts.pageOffset ?? 0;
   let bookPages = opts.bookPages;
+  /** Page numbers of targets in the book's other chapters (`setExternalTargets`). */
+  let externalTargets: ReadonlyMap<string, number> = new Map();
   /** Where this layout's elements live: its flow root when it has one (see `LayoutOptions.root`). */
   const scope: ParentNode = layout.root ?? document;
   const sheets = new Map<number, HTMLElement>();
@@ -189,6 +200,14 @@ export function decorate(
       if (offset === pageOffset && pages === bookPages) return;
       pageOffset = offset;
       bookPages = pages;
+      draw();
+    },
+    pageOfTarget: (href) => targetPage(href),
+    setExternalTargets(targets) {
+      const same =
+        targets.size === externalTargets.size && [...targets].every(([href, page]) => externalTargets.get(href) === page);
+      if (same) return;
+      externalTargets = targets;
       draw();
     },
     setDesigner(on) {
@@ -294,16 +313,24 @@ export function decorate(
       : [];
     const pageValues = api.pageNumbers.length ? api.pageNumbers : null;
 
-    // cross-reference targets: any id that is linked to
+    // cross-reference targets: any id that is linked to, here or (a chapter
+    // of the paged editor) in another chapter the host resolved
     const linked = new Set<string>();
     for (const a of Array.from(scope.querySelectorAll<HTMLAnchorElement>("a[href^='#']")))
       linked.add(a.getAttribute("href")!);
     for (const href of linked) {
-      const el = elementForHref(href, scope);
-      if (!el) continue;
-      const [page] = pageRangeOf(el, layout.strips);
-      if (page >= 0) api.targets.set(href, pageValues ? toFolioPage(page + 1, pageValues) : page + 1 + pageOffset);
+      const page = targetPage(href, pageValues) ?? externalTargets.get(href);
+      if (page !== undefined) api.targets.set(href, page);
     }
+  }
+
+  /** The page number of `href`'s target in this layout, as `target-counter(…, page)` shows it. */
+  function targetPage(href: string, pageValues = api.pageNumbers.length ? api.pageNumbers : null): number | undefined {
+    const el = elementForHref(href, scope);
+    if (!el) return undefined;
+    const [page] = pageRangeOf(el, layout.strips);
+    if (page < 0) return undefined;
+    return pageValues ? toFolioPage(page + 1, pageValues) : page + 1 + pageOffset;
   }
 
   /** Shared GCPM string() semantics — the same function the compiler samples. */
@@ -471,6 +498,8 @@ export function decorate(
           sheet.dataset.page = String(bookIndex + 1 + pageOffset);
           // Recto = odd 1-based page (page 1 is a recto).
           sheet.dataset.side = (bookIndex + pageOffset) % 2 === 0 ? "recto" : "verso";
+          // A signature-padding sheet, so a host can tell it from content.
+          if (ctx.padded) sheet.dataset.padded = "";
           sheet.style.left = `${sheetLeft}px`;
           sheet.style.top = `${sheetTop}px`;
           sheet.style.setProperty("--gp-page-w", px(ctx.geometry.width));

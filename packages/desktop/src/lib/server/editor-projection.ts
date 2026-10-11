@@ -48,6 +48,8 @@ export interface EditorProjectionHostResult {
   readonly pluginCss: string;
   readonly pluginErrors: readonly EditorProjectionPluginError[];
   readonly bookCss: string;
+  /** The manifest's `print` padding, so the paged editor appends the blank pages the PDF gets. */
+  readonly print: { readonly signature?: number; readonly reserveLastPage?: boolean; readonly lastPage?: "blank" | "short-by-one" };
 }
 
 export interface EditorProjectionHostArgs {
@@ -160,7 +162,8 @@ export async function buildHostEditorProjection(args: EditorProjectionHostArgs):
     trusted: true,
   });
   const { pluginCss, css: bookCss } = await bookCssFor(manifestDir, config.styles ?? [], pluginStyles);
-  return { projection, pluginCss, pluginErrors, bookCss };
+  const { signature, reserveLastPage, lastPage } = config.print ?? {};
+  return { projection, pluginCss, pluginErrors, bookCss, print: { signature, reserveLastPage, lastPage } };
 }
 
 /**

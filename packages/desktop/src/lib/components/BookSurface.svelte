@@ -31,6 +31,7 @@
    */
   import { onMount, tick, untrack } from "svelte";
   import type { GutterpressProjection } from "gutterpress/render";
+  import { lastPageMode, signaturePadding, type PrintPadding } from "gutterpress/viewer";
   import type { Diagnostic } from "@dimm-city/gutterpress-editor/core";
   import RichEditor from "$lib/components/RichEditor.svelte";
   import { DesktopDocumentHost } from "$lib/editor-host/desktop-document-host";
@@ -38,6 +39,8 @@
   export interface ChapterBuild {
     readonly projection: GutterpressProjection;
     readonly editorCss: string | undefined;
+    /** The book's `print` padding, when the host could read the manifest. */
+    readonly print?: PrintPadding;
   }
 
   interface Slot {
@@ -60,7 +63,9 @@
     getSelection(): { readonly from: number; readonly to: number } | undefined;
     setReadonly(next: boolean): void;
     setZoom(next: string): void;
-    setPageOffset(offset: number, bookPages?: number): void;
+    setPageOffset(offset: number, bookPages?: number, padPages?: number): void;
+    pageOfTarget(href: string): number | undefined;
+    setExternalTargets(targets: ReadonlyMap<string, number>): void;
     refreshProjection(next: GutterpressProjection): void;
     setSelection(from: number, to?: number): void;
   }
@@ -121,6 +126,10 @@
   const refreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const waiters = new Map<string, Array<() => void>>();
   const pagesByPath = new Map<string, number>();
+  /** Each laid-out chapter's content pages: its pages less any signature padding. */
+  const contentByPath = new Map<string, number>();
+  /** The book's `print` padding, from the latest chapter build. */
+  let bookPrint: PrintPadding | undefined;
   let queue: string[] = [];
   let pumping = false;
   let disposed = false;
@@ -171,6 +180,7 @@
     );
     const built = await buildProjection(text, host.getSnapshot().version);
     if (disposed) return;
+    if (built.print) bookPrint = built.print;
     patch(path, { host, projection: built.projection, editorCss: built.editorCss, loaded: true });
   }
 
@@ -206,6 +216,7 @@
   }
 
   const pagesOf = (path: string): number => pagesByPath.get(path) ?? pageEstimates[path] ?? 1;
+  const contentOf = (path: string): number => contentByPath.get(path) ?? pagesOf(path);
   let applyingOffsets = false;
   let offsetsDirty = false;
 
@@ -228,10 +239,14 @@
     try {
       do {
         offsetsDirty = false;
-        const bookPages = slots.reduce((n, slot) => n + pagesOf(slot.path), 0);
+        // `counter(pages)` counts the content, as the PDF's does: the
+        // signature padding is appended after it, to the last chapter.
+        const bookPages = slots.reduce((n, slot) => n + contentOf(slot.path), 0);
+        const padPages = bookPrint ? signaturePadding(bookPages, bookPrint.signature ?? 1, lastPageMode(bookPrint)) : 0;
+        const last = slots[slots.length - 1]?.path;
         let offset = 0;
         for (const slot of slots) {
-          if (slot.mounted) refs[slot.path]?.setPageOffset(offset, bookPages);
+          if (slot.mounted) refs[slot.path]?.setPageOffset(offset, bookPages, slot.path === last ? padPages : 0);
           offset += pagesOf(slot.path);
         }
       } while (offsetsDirty);
@@ -240,11 +255,37 @@
     }
   }
 
-  function paginated(path: string, pages: number): void {
+  /**
+   * A link into another chapter (a TOC's `target-counter()`) gets that
+   * chapter's page for it: each chapter is laid out on its own, so the page
+   * of a target comes from the chapter that holds it, and every chapter is
+   * told the pages of the targets it does not hold. A target in a chapter not
+   * mounted yet has no page until it is.
+   */
+  function applyTargets(): void {
+    if (!scroller) return;
+    const hrefs = new Set<string>();
+    for (const a of Array.from(scroller.querySelectorAll<HTMLAnchorElement>("a[href^='#']"))) hrefs.add(a.getAttribute("href")!);
+    const mounted = slots.filter((slot) => slot.mounted);
+    const targets = new Map<string, number>();
+    for (const href of hrefs) {
+      for (const slot of mounted) {
+        const page = refs[slot.path]?.pageOfTarget(href);
+        if (page === undefined) continue;
+        targets.set(href, page);
+        break;
+      }
+    }
+    for (const slot of mounted) refs[slot.path]?.setExternalTargets(targets);
+  }
+
+  function paginated(path: string, pages: number, content: number): void {
     pagesByPath.set(path, pages);
+    contentByPath.set(path, content);
     const slot = slotOf(path);
     if (slot && !slot.laidOut) patch(path, { laidOut: true });
     applyOffsets();
+    applyTargets();
     announcePageState();
     const list = waiters.get(path) ?? [];
     waiters.delete(path);
@@ -516,7 +557,7 @@
             zoom={zoomState}
             {projectDir}
             filePath={slot.path}
-            onPaginated={(pages) => paginated(slot.path, pages)}
+            onPaginated={(pages, content) => paginated(slot.path, pages, content)}
           />
         {/key}
       {:else}

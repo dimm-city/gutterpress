@@ -40,8 +40,8 @@ export interface PagedSurface {
   readonly onDocumentMount: (documentElement: HTMLElement) => void;
   /** Page count of the most recent pagination; 0 before the first render. */
   readonly totalPages: () => number;
-  /** Fires after every pagination with the current page count. */
-  readonly onPaginated: (listener: (totalPages: number) => void) => () => void;
+  /** Fires after every pagination with the current page count, and how many of those pages are content (not signature padding). */
+  readonly onPaginated: (listener: (totalPages: number, contentPages: number) => void) => () => void;
   /**
    * The stage's zoom: `"fit-width"` (a page fits the pane, never above 1:1)
    * or a scale such as `"1.25"`. Re-paginates, because CSS zoom changes
@@ -55,8 +55,15 @@ export interface PagedSurface {
    * Redraws the sheets; when the offset's parity changes in a book with
    * `recto`/`verso` breaks it re-paginates too, because which of those
    * breaks need a blank page depends on the page's parity in the BOOK.
+   * `padPages` is how many signature-padding pages follow this document's
+   * content (the book's last chapter gets them; see `LayoutOptions.padPages`);
+   * a change re-paginates.
    */
-  readonly setPageOffset: (offset: number, bookPages?: number) => void;
+  readonly setPageOffset: (offset: number, bookPages?: number, padPages?: number) => void;
+  /** The book page `href` ("#id")'s target is on, when it is in this document (see `DecorationApi.pageOfTarget`). */
+  readonly pageOfTarget: (href: string) => number | undefined;
+  /** Book pages of the targets in the other chapters, for this document's `target-counter()`s. */
+  readonly setExternalTargets: (targets: ReadonlyMap<string, number>) => void;
   readonly dispose: () => void;
 }
 
@@ -87,10 +94,12 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
   const rectoVerso = model.breaks.some(isRectoVersoBreak);
   /** The book's default page width in CSS px — known from the model, before anything is laid out. */
   const pageWidthPx = resolvePage(model).geometry.width * PX_PER_PT;
-  const listeners = new Set<(totalPages: number) => void>();
+  const listeners = new Set<(totalPages: number, contentPages: number) => void>();
   let pages = 0;
   let decoration: DecorationApi | undefined;
   let layout: ReturnType<typeof paginate> | undefined;
+  /** The pages of the last layout that are content, not signature padding. */
+  const contentPages = (): number => pages - (layout?.paddedPageIndices.length ?? 0);
   let resize: ResizeObserver | undefined;
   let fontsSettled = false;
   let disposed = false;
@@ -103,8 +112,12 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
   let pageOffset = 0;
   /** The book's page count for `counter(pages)`; undefined until the host says (see `setPageOffset`). */
   let bookPages: number | undefined;
-  /** The options the current layout was paginated with; `relayout()` reads `pageOffset` from it on every call. */
-  let layoutOpts: { root: HTMLElement; pageOffset: number } | undefined;
+  /** Signature-padding pages after this document's content (see `setPageOffset`). */
+  let padPages = 0;
+  /** Book pages of the other chapters' targets (see `setExternalTargets`), kept for a new decoration. */
+  let externalTargets: ReadonlyMap<string, number> = new Map();
+  /** The options the current layout was paginated with; `relayout()` reads `pageOffset` and `padPages` from it on every call. */
+  let layoutOpts: { root: HTMLElement; pageOffset: number; padPages: number } | undefined;
 
   /**
    * Scale the whole stage down when a page is wider than the pane, exactly
@@ -149,13 +162,16 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
     }
     const stage = documentElement.parentElement;
     if (stage) fit(stage);
-    if (layoutOpts) layoutOpts.pageOffset = pageOffset;
+    if (layoutOpts) {
+      layoutOpts.pageOffset = pageOffset;
+      layoutOpts.padPages = padPages;
+    }
     layout.relayout();
     applySpreadMode(layout.strips, false);
     decoration?.redraw();
     pages = layout.totalPages;
     announce(documentElement);
-    for (const listener of listeners) listener(pages);
+    for (const listener of listeners) listener(pages, contentPages());
   }
 
   /**
@@ -207,7 +223,7 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
       stage.classList.add(STAGE_CLASS);
       fit(stage);
     }
-    layoutOpts = { root: documentElement, pageOffset };
+    layoutOpts = { root: documentElement, pageOffset, padPages };
     layout = paginate(model, layoutOpts);
     // Single-page view is a ONE-COLUMN wrap, not the unwrapped default: the
     // unwrapped strip lays every page out in one long horizontal row. Must
@@ -217,6 +233,7 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
     // viewer's default put its 32px padding and scrolling on <body>, which
     // inset the whole window and gave it a second scrollbar.
     decoration = decorate(layout, { canvasRoots: [documentElement], pageOffset, bookPages, ...(stage ? { stage } : {}) });
+    decoration.setExternalTargets(externalTargets);
     // A book's own webfonts load asynchronously, and text measured in a
     // fallback face breaks into different pages than the real one — the
     // editor would sit one page long until the next edit re-rendered it.
@@ -239,7 +256,7 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
     }
     pages = layout.totalPages;
     announce(documentElement);
-    for (const listener of listeners) listener(pages);
+    for (const listener of listeners) listener(pages, contentPages());
   }
 
   return {
@@ -264,12 +281,19 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
       userZoom = scale !== null && Number.isFinite(scale) && scale > 0 ? scale : null;
       if (mounted) refresh(mounted);
     },
-    setPageOffset(offset: number, total?: number): void {
+    setPageOffset(offset: number, total?: number, pad = 0): void {
       const parityFlipped = (offset - pageOffset) % 2 !== 0;
+      const padChanged = pad !== padPages;
       pageOffset = offset;
       bookPages = total;
+      padPages = pad;
       decoration?.setPageOffset(offset, total);
-      if (parityFlipped && rectoVerso && mounted) refresh(mounted);
+      if (((parityFlipped && rectoVerso) || padChanged) && mounted) refresh(mounted);
+    },
+    pageOfTarget: (href) => decoration?.pageOfTarget(href),
+    setExternalTargets(targets) {
+      externalTargets = targets;
+      decoration?.setExternalTargets(targets);
     },
     onPaginated(listener) {
       listeners.add(listener);

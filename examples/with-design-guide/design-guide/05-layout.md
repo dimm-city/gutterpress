@@ -12,8 +12,10 @@ The `.gp-columns-2` class divides a container into two equal columns with a hair
 
 ```markdown
 @section .gp-columns-2
+
 Column content flows left to right automatically.
 Add `@column-break` to force content to the right column.
+
 @end-section
 ```
 
@@ -134,7 +136,9 @@ Wrap images in a `<figure>` element for proper captioning. The `figcaption` rend
 
 ```markdown
 @section .no-break
+
 Content that must not split across a page break.
+
 @end-section
 ```
 

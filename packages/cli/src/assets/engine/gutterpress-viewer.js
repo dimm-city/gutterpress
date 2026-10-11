@@ -1741,11 +1741,11 @@
   function blankPageIndices(strips, scope = document) {
     return Array.from(scope.querySelectorAll(".gp-recto-spacer")).map((el) => pageOf(el, strips));
   }
-  function padToSignature(strips, contentPages, scope = document) {
+  function padToSignature(strips, contentPages, scope = document, padPages) {
     for (const spacer of Array.from(scope.querySelectorAll(".gp-pad-spacer")))
       spacer.remove();
     const data = document.documentElement.dataset;
-    const count = signaturePadding(contentPages, Number(data.gpSignature) || 1, data.gpLastPage);
+    const count = padPages ?? signaturePadding(contentPages, Number(data.gpSignature) || 1, data.gpLastPage);
     const last = strips[strips.length - 1];
     if (!last || count === 0)
       return contentPages;
@@ -1803,7 +1803,7 @@
         measure(strips);
       const headers2 = opts.compensateHeaders === false ? { tables: 0, passes: 0, warnings: [] } : compensateRepeatedHeaders(strips);
       const contentPages2 = measure(strips).totalPages;
-      const totalPages2 = padToSignature(strips, contentPages2, scope);
+      const totalPages2 = padToSignature(strips, contentPages2, scope, opts.padPages);
       return { blanks: blanks2, headers: headers2, contentPages: contentPages2, totalPages: totalPages2, blankPageIndices: blankPageIndices(strips, scope) };
     });
     const api = {
@@ -1837,7 +1837,7 @@
               ...new Set([...authoring, ...compensateRepeatedHeaders(strips).warnings])
             ];
           const content = measure(strips).totalPages;
-          padToSignature(strips, content, scope);
+          padToSignature(strips, content, scope, opts.padPages);
           const r = measure(strips);
           api.totalPages = r.totalPages;
           api.blankPageIndices = blankPageIndices(strips, scope);
@@ -2150,6 +2150,7 @@
     const model = layout.model;
     let pageOffset = opts.pageOffset ?? 0;
     let bookPages = opts.bookPages;
+    let externalTargets = new Map;
     const scope = layout.root ?? document;
     const sheets = new Map;
     let blankPages = new Set;
@@ -2167,6 +2168,14 @@
           return;
         pageOffset = offset;
         bookPages = pages;
+        draw();
+      },
+      pageOfTarget: (href) => targetPage(href),
+      setExternalTargets(targets) {
+        const same = targets.size === externalTargets.size && [...targets].every(([href, page]) => externalTargets.get(href) === page);
+        if (same)
+          return;
+        externalTargets = targets;
         draw();
       },
       setDesigner(on) {
@@ -2246,13 +2255,19 @@
       for (const a of Array.from(scope.querySelectorAll("a[href^='#']")))
         linked.add(a.getAttribute("href"));
       for (const href of linked) {
-        const el = elementForHref(href, scope);
-        if (!el)
-          continue;
-        const [page] = pageRangeOf(el, layout.strips);
-        if (page >= 0)
-          api.targets.set(href, pageValues ? toFolioPage(page + 1, pageValues) : page + 1 + pageOffset);
+        const page = targetPage(href, pageValues) ?? externalTargets.get(href);
+        if (page !== undefined)
+          api.targets.set(href, page);
       }
+    }
+    function targetPage(href, pageValues = api.pageNumbers.length ? api.pageNumbers : null) {
+      const el = elementForHref(href, scope);
+      if (!el)
+        return;
+      const [page] = pageRangeOf(el, layout.strips);
+      if (page < 0)
+        return;
+      return pageValues ? toFolioPage(page + 1, pageValues) : page + 1 + pageOffset;
     }
     function stringAt(name, which, page) {
       return stringValueAt(api.stringMap.get(name) ?? [], page, parseWhich(which));
@@ -2359,6 +2374,8 @@
             sheet.className = "gp-sheet";
             sheet.dataset.page = String(bookIndex + 1 + pageOffset);
             sheet.dataset.side = (bookIndex + pageOffset) % 2 === 0 ? "recto" : "verso";
+            if (ctx.padded)
+              sheet.dataset.padded = "";
             sheet.style.left = `${sheetLeft}px`;
             sheet.style.top = `${sheetTop}px`;
             sheet.style.setProperty("--gp-page-w", px(ctx.geometry.width));

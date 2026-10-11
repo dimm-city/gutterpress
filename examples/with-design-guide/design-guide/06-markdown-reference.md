@@ -140,7 +140,9 @@ This `@section .no-break` block will stay on one page. Use it around tables, spe
 
 ```markdown
 @section .no-break
+
 Content that must stay on one page.
+
 @end-section
 ```
 
@@ -160,11 +162,13 @@ Right column content. The column rule runs between both columns.
 
 ```markdown
 @section .gp-columns-2
+
 Left column content. Use `@column-break` to force content into the right column early.
 
 @column-break
 
 Right column content. The column rule runs between both columns.
+
 @end-section
 ```
 
@@ -182,7 +186,9 @@ A body paragraph flows to the left of the sidebar. The paragraph will wrap aroun
 
 ```markdown
 @section .sidebar
+
 **Sidebar.** Floated right at 38% width.
+
 @end-section
 
 A body paragraph flows to the left of the sidebar.
@@ -215,8 +221,10 @@ Positive guidance callout. Green left border, cool-tinted background.
 
 ```markdown
 @section .callout-note
+
 <span class="callout-label">Note</span>
 Standard informational callout.
+
 @end-section
 ```
 
@@ -234,6 +242,7 @@ The measure of good design is whether the reader notices the design at all.
 
 ```markdown
 @section .pull-quote
+
 The measure of good design is whether the reader notices the design at all.
 
 <span class="attribution">— Design Guide, Chapter 3</span>
@@ -253,11 +262,15 @@ This block uses `@section .callout` — applying the `.callout` class directly.
 
 ```markdown
 @section .callout
+
 Content inside gets `class="section callout"` on its wrapping div.
+
 @end-section
 
 @section .my-custom-class key="value"
+
 Accepts classes, IDs, and data attributes.
+
 @end-section
 ```
 
@@ -379,11 +392,13 @@ Right column content. This paragraph begins here because of the column break dir
 
 ```markdown
 @section .gp-columns-2
+
 Left column content. The break below pushes everything after it into the right column.
 
 @column-break
 
 Right column content.
+
 @end-section
 ```
 

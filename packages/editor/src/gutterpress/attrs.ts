@@ -49,18 +49,54 @@ export function parseAttrsTrailer(sourceText: string): { readonly attrs: Record<
  */
 const IMAGE_TRAILER_RE = /!\[[^\]]*\]\([^)]*\)\{[^{}\n]*\}$/;
 
+/** The inline elements markdown-it-attrs gives a `{...}` written straight after them. */
+const INLINE_ATTRS_TARGETS = new Set(["A", "EM", "STRONG", "CODE", "IMG", "S", "DEL"]);
+const LEADING_ATTRS_RE = /^\{[^{}\n]*\}/;
+
+function applyParsedAttrs(target: Element, parsed: NonNullable<ReturnType<typeof parseAttrsTrailer>>): void {
+  if (parsed.id) target.id = parsed.id;
+  for (const cls of parsed.classes) target.classList.add(cls);
+  for (const [k, v] of Object.entries(parsed.attrs)) target.setAttribute(k, v);
+}
+
+/**
+ * `decorateInactiveBlock` for any block: a `{...}` written straight after a
+ * link, emphasis, strong, code span or image (`[Alpha](#alpha){.toc}`) is
+ * that element's, as markdown-it-attrs makes it on the page - a book's TOC
+ * styles `a.toc::after` with the target's page number. The fork renders the
+ * braces as the text right after the element; this applies them to the
+ * element and hides them. A `{...}` after plain text or a space is the
+ * block's, which `decorateAttrsTrailer` handles.
+ */
+export function decorateInlineAttrs(element: HTMLElement): void {
+  const walker = element.ownerDocument.createTreeWalker(element, 4 /* SHOW_TEXT */);
+  const texts: Text[] = [];
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) texts.push(n as Text);
+  for (const text of texts) {
+    if (text.parentElement?.closest(".md-marker, .md-glue")) continue;
+    const before = text.previousSibling;
+    if (!before || before.nodeType !== 1 || !INLINE_ATTRS_TARGETS.has((before as Element).tagName)) continue;
+    const braces = LEADING_ATTRS_RE.exec(text.data)?.[0];
+    const parsed = braces ? parseAttrsTrailer(braces) : null;
+    if (!braces || !parsed) continue;
+    applyParsedAttrs(before as Element, parsed);
+    text.data = text.data.slice(braces.length);
+  }
+}
+
 /** `decorateInactiveBlock` for headings and paragraphs: apply the trailer, hide its text. */
 export function decorateAttrsTrailer(element: HTMLElement, node: { readonly kind: string }, sourceText: string): void {
   if (node.kind !== "heading" && node.kind !== "paragraph") return;
   const parsed = parseAttrsTrailer(sourceText);
   if (!parsed) return;
+  // An element's own trailer (`[A](#a){.toc}`), already applied by
+  // `decorateInlineAttrs`, is not the block's.
+  if (!(element.textContent ?? "").trimEnd().endsWith(parsed.trailer.trim())) return;
   const image = IMAGE_TRAILER_RE.test(sourceText.trimEnd())
     ? element.querySelector("img")
     : null;
   const target: HTMLElement = image ?? element;
-  if (parsed.id) target.id = parsed.id;
-  for (const cls of parsed.classes) target.classList.add(cls);
-  for (const [k, v] of Object.entries(parsed.attrs)) target.setAttribute(k, v);
+  applyParsedAttrs(target, parsed);
 
   // Remove the trailer from the LAST text node(s). The text before it keeps
   // its node identity, so the fork's click-to-caret mapping for that text

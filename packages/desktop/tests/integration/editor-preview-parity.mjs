@@ -331,6 +331,16 @@ try {
     frame = live;
     await prepareBook();
   }
+  // The whole book's sheets, signature padding included: the editor appends
+  // the same blank pages after its last chapter.
+  const bookSheets = await inBook(() => document.querySelectorAll(".gp-sheet").length);
+  /** Each in-book link's generated text (a TOC's `target-counter()` page), in document order. */
+  const xrefsIn = (root) =>
+    [...root.querySelectorAll("a[href^='#']")]
+      .map((a) => [a.getAttribute("href"), a.getAttribute("data-gp-after") ?? a.getAttribute("data-gp-before")])
+      .filter(([, text]) => text !== null)
+      .map(([href, text]) => `${href} ${text}`);
+  const bookXrefs = await inBook(`(${xrefsIn})(document)`);
 
   // The book's own page counts were read above, while Edit had the preview
   // on screen. Read, unlocked, is the whole book in one scroll: every
@@ -371,7 +381,9 @@ try {
         const doc = el.querySelector(".md-document");
         order.push(name);
         byName[name] = {
-          sheets: el.querySelectorAll(".gp-sheet").length,
+          // A chapter's own pages; the padding after the last one is counted apart.
+          sheets: el.querySelectorAll(".gp-sheet:not([data-padded])").length,
+          padded: el.querySelectorAll(".gp-sheet[data-padded]").length,
           layout: Number(doc?.dataset.gpLayout ?? -1),
           editor: !!el.querySelector(".md-editor"),
           readonly: !!el.querySelector(".md-editor.md-readonly"),
@@ -501,6 +513,21 @@ try {
       );
     }
   }
+
+  const editorSheets = Object.values(unlocked.byName).reduce((n, c) => n + c.sheets + c.padded, 0);
+  if (editorSheets !== bookSheets) {
+    failures += 1;
+    console.error(`[parity] FAIL the book: the editor shows ${editorSheets} page(s) with its signature padding, the book ${bookSheets}`);
+  } else log(`ok   the book: ${editorSheets} page(s) with its signature padding`);
+
+  // A link into another chapter shows the page its target is on, as it does
+  // in the book.
+  const editorXrefs = await page.evaluate(`(${xrefsIn})(document.querySelector(".book-surface"))`);
+  const missing = bookXrefs.filter((x, i) => editorXrefs[i] !== x);
+  if (bookXrefs.length !== editorXrefs.length || missing.length) {
+    failures += 1;
+    console.error(`[parity] FAIL cross-references: the book shows ${JSON.stringify(bookXrefs.slice(0, 5))}, the editor ${JSON.stringify(editorXrefs.slice(0, 5))}`);
+  } else if (bookXrefs.length) log(`ok   ${bookXrefs.length} cross-reference(s) agree`);
 
   // The folios run on through the book: each chapter's first sheet is
   // numbered one past the last sheet of the chapter before it.

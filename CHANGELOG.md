@@ -86,8 +86,18 @@ This project follows [Semantic Versioning](https://semver.org/).
   `@continue`, or prose that starts with `@end-…`, stays as the book
   prints it. A fenced code block that shows a marker is no longer refused
   when a plugin renders it.
+- **The unlocked book matches the preview's page count and cross-references.**
+  A book printed in signatures (`print.signature`, `print.lastPage`) gets
+  the same blank pages after its last chapter as the preview and the PDF,
+  so the page count and navigation agree. A table of contents entry that
+  links into another chapter shows that chapter's page number, and an
+  attribute written straight after a link, emphasis or code
+  (`[Alpha](#alpha){.toc}`) styles that element instead of the paragraph
+  around it, or showing up as text.
 - **The glued-marker warning** no longer fires for `@end-columns` written
-  directly above `@page`.
+  directly above `@page`. The design-guide example, the theme and plugin
+  templates and the docs now write every marker on a line of its own, so
+  nothing they teach trips the warning.
 - **Inserting a section or two columns** leaves the cursor on a line of its
   own, so what you type is not glued to a marker line.
 - **Unlocked Read, tidied.** Insert snippet works on the page; the Problems
