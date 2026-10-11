@@ -43,6 +43,15 @@ This project follows [Semantic Versioning](https://semver.org/).
   of a multiple of the signature, DriveThruRPG's other accepted form, instead
   of adding a blank last page (`blank`, which `reserveLastPage: true` still
   means). The preview shows the same pages as the PDF.
+- **Preflight flags small text printed in a dark four-colour mix** (#336).
+  The new `pdf.print.black-text` warning lists the pages where text at 24pt
+  or smaller is printed with all four inks in black or a near-black colour,
+  such as a dark brown. Small four-colour text can look fuzzy if the plates
+  are slightly out of register. Near-black text already goes on the black
+  plate alone with `pdfx.blackText: k-only`; a designed dark colour keeps its
+  colour and is flagged so you can decide. It is a warning, so it never stops
+  a build. Set `lint.rules: { pdf.print.black-text: off }` to silence it, or
+  `error` to make it fail the build.
 - **Preflight checks the page count against the signature** (#336). The new
   `pdf.print.signature` check fails a print PDF whose page count doesn't fit
   its signature, or whose reserved last page has something on it.
