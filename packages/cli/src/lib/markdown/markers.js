@@ -2238,6 +2238,13 @@ body { margin: 0; }
 .gp-column-break { break-after: column; height: 0; font-size: 0; line-height: 0; visibility: hidden; }
 
 :where(h1,h2,h3,h4,h5,h6) { break-after: avoid; }
+/* A lead-in paragraph ("**ROLL A DIE!**" above a roll table, "You will need:"
+   above a list) stays with the table or list it introduces, the way a heading
+   stays with what follows it -- otherwise the label can end a column or page
+   with its table starting on the next (#370). Standard break-after; the
+   :has() selector is Chromium's own. :where() keeps specificity at zero so an
+   author rule such as p { break-after: auto } wins. Deliberately table/ul/ol only. */
+:where(p):has(+ :where(table, ul, ol)) { break-after: avoid; }
 :where(img, svg, video) { max-width: 100%; }
 :where(p > img:only-child, figure > img) { width: fit-content; max-width: 100%; height: auto; vertical-align: bottom; }
 :where(p) > :where(img:not([class])) { max-height: calc(var(--gp-content-h) - 4px); object-fit: contain; }
