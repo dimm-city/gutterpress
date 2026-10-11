@@ -39,7 +39,10 @@ policy: what its platform demands of the finished PDF. Targets never change
 how the book renders — only what the validator checks.
 
 - `dtrpg` — DriveThruRPG print-on-demand: PDF/X markers and metadata,
-  CMYK/Grayscale art, the 240% ink limit, embedded fonts, and a page count that fits the signature.
+  CMYK/Grayscale art, the 240% ink limit, embedded fonts, and a page count
+  that fits the signature. It also warns when text at 24pt and under is
+  printed in a dark four-colour mix, black or a dark colour, since small
+  four-colour text can look fuzzy.
 - `itch` — itch.io digital release: a well-formed PDF with embedded fonts;
   print-only rules (PDF/X, ink limits, CMYK-only art) don't apply.
 

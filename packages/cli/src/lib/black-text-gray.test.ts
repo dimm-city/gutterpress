@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { blackTextToGray, rewriteBlackText } from "./black-text-gray";
+import { blackTextToGray, countRichBlackText, findRichBlackText, rewriteBlackText } from "./black-text-gray";
 
 describe("rewriteBlackText", () => {
   test("near-black text fill becomes 0 g, original colour restored after ET", () => {
@@ -262,5 +262,35 @@ describe("form XObject size context (#336)", () => {
     expect(twice[0]).toContain("BT 0 g");
     const never = await streamsOf(await blackTextToGray(await mk(FORM, "")), "Form");
     expect(never[0]).toContain("BT 0 g");
+  });
+});
+
+describe("findRichBlackText (#336)", () => {
+  test("counts small four-colour near-black runs, ignoring K-only, large and coloured text", () => {
+    const rich = "0.722 0.675 0.671 0.882 k";
+    expect(countRichBlackText(`${rich} BT /F1 12 Tf <01> Tj ET`)).toBe(1);
+    expect(countRichBlackText(`0.667 0.675 0.69 0.804 k BT /F1 12 Tf [(a)] TJ ET`)).toBe(1); // warm ink
+    expect(countRichBlackText(`0 0 0 1 k BT /F1 12 Tf <01> Tj ET`)).toBe(0); // K-only
+    expect(countRichBlackText(`0 g BT /F1 12 Tf <01> Tj ET`)).toBe(0);
+    expect(countRichBlackText(`${rich} BT /F1 40 Tf <01> Tj ET`)).toBe(0); // over 24pt
+    expect(countRichBlackText(`0.9 0.1 0 0.1 k BT /F1 12 Tf <01> Tj ET`)).toBe(0); // a colour
+    expect(countRichBlackText(`0.9 0.5 0.1 0.8 k BT /F1 12 Tf <01> Tj ET`)).toBe(0); // dark, not neutral
+    expect(countRichBlackText(`q ${rich} k Q BT /F1 12 Tf <01> Tj ET`)).toBe(0); // q/Q restored
+  });
+
+  test("end to end: a book run through blackTextToGray audits clean, one that was not does not", async () => {
+    const lib = await import("pdf-lib");
+    const rich = "0.722 0.675 0.671 0.882 k";
+    const pdf = await pdfOf((ctx, page, { PDFName }) => {
+      const form = ctx.register(
+        ctx.flateStream(`${rich} BT /F1 20 Tf <01> Tj ET`, { Type: "XObject", Subtype: "Form", BBox: [0, 0, 100, 100] })
+      );
+      page.node.set(PDFName.of("Contents"), ctx.register(ctx.flateStream(`${rich} BT /F1 10 Tf <01> Tj ET /Fm0 Do`)));
+      page.node.set(PDFName.of("Resources"), ctx.obj({ XObject: { Fm0: form } }));
+    });
+    void lib;
+    expect(await findRichBlackText(pdf)).toEqual({ runs: 2, pages: [1] });
+    // The audit only reads: nothing changed.
+    expect(await findRichBlackText(await blackTextToGray(pdf))).toEqual({ runs: 2, pages: [1] });
   });
 });
