@@ -12,27 +12,40 @@
    * #310: a plain folder gets a next step instead of two facts on a blank
    * page — "Turn on version history" (`api.vcs.enableVersionHistory`, the
    * CLAUDE.md §7 escape hatch's other half). After it, the tab reads as any
-   * other git-backed project. An online copy has no equivalent action: the
-   * app can clone one (Open from GitHub) but cannot attach a repository to an
-   * existing folder, so there is nothing honest to offer for that here.
+   * other git-backed project.
+   *
+   * #358: a book with version history but no online copy gets "Set up online
+   * backup" — with a connected GitHub account the author creates a new
+   * repository (private by default) or picks an empty one, and the host
+   * connects it and pushes the book's history (`api.remote.setUpBackup`).
+   * Afterwards the book is the same as one opened from GitHub.
    *
    * PWA-clean (§8): api.* routes only.
    */
   import { onMount } from "svelte";
   import { api } from "$lib/api";
   import { friendlyHostError } from "$lib/errors";
-  import type { ProjectRemoteDiagnosis, RemoteAccessResult } from "$lib/platform/contract";
+  import { suggestRepositoryName } from "$lib/backup-repo-name";
+  import type {
+    ProjectRemoteDiagnosis,
+    RemoteAccessResult,
+    RemoteConnection,
+    RemoteRepository,
+  } from "$lib/platform/contract";
 
   let {
     projectDir,
     onOpenAccounts,
     onVersionHistoryEnabled,
+    onBackupSetUp,
   }: {
     projectDir: string | null;
     /** Open the app Settings view on the Accounts tab (to connect a server). */
     onOpenAccounts?: () => void;
     /** Version history was just turned on: the parent re-reads the project's classification so the status bar catches up. */
     onVersionHistoryEnabled?: (projectDir: string) => void;
+    /** Online backup was just set up: the parent re-reads the project's classification so the status bar catches up. */
+    onBackupSetUp?: (projectDir: string) => void;
   } = $props();
 
   let loading = $state(true);
@@ -42,6 +55,19 @@
   let enabling = $state(false);
   let justEnabled = $state(false);
   let enableError = $state<string | null>(null);
+
+  // Set up online backup (#358) — offered to a versioned book with no online copy.
+  let github = $state<RemoteConnection | null>(null);
+  let backupMode = $state<"create" | "existing">("create");
+  let repoName = $state("");
+  let makePrivate = $state(true);
+  let emptyRepos = $state<RemoteRepository[]>([]);
+  let reposLoading = $state(false);
+  let reposError = $state<string | null>(null);
+  let chosenRepo = $state("");
+  let settingUp = $state(false);
+  let backupError = $state<string | null>(null);
+  let backupDone = $state<string | null>(null);
 
   // Test Remote Access — only ever runs on explicit click.
   let testing = $state(false);
@@ -63,6 +89,79 @@
       diag = null;
     } finally {
       loading = false;
+    }
+    if (canSetUpBackup) await loadBackupContext(projectDir);
+  }
+
+  // What the set-up form needs: whether GitHub is connected, and the book's
+  // title for the repository name's default. Best-effort — the form still works
+  // (with a generic name) if either read fails.
+  async function loadBackupContext(dir: string) {
+    try {
+      github = await api.remote.getRemoteConnection();
+    } catch {
+      github = null;
+    }
+    if (repoName) return;
+    try {
+      repoName = suggestRepositoryName((await api.manifest.read(dir)).title);
+    } catch {
+      repoName = suggestRepositoryName(null);
+    }
+  }
+
+  async function chooseBackupMode(mode: "create" | "existing") {
+    backupMode = mode;
+    backupError = null;
+    if (mode !== "existing" || emptyRepos.length > 0 || reposLoading) return;
+    reposLoading = true;
+    reposError = null;
+    try {
+      const all = await api.remote.listRemoteRepositories();
+      emptyRepos = all.filter((r) => r.maybeEmpty);
+      if (!chosenRepo && emptyRepos[0]) chosenRepo = emptyRepos[0].fullName;
+    } catch (e) {
+      reposError = friendlyHostError(e instanceof Error ? e.message : String(e));
+    } finally {
+      reposLoading = false;
+    }
+  }
+
+  async function setUpBackup() {
+    if (!projectDir || settingUp) return;
+    const picked = emptyRepos.find((r) => r.fullName === chosenRepo);
+    if (backupMode === "existing" && !picked) {
+      backupError = "Choose which empty repository to use.";
+      return;
+    }
+    settingUp = true;
+    backupError = null;
+    backupDone = null;
+    try {
+      const result = await api.remote.setUpBackup(
+        projectDir,
+        backupMode === "create"
+          ? { kind: "create", name: repoName.trim(), private: makePrivate }
+          : { kind: "existing", owner: picked!.owner, name: picked!.name },
+      );
+      if (result.status === "connected") {
+        backupDone = `Online backup is on. Your book was copied to ${result.repository.fullName} on GitHub${result.repository.private ? " (private)" : ""}.`;
+        onBackupSetUp?.(projectDir);
+        await load();
+      } else {
+        backupError = result.message;
+        // The repository was made but the copy failed: it is empty, so keep it
+        // selected and let "Try again" reuse it instead of creating a second one.
+        if (result.repository) {
+          emptyRepos = [result.repository, ...emptyRepos.filter((r) => r.fullName !== result.repository!.fullName)];
+          chosenRepo = result.repository.fullName;
+          backupMode = "existing";
+        }
+      }
+    } catch (e) {
+      backupError = friendlyHostError(e instanceof Error ? e.message : String(e));
+    } finally {
+      settingUp = false;
     }
   }
 
@@ -106,6 +205,11 @@
   }
 
   const isPlainFolder = $derived(diag?.classification.type === "local-folder");
+
+  // A versioned book with no online copy yet — the one shape #358 sets up.
+  const canSetUpBackup = $derived(
+    !!diag && !isPlainFolder && !diag.remoteUrl && diag.guidance === "local-only",
+  );
 
   const folderLabel = $derived.by(() => {
     if (!diag) return "—";
@@ -179,6 +283,9 @@
     {#if justEnabled}
       <p class="hint guidance" role="status">Version history is on — the first version of your book is saved.</p>
     {/if}
+    {#if backupDone}
+      <p class="hint guidance" role="status">{backupDone}</p>
+    {/if}
     {#if guidanceCopy}
       <p class="hint guidance">{guidanceCopy}</p>
     {/if}
@@ -189,6 +296,81 @@
       {#if enableError}
         <p class="test-result fail" role="alert">{enableError}</p>
       {/if}
+    {/if}
+    {#if isPlainFolder}
+      <p class="hint muted">
+        Online backup copies your saved versions to GitHub, so it needs version history first.
+      </p>
+    {/if}
+    {#if canSetUpBackup}
+      <div class="backup" aria-label="Set up online backup">
+        <h4>Set up online backup</h4>
+        {#if !github?.connected}
+          <p class="hint">
+            Online backup keeps a copy of your book, and every earlier version, on your GitHub account.
+            Connect GitHub first.
+          </p>
+          {#if onOpenAccounts}
+            <button class="primary app-btn-primary" onclick={() => onOpenAccounts?.()}>Connect GitHub…</button>
+          {/if}
+        {:else}
+          <p class="hint">
+            Signed in to GitHub{github.username ? ` as ${github.username}` : ""}. Your book and its earlier
+            versions will be copied there.
+          </p>
+          <div class="mode-row" role="radiogroup" aria-label="Where to keep the online copy">
+            <label>
+              <input type="radio" name="backup-mode" checked={backupMode === "create"} onchange={() => void chooseBackupMode("create")} />
+              Create a new repository
+            </label>
+            <label>
+              <input type="radio" name="backup-mode" checked={backupMode === "existing"} onchange={() => void chooseBackupMode("existing")} />
+              Use an empty repository I already made
+            </label>
+          </div>
+          {#if backupMode === "create"}
+            <label class="field" for="backup-repo-name">
+              <span class="lbl">Repository name</span>
+              <input id="backup-repo-name" class="input" bind:value={repoName} spellcheck="false" autocomplete="off" />
+            </label>
+            <label class="check">
+              <input type="checkbox" bind:checked={makePrivate} />
+              Keep it private (only you can see it)
+            </label>
+          {:else if reposLoading}
+            <p class="hint">Looking for your empty repositories…</p>
+          {:else if reposError}
+            <p class="test-result fail" role="alert">{reposError}</p>
+          {:else if emptyRepos.length === 0}
+            <p class="hint">
+              No empty repositories found on your GitHub account. Create one on github.com (leave "Add a README"
+              off), then come back.
+            </p>
+            <button class="ghost" onclick={() => void api.shell.openExternal("https://github.com/new").catch(() => {})}>
+              Open github.com to create one…
+            </button>
+          {:else}
+            <label class="field" for="backup-existing-repo">
+              <span class="lbl">Empty repository</span>
+              <select id="backup-existing-repo" class="input" bind:value={chosenRepo}>
+                {#each emptyRepos as r (r.fullName)}
+                  <option value={r.fullName}>{r.fullName}{r.private ? " (private)" : ""}</option>
+                {/each}
+              </select>
+            </label>
+          {/if}
+          <button
+            class="primary app-btn-primary"
+            onclick={setUpBackup}
+            disabled={settingUp || (backupMode === "create" && !repoName.trim()) || (backupMode === "existing" && !chosenRepo)}
+          >
+            {settingUp ? "Setting up…" : backupError ? "Try again" : "Set up online backup"}
+          </button>
+          {#if backupError}
+            <p class="test-result fail" role="alert">{backupError}</p>
+          {/if}
+        {/if}
+      </div>
     {/if}
     {#if needsAccounts && onOpenAccounts}
       <button class="ghost" onclick={() => onOpenAccounts?.()}>Open account settings…</button>
@@ -236,6 +418,11 @@
   .status-grid dt { color: var(--app-text-muted); }
   .status-grid dd { margin: 0; }
   .mono { font-family: var(--app-font-mono); font-size: 12px; word-break: break-all; }
+  .backup { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; margin-top: 12px; }
+  .backup h4 { margin: 0; font-size: 13px; }
+  .backup .field { align-self: stretch; }
+  .mode-row { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+  .mode-row label, .check { display: flex; gap: 6px; align-items: center; font-size: 13px; }
   .test-row { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
   .test-result { margin: 0; font-size: 13px; line-height: 1.5; }
   .test-result.ok { color: var(--app-text); }

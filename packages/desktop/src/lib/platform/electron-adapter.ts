@@ -13,6 +13,7 @@ import type {
   BuildArgs,
   BuildResult,
   ExportProgressEvent,
+  RestoreProgressEvent,
   UrlPreviewBlockedEvent,
   UpdaterApi,
   NativeThemeState,
@@ -156,6 +157,10 @@ export class ElectronAdapter implements Platform {
 
   onUrlPreviewBlocked(cb: (data: UrlPreviewBlockedEvent) => void): () => void {
     return bridge().onUrlPreviewBlocked(cb);
+  }
+
+  onRestoreProgress(cb: (data: RestoreProgressEvent) => void): () => void {
+    return bridge().onRestoreProgress(cb);
   }
 
   onFlushBeforeClose(cb: (mode?: "flush" | "discard") => boolean | void | Promise<boolean | void>): () => void {

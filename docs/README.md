@@ -10,6 +10,7 @@ Complete documentation for creating professional print documents from markdown.
 
 New to Gutterpress? Start here:
 
+- **[Desktop app how-to guides](./desktop-guide/)** - Install the app, create a book, write with a live preview, add plugins, save a PDF, publish and back up — one task per page. Published with the rest of the docs at <https://gutterpress.dimm.city/docs/>.
 - **[User Guide — Chapter 1: Getting Started](../examples/gutterpress-user-guide/01-getting-started.md)** - Installation, basic workflow, and project setup
 
 ## Core Documentation (see User Guide)

@@ -54,8 +54,11 @@ function targetPrefix(target: string | undefined): string {
   return target ? `[${target}] ` : "";
 }
 
+// process.stdout.write, not console.log: Bun's console.log drops all but the
+// first 64KB of a large write to a pipe when the process then exits, so a
+// piped `validate --format json` came out truncated.
 function formatJson(report: RunnerReport): void {
-  console.log(
+  process.stdout.write(
     JSON.stringify(
       {
         results: report.results,
@@ -64,7 +67,7 @@ function formatJson(report: RunnerReport): void {
       },
       null,
       2
-    )
+    ) + "\n"
   );
 }
 

@@ -3,10 +3,11 @@ import { isOnlineSibling } from "../remote-auth/sync-messages";
 import { join } from "node:path";
 import { BOOK_HTML_FILENAME } from "../desktop";
 import { canonicalChapterId } from "./chapter-id";
-import { assembleBookHtml, type LayoutWarning } from "./assemble";
+import { assembleBookHtml, type AssembleBookHtmlOptions, type LayoutWarning } from "./assemble";
 import { resolveActiveStyles } from "../style-resolver";
 import { inlineStyles, type AssetCopy } from "../asset-inline";
 import { layerExtensionCss, type LoadedPlugin, type PluginStyleGroup } from "./renderer";
+import type { PrintPadding } from "../../engine/shared/synthesis.ts";
 
 export type { LayoutWarning } from "./assemble";
 
@@ -54,6 +55,8 @@ export async function renderChapters(
   inputDir: string,
   opts: {
     title?: string;
+    /** See {@link AssembleBookHtmlOptions.print}. */
+    print?: PrintPadding;
     styles?: string[];
     files?: string[] | null;
     plugins?: LoadedPlugin[];
@@ -143,6 +146,7 @@ export async function renderChapters(
     // go through the same inliner.
     preloadImages: cssAssetCopies.map((c) => c.to),
     title: opts.title,
+    print: opts.print,
     plugins: opts.plugins,
     pluginCss,
     annotateSourceChapters: opts.annotateSourceChapters,
@@ -162,6 +166,8 @@ export async function renderChaptersToFile(
   outDir: string,
   opts: {
     title?: string;
+    /** See {@link AssembleBookHtmlOptions.print}. */
+    print?: PrintPadding;
     styles?: string[];
     files?: string[] | null;
     plugins?: LoadedPlugin[];
@@ -178,6 +184,7 @@ export async function renderChaptersToFile(
   await mkdir(outDir, { recursive: true });
   const html = await renderChapters(inputDir, {
     title: opts.title,
+    print: opts.print,
     styles: opts.styles,
     files: opts.files,
     plugins: opts.plugins,

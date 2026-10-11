@@ -19,6 +19,7 @@ import { GUTTERPRESS_CSS } from "./gutterpress-css.ts";
 import { canonicalChapterId } from "./chapter-id";
 import { createMarkdownRenderer, type LoadedPlugin } from "./renderer";
 import { collectHtmlImageRefs, type ImageRefEnv } from "./images";
+import { lastPageMode, type PrintPadding } from "../../engine/shared/synthesis.ts";
 
 /** Reader injected by the host: resolve a project-root-relative file → its text. */
 export type ReadText = (relPath: string) => Promise<string>;
@@ -46,6 +47,14 @@ export type ReadText = (relPath: string) => Promise<string>;
  * same type, via a second, unconditional check modeled on `unknown_gp_class`
  * rather than the core-only `scanForMistypedMarkers`.
  *
+ * A declared marker's opt-in `validate` adds two more: `component_invalid`
+ * (one problem the validator reported — the only warning that may carry a
+ * `severity`) and `component_validate_failed` (the validator threw or
+ * returned something unusable).
+ *
+ * `unknown_variant` is emitted for a declared marker (container or
+ * `section: true`) whose bare word is not one of its declared `variants`.
+ *
  * There is deliberately no `section_without_page`: a @section with no open
  * @page is valid authoring (17/17 false positives across two real books).
  */
@@ -54,6 +63,8 @@ export interface LayoutWarning {
   type: string;
   message: string;
   marker?: unknown;
+  /** Set only by a component's `validate`; absent means `"warning"`. */
+  severity?: "error" | "warning" | "info";
 }
 
 /**
@@ -130,6 +141,13 @@ export interface AssembleBookHtmlOptions {
    */
   preloadImages?: string[];
   title?: string;
+  /**
+   * The manifest's `print` padding, written on `<html>` as
+   * `data-gp-signature` / `data-gp-last-page` so the viewer shows the
+   * blank pages the PDF build appends (`signaturePadding` in
+   * engine/shared/synthesis.ts) and the two page counts agree.
+   */
+  print?: PrintPadding;
   plugins?: LoadedPlugin[];
   pluginCss?: string;
   /** Add a layout-neutral source-file id to source-mapped preview blocks. */
@@ -248,8 +266,13 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
     .map((href) => `\n  <link rel="preload" as="image" href="${href}">`)
     .join("");
 
+  const lastPage = opts.print && lastPageMode(opts.print);
+  const printAttrs =
+    (opts.print?.signature && opts.print.signature > 1 ? ` data-gp-signature="${opts.print.signature}"` : "") +
+    (lastPage ? ` data-gp-last-page="${lastPage}"` : "");
+
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en"${printAttrs}>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">

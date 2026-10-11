@@ -60,6 +60,344 @@ This project follows [Semantic Versioning](https://semver.org/).
   range cannot be verified) is one quiet notice per unlock, with the
   details in Logs, rather than an error for every chapter.
 
+## [0.11.17] - 2026-10-10
+
+### Added
+
+- **Change a book's page size in Book settings** (#357). Under **Details →
+  Page size**, pick DriveThruRPG print, Trade book or a custom size (US
+  Letter, Trade paperback, Digest, A4, A5, or your own width and height).
+  **Save details** updates the size your book prints at and the size the
+  finished PDF is checked against, together. The setting shows the size your
+  book currently uses, and says so if the two have drifted apart. Before,
+  the size could only be picked when the book was created.
+- **Set up online backup for a book you started on this computer** (#358).
+  From **Set up online backup…** (or Book settings → **Connections**), with
+  GitHub connected, create a new private repository named after your book or
+  choose an empty one you already made. Gutterpress copies all of the book's
+  earlier versions there and keeps it backed up like a book opened from
+  GitHub. If something goes wrong (no internet, a name already in use, a
+  repository that already has files) you get a plain explanation, and your
+  book is left as it was.
+- **Silence a lint warning you have decided is fine** (#339). Set
+  `lint.rules` in `manifest.yaml` (for example
+  `printsafe/no-risky-print-effects: off`, or `warn` / `error` to change a
+  rule's severity), or silence one spot with a
+  `gutterpress-disable-next-line <rule-id> -- reason` comment on the line
+  above it, as a CSS comment or a markdown `<!-- -->` comment. This works for
+  the CSS print-safety rules and the heading-level check
+  (`source.accessibility.heading-order`). The desktop CSS editor's inline
+  marks honour the comments; the Problems panel and publish checks honour
+  both.
+- **Plugin markers with no body** (#344). A plugin-declared marker can set
+  `selfClosing: true` for a component that is a single element, such as a
+  divider: `@tape label="…"` is the whole component, needs no `@end-tape`,
+  and nothing after it is nested inside. Typing `@end-tape` is reported as a
+  problem, and editor autocomplete inserts just the marker.
+- **`print.lastPage: short-by-one`** (#336). Pads the book to one page short
+  of a multiple of the signature, DriveThruRPG's other accepted form, instead
+  of adding a blank last page (`blank`, which `reserveLastPage: true` still
+  means). The preview shows the same pages as the PDF.
+- **Preflight flags small text printed in a dark four-colour mix** (#336).
+  The new `pdf.print.black-text` warning lists the pages where text at 24pt
+  or smaller is printed with all four inks in black or a near-black colour,
+  such as a dark brown. Small four-colour text can look fuzzy if the plates
+  are slightly out of register. Near-black text already goes on the black
+  plate alone with `pdfx.blackText: k-only`; a designed dark colour keeps its
+  colour and is flagged so you can decide. It is a warning, so it never stops
+  a build. Set `lint.rules: { pdf.print.black-text: off }` to silence it, or
+  `error` to make it fail the build.
+- **Preflight checks the page count against the signature** (#336). The new
+  `pdf.print.signature` check fails a print PDF whose page count doesn't fit
+  its signature, or whose reserved last page has something on it.
+
+### Changed
+
+- **Only small black text goes on the black plate alone** (#336).
+  DriveThruRPG builds now make black text at or below 24pt K-only, as before,
+  but leave larger text in rich black, as DriveThruRPG recommends. Underlines
+  and strike-throughs on small black text now print K-only along with the
+  text. `build-fingerprint.json` records the `pdfx.blackText` setting.
+- **`clip-path` with a basic shape is no longer a print-safety warning**
+  (#339). `polygon()`, `inset()`, `circle()`, `ellipse()` and `path()` print
+  as vector clips. `clip-path: url(...)` and the properties that really
+  rasterize (`filter`, `backdrop-filter`, blend modes) are still flagged.
+
+### Fixed
+
+- **The in-app Help no longer points to the hidden Books tab** (#359). It now
+  says to use the folder button at the left of the status bar to get back to
+  your books and to Open from GitHub, and that the save status reads *Edits
+  saved*.
+- **At Fit to width, the preview no longer slides sideways** (#353). A
+  sideways trackpad swipe, turning a page or jumping to a page could push the
+  book to the left with part of the page cut off, and since no scrollbar was
+  shown there was no way to move it back. Most noticeable with the editor open
+  beside the preview and in two-page view. At Fit to width the page now stays
+  put; at other zoom levels the preview scrolls sideways as before.
+- **The preview shows the blank pages the PDF adds at the end** (#355). With a
+  print signature (`print.signature`, e.g. the `dtrpg` preset's 4) or a
+  reserved last page, the PDF build pads the book with blank pages, but the
+  preview stopped at the last content page, so the two page counts never
+  matched (the Field Guide previewed at 229 pages and exported at 232). The
+  preview now shows those pages as plain white sheets, exactly like the PDF's,
+  and both use one rule for how many there are. `counter(pages)` still counts
+  only the content pages, as print does. The blank pages also come out right
+  when the book ends on a nearly empty page, where the preview used to show
+  one fewer.
+- **A missing image no longer shifts the preview's pages away from the PDF's**
+  (#354). When a book links an image file that does not exist, the PDF build
+  puts a 640×480 magenta placeholder in its place, but the preview showed a
+  small broken-image icon. The space that saved pushed every later page up by
+  one, so in a real book everything after the missing image sat one page
+  earlier in the preview than in the PDF. The preview now shows the same
+  placeholder, so both lay out the same box, and the missing file is just as
+  easy to spot.
+
+## [0.11.16] - 2026-10-10
+
+### Added
+
+- **`@columns` lays content out in columns, and nothing else.** Write
+  `@columns 3` … `@end-columns` (1 to 5 columns; a bare `@columns` is two) and
+  the content flows into that many columns, with `@column-break` to move on
+  to the next one. It is a plain wrapper, not a section, so a theme that
+  styles sections does not give it a border or background. Any other number
+  is reported as a problem. The editor's `@` autocomplete offers it, and the
+  toolbar's **Two columns** block now inserts `@columns 2`. The count classes
+  behind it, `.gp-columns-1` to `.gp-columns-5`, also work on a section
+  (`.gp-columns-1`, `-4` and `-5` are new).
+
+- **Book settings → Features is split into three tabs.** *Installed & built-in*
+  holds what the book already uses — the version pickers, the pre-release
+  switch, *Check for updates* and the built-in formatting extras. *Search* is
+  the npm search that used to sit behind "Advanced"; it still runs only when
+  you first show it, never when a book opens. *Advanced* keeps install by name
+  and adding a plugin file or folder. The tab you were on is kept while the app
+  is open, and adding something from Search or Advanced stays on that tab and
+  says the new entry is under *Installed & built-in*. The tab strip is the
+  start screen's, now one shared component.
+- **The snippet picker is a searchable card grid.** Snippets now show as cards
+  in a 3-column grid (2 or 1 when the window is narrower) under a heading per
+  level — your book, each extension, core — instead of one long list. A card
+  shows the snippet's name, its level, the `@component` it is the example for,
+  its field count and the first lines of its content. A search box (focused on
+  open) filters by name and content as you type, level chips and "Components
+  only" narrow further, and Enter inserts the first match. Arrow keys move
+  between cards. Choosing a card inserts it exactly as before, including the
+  fill-in step for `{{fields}}`.
+- **Components show authors the structure they expect** (#338). When an
+  author picks a plugin component — typing `@` at the start of a line, or
+  from the snippet picker — the editor inserts the component's example
+  snippet: `snippets/<marker>.md` in its extension by default, or the path
+  the marker names with `snippet:`.
+- **Components can check their content** (#338). A marker may declare
+  `validate(component)`. It receives a plain description of the content
+  (`attrs`, `variant`, `text` and `blocks` such as headings, paragraphs,
+  images and lists) and returns problems, which appear in the Problems panel,
+  `gutterpress validate` and builds at the right line. Problems are warnings
+  unless the plugin marks one `error` or `info`. The plugin scaffold's
+  `term-box` ships an example.
+- **Components offer their variants in autocomplete.** Typing `@sk` lists
+  `@skill` and one `@skill <variant>` entry per variant the marker declares
+  (an alias lists its target's). Picking a variant inserts the component's
+  snippet with the variant word added after the marker name. The editor now
+  reads components through the same resolver the renderer uses, so both agree
+  on aliases and variants.
+- **Section markers.** A marker declared with `section: true` is a core
+  `@section` with the marker's classes: `@npc-stat wirephreak` renders
+  exactly like `@section .dc-npc-stat .dc-wirephreak` (plus
+  `data-npc-stat="wirephreak"`) and behaves like one in every way — it closes
+  at the next section or page, `@end-npc-stat` closes it, and `@continue`
+  keeps its classes. It gets autocomplete, snippets and `validate` like any
+  other component.
+- **A documented token contract for components that rebuild their content.**
+  A declared component's open token carries `meta.kind` (the base marker, so
+  an alias is caught too) alongside `component`, `variant`, `attrs` and
+  `line`. A plugin can declare a marker so core parses it, then rewrite the
+  tokens inside it with an ordinary markdown-it rule; the user guide shows
+  how. All of this is opt-in: plain markdown-it plugins are unaffected.
+- **A mistyped variant is reported.** On a plugin component, `@npc-stat
+  wirephreek` used to be silently ignored when `wirephreek` was not a declared
+  variant. Problems now says `"wirephreek" is not a variant of @npc-stat, so it
+  adds no styling. Variants: wirephreak. Did you mean "wirephreak"?` (or
+  `@npc-stat has no variants`). It is a warning (`unknown_variant`) for container
+  and `section: true` components alike. Nothing is reported for a declared
+  variant, no word, or an alias's preset variant, and the word still lands in
+  `data-<marker>` as before.
+- **Pick the version of any npm extension on the Features tab.** Each npm row
+  has a **Version** menu of the package's published versions, newest first.
+  Choosing one installs it the way `gutterpress ext add name@version` does and
+  moves the pin only once it has downloaded, verified and loaded; if it fails,
+  the book keeps its old version and copy and a message says why. The menu
+  lists stable releases; **Include pre-release versions** (off by default, an
+  app preference shared by all books) adds `-alpha`, `-beta` and `-rc`
+  versions and makes the update check count them as newer. The version a book
+  pins is always listed.
+- **An Install button for a missing or broken copy.** A row whose pinned
+  version has no downloaded copy now offers **Install** (or **Reinstall** when
+  the copy won't load), which fetches exactly the pinned version, shows
+  progress, then refreshes the row.
+
+### Changed
+
+- **Loading indicators look and behave the same everywhere, and say what the
+  wait is.** The opening overlay and the two corner pills ("Updating
+  preview…" and the PDF export) now share one card style (light and dark) and
+  one rule: an indicator appears only if the work is still going after about a
+  fifth of a second, and once it appears it stays for at least half a second,
+  so quick opens and edits no longer flash and nothing strobes. They announce
+  changes politely to screen readers, never block the page underneath, and
+  stand still when your system asks for reduced motion. The start screen's
+  status line, the editor placeholder and the Problems panel's "Checking your
+  book…" draw the same spinner. Opening a book now walks through
+  plain stages instead of a generic "Starting preview…": *Opening <book>…* →
+  *Downloading extensions (1 of 2)* with the package name and a progress bar →
+  *Laying out pages…* with a running page count → *Finishing up…*. The
+  download stage is live: a book opened from a fresh clone shows each pinned
+  extension as it arrives, and the notice afterwards just reports the result
+  (several failed downloads are one notice that points at **Install** in Book
+  settings > Features, and it stays until you close it). A finished PDF export
+  is reported by its "PDF saved to…" notice alone, not a second pill on top of it.
+
+- **Snippets come from levels: your book, extensions and Gutterpress** (#338).
+  The snippet picker now lists every snippet, grouped by level, even when two
+  share a name; before, a book snippet hid an extension's snippet of the same
+  name. Where a component needs one snippet, the book's
+  `snippets/<marker>.md` wins over the extension's.
+- **The status bar has a Books button, and its pieces are regrouped.** A
+  folder button in the left corner opens the start screen on its Books tab.
+  The book switcher beside it now shows a book icon instead of a folder. The
+  right side reads sync status, the "Edits saved" indicator, a divider, then
+  settings and help (help is back at the right edge). The save indicator moved
+  here from the editor toolbar (the Problems badge stays there) and shows only
+  while a book is open.
+- **Paging is centered in the preview toolbar.** The page controls (first,
+  previous, page picker, next, last) are centered with the zoom menu on the
+  right; in a narrow preview pane the zoom label and then the first/last
+  buttons drop out, and below that the paging falls back to the left so
+  nothing overlaps.
+- **The left panel's Books tab is hidden for now.** The status bar's Books
+  button opens the same list on the start screen, and we are deciding whether
+  it replaces the tab. A remembered Books tab shows Table of contents instead;
+  nothing is deleted, so the tab can come back.
+- **"Needs install" no longer sends you to the terminal.** The desktop row no
+  longer tells you to open Advanced or shows the `gutterpress ext add` command
+  (the CLI still prints it). `gutterpress ext outdated` and `ext update` are
+  unchanged; the library's update check gained an `includePrerelease` option,
+  off by default.
+- **Downloaded extensions stay out of a book's version history.** New and
+  adopted books now ignore `plugins/npm/` (next to `dist/`) in their
+  `.gitignore`, and installing an extension adds the rule to an existing book's
+  `.gitignore`, append-only. The manifest already pins each version, so a
+  fresh clone needs nothing from git. If your `.gitignore` deliberately
+  re-includes `plugins/npm/`, it is left alone and the install warns that
+  downloaded extensions shouldn't be committed. For a book in a subfolder of a
+  larger repository the rule goes in the book's own `.gitignore`, which
+  version history honours. Files already committed stay tracked — ignoring a
+  folder never removes anything from history; remove them yourself when you
+  are ready.
+
+- **A fresh clone of a book downloads its extensions by itself.** Downloaded
+  extensions are no longer part of a book's history, so a clone has the pins in
+  `manifest.yaml` but not the files. `gutterpress build`, `validate`,
+  `preflight` and `preview` now download any missing pinned version first and
+  print one line per package to stderr (`Downloaded gp-dimm-city@1.2.0-alpha.3
+  (pinned in manifest.yaml)`). The desktop's PDF export and Problems panel do
+  the same before they use your extensions, so no export or check runs without
+  them: a failed download stops an export with the extension and the reason,
+  and Problems lists it as an error. It is the exact version the manifest pins — never a newer
+  one — fetched through the same verified install as `ext add` (registry
+  lookup, integrity check, load test), and it touches nothing else: no
+  network when every copy is present, and local, unpinned and bundled entries
+  are left alone. If the download fails (registry error, integrity
+  mismatch), they stop and say which extension failed, why and how to retry
+  (exit code 3); live `preview` warns and carries on, as before. Offline,
+  nothing is tried package by package: one error names the extensions that
+  are not installed yet and says to try again once online. A book whose
+  extensions are already downloaded is never blocked offline, since nothing is
+  fetched. The plugin
+  loader itself is still offline. The desktop app does the same when you open
+  a book, before its preview loads: a short notice says what it downloaded, no
+  extra confirmation is asked for a version you already pinned, and if the
+  download fails the book still opens with the extension's **Needs install**
+  row and **Install** button as the way to retry (offline, the notice is an
+  error saying to connect to the internet to install them). Opening a book while a build
+  runs never downloads the same package twice.
+
+### Fixed
+
+- **A failed extension install no longer leaves empty folders behind.** An
+  install that failed (offline, a bad hash, a package that would not load) used
+  to remove its download but leave an empty `plugins/npm/<name>/` folder, or
+  `plugins/npm/` itself, in the book. It now removes exactly the folders it
+  created, and removing an extension removes its package folder once its last
+  version is gone.
+- **Downloaded versions are pruned the same way everywhere.** `ext add` and
+  `ext update` removed a package's old versions, but restoring a pin after a
+  pull or branch switch left the previous version in `plugins/npm/`. Now once a
+  package's pinned version is installed by either route, its other downloaded
+  versions are deleted, unless another enabled manifest entry still pins one.
+  Other packages are never touched.
+- **A `.gitignore` rule with a character class is recognised.** A book whose
+  `.gitignore` said `plugins/[np]pm/` had `plugins/npm/` appended again,
+  because the check understood only `*`, `**` and `?`. It now uses the same
+  gitignore matcher as version history.
+- **An unpinned extension says to pin it.** A manifest entry such as
+  `some-plugin` or `some-plugin@^1` used to fail a build with "not found";
+  it now says the entry is not pinned to an exact version and that
+  `gutterpress ext add` downloads and pins it.
+- **Two restores of one book cannot swap a copy out from under each other.**
+  A restore re-checks, once it is the one holding the book's install lock, that
+  the copy is still missing, and Windows path spellings that differ only in
+  case share one restore.
+- **The editor fills its pane again.** A leftover style from the old toolbar
+  centred both panes' contents, so the editor shrank to its longest line and
+  sat in the middle of the pane with an empty strip to its left. It now starts
+  at the pane's edge.
+- **"Fit to width" never scrolls sideways.** On some screens (fractional
+  display scaling) the fitted page could still overflow by a fraction of a
+  pixel and show a horizontal scrollbar. A fit now clips sideways overflow in
+  the preview; any numeric zoom scrolls as before.
+- **Full-screen pages keep still when switching tabs.** Settings, Help and Book
+  settings reserve the scrollbar's space, so going from a short tab to a long
+  one no longer nudges the page sideways.
+- **A freshly scaffolded plugin passes its own tests** (#338). Its "no
+  cascade layer" check matched `@layer` inside a stylesheet comment.
+- **A variant word that matches a JavaScript built-in name no longer leaks
+  into the page.** `@callout constructor` (and `toString`, `__proto__`, …)
+  emitted `function Object() { [native code] }` as a class. A component's
+  variant is now looked up among its own declared variants only, so these
+  words get the usual "not a variant" warning like any other undeclared word.
+
+## [0.11.15] - 2026-10-07
+
+### Changed
+
+- **Existing `dtrpg` books build differently.** Both fixes below are on by
+  default for the `dtrpg` preset, so rebuilding a book that hasn't changed
+  gives a PDF with 1–4 extra blank pages at the end, and, for `--format pdfx`,
+  black text on the black plate only. To keep the old output, set
+  `print.reserveLastPage: false` and `pdfx.blackText: icc` in `manifest.yaml`.
+  Books that already end on a blank printer page of their own still end
+  blank. The build may add more padding pages after it.
+
+### Fixed
+
+- **Black PDF/X text prints on the black plate only** (#331). Chromium
+  writes text colour as RGB, so the PDF/X conversion turned black text into
+  four-colour black, which DriveThruRPG rejects for text at 24pt and below.
+  The new `pdfx.blackText` option (`icc` or `k-only`) controls this; the
+  `dtrpg` preset uses `k-only`, which prints black and near-black text
+  (warm inks such as `#1a1512` included) at 100% K. Coloured text, and black
+  rules and panels, are unchanged.
+- **DriveThruRPG interiors end on a blank page** (#332). The `dtrpg` preset
+  now pads to 4-page signatures, and the new `print.reserveLastPage` option
+  (on for `dtrpg`) adds a full signature of blank pages when the content
+  already fills one exactly, so the final page — reserved for printer
+  information — is always blank. The build log's page count is the number
+  to enter in DriveThruRPG's cover Template Generator.
+
 ## [0.11.14] - 2026-10-06
 
 ### Added

@@ -3,6 +3,7 @@ import {
   describeSegments,
   extensionSourceLabel,
   extensionStatus,
+  pickerVersions,
   orderAfterMove,
   sampleSrcdoc,
   hoverPreviewSrcdoc,
@@ -138,11 +139,11 @@ test("extensionStatus: an npm entry the lib flagged as not installed / not pinne
     const st = extensionStatus(e, validation, false);
     expect(st.label).toBe("Needs install");
     expect(st.kind).toBe("error");
-    // Install from npm lives behind the Features tab's Advanced disclosure (#309).
-    expect(st.detail).toContain("Advanced");
-    expect(st.detail).toContain("Install from npm");
-    expect(st.detail).toContain("markdown-it-footnote@4.0.0");
-    expect(st.raw).toBe(warning);
+    // The row offers an Install button; the lib's text (the CLI's `gutterpress ext add …`) is never shown.
+    expect(st.fix).toBe("install");
+    expect(st.detail).not.toContain("Advanced");
+    expect(st.detail).not.toContain("gutterpress");
+    expect(st.raw).toBeUndefined();
   }
 });
 
@@ -166,4 +167,28 @@ test("extensionStatus: a failed load on an installed npm entry says to reinstall
   expect(st.label).toBe("Error");
   expect(st.detail).toContain("reinstall");
   expect(st.raw).toBe("Unknown load error");
+  expect(st.fix).toBe("reinstall");
+});
+
+test("extensionStatus: only npm rows have an in-app fix", () => {
+  const e = entry({ use: "./plugins/broken.js", kind: "path", name: "./plugins/broken.js" });
+  const validation: Record<string, ExtensionValidationResult> = {
+    "./plugins/broken.js": { use: "./plugins/broken.js", kind: "path", enabled: true, ok: false, error: "x" },
+  };
+  expect(extensionStatus(e, validation, false).fix).toBeUndefined();
+  expect(extensionStatus(entry(), { x: { use: "x", kind: "path", enabled: true, ok: true } }, false).fix).toBeUndefined();
+});
+
+test("pickerVersions: stable only unless asked, pre-release pin always kept, order preserved", () => {
+  const published = ["2.0.0-beta.1", "1.2.0", "1.2.0-alpha.2", "1.1.0+build-7", "1.0.0"];
+  expect(pickerVersions(published, "1.0.0", false)).toEqual(["1.2.0", "1.1.0+build-7", "1.0.0"]);
+  expect(pickerVersions(published, "1.0.0", true)).toEqual(published);
+  expect(pickerVersions(published, "1.2.0-alpha.2", false)).toEqual(["1.2.0", "1.2.0-alpha.2", "1.1.0+build-7", "1.0.0"]);
+  expect(pickerVersions(published, undefined, false)).toEqual(["1.2.0", "1.1.0+build-7", "1.0.0"]);
+});
+
+test("pickerVersions: a pin the registry does not list (or an unloaded list) is still offered, first", () => {
+  expect(pickerVersions([], "1.2.0-alpha.2", false)).toEqual(["1.2.0-alpha.2"]);
+  expect(pickerVersions(["1.1.0"], "9.9.9", false)).toEqual(["9.9.9", "1.1.0"]);
+  expect(pickerVersions([], undefined, true)).toEqual([]);
 });

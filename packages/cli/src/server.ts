@@ -87,7 +87,7 @@ export async function startPreviewServer(
   const state = createServerState(inputPath, tempDir, config, options);
 
   // Generate initial HTML (or a placeholder when there's no input yet)
-  await generateAndWriteHtml(inputPath, tempDir, config, state.cssAssets);
+  await generateAndWriteHtml(inputPath, tempDir, config, state.cssAssets, state.imageRefs);
 
   // Stage 5: Define restart function
   const restartPreview = async (newInputPath: string): Promise<void> => {

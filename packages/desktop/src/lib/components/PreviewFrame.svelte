@@ -104,7 +104,7 @@
        turned a ~10s layout into ~5 minutes (~1 page/sec) on a 287-page book
        (the 0.4.1 regression, proven by forcing opacity:1 mid-render: the
        remaining 247 pages completed in <14s). The page/layout shuffle is
-       hidden by the TRANSLUCENT LoadingOverlay sitting on top instead; the
+       hidden by the TRANSLUCENT ActivityIndicator overlay sitting on top instead; the
        cross-fade happens on the overlay, not the iframe. */
     opacity: 1;
   }

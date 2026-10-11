@@ -308,12 +308,16 @@ Renders:
 
 `@continue` used with no open `@section` is dropped with a warning — it does not resurrect a section already closed by `@end-section`.
 
-### @column-break and @spread
+### @columns, @column-break and @spread
 
-`@column-break` forces a break inside a multi-column section. `@spread` groups content into a two-page spread:
+`@columns` lays its content out in columns and does nothing else: no border,
+no background, none of the styling your theme gives a section. Give it the
+number of columns, 1 to 5 (a bare `@columns` is two), and close it with
+`@end-columns`. `@column-break` forces the next block into the next column.
+`@spread` groups content into a two-page spread.
 
 ```markdown
-@section {.gp-columns-2}
+@columns 2
 
 Left column content.
 
@@ -321,13 +325,19 @@ Left column content.
 
 Right column content.
 
-@end-section
+@end-columns
 ```
 
-`.gp-columns-2` and `.gp-columns-3` are the core two- and three-column
-utilities. They use `--gp-column-gap` for their gutter and are valid on a bare
-`@section`; an enclosing `@page` is not required. Themes may add decoration to
-an explicitly themed class, but should not redefine generic column vocabulary.
+Any other number (`@columns 6`) is reported as a problem and gives two
+columns. `@columns` closes at the next `@section`, `@page` or `@chapter`, so
+put it inside a section rather than around one.
+
+Under the hood `@columns 3` is a plain wrapper with the `.gp-columns` and
+`.gp-columns-3` classes. The count classes, `.gp-columns-1` to
+`.gp-columns-5`, also work on a section when you want its styling as well:
+`@section .gp-columns-2`. They use `--gp-column-gap` for their gutter, and an
+enclosing `@page` is not required. Themes may add decoration to an explicitly
+themed class, but should not redefine generic column vocabulary.
 
 Three more classes name decisions a column run otherwise needs raw CSS for:
 
@@ -339,7 +349,7 @@ Three more classes name decisions a column run otherwise needs raw CSS for:
 
 ### Grids: .gp-grid-2 and .gp-grid-3
 
-Columns flow; grids place. A `.gp-columns-2` section pours one run of text
+Columns flow; grids place. `@columns 2` pours one run of text
 down the first column and continues it in the second. A `.gp-grid-2` (or
 `.gp-grid-3`) section instead places each block — paragraph, image, card —
 into the next open slot, across then down. Reach for a grid when the pieces

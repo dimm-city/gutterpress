@@ -61,6 +61,9 @@ export {
 
 // ── Type-only exports for plugin authors ─────────────────────────────────────
 export type {
+  GutterpressComponent,
+  GutterpressComponentBlock,
+  GutterpressComponentProblem,
   GutterpressPlugin,
   GutterpressPluginExport,
   GutterpressPluginMetadata,

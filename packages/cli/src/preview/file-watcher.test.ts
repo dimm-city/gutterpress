@@ -52,6 +52,7 @@ function createTestServerState(
     previewServer: null,
     isShuttingDown: false,
     cssAssets: new Map<string, string>(),
+    imageRefs: new Set<string>(),
   };
 }
 

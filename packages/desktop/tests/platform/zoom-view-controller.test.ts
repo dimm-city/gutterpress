@@ -154,7 +154,7 @@ test("applyFitWidthZoom uses scale 1 when dimensions are missing", async () => {
   const h = make();
   (h.client as FakeClient).dims = null;
   await h.ctrl.applyFitWidthZoom();
-  expect((h.client as FakeClient).callsFor("setZoom")).toEqual([{ cmd: "setZoom", args: [1] }]);
+  expect((h.client as FakeClient).callsFor("setZoom")).toEqual([{ cmd: "setZoom", args: [1, false, true] }]);
 });
 
 test("applyFitWidthZoom leaves the zoom alone when the dimension query rejects", async () => {

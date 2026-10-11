@@ -209,3 +209,16 @@ test("listRepoBooks maps 401 to the reconnect message", async () => {
     listRepoBooks(CRED, "octocat", "books", "main", { fetchImpl }),
   ).rejects.toThrow(/reconnect github/i);
 });
+
+test("flags repositories that could be an empty backup target (size 0, writable, not archived)", async () => {
+  const body = [
+    { ...repoBody("fresh"), size: 0, permissions: { push: true } },
+    { ...repoBody("has-files"), size: 42, permissions: { push: true } },
+    { ...repoBody("archived"), size: 0, archived: true },
+    { ...repoBody("read-only"), size: 0, permissions: { push: false } },
+    repoBody("unknown-size"),
+  ];
+  const fetchImpl = (async () => jsonResponse(body)) as unknown as typeof fetch;
+  const repos = await listGitHubRepositories(CRED, { fetchImpl });
+  expect(repos.filter((r) => r.maybeEmpty).map((r) => r.name)).toEqual(["fresh"]);
+});

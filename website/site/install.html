@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Install</title>
+    <meta name="description" content="Download the Gutterpress desktop app for Windows, macOS or Linux, or install the CLI with Homebrew, Scoop, npm, a standalone binary or Docker.">
+    <meta property="og:title" content="Install Gutterpress">
+    <meta property="og:description" content="Download the desktop app, or install the CLI with Homebrew, Scoop, npm, a standalone binary or Docker.">
+  </head>
+  <body>
+    <main>
+      <h1>Install</h1>
+      <p>Most writers want the <a href="#desktop-app">desktop app</a>: an editor, a live paginated
+      preview and one-click PDF export, with nothing else to install. The
+      <a href="#command-line">command line</a> runs the same engine in scripts and CI.</p>
+
+      <h2 id="desktop-app">Desktop app</h2>
+      <p>The app bundles its own Chromium; no Node, Bun, or browser setup is needed.</p>
+      <include src="/_includes/downloads-desktop.html"></include>
+      <p>The downloads are unsigned for now, so macOS and Windows warn the first time you open the
+      app. <a href="/docs/desktop/install.html">Installing the desktop app</a> walks through it.</p>
+
+      <h2 id="command-line">Command line</h2>
+      <h3>Homebrew (macOS and Linux)</h3>
+      <pre><code>brew tap dimm-city/gutterpress https://github.com/dimm-city/gutterpress.git
+brew install dimm-city/gutterpress/gutterpress</code></pre>
+      <h3>Scoop (Windows)</h3>
+      <pre><code>scoop bucket add gutterpress https://github.com/dimm-city/gutterpress.git
+scoop install gutterpress/gutterpress</code></pre>
+      <h3>npm</h3>
+      <p>Node.js 22 or newer.</p>
+      <pre><code>npm install -g gutterpress</code></pre>
+      <h3>Standalone binary</h3>
+      <p>A single file, with no Node or Bun needed. Download it, make it executable on macOS and
+      Linux (<code>chmod +x</code>), and put it on your <code>PATH</code>.</p>
+      <include src="/_includes/downloads-cli.html"></include>
+      <h3>Docker</h3>
+      <p>A <a href="https://github.com/dimm-city/gutterpress/blob/main/docs/docker.md">Docker image</a>
+      ships with all the print tools preinstalled.</p>
+      <p>The CLI renders PDFs through a Chromium-based browser on the machine it runs on; some PDF/X
+      and validation features also use Ghostscript or qpdf. See
+      <a href="/docs/cli/system-setup.html">System setup</a>, then
+      <a href="/docs/cli/getting-started.html">Getting started</a>.</p>
+    </main>
+  </body>
+</html>

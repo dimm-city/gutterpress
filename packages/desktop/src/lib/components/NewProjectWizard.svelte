@@ -5,6 +5,8 @@
   import type { TemplateInfo } from "$lib/api";
   import { dialogBehavior, guardedClose, FOCUSABLE } from "$lib/dialog";
   import { useSettings } from "$lib/settings.svelte";
+  import PageSizeFields from "$lib/components/PageSizeFields.svelte";
+  import { PRESET_CHOICES, trimPoints, type PresetChoice } from "$lib/page-size-choices";
   import {
     PUBLISH_TARGET_CHOICES,
     PRINT_TOOL_IDS,
@@ -49,69 +51,19 @@
   // own manifest — the template is the first decision, and everything under
   // it starts from what that template is for. The writer can still change
   // any of it before creating.
-  // Kept as a local literal (labels are UI copy; the lib's PRESET_IDS is the
-  // authoritative id list and scaffoldProject rejects anything unknown).
-  type PresetChoice = "dtrpg" | "book" | "custom";
-  const PRESET_CHOICES: Array<{ id: PresetChoice; label: string; description: string }> = [
-    {
-      id: "dtrpg",
-      label: "DriveThruRPG print",
-      description: "Print-on-demand ready for DriveThruRPG: trim, ink and PDF checks preset.",
-    },
-    {
-      id: "book",
-      label: "Trade book",
-      description: "A neutral 6×9in book with no print-service rules.",
-    },
-    {
-      id: "custom",
-      label: "Custom size",
-      description: "You set the page size your book is designed for.",
-    },
-  ];
+  // The choices + copy are shared with Book settings ($lib/page-size-choices).
   let selectedPreset = $state<PresetChoice | null>(null);
 
   // Page size for the `custom` preset. Authors think in INCHES, so that is
   // what they type; the manifest stores points (72pt = 1in) and the named
-  // sizes below carry exact point values (A4/A5 are not round inch numbers).
-  const PT_PER_INCH = 72;
-  interface CommonSize {
-    id: string;
-    label: string;
-    /** Exact trim in points, or null for "I'll type my own". */
-    points: { width: number; height: number } | null;
-  }
-  const COMMON_SIZES: CommonSize[] = [
-    { id: "letter", label: 'US Letter — 8.5 × 11 in', points: { width: 612, height: 792 } },
-    { id: "trade", label: 'Trade paperback — 6 × 9 in', points: { width: 432, height: 648 } },
-    { id: "digest", label: 'Digest — 5.5 × 8.5 in', points: { width: 396, height: 612 } },
-    { id: "a4", label: "A4 — 210 × 297 mm", points: { width: 595, height: 842 } },
-    { id: "a5", label: "A5 — 148 × 210 mm", points: { width: 420, height: 595 } },
-    { id: "custom", label: "My own size…", points: null },
-  ];
+  // sizes carry exact point values (A4/A5 are not round inch numbers).
   let sizeChoice = $state<string>("letter");
   // Free-form trim in INCHES — only used when sizeChoice is "custom".
   let widthIn = $state("");
   let heightIn = $state("");
 
-  const namedSize = $derived(COMMON_SIZES.find((s) => s.id === sizeChoice)?.points ?? null);
-  const widthInNum = $derived(Number(widthIn));
-  const heightInNum = $derived(Number(heightIn));
-  const inchesValid = $derived(
-    Number.isFinite(widthInNum) && widthInNum > 0 &&
-    Number.isFinite(heightInNum) && heightInNum > 0
-  );
   /** The trim in points the manifest will record, or null while incomplete. */
-  const customPagePoints = $derived(
-    namedSize ??
-      (inchesValid
-        ? {
-            // Round to 3dp so 8.27in doesn't land as 595.44000000000005.
-            width: Math.round(widthInNum * PT_PER_INCH * 1000) / 1000,
-            height: Math.round(heightInNum * PT_PER_INCH * 1000) / 1000,
-          }
-        : null)
-  );
+  const customPagePoints = $derived(trimPoints(sizeChoice, widthIn, heightIn));
 
   // Publish targets (ADR 0008): WHERE the book will be published — each one
   // is a destination's validation policy, recorded explicitly in the new
@@ -589,43 +541,7 @@
             {/each}
           </div>
           {#if selectedPreset === "custom"}
-            <label class="field size-field" for="np-page-size">
-              <span>Page size</span>
-              <select id="np-page-size" bind:value={sizeChoice}>
-                {#each COMMON_SIZES as size (size.id)}
-                  <option value={size.id}>{size.label}</option>
-                {/each}
-              </select>
-            </label>
-            {#if sizeChoice === "custom"}
-              <div class="custom-page" role="group" aria-label="Page size in inches">
-                <label class="page-field" for="np-page-width">
-                  <span>Width (in)</span>
-                  <input
-                    id="np-page-width"
-                    bind:value={widthIn}
-                    type="number"
-                    min="0.1"
-                    step="0.25"
-                    placeholder="8.5"
-                    autocomplete="off"
-                  />
-                </label>
-                <span class="page-times" aria-hidden="true">×</span>
-                <label class="page-field" for="np-page-height">
-                  <span>Height (in)</span>
-                  <input
-                    id="np-page-height"
-                    bind:value={heightIn}
-                    type="number"
-                    min="0.1"
-                    step="0.25"
-                    placeholder="11"
-                    autocomplete="off"
-                  />
-                </label>
-              </div>
-            {/if}
+            <PageSizeFields idPrefix="np" bind:sizeChoice bind:widthIn bind:heightIn />
             <p class="page-hint">
               This is the page size your finished book is checked against; keep it
               matching the <code>@page</code> size in your stylesheet.
@@ -794,35 +710,6 @@
     line-height: 1.45;
     color: var(--app-warning-text);
   }
-  .custom-page {
-    display: flex;
-    align-items: flex-end;
-    gap: 8px;
-    margin-top: 2px;
-  }
-  .page-field { display: flex; flex-direction: column; gap: 4px; }
-  .page-field > span { font-size: 11px; color: var(--app-text-muted); }
-  .page-field input {
-    width: 90px;
-    background: var(--app-surface-sunken);
-    border: 1px solid var(--app-border);
-    color: var(--app-text-secondary);
-    padding: 6px 8px;
-    border-radius: 6px;
-    font-size: 13px;
-  }
-  .page-field input:focus { outline: none; border-color: var(--app-focus-ring); }
-  .size-field { gap: 4px; margin-top: 2px; }
-  .size-field select {
-    background: var(--app-surface-sunken);
-    border: 1px solid var(--app-border);
-    color: var(--app-text-secondary);
-    padding: 7px 8px;
-    border-radius: 6px;
-    font-size: 13px;
-  }
-  .size-field select:focus { outline: none; border-color: var(--app-focus-ring); }
-  .page-times { color: var(--app-text-muted); font-size: 13px; padding-bottom: 8px; }
   .page-hint {
     margin: 4px 0 0;
     font-size: 11px;

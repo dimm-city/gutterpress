@@ -55,6 +55,16 @@ export interface ServerState {
    * surface.
    */
   cssAssets: Map<string, string>;
+  /**
+   * Every image the current render references (`onImageRefs`, the same list
+   * the build plans its asset copies from), normalized to the URL path the
+   * preview serves it at. A request for one whose file does not exist gets
+   * the build's magenta placeholder (`placeholderPng`) instead of a 404, so
+   * the preview lays out the same 640×480 box the PDF does rather than a
+   * small broken-image icon — that difference moved every later page by one
+   * in a real book (#354). Rebuilt on every render; exact-match lookups only.
+   */
+  imageRefs: Set<string>;
 }
 
 /**
@@ -79,5 +89,6 @@ export function createServerState(
     config,
     options,
     cssAssets: new Map(),
+    imageRefs: new Set(),
   };
 }

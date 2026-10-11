@@ -8,7 +8,7 @@
    * rendered (or visibly rendering) preview. The continue card mirrors that
    * live progress.
    *
-   * Layer rules (hard constraints, see LoadingOverlay/PreviewFrame):
+   * Layer rules (hard constraints, see ActivityIndicator/PreviewFrame):
    * - The scrim is TRANSLUCENT, never opaque — the preview iframe underneath
    *   is cross-origin and Chromium throttles it to ~1fps when it has no
    *   visible pixels (the 0.4.1 slow-render regression). No backdrop-filter:
@@ -28,7 +28,9 @@
   import Icon from "$lib/components/Icon.svelte";
   import ProjectsListBody from "$lib/components/ProjectsListBody.svelte";
   import SettingsView from "$lib/components/SettingsView.svelte";
+  import Spinner from "$lib/components/Spinner.svelte";
   import BrandMark from "$lib/components/BrandMark.svelte";
+  import Tabs from "$lib/components/Tabs.svelte";
   import HelpContent from "$lib/components/HelpContent.svelte";
   import TroubleshootingView from "$lib/components/TroubleshootingView.svelte";
   import AboutView from "$lib/components/AboutView.svelte";
@@ -149,13 +151,6 @@
     { id: "troubleshooting", label: "Troubleshooting" },
   ];
   let activeTab = $state<LandingTab>("projects");
-  let tabEls = $state<Record<LandingTab, HTMLButtonElement | undefined>>({
-    projects: undefined,
-    settings: undefined,
-    help: undefined,
-    about: undefined,
-    troubleshooting: undefined,
-  });
 
   /** Sub-tab the Troubleshooting tab opens on (deep link or its default). */
   let troubleshootingTab = $state<TroubleshootingTab>("logs");
@@ -166,20 +161,6 @@
   export function showTab(tab: LandingTab, sub?: TroubleshootingTab) {
     troubleshootingTab = sanitizeTroubleshootingTab(sub);
     activeTab = tab;
-  }
-
-  function onTablistKeydown(e: KeyboardEvent) {
-    const ids = LANDING_TABS.map((tab) => tab.id);
-    const current = ids.indexOf(activeTab);
-    let next: number | undefined;
-    if (e.key === "ArrowRight") next = (current + 1) % ids.length;
-    else if (e.key === "ArrowLeft") next = (current - 1 + ids.length) % ids.length;
-    else if (e.key === "Home") next = 0;
-    else if (e.key === "End") next = ids.length - 1;
-    if (next === undefined) return;
-    e.preventDefault();
-    showTab(ids[next]!);
-    tabEls[activeTab]?.focus();
   }
 
   let rootEl = $state<HTMLElement | undefined>(undefined);
@@ -343,22 +324,7 @@
         </section>
       {/if}
 
-      <div class="tab-bar" role="tablist" aria-label="Start screen sections" onkeydown={onTablistKeydown} tabindex="-1">
-        {#each LANDING_TABS as tab (tab.id)}
-          <button
-            id="landing-tab-{tab.id}"
-            type="button"
-            role="tab"
-            class="tab"
-            class:active={activeTab === tab.id}
-            aria-selected={activeTab === tab.id}
-            aria-controls="landing-panel"
-            tabindex={activeTab === tab.id ? 0 : -1}
-            bind:this={tabEls[tab.id]}
-            onclick={() => showTab(tab.id)}
-          >{tab.label}</button>
-        {/each}
-      </div>
+      <Tabs tabs={LANDING_TABS} active={activeTab} label="Start screen sections" idPrefix="landing" onselect={(id) => showTab(id)} />
 
       <div
         id="landing-panel"
@@ -384,7 +350,7 @@
                 {#if status.kind === "ready"}
                   <span class="cc-ready-icon"><Icon name="circle-check" size={14} /></span>
                 {:else}
-                  <span class="cc-spinner" aria-hidden="true"></span>
+                  <Spinner size={12} />
                 {/if}
                 <span role="status" aria-live="polite">{status.label}</span>
                 {#if stalled && status.kind !== "ready"}
@@ -596,31 +562,6 @@
   .landing-h1 { margin: 0; font-size: 20px; font-weight: 700; color: var(--app-text); letter-spacing: -0.3px; }
   .landing-h2 { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--app-text-secondary); text-transform: uppercase; letter-spacing: 0.6px; }
 
-  /* ── Tab bar (SettingsView pattern) ────────────────────────────────── */
-  .tab-bar {
-    display: flex;
-    gap: 2px;
-    border-bottom: 1px solid var(--app-border-subtle);
-    flex-shrink: 0;
-    overflow-x: auto;
-  }
-  .tab {
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--app-text-muted);
-    font-size: 13px;
-    padding: 8px 12px;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-  .tab:hover { color: var(--app-text); }
-  .tab.active {
-    color: var(--app-text);
-    border-bottom-color: var(--app-accent);
-    font-weight: 600;
-  }
-  .tab:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: -2px; }
   .tab-panel {
     display: flex;
     flex-direction: column;
@@ -670,19 +611,6 @@
   .cc-status[data-kind="ready"] { color: var(--app-success-text); }
   .cc-ready-icon { display: inline-flex; color: var(--app-success-strong); }
   .cc-stalled { color: var(--app-warning-text); }
-  .cc-spinner {
-    width: 12px;
-    height: 12px;
-    border: 2px solid var(--app-spinner-track);
-    border-top-color: var(--app-spinner-head);
-    border-radius: 50%;
-    animation: landing-spin 0.75s linear infinite;
-    flex-shrink: 0;
-  }
-  @keyframes landing-spin { to { transform: rotate(360deg); } }
-  @media (prefers-reduced-motion: reduce) {
-    .cc-spinner { animation-duration: 1.6s; }
-  }
 
   /* Color (gradient fill/hover/border-color/font-weight) lives in
      theme.css's `.app-btn-primary` — co-applied in the template (the ONE

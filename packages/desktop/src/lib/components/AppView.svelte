@@ -103,6 +103,9 @@
     z-index: var(--app-z-sheet);
     background: var(--app-bg);
     overflow-y: auto;
+    /* Keep the scrollbar's space reserved so switching between a short and a
+       long tab (e.g. Features → Search) doesn't shift the centred page. */
+    scrollbar-gutter: stable;
     display: flex;
     justify-content: center;
     align-items: flex-start;

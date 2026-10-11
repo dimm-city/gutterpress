@@ -205,6 +205,12 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
     expect(config.page.tolerance).toBe(DTRPG_PRESET.page!.tolerance);
   });
 
+  test("pdfx.blackText: dtrpg defaults to k-only, book to icc, manifest overrides", () => {
+    expect(resolveConfig({}, {}).pdfx.blackText).toBe("k-only");
+    expect(resolveConfig({}, { preset: "book" }).pdfx.blackText).toBe("icc");
+    expect(resolveConfig({}, { pdfx: { blackText: "icc" } }).pdfx.blackText).toBe("icc");
+  });
+
   test("one-level-deep object (pdfx): manifest overrides flavor only, icc/stripAnnotations keep preset defaults", () => {
     const config = resolveConfig({}, { pdfx: { flavor: "x3" } });
     expect(config.pdfx.flavor).toBe("x3");
@@ -216,6 +222,19 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
     const config = resolveConfig({}, { lint: { configPath: null, enabled: false } });
     expect(config.lint.configPath).toBeNull();
     expect(config.lint.enabled).toBe(false);
+  });
+
+  test("lint.rules (#339): defaults to {}, manifest sets rule levels, cli wins per key", () => {
+    expect(resolveConfig({}, {}).lint.rules).toEqual({});
+    const config = resolveConfig(
+      { lint: { rules: { "printsafe/page-containment": "error" } } },
+      { lint: { rules: { "printsafe/no-risky-print-effects": "off", "printsafe/page-containment": "off" } } },
+    );
+    expect(config.lint.rules).toEqual({
+      "printsafe/no-risky-print-effects": "off",
+      "printsafe/page-containment": "error",
+    });
+    expect(config.lint.enabled).toBe(true);
   });
 
   test("validate.source string|false leaves: manifest false wins over preset null, cli false wins over manifest string", () => {

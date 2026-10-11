@@ -15,6 +15,7 @@
    * back to the toggle. No focus trap — it is a panel, not a modal.
    */
   import Icon from "$lib/components/Icon.svelte";
+  import Spinner from "$lib/components/Spinner.svelte";
   import type { ProblemEntry } from "$lib/platform/dtos";
   import {
     closesPanelOnEscape,
@@ -143,7 +144,9 @@
       </div>
     {:else if problems.length === 0}
       <div class="empty-state" role="status">
-        <span class="empty-icon"><Icon name="circle-check" size={18} /></span>
+        <span class="empty-icon">
+          {#if loading}<Spinner size={16} />{:else}<Icon name="circle-check" size={18} />{/if}
+        </span>
         <p class="empty-text">
           {loading ? "Checking your book…" : "No problems found — your book looks good!"}
         </p>

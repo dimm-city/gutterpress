@@ -15,11 +15,11 @@ import { resolveChromiumExecutable } from "../../../cli/src/lib/chromium";
  * CLI ships with, flags and all.
  */
 const component = readFileSync(
-  path.resolve(import.meta.dir, "../../src/lib/components/LoadingOverlay.svelte"),
+  path.resolve(import.meta.dir, "../../src/lib/components/ActivityIndicator.svelte"),
   "utf8",
 );
 const css = component.match(/<style>([\s\S]*?)<\/style>/)?.[1];
-if (!css) throw new Error("LoadingOverlay.svelte has no style block");
+if (!css) throw new Error("ActivityIndicator.svelte has no style block");
 
 const chromium = await resolveChromiumExecutable();
 const browserTest = chromium ? test : test.skip;
@@ -57,7 +57,7 @@ async function centerOf(page: Page, selector: string): Promise<{ x: number; y: n
   return box;
 }
 
-browserTest("wheel passes through the spinner to the iframe while Cancel remains clickable", async () => {
+browserTest("wheel passes through the indicator card to the iframe while Cancel remains clickable", async () => {
   const page = await browser!.newPage();
   try {
     await page.send("Emulation.setDeviceMetricsOverride", {
@@ -71,6 +71,12 @@ browserTest("wheel passes through the spinner to the iframe while Cancel remains
         :root {
           --app-overlay: rgba(0, 0, 0, .2);
           --app-spinner-track: #ccc;
+          --app-surface-raised: #fff;
+          --app-border: #ccc;
+          --app-text: #111;
+          --app-text-muted: #666;
+          --app-shadow-md: rgba(0, 0, 0, .2);
+          --app-control-hover-border: #444;
           --app-spinner-head: #333;
           --app-text-secondary: #222;
           --app-border-strong: #555;
@@ -83,11 +89,14 @@ browserTest("wheel passes through the spinner to the iframe while Cancel remains
       </style>
       <div class="preview-pane">
         <iframe id="preview" srcdoc="<!doctype html><style>html,body{margin:0}main{height:3000px;background:linear-gradient(#fff,#999)}</style><main></main>"></iframe>
-        <div class="loading-overlay variant-pane">
-          <div class="spinner-wrap">
-            <div class="spinner"></div>
-            <p class="label">Rendering…</p>
-            <button class="cancel-btn">Cancel</button>
+        <div class="region overlay anchor-pane" role="status">
+          <div class="layer">
+            <div class="card">
+              <span class="spinner"></span>
+              <div class="text"><p class="label">Laying out pages…</p><p class="detail"></p></div>
+              <div class="bar-slot"></div>
+              <button class="cancel">Cancel</button>
+            </div>
           </div>
         </div>
       </div>`);
@@ -96,7 +105,7 @@ browserTest("wheel passes through the spinner to the iframe while Cancel remains
     const FRAME = `document.getElementById("preview")`;
     await waitFor(page, `${FRAME} && ${FRAME}.contentDocument && ${FRAME}.contentDocument.querySelector("main")`, 10_000);
 
-    const spinner = await centerOf(page, ".spinner");
+    const spinner = await centerOf(page, ".card");
     await page.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: spinner.x, y: spinner.y });
     await page.send("Input.dispatchMouseEvent", {
       type: "mouseWheel",
@@ -114,10 +123,10 @@ browserTest("wheel passes through the spinner to the iframe while Cancel remains
     await waitFor(page, `${FRAME}.contentWindow.scrollY > 0`, 10_000);
     expect(await page.evaluate<number>(`${FRAME}.contentWindow.scrollY`)).toBeGreaterThan(0);
 
-    await page.evaluate(`document.querySelector(".cancel-btn").addEventListener("click", () => {
+    await page.evaluate(`document.querySelector(".cancel").addEventListener("click", () => {
       document.body.dataset.cancelled = "yes";
     })`);
-    const cancel = await centerOf(page, ".cancel-btn");
+    const cancel = await centerOf(page, ".cancel");
     for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) {
       await page.send("Input.dispatchMouseEvent", {
         type,

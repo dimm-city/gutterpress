@@ -5,6 +5,7 @@ import os from "node:os";
 import { randomBytes } from "node:crypto";
 import { loadManifestWithPath, MANIFEST_FILENAMES, resolveConfig } from "./manifest";
 import { renderChaptersToFile } from "./markdown/index";
+import { restoreForCommand } from "./extension-restore.ts";
 import { loadPluginsWithCss, type LoadedPluginsWithCss } from "./markdown/plugins";
 import { type AssetCopy } from "./asset-inline";
 import { resolveOutputDir, artifactName, BOOK_HTML } from "./output-paths";
@@ -15,6 +16,8 @@ import {
   stripAnnotations,
 } from "./ghostscript";
 import { writeBuildFingerprint, type BuildFingerprintInput } from "./build-fingerprint";
+import { blackTextToGray } from "./black-text-gray";
+import { lastPageMode } from "../engine/shared/synthesis.ts";
 import { getAssetPath } from "./embedded-assets";
 import { executeAndReport } from "./validation-exec";
 import { log } from "../utils/logger";
@@ -344,6 +347,12 @@ export async function loadBuildPlugins(ctx: BuildContext): Promise<LoadedPlugins
   if (ctx.plugins) return ctx.plugins;
   const { config, renderDir } = ctx;
   if (config.extensions.length > 0) {
+    // A fresh clone has the manifest's pins but not their downloaded copies:
+    // fetch them first (the loader itself stays offline) and fail the build
+    // rather than ship a book without its configured formatting. Every build
+    // and export (CLI, `preview --format pdf`, the desktop's PDF export)
+    // loads its plugins here, so none of them can skip it.
+    await restoreForCommand(ctx.inputDir, { manifestPath: ctx.opts.manifestPath, failFast: true });
     log.info(`Loading ${config.extensions.length} plugin(s)...`);
   }
   const loaded = await loadPluginsWithCss(config.extensions, renderDir);
@@ -448,6 +457,7 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
 
   const htmlFile = await renderChaptersToFile(renderDir, workDir, {
     title: config.title,
+    print: config.print,
     styles: config.styles,
     files: config.source.files,
     plugins,
@@ -733,6 +743,7 @@ class HtmlOutput implements OutputStrategy {
           resolvedFlavor: config.pdfx.flavor,
           iccPath: null,
           stripAnnotations: null,
+          blackText: null,
         },
       },
       `Wrote: ${path.join(outDir, BOOK_HTML)}`,
@@ -791,6 +802,7 @@ class PdfOutput implements OutputStrategy {
           title: config.title,
           author: config.authors.length > 0 ? config.authors.join(", ") : undefined,
           signature: config.print.signature,
+          lastPage: lastPageMode(config.print),
           allowShrink: opts.allowShrink,
         },
         browser
@@ -849,6 +861,11 @@ class PdfOutput implements OutputStrategy {
           await stripAnnotations(rawPdf, stage);
         }
 
+        if (config.pdfx.blackText === "k-only") {
+          log.info("Rewriting near-black text to K-only gray");
+          await fsp.writeFile(rawPdf, await blackTextToGray(await fsp.readFile(rawPdf)));
+        }
+
         log.info(`Converting to CMYK PDF/X (${pdfxMode})`);
         await convertToPdfxCmyk(rawPdf, path.resolve(pdfFile), {
           iccPath: effectiveIccPath,
@@ -888,6 +905,7 @@ class PdfOutput implements OutputStrategy {
             resolvedFlavor: config.pdfx.flavor,
             iccPath: effectiveIccPath,
             stripAnnotations: shouldStripAnnotations,
+            blackText: pdfxMode ? config.pdfx.blackText : null,
           },
         },
         `Wrote: ${reportedPdf}`,

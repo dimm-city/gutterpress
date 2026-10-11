@@ -1556,6 +1556,7 @@ const previewOpen = new PreviewOpenController({
   tokenStore: electronTokenStore,
   operationLogPath,
   emitSyncStatus,
+  emitRestoreProgress: (event) => safeSend("preview:restoreProgress", event),
   getWatchedDir: () => folderWatch.getWatchedDir(),
   armSyncInterval: (dir) => autoSync.armInterval(dir),
   scheduleInitialSync: (dir) => autoSync.scheduleInitialSync(dir),

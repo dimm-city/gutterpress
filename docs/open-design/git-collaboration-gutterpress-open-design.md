@@ -67,7 +67,7 @@ Open Design stages active skill resources into `.od-skills/` during runs. That d
 design/tmp/
 ```
 
-Do not ignore Gutterpress's managed `plugins/npm/` tree when the team relies on reproducible offline builds.
+Gutterpress's managed `plugins/npm/` tree should be ignored too: it is downloaded, not authored. Gutterpress adds the line to each book's `.gitignore` itself, and a fresh clone downloads the exact pinned versions on its first build, validate, preview or open.
 
 ## Keep control Markdown out of implicit manuscript discovery
 
@@ -171,7 +171,7 @@ For a named export:
 gutterpress ext add markdown-it-emoji@3.0.0 ./books/core-book --export full
 ```
 
-Gutterpress resolves and integrity-checks the package graph, vendors exact runtime dependencies beneath `books/core-book/plugins/npm/`, and writes the entry back pinned (`markdown-it-highlightjs@4.3.0`). Commit the manifest change and the managed tree. Do not replace this with a shared `node_modules`, a package-manager install, or a hand-copied vendor directory.
+Gutterpress resolves and integrity-checks the package graph, vendors exact runtime dependencies beneath `books/core-book/plugins/npm/`, and writes the entry back pinned (`markdown-it-highlightjs@4.3.0`). Commit the manifest change (the pin); the managed tree is gitignored and is downloaded again from the pin on a fresh clone. Do not replace this with a shared `node_modules`, a package-manager install, or a hand-copied vendor directory.
 
 `gutterpress ext list|remove|enable|disable` cover the rest of the list from the terminal; the desktop's Look and Features views are the same list.
 
@@ -212,7 +212,6 @@ Commit everything required to reproduce the publication and continue design work
 - manifests and manuscript Markdown;
 - shared and local looks (extension folders), styles, fonts, and images;
 - authored Gutterpress plugins and shared profiles;
-- Gutterpress-managed `plugins/npm/` dependency trees;
 - repository and book design guidance;
 - durable decisions and next steps;
 - team-authored Open Design skills and plugins; and

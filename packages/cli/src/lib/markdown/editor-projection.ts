@@ -347,7 +347,7 @@
 import type MarkdownIt from "markdown-it";
 import type Token from "markdown-it/lib/token.mjs";
 import { createMarkdownRenderer } from "./renderer";
-import { KNOWN_KINDS } from "./markers.js";
+import { CORE_DECLARED_MARKER_NAMES, KNOWN_KINDS } from "./markers.js";
 import { SOURCE_CHAPTER_ATTR, SOURCE_RANGE_ATTR } from "./source-range";
 import { registerPluginOriginCapture, resolvePluginTokenOrigin } from "./plugin-origin";
 
@@ -1206,8 +1206,10 @@ function pluginRegionLinesLookAuthored(
   return true;
 }
 
-/** A line that is one of core's own markers -  the kinds `markers.js` transforms. */
-const CORE_MARKER_LINE_RE = new RegExp(`^[ \\t]*@(?:${KNOWN_KINDS.join("|")})(?=[\\s{.#]|$)`);
+/** A line that is one of core's own markers - the kinds `markers.js` transforms, and the ones core declares (`@columns` / `@end-columns`). */
+const CORE_MARKER_LINE_RE = new RegExp(
+  `^[ \\t]*@(?:${[...KNOWN_KINDS, ...CORE_DECLARED_MARKER_NAMES.flatMap((name) => [name, `end-${name}`])].join("|")})(?=[\\s{.#]|$)`,
+);
 
 /**
  * Every nesting===1 "open" token type Gutterpress's OWN fixed base pipeline

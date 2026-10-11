@@ -25,6 +25,12 @@ export function extractVariables(template: string): string[] {
   return order;
 }
 
+/** Where the first `{{variable}}` placeholder sits, or null when there is none. */
+export function firstVariable(template: string): { from: number; to: number } | null {
+  const m = new RegExp(PLACEHOLDER_RE.source).exec(template);
+  return m ? { from: m.index, to: m.index + m[0].length } : null;
+}
+
 /**
  * Replace every `{{name}}` with `values[name]` (a missing key → empty string).
  * Non-placeholder braces are left intact.

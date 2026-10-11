@@ -38,6 +38,7 @@
   import type { OutlineEntry } from "$lib/preview-client";
   import type { ProjectCapabilities } from "$lib/platform/contract";
   import type { ToastController } from "$lib/components/Toast.svelte";
+  import { HIDE_BOOKS_TAB, shownTabId, visibleTabIds } from "$lib/left-panel-tabs";
 
   export type PanelTab = "projects" | "toc" | "files" | "media";
 
@@ -75,7 +76,7 @@
     open?: boolean;
     activeTab?: PanelTab;
     /** Reader (Settings → App): only Books and TOC — Files and Media are for
-     *  editing. A remembered Files/Media tab shows Books instead. */
+     *  editing. A remembered hidden tab shows the first visible one instead. */
     readerMode?: boolean;
     /** Panel width in px, user-resizable (clamped 300–480, narrowed only when
      *  the window can't spare that — see widthBounds()), persisted. */
@@ -229,10 +230,11 @@
     { id: "media", label: "Media", icon: "image", title: "Media library" },
   ];
 
-  const visibleTabs = $derived(readerMode ? TABS.filter((t) => t.id === "projects" || t.id === "toc") : TABS);
-  /** The tab actually shown: the active one, unless reader mode hides it. */
+  const visibleTabs = $derived(TABS.filter((t) => visibleTabIds(readerMode).includes(t.id)));
+  /** The tab actually shown: the active one, unless reader mode or the
+   *  temporary Books-tab hiding ($lib/left-panel-tabs) hides it. */
   const shownTab = $derived<PanelTab>(
-    readerMode && (activeTab === "files" || activeTab === "media") ? "projects" : activeTab,
+    shownTabId(activeTab, visibleTabs.map((t) => t.id)),
   );
 
   // ── APG tabs keyboard pattern ─────────────────────────────────────────────
@@ -468,26 +470,28 @@
       {/if}
     </div>
 
-    <!-- Books tab -->
-    <div
-      id="panel-content-projects"
-      class="tab-panel"
-      class:visible={shownTab === "projects"}
-      role="tabpanel"
-      aria-labelledby="panel-tab-projects"
-      aria-hidden={shownTab !== "projects"}
-    >
-      <h2 class="panel-heading">Books</h2>
-      <ProjectsListBody
-        compact
-        currentProjectPath={sourceMode === "folder" ? projectDir : null}
-        currentProjectDisplayName={sourceMode === "folder" ? projectDisplayName : null}
-        onChosen={(path) => { onProjectChosen?.(path); }}
-        onOpenUrl={(url) => { onOpenUrl?.(url); }}
-        {onOpenBook}
-        onNewProject={onNewProject}
-      />
-    </div>
+    <!-- Books tab — not mounted while HIDE_BOOKS_TAB is set ($lib/left-panel-tabs), so a hidden tab leaves no dangling tabpanel and no list fetch. -->
+    {#if !HIDE_BOOKS_TAB}
+      <div
+        id="panel-content-projects"
+        class="tab-panel"
+        class:visible={shownTab === "projects"}
+        role="tabpanel"
+        aria-labelledby="panel-tab-projects"
+        aria-hidden={shownTab !== "projects"}
+      >
+        <h2 class="panel-heading">Books</h2>
+        <ProjectsListBody
+          compact
+          currentProjectPath={sourceMode === "folder" ? projectDir : null}
+          currentProjectDisplayName={sourceMode === "folder" ? projectDisplayName : null}
+          onChosen={(path) => { onProjectChosen?.(path); }}
+          onOpenUrl={(url) => { onOpenUrl?.(url); }}
+          {onOpenBook}
+          onNewProject={onNewProject}
+        />
+      </div>
+    {/if}
 
   </div>
 </aside>

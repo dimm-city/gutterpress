@@ -1,0 +1,44 @@
+<!-- Worn letterpress filters for the nameplate and the PROOF stamp
+     (assets/site.css applies them): ragged edges, and specks and patches
+     where the ink did not take. Zero-size, so it takes no room. -->
+<svg class="ink-filters" width="0" height="0" aria-hidden="true" focusable="false">
+  <filter id="worn-ink" x="-5%" y="-20%" width="110%" height="140%" color-interpolation-filters="sRGB">
+    <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="2" seed="5" result="edge"/>
+    <feDisplacementMap in="SourceGraphic" in2="edge" scale="2.2" xChannelSelector="R" yChannelSelector="G" result="rough"/>
+    <feTurbulence type="fractalNoise" baseFrequency="0.07" numOctaves="4" seed="9" result="wear"/>
+    <feColorMatrix in="wear" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -10 0 0 0 7.9" result="wearMask"/>
+    <feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="1" seed="2" result="specks"/>
+    <feColorMatrix in="specks" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -16 0 0 0 11.2" result="speckMask"/>
+    <feComposite in="wearMask" in2="speckMask" operator="in" result="mask"/>
+    <feComposite in="rough" in2="mask" operator="in"/>
+  </filter>
+  <filter id="rubber-stamp" x="-10%" y="-30%" width="120%" height="160%" color-interpolation-filters="sRGB">
+    <feTurbulence type="fractalNoise" baseFrequency="0.6" numOctaves="2" seed="3" result="edge"/>
+    <feDisplacementMap in="SourceGraphic" in2="edge" scale="2.6" xChannelSelector="R" yChannelSelector="G" result="rough"/>
+    <feTurbulence type="fractalNoise" baseFrequency="0.12" numOctaves="3" seed="21" result="wear"/>
+    <feColorMatrix in="wear" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -7 0 0 0 5.3" result="mask"/>
+    <feComposite in="rough" in2="mask" operator="in"/>
+  </filter>
+</svg>
+<header class="site-head">
+  <div class="site-head-bar">
+    <a class="wordmark" href="/index.html">
+      <img class="wordmark-tile" src="/assets/icons/gutterpress-icon-light.svg" alt="" width="32" height="32">
+      <span class="wordmark-name">Gutterpress</span>
+    </a>
+    <span class="head-pill">proof</span>
+    <nav class="head-links" aria-label="Site">
+      <a href="/docs/index.html">docs</a>
+      <a href="/plugins.html">plugins</a>
+      <a href="/releases/0.11.16.html">releases</a>
+      <a href="/about.html">about</a>
+      <a href="https://github.com/dimm-city/gutterpress">github</a>
+      <a class="head-cta" href="/install.html">download</a>
+    </nav>
+  </div>
+  <p class="dateline"><span>Markdown &amp; CSS, typeset for print</span><span>Open source · by <a href="https://dimm.city">Dimm City</a></span></p>
+  <nav class="subnav" aria-label="On this page">
+    <a href="/docs/index.html">All docs</a>
+    <a href="#docnav">Contents</a>
+  </nav>
+</header>

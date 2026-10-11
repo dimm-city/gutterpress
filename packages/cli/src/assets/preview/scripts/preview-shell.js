@@ -108,7 +108,8 @@
       if (sourceBody.classList.contains('debug')) api.toggleDebugMode();
     }
     var zoom = source.documentElement.style.getPropertyValue('--gutterpress-zoom');
-    if (api && zoom) api.setZoom(zoom, true);
+    // Carry the fit flag too (setZoom's third argument clips sideways overflow).
+    if (api && zoom) api.setZoom(zoom, true, source.documentElement.style.overflowX === 'hidden');
   }
 
   function onReady(frame, callback, onTimeout, timeoutMs) {

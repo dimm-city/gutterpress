@@ -83,10 +83,10 @@ export type {
 export {
   scaffoldProject,
   adoptFolder,
-  ensureGitignoreHasDist,
   slugifyProjectName,
   escapeYamlScalar,
 } from "../lib/project-scaffold.ts";
+export { ensureProjectGitignore } from "../lib/project-gitignore.ts";
 
 export type {
   ProjectTemplateId,
@@ -136,25 +136,19 @@ export type {
   SaveProjectAsTemplateOptions,
 } from "../lib/project-templates.ts";
 
-// ── Snippets (#29) — extension merge (#242) ──────────────────────────────────
-// `listMergedSnippets`/`readExtensionSnippet` are the #242 additions: the
-// merge of an installed, active extension's declared `snippets` folder
-// (package.json's `gutterpress.snippets`) into the SAME picker `listSnippets`/
-// `readSnippet`/`saveSnippet`/`deleteSnippet` already served — see
-// `snippets.ts`'s header for the full design (precedence, provenance,
-// removal) and why this stays one module, not a second snippet subsystem.
+// ── Snippets (#29) — book, extension (#242) and core levels ─────────────────
+// See `snippets.ts`'s header for the levels and their precedence.
 export {
   extractVariables,
   substituteVariables,
   listSnippets,
-  readSnippet,
   saveSnippet,
   deleteSnippet,
   listMergedSnippets,
-  readExtensionSnippet,
+  listMarkerComponents,
   SNIPPETS_DIR,
 } from "../lib/snippets.ts";
-export type { SnippetEntry, SnippetSource } from "../lib/snippets.ts";
+export type { MarkerComponent, SnippetEntry, SnippetSource } from "../lib/snippets.ts";
 
 // ── Extension manager (#265) — the one rail ──────────────────────────────────
 export {
@@ -162,6 +156,7 @@ export {
   describeExtension,
   addExtension,
   checkExtensionUpdates,
+  listNpmVersions,
   updateExtensions,
   removeExtension,
   setExtensionEnabled,
@@ -196,6 +191,13 @@ export {
   parseExtensionSpecifier,
 } from "../lib/extension-specifier.ts";
 export type { ParsedExtensionSpecifier } from "../lib/extension-specifier.ts";
+
+// ── Restoring pinned extensions ──────────────────────────────────────────────
+// Downloaded copies are not in a book's git history; this downloads a missing
+// pinned version again. Called by build/validate/preview and the desktop's
+// book-open path — never by the (offline) loader.
+export { restorePinnedExtensions, restoreFailureMessage } from "../lib/extension-restore.ts";
+export type { RestorePinnedOptions, RestoreResult, RestoreFailure, RestoreProgress } from "../lib/extension-restore.ts";
 
 // ── Extension package import — .zip / .css / URL ─────────────────────────────
 // The zip/css sub-importers and pure decision helpers stay module-private
@@ -261,6 +263,10 @@ export {
   setActiveStyles,
 } from "../lib/manifest-config.ts";
 export type { ProjectConfigFields } from "../lib/manifest-config.ts";
+
+// ── Page size (#357) — read/write the manifest bounds + stylesheet `@page` together ──
+export { readPageSetup, setPageSetup } from "../lib/page-size.ts";
+export type { PageSetup, PageSizeChoice, PageSizePoints } from "../lib/page-size.ts";
 
 export {
   providerFor,
@@ -361,6 +367,18 @@ export type {
   RemoteBranch,
   RepoBook,
 } from "../lib/remote-auth/github-repos.ts";
+
+export {
+  setUpOnlineBackup,
+  isValidRepositoryName,
+} from "../lib/remote-auth/online-backup.ts";
+
+export type {
+  BackupTarget,
+  BackupSetupResult,
+  BackupSetupFailureReason,
+  SetUpOnlineBackupOptions,
+} from "../lib/remote-auth/online-backup.ts";
 
 export {
   cloneRepository,

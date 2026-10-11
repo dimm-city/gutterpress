@@ -29,6 +29,13 @@ export interface RemoteRepository {
   private: boolean;
   defaultBranch: string;
   htmlUrl: string;
+  /**
+   * Could be an empty repository the author can back a book up to: GitHub
+   * reports size 0, and the repository is writable and not archived. A hint
+   * for pickers only — a tiny non-empty repository also reports size 0, so
+   * the real emptiness check happens when a book is connected (online-backup.ts).
+   */
+  maybeEmpty?: boolean;
 }
 
 /** One branch of a remote repository. */
@@ -74,6 +81,9 @@ type UserReposPage = Array<{
   private: boolean;
   default_branch: string;
   html_url: string;
+  size?: number;
+  archived?: boolean;
+  permissions?: { push?: boolean };
   owner: { login: string };
 }>;
 
@@ -105,6 +115,9 @@ export async function listGitHubRepositories(
         private: r.private,
         defaultBranch: r.default_branch,
         htmlUrl: r.html_url,
+        ...(r.size === 0 && !r.archived && r.permissions?.push !== false
+          ? { maybeEmpty: true }
+          : {}),
       });
     }
     if (body.length < PER_PAGE) break;

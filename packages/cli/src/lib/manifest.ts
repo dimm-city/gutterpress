@@ -391,6 +391,13 @@ function resolveWithPreset(
   if (legacyPlugins !== undefined) {
     throw new UsageError(pluginsRemovedMessage(legacyPlugins));
   }
+  // A mistyped `lastPage` would otherwise silently stop reserving the page.
+  const lastPage = c.print?.lastPage ?? m.print?.lastPage;
+  if (lastPage !== undefined && lastPage !== "blank" && lastPage !== "short-by-one") {
+    throw new UsageError(
+      `Manifest field \`print.lastPage\` must be "blank" or "short-by-one", got ${JSON.stringify(lastPage)}.`
+    );
+  }
   // Extensions, in manifest order — which IS the load order and the cascade
   // order; nothing re-sorts them. An entry with `enabled: false` (#30) stays
   // in the manifest but is skipped here so it is never loaded.
@@ -415,12 +422,20 @@ function resolveWithPreset(
     targets: resolveTargets(c.targets ?? m.targets, preset.defaultTargets),
     source: mergeShape(c.source, m.source, preset.source),
     pdfx: mergeShape(c.pdfx, m.pdfx, preset.pdfx),
-    // Default (both presets) is signature: 1 = no padding — postprocess only
-    // pads when > 1, so a book that never asks for one gets none.
+    // `book` defaults to signature: 1 = no padding (postprocess only pads
+    // when > 1). `dtrpg` defaults to signature 4 + reserveLastPage so the
+    // interior ends on a blank page, which DriveThruRPG reserves for printer info.
+    // `print.lastPage` (blank | short-by-one) is absent from both presets: it
+    // only exists when an author writes it, and then wins over reserveLastPage.
     print: mergeShape(c.print, m.print, preset.print),
     page: preset.page ? mergeShape(c.page, m.page, preset.page) : resolveCustomPage(c, m),
     ink: mergeShape(c.ink, m.ink, preset.ink),
-    lint: mergeShape(c.lint, m.lint, preset.lint),
+    // `rules` is an open dictionary (not a fixed shape), so it merges like
+    // `validate.checks`: cli over manifest, key by key.
+    lint: {
+      ...mergeShape(c.lint, m.lint, preset.lint),
+      rules: { ...preset.lint.rules, ...m.lint?.rules, ...c.lint?.rules },
+    },
     validate: {
       enabled: c.validate?.enabled ?? m.validate?.enabled ?? preset.validate.enabled,
       checks: { ...preset.validate.checks, ...m.validate?.checks, ...c.validate?.checks },

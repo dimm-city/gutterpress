@@ -41,11 +41,14 @@ export const DTRPG_PRESET: VendorPreset = {
   source: {
     files: null,
   },
-  print: { signature: 1 },
+  // `lastPage` is listed (undefined) only so the manifest merge, which copies
+  // the preset's keys, carries an author's value; no preset sets it.
+  print: { signature: 4, reserveLastPage: true, lastPage: undefined },
   pdfx: {
     flavor: "x1a",
     icc: "profiles/CGATS21_CRPC1.icc",
     stripAnnotations: true,
+    blackText: "k-only",
   },
   page: {
     width: 621,
@@ -59,6 +62,7 @@ export const DTRPG_PRESET: VendorPreset = {
   lint: {
     enabled: true,
     configPath: null,
+    rules: {},
   },
   validate: {
     enabled: true,
@@ -144,11 +148,12 @@ export const BOOK_PRESET: VendorPreset = {
   source: {
     files: null,
   },
-  print: { signature: 1 },
+  print: { signature: 1, reserveLastPage: false, lastPage: undefined },
   pdfx: {
     flavor: "x1a",
     icc: "profiles/CGATS21_CRPC1.icc",
     stripAnnotations: true,
+    blackText: "icc",
   },
   page: {
     width: 432,
@@ -162,6 +167,7 @@ export const BOOK_PRESET: VendorPreset = {
   lint: {
     enabled: true,
     configPath: null,
+    rules: {},
   },
   validate: {
     enabled: true,

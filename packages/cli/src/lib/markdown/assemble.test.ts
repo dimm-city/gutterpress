@@ -94,3 +94,13 @@ test("assembleBookHtml throws on empty file list", async () => {
     assembleBookHtml({ files: [], readText: () => Promise.resolve("") }),
   ).rejects.toThrow(/no markdown files/i);
 });
+
+test("assembleBookHtml writes the print padding on <html> for the viewer", async () => {
+  const readText = () => Promise.resolve("# A\n");
+  const padded = await assembleBookHtml({ files: ["a.md"], readText, print: { signature: 4, reserveLastPage: true } });
+  expect(padded).toContain('<html lang="en" data-gp-signature="4" data-gp-last-page="blank">');
+  const short = await assembleBookHtml({ files: ["a.md"], readText, print: { signature: 4, reserveLastPage: true, lastPage: "short-by-one" } });
+  expect(short).toContain('<html lang="en" data-gp-signature="4" data-gp-last-page="short-by-one">');
+  const plain = await assembleBookHtml({ files: ["a.md"], readText, print: { signature: 1, reserveLastPage: false } });
+  expect(plain).toContain('<html lang="en">');
+});

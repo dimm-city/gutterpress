@@ -1,0 +1,879 @@
+/* Gutterpress site: a 1920s newsroom paste-up, after dark. Galleys of
+   yellowed newsprint are cut and pasted up on the night desk under a single
+   lamp, taped down, and marked up with typed notes and the editor's red
+   grease pencil. Everything else is the docs
+   template's stylesheet, which this site extends (unify.yaml). This sheet is
+   unlayered, so it wins over the template's layered rules wherever both set
+   a property, and it reads only the values in theme.css. */
+
+/* ── The night desk ─────────────────────────────────────────────────── */
+/* One lamp over the middle of the desk, falling off into the dark. */
+body {
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 22%, var(--pu-lamp), transparent 70%),
+    radial-gradient(ellipse 120% 90% at 50% 40%, transparent 55%, rgb(0 0 0 / 0.55)),
+    var(--pu-desk);
+  background-attachment: fixed;
+  font-size: 1.05rem;
+}
+
+/* Film grain over everything, fixed like the desk. */
+body::before {
+  mask-image: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.45 0 0 0 0 0.4 0 0 0 0.5 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+  opacity: 0.35;
+}
+
+a {
+  color: var(--pu-red);
+  text-decoration-color: color-mix(in srgb, var(--pu-red) 45%, transparent);
+}
+
+a:hover {
+  color: var(--accent-bright);
+}
+
+:focus-visible {
+  outline: 2px dashed var(--pu-red-bright);
+  outline-offset: 3px;
+}
+
+/* ── Type: headline face, text face, gothic labels ────────────────────── */
+/* Page titles: the nameplate's blackletter off a worn press (the
+   #worn-ink filter is defined in _includes/nav.html), with ink splattered
+   from just outside the first letter across the opening of the line. */
+h1 {
+  position: relative;
+  font-weight: 400;
+  color: var(--pu-ink);
+  letter-spacing: 0;
+}
+
+h1,
+.hero h1 {
+  filter: url(#worn-ink);
+  text-shadow: 0.6px 0.3px 0 rgb(26 21 18 / 0.5);
+}
+
+h1::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: -0.75em;
+  left: -2.1rem;
+  width: 300px;
+  height: 120px;
+  background: url("images/ink-splatter-title.svg") no-repeat;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+h2,
+h3 {
+  color: var(--pu-ink);
+  letter-spacing: 0;
+}
+
+h3 {
+  font: 800 0.95rem/1.3 var(--pu-gothic);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+strong {
+  color: var(--pu-ink);
+}
+
+code {
+  color: var(--pu-ink);
+  background: #e2d6b9;
+}
+
+/* Code: typed on a ruled index card and taped to the galley. The rules and
+   the red margin line scroll with the text (background-attachment: local),
+   and the line height matches the rule spacing so each line sits on one. */
+pre:not(.term-body) {
+  --card-line: 1.7em;
+  margin: 1.6rem 0 1.5rem;
+  padding: var(--card-line) 1.25rem calc(var(--card-line) * 0.6) 3.25rem;
+  font: 400 0.92rem/var(--card-line) var(--pu-type);
+  color: var(--pu-ink);
+  background:
+    linear-gradient(90deg, transparent 2.35rem, rgb(179 20 27 / 0.45) 2.35rem, rgb(179 20 27 / 0.45) calc(2.35rem + 1px), transparent calc(2.35rem + 1px)),
+    repeating-linear-gradient(transparent 0, transparent calc(var(--card-line) - 1px), rgb(31 111 148 / 0.28) calc(var(--card-line) - 1px), rgb(31 111 148 / 0.28) var(--card-line)),
+    #fbf8ee;
+  background-attachment: local;
+  background-position: 0 0, 0 calc(var(--card-line) * 0.15);
+  border: 0;
+  border-radius: 0;
+  box-shadow: 2px 5px 12px rgb(0 0 0 / 0.28), 0 0 0 1px rgb(26 21 18 / 0.08);
+  transform: rotate(-0.35deg);
+}
+
+pre:not(.term-body) code {
+  font: inherit;
+  line-height: inherit;
+}
+
+/* The tape holding the card down. The template wraps every fenced block in
+   .code-wrap, which is where the tape can sit without being clipped by the
+   card's own scrolling. */
+.code-wrap {
+  position: relative;
+  margin: 1.6rem 0 1.5rem;
+}
+
+.code-wrap > pre:not(.term-body) {
+  margin: 0;
+}
+
+.code-wrap::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: -10px;
+  left: 50%;
+  width: 5.5rem;
+  height: 20px;
+  margin-left: -2.75rem;
+  background: var(--pu-tape);
+  box-shadow: 0 0 0 1px rgb(26 21 18 / 0.06);
+  transform: rotate(2deg);
+  pointer-events: none;
+}
+
+.code-wrap:nth-of-type(even)::before {
+  transform: rotate(-3deg);
+}
+
+.copy-btn {
+  top: 0.4rem;
+  right: 0.4rem;
+  font-family: var(--pu-type);
+  color: var(--pu-ink-soft);
+  background: #fbf8ee;
+  border-color: var(--pu-ink-soft);
+  border-radius: 0;
+}
+
+/* Screenshots in the guides: prints pasted onto the galley. */
+body:not(.home) .shell > main img {
+  display: block;
+  margin: 1.5rem auto;
+  border: 6px solid #fbf8ee;
+  box-shadow: 2px 6px 14px rgb(0 0 0 / 0.35), 0 0 0 1px rgb(26 21 18 / 0.12);
+  transform: rotate(-0.4deg);
+}
+
+body:not(.home) .shell > main p:nth-of-type(even) > img {
+  transform: rotate(0.5deg);
+}
+
+blockquote {
+  background: none;
+  border-left: 3px solid var(--pu-red);
+  font-style: italic;
+}
+
+table {
+  border-top: 2px solid var(--pu-ink);
+  border-bottom: 2px solid var(--pu-ink);
+}
+
+th {
+  background: none;
+  color: var(--pu-ink);
+  font: 800 0.75rem/1.3 var(--pu-gothic);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid var(--pu-ink);
+}
+
+/* ── The rubber stamp ─────────────────────────────────────────────────── */
+.head-pill {
+  filter: url(#rubber-stamp);
+  border-width: 2.5px;
+}
+
+.kicker,
+.head-pill {
+  display: inline-block;
+  max-width: max-content;
+  padding: 0.15rem 0.5rem;
+  font: 800 0.72rem/1.3 var(--pu-gothic);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--pu-red);
+  background: none;
+  border: 2px solid var(--pu-red);
+  border-radius: 3px;
+  transform: rotate(-4deg);
+  opacity: 0.85;
+}
+
+/* ── The nameplate ────────────────────────────────────────────────────── */
+.site-head {
+  position: static;
+  background: var(--pu-galley);
+  backdrop-filter: none;
+  border-bottom: 0;
+  box-shadow: var(--pu-shadow), inset 0 0 40px var(--pu-galley-edge);
+}
+
+.site-head-bar {
+  height: auto;
+  min-height: var(--head-h);
+  padding-block: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.wordmark-tile {
+  width: 2.25rem;
+  height: 2.25rem;
+  background: none;
+}
+
+.wordmark-name {
+  font: 400 2.2rem/1 var(--pu-nameplate);
+  color: var(--pu-ink);
+  letter-spacing: 0;
+  /* Worn type, slightly over-inked and a hair out of register. */
+  filter: url(#worn-ink);
+  text-shadow: 0.6px 0.3px 0 rgb(26 21 18 / 0.55);
+  transform: rotate(-0.8deg);
+}
+
+/* Ink splattered across the nameplate: a blot past the PROOF stamp and fine
+   drops sprayed back over the lettering. Drawn over the header, but it
+   never takes a click. */
+.site-head-bar {
+  position: relative;
+}
+
+.site-head-bar::after {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: calc(var(--gutter) + 2.6rem);
+  width: 440px;
+  height: 84px;
+  background: url("images/ink-splatter.svg") no-repeat;
+  opacity: 0.88;
+  pointer-events: none;
+}
+
+@media (max-width: 40rem) {
+  .site-head-bar::after {
+    display: none;
+  }
+}
+
+.ink-filters {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.head-links {
+  gap: 0;
+}
+
+.head-links > a {
+  min-height: 2rem;
+  padding: 0 0.85rem;
+  font: 600 0.85rem/1 var(--pu-gothic);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--pu-ink);
+  border-left: 1px solid var(--pu-ink);
+}
+
+.head-links > a::before {
+  content: none;
+}
+
+.head-links > a:first-child {
+  border-left: 0;
+}
+
+.head-links > a:hover {
+  color: var(--pu-red);
+}
+
+.head-links > a.head-cta {
+  margin-left: 0.5rem;
+  border: 0;
+  background: var(--pu-ink);
+  color: var(--pu-galley);
+}
+
+.head-links > a.head-cta:hover {
+  background: var(--pu-red);
+  color: var(--pu-galley);
+}
+
+/* The folio line under the nameplate, between a thick and a thin rule. */
+.dateline {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  max-width: calc(var(--site) + 2 * var(--gutter));
+  margin: 0 auto;
+  padding: 0.3rem var(--gutter) 0.45rem;
+  font: 600 0.7rem/1.3 var(--pu-gothic);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--pu-ink);
+  border-top: 3px solid var(--pu-ink);
+  box-shadow: inset 0 1px 0 var(--pu-galley), inset 0 2px 0 var(--pu-ink);
+  border-bottom: 1px solid var(--pu-ink);
+}
+
+.subnav {
+  border-top: 0;
+}
+
+.subnav a {
+  background: var(--pu-galley);
+  border-color: var(--pu-ink);
+  font-family: var(--pu-gothic);
+  text-transform: uppercase;
+  color: var(--pu-ink);
+}
+
+@media (max-width: 40rem) {
+  .head-pill,
+  .head-links > a:not(.head-cta) {
+    display: none;
+  }
+
+  .dateline span:last-child {
+    display: none;
+  }
+}
+
+/* ── Galleys: type on paper, cut out and pasted down ──────────────────── */
+body:not(.home) .shell > main,
+.hero-copy,
+.card,
+.term,
+.docnav ul {
+  position: relative;
+  background: var(--pu-galley);
+  border: 0;
+  box-shadow: var(--pu-shadow), inset 0 0 40px var(--pu-galley-edge);
+}
+
+body:not(.home) .shell > main {
+  padding: 2.25rem clamp(1rem, 3vw, 2.5rem) 2.75rem;
+  transform: rotate(-0.15deg);
+}
+
+/* Tape across the top of the galley. */
+body:not(.home) .shell > main::before,
+.hero-copy::before {
+  content: "";
+  position: absolute;
+  top: -11px;
+  left: 50%;
+  width: 6.5rem;
+  height: 22px;
+  margin-left: -3.25rem;
+  background: var(--pu-tape);
+  box-shadow: 0 0 0 1px rgb(26 21 18 / 0.06);
+  transform: rotate(-2deg);
+}
+
+/* Blue pencil in the margin: a note to the compositor. */
+body:not(.home) .shell > main::after {
+  content: "GALLEY PROOF — CHECK HEDS";
+  position: absolute;
+  top: 0.4rem;
+  right: 0.9rem;
+  font: 400 0.8rem/1 var(--pu-type);
+  color: var(--pu-ink-soft);
+  transform: rotate(-1deg);
+  pointer-events: none;
+}
+
+/* Page headline, with a thick-and-thin rule under it. */
+body:not(.home) .shell > main > h1 {
+  margin-top: 0.75rem;
+  padding-bottom: 0.2rem;
+  font-size: clamp(2.3rem, 5.4vw, 3.5rem);
+  line-height: 1.1;
+}
+
+/* A drop cap on the opening paragraph. */
+body:not(.home) .shell > main > h1 + p::first-letter {
+  float: left;
+  margin: 0.08em 0.1em 0 0;
+  font: 900 3.4em/0.8 var(--display);
+  color: var(--pu-ink);
+}
+
+/* Section heads: a rule across the column, headline face. */
+main > h2 {
+  margin-top: 2.75rem;
+  padding-top: 0.5rem;
+  border-top: 3px solid var(--pu-ink);
+  font-size: clamp(1.4rem, 1rem + 1.4vw, 1.8rem);
+}
+
+main h2::before {
+  content: none;
+}
+
+/* ── Sidebar: the "Inside" index box ──────────────────────────────────── */
+/* The template pins the sidebar beside the page as its own scrolling box.
+   This one is taller than a screen, so that box grew scrollbars (the tilted
+   strips added a sideways one). Here it is ordinary page content instead:
+   it scrolls with the page, and nothing in it scrolls on its own. */
+.docnav {
+  position: static;
+  max-height: none;
+  overflow: visible;
+}
+
+.docnav-label {
+  padding-bottom: 0.2rem;
+  font: 600 0.78rem/1.3 var(--pu-gothic);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--pu-light);
+  border-bottom: 2px solid var(--pu-light);
+}
+
+.docnav ul {
+  padding: 0.35rem 0;
+  transform: rotate(0.3deg);
+}
+
+.docnav > div:nth-child(2) ul {
+  transform: rotate(-0.4deg);
+}
+
+.docnav li a {
+  color: var(--pu-ink);
+  font-family: var(--sans);
+}
+
+.docnav li a:hover,
+.docnav li a[aria-current] {
+  color: var(--pu-red);
+  background: var(--pu-newsprint);
+}
+
+.docnav-all a {
+  font: 400 0.85rem/1 var(--pu-type);
+  color: var(--pu-light);
+}
+
+/* ── Home: the front page being laid out ──────────────────────────────── */
+body.home .hero {
+  background: none;
+}
+
+.hero-copy {
+  padding: 2.25rem clamp(1rem, 3vw, 2.25rem);
+  transform: rotate(-0.5deg);
+}
+
+.hero h1 {
+  font: 400 clamp(2.4rem, 5.6vw, 4rem)/1.08 var(--h1-font);
+  color: var(--pu-ink);
+  background: none;
+  -webkit-text-fill-color: currentColor;
+}
+
+/* The editor's circle round the word that matters. */
+.hero h1 em {
+  font-style: normal; /* blackletter has no italic; the circle does the emphasis */
+  padding: 0 0.15em;
+  border: 2px solid var(--pu-red);
+  border-radius: 50% 45% 55% 48% / 55% 50% 48% 52%;
+}
+
+.hero .lede {
+  color: var(--pu-ink-soft);
+}
+
+.term {
+  transform: rotate(1deg);
+}
+
+.term::after {
+  content: "FIG. 1 — run it from a script, too";
+  position: absolute;
+  bottom: -1.8rem;
+  left: 0.5rem;
+  font: 400 0.85rem/1 var(--pu-type);
+  color: var(--pu-light-soft);
+}
+
+.term-head {
+  background: var(--pu-newsprint);
+  border-bottom: 1px solid var(--border-faint);
+}
+
+.term .prompt {
+  color: var(--pu-red);
+}
+
+.term .cmd {
+  color: var(--pu-ink);
+}
+
+/* Section flags across the page: gothic caps between a heavy and a light rule. */
+.home-section h2 {
+  width: 100%;
+  padding: 0.4rem 0 0.35rem;
+  font: 600 clamp(1.2rem, 2.6vw, 1.6rem)/1.2 var(--pu-gothic);
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: var(--pu-light);
+  border-top: 4px double var(--pu-light);
+  border-bottom: 1px solid var(--pu-light);
+}
+
+.home-section h2::before {
+  content: none;
+}
+
+.home-section .kicker {
+  margin-bottom: -0.75rem;
+  color: var(--pu-red-bright);
+  border-color: var(--pu-red-bright);
+}
+
+.home-note {
+  margin: 0.25rem 0 0;
+  font-size: 0.95rem;
+  color: var(--pu-light-soft);
+}
+
+.home-note a {
+  color: var(--pu-light);
+}
+
+/* Type slugs, cut from a proof. */
+.chip-row .label {
+  font-family: var(--pu-gothic);
+  color: var(--pu-light);
+}
+
+.chip-row .aside {
+  font: 400 0.85rem/1.2 var(--pu-type);
+  color: var(--pu-light-soft);
+}
+
+.chip {
+  color: var(--pu-ink);
+  background: var(--pu-galley);
+  border: 0;
+  box-shadow: 1px 3px 6px rgb(0 0 0 / 0.5);
+}
+
+.chip:nth-child(odd) {
+  transform: rotate(-1.2deg);
+}
+
+.chip:nth-child(even) {
+  transform: rotate(0.9deg);
+}
+
+/* Cards: column galleys, each numbered in blue pencil. */
+.card-grid {
+  gap: 1.75rem;
+  counter-reset: galley;
+}
+
+.card {
+  overflow: visible;
+  counter-increment: galley;
+  transform: rotate(-0.35deg);
+}
+
+.card::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  left: -10px;
+  width: 3.2rem;
+  height: 16px;
+  background: var(--pu-tape);
+  box-shadow: 0 0 0 1px rgb(26 21 18 / 0.06);
+  transform: rotate(-35deg);
+  transform-origin: center;
+  transition: none;
+}
+
+.card::after {
+  content: "GALLEY " counter(galley, upper-roman);
+  position: absolute;
+  top: 0.45rem;
+  right: 0.7rem;
+  font: 400 0.72rem/1 var(--pu-type);
+  color: var(--pu-ink-soft);
+}
+
+.card:nth-child(3n + 2) {
+  transform: rotate(0.45deg);
+}
+
+.card:nth-child(3n + 3) {
+  transform: rotate(-0.15deg);
+}
+
+.card:hover,
+.card.featured {
+  border: 0;
+}
+
+.card.featured {
+  outline: 2px solid var(--pu-red);
+  outline-offset: 4px;
+}
+
+.card h3 {
+  font: 700 1.3rem/1.2 var(--heading-font);
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--pu-ink);
+}
+
+.card p {
+  color: var(--pu-ink-soft);
+}
+
+.card .card-meta {
+  font: 800 0.7rem/1.3 var(--pu-gothic);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--pu-red);
+}
+
+.card .more {
+  font-family: var(--pu-gothic);
+  color: var(--pu-red);
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────── */
+.btn {
+  border: 2px solid var(--pu-ink);
+  font: 800 0.85rem/1 var(--pu-gothic);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.btn-primary,
+.btn-primary:hover {
+  background: var(--pu-ink);
+  color: var(--pu-galley);
+  filter: none;
+}
+
+.btn-primary:hover {
+  background: var(--pu-red);
+  border-color: var(--pu-red);
+}
+
+.btn-secondary {
+  background: var(--pu-galley);
+  color: var(--pu-ink);
+}
+
+.btn-secondary:hover {
+  color: var(--pu-red);
+  border-color: var(--pu-red);
+}
+
+/* ── Footer: the bottom strip, under a thick-and-thin rule ────────────── */
+.site-foot {
+  background: var(--pu-galley);
+  border-top: 4px double var(--pu-ink);
+  box-shadow: var(--pu-shadow), inset 0 0 40px var(--pu-galley-edge);
+}
+
+.foot-links a {
+  font: 600 0.78rem/1 var(--pu-gothic);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--pu-ink);
+}
+
+.foot-links a:hover {
+  color: var(--pu-red);
+}
+
+.site-foot p {
+  font-family: var(--sans);
+  color: var(--pu-ink-soft);
+}
+
+/* ── Plugins page: a search slip and plugin galleys that open ─────────── */
+.plugins-head {
+  padding-bottom: 0.5rem;
+}
+
+.plugins-head .lede {
+  max-width: 44rem;
+}
+
+.plugin-search {
+  margin: 1.25rem 0 0.5rem;
+}
+
+.plugin-search label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font: 600 0.78rem/1.3 var(--pu-gothic);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--pu-ink);
+}
+
+.plugin-search input {
+  width: 100%;
+  max-width: 28rem;
+  padding: 0.65rem 0.8rem;
+  font: 400 1rem/1.2 var(--pu-type);
+  color: var(--pu-ink);
+  background: #fbf6e8;
+  border: 1px solid var(--pu-ink);
+  box-shadow: none;
+}
+
+.plugin-search input:focus-visible {
+  outline: 2px dashed var(--pu-red-bright);
+  outline-offset: 3px;
+}
+
+.plugins-head .note {
+  font: 400 0.85rem/1.4 var(--pu-type);
+  color: var(--pu-ink-soft);
+}
+
+.plugins-section {
+  padding: 1.5rem 0 2.5rem;
+}
+
+.plugins-section h2 {
+  margin: 0 0 1.25rem;
+  padding: 0.4rem 0 0.35rem;
+  font: 600 clamp(1.1rem, 2.4vw, 1.4rem)/1.2 var(--pu-gothic);
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: var(--pu-ink);
+  border-top: 4px double var(--pu-ink);
+  border-bottom: 1px solid var(--pu-ink);
+}
+
+/* Each plugin is a <details> galley: the summary is the face, and opening it
+   shows the command that adds it to a book. A closed card keeps its own
+   height instead of stretching to an open neighbour's. */
+.card.plugin {
+  padding: 0;
+  align-self: start;
+}
+
+.card.plugin summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1.5rem 1.4rem 1.3rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.card.plugin summary::-webkit-details-marker {
+  display: none;
+}
+
+.card.plugin summary h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font: 700 1.1rem/1.2 var(--heading-font);
+  overflow-wrap: anywhere;
+}
+
+.card.plugin .badge {
+  margin-left: 0;
+  color: var(--pu-ink-soft);
+  border-color: var(--pu-ink-soft);
+  font-family: var(--pu-gothic);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.card.plugin .badge-gp {
+  color: var(--pu-red);
+  border-color: var(--pu-red);
+}
+
+.plugin-desc {
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--pu-ink-soft);
+}
+
+.plugin-meta {
+  font: 400 0.75rem/1.3 var(--pu-type);
+  color: var(--pu-ink-soft);
+}
+
+.plugin-cmd {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0 1.4rem 1.4rem;
+  border-top: 1px dashed var(--pu-ink-soft);
+}
+
+.plugin-cmd .term-body {
+  padding: 0.9rem 0 0;
+  line-height: 1.6;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.plugin-cmd .prompt {
+  color: var(--pu-red);
+}
+
+.card button.more {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pu-red);
+  font: 600 0.8rem/1.3 var(--pu-gothic);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.card button.more:hover {
+  color: var(--accent-bright);
+}
+
+/* ── Download tables ──────────────────────────────────────────────────── */
+.dl-version {
+  font: 400 0.85rem/1.4 var(--pu-type);
+  color: var(--pu-ink-soft);
+}
+
+.dl-size {
+  font: 400 0.75rem/1 var(--pu-type);
+  color: var(--pu-ink-soft);
+  white-space: nowrap;
+}
+
+.downloads td a code {
+  color: var(--pu-red);
+}

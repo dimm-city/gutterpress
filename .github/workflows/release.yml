@@ -757,6 +757,20 @@ jobs:
             --ref "$DEFAULT_BRANCH" \
             -f version="$VERSION"
 
+      # The project site's download links are read from the latest stable
+      # release when the site builds (website/scripts/gen.mjs), so rebuild it
+      # now that this release exists. Dispatched for the same reason as the
+      # workflows above: a release created with GITHUB_TOKEN fires no events.
+      - name: Refresh the site's download links (dispatch pages.yml)
+        if: ${{ needs.version.outputs.prerelease != 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          gh workflow run pages.yml \
+            --repo "${{ github.repository }}" \
+            --ref "$DEFAULT_BRANCH"
+
       # GitHub suppresses events from releases created with GITHUB_TOKEN (to
       # prevent workflow recursion; workflow_dispatch is exempt), so dispatch
       # docker.yml explicitly at the release tag. metadata-action derives the semver

@@ -110,7 +110,13 @@ The desktop app shows the same list under **Project settings → Features** (the
 
 ## Installing npm Plugins
 
-Install an npm plugin from the desktop app under **Project settings → Features**, or with the standalone CLI:
+Install an npm plugin from the desktop app under **Project settings → Features**, or with the standalone CLI. Features has three tabs:
+
+- **Installed & built-in** — everything your book already uses (with each package's **Version** menu and **Update** button), and the built-in formatting extras you can turn on.
+- **Search** — packages on npm tagged `gutterpress` or `markdown-it-plugin`. The list loads the first time you open the tab, so it never slows opening a book; type a word and press Enter to narrow it, then **Add** a package. The new entry is listed under **Installed & built-in**.
+- **Advanced** — **Install from npm** by package name (add `@version` for an exact version, and an export name for packages with named plugin functions), and **Add a plugin file or folder…** to use one from disk where it is.
+
+The CLI equivalent:
 
 ```bash
 gutterpress ext add markdown-it-highlightjs ./my-book
@@ -124,8 +130,10 @@ Gutterpress resolves the npm registry metadata to exact versions, verifies each
 registry integrity hash, and vendors the plugin's complete runtime dependency
 tree under the project's `plugins/npm/` folder as a plain `node_modules`
 layout. Gutterpress then writes the pinned specifier —
-`markdown-it-highlightjs@4.3.0` — into `extensions:`, so the vendored tree
-travels with the project and later builds do not access the network. Explicit
+`markdown-it-highlightjs@4.3.0` — into `extensions:`. The pin is what travels
+with your book; the downloaded copy under `plugins/npm/` does not (see
+[Cloning a book](#cloning-a-book-with-installed-extensions) below), and an
+ordinary build, with every copy present, does not access the network. Explicit
 reinstall always downloads fresh bytes rather than trusting the existing folder.
 
 No Bun, npm, Node.js installation, or package lifecycle script is used.
@@ -159,6 +167,65 @@ sandboxed: they run in-process with the app's full filesystem and network
 privileges. The desktop app shows this warning in a native confirmation before
 downloading a third-party plugin.
 
+## Cloning a Book with Installed Extensions
+
+Downloaded extensions are not part of your book's version history. New books
+(and folders you set up as a book) list `plugins/npm/` in their `.gitignore`
+next to `dist/`, and installing an extension adds that line to an older book's
+`.gitignore` if it is missing. A book inside a larger repository keeps the rule
+in its own folder's `.gitignore`, which version history honours. Nothing else in
+your `.gitignore` is changed, and if you have deliberately re-included
+`plugins/npm/` (a `!` rule) it is left alone and the install tells you
+downloaded extensions shouldn't be committed.
+
+So a fresh clone has your `manifest.yaml` and its pins but not the downloaded
+files — and it does not need you to do anything:
+
+- **Desktop app** — opening the book downloads any missing pinned version
+  first, with a short notice saying what it fetched. If you are offline, an
+  error says the extensions are not installed yet and to connect to the
+  internet; the book still opens without them. If a download fails for another
+  reason, a warning says which one and why. Either way the extension's row
+  under **Project settings → Features** reads **Needs install**, and its
+  **Install** button tries again.
+  Exporting a PDF or HTML and the **Problems** panel do the same before they
+  use your extensions, so they never run without them: if a download fails, an
+  export stops and says which extension and why, and Problems lists that as an
+  error to fix.
+- **CLI** — `gutterpress build`, `validate` and `preflight` (and a one-shot
+  `preview --format pdf`) download a missing pinned version before they start,
+  printing one line per package (to stderr, so `validate --format json` stays
+  clean JSON):
+
+  ```text
+  Downloaded gp-dimm-city@1.2.0-alpha.3 (pinned in manifest.yaml)
+  ```
+
+  If it cannot, they stop. Offline, they say which extensions are not installed
+  yet and to run the command again once you are online. For any other failure
+  (registry error, failed integrity check), they name the extension, the reason
+  and how to try again, or suggest `gutterpress ext add name@version`. A failed attempt
+  leaves nothing behind, not even an empty `plugins/npm/` folder. Live
+  `preview` only warns and keeps going, like any other plugin it cannot load.
+
+Once your extensions are downloaded, the book works offline: nothing is
+fetched when every pinned copy is already there.
+
+Restoring downloads exactly the version in `manifest.yaml`, never a newer one,
+through the same hash-verified install as `ext add`, and it never edits the
+manifest. Once a package's pinned version is in place, its other downloaded
+versions are deleted (after a pull moves a pin, or a branch switch, say) —
+they are a cache, the pin is what counts — unless another enabled entry in the
+manifest still pins that version. Other packages are never touched. It does nothing, and uses no network, when every copy is already
+there; local paths, unpinned names and bundled features are never touched.
+Because you pinned that exact version yourself, the desktop app does not ask
+for confirmation again when it restores it.
+
+If an older book already committed `plugins/npm/`, adding the ignore rule does
+not remove those files from its history — git keeps tracking what it already
+tracks. Remove them when you are ready (`git rm -r --cached plugins/npm`);
+Gutterpress never deletes anything from git for you.
+
 ## Updating a Pinned Extension
 
 A book pins an exact version and builds from its vendored copy, so nothing
@@ -175,13 +242,28 @@ gutterpress ext update gp-dimm-city ./my-book # just one
 downloaded, verified against the registry hash, vendored, load-tested, and
 re-pinned in place — the entry's `export:` and `enabled:` stay as written —
 and the previous version's folder under `plugins/npm/` is removed (a re-pin
-with `ext add` does the same). Commit the manifest and the new vendored tree
-together. To move to a specific version instead of the latest, or to go back,
+with `ext add` and a restore do the same). Commit the manifest; the new downloaded copy
+stays out of git, and a clone fetches it from the new pin. To move to a specific version instead of the latest, or to go back,
 run `ext add name@x.y.z`.
 
 The desktop app does the same under **Project settings → Features**: opening
 the tab checks npm once, an entry with a newer version shows it with an
-**Update** button, and *Check for updates* re-checks.
+**Update** button on the **Installed & built-in** tab, and *Check for updates*
+re-checks.
+
+Every npm package there also has a **Version** menu listing its published
+versions, newest first. Choosing one is `ext add name@version`: Gutterpress
+downloads, verifies and load-tests it, and only then moves the pin. If that
+fails, a message says why and the book keeps the version — and the downloaded
+copy — it had. The menu lists stable releases only; switch on **Include
+pre-release versions** (`-alpha`, `-beta`, `-rc`) to see the rest and to have
+the update check count them as newer. That switch is an app preference, shared
+by all your books, and off by default. The version a book pins is always
+listed, even a pre-release.
+
+If a book's pin names a version whose downloaded copy is missing — a changed
+`manifest.yaml`, or a copy that was deleted or is broken — its row says **Needs
+install** with an **Install** button that downloads exactly the pinned version.
 
 `ext outdated` exits 1 when a package is behind, so a CI step can watch a
 book's pins without updating anything.
@@ -195,7 +277,7 @@ gutterpress new "Field Notes" --kind plugin
 cd field-notes && bun install && bun test
 ```
 
-That produces a complete, runnable package: `package.json`, a `plugin.js` with one declarative container and one hand-written rule, component CSS with public `:root` tokens, an insertable snippet, and a fixture test you run with `bun test`. Its README explains which conventions are load-bearing and why — class prefixing, why you cannot import `gutterpress` at runtime, and where your CSS belongs in the cascade. Add it to a book with `gutterpress ext add ./field-notes <book>`, which lists the folder under `extensions:` and references it in place.
+That produces a complete, runnable package: `package.json`, a `plugin.js` with one declarative container and one hand-written rule, component CSS with public `:root` tokens, an insertable snippet, and a fixture test you run with `bun test`. Its `@term-box` component shows both component helpers — an example snippet the editor inserts and an opt-in `validate` check (see [Components](#plugin-components) below). Its README explains which conventions are load-bearing and why — class prefixing, why you cannot import `gutterpress` at runtime, and where your CSS belongs in the cascade. Add it to a book with `gutterpress ext add ./field-notes <book>`, which lists the folder under `extensions:` and references it in place.
 
 Use `--prefix` to choose the class prefix it claims (it defaults to the package slug):
 
@@ -328,6 +410,244 @@ plugin` scaffolds.
 Older packages carried a separate `gutterpress.json` or `theme.json`. Neither
 is read any more: move their fields into `package.json` as above.
 
+### Components: a marker, its snippet and its checks {#plugin-components}
+
+A **component** is a container your plugin declares in `export const markers`
+— the scaffold's `term-box`, used as `@term-box … @end-term-box`. Two optional
+fields on that declaration help the authors who use it.
+
+**`snippet` — show the structure.** When an author picks a component in the
+desktop editor — typing `@` at the start of a line, or from the snippet picker
+(Ctrl/Cmd+Shift+S), where its row is marked `@term-box` — Gutterpress inserts
+its example snippet, so the author starts from the structure the component
+expects. By default the snippet is `<snippets folder>/<marker name>.md`
+inside your package (the scaffold's `snippets/term-box.md`; the folder is the
+one `gutterpress.snippets` names, or `snippets`). To keep it somewhere else,
+point at any `.md` file inside your package:
+
+```js
+export const markers = {
+  "term-box": { class: "fn-term-box", snippet: "examples/term-box.md" },
+};
+```
+
+A snippet can use `{{fields}}`: the picker asks for them, and `@` autocomplete
+selects the first one so the author can type straight over it. A component
+without a snippet still autocompletes, as an empty marker pair.
+
+Snippets come from three levels: your book's own `snippets/` folder, each
+extension, and Gutterpress itself (core). The picker lists every one, grouped
+by where it comes from, even when two share a name. When a component needs
+a single snippet, your book's `snippets/term-box.md` wins over the
+extension's copy (and an extension's over core's), so you can change a
+component's starting structure for one book without touching the extension.
+
+**`variants` — name the choices.** A component's `variants` map each word an
+author can put after the marker to a class: `variants: { note: "fn-note" }`
+makes `@term-box note` add `fn-note`. The word is also kept as
+`data-term-box="note"`. If an author types a word that is not one of the
+variants — `@term-box nots` — it adds no styling, so Gutterpress says so in the
+Problems panel, listing the variants and suggesting the close match: `"nots" is
+not a variant of @term-box, so it adds no styling. Variants: note, warning. Did
+you mean "note"?` A component with no `variants` reports any word the same way
+(`@term-box has no variants`). An alias's `preset: { variant }` is yours, not the
+author's, so it is never reported.
+
+**`validate` — check the structure (opt-in).** Add a `validate` function and
+Gutterpress runs it for every use of the component whenever it checks the
+book: the desktop Problems panel, `gutterpress validate`, and builds. You don't
+need to know anything about markdown-it or Gutterpress internals — the
+function receives a plain description of what the author wrote:
+
+```js
+export const markers = {
+  "term-box": {
+    class: "fn-term-box",
+    validate(box) {
+      const problems = [];
+      if (!box.attrs.label) problems.push('Give the term box a label: @term-box label="…"');
+      if (!box.blocks.some((block) => block.type === "paragraph")) {
+        problems.push("Add a paragraph explaining the term.");
+      }
+      return problems;
+    },
+  },
+};
+```
+
+What `validate` receives:
+
+- `name` — the marker as typed (`"term-box"`)
+- `variant` — the bare word after it (`@term-box note` → `"note"`), or `null`
+- `attrs` — its attributes (`{ label: "…" }`)
+- `line` — the marker's line in the file
+- `text` — the raw markdown inside the component
+- `blocks` — the content, in order. Each block has a `type` and a `line`:
+  `heading` (`level`, `text`), `paragraph` (`text`), `image` (`alt`, `src` —
+  a paragraph holding only an image), `list` (`ordered`, `items`), `quote`
+  (`text`), `code` (`lang`, `text`), `table`, `rule`, `html` (`text`), and
+  `component` (`name`) for a component nested inside — which its own
+  `validate` checks. `text` is the block's raw markdown.
+
+What it returns: nothing when the content is fine, or a list of problems. A
+problem is a message, or `{ message, line, severity }` to point at a specific
+line or choose `"error"`, `"warning"` (the default) or `"info"`. Each one
+appears as `@term-box: <message>` at that line. Use `"error"` sparingly: it
+fails `gutterpress validate` and stops a build, though a book can downgrade
+the whole check with `validate.checks."source.markdown.layout-markers"`.
+`validate` must be synchronous; if it throws, the author sees that as a
+problem instead of a broken preview.
+
+A few recipes:
+
+```js
+// The first thing inside must be a heading.
+if (box.blocks[0]?.type !== "heading") problems.push("Start with a heading.");
+
+// No more than two paragraphs.
+const paragraphs = box.blocks.filter((b) => b.type === "paragraph");
+if (paragraphs.length > 2) problems.push({ message: "Keep it to two paragraphs.", line: paragraphs[2].line });
+
+// Every image needs alt text.
+for (const b of box.blocks) {
+  if (b.type === "image" && !b.alt.trim()) problems.push({ message: "Describe this image.", line: b.line });
+}
+
+// A list of at least two items.
+const list = box.blocks.find((b) => b.type === "list");
+if (!list || list.items.length < 2) problems.push("List at least two options.");
+
+// Variants you check yourself (words missing from `variants` are already reported).
+if (box.variant && !["note", "warning"].includes(box.variant)) problems.push(`Unknown variant "${box.variant}".`);
+```
+
+Because `validate` takes a plain object, you test it with plain objects too
+— the scaffold's `test/plugin.test.js` shows how.
+
+**`section: true` — a component that is a section.** Some components are page
+layouts rather than boxes: a column run, a card grid, a stat block. Declare
+them as sections and they behave exactly like `@section` — they close at the
+next `@section`, `@page`, `@chapter` or `@spread`, `@continue` reopens them
+with the same classes, and `.gp-columns-2` and friends work:
+
+```js
+export const markers = {
+  "npc-stat": {
+    section: true,
+    class: "fn-npc-stat",
+    variants: { wirephreak: "fn-wirephreak" },
+  },
+};
+```
+
+`@npc-stat wirephreak .extra` renders exactly like
+`@section .fn-npc-stat .fn-wirephreak .extra` (classes in that order), and
+`@end-npc-stat` is `@end-section`. The variant is not a section name, so it
+becomes `data-npc-stat="wirephreak"` instead of `data-section`. A section
+marker cannot also set `tag`, `label`, `autoCloseAt` or `selfClosing`; aliases of it are
+sections too. `validate` works on it as well (a `@continue` continuation is
+not checked separately).
+
+**`selfClosing` — a marker with no body.** Some components are one element and
+nothing else: a divider, a tape strip, a stamp. Set `selfClosing: true` and the
+marker emits its element (with its `label`, if any) and closes it on the spot,
+so there is no `@end-` line to forget and the content after it is never nested
+inside:
+
+```js
+export const markers = {
+  tape: {
+    selfClosing: true,
+    class: "fn-tape",
+    label: { tag: "span", class: "fn-tape-label", from: "attr:label" },
+  },
+};
+```
+
+`@tape label="— § —"` is the whole component. Typing `@end-tape` is reported in
+the Problems panel and ignored, and `@` autocomplete inserts just the marker
+(no closing pair). A self-closing marker cannot also set `section` or
+`autoCloseAt`, and a `validate` on it always sees empty `blocks` and `text` —
+check its `attrs` and `variant` instead.
+
+### Components that rebuild their content: declare, then transform
+
+Some components need more than a wrapper and classes — a card that turns its
+list into a grid, a procedure that numbers its steps. You do not need a
+special API for these. **Declare the marker** in `markers` so core parses it
+(autocomplete, closing rules, warnings, source lines), then **rewrite the
+tokens inside it** with an ordinary markdown-it core rule pushed from your
+default export. This is opt-in: a plugin that never declares a marker is a
+plain markdown-it plugin, exactly as before.
+
+A declared container renders as a `layout_component_open` token, its content
+tokens, and a matching `layout_component_close`. The open token's `meta` is a
+stable, public contract:
+
+| Field | Meaning |
+|-------|---------|
+| `line` | the marker's 1-based line |
+| `component` | the marker name as typed (an alias's own name, e.g. `dm-note`) |
+| `kind` | the resolved base marker name (the alias's target, e.g. `callout`) |
+| `variant` | the bare word after the marker (or an alias's preset), or `null` |
+| `attrs` | the marker's attributes as authored (`{ label: "…" }`) |
+| `labelled` | `true` when core injected a label element right after the open token |
+
+Match on `kind` and a rule for `callout` also catches `@dm-note`. The content
+is `tokens[from..close)`, where `from` is the index after the open token (two
+after it when `labelled`). A `section: true` marker produces
+`layout_section_open` / `layout_section_close` instead, with the same `meta`
+minus `labelled` (plus `continued: true` on a `@continue` reopening).
+
+Plugins cannot import from `gutterpress`, so copy this small helper into your
+plugin:
+
+```js
+// Calls fn(open, from, close) for each @<kind> component; the content is
+// tokens[from..close). Walks backwards so a transform can edit the tokens
+// without shifting the components it has yet to visit.
+function forEachComponent(tokens, kind, fn) {
+  for (let i = tokens.length - 1; i >= 0; i--) {
+    const open = tokens[i];
+    if (open.type !== "layout_component_open" || open.meta.kind !== kind) continue;
+    let depth = 0;
+    let close = i;
+    for (; close < tokens.length; close++) {
+      depth += tokens[close].nesting;
+      if (depth === 0) break;
+    }
+    fn(open, i + (open.meta.labelled ? 2 : 1), close);
+  }
+}
+
+export const markers = {
+  steps: { class: "fn-steps" },
+};
+
+export default function fieldNotes(md) {
+  md.core.ruler.push("fn_steps", (state) => {
+    forEachComponent(state.tokens, "steps", (open, from, close) => {
+      let count = 0;
+      for (let i = from; i < close; i++) {
+        const token = state.tokens[i];
+        if (token.type !== "list_item_open") continue;
+        token.attrJoin("class", "fn-step");
+        count++;
+      }
+      open.attrSet("data-steps", String(count));
+    });
+  });
+}
+```
+
+Your rule runs after core has placed the markers and parsed the inline
+content, after `validate` (which therefore sees what the author wrote), and
+before source ranges are attached.
+
+This is unrelated to the `gutterpress.components` catalog file, which nothing
+reads yet. Looks (CSS-only packages) have no JavaScript, so their components
+cannot carry `validate`.
+
 ## Built-in Plugins
 
 These run automatically before any extension and do not need to be declared in the manifest:
@@ -408,13 +728,13 @@ Gutterpress **fails the build** on extension errors — a final PDF must never s
 | `"plugins/x.js" looks like a path — write it as "./plugins/x.js"` | A path must start with `./`, `../` or `/`; anything else is read as an npm name. |
 | `"markdown-it-mark" is bundled with Gutterpress … drop "@3.0.0"` | Bundled names always resolve to the built-in copy and cannot be pinned. |
 | `Plugin file not found: …` | Check the path (relative to `manifest.yaml`) and that the file exists |
-| `` Extension "foo" not found. Install it with `gutterpress ext add foo` `` | Run that, or add it from Project settings → Features; make sure `plugins/npm/` travels with the project |
+| `` Extension "foo" not found. Install it with `gutterpress ext add foo` `` | Run that, or add it from Project settings → Features. A pinned entry whose copy is missing is downloaded automatically by `build`, `validate`, `preflight`, `preview` and when the desktop opens the book. An entry with no exact version (`foo`, `foo@^1`, `foo@latest`) is never downloaded for you and reads "is not pinned to an exact version": `ext add` downloads it and pins it |
 | `Plugin "foo" does not export a valid plugin function` | Ensure the default export is a function, or select its named function with `export:` |
 | `Plugin "foo" does not export a plugin function named "bar"` | Fix the `export:` name to one the package really exports |
 
 @end-section
 
-`gutterpress ext list` warns about the two states a build will trip over before you build: `Not pinned` (an npm name without a version — run `ext add` to install and pin it) and `Not installed` (a pinned entry whose vendored copy is missing — the same `ext add` reinstalls it).
+`gutterpress ext list` warns about the two states a build will trip over before you build: `Not pinned` (an npm name without a version — run `ext add` to install and pin it) and `Not installed` (a pinned entry whose vendored copy is missing — `build`, `validate`, `preflight` and `preview` download it for you, or `ext add` does it by hand).
 
 ## Reference Example
 

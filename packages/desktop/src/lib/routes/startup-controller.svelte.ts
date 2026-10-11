@@ -22,6 +22,7 @@
 
 import { decideStartupScreen } from "./startup-landing";
 import type { LastFlushFailure } from "../platform/contract";
+import { basenameOf } from "$lib/platform/paths";
 
 /** The subset of persisted `DesktopPrefs` this flow reads. */
 export interface StartupPrefs {
@@ -130,8 +131,10 @@ export class StartupController {
       // epoch is claimed at intent time with no await in between. The
       // per-project restore read (#43) lives in the lifecycle controller, keyed
       // to the RESOLVED book dir.
-      d.setBusy(true, "Reopening previous folder…");
-      await d.startFolderPreview(dir, "Reopening previous folder…");
+      // Same wording as every other open ("Opening <book>…").
+      const label = `Opening ${basenameOf(dir)}…`;
+      d.setBusy(true, label);
+      await d.startFolderPreview(dir, label);
       // If the saved project no longer opens (moved/renamed/deleted),
       // startFolderPreview sets openError but does NOT throw. The start
       // screen returns on its own (landingVisible derived: workspace is

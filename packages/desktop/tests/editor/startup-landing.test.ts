@@ -1,4 +1,5 @@
 import { test, expect } from "bun:test";
+import type { ActivityStage } from "../../src/lib/loading/activity-stage";
 import {
   decideStartupScreen,
   continueStatus,
@@ -42,28 +43,60 @@ test("previous project + landing off → pre-landing behavior (splash covers the
 // per-page tick and is rendered aria-hidden.
 // ---------------------------------------------------------------------------
 
+const stage = (over: Partial<ActivityStage>): ActivityStage => ({
+  id: "layout",
+  label: "Laying out pages…",
+  detail: null,
+  progress: null,
+  ...over,
+});
+
 test("no preview URL yet → opening", () => {
+  expect(continueStatus({ hasPreviewUrl: false, stage: null })).toEqual({
+    kind: "opening",
+    label: "Opening your book…",
+    detail: null,
+  });
+  // The open's own stage ("Opening “Book”…") does not replace the card's wording:
+  // the card already names the book.
   expect(
-    continueStatus({ hasPreviewUrl: false, rendering: false, renderProgressPage: 0 }),
+    continueStatus({ hasPreviewUrl: false, stage: stage({ id: "opening", label: "Opening Book…" }) }),
   ).toEqual({ kind: "opening", label: "Opening your book…", detail: null });
 });
 
-test("rendering with no page progress yet → preparing, no detail", () => {
+test("the extension download is named on the card before the preview exists", () => {
   expect(
-    continueStatus({ hasPreviewUrl: true, rendering: true, renderProgressPage: 0 }),
-  ).toEqual({ kind: "rendering", label: "Preparing your book…", detail: null });
+    continueStatus({
+      hasPreviewUrl: false,
+      stage: stage({
+        id: "downloading",
+        label: "Downloading extensions (1 of 2)…",
+        detail: "gp-x 1.0.0",
+      }),
+    }),
+  ).toEqual({ kind: "opening", label: "Downloading extensions (1 of 2)…", detail: "gp-x 1.0.0" });
 });
 
-test("rendering mid-layout → per-page progress goes in detail, label stays coarse", () => {
-  expect(
-    continueStatus({ hasPreviewUrl: true, rendering: true, renderProgressPage: 42 }),
-  ).toEqual({ kind: "rendering", label: "Preparing your book…", detail: "page 42…" });
+test("laying out with no page progress yet → the stage's label, no detail", () => {
+  expect(continueStatus({ hasPreviewUrl: true, stage: stage({}) })).toEqual({
+    kind: "rendering",
+    label: "Laying out pages…",
+    detail: null,
+  });
 });
 
-test("render settled → ready", () => {
+test("laying out mid-way → the page count goes in detail, label stays constant", () => {
   expect(
-    continueStatus({ hasPreviewUrl: true, rendering: false, renderProgressPage: 287 }),
-  ).toEqual({ kind: "ready", label: "Your book is ready.", detail: null });
+    continueStatus({ hasPreviewUrl: true, stage: stage({ detail: "42 pages so far" }) }),
+  ).toEqual({ kind: "rendering", label: "Laying out pages…", detail: "42 pages so far" });
+});
+
+test("no stage left → ready", () => {
+  expect(continueStatus({ hasPreviewUrl: true, stage: null })).toEqual({
+    kind: "ready",
+    label: "Your book is ready.",
+    detail: null,
+  });
 });
 
 // ---------------------------------------------------------------------------

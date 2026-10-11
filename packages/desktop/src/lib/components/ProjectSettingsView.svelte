@@ -47,6 +47,7 @@
    */
   import { onMount } from "svelte";
   import { api } from "$lib/api";
+  import { useSettings } from "$lib/settings.svelte";
   import type { ToastController } from "$lib/components/Toast.svelte";
   import { DetailsSectionController } from "$lib/routes/details-section-controller.svelte";
   import { ExtensionsSectionController } from "$lib/routes/extensions-section-controller.svelte";
@@ -71,13 +72,14 @@
     onClose,
     onOpenAccounts,
     onVersionHistoryEnabled,
+    onBackupSetUp,
     triggerEl,
   }: {
     projectDir: string | null;
     /** The repo the open book belongs to — lets the pickers offer SHARED styles. */
     repoRoot?: string | null;
     /** Tab to open on. Read once at mount (the view is keyed per open). */
-    initialTab?: "details" | "connections";
+    initialTab?: "details" | "features" | "connections";
     toast?: ToastController | null;
     /** Escape hatch: open a stylesheet in the raw-CSS editor (the parent
      *  closes this view first). */
@@ -89,6 +91,8 @@
     onOpenAccounts?: () => void;
     /** The Connections tab just turned on version history: re-read the project's classification. */
     onVersionHistoryEnabled?: (projectDir: string) => void;
+    /** The Connections tab just set up online backup: re-read the project's classification. */
+    onBackupSetUp?: (projectDir: string) => void;
     /** The control that opened the view, for focus restore on close. */
     triggerEl?: HTMLElement | null;
   } = $props();
@@ -125,6 +129,9 @@
     projectDir: projectDirAccessor,
     readManifest: (dir) => api.manifest.read(dir),
     writeManifest: (dir, updates) => api.manifest.setFields(dir, updates),
+    // Page size (#357): read back from the manifest + stylesheet, written to both.
+    readPageSetup: (dir) => api.pageSize.read(dir),
+    writePageSetup: (dir, choice) => api.pageSize.set(dir, choice),
     // The source-files list universe: top-level markdown files (the same set
     // the render pipeline includes when the manifest lists none).
     listMarkdownFiles: (dir) =>
@@ -145,6 +152,8 @@
     onError: (msg) => toast?.error?.(msg),
   });
 
+  const settings = useSettings();
+
   // ── Extensions — ONE list, two views (#243/#265). A change to a look
   //    refreshes Styles + Design. ─────────────────────────────────────────
   const extensions = new ExtensionsSectionController({
@@ -153,7 +162,10 @@
     recommended: () => api.extension.recommended(),
     listBuiltIn: () => api.extension.listBuiltIn(),
     search: (query) => api.extension.search(query),
-    outdated: (dir) => api.extension.outdated(dir),
+    outdated: (dir, includePrerelease) => api.extension.outdated(dir, includePrerelease),
+    versions: (name) => api.extension.versions(name),
+    includePrerelease: () => settings.current.updates.includeExtensionPrereleases,
+    setIncludePrerelease: (on) => settings.set({ updates: { includeExtensionPrereleases: on } }),
     validate: (dir) => api.extension.validate(dir),
     add: (dir, specifier, exportName) => api.extension.add(dir, specifier, exportName),
     addLocal: (dir) => api.extension.addLocal(dir),
@@ -304,7 +316,7 @@
       {#if activeTab === "connections"}
         <!-- This project's connection details. Accounts/credentials stay
              global in Settings → Accounts; onOpenAccounts routes there. -->
-        <ProjectConnectionsSection {projectDir} {onOpenAccounts} {onVersionHistoryEnabled} />
+        <ProjectConnectionsSection {projectDir} {onOpenAccounts} {onVersionHistoryEnabled} {onBackupSetUp} />
       {/if}
     {/if}
   </div>

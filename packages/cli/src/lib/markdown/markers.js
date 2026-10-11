@@ -34,7 +34,9 @@
  *   If no markers are present, plugin does nothing.
  *
  * Validation:
- *   Warnings are pushed into env.layoutWarnings: Array<{ line, type, message, marker? }>
+ *   Warnings are pushed into env.layoutWarnings: Array<{ line, type, message, marker?, severity? }>
+ *   (`severity` is only ever set by a declared marker's `validate` result —
+ *   see runComponentValidate; consumers treat its absence as "warning").
  *
  * Source line threading (token.meta.line):
  *   Every layout_*_open token (chapter/spread/page/section, including the
@@ -61,9 +63,15 @@
  *                   variants: { note: 'dc-note', warning: 'dc-note warning' },
  *                   label: { class: 'dc-alert-label', from: 'attr:label' },
  *                   autoCloseAt: ['eof'] },
- *       sidebar:  { tag: 'aside', class: 'dc-sidebar' },
+ *       sidebar:  { tag: 'aside', class: 'dc-sidebar',
+ *                   snippet: 'examples/sidebar.md',
+ *                   validate: (box) => box.blocks.length ? [] : ['Add some content.'] },
+ *       'npc-stat': { section: true, class: 'dc-npc-stat',
+ *                     variants: { wirephreak: 'dc-wirephreak' } },
  *       'dm-note': { alias: 'callout', preset: { variant: 'dm' } },
  *       'roll-table': { deprecated: 'Removed in 17.3.0 — use @outcome.' },
+ *       tape:     { selfClosing: true, class: 'dc-tape',
+ *                   label: { tag: 'span', class: 'dc-tape-label', from: 'attr:label' } },
  *     };
  *
  *   This is DATA the loader (`plugins.ts`) reads off the plugin module —
@@ -80,7 +88,10 @@
  *   `openDeclaredMarker`, and the declared-marker branch in `layout_transform`
  *   below. A plugin that needs more than a declarative wrapper still just
  *   writes a plain markdown-it block rule by hand; the declarative path is
- *   an alternative to that, never a replacement for it.
+ *   an alternative to that, never a replacement for it. `section: true`
+ *   makes a marker a core @section (`@npc-stat wirephreak` is
+ *   `@section .dc-npc-stat .dc-wirephreak`); containers also expose their
+ *   tokens (`meta.kind` etc., see renderer.ts) for a plugin's own core rule.
  */
 
 /**
@@ -197,9 +208,8 @@ function escapeAttr(s) {
  * @param {Set<string>|null} [declaredWords] — every declared marker's own
  *   name PLUS its auto-derived `end-<name>` closer (built once per plugin()
  *   call by `declaredKindWords`, from the registry `buildDeclaredMarkerRegistry`
- *   resolved). `null`/omitted for the zero-declared-markers case, which is
- *   every project not using #240 — behavior is then IDENTICAL to before this
- *   parameter existed.
+ *   resolved). The plugin always passes it (core declares `@columns`);
+ *   `null`/omitted means core kinds only.
  * @param {{allowUnknownKinds?: boolean}} [options] - see the `unknownKind`
  *   comment below; only the rich editor passes this.
  */
@@ -395,6 +405,172 @@ function warn(env, line, type, message, marker) {
   env.layoutWarnings.push({ line, type, message, marker });
 }
 
+// ── Component validation (opt-in, per declared marker) ─────────────────────
+//
+// A declared marker may carry `validate(component)`. Plugin authors write it
+// against the small plain object built here — never against markdown-it
+// tokens or core internals — so the authoring surface stays a few fields:
+// { name, variant, attrs, line, text, blocks }. A separate, read-only core
+// rule (`gp_component_validate`, below) runs it after inline parsing — the
+// same shape as gp-pin-scope.js — so the structural transform carries no
+// validation state. Results land on the same env.layoutWarnings channel as
+// every other marker warning, which carries them to `gutterpress validate`,
+// the desktop Problems panel, the build log and the preview terminal.
+
+const COMPONENT_SEVERITIES = ['error', 'warning', 'info'];
+
+/** Index of the token closing the block opened at `i` (or `i` for a nesting-0 token). */
+function blockEnd(tokens, i) {
+  if (tokens[i].nesting !== 1) return i;
+  let depth = 0;
+  for (let j = i; j < tokens.length; j++) {
+    depth += tokens[j].nesting;
+    if (depth === 0) return j;
+  }
+  return tokens.length - 1;
+}
+
+/** Raw markdown of every inline token in tokens[from..to], one per line. */
+function inlineText(tokens, from, to) {
+  const parts = [];
+  for (let k = from; k <= to; k++) if (tokens[k].type === 'inline') parts.push(tokens[k].content);
+  return parts.join('\n');
+}
+
+/** The image a paragraph's inline token holds, when that image is all it holds. */
+function soleImage(inline) {
+  const parts = (inline && inline.children || []).filter(
+    (c) => c.type !== 'softbreak' && !(c.type === 'text' && !c.content.trim())
+  );
+  return parts.length === 1 && parts[0].type === 'image' ? parts[0] : null;
+}
+
+/**
+ * Map a component's content tokens to the plain `blocks` list its `validate`
+ * receives. Top level only: a nested list, quote or component is ONE block
+ * (a nested component is checked by its own `validate`). A block's `text` is
+ * its raw markdown.
+ */
+function toComponentBlocks(tokens, fallbackLine) {
+  const blocks = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i];
+    const end = blockEnd(tokens, i);
+    const line = tok.map ? tok.map[0] + 1 : (tok.meta && tok.meta.line) || fallbackLine;
+    switch (tok.type) {
+      case 'heading_open':
+        blocks.push({ type: 'heading', level: Number(tok.tag.slice(1)), text: inlineText(tokens, i, end), line });
+        break;
+      case 'paragraph_open': {
+        const image = soleImage(tokens[i + 1]);
+        blocks.push(
+          image
+            ? { type: 'image', alt: image.content, src: image.attrGet('src') || '', line }
+            : { type: 'paragraph', text: inlineText(tokens, i, end), line }
+        );
+        break;
+      }
+      case 'bullet_list_open':
+      case 'ordered_list_open': {
+        const items = [];
+        for (let k = i + 1; k < end; k++) {
+          if (tokens[k].type !== 'list_item_open' || tokens[k].level !== tok.level + 1) continue;
+          const itemEnd = blockEnd(tokens, k);
+          const first = tokens.slice(k + 1, itemEnd).find((t) => t.type === 'inline');
+          items.push(first ? first.content : '');
+          k = itemEnd;
+        }
+        blocks.push({ type: 'list', ordered: tok.type === 'ordered_list_open', items, line });
+        break;
+      }
+      case 'blockquote_open':
+        blocks.push({ type: 'quote', text: inlineText(tokens, i, end), line });
+        break;
+      case 'fence':
+      case 'code_block':
+        blocks.push({ type: 'code', lang: (tok.info || '').trim().split(/\s+/)[0] || '', text: tok.content, line });
+        break;
+      case 'table_open':
+        blocks.push({ type: 'table', line });
+        break;
+      case 'hr':
+        blocks.push({ type: 'rule', line });
+        break;
+      case 'html_block':
+        blocks.push({ type: 'html', text: tok.content, line });
+        break;
+      case 'layout_component_open':
+        blocks.push({ type: 'component', name: tok.meta.component, line });
+        break;
+      default:
+        blocks.push({ type: tok.type.replace(/_open$/, ''), line });
+    }
+    i = end;
+  }
+  return blocks;
+}
+
+/**
+ * Run one component's opt-in `validate` and report its results. Never
+ * throws and never touches the token stream: a broken validator is a
+ * `component_validate_failed` warning, and the document renders exactly as
+ * it would without one.
+ *
+ * @param {object} env markdown-it env (receives the warnings)
+ * @param {object} decl the resolved declaration (carries validate/validateOwner)
+ * @param {object} meta the open token's meta: { line, component, variant, attrs }
+ * @param {object[]} tokens the component's content tokens (label excluded)
+ * @param {string[]} lines the source, split once per render
+ */
+function runComponentValidate(env, decl, meta, tokens, lines) {
+  const name = meta.component;
+  const line = meta.line || 0;
+  const report = (at, type, message, severity) => {
+    if (!env.layoutWarnings) env.layoutWarnings = [];
+    env.layoutWarnings.push(severity ? { line: at, type, message, severity } : { line: at, type, message });
+  };
+  const failed = (why) =>
+    report(line, 'component_validate_failed', `@${name}: plugin "${decl.validateOwner}"'s validate() ${why}`);
+
+  // `text` runs from the line after the marker through the component's last
+  // line of content (token maps are 0-based, end-exclusive).
+  let lastLine = line;
+  for (const t of tokens) if (t.map && t.map[1] > lastLine) lastLine = t.map[1];
+  const component = {
+    name,
+    variant: meta.variant || null,
+    attrs: { ...meta.attrs },
+    line,
+    text: lines.slice(line, lastLine).join('\n'),
+    blocks: toComponentBlocks(tokens, line),
+  };
+
+  let result;
+  try {
+    result = decl.validate(component);
+  } catch (error) {
+    failed(`threw: ${error instanceof Error ? error.message : String(error)}`);
+    return;
+  }
+  if (result === undefined || result === null) return;
+  if (typeof result === 'string') result = [result];
+  if (!Array.isArray(result)) {
+    failed('must return a message, an array of problems, or nothing (and must not be async).');
+    return;
+  }
+
+  for (const entry of result) {
+    const problem = typeof entry === 'string' ? { message: entry } : entry;
+    if (!problem || typeof problem.message !== 'string' || !problem.message.trim()) {
+      failed('returned a problem without a message.');
+      continue;
+    }
+    const at = Number.isInteger(problem.line) && problem.line > 0 ? problem.line : line;
+    const severity = COMPONENT_SEVERITIES.includes(problem.severity) ? problem.severity : undefined;
+    report(at, 'component_invalid', `@${name}: ${problem.message}`, severity);
+  }
+}
+
 /**
  * The other half of every "that isn't marker syntax" warning: the line may
  * not be a marker at all.
@@ -528,12 +704,30 @@ const TAG_NAME_RE = /^[a-z][a-z0-9-]*$/;
 
 /**
  * Validate + normalize the container-shaped fields common to a direct
- * declaration and an alias's target: `tag`, `class`, `variants`, `label`,
- * `autoCloseAt`. Shared by `resolveMarkerDeclaration` for both cases so an
+ * declaration and an alias's target: `section`, `tag`, `class`, `variants`,
+ * `label`, `autoCloseAt`. Shared by `resolveMarkerDeclaration` for both cases so an
  * alias's target is held to exactly the same contract a directly-declared
  * container is.
  */
 function resolveContainerShape(name, pluginName, decl) {
+  // `section: true` makes the marker a core @section (see `sectionMetaFor`),
+  // which owns its element, label-less and closed by the section rules — so
+  // the container-only fields have nothing to configure and are rejected
+  // rather than silently ignored.
+  if (decl.section !== undefined && typeof decl.section !== 'boolean') {
+    throw new Error(`Plugin "${pluginName}"'s marker "@${name}" has a \`section\` that is not a boolean.`);
+  }
+  if (decl.section) {
+    for (const field of ['tag', 'label', 'autoCloseAt', 'selfClosing']) {
+      if (decl[field] !== undefined) {
+        throw new Error(
+          `Plugin "${pluginName}"'s marker "@${name}" sets \`section: true\` and \`${field}\` — a section ` +
+            `marker is a core @section, so \`${field}\` does not apply. Remove one of them.`
+        );
+      }
+    }
+  }
+
   const tag = decl.tag !== undefined ? decl.tag : 'div';
   if (typeof tag !== 'string' || !TAG_NAME_RE.test(tag)) {
     throw new Error(
@@ -617,7 +811,37 @@ function resolveContainerShape(name, pluginName, decl) {
     autoCloseAtEof = decl.autoCloseAt.includes('eof');
   }
 
-  return { tag, classBase, variants, label, autoCloseAtEof };
+  // `selfClosing: true` — the marker emits one element and closes it on the
+  // spot (no body, no `@end-<name>`), so there is no frame for `autoCloseAt`
+  // to apply to.
+  if (decl.selfClosing !== undefined && typeof decl.selfClosing !== 'boolean') {
+    throw new Error(`Plugin "${pluginName}"'s marker "@${name}" has a \`selfClosing\` that is not a boolean.`);
+  }
+  if (decl.selfClosing && decl.autoCloseAt !== undefined) {
+    throw new Error(
+      `Plugin "${pluginName}"'s marker "@${name}" sets \`selfClosing: true\` and \`autoCloseAt\` — a ` +
+        `self-closing marker has no open container to auto-close. Remove one of them.`
+    );
+  }
+
+  // Opt-in structure check — see runComponentValidate. Owned by the plugin
+  // that declared the container, so an alias reports its TARGET's plugin.
+  if (decl.validate !== undefined && typeof decl.validate !== 'function') {
+    throw new Error(`Plugin "${pluginName}"'s marker "@${name}" has a \`validate\` that is not a function.`);
+  }
+  // Only a container that opts in carries these, so every other resolved
+  // shape is unchanged.
+  const check = decl.validate ? { validate: decl.validate, validateOwner: pluginName } : {};
+  return {
+    tag,
+    classBase,
+    variants,
+    label,
+    autoCloseAtEof,
+    ...(decl.section ? { section: true } : {}),
+    ...(decl.selfClosing ? { selfClosing: true } : {}),
+    ...check,
+  };
 }
 
 /**
@@ -647,6 +871,13 @@ function resolveMarkerDeclaration(name, rawDecl, rawRegistry, originOf) {
 
   if (typeof rawDecl !== 'object' || rawDecl === null || Array.isArray(rawDecl)) {
     throw new Error(`Plugin "${pluginName}"'s marker "@${name}" is not a plain object.`);
+  }
+
+  // `snippet` is read only by the host's component listing (snippets.ts
+  // `listMarkerComponents`) — core just rejects a malformed value at load
+  // time, like every other field, instead of letting it fail silently later.
+  if (rawDecl.snippet !== undefined && (typeof rawDecl.snippet !== 'string' || !rawDecl.snippet.trim())) {
+    throw new Error(`Plugin "${pluginName}"'s marker "@${name}" has a \`snippet\` that is not a non-empty path string.`);
   }
 
   if (rawDecl.deprecated !== undefined) {
@@ -698,6 +929,35 @@ function resolveMarkerDeclaration(name, rawDecl, rawRegistry, originOf) {
 }
 
 /**
+ * Core's own declared markers: plain wrappers that need nothing the declared
+ * container does not already give (a class, variants, `@end-<name>`, LIFO
+ * nesting, the unknown-variant warning), so they are declared here rather
+ * than hand-parsed like the structural kinds above. Their names are reserved
+ * to core exactly like `KNOWN_KINDS`.
+ *
+ *   @columns [1-5] — a multi-column run with no other styling: the
+ *   `.gp-columns*` utilities (gutterpress-css.ts) on a plain `div`, not a
+ *   `.section`, so a book whose theme paints sections does not paint it.
+ *   A bare `@columns` is two columns.
+ */
+const CORE_MARKER_OWNER = 'Gutterpress';
+const CORE_DECLARED_MARKERS = {
+  columns: {
+    class: 'gp-columns',
+    variants: { 1: 'gp-columns-1', 2: 'gp-columns-2', 3: 'gp-columns-3', 4: 'gp-columns-4', 5: 'gp-columns-5' },
+  },
+};
+
+/**
+ * The names core declares through the registry (`@columns`, …): core's own
+ * vocabulary like `KNOWN_KINDS`, but parsed by the declared-marker path.
+ * Exported for the editor projection, which must treat these lines as core
+ * layout syntax when it decides whether a plugin region's claimed range is
+ * credible (`editor-projection.ts`'s `CORE_MARKER_LINE_RE`).
+ */
+export const CORE_DECLARED_MARKER_NAMES = Object.freeze(Object.keys(CORE_DECLARED_MARKERS));
+
+/**
  * Merge every loaded plugin's `markers` export into ONE flat, resolved
  * registry — `Map<name, ResolvedDecl>` — validating collisions at LOAD TIME
  * (#240 / P2): a declared name that shadows a core reserved name, or that
@@ -717,15 +977,16 @@ export function buildDeclaredMarkerRegistry(sources) {
   const rawRegistry = new Map();
   const originOf = new Map();
 
-  for (const { pluginName, markers } of sources) {
+  for (const { pluginName, markers } of [{ pluginName: CORE_MARKER_OWNER, markers: CORE_DECLARED_MARKERS }, ...sources]) {
     if (!markers) continue;
     for (const [name, rawDecl] of Object.entries(markers)) {
       validateDeclaredMarkerName(name, pluginName);
 
-      if (KNOWN_KINDS.includes(name)) {
+      if (KNOWN_KINDS.includes(name) || (pluginName !== CORE_MARKER_OWNER && name in CORE_DECLARED_MARKERS)) {
         throw new Error(
           `Plugin "${pluginName}" declares marker "@${name}", which is a core Gutterpress marker name ` +
-            `(${KNOWN_KINDS.map((k) => `@${k}`).join(', ')}). Core marker names cannot be shadowed — ` +
+            `(${[...KNOWN_KINDS, ...Object.keys(CORE_DECLARED_MARKERS)].map((k) => `@${k}`).join(', ')}). ` +
+            `Core marker names cannot be shadowed — ` +
             `rename the plugin's marker.`
         );
       }
@@ -772,18 +1033,19 @@ function declaredKindWords(declaredMarkers) {
 /**
  * Nearest declared marker name to `word`, or null when nothing is close
  * enough — the declared-marker counterpart of `nearestKind` above, used only
- * by `scanForUnknownDeclaredMarkers`. A PROPORTIONAL threshold (matching
+ * by `scanForUnknownDeclaredMarkers` (and, over a marker's variant names, by
+ * `warnUnknownVariant`). A PROPORTIONAL threshold (matching
  * `gp-pin-scope.js`'s `nearestGpClass`, not `nearestKind`'s tighter
  * distance-1-only rule): declared names can be longer/compound
  * ("roll-table", "outcome-ladder"), where a fixed distance-1 threshold would
  * miss realistic typos the way it does for `gp-*` classes.
  */
-function nearestDeclaredMarkerName(word, declaredMarkers) {
+function nearestDeclaredMarkerName(word, names) {
   const w = word.toLowerCase();
   const threshold = Math.max(2, Math.floor(w.length / 3));
   let best = null;
   let bestDistance = Infinity;
-  for (const known of declaredMarkers.keys()) {
+  for (const known of names) {
     const d = editDistance(w, known);
     if (d < bestDistance) {
       bestDistance = d;
@@ -808,9 +1070,9 @@ function nearestDeclaredMarkerName(word, declaredMarkers) {
  * the eight short core keywords), `unknown_gp_class` has no such gate, and a
  * plugin's marker vocabulary deserves the same treatment: a document whose
  * ONLY marker is "@calout" must still be caught. Callers only reach here
- * with a non-empty registry (see the call site in layout_transform below),
- * so a project using no declarative-marker plugin pays nothing and behaves
- * exactly as it did before #240.
+ * with a non-empty registry (see the call site in layout_transform below);
+ * with no plugin markers that registry is core's alone, so it can only point
+ * a near-miss at a core declared name (`@column` → `@columns`).
  *
  * Reuses the exact "unclaimed marker-like line" scan `scanForMistypedMarkers`
  * uses (an inline token whose parent is a paragraph_open, `@word` anchored to
@@ -830,7 +1092,7 @@ function scanForUnknownDeclaredMarkers(state, declaredMarkers) {
       if (!m) continue;
       const word = m[1];
       if (KNOWN_KINDS.includes(word) || declaredMarkers.has(word)) continue;
-      const suggestion = nearestDeclaredMarkerName(word, declaredMarkers);
+      const suggestion = nearestDeclaredMarkerName(word, declaredMarkers.keys());
       if (!suggestion) continue;
       warn(
         state.env,
@@ -843,6 +1105,45 @@ function scanForUnknownDeclaredMarkers(state, declaredMarkers) {
   }
 }
 
+/**
+ * The class a declared marker's variant word selects, or '' when the word is
+ * not one of its OWN declared variants. An own-property check, not `variants[word]`:
+ * the word is author text, and `@callout constructor` must not resolve to
+ * `Object.prototype.constructor` (nor `toString`, `__proto__`, ...).
+ */
+function variantClassFor(decl, word) {
+  return word && decl.variants && Object.hasOwn(decl.variants, word) ? decl.variants[word] : '';
+}
+
+/**
+ * unknown_variant: the bare word after a DECLARED marker (`@card featured`)
+ * selects one of the marker's declared `variants`. A word that is not one of
+ * them styles nothing — it only lands in `data-<kind>` — so a typo
+ * (`@npc-stat wirephreek`) would otherwise fail silently. Warns only for a word
+ * the author typed on the line: an alias's `preset.variant` is the plugin's own
+ * choice and is never reported. Shared by container markers
+ * (`openDeclaredMarker`) and `section: true` markers (`sectionMetaFor`).
+ */
+function warnUnknownVariant(env, meta, decl) {
+  const word = meta.name;
+  if (!word) return;
+  const variants = Object.keys(decl.variants || {});
+  if (variants.includes(word)) return;
+  // Too short a word is within reach of every short variant name — no guess.
+  const near =
+    variants.find((v) => v.toLowerCase() === word.toLowerCase()) ||
+    (word.length >= 3 ? nearestDeclaredMarkerName(word, variants) : null);
+  warn(
+    env,
+    meta.__line,
+    'unknown_variant',
+    `"${word}" is not a variant of @${meta.kind}, so it adds no styling. ` +
+      (variants.length ? `Variants: ${variants.join(', ')}.` : `@${meta.kind} has no variants.`) +
+      (near ? ` Did you mean "${near}"?` : ''),
+    meta
+  );
+}
+
 export default function plugin(md, pluginOptions = {}) {
   const options = {
     // No `implicitPage` option — see the @section branch below.
@@ -852,14 +1153,13 @@ export default function plugin(md, pluginOptions = {}) {
 
   // #240: the already-merged, already-collision-checked registry
   // `renderer.ts`'s `createMarkdownRenderer` builds (via
-  // `buildDeclaredMarkerRegistry`, below) from every loaded plugin's
-  // `markers` export. `null` for the overwhelming common case (no loaded
-  // plugin declares any), normalized here so every call site below can do a
-  // plain truthiness check instead of re-deriving "empty Map vs null" logic.
+  // `buildDeclaredMarkerRegistry`, below) from core's own declared markers
+  // plus every loaded plugin's `markers` export. Never empty — `@columns` is
+  // always in it — so a caller that passes none still gets core's.
   const declaredMarkers =
     options.declaredMarkers instanceof Map && options.declaredMarkers.size > 0
       ? options.declaredMarkers
-      : null;
+      : buildDeclaredMarkerRegistry([]);
   const declaredWords = declaredKindWords(declaredMarkers);
 
   function markerBlock(state, startLine, endLine, silent) {
@@ -1054,8 +1354,7 @@ export default function plugin(md, pluginOptions = {}) {
     // #240: unlike scanForMistypedMarkers below, this runs BEFORE (and
     // regardless of) the __layoutMarkersUsed gate — see
     // scanForUnknownDeclaredMarkers's header for why a declared-marker typo
-    // must be caught even in a document with no OTHER marker at all. It is a
-    // no-op whenever declaredMarkers is null (every project not using #240).
+    // must be caught even in a document with no OTHER marker at all.
     scanForUnknownDeclaredMarkers(state, declaredMarkers);
 
     if (!state.env.__layoutMarkersUsed) return;
@@ -1186,21 +1485,33 @@ export default function plugin(md, pluginOptions = {}) {
       // out of the EXISTING, unconditional source_range core rule with zero
       // extra plumbing (isAnnotationTarget keys on token.nesting === 1, not
       // on any particular token TYPE).
-      t.meta = { line: meta.__line };
-
       // The variant selector: the marker's own bare name/argument
       // (`@callout warning` -> "warning"), falling back to an alias's
       // preset variant (`@dm-note` with no args -> decl.presetVariant, e.g.
       // "dm") when the line supplied none. An explicit name on the line
       // always wins over a preset.
       const variant = meta.name || decl.presetVariant || null;
-      const variantClass = (variant && decl.variants && decl.variants[variant]) || '';
+      warnUnknownVariant(state.env, meta, decl);
+      // Public token contract (see `GutterpressMarkerDeclaration` in
+      // renderer.ts): `component` is the marker name as typed (an alias's own
+      // name), `kind` its resolved base name. Also read by gp_component_validate.
+      t.meta = {
+        line: meta.__line,
+        component: meta.kind,
+        kind: decl.baseKind,
+        variant,
+        attrs: meta.attrs || {},
+        labelled: false,
+      };
+      const variantClass = variantClassFor(decl, variant);
       const baseClass = [decl.classBase, variantClass].filter(Boolean).join(' ');
       addClasses(t, baseClass, meta.attrs && meta.attrs.class ? meta.attrs.class : '');
       attachDataAttrs(t, decl.baseKind, variant, meta.attrs || {});
 
       out.push(t);
-      declaredFrames.push({ kind: decl.baseKind, tag: decl.tag, decl, line: meta.__line });
+      // `selfClosing`: closed below, right after the label — never a frame, so
+      // nothing that follows nests inside it and no `@end-<name>` can match.
+      if (!decl.selfClosing) declaredFrames.push({ kind: decl.baseKind, tag: decl.tag, decl, line: meta.__line });
 
       // Label injection (#240) — the same "structural element carrying the
       // data as both text content and an attribute" recipe as @chapter's
@@ -1217,8 +1528,10 @@ export default function plugin(md, pluginOptions = {}) {
             value
           )}</${decl.label.tag}>\n`;
           out.push(labelToken);
+          t.meta.labelled = true;
         }
       }
+      if (decl.selfClosing) out.push(new state.Token('layout_component_close', decl.tag, -1));
     }
 
     /**
@@ -1444,21 +1757,49 @@ export default function plugin(md, pluginOptions = {}) {
       }
     }
 
+    /**
+     * Rewrite a `section: true` declared marker into the meta of the core
+     * @section it stands for: the marker's `class`, then its variant's class,
+     * then the author's classes — exactly `@section .<class> .<variant> .extra`.
+     * `component` carries what tooling needs to identify the section (the
+     * public token meta: component, kind, variant, attrs); the variant is NOT
+     * the section's name, so `openSection` emits `data-<kind>="<variant>"`
+     * for it instead of `data-section`.
+     */
+    function sectionMetaFor(meta, decl) {
+      const attrs = meta.attrs || {};
+      const variant = meta.name || decl.presetVariant || null;
+      warnUnknownVariant(state.env, meta, decl);
+      const variantClass = variantClassFor(decl, variant);
+      const cls = [decl.classBase, variantClass, attrs.class].filter(Boolean).join(' ');
+      return {
+        kind: 'section',
+        name: null,
+        attrs: cls ? { ...attrs, class: cls } : attrs,
+        __line: meta.__line,
+        __component: { component: meta.kind, kind: decl.baseKind, variant, attrs },
+      };
+    }
+
     function openSection(meta) {
       const t = new state.Token('layout_section_open', 'div', 1);
+      const component = meta.__component || null;
       addClasses(t, 'section', meta.attrs && meta.attrs.class ? meta.attrs.class : '');
-      attachDataAttrs(t, 'section', meta.name, meta.attrs || {});
+      if (component) attachDataAttrs(t, component.kind, component.variant, meta.attrs || {});
+      else attachDataAttrs(t, 'section', meta.name, meta.attrs || {});
       // `line` is the 1-based marker line, threaded for the source-range
       // annotation rule (source-range.ts). Do NOT set token.map here — see
       // the do-not-use-token.map comment in openChapter above (ADR 0009);
       // applies identically here.
-      t.meta = { line: meta.__line };
+      t.meta = component
+        ? { line: meta.__line, ...component, ...(meta.__continued ? { continued: true } : {}) }
+        : { line: meta.__line };
       stack.open(
         {
           kind: 'section',
           classes: (meta.attrs && meta.attrs.class) || '',
           sawContent: false,
-          meta: { name: meta.name || null, attrs: { ...(meta.attrs || {}) } },
+          meta: { name: meta.name || null, attrs: { ...(meta.attrs || {}) }, component },
           openToken: t,
         },
         t
@@ -1559,9 +1900,25 @@ export default function plugin(md, pluginOptions = {}) {
         continue;
       }
 
-      const meta = tok.meta || {};
-      const kind = meta.kind;
+      let meta = tok.meta || {};
+      let kind = meta.kind;
       const line = meta.__line || 0;
+
+      // A `section: true` declared marker IS a core section: rewrite it (and
+      // its closer) into the @section / @end-section it stands for, so every
+      // branch below — closing, @continue, warnings — applies unchanged.
+      if (declaredMarkers) {
+        const closing = kind.startsWith('end-');
+        const sectionDecl = declaredMarkers.get(closing ? kind.slice(4) : kind);
+        if (sectionDecl && sectionDecl.section) {
+          if (closing) {
+            kind = 'end-section';
+          } else {
+            meta = sectionMetaFor(meta, sectionDecl);
+            kind = 'section';
+          }
+        }
+      }
 
       if (kind === 'chapter') {
         // #240: a declared container can never straddle a chapter boundary —
@@ -1644,6 +2001,12 @@ export default function plugin(md, pluginOptions = {}) {
           name: section.meta.name,
           attrs: { ...(section.meta.attrs || {}) },
         };
+        // A declared section marker's continuation is still that component
+        // (same classes via attrs.class, same data-<kind> and token meta).
+        if (section.meta.component) {
+          contMeta.__component = section.meta.component;
+          contMeta.__continued = true;
+        }
         // __line is deliberately re-attached here: contMeta only copies
         // name/attrs from the original section's meta snapshot, and openSection
         // reads meta.__line for the source-range annotation rule. Without this,
@@ -1726,7 +2089,9 @@ export default function plugin(md, pluginOptions = {}) {
                 state.env,
                 line,
                 'declared_marker_close_without_open',
-                `@${kind} used without an open @${closeDecl.baseKind}; ignoring marker.`,
+                closeDecl.selfClosing
+                  ? `@${kind} is not a marker: @${closeDecl.baseKind} is self-closing and has nothing to close; ignoring marker.`
+                  : `@${kind} used without an open @${closeDecl.baseKind}; ignoring marker.`,
                 meta
               );
             }
@@ -1763,6 +2128,29 @@ export default function plugin(md, pluginOptions = {}) {
     stack.closeAll();
     state.tokens = out;
   });
+
+  // Opt-in component checks (`validate` on a declared marker). Read-only, and
+  // pushed after inline parsing so a component's blocks are fully parsed —
+  // the same shape as gp-pin-scope.js. Registered only when some declared
+  // marker has a `validate`, so every other project pays nothing.
+  if (declaredMarkers && [...declaredMarkers.values()].some((d) => d.validate)) {
+    md.core.ruler.push('gp_component_validate', function (state) {
+      let lines = null;
+      const tokens = state.tokens;
+      for (let i = 0; i < tokens.length; i++) {
+        const tok = tokens[i];
+        // A container, or a `section: true` marker's section (a @continue
+        // continuation is skipped: it holds only the tail of its component).
+        const isSection = tok.type === 'layout_section_open' && tok.meta && tok.meta.component && !tok.meta.continued;
+        if (tok.type !== 'layout_component_open' && !isSection) continue;
+        const decl = declaredMarkers.get(tok.meta.component);
+        if (!decl || !decl.validate) continue;
+        if (!lines) lines = state.src.split('\n');
+        const from = i + (tok.meta.labelled ? 2 : 1);
+        runComponentValidate(state.env, decl, tok.meta, tokens.slice(from, blockEnd(tokens, i)), lines);
+      }
+    });
+  }
 
   // Renderer rules for injected tokens.
   //

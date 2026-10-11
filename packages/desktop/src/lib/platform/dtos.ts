@@ -249,6 +249,15 @@ export type ExtensionUpdatesResult =
   | { ok: true; checks: ExtensionUpdateCheck[] }
   | { ok: false; message: string };
 
+/**
+ * Every published version of one npm package, newest first, pre-releases
+ * included (the version picker's list). A fetch failure is DATA (`ok: false`),
+ * as for search and updates.
+ */
+export type ExtensionVersionsResult =
+  | { ok: true; versions: string[] }
+  | { ok: false; message: string };
+
 // ── Style resolver (CSS editor) ───────────────────────────────────────────────
 //
 // Mirrors the lib's `ProjectStyle` (packages/cli/src/lib/style-resolver.ts) —

@@ -54,11 +54,12 @@ function getSel(view: EditorView): { from: number; to: number } {
 
 // ── markerCompletions data table ─────────────────────────────────────────────
 
-test("markerCompletions covers exactly the core marker whitelist (parseMarkerLine)", () => {
+test("markerCompletions covers exactly core's markers (KNOWN_KINDS plus the declared @columns)", () => {
   const labels = markerCompletions.map((c) => c.label).sort();
   expect(labels).toEqual(
     [
       "@chapter",
+      "@columns",
       "@column-break",
       "@continue",
       "@end-section",
@@ -239,6 +240,17 @@ test("sanity check: the UNQUOTED broken form does NOT produce a label or opener 
 });
 
 // ── Template insertion: @section … @end-section pair ────────────────────────
+
+test("@columns completion inserts @columns 2 … @end-columns with the cursor between", () => {
+  const view = makeMockView("");
+  const entry = markerCompletions.find((c) => c.label === "@columns");
+  const apply = entry?.apply as (v: EditorView, completion: typeof entry, from: number, to: number) => void;
+  apply(view, entry as never, 0, 0);
+  expect(getDoc(view)).toBe("@columns 2\n\n@end-columns");
+  const sel = getSel(view);
+  expect(sel.from).toBe(sel.to);
+  expect(view.state.doc.lineAt(sel.from).text).toBe("");
+});
 
 test("@section completion apply inserts the @section/@end-section pair with cursor between", () => {
   const view = makeMockView("");

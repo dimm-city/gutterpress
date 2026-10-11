@@ -12,6 +12,7 @@ import { selectChecks } from "./policy";
 // (and its eager unpdf import) via the pdf check modules.
 import { retainPdfCache } from "../lib/pdf-inspect";
 import type { ResolvedConfig } from "../schema/manifest.types";
+import { ruleLevel } from "../lib/lint-rules";
 
 export interface RunnerOptions {
   category?: CheckCategory[];
@@ -95,7 +96,7 @@ export async function runChecks(
   try {
     for (const check of checks) {
       try {
-        const results = await check.run(ctx);
+        let results = await check.run(ctx);
 
         // Apply severity overrides from config
         const severityOverride = getCheckSeverityOverride(check.id, ctx.config);
@@ -103,6 +104,14 @@ export async function runChecks(
           for (const r of results) {
             r.severity = severityOverride;
           }
+        }
+
+        // `lint.rules` addressed to this check's id (printsafe/* rules are
+        // applied inside checkCss, which owns those ids).
+        const lintLevel = ruleLevel(ctx.config.lint.rules, check.id);
+        if (lintLevel === "off") results = [];
+        else if (lintLevel) {
+          for (const r of results) r.severity = lintLevel === "warn" ? "warning" : "error";
         }
 
         if (results.length === 0) {

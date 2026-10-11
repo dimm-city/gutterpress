@@ -169,6 +169,13 @@ export interface AppSettings {
   updates: {
     /** Release stream for desktop update checks (see UpdateChannel above). */
     channel: UpdateChannel;
+    /**
+     * Features tab: offer pre-release versions (`-alpha`, `-beta`, `-rc`) of
+     * npm extensions in the version picker, and count them as "newer" in the
+     * update check. An app preference, not per book — it is about which
+     * builds this author wants to see. Default off.
+     */
+    includeExtensionPrereleases: boolean;
   };
   versionHistory: {
     /**
@@ -243,6 +250,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   updates: {
     channel: "stable",
+    includeExtensionPrereleases: false,
   },
   versionHistory: {
     autoSave: true,
@@ -395,7 +403,28 @@ export interface RemoteRepository {
   private: boolean;
   defaultBranch: string;
   htmlUrl: string;
+  /** Could be an empty repository (a hint; the real check runs on connect). */
+  maybeEmpty?: boolean;
 }
+
+/** Where to back a locally-started book up to (#358). */
+export type BackupTarget =
+  | { kind: "create"; name: string; private?: boolean }
+  | { kind: "existing"; owner: string; name: string };
+
+/** Outcome of setting up online backup; failures carry plain-language text. */
+export type BackupSetupResult =
+  | { status: "connected"; repository: RemoteRepository }
+  | {
+      status: "failed";
+      reason:
+        | "not-connected" | "auth" | "offline" | "no-history" | "already-has-remote"
+        | "invalid-name" | "name-taken" | "not-found" | "no-permission" | "not-empty"
+        | "push-failed";
+      message: string;
+      /** The repository that exists online after a late failure. */
+      repository?: RemoteRepository;
+    };
 
 /** One branch of a remote repository. */
 export interface RemoteBranch {
@@ -717,12 +746,47 @@ export interface RawPreviewStartArgs {
   input: string;
 }
 
+/**
+ * What opening a book downloaded: the exact-pinned extensions its manifest
+ * names whose copies were missing (a fresh clone), and any that could not be
+ * downloaded. Present only when something was attempted — the common open
+ * touches nothing and carries no field at all.
+ */
+export interface OpenRestoreSummary {
+  /** `name@version` of each package downloaded. */
+  installed: string[];
+  failed: Array<{ use: string; message: string }>;
+  /** npm could not be reached: everything in `failed` is missing until the author is online. */
+  offline?: boolean;
+}
+
+/**
+ * One step of the open-time download of a book's missing pinned extensions,
+ * pushed from main on `preview:restoreProgress` while `api:preview` is still
+ * working (so a progress indicator can say what the wait is). Mirrors the
+ * lib's `RestoreProgress` but is declared here so the renderer never imports
+ * the lib (§8). `spec` is `name@version`; `index` is 0-based. A book with
+ * nothing to download emits no events at all.
+ */
+export type RestoreProgressEvent =
+  | { type: "start"; specs: string[] }
+  | {
+      type: "package";
+      spec: string;
+      index: number;
+      total: number;
+      state: "downloading" | "done" | "failed";
+      message?: string;
+    }
+  | { type: "end"; installed: string[]; failed: Array<{ use: string; message: string }> };
+
 export interface PreviewStartSuccess {
   previewStarted: true;
   url: string;
   port: number;
   input: string;
   title: string | null;
+  restoredExtensions?: OpenRestoreSummary;
 }
 
 export interface PreviewStartFailure {
@@ -731,6 +795,7 @@ export interface PreviewStartFailure {
   title: string | null;
   /** Actionable preview-generation failure; the folder itself is still open. */
   error: string;
+  restoredExtensions?: OpenRestoreSummary;
 }
 
 export type PreviewStartResult = PreviewStartSuccess | PreviewStartFailure;

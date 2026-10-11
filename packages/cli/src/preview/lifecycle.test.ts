@@ -70,6 +70,7 @@ function makeState(overrides: Partial<ServerState> = {}): ServerState {
     previewServer: null,
     isShuttingDown: false,
     cssAssets: new Map<string, string>(),
+    imageRefs: new Set<string>(),
     tempDir: "",
     config: resolveConfig({}, {}),
     options: makeOptions(),

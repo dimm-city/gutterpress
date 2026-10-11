@@ -91,12 +91,35 @@ export interface GutterpressMarkerLabel {
  * One entry in a plugin's declared `markers` table (#240 — "declarative
  * container components in core"). Exactly one of three shapes:
  *
- *   - a CONTAINER: `tag`/`class`/`variants`/`label`/`autoCloseAt`, any/all
+ *   - a CONTAINER: `section`/`tag`/`class`/`variants`/`label`/`autoCloseAt`/`selfClosing`, any/all
  *     optional (a bare `{}` is a valid, if pointless, `<div>` wrapper);
  *   - an ALIAS: `alias` (another declared name) + optional `preset`;
  *   - a DEPRECATION: `deprecated` (a human-readable retirement message) —
  *     wins over every other field on the same entry, per
  *     `markers.js`'s `resolveMarkerDeclaration`.
+ *
+ * A container may instead set `section: true` (below) to be a core `@section`.
+ *
+ * TOKEN CONTRACT (public and stable). A declared container renders as a
+ * `layout_component_open` / `layout_component_close` token pair, so a plugin
+ * can "declare, then transform": declare the marker so core parses it
+ * (autocomplete, closing, warnings, source lines), then rewrite the tokens
+ * between the pair with an ordinary markdown-it core rule. The open token's
+ * `meta` is
+ *
+ *     { line, component, kind, variant, attrs, labelled }
+ *
+ *   - `line`      the marker's 1-based line
+ *   - `component` the marker name as typed (an alias's own name)
+ *   - `kind`      the resolved base marker name (an alias's target)
+ *   - `variant`   the bare word after the marker (or an alias's preset), or null
+ *   - `attrs`     the marker's attributes, as authored
+ *   - `labelled`  true when core injected a label `html_block` right after the open token
+ *
+ * The close token has no meta. A `section: true` marker produces the core
+ * `layout_section_open` / `layout_section_close` pair instead; its open token
+ * carries `{ line, component, kind, variant, attrs }` (plus `continued: true`
+ * on a `@continue` reopening) and a plain `@section`'s carries only `{ line }`.
  *
  * See `markers.js`'s header comment for a worked example and
  * `buildDeclaredMarkerRegistry` for the full validation/resolution contract
@@ -107,6 +130,17 @@ export interface GutterpressMarkerLabel {
  * plugin input.
  */
 export interface GutterpressMarkerDeclaration {
+  /**
+   * This marker IS a core `@section`: `@npc-stat wirephreak .extra` renders
+   * exactly like `@section .<class> .<variants.wirephreak> .extra` (same
+   * classes, same order), closes like one (at the next `@section` / `@page` /
+   * `@chapter` / `@spread`, or `@end-<name>`, which acts as `@end-section`),
+   * and `@continue` reopens it with the same classes. The variant word is a
+   * variant, not a section name: it emits `data-<name>="<variant>"` (the
+   * alias target's name for an alias), never `data-section`. Cannot be combined
+   * with `tag`, `label` or `autoCloseAt`. Aliases of a section marker inherit it.
+   */
+  section?: boolean;
   /** Wrapper element tag. Defaults to `"div"`. */
   tag?: string;
   /** Base class(es) on the wrapper, e.g. `"dc-alert"`. */
@@ -127,13 +161,82 @@ export interface GutterpressMarkerDeclaration {
    * warns (the default — most likely a forgotten `@end-<name>`).
    */
   autoCloseAt?: Array<"eof">;
+  /**
+   * The marker is one element with no body and no `@end-<name>`: `@tape
+   * label="..."` emits the element (and its label) and closes it at once, so
+   * nothing that follows is nested inside and `@end-<name>` warns. Cannot be
+   * combined with `section` or `autoCloseAt`. A `validate` on a self-closing
+   * marker always sees empty `blocks` and `text`. Aliases inherit it.
+   */
+  selfClosing?: boolean;
   /** This marker is sugar for another declared marker (must name a non-alias, non-deprecated entry). */
   alias?: string;
   /** With `alias`: defaults applied when the invocation line supplies none. */
   preset?: { variant?: string };
   /** This marker is retired: using it (or its `@end-` form) warns with this message and is otherwise a no-op. */
   deprecated?: string;
+  /**
+   * The example content the desktop editor inserts for this component, as a
+   * path relative to the extension's own folder (where its package.json
+   * lives). Defaults to `<snippets folder>/<marker name>.md`. Read by the
+   * host's component listing only — it never affects rendering.
+   */
+  snippet?: string;
+  /**
+   * Opt-in structure check, run every time the component is rendered
+   * (validate, Problems panel, build, preview). Receives a plain description
+   * of the component's content — see {@link GutterpressComponent} — and
+   * returns its problems. Must be synchronous; ignored on an alias (which
+   * uses its target's) and on a deprecated entry. Works on `section: true`
+   * markers too (a `@continue` continuation is not validated on its own).
+   */
+  validate?: (component: GutterpressComponent) => GutterpressComponentProblems;
 }
+
+/** One top-level block inside a component, as its `validate` sees it. `line` is 1-based in the file. */
+export type GutterpressComponentBlock =
+  | { type: "heading"; level: number; text: string; line: number }
+  | { type: "paragraph"; text: string; line: number }
+  | { type: "image"; alt: string; src: string; line: number }
+  | { type: "list"; ordered: boolean; items: string[]; line: number }
+  | { type: "quote"; text: string; line: number }
+  | { type: "code"; lang: string; text: string; line: number }
+  | { type: "table" | "rule"; line: number }
+  | { type: "html"; text: string; line: number }
+  | { type: "component"; name: string; line: number }
+  /** Any other block (e.g. one another plugin adds), named after its markdown-it block type. */
+  | { type: string; line: number };
+
+/**
+ * What a declared marker's `validate` receives: a fresh, plain copy of one
+ * use of the component (changing it has no effect). `text` fields are raw
+ * markdown — inline formatting is not parsed.
+ */
+export interface GutterpressComponent {
+  /** The marker as the author typed it, e.g. `"term-box"`. */
+  name: string;
+  /** The bare word after the marker (`@term-box note` → `"note"`), or null. */
+  variant: string | null;
+  /** The marker's attributes, e.g. `{ label: "Read this first" }`. */
+  attrs: Record<string, string>;
+  /** The marker's own 1-based line. */
+  line: number;
+  /** The raw markdown inside the component, from the line after the marker through its last line of content. */
+  text: string;
+  /** The component's top-level content, in order. */
+  blocks: GutterpressComponentBlock[];
+}
+
+/**
+ * One problem from `validate`: a message, or a message with a 1-based `line`
+ * (default: the marker's line) and `severity` (default `"warning"`).
+ */
+export type GutterpressComponentProblem =
+  | string
+  | { message: string; line?: number; severity?: "error" | "warning" | "info" };
+
+/** `validate`'s return value: nothing, one message, or a list of problems. */
+export type GutterpressComponentProblems = GutterpressComponentProblem[] | string | void | null | undefined;
 
 /** A plugin's full declared marker table — see {@link GutterpressMarkerDeclaration}. */
 export type GutterpressMarkerTable = Record<string, GutterpressMarkerDeclaration>;

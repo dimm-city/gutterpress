@@ -21,6 +21,7 @@ function makeBridge() {
     build: rec("build", Promise.resolve({ outDir: "/out" })),
     onBuildProgress: rec("onBuildProgress", () => {}),
     onUrlPreviewBlocked: rec("onUrlPreviewBlocked", () => {}),
+    onRestoreProgress: rec("onRestoreProgress", () => {}),
     // #44 unsaved-changes / recovery surface
     watchFolder: rec("watchFolder", () => {}),
     onFlushBeforeClose: rec("onFlushBeforeClose", () => {}),
@@ -120,4 +121,16 @@ test("ElectronAdapter delegates Markdown file-launch events 1:1 to the bridge", 
   const unsub = p.onOpenMarkdownFile(() => {});
   expect(typeof unsub).toBe("function");
   expect(calls.map((c) => c.method)).toContain("onOpenMarkdownFile");
+});
+
+test("ElectronAdapter delegates the open-time restore progress stream 1:1 to the bridge", () => {
+  const { bridge, calls } = makeBridge();
+  // @ts-expect-error test global
+  globalThis.window = { electron: bridge };
+  const p = new ElectronAdapter();
+
+  const handler = () => {};
+  const unsub = p.onRestoreProgress(handler);
+  expect(typeof unsub).toBe("function");
+  expect(calls.find((c) => c.method === "onRestoreProgress")?.args).toEqual([handler]);
 });

@@ -1,5 +1,5 @@
 import { defineCommand } from "citty";
-import { log, executeAndReport, type OutputFormat } from "../index.ts";
+import { BuildError, log, executeAndReport, type OutputFormat } from "../index.ts";
 import {
   EXIT_CODES,
   UsageError,
@@ -98,7 +98,9 @@ export default defineCommand({
       );
     } catch (error) {
       log.error(error instanceof Error ? error.message : String(error));
-      process.exit(error instanceof UsageError ? error.exitCode : EXIT_CODES.USAGE);
+      process.exit(
+        error instanceof UsageError || error instanceof BuildError ? error.exitCode : EXIT_CODES.USAGE,
+      );
     }
 
     if (!result.ok) {

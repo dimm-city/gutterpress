@@ -25,7 +25,6 @@
   import Icon from "$lib/components/Icon.svelte";
   import type { ProblemEntry } from "$lib/platform/dtos";
   import { canExpandProblems, problemCounts, problemsSummary } from "$lib/problems";
-  import { saveIndicator } from "$lib/save-status";
   import type { ComponentProps } from "svelte";
   import { basenameOf } from "$lib/platform/paths";
   import { api } from "$lib/api";
@@ -61,10 +60,6 @@
     saving = false,
     /** Absolute path to the open project, used to compute assets/ destination. */
     projectDir = null,
-    savePhase = "clean",
-    autoSave = true,
-    forceSaving = false,
-    onSaveStatus,
     problems = [],
     problemsLoading = false,
     problemsError = null,
@@ -77,14 +72,9 @@
     savePending?: boolean;
     saving?: boolean;
     projectDir?: string | null;
-    // ── Status cluster (right end): the save state and the Problems badge.
-    //    Both are about the text being edited, so they live here rather than
-    //    in the status bar; their lists/views are the page's. ──
-    savePhase?: "clean" | "dirty" | "saving" | "error";
-    autoSave?: boolean;
-    forceSaving?: boolean;
-    /** Opens "Where your work is kept"; the indicator renders only when set. */
-    onSaveStatus?: (trigger: HTMLButtonElement) => void;
+    // ── Status cluster (right end): the Problems badge. It is about the text
+    //    being edited, so it lives here; its list/view is the page's. (The save
+    //    state is on the status bar.) ──
     problems?: ProblemEntry[];
     problemsLoading?: boolean;
     problemsError?: string | null;
@@ -94,7 +84,6 @@
     onToggleProblems?: (trigger: HTMLButtonElement) => void;
   } = $props();
 
-  let indicator = $derived(saveIndicator({ savePhase, autoSave, forceSaving }));
   let counts = $derived(problemCounts(problems));
   let canExpand = $derived(canExpandProblems(problems, problemsError, problemsOpen));
   let stripLabel = $derived(
@@ -106,7 +95,6 @@
           ? `Problems: ${problemsSummary(counts)}`
           : "No problems",
   );
-  let saveStatusEl = $state<HTMLButtonElement | null>(null);
   let problemsToggleEl = $state<HTMLButtonElement | null>(null);
 
   // The toolbar is only meaningful for markdown files.
@@ -607,16 +595,6 @@
         </span>
       {/if}
     {/if}
-    {#if onSaveStatus}
-      <button
-        bind:this={saveStatusEl}
-        type="button"
-        class="save-indicator {indicator.cls}"
-        aria-haspopup="dialog"
-        onclick={() => saveStatusEl && onSaveStatus(saveStatusEl)}
-        title={indicator.title}
-      ><Icon name={indicator.icon} size={13} /><span class="save-text" aria-live="polite" aria-atomic="true">{indicator.label}</span></button>
-    {/if}
   </div>
 </div>
 {/if}
@@ -1023,7 +1001,7 @@
     gap: 1px;
   }
 
-  /* ── Status cluster (right end): Problems badge + save indicator ────────── */
+  /* ── Status cluster (right end): Problems badge ────────── */
   .status-group {
     margin-left: auto;
     gap: 2px;
@@ -1053,25 +1031,6 @@
   .error-count { color: var(--app-error-text); }
   .warning-count { color: var(--app-warning-text); }
   .strip-count.ok { color: var(--app-success-text); }
-  /* The save state: a button that opens "Where your work is kept". Resting
-     is calm but readable; in flight is italic; an error uses the error token. */
-  .save-indicator {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 11px;
-    white-space: nowrap;
-    background: transparent;
-    border: none;
-    padding: 3px 6px;
-    border-radius: 4px;
-    cursor: pointer;
-    color: var(--app-text-secondary);
-  }
-  .save-indicator:hover { background: var(--app-control-hover-bg); }
-  .save-indicator:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
-  .save-indicator.saving { font-style: italic; }
-  .save-indicator.save-error { color: var(--app-error-text); font-weight: 600; }
 
   /*
    * Overflow tiers, by the toolbar's own width (a container query: the pane
@@ -1087,10 +1046,8 @@
    * matching group, so the popup never repeats a visible button.
    */
   @container editor-toolbar (max-width: 479px) {
-    /* The Save label (the widest always-on control) yields first, with the
-       save-state text beside the Problems badge. */
-    .save-label,
-    .save-text {
+    /* The Save label (the widest always-on control) yields first. */
+    .save-label {
       display: none;
     }
     .save-btn {

@@ -20,6 +20,7 @@ import {
   realpath,
   rename,
   rm,
+  rmdir,
 } from "node:fs/promises";
 import path from "node:path";
 import { Transform } from "node:stream";
@@ -86,6 +87,8 @@ export interface InstalledNpmPlugin {
   installRoot: string;
   /** Previous same-version directory held until the manifest commits. */
   backupRoot: string | null;
+  /** Folders THIS install created (`plugins/`, `plugins/npm/`, `plugins/npm/<name>/`), outermost first. */
+  createdDirs: string[];
   warnings: string[];
 }
 
@@ -762,34 +765,61 @@ async function installPackage(
   }
 }
 
-async function ensureDirectory(pathname: string): Promise<void> {
+/** Make sure `pathname` is a normal directory; true when this call created it. */
+async function ensureDirectory(pathname: string): Promise<boolean> {
   try {
     const info = await lstat(pathname);
     if (info.isSymbolicLink() || !info.isDirectory()) {
       throw new Error(`Plugin install path is not a normal directory: ${pathname}`);
     }
+    return false;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     await mkdir(pathname);
+    return true;
   }
 }
 
-async function prepareVendorParent(projectDir: string, name: string): Promise<string> {
+/**
+ * Remove folders a failed install created — innermost first, and only while
+ * they are still empty, so a folder that gained anything else (a local plugin
+ * in `plugins/`, another package's copy) is never touched.
+ */
+export async function removeEmptyDirs(dirs: readonly string[]): Promise<void> {
+  for (const dir of [...dirs].reverse()) {
+    try {
+      await rmdir(dir);
+    } catch {
+      return; // not empty (or already gone): everything outside it stays too
+    }
+  }
+}
+
+async function prepareVendorParent(
+  projectDir: string,
+  name: string,
+): Promise<{ npmRoot: string; createdDirs: string[] }> {
   const plugins = path.join(projectDir, PLUGINS_DIR);
   const npm = path.join(plugins, VENDORED_NPM_DIR);
   const packageParent = path.dirname(vendoredNpmPluginRoot(projectDir, name, "0.0.0"));
   await mkdir(projectDir, { recursive: true });
-  await ensureDirectory(plugins);
-  await ensureDirectory(npm);
-  await ensureDirectory(packageParent);
-  const [realNpm, realPackageParent] = await Promise.all([
-    realpath(npm),
-    realpath(packageParent),
-  ]);
-  if (!isContained(projectDir, realNpm) || !isContained(projectDir, realPackageParent)) {
-    throw new Error("Plugin install path resolves outside the book folder.");
+  const createdDirs: string[] = [];
+  try {
+    for (const dir of [plugins, npm, packageParent]) {
+      if (await ensureDirectory(dir)) createdDirs.push(dir);
+    }
+    const [realNpm, realPackageParent] = await Promise.all([
+      realpath(npm),
+      realpath(packageParent),
+    ]);
+    if (!isContained(projectDir, realNpm) || !isContained(projectDir, realPackageParent)) {
+      throw new Error("Plugin install path resolves outside the book folder.");
+    }
+    return { npmRoot: realNpm, createdDirs };
+  } catch (error) {
+    await removeEmptyDirs(createdDirs);
+    throw error;
   }
-  return realNpm;
 }
 
 /**
@@ -807,7 +837,7 @@ export async function installNpmPlugin(
   await mkdir(requestedProjectDir, { recursive: true });
   const projectDir = await realpath(requestedProjectDir);
   const requested = parseNpmPluginSpec(packageSpec);
-  const npmRoot = await prepareVendorParent(projectDir, requested.name);
+  const { npmRoot, createdDirs } = await prepareVendorParent(projectDir, requested.name);
   const container = await mkdtemp(path.join(npmRoot, ".install-"));
   const stageRoot = path.join(container, "root");
   const downloadsDir = path.join(container, "downloads");
@@ -829,6 +859,7 @@ export async function installNpmPlugin(
 
   let finalRoot = "";
   let backupRoot: string | null = null;
+  let published = false;
   try {
     const rootResult = await installPackage(
       ctx,
@@ -871,15 +902,20 @@ export async function installNpmPlugin(
       }
       throw error;
     }
+    published = true;
     return {
       name: rootRecord.name,
       version: rootRecord.version,
       installRoot: finalRoot,
       backupRoot,
+      createdDirs,
       warnings: [...ctx.warnings],
     };
   } finally {
     await rm(container, { recursive: true, force: true }).catch(() => {});
+    // A failed attempt leaves nothing behind: not its staging folder, and not
+    // the empty plugins/npm/<name>/ folders it made on the way.
+    if (!published) await removeEmptyDirs(createdDirs);
   }
 }
 
@@ -894,4 +930,5 @@ export async function finalizeNpmPluginInstall(installed: InstalledNpmPlugin): P
 export async function rollbackNpmPluginInstall(installed: InstalledNpmPlugin): Promise<void> {
   await rm(installed.installRoot, { recursive: true, force: true });
   if (installed.backupRoot) await rename(installed.backupRoot, installed.installRoot);
+  else await removeEmptyDirs(installed.createdDirs);
 }

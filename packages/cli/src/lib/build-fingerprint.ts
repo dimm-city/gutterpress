@@ -27,6 +27,8 @@ type PdfxFingerprintConfig = {
   resolvedFlavor: "x1a" | "x3";
   iccPath: string | null;
   stripAnnotations: boolean | null;
+  /** How near-black text was separated (#331); null when no PDF/X pass ran. Provenance only. */
+  blackText?: "icc" | "k-only" | null;
 };
 
 export type BuildFingerprintInput = {
@@ -282,6 +284,7 @@ export async function writeBuildFingerprint(input: BuildFingerprintInput): Promi
         resolvedFlavor: input.pdfx.resolvedFlavor,
         iccPath: input.pdfx.iccPath,
         stripAnnotations: input.pdfx.stripAnnotations,
+        blackText: input.pdfx.blackText ?? null,
       },
       outputDir: input.recordedOutputDir
         ? path.resolve(input.recordedOutputDir)

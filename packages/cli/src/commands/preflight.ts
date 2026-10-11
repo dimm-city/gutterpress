@@ -2,6 +2,7 @@ import { defineCommand } from "citty";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import {
+  BuildError,
   log,
   reportMissingTools,
   executeValidation,
@@ -247,7 +248,9 @@ export default defineCommand({
       });
     } catch (error) {
       log.error(error instanceof Error ? error.message : String(error));
-      process.exit(error instanceof UsageError ? error.exitCode : EXIT_CODES.USAGE);
+      process.exit(
+        error instanceof UsageError || error instanceof BuildError ? error.exitCode : EXIT_CODES.USAGE,
+      );
     }
 
     if (!execution) return;

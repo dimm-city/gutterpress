@@ -202,9 +202,19 @@ export const GUTTERPRESS_CSS = `
    NOT set, because the correct value depends on whether the run fragments
    across pages (auto packs each page's columns; the CSS initial balance is
    right for a run that fits on one page) and only the author knows which.
-   --gp-column-gap is author-settable. */
-.gp-columns-2 { columns: 2; column-gap: var(--gp-column-gap, 1.5em); }
-.gp-columns-3 { columns: 3; column-gap: var(--gp-column-gap, 1.5em); }
+   --gp-column-gap is author-settable.
+   .gp-columns is what the core @columns marker emits (markers.js); on its
+   own it is two columns, and @columns 1 to 5 add the matching count, which
+   wins because it comes later at the same specificity. */
+.gp-columns, .gp-columns-1, .gp-columns-2, .gp-columns-3, .gp-columns-4, .gp-columns-5 {
+  column-gap: var(--gp-column-gap, 1.5em);
+}
+.gp-columns { columns: 2; }
+.gp-columns-1 { columns: 1; }
+.gp-columns-2 { columns: 2; }
+.gp-columns-3 { columns: 3; }
+.gp-columns-4 { columns: 4; }
+.gp-columns-5 { columns: 5; }
 
 /* the per-shape decisions the paragraph above deliberately leaves to the
    author, named instead of left as raw CSS every book was reinventing
@@ -422,7 +432,7 @@ export const GP_CLASSES: ReadonlySet<string> = new Set([
   "gp-small", "gp-medium", "gp-large",
   "gp-tight", "gp-loose",
   // column runs + the column-fill/span vocabulary (#225/#228)
-  "gp-columns-2", "gp-columns-3",
+  "gp-columns", "gp-columns-1", "gp-columns-2", "gp-columns-3", "gp-columns-4", "gp-columns-5",
   "gp-columns-all", "gp-columns-flow", "gp-columns-balanced",
   // fragmentation controls (#225/#228)
   "gp-no-break", "gp-break-before",

@@ -46,7 +46,7 @@
     aria-expanded={open}
     title="Switch book"
   >
-    <Icon name="folder" size={13} />
+    <Icon name="book-open" size={13} />
     <span class="book-switcher-title">{activeTitle}</span>
     <Icon name={open ? "chevron-up" : "chevron-down"} size={12} />
   </button>

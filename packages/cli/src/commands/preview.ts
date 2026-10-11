@@ -17,6 +17,7 @@ import {
   resolvePort,
   UsageError,
 } from "../lib/cli-args.ts";
+import { restoreForCommand } from "../lib/extension-restore.ts";
 import { previewArgs } from "./preview-args.ts";
 
 // Re-exported so existing importers (and preview.test.ts) can keep resolving it
@@ -50,6 +51,9 @@ export default defineCommand({
             "--manifest is only supported by preview --format pdf or pdfx; live HTML preview discovers the book manifest from its input directory."
           );
         }
+        // Live preview degrades and reports (a missing package never blanks
+        // it), so a failed download is a warning here, not an exit.
+        await restoreForCommand(inputPath ?? process.cwd(), { failFast: false });
         await startPreviewServer({
           input: inputPath,
           port: resolvePort(args.port),
@@ -72,6 +76,8 @@ export default defineCommand({
         format
       );
 
+      const manifestPath = typeof args.manifest === "string" ? args.manifest : undefined;
+
       const result = await runBuild({
         inputDir: inputPath,
         format,
@@ -79,7 +85,7 @@ export default defineCommand({
         pdfFileOverride,
         pdfxFlavor,
         iccPath: typeof args.icc === "string" ? args.icc : undefined,
-        manifestPath: typeof args.manifest === "string" ? args.manifest : undefined,
+        manifestPath,
         stripAnnotations: typeof args["strip-annotations"] === "boolean" ? args["strip-annotations"] : undefined,
         skipLint: !!args["skip-lint"],
         skipPreValidate: !!args["skip-pre-validate"],

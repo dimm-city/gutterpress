@@ -1,0 +1,113 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Markdown &amp; CSS, typeset for print</title>
+    <meta name="description" content="Write a book in Markdown, lay it out with CSS, and export a print-ready PDF. A desktop app and CLI built on Chromium's CSS Paged Media engine.">
+    <meta property="og:title" content="Gutterpress">
+    <meta property="og:description" content="Write a book in Markdown, lay it out with CSS, and export a print-ready PDF.">
+  </head>
+  <body class="home">
+    <main>
+      <section class="hero">
+        <div class="hero-grid">
+          <div class="hero-copy">
+            <p class="kicker">Markdown &amp; CSS, typeset for print</p>
+            <h1>Write it in Markdown. Print it <em>for real</em>.</h1>
+            <p class="lede">
+              Gutterpress turns a folder of markdown files into a professionally typeset PDF: the kind you
+              send to an offset printer or a print-on-demand service. It uses a native Chromium print engine
+              and the W3C CSS Paged Media spec, so page breaks, running headers, columns, page numbers, and
+              bleed are handled for you.
+            </p>
+            <div class="cta-row">
+              <a class="btn btn-primary" href="/install.html#desktop-app">Download the desktop app</a>
+              <a class="btn btn-secondary" href="/docs/desktop/index.html">Get started</a>
+            </div>
+          </div>
+          <div class="hero-demo">
+            <div class="term">
+              <div class="term-head">
+                <span class="term-dot red"></span><span class="term-dot amber"></span><span class="term-dot green"></span>
+                <span class="term-title">my-book/</span>
+              </div>
+<pre class="term-body"><span class="prompt">$</span> <span class="cmd">npm install -g gutterpress</span>
+<span class="prompt">$</span> <span class="cmd">ls my-book</span>
+<span class="out">chapter-01.md  chapter-02.md</span>
+<span class="prompt">$</span> <span class="cmd">gutterpress build ./my-book</span></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="home-section">
+        <div class="inner">
+          <div class="chip-row">
+            <span class="label">The whole surface</span>
+            <code class="chip">*.md</code>
+            <code class="chip">manifest.yaml</code>
+            <code class="chip">@page</code>
+            <code class="chip">@section</code>
+            <code class="chip">--gp-*</code>
+            <span class="aside">markdown, a manifest, and CSS custom properties.</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="home-section" aria-labelledby="start">
+        <div class="inner">
+          <h2 id="start">Start here</h2>
+          <div class="card-grid">
+            <div class="card featured">
+              <h3>The desktop app</h3>
+              <p>Install it, create your first book, write with a live preview and save a PDF.</p>
+              <a class="more" href="/docs/desktop/index.html">Read the how-to guides →</a>
+            </div>
+            <div class="card">
+              <h3>The command line</h3>
+              <p>Projects and the manifest, building and validating PDFs, and every command.</p>
+              <a class="more" href="/docs/cli/getting-started.html">Get started on the CLI →</a>
+            </div>
+            <div class="card">
+              <h3>Writing &amp; design</h3>
+              <p>Markdown and layout markers, images, and restyling a book with CSS custom properties.</p>
+              <a class="more" href="/docs/writing-content.html">Start writing →</a>
+            </div>
+          </div>
+          <p class="home-note">This site is built from the same user guide Gutterpress prints as a book, so it
+          cannot drift from it. <a href="/docs/index.html">All documentation →</a></p>
+        </div>
+      </section>
+
+      <section class="home-section" aria-labelledby="what">
+        <div class="inner">
+          <p class="kicker">What it does</p>
+          <h2 id="what">Print production, from a text editor</h2>
+          <div class="card-grid">
+            <div class="card"><h3>Live preview</h3><p>Paginated layout: your book renders the way it will print, while you edit.</p></div>
+            <div class="card"><h3>PDF export</h3><p>From the app, or from the <code>gutterpress</code> CLI in scripts and CI.</p></div>
+            <div class="card"><h3>Print-ready output</h3><p>PDF/X with CMYK and an ICC profile for offset printers, PDF/A for archives.</p></div>
+            <div class="card"><h3>Custom CSS for everything</h3><p>Typography, page size, margins, columns, running headers and footers, page numbers, bleed.</p></div>
+            <div class="card"><h3>Plugins</h3><p>Use any of hundreds of <code>markdown-it</code> plugins for custom markdown, or write your own.</p></div>
+            <div class="card"><h3>Validation</h3><p>Before and after a build: image DPI, color space, font embedding, structural PDF checks.</p></div>
+            <div class="card"><h3>Publishing</h3><p>To itch.io, DriveThruRPG, Amazon KDP, Azure Static Web Apps, Shopify, and Google Drive.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="home-section" aria-labelledby="releases">
+        <div class="inner">
+          <p class="kicker">Releases</p>
+          <h2 id="releases">What's new</h2>
+          <div class="card-grid">
+            <a class="card" href="/releases/0.11.16.html"><p class="card-meta">2026-10-09</p><h3>0.11.16: smarter components</h3><p>Components that check their own content, a searchable snippet picker, and version pickers for extensions.</p></a>
+            <a class="card" href="/releases/0.11.15.html"><p class="card-meta">2026-10-07</p><h3>0.11.15: DriveThruRPG-ready</h3><p>Black PDF/X text prints on the black plate only, and interiors end on a blank page.</p></a>
+            <a class="card" href="/releases/0.11.14.html"><p class="card-meta">2026-10-06</p><h3>0.11.14: extension updates</h3><p>New <code>ext outdated</code> and <code>ext update</code> commands, and an Update button in the app.</p></a>
+          </div>
+          <div class="cta-row">
+            <a class="btn btn-secondary" href="/install.html">Install Gutterpress</a>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

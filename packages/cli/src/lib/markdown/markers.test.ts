@@ -28,7 +28,8 @@ interface LayoutWarning {
   line: number;
   type: string;
   message: string;
-  marker: unknown;
+  marker?: unknown;
+  severity?: string;
 }
 
 interface PagedEnv {
@@ -1878,6 +1879,13 @@ describe("buildDeclaredMarkerRegistry (#240)", () => {
       expect(build).toThrow(/core Gutterpress marker name/);
     });
 
+    test("core's declared @columns cannot be shadowed by a plugin either", () => {
+      const build = () =>
+        buildDeclaredMarkerRegistry([{ pluginName: "dc-plugin", markers: { columns: { class: "x" } } }]);
+      expect(build).toThrow(/dc-plugin/);
+      expect(build).toThrow(/core Gutterpress marker name/);
+    });
+
     test("every one of the eight core reserved names is rejected", () => {
       // "end-section" hits the earlier, ALSO-correct "end- is reserved for
       // an auto-derived closer" rejection first (validateDeclaredMarkerName
@@ -2106,9 +2114,9 @@ describe("buildDeclaredMarkerRegistry (#240)", () => {
       });
     });
 
-    test("an empty sources list, or a plugin with an empty markers object, resolves to an empty registry", () => {
-      expect(buildDeclaredMarkerRegistry([]).size).toBe(0);
-      expect(buildDeclaredMarkerRegistry([{ pluginName: "p", markers: {} }]).size).toBe(0);
+    test("an empty sources list, or a plugin with an empty markers object, resolves to core's markers only", () => {
+      expect([...buildDeclaredMarkerRegistry([]).keys()]).toEqual(["columns"]);
+      expect([...buildDeclaredMarkerRegistry([{ pluginName: "p", markers: {} }]).keys()]).toEqual(["columns"]);
     });
   });
 });
@@ -2167,6 +2175,71 @@ describe("declared markers — parsing & rendering (#240)", () => {
       const { html } = renderPaged("@callout unknown-variant\nText.\n@end-callout\n", { declaredMarkers });
       expect(html).toContain('class="dc-alert"');
       expect(html).toContain('data-callout="unknown-variant"');
+    });
+
+    test("Object.prototype names are not variants: no inherited value becomes a class, and each warns", () => {
+      for (const word of ["constructor", "toString", "hasOwnProperty", "__proto__", "valueOf"]) {
+        const { html, env } = renderPaged(`@callout ${word}\nText.\n@end-callout\n`, { declaredMarkers });
+        expect(html).not.toContain("native code");
+        expect(html).toContain('class="dc-alert"');
+        expect(html).not.toContain('class="dc-alert ');
+        expect((env.layoutWarnings ?? []).map((w) => w.type)).toEqual(["unknown_variant"]);
+      }
+    });
+
+    describe("unknown_variant warning", () => {
+      const variantWarnings = (src: string) =>
+        (renderPaged(src, { declaredMarkers }).env.layoutWarnings ?? []).filter((w) => w.type === "unknown_variant");
+
+      test("a word that is not a declared variant warns at the marker line, listing the variants", () => {
+        const w = variantWarnings("Intro.\n\n@callout mystery\nText.\n@end-callout\n");
+        expect(w).toHaveLength(1);
+        expect(w[0]!.line).toBe(3);
+        expect(w[0]!.message).toBe(
+          '"mystery" is not a variant of @callout, so it adds no styling. Variants: note, warning, dm.'
+        );
+      });
+
+      test("a near miss adds a did-you-mean, including a case-only mismatch", () => {
+        expect(variantWarnings("@callout warnin\nText.\n")[0]!.message).toMatch(/ Did you mean "warning"\?$/);
+        expect(variantWarnings("@callout Warning\nText.\n")[0]!.message).toMatch(/ Did you mean "warning"\?$/);
+      });
+
+      test("a very short word never gets a guess", () => {
+        expect(variantWarnings("@callout x\nText.\n")[0]!.message).not.toContain("Did you mean");
+      });
+
+      test("a marker with no variants says so", () => {
+        const w = variantWarnings("@sidebar wide\nText.\n@end-sidebar\n");
+        expect(w).toHaveLength(1);
+        expect(w[0]!.message).toBe('"wide" is not a variant of @sidebar, so it adds no styling. @sidebar has no variants.');
+      });
+
+      test("an alias reports the name as typed, against its target's variants", () => {
+        const w = variantWarnings("@dm-note mystery\nText.\n");
+        expect(w[0]!.message).toMatch(/^"mystery" is not a variant of @dm-note, .* Variants: note, warning, dm\.$/);
+      });
+
+      test("silent for a declared variant, no word, an alias's preset variant, or an explicit variant on an alias", () => {
+        expect(variantWarnings("@callout warning\nText.\n@end-callout\n")).toEqual([]);
+        expect(variantWarnings("@callout\nText.\n@end-callout\n")).toEqual([]);
+        expect(variantWarnings("@dm-note\nText.\n@end-callout\n")).toEqual([]);
+        expect(variantWarnings("@dm-note warning\nText.\n@end-callout\n")).toEqual([]);
+        expect(variantWarnings("@sidebar .extra\nText.\n@end-sidebar\n")).toEqual([]);
+      });
+
+      test("silent for the label: a label comes from attr:<name>, never the bare word", () => {
+        expect(variantWarnings("@callout label=Heads-up\nText.\n@end-callout\n")).toEqual([]);
+      });
+
+      test("silent for a deprecated marker, which has its own warning", () => {
+        expect(variantWarnings("@roll-table whatever\nText.\n")).toEqual([]);
+      });
+
+      test("the word is still recorded in data-<kind>, and the warning does not change the output", () => {
+        const { html } = renderPaged("@callout mystery\nText.\n@end-callout\n", { declaredMarkers });
+        expect(html).toBe('<div class="dc-alert" data-callout="mystery"><p>Text.</p>\n</div>');
+      });
     });
   });
 
@@ -2316,7 +2389,7 @@ describe("declared markers — parsing & rendering (#240)", () => {
   test("token.meta.line threading matches every core layout_*_open token (source-range primitive)", () => {
     const { tokens } = parsePaged("Intro\n\n@sidebar\nHi\n@end-sidebar\n", { declaredMarkers });
     const t = findToken(tokens, "layout_component_open")!;
-    expect(t.meta).toEqual({ line: 3 });
+    expect(t.meta).toEqual({ line: 3, component: "sidebar", kind: "sidebar", variant: null, attrs: {}, labelled: false });
     // Do NOT set token.map — see openChapter's identical comment (ADR 0009).
     // This is what lets the UNCHANGED, unconditional source_range core rule
     // (source-range.ts) annotate a declared marker's wrapper with ZERO
@@ -2324,6 +2397,104 @@ describe("declared markers — parsing & rendering (#240)", () => {
     // full data-source-range/data-chapter-src proof, against the real
     // pipeline, lives in source-range.test.ts.
     expect(t.map).toBeNull();
+  });
+});
+
+describe("selfClosing declared markers (#344)", () => {
+  const declaredMarkers = buildDeclaredMarkerRegistry([
+    {
+      pluginName: "dc-components",
+      markers: {
+        tape: {
+          selfClosing: true,
+          class: "dc-tape",
+          variants: { wide: "dc-tape-wide" },
+          label: { tag: "span", class: "dc-tape-label", from: "attr:label" },
+        },
+        "tape-2": { alias: "tape" },
+        sidebar: { tag: "aside", class: "dc-sidebar" },
+      },
+    },
+  ]);
+  const build = (decl: Record<string, unknown>) =>
+    buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { tape: decl } }]);
+
+  test("emits the element and closes it at once: open+close tokens, no body", () => {
+    const { tokens } = parsePaged("@tape\n", { declaredMarkers });
+    const { html } = renderPaged("@tape\n", { declaredMarkers });
+    expect(tokens.map((t) => t.type)).toEqual(["layout_component_open", "layout_component_close"]);
+    expect(html).toBe('<div class="dc-tape"></div>');
+  });
+
+  test("label, variant and attrs work; the label sits inside the element", () => {
+    const { html } = renderPaged('@tape wide .extra label="— § —"\n', { declaredMarkers });
+    expect(html).toBe(
+      '<div class="dc-tape dc-tape-wide extra" data-tape="wide" data-label="— § —">' +
+        '<span class="dc-tape-label">— § —</span>\n</div>'
+    );
+  });
+
+  test("following content is a sibling, never nested, even with no @end", () => {
+    const { html, env } = renderPaged("@tape\n\nAfter.\n", { declaredMarkers });
+    expect(html).toBe('<div class="dc-tape"></div><p>After.</p>\n');
+    expect(env.layoutWarnings ?? []).toEqual([]);
+  });
+
+  test("does not close an enclosing declared container", () => {
+    const { html } = renderPaged("@sidebar\nA\n@tape\nB\n@end-sidebar\n", { declaredMarkers });
+    expect(html).toBe('<aside class="dc-sidebar"><p>A</p>\n<div class="dc-tape"></div><p>B</p>\n</aside>');
+  });
+
+  test("source line is threaded onto the open token like any declared marker", () => {
+    const { tokens } = parsePaged("Intro\n\n@tape label=\"x\"\n", { declaredMarkers });
+    const open = findToken(tokens, "layout_component_open")!;
+    expect(open.meta).toMatchObject({ line: 3, component: "tape", kind: "tape", labelled: true });
+  });
+
+  test("@end-<name> warns and emits nothing", () => {
+    const { html, env } = renderPaged("@tape\n@end-tape\nText.\n", { declaredMarkers });
+    expect(html).toBe('<div class="dc-tape"></div><p>Text.</p>\n');
+    const warnings = (env.layoutWarnings ?? []).filter((w) => w.type === "declared_marker_close_without_open");
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]!.line).toBe(2);
+    expect(warnings[0]!.message).toContain("self-closing");
+  });
+
+  test("an alias inherits selfClosing from its target", () => {
+    const { html } = renderPaged("@tape-2\nText.\n", { declaredMarkers });
+    expect(html).toBe('<div class="dc-tape"></div><p>Text.</p>\n');
+  });
+
+  test("never warns about an unclosed container at end-of-document", () => {
+    expect(renderPaged("@tape\n", { declaredMarkers }).env.layoutWarnings ?? []).toEqual([]);
+  });
+
+  test("selfClosing: false is the ordinary container", () => {
+    const registry = build({ selfClosing: false, class: "x" });
+    expect(renderPaged("@tape\nHi\n@end-tape\n", { declaredMarkers: registry }).html).toBe(
+      '<div class="x"><p>Hi</p>\n</div>'
+    );
+  });
+
+  describe("invalid declarations are rejected at load time", () => {
+    test("not a boolean", () => {
+      expect(() => build({ selfClosing: "yes" })).toThrow(/`selfClosing` that is not a boolean/);
+    });
+    test("combined with autoCloseAt", () => {
+      expect(() => build({ selfClosing: true, autoCloseAt: ["eof"] })).toThrow(/`selfClosing: true` and `autoCloseAt`/);
+    });
+    test("combined with section", () => {
+      expect(() => build({ selfClosing: true, section: true })).toThrow(/`section: true` and `selfClosing`/);
+    });
+  });
+
+  test("a `validate` sees empty blocks and text", () => {
+    const seen: Array<{ blocks: unknown[]; text: string }> = [];
+    const registry = build({ selfClosing: true, validate: (c: { blocks: unknown[]; text: string }) => (seen.push(c), []) });
+    renderPaged("@tape\n\nAfter.\n", { declaredMarkers: registry });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.blocks).toEqual([]);
+    expect(seen[0]!.text).toBe("");
   });
 });
 
@@ -2372,5 +2543,475 @@ describe("createMarkdownRenderer wiring (#240)", () => {
     expect(html).toContain('<aside class="dc-sidebar"');
     expect(html).toContain(">HELLO GALAXY</p>");
     expect(html).not.toContain("WORLD<");
+  });
+});
+
+describe("declared marker `snippet` / `validate` (opt-in component checks)", () => {
+  type Seen = { name: string; variant: string | null; attrs: Record<string, string>; line: number; text: string; blocks: Array<Record<string, unknown>> };
+
+  /** Render `src` with one plugin declaring `markers`; returns warnings plus every component `validate` saw.
+   *  These fixtures glue markers to their content on purpose (the component's
+   *  own checks are the subject), so the glued-marker warning that earns is
+   *  left out here; it has its own tests above. */
+  function run(markers: Record<string, unknown>, src: string) {
+    const md = createMarkdownRenderer([{ name: "demo-plugin", plugin: () => {}, options: {}, markers } as LoadedPlugin]);
+    const env: PagedEnv = {};
+    const html = md.render(src, env);
+    return { html, warnings: (env.layoutWarnings ?? []).filter((w) => w.type !== "marker_glued") };
+  }
+
+  function recorder(result: unknown = []) {
+    const seen: Seen[] = [];
+    return { seen, validate: (c: Seen) => (seen.push(c), result) };
+  }
+
+  describe("load-time validation", () => {
+    test("rejects a `validate` that is not a function, naming plugin and marker", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { box: { validate: "yes" } } }])
+      ).toThrow(/Plugin "p"'s marker "@box" has a `validate` that is not a function/);
+    });
+
+    test("rejects a `snippet` that is not a non-empty string", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { box: { snippet: 3 } } }])
+      ).toThrow(/`snippet`/);
+      expect(() =>
+        buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { box: { snippet: "  " } } }])
+      ).toThrow(/`snippet`/);
+    });
+
+    test("a valid `snippet` path does not change rendering", () => {
+      const plain = run({ box: { class: "b" } }, "@box\nHi\n@end-box\n");
+      const withSnippet = run({ box: { class: "b", snippet: "examples/box.md" } }, "@box\nHi\n@end-box\n");
+      expect(withSnippet.html).toBe(plain.html);
+    });
+  });
+
+  describe("the component object", () => {
+    test("maps each block type, excludes the label, and reports 1-based file lines", () => {
+      const { seen, validate } = recorder();
+      const src = [
+        "# Outside", //                          1
+        "", //                                    2
+        '@box note label="Read me"', //          3
+        "### Head", //                            4
+        "", //                                    5
+        "Body *text*.", //                        6
+        "", //                                    7
+        "1. one", //                              8
+        "2. two", //                              9
+        "", //                                    10
+        '![A map](map.png "title")', //           11
+        "", //                                    12
+        "> quoted", //                            13
+        "", //                                    14
+        "```js", //                               15
+        "x()", //                                 16
+        "```", //                                 17
+        "---", //                                 18
+        "| a |", //                               19
+        "| - |", //                               20
+        "| 1 |", //                               21
+        "", //                                    22
+        "@inner", //                              23
+        "nested", //                              24
+        "@end-inner", //                          25
+        "@end-box", //                            26
+      ].join("\n");
+      run(
+        { box: { class: "b", label: { class: "l", from: "attr:label" }, validate }, inner: { class: "i" } },
+        src
+      );
+      expect(seen).toHaveLength(1);
+      const c = seen[0]!;
+      expect(c.name).toBe("box");
+      expect(c.variant).toBe("note");
+      expect(c.attrs).toEqual({ label: "Read me" });
+      expect(c.line).toBe(3);
+      // Through the last line of content (the nested @inner's paragraph).
+      expect(c.text).toBe(src.split("\n").slice(3, 24).join("\n"));
+      expect(c.blocks).toEqual([
+        { type: "heading", level: 3, text: "Head", line: 4 },
+        { type: "paragraph", text: "Body *text*.", line: 6 },
+        { type: "list", ordered: true, items: ["one", "two"], line: 8 },
+        { type: "image", alt: "A map", src: "map.png", line: 11 },
+        { type: "quote", text: "quoted", line: 13 },
+        { type: "code", lang: "js", text: "x()\n", line: 15 },
+        { type: "rule", line: 18 },
+        { type: "table", line: 19 },
+        { type: "component", name: "inner", line: 23 },
+      ]);
+    });
+
+    test("text is the component's content, however it closes: boundary marker, re-entrant opener, EOF", () => {
+      const { seen, validate } = recorder();
+      run({ box: { validate, autoCloseAt: ["eof"] } }, "@box\na\n@page\n@box\nb\n@box\nc\n\n");
+      expect(seen.map((c) => [c.line, c.text])).toEqual([
+        [1, "a"],
+        [4, "b"],
+        [6, "c"],
+      ]);
+    });
+
+    test("an alias runs its target's validator, named as the author typed it, with the preset variant", () => {
+      const { seen, validate } = recorder(["needs work"]);
+      const { warnings } = run(
+        { box: { validate }, tip: { alias: "box", preset: { variant: "hint" } } },
+        "@tip\nx\n@end-box\n"
+      );
+      expect(seen[0]).toMatchObject({ name: "tip", variant: "hint" });
+      expect(warnings).toEqual([expect.objectContaining({ type: "component_invalid", message: "@tip: needs work", line: 1 })]);
+    });
+  });
+
+  describe("results become layout warnings", () => {
+    test("strings default to the marker line; objects keep line and severity; a bogus severity is dropped", () => {
+      const { validate } = recorder([
+        "plain",
+        { message: "pinned", line: 3, severity: "error" },
+        { message: "soft", severity: "info" },
+        { message: "odd", severity: "fatal" },
+      ]);
+      const { warnings } = run({ box: { validate } }, "\n@box\nx\n@end-box\n");
+      expect(warnings).toEqual([
+        { line: 2, type: "component_invalid", message: "@box: plain" },
+        { line: 3, type: "component_invalid", message: "@box: pinned", severity: "error" },
+        { line: 2, type: "component_invalid", message: "@box: soft", severity: "info" },
+        { line: 2, type: "component_invalid", message: "@box: odd" },
+      ]);
+    });
+
+    test("a single string result is one problem; nothing or [] is no problem", () => {
+      expect(run({ box: { validate: () => "one" } }, "@box\nx\n@end-box\n").warnings).toHaveLength(1);
+      expect(run({ box: { validate: () => undefined } }, "@box\nx\n@end-box\n").warnings).toEqual([]);
+      expect(run({ box: { validate: () => [] } }, "@box\nx\n@end-box\n").warnings).toEqual([]);
+    });
+
+    test("a broken validator is reported and never changes the rendered HTML", () => {
+      const src = "@box\nx\n@end-box\n";
+      const clean = run({ box: { class: "b" } }, src).html;
+      const cases: Array<[() => unknown, RegExp]> = [
+        [() => { throw new Error("boom"); }, /threw: boom/],
+        [() => Promise.resolve([]), /must not be async/],
+        [() => 42, /must return/],
+        [() => [{ line: 2 }], /without a message/],
+      ];
+      for (const [validate, why] of cases) {
+        const { html, warnings } = run({ box: { class: "b", validate } }, src);
+        expect(html).toBe(clean);
+        expect(warnings).toHaveLength(1);
+        expect(warnings[0]!.type).toBe("component_validate_failed");
+        expect(warnings[0]!.message).toMatch(/^@box: plugin "demo-plugin"'s validate\(\) /);
+        expect(warnings[0]!.message).toMatch(why);
+      }
+    });
+  });
+});
+
+describe("section markers (`section: true`) and the component token contract", () => {
+  const declaredMarkers = buildDeclaredMarkerRegistry([
+    {
+      pluginName: "dc-components",
+      markers: {
+        "npc-stat": {
+          section: true,
+          class: "dc-npc-stat",
+          variants: { wirephreak: "dc-wirephreak" },
+        },
+        "npc-card": { alias: "npc-stat", preset: { variant: "wirephreak" } },
+        callout: { class: "dc-alert", variants: { note: "dc-note" } },
+        "dm-note": { alias: "callout", preset: { variant: "note" } },
+      },
+    },
+  ]);
+  const render = (src: string, env: PagedEnv = {}) => renderPaged(src, { declaredMarkers }, env);
+  /** The variant attribute a section marker adds on top of what `@section` emits. */
+  const withoutVariantAttr = (html: string) => html.replace(/ data-npc-stat="[^"]*"/g, "");
+
+  test("renders exactly what the equivalent @section renders (classes and order)", () => {
+    const marker = render("@npc-stat wirephreak .extra\nText.\n@end-npc-stat\n").html;
+    const core = renderPaged("@section .dc-npc-stat .dc-wirephreak .extra\nText.\n@end-section\n").html;
+    expect(withoutVariantAttr(marker)).toBe(core);
+    expect(classList(marker)).toEqual(["section", "dc-npc-stat", "dc-wirephreak", "extra"]);
+  });
+
+  test("the variant is a variant, not a section name: data-<marker>, never data-section", () => {
+    const { html } = render("@npc-stat wirephreak\nText.\n@end-npc-stat\n");
+    expect(attr(html, "data-npc-stat")).toBe("wirephreak");
+    expect(html).not.toContain("data-section");
+    // No variant, no data attribute.
+    expect(render("@npc-stat\nText.\n").html).not.toContain("data-");
+  });
+
+  test("bare marker, author classes only, braces and key=value attrs behave like @section", () => {
+    const bare = render("@npc-stat\nText.\n").html;
+    expect(bare).toBe(renderPaged("@section .dc-npc-stat\nText.\n").html);
+    const braced = render("@npc-stat {.extra} id=x\nText.\n").html;
+    expect(braced).toBe(renderPaged("@section .dc-npc-stat .extra id=x\nText.\n").html);
+  });
+
+  test("an unknown variant adds no class but still records the variant", () => {
+    const { html } = render("@npc-stat mystery\nText.\n");
+    expect(classList(html)).toEqual(["section", "dc-npc-stat"]);
+    expect(attr(html, "data-npc-stat")).toBe("mystery");
+  });
+
+  test("Object.prototype names are not variants of a section marker either", () => {
+    for (const word of ["constructor", "toString", "__proto__"]) {
+      const { html, env } = render(`@npc-stat ${word}\nText.\n`);
+      expect(html).not.toContain("native code");
+      expect(classList(html)).toEqual(["section", "dc-npc-stat"]);
+      expect((env.layoutWarnings ?? []).map((w) => w.type)).toEqual(["unknown_variant"]);
+    }
+  });
+
+  test("an unknown variant on a section marker warns, with a suggestion; declared and preset variants stay silent", () => {
+    const typo = render("@npc-stat wirephreek\nText.\n").env.layoutWarnings ?? [];
+    expect(typo).toEqual([
+      expect.objectContaining({
+        type: "unknown_variant",
+        line: 1,
+        message: '"wirephreek" is not a variant of @npc-stat, so it adds no styling. Variants: wirephreak. Did you mean "wirephreak"?',
+      }),
+    ]);
+    // Once per opener: not repeated by @continue, and not for an alias's preset.
+    const quiet = "@npc-stat wirephreak\nA\n@continue\nB\n@end-npc-stat\n@npc-card\nC\n@end-npc-card\n";
+    expect(render(quiet).env.layoutWarnings ?? []).toEqual([]);
+    expect((render("@npc-stat nope\nA\n@continue\nB\n").env.layoutWarnings ?? []).map((w) => w.type)).toEqual(["unknown_variant"]);
+  });
+
+  test("closes at the next section marker, the next @section, and @page", () => {
+    const again = render("@npc-stat\nA\n@npc-stat wirephreak\nB\n").html;
+    expect(again).toBe(
+      '<div class="section dc-npc-stat"><p>A</p>\n</div>' +
+        '<div class="section dc-npc-stat dc-wirephreak" data-npc-stat="wirephreak"><p>B</p>\n</div>'
+    );
+    const bySection = render("@npc-stat\nA\n@section\nB\n").html;
+    expect(bySection).toBe('<div class="section dc-npc-stat"><p>A</p>\n</div><div class="section"><p>B</p>\n</div>');
+    const byPage = render("@page\n@npc-stat\nA\n@page\nB\n").html;
+    expect(byPage).toBe(
+      '<div class="page"><div class="section dc-npc-stat"><p>A</p>\n</div></div><div class="page"><p>B</p>\n</div>'
+    );
+  });
+
+  test("@end-<name> behaves exactly like @end-section", () => {
+    const marker = render("@npc-stat\nA\n@end-npc-stat\nB\n");
+    expect(marker.html).toBe('<div class="section dc-npc-stat"><p>A</p>\n</div><p>B</p>\n');
+    // ...including closing a section a plain @section opened, and the same empty_section warning.
+    expect(render("@section\nA\n@end-npc-stat\nB\n").html).toBe(renderPaged("@section\nA\n@end-section\nB\n").html);
+    const empty = render("@npc-stat\n@end-npc-stat\n").env.layoutWarnings ?? [];
+    expect(empty.map((w) => w.type)).toEqual(["empty_section"]);
+    // Nothing open: no warning, exactly like a stray @end-section.
+    expect(render("@end-npc-stat\nA\n").env.layoutWarnings ?? []).toEqual([]);
+  });
+
+  test("@continue reopens it with the component's classes and variant", () => {
+    const { html } = render("@npc-stat wirephreak .extra\nA\n@continue\nB\n@end-npc-stat\n");
+    const opens = html.match(/<div class="[^"]*"[^>]*>/g)!;
+    expect(opens).toHaveLength(2);
+    expect(classList(opens[0]!)).toEqual(["section", "dc-npc-stat", "dc-wirephreak", "extra"]);
+    expect(classList(opens[1]!)).toEqual(["section", "dc-npc-stat", "dc-wirephreak", "extra", "gp-continued"]);
+    expect(attr(opens[1]!, "data-npc-stat")).toBe("wirephreak");
+  });
+
+  test("column utilities and empty_section warnings work as on a core section", () => {
+    const { html, env } = render("@npc-stat .gp-columns-2\nText.\n");
+    expect(classList(html)).toEqual(["section", "dc-npc-stat", "gp-columns-2"]);
+    const dup = render("@npc-stat wirephreak\n@npc-stat\nText.\n").env.layoutWarnings ?? [];
+    expect(dup.filter((w) => w.type === "empty_section")).toHaveLength(1);
+    expect(env.layoutWarnings ?? []).toEqual([]);
+  });
+
+  test("an alias of a section marker is a section: classes from the target, preset variant, shared closer", () => {
+    const { html } = render("@npc-card .extra\nText.\n@end-npc-stat\n");
+    expect(classList(html)).toEqual(["section", "dc-npc-stat", "dc-wirephreak", "extra"]);
+    expect(attr(html, "data-npc-stat")).toBe("wirephreak");
+    expect(render("@npc-card\nText.\n@end-npc-card\nAfter\n").html).toBe(
+      render("@npc-stat wirephreak\nText.\n@end-npc-stat\nAfter\n").html
+    );
+  });
+
+  test("the section token meta identifies the component", () => {
+    const { tokens } = parsePaged("@npc-stat wirephreak id=a\nA\n@continue\nB\n@npc-card\nC\n@section\nD\n", { declaredMarkers });
+    const opens = findTokens(tokens, "layout_section_open");
+    expect(opens.map((t) => t.meta)).toEqual([
+      { line: 1, component: "npc-stat", kind: "npc-stat", variant: "wirephreak", attrs: { id: "a" } },
+      { line: 3, component: "npc-stat", kind: "npc-stat", variant: "wirephreak", attrs: { id: "a" }, continued: true },
+      { line: 5, component: "npc-card", kind: "npc-stat", variant: "wirephreak", attrs: {} },
+      { line: 7 },
+    ]);
+  });
+
+  describe("load-time rejections", () => {
+    const build = (decl: Record<string, unknown>) => () =>
+      buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { box: decl } }]);
+
+    test("`section` must be a boolean", () => {
+      expect(build({ section: "yes" })).toThrow(/Plugin "p"'s marker "@box" has a `section` that is not a boolean/);
+    });
+
+    test("`tag`, `label` and `autoCloseAt` cannot be combined with `section: true`, naming plugin and marker", () => {
+      expect(build({ section: true, tag: "aside" })).toThrow(/Plugin "p"'s marker "@box" sets `section: true` and `tag`/);
+      expect(build({ section: true, label: { class: "l", from: "attr:label" } })).toThrow(/@box.*`label`/);
+      expect(build({ section: true, autoCloseAt: ["eof"] })).toThrow(/@box.*`autoCloseAt`/);
+    });
+
+    test("`section: false` and a plain section marker are accepted; the flag only appears when set", () => {
+      const reg = buildDeclaredMarkerRegistry([
+        { pluginName: "p", markers: { a: { section: false, tag: "aside" }, b: { section: true, class: "b" }, c: { class: "c" } } },
+      ]);
+      expect(reg.get("a")).not.toHaveProperty("section");
+      expect(reg.get("b")).toMatchObject({ section: true, classBase: "b" });
+      expect(reg.get("c")).not.toHaveProperty("section");
+    });
+  });
+
+  describe("validate on a section marker", () => {
+    type Seen = { name: string; variant: string | null; line: number; text: string; blocks: Array<Record<string, unknown>> };
+    function run(src: string, result: unknown = []) {
+      const seen: Seen[] = [];
+      const validate = (c: Seen) => (seen.push(c), result);
+      const markers = { stat: { section: true, class: "s", validate }, tip: { alias: "stat", preset: { variant: "t" } } };
+      const md = createMarkdownRenderer([{ name: "demo", plugin: () => {}, options: {}, markers } as LoadedPlugin]);
+      const env: PagedEnv = {};
+      md.render(src, env);
+      // Glued fixtures again (see the `run` above): the component's checks are the subject.
+      return { seen, warnings: (env.layoutWarnings ?? []).filter((w) => w.type !== "marker_glued") };
+    }
+
+    test("sees the tokens up to the section's close, like a container", () => {
+      const { seen } = run("@stat wide\n## Head\n\nBody.\n@section\nOther\n");
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).toMatchObject({ name: "stat", variant: "wide", line: 1, text: "## Head\n\nBody." });
+      expect(seen[0]!.blocks.map((b) => b.type)).toEqual(["heading", "paragraph"]);
+    });
+
+    test("reports problems at the right line, and runs through an alias under the typed name", () => {
+      const { seen, warnings } = run("\n@tip\nx\n@end-stat\n", ["bad"]);
+      expect(seen[0]).toMatchObject({ name: "tip", variant: "t", line: 2 });
+      expect(warnings).toEqual([expect.objectContaining({ type: "component_invalid", message: "@tip: bad", line: 2 })]);
+    });
+
+    test("a @continue continuation is not validated on its own", () => {
+      const { seen } = run("@stat\nA\n@continue\nB\n@end-stat\n");
+      expect(seen).toHaveLength(1);
+      expect(seen[0]!.text).toBe("A");
+    });
+  });
+
+  describe("`meta.kind` on layout_component_open", () => {
+    test("is the base marker name, for a direct marker and for an alias (component keeps the typed name)", () => {
+      const { tokens } = parsePaged("@callout note\nA\n@end-callout\n@dm-note\nB\n@end-callout\n", { declaredMarkers });
+      const opens = findTokens(tokens, "layout_component_open");
+      expect(opens.map((t) => [t.meta.component, t.meta.kind, t.meta.variant])).toEqual([
+        ["callout", "callout", "note"],
+        ["dm-note", "callout", "note"],
+      ]);
+      expect(opens[0]!.meta).toEqual({ line: 1, component: "callout", kind: "callout", variant: "note", attrs: {}, labelled: false });
+    });
+
+    test("a plugin's ordinary core rule can transform the tokens between open and close (declare, then transform)", () => {
+      function forEachComponent(
+        tokens: import("markdown-it/lib/token.mjs").default[],
+        kind: string,
+        fn: (open: import("markdown-it/lib/token.mjs").default, from: number, close: number) => void
+      ) {
+        for (let i = tokens.length - 1; i >= 0; i--) {
+          const open = tokens[i]!;
+          if (open.type !== "layout_component_open" || open.meta.kind !== kind) continue;
+          let depth = 0;
+          let close = i;
+          for (; close < tokens.length; close++) {
+            depth += tokens[close]!.nesting;
+            if (depth === 0) break;
+          }
+          fn(open, i + (open.meta.labelled ? 2 : 1), close);
+        }
+      }
+      const plugin: LoadedPlugin = {
+        name: "steps-plugin",
+        plugin: (md) => {
+          md.core.ruler.push("steps", (state) => {
+            forEachComponent(state.tokens, "callout", (open, from, close) => {
+              let count = 0;
+              for (let i = from; i < close; i++) {
+                if (state.tokens[i]!.type === "list_item_open") {
+                  state.tokens[i]!.attrJoin("class", "step");
+                  count++;
+                }
+              }
+              open.attrSet("data-steps", String(count));
+            });
+          });
+        },
+        options: {},
+        markers: { callout: { class: "c" }, "dm-note": { alias: "callout" } },
+      };
+      const md = createMarkdownRenderer([plugin]);
+      const html = md.render("@dm-note\n- a\n- b\n@end-callout\n\n- outside\n", {});
+      expect(html).toContain('data-steps="2"');
+      expect(html.match(/<li class="step"/g)).toHaveLength(2);
+    });
+  });
+
+  describe("opt-in regression", () => {
+    test("markers that don't use the new fields render identically to a registry without them", () => {
+      const markers = {
+        callout: { class: "dc-alert", variants: { note: "dc-note" }, label: { class: "l", from: "attr:label" }, autoCloseAt: ["eof"] },
+        "dm-note": { alias: "callout", preset: { variant: "note" } },
+      };
+      const src = '@page\n@callout note label="Hi"\nA\n@dm-note\nB\n@end-callout\n@section .x\nC\n@continue\nD\n@end-section\n';
+      const sectionFalse = { ...markers, callout: { ...markers.callout, section: false } };
+      const html = (m: Record<string, unknown>) =>
+        renderPaged(src, { declaredMarkers: buildDeclaredMarkerRegistry([{ pluginName: "p", markers: m }]) }).html;
+      expect(html(sectionFalse)).toBe(html(markers));
+      expect(html(markers)).toContain('<div class="dc-alert dc-note" data-callout="note">');
+      expect(html(markers)).toContain('<div class="section x">');
+      expect(html(markers)).toContain('<div class="section x gp-continued">');
+    });
+  });
+});
+
+describe("@columns (core declared marker)", () => {
+  const render = (src: string) => {
+    const env: { layoutWarnings?: Array<{ type: string; message: string }> } = {};
+    const html = createMarkdownRenderer([]).render(src, env);
+    return { html, warnings: env.layoutWarnings ?? [] };
+  };
+
+  test("@columns 1-5 is a plain wrapper carrying the matching column class, nothing else", () => {
+    for (const n of [1, 2, 3, 4, 5]) {
+      const { html, warnings } = render(`@columns ${n}\n\nText.\n\n@end-columns\n`);
+      expect(html).toMatch(new RegExp(`^<div class="gp-columns gp-columns-${n}" data-columns="${n}"[^>]*>`));
+      expect(html).not.toContain("section");
+      expect(warnings).toEqual([]);
+    }
+  });
+
+  test("a bare @columns is the two-column default (.gp-columns alone)", () => {
+    expect(render("@columns\n\nText.\n\n@end-columns\n").html).toMatch(/^<div class="gp-columns"[^>]*>/);
+  });
+
+  test("a count outside 1-5 is reported as an unknown variant", () => {
+    const { warnings } = render("@columns 6\n\nText.\n\n@end-columns\n");
+    expect(warnings.map((w) => w.type)).toEqual(["unknown_variant"]);
+    expect(warnings[0]!.message).toContain("Variants: 1, 2, 3, 4, 5.");
+  });
+
+  test("@column-break works inside it, and it nests inside a @section", () => {
+    const { html } = render("@section\n\n@columns 2\n\nA\n\n@column-break\n\nB\n\n@end-columns\n\n@end-section\n");
+    expect(html).toMatch(/<div class="section"[^>]*><div class="gp-columns gp-columns-2"[\s\S]*<div class="gp-column-break"/);
+  });
+
+  test("the marker plugin knows @columns even when no registry is passed", () => {
+    const md = new MarkdownIt().use(markerPlugin);
+    expect(md.render("@columns 3\n\nText.\n\n@end-columns\n")).toContain('class="gp-columns gp-columns-3"');
+  });
+
+  test("the CSS gives .gp-columns two columns and each count its own, with one shared gap", () => {
+    expect(GUTTERPRESS_CSS).toContain(".gp-columns { columns: 2; }");
+    for (const n of [1, 2, 3, 4, 5]) expect(GUTTERPRESS_CSS).toContain(`.gp-columns-${n} { columns: ${n}; }`);
+    expect(GUTTERPRESS_CSS.indexOf(".gp-columns { columns: 2; }")).toBeLessThan(GUTTERPRESS_CSS.indexOf(".gp-columns-1 { columns: 1; }"));
   });
 });

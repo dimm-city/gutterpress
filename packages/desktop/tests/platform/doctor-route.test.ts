@@ -1,11 +1,37 @@
-import { beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { registerHostServices } from "../../electron/server-bridge/host-services";
 import { makeHostServices } from "../support/host-services-fake";
+import { setLibForTests } from "../../src/routes/api/_lib/route";
 import { GET } from "../../src/routes/api/doctor/+server";
+
+// The route's own job is reshaping the lib's diagnostics, so the lib is faked:
+// the real getSystemDiagnostics spawns `which`/`gs --version`/`qpdf --version`,
+// and one of those calls stalling in CI hung the whole test run (the lib's
+// probes have their own tests in packages/cli).
+const tool = (id: string, bin: string) => ({
+  id,
+  name: bin,
+  bin,
+  found: true,
+  path: `/usr/bin/${bin}`,
+  usedBy: [],
+  installHint: "",
+});
 
 beforeAll(() => {
   registerHostServices(makeHostServices());
+  setLibForTests({
+    getSystemDiagnostics: async () => ({
+      libVersion: "0.0.0-lib",
+      platform: { os: "linux", arch: "x64", release: "test", node: process.versions.node },
+      tools: [tool("chromium", "chrome / chromium / msedge"), tool("gs", "gs"), tool("qpdf", "qpdf")],
+      configDir: "/home/test/.config/gutterpress",
+      docsUrl: "https://example.test/docs",
+    }),
+  });
 });
+
+afterAll(() => setLibForTests(null));
 
 // L10: the doctor route must exclude the bundled-Chromium diagnostic entry
 // from the "external tools" list by matching a stable machine id

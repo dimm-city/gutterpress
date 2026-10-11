@@ -30,6 +30,7 @@ import {
 } from "./extension-manifest.ts";
 import { loadPlugins } from "./markdown/plugins.ts";
 import { createMarkdownRenderer } from "./markdown/renderer.ts";
+import { substituteVariables } from "./snippets.ts";
 import type { ResolvedExtensionConfig } from "../schema/manifest.types.ts";
 
 async function tmpParent(): Promise<string> {
@@ -211,6 +212,27 @@ describe("scaffoldExtension --kind plugin", () => {
     expect(html).toContain('<span class="fn-term">a term</span>');
   });
 
+  test("its component validator flags a bad @term-box, and its own snippet passes", async () => {
+    const parent = await tmpParent();
+    const result = await scaffoldExtension({ name: "Field Notes", kind: "plugin", parentDir: parent });
+    const md = createMarkdownRenderer(await loadPlugins([pluginCfg(result.slug)], parent));
+    const problems = (src: string) => {
+      const env: { layoutWarnings?: Array<{ type: string; line: number }> } = {};
+      md.render(src, env);
+      return (env.layoutWarnings ?? []).filter((w) => w.type.startsWith("component_"));
+    };
+
+    expect(problems("@term-box\n### A heading\n@end-term-box\n")).toEqual([
+      expect.objectContaining({ type: "component_invalid", line: 1 }),
+      expect.objectContaining({ type: "component_invalid", line: 1 }),
+      expect.objectContaining({ type: "component_invalid", line: 2 }),
+    ]);
+
+    // The snippet the editor inserts, filled in, is a valid term box.
+    const snippet = await readFile(path.join(result.extensionDir, "snippets", "term-box.md"), "utf8");
+    expect(problems(substituteVariables(snippet, { label: "Gutter", body: "The inner margin." }))).toEqual([]);
+  });
+
   test("the scaffolded test suite's fixture matches its expected output", async () => {
     // The fixture/expected pair the author runs `bun test` on is generated
     // from the template, so a change to plugin.js that forgets expected.html
@@ -226,6 +248,13 @@ describe("scaffoldExtension --kind plugin", () => {
     const fixture = await readFile(path.join(result.extensionDir, "test", "fixture.md"), "utf8");
     const expected = await readFile(path.join(result.extensionDir, "test", "expected.html"), "utf8");
     expect(md.render(fixture)).toBe(expected);
+  });
+
+  test("its stylesheet declares no cascade layer (the scaffolded suite's own convention test)", async () => {
+    const parent = await tmpParent();
+    const result = await scaffoldExtension({ name: "Field Notes", kind: "plugin", parentDir: parent });
+    const css = await readFile(path.join(result.extensionDir, "styles", "plugin.css"), "utf8");
+    expect(stripCssComments(css)).not.toMatch(/@layer/);
   });
 });
 

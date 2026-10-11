@@ -105,3 +105,33 @@ testIf(
   },
   RENDER_TEST_TIMEOUT_MS
 );
+
+testIf(
+  "@columns: every count 1-5, and the bare default of 2, reach Chromium's computed column-count",
+  async () => {
+    const { createMarkdownRenderer } = await import("./renderer.ts");
+    const md = createMarkdownRenderer([]);
+    const body = ["", "1", "2", "3", "4", "5"]
+      .map((n) => md.render(`@columns ${n}\n\nText.\n\n@end-columns\n`))
+      .join("\n");
+    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "gp-columns-marker-"));
+    try {
+      const file = path.join(dir, "fixture.html");
+      await fsp.writeFile(file, `<!doctype html><meta charset="utf-8"><style>${GUTTERPRESS_CSS}</style>${body}`, "utf8");
+      browser ??= await launchChromium();
+      const page = await browser.newPage();
+      try {
+        await page.navigate(`file://${file}`);
+        const counts = (await page.evaluate(
+          `[...document.querySelectorAll(".gp-columns")].map((el) => getComputedStyle(el).columnCount)`
+        )) as string[];
+        expect(counts).toEqual(["2", "1", "2", "3", "4", "5"]);
+      } finally {
+        await page.close();
+      }
+    } finally {
+      await fsp.rm(dir, { recursive: true, force: true });
+    }
+  },
+  RENDER_TEST_TIMEOUT_MS
+);

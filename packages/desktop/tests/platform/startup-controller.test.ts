@@ -232,11 +232,11 @@ test("landing enabled with a last project: holds the landing, then reopens behin
   deps.getDesktopPrefs.impl = async () => ({ lastProjectDir: "/proj", showLandingAtStartup: true });
   await ctrl.run();
   expect(deps.setLandingHold.calls).toEqual([[true]]);
-  expect(deps.setBusy.calls).toEqual([[true, "Reopening previous folder…"]]);
+  expect(deps.setBusy.calls).toEqual([[true, "Opening proj…"]]);
   expect(deps.setLandingContinueDir.calls).toEqual([["/proj"]]);
   expect(deps.startFolderPreview.calls.length).toBe(1);
   expect(deps.startFolderPreview.calls[0]![0]).toBe("/proj");
-  expect(deps.startFolderPreview.calls[0]![1]).toBe("Reopening previous folder…");
+  expect(deps.startFolderPreview.calls[0]![1]).toBe("Opening proj…");
 });
 
 // ── Landing disabled (straight into the last project) ───────────────────────

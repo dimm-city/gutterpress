@@ -9,6 +9,8 @@
 // shortcuts.ts / preview-layout.ts).
 // ──────────────────────────────────────────────────────────────────────────
 
+import type { ActivityStage } from "../loading/activity-stage";
+
 export interface StartupScreenDecision {
   /**
    * Show the start screen layer as the app's first screen. When true the
@@ -45,30 +47,32 @@ export interface ContinueStatus {
    */
   label: string;
   /**
-   * Per-page progress suffix (e.g. "page 42…"). Updates on every laid-out
-   * page — VISUAL ONLY; the landing renders it aria-hidden.
+   * Finer progress suffix (a package name, "42 pages so far"). Updates on
+   * every laid-out page — VISUAL ONLY; the landing renders it aria-hidden.
    */
   detail: string | null;
 }
 
 /**
  * Plain-language status for the continue card, tracking the live pre-render
- * happening behind the landing.
+ * happening behind the landing. The wording after the first moments comes from
+ * the SAME stage the open overlay shows (activity-stage.ts), so the card and
+ * the overlay never describe the wait differently.
  */
 export function continueStatus(input: {
   hasPreviewUrl: boolean;
-  rendering: boolean;
-  renderProgressPage: number;
+  stage: ActivityStage | null;
 }): ContinueStatus {
+  const { stage } = input;
+  // The download is the one wait the card names before the preview exists.
+  if (stage?.id === "downloading") {
+    return { kind: "opening", label: stage.label, detail: stage.detail };
+  }
   if (!input.hasPreviewUrl) {
     return { kind: "opening", label: "Opening your book…", detail: null };
   }
-  if (input.rendering) {
-    return {
-      kind: "rendering",
-      label: "Preparing your book…",
-      detail: input.renderProgressPage > 0 ? `page ${input.renderProgressPage}…` : null,
-    };
+  if (stage) {
+    return { kind: "rendering", label: stage.label, detail: stage.detail };
   }
   return { kind: "ready", label: "Your book is ready.", detail: null };
 }

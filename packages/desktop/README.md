@@ -18,8 +18,8 @@ Electron main process (out/main/main.js — ESM, built by electron-vite)
   ├─ secureHandle("api:build", ...)    — delegates to export/controller.ts
   │                            (secureHandle wraps ipcMain.handle and rejects
   │                            any invocation from an untrusted sender frame)
-  └─ webContents.send(...) push channels  — build progress, folder-changed,
-                                            sync status, updater events
+  └─ webContents.send(...) push channels  — build progress, extension download
+                                            progress, folder-changed, sync status, updater events
 
 BrowserWindow loads app://local/
   ├─ preload.ts installs the narrow window.electron bridge (contextBridge)
@@ -253,7 +253,9 @@ packages/desktop/
 │   │   └── components/
 │   │       ├── PreviewFrame.svelte
 │   │       ├── Toast.svelte
-│   │       └── LoadingOverlay.svelte
+│   │       ├── ActivityIndicator.svelte  # the one loading overlay / pill
+│   │       └── Spinner.svelte            # the one spinner ring
+│   │   └── loading/             # stage wording + delay/min-visible timing (pure, unit-tested)
 │   └── app.html
 ├── static/                  # Static assets served from app:// root (favicon)
 ├── build/                   # SvelteKit build output (git-ignored):

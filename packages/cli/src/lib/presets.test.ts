@@ -6,6 +6,7 @@ import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import { UsageError } from "./cli-args";
 import { resolveConfig } from "./manifest";
+import { lastPageMode } from "../engine/shared/synthesis";
 import { getAssetPath } from "./embedded-assets";
 import { scaffoldProject } from "./project-scaffold";
 import { BUILT_IN_TEMPLATE_IDS } from "./project-templates";
@@ -71,6 +72,38 @@ test("custom preset resolves the author's geometry; tolerance defaults to 0.5", 
 test("each preset carries its default publish targets into the resolved config", () => {
   expect(resolveConfig({}, { preset: "dtrpg" }).targets).toEqual(["dtrpg"]);
   expect(resolveConfig({}, { preset: "book" }).targets).toEqual([]);
+});
+
+test("dtrpg pads to a 4-page signature and reserves a blank last page; book does not", () => {
+  expect(resolveConfig({}, { preset: "dtrpg" }).print).toEqual({
+    signature: 4,
+    reserveLastPage: true,
+  });
+  expect(resolveConfig({}, { preset: "book" }).print).toEqual({
+    signature: 1,
+    reserveLastPage: false,
+  });
+  expect(
+    resolveConfig({ print: { reserveLastPage: false } }, { preset: "dtrpg" }).print,
+  ).toEqual({ signature: 4, reserveLastPage: false });
+});
+
+test("print.lastPage: short-by-one is read from the manifest and wins over reserveLastPage; an unknown value is an error", () => {
+  const print = resolveConfig({}, { preset: "dtrpg", print: { lastPage: "short-by-one" } }).print;
+  expect(print).toEqual({ signature: 4, reserveLastPage: true, lastPage: "short-by-one" });
+  expect(lastPageMode(print)).toBe("short-by-one");
+  // an existing manifest with only reserveLastPage resolves exactly as before
+  expect(resolveConfig({}, { preset: "dtrpg" }).print.lastPage).toBeUndefined();
+  expect(lastPageMode(resolveConfig({}, { preset: "dtrpg" }).print)).toBe("blank");
+  expect(lastPageMode(resolveConfig({}, { preset: "book" }).print)).toBeUndefined();
+  expect(() =>
+    resolveConfig({}, { preset: "dtrpg", print: { lastPage: "short-by-1" as never } }),
+  ).toThrow(/print\.lastPage.*blank.*short-by-one/);
+});
+
+test("an explicit signature always wins over the preset's, at any trim size", () => {
+  expect(resolveConfig({}, { preset: "dtrpg", print: { signature: 6 } }).print.signature).toBe(6);
+  expect(resolveConfig({}, { preset: "book", print: { signature: 4 } }).print.signature).toBe(4);
 });
 
 test("manifest targets override the preset's defaults and are validated", () => {

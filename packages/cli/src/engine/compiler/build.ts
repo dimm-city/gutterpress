@@ -40,6 +40,7 @@ import {
   stringValueAt,
   toFolioPage,
   wantsRecto,
+  type LastPageMode,
   type StringEntry,
   type StringWhich,
 } from "../shared/synthesis.ts";
@@ -270,6 +271,8 @@ export interface BuildOptions {
   input: string;
   output?: string;
   signature?: number;
+  /** the printer-reserved last page: see `LastPageMode` in shared/synthesis.ts */
+  lastPage?: LastPageMode;
   marks?: boolean;
   slugPt?: number;
   bleedPt?: number;
@@ -1392,13 +1395,16 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     const post = await postprocess(bytes, {
       geometry: tier2.geometry,
       signature: opts.signature,
+      lastPage: opts.lastPage,
       marks: opts.marks,
       title: opts.title,
       author: opts.author,
     });
     log(
       `postprocess: ${post.pageCount} pages` +
-        (post.padded ? ` (+${post.padded} signature pad)` : ""),
+        (post.padded
+          ? ` (+${post.padded} blank${opts.lastPage ? `; last page: ${opts.lastPage}` : ""})`
+          : ""),
     );
 
     return {

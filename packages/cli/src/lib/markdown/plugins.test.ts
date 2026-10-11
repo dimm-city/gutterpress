@@ -462,17 +462,29 @@ describe("plugin loader", () => {
       );
     });
 
-    test("throws clear error when package not found", async () => {
+    test("throws clear error when a pinned package's downloaded copy is missing", async () => {
       await expect(
-        loadPlugin(cfg({ name: "this-package-does-not-exist-xyz" }), TMP_ROOT)
+        loadPlugin(cfg({ name: "this-package-does-not-exist-xyz", version: "1.0.0" }), TMP_ROOT)
       ).rejects.toThrow(/not found/);
     });
 
     test("error message points to the built-in installer, not an external tool", async () => {
       await expect(
-        loadPlugin(cfg({ name: "this-package-does-not-exist-xyz" }), TMP_ROOT)
-      ).rejects.toThrow(/gutterpress ext add this-package-does-not-exist-xyz.*Book settings > Features > Advanced/);
+        loadPlugin(cfg({ name: "this-package-does-not-exist-xyz", version: "1.0.0" }), TMP_ROOT)
+      ).rejects.toThrow(/gutterpress ext add this-package-does-not-exist-xyz@1\.0\.0.*Book settings > Features > Advanced/);
     });
+
+    test.each([undefined, "^1.0.0", "latest"])(
+      "an npm entry that is not pinned to an exact version (%p) says to pin it, not just 'not found'",
+      async (version) => {
+        const message = await loadPlugin(cfg({ name: "this-package-does-not-exist-xyz", version }), TMP_ROOT).then(
+          () => "",
+          (e: Error) => e.message,
+        );
+        expect(message).toContain("is not pinned to an exact version");
+        expect(message).toContain("gutterpress ext add this-package-does-not-exist-xyz");
+      },
+    );
 
     // Near-miss: a bare filename with a JS extension but no
     // path separator (e.g. `my-plugin.js`, unlike `plugins/my-plugin.js`
@@ -785,7 +797,7 @@ describe("plugin loader", () => {
         [
           cfg({ path: "ok.mjs" }),
           cfg({ path: "./missing.mjs" }),
-          cfg({ name: "this-package-does-not-exist-xyz" }),
+          cfg({ name: "this-package-does-not-exist-xyz", version: "1.0.0" }),
         ],
         TMP_ROOT,
         (ref, err) => failures.push({ ref, message: err.message })

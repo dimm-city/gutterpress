@@ -61,6 +61,8 @@ export type {
   SnapshotEntry,
   RemoteConnection,
   RemoteRepository,
+  BackupTarget,
+  BackupSetupResult,
   RemoteBranch,
   RepoBook,
   RemoteAccessResult,
@@ -85,6 +87,8 @@ import type {
   SnapshotEntry,
   RemoteConnection,
   RemoteRepository,
+  BackupTarget,
+  BackupSetupResult,
   RemoteBranch,
   RepoBook,
   RemoteAccessResult,
@@ -121,6 +125,7 @@ export type {
   NpmExtensionMatch,
   ExtensionSearchResult,
   ExtensionUpdatesResult,
+  ExtensionVersionsResult,
   ProjectStyle,
   RecoveryEntry,
   ProjectClassification,
@@ -146,6 +151,7 @@ import type {
   ExtensionImportResult,
   ExtensionSearchResult,
   ExtensionUpdatesResult,
+  ExtensionVersionsResult,
   ProjectStyle,
   RecoveryEntry,
   ProjectClassification,
@@ -188,34 +194,41 @@ export interface SavedTemplateInfo extends TemplateInfo {
 }
 
 /**
- * Provenance of one merged snippet entry (#242 — extensions can ship a
- * `snippets` folder declared in their package.json, merged into this SAME picker
- * feed by the lib's `listMergedSnippets`).
- *
- * `{ kind: 'project' }` is the author's own snippet — the only kind
- * `api.snip.save`/`api.snip.delete` ever produce or touch, and therefore the
- * only kind the picker may show a delete affordance for. `{ kind:
- * 'extension', ref, name }` is a READ-ONLY snippet contributed by an
- * installed, enabled extension (#265 — one rail, so one extension kind):
- * `name` is its display name (the picker's group label — see
- * SnippetPicker.svelte), `ref` is the extension's manifest specifier
- * (`ProjectExtensionEntry.use`) passed straight back to
- * `api.snip.readExtension` so the host can re-locate the right extension
- * folder itself — never a filesystem path the client hands the host
- * directly. Kept as its own type (not inlined) so `SnippetPicker.svelte` has
- * one name to import for its `source.kind === 'project'` gating.
- *
- * Decoupled from the lib's own `SnippetSource` type per CLAUDE.md §8 (the SPA
- * never value- or type-imports `gutterpress`) — kept in sync by hand; the two
- * shapes are structurally identical on purpose.
+ * Which level a snippet comes from — mirrors the lib's `SnippetSource` by
+ * hand (CLAUDE.md §8: the SPA never imports `gutterpress`). `project` is the
+ * book's own (the only level `api.snip.save`/`api.snip.delete` touch, so the
+ * only one the picker offers to delete); `extension` is read-only, `name`
+ * being its display name; `core` is reserved for snippets Gutterpress ships.
  */
-export type SnippetSource = { kind: 'project' } | { kind: 'extension'; ref: string; name: string };
+export type SnippetSource =
+  | { kind: 'project' }
+  | { kind: 'extension'; ref: string; name: string }
+  | { kind: 'core' };
 
 export interface SnippetEntry {
   name: string;
   fileName: string;
   variables: string[];
+  body: string;
   source: SnippetSource;
+  /** Set when this is the example snippet for that component (marker name). */
+  component?: string;
+}
+
+/**
+ * A plugin component (a declared marker such as `@term-box`) with the
+ * winning example snippet (book, then extension, then core) the editor
+ * inserts for it. Mirrors the lib's `MarkerComponent` by hand.
+ */
+export interface MarkerComponent {
+  /** Marker name without `@`. */
+  name: string;
+  source: Extract<SnippetSource, { kind: 'extension' }>;
+  /** Variant names accepted as the marker's bare word (`@name <variant>`). */
+  variants: string[];
+  /** One element with no body and no `@end-<name>`: inserted without a closing pair. */
+  selfClosing?: true;
+  snippet?: string;
 }
 
 /** Static publish-provider metadata (no project needed) — used by the
@@ -246,6 +259,25 @@ export interface ProjectConfigFields {
   /** `targets:` — the publish destinations this book is validated against
    *  (ADR 0008). `[]` is the explicit "no destination policies" opt-out. */
   targets?: string[];
+}
+
+/**
+ * A book's page size as recorded (mirrors the lib's `PageSetup`): the manifest's
+ * preset + validation bounds, and what the stylesheet's plain `@page` prints at.
+ * Sizes are points (72pt = 1in).
+ */
+export interface PageSetup {
+  /** null when the manifest names a preset the app doesn't know. */
+  preset: 'dtrpg' | 'book' | 'custom' | null;
+  bounds: { width: number; height: number; tolerance: number } | null;
+  css: { width: number; height: number; file: string } | null;
+}
+
+/** What the author picks (mirrors the lib's `PageSizeChoice`). */
+export interface PageSizeChoice {
+  preset: 'dtrpg' | 'book' | 'custom';
+  /** Required for `custom`; the other presets own their size. */
+  page?: { width: number; height: number };
 }
 
 export interface DirEntry {
@@ -516,32 +548,11 @@ export const api = {
   },
 
   snip: {
-    /** List the open project's snippets, MERGED with every installed, active
-     *  extension's own `snippets` folder (#242) — each entry's `source`
-     *  says which. This is what the picker actually renders; project-
-     *  only listing has no separate route (the lib's `listSnippets` is an
-     *  internal building block of `listMergedSnippets`, not exposed here). */
+    /** Every snippet the book can insert, from every level (book, extensions,
+     *  core), bodies included — each entry's `source` says which level. */
     list: (projectDir: string) => post<SnippetEntry[]>('/api/snip/list', { projectDir }),
-    /** Read one PROJECT snippet's raw body (`source.kind === 'project'`
-     *  entries only — see {@link readExtension} for the other kind). */
-    read: (projectDir: string, fileName: string) =>
-      post<string>('/api/snip/read', { projectDir, fileName }),
-    /** Read one EXTENSION-provided snippet's raw body (#242) —
-     *  `source.kind === 'extension'` entries. `source` is the exact object
-     *  the list call handed back; the host re-derives the extension's folder
-     *  from `source.ref` (its manifest specifier) itself rather than trusting
-     *  a path from the client. */
-    readExtension: (
-      projectDir: string,
-      source: { kind: 'extension'; ref: string },
-      fileName: string,
-    ) =>
-      post<string>('/api/snip/read-extension', {
-        projectDir,
-        kind: source.kind,
-        ref: source.ref,
-        fileName,
-      }),
+    /** The project's plugin components, each with its winning example snippet. */
+    components: (projectDir: string) => post<MarkerComponent[]>('/api/snip/components', { projectDir }),
     /** Save a snippet body under the project's snippets/ folder. Always
      *  writes to the PROJECT, even when the list currently shown includes
      *  extension-provided entries (#242) — there is no way to target an
@@ -599,9 +610,11 @@ export const api = {
     recommended: () => get<RecommendedExtension[]>('/api/extension/recommended'),
     /** Search npm for extensions (#246), on demand. A network/parse failure is data (`ok: false`), never a thrown error. */
     search: (query: string) => post<ExtensionSearchResult>('/api/extension/search', { query }),
-    /** Each pinned npm extension against npm's latest, on demand (the Features tab, never project load). A network failure is data (`ok: false`). */
-    outdated: (projectDir: string) =>
-      post<ExtensionUpdatesResult>('/api/extension/outdated', { projectDir }),
+    /** Each pinned npm extension against npm's latest (the newest of any kind with `includePrerelease`), on demand (the Features tab, never project load). A network failure is data (`ok: false`). */
+    outdated: (projectDir: string, includePrerelease = false) =>
+      post<ExtensionUpdatesResult>('/api/extension/outdated', { projectDir, includePrerelease }),
+    /** Every published version of one npm package, newest first, pre-releases included (the version picker's list). On demand; a network failure is data (`ok: false`). */
+    versions: (name: string) => post<ExtensionVersionsResult>('/api/extension/versions', { name }),
     /** The built-in looks (static metadata). */
     listBuiltIn: () => get<BuiltInStyleSet[]>('/api/extension/built-in'),
     /** Copy a built-in look into `extensions/<id>/` and add it as `./extensions/<id>`. */
@@ -640,6 +653,15 @@ export const api = {
     /** Apply the author-facing manifest field updates (one yaml round-trip). */
     setFields: (projectDir: string, updates: ProjectConfigFields) =>
       post<ProjectConfigFields>('/api/manifest/set-fields', { projectDir, updates }),
+  },
+
+  pageSize: {
+    /** Read the book's page size back from its manifest and stylesheet. */
+    read: (projectDir: string) =>
+      post<PageSetup>('/api/page-size/read', { projectDir }),
+    /** Change it: manifest preset + bounds and the stylesheet's `@page` size, together. */
+    set: (projectDir: string, choice: PageSizeChoice) =>
+      post<PageSetup>('/api/page-size/set', { projectDir, choice }),
   },
 
   style: {
@@ -724,6 +746,15 @@ export const api = {
     /** Repositories the user granted the Gutterpress GitHub App. */
     listRemoteRepositories: () =>
       post<RemoteRepository[]>('/api/remote/list-repositories'),
+
+    /**
+     * Online backup for a book that started on this computer (#358): create a
+     * GitHub repository (or use an empty one), connect the book to it and push
+     * its history. Resolves with `status: "failed"` + a plain message for
+     * every expected problem; it rejects only on unexpected errors.
+     */
+    setUpBackup: (projectDir: string, target: BackupTarget) =>
+      post<BackupSetupResult>('/api/remote/set-up-backup', { projectDir, target }),
 
     /** Branches of a chosen repository. */
     listRemoteBranches: (owner: string, repo: string) =>

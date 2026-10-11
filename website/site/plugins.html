@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Find plugins</title>
+    <meta name="description" content="Search npm for Gutterpress extensions and markdown-it plugins, the same search the desktop app runs, each with the command that adds it to a book.">
+    <meta name="schema" content="WebPage">
+  </head>
+  <body class="wide">
+    <main>
+      <section class="plugins-head">
+        <p class="kicker">Extensions</p>
+        <h1>Find plugins</h1>
+        <p class="lede">Every plugin a book can add. Five are built into Gutterpress and need no
+        network. On npm, a Gutterpress extension is tagged <code>gutterpress</code>, and any
+        markdown-it plugin tagged <code>markdown-it-plugin</code> works unchanged: this page runs
+        the same search as the desktop app's Features tab. Click a plugin for the command that adds
+        it to a book. <a href="/docs/plugins.html">The plugins chapter</a> covers installing,
+        ordering and writing your own.</p>
+        <div class="plugin-search" id="plugin-controls" role="search" hidden>
+          <label for="plugin-query">Search npm</label>
+          <input id="plugin-query" type="search" autocomplete="off" placeholder="e.g. emoji, footnote, highlight">
+        </div>
+        <p class="note" id="plugins-status" role="status" aria-live="polite">Searching npm for plugins…</p>
+        <noscript>
+          <p class="note">JavaScript is off, so only the built-in plugins are listed. Search npm for
+          <a href="https://www.npmjs.com/search?q=keywords:gutterpress">Gutterpress extensions</a> or
+          <a href="https://www.npmjs.com/search?q=keywords:markdown-it-plugin">markdown-it plugins</a>.</p>
+        </noscript>
+      </section>
+
+      <section class="plugins-section">
+        <h2>Built into Gutterpress</h2>
+        <!-- Written here so the page is complete without a script: each card opens to its
+             command (a <pre> with no <code> inside, so the template's code.js adds no second
+             copy button). A built-in resolves from the copy compiled into Gutterpress: no install,
+             no network. -->
+        <div class="card-grid" id="builtins">
+          <details class="card plugin">
+            <summary>
+              <h3>markdown-it-mark <span class="badge">built in</span></h3>
+              <span class="plugin-desc"><code>==highlighted==</code> text, as <code>&lt;mark&gt;</code>.</span>
+            </summary>
+            <div class="plugin-cmd">
+              <pre class="term-body"><span class="prompt">$</span> <span class="cmd">gutterpress ext add markdown-it-mark ./my-book</span></pre>
+              <div class="card-links">
+                <button type="button" class="more" data-copy="gutterpress ext add markdown-it-mark ./my-book">Copy command</button>
+                <a class="more" href="https://www.npmjs.com/package/markdown-it-mark">README on npm →</a>
+              </div>
+            </div>
+          </details>
+          <details class="card plugin">
+            <summary>
+              <h3>markdown-it-sub <span class="badge">built in</span></h3>
+              <span class="plugin-desc">Subscript, written <code>H~2~O</code>.</span>
+            </summary>
+            <div class="plugin-cmd">
+              <pre class="term-body"><span class="prompt">$</span> <span class="cmd">gutterpress ext add markdown-it-sub ./my-book</span></pre>
+              <div class="card-links">
+                <button type="button" class="more" data-copy="gutterpress ext add markdown-it-sub ./my-book">Copy command</button>
+                <a class="more" href="https://www.npmjs.com/package/markdown-it-sub">README on npm →</a>
+              </div>
+            </div>
+          </details>
+          <details class="card plugin">
+            <summary>
+              <h3>markdown-it-sup <span class="badge">built in</span></h3>
+              <span class="plugin-desc">Superscript, written <code>29^th^</code>.</span>
+            </summary>
+            <div class="plugin-cmd">
+              <pre class="term-body"><span class="prompt">$</span> <span class="cmd">gutterpress ext add markdown-it-sup ./my-book</span></pre>
+              <div class="card-links">
+                <button type="button" class="more" data-copy="gutterpress ext add markdown-it-sup ./my-book">Copy command</button>
+                <a class="more" href="https://www.npmjs.com/package/markdown-it-sup">README on npm →</a>
+              </div>
+            </div>
+          </details>
+          <details class="card plugin">
+            <summary>
+              <h3>markdown-it-abbr <span class="badge">built in</span></h3>
+              <span class="plugin-desc">Abbreviations: define <code>*[HTML]: Hyper Text Markup Language</code> once, and every use gets an <code>&lt;abbr&gt;</code>.</span>
+            </summary>
+            <div class="plugin-cmd">
+              <pre class="term-body"><span class="prompt">$</span> <span class="cmd">gutterpress ext add markdown-it-abbr ./my-book</span></pre>
+              <div class="card-links">
+                <button type="button" class="more" data-copy="gutterpress ext add markdown-it-abbr ./my-book">Copy command</button>
+                <a class="more" href="https://www.npmjs.com/package/markdown-it-abbr">README on npm →</a>
+              </div>
+            </div>
+          </details>
+          <details class="card plugin">
+            <summary>
+              <h3>gutterpress-gfm-alerts <span class="badge">built in</span></h3>
+              <span class="plugin-desc">GitHub-style alerts, <code>&gt; [!NOTE]</code>, <code>&gt; [!TIP]</code>, <code>&gt; [!WARNING]</code> and the rest, as callouts.</span>
+            </summary>
+            <div class="plugin-cmd">
+              <pre class="term-body"><span class="prompt">$</span> <span class="cmd">gutterpress ext add gutterpress-gfm-alerts ./my-book</span></pre>
+              <div class="card-links">
+                <button type="button" class="more" data-copy="gutterpress ext add gutterpress-gfm-alerts ./my-book">Copy command</button>
+                <a class="more" href="/docs/plugins.html">In the plugins chapter →</a>
+              </div>
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <section class="plugins-section">
+        <h2>On npm</h2>
+        <div class="card-grid" id="plugins"></div>
+      </section>
+    </main>
+
+    <!-- The npm search, the same one the desktop app and `gutterpress ext search` run
+         (packages/cli/src/lib/extension-search.ts): one registry query per keyword, because
+         `keywords:a,b` is an AND; only packages that really carry the keyword are kept, since the
+         registry's text search also matches descriptions; markdown-it itself and @types/* are
+         dropped; a package with both keywords is one card, as a Gutterpress extension; Gutterpress
+         extensions come first, then npm's own relevance. -->
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const KEYWORDS = [["gutterpress", "gutterpress"], ["markdown-it-plugin", "markdown-it"]];
+        const SIZE = 50;
+        const status = document.getElementById("plugins-status");
+        const grid = document.getElementById("plugins");
+        const controls = document.getElementById("plugin-controls");
+        const input = document.getElementById("plugin-query");
+        const escape = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({
+          "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+        })[c]);
+        const when = (iso) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+        const command = (name) => `gutterpress ext add ${name} ./my-book`;
+        const card = ({ pkg, kind }) => `<details class="card plugin">
+          <summary>
+            <h3>${escape(pkg.name)} <span class="badge${kind === "gutterpress" ? " badge-gp" : ""}">${kind}</span></h3>
+            <span class="plugin-desc">${escape(pkg.description || "No description yet.")}</span>
+            <span class="plugin-meta">v${escape(pkg.version)}${pkg.date ? ` · ${when(pkg.date)}` : ""}</span>
+          </summary>
+          <div class="plugin-cmd">
+            <pre class="term-body"><span class="prompt">$</span> <span class="cmd">${escape(command(pkg.name))}</span></pre>
+            <div class="card-links">
+              <button type="button" class="more" data-copy="${escape(command(pkg.name))}">Copy command</button>
+              <a class="more" href="https://www.npmjs.com/package/${escape(pkg.name)}">README on npm →</a>
+            </div>
+          </div>
+        </details>`;
+
+        document.querySelector("main").addEventListener("click", async (event) => {
+          const button = event.target.closest("button[data-copy]");
+          if (!button) return;
+          try {
+            await navigator.clipboard.writeText(button.dataset.copy);
+            button.textContent = "Copied";
+          } catch {
+            button.textContent = "Select the command above";
+          }
+          setTimeout(() => { button.textContent = "Copy command"; }, 1500);
+        });
+
+        let current = null;
+        async function search(query) {
+          current?.abort();
+          const controller = (current = new AbortController());
+          status.textContent = query ? `Searching npm for “${query}”…` : "Searching npm for plugins…";
+          try {
+            const pages = await Promise.all(KEYWORDS.map(async ([keyword, kind]) => {
+              const text = [query, `keywords:${keyword}`].filter(Boolean).join(" ");
+              const response = await fetch(`https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(text)}&size=${SIZE}`, { signal: controller.signal });
+              if (!response.ok) throw new Error(`npm answered ${response.status}`);
+              const body = await response.json();
+              return {
+                total: body.total,
+                found: body.objects
+                  .filter(({ package: pkg }) => (pkg.keywords || []).includes(keyword)
+                    && pkg.name !== "markdown-it" && !pkg.name.startsWith("@types/"))
+                  .map(({ package: pkg, searchScore }) => ({ pkg, kind, score: searchScore || 0 })),
+              };
+            }));
+            const byName = new Map();
+            for (const match of pages.flatMap((page) => page.found)) {
+              const seen = byName.get(match.pkg.name);
+              if (!seen) byName.set(match.pkg.name, match);
+              else {
+                if (match.kind === "gutterpress") { seen.pkg = match.pkg; seen.kind = match.kind; }
+                seen.score = Math.max(seen.score, match.score);
+              }
+            }
+            const matches = [...byName.values()].sort((a, b) =>
+              a.kind !== b.kind ? (a.kind === "gutterpress" ? -1 : 1) : b.score - a.score);
+            grid.innerHTML = matches.map(card).join("");
+            const extensions = matches.filter((m) => m.kind === "gutterpress").length;
+            status.textContent = matches.length
+              ? `${matches.length} on npm${query ? ` for “${query}”` : ""} · ${extensions} Gutterpress ${extensions === 1 ? "extension" : "extensions"} · ${matches.length - extensions} markdown-it plugins`
+              : `Nothing on npm matches “${query}”.`;
+          } catch (error) {
+            if (error.name === "AbortError") return;
+            grid.innerHTML = "";
+            status.innerHTML = 'Could not reach npm, so only the built-ins are listed. Search npm for <a href="https://www.npmjs.com/search?q=keywords:gutterpress">Gutterpress extensions</a> or <a href="https://www.npmjs.com/search?q=keywords:markdown-it-plugin">markdown-it plugins</a>.';
+          }
+        }
+
+        let timer;
+        input.addEventListener("input", () => {
+          clearTimeout(timer);
+          timer = setTimeout(() => search(input.value.trim()), 300);
+        });
+        controls.hidden = false;
+        search("");
+      });
+    </script>
+  </body>
+</html>

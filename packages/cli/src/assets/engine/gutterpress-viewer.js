@@ -30,6 +30,7 @@
     paginate: () => paginate,
     pageRangeOf: () => pageRangeOf,
     pageOf: () => pageOf,
+    padToSignature: () => padToSignature,
     measure: () => measure,
     makeOverflowFragmentable: () => makeOverflowFragmentable,
     loadStyleSources: () => loadStyleSources,
@@ -64,7 +65,11 @@
   background: var(--gp-stage-bg);
   margin: 0;
   padding: 32px;
-  overflow: auto;
+  /* No \`overflow\` of its own. The page scrolls through the viewport, which
+     scrolls on its own. An \`overflow: auto\` here only ever reached the
+     viewport by propagation; once a host clips \`<html>\` (fit-to-width), it
+     stopped propagating and made the body a sideways scroller whose
+     scrollbars sit off-screen (#353). */
   /* Standalone pages use \`--gutterpress-fit-zoom\`; embedded previews use the
      host-owned \`--gutterpress-zoom\`. fitZoom() guarantees only one is active. */
   --gp-zoom: calc(var(--gutterpress-zoom, 1) * var(--gutterpress-fit-zoom, 1));
@@ -944,6 +949,13 @@
       return wrong;
     });
   }
+  function signaturePadding(pageCount, signature = 1, lastPage) {
+    const size = signature > 1 ? signature : 1;
+    if (lastPage === "short-by-one")
+      return (size - (pageCount + 1) % size) % size;
+    const padded = (size - pageCount % size) % size;
+    return padded === 0 && lastPage === "blank" ? size : padded;
+  }
   var WHICH_VALUES = new Set(["first", "start", "last", "first-except"]);
   function parseWhich(raw) {
     const w = (raw ?? "").trim();
@@ -1705,6 +1717,29 @@
   function blankPageIndices(strips) {
     return Array.from(document.querySelectorAll(".gp-recto-spacer")).map((el) => pageOf(el, strips));
   }
+  function padToSignature(strips, contentPages) {
+    for (const spacer of Array.from(document.querySelectorAll(".gp-pad-spacer")))
+      spacer.remove();
+    const data = document.documentElement.dataset;
+    const count = signaturePadding(contentPages, Number(data.gpSignature) || 1, data.gpLastPage);
+    const last = strips[strips.length - 1];
+    if (!last || count === 0)
+      return contentPages;
+    const target = contentPages + count;
+    let total = contentPages;
+    for (let n = 0;n < count + 2 && total < target; n++) {
+      const spacer = document.createElement("div");
+      spacer.className = "gp-pad-spacer";
+      spacer.setAttribute("aria-hidden", "true");
+      spacer.style.cssText = "break-before: column; height: 0; margin: 0; padding: 0; border: 0;";
+      last.el.appendChild(spacer);
+      total = measure(strips).totalPages;
+    }
+    return total;
+  }
+  function pagesAfter(contentPages, totalPages) {
+    return Array.from({ length: Math.max(0, totalPages - contentPages) }, (_, i) => contentPages + i);
+  }
   function pageRangeOf(el, strips) {
     const strip = strips.find((s) => s.el.contains(el));
     if (!strip)
@@ -1733,7 +1768,7 @@
   function paginate(model, opts = {}) {
     const authoring = [];
     const strips = buildStrips(model, opts, authoring);
-    const { blanks, headers, totalPages, blankPageIndices: blankIndices } = withLayoutReadCache(() => {
+    const { blanks, headers, contentPages, totalPages, blankPageIndices: blankIndices } = withLayoutReadCache(() => {
       makeOverflowFragmentable(strips);
       stabilizeFullHeightPageRoots(model, strips);
       synthesizeColumnBreaks(model);
@@ -1742,7 +1777,9 @@
       if (blanks2)
         measure(strips);
       const headers2 = opts.compensateHeaders === false ? { tables: 0, passes: 0, warnings: [] } : compensateRepeatedHeaders(strips);
-      return { blanks: blanks2, headers: headers2, totalPages: measure(strips).totalPages, blankPageIndices: blankPageIndices(strips) };
+      const contentPages2 = measure(strips).totalPages;
+      const totalPages2 = padToSignature(strips, contentPages2);
+      return { blanks: blanks2, headers: headers2, contentPages: contentPages2, totalPages: totalPages2, blankPageIndices: blankPageIndices(strips) };
     });
     const api = {
       model,
@@ -1751,13 +1788,14 @@
       warnings: [...new Set([...authoring, ...headers.warnings])],
       blankPages: blanks,
       blankPageIndices: blankIndices,
+      paddedPageIndices: pagesAfter(contentPages, totalPages),
       pageOf: (sel) => pageOf(typeof sel === "string" ? document.querySelector(sel) : sel, strips),
       pageRangeOf: (sel) => pageRangeOf(typeof sel === "string" ? document.querySelector(sel) : sel, strips),
       relayout: () => {
         restoreFullHeightPageRoots();
         restoreScrollContainers();
         unwrapStrips(strips);
-        for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer")))
+        for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer, .gp-pad-spacer")))
           spacer.remove();
         const rebuilt = buildStrips(model, opts, authoring);
         strips.length = 0;
@@ -1772,9 +1810,12 @@
             api.warnings = [
               ...new Set([...authoring, ...compensateRepeatedHeaders(strips).warnings])
             ];
+          const content = measure(strips).totalPages;
+          padToSignature(strips, content);
           const r = measure(strips);
           api.totalPages = r.totalPages;
           api.blankPageIndices = blankPageIndices(strips);
+          api.paddedPageIndices = pagesAfter(content, r.totalPages);
           return r;
         });
       }
@@ -2084,6 +2125,7 @@
     let pageOffset = opts.pageOffset ?? 0;
     const sheets = new Map;
     let blankPages = new Set;
+    let paddedPages = new Set;
     const warnings = [];
     const api = {
       redraw: () => draw(),
@@ -2107,6 +2149,10 @@
     if (document.body.dataset.designer === undefined)
       api.setDesigner(!!opts.designer);
     function pageContext(strip, indexInStrip2, bookIndex) {
+      if (paddedPages.has(bookIndex)) {
+        const { geometry: geometry2 } = resolvePage(model, { pseudos: [] });
+        return { index: bookIndex, strip, pseudos: [], geometry: geometry2, marginBoxes: {}, decls: {}, padded: true };
+      }
       if (blankPages.has(bookIndex)) {
         const pseudos2 = ["blank"];
         const { geometry: geometry2, marginBoxes: marginBoxes2, decls: decls2 } = resolvePage(model, { pseudos: pseudos2 });
@@ -2259,6 +2305,7 @@
         sheets.clear();
         warnings.length = 0;
         blankPages = new Set(layout.blankPageIndices);
+        paddedPages = new Set(layout.paddedPageIndices);
         buildMaps();
         fillXrefs();
         let prevPageH = 0;
@@ -2288,11 +2335,12 @@
             sheet.style.setProperty("--gp-page-w", px(ctx.geometry.width));
             sheet.style.setProperty("--gp-page-h", px(ctx.geometry.height));
             applyPageBackground(sheet, ctx.decls);
-            for (const [prop, value] of canvasBg)
-              sheet.style.setProperty(prop, value);
+            if (!ctx.padded)
+              for (const [prop, value] of canvasBg)
+                sheet.style.setProperty(prop, value);
             layer.appendChild(sheet);
             sheets.set(bookIndex, sheet);
-            drawMarginBoxes(sheet, ctx, layout.totalPages);
+            drawMarginBoxes(sheet, ctx, layout.totalPages - paddedPages.size);
             drawGuides(sheet, ctx);
             drawCropMarks(sheet, ctx);
           }

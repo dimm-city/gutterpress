@@ -136,10 +136,14 @@ export interface ExtensionStatus {
   kind: "ok" | "error" | "disabled" | "checking" | "stale";
   detail?: string;
   raw?: string;
+  /** The in-app fix, when there is one: install a missing npm copy, or reinstall one that will not load. */
+  fix?: "install" | "reinstall";
 }
 
 /** The lib's "Not installed — …" / "Not pinned — …" notices on an npm entry
- *  whose vendored copy is absent: the one warning class with an in-app fix. */
+ *  whose vendored copy is absent: the one warning class with an in-app fix.
+ *  (Their text is the CLI's — `gutterpress ext add …` — so the desktop only
+ *  matches it and never shows it.) */
 const NEEDS_INSTALL_RE = /^not (installed|pinned)\b/i;
 
 /**
@@ -169,8 +173,8 @@ export function extensionStatus(
     return {
       label: "Needs install",
       kind: "error",
-      detail: `This book's downloaded copy is missing. Open Advanced on the Features tab, enter ${entry.use} under Install from npm, then click Re-check.`,
-      raw: needsInstall,
+      detail: "This book's downloaded copy is missing. Install it to download this version again.",
+      fix: "install",
     };
   }
   const v = validation[entry.use];
@@ -191,5 +195,26 @@ export function extensionStatus(
         ? "This installed npm package couldn't load. See details below, then reinstall it or click Re-check."
         : "This extension couldn't load. See details below, then click Re-check.",
     raw: v.error ?? "Unknown load error",
+    ...(entry.kind === "npm" ? { fix: "reinstall" as const } : {}),
   };
+}
+
+/** A pre-release version (`1.2.0-alpha.2`)? Build metadata (`+…`) does not make one. */
+const isPrereleaseVersion = (version: string): boolean => version.split("+")[0]!.includes("-");
+
+/**
+ * The versions a row's picker offers: the registry's published versions as
+ * given (already newest first), stable only unless `includePrerelease`, and
+ * ALWAYS the version the book pins — even a pre-release the toggle would hide —
+ * so the select can show what is actually in use. A pin the registry no longer
+ * lists (or a list that has not loaded) still appears, in its place by
+ * position: first, as the newest thing we know of.
+ */
+export function pickerVersions(
+  published: readonly string[],
+  pinned: string | undefined,
+  includePrerelease: boolean,
+): string[] {
+  const shown = published.filter((v) => v === pinned || includePrerelease || !isPrereleaseVersion(v));
+  return pinned && !shown.includes(pinned) ? [pinned, ...shown] : shown;
 }

@@ -178,20 +178,19 @@ describe("degradation (a): a manifest naming an UNINSTALLED npm plugin", () => {
 
     // Never a blank projection, never a silent omission: exactly the one
     // configured (uninstalled) plugin is named. The message text is pinned
-    // to the REAL `gutterpress/plugins` loader's own `loadNpmPackage`
-    // "not found" wording (quoted verbatim from a real run against this
-    // exact fixture, via `loadPlugin`'s `Failed to load plugin "…": …`
-    // wrapper) — not the deleted narrower duplicate's shorter message. The
-    // projection itself is still a valid, usable D6 shape.
+    // to the REAL `gutterpress/plugins` loader's own wording for a bare
+    // (unpinned) npm name — since 0.11.16 the loader restores a PINNED
+    // extension on open and says so when it cannot (quoted verbatim from a
+    // real run against this exact fixture, via `loadPlugin`'s
+    // `Failed to load plugin "…": …` wrapper). The projection itself is
+    // still a valid, usable D6 shape.
     expect(pluginErrors.length).toBe(1);
     expect(pluginErrors[0]!.pluginRef).toBe("gutterpress-plugin-definitely-not-installed");
     expect(pluginErrors[0]!.message).toBe(
       'Failed to load plugin "gutterpress-plugin-definitely-not-installed": ' +
-        'Extension "gutterpress-plugin-definitely-not-installed" not found. Install it with ' +
-        "`gutterpress ext add gutterpress-plugin-definitely-not-installed` (or Book settings > Features > Advanced in the desktop app),\n" +
-        "or reference a local file under `extensions:`:\n" +
-        "  extensions:\n" +
-        "    - ./plugins/gutterpress-plugin-definitely-not-installed.js",
+        'Extension "gutterpress-plugin-definitely-not-installed" is not pinned to an exact version, ' +
+        "so it can't be downloaded automatically. Run `gutterpress ext add gutterpress-plugin-definitely-not-installed` " +
+        "(or use Book settings > Features in the desktop app) to download it and pin its version in your manifest.",
     );
 
     expect(projection.schemaVersion).toBe(1);
