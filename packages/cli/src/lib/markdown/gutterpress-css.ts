@@ -385,6 +385,8 @@ export const GP_CLASSES: ReadonlySet<string> = new Set([
   "gp-tight", "gp-loose",
   // column runs — the CSS the @columns marker emits
   "gp-columns", "gp-columns-1", "gp-columns-2", "gp-columns-3", "gp-columns-4", "gp-columns-5",
+  // core page variants (`@page blank` / `@page full-bleed`, markers.js)
+  "gp-page-blank", "gp-page-full-bleed",
   // fragmentation controls (#225/#228)
   "gp-no-break", "gp-break-before",
   // shape wrap

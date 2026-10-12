@@ -238,7 +238,16 @@ export type GutterpressComponentProblem =
 /** `validate`'s return value: nothing, one message, or a list of problems. */
 export type GutterpressComponentProblems = GutterpressComponentProblem[] | string | void | null | undefined;
 
-/** A plugin's full declared marker table — see {@link GutterpressMarkerDeclaration}. */
+/**
+ * A plugin's full declared marker table — see {@link GutterpressMarkerDeclaration}.
+ *
+ * The reserved kinds `page`, `chapter` and `section` may also appear, in a
+ * variants-only form: `{ variants: { 'chapter-start': 'dc-page-chapter-start' },
+ * label?, snippet? }`. `@page chapter-start` then adds that class to the
+ * `.page` (likewise `@chapter`, `@section`), so book CSS styles by location:
+ * `.page.dc-page-chapter-start .section { … }`. Any other key on those names
+ * is a load error.
+ */
 export type GutterpressMarkerTable = Record<string, GutterpressMarkerDeclaration>;
 
 /**
