@@ -11,19 +11,27 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 - **Margin and bleed overlay in the preview.** A new **Margins and bleed** button
   beside the zoom menu (Read and Edit; the choice is saved as
-  `preview.marginOverlay`) draws every page's margin box (dashed) and the bleed
-  band outside the trim (translucent red), and outlines content that spills out
+  `preview.marginOverlay`) draws every page's margin box (a 2px dashed outline over a
+  light tint of the margin area) and the bleed band outside the trim (translucent
+  red with a solid red trim line), and outlines content that spills out
   of the text area: amber into the margin, red across the trim into the bleed or
   off the page. Art placed on purpose (`.gp-bleed`, `.gp-pin` / `.gp-flush`,
   `.gp-behind`, `@page full-bleed`) gets a soft dotted outline and is not counted.
   The button shows how many elements spill over; its tooltip has the rest. The
   geometry is the book's own: the run's resolved `@page` content box (mirrored
   `:left` / `:right` and named pages included) and the `@page` `bleed` the print
-  path uses, so a book with no `bleed` shows no band. It is viewer chrome only: it
+  path uses, so a book with no `bleed` shows no band, and the button's tooltip (or
+  the CLI badge) says "No bleed set" and shows the `@page { bleed: 0.125in }` that
+  adds one. Lines keep the same thickness on screen at every zoom. Its look is
+  adjustable in **Settings, App, Preview**: `preview.marginOverlayStrength`
+  (`subtle` / `normal` / `strong`, default `normal`: line width, margin tint and
+  band opacity) and `preview.marginOverlayColor` (default `#2f80ed`); both are
+  app settings, never book CSS, and `gutterpress preview` keeps the defaults. It
+  is viewer chrome only: it
   never prints, is not in a built PDF or a published page, adds nothing to your
   content and cannot change a page break. `gutterpress preview` has no toolbar, so
   it gets **Alt+M** and a small status badge instead. Preview protocol 9
-  (`setMarginOverlay`, `overlayChanged`).
+  (`setMarginOverlay(on, { color, strength })`, `overlayChanged`).
 
 ## [0.11.17] - 2026-10-12
 

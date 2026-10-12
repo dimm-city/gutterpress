@@ -56,14 +56,21 @@ The preview shows your book's pages exactly as they will print, and updates as y
   last), with a flick of the mouse wheel over the preview, or with the keys below.
 - **Zoom** with the menu at the top right of the preview: **Fit to width** or 25%–200%. The
   starting zoom is set in Settings → App → Preview.
-- **Check margins and bleed** with the **Margins and bleed** button beside the zoom menu. It draws a
-  dashed outline for each page's margins and a translucent band for the bleed, and outlines
-  anything that spills into them: amber for the margin, red for across the trim. Art you placed
-  on purpose (full-bleed images, pinned art) is outlined softly and not counted. The number on the
-  button is how many elements spill over; hover for the details. It works in Read and Edit, the
-  app remembers your choice, and it is for your eyes only: it is never printed, never in an
-  exported PDF, and it does not move anything. The margins and bleed are the ones your
-  `@page` CSS defines, so add `bleed: 0.125in;` to your `@page` rule to see the bleed.
+- **Check margins and bleed** with the **Margins and bleed** button beside the zoom menu. Each page
+  gets a tinted margin area inside a dashed outline of the text block, and a red band for the
+  bleed with a solid red line at the trim. Anything that spills past the margins is outlined: amber
+  for the margin, red for across the trim. Art you placed on purpose (full-bleed images, pinned
+  art) is outlined softly and not counted. The number on the button is how many elements spill
+  over; hover for the details. It works in Read and Edit, the app remembers your choice, and it is
+  for your eyes only: it is never printed, never in an exported PDF, and it does not move
+  anything.
+  - **The bleed band only appears when your stylesheet sets a bleed.** The margins and bleed are
+    the ones your `@page` CSS defines, so a book without one shows the margins and no band, and the
+    button's tooltip says "No bleed set". Add `bleed: 0.125in;` to your `@page` rule to see it.
+  - **Make it louder or quieter, or change its colour** in Settings → App → Preview: *Margin
+    overlay strength* (Subtle, Normal or Strong: line width, margin tint and bleed band) and
+    *Margin overlay colour* (the margin outline and tint). The lines stay the same thickness on
+    screen at every zoom. These are app settings, not book CSS.
 
 | Key | Does |
 | --- | --- |

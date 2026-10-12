@@ -113,13 +113,15 @@ The preview can draw each page's margins and bleed on top of your book, so you c
 
 With it on, every page shows:
 
-- a thin **dashed blue outline** — the margin box, where your text is laid out;
-- a **translucent red band** around the page edge, the **bleed** — the extra area a printer needs, with a red line at the trim where the page is cut;
+- a **dashed blue outline** — the margin box, where your text is laid out — with the margin area around it **tinted** so it reads as a region;
+- a **translucent red band** around the page edge, the **bleed** — the extra area a printer needs, with a solid red line at the trim where the page is cut (only when your stylesheet sets a bleed, see below);
 - an **amber outline** on anything that reaches past the margin box into the margin;
 - a **red outline** on anything that crosses the trim into the bleed band or beyond it (cut off in print);
 - a **dotted violet outline**, softly, on art you placed on purpose — `.gp-bleed` images, `.gp-pin` / `.gp-flush` pinned art, `.gp-behind` images and `@page full-bleed` pages. These are expected to leave the text area, so they are shown but not counted. The badge and the desktop button count the amber and red ones.
 
-The margins and bleed are the ones your own CSS defines, not a preset's. Page size, margins (including `@page :left` / `:right`) and `bleed` all come from your `@page` rules; if your book sets no `bleed`, there is no red band and the badge says so. Add `bleed: 0.125in;` to your `@page` rule to see it. The preview lays every page of a section's text in the same column, so on a book with mirrored margins the dashed outline follows the text; a faint dotted outline marks where that page's own `:left` / `:right` margins put them in the PDF.
+The margins and bleed are the ones your own CSS defines, not a preset's. Page size, margins (including `@page :left` / `:right`) and `bleed` all come from your `@page` rules. **The red band and trim line appear only when your stylesheet declares a bleed** — if it sets none, you see the margins but no band, and the desktop button's tooltip (or the CLI badge) says "No bleed set". Add `bleed: 0.125in;` to your `@page` rule to see it. The preview lays every page of a section's text in the same column, so on a book with mirrored margins the dashed outline follows the text; a faint dotted outline marks where that page's own `:left` / `:right` margins put them in the PDF.
+
+To make the overlay more or less prominent, or to change its colour, use the desktop app's **Settings → App → Preview**: **Margin overlay strength** (Subtle, Normal, Strong) and **Margin overlay colour**. These are app settings; there is nothing to add to your book's CSS. `gutterpress preview` always uses the Normal look.
 
 ## Project Structure
 
