@@ -70,7 +70,9 @@
   } from "$lib/editor/css-editor";
   import { markerCompletionSource } from "$lib/editor/marker-completions";
   import { componentCompletionSource } from "$lib/editor/component-completions";
-  import type { MarkerComponent } from "$lib/api";
+  import { variantCompletionSource } from "$lib/editor/variant-completions";
+  import { completionTabBinding } from "$lib/editor/completion-keymap";
+  import type { LocationVariant, MarkerComponent } from "$lib/api";
   import { onMount } from "svelte";
 
   let {
@@ -80,11 +82,14 @@
     onSave,
     onAnchorLine,
     components = [],
+    variants = [],
   }: {
     filePath?: string | null;
     content?: string;
     /** The project's plugin components, offered by `@` autocomplete. */
     components?: readonly MarkerComponent[];
+    /** The project's page / chapter / section variant words, offered after those markers. */
+    variants?: readonly LocationVariant[];
     onChange?: (value: string) => void;
     onSave?: () => void;
     /**
@@ -162,13 +167,17 @@
     return autocompletion({ override: [pagedMediaCompletionSource] });
   }
 
-  /** Core `@marker` and plugin component completions — active only for markdown docs.
-   *  The component source reads the `components` prop at completion time, so
-   *  a refreshed list needs no reconfigure. */
+  /** Core `@marker`, plugin component and variant-word completions — active only for
+   *  markdown docs. The component and variant sources read their props at completion
+   *  time, so a refreshed list needs no reconfigure. */
   function markdownCompletionExtensions(lang: EditorLanguage): Extension {
     if (lang !== "markdown") return [];
     return autocompletion({
-      override: [markerCompletionSource, componentCompletionSource(() => components)],
+      override: [
+        markerCompletionSource,
+        componentCompletionSource(() => components),
+        variantCompletionSource(() => variants),
+      ],
     });
   }
 
@@ -323,6 +332,7 @@
           { key: "Mod-s", run: () => { onSave?.(); return true; } },
           ...defaultKeymap,
           ...historyKeymap,
+          completionTabBinding, // before indentWithTab: wins only while a popup is open
           indentWithTab,
           // Editor toolbar keyboard shortcuts (#31)
           { key: "Ctrl-b", mac: "Cmd-b", run: (v) => { applyBold(v); return true; } },

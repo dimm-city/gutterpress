@@ -180,8 +180,8 @@ npm run dist:linux
 
 The AppImage is a bare portable executable — there is no installer, so nothing
 in the packaging step can add it to the KDE/GNOME application menu. That is a
-runtime, **opt-in** action instead: **Settings → App → Desktop integration →
-Add to application menu**, implemented in `electron/appimage-integration.ts`
+runtime, **opt-in** action instead: **Troubleshooting → Diagnostics → Desktop
+integration → Add to application menu**, implemented in `electron/appimage-integration.ts`
 (status/install/remove hooks → `src/routes/api/app/appimage-integration`). It
 installs a managed copy at `~/.local/bin/gutterpress.AppImage`, the icon in
 the user's hicolor theme, and an XDG `.desktop` entry — per-user, no root, no
@@ -290,7 +290,7 @@ Behavior:
   a code-signed app. Checks still run against GitHub Releases using the selected
   Stable/Beta/Alpha channel. The update banner opens that exact release so the
   user can download its DMG manually.
-- **Update channels:** Settings → App → Updates offers Stable (default), Beta,
+- **Update channels:** Troubleshooting → Diagnostics → Updates offers Stable (default), Beta,
   and Alpha. Channels are inclusive downward — Beta also receives stable
   releases, Alpha receives everything. Release tags must use `-beta.N` /
   `-alpha.N` prerelease suffixes (enforced by the release workflow):

@@ -1,8 +1,9 @@
 <script lang="ts">
   /**
    * HelpContent — the Help tab: guidance only (getting started, online-copy
-   * guide, keyboard shortcuts). Diagnostics, logs, versions and updates live
-   * in the Troubleshooting tab (TroubleshootingView).
+   * guide, keyboard shortcuts). Versions, updates, the update channel, desktop
+   * integration, diagnostics and logs live in the Troubleshooting tab
+   * (TroubleshootingView → Diagnostics).
    *
    * Help lives on the welcome screen's Help tab (WelcomeLanding), opened by the global help
    * button. Static copy — no host calls; the host passes the setup-guide opener.

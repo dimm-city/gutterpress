@@ -54,8 +54,8 @@
   import { PublishSectionController } from "$lib/routes/publish-section-controller.svelte";
   import { buildCanvasBackgroundStyles } from "$lib/iframe-styles";
   import { getPlatform } from "$lib/platform";
-  import type { WorkspaceMode } from "$lib/platform";
-  import { api, type MarkerComponent } from "$lib/api";
+  import type { ReadLayout, WorkspaceMode } from "$lib/platform";
+  import { api, type LocationVariant, type MarkerComponent } from "$lib/api";
   import { buildSourceList } from "$lib/components/config/source-files";
   import { isEditableTarget } from "$lib/a11y";
   import { invalidateDiscoveredProjects } from "$lib/projects-discover-cache";
@@ -75,6 +75,7 @@
   import { useSettings, _loadSettings, settingsChangeGuard, onSettingsChange } from "$lib/settings.svelte";
   import { sanitizeSettingsTab, type SettingsTab } from "$lib/settings-tabs";
   import { clampPanelWidth, viewportWidth } from "$lib/left-panel-width";
+  import { showReadLayoutToggle, viewModeFor } from "$lib/read-layout";
   import LeftPanel from "$lib/components/LeftPanel.svelte";
   import type { PanelTab } from "$lib/components/LeftPanel.svelte";
   import WelcomeLanding from "$lib/components/WelcomeLanding.svelte";
@@ -525,6 +526,7 @@
     clearStaleProjectState: () => {
       problems = [];
       projectComponents = [];
+      projectVariants = [];
       buildProblemEntries = [];
       problemsLoading = false;
       problemsError = null;
@@ -552,6 +554,7 @@
       pendingRecoveryScanDir = null;
       problems = [];
       projectComponents = [];
+      projectVariants = [];
       buildProblemEntries = [];
       problemsLoading = false;
       problemsError = null;
@@ -631,7 +634,7 @@
   // the inert workspace, which is a spec no-op).
   let landingRef = $state<{
     focusLayer: () => void;
-    showTab: (tab: "projects" | "settings" | "help" | "about" | "troubleshooting", sub?: TroubleshootingTab) => void;
+    showTab: (tab: "projects" | "settings" | "help" | "troubleshooting", sub?: TroubleshootingTab) => void;
   } | null>(null);
   /** Sub-tab the start screen's embedded Settings opens on. */
   let landingSettingsTab = $state<SettingsTab>("app");
@@ -1074,9 +1077,10 @@
   // Reading gets two pages side by side; editing gets one page beside the
   // editor. `isNarrow` is a CLAMP on that, not a competing decider — there is
   // no room for a second page below the breakpoint.
-  let viewMode = $derived<"single" | "two-column">(
-    mode === "viewer" && !isNarrow ? "two-column" : "single",
-  );
+  // Within Read, the author picks one page or a spread (Preview toolbar);
+  // `viewModeFor` is the one rule, and Edit never changes the stored choice.
+  let readLayout = $derived(settings.current.preview.readLayout);
+  let viewMode = $derived(viewModeFor(mode, isNarrow, readLayout));
 
   // Whether the editor pane is shown. A persisted narrow Edit preference
   // alone never opens it.
@@ -1350,6 +1354,9 @@
   const autoSaveSink = settingsChangeGuard<boolean>((on) => {
     if (on) void flushEditorBuffer();
   });
+  // Read layout (one page / spread): push the derived view mode into the
+  // viewer when the toggle — or a settings load — changes it.
+  const readLayoutSink = settingsChangeGuard<ReadLayout>(() => zoomView.applyViewMode(viewMode));
   onMount(() =>
     onSettingsChange((s) => {
       previewBgSink(s.appearance.previewBg);
@@ -1357,6 +1364,7 @@
       contextMenuSettingSink(s.preview.contextMenu);
       modeSink(effectiveMode(s));
       autoSaveSink(s.versionHistory.autoSave);
+      readLayoutSink(s.preview.readLayout);
     }),
   );
 
@@ -1703,12 +1711,22 @@
     leftPanelTab = "files";
   }
 
+  /** The page / chapter / section variant words for `@page ` etc., refreshed with the components. */
+  let projectVariants = $state<LocationVariant[]>([]);
+
   /** The project's plugin components for `@` autocomplete and the snippet
    *  picker — refreshed alongside problems, after every render, so enabling
    *  or editing an extension shows up without another event. */
   let projectComponents = $state<MarkerComponent[]>([]);
 
   function refreshComponents(dir: string) {
+    api.snip.variants(dir)
+      .then((list) => {
+        if (lifecycle.currentDir === dir) projectVariants = list;
+      })
+      .catch(() => {
+        if (lifecycle.currentDir === dir) projectVariants = [];
+      });
     api.snip.components(dir)
       .then((list) => {
         if (lifecycle.currentDir === dir) projectComponents = list;
@@ -2961,6 +2979,7 @@
                 onAnchorLine={(line, origin) =>
                   editorSync.onEditorAnchorLine(line, origin, editorChapter)}
                 components={projectComponents}
+                variants={projectVariants}
               />
             {:else if editorModuleFailed}
               <div class="editor-loading" role="alert">
@@ -3033,6 +3052,9 @@
             rendering={lifecycle.rendering}
             {zoom}
             zoomDisabled={!lifecycle.previewUrl}
+            showLayoutToggle={showReadLayoutToggle(mode, isNarrow)}
+            {readLayout}
+            onSetReadLayout={(next) => settings.set({ preview: { readLayout: next } })}
             onApplyZoom={(val) => { contextMenu.close(); zoomView.applyZoom(val); }}
           />
         {/if}
