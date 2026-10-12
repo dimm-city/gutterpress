@@ -13,7 +13,7 @@ Gutterpress is a desktop application (with a CLI for power users) that turns a f
 | **Windows** | `Gutterpress-setup-win-x64.exe` | Download and run the stable-named installer. The versioned `.zip` is a separate portable extract-and-run copy. |
 | **macOS Apple Silicon** | `Gutterpress-<version>-arm64.dmg` | Open the disk image, then drag the app to Applications. |
 | **macOS Intel** | `Gutterpress-<version>-x64.dmg` | Open the disk image, then drag the app to Applications. |
-| **Linux** | `Gutterpress-<version>.AppImage` | `chmod +x` the file, then double-click or run it. To get it in your KDE/GNOME application menu, open **Settings → App → Desktop integration → Add to application menu** — see [Desktop integration](./docs/desktop-shortcut.md#linux-appimage-application-menu-integration-desktop-app). |
+| **Linux** | `Gutterpress-<version>.AppImage` | `chmod +x` the file, then double-click or run it. To get it in your KDE/GNOME application menu, open **Troubleshooting → Diagnostics → Desktop integration → Add to application menu** — see [Desktop integration](./docs/desktop-shortcut.md#linux-appimage-application-menu-integration-desktop-app). |
 
 The desktop app is fully self-contained — no Bun, Node, Chromium, or other runtime to install. PDF export renders through Electron's own bundled Chromium (`webContents.printToPDF`), so there's nothing extra to set up. (The separate `gutterpress` CLI, for scripting and CI, does need a Chromium-based browser on the machine it runs on — see [User Guide: Chapter 7 — System Setup](./examples/gutterpress-user-guide/07-system-setup.md) if you're using that instead.)
 

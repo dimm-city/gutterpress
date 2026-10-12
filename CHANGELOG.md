@@ -26,6 +26,7 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Desktop: the About tab is gone; versions, updates and desktop integration moved to Troubleshooting → Diagnostics.** Diagnostics now shows the desktop and library versions, the **Check now** update button, the **Update channel** and (Linux AppImage) **Add to application menu**. Same settings, same behaviour; they no longer sit under Settings → App or a separate About tab.
 - **`@columns` is the one way to use columns.** `@columns 1` to `@columns 5`,
   closed with `@end-columns`, lays its content out in that many columns, and
   `@column-break` moves to the next column. A bare `@columns` is now exactly

@@ -2,11 +2,11 @@
   /**
    * TroubleshootingView — the start screen's Troubleshooting tab: the
    * sub-tabbed home for everything a writer needs when something is wrong or
-   * support asks "which version?". Diagnostics (system + tool status, copyable
-   * report), Logs (the app's diagnostic logs) and Sync (repair tools
-   * for a stuck online backup) and Report a problem (the diagnostic bundle
-   * + prefilled GitHub issue). Versions + updates live in
-   * the landing's About tab; the Help tab carries guidance only.
+   * support asks "which version?". Diagnostics (versions, system + tool
+   * status, copyable report, plus the update check, update channel and Linux
+   * desktop integration), Logs (the app's diagnostic logs) and Sync (repair
+   * tools for a stuck online backup) and Report a problem (the diagnostic
+   * bundle + prefilled GitHub issue). The Help tab carries guidance only.
    *
    * Reuses SettingsView's sub-tab pattern (TABS, tablist keys, tabpanel with
    * `idPrefix`). Owns its api.doctor load for Diagnostics.
@@ -16,6 +16,8 @@
   import LogsPanel from "$lib/components/LogsPanel.svelte";
   import ReportProblemPanel from "$lib/components/ReportProblemPanel.svelte";
   import SyncToolsPanel from "$lib/components/SyncToolsPanel.svelte";
+  import UpdatesIntegrationSection from "$lib/components/UpdatesIntegrationSection.svelte";
+  import type { UpdaterAvailableAction } from "$lib/platform";
   import { sanitizeTroubleshootingTab, type TroubleshootingTab } from "$lib/troubleshooting-tabs";
 
   let {
@@ -23,6 +25,11 @@
     idPrefix = "troubleshooting",
     projectDir = null,
     onCloseBook,
+    onCheckForUpdates,
+    checkingUpdates = false,
+    updateReadyVersion = null,
+    updateAvailableVersion = null,
+    updateAvailableAction = null,
   }: {
     /** The sub-tab to land on (deep link, e.g. "logs"). */
     initialTab?: TroubleshootingTab;
@@ -31,6 +38,12 @@
     /** The open book, if any — Sync's Scorched earth closes it when it is in the reset folder. */
     projectDir?: string | null;
     onCloseBook?: () => Promise<boolean>;
+    /** Diagnostics → Updates: the manual update check and the host's update state. */
+    onCheckForUpdates?: () => void;
+    checkingUpdates?: boolean;
+    updateReadyVersion?: string | null;
+    updateAvailableVersion?: string | null;
+    updateAvailableAction?: UpdaterAvailableAction | null;
   } = $props();
 
   // ── Tabs ────────────────────────────────────────────────────────────────────
@@ -194,9 +207,11 @@
       <p class="status error">{error}</p>
       <button class="retry app-btn-primary" onclick={load}>Retry</button>
     {:else if data}
-      <p class="intro">Check that your computer has what Gutterpress needs, and copy the details to share when you ask for help.</p>
+      <p class="intro">Which version you're running, whether an update is available, and whether your computer has what Gutterpress needs. Copy the details to share when you ask for help.</p>
 
       <section class="versions">
+        <div><strong>Desktop:</strong> {data.desktopVersion}</div>
+        <div><strong>Lib:</strong> {data.libVersion}</div>
         <div>
           <strong>Runtime:</strong>
           Electron {data.electronVersion} · Chromium {data.chromeVersion} · Node {data.platform.node}
@@ -207,6 +222,14 @@
         </div>
         <div><strong>CLI config directory:</strong> <code>{data.configDir}</code></div>
       </section>
+
+      <UpdatesIntegrationSection
+        {onCheckForUpdates}
+        {checkingUpdates}
+        {updateReadyVersion}
+        {updateAvailableVersion}
+        {updateAvailableAction}
+      />
 
       <section class="tools">
         <h3>Optional system tools</h3>

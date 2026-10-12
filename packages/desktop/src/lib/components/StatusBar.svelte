@@ -441,7 +441,7 @@
     <button class="status-icon-btn" onclick={() => onOpenSettings?.()} title="App preferences (Ctrl+,)" aria-label="App preferences">
       <Icon name="settings" size={14} />
     </button>
-    <button class="status-icon-btn" onclick={onOpenHelp} title="Help and about" aria-label="Help and about">
+    <button class="status-icon-btn" onclick={onOpenHelp} title="Help" aria-label="Help">
       <Icon name="circle-help" size={14} />
     </button>
   </div>
