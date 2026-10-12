@@ -76,6 +76,7 @@
   import { sanitizeSettingsTab, type SettingsTab } from "$lib/settings-tabs";
   import { clampPanelWidth, viewportWidth } from "$lib/left-panel-width";
   import { showReadLayoutToggle, viewModeFor } from "$lib/read-layout";
+  import type { MarginOverlaySummary } from "$lib/margin-overlay";
   import LeftPanel from "$lib/components/LeftPanel.svelte";
   import type { PanelTab } from "$lib/components/LeftPanel.svelte";
   import WelcomeLanding from "$lib/components/WelcomeLanding.svelte";
@@ -1081,6 +1082,10 @@
   // `viewModeFor` is the one rule, and Edit never changes the stored choice.
   let readLayout = $derived(settings.current.preview.readLayout);
   let viewMode = $derived(viewModeFor(mode, isNarrow, readLayout));
+  // Margin & bleed overlay: one durable switch for Read AND Edit; the viewer
+  // draws it, and reports what it found (the toolbar count) as it repaints.
+  let marginOverlay = $derived(settings.current.preview.marginOverlay);
+  let overlaySummary = $state<MarginOverlaySummary | null>(null);
 
   // Whether the editor pane is shown. A persisted narrow Edit preference
   // alone never opens it.
@@ -1357,6 +1362,16 @@
   // Read layout (one page / spread): push the derived view mode into the
   // viewer when the toggle — or a settings load — changes it.
   const readLayoutSink = settingsChangeGuard<ReadLayout>(() => zoomView.applyViewMode(viewMode));
+  // Margin & bleed overlay: push the switch into the viewer when the toggle —
+  // or a settings load — changes it. An old viewer without the command just
+  // rejects, which is the same as not having the feature.
+  const marginOverlaySink = settingsChangeGuard<boolean>(
+    (on) => {
+      if (!on) overlaySummary = null;
+      client?.call("setMarginOverlay", [on]).catch(() => {});
+    },
+    () => !!client,
+  );
   onMount(() =>
     onSettingsChange((s) => {
       previewBgSink(s.appearance.previewBg);
@@ -1365,6 +1380,7 @@
       modeSink(effectiveMode(s));
       autoSaveSink(s.versionHistory.autoSave);
       readLayoutSink(s.preview.readLayout);
+      marginOverlaySink(s.preview.marginOverlay);
     }),
   );
 
@@ -2091,6 +2107,8 @@
     zoom: () => zoom,
     viewMode: () => viewMode,
     bgColor: () => bgColor,
+    marginOverlay: () => marginOverlay,
+    setOverlaySummary: (summary) => (overlaySummary = summary),
     setRendering: (v) => (lifecycle.rendering = v),
     getRendering: () => lifecycle.rendering,
     setRenderProgressPage: (v) => (lifecycle.renderProgressPage = v),
@@ -3055,6 +3073,9 @@
             showLayoutToggle={showReadLayoutToggle(mode, isNarrow)}
             {readLayout}
             onSetReadLayout={(next) => settings.set({ preview: { readLayout: next } })}
+            {marginOverlay}
+            {overlaySummary}
+            onToggleMarginOverlay={() => settings.set({ preview: { marginOverlay: !marginOverlay } })}
             onApplyZoom={(val) => { contextMenu.close(); zoomView.applyZoom(val); }}
           />
         {/if}

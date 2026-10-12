@@ -16,9 +16,19 @@ export interface PreviewEvent {
     | "blockEditRequested"
     | "blockEditFinished"
     | "blockEditStateChanged"
+    /** Margin & bleed overlay turned on/off or repainted (protocol v9); detail is an OverlaySummary. */
+    | "overlayChanged"
     /** An Esc nothing in the book consumed (the app uses it to leave Focus). */
     | "escapePressed";
   detail: {
+    /** overlayChanged: whether the overlay is showing. */
+    on?: boolean;
+    /** overlayChanged: elements that leave their text area by accident. */
+    issues?: number;
+    /** overlayChanged: placed-on-purpose art (`.gp-bleed`, `.gp-pin`, …) outside it — shown, not counted. */
+    intended?: number;
+    /** overlayChanged: the book's `@page` bleed in pt (0 = none defined). */
+    bleedPt?: number;
     currentPage?: number;
     totalPages?: number;
     /** sourceLineChanged / elementActivated: 1-based markdown source line. */

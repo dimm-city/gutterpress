@@ -25,6 +25,7 @@
   import Icon from "$lib/components/Icon.svelte";
   import type { ReadLayout } from "$lib/platform";
   import type { PageNavController } from "$lib/routes/page-nav-controller.svelte";
+  import { overlayTooltip, type MarginOverlaySummary } from "$lib/margin-overlay";
 
   let {
     pageNav,
@@ -35,6 +36,9 @@
     showLayoutToggle = false,
     readLayout = "spread",
     onSetReadLayout = () => {},
+    marginOverlay = false,
+    overlaySummary = null,
+    onToggleMarginOverlay = () => {},
   }: {
     pageNav: PageNavController;
     rendering: boolean;
@@ -45,7 +49,13 @@
     showLayoutToggle?: boolean;
     readLayout?: ReadLayout;
     onSetReadLayout?: (layout: ReadLayout) => void;
+    /** Margin & bleed overlay (Read AND Edit): on/off, and what the viewer last found. */
+    marginOverlay?: boolean;
+    overlaySummary?: MarginOverlaySummary | null;
+    onToggleMarginOverlay?: () => void;
   } = $props();
+  const overlayLabel = $derived(overlayTooltip(marginOverlay, overlaySummary));
+  const overlayIssues = $derived(marginOverlay ? (overlaySummary?.issues ?? 0) : 0);
 
   const ZOOM_LEVELS: Array<[string, string]> = [
     ["fit-width", "Fit to width"],
@@ -133,6 +143,26 @@
     </button>
   </nav>
 
+  <div class="right-tools">
+  <!-- Margin & bleed overlay: a review aid, so it lives next to the zoom it
+       is read at, and shows in Read and Edit alike. The count is the number of
+       elements that spill past the margins (placed-on-purpose art is not
+       counted); the tooltip spells the rest out. -->
+  <button
+    class="icon-btn overlay-btn"
+    class:active={marginOverlay}
+    onclick={() => onToggleMarginOverlay()}
+    title={overlayLabel}
+    aria-label={marginOverlay ? "Hide margins and bleed" : "Show margins and bleed"}
+    aria-pressed={marginOverlay}
+    data-overlay-issues={overlayIssues}
+  >
+    <Icon name="frame" size={16} />
+    {#if overlayIssues > 0}
+      <span class="overlay-count" aria-label="{overlayIssues} overflowing">{overlayIssues}</span>
+    {/if}
+  </button>
+
   <details class="menu zoom-menu">
     <summary class="icon-btn menu-summary" title="Zoom level" aria-label="Zoom level">
       <Icon name="zoom-in" size={16} />
@@ -153,6 +183,7 @@
       {/each}
     </div>
   </details>
+  </div>
 </div>
 
 <style>
@@ -193,9 +224,12 @@
     border-radius: 6px;
     background: var(--app-control-bg);
   }
-  .zoom-menu {
+  .right-tools {
     grid-column: 3;
     justify-self: end;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
   }
 
   .preview-toolbar button,
@@ -220,10 +254,24 @@
   }
   /* The selected layout keeps its accent fill under the pointer: this sits
      after the hover rule above at equal specificity, so it wins. */
-  .preview-toolbar .layout-group button.active {
+  .preview-toolbar .layout-group button.active,
+  .preview-toolbar .overlay-btn.active {
     background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
     border-color: var(--app-accent-border);
     color: var(--app-accent-text);
+  }
+  .overlay-btn { gap: 4px; }
+  .overlay-count {
+    min-width: 14px;
+    padding: 0 4px;
+    border-radius: 7px;
+    background: var(--app-warning-bg);
+    border: 1px solid var(--app-warning-border);
+    color: var(--app-warning-text);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 14px;
+    text-align: center;
   }
   .preview-toolbar button:disabled {
     opacity: 0.4;
@@ -344,7 +392,7 @@
   @container preview-pane (max-width: 270px) {
     .preview-toolbar { grid-template-columns: auto minmax(0, 1fr); }
     .page-nav { grid-column: 1; }
-    .zoom-menu { grid-column: 2; }
+    .right-tools { grid-column: 2; }
   }
 
   @media (pointer: coarse) {
