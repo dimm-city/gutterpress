@@ -29,6 +29,8 @@ import { fileURLToPath } from "node:url";
 import { resolveChromiumExecutable } from "../../lib/chromium.ts";
 import { getAssetPath } from "../../lib/embedded-assets.ts";
 import { closeBrowser, getBrowser } from "./test-support/browser.ts";
+import { MARKER_CSS } from "../../lib/markdown/markers.js";
+import { GUTTERPRESS_CSS } from "../../lib/markdown/gutterpress-css.ts";
 
 const FIXTURES_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 const RENDER_TEST_TIMEOUT_MS = 60_000;
@@ -221,6 +223,114 @@ testIf(
         }
         // the lone recto keeps the right-hand slot of its row, where a pair's recto sits
         expect(ordered[0]![0]!.sheetLeft).toBeCloseTo(ordered[1]![1]!.sheetLeft, 1);
+      } finally {
+        await page.close();
+      }
+    });
+  },
+  RENDER_TEST_TIMEOUT_MS,
+);
+
+/**
+ * The same book with pages 3-4 on a named page whose margins are symmetric (40
+ * all round: the same 320px content box, so a run of its own with NO shift):
+ * three runs, each opening on a recto and so composed with the verso that ends
+ * the one before it — shift 20, then 0, then 20 again.
+ */
+const CHAINED = MIRRORED.replace(
+  "body { margin: 0; }",
+  "@page plate { margin: 40px; }\n      #t3, #t4 { page: plate; }\n      body { margin: 0; }",
+);
+
+testIf(
+  "runs with different shifts still compose into facing pairs at the sheet gap, down a chain of runs",
+  async () => {
+    await withBook(CHAINED, async (url) => {
+      const page = await open(url);
+      try {
+        const single = await page.evaluate(measureBook);
+        // text on its page's own margins, in the shifted runs and the unshifted one
+        expect(single.pages.map((p) => p.text.x)).toEqual([50, 30, 40, 40, 50, 30]);
+        expect(single.pages.map((p) => p.sheetLeft - single.pages[0]!.sheetLeft)).toEqual([0, 20, 0, 0, 0, 20]);
+
+        await page.evaluate(() => (window as any).Gutterpress.setSpread(true));
+        const spread = await page.evaluate(measureBook);
+        expect(spread.pageOf).toEqual(single.pageOf);
+        expect(spread.pages.map((p) => p.text.x)).toEqual([50, 30, 40, 40, 50, 30]);
+
+        const rows = new Map<number, typeof spread.pages>();
+        for (const p of spread.pages) rows.set(p.sheetTop, [...(rows.get(p.sheetTop) ?? []), p]);
+        const ordered = [...rows.entries()]
+          .sort((a, b) => a[0] - b[0])
+          .map(([, ps]) => ps.sort((a, b) => a.sheetLeft - b.sheetLeft));
+        // composed across the run boundaries, the cover and the last verso alone
+        expect(ordered.map((r) => r.map((p) => p.page))).toEqual([[1], [2, 3], [4, 5], [6]]);
+        for (const row of ordered.filter((r) => r.length === 2)) {
+          expect(row[1]!.sheetLeft - row[0]!.sheetRight).toBeCloseTo(24, 1);
+        }
+      } finally {
+        await page.close();
+      }
+    });
+  },
+  RENDER_TEST_TIMEOUT_MS,
+);
+
+testIf(
+  "edge-pinned art keeps the paper's edge, and the overlay's box on a flush page is the PDF's flushed frame",
+  async () => {
+    const source = await fsp.readFile(path.join(FIXTURES_DIR, "mirrored-flush.html"), "utf8");
+    const html = source.replace("</style>", `</style>\n<style>${MARKER_CSS}\n${GUTTERPRESS_CSS}</style>`);
+    await withBook(html, async (url) => {
+      const page = await open(url);
+      try {
+        await page.evaluate(() => (window as any).Gutterpress.decoration.setOverlay(true));
+        const m = await page.evaluate(() => {
+          const round = (v: number) => Math.round(v * 10) / 10;
+          const sheet = (n: number) => document.querySelector<HTMLElement>(`.gp-sheet[data-page="${n}"]`)!;
+          const at = (id: string, n: number) => {
+            const s = sheet(n).getBoundingClientRect();
+            const r = document.getElementById(id)!.getBoundingClientRect();
+            return {
+              left: round(r.left - s.left),
+              fromRight: round(s.right - r.right),
+              fromBottom: round(s.bottom - r.bottom),
+            };
+          };
+          const frame = (n: number) => {
+            const f = document.querySelector<HTMLElement>(`.gp-ov-page[data-page="${n}"] .gp-ov-margin`)!;
+            return [f.style.left, f.style.top, f.style.width, f.style.height];
+          };
+          return {
+            total: (window as any).Gutterpress.totalPages as number,
+            a1: at("a1", 1),
+            a2: at("a2", 2),
+            a4: at("a4", 4),
+            t2: at("t2", 2),
+            t4: at("t4", 4),
+            frames: [1, 2, 3, 4].map(frame),
+            dotted: document.querySelectorAll(".gp-ov-print").length,
+            summary: (window as any).Gutterpress.decoration.overlay(),
+          };
+        });
+        expect(m.total).toBe(4);
+        // a bottom-flush foot rests on the paper on a recto and on a verso alike…
+        expect(m.a1.fromBottom).toBeLessThan(2);
+        expect(m.a2.fromBottom).toBeLessThan(2);
+        // …while the verso's text sits on its own left margin (30), the recto's on 50
+        expect(m.t2.left).toBe(30);
+        // a side flush stays on the paper's edge, text and all as before: no claim, no shift
+        expect(m.a4.fromRight).toBeLessThan(2);
+        expect(m.t4.left).toBe(50);
+        // the dashed box is the page's flushed frame: bottom freed on 1 and 2, nothing else
+        expect(m.frames[0]).toEqual(["50px", "40px", "320px", "460px"]);
+        expect(m.frames[1]).toEqual(["30px", "40px", "320px", "460px"]);
+        expect(m.frames[2]).toEqual(["50px", "40px", "320px", "420px"]);
+        // the side-flush verso has its right edge freed and no shift: the frame the text is in
+        expect(m.frames[3]).toEqual(["50px", "40px", "350px", "420px"]);
+        expect(m.dotted).toBe(0);
+        // pinned art is intended, never counted as a problem
+        expect(m.summary.issues).toBe(0);
       } finally {
         await page.close();
       }

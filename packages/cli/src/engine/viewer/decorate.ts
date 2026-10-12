@@ -394,6 +394,7 @@ export function decorate(
     // stay in the same box, and pagination is untouched.
     let prevPageH = 0;
     let prevVersoShift = 0;
+    let prevRunX = 0;
     let first = true;
 
     for (const strip of layout.strips) {
@@ -524,11 +525,14 @@ export function decorate(
       // and its recto does not move, so when the two runs shift their versos
       // differently the pair's gap would be off by the difference — an
       // overlap if the previous run's is the larger. Slide the recto run by
-      // that difference and the pair keeps the sheet gap, as any pair inside
-      // one run does.
-      run.style.marginLeft = composed ? `${(prevVersoShift - strip.versoShift) * PX_PER_PT}px` : "";
+      // that difference, on top of wherever the previous run itself was slid
+      // (it may be composed with the one before it), and the pair keeps the
+      // sheet gap, as any pair inside one run does.
+      const runX = composed ? prevRunX + (prevVersoShift - strip.versoShift) * PX_PER_PT : 0;
+      run.style.marginLeft = runX ? `${runX}px` : "";
       prevPageH = PX_PER_PT * g.height;
       prevVersoShift = strip.versoShift;
+      prevRunX = runX;
       first = false;
 
       if (opts.designer) checkOverflow(strip, warnings);

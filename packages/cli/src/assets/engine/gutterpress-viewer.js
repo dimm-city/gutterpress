@@ -1499,7 +1499,11 @@
     const { right, left, agree } = pageSides(model, name);
     if (!agree)
       return 0;
-    return flushMargins(right.margin, flushEdges).left - flushMargins(left.margin, flushEdges).left;
+    const r = flushMargins(right.margin, flushEdges);
+    const l = flushMargins(left.margin, flushEdges);
+    if (Math.abs(r.left + r.right - (l.left + l.right)) >= 0.01)
+      return 0;
+    return r.left - l.left;
   }
   function buildStrips(model, opts = {}, warnings = []) {
     const doc = document;
@@ -2637,6 +2641,7 @@
       fillXrefs();
       let prevPageH = 0;
       let prevVersoShift = 0;
+      let prevRunX = 0;
       let first = true;
       for (const strip of layout.strips) {
         const run = ensureRun(strip);
@@ -2686,9 +2691,11 @@
         run.style.width = `${stride * perRow}px`;
         const composed = !!strip.wrapCols && shift === 1 && !first;
         run.style.marginTop = composed ? `${-(prevPageH + sheetGap)}px` : "";
-        run.style.marginLeft = composed ? `${(prevVersoShift - strip.versoShift) * PX_PER_PT}px` : "";
+        const runX = composed ? prevRunX + (prevVersoShift - strip.versoShift) * PX_PER_PT : 0;
+        run.style.marginLeft = runX ? `${runX}px` : "";
         prevPageH = PX_PER_PT * g.height;
         prevVersoShift = strip.versoShift;
+        prevRunX = runX;
         first = false;
         if (opts.designer)
           checkOverflow(strip, warnings);

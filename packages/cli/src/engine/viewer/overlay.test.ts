@@ -95,9 +95,13 @@ describe("where the geometry comes from", () => {
     // a named page that sets its own margins resolves its own sides (here, none mirrored)
     expect(versoShiftPt(model, "plate")).toBe(0);
     expect(versoShiftPt(extract(`@page { size: 6in 9in; margin: 0.75in; }`), undefined)).toBe(0);
-    // freed edges are measured freed, as the strip is: flush left zeroes both lefts
+    // freed top/bottom edges leave the widths alone: shift as usual
+    expect(versoShiftPt(model, undefined, ["bottom"])).toBeCloseTo(0.5 * IN, 5);
+    expect(versoShiftPt(model, undefined, ["top", "bottom"])).toBeCloseTo(0.5 * IN, 5);
+    // a freed left or right edge gives the sides different content widths in
+    // print: no claim, the pinned art keeps the paper's edge
     expect(versoShiftPt(model, undefined, ["left"])).toBe(0);
-    expect(versoShiftPt(model, undefined, ["right"])).toBeCloseTo(0.5 * IN, 5);
+    expect(versoShiftPt(model, undefined, ["right"])).toBe(0);
     // sides that disagree on the content size: no one column matches, no placement claims to
     expect(
       versoShiftPt(

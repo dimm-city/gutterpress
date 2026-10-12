@@ -1,0 +1,40 @@
+<!--
+  Edge-pinned art on a book with mirrored margins (decorate.ts, `versoShift`).
+  A 400x500px page, recto L50/R30, verso L30/R50 (the same 320px content box).
+
+  Four page roots, one page each:
+    1 recto  - art flush to the BOTTOM edge
+    2 verso  - art flush to the BOTTOM edge: the run frees only a top/bottom
+               edge, so the verso's text still sits at its own L30 and the
+               art on the paper's bottom
+    3 recto  - plain
+    4 verso  - art flush to the RIGHT (binding) edge: freeing a side edge gives
+               print different content widths on the two sides, so the viewer
+               makes no placement claim there and the art stays on the paper's
+               edge, as it always did
+-->
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      /* MARKER_CSS + GUTTERPRESS_CSS are injected by the test, exactly as
+         assemble.ts injects them into a real book. */
+      @page { size: 400px 500px; margin: 40px; }
+      @page :left  { margin-left: 30px; margin-right: 50px; }
+      @page :right { margin-left: 50px; margin-right: 30px; }
+      body { margin: 0; }
+      p { margin: 0; font: 12px/1 monospace; }
+      .art { display: block; width: 80px; height: 60px; background: #36c; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="page" id="r1"><p id="t1">Recto, foot flush.</p><p><span class="art gp-pin gp-bottom gp-flush" id="a1"></span></p></div>
+      <div class="page" id="v2"><p id="t2">Verso, foot flush.</p><p><span class="art gp-pin gp-bottom gp-flush" id="a2"></span></p></div>
+      <div class="page" id="r3"><p id="t3">Recto, plain.</p></div>
+      <div class="page" id="v4"><p id="t4">Verso, binding edge flush.</p><p><span class="art gp-pin gp-right gp-flush" id="a4"></span></p></div>
+    </main>
+    <script src="gutterpress-viewer.js"></script>
+  </body>
+</html>

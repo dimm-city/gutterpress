@@ -777,7 +777,11 @@ function pageSides(model: GcpmModel, name: string | undefined) {
  * Measured with the same freed margins the strip uses (`.gp-flush` edges), so
  * a flushed run's frame is the PDF's flushed frame. 0 for a book without
  * mirrored margins, and where the two sides disagree on the content size (no
- * one column matches both, so no placement can claim to).
+ * one column matches both, so no placement can claim to) — which includes a
+ * run that frees a LEFT or RIGHT edge: print then gives the two sides content
+ * boxes of different widths, so a verso's text and its edge-pinned art cannot
+ * both land where the PDF has them, and the art stays on the paper's edge as
+ * it always was. A top/bottom flush leaves the widths alone and shifts as usual.
  */
 export function versoShiftPt(
   model: GcpmModel,
@@ -786,7 +790,10 @@ export function versoShiftPt(
 ): number {
   const { right, left, agree } = pageSides(model, name);
   if (!agree) return 0;
-  return flushMargins(right.margin, flushEdges).left - flushMargins(left.margin, flushEdges).left;
+  const r = flushMargins(right.margin, flushEdges);
+  const l = flushMargins(left.margin, flushEdges);
+  if (Math.abs(r.left + r.right - (l.left + l.right)) >= 0.01) return 0;
+  return r.left - l.left;
 }
 
 /**
