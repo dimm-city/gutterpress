@@ -7,6 +7,8 @@ import {
 import type { CommitEngine } from "$lib/editor/commit-engine";
 import type { PreviewEvent } from "$lib/preview-client";
 import type { ImagePropertiesValue } from "$lib/editor/image-classes";
+import type { BlockPropertiesModel, BlockPropertiesValue } from "$lib/editor/block-properties";
+import type { ClassCatalogEntry } from "$lib/api";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
 // these unit tests. The production compiler replaces $state; the class only
@@ -102,6 +104,11 @@ interface Harness {
   }>;
   imagePropertiesResult: ImagePropertiesValue | null;
   imagePropertiesCalls: ImagePropertiesValue[];
+  /** What the Block properties dialog answers, given the model/initial it was shown (null = cancel). */
+  blockPropertiesAnswer: ((model: BlockPropertiesModel, initial: BlockPropertiesValue) => BlockPropertiesValue | null) | null;
+  blockPropertiesCalls: Array<{ model: BlockPropertiesModel; initial: BlockPropertiesValue }>;
+  classCatalog: ClassCatalogEntry[];
+  selfClosing: Set<string>;
   goToSourceCalls: Array<[string, number]>;
   openMediaPanelCalls: number;
   copyToClipboardCalls: string[];
@@ -129,6 +136,10 @@ function make(): Harness {
     promptCalls: [],
     imagePropertiesResult: null,
     imagePropertiesCalls: [],
+    blockPropertiesAnswer: null,
+    blockPropertiesCalls: [],
+    classCatalog: [],
+    selfClosing: new Set<string>(),
     goToSourceCalls: [],
     openMediaPanelCalls: 0,
     copyToClipboardCalls: [],
@@ -156,6 +167,12 @@ function make(): Harness {
       h.promptCalls.push(opts);
       return h.promptResult;
     },
+    promptBlockProperties: async (model, initial) => {
+      h.blockPropertiesCalls.push({ model, initial });
+      return h.blockPropertiesAnswer ? h.blockPropertiesAnswer(model, initial) : null;
+    },
+    classCatalog: () => h.classCatalog,
+    isSelfClosingMarker: (name) => h.selfClosing.has(name),
     promptImageProperties: async (initial) => {
       h.imagePropertiesCalls.push(initial);
       return h.imagePropertiesResult;
@@ -472,6 +489,156 @@ describe("marker kind", () => {
   });
 });
 
+// ── Block properties… ───────────────────────────────────────────────────────
+
+describe("Block properties…", () => {
+  const dc = { kind: "extension" as const, ref: "gp-dimm-city@1.6.2", name: "Dimm City" };
+  const SOURCE = "Intro.\n\n@section card .dc-snug\n\nBody.\n\n@end-section\n";
+
+  async function open(h: Harness, over: Partial<PreviewEvent["detail"]> = {}) {
+    h.client.emit({ name: "contextMenuRequested", detail: detail({ kind: "marker", range: [2, 3], ...over }) });
+    await flush();
+    return h.ctrl.items.find((i) => i.id === "marker-properties");
+  }
+
+  test("offered for a marker that opens a block, not for a break or a closer", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = SOURCE;
+    expect(await open(h)).toBeDefined();
+    const breaks = make();
+    breaks.readFileMap["/proj/ch1.md"] = "before\n@page-break\nafter\n";
+    expect(await open(breaks, { range: [1, 2] })).toBeUndefined();
+    const closer = make();
+    closer.readFileMap["/proj/ch1.md"] = SOURCE;
+    expect(await open(closer, { range: [6, 7] })).toBeUndefined();
+  });
+
+  test("shows the block as written and commits one minimal patch for the changes made", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = SOURCE;
+    h.classCatalog = [
+      { class: "dc-snug", modifier: true, appliesTo: ["section", "page"], label: "Snug", source: dc },
+      { class: "dc-avoid-split", modifier: true, appliesTo: ["section"], label: "Avoid split", source: dc },
+    ];
+    h.blockPropertiesAnswer = (_m, initial) => ({
+      ...initial,
+      classes: { ...initial.classes, "gp-no-break": true, "dc-snug": false },
+      breakBefore: true,
+    });
+    const item = (await open(h))!;
+    await h.ctrl.runItem(item);
+
+    const shown = h.blockPropertiesCalls[0]!;
+    expect(shown.model.marker).toBe("section");
+    expect(shown.model.options.map((o) => o.class)).toEqual(["gp-no-break", "dc-avoid-split", "dc-snug"]);
+    expect(shown.initial).toEqual({
+      classes: { "gp-no-break": false, "dc-avoid-split": false, "dc-snug": true },
+      breakBefore: false,
+      columns: "",
+    });
+    expect(h.commitEngine.calls).toEqual([
+      {
+        chapter: "ch1.md",
+        range: [2, 3],
+        expected: "@section card .dc-snug\n",
+        replacement: "@page-break\n\n@section card .gp-no-break\n",
+        expectedGeneration: 0,
+      },
+    ]);
+    expect(h.ctrl.open).toBe(false);
+  });
+
+  test("removing an existing break reaches above the marker line, and the patch says so", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "Intro.\n\n@page-break\n\n@section\n\nBody.\n\n@end-section\n";
+    h.blockPropertiesAnswer = (_m, initial) => ({ ...initial, breakBefore: false });
+    const item = (await open(h, { range: [4, 5] }))!;
+    await h.ctrl.runItem(item);
+    expect(h.commitEngine.calls).toEqual([
+      { chapter: "ch1.md", range: [2, 4], expected: "@page-break\n\n", replacement: "", expectedGeneration: 0 },
+    ]);
+  });
+
+  test("columns wrap the content through the same patch", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "@section\nBody.\n@end-section\n";
+    h.blockPropertiesAnswer = (_m, initial) => ({ ...initial, columns: "2" });
+    h.client.emit({ name: "contextMenuRequested", detail: detail({ kind: "marker", range: [0, 1] }) });
+    await flush();
+    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "marker-properties")!);
+    expect(h.commitEngine.calls).toEqual([
+      {
+        chapter: "ch1.md",
+        range: [1, 2],
+        expected: "Body.\n",
+        replacement: "@columns 2\n\nBody.\n\n@end-columns\n",
+        expectedGeneration: 0,
+      },
+    ]);
+  });
+
+  test("cancelling, or confirming nothing changed, writes nothing and closes the menu", async () => {
+    const cancel = make();
+    cancel.readFileMap["/proj/ch1.md"] = SOURCE;
+    await cancel.ctrl.runItem((await open(cancel))!);
+    expect(cancel.commitEngine.calls).toEqual([]);
+    expect(cancel.ctrl.open).toBe(false);
+
+    const same = make();
+    same.readFileMap["/proj/ch1.md"] = SOURCE;
+    same.blockPropertiesAnswer = (_m, initial) => ({ ...initial });
+    await same.ctrl.runItem((await open(same))!);
+    expect(same.commitEngine.calls).toEqual([]);
+    expect(same.toastErrorCalls).toEqual([]);
+  });
+
+  test("a change the block cannot take is reported, not guessed", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "@section\nBody.\n";
+    h.blockPropertiesAnswer = (_m, initial) => ({ ...initial, columns: "3" });
+    h.client.emit({ name: "contextMenuRequested", detail: detail({ kind: "marker", range: [0, 1] }) });
+    await flush();
+    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "marker-properties")!);
+    expect(h.commitEngine.calls).toEqual([]);
+    expect(h.toastErrorCalls[0]).toContain("@end-section");
+  });
+
+  test("a self-closing plugin marker is told it has no content for columns", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "@tape label=Hi\n";
+    h.selfClosing.add("tape");
+    h.client.emit({ name: "contextMenuRequested", detail: detail({ kind: "marker", range: [0, 1] }) });
+    await flush();
+    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "marker-properties")!);
+    expect(h.blockPropertiesCalls[0]!.model.columns.kind).toBe("unavailable");
+  });
+
+  test("a commit refusal (the file moved) is the engine's toast, the menu stays closed", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = SOURCE;
+    h.commitEngine.result = { ok: false, reason: "mismatch", message: "This block changed — reopen to make this change.", degradeLine: 3 };
+    h.blockPropertiesAnswer = (_m, initial) => ({ ...initial, classes: { ...initial.classes, "gp-no-break": true } });
+    await h.ctrl.runItem((await open(h))!);
+    expect(h.toastErrorCalls).toEqual(["This block changed — reopen to make this change."]);
+  });
+
+  test("the enclosing @page offers Page properties… and edits that page's line", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "@page cover\n\n@section\n\ntext\n\n@end-section\n";
+    h.blockPropertiesAnswer = (_m, initial) => ({ ...initial, classes: { ...initial.classes, "gp-no-break": true } });
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: { ...detail({ kind: "marker", range: [2, 3] }), pageMarker: { chapter: "ch1.md", range: [0, 1], blockTag: "div" } },
+    });
+    await flush();
+    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "page-marker-properties")!);
+    expect(h.blockPropertiesCalls[0]!.model.marker).toBe("page");
+    expect(h.commitEngine.calls).toEqual([
+      { chapter: "ch1.md", range: [0, 1], expected: "@page cover\n", replacement: "@page cover .gp-no-break\n", expectedGeneration: 0 },
+    ]);
+  });
+});
+
 // ── page marker (protocol v7's secondary `pageMarker` field) ─────────────────
 
 /** detail() plus a v7 `pageMarker` field (not yet in PreviewEvent's detail
@@ -528,7 +695,13 @@ describe("page marker (protocol v7)", () => {
       }),
     });
     await flush();
-    expect(h.ctrl.items.map((i) => i.id)).toEqual(["marker-edit", "page-marker-edit", "go-to-source"]);
+    expect(h.ctrl.items.map((i) => i.id)).toEqual([
+      "marker-edit",
+      "marker-properties",
+      "page-marker-edit",
+      "page-marker-properties",
+      "go-to-source",
+    ]);
   });
 
   test("suppressed when the primary target IS the page marker (same chapter + range)", async () => {

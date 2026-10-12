@@ -45,6 +45,13 @@
   import TextPromptDialog from "$lib/components/TextPromptDialog.svelte";
   import ImagePropertiesDialog from "$lib/components/ImagePropertiesDialog.svelte";
   import type { ImagePropertiesValue } from "$lib/editor/image-classes";
+  import BlockPropertiesDialog from "$lib/components/BlockPropertiesDialog.svelte";
+  import {
+    editBlockProperties,
+    type BlockPropertiesModel,
+    type BlockPropertiesValue,
+  } from "$lib/editor/block-properties";
+  import type { LinePatch } from "$lib/editor/block-attrs";
   import { CommitEngine } from "$lib/editor/commit-engine";
   import { SyncController } from "$lib/routes/sync-controller.svelte";
   import { ProjectSessionController } from "$lib/routes/project-session-controller.svelte";
@@ -1000,6 +1007,10 @@
      * undoable transaction (inline-editing plan §4.7 Step 4 — commit-engine.ts).
      * Offsets are into THAT FILE, not into the document. */
     applyRangeEditIn: (path: string, from: number, to: number, insert: string) => void;
+    /** The document text and the caret's 0-based line (Block properties, Alt+Enter). */
+    getCaretContext: () => { source: string; line: number } | null;
+    /** Apply a planned line patch as one undoable transaction; false when the document no longer matches it. */
+    applyLinePatch: (patch: LinePatch) => boolean;
   } | null>(null);
 
   // Snippet picker (#29) — opened via the toolbar button or Ctrl/Cmd+Shift+S.
@@ -2047,6 +2058,57 @@
     pending?.resolve(value);
   }
 
+  let blockPropertiesPrompt = $state<{
+    model: BlockPropertiesModel;
+    initialValue: BlockPropertiesValue;
+    resolve: (value: BlockPropertiesValue | null) => void;
+  } | null>(null);
+
+  function promptBlockProperties(
+    model: BlockPropertiesModel,
+    initialValue: BlockPropertiesValue,
+  ): Promise<BlockPropertiesValue | null> {
+    return new Promise((resolve) => {
+      blockPropertiesPrompt = { model, initialValue, resolve };
+    });
+  }
+
+  function finishBlockProperties(value: BlockPropertiesValue | null): void {
+    const pending = blockPropertiesPrompt;
+    blockPropertiesPrompt = null;
+    pending?.resolve(value);
+  }
+
+  function isSelfClosingMarker(name: string): boolean {
+    return projectComponents.some((c) => c.name === name && c.selfClosing === true);
+  }
+
+  /**
+   * Block properties for the marker line under the source editor's caret
+   * (Alt+Enter). The preview's right-click menu reaches the same dialog and the
+   * same planner (`editBlockProperties`); the difference is only where the
+   * patch lands — here straight into the editor's undo history.
+   */
+  async function openBlockPropertiesAtCaret(): Promise<void> {
+    const at = editorRef?.getCaretContext();
+    if (!at) return;
+    const outcome = await editBlockProperties({
+      source: at.source,
+      line: at.line,
+      catalog: projectClasses,
+      isSelfClosingMarker,
+      prompt: promptBlockProperties,
+    });
+    if (outcome.kind === "unreadable") {
+      toast?.info?.("Put the cursor on a marker line such as @section or @skill, then press Alt+Enter.");
+    } else if (outcome.kind === "error") {
+      toast?.error(outcome.message);
+    } else if (outcome.kind === "patch" && !editorRef?.applyLinePatch(outcome.patch)) {
+      toast?.error("The file changed while the dialog was open. Try again.");
+    }
+    editorRef?.focus();
+  }
+
   async function copyToClipboard(text: string): Promise<void> {
     try {
       await navigator.clipboard.writeText(text);
@@ -2105,6 +2167,9 @@
     },
     promptText,
     promptImageProperties,
+    promptBlockProperties,
+    classCatalog: () => projectClasses,
+    isSelfClosingMarker,
     goToSource,
     openMediaPanel,
     copyToClipboard,
@@ -3025,6 +3090,7 @@
                 components={projectComponents}
                 variants={projectVariants}
                 classes={projectClasses}
+                onBlockProperties={() => void openBlockPropertiesAtCaret()}
               />
             {:else if editorModuleFailed}
               <div class="editor-loading" role="alert">
@@ -3362,6 +3428,14 @@
   <ImagePropertiesDialog
     initialValue={imagePropertiesPrompt.initialValue}
     onDone={finishImageProperties}
+  />
+{/if}
+
+{#if blockPropertiesPrompt}
+  <BlockPropertiesDialog
+    model={blockPropertiesPrompt.model}
+    initialValue={blockPropertiesPrompt.initialValue}
+    onDone={finishBlockProperties}
   />
 {/if}
 
