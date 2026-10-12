@@ -25,10 +25,10 @@ describe("table cell alignment", () => {
     expect(html).toContain('style="text-align:right"');
   });
 
-  test("the rules are zero-specificity", () => {
+  test("the rules are element + attribute (0,1,1), so they outrank a bare th/td rule", () => {
     for (const side of ["left", "center", "right"]) {
       expect(TABLE_ALIGN_CSS).toContain(
-        `:where(th[data-align="${side}"], td[data-align="${side}"]) { text-align: ${side}; }`
+        `th[data-align="${side}"], td[data-align="${side}"] { text-align: ${side}; }`
       );
     }
   });
@@ -51,9 +51,10 @@ describe("where data-align sits in the cascade (computed style, Chromium)", () =
   });
   afterEach(() => rmSync(root, { recursive: true, force: true }));
 
-  async function aligns(bookCss: string): Promise<string[]> {
+  /** Computed text-align of `selector` cells: header cells then body cells, in a book with or without the look extension. */
+  async function aligns(bookCss: string, selector = "tbody td", withExtension = true): Promise<string[]> {
     writeFileSync(join(dir, "styles", "book.css"), bookCss, "utf8");
-    const config = resolveConfig({}, { extensions: ["./ext/look"], styles: ["styles/book.css"] });
+    const config = resolveConfig({}, { extensions: withExtension ? ["./ext/look"] : [], styles: ["styles/book.css"] });
     const { plugins, pluginStyles } = await loadPluginsWithCss(config.extensions, dir);
     const html = await renderChapters(dir, { styles: config.styles, files: ["chapter.md"], plugins, pluginStyles });
     const browser = await launchChromium();
@@ -61,7 +62,7 @@ describe("where data-align sits in the cascade (computed style, Chromium)", () =
       const page = await browser.newPage();
       await page.setContent(html);
       return await page.evaluate<string[]>(
-        "[...document.querySelectorAll('tbody td')].map((td) => getComputedStyle(td).textAlign)"
+        `[...document.querySelectorAll(${JSON.stringify(selector)})].map((c) => getComputedStyle(c).textAlign)`
       );
     } finally {
       await browser.close();
@@ -69,11 +70,29 @@ describe("where data-align sits in the cascade (computed style, Chromium)", () =
   }
 
   test(
-    "a markdown alignment still beats a plugin's default, and the book's CSS beats it without !important",
+    "a markdown alignment still beats a plugin's default, and a book rule as specific and later overrides it without !important",
     async () => {
       expect(await aligns("p { margin: 0 }")).toEqual(["left", "center", "right", "left"]);
       expect(await aligns('td[data-align="right"] { text-align: center }')).toEqual(["left", "center", "center", "left"]);
-      expect(await aligns("td { text-align: right }")).toEqual(["right", "right", "right", "right"]);
+      // A less specific book rule (0,0,2) does not: that is the generic-rule case below.
+      expect(await aligns("table td { text-align: right }")).toEqual(["left", "center", "right", "right"]);
+    },
+    60000
+  );
+
+  test(
+    "no extensions: header AND body cells keep their markdown alignment against a book's generic th/td rule",
+    async () => {
+      // The user guide's and design guide's own `th { text-align: left }`, which the inline style used to beat.
+      const generic = "th { text-align: left } td { text-align: left }";
+      expect(await aligns(generic, "thead th", false)).toEqual(["left", "center", "right", "left"]);
+      expect(await aligns(generic, "tbody td", false)).toEqual(["left", "center", "right", "left"]);
+      // Without any book rule the UA default shows through for an unaligned column only.
+      expect(await aligns("p { margin: 0 }", "thead th", false)).toEqual(["left", "center", "right", "center"]);
+      // And the book can still override one column, header included, with no !important.
+      expect(await aligns('th[data-align="center"], td[data-align="center"] { text-align: right }', "thead th", false)).toEqual(
+        ["left", "right", "right", "center"]
+      );
     },
     60000
   );

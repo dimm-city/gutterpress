@@ -30,9 +30,12 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **Table alignment is `data-align`.** The markdown alignment row (`|:--|:-:|--:|`)
   now sets `data-align="left|center|right"` on each cell instead of an inline
   `style="text-align:…"`, so a stylesheet can change one column without
-  `!important`. The rule sits above any extension and below your own `styles:`, so
-  a markdown alignment still beats a look's default (the Field Guide's 181 aligned
-  cells print exactly as before).
+  `!important`. The rule is unlayered with the specificity of an element plus an
+  attribute, so a markdown alignment still beats a look's default and a book's
+  generic `th { text-align: left }`, as the inline style did, and a book rule that
+  is at least as specific and later (`td[data-align="right"] { … }`, `.stats td { … }`)
+  overrides it (the Field Guide, the user guide and the design guide print exactly
+  as before).
 - **`validate` warns when the live preview cannot follow a break.** New CSS rule
   `printsafe/preview-cannot-follow` (warning; switch it off or silence one site like
   any `printsafe/` rule) reports a forced `break-before`/`break-after` or a `page:`

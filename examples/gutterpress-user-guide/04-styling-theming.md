@@ -388,9 +388,11 @@ leaves its CSS unlayered cannot jump ahead of one listed after it. Your own
 every layer at any specificity: a bare element selector in `book.css`
 overrides a look's most specific rule. You never need `!important`, or an
 extra selector to inflate specificity, to beat core or an extension. (The one
-core rule that sits above the extensions is a table's column alignment from
-the markdown alignment row, `data-align`, because an alignment you wrote in
-the table should beat a look's default. Your `styles:` still beat it.)
+exception is a table's column alignment from the markdown alignment row,
+`data-align`: it is unlayered with the specificity of `td[data-align]`, because
+an alignment you wrote in the table should beat a look's default and a plain
+`th { text-align: left }`. To change it, write a rule at least as specific,
+like `td[data-align="right"] { text-align: center; }`; no `!important`.)
 
 If your own stylesheets are more than a couple of files, declare your own
 layer order at the top of your first stylesheet instead of relying on the

@@ -256,17 +256,18 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   // The two core blocks stay separate by ownership: MARKER_CSS supports the
   // marker-generated DOM, while gutterpress-css.ts owns the broader `gp-*`
   // author vocabulary. One more core block, the table column alignment
-  // (table-align.ts), is a top-level layer `gp-align` declared AFTER the
-  // extensions: it replaces an inline style, which beat plugin CSS, so it
-  // must keep beating plugin CSS while still yielding to the book's.
+  // (table-align.ts), is deliberately UNLAYERED, with attribute specificity:
+  // it replaces an inline style, which beat plugin CSS (layered) and a book's
+  // generic `th { text-align }`, so it must still beat both, while a book rule
+  // that is at least as specific and later can override it.
   const inlineCss = [
     "@layer gp.marker, gp.vocab;",
     `/* gutterpress markers */\n@layer gp.marker {\n${MARKER_CSS.trim()}\n}`,
     `/* gutterpress */\n@layer gp.vocab {\n${GUTTERPRESS_CSS.trim()}\n}`,
     pluginCss ? `/* extension css */\n${pluginCss.trim()}` : null,
-    // After the extension layers, so a markdown column alignment beats a
-    // plugin's default; before the (unlayered) project CSS, which beats it.
-    `/* column alignment */\n@layer gp-align {\n${TABLE_ALIGN_CSS.trim()}\n}`,
+    // Unlayered, before the project CSS (equal specificity: the book's rule,
+    // coming later, wins).
+    `/* column alignment */\n${TABLE_ALIGN_CSS.trim()}`,
     projectCss ? `/* project css */\n${projectCss.trim()}` : null,
   ].filter(Boolean).join("\n\n");
 

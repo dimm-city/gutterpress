@@ -27,18 +27,24 @@ export function gpTableAlign(md: MarkdownIt): void {
 }
 
 /**
- * The rules that apply `data-align`. `assemble.ts` injects them in their own
- * top-level layer declared AFTER every extension's, which puts them exactly
- * where the inline style they replace sat among those two: an author's
- * `:-:` in markdown still beats a plugin's default `th { text-align: left }`.
- * The book's own stylesheets are unlayered and so beat them at any
- * specificity, which is the point: `td[data-align="right"] { text-align:
- * center }` in `book.css` now works with no `!important`. (In `gp.marker`
- * instead, the rules would sit under the plugins and silently demote every
- * markdown alignment to a default.) `:where()` keeps them at zero specificity.
+ * The rules that apply `data-align`. `assemble.ts` injects them UNLAYERED,
+ * just before the book's own stylesheets, and with the natural specificity of
+ * an element plus an attribute (0,1,1). That puts them where the inline style
+ * they replace sat against the two things that used to lose to it:
+ *
+ *   - a plugin's default (`th { text-align: left }`, always in a cascade
+ *     layer): unlayered beats layered, so a markdown `:-:` still wins;
+ *   - a book's generic element rule (`th { text-align: left }`, specificity
+ *     0,0,1): the attribute selector outranks it, so the same book prints the
+ *     same. Measured on the user guide and the design guide, whose `th` rule
+ *     centred headers only until a layered version of these rules let it win.
+ *
+ * Unlike an inline style they can be overridden without `!important`: any
+ * book rule at least as specific that comes later wins, e.g.
+ * `td[data-align="right"] { text-align: center }` or `.stats td { … }`.
  */
 export const TABLE_ALIGN_CSS = `
-:where(th[data-align="left"], td[data-align="left"]) { text-align: left; }
-:where(th[data-align="center"], td[data-align="center"]) { text-align: center; }
-:where(th[data-align="right"], td[data-align="right"]) { text-align: right; }
+th[data-align="left"], td[data-align="left"] { text-align: left; }
+th[data-align="center"], td[data-align="center"] { text-align: center; }
+th[data-align="right"], td[data-align="right"] { text-align: right; }
 `;
