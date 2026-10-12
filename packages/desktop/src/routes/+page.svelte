@@ -55,7 +55,7 @@
   import { buildCanvasBackgroundStyles } from "$lib/iframe-styles";
   import { getPlatform } from "$lib/platform";
   import type { ReadLayout, WorkspaceMode } from "$lib/platform";
-  import { api, type LocationVariant, type MarkerComponent } from "$lib/api";
+  import { api, type ClassCatalogEntry, type LocationVariant, type MarkerComponent } from "$lib/api";
   import { buildSourceList } from "$lib/components/config/source-files";
   import { isEditableTarget } from "$lib/a11y";
   import { invalidateDiscoveredProjects } from "$lib/projects-discover-cache";
@@ -528,6 +528,7 @@
       problems = [];
       projectComponents = [];
       projectVariants = [];
+      projectClasses = [];
       buildProblemEntries = [];
       problemsLoading = false;
       problemsError = null;
@@ -556,6 +557,7 @@
       problems = [];
       projectComponents = [];
       projectVariants = [];
+      projectClasses = [];
       buildProblemEntries = [];
       problemsLoading = false;
       problemsError = null;
@@ -1746,7 +1748,19 @@
    *  or editing an extension shows up without another event. */
   let projectComponents = $state<MarkerComponent[]>([]);
 
+  /** The classes the project's extensions document and its stylesheets use, for `.class`
+   *  autocomplete and the Block properties modifiers; refreshed with the components. */
+  let projectClasses = $state<ClassCatalogEntry[]>([]);
+
   function refreshComponents(dir: string) {
+    api.snip.classes(dir)
+      .then((list) => {
+        if (lifecycle.currentDir === dir) projectClasses = list;
+      })
+      .catch(() => {
+        // Class autocomplete just keeps core's vocabulary.
+        if (lifecycle.currentDir === dir) projectClasses = [];
+      });
     api.snip.variants(dir)
       .then((list) => {
         if (lifecycle.currentDir === dir) projectVariants = list;
@@ -3010,6 +3024,7 @@
                   editorSync.onEditorAnchorLine(line, origin, editorChapter)}
                 components={projectComponents}
                 variants={projectVariants}
+                classes={projectClasses}
               />
             {:else if editorModuleFailed}
               <div class="editor-loading" role="alert">

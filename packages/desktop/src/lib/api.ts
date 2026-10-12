@@ -245,6 +245,26 @@ export interface LocationVariant {
   snippet?: string;
 }
 
+/**
+ * A class an extension's component catalog (`gutterpress.components`, a
+ * `components.yaml`) documents, or one the book's own stylesheets use. Declared
+ * by hand: the SPA never imports `gutterpress` (CLAUDE.md §8). Core's own
+ * `gp-*` classes are not here; the editor carries those (`core-classes.ts`).
+ */
+export interface ClassCatalogEntry {
+  /** The class without its dot. */
+  class: string;
+  /** One line from the catalog (`description`, else `notes`, `breaks`, `recipe`); absent for a stylesheet class. */
+  description?: string;
+  /** The catalog marks it as a modifier: a class that changes a component without being one. Offered as a Block properties toggle. */
+  modifier?: true;
+  /** Marker words (without `@`) the catalog's recipe writes the class on; empty when it names none. */
+  appliesTo: string[];
+  /** The catalog entry's `label`, else its name — the name a modifier toggle shows. */
+  label?: string;
+  source: Extract<SnippetSource, { kind: 'extension' }> | { kind: 'book' };
+}
+
 /** Static publish-provider metadata (no project needed) — used by the
  *  Settings → Connections tab to classify + label stored credentials. */
 export interface PublishProviderStaticInfo {
@@ -557,6 +577,8 @@ export const api = {
     components: (projectDir: string) => post<MarkerComponent[]>('/api/snip/components', { projectDir }),
     /** The page / chapter / section variants the project can use: core's plus each extension's. */
     variants: (projectDir: string) => post<LocationVariant[]>('/api/snip/variants', { projectDir }),
+    /** The classes the book's extensions document (their component catalog) and its own stylesheets use. */
+    classes: (projectDir: string) => post<ClassCatalogEntry[]>('/api/snip/classes', { projectDir }),
     /** Save a snippet body under the project's snippets/ folder. Always
      *  writes to the PROJECT, even when the list currently shown includes
      *  extension-provided entries (#242) — there is no way to target an

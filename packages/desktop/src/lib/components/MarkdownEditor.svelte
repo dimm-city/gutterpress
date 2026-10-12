@@ -71,8 +71,9 @@
   import { markerCompletionSource } from "$lib/editor/marker-completions";
   import { componentCompletionSource } from "$lib/editor/component-completions";
   import { variantCompletionSource } from "$lib/editor/variant-completions";
+  import { classCompletionSource } from "$lib/editor/class-completions";
   import { completionTabBinding } from "$lib/editor/completion-keymap";
-  import type { LocationVariant, MarkerComponent } from "$lib/api";
+  import type { ClassCatalogEntry, LocationVariant, MarkerComponent } from "$lib/api";
   import { onMount } from "svelte";
 
   let {
@@ -83,6 +84,7 @@
     onAnchorLine,
     components = [],
     variants = [],
+    classes = [],
   }: {
     filePath?: string | null;
     content?: string;
@@ -90,6 +92,8 @@
     components?: readonly MarkerComponent[];
     /** The project's page / chapter / section variant words, offered after those markers. */
     variants?: readonly LocationVariant[];
+    /** The classes the project's extensions document and its stylesheets use, offered after a `.`. */
+    classes?: readonly ClassCatalogEntry[];
     onChange?: (value: string) => void;
     onSave?: () => void;
     /**
@@ -167,9 +171,9 @@
     return autocompletion({ override: [pagedMediaCompletionSource] });
   }
 
-  /** Core `@marker`, plugin component and variant-word completions — active only for
-   *  markdown docs. The component and variant sources read their props at completion
-   *  time, so a refreshed list needs no reconfigure. */
+  /** Core `@marker`, plugin component, variant-word and `.class` completions — active only
+   *  for markdown docs. The component, variant and class sources read their props at
+   *  completion time, so a refreshed list needs no reconfigure. */
   function markdownCompletionExtensions(lang: EditorLanguage): Extension {
     if (lang !== "markdown") return [];
     return autocompletion({
@@ -177,6 +181,7 @@
         markerCompletionSource,
         componentCompletionSource(() => components),
         variantCompletionSource(() => variants),
+        classCompletionSource(() => classes),
       ],
     });
   }

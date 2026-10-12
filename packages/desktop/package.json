@@ -39,7 +39,8 @@
     "electron-updater": "^6.6.2",
     "gutterpress": "workspace:*",
     "semver": "~7.7.3",
-    "svelte": "^5.55.8"
+    "svelte": "^5.55.8",
+    "yaml": "^2.8.2"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
