@@ -16,8 +16,10 @@ export interface MarginOverlaySummary {
   issues: number;
   /** art placed on purpose (.gp-bleed, .gp-pin, …) outside it — shown softly, never counted */
   intended: number;
-  /** the book's `@page` bleed in pt; 0 = the book defines none */
+  /** the book's bleed in pt; 0 = neither its `@page` CSS nor its preset defines one */
   bleedPt: number;
+  /** true when that bleed is the project's `page.bleed` (a preset's, e.g. dtrpg), already inside the page */
+  bleedInSheet?: boolean;
 }
 
 /** A viewer result, or null for anything that is not one (older viewer, off). */
@@ -26,6 +28,7 @@ export function overlaySummaryFrom(detail: {
   issues?: number;
   intended?: number;
   bleedPt?: number;
+  bleedInSheet?: boolean;
 } | null | undefined): MarginOverlaySummary | null {
   if (!detail || detail.on !== true) return null;
   return {
@@ -33,6 +36,7 @@ export function overlaySummaryFrom(detail: {
     issues: Math.max(0, Math.floor(detail.issues ?? 0)),
     intended: Math.max(0, Math.floor(detail.intended ?? 0)),
     bleedPt: Math.max(0, detail.bleedPt ?? 0),
+    ...(detail.bleedInSheet === true ? { bleedInSheet: true } : {}),
   };
 }
 
@@ -81,7 +85,9 @@ export function overlayTooltip(on: boolean, summary: MarginOverlaySummary | null
     }
     lines.push(
       summary.bleedPt > 0
-        ? `Bleed: ${formatBleed(summary.bleedPt)}`
+        ? summary.bleedInSheet
+          ? `Bleed: ${formatBleed(summary.bleedPt)}, already inside the page on the top, bottom and outer edges (from your print preset)`
+          : `Bleed: ${formatBleed(summary.bleedPt)}`
         : "No bleed set \u2014 add @page { bleed: 0.125in } to your stylesheet to see the bleed edge",
     );
   }

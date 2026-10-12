@@ -27,8 +27,10 @@ export interface PreviewEvent {
     issues?: number;
     /** overlayChanged: placed-on-purpose art (`.gp-bleed`, `.gp-pin`, …) outside it — shown, not counted. */
     intended?: number;
-    /** overlayChanged: the book's `@page` bleed in pt (0 = none defined). */
+    /** overlayChanged: the book's bleed in pt (0 = none defined by its `@page` CSS or preset). */
     bleedPt?: number;
+    /** overlayChanged: true when that bleed is the project's in-sheet `page.bleed` (a preset's), not CSS. */
+    bleedInSheet?: boolean;
     currentPage?: number;
     totalPages?: number;
     /** sourceLineChanged / elementActivated: 1-based markdown source line. */

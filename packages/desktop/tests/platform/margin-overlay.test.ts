@@ -120,6 +120,16 @@ describe("the toolbar tooltip", () => {
     );
   });
 
+  test("on: a bleed that comes from the print preset says it is already inside the page", () => {
+    const s = overlaySummaryFrom({ on: true, issues: 0, intended: 0, bleedPt: 9, bleedInSheet: true })!;
+    expect(s.bleedInSheet).toBe(true);
+    const t = overlayTooltip(true, s);
+    expect(t).toContain("Bleed: 0.125 in");
+    expect(t).toContain("inside the page");
+    expect(t).not.toContain("No bleed set");
+    expect(overlaySummaryFrom({ on: true, bleedPt: 9 })!.bleedInSheet).toBeUndefined();
+  });
+
   test("on, before the viewer has answered: just the action", () => {
     expect(overlayTooltip(true, null)).toBe("Hide margins and bleed");
   });
