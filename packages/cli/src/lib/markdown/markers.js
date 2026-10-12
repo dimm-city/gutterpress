@@ -2433,12 +2433,6 @@ body { margin: 0; }
    the section that opens with the table or list. */
 :where(p):has(+ :where(table, ul, ol)) { break-after: avoid; }
 :where(p):has(+ :where(.section) > :where(table, ul, ol):first-child) { break-after: avoid; }
-/* A column's alignment (\`|:--|:-:|--:|\`) arrives as data-align, not an inline
-   style (table-align.ts), so any stylesheet rule overrides it without
-   !important. Zero specificity: a plugin's or book's own cell alignment wins. */
-:where(th[data-align="left"], td[data-align="left"]) { text-align: left; }
-:where(th[data-align="center"], td[data-align="center"]) { text-align: center; }
-:where(th[data-align="right"], td[data-align="right"]) { text-align: right; }
 :where(img, svg, video) { max-width: 100%; }
 :where(p > img:only-child, figure > img) { width: fit-content; max-width: 100%; height: auto; vertical-align: bottom; }
 :where(p) > :where(img:not([class])) { max-height: calc(var(--gp-content-h) - 4px); object-fit: contain; }
