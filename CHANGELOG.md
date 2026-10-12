@@ -7,6 +7,11 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **One page / two pages toggle in Read.** The preview toolbar has a layout
+  toggle in Read mode that switches between one page and a two-page spread; the
+  choice is saved in app settings (`preview.readLayout`, default two pages).
+  Edit mode always shows single pages and returning to Read restores your last
+  choice.
 - **Plugins can provide page, chapter and section variants.** A plugin's
   `markers` export may declare `page`, `chapter` and `section` with just
   `variants` (`page: { variants: { 'chapter-start': 'dc-page-chapter-start' } }`).

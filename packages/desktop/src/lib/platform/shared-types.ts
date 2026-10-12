@@ -105,7 +105,8 @@ export interface ProjectCapabilities {
  * The ONE switch for what the wide workspace shows. Everything else about the
  * layout is derived from it:
  *
- *   viewMode      = mode === "viewer" && !isNarrow ? "two-column" : "single"
+ *   viewMode      = mode === "viewer" && !isNarrow && readLayout === "spread"
+ *                     ? "two-column" : "single"      (see `viewModeFor`)
  *   editorVisible = mode !== "viewer"
  *
  * Focus (hide the chrome) is deliberately NOT a value here: it is a separate,
@@ -115,6 +116,9 @@ export interface ProjectCapabilities {
  * selector.
  */
 export type WorkspaceMode = "editor" | "viewer";
+
+/** Read mode's page layout (Preview toolbar toggle). */
+export type ReadLayout = "single" | "spread";
 
 // ── User settings (#45) ───────────────────────────────────────────────────
 
@@ -152,6 +156,12 @@ export interface AppSettings {
      * shown. Ignored above the responsive breakpoint (split layout). (#responsive)
      */
     paneMode: "edit" | "view";
+    /**
+     * Read mode's page layout: one page at a time or a two-page spread. Only
+     * Read consults it; Edit is always single-page, and the choice is kept
+     * untouched underneath so returning to Read restores it.
+     */
+    readLayout: ReadLayout;
     /**
      * Durable editor/preview split fraction (0.25..0.75, editor share) for the
      * wide side-by-side layout (#103). The always-read default; the per-project
@@ -243,6 +253,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     // see where to type. Only fills a settings file that has no choice saved.
     mode: "editor",
     paneMode: "view",
+    // Reading opens as a two-page spread, as it always did before the toggle.
+    readLayout: "spread",
     // Matches DEFAULT_SPLIT_RATIO in src/lib/editor/preview-layout.ts so the
     // durable default and the double-click reset target agree (#103).
     splitRatio: 0.42,
