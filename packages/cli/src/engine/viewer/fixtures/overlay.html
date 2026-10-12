@@ -1,0 +1,46 @@
+<!--
+  Margin & bleed overlay fixture (overlay.ts). A 400x500px page with 40px
+  margins and a 12px bleed, mirrored binding margins, and one element for each
+  verdict the overlay can reach. The test asserts what is flagged — and that
+  switching the overlay on changes nothing about pagination.
+
+  Page 1 is a recto: content area x 50..370, y 40..460 (320x420). Trim:
+  0..400 x 0..500. Bleed box: -12..412 x -12..512. The viewer lays every page's
+  text in that same column (see decorate.ts).
+-->
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      /* MARKER_CSS + GUTTERPRESS_CSS are injected by the test, exactly as
+         assemble.ts injects them into a real book. */
+      @page { size: 400px 500px; margin: 40px; bleed: 12px; }
+      @page :left  { margin-left: 30px; margin-right: 50px; }
+      @page :right { margin-left: 50px; margin-right: 30px; }
+      body { margin: 0; }
+      p { margin: 0 0 6px; font: 12px/1.2 monospace; }
+      .bar { display: block; height: 14px; background: #36c; margin-bottom: 8px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p id="intro">Ordinary text that fits the content area.</p>
+      <!-- content area is 320px wide (400 - 50 - 30) -->
+      <div class="bar" id="fits" style="width: 320px"></div>
+      <div class="bar" id="into-margin" style="width: 340px"></div>
+      <div class="bar" id="into-bleed" style="margin-left: -55px; width: 410px"></div>
+      <div class="bar" id="off-page" style="margin-left: -75px; width: 520px"></div>
+      <div class="bar gp-behind" id="placed" style="width: 350px"></div>
+      <div id="filler"></div>
+      <p id="last">The last paragraph.</p>
+    </main>
+    <script>
+      document.getElementById("filler").innerHTML = Array.from(
+        { length: 44 },
+        () => "<p>" + "filler ".repeat(15) + "</p>",
+      ).join("");
+    </script>
+    <script src="gutterpress-viewer.js"></script>
+  </body>
+</html>

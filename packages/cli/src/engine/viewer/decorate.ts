@@ -31,6 +31,15 @@ import {
   toFolioPage,
   type PageCounterReset,
 } from "../shared/synthesis.ts";
+import { flushMargins } from "../shared/flush.ts";
+import {
+  OVERLAY_OFF,
+  clearOverlay,
+  documentBleedPt,
+  paintOverlay,
+  type OverlayPage,
+  type OverlaySummary,
+} from "./overlay.ts";
 import {
   PX_PER_PT,
   pageRangeOf,
@@ -71,6 +80,10 @@ export interface DecorationApi {
   warnings: string[];
   /** show/hide trim, safe, and crop guides on the stage */
   setDesigner(on: boolean): void;
+  /** margin & bleed overlay (overlay.ts): draws it, and returns what it found.
+   * Chrome only — pagination is identical with it on or off. */
+  setOverlay(on: boolean): OverlaySummary;
+  overlay(): OverlaySummary;
 }
 
 interface PageCtx {
@@ -128,6 +141,15 @@ export function decorate(
   let blankPages = new Set<number>();
   let paddedPages = new Set<number>();
   const warnings: string[] = [];
+  // Margin & bleed overlay (overlay.ts). The pages are collected by draw() —
+  // which rebuilds every sheet — so the overlay is repainted after each one.
+  let overlayOn = false;
+  let overlayPages: OverlayPage[] = [];
+  let overlaySummary: OverlaySummary = OVERLAY_OFF;
+  const paintOverlayNow = () => {
+    overlaySummary = paintOverlay(overlayPages, layout.strips, documentBleedPt(model));
+    window.dispatchEvent(new CustomEvent("gp:overlay", { detail: overlaySummary }));
+  };
   const api: DecorationApi = {
     redraw: () => draw(),
     sheetFor: (p) => sheets.get(p),
@@ -138,6 +160,18 @@ export function decorate(
     setDesigner(on) {
       document.body.dataset.designer = on ? "on" : "off";
     },
+    setOverlay(on) {
+      overlayOn = on;
+      document.body.dataset.overlay = on ? "on" : "off";
+      if (on) paintOverlayNow();
+      else {
+        clearOverlay();
+        overlaySummary = OVERLAY_OFF;
+        window.dispatchEvent(new CustomEvent("gp:overlay", { detail: overlaySummary }));
+      }
+      return overlaySummary;
+    },
+    overlay: () => overlaySummary,
   };
   // Must run BEFORE `.gp-stage` lands on <body>: after that the stage's own
   // chrome background is indistinguishable from the author's.
@@ -331,6 +365,7 @@ export function decorate(
     warnings.length = 0;
     blankPages = new Set(layout.blankPageIndices);
     paddedPages = new Set(layout.paddedPageIndices);
+    overlayPages = [];
     buildMaps();
     fillXrefs();
 
@@ -408,6 +443,20 @@ export function decorate(
         drawMarginBoxes(sheet, ctx, layout.totalPages - paddedPages.size);
         drawGuides(sheet, ctx);
         drawCropMarks(sheet, ctx);
+        overlayPages.push({
+          index: bookIndex,
+          sheet,
+          strip,
+          geometry: ctx.geometry,
+          // Text sits in the strip's column, not in the page's own margins (a
+          // blank or padding sheet has no text, so its own margins stand).
+          margin:
+            ctx.padded || blankPages.has(bookIndex)
+              ? ctx.geometry.margin
+              : strip.flushEdges?.length
+                ? flushMargins(g.margin, strip.flushEdges)
+                : g.margin,
+        });
       }
 
       // Reserve the full row width even for a solo page in a wrapped run
@@ -453,6 +502,7 @@ export function decorate(
 
       if (opts.designer) checkOverflow(strip, warnings);
     }
+    if (overlayOn) paintOverlayNow();
   }
 
   function drawMarginBoxes(sheet: HTMLElement, ctx: PageCtx, totalPages: number) {

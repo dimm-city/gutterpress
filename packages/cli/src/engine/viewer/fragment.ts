@@ -1198,7 +1198,7 @@ export function strideOf(strip: HTMLElement): number {
  * what the sheets, spacers and column boxes are sized in), and the rest of
  * the fragmenter depends on them.
  */
-function cssZoomOf(el: Element): number {
+export function cssZoomOf(el: Element): number {
   const stage = el.closest(".gp-stage") ?? document.body;
   return new DOMMatrixReadOnly(getComputedStyle(stage).transform).a || 1;
 }
@@ -1270,7 +1270,7 @@ export function wrapGeometry(strip: StripInfo): { perRow: number; shift: number 
   };
 }
 
-function indexInStrip(left: number, top: number, strip: StripInfo): number {
+export function indexInStrip(left: number, top: number, strip: StripInfo): number {
   const { stride, rowStride } = stripMetrics(strip.el);
   const stripBox = strip.el.getBoundingClientRect();
   // `left`/`top` and `stripBox` are client-rect coordinates — scaled by the

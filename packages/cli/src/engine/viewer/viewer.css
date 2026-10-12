@@ -218,6 +218,68 @@
 .gp-marginbox[data-align="center"] > .gp-marginbox-content { justify-content: center; }
 .gp-marginbox[data-align="end"] > .gp-marginbox-content { justify-content: flex-end; }
 
+/* margin & bleed overlay (overlay.ts) -------------------------------- */
+/* One sibling layer per run, ABOVE the strip so the lines stay visible over
+   author backgrounds and art. Absolutely positioned and pointer-transparent:
+   it takes no flow space and no hits, so it cannot move a page break. Exists
+   only while the overlay is on. */
+.gp-ov {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  --gp-ov-margin: #2f80ed;
+  --gp-ov-bleed: 229 72 77;
+  --gp-ov-warn: #f59e0b;
+  --gp-ov-error: #e5484d;
+  --gp-ov-intent: #8b5cf6;
+}
+
+.gp-ov-page {
+  position: absolute;
+}
+
+/* margin box: thin dashed outline of the content area */
+.gp-ov-margin {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px dashed var(--gp-ov-margin);
+}
+
+/* bleed: a translucent band OUTSIDE the trim (its width is the border) */
+.gp-ov-bleed {
+  position: absolute;
+  box-sizing: border-box;
+  border-style: solid;
+  border-color: rgb(var(--gp-ov-bleed) / 0.3);
+}
+
+/* trim: where the sheet will be cut, drawn only when there is bleed */
+.gp-ov-trim {
+  position: absolute;
+  inset: 0;
+  outline: 1px solid rgb(var(--gp-ov-bleed) / 0.9);
+}
+
+/* overflow flags — outline + faint tint, never a box change */
+.gp-ov-flag {
+  position: absolute;
+  box-sizing: border-box;
+}
+.gp-ov-flag[data-kind="margin"] {
+  outline: 2px solid var(--gp-ov-warn);
+  background: rgb(245 158 11 / 0.14);
+}
+.gp-ov-flag[data-kind="bleed"],
+.gp-ov-flag[data-kind="off-page"] {
+  outline: 2px solid var(--gp-ov-error);
+  background: rgb(229 72 77 / 0.16);
+}
+/* placed on purpose (.gp-bleed, .gp-pin, …): present, not a problem */
+.gp-ov-flag[data-kind="intended"] {
+  outline: 1px dotted var(--gp-ov-intent);
+}
+
 /* designer mode ------------------------------------------------------- */
 .gp-guide-trim,
 .gp-guide-safe,
@@ -261,6 +323,7 @@
     transform: none;
   }
   .gp-layer,
+  .gp-ov,
   .gp-warning,
   .gp-guide-trim,
   .gp-guide-safe,
