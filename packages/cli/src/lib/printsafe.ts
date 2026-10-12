@@ -7,6 +7,9 @@
 //
 //  - no-remote-urls           blocks http(s):// and protocol-relative url()
 //  - no-risky-print-effects   warns on properties that can force rasterization
+//  - page-containment         warns on rules that trap `.gp-behind`/`.gp-bleed` art
+//  - preview-cannot-follow    warns on a forced break or `page:` the live preview's
+//                             CSS reader cannot see, so preview and PDF drift apart
 
 import postcss from "postcss";
 import { MARGIN_BOX_IGNORED_PROPERTIES } from "../engine/shared/margin-box-support.ts";
@@ -16,6 +19,7 @@ export const ruleRemoteUrls = "printsafe/no-remote-urls";
 export const ruleRiskyProps = "printsafe/no-risky-print-effects";
 export const ruleSyntax = "printsafe/syntax-error";
 export const rulePageContainment = "printsafe/page-containment";
+export const rulePreviewCannotFollow = "printsafe/preview-cannot-follow";
 
 export interface PrintSafeWarning {
   rule: string;
@@ -243,6 +247,88 @@ function clipsDescendants(decl: postcss.Declaration): boolean {
   return v !== "" && !isInertValue(p, v);
 }
 
+// ── Declarations the live preview cannot see ────────────────────────────────
+//
+// The preview does not paginate with the print fragmenter; it reads the
+// author's forced breaks and `page:` assignments out of the CSS text itself
+// (engine/shared/gcpm-extract.ts) and rebuilds them. That reader is small on
+// purpose, so a declaration it cannot read is honoured by the PDF and
+// invisible to the preview: the page count drifts, and nothing says why.
+// EXACTLY what it misses (see `parseQualifiedRule`, `walk`, `parseDeclarations`
+// there and `FORCED_PAGE_LIKE` in viewer/fragment.ts):
+//
+//   - a `var()`: it compares the value TEXT with page|left|right|recto|verso,
+//     and takes `page:` as the page name verbatim;
+//   - a rule nested inside another rule (CSS nesting), or an at-rule nested in
+//     a rule: it reads qualified rules at the top level and inside
+//     @media/@supports/@layer/@scope/@container/@document only;
+//   - the first declaration after a nested block in the same rule: its text is
+//     glued to the nested block's, so the property name comes out garbled;
+//   - the legacy `page-break-before/after`: it reads `break-*` only.
+//
+// A source-only check, so a `var()` is reported wherever it appears (there is
+// no cascade to say what it resolves to), as `inertValues` does for filters.
+// Delete this rule when the preview reads computed style instead of text.
+
+const PREVIEW_AT_RULES = new Set(["media", "supports", "layer", "scope", "container", "document"]);
+const FORCED_BREAK_VALUE = /^(page|left|right|recto|verso)$/i;
+const LEGACY_FORCED_VALUE = /^(always|left|right)$/i;
+
+/** Why the live preview cannot follow `decl`, or null when it can (or it is not a forced break / page assignment). */
+function previewBlindSpot(decl: postcss.Declaration): string | null {
+  const prop = decl.prop.toLowerCase();
+  const value = decl.value.trim();
+  const written = `${decl.prop}: ${decl.value}`;
+  const isBreak = prop === "break-before" || prop === "break-after";
+  const isLegacy = prop === "page-break-before" || prop === "page-break-after";
+  if (!isBreak && !isLegacy && prop !== "page") return null;
+
+  // Only declarations the reader would otherwise visit: not inside @page,
+  // @keyframes, @font-face and the like, which it skips whole.
+  const rules: postcss.Rule[] = [];
+  for (let p: postcss.Container | postcss.Document | undefined = decl.parent; p; p = p.parent) {
+    if (p.type === "rule") rules.push(p as postcss.Rule);
+    else if (p.type === "atrule") {
+      const name = (p as postcss.AtRule).name.toLowerCase();
+      if (!PREVIEW_AT_RULES.has(name)) return null;
+    }
+  }
+  if (rules.length === 0) return null;
+
+  const consequence =
+    "the PDF honours it but the live preview does not show it, so the two page counts drift apart";
+
+  if (isLegacy) {
+    if (!LEGACY_FORCED_VALUE.test(value)) return null;
+    const modern = prop.replace("page-break-", "break-");
+    const keyword = /^always$/i.test(value) ? "page" : value.toLowerCase();
+    return `"${written}" is the legacy spelling, and the live preview reads only ${modern}: ${consequence}. Write "${modern}: ${keyword}".`;
+  }
+
+  const viaVar = /\bvar\(/i.test(value);
+  if (isBreak && !viaVar && !FORCED_BREAK_VALUE.test(value)) return null;
+  if (prop === "page" && !viaVar && (value === "" || /^auto$/i.test(value))) return null;
+  const what = prop === "page" ? "page assignment" : "forced break";
+
+  if (viaVar) {
+    return `The ${what} "${written}" uses var(): the live preview reads it only as a literal ${
+      prop === "page" ? "page name" : "keyword (page, left, right, recto or verso)"
+    }, so ${consequence}. Write the literal value.`;
+  }
+
+  const parent = decl.parent as postcss.Container;
+  if (rules.length >= 2 || parent.type === "atrule") {
+    const outer = rules[rules.length - 1]!.selector;
+    return `The ${what} "${written}" is inside a nested rule in "${outer}": the live preview reads only top-level rules and rules inside @media, @supports, @layer, @scope, @container and @document, so ${consequence}. Move it to a flat rule of its own.`;
+  }
+  let prev = decl.prev();
+  while (prev && prev.type === "comment") prev = prev.prev();
+  if (prev && (prev.type === "rule" || (prev.type === "atrule" && (prev as postcss.AtRule).nodes))) {
+    return `The ${what} "${written}" comes right after a nested rule in "${rules[0]!.selector}": the live preview's CSS reader drops the first declaration after a nested block, so ${consequence}. Move the declaration above the nested rule.`;
+  }
+  return null;
+}
+
 function nodeLoc(node: postcss.Node): { line: number; column: number } {
   return {
     line: node.source?.start?.line ?? 1,
@@ -383,6 +469,14 @@ function checkCssRaw(css: string, from?: string): PrintSafeWarning[] {
         message: `"${decl.prop}: fit-content" in a @page margin box collapses only the inline axis — the box stays stretched to the full margin band, so a chip/pill renders as a tall rectangle around its text. Add "height: fit-content" (align-self / vertical-align do nothing here).`,
         ...nodeLoc(decl),
       });
+    }
+  });
+
+  // Forced breaks and page assignments the live preview's CSS reader cannot see.
+  root.walkDecls((decl) => {
+    const message = previewBlindSpot(decl);
+    if (message) {
+      warnings.push({ rule: rulePreviewCannotFollow, severity: "warning", message, ...nodeLoc(decl) });
     }
   });
 
