@@ -23,9 +23,15 @@ This project follows [Semantic Versioning](https://semver.org/).
   with zero margin whose content box is the whole sheet. A book that already
   used `@page blank` or `@page full-bleed` as plain page names now also gets
   those pages.
+- **The editor suggests page, chapter and section variants.** After `@page `,
+  `@chapter ` or `@section `, the `@` autocomplete lists the words core and the
+  book's plugins declare, with the declaring plugin as detail. Picking one
+  inserts the word only; any other name still works.
 
 ### Changed
 
+- **Tab accepts the selected autocomplete suggestion**, as Enter does. With no
+  suggestion list open, Tab indents as before.
 - **`@columns` is the one way to use columns.** `@columns 1` to `@columns 5`,
   closed with `@end-columns`, lays its content out in that many columns, and
   `@column-break` moves to the next column. A bare `@columns` is now exactly
