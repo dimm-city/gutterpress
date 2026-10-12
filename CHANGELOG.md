@@ -19,8 +19,8 @@ This project follows [Semantic Versioning](https://semver.org/).
   its explicit `name=`, else its `label=`, else the slug of its own first heading
   (the first heading that sits directly in it), else none. A heading's is its
   `{name=}` or its slug; an image's is its `{name=}` or its file name without the
-  folder or extension. Slugs are lower-case ASCII with runs of other characters
-  as one hyphen. Names are unique within a source file (`-2`, `-3` in reading
+  folder or extension. Slugs are lower-case ASCII with apostrophes dropped
+  (`Founder's House` is `founders-house`) and runs of other characters as one hyphen. Names are unique within a source file (`-2`, `-3` in reading
   order; explicit names are reserved first; blocks share one namespace, headings
   have their own, and two pictures from one file share a name). A `@continue`
   piece keeps its block's name. No `id` is ever added. A plain `data-*`

@@ -31,6 +31,16 @@ describe("nameSlug / nameFromSrc", () => {
     expect(nameSlug("???")).toBe("");
   });
 
+  test("apostrophes are dropped, straight or curly, for blocks, headings and images alike", () => {
+    expect(nameSlug("The Founder's House")).toBe("the-founders-house");
+    expect(nameSlug("Founder’s House")).toBe("founders-house");
+    expect(nameFromSrc("art/Founder%27s%20House.png")).toBe("founders-house");
+    // The typographer turns ' into ’ before the rule runs; headings and labelled blocks still agree.
+    const html = render("@section label=\"Don't Panic\"\n## Hunter's Guide\nx\n");
+    expect(html).toContain('data-name="dont-panic"');
+    expect(html).toContain('<h2 data-name="hunters-guide"');
+  });
+
   test("an image name is the basename without extension, percent-decoded, query and folder dropped", () => {
     expect(nameFromSrc("images/chapter-00/founder-house.png")).toBe("founder-house");
     expect(nameFromSrc("./art/Staff%20of%20Many%20Hungry%20Maws.PNG?v=2#x")).toBe("staff-of-many-hungry-maws");

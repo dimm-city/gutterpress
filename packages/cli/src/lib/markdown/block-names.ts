@@ -33,8 +33,8 @@
  *   Images take an explicit `{name=…}`, else the slug of the file's basename
  *   without its extension (see {@link nameFromSrc}, applied in images.ts).
  *
- * SLUGS: lower-case, accents folded to ASCII, every run of other characters
- * becomes one `-`, trimmed. `slug.ts`'s `slugify` plus a few letters NFKD
+ * SLUGS: lower-case, accents folded to ASCII, apostrophes (' and ’) dropped,
+ * every run of other characters becomes one `-`, trimmed. `slug.ts`'s `slugify` plus a few letters NFKD
  * does not decompose.
  *
  * COLLISIONS. Names are unique within one source file, because a file is
@@ -76,7 +76,9 @@ const FOLDED: Record<string, string> = {
 
 /** The `data-name` slug of `text`: `""` when nothing usable is left. */
 export function nameSlug(text: string): string {
-  return slugify(text.replace(/[ßæœøđðþłı]/gi, (c) => FOLDED[c.toLowerCase()] ?? c));
+  // Apostrophes (' and the typographer's ’) are dropped, not turned into a
+  // hyphen: "Founder's House" is `founders-house`.
+  return slugify(text.replace(/['’]/g, "").replace(/[ßæœøđðþłı]/gi, (c) => FOLDED[c.toLowerCase()] ?? c));
 }
 
 /**
