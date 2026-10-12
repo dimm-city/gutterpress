@@ -56,6 +56,14 @@ The preview shows your book's pages exactly as they will print, and updates as y
   last), with a flick of the mouse wheel over the preview, or with the keys below.
 - **Zoom** with the menu at the top right of the preview: **Fit to width** or 25%–200%. The
   starting zoom is set in Settings → App → Preview.
+- **Check margins and bleed** with the **Margins and bleed** button beside the zoom menu. It draws a
+  dashed outline for each page's margins and a translucent band for the bleed, and outlines
+  anything that spills into them: amber for the margin, red for across the trim. Art you placed
+  on purpose (full-bleed images, pinned art) is outlined softly and not counted. The number on the
+  button is how many elements spill over; hover for the details. It works in Read and Edit, the
+  app remembers your choice, and it is for your eyes only: it is never printed, never in an
+  exported PDF, and it does not move anything. The margins and bleed are the ones your
+  `@page` CSS defines, so add `bleed: 0.125in;` to your `@page` rule to see the bleed.
 
 | Key | Does |
 | --- | --- |

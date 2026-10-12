@@ -5,6 +5,26 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.18]
+
+### Added
+
+- **Margin and bleed overlay in the preview.** A new **Margins and bleed** button
+  beside the zoom menu (Read and Edit; the choice is saved as
+  `preview.marginOverlay`) draws every page's margin box (dashed) and the bleed
+  band outside the trim (translucent red), and outlines content that spills out
+  of the text area: amber into the margin, red across the trim into the bleed or
+  off the page. Art placed on purpose (`.gp-bleed`, `.gp-pin` / `.gp-flush`,
+  `.gp-behind`, `@page full-bleed`) gets a soft dotted outline and is not counted.
+  The button shows how many elements spill over; its tooltip has the rest. The
+  geometry is the book's own: the run's resolved `@page` content box (mirrored
+  `:left` / `:right` and named pages included) and the `@page` `bleed` the print
+  path uses, so a book with no `bleed` shows no band. It is viewer chrome only: it
+  never prints, is not in a built PDF or a published page, adds nothing to your
+  content and cannot change a page break. `gutterpress preview` has no toolbar, so
+  it gets **Alt+M** and a small status badge instead. Preview protocol 9
+  (`setMarginOverlay`, `overlayChanged`).
+
 ## [0.11.17] - 2026-10-12
 
 ### Added

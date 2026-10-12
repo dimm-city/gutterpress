@@ -104,6 +104,23 @@ command produces a PDF in a `dist/` directory next to your project.
 
 Gutterpress supports Chrome, Edge, and other Chromium-based browsers — and nothing else. Firefox and Safari are not supported: the PDF always renders in Chromium, so a preview in another engine measures text differently and places page breaks the PDF will not reproduce. The desktop app previews in its own bundled Chromium, so it always matches; if you preview from the CLI, open the URL it prints in a Chromium-based browser. Either way, embed your fonts with `@font-face` instead of relying on system fonts, so the preview measures the same fonts the PDF prints.
 
+### Check Margins and Bleed
+
+The preview can draw each page's margins and bleed on top of your book, so you can see how content sits against them and spot anything that spills over. It is a review aid only: it never prints, never appears in an exported PDF or a published page, and never moves your content or changes a page break.
+
+- **Desktop app:** the **Margins and bleed** button at the top right of the preview (next to the zoom menu) switches it on and off, in Read and in Edit. The app remembers your choice.
+- **`gutterpress preview`:** press **Alt+M** in the browser. A small badge in the corner shows what it found; press **Alt+M** again to hide it.
+
+With it on, every page shows:
+
+- a thin **dashed blue outline** — the margin box, where your text is laid out;
+- a **translucent red band** around the page edge, the **bleed** — the extra area a printer needs, with a red line at the trim where the page is cut;
+- an **amber outline** on anything that reaches past the margin box into the margin;
+- a **red outline** on anything that crosses the trim into the bleed band or beyond it (cut off in print);
+- a **dotted violet outline**, softly, on art you placed on purpose — `.gp-bleed` images, `.gp-pin` / `.gp-flush` pinned art, `.gp-behind` images and `@page full-bleed` pages. These are expected to leave the text area, so they are shown but not counted. The badge and the desktop button count the amber and red ones.
+
+The margins and bleed are the ones your own CSS defines, not a preset's. Page size, margins (including `@page :left` / `:right`) and `bleed` all come from your `@page` rules; if your book sets no `bleed`, there is no red band and the badge says so. Add `bleed: 0.125in;` to your `@page` rule to see it. The preview lays every page of a section's text in the same column, so on a book with mirrored margins the dashed outline follows the text; a faint dotted outline marks where that page's own `:left` / `:right` margins put them in the PDF.
+
 ## Project Structure
 
 A Gutterpress project is a directory with a `manifest.yaml` file and one or more markdown source files — the same shape `gutterpress new` just created for you, grown out with more chapters:
