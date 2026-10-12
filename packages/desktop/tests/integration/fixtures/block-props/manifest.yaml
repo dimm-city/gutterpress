@@ -1,0 +1,8 @@
+title: "Block properties fixture"
+authors:
+  - "Gutterpress tests"
+source:
+  files:
+    - 01-chapter.md
+extensions:
+  - ./plugins/house

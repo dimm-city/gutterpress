@@ -1,0 +1,4 @@
+/* A bordered card with real padding, so the card's own box is something to right-click. */
+.hs-card { border: 1px solid #888; padding: 14px 18px; margin: 12px 0; }
+.hs-card.hs-tight { padding: 6px 10px; margin: 4px 0; }
+.hs-card.hs-wide { margin-left: -12px; margin-right: -12px; }

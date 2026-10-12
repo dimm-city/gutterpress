@@ -112,19 +112,21 @@ export function classOptions(
     });
   };
 
+  // On an image, core's image vocabulary leads and nothing else competes with it;
+  // elsewhere a plugin's classes lead (they document the marker or element).
+  const onImage = ctx.kind === "image";
   for (const c of CORE_CLASSES) {
-    const likely = ctx.kind === "image" ? c.scope === "image" : c.scope === "any";
+    const likely = onImage ? c.scope === "image" : c.scope === "any";
     add(c.class, c.description, "core", likely ? 3 : 0);
   }
   for (const e of catalog) {
     if (e.source.kind === "book") continue;
     const forThis = ctx.kind === "marker" && ctx.marker !== undefined && e.appliesTo.includes(ctx.marker);
-    // Plugin classes lead on a marker line (they document the marker), trail an image's own.
-    const boost = e.modifier ? (forThis ? 6 : 4) : forThis ? 5 : ctx.kind === "image" ? -1 : 2;
+    const boost = onImage ? -1 : e.modifier ? (forThis ? 6 : 4) : forThis ? 5 : 2;
     add(e.class, e.description, e.source, boost);
   }
   for (const e of catalog) {
-    if (e.source.kind === "book") add(e.class, e.description, e.source, ctx.kind === "image" ? -2 : 1);
+    if (e.source.kind === "book") add(e.class, e.description, e.source, onImage ? -2 : 1);
   }
   return options;
 }

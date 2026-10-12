@@ -139,6 +139,9 @@ describe("classOptions", () => {
     const o = classOptions({ kind: "image", dot: true }, catalog).sort((a, b) => (b.boost ?? 0) - (a.boost ?? 0));
     expect(labels(o).indexOf("gp-right")).toBeLessThan(labels(o).indexOf("gp-no-break"));
     expect(labels(o).indexOf("gp-no-break")).toBeLessThan(labels(o).indexOf("dc-chevron"));
+    // a section modifier is not an image option: it does not outrank core's image classes
+    expect(labels(o).indexOf("gp-right")).toBeLessThan(labels(o).indexOf("dc-snug"));
+    expect(labels(o).indexOf("gp-pin")).toBeLessThan(labels(o).indexOf("dc-avoid-split"));
   });
 
   test("everything in core's offered vocabulary is listed", () => {
