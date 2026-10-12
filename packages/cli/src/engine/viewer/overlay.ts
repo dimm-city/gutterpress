@@ -21,6 +21,13 @@
  *    drawn too, as a faint dotted outline — the PDF's contract for that page.
  *  - bleed: `pageGeometry()`, the compiler's own resolution — the document's
  *    base `@page { bleed }` (a named page's `bleed` is ignored by print too).
+ *    When the stylesheet declares none, the project's `page.bleed` (a preset
+ *    such as `dtrpg`, passed in by preview assembly as <meta name="gp-inset-bleed">)
+ *    says the sheet already CONTAINS a bleed, on the top, bottom and OUTER edge
+ *    only (outer = right on a recto, left on a verso; the binding edge has none —
+ *    DriveThruRPG's interior file). CSS `bleed` cannot say that (it is symmetric
+ *    and grows the page), so it is drawn here from the config and nowhere else:
+ *    the PDF is untouched.
  *
  * How it looks is set in ONE place — the `--gp-ov-*` tokens at the top of the
  * overlay section of viewer.css. The app lets a user change the colour and a
@@ -56,6 +63,8 @@ export interface Rect {
 
 /** The three nested boxes of one page, in one unit, origin at the trim's top-left. */
 export interface PageBoxes {
+  /** the whole sheet; the layer's origin, which every other rect is measured from */
+  host: Rect;
   /** the cut page */
   trim: Rect;
   /** the area text is laid out in (trim minus margins) */
@@ -85,6 +94,7 @@ export function pageBoxes(
   const h = g.height * scale;
   const b = Math.max(0, bleed) * scale;
   return {
+    host: { x: 0, y: 0, w, h },
     trim: { x: 0, y: 0, w, h },
     content: {
       x: margin.left * scale,
@@ -93,6 +103,33 @@ export function pageBoxes(
       h: h - (margin.top + margin.bottom) * scale,
     },
     bleedBox: { x: -b, y: -b, w: w + 2 * b, h: h + 2 * b },
+    bleed: b,
+  };
+}
+
+export type PageSide = "recto" | "verso";
+
+/**
+ * Boxes for a sheet that already contains its bleed (`page.bleed`): the sheet
+ * is the bleed box, and the trim is the sheet pulled in by `bleed` on the top,
+ * bottom and OUTER edge — the right edge of a recto, the left edge of a verso.
+ * The binding edge has no bleed. Margins are the sheet's own (the `@page`
+ * margins are measured from the sheet edge), so `content` is not moved.
+ */
+export function insetPageBoxes(
+  g: Pick<PageGeometry, "width" | "height">,
+  margin: PageGeometry["margin"],
+  bleed: number,
+  side: PageSide,
+  scale = 1,
+): PageBoxes {
+  const sheet = pageBoxes(g, margin, 0, scale);
+  const b = Math.max(0, bleed) * scale;
+  return {
+    host: sheet.host,
+    trim: { x: side === "verso" ? b : 0, y: b, w: sheet.host.w - b, h: sheet.host.h - 2 * b },
+    content: sheet.content,
+    bleedBox: sheet.host,
     bleed: b,
   };
 }
@@ -172,6 +209,8 @@ export interface OverlaySummary {
   intended: number;
   /** the document's bleed in pt (0 = the book defines none) */
   bleedPt: number;
+  /** present (true) when that bleed is the project's `page.bleed`, inside the sheet, not CSS */
+  bleedInSheet?: true;
 }
 
 export const OVERLAY_OFF: OverlaySummary = { on: false, issues: 0, intended: 0, bleedPt: 0 };
@@ -195,6 +234,18 @@ export interface OverlayPage {
   printMargin: PageGeometry["margin"];
 }
 
+/**
+ * The in-sheet bleed (pt) the project's config declares, from the preview
+ * page's own `<meta name="gp-inset-bleed">` — present only in the live
+ * preview's book.html, never in a built or published document. 0 = none.
+ */
+export function configInsetBleedPt(): number {
+  const v = parseFloat(
+    document.querySelector('meta[name="gp-inset-bleed"]')?.getAttribute("content") ?? "",
+  );
+  return Number.isFinite(v) && v > 0 ? v : 0;
+}
+
 const SKIP = new Set(["SCRIPT", "STYLE", "LINK", "TEMPLATE", "BR", "WBR", "SOURCE", "TRACK", "META"]);
 /** Sub-pixel tolerance, in CSS px (unscaled). */
 const TOL_PX = 1;
@@ -216,12 +267,17 @@ function place(el: HTMLElement, r: Rect): void {
 /** The margin as a REGION: the trim with the content box cut out (even-odd, so exact at any zoom). */
 function marginTint(b: PageBoxes): HTMLDivElement {
   const el = div("gp-ov-tint");
-  const { x: l, y: t, w, h } = b.content;
-  const r = l + w;
-  const bt = t + h;
+  const t = b.trim;
+  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+  const l = clamp(b.content.x, t.x, t.x + t.w);
+  const r = clamp(b.content.x + b.content.w, t.x, t.x + t.w);
+  const top = clamp(b.content.y, t.y, t.y + t.h);
+  const bot = clamp(b.content.y + b.content.h, t.y, t.y + t.h);
+  const x2 = t.x + t.w;
+  const y2 = t.y + t.h;
   el.style.clipPath =
-    `polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ` +
-    `${l}px ${t}px, ${l}px ${bt}px, ${r}px ${bt}px, ${r}px ${t}px, ${l}px ${t}px)`;
+    `polygon(evenodd, ${t.x}px ${t.y}px, ${x2}px ${t.y}px, ${x2}px ${y2}px, ${t.x}px ${y2}px, ${t.x}px ${t.y}px, ` +
+    `${l}px ${top}px, ${l}px ${bot}px, ${r}px ${bot}px, ${r}px ${top}px, ${l}px ${top}px)`;
   return el;
 }
 
@@ -251,7 +307,11 @@ export function paintOverlay(
   pages: readonly OverlayPage[],
   strips: readonly StripInfo[],
   bleedPt: number,
+  insetBleedPt = 0,
 ): OverlaySummary {
+  // CSS `@page { bleed }` wins; the config's in-sheet bleed only fills in when
+  // the stylesheet declares none.
+  const inSheet = bleedPt <= 0 && insetBleedPt > 0;
   clearOverlay();
   const layers = new Map<Element, HTMLElement>();
   const painted = new Map<number, Painted>();
@@ -265,17 +325,29 @@ export function paintOverlay(
       run.appendChild(layer);
       layers.set(run, layer);
     }
-    const boxes = pageBoxes(p.geometry, p.margin, bleedPt, PX_PER_PT);
-    const host = div("gp-ov-page", boxes.trim);
+    const boxes = inSheet
+      ? insetPageBoxes(
+          p.geometry,
+          p.margin,
+          insetBleedPt,
+          p.sheet.dataset.side === "verso" ? "verso" : "recto",
+          PX_PER_PT,
+        )
+      : pageBoxes(p.geometry, p.margin, bleedPt, PX_PER_PT);
+    const host = div("gp-ov-page", boxes.host);
     host.style.left = p.sheet.style.left;
     host.style.top = p.sheet.style.top;
     host.dataset.page = String(p.index + 1);
     if (boxes.bleed > 0) {
-      const band = div("gp-ov-bleed");
-      band.style.inset = `${-boxes.bleed}px`;
-      band.style.borderWidth = `${boxes.bleed}px`;
+      // The band is the bleed box minus the trim: a border whose width on each
+      // side is how far the trim sits inside it (0 on a binding edge).
+      const bb = boxes.bleedBox;
+      const t = boxes.trim;
+      const band = div("gp-ov-bleed", bb);
+      band.style.borderWidth =
+        `${t.y - bb.y}px ${bb.x + bb.w - (t.x + t.w)}px ${bb.y + bb.h - (t.y + t.h)}px ${t.x - bb.x}px`;
       host.appendChild(band);
-      host.appendChild(div("gp-ov-trim"));
+      host.appendChild(div("gp-ov-trim", t));
     }
     host.appendChild(marginTint(boxes));
     host.appendChild(div("gp-ov-margin", boxes.content));
@@ -338,5 +410,7 @@ export function paintOverlay(
     el.dataset.kind = f.kind;
     f.host.appendChild(el);
   }
-  return { on: true, issues, intended, bleedPt: bleedPt };
+  return inSheet
+    ? { on: true, issues, intended, bleedPt: insetBleedPt, bleedInSheet: true }
+    : { on: true, issues, intended, bleedPt };
 }

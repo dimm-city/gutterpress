@@ -35,6 +35,7 @@ import { flushMargins } from "../shared/flush.ts";
 import {
   OVERLAY_OFF,
   clearOverlay,
+  configInsetBleedPt,
   documentBleedPt,
   paintOverlay,
   sanitizeOverlayStyle,
@@ -149,7 +150,7 @@ export function decorate(
   let overlayPages: OverlayPage[] = [];
   let overlaySummary: OverlaySummary = OVERLAY_OFF;
   const paintOverlayNow = () => {
-    overlaySummary = paintOverlay(overlayPages, layout.strips, documentBleedPt(model));
+    overlaySummary = paintOverlay(overlayPages, layout.strips, documentBleedPt(model), configInsetBleedPt());
     window.dispatchEvent(new CustomEvent("gp:overlay", { detail: overlaySummary }));
   };
   const api: DecorationApi = {

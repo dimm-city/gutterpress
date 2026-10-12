@@ -24,6 +24,7 @@ import { runPageBox } from "./fragment.ts";
 import {
   classifyRect,
   documentBleedPt,
+  insetPageBoxes,
   marginsDiffer,
   pageBoxes,
   sanitizeOverlayStyle,
@@ -139,6 +140,43 @@ describe("classifying an element's box", () => {
   });
 });
 
+describe("a bleed the sheet already contains (page.bleed)", () => {
+  const g = { width: 621, height: 810 };
+  const m = { top: 54, right: 45, bottom: 63, left: 63 };
+
+  test("the trim is inset on the top, bottom and OUTER edge: right on a recto, left on a verso", () => {
+    const recto = insetPageBoxes(g, m, 9, "recto");
+    expect(recto.trim).toEqual({ x: 0, y: 9, w: 612, h: 792 });
+    const verso = insetPageBoxes(g, m, 9, "verso");
+    expect(verso.trim).toEqual({ x: 9, y: 9, w: 612, h: 792 });
+    // the sheet is the bleed box either way; the binding edge has no bleed
+    expect(recto.bleedBox).toEqual({ x: 0, y: 0, w: 621, h: 810 });
+    expect(verso.bleedBox).toEqual(recto.bleedBox);
+    // margins are the sheet's own: they do not move
+    expect(recto.content).toEqual(verso.content);
+    expect(recto.content).toEqual({ x: 63, y: 54, w: 621 - 108, h: 810 - 117 });
+  });
+
+  test("content crossing the trim into the band is `bleed`; past the sheet is off the page", () => {
+    const recto = insetPageBoxes(g, m, 9, "recto");
+    const verso = insetPageBoxes(g, m, 9, "verso");
+    const at = (x: number, y: number, w: number, h: number): Rect => ({ x, y, w, h });
+    // reaches the right edge: the outer edge of a recto (bleed), the binding edge of a verso (margin: nothing is cut there)
+    const toRight = at(100, 100, 521, 10);
+    expect(classifyRect(toRight, recto)).toBe("bleed");
+    expect(classifyRect(toRight, verso)).toBe("margin");
+    // the left edge is the mirror image
+    const toLeft = at(0, 100, 300, 10);
+    expect(classifyRect(toLeft, recto)).toBe("margin");
+    expect(classifyRect(toLeft, verso)).toBe("bleed");
+    // into the top band
+    expect(classifyRect(at(100, 3, 100, 10), recto)).toBe("bleed");
+    // beyond the sheet: cut off
+    expect(classifyRect(at(100, 100, 600, 10), recto)).toBe("off-page");
+    expect(classifyRect(at(-3, 100, 100, 10), recto)).toBe("off-page");
+  });
+});
+
 describe("the look a host may set", () => {
   test("only a hex colour and a known strength get through", () => {
     expect(sanitizeOverlayStyle({ color: "#00AA55", strength: "strong" })).toEqual({ color: "#00AA55", strength: "strong" });
@@ -162,12 +200,12 @@ afterAll(async () => {
   await closeBrowser();
 });
 
-async function withFixture<T>(run: (url: string) => Promise<T>): Promise<T> {
+async function withFixture<T>(run: (url: string) => Promise<T>, name = "overlay.html"): Promise<T> {
   const dir = await fsp.mkdtemp(path.join(FIXTURES_DIR, "..", ".overlay-"));
   try {
-    const source = await fsp.readFile(path.join(FIXTURES_DIR, "overlay.html"), "utf8");
+    const source = await fsp.readFile(path.join(FIXTURES_DIR, name), "utf8");
     await fsp.writeFile(
-      path.join(dir, "overlay.html"),
+      path.join(dir, name),
       source.replace("</style>", `</style>\n<style>${MARKER_CSS}\n${GUTTERPRESS_CSS}</style>`),
       "utf8",
     );
@@ -175,7 +213,7 @@ async function withFixture<T>(run: (url: string) => Promise<T>): Promise<T> {
       await getAssetPath("engine/gutterpress-viewer.js"),
       path.join(dir, "gutterpress-viewer.js"),
     );
-    const { url, close } = await serveDir(dir, "overlay.html");
+    const { url, close } = await serveDir(dir, name);
     try {
       return await run(url);
     } finally {
@@ -395,6 +433,53 @@ testIf(
         await page.close();
       }
     });
+  },
+  RENDER_TEST_TIMEOUT_MS,
+);
+
+testIf(
+  "a sheet that contains its bleed (page.bleed) shows the trim inset on the outer edge of each page, and nothing moves",
+  async () => {
+    await withFixture(async (url) => {
+      const page = await (await getBrowser()).newPage();
+      try {
+        await page.goto(url);
+        await page.waitForFunction("window.Gutterpress?.totalPages > 0");
+        const pagesBefore = await page.evaluate(() => (window as any).Gutterpress.totalPages as number);
+        const summary = await page.evaluate(() => (window as any).Gutterpress.decoration.setOverlay(true));
+        expect(summary).toEqual({ on: true, issues: 4, intended: 0, bleedPt: 9, bleedInSheet: true });
+
+        const drawn = await page.evaluate(() =>
+          Array.from(document.querySelectorAll<HTMLElement>(".gp-ov-page")).slice(0, 2).map((pg) => {
+            const t = pg.querySelector<HTMLElement>(".gp-ov-trim")!;
+            const band = pg.querySelector<HTMLElement>(".gp-ov-bleed")!;
+            return {
+              page: pg.dataset.page,
+              host: [pg.style.width, pg.style.height],
+              trim: [t.style.left, t.style.top, t.style.width, t.style.height],
+              band: getComputedStyle(band).borderWidth,
+              flags: Array.from(pg.querySelectorAll<HTMLElement>(".gp-ov-flag")).map((f) => f.dataset.kind),
+            };
+          }),
+        );
+        // (9pt = 12px) the host is the whole sheet; the trim is pulled in on top, bottom and OUTER edge
+        expect(drawn[0]).toMatchObject({ page: "1", host: ["400px", "500px"], trim: ["0px", "12px", "388px", "476px"] });
+        expect(drawn[1]).toMatchObject({ page: "2", host: ["400px", "500px"], trim: ["12px", "12px", "388px", "476px"] });
+        // band widths: top right bottom left — the binding edge has none
+        expect(drawn[0]!.band).toBe("12px 12px 12px 0px");
+        expect(drawn[1]!.band).toBe("12px 0px 12px 12px");
+        // content that crosses the trim into the band is red; the other end is just margin
+        expect([...drawn[0]!.flags].sort()).toEqual(["bleed", "margin"]);
+        expect([...drawn[1]!.flags].sort()).toEqual(["bleed", "margin"]);
+
+        // …and CSS `@page { bleed }`, where present, wins (the other fixture)
+        expect(await page.evaluate(() => (window as any).Gutterpress.totalPages)).toBe(pagesBefore);
+        await page.evaluate(() => (window as any).Gutterpress.decoration.setOverlay(false));
+        expect(await page.evaluate(() => (window as any).Gutterpress.totalPages)).toBe(pagesBefore);
+      } finally {
+        await page.close();
+      }
+    }, "overlay-inset.html");
   },
   RENDER_TEST_TIMEOUT_MS,
 );

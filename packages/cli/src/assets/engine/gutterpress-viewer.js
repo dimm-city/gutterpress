@@ -281,6 +281,7 @@
   --gp-ov-tint: 0.1;            /* opacity of the tint over the margin area */
   --gp-ov-bleed-color: #e5484d; /* bleed band + trim line */
   --gp-ov-bleed-alpha: 0.45;    /* opacity of the bleed band */
+  --gp-ov-trim-color: #8a0b18;  /* the trim line: darker than the band so it reads as an edge */
   --gp-ov-flag-width: 2px;      /* overflow flag outline */
   --gp-ov-warn: #f59e0b;        /* reaches into the margin */
   --gp-ov-error: #e5484d;       /* crosses the trim / leaves the page */
@@ -351,11 +352,11 @@
 }
 
 /* trim: where the sheet will be cut, drawn only when there is bleed — solid,
-   just inside the edge so it never paints over the band */
+   just inside the edge so it never paints over the band (overlay.ts sizes and
+   places it: the whole sheet, or the sheet less an in-sheet bleed) */
 .gp-ov-trim {
   position: absolute;
-  inset: 0;
-  outline: var(--gp-ov-w) solid var(--gp-ov-bleed-color);
+  outline: var(--gp-ov-w) solid var(--gp-ov-trim-color);
   outline-offset: calc(-1 * var(--gp-ov-w));
 }
 
@@ -2208,6 +2209,7 @@
     const h = g.height * scale;
     const b = Math.max(0, bleed) * scale;
     return {
+      host: { x: 0, y: 0, w, h },
       trim: { x: 0, y: 0, w, h },
       content: {
         x: margin.left * scale,
@@ -2216,6 +2218,17 @@
         h: h - (margin.top + margin.bottom) * scale
       },
       bleedBox: { x: -b, y: -b, w: w + 2 * b, h: h + 2 * b },
+      bleed: b
+    };
+  }
+  function insetPageBoxes(g, margin, bleed, side, scale = 1) {
+    const sheet = pageBoxes(g, margin, 0, scale);
+    const b = Math.max(0, bleed) * scale;
+    return {
+      host: sheet.host,
+      trim: { x: side === "verso" ? b : 0, y: b, w: sheet.host.w - b, h: sheet.host.h - 2 * b },
+      content: sheet.content,
+      bleedBox: sheet.host,
       bleed: b
     };
   }
@@ -2249,6 +2262,10 @@
   function marginsDiffer(a, b) {
     return ["top", "right", "bottom", "left"].some((k) => Math.abs(a[k] - b[k]) > 0.5);
   }
+  function configInsetBleedPt() {
+    const v = parseFloat(document.querySelector('meta[name="gp-inset-bleed"]')?.getAttribute("content") ?? "");
+    return Number.isFinite(v) && v > 0 ? v : 0;
+  }
   var SKIP = new Set(["SCRIPT", "STYLE", "LINK", "TEMPLATE", "BR", "WBR", "SOURCE", "TRACK", "META"]);
   var TOL_PX = 1;
   function div(cls, box) {
@@ -2266,17 +2283,23 @@
   }
   function marginTint(b) {
     const el = div("gp-ov-tint");
-    const { x: l, y: t, w, h } = b.content;
-    const r = l + w;
-    const bt = t + h;
-    el.style.clipPath = `polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ` + `${l}px ${t}px, ${l}px ${bt}px, ${r}px ${bt}px, ${r}px ${t}px, ${l}px ${t}px)`;
+    const t = b.trim;
+    const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+    const l = clamp(b.content.x, t.x, t.x + t.w);
+    const r = clamp(b.content.x + b.content.w, t.x, t.x + t.w);
+    const top = clamp(b.content.y, t.y, t.y + t.h);
+    const bot = clamp(b.content.y + b.content.h, t.y, t.y + t.h);
+    const x2 = t.x + t.w;
+    const y2 = t.y + t.h;
+    el.style.clipPath = `polygon(evenodd, ${t.x}px ${t.y}px, ${x2}px ${t.y}px, ${x2}px ${y2}px, ${t.x}px ${y2}px, ${t.x}px ${t.y}px, ` + `${l}px ${top}px, ${l}px ${bot}px, ${r}px ${bot}px, ${r}px ${top}px, ${l}px ${top}px)`;
     return el;
   }
   function clearOverlay() {
     for (const layer of Array.from(document.querySelectorAll(".gp-ov")))
       layer.remove();
   }
-  function paintOverlay(pages, strips, bleedPt) {
+  function paintOverlay(pages, strips, bleedPt, insetBleedPt = 0) {
+    const inSheet = bleedPt <= 0 && insetBleedPt > 0;
     clearOverlay();
     const layers = new Map;
     const painted = new Map;
@@ -2290,17 +2313,18 @@
         run.appendChild(layer);
         layers.set(run, layer);
       }
-      const boxes = pageBoxes(p.geometry, p.margin, bleedPt, PX_PER_PT);
-      const host = div("gp-ov-page", boxes.trim);
+      const boxes = inSheet ? insetPageBoxes(p.geometry, p.margin, insetBleedPt, p.sheet.dataset.side === "verso" ? "verso" : "recto", PX_PER_PT) : pageBoxes(p.geometry, p.margin, bleedPt, PX_PER_PT);
+      const host = div("gp-ov-page", boxes.host);
       host.style.left = p.sheet.style.left;
       host.style.top = p.sheet.style.top;
       host.dataset.page = String(p.index + 1);
       if (boxes.bleed > 0) {
-        const band = div("gp-ov-bleed");
-        band.style.inset = `${-boxes.bleed}px`;
-        band.style.borderWidth = `${boxes.bleed}px`;
+        const bb = boxes.bleedBox;
+        const t = boxes.trim;
+        const band = div("gp-ov-bleed", bb);
+        band.style.borderWidth = `${t.y - bb.y}px ${bb.x + bb.w - (t.x + t.w)}px ${bb.y + bb.h - (t.y + t.h)}px ${t.x - bb.x}px`;
         host.appendChild(band);
-        host.appendChild(div("gp-ov-trim"));
+        host.appendChild(div("gp-ov-trim", t));
       }
       host.appendChild(marginTint(boxes));
       host.appendChild(div("gp-ov-margin", boxes.content));
@@ -2364,7 +2388,7 @@
       el.dataset.kind = f.kind;
       f.host.appendChild(el);
     }
-    return { on: true, issues, intended, bleedPt };
+    return inSheet ? { on: true, issues, intended, bleedPt: insetBleedPt, bleedInSheet: true } : { on: true, issues, intended, bleedPt };
   }
 
   // src/engine/viewer/decorate.ts
@@ -2399,7 +2423,7 @@
     let overlayPages = [];
     let overlaySummary = OVERLAY_OFF;
     const paintOverlayNow = () => {
-      overlaySummary = paintOverlay(overlayPages, layout.strips, documentBleedPt(model));
+      overlaySummary = paintOverlay(overlayPages, layout.strips, documentBleedPt(model), configInsetBleedPt());
       window.dispatchEvent(new CustomEvent("gp:overlay", { detail: overlaySummary }));
     };
     const api = {

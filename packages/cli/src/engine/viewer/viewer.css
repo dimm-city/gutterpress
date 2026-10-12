@@ -230,6 +230,7 @@
   --gp-ov-tint: 0.1;            /* opacity of the tint over the margin area */
   --gp-ov-bleed-color: #e5484d; /* bleed band + trim line */
   --gp-ov-bleed-alpha: 0.45;    /* opacity of the bleed band */
+  --gp-ov-trim-color: #8a0b18;  /* the trim line: darker than the band so it reads as an edge */
   --gp-ov-flag-width: 2px;      /* overflow flag outline */
   --gp-ov-warn: #f59e0b;        /* reaches into the margin */
   --gp-ov-error: #e5484d;       /* crosses the trim / leaves the page */
@@ -300,11 +301,11 @@
 }
 
 /* trim: where the sheet will be cut, drawn only when there is bleed — solid,
-   just inside the edge so it never paints over the band */
+   just inside the edge so it never paints over the band (overlay.ts sizes and
+   places it: the whole sheet, or the sheet less an in-sheet bleed) */
 .gp-ov-trim {
   position: absolute;
-  inset: 0;
-  outline: var(--gp-ov-w) solid var(--gp-ov-bleed-color);
+  outline: var(--gp-ov-w) solid var(--gp-ov-trim-color);
   outline-offset: calc(-1 * var(--gp-ov-w));
 }
 
