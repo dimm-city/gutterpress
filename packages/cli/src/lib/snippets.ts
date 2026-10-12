@@ -220,6 +220,25 @@ export interface MarkerComponent {
   snippet?: string;
 }
 
+/**
+ * One `page` / `chapter` / `section` variant the book can use (`@page blank`,
+ * `@section card`): the bare word, the class it adds, and who declares it.
+ * Core's own (`blank`, `full-bleed`) have `source: { kind: "core" }`. `label`
+ * and `snippet` are the declaring plugin's group values for that kind, passed
+ * through as declared (`snippet` is a path relative to the extension, unread).
+ * Data only — what the renderer does with a variant is `markers.js`'s.
+ */
+export interface LocationVariant {
+  kind: "page" | "chapter" | "section";
+  /** The word after the marker: `@page <word>`. */
+  word: string;
+  /** The class it adds to the emitted element. */
+  class: string;
+  source: Extract<SnippetSource, { kind: "extension" | "core" }>;
+  label?: string;
+  snippet?: string;
+}
+
 /** An extension's declared snippets folder, relative to the extension, or
  *  null when it declares none (or one that escapes its folder). */
 async function declaredSnippetsFolder(entry: ProjectExtensionEntry): Promise<string | null> {
@@ -255,7 +274,7 @@ async function declaredMarkers(
  */
 async function collectLibrary(
   projectDir: string,
-): Promise<{ snippets: SnippetEntry[]; components: MarkerComponent[] }> {
+): Promise<{ snippets: SnippetEntry[]; components: MarkerComponent[]; locationVariants: LocationVariant[] }> {
   const groups: Array<{ label: string; snippets: SnippetEntry[] }> = [];
   const components: MarkerComponent[] = [];
 
@@ -283,10 +302,13 @@ async function collectLibrary(
   // reported by validation / Problems, so here they just mean "no components
   // listed" rather than a failed listing; snippet files are still listed.
   let registry: Map<string, { deprecated?: string; variants?: Record<string, string>; selfClosing?: boolean }> | undefined;
+  let variantRegistry = buildDeclaredMarkerRegistry([]).locationVariants;
   try {
-    registry = buildDeclaredMarkerRegistry(
+    const built = buildDeclaredMarkerRegistry(
       loaded.flatMap((l) => (l.markers ? [{ pluginName: l.entry.label, markers: l.markers }] : [])),
     );
+    registry = built;
+    variantRegistry = built.locationVariants;
   } catch {
     registry = undefined;
   }
@@ -353,7 +375,26 @@ async function collectLibrary(
     if (best) component.snippet = best.body;
   }
   components.sort((a, b) => a.name.localeCompare(b.name));
-  return { snippets, components };
+
+  // Page / chapter / section variants: core's own, then each extension's.
+  // When the registry failed to build, only core's are listed.
+  const sourceOf = new Map(loaded.map((l) => [l.entry.label, l.source] as const));
+  const locationVariants: LocationVariant[] = [];
+  for (const kind of ["page", "chapter", "section"] as const) {
+    for (const [word, v] of variantRegistry[kind]) {
+      const source = sourceOf.get(v.owner) ?? { kind: "core" as const };
+      locationVariants.push({
+        kind,
+        word,
+        class: v.class,
+        source,
+        ...(v.label ? { label: v.label } : {}),
+        ...(v.snippet ? { snippet: v.snippet } : {}),
+      });
+    }
+  }
+  locationVariants.sort((a, b) => a.kind.localeCompare(b.kind) || a.word.localeCompare(b.word));
+  return { snippets, components, locationVariants };
 }
 
 /** Every snippet the project can insert, from every level — see {@link collectLibrary}. */
@@ -365,4 +406,10 @@ export async function listMergedSnippets(projectDir: string): Promise<SnippetEnt
  *  winning example snippet (book > extension > core) — see {@link collectLibrary}. */
 export async function listMarkerComponents(projectDir: string): Promise<MarkerComponent[]> {
   return (await collectLibrary(projectDir)).components;
+}
+
+/** Every `page` / `chapter` / `section` variant the project can use — core's
+ *  own plus each enabled extension's — see {@link LocationVariant}. */
+export async function listLocationVariants(projectDir: string): Promise<LocationVariant[]> {
+  return (await collectLibrary(projectDir)).locationVariants;
 }

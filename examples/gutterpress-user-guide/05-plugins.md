@@ -570,6 +570,31 @@ the Problems panel and ignored, and `@` autocomplete inserts just the marker
 `autoCloseAt`, and a `validate` on it always sees empty `blocks` and `text` —
 check its `attrs` and `variant` instead.
 
+### Page, chapter and section variants {#plugin-location-variants}
+
+Components are styled by what they are; pages, chapters and sections are
+styled by **where** a component sits. A plugin can declare *variants* of the
+three core markers `@page`, `@chapter` and `@section`, and a book then styles
+a component by its location: `.page.dc-page-chapter-start .section { … }`.
+
+```js
+export const markers = {
+  page: {
+    variants: { "chapter-start": "dc-page-chapter-start", intro: "dc-page-intro" },
+  },
+  chapter: { variants: { rules: "dc-chapter-rules" } },
+  section: { variants: { card: "dc-section-card" } },
+};
+```
+
+- `@page chapter-start` renders `<div class="page dc-page-chapter-start" data-page="chapter-start">`. The class string is yours — core adds no prefix. Author classes come after it, and `@section card` works the same way with `data-section`.
+- Raw classes stay valid and are never rewritten: `@page .dc-page-chapter-start` is the same page.
+- A word that is not a variant is still a free name; nothing warns, because existing books use free page names. Only a near-miss of a declared variant (`@page chapter-strat`) is reported, as an unknown variant.
+- `@chapter`'s bare word is normally its label (`@chapter C.01`). If it is a declared chapter variant (`@chapter rules`) it is the variant instead, and the chapter has no label. For both, use the class: `@chapter C.01 .dc-chapter-rules`.
+- Only `variants` (plus an optional `label` and `snippet`, which the editor's variant list passes through) is allowed on these names. Any other key — `class`, `tag`, `alias`, `validate` — is the usual "core marker name" load error. A variant word must be unique across every loaded plugin and core's own (`@page blank` and `@page full-bleed` are core's); a clash names both sides.
+
+Variants only add a class. They are data, like the rest of `markers`.
+
 ### Components that rebuild their content: declare, then transform
 
 Some components need more than a wrapper and classes — a card that turns its

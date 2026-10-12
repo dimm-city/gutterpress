@@ -53,7 +53,9 @@ export type ReadText = (relPath: string) => Promise<string>;
  * returned something unusable).
  *
  * `unknown_variant` is emitted for a declared marker (container or
- * `section: true`) whose bare word is not one of its declared `variants`.
+ * `section: true`) whose bare word is not one of its declared `variants`, and
+ * for an `@page` / `@section` word that is a near-miss of a declared page /
+ * section variant (any other word there is a free name and stays silent).
  *
  * There is deliberately no `section_without_page`: a @section with no open
  * @page is valid authoring (17/17 false positives across two real books).

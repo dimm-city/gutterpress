@@ -230,6 +230,21 @@ export interface MarkerComponent {
   snippet?: string;
 }
 
+/**
+ * A `page` / `chapter` / `section` variant (`@page blank`, `@section card`)
+ * the book can use. Mirrors the lib's `LocationVariant` by hand.
+ */
+export interface LocationVariant {
+  kind: 'page' | 'chapter' | 'section';
+  /** The word after the marker: `@page <word>`. */
+  word: string;
+  /** The class it adds to the emitted element. */
+  class: string;
+  source: Extract<SnippetSource, { kind: 'extension' | 'core' }>;
+  label?: string;
+  snippet?: string;
+}
+
 /** Static publish-provider metadata (no project needed) — used by the
  *  Settings → Connections tab to classify + label stored credentials. */
 export interface PublishProviderStaticInfo {
@@ -540,6 +555,8 @@ export const api = {
     list: (projectDir: string) => post<SnippetEntry[]>('/api/snip/list', { projectDir }),
     /** The project's plugin components, each with its winning example snippet. */
     components: (projectDir: string) => post<MarkerComponent[]>('/api/snip/components', { projectDir }),
+    /** The page / chapter / section variants the project can use: core's plus each extension's. */
+    variants: (projectDir: string) => post<LocationVariant[]>('/api/snip/variants', { projectDir }),
     /** Save a snippet body under the project's snippets/ folder. Always
      *  writes to the PROJECT, even when the list currently shown includes
      *  extension-provided entries (#242) — there is no way to target an

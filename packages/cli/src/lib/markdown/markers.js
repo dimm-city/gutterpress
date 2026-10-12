@@ -92,6 +92,31 @@
  *   makes a marker a core @section (`@npc-stat wirephreak` is
  *   `@section .dc-npc-stat .dc-wirephreak`); containers also expose their
  *   tokens (`meta.kind` etc., see renderer.ts) for a plugin's own core rule.
+ *
+ *   LOCATION VARIANTS. The reserved kinds `page`, `chapter` and `section` may
+ *   be declared in a variants-only form (any other key throws the core-name
+ *   error above):
+ *
+ *     page:    { variants: { 'chapter-start': 'dc-page-chapter-start' } },
+ *     chapter: { variants: { rules: 'dc-chapter-rules' } },
+ *     section: { variants: { card: 'dc-section-card' } },
+ *
+ *   `@page chapter-start` then emits `<div class="page dc-page-chapter-start"
+ *   data-page="chapter-start">` (author classes appended; `@section` likewise
+ *   with `data-section`), so a plugin or book styles a component by where it
+ *   sits: `.page.dc-page-chapter-start .section { … }`. The class string is
+ *   the plugin's own; core adds no prefix. A bare word that is NOT a declared
+ *   variant is a free name exactly as before (no warning — existing books use
+ *   them; only a near-miss of a declared variant warns, as `unknown_variant`).
+ *   `@chapter`'s bare word is its label (`data-chapter-label`, `.chapter-opener`)
+ *   unless it is a declared chapter variant, in which case it is the variant
+ *   and the chapter has no label (use `@chapter C.01 .dc-chapter-rules` for
+ *   both). Raw classes stay valid and are never rewritten: `@page
+ *   .dc-page-chapter-start` is the same page. A variant word is unique across
+ *   plugins and core. Core declares two page variants through the same
+ *   registry (`CORE_DECLARED_MARKERS`): `blank` and `full-bleed`, styled in
+ *   MARKER_CSS. The merged words live on the registry's `locationVariants`
+ *   property (they are not markers: no `@end-` closer).
  */
 
 /**
@@ -910,7 +935,63 @@ const CORE_DECLARED_MARKERS = {
     preset: { variant: '2' },
     variants: { 1: 'gp-columns-1', 2: 'gp-columns-2', 3: 'gp-columns-3', 4: 'gp-columns-4', 5: 'gp-columns-5' },
   },
+  // The reserved kinds `page`/`chapter`/`section` take a variants-only
+  // declaration (see LOCATION_KINDS): core's own page variants, styled in
+  // MARKER_CSS. Core declares no chapter or section variants.
+  //   @page blank       — a page with empty margin boxes (no running head/folio).
+  //   @page full-bleed  — a page with zero margin: its content box is the sheet.
+  page: { variants: { blank: 'gp-page-blank', 'full-bleed': 'gp-page-full-bleed' } },
 };
+
+/**
+ * The reserved kinds whose bare word may be a plugin-declared VARIANT
+ * (`export const markers = { page: { variants: { intro: 'dc-page-intro' } } }`).
+ * A variant adds a class to the `.page` / `.chapter` / `.section` the marker
+ * already emits, so plugins and book CSS style a component by its location
+ * (`.page.dc-page-intro .section { … }`). It is not a new marker: only the
+ * keys in LOCATION_KEYS are accepted, and any other key on a reserved name
+ * still throws the "core marker name" error.
+ */
+const LOCATION_KINDS = ['page', 'chapter', 'section'];
+const LOCATION_KEYS = ['variants', 'label', 'snippet'];
+
+function isLocationDeclaration(name, rawDecl) {
+  return (
+    LOCATION_KINDS.includes(name) &&
+    rawDecl !== null &&
+    typeof rawDecl === 'object' &&
+    !Array.isArray(rawDecl) &&
+    Object.hasOwn(rawDecl, 'variants') &&
+    Object.keys(rawDecl).every((k) => LOCATION_KEYS.includes(k))
+  );
+}
+
+/** Validate one `page`/`chapter` variants declaration and merge it into `into`. */
+function addLocationVariants(kind, rawDecl, pluginName, into) {
+  const { variants, label, snippet } = rawDecl;
+  const where = `Plugin "${pluginName}" declares @${kind} variants`;
+  if (variants === null || typeof variants !== 'object' || Array.isArray(variants)) {
+    throw new Error(`${where} that are not a plain object of { word: 'class' }.`);
+  }
+  if (label !== undefined && typeof label !== 'string') throw new Error(`${where} with a \`label\` that is not a string.`);
+  if (snippet !== undefined && typeof snippet !== 'string') throw new Error(`${where} with a \`snippet\` that is not a string.`);
+  for (const [word, cls] of Object.entries(variants)) {
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(word)) {
+      throw new Error(`${where} with an invalid word "${word}" — use letters, digits, hyphens and underscores.`);
+    }
+    if (typeof cls !== 'string' || !cls.trim()) {
+      throw new Error(`${where}: variant "${word}" needs a non-empty class string.`);
+    }
+    const taken = into[kind].get(word);
+    if (taken) {
+      throw new Error(
+        `@${kind} variant "${word}" is declared by both plugin "${taken.owner}" and plugin "${pluginName}". ` +
+          `Variant words must be unique across every loaded plugin — rename one of them.`
+      );
+    }
+    into[kind].set(word, { class: cls.trim(), owner: pluginName, ...(label ? { label } : {}), ...(snippet ? { snippet } : {}) });
+  }
+}
 
 /**
  * Merge every loaded plugin's `markers` export into ONE flat, resolved
@@ -926,21 +1007,31 @@ const CORE_DECLARED_MARKERS = {
  *   One entry per LOADED plugin that declared a non-empty `markers` export,
  *   in plugin load order. A plugin with no `markers` export is simply
  *   omitted by the caller — this function never sees it.
- * @returns {Map<string, object>} empty when `sources` is empty.
+ * @typedef {{ class: string, owner: string, label?: string, snippet?: string }} LocationVariant
+ * @returns {Map<string, object> & { locationVariants: { page: Map<string, LocationVariant>, chapter: Map<string, LocationVariant>, section: Map<string, LocationVariant> } }}
+ *   the container markers (core's `@columns` always), plus the merged
+ *   `page`/`chapter`/`section` variants as `locationVariants.<kind>: Map<word, { class,
+ *   owner, label?, snippet? }>` (core's own page variants always).
  */
 export function buildDeclaredMarkerRegistry(sources) {
   const rawRegistry = new Map();
   const originOf = new Map();
+  const locationVariants = { page: new Map(), chapter: new Map(), section: new Map() };
 
   for (const { pluginName, markers } of [{ pluginName: CORE_MARKER_OWNER, markers: CORE_DECLARED_MARKERS }, ...sources]) {
     if (!markers) continue;
     for (const [name, rawDecl] of Object.entries(markers)) {
       validateDeclaredMarkerName(name, pluginName);
 
+      if (isLocationDeclaration(name, rawDecl)) {
+        addLocationVariants(name, rawDecl, pluginName, locationVariants);
+        continue;
+      }
+
       if (KNOWN_KINDS.includes(name) || (pluginName !== CORE_MARKER_OWNER && name in CORE_DECLARED_MARKERS)) {
         throw new Error(
           `Plugin "${pluginName}" declares marker "@${name}", which is a core Gutterpress marker name ` +
-            `(${[...KNOWN_KINDS, ...Object.keys(CORE_DECLARED_MARKERS)].map((k) => `@${k}`).join(', ')}). ` +
+            `(${[...KNOWN_KINDS, ...Object.keys(CORE_DECLARED_MARKERS).filter((k) => !KNOWN_KINDS.includes(k))].map((k) => `@${k}`).join(', ')}). ` +
             `Core marker names cannot be shadowed — ` +
             `rename the plugin's marker.`
         );
@@ -965,6 +1056,10 @@ export function buildDeclaredMarkerRegistry(sources) {
   for (const [name, rawDecl] of rawRegistry) {
     resolved.set(name, resolveMarkerDeclaration(name, rawDecl, rawRegistry, originOf));
   }
+  // `page`/`chapter`/`section` variants ride on the registry as a property, NOT as map
+  // entries: they are not markers (no `@end-` closer, no recognised `@word`),
+  // and every consumer that iterates the map means containers.
+  resolved.locationVariants = locationVariants;
   return resolved;
 }
 
@@ -1071,6 +1166,18 @@ function variantClassFor(decl, word) {
 }
 
 /**
+ * The declared variant `word` is probably a typo of, or null. A case-only
+ * difference counts; a word too short is within reach of every short variant
+ * name, so it gets no guess.
+ */
+function nearVariant(word, variants) {
+  return (
+    variants.find((v) => v.toLowerCase() === word.toLowerCase()) ||
+    (word.length >= 3 ? nearestDeclaredMarkerName(word, variants) : null)
+  );
+}
+
+/**
  * unknown_variant: the bare word after a DECLARED marker (`@card featured`)
  * selects one of the marker's declared `variants`. A word that is not one of
  * them styles nothing — it only lands in `data-<kind>` — so a typo
@@ -1084,10 +1191,7 @@ function warnUnknownVariant(env, meta, decl) {
   if (!word) return;
   const variants = Object.keys(decl.variants || {});
   if (variants.includes(word)) return;
-  // Too short a word is within reach of every short variant name — no guess.
-  const near =
-    variants.find((v) => v.toLowerCase() === word.toLowerCase()) ||
-    (word.length >= 3 ? nearestDeclaredMarkerName(word, variants) : null);
+  const near = nearVariant(word, variants);
   warn(
     env,
     meta.__line,
@@ -1095,6 +1199,26 @@ function warnUnknownVariant(env, meta, decl) {
     `"${word}" is not a variant of @${meta.kind}, so it adds no styling. ` +
       (variants.length ? `Variants: ${variants.join(', ')}.` : `@${meta.kind} has no variants.`) +
       (near ? ` Did you mean "${near}"?` : ''),
+    meta
+  );
+}
+
+/**
+ * `@page chapter-strat` when a page variant `chapter-start` is declared: the
+ * word is still a free page (or section) name — existing books use them — so
+ * the only evidence it was meant as a variant is a near-miss. Same
+ * `unknown_variant` channel as a declared marker's; no near-miss, no warning.
+ */
+function warnNearMissVariant(env, meta, kind, variants) {
+  const words = [...variants.keys()];
+  const near = nearVariant(meta.name, words);
+  if (!near) return;
+  warn(
+    env,
+    meta.__line,
+    'unknown_variant',
+    `"${meta.name}" is not a variant of @${kind}, so it is only a ${kind} name and adds no styling. ` +
+      `Variants: ${words.join(', ')}. Did you mean "${near}"?`,
     meta
   );
 }
@@ -1116,6 +1240,9 @@ export default function plugin(md, pluginOptions = {}) {
       ? options.declaredMarkers
       : buildDeclaredMarkerRegistry([]);
   const declaredWords = declaredKindWords(declaredMarkers);
+  // `page`/`chapter`/`section` variants (core's + every plugin's), word -> { class, … }.
+  // A caller-built Map without the property still gets core's own.
+  const locationVariants = declaredMarkers.locationVariants || buildDeclaredMarkerRegistry([]).locationVariants;
 
   function markerBlock(state, startLine, endLine, silent) {
     const pos = state.bMarks[startLine] + state.tShift[startLine];
@@ -1582,13 +1709,18 @@ export default function plugin(md, pluginOptions = {}) {
       // page of a multi-page chapter (the wrapper is cloned per page). See
       // ADR 0009.
       t.meta = { line: meta.__line };
-      const classes = meta.attrs?.class || '';
+      // The bare word is a declared chapter variant (`@chapter rules`) OR the
+      // label (`@chapter C.01`) — never both. A variant adds its class and
+      // leaves the chapter unlabelled; any other word is the label.
+      const variant = locationVariants.chapter.get(meta.name);
+      const label = variant ? '' : meta.name;
+      const classes = [variant?.class, meta.attrs?.class].filter(Boolean).join(' ');
       addClasses(t, 'chapter', classes);
-      // Pass meta.name so attachDataAttrs emits `data-chapter-label="<name>"`
+      // Pass the label so attachDataAttrs emits `data-chapter-label="<name>"`
       // (e.g. data-chapter-label="C.01"). Consumer plugins use this to render
       // the chapter's badge / opener UI; this module treats it as opaque
       // metadata.
-      attachDataAttrs(t, 'chapter', meta.name, meta.attrs || {});
+      attachDataAttrs(t, 'chapter', label, meta.attrs || {});
       // Resolve chapter counter class: explicit `.chapter-N` in the class
       // list takes priority over the `ch="N"` attribute.
       const explicit = (classes.match(/(?:^|\s)(chapter-\d+)(?=\s|$)/) || [])[1] || '';
@@ -1596,7 +1728,7 @@ export default function plugin(md, pluginOptions = {}) {
       stack.open(
         {
           kind: 'chapter',
-          label: meta.name || '',
+          label: label || '',
           counterClass: explicit || fromAttr,
           openerEmitted: false,
         },
@@ -1634,9 +1766,16 @@ export default function plugin(md, pluginOptions = {}) {
       // the author repeating .chapter-N on every @page directive.
       const counterClass = chapter ? chapter.counterClass : '';
       const tokens = explicit ? explicit.split(/\s+/) : [];
-      const merged = (counterClass && !tokens.includes(counterClass))
+      const withCounter = (counterClass && !tokens.includes(counterClass))
         ? (explicit ? `${explicit} ${counterClass}` : counterClass)
         : explicit;
+      // A bare word that is a declared page variant (`@page blank`) adds its
+      // class ahead of the author's. Any other word is a free page name, as
+      // ever; only a near-miss of a variant warns. `data-page` is emitted
+      // for both, unchanged.
+      const variant = locationVariants.page.get(meta.name);
+      if (!variant && meta.name) warnNearMissVariant(state.env, meta, 'page', locationVariants.page);
+      const merged = [variant?.class, withCounter].filter(Boolean).join(' ');
       addClasses(t, 'page', merged);
       attachDataAttrs(t, 'page', meta.name, meta.attrs || {});
       // Propagate the chapter label so CSS can target the chapter-opener
@@ -1702,7 +1841,12 @@ export default function plugin(md, pluginOptions = {}) {
     function openSection(meta, inColumns = false) {
       const t = new state.Token('layout_section_open', 'div', 1);
       const component = meta.__component || null;
-      addClasses(t, 'section', meta.attrs && meta.attrs.class ? meta.attrs.class : '');
+      // A bare word that is a declared section variant (`@section card`) adds
+      // its class ahead of the author's; `data-section` is emitted either
+      // way. A declared component's word is its own variant (sectionMetaFor)
+      // and a @continue reopening replays the same name, so both stay right.
+      const variant = component ? null : locationVariants.section.get(meta.name);
+      addClasses(t, 'section', [variant?.class, meta.attrs && meta.attrs.class].filter(Boolean).join(' '));
       if (component) attachDataAttrs(t, component.kind, component.variant, meta.attrs || {});
       else attachDataAttrs(t, 'section', meta.name, meta.attrs || {});
       // `line` is the 1-based marker line, threaded for the source-range
@@ -1860,6 +2004,9 @@ export default function plugin(md, pluginOptions = {}) {
           );
         }
 
+        if (meta.name && !locationVariants.section.has(meta.name)) {
+          warnNearMissVariant(state.env, meta, 'section', locationVariants.section);
+        }
         openSection(meta, keep > 0);
         continue;
       }
@@ -2237,6 +2384,17 @@ export default function plugin(md, pluginOptions = {}) {
  * Core ships no spanner class: a spanning heading is the end of one @columns run and the start of the next.
  *
  */
+// The sixteen CSS Paged Media margin boxes, each emptied — what a core page
+// variant below means by "no running head or folio". Spelled out, not a
+// shorthand: there is no `@page { all margin boxes: none }`.
+const NO_MARGIN_BOXES = [
+  'top-left-corner', 'top-left', 'top-center', 'top-right', 'top-right-corner',
+  'bottom-left-corner', 'bottom-left', 'bottom-center', 'bottom-right', 'bottom-right-corner',
+  'left-top', 'left-middle', 'left-bottom', 'right-top', 'right-middle', 'right-bottom',
+]
+  .map((box) => `  @${box} { content: none; }`)
+  .join('\n');
+
 export const MARKER_CSS = `
 /* The UA default of 8px body margin is a screen affordance with no meaning
    in paged media, and engines disagree about it: a polyfill that treats the
@@ -2270,5 +2428,33 @@ body { margin: 0; }
 :where(p > img:only-child, figure > img) { width: fit-content; max-width: 100%; height: auto; vertical-align: bottom; }
 :where(p) > :where(img:not([class])) { max-height: calc(var(--gp-content-h) - 4px); object-fit: contain; }
 :where(figure) { break-inside: avoid; }
+
+/* Core page variants — \`@page blank\` and \`@page full-bleed\` (CORE_DECLARED_MARKERS).
+   Each is the \`.page\` the marker already emits plus one class; the class
+   assigns the page to a NAMED page, and the named \`@page\` block below is
+   plain CSS Paged Media. Authors never write these names.
+
+   SPEC GAP FILLED: none. Named pages (\`@page <name>\`, \`page:\`) and margin
+   box \`content: none\` are standard and implemented in Chromium; this is
+   author vocabulary that expands to them (permanent, like @columns), not a
+   shim, so nothing here is deleted when Chrome catches up. Both pages are
+   named \`gp-\`, which the shrink-to-fit audit (engine/compiler/build.ts)
+   leaves out of its per-page limits, so they cannot loosen it for other pages.
+
+   The folio still COUNTS on these pages (only what is drawn is cleared), and
+   a book that assigns \`page:\` to every \`.page\` in its own unlayered CSS
+   overrides the assignment, as any unlayered rule overrides this layer. */
+@page gp-page-blank {
+${NO_MARGIN_BOXES}
+}
+.page.gp-page-blank { page: gp-page-blank; }
+
+/* full-bleed: zero page margin, so the content box IS the sheet. The margin
+   boxes are cleared too — with zero margins they would land on the trim line. */
+@page gp-page-full-bleed {
+  margin: 0;
+${NO_MARGIN_BOXES}
+}
+.page.gp-page-full-bleed { page: gp-page-full-bleed; }
 
 `;

@@ -5,6 +5,25 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Plugins can provide page, chapter and section variants.** A plugin's
+  `markers` export may declare `page`, `chapter` and `section` with just
+  `variants` (`page: { variants: { 'chapter-start': 'dc-page-chapter-start' } }`).
+  `@page chapter-start` and `@section card` then add the variant's class, so a
+  book styles by location (`.page.dc-page-chapter-start .section { … }`).
+  `data-page` / `data-section` are still emitted, other words stay free names
+  (a near-miss of a declared variant gets an unknown-variant warning), and raw
+  classes work as before. On `@chapter`, a declared variant word is the variant
+  and any other word is the label as before. The same word from two plugins is
+  a load error naming both. The component picker's data gains
+  `listLocationVariants` (and `api.snip.variants` in the desktop app).
+- **Core page variants.** `@page blank` is a page with no running head or folio
+  drawn (it still counts in the numbering), and `@page full-bleed` is a page
+  with zero margin whose content box is the whole sheet. A book that already
+  used `@page blank` or `@page full-bleed` as plain page names now also gets
+  those pages.
+
 ### Changed
 
 - **`@columns` is the one way to use columns.** `@columns 1` to `@columns 5`,

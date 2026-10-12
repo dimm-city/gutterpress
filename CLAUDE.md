@@ -453,7 +453,7 @@ prefixed. The split between the two modules is by ROLE, not owner:
   `.gp-column-break` / `.gp-continued`, plus the minimal CSS that DOM needs.
   It also holds core's own DECLARED markers (`CORE_DECLARED_MARKERS`), seeded
   into the same registry plugins declare into and reserved like the
-  structural kinds: today only `@columns [1-5]`, a plain `div.gp-columns`
+  structural kinds: `@columns [1-5]` (plus two page variants, below), a plain `div.gp-columns`
   (+ `.gp-columns-N`) styled by `GUTTERPRESS_CSS`, never a `.section`.
 - `gutterpress-css.ts` (`GUTTERPRESS_CSS`) — the author **utility
   vocabulary**: image flow/size/spacing, `.gp-shape`, `.gp-pin` + edges,
@@ -471,6 +471,20 @@ prefixed. The split between the two modules is by ROLE, not owner:
 
 `assemble.ts` injects `MARKER_CSS` then `GUTTERPRESS_CSS`, before user plugin
 CSS and the author's stylesheets, so author rules win at equal specificity.
+
+**Page, chapter and section variants.** The reserved kinds `page`, `chapter`
+and `section` can be declared by a plugin in a variants-only form
+(`page: { variants: { intro: 'dc-page-intro' } }`; any other key still throws
+the core-name error). The same registry merges the words (one word, one owner;
+a duplicate across plugins is a load error) and the marker's bare word then adds
+the variant's class to the `.page` / `.chapter` / `.section`, so plugins and
+books style by location (`.page.dc-page-intro .section`). `data-page` /
+`data-section` are still emitted, a non-variant word stays a free name (only a
+near-miss warns), raw classes are never rewritten, and `@chapter`'s bare word is
+its label unless it is a declared chapter variant. Core declares `@columns` and
+two page variants (`blank`, `full-bleed`: plain named `@page` blocks in
+`MARKER_CSS`, no spec gap behind them, so nothing to delete when Chrome
+catches up); it declares no chapter or section variants.
 
 Marker attributes accept both the compact spelling (`@section .gp-columns-2`)
 and markdown-it-attrs braces (`@section {.gp-columns-2}`). They are equivalent
