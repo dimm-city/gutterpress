@@ -62,6 +62,13 @@ import {
   tokenizeImageAttrs,
   type ImagePropertiesValue,
 } from "$lib/editor/image-classes";
+import { isBlockMarkerName, parseMarkerLine } from "$lib/editor/block-attrs";
+import {
+  editBlockProperties,
+  type BlockPropertiesModel,
+  type BlockPropertiesValue,
+} from "$lib/editor/block-properties";
+import type { ClassCatalogEntry } from "$lib/api";
 import {
   locateSelectionInSource,
   touchesStructuralSyntax,
@@ -116,6 +123,15 @@ export interface ContextMenuDeps {
   }) => Promise<string | null>;
   /** Edit every supported image property in one modal and apply once. */
   promptImageProperties: (initial: ImagePropertiesValue) => Promise<ImagePropertiesValue | null>;
+  /** Edit a marker block's properties in one modal; null = cancelled. */
+  promptBlockProperties: (
+    model: BlockPropertiesModel,
+    initial: BlockPropertiesValue,
+  ) => Promise<BlockPropertiesValue | null>;
+  /** The classes the project's extensions document (modifiers become toggles). */
+  classCatalog: () => readonly ClassCatalogEntry[];
+  /** True for a plugin marker that closes itself (no `@end-` line, so no columns). */
+  isSelfClosingMarker: (name: string) => boolean;
   /** Open the editor, reveal the chapter, and place its caret on the source line. */
   goToSource: (chapter: string, line: number) => void;
   /** Switch the left panel to the Media tab ("Reveal in Media panel"). */
@@ -370,7 +386,7 @@ export class ContextMenuController {
       case "link":
         return this.linkItems(target, blockSlice, gen);
       case "marker":
-        return this.markerItems(target, gen, pageMarker);
+        return this.markerItems(target, gen, pageMarker, blockSlice);
       case "block":
         return this.blockItems(target, gen, anchor, pageMarker);
       default:
@@ -654,16 +670,73 @@ export class ContextMenuController {
         enabled: true,
         run: () => this.promptEditMarkerLine(chapter, range, gen, "Edit page marker"),
       },
+      this.blockPropertiesItem("page-marker-properties", "Page properties…", chapter, range, gen),
     ];
+  }
+
+  /**
+   * "Block properties…": classes, break before and columns for the marker block
+   * whose marker line is `range`'s first line. The whole read → dialog → plan flow
+   * is `editBlockProperties` (shared with the source editor); this only commits
+   * the line patch it plans, through the same engine as every other menu edit.
+   */
+  private blockPropertiesItem(
+    id: string,
+    label: string,
+    chapter: string,
+    range: SourceRange,
+    gen: number,
+  ): ContextMenuItem {
+    return {
+      id,
+      label,
+      enabled: true,
+      run: async () => {
+        const source = await this.readChapterSource(chapter);
+        if (source == null) {
+          this.deps.toastError("Couldn't locate this marker in the source.");
+          this.close();
+          return;
+        }
+        // The dialog is a modal over the page; the menu has done its job.
+        this.close();
+        const outcome = await editBlockProperties({
+          source,
+          line: range[0],
+          catalog: this.deps.classCatalog(),
+          isSelfClosingMarker: this.deps.isSelfClosingMarker,
+          prompt: this.deps.promptBlockProperties,
+        });
+        switch (outcome.kind) {
+          case "unreadable":
+            this.deps.toastError("Couldn't read this marker. Open it in the editor to change it.");
+            return;
+          case "error":
+            this.deps.toastError(outcome.message);
+            return;
+          case "patch": {
+            const { patch } = outcome;
+            await this.commit(chapter, patch.range, patch.expected, patch.replacement, gen);
+            return;
+          }
+          default:
+            return;
+        }
+      },
+    };
   }
 
   private markerItems(
     target: ContextTarget,
     gen: number,
     pageMarker: PageMarkerTarget | null,
+    blockSlice: string | null,
   ): ContextMenuItem[] {
     const chapter = target.chapter!;
     const range = target.range!;
+    // A break or a closer has no properties; only a marker that opens a block does.
+    const marker = blockSlice == null ? null : parseMarkerLine(blockSlice.split(/\r\n?|\n/, 1)[0]!);
+    const hasProperties = marker != null && isBlockMarkerName(marker.name);
     const items: ContextMenuItem[] = [
       {
         id: "marker-edit",
@@ -671,6 +744,9 @@ export class ContextMenuController {
         enabled: true,
         run: () => this.promptEditMarkerLine(chapter, range, gen, "Edit marker"),
       },
+      ...(hasProperties
+        ? [this.blockPropertiesItem("marker-properties", "Block properties…", chapter, range, gen)]
+        : []),
       ...this.pageMarkerItems(target, pageMarker, gen),
       this.goToSourceItem(target),
     ];

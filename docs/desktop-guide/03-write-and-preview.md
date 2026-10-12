@@ -35,6 +35,55 @@ table, an image or a [snippet](04-snippets.md).
 automatically unless you turn that off in Settings → Saving. The indicator in the status bar
 reads **Edits saved**, **Saving…** or **Unsaved changes**.
 
+### Pick a class from a list
+
+Classes are how you tune a block or an image: `.gp-no-break`, `.gp-right`, a plugin's
+`.dc-snug`. You do not have to remember them. In the editor, type a `.`
+
+- after a marker word, as in `@section .`, or
+- inside curly braces on any element, as in `## Title {.` or `![Map](map.png){.`
+
+and a list appears. It starts with Gutterpress's own `gp-*` classes, then the classes each
+plugin your book uses documents in its component catalog, then the classes your book's own
+stylesheets use. Each suggestion has a one-line description where there is one, and says where
+it comes from. On an image the image classes come first; on a marker line a plugin's
+classes for that marker do.
+
+Keep typing to narrow the list, then press **Tab** or **Enter** to accept (**Esc** dismisses it).
+**Ctrl+Space** asks for the list inside empty braces. The list works the same way as the `@`
+suggestions for [markers and components](04-snippets.md#insert-a-component-with-).
+
+### Change a block's properties
+
+A marker block (`@section`, `@skill`, `@gear`, a plugin's own markers, `@page`) can be tuned from a
+dialog, without typing a class or a marker by hand. Open it either way:
+
+- **in the preview**, right-click the block's own edge or padding (not a paragraph inside it) and
+  choose **Block properties…**; inside a page the menu also has **Page properties…** for the
+  page itself;
+- **in the editor**, put the cursor on the marker line and press **Alt+Enter** (Option+Enter on
+  a Mac).
+
+The dialog has:
+
+- **Keep together** keeps the block whole: it moves to the next page rather than splitting
+  (adds `.gp-no-break` to the marker line).
+- **A section for each plugin** your book uses, with the modifiers its component catalog
+  documents. For Dimm City these are **Avoid split** (`.dc-avoid-split`) and **Snug**
+  (`.dc-snug`). A plugin that documents a modifier gets a toggle here with no change to
+  Gutterpress.
+- **Break before** puts a `@page-break` line directly above the block, so it starts on a new
+  page. Turning it off removes that line (and any other page breaks stacked directly above).
+- **Columns** wraps the block's content in `@columns N` … `@end-columns` (1 to 5), changes N,
+  or unwraps it. It needs the block's own closing line (`@end-section`, `@end-skill`); without
+  one the dialog says so and leaves it unavailable. A block that already has its own
+  `@columns` run in the middle of its content is left for you to edit in the source.
+
+Only what you change is edited. The variant word, `#id`, `label="…"`, other classes and
+whichever spelling you use (`.class` or `{.class}`) stay exactly as written, and Apply with
+nothing changed writes nothing. Edits made from the editor go into its undo history
+(Ctrl+Z).
+
 ## Your book's files and images
 
 The left panel has three tabs:

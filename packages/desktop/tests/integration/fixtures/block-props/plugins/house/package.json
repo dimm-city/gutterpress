@@ -1,0 +1,11 @@
+{
+  "name": "house",
+  "version": "1.0.0",
+  "description": "A tiny house-style plugin for the Block properties drive.",
+  "type": "module",
+  "main": "plugin.js",
+  "gutterpress": {
+    "styles": ["styles/house.css"],
+    "components": "components.yaml"
+  }
+}

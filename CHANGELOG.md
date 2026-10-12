@@ -43,6 +43,40 @@ This project follows [Semantic Versioning](https://semver.org/).
   content and cannot change a page break. `gutterpress preview` has no toolbar, so
   it gets **Alt+M** and a small status badge instead. Preview protocol 9
   (`setMarginOverlay(on, { color, strength })`, `overlayChanged`).
+- **Block properties for marker blocks (desktop).** Right-click a marker in the
+  preview (the block's own edge or padding; **Block properties…**, and **Page
+  properties…** for the enclosing page) or press **Alt+Enter** on a marker line in the
+  source editor to open one small dialog for `@section`, `@skill`, `@gear`, `@page` and
+  any other marker. **Keep together** toggles core's `.gp-no-break`; each loaded
+  plugin adds a section with the modifiers its component catalog documents (a
+  `modifier:` entry in `components.yaml`, e.g. gp-dimm-city's **Avoid split**
+  `.dc-avoid-split` and **Snug** `.dc-snug`), so nothing is hard-coded to one
+  plugin and a retired catalog entry is never offered. **Break before** inserts or
+  removes a `@page-break` line directly above the block. **Columns** wraps the
+  block's content in `@columns N` … `@end-columns`, changes N, or unwraps it (it needs
+  the block's own `@end-…` line, and says so when it has none). The edit is
+  token-preserving, like image properties: the marker line is tokenized the way core
+  parses it, so the compact `.class` and brace `{.class}` spellings, `class=`, `#id`,
+  `key=value`, a quoted `label="…"`, the variant word, indentation and trailing space
+  all survive in order; only the facet changed is touched, a toggle repeated is a
+  no-op, and confirming an unchanged dialog writes nothing. One minimal line patch is
+  applied through the commit engine from the preview and straight into the editor's
+  undo history from the source. Pure, Svelte-free `block-attrs.ts` and
+  `block-properties.ts`, covered by unit tests and a new drive
+  (`tests/integration/block-properties.pw.mjs`, run in CI's "App behaviour" job).
+- **`.class` autocomplete in the source editor (desktop).** Typing `.` after a marker
+  word (`@section .`) or inside `{ … }` attribute braces on any element (`## Title {.`,
+  `![](a.png){.`) lists classes, with a one-line description each where the catalog
+  has one and where it comes from: core's `gp-*` vocabulary (`core-classes.ts`,
+  mirrored from `GP_CLASSES` with a drift gate that fails when core adds or drops a
+  class), the classes each loaded plugin documents in its component catalog, and the
+  classes the book's own active stylesheets use. Likely ones come first (an image's
+  classes on an image, a plugin's classes for that marker on its marker line); Tab
+  and Enter accept, as for the `@` suggestions, and Ctrl+Space asks inside empty
+  braces. Not offered inside code. A new host route, `POST /api/snip/classes`, reads
+  the catalogs (a small, tolerant reader of the entry fields core has not yet
+  defined; it is meant to be replaced when core grows a catalog reader) and the
+  stylesheets.
 
 ### Fixed
 
