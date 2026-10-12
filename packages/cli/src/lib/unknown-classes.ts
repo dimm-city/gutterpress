@@ -36,7 +36,8 @@ export interface ClassUse {
 export function classesInTokens(tokens: readonly Token[]): Map<string, ClassUse> {
   const uses = new Map<string, ClassUse>();
   const note = (token: Token, line: number): void => {
-    const cls = token.attrGet("class");
+    // Read `attrs` directly: a plugin may hand back a token-shaped plain object.
+    const cls = token.attrs?.find(([key]) => key === "class")?.[1];
     if (!cls) return;
     for (const c of cls.split(/\s+/)) {
       if (!c || c.startsWith("gp-") || EMITTED.has(c) || /^chapter-\d+$/.test(c)) continue;
