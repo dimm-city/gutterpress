@@ -9,6 +9,42 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Target one block from your stylesheet with `data-name`.** Every block a marker
+  opens (`@chapter`, `@spread`, `@page`, `@section`, `@columns`, a plugin's
+  markers and their variants), every heading and every image now carries a
+  `data-name`, so a book's CSS can restyle one instance without a markdown edit:
+  `[data-name="sporos-hollow"]:not(.gp-continued) { break-inside: avoid; }`,
+  `.section[data-name="hit-the-streets"] { break-before: page; }`,
+  `img[data-name="founder-house"] { float: right; width: 40%; }`. A block's name is
+  its explicit `name=`, else its `label=`, else the slug of its own first heading
+  (the first heading that sits directly in it), else none. A heading's is its
+  `{name=}` or its slug; an image's is its `{name=}` or its file name without the
+  folder or extension. Slugs are lower-case ASCII with apostrophes dropped
+  (`Founder's House` is `founders-house`) and runs of other characters as one hyphen. Names are unique within a source file (`-2`, `-3` in reading
+  order; explicit names are reserved first; blocks share one namespace, headings
+  have their own, and two pictures from one file share a name). A `@continue`
+  piece keeps its block's name. No `id` is ever added. A plain `data-*`
+  attribute that only your selectors read; the markdown overrides (`gp-*` classes,
+  `@page-break`, `@columns`, plugin modifiers, `{#id}`) are unchanged. See "Targeting
+  one block from your stylesheet" in the user guide.
+- **Table alignment is `data-align`.** The markdown alignment row (`|:--|:-:|--:|`)
+  now sets `data-align="left|center|right"` on each cell instead of an inline
+  `style="text-align:…"`, so a stylesheet can change one column without
+  `!important`. The rule sits above any extension and below your own `styles:`, so
+  a markdown alignment still beats a look's default (the Field Guide's 181 aligned
+  cells print exactly as before).
+- **`validate` warns when the live preview cannot follow a break.** New CSS rule
+  `printsafe/preview-cannot-follow` (warning; switch it off or silence one site like
+  any `printsafe/` rule) reports a forced `break-before`/`break-after` or a `page:`
+  assignment written with `var()`, inside a nested rule, right after a nested
+  rule, or the legacy `page-break-before: always`: the PDF honours them, the
+  preview's CSS reader does not, and the page counts drift apart.
+- **`validate` warns on a class no stylesheet mentions.** A class on a markdown
+  element or marker line (`{.hilite}`, `@section .pannel`) that matches no selector
+  in Gutterpress's own CSS, the loaded plugins' CSS or the book's stylesheets
+  (local `@import`s followed) is a warning from the layout-markers check, once per
+  class per file, with a "did you mean" when one is near. Never an error. `gp-*`
+  classes stay with the existing unknown-class diagnostic.
 - **Margin and bleed overlay in the preview.** A new **Margins and bleed** button
   beside the zoom menu (Read and Edit; the choice is saved as
   `preview.marginOverlay`) draws every page's margin box (a 2px dashed outline over a
@@ -80,6 +116,12 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **`@page-break #id` keeps its id, and `@continue` stops repeating one.** The two
+  break markers (`@page-break`, `@column-break`) dropped every attribute on their
+  line, so a `#id` for a link or a `target-counter()` to land on vanished; they
+  now keep `#id`, `.class` and `key=value`. `@continue` cloned the section's attributes
+  including its `id`, so a split section printed the same id twice; the
+  continuation now drops the `id` and keeps the rest.
 - **Left-hand pages sit where the PDF puts them in the preview.** On a book with
   mirrored margins (`@page :left` and `@page :right` with different left and right
   margins) the preview placed every page's text where a right-hand page's would
