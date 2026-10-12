@@ -211,8 +211,12 @@ describe('createPreviewServer', () => {
     tempDir = await mkdtemp(join(tmpdir(), 'gutterpress-http-test-temp-'));
     projectDir = await mkdtemp(join(tmpdir(), 'gutterpress-http-test-project-'));
     server = null;
-    // Pick an unlikely-to-be-busy port range per test.
-    port = 50000 + Math.floor(Math.random() * 5000);
+    // Let the OS hand out a port that is free right now, then release it. A
+    // random guess in 50000-55000 sits inside Linux's ephemeral range and
+    // collided on CI ("Failed to start server. Is port 50572 in use?").
+    const probe = Bun.serve({ port: 0, fetch: () => new Response() });
+    port = probe.port!; // a just-bound server always has a port
+    probe.stop(true);
   });
 
   afterEach(async () => {
