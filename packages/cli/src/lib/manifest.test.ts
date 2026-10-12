@@ -205,6 +205,24 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
     expect(config.page.tolerance).toBe(DTRPG_PRESET.page!.tolerance);
   });
 
+  test("page.bleed: dtrpg declares DriveThruRPG's 0.125in in-sheet bleed; book/custom declare none; a manifest overrides it", () => {
+    expect(DTRPG_PRESET.page!.bleed).toBe(9);
+    expect(resolveConfig({}, {}).page.bleed).toBe(9);
+    expect(resolveConfig({}, { preset: "book" }).page.bleed).toBeUndefined();
+    expect(resolveConfig({}, { preset: "custom", page: { width: 612, height: 792 } }).page.bleed).toBeUndefined();
+    // leaf by leaf: an author's value wins, the rest of the page block is untouched
+    const m = resolveConfig({}, { page: { bleed: 18 } });
+    expect(m.page.bleed).toBe(18);
+    expect(m.page.width).toBe(621);
+    expect(resolveConfig({ page: { bleed: 4.5 } }, { page: { bleed: 18 } }).page.bleed).toBe(4.5);
+    // …including on presets that declare none
+    expect(resolveConfig({}, { preset: "book", page: { bleed: 9 } }).page.bleed).toBe(9);
+    expect(resolveConfig({}, { preset: "custom", page: { width: 612, height: 792, bleed: 9 } }).page.bleed).toBe(9);
+    // the PDF page-size bounds are unchanged by it
+    expect(resolveConfig({}, {}).page.width).toBe(621);
+    expect(resolveConfig({}, {}).page.height).toBe(810);
+  });
+
   test("pdfx.blackText: dtrpg defaults to k-only, book to icc, manifest overrides", () => {
     expect(resolveConfig({}, {}).pdfx.blackText).toBe("k-only");
     expect(resolveConfig({}, { preset: "book" }).pdfx.blackText).toBe("icc");

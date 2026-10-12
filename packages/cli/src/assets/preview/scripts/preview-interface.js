@@ -1655,6 +1655,7 @@
     var parts = ['Margins & bleed'];
     parts.push(summary.issues ? summary.issues + ' overflowing' : 'nothing overflows');
     if (summary.intended) parts.push(summary.intended + ' placed on purpose');
+    if (summary.bleedInSheet) parts.push('bleed inside the page (print preset)');
     if (!summary.bleedPt) parts.push('no bleed set \u2014 add @page { bleed: 0.125in } to see the bleed edge');
     badge.textContent = parts.join(' \u00b7 ') + '  (Alt+M hides)';
   }
