@@ -169,6 +169,10 @@ export interface AppSettings {
      * exported PDF — available in both Read and Edit. Default off.
      */
     marginOverlay: boolean;
+    /** The overlay's colour (margin outline and tint), `#rrggbb`. Default blue. */
+    marginOverlayColor: string;
+    /** How prominent the overlay is: line width, margin tint and bleed band. Default "normal". */
+    marginOverlayStrength: "subtle" | "normal" | "strong";
     /**
      * Durable editor/preview split fraction (0.25..0.75, editor share) for the
      * wide side-by-side layout (#103). The always-read default; the per-project
@@ -263,6 +267,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     // Reading opens as a two-page spread, as it always did before the toggle.
     readLayout: "spread",
     marginOverlay: false,
+    marginOverlayColor: "#2f80ed",
+    marginOverlayStrength: "normal",
     // Matches DEFAULT_SPLIT_RATIO in src/lib/editor/preview-layout.ts so the
     // durable default and the double-click reset target agree (#103).
     splitRatio: 0.42,

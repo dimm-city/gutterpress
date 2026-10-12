@@ -1145,8 +1145,8 @@ async function main() {
       window.Gutterpress = {
         pageOf: () => -1,
         decoration: {
-          setOverlay(on) {
-            calls.push(on);
+          setOverlay(on, style) {
+            calls.push(style ? [on, style] : on);
             document.body.dataset.overlay = on ? "on" : "off";
             const s = summary(on);
             window.dispatchEvent(new window.CustomEvent("gp:overlay", { detail: s }));
@@ -1168,6 +1168,12 @@ async function main() {
     assert.deepEqual(events, [summary(true)], "gp:overlay is re-announced as overlayChanged for the bridge");
     assert.deepEqual(api.toggleMarginOverlay(), summary(false), "toggle flips the current state");
     assert.deepEqual(calls, [true, false]);
+    // the look (colour, strength) is passed straight through to the viewer
+    calls.length = 0;
+    api.setMarginOverlay(true, { color: "#00aa55", strength: "strong" });
+    assert.deepEqual(calls, [[true, { color: "#00aa55", strength: "strong" }]]);
+    calls.length = 0;
+    api.setMarginOverlay(false);
 
     // no viewer support (older bundle) is null, not a throw
     {

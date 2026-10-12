@@ -40,8 +40,10 @@ function installBook(frame, markup = BOOK_NATIVE, layout = "vertical") {
     // shell asked of it, and stamps body[data-overlay] as the real one does.
     decoration: {
       setDesigner() {},
-      setOverlay(on) {
+      setOverlay(on, style) {
         frameWindow.__overlayCalls.push(on);
+        if (style && style.strength) frameDocument.body.dataset.overlayStrength = style.strength;
+        if (style && style.color) frameDocument.body.style.setProperty("--gp-ov-color", style.color);
         frameDocument.body.dataset.overlay = on ? "on" : "off";
         return { on, issues: 0, intended: 0, bleedPt: 0 };
       },
@@ -536,7 +538,7 @@ async function main() {
   active.contentWindow.previewAPI.setZoom("0.8");
   active.contentDocument.body.classList.add("debug");
   // The author switched the margin & bleed overlay on before this save.
-  active.contentWindow.previewAPI.setMarginOverlay(true);
+  active.contentWindow.previewAPI.setMarginOverlay(true, { color: "#00aa55", strength: "strong" });
   const desktopStyle = active.contentDocument.createElement("style");
   desktopStyle.setAttribute("data-gutterpress-desktop-canvas", "true");
   desktopStyle.textContent = ".gp-sheet { box-shadow: 0 0 2px black; }";
@@ -642,6 +644,8 @@ async function main() {
     "the margin & bleed overlay is carried into the replacement, once, before reveal",
   );
   assert.equal(fresh.contentDocument.body.dataset.overlay, "on", "overlay state survives a hot reload");
+  assert.equal(fresh.contentDocument.body.dataset.overlayStrength, "strong", "…and so does its strength");
+  assert.equal(fresh.contentDocument.body.style.getPropertyValue("--gp-ov-color"), "#00aa55", "…and its colour");
   assert.equal(
     fresh.contentDocument.documentElement.style.getPropertyValue("--gutterpress-zoom"),
     "0.8",

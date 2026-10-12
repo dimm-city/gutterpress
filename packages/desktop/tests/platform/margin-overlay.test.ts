@@ -7,13 +7,30 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createSettingsStore, DEFAULT_SETTINGS, mergeSettings, type DeepPartialSettings } from "../../electron/settings-store";
-import { formatBleed, overlaySummaryFrom, overlayTooltip } from "../../src/lib/margin-overlay";
+import { formatBleed, overlayStyleFrom, overlaySummaryFrom, overlayTooltip } from "../../src/lib/margin-overlay";
 
 const read = (rel: string) => readFileSync(resolve(__dirname, "../..", rel), "utf8");
 
 describe("preview.marginOverlay setting", () => {
   test("is off until the author turns it on", () => {
     expect(DEFAULT_SETTINGS.preview.marginOverlay).toBe(false);
+  });
+
+  test("the look defaults to a normal-strength blue, and a patch changes just that", () => {
+    expect(DEFAULT_SETTINGS.preview.marginOverlayColor).toBe("#2f80ed");
+    expect(DEFAULT_SETTINGS.preview.marginOverlayStrength).toBe("normal");
+    const m = mergeSettings(DEFAULT_SETTINGS, {
+      preview: { marginOverlayColor: "#00aa55", marginOverlayStrength: "strong" },
+    } as DeepPartialSettings);
+    expect(m.preview.marginOverlayColor).toBe("#00aa55");
+    expect(m.preview.marginOverlayStrength).toBe("strong");
+    expect(m.preview.marginOverlay).toBe(false);
+  });
+
+  test("a hand-edited bad value falls back to the default look", () => {
+    expect(overlayStyleFrom("#00AA55", "subtle")).toEqual({ color: "#00AA55", strength: "subtle" });
+    expect(overlayStyleFrom("red; background: url(x)", "loud")).toEqual({ color: "#2f80ed", strength: "normal" });
+    expect(overlayStyleFrom(undefined, undefined)).toEqual({ color: "#2f80ed", strength: "normal" });
   });
 
   test("a patch persists and leaves the sibling preview fields alone", () => {
@@ -96,7 +113,8 @@ describe("the toolbar tooltip", () => {
     const t = overlayTooltip(true, { on: true, issues: 1, intended: 0, bleedPt: 0 });
     expect(t).toContain("1 element extends past the margins");
     expect(t).not.toContain("placed on purpose");
-    expect(t).toContain("No bleed defined");
+    expect(t).toContain("No bleed set");
+    expect(t).toContain("@page { bleed: 0.125in }");
     expect(overlayTooltip(true, { on: true, issues: 0, intended: 0, bleedPt: 9 })).toContain(
       "Nothing extends past the margins",
     );
@@ -108,6 +126,13 @@ describe("the toolbar tooltip", () => {
 });
 
 describe("wiring", () => {
+  test("Settings > Preview has the strength and colour controls", () => {
+    const settingsView = read("src/lib/components/SettingsView.svelte");
+    expect(settingsView).toContain("marginOverlayStrength");
+    expect(settingsView).toContain("marginOverlayColor");
+    expect(settingsView).toContain('type="color"');
+  });
+
   const toolbar = read("src/lib/components/PreviewToolbar.svelte");
   const page = read("src/routes/+page.svelte");
 
@@ -123,8 +148,9 @@ describe("wiring", () => {
 
   test("the page persists the choice, pushes it through the settings channel, and shows the count", () => {
     expect(page).toContain("marginOverlay: !marginOverlay");
-    expect(page).toContain("marginOverlaySink(s.preview.marginOverlay)");
-    expect(page).toContain('client?.call("setMarginOverlay", [on])');
+    expect(page).toContain("marginOverlaySink(");
+    expect(page).toContain("s.preview.marginOverlayStrength");
+    expect(page).toContain('client?.call("setMarginOverlay", [on, { color, strength }])');
     expect(page).toContain("{overlaySummary}");
     // no $effect in the SPA: the sink rides the settings change channel
     expect(page.slice(page.indexOf("const marginOverlaySink"), page.indexOf("const marginOverlaySink") + 400)).not.toContain("$effect");

@@ -36,6 +36,7 @@ interface Harness {
   overlay: boolean;
   /** the author's durable margin & bleed overlay choice */
   marginOverlay: boolean;
+  marginOverlayStyle: { color: string; strength: "subtle" | "normal" | "strong" };
   /** what the viewer last reported (the toolbar count) */
   overlaySummary: unknown;
   updating: boolean;
@@ -55,6 +56,7 @@ function make(): Harness {
     renderProgressPage: 0,
     overlay: false,
     marginOverlay: false,
+    marginOverlayStyle: { color: "#2f80ed", strength: "normal" },
     overlaySummary: null as unknown,
     updating: false,
     pendingRestore: { page: null } as { page: number | null },
@@ -117,6 +119,7 @@ function make(): Harness {
     viewMode: () => h.viewMode,
     bgColor: () => "#123456",
     marginOverlay: () => h.marginOverlay,
+    marginOverlayStyle: () => h.marginOverlayStyle,
     setOverlaySummary: (summary) => {
       h.overlaySummary = summary;
       log.push(`overlaySummary:${JSON.stringify(summary)}`);
@@ -471,10 +474,11 @@ test("renderingComplete tolerates a missing client (no crash, still reveals)", a
 test("a fresh frame is told to show the overlay when the author has it on", async () => {
   const h = make();
   h.marginOverlay = true;
+  h.marginOverlayStyle = { color: "#00aa55", strength: "strong" };
   h.zoom = "0.5";
   h.ctrl.handleEvent(rc(4));
   await flush();
-  expect(h.client.calls).toContainEqual({ cmd: "setMarginOverlay", args: [true] });
+  expect(h.client.calls).toContainEqual({ cmd: "setMarginOverlay", args: [true, { color: "#00aa55", strength: "strong" }] });
   // pushed with the view mode, ahead of the zoom, and the reveal still comes last
   const order = h.client.calls.map((c) => c.cmd);
   expect(order.indexOf("setMarginOverlay")).toBeLessThan(order.indexOf("setZoom"));

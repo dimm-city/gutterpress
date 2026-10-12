@@ -36,6 +36,26 @@ export function overlaySummaryFrom(detail: {
   };
 }
 
+/** What the app sends the viewer with the on/off switch (`setMarginOverlay`'s second argument). */
+export interface MarginOverlayStyle {
+  color: string;
+  strength: "subtle" | "normal" | "strong";
+}
+
+export const MARGIN_OVERLAY_STRENGTHS: ReadonlyArray<{ value: MarginOverlayStyle["strength"]; label: string }> = [
+  { value: "subtle", label: "Subtle" },
+  { value: "normal", label: "Normal" },
+  { value: "strong", label: "Strong" },
+];
+
+/** The two persisted settings as the viewer takes them; a hand-edited bad value falls back to the default. */
+export function overlayStyleFrom(color: unknown, strength: unknown): MarginOverlayStyle {
+  return {
+    color: typeof color === "string" && /^#[0-9a-f]{6}$/i.test(color) ? color : "#2f80ed",
+    strength: strength === "subtle" || strength === "strong" ? strength : "normal",
+  };
+}
+
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** "0.125 in" for a bleed in pt. */
@@ -62,7 +82,7 @@ export function overlayTooltip(on: boolean, summary: MarginOverlaySummary | null
     lines.push(
       summary.bleedPt > 0
         ? `Bleed: ${formatBleed(summary.bleedPt)}`
-        : "No bleed defined: add @page { bleed: 0.125in } to show it",
+        : "No bleed set \u2014 add @page { bleed: 0.125in } to your stylesheet to see the bleed edge",
     );
   }
   return lines.join("\n");

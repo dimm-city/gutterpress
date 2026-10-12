@@ -8,6 +8,7 @@
   import { getPlatform } from "$lib/platform";
   import { sanitizeSettingsTab, type SettingsTab } from "$lib/settings-tabs";
   import { api } from "$lib/api";
+  import { MARGIN_OVERLAY_STRENGTHS, overlayStyleFrom } from "$lib/margin-overlay";
   import { friendlyHostError } from "$lib/errors";
 
   let {
@@ -311,6 +312,30 @@
             type="checkbox"
             checked={s.preview.contextMenu}
             onchange={(e) => settings.set({ preview: { contextMenu: (e.currentTarget as HTMLInputElement).checked } })}
+          />
+        </div>
+        <div class="row">
+          <div class="row-label">
+            <label for="set-overlay-strength">Margin overlay strength</label>
+            <span class="row-hint">How strongly the preview's margin &amp; bleed overlay (the toolbar button) is drawn. The bleed band shows only when your stylesheet sets a page bleed.</span>
+          </div>
+          <select
+            id="set-overlay-strength"
+            value={overlayStyleFrom(s.preview.marginOverlayColor, s.preview.marginOverlayStrength).strength}
+            onchange={(e) => settings.set({ preview: { marginOverlayStrength: (e.currentTarget as HTMLSelectElement).value as "subtle" | "normal" | "strong" } })}
+          >
+            {#each MARGIN_OVERLAY_STRENGTHS as o (o.value)}
+              <option value={o.value}>{o.label}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="row">
+          <label for="set-overlay-color">Margin overlay colour</label>
+          <input
+            id="set-overlay-color"
+            type="color"
+            value={overlayStyleFrom(s.preview.marginOverlayColor, s.preview.marginOverlayStrength).color}
+            oninput={(e) => settings.set({ preview: { marginOverlayColor: (e.currentTarget as HTMLInputElement).value } })}
           />
         </div>
       </section>

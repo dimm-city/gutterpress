@@ -76,7 +76,7 @@
   import { sanitizeSettingsTab, type SettingsTab } from "$lib/settings-tabs";
   import { clampPanelWidth, viewportWidth } from "$lib/left-panel-width";
   import { showReadLayoutToggle, viewModeFor } from "$lib/read-layout";
-  import type { MarginOverlaySummary } from "$lib/margin-overlay";
+  import { overlayStyleFrom, type MarginOverlayStyle, type MarginOverlaySummary } from "$lib/margin-overlay";
   import LeftPanel from "$lib/components/LeftPanel.svelte";
   import type { PanelTab } from "$lib/components/LeftPanel.svelte";
   import WelcomeLanding from "$lib/components/WelcomeLanding.svelte";
@@ -1085,6 +1085,9 @@
   // Margin & bleed overlay: one durable switch for Read AND Edit; the viewer
   // draws it, and reports what it found (the toolbar count) as it repaints.
   let marginOverlay = $derived(settings.current.preview.marginOverlay);
+  let overlayStyle = $derived(
+    overlayStyleFrom(settings.current.preview.marginOverlayColor, settings.current.preview.marginOverlayStrength),
+  );
   let overlaySummary = $state<MarginOverlaySummary | null>(null);
 
   // Whether the editor pane is shown. A persisted narrow Edit preference
@@ -1365,10 +1368,13 @@
   // Margin & bleed overlay: push the switch into the viewer when the toggle —
   // or a settings load — changes it. An old viewer without the command just
   // rejects, which is the same as not having the feature.
-  const marginOverlaySink = settingsChangeGuard<boolean>(
-    (on) => {
+  // The look (colour, strength) rides along with the switch, so one sink
+  // covers both; a change of look alone restyles without repainting.
+  const marginOverlaySink = settingsChangeGuard<string>(
+    (key) => {
+      const { on, color, strength } = JSON.parse(key) as { on: boolean } & MarginOverlayStyle;
       if (!on) overlaySummary = null;
-      client?.call("setMarginOverlay", [on]).catch(() => {});
+      client?.call("setMarginOverlay", [on, { color, strength }]).catch(() => {});
     },
     () => !!client,
   );
@@ -1380,7 +1386,12 @@
       modeSink(effectiveMode(s));
       autoSaveSink(s.versionHistory.autoSave);
       readLayoutSink(s.preview.readLayout);
-      marginOverlaySink(s.preview.marginOverlay);
+      marginOverlaySink(
+        JSON.stringify({
+          on: s.preview.marginOverlay,
+          ...overlayStyleFrom(s.preview.marginOverlayColor, s.preview.marginOverlayStrength),
+        }),
+      );
     }),
   );
 
@@ -2108,6 +2119,7 @@
     viewMode: () => viewMode,
     bgColor: () => bgColor,
     marginOverlay: () => marginOverlay,
+    marginOverlayStyle: () => overlayStyle,
     setOverlaySummary: (summary) => (overlaySummary = summary),
     setRendering: (v) => (lifecycle.rendering = v),
     getRendering: () => lifecycle.rendering,

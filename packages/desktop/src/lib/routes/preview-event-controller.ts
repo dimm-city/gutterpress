@@ -24,7 +24,7 @@
 
 import { buildCanvasBackgroundStyles } from "$lib/iframe-styles";
 import type { PreviewEvent } from "$lib/preview-client";
-import { overlaySummaryFrom, type MarginOverlaySummary } from "$lib/margin-overlay";
+import { overlaySummaryFrom, type MarginOverlayStyle, type MarginOverlaySummary } from "$lib/margin-overlay";
 
 /** Minimal host-command client surface the controller drives. */
 interface PreviewEventClient {
@@ -72,6 +72,8 @@ export interface PreviewEventDeps {
   bgColor: () => string;
   /** Margin & bleed overlay (Preview toolbar toggle): the durable on/off. */
   marginOverlay: () => boolean;
+  /** …and its look (colour, strength), sent with the switch. */
+  marginOverlayStyle: () => MarginOverlayStyle;
   // ── Render-phase state sinks / getters ──────────────────────────────────
   setRendering: (v: boolean) => void;
   getRendering: () => boolean;
@@ -198,7 +200,7 @@ export class PreviewEventController {
         d.zoomView.applyViewMode(d.viewMode());
         // A fresh frame starts with the overlay off: carry the author's choice
         // into it (a hot reload carries its own — the shell copies it).
-        if (d.marginOverlay()) client?.call("setMarginOverlay", [true]).catch(() => {});
+        if (d.marginOverlay()) client?.call("setMarginOverlay", [true, d.marginOverlayStyle()]).catch(() => {});
         try {
           if (zoom === "fit-width") {
             await d.zoomView.applyFitWidthZoom();
