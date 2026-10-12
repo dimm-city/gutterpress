@@ -37,6 +37,7 @@ import {
   clearOverlay,
   configInsetBleedPt,
   documentBleedPt,
+  pageFrameMargin,
   paintOverlay,
   sanitizeOverlayStyle,
   type OverlayPage,
@@ -392,6 +393,7 @@ export function decorate(
     // placement arithmetic on boxes we already position; content and sheets
     // stay in the same box, and pagination is untouched.
     let prevPageH = 0;
+    let prevVersoShift = 0;
     let first = true;
 
     for (const strip of layout.strips) {
@@ -428,19 +430,31 @@ export function decorate(
         const slot = i + shift;
         const row = Math.floor(slot / perRow);
         const colVisual = slot % perRow;
-        // Keep paper geometry stable. Chromium multicol gives every fragment
-        // in a run one fixed content-column origin; moving the paper around
-        // that origin to mimic page-specific mirrored margins made single
-        // sheets wobble and facing sheets touch. The PDF remains the exact
-        // page-margin contract; the interactive viewer keeps equal paper gaps.
-        const sheetLeft = colVisual * stride;
+        // Recto = odd 1-based page (page 1 is a recto).
+        const side = bookIndex % 2 === 0 ? "recto" : "verso";
+        // Multicol gives every column in a run one text origin, which is the
+        // RECTO's left margin, so a verso's text could only land on its own
+        // `@page :left` margin if the PAPER moves. It does: a verso's sheet
+        // slides right by `versoShift` (recto left margin less verso's; 0
+        // unless the book mirrors its margins), putting the text exactly where
+        // the PDF puts it on that sheet. Everything drawn on the sheet — margin
+        // boxes, guides, crop marks, the overlay — is positioned from the
+        // sheet, so it moves with it and was already right.
+        //
+        // The cost is the one this once avoided: the verso/recto pitch is no
+        // longer uniform, so single-page view staggers verso sheets sideways
+        // by the shift (12px in a field guide), and the gap across a page turn
+        // is the sheet gap plus twice that. The strip's pitch grows by the
+        // shift (`--gp-verso-shift`), so the gap between FACING sheets stays
+        // the sheet gap and they can never overlap. Only paper moves; the
+        // column width, so pagination, is untouched.
+        const sheetLeft = colVisual * stride + (side === "verso" ? strip.versoShift * PX_PER_PT : 0);
         const sheetTop = row * rowStride;
 
         const sheet = document.createElement("div");
         sheet.className = "gp-sheet";
         sheet.dataset.page = String(bookIndex + 1);
-        // Recto = odd 1-based page (page 1 is a recto).
-        sheet.dataset.side = bookIndex % 2 === 0 ? "recto" : "verso";
+        sheet.dataset.side = side;
         sheet.style.left = `${sheetLeft}px`;
         sheet.style.top = `${sheetTop}px`;
         sheet.style.setProperty("--gp-page-w", px(ctx.geometry.width));
@@ -460,15 +474,13 @@ export function decorate(
           sheet,
           strip,
           geometry: ctx.geometry,
-          printMargin: ctx.geometry.margin,
-          // Text sits in the strip's column, not in the page's own margins (a
-          // blank or padding sheet has no text, so its own margins stand).
+          // Text sits in the strip's column, freed on `.gp-flush` edges, and
+          // on a verso's slid sheet (a blank or padding sheet has no text, so
+          // its own margins stand).
           margin:
             ctx.padded || blankPages.has(bookIndex)
               ? ctx.geometry.margin
-              : strip.flushEdges?.length
-                ? flushMargins(g.margin, strip.flushEdges)
-                : g.margin,
+              : pageFrameMargin(flushMargins(g.margin, strip.flushEdges ?? []), strip.versoShift, side),
         });
       }
 
@@ -506,11 +518,17 @@ export function decorate(
       // `rowStride*(rows-1)` from the top, so bottom-of-box minus
       // top-of-last-row is `pageH` regardless of row count. The very first
       // run keeps the solo-cover convention.
-      run.style.marginTop =
-        strip.wrapCols && shift === 1 && !first
-          ? `${-(prevPageH + sheetGap)}px`
-          : "";
+      const composed = !!strip.wrapCols && shift === 1 && !first;
+      run.style.marginTop = composed ? `${-(prevPageH + sheetGap)}px` : "";
+      // The pair's verso (the previous run's) sits at its run's `versoShift`
+      // and its recto does not move, so when the two runs shift their versos
+      // differently the pair's gap would be off by the difference — an
+      // overlap if the previous run's is the larger. Slide the recto run by
+      // that difference and the pair keeps the sheet gap, as any pair inside
+      // one run does.
+      run.style.marginLeft = composed ? `${(prevVersoShift - strip.versoShift) * PX_PER_PT}px` : "";
       prevPageH = PX_PER_PT * g.height;
+      prevVersoShift = strip.versoShift;
       first = false;
 
       if (opts.designer) checkOverflow(strip, warnings);

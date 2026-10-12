@@ -14,11 +14,9 @@
  *    mirroring and named pages) the columns are sized from, with `.gp-flush`
  *    edges freed exactly as `buildStrips()` frees them. The outline is drawn
  *    where the preview really lays the text, so what you see is what is
- *    classified. The preview keeps ONE text column per run (see decorate.ts's
- *    note on mirrored margins), so on a mirrored-margin book a verso's text
- *    sits where the recto's would; the column WIDTH is the PDF's. Where a
- *    page's own `@page :left`/`:right` margins sit somewhere else, they are
- *    drawn too, as a faint dotted outline — the PDF's contract for that page.
+ *    classified. On a mirrored-margin book that is each page's OWN margin box:
+ *    decorate.ts slides a verso's sheet so its text sits at the `:left`
+ *    margins, and the frame passed in here is that page's (`pageFrameMargin`).
  *  - bleed: `pageGeometry()`, the compiler's own resolution — the document's
  *    base `@page { bleed }` (a named page's `bleed` is ignored by print too).
  *    When the stylesheet declares none, the project's `page.bleed` (a preset
@@ -215,9 +213,21 @@ export interface OverlaySummary {
 
 export const OVERLAY_OFF: OverlaySummary = { on: false, issues: 0, intended: 0, bleedPt: 0 };
 
-/** Do two margin sets differ enough to draw both? (half a pt: well below anything an author sets) */
-export function marginsDiffer(a: PageGeometry["margin"], b: PageGeometry["margin"]): boolean {
-  return (["top", "right", "bottom", "left"] as const).some((k) => Math.abs(a[k] - b[k]) > 0.5);
+/**
+ * Where the text frame sits on a page's OWN sheet, from the margins the run's
+ * column is laid out in (a recto's). A verso's sheet is slid `versoShift` pt
+ * right (decorate.ts), so the same column lands that much closer to the sheet's
+ * left edge: the left margin shrinks by it and the right one grows by it, the
+ * width staying the column's. With no shift, or on a recto, it is the margins
+ * unchanged.
+ */
+export function pageFrameMargin(
+  margin: PageGeometry["margin"],
+  versoShift: number,
+  side: PageSide,
+): PageGeometry["margin"] {
+  if (side === "recto" || !versoShift) return margin;
+  return { ...margin, left: margin.left - versoShift, right: margin.right + versoShift };
 }
 
 /** One drawn page, as `decorate()` knows it. */
@@ -228,10 +238,8 @@ export interface OverlayPage {
   strip: StripInfo;
   /** this sheet's own size */
   geometry: PageGeometry;
-  /** the margins of the column text is actually laid out in on this page */
+  /** the margins of the frame text is actually laid out in on THIS page's sheet */
   margin: PageGeometry["margin"];
-  /** this page's own `@page` margins (`:left`/`:right` resolved) — what the PDF will have */
-  printMargin: PageGeometry["margin"];
 }
 
 /**
@@ -351,9 +359,6 @@ export function paintOverlay(
     }
     host.appendChild(marginTint(boxes));
     host.appendChild(div("gp-ov-margin", boxes.content));
-    if (marginsDiffer(p.printMargin, p.margin)) {
-      host.appendChild(div("gp-ov-print", pageBoxes(p.geometry, p.printMargin, 0, PX_PER_PT).content));
-    }
     layer.appendChild(host);
     painted.set(p.index, { host, boxes, sheet: p.sheet });
   }

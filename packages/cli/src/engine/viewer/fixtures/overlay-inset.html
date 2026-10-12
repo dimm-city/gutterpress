@@ -4,8 +4,9 @@
   the sheet already contains a 9pt (12px) bleed on the top, bottom and outer edge.
 
   Page 1 is a recto (outer edge = right: trim x 0..388), page 2 a verso (outer
-  edge = left: trim x 12..400); y trim 9..491 on both. The viewer lays every
-  page's text in one column, x 50..370 (see decorate.ts).
+  edge = left: trim x 12..400); y trim 9..491 on both. Each page's text sits at
+  its own margins: x 50..370 on the recto, x 30..350 on the verso (decorate.ts
+  slides the verso's sheet to put it there).
 -->
 <!doctype html>
 <html>
@@ -30,8 +31,8 @@
       <!-- x 5..105 pokes past the content edge on the binding side: the margin, not bleed -->
       <div class="bar" id="r-binding" style="margin-left: -45px; width: 100px"></div>
       <!-- page 2 (verso): x 5..105 crosses the outer (left) trim at 12 -->
-      <div class="bar brk" id="v-outer" style="margin-left: -45px; width: 100px"></div>
-      <!-- x 50..395 reaches the binding side: nothing is cut there, so the margin -->
+      <div class="bar brk" id="v-outer" style="margin-left: -25px; width: 100px"></div>
+      <!-- x 30..375 reaches the binding side: nothing is cut there, so the margin -->
       <div class="bar" id="v-binding" style="width: 345px"></div>
     </main>
     <script src="gutterpress-viewer.js"></script>

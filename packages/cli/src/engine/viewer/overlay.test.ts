@@ -20,13 +20,13 @@ import { closeBrowser, getBrowser } from "./test-support/browser.ts";
 import { MARKER_CSS } from "../../lib/markdown/markers.js";
 import { GUTTERPRESS_CSS } from "../../lib/markdown/gutterpress-css.ts";
 import { extract } from "../shared/gcpm-extract.ts";
-import { runPageBox } from "./fragment.ts";
+import { runPageBox, versoShiftPt } from "./fragment.ts";
 import {
   classifyRect,
   documentBleedPt,
   insetPageBoxes,
-  marginsDiffer,
   pageBoxes,
+  pageFrameMargin,
   sanitizeOverlayStyle,
   worstKind,
   type Rect,
@@ -78,12 +78,37 @@ describe("where the geometry comes from", () => {
     expect(b.content).toEqual({ x: 50, y: 40, w: 320, h: 420 });
   });
 
-  test("the PDF's own margins are drawn too, only where they sit elsewhere", () => {
+  test("a verso's frame is the recto's slid to the verso's own margins; a recto's is untouched", () => {
     const m = { top: 40, right: 30, bottom: 40, left: 50 };
-    expect(marginsDiffer(m, { ...m })).toBe(false);
-    expect(marginsDiffer(m, { ...m, left: 50.4 })).toBe(false);
-    // the mirror image of a recto's margins: a verso
-    expect(marginsDiffer(m, { top: 40, right: 50, bottom: 40, left: 30 })).toBe(true);
+    // the verso's sheet slides 20 right, so the same column sits 20 closer to its left edge
+    expect(pageFrameMargin(m, 20, "verso")).toEqual({ top: 40, right: 50, bottom: 40, left: 30 });
+    expect(pageFrameMargin(m, 20, "recto")).toBe(m);
+    // no mirroring, no change
+    expect(pageFrameMargin(m, 0, "verso")).toBe(m);
+    // the frame keeps the column's width either way
+    const v = pageFrameMargin(m, 20, "verso");
+    expect(400 - v.left - v.right).toBe(400 - m.left - m.right);
+  });
+
+  test("a mirrored book's verso shift is the recto's left margin less the verso's, 0 without mirroring", () => {
+    expect(versoShiftPt(model, undefined)).toBeCloseTo(0.5 * IN, 5);
+    // a named page that sets its own margins resolves its own sides (here, none mirrored)
+    expect(versoShiftPt(model, "plate")).toBe(0);
+    expect(versoShiftPt(extract(`@page { size: 6in 9in; margin: 0.75in; }`), undefined)).toBe(0);
+    // freed edges are measured freed, as the strip is: flush left zeroes both lefts
+    expect(versoShiftPt(model, undefined, ["left"])).toBe(0);
+    expect(versoShiftPt(model, undefined, ["right"])).toBeCloseTo(0.5 * IN, 5);
+    // sides that disagree on the content size: no one column matches, no placement claims to
+    expect(
+      versoShiftPt(
+        extract(`
+          @page { size: 6in 9in; margin: 0.75in 0.5in; }
+          @page :left  { margin-left: 0.5in; margin-right: 1.5in; }
+          @page :right { margin-left: 1in;   margin-right: 0.5in; }
+        `),
+        undefined,
+      ),
+    ).toBe(0);
   });
 
   test("units scale together", () => {
@@ -300,16 +325,23 @@ testIf(
         expect(drawn.margin1).toEqual(["50px", "40px", "320px", "420px"]);
         expect(drawn.pointerEvents).toBe("none");
 
-        // mirrored margins: the verso's PDF margins (L30/R50) sit elsewhere than
-        // the preview's text column (L50/R30), so page 2 carries a second,
-        // dotted outline; the recto's two coincide, so page 1 draws just one.
-        const print = await page.evaluate(() =>
+        // mirrored margins: each page draws ONE outline, its own @page's box.
+        // The recto's is L50/R30; the verso's sheet is slid so its text sits at
+        // L30/R50 (the same 320px column), and there is no second outline.
+        const margins = await page.evaluate(() =>
           Array.from(document.querySelectorAll<HTMLElement>(".gp-ov-page")).slice(0, 2).map((pg) => {
-            const p = pg.querySelector<HTMLElement>(".gp-ov-print");
-            return p ? [p.style.left, p.style.width] : null;
+            const m = pg.querySelector<HTMLElement>(".gp-ov-margin")!;
+            return {
+              outlines: pg.querySelectorAll(".gp-ov-margin").length,
+              box: [m.style.left, m.style.width],
+            };
           }),
         );
-        expect(print).toEqual([null, ["30px", "320px"]]);
+        expect(margins).toEqual([
+          { outlines: 1, box: ["50px", "320px"] },
+          { outlines: 1, box: ["30px", "320px"] },
+        ]);
+        expect(await page.evaluate(() => document.querySelectorAll(".gp-ov-print").length)).toBe(0);
 
         // …and the book is exactly as it was
         expect(await snapshot()).toEqual(before);

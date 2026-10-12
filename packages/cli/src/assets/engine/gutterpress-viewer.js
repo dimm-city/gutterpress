@@ -19,6 +19,7 @@
   __export(exports_fragment, {
     wrapGeometry: () => wrapGeometry,
     waitForLayoutReady: () => waitForLayoutReady,
+    versoShiftPt: () => versoShiftPt,
     synthesizeColumnBreaks: () => synthesizeColumnBreaks,
     stripMetrics: () => stripMetrics,
     strideOf: () => strideOf,
@@ -108,13 +109,20 @@
    below is already sized to the run's full width and owns the actual
    clipping/visibility, so the strip does not need to. */
 .gp-strip {
+  /* Column pitch less the content width. \`--gp-verso-shift\` is set only on a
+     book with mirrored margins: decorate.ts slides each verso's sheet by it,
+     and growing the pitch by the same amount keeps the gap between a verso and
+     the recto it faces at the sheet gap (the gap across the page turn gets
+     twice the shift instead). Without it, it is 0px and nothing changes. */
+  --gp-col-gap: calc(
+    var(--gp-margin-right) + var(--gp-margin-left) + var(--gp-sheet-gap) +
+      var(--gp-verso-shift, 0px)
+  );
   position: relative;
   width: var(--gp-content-w);
   height: var(--gp-content-h);
   column-width: var(--gp-content-w);
-  column-gap: calc(
-    var(--gp-margin-right) + var(--gp-margin-left) + var(--gp-sheet-gap)
-  );
+  column-gap: var(--gp-col-gap);
   column-fill: auto;
   overflow: visible;
   margin: 0;
@@ -176,9 +184,7 @@
   );
   width: calc(
     var(--gp-content-w) * var(--gp-wrap-cols, 2) +
-      (
-        var(--gp-margin-right) + var(--gp-margin-left) + var(--gp-sheet-gap)
-      ) * (var(--gp-wrap-cols, 2) - 1)
+      var(--gp-col-gap) * (var(--gp-wrap-cols, 2) - 1)
   );
 }
 
@@ -332,15 +338,6 @@
   position: absolute;
   box-sizing: border-box;
   border: var(--gp-ov-w) var(--gp-ov-style) var(--gp-ov-color);
-}
-
-/* the PDF's own margins for this page, where they differ from where the
-   preview lays the text (mirrored :left/:right, .gp-flush): fainter, dotted */
-.gp-ov-print {
-  position: absolute;
-  box-sizing: border-box;
-  border: var(--gp-ov-w) dotted var(--gp-ov-color);
-  opacity: 0.6;
 }
 
 /* bleed: a translucent band OUTSIDE the trim (its width is the border) */
@@ -1475,6 +1472,13 @@
     }
   }
   function runPageBox(model, name, warnings = []) {
+    const { right, agree, r, l } = pageSides(model, name);
+    if (agree)
+      return right;
+    warnings.push(`@page :left and @page :right give ${name ? `the "${name}" page` : "this book"} ` + `different content areas (${l.w.toFixed(1)}×${l.h.toFixed(1)}pt vs ` + `${r.w.toFixed(1)}×${r.h.toFixed(1)}pt). Print alternates between them; the preview can ` + `only show one, so page breaks here may not match the PDF. Mirror the margins instead: ` + `swap which edge is wide and keep the total the same.`);
+    return resolvePage(model, { name }).geometry;
+  }
+  function pageSides(model, name) {
     const right = resolvePage(model, { name, pseudos: ["right"] }).geometry;
     const left = resolvePage(model, { name, pseudos: ["left"] }).geometry;
     const box = (g) => ({
@@ -1483,10 +1487,19 @@
     });
     const r = box(right);
     const l = box(left);
-    if (Math.abs(r.w - l.w) < 0.01 && Math.abs(r.h - l.h) < 0.01)
-      return right;
-    warnings.push(`@page :left and @page :right give ${name ? `the "${name}" page` : "this book"} ` + `different content areas (${l.w.toFixed(1)}×${l.h.toFixed(1)}pt vs ` + `${r.w.toFixed(1)}×${r.h.toFixed(1)}pt). Print alternates between them; the preview can ` + `only show one, so page breaks here may not match the PDF. Mirror the margins instead: ` + `swap which edge is wide and keep the total the same.`);
-    return resolvePage(model, { name }).geometry;
+    return {
+      right,
+      left,
+      r,
+      l,
+      agree: Math.abs(r.w - l.w) < 0.01 && Math.abs(r.h - l.h) < 0.01
+    };
+  }
+  function versoShiftPt(model, name, flushEdges = []) {
+    const { right, left, agree } = pageSides(model, name);
+    if (!agree)
+      return 0;
+    return flushMargins(right.margin, flushEdges).left - flushMargins(left.margin, flushEdges).left;
   }
   function buildStrips(model, opts = {}, warnings = []) {
     const doc = document;
@@ -1512,6 +1525,10 @@
       strip.style.setProperty("--gp-margin-right", `${pt(margin.right)}px`);
       strip.style.setProperty("--gp-margin-bottom", `${pt(margin.bottom)}px`);
       strip.style.setProperty("--gp-margin-left", `${pt(margin.left)}px`);
+      const rawShift = versoShiftPt(model, run.page, run.flushEdges);
+      const versoShift = Math.abs(rawShift) >= 0.01 ? rawShift : 0;
+      if (versoShift)
+        strip.style.setProperty("--gp-verso-shift", `${pt(versoShift)}px`);
       run.nodes[0].before(strip);
       for (const n of run.nodes)
         strip.appendChild(n);
@@ -1520,6 +1537,7 @@
         page: run.page,
         geometry,
         flushEdges: run.flushEdges,
+        versoShift,
         pages: 0,
         offset: 0
       });
@@ -2259,8 +2277,10 @@
     return out;
   }
   var OVERLAY_OFF = { on: false, issues: 0, intended: 0, bleedPt: 0 };
-  function marginsDiffer(a, b) {
-    return ["top", "right", "bottom", "left"].some((k) => Math.abs(a[k] - b[k]) > 0.5);
+  function pageFrameMargin(margin, versoShift, side) {
+    if (side === "recto" || !versoShift)
+      return margin;
+    return { ...margin, left: margin.left - versoShift, right: margin.right + versoShift };
   }
   function configInsetBleedPt() {
     const v = parseFloat(document.querySelector('meta[name="gp-inset-bleed"]')?.getAttribute("content") ?? "");
@@ -2328,9 +2348,6 @@
       }
       host.appendChild(marginTint(boxes));
       host.appendChild(div("gp-ov-margin", boxes.content));
-      if (marginsDiffer(p.printMargin, p.margin)) {
-        host.appendChild(div("gp-ov-print", pageBoxes(p.geometry, p.printMargin, 0, PX_PER_PT).content));
-      }
       layer.appendChild(host);
       painted.set(p.index, { host, boxes, sheet: p.sheet });
     }
@@ -2619,6 +2636,7 @@
       buildMaps();
       fillXrefs();
       let prevPageH = 0;
+      let prevVersoShift = 0;
       let first = true;
       for (const strip of layout.strips) {
         const run = ensureRun(strip);
@@ -2635,12 +2653,13 @@
           const slot = i + shift;
           const row = Math.floor(slot / perRow);
           const colVisual = slot % perRow;
-          const sheetLeft = colVisual * stride;
+          const side = bookIndex % 2 === 0 ? "recto" : "verso";
+          const sheetLeft = colVisual * stride + (side === "verso" ? strip.versoShift * PX_PER_PT : 0);
           const sheetTop = row * rowStride;
           const sheet = document.createElement("div");
           sheet.className = "gp-sheet";
           sheet.dataset.page = String(bookIndex + 1);
-          sheet.dataset.side = bookIndex % 2 === 0 ? "recto" : "verso";
+          sheet.dataset.side = side;
           sheet.style.left = `${sheetLeft}px`;
           sheet.style.top = `${sheetTop}px`;
           sheet.style.setProperty("--gp-page-w", px(ctx.geometry.width));
@@ -2659,15 +2678,17 @@
             sheet,
             strip,
             geometry: ctx.geometry,
-            printMargin: ctx.geometry.margin,
-            margin: ctx.padded || blankPages.has(bookIndex) ? ctx.geometry.margin : strip.flushEdges?.length ? flushMargins(g.margin, strip.flushEdges) : g.margin
+            margin: ctx.padded || blankPages.has(bookIndex) ? ctx.geometry.margin : pageFrameMargin(flushMargins(g.margin, strip.flushEdges ?? []), strip.versoShift, side)
           });
         }
         const rows = Math.max(1, Math.ceil((strip.pages + shift) / perRow));
         run.style.height = `${rowStride * (rows - 1) + PX_PER_PT * g.height}px`;
         run.style.width = `${stride * perRow}px`;
-        run.style.marginTop = strip.wrapCols && shift === 1 && !first ? `${-(prevPageH + sheetGap)}px` : "";
+        const composed = !!strip.wrapCols && shift === 1 && !first;
+        run.style.marginTop = composed ? `${-(prevPageH + sheetGap)}px` : "";
+        run.style.marginLeft = composed ? `${(prevVersoShift - strip.versoShift) * PX_PER_PT}px` : "";
         prevPageH = PX_PER_PT * g.height;
+        prevVersoShift = strip.versoShift;
         first = false;
         if (opts.designer)
           checkOverflow(strip, warnings);
