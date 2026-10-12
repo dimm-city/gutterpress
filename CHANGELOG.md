@@ -42,6 +42,15 @@ This project follows [Semantic Versioning](https://semver.org/).
   assignment written with `var()`, inside a nested rule, right after a nested
   rule, or the legacy `page-break-before: always`: the PDF honours them, the
   preview's CSS reader does not, and the page counts drift apart.
+- **`validate` warns on `hyphens: auto`.** New CSS rule `printsafe/engine-hyphenation`
+  (warning; switch it off or silence one site like any `printsafe/` rule) reports
+  `hyphens: auto` and `-webkit-hyphens: auto` in the book's stylesheets and any loaded
+  plugin's. Automatic hyphenation depends on the dictionaries the browser ships (Chrome
+  for Testing has them, the desktop app's Chromium has none on Linux, macOS uses the
+  system hyphenator), so one book paginated at 396 pages in the desktop app and 392 in
+  the CLI. Use `hyphens: manual` with soft hyphens (`&shy;`) for identical pages
+  everywhere. The bundled `clean-book` look now sets `hyphens: manual` on paragraphs
+  instead of `auto`; no other Gutterpress CSS sets it.
 - **`validate` warns on a class no stylesheet mentions.** A class on a markdown
   element or marker line (`{.hilite}`, `@section .pannel`) that matches no selector
   in Gutterpress's own CSS, the loaded plugins' CSS or the book's stylesheets

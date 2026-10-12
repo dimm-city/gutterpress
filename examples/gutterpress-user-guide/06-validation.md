@@ -181,6 +181,8 @@ Examples: broken internal links, missing alt text, oversized source images, mark
 
 The CSS check also tells you when the live preview cannot follow a break in your stylesheet. The preview reads your forced breaks (`break-before`/`break-after: page`, `left`, `right`) and `page:` assignments from the CSS text, so one written with `var()`, inside a nested rule, right after a nested rule, or with the old `page-break-before: always` spelling is honoured by the PDF but missing from the preview, and the two page counts drift apart. Rule id `printsafe/preview-cannot-follow`; write the keyword in a flat rule, or silence it like any other rule below.
 
+It also warns on `hyphens: auto` (and `-webkit-hyphens: auto`) in your stylesheets or in a loaded plugin's. Automatic hyphenation depends on the dictionaries the browser ships, and they differ: Chrome for Testing has them, the desktop app's Chromium has none on Linux, and macOS uses the system hyphenator. The same book can then break lines, and so pages, differently in the desktop app and the CLI (one book came out at 396 pages in one and 392 in the other). Use `hyphens: manual` with soft hyphens (`&shy;`) where you want a word to break, and every build gives the same pages. Rule id `printsafe/engine-hyphenation`; it is always a warning unless you raise it, and you can silence it like any other rule below.
+
 ### PDF checks (post-build)
 
 Run on the generated PDF. Verify structural correctness and print compliance.
@@ -249,7 +251,7 @@ lint:
 
 The rule id is the one shown in the warning: `printsafe/…` for CSS print-safety
 rules (`printsafe/no-risky-print-effects`, `printsafe/page-containment`,
-`printsafe/preview-cannot-follow`, `printsafe/no-remote-urls`), or the check id for the rest (for example
+`printsafe/preview-cannot-follow`, `printsafe/engine-hyphenation`, `printsafe/no-remote-urls`), or the check id for the rest (for example
 `source.accessibility.heading-order`). An id that matches no rule is ignored,
 so a typo has no effect — check the spelling against the warning text.
 

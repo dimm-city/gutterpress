@@ -10,6 +10,8 @@
 //  - page-containment         warns on rules that trap `.gp-behind`/`.gp-bleed` art
 //  - preview-cannot-follow    warns on a forced break or `page:` the live preview's
 //                             CSS reader cannot see, so preview and PDF drift apart
+//  - engine-hyphenation       warns on `hyphens: auto`, which breaks lines only where
+//                             the running Chromium ships dictionaries, so builds differ
 
 import postcss from "postcss";
 import { MARGIN_BOX_IGNORED_PROPERTIES } from "../engine/shared/margin-box-support.ts";
@@ -20,6 +22,7 @@ export const ruleRiskyProps = "printsafe/no-risky-print-effects";
 export const ruleSyntax = "printsafe/syntax-error";
 export const rulePageContainment = "printsafe/page-containment";
 export const rulePreviewCannotFollow = "printsafe/preview-cannot-follow";
+export const ruleEngineHyphenation = "printsafe/engine-hyphenation";
 
 export interface PrintSafeWarning {
   rule: string;
@@ -333,6 +336,24 @@ function previewBlindSpot(decl: postcss.Declaration): string | null {
   return null;
 }
 
+// ── Hyphenation that depends on the browser build ───────────────────────────
+//
+// `hyphens: auto` breaks words only where the running Chromium ships
+// hyphenation dictionaries, and the builds Gutterpress runs on differ: Chrome
+// for Testing has them, the desktop app's Electron Chromium has none on Linux,
+// and macOS uses the system hyphenator. The same book then breaks lines — and
+// so pages — differently per build (396 pages in the desktop app, 392 in the
+// CLI), which breaks the promise that every build of a book gives the same
+// pages. `hyphens: manual` (the initial value) breaks only at soft hyphens
+// (`&shy;`), the same everywhere. Source-only, so `var()` values are not
+// resolved. Delete this rule if Chromium ships dictionaries on every platform.
+
+/** `hyphens: auto`, or the same value under the `-webkit-` prefix. */
+function isAutoHyphenation(decl: postcss.Declaration): boolean {
+  const prop = decl.prop.toLowerCase();
+  return (prop === "hyphens" || prop === "-webkit-hyphens") && decl.value.trim().toLowerCase() === "auto";
+}
+
 function nodeLoc(node: postcss.Node): { line: number; column: number } {
   return {
     line: node.source?.start?.line ?? 1,
@@ -482,6 +503,17 @@ function checkCssRaw(css: string, from?: string): PrintSafeWarning[] {
     if (message) {
       warnings.push({ rule: rulePreviewCannotFollow, severity: "warning", message, ...nodeLoc(decl) });
     }
+  });
+
+  // Automatic hyphenation: the dictionaries differ per Chromium build.
+  root.walkDecls((decl) => {
+    if (!isAutoHyphenation(decl)) return;
+    warnings.push({
+      rule: ruleEngineHyphenation,
+      severity: "warning",
+      message: `"${decl.prop}: auto" depends on the browser's hyphenation dictionaries, so the desktop app and the CLI (and different operating systems) can break lines and pages differently. Use "hyphens: manual" with soft hyphens (&shy;) for identical pages everywhere.`,
+      ...nodeLoc(decl),
+    });
   });
 
   // Fast source hint for declarations on core's known page wrappers. The
