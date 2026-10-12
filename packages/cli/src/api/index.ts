@@ -146,9 +146,10 @@ export {
   deleteSnippet,
   listMergedSnippets,
   listMarkerComponents,
+  listLocationVariants,
   SNIPPETS_DIR,
 } from "../lib/snippets.ts";
-export type { MarkerComponent, SnippetEntry, SnippetSource } from "../lib/snippets.ts";
+export type { LocationVariant, MarkerComponent, SnippetEntry, SnippetSource } from "../lib/snippets.ts";
 
 // ── Extension manager (#265) — the one rail ──────────────────────────────────
 export {

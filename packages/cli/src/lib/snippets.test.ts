@@ -11,6 +11,7 @@ import {
   deleteSnippet,
   listMergedSnippets,
   listMarkerComponents,
+  listLocationVariants,
   SNIPPETS_DIR,
 } from "./snippets.ts";
 
@@ -684,6 +685,56 @@ test("listMarkerComponents lists no components when two plugins declare the same
     await writeManifest(proj, ["extensions:", "  - ./plugins/one", "  - ./plugins/two", ""].join("\n"));
     expect(await listMarkerComponents(proj)).toEqual([]);
     expect((await listMergedSnippets(proj)).map((e) => [e.fileName, e.component])).toEqual([["box.md", undefined]]);
+  } finally {
+    await rm(proj, { recursive: true, force: true });
+  }
+});
+
+test("listLocationVariants lists core's page variants, then each extension's page/chapter/section variants", async () => {
+  const proj = await tmpProject();
+  try {
+    await makeComponentPlugin(
+      proj,
+      "dc",
+      `{
+        box: {},
+        page: { variants: { intro: "dc-page-intro" }, label: "Dimm City pages", snippet: "examples/page.md" },
+        chapter: { variants: { rules: "dc-chapter-rules" } },
+        section: { variants: { card: "dc-section-card" } },
+      }`,
+      {},
+    );
+    await writeManifest(proj, ["extensions:", "  - ./plugins/dc", ""].join("\n"));
+    const source = { kind: "extension" as const, ref: "./plugins/dc", name: "Dc" };
+    const core = { kind: "core" as const };
+    const variants = await listLocationVariants(proj);
+    expect(variants.map((v) => [v.kind, v.word, v.class])).toEqual([
+      ["chapter", "rules", "dc-chapter-rules"],
+      ["page", "blank", "gp-page-blank"],
+      ["page", "full-bleed", "gp-page-full-bleed"],
+      ["page", "intro", "dc-page-intro"],
+      ["section", "card", "dc-section-card"],
+    ]);
+    expect(variants.find((v) => v.word === "blank")?.source).toEqual(core);
+    const intro = variants.find((v) => v.word === "intro")!;
+    expect(intro.source.kind).toBe("extension");
+    expect(intro.source).toMatchObject({ ref: source.ref });
+    expect(intro.label).toBe("Dimm City pages");
+    expect(intro.snippet).toBe("examples/page.md");
+    // page/chapter/section are variants, not components
+    expect((await listMarkerComponents(proj)).map((c) => c.name)).toEqual(["box"]);
+  } finally {
+    await rm(proj, { recursive: true, force: true });
+  }
+});
+
+test("listLocationVariants still lists core's when two extensions clash", async () => {
+  const proj = await tmpProject();
+  try {
+    await makeComponentPlugin(proj, "a", `{ page: { variants: { intro: "a-intro" } } }`, {});
+    await makeComponentPlugin(proj, "b", `{ page: { variants: { intro: "b-intro" } } }`, {});
+    await writeManifest(proj, ["extensions:", "  - ./plugins/a", "  - ./plugins/b", ""].join("\n"));
+    expect((await listLocationVariants(proj)).map((v) => v.word)).toEqual(["blank", "full-bleed"]);
   } finally {
     await rm(proj, { recursive: true, force: true });
   }
