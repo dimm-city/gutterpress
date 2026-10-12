@@ -270,6 +270,34 @@
 .gp-marginbox[data-align="end"] > .gp-marginbox-content { justify-content: flex-end; }
 
 /* margin & bleed overlay (overlay.ts) -------------------------------- */
+/* THE LOOK LIVES HERE, in these tokens, and nowhere else: colours, line
+   width, line style, tint strength. The desktop app's settings change the
+   colour (an inline \`--gp-ov-color\` on <body>) and pick a strength preset
+   (\`data-overlay-strength\`); nothing in a book's CSS is involved or needed. */
+.gp-stage {
+  --gp-ov-color: #2f80ed;       /* margin box line + the tint over the margins */
+  --gp-ov-width: 2px;           /* line width as seen on screen, at any zoom */
+  --gp-ov-style: dashed;        /* margin box line style */
+  --gp-ov-tint: 0.1;            /* opacity of the tint over the margin area */
+  --gp-ov-bleed-color: #e5484d; /* bleed band + trim line */
+  --gp-ov-bleed-alpha: 0.45;    /* opacity of the bleed band */
+  --gp-ov-flag-width: 2px;      /* overflow flag outline */
+  --gp-ov-warn: #f59e0b;        /* reaches into the margin */
+  --gp-ov-error: #e5484d;       /* crosses the trim / leaves the page */
+  --gp-ov-intent: #8b5cf6;      /* placed on purpose */
+}
+.gp-stage[data-overlay-strength="subtle"] {
+  --gp-ov-width: 1px;
+  --gp-ov-tint: 0.05;
+  --gp-ov-bleed-alpha: 0.3;
+}
+.gp-stage[data-overlay-strength="strong"] {
+  --gp-ov-width: 3px;
+  --gp-ov-tint: 0.2;
+  --gp-ov-bleed-alpha: 0.65;
+  --gp-ov-flag-width: 3px;
+}
+
 /* One sibling layer per run, ABOVE the strip so the lines stay visible over
    author backgrounds and art. Absolutely positioned and pointer-transparent:
    it takes no flow space and no hits, so it cannot move a page break. Exists
@@ -279,22 +307,30 @@
   inset: 0;
   z-index: 5;
   pointer-events: none;
-  --gp-ov-margin: #2f80ed;
-  --gp-ov-bleed: 229 72 77;
-  --gp-ov-warn: #f59e0b;
-  --gp-ov-error: #e5484d;
-  --gp-ov-intent: #8b5cf6;
+  /* The stage is a paint transform, so a 2px line would shrink with the zoom
+     and vanish at fit-to-width. Lines are sized in layout px divided by the
+     zoom, which makes them the same width on screen at every zoom. */
+  --gp-ov-w: calc(var(--gp-ov-width) / var(--gp-zoom, 1));
+  --gp-ov-flag-w: calc(var(--gp-ov-flag-width) / var(--gp-zoom, 1));
 }
 
 .gp-ov-page {
   position: absolute;
 }
 
-/* margin box: thin dashed outline of the content area */
+/* the margins as a region: the trim minus the content box (clip-path, set in
+   overlay.ts), so a margin reads as an area, not a hairline */
+.gp-ov-tint {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--gp-ov-color) calc(var(--gp-ov-tint) * 100%), transparent);
+}
+
+/* margin box: the content area's outline */
 .gp-ov-margin {
   position: absolute;
   box-sizing: border-box;
-  border: 1px dashed var(--gp-ov-margin);
+  border: var(--gp-ov-w) var(--gp-ov-style) var(--gp-ov-color);
 }
 
 /* the PDF's own margins for this page, where they differ from where the
@@ -302,8 +338,8 @@
 .gp-ov-print {
   position: absolute;
   box-sizing: border-box;
-  border: 1px dotted var(--gp-ov-margin);
-  opacity: 0.55;
+  border: var(--gp-ov-w) dotted var(--gp-ov-color);
+  opacity: 0.6;
 }
 
 /* bleed: a translucent band OUTSIDE the trim (its width is the border) */
@@ -311,14 +347,16 @@
   position: absolute;
   box-sizing: border-box;
   border-style: solid;
-  border-color: rgb(var(--gp-ov-bleed) / 0.3);
+  border-color: color-mix(in srgb, var(--gp-ov-bleed-color) calc(var(--gp-ov-bleed-alpha) * 100%), transparent);
 }
 
-/* trim: where the sheet will be cut, drawn only when there is bleed */
+/* trim: where the sheet will be cut, drawn only when there is bleed — solid,
+   just inside the edge so it never paints over the band */
 .gp-ov-trim {
   position: absolute;
   inset: 0;
-  outline: 1px solid rgb(var(--gp-ov-bleed) / 0.9);
+  outline: var(--gp-ov-w) solid var(--gp-ov-bleed-color);
+  outline-offset: calc(-1 * var(--gp-ov-w));
 }
 
 /* overflow flags — outline + faint tint, never a box change */
@@ -327,17 +365,17 @@
   box-sizing: border-box;
 }
 .gp-ov-flag[data-kind="margin"] {
-  outline: 2px solid var(--gp-ov-warn);
-  background: rgb(245 158 11 / 0.14);
+  outline: var(--gp-ov-flag-w) solid var(--gp-ov-warn);
+  background: color-mix(in srgb, var(--gp-ov-warn) 16%, transparent);
 }
 .gp-ov-flag[data-kind="bleed"],
 .gp-ov-flag[data-kind="off-page"] {
-  outline: 2px solid var(--gp-ov-error);
-  background: rgb(229 72 77 / 0.16);
+  outline: var(--gp-ov-flag-w) solid var(--gp-ov-error);
+  background: color-mix(in srgb, var(--gp-ov-error) 18%, transparent);
 }
 /* placed on purpose (.gp-bleed, .gp-pin, …): present, not a problem */
 .gp-ov-flag[data-kind="intended"] {
-  outline: 1px dotted var(--gp-ov-intent);
+  outline: var(--gp-ov-flag-w) dotted var(--gp-ov-intent);
 }
 
 /* designer mode ------------------------------------------------------- */
@@ -2196,6 +2234,17 @@
     return kinds.reduce((worst, k) => SEVERITY[k] > SEVERITY[worst] ? k : worst, "inside");
   }
   var INTENT_SELECTOR = ".gp-bleed, .gp-pin, .gp-flush, .gp-behind, .gp-page-full-bleed";
+  var OVERLAY_STRENGTHS = ["subtle", "normal", "strong"];
+  var HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+  function sanitizeOverlayStyle(style) {
+    const s = style && typeof style === "object" ? style : {};
+    const out = {};
+    if (typeof s.color === "string" && HEX_COLOR.test(s.color.trim()))
+      out.color = s.color.trim();
+    if (OVERLAY_STRENGTHS.includes(s.strength))
+      out.strength = s.strength;
+    return out;
+  }
   var OVERLAY_OFF = { on: false, issues: 0, intended: 0, bleedPt: 0 };
   function marginsDiffer(a, b) {
     return ["top", "right", "bottom", "left"].some((k) => Math.abs(a[k] - b[k]) > 0.5);
@@ -2214,6 +2263,14 @@
     el.style.top = `${r.y}px`;
     el.style.width = `${r.w}px`;
     el.style.height = `${r.h}px`;
+  }
+  function marginTint(b) {
+    const el = div("gp-ov-tint");
+    const { x: l, y: t, w, h } = b.content;
+    const r = l + w;
+    const bt = t + h;
+    el.style.clipPath = `polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ` + `${l}px ${t}px, ${l}px ${bt}px, ${r}px ${bt}px, ${r}px ${t}px, ${l}px ${t}px)`;
+    return el;
   }
   function clearOverlay() {
     for (const layer of Array.from(document.querySelectorAll(".gp-ov")))
@@ -2245,6 +2302,7 @@
         host.appendChild(band);
         host.appendChild(div("gp-ov-trim"));
       }
+      host.appendChild(marginTint(boxes));
       host.appendChild(div("gp-ov-margin", boxes.content));
       if (marginsDiffer(p.printMargin, p.margin)) {
         host.appendChild(div("gp-ov-print", pageBoxes(p.geometry, p.printMargin, 0, PX_PER_PT).content));
@@ -2354,12 +2412,21 @@
       setDesigner(on) {
         document.body.dataset.designer = on ? "on" : "off";
       },
-      setOverlay(on) {
+      setOverlay(on, style) {
+        if (style) {
+          const { color, strength } = sanitizeOverlayStyle(style);
+          if (strength)
+            document.body.dataset.overlayStrength = strength;
+          if (color)
+            document.body.style.setProperty("--gp-ov-color", color);
+        }
+        const wasOn = overlayOn;
         overlayOn = on;
         document.body.dataset.overlay = on ? "on" : "off";
-        if (on)
-          paintOverlayNow();
-        else {
+        if (on) {
+          if (!(wasOn && style))
+            paintOverlayNow();
+        } else {
           clearOverlay();
           overlaySummary = OVERLAY_OFF;
           window.dispatchEvent(new CustomEvent("gp:overlay", { detail: overlaySummary }));

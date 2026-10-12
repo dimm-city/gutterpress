@@ -22,6 +22,11 @@
  *  - bleed: `pageGeometry()`, the compiler's own resolution — the document's
  *    base `@page { bleed }` (a named page's `bleed` is ignored by print too).
  *
+ * How it looks is set in ONE place — the `--gp-ov-*` tokens at the top of the
+ * overlay section of viewer.css. The app lets a user change the colour and a
+ * three-step strength (see `OverlayStyle`); both only set a token on <body>,
+ * so no author CSS is involved and nothing needs to repaint.
+ *
  * What it never does: it adds no box to author content and no class or
  * attribute to author elements. Everything is absolutely-positioned,
  * pointer-transparent chrome in one sibling layer (`.gp-ov`) per run, outside
@@ -135,6 +140,30 @@ export function worstKind(kinds: readonly OverflowKind[]): OverflowKind {
  */
 export const INTENT_SELECTOR = ".gp-bleed, .gp-pin, .gp-flush, .gp-behind, .gp-page-full-bleed";
 
+/**
+ * The two knobs a host may turn. They carry no geometry: the viewer maps them
+ * onto the `--gp-ov-*` tokens (viewer.css), so "more or less prominent" and
+ * "which colour" are the whole vocabulary.
+ */
+export const OVERLAY_STRENGTHS = ["subtle", "normal", "strong"] as const;
+export type OverlayStrength = (typeof OVERLAY_STRENGTHS)[number];
+export interface OverlayStyle {
+  /** margin box + margin tint colour, `#rgb` / `#rrggbb` */
+  color?: string;
+  strength?: OverlayStrength;
+}
+
+const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+/** Whatever a host sent, reduced to values the stylesheet can take; anything else is dropped. */
+export function sanitizeOverlayStyle(style: unknown): OverlayStyle {
+  const s = (style && typeof style === "object" ? style : {}) as Record<string, unknown>;
+  const out: OverlayStyle = {};
+  if (typeof s.color === "string" && HEX_COLOR.test(s.color.trim())) out.color = s.color.trim();
+  if (OVERLAY_STRENGTHS.includes(s.strength as OverlayStrength)) out.strength = s.strength as OverlayStrength;
+  return out;
+}
+
 export interface OverlaySummary {
   on: boolean;
   /** elements that leave their content area by accident (counted) */
@@ -182,6 +211,18 @@ function place(el: HTMLElement, r: Rect): void {
   el.style.top = `${r.y}px`;
   el.style.width = `${r.w}px`;
   el.style.height = `${r.h}px`;
+}
+
+/** The margin as a REGION: the trim with the content box cut out (even-odd, so exact at any zoom). */
+function marginTint(b: PageBoxes): HTMLDivElement {
+  const el = div("gp-ov-tint");
+  const { x: l, y: t, w, h } = b.content;
+  const r = l + w;
+  const bt = t + h;
+  el.style.clipPath =
+    `polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ` +
+    `${l}px ${t}px, ${l}px ${bt}px, ${r}px ${bt}px, ${r}px ${t}px, ${l}px ${t}px)`;
+  return el;
 }
 
 export function clearOverlay(): void {
@@ -236,6 +277,7 @@ export function paintOverlay(
       host.appendChild(band);
       host.appendChild(div("gp-ov-trim"));
     }
+    host.appendChild(marginTint(boxes));
     host.appendChild(div("gp-ov-margin", boxes.content));
     if (marginsDiffer(p.printMargin, p.margin)) {
       host.appendChild(div("gp-ov-print", pageBoxes(p.geometry, p.printMargin, 0, PX_PER_PT).content));

@@ -21,7 +21,15 @@ import { MARKER_CSS } from "../../lib/markdown/markers.js";
 import { GUTTERPRESS_CSS } from "../../lib/markdown/gutterpress-css.ts";
 import { extract } from "../shared/gcpm-extract.ts";
 import { runPageBox } from "./fragment.ts";
-import { classifyRect, documentBleedPt, marginsDiffer, pageBoxes, worstKind, type Rect } from "./overlay.ts";
+import {
+  classifyRect,
+  documentBleedPt,
+  marginsDiffer,
+  pageBoxes,
+  sanitizeOverlayStyle,
+  worstKind,
+  type Rect,
+} from "./overlay.ts";
 
 const IN = 72;
 
@@ -128,6 +136,17 @@ describe("classifying an element's box", () => {
     expect(worstKind(["margin", "bleed"])).toBe("bleed");
     expect(worstKind(["bleed", "off-page", "margin"])).toBe("off-page");
     expect(worstKind([])).toBe("inside");
+  });
+});
+
+describe("the look a host may set", () => {
+  test("only a hex colour and a known strength get through", () => {
+    expect(sanitizeOverlayStyle({ color: "#00AA55", strength: "strong" })).toEqual({ color: "#00AA55", strength: "strong" });
+    expect(sanitizeOverlayStyle({ color: "#0a5" })).toEqual({ color: "#0a5" });
+    expect(sanitizeOverlayStyle({ color: "red; x: y", strength: "loud" })).toEqual({});
+    expect(sanitizeOverlayStyle({ color: "url(javascript:1)" })).toEqual({});
+    expect(sanitizeOverlayStyle(null)).toEqual({});
+    expect(sanitizeOverlayStyle("strong")).toEqual({});
   });
 });
 
@@ -304,6 +323,74 @@ testIf(
         expect(await page.evaluate(() => document.querySelectorAll(".gp-ov-page").length)).toBe(
           await page.evaluate(() => document.querySelectorAll(".gp-sheet").length),
         );
+      } finally {
+        await page.close();
+      }
+    });
+  },
+  RENDER_TEST_TIMEOUT_MS,
+);
+
+testIf(
+  "the look: visible by default, constant on screen at any zoom, and adjustable by strength and colour",
+  async () => {
+    await withFixture(async (url) => {
+      const page = await (await getBrowser()).newPage();
+      try {
+        await page.goto(url);
+        await page.waitForFunction("window.Gutterpress?.totalPages > 0");
+        await page.evaluate(() => (window as any).Gutterpress.decoration.setOverlay(true));
+
+        const look = () =>
+          page.evaluate(() => {
+            const zoom = new DOMMatrixReadOnly(getComputedStyle(document.body).transform).a || 1;
+            const cs = (sel: string) => getComputedStyle(document.querySelector(sel)!);
+            const m = cs(".gp-ov-margin");
+            return {
+              // what the author sees: layout px x zoom
+              marginLine: parseFloat(m.borderTopWidth) * zoom,
+              marginColor: m.borderTopColor,
+              tint: cs(".gp-ov-tint").backgroundColor,
+              trimLine: parseFloat(cs(".gp-ov-trim").outlineWidth) * zoom,
+              band: cs(".gp-ov-bleed").borderTopColor,
+              clip: (document.querySelector(".gp-ov-tint") as HTMLElement).style.clipPath,
+            };
+          });
+
+        // default: a solid 2px-on-screen line, a translucent margin region, a stronger band
+        const base = await look();
+        expect(base.marginLine).toBeGreaterThanOrEqual(1.9);
+        expect(base.marginLine).toBeLessThanOrEqual(2.1);
+        expect(base.trimLine).toBeGreaterThanOrEqual(1.9);
+        expect(base.tint).toMatch(/^color\(srgb|^rgba?\(/);
+        expect(base.tint).not.toBe("rgba(0, 0, 0, 0)");
+        expect(base.clip).toContain("evenodd");
+
+        // the stage is a paint transform; the line stays ~2px on screen at half zoom
+        await page.evaluate(() => document.documentElement.style.setProperty("--gutterpress-zoom", "0.5"));
+        const half = await look();
+        expect(half.marginLine).toBeGreaterThanOrEqual(1.9);
+        expect(half.marginLine).toBeLessThanOrEqual(2.1);
+        await page.evaluate(() => document.documentElement.style.removeProperty("--gutterpress-zoom"));
+
+        // strength and colour are tokens on <body>: a restyle needs no repaint
+        const layer = await page.evaluate(() => {
+          (document.querySelector(".gp-ov-margin") as any).__same = true;
+          (window as any).Gutterpress.decoration.setOverlay(true, { color: "#00aa55", strength: "strong" });
+          return (document.querySelector(".gp-ov-margin") as any).__same === true;
+        });
+        expect(layer).toBe(true);
+        const strong = await look();
+        expect(strong.marginLine).toBeGreaterThanOrEqual(2.9);
+        expect(strong.marginColor).toBe("rgb(0, 170, 85)");
+        await page.evaluate(() => (window as any).Gutterpress.decoration.setOverlay(true, { strength: "subtle" }));
+        expect((await look()).marginLine).toBeLessThanOrEqual(1.1);
+
+        // a bad value is ignored, not applied
+        await page.evaluate(() => (window as any).Gutterpress.decoration.setOverlay(true, { color: "red; x:y", strength: "loud" }));
+        const after = await look();
+        expect(after.marginColor).toBe("rgb(0, 170, 85)");
+        expect(after.marginLine).toBeLessThanOrEqual(1.1);
       } finally {
         await page.close();
       }

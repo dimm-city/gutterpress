@@ -37,7 +37,9 @@ import {
   clearOverlay,
   documentBleedPt,
   paintOverlay,
+  sanitizeOverlayStyle,
   type OverlayPage,
+  type OverlayStyle,
   type OverlaySummary,
 } from "./overlay.ts";
 import {
@@ -82,7 +84,7 @@ export interface DecorationApi {
   setDesigner(on: boolean): void;
   /** margin & bleed overlay (overlay.ts): draws it, and returns what it found.
    * Chrome only — pagination is identical with it on or off. */
-  setOverlay(on: boolean): OverlaySummary;
+  setOverlay(on: boolean, style?: OverlayStyle): OverlaySummary;
   overlay(): OverlaySummary;
 }
 
@@ -160,11 +162,20 @@ export function decorate(
     setDesigner(on) {
       document.body.dataset.designer = on ? "on" : "off";
     },
-    setOverlay(on) {
+    setOverlay(on, style) {
+      // The look is only tokens on <body> (viewer.css): a call that merely
+      // restyles an overlay that is already showing needs no repaint.
+      if (style) {
+        const { color, strength } = sanitizeOverlayStyle(style);
+        if (strength) document.body.dataset.overlayStrength = strength;
+        if (color) document.body.style.setProperty("--gp-ov-color", color);
+      }
+      const wasOn = overlayOn;
       overlayOn = on;
       document.body.dataset.overlay = on ? "on" : "off";
-      if (on) paintOverlayNow();
-      else {
+      if (on) {
+        if (!(wasOn && style)) paintOverlayNow();
+      } else {
         clearOverlay();
         overlaySummary = OVERLAY_OFF;
         window.dispatchEvent(new CustomEvent("gp:overlay", { detail: overlaySummary }));

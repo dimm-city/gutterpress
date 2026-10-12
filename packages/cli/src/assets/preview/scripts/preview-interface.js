@@ -1101,15 +1101,20 @@
     // the overlayChanged event (margin & bleed overlay, engine/viewer/
     // overlay.ts). A v9 lib with a pre-v9 SPA simply never turns it on; a v9
     // SPA feature-detects on the version before offering the toggle.
+    // (v9 is unreleased as of this writing, so setMarginOverlay's optional
+    // second argument — the look, below — is part of v9, not a bump.)
     getProtocolVersion: function () { return 9; },
 
     // Margin & bleed overlay. Viewer chrome only — it adds no box to the book
     // and no attribute to its elements, so pagination is identical on or off.
     // Returns the summary {on, issues, intended, bleedPt}, or null when the
-    // viewer predates it.
-    setMarginOverlay: function (on) {
+    // viewer predates it. `style` ({color: '#rrggbb', strength: 'subtle' |
+    // 'normal' | 'strong'}) is optional: it only sets the viewer's own
+    // `--gp-ov-*` tokens, and a call that carries it while the overlay is
+    // already on restyles without repainting.
+    setMarginOverlay: function (on, style) {
       var d = window.Gutterpress && window.Gutterpress.decoration;
-      return d && typeof d.setOverlay === 'function' ? d.setOverlay(!!on) : null;
+      return d && typeof d.setOverlay === 'function' ? d.setOverlay(!!on, style) : null;
     },
     toggleMarginOverlay: function () {
       var d = window.Gutterpress && window.Gutterpress.decoration;
@@ -1650,7 +1655,7 @@
     var parts = ['Margins & bleed'];
     parts.push(summary.issues ? summary.issues + ' overflowing' : 'nothing overflows');
     if (summary.intended) parts.push(summary.intended + ' placed on purpose');
-    if (!summary.bleedPt) parts.push('no @page bleed set');
+    if (!summary.bleedPt) parts.push('no bleed set \u2014 add @page { bleed: 0.125in } to see the bleed edge');
     badge.textContent = parts.join(' \u00b7 ') + '  (Alt+M hides)';
   }
 

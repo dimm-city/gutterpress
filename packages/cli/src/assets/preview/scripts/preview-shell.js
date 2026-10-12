@@ -108,7 +108,13 @@
       if (sourceBody.classList.contains('debug')) api.toggleDebugMode();
       // The margin & bleed overlay is a review aid the author switched on: a
       // hot reload must not drop it.
-      if (sourceBody.dataset.overlay === 'on' && api.setMarginOverlay) api.setMarginOverlay(true);
+      // Its look (colour, strength) travels with it.
+      if (sourceBody.dataset.overlay === 'on' && api.setMarginOverlay) {
+        api.setMarginOverlay(true, {
+          color: sourceBody.style.getPropertyValue('--gp-ov-color').trim(),
+          strength: sourceBody.dataset.overlayStrength
+        });
+      }
     }
     var zoom = source.documentElement.style.getPropertyValue('--gutterpress-zoom');
     // Carry the fit flag too (setZoom's third argument clips sideways overflow).
