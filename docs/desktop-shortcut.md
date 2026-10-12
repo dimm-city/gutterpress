@@ -7,7 +7,7 @@ Gutterpress ships two separate desktop entries, for two separate programs:
 | | **Application-menu integration** | **CLI preview shortcut** |
 |---|---|---|
 | What it launches | The **full Electron desktop app** (toolbar, editor, page navigation, zoom, folder picker, Save PDF) | The **headless `gutterpress preview` server** + your default browser |
-| Where it comes from | Opt-in, from inside the app: **Settings → App → Desktop integration** | The `install.sh` / `install.ps1` CLI installers |
+| Where it comes from | Opt-in, from inside the app: **Troubleshooting → Diagnostics → Desktop integration** | The `install.sh` / `install.ps1` CLI installers |
 | Platforms | Linux AppImage only (Windows and macOS installers already create their own entries) | Linux and Windows |
 | Documented in | [Linux AppImage application-menu integration](#linux-appimage-application-menu-integration-desktop-app) (below) | [CLI preview shortcut](#cli-preview-shortcut-headless-preview-server) (below) |
 
@@ -23,7 +23,7 @@ configuration behind your back.
 
 When you want it in the application menu, turn it on explicitly:
 
-**Settings → App → Desktop integration → Add to application menu**
+**Troubleshooting → Diagnostics → Desktop integration → Add to application menu**
 
 The action appears **only** in a packaged Linux AppImage build (it is hidden on
 Windows, macOS, and in development). It needs no
