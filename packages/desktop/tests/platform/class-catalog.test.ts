@@ -84,6 +84,22 @@ describe("parseCatalogClasses", () => {
     expect(snug.description).toBe("Paragraph margins drop so a section that overflows by a line fits.");
   });
 
+  test("a `modifier:` list names every class in it", () => {
+    const c = byClass(`
+components:
+  - name: heading-looks
+    status: live
+    origin: author
+    modifier: [dc-h3, .dc-h4, "not a class"]
+    recipe: "## Title {.dc-h3}"
+    notes: "Gives a heading another level's look."
+`);
+    expect(c.get("dc-h3")!.modifier).toBe(true);
+    expect(c.get("dc-h4")!.modifier).toBe(true);
+    expect(c.get("dc-h4")!.description).toBe("Gives a heading another level's look.");
+    expect(c.has("not a class")).toBe(false);
+  });
+
   test("retired and unimplemented entries are skipped", () => {
     const c = byClass(DC);
     expect(c.has("dc-allow-split")).toBe(false);

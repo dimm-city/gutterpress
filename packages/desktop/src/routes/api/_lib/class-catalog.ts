@@ -102,15 +102,22 @@ function recipeClasses(recipe: string | undefined, isAuthor: boolean): string[] 
   return out;
 }
 
-/** The class a `modifier:` field names: its own string, or (for `true`) the entry's emitted/written class. */
-function modifierClass(entry: Record<string, unknown>): string | undefined {
+/**
+ * The classes a `modifier:` field names: its own string, each string of a list
+ * (`[dc-h3, dc-h4]`), or (for `true`) the entry's emitted/written class.
+ */
+function modifierClasses(entry: Record<string, unknown>): string[] {
   const m = entry.modifier;
-  if (typeof m === 'string') {
-    const cls = m.trim().replace(/^\./, '');
+  const asClass = (v: unknown): string | undefined => {
+    if (typeof v !== 'string') return undefined;
+    const cls = v.trim().replace(/^\./, '');
     return /^[A-Za-z_][\w-]*$/.test(cls) ? cls : undefined;
-  }
-  if (m !== true) return undefined;
-  return classFromEmits(entry.emits) ?? recipeClasses(str(entry.recipe), true).at(-1);
+  };
+  if (Array.isArray(m)) return m.map(asClass).filter((c): c is string => !!c);
+  if (typeof m === 'string') return [asClass(m)].filter((c): c is string => !!c);
+  if (m !== true) return [];
+  const cls = classFromEmits(entry.emits) ?? recipeClasses(str(entry.recipe), true).at(-1);
+  return cls ? [cls] : [];
 }
 
 /**
@@ -151,8 +158,7 @@ export function parseCatalogClasses(yamlText: string, source: Source): ClassCata
       const appliesTo = recipeMarkers(recipe);
       const label = str(entry.label) ?? prettify(name);
 
-      const modifier = modifierClass(entry);
-      if (modifier) {
+      for (const modifier of modifierClasses(entry)) {
         add(modifier, { description: describe(entry, true), modifier: true, appliesTo, label });
       }
       for (const cls of recipeClasses(recipe, isAuthor)) {
