@@ -22,6 +22,7 @@ import markdownItFootnote from "markdown-it-footnote";
 import gutterpressMarkers, { buildDeclaredMarkerRegistry } from "./markers.js";
 import gpPinScope from "./gp-pin-scope.js";
 import { gpBlockNames } from "./block-names";
+import { gpTableAlign } from "./table-align";
 import markdownItSourceMap from "markdown-it-source-map";
 import markdownItDeflist from "markdown-it-deflist";
 // Optional, opt-in markdown features. Bundled so they're available WITHOUT any
@@ -423,6 +424,8 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   // `data-name` on blocks, headings and (in the image rule below) images. After
   // markdown-it-attrs so `{name=…}` is in place, before any plugin's own rules.
   md.use(gpBlockNames);
+  // Column alignment as `data-align` (styled by MARKER_CSS), not an inline style.
+  md.use(gpTableAlign);
 
   // Image src normalization (token-level renderer rule).
   registerImageRule(md);
