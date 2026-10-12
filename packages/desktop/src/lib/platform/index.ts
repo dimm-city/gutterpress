@@ -33,7 +33,7 @@ export type {
 
 export type { RecentFolderEntry, FavoriteEntry, PrintSafeWarning } from "./dtos";
 
-export type { WorkspaceMode } from "./shared-types";
+export type { WorkspaceMode, ReadLayout } from "./shared-types";
 
 let instance: Platform | null = null;
 

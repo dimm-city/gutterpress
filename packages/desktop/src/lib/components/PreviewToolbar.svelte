@@ -23,6 +23,7 @@
    * PWA-clean (§8): type-only imports, zero host/Node code.
    */
   import Icon from "$lib/components/Icon.svelte";
+  import type { ReadLayout } from "$lib/platform";
   import type { PageNavController } from "$lib/routes/page-nav-controller.svelte";
 
   let {
@@ -31,12 +32,19 @@
     zoom,
     zoomDisabled,
     onApplyZoom,
+    showLayoutToggle = false,
+    readLayout = "spread",
+    onSetReadLayout = () => {},
   }: {
     pageNav: PageNavController;
     rendering: boolean;
     zoom: string;
     zoomDisabled: boolean;
     onApplyZoom: (zoom: string) => void;
+    /** Read mode only (and only where two pages fit): one page / two pages. */
+    showLayoutToggle?: boolean;
+    readLayout?: ReadLayout;
+    onSetReadLayout?: (layout: ReadLayout) => void;
   } = $props();
 
   const ZOOM_LEVELS: Array<[string, string]> = [
@@ -63,6 +71,32 @@
 </script>
 
 <div class="preview-toolbar" role="toolbar" aria-label="Preview controls">
+  {#if showLayoutToggle}
+    <!-- Read layout: one page or a two-page spread. Read mode only — Edit is
+         always one page, so the control is not rendered there. -->
+    <div class="layout-group" role="group" aria-label="Page layout">
+      <button
+        class="icon-btn"
+        class:active={readLayout === "single"}
+        onclick={() => onSetReadLayout("single")}
+        title="One page at a time"
+        aria-label="One page"
+        aria-pressed={readLayout === "single"}
+      >
+        <Icon name="rectangle-vertical" size={16} />
+      </button>
+      <button
+        class="icon-btn"
+        class:active={readLayout === "spread"}
+        onclick={() => onSetReadLayout("spread")}
+        title="Two pages side by side"
+        aria-label="Two pages"
+        aria-pressed={readLayout === "spread"}
+      >
+        <Icon name="columns-2" size={16} />
+      </button>
+    </div>
+  {/if}
   <nav class="page-nav" aria-label="Page navigation">
     <button class="icon-btn" onclick={() => pageNav.firstPage()} disabled={rendering} title="First page (Home)" aria-label="First page">
       <Icon name="chevrons-left" size={16} />
@@ -149,6 +183,16 @@
     align-items: center;
     gap: 2px;
   }
+  .layout-group {
+    grid-column: 1;
+    justify-self: start;
+    display: inline-flex;
+    gap: 1px;
+    padding: 1px;
+    border: 1px solid var(--app-control-border);
+    border-radius: 6px;
+    background: var(--app-control-bg);
+  }
   .zoom-menu {
     grid-column: 3;
     justify-self: end;
@@ -173,6 +217,13 @@
   .preview-toolbar button:hover:not(:disabled),
   .menu-summary:hover {
     background: var(--app-control-hover-bg);
+  }
+  /* The selected layout keeps its accent fill under the pointer: this sits
+     after the hover rule above at equal specificity, so it wins. */
+  .preview-toolbar .layout-group button.active {
+    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
+    border-color: var(--app-accent-border);
+    color: var(--app-accent-text);
   }
   .preview-toolbar button:disabled {
     opacity: 0.4;

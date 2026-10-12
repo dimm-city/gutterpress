@@ -7,6 +7,11 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **One page / two pages toggle in Read.** The preview toolbar has a layout
+  toggle in Read mode that switches between one page and a two-page spread; the
+  choice is saved in app settings (`preview.readLayout`, default two pages).
+  Edit mode always shows single pages and returning to Read restores your last
+  choice.
 - **Plugins can provide page, chapter and section variants.** A plugin's
   `markers` export may declare `page`, `chapter` and `section` with just
   `variants` (`page: { variants: { 'chapter-start': 'dc-page-chapter-start' } }`).
@@ -27,6 +32,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - **Desktop: the About tab is gone; versions, updates and desktop integration moved to Troubleshooting → Diagnostics.** Diagnostics now shows the desktop and library versions, the **Check now** update button, the **Update channel** and (Linux AppImage) **Add to application menu**. Same settings, same behaviour; they no longer sit under Settings → App or a separate About tab.
+- **Reader role no longer shows a one-tab strip.** With Settings → App role set
+  to Reader, the left panel shows the table of contents directly under its own
+  heading instead of a strip holding a single "TOC" tab. Author role is
+  unchanged.
 - **`@columns` is the one way to use columns.** `@columns 1` to `@columns 5`,
   closed with `@end-columns`, lays its content out in that many columns, and
   `@column-break` moves to the next column. A bare `@columns` is now exactly
