@@ -64,9 +64,12 @@ The preview shows your book's pages exactly as they will print, and updates as y
   over; hover for the details. It works in Read and Edit, the app remembers your choice, and it is
   for your eyes only: it is never printed, never in an exported PDF, and it does not move
   anything.
-  - **The bleed band only appears when your stylesheet sets a bleed.** The margins and bleed are
-    the ones your `@page` CSS defines, so a book without one shows the margins and no band, and the
-    button's tooltip says "No bleed set". Add `bleed: 0.125in;` to your `@page` rule to see it.
+  - **Where the bleed comes from.** A bleed set in your stylesheet (`@page { bleed }`) is drawn
+    as a band around the page. Without one, a DriveThruRPG (`dtrpg`) book uses its preset's bleed:
+    that file size already contains 0.125in of bleed on the top, bottom and outer edges (none on
+    the binding edge), so the band and a solid trim line appear inside the page on those edges.
+    With neither, you see the margins and no band, and the button's tooltip says "No bleed set";
+    add `bleed: 0.125in;` to your `@page` rule to see it.
   - **Make it louder or quieter, or change its colour** in Settings → App → Preview: *Margin
     overlay strength* (Subtle, Normal or Strong: line width, margin tint and bleed band) and
     *Margin overlay colour* (the margin outline and tint). The lines stay the same thickness on

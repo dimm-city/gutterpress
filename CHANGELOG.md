@@ -22,7 +22,18 @@ This project follows [Semantic Versioning](https://semver.org/).
   `:left` / `:right` and named pages included) and the `@page` `bleed` the print
   path uses, so a book with no `bleed` shows no band, and the button's tooltip (or
   the CLI badge) says "No bleed set" and shows the `@page { bleed: 0.125in }` that
-  adds one. Lines keep the same thickness on screen at every zoom. Its look is
+  adds one. A `dtrpg` book needs no CSS for that: the preset now declares
+  `page.bleed: 9` (0.125in), because DriveThruRPG's 8.625 x 11.25in interior file
+  already contains the bleed on the top, bottom and OUTER edges only (none on the
+  binding edge), which CSS `bleed` cannot express. The overlay draws the band and a
+  solid trim line inside the page on those three edges (right edge on a recto, left
+  on a verso) and flags content that crosses the trim; a CSS `@page { bleed }` wins
+  when present. `page.bleed` is a manifest field (points) any book can set; it
+  reaches only the preview overlay, never the PDF or a published page. The `dtrpg`
+  preset's values now say in comments which come from DriveThru's published print
+  spec (240% ink, the CGATS21 profile, PDF/X-1a or X-3, CMYK, the blank last page,
+  the 3-edge bleed) and which are Gutterpress conventions or derived from PDF/X.
+  Lines keep the same thickness on screen at every zoom. Its look is
   adjustable in **Settings, App, Preview**: `preview.marginOverlayStrength`
   (`subtle` / `normal` / `strong`, default `normal`: line width, margin tint and
   band opacity) and `preview.marginOverlayColor` (default `#2f80ed`); both are

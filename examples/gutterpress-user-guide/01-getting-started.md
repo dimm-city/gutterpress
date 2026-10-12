@@ -35,7 +35,7 @@ gutterpress new "My Book" --preset dtrpg
 The `--preset` names what the book is *designed for* — it sets the page size
 and print rules the project starts with, and it is required:
 
-- `dtrpg` — DriveThruRPG print-on-demand: letter-with-bleed page (621×810pt = 8.625×11.25in), print-ready checks on by default
+- `dtrpg` — DriveThruRPG print-on-demand: the 8.5×11in book's file size, trim plus a 0.125in bleed on the top, bottom and outer edges (621×810pt = 8.625×11.25in), print-ready checks on by default
 - `book` — a neutral 6×9in trade book, no print-service rules
 - `custom` — you supply the trim: add `--page-width` and `--page-height` (points; 72pt = 1in)
 
@@ -119,7 +119,7 @@ With it on, every page shows:
 - a **red outline** on anything that crosses the trim into the bleed band or beyond it (cut off in print);
 - a **dotted violet outline**, softly, on art you placed on purpose — `.gp-bleed` images, `.gp-pin` / `.gp-flush` pinned art, `.gp-behind` images and `@page full-bleed` pages. These are expected to leave the text area, so they are shown but not counted. The badge and the desktop button count the amber and red ones.
 
-The margins and bleed are the ones your own CSS defines, not a preset's. Page size, margins (including `@page :left` / `:right`) and `bleed` all come from your `@page` rules. **The red band and trim line appear only when your stylesheet declares a bleed** — if it sets none, you see the margins but no band, and the desktop button's tooltip (or the CLI badge) says "No bleed set". Add `bleed: 0.125in;` to your `@page` rule to see it. The preview lays every page of a section's text in the same column, so on a book with mirrored margins the dashed outline follows the text; a faint dotted outline marks where that page's own `:left` / `:right` margins put them in the PDF.
+Page size and margins (including `@page :left` / `:right`) come from your own `@page` rules. The bleed comes from one of two places. **If your stylesheet declares `@page { bleed }`, that is drawn** as a band around the page edge. **Otherwise, a `dtrpg` book uses its preset's bleed:** DriveThruRPG's 8.625×11.25in file already contains a 0.125in bleed on the top, bottom and outer edges (the right edge of a right-hand page, the left edge of a left-hand one) and none on the binding edge, so the band and the solid trim line are drawn *inside* the page on those three edges. (CSS `bleed` cannot say that — it adds the same bleed on every side outside the page — so the preset records it for the preview only; your PDF is unchanged. Set `page: { bleed: … }` in `manifest.yaml`, in points, to override it.) If neither declares a bleed, you see the margins but no band, and the desktop button's tooltip (or the CLI badge) says "No bleed set"; add `bleed: 0.125in;` to your `@page` rule to see it. The preview lays every page of a section's text in the same column, so on a book with mirrored margins the dashed outline follows the text; a faint dotted outline marks where that page's own `:left` / `:right` margins put them in the PDF.
 
 To make the overlay more or less prominent, or to change its colour, use the desktop app's **Settings → App → Preview**: **Margin overlay strength** (Subtle, Normal, Strong) and **Margin overlay colour**. These are app settings; there is nothing to add to your book's CSS. `gutterpress preview` always uses the Normal look.
 
