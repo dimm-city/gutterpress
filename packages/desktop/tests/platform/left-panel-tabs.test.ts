@@ -4,7 +4,7 @@
  */
 import { describe, test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
-import { HIDE_BOOKS_TAB, shownTabId, visibleTabIds } from "../../src/lib/left-panel-tabs";
+import { HIDE_BOOKS_TAB, shownTabId, showTabStrip, visibleTabIds } from "../../src/lib/left-panel-tabs";
 
 describe("visibleTabIds", () => {
   test("Books is hidden while the temporary flag is set", () => {
@@ -19,6 +19,23 @@ describe("visibleTabIds", () => {
   test("reader mode keeps only TOC (Books too when un-hidden)", () => {
     expect(visibleTabIds(true)).toEqual(["toc"]);
     expect(visibleTabIds(true, false)).toEqual(["projects", "toc"]);
+  });
+});
+
+describe("showTabStrip", () => {
+  test("reader role shows no tab strip: the lone TOC panel is shown directly", () => {
+    expect(showTabStrip(visibleTabIds(true))).toBe(false);
+  });
+
+  test("author role keeps the strip", () => {
+    expect(showTabStrip(visibleTabIds(false))).toBe(true);
+  });
+
+  test("LeftPanel draws the strip only when stripShown, and labels the bare TOC panel by its heading", () => {
+    const src = readFileSync(new URL("../../src/lib/components/LeftPanel.svelte", import.meta.url), "utf8");
+    expect(src).toMatch(/\{#if stripShown\}\s*<div class="panel-tabs"/);
+    expect(src).toContain('role={stripShown ? "tabpanel" : "region"}');
+    expect(src).toContain('id="panel-heading-toc"');
   });
 });
 

@@ -33,3 +33,12 @@ export function visibleTabIds(readerMode: boolean, hideBooks: boolean = HIDE_BOO
 export function shownTabId(active: LeftPanelTabId, visible: readonly LeftPanelTabId[]): LeftPanelTabId {
   return visible.includes(active) ? active : (visible[0] ?? active);
 }
+
+/**
+ * Whether the tab strip is drawn at all. A strip of one tab chooses nothing:
+ * in reader role only the TOC is left, and the TOC panel carries its own
+ * "Table of contents" heading, so the panel shows it directly with no strip.
+ */
+export function showTabStrip(visible: readonly LeftPanelTabId[]): boolean {
+  return visible.length > 1;
+}

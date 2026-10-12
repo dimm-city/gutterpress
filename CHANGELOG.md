@@ -26,6 +26,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Reader role no longer shows a one-tab strip.** With Settings → App role set
+  to Reader, the left panel shows the table of contents directly under its own
+  heading instead of a strip holding a single "TOC" tab. Author role is
+  unchanged.
 - **`@columns` is the one way to use columns.** `@columns 1` to `@columns 5`,
   closed with `@end-columns`, lays its content out in that many columns, and
   `@column-break` moves to the next column. A bare `@columns` is now exactly
