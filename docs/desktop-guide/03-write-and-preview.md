@@ -64,6 +64,11 @@ The preview shows your book's pages exactly as they will print, and updates as y
   over; hover for the details. It works in Read and Edit, the app remembers your choice, and it is
   for your eyes only: it is never printed, never in an exported PDF, and it does not move
   anything.
+  - **Left-hand and right-hand pages.** If your book mirrors its margins (`@page :left` and
+    `@page :right` with different left and right margins), every page shows its own margin box.
+    Left-hand pages sit where the PDF puts them: the preview slides each left-hand page sideways
+    by the difference between its margins and a right-hand page's, so the text, the running heads
+    and the folio land where they will in print. Page breaks do not change.
   - **Where the bleed comes from.** A bleed set in your stylesheet (`@page { bleed }`) is drawn
     as a band around the page. Without one, a DriveThruRPG (`dtrpg`) book uses its preset's bleed:
     that file size already contains 0.125in of bleed on the top, bottom and outer edges (none on

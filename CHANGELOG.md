@@ -44,6 +44,25 @@ This project follows [Semantic Versioning](https://semver.org/).
   it gets **Alt+M** and a small status badge instead. Preview protocol 9
   (`setMarginOverlay(on, { color, strength })`, `overlayChanged`).
 
+### Fixed
+
+- **Left-hand pages sit where the PDF puts them in the preview.** On a book with
+  mirrored margins (`@page :left` and `@page :right` with different left and right
+  margins) the preview placed every page's text where a right-hand page's would
+  go, so on a left-hand page the text sat too far toward the binding edge of its
+  sheet (12px in the Dimm City Field Guide, whose right-hand pages have a 0.75in
+  binding margin and left-hand ones 0.625in). Each left-hand sheet now slides by
+  that difference, so the text, the running heads and folios, the guides and the
+  margin overlay all land where the PDF has them. The text column's width, the page
+  breaks and the page count are untouched. In the one-page view the left-hand
+  sheets sit a little sideways of the right-hand ones, by that same amount; in the
+  two-page view the gap between the two pages of a spread stays the same and the gap
+  across a page turn grows by twice it. A book without mirrored margins is laid out
+  exactly as before, and so is a section that pins art flush to a left or right
+  edge (print gives its two sides different text widths, and the art stays on the
+  paper's edge). The margin overlay no longer needs the second, dotted outline it
+  drew on those pages: its dashed box is the PDF's margin box on every page.
+
 ## [0.11.17] - 2026-10-12
 
 ### Added
