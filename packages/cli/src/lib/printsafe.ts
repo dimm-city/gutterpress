@@ -301,6 +301,10 @@ function previewBlindSpot(decl: postcss.Declaration): string | null {
   if (isLegacy) {
     if (!LEGACY_FORCED_VALUE.test(value)) return null;
     const modern = prop.replace("page-break-", "break-");
+    // The usual pairing (`break-before: page; page-break-before: always;`)
+    // is fine: the preview reads the modern line and print ignores the alias.
+    const siblings = (decl.parent as postcss.Container).nodes ?? [];
+    if (siblings.some((n) => n.type === "decl" && (n as postcss.Declaration).prop.toLowerCase() === modern)) return null;
     const keyword = /^always$/i.test(value) ? "page" : value.toLowerCase();
     return `"${written}" is the legacy spelling, and the live preview reads only ${modern}: ${consequence}. Write "${modern}: ${keyword}".`;
   }

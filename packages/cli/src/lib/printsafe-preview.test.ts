@@ -49,6 +49,10 @@ describe("printsafe/preview-cannot-follow", () => {
     expect(w[1]!.message).toContain('Write "break-after: left"');
   });
 
+  test("the legacy alias next to its modern spelling in the same rule is fine", () => {
+    expect(rule(`.b { break-before: page; page-break-before: always; } .k { break-after: avoid; page-break-after: avoid; }`)).toEqual([]);
+  });
+
   test("declarations the reader skips whole (@page, @keyframes, @font-face) are not its business", () => {
     expect(rule(`@keyframes k { from { break-before: var(--x); } } @page { page-break-before: always; }`)).toEqual([]);
   });
