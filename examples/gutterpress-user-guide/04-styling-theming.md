@@ -361,7 +361,7 @@ A name is lower-case ASCII with every run of other characters turned into one hy
 
 A section split by `@continue` is one block: both pieces keep its name and the second carries `.gp-continued`, which is why the first rule above says `:not(.gp-continued)`. Gutterpress never adds `id`s for you, so links and page-number references are unaffected.
 
-Two things to know about break rules written in a stylesheet. Write the break as a plain keyword (`break-before: page`, not `break-before: var(--x)`) in a flat rule, not inside another rule: the live preview reads your CSS text to place the same breaks the PDF has, and it cannot follow a `var()` or a nested rule. `gutterpress validate` warns when it finds one (`printsafe/preview-cannot-follow`). It also warns about a class in your markdown that no stylesheet mentions (`{.hilite}` when you meant `.highlight`).
+Two things to know about break rules written in a stylesheet. Write the break as a plain keyword (`break-before: page`, not a value read through `var()`) in a flat rule, not inside another rule: the live preview reads your CSS text to place the same breaks the PDF has, and it cannot follow a `var()` or a nested rule. `gutterpress validate` warns when it finds one (`printsafe/preview-cannot-follow`). It also warns about a class in your markdown that no stylesheet mentions (`{.hilite}` when you meant `.highlight`).
 
 ## CSS Cascade Order
 
