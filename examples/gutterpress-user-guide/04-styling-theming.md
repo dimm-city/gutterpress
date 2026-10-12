@@ -310,6 +310,59 @@ body {
 }
 ```
 
+## Targeting one block from your stylesheet {#targeting-one-block}
+
+Your markdown can stay content: headings, paragraphs, the markers that mean something (`@section`, `@npc-stat`), and nothing about how it looks. To tune *one* block, say keep this section on one page, start that one on a new page, float that picture, you do not have to edit the markdown. Every block carries a `data-name` that your stylesheet can select.
+
+```markdown
+@section panel
+
+## Sporos Hollow
+
+The spores drift in from the east vent...
+
+![The founders' house](images/chapter-00/founder-house.png)
+```
+
+renders (attributes trimmed)
+
+```html
+<div class="section" data-section="panel" data-name="sporos-hollow">
+  <h2 data-name="sporos-hollow">Sporos Hollow</h2>
+  <p>The spores drift in from the east vent...</p>
+  <p><img src="images/chapter-00/founder-house.png" data-name="founder-house"></p>
+</div>
+```
+
+and these rules, in any of your `styles:`, reach exactly those three elements:
+
+```css
+/* keep one section on a single page */
+[data-name="sporos-hollow"]:not(.gp-continued) { break-inside: avoid; }
+
+/* start a block on a new page */
+.section[data-name="hit-the-streets"] { break-before: page; }
+
+/* float one picture */
+img[data-name="founder-house"] { float: right; width: 40%; margin: 0 0 1em 1em; }
+```
+
+This is an alternative to the markdown overrides, not a replacement. `.gp-no-break`, `@page-break`, `{.gp-right .gp-medium}`, `@columns`, a plugin's modifier classes and `{#id}` all keep working; use whichever you like, and mix them freely. Reach for `data-name` when you would rather keep the tuning in one stylesheet than scattered through the chapters.
+
+**Where a name comes from.** The first of these that exists:
+
+| Element | Name |
+|---------|------|
+| A marker block (`@chapter`, `@spread`, `@page`, `@section`, `@columns`, a plugin's markers, variants too) | the marker's own `name=`, else its `label=`, else its **own** first heading. A block with none of these has no name |
+| A heading | `{name=…}` if you wrote one, else its own text |
+| An image | `{name=…}` if you wrote one, else the file name without its folder or extension |
+
+A name is lower-case ASCII with every run of other characters turned into one hyphen, so *The Founder's House* is `the-founder-s-house` and `images/chapter-00/Founder%20House.png` is `founder-house`. "Own" first heading means the first heading that sits directly in that block: a `@page` that holds a `@section` does not borrow the section's title, so each name picks out one block. When two blocks in a **file** would get the same name, the later ones become `-2`, `-3`, and so on, in reading order. Headings are numbered separately from blocks, so a section and its title can both be `sporos-hollow`; add the element (`h2[data-name="sporos-hollow"]`) or a class to say which. Two pictures from the same file share a name, which is usually what you want. Names are unique within one markdown file, not across the book: scope a rule by chapter (`#ch-06 [data-name="sporos-hollow"]`) or give the block an explicit `name=` when you need that.
+
+A section split by `@continue` is one block: both pieces keep its name and the second carries `.gp-continued`, which is why the first rule above says `:not(.gp-continued)`. Gutterpress never adds `id`s for you, so links and page-number references are unaffected.
+
+Two things to know about break rules written in a stylesheet. Write the break as a plain keyword (`break-before: page`, not `break-before: var(--x)`) in a flat rule, not inside another rule: the live preview reads your CSS text to place the same breaks the PDF has, and it cannot follow a `var()` or a nested rule. `gutterpress validate` warns when it finds one (`printsafe/preview-cannot-follow`). It also warns about a class in your markdown that no stylesheet mentions (`{.hilite}` when you meant `.highlight`).
+
 ## CSS Cascade Order
 
 Extensions load first, in `extensions:` order, then your own `styles:` in their order. Later files override earlier ones:
@@ -334,7 +387,10 @@ leaves its CSS unlayered cannot jump ahead of one listed after it. Your own
 `styles:` are the only unlayered CSS in the book, and unlayered CSS beats
 every layer at any specificity: a bare element selector in `book.css`
 overrides a look's most specific rule. You never need `!important`, or an
-extra selector to inflate specificity, to beat core or an extension.
+extra selector to inflate specificity, to beat core or an extension. (The one
+core rule that sits above the extensions is a table's column alignment from
+the markdown alignment row, `data-align`, because an alignment you wrote in
+the table should beat a look's default. Your `styles:` still beat it.)
 
 If your own stylesheets are more than a couple of files, declare your own
 layer order at the top of your first stylesheet instead of relying on the

@@ -177,7 +177,9 @@ says so and changes nothing. A file with uncommitted changes is rewritten too
 
 Run on markdown source files and assets before the PDF is generated. Catch authoring errors early.
 
-Examples: broken internal links, missing alt text, oversized source images, markdown lint errors, a mistyped marker or a variant word a plugin component does not declare (`@card featuerd`), and the structure checks a plugin component opts into with `validate` ([Chapter 5](#ch-plugins)).
+Examples: broken internal links, missing alt text, oversized source images, markdown lint errors, a mistyped marker or a variant word a plugin component does not declare (`@card featuerd`), a class in your markdown that no stylesheet mentions (`{.hilite}` or `@section .pannel`, with a "did you mean" when one is near; always a warning, one per class per file), and the structure checks a plugin component opts into with `validate` ([Chapter 5](#ch-plugins)).
+
+The CSS check also tells you when the live preview cannot follow a break in your stylesheet. The preview reads your forced breaks (`break-before`/`break-after: page`, `left`, `right`) and `page:` assignments from the CSS text, so one written with `var()`, inside a nested rule, right after a nested rule, or with the old `page-break-before: always` spelling is honoured by the PDF but missing from the preview, and the two page counts drift apart. Rule id `printsafe/preview-cannot-follow`; write the keyword in a flat rule, or silence it like any other rule below.
 
 ### PDF checks (post-build)
 
@@ -247,7 +249,7 @@ lint:
 
 The rule id is the one shown in the warning: `printsafe/…` for CSS print-safety
 rules (`printsafe/no-risky-print-effects`, `printsafe/page-containment`,
-`printsafe/no-remote-urls`), or the check id for the rest (for example
+`printsafe/preview-cannot-follow`, `printsafe/no-remote-urls`), or the check id for the rest (for example
 `source.accessibility.heading-order`). An id that matches no rule is ignored,
 so a typo has no effect — check the spelling against the warning text.
 
