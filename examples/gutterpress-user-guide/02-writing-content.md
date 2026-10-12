@@ -212,6 +212,7 @@ Renders:
 - `.chapter-opener` is a plain, unstyled `<div>` — style it yourself as a badge, a big numeral, a rule, or a full opener layout. It's injected once per chapter, on the first `@page` only.
 - `#id` / `.class` work like on any other marker: `@chapter #ch-bestiary .bestiary`.
 - No bare label means no `.chapter-opener` — there's no label to show.
+- A plugin can declare **chapter variants** (see [Page, chapter and section variants](#plugin-location-variants)). If the bare word is one of them (`@chapter rules`), it is the variant — its class lands on the chapter and there is no label. Any other word is still the label. To have both, write the variant as a class: `@chapter C.01 .dc-chapter-rules`.
 
 ### @page — start a new page
 
@@ -237,6 +238,25 @@ Marker classes may also use markdown-it-attrs braces. For example,
 `@section {.sidebar}` is equivalent to `@section .sidebar`.
 
 **Two or more bare words with no `.class`/`class=` are all treated as classes, with no name at all** — `@page cover sidebar` renders `<div class="page cover sidebar">`, no `data-page`. For predictable results, always use `.class` shorthand (or `class=...`) when you want a class, and reserve a single bare word for the page's name.
+
+#### Page variants
+
+Some page names are **variants**: the word also adds a class, so the page can be styled by what kind of page it is. Core ships two:
+
+| Marker | Class added | What it does |
+|--------|-------------|--------------|
+| `@page blank` | `gp-page-blank` | A page with empty margin boxes — no running head, no folio drawn. The page still counts in the page numbering, and its content is untouched. |
+| `@page full-bleed` | `gp-page-full-bleed` | A page with zero margin, so its content box is the whole sheet. Running heads and folios are cleared on it too. |
+
+```markdown
+@page full-bleed
+
+![Map of the city](map.jpg)
+```
+
+renders `<div class="page gp-page-full-bleed" data-page="full-bleed">`. A theme or plugin can declare more (`@page chapter-start`, `@page intro`) — see [Page, chapter and section variants](#plugin-location-variants) — and then style them by location: `.page.dc-page-chapter-start .section { … }`. `data-page` is still emitted, any other single word is still just a free page name, and a raw class (`@page .dc-page-chapter-start`) works the same as the variant word. If you mistype a variant (`@page chapter-strat`), Problems tells you what you probably meant.
+
+If your own CSS gives every `.page` a `page:` name, that rule is yours and wins over a variant's — name pages with `data-page` selectors instead.
 
 ### @page-break — hard break
 
@@ -278,6 +298,8 @@ Continues on the same page as the section above.
 ```
 
 `@section` emits `<div class="section">` — plain `.section`, never `.region`.
+
+A plugin can declare **section variants** (`@section card`): the word also adds the variant's class, `data-section` is still emitted, and any other word stays a free section name. See [Page, chapter and section variants](#plugin-location-variants).
 
 ### @continue — split a named section without losing its identity
 

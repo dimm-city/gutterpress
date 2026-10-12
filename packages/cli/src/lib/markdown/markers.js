@@ -92,6 +92,31 @@
  *   makes a marker a core @section (`@npc-stat wirephreak` is
  *   `@section .dc-npc-stat .dc-wirephreak`); containers also expose their
  *   tokens (`meta.kind` etc., see renderer.ts) for a plugin's own core rule.
+ *
+ *   LOCATION VARIANTS. The reserved kinds `page`, `chapter` and `section` may
+ *   be declared in a variants-only form (any other key throws the core-name
+ *   error above):
+ *
+ *     page:    { variants: { 'chapter-start': 'dc-page-chapter-start' } },
+ *     chapter: { variants: { rules: 'dc-chapter-rules' } },
+ *     section: { variants: { card: 'dc-section-card' } },
+ *
+ *   `@page chapter-start` then emits `<div class="page dc-page-chapter-start"
+ *   data-page="chapter-start">` (author classes appended; `@section` likewise
+ *   with `data-section`), so a plugin or book styles a component by where it
+ *   sits: `.page.dc-page-chapter-start .section { … }`. The class string is
+ *   the plugin's own; core adds no prefix. A bare word that is NOT a declared
+ *   variant is a free name exactly as before (no warning — existing books use
+ *   them; only a near-miss of a declared variant warns, as `unknown_variant`).
+ *   `@chapter`'s bare word is its label (`data-chapter-label`, `.chapter-opener`)
+ *   unless it is a declared chapter variant, in which case it is the variant
+ *   and the chapter has no label (use `@chapter C.01 .dc-chapter-rules` for
+ *   both). Raw classes stay valid and are never rewritten: `@page
+ *   .dc-page-chapter-start` is the same page. A variant word is unique across
+ *   plugins and core. Core declares two page variants through the same
+ *   registry (`CORE_DECLARED_MARKERS`): `blank` and `full-bleed`, styled in
+ *   MARKER_CSS. The merged words live on the registry's `locationVariants`
+ *   property (they are not markers: no `@end-` closer).
  */
 
 /**
