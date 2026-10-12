@@ -21,6 +21,7 @@ import markdownItAttrs from "markdown-it-attrs";
 import markdownItFootnote from "markdown-it-footnote";
 import gutterpressMarkers, { buildDeclaredMarkerRegistry } from "./markers.js";
 import gpPinScope from "./gp-pin-scope.js";
+import { gpBlockNames } from "./block-names";
 import markdownItSourceMap from "markdown-it-source-map";
 import markdownItDeflist from "markdown-it-deflist";
 // Optional, opt-in markdown features. Bundled so they're available WITHOUT any
@@ -118,8 +119,9 @@ export interface GutterpressMarkerLabel {
  *
  * The close token has no meta. A `section: true` marker produces the core
  * `layout_section_open` / `layout_section_close` pair instead; its open token
- * carries `{ line, component, kind, variant, attrs }` (plus `continued: true`
- * on a `@continue` reopening) and a plain `@section`'s carries only `{ line }`.
+ * carries `{ line, component, kind, variant, attrs }` and a plain `@section`'s
+ * carries only `{ line }`; a `@continue` reopening of either adds
+ * `continued: true`.
  *
  * See `markers.js`'s header comment for a worked example and
  * `buildDeclaredMarkerRegistry` for the full validation/resolution contract
@@ -418,6 +420,9 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   // layout_* tokens that parser emits) and markdown-it-attrs (it reads the
   // {.gp-pin} classes attrs attaches).
   md.use(gpPinScope);
+  // `data-name` on blocks, headings and (in the image rule below) images. After
+  // markdown-it-attrs so `{name=…}` is in place, before any plugin's own rules.
+  md.use(gpBlockNames);
 
   // Image src normalization (token-level renderer rule).
   registerImageRule(md);
