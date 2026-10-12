@@ -427,22 +427,33 @@ describe("marker grammar (parsed via rendered output + warnings)", () => {
     });
   });
 
-  describe("kinds with no body (attrs/name always ignored)", () => {
-    test("@continue, @end-section, @page-break, @column-break ignore any trailing tokens", () => {
-      const pageBreak = renderPaged(
-        "@page-break trailing tokens ignored .foo #bar\nHi\n"
-      ).html;
-      expect(pageBreak).toBe(
-        '<div class="gp-page-break" aria-hidden="true"></div>\n<p>Hi</p>\n'
-      );
-
-      const columnBreak = renderPaged("@column-break .foo #bar\nHi\n").html;
-      expect(columnBreak).toBe(
-        '<div class="gp-column-break" aria-hidden="true"></div>\n<p>Hi</p>\n'
-      );
-
+  describe("kinds with no body", () => {
+    test("@continue and @end-section ignore any trailing tokens", () => {
       const endSection = renderPaged("@end-section .foo #bar\nHi\n").html;
       expect(endSection).toBe("<p>Hi</p>\n");
+    });
+
+    test("@page-break and @column-break ignore a bare word but keep #id, .class and key=value", () => {
+      // A bare word was always ignored (it takes no name) ...
+      expect(renderPaged("@page-break trailing words\nHi\n").html).toBe(
+        '<div class="gp-page-break" aria-hidden="true"></div>\n<p>Hi</p>\n'
+      );
+      // ... but the attributes every other marker keeps used to vanish here.
+      expect(renderPaged("@page-break trailing .foo #bar\nHi\n").html).toBe(
+        '<div class="gp-page-break foo" aria-hidden="true" id="bar"></div>\n<p>Hi</p>\n'
+      );
+      expect(renderPaged("@column-break .foo #bar\nHi\n").html).toBe(
+        '<div class="gp-column-break foo" aria-hidden="true" id="bar"></div>\n<p>Hi</p>\n'
+      );
+      expect(renderPaged("@page-break name=cut\nHi\n").html).toBe(
+        '<div class="gp-page-break" aria-hidden="true" data-name="cut"></div>\n<p>Hi</p>\n'
+      );
+    });
+
+    test("a break's #id survives the whole pipeline, and a stray token on one adds no warning", () => {
+      const { html, env } = renderPaged("@page-break #part-two\n@page-break #\nHi\n");
+      expect(html).toContain('id="part-two"');
+      expect(env.layoutWarnings ?? []).toEqual([]);
     });
   });
 });
@@ -900,6 +911,24 @@ describe("@continue / @end-section", () => {
     expect(html).toContain(
       '<div class="section gp-continued" data-section="S" data-region="aside">'
     );
+  });
+
+  test("@continue does not repeat the section's id (an id names one element); every other attr is kept", () => {
+    const { html } = renderPaged(
+      "@section S #sporos name=sporos-card\nA\n@continue\nB\n@continue\nC\n@end-section\n"
+    );
+    expect(html.match(/id="sporos"/g)).toHaveLength(1);
+    expect(html).toContain('<div class="section" data-section="S" id="sporos" data-name="sporos-card">');
+    expect(html.match(/<div class="section gp-continued" data-section="S" data-name="sporos-card">/g)).toHaveLength(2);
+  });
+
+  test("@continue of a declared section marker drops the id as well", () => {
+    const declaredMarkers = buildDeclaredMarkerRegistry([
+      { pluginName: "p", markers: { card: { section: true, class: "dc-card" } } },
+    ]);
+    const { html } = renderPaged("@card #the-card\nA\n@continue\nB\n@end-card\n", { declaredMarkers });
+    expect(html.match(/id="the-card"/g)).toHaveLength(1);
+    expect(html.match(/gp-continued/g)).toHaveLength(1);
   });
 
   test("@continue does not duplicate gp-continued if chained twice", () => {

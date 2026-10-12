@@ -289,11 +289,17 @@ function parseMarkerLine(line, declaredWords) {
   // auto-derived "end-<name>" — takes no body, exactly like page-break /
   // column-break / continue. `end-section` already matches the `end-`
   // prefix, so this single check covers all of them.
-  if (kind === 'page-break' || kind === 'column-break' || kind === 'continue' || kind.startsWith('end-')) {
+  if (kind === 'continue' || kind.startsWith('end-')) {
     return { kind, name: null, attrs: {} };
   }
 
-  const body = tokens.slice(1);
+  // The two break markers take no name and no body, but their `#id`, `.class`
+  // and `key=value` tokens are kept: they used to be dropped without a word,
+  // so `@page-break #next-part` printed a break with no id for a link or a
+  // `target-counter()` to land on. A bare word (`@page-break here`) stays
+  // ignored, as it always was, rather than turning into a class.
+  const isBreak = kind === 'page-break' || kind === 'column-break';
+  const body = isBreak ? tokens.slice(1).filter((token) => !isBareToken(token)) : tokens.slice(1);
   const hasExplicitAttrsOrShorthand = body.some(
     (token) => token.includes('=') || token.startsWith('.') || token.startsWith('#')
   );
@@ -380,6 +386,10 @@ function parseMarkerLine(line, declaredWords) {
   }
 
   if (classes.length) attrs.class = classes.join(' ');
+
+  // A break reports nothing about its tokens: it never did, and a stray
+  // `#`/`.` on one is not worth a new warning on books that already build.
+  if (isBreak) return { kind, name: null, attrs };
 
   // The warning itself is emitted by markerBlock AFTER the silent check —
   // this parser is also invoked by markdown-it's silent paragraph-terminator
@@ -633,6 +643,18 @@ function attachDataAttrs(token, kind, name, attrs) {
     // `data-data-augmented-ui` (#280).
     token.attrSet(k.startsWith('data-') ? k : `data-${k}`, v);
   }
+}
+
+/**
+ * A break marker's attributes: its own class first, then the author's, and
+ * whatever `#id` / `key=value` the marker line carried (the same attributes
+ * every other marker keeps). `aria-hidden` sits between the two so the
+ * element reads the way it always did.
+ */
+function attachBreak(token, baseClass, attrs = {}) {
+  addClasses(token, baseClass, attrs.class);
+  token.attrSet('aria-hidden', 'true');
+  attachDataAttrs(token, 'break', null, attrs);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1853,9 +1875,11 @@ export default function plugin(md, pluginOptions = {}) {
       // annotation rule (source-range.ts). Do NOT set token.map here — see
       // the do-not-use-token.map comment in openChapter above (ADR 0009);
       // applies identically here.
-      t.meta = component
-        ? { line: meta.__line, ...component, ...(meta.__continued ? { continued: true } : {}) }
-        : { line: meta.__line };
+      t.meta = {
+        line: meta.__line,
+        ...(component || {}),
+        ...(meta.__continued ? { continued: true } : {}),
+      };
       stack.open(
         {
           kind: 'section',
@@ -2027,13 +2051,17 @@ export default function plugin(md, pluginOptions = {}) {
         const contMeta = {
           name: section.meta.name,
           attrs: { ...(section.meta.attrs || {}) },
+          __continued: true,
         };
+        // An id names ONE element (a link, a `target-counter()` and
+        // `:target` all land on the first match), so the continuation must
+        // not repeat it. Every other attribute, the `data-name` included,
+        // is the same block's and is kept: a rule written for the block
+        // reaches both pieces, and `:not(.gp-continued)` picks the first.
+        delete contMeta.attrs.id;
         // A declared section marker's continuation is still that component
         // (same classes via attrs.class, same data-<kind> and token meta).
-        if (section.meta.component) {
-          contMeta.__component = section.meta.component;
-          contMeta.__continued = true;
-        }
+        if (section.meta.component) contMeta.__component = section.meta.component;
         // __line is deliberately re-attached here: contMeta only copies
         // name/attrs from the original section's meta snapshot, and openSection
         // reads meta.__line for the source-range annotation rule. Without this,
@@ -2056,8 +2084,7 @@ export default function plugin(md, pluginOptions = {}) {
         // token.map — see the do-not-use-token.map comment in openChapter
         // above (ADR 0009); applies identically here.
         t.meta = { line };
-        t.attrSet('class', 'gp-page-break');
-        t.attrSet('aria-hidden', 'true');
+        attachBreak(t, 'gp-page-break', meta.attrs);
         out.push(t);
         continue;
       }
@@ -2068,8 +2095,7 @@ export default function plugin(md, pluginOptions = {}) {
         // token.map — see the do-not-use-token.map comment in openChapter
         // above (ADR 0009); applies identically here.
         t.meta = { line };
-        t.attrSet('class', 'gp-column-break');
-        t.attrSet('aria-hidden', 'true');
+        attachBreak(t, 'gp-column-break', meta.attrs);
         out.push(t);
         continue;
       }
@@ -2188,36 +2214,19 @@ export default function plugin(md, pluginOptions = {}) {
   // renderToken would be dead weight that implied it did something.
 
   // nesting:0 on <div> emits only an opening tag — emit complete open+close pair instead.
-  // Both tokens' class is always the plugin's own literal ('gp-page-break' /
-  // 'gp-column-break') today, never author input, but escapeAttr is applied
-  // here too so this stays safe if that ever changes.
   //
-  // data-source-range (set by the source_range core rule, which runs BEFORE
-  // render — see source-range.ts) is threaded through explicitly in both
-  // rules below: this custom renderer bypasses self.renderToken()/
-  // renderAttrs, so any attr not named here is silently dropped from
-  // output. Without this, @page-break / @column-break markers would be
-  // un-targetable by the context menu's "marker" kind (plan §3.1's kind
-  // precedence explicitly includes "layout wrapper/break") even though
-  // this module threads token.meta.line onto them for exactly this
-  // purpose.
-  md.renderer.rules.layout_page_break = (tokens, idx) => {
-    const cls = tokens[idx].attrGet('class') || 'gp-page-break';
-    const rangeAttr = tokens[idx].attrGet('data-source-range');
-    const rangeHtml = rangeAttr ? ` data-source-range="${escapeAttr(rangeAttr)}"` : '';
-    const chapterAttr = tokens[idx].attrGet('data-chapter-src');
-    const chapterHtml = chapterAttr ? ` data-chapter-src="${escapeAttr(chapterAttr)}"` : '';
-    return `<div class="${escapeAttr(cls)}" aria-hidden="true"${rangeHtml}${chapterHtml}></div>\n`;
-  };
-
-  md.renderer.rules.layout_column_break = (tokens, idx) => {
-    const cls = tokens[idx].attrGet('class') || 'gp-column-break';
-    const rangeAttr = tokens[idx].attrGet('data-source-range');
-    const rangeHtml = rangeAttr ? ` data-source-range="${escapeAttr(rangeAttr)}"` : '';
-    const chapterAttr = tokens[idx].attrGet('data-chapter-src');
-    const chapterHtml = chapterAttr ? ` data-chapter-src="${escapeAttr(chapterAttr)}"` : '';
-    return `<div class="${escapeAttr(cls)}" aria-hidden="true"${rangeHtml}${chapterHtml}></div>\n`;
-  };
+  // Every attribute on the token is rendered (`renderAttrs`): the class and
+  // aria-hidden attachBreak set, the marker line's `#id` / `key=value`, and
+  // the data-source-range / data-chapter-src the source_range core rule adds
+  // (which runs BEFORE render — see source-range.ts). A rule that named its
+  // attributes one by one is what let `@page-break #id` lose its id, and what
+  // would drop any attribute added later. data-source-range keeps the break
+  // targetable by the context menu's "marker" kind (plan §3.1's kind
+  // precedence explicitly includes "layout wrapper/break").
+  const renderBreak = (tokens, idx, options, env, self) =>
+    `<div${self.renderAttrs(tokens[idx])}></div>\n`;
+  md.renderer.rules.layout_page_break = renderBreak;
+  md.renderer.rules.layout_column_break = renderBreak;
 
   // layout_marker tokens are transformed away in the core rule
   md.renderer.rules.layout_marker = () => '';
