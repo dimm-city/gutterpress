@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.17] - 2026-10-12
+
 ### Added
 
 - **One page / two pages toggle in Read.** The preview toolbar has a layout
@@ -32,73 +34,6 @@ This project follows [Semantic Versioning](https://semver.org/).
   `@chapter ` or `@section `, the `@` autocomplete lists the words core and the
   book's plugins declare, with the declaring plugin as detail. Picking one
   inserts the word only; any other name still works.
-
-### Changed
-
-- **Desktop: the About tab is gone; versions, updates and desktop integration moved to Troubleshooting → Diagnostics.** Diagnostics now shows the desktop and library versions, the **Check now** update button, the **Update channel** and (Linux AppImage) **Add to application menu**. Same settings, same behaviour; they no longer sit under Settings → App or a separate About tab.
-- **Reader role no longer shows a one-tab strip.** With Settings → App role set
-  to Reader, the left panel shows the table of contents directly under its own
-  heading instead of a strip holding a single "TOC" tab. Author role is
-  unchanged.
-- **Tab accepts the selected autocomplete suggestion**, as Enter does. With no
-  suggestion list open, Tab indents as before.
-- **`@columns` is the one way to use columns.** `@columns 1` to `@columns 5`,
-  closed with `@end-columns`, lays its content out in that many columns, and
-  `@column-break` moves to the next column. A bare `@columns` is now exactly
-  `@columns 2`. To get a full-width heading or a different column count
-  partway down, end the run, write the content, and open a new `@columns`.
-  The `.gp-columns` / `.gp-columns-N` classes remain as the CSS the marker
-  emits but are no longer documented for authors to write by hand.
-- **Sections nest inside `@columns`.** A `@section` (or a plugin marker that is
-  a section, such as `@npc-stat`) opened between `@columns` and `@end-columns`
-  now sits inside the columns instead of silently closing them. Each new
-  section closes the previous one and opens the next in the same run, and
-  `@end-columns` closes any open section first. Before, the columns ended at
-  the first section and the later `@end-columns` was reported as unmatched.
-  Columns opened inside a section work as before.
-- **Themes style columns with a token, not column rules.** Alongside
-  `--gp-column-gap`, `--gp-column-rule` (default `none`) now sets the line
-  between columns on every `@columns` run. Both are zero-specificity, so any
-  rule of your own still wins. The scaffolded theme's reference page template
-  no longer sets `columns` itself.
-- The empty-column build warning (`engine.multicol.dead-column`) now tells you
-  to end the `@columns` run where the page ends and open a new one, instead of
-  naming `.gp-columns-flow`.
-
-### Removed
-
-- **`.gp-columns-all`, `.gp-columns-flow`, `.gp-columns-balanced`,
-  `.gp-grid-2`, `.gp-grid-3` and `--gp-grid-gap`**, with the
-  `break_inside_grid` warning that only existed for the grid classes. A book
-  that still writes one of these classes gets the unknown-class warning. Use
-  `@columns N` ... `@end-columns` instead.
-
-### Fixed
-
-- **A box you mark `break-inside: avoid` now moves whole to the next page
-  instead of splitting.** Core used to give the first child of every
-  `@section` and figure a `break-before: avoid`; because a first child's
-  break-before applies to the box around it, that made the break above every
-  section illegal, and a section that followed other content was cut in
-  two even though you had asked for it to stay in one piece (in the PDF and in
-  the preview, including a run of sections inside `@columns`). The rule is
-  gone. A heading still stays with what follows it, and a lead-in line such as
-  "You will need:" now also stays with the `@section` that opens with its
-  table or list. Pages that held a split box reflow.
-- **A lead-in line stays with the table or list it introduces** (#370). A
-  label such as **ROLL A DIE!** or "You will need:" written directly above a
-  table or a list no longer ends a column or a page with its table starting
-  on the next one; the label now moves along with it, the way a heading
-  already stays with what follows. Only a paragraph directly followed by a
-  table or list is affected. To turn it off for your book, add
-  `p { break-after: auto; }` to your stylesheet. The preview now agrees with
-  the PDF when a table with a header row is pushed to the next page or
-  column: the label (or a heading) above it moves along instead of staying
-  behind.
-
-## [0.11.17] - 2026-10-10
-
-### Added
 
 - **Change a book's page size in Book settings** (#357). Under **Details →
   Page size**, pick DriveThruRPG print, Trade book or a custom size (US
@@ -149,6 +84,36 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Desktop: the About tab is gone; versions, updates and desktop integration moved to Troubleshooting → Diagnostics.** Diagnostics now shows the desktop and library versions, the **Check now** update button, the **Update channel** and (Linux AppImage) **Add to application menu**. Same settings, same behaviour; they no longer sit under Settings → App or a separate About tab.
+- **Reader role no longer shows a one-tab strip.** With Settings → App role set
+  to Reader, the left panel shows the table of contents directly under its own
+  heading instead of a strip holding a single "TOC" tab. Author role is
+  unchanged.
+- **Tab accepts the selected autocomplete suggestion**, as Enter does. With no
+  suggestion list open, Tab indents as before.
+- **`@columns` is the one way to use columns.** `@columns 1` to `@columns 5`,
+  closed with `@end-columns`, lays its content out in that many columns, and
+  `@column-break` moves to the next column. A bare `@columns` is now exactly
+  `@columns 2`. To get a full-width heading or a different column count
+  partway down, end the run, write the content, and open a new `@columns`.
+  The `.gp-columns` / `.gp-columns-N` classes remain as the CSS the marker
+  emits but are no longer documented for authors to write by hand.
+- **Sections nest inside `@columns`.** A `@section` (or a plugin marker that is
+  a section, such as `@npc-stat`) opened between `@columns` and `@end-columns`
+  now sits inside the columns instead of silently closing them. Each new
+  section closes the previous one and opens the next in the same run, and
+  `@end-columns` closes any open section first. Before, the columns ended at
+  the first section and the later `@end-columns` was reported as unmatched.
+  Columns opened inside a section work as before.
+- **Themes style columns with a token, not column rules.** Alongside
+  `--gp-column-gap`, `--gp-column-rule` (default `none`) now sets the line
+  between columns on every `@columns` run. Both are zero-specificity, so any
+  rule of your own still wins. The scaffolded theme's reference page template
+  no longer sets `columns` itself.
+- The empty-column build warning (`engine.multicol.dead-column`) now tells you
+  to end the `@columns` run where the page ends and open a new one, instead of
+  naming `.gp-columns-flow`.
+
 - **A new app icon.** The GP monogram is redrawn as a worn, ink-splattered
   stamp in New Rocker on a newsprint tile: in the app's window, the start
   screen, the app icon on every platform, and the CLI preview's tab.
@@ -163,7 +128,36 @@ This project follows [Semantic Versioning](https://semver.org/).
   as vector clips. `clip-path: url(...)` and the properties that really
   rasterize (`filter`, `backdrop-filter`, blend modes) are still flagged.
 
+### Removed
+
+- **`.gp-columns-all`, `.gp-columns-flow`, `.gp-columns-balanced`,
+  `.gp-grid-2`, `.gp-grid-3` and `--gp-grid-gap`**, with the
+  `break_inside_grid` warning that only existed for the grid classes. A book
+  that still writes one of these classes gets the unknown-class warning. Use
+  `@columns N` ... `@end-columns` instead.
+
 ### Fixed
+
+- **A box you mark `break-inside: avoid` now moves whole to the next page
+  instead of splitting.** Core used to give the first child of every
+  `@section` and figure a `break-before: avoid`; because a first child's
+  break-before applies to the box around it, that made the break above every
+  section illegal, and a section that followed other content was cut in
+  two even though you had asked for it to stay in one piece (in the PDF and in
+  the preview, including a run of sections inside `@columns`). The rule is
+  gone. A heading still stays with what follows it, and a lead-in line such as
+  "You will need:" now also stays with the `@section` that opens with its
+  table or list. Pages that held a split box reflow.
+- **A lead-in line stays with the table or list it introduces** (#370). A
+  label such as **ROLL A DIE!** or "You will need:" written directly above a
+  table or a list no longer ends a column or a page with its table starting
+  on the next one; the label now moves along with it, the way a heading
+  already stays with what follows. Only a paragraph directly followed by a
+  table or list is affected. To turn it off for your book, add
+  `p { break-after: auto; }` to your stylesheet. The preview now agrees with
+  the PDF when a table with a header row is pushed to the next page or
+  column: the label (or a heading) above it moves along instead of staying
+  behind.
 
 - **The in-app Help no longer points to the hidden Books tab** (#359). It now
   says to use the folder button at the left of the status bar to get back to
