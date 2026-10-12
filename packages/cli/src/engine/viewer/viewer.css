@@ -246,6 +246,15 @@
   border: 1px dashed var(--gp-ov-margin);
 }
 
+/* the PDF's own margins for this page, where they differ from where the
+   preview lays the text (mirrored :left/:right, .gp-flush): fainter, dotted */
+.gp-ov-print {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px dotted var(--gp-ov-margin);
+  opacity: 0.55;
+}
+
 /* bleed: a translucent band OUTSIDE the trim (its width is the border) */
 .gp-ov-bleed {
   position: absolute;

@@ -297,6 +297,15 @@
   border: 1px dashed var(--gp-ov-margin);
 }
 
+/* the PDF's own margins for this page, where they differ from where the
+   preview lays the text (mirrored :left/:right, .gp-flush): fainter, dotted */
+.gp-ov-print {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px dotted var(--gp-ov-margin);
+  opacity: 0.55;
+}
+
 /* bleed: a translucent band OUTSIDE the trim (its width is the border) */
 .gp-ov-bleed {
   position: absolute;
@@ -2188,6 +2197,9 @@
   }
   var INTENT_SELECTOR = ".gp-bleed, .gp-pin, .gp-flush, .gp-behind, .gp-page-full-bleed";
   var OVERLAY_OFF = { on: false, issues: 0, intended: 0, bleedPt: 0 };
+  function marginsDiffer(a, b) {
+    return ["top", "right", "bottom", "left"].some((k) => Math.abs(a[k] - b[k]) > 0.5);
+  }
   var SKIP = new Set(["SCRIPT", "STYLE", "LINK", "TEMPLATE", "BR", "WBR", "SOURCE", "TRACK", "META"]);
   var TOL_PX = 1;
   function div(cls, box) {
@@ -2234,6 +2246,9 @@
         host.appendChild(div("gp-ov-trim"));
       }
       host.appendChild(div("gp-ov-margin", boxes.content));
+      if (marginsDiffer(p.printMargin, p.margin)) {
+        host.appendChild(div("gp-ov-print", pageBoxes(p.geometry, p.printMargin, 0, PX_PER_PT).content));
+      }
       layer.appendChild(host);
       painted.set(p.index, { host, boxes, sheet: p.sheet });
     }
@@ -2553,6 +2568,7 @@
             sheet,
             strip,
             geometry: ctx.geometry,
+            printMargin: ctx.geometry.margin,
             margin: ctx.padded || blankPages.has(bookIndex) ? ctx.geometry.margin : strip.flushEdges?.length ? flushMargins(g.margin, strip.flushEdges) : g.margin
           });
         }

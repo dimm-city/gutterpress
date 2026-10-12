@@ -448,6 +448,7 @@ export function decorate(
           sheet,
           strip,
           geometry: ctx.geometry,
+          printMargin: ctx.geometry.margin,
           // Text sits in the strip's column, not in the page's own margins (a
           // blank or padding sheet has no text, so its own margins stand).
           margin:

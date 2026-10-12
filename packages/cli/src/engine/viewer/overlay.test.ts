@@ -21,7 +21,7 @@ import { MARKER_CSS } from "../../lib/markdown/markers.js";
 import { GUTTERPRESS_CSS } from "../../lib/markdown/gutterpress-css.ts";
 import { extract } from "../shared/gcpm-extract.ts";
 import { runPageBox } from "./fragment.ts";
-import { classifyRect, documentBleedPt, pageBoxes, worstKind, type Rect } from "./overlay.ts";
+import { classifyRect, documentBleedPt, marginsDiffer, pageBoxes, worstKind, type Rect } from "./overlay.ts";
 
 const IN = 72;
 
@@ -67,6 +67,14 @@ describe("where the geometry comes from", () => {
     expect(b.trim).toEqual({ x: 0, y: 0, w: 400, h: 500 });
     expect(b.bleedBox).toEqual({ x: -12, y: -12, w: 424, h: 524 });
     expect(b.content).toEqual({ x: 50, y: 40, w: 320, h: 420 });
+  });
+
+  test("the PDF's own margins are drawn too, only where they sit elsewhere", () => {
+    const m = { top: 40, right: 30, bottom: 40, left: 50 };
+    expect(marginsDiffer(m, { ...m })).toBe(false);
+    expect(marginsDiffer(m, { ...m, left: 50.4 })).toBe(false);
+    // the mirror image of a recto's margins: a verso
+    expect(marginsDiffer(m, { top: 40, right: 50, bottom: 40, left: 30 })).toBe(true);
   });
 
   test("units scale together", () => {
@@ -234,6 +242,17 @@ testIf(
         expect(drawn.band).toBe("12px");
         expect(drawn.margin1).toEqual(["50px", "40px", "320px", "420px"]);
         expect(drawn.pointerEvents).toBe("none");
+
+        // mirrored margins: the verso's PDF margins (L30/R50) sit elsewhere than
+        // the preview's text column (L50/R30), so page 2 carries a second,
+        // dotted outline; the recto's two coincide, so page 1 draws just one.
+        const print = await page.evaluate(() =>
+          Array.from(document.querySelectorAll<HTMLElement>(".gp-ov-page")).slice(0, 2).map((pg) => {
+            const p = pg.querySelector<HTMLElement>(".gp-ov-print");
+            return p ? [p.style.left, p.style.width] : null;
+          }),
+        );
+        expect(print).toEqual([null, ["30px", "320px"]]);
 
         // …and the book is exactly as it was
         expect(await snapshot()).toEqual(before);
