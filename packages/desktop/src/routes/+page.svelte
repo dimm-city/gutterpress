@@ -55,7 +55,7 @@
   import { buildCanvasBackgroundStyles } from "$lib/iframe-styles";
   import { getPlatform } from "$lib/platform";
   import type { ReadLayout, WorkspaceMode } from "$lib/platform";
-  import { api, type MarkerComponent } from "$lib/api";
+  import { api, type LocationVariant, type MarkerComponent } from "$lib/api";
   import { buildSourceList } from "$lib/components/config/source-files";
   import { isEditableTarget } from "$lib/a11y";
   import { invalidateDiscoveredProjects } from "$lib/projects-discover-cache";
@@ -526,6 +526,7 @@
     clearStaleProjectState: () => {
       problems = [];
       projectComponents = [];
+      projectVariants = [];
       buildProblemEntries = [];
       problemsLoading = false;
       problemsError = null;
@@ -553,6 +554,7 @@
       pendingRecoveryScanDir = null;
       problems = [];
       projectComponents = [];
+      projectVariants = [];
       buildProblemEntries = [];
       problemsLoading = false;
       problemsError = null;
@@ -1709,12 +1711,22 @@
     leftPanelTab = "files";
   }
 
+  /** The page / chapter / section variant words for `@page ` etc., refreshed with the components. */
+  let projectVariants = $state<LocationVariant[]>([]);
+
   /** The project's plugin components for `@` autocomplete and the snippet
    *  picker — refreshed alongside problems, after every render, so enabling
    *  or editing an extension shows up without another event. */
   let projectComponents = $state<MarkerComponent[]>([]);
 
   function refreshComponents(dir: string) {
+    api.snip.variants(dir)
+      .then((list) => {
+        if (lifecycle.currentDir === dir) projectVariants = list;
+      })
+      .catch(() => {
+        if (lifecycle.currentDir === dir) projectVariants = [];
+      });
     api.snip.components(dir)
       .then((list) => {
         if (lifecycle.currentDir === dir) projectComponents = list;
@@ -2967,6 +2979,7 @@
                 onAnchorLine={(line, origin) =>
                   editorSync.onEditorAnchorLine(line, origin, editorChapter)}
                 components={projectComponents}
+                variants={projectVariants}
               />
             {:else if editorModuleFailed}
               <div class="editor-loading" role="alert">
