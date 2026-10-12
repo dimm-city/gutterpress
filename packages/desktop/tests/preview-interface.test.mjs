@@ -1136,10 +1136,108 @@ async function main() {
     assert.equal(requests.length, 0);
   }
 
-  // getProtocolVersion() bumped to 8 (in-flow editing; rects/mask removed).
+
+  // ── Margin & bleed overlay (protocol v9) ──────────────────────────────────
+  {
+    const calls = [];
+    const summary = (on) => ({ on, issues: on ? 2 : 0, intended: on ? 1 : 0, bleedPt: 9 });
+    const stubViewer = (window, document) => {
+      window.Gutterpress = {
+        pageOf: () => -1,
+        decoration: {
+          setOverlay(on) {
+            calls.push(on);
+            document.body.dataset.overlay = on ? "on" : "off";
+            const s = summary(on);
+            window.dispatchEvent(new window.CustomEvent("gp:overlay", { detail: s }));
+            return s;
+          },
+          overlay: () => summary(document.body.dataset.overlay === "on"),
+        },
+      };
+    };
+
+    // standalone (the CLI preview: the shell is top level) gets Alt+M and a status pill
+    const { window, document, api } = loadInterfaceWithDom("<p>x</p>", { native: true });
+    stubViewer(window, document);
+    const events = [];
+    window.addEventListener("overlayChanged", (e) => events.push(e.detail));
+
+    assert.deepEqual(api.setMarginOverlay(true), summary(true), "setMarginOverlay returns the viewer's summary");
+    assert.deepEqual(api.getMarginOverlay(), summary(true));
+    assert.deepEqual(events, [summary(true)], "gp:overlay is re-announced as overlayChanged for the bridge");
+    assert.deepEqual(api.toggleMarginOverlay(), summary(false), "toggle flips the current state");
+    assert.deepEqual(calls, [true, false]);
+
+    // no viewer support (older bundle) is null, not a throw
+    {
+      const bare = loadInterfaceWithDom("<p>x</p>").api;
+      assert.equal(bare.setMarginOverlay(true), null);
+      assert.equal(bare.toggleMarginOverlay(), null);
+      assert.equal(bare.getMarginOverlay(), null);
+    }
+
+    // refresh() (the shell calls it right after a hot-reload swap) re-announces an ON overlay
+    events.length = 0;
+    api.setMarginOverlay(true);
+    events.length = 0;
+    api.refresh();
+    assert.deepEqual(events, [summary(true)], "refresh re-announces an overlay that is on");
+    api.setMarginOverlay(false);
+    events.length = 0;
+    api.refresh();
+    assert.deepEqual(events, [], "…and says nothing when it is off");
+
+    // standalone: Alt+M toggles it and a pill reports the result; a plain M does nothing
+    api.setMarginOverlay(false);
+    calls.length = 0;
+    const press = (init) =>
+      document.dispatchEvent(new window.KeyboardEvent("keydown", { code: "KeyM", key: "m", bubbles: true, cancelable: true, ...init }));
+    press({});
+    assert.deepEqual(calls, [], "a bare M is just a letter");
+    press({ altKey: true });
+    assert.deepEqual(calls, [true], "Alt+M switches the overlay on");
+    const pill = document.getElementById("gp-ov-badge");
+    assert.ok(pill, "standalone shows a status pill");
+    assert.match(pill.textContent, /2 overflowing/);
+    assert.match(pill.textContent, /1 placed on purpose/);
+    assert.match(pill.textContent, /Alt\+M hides/);
+    press({ altKey: true });
+    assert.deepEqual(calls, [true, false], "Alt+M again switches it off");
+    assert.equal(document.getElementById("gp-ov-badge"), null, "the pill goes with it");
+
+    // hosted by the desktop app (the shell's parent is the app): no key, no pill — the app owns both
+    {
+      const hosted = new Window({ url: "http://localhost/" });
+      const appWindow = {};
+      appWindow.parent = appWindow;
+      const shellWindow = { parent: appWindow };
+      Object.defineProperty(hosted, "parent", { configurable: true, value: shellWindow });
+      const hostedDoc = hosted.document;
+      hostedDoc.head.innerHTML = '<script src="/engine/gutterpress-viewer.js"></script>';
+      hostedDoc.body.innerHTML = "<p>x</p>";
+      hostedDoc.elementFromPoint = () => null;
+      new Function("window", "document", "CustomEvent", "MutationObserver", "setTimeout", "clearTimeout", scriptSource)(
+        hosted, hostedDoc, hosted.CustomEvent, hosted.MutationObserver, setTimeout, clearTimeout);
+      const hostedCalls = [];
+      hosted.Gutterpress = { pageOf: () => -1, decoration: {
+        setOverlay(on) { hostedCalls.push(on); hostedDoc.body.dataset.overlay = on ? "on" : "off"; const s = summary(on); hosted.dispatchEvent(new hosted.CustomEvent("gp:overlay", { detail: s })); return s; },
+        overlay: () => summary(false),
+      } };
+      hostedDoc.dispatchEvent(new hosted.KeyboardEvent("keydown", { code: "KeyM", key: "m", altKey: true, bubbles: true, cancelable: true }));
+      assert.deepEqual(hostedCalls, [], "under the desktop app the toolbar owns the toggle");
+      hosted.previewAPI.setMarginOverlay(true);
+      assert.equal(hostedDoc.getElementById("gp-ov-badge"), null, "…and the count lives in the toolbar, not a pill");
+    }
+
+    console.log("[desktop-test] PASS margin & bleed overlay API (protocol v9)");
+  }
+
+  // getProtocolVersion() is 9 (margin & bleed overlay on top of v8's in-flow
+  // editing; rects/mask removed in v8).
   {
     const { api } = loadInterfaceWithDom("<p>x</p>");
-    assert.equal(api.getProtocolVersion(), 8);
+    assert.equal(api.getProtocolVersion(), 9);
     assert.equal(typeof api.beginBlockEdit, "function");
     assert.equal(typeof api.endBlockEdit, "function");
     assert.equal(api.getRectsFor, undefined, "geometry command removed with the panel");
@@ -1184,6 +1282,8 @@ async function main() {
       ["blockEditRequested", { chapter: "a.md", range: [2, 4], x: 5, y: 6, via: "dblclick" }],
       ["blockEditFinished", { text: "edited", commit: true, chapter: "a.md", range: [2, 4] }],
       ["blockEditStateChanged", { open: true }],
+      // protocol v9: the margin & bleed overlay's result drives the toolbar count
+      ["overlayChanged", { on: true, issues: 2, intended: 1, bleedPt: 9 }],
     ];
     for (const [name, detail] of forwarded) {
       posted.length = 0;
@@ -1192,7 +1292,7 @@ async function main() {
       assert.ok(hit, `bridge forwards ${name}`);
       assert.deepEqual(hit.detail, detail, `${name} detail crosses intact`);
     }
-    console.log("[desktop-test] PASS bridge forwards protocol v8 edit events");
+    console.log("[desktop-test] PASS bridge forwards protocol v8 edit events + v9 overlayChanged");
   }
 }
 

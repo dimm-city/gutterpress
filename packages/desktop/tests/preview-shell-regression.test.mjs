@@ -36,7 +36,19 @@ function installBook(frame, markup = BOOK_NATIVE, layout = "vertical") {
       const sheet = el && el.closest ? el.closest(".gp-sheet") : null;
       return sheet ? parseInt(sheet.getAttribute("data-page"), 10) - 1 : -1;
     },
+    // The viewer's margin & bleed overlay hook (decorate.ts): records what the
+    // shell asked of it, and stamps body[data-overlay] as the real one does.
+    decoration: {
+      setDesigner() {},
+      setOverlay(on) {
+        frameWindow.__overlayCalls.push(on);
+        frameDocument.body.dataset.overlay = on ? "on" : "off";
+        return { on, issues: 0, intended: 0, bleedPt: 0 };
+      },
+      overlay: () => ({ on: frameDocument.body.dataset.overlay === "on", issues: 0, intended: 0, bleedPt: 0 }),
+    },
   };
+  frameWindow.__overlayCalls = [];
   frameDocument.body.innerHTML = markup;
   const pageSelector = ".gp-sheet";
   const pages = [...frameDocument.querySelectorAll(pageSelector)];
@@ -523,6 +535,8 @@ async function main() {
   active.contentWindow.previewAPI.setViewMode("single");
   active.contentWindow.previewAPI.setZoom("0.8");
   active.contentDocument.body.classList.add("debug");
+  // The author switched the margin & bleed overlay on before this save.
+  active.contentWindow.previewAPI.setMarginOverlay(true);
   const desktopStyle = active.contentDocument.createElement("style");
   desktopStyle.setAttribute("data-gutterpress-desktop-canvas", "true");
   desktopStyle.textContent = ".gp-sheet { box-shadow: 0 0 2px black; }";
@@ -622,6 +636,12 @@ async function main() {
   assert.equal(fresh.title, "preview", "the replacement retains the iframe title");
   assert.equal(fresh.contentDocument.body.classList.contains("view-single"), true, "view mode is copied before reveal");
   assert.equal(fresh.contentDocument.body.classList.contains("debug"), true, "debug state is copied before reveal");
+  assert.deepEqual(
+    fresh.contentWindow.__overlayCalls,
+    [true],
+    "the margin & bleed overlay is carried into the replacement, once, before reveal",
+  );
+  assert.equal(fresh.contentDocument.body.dataset.overlay, "on", "overlay state survives a hot reload");
   assert.equal(
     fresh.contentDocument.documentElement.style.getPropertyValue("--gutterpress-zoom"),
     "0.8",

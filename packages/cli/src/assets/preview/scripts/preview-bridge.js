@@ -14,7 +14,7 @@
 //
 // Commands map 1:1 to previewAPI methods: getTotalPages, getCurrentPage,
 // goToPage, firstPage, prevPage, nextPage, lastPage, setViewMode, setZoom,
-// toggleDebugMode. Plus a synthetic 'print' command that calls window.print().
+// toggleDebugMode, setMarginOverlay. Plus a synthetic 'print' command that calls window.print().
 //
 // Additional messages:
 //   parent -> iframe: { type: 'gutterpress:inject-styles', id: <attr-name>, css: <string> }
@@ -81,6 +81,10 @@
   // context-menu target request.
   window.addEventListener('contextMenuRequested', function (e) {
     post({ type: 'gutterpress:event', name: 'contextMenuRequested', detail: e.detail });
+  });
+  // Margin & bleed overlay result (protocol v9): {on, issues, intended, bleedPt}.
+  window.addEventListener('overlayChanged', function (e) {
+    post({ type: 'gutterpress:event', name: 'overlayChanged', detail: e.detail });
   });
   // In-flow block editing (protocol v8). `Requested` is the double-click entry
   // point — the SPA answers it with a beginBlockEdit command. `Finished`
