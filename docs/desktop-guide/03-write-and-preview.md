@@ -51,7 +51,7 @@ classes for that marker do.
 
 Keep typing to narrow the list, then press **Tab** or **Enter** to accept (**Esc** dismisses it).
 **Ctrl+Space** asks for the list inside empty braces. The list works the same way as the `@`
-suggestions for [markers and components](04-snippets.md#insert-a-component-with-).
+suggestions for [markers and components](04-snippets.md#insert-a-component).
 
 ### Change a block's properties
 

@@ -24,7 +24,7 @@ enter the values and click **Insert**.
 
 ![Fill in the snippet: one field per placeholder](images/snippet-fill.jpg)
 
-## Insert a component with @
+## Insert a component
 
 Type `@` at the start of a line to see the layout markers (`@chapter`, `@section`, `@page`,
 `@spread`, `@page-break` and the rest) and the components your book's plugins add. Keep typing to
