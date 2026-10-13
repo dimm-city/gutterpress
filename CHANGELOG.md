@@ -152,6 +152,12 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Desktop: a folder with several books reopens the book you were in.** Opening the
+  folder itself (a favorite, **Open a folder**, or a launch that starts from the
+  folder) used to land on the alphabetically first book, whichever one you were last
+  working in. It now opens the book last open in that folder, the same one the
+  **Recently opened** row already reopened. If that book is gone, it still falls back
+  to the first. Opening a specific book is unchanged.
 - **Report a problem fills in the App log.** The log was only copied to the clipboard,
   so the GitHub form opened with **App log** empty. It now arrives in the form: the
   newest lines that fit in the link, with a note when earlier lines were left out

@@ -68,6 +68,8 @@ export interface ProjectClassification {
   repoRoot?: string;
   /** Sibling books inside `repoRoot`, sorted by `subPath`. */
   books?: ProjectClassificationBook[];
+  /** The book last open in `repoRoot`, when the app remembers one. */
+  lastActiveBook?: string;
 }
 
 // ── Local version history (#13) ───────────────────────────────────────────────

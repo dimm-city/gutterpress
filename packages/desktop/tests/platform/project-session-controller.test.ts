@@ -29,6 +29,7 @@ type ClassifyResult = {
   hasManifest: boolean;
   repoRoot?: string;
   books?: ProjectBookEntry[];
+  lastActiveBook?: string;
 };
 
 interface Harness {
@@ -378,6 +379,32 @@ const TWO_BOOKS: ProjectBookEntry[] = [
 test("resolveActiveBookDir: a folder INSIDE a book resolves to THAT book, not books[0]", () => {
   expect(resolveActiveBookDir("/repo/beta/chapters", "/repo", TWO_BOOKS)).toBe("/repo/beta");
   expect(resolveActiveBookDir("/repo/beta/styles/deep/nest", "/repo", TWO_BOOKS)).toBe("/repo/beta");
+});
+
+// ── the repo root reopens the book last open in it ───────────────────────────
+//
+// Opening the repo root itself (a favorite, the folder picker) used to land on
+// books[0] even when the author had last been working in another book.
+
+test("resolveActiveBookDir: bare repo root picked → the book last open in this repo", () => {
+  expect(resolveActiveBookDir("/repo", "/repo", TWO_BOOKS, "/repo/beta")).toBe("/repo/beta");
+  expect(resolveActiveBookDir("/repo/shared", "/repo", TWO_BOOKS, "/repo/beta/")).toBe("/repo/beta");
+});
+
+test("resolveActiveBookDir: an explicitly picked book beats the remembered one", () => {
+  expect(resolveActiveBookDir("/repo/alpha", "/repo", TWO_BOOKS, "/repo/beta")).toBe("/repo/alpha");
+});
+
+test("resolveActiveBookDir: a remembered book that is no longer in the repo falls back to books[0]", () => {
+  expect(resolveActiveBookDir("/repo", "/repo", TWO_BOOKS, "/repo/gone")).toBe("/repo/alpha");
+});
+
+test("classify: opening the repo root activates the classifier's lastActiveBook", async () => {
+  const h = makeHarness();
+  h.classify.next = { source: {}, capabilities: makeCaps(), hasManifest: false, repoRoot: "/repo", books: TWO_BOOKS, lastActiveBook: "/repo/beta" };
+  await h.ctrl.classify("/repo");
+  expect(h.ctrl.activeBookDir).toBe("/repo/beta");
+  expect(h.ctrl.activeBookHasManifest).toBe(true);
 });
 
 test("resolveActiveBookDir: a trailing-slash spelling of a book path resolves to that book", () => {
