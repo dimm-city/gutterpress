@@ -42,6 +42,15 @@ This project follows [Semantic Versioning](https://semver.org/).
   assignment written with `var()`, inside a nested rule, right after a nested
   rule, or the legacy `page-break-before: always`: the PDF honours them, the
   preview's CSS reader does not, and the page counts drift apart.
+- **Open a terminal in the book's folder.** With a book open, Troubleshooting →
+  Diagnostics has **Open terminal in book folder**: bash in a new window (macOS:
+  Terminal; Linux: the first terminal found); on Windows, bash when one is on PATH
+  (Git Bash, WSL), otherwise a Command Prompt.
+- **Report a problem asks the bug form's questions.** A short summary, what happened,
+  what you expected and the steps that show it go straight into the GitHub issue form
+  with the details the app adds, and the panel says what to do on GitHub that it
+  cannot (sign in, drag screenshots or a sample into the new **Screenshots or files**
+  field). The bug template gains **What did you expect?** and **Screenshots or files**.
 - **The build warns when its browser cannot hyphenate.** `hyphens: auto` breaks
   words only where the browser has a dictionary for the text's language, and
   Chromium builds differ: Chrome for Testing has them, the desktop app's Electron
@@ -128,6 +137,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Report a problem fills in the App log.** The log was only copied to the clipboard,
+  so the GitHub form opened with **App log** empty. It now arrives in the form: the
+  newest lines that fit in the link, with a note when earlier lines were left out
+  (the full log is still on the clipboard).
 - **`@page-break #id` keeps its id, and `@continue` stops repeating one.** The two
   break markers (`@page-break`, `@column-break`) dropped every attribute on their
   line, so a `#id` for a link or a `target-counter()` to land on vanished; they

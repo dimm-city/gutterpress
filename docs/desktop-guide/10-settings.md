@@ -35,7 +35,12 @@ application menu**, which adds the AppImage to your desktop's menu.
 The start screen's **Help** tab has help on using the app, and these guides are always at
 [gutterpress.dimm.city/docs](https://gutterpress.dimm.city/docs/).
 
-To report a problem, open **Troubleshooting → Report a problem**. **Copy report** copies the
-details, and **Open GitHub issue** starts an issue with them; nothing is sent until you submit
-it. Error messages also offer **Report a problem**. The **Logs** and **Diagnostics** tabs help
-when something isn't working.
+To report a problem, open **Troubleshooting → Report a problem** and answer its questions: a
+short summary, what happened, what you expected, and the steps that show it. **Open GitHub
+issue** opens the issue form with your answers, your app and system versions, how the book is
+set up (not its text) and the end of the app's log already filled in; nothing is sent until you
+create the issue. On GitHub, drag any screenshots or sample files into **Screenshots or files**,
+since the app can't attach them for you. **Copy report** copies the same details. Error messages
+also offer **Report a problem**. The **Logs** and **Diagnostics** tabs help when something isn't
+working, and with a book open, **Open terminal in book folder** on the **Diagnostics** tab opens
+a terminal there (bash; on Windows, a Command Prompt when bash isn't installed).

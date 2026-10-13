@@ -12,6 +12,7 @@
    * `idPrefix`). Owns its api.doctor load for Diagnostics.
    */
   import { api } from "$lib/api";
+  import { unwrapRouteError } from "$lib/errors";
   import type { DoctorDiagnostics } from "$lib/api";
   import LogsPanel from "$lib/components/LogsPanel.svelte";
   import ReportProblemPanel from "$lib/components/ReportProblemPanel.svelte";
@@ -139,6 +140,16 @@
     navigator.clipboard.writeText(lines.join("\n"));
     copied = true;
     setTimeout(() => { copied = false; }, 1500);
+  }
+
+  let terminalError = $state<string | null>(null);
+  async function openTerminal(dir: string) {
+    terminalError = null;
+    try {
+      await api.shell.openTerminal(dir);
+    } catch (e) {
+      terminalError = unwrapRouteError(e instanceof Error ? e.message : String(e));
+    }
   }
 
   function getInstallHint(hint: string, os: string): string {
@@ -289,10 +300,18 @@
       </section>
 
       <footer class="actions">
+        {#if projectDir}
+          <button class="ghost" onclick={() => void openTerminal(projectDir)} title="Open a terminal window in this book's folder">
+            Open terminal in book folder
+          </button>
+        {/if}
         <button class="ghost" onclick={copyReport} title="Copy system info to clipboard — useful when asking for support">
           {copied ? "Copied!" : "Copy diagnostic info"}
         </button>
       </footer>
+      {#if terminalError}
+        <p class="terminal-error" role="alert">{terminalError}</p>
+      {/if}
     {/if}
   </div>
 </div>
@@ -419,4 +438,5 @@
     cursor: pointer;
   }
   .actions .ghost:hover { background: var(--app-surface-hover); color: var(--app-text); }
+  .terminal-error { margin: 8px 0 0; font-size: 12px; color: var(--app-error-text); text-align: right; }
 </style>

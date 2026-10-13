@@ -370,6 +370,9 @@ export const api = {
     /** Reveal a file in the OS file manager. */
     showInFolder: (filePath: string) =>
       post<{ ok: boolean }>('/api/shell/show-in-folder', { filePath }),
+    /** Open a terminal (bash; Command Prompt on Windows without bash) in the open book's folder. */
+    openTerminal: (projectDir: string) =>
+      post<{ ok: boolean; label: string }>('/api/shell/open-terminal', { projectDir }),
   },
 
   report: {
