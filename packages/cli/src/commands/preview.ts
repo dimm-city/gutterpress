@@ -17,7 +17,6 @@ import {
   resolvePort,
   UsageError,
 } from "../lib/cli-args.ts";
-import { restoreForCommand } from "../lib/extension-restore.ts";
 import { previewArgs } from "./preview-args.ts";
 
 // Re-exported so existing importers (and preview.test.ts) can keep resolving it
@@ -51,9 +50,8 @@ export default defineCommand({
             "--manifest is only supported by preview --format pdf or pdfx; live HTML preview discovers the book manifest from its input directory."
           );
         }
-        // Live preview degrades and reports (a missing package never blanks
-        // it), so a failed download is a warning here, not an exit.
-        await restoreForCommand(inputPath ?? process.cwd(), { failFast: false });
+        // The preview's render path downloads missing pinned extensions
+        // itself, on every render (preview/file-watcher.ts renderPreviewBook).
         await startPreviewServer({
           input: inputPath,
           port: resolvePort(args.port),

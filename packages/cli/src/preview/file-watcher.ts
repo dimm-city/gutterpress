@@ -21,6 +21,7 @@ import {
   readExtensionMeta,
 } from '../lib/extension-manifest';
 import { loadPluginsWithCss } from '../lib/markdown/plugins';
+import { restoreForCommand } from '../lib/extension-restore';
 import { BOOK_HTML_FILENAME } from '../lib/desktop';
 import { imageRefKey } from '../lib/static-serve';
 import type { ServerState } from './server-context';
@@ -81,6 +82,12 @@ async function renderPreviewBook(
     onImageRefs?: (refs: string[]) => void;
   }
 ): Promise<string> {
+  // Every live render first downloads any pinned extension whose copy is
+  // missing: the first render from any host, a rebuild after the manifest's
+  // pins change (an edit, Get latest, restoring a version) and a restart into
+  // another book. No network when every copy is present. A failed download
+  // warns and the render degrades, as the loader below does.
+  await restoreForCommand(inputPath, { failFast: false });
   const { plugins, pluginStyles } = await loadPluginsWithCss(
     config.extensions,
     inputPath,

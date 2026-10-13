@@ -370,11 +370,15 @@ export, so `build`, one-shot PDF `preview` and the desktop's PDF export) and
 desktop's Problems and publish-preflight routes; skipped when the caller
 passes `pluginStylePaths`, i.e. a build's own gate that already restored).
 Both fail fast with the extension, the reason and how to retry — a new
-command that builds or checks gets this for free. Only the live HTML preview
-degrades (`preview`'s command and the desktop's `PreviewOpenController` when a
-book is opened — host-side; the result's `restoredExtensions` becomes a toast,
-and the Features tab's "Needs install" row + Install button stay the
-fallback). `publish` loads no plugins and does not restore.
+command that builds or checks gets this for free. The live HTML preview
+restores from its own render path, `renderPreviewBook`
+(`preview/file-watcher.ts`), on EVERY render: the first render from any host,
+a rebuild after the manifest's pins change (an edit, Get latest, restoring a
+version) and a restart into another book. It degrades rather than failing. The
+desktop's `PreviewOpenController` also restores when a book is opened, only so
+the open can show download progress and a toast (`restoredExtensions`); the
+Features tab's "Needs install" row + Install button stay the fallback.
+`publish` loads no plugins and does not restore.
 
 **One pruning rule:** once a package's pinned version is installed — by `ext
 add`/`update` or a restore — every other `plugins/npm/<name>/<version>/`

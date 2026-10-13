@@ -188,6 +188,10 @@ files — and it does not need you to do anything:
   reason, a warning says which one and why. Either way the extension's row
   under **Project settings → Features** reads **Needs install**, and its
   **Install** button tries again.
+  The preview checks again every time it redraws the book, so a pin that
+  changes while the book is open (you edit `manifest.yaml`, **Get latest**
+  brings in a new one, or you restore an earlier version) is downloaded before
+  the next redraw.
   Exporting a PDF or HTML and the **Problems** panel do the same before they
   use your extensions, so they never run without them: if a download fails, an
   export stops and says which extension and why, and Problems lists that as an
@@ -206,7 +210,9 @@ files — and it does not need you to do anything:
   (registry error, failed integrity check), they name the extension, the reason
   and how to try again, or suggest `gutterpress ext add name@version`. A failed attempt
   leaves nothing behind, not even an empty `plugins/npm/` folder. Live
-  `preview` only warns and keeps going, like any other plugin it cannot load.
+  `preview` downloads a missing pinned version before every render, including
+  after you change a pin while it runs. If it cannot, it only warns and keeps
+  going, like any other plugin it cannot load.
 
 Once your extensions are downloaded, the book works offline: nothing is
 fetched when every pinned copy is already there.

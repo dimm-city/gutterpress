@@ -152,6 +152,15 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The preview downloads a book's pinned extensions on every render.** The live
+  preview used to check only when a book was opened (the desktop's open, or the
+  start of `gutterpress preview`). A pin that changed while the book was open
+  rendered the book without its extension: an edit to `manifest.yaml`, **Get latest**
+  or an online backup bringing in a new pin, or restoring an earlier version. The
+  check now runs in the preview's one render path, so every render downloads any
+  missing pinned version first, from any host. It costs nothing when every copy is
+  present. A failed download still only warns, and the preview renders without that
+  extension.
 - **Desktop: a folder with several books reopens the book you were in.** Opening the
   folder itself (a favorite, **Open a folder**, or a launch that starts from the
   folder) used to land on the alphabetically first book, whichever one you were last
