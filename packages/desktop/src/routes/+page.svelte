@@ -3445,7 +3445,7 @@
     height: 100%;
     background: var(--app-bg);
     color: var(--app-text);
-    font-family: var(--app-font);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   }
 
   .app-root {

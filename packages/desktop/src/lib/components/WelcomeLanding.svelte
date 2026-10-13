@@ -486,7 +486,7 @@
     outline: none;
     /* Self-contained font stack: the layer sits outside the workspace shell,
        so it must not inherit the browser's default serif. */
-    font-family: var(--app-font);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
     color: var(--app-text);
   }
 

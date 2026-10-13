@@ -15,9 +15,6 @@
   scrollbar-color: var(--app-scrollbar-thumb) var(--app-scrollbar-track);
 }
 
-/* Form controls take the app font (--app-font) rather than the browser's own. */
-button, input, select, textarea { font-family: inherit; }
-
 /**
  * App-chrome theme tokens (#48).
  *
@@ -137,11 +134,6 @@ button, input, select, textarea { font-family: inherit; }
   --app-scrollbar-track: transparent;
 
   /* ── Theme-invariant tokens (defined once; no dark override) ──────────── */
-
-  /* The app's chrome and copy: Old Standard TT, the text face of the project
-     site (gutterpress.dimm.city), bundled from @fontsource/old-standard-tt
-     (+layout.svelte) so it works offline. */
-  --app-font: "Old Standard TT", Georgia, "Times New Roman", serif;
 
   /* Monospace stack for chrome code snippets, paths, shortcut keys. */
   --app-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;

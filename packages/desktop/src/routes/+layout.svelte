@@ -1,7 +1,4 @@
 <script lang="ts">
-  import "@fontsource/old-standard-tt/400.css";
-  import "@fontsource/old-standard-tt/400-italic.css";
-  import "@fontsource/old-standard-tt/700.css";
   import "$lib/theme.css";
   import { onMount } from "svelte";
   import { _loadSettings } from "$lib/settings.svelte";
