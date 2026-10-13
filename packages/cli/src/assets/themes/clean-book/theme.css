@@ -44,10 +44,7 @@ h1 { font-size: var(--fs-h1); margin: 0 0 0.6em; }
 h2 { font-size: var(--fs-h2); margin: 1.4em 0 0.4em; }
 h3 { font-size: var(--fs-h3); margin: 1.2em 0 0.3em; }
 
-/* hyphens: manual, not auto: auto breaks words only where the running Chromium
-   ships dictionaries (desktop app and CLI differ), which changes the page count.
-   Authors add soft hyphens (&shy;) where they want a break. */
-p { margin: 0 0 0.8em; text-align: justify; hyphens: manual; }
+p { margin: 0 0 0.8em; text-align: justify; hyphens: auto; }
 
 a { color: var(--color-accent); text-decoration: none; }
 

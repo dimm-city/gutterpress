@@ -59,6 +59,7 @@ const SOURCE_LABELS: Record<string, string> = {
   "engine.image.low-dpi": "Image resolution",
   "engine.flush.margin-box": "Running head on a flushed edge",
   "engine.page-background.unreferenced": "Page background image not printed",
+  "engine.hyphenation.unsupported": "Hyphenation not available",
 };
 
 export function friendlySource(checkId: string): string {

@@ -349,6 +349,7 @@ spell-check-style source findings; from the CLI they print as warnings.
 | Image resolution | Below the DPI floor; may look soft in print. |
 | Margin box couldn't relocate | A `.gp-flush`-freed margin box's `content` isn't a value the build can re-home; it will not print on that page — simplify the content or drop `.gp-flush` there. |
 | Page background not preloaded | An `@page` background image the build can't stage and preload — remote, reached from CSS outside your project stylesheets, or also used as an `<img src>` — so Chromium prints the background colour alone (§1). |
+| Hyphenation not available | Text styled `hyphens: auto` is in a language the browser making this PDF has no hyphenation dictionary for (the desktop app's Electron has none on Linux), so nothing is hyphenated automatically and lines break differently than in a browser that has one. Silent wherever hyphenation works. |
 
 If you add a check to the engine, give it a code in `BUILD_DIAGNOSTIC_CODES`
 and a plain-language label in the desktop's `SOURCE_LABELS` — a test fails
