@@ -42,6 +42,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   assignment written with `var()`, inside a nested rule, right after a nested
   rule, or the legacy `page-break-before: always`: the PDF honours them, the
   preview's CSS reader does not, and the page counts drift apart.
+- **The desktop app uses the project site's typeface.** Menus, buttons, panels,
+  dialogs and messages are set in Old Standard TT, the text face of
+  gutterpress.dimm.city, bundled with the app so it works offline. Code, paths and
+  the editor keep their monospace font; the book preview is unaffected.
 - **Open a terminal in the book's folder.** With a book open, Troubleshooting →
   Diagnostics has **Open terminal in book folder**: bash in a new window (macOS:
   Terminal; Linux: the first terminal found); on Windows, bash when one is on PATH

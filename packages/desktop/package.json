@@ -43,6 +43,7 @@
     "yaml": "^2.8.2"
   },
   "devDependencies": {
+    "@fontsource/old-standard-tt": "^5.3.0",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "@types/node": "^22.0.0",
     "@types/semver": "^7.7.1",

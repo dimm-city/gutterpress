@@ -110,7 +110,7 @@
     justify-content: center;
     align-items: flex-start;
     outline: none;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    font-family: var(--app-font);
     color: var(--app-text);
   }
   .view-col {

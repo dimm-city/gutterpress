@@ -10,7 +10,7 @@
     },
     "packages/cli": {
       "name": "gutterpress",
-      "version": "0.11.13",
+      "version": "0.11.18-alpha.7",
       "bin": {
         "gutterpress": "./dist/cli.js",
       },
@@ -55,7 +55,7 @@
     },
     "packages/desktop": {
       "name": "@dimm-city/gutterpress-desktop",
-      "version": "0.11.13",
+      "version": "0.11.18-alpha.7",
       "dependencies": {
         "@codemirror/autocomplete": "^6.18.4",
         "@codemirror/commands": "^6.8.0",
@@ -75,6 +75,7 @@
         "yaml": "^2.8.2",
       },
       "devDependencies": {
+        "@fontsource/old-standard-tt": "^5.3.0",
         "@sveltejs/vite-plugin-svelte": "^7.1.2",
         "@types/node": "^22.0.0",
         "@types/semver": "^7.7.1",
@@ -317,6 +318,8 @@
     "@eslint/object-schema": ["@eslint/object-schema@2.1.7", "", {}, "sha512-VtAOaymWVfZcmZbp6E2mympDIHvyjXs/12LqWYjVw6qjrfF+VK+fyG33kChz3nnK+SU5/NeHOqrTEHS8sXO3OA=="],
 
     "@eslint/plugin-kit": ["@eslint/plugin-kit@0.4.1", "", { "dependencies": { "@eslint/core": "^0.17.0", "levn": "^0.4.1" } }, "sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA=="],
+
+    "@fontsource/old-standard-tt": ["@fontsource/old-standard-tt@5.3.0", "", {}, "sha512-9cXU8XWqw4Pz9/9Lf6Otf1GPc0y17d96/nP9tzs4PLlq1IFMIxXszL3OLldaoyAn5YGr1r+tIXr0rlbgIeCYrg=="],
 
     "@hapi/address": ["@hapi/address@5.1.1", "", { "dependencies": { "@hapi/hoek": "^11.0.2" } }, "sha512-A+po2d/dVoY7cYajycYI43ZbYMXukuopIsqCjh5QzsBCipDtdofHntljDlpccMjIfTy6UOkg+5KPriwYch2bXA=="],
 

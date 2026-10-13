@@ -311,7 +311,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 260px;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-family: var(--app-font);
     color: var(--app-text-secondary);
     cursor: default;
     user-select: none;

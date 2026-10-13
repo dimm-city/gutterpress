@@ -129,7 +129,7 @@
     border-radius: 8px;
     border: 1px solid transparent;
     font-size: 13px;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    font-family: var(--app-font);
     min-width: 240px;
     max-width: 380px;
     box-shadow: 0 4px 16px var(--app-shadow-md);
