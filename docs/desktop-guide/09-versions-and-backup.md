@@ -76,4 +76,18 @@ was. The common cases:
 Settings → **Saving** has the switches: **Save edits automatically**, **Keep previous versions**
 and **Keep this book backed up online**.
 
+### Get and send changes yourself
+
+To get changes from online and send yours only when you choose, turn off **Keep this book backed
+up online**. The status bar then shows two buttons next to the online status:
+
+- **Get latest** brings in the changes from online and sends nothing back. Your own edits stay
+  on this computer.
+- **Back up now** gets the latest first, then sends your changes.
+
+Both buttons are also in **Where your work is kept**. While automatic backup is off, Gutterpress
+checks for new changes online every few minutes and when you come back to the window. When it
+finds some, a message says **New changes are online for this book**, with a **Get latest**
+button.
+
 Next: [settings, updates and getting help](10-settings.md).

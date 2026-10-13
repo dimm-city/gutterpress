@@ -459,6 +459,8 @@
   // + buffer).
   const syncController = new SyncController({
     syncChanges: (dir) => api.remote.syncChanges(dir),
+    getLatest: (dir) => api.remote.getLatest(dir),
+    checkUpdates: (dir) => api.remote.checkUpdates(dir),
     repair: (dir) => api.remote.repairOnlineBackup(dir),
     diagnose: (dir) => api.remote.diagnoseProjectRemote(dir),
     currentDir: () => lifecycle.currentDir,
@@ -733,6 +735,9 @@
   // The extension download is pushed from the host while `startPreview` is
   // pending (no replay), so subscribe before any open can start.
   onMount(() => getPlatform().onRestoreProgress((event) => lifecycle.onRestoreProgress(event)));
+  // With automatic online backup off, look for new online changes now and then
+  // and prompt (SyncController.checkForUpdates).
+  onMount(() => syncController.watchForUpdates());
 
   const landingStatus = $derived(
     continueStatus({ hasPreviewUrl: !!lifecycle.previewUrl, stage: openStage }),
@@ -3257,6 +3262,9 @@
     onShowLog={showProjectLog}
     onForceSave={handleForceSave}
     onForceSync={() => syncController.handleForceSync()}
+    onGetLatest={() => syncController.handleGetLatest()}
+    gettingLatest={syncController.gettingLatest}
+    updatesAvailable={syncController.updatesAvailable}
     onRepair={() => syncController.handleRepair()}
     manualBackup={syncController.lastManual}
     onSaveVersion={async () => {

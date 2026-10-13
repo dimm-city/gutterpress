@@ -548,3 +548,62 @@ export async function refreshRemoteCopies(options: {
     return { refreshed: false, reason: "offline" };
   }
 }
+
+/**
+ * Has the book's branch moved online since this copy last heard from it?
+ * Reads only the server's advertised refs (`listServerRefs`: no objects
+ * downloaded, no history walked, nothing written), so it is cheap enough to
+ * poll and safe on a dirty tree. The branch's online tip is compared with the
+ * remote-tracking ref (the last tip this copy fetched or pushed) and with the
+ * local tip: if it matches neither, someone else sent changes the author has
+ * not got. A local copy ahead of the remote is not "updates available".
+ *
+ * Best-effort like refreshRemoteCopies: it never throws; it reports why it
+ * could not tell.
+ */
+export async function checkRemoteUpdates(options: {
+  projectDir: string;
+  credential?: HostCredential;
+  tokenStore?: TokenStore;
+  httpClient?: typeof defaultGitHttp;
+}): Promise<{ available: boolean; reason?: "no-remote" | "auth" | "offline" }> {
+  const http = options.httpClient ?? defaultGitHttp;
+  try {
+    const dir = await repoDirFor(options.projectDir);
+    const transport = await resolveTransport(dir, {
+      ...(options.credential ? { credential: options.credential } : {}),
+      ...(options.tokenStore ? { tokenStore: options.tokenStore } : {}),
+    });
+    const branch = await currentBranchOrThrow(dir);
+    const refs = await git.listServerRefs({
+      http,
+      url: transport.url,
+      prefix: `refs/heads/${branch}`,
+      ...onAuthFor(transport.credential),
+      // One shot: never loop on a rejected credential.
+      ...(transport.credential ? { onAuthFailure: () => ({ cancel: true }) } : {}),
+    });
+    const remoteTip = refs.find((r) => r.ref === `refs/heads/${branch}`)?.oid;
+    if (!remoteTip) return { available: false };
+    const known = async (ref: string) => {
+      try {
+        return await git.resolveRef({ fs, dir, ref });
+      } catch {
+        return null;
+      }
+    };
+    const tracking = await known(`refs/remotes/${transport.remote}/${branch}`);
+    const local = await known(branch);
+    return { available: remoteTip !== tracking && remoteTip !== local };
+  } catch (e) {
+    const message = (e as { message?: string })?.message ?? "";
+    if (message === MSG_NO_REMOTE || message === MSG_SSH_REMOTE) {
+      return { available: false, reason: "no-remote" };
+    }
+    const status = (e as { data?: { statusCode?: number } })?.data?.statusCode;
+    if (status === 401 || status === 403 || status === 404) {
+      return { available: false, reason: "auth" };
+    }
+    return { available: false, reason: "offline" };
+  }
+}

@@ -294,7 +294,10 @@ describe("online backup", () => {
     const manual = sync("synced", { canSync: true, syncing: true });
     expect(manual.status).toBe("Backing up now…");
     // The button stays, disabled and honest, so the dialog is the one home for it.
-    expect(manual.actions).toEqual([{ id: "syncNow", label: "Backing up…", disabled: true, primary: false }]);
+    expect(manual.actions).toEqual([
+      { id: "syncNow", label: "Backing up…", disabled: true, primary: false },
+      { id: "pullNow", label: "Get latest", disabled: true, primary: false },
+    ]);
     expect(sync("syncing", { canSync: true }).actions[0]).toMatchObject({ id: "syncNow", disabled: true });
     // No usable remote: nothing to press.
     expect(sync("syncing", { canSync: false }).actions).toEqual([]);
@@ -355,10 +358,33 @@ describe("online backup", () => {
   test("idle on a book that can back up: ready (auto on) or off (auto off)", () => {
     const on = sync("idle", { canSync: true });
     expect(on.status).toBe("Online backup is on. Your book will be copied online automatically.");
-    expect(ids(on)).toEqual(["syncNow"]);
+    expect(ids(on)).toEqual(["syncNow", "pullNow"]);
     const off = sync("idle", { canSync: true, automatic: false });
     expect(off.status).toBe("Automatic online backup is off.");
     expect(off.detail).toContain("Settings → Saving → Keep this book backed up online");
+  });
+  test("Get latest sits beside Back up now and is offered in the same states", () => {
+    for (const state of ["synced", "idle", "offline", "error", "syncing"] as const) {
+      expect(ids(sync(state, { canSync: true })), state).toContain("pullNow");
+      expect(ids(sync(state, { canSync: false, hasRemote: true })), state).not.toContain("pullNow");
+    }
+  });
+  test("changes waiting online: Get latest becomes the suggested action", () => {
+    const s = sync("idle", { canSync: true, automatic: false, updatesAvailable: true });
+    expect(s.status).toBe("New changes are online.");
+    expect(s.detail).toContain("without sending yours");
+    expect(s.tone).toBe("pending");
+    expect(s.actions).toEqual([
+      { id: "syncNow", label: "Back up now", disabled: false, primary: false },
+      { id: "pullNow", label: "Get latest", disabled: false, primary: true },
+    ]);
+  });
+  test("getting latest: both buttons wait, honestly labelled", () => {
+    const s = sync("idle", { canSync: true, automatic: false, pulling: true, updatesAvailable: true });
+    expect(s.actions).toEqual([
+      { id: "syncNow", label: "Back up now", disabled: true, primary: false },
+      { id: "pullNow", label: "Getting latest…", disabled: true, primary: false },
+    ]);
   });
   test("the retry button is never offered when the book can't back up", () => {
     expect(ids(sync("error", { canSync: false }))).toEqual([]);

@@ -839,6 +839,14 @@ export const api = {
         ...(message ? { message } : {}),
       }),
 
+    /** "Get latest": fetch and merge the online changes; never pushes. */
+    getLatest: (projectDir: string) =>
+      post<SyncOutcome>('/api/remote/sync', { projectDir, push: false }),
+
+    /** Whether the book's branch has moved online (reads refs only; never throws). */
+    checkUpdates: (projectDir: string) =>
+      post<{ available: boolean; reason?: 'no-remote' | 'auth' | 'offline' }>('/api/remote/check-updates', { projectDir }),
+
     /**
      * "Repair online backup": replace the book's broken history with a fresh
      * download of the online copy, keep every file on this computer, restore

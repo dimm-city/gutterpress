@@ -19,11 +19,20 @@ interface SyncToast {
   success(message: string): void;
   info?(message: string): void;
   error(message: string): void;
+  /** A toast with one action button (the "new changes online" prompt). */
+  show?(message: string, type?: "info", duration?: number, action?: { label: string; onClick: () => void }): void;
 }
+
+/** How often to look for new online changes while automatic backup is off. */
+export const UPDATE_CHECK_INTERVAL_MS = 5 * 60_000;
 
 export interface SyncControllerDeps {
   /** Host round-trip: run an immediate sync for the given project dir. */
   syncChanges: (dir: string) => Promise<SyncOutcome>;
+  /** Host round-trip: "Get latest", fetch and merge the online changes without pushing. */
+  getLatest: (dir: string) => Promise<SyncOutcome>;
+  /** Host round-trip: has the book's branch moved online? (reads refs only; never throws) */
+  checkUpdates: (dir: string) => Promise<{ available: boolean; reason?: string }>;
   /** Host round-trip: "Repair online backup" for the given project dir. */
   repair: (dir: string) => Promise<{ outcome: SyncOutcome; restoredFiles: string[] }>;
   /** Host round-trip: diagnose the project's remote (protocol/credential/provider). */
@@ -92,6 +101,10 @@ export class SyncController {
   forceSyncing = $state(false);
   /** The last manual backup's outcome, or null before any this session. */
   lastManual = $state<ManualBackup | null>(null);
+  /** True while a manual "Get latest" is in flight. */
+  gettingLatest = $state(false);
+  /** The online copy has changes this one has not got (last check said so). */
+  updatesAvailable = $state(false);
   private deps: SyncControllerDeps;
 
   constructor(deps: SyncControllerDeps) {
@@ -99,12 +112,94 @@ export class SyncController {
   }
 
   async refreshSyncDiag(dir: string): Promise<void> {
+    this.updatesAvailable = false;
     try {
       const diag = await this.deps.diagnose(dir);
       // Project may have changed while the diagnosis was in flight.
-      if (this.deps.currentDir() === dir) this.syncDiag = diag;
+      if (this.deps.currentDir() !== dir) return;
+      this.syncDiag = diag;
+      void this.checkForUpdates();
     } catch {
       this.syncDiag = null;
+    }
+  }
+
+  /**
+   * Look for changes online the author has not got, and prompt once per
+   * discovery. Only while automatic backup is off (automatic backup gets them
+   * on its own every few minutes) and only for a book that can sync. Quiet on
+   * every failure: the next check, or the author's own Get latest, tries again.
+   */
+  async checkForUpdates(): Promise<void> {
+    const dir = this.deps.currentDir();
+    if (!dir || !this.syncDiag?.canSync || (this.deps.autoBackup?.() ?? true)) return;
+    if (this.forceSyncing || this.gettingLatest) return;
+    let result: { available: boolean; reason?: string };
+    try {
+      result = await this.deps.checkUpdates(dir);
+    } catch {
+      return;
+    }
+    if (this.deps.currentDir() !== dir || result.reason) return;
+    const discovered = result.available && !this.updatesAvailable;
+    this.updatesAvailable = result.available;
+    if (discovered) {
+      const t = this.deps.toast();
+      const message = "New changes are online for this book.";
+      if (t?.show) t.show(message, "info", 0, { label: "Get latest", onClick: () => void this.handleGetLatest() });
+      else t?.info?.(`${message} Use Get latest to bring them in.`);
+    }
+  }
+
+  /**
+   * Check now, then every UPDATE_CHECK_INTERVAL_MS and whenever the window
+   * comes back into focus. Returns the cleanup.
+   */
+  watchForUpdates(win: Pick<Window, "addEventListener" | "removeEventListener"> = window): () => void {
+    const check = () => void this.checkForUpdates();
+    const timer = setInterval(check, UPDATE_CHECK_INTERVAL_MS);
+    win.addEventListener("focus", check);
+    return () => {
+      clearInterval(timer);
+      win.removeEventListener("focus", check);
+    };
+  }
+
+  /**
+   * "Get latest": bring in the online changes without sending anything back.
+   * Unsaved-to-history edits are kept (the lib saves a version first when it
+   * has something to merge), and overlaps are combined as in any sync.
+   */
+  async handleGetLatest(): Promise<void> {
+    const dir = this.deps.currentDir();
+    if (!dir || this.gettingLatest || this.forceSyncing) return;
+    this.gettingLatest = true;
+    const failed = "Couldn't get the latest changes. Your work is saved on this computer — try again when you're ready.";
+    try {
+      const outcome = await this.deps.getLatest(dir);
+      if (this.deps.currentDir() !== dir) return;
+      if (outcome.status === "synced" || outcome.status === "up-to-date") {
+        this.updatesAvailable = false;
+        const merged = outcome.status === "synced" && outcome.mergedRemoteChanges;
+        if (merged || outcome.filesChanged) {
+          this.deps.onFilesChanged();
+          this.deps.toast()?.success("Got the latest changes from online.");
+          this.applyConvergeReport(outcome.combinedFiles, outcome.keptBothFiles);
+        } else {
+          this.deps.toast()?.info?.("Already up to date — nothing new online.");
+        }
+      } else if (outcome.status === "auth") {
+        this.deps.toast()?.error("Not signed in to online backup. Use the button in Where your work is kept to sign in.");
+      } else if (outcome.status === "offline") {
+        this.deps.toast()?.info?.("You're offline. Try again when you're connected.");
+      } else {
+        if (outcome.filesChanged) this.deps.onFilesChanged();
+        this.deps.toast()?.error(outcome.message || failed);
+      }
+    } catch {
+      this.deps.toast()?.error(failed);
+    } finally {
+      if (this.deps.currentDir() === dir) this.gettingLatest = false;
     }
   }
 
@@ -140,6 +235,7 @@ export class SyncController {
       const outcome = await this.deps.syncChanges(dir);
       if (this.deps.currentDir() !== dir) return; // Project switched mid-sync.
       this.recordManual(dir, outcomeState(outcome));
+      if (outcome.status === "synced" || outcome.status === "up-to-date") this.updatesAvailable = false;
       if (outcome.status === "synced") {
         this.deps.onSyncCompleted(outcome.mergedRemoteChanges, outcome.filesChanged === true);
         this.applyConvergeReport(outcome.combinedFiles, outcome.keptBothFiles);

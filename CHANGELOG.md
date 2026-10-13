@@ -134,6 +134,21 @@ This project follows [Semantic Versioning](https://semver.org/).
   the catalogs (a small, tolerant reader of the entry fields core has not yet
   defined; it is meant to be replaced when core grows a catalog reader) and the
   stylesheets.
+- **Desktop: Get latest, and a prompt when there are new changes online.** With
+  **Keep this book backed up online** off, a book that can back up still syncs, on
+  demand. The status bar shows two buttons beside the online status: **Get latest**,
+  which brings in the online changes and sends nothing back, and **Back up now**,
+  which gets the latest and then sends yours. **Where your work is kept** offers
+  **Get latest** too, in every state where **Back up now** works. While automatic
+  backup is off, the app checks the book's branch online every 5 minutes and when
+  the window comes back into focus. When the branch has moved, a toast that stays
+  until dismissed says **New changes are online for this book** and has a **Get
+  latest** button. The status bar button then reads **New online**. The check reads
+  the server's refs only, so nothing is downloaded or changed, and it stays quiet
+  when offline or not signed in. A copy that is only ahead of the online one is not
+  flagged. New lib export `checkRemoteUpdates`, a new host route
+  `POST /api/remote/check-updates`, and `POST /api/remote/sync` accepts
+  `push: false` (it runs the lib's existing pull-only sync).
 
 ### Fixed
 
