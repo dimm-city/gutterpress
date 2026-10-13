@@ -1,0 +1,26 @@
+# The component catalog the desktop reads for class autocomplete and Block properties.
+components:
+  - name: card
+    status: live
+    origin: plugin
+    recipe: "@card [.hs-wide] … @end-card"
+    notes: "A bordered house-style card."
+
+  - name: tight
+    status: live
+    origin: author
+    modifier: hs-tight
+    recipe: "@card .hs-tight  |  @section .hs-tight"
+    notes: "Pulls the card's margins in so a long one fits the page."
+
+  - name: wide
+    status: live
+    origin: author
+    recipe: "@card .hs-wide"
+    notes: "Lets the card run into the outside margin."
+
+  - name: old-split
+    status: retired
+    origin: author
+    modifier: hs-old-split
+    recipe: "@card .hs-old-split"

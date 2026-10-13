@@ -150,6 +150,15 @@ export interface GutterpressManifest {
     width?: number;
     height?: number;
     tolerance?: number;
+    /**
+     * A bleed (pt) the page `width` x `height` ALREADY CONTAINS, on the top,
+     * bottom and OUTER edges only (the binding edge has none) — how
+     * DriveThruRPG's interior file is cut (8.625 x 11.25in for an 8.5 x 11in
+     * book). It changes nothing in the PDF: it only tells the preview's margin
+     * & bleed overlay where the trim is. CSS `@page { bleed }` (symmetric,
+     * grows the page) wins when the stylesheet declares one.
+     */
+    bleed?: number;
   };
   ink?: {
     maxTac?: number;
@@ -264,6 +273,8 @@ export interface ResolvedConfig {
     width: number;
     height: number;
     tolerance: number;
+    /** In-sheet bleed in pt (top, bottom, outer edge; see the manifest field); absent = none. */
+    bleed?: number;
   };
   ink: {
     maxTac: number;

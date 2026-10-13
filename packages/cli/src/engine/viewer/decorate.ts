@@ -31,6 +31,19 @@ import {
   toFolioPage,
   type PageCounterReset,
 } from "../shared/synthesis.ts";
+import { flushMargins } from "../shared/flush.ts";
+import {
+  OVERLAY_OFF,
+  clearOverlay,
+  configInsetBleedPt,
+  documentBleedPt,
+  pageFrameMargin,
+  paintOverlay,
+  sanitizeOverlayStyle,
+  type OverlayPage,
+  type OverlayStyle,
+  type OverlaySummary,
+} from "./overlay.ts";
 import {
   PX_PER_PT,
   pageRangeOf,
@@ -71,6 +84,10 @@ export interface DecorationApi {
   warnings: string[];
   /** show/hide trim, safe, and crop guides on the stage */
   setDesigner(on: boolean): void;
+  /** margin & bleed overlay (overlay.ts): draws it, and returns what it found.
+   * Chrome only — pagination is identical with it on or off. */
+  setOverlay(on: boolean, style?: OverlayStyle): OverlaySummary;
+  overlay(): OverlaySummary;
 }
 
 interface PageCtx {
@@ -128,6 +145,15 @@ export function decorate(
   let blankPages = new Set<number>();
   let paddedPages = new Set<number>();
   const warnings: string[] = [];
+  // Margin & bleed overlay (overlay.ts). The pages are collected by draw() —
+  // which rebuilds every sheet — so the overlay is repainted after each one.
+  let overlayOn = false;
+  let overlayPages: OverlayPage[] = [];
+  let overlaySummary: OverlaySummary = OVERLAY_OFF;
+  const paintOverlayNow = () => {
+    overlaySummary = paintOverlay(overlayPages, layout.strips, documentBleedPt(model), configInsetBleedPt());
+    window.dispatchEvent(new CustomEvent("gp:overlay", { detail: overlaySummary }));
+  };
   const api: DecorationApi = {
     redraw: () => draw(),
     sheetFor: (p) => sheets.get(p),
@@ -138,6 +164,27 @@ export function decorate(
     setDesigner(on) {
       document.body.dataset.designer = on ? "on" : "off";
     },
+    setOverlay(on, style) {
+      // The look is only tokens on <body> (viewer.css): a call that merely
+      // restyles an overlay that is already showing needs no repaint.
+      if (style) {
+        const { color, strength } = sanitizeOverlayStyle(style);
+        if (strength) document.body.dataset.overlayStrength = strength;
+        if (color) document.body.style.setProperty("--gp-ov-color", color);
+      }
+      const wasOn = overlayOn;
+      overlayOn = on;
+      document.body.dataset.overlay = on ? "on" : "off";
+      if (on) {
+        if (!(wasOn && style)) paintOverlayNow();
+      } else {
+        clearOverlay();
+        overlaySummary = OVERLAY_OFF;
+        window.dispatchEvent(new CustomEvent("gp:overlay", { detail: overlaySummary }));
+      }
+      return overlaySummary;
+    },
+    overlay: () => overlaySummary,
   };
   // Must run BEFORE `.gp-stage` lands on <body>: after that the stage's own
   // chrome background is indistinguishable from the author's.
@@ -331,6 +378,7 @@ export function decorate(
     warnings.length = 0;
     blankPages = new Set(layout.blankPageIndices);
     paddedPages = new Set(layout.paddedPageIndices);
+    overlayPages = [];
     buildMaps();
     fillXrefs();
 
@@ -345,6 +393,8 @@ export function decorate(
     // placement arithmetic on boxes we already position; content and sheets
     // stay in the same box, and pagination is untouched.
     let prevPageH = 0;
+    let prevVersoShift = 0;
+    let prevRunX = 0;
     let first = true;
 
     for (const strip of layout.strips) {
@@ -381,19 +431,31 @@ export function decorate(
         const slot = i + shift;
         const row = Math.floor(slot / perRow);
         const colVisual = slot % perRow;
-        // Keep paper geometry stable. Chromium multicol gives every fragment
-        // in a run one fixed content-column origin; moving the paper around
-        // that origin to mimic page-specific mirrored margins made single
-        // sheets wobble and facing sheets touch. The PDF remains the exact
-        // page-margin contract; the interactive viewer keeps equal paper gaps.
-        const sheetLeft = colVisual * stride;
+        // Recto = odd 1-based page (page 1 is a recto).
+        const side = bookIndex % 2 === 0 ? "recto" : "verso";
+        // Multicol gives every column in a run one text origin, which is the
+        // RECTO's left margin, so a verso's text could only land on its own
+        // `@page :left` margin if the PAPER moves. It does: a verso's sheet
+        // slides right by `versoShift` (recto left margin less verso's; 0
+        // unless the book mirrors its margins), putting the text exactly where
+        // the PDF puts it on that sheet. Everything drawn on the sheet — margin
+        // boxes, guides, crop marks, the overlay — is positioned from the
+        // sheet, so it moves with it and was already right.
+        //
+        // The cost is the one this once avoided: the verso/recto pitch is no
+        // longer uniform, so single-page view staggers verso sheets sideways
+        // by the shift (12px in a field guide), and the gap across a page turn
+        // is the sheet gap plus twice that. The strip's pitch grows by the
+        // shift (`--gp-verso-shift`), so the gap between FACING sheets stays
+        // the sheet gap and they can never overlap. Only paper moves; the
+        // column width, so pagination, is untouched.
+        const sheetLeft = colVisual * stride + (side === "verso" ? strip.versoShift * PX_PER_PT : 0);
         const sheetTop = row * rowStride;
 
         const sheet = document.createElement("div");
         sheet.className = "gp-sheet";
         sheet.dataset.page = String(bookIndex + 1);
-        // Recto = odd 1-based page (page 1 is a recto).
-        sheet.dataset.side = bookIndex % 2 === 0 ? "recto" : "verso";
+        sheet.dataset.side = side;
         sheet.style.left = `${sheetLeft}px`;
         sheet.style.top = `${sheetTop}px`;
         sheet.style.setProperty("--gp-page-w", px(ctx.geometry.width));
@@ -408,6 +470,19 @@ export function decorate(
         drawMarginBoxes(sheet, ctx, layout.totalPages - paddedPages.size);
         drawGuides(sheet, ctx);
         drawCropMarks(sheet, ctx);
+        overlayPages.push({
+          index: bookIndex,
+          sheet,
+          strip,
+          geometry: ctx.geometry,
+          // Text sits in the strip's column, freed on `.gp-flush` edges, and
+          // on a verso's slid sheet (a blank or padding sheet has no text, so
+          // its own margins stand).
+          margin:
+            ctx.padded || blankPages.has(bookIndex)
+              ? ctx.geometry.margin
+              : pageFrameMargin(flushMargins(g.margin, strip.flushEdges ?? []), strip.versoShift, side),
+        });
       }
 
       // Reserve the full row width even for a solo page in a wrapped run
@@ -444,15 +519,25 @@ export function decorate(
       // `rowStride*(rows-1)` from the top, so bottom-of-box minus
       // top-of-last-row is `pageH` regardless of row count. The very first
       // run keeps the solo-cover convention.
-      run.style.marginTop =
-        strip.wrapCols && shift === 1 && !first
-          ? `${-(prevPageH + sheetGap)}px`
-          : "";
+      const composed = !!strip.wrapCols && shift === 1 && !first;
+      run.style.marginTop = composed ? `${-(prevPageH + sheetGap)}px` : "";
+      // The pair's verso (the previous run's) sits at its run's `versoShift`
+      // and its recto does not move, so when the two runs shift their versos
+      // differently the pair's gap would be off by the difference — an
+      // overlap if the previous run's is the larger. Slide the recto run by
+      // that difference, on top of wherever the previous run itself was slid
+      // (it may be composed with the one before it), and the pair keeps the
+      // sheet gap, as any pair inside one run does.
+      const runX = composed ? prevRunX + (prevVersoShift - strip.versoShift) * PX_PER_PT : 0;
+      run.style.marginLeft = runX ? `${runX}px` : "";
       prevPageH = PX_PER_PT * g.height;
+      prevVersoShift = strip.versoShift;
+      prevRunX = runX;
       first = false;
 
       if (opts.designer) checkOverflow(strip, warnings);
     }
+    if (overlayOn) paintOverlayNow();
   }
 
   function drawMarginBoxes(sheet: HTMLElement, ctx: PageCtx, totalPages: number) {

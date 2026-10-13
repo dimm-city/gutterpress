@@ -370,11 +370,15 @@ export, so `build`, one-shot PDF `preview` and the desktop's PDF export) and
 desktop's Problems and publish-preflight routes; skipped when the caller
 passes `pluginStylePaths`, i.e. a build's own gate that already restored).
 Both fail fast with the extension, the reason and how to retry — a new
-command that builds or checks gets this for free. Only the live HTML preview
-degrades (`preview`'s command and the desktop's `PreviewOpenController` when a
-book is opened — host-side; the result's `restoredExtensions` becomes a toast,
-and the Features tab's "Needs install" row + Install button stay the
-fallback). `publish` loads no plugins and does not restore.
+command that builds or checks gets this for free. The live HTML preview
+restores from its own render path, `renderPreviewBook`
+(`preview/file-watcher.ts`), on EVERY render: the first render from any host,
+a rebuild after the manifest's pins change (an edit, Get latest, restoring a
+version) and a restart into another book. It degrades rather than failing. The
+desktop's `PreviewOpenController` also restores when a book is opened, only so
+the open can show download progress and a toast (`restoredExtensions`); the
+Features tab's "Needs install" row + Install button stay the fallback.
+`publish` loads no plugins and does not restore.
 
 **One pruning rule:** once a package's pinned version is installed — by `ext
 add`/`update` or a restore — every other `plugins/npm/<name>/<version>/`
@@ -491,6 +495,17 @@ and markdown-it-attrs braces (`@section {.gp-columns-2}`). They are equivalent
 authoring forms and both are part of the public marker contract. A bare
 `@section` is valid without an enclosing `@page`; do not restore implicit page
 wrapping or a warning for that shape.
+
+**`data-name` is the one-block hook.** Every marker-opened block, heading and
+image carries a plain `data-name` (`block-names.ts`: explicit `name=`, else
+`label=`, else the block's own first heading, else none; unique per source
+file; the user guide's "Targeting one block from your stylesheet" is the
+author text), so a book's CSS can tune one instance without a markdown edit.
+Only the author's own selectors read it: the viewer and print path never do, so
+it adds no behaviour a future Chrome would replace. No `id` is ever generated
+(ids feed links and `target-counter()`), a `@continue` piece keeps its block's
+`data-name` and drops the `id`, and the markdown overrides (`gp-*` classes,
+`@page-break`, `@columns`, plugin modifiers, `{#id}`) stay supported.
 
 ### 7. Git/source operations are Node-native — no external OS tools (0.4.0+)
 

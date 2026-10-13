@@ -68,6 +68,8 @@ export interface ProjectClassification {
   repoRoot?: string;
   /** Sibling books inside `repoRoot`, sorted by `subPath`. */
   books?: ProjectClassificationBook[];
+  /** The book last open in `repoRoot`, when the app remembers one. */
+  lastActiveBook?: string;
 }
 
 // ── Local version history (#13) ───────────────────────────────────────────────
@@ -364,8 +366,10 @@ export type RemoteGuidanceId =
 export interface ProblemReport {
   /** Full Markdown report (system + book summary + app-log tail) for the clipboard. */
   report: string;
-  /** GitHub `issues/new` URL with the system + book sections prefilled. */
-  issueUrl: string;
+  /** System + book sections, for the issue form's Diagnostics field. */
+  diagnostics: string;
+  /** The log tail (or why there is none), for the issue form's App log field. */
+  log: string;
 }
 
 /** One diagnostic log file the host can list (userData/logs, newest first). */

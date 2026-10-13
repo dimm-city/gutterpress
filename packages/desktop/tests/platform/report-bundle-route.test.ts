@@ -22,11 +22,12 @@ test("report bundle with no book: system section from the lib, no book, log stat
   // The fake host has no logs root, so the log reads as unavailable.
   const res = await POST(event({ projectDir: null }));
   expect(res.status).toBe(200);
-  const body = (await res.json()) as { report: string; issueUrl: string };
+  const body = (await res.json()) as { report: string; diagnostics: string; log: string };
   expect(body.report).toContain("Gutterpress desktop 0.0.0-test");
   expect(body.report).toContain("- (no book open)");
   expect(body.report).toContain("(app log unavailable)");
-  expect(body.issueUrl).toStartWith("https://github.com/dimm-city/gutterpress/issues/new?");
+  expect(body.diagnostics).toContain("- (no book open)");
+  expect(body.log).toBe("(app log unavailable)");
 });
 
 test("report bundle rejects a projectDir outside the open project", async () => {

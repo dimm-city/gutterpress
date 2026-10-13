@@ -1,4 +1,5 @@
 import type MarkdownIt from "markdown-it";
+import { nameFromSrc, takeExplicitName } from "./block-names";
 
 /**
  * Markdown-it `image` renderer rule that RECORDS every image reference the
@@ -121,6 +122,13 @@ export function registerImageRule(md: MarkdownIt): void {
     if (srcIdx >= 0 && token.attrs) {
       const src = token.attrs[srcIdx]![1];
       if (src) {
+        // `data-name`: an explicit `{name=…}` wins, else the file's basename
+        // (see block-names.ts), so a book's CSS can select one picture:
+        // `img[data-name="founder-house"]`.
+        const explicit = takeExplicitName(token);
+        const named = explicit || nameFromSrc(src);
+        if (named) token.attrSet("data-name", named);
+
         const bucket = (env as ImageRefEnv | undefined) ?? {};
         (bucket.imageRefs ??= []).push(src);
 

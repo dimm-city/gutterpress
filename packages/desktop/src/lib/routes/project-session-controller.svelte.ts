@@ -84,8 +84,8 @@ function isSameOrInside(candidate: string, root: string): boolean {
  *  - Multiple books: the book that CONTAINS the picked folder is active — the
  *    deepest one, so nested books resolve to the innermost; otherwise (the bare
  *    repo root, or a repo-level folder like `shared/` that belongs to no book)
- *    the first book alphabetically by `subPath` is active until the user
- *    switches (via the book switcher).
+ *    the book last open in this repo (`lastActiveBook`, when it is still one
+ *    of `books`), else the first book alphabetically by `subPath`.
  *
  * A containment match, not an exact `===` compare: with `===` the `books[0]`
  * fallback — meant for "the bare repo root was picked" — fires for ANY
@@ -98,6 +98,7 @@ export function resolveActiveBookDir(
   pickedDir: string,
   repoRoot: string | undefined,
   books: ProjectBookEntry[],
+  lastActiveBook?: string,
 ): string {
   if (!repoRoot || books.length === 0) return pickedDir;
   if (books.length === 1) return books[0]!.path;
@@ -113,7 +114,9 @@ export function resolveActiveBookDir(
       bestLength = candidate.length;
     }
   }
-  return (best ?? books[0]!).path;
+  if (best) return best.path;
+  const remembered = lastActiveBook ? normalizeDirPath(lastActiveBook) : null;
+  return (books.find((book) => normalizeDirPath(book.path) === remembered) ?? books[0]!).path;
 }
 
 export interface ProjectSessionDeps {
@@ -196,7 +199,7 @@ export class ProjectSessionController {
           result.source.type === "local-git-folder" ? result.source.hasRemote : false;
         this.repoRoot = result.repoRoot ?? null;
         this.books = result.books ?? [];
-        this.activeBookDir = resolveActiveBookDir(dir, result.repoRoot, this.books);
+        this.activeBookDir = resolveActiveBookDir(dir, result.repoRoot, this.books, result.lastActiveBook);
         this.activeBookHasManifest =
           this.books.some((book) => book.path === this.activeBookDir) ||
           (this.activeBookDir === dir && result.hasManifest);

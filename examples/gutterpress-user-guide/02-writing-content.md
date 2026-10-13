@@ -109,6 +109,8 @@ GFM tables render as standard `<table><thead>…</thead><tbody>…</tbody></tabl
 
 Alternating row shading and keeping a whole table on one page (`table { break-inside: avoid; }`) are **this guide's `guide.css`**, not core. A bare Gutterpress project renders plain, unshaded tables that may break anywhere; add your own `break-inside: avoid` rule to a table or an explicitly classed `@section` when it must stay together.
 
+The alignment row becomes a plain `data-align="left|center|right"` attribute on each cell, not an inline style, so your stylesheet can change one column's alignment without `!important`: `td[data-align="right"] { text-align: center; }`.
+
 Keep tables simple — 5 to 7 columns maximum. Align numbers right, text left.
 
 ## Markdown Attributes
@@ -270,7 +272,7 @@ Content above.
 Content below, on a new page.
 ```
 
-Renders `<div class="gp-page-break" aria-hidden="true"></div>` between the two paragraphs — a plain marker element, not a page container.
+Renders `<div class="gp-page-break" aria-hidden="true"></div>` between the two paragraphs — a plain marker element, not a page container. Like the other markers it keeps a `#id` (`@page-break #part-two`), which is what a link or a page-number reference lands on.
 
 ### @section and @end-section
 
@@ -327,6 +329,8 @@ Renders:
   <p>The overflow, continuing.</p>
 </div>
 ```
+
+An `id` names one element, so the continuation does **not** repeat the section's `#id`; it keeps everything else, including its `data-name` (see [Targeting one block from your stylesheet](#targeting-one-block)). Style only the first piece with `:not(.gp-continued)`.
 
 `@continue` used with no open `@section` is dropped with a warning — it does not resurrect a section already closed by `@end-section`.
 

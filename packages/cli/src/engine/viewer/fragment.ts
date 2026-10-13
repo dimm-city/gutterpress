@@ -27,6 +27,12 @@ export interface StripInfo {
   geometry: PageGeometry;
   /** edges freed by `.gp-flush` pins in this run (shared/flush.ts) */
   flushEdges?: FlushEdge[];
+  /** how far the strip's text sits to the right of a VERSO's own left margin,
+   * in pt: `@page :right`'s left margin less `@page :left`'s (`versoShiftPt`).
+   * The multicol lays every page's text at the recto's margin, so decoration
+   * slides each verso's sheet by this much to put the text where the verso's
+   * own margins say. 0 on a book without mirrored margins. */
+  versoShift: number;
   /** page count of this run */
   pages: number;
   /** page index (0-based, book-wide) of this run's first page */
@@ -712,7 +718,9 @@ function restoreScrollContainers(doc: Document = document): void {
  *
  * The two sides mirror, so they agree on the content box's SIZE and differ only
  * in which edge is wide — one multicol carries that exactly. `:right` is the
- * side taken, because page 1 is a recto and so is every odd page after it.
+ * side taken for the column, because page 1 is a recto and so is every odd page
+ * after it. Where a verso's text then sits on ITS paper is not this function's
+ * business: `versoShiftPt` says how far decoration slides the verso's sheet.
  *
  * When the two sides genuinely disagree on the size (an asymmetric design that
  * print alternates between), no single column width can match both. The
@@ -724,15 +732,8 @@ export function runPageBox(
   name: string | undefined,
   warnings: string[] = [],
 ): PageGeometry {
-  const right = resolvePage(model, { name, pseudos: ["right"] }).geometry;
-  const left = resolvePage(model, { name, pseudos: ["left"] }).geometry;
-  const box = (g: PageGeometry) => ({
-    w: g.width - g.margin.left - g.margin.right,
-    h: g.height - g.margin.top - g.margin.bottom,
-  });
-  const r = box(right);
-  const l = box(left);
-  if (Math.abs(r.w - l.w) < 0.01 && Math.abs(r.h - l.h) < 0.01) return right;
+  const { right, agree, r, l } = pageSides(model, name);
+  if (agree) return right;
   warnings.push(
     `@page :left and @page :right give ${name ? `the "${name}" page` : "this book"} ` +
       `different content areas (${l.w.toFixed(1)}×${l.h.toFixed(1)}pt vs ` +
@@ -741,6 +742,58 @@ export function runPageBox(
       `swap which edge is wide and keep the total the same.`,
   );
   return resolvePage(model, { name }).geometry;
+}
+
+/** A run's `:right` and `:left` pages, and whether they agree on the content box's size. */
+function pageSides(model: GcpmModel, name: string | undefined) {
+  const right = resolvePage(model, { name, pseudos: ["right"] }).geometry;
+  const left = resolvePage(model, { name, pseudos: ["left"] }).geometry;
+  const box = (g: PageGeometry) => ({
+    w: g.width - g.margin.left - g.margin.right,
+    h: g.height - g.margin.top - g.margin.bottom,
+  });
+  const r = box(right);
+  const l = box(left);
+  return {
+    right,
+    left,
+    r,
+    l,
+    agree: Math.abs(r.w - l.w) < 0.01 && Math.abs(r.h - l.h) < 0.01,
+  };
+}
+
+/**
+ * How far to the right of a verso's own left margin the run's text sits, in pt.
+ *
+ * The run's one multicol puts every page's text at the RECTO's left margin
+ * (`runPageBox`). A verso's `@page :left` margin is usually smaller (the outer
+ * edge, where the recto has the binding), so on its sheet that text would sit
+ * `shift` too far right. The text cannot move per page, but the paper can:
+ * decoration slides each verso's sheet right by `shift`, which lands the text
+ * on the verso's own left margin and leaves the column WIDTH — all that
+ * pagination depends on — exactly as it was.
+ *
+ * Measured with the same freed margins the strip uses (`.gp-flush` edges), so
+ * a flushed run's frame is the PDF's flushed frame. 0 for a book without
+ * mirrored margins, and where the two sides disagree on the content size (no
+ * one column matches both, so no placement can claim to) — which includes a
+ * run that frees a LEFT or RIGHT edge: print then gives the two sides content
+ * boxes of different widths, so a verso's text and its edge-pinned art cannot
+ * both land where the PDF has them, and the art stays on the paper's edge as
+ * it always was. A top/bottom flush leaves the widths alone and shifts as usual.
+ */
+export function versoShiftPt(
+  model: GcpmModel,
+  name: string | undefined,
+  flushEdges: readonly FlushEdge[] = [],
+): number {
+  const { right, left, agree } = pageSides(model, name);
+  if (!agree) return 0;
+  const r = flushMargins(right.margin, flushEdges);
+  const l = flushMargins(left.margin, flushEdges);
+  if (Math.abs(r.left + r.right - (l.left + l.right)) >= 0.01) return 0;
+  return r.left - l.left;
 }
 
 /**
@@ -772,7 +825,7 @@ export function buildStrips(
     // the sheet edge, its translate lands on the paper where flushed, and
     // the sheet-pitch arithmetic (content + margins + gap) is unchanged by
     // construction. Decoration keeps the AUTHOR geometry via strip.geometry:
-    // sheets and margin-box slots do not move — margin boxes on a flushed
+    // sheet size and margin-box slots do not change — margin boxes on a flushed
     // edge keep painting at their original coordinates, exactly where the
     // compiler relocates them in print.
     const margin = run.flushEdges?.length
@@ -789,6 +842,12 @@ export function buildStrips(
     strip.style.setProperty("--gp-margin-right", `${pt(margin.right)}px`);
     strip.style.setProperty("--gp-margin-bottom", `${pt(margin.bottom)}px`);
     strip.style.setProperty("--gp-margin-left", `${pt(margin.left)}px`);
+    // A verso's sheet slides by this much (decorate.ts), which would close the
+    // gap to the recto it faces by the same amount — so the pitch grows by it
+    // and the facing gap stays the sheet gap. Unset (0px) without mirroring.
+    const rawShift = versoShiftPt(model, run.page, run.flushEdges);
+    const versoShift = Math.abs(rawShift) >= 0.01 ? rawShift : 0;
+    if (versoShift) strip.style.setProperty("--gp-verso-shift", `${pt(versoShift)}px`);
     run.nodes[0]!.before(strip);
     for (const n of run.nodes) strip.appendChild(n);
     strips.push({
@@ -796,6 +855,7 @@ export function buildStrips(
       page: run.page,
       geometry,
       flushEdges: run.flushEdges,
+      versoShift,
       pages: 0,
       offset: 0,
     });
@@ -1198,7 +1258,7 @@ export function strideOf(strip: HTMLElement): number {
  * what the sheets, spacers and column boxes are sized in), and the rest of
  * the fragmenter depends on them.
  */
-function cssZoomOf(el: Element): number {
+export function cssZoomOf(el: Element): number {
   const stage = el.closest(".gp-stage") ?? document.body;
   return new DOMMatrixReadOnly(getComputedStyle(stage).transform).a || 1;
 }
@@ -1270,7 +1330,7 @@ export function wrapGeometry(strip: StripInfo): { perRow: number; shift: number 
   };
 }
 
-function indexInStrip(left: number, top: number, strip: StripInfo): number {
+export function indexInStrip(left: number, top: number, strip: StripInfo): number {
   const { stride, rowStride } = stripMetrics(strip.el);
   const stripBox = strip.el.getBoundingClientRect();
   // `left`/`top` and `stripBox` are client-rect coordinates — scaled by the

@@ -70,6 +70,9 @@ interface SpreadReport {
   rows: Array<{ top: number; sheets: Array<{ page: number; side: string }> }>;
   singleRows: Array<{ top: number; sheets: Array<{ page: number; side: string }> }>;
   singleSheetLefts: number[];
+  /** left edge of the default run's paragraphs relative to their own sheet, by side */
+  singleTextOffsets: { recto: number[]; verso: number[] };
+  spreadTextOffsets: { recto: number[]; verso: number[] };
   overlapHit: {
     coveredPage: number;
     hitId: string | null;
@@ -135,6 +138,25 @@ testIf(
             );
             const single = probeEls.map((el) => gp.pageOf(el));
 
+            // Where the default run's paragraphs sit on the sheet drawn for
+            // their page (`a1`..`a12` are in the unnamed run; a paragraph's
+            // first rect is its first line's page, which is what `single` says).
+            const textOffsets = () => {
+              const out: { recto: number[]; verso: number[] } = { recto: [], verso: [] };
+              probeEls.forEach((el, i) => {
+                if (!/^a\d+$/.test(el.id)) return;
+                const sheet = document.querySelector<HTMLElement>(
+                  `.gp-sheet[data-page="${single[i]! + 1}"]`,
+                )!;
+                const r = el.getClientRects()[0]!;
+                out[sheet.dataset.side as "recto" | "verso"].push(
+                  Math.round((r.left - sheet.getBoundingClientRect().left) * 10) / 10,
+                );
+              });
+              return out;
+            };
+            const singleTextOffsets = textOffsets();
+
             const collectRows = () => {
               const m = new Map<number, Array<{ page: number; side: string; l: number; r: number; b: number }>>();
               for (const sh of Array.from(
@@ -170,6 +192,7 @@ testIf(
               Math.round(row.top - Math.max(...singleGeometry[i]!.sheets.map((sheet) => sheet.b))),
             );
             gp.setSpread(true);
+            const spreadTextOffsets = textOffsets();
 
             const spread = probeEls.map((el) => gp.pageOf(el));
             const pageOfMismatches: SpreadReport["pageOfMismatches"] = [];
@@ -294,6 +317,8 @@ testIf(
               rows,
               singleRows,
               singleSheetLefts,
+              singleTextOffsets,
+              spreadTextOffsets,
               overlapHit,
             } as SpreadReport;
           });
@@ -328,12 +353,22 @@ testIf(
         expect(report.singleVerticalGaps).toEqual(
           report.singleVerticalGaps.map(() => report.sheetGap),
         );
-        // Screen-viewer paper is a stable navigation surface: mirrored and
-        // named-page margins may not make sheets wobble horizontally. Native
-        // multicol has one fixed content-column origin, so page-specific
-        // margin fidelity remains the PDF's contract; moving paper chrome
-        // around that fixed origin made the real field guide stagger by 24px.
-        expect(Math.max(...report.singleSheetLefts) - Math.min(...report.singleSheetLefts)).toBeLessThanOrEqual(1);
+        // MIRRORED MARGINS: every page's text sits at ITS OWN page's left
+        // margin on its sheet, in both view modes — this fixture's `:right`
+        // is 0.25in (24px) and `:left` 0.75in (72px). Multicol has one text
+        // origin per run, so it is the verso's PAPER that moves: the sheets
+        // take exactly two horizontal positions, the verso ones (72 - 24 =)
+        // 48px apart from the recto ones. (The viewer used to leave sheets
+        // aligned and the verso's text at the recto's margin.)
+        for (const offsets of [report.singleTextOffsets, report.spreadTextOffsets]) {
+          expect(offsets.recto.length).toBeGreaterThan(2);
+          expect(offsets.verso.length).toBeGreaterThan(2);
+          for (const x of offsets.recto) expect(x).toBeCloseTo(24, 0);
+          for (const x of offsets.verso) expect(x).toBeCloseTo(72, 0);
+        }
+        expect(
+          Math.max(...report.singleSheetLefts) - Math.min(...report.singleSheetLefts),
+        ).toBeGreaterThanOrEqual(47);
 
         // (2) a view mode may not move a page boundary.
         expect(report.pageOfMismatches).toEqual([]);

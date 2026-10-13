@@ -19,6 +19,7 @@
   __export(exports_fragment, {
     wrapGeometry: () => wrapGeometry,
     waitForLayoutReady: () => waitForLayoutReady,
+    versoShiftPt: () => versoShiftPt,
     synthesizeColumnBreaks: () => synthesizeColumnBreaks,
     stripMetrics: () => stripMetrics,
     strideOf: () => strideOf,
@@ -34,7 +35,9 @@
     loadStyleSources: () => loadStyleSources,
     injectViewerCss: () => injectViewerCss,
     injectBreakMapping: () => injectBreakMapping,
+    indexInStrip: () => indexInStrip,
     fragmentDocument: () => fragmentDocument,
+    cssZoomOf: () => cssZoomOf,
     contentEdgeRect: () => contentEdgeRect,
     compensateRepeatedHeaders: () => compensateRepeatedHeaders,
     compensateRectoBreaks: () => compensateRectoBreaks,
@@ -106,13 +109,20 @@
    below is already sized to the run's full width and owns the actual
    clipping/visibility, so the strip does not need to. */
 .gp-strip {
+  /* Column pitch less the content width. \`--gp-verso-shift\` is set only on a
+     book with mirrored margins: decorate.ts slides each verso's sheet by it,
+     and growing the pitch by the same amount keeps the gap between a verso and
+     the recto it faces at the sheet gap (the gap across the page turn gets
+     twice the shift instead). Without it, it is 0px and nothing changes. */
+  --gp-col-gap: calc(
+    var(--gp-margin-right) + var(--gp-margin-left) + var(--gp-sheet-gap) +
+      var(--gp-verso-shift, 0px)
+  );
   position: relative;
   width: var(--gp-content-w);
   height: var(--gp-content-h);
   column-width: var(--gp-content-w);
-  column-gap: calc(
-    var(--gp-margin-right) + var(--gp-margin-left) + var(--gp-sheet-gap)
-  );
+  column-gap: var(--gp-col-gap);
   column-fill: auto;
   overflow: visible;
   margin: 0;
@@ -174,9 +184,7 @@
   );
   width: calc(
     var(--gp-content-w) * var(--gp-wrap-cols, 2) +
-      (
-        var(--gp-margin-right) + var(--gp-margin-left) + var(--gp-sheet-gap)
-      ) * (var(--gp-wrap-cols, 2) - 1)
+      var(--gp-col-gap) * (var(--gp-wrap-cols, 2) - 1)
   );
 }
 
@@ -267,6 +275,107 @@
 .gp-marginbox[data-align="center"] > .gp-marginbox-content { justify-content: center; }
 .gp-marginbox[data-align="end"] > .gp-marginbox-content { justify-content: flex-end; }
 
+/* margin & bleed overlay (overlay.ts) -------------------------------- */
+/* THE LOOK LIVES HERE, in these tokens, and nowhere else: colours, line
+   width, line style, tint strength. The desktop app's settings change the
+   colour (an inline \`--gp-ov-color\` on <body>) and pick a strength preset
+   (\`data-overlay-strength\`); nothing in a book's CSS is involved or needed. */
+.gp-stage {
+  --gp-ov-color: #2f80ed;       /* margin box line + the tint over the margins */
+  --gp-ov-width: 2px;           /* line width as seen on screen, at any zoom */
+  --gp-ov-style: dashed;        /* margin box line style */
+  --gp-ov-tint: 0.1;            /* opacity of the tint over the margin area */
+  --gp-ov-bleed-color: #e5484d; /* bleed band + trim line */
+  --gp-ov-bleed-alpha: 0.45;    /* opacity of the bleed band */
+  --gp-ov-trim-color: #8a0b18;  /* the trim line: darker than the band so it reads as an edge */
+  --gp-ov-flag-width: 2px;      /* overflow flag outline */
+  --gp-ov-warn: #f59e0b;        /* reaches into the margin */
+  --gp-ov-error: #e5484d;       /* crosses the trim / leaves the page */
+  --gp-ov-intent: #8b5cf6;      /* placed on purpose */
+}
+.gp-stage[data-overlay-strength="subtle"] {
+  --gp-ov-width: 1px;
+  --gp-ov-tint: 0.05;
+  --gp-ov-bleed-alpha: 0.3;
+}
+.gp-stage[data-overlay-strength="strong"] {
+  --gp-ov-width: 3px;
+  --gp-ov-tint: 0.2;
+  --gp-ov-bleed-alpha: 0.65;
+  --gp-ov-flag-width: 3px;
+}
+
+/* One sibling layer per run, ABOVE the strip so the lines stay visible over
+   author backgrounds and art. Absolutely positioned and pointer-transparent:
+   it takes no flow space and no hits, so it cannot move a page break. Exists
+   only while the overlay is on. */
+.gp-ov {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  /* The stage is a paint transform, so a 2px line would shrink with the zoom
+     and vanish at fit-to-width. Lines are sized in layout px divided by the
+     zoom, which makes them the same width on screen at every zoom. */
+  --gp-ov-w: calc(var(--gp-ov-width) / var(--gp-zoom, 1));
+  --gp-ov-flag-w: calc(var(--gp-ov-flag-width) / var(--gp-zoom, 1));
+}
+
+.gp-ov-page {
+  position: absolute;
+}
+
+/* the margins as a region: the trim minus the content box (clip-path, set in
+   overlay.ts), so a margin reads as an area, not a hairline */
+.gp-ov-tint {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--gp-ov-color) calc(var(--gp-ov-tint) * 100%), transparent);
+}
+
+/* margin box: the content area's outline */
+.gp-ov-margin {
+  position: absolute;
+  box-sizing: border-box;
+  border: var(--gp-ov-w) var(--gp-ov-style) var(--gp-ov-color);
+}
+
+/* bleed: a translucent band OUTSIDE the trim (its width is the border) */
+.gp-ov-bleed {
+  position: absolute;
+  box-sizing: border-box;
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--gp-ov-bleed-color) calc(var(--gp-ov-bleed-alpha) * 100%), transparent);
+}
+
+/* trim: where the sheet will be cut, drawn only when there is bleed — solid,
+   just inside the edge so it never paints over the band (overlay.ts sizes and
+   places it: the whole sheet, or the sheet less an in-sheet bleed) */
+.gp-ov-trim {
+  position: absolute;
+  outline: var(--gp-ov-w) solid var(--gp-ov-trim-color);
+  outline-offset: calc(-1 * var(--gp-ov-w));
+}
+
+/* overflow flags — outline + faint tint, never a box change */
+.gp-ov-flag {
+  position: absolute;
+  box-sizing: border-box;
+}
+.gp-ov-flag[data-kind="margin"] {
+  outline: var(--gp-ov-flag-w) solid var(--gp-ov-warn);
+  background: color-mix(in srgb, var(--gp-ov-warn) 16%, transparent);
+}
+.gp-ov-flag[data-kind="bleed"],
+.gp-ov-flag[data-kind="off-page"] {
+  outline: var(--gp-ov-flag-w) solid var(--gp-ov-error);
+  background: color-mix(in srgb, var(--gp-ov-error) 18%, transparent);
+}
+/* placed on purpose (.gp-bleed, .gp-pin, …): present, not a problem */
+.gp-ov-flag[data-kind="intended"] {
+  outline: var(--gp-ov-flag-w) dotted var(--gp-ov-intent);
+}
+
 /* designer mode ------------------------------------------------------- */
 .gp-guide-trim,
 .gp-guide-safe,
@@ -310,6 +419,7 @@
     transform: none;
   }
   .gp-layer,
+  .gp-ov,
   .gp-warning,
   .gp-guide-trim,
   .gp-guide-safe,
@@ -1362,6 +1472,13 @@
     }
   }
   function runPageBox(model, name, warnings = []) {
+    const { right, agree, r, l } = pageSides(model, name);
+    if (agree)
+      return right;
+    warnings.push(`@page :left and @page :right give ${name ? `the "${name}" page` : "this book"} ` + `different content areas (${l.w.toFixed(1)}×${l.h.toFixed(1)}pt vs ` + `${r.w.toFixed(1)}×${r.h.toFixed(1)}pt). Print alternates between them; the preview can ` + `only show one, so page breaks here may not match the PDF. Mirror the margins instead: ` + `swap which edge is wide and keep the total the same.`);
+    return resolvePage(model, { name }).geometry;
+  }
+  function pageSides(model, name) {
     const right = resolvePage(model, { name, pseudos: ["right"] }).geometry;
     const left = resolvePage(model, { name, pseudos: ["left"] }).geometry;
     const box = (g) => ({
@@ -1370,10 +1487,23 @@
     });
     const r = box(right);
     const l = box(left);
-    if (Math.abs(r.w - l.w) < 0.01 && Math.abs(r.h - l.h) < 0.01)
-      return right;
-    warnings.push(`@page :left and @page :right give ${name ? `the "${name}" page` : "this book"} ` + `different content areas (${l.w.toFixed(1)}×${l.h.toFixed(1)}pt vs ` + `${r.w.toFixed(1)}×${r.h.toFixed(1)}pt). Print alternates between them; the preview can ` + `only show one, so page breaks here may not match the PDF. Mirror the margins instead: ` + `swap which edge is wide and keep the total the same.`);
-    return resolvePage(model, { name }).geometry;
+    return {
+      right,
+      left,
+      r,
+      l,
+      agree: Math.abs(r.w - l.w) < 0.01 && Math.abs(r.h - l.h) < 0.01
+    };
+  }
+  function versoShiftPt(model, name, flushEdges = []) {
+    const { right, left, agree } = pageSides(model, name);
+    if (!agree)
+      return 0;
+    const r = flushMargins(right.margin, flushEdges);
+    const l = flushMargins(left.margin, flushEdges);
+    if (Math.abs(r.left + r.right - (l.left + l.right)) >= 0.01)
+      return 0;
+    return r.left - l.left;
   }
   function buildStrips(model, opts = {}, warnings = []) {
     const doc = document;
@@ -1399,6 +1529,10 @@
       strip.style.setProperty("--gp-margin-right", `${pt(margin.right)}px`);
       strip.style.setProperty("--gp-margin-bottom", `${pt(margin.bottom)}px`);
       strip.style.setProperty("--gp-margin-left", `${pt(margin.left)}px`);
+      const rawShift = versoShiftPt(model, run.page, run.flushEdges);
+      const versoShift = Math.abs(rawShift) >= 0.01 ? rawShift : 0;
+      if (versoShift)
+        strip.style.setProperty("--gp-verso-shift", `${pt(versoShift)}px`);
       run.nodes[0].before(strip);
       for (const n of run.nodes)
         strip.appendChild(n);
@@ -1407,6 +1541,7 @@
         page: run.page,
         geometry,
         flushEdges: run.flushEdges,
+        versoShift,
         pages: 0,
         offset: 0
       });
@@ -2067,6 +2202,216 @@
     return /right/.test(name) ? "end" : "start";
   }
 
+  // src/engine/compiler/tier2.ts
+  var DEFAULT_SLUG_PT = 18;
+  function pageGeometry(model, opts) {
+    const base = resolvePage(model);
+    const trim = { width: base.geometry.width, height: base.geometry.height };
+    const bleed = opts.bleedPt ?? base.geometry.bleed;
+    const wantsMarks = base.geometry.marks.length > 0 || opts.marks === true;
+    const slug = wantsMarks ? opts.slugPt ?? DEFAULT_SLUG_PT : 0;
+    return {
+      trim,
+      bleed,
+      slug,
+      marks: base.geometry.marks.length ? base.geometry.marks : wantsMarks ? ["crop"] : [],
+      media: {
+        width: trim.width + 2 * (bleed + slug),
+        height: trim.height + 2 * (bleed + slug)
+      }
+    };
+  }
+
+  // src/engine/viewer/overlay.ts
+  function documentBleedPt(model) {
+    return pageGeometry(model, { model }).bleed;
+  }
+  function pageBoxes(g, margin, bleed, scale = 1) {
+    const w = g.width * scale;
+    const h = g.height * scale;
+    const b = Math.max(0, bleed) * scale;
+    return {
+      host: { x: 0, y: 0, w, h },
+      trim: { x: 0, y: 0, w, h },
+      content: {
+        x: margin.left * scale,
+        y: margin.top * scale,
+        w: w - (margin.left + margin.right) * scale,
+        h: h - (margin.top + margin.bottom) * scale
+      },
+      bleedBox: { x: -b, y: -b, w: w + 2 * b, h: h + 2 * b },
+      bleed: b
+    };
+  }
+  function insetPageBoxes(g, margin, bleed, side, scale = 1) {
+    const sheet = pageBoxes(g, margin, 0, scale);
+    const b = Math.max(0, bleed) * scale;
+    return {
+      host: sheet.host,
+      trim: { x: side === "verso" ? b : 0, y: b, w: sheet.host.w - b, h: sheet.host.h - 2 * b },
+      content: sheet.content,
+      bleedBox: sheet.host,
+      bleed: b
+    };
+  }
+  var SEVERITY = { inside: 0, margin: 1, bleed: 2, "off-page": 3 };
+  var within = (r, outer, tol) => r.x >= outer.x - tol && r.y >= outer.y - tol && r.x + r.w <= outer.x + outer.w + tol && r.y + r.h <= outer.y + outer.h + tol;
+  function classifyRect(r, boxes, tol = 0) {
+    if (within(r, boxes.content, tol))
+      return "inside";
+    if (within(r, boxes.trim, tol))
+      return "margin";
+    if (boxes.bleed > 0 && within(r, boxes.bleedBox, tol))
+      return "bleed";
+    return "off-page";
+  }
+  function worstKind(kinds) {
+    return kinds.reduce((worst, k) => SEVERITY[k] > SEVERITY[worst] ? k : worst, "inside");
+  }
+  var INTENT_SELECTOR = ".gp-bleed, .gp-pin, .gp-flush, .gp-behind, .gp-page-full-bleed";
+  var OVERLAY_STRENGTHS = ["subtle", "normal", "strong"];
+  var HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+  function sanitizeOverlayStyle(style) {
+    const s = style && typeof style === "object" ? style : {};
+    const out = {};
+    if (typeof s.color === "string" && HEX_COLOR.test(s.color.trim()))
+      out.color = s.color.trim();
+    if (OVERLAY_STRENGTHS.includes(s.strength))
+      out.strength = s.strength;
+    return out;
+  }
+  var OVERLAY_OFF = { on: false, issues: 0, intended: 0, bleedPt: 0 };
+  function pageFrameMargin(margin, versoShift, side) {
+    if (side === "recto" || !versoShift)
+      return margin;
+    return { ...margin, left: margin.left - versoShift, right: margin.right + versoShift };
+  }
+  function configInsetBleedPt() {
+    const v = parseFloat(document.querySelector('meta[name="gp-inset-bleed"]')?.getAttribute("content") ?? "");
+    return Number.isFinite(v) && v > 0 ? v : 0;
+  }
+  var SKIP = new Set(["SCRIPT", "STYLE", "LINK", "TEMPLATE", "BR", "WBR", "SOURCE", "TRACK", "META"]);
+  var TOL_PX = 1;
+  function div(cls, box) {
+    const el = document.createElement("div");
+    el.className = cls;
+    if (box)
+      place(el, box);
+    return el;
+  }
+  function place(el, r) {
+    el.style.left = `${r.x}px`;
+    el.style.top = `${r.y}px`;
+    el.style.width = `${r.w}px`;
+    el.style.height = `${r.h}px`;
+  }
+  function marginTint(b) {
+    const el = div("gp-ov-tint");
+    const t = b.trim;
+    const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+    const l = clamp(b.content.x, t.x, t.x + t.w);
+    const r = clamp(b.content.x + b.content.w, t.x, t.x + t.w);
+    const top = clamp(b.content.y, t.y, t.y + t.h);
+    const bot = clamp(b.content.y + b.content.h, t.y, t.y + t.h);
+    const x2 = t.x + t.w;
+    const y2 = t.y + t.h;
+    el.style.clipPath = `polygon(evenodd, ${t.x}px ${t.y}px, ${x2}px ${t.y}px, ${x2}px ${y2}px, ${t.x}px ${y2}px, ${t.x}px ${t.y}px, ` + `${l}px ${top}px, ${l}px ${bot}px, ${r}px ${bot}px, ${r}px ${top}px, ${l}px ${top}px)`;
+    return el;
+  }
+  function clearOverlay() {
+    for (const layer of Array.from(document.querySelectorAll(".gp-ov")))
+      layer.remove();
+  }
+  function paintOverlay(pages, strips, bleedPt, insetBleedPt = 0) {
+    const inSheet = bleedPt <= 0 && insetBleedPt > 0;
+    clearOverlay();
+    const layers = new Map;
+    const painted = new Map;
+    for (const p of pages) {
+      const run = p.sheet.closest(".gp-run");
+      if (!run)
+        continue;
+      let layer = layers.get(run);
+      if (!layer) {
+        layer = div("gp-ov");
+        run.appendChild(layer);
+        layers.set(run, layer);
+      }
+      const boxes = inSheet ? insetPageBoxes(p.geometry, p.margin, insetBleedPt, p.sheet.dataset.side === "verso" ? "verso" : "recto", PX_PER_PT) : pageBoxes(p.geometry, p.margin, bleedPt, PX_PER_PT);
+      const host = div("gp-ov-page", boxes.host);
+      host.style.left = p.sheet.style.left;
+      host.style.top = p.sheet.style.top;
+      host.dataset.page = String(p.index + 1);
+      if (boxes.bleed > 0) {
+        const bb = boxes.bleedBox;
+        const t = boxes.trim;
+        const band = div("gp-ov-bleed", bb);
+        band.style.borderWidth = `${t.y - bb.y}px ${bb.x + bb.w - (t.x + t.w)}px ${bb.y + bb.h - (t.y + t.h)}px ${t.x - bb.x}px`;
+        host.appendChild(band);
+        host.appendChild(div("gp-ov-trim", t));
+      }
+      host.appendChild(marginTint(boxes));
+      host.appendChild(div("gp-ov-margin", boxes.content));
+      layer.appendChild(host);
+      painted.set(p.index, { host, boxes, sheet: p.sheet });
+    }
+    const flags = [];
+    let issues = 0;
+    let intended = 0;
+    for (const strip of strips) {
+      const zoom = cssZoomOf(strip.el);
+      const colW = (parseFloat(strip.el.style.getPropertyValue("--gp-content-w")) || 0) * zoom;
+      const colH = (parseFloat(strip.el.style.getPropertyValue("--gp-content-h")) || 0) * zoom;
+      const visit = (el) => {
+        if (SKIP.has(el.tagName) || el.classList.contains("gp-wrap-spacer"))
+          return;
+        const kinds = [];
+        const found = [];
+        for (const r of Array.from(el.getClientRects())) {
+          if (r.width <= 0 && r.height <= 0)
+            continue;
+          const ax = r.left + Math.min(r.width, colW || r.width) / 2;
+          const ay = r.top + Math.min(r.height, colH || r.height) / 2;
+          const target = painted.get(strip.offset + indexInStrip(ax, ay, strip));
+          if (!target)
+            continue;
+          target.rect ??= target.sheet.getBoundingClientRect();
+          const local = {
+            x: (r.left - target.rect.left) / zoom,
+            y: (r.top - target.rect.top) / zoom,
+            w: r.width / zoom,
+            h: r.height / zoom
+          };
+          const kind = classifyRect(local, target.boxes, TOL_PX);
+          kinds.push(kind);
+          if (kind !== "inside")
+            found.push({ host: target.host, kind, box: local });
+        }
+        const worst = worstKind(kinds);
+        if (worst !== "inside") {
+          const isIntended = el.closest(INTENT_SELECTOR) !== null;
+          if (isIntended)
+            intended++;
+          else
+            issues++;
+          for (const f of found)
+            flags.push(isIntended ? { ...f, kind: "intended" } : f);
+          return;
+        }
+        for (const child of Array.from(el.children))
+          visit(child);
+      };
+      for (const child of Array.from(strip.el.children))
+        visit(child);
+    }
+    for (const f of flags) {
+      const el = div(`gp-ov-flag`, f.box);
+      el.dataset.kind = f.kind;
+      f.host.appendChild(el);
+    }
+    return inSheet ? { on: true, issues, intended, bleedPt: insetBleedPt, bleedInSheet: true } : { on: true, issues, intended, bleedPt };
+  }
+
   // src/engine/viewer/decorate.ts
   var px = (v) => `${v * PX_PER_PT}px`;
   function elementForHref(href) {
@@ -2095,6 +2440,13 @@
     let blankPages = new Set;
     let paddedPages = new Set;
     const warnings = [];
+    let overlayOn = false;
+    let overlayPages = [];
+    let overlaySummary = OVERLAY_OFF;
+    const paintOverlayNow = () => {
+      overlaySummary = paintOverlay(overlayPages, layout.strips, documentBleedPt(model), configInsetBleedPt());
+      window.dispatchEvent(new CustomEvent("gp:overlay", { detail: overlaySummary }));
+    };
     const api = {
       redraw: () => draw(),
       sheetFor: (p) => sheets.get(p),
@@ -2104,7 +2456,29 @@
       warnings,
       setDesigner(on) {
         document.body.dataset.designer = on ? "on" : "off";
-      }
+      },
+      setOverlay(on, style) {
+        if (style) {
+          const { color, strength } = sanitizeOverlayStyle(style);
+          if (strength)
+            document.body.dataset.overlayStrength = strength;
+          if (color)
+            document.body.style.setProperty("--gp-ov-color", color);
+        }
+        const wasOn = overlayOn;
+        overlayOn = on;
+        document.body.dataset.overlay = on ? "on" : "off";
+        if (on) {
+          if (!(wasOn && style))
+            paintOverlayNow();
+        } else {
+          clearOverlay();
+          overlaySummary = OVERLAY_OFF;
+          window.dispatchEvent(new CustomEvent("gp:overlay", { detail: overlaySummary }));
+        }
+        return overlaySummary;
+      },
+      overlay: () => overlaySummary
     };
     const canvasBg = captureCanvasBackground();
     document.body.classList.add("gp-stage");
@@ -2262,9 +2636,12 @@
       warnings.length = 0;
       blankPages = new Set(layout.blankPageIndices);
       paddedPages = new Set(layout.paddedPageIndices);
+      overlayPages = [];
       buildMaps();
       fillXrefs();
       let prevPageH = 0;
+      let prevVersoShift = 0;
+      let prevRunX = 0;
       let first = true;
       for (const strip of layout.strips) {
         const run = ensureRun(strip);
@@ -2281,12 +2658,13 @@
           const slot = i + shift;
           const row = Math.floor(slot / perRow);
           const colVisual = slot % perRow;
-          const sheetLeft = colVisual * stride;
+          const side = bookIndex % 2 === 0 ? "recto" : "verso";
+          const sheetLeft = colVisual * stride + (side === "verso" ? strip.versoShift * PX_PER_PT : 0);
           const sheetTop = row * rowStride;
           const sheet = document.createElement("div");
           sheet.className = "gp-sheet";
           sheet.dataset.page = String(bookIndex + 1);
-          sheet.dataset.side = bookIndex % 2 === 0 ? "recto" : "verso";
+          sheet.dataset.side = side;
           sheet.style.left = `${sheetLeft}px`;
           sheet.style.top = `${sheetTop}px`;
           sheet.style.setProperty("--gp-page-w", px(ctx.geometry.width));
@@ -2300,16 +2678,30 @@
           drawMarginBoxes(sheet, ctx, layout.totalPages - paddedPages.size);
           drawGuides(sheet, ctx);
           drawCropMarks(sheet, ctx);
+          overlayPages.push({
+            index: bookIndex,
+            sheet,
+            strip,
+            geometry: ctx.geometry,
+            margin: ctx.padded || blankPages.has(bookIndex) ? ctx.geometry.margin : pageFrameMargin(flushMargins(g.margin, strip.flushEdges ?? []), strip.versoShift, side)
+          });
         }
         const rows = Math.max(1, Math.ceil((strip.pages + shift) / perRow));
         run.style.height = `${rowStride * (rows - 1) + PX_PER_PT * g.height}px`;
         run.style.width = `${stride * perRow}px`;
-        run.style.marginTop = strip.wrapCols && shift === 1 && !first ? `${-(prevPageH + sheetGap)}px` : "";
+        const composed = !!strip.wrapCols && shift === 1 && !first;
+        run.style.marginTop = composed ? `${-(prevPageH + sheetGap)}px` : "";
+        const runX = composed ? prevRunX + (prevVersoShift - strip.versoShift) * PX_PER_PT : 0;
+        run.style.marginLeft = runX ? `${runX}px` : "";
         prevPageH = PX_PER_PT * g.height;
+        prevVersoShift = strip.versoShift;
+        prevRunX = runX;
         first = false;
         if (opts.designer)
           checkOverflow(strip, warnings);
       }
+      if (overlayOn)
+        paintOverlayNow();
     }
     function drawMarginBoxes(sheet, ctx, totalPages) {
       const g = ctx.geometry;

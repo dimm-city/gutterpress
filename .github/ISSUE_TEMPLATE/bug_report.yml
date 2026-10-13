@@ -1,5 +1,5 @@
 # Field ids are the query params the desktop app's "Report a problem" prefills
-# (packages/desktop/src/lib/server/problem-report.ts). Renaming one breaks that.
+# (packages/desktop/src/lib/issue-report.ts). Renaming one breaks that.
 name: Bug report
 description: Something in Gutterpress didn't work as expected
 title: "[Bug]: "
@@ -9,17 +9,28 @@ body:
     id: what-happened
     attributes:
       label: What happened?
-      description: What did you expect, and what happened instead?
+      description: What went wrong? Include any error message you saw, word for word.
     validations:
       required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      description: What should have happened instead?
   - type: textarea
     id: steps
     attributes:
       label: Steps to reproduce
+      description: The smallest set of steps that shows the problem, starting from opening the app.
       placeholder: |
         1. Open …
         2. Click …
         3. See …
+  - type: textarea
+    id: files
+    attributes:
+      label: Screenshots or files
+      description: Drag screenshots, a short screen recording, or a small sample (a chapter, an image, a zipped cut-down book) into this box. The app can't attach files for you. Remove anything private first.
   - type: textarea
     id: diagnostics
     attributes:
@@ -30,5 +41,5 @@ body:
     id: log
     attributes:
       label: App log
-      description: Paste here — the app copied the full report (including the log) to your clipboard when it opened this form.
+      description: Filled in automatically with the end of the app's log. If it says lines were left out, the full report is on your clipboard; paste it here instead.
       render: text

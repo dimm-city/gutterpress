@@ -138,7 +138,8 @@ describe("source_range: generic markdown constructs", () => {
 
   test("heading: range matches and charRange reproduces exact source", () => {
     const seg = corpus.segments.heading!;
-    expect(html).toContain(`<h1 ${SOURCE_RANGE_ATTR}="${seg.start}:${seg.end}"`);
+    // Order-independent: the heading also carries its `data-name`.
+    expect(html).toMatch(new RegExp(`<h1[^>]* ${SOURCE_RANGE_ATTR}="${seg.start}:${seg.end}"`));
     const starts = buildLineStarts(src);
     const [from, to] = charRange(src, starts, [seg.start, seg.end]);
     expect(src.slice(from, to)).toBe(corpus.text("heading"));

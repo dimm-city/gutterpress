@@ -16,6 +16,7 @@
  */
 import { MARKER_CSS } from "./markers.js";
 import { GUTTERPRESS_CSS } from "./gutterpress-css.ts";
+import { TABLE_ALIGN_CSS } from "./table-align";
 import { canonicalChapterId } from "./chapter-id";
 import { createMarkdownRenderer, type LoadedPlugin } from "./renderer";
 import { collectHtmlImageRefs, type ImageRefEnv } from "./images";
@@ -254,12 +255,19 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   // see the styling guide's cascade-layers section).
   // The two core blocks stay separate by ownership: MARKER_CSS supports the
   // marker-generated DOM, while gutterpress-css.ts owns the broader `gp-*`
-  // author vocabulary.
+  // author vocabulary. One more core block, the table column alignment
+  // (table-align.ts), is deliberately UNLAYERED, with attribute specificity:
+  // it replaces an inline style, which beat plugin CSS (layered) and a book's
+  // generic `th { text-align }`, so it must still beat both, while a book rule
+  // that is at least as specific and later can override it.
   const inlineCss = [
     "@layer gp.marker, gp.vocab;",
     `/* gutterpress markers */\n@layer gp.marker {\n${MARKER_CSS.trim()}\n}`,
     `/* gutterpress */\n@layer gp.vocab {\n${GUTTERPRESS_CSS.trim()}\n}`,
     pluginCss ? `/* extension css */\n${pluginCss.trim()}` : null,
+    // Unlayered, before the project CSS (equal specificity: the book's rule,
+    // coming later, wins).
+    `/* column alignment */\n${TABLE_ALIGN_CSS.trim()}`,
     projectCss ? `/* project css */\n${projectCss.trim()}` : null,
   ].filter(Boolean).join("\n\n");
 

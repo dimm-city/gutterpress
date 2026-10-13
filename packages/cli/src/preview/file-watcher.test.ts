@@ -257,6 +257,13 @@ describe('injectPreviewScripts', () => {
     expect(out).toContain('/preview/scripts/preview-interface.js');
     expect(out).toContain('/preview/scripts/preview-bridge.js');
   });
+
+  test('hands the project\'s in-sheet bleed to the overlay as a preview-only <meta>', () => {
+    expect(injectPreviewScripts(html)).not.toContain('gp-inset-bleed');
+    const out = injectPreviewScripts(html, 9);
+    expect(out).toContain('<meta name="gp-inset-bleed" content="9">');
+    expect(out.indexOf('gp-inset-bleed')).toBeLessThan(out.indexOf('</head>'));
+  });
 });
 
 describe('externalWatchTargets', () => {

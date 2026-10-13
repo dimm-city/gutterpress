@@ -185,16 +185,18 @@ test("spawnCapture re-arms the flush grace while a grandchild keeps streaming af
   // grandchild streams for LONGER than one grace-width, with gaps SHORTER
   // than the grace. The grace is an idle window — every chunk re-arms it —
   // so the full stream must be captured, not cut at exit+grace.
+  // The gap (50ms) sits far below the grace (600ms) so a loaded CI runner
+  // cannot stretch one gap past it; the stream (~1.5s) still runs well past
+  // one grace-width, so a one-shot grace would truncate the tail.
   const sync = syncFilePath();
   const script = [
-    `( : > "${sync}"; i=0; while [ $i -lt 8 ]; do echo "tick-$i"; sleep 0.05; i=$((i+1)); done ) &`,
+    `( : > "${sync}"; i=0; while [ $i -lt 30 ]; do echo "tick-$i"; sleep 0.05; i=$((i+1)); done ) &`,
     `while [ ! -e "${sync}" ]; do :; done`,
     `exit 0`,
   ].join("\n");
-  const res = await spawnCapture("sh", ["-c", script], { exitGraceMs: 200 });
+  const res = await spawnCapture("sh", ["-c", script], { exitGraceMs: 600 });
   expect(res.code).toBe(0);
-  // 8 ticks over ~400ms: a one-shot 200ms grace would truncate the tail.
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 30; i++) {
     expect(res.stdout).toContain(`tick-${i}`);
   }
 });

@@ -320,6 +320,7 @@ function resolveCustomPage(
     width: width!,
     height: height!,
     tolerance: c.page?.tolerance ?? m.page?.tolerance ?? 0.5,
+    bleed: c.page?.bleed ?? m.page?.bleed,
   };
 }
 

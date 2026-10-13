@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
   formatProblemReport,
-  ISSUE_URL,
   redactHome,
   summarizeManifest,
   tailLog,
@@ -82,18 +81,13 @@ describe("formatProblemReport", () => {
     expect(report).not.toContain("/home/ada");
   });
 
-  test("issue URL targets the bug template with system + book prefilled, log left to paste", () => {
-    const { issueUrl } = formatProblemReport({ ...base, book: ["preset: book"] });
-    const url = new URL(issueUrl);
-    expect(`${url.origin}${url.pathname}`).toBe(ISSUE_URL);
-    expect(url.searchParams.get("template")).toBe("bug_report.yml");
-    const diagnostics = url.searchParams.get("diagnostics")!;
+  test("diagnostics and log come back separately for the issue form, home dir redacted", () => {
+    const { diagnostics, log } = formatProblemReport({ ...base, book: ["preset: book"] });
     expect(diagnostics).toContain("## System");
     expect(diagnostics).toContain("- preset: book");
     expect(diagnostics).not.toContain("## App log");
     expect(diagnostics).not.toContain("/home/ada");
-    // Browsers and GitHub both reject very long URLs; the log is what grows, and it stays out.
-    expect(issueUrl.length).toBeLessThan(4000);
+    expect(log).toBe("2026-10-03T00:00:00.000Z updater: check failed for ~/Books/x");
   });
 
   test("unavailable and empty logs are stated, not blank", () => {

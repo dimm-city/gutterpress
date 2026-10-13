@@ -200,6 +200,12 @@
           "description": "Allowed deviation, in points, between the expected and the actual page size.",
           "default": 0.5,
           "minimum": 0
+        },
+        "bleed": {
+          "type": "number",
+          "description": "A bleed, in points, that the page width x height ALREADY CONTAINS on the top, bottom and OUTER edges (none on the binding edge) — how DriveThruRPG's interior file is cut (8.625 x 11.25in for an 8.5 x 11in book). Preview overlay only: it tells the margin & bleed overlay where the trim is and changes nothing in the PDF. CSS `@page { bleed }` wins when the stylesheet declares one. Preset default: dtrpg 9 (0.125in); book and custom none.",
+          "minimum": 0,
+          "examples": [9]
         }
       }
     },
@@ -237,7 +243,7 @@
         },
         "rules": {
           "type": "object",
-          "description": "Per-rule level overrides, keyed by rule id: a printsafe rule (printsafe/no-risky-print-effects, printsafe/page-containment, printsafe/no-remote-urls) or a check id such as source.accessibility.heading-order. \"off\" silences the rule; \"warn\" / \"error\" set its severity. An id that matches no rule is ignored. To silence one site instead, put a `gutterpress-disable-next-line <rule-id> -- reason` comment (CSS `/* */` or markdown `<!-- -->`) on the line above it.",
+          "description": "Per-rule level overrides, keyed by rule id: a printsafe rule (printsafe/no-risky-print-effects, printsafe/page-containment, printsafe/preview-cannot-follow, printsafe/no-remote-urls) or a check id such as source.accessibility.heading-order. \"off\" silences the rule; \"warn\" / \"error\" set its severity. An id that matches no rule is ignored. To silence one site instead, put a `gutterpress-disable-next-line <rule-id> -- reason` comment (CSS `/* */` or markdown `<!-- -->`) on the line above it.",
           "additionalProperties": { "enum": ["off", "warn", "error"] },
           "examples": [{ "printsafe/no-risky-print-effects": "off" }]
         }

@@ -42,6 +42,7 @@ export type SaveStatusActionId =
   | "enableVersionHistory"
   | "connect"
   | "syncNow"
+  | "pullNow"
   | "openBookConnections"
   | "repair"
   | "repairNow"
@@ -123,6 +124,10 @@ export interface SaveStatusInput {
     lastSyncAt: string | null;
     /** A manual "Back up now" is in progress. */
     syncing: boolean;
+    /** A manual "Get latest" is in progress. */
+    pulling?: boolean;
+    /** The last check found changes online this copy has not got. */
+    updatesAvailable?: boolean;
     /** "Repair online backup": offered (idle), awaiting confirmation (armed), or running. */
     repair: "idle" | "armed" | "running";
   };
@@ -310,10 +315,19 @@ export function onlineSection(
   const base = { explain: ONLINE_EXPLAIN };
   // Offered in every state where a manual backup can work (a usable remote and
   // a stored sign-in); primary only when it is the suggested fix.
-  const busy = o.syncing || o.state === "syncing";
+  // "Get latest" sits beside it: it brings in online changes and sends nothing.
+  const busy = o.syncing || o.state === "syncing" || !!o.pulling;
   const backUpNow = (primary = false): SaveStatusAction[] =>
     o.canSync
-      ? [{ id: "syncNow", label: busy ? "Backing up…" : "Back up now", disabled: busy, primary: primary && !busy }]
+      ? [
+          { id: "syncNow", label: o.syncing || o.state === "syncing" ? "Backing up…" : "Back up now", disabled: busy, primary: primary && !busy && !o.updatesAvailable },
+          {
+            id: "pullNow",
+            label: o.pulling ? "Getting latest…" : "Get latest",
+            disabled: busy,
+            primary: !!o.updatesAvailable && !busy,
+          },
+        ]
       : [];
 
   if (i.versions.enabled === null) return checking(base.explain);
@@ -415,13 +429,21 @@ export function onlineSection(
               tone: "ok",
               actions: backUpNow(),
             }
-          : {
-              ...base,
-              status: "Automatic online backup is off.",
-              detail: `Turn it on in ${SETTING_BACKUP}, or back up now.`,
-              tone: "neutral",
-              actions: backUpNow(),
-            };
+          : o.updatesAvailable
+            ? {
+                ...base,
+                status: "New changes are online.",
+                detail: "Get latest brings them in without sending yours. Back up now gets them and sends yours.",
+                tone: "pending",
+                actions: backUpNow(),
+              }
+            : {
+                ...base,
+                status: "Automatic online backup is off.",
+                detail: `Get latest and back up when you choose, or turn it on in ${SETTING_BACKUP}.`,
+                tone: "neutral",
+                actions: backUpNow(),
+              };
       }
       return notBackedUp(base.explain, o.hasRemote);
   }

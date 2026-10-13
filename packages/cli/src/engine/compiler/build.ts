@@ -245,7 +245,8 @@ export type BuildDiagnosticCode =
   | "engine.content.overheight"
   | "engine.image.low-dpi"
   | "engine.flush.margin-box"
-  | "engine.page-background.unreferenced";
+  | "engine.page-background.unreferenced"
+  | "engine.hyphenation.unsupported";
 
 export const BUILD_DIAGNOSTIC_CODES: readonly BuildDiagnosticCode[] = [
   "engine.width.overflow",
@@ -258,6 +259,7 @@ export const BUILD_DIAGNOSTIC_CODES: readonly BuildDiagnosticCode[] = [
   "engine.image.low-dpi",
   "engine.flush.margin-box",
   "engine.page-background.unreferenced",
+  "engine.hyphenation.unsupported",
 ];
 
 export interface BuildDiagnostic {
@@ -1384,6 +1386,69 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
           `${d} runs over more than one page in columns, and only the last page's columns get balanced — earlier pages are left with an empty column. End the @columns run where the page ends and open a new @columns for the next page, or set column-fill: auto on ${d} in your stylesheet so every page's columns fill.`,
         );
       if (multicol.length) log(`audit: ${multicol.length} fragmenting multicol warning(s)`);
+    }
+
+    // Hyphenation the printing browser cannot do. `hyphens: auto` breaks words
+    // only where the browser has a hyphenation dictionary for the text's
+    // language, and Chromium builds differ: Chrome for Testing has them, the
+    // desktop app's Electron has none on Linux (MEASURED: one book paginated
+    // at 396 pages there and 392 in the CLI, preview = PDF within each). The
+    // CSS is fine — only the browser can say whether it is honoured — so this
+    // asks the browser making the PDF: for each language that `hyphens: auto`
+    // text uses, its longest words are laid out in a 1px-wide box with
+    // `hyphens: auto` and with `manual`; if none comes out taller, nothing in
+    // that language can hyphenate here. Silent wherever hyphenation works.
+    {
+      const missing = JSON.parse(
+        await page.evaluate<string>(`(() => {
+          const words = new Map();
+          const styled = new Map();
+          const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+          for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+            const found = n.data.match(/\\p{L}{7,}/gu);
+            const el = n.parentElement;
+            if (!found || !el) continue;
+            if (!styled.has(el)) styled.set(el, getComputedStyle(el).hyphens === "auto");
+            if (!styled.get(el)) continue;
+            const host = el.closest("[lang]");
+            const lang = host ? host.getAttribute("lang") : null;
+            if (!words.has(lang)) words.set(lang, new Set());
+            const set = words.get(lang);
+            for (const w of found) if (set.size < 200) set.add(w);
+          }
+          if (!words.size) return "[]";
+          const box = document.createElement("div");
+          box.style.cssText = "position:absolute;left:-10000px;top:0;visibility:hidden";
+          const probes = [];
+          for (const [lang, set] of words) {
+            for (const w of [...set].sort((a, b) => b.length - a.length).slice(0, 8)) {
+              const pair = ["auto", "manual"].map((h) => {
+                const d = document.createElement("div");
+                if (lang !== null) d.setAttribute("lang", lang);
+                d.style.cssText = "width:1px;font:16px/16px serif;word-break:normal;overflow-wrap:normal;hyphens:" + h;
+                d.textContent = w;
+                box.appendChild(d);
+                return d;
+              });
+              probes.push({ lang, pair });
+            }
+          }
+          document.body.appendChild(box);
+          const hyphenates = new Set();
+          for (const { lang, pair } of probes)
+            if (pair[0].offsetHeight > pair[1].offsetHeight) hyphenates.add(lang);
+          box.remove();
+          const ua = navigator.userAgent;
+          const browser = (/Electron\\/[\\d.]+/.exec(ua) || /(?:HeadlessChrome|Chrome)\\/[\\d.]+/.exec(ua) || [ua])[0];
+          return JSON.stringify([...words.keys()].filter((l) => !hyphenates.has(l)).map((lang) => ({ lang, browser })));
+        })()`),
+      ) as Array<{ lang: string | null; browser: string }>;
+      for (const { lang, browser } of missing)
+        diagnose(
+          "engine.hyphenation.unsupported",
+          `Your stylesheets set hyphens: auto, but the browser making this PDF (${browser}) has no hyphenation dictionary for ${lang ? `"${lang}"` : "the document's language"}, so no word is hyphenated automatically and lines (and pages) break differently than in a browser that has one. Build in a browser that hyphenates, such as Chrome (which the gutterpress CLI uses), or add soft hyphens (&shy;) where a word may break.`,
+        );
+      if (missing.length) log(`audit: hyphenation unavailable for ${missing.length} language(s)`);
     }
 
     if (bytes === undefined) {

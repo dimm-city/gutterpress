@@ -25,6 +25,17 @@ export interface VendorPreset extends Omit<ResolvedConfig, "title" | "authors" |
 export const PRESET_IDS = ["dtrpg", "book", "custom"] as const;
 export type PresetId = (typeof PRESET_IDS)[number];
 
+/**
+ * DriveThruRPG print-on-demand interior. Where each value comes from:
+ *
+ *  SPEC = DriveThru Partners, "Quick Specifications for Print Books"
+ *         (help.drivethrupartners.com/hc/en-us/articles/12780800178583)
+ *  GUIDE = third-party DriveThruRPG layout guides (consistent with SPEC's
+ *         bleed rule; not stated by DriveThru itself)
+ *  CONVENTION = Gutterpress's own choice or a value DERIVED from a spec
+ *         requirement (e.g. PDF/X-1a forbids transparency) — NOT a DriveThru
+ *         requirement in its own right.
+ */
 export const DTRPG_PRESET: VendorPreset = {
   // Books designed for DriveThruRPG validate against it by default.
   defaultTargets: ["dtrpg"],
@@ -43,21 +54,41 @@ export const DTRPG_PRESET: VendorPreset = {
   },
   // `lastPage` is listed (undefined) only so the manifest merge, which copies
   // the preset's keys, carries an author's value; no preset sets it.
+  // SPEC: the page count must be one less than a signature multiple, or the
+  // file must end on a fully blank page; US Letter (and 6.69 x 9.61in and up)
+  // prints in 4-page signatures (#332). `reserveLastPage` takes the blank-page
+  // route.
   print: { signature: 4, reserveLastPage: true, lastPage: undefined },
   pdfx: {
+    // SPEC: PDF/X-1a:2001 or PDF/X-3:2002 (x1a is the default of the two).
     flavor: "x1a",
+    // SPEC: the CGATS21_CRPC1.icc profile.
     icc: "profiles/CGATS21_CRPC1.icc",
+    // CONVENTION: interactive annotations have no place in a PDF/X print file.
     stripAnnotations: true,
+    // CONVENTION (#331): near-black text on the black plate alone, so small
+    // type is not registered across four plates. Not a DriveThru rule.
     blackText: "k-only",
   },
   page: {
+    // GUIDE: 8.625 x 11.25in is the interior FILE size for an 8.5 x 11in book:
+    // the trim plus 0.125in bleed on the three outside edges (SPEC: a .125in
+    // bleed on the top, bottom and outer edges, none on the binding edge).
+    // Other trim sizes set `page.width`/`height`/`bleed` in the manifest.
     width: 621,
     height: 810,
-    tolerance: 0.5,
+    tolerance: 0.5, // CONVENTION: slack for rounding in the PDF boxes
+    // SPEC: 0.125in = 9pt, ALREADY INSIDE width/height above on the top,
+    // bottom and outer edges only. Declared so the preview's margin & bleed
+    // overlay can show the trim; the PDF is unchanged (CSS `bleed` is
+    // symmetric and would grow the page and add binding-edge bleed, which the
+    // SPEC rules out).
+    bleed: 9,
   },
   ink: {
+    // SPEC: total ink coverage must not exceed 240%.
     maxTac: 240,
-    tacTolerance: 0.5,
+    tacTolerance: 0.5, // CONVENTION: measurement noise
   },
   lint: {
     enabled: true,
@@ -67,6 +98,7 @@ export const DTRPG_PRESET: VendorPreset = {
   validate: {
     enabled: true,
     checks: {
+      // SPEC: PDF/X conformance (markers + metadata) and "all fonts embedded".
       "pdf.structure.qpdf": {
         enabled: true,
         severity: "error",
@@ -93,7 +125,9 @@ export const DTRPG_PRESET: VendorPreset = {
     assets: {
       maxImageSize: 10_000_000,
       minImageDpi: 300,
+      // SPEC: CMYK for colour interiors (Grayscale for black-and-white).
       allowedColorSpaces: ["CMYK", "Grayscale"],
+      // DERIVED: PDF/X-1a forbids transparency, which an alpha channel needs.
       allowAlpha: false,
       approvedFontFiles: [],
       requireFontLicense: false,
@@ -101,9 +135,17 @@ export const DTRPG_PRESET: VendorPreset = {
     pdf: {
       requireBookmarks: false,
       requireTocLinks: false,
+      // CONVENTION: 300 dpi is the common print minimum; DriveThru's quick
+      // spec does not state one.
       minImageResolution: 300,
+      // DERIVED: PDF/X-1a forbids transparency; DriveThru asks for X-1a/X-3.
       forbidTransparency: true,
+      // Stays false on purpose: `pdf.print.bleed` compares MediaBox with
+      // TrimBox and expects the bleed OUTSIDE the trim on every side. Here the
+      // bleed is inside the sheet on three edges and TrimBox == MediaBox, so
+      // the check would warn on every correct DriveThruRPG file.
       requireBleed: false,
+      // SPEC: 0.125in (the size `page.bleed` above is declared at).
       bleedSize: 9,
     },
     heuristics: {
@@ -159,6 +201,8 @@ export const BOOK_PRESET: VendorPreset = {
     width: 432,
     height: 648,
     tolerance: 0.5,
+    // No bleed inside the sheet; listed so a manifest `page.bleed` merges in.
+    bleed: undefined,
   },
   ink: {
     maxTac: 400,

@@ -26,6 +26,7 @@ import httpNode from "isomorphic-git/http/node";
 import { cloneRepository } from "./clone.ts";
 import {
   isPushRejected,
+  checkRemoteUpdates,
   isUnrelatedHistories,
   refreshRemoteCopies,
   syncProject,
@@ -1807,6 +1808,70 @@ describe("refreshRemoteCopies", () => {
         reason: "no-remote",
       });
       expect((await listLocalBranches(dir))!.branches).toContain("main");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("checkRemoteUpdates", () => {
+  test("says nothing new right after a clone, and 'available' once someone else commits online", async () => {
+    const h = await setupClone();
+    try {
+      expect(await checkRemoteUpdates({ projectDir: h.projectDir })).toEqual({ available: false });
+      await serverCommit(h.serverDir, { "elsewhere.md": "# From another machine\n" }, "elsewhere");
+      expect(await checkRemoteUpdates({ projectDir: h.projectDir })).toEqual({ available: true });
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("reads refs only: nothing is downloaded or moved until the author gets the changes", async () => {
+    const h = await setupClone();
+    try {
+      const trackingBefore = await git.resolveRef({ fs, dir: h.projectDir, ref: "refs/remotes/origin/main" });
+      await serverCommit(h.serverDir, { "elsewhere.md": "x\n" }, "elsewhere");
+      await checkRemoteUpdates({ projectDir: h.projectDir });
+      expect(await git.resolveRef({ fs, dir: h.projectDir, ref: "refs/remotes/origin/main" })).toBe(trackingBefore);
+      expect(fs.existsSync(path.join(h.projectDir, "elsewhere.md"))).toBe(false);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("clears once the changes are pulled (push: false), and a local copy ahead is not 'available'", async () => {
+    const h = await setupClone();
+    try {
+      await serverCommit(h.serverDir, { "elsewhere.md": "x\n" }, "elsewhere");
+      const pulled = await syncProject({ projectDir: h.projectDir, push: false });
+      expect(pulled.status === "synced" || pulled.status === "up-to-date").toBe(true);
+      expect(fs.existsSync(path.join(h.projectDir, "elsewhere.md"))).toBe(true);
+      expect(await checkRemoteUpdates({ projectDir: h.projectDir })).toEqual({ available: false });
+
+      // The author edits and snapshots locally without sending: still nothing new online.
+      await writeFile(path.join(h.projectDir, "mine.md"), "# Mine\n");
+      await syncProject({ projectDir: h.projectDir, push: false });
+      expect(await checkRemoteUpdates({ projectDir: h.projectDir })).toEqual({ available: false });
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("reports reason 'auth' for a private repo with no saved connection, without throwing", async () => {
+    const h = await setupClone({ requireAuth: { username: "u", password: "p" } });
+    try {
+      expect(await checkRemoteUpdates({ projectDir: h.projectDir })).toEqual({ available: false, reason: "auth" });
+      expect(await checkRemoteUpdates({ projectDir: h.projectDir, credential: h.credential! })).toEqual({ available: false });
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("reports reason 'no-remote' when the book has no remote", async () => {
+    const dir = await tempDir("gutterpress-updates-noremote-");
+    try {
+      await createFixtureRepo(dir);
+      expect(await checkRemoteUpdates({ projectDir: dir })).toEqual({ available: false, reason: "no-remote" });
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

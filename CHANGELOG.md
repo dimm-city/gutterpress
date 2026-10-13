@@ -5,6 +5,195 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.18] - 2026-10-13
+
+### Added
+
+- **Target one block from your stylesheet with `data-name`.** Every block a marker
+  opens (`@chapter`, `@spread`, `@page`, `@section`, `@columns`, a plugin's
+  markers and their variants), every heading and every image now carries a
+  `data-name`, so a book's CSS can restyle one instance without a markdown edit:
+  `[data-name="sporos-hollow"]:not(.gp-continued) { break-inside: avoid; }`,
+  `.section[data-name="hit-the-streets"] { break-before: page; }`,
+  `img[data-name="founder-house"] { float: right; width: 40%; }`. A block's name is
+  its explicit `name=`, else its `label=`, else the slug of its own first heading
+  (the first heading that sits directly in it), else none. A heading's is its
+  `{name=}` or its slug; an image's is its `{name=}` or its file name without the
+  folder or extension. Slugs are lower-case ASCII with apostrophes dropped
+  (`Founder's House` is `founders-house`) and runs of other characters as one hyphen. Names are unique within a source file (`-2`, `-3` in reading
+  order; explicit names are reserved first; blocks share one namespace, headings
+  have their own, and two pictures from one file share a name). A `@continue`
+  piece keeps its block's name. No `id` is ever added. A plain `data-*`
+  attribute that only your selectors read; the markdown overrides (`gp-*` classes,
+  `@page-break`, `@columns`, plugin modifiers, `{#id}`) are unchanged. See "Targeting
+  one block from your stylesheet" in the user guide.
+- **Table alignment is `data-align`.** The markdown alignment row (`|:--|:-:|--:|`)
+  now sets `data-align="left|center|right"` on each cell instead of an inline
+  `style="text-align:…"`, so a stylesheet can change one column without
+  `!important`. The rule is unlayered with the specificity of an element plus an
+  attribute, so a markdown alignment still beats a look's default and a book's
+  generic `th { text-align: left }`, as the inline style did, and a book rule that
+  is at least as specific and later (`td[data-align="right"] { … }`, `.stats td { … }`)
+  overrides it (the Field Guide, the user guide and the design guide print exactly
+  as before).
+- **`validate` warns when the live preview cannot follow a break.** New CSS rule
+  `printsafe/preview-cannot-follow` (warning; switch it off or silence one site like
+  any `printsafe/` rule) reports a forced `break-before`/`break-after` or a `page:`
+  assignment written with `var()`, inside a nested rule, right after a nested
+  rule, or the legacy `page-break-before: always`: the PDF honours them, the
+  preview's CSS reader does not, and the page counts drift apart.
+- **Open a terminal in the book's folder.** With a book open, Troubleshooting →
+  Diagnostics has **Open terminal in book folder**: bash in a new window (macOS:
+  Terminal; Linux: the first terminal found); on Windows, bash when one is on PATH
+  (Git Bash, WSL), otherwise a Command Prompt.
+- **Report a problem asks the bug form's questions.** A short summary, what happened,
+  what you expected and the steps that show it go straight into the GitHub issue form
+  with the details the app adds, and the panel says what to do on GitHub that it
+  cannot (sign in, drag screenshots or a sample into the new **Screenshots or files**
+  field). The bug template gains **What did you expect?** and **Screenshots or files**.
+- **The build warns when its browser cannot hyphenate.** `hyphens: auto` breaks
+  words only where the browser has a dictionary for the text's language, and
+  Chromium builds differ: Chrome for Testing has them, the desktop app's Electron
+  has none on Linux, so one book came out at 396 pages in the desktop app and 392
+  in the CLI. The CSS is not wrong, so nothing is linted; instead a PDF build asks
+  the browser making it, and when `hyphens: auto` text is in a language it cannot
+  hyphenate, reports `engine.hyphenation.unsupported` (Problems: "Hyphenation not
+  available"), naming the browser and the language. Silent wherever hyphenation
+  works.
+- **`validate` warns on a class no stylesheet mentions.** A class on a markdown
+  element or marker line (`{.hilite}`, `@section .pannel`) that matches no selector
+  in Gutterpress's own CSS, the loaded plugins' CSS or the book's stylesheets
+  (local `@import`s followed) is a warning from the layout-markers check, once per
+  class per file, with a "did you mean" when one is near. Never an error. `gp-*`
+  classes stay with the existing unknown-class diagnostic.
+- **Margin and bleed overlay in the preview.** A new **Margins and bleed** button
+  beside the zoom menu (Read and Edit; the choice is saved as
+  `preview.marginOverlay`) draws every page's margin box (a 2px dashed outline over a
+  light tint of the margin area) and the bleed band outside the trim (translucent
+  red with a solid red trim line), and outlines content that spills out
+  of the text area: amber into the margin, red across the trim into the bleed or
+  off the page. Art placed on purpose (`.gp-bleed`, `.gp-pin` / `.gp-flush`,
+  `.gp-behind`, `@page full-bleed`) gets a soft dotted outline and is not counted.
+  The button shows how many elements spill over; its tooltip has the rest. The
+  geometry is the book's own: the run's resolved `@page` content box (mirrored
+  `:left` / `:right` and named pages included) and the `@page` `bleed` the print
+  path uses, so a book with no `bleed` shows no band, and the button's tooltip (or
+  the CLI badge) says "No bleed set" and shows the `@page { bleed: 0.125in }` that
+  adds one. A `dtrpg` book needs no CSS for that: the preset now declares
+  `page.bleed: 9` (0.125in), because DriveThruRPG's 8.625 x 11.25in interior file
+  already contains the bleed on the top, bottom and OUTER edges only (none on the
+  binding edge), which CSS `bleed` cannot express. The overlay draws the band and a
+  solid trim line inside the page on those three edges (right edge on a recto, left
+  on a verso) and flags content that crosses the trim; a CSS `@page { bleed }` wins
+  when present. `page.bleed` is a manifest field (points) any book can set; it
+  reaches only the preview overlay, never the PDF or a published page. The `dtrpg`
+  preset's values now say in comments which come from DriveThru's published print
+  spec (240% ink, the CGATS21 profile, PDF/X-1a or X-3, CMYK, the blank last page,
+  the 3-edge bleed) and which are Gutterpress conventions or derived from PDF/X.
+  Lines keep the same thickness on screen at every zoom. Its look is
+  adjustable in **Settings, App, Preview**: `preview.marginOverlayStrength`
+  (`subtle` / `normal` / `strong`, default `normal`: line width, margin tint and
+  band opacity) and `preview.marginOverlayColor` (default `#2f80ed`); both are
+  app settings, never book CSS, and `gutterpress preview` keeps the defaults. It
+  is viewer chrome only: it
+  never prints, is not in a built PDF or a published page, adds nothing to your
+  content and cannot change a page break. `gutterpress preview` has no toolbar, so
+  it gets **Alt+M** and a small status badge instead. Preview protocol 9
+  (`setMarginOverlay(on, { color, strength })`, `overlayChanged`).
+- **Block properties for marker blocks (desktop).** Right-click a marker in the
+  preview (the block's own edge or padding; **Block properties…**, and **Page
+  properties…** for the enclosing page) or press **Alt+Enter** on a marker line in the
+  source editor to open one small dialog for `@section`, `@skill`, `@gear`, `@page` and
+  any other marker. **Keep together** toggles core's `.gp-no-break`; each loaded
+  plugin adds a section with the modifiers its component catalog documents (a
+  `modifier:` entry in `components.yaml`, e.g. gp-dimm-city's **Avoid split**
+  `.dc-avoid-split` and **Snug** `.dc-snug`), so nothing is hard-coded to one
+  plugin and a retired catalog entry is never offered. **Break before** inserts or
+  removes a `@page-break` line directly above the block. **Columns** wraps the
+  block's content in `@columns N` … `@end-columns`, changes N, or unwraps it (it needs
+  the block's own `@end-…` line, and says so when it has none). The edit is
+  token-preserving, like image properties: the marker line is tokenized the way core
+  parses it, so the compact `.class` and brace `{.class}` spellings, `class=`, `#id`,
+  `key=value`, a quoted `label="…"`, the variant word, indentation and trailing space
+  all survive in order; only the facet changed is touched, a toggle repeated is a
+  no-op, and confirming an unchanged dialog writes nothing. One minimal line patch is
+  applied through the commit engine from the preview and straight into the editor's
+  undo history from the source. Pure, Svelte-free `block-attrs.ts` and
+  `block-properties.ts`, covered by unit tests and a new drive
+  (`tests/integration/block-properties.pw.mjs`, run in CI's "App behaviour" job).
+- **`.class` autocomplete in the source editor (desktop).** Typing `.` after a marker
+  word (`@section .`) or inside `{ … }` attribute braces on any element (`## Title {.`,
+  `![](a.png){.`) lists classes, with a one-line description each where the catalog
+  has one and where it comes from: core's `gp-*` vocabulary (`core-classes.ts`,
+  mirrored from `GP_CLASSES` with a drift gate that fails when core adds or drops a
+  class), the classes each loaded plugin documents in its component catalog, and the
+  classes the book's own active stylesheets use. Likely ones come first (an image's
+  classes on an image, a plugin's classes for that marker on its marker line); Tab
+  and Enter accept, as for the `@` suggestions, and Ctrl+Space asks inside empty
+  braces. Not offered inside code. A new host route, `POST /api/snip/classes`, reads
+  the catalogs (a small, tolerant reader of the entry fields core has not yet
+  defined; it is meant to be replaced when core grows a catalog reader) and the
+  stylesheets.
+- **Desktop: Get latest, and a prompt when there are new changes online.** With
+  **Keep this book backed up online** off, a book that can back up still syncs, on
+  demand. The status bar shows two buttons beside the online status: **Get latest**,
+  which brings in the online changes and sends nothing back, and **Back up now**,
+  which gets the latest and then sends yours. **Where your work is kept** offers
+  **Get latest** too, in every state where **Back up now** works. While automatic
+  backup is off, the app checks the book's branch online every 5 minutes and when
+  the window comes back into focus. When the branch has moved, a toast that stays
+  until dismissed says **New changes are online for this book** and has a **Get
+  latest** button. The status bar button then reads **New online**. The check reads
+  the server's refs only, so nothing is downloaded or changed, and it stays quiet
+  when offline or not signed in. A copy that is only ahead of the online one is not
+  flagged. New lib export `checkRemoteUpdates`, a new host route
+  `POST /api/remote/check-updates`, and `POST /api/remote/sync` accepts
+  `push: false` (it runs the lib's existing pull-only sync).
+
+### Fixed
+
+- **The preview downloads a book's pinned extensions on every render.** The live
+  preview used to check only when a book was opened (the desktop's open, or the
+  start of `gutterpress preview`). A pin that changed while the book was open
+  rendered the book without its extension: an edit to `manifest.yaml`, **Get latest**
+  or an online backup bringing in a new pin, or restoring an earlier version. The
+  check now runs in the preview's one render path, so every render downloads any
+  missing pinned version first, from any host. It costs nothing when every copy is
+  present. A failed download still only warns, and the preview renders without that
+  extension.
+- **Desktop: a folder with several books reopens the book you were in.** Opening the
+  folder itself (a favorite, **Open a folder**, or a launch that starts from the
+  folder) used to land on the alphabetically first book, whichever one you were last
+  working in. It now opens the book last open in that folder, the same one the
+  **Recently opened** row already reopened. If that book is gone, it still falls back
+  to the first. Opening a specific book is unchanged.
+- **Report a problem fills in the App log.** The log was only copied to the clipboard,
+  so the GitHub form opened with **App log** empty. It now arrives in the form: the
+  newest lines that fit in the link, with a note when earlier lines were left out
+  (the full log is still on the clipboard).
+- **`@page-break #id` keeps its id, and `@continue` stops repeating one.** The two
+  break markers (`@page-break`, `@column-break`) dropped every attribute on their
+  line, so a `#id` for a link or a `target-counter()` to land on vanished; they
+  now keep `#id`, `.class` and `key=value`. `@continue` cloned the section's attributes
+  including its `id`, so a split section printed the same id twice; the
+  continuation now drops the `id` and keeps the rest.
+- **Left-hand pages sit where the PDF puts them in the preview.** On a book with
+  mirrored margins (`@page :left` and `@page :right` with different left and right
+  margins) the preview placed every page's text where a right-hand page's would
+  go, so on a left-hand page the text sat too far toward the binding edge of its
+  sheet (12px in the Dimm City Field Guide, whose right-hand pages have a 0.75in
+  binding margin and left-hand ones 0.625in). Each left-hand sheet now slides by
+  that difference, so the text, the running heads and folios, the guides and the
+  margin overlay all land where the PDF has them. The text column's width, the page
+  breaks and the page count are untouched. In the one-page view the left-hand
+  sheets sit a little sideways of the right-hand ones, by that same amount; in the
+  two-page view the gap between the two pages of a spread stays the same and the gap
+  across a page turn grows by twice it. A book without mirrored margins is laid out
+  exactly as before, and so is a section that pins art flush to a left or right
+  edge (print gives its two sides different text widths, and the art stays on the
+  paper's edge). The margin overlay no longer needs the second, dotted outline it
+  drew on those pages: its dashed box is the PDF's margin box on every page.
+
 ## [0.11.17] - 2026-10-12
 
 ### Added

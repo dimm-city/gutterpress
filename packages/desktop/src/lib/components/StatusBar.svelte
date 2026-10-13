@@ -77,6 +77,12 @@
     onRepair = undefined as (() => void | Promise<void>) | undefined,
     /** Called when the author clicks "Back up now" in the dialog. */
     onForceSync = undefined as (() => void | Promise<void>) | undefined,
+    /** Called for "Get latest": bring in the online changes without sending any. */
+    onGetLatest = undefined as (() => void | Promise<void>) | undefined,
+    /** A "Get latest" is in progress. */
+    gettingLatest = false,
+    /** The last check found changes online this copy has not got. */
+    updatesAvailable = false,
     /** Outcome of the last manual "Back up now" (manual backups bypass the
      *  host orchestrator, the only emitter of the status stream). */
     manualBackup = null as ManualBackup | null,
@@ -117,6 +123,9 @@
     onShowLog?: (logFilePath: string | null) => void;
     onForceSave?: () => void;
     onForceSync?: () => void | Promise<void>;
+    onGetLatest?: () => void | Promise<void>;
+    gettingLatest?: boolean;
+    updatesAvailable?: boolean;
     onRepair?: () => void | Promise<void>;
     manualBackup?: ManualBackup | null;
     onSaveVersion?: () => Promise<"saved" | "unchanged">;
@@ -201,6 +210,8 @@
         automatic: autoBackup,
         lastSyncAt,
         syncing: forceSyncing,
+        pulling: gettingLatest,
+        updatesAvailable,
         repair: repairPhase,
       },
       now: nowMs,
@@ -358,6 +369,9 @@
       case "syncNow":
         void backUpNow();
         break;
+      case "pullNow":
+        void onGetLatest?.();
+        break;
       case "repair":
         repairPhase = "armed";
         break;
@@ -380,6 +394,9 @@
   let showSync = $derived(
     !!projectDir && sourceMode === "folder" && (canSync || canSnapshot),
   );
+  // Manual mode: automatic online backup is off but the book can sync, so the
+  // bar offers Get latest and Back up now beside the pill.
+  let showManualSync = $derived(showSync && canSync && !autoBackup);
 
   // Book switcher: only when the open repo actually has more than one book.
   // Save indicator: only for an open folder book (the save state is the editor
@@ -423,6 +440,27 @@
           onVersionsProblem={() => (versionsProblemDir = projectDir)}
         />
       {/key}
+      {#if showManualSync}
+        <!-- Automatic online backup is off: the author gets and sends changes
+             on demand. Get latest never sends anything back. -->
+        <button
+          type="button"
+          class="status-icon-btn manual-sync"
+          class:has-updates={updatesAvailable}
+          onclick={() => void onGetLatest?.()}
+          disabled={gettingLatest || forceSyncing}
+          title={updatesAvailable ? "New changes are online — get them (your changes stay on this computer)" : "Get latest: bring in changes from online without sending yours"}
+          aria-label={updatesAvailable ? "Get latest — new changes are online" : "Get latest"}
+        ><Icon name="arrow-down-to-line" size={14} />{#if updatesAvailable}<span class="manual-sync-text">{gettingLatest ? "Getting…" : "New online"}</span>{/if}</button>
+        <button
+          type="button"
+          class="status-icon-btn"
+          onclick={() => void backUpNow()}
+          disabled={gettingLatest || forceSyncing}
+          title="Back up now: send your changes online (it gets the latest first)"
+          aria-label="Back up now"
+        ><Icon name="cloud-upload" size={14} /></button>
+      {/if}
     {/if}
     {#if showSave}
       <span class="divider" aria-hidden="true"></span>
@@ -513,6 +551,17 @@
   .status-icon-btn:focus-visible {
     outline: 2px solid var(--app-focus-ring);
     outline-offset: 1px;
+  }
+  /* Manual sync: a little room from the pill; with changes waiting online the
+     Get latest button names them and takes the accent. */
+  .manual-sync {
+    margin-left: 6px;
+    gap: 4px;
+  }
+  .manual-sync.has-updates {
+    color: var(--app-link);
+    font-size: 11px;
+    font-weight: 600;
   }
   .status-icon-btn:disabled {
     cursor: default;

@@ -1070,6 +1070,12 @@
       refreshPages();
       currentPage = detectVisiblePage();
       recordVisibleSource();
+      // A hot-reload swap makes this frame the active one AFTER its overlay was
+      // switched on (while hidden, where nothing is relayed): say so now.
+      var overlay = api.getMarginOverlay();
+      if (overlay && overlay.on) {
+        window.dispatchEvent(new CustomEvent('overlayChanged', { detail: overlay }));
+      }
       return api.notifyPageChange();
     },
 
@@ -1091,7 +1097,33 @@
     // floating edit panel this replaces. A v8 lib with a pre-v8 SPA loses the
     // "Edit this block" action and nothing else; a v8 SPA feature-detects on
     // the version before offering it.
-    getProtocolVersion: function () { return 8; },
+    // v9: ADDED setMarginOverlay()/toggleMarginOverlay()/getMarginOverlay() and
+    // the overlayChanged event (margin & bleed overlay, engine/viewer/
+    // overlay.ts). A v9 lib with a pre-v9 SPA simply never turns it on; a v9
+    // SPA feature-detects on the version before offering the toggle.
+    // (v9 is unreleased as of this writing, so setMarginOverlay's optional
+    // second argument — the look, below — is part of v9, not a bump.)
+    getProtocolVersion: function () { return 9; },
+
+    // Margin & bleed overlay. Viewer chrome only — it adds no box to the book
+    // and no attribute to its elements, so pagination is identical on or off.
+    // Returns the summary {on, issues, intended, bleedPt}, or null when the
+    // viewer predates it. `style` ({color: '#rrggbb', strength: 'subtle' |
+    // 'normal' | 'strong'}) is optional: it only sets the viewer's own
+    // `--gp-ov-*` tokens, and a call that carries it while the overlay is
+    // already on restyles without repainting.
+    setMarginOverlay: function (on, style) {
+      var d = window.Gutterpress && window.Gutterpress.decoration;
+      return d && typeof d.setOverlay === 'function' ? d.setOverlay(!!on, style) : null;
+    },
+    toggleMarginOverlay: function () {
+      var d = window.Gutterpress && window.Gutterpress.decoration;
+      return d && typeof d.setOverlay === 'function' ? d.setOverlay(document.body.dataset.overlay !== 'on') : null;
+    },
+    getMarginOverlay: function () {
+      var d = window.Gutterpress && window.Gutterpress.decoration;
+      return d && typeof d.overlay === 'function' ? d.overlay() : null;
+    },
 
     // Resolve the annotated element/selection at a viewport point (protocol
     // v4). Pure read; see buildContextTarget() above for the full contract.
@@ -1596,4 +1628,48 @@
   // The Gutterpress engine viewer dispatches this when its pagination
   // completes (engine/viewer/index.ts's mount()).
   window.addEventListener('gp:layout', onRenderingComplete);
+
+  // Margin & bleed overlay: relay the viewer's result as 'overlayChanged' (the
+  // bridge posts it to a host toolbar) and, where no host toolbar exists, give
+  // the standalone CLI preview its own switch: Alt+M, plus a small status pill.
+  // "Standalone" = the shell is top level (the CLI); under the desktop app the
+  // shell's parent is the app, which owns the toggle and the count.
+  var standalone = false;
+  try { standalone = window.parent === window || window.parent.parent === window.parent; } catch (_e) {}
+
+  function updateOverlayBadge(summary) {
+    var badge = document.getElementById('gp-ov-badge');
+    if (!standalone || !summary || !summary.on) {
+      if (badge) badge.remove();
+      return;
+    }
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.id = 'gp-ov-badge';
+      badge.setAttribute('role', 'status');
+      badge.style.cssText = 'position:fixed;top:8px;right:8px;z-index:2147483000;pointer-events:none;' +
+        'background:rgba(20,20,24,.88);color:#fff;font:600 11px/1.4 ui-sans-serif,system-ui,sans-serif;' +
+        'padding:4px 10px;border-radius:999px;box-shadow:0 1px 6px rgba(0,0,0,.4)';
+      document.documentElement.appendChild(badge);
+    }
+    var parts = ['Margins & bleed'];
+    parts.push(summary.issues ? summary.issues + ' overflowing' : 'nothing overflows');
+    if (summary.intended) parts.push(summary.intended + ' placed on purpose');
+    if (summary.bleedInSheet) parts.push('bleed inside the page (print preset)');
+    if (!summary.bleedPt) parts.push('no bleed set \u2014 add @page { bleed: 0.125in } to see the bleed edge');
+    badge.textContent = parts.join(' \u00b7 ') + '  (Alt+M hides)';
+  }
+
+  window.addEventListener('gp:overlay', function (e) {
+    updateOverlayBadge(e.detail);
+    window.dispatchEvent(new CustomEvent('overlayChanged', { detail: e.detail }));
+  });
+
+  if (standalone) {
+    document.addEventListener('keydown', function (e) {
+      if (e.code !== 'KeyM' || !e.altKey || e.ctrlKey || e.metaKey || e.defaultPrevented) return;
+      e.preventDefault();
+      api.toggleMarginOverlay();
+    });
+  }
 })();

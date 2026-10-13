@@ -75,7 +75,9 @@
     // App-toolbar Focus toggle
     | "maximize"
     // Source-files list drag handle
-    | "grip-vertical";
+    | "grip-vertical"
+    // Preview toolbar: margin & bleed overlay toggle
+    | "frame";
 
   const ICONS: Record<IconName, string> = {
     "folder-open":
@@ -204,6 +206,8 @@
       '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>',
     "grip-vertical":
       '<circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/>',
+    "frame":
+      '<line x1="22" x2="2" y1="6" y2="6"/><line x1="22" x2="2" y1="18" y2="18"/><line x1="6" x2="6" y1="2" y2="22"/><line x1="18" x2="18" y1="2" y2="22"/>',
   };
 </script>
 

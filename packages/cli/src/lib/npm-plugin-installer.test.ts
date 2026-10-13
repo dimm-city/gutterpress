@@ -34,6 +34,7 @@ import { loadPlugin } from "./markdown/plugins";
 import { BuildError } from "./build-error";
 import { loadBuildPlugins, resolveBuildContext } from "./build-runner";
 import { executeValidation } from "./validation-exec";
+import { generateAndWriteHtml } from "../preview/file-watcher";
 import {
   restoreFailureMessage,
   restoreForCommand,
@@ -2110,6 +2111,46 @@ describe("the shared seams restore before they load plugins", () => {
     await withFetch(noNetworkFetch, () =>
       executeValidation({ input: dir, category: "source", phase: "pre-build", pluginStylePaths: [] }),
     );
+  });
+
+  test("the live preview's render (every render, from any host) downloads a missing pin first", async () => {
+    const { dir, fixture } = await freshClone();
+    const config = resolveConfig({}, await loadManifest(dir));
+    const tempDir = path.join(dir, ".preview");
+    await mkdir(tempDir, { recursive: true });
+    const render = () => generateAndWriteHtml(dir, tempDir, config, new Map());
+
+    await withFetch(fixture.fetch, render);
+    expect(fixture.calls.filter((url) => url.endsWith(".tgz"))).toHaveLength(1);
+    expect(existsSync(vendoredNpmPluginRoot(dir, name, "1.0.0"))).toBe(true);
+
+    // The next render finds the copy and stays offline.
+    await withFetch(noNetworkFetch, render);
+    // A copy that goes missing later (a pin changed by Get latest, a deleted folder) comes back on the next render.
+    await rm(path.join(dir, "plugins"), { recursive: true });
+    await withFetch(fixture.fetch, render);
+    expect(existsSync(vendoredNpmPluginRoot(dir, name, "1.0.0"))).toBe(true);
+  });
+
+  test("the live preview still renders when the download fails", async () => {
+    const { dir } = await freshClone();
+    const config = resolveConfig({}, await loadManifest(dir));
+    const tempDir = path.join(dir, ".preview");
+    await mkdir(tempDir, { recursive: true });
+    const offline = (async () => {
+      throw new Error("ECONNREFUSED");
+    }) as unknown as typeof globalThis.fetch;
+    const warnings: string[] = [];
+    const warnSpy = spyOn(console, "warn").mockImplementation((...args) => {
+      warnings.push(args.join(" "));
+    });
+    try {
+      await withFetch(offline, () => generateAndWriteHtml(dir, tempDir, config, new Map()));
+    } finally {
+      warnSpy.mockRestore();
+    }
+    expect(warnings.join("\n")).toMatch(/offline.*markdown-it-gutterpress-seam@1\.0\.0/);
+    expect(await readFile(path.join(tempDir, "book.html"), "utf8")).toContain("Hi");
   });
 });
 

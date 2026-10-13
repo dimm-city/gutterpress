@@ -432,6 +432,7 @@ export type {
 export {
   syncProject,
   refreshRemoteCopies,
+  checkRemoteUpdates,
   SYNC_SNAPSHOT_MESSAGE,
 } from "../lib/remote-auth/sync.ts";
 export {

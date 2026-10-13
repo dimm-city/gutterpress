@@ -71,8 +71,11 @@
   import { markerCompletionSource } from "$lib/editor/marker-completions";
   import { componentCompletionSource } from "$lib/editor/component-completions";
   import { variantCompletionSource } from "$lib/editor/variant-completions";
+  import { classCompletionSource } from "$lib/editor/class-completions";
   import { completionTabBinding } from "$lib/editor/completion-keymap";
-  import type { LocationVariant, MarkerComponent } from "$lib/api";
+  import type { LinePatch } from "$lib/editor/block-attrs";
+  import { buildLineStarts, charRange } from "$lib/editor/source-range";
+  import type { ClassCatalogEntry, LocationVariant, MarkerComponent } from "$lib/api";
   import { onMount } from "svelte";
 
   let {
@@ -83,6 +86,8 @@
     onAnchorLine,
     components = [],
     variants = [],
+    classes = [],
+    onBlockProperties,
   }: {
     filePath?: string | null;
     content?: string;
@@ -90,6 +95,10 @@
     components?: readonly MarkerComponent[];
     /** The project's page / chapter / section variant words, offered after those markers. */
     variants?: readonly LocationVariant[];
+    /** The classes the project's extensions document and its stylesheets use, offered after a `.`. */
+    classes?: readonly ClassCatalogEntry[];
+    /** Alt+Enter: open Block properties for the marker line under the caret. */
+    onBlockProperties?: () => void;
     onChange?: (value: string) => void;
     onSave?: () => void;
     /**
@@ -167,9 +176,9 @@
     return autocompletion({ override: [pagedMediaCompletionSource] });
   }
 
-  /** Core `@marker`, plugin component and variant-word completions — active only for
-   *  markdown docs. The component and variant sources read their props at completion
-   *  time, so a refreshed list needs no reconfigure. */
+  /** Core `@marker`, plugin component, variant-word and `.class` completions — active only
+   *  for markdown docs. The component, variant and class sources read their props at
+   *  completion time, so a refreshed list needs no reconfigure. */
   function markdownCompletionExtensions(lang: EditorLanguage): Extension {
     if (lang !== "markdown") return [];
     return autocompletion({
@@ -177,6 +186,7 @@
         markerCompletionSource,
         componentCompletionSource(() => components),
         variantCompletionSource(() => variants),
+        classCompletionSource(() => classes),
       ],
     });
   }
@@ -330,6 +340,7 @@
          syntaxHighlighting(gutterpressHighlight, { fallback: true }),
         keymap.of([
           { key: "Mod-s", run: () => { onSave?.(); return true; } },
+          { key: "Alt-Enter", run: () => { if (!onBlockProperties) return false; onBlockProperties(); return true; } },
           ...defaultKeymap,
           ...historyKeymap,
           completionTabBinding, // before indentWithTab: wins only while a popup is open
@@ -479,6 +490,27 @@
   ): void {
     if (!view || appliedPath !== path) return;
     view.dispatch({ changes: { from, to, insert } });
+  }
+
+  /** The document and the caret's 0-based line, for editing the marker block under the caret. */
+  export function getCaretContext(): { source: string; line: number } | null {
+    if (!view) return null;
+    const doc = view.state.doc;
+    return { source: doc.toString(), line: doc.lineAt(view.state.selection.main.head).number - 1 };
+  }
+
+  /**
+   * Apply a planned line patch (`block-attrs.ts`) as one undoable transaction.
+   * False, and nothing written, when the document no longer holds the text the
+   * patch was planned against.
+   */
+  export function applyLinePatch(patch: LinePatch): boolean {
+    if (!view) return false;
+    const text = view.state.doc.toString();
+    const [from, to] = charRange(text, buildLineStarts(text), patch.range);
+    if (text.slice(from, to) !== patch.expected) return false;
+    view.dispatch({ changes: { from, to, insert: patch.replacement } });
+    return true;
   }
 
   /** Current selection text (empty string when there is no selection) (#29). */

@@ -24,6 +24,7 @@
 
 import { buildCanvasBackgroundStyles } from "$lib/iframe-styles";
 import type { PreviewEvent } from "$lib/preview-client";
+import { overlaySummaryFrom, type MarginOverlayStyle, type MarginOverlaySummary } from "$lib/margin-overlay";
 
 /** Minimal host-command client surface the controller drives. */
 interface PreviewEventClient {
@@ -69,6 +70,10 @@ export interface PreviewEventDeps {
   zoom: () => string;
   viewMode: () => "single" | "two-column";
   bgColor: () => string;
+  /** Margin & bleed overlay (Preview toolbar toggle): the durable on/off. */
+  marginOverlay: () => boolean;
+  /** …and its look (colour, strength), sent with the switch. */
+  marginOverlayStyle: () => MarginOverlayStyle;
   // ── Render-phase state sinks / getters ──────────────────────────────────
   setRendering: (v: boolean) => void;
   getRendering: () => boolean;
@@ -86,6 +91,8 @@ export interface PreviewEventDeps {
   refreshProblems: () => void;
   /** Cross-fade the settled pages into view (one animation frame; no timers). */
   revealSettledPages: () => void;
+  /** What the viewer found when it last drew the overlay; null when it is off. */
+  setOverlaySummary: (summary: MarginOverlaySummary | null) => void;
   toastSuccess: (message: string) => void;
   // ── Environment / clock ──────────────────────────────────────────────────
   scheduleMicrotask: (fn: () => void) => void;
@@ -153,6 +160,9 @@ export class PreviewEventController {
       case "pageChanged":
         this.onPageChanged(e.detail);
         break;
+      case "overlayChanged":
+        this.deps.setOverlaySummary(overlaySummaryFrom(e.detail));
+        break;
       case "ready":
         this.onReady();
         break;
@@ -188,6 +198,9 @@ export class PreviewEventController {
       const zoom = d.zoom();
       void (async () => {
         d.zoomView.applyViewMode(d.viewMode());
+        // A fresh frame starts with the overlay off: carry the author's choice
+        // into it (a hot reload carries its own — the shell copies it).
+        if (d.marginOverlay()) client?.call("setMarginOverlay", [true, d.marginOverlayStyle()]).catch(() => {});
         try {
           if (zoom === "fit-width") {
             await d.zoomView.applyFitWidthZoom();

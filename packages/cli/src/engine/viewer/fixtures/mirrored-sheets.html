@@ -1,0 +1,40 @@
+<!--
+  Mirrored-margin fixture (decorate.ts, `versoShift`). A 400x500px page with the
+  ordinary bound-book idiom: the recto's binding edge is its LEFT (50px), its
+  outer edge the right (30px); a verso is the mirror image (L30 / R50). Both
+  content boxes are 320px wide, so pagination cannot differ between the sides.
+
+  Six pages, one paragraph each, forced apart. Page 2 (a verso) also carries
+  two bars: `fits` exactly fills the verso's content box (x 30..350) and `out`
+  reaches 10px past the verso's OUTER edge (x -10), into the 12px bleed.
+
+  Each side's rule is ONE line, so a test can drop the pair and measure the same
+  book without mirroring.
+-->
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      @page { size: 400px 500px; margin: 40px; bleed: 12px; }
+      @page :left  { margin-left: 30px; margin-right: 50px; @top-left { content: "verso head"; } }
+      @page :right { margin-left: 50px; margin-right: 30px; @top-left { content: "recto head"; } }
+      body { margin: 0; }
+      p { margin: 0 0 6px; font: 12px/1.2 monospace; break-before: page; }
+      .bar { display: block; height: 14px; background: #36c; margin-bottom: 8px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p id="t1">Page one, a recto.</p>
+      <p id="t2">Page two, a verso.</p>
+      <div class="bar" id="fits" style="width: 320px"></div>
+      <div class="bar" id="out" style="margin-left: -40px; width: 100px"></div>
+      <p id="t3">Page three, a recto.</p>
+      <p id="t4">Page four, a verso.</p>
+      <p id="t5">Page five, a recto.</p>
+      <p id="t6">Page six, a verso.</p>
+    </main>
+    <script src="gutterpress-viewer.js"></script>
+  </body>
+</html>

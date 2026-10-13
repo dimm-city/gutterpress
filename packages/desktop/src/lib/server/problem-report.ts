@@ -13,9 +13,6 @@
  * the whole report so tool paths and log lines carry no username.
  */
 
-export const ISSUE_URL = 'https://github.com/dimm-city/gutterpress/issues/new';
-/** `.github/ISSUE_TEMPLATE/bug_report.yml` — its field ids are the prefill query params. */
-export const ISSUE_TEMPLATE = 'bug_report.yml';
 /** Tail of the app log to include — enough context, small enough to paste. */
 export const LOG_TAIL_BYTES = 8 * 1024;
 
@@ -94,8 +91,10 @@ export function redactHome(text: string, homeDir: string): string {
 export interface ProblemReport {
   /** The full Markdown report (system + book + log tail) for the clipboard. */
   report: string;
-  /** `issues/new` with the system + book sections prefilled; the log is pasted. */
-  issueUrl: string;
+  /** System + book sections, for the issue form's Diagnostics field. */
+  diagnostics: string;
+  /** The log tail (or why there is none), for the issue form's App log field. */
+  log: string;
 }
 
 export function formatProblemReport(input: ProblemReportInput): ProblemReport {
@@ -111,14 +110,9 @@ export function formatProblemReport(input: ProblemReportInput): ProblemReport {
     `- tools: ${tools || '(none)'}`,
   ];
   const book = ['## Book', ...(input.book ? input.book.map((l) => `- ${l}`) : ['- (no book open)'])];
-  const log = [
-    '## App log (tail)',
-    '```',
-    input.appLog === null ? '(app log unavailable)' : input.appLog || '(empty)',
-    '```',
-  ];
+  const logText = input.appLog === null ? '(app log unavailable)' : input.appLog || '(empty)';
   const diagnostics = redactHome([...system, '', ...book].join('\n'), input.homeDir);
-  const report = redactHome([...system, '', ...book, '', ...log].join('\n'), input.homeDir);
-  const params = new URLSearchParams({ template: ISSUE_TEMPLATE, diagnostics });
-  return { report, issueUrl: `${ISSUE_URL}?${params}` };
+  const log = redactHome(logText, input.homeDir);
+  const report = [diagnostics, '', '## App log (tail)', '```', log, '```'].join('\n');
+  return { report, diagnostics, log };
 }

@@ -21,6 +21,7 @@ import {
   readExtensionMeta,
 } from '../lib/extension-manifest';
 import { loadPluginsWithCss } from '../lib/markdown/plugins';
+import { restoreForCommand } from '../lib/extension-restore';
 import { BOOK_HTML_FILENAME } from '../lib/desktop';
 import { imageRefKey } from '../lib/static-serve';
 import type { ServerState } from './server-context';
@@ -81,6 +82,12 @@ async function renderPreviewBook(
     onImageRefs?: (refs: string[]) => void;
   }
 ): Promise<string> {
+  // Every live render first downloads any pinned extension whose copy is
+  // missing: the first render from any host, a rebuild after the manifest's
+  // pins change (an edit, Get latest, restoring a version) and a restart into
+  // another book. No network when every copy is present. A failed download
+  // warns and the render degrades, as the loader below does.
+  await restoreForCommand(inputPath, { failFast: false });
   const { plugins, pluginStyles } = await loadPluginsWithCss(
     config.extensions,
     inputPath,
@@ -121,9 +128,14 @@ async function renderPreviewBook(
  * no per-source wrappers or forced breaks are added, so preview pagination
  * never diverges from the PDF where a source file begins mid-page.
  */
-export function injectPreviewScripts(html: string): string {
+export function injectPreviewScripts(html: string, insetBleedPt = 0): string {
+  // The project's in-sheet bleed (`page.bleed`, e.g. dtrpg's) is tooling data
+  // for the margin & bleed overlay only. It rides in the preview's book.html
+  // and nowhere else: the built PDF and published HTML never get it.
+  const meta = insetBleedPt > 0 ? `  <meta name="gp-inset-bleed" content="${insetBleedPt}">\n` : "";
   const scripts =
-    '  <script src="/engine/gutterpress-viewer.js"></script>\n  '
+    meta
+    + '  <script src="/engine/gutterpress-viewer.js"></script>\n  '
     + '<script src="/preview/scripts/preview-interface.js"></script>\n  '
     + '<script src="/preview/scripts/preview-bridge.js"></script>\n';
   return /<\/head>/i.test(html)
@@ -154,6 +166,7 @@ export async function generateAndWriteHtml(
     source?: { files?: string[] | null };
     extensions?: ResolvedExtensionConfig[];
     print?: PrintPadding;
+    page?: { bleed?: number };
   },
   cssAssets: Map<string, string>,
   imageRefs?: Set<string>
@@ -186,7 +199,7 @@ export async function generateAndWriteHtml(
   }
   await fsp.writeFile(
     path.join(tempDir, BOOK_HTML_FILENAME),
-    injectPreviewScripts(html),
+    injectPreviewScripts(html, config.page?.bleed),
     "utf-8"
   );
 }
