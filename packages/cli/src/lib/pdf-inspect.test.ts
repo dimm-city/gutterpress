@@ -23,6 +23,7 @@ import {
   getOutlineCount,
   getOpPass,
   isLoadable,
+  textUnderTransparencyPages,
 } from "./pdf-inspect";
 import type { PDFDocumentProxy } from "unpdf/pdfjs";
 
@@ -257,5 +258,131 @@ describe("pdf-inspect cache eviction + clearPdfCache", () => {
     active();
     await new Promise((r) => setTimeout(r, 20));
     expect(destroyed).toBe(true);
+  });
+});
+
+describe("textUnderTransparencyPages", () => {
+  const TEXT = "BT /F1 12 Tf 10 50 Td (Hello) Tj ET";
+
+  /**
+   * One-page PDF whose content stream is `content`. `gs` maps ExtGState names
+   * to their entries; `forms` maps XObject names to `{ content, group }`.
+   * `pageGroup` puts a transparency group on the PAGE itself.
+   */
+  async function pdf(
+    content: string,
+    opts: {
+      gs?: Record<string, Record<string, unknown>>;
+      forms?: Record<string, { content: string; group?: boolean; knockout?: boolean }>;
+      pageGroup?: boolean;
+    } = {}
+  ): Promise<Uint8Array> {
+    const { PDFDocument, PDFName, StandardFonts } = await import("pdf-lib");
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([100, 100]);
+    const { context } = doc;
+    const font = doc.embedStandardFont(StandardFonts.Helvetica);
+    const extGState = context.obj({});
+    for (const [name, entries] of Object.entries(opts.gs ?? {})) {
+      const dict = context.obj({ Type: "ExtGState" });
+      for (const [k, v] of Object.entries(entries)) {
+        dict.set(
+          PDFName.of(k),
+          k === "SMask"
+            ? context.obj({
+                Type: "Mask",
+                S: "Luminosity",
+                G: context.register(
+                  context.stream("0 g 0 0 100 100 re f", {
+                    Type: "XObject",
+                    Subtype: "Form",
+                    BBox: [0, 0, 100, 100],
+                    Group: { S: "Transparency", CS: "DeviceGray" },
+                  })
+                ),
+              })
+            : typeof v === "string"
+              ? PDFName.of(v)
+              : context.obj(v as number)
+        );
+      }
+      extGState.set(PDFName.of(name), context.register(dict));
+    }
+    const xobjects = context.obj({});
+    for (const [name, form] of Object.entries(opts.forms ?? {})) {
+      const stream = context.stream(form.content, {
+        Type: "XObject",
+        Subtype: "Form",
+        BBox: [0, 0, 100, 100],
+        Resources: { Font: { F1: font.ref }, XObject: xobjects, ExtGState: extGState },
+        ...(form.group
+          ? { Group: { S: "Transparency", Type: "Group", I: true, K: !!form.knockout } }
+          : {}),
+      });
+      xobjects.set(PDFName.of(name), context.register(stream));
+    }
+    page.node.set(
+      PDFName.of("Resources"),
+      context.obj({ Font: { F1: font.ref }, ExtGState: extGState, XObject: xobjects })
+    );
+    page.node.set(PDFName.of("Contents"), context.register(context.stream(content)));
+    if (opts.pageGroup) {
+      page.node.set(PDFName.of("Group"), context.obj({ S: "Transparency", Type: "Group" }));
+    }
+    return doc.save();
+  }
+
+  test("plain text beside a soft shadow is eligible", async () => {
+    const bytes = await pdf(`q /G gs 0 0 40 40 re f Q ${TEXT}`, { gs: { G: { ca: 0.4 } } });
+    expect(await textUnderTransparencyPages(bytes)).toEqual([]);
+  });
+
+  test("a page-level /Group alone does not count", async () => {
+    expect(await textUnderTransparencyPages(await pdf(TEXT, { pageGroup: true }))).toEqual([]);
+  });
+
+  test("constant alpha, blend mode and soft mask on the text flag the page", async () => {
+    const gs = {
+      A: { ca: 0.15 },
+      S: { CA: 0.5 },
+      B: { BM: "Multiply" },
+      M: { SMask: "mask" },
+    };
+    for (const name of Object.keys(gs)) {
+      expect(await textUnderTransparencyPages(await pdf(`q /${name} gs ${TEXT} Q`, { gs }))).toEqual([1]);
+    }
+  });
+
+  test("an opaque or Normal state is eligible, and Q ends the effect", async () => {
+    const gs = { N: { ca: 1, CA: 1, BM: "Normal" }, A: { ca: 0.15 } };
+    expect(await textUnderTransparencyPages(await pdf(`q /N gs ${TEXT} Q`, { gs }))).toEqual([]);
+    expect(await textUnderTransparencyPages(await pdf(`q /A gs 0 0 5 5 re f Q ${TEXT}`, { gs }))).toEqual([]);
+  });
+
+  test("text in a plain isolated group at alpha 1 is eligible (Chromium's wrapper)", async () => {
+    const forms = { Grp: { content: TEXT, group: true }, Plain: { content: TEXT } };
+    expect(await textUnderTransparencyPages(await pdf("/Grp Do", { forms }))).toEqual([]);
+    expect(await textUnderTransparencyPages(await pdf("/Plain Do", { forms }))).toEqual([]);
+  });
+
+  test("text in an opacity group (alpha set outside, reset inside) is flagged", async () => {
+    // What Chromium emits for `opacity: .15`: the alpha is on the Do, the form resets it.
+    const gs = { A: { ca: 0.15 }, One: { ca: 1 } };
+    const forms = { Grp: { content: `/One gs ${TEXT}`, group: true } };
+    expect(await textUnderTransparencyPages(await pdf("q /A gs /Grp Do Q", { gs, forms }))).toEqual([1]);
+  });
+
+  test("text in a knockout group is flagged, and so is text nested inside one", async () => {
+    const forms = {
+      Plain: { content: TEXT },
+      Knock: { content: "/Plain Do", group: true, knockout: true },
+    };
+    expect(await textUnderTransparencyPages(await pdf("/Knock Do", { forms }))).toEqual([1]);
+  });
+
+  test("a plain form inherits the state it is drawn in", async () => {
+    const gs = { A: { ca: 0.15 } };
+    const forms = { Plain: { content: TEXT } };
+    expect(await textUnderTransparencyPages(await pdf("q /A gs /Plain Do Q", { gs, forms }))).toEqual([1]);
   });
 });

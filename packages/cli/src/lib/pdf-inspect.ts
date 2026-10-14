@@ -487,6 +487,73 @@ export function getOpPass(doc: PDFDocumentProxy): Promise<OpPass> {
   return p;
 }
 
+const SHOW_TEXT_OPS = new Set<number>(
+  ["showText", "showSpacedText", "nextLineShowText", "nextLineSetSpacingShowText"]
+    .map((name) => OPS[name])
+    .filter((op): op is number => op !== undefined)
+);
+
+/**
+ * 1-based pages that SHOW TEXT while transparency is in effect: constant alpha
+ * (`ca`/`CA` < 1), a non-Normal blend mode, an active soft mask, or any
+ * enclosing transparency group that is composited translucent, blended or
+ * masked, or is a knockout group. (Chromium draws `opacity` and
+ * `mix-blend-mode` content as a group form XObject under such a state, and
+ * resets the state INSIDE the group, so the state at the point the group
+ * begins is what counts.) Such text cannot be lifted out of its page and drawn
+ * opaque on top of a flattened picture without changing how it looks, so
+ * `pdfx.transparency: preserve-text` leaves those pages alone.
+ *
+ * A plain isolated group composited at alpha 1 / Normal / no mask is NOT
+ * counted: painting it is the same as painting its content inline, and
+ * Chromium wraps the content of EVERY page in one as soon as any element of
+ * the document uses a blend mode (measured on Chromium 141), which would
+ * otherwise rule out every page of such a book. The page's OWN `/Group` is
+ * likewise ignored.
+ *
+ * Walks PDF.js's operator list, which has already inlined form XObjects
+ * between `paintFormXObjectBegin/End` and reports their `/Group` as
+ * `beginGroup/endGroup`. Graphics state is tracked per save/restore (a form
+ * XObject is an implicit save/restore).
+ */
+export async function textUnderTransparencyPages(pdfBytes: Uint8Array): Promise<number[]> {
+  const GSTATE_BIT: Record<string, number> = { ca: 1, CA: 2, BM: 4, SMask: 8 };
+  const doc = await getDocumentProxy(new Uint8Array(pdfBytes));
+  const pages: number[] = [];
+  try {
+    for (let i = 1; i <= doc.numPages; i++) {
+      const ops = await (await doc.getPage(i)).getOperatorList();
+      let state = 0; // GSTATE_BIT flags currently in effect
+      const groups: boolean[] = []; // open groups: composited translucent, blended, masked or knockout?
+      const stack: number[] = [];
+      for (let j = 0; j < ops.fnArray.length; j++) {
+        const fn = ops.fnArray[j]!;
+        if (fn === OPS.save || fn === OPS.paintFormXObjectBegin) stack.push(state);
+        else if (fn === OPS.restore || fn === OPS.paintFormXObjectEnd) state = stack.pop() ?? 0;
+        else if (fn === OPS.beginGroup) {
+          const group = (ops.argsArray[j] as [{ smask?: unknown; knockout?: boolean }])[0];
+          groups.push(state !== 0 || !!(group.smask || group.knockout));
+        } else if (fn === OPS.endGroup) groups.pop();
+        else if (fn === OPS.setGState) {
+          for (const [key, value] of (ops.argsArray[j] as [[string, unknown][]])[0]) {
+            const bit = GSTATE_BIT[key];
+            if (!bit) continue;
+            const on =
+              key === "BM" ? value !== "source-over" : key === "SMask" ? !!value : (value as number) < 1;
+            state = on ? state | bit : state & ~bit;
+          }
+        } else if (SHOW_TEXT_OPS.has(fn) && (state || groups.includes(true))) {
+          pages.push(i);
+          break;
+        }
+      }
+    }
+  } finally {
+    await doc.destroy();
+  }
+  return pages;
+}
+
 /**
  * Await an image XObject's pixel dimensions (requires PDF.js to decode it).
  * Bounded by a timeout so a slow/broken image can't hang validation.
