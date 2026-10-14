@@ -110,6 +110,19 @@ function isDroppedPageGradient(decl: postcss.Declaration): boolean {
   return isInPageBox(decl);
 }
 
+/**
+ * Chromium emits these as a PostScript-function shading (ShadingType 1 +
+ * FunctionType 4), which Ghostscript 10.x cannot convert: a `--format pdfx`
+ * build reports "error in pattern" and the gradient prints blank (#386). Plain
+ * `linear-gradient()` / `radial-gradient()` are ShadingType 2/3 and fine.
+ * Source-only, so it cannot know the book's output format; the build-time
+ * check (`findPostScriptShadingPages`) is the exact one. Delete both when
+ * Ghostscript paints these shadings.
+ */
+function isPostScriptShadingGradient(decl: postcss.Declaration): boolean {
+  return /(repeating-(linear|radial|conic)|conic)-gradient\(/i.test(decl.value);
+}
+
 function isInPageMarginBox(decl: postcss.Declaration): boolean {
   const box = decl.parent;
   if (!box || box.type !== "atrule") return false;
@@ -464,6 +477,13 @@ function checkCssRaw(css: string, from?: string): PrintSafeWarning[] {
         rule: ruleRiskyProps,
         severity: "warning",
         message: `"${decl.prop}: ${decl.value}" on @page paints nothing in print — Chromium drops a gradient in the @page box's own background, with no error and a valid-looking PDF. A solid colour there paints the whole sheet; the same gradient also works on "html" (it covers the content area, not the sheet) or in a margin box.`,
+        ...nodeLoc(decl),
+      });
+    } else if (isPostScriptShadingGradient(decl)) {
+      warnings.push({
+        rule: ruleRiskyProps,
+        severity: "warning",
+        message: `"${decl.prop}: ${decl.value}" prints blank in PDF/X exports (--format pdfx): Chromium emits repeating-*-gradient() and conic-gradient() in a form Ghostscript cannot convert. Plain PDF output is unaffected. Use linear-gradient() or radial-gradient() instead; for 0deg/90deg stripes write "linear-gradient(90deg, #b33 0 6px, #c8c5bf 6px 10px)" with "background-size: 10px 100%", and for anything else a small tiled image.`,
         ...nodeLoc(decl),
       });
     } else if (isUnpairedFitContentWidth(decl)) {

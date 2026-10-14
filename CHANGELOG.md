@@ -5,6 +5,22 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Repeating and conic gradients no longer disappear from PDF/X builds without
+  a word.** In a `--format pdfx` build, `repeating-linear-gradient()`,
+  `repeating-radial-gradient()`, `repeating-conic-gradient()` and
+  `conic-gradient()` printed blank:
+  Chromium emits them as a PostScript-function shading that Ghostscript cannot
+  convert (plain `linear-gradient()` / `radial-gradient()` are fine, and plain
+  PDF output is unaffected). The CSS lint
+  (`printsafe/no-risky-print-effects`) now warns on them and names the
+  workaround (a tiled `linear-gradient(90deg, …)` with `background-size` for
+  0deg/90deg stripes, otherwise a small tiled image), and the PDF/X build warns
+  with the page numbers it found them on. Ghostscript's own "The following
+  warnings were encountered" block is now logged as a warning instead of being
+  left on the terminal where the desktop app never showed it.
+
 ## [0.11.18] - 2026-10-13
 
 ### Added
