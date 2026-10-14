@@ -73,6 +73,7 @@
   import { variantCompletionSource } from "$lib/editor/variant-completions";
   import { classCompletionSource } from "$lib/editor/class-completions";
   import { completionTabBinding } from "$lib/editor/completion-keymap";
+  import { specialCharacterMarks } from "$lib/editor/special-characters";
   import type { LinePatch } from "$lib/editor/block-attrs";
   import { buildLineStarts, charRange } from "$lib/editor/source-range";
   import type { ClassCatalogEntry, LocationVariant, MarkerComponent } from "$lib/api";
@@ -259,6 +260,14 @@
       outline: "1px solid var(--cm-bracket-outline)",
     },
     ".cm-selectionMatch": { backgroundColor: "var(--cm-selection)" },
+    // Unusual characters (#382): a box around each one with width, and
+    // CodeMirror's placeholder for the zero-width ones, in one colour.
+    ".cm-gp-char": {
+      outline: "1px solid var(--cm-unusual-char)",
+      outlineOffset: "-1px",
+      borderRadius: "2px",
+    },
+    ".cm-specialChar": { color: "var(--cm-unusual-char)" },
     "&.cm-focused": { outline: "none" },
     // Autocomplete popup — shared by the markdown `@marker` list and the CSS
     // editor's Paged Media list (both use this one theme). CodeMirror's stock
@@ -337,6 +346,8 @@
         cssLintCompartment.of(cssLintExtensions(lang)),
         cssCompletionCompartment.of(cssCompletionExtensions(lang)),
         markdownCompletionCompartment.of(markdownCompletionExtensions(lang)),
+        // The characters `source.characters` reports (#382), marked where they sit.
+        lang === "markdown" ? specialCharacterMarks() : [],
          syntaxHighlighting(gutterpressHighlight, { fallback: true }),
         keymap.of([
           { key: "Mod-s", run: () => { onSave?.(); return true; } },
@@ -580,11 +591,15 @@
   }
 
   /** Reveal a 1-based line. Deliberate navigation also places the caret/focus. */
-  export function revealLine(line: number, focusEditor = false): void {
+  export function revealLine(line: number, focusEditor = false, column?: number): void {
     if (!view) return;
     const doc = view.state.doc;
     const clamped = Math.max(1, Math.min(line, doc.lines));
-    const pos = doc.line(clamped).from;
+    const target = doc.line(clamped);
+    const pos = target.from;
+    // A Problems entry's 1-based column puts the caret on the finding itself
+    // (#382); the scroll still anchors on the line start, as below.
+    const caret = column ? Math.min(pos + column - 1, target.to) : pos;
     // Suppress the echo across the async scroll event the dispatch triggers.
     suppressEmitUntil = Date.now() + 300;
     lastEmittedLine = clamped;
@@ -594,7 +609,7 @@
     // top keeps both panes agreeing on the same anchor point. Centering here
     // gives a constant ~half-viewport disagreement.
     view.dispatch({
-      selection: focusEditor ? { anchor: pos } : undefined,
+      selection: focusEditor ? { anchor: caret } : undefined,
       effects: EditorView.scrollIntoView(pos, { y: "start" }),
     });
     if (focusEditor) view.focus();
@@ -675,6 +690,7 @@
     --cm-function: light-dark(#8250df, #82aaff);
     --cm-punct: light-dark(#57606a, #9aa5b1);
     --cm-invalid: light-dark(#cf222e, #ff6b6b);
+    --cm-unusual-char: light-dark(#bf8700, #e3b341);
     --cm-selection: light-dark(rgba(9, 105, 218, 0.18), rgba(92, 179, 255, 0.28));
     --cm-active-line: light-dark(rgba(27, 31, 36, 0.045), rgba(255, 255, 255, 0.05));
     --cm-gutter-bg: var(--app-surface);

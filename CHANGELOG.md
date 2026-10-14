@@ -5,6 +5,27 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **`validate` and the Problems panel report unusual characters in your
+  markdown.** New check `source.characters` (warning) finds what pasting from a
+  chat model, a word processor or a web page leaves behind: em and en dashes,
+  curly and look-alike quote marks, the ellipsis character, bullets, arrows and
+  emoji, plus invisible characters (zero-width spaces, non-breaking and other odd
+  spaces, bidi and control characters, a byte-order mark, which turns a file's
+  first heading into a paragraph) and encoding damage (U+FFFD). Each finding has
+  its line and column and says what to type instead: `---`, `--`, `...` and
+  straight quotes already print as the proper typography, and an HTML entity
+  (`&nbsp;`, `&rarr;`) keeps a character you want without a warning. Quotation
+  marks other languages use (guillemets, low-9 quotes) are never reported.
+  Silence it like any rule: `lint.rules`, or `gutterpress-disable-next-line
+  source.characters`.
+- **The editor outlines those characters where they sit.** In a markdown file
+  each one gets a box (zero-width ones show as a placeholder symbol), and
+  hovering says what it is and what to type instead, while you type, not only
+  after a save. Clicking the finding in Problems puts the cursor on the
+  character.
+
 ## [0.11.18] - 2026-10-13
 
 ### Added
