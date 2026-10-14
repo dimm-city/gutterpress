@@ -218,14 +218,14 @@ export async function resolveRasterizer(): Promise<string | null> {
   return (await resolveGhostscript()) ?? null;
 }
 
-/** Page 1 of `pdfPath` as an 8-bit grayscale raster at 100 dpi. */
-export function rasterizePdfPage(gsBin: string, pdfPath: string, outDir: string, tag: string): GrayRaster {
+/** Page `page` (default 1) of `pdfPath` as an 8-bit grayscale raster at 100 dpi. */
+export function rasterizePdfPage(gsBin: string, pdfPath: string, outDir: string, tag: string, page = 1): GrayRaster {
   const out = path.join(outDir, `${tag}.pgm`);
   nodeFs.rmSync(out, { force: true });
   const res = spawnSync(
     gsBin,
     ["-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sDEVICE=pgmraw", "-r100",
-     "-dFirstPage=1", "-dLastPage=1", `-sOutputFile=${out}`, pdfPath],
+     `-dFirstPage=${page}`, `-dLastPage=${page}`, `-sOutputFile=${out}`, pdfPath],
     { encoding: "utf-8" },
   );
   if (res.status !== 0) throw new Error(`ghostscript failed: ${res.stderr || res.status}`);

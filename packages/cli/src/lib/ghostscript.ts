@@ -100,8 +100,8 @@ export async function resolveGhostscript(
  * option is to flatten the page it appears ON down to a single raster image
  * (B.10, measured: text and fonts on that page are lost, identically on both
  * engines — a Ghostscript/PDF-1.3 property, not an engine bug).
- * {@link flattenTransparentPages} keeps the text live on exactly the pages
- * this returns; every other page is left alone.
+ * {@link flattenTransparentPages} (opt-in, `pdfx.transparency: preserve-text`)
+ * can instead keep the text live on the pages this returns.
  *
  * This walks each page's parsed object graph rather than scanning raw bytes. A
  * byte scan is NOT sufficient and produced a false "all clear" in review: image
@@ -223,30 +223,31 @@ export async function stripAnnotations(
 }
 
 /**
- * Make the pages in `pages` (1-based, from {@link transparentPages}) free of
- * transparency while keeping their text live, so PDF/X (PDF 1.3) conversion
- * has nothing left to flatten into a single bitmap.
+ * Make the pages in `pages` (1-based; from {@link transparentPages}, minus
+ * those `textUnderTransparencyPages` names) free of transparency while keeping
+ * their text live, so PDF/X (PDF 1.3) conversion has nothing left to flatten
+ * into a single bitmap. Opt-in: `pdfx.transparency: preserve-text`.
  *
- * Per affected page, three Ghostscript passes split it in two and pdf-lib
+ * Per affected page, two Ghostscript passes split it in two and pdf-lib
  * stacks the halves back on the ORIGINAL page object:
  *
- *  1. ARTWORK — `-dFILTERTEXT` drops the glyphs, then `pdfimage24 -r300`
+ *  1. ARTWORK — `pdfimage24 -dFILTERTEXT -r300` drops the glyphs and
  *     composites everything left (soft shadows, alpha images, opacity) into
- *     one opaque 300 DPI image;
+ *     one opaque 300 DPI image, straight from the source;
  *  2. TEXT — `-dFILTERIMAGE -dFILTERVECTOR` keeps only the glyphs. It needs
  *     `-dNOTRANSPARENCY`: without it Chromium's transparency groups and
  *     `/ca`/`/SMask` ExtGStates survive in the text-only file and the next
- *     step flattens the page anyway;
+ *     step flattens the page anyway. That is only faithful for text with no
+ *     transparency of its own, which is why callers leave other pages out;
  *  3. the page's content is replaced by the artwork with the text drawn on
  *     top. Editing the original page keeps its boxes (Media/Crop/Trim/Bleed),
  *     annotations, the document's metadata, outlines and labels exactly as
  *     they were; only its `/Contents`, `/Resources` and `/Group` change.
  *
- * Pages not listed are never touched. Known limits, all consequences of
+ * Pages not listed are never touched. Known limits, both consequences of
  * splitting a page into "picture" and "text": the page's vector chrome
- * (rules, backgrounds, shapes) becomes the 300 DPI picture; text is always the
- * top layer, so text another element covers shows through; and text that
- * carries its own transparency prints opaque.
+ * (rules, backgrounds, shapes) becomes the 300 DPI picture, and text is always
+ * the top layer, so text another element covers shows through.
  */
 export async function flattenTransparentPages(
   pdfPath: string,
@@ -261,7 +262,6 @@ export async function flattenTransparentPages(
     );
   }
   const art = join(stagingDir, "flatten-art.pdf");
-  const artFlat = join(stagingDir, "flatten-art-flat.pdf");
   const text = join(stagingDir, "flatten-text.pdf");
   const pageList = `-sPageList=${pages.join(",")}`;
   // Links and outlines point at pages this subset leaves out; they stay on the
@@ -270,8 +270,7 @@ export async function flattenTransparentPages(
     run(ghostscript, ["-q", "-dBATCH", "-dNOPAUSE", "-dSAFER", "-dPreserveAnnots=false", ...args]);
 
   try {
-    await gs(pageList, "-sDEVICE=pdfwrite", "-dFILTERTEXT", `-sOutputFile=${art}`, pdfPath);
-    await gs("-sDEVICE=pdfimage24", "-r300", `-sOutputFile=${artFlat}`, art);
+    await gs(pageList, "-sDEVICE=pdfimage24", "-dFILTERTEXT", "-r300", `-sOutputFile=${art}`, pdfPath);
     await gs(
       pageList,
       "-sDEVICE=pdfwrite",
@@ -285,7 +284,7 @@ export async function flattenTransparentPages(
 
     const { PDFDocument, PDFName } = await import("pdf-lib");
     const doc = await PDFDocument.load(await readFile(pdfPath), { updateMetadata: false });
-    const artDoc = await PDFDocument.load(await readFile(artFlat));
+    const artDoc = await PDFDocument.load(await readFile(art));
     const textDoc = await PDFDocument.load(await readFile(text));
     if (artDoc.getPageCount() !== pages.length || textDoc.getPageCount() !== pages.length) {
       throw new Error(
@@ -313,7 +312,7 @@ export async function flattenTransparentPages(
     });
     await writeFile(pdfPath, await doc.save());
   } finally {
-    await Promise.all([art, artFlat, text].map((f) => unlink(f).catch(() => {})));
+    await Promise.all([art, text].map((f) => unlink(f).catch(() => {})));
   }
 }
 

@@ -1,20 +1,23 @@
 /**
- * Real Chromium -> real Ghostscript: a PDF/X build keeps live text on pages
- * whose artwork needs transparency (soft `rgba()` shadows), and leaves pages
- * without transparency alone. Skips when Chromium or Ghostscript is absent
+ * Real Chromium -> real Ghostscript: `pdfx.transparency: preserve-text` keeps
+ * live text on pages whose artwork needs transparency (soft `rgba()` shadows),
+ * leaves pages without transparency alone, and leaves pages whose TEXT is
+ * translucent or blended to Ghostscript's whole-page flattening. Skips when Chromium or Ghostscript is absent
  * (CI fails on a missing one via ci-preconditions.test.ts).
  */
 import { expect, test } from "bun:test";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { mkdir } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { PDFArray, PDFDocument, PDFName, PDFNumber } from "pdf-lib";
 import { resolveChromiumExecutable } from "./chromium";
 import { launchChromium } from "../engine/shared/cdp";
 import { build } from "../engine/compiler/build";
+import { runBuild } from "./build-runner";
 import { getAssetPath } from "./embedded-assets";
 import { blackTextToGray } from "./black-text-gray";
-import { loadPdf, getOpPass, getTextPass } from "./pdf-inspect";
+import { loadPdf, getOpPass, getTextPass, textUnderTransparencyPages } from "./pdf-inspect";
 import {
   convertToPdfxCmyk,
   flattenTransparentPages,
@@ -32,16 +35,33 @@ if (!chromium || !ghostscript) {
   );
 }
 
+// Six one-page sections. Which `pdfx.transparency: preserve-text` does with each:
+//   1, 3  soft shadow + plain text            -> split, text live
+//   2     plain text only. Chromium wraps EVERY page in an alpha-1 group once the
+//         document blends anywhere (page 6), so this one counts as transparent
+//         too                                  -> split, text live
+//   4     opaque box OVER text + unrelated soft shadow -> split (the documented
+//         limit: the covered words show through; default mode keeps occlusion)
+//   5     translucent text (opacity .15)       -> falls back, left untouched
+//   6     multiply-blended text on yellow      -> falls back, left untouched
 const HTML = `<!doctype html><meta charset="utf-8"><style>
 @page { size: 300px 400px; margin: 30px }
-body { font: 14px/1.4 serif; margin: 0; color: #000 }
+body { font: bold 26px/1.2 sans-serif; margin: 0; color: #000 }
 section { break-after: page }
 .card { margin-top: 40px; padding: 16px; background: #fff;
   box-shadow: 0 12px 24px rgba(0, 0, 0, .45) }
+.cover { position: relative; height: 40px }
+.cover i { position: absolute; inset: 0; background: #c00 }
+.faint { opacity: .15 }
+.yellow { background: #ffff00; padding: 10px }
+.multiply { color: #00ffff; mix-blend-mode: multiply }
 </style>
-<section><div class="card">Soft shadow card page one text.</div></section>
-<section><p>Plain page two text, no transparency.</p></section>
-<section><div class="card">Soft shadow card page three text.</div></section>`;
+<section><div class="card">Card one</div></section>
+<section><p>Plain page two</p></section>
+<section><div class="card">Card three</div></section>
+<section><div class="cover">COVERED WORDS<i></i></div><div class="card" style="margin-top:120px">Card four</div></section>
+<section><p class="faint">Faint five</p><div class="card">Card five</div></section>
+<section><div class="yellow"><span class="multiply">Multiply six</span></div><div class="card">Card six</div></section>`;
 
 const boxOf = (doc: PDFDocument, page: number, name: string) =>
   (doc.getPage(page).node.lookup(PDFName.of(name)) as PDFArray)
@@ -58,7 +78,7 @@ function contentOf(doc: PDFDocument, page: number): string {
 }
 
 testIf(
-  "flattens only transparent pages, keeps their text live through PDF/X conversion",
+  "preserve-text splits only eligible transparent pages and keeps their appearance",
   async () => {
     const dir = await makeTempDir("gp-flatten-");
     const browser = await launchChromium();
@@ -68,30 +88,51 @@ testIf(
       const built = await build({ input: pathToFileURL(file).href, browser, dpiFloor: 0 });
 
       // Page boxes are set earlier in the real pipeline; stand in for that.
-      const src = await PDFDocument.load(built.bytes);
-      for (const page of src.getPages()) {
+      const srcDoc = await PDFDocument.load(built.bytes);
+      for (const page of srcDoc.getPages()) {
         page.setTrimBox(6, 6, 213, 288);
         page.setBleedBox(3, 3, 219, 294);
       }
-      src.setTitle("Flatten fixture");
+      srcDoc.setTitle("Flatten fixture");
+      // `source.pdf` is never written again: every comparison below is against it.
+      const sourcePdf = join(dir, "source.pdf");
       const rawPdf = join(dir, "raw.pdf");
-      await writeFile(rawPdf, await src.save());
+      await writeFile(sourcePdf, await srcDoc.save());
+      await copyFile(sourcePdf, rawPdf);
+      const sourceBytes = await readFile(sourcePdf);
 
-      expect(await transparentPages(await readFile(rawPdf))).toEqual([1, 3]);
+      const transparent = await transparentPages(sourceBytes);
+      expect(transparent).toEqual([1, 2, 3, 4, 5, 6]);
+      // Chromium wraps opacity and blended text in a group form XObject.
+      const blocked = await textUnderTransparencyPages(sourceBytes);
+      expect(blocked).toEqual([5, 6]);
+      const split = transparent.filter((n) => !blocked.includes(n));
+      expect(split).toEqual([1, 2, 3, 4]);
 
-      await flattenTransparentPages(rawPdf, [1, 3], dir);
+      await flattenTransparentPages(rawPdf, split, dir);
 
       const flat = await PDFDocument.load(await readFile(rawPdf));
-      expect(flat.getPageCount()).toBe(3);
+      expect(flat.getPageCount()).toBe(6);
       expect(flat.getTitle()).toBe("Flatten fixture");
-      for (let i = 0; i < 3; i++) {
-        expect(boxOf(flat, i, "TrimBox")).toEqual([6, 6, 219, 294]);
-        expect(boxOf(flat, i, "BleedBox")).toEqual([3, 3, 222, 297]);
-        expect(boxOf(flat, i, "MediaBox")).toEqual(boxOf(src, i, "MediaBox"));
+      for (let i = 0; i < 6; i++) {
+        expect(boxOf(flat, i, "TrimBox")).toEqual(boxOf(srcDoc, i, "TrimBox"));
+        expect(boxOf(flat, i, "BleedBox")).toEqual(boxOf(srcDoc, i, "BleedBox"));
+        expect(boxOf(flat, i, "MediaBox")).toEqual(boxOf(srcDoc, i, "MediaBox"));
       }
-      // Page 2 had no transparency: byte-identical content stream.
-      expect(contentOf(flat, 1)).toBe(contentOf(src, 1));
-      expect(await transparentPages(await readFile(rawPdf))).toEqual([]);
+      // Fallback pages are untouched: identical content, identical pixels.
+      for (const n of [5, 6]) {
+        expect(contentOf(flat, n - 1)).toBe(contentOf(srcDoc, n - 1));
+        const before = rasterizePdfPage(ghostscript!, sourcePdf, dir, `src${n}`, n);
+        const after = rasterizePdfPage(ghostscript!, rawPdf, dir, `raw${n}`, n);
+        expect(meanAbsDiff(before, after)).toBe(0);
+      }
+      // The split pages look like their untouched source (before any CMYK step).
+      for (const n of [1, 2, 3]) {
+        const before = rasterizePdfPage(ghostscript!, sourcePdf, dir, `src${n}`, n);
+        const after = rasterizePdfPage(ghostscript!, rawPdf, dir, `raw${n}`, n);
+        expect(meanAbsDiff(before, after)).toBeLessThan(1);
+      }
+      expect(await transparentPages(await readFile(rawPdf))).toEqual([5, 6]);
 
       const converted = join(dir, "pdfx.pdf");
       await writeFile(rawPdf, await blackTextToGray(await readFile(rawPdf)));
@@ -108,28 +149,36 @@ testIf(
       expect(bytes).not.toMatch(/\/ca\s+0?\.\d/);
 
       const out = await PDFDocument.load(await readFile(converted));
-      expect(out.getPageCount()).toBe(3);
-      for (let i = 0; i < 3; i++) {
-        const [x0, y0, x1, y1] = boxOf(out, i, "TrimBox");
-        expect([x0, y0, x1, y1].map((n) => Math.round(n! * 10) / 10)).toEqual([6, 6, 219, 294]);
+      expect(out.getPageCount()).toBe(6);
+      for (let i = 0; i < 6; i++) {
+        const trim = boxOf(out, i, "TrimBox").map((n) => Math.round(n * 10) / 10);
+        expect(trim).toEqual([6, 6, 219, 294]);
       }
 
       const pdf = await loadPdf(converted);
       expect(pdf).not.toBeNull();
       const { textByPage } = await getTextPass(pdf!);
-      expect(textByPage[0]).toContain("Soft shadow card page one text");
-      expect(textByPage[1]).toContain("Plain page two text");
-      expect(textByPage[2]).toContain("Soft shadow card page three text");
+      expect(textByPage[0]).toContain("Card one");
+      expect(textByPage[1]).toContain("Plain page two");
+      expect(textByPage[2]).toContain("Card three");
+      expect(textByPage[3]).toContain("COVERED WORDS");
+      // Fallback pages: Ghostscript rasterized the whole page, as in default mode.
+      expect(textByPage[4]).not.toContain("Faint five");
+      expect(textByPage[5]).not.toContain("Multiply six");
       const { fonts, imagesByPage } = await getOpPass(pdf!);
       expect(fonts.length).toBeGreaterThan(0);
       expect(fonts.every((f) => f.embedded)).toBe(true);
       expect(imagesByPage.get(1)?.length).toBe(1);
-      expect(imagesByPage.get(2)?.length ?? 0).toBe(0);
 
-      // The merged page still looks like the transparent original.
-      const before = rasterizePdfPage(ghostscript!, join(dir, "raw.pdf"), dir, "before");
-      const after = rasterizePdfPage(ghostscript!, converted, dir, "after");
-      expect(meanAbsDiff(before, after)).toBeLessThan(8);
+      // Every page, fallback ones included, still looks like the untouched
+      // source after CMYK conversion (the old text pass printed the faint
+      // text solid black and the multiplied text cyan instead of green).
+      for (let n = 1; n <= 6; n++) {
+        if (n === 4) continue; // split by design: the covered words show through
+        const before = rasterizePdfPage(ghostscript!, sourcePdf, dir, `srcc${n}`, n);
+        const after = rasterizePdfPage(ghostscript!, converted, dir, `cmyk${n}`, n);
+        expect(meanAbsDiff(before, after)).toBeLessThan(8);
+      }
     } finally {
       await browser.close();
       await rm(dir, { recursive: true, force: true });
@@ -161,7 +210,10 @@ section { break-after: page; font: 14px serif }
       await writeFile(rawPdf, built.bytes);
 
       expect(await transparentPages(await readFile(rawPdf))).toEqual([1]);
+      const plainBefore = contentOf(await PDFDocument.load(built.bytes), 1);
       await flattenTransparentPages(rawPdf, [1], dir);
+      // The page with no transparency is byte-identical.
+      expect(contentOf(await PDFDocument.load(await readFile(rawPdf)), 1)).toBe(plainBefore);
 
       expect(await transparentPages(await readFile(rawPdf))).toEqual([]);
       const pdf = await loadPdf(rawPdf);
@@ -171,6 +223,98 @@ section { break-after: page; font: 14px serif }
       expect(textByPage[1]).toContain("Text after the plate");
     } finally {
       await browser.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+  240_000
+);
+
+// The same book through the real `build --format pdfx`, in both modes, against
+// the untouched `--format pdf` render of it. The default must keep occlusion
+// and appearance (Ghostscript flattens whole pages); `preserve-text` is opt-in.
+testIf(
+  "pdfx.transparency: flatten-page (default) keeps occlusion, preserve-text is opt-in",
+  async () => {
+    const dir = await makeTempDir("gp-transparency-e2e-");
+    try {
+      await mkdir(join(dir, "styles"));
+      await writeFile(
+        join(dir, "styles", "main.css"),
+        `body { font: bold 20px/1.2 sans-serif; color: #000 }
+.card { padding: 16px; background: #fff; box-shadow: 0 12px 24px rgba(0, 0, 0, .45) }
+.cover { position: relative; height: 300px; font: bold 110px/1 sans-serif }
+.cover i { position: absolute; inset: 0; background: #c00 }
+.faint { opacity: .15; font-size: 48px }
+`,
+        "utf8"
+      );
+      await writeFile(
+        join(dir, "book.md"),
+        `@page
+
+<div class="card">Card one</div>
+
+@page
+
+<div class="cover">COVERED WORDS<i></i></div>
+
+<div class="card" style="margin-top:40px">Card two</div>
+
+@page
+
+<p class="faint">Faint three</p>
+`,
+        "utf8"
+      );
+      const manifest = (pdfx: string) =>
+        writeFile(
+          join(dir, "manifest.yaml"),
+          `title: Transparency e2e\nauthors: [T]\nstyles: [styles/main.css]\npreset: dtrpg\n${pdfx}`,
+          "utf8"
+        );
+      const buildTo = async (format: "pdf" | "pdfx", name: string) => {
+        const result = await runBuild({
+          inputDir: dir,
+          format,
+          outDir: join(dir, name),
+          skipLint: true,
+          skipPreValidate: true,
+          skipPostValidate: true,
+          rawArgs: {},
+        });
+        return result.pdfPath!;
+      };
+
+      await manifest("");
+      const source = await buildTo("pdf", "src");
+      const flat = await buildTo("pdfx", "default");
+      await manifest("pdfx:\n  transparency: preserve-text\n");
+      const kept = await buildTo("pdfx", "preserve");
+
+      const textOf = async (file: string) => (await getTextPass((await loadPdf(file))!)).textByPage;
+      const defaultText = await textOf(flat);
+      const preserveText = await textOf(kept);
+      // Default: every transparent page is rasterized whole, as before.
+      expect(defaultText.slice(0, 3).join("")).toBe("");
+      // Opt-in: the shadow pages keep their text; the translucent-text page falls back.
+      expect(preserveText[0]).toContain("Card one");
+      expect(preserveText[1]).toContain("Card two");
+      expect(preserveText[2] ?? "").not.toContain("Faint three");
+
+      const diff = (file: string, n: number) =>
+        meanAbsDiff(
+          rasterizePdfPage(ghostscript!, source, dir, `s${n}`, n),
+          rasterizePdfPage(ghostscript!, file, dir, `f${n}`, n)
+        );
+      // Default mode: the red box still hides "COVERED WORDS" (page 2).
+      const defaultCovered = diff(flat, 2);
+      expect(defaultCovered).toBeLessThan(4);
+      // preserve-text: documented limit, the covered words print on top of the box.
+      expect(diff(kept, 2)).toBeGreaterThan(defaultCovered + 1);
+      // The translucent-text page looks the same in both modes, and like the source.
+      expect(diff(flat, 3)).toBeLessThan(3);
+      expect(diff(kept, 3)).toBeLessThan(3);
+    } finally {
       await rm(dir, { recursive: true, force: true });
     }
   },
