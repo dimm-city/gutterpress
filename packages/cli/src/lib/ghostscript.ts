@@ -293,7 +293,11 @@ export async function flattenTransparentPages(
       );
     }
     const artPages = await doc.embedPages(artDoc.getPages());
-    const textPages = await doc.embedPages(textDoc.getPages());
+    // A page with transparency but no text (a full-page art plate) comes back
+    // from the text pass with no /Contents, which pdf-lib cannot embed.
+    const textPages = await Promise.all(
+      textDoc.getPages().map((p) => (p.node.Contents() ? doc.embedPage(p) : undefined))
+    );
 
     pages.forEach((pageNumber, i) => {
       const page = doc.getPage(pageNumber - 1);
@@ -304,7 +308,8 @@ export async function flattenTransparentPages(
       // Scale to the original box: the 300 DPI raster's pixel grid rounds the
       // page size by a fraction of a point.
       page.drawPage(artPages[i]!, { x, y, width, height });
-      page.drawPage(textPages[i]!, { x, y, width, height });
+      const textPage = textPages[i];
+      if (textPage) page.drawPage(textPage, { x, y, width, height });
     });
     await writeFile(pdfPath, await doc.save());
   } finally {

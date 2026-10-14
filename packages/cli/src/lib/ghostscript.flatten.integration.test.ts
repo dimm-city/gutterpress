@@ -137,3 +137,42 @@ testIf(
   },
   240_000
 );
+
+testIf(
+  "flattens a transparent page that has no text (a full-page art plate)",
+  async () => {
+    const dir = await makeTempDir("gp-flatten-art-");
+    const browser = await launchChromium();
+    try {
+      const file = join(dir, "book.html");
+      await writeFile(
+        file,
+        `<!doctype html><meta charset="utf-8"><style>
+@page { size: 300px 400px; margin: 30px }
+section { break-after: page; font: 14px serif }
+.plate { height: 200px; background: #fff; box-shadow: 0 12px 24px rgba(0, 0, 0, .45) }
+</style>
+<section><div class="plate"></div></section>
+<section><p>Text after the plate.</p></section>`,
+        "utf8"
+      );
+      const built = await build({ input: pathToFileURL(file).href, browser, dpiFloor: 0 });
+      const rawPdf = join(dir, "raw.pdf");
+      await writeFile(rawPdf, built.bytes);
+
+      expect(await transparentPages(await readFile(rawPdf))).toEqual([1]);
+      await flattenTransparentPages(rawPdf, [1], dir);
+
+      expect(await transparentPages(await readFile(rawPdf))).toEqual([]);
+      const pdf = await loadPdf(rawPdf);
+      const { imagesByPage } = await getOpPass(pdf!);
+      expect(imagesByPage.get(1)?.length).toBe(1);
+      const { textByPage } = await getTextPass(pdf!);
+      expect(textByPage[1]).toContain("Text after the plate");
+    } finally {
+      await browser.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+  240_000
+);
