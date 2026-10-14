@@ -105,6 +105,53 @@ never passed on a child-process command line (butler and the SWA CLI receive
 them via environment variables; Google Drive's client makes its own `fetch`
 calls, no child process at all).
 
+## PDF/X and transparency {#pdfx-transparency}
+
+`--format pdfx` (PDF/X-1a, PDF/X-3) is built on PDF 1.3, which cannot represent
+transparency. Soft or `rgba()` box-shadows, alpha-channel PNGs, `opacity`, and
+blend modes all need it. Ghostscript's own answer is to flatten the whole page
+into one bitmap, text included, so the page loses its fonts and `pdftotext`
+finds nothing.
+
+Gutterpress does the flattening itself, on the affected pages only:
+
+1. It finds the pages that use transparency. Every other page is left as it is,
+   vector text and shapes.
+2. On each affected page the **artwork** (everything except the glyphs) is
+   composited into one opaque 300 DPI image, and the **text** is kept as live
+   vector text drawn on top of it. Page boxes (Trim, Bleed, Crop), links and the
+   document's metadata stay as they were.
+3. The usual PDF/X steps run on the result, so `pdfx.blackText: k-only` still
+   reaches the text on these pages.
+
+The build prints the page numbers it flattened. To check the result:
+
+```bash
+pdftotext -f 3 -l 3 dist/my-book/my-book-pdfx.pdf -   # the page's words
+pdffonts dist/my-book/my-book-pdfx.pdf                 # every font embedded
+```
+
+`examples/with-print-effects/` is a small book with one effect per page.
+
+Known limits, all consequences of splitting a page into picture and text:
+
+- On a flattened page, rules, backgrounds and shapes are part of the 300 DPI
+  picture, not vectors.
+- Text is always the top layer. If another element is painted over text, the
+  text still shows through.
+- Text that carries its own transparency (translucent glyph colour, `opacity`
+  on a text block) prints fully opaque.
+- Keep CSS `filter` off text-bearing elements: Chromium rasterizes those into
+  the PDF itself, before this step.
+- `repeating-linear-gradient()` and `conic-gradient()` are a separate Ghostscript
+  gap (#386) and are not covered here.
+
+**For plugin authors.** There is no API to call and nothing to opt into: write
+ordinary CSS and the build handles the rest. Keep `filter` off text-bearing
+elements, don't paint over text, keep glyph colours opaque, and require a
+Gutterpress version that ships this behaviour. Older versions flatten the whole
+page to a bitmap with no text.
+
 ## Architecture
 
 Everything lives in the lib (`packages/cli/src/lib/publish/`) and is consumed

@@ -5,6 +5,21 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **`--format pdfx` keeps live text on pages that use transparency.** PDF/X-1a
+  and X-3 (PDF 1.3) cannot hold transparency, and Ghostscript used to flatten
+  every page with a soft `rgba()` shadow, an alpha PNG or `opacity` into one
+  bitmap, text and fonts included. Now only those pages are touched: the artwork
+  becomes a 300 DPI picture and the text stays live vector text on top, so
+  searchable, embedded-font text and the `k-only` black-text rewrite survive. Pages without
+  transparency are untouched, and page boxes and metadata are kept. The build
+  warning now names the flattened pages and states the limits (flattened pages'
+  rules and shapes are raster; text is always on top, so text another element
+  covers shows through; text with its own transparency prints opaque). The new
+  `examples/with-print-effects` book shows one effect per page; see "PDF/X and
+  transparency" in `docs/publishing.md`.
+
 ## [0.11.18] - 2026-10-13
 
 ### Added

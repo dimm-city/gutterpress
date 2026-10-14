@@ -247,6 +247,14 @@ fixture — but only when the thing being kept-with can actually be placed:
   text-bearing elements. `clip-path` with a basic shape (`polygon()`,
   `inset()`, `circle()`, `ellipse()`, `path()`) is a vector clip and is NOT
   flagged; only `clip-path: url(...)` (an SVG mask) is.
+- **Transparency in a `--format pdfx` build.** PDF/X-1a and X-3 cannot hold
+  transparency (soft or `rgba()` shadows, alpha PNGs, `opacity`), so each page
+  that uses it has its artwork flattened to a 300 DPI picture. Its text stays
+  live text on top, so `pdftotext` and embedded fonts still work (unlike
+  `filter`, above). The price: that page's rules, backgrounds and shapes
+  become raster, text always sits above the artwork (text another element
+  covers shows through), and text with its own transparency prints opaque. See
+  [PDF/X and transparency](publishing.md#pdfx-transparency).
 - To accept a warning you have decided is fine, switch the rule off for the
   book (`lint.rules` in `manifest.yaml`) or for one line
   (`/* gutterpress-disable-next-line <rule-id> -- reason */`).

@@ -109,6 +109,12 @@ rules:
 - **Black text prints in black ink only.** In a `--format pdfx` build, black
   and near-black text goes on the black plate alone, as DriveThruRPG requires
   for small text. Coloured text is printed as designed.
+- **Soft shadows and translucent art keep their text.** PDF/X-1a has no
+  transparency, so a page that uses a soft `rgba()` shadow, a PNG with an alpha
+  channel or `opacity` is flattened to a 300 DPI picture in a `--format pdfx`
+  build, but its text stays live text. The build lists the pages it flattened.
+  On those pages rules and backgrounds become part of the picture, and text
+  always sits above the artwork, so text another element covers shows through.
 
 @end-section
 
