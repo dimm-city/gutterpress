@@ -11,7 +11,8 @@ import { type AssetCopy } from "./asset-inline";
 import { resolveOutputDir, artifactName, BOOK_HTML } from "./output-paths";
 import {
   convertToPdfxCmyk,
-  hasLiveTransparency,
+  flattenTransparentPages,
+  transparentPages,
   stampCreator,
   stripAnnotations,
 } from "./ghostscript";
@@ -832,25 +833,23 @@ class PdfOutput implements OutputStrategy {
 
         // B.10: PDF/X-1a and PDF/X-3 are built at PDF 1.3 compatibility,
         // which cannot represent live transparency at all — an alpha-channel
-        // image OR a CSS `opacity`/`mix-blend-mode` rule forces Ghostscript
-        // to flatten whatever page it's on into a single raster (fonts and
-        // searchable text lost on that page). This is not fixable without
-        // changing PDF/X conformance (PDF/X-1a and PDF/X-3 are both
-        // PDF-1.3-based by spec, not a Gutterpress default), so warn
-        // precisely rather than let the author discover a fontless page
-        // after the fact.
-        if (await hasLiveTransparency(await fsp.readFile(rawPdf))) {
+        // image, a soft `rgba()` shadow or a CSS `opacity`/`mix-blend-mode`
+        // rule makes Ghostscript flatten the whole page it's on into one
+        // raster (fonts and searchable text lost). So on THOSE pages only,
+        // flatten the artwork ourselves and keep the text live on top; pages
+        // without transparency stay untouched vector. Runs before annotation
+        // stripping and the black-text rewrite so both see the merged pages.
+        const transparent = await transparentPages(await fsp.readFile(rawPdf));
+        if (transparent.length > 0) {
+          await flattenTransparentPages(rawPdf, transparent, stage);
           log.warn(
-            "This book uses transparency — an image with an alpha channel, or a CSS " +
-              "rule like `opacity` or `mix-blend-mode`. " +
-              `PDF/${pdfxMode === "x1a" ? "X-1a" : "X-3"} has no way to represent that ` +
-              "(both are based on PDF 1.3, which predates PDF transparency), so " +
-              "Ghostscript will flatten every page that uses it into a single raster " +
-              "image — that page loses its embedded fonts and searchable text in the " +
-              "PDF/X output. To keep vector text, remove the `opacity`/blend rule and " +
-              "flatten any alpha-channel image against its intended background before " +
-              "including it (export it with no alpha channel), or build --format pdf " +
-              "instead of pdfx if this book doesn't need print-ready CMYK."
+            `Page${transparent.length === 1 ? "" : "s"} ${transparent.join(", ")} use${transparent.length === 1 ? "s" : ""} ` +
+              "transparency, which PDF/" +
+              `${pdfxMode === "x1a" ? "X-1a" : "X-3"} (PDF 1.3) cannot represent. ` +
+              "Each was flattened to a 300 DPI picture with its text kept live on top, so " +
+              "fonts and searchable text survive. On those pages, rules, backgrounds and " +
+              "shapes are raster, text always sits above the artwork (text covered by " +
+              "another element shows through), and text with its own transparency prints opaque."
           );
         }
 
