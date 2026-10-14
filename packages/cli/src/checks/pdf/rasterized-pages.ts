@@ -61,8 +61,10 @@ const check: Check = {
         message: `Possible rasterized pages detected: ${rasterizedPages.join(", ")}`,
         file: ctx.pdfPath,
         detail:
-          "This may indicate CSS filters, blend modes, or transparency that forced flattening. " +
-          "Text on these pages may not be selectable and quality may be reduced.",
+          "A single full-page image with a little text: intentional full-bleed art, CSS filters or " +
+          "blend modes that forced flattening, or (in a PDF/X build) a page Gutterpress flattened " +
+          "because it uses transparency. Flattened pages keep their text live and selectable " +
+          "(check with pdftotext); their artwork is a 300 DPI picture.",
         code: "rasterized-pages-detected",
         data: { pages: rasterizedPages },
       },

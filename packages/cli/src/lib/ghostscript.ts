@@ -264,8 +264,10 @@ export async function flattenTransparentPages(
   const artFlat = join(stagingDir, "flatten-art-flat.pdf");
   const text = join(stagingDir, "flatten-text.pdf");
   const pageList = `-sPageList=${pages.join(",")}`;
+  // Links and outlines point at pages this subset leaves out; they stay on the
+  // original page objects and are not wanted in the scratch files.
   const gs = (...args: string[]) =>
-    run(ghostscript, ["-q", "-dBATCH", "-dNOPAUSE", "-dSAFER", ...args]);
+    run(ghostscript, ["-q", "-dBATCH", "-dNOPAUSE", "-dSAFER", "-dPreserveAnnots=false", ...args]);
 
   try {
     await gs(pageList, "-sDEVICE=pdfwrite", "-dFILTERTEXT", `-sOutputFile=${art}`, pdfPath);
