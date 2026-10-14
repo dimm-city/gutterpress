@@ -174,14 +174,22 @@ the build names them.
 
 Known limits of the pages that are split:
 
-- Rules, backgrounds and shapes are part of the 300 DPI picture, not vectors.
+- Rules, backgrounds and shapes are part of the 300 DPI picture, not vectors,
+  so fine rules lose their vector sharpness.
+- The file grows: each split page carries a full-page picture. The 228-page
+  Dimm City Field Guide grew about 2.5× (92 MB to 231 MB). One blend mode
+  anywhere in a book can make Chromium wrap most of its pages in transparency
+  groups, so many more pages are split than the effect's own pages.
 - Text is always the top layer. If another element is painted over text, the
-  text still shows through. Do not use `preserve-text` for a book that hides
-  text behind opaque shapes.
+  text still shows through, and a translucent tint over text no longer tints
+  it. Do not use `preserve-text` for a book whose look depends on shapes or
+  tints painted over text.
 - Keep CSS `filter` off text-bearing elements: Chromium rasterizes those into
   the PDF itself, before this step.
-- `repeating-linear-gradient()` and `conic-gradient()` are a separate Ghostscript
-  gap (#386) and are not covered here.
+
+The build lists each fallback page with its cause and the change that fixes it.
+Check a `preserve-text` build visually as well as with `pdftotext`: text that
+extracts can still be painted wrong.
 
 **For plugin authors.** A plugin cannot choose this; the book's author opts in
 with `pdfx.transparency`. If your styles rely on it, say so in your docs, keep

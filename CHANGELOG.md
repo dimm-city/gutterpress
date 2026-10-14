@@ -20,7 +20,8 @@ This project follows [Semantic Versioning](https://semver.org/).
   pattern fill or text clip such as SVG `fill="url(#…)"` or gradient text),
   or a page with a repeating or conic gradient, is
   not split: it falls back to Ghostscript's
-  whole-page flattening, so its appearance is unchanged. On split pages rules
+  whole-page flattening, so its appearance is unchanged, and the build names
+  each such page's cause and the change that fixes it. On split pages rules
   and shapes are raster and text is always on top, so text another element
   covers shows through. The default, `flatten-page`, keeps today's behaviour
   and warning (which now mentions the option). The new

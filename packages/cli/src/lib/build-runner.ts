@@ -847,13 +847,13 @@ class PdfOutput implements OutputStrategy {
         const rawBytes = await fsp.readFile(rawPdf);
         const transparent = await transparentPages(rawBytes);
         if (transparent.length > 0 && config.pdfx.transparency === "preserve-text") {
-          const { pagesWithUnsplittableText } = await import("./pdf-inspect");
+          const { unsplittableTextReasons } = await import("./pdf-inspect");
           // A repeating/conic gradient (#386) is a PostScript-function shading
           // the artwork raster pass distorts, so its page is not split either.
-          const blocked = new Set([
-            ...(await pagesWithUnsplittableText(rawBytes)),
-            ...(await findPostScriptShadingPages(rawBytes)),
-          ]);
+          const blocked = new Map<number, string>(await unsplittableTextReasons(rawBytes));
+          for (const n of await findPostScriptShadingPages(rawBytes)) {
+            if (!blocked.has(n)) blocked.set(n, "gradient");
+          }
           const split = transparent.filter((n) => !blocked.has(n));
           const kept = transparent.filter((n) => blocked.has(n));
           await flattenTransparentPages(rawPdf, split, stage);
@@ -869,14 +869,27 @@ class PdfOutput implements OutputStrategy {
             );
           }
           if (kept.length > 0) {
+            // One line per cause, each with its fix: the causes need different author changes.
+            const CAUSE: Record<string, string> = {
+              "text-transparency":
+                "text drawn with transparency or blending (opacity, mix-blend-mode, a soft mask, a translucent text-shadow); keep that text opaque",
+              "type3-font":
+                "text in a Type 3 font (the synthetic bold of a single-weight font, or a text stroke); use a font face with a real bold",
+              "text-pattern-or-clip":
+                "text filled with a pattern or used as a clip (SVG fill=\"url(#…)\", gradient text, background-clip: text)",
+              gradient:
+                "a repeating or conic gradient; use a linear or radial gradient, or a small tiled image",
+            };
+            const byCause = new Map<string, number[]>();
+            for (const n of kept) {
+              const cause = blocked.get(n)!;
+              byCause.set(cause, [...(byCause.get(cause) ?? []), n]);
+            }
             log.warn(
-              `Page${kept.length === 1 ? "" : "s"} ${kept.join(", ")} could not keep ${kept.length === 1 ? "its" : "their"} text live. ` +
-                "Each has text drawn with transparency or blending (opacity, mix-blend-mode, a soft mask), " +
-                "in a Type 3 font (such as the synthetic bold of a single-weight font), " +
-                "with a pattern fill or as a clip (SVG text filled with url(#pattern), gradient text), " +
-                "or a repeating or conic gradient, none of which survives being split from flattened artwork unchanged. " +
-                `Ghostscript will flatten ${kept.length === 1 ? "that page" : "each of those pages"} ` +
-                "into one raster image, losing its embedded fonts and searchable text."
+              `Page${kept.length === 1 ? "" : "s"} ${kept.join(", ")} could not keep ${kept.length === 1 ? "its" : "their"} text live; ` +
+                `Ghostscript will flatten ${kept.length === 1 ? "that page" : "each of those pages"} into one raster image, ` +
+                "losing its embedded fonts and searchable text:\n" +
+                [...byCause].map(([cause, pages]) => `  - page${pages.length === 1 ? "" : "s"} ${pages.join(", ")}: ${CAUSE[cause]}`).join("\n")
             );
           }
         } else if (transparent.length > 0) {

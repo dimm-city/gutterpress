@@ -533,13 +533,26 @@ const SHOW_TEXT_OPS = new Set<number>(
  * XObject is an implicit save/restore).
  */
 export async function pagesWithUnsplittableText(pdfBytes: Uint8Array): Promise<number[]> {
+  return [...(await unsplittableTextReasons(pdfBytes)).keys()];
+}
+
+/** Why a page's text cannot be split from its artwork. */
+export type UnsplittableReason = "text-transparency" | "type3-font" | "text-pattern-or-clip";
+
+/**
+ * {@link pagesWithUnsplittableText} with the first reason found on each page,
+ * so the build can tell an author what to change on that page.
+ */
+export async function unsplittableTextReasons(
+  pdfBytes: Uint8Array
+): Promise<Map<number, UnsplittableReason>> {
   const GSTATE_BIT: Record<string, number> = { ca: 1, CA: 2, BM: 4, SMask: 8 };
   const COMPOSITING = 15; // the GSTATE_BIT flags: what makes a group count
   const FILL_PATTERN = 16;
   const STROKE_PATTERN = 32;
   const CLIP_TEXT = 64; // text render modes 4-7 add the glyphs to the clip
   const doc = await getDocumentProxy(new Uint8Array(pdfBytes));
-  const pages: number[] = [];
+  const pages = new Map<number, UnsplittableReason>();
   try {
     for (let i = 1; i <= doc.numPages; i++) {
       const page = await doc.getPage(i);
@@ -558,7 +571,7 @@ export async function pagesWithUnsplittableText(pdfBytes: Uint8Array): Promise<n
         else if (fn === OPS.setFont) {
           const ref = (ops.argsArray[j] as [unknown])[0];
           if (typeof ref === "string" && page.commonObjs.has(ref) && (page.commonObjs.get(ref) as { isType3Font?: boolean }).isType3Font) {
-            pages.push(i);
+            pages.set(i, "type3-font");
             break;
           }
         }
@@ -581,7 +594,8 @@ export async function pagesWithUnsplittableText(pdfBytes: Uint8Array): Promise<n
             state = on ? state | bit : state & ~bit;
           }
         } else if (SHOW_TEXT_OPS.has(fn) && (state || groups.includes(true))) {
-          pages.push(i);
+          const paint = state & (FILL_PATTERN | STROKE_PATTERN | CLIP_TEXT);
+          pages.set(i, paint ? "text-pattern-or-clip" : "text-transparency");
           break;
         }
       }

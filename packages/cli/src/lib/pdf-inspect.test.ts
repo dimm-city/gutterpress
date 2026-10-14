@@ -24,6 +24,7 @@ import {
   getOpPass,
   isLoadable,
   pagesWithUnsplittableText,
+  unsplittableTextReasons,
 } from "./pdf-inspect";
 import type { PDFDocumentProxy } from "unpdf/pdfjs";
 
@@ -332,6 +333,11 @@ describe("pagesWithUnsplittableText", () => {
     return doc.save();
   }
 
+  test("unsplittableTextReasons reports translucent text as text-transparency", async () => {
+    const bytes = await pdf(`q /G gs ${TEXT} Q`, { gs: { G: { ca: 0.4 } } });
+    expect(await unsplittableTextReasons(bytes)).toEqual(new Map([[1, "text-transparency"]]));
+  });
+
   test("plain text beside a soft shadow is eligible", async () => {
     const bytes = await pdf(`q /G gs 0 0 40 40 re f Q ${TEXT}`, { gs: { G: { ca: 0.4 } } });
     expect(await pagesWithUnsplittableText(bytes)).toEqual([]);
@@ -415,6 +421,15 @@ describe("pagesWithUnsplittableText: text paint", () => {
   test("a plain fill colour after the pattern, or Q, makes text eligible again", async () => {
     expect(await pagesWithUnsplittableText(await pdf(`/Pattern cs /P0 scn 0 g ${TEXT}`, true))).toEqual([]);
     expect(await pagesWithUnsplittableText(await pdf(`q /Pattern cs /P0 scn Q ${TEXT}`, true))).toEqual([]);
+  });
+
+  test("unsplittableTextReasons names the cause per page", async () => {
+    expect(await unsplittableTextReasons(await pdf(`/Pattern cs /P0 scn ${TEXT}`, true))).toEqual(
+      new Map([[1, "text-pattern-or-clip"]])
+    );
+    expect(await unsplittableTextReasons(await pdf("BT 7 Tr /F1 12 Tf 10 50 Td (Hello) Tj ET"))).toEqual(
+      new Map([[1, "text-pattern-or-clip"]])
+    );
   });
 
   test("text used as a clip (render modes 4-7) is flagged; invisible text (3) is not", async () => {
