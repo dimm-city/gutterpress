@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.19] - 2026-10-14
+
 ### Added
 
 - **`pdfx.transparency: preserve-text` (opt-in) keeps live text on PDF/X pages
