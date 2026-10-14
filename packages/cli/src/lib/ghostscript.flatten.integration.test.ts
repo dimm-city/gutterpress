@@ -396,6 +396,10 @@ testIf(
 @page
 
 <div class="vibe">Vibe four</div>
+
+@page
+
+<div class="card" style="height:200px"></div>
 `,
         "utf8"
       );
@@ -421,11 +425,26 @@ testIf(
       await manifest("");
       const source = await buildTo("pdf", "src");
       const warn = spyOn(log, "warn");
+      const info = spyOn(log, "info");
       const flat = await buildTo("pdfx", "default");
       await manifest("pdfx:\n  transparency: preserve-text\n");
       const kept = await buildTo("pdfx", "preserve");
       const warnings = warn.mock.calls.map((c) => String(c[0]));
+      const infos = info.mock.calls.map((c) => String(c[0]));
+      warn.mockClear();
+      // The override: page 2's cover must hide its words, so the author lists it.
+      await manifest("pdfx:\n  transparency: preserve-text\n  flattenPages: [2]\n  rasterDpi: 150\n");
+      const listed = await buildTo("pdfx", "listed");
+      const listedWarnings = warn.mock.calls.map((c) => String(c[0]));
       warn.mockRestore();
+      info.mockRestore();
+      // Benefit report: page 1 and 2 keep live text; page 5 (a shadow, no text)
+      // is not split; page 3 (translucent) and 4 (gradient) fall back.
+      expect(warnings.some((w) => w.startsWith("Pages 1, 2 use transparency"))).toBe(true);
+      expect(infos.some((w) => w.startsWith("Page 5 uses transparency but shows no text"))).toBe(true);
+      expect(warnings.some((w) => w.startsWith("Pages 3, 4 could not keep their text live"))).toBe(true);
+      expect(listedWarnings.some((w) => w.startsWith("Page 1 uses transparency") && w.includes("150 DPI"))).toBe(true);
+      expect(listedWarnings.some((w) => w.includes("page 2: listed in pdfx.flattenPages"))).toBe(true);
       // The gradient page has a shadow, so Ghostscript flattens it whole: the
       // warning names the text loss, not a blank gradient.
       expect(warnings.filter((w) => w.startsWith("Page 4: a repeating-*-gradient() or conic-gradient() is painted only"))).toHaveLength(2);
@@ -457,6 +476,17 @@ testIf(
       // The translucent-text page looks the same in both modes, and like the source.
       expect(diff(flat, 3)).toBeLessThan(3);
       expect(diff(kept, 3)).toBeLessThan(3);
+      // Listed in pdfx.flattenPages, page 2 is flattened whole like the default:
+      // the cover hides the words again.
+      expect(diff(listed, 2)).toBeLessThan(defaultCovered + 1);
+      expect((await textOf(listed))[1] ?? "").not.toContain("Card two");
+      // A page with no text is flattened whole in both modes.
+      expect(
+        meanAbsDiff(
+          rasterizePdfPage(ghostscript!, flat, dir, "a-flat", 5),
+          rasterizePdfPage(ghostscript!, kept, dir, "a-kept", 5)
+        )
+      ).toBeLessThan(0.1);
       // The gradient page goes through the same whole-page path in both modes,
       // so the two PDF/X outputs match each other. (Against the RGB source the
       // CMYK conversion alone moves colour by more than 1 on some Ghostscript

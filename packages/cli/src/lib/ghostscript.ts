@@ -305,9 +305,10 @@ export async function stripAnnotations(
  * Per affected page, two Ghostscript passes split it in two and pdf-lib
  * stacks the halves back on the ORIGINAL page object:
  *
- *  1. ARTWORK — `pdfimage24 -dFILTERTEXT -r300` drops the glyphs and
+ *  1. ARTWORK — `pdfimage24 -dFILTERTEXT -r<dpi>` drops the glyphs and
  *     composites everything left (soft shadows, alpha images, opacity) into
- *     one opaque 300 DPI image, straight from the source;
+ *     one opaque image (300 DPI unless `pdfx.rasterDpi` says otherwise),
+ *     straight from the source;
  *  2. TEXT — `-dFILTERIMAGE -dFILTERVECTOR` keeps only the glyphs. It needs
  *     `-dNOTRANSPARENCY`: without it Chromium's transparency groups and
  *     `/ca`/`/SMask` ExtGStates survive in the text-only file and the next
@@ -320,13 +321,15 @@ export async function stripAnnotations(
  *
  * Pages not listed are never touched. Known limits, both consequences of
  * splitting a page into "picture" and "text": the page's vector chrome
- * (rules, backgrounds, shapes) becomes the 300 DPI picture, and text is always
- * the top layer, so text another element covers shows through.
+ * (rules, backgrounds, shapes) becomes the picture, and text is always the
+ * top layer, so text another element covers shows through.
  */
 export async function flattenTransparentPages(
   pdfPath: string,
   pages: number[],
-  stagingDir: string
+  stagingDir: string,
+  /** artwork resolution (`pdfx.rasterDpi`) */
+  dpi = 300
 ): Promise<void> {
   if (pages.length === 0) return;
   const ghostscript = await resolveGhostscript();
@@ -350,7 +353,7 @@ export async function flattenTransparentPages(
     ]);
 
   try {
-    await gs(pageList, "-sDEVICE=pdfimage24", "-dFILTERTEXT", "-r300", `-sOutputFile=${art}`, pdfPath);
+    await gs(pageList, "-sDEVICE=pdfimage24", "-dFILTERTEXT", `-r${dpi}`, `-sOutputFile=${art}`, pdfPath);
     await gs(
       pageList,
       "-sDEVICE=pdfwrite",
@@ -388,7 +391,7 @@ export async function flattenTransparentPages(
       page.node.set(PDFName.of("Contents"), doc.context.obj([]));
       page.node.set(PDFName.of("Resources"), doc.context.obj({}));
       page.node.delete(PDFName.of("Group"));
-      // Scale to the original box: the 300 DPI raster's pixel grid rounds the
+      // Scale to the original box: the raster's pixel grid rounds the
       // page size by a fraction of a point.
       page.drawPage(artPages[i]!, { x, y, width, height });
       const textPage = textPages[i];
@@ -507,6 +510,13 @@ export async function convertToPdfxCmyk(
     title?: string;
     maxTac?: number;
     stagingDir: string;
+    /**
+     * Resolution of the picture Ghostscript makes of a page it flattens
+     * (`pdfx.rasterDpi`). Unset keeps Ghostscript's own default (720 DPI).
+     * pdfwrite uses it only for rendering it must do, such as transparency
+     * flattening: vector content is unaffected.
+     */
+    rasterDpi?: number;
   }
 ): Promise<void> {
   const iccPath = resolve(config.iccPath);
@@ -526,6 +536,7 @@ export async function convertToPdfxCmyk(
     "-dDownsampleColorImages=false",
     "-dDownsampleGrayImages=false",
     "-dDownsampleMonoImages=false",
+    ...(config.rasterDpi ? [`-r${config.rasterDpi}`] : []),
     "-sProcessColorModel=DeviceCMYK",
     "-sColorConversionStrategy=CMYK",
     "-dOverrideICC=true",

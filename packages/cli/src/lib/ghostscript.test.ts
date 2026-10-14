@@ -160,6 +160,35 @@ test("convertToPdfxCmyk uses resolved Ghostscript and stages its definition file
   }
 });
 
+test("convertToPdfxCmyk passes pdfx.rasterDpi to Ghostscript only when set", async () => {
+  const stagingDir = await mkdtemp(join(tmpdir(), "gutterpress-gs-dpi-"));
+  try {
+    const executable = join(stagingDir, "custom-gs");
+    await writeFile(executable, "");
+    process.env.GHOSTSCRIPT_PATH = executable;
+    const spawnSpy = spyOn(execMod, "spawnCapture").mockResolvedValue({
+      code: 0,
+      signal: null,
+      stdout: "",
+      stderr: "",
+    });
+    const convert = (rasterDpi?: number) =>
+      convertToPdfxCmyk(join(stagingDir, "raw.pdf"), join(stagingDir, "out.pdf"), {
+        iccPath: join(stagingDir, "profile.icc"),
+        pdfx: "x1a",
+        stagingDir,
+        rasterDpi,
+      });
+    await convert();
+    await convert(300);
+    const resolutions = spawnSpy.mock.calls.map((c) => (c[1] as string[]).filter((a) => a.startsWith("-r")));
+    expect(resolutions).toEqual([[], ["-r300"]]);
+    spawnSpy.mockRestore();
+  } finally {
+    await rm(stagingDir, { recursive: true, force: true });
+  }
+});
+
 test("convertToPdfxCmyk logs Ghostscript's warnings block instead of discarding it", async () => {
   const stagingDir = await mkdtemp(join(tmpdir(), "gutterpress-gs-warn-"));
   try {

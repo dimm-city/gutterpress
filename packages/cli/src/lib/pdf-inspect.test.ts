@@ -338,6 +338,12 @@ describe("pagesWithUnsplittableText", () => {
     expect(await unsplittableTextReasons(bytes)).toEqual(new Map([[1, "text-transparency"]]));
   });
 
+  test("a page that shows no text is reported as no-text, not as unsplittable", async () => {
+    const bytes = await pdf(`q /G gs 0 0 40 40 re f Q`, { gs: { G: { ca: 0.4 } } });
+    expect(await unsplittableTextReasons(bytes)).toEqual(new Map([[1, "no-text"]]));
+    expect(await pagesWithUnsplittableText(bytes)).toEqual([]);
+  });
+
   test("plain text beside a soft shadow is eligible", async () => {
     const bytes = await pdf(`q /G gs 0 0 40 40 re f Q ${TEXT}`, { gs: { G: { ca: 0.4 } } });
     expect(await pagesWithUnsplittableText(bytes)).toEqual([]);

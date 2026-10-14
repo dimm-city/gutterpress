@@ -120,6 +120,8 @@ every preset):
 pdfx:
   transparency: flatten-page   # default
   # transparency: preserve-text
+  # flattenPages: [4, 13]      # preserve-text: pages to flatten whole anyway
+  # rasterDpi: 300             # resolution of pictures made from transparent pages
 ```
 
 - **`flatten-page`** (default): the page is left to Ghostscript, which flattens
@@ -128,15 +130,19 @@ pdfx:
 - **`preserve-text`** (opt-in): Gutterpress flattens the artwork itself and keeps
   the text live, on the pages where that is faithful.
   1. Pages that use transparency are found. Every other page is left as it is,
-     vector text and shapes.
+     vector text and shapes. A transparent page that shows no text has nothing
+     to keep, so Ghostscript flattens it whole, as in `flatten-page`.
   2. On each such page the **artwork** (everything except the glyphs) is
-     composited into one opaque 300 DPI image, and the **text** is kept as live
+     composited into one opaque image (300 DPI, or `pdfx.rasterDpi`), and the
+     **text** is kept as live
      vector text drawn on top of it. Page boxes (Trim, Bleed, Crop), links and
      the document's metadata stay as they were.
   3. The usual PDF/X steps run on the result, so `pdfx.blackText: k-only` still
      reaches the text on these pages.
 
-  The build lists the pages it split. Alpha-channel images are still flagged by
+  The build reports three groups: pages that kept their text live, pages that
+  show no text, and text pages that fell back (below), and it says so when no
+  page kept its text. Alpha-channel images are still flagged by
   the `dtrpg` preset (`validate.assets.allowAlpha: false`); a book that opts in
   and uses them sets `allowAlpha: true` itself.
 
@@ -179,24 +185,42 @@ Such pages are not split and go to Ghostscript exactly as in `flatten-page`;
 the build names them, each with the first cause it found. A page can have more
 than one, so fixing the named cause can reveal another.
 
+**Flattening chosen pages whole.** `pdfx.flattenPages` lists pages that
+`preserve-text` leaves to Ghostscript's whole-page flattening even though they
+could be split, using the page numbers the build reports (the PDF's own page
+order, not printed folios). Use it for a page whose look depends on something
+painted over its text, such as a cover or a tint (see the limits below), so the
+rest of the book can still keep its text. Page numbers move when the book
+reflows: check the build's report after editing. A listed page with no
+transparency is never flattened; the build warns about it.
+
+**Picture resolution.** `pdfx.rasterDpi` sets the resolution of every picture
+made from a transparent page: the whole pages Ghostscript flattens and the
+`preserve-text` artwork. Unset, Ghostscript flattens whole pages at its default
+of 720 DPI and the `preserve-text` artwork is 300 DPI. It changes nothing else:
+vector text and shapes, and the book's own images, are not resampled. Lower is
+smaller and softer; fine rules and textures show it first. These pictures are
+compressed losslessly.
+
 Known limits of the pages that are split:
 
-- Rules, backgrounds and shapes are part of the 300 DPI picture, not vectors,
-  so fine rules lose their vector sharpness.
-- File size depends on the book's content and on rasterization: each split
-  page carries a 300 DPI full-page picture, and a whole-page fallback carries
+- Rules, backgrounds and shapes are part of the picture, not vectors, so fine
+  rules lose their vector sharpness.
+- File size depends on the book's content and on `pdfx.rasterDpi`: each split
+  page carries a full-page picture, and a whole-page fallback carries
   Ghostscript's own page image. Measured on the 228-page Dimm City Field Guide
   against `flatten-page`, the same source came out smaller with `preserve-text`
   (one styling 1126 MB to 235 MB, another 140 MB to 45 MB), mostly because of
-  the 300 DPI picture resolution; keeping the text live is the benefit, not the
-  size. Compare PDF/X against PDF/X: an RGB `--format pdf` build is not a
-  baseline for a CMYK PDF/X file. One blend mode
+  the picture resolution (300 against 720 DPI); `pdfx.rasterDpi` gets that
+  saving in either mode. Keeping the text live is `preserve-text`'s benefit,
+  not the size. Compare PDF/X against PDF/X: an RGB `--format pdf` build is not
+  a baseline for a CMYK PDF/X file. One blend mode
   anywhere in a book can make Chromium wrap most of its pages in transparency
   groups, so many more pages are split than the effect's own pages.
 - Text is always the top layer. If another element is painted over text, the
   text still shows through, and a translucent tint over text no longer tints
-  it. Do not use `preserve-text` for a book whose look depends on shapes or
-  tints painted over text.
+  it. List such pages in `pdfx.flattenPages`; do not use `preserve-text` for
+  a book whose look depends on shapes or tints painted over text throughout.
 - Keep CSS `filter` off text-bearing elements: Chromium rasterizes those into
   the PDF itself, before this step.
 

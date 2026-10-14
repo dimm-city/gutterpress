@@ -29,6 +29,16 @@ This project follows [Semantic Versioning](https://semver.org/).
   and warning (which now mentions the option). The new
   `examples/with-print-effects` book shows one effect per page; see "PDF/X and
   transparency" in `docs/publishing.md`.
+  The build reports which pages kept live text, which show no text (those are
+  not split: there is nothing to keep), and which text pages fell back, and
+  says so when no page kept its text. `pdfx.flattenPages: [4, 13]` flattens
+  chosen pages whole anyway, for a page whose cover or tint over its text must
+  stay as designed.
+- **`pdfx.rasterDpi`** sets the resolution of every picture made from a
+  transparent page in a PDF/X build: the whole pages Ghostscript flattens and
+  the `preserve-text` artwork. Unset keeps today's 720 DPI for whole pages and
+  300 for `preserve-text` artwork; vector content and the book's own images
+  are not resampled.
 
 ### Fixed
 

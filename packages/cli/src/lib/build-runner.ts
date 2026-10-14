@@ -877,31 +877,47 @@ class PdfOutput implements OutputStrategy {
           );
         }
 
+        const flattenPages = config.pdfx.flattenPages;
         if (transparent.length > 0 && config.pdfx.transparency === "preserve-text") {
           const { unsplittableTextReasons } = await import("./pdf-inspect");
+          const reasons = await unsplittableTextReasons(rawBytes);
+          // A page that shows no text has nothing to keep: Ghostscript's
+          // whole-page flattening is as good, so it is not split.
+          const artOnly = transparent.filter((n) => reasons.get(n) === "no-text" && !flattenPages.includes(n));
+          const blocked = new Map<number, string>();
+          // The author's list wins: it is the reason they will look for.
+          for (const n of flattenPages) blocked.set(n, "listed");
+          for (const [n, reason] of reasons) if (reason !== "no-text" && !blocked.has(n)) blocked.set(n, reason);
           // A repeating/conic gradient (#386) is a PostScript-function shading
           // the artwork raster pass distorts, so its page is not split either.
-          const blocked = new Map<number, string>(await unsplittableTextReasons(rawBytes));
-          for (const n of blankGradientPages) {
-            if (!blocked.has(n)) blocked.set(n, "gradient");
-          }
-          const split = transparent.filter((n) => !blocked.has(n));
-          const kept = transparent.filter((n) => blocked.has(n));
-          await flattenTransparentPages(rawPdf, split, stage);
+          for (const n of blankGradientPages) if (!blocked.has(n)) blocked.set(n, "gradient");
+          const split = transparent.filter((n) => !blocked.has(n) && !artOnly.includes(n));
+          const kept = transparent.filter((n) => blocked.has(n) && !artOnly.includes(n));
+          await flattenTransparentPages(rawPdf, split, stage, config.pdfx.rasterDpi);
           const x = pdfxMode === "x1a" ? "X-1a" : "X-3";
+          const dpi = config.pdfx.rasterDpi ?? 300;
           if (split.length > 0) {
             log.warn(
-              `Page${split.length === 1 ? "" : "s"} ${split.join(", ")} use${split.length === 1 ? "s" : ""} ` +
+              `${pageList(split)} use${split.length === 1 ? "s" : ""} ` +
                 `transparency, which PDF/${x} (PDF 1.3) cannot represent. ` +
-                "Each was flattened to a 300 DPI picture with its text kept live on top " +
+                `Each was flattened to a ${dpi} DPI picture with its text kept live on top ` +
                 "(pdfx.transparency: preserve-text), so fonts and searchable text survive. " +
                 "On those pages, rules, backgrounds and shapes are raster, and text always " +
-                "sits above the artwork: text another element covers shows through."
+                "sits above the artwork: text another element covers shows through. " +
+                "List a page in pdfx.flattenPages to flatten it whole instead."
+            );
+          }
+          if (artOnly.length > 0) {
+            log.info(
+              `${pageList(artOnly)} use${artOnly.length === 1 ? "s" : ""} transparency but show${artOnly.length === 1 ? "s" : ""} no text, ` +
+                "so there is no text to keep: Ghostscript flattens " +
+                `${artOnly.length === 1 ? "it" : "each"} whole (resolution: pdfx.rasterDpi).`
             );
           }
           if (kept.length > 0) {
             // One line per cause, each with its fix: the causes need different author changes.
             const CAUSE: Record<string, string> = {
+              listed: "listed in pdfx.flattenPages",
               "text-transparency":
                 "text drawn with transparency or blending (opacity, mix-blend-mode, a soft mask, a translucent text-shadow); keep that text opaque",
               "type3-font":
@@ -917,14 +933,30 @@ class PdfOutput implements OutputStrategy {
               byCause.set(cause, [...(byCause.get(cause) ?? []), n]);
             }
             log.warn(
-              `Page${kept.length === 1 ? "" : "s"} ${kept.join(", ")} could not keep ${kept.length === 1 ? "its" : "their"} text live; ` +
+              `${pageList(kept)} could not keep ${kept.length === 1 ? "its" : "their"} text live; ` +
                 `Ghostscript will flatten ${kept.length === 1 ? "that page" : "each of those pages"} into one raster image, ` +
                 "losing its embedded fonts and searchable text. Each page lists the first cause found; " +
                 "fixing it can reveal another:\n" +
                 [...byCause].map(([cause, pages]) => `  - page${pages.length === 1 ? "" : "s"} ${pages.join(", ")}: ${CAUSE[cause]}`).join("\n")
             );
           }
-        } else if (transparent.length > 0) {
+          if (split.length === 0 && kept.length > 0) {
+            log.warn(
+              "pdfx.transparency: preserve-text kept no page's text live in this book: " +
+                "every page with transparency and text falls back (see above)."
+            );
+          }
+        }
+        const unused = flattenPages.filter((n) => !transparent.includes(n));
+        if (flattenPages.length > 0 && config.pdfx.transparency !== "preserve-text") {
+          log.warn("pdfx.flattenPages has no effect without pdfx.transparency: preserve-text.");
+        } else if (unused.length > 0) {
+          log.warn(
+            `pdfx.flattenPages lists ${pageList(unused).toLowerCase()}, which ${unused.length === 1 ? "has" : "have"} no transparency ` +
+              "(or do not exist): nothing to flatten there."
+          );
+        }
+        if (transparent.length > 0 && config.pdfx.transparency !== "preserve-text") {
           log.warn(
             "This book uses transparency — an image with an alpha channel, or a CSS " +
               "rule like `opacity` or `mix-blend-mode`. " +
@@ -960,6 +992,7 @@ class PdfOutput implements OutputStrategy {
           title: config.title,
           maxTac: config.ink.maxTac,
           stagingDir: stage,
+          rasterDpi: config.pdfx.rasterDpi,
         });
       }
 

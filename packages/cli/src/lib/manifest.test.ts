@@ -242,6 +242,18 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
     expect(resolveConfig({}, {}).validate.assets.allowAlpha).toBe(false);
   });
 
+  test("pdfx.flattenPages and pdfx.rasterDpi: unset by default, validated when set", () => {
+    expect(resolveConfig({}, {}).pdfx.flattenPages).toEqual([]);
+    expect(resolveConfig({}, {}).pdfx.rasterDpi).toBeUndefined();
+    const set = resolveConfig({}, { pdfx: { flattenPages: [4, 13], rasterDpi: 300 } }).pdfx;
+    expect(set.flattenPages).toEqual([4, 13]);
+    expect(set.rasterDpi).toBe(300);
+    expect(() => resolveConfig({}, { pdfx: { flattenPages: [0] } })).toThrow(/pdfx\.flattenPages/);
+    expect(() => resolveConfig({}, { pdfx: { flattenPages: 4 as never } })).toThrow(/pdfx\.flattenPages/);
+    expect(() => resolveConfig({}, { pdfx: { rasterDpi: 50 } })).toThrow(/pdfx\.rasterDpi/);
+    expect(() => resolveConfig({}, { pdfx: { rasterDpi: 300.5 } })).toThrow(/pdfx\.rasterDpi/);
+  });
+
   test("one-level-deep object (pdfx): manifest overrides flavor only, icc/stripAnnotations keep preset defaults", () => {
     const config = resolveConfig({}, { pdfx: { flavor: "x3" } });
     expect(config.pdfx.flavor).toBe("x3");

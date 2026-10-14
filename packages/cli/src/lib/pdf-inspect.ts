@@ -533,15 +533,20 @@ const SHOW_TEXT_OPS = new Set<number>(
  * XObject is an implicit save/restore).
  */
 export async function pagesWithUnsplittableText(pdfBytes: Uint8Array): Promise<number[]> {
-  return [...(await unsplittableTextReasons(pdfBytes)).keys()];
+  const reasons = await unsplittableTextReasons(pdfBytes);
+  return [...reasons].filter(([, reason]) => reason !== "no-text").map(([page]) => page);
 }
 
-/** Why a page's text cannot be split from its artwork. */
-export type UnsplittableReason = "text-transparency" | "type3-font" | "text-pattern-or-clip";
+/**
+ * Why a page is not split from its artwork: its text cannot be (the first
+ * three), or it shows no text at all, so there is none to keep (`no-text`).
+ */
+export type UnsplittableReason = "text-transparency" | "type3-font" | "text-pattern-or-clip" | "no-text";
 
 /**
  * {@link pagesWithUnsplittableText} with the first reason found on each page,
- * so the build can tell an author what to change on that page.
+ * so the build can tell an author what to change on that page, plus the pages
+ * that show no text (`no-text`).
  */
 export async function unsplittableTextReasons(
   pdfBytes: Uint8Array
@@ -560,6 +565,7 @@ export async function unsplittableTextReasons(
       let state = 0; // GSTATE_BIT flags currently in effect
       const groups: boolean[] = []; // open groups: composited translucent, blended, masked or knockout?
       const stack: number[] = [];
+      let showsText = false;
       for (let j = 0; j < ops.fnArray.length; j++) {
         const fn = ops.fnArray[j]!;
         if (fn === OPS.save || fn === OPS.paintFormXObjectBegin) stack.push(state);
@@ -593,12 +599,16 @@ export async function unsplittableTextReasons(
               key === "BM" ? value !== "source-over" : key === "SMask" ? !!value : (value as number) < 1;
             state = on ? state | bit : state & ~bit;
           }
-        } else if (SHOW_TEXT_OPS.has(fn) && (state || groups.includes(true))) {
-          const paint = state & (FILL_PATTERN | STROKE_PATTERN | CLIP_TEXT);
-          pages.set(i, paint ? "text-pattern-or-clip" : "text-transparency");
-          break;
+        } else if (SHOW_TEXT_OPS.has(fn)) {
+          showsText = true;
+          if (state || groups.includes(true)) {
+            const paint = state & (FILL_PATTERN | STROKE_PATTERN | CLIP_TEXT);
+            pages.set(i, paint ? "text-pattern-or-clip" : "text-transparency");
+            break;
+          }
         }
       }
+      if (!showsText && !pages.has(i)) pages.set(i, "no-text");
     }
   } finally {
     await doc.destroy();
