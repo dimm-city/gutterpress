@@ -1,3 +1,5 @@
+> Superseded for latest-build results by the [full three-sweep rerun on ff1022bf](rerun-ff1022bf/README.md). The report below records the historical run and its original findings.
+
 # Field Guide advanced CSS PDF export tests
 
 **Historical full-book test: `8a33992`.** See the README for the targeted verification of subsequent fix `4312289`.

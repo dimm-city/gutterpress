@@ -1,0 +1,88 @@
+{
+  "sweeps": [
+    {
+      "sweep": "combined",
+      "prCommit": "ff1022bf061e18a10afeaf4e15414f3bd0cd3c1e",
+      "source": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-stress/rerun-ff1022bf/combined/combined-pdf.pdf",
+      "final": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-stress/rerun-ff1022bf/combined/combined-pdfx.pdf",
+      "pages": 228,
+      "fallback": [
+        2,
+        5,
+        7,
+        8,
+        10,
+        12,
+        14,
+        15,
+        18,
+        138,
+        159,
+        192
+      ],
+      "checked": 216,
+      "exactSequenceMatches": 216,
+      "inventoryMatches": 216,
+      "mismatches": [],
+      "sourceSha256": "3b195cc27b5a931e43a8262a0a9b21c44618ccbdbd7f3bc631e5f13e268fa898",
+      "finalSha256": "333a436b24a9a2e8960f8ca50cd36b3d16cbfd87d71d488d7a0b5f03e49cb55c"
+    },
+    {
+      "sweep": "isolated",
+      "prCommit": "ff1022bf061e18a10afeaf4e15414f3bd0cd3c1e",
+      "source": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-stress/rerun-ff1022bf/isolated/isolated-pdf.pdf",
+      "final": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-stress/rerun-ff1022bf/isolated/isolated-pdfx.pdf",
+      "pages": 228,
+      "fallback": [
+        10,
+        15,
+        18,
+        19
+      ],
+      "checked": 224,
+      "exactSequenceMatches": 224,
+      "inventoryMatches": 224,
+      "mismatches": [],
+      "sourceSha256": "f0e2567947d2c7cb2465dfaac6e12155167a2f9188e538c0ffbf9168acece2db",
+      "finalSha256": "2c7946815445186506867e820ac60a3ce3921ac11737415b0de871047e1492c9"
+    },
+    {
+      "sweep": "boundary",
+      "prCommit": "ff1022bf061e18a10afeaf4e15414f3bd0cd3c1e",
+      "source": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-stress/rerun-ff1022bf/boundary/boundary-pdf.pdf",
+      "final": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-stress/rerun-ff1022bf/boundary/boundary-pdfx.pdf",
+      "pages": 228,
+      "fallback": [
+        14,
+        15,
+        17
+      ],
+      "checked": 225,
+      "exactSequenceMatches": 225,
+      "inventoryMatches": 225,
+      "mismatches": [],
+      "sourceSha256": "386a89880c422769fec5038f6e50dcf7f3f4fbd5ccd54f117836f119bc2e736d",
+      "finalSha256": "6ab6ec76eb9f4129f51f412a7bc4ccc4b507c865292b4b6eaa165f1ddd18a9d6"
+    }
+  ],
+  "totalNonfallbackPagesChecked": 665,
+  "allOrderedGlyphSequencesEqual": true,
+  "verifiedDiagnosticDefects": [
+    {
+      "file": "packages/cli/src/lib/build-runner.ts",
+      "line": 844,
+      "relatedFile": "packages/cli/src/lib/printsafe.ts:486",
+      "finding": "Blank-gradient prediction contradicted by visible gradients in combined and boundary page 14 PDF/X renders; both pages take whole-page fallback."
+    },
+    {
+      "file": "packages/cli/src/lib/build-runner.ts",
+      "line": 893,
+      "finding": "Real-bold remediation does not fix stroke-driven Type3: isolated pages15/18 source headings explicitly use Tomorrow-Bold Type3, and the pinned Tomorrow700 face has real Bold metadata."
+    }
+  ],
+  "visualSpotChecks": [
+    "combined/previews/compare-p014.jpg",
+    "boundary/previews/compare-p014.jpg"
+  ],
+  "scope": "Unicode glyph sequence/inventory comparison on all nonfallback pages; sampled gradient visual verification. Not a general image-fidelity or press-compliance certification."
+}

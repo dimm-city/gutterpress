@@ -1,0 +1,26 @@
+{
+  "results": [],
+  "summary": {
+    "total": 14,
+    "errors": 0,
+    "warnings": 0,
+    "infos": 0,
+    "passed": 14
+  },
+  "passed": [
+    "pdf.structure.qpdf",
+    "pdf.print.page-size",
+    "pdf.print.pdfx-markers",
+    "pdf.print.color-spaces",
+    "pdf.print.embedded-fonts",
+    "pdf.print.transparency",
+    "pdf.print.bleed",
+    "pdf.print.pdfx-metadata",
+    "pdf.structure.qpdf",
+    "pdf.print.page-size",
+    "pdf.print.color-spaces",
+    "pdf.print.embedded-fonts",
+    "pdf.print.transparency",
+    "pdf.print.bleed"
+  ]
+}

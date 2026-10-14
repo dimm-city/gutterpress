@@ -1,0 +1,15 @@
+{
+  "book_head": "11ddc736",
+  "pr_head": "ff1022bf061e18a10afeaf4e15414f3bd0cd3c1e",
+  "all_sweeps_full_book": true,
+  "css_unchanged_from_historical_sweeps": {
+    "combined": true,
+    "isolated": true,
+    "boundary": true
+  },
+  "css_sha256": {
+    "combined": "5f88de72ddcfedaff133027bc983b0ae76dac6175442c2c5107fedf0ba28b556",
+    "isolated": "cf4babc99ebce1e5b36c72eeeaa1cd3bffcb818c9a9653e5cc2e57532b0423f7",
+    "boundary": "b9389aa85d22970e4a463ff2364f31038931ff866c5c1ac6691253c140c607a6"
+  }
+}

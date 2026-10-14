@@ -1,0 +1,128 @@
+bun test v1.4.1 (4661e494f)
+
+packages/cli/src/lib/printsafe.test.ts:
+(pass) checkCss warns on filter: with the measured rasterization/build-time message [2.00ms]
+(pass) checkCss's filter: warning also names the render-parity blind spot [0.13ms]
+(pass) checkCss stays silent on filter: when the CSS has no filter declarations [0.27ms]
+(pass) checkCss warns once on transform: inside an @page margin box [0.29ms]
+(pass) checkCss does not flag transform: outside an @page margin box [0.17ms]
+(pass) checkCss warns on width: fit-content with no block-axis size in a margin box [0.22ms]
+(pass) checkCss accepts fit-content width once a block-axis size is present [0.28ms]
+(pass) checkCss does not flag a full-height margin box that paints its own chip [0.24ms]
+(pass) checkCss does not flag fit-content width outside an @page margin box [0.11ms]
+(pass) checkCss warns when a page wrapper clips its descendants [0.16ms]
+(pass) checkCss warns when a page wrapper becomes a stacking context [0.27ms]
+(pass) page-containment stays a narrow source hint; live wrapper chains belong to the engine audit [0.07ms]
+(pass) checkCss accepts the values core itself relies on [0.08ms]
+(pass) checkCss does not flag classes that merely start with page/spread [0.07ms]
+(pass) checkCss accepts a :has()-scoped clip exception [0.06ms]
+(pass) checkCss warns on a gradient in @page { background } [0.23ms]
+(pass) checkCss warns on a gradient in @page { background-image } [0.07ms]
+(pass) checkCss does not flag a gradient anywhere a gradient paints [0.10ms]
+(pass) checkCss warns on every property a margin box silently drops [0.50ms]
+(pass) filter: in a margin box reports the drop, not the rasterization cost [0.10ms]
+(pass) checkCss does not flag the properties a margin box honours [0.14ms]
+(pass) isolation is reported as a stacking context, never as a rasterization risk [0.09ms]
+(pass) removing isolation from riskyProps keeps the page-containment signal intact [0.07ms]
+(pass) inert values are never a rasterization risk (#259) [0.55ms]
+(pass) a book that suppresses a filter with filter: none reaches zero findings for that rule [0.07ms]
+(pass) an inert value inside an @page margin box is not reported as a dropped declaration [0.12ms]
+(pass) will-change: auto on a page wrapper is not a stacking context; will-change: transform still is [0.10ms]
+(pass) overflow at visible or a CSS-wide reset keyword does not clip; any other value does [0.18ms]
+(pass) clip-path: basic shapes are not flagged, url(...) is [0.23ms]
+(pass) gutterpress-disable-next-line silences the named rule on the next line only [0.27ms]
+(pass) gutterpress-disable-next-line only silences the rules it names [0.13ms]
+(pass) lint rules: off drops a rule, warn/error set its severity, unknown ids are ignored [0.21ms]
+(pass) checkCss warns that repeating-linear-gradient(45deg, red 0 10px, blue 10px 20px) prints blank in PDF/X [0.06ms]
+(pass) checkCss warns that repeating-radial-gradient(circle, red 0 10px, blue 10px 20px) prints blank in PDF/X [0.03ms]
+(pass) checkCss warns that conic-gradient(red, blue, red) prints blank in PDF/X [0.02ms]
+(pass) checkCss warns that repeating-conic-gradient(red 0 20deg, blue 20deg 40deg) prints blank in PDF/X [0.02ms]
+(pass) checkCss warns that -webkit-repeating-linear-gradient(red 0 10px, blue 10px 20px) prints blank in PDF/X [0.02ms]
+(pass) checkCss flags a PostScript-shading gradient among layered backgrounds and in background-image [0.03ms]
+(pass) checkCss stays silent on plain gradients and the tiled-stripe workaround [0.05ms]
+(pass) the PDF/X gradient warning honours disable directives and lint.rules [0.10ms]
+
+packages/cli/src/lib/pdf-inspect.test.ts:
+[pdf-inspect.test] fixture not found (/tmp/gutterpress-pr388-evidence-head/packages/cli/tests/field-guide.pdf); skipping real-PDF suite
+(skip) pdf-inspect (real PDF fixture) > (unnamed)
+(skip) pdf-inspect (real PDF fixture) > loads the document and reports page count
+(skip) pdf-inspect (real PDF fixture) > loadPdf returns the same cached instance for the same path
+(skip) pdf-inspect (real PDF fixture) > loadPdf returns null for a missing file
+(skip) pdf-inspect (real PDF fixture) > page size is reported in points (US Letter)
+(skip) pdf-inspect (real PDF fixture) > reads the outline (bookmark) tree
+(skip) pdf-inspect (real PDF fixture) > enumerates fonts and detects them as embedded (Chromium output)
+(skip) pdf-inspect (real PDF fixture) > builds a per-page image inventory with placed sizes
+(skip) pdf-inspect (real PDF fixture) > structural parse gate passes for a valid PDF
+(pass) pdf-inspect (synthetic pdf-lib document) > loads and reports page count [7.66ms]
+(pass) pdf-inspect (synthetic pdf-lib document) > reports page size in points [0.68ms]
+(pass) pdf-inspect (synthetic pdf-lib document) > no outline → count 0; structural gate passes [0.38ms]
+(pass) pdf-inspect (synthetic pdf-lib document) > loadPdf returns null for a missing file [0.10ms]
+(pass) pdf-inspect cache eviction + clearPdfCache > clearPdfCache destroys grace-held evicted documents immediately [46.04ms]
+(pass) pdf-inspect cache eviction + clearPdfCache > releasing one of two overlapping retains keeps documents alive; the last release clears cached + grace-held [46.37ms]
+(pass) pdf-inspect cache eviction + clearPdfCache > release is idempotent — a stale release cannot clear a newer scope [41.70ms]
+(pass) pagesWithUnsplittableText > unsplittableTextReasons reports translucent text as text-transparency [22.91ms]
+(pass) pagesWithUnsplittableText > plain text beside a soft shadow is eligible [2.98ms]
+(pass) pagesWithUnsplittableText > a page-level /Group alone does not count [2.34ms]
+(pass) pagesWithUnsplittableText > constant alpha, blend mode and soft mask on the text flag the page [9.64ms]
+(pass) pagesWithUnsplittableText > an opaque or Normal state is eligible, and Q ends the effect [3.69ms]
+(pass) pagesWithUnsplittableText > text in a plain isolated group at alpha 1 is eligible (Chromium's wrapper) [4.12ms]
+(pass) pagesWithUnsplittableText > text in an opacity group (alpha set outside, reset inside) is flagged [2.37ms]
+(pass) pagesWithUnsplittableText > text in a knockout group is flagged, and so is text nested inside one [3.03ms]
+(pass) pagesWithUnsplittableText > a plain form inherits the state it is drawn in [3.46ms]
+(pass) pagesWithUnsplittableText: text paint > text filled with a tiling pattern is flagged [3.03ms]
+(pass) pagesWithUnsplittableText: text paint > a plain fill colour after the pattern, or Q, makes text eligible again [5.15ms]
+(pass) pagesWithUnsplittableText: text paint > unsplittableTextReasons names the cause per page [5.03ms]
+(pass) pagesWithUnsplittableText: text paint > text used as a clip (render modes 4-7) is flagged; invisible text (3) is not [4.78ms]
+
+packages/cli/src/lib/ghostscript.test.ts:
+(pass) resolveGhostscript > uses GHOSTSCRIPT_PATH before probing PATH [0.39ms]
+(pass) resolveGhostscript > probes the standard Windows command names in priority order [0.13ms]
+(pass) resolveGhostscript > finds the newest conventional versioned Program Files install [0.94ms]
+(pass) stripAnnotations keeps its qpdf scratch file in staging, and deletes leftover /Annots [9.46ms]
+(pass) convertToPdfxCmyk uses resolved Ghostscript and stages its definition file [1.34ms]
+(pass) convertToPdfxCmyk logs Ghostscript's warnings block instead of discarding it [0.42ms]
+(pass) convertToPdfxCmyk reports a Ghostscript crash with its version [0.37ms]
+(pass) transparentPages > none on a plain opaque PDF [1.46ms]
+(pass) transparentPages > detects an alpha-channel image (/SMask on an image XObject) [0.73ms]
+(pass) transparentPages > does not false-positive on an opaque image's /SMask /None [0.64ms]
+(pass) transparentPages > detects a CSS-opacity transparency group even inside an object stream [1.12ms]
+(pass) transparentPages > detects graphics-state constant alpha (/ca < 1) and names only that page [1.08ms]
+(pass) transparentPages > detects a non-Normal blend mode [0.79ms]
+(pass) transparentPages > does not false-positive on a fully opaque graphics state or /BM /Normal [1.16ms]
+(pass) transparentPages > returns none rather than throwing on bytes that are not a PDF [0.37ms]
+
+packages/cli/src/lib/exec.test.ts:
+(pass) execCapture rejects with a signal-named message when child is killed by a signal [5.67ms]
+(pass) run rejects with the signal name, not 'exited null', when the child is killed [154.85ms]
+(pass) execCapture timeout rejection message is byte-exact: '<cmd> <args> timed out after <ms>ms' [101.05ms]
+(pass) execCapture non-zero-exit rejection message is byte-exact: '<cmd> exited <code>\n<stderr>' [1.24ms]
+(pass) execCapture signal-death rejection message is byte-exact: '<cmd> was killed by signal <sig>\n<stderr>' [0.94ms]
+(pass) buildEnhancedPath joins with the given separator, not a hardcoded ':' [0.04ms]
+(pass) buildEnhancedPath defaults to node:path's delimiter for the current platform [0.01ms]
+(pass) buildEnhancedPath does not corrupt Windows drive-letter paths by fusing them together [0.02ms]
+(pass) exec.ts exports a single shared enhancedPath built from localBin [0.01ms]
+(pass) execCapture with no timeoutMs option behaves as before (unlimited wait) [2.08ms]
+(pass) execCapture rejects and kills the child once timeoutMs elapses [100.77ms]
+(pass) execCapture with timeoutMs: 0 disables the kill timer entirely [2.31ms]
+(pass) execCapture's kill timer is cleared on normal (non-timeout) completion [2.24ms]
+(pass) execCapture's kill timer is unref'd so it cannot hold the event loop open [2.54ms]
+(pass) spawnCapture re-arms the flush grace while a grandchild keeps streaming after 'exit' [1570.58ms]
+(pass) spawnCapture settles ~one grace after 'exit' when a silent grandchild holds the pipe [201.28ms]
+(pass) execCapture respects the cwd option [2.56ms]
+
+9 tests skipped:
+(skip) pdf-inspect (real PDF fixture) > (unnamed)
+(skip) pdf-inspect (real PDF fixture) > loads the document and reports page count
+(skip) pdf-inspect (real PDF fixture) > loadPdf returns the same cached instance for the same path
+(skip) pdf-inspect (real PDF fixture) > loadPdf returns null for a missing file
+(skip) pdf-inspect (real PDF fixture) > page size is reported in points (US Letter)
+(skip) pdf-inspect (real PDF fixture) > reads the outline (bookmark) tree
+(skip) pdf-inspect (real PDF fixture) > enumerates fonts and detects them as embedded (Chromium output)
+(skip) pdf-inspect (real PDF fixture) > builds a per-page image inventory with placed sizes
+(skip) pdf-inspect (real PDF fixture) > structural parse gate passes for a valid PDF
+
+ 92 pass
+ 9 skip
+ 0 fail
+ 296 expect() calls
+Ran 101 tests across 4 files. [2.52s]

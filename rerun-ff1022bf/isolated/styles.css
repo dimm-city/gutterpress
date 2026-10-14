@@ -1,0 +1,95 @@
+/* FG-OVERRIDES.CSS — Field Guide book overrides.
+   Book-specific rules scoped to Field Guide pages and chapters. Unlayered, so
+   it beats the gp-dimm-city package (which sits in `@layer ext.gp-dimm-city`)
+   at any specificity. Shared component styling lives in gp-dimm-city.
+
+   Rule of thumb: a rule belongs here only if its selector is scoped to a
+   specific page class or chapter id, or it is break control or a .fg-art-*
+   image utility. A bare .dc-* rule, or any spacing/colour/font change to a
+   component, belongs in the package so a second DC book gets it for free. */
+
+/* ── ART ─────────────────────────────────────────────────────────────────── */
+
+/* Founders House plate on the credits page. Placement and width come from
+   core's `.gp-pin .gp-bottom .gp-full` in the markdown; do not add position,
+   inset or width here, since a `.fg-art-*` class beats `.gp-pin` at equal
+   specificity. (Pinned art needs an explicit width: `width: auto` lets the
+   image's intrinsic width feed native print's preferred-width computation and
+   scales the whole book down.) Only the plate's look and height are declared. */
+.fg-art-founders-house {
+   height: 2.75in;
+   object-fit: cover;
+   border: none;
+   box-shadow: none;
+}
+
+/* Chapter opener art: fills the chapter-start splash below the C.NN banner
+   (page 11.25in less margins ~10in, less ~1.2in banner = ~8.5in). */
+.fg-art-chapter-opener {
+   width: 100%;
+   height: 8.5in;
+   object-fit: cover;
+   display: block;
+   margin: 0;
+}
+
+/* In-flow spot plate between core's `.gp-medium` (50%) and `.gp-large` (75%),
+   for art centred (`.gp-center`) in the space a page has left. Sized only.
+   66%, not 70%: under the DriveThruRPG margins the 70% plate (282pt tall)
+   missed the space under Break Your Demons by 5pt and printed alone on the
+   next page. */
+.fg-art-plate {
+   width: 66%;
+}
+
+/* ── TABLES AND TEXT ─────────────────────────────────────────────────────── */
+
+/* The NPC chapter's closing tagline (chapter-04): `.dc-h6` look in body ink
+   (a `###### <p>` took body-text colour). */
+.fg-tagline {
+   color: var(--ink);
+}
+/* PDFX STRESS LAB — deliberately experimental; not production styling.
+   All experiments live in this book sheet; the pinned extension is untouched.
+   This face-range override removes synthetic-bold Type 3 text, allowing the
+   artwork/text split to be exercised. It does not add real font weights.
+   baseline.pdf retains the original font declaration for comparison. */
+@font-face {
+  font-family: 'lixdu';
+  src: url('../plugins/npm/gp-dimm-city/1.6.3/node_modules/gp-dimm-city/fonts/lixdu/lixdu.woff') format('woff');
+  font-weight: 100 900;
+  font-style: normal;
+}
+
+
+/* ISOLATED SWEEP: independent controls on real book elements. */
+/* A: rotation of opaque live text, shadow only on its container. */
+#c2-who-do-you-dream { transform:rotate(-1deg); transform-origin:center; }
+.page:has(#c2-who-do-you-dream) .section { box-shadow:3pt 4pt 8pt #0006; }
+/* B: hard opaque text-shadow, no soft shadow. */
+.dc-page-contents h1 { text-shadow:2pt 2pt 0 #a00080; }
+/* C: callout translucency without stroked heading or backdrop filter. */
+.page:has(#c2-character-profile) .dc-alert { --dc-alert-bg:rgba(0,175,220,.23); box-shadow:3pt 4pt 8pt #0005; }
+/* D: geometric clipping of opaque text with a separate shadow. */
+#c2-first-impressions { clip-path:polygon(0 0,70% 0,70% 100%,0 100%); }
+.page:has(#c2-first-impressions) .section { box-shadow:3pt 4pt 8pt #0005; }
+/* E: overflow clipping truncates real body text; no transparent glyphs. */
+.dc-page-citizen-file:has(table) .section > p:first-of-type { max-height:5pt; overflow:hidden; }
+.dc-page-citizen-file:has(table) table { box-shadow:3pt 4pt 8pt #0005; }
+/* F/G: opaque and RGBA strokes on the same regular family, separate pages. */
+#c2-community { font-family:'Tomorrow'; -webkit-text-stroke:.2pt #d50076; }
+.page:has(#c2-community) .section { box-shadow:3pt 4pt 8pt #0005; }
+#c2-flaw { font-family:'Tomorrow'; -webkit-text-stroke:.2pt rgba(200,0,100,.4); }
+.page:has(#c2-flaw) .section { box-shadow:3pt 4pt 8pt #0005; }
+/* H/I: opacity boundary without another translucent text rule. */
+#c2-ideal { opacity:1; box-shadow:3pt 4pt 8pt #0005; }
+#c2-dream { opacity:.999; box-shadow:3pt 4pt 8pt #0005; }
+/* J: a real backdrop blur over existing prose, with translucent foreground. */
+.page:has(#c2-style) .section > p:first-of-type { position:relative; }
+.page:has(#c2-style) .section > p:first-of-type::after {
+ content:""; position:absolute; z-index:5; inset:0; background:#00ccee44; backdrop-filter:blur(2pt);
+}
+/* K: opaque inset shadow: artwork may legitimately cover glyphs at the edge. */
+.page:has(img[alt="creaturepunk"]) .section:first-of-type { box-shadow:inset 0 18pt 0 #ffffff; }
+/* L: soft-only text shadow distinguishes Chromium's glyph representation. */
+.page:has(img[alt="Tiny T2"]) h3 { text-shadow:2pt 2pt 4pt #d5007680; }

@@ -1,0 +1,1827 @@
+{
+  "sweep": "isolated",
+  "prCommit": "ff1022bf061e18a10afeaf4e15414f3bd0cd3c1e",
+  "source": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-stress/rerun-ff1022bf/isolated/isolated-pdf.pdf",
+  "final": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-stress/rerun-ff1022bf/isolated/isolated-pdfx.pdf",
+  "pages": 228,
+  "fallback": [
+    10,
+    15,
+    18,
+    19
+  ],
+  "checked": 224,
+  "exactSequenceMatches": 224,
+  "inventoryMatches": 224,
+  "mismatches": [],
+  "rows": [
+    {
+      "page": 1,
+      "fallback": false,
+      "sourceGlyphs": 1321,
+      "finalGlyphs": 1321,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 2,
+      "fallback": false,
+      "sourceGlyphs": 979,
+      "finalGlyphs": 979,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 3,
+      "fallback": false,
+      "sourceGlyphs": 1131,
+      "finalGlyphs": 1131,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 4,
+      "fallback": false,
+      "sourceGlyphs": 1558,
+      "finalGlyphs": 1558,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 5,
+      "fallback": false,
+      "sourceGlyphs": 1778,
+      "finalGlyphs": 1778,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 6,
+      "fallback": false,
+      "sourceGlyphs": 0,
+      "finalGlyphs": 0,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 7,
+      "fallback": false,
+      "sourceGlyphs": 1124,
+      "finalGlyphs": 1124,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 8,
+      "fallback": false,
+      "sourceGlyphs": 752,
+      "finalGlyphs": 752,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 9,
+      "fallback": false,
+      "sourceGlyphs": 1707,
+      "finalGlyphs": 1707,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 10,
+      "fallback": true
+    },
+    {
+      "page": 11,
+      "fallback": false,
+      "sourceGlyphs": 1561,
+      "finalGlyphs": 1561,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 12,
+      "fallback": false,
+      "sourceGlyphs": 3304,
+      "finalGlyphs": 3304,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 13,
+      "fallback": false,
+      "sourceGlyphs": 1272,
+      "finalGlyphs": 1272,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 14,
+      "fallback": false,
+      "sourceGlyphs": 715,
+      "finalGlyphs": 715,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 15,
+      "fallback": true
+    },
+    {
+      "page": 16,
+      "fallback": false,
+      "sourceGlyphs": 801,
+      "finalGlyphs": 801,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 17,
+      "fallback": false,
+      "sourceGlyphs": 2096,
+      "finalGlyphs": 2096,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 18,
+      "fallback": true
+    },
+    {
+      "page": 19,
+      "fallback": true
+    },
+    {
+      "page": 20,
+      "fallback": false,
+      "sourceGlyphs": 911,
+      "finalGlyphs": 911,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 21,
+      "fallback": false,
+      "sourceGlyphs": 1171,
+      "finalGlyphs": 1171,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 22,
+      "fallback": false,
+      "sourceGlyphs": 1148,
+      "finalGlyphs": 1148,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 23,
+      "fallback": false,
+      "sourceGlyphs": 2082,
+      "finalGlyphs": 2082,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 24,
+      "fallback": false,
+      "sourceGlyphs": 1473,
+      "finalGlyphs": 1473,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 25,
+      "fallback": false,
+      "sourceGlyphs": 1544,
+      "finalGlyphs": 1544,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 26,
+      "fallback": false,
+      "sourceGlyphs": 1727,
+      "finalGlyphs": 1727,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 27,
+      "fallback": false,
+      "sourceGlyphs": 2027,
+      "finalGlyphs": 2027,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 28,
+      "fallback": false,
+      "sourceGlyphs": 1361,
+      "finalGlyphs": 1361,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 29,
+      "fallback": false,
+      "sourceGlyphs": 919,
+      "finalGlyphs": 919,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 30,
+      "fallback": false,
+      "sourceGlyphs": 1060,
+      "finalGlyphs": 1060,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 31,
+      "fallback": false,
+      "sourceGlyphs": 1629,
+      "finalGlyphs": 1629,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 32,
+      "fallback": false,
+      "sourceGlyphs": 1347,
+      "finalGlyphs": 1347,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 33,
+      "fallback": false,
+      "sourceGlyphs": 1489,
+      "finalGlyphs": 1489,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 34,
+      "fallback": false,
+      "sourceGlyphs": 1790,
+      "finalGlyphs": 1790,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 35,
+      "fallback": false,
+      "sourceGlyphs": 1502,
+      "finalGlyphs": 1502,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 36,
+      "fallback": false,
+      "sourceGlyphs": 1499,
+      "finalGlyphs": 1499,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 37,
+      "fallback": false,
+      "sourceGlyphs": 205,
+      "finalGlyphs": 205,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 38,
+      "fallback": false,
+      "sourceGlyphs": 1461,
+      "finalGlyphs": 1461,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 39,
+      "fallback": false,
+      "sourceGlyphs": 2425,
+      "finalGlyphs": 2425,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 40,
+      "fallback": false,
+      "sourceGlyphs": 0,
+      "finalGlyphs": 0,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 41,
+      "fallback": false,
+      "sourceGlyphs": 1889,
+      "finalGlyphs": 1889,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 42,
+      "fallback": false,
+      "sourceGlyphs": 1206,
+      "finalGlyphs": 1206,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 43,
+      "fallback": false,
+      "sourceGlyphs": 1920,
+      "finalGlyphs": 1920,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 44,
+      "fallback": false,
+      "sourceGlyphs": 1748,
+      "finalGlyphs": 1748,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 45,
+      "fallback": false,
+      "sourceGlyphs": 1348,
+      "finalGlyphs": 1348,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 46,
+      "fallback": false,
+      "sourceGlyphs": 1503,
+      "finalGlyphs": 1503,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 47,
+      "fallback": false,
+      "sourceGlyphs": 1477,
+      "finalGlyphs": 1477,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 48,
+      "fallback": false,
+      "sourceGlyphs": 1655,
+      "finalGlyphs": 1655,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 49,
+      "fallback": false,
+      "sourceGlyphs": 1334,
+      "finalGlyphs": 1334,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 50,
+      "fallback": false,
+      "sourceGlyphs": 1597,
+      "finalGlyphs": 1597,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 51,
+      "fallback": false,
+      "sourceGlyphs": 1658,
+      "finalGlyphs": 1658,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 52,
+      "fallback": false,
+      "sourceGlyphs": 1566,
+      "finalGlyphs": 1566,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 53,
+      "fallback": false,
+      "sourceGlyphs": 1392,
+      "finalGlyphs": 1392,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 54,
+      "fallback": false,
+      "sourceGlyphs": 2198,
+      "finalGlyphs": 2198,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 55,
+      "fallback": false,
+      "sourceGlyphs": 877,
+      "finalGlyphs": 877,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 56,
+      "fallback": false,
+      "sourceGlyphs": 2268,
+      "finalGlyphs": 2268,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 57,
+      "fallback": false,
+      "sourceGlyphs": 0,
+      "finalGlyphs": 0,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 58,
+      "fallback": false,
+      "sourceGlyphs": 1322,
+      "finalGlyphs": 1322,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 59,
+      "fallback": false,
+      "sourceGlyphs": 1312,
+      "finalGlyphs": 1312,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 60,
+      "fallback": false,
+      "sourceGlyphs": 1811,
+      "finalGlyphs": 1811,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 61,
+      "fallback": false,
+      "sourceGlyphs": 1530,
+      "finalGlyphs": 1530,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 62,
+      "fallback": false,
+      "sourceGlyphs": 1191,
+      "finalGlyphs": 1191,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 63,
+      "fallback": false,
+      "sourceGlyphs": 1562,
+      "finalGlyphs": 1562,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 64,
+      "fallback": false,
+      "sourceGlyphs": 1735,
+      "finalGlyphs": 1735,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 65,
+      "fallback": false,
+      "sourceGlyphs": 1236,
+      "finalGlyphs": 1236,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 66,
+      "fallback": false,
+      "sourceGlyphs": 736,
+      "finalGlyphs": 736,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 67,
+      "fallback": false,
+      "sourceGlyphs": 1403,
+      "finalGlyphs": 1403,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 68,
+      "fallback": false,
+      "sourceGlyphs": 1981,
+      "finalGlyphs": 1981,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 69,
+      "fallback": false,
+      "sourceGlyphs": 1555,
+      "finalGlyphs": 1555,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 70,
+      "fallback": false,
+      "sourceGlyphs": 1658,
+      "finalGlyphs": 1658,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 71,
+      "fallback": false,
+      "sourceGlyphs": 1689,
+      "finalGlyphs": 1689,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 72,
+      "fallback": false,
+      "sourceGlyphs": 2137,
+      "finalGlyphs": 2137,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 73,
+      "fallback": false,
+      "sourceGlyphs": 1336,
+      "finalGlyphs": 1336,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 74,
+      "fallback": false,
+      "sourceGlyphs": 1327,
+      "finalGlyphs": 1327,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 75,
+      "fallback": false,
+      "sourceGlyphs": 2886,
+      "finalGlyphs": 2886,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 76,
+      "fallback": false,
+      "sourceGlyphs": 0,
+      "finalGlyphs": 0,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 77,
+      "fallback": false,
+      "sourceGlyphs": 1256,
+      "finalGlyphs": 1256,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 78,
+      "fallback": false,
+      "sourceGlyphs": 2009,
+      "finalGlyphs": 2009,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 79,
+      "fallback": false,
+      "sourceGlyphs": 2034,
+      "finalGlyphs": 2034,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 80,
+      "fallback": false,
+      "sourceGlyphs": 1419,
+      "finalGlyphs": 1419,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 81,
+      "fallback": false,
+      "sourceGlyphs": 1907,
+      "finalGlyphs": 1907,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 82,
+      "fallback": false,
+      "sourceGlyphs": 1937,
+      "finalGlyphs": 1937,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 83,
+      "fallback": false,
+      "sourceGlyphs": 1464,
+      "finalGlyphs": 1464,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 84,
+      "fallback": false,
+      "sourceGlyphs": 1519,
+      "finalGlyphs": 1519,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 85,
+      "fallback": false,
+      "sourceGlyphs": 1817,
+      "finalGlyphs": 1817,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 86,
+      "fallback": false,
+      "sourceGlyphs": 1654,
+      "finalGlyphs": 1654,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 87,
+      "fallback": false,
+      "sourceGlyphs": 1794,
+      "finalGlyphs": 1794,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 88,
+      "fallback": false,
+      "sourceGlyphs": 1365,
+      "finalGlyphs": 1365,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 89,
+      "fallback": false,
+      "sourceGlyphs": 932,
+      "finalGlyphs": 932,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 90,
+      "fallback": false,
+      "sourceGlyphs": 1703,
+      "finalGlyphs": 1703,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 91,
+      "fallback": false,
+      "sourceGlyphs": 1327,
+      "finalGlyphs": 1327,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 92,
+      "fallback": false,
+      "sourceGlyphs": 1731,
+      "finalGlyphs": 1731,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 93,
+      "fallback": false,
+      "sourceGlyphs": 452,
+      "finalGlyphs": 452,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 94,
+      "fallback": false,
+      "sourceGlyphs": 3107,
+      "finalGlyphs": 3107,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 95,
+      "fallback": false,
+      "sourceGlyphs": 0,
+      "finalGlyphs": 0,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 96,
+      "fallback": false,
+      "sourceGlyphs": 1353,
+      "finalGlyphs": 1353,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 97,
+      "fallback": false,
+      "sourceGlyphs": 1413,
+      "finalGlyphs": 1413,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 98,
+      "fallback": false,
+      "sourceGlyphs": 1651,
+      "finalGlyphs": 1651,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 99,
+      "fallback": false,
+      "sourceGlyphs": 2088,
+      "finalGlyphs": 2088,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 100,
+      "fallback": false,
+      "sourceGlyphs": 1413,
+      "finalGlyphs": 1413,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 101,
+      "fallback": false,
+      "sourceGlyphs": 1307,
+      "finalGlyphs": 1307,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 102,
+      "fallback": false,
+      "sourceGlyphs": 1189,
+      "finalGlyphs": 1189,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 103,
+      "fallback": false,
+      "sourceGlyphs": 1407,
+      "finalGlyphs": 1407,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 104,
+      "fallback": false,
+      "sourceGlyphs": 991,
+      "finalGlyphs": 991,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 105,
+      "fallback": false,
+      "sourceGlyphs": 1405,
+      "finalGlyphs": 1405,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 106,
+      "fallback": false,
+      "sourceGlyphs": 1209,
+      "finalGlyphs": 1209,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 107,
+      "fallback": false,
+      "sourceGlyphs": 1704,
+      "finalGlyphs": 1704,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 108,
+      "fallback": false,
+      "sourceGlyphs": 1308,
+      "finalGlyphs": 1308,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 109,
+      "fallback": false,
+      "sourceGlyphs": 1155,
+      "finalGlyphs": 1155,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 110,
+      "fallback": false,
+      "sourceGlyphs": 1151,
+      "finalGlyphs": 1151,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 111,
+      "fallback": false,
+      "sourceGlyphs": 1536,
+      "finalGlyphs": 1536,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 112,
+      "fallback": false,
+      "sourceGlyphs": 1685,
+      "finalGlyphs": 1685,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 113,
+      "fallback": false,
+      "sourceGlyphs": 2231,
+      "finalGlyphs": 2231,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 114,
+      "fallback": false,
+      "sourceGlyphs": 1617,
+      "finalGlyphs": 1617,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 115,
+      "fallback": false,
+      "sourceGlyphs": 2396,
+      "finalGlyphs": 2396,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 116,
+      "fallback": false,
+      "sourceGlyphs": 2291,
+      "finalGlyphs": 2291,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 117,
+      "fallback": false,
+      "sourceGlyphs": 2229,
+      "finalGlyphs": 2229,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 118,
+      "fallback": false,
+      "sourceGlyphs": 688,
+      "finalGlyphs": 688,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 119,
+      "fallback": false,
+      "sourceGlyphs": 2395,
+      "finalGlyphs": 2395,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 120,
+      "fallback": false,
+      "sourceGlyphs": 0,
+      "finalGlyphs": 0,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 121,
+      "fallback": false,
+      "sourceGlyphs": 2606,
+      "finalGlyphs": 2606,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 122,
+      "fallback": false,
+      "sourceGlyphs": 1690,
+      "finalGlyphs": 1690,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 123,
+      "fallback": false,
+      "sourceGlyphs": 1693,
+      "finalGlyphs": 1693,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 124,
+      "fallback": false,
+      "sourceGlyphs": 1441,
+      "finalGlyphs": 1441,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 125,
+      "fallback": false,
+      "sourceGlyphs": 1274,
+      "finalGlyphs": 1274,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 126,
+      "fallback": false,
+      "sourceGlyphs": 1771,
+      "finalGlyphs": 1771,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 127,
+      "fallback": false,
+      "sourceGlyphs": 1867,
+      "finalGlyphs": 1867,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 128,
+      "fallback": false,
+      "sourceGlyphs": 1579,
+      "finalGlyphs": 1579,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 129,
+      "fallback": false,
+      "sourceGlyphs": 2145,
+      "finalGlyphs": 2145,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 130,
+      "fallback": false,
+      "sourceGlyphs": 2351,
+      "finalGlyphs": 2351,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 131,
+      "fallback": false,
+      "sourceGlyphs": 1093,
+      "finalGlyphs": 1093,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 132,
+      "fallback": false,
+      "sourceGlyphs": 1778,
+      "finalGlyphs": 1778,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 133,
+      "fallback": false,
+      "sourceGlyphs": 1095,
+      "finalGlyphs": 1095,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 134,
+      "fallback": false,
+      "sourceGlyphs": 1690,
+      "finalGlyphs": 1690,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 135,
+      "fallback": false,
+      "sourceGlyphs": 1430,
+      "finalGlyphs": 1430,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 136,
+      "fallback": false,
+      "sourceGlyphs": 1608,
+      "finalGlyphs": 1608,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 137,
+      "fallback": false,
+      "sourceGlyphs": 1119,
+      "finalGlyphs": 1119,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 138,
+      "fallback": false,
+      "sourceGlyphs": 0,
+      "finalGlyphs": 0,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 139,
+      "fallback": false,
+      "sourceGlyphs": 3104,
+      "finalGlyphs": 3104,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 140,
+      "fallback": false,
+      "sourceGlyphs": 1934,
+      "finalGlyphs": 1934,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 141,
+      "fallback": false,
+      "sourceGlyphs": 1839,
+      "finalGlyphs": 1839,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 142,
+      "fallback": false,
+      "sourceGlyphs": 1952,
+      "finalGlyphs": 1952,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 143,
+      "fallback": false,
+      "sourceGlyphs": 1603,
+      "finalGlyphs": 1603,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 144,
+      "fallback": false,
+      "sourceGlyphs": 1550,
+      "finalGlyphs": 1550,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 145,
+      "fallback": false,
+      "sourceGlyphs": 1653,
+      "finalGlyphs": 1653,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 146,
+      "fallback": false,
+      "sourceGlyphs": 1712,
+      "finalGlyphs": 1712,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 147,
+      "fallback": false,
+      "sourceGlyphs": 2182,
+      "finalGlyphs": 2182,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 148,
+      "fallback": false,
+      "sourceGlyphs": 2210,
+      "finalGlyphs": 2210,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 149,
+      "fallback": false,
+      "sourceGlyphs": 1851,
+      "finalGlyphs": 1851,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 150,
+      "fallback": false,
+      "sourceGlyphs": 1733,
+      "finalGlyphs": 1733,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 151,
+      "fallback": false,
+      "sourceGlyphs": 1921,
+      "finalGlyphs": 1921,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 152,
+      "fallback": false,
+      "sourceGlyphs": 1523,
+      "finalGlyphs": 1523,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 153,
+      "fallback": false,
+      "sourceGlyphs": 2106,
+      "finalGlyphs": 2106,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 154,
+      "fallback": false,
+      "sourceGlyphs": 1573,
+      "finalGlyphs": 1573,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 155,
+      "fallback": false,
+      "sourceGlyphs": 1376,
+      "finalGlyphs": 1376,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 156,
+      "fallback": false,
+      "sourceGlyphs": 2194,
+      "finalGlyphs": 2194,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 157,
+      "fallback": false,
+      "sourceGlyphs": 1672,
+      "finalGlyphs": 1672,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 158,
+      "fallback": false,
+      "sourceGlyphs": 659,
+      "finalGlyphs": 659,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 159,
+      "fallback": false,
+      "sourceGlyphs": 0,
+      "finalGlyphs": 0,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 160,
+      "fallback": false,
+      "sourceGlyphs": 2901,
+      "finalGlyphs": 2901,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 161,
+      "fallback": false,
+      "sourceGlyphs": 1747,
+      "finalGlyphs": 1747,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 162,
+      "fallback": false,
+      "sourceGlyphs": 1589,
+      "finalGlyphs": 1589,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 163,
+      "fallback": false,
+      "sourceGlyphs": 1989,
+      "finalGlyphs": 1989,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 164,
+      "fallback": false,
+      "sourceGlyphs": 1366,
+      "finalGlyphs": 1366,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 165,
+      "fallback": false,
+      "sourceGlyphs": 1921,
+      "finalGlyphs": 1921,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 166,
+      "fallback": false,
+      "sourceGlyphs": 1993,
+      "finalGlyphs": 1993,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 167,
+      "fallback": false,
+      "sourceGlyphs": 1618,
+      "finalGlyphs": 1618,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 168,
+      "fallback": false,
+      "sourceGlyphs": 1565,
+      "finalGlyphs": 1565,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 169,
+      "fallback": false,
+      "sourceGlyphs": 1908,
+      "finalGlyphs": 1908,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 170,
+      "fallback": false,
+      "sourceGlyphs": 989,
+      "finalGlyphs": 989,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 171,
+      "fallback": false,
+      "sourceGlyphs": 1615,
+      "finalGlyphs": 1615,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 172,
+      "fallback": false,
+      "sourceGlyphs": 1450,
+      "finalGlyphs": 1450,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 173,
+      "fallback": false,
+      "sourceGlyphs": 1709,
+      "finalGlyphs": 1709,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 174,
+      "fallback": false,
+      "sourceGlyphs": 1044,
+      "finalGlyphs": 1044,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 175,
+      "fallback": false,
+      "sourceGlyphs": 0,
+      "finalGlyphs": 0,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 176,
+      "fallback": false,
+      "sourceGlyphs": 2626,
+      "finalGlyphs": 2626,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 177,
+      "fallback": false,
+      "sourceGlyphs": 1552,
+      "finalGlyphs": 1552,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 178,
+      "fallback": false,
+      "sourceGlyphs": 1851,
+      "finalGlyphs": 1851,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 179,
+      "fallback": false,
+      "sourceGlyphs": 2197,
+      "finalGlyphs": 2197,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 180,
+      "fallback": false,
+      "sourceGlyphs": 1773,
+      "finalGlyphs": 1773,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 181,
+      "fallback": false,
+      "sourceGlyphs": 1506,
+      "finalGlyphs": 1506,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 182,
+      "fallback": false,
+      "sourceGlyphs": 2314,
+      "finalGlyphs": 2314,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 183,
+      "fallback": false,
+      "sourceGlyphs": 1529,
+      "finalGlyphs": 1529,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 184,
+      "fallback": false,
+      "sourceGlyphs": 1906,
+      "finalGlyphs": 1906,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 185,
+      "fallback": false,
+      "sourceGlyphs": 1456,
+      "finalGlyphs": 1456,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 186,
+      "fallback": false,
+      "sourceGlyphs": 1155,
+      "finalGlyphs": 1155,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 187,
+      "fallback": false,
+      "sourceGlyphs": 1839,
+      "finalGlyphs": 1839,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 188,
+      "fallback": false,
+      "sourceGlyphs": 1337,
+      "finalGlyphs": 1337,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 189,
+      "fallback": false,
+      "sourceGlyphs": 1391,
+      "finalGlyphs": 1391,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 190,
+      "fallback": false,
+      "sourceGlyphs": 2266,
+      "finalGlyphs": 2266,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 191,
+      "fallback": false,
+      "sourceGlyphs": 1356,
+      "finalGlyphs": 1356,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 192,
+      "fallback": false,
+      "sourceGlyphs": 1404,
+      "finalGlyphs": 1404,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 193,
+      "fallback": false,
+      "sourceGlyphs": 0,
+      "finalGlyphs": 0,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 194,
+      "fallback": false,
+      "sourceGlyphs": 1540,
+      "finalGlyphs": 1540,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 195,
+      "fallback": false,
+      "sourceGlyphs": 1193,
+      "finalGlyphs": 1193,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 196,
+      "fallback": false,
+      "sourceGlyphs": 1488,
+      "finalGlyphs": 1488,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 197,
+      "fallback": false,
+      "sourceGlyphs": 605,
+      "finalGlyphs": 605,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 198,
+      "fallback": false,
+      "sourceGlyphs": 865,
+      "finalGlyphs": 865,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 199,
+      "fallback": false,
+      "sourceGlyphs": 1417,
+      "finalGlyphs": 1417,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 200,
+      "fallback": false,
+      "sourceGlyphs": 1042,
+      "finalGlyphs": 1042,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 201,
+      "fallback": false,
+      "sourceGlyphs": 1280,
+      "finalGlyphs": 1280,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 202,
+      "fallback": false,
+      "sourceGlyphs": 1174,
+      "finalGlyphs": 1174,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 203,
+      "fallback": false,
+      "sourceGlyphs": 491,
+      "finalGlyphs": 491,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 204,
+      "fallback": false,
+      "sourceGlyphs": 1791,
+      "finalGlyphs": 1791,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 205,
+      "fallback": false,
+      "sourceGlyphs": 1767,
+      "finalGlyphs": 1767,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 206,
+      "fallback": false,
+      "sourceGlyphs": 1464,
+      "finalGlyphs": 1464,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 207,
+      "fallback": false,
+      "sourceGlyphs": 1706,
+      "finalGlyphs": 1706,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 208,
+      "fallback": false,
+      "sourceGlyphs": 1459,
+      "finalGlyphs": 1459,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 209,
+      "fallback": false,
+      "sourceGlyphs": 875,
+      "finalGlyphs": 875,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 210,
+      "fallback": false,
+      "sourceGlyphs": 1119,
+      "finalGlyphs": 1119,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 211,
+      "fallback": false,
+      "sourceGlyphs": 1246,
+      "finalGlyphs": 1246,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 212,
+      "fallback": false,
+      "sourceGlyphs": 1943,
+      "finalGlyphs": 1943,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 213,
+      "fallback": false,
+      "sourceGlyphs": 2553,
+      "finalGlyphs": 2553,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 214,
+      "fallback": false,
+      "sourceGlyphs": 1163,
+      "finalGlyphs": 1163,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 215,
+      "fallback": false,
+      "sourceGlyphs": 1138,
+      "finalGlyphs": 1138,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 216,
+      "fallback": false,
+      "sourceGlyphs": 1365,
+      "finalGlyphs": 1365,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 217,
+      "fallback": false,
+      "sourceGlyphs": 1519,
+      "finalGlyphs": 1519,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 218,
+      "fallback": false,
+      "sourceGlyphs": 600,
+      "finalGlyphs": 600,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 219,
+      "fallback": false,
+      "sourceGlyphs": 204,
+      "finalGlyphs": 204,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 220,
+      "fallback": false,
+      "sourceGlyphs": 2755,
+      "finalGlyphs": 2755,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 221,
+      "fallback": false,
+      "sourceGlyphs": 1600,
+      "finalGlyphs": 1600,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 222,
+      "fallback": false,
+      "sourceGlyphs": 1322,
+      "finalGlyphs": 1322,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 223,
+      "fallback": false,
+      "sourceGlyphs": 1395,
+      "finalGlyphs": 1395,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 224,
+      "fallback": false,
+      "sourceGlyphs": 1873,
+      "finalGlyphs": 1873,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 225,
+      "fallback": false,
+      "sourceGlyphs": 1851,
+      "finalGlyphs": 1851,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 226,
+      "fallback": false,
+      "sourceGlyphs": 0,
+      "finalGlyphs": 0,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 227,
+      "fallback": false,
+      "sourceGlyphs": 0,
+      "finalGlyphs": 0,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    },
+    {
+      "page": 228,
+      "fallback": false,
+      "sourceGlyphs": 0,
+      "finalGlyphs": 0,
+      "sequenceEqual": true,
+      "inventoryEqual": true
+    }
+  ]
+}

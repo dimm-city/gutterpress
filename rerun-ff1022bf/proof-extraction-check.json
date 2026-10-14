@@ -1,0 +1,50 @@
+[
+  {
+    "file": "combined/p14-pdf.pdf",
+    "exactPixelsMatchFullOutputPage": true,
+    "renderSize": [
+      921,
+      1200
+    ]
+  },
+  {
+    "file": "combined/p14-pdfx.pdf",
+    "exactPixelsMatchFullOutputPage": true,
+    "renderSize": [
+      921,
+      1200
+    ]
+  },
+  {
+    "file": "isolated/p15-pdf.pdf",
+    "exactPixelsMatchFullOutputPage": true,
+    "renderSize": [
+      921,
+      1200
+    ]
+  },
+  {
+    "file": "isolated/p15-pdfx.pdf",
+    "exactPixelsMatchFullOutputPage": true,
+    "renderSize": [
+      921,
+      1200
+    ]
+  },
+  {
+    "file": "boundary/p14-pdf.pdf",
+    "exactPixelsMatchFullOutputPage": true,
+    "renderSize": [
+      921,
+      1200
+    ]
+  },
+  {
+    "file": "boundary/p14-pdfx.pdf",
+    "exactPixelsMatchFullOutputPage": true,
+    "renderSize": [
+      921,
+      1200
+    ]
+  }
+]

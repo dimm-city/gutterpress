@@ -1,5 +1,9 @@
 # PR388: Field Guide CSS evidence
 
+**Latest result:** [Full 228-page builds of all three sweeps on ff1022bf](rerun-ff1022bf/README.md). The gradient guard holds in the full book, selected print checks pass, and 665 nonfallback page glyph comparisons match. Two diagnostic corrections are recommended. The evidence below is retained as history.
+
+## Historical 8a33992 / 4312289 evidence
+
 The 228-page Field Guide confirms that the opt-in preserves live text for artwork and backgrounds beneath ordinary opaque text. It also demonstrates whole-page fallback boundaries and the documented foreground-ordering limitation. These are deliberately aggressive experiments, not proposed production styles.
 
 ## Status and provenance

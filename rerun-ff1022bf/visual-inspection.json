@@ -1,0 +1,50 @@
+{
+  "renderHeight": 1200,
+  "comparison": "Chromium source vs latest full PDF/X",
+  "personallyInspectedPages": {
+    "combined": [
+      1,
+      4,
+      8,
+      12,
+      13,
+      14,
+      17,
+      138,
+      159,
+      192,
+      200
+    ],
+    "isolated": [
+      2,
+      5,
+      7,
+      8,
+      9,
+      10,
+      13,
+      15,
+      17,
+      18,
+      19
+    ],
+    "boundary": [
+      8,
+      13,
+      14,
+      15,
+      17,
+      18,
+      19,
+      138,
+      200
+    ]
+  },
+  "notes": [
+    "Combined p14 repeating stripes retained via fallback; p138/p159 SVG wordmarks visible.",
+    "Combined p4 cover and p13 tint retain documented foreground-order limitations.",
+    "Isolated rotation, hard shadow, callout translucency and overflow clipping retain expected appearance. Type3 strokes, soft shadow and .999 retain fallback appearance.",
+    "Boundary conic geometry retained; p8 glyph clip retained; p13 image blend retained; p15 alpha and p17 .9999 fall back; p18 .999999 and p19 body remain live; p19 heading absent in source and output.",
+    "Controls combined/boundary p200 retain layout/content. RGB-to-CMYK color changes are visible."
+  ]
+}

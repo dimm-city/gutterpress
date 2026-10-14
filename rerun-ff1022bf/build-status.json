@@ -1,0 +1,14 @@
+{
+  "combined": {
+    "exit": 0,
+    "seconds": 591.93
+  },
+  "isolated": {
+    "exit": 0,
+    "seconds": 440.22
+  },
+  "boundary": {
+    "exit": 0,
+    "seconds": 521.96
+  }
+}

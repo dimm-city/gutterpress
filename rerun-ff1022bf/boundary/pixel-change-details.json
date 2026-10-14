@@ -1,0 +1,20 @@
+[
+  {
+    "page": 15,
+    "pixels": 397440,
+    "changedPixels": 553,
+    "fractionChanged": 0.0013914049919484701,
+    "pixelsChannelDiffAbove16": 34,
+    "maximumChannelDifference": 23,
+    "mae": 0.004550791733762748
+  },
+  {
+    "page": 17,
+    "pixels": 397440,
+    "changedPixels": 95,
+    "fractionChanged": 0.00023902979066022545,
+    "pixelsChannelDiffAbove16": 1,
+    "maximumChannelDifference": 20,
+    "mae": 0.0005367686527106818
+  }
+]
