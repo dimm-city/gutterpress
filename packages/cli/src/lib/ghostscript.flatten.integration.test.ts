@@ -5,7 +5,7 @@
  * translucent or blended to Ghostscript's whole-page flattening. Skips when Chromium or Ghostscript is absent
  * (CI fails on a missing one via ci-preconditions.test.ts).
  */
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { copyFile, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -16,6 +16,7 @@ import { resolveChromiumExecutable } from "./chromium";
 import { launchChromium } from "../engine/shared/cdp";
 import { build } from "../engine/compiler/build";
 import { runBuild } from "./build-runner";
+import { log } from "../utils/logger";
 import { getAssetPath } from "./embedded-assets";
 import { blackTextToGray } from "./black-text-gray";
 import { loadPdf, getOpPass, getTextPass, pagesWithUnsplittableText } from "./pdf-inspect";
@@ -419,9 +420,16 @@ testIf(
 
       await manifest("");
       const source = await buildTo("pdf", "src");
+      const warn = spyOn(log, "warn");
       const flat = await buildTo("pdfx", "default");
       await manifest("pdfx:\n  transparency: preserve-text\n");
       const kept = await buildTo("pdfx", "preserve");
+      const warnings = warn.mock.calls.map((c) => String(c[0]));
+      warn.mockRestore();
+      // The gradient page has a shadow, so Ghostscript flattens it whole: the
+      // warning names the text loss, not a blank gradient.
+      expect(warnings.filter((w) => w.startsWith("Page 4: a repeating-*-gradient() or conic-gradient() survives only"))).toHaveLength(2);
+      expect(warnings.some((w) => w.includes("will print blank"))).toBe(false);
 
       const textOf = async (file: string) => (await getTextPass((await loadPdf(file))!)).textByPage;
       const defaultText = await textOf(flat);

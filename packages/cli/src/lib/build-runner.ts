@@ -833,22 +833,6 @@ class PdfOutput implements OutputStrategy {
         effectiveIccPath = await resolveIccProfile(icc, manifestDir, opts.iccPath);
 
         const rawBytes = await fsp.readFile(rawPdf);
-        // #386: Ghostscript 10.x cannot convert the PostScript-function
-        // shadings Chromium emits for repeating-*-gradient() and
-        // conic-gradient(); it logs "error in pattern" and paints nothing. Checked
-        // on the raw PDF, before the flatten below redraws any page.
-        const blankGradientPages = await findPostScriptShadingPages(rawBytes);
-        if (blankGradientPages.length > 0) {
-          log.warn(
-            `Page${blankGradientPages.length === 1 ? "" : "s"} ${blankGradientPages.join(", ")}: ` +
-              "a repeating-*-gradient() or conic-gradient() will print blank — " +
-              "Ghostscript cannot convert it to PDF/X. Replace it with a plain linear-gradient() or " +
-              "radial-gradient(), or a small tiled image. For 0deg/90deg stripes, " +
-              "`linear-gradient(90deg, #b33 0 6px, #c8c5bf 6px 10px)` with " +
-              "`background-size: 10px 100%` converts correctly."
-          );
-        }
-
         // B.10: PDF/X-1a and PDF/X-3 are built at PDF 1.3 compatibility,
         // which cannot represent live transparency at all — an alpha-channel
         // image OR a CSS `opacity`/`mix-blend-mode` rule forces Ghostscript
@@ -862,6 +846,36 @@ class PdfOutput implements OutputStrategy {
         // live, on the pages where that is faithful. Runs before annotation
         // stripping and the black-text rewrite so both see the merged pages.
         const transparent = await transparentPages(rawBytes);
+
+        // #386: Ghostscript 10.x cannot convert the PostScript-function
+        // shadings Chromium emits for repeating-*-gradient() and
+        // conic-gradient() as vectors; it logs "error in pattern" and paints
+        // nothing. A page Ghostscript flattens whole (it has transparency, and
+        // is never split below) keeps the gradient in its page image instead,
+        // at the cost of that page's live text. Checked on the raw PDF, before
+        // the flatten below redraws any page.
+        const blankGradientPages = await findPostScriptShadingPages(rawBytes);
+        const flattenedGradientPages = blankGradientPages.filter((n) => transparent.includes(n));
+        const vectorGradientPages = blankGradientPages.filter((n) => !transparent.includes(n));
+        const GRADIENT_FIX =
+          "Replace it with a plain linear-gradient() or radial-gradient(), or a small tiled image. " +
+          "For 0deg/90deg stripes, `linear-gradient(90deg, #b33 0 6px, #c8c5bf 6px 10px)` with " +
+          "`background-size: 10px 100%` converts correctly.";
+        const pageList = (pages: number[]) => `Page${pages.length === 1 ? "" : "s"} ${pages.join(", ")}`;
+        if (vectorGradientPages.length > 0) {
+          log.warn(
+            `${pageList(vectorGradientPages)}: a repeating-*-gradient() or conic-gradient() will print blank — ` +
+              `Ghostscript cannot convert it to PDF/X. ${GRADIENT_FIX}`
+          );
+        }
+        if (flattenedGradientPages.length > 0) {
+          log.warn(
+            `${pageList(flattenedGradientPages)}: a repeating-*-gradient() or conic-gradient() survives only because ` +
+              "Ghostscript flattens the whole page into one raster image, so the page loses its embedded fonts " +
+              `and searchable text (on a page without transparency it would print blank). ${GRADIENT_FIX}`
+          );
+        }
+
         if (transparent.length > 0 && config.pdfx.transparency === "preserve-text") {
           const { unsplittableTextReasons } = await import("./pdf-inspect");
           // A repeating/conic gradient (#386) is a PostScript-function shading
@@ -890,7 +904,7 @@ class PdfOutput implements OutputStrategy {
               "text-transparency":
                 "text drawn with transparency or blending (opacity, mix-blend-mode, a soft mask, a translucent text-shadow); keep that text opaque",
               "type3-font":
-                "text in a Type 3 font (the synthetic bold of a single-weight font, or a text stroke); use a font face with a real bold",
+                "text in a Type 3 font: for a synthetic bold (a weight the font has no face for), use a face with that weight or set the font's own weight; for -webkit-text-stroke, remove the stroke or accept this fallback",
               "text-pattern-or-clip":
                 "text filled with a pattern or used as a clip (SVG fill=\"url(#…)\", gradient text, background-clip: text)",
               gradient:

@@ -251,6 +251,8 @@ fixture — but only when the thing being kept-with can actually be placed:
   `repeating-conic-gradient()` and `conic-gradient()` print blank in a `--format pdfx` build.** Chromium emits
   them in a form Ghostscript's CMYK conversion cannot paint; plain PDF output is
   fine, and plain `linear-gradient()` / `radial-gradient()` convert correctly.
+  On a page that also uses transparency, Ghostscript flattens the whole page to
+  an image, which keeps the gradient but loses that page's live text.
   The CSS lint flags them and the build names the affected pages. For 0deg/90deg
   stripes write `linear-gradient(90deg, #b33 0 6px, #c8c5bf 6px 10px)` with
   `background-size: 10px 100%`; for diagonal stripes, radial rings or conic

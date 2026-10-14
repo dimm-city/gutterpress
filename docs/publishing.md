@@ -157,9 +157,12 @@ pdffonts dist/my-book/my-book-pdfx.pdf                 # every font embedded
   opaque on top of a picture changes how it looks (faint text prints solid,
   multiplied text changes colour).
 - A page whose text uses a Type 3 font. Chromium emits one for glyphs it can
-  only draw as paths, such as the synthetic bold of `font-weight: 700` on a
-  webfont that has only a regular face (`pdffonts` lists it as `Type 3`). The
-  text layer keeps no vector paths, so that text would print nothing.
+  only draw as paths: the synthetic bold of `font-weight: 700` on a webfont
+  that has only a regular face, and any text with `-webkit-text-stroke`, even
+  in a real bold face (`pdffonts` lists it as `Type 3`). The text layer keeps
+  no vector paths, so that text would print nothing. For a synthetic bold, use
+  a face with that weight or set the font's own weight; for a stroke, remove it
+  or accept the fallback.
 - A page whose text is painted with a pattern or used as a clip: SVG
   `<text fill="url(#…)">`, a gradient text fill, `background-clip: text`. The
   picture loses the glyphs and the text layer loses their paint, so that text
