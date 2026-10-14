@@ -27,6 +27,15 @@ This project follows [Semantic Versioning](https://semver.org/).
   hovering says what it is and what to type instead, while you type, not only
   after a save. Clicking the finding in Problems puts the cursor on the
   character.
+- **The editor marks every line the Problems list reports.** Open a file and each
+  line with a finding, from any check, gets a marker in the gutter and a tint by
+  severity; hovering shows the message and which check found it. The marks follow
+  their lines while you type and update when the list refreshes. In a stylesheet
+  the editor's own print-safety check and the project's other findings show
+  together. Settings → Editor → **Highlight problems in the editor** (on by
+  default) turns all of it off: the line marks, the stylesheet gutter and the
+  unusual-character boxes. Invisible characters keep their placeholder, since
+  without it they cannot be seen at all.
 
 ### Removed
 

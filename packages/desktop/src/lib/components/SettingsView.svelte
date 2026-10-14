@@ -343,6 +343,26 @@
       {/if}
 
       {#if activeTab === "editor"}
+      <!-- Editor ----------------------------------------------------------- -->
+      <section class="group">
+        <div class="group-head">
+          <h3>Editor</h3>
+          <button class="reset" onclick={() => settings.resetSection("editor")} title="Reset editor settings to defaults">Reset</button>
+        </div>
+        <div class="row">
+          <div class="row-label">
+            <label for="set-highlight-problems">Highlight problems in the editor</label>
+            <span class="row-hint">Mark each line the Problems list reports, and outline unusual characters such as em dashes and curly quotes.</span>
+          </div>
+          <input
+            id="set-highlight-problems"
+            type="checkbox"
+            checked={s.editor.highlightProblems}
+            onchange={(e) => settings.set({ editor: { highlightProblems: (e.currentTarget as HTMLInputElement).checked } })}
+          />
+        </div>
+      </section>
+
       <!-- Advanced (for developers) — a section, not a tab: two developer
            knobs don't justify a whole tab. -->
       <section class="group advanced">

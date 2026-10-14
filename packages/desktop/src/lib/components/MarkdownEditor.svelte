@@ -60,7 +60,13 @@
     bracketMatching,
   } from "@codemirror/language";
   import { tags as t } from "@lezer/highlight";
-  import { linter, lintGutter } from "@codemirror/lint";
+  import {
+    diagnosticCount,
+    forceLinting,
+    linter,
+    lintGutter,
+    setDiagnostics,
+  } from "@codemirror/lint";
   import { autocompletion } from "@codemirror/autocomplete";
   import {
     languageForPath,
@@ -73,7 +79,10 @@
   import { variantCompletionSource } from "$lib/editor/variant-completions";
   import { classCompletionSource } from "$lib/editor/class-completions";
   import { completionTabBinding } from "$lib/editor/completion-keymap";
-  import { specialCharacterMarks } from "$lib/editor/special-characters";
+  import { characterBoxes, characterPlaceholders } from "$lib/editor/special-characters";
+  import { LIVE_CSS_SOURCES, problemDiagnostics } from "$lib/editor/problem-diagnostics";
+  import { onSettingsChange, settingsChangeGuard, useSettings } from "$lib/settings.svelte";
+  import type { ProblemEntry } from "$lib/platform/dtos";
   import type { LinePatch } from "$lib/editor/block-attrs";
   import { buildLineStarts, charRange } from "$lib/editor/source-range";
   import type { ClassCatalogEntry, LocationVariant, MarkerComponent } from "$lib/api";
@@ -88,10 +97,13 @@
     components = [],
     variants = [],
     classes = [],
+    problems = [],
     onBlockProperties,
   }: {
     filePath?: string | null;
     content?: string;
+    /** The Problems panel's entries; the open file's are marked in the editor (#383). */
+    problems?: readonly ProblemEntry[];
     /** The project's plugin components, offered by `@` autocomplete. */
     components?: readonly MarkerComponent[];
     /** The project's page / chapter / section variant words, offered after those markers. */
@@ -147,13 +159,16 @@
   // `Gutterpress validate`), and Paged Media at-rule/property completions. Other
   // file types keep markdown (or plaintext) and carry none of the CSS layers.
   const languageCompartment = new Compartment();
-  const cssLintCompartment = new Compartment();
+  const problemsCompartment = new Compartment();
   const cssCompletionCompartment = new Compartment();
   const markdownCompletionCompartment = new Compartment();
   // The filePath the view's document currently belongs to. Used by
   // switchFile() to no-op a call that doesn't actually change the open file.
   // Seeded at mount alongside the initial document.
   let appliedPath: string | null = null;
+  // Settings → Editor, "Highlight problems in the editor" (#383). Kept current
+  // by the onSettingsChange sink registered in onMount.
+  let highlightProblems = useSettings().current.editor.highlightProblems;
 
   /** Build the language extension for a given resolved language mode. */
   function languageExtension(lang: EditorLanguage): Extension {
@@ -162,13 +177,60 @@
     return [];
   }
 
-  /** The print-safety lint gutter — active only for CSS docs. */
-  function cssLintExtensions(lang: EditorLanguage): Extension {
-    if (lang !== "css") return [];
-    return [
-      lintGutter(),
-      linter((cmView) => cssDiagnosticsSource(cmView.state), { delay: 400 }),
-    ];
+  /**
+   * Problem highlighting (#383), all of it behind the one setting: the lint
+   * gutter, and per language the CSS print-safety linter or the unusual-
+   * character boxes. A CSS file's linter also returns the file's Problems
+   * entries, since a second writer of the lint state would wipe the first.
+   */
+  function problemExtensions(lang: EditorLanguage): Extension {
+    if (!highlightProblems) return [];
+    if (lang === "css") {
+      return [
+        lintGutter(),
+        linter(
+          async (cmView) => [
+            ...(await cssDiagnosticsSource(cmView.state)),
+            ...problemDiagnostics(cmView.state.doc, problems, appliedPath, LIVE_CSS_SOURCES),
+          ],
+          { delay: 400 },
+        ),
+      ];
+    }
+    return [lintGutter(), lang === "markdown" ? characterBoxes() : []];
+  }
+
+  /**
+   * Mark the open file's Problems entries. Called when the list changes, the
+   * file switches or the setting flips. A CSS file's linter merges them with its
+   * live results, so it is re-run instead.
+   */
+  function applyProblems(): void {
+    if (!view) return;
+    if (highlightProblems && languageForPath(appliedPath) === "css") {
+      forceLinting(view);
+      return;
+    }
+    const diagnostics = highlightProblems
+      ? problemDiagnostics(view.state.doc, problems, appliedPath)
+      : [];
+    if (diagnostics.length === 0 && diagnosticCount(view.state) === 0) return;
+    view.dispatch(setDiagnostics(view.state, diagnostics));
+  }
+
+  function setHighlightProblems(on: boolean): void {
+    highlightProblems = on;
+    if (!view) return;
+    view.dispatch({
+      effects: problemsCompartment.reconfigure(problemExtensions(languageForPath(appliedPath))),
+    });
+    applyProblems();
+  }
+
+  /** Re-mark when the parent's Problems list changes: a use: action's update(),
+   *  since this repo bans $effect. */
+  function watchProblems(_node: HTMLElement, _problems: readonly ProblemEntry[]) {
+    return { update: () => applyProblems() };
   }
 
   /** Paged Media completions — active only for CSS docs. */
@@ -268,6 +330,10 @@
       borderRadius: "2px",
     },
     ".cm-specialChar": { color: "var(--cm-unusual-char)" },
+    // Problem lines (#383): a severity tint under CodeMirror's own squiggle.
+    ".cm-lintRange-error": { backgroundColor: "var(--cm-problem-error)" },
+    ".cm-lintRange-warning": { backgroundColor: "var(--cm-problem-warning)" },
+    ".cm-lintRange-info": { backgroundColor: "var(--cm-problem-info)" },
     "&.cm-focused": { outline: "none" },
     // Autocomplete popup — shared by the markdown `@marker` list and the CSS
     // editor's Paged Media list (both use this one theme). CodeMirror's stock
@@ -343,11 +409,11 @@
         highlightActiveLine(),
         bracketMatching(),
         languageCompartment.of(languageExtension(lang)),
-        cssLintCompartment.of(cssLintExtensions(lang)),
+        problemsCompartment.of(problemExtensions(lang)),
         cssCompletionCompartment.of(cssCompletionExtensions(lang)),
         markdownCompletionCompartment.of(markdownCompletionExtensions(lang)),
-        // The characters `source.characters` reports (#382), marked where they sit.
-        lang === "markdown" ? specialCharacterMarks() : [],
+        // Zero-width characters `source.characters` reports (#382), made visible.
+        lang === "markdown" ? characterPlaceholders() : [],
          syntaxHighlighting(gutterpressHighlight, { fallback: true }),
         keymap.of([
           { key: "Mod-s", run: () => { onSave?.(); return true; } },
@@ -389,6 +455,9 @@
     if (!host) return;
     appliedPath = filePath;
     view = new EditorView({ state: buildState(content, filePath), parent: host });
+    applyProblems();
+    const highlightSink = settingsChangeGuard<boolean>(setHighlightProblems);
+    const offSettings = onSettingsChange((s) => highlightSink(s.editor.highlightProblems));
     // Editor→preview scroll sync: emit the top visible line as the user
     // scrolls (rAF-coalesced). Bound to scrollDOM rather than updateListener
     // because pure scrolling doesn't produce editor transactions.
@@ -404,6 +473,7 @@
     v.scrollDOM.addEventListener("scroll", onScroll, { passive: true });
     detachScroll = () => v.scrollDOM.removeEventListener("scroll", onScroll);
     return () => {
+      offSettings();
       if (anchorRaf) cancelAnimationFrame(anchorRaf);
       anchorRaf = 0;
       detachScroll?.();
@@ -439,6 +509,7 @@
     suppressEmitUntil = Date.now() + 300;
     lastEmittedLine = -1;
     view.setState(buildState(newContent, newPath));
+    applyProblems();
   }
 
   /**
@@ -622,7 +693,12 @@
       <p>Select a file from the list to start editing.</p>
     </div>
   {/if}
-  <div class="editor-host" bind:this={host} class:hidden={!filePath}></div>
+  <div
+    class="editor-host"
+    bind:this={host}
+    class:hidden={!filePath}
+    use:watchProblems={problems}
+  ></div>
 </div>
 <!-- Toolbar portals are rendered by the parent via EditorToolbar.svelte placed
      ABOVE this component in the editor-pane section. The runToolbarAction()
@@ -691,6 +767,9 @@
     --cm-punct: light-dark(#57606a, #9aa5b1);
     --cm-invalid: light-dark(#cf222e, #ff6b6b);
     --cm-unusual-char: light-dark(#bf8700, #e3b341);
+    --cm-problem-error: light-dark(rgba(207, 34, 46, 0.08), rgba(255, 107, 107, 0.12));
+    --cm-problem-warning: light-dark(rgba(191, 135, 0, 0.1), rgba(227, 179, 65, 0.12));
+    --cm-problem-info: light-dark(rgba(9, 105, 218, 0.08), rgba(92, 179, 255, 0.12));
     --cm-selection: light-dark(rgba(9, 105, 218, 0.18), rgba(92, 179, 255, 0.28));
     --cm-active-line: light-dark(rgba(27, 31, 36, 0.045), rgba(255, 255, 255, 0.05));
     --cm-gutter-bg: var(--app-surface);

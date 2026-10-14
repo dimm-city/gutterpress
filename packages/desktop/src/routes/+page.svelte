@@ -3095,6 +3095,7 @@
                 components={projectComponents}
                 variants={projectVariants}
                 classes={projectClasses}
+                problems={displayedProblems}
                 onBlockProperties={() => void openBlockPropertiesAtCaret()}
               />
             {:else if editorModuleFailed}
