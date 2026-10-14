@@ -386,3 +386,39 @@ describe("pagesWithUnsplittableText", () => {
     expect(await pagesWithUnsplittableText(await pdf("q /A gs /Plain Do Q", { gs, forms }))).toEqual([1]);
   });
 });
+
+describe("pagesWithUnsplittableText: text paint", () => {
+  const TEXT = "BT /F1 12 Tf 10 50 Td (Hello) Tj ET";
+  async function pdf(content: string, pattern = false): Promise<Uint8Array> {
+    const { PDFDocument, PDFName, StandardFonts } = await import("pdf-lib");
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([100, 100]);
+    const { context } = doc;
+    const font = doc.embedStandardFont(StandardFonts.Helvetica);
+    const patterns = context.obj({});
+    if (pattern) {
+      const tile = context.stream("1 0 0 rg 0 0 5 10 re f 0 0 1 rg 5 0 5 10 re f", {
+        Type: "Pattern", PatternType: 1, PaintType: 1, TilingType: 1,
+        BBox: [0, 0, 10, 10], XStep: 10, YStep: 10, Resources: {},
+      });
+      patterns.set(PDFName.of("P0"), context.register(tile));
+    }
+    page.node.set(PDFName.of("Resources"), context.obj({ Font: { F1: font.ref }, Pattern: patterns }));
+    page.node.set(PDFName.of("Contents"), context.register(context.stream(content)));
+    return doc.save();
+  }
+
+  test("text filled with a tiling pattern is flagged", async () => {
+    expect(await pagesWithUnsplittableText(await pdf(`/Pattern cs /P0 scn ${TEXT}`, true))).toEqual([1]);
+  });
+
+  test("a plain fill colour after the pattern, or Q, makes text eligible again", async () => {
+    expect(await pagesWithUnsplittableText(await pdf(`/Pattern cs /P0 scn 0 g ${TEXT}`, true))).toEqual([]);
+    expect(await pagesWithUnsplittableText(await pdf(`q /Pattern cs /P0 scn Q ${TEXT}`, true))).toEqual([]);
+  });
+
+  test("text used as a clip (render modes 4-7) is flagged; invisible text (3) is not", async () => {
+    expect(await pagesWithUnsplittableText(await pdf("BT 7 Tr /F1 12 Tf 10 50 Td (Hello) Tj ET"))).toEqual([1]);
+    expect(await pagesWithUnsplittableText(await pdf("BT 3 Tr /F1 12 Tf 10 50 Td (Hello) Tj ET"))).toEqual([]);
+  });
+});

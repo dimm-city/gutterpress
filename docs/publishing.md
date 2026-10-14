@@ -149,7 +149,7 @@ pdffonts dist/my-book/my-book-pdfx.pdf                 # every font embedded
 
 `examples/with-print-effects/` is a small book with one effect per page.
 
-**Fallback.** Two kinds of page cannot be split:
+**Fallback.** Three kinds of page cannot be split:
 
 - A page whose text is itself drawn with transparency: `opacity` or
   `mix-blend-mode` on a text block, translucent glyph colour, a soft mask over
@@ -160,6 +160,10 @@ pdffonts dist/my-book/my-book-pdfx.pdf                 # every font embedded
   only draw as paths, such as the synthetic bold of `font-weight: 700` on a
   webfont that has only a regular face (`pdffonts` lists it as `Type 3`). The
   text layer keeps no vector paths, so that text would print nothing.
+- A page whose text is painted with a pattern or used as a clip: SVG
+  `<text fill="url(#…)">`, a gradient text fill, `background-clip: text`. The
+  picture loses the glyphs and the text layer loses their paint, so that text
+  would vanish.
 
 Such pages are not split and go to Ghostscript exactly as in `flatten-page`;
 the build names them.

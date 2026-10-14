@@ -487,6 +487,11 @@ export function getOpPass(doc: PDFDocumentProxy): Promise<OpPass> {
   return p;
 }
 
+const opSet = (names: string[]) =>
+  new Set<number>(names.map((name) => OPS[name]).filter((op): op is number => op !== undefined));
+const FILL_COLOR_OPS = opSet(["setFillGray", "setFillRGBColor", "setFillCMYKColor", "setFillColor"]);
+const STROKE_COLOR_OPS = opSet(["setStrokeGray", "setStrokeRGBColor", "setStrokeCMYKColor", "setStrokeColor"]);
+
 const SHOW_TEXT_OPS = new Set<number>(
   ["showText", "showSpacedText", "nextLineShowText", "nextLineSetSpacingShowText"]
     .map((name) => OPS[name])
@@ -509,6 +514,12 @@ const SHOW_TEXT_OPS = new Set<number>(
  * single-weight webfont. Their glyph procedures are vector paths, which the
  * text pass's `-dFILTERVECTOR` strips, so the text would print nothing.
  *
+ * Also flagged: text painted with a pattern (`scn`/`SCN` to a tiling pattern
+ * or shading), as Chromium emits for SVG `<text fill="url(#…)">` and gradient
+ * text fills, and text used as a clip (render modes 4-7, `background-clip:
+ * text`). The artwork pass removes the glyphs and the text pass's
+ * `-dFILTERIMAGE`/`-dFILTERVECTOR` removes their paint, so they would vanish.
+ *
  * A plain isolated group composited at alpha 1 / Normal / no mask is NOT
  * counted: painting it is the same as painting its content inline, and
  * Chromium wraps the content of EVERY page in one as soon as any element of
@@ -523,6 +534,10 @@ const SHOW_TEXT_OPS = new Set<number>(
  */
 export async function pagesWithUnsplittableText(pdfBytes: Uint8Array): Promise<number[]> {
   const GSTATE_BIT: Record<string, number> = { ca: 1, CA: 2, BM: 4, SMask: 8 };
+  const COMPOSITING = 15; // the GSTATE_BIT flags: what makes a group count
+  const FILL_PATTERN = 16;
+  const STROKE_PATTERN = 32;
+  const CLIP_TEXT = 64; // text render modes 4-7 add the glyphs to the clip
   const doc = await getDocumentProxy(new Uint8Array(pdfBytes));
   const pages: number[] = [];
   try {
@@ -538,7 +553,7 @@ export async function pagesWithUnsplittableText(pdfBytes: Uint8Array): Promise<n
         else if (fn === OPS.restore || fn === OPS.paintFormXObjectEnd) state = stack.pop() ?? 0;
         else if (fn === OPS.beginGroup) {
           const group = (ops.argsArray[j] as [{ smask?: unknown; knockout?: boolean }])[0];
-          groups.push(state !== 0 || !!(group.smask || group.knockout));
+          groups.push((state & COMPOSITING) !== 0 || !!(group.smask || group.knockout));
         } else if (fn === OPS.endGroup) groups.pop();
         else if (fn === OPS.setFont) {
           const ref = (ops.argsArray[j] as [unknown])[0];
@@ -547,7 +562,17 @@ export async function pagesWithUnsplittableText(pdfBytes: Uint8Array): Promise<n
             break;
           }
         }
-        else if (fn === OPS.setGState) {
+        else if (fn === OPS.setFillColorN || fn === OPS.setStrokeColorN) {
+          // PDF.js reports a pattern paint as ["TilingPattern" | "Shading", …];
+          // a plain colour comes through setFill/StrokeRGBColor etc. instead.
+          const bit = fn === OPS.setFillColorN ? FILL_PATTERN : STROKE_PATTERN;
+          const kind = (ops.argsArray[j] as unknown[])[0];
+          state = kind === "TilingPattern" || kind === "Shading" ? state | bit : state & ~bit;
+        } else if (FILL_COLOR_OPS.has(fn)) state &= ~FILL_PATTERN;
+        else if (STROKE_COLOR_OPS.has(fn)) state &= ~STROKE_PATTERN;
+        else if (fn === OPS.setTextRenderingMode) {
+          state = (ops.argsArray[j] as [number])[0] >= 4 ? state | CLIP_TEXT : state & ~CLIP_TEXT;
+        } else if (fn === OPS.setGState) {
           for (const [key, value] of (ops.argsArray[j] as [[string, unknown][]])[0]) {
             const bit = GSTATE_BIT[key];
             if (!bit) continue;

@@ -295,6 +295,66 @@ section { break-after: page; font: 24px Single }
   240_000
 );
 
+// Chromium paints SVG `<text fill="url(#pattern)">` (and gradient text fills)
+// with a tiling pattern. The artwork pass drops the glyphs and the text pass
+// drops their pattern paint, so a split page would lose the whole wordmark
+// while pdftotext still finds it: such a page must fall back.
+testIf(
+  "a page with pattern-filled text is not split and keeps its pixels",
+  async () => {
+    const dir = await makeTempDir("gp-flatten-pattern-");
+    const browser = await launchChromium();
+    try {
+      const file = join(dir, "book.html");
+      await writeFile(
+        file,
+        `<!doctype html><meta charset="utf-8"><style>
+@page { size: 300px 400px; margin: 30px }
+section { break-after: page; font: 16px serif }
+.card { margin-top: 20px; padding: 16px; background: #fff; box-shadow: 0 12px 24px rgba(0, 0, 0, .45) }
+</style>
+<section>
+<svg width="200" height="60"><defs><pattern id="p" width="8" height="8" patternUnits="userSpaceOnUse">
+<rect width="4" height="8" fill="#d00"/><rect x="4" width="4" height="8" fill="#00d"/></pattern></defs>
+<text x="0" y="45" font-size="40" font-weight="700" font-family="sans-serif" fill="url(#p)">PATTERN</text></svg>
+<div class="card">Shadow card</div></section>
+<section><div class="card">Plain text card</div></section>`,
+        "utf8"
+      );
+      const built = await build({ input: pathToFileURL(file).href, browser, dpiFloor: 0 });
+      const sourcePdf = join(dir, "source.pdf");
+      const rawPdf = join(dir, "raw.pdf");
+      await writeFile(sourcePdf, built.bytes);
+      await copyFile(sourcePdf, rawPdf);
+
+      expect(await transparentPages(built.bytes)).toEqual([1, 2]);
+      expect(await pagesWithUnsplittableText(built.bytes)).toEqual([1]);
+
+      // Splitting page 1 anyway erases the wordmark: the pixels prove why it is excluded.
+      await flattenTransparentPages(rawPdf, [1], dir);
+      const forced = meanAbsDiff(
+        rasterizePdfPage(ghostscript!, sourcePdf, dir, "patsrc", 1),
+        rasterizePdfPage(ghostscript!, rawPdf, dir, "patforced", 1)
+      );
+      expect(forced).toBeGreaterThan(1);
+
+      // The ordinary page of the same book splits cleanly.
+      await copyFile(sourcePdf, rawPdf);
+      await flattenTransparentPages(rawPdf, [2], dir);
+      expect(
+        meanAbsDiff(
+          rasterizePdfPage(ghostscript!, sourcePdf, dir, "patsrc2", 2),
+          rasterizePdfPage(ghostscript!, rawPdf, dir, "patsplit2", 2)
+        )
+      ).toBeLessThan(1);
+    } finally {
+      await browser.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+  240_000
+);
+
 // The same book through the real `build --format pdfx`, in both modes, against
 // the untouched `--format pdf` render of it. The default must keep occlusion
 // and appearance (Ghostscript flattens whole pages); `preserve-text` is opt-in.

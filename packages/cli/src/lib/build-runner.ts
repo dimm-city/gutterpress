@@ -866,7 +866,8 @@ class PdfOutput implements OutputStrategy {
             log.warn(
               `Page${kept.length === 1 ? "" : "s"} ${kept.join(", ")} could not keep ${kept.length === 1 ? "its" : "their"} text live: ` +
                 "their text uses transparency or blending (opacity, mix-blend-mode, a soft mask) " +
-                "or a Type 3 font (such as the synthetic bold of a single-weight font), " +
+                "a Type 3 font (such as the synthetic bold of a single-weight font), " +
+                "or a pattern fill (SVG text filled with url(#pattern), gradient text) or text used as a clip, " +
                 `which cannot be drawn on top of flattened artwork unchanged. Ghostscript will flatten ${kept.length === 1 ? "that page" : "each of those pages"} ` +
                 "into one raster image, losing its embedded fonts and searchable text."
             );
