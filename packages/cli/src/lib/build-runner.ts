@@ -864,15 +864,16 @@ class PdfOutput implements OutputStrategy {
         const pageList = (pages: number[]) => `Page${pages.length === 1 ? "" : "s"} ${pages.join(", ")}`;
         if (vectorGradientPages.length > 0) {
           log.warn(
-            `${pageList(vectorGradientPages)}: a repeating-*-gradient() or conic-gradient() can print blank — ` +
-              `Ghostscript 10.x has been seen to paint nothing for it when converting to PDF/X. ${GRADIENT_FIX}`
+            `${pageList(vectorGradientPages)}: a repeating-*-gradient() or conic-gradient() can print blank or distorted — ` +
+              `Ghostscript has been seen to paint nothing, or irregular stripes, for it when converting to PDF/X; ` +
+              `check the page visually. ${GRADIENT_FIX}`
           );
         }
         if (flattenedGradientPages.length > 0) {
           log.warn(
-            `${pageList(flattenedGradientPages)}: a repeating-*-gradient() or conic-gradient() survives only because ` +
-              "Ghostscript flattens the whole page into one raster image, so the page loses its embedded fonts " +
-              `and searchable text (on a page without transparency it would print blank). ${GRADIENT_FIX}`
+            `${pageList(flattenedGradientPages)}: a repeating-*-gradient() or conic-gradient() is painted only as part of ` +
+              "the one raster image Ghostscript makes of the whole page, so the page loses its embedded fonts " +
+              `and searchable text. Check the page visually. ${GRADIENT_FIX}`
           );
         }
 

@@ -248,8 +248,9 @@ fixture — but only when the thing being kept-with can actually be placed:
   `inset()`, `circle()`, `ellipse()`, `path()`) is a vector clip and is NOT
   flagged; only `clip-path: url(...)` (an SVG mask) is.
 - **`repeating-linear-gradient()`, `repeating-radial-gradient()`,
-  `repeating-conic-gradient()` and `conic-gradient()` can print blank in a `--format pdfx` build.** Chromium emits
-  them in a form Ghostscript 10.x has been seen to paint as nothing in the CMYK conversion; plain PDF output is
+  `repeating-conic-gradient()` and `conic-gradient()` can print blank or distorted in a `--format pdfx` build.** Chromium emits
+  them in a form Ghostscript has been seen to paint as nothing, or as irregular
+  stripes, in the CMYK conversion (check such pages visually); plain PDF output is
   fine, and plain `linear-gradient()` / `radial-gradient()` convert correctly.
   On a page that also uses transparency, Ghostscript flattens the whole page to
   an image, which keeps the gradient but loses that page's live text.

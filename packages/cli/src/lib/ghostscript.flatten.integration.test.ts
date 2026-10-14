@@ -428,7 +428,7 @@ testIf(
       warn.mockRestore();
       // The gradient page has a shadow, so Ghostscript flattens it whole: the
       // warning names the text loss, not a blank gradient.
-      expect(warnings.filter((w) => w.startsWith("Page 4: a repeating-*-gradient() or conic-gradient() survives only"))).toHaveLength(2);
+      expect(warnings.filter((w) => w.startsWith("Page 4: a repeating-*-gradient() or conic-gradient() is painted only"))).toHaveLength(2);
       expect(warnings.some((w) => w.includes("can print blank"))).toBe(false);
 
       const textOf = async (file: string) => (await getTextPass((await loadPdf(file))!)).textByPage;
@@ -457,9 +457,19 @@ testIf(
       // The translucent-text page looks the same in both modes, and like the source.
       expect(diff(flat, 3)).toBeLessThan(3);
       expect(diff(kept, 3)).toBeLessThan(3);
-      // The gradient page goes through the same whole-page path in both modes.
-      expect(diff(kept, 4)).toBeLessThan(1);
-      expect(diff(kept, 4)).toBeLessThan(diff(flat, 4) + 1);
+      // The gradient page goes through the same whole-page path in both modes,
+      // so the two PDF/X outputs match each other. (Against the RGB source the
+      // CMYK conversion alone moves colour by more than 1 on some Ghostscript
+      // versions, so that is not the equivalence check.)
+      const between = meanAbsDiff(
+        rasterizePdfPage(ghostscript!, flat, dir, "g-flat", 4),
+        rasterizePdfPage(ghostscript!, kept, dir, "g-kept", 4)
+      );
+      expect(between).toBeLessThan(0.1);
+      // ...and keep the source's page geometry.
+      const sizeOf = async (file: string) =>
+        (await PDFDocument.load(await readFile(file), { updateMetadata: false })).getPage(3).getSize();
+      expect(await sizeOf(kept)).toEqual(await sizeOf(source));
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

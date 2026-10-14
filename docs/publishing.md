@@ -183,8 +183,14 @@ Known limits of the pages that are split:
 
 - Rules, backgrounds and shapes are part of the 300 DPI picture, not vectors,
   so fine rules lose their vector sharpness.
-- The file grows: each split page carries a full-page picture. The 228-page
-  Dimm City Field Guide grew about 2.5× (92 MB to 231 MB). One blend mode
+- File size depends on the book's content and on rasterization: each split
+  page carries a 300 DPI full-page picture, and a whole-page fallback carries
+  Ghostscript's own page image. Measured on the 228-page Dimm City Field Guide
+  against `flatten-page`, the same source came out smaller with `preserve-text`
+  (one styling 1126 MB to 235 MB, another 140 MB to 45 MB), mostly because of
+  the 300 DPI picture resolution; keeping the text live is the benefit, not the
+  size. Compare PDF/X against PDF/X: an RGB `--format pdf` build is not a
+  baseline for a CMYK PDF/X file. One blend mode
   anywhere in a book can make Chromium wrap most of its pages in transparency
   groups, so many more pages are split than the effect's own pages.
 - Text is always the top layer. If another element is painted over text, the
