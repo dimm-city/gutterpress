@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile, writeFile, unlink, rename, readdir } from "node:fs/promises";
 import { join, basename, resolve } from "node:path";
-import { enhancedPath, run, spawnCapture } from "./exec";
+import { enhancedPath, execCapture, run, spawnCapture } from "./exec";
 import { log } from "../utils/logger";
 import { findTool } from "./tool-probe";
 
@@ -436,9 +436,22 @@ export async function convertToPdfxCmyk(
     }
     // `run` inherits stdio, which would leave the warnings block on a terminal
     // the desktop app never shows; capture it and log it through the logger.
-    const { code, stdout, stderr } = await spawnCapture(ghostscript, args, {
+    const { code, signal, stdout, stderr } = await spawnCapture(ghostscript, args, {
       env: { ...process.env, PATH: enhancedPath },
     });
+    if (signal) {
+      const version = await execCapture(ghostscript, ["--version"])
+        .then((r) => r.stdout.trim())
+        .catch(() => "unknown version");
+      throw new Error(
+        `Ghostscript ${version} crashed (${signal}) while converting to PDF/X. ` +
+          "This is a Ghostscript bug, not a problem with the PDF. Ghostscript " +
+          "10.02.1 has been seen to crash in the PDF 1.3 transparency flattening " +
+          "PDF/X requires, on a page with an alpha-channel image. Flattening that " +
+          "image against its background avoided it there; a newer Ghostscript may " +
+          "too. A plain PDF (--format pdf) does not run this step."
+      );
+    }
     if (code !== 0) {
       throw new Error(`${ghostscript} ${args.join(" ")} exited ${code}\n${stdout}${stderr}`);
     }

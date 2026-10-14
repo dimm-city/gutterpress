@@ -20,6 +20,13 @@ This project follows [Semantic Versioning](https://semver.org/).
   with the page numbers it found them on. Ghostscript's own "The following
   warnings were encountered" block is now logged as a warning instead of being
   left on the terminal where the desktop app never showed it.
+- **A Ghostscript crash during PDF/X conversion now says so.** Ghostscript 10.02.1
+  segfaults in the PDF 1.3 transparency flattening PDF/X requires, on some pages
+  that use an image with an alpha channel (a 228-page book died at page 9). The
+  build reported only `exited null`. Child processes killed by a signal are now
+  reported as `was killed by signal SIGSEGV`, and the PDF/X step names the
+  Ghostscript version and the workaround: remove the alpha channel from the image,
+  or try a newer Ghostscript.
 
 ## [0.11.18] - 2026-10-13
 

@@ -187,6 +187,39 @@ test("convertToPdfxCmyk logs Ghostscript's warnings block instead of discarding 
   }
 });
 
+test("convertToPdfxCmyk reports a Ghostscript crash with its version", async () => {
+  const stagingDir = await mkdtemp(join(tmpdir(), "gutterpress-gs-crash-"));
+  try {
+    const executable = join(stagingDir, "custom-gs");
+    const iccPath = join(stagingDir, "profile.icc");
+    await writeFile(executable, "");
+    await writeFile(iccPath, "not-a-real-icc");
+    process.env.GHOSTSCRIPT_PATH = executable;
+    spyOn(execMod, "spawnCapture").mockResolvedValue({
+      code: null,
+      signal: "SIGSEGV",
+      stdout: "",
+      stderr: "",
+    });
+    const capture = spyOn(execMod, "execCapture").mockResolvedValue({
+      stdout: "10.02.1\n",
+      stderr: "",
+    });
+
+    await expect(
+      convertToPdfxCmyk(join(stagingDir, "in.pdf"), join(stagingDir, "out.pdf"), {
+        iccPath,
+        pdfx: "x1a",
+        stagingDir,
+      })
+    ).rejects.toThrow(/Ghostscript 10\.02\.1 crashed \(SIGSEGV\).*alpha-channel image/);
+    expect(capture.mock.calls[0]?.[1]).toEqual(["--version"]);
+    capture.mockRestore();
+  } finally {
+    await rm(stagingDir, { recursive: true, force: true });
+  }
+});
+
 describe("hasLiveTransparency", () => {
   /**
    * Build a real (pdf-lib-parseable) one-page PDF whose page dict carries the

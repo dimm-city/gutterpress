@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import {
   execCapture,
+  run,
   spawnCapture,
   buildEnhancedPath,
   localBin,
@@ -23,6 +24,18 @@ test("execCapture rejects with a signal-named message when child is killed by a 
   expect(err).toBeDefined();
   expect(err!.message).not.toContain("exited null");
   expect(err!.message).toContain("SIGTERM");
+});
+
+test("run rejects with the signal name, not 'exited null', when the child is killed", async () => {
+  let err: (Error & { signal?: string }) | undefined;
+  try {
+    await run("sh", ["-c", "kill -SEGV $$"]);
+  } catch (e) {
+    err = e as Error;
+  }
+  expect(err!.message).toContain("was killed by signal SIGSEGV");
+  expect(err!.message).not.toContain("exited null");
+  expect(err!.signal).toBe("SIGSEGV");
 });
 
 // --- exact error message formats (pins for the spawn-consolidation claim
