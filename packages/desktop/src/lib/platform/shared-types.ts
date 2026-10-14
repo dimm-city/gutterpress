@@ -133,6 +133,14 @@ export interface AppSettings {
   workspace: {
     role: WorkspaceRole;
   };
+  editor: {
+    /**
+     * Mark every line with a Problems entry in the editor, plus the CSS lint
+     * gutter and the unusual-character boxes (Settings → Editor, "Highlight
+     * problems in the editor", #383). Default ON.
+     */
+    highlightProblems: boolean;
+  };
   appearance: {
     theme: "light" | "dark" | "system";
     previewBg: string;
@@ -240,6 +248,9 @@ export interface AppSettings {
 export const DEFAULT_SETTINGS: AppSettings = {
   workspace: {
     role: "reader",
+  },
+  editor: {
+    highlightProblems: true,
   },
   appearance: {
     theme: "system",

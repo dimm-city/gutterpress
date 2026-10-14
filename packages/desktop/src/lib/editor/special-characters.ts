@@ -252,10 +252,18 @@ function renderPlaceholder(code: number, _description: string | null, placeholde
   return span;
 }
 
-/** Boxes around the characters with width; placeholders for the zero-width ones. */
-export function specialCharacterMarks(): Extension {
-  return [
-    highlightSpecialChars({ specialChars: ZERO_WIDTH_PATTERN, render: renderPlaceholder }),
-    boxPlugin,
-  ];
+/**
+ * Placeholders for the zero-width characters. Always on: they are what makes
+ * an invisible character visible at all, not a problem mark.
+ */
+export function characterPlaceholders(): Extension {
+  return highlightSpecialChars({ specialChars: ZERO_WIDTH_PATTERN, render: renderPlaceholder });
+}
+
+/**
+ * Boxes around the characters with width. Problem highlighting, so they follow
+ * "Highlight problems in the editor" (#383).
+ */
+export function characterBoxes(): Extension {
+  return boxPlugin;
 }

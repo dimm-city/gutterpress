@@ -203,11 +203,11 @@ test("readSettings deep-merges a stored partial over DEFAULT_SETTINGS", async ()
   expect(s.appearance).toEqual(DEFAULT_SETTINGS.appearance);
 });
 
-test("readSettings loads a file still carrying keys and sections deleted from the schema, dropping them (#274, #384)", async () => {
+test("readSettings loads a file still carrying keys deleted from the schema, dropping them (#274, #384)", async () => {
   const { store, renames } = makeStore({
     readFileImpl: async () =>
       JSON.stringify({
-        // The removed `editor` section, as older versions wrote it.
+        // The `editor` section as older versions wrote it (#384 removed those keys).
         editor: { fontSize: 18, autoSaveDelay: 2500, crashRecovery: false },
         versionHistory: { autoSnapshotMinutes: 30, autoSave: false },
         appearance: { theme: "dark" },
@@ -220,13 +220,13 @@ test("readSettings loads a file still carrying keys and sections deleted from th
   // Every setting that still exists keeps its saved value.
   expect(s.versionHistory.autoSave).toBe(false);
   expect(s.appearance.theme).toBe("dark");
-  // The removed section and the removed key do not survive the merge.
-  expect(s).not.toHaveProperty("editor");
+  // The removed keys do not survive the merge.
+  expect(s.editor).toEqual(DEFAULT_SETTINGS.editor);
   expect(s.versionHistory).not.toHaveProperty("autoSnapshotMinutes");
   expect(s.versionHistory.autoSnapshot).toBe(DEFAULT_SETTINGS.versionHistory.autoSnapshot);
 });
 
-test("updateSettings drops a removed section from the file on the next write (#384)", async () => {
+test("updateSettings drops the removed editor keys from the file on the next write (#384)", async () => {
   const { store, writes } = makeStore({
     readFileImpl: async () =>
       JSON.stringify({ editor: { fontSize: 18 }, appearance: { theme: "dark" } }),
@@ -235,7 +235,7 @@ test("updateSettings drops a removed section from the file on the next write (#3
   await store.updateSettings({ preview: { splitRatio: 0.4 } });
 
   const written = JSON.parse(writes[0]!.data) as Record<string, unknown>;
-  expect(written).not.toHaveProperty("editor");
+  expect(written.editor).toEqual(DEFAULT_SETTINGS.editor);
   expect((written.appearance as { theme: string }).theme).toBe("dark");
 });
 
