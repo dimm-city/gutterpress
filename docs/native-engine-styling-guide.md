@@ -247,6 +247,14 @@ fixture — but only when the thing being kept-with can actually be placed:
   text-bearing elements. `clip-path` with a basic shape (`polygon()`,
   `inset()`, `circle()`, `ellipse()`, `path()`) is a vector clip and is NOT
   flagged; only `clip-path: url(...)` (an SVG mask) is.
+- **`repeating-linear-gradient()`, `repeating-radial-gradient()`,
+  `repeating-conic-gradient()` and `conic-gradient()` print blank in a `--format pdfx` build.** Chromium emits
+  them in a form Ghostscript's CMYK conversion cannot paint; plain PDF output is
+  fine, and plain `linear-gradient()` / `radial-gradient()` convert correctly.
+  The CSS lint flags them and the build names the affected pages. For 0deg/90deg
+  stripes write `linear-gradient(90deg, #b33 0 6px, #c8c5bf 6px 10px)` with
+  `background-size: 10px 100%`; for diagonal stripes, radial rings or conic
+  fills use a small tiled image.
 - **Transparency in a `--format pdfx` build.** PDF/X-1a and X-3 cannot hold
   transparency (soft or `rgba()` shadows, alpha PNGs, `opacity`), so by default
   Ghostscript flattens each page that uses it into one bitmap, text included.

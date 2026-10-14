@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
 import { readFile, writeFile, unlink, rename, readdir } from "node:fs/promises";
 import { join, basename, resolve } from "node:path";
-import { run } from "./exec";
+import { enhancedPath, execCapture, run, spawnCapture } from "./exec";
+import { log } from "../utils/logger";
 import { findTool } from "./tool-probe";
 
 const WINDOWS_GHOSTSCRIPT_NAMES = ["gswin64c", "gswin32c", "gs"];
@@ -556,7 +557,31 @@ export async function convertToPdfxCmyk(
         "Ghostscript executable not found. Install Ghostscript or set GHOSTSCRIPT_PATH to its command-line executable."
       );
     }
-    await run(ghostscript, args);
+    // `run` inherits stdio, which would leave the warnings block on a terminal
+    // the desktop app never shows; capture it and log it through the logger.
+    const { code, signal, stdout, stderr } = await spawnCapture(ghostscript, args, {
+      env: { ...process.env, PATH: enhancedPath },
+    });
+    if (signal) {
+      const version = await execCapture(ghostscript, ["--version"])
+        .then((r) => r.stdout.trim())
+        .catch(() => "unknown version");
+      throw new Error(
+        `Ghostscript ${version} crashed (${signal}) while converting to PDF/X. ` +
+          "This is a Ghostscript bug, not a problem with the PDF. Ghostscript " +
+          "10.02.1 has been seen to crash in the PDF 1.3 transparency flattening " +
+          "PDF/X requires, on a page with an alpha-channel image. Flattening that " +
+          "image against its background avoided it there; a newer Ghostscript may " +
+          "too. A plain PDF (--format pdf) does not run this step."
+      );
+    }
+    if (code !== 0) {
+      throw new Error(`${ghostscript} ${args.join(" ")} exited ${code}\n${stdout}${stderr}`);
+    }
+    const at = stderr.indexOf("The following warnings");
+    if (at >= 0) {
+      log.warn(`Ghostscript reported problems converting to PDF/X:\n${stderr.slice(at).trim()}`);
+    }
   } finally {
     await unlink(tmpDef).catch(() => {});
   }

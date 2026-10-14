@@ -832,6 +832,23 @@ class PdfOutput implements OutputStrategy {
         const icc = opts.iccPath ?? config.pdfx.icc;
         effectiveIccPath = await resolveIccProfile(icc, manifestDir, opts.iccPath);
 
+        const rawBytes = await fsp.readFile(rawPdf);
+        // #386: Ghostscript 10.x cannot convert the PostScript-function
+        // shadings Chromium emits for repeating-*-gradient() and
+        // conic-gradient(); it logs "error in pattern" and paints nothing. Checked
+        // on the raw PDF, before the flatten below redraws any page.
+        const blankGradientPages = await findPostScriptShadingPages(rawBytes);
+        if (blankGradientPages.length > 0) {
+          log.warn(
+            `Page${blankGradientPages.length === 1 ? "" : "s"} ${blankGradientPages.join(", ")}: ` +
+              "a repeating-*-gradient() or conic-gradient() will print blank — " +
+              "Ghostscript cannot convert it to PDF/X. Replace it with a plain linear-gradient() or " +
+              "radial-gradient(), or a small tiled image. For 0deg/90deg stripes, " +
+              "`linear-gradient(90deg, #b33 0 6px, #c8c5bf 6px 10px)` with " +
+              "`background-size: 10px 100%` converts correctly."
+          );
+        }
+
         // B.10: PDF/X-1a and PDF/X-3 are built at PDF 1.3 compatibility,
         // which cannot represent live transparency at all — an alpha-channel
         // image OR a CSS `opacity`/`mix-blend-mode` rule forces Ghostscript
@@ -844,14 +861,13 @@ class PdfOutput implements OutputStrategy {
         // opt-in alternative: flatten the artwork ourselves and keep the text
         // live, on the pages where that is faithful. Runs before annotation
         // stripping and the black-text rewrite so both see the merged pages.
-        const rawBytes = await fsp.readFile(rawPdf);
         const transparent = await transparentPages(rawBytes);
         if (transparent.length > 0 && config.pdfx.transparency === "preserve-text") {
           const { unsplittableTextReasons } = await import("./pdf-inspect");
           // A repeating/conic gradient (#386) is a PostScript-function shading
           // the artwork raster pass distorts, so its page is not split either.
           const blocked = new Map<number, string>(await unsplittableTextReasons(rawBytes));
-          for (const n of await findPostScriptShadingPages(rawBytes)) {
+          for (const n of blankGradientPages) {
             if (!blocked.has(n)) blocked.set(n, "gradient");
           }
           const split = transparent.filter((n) => !blocked.has(n));
