@@ -374,3 +374,39 @@ test("lint rules: off drops a rule, warn/error set its severity, unknown ids are
   expect(levels.map((x) => x.severity).sort()).toEqual(["error", "warning"]);
   expect(levels).toHaveLength(2);
 });
+
+// #386: Ghostscript cannot convert the PostScript-function shadings Chromium
+// emits for these three, so a PDF/X export prints them blank.
+test.each([
+  "repeating-linear-gradient(45deg, red 0 10px, blue 10px 20px)",
+  "repeating-radial-gradient(circle, red 0 10px, blue 10px 20px)",
+  "conic-gradient(red, blue, red)",
+])("checkCss warns that %s prints blank in PDF/X", (gradient) => {
+  const found = checkCss(`.a { background: ${gradient}; }`).filter((w) => w.rule === ruleRiskyProps);
+  expect(found.length).toBe(1);
+  expect(found[0]!.severity).toBe("warning");
+  expect(found[0]!.message).toContain("PDF/X");
+  expect(found[0]!.message).toContain("background-size: 10px 100%");
+});
+
+test("checkCss flags a PostScript-shading gradient among layered backgrounds and in background-image", () => {
+  expect(checkCss(`.a { background-image: url(a.png), conic-gradient(red, blue); }`)).toHaveLength(1);
+});
+
+test("checkCss stays silent on plain gradients and the tiled-stripe workaround", () => {
+  const css = `
+    .a { background: linear-gradient(red, blue); }
+    .b { background: radial-gradient(circle, red, blue); }
+    .c { background: linear-gradient(90deg, #b33 0 6px, #c8c5bf 6px 10px); background-size: 10px 100%; }
+  `;
+  expect(checkCss(css)).toEqual([]);
+});
+
+test("the PDF/X gradient warning honours disable directives and lint.rules", () => {
+  const css = `/* gutterpress-disable-next-line printsafe/no-risky-print-effects -- web only */
+.a { background: conic-gradient(red, blue); }`;
+  expect(checkCss(css)).toEqual([]);
+  const plain = `.a { background: conic-gradient(red, blue); }`;
+  expect(checkCss(plain, undefined, { rules: { [ruleRiskyProps]: "off" } })).toEqual([]);
+  expect(checkCss(plain, undefined, { rules: { [ruleRiskyProps]: "error" } })[0]!.severity).toBe("error");
+});

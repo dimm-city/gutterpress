@@ -11,6 +11,7 @@ import { type AssetCopy } from "./asset-inline";
 import { resolveOutputDir, artifactName, BOOK_HTML } from "./output-paths";
 import {
   convertToPdfxCmyk,
+  findPostScriptShadingPages,
   hasLiveTransparency,
   stampCreator,
   stripAnnotations,
@@ -851,6 +852,22 @@ class PdfOutput implements OutputStrategy {
               "flatten any alpha-channel image against its intended background before " +
               "including it (export it with no alpha channel), or build --format pdf " +
               "instead of pdfx if this book doesn't need print-ready CMYK."
+          );
+        }
+
+        // #386: Ghostscript 10.x cannot convert the PostScript-function
+        // shadings Chromium emits for repeating-*-gradient() and
+        // conic-gradient(); it logs "error in pattern" and paints nothing.
+        const blankGradientPages = await findPostScriptShadingPages(await fsp.readFile(rawPdf));
+        if (blankGradientPages.length > 0) {
+          log.warn(
+            `Page${blankGradientPages.length === 1 ? "" : "s"} ${blankGradientPages.join(", ")} ` +
+              "use a repeating-linear-gradient(), repeating-radial-gradient() or " +
+              "conic-gradient(), which Ghostscript cannot convert to PDF/X — it will " +
+              "print blank. Replace it with a plain linear-gradient() or " +
+              "radial-gradient(), or a small tiled image. For 0deg/90deg stripes, " +
+              "`linear-gradient(90deg, #b33 0 6px, #c8c5bf 6px 10px)` with " +
+              "`background-size: 10px 100%` converts correctly."
           );
         }
 
