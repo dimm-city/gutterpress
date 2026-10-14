@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.19] - 2026-10-14
+
 ### Fixed
 
 - **Repeating and conic gradients no longer disappear from PDF/X builds without
