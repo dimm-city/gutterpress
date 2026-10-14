@@ -1,18 +1,20 @@
 # Print Effects Example
 
-One transparency effect per page, built as PDF/X-1a to show that the text on
-those pages stays live.
+One transparency effect per page, built as PDF/X-1a with
+`pdfx.transparency: preserve-text` to show that the text on those pages stays
+live.
 
 PDF/X-1a and X-3 are PDF 1.3, which has no transparency. A soft `rgba()` shadow,
-an alpha-channel PNG, `opacity` or a blend mode used to make Ghostscript flatten
-the whole page into one bitmap, losing its fonts and searchable text. Now
-Gutterpress flattens only the **artwork** of those pages to a 300 DPI image and
-draws the **text** back on top as live text. Pages without transparency are not
-touched.
+an alpha-channel PNG, `opacity` or a blend mode makes Ghostscript flatten the
+whole page into one bitmap, losing its fonts and searchable text (the default,
+`pdfx.transparency: flatten-page`). With `preserve-text`, Gutterpress flattens
+only the **artwork** of those pages to a 300 DPI image and draws the **text**
+back on top as live text. Pages without transparency are not touched.
 
 ## What's Included
 
-- `manifest.yaml` — the `dtrpg` preset, one stylesheet
+- `manifest.yaml` — the `dtrpg` preset, one stylesheet, `pdfx.transparency: preserve-text`
+  and `validate.assets.allowAlpha: true` (the cutout PNG has an alpha channel)
 - `effects.md` — five pages:
   1. a soft, blurred `rgba()` box-shadow card over a brick wall
   2. a `clip-path` polygon card whose shape-following shadow is a clipped
@@ -50,8 +52,10 @@ Text on pages 1 to 4 is selectable, and black text is on the black plate alone
   picture, not vectors.
 - Text is always the top layer. If another element is painted over text, the
   text shows through it in the PDF/X file.
-- Text that has its own transparency (a translucent glyph colour, `opacity` on
-  a text block) prints fully opaque.
+- A page whose text has its own transparency (a translucent glyph colour,
+  `opacity` or a blend mode on a text block) is not split: it falls back to
+  Ghostscript's whole-page flattening and loses its live text. None of the
+  pages here do that.
 - Keep CSS `filter` off text-bearing elements: Chromium rasterizes those into
   the PDF itself.
 - `repeating-linear-gradient()` and `conic-gradient()` are a separate

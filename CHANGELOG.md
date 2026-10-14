@@ -5,22 +5,24 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Changed
+### Added
 
-- **`--format pdfx` keeps live text on pages that use transparency.** PDF/X-1a
-  and X-3 (PDF 1.3) cannot hold transparency, and Ghostscript used to flatten
-  every page with a soft `rgba()` shadow, an alpha PNG or `opacity` into one
-  bitmap, text and fonts included. Now only those pages are touched: the artwork
-  becomes a 300 DPI picture and the text stays live vector text on top, so
-  searchable, embedded-font text and the `k-only` black-text rewrite survive. Pages without
-  transparency are untouched, and page boxes and metadata are kept. The build
-  warning now names the flattened pages and states the limits (flattened pages'
-  rules and shapes are raster; text is always on top, so text another element
-  covers shows through; text with its own transparency prints opaque). The new
+- **`pdfx.transparency: preserve-text` (opt-in) keeps live text on PDF/X pages
+  that use transparency.** PDF/X-1a and X-3 (PDF 1.3) cannot hold
+  transparency, and Ghostscript flattens every page with a soft `rgba()`
+  shadow, an alpha PNG or `opacity` into one bitmap, text and fonts included.
+  With `preserve-text`, an eligible page's artwork becomes a 300 DPI picture
+  and its text stays live vector text on top, so searchable, embedded-font text
+  and the `k-only` black-text rewrite survive. Pages without transparency are
+  untouched, and page boxes and metadata are kept. A page whose text is itself
+  translucent or blended (`opacity`, `mix-blend-mode`, a soft mask, a
+  translucent or knockout group) is not split: it falls back to Ghostscript's
+  whole-page flattening, so its appearance is unchanged. On split pages rules
+  and shapes are raster and text is always on top, so text another element
+  covers shows through. The default, `flatten-page`, keeps today's behaviour
+  and warning (which now mentions the option). The new
   `examples/with-print-effects` book shows one effect per page; see "PDF/X and
-  transparency" in `docs/publishing.md`. The `dtrpg` preset no longer warns
-  about images with an alpha channel (`validate.assets.allowAlpha` is now
-  `true`), since the PDF/X build no longer turns their pages into bitmaps.
+  transparency" in `docs/publishing.md`.
 
 ## [0.11.18] - 2026-10-13
 

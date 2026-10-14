@@ -82,7 +82,7 @@ Browse the [`examples/`](./examples/) directory for real projects you can copy:
 - **`with-design-guide`** — the most complete reference. A multi-chapter design guide that exercises the layout features: custom fonts, page templates, columns, sidebars, and callouts.
 - **`gutterpress-user-guide`** — the comprehensive user guide, authored in Gutterpress itself.
 - **`with-validation`** — focused on the pre-/post-build validation pipeline.
-- **`with-print-effects`** — soft shadows, clipped shapes and alpha art in a PDF/X build, with live text kept on every page.
+- **`with-print-effects`** — soft shadows, clipped shapes and alpha art in a PDF/X build, with live text kept (`pdfx.transparency: preserve-text`).
 
 ## Project layout
 

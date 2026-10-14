@@ -5,5 +5,19 @@ authors:
 styles:
   - styles/main.css
 
+# Only the book itself; this folder's README.md is documentation, not a page.
+source:
+  files:
+    - effects.md
+
 # DriveThruRPG print-on-demand interior (PDF/X-1a).
 preset: dtrpg
+
+pdfx:
+  # Opt in: flatten only the artwork of pages that use transparency, keep text live.
+  transparency: preserve-text
+
+validate:
+  assets:
+    # The cutout PNG has an alpha channel; this book's build handles it.
+    allowAlpha: true

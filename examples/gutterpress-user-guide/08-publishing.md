@@ -109,12 +109,15 @@ rules:
 - **Black text prints in black ink only.** In a `--format pdfx` build, black
   and near-black text goes on the black plate alone, as DriveThruRPG requires
   for small text. Coloured text is printed as designed.
-- **Soft shadows and translucent art keep their text.** PDF/X-1a has no
-  transparency, so a page that uses a soft `rgba()` shadow, a PNG with an alpha
-  channel or `opacity` is flattened to a 300 DPI picture in a `--format pdfx`
-  build, but its text stays live text. The build lists the pages it flattened.
-  On those pages rules and backgrounds become part of the picture, and text
-  always sits above the artwork, so text another element covers shows through.
+- **Soft shadows and translucent art.** PDF/X-1a has no transparency, so a page
+  that uses a soft `rgba()` shadow, a PNG with an alpha channel or `opacity` is
+  flattened to a picture in a `--format pdfx` build, and by default that page
+  loses its live text. To keep the text, add `pdfx: { transparency:
+  preserve-text }` to `manifest.yaml`: only the artwork becomes a 300 DPI
+  picture and the text stays live on top. Rules and backgrounds on those pages
+  become part of the picture, text always sits above the artwork (text another
+  element covers shows through), and a page whose text is itself translucent
+  or blended keeps the default. The build lists the pages it flattened.
 
 @end-section
 

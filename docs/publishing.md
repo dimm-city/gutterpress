@@ -111,20 +111,36 @@ calls, no child process at all).
 transparency. Soft or `rgba()` box-shadows, alpha-channel PNGs, `opacity`, and
 blend modes all need it. Ghostscript's own answer is to flatten the whole page
 into one bitmap, text included, so the page loses its fonts and `pdftotext`
-finds nothing.
+finds nothing. The build warns when a book does this.
 
-Gutterpress does the flattening itself, on the affected pages only:
+`pdfx.transparency` in `manifest.yaml` chooses what happens (the same default in
+every preset):
 
-1. It finds the pages that use transparency. Every other page is left as it is,
-   vector text and shapes.
-2. On each affected page the **artwork** (everything except the glyphs) is
-   composited into one opaque 300 DPI image, and the **text** is kept as live
-   vector text drawn on top of it. Page boxes (Trim, Bleed, Crop), links and the
-   document's metadata stay as they were.
-3. The usual PDF/X steps run on the result, so `pdfx.blackText: k-only` still
-   reaches the text on these pages.
+```yaml
+pdfx:
+  transparency: flatten-page   # default
+  # transparency: preserve-text
+```
 
-The build prints the page numbers it flattened. To check the result:
+- **`flatten-page`** (default): the page is left to Ghostscript, which flattens
+  the whole page. What you see is what the page looked like, but its text is
+  gone. Occlusion is preserved: an element painted over text still hides it.
+- **`preserve-text`** (opt-in): Gutterpress flattens the artwork itself and keeps
+  the text live, on the pages where that is faithful.
+  1. Pages that use transparency are found. Every other page is left as it is,
+     vector text and shapes.
+  2. On each such page the **artwork** (everything except the glyphs) is
+     composited into one opaque 300 DPI image, and the **text** is kept as live
+     vector text drawn on top of it. Page boxes (Trim, Bleed, Crop), links and
+     the document's metadata stay as they were.
+  3. The usual PDF/X steps run on the result, so `pdfx.blackText: k-only` still
+     reaches the text on these pages.
+
+  The build lists the pages it split. Alpha-channel images are still flagged by
+  the `dtrpg` preset (`validate.assets.allowAlpha: false`); a book that opts in
+  and uses them sets `allowAlpha: true` itself.
+
+Under `preserve-text`, to check the result:
 
 ```bash
 pdftotext -f 3 -l 3 dist/my-book/my-book-pdfx.pdf -   # the page's words
@@ -133,24 +149,28 @@ pdffonts dist/my-book/my-book-pdfx.pdf                 # every font embedded
 
 `examples/with-print-effects/` is a small book with one effect per page.
 
-Known limits, all consequences of splitting a page into picture and text:
+**Fallback.** A page whose text is itself drawn with transparency, such as
+`opacity` or `mix-blend-mode` on a text block, translucent glyph colour, a soft
+mask over the text or a translucent or knockout group around it, cannot be
+split: drawing that text opaque on top of a picture changes how it looks (faint
+text prints solid, multiplied text changes colour). Those pages are not split
+and go to Ghostscript exactly as in `flatten-page`; the build names them.
 
-- On a flattened page, rules, backgrounds and shapes are part of the 300 DPI
-  picture, not vectors.
+Known limits of the pages that are split:
+
+- Rules, backgrounds and shapes are part of the 300 DPI picture, not vectors.
 - Text is always the top layer. If another element is painted over text, the
-  text still shows through.
-- Text that carries its own transparency (translucent glyph colour, `opacity`
-  on a text block) prints fully opaque.
+  text still shows through. Do not use `preserve-text` for a book that hides
+  text behind opaque shapes.
 - Keep CSS `filter` off text-bearing elements: Chromium rasterizes those into
   the PDF itself, before this step.
 - `repeating-linear-gradient()` and `conic-gradient()` are a separate Ghostscript
   gap (#386) and are not covered here.
 
-**For plugin authors.** There is no API to call and nothing to opt into: write
-ordinary CSS and the build handles the rest. Keep `filter` off text-bearing
-elements, don't paint over text, keep glyph colours opaque, and require a
-Gutterpress version that ships this behaviour. Older versions flatten the whole
-page to a bitmap with no text.
+**For plugin authors.** A plugin cannot choose this; the book's author opts in
+with `pdfx.transparency`. If your styles rely on it, say so in your docs, keep
+glyph colours opaque and `opacity`/`mix-blend-mode` off text blocks, and don't
+paint over text.
 
 ## Architecture
 
