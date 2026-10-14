@@ -75,7 +75,7 @@ export function onSettingsChange(fn: SettingsListener): () => void {
 function isAppSettings(value: unknown): value is AppSettings {
   if (!value || typeof value !== "object") return false;
   const settings = value as Partial<AppSettings>;
-  return !!settings.editor && !!settings.appearance && !!settings.preview && !!settings.versionHistory;
+  return !!settings.appearance && !!settings.preview && !!settings.versionHistory;
 }
 
 /**

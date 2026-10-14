@@ -133,12 +133,6 @@ export interface AppSettings {
   workspace: {
     role: WorkspaceRole;
   };
-  editor: {
-    fontFamily: string;
-    fontSize: number;
-    lineHeight: number;
-    spellCheckLanguage: string;
-  };
   appearance: {
     theme: "light" | "dark" | "system";
     previewBg: string;
@@ -203,10 +197,9 @@ export interface AppSettings {
      * Write editor changes to disk on their own, 500ms after the last edit
      * (Settings → Saving, "Save edits automatically"). Off: edits wait for
      * Save / Ctrl+S (leaving the file asks Save / Don't Save / Cancel), so
-     * the Save button means something. Lives in this section, not `editor`,
-     * because this section is
-     * the Saving group's storage — its one Reset restores every switch there,
-     * and the Editor tab's Reset leaves it alone. Default ON.
+     * the Save button means something. Lives in this section because this
+     * section is the Saving group's storage — its one Reset restores every
+     * switch there. Default ON.
      */
     autoSave: boolean;
     /**
@@ -247,12 +240,6 @@ export interface AppSettings {
 export const DEFAULT_SETTINGS: AppSettings = {
   workspace: {
     role: "reader",
-  },
-  editor: {
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-    fontSize: 14,
-    lineHeight: 1.6,
-    spellCheckLanguage: "en-US",
   },
   appearance: {
     theme: "system",

@@ -26,6 +26,13 @@ This project follows [Semantic Versioning](https://semver.org/).
   after a save. Clicking the finding in Problems puts the cursor on the
   character.
 
+### Removed
+
+- **The Editor settings for font family, font size, line spacing and spell-check
+  language.** Nothing applied them: the editor kept its own font and spacing
+  whatever they said. A settings file saved by an older version still loads with
+  every other choice intact, and the old values are dropped on the next save.
+
 ## [0.11.18] - 2026-10-13
 
 ### Added

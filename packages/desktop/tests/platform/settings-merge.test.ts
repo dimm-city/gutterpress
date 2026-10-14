@@ -62,6 +62,20 @@ test("drops a patch key no longer present in the base section (#274)", () => {
   expect(merged.editor).not.toHaveProperty("autoSaveDelay");
 });
 
+test("drops a patch section no longer present in the base instead of throwing (#384)", () => {
+  const base = makeBase();
+  // A persisted file can still carry a whole section a later schema version
+  // removed (the deleted `editor` section) — a throw here would make the
+  // store treat the file as corrupt and fall back to defaults.
+  const merged = deepMergeSettings(base, {
+    removedSection: { fontSize: 18 },
+    appearance: { theme: "dark" },
+  } as unknown as DeepPartial<AppSettings>);
+
+  expect(merged).not.toHaveProperty("removedSection");
+  expect(merged.appearance).toEqual({ theme: "dark", previewBg: "#5a5a5a" } as never);
+});
+
 test("ignores undefined sections", () => {
   const base = makeBase();
   const merged = deepMergeSettings(base, {
