@@ -6,6 +6,7 @@
  * (CI fails on a missing one via ci-preconditions.test.ts).
  */
 import { expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { copyFile, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
@@ -17,7 +18,7 @@ import { build } from "../engine/compiler/build";
 import { runBuild } from "./build-runner";
 import { getAssetPath } from "./embedded-assets";
 import { blackTextToGray } from "./black-text-gray";
-import { loadPdf, getOpPass, getTextPass, textUnderTransparencyPages } from "./pdf-inspect";
+import { loadPdf, getOpPass, getTextPass, pagesWithUnsplittableText } from "./pdf-inspect";
 import {
   convertToPdfxCmyk,
   flattenTransparentPages,
@@ -104,7 +105,7 @@ testIf(
       const transparent = await transparentPages(sourceBytes);
       expect(transparent).toEqual([1, 2, 3, 4, 5, 6]);
       // Chromium wraps opacity and blended text in a group form XObject.
-      const blocked = await textUnderTransparencyPages(sourceBytes);
+      const blocked = await pagesWithUnsplittableText(sourceBytes);
       expect(blocked).toEqual([5, 6]);
       const split = transparent.filter((n) => !blocked.includes(n));
       expect(split).toEqual([1, 2, 3, 4]);
@@ -221,6 +222,71 @@ section { break-after: page; font: 14px serif }
       expect(imagesByPage.get(1)?.length).toBe(1);
       const { textByPage } = await getTextPass(pdf!);
       expect(textByPage[1]).toContain("Text after the plate");
+    } finally {
+      await browser.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+  240_000
+);
+
+// Skia emits a Type 3 font (glyphs as vector paths) for the synthetic bold of a
+// single-weight font. The text pass's -dFILTERVECTOR strips those paths, so a
+// split page would print nothing there even though pdftotext still finds the
+// words: such a page must fall back.
+const REGULAR_ONLY_FONT = [
+  "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+  "/usr/share/fonts/dejavu/DejaVuSansMono.ttf",
+  "/System/Library/Fonts/Supplemental/Courier New.ttf",
+  "C:\\Windows\\Fonts\\cour.ttf",
+].find((f) => existsSync(f));
+
+(REGULAR_ONLY_FONT ? testIf : test.skip)(
+  "a page with synthetic-bold (Type 3) text is not split and keeps its pixels",
+  async () => {
+    const dir = await makeTempDir("gp-flatten-t3-");
+    const browser = await launchChromium();
+    try {
+      await copyFile(REGULAR_ONLY_FONT!, join(dir, "regular.ttf"));
+      const file = join(dir, "book.html");
+      await writeFile(
+        file,
+        `<!doctype html><meta charset="utf-8"><style>
+@font-face { font-family: Single; src: url(regular.ttf); font-weight: 400 }
+@page { size: 300px 400px; margin: 30px }
+section { break-after: page; font: 24px Single }
+.card { margin-top: 40px; padding: 16px; background: #fff; box-shadow: 0 12px 24px rgba(0, 0, 0, .45) }
+</style>
+<section><div class="card"><b>Synthetic bold</b> regular</div></section>
+<section><div class="card">Regular only</div></section>`,
+        "utf8"
+      );
+      const built = await build({ input: pathToFileURL(file).href, browser, dpiFloor: 0 });
+      const sourcePdf = join(dir, "source.pdf");
+      const rawPdf = join(dir, "raw.pdf");
+      await writeFile(sourcePdf, built.bytes);
+      await copyFile(sourcePdf, rawPdf);
+
+      expect(await transparentPages(built.bytes)).toEqual([1, 2]);
+      expect(await pagesWithUnsplittableText(built.bytes)).toEqual([1]);
+
+      // Splitting page 1 anyway loses the bold glyphs: the pixels prove why it is excluded.
+      await flattenTransparentPages(rawPdf, [1], dir);
+      const forced = meanAbsDiff(
+        rasterizePdfPage(ghostscript!, sourcePdf, dir, "t3src", 1),
+        rasterizePdfPage(ghostscript!, rawPdf, dir, "t3forced", 1)
+      );
+      expect(forced).toBeGreaterThan(0.5);
+
+      // The ordinary page of the same book splits cleanly.
+      await copyFile(sourcePdf, rawPdf);
+      await flattenTransparentPages(rawPdf, [2], dir);
+      expect(
+        meanAbsDiff(
+          rasterizePdfPage(ghostscript!, sourcePdf, dir, "t3src2", 2),
+          rasterizePdfPage(ghostscript!, rawPdf, dir, "t3split2", 2)
+        )
+      ).toBeLessThan(1);
     } finally {
       await browser.close();
       await rm(dir, { recursive: true, force: true });

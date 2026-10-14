@@ -846,8 +846,8 @@ class PdfOutput implements OutputStrategy {
         const rawBytes = await fsp.readFile(rawPdf);
         const transparent = await transparentPages(rawBytes);
         if (transparent.length > 0 && config.pdfx.transparency === "preserve-text") {
-          const { textUnderTransparencyPages } = await import("./pdf-inspect");
-          const blocked = new Set(await textUnderTransparencyPages(rawBytes));
+          const { pagesWithUnsplittableText } = await import("./pdf-inspect");
+          const blocked = new Set(await pagesWithUnsplittableText(rawBytes));
           const split = transparent.filter((n) => !blocked.has(n));
           const kept = transparent.filter((n) => blocked.has(n));
           await flattenTransparentPages(rawPdf, split, stage);
@@ -865,7 +865,8 @@ class PdfOutput implements OutputStrategy {
           if (kept.length > 0) {
             log.warn(
               `Page${kept.length === 1 ? "" : "s"} ${kept.join(", ")} could not keep ${kept.length === 1 ? "its" : "their"} text live: ` +
-                "their text uses transparency or blending (opacity, mix-blend-mode, a soft mask), " +
+                "their text uses transparency or blending (opacity, mix-blend-mode, a soft mask) " +
+                "or a Type 3 font (such as the synthetic bold of a single-weight font), " +
                 `which cannot be drawn on top of flattened artwork unchanged. Ghostscript will flatten ${kept.length === 1 ? "that page" : "each of those pages"} ` +
                 "into one raster image, losing its embedded fonts and searchable text."
             );

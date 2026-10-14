@@ -149,12 +149,20 @@ pdffonts dist/my-book/my-book-pdfx.pdf                 # every font embedded
 
 `examples/with-print-effects/` is a small book with one effect per page.
 
-**Fallback.** A page whose text is itself drawn with transparency, such as
-`opacity` or `mix-blend-mode` on a text block, translucent glyph colour, a soft
-mask over the text or a translucent or knockout group around it, cannot be
-split: drawing that text opaque on top of a picture changes how it looks (faint
-text prints solid, multiplied text changes colour). Those pages are not split
-and go to Ghostscript exactly as in `flatten-page`; the build names them.
+**Fallback.** Two kinds of page cannot be split:
+
+- A page whose text is itself drawn with transparency: `opacity` or
+  `mix-blend-mode` on a text block, translucent glyph colour, a soft mask over
+  the text, or a translucent or knockout group around it. Drawing that text
+  opaque on top of a picture changes how it looks (faint text prints solid,
+  multiplied text changes colour).
+- A page whose text uses a Type 3 font. Chromium emits one for glyphs it can
+  only draw as paths, such as the synthetic bold of `font-weight: 700` on a
+  webfont that has only a regular face (`pdffonts` lists it as `Type 3`). The
+  text layer keeps no vector paths, so that text would print nothing.
+
+Such pages are not split and go to Ghostscript exactly as in `flatten-page`;
+the build names them.
 
 Known limits of the pages that are split:
 

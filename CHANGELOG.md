@@ -16,7 +16,8 @@ This project follows [Semantic Versioning](https://semver.org/).
   and the `k-only` black-text rewrite survive. Pages without transparency are
   untouched, and page boxes and metadata are kept. A page whose text is itself
   translucent or blended (`opacity`, `mix-blend-mode`, a soft mask, a
-  translucent or knockout group) is not split: it falls back to Ghostscript's
+  translucent or knockout group, or a Type 3 font such as a synthetic bold) is
+  not split: it falls back to Ghostscript's
   whole-page flattening, so its appearance is unchanged. On split pages rules
   and shapes are raster and text is always on top, so text another element
   covers shows through. The default, `flatten-page`, keeps today's behaviour

@@ -157,7 +157,7 @@
         },
         "transparency": {
           "type": "string",
-          "description": "What a PDF/X build does with a page that uses transparency (an alpha-channel image, a soft `rgba()` shadow, CSS `opacity` or `mix-blend-mode`), which PDF/X (PDF 1.3) cannot represent. `flatten-page` leaves the page to Ghostscript, which rasterizes the WHOLE page: it looks right but loses the page's text and fonts. `preserve-text` flattens only the artwork to a 300 DPI picture and draws the text live on top, so the page stays searchable. Text is then always the top layer (text another element covers shows through), and a page whose text is itself translucent, blended or inside a transparency group falls back to `flatten-page`. Set `validate.assets.allowAlpha: true` to use alpha-channel images. Same for every preset: `flatten-page`.",
+          "description": "What a PDF/X build does with a page that uses transparency (an alpha-channel image, a soft `rgba()` shadow, CSS `opacity` or `mix-blend-mode`), which PDF/X (PDF 1.3) cannot represent. `flatten-page` leaves the page to Ghostscript, which rasterizes the WHOLE page: it looks right but loses the page's text and fonts. `preserve-text` flattens only the artwork to a 300 DPI picture and draws the text live on top, so the page stays searchable. Text is then always the top layer (text another element covers shows through), and a page whose text is itself translucent, blended, inside a transparency group or set in a Type 3 font (e.g. synthetic bold) falls back to `flatten-page`. Set `validate.assets.allowAlpha: true` to use alpha-channel images. Same for every preset: `flatten-page`.",
           "enum": ["flatten-page", "preserve-text"],
           "default": "flatten-page"
         }

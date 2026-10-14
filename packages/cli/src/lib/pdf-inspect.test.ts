@@ -23,7 +23,7 @@ import {
   getOutlineCount,
   getOpPass,
   isLoadable,
-  textUnderTransparencyPages,
+  pagesWithUnsplittableText,
 } from "./pdf-inspect";
 import type { PDFDocumentProxy } from "unpdf/pdfjs";
 
@@ -261,7 +261,7 @@ describe("pdf-inspect cache eviction + clearPdfCache", () => {
   });
 });
 
-describe("textUnderTransparencyPages", () => {
+describe("pagesWithUnsplittableText", () => {
   const TEXT = "BT /F1 12 Tf 10 50 Td (Hello) Tj ET";
 
   /**
@@ -334,11 +334,11 @@ describe("textUnderTransparencyPages", () => {
 
   test("plain text beside a soft shadow is eligible", async () => {
     const bytes = await pdf(`q /G gs 0 0 40 40 re f Q ${TEXT}`, { gs: { G: { ca: 0.4 } } });
-    expect(await textUnderTransparencyPages(bytes)).toEqual([]);
+    expect(await pagesWithUnsplittableText(bytes)).toEqual([]);
   });
 
   test("a page-level /Group alone does not count", async () => {
-    expect(await textUnderTransparencyPages(await pdf(TEXT, { pageGroup: true }))).toEqual([]);
+    expect(await pagesWithUnsplittableText(await pdf(TEXT, { pageGroup: true }))).toEqual([]);
   });
 
   test("constant alpha, blend mode and soft mask on the text flag the page", async () => {
@@ -349,27 +349,27 @@ describe("textUnderTransparencyPages", () => {
       M: { SMask: "mask" },
     };
     for (const name of Object.keys(gs)) {
-      expect(await textUnderTransparencyPages(await pdf(`q /${name} gs ${TEXT} Q`, { gs }))).toEqual([1]);
+      expect(await pagesWithUnsplittableText(await pdf(`q /${name} gs ${TEXT} Q`, { gs }))).toEqual([1]);
     }
   });
 
   test("an opaque or Normal state is eligible, and Q ends the effect", async () => {
     const gs = { N: { ca: 1, CA: 1, BM: "Normal" }, A: { ca: 0.15 } };
-    expect(await textUnderTransparencyPages(await pdf(`q /N gs ${TEXT} Q`, { gs }))).toEqual([]);
-    expect(await textUnderTransparencyPages(await pdf(`q /A gs 0 0 5 5 re f Q ${TEXT}`, { gs }))).toEqual([]);
+    expect(await pagesWithUnsplittableText(await pdf(`q /N gs ${TEXT} Q`, { gs }))).toEqual([]);
+    expect(await pagesWithUnsplittableText(await pdf(`q /A gs 0 0 5 5 re f Q ${TEXT}`, { gs }))).toEqual([]);
   });
 
   test("text in a plain isolated group at alpha 1 is eligible (Chromium's wrapper)", async () => {
     const forms = { Grp: { content: TEXT, group: true }, Plain: { content: TEXT } };
-    expect(await textUnderTransparencyPages(await pdf("/Grp Do", { forms }))).toEqual([]);
-    expect(await textUnderTransparencyPages(await pdf("/Plain Do", { forms }))).toEqual([]);
+    expect(await pagesWithUnsplittableText(await pdf("/Grp Do", { forms }))).toEqual([]);
+    expect(await pagesWithUnsplittableText(await pdf("/Plain Do", { forms }))).toEqual([]);
   });
 
   test("text in an opacity group (alpha set outside, reset inside) is flagged", async () => {
     // What Chromium emits for `opacity: .15`: the alpha is on the Do, the form resets it.
     const gs = { A: { ca: 0.15 }, One: { ca: 1 } };
     const forms = { Grp: { content: `/One gs ${TEXT}`, group: true } };
-    expect(await textUnderTransparencyPages(await pdf("q /A gs /Grp Do Q", { gs, forms }))).toEqual([1]);
+    expect(await pagesWithUnsplittableText(await pdf("q /A gs /Grp Do Q", { gs, forms }))).toEqual([1]);
   });
 
   test("text in a knockout group is flagged, and so is text nested inside one", async () => {
@@ -377,12 +377,12 @@ describe("textUnderTransparencyPages", () => {
       Plain: { content: TEXT },
       Knock: { content: "/Plain Do", group: true, knockout: true },
     };
-    expect(await textUnderTransparencyPages(await pdf("/Knock Do", { forms }))).toEqual([1]);
+    expect(await pagesWithUnsplittableText(await pdf("/Knock Do", { forms }))).toEqual([1]);
   });
 
   test("a plain form inherits the state it is drawn in", async () => {
     const gs = { A: { ca: 0.15 } };
     const forms = { Plain: { content: TEXT } };
-    expect(await textUnderTransparencyPages(await pdf("q /A gs /Plain Do Q", { gs, forms }))).toEqual([1]);
+    expect(await pagesWithUnsplittableText(await pdf("q /A gs /Plain Do Q", { gs, forms }))).toEqual([1]);
   });
 });

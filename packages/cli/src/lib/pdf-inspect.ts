@@ -494,7 +494,7 @@ const SHOW_TEXT_OPS = new Set<number>(
 );
 
 /**
- * 1-based pages that SHOW TEXT while transparency is in effect: constant alpha
+ * 1-based pages whose text cannot be split from its artwork. Text that SHOWS while transparency is in effect: constant alpha
  * (`ca`/`CA` < 1), a non-Normal blend mode, an active soft mask, or any
  * enclosing transparency group that is composited translucent, blended or
  * masked, or is a knockout group. (Chromium draws `opacity` and
@@ -503,6 +503,11 @@ const SHOW_TEXT_OPS = new Set<number>(
  * begins is what counts.) Such text cannot be lifted out of its page and drawn
  * opaque on top of a flattened picture without changing how it looks, so
  * `pdfx.transparency: preserve-text` leaves those pages alone.
+ *
+ * Also flagged: any page that sets a Type 3 font. Chromium (Skia) emits Type 3
+ * for glyphs it can only draw as paths, e.g. the synthetic bold of a
+ * single-weight webfont. Their glyph procedures are vector paths, which the
+ * text pass's `-dFILTERVECTOR` strips, so the text would print nothing.
  *
  * A plain isolated group composited at alpha 1 / Normal / no mask is NOT
  * counted: painting it is the same as painting its content inline, and
@@ -516,13 +521,14 @@ const SHOW_TEXT_OPS = new Set<number>(
  * `beginGroup/endGroup`. Graphics state is tracked per save/restore (a form
  * XObject is an implicit save/restore).
  */
-export async function textUnderTransparencyPages(pdfBytes: Uint8Array): Promise<number[]> {
+export async function pagesWithUnsplittableText(pdfBytes: Uint8Array): Promise<number[]> {
   const GSTATE_BIT: Record<string, number> = { ca: 1, CA: 2, BM: 4, SMask: 8 };
   const doc = await getDocumentProxy(new Uint8Array(pdfBytes));
   const pages: number[] = [];
   try {
     for (let i = 1; i <= doc.numPages; i++) {
-      const ops = await (await doc.getPage(i)).getOperatorList();
+      const page = await doc.getPage(i);
+      const ops = await page.getOperatorList();
       let state = 0; // GSTATE_BIT flags currently in effect
       const groups: boolean[] = []; // open groups: composited translucent, blended, masked or knockout?
       const stack: number[] = [];
@@ -534,6 +540,13 @@ export async function textUnderTransparencyPages(pdfBytes: Uint8Array): Promise<
           const group = (ops.argsArray[j] as [{ smask?: unknown; knockout?: boolean }])[0];
           groups.push(state !== 0 || !!(group.smask || group.knockout));
         } else if (fn === OPS.endGroup) groups.pop();
+        else if (fn === OPS.setFont) {
+          const ref = (ops.argsArray[j] as [unknown])[0];
+          if (typeof ref === "string" && page.commonObjs.has(ref) && (page.commonObjs.get(ref) as { isType3Font?: boolean }).isType3Font) {
+            pages.push(i);
+            break;
+          }
+        }
         else if (fn === OPS.setGState) {
           for (const [key, value] of (ops.argsArray[j] as [[string, unknown][]])[0]) {
             const bit = GSTATE_BIT[key];

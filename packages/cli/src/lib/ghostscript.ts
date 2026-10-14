@@ -224,7 +224,7 @@ export async function stripAnnotations(
 
 /**
  * Make the pages in `pages` (1-based; from {@link transparentPages}, minus
- * those `textUnderTransparencyPages` names) free of transparency while keeping
+ * those `pagesWithUnsplittableText` names) free of transparency while keeping
  * their text live, so PDF/X (PDF 1.3) conversion has nothing left to flatten
  * into a single bitmap. Opt-in: `pdfx.transparency: preserve-text`.
  *
@@ -265,9 +265,15 @@ export async function flattenTransparentPages(
   const text = join(stagingDir, "flatten-text.pdf");
   const pageList = `-sPageList=${pages.join(",")}`;
   // Links and outlines point at pages this subset leaves out; they stay on the
-  // original page objects and are not wanted in the scratch files.
+  // original page objects and are not wanted in the scratch files (and
+  // -dNO_PDFMARK_OUTLINES stops Ghostscript logging "pdfmark destination page N
+  // points beyond the last page" for them).
   const gs = (...args: string[]) =>
-    run(ghostscript, ["-q", "-dBATCH", "-dNOPAUSE", "-dSAFER", "-dPreserveAnnots=false", ...args]);
+    run(ghostscript, [
+      "-q", "-dBATCH", "-dNOPAUSE", "-dSAFER",
+      "-dPreserveAnnots=false", "-dNO_PDFMARK_OUTLINES",
+      ...args,
+    ]);
 
   try {
     await gs(pageList, "-sDEVICE=pdfimage24", "-dFILTERTEXT", "-r300", `-sOutputFile=${art}`, pdfPath);
@@ -293,10 +299,14 @@ export async function flattenTransparentPages(
     }
     const artPages = await doc.embedPages(artDoc.getPages());
     // A page with transparency but no text (a full-page art plate) comes back
-    // from the text pass with no /Contents, which pdf-lib cannot embed.
-    const textPages = await Promise.all(
-      textDoc.getPages().map((p) => (p.node.Contents() ? doc.embedPage(p) : undefined))
-    );
+    // from the text pass with no /Contents, which pdf-lib cannot embed. One
+    // embedPages call copies the text file's fonts once; embedding page by page
+    // would copy them again for every page.
+    const withText = textDoc.getPages().filter((p) => p.node.Contents());
+    const embeddedText = await doc.embedPages(withText);
+    const textPages = textDoc
+      .getPages()
+      .map((p) => embeddedText[withText.indexOf(p)]);
 
     pages.forEach((pageNumber, i) => {
       const page = doc.getPage(pageNumber - 1);
