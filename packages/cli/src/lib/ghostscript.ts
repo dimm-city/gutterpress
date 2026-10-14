@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
 import { readFile, writeFile, unlink, rename, readdir } from "node:fs/promises";
 import { join, basename, resolve } from "node:path";
-import { execCapture, run } from "./exec";
+import { enhancedPath, execCapture, run, spawnCapture } from "./exec";
+import { log } from "../utils/logger";
 import { findTool } from "./tool-probe";
 
 const WINDOWS_GHOSTSCRIPT_NAMES = ["gswin64c", "gswin32c", "gs"];
@@ -160,6 +161,79 @@ export async function hasLiveTransparency(pdfBytes: Uint8Array): Promise<boolean
     }
   }
   return false;
+}
+
+/**
+ * 1-based numbers of the pages that paint a `/ShadingType 1` shading whose
+ * function is `/FunctionType 4` (a PostScript calculator function).
+ *
+ * That is how Chromium (Skia) emits `repeating-linear-gradient()`,
+ * `repeating-radial-gradient()`, `repeating-conic-gradient()` and
+ * `conic-gradient()`. Ghostscript 10.x
+ * reports "error in pattern" on it while converting to PDF/X and paints
+ * nothing, so the gradient prints blank (#386). Plain `linear-gradient()` and
+ * `radial-gradient()` are ShadingType 2/3 and convert fine. Detecting it lets
+ * the build name the affected pages before the conversion drops them; the
+ * pipeline does not rewrite the gradient. Delete this when Ghostscript paints
+ * these shadings.
+ *
+ * Walks page resources (and form XObjects they draw) rather than every
+ * object, so only shadings a page can actually paint are reported. Like
+ * {@link hasLiveTransparency}, it never fails a build: an unparseable PDF
+ * reports no pages.
+ */
+export async function findPostScriptShadingPages(pdfBytes: Uint8Array): Promise<number[]> {
+  const { PDFDocument, PDFDict, PDFName, PDFNumber, PDFRawStream, PDFRef } = await import(
+    "pdf-lib"
+  );
+  let doc;
+  try {
+    doc = await PDFDocument.load(pdfBytes, {
+      updateMetadata: false,
+      throwOnInvalidObject: false,
+    });
+  } catch {
+    return [];
+  }
+  const ctx = doc.context;
+  const asDict = (obj: unknown) => {
+    const o = obj instanceof PDFRef ? ctx.lookup(obj) : obj;
+    return o instanceof PDFRawStream ? o.dict : o instanceof PDFDict ? o : undefined;
+  };
+  const num = (obj: unknown) => {
+    const o = obj instanceof PDFRef ? ctx.lookup(obj) : obj;
+    return o instanceof PDFNumber ? o.asNumber() : undefined;
+  };
+  const isPostScriptShading = (shading: unknown) => {
+    const dict = asDict(shading);
+    if (!dict || num(dict.get(PDFName.of("ShadingType"))) !== 1) return false;
+    return num(asDict(dict.get(PDFName.of("Function")))?.get(PDFName.of("FunctionType"))) === 4;
+  };
+  const subDicts = (resources: import("pdf-lib").PDFDict, key: string) => {
+    const group = asDict(resources.get(PDFName.of(key)));
+    return group ? group.entries().map(([, v]) => v) : [];
+  };
+
+  const seen = new Set<unknown>();
+  const usesPostScriptShading = (resources: import("pdf-lib").PDFDict | undefined): boolean => {
+    if (!resources || seen.has(resources)) return false;
+    seen.add(resources);
+    if (subDicts(resources, "Shading").some(isPostScriptShading)) return true;
+    for (const pattern of subDicts(resources, "Pattern")) {
+      const dict = asDict(pattern);
+      if (dict && isPostScriptShading(dict.get(PDFName.of("Shading")))) return true;
+    }
+    return subDicts(resources, "XObject").some((x) =>
+      usesPostScriptShading(asDict(asDict(x)?.get(PDFName.of("Resources"))))
+    );
+  };
+
+  const pages: number[] = [];
+  doc.getPages().forEach((page, i) => {
+    seen.clear();
+    if (usesPostScriptShading(asDict(page.node.Resources()))) pages.push(i + 1);
+  });
+  return pages;
 }
 
 /**
@@ -360,11 +434,12 @@ export async function convertToPdfxCmyk(
         "Ghostscript executable not found. Install Ghostscript or set GHOSTSCRIPT_PATH to its command-line executable."
       );
     }
-    try {
-      await run(ghostscript, args);
-    } catch (err) {
-      const signal = (err as { signal?: NodeJS.Signals | null }).signal;
-      if (!signal) throw err;
+    // `run` inherits stdio, which would leave the warnings block on a terminal
+    // the desktop app never shows; capture it and log it through the logger.
+    const { code, signal, stdout, stderr } = await spawnCapture(ghostscript, args, {
+      env: { ...process.env, PATH: enhancedPath },
+    });
+    if (signal) {
       const version = await execCapture(ghostscript, ["--version"])
         .then((r) => r.stdout.trim())
         .catch(() => "unknown version");
@@ -376,6 +451,13 @@ export async function convertToPdfxCmyk(
           "image against its background avoided it there; a newer Ghostscript may " +
           "too. A plain PDF (--format pdf) does not run this step."
       );
+    }
+    if (code !== 0) {
+      throw new Error(`${ghostscript} ${args.join(" ")} exited ${code}\n${stdout}${stderr}`);
+    }
+    const at = stderr.indexOf("The following warnings");
+    if (at >= 0) {
+      log.warn(`Ghostscript reported problems converting to PDF/X:\n${stderr.slice(at).trim()}`);
     }
   } finally {
     await unlink(tmpDef).catch(() => {});

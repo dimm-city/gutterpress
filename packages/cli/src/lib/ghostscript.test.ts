@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as execMod from "./exec";
 import * as toolProbe from "./tool-probe";
+import { log } from "../utils/logger";
 import {
   convertToPdfxCmyk,
   hasLiveTransparency,
@@ -16,6 +17,8 @@ const originalGhostscriptPath = process.env.GHOSTSCRIPT_PATH;
 
 afterEach(() => {
   (execMod.run as unknown as { mockRestore?: () => void }).mockRestore?.();
+  (execMod.spawnCapture as unknown as { mockRestore?: () => void }).mockRestore?.();
+  (log.warn as unknown as { mockRestore?: () => void }).mockRestore?.();
   (toolProbe.findTool as unknown as { mockRestore?: () => void }).mockRestore?.();
   if (originalGhostscriptPath === undefined) delete process.env.GHOSTSCRIPT_PATH;
   else process.env.GHOSTSCRIPT_PATH = originalGhostscriptPath;
@@ -129,12 +132,12 @@ test("convertToPdfxCmyk uses resolved Ghostscript and stages its definition file
     process.env.GHOSTSCRIPT_PATH = executable;
 
     let capturedArgs: string[] = [];
-    const run = spyOn(execMod, "run").mockImplementation(async (_cmd, args) => {
+    const run = spyOn(execMod, "spawnCapture").mockImplementation(async (_cmd, args) => {
       capturedArgs = args;
       const definition = args.at(-2)!;
       expect(definition).toBe(join(stagingDir, "pdfx-def.ps"));
       expect(existsSync(definition)).toBe(true);
-      throw new Error("Ghostscript conversion failed");
+      return { code: 1, signal: null, stdout: "Error: /undefined in x\n", stderr: "" };
     });
 
     await expect(
@@ -143,7 +146,7 @@ test("convertToPdfxCmyk uses resolved Ghostscript and stages its definition file
         pdfx: "x3",
         stagingDir,
       })
-    ).rejects.toThrow("Ghostscript conversion failed");
+    ).rejects.toThrow("Error: /undefined in x");
 
     expect(run.mock.calls[0]?.[0]).toBe(executable);
     expect(capturedArgs).toContain(`-sOutputICCProfile=${iccPath}`);
@@ -156,6 +159,34 @@ test("convertToPdfxCmyk uses resolved Ghostscript and stages its definition file
   }
 });
 
+test("convertToPdfxCmyk logs Ghostscript's warnings block instead of discarding it", async () => {
+  const stagingDir = await mkdtemp(join(tmpdir(), "gutterpress-gs-warn-"));
+  try {
+    const executable = join(stagingDir, "custom-gs");
+    await writeFile(executable, "");
+    process.env.GHOSTSCRIPT_PATH = executable;
+    spyOn(execMod, "spawnCapture").mockResolvedValue({
+      code: 0,
+      signal: null,
+      stdout: "Page 1\n\terror in pattern\n",
+      stderr:
+        "\nThe following warnings were encountered at least once while processing this file:\n\n   **** This file had errors that were repaired or ignored.\n",
+    });
+    const warn = spyOn(log, "warn").mockImplementation(() => {});
+
+    await convertToPdfxCmyk(join(stagingDir, "raw.pdf"), join(stagingDir, "out.pdf"), {
+      iccPath: join(stagingDir, "profile.icc"),
+      pdfx: "x3",
+      stagingDir,
+    });
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]![0])).toContain("This file had errors that were repaired");
+  } finally {
+    await rm(stagingDir, { recursive: true, force: true });
+  }
+});
+
 test("convertToPdfxCmyk reports a Ghostscript crash with its version", async () => {
   const stagingDir = await mkdtemp(join(tmpdir(), "gutterpress-gs-crash-"));
   try {
@@ -164,9 +195,12 @@ test("convertToPdfxCmyk reports a Ghostscript crash with its version", async () 
     await writeFile(executable, "");
     await writeFile(iccPath, "not-a-real-icc");
     process.env.GHOSTSCRIPT_PATH = executable;
-    spyOn(execMod, "run").mockRejectedValue(
-      Object.assign(new Error("gs was killed by signal SIGSEGV"), { signal: "SIGSEGV" })
-    );
+    spyOn(execMod, "spawnCapture").mockResolvedValue({
+      code: null,
+      signal: "SIGSEGV",
+      stdout: "",
+      stderr: "",
+    });
     const capture = spyOn(execMod, "execCapture").mockResolvedValue({
       stdout: "10.02.1\n",
       stderr: "",
