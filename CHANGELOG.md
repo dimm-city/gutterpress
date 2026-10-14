@@ -9,6 +9,40 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **`validate` and the Problems panel report unusual characters in your
+  markdown.** New check `source.characters` (warning) finds what pasting from a
+  chat model, a word processor or a web page leaves behind: em and en dashes,
+  curly and look-alike quote marks, the ellipsis character, bullets, arrows and
+  emoji, plus invisible characters (zero-width spaces, non-breaking and other odd
+  spaces, bidi and control characters, a byte-order mark, which turns a file's
+  first heading into a paragraph) and encoding damage (U+FFFD). Each finding has
+  its line and column and says what to type instead: `---`, `--`, `...` and
+  straight quotes already print as the proper typography, and an HTML entity
+  (`&nbsp;`, `&rarr;`) keeps a character you want without a warning. Quotation
+  marks other languages use (guillemets, low-9 quotes) are never reported.
+  Silence it like any rule: `lint.rules`, or `gutterpress-disable-next-line
+  source.characters`.
+- **The editor outlines those characters where they sit.** In a markdown file
+  each one gets a box (zero-width ones show as a placeholder symbol), and
+  hovering says what it is and what to type instead, while you type, not only
+  after a save. Clicking the finding in Problems puts the cursor on the
+  character.
+- **The editor marks every line the Problems list reports.** Open a file and each
+  line with a finding, from any check, gets a marker in the gutter and a tint by
+  severity; hovering shows the message and which check found it. The marks follow
+  their lines while you type and update when the list refreshes. In a stylesheet
+  the editor's own print-safety check and the project's other findings show
+  together. Settings → Editor → **Highlight problems in the editor** (on by
+  default) turns all of it off: the line marks, the stylesheet gutter and the
+  unusual-character boxes. Invisible characters keep their placeholder, since
+  without it they cannot be seen at all.
+
+### Removed
+
+- **The Editor settings for font family, font size, line spacing and spell-check
+  language.** Nothing applied them: the editor kept its own font and spacing
+  whatever they said. A settings file saved by an older version still loads with
+  every other choice intact, and the old values are dropped on the next save.
 - **`pdfx.transparency: preserve-text` (opt-in) keeps live text on PDF/X pages
   that use transparency.** PDF/X-1a and X-3 (PDF 1.3) cannot hold
   transparency, and Ghostscript flattens every page with a soft `rgba()`
