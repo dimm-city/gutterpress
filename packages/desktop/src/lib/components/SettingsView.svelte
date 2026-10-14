@@ -343,55 +343,6 @@
       {/if}
 
       {#if activeTab === "editor"}
-      <!-- Editor ----------------------------------------------------------- -->
-      <section class="group">
-        <div class="group-head">
-          <h3>Editor</h3>
-          <button class="reset" onclick={() => settings.resetSection("editor")} title="Reset editor settings to defaults">Reset</button>
-        </div>
-        <div class="row">
-          <label for="set-font">Font family</label>
-          <input
-            id="set-font"
-            type="text"
-            value={s.editor.fontFamily}
-            onchange={(e) => settings.set({ editor: { fontFamily: (e.currentTarget as HTMLInputElement).value } })}
-          />
-        </div>
-        <div class="row">
-          <label for="set-fontsize">Font size</label>
-          <input
-            id="set-fontsize"
-            type="number"
-            min="8"
-            max="32"
-            value={s.editor.fontSize}
-            onchange={(e) => settings.set({ editor: { fontSize: Number((e.currentTarget as HTMLInputElement).value) } })}
-          />
-        </div>
-        <div class="row">
-          <label for="set-lineheight">Line spacing</label>
-          <input
-            id="set-lineheight"
-            type="number"
-            min="1"
-            max="3"
-            step="0.1"
-            value={s.editor.lineHeight}
-            onchange={(e) => settings.set({ editor: { lineHeight: Number((e.currentTarget as HTMLInputElement).value) } })}
-          />
-        </div>
-        <div class="row">
-          <label for="set-spell">Spell-check language</label>
-          <input
-            id="set-spell"
-            type="text"
-            value={s.editor.spellCheckLanguage}
-            onchange={(e) => settings.set({ editor: { spellCheckLanguage: (e.currentTarget as HTMLInputElement).value } })}
-          />
-        </div>
-      </section>
-
       <!-- Advanced (for developers) — a section, not a tab: two developer
            knobs don't justify a whole tab. -->
       <section class="group advanced">
@@ -674,7 +625,6 @@
   .row-toggle { align-items: center; }
   .row-label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .row-hint { font-size: 11px; line-height: 1.3; color: var(--app-text-muted); }
-  .row input[type="text"],
   .row input[type="number"],
   .row select {
     background: var(--app-surface-sunken);
