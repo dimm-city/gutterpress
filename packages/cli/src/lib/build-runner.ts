@@ -864,8 +864,8 @@ class PdfOutput implements OutputStrategy {
         const pageList = (pages: number[]) => `Page${pages.length === 1 ? "" : "s"} ${pages.join(", ")}`;
         if (vectorGradientPages.length > 0) {
           log.warn(
-            `${pageList(vectorGradientPages)}: a repeating-*-gradient() or conic-gradient() will print blank — ` +
-              `Ghostscript cannot convert it to PDF/X. ${GRADIENT_FIX}`
+            `${pageList(vectorGradientPages)}: a repeating-*-gradient() or conic-gradient() can print blank — ` +
+              `Ghostscript 10.x has been seen to paint nothing for it when converting to PDF/X. ${GRADIENT_FIX}`
           );
         }
         if (flattenedGradientPages.length > 0) {
@@ -918,7 +918,8 @@ class PdfOutput implements OutputStrategy {
             log.warn(
               `Page${kept.length === 1 ? "" : "s"} ${kept.join(", ")} could not keep ${kept.length === 1 ? "its" : "their"} text live; ` +
                 `Ghostscript will flatten ${kept.length === 1 ? "that page" : "each of those pages"} into one raster image, ` +
-                "losing its embedded fonts and searchable text:\n" +
+                "losing its embedded fonts and searchable text. Each page lists the first cause found; " +
+                "fixing it can reveal another:\n" +
                 [...byCause].map(([cause, pages]) => `  - page${pages.length === 1 ? "" : "s"} ${pages.join(", ")}: ${CAUSE[cause]}`).join("\n")
             );
           }

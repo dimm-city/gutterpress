@@ -170,10 +170,14 @@ pdffonts dist/my-book/my-book-pdfx.pdf                 # every font embedded
 - A page with a `repeating-linear-gradient()`, `repeating-radial-gradient()`,
   `repeating-conic-gradient()` or `conic-gradient()`. Chromium prints these as
   a PostScript-function shading, which the artwork picture renders with
-  irregular stripes (#386).
+  irregular stripes (#386). The check is conservative: it also sends a page to
+  the fallback when Ghostscript would have painted that gradient correctly
+  (a `conic-gradient()` did on Ghostscript 10.06), so the page loses its live
+  text either way.
 
 Such pages are not split and go to Ghostscript exactly as in `flatten-page`;
-the build names them.
+the build names them, each with the first cause it found. A page can have more
+than one, so fixing the named cause can reveal another.
 
 Known limits of the pages that are split:
 

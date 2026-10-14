@@ -429,7 +429,7 @@ testIf(
       // The gradient page has a shadow, so Ghostscript flattens it whole: the
       // warning names the text loss, not a blank gradient.
       expect(warnings.filter((w) => w.startsWith("Page 4: a repeating-*-gradient() or conic-gradient() survives only"))).toHaveLength(2);
-      expect(warnings.some((w) => w.includes("will print blank"))).toBe(false);
+      expect(warnings.some((w) => w.includes("can print blank"))).toBe(false);
 
       const textOf = async (file: string) => (await getTextPass((await loadPdf(file))!)).textByPage;
       const defaultText = await textOf(flat);
