@@ -182,6 +182,79 @@ export async function transparentPages(pdfBytes: Uint8Array): Promise<number[]> 
 }
 
 /**
+ * 1-based numbers of the pages that paint a `/ShadingType 1` shading whose
+ * function is `/FunctionType 4` (a PostScript calculator function).
+ *
+ * That is how Chromium (Skia) emits `repeating-linear-gradient()`,
+ * `repeating-radial-gradient()`, `repeating-conic-gradient()` and
+ * `conic-gradient()`. Ghostscript 10.x
+ * reports "error in pattern" on it while converting to PDF/X and paints
+ * nothing, so the gradient prints blank (#386). Plain `linear-gradient()` and
+ * `radial-gradient()` are ShadingType 2/3 and convert fine. Detecting it lets
+ * the build name the affected pages before the conversion drops them; the
+ * pipeline does not rewrite the gradient. Delete this when Ghostscript paints
+ * these shadings.
+ *
+ * Walks page resources (and form XObjects they draw) rather than every
+ * object, so only shadings a page can actually paint are reported. Like
+ * {@link transparentPages}, it never fails a build: an unparseable PDF
+ * reports no pages.
+ */
+export async function findPostScriptShadingPages(pdfBytes: Uint8Array): Promise<number[]> {
+  const { PDFDocument, PDFDict, PDFName, PDFNumber, PDFRawStream, PDFRef } = await import(
+    "pdf-lib"
+  );
+  let doc;
+  try {
+    doc = await PDFDocument.load(pdfBytes, {
+      updateMetadata: false,
+      throwOnInvalidObject: false,
+    });
+  } catch {
+    return [];
+  }
+  const ctx = doc.context;
+  const asDict = (obj: unknown) => {
+    const o = obj instanceof PDFRef ? ctx.lookup(obj) : obj;
+    return o instanceof PDFRawStream ? o.dict : o instanceof PDFDict ? o : undefined;
+  };
+  const num = (obj: unknown) => {
+    const o = obj instanceof PDFRef ? ctx.lookup(obj) : obj;
+    return o instanceof PDFNumber ? o.asNumber() : undefined;
+  };
+  const isPostScriptShading = (shading: unknown) => {
+    const dict = asDict(shading);
+    if (!dict || num(dict.get(PDFName.of("ShadingType"))) !== 1) return false;
+    return num(asDict(dict.get(PDFName.of("Function")))?.get(PDFName.of("FunctionType"))) === 4;
+  };
+  const subDicts = (resources: import("pdf-lib").PDFDict, key: string) => {
+    const group = asDict(resources.get(PDFName.of(key)));
+    return group ? group.entries().map(([, v]) => v) : [];
+  };
+
+  const seen = new Set<unknown>();
+  const usesPostScriptShading = (resources: import("pdf-lib").PDFDict | undefined): boolean => {
+    if (!resources || seen.has(resources)) return false;
+    seen.add(resources);
+    if (subDicts(resources, "Shading").some(isPostScriptShading)) return true;
+    for (const pattern of subDicts(resources, "Pattern")) {
+      const dict = asDict(pattern);
+      if (dict && isPostScriptShading(dict.get(PDFName.of("Shading")))) return true;
+    }
+    return subDicts(resources, "XObject").some((x) =>
+      usesPostScriptShading(asDict(asDict(x)?.get(PDFName.of("Resources"))))
+    );
+  };
+
+  const pages: number[] = [];
+  doc.getPages().forEach((page, i) => {
+    seen.clear();
+    if (usesPostScriptShading(asDict(page.node.Resources()))) pages.push(i + 1);
+  });
+  return pages;
+}
+
+/**
  * Strip all annotations from a PDF.
  *
  * Chromium embeds internal link annotations (from HTML `id` attributes)

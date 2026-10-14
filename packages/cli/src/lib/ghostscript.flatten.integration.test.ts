@@ -371,6 +371,8 @@ testIf(
 .cover { position: relative; height: 300px; font: bold 110px/1 sans-serif }
 .cover i { position: absolute; inset: 0; background: #c00 }
 .faint { opacity: .15; font-size: 48px }
+.vibe { padding: 16px; box-shadow: 0 8px 16px rgba(0, 0, 0, .4);
+  background: repeating-linear-gradient(35deg, #ffffcc 0 8pt, #33ccee 8pt 16pt) }
 `,
         "utf8"
       );
@@ -389,6 +391,10 @@ testIf(
 @page
 
 <p class="faint">Faint three</p>
+
+@page
+
+<div class="vibe">Vibe four</div>
 `,
         "utf8"
       );
@@ -426,6 +432,9 @@ testIf(
       expect(preserveText[0]).toContain("Card one");
       expect(preserveText[1]).toContain("Card two");
       expect(preserveText[2] ?? "").not.toContain("Faint three");
+      // A repeating gradient (#386) is a PostScript-function shading the
+      // artwork raster pass distorts, so its page falls back too.
+      expect(preserveText[3] ?? "").not.toContain("Vibe four");
 
       const diff = (file: string, n: number) =>
         meanAbsDiff(
@@ -440,6 +449,9 @@ testIf(
       // The translucent-text page looks the same in both modes, and like the source.
       expect(diff(flat, 3)).toBeLessThan(3);
       expect(diff(kept, 3)).toBeLessThan(3);
+      // The gradient page goes through the same whole-page path in both modes.
+      expect(diff(kept, 4)).toBeLessThan(1);
+      expect(diff(kept, 4)).toBeLessThan(diff(flat, 4) + 1);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

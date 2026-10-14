@@ -149,7 +149,7 @@ pdffonts dist/my-book/my-book-pdfx.pdf                 # every font embedded
 
 `examples/with-print-effects/` is a small book with one effect per page.
 
-**Fallback.** Three kinds of page cannot be split:
+**Fallback.** Four kinds of page cannot be split:
 
 - A page whose text is itself drawn with transparency: `opacity` or
   `mix-blend-mode` on a text block, translucent glyph colour, a soft mask over
@@ -164,6 +164,10 @@ pdffonts dist/my-book/my-book-pdfx.pdf                 # every font embedded
   `<text fill="url(#…)">`, a gradient text fill, `background-clip: text`. The
   picture loses the glyphs and the text layer loses their paint, so that text
   would vanish.
+- A page with a `repeating-linear-gradient()`, `repeating-radial-gradient()`,
+  `repeating-conic-gradient()` or `conic-gradient()`. Chromium prints these as
+  a PostScript-function shading, which the artwork picture renders with
+  irregular stripes (#386).
 
 Such pages are not split and go to Ghostscript exactly as in `flatten-page`;
 the build names them.

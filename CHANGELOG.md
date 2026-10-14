@@ -17,7 +17,8 @@ This project follows [Semantic Versioning](https://semver.org/).
   untouched, and page boxes and metadata are kept. A page whose text is itself
   translucent or blended (`opacity`, `mix-blend-mode`, a soft mask, a
   translucent or knockout group, a Type 3 font such as a synthetic bold, or a
-  pattern fill or text clip such as SVG `fill="url(#…)"` or gradient text) is
+  pattern fill or text clip such as SVG `fill="url(#…)"` or gradient text),
+  or a page with a repeating or conic gradient, is
   not split: it falls back to Ghostscript's
   whole-page flattening, so its appearance is unchanged. On split pages rules
   and shapes are raster and text is always on top, so text another element

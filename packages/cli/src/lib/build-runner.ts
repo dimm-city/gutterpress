@@ -11,6 +11,7 @@ import { type AssetCopy } from "./asset-inline";
 import { resolveOutputDir, artifactName, BOOK_HTML } from "./output-paths";
 import {
   convertToPdfxCmyk,
+  findPostScriptShadingPages,
   flattenTransparentPages,
   transparentPages,
   stampCreator,
@@ -847,7 +848,12 @@ class PdfOutput implements OutputStrategy {
         const transparent = await transparentPages(rawBytes);
         if (transparent.length > 0 && config.pdfx.transparency === "preserve-text") {
           const { pagesWithUnsplittableText } = await import("./pdf-inspect");
-          const blocked = new Set(await pagesWithUnsplittableText(rawBytes));
+          // A repeating/conic gradient (#386) is a PostScript-function shading
+          // the artwork raster pass distorts, so its page is not split either.
+          const blocked = new Set([
+            ...(await pagesWithUnsplittableText(rawBytes)),
+            ...(await findPostScriptShadingPages(rawBytes)),
+          ]);
           const split = transparent.filter((n) => !blocked.has(n));
           const kept = transparent.filter((n) => blocked.has(n));
           await flattenTransparentPages(rawPdf, split, stage);
@@ -864,11 +870,12 @@ class PdfOutput implements OutputStrategy {
           }
           if (kept.length > 0) {
             log.warn(
-              `Page${kept.length === 1 ? "" : "s"} ${kept.join(", ")} could not keep ${kept.length === 1 ? "its" : "their"} text live: ` +
-                "their text uses transparency or blending (opacity, mix-blend-mode, a soft mask) " +
-                "a Type 3 font (such as the synthetic bold of a single-weight font), " +
-                "or a pattern fill (SVG text filled with url(#pattern), gradient text) or text used as a clip, " +
-                `which cannot be drawn on top of flattened artwork unchanged. Ghostscript will flatten ${kept.length === 1 ? "that page" : "each of those pages"} ` +
+              `Page${kept.length === 1 ? "" : "s"} ${kept.join(", ")} could not keep ${kept.length === 1 ? "its" : "their"} text live. ` +
+                "Each has text drawn with transparency or blending (opacity, mix-blend-mode, a soft mask), " +
+                "in a Type 3 font (such as the synthetic bold of a single-weight font), " +
+                "with a pattern fill or as a clip (SVG text filled with url(#pattern), gradient text), " +
+                "or a repeating or conic gradient, none of which survives being split from flattened artwork unchanged. " +
+                `Ghostscript will flatten ${kept.length === 1 ? "that page" : "each of those pages"} ` +
                 "into one raster image, losing its embedded fonts and searchable text."
             );
           }
