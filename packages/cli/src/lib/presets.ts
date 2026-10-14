@@ -127,8 +127,9 @@ export const DTRPG_PRESET: VendorPreset = {
       minImageDpi: 300,
       // SPEC: CMYK for colour interiors (Grayscale for black-and-white).
       allowedColorSpaces: ["CMYK", "Grayscale"],
-      // DERIVED: PDF/X-1a forbids transparency, which an alpha channel needs.
-      allowAlpha: false,
+      // An alpha channel is fine: PDF/X-1a forbids transparency in the OUTPUT,
+      // and the pdfx build flattens the pages that use it (#385).
+      allowAlpha: true,
       approvedFontFiles: [],
       requireFontLicense: false,
     },

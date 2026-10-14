@@ -370,7 +370,7 @@
             },
             "allowAlpha": {
               "type": "boolean",
-              "description": "Whether images may carry an alpha channel (asset.image.alpha-channel). Preset defaults: dtrpg false (PDF/X forbids transparency), book true."
+              "description": "Whether images may carry an alpha channel (asset.image.alpha-channel). Preset defaults: true for dtrpg and book (a PDF/X build flattens the pages that use transparency and keeps their text live)."
             },
             "approvedFontFiles": {
               "type": "array",

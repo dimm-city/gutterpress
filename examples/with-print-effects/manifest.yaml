@@ -7,10 +7,3 @@ styles:
 
 # DriveThruRPG print-on-demand interior (PDF/X-1a).
 preset: dtrpg
-
-# The preset warns about images with an alpha channel because PDF/X-1a has no
-# transparency. Gutterpress flattens the pages that use it (keeping their text
-# live), so this book uses alpha art on purpose.
-validate:
-  assets:
-    allowAlpha: true

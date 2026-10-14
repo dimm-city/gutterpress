@@ -18,7 +18,9 @@ This project follows [Semantic Versioning](https://semver.org/).
   rules and shapes are raster; text is always on top, so text another element
   covers shows through; text with its own transparency prints opaque). The new
   `examples/with-print-effects` book shows one effect per page; see "PDF/X and
-  transparency" in `docs/publishing.md`.
+  transparency" in `docs/publishing.md`. The `dtrpg` preset no longer warns
+  about images with an alpha channel (`validate.assets.allowAlpha` is now
+  `true`), since the PDF/X build no longer turns their pages into bitmaps.
 
 ## [0.11.18] - 2026-10-13
 
