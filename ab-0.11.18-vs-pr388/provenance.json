@@ -1,0 +1,21 @@
+{
+  "versions": {
+    "baseline": "dfc3645781d5917eb16894d58a691ccd1d87745c",
+    "pr": "42091eccba9111df036e440a247830e0e7d84fb8"
+  },
+  "bookBase": "11ddc736",
+  "extension": "gp-dimm-city@1.6.3",
+  "ghostscript": "10.06.0",
+  "bun": "1.4.1",
+  "sourceEngine": "Chromium 155.0.8059.39",
+  "pdfx": "x1a",
+  "iccSha256": "f0d784825f8f358db94fd71c7de9f56ba228df9a606667fa7c1a9850332fa317",
+  "method": "Both exact-version export functions receive identical full 228-page source PDF bytes per case. Old: transparency warning detection, annotation stripping, K-only text rewrite, PDF/X conversion. PR: current eligibility/gradient guard and art/text split before identical subsequent stages. Source/compiler engine, black-text rewrite, ICC, package dependencies, lockfile have zero git diff between compared revisions. Most sources are retained verified real-book outputs; original-font effects source was freshly built using the 0.11.18 CLI.",
+  "timingScope": "Export pipeline elapsed time only, excluding source pagination and file-copy/hash steps. Independent cases run concurrently; observed times are not controlled benchmarks.",
+  "fontControls": "production-fonts and production-fonts-effects preserve original downloaded font declarations. Other sweeps use the explicitly documented lab Lixdu weight-range declaration, identically for both exporters.",
+  "headUpdate": {
+    "commit": "7c692ab4df03a43e102eb7d9f02a68980504e276",
+    "renderingDiff": "None: ghostscript.ts, pdf-inspect.ts, black-text-gray.ts, compiler source, and dependency lock are unchanged. Updates affect messages, docs, test message expectation, version numbers, and changelog.",
+    "evidence": "head-update-7c692ab4.patch"
+  }
+}

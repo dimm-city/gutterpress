@@ -1,0 +1,47 @@
+[
+  {
+    "case": "production-fonts",
+    "pages": 228,
+    "boxesUnchanged": true,
+    "retainedGlyphMismatches": 0,
+    "newLostGlyphPages": [],
+    "transparency": [],
+    "unembeddedFonts": 0
+  },
+  {
+    "case": "isolated",
+    "pages": 228,
+    "boxesUnchanged": true,
+    "retainedGlyphMismatches": 0,
+    "newLostGlyphPages": [],
+    "transparency": [],
+    "unembeddedFonts": 0
+  },
+  {
+    "case": "combined",
+    "pages": 228,
+    "boxesUnchanged": true,
+    "retainedGlyphMismatches": 0,
+    "newLostGlyphPages": [],
+    "transparency": [],
+    "unembeddedFonts": 0
+  },
+  {
+    "case": "boundary",
+    "pages": 228,
+    "boxesUnchanged": true,
+    "retainedGlyphMismatches": 0,
+    "newLostGlyphPages": [],
+    "transparency": [],
+    "unembeddedFonts": 0
+  },
+  {
+    "case": "production-fonts-effects",
+    "pages": 228,
+    "boxesUnchanged": true,
+    "retainedGlyphMismatches": 0,
+    "newLostGlyphPages": [],
+    "transparency": [],
+    "unembeddedFonts": 0
+  }
+]

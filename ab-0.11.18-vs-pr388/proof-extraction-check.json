@@ -1,0 +1,146 @@
+[
+  {
+    "file": "production-fonts/proof/source-p006.pdf",
+    "fullFile": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-stress/baseline.pdf",
+    "page": 6,
+    "pixelIdenticalAtHeight": 1200,
+    "qpdfExit": 0,
+    "sha256": "be5e7cfe653b2fd07a4e1de08a0c3b4938693ea3e0b550292408d97548727b18"
+  },
+  {
+    "file": "production-fonts/proof/v0.11.18-p006.pdf",
+    "fullFile": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/production-fonts/v0.11.18/book.pdf",
+    "page": 6,
+    "pixelIdenticalAtHeight": 1200,
+    "qpdfExit": 0,
+    "sha256": "5973d77ab6f01483daada810ea4f277ffbd9f3d966c02c619435fa9c6bd2923d"
+  },
+  {
+    "file": "production-fonts/proof/pr388-p006.pdf",
+    "fullFile": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/production-fonts/pr388/book.pdf",
+    "page": 6,
+    "pixelIdenticalAtHeight": 1200,
+    "qpdfExit": 0,
+    "sha256": "bdbcf4b60e83f72750dff4c75bf6badfd6035b94006b92fcc61ebaa464c261ad"
+  },
+  {
+    "file": "isolated/proof/source-p007.pdf",
+    "fullFile": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-stress/rerun-ff1022bf/isolated/isolated-pdf.pdf",
+    "page": 7,
+    "pixelIdenticalAtHeight": 1200,
+    "qpdfExit": 0,
+    "sha256": "831bd1f5e6ffcf8abf70beb1a7b5df2fcfd43bd73ff042386bff2d89e0180c25"
+  },
+  {
+    "file": "isolated/proof/v0.11.18-p007.pdf",
+    "fullFile": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/isolated/v0.11.18/book.pdf",
+    "page": 7,
+    "pixelIdenticalAtHeight": 1200,
+    "qpdfExit": 0,
+    "sha256": "f68d15f89b16e3e3ea5b782e910a29ceecdfbfe6109ffb81a0d2269d1d50e2a6"
+  },
+  {
+    "file": "isolated/proof/pr388-p007.pdf",
+    "fullFile": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/isolated/pr388/book.pdf",
+    "page": 7,
+    "pixelIdenticalAtHeight": 1200,
+    "qpdfExit": 0,
+    "sha256": "8f312e4f589ccd1f2e33565a271886b28dad5b85258877adeda5aaddff326f23"
+  },
+  {
+    "file": "combined/proof/source-p004.pdf",
+    "fullFile": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-stress/rerun-ff1022bf/combined/combined-pdf.pdf",
+    "page": 4,
+    "pixelIdenticalAtHeight": 1200,
+    "qpdfExit": 0,
+    "sha256": "b64203cf7a4fae2b4125be3dfd1b82387005ef3fc342df2a16de2de24cc4e2a3"
+  },
+  {
+    "file": "combined/proof/v0.11.18-p004.pdf",
+    "fullFile": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/combined/v0.11.18/book.pdf",
+    "page": 4,
+    "pixelIdenticalAtHeight": 1200,
+    "qpdfExit": 0,
+    "sha256": "39c94409e85b5288b8bb9ecc6f89853d973ad7dff20c49e6adef923442cc9d08"
+  },
+  {
+    "file": "combined/proof/pr388-p004.pdf",
+    "fullFile": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/combined/pr388/book.pdf",
+    "page": 4,
+    "pixelIdenticalAtHeight": 1200,
+    "qpdfExit": 0,
+    "sha256": "5ac39d9c0751030cda1b262747aee0e039cf7fcf20e9a60b92ba76214bf634ee"
+  },
+  {
+    "file": "combined/proof/source-p014.pdf",
+    "fullFile": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-stress/rerun-ff1022bf/combined/combined-pdf.pdf",
+    "page": 14,
+    "pixelIdenticalAtHeight": 1200,
+    "qpdfExit": 0,
+    "sha256": "56efdeda4bbe5393c8c3f137fd150f7dfe13f2a34402c71049b0ec07f45e25a9"
+  },
+  {
+    "file": "combined/proof/v0.11.18-p014.pdf",
+    "fullFile": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/combined/v0.11.18/book.pdf",
+    "page": 14,
+    "pixelIdenticalAtHeight": 1200,
+    "qpdfExit": 0,
+    "sha256": "5549c3391c6f8bf6eccc168a8e1ea8fde1ad8078616848fc7a6f7d2fc2486daa"
+  },
+  {
+    "file": "combined/proof/pr388-p014.pdf",
+    "fullFile": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/combined/pr388/book.pdf",
+    "page": 14,
+    "pixelIdenticalAtHeight": 1200,
+    "qpdfExit": 0,
+    "sha256": "bb190d2a6f268db6d86e62cabf6317b7f5dc6a9a60fd951d6dbad7db8e4fd280"
+  },
+  {
+    "file": "boundary/proof/source-p014.pdf",
+    "fullFile": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-stress/rerun-ff1022bf/boundary/boundary-pdf.pdf",
+    "page": 14,
+    "pixelIdenticalAtHeight": 1200,
+    "qpdfExit": 0,
+    "sha256": "9fc329a50f66092abfeb97a3c8dfacc90a734e970306f27d5abb179942ebfbf7"
+  },
+  {
+    "file": "boundary/proof/v0.11.18-p014.pdf",
+    "fullFile": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/boundary/v0.11.18/book.pdf",
+    "page": 14,
+    "pixelIdenticalAtHeight": 1200,
+    "qpdfExit": 0,
+    "sha256": "734f5915af0977a812a8e6d8feafafbf537a89c58d7476cc8e90bd8c341d2c67"
+  },
+  {
+    "file": "boundary/proof/pr388-p014.pdf",
+    "fullFile": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/boundary/pr388/book.pdf",
+    "page": 14,
+    "pixelIdenticalAtHeight": 1200,
+    "qpdfExit": 0,
+    "sha256": "1322a3e0b773818716faf30a300a88d12cd26ed0cdccf686a7deb7ed32a44d56"
+  },
+  {
+    "file": "production-fonts-effects/proof/source-p007.pdf",
+    "fullFile": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/production-fonts-effects/source.pdf",
+    "page": 7,
+    "pixelIdenticalAtHeight": 1200,
+    "qpdfExit": 0,
+    "sha256": "bb94ff43b8ae328f562fc19120736e5557518d63fc4a1fc395f2eb4a264fdc4a"
+  },
+  {
+    "file": "production-fonts-effects/proof/v0.11.18-p007.pdf",
+    "fullFile": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/production-fonts-effects/v0.11.18/book.pdf",
+    "page": 7,
+    "pixelIdenticalAtHeight": 1200,
+    "qpdfExit": 0,
+    "sha256": "9821a97c0efbb5a2044bd71e4be006e43c14790bbfc6abedcc793e331330c3a1"
+  },
+  {
+    "file": "production-fonts-effects/proof/pr388-p007.pdf",
+    "fullFile": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/production-fonts-effects/pr388/book.pdf",
+    "page": 7,
+    "pixelIdenticalAtHeight": 1200,
+    "qpdfExit": 0,
+    "sha256": "460d2324e627b3503ab0c01fc18b17536ea14d477ee4c4e4b5311cdd136614d6"
+  }
+]

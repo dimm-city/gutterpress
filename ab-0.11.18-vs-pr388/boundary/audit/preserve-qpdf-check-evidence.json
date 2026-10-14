@@ -1,0 +1,10 @@
+{
+  "command": [
+    "qpdf",
+    "--check",
+    "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/boundary/pr388/book.pdf"
+  ],
+  "exitCode": 0,
+  "stdoutLog": "preserve-qpdf.txt",
+  "exitEvidence": "The completed audit runner throws unless qpdf spawnSync.status is exactly 0, before writing the audit JSON. This records that executed check, not a second qpdf run."
+}

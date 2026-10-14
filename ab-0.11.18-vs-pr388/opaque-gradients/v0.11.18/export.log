@@ -1,0 +1,8 @@
+GPL Ghostscript 10.06.0 (2025-09-09)
+Copyright (C) 2025 Artifex Software, Inc.  All rights reserved.
+This software is supplied under the GNU AGPLv3 and comes with NO WARRANTY:
+see the file COPYING for details.
+Processing pages 1 through 2.
+Page 1
+Page 2
+{"version":"v0.11.18","commit":"dfc3645781d5917eb16894d58a691ccd1d87745c","source":"/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/opaque-gradients/source.pdf","sourceSha256":"f2177a39b5b793db61c6e2edab036073fa55bb0634384cfa55c9846d0f96238c","sourceBytes":2132895,"css":"/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/opaque-gradients/styles.css","cssSha256":"bf602f3b0f8f231c46ca2ce2c8fadd19df6b13328516e2e6cdca26921470e8f4","output":"/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/opaque-gradients/v0.11.18/book.pdf","outputBytes":3539005,"outputSha256":"610d42879bd418e0528f9049a2451db3de7ed6ec1e8a97480e493887cf96fbde","detectedTransparency":false,"times":{"inspection":0.07784799999999999,"stripAnnotations":0.06837502200000001,"blackText":0.17779475200000003,"cmyk":5.635600372000001,"total":5.959784584}}

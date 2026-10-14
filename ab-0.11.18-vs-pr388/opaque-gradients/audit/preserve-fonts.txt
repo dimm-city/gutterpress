@@ -1,0 +1,8 @@
+name                                 type              encoding         emb sub uni object ID
+------------------------------------ ----------------- ---------------- --- --- --- ---------
+VHANSP+TitilliumWeb-Italic           CID TrueType      Identity-H       yes yes yes    103  0
+QAXVMM+TitilliumWeb-Regular          CID TrueType      Identity-H       yes yes yes     57  0
+YIWGPX+Tomorrow-Bold                 CID TrueType      Identity-H       yes yes yes     23  0
+[none]                               Type 3            Custom           yes no  yes     20  0
+MEFYIU+TitilliumWeb-Bold             CID TrueType      Identity-H       yes yes yes    171  0
+IVTQAW+TitilliumWeb-BoldItalic       CID TrueType      Identity-H       yes yes yes    165  0

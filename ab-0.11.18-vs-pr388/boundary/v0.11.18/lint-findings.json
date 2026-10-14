@@ -1,0 +1,23 @@
+[
+  {
+    "rule": "printsafe/no-risky-print-effects",
+    "severity": "warning",
+    "message": "Property is high-risk for print/PDF (can force rasterization): mix-blend-mode",
+    "line": 76,
+    "column": 28
+  },
+  {
+    "rule": "printsafe/page-containment",
+    "severity": "warning",
+    "message": "\"mix-blend-mode: screen\" on \".page:has(#c2-style) img\" makes the page box a stacking context, so a .gp-behind image is trapped inside it and paints ABOVE the page's text instead of under it. Core keeps .page/.spread at \"position: relative; z-index: auto\" for this reason. This is an early source-only check; the build-time engine.layer.trapped audit is authoritative for the live ancestor chain.",
+    "line": 76,
+    "column": 28
+  },
+  {
+    "rule": "printsafe/page-containment",
+    "severity": "warning",
+    "message": "\"opacity: .7\" on \".page:has(#c2-style) img\" makes the page box a stacking context, so a .gp-behind image is trapped inside it and paints ABOVE the page's text instead of under it. Core keeps .page/.spread at \"position: relative; z-index: auto\" for this reason. This is an early source-only check; the build-time engine.layer.trapped audit is authoritative for the live ancestor chain.",
+    "line": 76,
+    "column": 51
+  }
+]

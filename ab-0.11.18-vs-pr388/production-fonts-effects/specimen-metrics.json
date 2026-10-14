@@ -1,0 +1,38 @@
+[
+  {
+    "page": 1,
+    "renderHeight": 1200,
+    "oldVsNewMeanChannelError": 0.0,
+    "oldVsNewIdentical": true
+  },
+  {
+    "page": 4,
+    "renderHeight": 1200,
+    "oldVsNewMeanChannelError": 0.0,
+    "oldVsNewIdentical": true
+  },
+  {
+    "page": 7,
+    "renderHeight": 1200,
+    "oldVsNewMeanChannelError": 0.0,
+    "oldVsNewIdentical": true
+  },
+  {
+    "page": 13,
+    "renderHeight": 1200,
+    "oldVsNewMeanChannelError": 0.0,
+    "oldVsNewIdentical": true
+  },
+  {
+    "page": 14,
+    "renderHeight": 1200,
+    "oldVsNewMeanChannelError": 0.0,
+    "oldVsNewIdentical": true
+  },
+  {
+    "page": 200,
+    "renderHeight": 1200,
+    "oldVsNewMeanChannelError": 0.0,
+    "oldVsNewIdentical": true
+  }
+]

@@ -1,0 +1,9 @@
+{
+  "sourceVsDefault": 1.2388117647058823,
+  "sourceVsPreserve": 1.2388117647058823,
+  "defaultVsPreserve": 0,
+  "originalTest": "1 fail, 4 filtered, 12 expectations, failing threshold <1 at line461",
+  "diagnosticTest": "1 pass, 4 filtered, 13 expectations; changed comparison target only and retained fixtures",
+  "testedCommit": "42091ecc",
+  "latestCommit": "7c692ab4; failing pixel assertion unchanged"
+}

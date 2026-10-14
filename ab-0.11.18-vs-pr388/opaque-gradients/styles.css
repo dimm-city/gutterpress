@@ -1,0 +1,55 @@
+/* FG-OVERRIDES.CSS — Field Guide book overrides.
+   Book-specific rules scoped to Field Guide pages and chapters. Unlayered, so
+   it beats the gp-dimm-city package (which sits in `@layer ext.gp-dimm-city`)
+   at any specificity. Shared component styling lives in gp-dimm-city.
+
+   Rule of thumb: a rule belongs here only if its selector is scoped to a
+   specific page class or chapter id, or it is break control or a .fg-art-*
+   image utility. A bare .dc-* rule, or any spacing/colour/font change to a
+   component, belongs in the package so a second DC book gets it for free. */
+
+/* ── ART ─────────────────────────────────────────────────────────────────── */
+
+/* Founders House plate on the credits page. Placement and width come from
+   core's `.gp-pin .gp-bottom .gp-full` in the markdown; do not add position,
+   inset or width here, since a `.fg-art-*` class beats `.gp-pin` at equal
+   specificity. (Pinned art needs an explicit width: `width: auto` lets the
+   image's intrinsic width feed native print's preferred-width computation and
+   scales the whole book down.) Only the plate's look and height are declared. */
+.fg-art-founders-house {
+   height: 2.75in;
+   object-fit: cover;
+   border: none;
+   box-shadow: none;
+}
+
+/* Chapter opener art: fills the chapter-start splash below the C.NN banner
+   (page 11.25in less margins ~10in, less ~1.2in banner = ~8.5in). */
+.fg-art-chapter-opener {
+   width: 100%;
+   height: 8.5in;
+   object-fit: cover;
+   display: block;
+   margin: 0;
+}
+
+/* In-flow spot plate between core's `.gp-medium` (50%) and `.gp-large` (75%),
+   for art centred (`.gp-center`) in the space a page has left. Sized only.
+   66%, not 70%: under the DriveThruRPG margins the 70% plate (282pt tall)
+   missed the space under Break Your Demons by 5pt and printed alone on the
+   next page. */
+.fg-art-plate {
+   width: 66%;
+}
+
+/* ── TABLES AND TEXT ─────────────────────────────────────────────────────── */
+
+/* The NPC chapter's closing tagline (chapter-04): `.dc-h6` look in body ink
+   (a `###### <p>` took body-text colour). */
+.fg-tagline {
+   color: var(--ink);
+}
+
+/* Opaque-gradient A/B control on existing Field Guide elements. */
+.dc-vibe-callout { background:repeating-linear-gradient(35deg,#ffffcc 0 8pt,#33ccee 8pt 16pt); box-shadow:none; }
+#c2-ideal { background:conic-gradient(red,yellow,lime,cyan,blue,magenta,red); box-shadow:none; }

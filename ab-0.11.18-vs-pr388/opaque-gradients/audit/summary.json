@@ -1,0 +1,98 @@
+{
+  "variant": "opaque-gradients",
+  "inspectorCommit": "42091eccba9111df036e440a247830e0e7d84fb8",
+  "source": {
+    "path": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/opaque-gradients/source.pdf",
+    "bytes": 2132895,
+    "sha256": "f2177a39b5b793db61c6e2edab036073fa55bb0634384cfa55c9846d0f96238c",
+    "pages": 2,
+    "textPages": [
+      1,
+      2
+    ],
+    "glyphPages": [
+      1,
+      2
+    ],
+    "transparentPages": []
+  },
+  "expectedPreserve": {
+    "eligible": [],
+    "fallback": [],
+    "reasons": {
+      "1": "type3-font",
+      "2": "type3-font"
+    },
+    "gradients": [
+      1,
+      2
+    ]
+  },
+  "outputs": {
+    "baseline": {
+      "path": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/opaque-gradients/v0.11.18/book.pdf",
+      "bytes": 3539005,
+      "sha256": "610d42879bd418e0528f9049a2451db3de7ed6ec1e8a97480e493887cf96fbde",
+      "pages": 2,
+      "sourcePagesEqual": true,
+      "boxMismatches": [],
+      "textPages": [
+        1,
+        2
+      ],
+      "glyphPages": [
+        1,
+        2
+      ],
+      "lostGlyphPages": [],
+      "finalTransparency": [],
+      "unembeddedFonts": [],
+      "exactGlyphSequencePages": 2,
+      "mismatches": [],
+      "retainedMismatch": [],
+      "nonFallbackExactGlyphPages": 2,
+      "nonFallbackMismatch": [],
+      "fullPageImagePpiHistogram": {},
+      "imagePpiHistogram": {
+        "90x90": 1,
+        "180x90": 1
+      }
+    },
+    "preserve": {
+      "path": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/opaque-gradients/pr388/book.pdf",
+      "bytes": 3539005,
+      "sha256": "85b3eab6932fe8c482d9c5afdca6f65ba8d1674f230952c909634104d75f77b5",
+      "pages": 2,
+      "sourcePagesEqual": true,
+      "boxMismatches": [],
+      "textPages": [
+        1,
+        2
+      ],
+      "glyphPages": [
+        1,
+        2
+      ],
+      "lostGlyphPages": [],
+      "finalTransparency": [],
+      "unembeddedFonts": [],
+      "exactGlyphSequencePages": 2,
+      "mismatches": [],
+      "retainedMismatch": [],
+      "nonFallbackExactGlyphPages": 2,
+      "nonFallbackMismatch": [],
+      "fullPageImagePpiHistogram": {},
+      "imagePpiHistogram": {
+        "90x90": 1,
+        "180x90": 1
+      }
+    }
+  },
+  "comparison": {
+    "gainedGlyphPages": [],
+    "lostGlyphPages": [],
+    "bytesDelta": 0,
+    "bytesRatio": 1
+  },
+  "scope": "Technical audit of identical source PDFs. Glyph retention does not prove correct visual compositing. No physical press proof, peak-TAC measurement, or full PDF/X certification."
+}

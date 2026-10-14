@@ -1,0 +1,126 @@
+{
+  "method": "Assistant visually inspected all thirty source/0.11.18/PR triptychs plus the six 600-DPI crops, both opaque-gradient controls, resolution-control pages 1, 2, 4, and the old/PR ink-channel planes. This is specimen inspection, not a visual review of every full-book page.",
+  "triptychs": {
+    "production-fonts": [
+      4,
+      6,
+      7,
+      40,
+      138,
+      200
+    ],
+    "isolated": [
+      5,
+      7,
+      9,
+      10,
+      13,
+      15,
+      19
+    ],
+    "combined": [
+      1,
+      4,
+      9,
+      13,
+      14,
+      15,
+      17,
+      19
+    ],
+    "boundary": [
+      8,
+      13,
+      14
+    ],
+    "production-fonts-effects": [
+      1,
+      4,
+      7,
+      13,
+      14,
+      200
+    ]
+  },
+  "crops": [
+    {
+      "case": "production-fonts",
+      "page": 6,
+      "name": "brick-detail",
+      "rectPtTopLeft": [
+        10,
+        10,
+        90,
+        65
+      ],
+      "dpi": 600
+    },
+    {
+      "case": "production-fonts",
+      "page": 6,
+      "name": "illustration-detail",
+      "rectPtTopLeft": [
+        165,
+        230,
+        100,
+        85
+      ],
+      "dpi": 600
+    },
+    {
+      "case": "isolated",
+      "page": 7,
+      "name": "callout-type",
+      "rectPtTopLeft": [
+        360,
+        185,
+        120,
+        80
+      ],
+      "dpi": 600
+    },
+    {
+      "case": "combined",
+      "page": 9,
+      "name": "fine-rules",
+      "rectPtTopLeft": [
+        75,
+        150,
+        130,
+        75
+      ],
+      "dpi": 600
+    },
+    {
+      "case": "combined",
+      "page": 1,
+      "name": "body-type",
+      "rectPtTopLeft": [
+        75,
+        320,
+        130,
+        65
+      ],
+      "dpi": 600
+    },
+    {
+      "case": "combined",
+      "page": 4,
+      "name": "foreground-cover",
+      "rectPtTopLeft": [
+        70,
+        75,
+        250,
+        40
+      ],
+      "dpi": 600
+    }
+  ],
+  "observations": [
+    "Text edges improve on eligible split pages; the callout ink control has pure K dark pixels in the PR specimen.",
+    "Combined page 4 reveals words under the foreground cover; combined and isolated page 13 remove the foreground tint from text.",
+    "Original-font effects pages checked are pixel-identical old versus PR, including retained cover/tint appearance, with no live-text gain.",
+    "Brick detail softens at 300 DPI; photographic plate detail changes less. Rules lose vector edges, while ordinary text remains crisp.",
+    "Tested gradient fallback keeps appearance at the cost of live text; opaque repeating gradient still distorts, while opaque conic paints in both versions."
+  ]
+}

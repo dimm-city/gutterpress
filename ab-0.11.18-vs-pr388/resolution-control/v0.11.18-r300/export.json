@@ -1,0 +1,20 @@
+{
+  "version": "v0.11.18",
+  "commit": "dfc3645781d5917eb16894d58a691ccd1d87745c",
+  "source": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/resolution-control/source.pdf",
+  "sourceSha256": "5056b4aae7f1bf34be74cd2f78ffd54466b22d6a3ad0cf2707aa517e3d9f9238",
+  "sourceBytes": 11572806,
+  "css": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/resolution-control/styles.css",
+  "cssSha256": "2a755c669572378335274755086c80cb0a4d61247c0a9d73c54fbbfca42d14dc",
+  "output": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/resolution-control/v0.11.18-r300/book.pdf",
+  "outputBytes": 7271226,
+  "outputSha256": "38e207fb3f57584da79de1b1c7c18666b24bbb2c88b7543779936caacba46550",
+  "detectedTransparency": true,
+  "times": {
+    "inspection": 0.06964341900000001,
+    "stripAnnotations": 0.060787825999999996,
+    "blackText": 0.066326237,
+    "cmyk": 13.253282086999999,
+    "total": 13.450168912999999
+  }
+}

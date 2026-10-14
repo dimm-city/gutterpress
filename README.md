@@ -1,6 +1,8 @@
 # PR388: Field Guide CSS evidence
 
-**Latest result:** [Full 228-page builds of all three sweeps on ff1022bf](rerun-ff1022bf/README.md). The gradient guard holds in the full book, selected print checks pass, and 665 nonfallback page glyph comparisons match. Two diagnostic corrections are recommended. The evidence below is retained as history.
+**Latest result:** [Actual 0.11.18 versus PR388 A/B comparison](ab-0.11.18-vs-pr388/README.md): five full 228-page pairs, all three styling sweeps, original-font controls, a resolution control, and visual/PDF proof. The feature preserves eligible text, but does not make arbitrary CSS print-safe. This direct comparison supersedes earlier inferences about its file-size cost.
+
+[Previous full three-sweep rerun on ff1022bf](rerun-ff1022bf/README.md) and the evidence below are retained as history.
 
 ## Historical 8a33992 / 4312289 evidence
 

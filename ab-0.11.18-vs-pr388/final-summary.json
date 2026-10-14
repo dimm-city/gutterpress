@@ -1,0 +1,145 @@
+{
+  "status": "passed",
+  "fullBookPairs": 5,
+  "finalPdfFiles": 10,
+  "pagesPerFile": 228,
+  "checks": [
+    "independent source/output hashes match exporter metadata",
+    "page counts and boxes unchanged",
+    "no lost live-text page versus baseline",
+    "all retained ordered glyph sequences match source",
+    "all PR text losses exactly match declared fallback",
+    "no final transparency",
+    "all remaining fonts embedded",
+    "PDF/X-1a markers and embedded four-channel output intent present",
+    "independent qpdf structural checks pass"
+  ],
+  "scope": "Technical comparisons, not physical press proof or full PDF/X certification. Source image lists may omit tiling-pattern backgrounds. Time measurements are not controlled benchmarks.",
+  "rows": [
+    {
+      "case": "production-fonts",
+      "sourceSha256": "46932a81756294edcea34778f1e6c1ef09edbaa4f9d86ec6c71ce8579973c348",
+      "sourceTextPages": 215,
+      "oldTextPages": 204,
+      "prTextPages": 204,
+      "gainedTextPages": 0,
+      "oldBytes": 114595410,
+      "prBytes": 74494343,
+      "splitPages": 9,
+      "fallbackPages": 11,
+      "prNonFallbackExactGlyphPages": 217,
+      "qpdfChecks": [
+        {
+          "mode": "v0.11.18",
+          "exitCode": 0,
+          "record": "production-fonts/audit/baseline-qpdf-check-evidence.json"
+        },
+        {
+          "mode": "pr388",
+          "exitCode": 0,
+          "record": "production-fonts/audit/preserve-qpdf-check-evidence.json"
+        }
+      ]
+    },
+    {
+      "case": "isolated",
+      "sourceSha256": "f0e2567947d2c7cb2465dfaac6e12155167a2f9188e538c0ffbf9168acece2db",
+      "sourceTextPages": 215,
+      "oldTextPages": 199,
+      "prTextPages": 211,
+      "gainedTextPages": 12,
+      "oldBytes": 140429030,
+      "prBytes": 45159376,
+      "splitPages": 21,
+      "fallbackPages": 4,
+      "prNonFallbackExactGlyphPages": 224,
+      "qpdfChecks": [
+        {
+          "mode": "v0.11.18",
+          "exitCode": 0,
+          "record": "isolated/audit/baseline-qpdf-check-evidence.json"
+        },
+        {
+          "mode": "pr388",
+          "exitCode": 0,
+          "record": "isolated/audit/preserve-qpdf-check-evidence.json"
+        }
+      ]
+    },
+    {
+      "case": "combined",
+      "sourceSha256": "3b195cc27b5a931e43a8262a0a9b21c44618ccbdbd7f3bc631e5f13e268fa898",
+      "sourceTextPages": 217,
+      "oldTextPages": 0,
+      "prTextPages": 205,
+      "gainedTextPages": 205,
+      "oldBytes": 1125730574,
+      "prBytes": 235464148,
+      "splitPages": 213,
+      "fallbackPages": 12,
+      "prNonFallbackExactGlyphPages": 216,
+      "qpdfChecks": [
+        {
+          "mode": "v0.11.18",
+          "exitCode": 0,
+          "record": "combined/audit/baseline-qpdf-check-evidence.json"
+        },
+        {
+          "mode": "pr388",
+          "exitCode": 0,
+          "record": "combined/audit/preserve-qpdf-check-evidence.json"
+        }
+      ]
+    },
+    {
+      "case": "boundary",
+      "sourceSha256": "386a89880c422769fec5038f6e50dcf7f3f4fbd5ccd54f117836f119bc2e736d",
+      "sourceTextPages": 215,
+      "oldTextPages": 0,
+      "prTextPages": 212,
+      "gainedTextPages": 212,
+      "oldBytes": 1125321351,
+      "prBytes": 191260848,
+      "splitPages": 222,
+      "fallbackPages": 3,
+      "prNonFallbackExactGlyphPages": 225,
+      "qpdfChecks": [
+        {
+          "mode": "v0.11.18",
+          "exitCode": 0,
+          "record": "boundary/audit/baseline-qpdf-check-evidence.json"
+        },
+        {
+          "mode": "pr388",
+          "exitCode": 0,
+          "record": "boundary/audit/preserve-qpdf-check-evidence.json"
+        }
+      ]
+    },
+    {
+      "case": "production-fonts-effects",
+      "sourceSha256": "fe1a81514931e0b44bd2955a3c56f8abe8505149b2765cbb3194a338d84785af",
+      "sourceTextPages": 217,
+      "oldTextPages": 0,
+      "prTextPages": 0,
+      "gainedTextPages": 0,
+      "oldBytes": 1125835445,
+      "prBytes": 1095140169,
+      "splitPages": 8,
+      "fallbackPages": 217,
+      "prNonFallbackExactGlyphPages": 11,
+      "qpdfChecks": [
+        {
+          "mode": "v0.11.18",
+          "exitCode": 0,
+          "record": "production-fonts-effects/audit/baseline-qpdf-check-evidence.json"
+        },
+        {
+          "mode": "pr388",
+          "exitCode": 0,
+          "record": "production-fonts-effects/audit/preserve-qpdf-check-evidence.json"
+        }
+      ]
+    }
+  ]
+}

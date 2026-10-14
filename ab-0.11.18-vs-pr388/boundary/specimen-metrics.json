@@ -1,0 +1,20 @@
+[
+  {
+    "page": 8,
+    "renderHeight": 1200,
+    "oldVsNewMeanChannelError": 5.910003920858969,
+    "oldVsNewIdentical": false
+  },
+  {
+    "page": 13,
+    "renderHeight": 1200,
+    "oldVsNewMeanChannelError": 8.481518880443963,
+    "oldVsNewIdentical": false
+  },
+  {
+    "page": 14,
+    "renderHeight": 1200,
+    "oldVsNewMeanChannelError": 0.0,
+    "oldVsNewIdentical": true
+  }
+]

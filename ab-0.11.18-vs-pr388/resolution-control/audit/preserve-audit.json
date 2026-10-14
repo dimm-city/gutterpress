@@ -1,0 +1,439 @@
+{
+  "label": "preserve",
+  "path": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/resolution-control/pr388/book.pdf",
+  "bytes": 6168439,
+  "sha256": "845f156314359e17280811c7b15cbce05a6ba5a976a4e63e35d4f29c58d9fb4a",
+  "pages": 4,
+  "boxes": [
+    {
+      "media": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "trim": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "bleed": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "rotation": 0
+    },
+    {
+      "media": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "trim": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "bleed": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "rotation": 0
+    },
+    {
+      "media": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "trim": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "bleed": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "rotation": 0
+    },
+    {
+      "media": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "trim": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "bleed": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "rotation": 0
+    }
+  ],
+  "transparency": [],
+  "metadata": {
+    "GTS_PDFXVersion": "(PDF/X-1:2001)",
+    "GTS_PDFXConformance": "(PDF/X-1a:2001)",
+    "Trapped": "/False",
+    "Producer": "(GPL Ghostscript 10.06.0)"
+  },
+  "outputIntents": [
+    {
+      "subtype": "/GTS_PDFX",
+      "identifier": "(CGATS TR001)",
+      "hasProfile": true,
+      "channels": "4"
+    }
+  ],
+  "fonts": [
+    {
+      "raw": "ITJOWW+TitilliumWeb-Italic           CID TrueType      Identity-H       yes yes yes     43  0",
+      "name": "ITJOWW+TitilliumWeb-Italic",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "XSTBYP+TitilliumWeb-BoldItalic       CID TrueType      Identity-H       yes yes yes     38  0",
+      "name": "XSTBYP+TitilliumWeb-BoldItalic",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "ZFWRCV+Tomorrow-Bold                 CID TrueType      Identity-H       yes yes yes     33  0",
+      "name": "ZFWRCV+Tomorrow-Bold",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "LIPMVL+TitilliumWeb-Regular          CID TrueType      Identity-H       yes yes yes     27  0",
+      "name": "LIPMVL+TitilliumWeb-Regular",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "ZNFQQP+Lixdu                         CID TrueType      Identity-H       yes yes yes     21  0",
+      "name": "ZNFQQP+Lixdu",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "AVUAPF+TitilliumWeb-Regular          CID TrueType      Identity-H       yes yes yes     93  0",
+      "name": "AVUAPF+TitilliumWeb-Regular",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "IGOOOB+Tomorrow-Bold                 CID TrueType      Identity-H       yes yes yes     88  0",
+      "name": "IGOOOB+Tomorrow-Bold",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "MWOLWC+TitilliumWeb-Italic           CID TrueType      Identity-H       yes yes yes     71  0",
+      "name": "MWOLWC+TitilliumWeb-Italic",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "RXISVH+TitilliumWeb-BoldItalic       CID TrueType      Identity-H       yes yes yes     66  0",
+      "name": "RXISVH+TitilliumWeb-BoldItalic",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "IJSKDJ+Lixdu                         CID TrueType      Identity-H       yes yes yes     61  0",
+      "name": "IJSKDJ+Lixdu",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "BHLEXD+TitilliumWeb-Bold             CID TrueType      Identity-H       yes yes yes    125  0",
+      "name": "BHLEXD+TitilliumWeb-Bold",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    }
+  ],
+  "unembeddedFonts": [],
+  "images": [
+    {
+      "page": 1,
+      "index": 0,
+      "type": "image",
+      "width": 2588,
+      "height": 3375,
+      "color": "cmyk",
+      "components": 4,
+      "bits": 8,
+      "encoding": "jpeg",
+      "object": "9 0",
+      "xPpi": 300,
+      "yPpi": 300
+    },
+    {
+      "page": 2,
+      "index": 1,
+      "type": "image",
+      "width": 2588,
+      "height": 3375,
+      "color": "cmyk",
+      "components": 4,
+      "bits": 8,
+      "encoding": "jpeg",
+      "object": "17 0",
+      "xPpi": 300,
+      "yPpi": 300
+    },
+    {
+      "page": 3,
+      "index": 2,
+      "type": "image",
+      "width": 2588,
+      "height": 3375,
+      "color": "cmyk",
+      "components": 4,
+      "bits": 8,
+      "encoding": "jpeg",
+      "object": "56 0",
+      "xPpi": 300,
+      "yPpi": 300
+    },
+    {
+      "page": 4,
+      "index": 3,
+      "type": "image",
+      "width": 2588,
+      "height": 3375,
+      "color": "cmyk",
+      "components": 4,
+      "bits": 8,
+      "encoding": "jpeg",
+      "object": "119 0",
+      "xPpi": 300,
+      "yPpi": 300
+    }
+  ],
+  "textPages": [
+    2,
+    3,
+    4
+  ],
+  "glyphPages": [
+    2,
+    3,
+    4
+  ],
+  "glyphAuditOptions": {
+    "maxImageSize": 1,
+    "reason": "Skip expensive image decoding; observed image placements independently measured by pdfimages -list."
+  },
+  "rows": [
+    {
+      "page": 1,
+      "glyphs": 0,
+      "glyphSequenceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "popplerNonWhitespaceChars": 0,
+      "operators": {
+        "save": 2,
+        "transform": 2,
+        "restore": 2,
+        "beginMarkedContentProps": 2,
+        "endMarkedContent": 2
+      },
+      "images": [
+        {
+          "page": 1,
+          "index": 0,
+          "type": "image",
+          "width": 2588,
+          "height": 3375,
+          "color": "cmyk",
+          "components": 4,
+          "bits": 8,
+          "encoding": "jpeg",
+          "object": "9 0",
+          "xPpi": 300,
+          "yPpi": 300
+        }
+      ]
+    },
+    {
+      "page": 2,
+      "glyphs": 1124,
+      "glyphSequenceSha256": "7a640d124869f81ef6b0f97895ebecae403f60b6ef3b1a7d2a565c877be06ad7",
+      "popplerNonWhitespaceChars": 949,
+      "operators": {
+        "save": 18,
+        "transform": 14,
+        "restore": 18,
+        "beginMarkedContentProps": 12,
+        "endMarkedContent": 12,
+        "setFillRGBColor": 7,
+        "beginText": 12,
+        "dependency": 5,
+        "setFont": 12,
+        "setTextMatrix": 12,
+        "showText": 34,
+        "endText": 12,
+        "eoClip": 3,
+        "constructPath": 4,
+        "setLeading": 3,
+        "nextLine": 18,
+        "moveText": 4,
+        "clip": 1
+      },
+      "images": [
+        {
+          "page": 2,
+          "index": 1,
+          "type": "image",
+          "width": 2588,
+          "height": 3375,
+          "color": "cmyk",
+          "components": 4,
+          "bits": 8,
+          "encoding": "jpeg",
+          "object": "17 0",
+          "xPpi": 300,
+          "yPpi": 300
+        }
+      ]
+    },
+    {
+      "page": 3,
+      "glyphs": 1321,
+      "glyphSequenceSha256": "d92a975a5a64d35d0e169b7adac3d3fedc0baf49f963b57092400eed7b8d88f3",
+      "popplerNonWhitespaceChars": 1146,
+      "operators": {
+        "save": 26,
+        "transform": 25,
+        "restore": 26,
+        "beginMarkedContentProps": 36,
+        "endMarkedContent": 36,
+        "clip": 1,
+        "constructPath": 1,
+        "setFillRGBColor": 2,
+        "beginText": 23,
+        "dependency": 5,
+        "setFont": 23,
+        "setTextMatrix": 23,
+        "showText": 48,
+        "endText": 23,
+        "moveText": 22,
+        "setLeading": 3,
+        "nextLine": 3
+      },
+      "images": [
+        {
+          "page": 3,
+          "index": 2,
+          "type": "image",
+          "width": 2588,
+          "height": 3375,
+          "color": "cmyk",
+          "components": 4,
+          "bits": 8,
+          "encoding": "jpeg",
+          "object": "56 0",
+          "xPpi": 300,
+          "yPpi": 300
+        }
+      ]
+    },
+    {
+      "page": 4,
+      "glyphs": 1558,
+      "glyphSequenceSha256": "74d5255bc6bc73a5fc626cb10d4b74361a0a58de133e4adac0226ffbdc4824d7",
+      "popplerNonWhitespaceChars": 1329,
+      "operators": {
+        "save": 32,
+        "transform": 29,
+        "restore": 32,
+        "beginMarkedContentProps": 29,
+        "endMarkedContent": 29,
+        "setFillRGBColor": 6,
+        "beginText": 27,
+        "dependency": 6,
+        "setFont": 27,
+        "setTextMatrix": 27,
+        "showText": 50,
+        "endText": 27,
+        "eoClip": 2,
+        "constructPath": 3,
+        "moveText": 23,
+        "clip": 1
+      },
+      "images": [
+        {
+          "page": 4,
+          "index": 3,
+          "type": "image",
+          "width": 2588,
+          "height": 3375,
+          "color": "cmyk",
+          "components": 4,
+          "bits": 8,
+          "encoding": "jpeg",
+          "object": "119 0",
+          "xPpi": 300,
+          "yPpi": 300
+        }
+      ]
+    }
+  ],
+  "imageAuditScope": "Poppler pdfimages -list observed placements; tiling-pattern backgrounds can be omitted. This is not an exhaustive source-detail audit."
+}

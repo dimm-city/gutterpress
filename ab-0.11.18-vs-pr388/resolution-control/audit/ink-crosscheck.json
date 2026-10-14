@@ -1,0 +1,44 @@
+[
+  {
+    "mode": "v0.11.18",
+    "cropSha256": "006e0cf024a65b0e91b584ef012575d360ffa8b2fabba1fc31e9512619da0528",
+    "darkPixels": 69034,
+    "nearKOnly": 31267,
+    "maximumCmyQuantiles": {
+      "0.5": 3,
+      "0.9": 13,
+      "0.99": 27,
+      "1": 40
+    },
+    "darkPixelsWithAnyCmyAbove16": 4835,
+    "note": "Statistics describe all crop pixels with K>=128, not a semantic glyph mask. The low CMY values are consistent with edge/resampling/compression effects; this does not isolate their relative causes or justify calling all old text rich black."
+  },
+  {
+    "mode": "v0.11.18-r300",
+    "cropSha256": "a5a3007bd023c7e95013d7b61333f69fb7e2a4ac3f2297a757edcd1a0e93e484",
+    "darkPixels": 68932,
+    "nearKOnly": 10516,
+    "maximumCmyQuantiles": {
+      "0.5": 6,
+      "0.9": 15,
+      "0.99": 25,
+      "1": 40
+    },
+    "darkPixelsWithAnyCmyAbove16": 5620,
+    "note": "Statistics describe all crop pixels with K>=128, not a semantic glyph mask. The low CMY values are consistent with edge/resampling/compression effects; this does not isolate their relative causes or justify calling all old text rich black."
+  },
+  {
+    "mode": "pr388",
+    "cropSha256": "2acfb2437d3708d68401d1919dfe6a472b372b90f916bce9b9af2a89de9352ae",
+    "darkPixels": 69064,
+    "nearKOnly": 69064,
+    "maximumCmyQuantiles": {
+      "0.5": 0,
+      "0.9": 0,
+      "0.99": 0,
+      "1": 0
+    },
+    "darkPixelsWithAnyCmyAbove16": 0,
+    "note": "Statistics describe all crop pixels with K>=128, not a semantic glyph mask. The low CMY values are consistent with edge/resampling/compression effects; this does not isolate their relative causes or justify calling all old text rich black."
+  }
+]

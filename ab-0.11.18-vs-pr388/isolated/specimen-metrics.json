@@ -1,0 +1,44 @@
+[
+  {
+    "page": 5,
+    "renderHeight": 1200,
+    "oldVsNewMeanChannelError": 7.993915128483533,
+    "oldVsNewIdentical": false
+  },
+  {
+    "page": 7,
+    "renderHeight": 1200,
+    "oldVsNewMeanChannelError": 8.019281276390396,
+    "oldVsNewIdentical": false
+  },
+  {
+    "page": 9,
+    "renderHeight": 1200,
+    "oldVsNewMeanChannelError": 8.488083001568343,
+    "oldVsNewIdentical": false
+  },
+  {
+    "page": 10,
+    "renderHeight": 1200,
+    "oldVsNewMeanChannelError": 0.0,
+    "oldVsNewIdentical": true
+  },
+  {
+    "page": 13,
+    "renderHeight": 1200,
+    "oldVsNewMeanChannelError": 8.560304620581492,
+    "oldVsNewIdentical": false
+  },
+  {
+    "page": 15,
+    "renderHeight": 1200,
+    "oldVsNewMeanChannelError": 0.0,
+    "oldVsNewIdentical": true
+  },
+  {
+    "page": 19,
+    "renderHeight": 1200,
+    "oldVsNewMeanChannelError": 0.0,
+    "oldVsNewIdentical": true
+  }
+]

@@ -1,0 +1,86 @@
+[
+  {
+    "rule": "printsafe/no-risky-print-effects",
+    "severity": "warning",
+    "message": "Property is high-risk for print/PDF: 'filter' rasterizes its subtree to a 300 DPI bitmap in the printed PDF (text becomes unselectable, unsearchable, and inaccessible), and it dominates build time (~90% measured; 57.0s -> 6.2s over 60pp when scoped — see ENGINE.md §10). Scope it to the smallest possible selector. It also means the render-parity gate cannot see a text-only change inside it (docs/render-parity-gate.md, \"Known blind spot\").",
+    "line": 92,
+    "column": 88
+  },
+  {
+    "rule": "printsafe/no-risky-print-effects",
+    "severity": "warning",
+    "message": "\"background: repeating-linear-gradient(35deg,#ffffcc 0 8pt,#33ccee 8pt 16pt)\" is at risk in PDF/X exports (--format pdfx): Chromium emits repeating-*-gradient() and conic-gradient() in a form Ghostscript cannot convert, so it prints blank, unless the page also uses transparency and Ghostscript flattens the whole page to an image, which keeps the gradient but loses that page's live text. Plain PDF output is unaffected. Use linear-gradient() or radial-gradient() instead; for 0deg/90deg stripes write \"linear-gradient(90deg, #b33 0 6px, #c8c5bf 6px 10px)\" with \"background-size: 10px 100%\", and for anything else a small tiled image.",
+    "line": 95,
+    "column": 20
+  },
+  {
+    "rule": "printsafe/no-risky-print-effects",
+    "severity": "warning",
+    "message": "Property is high-risk for print/PDF (can force rasterization): mix-blend-mode",
+    "line": 98,
+    "column": 17
+  },
+  {
+    "rule": "printsafe/no-risky-print-effects",
+    "severity": "warning",
+    "message": "Property is high-risk for print/PDF: 'filter' rasterizes its subtree to a 300 DPI bitmap in the printed PDF (text becomes unselectable, unsearchable, and inaccessible), and it dominates build time (~90% measured; 57.0s -> 6.2s over 60pp when scoped — see ENGINE.md §10). Scope it to the smallest possible selector. It also means the render-parity gate cannot see a text-only change inside it (docs/render-parity-gate.md, \"Known blind spot\").",
+    "line": 107,
+    "column": 13
+  },
+  {
+    "rule": "printsafe/no-risky-print-effects",
+    "severity": "warning",
+    "message": "Property is high-risk for print/PDF (can force rasterization): mix-blend-mode",
+    "line": 116,
+    "column": 27
+  },
+  {
+    "rule": "printsafe/no-risky-print-effects",
+    "severity": "warning",
+    "message": "Property is high-risk for print/PDF (can force rasterization): backdrop-filter",
+    "line": 128,
+    "column": 45
+  },
+  {
+    "rule": "printsafe/no-risky-print-effects",
+    "severity": "warning",
+    "message": "\"background: conic-gradient(red,yellow,lime,cyan,blue,magenta,red)\" is at risk in PDF/X exports (--format pdfx): Chromium emits repeating-*-gradient() and conic-gradient() in a form Ghostscript cannot convert, so it prints blank, unless the page also uses transparency and Ghostscript flattens the whole page to an image, which keeps the gradient but loses that page's live text. Plain PDF output is unaffected. Use linear-gradient() or radial-gradient() instead; for 0deg/90deg stripes write \"linear-gradient(90deg, #b33 0 6px, #c8c5bf 6px 10px)\" with \"background-size: 10px 100%\", and for anything else a small tiled image.",
+    "line": 148,
+    "column": 3
+  },
+  {
+    "rule": "printsafe/page-containment",
+    "severity": "warning",
+    "message": "\"opacity: .15\" on \".page:has(img[alt=\"Tiny T2\"]) h3\" makes the page box a stacking context, so a .gp-behind image is trapped inside it and paints ABOVE the page's text instead of under it. Core keeps .page/.spread at \"position: relative; z-index: auto\" for this reason. This is an early source-only check; the build-time engine.layer.trapped audit is authoritative for the live ancestor chain.",
+    "line": 83,
+    "column": 36
+  },
+  {
+    "rule": "printsafe/page-containment",
+    "severity": "warning",
+    "message": "\"filter: grayscale(.6) drop-shadow(3pt 4pt 4pt #48006077)\" on \".page:has(#c2-style) img\" makes the page box a stacking context, so a .gp-behind image is trapped inside it and paints ABOVE the page's text instead of under it. Core keeps .page/.spread at \"position: relative; z-index: auto\" for this reason. This is an early source-only check; the build-time engine.layer.trapped audit is authoritative for the live ancestor chain.",
+    "line": 92,
+    "column": 88
+  },
+  {
+    "rule": "printsafe/page-containment",
+    "severity": "warning",
+    "message": "\"backdrop-filter: blur(2pt)\" on \".page:has(#c2-character-profile) .section\" makes the page box a stacking context, so a .gp-behind image is trapped inside it and paints ABOVE the page's text instead of under it. Core keeps .page/.spread at \"position: relative; z-index: auto\" for this reason. This is an early source-only check; the build-time engine.layer.trapped audit is authoritative for the live ancestor chain.",
+    "line": 128,
+    "column": 45
+  },
+  {
+    "rule": "printsafe/page-containment",
+    "severity": "warning",
+    "message": "\"z-index: 5\" on \".page:has(img[alt=\"creaturepunk\"]) .section:first-of-type p:first-of-type::after\" makes the page box a stacking context, so a .gp-behind image is trapped inside it and paints ABOVE the page's text instead of under it. Core keeps .page/.spread at \"position: relative; z-index: auto\" for this reason. This is an early source-only check; the build-time engine.layer.trapped audit is authoritative for the live ancestor chain.",
+    "line": 137,
+    "column": 34
+  },
+  {
+    "rule": "printsafe/page-containment",
+    "severity": "warning",
+    "message": "\"z-index: 5\" on \".page:has(#c2-style) .section > p:first-of-type::after\" makes the page box a stacking context, so a .gp-behind image is trapped inside it and paints ABOVE the page's text instead of under it. Core keeps .page/.spread at \"position: relative; z-index: auto\" for this reason. This is an early source-only check; the build-time engine.layer.trapped audit is authoritative for the live ancestor chain.",
+    "line": 142,
+    "column": 34
+  }
+]

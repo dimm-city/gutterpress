@@ -1,0 +1,6 @@
+checking /home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-stress/rerun-ff1022bf/boundary/boundary-pdf.pdf
+PDF Version: 1.7
+File is not encrypted
+File is not linearized
+No syntax or stream encoding errors found; the file may still contain
+errors that qpdf cannot detect

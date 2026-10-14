@@ -1,0 +1,36 @@
+[
+  {
+    "from": "v0.11.18",
+    "to": "42091ecc",
+    "paths": [
+      "packages/cli/src/engine",
+      "packages/cli/src/lib/black-text-gray.ts",
+      "packages/cli/profiles/CGATS21_CRPC1.icc",
+      "bun.lock"
+    ],
+    "changedFiles": []
+  },
+  {
+    "from": "42091ecc",
+    "to": "7c692ab4",
+    "paths": [
+      "packages/cli/src/engine",
+      "packages/cli/src/lib/black-text-gray.ts",
+      "packages/cli/profiles/CGATS21_CRPC1.icc",
+      "bun.lock",
+      "packages/cli/src/lib/ghostscript.ts",
+      "packages/cli/src/lib/pdf-inspect.ts"
+    ],
+    "changedFiles": [],
+    "allChangedFiles": [
+      "CHANGELOG.md",
+      "docs/native-engine-styling-guide.md",
+      "docs/publishing.md",
+      "packages/cli/package.json",
+      "packages/cli/src/lib/build-runner.ts",
+      "packages/cli/src/lib/ghostscript.flatten.integration.test.ts",
+      "packages/cli/src/lib/printsafe.ts",
+      "packages/desktop/package.json"
+    ]
+  }
+]

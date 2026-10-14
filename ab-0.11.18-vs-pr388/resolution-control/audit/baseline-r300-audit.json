@@ -1,0 +1,309 @@
+{
+  "label": "baseline-r300",
+  "path": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/resolution-control/v0.11.18-r300/book.pdf",
+  "bytes": 7271226,
+  "sha256": "38e207fb3f57584da79de1b1c7c18666b24bbb2c88b7543779936caacba46550",
+  "pages": 4,
+  "boxes": [
+    {
+      "media": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "trim": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "bleed": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "rotation": 0
+    },
+    {
+      "media": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "trim": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "bleed": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "rotation": 0
+    },
+    {
+      "media": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "trim": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "bleed": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "rotation": 0
+    },
+    {
+      "media": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "trim": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "bleed": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "rotation": 0
+    }
+  ],
+  "transparency": [],
+  "metadata": {
+    "GTS_PDFXVersion": "(PDF/X-1:2001)",
+    "GTS_PDFXConformance": "(PDF/X-1a:2001)",
+    "Trapped": "/False",
+    "Producer": "(GPL Ghostscript 10.06.0)"
+  },
+  "outputIntents": [
+    {
+      "subtype": "/GTS_PDFX",
+      "identifier": "(CGATS TR001)",
+      "hasProfile": true,
+      "channels": "4"
+    }
+  ],
+  "fonts": [],
+  "unembeddedFonts": [],
+  "images": [
+    {
+      "page": 1,
+      "index": 0,
+      "type": "image",
+      "width": 2588,
+      "height": 3375,
+      "color": "cmyk",
+      "components": 4,
+      "bits": 8,
+      "encoding": "jpeg",
+      "object": "9 0",
+      "xPpi": 300,
+      "yPpi": 300
+    },
+    {
+      "page": 2,
+      "index": 1,
+      "type": "image",
+      "width": 2588,
+      "height": 3375,
+      "color": "cmyk",
+      "components": 4,
+      "bits": 8,
+      "encoding": "jpeg",
+      "object": "14 0",
+      "xPpi": 300,
+      "yPpi": 300
+    },
+    {
+      "page": 3,
+      "index": 2,
+      "type": "image",
+      "width": 2588,
+      "height": 3375,
+      "color": "cmyk",
+      "components": 4,
+      "bits": 8,
+      "encoding": "jpeg",
+      "object": "19 0",
+      "xPpi": 300,
+      "yPpi": 300
+    },
+    {
+      "page": 4,
+      "index": 3,
+      "type": "image",
+      "width": 2588,
+      "height": 3375,
+      "color": "cmyk",
+      "components": 4,
+      "bits": 8,
+      "encoding": "jpeg",
+      "object": "24 0",
+      "xPpi": 300,
+      "yPpi": 300
+    }
+  ],
+  "textPages": [],
+  "glyphPages": [],
+  "glyphAuditOptions": {
+    "maxImageSize": 1,
+    "reason": "Skip expensive image decoding; observed image placements independently measured by pdfimages -list."
+  },
+  "rows": [
+    {
+      "page": 1,
+      "glyphs": 0,
+      "glyphSequenceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "popplerNonWhitespaceChars": 0,
+      "operators": {
+        "save": 2,
+        "transform": 2,
+        "restore": 2
+      },
+      "images": [
+        {
+          "page": 1,
+          "index": 0,
+          "type": "image",
+          "width": 2588,
+          "height": 3375,
+          "color": "cmyk",
+          "components": 4,
+          "bits": 8,
+          "encoding": "jpeg",
+          "object": "9 0",
+          "xPpi": 300,
+          "yPpi": 300
+        }
+      ]
+    },
+    {
+      "page": 2,
+      "glyphs": 0,
+      "glyphSequenceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "popplerNonWhitespaceChars": 0,
+      "operators": {
+        "save": 2,
+        "transform": 2,
+        "restore": 2
+      },
+      "images": [
+        {
+          "page": 2,
+          "index": 1,
+          "type": "image",
+          "width": 2588,
+          "height": 3375,
+          "color": "cmyk",
+          "components": 4,
+          "bits": 8,
+          "encoding": "jpeg",
+          "object": "14 0",
+          "xPpi": 300,
+          "yPpi": 300
+        }
+      ]
+    },
+    {
+      "page": 3,
+      "glyphs": 0,
+      "glyphSequenceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "popplerNonWhitespaceChars": 0,
+      "operators": {
+        "save": 2,
+        "transform": 2,
+        "restore": 2
+      },
+      "images": [
+        {
+          "page": 3,
+          "index": 2,
+          "type": "image",
+          "width": 2588,
+          "height": 3375,
+          "color": "cmyk",
+          "components": 4,
+          "bits": 8,
+          "encoding": "jpeg",
+          "object": "19 0",
+          "xPpi": 300,
+          "yPpi": 300
+        }
+      ]
+    },
+    {
+      "page": 4,
+      "glyphs": 0,
+      "glyphSequenceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "popplerNonWhitespaceChars": 0,
+      "operators": {
+        "save": 2,
+        "transform": 2,
+        "restore": 2
+      },
+      "images": [
+        {
+          "page": 4,
+          "index": 3,
+          "type": "image",
+          "width": 2588,
+          "height": 3375,
+          "color": "cmyk",
+          "components": 4,
+          "bits": 8,
+          "encoding": "jpeg",
+          "object": "24 0",
+          "xPpi": 300,
+          "yPpi": 300
+        }
+      ]
+    }
+  ],
+  "imageAuditScope": "Poppler pdfimages -list observed placements; tiling-pattern backgrounds can be omitted. This is not an exhaustive source-detail audit."
+}

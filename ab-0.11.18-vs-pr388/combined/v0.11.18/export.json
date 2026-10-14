@@ -1,0 +1,16 @@
+{
+  "version": "v0.11.18",
+  "commit": "dfc3645781d5917eb16894d58a691ccd1d87745c",
+  "source": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-stress/rerun-ff1022bf/combined/combined-pdf.pdf",
+  "sourceSha256": "3b195cc27b5a931e43a8262a0a9b21c44618ccbdbd7f3bc631e5f13e268fa898",
+  "sourceBytes": 92268388,
+  "css": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/combined/styles.css",
+  "cssSha256": "da8b92075d9d7868992c4e8b21f2e4f1de09c280ad54d9ad376e9ff295b617bc",
+  "output": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/combined/v0.11.18/book.pdf",
+  "outputBytes": 1125730574,
+  "outputSha256": "c1ad75b0b2bcdb4c0fc908fa1d8b5a8a6420555a64547e869a9c144f5164c3b2",
+  "times": {
+    "total": null
+  },
+  "completion": "recovered completed artifact; see recovery.json for unobserved exit/timing"
+}

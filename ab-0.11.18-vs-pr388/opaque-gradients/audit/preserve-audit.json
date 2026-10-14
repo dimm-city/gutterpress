@@ -1,0 +1,260 @@
+{
+  "label": "preserve",
+  "path": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/opaque-gradients/pr388/book.pdf",
+  "bytes": 3539005,
+  "sha256": "85b3eab6932fe8c482d9c5afdca6f65ba8d1674f230952c909634104d75f77b5",
+  "pages": 2,
+  "boxes": [
+    {
+      "media": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "trim": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "bleed": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "rotation": 0
+    },
+    {
+      "media": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "trim": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "bleed": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "rotation": 0
+    }
+  ],
+  "transparency": [],
+  "metadata": {
+    "GTS_PDFXVersion": "(PDF/X-1:2001)",
+    "GTS_PDFXConformance": "(PDF/X-1a:2001)",
+    "Trapped": "/False",
+    "Producer": "(GPL Ghostscript 10.06.0)"
+  },
+  "outputIntents": [
+    {
+      "subtype": "/GTS_PDFX",
+      "identifier": "(CGATS TR001)",
+      "hasProfile": true,
+      "channels": "4"
+    }
+  ],
+  "fonts": [
+    {
+      "raw": "VHANSP+TitilliumWeb-Italic           CID TrueType      Identity-H       yes yes yes    103  0",
+      "name": "VHANSP+TitilliumWeb-Italic",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "QAXVMM+TitilliumWeb-Regular          CID TrueType      Identity-H       yes yes yes     57  0",
+      "name": "QAXVMM+TitilliumWeb-Regular",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "YIWGPX+Tomorrow-Bold                 CID TrueType      Identity-H       yes yes yes     23  0",
+      "name": "YIWGPX+Tomorrow-Bold",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "[none]                               Type 3            Custom           yes no  yes     20  0",
+      "name": "[none]",
+      "embedded": true,
+      "subset": false,
+      "toUnicode": true
+    },
+    {
+      "raw": "MEFYIU+TitilliumWeb-Bold             CID TrueType      Identity-H       yes yes yes    171  0",
+      "name": "MEFYIU+TitilliumWeb-Bold",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "IVTQAW+TitilliumWeb-BoldItalic       CID TrueType      Identity-H       yes yes yes    165  0",
+      "name": "IVTQAW+TitilliumWeb-BoldItalic",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    }
+  ],
+  "unembeddedFonts": [],
+  "images": [
+    {
+      "page": 1,
+      "index": 0,
+      "type": "image",
+      "width": 649,
+      "height": 73,
+      "color": "cmyk",
+      "components": 4,
+      "bits": 8,
+      "encoding": "image",
+      "object": "99 0",
+      "xPpi": 90,
+      "yPpi": 90
+    },
+    {
+      "page": 2,
+      "index": 1,
+      "type": "image",
+      "width": 1305,
+      "height": 37,
+      "color": "cmyk",
+      "components": 4,
+      "bits": 8,
+      "encoding": "image",
+      "object": "119 0",
+      "xPpi": 180,
+      "yPpi": 90
+    }
+  ],
+  "textPages": [
+    1,
+    2
+  ],
+  "glyphPages": [
+    1,
+    2
+  ],
+  "glyphAuditOptions": {
+    "maxImageSize": 1,
+    "reason": "Skip expensive image decoding; observed image placements independently measured by pdfimages -list."
+  },
+  "rows": [
+    {
+      "page": 1,
+      "glyphs": 715,
+      "glyphSequenceSha256": "6691514e76224202a4da6d6f558d0b63c97c22f7a5c16c9b2e13eb5f6ddeaa15",
+      "popplerNonWhitespaceChars": 623,
+      "operators": {
+        "save": 40,
+        "transform": 31,
+        "beginMarkedContentProps": 57,
+        "setFillRGBColor": 19,
+        "constructPath": 2397,
+        "setFillColorN": 1,
+        "endMarkedContent": 57,
+        "setStrokeRGBColor": 3,
+        "beginText": 28,
+        "dependency": 6,
+        "setFont": 28,
+        "setTextMatrix": 28,
+        "showText": 34,
+        "endText": 28,
+        "restore": 40,
+        "setLineWidth": 1,
+        "setMiterLimit": 1,
+        "eoClip": 4,
+        "clip": 9,
+        "setLeading": 4,
+        "nextLine": 4,
+        "moveText": 2
+      },
+      "images": [
+        {
+          "page": 1,
+          "index": 0,
+          "type": "image",
+          "width": 649,
+          "height": 73,
+          "color": "cmyk",
+          "components": 4,
+          "bits": 8,
+          "encoding": "image",
+          "object": "99 0",
+          "xPpi": 90,
+          "yPpi": 90
+        }
+      ]
+    },
+    {
+      "page": 2,
+      "glyphs": 2096,
+      "glyphSequenceSha256": "e8ea19c5a8b26cf0e10457ce4b5736d3b9dd90b2f21f2d4986d4ce996f6c5bbe",
+      "popplerNonWhitespaceChars": 1790,
+      "operators": {
+        "save": 57,
+        "transform": 49,
+        "beginMarkedContentProps": 84,
+        "setFillRGBColor": 22,
+        "constructPath": 5728,
+        "setFillColorN": 1,
+        "endMarkedContent": 84,
+        "setLineWidth": 1,
+        "setMiterLimit": 1,
+        "setStrokeRGBColor": 3,
+        "beginText": 46,
+        "dependency": 8,
+        "setFont": 46,
+        "setTextMatrix": 46,
+        "showText": 72,
+        "endText": 46,
+        "restore": 57,
+        "eoClip": 4,
+        "clip": 8,
+        "moveText": 25,
+        "setLeading": 1,
+        "nextLine": 1
+      },
+      "images": [
+        {
+          "page": 2,
+          "index": 1,
+          "type": "image",
+          "width": 1305,
+          "height": 37,
+          "color": "cmyk",
+          "components": 4,
+          "bits": 8,
+          "encoding": "image",
+          "object": "119 0",
+          "xPpi": 180,
+          "yPpi": 90
+        }
+      ]
+    }
+  ],
+  "imageAuditScope": "Poppler pdfimages -list observed placements; tiling-pattern backgrounds can be omitted. This is not an exhaustive source-detail audit."
+}

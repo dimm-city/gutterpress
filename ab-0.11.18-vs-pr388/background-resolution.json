@@ -1,0 +1,13 @@
+{
+  "file": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/field-guide/plugins/npm/gp-dimm-city/1.6.3/node_modules/gp-dimm-city/images/brick-wall.png",
+  "sha256": "47b9b1bb26e25de4483f0f1cdffd88e56d2906e2ff03e45b7552c51d26035b2e",
+  "pixels": [
+    2550,
+    3300
+  ],
+  "cssFile": "field-guide/plugins/npm/gp-dimm-city/1.6.3/node_modules/gp-dimm-city/styles/dc-native.css",
+  "cssLine": 50,
+  "backgroundSize": "1.5in auto",
+  "nominalSourcePpi": 1700.0,
+  "note": "This tiled background is distinct from the 262PPI p6 illustration. Poppler pdfimages output used by the audit did not enumerate this pattern background."
+}

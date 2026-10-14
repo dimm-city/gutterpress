@@ -1,0 +1,74 @@
+[
+  {
+    "case": "production-fonts",
+    "page": 6,
+    "name": "brick-detail",
+    "rectPtTopLeft": [
+      10,
+      10,
+      90,
+      65
+    ],
+    "dpi": 600
+  },
+  {
+    "case": "production-fonts",
+    "page": 6,
+    "name": "illustration-detail",
+    "rectPtTopLeft": [
+      165,
+      230,
+      100,
+      85
+    ],
+    "dpi": 600
+  },
+  {
+    "case": "isolated",
+    "page": 7,
+    "name": "callout-type",
+    "rectPtTopLeft": [
+      360,
+      185,
+      120,
+      80
+    ],
+    "dpi": 600
+  },
+  {
+    "case": "combined",
+    "page": 9,
+    "name": "fine-rules",
+    "rectPtTopLeft": [
+      75,
+      150,
+      130,
+      75
+    ],
+    "dpi": 600
+  },
+  {
+    "case": "combined",
+    "page": 1,
+    "name": "body-type",
+    "rectPtTopLeft": [
+      75,
+      320,
+      130,
+      65
+    ],
+    "dpi": 600
+  },
+  {
+    "case": "combined",
+    "page": 4,
+    "name": "foreground-cover",
+    "rectPtTopLeft": [
+      70,
+      75,
+      250,
+      40
+    ],
+    "dpi": 600
+  }
+]

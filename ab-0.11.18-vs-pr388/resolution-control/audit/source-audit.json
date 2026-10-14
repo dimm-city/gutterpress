@@ -1,0 +1,712 @@
+{
+  "label": "source",
+  "path": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/resolution-control/source.pdf",
+  "bytes": 11572806,
+  "sha256": "5056b4aae7f1bf34be74cd2f78ffd54466b22d6a3ad0cf2707aa517e3d9f9238",
+  "pages": 4,
+  "boxes": [
+    {
+      "media": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "trim": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "bleed": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "rotation": 0
+    },
+    {
+      "media": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "trim": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "bleed": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "rotation": 0
+    },
+    {
+      "media": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "trim": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "bleed": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "rotation": 0
+    },
+    {
+      "media": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "trim": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "bleed": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "rotation": 0
+    }
+  ],
+  "transparency": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "metadata": {},
+  "outputIntents": [],
+  "fonts": [
+    {
+      "raw": "DAAAAA+Tomorrow-Bold                 CID TrueType      Identity-H       yes yes yes     18  0",
+      "name": "DAAAAA+Tomorrow-Bold",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "EAAAAA+TitilliumWeb-Regular          CID TrueType      Identity-H       yes yes yes     19  0",
+      "name": "EAAAAA+TitilliumWeb-Regular",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "AAAAAA+Lixdu                         CID TrueType      Identity-H       yes yes yes     20  0",
+      "name": "AAAAAA+Lixdu",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "BAAAAA+TitilliumWeb-BoldItalic       CID TrueType      Identity-H       yes yes yes     21  0",
+      "name": "BAAAAA+TitilliumWeb-BoldItalic",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "CAAAAA+TitilliumWeb-Italic           CID TrueType      Identity-H       yes yes yes     22  0",
+      "name": "CAAAAA+TitilliumWeb-Italic",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "DAAAAA+Tomorrow-Bold                 CID TrueType      Identity-H       yes yes yes     31  0",
+      "name": "DAAAAA+Tomorrow-Bold",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "EAAAAA+TitilliumWeb-Regular          CID TrueType      Identity-H       yes yes yes     60  0",
+      "name": "EAAAAA+TitilliumWeb-Regular",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "AAAAAA+Lixdu                         CID TrueType      Identity-H       yes yes yes     32  0",
+      "name": "AAAAAA+Lixdu",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "BAAAAA+TitilliumWeb-BoldItalic       CID TrueType      Identity-H       yes yes yes     61  0",
+      "name": "BAAAAA+TitilliumWeb-BoldItalic",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "CAAAAA+TitilliumWeb-Italic           CID TrueType      Identity-H       yes yes yes     62  0",
+      "name": "CAAAAA+TitilliumWeb-Italic",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "FAAAAA+TitilliumWeb-Bold             CID TrueType      Identity-H       yes yes yes     69  0",
+      "name": "FAAAAA+TitilliumWeb-Bold",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    }
+  ],
+  "unembeddedFonts": [],
+  "images": [
+    {
+      "page": 1,
+      "index": 0,
+      "type": "image",
+      "width": 1788,
+      "height": 2546,
+      "color": "icc",
+      "components": 3,
+      "bits": 8,
+      "encoding": "image",
+      "object": "10 0",
+      "xPpi": 262,
+      "yPpi": 262
+    },
+    {
+      "page": 1,
+      "index": 1,
+      "type": "smask",
+      "width": 1788,
+      "height": 2546,
+      "color": "gray",
+      "components": 1,
+      "bits": 8,
+      "encoding": "image",
+      "object": "10 0",
+      "xPpi": 262,
+      "yPpi": 262
+    },
+    {
+      "page": 2,
+      "index": 2,
+      "type": "image",
+      "width": 1107,
+      "height": 998,
+      "color": "gray",
+      "components": 1,
+      "bits": 8,
+      "encoding": "jpeg",
+      "object": "72 0",
+      "xPpi": 300,
+      "yPpi": 300
+    },
+    {
+      "page": 2,
+      "index": 3,
+      "type": "image",
+      "width": 1958,
+      "height": 2732,
+      "color": "icc",
+      "components": 3,
+      "bits": 8,
+      "encoding": "image",
+      "object": "24 0",
+      "xPpi": 360,
+      "yPpi": 360
+    },
+    {
+      "page": 2,
+      "index": 4,
+      "type": "smask",
+      "width": 1958,
+      "height": 2732,
+      "color": "gray",
+      "components": 1,
+      "bits": 8,
+      "encoding": "image",
+      "object": "24 0",
+      "xPpi": 360,
+      "yPpi": 360
+    },
+    {
+      "page": 3,
+      "index": 5,
+      "type": "image",
+      "width": 2307,
+      "height": 2435,
+      "color": "gray",
+      "components": 1,
+      "bits": 8,
+      "encoding": "jpeg",
+      "object": "100 0",
+      "xPpi": 300,
+      "yPpi": 300
+    },
+    {
+      "page": 3,
+      "index": 6,
+      "type": "image",
+      "width": 2336,
+      "height": 2470,
+      "color": "gray",
+      "components": 1,
+      "bits": 8,
+      "encoding": "jpeg",
+      "object": "101 0",
+      "xPpi": 300,
+      "yPpi": 300
+    },
+    {
+      "page": 3,
+      "index": 7,
+      "type": "image",
+      "width": 952,
+      "height": 678,
+      "color": "icc",
+      "components": 3,
+      "bits": 8,
+      "encoding": "image",
+      "object": "87 0",
+      "xPpi": 110,
+      "yPpi": 110
+    },
+    {
+      "page": 4,
+      "index": 8,
+      "type": "image",
+      "width": 3000,
+      "height": 466,
+      "color": "icc",
+      "components": 3,
+      "bits": 8,
+      "encoding": "image",
+      "object": "70 0",
+      "xPpi": 414,
+      "yPpi": 414
+    },
+    {
+      "page": 4,
+      "index": 9,
+      "type": "smask",
+      "width": 3000,
+      "height": 466,
+      "color": "gray",
+      "components": 1,
+      "bits": 8,
+      "encoding": "image",
+      "object": "70 0",
+      "xPpi": 414,
+      "yPpi": 414
+    },
+    {
+      "page": 4,
+      "index": 10,
+      "type": "image",
+      "width": 1532,
+      "height": 96,
+      "color": "gray",
+      "components": 1,
+      "bits": 8,
+      "encoding": "jpeg",
+      "object": "107 0",
+      "xPpi": 300,
+      "yPpi": 300
+    },
+    {
+      "page": 4,
+      "index": 11,
+      "type": "image",
+      "width": 512,
+      "height": 512,
+      "color": "icc",
+      "components": 3,
+      "bits": 8,
+      "encoding": "image",
+      "object": "71 0",
+      "xPpi": 296,
+      "yPpi": 296
+    },
+    {
+      "page": 4,
+      "index": 12,
+      "type": "smask",
+      "width": 512,
+      "height": 512,
+      "color": "gray",
+      "components": 1,
+      "bits": 8,
+      "encoding": "image",
+      "object": "71 0",
+      "xPpi": 296,
+      "yPpi": 296
+    }
+  ],
+  "textPages": [
+    2,
+    3,
+    4
+  ],
+  "glyphPages": [
+    2,
+    3,
+    4
+  ],
+  "glyphAuditOptions": {
+    "maxImageSize": 1,
+    "reason": "Skip expensive image decoding; observed image placements independently measured by pdfimages -list."
+  },
+  "rows": [
+    {
+      "page": 1,
+      "glyphs": 0,
+      "glyphSequenceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "popplerNonWhitespaceChars": 0,
+      "operators": {
+        "transform": 3,
+        "save": 3,
+        "setStrokeRGBColor": 2,
+        "setFillRGBColor": 2,
+        "setGState": 2,
+        "beginMarkedContentProps": 2,
+        "constructPath": 3,
+        "setStrokeColorN": 1,
+        "setFillColorN": 1,
+        "restore": 3,
+        "eoClip": 1,
+        "endMarkedContent": 2
+      },
+      "images": [
+        {
+          "page": 1,
+          "index": 0,
+          "type": "image",
+          "width": 1788,
+          "height": 2546,
+          "color": "icc",
+          "components": 3,
+          "bits": 8,
+          "encoding": "image",
+          "object": "10 0",
+          "xPpi": 262,
+          "yPpi": 262
+        },
+        {
+          "page": 1,
+          "index": 1,
+          "type": "smask",
+          "width": 1788,
+          "height": 2546,
+          "color": "gray",
+          "components": 1,
+          "bits": 8,
+          "encoding": "image",
+          "object": "10 0",
+          "xPpi": 262,
+          "yPpi": 262
+        }
+      ]
+    },
+    {
+      "page": 2,
+      "glyphs": 1124,
+      "glyphSequenceSha256": "7a640d124869f81ef6b0f97895ebecae403f60b6ef3b1a7d2a565c877be06ad7",
+      "popplerNonWhitespaceChars": 949,
+      "operators": {
+        "transform": 15,
+        "save": 26,
+        "setStrokeRGBColor": 23,
+        "setFillRGBColor": 23,
+        "setGState": 20,
+        "beginMarkedContentProps": 12,
+        "constructPath": 50,
+        "setStrokeColorN": 1,
+        "setFillColorN": 1,
+        "endMarkedContent": 12,
+        "beginText": 33,
+        "dependency": 10,
+        "setFont": 33,
+        "setTextMatrix": 33,
+        "showText": 1124,
+        "moveText": 1091,
+        "endText": 33,
+        "restore": 26,
+        "eoClip": 8,
+        "clip": 22,
+        "beginGroup": 1,
+        "paintFormXObjectBegin": 1,
+        "paintFormXObjectEnd": 1,
+        "endGroup": 1
+      },
+      "images": [
+        {
+          "page": 2,
+          "index": 2,
+          "type": "image",
+          "width": 1107,
+          "height": 998,
+          "color": "gray",
+          "components": 1,
+          "bits": 8,
+          "encoding": "jpeg",
+          "object": "72 0",
+          "xPpi": 300,
+          "yPpi": 300
+        },
+        {
+          "page": 2,
+          "index": 3,
+          "type": "image",
+          "width": 1958,
+          "height": 2732,
+          "color": "icc",
+          "components": 3,
+          "bits": 8,
+          "encoding": "image",
+          "object": "24 0",
+          "xPpi": 360,
+          "yPpi": 360
+        },
+        {
+          "page": 2,
+          "index": 4,
+          "type": "smask",
+          "width": 1958,
+          "height": 2732,
+          "color": "gray",
+          "components": 1,
+          "bits": 8,
+          "encoding": "image",
+          "object": "24 0",
+          "xPpi": 360,
+          "yPpi": 360
+        }
+      ]
+    },
+    {
+      "page": 3,
+      "glyphs": 1321,
+      "glyphSequenceSha256": "d92a975a5a64d35d0e169b7adac3d3fedc0baf49f963b57092400eed7b8d88f3",
+      "popplerNonWhitespaceChars": 1146,
+      "operators": {
+        "transform": 14,
+        "save": 20,
+        "setStrokeRGBColor": 19,
+        "setFillRGBColor": 19,
+        "setGState": 19,
+        "beginMarkedContentProps": 36,
+        "constructPath": 30,
+        "setStrokeColorN": 1,
+        "setFillColorN": 1,
+        "endMarkedContent": 36,
+        "restore": 20,
+        "eoClip": 6,
+        "beginGroup": 4,
+        "paintFormXObjectBegin": 4,
+        "beginText": 37,
+        "dependency": 8,
+        "setFont": 37,
+        "setTextMatrix": 37,
+        "showText": 1321,
+        "moveText": 1284,
+        "endText": 37,
+        "paintFormXObjectEnd": 4,
+        "endGroup": 4,
+        "clip": 2
+      },
+      "images": [
+        {
+          "page": 3,
+          "index": 5,
+          "type": "image",
+          "width": 2307,
+          "height": 2435,
+          "color": "gray",
+          "components": 1,
+          "bits": 8,
+          "encoding": "jpeg",
+          "object": "100 0",
+          "xPpi": 300,
+          "yPpi": 300
+        },
+        {
+          "page": 3,
+          "index": 6,
+          "type": "image",
+          "width": 2336,
+          "height": 2470,
+          "color": "gray",
+          "components": 1,
+          "bits": 8,
+          "encoding": "jpeg",
+          "object": "101 0",
+          "xPpi": 300,
+          "yPpi": 300
+        },
+        {
+          "page": 3,
+          "index": 7,
+          "type": "image",
+          "width": 952,
+          "height": 678,
+          "color": "icc",
+          "components": 3,
+          "bits": 8,
+          "encoding": "image",
+          "object": "87 0",
+          "xPpi": 110,
+          "yPpi": 110
+        }
+      ]
+    },
+    {
+      "page": 4,
+      "glyphs": 1558,
+      "glyphSequenceSha256": "74d5255bc6bc73a5fc626cb10d4b74361a0a58de133e4adac0226ffbdc4824d7",
+      "popplerNonWhitespaceChars": 1329,
+      "operators": {
+        "transform": 23,
+        "save": 40,
+        "setStrokeRGBColor": 31,
+        "setFillRGBColor": 31,
+        "setGState": 27,
+        "beginMarkedContentProps": 29,
+        "constructPath": 72,
+        "setStrokeColorN": 1,
+        "setFillColorN": 1,
+        "endMarkedContent": 29,
+        "beginText": 37,
+        "dependency": 12,
+        "setFont": 37,
+        "setTextMatrix": 37,
+        "showText": 1558,
+        "moveText": 1521,
+        "endText": 37,
+        "restore": 40,
+        "eoClip": 23,
+        "beginGroup": 2,
+        "paintFormXObjectBegin": 2,
+        "clip": 24,
+        "paintFormXObjectEnd": 2,
+        "endGroup": 2
+      },
+      "images": [
+        {
+          "page": 4,
+          "index": 8,
+          "type": "image",
+          "width": 3000,
+          "height": 466,
+          "color": "icc",
+          "components": 3,
+          "bits": 8,
+          "encoding": "image",
+          "object": "70 0",
+          "xPpi": 414,
+          "yPpi": 414
+        },
+        {
+          "page": 4,
+          "index": 9,
+          "type": "smask",
+          "width": 3000,
+          "height": 466,
+          "color": "gray",
+          "components": 1,
+          "bits": 8,
+          "encoding": "image",
+          "object": "70 0",
+          "xPpi": 414,
+          "yPpi": 414
+        },
+        {
+          "page": 4,
+          "index": 10,
+          "type": "image",
+          "width": 1532,
+          "height": 96,
+          "color": "gray",
+          "components": 1,
+          "bits": 8,
+          "encoding": "jpeg",
+          "object": "107 0",
+          "xPpi": 300,
+          "yPpi": 300
+        },
+        {
+          "page": 4,
+          "index": 11,
+          "type": "image",
+          "width": 512,
+          "height": 512,
+          "color": "icc",
+          "components": 3,
+          "bits": 8,
+          "encoding": "image",
+          "object": "71 0",
+          "xPpi": 296,
+          "yPpi": 296
+        },
+        {
+          "page": 4,
+          "index": 12,
+          "type": "smask",
+          "width": 512,
+          "height": 512,
+          "color": "gray",
+          "components": 1,
+          "bits": 8,
+          "encoding": "image",
+          "object": "71 0",
+          "xPpi": 296,
+          "yPpi": 296
+        }
+      ]
+    }
+  ],
+  "imageAuditScope": "Poppler pdfimages -list observed placements; tiling-pattern backgrounds can be omitted. This is not an exhaustive source-detail audit."
+}

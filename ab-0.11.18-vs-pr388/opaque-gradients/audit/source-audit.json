@@ -1,0 +1,185 @@
+{
+  "label": "source",
+  "path": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-ab-0.11.18-vs-42091ecc/opaque-gradients/source.pdf",
+  "bytes": 2132895,
+  "sha256": "f2177a39b5b793db61c6e2edab036073fa55bb0634384cfa55c9846d0f96238c",
+  "pages": 2,
+  "boxes": [
+    {
+      "media": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "trim": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "bleed": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "rotation": 0
+    },
+    {
+      "media": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "trim": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "bleed": {
+        "x": 0,
+        "y": 0,
+        "width": 621,
+        "height": 810
+      },
+      "rotation": 0
+    }
+  ],
+  "transparency": [],
+  "metadata": {},
+  "outputIntents": [],
+  "fonts": [
+    {
+      "raw": "DAAAAA+Tomorrow-Bold                 CID TrueType      Identity-H       yes yes yes      8  0",
+      "name": "DAAAAA+Tomorrow-Bold",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "EAAAAA+TitilliumWeb-Regular          CID TrueType      Identity-H       yes yes yes      9  0",
+      "name": "EAAAAA+TitilliumWeb-Regular",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "AAAAAA+Lixdu                         Type 3            Custom           yes yes yes     10  0",
+      "name": "AAAAAA+Lixdu",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "CAAAAA+TitilliumWeb-Italic           CID TrueType      Identity-H       yes yes yes     11  0",
+      "name": "CAAAAA+TitilliumWeb-Italic",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "FAAAAA+TitilliumWeb-Bold             CID TrueType      Identity-H       yes yes yes     15  0",
+      "name": "FAAAAA+TitilliumWeb-Bold",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    },
+    {
+      "raw": "BAAAAA+TitilliumWeb-BoldItalic       CID TrueType      Identity-H       yes yes yes     16  0",
+      "name": "BAAAAA+TitilliumWeb-BoldItalic",
+      "embedded": true,
+      "subset": true,
+      "toUnicode": true
+    }
+  ],
+  "unembeddedFonts": [],
+  "images": [],
+  "textPages": [
+    1,
+    2
+  ],
+  "glyphPages": [
+    1,
+    2
+  ],
+  "glyphAuditOptions": {
+    "maxImageSize": 1,
+    "reason": "Skip expensive image decoding; observed image placements independently measured by pdfimages -list."
+  },
+  "rows": [
+    {
+      "page": 1,
+      "glyphs": 715,
+      "glyphSequenceSha256": "6691514e76224202a4da6d6f558d0b63c97c22f7a5c16c9b2e13eb5f6ddeaa15",
+      "popplerNonWhitespaceChars": 623,
+      "operators": {
+        "transform": 11,
+        "save": 18,
+        "setStrokeRGBColor": 22,
+        "setFillRGBColor": 22,
+        "setGState": 12,
+        "beginMarkedContentProps": 57,
+        "constructPath": 2409,
+        "setStrokeColorN": 2,
+        "setFillColorN": 2,
+        "endMarkedContent": 57,
+        "beginText": 34,
+        "dependency": 7,
+        "setFont": 34,
+        "setTextMatrix": 34,
+        "showText": 715,
+        "moveText": 681,
+        "endText": 34,
+        "restore": 18,
+        "clip": 19,
+        "eoClip": 5
+      },
+      "images": []
+    },
+    {
+      "page": 2,
+      "glyphs": 2096,
+      "glyphSequenceSha256": "e8ea19c5a8b26cf0e10457ce4b5736d3b9dd90b2f21f2d4986d4ce996f6c5bbe",
+      "popplerNonWhitespaceChars": 1790,
+      "operators": {
+        "transform": 10,
+        "save": 16,
+        "setStrokeRGBColor": 23,
+        "setFillRGBColor": 23,
+        "setGState": 11,
+        "beginMarkedContentProps": 84,
+        "constructPath": 5742,
+        "setStrokeColorN": 2,
+        "setFillColorN": 2,
+        "endMarkedContent": 84,
+        "beginText": 53,
+        "dependency": 14,
+        "setFont": 53,
+        "setTextMatrix": 53,
+        "showText": 2096,
+        "moveText": 2043,
+        "endText": 53,
+        "restore": 16,
+        "eoClip": 9,
+        "clip": 16
+      },
+      "images": []
+    }
+  ],
+  "imageAuditScope": "Poppler pdfimages -list observed placements; tiling-pattern backgrounds can be omitted. This is not an exhaustive source-detail audit."
+}

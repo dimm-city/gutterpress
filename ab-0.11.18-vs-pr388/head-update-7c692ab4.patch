@@ -1,0 +1,125 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index bcf85ea7..b901ced0 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/).
+ 
+ ## [Unreleased]
+ 
++## [0.11.19] - 2026-10-14
++
+ ### Added
+ 
+ - **`pdfx.transparency: preserve-text` (opt-in) keeps live text on PDF/X pages
+diff --git a/docs/native-engine-styling-guide.md b/docs/native-engine-styling-guide.md
+index 92015891..46481c2b 100644
+--- a/docs/native-engine-styling-guide.md
++++ b/docs/native-engine-styling-guide.md
+@@ -248,8 +248,8 @@ fixture — but only when the thing being kept-with can actually be placed:
+   `inset()`, `circle()`, `ellipse()`, `path()`) is a vector clip and is NOT
+   flagged; only `clip-path: url(...)` (an SVG mask) is.
+ - **`repeating-linear-gradient()`, `repeating-radial-gradient()`,
+-  `repeating-conic-gradient()` and `conic-gradient()` print blank in a `--format pdfx` build.** Chromium emits
+-  them in a form Ghostscript's CMYK conversion cannot paint; plain PDF output is
++  `repeating-conic-gradient()` and `conic-gradient()` can print blank in a `--format pdfx` build.** Chromium emits
++  them in a form Ghostscript 10.x has been seen to paint as nothing in the CMYK conversion; plain PDF output is
+   fine, and plain `linear-gradient()` / `radial-gradient()` convert correctly.
+   On a page that also uses transparency, Ghostscript flattens the whole page to
+   an image, which keeps the gradient but loses that page's live text.
+diff --git a/docs/publishing.md b/docs/publishing.md
+index ce3d8f5c..5ab2db7e 100644
+--- a/docs/publishing.md
++++ b/docs/publishing.md
+@@ -170,10 +170,14 @@ pdffonts dist/my-book/my-book-pdfx.pdf                 # every font embedded
+ - A page with a `repeating-linear-gradient()`, `repeating-radial-gradient()`,
+   `repeating-conic-gradient()` or `conic-gradient()`. Chromium prints these as
+   a PostScript-function shading, which the artwork picture renders with
+-  irregular stripes (#386).
++  irregular stripes (#386). The check is conservative: it also sends a page to
++  the fallback when Ghostscript would have painted that gradient correctly
++  (a `conic-gradient()` did on Ghostscript 10.06), so the page loses its live
++  text either way.
+ 
+ Such pages are not split and go to Ghostscript exactly as in `flatten-page`;
+-the build names them.
++the build names them, each with the first cause it found. A page can have more
++than one, so fixing the named cause can reveal another.
+ 
+ Known limits of the pages that are split:
+ 
+diff --git a/packages/cli/package.json b/packages/cli/package.json
+index fb384a93..5519b3bd 100644
+--- a/packages/cli/package.json
++++ b/packages/cli/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "gutterpress",
+-  "version": "0.11.18",
++  "version": "0.11.19-alpha.1",
+   "description": "Markdown-to-PDF converter for professional print layout using a native Chromium print engine and Ghostscript.",
+   "author": "itlackey",
+   "license": "MPL-2.0",
+diff --git a/packages/cli/src/lib/build-runner.ts b/packages/cli/src/lib/build-runner.ts
+index 7e90eb57..4a5d35fa 100644
+--- a/packages/cli/src/lib/build-runner.ts
++++ b/packages/cli/src/lib/build-runner.ts
+@@ -864,8 +864,8 @@ class PdfOutput implements OutputStrategy {
+         const pageList = (pages: number[]) => `Page${pages.length === 1 ? "" : "s"} ${pages.join(", ")}`;
+         if (vectorGradientPages.length > 0) {
+           log.warn(
+-            `${pageList(vectorGradientPages)}: a repeating-*-gradient() or conic-gradient() will print blank — ` +
+-              `Ghostscript cannot convert it to PDF/X. ${GRADIENT_FIX}`
++            `${pageList(vectorGradientPages)}: a repeating-*-gradient() or conic-gradient() can print blank — ` +
++              `Ghostscript 10.x has been seen to paint nothing for it when converting to PDF/X. ${GRADIENT_FIX}`
+           );
+         }
+         if (flattenedGradientPages.length > 0) {
+@@ -918,7 +918,8 @@ class PdfOutput implements OutputStrategy {
+             log.warn(
+               `Page${kept.length === 1 ? "" : "s"} ${kept.join(", ")} could not keep ${kept.length === 1 ? "its" : "their"} text live; ` +
+                 `Ghostscript will flatten ${kept.length === 1 ? "that page" : "each of those pages"} into one raster image, ` +
+-                "losing its embedded fonts and searchable text:\n" +
++                "losing its embedded fonts and searchable text. Each page lists the first cause found; " +
++                "fixing it can reveal another:\n" +
+                 [...byCause].map(([cause, pages]) => `  - page${pages.length === 1 ? "" : "s"} ${pages.join(", ")}: ${CAUSE[cause]}`).join("\n")
+             );
+           }
+diff --git a/packages/cli/src/lib/ghostscript.flatten.integration.test.ts b/packages/cli/src/lib/ghostscript.flatten.integration.test.ts
+index 90316da8..a0fbe99d 100644
+--- a/packages/cli/src/lib/ghostscript.flatten.integration.test.ts
++++ b/packages/cli/src/lib/ghostscript.flatten.integration.test.ts
+@@ -429,7 +429,7 @@ testIf(
+       // The gradient page has a shadow, so Ghostscript flattens it whole: the
+       // warning names the text loss, not a blank gradient.
+       expect(warnings.filter((w) => w.startsWith("Page 4: a repeating-*-gradient() or conic-gradient() survives only"))).toHaveLength(2);
+-      expect(warnings.some((w) => w.includes("will print blank"))).toBe(false);
++      expect(warnings.some((w) => w.includes("can print blank"))).toBe(false);
+ 
+       const textOf = async (file: string) => (await getTextPass((await loadPdf(file))!)).textByPage;
+       const defaultText = await textOf(flat);
+diff --git a/packages/cli/src/lib/printsafe.ts b/packages/cli/src/lib/printsafe.ts
+index 5b825512..e6e989b3 100644
+--- a/packages/cli/src/lib/printsafe.ts
++++ b/packages/cli/src/lib/printsafe.ts
+@@ -483,7 +483,7 @@ function checkCssRaw(css: string, from?: string): PrintSafeWarning[] {
+       warnings.push({
+         rule: ruleRiskyProps,
+         severity: "warning",
+-        message: `"${decl.prop}: ${decl.value}" is at risk in PDF/X exports (--format pdfx): Chromium emits repeating-*-gradient() and conic-gradient() in a form Ghostscript cannot convert, so it prints blank, unless the page also uses transparency and Ghostscript flattens the whole page to an image, which keeps the gradient but loses that page's live text. Plain PDF output is unaffected. Use linear-gradient() or radial-gradient() instead; for 0deg/90deg stripes write "linear-gradient(90deg, #b33 0 6px, #c8c5bf 6px 10px)" with "background-size: 10px 100%", and for anything else a small tiled image.`,
++        message: `"${decl.prop}: ${decl.value}" is at risk in PDF/X exports (--format pdfx): Chromium emits repeating-*-gradient() and conic-gradient() in a form Ghostscript 10.x has been seen to paint as nothing, so it can print blank, unless the page also uses transparency and Ghostscript flattens the whole page to an image, which keeps the gradient but loses that page's live text. Plain PDF output is unaffected. Use linear-gradient() or radial-gradient() instead; for 0deg/90deg stripes write "linear-gradient(90deg, #b33 0 6px, #c8c5bf 6px 10px)" with "background-size: 10px 100%", and for anything else a small tiled image.`,
+         ...nodeLoc(decl),
+       });
+     } else if (isUnpairedFitContentWidth(decl)) {
+diff --git a/packages/desktop/package.json b/packages/desktop/package.json
+index 43889e82..832c9d98 100644
+--- a/packages/desktop/package.json
++++ b/packages/desktop/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "@dimm-city/gutterpress-desktop",
+   "private": true,
+-  "version": "0.11.18",
++  "version": "0.11.19-alpha.1",
+   "type": "module",
+   "main": "out/main/main.js",
+   "desktopName": "city.dimm.gutterpress.desktop",

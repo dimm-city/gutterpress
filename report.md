@@ -1,3 +1,5 @@
+> Latest: [Actual 0.11.18 versus PR388 A/B comparison](ab-0.11.18-vs-pr388/README.md), including full-book controls and a correction to earlier file-size interpretations.
+
 > Superseded for latest-build results by the [full three-sweep rerun on ff1022bf](rerun-ff1022bf/README.md). The report below records the historical run and its original findings.
 
 # Field Guide advanced CSS PDF export tests
