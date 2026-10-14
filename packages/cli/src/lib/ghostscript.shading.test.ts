@@ -21,6 +21,7 @@ const BOXES = [
   `<div style="background:radial-gradient(circle,red,blue)"></div>`,
   `<div style="background:repeating-radial-gradient(circle,red 0 10px,blue 10px 20px)"></div>`,
   `<div style="background:conic-gradient(red,blue,red)"></div>`,
+  `<div style="background:repeating-conic-gradient(red 0 20deg,blue 20deg 40deg)"></div>`,
 ];
 
 testIf("findPostScriptShadingPages names exactly the pages with repeating/conic gradients", async () => {
@@ -29,7 +30,7 @@ testIf("findPostScriptShadingPages names exactly the pages with repeating/conic 
     const page = await browser.newPage();
     await page.setContent(PAGE + BOXES.join(""));
     const pdf = await page.printToPDF({ printBackground: true, preferCSSPageSize: true });
-    expect(await findPostScriptShadingPages(pdf)).toEqual([2, 5, 6]);
+    expect(await findPostScriptShadingPages(pdf)).toEqual([2, 5, 6, 7]);
   } finally {
     await browser.close();
   }

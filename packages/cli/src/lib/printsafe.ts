@@ -120,9 +120,7 @@ function isDroppedPageGradient(decl: postcss.Declaration): boolean {
  * Ghostscript paints these shadings.
  */
 function isPostScriptShadingGradient(decl: postcss.Declaration): boolean {
-  return /(^|[\s,(])(repeating-linear-gradient|repeating-radial-gradient|conic-gradient)\(/i.test(
-    decl.value,
-  );
+  return /(repeating-(linear|radial|conic)|conic)-gradient\(/i.test(decl.value);
 }
 
 function isInPageMarginBox(decl: postcss.Declaration): boolean {
@@ -485,7 +483,7 @@ function checkCssRaw(css: string, from?: string): PrintSafeWarning[] {
       warnings.push({
         rule: ruleRiskyProps,
         severity: "warning",
-        message: `"${decl.prop}: ${decl.value}" prints blank in PDF/X exports (--format pdfx): Chromium emits repeating-linear-gradient(), repeating-radial-gradient() and conic-gradient() in a form Ghostscript cannot convert. Plain PDF output is unaffected. Use linear-gradient() or radial-gradient() instead; for 0deg/90deg stripes write "linear-gradient(90deg, #b33 0 6px, #c8c5bf 6px 10px)" with "background-size: 10px 100%", and for anything else a small tiled image.`,
+        message: `"${decl.prop}: ${decl.value}" prints blank in PDF/X exports (--format pdfx): Chromium emits repeating-*-gradient() and conic-gradient() in a form Ghostscript cannot convert. Plain PDF output is unaffected. Use linear-gradient() or radial-gradient() instead; for 0deg/90deg stripes write "linear-gradient(90deg, #b33 0 6px, #c8c5bf 6px 10px)" with "background-size: 10px 100%", and for anything else a small tiled image.`,
         ...nodeLoc(decl),
       });
     } else if (isUnpairedFitContentWidth(decl)) {

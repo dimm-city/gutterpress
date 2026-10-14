@@ -376,11 +376,13 @@ test("lint rules: off drops a rule, warn/error set its severity, unknown ids are
 });
 
 // #386: Ghostscript cannot convert the PostScript-function shadings Chromium
-// emits for these three, so a PDF/X export prints them blank.
+// emits for these, so a PDF/X export prints them blank.
 test.each([
   "repeating-linear-gradient(45deg, red 0 10px, blue 10px 20px)",
   "repeating-radial-gradient(circle, red 0 10px, blue 10px 20px)",
   "conic-gradient(red, blue, red)",
+  "repeating-conic-gradient(red 0 20deg, blue 20deg 40deg)",
+  "-webkit-repeating-linear-gradient(red 0 10px, blue 10px 20px)",
 ])("checkCss warns that %s prints blank in PDF/X", (gradient) => {
   const found = checkCss(`.a { background: ${gradient}; }`).filter((w) => w.rule === ruleRiskyProps);
   expect(found.length).toBe(1);

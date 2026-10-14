@@ -9,7 +9,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 - **Repeating and conic gradients no longer disappear from PDF/X builds without
   a word.** In a `--format pdfx` build, `repeating-linear-gradient()`,
-  `repeating-radial-gradient()` and `conic-gradient()` printed blank:
+  `repeating-radial-gradient()`, `repeating-conic-gradient()` and
+  `conic-gradient()` printed blank:
   Chromium emits them as a PostScript-function shading that Ghostscript cannot
   convert (plain `linear-gradient()` / `radial-gradient()` are fine, and plain
   PDF output is unaffected). The CSS lint

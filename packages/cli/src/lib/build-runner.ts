@@ -861,10 +861,9 @@ class PdfOutput implements OutputStrategy {
         const blankGradientPages = await findPostScriptShadingPages(await fsp.readFile(rawPdf));
         if (blankGradientPages.length > 0) {
           log.warn(
-            `Page${blankGradientPages.length === 1 ? "" : "s"} ${blankGradientPages.join(", ")} ` +
-              "use a repeating-linear-gradient(), repeating-radial-gradient() or " +
-              "conic-gradient(), which Ghostscript cannot convert to PDF/X — it will " +
-              "print blank. Replace it with a plain linear-gradient() or " +
+            `Page${blankGradientPages.length === 1 ? "" : "s"} ${blankGradientPages.join(", ")}: ` +
+              "a repeating-*-gradient() or conic-gradient() will print blank — " +
+              "Ghostscript cannot convert it to PDF/X. Replace it with a plain linear-gradient() or " +
               "radial-gradient(), or a small tiled image. For 0deg/90deg stripes, " +
               "`linear-gradient(90deg, #b33 0 6px, #c8c5bf 6px 10px)` with " +
               "`background-size: 10px 100%` converts correctly."

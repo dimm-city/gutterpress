@@ -247,8 +247,8 @@ fixture — but only when the thing being kept-with can actually be placed:
   text-bearing elements. `clip-path` with a basic shape (`polygon()`,
   `inset()`, `circle()`, `ellipse()`, `path()`) is a vector clip and is NOT
   flagged; only `clip-path: url(...)` (an SVG mask) is.
-- **`repeating-linear-gradient()`, `repeating-radial-gradient()` and
-  `conic-gradient()` print blank in a `--format pdfx` build.** Chromium emits
+- **`repeating-linear-gradient()`, `repeating-radial-gradient()`,
+  `repeating-conic-gradient()` and `conic-gradient()` print blank in a `--format pdfx` build.** Chromium emits
   them in a form Ghostscript's CMYK conversion cannot paint; plain PDF output is
   fine, and plain `linear-gradient()` / `radial-gradient()` convert correctly.
   The CSS lint flags them and the build names the affected pages. For 0deg/90deg

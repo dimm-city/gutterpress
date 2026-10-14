@@ -168,7 +168,8 @@ export async function hasLiveTransparency(pdfBytes: Uint8Array): Promise<boolean
  * function is `/FunctionType 4` (a PostScript calculator function).
  *
  * That is how Chromium (Skia) emits `repeating-linear-gradient()`,
- * `repeating-radial-gradient()` and `conic-gradient()`. Ghostscript 10.x
+ * `repeating-radial-gradient()`, `repeating-conic-gradient()` and
+ * `conic-gradient()`. Ghostscript 10.x
  * reports "error in pattern" on it while converting to PDF/X and paints
  * nothing, so the gradient prints blank (#386). Plain `linear-gradient()` and
  * `radial-gradient()` are ShadingType 2/3 and convert fine. Detecting it lets
