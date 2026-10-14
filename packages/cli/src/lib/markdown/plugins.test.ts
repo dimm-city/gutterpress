@@ -441,6 +441,35 @@ describe("plugin loader", () => {
       expect(md.from).toBe("vendored");
     });
 
+    // #381 (experimental) — decided from package.json alone, before any import.
+    test("a vendored publishing plugin is skipped without importing its entry (#381)", async () => {
+      const name = "gp-publish-vendored-fixture";
+      const marker = "__gpPublishVendoredImported";
+      const vendored = vendoredNpmPluginPackageDir(vendoredNpmPluginRoot(TMP_ROOT, name, "1.0.0"), name);
+      mkdirSync(vendored, { recursive: true });
+      writeFileSync(
+        join(vendored, "package.json"),
+        JSON.stringify({
+          name,
+          version: "1.0.0",
+          type: "module",
+          exports: "./index.js",
+          description: "Publishes somewhere",
+          gutterpress: { publish: true },
+        }),
+      );
+      writeFileSync(
+        join(vendored, "index.js"),
+        `globalThis.${marker} = true;\nexport default function notAMarkdownPlugin() {}\nexport async function publish() {}\n`,
+      );
+
+      const loaded = await loadPlugin(cfg({ name, version: "1.0.0" }), TMP_ROOT);
+
+      expect(loaded.name).toBe(name);
+      expect(loaded.metadata).toEqual({ name, description: "Publishes somewhere" });
+      expect((globalThis as Record<string, unknown>)[marker]).toBeUndefined();
+    });
+
     test("does not fall back when a pinned vendored copy is present but broken", async () => {
       const name = "broken-vendored-plugin-fixture";
       const packageDir = join(TMP_ROOT, "node_modules", name);
@@ -681,6 +710,26 @@ describe("plugin loader", () => {
       await expect(loadPlugin(cfg({ path: "empty-extension" }), TMP_ROOT)).rejects.toThrow(
         /declares no markdown-it plugin \(`main`\) and no `gutterpress.styles` in its package.json/,
       );
+    });
+
+    // #381 (experimental) — a publishing plugin declares something, just
+    // nothing the renderer loads: a no-op, and its entry never runs.
+    test("a publishing-plugin folder loads as a no-op without importing its entry (#381)", async () => {
+      const marker = "__gpPublishFolderImported";
+      writeExtension(
+        "publish-folder",
+        { name: "gp-publish-folder", type: "module", main: "index.js", gutterpress: { publish: true } },
+        { "index.js": `globalThis.${marker} = true;\nexport async function publish() {}\n` },
+      );
+
+      const loaded = await loadPlugin(cfg({ path: "publish-folder" }), TMP_ROOT);
+
+      expect(loaded.metadata?.name).toBe("gp-publish-folder");
+      expect(loaded.styles).toBeUndefined();
+      expect((globalThis as Record<string, unknown>)[marker]).toBeUndefined();
+      const md = new MarkdownIt();
+      applyPlugins(md, [loaded]);
+      expect(md.render("# Hi")).toBe("<h1>Hi</h1>\n");
     });
 
     // #276 — the migration a 0.10.9 project hits: a look folder still

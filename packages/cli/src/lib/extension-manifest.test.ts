@@ -111,7 +111,35 @@ describe("extension-manifest", () => {
         styles: false,
         snippets: false,
         components: false,
+        publish: false,
       });
+    });
+
+    // #381 (experimental) — a publishing plugin's `main` is its publish
+    // module, never a markdown-it entry.
+    test("`gutterpress.publish: true` marks a publishing plugin whose `main` is not a markdown entry (#381)", async () => {
+      const meta = await readExtensionMeta(
+        pkgDir({ name: "gp-publish-x", main: "index.js", gutterpress: { publish: true } }),
+      );
+      expect(meta.publish).toBe(true);
+      expect(extensionEntry(meta)).toBeUndefined();
+      expect(extensionCarries(meta)).toEqual({
+        markdown: false,
+        styles: false,
+        snippets: false,
+        components: false,
+        publish: true,
+      });
+    });
+
+    test("only a literal `true` is a publish flag (#381)", async () => {
+      for (const publish of ["true", 1, "./publish.js", {}]) {
+        const meta = await readExtensionMeta(
+          pkgDir({ name: "not-a-publisher", main: "index.js", gutterpress: { publish } }),
+        );
+        expect(meta.publish).toBeUndefined();
+        expect(extensionEntry(meta)).toBe("index.js");
+      }
     });
 
     test("returns {} for a folder with no package.json", async () => {

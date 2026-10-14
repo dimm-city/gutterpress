@@ -149,7 +149,7 @@ async function requireProjectDir(dir: unknown, verb: string): Promise<string> {
 }
 
 function carriesLabel(entry: ProjectExtensionEntry): string {
-  const parts = (["markdown", "styles", "snippets", "components"] as const).filter(
+  const parts = (["markdown", "styles", "snippets", "components", "publish"] as const).filter(
     (k) => entry.carries[k],
   );
   return parts.length > 0 ? parts.join(", ") : "nothing declared";
