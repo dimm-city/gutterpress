@@ -370,11 +370,11 @@ export async function convertToPdfxCmyk(
         .catch(() => "unknown version");
       throw new Error(
         `Ghostscript ${version} crashed (${signal}) while converting to PDF/X. ` +
-          "This is a Ghostscript bug, not a problem with the PDF: it is known to " +
-          "crash in the PDF 1.3 transparency flattening PDF/X requires, on pages " +
-          "that use an image with an alpha channel. Removing the alpha channel " +
-          "(flatten the image against its background) avoids it, as may a newer " +
-          "Ghostscript release; build --format pdf needs neither."
+          "This is a Ghostscript bug, not a problem with the PDF. Ghostscript " +
+          "10.02.1 has been seen to crash in the PDF 1.3 transparency flattening " +
+          "PDF/X requires, on a page with an alpha-channel image. Flattening that " +
+          "image against its background avoided it there; a newer Ghostscript may " +
+          "too. A plain PDF (--format pdf) does not run this step."
       );
     }
   } finally {

@@ -178,7 +178,7 @@ test("convertToPdfxCmyk reports a Ghostscript crash with its version", async () 
         pdfx: "x1a",
         stagingDir,
       })
-    ).rejects.toThrow(/Ghostscript 10\.02\.1 crashed \(SIGSEGV\).*alpha channel/);
+    ).rejects.toThrow(/Ghostscript 10\.02\.1 crashed \(SIGSEGV\).*alpha-channel image/);
     expect(capture.mock.calls[0]?.[1]).toEqual(["--version"]);
     capture.mockRestore();
   } finally {
