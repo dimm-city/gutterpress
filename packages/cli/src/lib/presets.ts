@@ -69,6 +69,8 @@ export const DTRPG_PRESET: VendorPreset = {
     // CONVENTION (#331): near-black text on the black plate alone, so small
     // type is not registered across four plates. Not a DriveThru rule.
     blackText: "k-only",
+    // CONVENTION (#385): the safe default. Books opt in to `preserve-text`.
+    transparency: "flatten-page",
   },
   page: {
     // GUIDE: 8.625 x 11.25in is the interior FILE size for an 8.5 x 11in book:
@@ -127,9 +129,8 @@ export const DTRPG_PRESET: VendorPreset = {
       minImageDpi: 300,
       // SPEC: CMYK for colour interiors (Grayscale for black-and-white).
       allowedColorSpaces: ["CMYK", "Grayscale"],
-      // An alpha channel is fine: PDF/X-1a forbids transparency in the OUTPUT,
-      // and the pdfx build flattens the pages that use it (#385).
-      allowAlpha: true,
+      // DERIVED: PDF/X-1a forbids transparency, which an alpha channel needs.
+      allowAlpha: false,
       approvedFontFiles: [],
       requireFontLicense: false,
     },
@@ -197,6 +198,7 @@ export const BOOK_PRESET: VendorPreset = {
     icc: "profiles/CGATS21_CRPC1.icc",
     stripAnnotations: true,
     blackText: "icc",
+    transparency: "flatten-page",
   },
   page: {
     width: 432,

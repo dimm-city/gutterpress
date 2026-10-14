@@ -399,6 +399,13 @@ function resolveWithPreset(
       `Manifest field \`print.lastPage\` must be "blank" or "short-by-one", got ${JSON.stringify(lastPage)}.`
     );
   }
+  // A mistyped `pdfx.transparency` would otherwise silently keep the default.
+  const transparency = c.pdfx?.transparency ?? m.pdfx?.transparency;
+  if (transparency !== undefined && transparency !== "flatten-page" && transparency !== "preserve-text") {
+    throw new UsageError(
+      `Manifest field \`pdfx.transparency\` must be "flatten-page" or "preserve-text", got ${JSON.stringify(transparency)}.`
+    );
+  }
   // Extensions, in manifest order — which IS the load order and the cascade
   // order; nothing re-sorts them. An entry with `enabled: false` (#30) stays
   // in the manifest but is skipped here so it is never loaded.

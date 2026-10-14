@@ -122,6 +122,13 @@ export interface GutterpressManifest {
     stripAnnotations?: boolean;
     /** `k-only` prints near-black text on the black plate alone (#331). */
     blackText?: "icc" | "k-only";
+    /**
+     * A page that uses transparency, which PDF/X cannot hold (#385).
+     * `flatten-page` (default): Ghostscript rasterizes the whole page, text
+     * included. `preserve-text`: flatten the artwork only and keep the text
+     * live on top; a page whose text is itself translucent/blended falls back.
+     */
+    transparency?: "flatten-page" | "preserve-text";
   };
   /**
    * Native-engine print-production options with no other manifest home
@@ -263,6 +270,7 @@ export interface ResolvedConfig {
     icc: string;
     stripAnnotations: boolean;
     blackText: "icc" | "k-only";
+    transparency: "flatten-page" | "preserve-text";
   };
   print: {
     signature: number;
