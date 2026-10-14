@@ -1,0 +1,48 @@
+{
+  "tested_date": "2026-10-14",
+  "pr": 388,
+  "pr_head": "8a33992beda5b8cd623cf39713903d0736458d0c",
+  "book_head": "11ddc736",
+  "extension": "gp-dimm-city@1.6.3",
+  "chromium": "155.0.8059.39",
+  "ghostscript": "10.06.0",
+  "pages": 228,
+  "source_bytes": 92268391,
+  "pdfx_bytes": 230696123,
+  "transparent_pages": 225,
+  "split_pages": 214,
+  "fallback_pages": [
+    2,
+    5,
+    7,
+    8,
+    10,
+    12,
+    15,
+    18,
+    138,
+    159,
+    192
+  ],
+  "text_pages_source": 217,
+  "text_pages_pdfx": 206,
+  "embedded_fonts": 10,
+  "unexplained_text_loss_pages": [],
+  "selected_checks_passed": [
+    "structure",
+    "page-size",
+    "bleed",
+    "embedded-fonts",
+    "transparency",
+    "color-spaces",
+    "pdfx-metadata",
+    "pdfx-markers"
+  ],
+  "qpdf_check_exit": 0,
+  "review_url": "https://github.com/dimm-city/gutterpress/pull/388#pullrequestreview-5521659589",
+  "sweeps": {
+    "combined": "5f88de72ddcfedaff133027bc983b0ae76dac6175442c2c5107fedf0ba28b556",
+    "isolated": "cf4babc99ebce1e5b36c72eeeaa1cd3bffcb818c9a9653e5cc2e57532b0423f7",
+    "boundary": "b9389aa85d22970e4a463ff2364f31038931ff866c5c1ac6691253c140c607a6"
+  }
+}

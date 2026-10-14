@@ -1,0 +1,26 @@
+{
+  "render": "Poppler pdftoppm, scale-to 1200, first and only page",
+  "source_page": 14,
+  "comparison": "New-head preserve fallback versus old-head default conversion of the identical source",
+  "dimensions": [
+    921,
+    1200
+  ],
+  "mean_absolute_rgb_difference": 0.0,
+  "channel_extrema": [
+    [
+      0,
+      0
+    ],
+    [
+      0,
+      0
+    ],
+    [
+      0,
+      0
+    ]
+  ],
+  "new_head_live_text": "none (expected whole-page fallback)",
+  "qpdf_check": "exit 0; no syntax or stream encoding errors"
+}

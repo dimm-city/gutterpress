@@ -1,0 +1,14 @@
+{
+  "experimental-source.pdf": {
+    "bytes": 92268391,
+    "sha256": "fa01fc25be6218d43fd7785685a8efd6c2b486615277ed21075cee0992386806"
+  },
+  "experimental-preserve.pdf": {
+    "bytes": 230696123,
+    "sha256": "e27a766214dedc0cceb930bbed33d39813b369cbeaaed19dbc5e70bf614b8a33"
+  },
+  "baseline.pdf": {
+    "bytes": 77048705,
+    "sha256": "46932a81756294edcea34778f1e6c1ef09edbaa4f9d86ec6c71ce8579973c348"
+  }
+}

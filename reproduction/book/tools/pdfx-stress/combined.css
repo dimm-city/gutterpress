@@ -1,0 +1,112 @@
+/* PDFX STRESS LAB — deliberately experimental; not production styling.
+   All experiments live in this book sheet; the pinned extension is untouched.
+   This face-range override removes synthetic-bold Type 3 text, allowing the
+   artwork/text split to be exercised. It does not add real font weights.
+   baseline.pdf retains the original font declaration for comparison. */
+@font-face {
+  font-family: 'lixdu';
+  src: url('../plugins/npm/gp-dimm-city/1.6.3/node_modules/gp-dimm-city/fonts/lixdu/lixdu.woff') format('woff');
+  font-weight: 100 900;
+  font-style: normal;
+}
+
+/* 01: RGBA surface and layered outer/inset shadows. Expected: split. */
+.dc-page-credits .section { background: rgba(255,245,225,.78); box-shadow: 4pt 5pt 9pt #24113d66, inset 0 0 9pt #00aabb44; }
+
+/* 02: Soft and hard text shadows. Expected: inspect. */
+.dc-page-contents h1 { text-shadow: 2pt 2pt 0 #ff00aab3, -2pt -2pt 5pt #00ccff99; }
+
+/* 03: Rotation + soft text shadow: observed fallback. Rotation alone succeeds in isolated.css. */
+#c2-who-do-you-dream { transform: rotate(-1deg); transform-origin: center; text-shadow: 1pt 2pt 3pt #0006; }
+
+/* 04: Isolated callout succeeds; case 19 forces this combined page to fall back. */
+.page:has(#c2-character-profile) .dc-alert { --dc-alert-bg: rgba(0,175,220,.23); box-shadow: 3pt 4pt 8pt #0005; }
+
+/* 05: CSS gradient text clip. Expected: fallback. */
+#c2-first-impressions { background: linear-gradient(90deg,#d30070,#0060cc); background-clip: text; -webkit-background-clip:text; color:transparent; }
+
+/* 06: Translucent table rows and fine colored rules. Expected: split. */
+.dc-page-citizen-file:has(table) td { background: rgba(240,30,145,.12); border-bottom: .25pt solid #16a2b3; }
+
+/* 07: 15 percent text opacity. Expected: fallback. */
+.page:has(img[alt="Tiny T2"]) h3 { opacity:.15; }
+
+/* 08: 99.9 percent group opacity / page collateral loss. Expected: fallback. */
+#specialty-augmerc { opacity:.999; }
+
+/* 09: 100 percent group opacity control. Expected: same-page. */
+#specialty-proxy { opacity:1; box-shadow:3pt 3pt 6pt #0005; }
+
+/* 10: Alpha image, gradient mask, image filter. Expected: split. */
+.page:has(#c2-style) img { mask-image:linear-gradient(to bottom,#000 45%,transparent); filter:grayscale(.6) drop-shadow(3pt 4pt 4pt #48006077); }
+
+/* 11: Repeating gradient: observed stripe distortion. Conic is exercised in boundary.css. */
+.dc-vibe-callout { background:repeating-linear-gradient(35deg,#ffffcc 0 8pt,#33ccee 8pt 16pt); box-shadow:2pt 3pt 5pt #0006; }
+
+/* 12: Blend mode on text. Expected: fallback. */
+#c2-community { mix-blend-mode:multiply; color:#a30050; }
+
+/* 13: Opacity 1 control. Expected: split. */
+#c2-ideal { opacity:1; box-shadow:2pt 3pt 6pt #0005; }
+
+/* 14: Opacity .999 boundary. Expected: fallback. */
+#c2-flaw { opacity:.999; box-shadow:2pt 3pt 6pt #0005; }
+
+/* 15: Filtered text rasterized by Chromium. Expected: already-raster. */
+#c2-dream { filter:drop-shadow(2pt 3pt 3pt #b0007899); }
+
+/* 16: Alpha radial/linear layered artwork. Expected: split. */
+.page:has(#c2-ideal) .section { --dc-section-bg:radial-gradient(ellipse at top right,#00bacb66,transparent 70%),linear-gradient(90deg,#ffe2f0dd,#fff9); }
+
+/* 17: Clipped and translucent credit artwork. Expected: split. */
+img.fg-art-founders-house { opacity:.65; clip-path:polygon(0 0,95% 0,100% 20%,100% 100%,0 100%); }
+
+/* 18: Blend mode on artwork only. Expected: split. */
+img[alt="Streetwarden"] { mix-blend-mode:multiply; opacity:.7; }
+
+/* 19: Opaque text stroke on display font. Expected: inspect. */
+.page:has(#c2-character-profile) h2 { -webkit-text-stroke:.3pt #d50076; }
+
+/* 20: Foreground opaque occlusion. Expected: known-limit. */
+.page:has(img[alt="creaturepunk"]) .section:first-of-type p:first-of-type { position:relative; }
+
+/* 21: Foreground translucent overlay. Expected: known-limit. */
+.page:has(#c2-style) .section > p:first-of-type { position:relative; }
+
+/* 22: Backdrop filter on panel. Expected: inspect. */
+.page:has(#c2-character-profile) .section { backdrop-filter:blur(2pt); }
+
+/* 23: Text mask fade. Expected: fallback. */
+#c1-are-you-lucid { mask-image:linear-gradient(90deg,#000 20%,transparent); }
+
+/* 24: Near-transparent ink boundary. Expected: fallback. */
+.page:has(#c2-flaw) .section > p:first-of-type { color:rgba(0,0,0,.01); }
+/* 20: intentionally hides part of actual prose; the split must not reveal it. */
+.page:has(img[alt="creaturepunk"]) .section:first-of-type p:first-of-type::after {
+  content:""; position:absolute; z-index:5; left:0; top:0; width:72%; height:14pt;
+  background:#faf0dc; box-shadow:2pt 2pt 3pt #0004;
+}
+/* 21: translucent foreground tint over real text tests paint order. */
+.page:has(#c2-style) .section > p:first-of-type::after {
+  content:""; position:absolute; z-index:5; inset:0; background:#ff00aa99;
+}
+/* 11b: This pseudo-element did not produce a visible conic specimen in print.
+   boundary.css paints the conic directly; that verified specimen succeeds on GS 10.06. */
+.dc-vibe-callout::after {
+  content:""; position:absolute; right:0; bottom:0; width:44pt; height:44pt;
+  background:conic-gradient(red,yellow,lime,cyan,blue,magenta,red);
+}
+/* 25/26: CSS inserts SVG wordmarks into actual specialty opener artwork.
+   These exercise the regression fixed in PR commit 8a33992. */
+#chapter-02-6-wirephreak .dc-specialty-art,
+#chapter-02-7-technosorcerer .dc-specialty-art { position:relative; }
+#chapter-02-6-wirephreak .dc-specialty-art::after {
+  content:url('../images/pdfx-stress/pattern-wordmark.svg');
+  position:absolute; left:8pt; top:16pt; width:280pt; height:60pt;
+  box-shadow:3pt 4pt 5pt #0006;
+}
+#chapter-02-7-technosorcerer .dc-specialty-art::after {
+  content:url('../images/pdfx-stress/gradient-wordmark.svg');
+  position:absolute; left:8pt; top:16pt; width:280pt; height:60pt;
+  box-shadow:3pt 4pt 5pt #0006;
+}

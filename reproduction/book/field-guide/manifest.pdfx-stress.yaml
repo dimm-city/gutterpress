@@ -1,0 +1,38 @@
+title: Dimm City Field Guide
+authors:
+  - Todd Ward
+  - IT Lackey
+
+preset: dtrpg
+
+extensions:
+  - gp-dimm-city@1.6.3
+  - gutterpress-gfm-alerts
+  - markdown-it-mark
+
+styles:
+  - styles/fg-overrides.css
+pdfx:
+  transparency: preserve-text
+  icc: .print-md/profiles/CGATS21_CRPC1.icc
+
+publish:
+  gdrive:
+    folderId: 1fq156YxlxQl7YVD_as9X0L1YvQFfk9aH
+    folder: Gutterpress
+  local:
+    dir: /home/founder3/Documents
+
+validate:
+  assets:
+    allowAlpha: true
+  source:
+    markdownlint: ../.markdownlint.jsonc
+targets:
+  - dtrpg
+  - itch
+
+source:
+  files:
+    - chapter-00.md
+    - chapter-01.md

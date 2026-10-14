@@ -1,0 +1,41 @@
+{
+  "results": [
+    {
+      "checkId": "pdf.print.pdfx-markers",
+      "severity": "error",
+      "code": "inspect-failed",
+      "message": "Unable to parse qpdf JSON output for PDF/X checks.",
+      "file": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-stress/experimental-preserve.pdf",
+      "target": "dtrpg"
+    },
+    {
+      "checkId": "pdf.print.pdfx-metadata",
+      "severity": "error",
+      "code": "inspect-failed",
+      "message": "Unable to parse qpdf JSON output for PDF/X metadata checks.",
+      "file": "/home/founder3/code/dimm-city/dc-op-manual/.worktrees/pdfx-field-guide-stress/.print-md/build/pdfx-stress/experimental-preserve.pdf",
+      "target": "dtrpg"
+    }
+  ],
+  "summary": {
+    "total": 14,
+    "errors": 2,
+    "warnings": 0,
+    "infos": 0,
+    "passed": 12
+  },
+  "passed": [
+    "pdf.structure.qpdf",
+    "pdf.print.page-size",
+    "pdf.print.color-spaces",
+    "pdf.print.embedded-fonts",
+    "pdf.print.transparency",
+    "pdf.print.bleed",
+    "pdf.structure.qpdf",
+    "pdf.print.page-size",
+    "pdf.print.color-spaces",
+    "pdf.print.embedded-fonts",
+    "pdf.print.transparency",
+    "pdf.print.bleed"
+  ]
+}

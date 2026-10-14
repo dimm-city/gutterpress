@@ -1,0 +1,260 @@
+[
+  {
+    "id": "01",
+    "name": "RGBA surface and layered outer/inset shadows",
+    "selector": ".dc-page-credits .section",
+    "declarations": "background: rgba(255,245,225,.78); box-shadow: 4pt 5pt 9pt #24113d66, inset 0 0 9pt #00aabb44;",
+    "expected": "split",
+    "pages": "1",
+    "observed": "split",
+    "notes": "RGBA panel, layered shadows, alpha artwork preserve appearance; body text remains live."
+  },
+  {
+    "id": "02",
+    "name": "Soft and hard text shadows",
+    "selector": ".dc-page-contents h1",
+    "declarations": "text-shadow: 2pt 2pt 0 #ff00aab3, -2pt -2pt 5pt #00ccff99;",
+    "expected": "inspect",
+    "pages": "2",
+    "observed": "fallback",
+    "notes": "Soft text-shadow produces ca=0 text; whole page loses live text."
+  },
+  {
+    "id": "03",
+    "name": "Rotated opaque heading",
+    "selector": "#c2-who-do-you-dream",
+    "declarations": "transform: rotate(-1deg); transform-origin: center; text-shadow: 1pt 2pt 3pt #0006;",
+    "expected": "split",
+    "pages": "5",
+    "observed": "fallback",
+    "notes": "Soft text-shadow masks rotation. Independent isolated rotation without text-shadow splits successfully."
+  },
+  {
+    "id": "04",
+    "name": "Translucent clipped callout behind opaque type",
+    "selector": ".page:has(#c2-character-profile) .dc-alert",
+    "declarations": "--dc-alert-bg: rgba(0,175,220,.23); box-shadow: 3pt 4pt 8pt #0005;",
+    "expected": "split",
+    "pages": "7",
+    "observed": "fallback in combined; split in isolated",
+    "notes": "Stroked heading forces combined fallback. Isolated callout translucency succeeds."
+  },
+  {
+    "id": "05",
+    "name": "CSS gradient text clip",
+    "selector": "#c2-first-impressions",
+    "declarations": "background: linear-gradient(90deg,#d30070,#0060cc); background-clip: text; -webkit-background-clip:text; color:transparent;",
+    "expected": "fallback",
+    "pages": "8",
+    "observed": "fallback",
+    "notes": "Gradient text remains visible through fallback; the entire page loses live text."
+  },
+  {
+    "id": "06",
+    "name": "Translucent table rows and fine colored rules",
+    "selector": ".dc-page-citizen-file:has(table) td",
+    "declarations": "background: rgba(240,30,145,.12); border-bottom: .25pt solid #16a2b3;",
+    "expected": "split",
+    "pages": "9",
+    "observed": "split",
+    "notes": "Translucent rows survive; .25pt colored rules become 300 DPI artwork."
+  },
+  {
+    "id": "07",
+    "name": "15 percent text opacity",
+    "selector": ".page:has(img[alt=\"Tiny T2\"]) h3",
+    "declarations": "opacity:.15;",
+    "expected": "fallback",
+    "pages": "10",
+    "observed": "fallback",
+    "notes": "15% opacity on heading forces whole-page rasterization."
+  },
+  {
+    "id": "08",
+    "name": "99.9 percent group opacity / page collateral loss",
+    "selector": "#specialty-augmerc",
+    "declarations": "opacity:.999;",
+    "expected": "fallback",
+    "pages": "12",
+    "observed": "fallback",
+    "notes": "One card at .999 opacity rasterizes all ten cards and unrelated text on that page."
+  },
+  {
+    "id": "09",
+    "name": "100 percent group opacity control",
+    "selector": "#specialty-proxy",
+    "declarations": "opacity:1; box-shadow:3pt 3pt 6pt #0005;",
+    "expected": "same-page",
+    "pages": "12",
+    "observed": "collateral fallback",
+    "notes": "Not independent evidence; opacity:1 on page17 independently succeeds."
+  },
+  {
+    "id": "10",
+    "name": "Alpha image, gradient mask, image filter",
+    "selector": ".page:has(#c2-style) img",
+    "declarations": "mask-image:linear-gradient(to bottom,#000 45%,transparent); filter:grayscale(.6) drop-shadow(3pt 4pt 4pt #48006077);",
+    "expected": "split",
+    "pages": "13",
+    "observed": "split",
+    "notes": "Image mask, grayscale and drop-shadow survive. Separate text-overlay failure also on this page."
+  },
+  {
+    "id": "11",
+    "name": "Repeating and conic gradient artwork",
+    "selector": ".dc-vibe-callout",
+    "declarations": "background:repeating-linear-gradient(35deg,#ffffcc 0 8pt,#33ccee 8pt 16pt); box-shadow:2pt 3pt 5pt #0006;",
+    "expected": "inspect",
+    "pages": "14",
+    "observed": "FAIL",
+    "notes": "Repeating gradient stripes distort in pdfimage24; source/default preserve them. Conic is tested independently in boundary sweep."
+  },
+  {
+    "id": "12",
+    "name": "Blend mode on text",
+    "selector": "#c2-community",
+    "declarations": "mix-blend-mode:multiply; color:#a30050;",
+    "expected": "fallback",
+    "pages": "15",
+    "observed": "fallback",
+    "notes": "Text multiply blend triggers whole-page fallback."
+  },
+  {
+    "id": "13",
+    "name": "Opacity 1 control",
+    "selector": "#c2-ideal",
+    "declarations": "opacity:1; box-shadow:2pt 3pt 6pt #0005;",
+    "expected": "split",
+    "pages": "17",
+    "observed": "split",
+    "notes": "Opacity 1 with artwork shadow retains live text."
+  },
+  {
+    "id": "14",
+    "name": "Opacity .999 boundary",
+    "selector": "#c2-flaw",
+    "declarations": "opacity:.999; box-shadow:2pt 3pt 6pt #0005;",
+    "expected": "fallback",
+    "pages": "18",
+    "observed": "fallback",
+    "notes": "Independent isolated .999 heading on p19 confirms threshold without low-alpha body text confound."
+  },
+  {
+    "id": "15",
+    "name": "Filtered text rasterized by Chromium",
+    "selector": "#c2-dream",
+    "declarations": "filter:drop-shadow(2pt 3pt 3pt #b0007899);",
+    "expected": "already-raster",
+    "pages": "19",
+    "observed": "already raster in source",
+    "notes": "Filtered heading is visible but not live even before PDF/X; body stays live."
+  },
+  {
+    "id": "16",
+    "name": "Alpha radial/linear layered artwork",
+    "selector": ".page:has(#c2-ideal) .section",
+    "declarations": "--dc-section-bg:radial-gradient(ellipse at top right,#00bacb66,transparent 70%),linear-gradient(90deg,#ffe2f0dd,#fff9);",
+    "expected": "split",
+    "pages": "17",
+    "observed": "split",
+    "notes": "Layered radial and linear alpha backgrounds preserve geometry and body text."
+  },
+  {
+    "id": "17",
+    "name": "Clipped and translucent credit artwork",
+    "selector": "img.fg-art-founders-house",
+    "declarations": "opacity:.65; clip-path:polygon(0 0,95% 0,100% 20%,100% 100%,0 100%);",
+    "expected": "split",
+    "pages": "1",
+    "observed": "split",
+    "notes": "Clipped alpha artwork preserved."
+  },
+  {
+    "id": "18",
+    "name": "Blend mode on artwork only",
+    "selector": "img[alt=\"Streetwarden\"]",
+    "declarations": "mix-blend-mode:multiply; opacity:.7;",
+    "expected": "split",
+    "pages": "12",
+    "observed": "collateral fallback",
+    "notes": "Multiply artwork shares card-opacity fallback; independent screen-blended artwork succeeds on boundary p13."
+  },
+  {
+    "id": "19",
+    "name": "Opaque stroke on display font",
+    "selector": ".page:has(#c2-character-profile) h2",
+    "declarations": "-webkit-text-stroke:.3pt #d50076;",
+    "expected": "inspect",
+    "pages": "7",
+    "observed": "fallback",
+    "notes": "Stroke produces Type3 Lixdu; real-bold Tomorrow strokes also Type3 in isolated p15/p18."
+  },
+  {
+    "id": "20",
+    "name": "Foreground opaque occlusion",
+    "selector": ".page:has(img[alt=\"creaturepunk\"]) .section:first-of-type p:first-of-type",
+    "declarations": "position:relative;",
+    "expected": "known-limit",
+    "pages": "4",
+    "observed": "FAIL documented limit",
+    "notes": "Covered prose becomes visible above an opaque pseudo-element."
+  },
+  {
+    "id": "21",
+    "name": "Foreground translucent overlay",
+    "selector": ".page:has(#c2-style) .section > p:first-of-type",
+    "declarations": "position:relative;",
+    "expected": "known-limit",
+    "pages": "13",
+    "observed": "FAIL documented limit",
+    "notes": "Foreground pink tint no longer tints underlying text."
+  },
+  {
+    "id": "22",
+    "name": "Backdrop filter on panel",
+    "selector": ".page:has(#c2-character-profile) .section",
+    "declarations": "backdrop-filter:blur(2pt);",
+    "expected": "inspect",
+    "pages": "7; isolated13",
+    "observed": "browser limitation",
+    "notes": "Independent backdrop overlay has no blur in Chromium PDF; only its cyan tint is emitted."
+  },
+  {
+    "id": "23",
+    "name": "Text mask fade",
+    "selector": "#c1-are-you-lucid",
+    "declarations": "mask-image:linear-gradient(90deg,#000 20%,transparent);",
+    "expected": "fallback",
+    "pages": "192",
+    "observed": "fallback",
+    "notes": "Text mask forces whole-page rasterization."
+  },
+  {
+    "id": "24",
+    "name": "Near-transparent ink boundary",
+    "selector": ".page:has(#c2-flaw) .section > p:first-of-type",
+    "declarations": "color:rgba(0,0,0,.01);",
+    "expected": "fallback",
+    "pages": "18",
+    "observed": "fallback",
+    "notes": "Near-transparent body ink appears in source; combined fallback preserves appearance, with no live text."
+  },
+  {
+    "id": "25",
+    "name": "SVG opaque pattern wordmark",
+    "selector": "#chapter-02-6-wirephreak .dc-specialty-art::after",
+    "expected": "fallback",
+    "pages": "138",
+    "observed": "fallback regression fixed",
+    "notes": "Pattern wordmark remains visible, now detected and rasterized."
+  },
+  {
+    "id": "26",
+    "name": "SVG alpha-gradient wordmark",
+    "selector": "#chapter-02-7-technosorcerer .dc-specialty-art::after",
+    "expected": "fallback",
+    "pages": "159",
+    "observed": "fallback regression fixed",
+    "notes": "Alpha-gradient SVG wordmark remains visible, now detected and rasterized."
+  }
+]

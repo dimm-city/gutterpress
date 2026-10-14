@@ -1,0 +1,29 @@
+/* PDFX STRESS LAB — deliberately experimental; not production styling.
+   All experiments live in this book sheet; the pinned extension is untouched.
+   This face-range override removes synthetic-bold Type 3 text, allowing the
+   artwork/text split to be exercised. It does not add real font weights.
+   baseline.pdf retains the original font declaration for comparison. */
+@font-face {
+  font-family: 'lixdu';
+  src: url('../plugins/npm/gp-dimm-city/1.6.3/node_modules/gp-dimm-city/fonts/lixdu/lixdu.woff') format('woff');
+  font-weight: 100 900;
+  font-style: normal;
+}
+
+
+/* BOUNDARY SWEEP: front matter + Citizen File, unchanged real manuscript. */
+/* Conic shading is painted directly, avoiding pseudo-element layout ambiguity. */
+.dc-vibe-callout { background:conic-gradient(red,yellow,lime,cyan,blue,magenta,red); box-shadow:3pt 4pt 8pt #0005; }
+/* Chromium alpha precision boundary: separate actual book headings. */
+#c2-ideal { opacity:.9999; box-shadow:3pt 4pt 8pt #0005; }
+#c2-flaw { opacity:.999999; box-shadow:3pt 4pt 8pt #0005; }
+#c2-dream { opacity:0; }
+.page:has(#c2-dream) .section { box-shadow:3pt 4pt 8pt #0005; }
+/* Alpha on paint vs alpha on the entire group. */
+#c2-community { color:rgba(0,90,140,.5); }
+/* A blend confined to image pixels, with unrelated body text remaining opaque. */
+.page:has(#c2-style) img { mix-blend-mode:screen; opacity:.7; }
+
+/* Geometric clip crosses actual glyphs; the ordinary text must stay clipped. */
+#c2-first-impressions { clip-path:inset(0 65% 0 0); }
+.page:has(#c2-first-impressions) .section { box-shadow:3pt 4pt 8pt #0005; }

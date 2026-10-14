@@ -1,0 +1,14 @@
+{
+  "results": [],
+  "summary": {
+    "total": 2,
+    "errors": 0,
+    "warnings": 0,
+    "infos": 0,
+    "passed": 2
+  },
+  "passed": [
+    "pdf.print.pdfx-markers",
+    "pdf.print.pdfx-metadata"
+  ]
+}
