@@ -7,6 +7,13 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [0.11.19] - 2026-10-14
 
+### Removed
+
+- **The Editor settings for font family, font size, line spacing and spell-check
+  language.** Nothing applied them: the editor kept its own font and spacing
+  whatever they said. A settings file saved by an older version still loads with
+  every other choice intact, and the old values are dropped on the next save.
+
 ### Fixed
 
 - **Repeating and conic gradients no longer disappear from PDF/X builds without

@@ -14,7 +14,10 @@
  * that dead key would spread into the merged object, ride along on every
  * subsequent settings write, and live forever. Filtering against `base[key]`
  * — DEFAULT_SETTINGS at load time, the already-clean live state thereafter —
- * drops it instead of merely hiding it behind the type system.
+ * drops it instead of merely hiding it behind the type system. A whole
+ * SECTION the schema removed (the deleted `editor` section, #384) is dropped
+ * the same way, rather than throwing on the missing base section — a throw on
+ * load reads as a corrupt file and resets every other setting.
  */
 // Import from the shared-types leaf, NOT the ./platform value barrel: this pure
 // module is also consumed host-side (electron/settings-store.ts), and pulling
@@ -41,6 +44,7 @@ function mergeSettingsSection<K extends keyof AppSettings>(
 export function deepMergeSettings(base: AppSettings, patch: DeepPartial<AppSettings>): AppSettings {
   const out: AppSettings = { ...base };
   for (const key of Object.keys(patch) as Array<keyof AppSettings>) {
+    if (!(key in base)) continue;
     mergeSettingsSection(out, base, key, patch[key]);
   }
   return out;
