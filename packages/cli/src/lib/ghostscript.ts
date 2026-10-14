@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile, writeFile, unlink, rename, readdir } from "node:fs/promises";
 import { join, basename, resolve } from "node:path";
-import { run } from "./exec";
+import { execCapture, run } from "./exec";
 import { findTool } from "./tool-probe";
 
 const WINDOWS_GHOSTSCRIPT_NAMES = ["gswin64c", "gswin32c", "gs"];
@@ -360,7 +360,23 @@ export async function convertToPdfxCmyk(
         "Ghostscript executable not found. Install Ghostscript or set GHOSTSCRIPT_PATH to its command-line executable."
       );
     }
-    await run(ghostscript, args);
+    try {
+      await run(ghostscript, args);
+    } catch (err) {
+      const signal = (err as { signal?: NodeJS.Signals | null }).signal;
+      if (!signal) throw err;
+      const version = await execCapture(ghostscript, ["--version"])
+        .then((r) => r.stdout.trim())
+        .catch(() => "unknown version");
+      throw new Error(
+        `Ghostscript ${version} crashed (${signal}) while converting to PDF/X. ` +
+          "This is a Ghostscript bug, not a problem with the PDF: it is known to " +
+          "crash in the PDF 1.3 transparency flattening PDF/X requires, on pages " +
+          "that use an image with an alpha channel. Removing the alpha channel " +
+          "(flatten the image against its background) avoids it, as may a newer " +
+          "Ghostscript release; build --format pdf needs neither."
+      );
+    }
   } finally {
     await unlink(tmpDef).catch(() => {});
   }
