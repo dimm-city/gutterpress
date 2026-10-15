@@ -41,7 +41,9 @@ export const CORE_CLASSES: readonly CoreClass[] = [
   // Sizes and spacing.
   { class: "gp-small", scope: "image", description: "25% of the column width" },
   { class: "gp-medium", scope: "image", description: "50% of the column width" },
-  { class: "gp-large", scope: "image", description: "75% of the column width" },
+  { class: "gp-large", scope: "image", description: "60% of the column width" },
+  { class: "gp-xl", scope: "image", description: "80% of the column width" },
+  { class: "gp-xxl", scope: "image", description: "90% of the column width" },
   { class: "gp-tight", scope: "image", description: "Float clearance of 0.5em" },
   { class: "gp-loose", scope: "image", description: "Float clearance of 2em" },
   { class: "gp-shape", scope: "image", description: "Wrap text to the shape of a floated image" },

@@ -1266,15 +1266,18 @@ describe("GUTTERPRESS_CSS gp-* vocabulary", () => {
     }
   });
 
-  test("sizes declare width 25/50/75% with the float-cap lift", () => {
-    const small = GUTTERPRESS_CSS.match(/\.gp-small\s*\{[^}]*\}/);
-    const medium = GUTTERPRESS_CSS.match(/\.gp-medium\s*\{[^}]*\}/);
-    const large = GUTTERPRESS_CSS.match(/\.gp-large\s*\{[^}]*\}/);
-    expect(small![0]).toMatch(/width:\s*25%/);
-    expect(medium![0]).toMatch(/width:\s*50%/);
-    expect(large![0]).toMatch(/width:\s*75%/);
-    for (const rule of [small, medium, large]) {
-      expect(rule![0]).toMatch(/max-width:\s*100%/);
+  test("sizes declare width 25/50/60/80/90% with the float-cap lift", () => {
+    const sizes: Array<[string, number]> = [
+      ["small", 25],
+      ["medium", 50],
+      ["large", 60],
+      ["xl", 80],
+      ["xxl", 90],
+    ];
+    for (const [size, percent] of sizes) {
+      const rule = GUTTERPRESS_CSS.match(new RegExp(`\\.gp-${size}\\s*\\{[^}]*\\}`))![0];
+      expect(rule).toMatch(new RegExp(`(^|[^-])width:\\s*${percent}%`));
+      expect(rule).toMatch(/max-width:\s*100%/);
     }
     // After the float rules, so max-width:100% beats the 50% cap on order.
     expect(GUTTERPRESS_CSS.indexOf(".gp-small")).toBeGreaterThan(GUTTERPRESS_CSS.indexOf(".gp-right {"));
@@ -1375,7 +1378,7 @@ describe("gp-* vocabulary — rendered output", () => {
     expect(html).toContain('class="gp-pin gp-bottom"');
     for (const selector of [
       ".gp-left", ".gp-right", ".gp-center", ".gp-full", ".gp-bleed",
-      ".gp-small", ".gp-medium", ".gp-large", ".gp-tight", ".gp-loose",
+      ".gp-small", ".gp-medium", ".gp-large", ".gp-xl", ".gp-xxl", ".gp-tight", ".gp-loose",
       ".gp-pin", ".gp-top", ".gp-bottom",
     ]) {
       expect(html).toContain(selector);

@@ -31,7 +31,10 @@
  *   .gp-full      — fills the page's content width.
  *   .gp-small     — width 25% of the column. Sizes compose with any
  *   .gp-medium    — width 50%.        position (including .gp-pin, where
- *   .gp-large     — width 75%.        the % resolves against the page box).
+ *   .gp-large     — width 60%.        the % resolves against the page
+ *   .gp-xl        — width 80%.        root: the page box, reaching the
+ *   .gp-xxl       — width 90%.        paper on an edge a pin uses).
+ *                   There is no 100% step: that is .gp-full, a position.
  *   .gp-tight     — float/shape clearance 0.5em (sets --gp-gap; default 1em).
  *   .gp-loose     — float/shape clearance 2em (sets --gp-gap).
  *   .gp-shape     — wraps text to a floated image's alpha silhouette
@@ -195,7 +198,9 @@ export const GUTTERPRESS_CSS = `
    cap at equal specificity */
 .gp-small { width: 25%; max-width: 100%; }
 .gp-medium { width: 50%; max-width: 100%; }
-.gp-large { width: 75%; max-width: 100%; }
+.gp-large { width: 60%; max-width: 100%; }
+.gp-xl { width: 80%; max-width: 100%; }
+.gp-xxl { width: 90%; max-width: 100%; }
 
 /* float clearance presets — consumed by var(--gp-gap) in the float rules
    above and by .gp-shape's shape-margin below; --gp-gap itself is
@@ -410,7 +415,7 @@ img.gp-shape {
 export const GP_CLASSES: ReadonlySet<string> = new Set([
   // flow positions, sizes, spacing
   "gp-left", "gp-right", "gp-center", "gp-full", "gp-bleed",
-  "gp-small", "gp-medium", "gp-large",
+  "gp-small", "gp-medium", "gp-large", "gp-xl", "gp-xxl",
   "gp-tight", "gp-loose",
   // column runs — the CSS the @columns marker emits
   "gp-columns", "gp-columns-1", "gp-columns-2", "gp-columns-3", "gp-columns-4", "gp-columns-5",

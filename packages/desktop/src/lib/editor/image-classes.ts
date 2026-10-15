@@ -55,7 +55,9 @@ export const IMAGE_POSITION_OPTIONS: readonly ImageClassOption[] = [
 export const IMAGE_SIZE_OPTIONS: readonly ImageClassOption[] = [
   { class: "gp-small", short: "small", label: "Small (25%)" },
   { class: "gp-medium", short: "medium", label: "Medium (50%)" },
-  { class: "gp-large", short: "large", label: "Large (75%)" },
+  { class: "gp-large", short: "large", label: "Large (60%)" },
+  { class: "gp-xl", short: "xl", label: "XL (80%)" },
+  { class: "gp-xxl", short: "xxl", label: "XXL (90%)" },
 ] as const;
 
 export const IMAGE_SPACING_OPTIONS: readonly ImageClassOption[] = [

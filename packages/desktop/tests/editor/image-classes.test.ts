@@ -236,6 +236,21 @@ describe("depth layer facet", () => {
   });
 });
 
+describe("size facet", () => {
+  test("runs 25 / 50 / 60 / 80 / 90%, smallest first, with no 100% step (that is .gp-full, a position)", () => {
+    expect(IMAGE_SIZE_OPTIONS.map((o) => [o.class, o.label])).toEqual([
+      ["gp-small", "Small (25%)"],
+      ["gp-medium", "Medium (50%)"],
+      ["gp-large", "Large (60%)"],
+      ["gp-xl", "XL (80%)"],
+      ["gp-xxl", "XXL (90%)"],
+    ]);
+    expect(normalizeClassInput(IMAGE_SIZE_OPTIONS, "xl")).toBe("gp-xl");
+    expect(normalizeClassInput(IMAGE_SIZE_OPTIONS, "XXL")).toBe("gp-xxl");
+    expect(serializeImageAttrs(setSizeClass(tokenizeImageAttrs("{.gp-pin .gp-large}"), "gp-xxl"))).toBe("{.gp-pin .gp-xxl}");
+  });
+});
+
 describe("normalizeClassInput", () => {
   test("accepts short names, canonical classes, and legacy aliases", () => {
     expect(normalizeClassInput(IMAGE_POSITION_OPTIONS, "right")).toBe("gp-right");
