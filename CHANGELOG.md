@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.20] - 2026-10-15
+
 ### Added
 
 - **`pdfx.rasterDpi` sets the resolution of the pages a PDF/X build flattens.**
