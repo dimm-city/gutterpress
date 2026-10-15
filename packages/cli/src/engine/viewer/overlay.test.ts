@@ -1,15 +1,19 @@
 /**
- * Safe area & bleed overlay (overlay.ts).
+ * Print overlays (overlay.ts).
  *
  * Two layers of evidence:
  *  1. the pure geometry + classification, fast and browser-free — the boxes
- *     the project's `page` block produces (a text box and an art box), and how
- *     a piece of ink is judged against the rule that applies to it;
+ *     the project's `page` block produces (a text box and an art box), how
+ *     a piece of ink is judged against the rule that applies to it, and how a
+ *     host names the layers and the colours;
  *  2. the real viewer in Chromium on `fixtures/overlay.html` — which text and
  *     art is flagged under which rule (page furniture included), what reads as
  *     intended, how the meta is read, that every box sits on its sheet whatever
  *     the book's margins, that the book's own CSS cannot hide, move or restyle
- *     it, and that switching it on changes NOTHING about the book.
+ *     it, that each of the three layers (bleed, safe, margins) is drawn alone
+ *     and in its own colour, what the legend says, and that switching any of it
+ *     on changes NOTHING about the book — plus `fixtures/mirrored-sheets.html`
+ *     for the margins layer on a book whose recto and verso margins mirror.
  */
 import { serveDir } from "./test-support/serve-dir.ts";
 import { test, expect, afterAll, describe } from "bun:test";
@@ -22,7 +26,7 @@ import { getAssetPath } from "../../lib/embedded-assets.ts";
 import { closeBrowser, getBrowser } from "./test-support/browser.ts";
 import { MARKER_CSS } from "../../lib/markdown/markers.js";
 import { GUTTERPRESS_CSS } from "../../lib/markdown/gutterpress-css.ts";
-import { classifyRect, pageBoxes, sanitizeOverlayStyle, type Rect } from "./overlay.ts";
+import { classifyRect, layersFrom, pageBoxes, sanitizeOverlayStyle, type Rect } from "./overlay.ts";
 
 // DriveThruRPG's file: 8.625 x 11.25in with a 0.125in bleed inside it, text 0.5in and art 0.25in inside the trim.
 const DTRPG = { width: 621, height: 810, bleed: 9, safe: 36, artSafe: 18 };
@@ -161,12 +165,36 @@ describe("judging a piece of ink", () => {
   });
 });
 
-describe("the look a host may set", () => {
-  test("only a hex colour and a known strength get through", () => {
-    expect(sanitizeOverlayStyle({ color: "#00AA55", strength: "strong" })).toEqual({ color: "#00AA55", strength: "strong" });
-    expect(sanitizeOverlayStyle({ color: "#0a5" })).toEqual({ color: "#0a5" });
+describe("the layers and the look a host may set", () => {
+  test("a boolean sets all three layers; an object names the ones that are on", () => {
+    expect(layersFrom(true)).toEqual({ bleed: true, safe: true, margins: true });
+    expect(layersFrom(false)).toEqual({ bleed: false, safe: false, margins: false });
+    expect(layersFrom({ safe: true })).toEqual({ bleed: false, safe: true, margins: false });
+    expect(layersFrom({ bleed: true, margins: true })).toEqual({ bleed: true, safe: false, margins: true });
+    // only a real `true` is on: anything else a host sends is off
+    expect(layersFrom({ bleed: "yes", safe: 1, margins: true })).toEqual({ bleed: false, safe: false, margins: true });
+    expect(layersFrom(undefined)).toEqual({ bleed: false, safe: false, margins: false });
+    expect(layersFrom(null)).toEqual({ bleed: false, safe: false, margins: false });
+  });
+
+  test("only a hex colour and a known strength get through; `color` is the safe layer's alias", () => {
+    expect(sanitizeOverlayStyle({ color: "#00AA55", strength: "strong" })).toEqual({
+      colors: { safe: "#00AA55" },
+      strength: "strong",
+    });
+    expect(sanitizeOverlayStyle({ color: "#0a5" })).toEqual({ colors: { safe: "#0a5" } });
+    expect(sanitizeOverlayStyle({ colors: { bleed: "#aa0000", safe: "#00aa55", margins: "#e91e63" } })).toEqual({
+      colors: { bleed: "#aa0000", safe: "#00aa55", margins: "#e91e63" },
+    });
+    // `colors.safe` wins over its alias; a bad one lets the alias through
+    expect(sanitizeOverlayStyle({ color: "#111111", colors: { safe: "#222222" } })).toEqual({ colors: { safe: "#222222" } });
+    expect(sanitizeOverlayStyle({ color: "#111111", colors: { safe: "blue" } })).toEqual({ colors: { safe: "#111111" } });
+    // the alias is the SAFE layer's only
+    expect(sanitizeOverlayStyle({ color: "#111111" }).colors).toEqual({ safe: "#111111" });
     expect(sanitizeOverlayStyle({ color: "red; x: y", strength: "loud" })).toEqual({});
     expect(sanitizeOverlayStyle({ color: "url(javascript:1)" })).toEqual({});
+    expect(sanitizeOverlayStyle({ colors: { bleed: "red; x: y", margins: 7, nope: "#fff" } })).toEqual({});
+    expect(sanitizeOverlayStyle({ colors: "#fff" })).toEqual({});
     expect(sanitizeOverlayStyle(null)).toEqual({});
     expect(sanitizeOverlayStyle("strong")).toEqual({});
   });
@@ -184,10 +212,14 @@ afterAll(async () => {
   await closeBrowser();
 });
 
-async function withFixture<T>(run: (url: string) => Promise<T>, name = "overlay.html"): Promise<T> {
+async function withFixture<T>(
+  run: (url: string) => Promise<T>,
+  name = "overlay.html",
+  edit: (html: string) => string = (html) => html,
+): Promise<T> {
   const dir = await fsp.mkdtemp(path.join(FIXTURES_DIR, "..", ".overlay-"));
   try {
-    const source = await fsp.readFile(path.join(FIXTURES_DIR, name), "utf8");
+    const source = edit(await fsp.readFile(path.join(FIXTURES_DIR, name), "utf8"));
     await fsp.writeFile(
       path.join(dir, name),
       source.replace("</style>", `</style>\n<style>${MARKER_CSS}\n${GUTTERPRESS_CSS}</style>`),
@@ -253,6 +285,7 @@ testIf(
         const summary = await page.evaluate(() => (window as any).Gutterpress.decoration.setOverlay(true));
         expect(summary).toEqual({
           on: true,
+          layers: { bleed: true, safe: true, margins: true },
           issues: 11,
           intended: 1,
           bleedPt: 9,
@@ -483,6 +516,7 @@ testIf(
         // only the text that leaves the sheet is a problem (art that runs past it is bleeding); no safe area, no bleed
         expect(summary).toEqual({
           on: true,
+          layers: { bleed: true, safe: true, margins: true },
           issues: 1,
           intended: 0,
           bleedPt: 0,
@@ -490,16 +524,19 @@ testIf(
           artSafePt: 0,
           counts: { text: 0, art: 0, bleed: 0, offPage: 1, intended: 0 },
         });
+        const sheets = await page.evaluate(() => document.querySelectorAll(".gp-sheet").length);
         const drawn = await page.evaluate(() => {
           const shadow = document.querySelector("gp-overlay")!.shadowRoot!;
           return {
             safes: shadow.querySelectorAll(".gp-ov-safe").length,
             arts: shadow.querySelectorAll(".gp-ov-art").length,
             bleeds: shadow.querySelectorAll(".gp-ov-bleed").length,
+            margins: shadow.querySelectorAll(".gp-ov-margins").length,
             flags: Array.from(shadow.querySelectorAll<HTMLElement>(".gp-ov-flag")).map((f) => [f.dataset.rule, f.dataset.kind]),
           };
         });
-        expect(drawn).toEqual({ safes: 0, arts: 0, bleeds: 0, flags: [["text", "off-page"]] });
+        // the margins layer is the book's own @page margins, so it needs no manifest: one box per sheet
+        expect(drawn).toEqual({ safes: 0, arts: 0, bleeds: 0, margins: sheets, flags: [["text", "off-page"]] });
       } finally {
         await page.close();
       }
@@ -615,6 +652,566 @@ testIf(
         await page.close();
       }
     });
+  },
+  RENDER_TEST_TIMEOUT_MS,
+);
+
+// ── layers, colours, margins, legend ───────────────────────────────────────
+
+/** The look of one of the project's two spec links, as the overlay fixture's meta words it. */
+const SPEC_LABEL = "DriveThruRPG — Quick Specifications for Print Books";
+const SPEC_URL = "https://help.drivethrupartners.com/hc/en-us/articles/12780800178583-Quick-Specifications-for-Print-Books";
+
+testIf(
+  "each layer is drawn alone: bleed is the band and the trim, safe the lines, the tint and every flag, margins the book's own content box",
+  async () => {
+    await withFixture(async (url) => {
+      const page = await (await getBrowser()).newPage();
+      try {
+        await page.goto(url);
+        await page.waitForFunction("window.Gutterpress?.totalPages > 0");
+        const sheets = await page.evaluate(() => document.querySelectorAll(".gp-sheet").length);
+        const book = () =>
+          page.evaluate(() => ({
+            pages: (window as any).Gutterpress.totalPages as number,
+            markup: document.querySelector(".gp-strip")!.outerHTML,
+            body: document.body.getBoundingClientRect().height,
+          }));
+        const before = await book();
+        await page.evaluate(() => {
+          (window as any).__events = [];
+          window.addEventListener("gp:overlay", (e) => (window as any).__events.push((e as CustomEvent).detail.layers));
+        });
+
+        /** Switch the overlay to `state`, and report what is drawn. */
+        const drawn = (state: unknown) =>
+          page.evaluate((s: unknown) => {
+            const summary = (window as any).Gutterpress.decoration.setOverlay(s);
+            const shadow = document.querySelector("gp-overlay")?.shadowRoot;
+            const count = (sel: string) => shadow?.querySelectorAll(sel).length ?? 0;
+            return {
+              summary,
+              bleed: count(".gp-ov-bleed"),
+              trim: count(".gp-ov-trim"),
+              tint: count(".gp-ov-tint"),
+              safe: count(".gp-ov-safe"),
+              art: count(".gp-ov-art"),
+              margins: count(".gp-ov-margins"),
+              flags: count(".gp-ov-flag"),
+              legend: Array.from(shadow?.querySelectorAll(".gp-ov-row b") ?? []).map((b) => b.textContent),
+              host: document.querySelectorAll("gp-overlay").length,
+            };
+          }, state);
+
+        const none = { bleed: 0, trim: 0, tint: 0, safe: 0, art: 0, margins: 0, flags: 0 };
+        const found = { text: 3, art: 4, bleed: 3, offPage: 1, intended: 1 };
+        const quiet = { text: 0, art: 0, bleed: 0, offPage: 0, intended: 0 };
+
+        // bleed: the band and the trim line, and nothing else — nothing is judged
+        const bleed = await drawn({ bleed: true });
+        expect(bleed).toMatchObject({ ...none, bleed: sheets, trim: sheets, legend: ["Bleed"], host: 1 });
+        expect(bleed.summary).toMatchObject({ on: true, layers: { bleed: true, safe: false, margins: false }, issues: 0, bleedPt: 9, safePt: 18, counts: quiet });
+        expect(await book()).toEqual(before);
+
+        // safe: both lines, the tint and every flag (the whole of what the overlay found)
+        const safe = await drawn({ safe: true });
+        expect(safe).toMatchObject({ ...none, tint: sheets, safe: sheets, art: sheets, flags: 12, legend: ["Safe area"] });
+        expect(safe.summary).toMatchObject({ on: true, layers: { bleed: false, safe: true, margins: false }, issues: 11, intended: 1, counts: found });
+        expect(await book()).toEqual(before);
+
+        // margins: the page's own content box, and nothing else — nothing is judged
+        const margins = await drawn({ margins: true });
+        expect(margins).toMatchObject({ ...none, margins: sheets, legend: ["Page margins"] });
+        expect(margins.summary).toMatchObject({ on: true, layers: { bleed: false, safe: false, margins: true }, issues: 0, counts: quiet });
+        expect(await book()).toEqual(before);
+
+        // two together, and all three
+        expect(await drawn({ bleed: true, margins: true })).toMatchObject({ ...none, bleed: sheets, trim: sheets, margins: sheets, legend: ["Bleed", "Page margins"] });
+        const all = await drawn(true);
+        expect(all).toMatchObject({ bleed: sheets, trim: sheets, tint: sheets, safe: sheets, art: sheets, margins: sheets, flags: 12, legend: ["Bleed", "Safe area", "Page margins"] });
+        expect(all.summary).toMatchObject({ on: true, layers: { bleed: true, safe: true, margins: true }, issues: 11, counts: found });
+        expect(await book()).toEqual(before);
+
+        // the record a host carries across a reload names the layers that were showing, and outlives switching off
+        const records = () => page.evaluate(() => ({ overlay: document.body.dataset.overlay, layers: document.body.dataset.overlayLayers }));
+        await drawn({ bleed: true, margins: true });
+        expect(await records()).toEqual({ overlay: "on", layers: "bleed,margins" });
+        // no layer at all is no overlay: gone, whichever way it is asked for
+        for (const off of [false, {}, { bleed: false, safe: false, margins: false }]) {
+          await drawn(true);
+          const gone = await drawn(off);
+          expect(gone).toMatchObject({ ...none, host: 0, legend: [] });
+          expect(gone.summary).toEqual({
+            on: false,
+            layers: { bleed: false, safe: false, margins: false },
+            issues: 0,
+            intended: 0,
+            bleedPt: 0,
+            safePt: 0,
+            artSafePt: 0,
+            counts: quiet,
+          });
+          expect(await records()).toEqual({ overlay: "off", layers: "bleed,safe,margins" });
+        }
+        await drawn({ bleed: true, margins: true });
+        await drawn(false);
+        expect(await records()).toEqual({ overlay: "off", layers: "bleed,margins" });
+        expect(await book()).toEqual(before);
+
+        // every change announced the layers it left drawn
+        expect(await page.evaluate(() => (window as any).__events)).toContainEqual({ bleed: true, safe: false, margins: false });
+        expect(await page.evaluate(() => (window as any).__events)).toContainEqual({ bleed: false, safe: false, margins: false });
+      } finally {
+        await page.close();
+      }
+    });
+  },
+  RENDER_TEST_TIMEOUT_MS,
+);
+
+testIf(
+  "switching a layer while the overlay is on repaints it; restyling the same layers does not",
+  async () => {
+    await withFixture(async (url) => {
+      const page = await (await getBrowser()).newPage();
+      try {
+        await page.goto(url);
+        await page.waitForFunction("window.Gutterpress?.totalPages > 0");
+        const state = (s: unknown, style?: unknown) =>
+          page.evaluate(
+            (a: unknown, b: unknown) => {
+              const shadow = () => document.querySelector("gp-overlay")!.shadowRoot!;
+              const first = shadow().querySelector<any>(".gp-ov-page");
+              if (first) first.__same = true;
+              const summary = (window as any).Gutterpress.decoration.setOverlay(a, b);
+              const now = shadow();
+              return {
+                kept: now.querySelector<any>(".gp-ov-page")?.__same === true,
+                margins: now.querySelectorAll(".gp-ov-margins").length,
+                flags: now.querySelectorAll(".gp-ov-flag").length,
+                summary,
+              };
+            },
+            s,
+            style,
+          );
+        await page.evaluate(() => (window as any).Gutterpress.decoration.setOverlay({ safe: true }));
+        // the same layers with a look: a restyle, nothing is redrawn
+        const restyled = await state({ safe: true }, { strength: "strong", colors: { safe: "#00aa55" } });
+        expect(restyled.kept).toBe(true);
+        expect(restyled.margins).toBe(0);
+        // another layer: drawn again, and the flags are still found
+        const more = await state({ safe: true, margins: true }, { strength: "subtle" });
+        expect(more.kept).toBe(false);
+        expect(more.margins).toBeGreaterThan(0);
+        expect(more.flags).toBe(12);
+        // the layer's own look can follow, again without a redraw
+        const same = await state({ safe: true, margins: true }, { colors: { margins: "#e91e63" } });
+        expect(same.kept).toBe(true);
+        // dropping the safe layer drops its flags with it
+        const less = await state({ margins: true }, { colors: { margins: "#e91e63" } });
+        expect(less.kept).toBe(false);
+        expect(less.flags).toBe(0);
+        expect(less.summary).toMatchObject({ issues: 0, layers: { bleed: false, safe: false, margins: true } });
+      } finally {
+        await page.close();
+      }
+    });
+  },
+  RENDER_TEST_TIMEOUT_MS,
+);
+
+testIf(
+  "each layer has its own colour, kept when the overlay is switched off, and the legend's swatches show it",
+  async () => {
+    await withFixture(async (url) => {
+      const page = await (await getBrowser()).newPage();
+      try {
+        await page.goto(url);
+        await page.waitForFunction("window.Gutterpress?.totalPages > 0");
+        const look = () =>
+          page.evaluate(() => {
+            const shadow = document.querySelector("gp-overlay")!.shadowRoot!;
+            const cs = (sel: string) => getComputedStyle(shadow.querySelector(sel)!);
+            const zoom = new DOMMatrixReadOnly(getComputedStyle(document.body).transform).a || 1;
+            return {
+              safe: cs(".gp-ov-safe").borderTopColor,
+              art: cs(".gp-ov-art").borderTopColor,
+              margins: cs(".gp-ov-margins").borderTopColor,
+              trim: cs(".gp-ov-trim").outlineColor,
+              swatch: {
+                bleed: cs('.gp-ov-swatch[data-layer="bleed"]').backgroundColor,
+                safe: cs('.gp-ov-swatch[data-layer="safe"]').backgroundColor,
+                margins: cs('.gp-ov-swatch[data-layer="margins"]').backgroundColor,
+              },
+              marginsStyle: cs(".gp-ov-margins").borderTopStyle,
+              // what the author sees: layout px x zoom
+              marginsLine: parseFloat(cs(".gp-ov-margins").borderTopWidth) * zoom,
+              safeLine: parseFloat(cs(".gp-ov-safe").borderTopWidth) * zoom,
+              records: { ...document.body.dataset },
+            };
+          });
+        const set = (style: unknown) =>
+          page.evaluate((s: unknown) => (window as any).Gutterpress.decoration.setOverlay(true, s), style);
+        await page.evaluate(() => (window as any).Gutterpress.decoration.setOverlay(true));
+
+        // the defaults: blue safe lines, red bleed, green margins — the margins a thin solid line
+        const base = await look();
+        expect(base.safe).toBe("rgb(47, 128, 237)");
+        expect(base.art).toBe("rgb(47, 128, 237)");
+        expect(base.margins).toBe("rgb(26, 156, 107)");
+        expect(base.swatch).toEqual({ bleed: "rgb(229, 72, 77)", safe: "rgb(47, 128, 237)", margins: "rgb(26, 156, 107)" });
+        expect(base.marginsStyle).toBe("solid");
+        expect(base.marginsLine).toBeGreaterThanOrEqual(0.9);
+        expect(base.marginsLine).toBeLessThanOrEqual(1.1);
+        expect(base.marginsLine).toBeLessThan(base.safeLine);
+
+        // one layer's colour moves only that layer
+        await set({ colors: { margins: "#e91e63" } });
+        const margins = await look();
+        expect(margins.margins).toBe("rgb(233, 30, 99)");
+        expect(margins.swatch.margins).toBe("rgb(233, 30, 99)");
+        expect(margins.safe).toBe(base.safe);
+        expect(margins.swatch.bleed).toBe(base.swatch.bleed);
+        expect(margins.trim).toBe(base.trim);
+
+        // bleed's colour carries the trim line with it; safe's carries both of its lines
+        await set({ colors: { bleed: "#00aa55", safe: "#0000ff" } });
+        const two = await look();
+        expect(two.swatch).toEqual({ bleed: "rgb(0, 170, 85)", safe: "rgb(0, 0, 255)", margins: "rgb(233, 30, 99)" });
+        expect(two.safe).toBe("rgb(0, 0, 255)");
+        expect(two.art).toBe("rgb(0, 0, 255)");
+        expect(two.margins).toBe("rgb(233, 30, 99)");
+        expect(two.trim).not.toBe(base.trim);
+
+        // `color` is the safe layer's alias; a bad value is ignored, not applied
+        await set({ color: "#123456" });
+        expect((await look()).safe).toBe("rgb(18, 52, 86)");
+        await set({ colors: { bleed: "red; x:y", margins: 7 as unknown as string }, color: "url(javascript:1)" });
+        const kept = await look();
+        expect(kept.swatch).toEqual({ bleed: "rgb(0, 170, 85)", safe: "rgb(18, 52, 86)", margins: "rgb(233, 30, 99)" });
+
+        // the look is recorded for a host to carry across a reload, and survives switching the overlay off and on
+        expect(kept.records).toMatchObject({
+          overlayColor: "#123456",
+          overlayBleedColor: "#00aa55",
+          overlayMarginsColor: "#e91e63",
+        });
+        await page.evaluate(() => (window as any).Gutterpress.decoration.setOverlay(false));
+        await page.evaluate(() => (window as any).Gutterpress.decoration.setOverlay(true));
+        expect((await look()).swatch).toEqual(kept.swatch);
+      } finally {
+        await page.close();
+      }
+    });
+  },
+  RENDER_TEST_TIMEOUT_MS,
+);
+
+/** In-page: every overlay margins box against the sheet it belongs to, in the sheet's own px. */
+function marginsBoxes() {
+  const shadow = document.querySelector("gp-overlay")!.shadowRoot!;
+  return Array.from(shadow.querySelectorAll<HTMLElement>(".gp-ov-page")).map((pg) => {
+    const sheet = document.querySelector<HTMLElement>(`.gp-sheet[data-page="${pg.dataset.page}"]`)!;
+    const box = pg.querySelector<HTMLElement>(".gp-ov-margins")!.getBoundingClientRect();
+    const s = sheet.getBoundingClientRect();
+    const round = (n: number) => Math.round(n * 100) / 100;
+    return {
+      page: Number(pg.dataset.page),
+      side: sheet.dataset.side,
+      x: round(box.left - s.left),
+      y: round(box.top - s.top),
+      w: round(box.width),
+      h: round(box.height),
+    };
+  });
+}
+
+testIf(
+  "margins: a page's own @page content box — a recto's margins, a verso's mirrored — where that page's text sits",
+  async () => {
+    await withFixture(async (url) => {
+      const page = await (await getBrowser()).newPage();
+      try {
+        await page.goto(url);
+        await page.waitForFunction("window.Gutterpress?.totalPages > 0");
+        await page.evaluate(() => (window as any).Gutterpress.decoration.setOverlay({ margins: true }));
+        // the fixture: a 400x500px sheet; a recto binds on the left (L50, R30), a verso on the right (L30, R50); top and bottom 40
+        const boxes = await page.evaluate(marginsBoxes);
+        expect(boxes).toHaveLength(6);
+        for (const b of boxes) {
+          expect(b.side).toBe(b.page % 2 === 1 ? "recto" : "verso");
+          expect(b.x).toBeCloseTo(b.side === "recto" ? 50 : 30, 1);
+          expect(b.y).toBeCloseTo(40, 1);
+          expect(b.w).toBeCloseTo(320, 1);
+          expect(b.h).toBeCloseTo(420, 1);
+        }
+        // …which is where each page's text is: the box is the book's choice, drawn, not a guess
+        const text = await page.evaluate(() => {
+          const left = (id: string) => {
+            const el = document.getElementById(id)!;
+            const sheet = document.querySelector(`.gp-sheet[data-page="${(window as any).Gutterpress.pageOf(el, (window as any).Gutterpress.strips) + 1}"]`)!;
+            return Math.round((el.getBoundingClientRect().left - sheet.getBoundingClientRect().left) * 100) / 100;
+          };
+          const fits = document.getElementById("fits")!.getBoundingClientRect();
+          return { t1: left("t1"), t2: left("t2"), fits: left("fits"), fitsWidth: fits.width };
+        });
+        expect(text.t1).toBeCloseTo(boxes[0]!.x, 1);
+        expect(text.t2).toBeCloseTo(boxes[1]!.x, 1);
+        // a bar that exactly fills the verso's content box is exactly the box
+        expect(text.fits).toBeCloseTo(boxes[1]!.x, 1);
+        expect(text.fitsWidth).toBeCloseTo(boxes[1]!.w, 1);
+
+        // each box sits on its sheet, whatever the zoom
+        for (const d of await page.evaluate(alignment)) expect(d).toBeLessThan(0.5);
+        await page.evaluate(() => document.documentElement.style.setProperty("--gutterpress-zoom", "0.5"));
+        for (const d of await page.evaluate(alignment)) expect(d).toBeLessThan(0.5);
+        const half = await page.evaluate(marginsBoxes);
+        for (const [i, b] of half.entries()) {
+          // on screen the box is half the size, and still the same fraction of its sheet
+          expect(b.x).toBeCloseTo(boxes[i]!.x / 2, 1);
+          expect(b.w).toBeCloseTo(boxes[i]!.w / 2, 1);
+        }
+        // and a thin solid line at any zoom: about one pixel on screen
+        const line = await page.evaluate(() => {
+          const el = document.querySelector("gp-overlay")!.shadowRoot!.querySelector(".gp-ov-margins")!;
+          const zoom = new DOMMatrixReadOnly(getComputedStyle(document.body).transform).a || 1;
+          return parseFloat(getComputedStyle(el).borderTopWidth) * zoom;
+        });
+        expect(line).toBeGreaterThanOrEqual(0.9);
+        expect(line).toBeLessThanOrEqual(1.1);
+      } finally {
+        await page.close();
+      }
+    }, "mirrored-sheets.html");
+  },
+  RENDER_TEST_TIMEOUT_MS,
+);
+
+testIf(
+  "margins: a book whose recto and verso margins are the same draws the same box on both",
+  async () => {
+    await withFixture(
+      async (url) => {
+        const page = await (await getBrowser()).newPage();
+        try {
+          await page.goto(url);
+          await page.waitForFunction("window.Gutterpress?.totalPages > 0");
+          await page.evaluate(() => (window as any).Gutterpress.decoration.setOverlay({ margins: true }));
+          for (const b of await page.evaluate(marginsBoxes)) {
+            expect([b.x, b.y, b.w, b.h].map((n) => Math.round(n))).toEqual([40, 40, 320, 420]);
+          }
+        } finally {
+          await page.close();
+        }
+      },
+      "mirrored-sheets.html",
+      // drop the pair of mirrored rules: both sides take `@page { margin: 40px }`
+      (html) => html.replace("margin-left: 30px; margin-right: 50px;", "").replace("margin-left: 50px; margin-right: 30px;", ""),
+    );
+  },
+  RENDER_TEST_TIMEOUT_MS,
+);
+
+testIf(
+  "margins: the blank pages appended to fill a signature are plain sheets, with no margins of their own to draw",
+  async () => {
+    await withFixture(
+      async (url) => {
+        const page = await (await getBrowser()).newPage();
+        try {
+          await page.goto(url);
+          await page.waitForFunction("window.Gutterpress?.totalPages > 0");
+          // six pages of content, padded to a signature of four: pages 7 and 8 are the PDF build's blanks
+          expect(await page.evaluate(() => document.querySelectorAll(".gp-sheet").length)).toBe(8);
+          await page.evaluate(() => (window as any).Gutterpress.decoration.setOverlay({ margins: true }));
+          const boxes = await page.evaluate(() =>
+            Array.from(document.querySelector("gp-overlay")!.shadowRoot!.querySelectorAll<HTMLElement>(".gp-ov-page")).map(
+              (pg) => [Number(pg.dataset.page), pg.querySelectorAll(".gp-ov-margins").length],
+            ),
+          );
+          expect(boxes).toEqual([[1, 1], [2, 1], [3, 1], [4, 1], [5, 1], [6, 1], [7, 0], [8, 0]]);
+        } finally {
+          await page.close();
+        }
+      },
+      "mirrored-sheets.html",
+      (html) => html.replace("<html>", '<html data-gp-signature="4">'),
+    );
+  },
+  RENDER_TEST_TIMEOUT_MS,
+);
+
+testIf(
+  "the legend: a row per enabled layer with its values, where they come from, what was found, in a corner that does not move",
+  async () => {
+    await withFixture(async (url) => {
+      const page = await (await getBrowser()).newPage();
+      try {
+        await page.goto(url);
+        await page.waitForFunction("window.Gutterpress?.totalPages > 0");
+        const legend = (state: unknown = true) =>
+          page.evaluate((s: unknown) => {
+            (window as any).Gutterpress.decoration.setOverlay(s);
+            const shadow = document.querySelector("gp-overlay")!.shadowRoot!;
+            const el = shadow.querySelector<HTMLElement>(".gp-ov-legend");
+            if (!el) return null;
+            const link = el.querySelector("a");
+            const r = el.getBoundingClientRect();
+            const rows = Array.from(el.querySelectorAll(".gp-ov-row"));
+            return {
+              rows: rows.map((row) => row.textContent),
+              swatches: Array.from(el.querySelectorAll<HTMLElement>(".gp-ov-swatch")).map((sw) => sw.dataset.layer),
+              lines: Array.from(el.children).filter((c) => !rows.includes(c)).map((c) => c.textContent),
+              link: link && { text: link.textContent, href: link.getAttribute("href"), target: link.target, rel: link.rel },
+              corner: { right: Math.round(innerWidth - r.right), bottom: Math.round(innerHeight - r.bottom), w: Math.round(r.width), h: Math.round(r.height) },
+              inRoot: el.closest(".root") !== null,
+              legendPointer: getComputedStyle(el).pointerEvents,
+            };
+          }, state);
+
+        // all three layers (the fixture's meta is DriveThruRPG's rules, scaled: bleed 9pt, text 18pt, art 9pt)
+        const all = (await legend())!;
+        expect(all.rows).toEqual([
+          "Bleed 0.125in — top, bottom, outside; none at the binding",
+          "Safe area — text 0.25in; art 0.125in (0.25in at the binding)",
+          "Page margins — your stylesheet's @page margins",
+        ]);
+        expect(all.swatches).toEqual(["bleed", "safe", "margins"]);
+        // where the numbers come from: the printer's spec, as a link that opens elsewhere
+        expect(all.link).toEqual({ text: SPEC_LABEL, href: SPEC_URL, target: "_blank", rel: "noopener" });
+        expect(all.lines).toEqual([
+          `from ${SPEC_LABEL}`,
+          "3 text outside the safe area · 4 art outside · 3 in the bleed band · 1 off the page · 1 placed on purpose",
+        ]);
+        expect(all.inRoot).toBe(true);
+
+        // each row follows its layer; the source is shown only where the printer's numbers are; counts only with the safe layer
+        expect((await legend({ bleed: true }))!).toMatchObject({
+          rows: ["Bleed 0.125in — top, bottom, outside; none at the binding"],
+          lines: [`from ${SPEC_LABEL}`],
+        });
+        expect((await legend({ safe: true }))!).toMatchObject({
+          rows: ["Safe area — text 0.25in; art 0.125in (0.25in at the binding)"],
+          lines: [`from ${SPEC_LABEL}`, expect.stringMatching(/^3 text outside the safe area · 4 art outside/)],
+        });
+        const onlyMargins = (await legend({ margins: true }))!;
+        expect(onlyMargins.rows).toEqual(["Page margins — your stylesheet's @page margins"]);
+        expect(onlyMargins.lines).toEqual([]);
+        expect(onlyMargins.link).toBeNull();
+
+        // the host binds a key only in the standalone preview; the legend claims it only then
+        expect(all.lines).not.toContain("Alt+M hides");
+        await page.evaluate(() => (document.documentElement.dataset.overlayKey = "Alt+M"));
+        expect((await legend())!.lines.at(-1)).toBe("Alt+M hides");
+
+        // fixed in the corner of the viewport: scrolling and zooming the book do not move or scale it
+        const corner = (await legend())!.corner;
+        expect(corner.right).toBe(12);
+        expect(corner.bottom).toBe(12);
+        await page.evaluate(() => scrollTo(0, 400));
+        expect(await page.evaluate(() => scrollY)).toBeGreaterThan(0); // the book really moved under the legend
+        await page.evaluate(() => document.documentElement.style.setProperty("--gutterpress-zoom", "0.5"));
+        expect((await page.evaluate(() => {
+          const r = document.querySelector("gp-overlay")!.shadowRoot!.querySelector(".gp-ov-legend")!.getBoundingClientRect();
+          return { right: Math.round(innerWidth - r.right), bottom: Math.round(innerHeight - r.bottom), w: Math.round(r.width), h: Math.round(r.height) };
+        }))).toEqual(corner);
+        await page.evaluate(() => document.documentElement.style.removeProperty("--gutterpress-zoom"));
+        await page.evaluate(() => scrollTo(0, 0));
+
+        // the pointer: the legend takes it (its link must be clickable); nothing else the overlay draws does
+        const pointer = await page.evaluate(() => {
+          const shadow = document.querySelector("gp-overlay")!.shadowRoot!;
+          const link = shadow.querySelector("a")!.getBoundingClientRect();
+          const flagged = document.getElementById("text-near")!.getBoundingClientRect();
+          const at = (x: number, y: number) => document.elementFromPoint(x, y);
+          return {
+            legend: getComputedStyle(shadow.querySelector(".gp-ov-legend")!).pointerEvents,
+            host: getComputedStyle(document.querySelector("gp-overlay")!).pointerEvents,
+            root: getComputedStyle(shadow.querySelector(".root")!).pointerEvents,
+            flag: getComputedStyle(shadow.querySelector(".gp-ov-flag")!).pointerEvents,
+            margins: getComputedStyle(shadow.querySelector(".gp-ov-margins")!).pointerEvents,
+            linkHit: shadow.elementFromPoint(link.left + link.width / 2, link.top + link.height / 2)?.tagName,
+            // over a flagged line the book is still what is under the pointer
+            bookHit: at(flagged.left + 20, flagged.top + flagged.height / 2)?.id,
+          };
+        });
+        expect(pointer).toEqual({ legend: "auto", host: "none", root: "none", flag: "none", margins: "none", linkHit: "A", bookHit: "text-near" });
+
+        // and it is not part of a printed page
+        const hiddenForPrint = await page.evaluate(() => {
+          const sheet = document.querySelector("gp-overlay")!.shadowRoot!.querySelector("style")!.sheet!;
+          const print = Array.from(sheet.cssRules).find((r) => r instanceof CSSMediaRule && r.media.mediaText === "print") as CSSMediaRule;
+          return Array.from(print.cssRules).some((r) => (r as CSSStyleRule).selectorText === ".root" && (r as CSSStyleRule).style.display === "none");
+        });
+        expect(hiddenForPrint).toBe(true);
+      } finally {
+        await page.close();
+      }
+    });
+  },
+  RENDER_TEST_TIMEOUT_MS,
+);
+
+testIf(
+  "the legend says what the project has not set, where its numbers come from without a spec, and when everything is inside",
+  async () => {
+    await withFixture(async (url) => {
+      const page = await (await getBrowser()).newPage();
+      try {
+        await page.goto(url);
+        await page.waitForFunction("window.Gutterpress?.totalPages > 0");
+        // this book (a 400x500px sheet, every line inside it) has no <meta> of its own: add the project's geometry
+        const legendFor = (content: string) =>
+          page.evaluate((c: string) => {
+            document.querySelector('meta[name="gp-print-area"]')?.remove();
+            const meta = document.createElement("meta");
+            meta.name = "gp-print-area";
+            meta.content = c;
+            document.head.appendChild(meta);
+            (window as any).Gutterpress.decoration.setOverlay(true);
+            const el = document.querySelector("gp-overlay")!.shadowRoot!.querySelector(".gp-ov-legend")!;
+            const rows = Array.from(el.querySelectorAll(".gp-ov-row"));
+            return {
+              rows: rows.map((r) => r.textContent),
+              lines: Array.from(el.children).filter((x) => !rows.includes(x)).map((x) => x.textContent),
+              links: el.querySelectorAll("a").length,
+            };
+          }, content);
+
+        // nothing set: say so, name the manifest key, and a book with nothing outside is told so
+        expect(await legendFor('{"width":300,"height":375}')).toEqual({
+          rows: [
+            "Bleed — none set (page.bleed in manifest.yaml)",
+            "Safe area — none set (page.safe in manifest.yaml)",
+            "Page margins — your stylesheet's @page margins",
+          ],
+          lines: ["from manifest.yaml", "everything inside the safe area"],
+          links: 0,
+        });
+
+        // a preset without a spec of its own: the numbers are the manifest's; one rule for text and art reads as one distance
+        expect(await legendFor('{"width":300,"height":375,"bleed":9,"safe":18,"preset":"book"}')).toMatchObject({
+          rows: [
+            "Bleed 0.125in — top, bottom, outside; none at the binding",
+            "Safe area — text and art 0.25in, every edge",
+            "Page margins — your stylesheet's @page margins",
+          ],
+          lines: ["from manifest.yaml (preset book)", expect.any(String)],
+          links: 0,
+        });
+
+        // a spec is a link only when its address is a web address
+        const spec = (url: string) =>
+          legendFor(`{"width":300,"height":375,"bleed":9,"safe":18,"preset":"dtrpg","spec":{"label":"A spec","url":${JSON.stringify(url)}}}`);
+        expect((await spec("https://example.com/spec")).links).toBe(1);
+        const unsafe = await spec("javascript:alert(1)");
+        expect(unsafe.links).toBe(0);
+        expect(unsafe.lines[0]).toBe("from manifest.yaml (preset dtrpg)");
+      } finally {
+        await page.close();
+      }
+    }, "mirrored-sheets.html");
   },
   RENDER_TEST_TIMEOUT_MS,
 );

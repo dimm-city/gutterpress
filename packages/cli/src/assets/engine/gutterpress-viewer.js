@@ -2142,19 +2142,31 @@
     return worst;
   }
   var INTENT_SELECTOR = ".gp-bleed, .gp-pin, .gp-flush, .gp-behind, .gp-page-full-bleed";
+  var OVERLAY_LAYERS = ["bleed", "safe", "margins"];
+  function layersFrom(state) {
+    const named = state && typeof state === "object" ? state : null;
+    const on = (layer) => named ? named[layer] === true : !!state;
+    return { bleed: on("bleed"), safe: on("safe"), margins: on("margins") };
+  }
   var OVERLAY_STRENGTHS = ["subtle", "normal", "strong"];
   var HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
   function sanitizeOverlayStyle(style) {
     const s = style && typeof style === "object" ? style : {};
+    const given = s.colors && typeof s.colors === "object" ? s.colors : {};
+    const hex = (v) => typeof v === "string" && HEX_COLOR.test(v.trim()) ? v.trim() : undefined;
     const out = {};
-    if (typeof s.color === "string" && HEX_COLOR.test(s.color.trim()))
-      out.color = s.color.trim();
+    for (const layer of OVERLAY_LAYERS) {
+      const color = hex(given[layer]) ?? (layer === "safe" ? hex(s.color) : undefined);
+      if (color)
+        (out.colors ??= {})[layer] = color;
+    }
     if (OVERLAY_STRENGTHS.includes(s.strength))
       out.strength = s.strength;
     return out;
   }
   var OVERLAY_OFF = {
     on: false,
+    layers: { bleed: false, safe: false, margins: false },
     issues: 0,
     intended: 0,
     bleedPt: 0,
@@ -2172,7 +2184,7 @@
       if (!n(v.width) || !n(v.height))
         return null;
       const safe = n(v.safe);
-      const spec = v.spec && typeof v.spec.label === "string" && typeof v.spec.url === "string" ? v.spec : undefined;
+      const spec = v.spec && typeof v.spec.label === "string" && typeof v.spec.url === "string" && /^https?:\/\//i.test(v.spec.url) ? v.spec : undefined;
       return {
         width: n(v.width),
         height: n(v.height),
@@ -2192,14 +2204,15 @@
   }
   var OVERLAY_CSS = `
 .root {
-  --gp-ov-color: #2f80ed;       /* safe-area lines + the tint outside the text line */
+  --gp-ov-color: #2f80ed;       /* safe layer: its two lines + the tint outside the text line */
   --gp-ov-width: 2px;           /* line width as seen on screen, at any zoom */
   --gp-ov-style: dashed;        /* text safe line style */
   --gp-ov-art-style: dotted;    /* art safe line style */
   --gp-ov-tint: 0.1;            /* opacity of the tint between the text line and the trim */
-  --gp-ov-bleed-color: #e5484d; /* bleed band */
+  --gp-ov-bleed-color: #e5484d; /* bleed layer: the band, and (darker) the trim line */
   --gp-ov-bleed-alpha: 0.45;    /* opacity of the bleed band */
-  --gp-ov-trim-color: #8a0b18;  /* the trim line: darker than the band so it reads as an edge */
+  --gp-ov-trim-color: color-mix(in srgb, var(--gp-ov-bleed-color) 60%, #000); /* darker than the band so it reads as an edge */
+  --gp-ov-margins-color: #1a9c6b; /* margins layer: the page's own content box */
   --gp-ov-flag-width: 2px;      /* overflow flag outline */
   --gp-ov-warn: #f59e0b;        /* leaves the safe area */
   --gp-ov-error: #e5484d;       /* crosses the trim / leaves the sheet */
@@ -2208,9 +2221,17 @@
      zoom; dividing by it keeps lines the same width on screen at every zoom. */
   --gp-ov-w: calc(var(--gp-ov-width) / var(--gp-ov-z, 1));
   --gp-ov-flag-w: calc(var(--gp-ov-flag-width) / var(--gp-ov-z, 1));
+  --gp-ov-margins-w: calc(1px / var(--gp-ov-z, 1)); /* thin, whatever the strength */
   position: absolute;
   inset: 0;
   pointer-events: none;
+}
+/* the stage's zoomed copy, holding the pages' boxes; the legend sits beside it, not in it */
+.gp-ov-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
 }
 .root[data-strength="subtle"] {
   --gp-ov-width: 1px;
@@ -2223,7 +2244,7 @@
   --gp-ov-bleed-alpha: 0.65;
   --gp-ov-flag-width: 3px;
 }
-.gp-ov-page, .gp-ov-tint, .gp-ov-safe, .gp-ov-art, .gp-ov-bleed, .gp-ov-trim, .gp-ov-flag {
+.gp-ov-page, .gp-ov-tint, .gp-ov-safe, .gp-ov-art, .gp-ov-bleed, .gp-ov-trim, .gp-ov-margins, .gp-ov-flag {
   position: absolute;
   box-sizing: border-box;
 }
@@ -2248,6 +2269,10 @@
   outline: var(--gp-ov-w) solid var(--gp-ov-trim-color);
   outline-offset: calc(-1 * var(--gp-ov-w));
 }
+/* margins: the page's own content box, a thin solid line */
+.gp-ov-margins {
+  border: var(--gp-ov-margins-w) solid var(--gp-ov-margins-color);
+}
 /* overflow flags: outline + faint tint, never a box change */
 .gp-ov-flag[data-kind="unsafe"] {
   outline: var(--gp-ov-flag-w) solid var(--gp-ov-warn);
@@ -2261,6 +2286,37 @@
 .gp-ov-flag[data-kind="intended"] {
   outline: var(--gp-ov-flag-w) dotted var(--gp-ov-intent);
 }
+/* the legend: small, fixed in a corner of the viewport, and the one part that takes the pointer (its link) */
+.gp-ov-legend {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  box-sizing: border-box;
+  max-width: min(360px, calc(100vw - 24px));
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(20, 20, 24, 0.92);
+  color: #fff;
+  font: 11px/1.45 ui-sans-serif, system-ui, sans-serif;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+}
+.gp-ov-legend > div + div { margin-top: 3px; }
+.gp-ov-legend a { color: #9cc2ff; }
+.gp-ov-row { display: flex; align-items: flex-start; gap: 6px; }
+.gp-ov-swatch {
+  flex: none;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  margin-top: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 2px;
+}
+.gp-ov-swatch[data-layer="bleed"] { background: var(--gp-ov-bleed-color); }
+.gp-ov-swatch[data-layer="safe"] { background: var(--gp-ov-color); }
+.gp-ov-swatch[data-layer="margins"] { background: var(--gp-ov-margins-color); }
+.gp-ov-note { opacity: 0.75; }
 @media print {
   .root { display: none; }
 }
@@ -2284,24 +2340,32 @@
     "mask: none",
     "z-index: 2147483647",
     "pointer-events: none",
-    "transform-origin: 0 0",
     "contain: style"
   ].map((d) => `${d} !important`).join("; ");
   var OVERLAY_TAG = "gp-overlay";
   var host = null;
   var root = null;
+  var canvas = null;
   var observer = null;
   var currentStyle = {};
+  var COLOR_TOKEN = {
+    bleed: "--gp-ov-bleed-color",
+    safe: "--gp-ov-color",
+    margins: "--gp-ov-margins-color"
+  };
   function applyStyle() {
     if (!root)
       return;
     if (currentStyle.strength)
       root.dataset.strength = currentStyle.strength;
-    if (currentStyle.color)
-      root.style.setProperty("--gp-ov-color", currentStyle.color);
+    for (const layer of OVERLAY_LAYERS) {
+      const color = currentStyle.colors?.[layer];
+      if (color)
+        root.style.setProperty(COLOR_TOKEN[layer], color);
+    }
   }
   function setOverlayStyle(style) {
-    currentStyle = { ...currentStyle, ...style };
+    currentStyle = { ...currentStyle, ...style, colors: { ...currentStyle.colors, ...style.colors } };
     applyStyle();
   }
   function stageFrame() {
@@ -2311,32 +2375,33 @@
     return { left: r.left, top: r.top, zoom: zoom || 1 };
   }
   function syncToStage() {
-    if (!host || !root)
+    if (!root || !canvas)
       return;
     const { left, top, zoom } = stageFrame();
-    host.style.setProperty("transform", `translate(${left + window.scrollX}px, ${top + window.scrollY}px) scale(${zoom})`, "important");
+    canvas.style.transform = `translate(${left + window.scrollX}px, ${top + window.scrollY}px) scale(${zoom})`;
     root.style.setProperty("--gp-ov-z", String(zoom));
   }
   function ensureRoot() {
-    if (host && root && host.isConnected) {
-      root.textContent = "";
-      return root;
+    if (!(host && root && host.isConnected)) {
+      host = document.createElement(OVERLAY_TAG);
+      host.setAttribute("style", HOST_STYLE);
+      const shadow = host.attachShadow({ mode: "open" });
+      const sheet = document.createElement("style");
+      sheet.textContent = OVERLAY_CSS;
+      root = document.createElement("div");
+      root.className = "root";
+      shadow.append(sheet, root);
+      document.documentElement.appendChild(host);
+      applyStyle();
+      observer = new MutationObserver(syncToStage);
+      observer.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
+      observer.observe(document.body, { attributes: true, attributeFilter: ["style"] });
     }
-    host = document.createElement(OVERLAY_TAG);
-    host.setAttribute("style", HOST_STYLE);
-    host.setAttribute("aria-hidden", "true");
-    const shadow = host.attachShadow({ mode: "open" });
-    const sheet = document.createElement("style");
-    sheet.textContent = OVERLAY_CSS;
-    root = document.createElement("div");
-    root.className = "root";
-    shadow.append(sheet, root);
-    document.documentElement.appendChild(host);
-    applyStyle();
-    observer = new MutationObserver(syncToStage);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
-    observer.observe(document.body, { attributes: true, attributeFilter: ["style"] });
-    return root;
+    root.textContent = "";
+    canvas = div("gp-ov-canvas");
+    canvas.setAttribute("aria-hidden", "true");
+    root.appendChild(canvas);
+    return canvas;
   }
   function clearOverlay() {
     observer?.disconnect();
@@ -2344,6 +2409,7 @@
     host?.remove();
     host = null;
     root = null;
+    canvas = null;
   }
   function div(cls, box) {
     const el = document.createElement("div");
@@ -2365,11 +2431,83 @@
     el.style.clipPath = `polygon(evenodd, ${t.x}px ${t.y}px, ${t.x + t.w}px ${t.y}px, ${t.x + t.w}px ${t.y + t.h}px, ${t.x}px ${t.y + t.h}px, ${t.x}px ${t.y}px, ` + `${s.x}px ${s.y}px, ${s.x}px ${s.y + s.h}px, ${s.x + s.w}px ${s.y + s.h}px, ${s.x + s.w}px ${s.y}px, ${s.x}px ${s.y}px)`;
     return el;
   }
+  function marginsBox(p, side) {
+    const { width, height, margin } = p.strip.geometry;
+    const shift = side === "verso" ? p.strip.versoShift : 0;
+    const left = margin.left - shift;
+    const right = margin.right + shift;
+    return {
+      x: left * PX_PER_PT,
+      y: margin.top * PX_PER_PT,
+      w: Math.max(0, width - left - right) * PX_PER_PT,
+      h: Math.max(0, height - margin.top - margin.bottom) * PX_PER_PT
+    };
+  }
   var TOL_PX = 1;
   var SKIP = new Set(["SCRIPT", "STYLE", "LINK", "TEMPLATE", "BR", "WBR", "SOURCE", "TRACK", "META"]);
   var ART_TAGS = new Set(["img", "svg", "video", "canvas"]);
   var inches = (px) => +(Math.abs(px) / 96).toFixed(2);
-  function paintOverlay(pages, strips, area) {
+  var ptIn = (pt2) => `${+(pt2 / 72).toFixed(3)}in`;
+  function legend(layers, area, summary) {
+    const el = div("gp-ov-legend");
+    const add = (cls, ...content) => {
+      const line = div(cls);
+      line.append(...content);
+      el.appendChild(line);
+    };
+    const row = (layer, name, text) => {
+      const swatch = div("gp-ov-swatch");
+      swatch.dataset.layer = layer;
+      const bold = document.createElement("b");
+      bold.textContent = name;
+      const label = document.createElement("span");
+      label.append(bold, text);
+      add("gp-ov-row", swatch, label);
+    };
+    const { bleedPt, safePt, artSafePt, counts } = summary;
+    if (layers.bleed) {
+      row("bleed", "Bleed", bleedPt > 0 ? ` ${ptIn(bleedPt)} — top, bottom, outside; none at the binding` : " — none set (page.bleed in manifest.yaml)");
+    }
+    if (layers.safe) {
+      const text = ptIn(safePt);
+      row("safe", "Safe area", safePt <= 0 && artSafePt <= 0 ? " — none set (page.safe in manifest.yaml)" : artSafePt === safePt ? ` — text and art ${text}, every edge` : ` — text ${text}; art ${ptIn(artSafePt)} (${text} at the binding)`);
+    }
+    if (layers.margins)
+      row("margins", "Page margins", " — your stylesheet's @page margins");
+    if (area && (layers.bleed || layers.safe)) {
+      if (area.spec) {
+        const link = document.createElement("a");
+        link.href = area.spec.url;
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.textContent = area.spec.label;
+        add("gp-ov-note", "from ", link);
+      } else {
+        add("gp-ov-note", `from manifest.yaml${area.preset ? ` (preset ${area.preset})` : ""}`);
+      }
+    }
+    if (layers.safe) {
+      const found = [];
+      if (counts.text)
+        found.push(`${counts.text} text outside the safe area`);
+      if (counts.art)
+        found.push(`${counts.art} art outside${counts.text ? "" : " the safe area"}`);
+      if (counts.bleed)
+        found.push(`${counts.bleed} in the bleed band`);
+      if (counts.offPage)
+        found.push(`${counts.offPage} off the page`);
+      if (!found.length)
+        found.push("everything inside the safe area");
+      if (counts.intended)
+        found.push(`${counts.intended} placed on purpose`);
+      add("gp-ov-found", found.join(" · "));
+    }
+    const key = document.documentElement.dataset.overlayKey;
+    if (key)
+      add("gp-ov-note", `${key} hides`);
+    return el;
+  }
+  function paintOverlay(pages, strips, area, layers) {
     const layer = ensureRoot();
     syncToStage();
     const stage = stageFrame();
@@ -2385,7 +2523,7 @@
         h: boxes.sheet.h
       });
       host2.dataset.page = String(p.index + 1);
-      if (boxes.bleed > 0) {
+      if (layers.bleed && boxes.bleed > 0) {
         const sh = boxes.sheet;
         const t = boxes.trim;
         const band = div("gp-ov-bleed", sh);
@@ -2393,12 +2531,15 @@
         host2.appendChild(band);
         host2.appendChild(div("gp-ov-trim", t));
       }
-      if (area && area.safe > 0) {
+      if (layers.safe && area && area.safe > 0) {
         host2.appendChild(unsafeTint(boxes));
         host2.appendChild(div("gp-ov-safe", boxes.safe));
       }
-      if (area && area.artSafe > 0 && area.artSafe !== area.safe)
+      if (layers.safe && area && area.artSafe > 0 && area.artSafe !== area.safe) {
         host2.appendChild(div("gp-ov-art", boxes.safeArt));
+      }
+      if (layers.margins && !p.padded)
+        host2.appendChild(div("gp-ov-margins", marginsBox(p, side)));
       layer.appendChild(host2);
       painted.set(p.index, { host: host2, boxes, sheet: p.sheet, rect });
     }
@@ -2408,6 +2549,8 @@
     const range = document.createRange();
     const source = area?.spec?.label ?? "the safe area";
     const inspect = (root2, pageOf2, zoom) => {
+      if (!layers.safe)
+        return;
       const judge = (el, rule, rects) => {
         for (const r of rects) {
           if (r.width <= 0 && r.height <= 0)
@@ -2484,8 +2627,9 @@
       el.title = f.title;
       f.host.appendChild(el);
     }
-    return {
+    const summary = {
       on: true,
+      layers,
       issues: counts.text + counts.art + counts.bleed + counts.offPage,
       intended: counts.intended,
       bleedPt: area?.bleed ?? 0,
@@ -2493,6 +2637,8 @@
       artSafePt: area?.artSafe ?? 0,
       counts
     };
+    root?.appendChild(legend(layers, area, summary));
+    return summary;
   }
 
   // src/engine/viewer/decorate.ts
@@ -2524,10 +2670,11 @@
     let paddedPages = new Set;
     const warnings = [];
     let overlayOn = false;
+    let overlayLayers = OVERLAY_OFF.layers;
     let overlayPages = [];
     let overlaySummary = OVERLAY_OFF;
     const paintOverlayNow = () => {
-      overlaySummary = paintOverlay(overlayPages, layout.strips, printAreaFromMeta());
+      overlaySummary = paintOverlay(overlayPages, layout.strips, printAreaFromMeta(), overlayLayers);
       window.dispatchEvent(new CustomEvent("gp:overlay", { detail: overlaySummary }));
     };
     const api = {
@@ -2540,20 +2687,29 @@
       setDesigner(on) {
         document.body.dataset.designer = on ? "on" : "off";
       },
-      setOverlay(on, style) {
+      setOverlay(state, style) {
         if (style) {
           const clean = sanitizeOverlayStyle(style);
           setOverlayStyle(clean);
-          if (clean.strength)
-            document.body.dataset.overlayStrength = clean.strength;
-          if (clean.color)
-            document.body.dataset.overlayColor = clean.color;
+          const { strength, colors } = clean;
+          if (strength)
+            document.body.dataset.overlayStrength = strength;
+          if (colors?.safe)
+            document.body.dataset.overlayColor = colors.safe;
+          if (colors?.bleed)
+            document.body.dataset.overlayBleedColor = colors.bleed;
+          if (colors?.margins)
+            document.body.dataset.overlayMarginsColor = colors.margins;
         }
         const wasOn = overlayOn;
-        overlayOn = on;
-        document.body.dataset.overlay = on ? "on" : "off";
-        if (on) {
-          if (!(wasOn && style))
+        const next = layersFrom(state);
+        const sameLayers = OVERLAY_LAYERS.every((layer) => next[layer] === overlayLayers[layer]);
+        overlayLayers = next;
+        overlayOn = OVERLAY_LAYERS.some((layer) => next[layer]);
+        document.body.dataset.overlay = overlayOn ? "on" : "off";
+        if (overlayOn) {
+          document.body.dataset.overlayLayers = OVERLAY_LAYERS.filter((layer) => next[layer]).join(",");
+          if (!(wasOn && sameLayers && style))
             paintOverlayNow();
         } else {
           clearOverlay();
@@ -2697,8 +2853,8 @@
       }
       if (!marked.length)
         return;
-      const canvas = document.createElement("canvas");
-      const cx = canvas.getContext("2d");
+      const canvas2 = document.createElement("canvas");
+      const cx = canvas2.getContext("2d");
       for (const m of marked)
         m.el.setAttribute(m.attr, m.raw.replace(LEADER_RE, ""));
       document.body.offsetHeight;
@@ -2762,7 +2918,7 @@
           drawMarginBoxes(sheet, ctx, layout.totalPages - paddedPages.size);
           drawGuides(sheet, ctx);
           drawCropMarks(sheet, ctx);
-          overlayPages.push({ index: bookIndex, sheet, strip });
+          overlayPages.push({ index: bookIndex, sheet, strip, padded: ctx.padded });
         }
         const rows = Math.max(1, Math.ceil((strip.pages + shift) / perRow));
         run.style.height = `${rowStride * (rows - 1) + PX_PER_PT * g.height}px`;

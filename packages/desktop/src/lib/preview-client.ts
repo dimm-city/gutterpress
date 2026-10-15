@@ -16,13 +16,15 @@ export interface PreviewEvent {
     | "blockEditRequested"
     | "blockEditFinished"
     | "blockEditStateChanged"
-    /** Safe area & bleed overlay turned on/off or repainted (protocol v9); detail is an OverlaySummary. */
+    /** Print overlays turned on/off or repainted (protocol v9); detail is an OverlaySummary. */
     | "overlayChanged"
     /** An Esc nothing in the book consumed (the app uses it to leave Focus). */
     | "escapePressed";
   detail: {
     /** overlayChanged: whether the overlay is showing. */
     on?: boolean;
+    /** overlayChanged: the layers that are drawn; counts are only judged while `safe` is one. */
+    layers?: { bleed?: boolean; safe?: boolean; margins?: boolean };
     /** overlayChanged: text and art that leave their safe area by accident, or the trim. */
     issues?: number;
     /** overlayChanged: placed-on-purpose art (`.gp-bleed`, `.gp-pin`, …) outside it — shown, not counted. */

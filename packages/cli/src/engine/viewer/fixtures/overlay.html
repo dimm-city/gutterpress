@@ -15,8 +15,8 @@
   overlay. Page 1 also carries a folio in its bottom margin: page furniture,
   judged like everything else.
 
-  The book's CSS also tries to hide, move and restyle the overlay; the test
-  asserts none of it lands.
+  The book's CSS also tries to hide, move and restyle the overlay (every layer
+  and its legend included); the test asserts none of it lands.
 -->
 <!doctype html>
 <html>
@@ -45,8 +45,8 @@
 
       /* A book (or a plugin) reaching for the overlay. None of this may land. */
       gp-overlay { display: none !important; transform: translate(300px, 300px) !important; opacity: 0 !important; }
-      :root, body { --gp-ov-color: #ff0000; --gp-ov-width: 9px; }
-      .gp-ov-safe, .gp-ov-art, .gp-ov-page { display: none !important; }
+      :root, body { --gp-ov-color: #ff0000; --gp-ov-bleed-color: #ff0000; --gp-ov-margins-color: #ff0000; --gp-ov-width: 9px; }
+      .gp-ov-safe, .gp-ov-art, .gp-ov-page, .gp-ov-margins, .gp-ov-bleed, .gp-ov-legend { display: none !important; }
       div { outline-color: #ff0000 !important; border-color: #ff0000 !important; }
     </style>
   </head>

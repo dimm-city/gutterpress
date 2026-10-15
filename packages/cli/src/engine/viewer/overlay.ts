@@ -1,49 +1,66 @@
 /**
- * Safe area & bleed overlay (viewer chrome — PERMANENT tooling, not a shim).
+ * Print overlays (viewer chrome — PERMANENT tooling, not a shim).
  *
- * An author-facing review aid: while it is on, every page in the preview shows
- * the printer's two safe lines — text (dashed, with the band between it and the
- * trim tinted) and art (dotted) — the trim, and the bleed band (translucent).
- * It judges the book's INK against the rule that applies to it, the way the
- * printer does: each line of text (a text node's glyph rects) against the TEXT
- * box; images, media and any box that paints (a background or a border) against
- * the ART box, edge by edge — an edge that runs out to the sheet's edge is a
- * bleed done right and passes. A container that paints nothing is never
- * flagged, only what it holds, and page furniture (folios, running heads) is
- * judged the same way. A flag is amber when the ink stays on the trimmed page,
- * red when it crosses the trim into the bleed or off the sheet. Art the author
- * placed on purpose (`.gp-bleed`, `.gp-pin`, `.gp-flush`, `.gp-behind`) is
- * outlined softly in violet and not counted.
+ * An author-facing review aid of three independent layers, each with its own
+ * colour, its own toggle and its own row in the legend:
+ *  - `bleed`    the bleed band (translucent) and the trim line;
+ *  - `safe`     the printer's two safe lines — text (dashed, with the band
+ *               between it and the trim tinted) and art (dotted) — and every
+ *               flag the layer raises;
+ *  - `margins`  the page's own content box, the sheet inset by that page's
+ *               `@page` margins, as a thin solid line. It is the BOOK's
+ *               choice, not the printer's, and the legend says so.
  *
- * WHERE THE GEOMETRY COMES FROM: the project's manifest and its preset, and
- * nothing else — `page.width` x `page.height` (the sheet), `page.bleed` (a bleed
- * the sheet already contains on the top, bottom and OUTER edge; the binding
- * edge has none, as DriveThruRPG cuts it), `page.safe` (the TEXT rule: its
- * inset from the trim on every edge) and `page.artSafe` (the ART rule: its
- * inset on the top, bottom and outer edge, while the binding edge takes `safe`;
- * absent = `safe`). Preview assembly hands them in as
+ * The `safe` layer judges the book's INK against the rule that applies to it,
+ * the way the printer does: each line of text (a text node's glyph rects)
+ * against the TEXT box; images, media and any box that paints (a background or
+ * a border) against the ART box, edge by edge — an edge that runs out to the
+ * sheet's edge is a bleed done right and passes. A container that paints
+ * nothing is never flagged, only what it holds, and page furniture (folios,
+ * running heads) is judged the same way. A flag is amber when the ink stays on
+ * the trimmed page, red when it crosses the trim into the bleed or off the
+ * sheet. Art the author placed on purpose (`.gp-bleed`, `.gp-pin`,
+ * `.gp-flush`, `.gp-behind`) is outlined softly in violet and not counted.
+ * With the layer off nothing is judged: no flags, and every count is 0.
+ *
+ * WHERE THE GEOMETRY COMES FROM. `bleed` and `safe`: the project's manifest and
+ * its preset, and nothing else — `page.width` x `page.height` (the sheet),
+ * `page.bleed` (a bleed the sheet already contains on the top, bottom and OUTER
+ * edge; the binding edge has none, as DriveThruRPG cuts it), `page.safe` (the
+ * TEXT rule: its inset from the trim on every edge) and `page.artSafe` (the ART
+ * rule: its inset on the top, bottom and outer edge, while the binding edge
+ * takes `safe`; absent = `safe`). Preview assembly hands them in as
  * `<meta name="gp-print-area">`, with the preset's id and the printer spec it
- * follows, which only word what is found. No book or plugin CSS feeds it: not
+ * follows, which only word what is found. No book or plugin CSS feeds them: not
  * the `@page` margins (they are where the author put the TEXT, which is not the
- * printer's safe area), not `@page { bleed }`. Each box is anchored on the top-
- * left of the sheet the viewer drew for that page, so it sits on the paper
- * wherever the paper is.
+ * printer's safe area), not `@page { bleed }`. `margins` is the one layer that
+ * IS the book's own CSS, and only its `@page` margins as the viewer resolved
+ * them: a recto's are the run's (`strip.geometry.margin`), a verso's swap by
+ * `versoShift` (decorate.ts). Each box is anchored on the top-left of the sheet
+ * the viewer drew for that page, so it sits on the paper wherever the paper is.
  *
  * WHERE IT IS DRAWN: one `<gp-overlay>` element on `<html>`, outside `<body>`
  * (the stage the book's CSS styles), with every property that could place,
  * hide or restyle it set inline and `!important`, and all of its content in a
  * shadow root with its own stylesheet and its own tokens. No selector in a
  * book or plugin stylesheet reaches inside, no custom property they set is
- * inherited by it, and it stacks above the whole book. It mirrors the stage's
- * zoom (a paint transform) and is re-synced when a host changes it.
+ * inherited by it, and it stacks above the whole book. The pages' boxes are
+ * mirrored onto the stage's zoom (a paint transform, re-synced when a host
+ * changes it) in one canvas; the LEGEND is not in that canvas, so it stays put
+ * in the corner of the viewport at any zoom or scroll. The legend names each
+ * enabled layer with its values in inches and the edges they apply to, where
+ * those numbers come from (the printer's spec as a link, else the manifest),
+ * what the `safe` layer found, and how to hide it. It is the only part that
+ * takes the pointer (its link must be clickable).
  *
  * How it looks is set in ONE place — the tokens in `OVERLAY_CSS` below. The app
- * lets a user change the colour and a three-step strength (`OverlayStyle`);
- * both only set a token on the overlay's own root, so nothing repaints.
+ * lets a user change each layer's colour and a three-step strength
+ * (`OverlayStyle`); both only set a token on the overlay's own root, so
+ * nothing repaints.
  *
  * What it never does: it adds no box to author content and no class or
  * attribute to author elements, so pagination is untouched (a test measures
- * page counts with the overlay off and on). It only exists while the overlay is
+ * page counts with the overlay off and on). It only exists while a layer is
  * on, is hidden for `@media print`, and is never part of a built PDF.
  *
  * Removal: delete this file and the `setOverlay` hook in decorate.ts. Nothing
@@ -177,32 +194,53 @@ export function classifyRect(
  */
 export const INTENT_SELECTOR = ".gp-bleed, .gp-pin, .gp-flush, .gp-behind, .gp-page-full-bleed";
 
+/** The three layers a host may turn on and off, each independently. */
+export const OVERLAY_LAYERS = ["bleed", "safe", "margins"] as const;
+export type OverlayLayer = (typeof OVERLAY_LAYERS)[number];
+export type OverlayLayers = Record<OverlayLayer, boolean>;
+
+/** `true` / `false` set all three layers; an object names the ones that are on (a layer it leaves out is off). */
+export function layersFrom(state: unknown): OverlayLayers {
+  const named = state && typeof state === "object" ? (state as Record<string, unknown>) : null;
+  const on = (layer: OverlayLayer) => (named ? named[layer] === true : !!state);
+  return { bleed: on("bleed"), safe: on("safe"), margins: on("margins") };
+}
+
 /**
- * The two knobs a host may turn. They carry no geometry: the overlay maps them
- * onto its own tokens, so "more or less prominent" and "which colour" are the
- * whole vocabulary.
+ * The knobs a host may turn besides the layers. They carry no geometry: the
+ * overlay maps them onto its own tokens, so "more or less prominent" and
+ * "which colour, per layer" are the whole vocabulary.
  */
 export const OVERLAY_STRENGTHS = ["subtle", "normal", "strong"] as const;
 export type OverlayStrength = (typeof OVERLAY_STRENGTHS)[number];
 export interface OverlayStyle {
-  /** safe-area outline + tint colour, `#rgb` / `#rrggbb` */
+  /** alias of `colors.safe` */
   color?: string;
+  /** each layer's colour, `#rgb` / `#rrggbb` */
+  colors?: Partial<Record<OverlayLayer, string>>;
   strength?: OverlayStrength;
 }
 
 const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
-/** Whatever a host sent, reduced to values the stylesheet can take; anything else is dropped. */
+/** Whatever a host sent, reduced to values the stylesheet can take (`color` folded into `colors.safe`); anything else is dropped. */
 export function sanitizeOverlayStyle(style: unknown): OverlayStyle {
   const s = (style && typeof style === "object" ? style : {}) as Record<string, unknown>;
+  const given = (s.colors && typeof s.colors === "object" ? s.colors : {}) as Record<string, unknown>;
+  const hex = (v: unknown) => (typeof v === "string" && HEX_COLOR.test(v.trim()) ? v.trim() : undefined);
   const out: OverlayStyle = {};
-  if (typeof s.color === "string" && HEX_COLOR.test(s.color.trim())) out.color = s.color.trim();
+  for (const layer of OVERLAY_LAYERS) {
+    const color = hex(given[layer]) ?? (layer === "safe" ? hex(s.color) : undefined);
+    if (color) (out.colors ??= {})[layer] = color;
+  }
   if (OVERLAY_STRENGTHS.includes(s.strength as OverlayStrength)) out.strength = s.strength as OverlayStrength;
   return out;
 }
 
 export interface OverlaySummary {
   on: boolean;
+  /** the layers that are drawn (all false when off) */
+  layers: OverlayLayers;
   /** ink that leaves its safe area by accident: `counts.text + art + bleed + offPage` */
   issues: number;
   /** intentional ink that leaves it on purpose (shown, not counted) */
@@ -219,6 +257,7 @@ export interface OverlaySummary {
 
 export const OVERLAY_OFF: OverlaySummary = {
   on: false,
+  layers: { bleed: false, safe: false, margins: false },
   issues: 0,
   intended: 0,
   bleedPt: 0,
@@ -233,6 +272,8 @@ export interface OverlayPage {
   index: number;
   sheet: HTMLElement;
   strip: StripInfo;
+  /** an appended signature-padding page: a plain sheet, with no `@page` margins of its own */
+  padded?: boolean;
 }
 
 /**
@@ -248,7 +289,11 @@ export function printAreaFromMeta(): PrintArea | null {
     const n = (x: unknown) => (typeof x === "number" && Number.isFinite(x) && x > 0 ? x : 0);
     if (!n(v.width) || !n(v.height)) return null;
     const safe = n(v.safe);
-    const spec = v.spec && typeof v.spec.label === "string" && typeof v.spec.url === "string" ? v.spec : undefined;
+    // the spec becomes a link in the legend: only a web address is one
+    const spec =
+      v.spec && typeof v.spec.label === "string" && typeof v.spec.url === "string" && /^https?:\/\//i.test(v.spec.url)
+        ? v.spec
+        : undefined;
     return {
       width: n(v.width),
       height: n(v.height),
@@ -279,14 +324,15 @@ function sheetArea(sheet: HTMLElement): PrintArea {
  */
 export const OVERLAY_CSS = `
 .root {
-  --gp-ov-color: #2f80ed;       /* safe-area lines + the tint outside the text line */
+  --gp-ov-color: #2f80ed;       /* safe layer: its two lines + the tint outside the text line */
   --gp-ov-width: 2px;           /* line width as seen on screen, at any zoom */
   --gp-ov-style: dashed;        /* text safe line style */
   --gp-ov-art-style: dotted;    /* art safe line style */
   --gp-ov-tint: 0.1;            /* opacity of the tint between the text line and the trim */
-  --gp-ov-bleed-color: #e5484d; /* bleed band */
+  --gp-ov-bleed-color: #e5484d; /* bleed layer: the band, and (darker) the trim line */
   --gp-ov-bleed-alpha: 0.45;    /* opacity of the bleed band */
-  --gp-ov-trim-color: #8a0b18;  /* the trim line: darker than the band so it reads as an edge */
+  --gp-ov-trim-color: color-mix(in srgb, var(--gp-ov-bleed-color) 60%, #000); /* darker than the band so it reads as an edge */
+  --gp-ov-margins-color: #1a9c6b; /* margins layer: the page's own content box */
   --gp-ov-flag-width: 2px;      /* overflow flag outline */
   --gp-ov-warn: #f59e0b;        /* leaves the safe area */
   --gp-ov-error: #e5484d;       /* crosses the trim / leaves the sheet */
@@ -295,9 +341,17 @@ export const OVERLAY_CSS = `
      zoom; dividing by it keeps lines the same width on screen at every zoom. */
   --gp-ov-w: calc(var(--gp-ov-width) / var(--gp-ov-z, 1));
   --gp-ov-flag-w: calc(var(--gp-ov-flag-width) / var(--gp-ov-z, 1));
+  --gp-ov-margins-w: calc(1px / var(--gp-ov-z, 1)); /* thin, whatever the strength */
   position: absolute;
   inset: 0;
   pointer-events: none;
+}
+/* the stage's zoomed copy, holding the pages' boxes; the legend sits beside it, not in it */
+.gp-ov-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
 }
 .root[data-strength="subtle"] {
   --gp-ov-width: 1px;
@@ -310,7 +364,7 @@ export const OVERLAY_CSS = `
   --gp-ov-bleed-alpha: 0.65;
   --gp-ov-flag-width: 3px;
 }
-.gp-ov-page, .gp-ov-tint, .gp-ov-safe, .gp-ov-art, .gp-ov-bleed, .gp-ov-trim, .gp-ov-flag {
+.gp-ov-page, .gp-ov-tint, .gp-ov-safe, .gp-ov-art, .gp-ov-bleed, .gp-ov-trim, .gp-ov-margins, .gp-ov-flag {
   position: absolute;
   box-sizing: border-box;
 }
@@ -335,6 +389,10 @@ export const OVERLAY_CSS = `
   outline: var(--gp-ov-w) solid var(--gp-ov-trim-color);
   outline-offset: calc(-1 * var(--gp-ov-w));
 }
+/* margins: the page's own content box, a thin solid line */
+.gp-ov-margins {
+  border: var(--gp-ov-margins-w) solid var(--gp-ov-margins-color);
+}
 /* overflow flags: outline + faint tint, never a box change */
 .gp-ov-flag[data-kind="unsafe"] {
   outline: var(--gp-ov-flag-w) solid var(--gp-ov-warn);
@@ -348,6 +406,37 @@ export const OVERLAY_CSS = `
 .gp-ov-flag[data-kind="intended"] {
   outline: var(--gp-ov-flag-w) dotted var(--gp-ov-intent);
 }
+/* the legend: small, fixed in a corner of the viewport, and the one part that takes the pointer (its link) */
+.gp-ov-legend {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  box-sizing: border-box;
+  max-width: min(360px, calc(100vw - 24px));
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(20, 20, 24, 0.92);
+  color: #fff;
+  font: 11px/1.45 ui-sans-serif, system-ui, sans-serif;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+}
+.gp-ov-legend > div + div { margin-top: 3px; }
+.gp-ov-legend a { color: #9cc2ff; }
+.gp-ov-row { display: flex; align-items: flex-start; gap: 6px; }
+.gp-ov-swatch {
+  flex: none;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  margin-top: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 2px;
+}
+.gp-ov-swatch[data-layer="bleed"] { background: var(--gp-ov-bleed-color); }
+.gp-ov-swatch[data-layer="safe"] { background: var(--gp-ov-color); }
+.gp-ov-swatch[data-layer="margins"] { background: var(--gp-ov-margins-color); }
+.gp-ov-note { opacity: 0.75; }
 @media print {
   .root { display: none; }
 }
@@ -378,7 +467,6 @@ const HOST_STYLE = [
   "mask: none",
   "z-index: 2147483647",
   "pointer-events: none",
-  "transform-origin: 0 0",
   "contain: style",
 ]
   .map((d) => `${d} !important`)
@@ -388,18 +476,30 @@ export const OVERLAY_TAG = "gp-overlay";
 
 let host: HTMLElement | null = null;
 let root: HTMLElement | null = null;
+/** the zoomed layer inside `root` that the pages' boxes are drawn in */
+let canvas: HTMLElement | null = null;
 let observer: MutationObserver | null = null;
 let currentStyle: OverlayStyle = {};
+
+/** The token each layer's colour sets on the root (`--gp-ov-color` is the safe layer's, as it was before there were layers). */
+const COLOR_TOKEN: Record<OverlayLayer, string> = {
+  bleed: "--gp-ov-bleed-color",
+  safe: "--gp-ov-color",
+  margins: "--gp-ov-margins-color",
+};
 
 function applyStyle(): void {
   if (!root) return;
   if (currentStyle.strength) root.dataset.strength = currentStyle.strength;
-  if (currentStyle.color) root.style.setProperty("--gp-ov-color", currentStyle.color);
+  for (const layer of OVERLAY_LAYERS) {
+    const color = currentStyle.colors?.[layer];
+    if (color) root.style.setProperty(COLOR_TOKEN[layer], color);
+  }
 }
 
 /** Remember the look and apply it to a showing overlay; no repaint. */
 export function setOverlayStyle(style: OverlayStyle): void {
-  currentStyle = { ...currentStyle, ...style };
+  currentStyle = { ...currentStyle, ...style, colors: { ...currentStyle.colors, ...style.colors } };
   applyStyle();
 }
 
@@ -411,41 +511,43 @@ function stageFrame(): { left: number; top: number; zoom: number } {
   return { left: r.left, top: r.top, zoom: zoom || 1 };
 }
 
-/** Line the overlay up with the stage: same origin, same zoom. */
+/** Line the canvas up with the stage: same origin, same zoom. */
 function syncToStage(): void {
-  if (!host || !root) return;
+  if (!root || !canvas) return;
   const { left, top, zoom } = stageFrame();
-  host.style.setProperty(
-    "transform",
-    `translate(${left + window.scrollX}px, ${top + window.scrollY}px) scale(${zoom})`,
-    "important",
-  );
+  canvas.style.transform = `translate(${left + window.scrollX}px, ${top + window.scrollY}px) scale(${zoom})`;
   root.style.setProperty("--gp-ov-z", String(zoom));
 }
 
+/**
+ * The overlay's root, created on first use and emptied on every call. Returns
+ * the canvas the pages' boxes go in (aria-hidden: they are decoration); the
+ * legend is appended to the root beside it, outside the stage's zoom.
+ */
 function ensureRoot(): HTMLElement {
-  if (host && root && host.isConnected) {
-    root.textContent = "";
-    return root;
+  if (!(host && root && host.isConnected)) {
+    host = document.createElement(OVERLAY_TAG);
+    host.setAttribute("style", HOST_STYLE);
+    const shadow = host.attachShadow({ mode: "open" });
+    const sheet = document.createElement("style");
+    sheet.textContent = OVERLAY_CSS;
+    root = document.createElement("div");
+    root.className = "root";
+    shadow.append(sheet, root);
+    document.documentElement.appendChild(host);
+    applyStyle();
+    // A host zooms by setting a custom property on <html> or <body>; the stage
+    // is a paint transform, so nothing re-lays out and no redraw follows. Keep
+    // the canvas's transform in step with it.
+    observer = new MutationObserver(syncToStage);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
+    observer.observe(document.body, { attributes: true, attributeFilter: ["style"] });
   }
-  host = document.createElement(OVERLAY_TAG);
-  host.setAttribute("style", HOST_STYLE);
-  host.setAttribute("aria-hidden", "true");
-  const shadow = host.attachShadow({ mode: "open" });
-  const sheet = document.createElement("style");
-  sheet.textContent = OVERLAY_CSS;
-  root = document.createElement("div");
-  root.className = "root";
-  shadow.append(sheet, root);
-  document.documentElement.appendChild(host);
-  applyStyle();
-  // A host zooms by setting a custom property on <html> or <body>; the stage
-  // is a paint transform, so nothing re-lays out and no redraw follows. Keep
-  // the overlay's transform in step with it.
-  observer = new MutationObserver(syncToStage);
-  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
-  observer.observe(document.body, { attributes: true, attributeFilter: ["style"] });
-  return root;
+  root.textContent = "";
+  canvas = div("gp-ov-canvas");
+  canvas.setAttribute("aria-hidden", "true");
+  root.appendChild(canvas);
+  return canvas;
 }
 
 export function clearOverlay(): void {
@@ -454,6 +556,7 @@ export function clearOverlay(): void {
   host?.remove();
   host = null;
   root = null;
+  canvas = null;
 }
 
 function div(cls: string, box?: Rect): HTMLDivElement {
@@ -481,6 +584,26 @@ function unsafeTint(b: PageBoxes): HTMLDivElement {
   return el;
 }
 
+/**
+ * The page's own content box in px, from the sheet's top-left: the sheet inset
+ * by that page's `@page` margins. A recto takes the run's (`strip.geometry`); a
+ * verso's left and right swap by `versoShift`, how far the run's text sits to
+ * the right of the verso's own left margin (decorate.ts), so the box lands
+ * where that page's text does.
+ */
+function marginsBox(p: OverlayPage, side: PageSide): Rect {
+  const { width, height, margin } = p.strip.geometry;
+  const shift = side === "verso" ? p.strip.versoShift : 0;
+  const left = margin.left - shift;
+  const right = margin.right + shift;
+  return {
+    x: left * PX_PER_PT,
+    y: margin.top * PX_PER_PT,
+    w: Math.max(0, width - left - right) * PX_PER_PT,
+    h: Math.max(0, height - margin.top - margin.bottom) * PX_PER_PT,
+  };
+}
+
 interface Painted {
   host: HTMLElement;
   boxes: PageBoxes;
@@ -504,16 +627,94 @@ const SKIP = new Set(["SCRIPT", "STYLE", "LINK", "TEMPLATE", "BR", "WBR", "SOURC
 const ART_TAGS = new Set(["img", "svg", "video", "canvas"]);
 /** CSS px to inches, as a number that reads without trailing zeros. */
 const inches = (px: number) => +(Math.abs(px) / 96).toFixed(2);
+/** pt to inches, as the legend words a rule ("0.125in"). */
+const ptIn = (pt: number) => `${+(pt / 72).toFixed(3)}in`;
 
 /**
- * Draw the overlay for `pages` and return what it found. Idempotent: the
- * previous drawing is replaced. `area` is the project's geometry
- * (`printAreaFromMeta()`); `null` falls back to each sheet's own size.
+ * The legend, in the root beside the canvas: one row per enabled layer (swatch,
+ * name, its values in inches and the edges they apply to), where the numbers
+ * come from, what the `safe` layer found, and — when the host binds a key for
+ * it (`<html data-overlay-key>`) — how to hide it. Everything is set as text;
+ * the only markup is the spec's link.
+ */
+function legend(layers: OverlayLayers, area: PrintArea | null, summary: OverlaySummary): HTMLElement {
+  const el = div("gp-ov-legend");
+  const add = (cls: string, ...content: Array<string | Node>) => {
+    const line = div(cls);
+    line.append(...content);
+    el.appendChild(line);
+  };
+  const row = (layer: OverlayLayer, name: string, text: string) => {
+    const swatch = div("gp-ov-swatch");
+    swatch.dataset.layer = layer;
+    const bold = document.createElement("b");
+    bold.textContent = name;
+    const label = document.createElement("span");
+    label.append(bold, text);
+    add("gp-ov-row", swatch, label);
+  };
+  const { bleedPt, safePt, artSafePt, counts } = summary;
+  if (layers.bleed) {
+    row(
+      "bleed",
+      "Bleed",
+      bleedPt > 0
+        ? ` ${ptIn(bleedPt)} — top, bottom, outside; none at the binding`
+        : " — none set (page.bleed in manifest.yaml)",
+    );
+  }
+  if (layers.safe) {
+    const text = ptIn(safePt);
+    row(
+      "safe",
+      "Safe area",
+      safePt <= 0 && artSafePt <= 0
+        ? " — none set (page.safe in manifest.yaml)"
+        : artSafePt === safePt
+          ? ` — text and art ${text}, every edge`
+          : ` — text ${text}; art ${ptIn(artSafePt)} (${text} at the binding)`,
+    );
+  }
+  if (layers.margins) row("margins", "Page margins", " — your stylesheet's @page margins");
+  if (area && (layers.bleed || layers.safe)) {
+    if (area.spec) {
+      const link = document.createElement("a");
+      link.href = area.spec.url;
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.textContent = area.spec.label;
+      add("gp-ov-note", "from ", link);
+    } else {
+      add("gp-ov-note", `from manifest.yaml${area.preset ? ` (preset ${area.preset})` : ""}`);
+    }
+  }
+  if (layers.safe) {
+    const found: string[] = [];
+    if (counts.text) found.push(`${counts.text} text outside the safe area`);
+    if (counts.art) found.push(`${counts.art} art outside${counts.text ? "" : " the safe area"}`);
+    if (counts.bleed) found.push(`${counts.bleed} in the bleed band`);
+    if (counts.offPage) found.push(`${counts.offPage} off the page`);
+    if (!found.length) found.push("everything inside the safe area");
+    if (counts.intended) found.push(`${counts.intended} placed on purpose`);
+    add("gp-ov-found", found.join(" · "));
+  }
+  const key = document.documentElement.dataset.overlayKey;
+  if (key) add("gp-ov-note", `${key} hides`);
+  return el;
+}
+
+/**
+ * Draw the overlay's `layers` for `pages` and return what it found. Idempotent:
+ * the previous drawing is replaced. `area` is the project's geometry
+ * (`printAreaFromMeta()`); `null` falls back to each sheet's own size. Only
+ * the `safe` layer judges the book's ink: with it off there are no flags and
+ * every count is 0.
  */
 export function paintOverlay(
   pages: readonly OverlayPage[],
   strips: readonly StripInfo[],
   area: PrintArea | null,
+  layers: OverlayLayers,
 ): OverlaySummary {
   const layer = ensureRoot();
   syncToStage();
@@ -533,7 +734,7 @@ export function paintOverlay(
       h: boxes.sheet.h,
     });
     host.dataset.page = String(p.index + 1);
-    if (boxes.bleed > 0) {
+    if (layers.bleed && boxes.bleed > 0) {
       // The band is the sheet minus the trim: a border whose width on each
       // side is how far the trim sits inside it (0 on the binding edge).
       const sh = boxes.sheet;
@@ -544,12 +745,15 @@ export function paintOverlay(
       host.appendChild(band);
       host.appendChild(div("gp-ov-trim", t));
     }
-    if (area && area.safe > 0) {
+    if (layers.safe && area && area.safe > 0) {
       host.appendChild(unsafeTint(boxes));
       host.appendChild(div("gp-ov-safe", boxes.safe));
     }
     // the art line, unless it would only retrace the text line or the trim
-    if (area && area.artSafe > 0 && area.artSafe !== area.safe) host.appendChild(div("gp-ov-art", boxes.safeArt));
+    if (layers.safe && area && area.artSafe > 0 && area.artSafe !== area.safe) {
+      host.appendChild(div("gp-ov-art", boxes.safeArt));
+    }
+    if (layers.margins && !p.padded) host.appendChild(div("gp-ov-margins", marginsBox(p, side)));
     layer.appendChild(host);
     painted.set(p.index, { host, boxes, sheet: p.sheet, rect });
   }
@@ -565,8 +769,10 @@ export function paintOverlay(
    * box; images, media and any box that paints (a background or a border)
    * against the art box. A container that paints nothing is never flagged
    * itself, only what it holds. `pageOf` says which page a client rect is on.
+   * Judging is the `safe` layer's job: with it off nothing is looked at.
    */
   const inspect = (root: Node, pageOf: (r: DOMRect) => Painted | undefined, zoom: number): void => {
+    if (!layers.safe) return;
     const judge = (el: Element, rule: OverflowRule, rects: Iterable<DOMRect>): void => {
       for (const r of rects) {
         if (r.width <= 0 && r.height <= 0) continue;
@@ -651,8 +857,9 @@ export function paintOverlay(
     el.title = f.title;
     f.host.appendChild(el);
   }
-  return {
+  const summary: OverlaySummary = {
     on: true,
+    layers,
     issues: counts.text + counts.art + counts.bleed + counts.offPage,
     intended: counts.intended,
     bleedPt: area?.bleed ?? 0,
@@ -660,4 +867,6 @@ export function paintOverlay(
     artSafePt: area?.artSafe ?? 0,
     counts,
   };
+  root?.appendChild(legend(layers, area, summary));
+  return summary;
 }

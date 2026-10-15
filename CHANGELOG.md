@@ -42,6 +42,31 @@ This project follows [Semantic Versioning](https://semver.org/).
   `page.safe`. Run it with `gutterpress validate --target dtrpg` or the
   desktop's publish preflight, and soften or turn it off with `validate.checks`
   in `manifest.yaml` like any other check.
+- **Three print overlays you can switch on one at a time, each in its own
+  colour.** The preview overlay is now made of layers. **Bleed** draws the band
+  outside the trim and the trim line. **Safe area** draws the printer's two
+  lines (dashed for text, dotted for art) and the tint between the text line and
+  the trim, and outlines whatever strays. **Page margins** draws each page's own
+  `@page` content box as a thin solid line: it is your book's choice, not the
+  printer's, and when your margins mirror, a left-hand page's box is the mirror
+  of a right-hand page's. In the desktop app the button beside the zoom menu is
+  still the switch for all of it, and the small menu next to it ticks the layers,
+  each with its colour. **Settings, App, Preview** has a colour for each layer
+  (the one colour from before becomes the safe area's) and the strength. In the
+  CLI's preview, Alt+M hides the overlay and shows again the layers you had on.
+  The layers and their colours survive a hot reload. Only the safe area layer
+  checks your book, so with it off there is nothing to count. None of it touches
+  your book: your markup and your page breaks are the same with it on or off.
+- **A legend in the corner of the preview says what you are looking at.** It has
+  one row for each layer that is on, with its sizes in inches and the edges they
+  apply to, such as "Bleed 0.125in — top, bottom, outside; none at the binding"
+  and "Safe area — text 0.5in; art 0.25in (0.5in at the binding)". It says where
+  the numbers come from, a link to the printer's specification for the `dtrpg`
+  preset and `manifest.yaml` otherwise, and what the safe area layer found:
+  "3 text outside the safe area · 1 art outside · 2 in the bleed band", or
+  "everything inside the safe area". It stays in its corner as you scroll and
+  zoom, and it is never printed. It replaces the CLI's status badge, and the
+  desktop button's tooltip is now a one-line summary of the same count.
 
 ### Changed
 
@@ -67,8 +92,8 @@ This project follows [Semantic Versioning](https://semver.org/).
   margins are checked too. Art that runs out to the edge of the page is a bleed
   done right and passes; art that stops short inside the bleed band is outlined
   red. The page shows both lines, dashed for text and dotted for art, and the
-  desktop button's tooltip and the CLI's badge say what was found, for instance
-  "2 text, 1 art outside the safe area".
+  preview's legend and the desktop button's tooltip say what was found, for
+  instance "2 text, 1 art outside the safe area".
 
 ## [0.11.19] - 2026-10-15
 

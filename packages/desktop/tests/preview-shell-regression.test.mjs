@@ -36,15 +36,23 @@ function installBook(frame, markup = BOOK_NATIVE, layout = "vertical") {
       const sheet = el && el.closest ? el.closest(".gp-sheet") : null;
       return sheet ? parseInt(sheet.getAttribute("data-page"), 10) - 1 : -1;
     },
-    // The viewer's margin & bleed overlay hook (decorate.ts): records what the
-    // shell asked of it, and stamps body[data-overlay] as the real one does.
+    // The viewer's print overlays hook (decorate.ts): records what the shell
+    // asked of it, and stamps the records on <body> (on/off, the layers showing,
+    // strength, a colour per layer) as the real one does.
     decoration: {
       setDesigner() {},
-      setOverlay(on, style) {
-        frameWindow.__overlayCalls.push(on);
-        if (style && style.strength) frameDocument.body.dataset.overlayStrength = style.strength;
-        if (style && style.color) frameDocument.body.dataset.overlayColor = style.color;
-        frameDocument.body.dataset.overlay = on ? "on" : "off";
+      setOverlay(state, style) {
+        frameWindow.__overlayCalls.push(state);
+        const dataset = frameDocument.body.dataset;
+        const colors = (style && style.colors) || {};
+        if (style && style.strength) dataset.overlayStrength = style.strength;
+        if (colors.safe) dataset.overlayColor = colors.safe;
+        if (colors.bleed) dataset.overlayBleedColor = colors.bleed;
+        if (colors.margins) dataset.overlayMarginsColor = colors.margins;
+        const shown = ["bleed", "safe", "margins"].filter((layer) => (typeof state === "object" ? state[layer] === true : !!state));
+        const on = shown.length > 0;
+        dataset.overlay = on ? "on" : "off";
+        if (on) dataset.overlayLayers = shown.join(",");
         return { on, issues: 0, intended: 0, bleedPt: 0 };
       },
       overlay: () => ({ on: frameDocument.body.dataset.overlay === "on", issues: 0, intended: 0, bleedPt: 0 }),
@@ -537,8 +545,11 @@ async function main() {
   active.contentWindow.previewAPI.setViewMode("single");
   active.contentWindow.previewAPI.setZoom("0.8");
   active.contentDocument.body.classList.add("debug");
-  // The author switched the margin & bleed overlay on before this save.
-  active.contentWindow.previewAPI.setMarginOverlay(true, { color: "#00aa55", strength: "strong" });
+  // The author switched two of the print overlays' layers on before this save, with colours of their own.
+  active.contentWindow.previewAPI.setMarginOverlay(
+    { bleed: true, safe: false, margins: true },
+    { strength: "strong", colors: { bleed: "#00aa55", safe: "#2f80ed", margins: "#e91e63" } },
+  );
   const desktopStyle = active.contentDocument.createElement("style");
   desktopStyle.setAttribute("data-gutterpress-desktop-canvas", "true");
   desktopStyle.textContent = ".gp-sheet { box-shadow: 0 0 2px black; }";
@@ -640,12 +651,15 @@ async function main() {
   assert.equal(fresh.contentDocument.body.classList.contains("debug"), true, "debug state is copied before reveal");
   assert.deepEqual(
     fresh.contentWindow.__overlayCalls,
-    [true],
-    "the margin & bleed overlay is carried into the replacement, once, before reveal",
+    [{ bleed: true, safe: false, margins: true }],
+    "the print overlays are carried into the replacement, once, before reveal, with the layers that were showing",
   );
   assert.equal(fresh.contentDocument.body.dataset.overlay, "on", "overlay state survives a hot reload");
-  assert.equal(fresh.contentDocument.body.dataset.overlayStrength, "strong", "…and so does its strength");
-  assert.equal(fresh.contentDocument.body.dataset.overlayColor, "#00aa55", "…and its colour");
+  assert.equal(fresh.contentDocument.body.dataset.overlayLayers, "bleed,margins", "…and so do its layers");
+  assert.equal(fresh.contentDocument.body.dataset.overlayStrength, "strong", "…and its strength");
+  assert.equal(fresh.contentDocument.body.dataset.overlayBleedColor, "#00aa55", "…and each layer's colour");
+  assert.equal(fresh.contentDocument.body.dataset.overlayColor, "#2f80ed", "…the safe layer's too");
+  assert.equal(fresh.contentDocument.body.dataset.overlayMarginsColor, "#e91e63", "…and the margins'");
   assert.equal(
     fresh.contentDocument.documentElement.style.getPropertyValue("--gutterpress-zoom"),
     "0.8",

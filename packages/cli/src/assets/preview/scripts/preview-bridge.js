@@ -14,7 +14,7 @@
 //
 // Commands map 1:1 to previewAPI methods: getTotalPages, getCurrentPage,
 // goToPage, firstPage, prevPage, nextPage, lastPage, setViewMode, setZoom,
-// toggleDebugMode, setMarginOverlay(on, {color, strength}). Plus a synthetic 'print' command that calls window.print().
+// toggleDebugMode, setMarginOverlay(state, {strength, colors}). Plus a synthetic 'print' command that calls window.print().
 //
 // Additional messages:
 //   parent -> iframe: { type: 'gutterpress:inject-styles', id: <attr-name>, css: <string> }

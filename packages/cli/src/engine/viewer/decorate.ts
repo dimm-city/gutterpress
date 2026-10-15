@@ -32,12 +32,15 @@ import {
   type PageCounterReset,
 } from "../shared/synthesis.ts";
 import {
+  OVERLAY_LAYERS,
   OVERLAY_OFF,
   clearOverlay,
+  layersFrom,
   paintOverlay,
   printAreaFromMeta,
   sanitizeOverlayStyle,
   setOverlayStyle,
+  type OverlayLayers,
   type OverlayPage,
   type OverlayStyle,
   type OverlaySummary,
@@ -82,9 +85,11 @@ export interface DecorationApi {
   warnings: string[];
   /** show/hide trim and crop guides on the stage */
   setDesigner(on: boolean): void;
-  /** safe area & bleed overlay (overlay.ts): draws it, and returns what it found.
-   * Chrome only — pagination is identical with it on or off. */
-  setOverlay(on: boolean, style?: OverlayStyle): OverlaySummary;
+  /** print overlays (overlay.ts): draws the layers named by `state` — `true`/`false` for all three, or
+   * `{ bleed?, safe?, margins? }` (a layer left out is off) — and returns what the `safe` layer found.
+   * Chrome only — pagination is identical with them on or off. */
+  setOverlay(state: boolean | Partial<OverlayLayers>, style?: OverlayStyle): OverlaySummary;
+  /** the last summary, with the `layers` that are drawn */
   overlay(): OverlaySummary;
 }
 
@@ -143,13 +148,14 @@ export function decorate(
   let blankPages = new Set<number>();
   let paddedPages = new Set<number>();
   const warnings: string[] = [];
-  // Safe area & bleed overlay (overlay.ts). The pages are collected by draw() —
-  // which rebuilds every sheet — so the overlay is repainted after each one.
+  // Print overlays (overlay.ts). The pages are collected by draw() — which
+  // rebuilds every sheet — so the overlay is repainted after each one.
   let overlayOn = false;
+  let overlayLayers: OverlayLayers = OVERLAY_OFF.layers;
   let overlayPages: OverlayPage[] = [];
   let overlaySummary: OverlaySummary = OVERLAY_OFF;
   const paintOverlayNow = () => {
-    overlaySummary = paintOverlay(overlayPages, layout.strips, printAreaFromMeta());
+    overlaySummary = paintOverlay(overlayPages, layout.strips, printAreaFromMeta(), overlayLayers);
     window.dispatchEvent(new CustomEvent("gp:overlay", { detail: overlaySummary }));
   };
   const api: DecorationApi = {
@@ -162,22 +168,31 @@ export function decorate(
     setDesigner(on) {
       document.body.dataset.designer = on ? "on" : "off";
     },
-    setOverlay(on, style) {
+    setOverlay(state, style) {
       // The look is only tokens on the overlay's own root: a call that merely
       // restyles an overlay that is already showing needs no repaint.
       if (style) {
         const clean = sanitizeOverlayStyle(style);
         setOverlayStyle(clean);
+        const { strength, colors } = clean;
         // A record for hosts (the preview shell carries it across a hot-reload
         // swap); nothing renders from these attributes.
-        if (clean.strength) document.body.dataset.overlayStrength = clean.strength;
-        if (clean.color) document.body.dataset.overlayColor = clean.color;
+        if (strength) document.body.dataset.overlayStrength = strength;
+        if (colors?.safe) document.body.dataset.overlayColor = colors.safe;
+        if (colors?.bleed) document.body.dataset.overlayBleedColor = colors.bleed;
+        if (colors?.margins) document.body.dataset.overlayMarginsColor = colors.margins;
       }
       const wasOn = overlayOn;
-      overlayOn = on;
-      document.body.dataset.overlay = on ? "on" : "off";
-      if (on) {
-        if (!(wasOn && style)) paintOverlayNow();
+      const next = layersFrom(state);
+      const sameLayers = OVERLAY_LAYERS.every((layer) => next[layer] === overlayLayers[layer]);
+      overlayLayers = next;
+      overlayOn = OVERLAY_LAYERS.some((layer) => next[layer]);
+      document.body.dataset.overlay = overlayOn ? "on" : "off";
+      if (overlayOn) {
+        // The record of which layers are showing outlives the overlay being
+        // switched off, so a host can switch the same set back on.
+        document.body.dataset.overlayLayers = OVERLAY_LAYERS.filter((layer) => next[layer]).join(",");
+        if (!(wasOn && sameLayers && style)) paintOverlayNow();
       } else {
         clearOverlay();
         overlaySummary = OVERLAY_OFF;
@@ -471,7 +486,7 @@ export function decorate(
         drawMarginBoxes(sheet, ctx, layout.totalPages - paddedPages.size);
         drawGuides(sheet, ctx);
         drawCropMarks(sheet, ctx);
-        overlayPages.push({ index: bookIndex, sheet, strip });
+        overlayPages.push({ index: bookIndex, sheet, strip, padded: ctx.padded });
       }
 
       // Reserve the full row width even for a solo page in a wrapped run

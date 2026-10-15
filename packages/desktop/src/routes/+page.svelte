@@ -83,7 +83,13 @@
   import { sanitizeSettingsTab, type SettingsTab } from "$lib/settings-tabs";
   import { clampPanelWidth, viewportWidth } from "$lib/left-panel-width";
   import { showReadLayoutToggle, viewModeFor } from "$lib/read-layout";
-  import { overlayStyleFrom, type MarginOverlayStyle, type MarginOverlaySummary } from "$lib/margin-overlay";
+  import {
+    overlayLayersFrom,
+    overlayStyleFrom,
+    type MarginOverlayLayers,
+    type MarginOverlayStyle,
+    type MarginOverlaySummary,
+  } from "$lib/margin-overlay";
   import LeftPanel from "$lib/components/LeftPanel.svelte";
   import type { PanelTab } from "$lib/components/LeftPanel.svelte";
   import WelcomeLanding from "$lib/components/WelcomeLanding.svelte";
@@ -1100,11 +1106,13 @@
   // `viewModeFor` is the one rule, and Edit never changes the stored choice.
   let readLayout = $derived(settings.current.preview.readLayout);
   let viewMode = $derived(viewModeFor(mode, isNarrow, readLayout));
-  // Safe area & bleed overlay: one durable switch for Read AND Edit; the viewer
-  // draws it, and reports what it found (the toolbar count) as it repaints.
+  // Print overlays: one durable master switch for Read AND Edit, with the
+  // layers it shows; the viewer draws them, and reports what it found (the
+  // toolbar count) as it repaints.
   let marginOverlay = $derived(settings.current.preview.marginOverlay);
+  let overlayLayers = $derived(overlayLayersFrom(settings.current.preview.overlayLayers));
   let overlayStyle = $derived(
-    overlayStyleFrom(settings.current.preview.marginOverlayColor, settings.current.preview.marginOverlayStrength),
+    overlayStyleFrom(settings.current.preview.overlayColors, settings.current.preview.marginOverlayStrength),
   );
   let overlaySummary = $state<MarginOverlaySummary | null>(null);
 
@@ -1383,16 +1391,17 @@
   // Read layout (one page / spread): push the derived view mode into the
   // viewer when the toggle — or a settings load — changes it.
   const readLayoutSink = settingsChangeGuard<ReadLayout>(() => zoomView.applyViewMode(viewMode));
-  // Safe area & bleed overlay: push the switch into the viewer when the toggle —
-  // or a settings load — changes it. An old viewer without the command just
+  // Print overlays: push the switch into the viewer when the toggle — or a
+  // settings load — changes it. An old viewer without the command just
   // rejects, which is the same as not having the feature.
-  // The look (colour, strength) rides along with the switch, so one sink
-  // covers both; a change of look alone restyles without repainting.
+  // The layers to show (false while the master switch is off) and the look
+  // (a colour per layer, strength) ride along together, so one sink covers all
+  // of it; a change of look alone restyles without repainting.
   const marginOverlaySink = settingsChangeGuard<string>(
     (key) => {
-      const { on, color, strength } = JSON.parse(key) as { on: boolean } & MarginOverlayStyle;
-      if (!on) overlaySummary = null;
-      client?.call("setMarginOverlay", [on, { color, strength }]).catch(() => {});
+      const { state, style } = JSON.parse(key) as { state: false | MarginOverlayLayers; style: MarginOverlayStyle };
+      if (!state) overlaySummary = null;
+      client?.call("setMarginOverlay", [state, style]).catch(() => {});
     },
     () => !!client,
   );
@@ -1406,8 +1415,8 @@
       readLayoutSink(s.preview.readLayout);
       marginOverlaySink(
         JSON.stringify({
-          on: s.preview.marginOverlay,
-          ...overlayStyleFrom(s.preview.marginOverlayColor, s.preview.marginOverlayStrength),
+          state: s.preview.marginOverlay && overlayLayersFrom(s.preview.overlayLayers),
+          style: overlayStyleFrom(s.preview.overlayColors, s.preview.marginOverlayStrength),
         }),
       );
     }),
@@ -2202,7 +2211,7 @@
     zoom: () => zoom,
     viewMode: () => viewMode,
     bgColor: () => bgColor,
-    marginOverlay: () => marginOverlay,
+    marginOverlayState: () => marginOverlay && overlayLayers,
     marginOverlayStyle: () => overlayStyle,
     setOverlaySummary: (summary) => (overlaySummary = summary),
     setRendering: (v) => (lifecycle.rendering = v),
@@ -3173,8 +3182,18 @@
             {readLayout}
             onSetReadLayout={(next) => settings.set({ preview: { readLayout: next } })}
             {marginOverlay}
+            {overlayLayers}
+            overlayColors={overlayStyle.colors}
             {overlaySummary}
             onToggleMarginOverlay={() => settings.set({ preview: { marginOverlay: !marginOverlay } })}
+            onToggleOverlayLayer={(layer) =>
+              settings.set({
+                preview: {
+                  overlayLayers: { ...overlayLayers, [layer]: !overlayLayers[layer] },
+                  // ticking a layer while the overlay is off is asking to see it
+                  marginOverlay: marginOverlay || !overlayLayers[layer],
+                },
+              })}
             onApplyZoom={(val) => { contextMenu.close(); zoomView.applyZoom(val); }}
           />
         {/if}

@@ -25,7 +25,16 @@
   import Icon from "$lib/components/Icon.svelte";
   import type { ReadLayout } from "$lib/platform";
   import type { PageNavController } from "$lib/routes/page-nav-controller.svelte";
-  import { overlayTooltip, type MarginOverlaySummary } from "$lib/margin-overlay";
+  import {
+    OVERLAY_LAYERS,
+    overlayLayersFrom,
+    overlayStyleFrom,
+    overlayTooltip,
+    type MarginOverlayColors,
+    type MarginOverlayLayer,
+    type MarginOverlayLayers,
+    type MarginOverlaySummary,
+  } from "$lib/margin-overlay";
 
   let {
     pageNav,
@@ -37,8 +46,11 @@
     readLayout = "spread",
     onSetReadLayout = () => {},
     marginOverlay = false,
+    overlayLayers = overlayLayersFrom(undefined),
+    overlayColors = overlayStyleFrom(undefined, undefined).colors,
     overlaySummary = null,
     onToggleMarginOverlay = () => {},
+    onToggleOverlayLayer = () => {},
   }: {
     pageNav: PageNavController;
     rendering: boolean;
@@ -49,10 +61,13 @@
     showLayoutToggle?: boolean;
     readLayout?: ReadLayout;
     onSetReadLayout?: (layout: ReadLayout) => void;
-    /** Safe area & bleed overlay (Read AND Edit): on/off, and what the viewer last found. */
+    /** Print overlays (Read AND Edit): the master on/off, the layers it shows and their colours, and what the viewer last found. */
     marginOverlay?: boolean;
+    overlayLayers?: MarginOverlayLayers;
+    overlayColors?: MarginOverlayColors;
     overlaySummary?: MarginOverlaySummary | null;
     onToggleMarginOverlay?: () => void;
+    onToggleOverlayLayer?: (layer: MarginOverlayLayer) => void;
   } = $props();
   const overlayLabel = $derived(overlayTooltip(marginOverlay, overlaySummary));
   const overlayIssues = $derived(marginOverlay ? (overlaySummary?.issues ?? 0) : 0);
@@ -144,16 +159,18 @@
   </nav>
 
   <div class="right-tools">
-  <!-- Safe area & bleed overlay: a review aid, so it lives next to the zoom it
-       is read at, and shows in Read and Edit alike. The count is the number of
-       elements that leave the safe area (placed-on-purpose art is not
-       counted); the tooltip spells the rest out. -->
+  <!-- Print overlays: a review aid, so it lives next to the zoom it is read
+       at, and shows in Read and Edit alike. The button is the master switch.
+       The count is the number of elements that leave the safe area
+       (placed-on-purpose art is not counted); the tooltip spells the rest out.
+       The menu beside it picks the layers (each with its colour); ticking one
+       while the overlay is off turns the overlay on. -->
   <button
     class="icon-btn overlay-btn"
     class:active={marginOverlay}
     onclick={() => onToggleMarginOverlay()}
     title={overlayLabel}
-    aria-label={marginOverlay ? "Hide safe area and bleed" : "Show safe area and bleed"}
+    aria-label={marginOverlay ? "Hide print overlays" : "Show print overlays"}
     aria-pressed={marginOverlay}
     data-overlay-issues={overlayIssues}
   >
@@ -162,6 +179,20 @@
       <span class="overlay-count" aria-label="{overlayIssues} outside the safe area">{overlayIssues}</span>
     {/if}
   </button>
+  <details class="menu layers-menu">
+    <summary class="icon-btn menu-summary" title="Choose which print overlays to show" aria-label="Print overlay layers">
+      <Icon name="chevron-down" size={12} />
+    </summary>
+    <div class="menu-panel">
+      {#each OVERLAY_LAYERS as layer (layer.id)}
+        <label class="layer-item">
+          <input type="checkbox" checked={overlayLayers[layer.id]} onchange={() => onToggleOverlayLayer(layer.id)} />
+          <span class="layer-swatch" style:background={overlayColors[layer.id]}></span>
+          {layer.label}
+        </label>
+      {/each}
+    </div>
+  </details>
 
   <details class="menu zoom-menu">
     <summary class="icon-btn menu-summary" title="Zoom level" aria-label="Zoom level">
@@ -376,6 +407,26 @@
     content: "\2713" / "";
     margin-left: auto;
     padding-left: 12px;
+  }
+  /* The layer menu's rows: a checkbox, the layer's colour, its name. */
+  .layer-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 3px;
+    color: var(--app-text);
+    font-size: 12px;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .layer-item:hover { background: var(--app-control-hover-bg); }
+  .layer-swatch {
+    flex: none;
+    width: 10px;
+    height: 10px;
+    border: 1px solid var(--app-border);
+    border-radius: 2px;
   }
 
   /* Narrow preview pane (the editor beside it, or a phone): the zoom label

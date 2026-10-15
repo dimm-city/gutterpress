@@ -1098,28 +1098,41 @@
     // "Edit this block" action and nothing else; a v8 SPA feature-detects on
     // the version before offering it.
     // v9: ADDED setMarginOverlay()/toggleMarginOverlay()/getMarginOverlay() and
-    // the overlayChanged event (margin & bleed overlay, engine/viewer/
-    // overlay.ts). A v9 lib with a pre-v9 SPA simply never turns it on; a v9
-    // SPA feature-detects on the version before offering the toggle.
+    // the overlayChanged event (print overlays, engine/viewer/overlay.ts). A
+    // v9 lib with a pre-v9 SPA simply never turns it on; a v9 SPA
+    // feature-detects on the version before offering the toggle.
     // (v9 is unreleased as of this writing, so setMarginOverlay's optional
-    // second argument — the look, below — is part of v9, not a bump.)
+    // second argument — the look, below — and its layer object are part of
+    // v9, not a bump: a plain boolean still works and means all three layers.)
     getProtocolVersion: function () { return 9; },
 
-    // Safe area & bleed overlay. Viewer chrome only — it adds no box to the
-    // book and no attribute to its elements, so pagination is identical on or
-    // off. Returns the summary {on, issues, intended, bleedPt, safePt, artSafePt,
-    // counts: {text, art, bleed, offPage, intended}}, or null when the viewer
-    // predates it. `style` ({color: '#rrggbb', strength:
-    // 'subtle' | 'normal' | 'strong'}) is optional: it only sets the overlay's
-    // own tokens, and a call that carries it while the overlay is already on
-    // restyles without repainting.
-    setMarginOverlay: function (on, style) {
+    // Print overlays: three layers (bleed, safe, margins), each independent.
+    // Viewer chrome only — it adds no box to the book and no attribute to its
+    // elements, so pagination is identical on or off. `state` is a boolean
+    // (all three layers) or {bleed, safe, margins} naming the layers that are
+    // on (one it leaves out is off). Returns the summary {on, layers: {bleed,
+    // safe, margins}, issues, intended, bleedPt, safePt, artSafePt, counts:
+    // {text, art, bleed, offPage, intended}}, or null when the viewer predates
+    // it. `style` ({strength: 'subtle' | 'normal' | 'strong', colors: {bleed,
+    // safe, margins} as '#rrggbb', color: an alias of colors.safe}) is
+    // optional: it only sets the overlay's own tokens, and a call that carries
+    // it while the same layers are already on restyles without repainting.
+    setMarginOverlay: function (state, style) {
       var d = window.Gutterpress && window.Gutterpress.decoration;
-      return d && typeof d.setOverlay === 'function' ? d.setOverlay(!!on, style) : null;
+      return d && typeof d.setOverlay === 'function' ? d.setOverlay(state, style) : null;
     },
+    // Hide the overlay, or bring back the layers it was last showing (the
+    // viewer's record on <body>; all three the first time).
     toggleMarginOverlay: function () {
       var d = window.Gutterpress && window.Gutterpress.decoration;
-      return d && typeof d.setOverlay === 'function' ? d.setOverlay(document.body.dataset.overlay !== 'on') : null;
+      if (!d || typeof d.setOverlay !== 'function') return null;
+      if (document.body.dataset.overlay === 'on') return d.setOverlay(false);
+      var last = (document.body.dataset.overlayLayers || 'bleed,safe,margins').split(',');
+      return d.setOverlay({
+        bleed: last.indexOf('bleed') >= 0,
+        safe: last.indexOf('safe') >= 0,
+        margins: last.indexOf('margins') >= 0
+      });
     },
     getMarginOverlay: function () {
       var d = window.Gutterpress && window.Gutterpress.decoration;
@@ -1630,48 +1643,23 @@
   // completes (engine/viewer/index.ts's mount()).
   window.addEventListener('gp:layout', onRenderingComplete);
 
-  // Safe area & bleed overlay: relay the viewer's result as 'overlayChanged' (the
-  // bridge posts it to a host toolbar) and, where no host toolbar exists, give
-  // the standalone CLI preview its own switch: Alt+M, plus a small status pill.
+  // Print overlays: relay the viewer's result as 'overlayChanged' (the bridge
+  // posts it to a host toolbar) and, where no host toolbar exists, give the
+  // standalone CLI preview its own switch: Alt+M. The viewer's legend carries
+  // the rest — what each layer is, what was found — so there is no badge here.
   // "Standalone" = the shell is top level (the CLI); under the desktop app the
   // shell's parent is the app, which owns the toggle and the count.
   var standalone = false;
   try { standalone = window.parent === window || window.parent.parent === window.parent; } catch (_e) {}
 
-  function updateOverlayBadge(summary) {
-    var badge = document.getElementById('gp-ov-badge');
-    if (!standalone || !summary || !summary.on) {
-      if (badge) badge.remove();
-      return;
-    }
-    if (!badge) {
-      badge = document.createElement('div');
-      badge.id = 'gp-ov-badge';
-      badge.setAttribute('role', 'status');
-      badge.style.cssText = 'position:fixed;top:8px;right:8px;z-index:2147483000;pointer-events:none;' +
-        'background:rgba(20,20,24,.88);color:#fff;font:600 11px/1.4 ui-sans-serif,system-ui,sans-serif;' +
-        'padding:4px 10px;border-radius:999px;box-shadow:0 1px 6px rgba(0,0,0,.4)';
-      document.documentElement.appendChild(badge);
-    }
-    var parts = ['Safe area & bleed'];
-    var c = summary.counts || {};
-    var outside = [c.text && c.text + ' text', c.art && c.art + ' art'].filter(Boolean).join(', ');
-    if (outside) parts.push(outside + ' outside the safe area');
-    if (c.bleed) parts.push(c.bleed + ' in the bleed band');
-    if (c.offPage) parts.push(c.offPage + ' off the page');
-    if (!summary.issues) parts.push('everything inside the safe area');
-    if (summary.intended) parts.push(summary.intended + ' placed on purpose');
-    if (!summary.safePt) parts.push('no safe area set (page.safe in manifest.yaml)');
-    if (!summary.bleedPt) parts.push('no bleed set (page.bleed in manifest.yaml)');
-    badge.textContent = parts.join(' \u00b7 ') + '  (Alt+M hides)';
-  }
-
   window.addEventListener('gp:overlay', function (e) {
-    updateOverlayBadge(e.detail);
     window.dispatchEvent(new CustomEvent('overlayChanged', { detail: e.detail }));
   });
 
   if (standalone) {
+    // The legend ends "Alt+M hides" only where this key is bound: the viewer
+    // reads the key from here.
+    document.documentElement.dataset.overlayKey = 'Alt+M';
     document.addEventListener('keydown', function (e) {
       if (e.code !== 'KeyM' || !e.altKey || e.ctrlKey || e.metaKey || e.defaultPrevented) return;
       e.preventDefault();
