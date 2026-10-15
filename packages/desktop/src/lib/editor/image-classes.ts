@@ -18,7 +18,7 @@
  *
  * The tokenizer/facet-setter pairs below exist for one reason: a
  * regex + rebuild-from-scratch write path silently DROPS every token it
- * doesn't recognize (`.gp-small`, `.my-note`, `#fig`, `key=val`) whenever
+ * doesn't recognize (`.gp-size-30`, `.my-note`, `#fig`, `key=val`) whenever
  * the user edits width or position. All editing is therefore
  * token-preserving: parse the `{…}` suffix into verbatim tokens,
  * replace only the facet being changed (in place, order kept), serialize
@@ -53,11 +53,15 @@ export const IMAGE_POSITION_OPTIONS: readonly ImageClassOption[] = [
 ] as const;
 
 export const IMAGE_SIZE_OPTIONS: readonly ImageClassOption[] = [
-  { class: "gp-small", short: "small", label: "Small (25%)" },
-  { class: "gp-medium", short: "medium", label: "Medium (50%)" },
-  { class: "gp-large", short: "large", label: "Large (60%)" },
-  { class: "gp-xl", short: "xl", label: "XL (80%)" },
-  { class: "gp-xxl", short: "xxl", label: "XXL (90%)" },
+  { class: "gp-size-10", short: "10", label: "10%" },
+  { class: "gp-size-20", short: "20", label: "20%" },
+  { class: "gp-size-30", short: "30", label: "30%" },
+  { class: "gp-size-40", short: "40", label: "40%" },
+  { class: "gp-size-50", short: "50", label: "50%" },
+  { class: "gp-size-60", short: "60", label: "60%" },
+  { class: "gp-size-70", short: "70", label: "70%" },
+  { class: "gp-size-80", short: "80", label: "80%" },
+  { class: "gp-size-90", short: "90", label: "90%" },
 ] as const;
 
 export const IMAGE_SPACING_OPTIONS: readonly ImageClassOption[] = [

@@ -32,7 +32,7 @@ transparency, so the page is flattened for PDF/X. The artwork becomes one
 picture; the text next to it stays a font, not a bitmap, and prints from the
 black plate alone.
 
-![A soft-edged cutout](assets/cutout.png){.gp-pin .gp-right .gp-top .gp-small}
+![A soft-edged cutout](assets/cutout.png){.gp-pin .gp-right .gp-top .gp-size-30}
 
 @page
 

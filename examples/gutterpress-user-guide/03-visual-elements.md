@@ -118,9 +118,9 @@ optionally add a **size**, a **spacing**, and a **shape** word — the
 classes compose:
 
 ```markdown
-![Float right, quarter width](assets/small.jpg){.gp-right .gp-small}
+![Float right, 30% width](assets/small.jpg){.gp-right .gp-size-30}
 
-![Centered, half width](assets/photo.jpg){.gp-center .gp-medium}
+![Centered, half width](assets/photo.jpg){.gp-center .gp-size-50}
 
 ![Float left, roomy text wrap](assets/portrait.jpg){.gp-left .gp-loose}
 
@@ -141,15 +141,19 @@ the page is simply where it appears in your markdown):
 | `.gp-flush` | With `.gp-pin` + an edge: runs to the paper's edge, past the printer's safe area (Problems notes it) |
 
 **Sizes** (work with any position, including `.gp-pin`; an explicit size
-overrides the floats' 50% cap):
+overrides the floats' 50% cap; for the full width use `.gp-full`):
 
 | Class | Width |
 |-------|-------|
-| `.gp-small` | 25% of the column |
-| `.gp-medium` | 50% |
-| `.gp-large` | 60% |
-| `.gp-xl` | 80% |
-| `.gp-xxl` | 90% |
+| `.gp-size-10` | 10% of the column |
+| `.gp-size-20` | 20% |
+| `.gp-size-30` | 30% |
+| `.gp-size-40` | 40% |
+| `.gp-size-50` | 50% |
+| `.gp-size-60` | 60% |
+| `.gp-size-70` | 70% |
+| `.gp-size-80` | 80% |
+| `.gp-size-90` | 90% |
 
 **Spacing** (how much room a float leaves for the text wrapping around it —
 no class means the normal 1em):
@@ -206,9 +210,9 @@ floats use):
 
 # A Title Page
 
-![Watermark, page center](assets/sigil.png){.gp-pin .gp-medium}
+![Watermark, page center](assets/sigil.png){.gp-pin .gp-size-50}
 
-![Colophon mark, bottom right](assets/mark.png){.gp-pin .gp-bottom .gp-right .gp-small}
+![Colophon mark, bottom right](assets/mark.png){.gp-pin .gp-bottom .gp-right .gp-size-30}
 ```
 
 One horizontal word + one vertical word gives nine positions; sizes compose
@@ -254,7 +258,7 @@ Two rules keep pinning predictable:
   ...the card's own text...
   @end-section
 
-  ![Colophon mark](assets/mark.png){.gp-pin .gp-bottom .gp-right .gp-small}
+  ![Colophon mark](assets/mark.png){.gp-pin .gp-bottom .gp-right .gp-size-30}
   ```
 
   Only a pin with **no** enclosing frame at all is an error — that is the

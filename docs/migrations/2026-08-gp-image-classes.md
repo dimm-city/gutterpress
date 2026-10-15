@@ -19,8 +19,8 @@ more).
 
 The replacements are not just renames — they compose with the new axes:
 
-- **Sizes**: `.gp-small` / `.gp-medium` / `.gp-large` (25/50/75% of the
-  column; an explicit size overrides the floats' 50% cap).
+- **Sizes**: `.gp-size-10` … `.gp-size-90` (10% to 90% of the column, in
+  10% steps; an explicit size overrides the floats' 50% cap).
 - **Spacing**: `.gp-tight` / `.gp-loose` float clearance presets (or set
   `--gp-gap` directly in your stylesheet).
 - **Shape**: `.gp-shape` wraps text to a floated image's alpha silhouette.

@@ -1266,21 +1266,19 @@ describe("GUTTERPRESS_CSS gp-* vocabulary", () => {
     }
   });
 
-  test("sizes declare width 25/50/60/80/90% with the float-cap lift", () => {
-    const sizes: Array<[string, number]> = [
-      ["small", 25],
-      ["medium", 50],
-      ["large", 60],
-      ["xl", 80],
-      ["xxl", 90],
-    ];
-    for (const [size, percent] of sizes) {
-      const rule = GUTTERPRESS_CSS.match(new RegExp(`\\.gp-${size}\\s*\\{[^}]*\\}`))![0];
+  test("sizes declare width 10% to 90% in 10% steps, each with the float-cap lift", () => {
+    for (let percent = 10; percent <= 90; percent += 10) {
+      const rule = GUTTERPRESS_CSS.match(new RegExp(`\\.gp-size-${percent}\\s*\\{[^}]*\\}`))![0];
       expect(rule).toMatch(new RegExp(`(^|[^-])width:\\s*${percent}%`));
       expect(rule).toMatch(/max-width:\s*100%/);
     }
+    // No 100% step (that is .gp-full, a position), and the named ladder is gone, not aliased.
+    expect(GUTTERPRESS_CSS).not.toContain(".gp-size-100");
+    for (const named of ["small", "medium", "large", "xl", "xxl"]) {
+      expect(GUTTERPRESS_CSS).not.toContain(`.gp-${named}`);
+    }
     // After the float rules, so max-width:100% beats the 50% cap on order.
-    expect(GUTTERPRESS_CSS.indexOf(".gp-small")).toBeGreaterThan(GUTTERPRESS_CSS.indexOf(".gp-right {"));
+    expect(GUTTERPRESS_CSS.indexOf(".gp-size-10")).toBeGreaterThan(GUTTERPRESS_CSS.indexOf(".gp-right {"));
   });
 
   test("spacing presets set --gp-gap and the float rules consume it", () => {
@@ -1363,9 +1361,9 @@ describe("GUTTERPRESS_CSS gp-* vocabulary", () => {
 describe("gp-* vocabulary — rendered output", () => {
   test("multi-class attrs compose on the rendered <img>", () => {
     const md = createMarkdownRenderer();
-    const html = md.render("![Art](x.png){.gp-right .gp-small}");
+    const html = md.render("![Art](x.png){.gp-right .gp-size-30}");
     expect(html).toContain('<img src="x.png" alt="Art"');
-    expect(html).toContain('class="gp-right gp-small"');
+    expect(html).toContain('class="gp-right gp-size-30"');
   });
 
   test("assembleBookHtml carries every gp-* selector into the injected <style> block", async () => {
@@ -1378,7 +1376,8 @@ describe("gp-* vocabulary — rendered output", () => {
     expect(html).toContain('class="gp-pin gp-bottom"');
     for (const selector of [
       ".gp-left", ".gp-right", ".gp-center", ".gp-full", ".gp-bleed",
-      ".gp-small", ".gp-medium", ".gp-large", ".gp-xl", ".gp-xxl", ".gp-tight", ".gp-loose",
+      ".gp-size-10", ".gp-size-20", ".gp-size-30", ".gp-size-40", ".gp-size-50",
+      ".gp-size-60", ".gp-size-70", ".gp-size-80", ".gp-size-90", ".gp-tight", ".gp-loose",
       ".gp-pin", ".gp-top", ".gp-bottom",
     ]) {
       expect(html).toContain(selector);
@@ -1443,7 +1442,7 @@ describe("pin_outside_page warning (gp_pin_scope_check)", () => {
   });
 
   test("an image with other gp-* classes but no .gp-pin never warns", () => {
-    const { pin } = pinWarnings("![w](w.png){.gp-right .gp-small}\n");
+    const { pin } = pinWarnings("![w](w.png){.gp-right .gp-size-30}\n");
     expect(pin).toEqual([]);
   });
 });
@@ -1539,7 +1538,7 @@ describe("unknown_gp_class warning (gp_pin_scope_check)", () => {
       "",
       "@end-section",
       "",
-      "![a](a.png){.gp-left .gp-small .gp-tight .gp-shape}",
+      "![a](a.png){.gp-left .gp-size-30 .gp-tight .gp-shape}",
       "",
       "![b](b.png){.gp-pin .gp-top .gp-behind}",
       "",

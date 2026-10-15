@@ -82,20 +82,20 @@ position word plus optional size and spacing words that compose:
 
 <div class="example">
 <div style="overflow: hidden; padding: 0.2em 0;">
-  <div style="float: right; width: 25%; margin: 0 0 1em 1em; background: var(--color-tint); border: var(--border-thin); height: 60pt; display: flex; align-items: center; justify-content: center;">
-    <span style="font-family: var(--font-display); font-size: var(--fs-small); color: var(--color-ink-faint);">.gp-right .gp-small</span>
+  <div style="float: right; width: 30%; margin: 0 0 1em 1em; background: var(--color-tint); border: var(--border-thin); height: 60pt; display: flex; align-items: center; justify-content: center;">
+    <span style="font-family: var(--font-display); font-size: var(--fs-small); color: var(--color-ink-faint);">.gp-right .gp-size-30</span>
   </div>
-  <p>A quarter-width right float via <code>{.gp-right .gp-small}</code> — no stylesheet required. Sizes (<code>.gp-small/.gp-medium/.gp-large</code>) and wrap spacing (<code>.gp-tight/.gp-loose</code>) compose with either float, and <code>.gp-center</code>/<code>.gp-full</code>/<code>.gp-bleed</code> cover the no-wrap layouts.</p>
+  <p>A 30%-width right float via <code>{.gp-right .gp-size-30}</code> — no stylesheet required. Sizes (<code>.gp-size-10</code> to <code>.gp-size-90</code>) and wrap spacing (<code>.gp-tight/.gp-loose</code>) compose with either float, and <code>.gp-center</code>/<code>.gp-full</code>/<code>.gp-bleed</code> cover the no-wrap layouts.</p>
   <p style="clear: both;">Inside an <code>@page</code> block, <code>{.gp-pin .gp-bottom .gp-right}</code> pins an image to the page corner instead of flowing. See the User Guide's Chapter 3 for the full vocabulary.</p>
 </div>
 </div>
 
 ```markdown
-![Alt text](path/to/image.png){.gp-right .gp-small}
+![Alt text](path/to/image.png){.gp-right .gp-size-30}
 
 Body paragraph flows alongside the image...
 
-![Watermark](path/to/mark.png){.gp-pin .gp-bottom .gp-right .gp-small}
+![Watermark](path/to/mark.png){.gp-pin .gp-bottom .gp-right .gp-size-30}
 ```
 
 ---
@@ -156,7 +156,7 @@ Content that must not split across a page break.
 <tr><td>.img-float-right</td><td>![alt](src){.img-float-right}</td><td>Float image right, 44% width, text wraps</td></tr>
 <tr><td>.img-float-left</td><td>![alt](src){.img-float-left}</td><td>Float image left, 44% width, text wraps</td></tr>
 <tr><td>.gp-left / .gp-right / .gp-center / .gp-full / .gp-bleed</td><td>![alt](src){.gp-right}</td><td>Core image positions (no project CSS needed)</td></tr>
-<tr><td>.gp-small / .gp-medium / .gp-large / .gp-xl / .gp-xxl</td><td>![alt](src){.gp-right .gp-small}</td><td>Core image sizes — 25/50/60/80/90% of the column</td></tr>
+<tr><td>.gp-size-10 … .gp-size-90</td><td>![alt](src){.gp-right .gp-size-30}</td><td>Core image sizes — 10% to 90% of the column, in 10% steps</td></tr>
 <tr><td>.gp-shape</td><td>![alt](src){.gp-right .gp-shape}</td><td>Wrap text to a floated image's alpha silhouette</td></tr>
 <tr><td>.gp-pin (+ .gp-top/.gp-bottom/.gp-left/.gp-right)</td><td>![alt](src){.gp-pin .gp-bottom}</td><td>Pin an image to its @page container instead of flowing, on the printer's art-safe line of its edges</td></tr>
 <tr><td>.no-break</td><td>@section .no-break</td><td>Prevent block from splitting across pages</td></tr>

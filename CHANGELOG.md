@@ -54,11 +54,15 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **`pdfx.rasterDpi` also sets the resolution of `preserve-text` artwork.**
   Unset, that artwork is 300 DPI; whole pages Ghostscript flattens keep 720.
 
-- **Two more image sizes, `.gp-xl` (80%) and `.gp-xxl` (90%), and
-  `.gp-large` is now 60%.** The sizes run `.gp-small` 25%, `.gp-medium` 50%,
-  `.gp-large` 60% (it was 75%), `.gp-xl` 80% and `.gp-xxl` 90% of the column,
-  in flow and on pinned art alike. There is no 100% size: `.gp-full` still
-  fills the column. In the desktop app the image size menus list all five.
+- **Image sizes are `.gp-size-10` to `.gp-size-90`, in 10% steps, and
+  `.gp-small`, `.gp-medium`, `.gp-large`, `.gp-xl` and `.gp-xxl` are gone.**
+  The number is the image's width as a percentage of the column, in flow and
+  on pinned art alike. There is no 100% size: `.gp-full` still fills the
+  column. A book that used `.gp-small` (25%) or `.gp-medium` (50%) writes
+  `.gp-size-30` or `.gp-size-50` instead, and one that used `.gp-large` (75%
+  in 0.11.19) writes `.gp-size-70` or `.gp-size-80`; `gutterpress validate`
+  and the Problems panel report an old name as an unknown `gp-` class. In the
+  desktop app the image size menus list the nine steps, 10% to 90%.
 
 - **`page.safe` and `page.artSafe` hold the printer's two safe-area rules, and
   the `dtrpg` preset sets both.** DriveThruRPG's quick specifications ask for

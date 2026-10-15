@@ -18,7 +18,7 @@
  * Also ships the author-facing `gp-*` image/block vocabulary (CLAUDE.md §0 —
  * a behavior broadly useful to non-technical authors belongs in core, not a
  * project layer). markdown-it-attrs is bundled by
- * default (renderer.ts), so `![Art](x.jpg){.gp-right .gp-small}` already
+ * default (renderer.ts), so `![Art](x.jpg){.gp-right .gp-size-30}` already
  * attaches the classes to the rendered `<img>` — these rules are what make
  * them actually do something print-safe. One vocabulary, no aliases: there
  * is no duplicate way to spell each layout (the desktop editor rewrites the
@@ -29,11 +29,11 @@
  *   .gp-right     — floats right, text wraps.
  *   .gp-center    — centers a block element.
  *   .gp-full      — fills the page's content width.
- *   .gp-small     — width 25% of the column. Sizes compose with any
- *   .gp-medium    — width 50%.        position (including .gp-pin, where
- *   .gp-large     — width 60%.        the % resolves against the page
- *   .gp-xl        — width 80%.        root: the page box, reaching the
- *   .gp-xxl       — width 90%.        paper on an edge a pin uses).
+ *   .gp-size-10 … .gp-size-90
+ *                 — width 10% … 90% of the column, in 10% steps. Sizes
+ *                   compose with any position (including .gp-pin, where
+ *                   the % resolves against the page root: the page box,
+ *                   reaching the paper on an edge a pin uses).
  *                   There is no 100% step: that is .gp-full, a position.
  *   .gp-tight     — float/shape clearance 0.5em (sets --gp-gap; default 1em).
  *   .gp-loose     — float/shape clearance 2em (sets --gp-gap).
@@ -196,11 +196,15 @@ export const GUTTERPRESS_CSS = `
 
 /* sizes — AFTER the flow positions so max-width:100% lifts the floats' 50%
    cap at equal specificity */
-.gp-small { width: 25%; max-width: 100%; }
-.gp-medium { width: 50%; max-width: 100%; }
-.gp-large { width: 60%; max-width: 100%; }
-.gp-xl { width: 80%; max-width: 100%; }
-.gp-xxl { width: 90%; max-width: 100%; }
+.gp-size-10 { width: 10%; max-width: 100%; }
+.gp-size-20 { width: 20%; max-width: 100%; }
+.gp-size-30 { width: 30%; max-width: 100%; }
+.gp-size-40 { width: 40%; max-width: 100%; }
+.gp-size-50 { width: 50%; max-width: 100%; }
+.gp-size-60 { width: 60%; max-width: 100%; }
+.gp-size-70 { width: 70%; max-width: 100%; }
+.gp-size-80 { width: 80%; max-width: 100%; }
+.gp-size-90 { width: 90%; max-width: 100%; }
 
 /* float clearance presets — consumed by var(--gp-gap) in the float rules
    above and by .gp-shape's shape-margin below; --gp-gap itself is
@@ -415,7 +419,8 @@ img.gp-shape {
 export const GP_CLASSES: ReadonlySet<string> = new Set([
   // flow positions, sizes, spacing
   "gp-left", "gp-right", "gp-center", "gp-full", "gp-bleed",
-  "gp-small", "gp-medium", "gp-large", "gp-xl", "gp-xxl",
+  "gp-size-10", "gp-size-20", "gp-size-30", "gp-size-40", "gp-size-50",
+  "gp-size-60", "gp-size-70", "gp-size-80", "gp-size-90",
   "gp-tight", "gp-loose",
   // column runs — the CSS the @columns marker emits
   "gp-columns", "gp-columns-1", "gp-columns-2", "gp-columns-3", "gp-columns-4", "gp-columns-5",

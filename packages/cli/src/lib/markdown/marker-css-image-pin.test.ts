@@ -53,7 +53,7 @@ const SVG = encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="${IMG_W}" height="${IMG_H}" viewBox="0 0 100 200"><rect width="100" height="200" fill="#36c"/></svg>`
 );
 const SRC = `data:image/svg+xml,${SVG}`;
-// Square art for the flow-compose case: gp-large makes it 60% of a 384px
+// Square art for the flow-compose case: gp-size-60 makes it 60% of a 384px
 // page (230.4px); with the 1:2 portrait SVG the float would be 461px tall
 // and overflow its fixed-height .page onto extra sheets, breaking the
 // page-count assertion for a reason that has nothing to do with the CSS
@@ -77,9 +77,9 @@ ${GUTTERPRESS_CSS}
 <div class="page" id="p1"><p id="p1p"><img id="i1" class="gp-pin" src="${SRC}" alt=""></p></div>
 <div class="page" id="p2"><p><img id="i2" class="gp-pin gp-top gp-right" src="${SRC}" alt=""></p></div>
 <div class="page" id="p3"><p><img id="i3" class="gp-pin gp-bottom gp-left" src="${SRC}" alt=""></p></div>
-<div class="page" id="p4"><p><img id="i4" class="gp-pin gp-small" src="${SRC}" alt=""></p></div>
+<div class="page" id="p4"><p><img id="i4" class="gp-pin gp-size-30" src="${SRC}" alt=""></p></div>
 <div class="page" id="p5"><p id="p5p">Wrap copy before the art so the float has a line box to sit in.
-<img id="i5" class="gp-right gp-large" src="${SQ_SRC}" alt="">
+<img id="i5" class="gp-right gp-size-60" src="${SQ_SRC}" alt="">
 More copy after the art keeps the paragraph from collapsing.</p></div>`;
 
 const chromium = await resolveChromiumExecutable();
@@ -168,10 +168,10 @@ testIf(
         expect(m.bottomLeft.left).toBeCloseTo(0, 0);
         expect(m.flow.pinnedFloat).toBe("none");
 
-        // Case 4: gp-pin gp-small — 25% of the .page padding box.
-        expect(m.small.width).toBeCloseTo(PAGE_W * 0.25, 0);
+        // Case 4: gp-pin gp-size-30 — 30% of the .page padding box.
+        expect(m.small.width).toBeCloseTo(PAGE_W * 0.3, 0);
 
-        // Case 5: flow compose — gp-right gp-large floats right at 60% of
+        // Case 5: flow compose — gp-right gp-size-60 floats right at 60% of
         // the paragraph's containing block (the size rule's max-width:100%
         // lifts the floats' 50% cap purely by source order).
         expect(m.flow.float).toBe("right");

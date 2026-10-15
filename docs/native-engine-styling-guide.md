@@ -117,7 +117,7 @@ smaller, more pages, different pagination) appears far from the cause.
   improving the page.
 - **Fix A½ (for images): core now ships a supported pin idiom.** A markdown
   image with `{.gp-pin}` (+ `.gp-top/.gp-bottom/.gp-left/.gp-right` edge
-  modifiers, `.gp-small/.gp-medium/.gp-large/.gp-xl/.gp-xxl` sizes) is abspos
+  modifiers, `.gp-size-10` to `.gp-size-90` sizes) is abspos
   done the safe way: GUTTERPRESS_CSS supplies four insets + explicit
   self-alignment, the containing block is the image's nearest positioned
   ancestor — the `.page`/`.spread` it sits in unless the theme positions

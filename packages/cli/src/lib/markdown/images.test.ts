@@ -55,9 +55,9 @@ test("a .gp-shape image gets its src mirrored into an inline --gp-shape url", ()
 
 test("images without .gp-shape get no style attribute", () => {
   const md = createMarkdownRenderer();
-  const html = md.render("![b](beast.png){.gp-right .gp-small}");
+  const html = md.render("![b](beast.png){.gp-right .gp-size-30}");
   expect(html).toContain('<img src="beast.png" alt="b"');
-  expect(html).toContain('class="gp-right gp-small"');
+  expect(html).toContain('class="gp-right gp-size-30"');
   expect(html).not.toContain("--gp-shape");
 });
 

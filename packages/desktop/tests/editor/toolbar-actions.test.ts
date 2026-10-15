@@ -317,20 +317,20 @@ test("applyImage: canonical gp-* position classes insert as-is", () => {
 
 test("applyImage: size composes with width and position, in stable order", () => {
   const v = makeMockView("text");
-  applyImage(v as unknown as EditorView, "assets/art.jpg", "Art", "300px", "gp-right", "gp-small");
-  expect(getDoc(v)).toContain('![Art](assets/art.jpg){width="300px" .gp-right .gp-small}');
+  applyImage(v as unknown as EditorView, "assets/art.jpg", "Art", "300px", "gp-right", "gp-size-30");
+  expect(getDoc(v)).toContain('![Art](assets/art.jpg){width="300px" .gp-right .gp-size-30}');
 });
 
 test("applyImage: size alone builds a one-class suffix", () => {
   const v = makeMockView("text");
-  applyImage(v as unknown as EditorView, "assets/art.jpg", "Art", undefined, undefined, "gp-medium");
-  expect(getDoc(v)).toContain("![Art](assets/art.jpg){.gp-medium}");
+  applyImage(v as unknown as EditorView, "assets/art.jpg", "Art", undefined, undefined, "gp-size-50");
+  expect(getDoc(v)).toContain("![Art](assets/art.jpg){.gp-size-50}");
 });
 
 test("applyImage: shape toggle appends .gp-shape after the other facets", () => {
   const v = makeMockView("text");
-  applyImage(v as unknown as EditorView, "assets/beast.png", "Beast", undefined, "gp-right", "gp-small", true);
-  expect(getDoc(v)).toContain("![Beast](assets/beast.png){.gp-right .gp-small .gp-shape}");
+  applyImage(v as unknown as EditorView, "assets/beast.png", "Beast", undefined, "gp-right", "gp-size-30", true);
+  expect(getDoc(v)).toContain("![Beast](assets/beast.png){.gp-right .gp-size-30 .gp-shape}");
 });
 
 // ── L6: empty-selection toggle must not pile up marker debris ───────────────
