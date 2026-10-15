@@ -996,7 +996,7 @@
   let workspaceEl = $state<HTMLElement | undefined>(undefined);
   let editorRef = $state<{
     focus: () => void;
-    revealLine: (line: number, focusEditor?: boolean) => void;
+    revealLine: (line: number, focusEditor?: boolean, column?: number) => void;
     runToolbarAction: (action: ToolbarAction, payload?: ToolbarPayload) => void;
     getSelectionText: () => string;
     insertSnippet: (text: string) => void;
@@ -1843,7 +1843,7 @@
       if (selected && p.line) {
         const path = p.filePath!;
         whenEditorReady(() => {
-          if (editorRef?.hasFile(path)) editorRef.revealLine(p.line!, true);
+          if (editorRef?.hasFile(path)) editorRef.revealLine(p.line!, true, p.column);
         });
       }
     });
@@ -3095,6 +3095,7 @@
                 components={projectComponents}
                 variants={projectVariants}
                 classes={projectClasses}
+                problems={displayedProblems}
                 onBlockProperties={() => void openBlockPropertiesAtCaret()}
               />
             {:else if editorModuleFailed}

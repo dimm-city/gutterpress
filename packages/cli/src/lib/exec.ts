@@ -32,7 +32,8 @@ function enhancedEnv(): NodeJS.ProcessEnv {
 }
 
 /**
- * Spawn a child process, inherit stdio, reject on non-zero exit.
+ * Spawn a child process, inherit stdio, reject on non-zero exit or death by
+ * signal (the error's `signal` property is set in that case).
  */
 export function run(
   cmd: string,
@@ -42,10 +43,14 @@ export function run(
   return new Promise((resolve, reject) => {
     const p = spawn(cmd, args, { stdio: "inherit", cwd: opts.cwd, env: enhancedEnv() });
     p.on("error", reject);
-    p.on("exit", (code) => {
+    p.on("exit", (code, signal) => {
       if (code === 0) return resolve();
       const cwd = opts.cwd ?? process.cwd();
-      reject(new Error(`${cmd} ${args.join(" ")} (cwd=${cwd}) exited ${code}`));
+      const what = signal ? `was killed by signal ${signal}` : `exited ${code}`;
+      // `signal` rides on the error so callers can tell a crash from a failure.
+      reject(
+        Object.assign(new Error(`${cmd} ${args.join(" ")} (cwd=${cwd}) ${what}`), { signal })
+      );
     });
   });
 }

@@ -5,6 +5,78 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.19] - 2026-10-15
+
+### Added
+
+- **`validate` and the Problems panel report unusual characters in your
+  markdown.** New check `source.characters` finds what pasting from a
+  chat model, a word processor or a web page leaves behind: em and en dashes,
+  curly and look-alike quote marks, the ellipsis character, bullets, arrows and
+  emoji, plus invisible characters (zero-width spaces, non-breaking and other odd
+  spaces, bidi and control characters, a byte-order mark, which turns a file's
+  first heading into a paragraph) and encoding damage (U+FFFD). Each finding has
+  its line and column and says what to type instead: `---`, `--`, `...` and
+  straight quotes already print as the proper typography, and an HTML entity
+  (`&nbsp;`, `&rarr;`) keeps a character you want without a warning. Quotation
+  marks other languages use (guillemets, low-9 quotes) are never reported.
+  Dashes, curly quotes and the ellipsis character are info (they print
+  correctly, and pasted prose is full of them), so they stay out of the
+  Problems count; the rest are warnings. Silence it like any rule: `lint.rules`, or `gutterpress-disable-next-line
+  source.characters`.
+- **The editor outlines those characters where they sit.** In a markdown file
+  each one gets a box (zero-width ones show as a placeholder symbol), and
+  hovering says what it is and what to type instead, while you type, not only
+  after a save. Clicking the finding in Problems puts the cursor on the
+  character.
+- **The editor marks every line the Problems list reports.** Open a file and each
+  line with a finding, from any check, gets a marker in the gutter and a tint by
+  severity; hovering shows the message and which check found it. The marks follow
+  their lines while you type and update when the list refreshes. In a stylesheet
+  the editor's own print-safety check and the project's other findings show
+  together. Settings → Editor → **Highlight problems in the editor** (on by
+  default) turns all of it off: the line marks, the stylesheet gutter and the
+  unusual-character boxes. Invisible characters keep their placeholder, since
+  without it they cannot be seen at all.
+
+### Removed
+
+- **The Editor settings for font family, font size, line spacing and spell-check
+  language.** Nothing applied them: the editor kept its own font and spacing
+  whatever they said. A settings file saved by an older version still loads with
+  every other choice intact, and the old values are dropped on the next save.
+
+### Fixed
+
+- **`gutterpress validate` with no folder now checks the book it is run in.**
+  The folder argument's help says it defaults to the current folder, but nothing
+  applied that default: a bare `validate` ran every source check over no files
+  and reported VALIDATION PASSED. It now behaves exactly like `validate .`.
+  `validate --pdf book.pdf` on its own still checks only the PDF.
+- **`gutterpress preflight` with no folder now reads the book it is run in.**
+  The same unapplied default: without a folder, the asset and heuristic checks
+  had no project to read and were skipped. It now behaves like `preflight .`.
+- **Repeating and conic gradients no longer disappear from PDF/X builds without
+  a word.** In a `--format pdfx` build, `repeating-linear-gradient()`,
+  `repeating-radial-gradient()`, `repeating-conic-gradient()` and
+  `conic-gradient()` printed blank:
+  Chromium emits them as a PostScript-function shading that Ghostscript cannot
+  convert (plain `linear-gradient()` / `radial-gradient()` are fine, and plain
+  PDF output is unaffected). The CSS lint
+  (`printsafe/no-risky-print-effects`) now warns on them and names the
+  workaround (a tiled `linear-gradient(90deg, …)` with `background-size` for
+  0deg/90deg stripes, otherwise a small tiled image), and the PDF/X build warns
+  with the page numbers it found them on. Ghostscript's own "The following
+  warnings were encountered" block is now logged as a warning instead of being
+  left on the terminal where the desktop app never showed it.
+- **A Ghostscript crash during PDF/X conversion now says so.** Ghostscript 10.02.1
+  segfaults in the PDF 1.3 transparency flattening PDF/X requires, on some pages
+  that use an image with an alpha channel (a 228-page book died at page 9). The
+  build reported only `exited null`. Child processes killed by a signal are now
+  reported as `was killed by signal SIGSEGV`, and the PDF/X step names the
+  Ghostscript version and the workaround: remove the alpha channel from the image,
+  or try a newer Ghostscript.
+
 ## [0.11.18] - 2026-10-13
 
 ### Added
