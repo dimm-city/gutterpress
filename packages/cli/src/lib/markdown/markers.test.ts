@@ -1445,6 +1445,42 @@ describe("pin_outside_page warning (gp_pin_scope_check)", () => {
   });
 });
 
+// flush_art: `.gp-flush` is the escape hatch past the printer's art-safe line
+// (a pin sits ON that line without it), so every image that takes it is said
+// out loud, once, on the channel validate and the Problems panel read.
+describe("flush_art warning (gp_pin_scope_check)", () => {
+  function flushWarnings(src: string): LayoutWarning[] {
+    const md = createMarkdownRenderer();
+    const env: PagedEnv = {};
+    md.render(src, env);
+    return (env.layoutWarnings ?? []).filter((w) => w.type === "flush_art");
+  }
+
+  test("an edge-pinned image with .gp-flush warns once, on its line, at the channel's warning severity", () => {
+    const warnings = flushWarnings("@page\n\ntext\n\n![Wall](wall.png){.gp-pin .gp-bottom .gp-flush}\n");
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]!.line).toBe(5);
+    expect(warnings[0]!.severity).toBeUndefined(); // = "warning" (see LayoutWarning)
+    expect(warnings[0]!.message).toBe(
+      "`.gp-flush` puts this image on the paper's edge, past the printer's safe area. Printers trim up to 0.125in there, so keep it for art that is meant to bleed off the page.",
+    );
+  });
+
+  test("one warning per image: a corner counts once, two images twice", () => {
+    expect(flushWarnings("@page\n\n![a](a.png){.gp-pin .gp-bottom .gp-right .gp-flush}\n")).toHaveLength(1);
+    const two = flushWarnings(
+      "@page\n\n![a](a.png){.gp-pin .gp-top .gp-flush}\n\n![b](b.png){.gp-pin .gp-left .gp-flush}\n",
+    );
+    expect(two.map((w) => w.line)).toEqual([3, 5]);
+  });
+
+  test("silent where .gp-flush does nothing: without .gp-pin, or on a pin with no edge word", () => {
+    expect(flushWarnings("@page\n\n![a](a.png){.gp-bleed .gp-flush}\n")).toEqual([]);
+    expect(flushWarnings("@page\n\n![a](a.png){.gp-pin .gp-flush}\n")).toEqual([]);
+    expect(flushWarnings("@page\n\n![a](a.png){.gp-pin .gp-bottom}\n")).toEqual([]);
+  });
+});
+
 // unknown_gp_class (#226): a gp-* class that is not part of core's published
 // vocabulary previously rendered as a silent no-op — an author typed
 // `@section .gp-columns-flow` before the class existed and nothing said why.
