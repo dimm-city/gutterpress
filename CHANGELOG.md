@@ -120,7 +120,8 @@ This project follows [Semantic Versioning](https://semver.org/).
   "everything inside the safe area". It stays in its corner as you scroll and
   zoom, and it is never printed. It replaces the status badge the CLI's preview
   showed, and the desktop button's tooltip is now a one-line summary of the
-  same count.
+  same count. A chevron in the legend's header folds it down to its title and
+  back, and it stays as you left it when the preview reloads.
 
 ### Changed
 

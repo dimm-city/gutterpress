@@ -140,7 +140,7 @@ from DriveThruRPG — Quick Specifications for Print Books
 3 text outside the safe area · 1 art outside · 2 in the bleed band
 ```
 
-*Outside* is the edge away from the spine and *binding* is the edge at the spine: on a right-hand (odd) page the binding edge is the left one, and page 1 is a right-hand page. The source line links to the printer's article when your preset has one; otherwise it names `manifest.yaml`. The last line counts only what the safe area layers that are on look at: text for **Safe area: text**, art for **Safe area: art**, and whatever either finds in the bleed band or off the page. A clean book says "everything inside the safe area", or "all text inside the safe area" or "all art inside the safe area" when only one of the two is on.
+*Outside* is the edge away from the spine and *binding* is the edge at the spine: on a right-hand (odd) page the binding edge is the left one, and page 1 is a right-hand page. The source line links to the printer's article when your preset has one; otherwise it names `manifest.yaml`. The last line counts only what the safe area layers that are on look at: text for **Safe area: text**, art for **Safe area: art**, and whatever either finds in the bleed band or off the page. A clean book says "everything inside the safe area", or "all text inside the safe area" or "all art inside the safe area" when only one of the two is on. When the legend is in your way, the chevron beside its **Print overlays** title folds it down to that title; click it again to open it. The preview keeps it as you left it.
 
 To switch the overlays on:
 

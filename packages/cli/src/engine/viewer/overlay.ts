@@ -55,8 +55,9 @@
  * in the corner of the viewport at any zoom or scroll. The legend names each
  * enabled layer with its values in inches and the edges they apply to, where
  * those numbers come from (the printer's spec as a link, else the manifest),
- * what the safe layers found, and how to hide it. It is the only part that
- * takes the pointer (its link must be clickable).
+ * what the safe layers found, and how to hide it, under a header whose
+ * button folds all that away. It is the only part that takes the pointer (its
+ * link and that button must be clickable).
  *
  * How it looks is set in ONE place — the tokens in `OVERLAY_CSS` below. The app
  * lets a user change each layer's colour and a three-step strength
@@ -368,7 +369,7 @@ export const OVERLAY_CSS = `
 .gp-ov-flag[data-kind="intended"] {
   outline: var(--gp-ov-flag-w) dotted var(--gp-ov-intent);
 }
-/* the legend: small, fixed in a corner of the viewport, and the one part that takes the pointer (its link) */
+/* the legend: small, fixed in a corner of the viewport, and the one part that takes the pointer (its link and its fold button) */
 .gp-ov-legend {
   position: fixed;
   right: 12px;
@@ -383,8 +384,33 @@ export const OVERLAY_CSS = `
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
   pointer-events: auto;
 }
-.gp-ov-legend > div + div { margin-top: 3px; }
+.gp-ov-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.gp-ov-body { margin-top: 6px; }
+.gp-ov-body > div + div { margin-top: 3px; }
 .gp-ov-legend a { color: #9cc2ff; }
+/* the fold button: a chevron made of two borders, down while the legend is open, up once it is folded to its header */
+.gp-ov-toggle {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+.gp-ov-toggle:focus-visible { outline: 2px solid #9cc2ff; }
+.gp-ov-toggle::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: translateY(-2px) rotate(45deg);
+}
+.gp-ov-toggle[aria-expanded="false"]::before { transform: translateY(2px) rotate(-135deg); }
 .gp-ov-row { display: flex; align-items: flex-start; gap: 6px; }
 .gp-ov-swatch {
   flex: none;
@@ -594,19 +620,38 @@ const inches = (px: number) => +(Math.abs(px) / 96).toFixed(2);
 /** pt to inches, as the legend words a rule ("0.125in"). */
 const ptIn = (pt: number) => `${+(pt / 72).toFixed(3)}in`;
 
+/** `localStorage` key for whether the legend is folded. */
+const LEGEND_FOLD_KEY = "gutterpress.overlay-legend-collapsed";
+
 /**
- * The legend, in the root beside the canvas: one row per enabled layer (swatch,
- * name, its values in inches and the edges they apply to), where the numbers
- * come from, what the `safe` layer found, and — when the host binds a key for
- * it (`<html data-overlay-key>`) — how to hide it. Everything is set as text;
- * the only markup is the spec's link.
+ * Whether the legend is folded to its header. It is module state because the
+ * legend is rebuilt on every paint, and it is mirrored to `localStorage` so a
+ * reload of the preview keeps it. Storage is only a convenience: where it is
+ * blocked the legend still folds, for as long as the page lives.
+ */
+let legendCollapsed = false;
+try {
+  legendCollapsed = localStorage.getItem(LEGEND_FOLD_KEY) === "true";
+} catch {
+  // storage is blocked: the legend starts open
+}
+
+/**
+ * The legend, in the root beside the canvas: a header (the title and a button
+ * that folds the rest away) over one row per enabled layer (swatch, name, its
+ * values in inches and the edges they apply to), where the numbers come from,
+ * what the `safe` layer found, and — when the host binds a key for it
+ * (`<html data-overlay-key>`) — how to hide it. Everything is set as text; the
+ * only markup is the spec's link and the button.
  */
 function legend(layers: OverlayLayers, area: PrintArea | null, summary: OverlaySummary): HTMLElement {
   const el = div("gp-ov-legend");
+  const body = div("gp-ov-body");
+  body.id = "gp-ov-body";
   const add = (cls: string, ...content: Array<string | Node>) => {
     const line = div(cls);
     line.append(...content);
-    el.appendChild(line);
+    body.appendChild(line);
   };
   const row = (layer: OverlayLayer, name: string, text: string) => {
     const swatch = div("gp-ov-swatch");
@@ -673,6 +718,33 @@ function legend(layers: OverlayLayers, area: PrintArea | null, summary: OverlayS
   }
   const key = document.documentElement.dataset.overlayKey;
   if (key) add("gp-ov-note", `${key} hides`);
+
+  const title = document.createElement("b");
+  title.id = "gp-ov-title";
+  title.textContent = "Print overlays";
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "gp-ov-toggle";
+  toggle.setAttribute("aria-labelledby", title.id);
+  toggle.setAttribute("aria-controls", body.id);
+  const fold = () => {
+    body.hidden = legendCollapsed;
+    toggle.setAttribute("aria-expanded", String(!legendCollapsed));
+    toggle.title = legendCollapsed ? "Show the legend" : "Hide the legend";
+  };
+  toggle.addEventListener("click", () => {
+    legendCollapsed = !legendCollapsed;
+    try {
+      localStorage.setItem(LEGEND_FOLD_KEY, String(legendCollapsed));
+    } catch {
+      // storage is blocked or full: the fold lasts as long as the page
+    }
+    fold();
+  });
+  fold();
+  const head = div("gp-ov-head");
+  head.append(title, toggle);
+  el.append(head, body);
   return el;
 }
 

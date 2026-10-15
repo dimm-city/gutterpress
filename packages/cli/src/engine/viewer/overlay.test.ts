@@ -12,7 +12,7 @@
  *     the book's margins, that the book's own CSS cannot hide, move or restyle
  *     it, that each of the four layers (bleed, safe = text, art, margins) is
  *     drawn alone and in its own colour, that each safe layer judges only its
- *     own rule, what the legend says, and that switching any of it on changes
+ *     own rule, what the legend says and how it folds, and that switching any of it on changes
  *     NOTHING about the book — plus `fixtures/mirrored-sheets.html` for the
  *     margins layer on a book whose recto and verso margins mirror.
  */
@@ -24,7 +24,7 @@ import { fileURLToPath } from "node:url";
 
 import { resolveChromiumExecutable } from "../../lib/chromium.ts";
 import { getAssetPath } from "../../lib/embedded-assets.ts";
-import { closeBrowser, getBrowser } from "./test-support/browser.ts";
+import { closeBrowser, getBrowser, type TestPage } from "./test-support/browser.ts";
 import { MARKER_CSS } from "../../lib/markdown/markers.js";
 import { GUTTERPRESS_CSS } from "../../lib/markdown/gutterpress-css.ts";
 import { classifyRect, layersFrom, pageBoxes, sanitizeOverlayStyle, type Rect } from "./overlay.ts";
@@ -247,6 +247,12 @@ async function withFixture<T>(
     await fsp.rm(dir, { recursive: true, force: true });
   }
 }
+
+/** Press the legend's fold button. */
+const pressFold = (page: TestPage) =>
+  page.evaluate(() =>
+    document.querySelector("gp-overlay")!.shadowRoot!.querySelector<HTMLButtonElement>(".gp-ov-legend button")!.click(),
+  );
 
 /** In-page: every overlay page box against the sheet it belongs to, on screen. */
 function alignment() {
@@ -1174,7 +1180,7 @@ testIf(
             return {
               rows: rows.map((row) => row.textContent),
               swatches: Array.from(el.querySelectorAll<HTMLElement>(".gp-ov-swatch")).map((sw) => sw.dataset.layer),
-              lines: Array.from(el.children).filter((c) => !rows.includes(c)).map((c) => c.textContent),
+              lines: Array.from(el.querySelector(".gp-ov-body")!.children).filter((c) => !rows.includes(c)).map((c) => c.textContent),
               link: link && { text: link.textContent, href: link.getAttribute("href"), target: link.target, rel: link.rel },
               corner: { right: Math.round(innerWidth - r.right), bottom: Math.round(innerHeight - r.bottom), w: Math.round(r.width), h: Math.round(r.height) },
               inRoot: el.closest(".root") !== null,
@@ -1272,6 +1278,135 @@ testIf(
 );
 
 testIf(
+  "the legend folds to its header: its button collapses and expands it, and the choice outlives a repaint and a reload",
+  async () => {
+    await withFixture(async (url) => {
+      const page = await (await getBrowser()).newPage();
+      try {
+        const start = async () => {
+          await page.goto(url);
+          await page.waitForFunction("window.Gutterpress?.totalPages > 0");
+          await page.evaluate(() => (window as any).Gutterpress.decoration.setOverlay(true));
+        };
+        /** What a reader sees of the legend now: a laid-out row has a height, a folded one has none. */
+        const seen = () =>
+          page.evaluate(() => {
+            const shadow = document.querySelector("gp-overlay")!.shadowRoot!;
+            const el = shadow.querySelector<HTMLElement>(".gp-ov-legend")!;
+            const button = el.querySelector("button")!;
+            const shown = (n: Element) => n.getBoundingClientRect().height > 0;
+            const r = el.getBoundingClientRect();
+            return {
+              title: shadow.getElementById(button.getAttribute("aria-labelledby")!)?.textContent,
+              expanded: button.getAttribute("aria-expanded"),
+              controls: shadow.getElementById(button.getAttribute("aria-controls")!)?.className,
+              header: shown(el.querySelector(".gp-ov-head")!),
+              rows: Array.from(el.querySelectorAll(".gp-ov-row")).filter(shown).length,
+              notes: Array.from(el.querySelectorAll(".gp-ov-note, .gp-ov-found")).filter(shown).length,
+              height: Math.round(r.height),
+              corner: { right: Math.round(innerWidth - r.right), bottom: Math.round(innerHeight - r.bottom) },
+              stored: localStorage.getItem("gutterpress.overlay-legend-collapsed"),
+            };
+          });
+        /** The button is hit where it is drawn, and nothing else the overlay draws takes the pointer. */
+        const pointer = () =>
+          page.evaluate(() => {
+            const shadow = document.querySelector("gp-overlay")!.shadowRoot!;
+            const legend = shadow.querySelector(".gp-ov-legend")!;
+            const b = legend.querySelector("button")!.getBoundingClientRect();
+            return {
+              elsewhere: Array.from(shadow.querySelectorAll<HTMLElement>(".root, .root *"))
+                .filter((n) => !legend.contains(n) && getComputedStyle(n).pointerEvents !== "none")
+                .map((n) => n.className),
+              hit: shadow.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)?.tagName,
+            };
+          });
+
+        await start();
+        // open to begin with: the title over a row for each layer, the source and the counts
+        const open = await seen();
+        expect(open).toMatchObject({ title: "Print overlays", expanded: "true", controls: "gp-ov-body", header: true, rows: 4, notes: 2, stored: null });
+        expect(await pointer()).toEqual({ elsewhere: [], hit: "BUTTON" });
+
+        // the button folds it to its header alone, in the same corner
+        await pressFold(page);
+        const folded = await seen();
+        expect(folded).toMatchObject({ expanded: "false", header: true, rows: 0, notes: 0, stored: "true", corner: open.corner });
+        expect(folded.height).toBeLessThan(open.height);
+        expect(await pointer()).toEqual({ elsewhere: [], hit: "BUTTON" });
+
+        // the legend is rebuilt on every paint (a redraw, other layers) and a zoom moves it not at all: it stays folded
+        const rebuilt = await page.evaluate(() => {
+          const legend = () => document.querySelector("gp-overlay")!.shadowRoot!.querySelector(".gp-ov-legend");
+          const before = legend();
+          (window as any).Gutterpress.decoration.redraw();
+          return legend() !== before;
+        });
+        expect(rebuilt).toBe(true);
+        expect(await seen()).toMatchObject({ expanded: "false", header: true, rows: 0, notes: 0 });
+        await page.evaluate(() => (window as any).Gutterpress.decoration.setOverlay({ safe: true, art: true }));
+        expect(await seen()).toMatchObject({ expanded: "false", header: true, rows: 0, notes: 0 });
+        await page.evaluate(() => document.documentElement.style.setProperty("--gutterpress-zoom", "0.5"));
+        expect(await seen()).toMatchObject({ expanded: "false", header: true, rows: 0, notes: 0 });
+        await page.evaluate(() => document.documentElement.style.removeProperty("--gutterpress-zoom"));
+
+        // a reload (the preview swaps in a rebuilt book that way) brings it back folded
+        await start();
+        expect(await seen()).toMatchObject({ expanded: "false", header: true, rows: 0, notes: 0, stored: "true" });
+
+        // and pressing the button again unfolds it, to what it was
+        await pressFold(page);
+        expect(await seen()).toEqual({ ...open, stored: "false" });
+      } finally {
+        await page.close();
+      }
+    });
+  },
+  RENDER_TEST_TIMEOUT_MS,
+);
+
+testIf(
+  "the legend still folds where the browser blocks storage",
+  async () => {
+    await withFixture(
+      async (url) => {
+        const page = await (await getBrowser()).newPage();
+        try {
+          await page.goto(url);
+          await page.waitForFunction("window.Gutterpress?.totalPages > 0");
+          expect(await page.evaluate(() => { try { void localStorage; return "readable"; } catch { return "blocked"; } })).toBe("blocked");
+          await page.evaluate(() => (window as any).Gutterpress.decoration.setOverlay(true));
+          const rows = () =>
+            page.evaluate(
+              () =>
+                Array.from(document.querySelector("gp-overlay")!.shadowRoot!.querySelectorAll(".gp-ov-row")).filter(
+                  (r) => r.getBoundingClientRect().height > 0,
+                ).length,
+            );
+          expect(await rows()).toBe(4);
+          await pressFold(page);
+          expect(await rows()).toBe(0);
+          // for as long as the page lives, a repaint included
+          await page.evaluate(() => (window as any).Gutterpress.decoration.redraw());
+          expect(await rows()).toBe(0);
+          await pressFold(page);
+          expect(await rows()).toBe(4);
+        } finally {
+          await page.close();
+        }
+      },
+      "overlay.html",
+      (html) =>
+        html.replace(
+          "<head>",
+          '<head><script>Object.defineProperty(window, "localStorage", { get() { throw new DOMException("blocked", "SecurityError"); } });</script>',
+        ),
+    );
+  },
+  RENDER_TEST_TIMEOUT_MS,
+);
+
+testIf(
   "the legend says what the project has not set, where its numbers come from without a spec, and when everything is inside",
   async () => {
     await withFixture(async (url) => {
@@ -1293,7 +1428,7 @@ testIf(
               const rows = Array.from(el.querySelectorAll(".gp-ov-row"));
               return {
                 rows: rows.map((r) => r.textContent),
-                lines: Array.from(el.children).filter((x) => !rows.includes(x)).map((x) => x.textContent),
+                lines: Array.from(el.querySelector(".gp-ov-body")!.children).filter((x) => !rows.includes(x)).map((x) => x.textContent),
                 links: el.querySelectorAll("a").length,
               };
             },

@@ -2386,7 +2386,7 @@
 .gp-ov-flag[data-kind="intended"] {
   outline: var(--gp-ov-flag-w) dotted var(--gp-ov-intent);
 }
-/* the legend: small, fixed in a corner of the viewport, and the one part that takes the pointer (its link) */
+/* the legend: small, fixed in a corner of the viewport, and the one part that takes the pointer (its link and its fold button) */
 .gp-ov-legend {
   position: fixed;
   right: 12px;
@@ -2401,8 +2401,33 @@
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
   pointer-events: auto;
 }
-.gp-ov-legend > div + div { margin-top: 3px; }
+.gp-ov-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.gp-ov-body { margin-top: 6px; }
+.gp-ov-body > div + div { margin-top: 3px; }
 .gp-ov-legend a { color: #9cc2ff; }
+/* the fold button: a chevron made of two borders, down while the legend is open, up once it is folded to its header */
+.gp-ov-toggle {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+.gp-ov-toggle:focus-visible { outline: 2px solid #9cc2ff; }
+.gp-ov-toggle::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: translateY(-2px) rotate(45deg);
+}
+.gp-ov-toggle[aria-expanded="false"]::before { transform: translateY(2px) rotate(-135deg); }
 .gp-ov-row { display: flex; align-items: flex-start; gap: 6px; }
 .gp-ov-swatch {
   flex: none;
@@ -2550,12 +2575,19 @@
   var ART_TAGS = new Set(["img", "svg", "video", "canvas"]);
   var inches = (px) => +(Math.abs(px) / 96).toFixed(2);
   var ptIn = (pt2) => `${+(pt2 / 72).toFixed(3)}in`;
+  var LEGEND_FOLD_KEY = "gutterpress.overlay-legend-collapsed";
+  var legendCollapsed = false;
+  try {
+    legendCollapsed = localStorage.getItem(LEGEND_FOLD_KEY) === "true";
+  } catch {}
   function legend(layers, area, summary) {
     const el = div("gp-ov-legend");
+    const body = div("gp-ov-body");
+    body.id = "gp-ov-body";
     const add = (cls, ...content) => {
       const line = div(cls);
       line.append(...content);
-      el.appendChild(line);
+      body.appendChild(line);
     };
     const row = (layer, name, text) => {
       const swatch = div("gp-ov-swatch");
@@ -2610,6 +2642,30 @@
     const key = document.documentElement.dataset.overlayKey;
     if (key)
       add("gp-ov-note", `${key} hides`);
+    const title = document.createElement("b");
+    title.id = "gp-ov-title";
+    title.textContent = "Print overlays";
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "gp-ov-toggle";
+    toggle.setAttribute("aria-labelledby", title.id);
+    toggle.setAttribute("aria-controls", body.id);
+    const fold = () => {
+      body.hidden = legendCollapsed;
+      toggle.setAttribute("aria-expanded", String(!legendCollapsed));
+      toggle.title = legendCollapsed ? "Show the legend" : "Hide the legend";
+    };
+    toggle.addEventListener("click", () => {
+      legendCollapsed = !legendCollapsed;
+      try {
+        localStorage.setItem(LEGEND_FOLD_KEY, String(legendCollapsed));
+      } catch {}
+      fold();
+    });
+    fold();
+    const head = div("gp-ov-head");
+    head.append(title, toggle);
+    el.append(head, body);
     return el;
   }
   function paintOverlay(pages, strips, area, layers) {
