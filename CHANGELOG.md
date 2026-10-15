@@ -5,12 +5,12 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.11.19] - 2026-10-14
+## [0.11.19] - 2026-10-15
 
 ### Added
 
 - **`validate` and the Problems panel report unusual characters in your
-  markdown.** New check `source.characters` (warning) finds what pasting from a
+  markdown.** New check `source.characters` finds what pasting from a
   chat model, a word processor or a web page leaves behind: em and en dashes,
   curly and look-alike quote marks, the ellipsis character, bullets, arrows and
   emoji, plus invisible characters (zero-width spaces, non-breaking and other odd
@@ -20,7 +20,9 @@ This project follows [Semantic Versioning](https://semver.org/).
   straight quotes already print as the proper typography, and an HTML entity
   (`&nbsp;`, `&rarr;`) keeps a character you want without a warning. Quotation
   marks other languages use (guillemets, low-9 quotes) are never reported.
-  Silence it like any rule: `lint.rules`, or `gutterpress-disable-next-line
+  Dashes, curly quotes and the ellipsis character are info (they print
+  correctly, and pasted prose is full of them), so they stay out of the
+  Problems count; the rest are warnings. Silence it like any rule: `lint.rules`, or `gutterpress-disable-next-line
   source.characters`.
 - **The editor outlines those characters where they sit.** In a markdown file
   each one gets a box (zero-width ones show as a placeholder symbol), and
@@ -51,6 +53,9 @@ This project follows [Semantic Versioning](https://semver.org/).
   applied that default: a bare `validate` ran every source check over no files
   and reported VALIDATION PASSED. It now behaves exactly like `validate .`.
   `validate --pdf book.pdf` on its own still checks only the PDF.
+- **`gutterpress preflight` with no folder now reads the book it is run in.**
+  The same unapplied default: without a folder, the asset and heuristic checks
+  had no project to read and were skipped. It now behaves like `preflight .`.
 - **Repeating and conic gradients no longer disappear from PDF/X builds without
   a word.** In a `--format pdfx` build, `repeating-linear-gradient()`,
   `repeating-radial-gradient()`, `repeating-conic-gradient()` and

@@ -41,7 +41,7 @@ describe("source.characters", () => {
       [4, 10, "typographer"],
       [4, 13, "typographer"],
     ]);
-    expect(results[0]!.severity).toBe("warning");
+    expect(results[0]!.severity).toBe("info");
     expect(results[0]!.message).toBe("Em dash (U+2014). Type --- instead; it prints the same.");
     expect(results[0]!.data).toEqual({ codePoint: 0x2014 });
   });
@@ -69,6 +69,12 @@ describe("source.characters", () => {
       "control",
       "replacement",
       "private-use",
+    ]);
+    // Typography the typographer prints anyway is info; the rest can change
+    // what prints, so it stays a warning.
+    expect(results.map((r) => r.severity)).toEqual([
+      "info",
+      ...Array(8).fill("warning"),
     ]);
     expect(results[3]!.message).toBe("Emoji (U+1F680). Delete it, or type &#x1F680; if you meant it.");
     expect(results[4]!.message).toBe(

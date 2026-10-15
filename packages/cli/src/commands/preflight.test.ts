@@ -1,5 +1,8 @@
-import { describe, expect, test } from "bun:test";
-import { buildPreflightPayload, toPreflightMarkdown } from "./preflight";
+import { describe, expect, test, spyOn } from "bun:test";
+import { runCommand } from "citty";
+import * as validationExecMod from "../lib/validation-exec.ts";
+import type { ValidationExecutionArgs } from "../lib/validation-exec.ts";
+import preflightCommand, { buildPreflightPayload, toPreflightMarkdown } from "./preflight";
 import type { ValidationExecutionResult } from "../index.ts";
 
 function makeExecution(overrides: Partial<ValidationExecutionResult> = {}): ValidationExecutionResult {
@@ -122,5 +125,32 @@ describe("preflight payload", () => {
     expect(markdown).toContain("# gutterpress preflight");
     expect(markdown).toContain("Status: **GO**");
     expect(markdown).toContain("- Targets: none");
+  });
+});
+
+describe("preflight command — source directory", () => {
+  async function inputFor(rawArgs: string[]): Promise<string | undefined> {
+    let captured: ValidationExecutionArgs | undefined;
+    const spy = spyOn(validationExecMod, "executeValidation").mockImplementation((async (
+      args: ValidationExecutionArgs,
+    ) => {
+      captured = args;
+      return undefined;
+    }) as unknown as typeof validationExecMod.executeValidation);
+    try {
+      await runCommand(preflightCommand, { rawArgs });
+    } finally {
+      spy.mockRestore();
+    }
+    return captured?.input;
+  }
+
+  test("no dir and no --input means cwd, so a bare preflight reads the book it runs in", async () => {
+    expect(await inputFor(["--pdf", "./book.pdf"])).toBe(".");
+  });
+
+  test("the positional dir, then --input, still win", async () => {
+    expect(await inputFor(["./my-book", "--pdf", "./book.pdf"])).toBe("./my-book");
+    expect(await inputFor(["./my-book", "--pdf", "./book.pdf", "--input", "./flag"])).toBe("./flag");
   });
 });

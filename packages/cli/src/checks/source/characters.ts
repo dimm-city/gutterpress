@@ -57,7 +57,10 @@ const check: Check = {
           const { name, code, fix } = describeCharacter(char);
           results.push(
             finding(check.id, {
-              severity: "warning",
+              // Typography the typographer would print anyway (dashes, curly
+              // quotes, the ellipsis) is info: common in pasted prose, and it
+              // prints correctly. Everything else can change what prints.
+              severity: code === "typographer" ? "info" : "warning",
               code,
               message: `${name} (${codePointLabel(char)}). ${fix}`,
               file,
