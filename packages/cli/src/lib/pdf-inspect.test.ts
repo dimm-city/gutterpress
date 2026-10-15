@@ -23,10 +23,13 @@ import {
   getOutlineCount,
   getOpPass,
   isLoadable,
-  pagesWithUnsplittableText,
   unsplittableTextReasons,
 } from "./pdf-inspect";
 import type { PDFDocumentProxy } from "unpdf/pdfjs";
+
+/** Pages whose text cannot be split: the reasons map without its `no-text` pages. */
+const pagesWithUnsplittableText = async (bytes: Uint8Array) =>
+  [...(await unsplittableTextReasons(bytes))].filter(([, reason]) => reason !== "no-text").map(([page]) => page);
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // Large (135 MB), Chromium-generated, and gitignored — present on dev machines,
@@ -262,7 +265,7 @@ describe("pdf-inspect cache eviction + clearPdfCache", () => {
   });
 });
 
-describe("pagesWithUnsplittableText", () => {
+describe("unsplittableTextReasons", () => {
   const TEXT = "BT /F1 12 Tf 10 50 Td (Hello) Tj ET";
 
   /**
@@ -399,7 +402,7 @@ describe("pagesWithUnsplittableText", () => {
   });
 });
 
-describe("pagesWithUnsplittableText: text paint", () => {
+describe("unsplittableTextReasons: text paint", () => {
   const TEXT = "BT /F1 12 Tf 10 50 Td (Hello) Tj ET";
   async function pdf(content: string, pattern = false): Promise<Uint8Array> {
     const { PDFDocument, PDFName, StandardFonts } = await import("pdf-lib");
@@ -441,5 +444,49 @@ describe("pagesWithUnsplittableText: text paint", () => {
   test("text used as a clip (render modes 4-7) is flagged; invisible text (3) is not", async () => {
     expect(await pagesWithUnsplittableText(await pdf("BT 7 Tr /F1 12 Tf 10 50 Td (Hello) Tj ET"))).toEqual([1]);
     expect(await pagesWithUnsplittableText(await pdf("BT 3 Tr /F1 12 Tf 10 50 Td (Hello) Tj ET"))).toEqual([]);
+  });
+});
+
+describe("unsplittableTextReasons: fonts and page selection", () => {
+  const TEXT = "BT /F1 12 Tf 10 50 Td (a) Tj ET";
+  /** A PDF whose pages each show TEXT in a font that is Type 3 when `type3[i]`. */
+  async function pdf(type3: boolean[]): Promise<Uint8Array> {
+    const { PDFDocument, PDFName, StandardFonts } = await import("pdf-lib");
+    const doc = await PDFDocument.create();
+    const { context } = doc;
+    const standard = doc.embedStandardFont(StandardFonts.Helvetica);
+    // Chromium emits a Type 3 font for glyphs it can only draw as paths (a
+    // synthetic bold, a text stroke): each glyph is a content stream.
+    const glyph = context.register(context.stream("1000 0 0 0 750 750 d1 0 0 750 750 re f"));
+    const type3Font = context.register(
+      context.obj({
+        Type: "Font",
+        Subtype: "Type3",
+        FontBBox: [0, 0, 750, 750],
+        FontMatrix: [0.001, 0, 0, 0.001, 0, 0],
+        CharProcs: { a: glyph },
+        Encoding: { Type: "Encoding", Differences: [97, PDFName.of("a")] },
+        FirstChar: 97,
+        LastChar: 97,
+        Widths: [1000],
+        Resources: {},
+      })
+    );
+    for (const isType3 of type3) {
+      const page = doc.addPage([100, 100]);
+      page.node.set(PDFName.of("Resources"), context.obj({ Font: { F1: isType3 ? type3Font : standard.ref } }));
+      page.node.set(PDFName.of("Contents"), context.register(context.stream(TEXT)));
+    }
+    return doc.save();
+  }
+
+  test("text in a Type 3 font is flagged as type3-font", async () => {
+    expect(await unsplittableTextReasons(await pdf([true, false]))).toEqual(new Map([[1, "type3-font"]]));
+  });
+
+  test("pages limits the scan to the pages listed", async () => {
+    const bytes = await pdf([true, false, true]);
+    expect(await unsplittableTextReasons(bytes, [2, 3])).toEqual(new Map([[3, "type3-font"]]));
+    expect(await unsplittableTextReasons(bytes, [])).toEqual(new Map());
   });
 });

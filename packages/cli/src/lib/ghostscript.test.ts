@@ -9,6 +9,7 @@ import * as toolProbe from "./tool-probe";
 import { log } from "../utils/logger";
 import {
   convertToPdfxCmyk,
+  planTransparentPages,
   transparentPages,
   resolveGhostscript,
   stripAnnotations,
@@ -280,7 +281,6 @@ describe("transparentPages", () => {
     kind: string,
     obj: import("pdf-lib").PDFObject
   ) {
-    
     page.node.set(PdfName.of("Resources"), ctx.obj({ [kind]: { X: ctx.register(obj) } }));
   }
 
@@ -378,5 +378,44 @@ describe("transparentPages", () => {
 
   test("returns none rather than throwing on bytes that are not a PDF", async () => {
     expect(await transparentPages(Buffer.from("not a pdf at all"))).toEqual([]);
+  });
+});
+
+describe("planTransparentPages", () => {
+  test("puts every transparent page in exactly one group", () => {
+    const plan = planTransparentPages(
+      [1, 2, 3, 4, 5, 6],
+      new Map([
+        [2, "no-text"],
+        [3, "text-transparency"],
+        [5, "type3-font"],
+      ]),
+      [],
+      [4]
+    );
+    expect(plan.split).toEqual([1, 6]);
+    expect(plan.artOnly).toEqual([2]);
+    expect(plan.kept).toEqual(new Map([[3, "text-transparency"], [4, "gradient"], [5, "type3-font"]]));
+  });
+
+  test("the author's flattenPages list wins over the text's own reason and a gradient", () => {
+    const plan = planTransparentPages([1, 2, 3], new Map([[2, "type3-font"]]), [1, 2, 3], [3]);
+    expect(plan.split).toEqual([]);
+    expect(plan.kept).toEqual(new Map([[1, "listed"], [2, "listed"], [3, "listed"]]));
+  });
+
+  test("a page with no text stays artwork-only, even when listed or carrying a gradient", () => {
+    const plan = planTransparentPages([1, 2], new Map([[1, "no-text"], [2, "no-text"]]), [1], [2]);
+    expect(plan).toEqual({ split: [], artOnly: [1, 2], kept: new Map() });
+  });
+
+  test("a text reason outranks a gradient on the same page", () => {
+    expect(planTransparentPages([1], new Map([[1, "text-pattern-or-clip"]]), [], [1]).kept).toEqual(
+      new Map([[1, "text-pattern-or-clip"]])
+    );
+  });
+
+  test("listed or gradient pages without transparency are ignored", () => {
+    expect(planTransparentPages([2], new Map(), [1, 9], [3])).toEqual({ split: [2], artOnly: [], kept: new Map() });
   });
 });

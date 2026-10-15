@@ -261,11 +261,14 @@ fixture — but only when the thing being kept-with can actually be placed:
 - **Transparency in a `--format pdfx` build.** PDF/X-1a and X-3 cannot hold
   transparency (soft or `rgba()` shadows, alpha PNGs, `opacity`), so by default
   Ghostscript flattens each page that uses it into one bitmap, text included.
-  Set `pdfx.transparency: preserve-text` to flatten only the artwork to a 300
-  DPI picture and keep the text live on top (unlike `filter`, above). The price:
-  that page's rules, backgrounds and shapes become raster, text always sits
-  above the artwork (text another element covers shows through), and a page
-  whose text is itself translucent or blended falls back to the default. See
+  Set `pdfx.transparency: preserve-text` to flatten only the artwork to a
+  picture (300 DPI, or `pdfx.rasterDpi`) and keep the text live on top (unlike
+  `filter`, above). The price: that page's rules, backgrounds and shapes become
+  raster, and text always sits above the artwork (text another element covers
+  shows through). A page whose text is translucent or blended, set in a Type 3
+  font (a synthetic bold, a text stroke), filled with a pattern or used as a
+  clip, or a page with a repeating or conic gradient, is flattened whole as by
+  default; the build names each one's cause. See
   [PDF/X and transparency](publishing.md#pdfx-transparency).
 - To accept a warning you have decided is fine, switch the rule off for the
   book (`lint.rules` in `manifest.yaml`) or for one line

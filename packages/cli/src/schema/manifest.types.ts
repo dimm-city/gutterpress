@@ -126,7 +126,9 @@ export interface GutterpressManifest {
      * A page that uses transparency, which PDF/X cannot hold (#385).
      * `flatten-page` (default): Ghostscript rasterizes the whole page, text
      * included. `preserve-text`: flatten the artwork only and keep the text
-     * live on top; a page whose text is itself translucent/blended falls back.
+     * live on top; a page whose text cannot be split (translucent or blended,
+     * Type 3, pattern-filled or a clip) or that has a repeating or conic
+     * gradient falls back to the whole-page flattening.
      */
     transparency?: "flatten-page" | "preserve-text";
     /**

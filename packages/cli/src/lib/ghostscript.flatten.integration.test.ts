@@ -11,7 +11,7 @@ import { copyFile, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
-import { PDFArray, PDFDocument, PDFName, PDFNumber } from "pdf-lib";
+import { PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber, PDFRawStream } from "pdf-lib";
 import { resolveChromiumExecutable } from "./chromium";
 import { launchChromium } from "../engine/shared/cdp";
 import { build } from "../engine/compiler/build";
@@ -19,10 +19,11 @@ import { runBuild } from "./build-runner";
 import { log } from "../utils/logger";
 import { getAssetPath } from "./embedded-assets";
 import { blackTextToGray } from "./black-text-gray";
-import { loadPdf, getOpPass, getTextPass, pagesWithUnsplittableText } from "./pdf-inspect";
+import { loadPdf, getOpPass, getTextPass, unsplittableTextReasons } from "./pdf-inspect";
 import {
   convertToPdfxCmyk,
   flattenTransparentPages,
+  planTransparentPages,
   resolveGhostscript,
   transparentPages,
 } from "./ghostscript";
@@ -70,6 +71,24 @@ const boxOf = (doc: PDFDocument, page: number, name: string) =>
     .asArray()
     .map((n) => (n as PDFNumber).asNumber());
 
+/** Pixel widths of the images page `n` (1-based) draws, through nested forms, and the page's width in points. */
+async function pageImageWidths(file: string, n: number): Promise<{ widths: number[]; pageWidth: number }> {
+  const doc = await PDFDocument.load(await readFile(file));
+  const widths: number[] = [];
+  const walk = (resources: PDFDict | undefined) => {
+    const xobjects = resources?.lookupMaybe(PDFName.of("XObject"), PDFDict);
+    for (const [, ref] of xobjects?.entries() ?? []) {
+      const dict = (doc.context.lookup(ref) as PDFRawStream).dict;
+      const subtype = dict.get(PDFName.of("Subtype"))?.toString();
+      if (subtype === "/Image") widths.push((dict.get(PDFName.of("Width")) as PDFNumber).asNumber());
+      else if (subtype === "/Form") walk(dict.lookupMaybe(PDFName.of("Resources"), PDFDict));
+    }
+  };
+  const page = doc.getPage(n - 1);
+  walk(page.node.Resources());
+  return { widths, pageWidth: page.getMediaBox().width };
+}
+
 /** A page's content stream(s) as comparable text. */
 function contentOf(doc: PDFDocument, page: number): string {
   const contents = doc.getPage(page).node.Contents();
@@ -106,9 +125,11 @@ testIf(
       const transparent = await transparentPages(sourceBytes);
       expect(transparent).toEqual([1, 2, 3, 4, 5, 6]);
       // Chromium wraps opacity and blended text in a group form XObject.
-      const blocked = await pagesWithUnsplittableText(sourceBytes);
-      expect(blocked).toEqual([5, 6]);
-      const split = transparent.filter((n) => !blocked.includes(n));
+      // The same plan the build makes (no pages listed, no gradients here).
+      const plan = planTransparentPages(transparent, await unsplittableTextReasons(sourceBytes), [], []);
+      expect(plan.kept).toEqual(new Map([[5, "text-transparency"], [6, "text-transparency"]]));
+      expect(plan.artOnly).toEqual([]);
+      const split = plan.split;
       expect(split).toEqual([1, 2, 3, 4]);
 
       await flattenTransparentPages(rawPdf, split, dir);
@@ -190,7 +211,7 @@ testIf(
 );
 
 testIf(
-  "flattens a transparent page that has no text (a full-page art plate)",
+  "flattenTransparentPages still handles a page whose text pass comes back empty (an art plate)",
   async () => {
     const dir = await makeTempDir("gp-flatten-art-");
     const browser = await launchChromium();
@@ -212,6 +233,9 @@ section { break-after: page; font: 14px serif }
       await writeFile(rawPdf, built.bytes);
 
       expect(await transparentPages(await readFile(rawPdf))).toEqual([1]);
+      // The build never splits such a page (nothing to keep); the guard is for
+      // text the scanner sees but Ghostscript's text pass drops.
+      expect(await unsplittableTextReasons(built.bytes, [1])).toEqual(new Map([[1, "no-text"]]));
       const plainBefore = contentOf(await PDFDocument.load(built.bytes), 1);
       await flattenTransparentPages(rawPdf, [1], dir);
       // The page with no transparency is byte-identical.
@@ -269,7 +293,7 @@ section { break-after: page; font: 24px Single }
       await copyFile(sourcePdf, rawPdf);
 
       expect(await transparentPages(built.bytes)).toEqual([1, 2]);
-      expect(await pagesWithUnsplittableText(built.bytes)).toEqual([1]);
+      expect(await unsplittableTextReasons(built.bytes, [1, 2])).toEqual(new Map([[1, "type3-font"]]));
 
       // Splitting page 1 anyway loses the bold glyphs: the pixels prove why it is excluded.
       await flattenTransparentPages(rawPdf, [1], dir);
@@ -329,7 +353,7 @@ section { break-after: page; font: 16px serif }
       await copyFile(sourcePdf, rawPdf);
 
       expect(await transparentPages(built.bytes)).toEqual([1, 2]);
-      expect(await pagesWithUnsplittableText(built.bytes)).toEqual([1]);
+      expect(await unsplittableTextReasons(built.bytes, [1, 2])).toEqual(new Map([[1, "text-pattern-or-clip"]]));
 
       // Splitting page 1 anyway erases the wordmark: the pixels prove why it is excluded.
       await flattenTransparentPages(rawPdf, [1], dir);
@@ -445,9 +469,22 @@ testIf(
       expect(warnings.some((w) => w.startsWith("Pages 3, 4 could not keep their text live"))).toBe(true);
       expect(listedWarnings.some((w) => w.startsWith("Page 1 uses transparency") && w.includes("150 DPI"))).toBe(true);
       expect(listedWarnings.some((w) => w.includes("page 2: listed in pdfx.flattenPages"))).toBe(true);
+      // pdfx.rasterDpi sets the picture's resolution on both paths: page 1's
+      // split artwork, and page 2, which Ghostscript flattens whole. The
+      // default split artwork is 300 DPI.
+      const pixelsAt = async (file: string, n: number, dpi: number) => {
+        const { widths, pageWidth } = await pageImageWidths(file, n);
+        expect(Math.max(...widths)).toBeCloseTo((pageWidth / 72) * dpi, -1);
+      };
+      await pixelsAt(kept, 1, 300);
+      await pixelsAt(listed, 1, 150);
+      await pixelsAt(listed, 2, 150);
       // The gradient page has a shadow, so Ghostscript flattens it whole: the
-      // warning names the text loss, not a blank gradient.
-      expect(warnings.filter((w) => w.startsWith("Page 4: a repeating-*-gradient() or conic-gradient() is painted only"))).toHaveLength(2);
+      // warning names the text loss, not a blank gradient. The default build
+      // says so once; preserve-text reports it once, among its fallback pages.
+      const gradientNote = "Page 4: a repeating-*-gradient() or conic-gradient() is painted only";
+      expect(warnings.filter((w) => w.startsWith(gradientNote))).toHaveLength(1);
+      expect(warnings.filter((w) => w.includes("  - page 4: a repeating or conic gradient"))).toHaveLength(1);
       expect(warnings.some((w) => w.includes("can print blank"))).toBe(false);
 
       const textOf = async (file: string) => (await getTextPass((await loadPdf(file))!)).textByPage;

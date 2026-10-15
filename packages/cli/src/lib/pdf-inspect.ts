@@ -492,14 +492,21 @@ const opSet = (names: string[]) =>
 const FILL_COLOR_OPS = opSet(["setFillGray", "setFillRGBColor", "setFillCMYKColor", "setFillColor"]);
 const STROKE_COLOR_OPS = opSet(["setStrokeGray", "setStrokeRGBColor", "setStrokeCMYKColor", "setStrokeColor"]);
 
-const SHOW_TEXT_OPS = new Set<number>(
-  ["showText", "showSpacedText", "nextLineShowText", "nextLineSetSpacingShowText"]
-    .map((name) => OPS[name])
-    .filter((op): op is number => op !== undefined)
-);
+const SHOW_TEXT_OPS = opSet(["showText", "showSpacedText", "nextLineShowText", "nextLineSetSpacingShowText"]);
 
 /**
- * 1-based pages whose text cannot be split from its artwork. Text that SHOWS while transparency is in effect: constant alpha
+ * Why a page is not split from its artwork: its text cannot be (the first
+ * three), or it shows no text at all, so there is none to keep (`no-text`).
+ */
+export type UnsplittableReason = "text-transparency" | "type3-font" | "text-pattern-or-clip" | "no-text";
+
+/**
+ * For each 1-based page that `pdfx.transparency: preserve-text` must not split,
+ * the first reason found; pages absent from the map can be split. `pages`
+ * limits the scan to those pages (the build passes the transparent ones only,
+ * so the rest of the book is never decoded).
+ *
+ * A page's text cannot be split when text SHOWS while transparency is in effect: constant alpha
  * (`ca`/`CA` < 1), a non-Normal blend mode, an active soft mask, or any
  * enclosing transparency group that is composited translucent, blended or
  * masked, or is a knockout group. (Chromium draws `opacity` and
@@ -532,24 +539,9 @@ const SHOW_TEXT_OPS = new Set<number>(
  * `beginGroup/endGroup`. Graphics state is tracked per save/restore (a form
  * XObject is an implicit save/restore).
  */
-export async function pagesWithUnsplittableText(pdfBytes: Uint8Array): Promise<number[]> {
-  const reasons = await unsplittableTextReasons(pdfBytes);
-  return [...reasons].filter(([, reason]) => reason !== "no-text").map(([page]) => page);
-}
-
-/**
- * Why a page is not split from its artwork: its text cannot be (the first
- * three), or it shows no text at all, so there is none to keep (`no-text`).
- */
-export type UnsplittableReason = "text-transparency" | "type3-font" | "text-pattern-or-clip" | "no-text";
-
-/**
- * {@link pagesWithUnsplittableText} with the first reason found on each page,
- * so the build can tell an author what to change on that page, plus the pages
- * that show no text (`no-text`).
- */
 export async function unsplittableTextReasons(
-  pdfBytes: Uint8Array
+  pdfBytes: Uint8Array,
+  pages?: number[]
 ): Promise<Map<number, UnsplittableReason>> {
   const GSTATE_BIT: Record<string, number> = { ca: 1, CA: 2, BM: 4, SMask: 8 };
   const COMPOSITING = 15; // the GSTATE_BIT flags: what makes a group count
@@ -557,9 +549,10 @@ export async function unsplittableTextReasons(
   const STROKE_PATTERN = 32;
   const CLIP_TEXT = 64; // text render modes 4-7 add the glyphs to the clip
   const doc = await getDocumentProxy(new Uint8Array(pdfBytes));
-  const pages = new Map<number, UnsplittableReason>();
+  const reasons = new Map<number, UnsplittableReason>();
   try {
-    for (let i = 1; i <= doc.numPages; i++) {
+    const scan = pages ?? Array.from({ length: doc.numPages }, (_, i) => i + 1);
+    for (const i of scan) {
       const page = await doc.getPage(i);
       const ops = await page.getOperatorList();
       let state = 0; // GSTATE_BIT flags currently in effect
@@ -576,12 +569,12 @@ export async function unsplittableTextReasons(
         } else if (fn === OPS.endGroup) groups.pop();
         else if (fn === OPS.setFont) {
           const ref = (ops.argsArray[j] as [unknown])[0];
-          if (typeof ref === "string" && page.commonObjs.has(ref) && (page.commonObjs.get(ref) as { isType3Font?: boolean }).isType3Font) {
-            pages.set(i, "type3-font");
+          const font = typeof ref === "string" && page.commonObjs.has(ref) ? page.commonObjs.get(ref) : undefined;
+          if ((font as { isType3Font?: boolean } | undefined)?.isType3Font) {
+            reasons.set(i, "type3-font");
             break;
           }
-        }
-        else if (fn === OPS.setFillColorN || fn === OPS.setStrokeColorN) {
+        } else if (fn === OPS.setFillColorN || fn === OPS.setStrokeColorN) {
           // PDF.js reports a pattern paint as ["TilingPattern" | "Shading", …];
           // a plain colour comes through setFill/StrokeRGBColor etc. instead.
           const bit = fn === OPS.setFillColorN ? FILL_PATTERN : STROKE_PATTERN;
@@ -603,17 +596,17 @@ export async function unsplittableTextReasons(
           showsText = true;
           if (state || groups.includes(true)) {
             const paint = state & (FILL_PATTERN | STROKE_PATTERN | CLIP_TEXT);
-            pages.set(i, paint ? "text-pattern-or-clip" : "text-transparency");
+            reasons.set(i, paint ? "text-pattern-or-clip" : "text-transparency");
             break;
           }
         }
       }
-      if (!showsText && !pages.has(i)) pages.set(i, "no-text");
+      if (!showsText && !reasons.has(i)) reasons.set(i, "no-text");
     }
   } finally {
     await doc.destroy();
   }
-  return pages;
+  return reasons;
 }
 
 /**

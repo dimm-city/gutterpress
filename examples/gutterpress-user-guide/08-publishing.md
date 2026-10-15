@@ -117,10 +117,11 @@ rules:
   picture and the text stays live on top. Rules and backgrounds on those pages
   become part of the picture, text always sits above the artwork (text another
   element covers shows through), and a page whose text is itself translucent
-  or blended keeps the default. The build lists the pages it flattened. A page
-  whose look depends on something painted over its text can be flattened
-  whole anyway: list its number in `pdfx: { flattenPages: [4] }`. To make the
-  flattened pictures smaller (or sharper), set `pdfx: { rasterDpi: 300 }`.
+  or blended keeps the default. The build lists the pages it flattened, and
+  why. A page whose look depends on something painted over its text can be
+  flattened whole anyway: list its number in `pdfx: { flattenPages: [4] }`.
+  For sharper artwork, set `pdfx: { rasterDpi: 600 }` (larger files); a
+  lower value such as 200 makes the file smaller and the artwork softer.
 
 @end-section
 

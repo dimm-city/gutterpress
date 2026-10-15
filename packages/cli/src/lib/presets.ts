@@ -72,6 +72,8 @@ export const DTRPG_PRESET: VendorPreset = {
     // CONVENTION (#385): the safe default. Books opt in to `preserve-text`.
     transparency: "flatten-page",
     flattenPages: [],
+    // Unset: Ghostscript's 720 DPI for whole pages, 300 for preserve-text
+    // artwork. The key must exist: resolveConfig only merges keys a preset has.
     rasterDpi: undefined,
   },
   page: {

@@ -29,6 +29,14 @@ type PdfxFingerprintConfig = {
   stripAnnotations: boolean | null;
   /** How near-black text was separated (#331); null when no PDF/X pass ran. Provenance only. */
   blackText?: "icc" | "k-only" | null;
+  /**
+   * How pages with transparency were handled (#385): `pdfx.transparency`,
+   * `pdfx.flattenPages` and `pdfx.rasterDpi`. null when no PDF/X pass ran
+   * (and, for rasterDpi, when unset). Provenance only.
+   */
+  transparency?: "flatten-page" | "preserve-text" | null;
+  flattenPages?: number[] | null;
+  rasterDpi?: number | null;
 };
 
 export type BuildFingerprintInput = {
@@ -285,6 +293,9 @@ export async function writeBuildFingerprint(input: BuildFingerprintInput): Promi
         iccPath: input.pdfx.iccPath,
         stripAnnotations: input.pdfx.stripAnnotations,
         blackText: input.pdfx.blackText ?? null,
+        transparency: input.pdfx.transparency ?? null,
+        flattenPages: input.pdfx.flattenPages ?? null,
+        rasterDpi: input.pdfx.rasterDpi ?? null,
       },
       outputDir: input.recordedOutputDir
         ? path.resolve(input.recordedOutputDir)

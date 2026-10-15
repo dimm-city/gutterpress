@@ -4,6 +4,7 @@ import { join, basename, resolve } from "node:path";
 import { enhancedPath, execCapture, run, spawnCapture } from "./exec";
 import { log } from "../utils/logger";
 import { findTool } from "./tool-probe";
+import type { UnsplittableReason } from "./pdf-inspect";
 
 const WINDOWS_GHOSTSCRIPT_NAMES = ["gswin64c", "gswin32c", "gs"];
 const POSIX_GHOSTSCRIPT_NAMES = ["gs"];
@@ -109,8 +110,9 @@ export async function resolveGhostscript(
  * XObjects are streams, so their dicts do sit uncompressed at top level, but
  * `/ExtGState` and `/Group` dicts are plain objects that Chromium packs into
  * **object streams** (`/Type /ObjStm`, deflate-compressed), where no regex can
- * see them. Fonts and `/Parent` (which leads to every other page) are not
- * followed.
+ * see them. Fonts, `/Parent` (which leads to every other page) and `/Annots`
+ * are not followed: an annotation's appearance stream is not page content, and
+ * PDF/X builds strip annotations before conversion.
  */
 export async function transparentPages(pdfBytes: Uint8Array): Promise<number[]> {
   const { PDFDocument, PDFDict, PDFName, PDFNumber, PDFRawStream, PDFArray, PDFRef } =
@@ -296,9 +298,46 @@ export async function stripAnnotations(
   await writeFile(pdfPath, out);
 }
 
+/** Why a transparent page is flattened whole under `preserve-text` instead of split. */
+export type FallbackCause = Exclude<UnsplittableReason, "no-text"> | "listed" | "gradient";
+
 /**
- * Make the pages in `pages` (1-based; from {@link transparentPages}, minus
- * those `pagesWithUnsplittableText` names) free of transparency while keeping
+ * Sort each page that uses transparency (1-based, from {@link transparentPages})
+ * for `pdfx.transparency: preserve-text`:
+ * - `split`: its artwork is flattened and its text kept live
+ *   ({@link flattenTransparentPages});
+ * - `artOnly`: it shows no text, so there is nothing to keep and Ghostscript
+ *   flattens it whole, which is as good;
+ * - `kept`: it has text but is flattened whole anyway, with the cause the
+ *   build reports. The author's `pdfx.flattenPages` list wins, then the
+ *   text's own reason (`unsplittableTextReasons`), then a repeating or conic
+ *   gradient (#386), whose PostScript-function shading the artwork pass
+ *   distorts.
+ * Every transparent page lands in exactly one group.
+ */
+export function planTransparentPages(
+  transparent: number[],
+  reasons: Map<number, UnsplittableReason>,
+  flattenPages: number[],
+  gradientPages: number[]
+): { split: number[]; artOnly: number[]; kept: Map<number, FallbackCause> } {
+  const split: number[] = [];
+  const artOnly: number[] = [];
+  const kept = new Map<number, FallbackCause>();
+  for (const n of transparent) {
+    const reason = reasons.get(n);
+    if (reason === "no-text") artOnly.push(n);
+    else if (flattenPages.includes(n)) kept.set(n, "listed");
+    else if (reason) kept.set(n, reason);
+    else if (gradientPages.includes(n)) kept.set(n, "gradient");
+    else split.push(n);
+  }
+  return { split, artOnly, kept };
+}
+
+/**
+ * Make the pages in `pages` (1-based; the `split` group of
+ * {@link planTransparentPages}) free of transparency while keeping
  * their text live, so PDF/X (PDF 1.3) conversion has nothing left to flatten
  * into a single bitmap. Opt-in: `pdfx.transparency: preserve-text`.
  *
@@ -326,11 +365,13 @@ export async function stripAnnotations(
  */
 export async function flattenTransparentPages(
   pdfPath: string,
-  pages: number[],
+  pageNumbers: number[],
   stagingDir: string,
   /** artwork resolution (`pdfx.rasterDpi`) */
   dpi = 300
 ): Promise<void> {
+  // The scratch files' pages are matched to these by index, in page order.
+  const pages = [...new Set(pageNumbers)].sort((a, b) => a - b);
   if (pages.length === 0) return;
   const ghostscript = await resolveGhostscript();
   if (!ghostscript) {
@@ -371,14 +412,17 @@ export async function flattenTransparentPages(
     const textDoc = await PDFDocument.load(await readFile(text));
     if (artDoc.getPageCount() !== pages.length || textDoc.getPageCount() !== pages.length) {
       throw new Error(
-        `Ghostscript returned ${artDoc.getPageCount()} artwork and ${textDoc.getPageCount()} text pages for ${pages.length} transparent pages.`
+        `Ghostscript returned ${artDoc.getPageCount()} artwork and ${textDoc.getPageCount()} text pages ` +
+          `for ${pages.length} transparent pages.`
       );
     }
     const artPages = await doc.embedPages(artDoc.getPages());
-    // A page with transparency but no text (a full-page art plate) comes back
-    // from the text pass with no /Contents, which pdf-lib cannot embed. One
-    // embedPages call copies the text file's fonts once; embedding page by page
-    // would copy them again for every page.
+    // A page whose text pass comes back empty has no /Contents, which pdf-lib
+    // cannot embed. The build does not split pages that show no text, but text
+    // pdf.js counts can still come back empty from Ghostscript (e.g. only
+    // whitespace or invisible glyphs), so it is guarded here. One embedPages
+    // call copies the text file's fonts once; embedding page by page would
+    // copy them again for every page.
     const withText = textDoc.getPages().filter((p) => p.node.Contents());
     const embeddedText = await doc.embedPages(withText);
     const textPages = textDoc
