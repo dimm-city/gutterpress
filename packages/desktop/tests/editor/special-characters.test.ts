@@ -64,4 +64,8 @@ describe("zero-width characters get placeholders, the rest get boxes", () => {
     }
     expect(wrong).toEqual([]);
   });
+
+  test("the placeholder is not a character the check reports", () => {
+    expect(stateless(editor.CHARACTER_PATTERN).test(editor.PLACEHOLDER)).toBe(false);
+  });
 });

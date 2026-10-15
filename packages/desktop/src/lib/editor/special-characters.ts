@@ -241,12 +241,19 @@ const boxPlugin = ViewPlugin.fromClass(
 );
 
 /**
- * CodeMirror's placeholder, titled like the boxes. Only ZERO_WIDTH_PATTERN's
+ * What a zero-width character shows as: a dotted circle, Unicode's own sign
+ * for "nothing visible here". Not CodeMirror's default `•`, which is U+2022, a
+ * character this check reports itself, so the two could not be told apart.
+ */
+export const PLACEHOLDER = "\u25CC";
+
+/**
+ * The placeholder, titled like the boxes. Only ZERO_WIDTH_PATTERN's
  * characters reach it: that pattern replaces CodeMirror's own list.
  */
-function renderPlaceholder(code: number, _description: string | null, placeholder: string) {
+function renderPlaceholder(code: number) {
   const span = document.createElement("span");
-  span.textContent = placeholder;
+  span.textContent = PLACEHOLDER;
   span.title = characterTitle(String.fromCodePoint(code));
   span.className = "cm-specialChar";
   return span;

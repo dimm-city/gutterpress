@@ -46,6 +46,11 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **`gutterpress validate` with no folder now checks the book it is run in.**
+  The folder argument's help says it defaults to the current folder, but nothing
+  applied that default: a bare `validate` ran every source check over no files
+  and reported VALIDATION PASSED. It now behaves exactly like `validate .`.
+  `validate --pdf book.pdf` on its own still checks only the PDF.
 - **Repeating and conic gradients no longer disappear from PDF/X builds without
   a word.** In a `--format pdfx` build, `repeating-linear-gradient()`,
   `repeating-radial-gradient()`, `repeating-conic-gradient()` and

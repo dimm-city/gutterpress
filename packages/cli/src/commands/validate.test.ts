@@ -50,6 +50,30 @@ describe("validate command — positional/--input precedence (M46) and arg mappi
     expect(capturedArgs?.input).toBe("./my-book");
   });
 
+  test("no dir and no --input means cwd, so a bare validate checks the book it runs in", async () => {
+    let capturedArgs: ValidationExecutionArgs | undefined;
+    stubExecuteAndReport(async (args) => {
+      capturedArgs = args;
+      return { ok: true, execution: {} };
+    });
+
+    await runCommand(validateCommand, { rawArgs: [] });
+
+    expect(capturedArgs?.input).toBe(".");
+  });
+
+  test("--pdf alone stays a PDF-only run: no source directory is defaulted", async () => {
+    let capturedArgs: ValidationExecutionArgs | undefined;
+    stubExecuteAndReport(async (args) => {
+      capturedArgs = args;
+      return { ok: true, execution: {} };
+    });
+
+    await runCommand(validateCommand, { rawArgs: ["--pdf", "./book.pdf"] });
+
+    expect(capturedArgs?.input).toBeUndefined();
+  });
+
   test("--input overrides the positional dir", async () => {
     let capturedArgs: ValidationExecutionArgs | undefined;
     stubExecuteAndReport(async (args) => {
