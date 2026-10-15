@@ -509,7 +509,13 @@ export function decorate(
       // sheet visually ended: sheets stacked in document flow overlapped by
       // that same margin gap. Reserve `rowStride` pitch only BETWEEN rows,
       // and the sheet's real full height (`g.height`) for the last row.
-      run.style.height = `${rowStride * (rows - 1) + PX_PER_PT * g.height}px`;
+      // `min-height`, never `height`: the strip is `height: 100%` (see
+      // `.gp-strip` in viewer.css) so that a page root's percentage height
+      // resolves only where print's would. A definite wrapper would make it
+      // resolve HERE, after `measure()` fixed the page count — re-fragmenting
+      // the run under sheets drawn for the old count. The run's own content is
+      // the strip, one column tall, so the floor below is its used height.
+      run.style.minHeight = `${rowStride * (rows - 1) + PX_PER_PT * g.height}px`;
       run.style.width = `${stride * perRow}px`;
 
       // A recto-starting wrapped run overlaps the previous run's last row
@@ -638,7 +644,7 @@ export function decorate(
 
   /** Screen-mode limit (§7): elements taller than a page clip. Say so, loudly. */
   function checkOverflow(strip: StripInfo, out: string[]) {
-    const h = strip.el.clientHeight;
+    const { height: h } = stripMetrics(strip.el);
     for (const el of Array.from(strip.el.querySelectorAll<HTMLElement>("figure,table,img,pre"))) {
       const r = el.getBoundingClientRect();
       if (r.height > h + 1) {
