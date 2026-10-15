@@ -1190,7 +1190,7 @@ async function main() {
     assert.deepEqual(calls, [true, false]);
     // the layers and the look (a colour per layer, strength) are passed straight through to the viewer
     calls.length = 0;
-    const style = { strength: "strong", colors: { bleed: "#00aa55", safe: "#2f80ed", art: "#00b4d8", margins: "#e91e63" } };
+    const style = { strength: "strong", colors: { bleed: "#00aa55", safe: "#2f80ed", art: "#a855f7", margins: "#e91e63" } };
     api.setMarginOverlay({ bleed: false, safe: true, art: false, margins: true }, style);
     assert.deepEqual(calls, [[{ bleed: false, safe: true, art: false, margins: true }, style]]);
     calls.length = 0;

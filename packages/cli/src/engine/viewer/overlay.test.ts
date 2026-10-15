@@ -190,8 +190,8 @@ describe("the layers and the look a host may set", () => {
       strength: "strong",
     });
     expect(sanitizeOverlayStyle({ color: "#0a5" })).toEqual({ colors: { safe: "#0a5" } });
-    expect(sanitizeOverlayStyle({ colors: { bleed: "#aa0000", safe: "#00aa55", art: "#00b4d8", margins: "#e91e63" } })).toEqual({
-      colors: { bleed: "#aa0000", safe: "#00aa55", art: "#00b4d8", margins: "#e91e63" },
+    expect(sanitizeOverlayStyle({ colors: { bleed: "#aa0000", safe: "#00aa55", art: "#a855f7", margins: "#e91e63" } })).toEqual({
+      colors: { bleed: "#aa0000", safe: "#00aa55", art: "#a855f7", margins: "#e91e63" },
     });
     // `colors.safe` wins over its alias; a bad one lets the alias through
     expect(sanitizeOverlayStyle({ color: "#111111", colors: { safe: "#222222" } })).toEqual({ colors: { safe: "#222222" } });
@@ -515,9 +515,9 @@ testIf(
         expect(seen.safeDisplay).toBe("block");
         // every layer keeps its own colour, whatever the book's `:root` says
         expect(seen.safeColor).toBe("rgb(47, 128, 237)");
-        expect(seen.artColor).toBe("rgb(0, 180, 216)");
+        expect(seen.artColor).toBe("rgb(168, 85, 247)");
         expect(seen.marginsColor).toBe("rgb(26, 156, 107)");
-        expect(seen.swatches).toEqual(["rgb(229, 72, 77)", "rgb(47, 128, 237)", "rgb(0, 180, 216)", "rgb(26, 156, 107)"]);
+        expect(seen.swatches).toEqual(["rgb(229, 72, 77)", "rgb(47, 128, 237)", "rgb(168, 85, 247)", "rgb(26, 156, 107)"]);
         expect(seen.safeWidth).toBeGreaterThanOrEqual(1.9);
         expect(seen.safeWidth).toBeLessThanOrEqual(2.1);
         // and it is where the sheets are, not where the book's transform tried to put it
@@ -636,7 +636,7 @@ testIf(
             };
           });
 
-        // default: a 2px-on-screen text line (dashed, blue) and art line (dotted, cyan: its own colour, so the two
+        // default: a 2px-on-screen text line (dashed, blue) and art line (dotted, purple: its own colour, so the two
         // can never be mistaken for each other), a translucent unsafe band
         const base = await look();
         expect(base.safeLine).toBeGreaterThanOrEqual(1.9);
@@ -644,7 +644,7 @@ testIf(
         expect(base.safeStyle).toBe("dashed");
         expect(base.safeColor).toBe("rgb(47, 128, 237)");
         expect(base.artStyle).toBe("dotted");
-        expect(base.artColor).toBe("rgb(0, 180, 216)");
+        expect(base.artColor).toBe("rgb(168, 85, 247)");
         expect(base.artColor).not.toBe(base.safeColor);
         expect(base.artLine).toBeGreaterThanOrEqual(1.9);
         expect(base.artLine).toBeLessThanOrEqual(2.1);
@@ -672,7 +672,7 @@ testIf(
         expect(strong.safeLine).toBeGreaterThanOrEqual(2.9);
         expect(strong.safeColor).toBe("rgb(0, 170, 85)");
         // `color` is the text safe line's alias: the art line keeps its own colour
-        expect(strong.artColor).toBe("rgb(0, 180, 216)");
+        expect(strong.artColor).toBe("rgb(168, 85, 247)");
         await page.evaluate(() => (window as any).Gutterpress.decoration.setOverlay(true, { strength: "subtle" }));
         expect((await look()).safeLine).toBeLessThanOrEqual(1.1);
 
@@ -945,16 +945,16 @@ testIf(
           page.evaluate((s: unknown) => (window as any).Gutterpress.decoration.setOverlay(true, s), style);
         await page.evaluate(() => (window as any).Gutterpress.decoration.setOverlay(true));
 
-        // the defaults: red bleed, blue text line, cyan art line, green margins — four colours, no two alike;
+        // the defaults: red bleed, blue text line, purple art line, green margins — four colours, no two alike;
         // the margins a thin solid line
         const base = await look();
         expect(base.safe).toBe("rgb(47, 128, 237)");
-        expect(base.art).toBe("rgb(0, 180, 216)");
+        expect(base.art).toBe("rgb(168, 85, 247)");
         expect(base.margins).toBe("rgb(26, 156, 107)");
         expect(base.swatch).toEqual({
           bleed: "rgb(229, 72, 77)",
           safe: "rgb(47, 128, 237)",
-          art: "rgb(0, 180, 216)",
+          art: "rgb(168, 85, 247)",
           margins: "rgb(26, 156, 107)",
         });
         expect(new Set(Object.values(base.swatch)).size).toBe(4);
@@ -980,7 +980,7 @@ testIf(
         expect(art.swatch.art).toBe("rgb(255, 136, 0)");
         expect(art.safe).toBe(base.safe);
         expect(art.swatch.safe).toBe(base.swatch.safe);
-        await set({ colors: { art: "#00b4d8" } });
+        await set({ colors: { art: "#a855f7" } });
 
         // bleed's colour carries the trim line with it; safe's carries the text line
         await set({ colors: { bleed: "#00aa55", safe: "#0000ff" } });
@@ -988,11 +988,11 @@ testIf(
         expect(two.swatch).toEqual({
           bleed: "rgb(0, 170, 85)",
           safe: "rgb(0, 0, 255)",
-          art: "rgb(0, 180, 216)",
+          art: "rgb(168, 85, 247)",
           margins: "rgb(233, 30, 99)",
         });
         expect(two.safe).toBe("rgb(0, 0, 255)");
-        expect(two.art).toBe("rgb(0, 180, 216)");
+        expect(two.art).toBe("rgb(168, 85, 247)");
         expect(two.margins).toBe("rgb(233, 30, 99)");
         expect(two.trim).not.toBe(base.trim);
 
@@ -1004,14 +1004,14 @@ testIf(
         expect(kept.swatch).toEqual({
           bleed: "rgb(0, 170, 85)",
           safe: "rgb(18, 52, 86)",
-          art: "rgb(0, 180, 216)",
+          art: "rgb(168, 85, 247)",
           margins: "rgb(233, 30, 99)",
         });
 
         // the look is recorded for a host to carry across a reload, and survives switching the overlay off and on
         expect(kept.records).toMatchObject({
           overlayColor: "#123456",
-          overlayArtColor: "#00b4d8",
+          overlayArtColor: "#a855f7",
           overlayBleedColor: "#00aa55",
           overlayMarginsColor: "#e91e63",
         });

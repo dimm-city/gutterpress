@@ -96,7 +96,7 @@ This project follows [Semantic Versioning](https://semver.org/).
   row in the legend. **Bleed** (red) draws the band outside the trim and the
   trim line. **Safe area: text** (blue) draws the printer's text line, dashed,
   tints the strip between it and the trim, and outlines text that strays.
-  **Safe area: art** (cyan) draws the art line, dotted, and outlines art that
+  **Safe area: art** (purple) draws the art line, dotted, and outlines art that
   strays. Each safe area layer checks only its own rule, so with one off there
   is nothing to outline or count for it, and where both rules are the same
   distance their two lines lie on top of each other. **Page margins** (green)

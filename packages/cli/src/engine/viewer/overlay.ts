@@ -294,7 +294,7 @@ export const OVERLAY_CSS = `
   --gp-ov-bleed-color: #e5484d; /* bleed layer: the band, and (darker) the trim line */
   --gp-ov-bleed-alpha: 0.45;    /* opacity of the bleed band */
   --gp-ov-trim-color: color-mix(in srgb, var(--gp-ov-bleed-color) 60%, #000); /* darker than the band so it reads as an edge */
-  --gp-ov-art-color: #00b4d8;   /* art layer: the art line (dotted, a second cue) */
+  --gp-ov-art-color: #a855f7;   /* art layer: the art line (dotted, a second cue) */
   --gp-ov-margins-color: #1a9c6b; /* margins layer: the page's own content box */
   --gp-ov-flag-width: 2px;      /* overflow flag outline */
   --gp-ov-warn: #f59e0b;        /* leaves the safe area */

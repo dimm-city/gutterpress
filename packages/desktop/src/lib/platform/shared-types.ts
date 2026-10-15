@@ -283,7 +283,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     marginOverlayColor: "#2f80ed",
     marginOverlayStrength: "normal",
     overlayLayers: { bleed: true, safe: true, art: true, margins: true },
-    overlayColors: { bleed: "#e5484d", safe: "#2f80ed", art: "#00b4d8", margins: "#1a9c6b" },
+    overlayColors: { bleed: "#e5484d", safe: "#2f80ed", art: "#a855f7", margins: "#1a9c6b" },
     // Matches DEFAULT_SPLIT_RATIO in src/lib/editor/preview-layout.ts so the
     // durable default and the double-click reset target agree (#103).
     splitRatio: 0.42,

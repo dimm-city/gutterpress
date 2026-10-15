@@ -52,7 +52,7 @@ describe("preview.marginOverlay setting", () => {
     expect(DEFAULT_SETTINGS.preview.overlayColors).toEqual({
       bleed: "#e5484d",
       safe: "#2f80ed",
-      art: "#00b4d8",
+      art: "#a855f7",
       margins: "#1a9c6b",
     });
     // four colours, no two alike: every line on the page can be told from the rest
@@ -95,11 +95,11 @@ describe("preview.marginOverlay setting", () => {
     });
     expect(overlayStyleFrom({ bleed: "#AA0000", safe: "red; background: url(x)", art: "url(x)", margins: 7 }, "loud")).toEqual({
       strength: "normal",
-      colors: { bleed: "#AA0000", safe: "#2f80ed", art: "#00b4d8", margins: "#1a9c6b" },
+      colors: { bleed: "#AA0000", safe: "#2f80ed", art: "#a855f7", margins: "#1a9c6b" },
     });
     expect(overlayStyleFrom(undefined, undefined)).toEqual({
       strength: "normal",
-      colors: { bleed: "#e5484d", safe: "#2f80ed", art: "#00b4d8", margins: "#1a9c6b" },
+      colors: { bleed: "#e5484d", safe: "#2f80ed", art: "#a855f7", margins: "#1a9c6b" },
     });
   });
 
@@ -117,7 +117,7 @@ describe("preview.marginOverlay setting", () => {
     expect(overlayStyleFrom(preview.overlayColors, preview.marginOverlayStrength).colors).toEqual({
       bleed: "#111111",
       safe: "#222222",
-      art: "#00b4d8",
+      art: "#a855f7",
       margins: "#333333",
     });
   });
@@ -161,7 +161,7 @@ describe("preview.marginOverlay setting", () => {
     expect((await store.readSettings()).preview.overlayColors).toEqual({
       bleed: "#e5484d",
       safe: "#00aa55",
-      art: "#00b4d8",
+      art: "#a855f7",
       margins: "#1a9c6b",
     });
     // any write (even of something else) saves it with the rest, so it is the layer's own from then on
@@ -169,12 +169,12 @@ describe("preview.marginOverlay setting", () => {
     expect(JSON.parse(files.get("/ud/app-settings.json")!).preview.overlayColors).toEqual({
       bleed: "#e5484d",
       safe: "#00aa55",
-      art: "#00b4d8",
+      art: "#a855f7",
       margins: "#1a9c6b",
     });
     // choosing another colour replaces it; the old key is no longer consulted
     await store.updateSettings({
-      preview: { overlayColors: { bleed: "#e5484d", safe: "#123456", art: "#00b4d8", margins: "#1a9c6b" } },
+      preview: { overlayColors: { bleed: "#e5484d", safe: "#123456", art: "#a855f7", margins: "#1a9c6b" } },
     } as DeepPartialSettings);
     expect(JSON.parse(files.get("/ud/app-settings.json")!).preview.overlayColors.safe).toBe("#123456");
     expect((await store.readSettings()).preview.overlayColors.safe).toBe("#123456");

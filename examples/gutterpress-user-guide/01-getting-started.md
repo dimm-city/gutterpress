@@ -116,7 +116,7 @@ There are four layers. Each has its own colour (you can change them, below) and 
 |-------|---------------|--------|
 | **Bleed** | A tinted band outside the trim, and a solid line where the page is cut | Red |
 | **Safe area: text** | The printer's safe line for text, **dashed**, with the strip between it and the trim tinted | Blue |
-| **Safe area: art** | The printer's safe line for art that does not bleed, **dotted** | Cyan |
+| **Safe area: art** | The printer's safe line for art that does not bleed, **dotted** | Purple |
 | **Page margins** | The box your own `@page` margins leave for text, as a thin solid line. It is your book's choice, not the printer's | Green |
 
 @end-section

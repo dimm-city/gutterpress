@@ -59,7 +59,7 @@ function make(): Harness {
     renderProgressPage: 0,
     overlay: false,
     marginOverlayState: false as Harness["marginOverlayState"],
-    marginOverlayStyle: { strength: "normal", colors: { bleed: "#e5484d", safe: "#2f80ed", art: "#00b4d8", margins: "#1a9c6b" } },
+    marginOverlayStyle: { strength: "normal", colors: { bleed: "#e5484d", safe: "#2f80ed", art: "#a855f7", margins: "#1a9c6b" } },
     overlaySummary: null as unknown,
     updating: false,
     pendingRestore: { page: null } as { page: number | null },
