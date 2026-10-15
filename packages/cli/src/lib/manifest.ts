@@ -401,6 +401,22 @@ function resolveWithPreset(
       `Manifest field \`print.lastPage\` must be "blank" or "short-by-one", got ${JSON.stringify(lastPage)}.`
     );
   }
+  // A mistyped `pdfx.transparency` would otherwise silently keep the default.
+  const transparency = c.pdfx?.transparency ?? m.pdfx?.transparency;
+  if (transparency !== undefined && transparency !== "flatten-page" && transparency !== "preserve-text") {
+    throw new UsageError(
+      `Manifest field \`pdfx.transparency\` must be "flatten-page" or "preserve-text", got ${JSON.stringify(transparency)}.`
+    );
+  }
+  const flattenPages = c.pdfx?.flattenPages ?? m.pdfx?.flattenPages;
+  if (
+    flattenPages !== undefined &&
+    !(Array.isArray(flattenPages) && flattenPages.every((n) => Number.isInteger(n) && n >= 1))
+  ) {
+    throw new UsageError(
+      `Manifest field \`pdfx.flattenPages\` must be a list of page numbers (1, 2, …), got ${JSON.stringify(flattenPages)}.`
+    );
+  }
   const rasterDpi = c.pdfx?.rasterDpi ?? m.pdfx?.rasterDpi;
   if (rasterDpi !== undefined && !(Number.isInteger(rasterDpi) && rasterDpi >= 72 && rasterDpi <= 1200)) {
     throw new UsageError(

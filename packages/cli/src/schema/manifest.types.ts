@@ -123,8 +123,24 @@ export interface GutterpressManifest {
     /** `k-only` prints near-black text on the black plate alone (#331). */
     blackText?: "icc" | "k-only";
     /**
-     * Resolution (DPI) of the picture Ghostscript makes of a page it flattens
-     * because the page uses transparency. Unset: Ghostscript's default (720).
+     * A page that uses transparency, which PDF/X cannot hold (#385).
+     * `flatten-page` (default): Ghostscript rasterizes the whole page, text
+     * included. `preserve-text`: flatten the artwork only and keep the text
+     * live on top; a page whose text cannot be split (translucent or blended,
+     * Type 3, pattern-filled or a clip) or that has a repeating or conic
+     * gradient falls back to the whole-page flattening.
+     */
+    transparency?: "flatten-page" | "preserve-text";
+    /**
+     * `preserve-text` only: pages (1-based, as the build reports them) left to
+     * Ghostscript's whole-page flattening, e.g. a page whose look depends on a
+     * cover or tint painted over its text.
+     */
+    flattenPages?: number[];
+    /**
+     * Resolution (DPI) of every picture made from a transparent page: the
+     * whole page Ghostscript flattens, and the `preserve-text` artwork.
+     * Unset: Ghostscript's default (720) and 300 for `preserve-text` artwork.
      */
     rasterDpi?: number;
   };
@@ -294,6 +310,8 @@ export interface ResolvedConfig {
     icc: string;
     stripAnnotations: boolean;
     blackText: "icc" | "k-only";
+    transparency: "flatten-page" | "preserve-text";
+    flattenPages: number[];
     rasterDpi?: number;
   };
   print: {

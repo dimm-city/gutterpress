@@ -109,12 +109,19 @@ rules:
 - **Black text prints in black ink only.** In a `--format pdfx` build, black
   and near-black text goes on the black plate alone, as DriveThruRPG requires
   for small text. Coloured text is printed as designed.
-- **Pages with soft shadows or translucent art become pictures.** PDF/X-1a has
-  no transparency, so in a `--format pdfx` build each page that uses it (a soft
-  `rgba()` shadow, a PNG with an alpha channel, `opacity`) is flattened into
-  one picture, 720 DPI by default. If the file is too large, set
-  `pdfx: { rasterDpi: 300 }` in `manifest.yaml`: those pictures shrink to
-  about a sixth of the pixels, and every other page is unchanged.
+- **Soft shadows and translucent art.** PDF/X-1a has no transparency, so a page
+  that uses a soft `rgba()` shadow, a PNG with an alpha channel or `opacity` is
+  flattened to a picture in a `--format pdfx` build, and by default that page
+  loses its live text. To keep the text, add `pdfx: { transparency:
+  preserve-text }` to `manifest.yaml`: only the artwork becomes a 300 DPI
+  picture and the text stays live on top. Rules and backgrounds on those pages
+  become part of the picture, text always sits above the artwork (text another
+  element covers shows through), and a page whose text is itself translucent
+  or blended keeps the default. The build lists the pages it flattened, and
+  why. A page whose look depends on something painted over its text can be
+  flattened whole anyway: list its number in `pdfx: { flattenPages: [4] }`.
+  For sharper artwork, set `pdfx: { rasterDpi: 600 }` (larger files); a
+  lower value such as 200 makes the file smaller and the artwork softer.
 
 @end-section
 

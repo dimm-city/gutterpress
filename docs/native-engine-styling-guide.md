@@ -248,13 +248,28 @@ fixture — but only when the thing being kept-with can actually be placed:
   `inset()`, `circle()`, `ellipse()`, `path()`) is a vector clip and is NOT
   flagged; only `clip-path: url(...)` (an SVG mask) is.
 - **`repeating-linear-gradient()`, `repeating-radial-gradient()`,
-  `repeating-conic-gradient()` and `conic-gradient()` print blank in a `--format pdfx` build.** Chromium emits
-  them in a form Ghostscript's CMYK conversion cannot paint; plain PDF output is
+  `repeating-conic-gradient()` and `conic-gradient()` can print blank or distorted in a `--format pdfx` build.** Chromium emits
+  them in a form Ghostscript has been seen to paint as nothing, or as irregular
+  stripes, in the CMYK conversion (check such pages visually); plain PDF output is
   fine, and plain `linear-gradient()` / `radial-gradient()` convert correctly.
+  On a page that also uses transparency, Ghostscript flattens the whole page to
+  an image, which keeps the gradient but loses that page's live text.
   The CSS lint flags them and the build names the affected pages. For 0deg/90deg
   stripes write `linear-gradient(90deg, #b33 0 6px, #c8c5bf 6px 10px)` with
   `background-size: 10px 100%`; for diagonal stripes, radial rings or conic
   fills use a small tiled image.
+- **Transparency in a `--format pdfx` build.** PDF/X-1a and X-3 cannot hold
+  transparency (soft or `rgba()` shadows, alpha PNGs, `opacity`), so by default
+  Ghostscript flattens each page that uses it into one bitmap, text included.
+  Set `pdfx.transparency: preserve-text` to flatten only the artwork to a
+  picture (300 DPI, or `pdfx.rasterDpi`) and keep the text live on top (unlike
+  `filter`, above). The price: that page's rules, backgrounds and shapes become
+  raster, and text always sits above the artwork (text another element covers
+  shows through). A page whose text is translucent or blended, set in a Type 3
+  font (a synthetic bold, a text stroke), filled with a pattern or used as a
+  clip, or a page with a repeating or conic gradient, is flattened whole as by
+  default; the build names each one's cause. See
+  [PDF/X and transparency](publishing.md#pdfx-transparency).
 - To accept a warning you have decided is fine, switch the rule off for the
   book (`lint.rules` in `manifest.yaml`) or for one line
   (`/* gutterpress-disable-next-line <rule-id> -- reason */`).

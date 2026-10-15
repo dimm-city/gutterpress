@@ -78,6 +78,11 @@ export const DTRPG_PRESET: VendorPreset = {
     // CONVENTION (#331): near-black text on the black plate alone, so small
     // type is not registered across four plates. Not a DriveThru rule.
     blackText: "k-only",
+    // CONVENTION (#385): the safe default. Books opt in to `preserve-text`.
+    transparency: "flatten-page",
+    flattenPages: [],
+    // Unset: Ghostscript's 720 DPI for whole pages, 300 for preserve-text
+    // artwork. The key must exist: resolveConfig only merges keys a preset has.
     rasterDpi: undefined,
   },
   page: {
@@ -220,6 +225,8 @@ export const BOOK_PRESET: VendorPreset = {
     icc: "profiles/CGATS21_CRPC1.icc",
     stripAnnotations: true,
     blackText: "icc",
+    transparency: "flatten-page",
+    flattenPages: [],
     rasterDpi: undefined,
   },
   page: {

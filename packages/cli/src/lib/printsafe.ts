@@ -483,7 +483,7 @@ function checkCssRaw(css: string, from?: string): PrintSafeWarning[] {
       warnings.push({
         rule: ruleRiskyProps,
         severity: "warning",
-        message: `"${decl.prop}: ${decl.value}" prints blank in PDF/X exports (--format pdfx): Chromium emits repeating-*-gradient() and conic-gradient() in a form Ghostscript cannot convert. Plain PDF output is unaffected. Use linear-gradient() or radial-gradient() instead; for 0deg/90deg stripes write "linear-gradient(90deg, #b33 0 6px, #c8c5bf 6px 10px)" with "background-size: 10px 100%", and for anything else a small tiled image.`,
+        message: `"${decl.prop}: ${decl.value}" is at risk in PDF/X exports (--format pdfx): Chromium emits repeating-*-gradient() and conic-gradient() in a form Ghostscript has been seen to paint as nothing or as irregular stripes, so it can print blank or distorted, unless the page also uses transparency and Ghostscript flattens the whole page to an image, which keeps the gradient but loses that page's live text. Plain PDF output is unaffected. Use linear-gradient() or radial-gradient() instead; for 0deg/90deg stripes write "linear-gradient(90deg, #b33 0 6px, #c8c5bf 6px 10px)" with "background-size: 10px 100%", and for anything else a small tiled image.`,
         ...nodeLoc(decl),
       });
     } else if (isUnpairedFitContentWidth(decl)) {

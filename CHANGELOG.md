@@ -5,6 +5,46 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **`pdfx.transparency: preserve-text` (opt-in) keeps live text on PDF/X pages
+  that use transparency.** PDF/X-1a and X-3 (PDF 1.3) cannot hold
+  transparency, and Ghostscript flattens every page with a soft `rgba()`
+  shadow, an alpha PNG or `opacity` into one bitmap, text and fonts included.
+  With `preserve-text`, an eligible page's artwork becomes a 300 DPI picture
+  and its text stays live vector text on top, so searchable, embedded-font text
+  and the `k-only` black-text rewrite survive. Pages without transparency are
+  untouched, and page boxes and metadata are kept. A page whose text is itself
+  translucent or blended (`opacity`, `mix-blend-mode`, a soft mask, a
+  translucent or knockout group, a Type 3 font such as a synthetic bold, or a
+  pattern fill or text clip such as SVG `fill="url(#…)"` or gradient text),
+  or a page with a repeating or conic gradient, is
+  not split: it falls back to Ghostscript's
+  whole-page flattening, so its appearance is unchanged, and the build names
+  each such page's cause and the change that fixes it. On split pages rules
+  and shapes are raster and text is always on top, so text another element
+  covers shows through. The default, `flatten-page`, keeps today's behaviour
+  and warning (which now mentions the option). The new
+  `examples/with-print-effects` book shows one effect per page; see "PDF/X and
+  transparency" in `docs/publishing.md`.
+  The build reports which pages kept live text, which show no text (those are
+  not split: there is nothing to keep), and which text pages fell back, and
+  says so when no page kept its text. `pdfx.flattenPages: [4, 13]` flattens
+  chosen pages whole anyway, for a page whose cover or tint over its text must
+  stay as designed.
+- **`pdfx.rasterDpi` also sets the resolution of `preserve-text` artwork.**
+  Unset, that artwork is 300 DPI; whole pages Ghostscript flattens keep 720.
+
+### Changed
+
+- **PDF/X builds save every picture losslessly.** Converting to CMYK
+  re-encodes each colour image, and Ghostscript's default chose a low-quality
+  JPEG: flattened pages got blotches and light halos along edges that a
+  printer reproduces. Pictures are now compressed losslessly. Files with
+  photos or flattened pages grow (a flattened text page by about 5%, a
+  full-page illustration about twice); a JPEG good enough for print came out
+  larger still.
+
 ## [0.11.20] - 2026-10-15
 
 ### Added
