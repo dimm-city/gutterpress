@@ -384,6 +384,13 @@ export async function convertToPdfxCmyk(
     title?: string;
     maxTac?: number;
     stagingDir: string;
+    /**
+     * Resolution of the picture Ghostscript makes of a page it flattens
+     * (`pdfx.rasterDpi`). Unset keeps Ghostscript's own default (720 DPI).
+     * pdfwrite uses it only for rendering it must do, such as transparency
+     * flattening: vector content is unaffected.
+     */
+    rasterDpi?: number;
   }
 ): Promise<void> {
   const iccPath = resolve(config.iccPath);
@@ -403,6 +410,7 @@ export async function convertToPdfxCmyk(
     "-dDownsampleColorImages=false",
     "-dDownsampleGrayImages=false",
     "-dDownsampleMonoImages=false",
+    ...(config.rasterDpi ? [`-r${config.rasterDpi}`] : []),
     "-sProcessColorModel=DeviceCMYK",
     "-sColorConversionStrategy=CMYK",
     "-dOverrideICC=true",

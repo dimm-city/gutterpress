@@ -400,6 +400,12 @@ function resolveWithPreset(
       `Manifest field \`print.lastPage\` must be "blank" or "short-by-one", got ${JSON.stringify(lastPage)}.`
     );
   }
+  const rasterDpi = c.pdfx?.rasterDpi ?? m.pdfx?.rasterDpi;
+  if (rasterDpi !== undefined && !(Number.isInteger(rasterDpi) && rasterDpi >= 72 && rasterDpi <= 2400)) {
+    throw new UsageError(
+      `Manifest field \`pdfx.rasterDpi\` must be a whole number from 72 to 2400, got ${JSON.stringify(rasterDpi)}.`
+    );
+  }
   // Extensions, in manifest order — which IS the load order and the cascade
   // order; nothing re-sorts them. An entry with `enabled: false` (#30) stays
   // in the manifest but is skipped here so it is never loaded.

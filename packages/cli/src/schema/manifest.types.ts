@@ -122,6 +122,11 @@ export interface GutterpressManifest {
     stripAnnotations?: boolean;
     /** `k-only` prints near-black text on the black plate alone (#331). */
     blackText?: "icc" | "k-only";
+    /**
+     * Resolution (DPI) of the picture Ghostscript makes of a page it flattens
+     * because the page uses transparency. Unset: Ghostscript's default (720).
+     */
+    rasterDpi?: number;
   };
   /**
    * Native-engine print-production options with no other manifest home
@@ -269,6 +274,7 @@ export interface ResolvedConfig {
     icc: string;
     stripAnnotations: boolean;
     blackText: "icc" | "k-only";
+    rasterDpi?: number;
   };
   print: {
     signature: number;

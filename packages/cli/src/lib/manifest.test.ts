@@ -229,6 +229,13 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
     expect(resolveConfig({}, { pdfx: { blackText: "icc" } }).pdfx.blackText).toBe("icc");
   });
 
+  test("pdfx.rasterDpi: unset by default, validated when set", () => {
+    expect(resolveConfig({}, {}).pdfx.rasterDpi).toBeUndefined();
+    expect(resolveConfig({}, { pdfx: { rasterDpi: 300 } }).pdfx.rasterDpi).toBe(300);
+    expect(() => resolveConfig({}, { pdfx: { rasterDpi: 50 } })).toThrow(/pdfx\.rasterDpi/);
+    expect(() => resolveConfig({}, { pdfx: { rasterDpi: 300.5 } })).toThrow(/pdfx\.rasterDpi/);
+  });
+
   test("one-level-deep object (pdfx): manifest overrides flavor only, icc/stripAnnotations keep preset defaults", () => {
     const config = resolveConfig({}, { pdfx: { flavor: "x3" } });
     expect(config.pdfx.flavor).toBe("x3");
