@@ -234,6 +234,7 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
     expect(resolveConfig({}, { pdfx: { rasterDpi: 300 } }).pdfx.rasterDpi).toBe(300);
     expect(() => resolveConfig({}, { pdfx: { rasterDpi: 50 } })).toThrow(/pdfx\.rasterDpi/);
     expect(() => resolveConfig({}, { pdfx: { rasterDpi: 300.5 } })).toThrow(/pdfx\.rasterDpi/);
+    expect(() => resolveConfig({}, { pdfx: { rasterDpi: 2400 } })).toThrow(/pdfx\.rasterDpi/);
   });
 
   test("one-level-deep object (pdfx): manifest overrides flavor only, icc/stripAnnotations keep preset defaults", () => {

@@ -401,9 +401,9 @@ function resolveWithPreset(
     );
   }
   const rasterDpi = c.pdfx?.rasterDpi ?? m.pdfx?.rasterDpi;
-  if (rasterDpi !== undefined && !(Number.isInteger(rasterDpi) && rasterDpi >= 72 && rasterDpi <= 2400)) {
+  if (rasterDpi !== undefined && !(Number.isInteger(rasterDpi) && rasterDpi >= 72 && rasterDpi <= 1200)) {
     throw new UsageError(
-      `Manifest field \`pdfx.rasterDpi\` must be a whole number from 72 to 2400, got ${JSON.stringify(rasterDpi)}.`
+      `Manifest field \`pdfx.rasterDpi\` must be a whole number from 72 to 1200, got ${JSON.stringify(rasterDpi)}.`
     );
   }
   // Extensions, in manifest order — which IS the load order and the cascade
