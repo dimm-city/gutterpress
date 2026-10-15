@@ -894,6 +894,21 @@ function keepChainHead(el: HTMLElement): HTMLElement {
 const pushTargets = new WeakMap<HTMLTableElement, HTMLElement>();
 
 /**
+ * The `thead` / `tfoot` print repeats on every page, or null. Chromium repeats
+ * a section only while it IS a header/footer group: one the author set to
+ * `display: table-row-group` (or anything else) prints once, where it sits,
+ * and so must the screen.
+ */
+function repeatingHead(table: HTMLTableElement): HTMLTableSectionElement | null {
+  const head = table.tHead;
+  return head && getComputedStyle(head).display === "table-header-group" ? head : null;
+}
+function repeatingFoot(table: HTMLTableElement): HTMLTableSectionElement | null {
+  const foot = table.tFoot;
+  return foot && getComputedStyle(foot).display === "table-footer-group" ? foot : null;
+}
+
+/**
  * Screen-mode compensation for repeated table headers (S5).
  *
  * Chromium repeats `<thead>`/`<tfoot>` on every PAGE a table spans in print,
@@ -905,6 +920,8 @@ const pushTargets = new WeakMap<HTMLTableElement, HTMLElement>();
  * with a zero-content shim row, then re-check — inserting a shim can move the
  * break, so iterate to a fixed point (bounded; converges in ≤2 passes on real
  * content, same model as the compiler's Tier 3).
+ *
+ * Only a section print repeats is compensated (see `repeatingHead`).
  */
 export function compensateRepeatedHeaders(
   strips: StripInfo[],
@@ -916,7 +933,7 @@ export function compensateRepeatedHeaders(
 
   for (const strip of strips) {
     const tables = Array.from(strip.el.querySelectorAll("table")).filter(
-      (t) => t.tHead || t.tFoot,
+      (t) => repeatingHead(t) || repeatingFoot(t),
     );
     if (!tables.length) continue;
     for (const table of tables) {
@@ -965,10 +982,10 @@ export function compensateRepeatedHeaders(
       }> = [];
 
       for (const table of tables) {
-        const head = table.tHead;
+        const head = repeatingHead(table);
         const headRect = head?.getClientRects()[0];
         // Rect-derived heights are zoom-scaled; colBottom (clientHeight) is not.
-        const footHeight = (table.tFoot?.getBoundingClientRect().height ?? 0) / zoom;
+        const footHeight = (repeatingFoot(table)?.getBoundingClientRect().height ?? 0) / zoom;
         const rows = Array.from(
           table.querySelectorAll<HTMLTableRowElement>("tbody > tr"),
         ).filter(
@@ -1095,7 +1112,7 @@ function sectionShim(
       td.colSpan = cell.colSpan;
       td.innerHTML = cell.innerHTML;
       const cs = getComputedStyle(cell);
-      td.style.cssText = `font:${cs.font};text-align:${cs.textAlign};padding:${cs.padding};border:${cs.border};background:${cs.backgroundColor};`;
+      td.style.cssText = `font:${cs.font};color:${cs.color};letter-spacing:${cs.letterSpacing};text-transform:${cs.textTransform};vertical-align:${cs.verticalAlign};text-align:${cs.textAlign};padding:${cs.padding};border:${cs.border};background:${cs.backgroundColor};`;
       shim.appendChild(td);
     }
   } else {

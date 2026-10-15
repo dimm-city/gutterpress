@@ -1455,12 +1455,20 @@
     return head;
   }
   var pushTargets = new WeakMap;
+  function repeatingHead(table) {
+    const head = table.tHead;
+    return head && getComputedStyle(head).display === "table-header-group" ? head : null;
+  }
+  function repeatingFoot(table) {
+    const foot = table.tFoot;
+    return foot && getComputedStyle(foot).display === "table-footer-group" ? foot : null;
+  }
   function compensateRepeatedHeaders(strips, maxPasses = 24) {
     const warnings = [];
     let passes = 0;
     let touched = 0;
     for (const strip of strips) {
-      const tables = Array.from(strip.el.querySelectorAll("table")).filter((t) => t.tHead || t.tFoot);
+      const tables = Array.from(strip.el.querySelectorAll("table")).filter((t) => repeatingHead(t) || repeatingFoot(t));
       if (!tables.length)
         continue;
       for (const table of tables) {
@@ -1485,9 +1493,9 @@
         const colBottom = strip.el.clientHeight;
         const plans = [];
         for (const table of tables) {
-          const head = table.tHead;
+          const head = repeatingHead(table);
           const headRect = head?.getClientRects()[0];
-          const footHeight = (table.tFoot?.getBoundingClientRect().height ?? 0) / zoom;
+          const footHeight = (repeatingFoot(table)?.getBoundingClientRect().height ?? 0) / zoom;
           const rows = Array.from(table.querySelectorAll("tbody > tr")).filter((r) => !r.classList.contains("gp-thead-shim") && !r.classList.contains("gp-tfoot-shim"));
           if (!rows.length)
             continue;
@@ -1567,7 +1575,7 @@
         td.colSpan = cell.colSpan;
         td.innerHTML = cell.innerHTML;
         const cs = getComputedStyle(cell);
-        td.style.cssText = `font:${cs.font};text-align:${cs.textAlign};padding:${cs.padding};border:${cs.border};background:${cs.backgroundColor};`;
+        td.style.cssText = `font:${cs.font};color:${cs.color};letter-spacing:${cs.letterSpacing};text-transform:${cs.textTransform};vertical-align:${cs.verticalAlign};text-align:${cs.textAlign};padding:${cs.padding};border:${cs.border};background:${cs.backgroundColor};`;
         shim.appendChild(td);
       }
     } else {
