@@ -47,9 +47,10 @@ function installBook(frame, markup = BOOK_NATIVE, layout = "vertical") {
         const colors = (style && style.colors) || {};
         if (style && style.strength) dataset.overlayStrength = style.strength;
         if (colors.safe) dataset.overlayColor = colors.safe;
+        if (colors.art) dataset.overlayArtColor = colors.art;
         if (colors.bleed) dataset.overlayBleedColor = colors.bleed;
         if (colors.margins) dataset.overlayMarginsColor = colors.margins;
-        const shown = ["bleed", "safe", "margins"].filter((layer) => (typeof state === "object" ? state[layer] === true : !!state));
+        const shown = ["bleed", "safe", "art", "margins"].filter((layer) => (typeof state === "object" ? state[layer] === true : !!state));
         const on = shown.length > 0;
         dataset.overlay = on ? "on" : "off";
         if (on) dataset.overlayLayers = shown.join(",");
@@ -545,10 +546,10 @@ async function main() {
   active.contentWindow.previewAPI.setViewMode("single");
   active.contentWindow.previewAPI.setZoom("0.8");
   active.contentDocument.body.classList.add("debug");
-  // The author switched two of the print overlays' layers on before this save, with colours of their own.
+  // The author switched three of the print overlays' four layers on before this save, with colours of their own.
   active.contentWindow.previewAPI.setMarginOverlay(
-    { bleed: true, safe: false, margins: true },
-    { strength: "strong", colors: { bleed: "#00aa55", safe: "#2f80ed", margins: "#e91e63" } },
+    { bleed: true, safe: false, art: true, margins: true },
+    { strength: "strong", colors: { bleed: "#00aa55", safe: "#2f80ed", art: "#ff8800", margins: "#e91e63" } },
   );
   const desktopStyle = active.contentDocument.createElement("style");
   desktopStyle.setAttribute("data-gutterpress-desktop-canvas", "true");
@@ -651,14 +652,15 @@ async function main() {
   assert.equal(fresh.contentDocument.body.classList.contains("debug"), true, "debug state is copied before reveal");
   assert.deepEqual(
     fresh.contentWindow.__overlayCalls,
-    [{ bleed: true, safe: false, margins: true }],
+    [{ bleed: true, safe: false, art: true, margins: true }],
     "the print overlays are carried into the replacement, once, before reveal, with the layers that were showing",
   );
   assert.equal(fresh.contentDocument.body.dataset.overlay, "on", "overlay state survives a hot reload");
-  assert.equal(fresh.contentDocument.body.dataset.overlayLayers, "bleed,margins", "…and so do its layers");
+  assert.equal(fresh.contentDocument.body.dataset.overlayLayers, "bleed,art,margins", "…and so do its layers");
   assert.equal(fresh.contentDocument.body.dataset.overlayStrength, "strong", "…and its strength");
   assert.equal(fresh.contentDocument.body.dataset.overlayBleedColor, "#00aa55", "…and each layer's colour");
-  assert.equal(fresh.contentDocument.body.dataset.overlayColor, "#2f80ed", "…the safe layer's too");
+  assert.equal(fresh.contentDocument.body.dataset.overlayColor, "#2f80ed", "…the text safe layer's too");
+  assert.equal(fresh.contentDocument.body.dataset.overlayArtColor, "#ff8800", "…the art safe layer's");
   assert.equal(fresh.contentDocument.body.dataset.overlayMarginsColor, "#e91e63", "…and the margins'");
   assert.equal(
     fresh.contentDocument.documentElement.style.getPropertyValue("--gutterpress-zoom"),

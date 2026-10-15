@@ -47,44 +47,78 @@ describe("preview.marginOverlay setting", () => {
     expect(DEFAULT_SETTINGS.preview.marginOverlay).toBe(false);
   });
 
-  test("all three layers are on and each has its own colour by default", () => {
-    expect(DEFAULT_SETTINGS.preview.overlayLayers).toEqual({ bleed: true, safe: true, margins: true });
-    expect(DEFAULT_SETTINGS.preview.overlayColors).toEqual({ bleed: "#e5484d", safe: "#2f80ed", margins: "#1a9c6b" });
+  test("all four layers are on and each has its own colour by default", () => {
+    expect(DEFAULT_SETTINGS.preview.overlayLayers).toEqual({ bleed: true, safe: true, art: true, margins: true });
+    expect(DEFAULT_SETTINGS.preview.overlayColors).toEqual({
+      bleed: "#e5484d",
+      safe: "#2f80ed",
+      art: "#00b4d8",
+      margins: "#1a9c6b",
+    });
+    // four colours, no two alike: every line on the page can be told from the rest
+    expect(new Set(Object.values(DEFAULT_SETTINGS.preview.overlayColors)).size).toBe(4);
     expect(DEFAULT_SETTINGS.preview.marginOverlayStrength).toBe("normal");
-    // the colour the overlay had before it had layers is the safe layer's default
+    // the colour the overlay had before it had layers is the (text) safe layer's default
     expect(DEFAULT_SETTINGS.preview.overlayColors.safe).toBe(DEFAULT_SETTINGS.preview.marginOverlayColor);
   });
 
   test("a patch changes just the layer or colour set (each is written whole) and leaves the master switch alone", () => {
     const layers = mergeSettings(DEFAULT_SETTINGS, {
-      preview: { overlayLayers: { bleed: false, safe: true, margins: true } },
+      preview: { overlayLayers: { bleed: false, safe: true, art: false, margins: true } },
     } as DeepPartialSettings);
-    expect(layers.preview.overlayLayers).toEqual({ bleed: false, safe: true, margins: true });
+    expect(layers.preview.overlayLayers).toEqual({ bleed: false, safe: true, art: false, margins: true });
     expect(layers.preview.overlayColors).toEqual(DEFAULT_SETTINGS.preview.overlayColors);
     expect(layers.preview.marginOverlay).toBe(false);
     const look = mergeSettings(DEFAULT_SETTINGS, {
-      preview: { overlayColors: { bleed: "#00aa55", safe: "#2f80ed", margins: "#e91e63" }, marginOverlayStrength: "strong" },
+      preview: {
+        overlayColors: { bleed: "#00aa55", safe: "#2f80ed", art: "#ff8800", margins: "#e91e63" },
+        marginOverlayStrength: "strong",
+      },
     } as DeepPartialSettings);
-    expect(look.preview.overlayColors).toEqual({ bleed: "#00aa55", safe: "#2f80ed", margins: "#e91e63" });
+    expect(look.preview.overlayColors).toEqual({ bleed: "#00aa55", safe: "#2f80ed", art: "#ff8800", margins: "#e91e63" });
     expect(look.preview.marginOverlayStrength).toBe("strong");
     expect(look.preview.overlayLayers).toEqual(DEFAULT_SETTINGS.preview.overlayLayers);
   });
 
   test("a hand-edited bad value falls back to the default, layer by layer", () => {
-    expect(overlayLayersFrom({ bleed: false, safe: "no", margins: 0 })).toEqual({ bleed: false, safe: true, margins: true });
-    expect(overlayLayersFrom(undefined)).toEqual({ bleed: true, safe: true, margins: true });
-    expect(overlayLayersFrom("off")).toEqual({ bleed: true, safe: true, margins: true });
-    expect(overlayStyleFrom({ bleed: "#00AA55", safe: "#2f80ed", margins: "#e91e63" }, "subtle")).toEqual({
-      strength: "subtle",
-      colors: { bleed: "#00AA55", safe: "#2f80ed", margins: "#e91e63" },
+    expect(overlayLayersFrom({ bleed: false, safe: "no", art: null, margins: 0 })).toEqual({
+      bleed: false,
+      safe: true,
+      art: true,
+      margins: true,
     });
-    expect(overlayStyleFrom({ bleed: "#AA0000", safe: "red; background: url(x)", margins: 7 }, "loud")).toEqual({
+    expect(overlayLayersFrom(undefined)).toEqual({ bleed: true, safe: true, art: true, margins: true });
+    expect(overlayLayersFrom("off")).toEqual({ bleed: true, safe: true, art: true, margins: true });
+    expect(overlayStyleFrom({ bleed: "#00AA55", safe: "#2f80ed", art: "#FF8800", margins: "#e91e63" }, "subtle")).toEqual({
+      strength: "subtle",
+      colors: { bleed: "#00AA55", safe: "#2f80ed", art: "#FF8800", margins: "#e91e63" },
+    });
+    expect(overlayStyleFrom({ bleed: "#AA0000", safe: "red; background: url(x)", art: "url(x)", margins: 7 }, "loud")).toEqual({
       strength: "normal",
-      colors: { bleed: "#AA0000", safe: "#2f80ed", margins: "#1a9c6b" },
+      colors: { bleed: "#AA0000", safe: "#2f80ed", art: "#00b4d8", margins: "#1a9c6b" },
     });
     expect(overlayStyleFrom(undefined, undefined)).toEqual({
       strength: "normal",
-      colors: { bleed: "#e5484d", safe: "#2f80ed", margins: "#1a9c6b" },
+      colors: { bleed: "#e5484d", safe: "#2f80ed", art: "#00b4d8", margins: "#1a9c6b" },
+    });
+  });
+
+  test("a stored layer choice or colours from before art was a layer of its own read art as on, in its colour", async () => {
+    // the shape the app wrote while the safe area was one layer: three keys each
+    const { store } = storeWith({
+      preview: {
+        marginOverlay: true,
+        overlayLayers: { bleed: false, safe: true, margins: true },
+        overlayColors: { bleed: "#111111", safe: "#222222", margins: "#333333" },
+      },
+    });
+    const { preview } = await store.readSettings();
+    expect(overlayLayersFrom(preview.overlayLayers)).toEqual({ bleed: false, safe: true, art: true, margins: true });
+    expect(overlayStyleFrom(preview.overlayColors, preview.marginOverlayStrength).colors).toEqual({
+      bleed: "#111111",
+      safe: "#222222",
+      art: "#00b4d8",
+      margins: "#333333",
     });
   });
 
@@ -105,43 +139,59 @@ describe("preview.marginOverlay setting", () => {
     expect((await store.readSettings()).preview.marginOverlay).toBe(false);
     await store.updateSettings({ preview: { marginOverlay: true } } as DeepPartialSettings);
     expect((await store.readSettings()).preview.marginOverlay).toBe(true);
-    await store.updateSettings({ preview: { overlayLayers: { bleed: true, safe: false, margins: true } } } as DeepPartialSettings);
-    expect((await store.readSettings()).preview.overlayLayers).toEqual({ bleed: true, safe: false, margins: true });
+    await store.updateSettings({ preview: { overlayLayers: { bleed: true, safe: false, art: true, margins: true } } } as DeepPartialSettings);
+    expect((await store.readSettings()).preview.overlayLayers).toEqual({ bleed: true, safe: false, art: true, margins: true });
     // Edit mode's own write leaves them alone
     await store.updateSettings({ preview: { mode: "editor" } } as DeepPartialSettings);
     const after = (await store.readSettings()).preview;
     expect(after.marginOverlay).toBe(true);
-    expect(after.overlayLayers).toEqual({ bleed: true, safe: false, margins: true });
+    expect(after.overlayLayers).toEqual({ bleed: true, safe: false, art: true, margins: true });
 
     // a file written before there were layers: the overlay was on, with a colour of its own
     const old = storeWith({ preview: { marginOverlay: true, marginOverlayColor: "#2f80ed", marginOverlayStrength: "strong" } });
     const read = (await old.store.readSettings()).preview;
     expect(read.marginOverlay).toBe(true);
     expect(read.marginOverlayStrength).toBe("strong");
-    expect(read.overlayLayers).toEqual({ bleed: true, safe: true, margins: true });
+    expect(read.overlayLayers).toEqual({ bleed: true, safe: true, art: true, margins: true });
   });
 
-  test("the one colour from before the layers becomes the safe layer's, until the layer colours are saved", async () => {
+  test("the one colour from before the layers becomes the text safe layer's, until the layer colours are saved", async () => {
     const { store, files } = storeWith({ preview: { marginOverlay: true, marginOverlayColor: "#00aa55" } });
-    // read as the safe layer's colour; the other two are their defaults
-    expect((await store.readSettings()).preview.overlayColors).toEqual({ bleed: "#e5484d", safe: "#00aa55", margins: "#1a9c6b" });
+    // read as the text safe layer's colour; the others are their defaults
+    expect((await store.readSettings()).preview.overlayColors).toEqual({
+      bleed: "#e5484d",
+      safe: "#00aa55",
+      art: "#00b4d8",
+      margins: "#1a9c6b",
+    });
     // any write (even of something else) saves it with the rest, so it is the layer's own from then on
     await store.updateSettings({ preview: { mode: "editor" } } as DeepPartialSettings);
     expect(JSON.parse(files.get("/ud/app-settings.json")!).preview.overlayColors).toEqual({
       bleed: "#e5484d",
       safe: "#00aa55",
+      art: "#00b4d8",
       margins: "#1a9c6b",
     });
     // choosing another colour replaces it; the old key is no longer consulted
-    await store.updateSettings({ preview: { overlayColors: { bleed: "#e5484d", safe: "#123456", margins: "#1a9c6b" } } } as DeepPartialSettings);
+    await store.updateSettings({
+      preview: { overlayColors: { bleed: "#e5484d", safe: "#123456", art: "#00b4d8", margins: "#1a9c6b" } },
+    } as DeepPartialSettings);
     expect(JSON.parse(files.get("/ud/app-settings.json")!).preview.overlayColors.safe).toBe("#123456");
     expect((await store.readSettings()).preview.overlayColors.safe).toBe("#123456");
 
     // a file that already has layer colours is not overridden by the old key
     const both = storeWith({
-      preview: { marginOverlayColor: "#00aa55", overlayColors: { bleed: "#111111", safe: "#222222", margins: "#333333" } },
+      preview: {
+        marginOverlayColor: "#00aa55",
+        overlayColors: { bleed: "#111111", safe: "#222222", art: "#444444", margins: "#333333" },
+      },
     });
-    expect((await both.store.readSettings()).preview.overlayColors).toEqual({ bleed: "#111111", safe: "#222222", margins: "#333333" });
+    expect((await both.store.readSettings()).preview.overlayColors).toEqual({
+      bleed: "#111111",
+      safe: "#222222",
+      art: "#444444",
+      margins: "#333333",
+    });
 
     // a file with no old colour at all reads the defaults
     const none = storeWith({ preview: { marginOverlay: true } });
@@ -157,7 +207,7 @@ describe("the viewer's finding", () => {
     expect(
       overlaySummaryFrom({
         on: true,
-        layers: { bleed: false, safe: true, margins: true },
+        layers: { bleed: false, safe: true, art: false, margins: true },
         issues: 2.7,
         intended: -1,
         bleedPt: 9,
@@ -167,7 +217,7 @@ describe("the viewer's finding", () => {
       }),
     ).toEqual({
       on: true,
-      layers: { bleed: false, safe: true, margins: true },
+      layers: { bleed: false, safe: true, art: false, margins: true },
       issues: 2,
       intended: 0,
       bleedPt: 9,
@@ -178,7 +228,7 @@ describe("the viewer's finding", () => {
     // a viewer that predates the layers drew them all
     expect(overlaySummaryFrom({ on: true })).toEqual({
       on: true,
-      layers: { bleed: true, safe: true, margins: true },
+      layers: { bleed: true, safe: true, art: true, margins: true },
       issues: 0,
       intended: 0,
       bleedPt: 0,
@@ -191,7 +241,8 @@ describe("the viewer's finding", () => {
   test("the layers are listed in one order, with the names the legend and the settings use", () => {
     expect(OVERLAY_LAYERS.map((l) => [l.id, l.label])).toEqual([
       ["bleed", "Bleed"],
-      ["safe", "Safe area"],
+      ["safe", "Safe area: text"],
+      ["art", "Safe area: art"],
       ["margins", "Page margins"],
     ]);
   });
@@ -201,13 +252,13 @@ describe("the toolbar tooltip", () => {
   test("off: says what turning it on does, on one line", () => {
     const t = overlayTooltip(false, null);
     expect(t).toMatch(/^Show print overlays/);
-    expect(t).toMatch(/bleed, safe area and page margins/);
+    expect(t).toMatch(/bleed, the safe areas for text and for art, and page margins/);
     expect(t).not.toContain("\n");
   });
 
   const summary = (over: Partial<MarginOverlaySummary> = {}): MarginOverlaySummary => ({
     on: true,
-    layers: { bleed: true, safe: true, margins: true },
+    layers: { bleed: true, safe: true, art: true, margins: true },
     issues: 0,
     intended: 0,
     bleedPt: 9,
@@ -242,10 +293,18 @@ describe("the toolbar tooltip", () => {
     expect(t).not.toContain("placed on purpose");
   });
 
-  test("on: only the safe layer judges the book, so without it there is nothing to report", () => {
-    const noSafe = summary({ layers: { bleed: true, safe: false, margins: true }, issues: 0 });
-    expect(overlayTooltip(true, noSafe)).toBe("Hide print overlays");
-    expect(overlayTooltip(true, noSafe)).not.toContain("everything inside");
+  test("on: only the safe layers judge the book, so without either there is nothing to report", () => {
+    const neither = summary({ layers: { bleed: true, safe: false, art: false, margins: true }, issues: 0 });
+    expect(overlayTooltip(true, neither)).toBe("Hide print overlays");
+    expect(overlayTooltip(true, neither)).not.toContain("inside the safe area");
+  });
+
+  test("on: a clean book is only 'everything' when both safe layers looked; with one on it says which", () => {
+    const only = (layers: Partial<MarginOverlaySummary["layers"]>) =>
+      overlayTooltip(true, summary({ layers: { bleed: false, safe: false, art: false, margins: false, ...layers } }));
+    expect(only({ safe: true, art: true })).toBe("Hide print overlays · everything inside the safe area");
+    expect(only({ safe: true })).toBe("Hide print overlays · all text inside the safe area");
+    expect(only({ art: true })).toBe("Hide print overlays · all art inside the safe area");
   });
 
   test("on, before the viewer has answered: just the action", () => {

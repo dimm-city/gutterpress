@@ -1140,7 +1140,7 @@ async function main() {
   // ── Print overlays (protocol v9) ─────────────────────────────────────────────
   {
     const calls = [];
-    const summary = (on, layers = { bleed: on, safe: on, margins: on }) => ({
+    const summary = (on, layers = { bleed: on, safe: on, art: on, margins: on }) => ({
       on,
       layers,
       issues: on ? 4 : 0,
@@ -1151,7 +1151,7 @@ async function main() {
       counts: { text: on ? 2 : 0, art: on ? 1 : 0, bleed: on ? 1 : 0, offPage: 0, intended: on ? 1 : 0 },
     });
     // What the viewer's setOverlay does with its first argument (a boolean is all
-    // three layers; an object names the ones that are on) and records on <body>.
+    // four layers; an object names the ones that are on) and records on <body>.
     const stubViewer = (window, document) => {
       window.Gutterpress = {
         pageOf: () => -1,
@@ -1161,9 +1161,10 @@ async function main() {
             const layers = {
               bleed: state === true || state?.bleed === true,
               safe: state === true || state?.safe === true,
+              art: state === true || state?.art === true,
               margins: state === true || state?.margins === true,
             };
-            const on = layers.bleed || layers.safe || layers.margins;
+            const on = layers.bleed || layers.safe || layers.art || layers.margins;
             document.body.dataset.overlay = on ? "on" : "off";
             if (on) document.body.dataset.overlayLayers = Object.keys(layers).filter((k) => layers[k]).join(",");
             const s = summary(on, layers);
@@ -1189,9 +1190,9 @@ async function main() {
     assert.deepEqual(calls, [true, false]);
     // the layers and the look (a colour per layer, strength) are passed straight through to the viewer
     calls.length = 0;
-    const style = { strength: "strong", colors: { bleed: "#00aa55", safe: "#2f80ed", margins: "#e91e63" } };
-    api.setMarginOverlay({ bleed: false, safe: true, margins: true }, style);
-    assert.deepEqual(calls, [[{ bleed: false, safe: true, margins: true }, style]]);
+    const style = { strength: "strong", colors: { bleed: "#00aa55", safe: "#2f80ed", art: "#00b4d8", margins: "#e91e63" } };
+    api.setMarginOverlay({ bleed: false, safe: true, art: false, margins: true }, style);
+    assert.deepEqual(calls, [[{ bleed: false, safe: true, art: false, margins: true }, style]]);
     calls.length = 0;
     api.setMarginOverlay(false);
 
@@ -1216,24 +1217,24 @@ async function main() {
     assert.deepEqual(events, [], "…and says nothing when it is off");
 
     // standalone: Alt+M hides the overlay and brings back the layers it was showing; a plain M does nothing
-    api.setMarginOverlay({ safe: true, margins: true });
+    api.setMarginOverlay({ safe: true, art: true, margins: true });
     api.setMarginOverlay(false);
-    assert.equal(document.body.dataset.overlayLayers, "safe,margins", "the viewer's record outlives switching it off");
+    assert.equal(document.body.dataset.overlayLayers, "safe,art,margins", "the viewer's record outlives switching it off");
     calls.length = 0;
     const press = (init) =>
       document.dispatchEvent(new window.KeyboardEvent("keydown", { code: "KeyM", key: "m", bubbles: true, cancelable: true, ...init }));
     press({});
     assert.deepEqual(calls, [], "a bare M is just a letter");
     press({ altKey: true });
-    assert.deepEqual(calls, [{ bleed: false, safe: true, margins: true }], "Alt+M switches back on the layers it was last showing");
+    assert.deepEqual(calls, [{ bleed: false, safe: true, art: true, margins: true }], "Alt+M switches back on the layers it was last showing");
     press({ altKey: true });
-    assert.deepEqual(calls, [{ bleed: false, safe: true, margins: true }, false], "Alt+M again switches it off");
+    assert.deepEqual(calls, [{ bleed: false, safe: true, art: true, margins: true }, false], "Alt+M again switches it off");
     assert.equal(document.getElementById("gp-ov-badge"), null, "the legend is the viewer's: the host adds no badge");
     // the first time there is no record: all three layers
     delete document.body.dataset.overlayLayers;
     calls.length = 0;
     press({ altKey: true });
-    assert.deepEqual(calls, [{ bleed: true, safe: true, margins: true }], "with nothing remembered, Alt+M shows all three");
+    assert.deepEqual(calls, [{ bleed: true, safe: true, art: true, margins: true }], "with nothing remembered, Alt+M shows all four");
 
     // hosted by the desktop app (the shell's parent is the app): no key, no claim — the app owns the toggle
     {

@@ -106,19 +106,21 @@ The preview shows your book's pages exactly as they will print, and updates as y
 - **Zoom** with the menu at the top right of the preview: **Fit to width** or 25%–200%. The
   starting zoom is set in Settings → App → Preview.
 - **Check the print overlays** with the **print overlays** button beside the zoom menu. It draws
-  three layers on every page, each in its own colour: the **bleed** (a tinted band outside the
-  trim, with a solid line where the page is cut), the printer's **safe area** (a dashed line for
-  text and a dotted line for art, with the strip beside the trim tinted) and your own **page
-  margins** (a thin solid line). Text, pictures and boxes that leave their safe line are outlined
-  amber while they stay on the page and red once they cross the trim. Art you placed on purpose
-  (full-bleed images, pinned art) is outlined softly and not counted. A small legend in the corner
-  of the preview names each layer with its sizes in inches, says where they come from and counts
-  what was found. The number on the button is how many things leave the safe area; hover for a
-  one-line summary. It works in Read and Edit, the app remembers your choice, and it is for your
-  eyes only: it is never printed, never in an exported PDF, and it does not move anything.
+  four layers on every page, each in its own colour: the **bleed** (a tinted band outside the
+  trim, with a solid line where the page is cut), the printer's safe area for text (**Safe area:
+  text**, a dashed line, with the strip beside the trim tinted), the printer's safe area for art
+  (**Safe area: art**, a dotted line) and your own **page margins** (a thin solid line). Text,
+  pictures and boxes that leave their safe line are outlined amber while they stay on the page and
+  red once they cross the trim; each safe area layer outlines only what its own rule covers. Art
+  you placed on purpose (full-bleed images, pinned art) is outlined softly and not counted. A small
+  legend in the corner of the preview names each layer with its sizes in inches, says where they
+  come from and counts what was found. The number on the button is how many things leave a safe
+  area; hover for a one-line summary. It works in Read and Edit, the app remembers your choice, and
+  it is for your eyes only: it is never printed, never in an exported PDF, and it does not move
+  anything.
   - **Pick the layers.** The small arrow beside the button opens a menu with a tick box and a
-    colour swatch for each layer: **Bleed**, **Safe area** and **Page margins**. Ticking one while
-    the overlays are off turns them on.
+    colour swatch for each layer: **Bleed**, **Safe area: text**, **Safe area: art** and **Page
+    margins**. Ticking one while the overlays are off turns them on.
   - **Where the lines come from.** The bleed and the safe lines come only from your project's print
     settings: `page.width` and `page.height`, `page.bleed`, `page.safe` and `page.artSafe` in
     `manifest.yaml`, or your preset's values. Only the **Page margins** layer reads your
@@ -132,8 +134,9 @@ The preview shows your book's pages exactly as they will print, and updates as y
     legend says which setting to add.
   - **Make it louder or quieter, or change the colours** in Settings → App → Preview: *Print overlay
     strength* (Subtle, Normal or Strong: line width, tint and bleed band) and a colour for each
-    layer (*Bleed overlay colour*, *Safe area overlay colour*, *Page margins overlay colour*). The
-    lines stay the same thickness on screen at every zoom. These are app settings, not book CSS.
+    layer (*Bleed overlay colour*, *Safe area: text overlay colour*, *Safe area: art overlay
+    colour*, *Page margins overlay colour*). The lines stay the same thickness on screen at every
+    zoom. These are app settings, not book CSS.
 
 | Key | Does |
 | --- | --- |

@@ -1,14 +1,14 @@
 /**
  * Print overlays — the host side of the preview toolbar toggle.
  *
- * The overlays themselves (three layers: bleed, safe area, page margins, each
- * with its own colour) and their legend are drawn by the viewer inside the
- * preview frame (cli `engine/viewer/overlay.ts`); the app owns only the
- * choices — the master on/off (`preview.marginOverlay`), which layers show
- * (`overlayLayers`), their colours (`overlayColors`) and the strength, all
- * persisted — and shows what the viewer found. This module is the pure part:
- * the viewer's result type, the settings read as the viewer takes them, and the
- * words for the toolbar button.
+ * The overlays themselves (four layers: bleed, safe area for text, safe area
+ * for art, page margins, each with its own colour) and their legend are drawn
+ * by the viewer inside the preview frame (cli `engine/viewer/overlay.ts`); the
+ * app owns only the choices — the master on/off (`preview.marginOverlay`),
+ * which layers show (`overlayLayers`), their colours (`overlayColors`) and the
+ * strength, all persisted — and shows what the viewer found. This module is
+ * the pure part: the viewer's result type, the settings read as the viewer
+ * takes them, and the words for the toolbar button.
  *
  * PWA-clean (§8): no host imports.
  */
@@ -17,7 +17,8 @@ import { DEFAULT_SETTINGS } from "./platform/shared-types";
 /** The layers, in the order the toolbar menu and the settings list them. */
 export const OVERLAY_LAYERS = [
   { id: "bleed", label: "Bleed" },
-  { id: "safe", label: "Safe area" },
+  { id: "safe", label: "Safe area: text" },
+  { id: "art", label: "Safe area: art" },
   { id: "margins", label: "Page margins" },
 ] as const;
 
@@ -28,7 +29,7 @@ export type MarginOverlayColors = Record<MarginOverlayLayer, string>;
 /** What the viewer reports after drawing: the `overlayChanged` event's detail. */
 export interface MarginOverlaySummary {
   on: boolean;
-  /** the layers that are drawn; the counts below are only judged while `safe` is one of them */
+  /** the layers that are drawn; text is only judged while `safe` is one of them, art while `art` is */
   layers: MarginOverlayLayers;
   /** text and art that leave their safe area by accident, or the trim (the count in the toolbar) */
   issues: number;
@@ -89,11 +90,11 @@ export const MARGIN_OVERLAY_STRENGTHS: ReadonlyArray<{ value: MarginOverlayStyle
 
 const DEFAULTS = DEFAULT_SETTINGS.preview;
 
-/** The persisted layer choice; a layer that is missing or hand-edited to a non-boolean is on, as by default. */
+/** The persisted layer choice; a layer that is missing (an `art` stored before it was a layer) or hand-edited to a non-boolean is on, as by default. */
 export function overlayLayersFrom(layers: unknown): MarginOverlayLayers {
   const l = (layers && typeof layers === "object" ? layers : {}) as Record<string, unknown>;
   const on = (id: MarginOverlayLayer) => (typeof l[id] === "boolean" ? (l[id] as boolean) : DEFAULTS.overlayLayers[id]);
-  return { bleed: on("bleed"), safe: on("safe"), margins: on("margins") };
+  return { bleed: on("bleed"), safe: on("safe"), art: on("art"), margins: on("margins") };
 }
 
 /** The persisted colours as the viewer takes them; a hand-edited bad value falls back to that layer's default. */
@@ -101,7 +102,7 @@ function overlayColorsFrom(colors: unknown): MarginOverlayColors {
   const c = (colors && typeof colors === "object" ? colors : {}) as Record<string, unknown>;
   const color = (id: MarginOverlayLayer) =>
     typeof c[id] === "string" && /^#[0-9a-f]{6}$/i.test(c[id] as string) ? (c[id] as string) : DEFAULTS.overlayColors[id];
-  return { bleed: color("bleed"), safe: color("safe"), margins: color("margins") };
+  return { bleed: color("bleed"), safe: color("safe"), art: color("art"), margins: color("margins") };
 }
 
 /** The persisted colours and strength as the viewer takes them. */
@@ -115,14 +116,16 @@ export function overlayStyleFrom(colors: unknown, strength: unknown): MarginOver
 /** The toolbar button's tooltip (and accessible name), for its current state: one line. */
 export function overlayTooltip(on: boolean, summary: MarginOverlaySummary | null): string {
   if (!on) {
-    return "Show print overlays: bleed, safe area and page margins, with content outside the safe area highlighted";
+    return "Show print overlays: bleed, the safe areas for text and for art, and page margins, with content outside a safe area highlighted";
   }
   const found: string[] = [];
-  // only the safe layer judges the book, so only then is there anything to report
-  if (summary?.layers.safe) {
+  // only the safe layers judge the book (text by `safe`, art by `art`), so only then is there anything to report
+  if (summary && (summary.layers.safe || summary.layers.art)) {
     const { text, art, bleed, offPage } = summary.counts;
     const outside = [text > 0 && `${text} text`, art > 0 && `${art} art`].filter(Boolean).join(", ");
-    if (summary.issues === 0) found.push("everything inside the safe area");
+    if (summary.issues === 0) {
+      found.push(`${summary.layers.safe && summary.layers.art ? "everything" : summary.layers.safe ? "all text" : "all art"} inside the safe area`);
+    }
     if (outside) found.push(`${outside} outside the safe area`);
     if (bleed > 0) found.push(`${bleed} in the bleed band`);
     if (offPage > 0) found.push(`${offPage} off the page`);

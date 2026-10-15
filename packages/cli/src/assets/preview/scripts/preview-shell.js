@@ -115,12 +115,14 @@
         api.setMarginOverlay({
           bleed: shown.indexOf('bleed') >= 0,
           safe: shown.indexOf('safe') >= 0,
+          art: shown.indexOf('art') >= 0,
           margins: shown.indexOf('margins') >= 0
         }, {
           strength: sourceBody.dataset.overlayStrength,
           colors: {
             bleed: sourceBody.dataset.overlayBleedColor,
             safe: sourceBody.dataset.overlayColor,
+            art: sourceBody.dataset.overlayArtColor,
             margins: sourceBody.dataset.overlayMarginsColor
           }
         });

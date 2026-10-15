@@ -35,10 +35,10 @@ interface Harness {
   renderProgressPage: number;
   overlay: boolean;
   /** the author's durable print overlay choice: the layers to show, or false while the master switch is off */
-  marginOverlayState: false | { bleed: boolean; safe: boolean; margins: boolean };
+  marginOverlayState: false | { bleed: boolean; safe: boolean; art: boolean; margins: boolean };
   marginOverlayStyle: {
     strength: "subtle" | "normal" | "strong";
-    colors: { bleed: string; safe: string; margins: string };
+    colors: { bleed: string; safe: string; art: string; margins: string };
   };
   /** what the viewer last reported (the toolbar count) */
   overlaySummary: unknown;
@@ -59,7 +59,7 @@ function make(): Harness {
     renderProgressPage: 0,
     overlay: false,
     marginOverlayState: false as Harness["marginOverlayState"],
-    marginOverlayStyle: { strength: "normal", colors: { bleed: "#e5484d", safe: "#2f80ed", margins: "#1a9c6b" } },
+    marginOverlayStyle: { strength: "normal", colors: { bleed: "#e5484d", safe: "#2f80ed", art: "#00b4d8", margins: "#1a9c6b" } },
     overlaySummary: null as unknown,
     updating: false,
     pendingRestore: { page: null } as { page: number | null },
@@ -476,16 +476,19 @@ test("renderingComplete tolerates a missing client (no crash, still reveals)", a
 
 test("a fresh frame is told to show the overlay's layers when the author has it on", async () => {
   const h = make();
-  h.marginOverlayState = { bleed: false, safe: true, margins: true };
-  h.marginOverlayStyle = { strength: "strong", colors: { bleed: "#00aa55", safe: "#2f80ed", margins: "#e91e63" } };
+  h.marginOverlayState = { bleed: false, safe: true, art: true, margins: true };
+  h.marginOverlayStyle = {
+    strength: "strong",
+    colors: { bleed: "#00aa55", safe: "#2f80ed", art: "#ff8800", margins: "#e91e63" },
+  };
   h.zoom = "0.5";
   h.ctrl.handleEvent(rc(4));
   await flush();
   expect(h.client.calls).toContainEqual({
     cmd: "setMarginOverlay",
     args: [
-      { bleed: false, safe: true, margins: true },
-      { strength: "strong", colors: { bleed: "#00aa55", safe: "#2f80ed", margins: "#e91e63" } },
+      { bleed: false, safe: true, art: true, margins: true },
+      { strength: "strong", colors: { bleed: "#00aa55", safe: "#2f80ed", art: "#ff8800", margins: "#e91e63" } },
     ],
   });
   // pushed with the view mode, ahead of the zoom, and the reveal still comes last
@@ -503,7 +506,7 @@ test("with the overlay off a render asks for nothing", async () => {
 
 test("a hot reload does not re-send it: the shell carries the overlay into the replacement", async () => {
   const h = make();
-  h.marginOverlayState = { bleed: true, safe: true, margins: true };
+  h.marginOverlayState = { bleed: true, safe: true, art: true, margins: true };
   h.ctrl.handleEvent({ name: "renderingComplete", detail: { totalPages: 4, hotReload: true } });
   await flush();
   expect(h.client.calls.find((c) => c.cmd === "setMarginOverlay")).toBeUndefined();
@@ -515,7 +518,7 @@ test("overlayChanged hands the viewer's finding to the toolbar, and 'off' clears
     name: "overlayChanged",
     detail: {
       on: true,
-      layers: { bleed: false, safe: true, margins: true },
+      layers: { bleed: false, safe: true, art: false, margins: true },
       issues: 3.9,
       intended: 1,
       bleedPt: 9,
@@ -525,7 +528,7 @@ test("overlayChanged hands the viewer's finding to the toolbar, and 'off' clears
   });
   expect(h.overlaySummary).toEqual({
     on: true,
-    layers: { bleed: false, safe: true, margins: true },
+    layers: { bleed: false, safe: true, art: false, margins: true },
     issues: 3,
     intended: 1,
     bleedPt: 9,

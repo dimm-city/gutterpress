@@ -2142,11 +2142,11 @@
     return worst;
   }
   var INTENT_SELECTOR = ".gp-bleed, .gp-pin, .gp-flush, .gp-behind, .gp-page-full-bleed";
-  var OVERLAY_LAYERS = ["bleed", "safe", "margins"];
+  var OVERLAY_LAYERS = ["bleed", "safe", "art", "margins"];
   function layersFrom(state) {
     const named = state && typeof state === "object" ? state : null;
     const on = (layer) => named ? named[layer] === true : !!state;
-    return { bleed: on("bleed"), safe: on("safe"), margins: on("margins") };
+    return { bleed: on("bleed"), safe: on("safe"), art: on("art"), margins: on("margins") };
   }
   var OVERLAY_STRENGTHS = ["subtle", "normal", "strong"];
   var HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
@@ -2166,7 +2166,7 @@
   }
   var OVERLAY_OFF = {
     on: false,
-    layers: { bleed: false, safe: false, margins: false },
+    layers: { bleed: false, safe: false, art: false, margins: false },
     issues: 0,
     intended: 0,
     bleedPt: 0,
@@ -2204,7 +2204,7 @@
   }
   var OVERLAY_CSS = `
 .root {
-  --gp-ov-color: #2f80ed;       /* safe layer: its two lines + the tint outside the text line */
+  --gp-ov-color: #2f80ed;       /* safe layer: the text line + the tint outside it */
   --gp-ov-width: 2px;           /* line width as seen on screen, at any zoom */
   --gp-ov-style: dashed;        /* text safe line style */
   --gp-ov-art-style: dotted;    /* art safe line style */
@@ -2212,6 +2212,7 @@
   --gp-ov-bleed-color: #e5484d; /* bleed layer: the band, and (darker) the trim line */
   --gp-ov-bleed-alpha: 0.45;    /* opacity of the bleed band */
   --gp-ov-trim-color: color-mix(in srgb, var(--gp-ov-bleed-color) 60%, #000); /* darker than the band so it reads as an edge */
+  --gp-ov-art-color: #00b4d8;   /* art layer: the art line (dotted, a second cue) */
   --gp-ov-margins-color: #1a9c6b; /* margins layer: the page's own content box */
   --gp-ov-flag-width: 2px;      /* overflow flag outline */
   --gp-ov-warn: #f59e0b;        /* leaves the safe area */
@@ -2257,7 +2258,7 @@
   border: var(--gp-ov-w) var(--gp-ov-style) var(--gp-ov-color);
 }
 .gp-ov-art {
-  border: var(--gp-ov-w) var(--gp-ov-art-style) var(--gp-ov-color);
+  border: var(--gp-ov-w) var(--gp-ov-art-style) var(--gp-ov-art-color);
 }
 /* bleed: a translucent band between the trim and the sheet edge (its width is the border) */
 .gp-ov-bleed {
@@ -2292,7 +2293,7 @@
   right: 12px;
   bottom: 12px;
   box-sizing: border-box;
-  max-width: min(360px, calc(100vw - 24px));
+  max-width: min(420px, calc(100vw - 24px));
   padding: 8px 10px;
   border-radius: 8px;
   background: rgba(20, 20, 24, 0.92);
@@ -2315,6 +2316,7 @@
 }
 .gp-ov-swatch[data-layer="bleed"] { background: var(--gp-ov-bleed-color); }
 .gp-ov-swatch[data-layer="safe"] { background: var(--gp-ov-color); }
+.gp-ov-swatch[data-layer="art"] { background: var(--gp-ov-art-color); }
 .gp-ov-swatch[data-layer="margins"] { background: var(--gp-ov-margins-color); }
 .gp-ov-note { opacity: 0.75; }
 @media print {
@@ -2351,6 +2353,7 @@
   var COLOR_TOKEN = {
     bleed: "--gp-ov-bleed-color",
     safe: "--gp-ov-color",
+    art: "--gp-ov-art-color",
     margins: "--gp-ov-margins-color"
   };
   function applyStyle() {
@@ -2469,12 +2472,14 @@
       row("bleed", "Bleed", bleedPt > 0 ? ` ${ptIn(bleedPt)} — top, bottom, outside; none at the binding` : " — none set (page.bleed in manifest.yaml)");
     }
     if (layers.safe) {
-      const text = ptIn(safePt);
-      row("safe", "Safe area", safePt <= 0 && artSafePt <= 0 ? " — none set (page.safe in manifest.yaml)" : artSafePt === safePt ? ` — text and art ${text}, every edge` : ` — text ${text}; art ${ptIn(artSafePt)} (${text} at the binding)`);
+      row("safe", "Safe area: text", safePt > 0 ? ` — ${ptIn(safePt)}, every edge` : " — none set (page.safe in manifest.yaml)");
+    }
+    if (layers.art) {
+      row("art", "Safe area: art", safePt <= 0 && artSafePt <= 0 ? " — none set (page.artSafe in manifest.yaml)" : artSafePt === safePt ? ` — ${ptIn(artSafePt)}, every edge` : ` — ${ptIn(artSafePt)} top, bottom, outside; ${ptIn(safePt)} at the binding`);
     }
     if (layers.margins)
       row("margins", "Page margins", " — your stylesheet's @page margins");
-    if (area && (layers.bleed || layers.safe)) {
+    if (area && (layers.bleed || layers.safe || layers.art)) {
       if (area.spec) {
         const link = document.createElement("a");
         link.href = area.spec.url;
@@ -2486,7 +2491,7 @@
         add("gp-ov-note", `from manifest.yaml${area.preset ? ` (preset ${area.preset})` : ""}`);
       }
     }
-    if (layers.safe) {
+    if (layers.safe || layers.art) {
       const found = [];
       if (counts.text)
         found.push(`${counts.text} text outside the safe area`);
@@ -2496,8 +2501,9 @@
         found.push(`${counts.bleed} in the bleed band`);
       if (counts.offPage)
         found.push(`${counts.offPage} off the page`);
-      if (!found.length)
-        found.push("everything inside the safe area");
+      if (!found.length) {
+        found.push(`${layers.safe && layers.art ? "everything" : layers.safe ? "all text" : "all art"} inside the safe area`);
+      }
       if (counts.intended)
         found.push(`${counts.intended} placed on purpose`);
       add("gp-ov-found", found.join(" · "));
@@ -2535,9 +2541,8 @@
         host2.appendChild(unsafeTint(boxes));
         host2.appendChild(div("gp-ov-safe", boxes.safe));
       }
-      if (layers.safe && area && area.artSafe > 0 && area.artSafe !== area.safe) {
+      if (layers.art && area && area.artSafe > 0)
         host2.appendChild(div("gp-ov-art", boxes.safeArt));
-      }
       if (layers.margins && !p.padded)
         host2.appendChild(div("gp-ov-margins", marginsBox(p, side)));
       layer.appendChild(host2);
@@ -2549,7 +2554,7 @@
     const range = document.createRange();
     const source = area?.spec?.label ?? "the safe area";
     const inspect = (root2, pageOf2, zoom) => {
-      if (!layers.safe)
+      if (!layers.safe && !layers.art)
         return;
       const judge = (el, rule, rects) => {
         for (const r of rects) {
@@ -2587,7 +2592,7 @@
       };
       const visit = (node) => {
         if (node.nodeType === Node.TEXT_NODE) {
-          if (!node.nodeValue?.trim())
+          if (!layers.safe || !node.nodeValue?.trim())
             return;
           range.selectNodeContents(node);
           judge(node.parentElement, "text", range.getClientRects());
@@ -2595,9 +2600,11 @@
         }
         if (!(node instanceof Element) || SKIP.has(node.tagName) || node.classList.contains("gp-wrap-spacer"))
           return;
-        const cs = getComputedStyle(node);
-        if (ART_TAGS.has(node.localName) || cs.backgroundImage !== "none" || !/^rgba\(.*, 0\)$/.test(cs.backgroundColor) || parseFloat(cs.borderTopWidth) > 0 || parseFloat(cs.borderRightWidth) > 0 || parseFloat(cs.borderBottomWidth) > 0 || parseFloat(cs.borderLeftWidth) > 0) {
-          judge(node, "art", node.getClientRects());
+        if (layers.art) {
+          const cs = getComputedStyle(node);
+          if (ART_TAGS.has(node.localName) || cs.backgroundImage !== "none" || !/^rgba\(.*, 0\)$/.test(cs.backgroundColor) || parseFloat(cs.borderTopWidth) > 0 || parseFloat(cs.borderRightWidth) > 0 || parseFloat(cs.borderBottomWidth) > 0 || parseFloat(cs.borderLeftWidth) > 0) {
+            judge(node, "art", node.getClientRects());
+          }
         }
         for (const child of node.childNodes)
           visit(child);
@@ -2696,6 +2703,8 @@
             document.body.dataset.overlayStrength = strength;
           if (colors?.safe)
             document.body.dataset.overlayColor = colors.safe;
+          if (colors?.art)
+            document.body.dataset.overlayArtColor = colors.art;
           if (colors?.bleed)
             document.body.dataset.overlayBleedColor = colors.bleed;
           if (colors?.margins)

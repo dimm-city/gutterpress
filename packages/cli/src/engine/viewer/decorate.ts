@@ -85,8 +85,8 @@ export interface DecorationApi {
   warnings: string[];
   /** show/hide trim and crop guides on the stage */
   setDesigner(on: boolean): void;
-  /** print overlays (overlay.ts): draws the layers named by `state` — `true`/`false` for all three, or
-   * `{ bleed?, safe?, margins? }` (a layer left out is off) — and returns what the `safe` layer found.
+  /** print overlays (overlay.ts): draws the layers named by `state` — `true`/`false` for all four, or
+   * `{ bleed?, safe?, art?, margins? }` (a layer left out is off) — and returns what the safe layers found.
    * Chrome only — pagination is identical with them on or off. */
   setOverlay(state: boolean | Partial<OverlayLayers>, style?: OverlayStyle): OverlaySummary;
   /** the last summary, with the `layers` that are drawn */
@@ -179,6 +179,7 @@ export function decorate(
         // swap); nothing renders from these attributes.
         if (strength) document.body.dataset.overlayStrength = strength;
         if (colors?.safe) document.body.dataset.overlayColor = colors.safe;
+        if (colors?.art) document.body.dataset.overlayArtColor = colors.art;
         if (colors?.bleed) document.body.dataset.overlayBleedColor = colors.bleed;
         if (colors?.margins) document.body.dataset.overlayMarginsColor = colors.margins;
       }

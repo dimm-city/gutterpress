@@ -1,43 +1,47 @@
 /**
  * Print overlays (viewer chrome — PERMANENT tooling, not a shim).
  *
- * An author-facing review aid of three independent layers, each with its own
- * colour, its own toggle and its own row in the legend:
+ * An author-facing review aid of four independent layers, each with its own
+ * colour, its own toggle and its own row in the legend, so every line on the
+ * page says what it is:
  *  - `bleed`    the bleed band (translucent) and the trim line;
- *  - `safe`     the printer's two safe lines — text (dashed, with the band
- *               between it and the trim tinted) and art (dotted) — and every
- *               flag the layer raises;
+ *  - `safe`     the printer's TEXT safe line (dashed), the band between it and
+ *               the trim tinted, and every flag raised on text;
+ *  - `art`      the printer's ART safe line (dotted) and every flag raised on
+ *               art;
  *  - `margins`  the page's own content box, the sheet inset by that page's
  *               `@page` margins, as a thin solid line. It is the BOOK's
  *               choice, not the printer's, and the legend says so.
  *
- * The `safe` layer judges the book's INK against the rule that applies to it,
- * the way the printer does: each line of text (a text node's glyph rects)
- * against the TEXT box; images, media and any box that paints (a background or
- * a border) against the ART box, edge by edge — an edge that runs out to the
- * sheet's edge is a bleed done right and passes. A container that paints
- * nothing is never flagged, only what it holds, and page furniture (folios,
- * running heads) is judged the same way. A flag is amber when the ink stays on
- * the trimmed page, red when it crosses the trim into the bleed or off the
- * sheet. Art the author placed on purpose (`.gp-bleed`, `.gp-pin`,
- * `.gp-flush`, `.gp-behind`) is outlined softly in violet and not counted.
- * With the layer off nothing is judged: no flags, and every count is 0.
+ * The two safe layers judge the book's INK against the rule that applies to
+ * it, the way the printer does, each judging only its own: `safe` each line of
+ * text (a text node's glyph rects) against the TEXT box; `art` images, media
+ * and any box that paints (a background or a border) against the ART box, edge
+ * by edge — an edge that runs out to the sheet's edge is a bleed done right and
+ * passes. A container that paints nothing is never flagged, only what it
+ * holds, and page furniture (folios, running heads) is judged the same way. A
+ * flag is amber when the ink stays on the trimmed page, red when it crosses
+ * the trim into the bleed or off the sheet. Art the author placed on purpose
+ * (`.gp-bleed`, `.gp-pin`, `.gp-flush`, `.gp-behind`) is outlined softly in
+ * violet and not counted. With a layer off nothing of its rule is judged: no
+ * flags, and no count.
  *
- * WHERE THE GEOMETRY COMES FROM. `bleed` and `safe`: the project's manifest and
- * its preset, and nothing else — `page.width` x `page.height` (the sheet),
- * `page.bleed` (a bleed the sheet already contains on the top, bottom and OUTER
- * edge; the binding edge has none, as DriveThruRPG cuts it), `page.safe` (the
- * TEXT rule: its inset from the trim on every edge) and `page.artSafe` (the ART
- * rule: its inset on the top, bottom and outer edge, while the binding edge
- * takes `safe`; absent = `safe`). Preview assembly hands them in as
- * `<meta name="gp-print-area">`, with the preset's id and the printer spec it
- * follows, which only word what is found. No book or plugin CSS feeds them: not
- * the `@page` margins (they are where the author put the TEXT, which is not the
- * printer's safe area), not `@page { bleed }`. `margins` is the one layer that
- * IS the book's own CSS, and only its `@page` margins as the viewer resolved
- * them: a recto's are the run's (`strip.geometry.margin`), a verso's swap by
- * `versoShift` (decorate.ts). Each box is anchored on the top-left of the sheet
- * the viewer drew for that page, so it sits on the paper wherever the paper is.
+ * WHERE THE GEOMETRY COMES FROM. `bleed`, `safe` and `art`: the project's
+ * manifest and its preset, and nothing else — `page.width` x `page.height`
+ * (the sheet), `page.bleed` (a bleed the sheet already contains on the top,
+ * bottom and OUTER edge; the binding edge has none, as DriveThruRPG cuts it),
+ * `page.safe` (the TEXT rule: its inset from the trim on every edge) and
+ * `page.artSafe` (the ART rule: its inset on the top, bottom and outer edge,
+ * while the binding edge takes `safe`; absent = `safe`). Preview assembly
+ * hands them in as `<meta name="gp-print-area">`, with the preset's id and the
+ * printer spec it follows, which only word what is found. No book or plugin
+ * CSS feeds them: not the `@page` margins (they are where the author put the
+ * TEXT, which is not the printer's safe area), not `@page { bleed }`.
+ * `margins` is the one layer that IS the book's own CSS, and only its `@page`
+ * margins as the viewer resolved them: a recto's are the run's
+ * (`strip.geometry.margin`), a verso's swap by `versoShift` (decorate.ts). Each
+ * box is anchored on the top-left of the sheet the viewer drew for that page,
+ * so it sits on the paper wherever the paper is.
  *
  * WHERE IT IS DRAWN: one `<gp-overlay>` element on `<html>`, outside `<body>`
  * (the stage the book's CSS styles), with every property that could place,
@@ -50,7 +54,7 @@
  * in the corner of the viewport at any zoom or scroll. The legend names each
  * enabled layer with its values in inches and the edges they apply to, where
  * those numbers come from (the printer's spec as a link, else the manifest),
- * what the `safe` layer found, and how to hide it. It is the only part that
+ * what the safe layers found, and how to hide it. It is the only part that
  * takes the pointer (its link must be clickable).
  *
  * How it looks is set in ONE place — the tokens in `OVERLAY_CSS` below. The app
@@ -194,16 +198,16 @@ export function classifyRect(
  */
 export const INTENT_SELECTOR = ".gp-bleed, .gp-pin, .gp-flush, .gp-behind, .gp-page-full-bleed";
 
-/** The three layers a host may turn on and off, each independently. */
-export const OVERLAY_LAYERS = ["bleed", "safe", "margins"] as const;
+/** The four layers a host may turn on and off, each independently. */
+export const OVERLAY_LAYERS = ["bleed", "safe", "art", "margins"] as const;
 export type OverlayLayer = (typeof OVERLAY_LAYERS)[number];
 export type OverlayLayers = Record<OverlayLayer, boolean>;
 
-/** `true` / `false` set all three layers; an object names the ones that are on (a layer it leaves out is off). */
+/** `true` / `false` set all four layers; an object names the ones that are on (a layer it leaves out is off). */
 export function layersFrom(state: unknown): OverlayLayers {
   const named = state && typeof state === "object" ? (state as Record<string, unknown>) : null;
   const on = (layer: OverlayLayer) => (named ? named[layer] === true : !!state);
-  return { bleed: on("bleed"), safe: on("safe"), margins: on("margins") };
+  return { bleed: on("bleed"), safe: on("safe"), art: on("art"), margins: on("margins") };
 }
 
 /**
@@ -241,7 +245,7 @@ export interface OverlaySummary {
   on: boolean;
   /** the layers that are drawn (all false when off) */
   layers: OverlayLayers;
-  /** ink that leaves its safe area by accident: `counts.text + art + bleed + offPage` */
+  /** ink that leaves its safe area by accident, as far as the layers that are on judge it: `counts.text + art + bleed + offPage` */
   issues: number;
   /** intentional ink that leaves it on purpose (shown, not counted) */
   intended: number;
@@ -251,13 +255,17 @@ export interface OverlaySummary {
   safePt: number;
   /** the ART rule's inset on the top, bottom and outer edge in pt (`page.artSafe`, else `safePt`) */
   artSafePt: number;
-  /** one per outlined rect: past a safe line on the trimmed page (text, art), in the bleed band, off the sheet, placed on purpose */
+  /**
+   * one per outlined rect: past a safe line on the trimmed page (text, art), in the bleed band, off the sheet, placed
+   * on purpose. Only ink whose layer is on is judged: text by `safe`, art by `art`, so the bleed band and off-page
+   * counts hold what those layers looked at.
+   */
   counts: { text: number; art: number; bleed: number; offPage: number; intended: number };
 }
 
 export const OVERLAY_OFF: OverlaySummary = {
   on: false,
-  layers: { bleed: false, safe: false, margins: false },
+  layers: { bleed: false, safe: false, art: false, margins: false },
   issues: 0,
   intended: 0,
   bleedPt: 0,
@@ -324,7 +332,7 @@ function sheetArea(sheet: HTMLElement): PrintArea {
  */
 export const OVERLAY_CSS = `
 .root {
-  --gp-ov-color: #2f80ed;       /* safe layer: its two lines + the tint outside the text line */
+  --gp-ov-color: #2f80ed;       /* safe layer: the text line + the tint outside it */
   --gp-ov-width: 2px;           /* line width as seen on screen, at any zoom */
   --gp-ov-style: dashed;        /* text safe line style */
   --gp-ov-art-style: dotted;    /* art safe line style */
@@ -332,6 +340,7 @@ export const OVERLAY_CSS = `
   --gp-ov-bleed-color: #e5484d; /* bleed layer: the band, and (darker) the trim line */
   --gp-ov-bleed-alpha: 0.45;    /* opacity of the bleed band */
   --gp-ov-trim-color: color-mix(in srgb, var(--gp-ov-bleed-color) 60%, #000); /* darker than the band so it reads as an edge */
+  --gp-ov-art-color: #00b4d8;   /* art layer: the art line (dotted, a second cue) */
   --gp-ov-margins-color: #1a9c6b; /* margins layer: the page's own content box */
   --gp-ov-flag-width: 2px;      /* overflow flag outline */
   --gp-ov-warn: #f59e0b;        /* leaves the safe area */
@@ -377,7 +386,7 @@ export const OVERLAY_CSS = `
   border: var(--gp-ov-w) var(--gp-ov-style) var(--gp-ov-color);
 }
 .gp-ov-art {
-  border: var(--gp-ov-w) var(--gp-ov-art-style) var(--gp-ov-color);
+  border: var(--gp-ov-w) var(--gp-ov-art-style) var(--gp-ov-art-color);
 }
 /* bleed: a translucent band between the trim and the sheet edge (its width is the border) */
 .gp-ov-bleed {
@@ -412,7 +421,7 @@ export const OVERLAY_CSS = `
   right: 12px;
   bottom: 12px;
   box-sizing: border-box;
-  max-width: min(360px, calc(100vw - 24px));
+  max-width: min(420px, calc(100vw - 24px));
   padding: 8px 10px;
   border-radius: 8px;
   background: rgba(20, 20, 24, 0.92);
@@ -435,6 +444,7 @@ export const OVERLAY_CSS = `
 }
 .gp-ov-swatch[data-layer="bleed"] { background: var(--gp-ov-bleed-color); }
 .gp-ov-swatch[data-layer="safe"] { background: var(--gp-ov-color); }
+.gp-ov-swatch[data-layer="art"] { background: var(--gp-ov-art-color); }
 .gp-ov-swatch[data-layer="margins"] { background: var(--gp-ov-margins-color); }
 .gp-ov-note { opacity: 0.75; }
 @media print {
@@ -485,6 +495,7 @@ let currentStyle: OverlayStyle = {};
 const COLOR_TOKEN: Record<OverlayLayer, string> = {
   bleed: "--gp-ov-bleed-color",
   safe: "--gp-ov-color",
+  art: "--gp-ov-art-color",
   margins: "--gp-ov-margins-color",
 };
 
@@ -664,19 +675,25 @@ function legend(layers: OverlayLayers, area: PrintArea | null, summary: OverlayS
     );
   }
   if (layers.safe) {
-    const text = ptIn(safePt);
     row(
       "safe",
-      "Safe area",
+      "Safe area: text",
+      safePt > 0 ? ` — ${ptIn(safePt)}, every edge` : " — none set (page.safe in manifest.yaml)",
+    );
+  }
+  if (layers.art) {
+    row(
+      "art",
+      "Safe area: art",
       safePt <= 0 && artSafePt <= 0
-        ? " — none set (page.safe in manifest.yaml)"
+        ? " — none set (page.artSafe in manifest.yaml)"
         : artSafePt === safePt
-          ? ` — text and art ${text}, every edge`
-          : ` — text ${text}; art ${ptIn(artSafePt)} (${text} at the binding)`,
+          ? ` — ${ptIn(artSafePt)}, every edge`
+          : ` — ${ptIn(artSafePt)} top, bottom, outside; ${ptIn(safePt)} at the binding`,
     );
   }
   if (layers.margins) row("margins", "Page margins", " — your stylesheet's @page margins");
-  if (area && (layers.bleed || layers.safe)) {
+  if (area && (layers.bleed || layers.safe || layers.art)) {
     if (area.spec) {
       const link = document.createElement("a");
       link.href = area.spec.url;
@@ -688,13 +705,16 @@ function legend(layers: OverlayLayers, area: PrintArea | null, summary: OverlayS
       add("gp-ov-note", `from manifest.yaml${area.preset ? ` (preset ${area.preset})` : ""}`);
     }
   }
-  if (layers.safe) {
+  // the counts hold only what the safe layers that are on judged: text for `safe`, art for `art`
+  if (layers.safe || layers.art) {
     const found: string[] = [];
     if (counts.text) found.push(`${counts.text} text outside the safe area`);
     if (counts.art) found.push(`${counts.art} art outside${counts.text ? "" : " the safe area"}`);
     if (counts.bleed) found.push(`${counts.bleed} in the bleed band`);
     if (counts.offPage) found.push(`${counts.offPage} off the page`);
-    if (!found.length) found.push("everything inside the safe area");
+    if (!found.length) {
+      found.push(`${layers.safe && layers.art ? "everything" : layers.safe ? "all text" : "all art"} inside the safe area`);
+    }
     if (counts.intended) found.push(`${counts.intended} placed on purpose`);
     add("gp-ov-found", found.join(" · "));
   }
@@ -707,8 +727,8 @@ function legend(layers: OverlayLayers, area: PrintArea | null, summary: OverlayS
  * Draw the overlay's `layers` for `pages` and return what it found. Idempotent:
  * the previous drawing is replaced. `area` is the project's geometry
  * (`printAreaFromMeta()`); `null` falls back to each sheet's own size. Only
- * the `safe` layer judges the book's ink: with it off there are no flags and
- * every count is 0.
+ * the two safe layers judge the book's ink, each its own rule (`safe` text,
+ * `art` art): with a layer off there are no flags and no count for its rule.
  */
 export function paintOverlay(
   pages: readonly OverlayPage[],
@@ -749,10 +769,8 @@ export function paintOverlay(
       host.appendChild(unsafeTint(boxes));
       host.appendChild(div("gp-ov-safe", boxes.safe));
     }
-    // the art line, unless it would only retrace the text line or the trim
-    if (layers.safe && area && area.artSafe > 0 && area.artSafe !== area.safe) {
-      host.appendChild(div("gp-ov-art", boxes.safeArt));
-    }
+    // the art line: its own layer, so it is drawn even where it lies on the text line (one rule for both)
+    if (layers.art && area && area.artSafe > 0) host.appendChild(div("gp-ov-art", boxes.safeArt));
     if (layers.margins && !p.padded) host.appendChild(div("gp-ov-margins", marginsBox(p, side)));
     layer.appendChild(host);
     painted.set(p.index, { host, boxes, sheet: p.sheet, rect });
@@ -765,14 +783,14 @@ export function paintOverlay(
   const source = area?.spec?.label ?? "the safe area";
 
   /**
-   * Judge the ink under `root`: every text node's glyph rects against the text
-   * box; images, media and any box that paints (a background or a border)
-   * against the art box. A container that paints nothing is never flagged
-   * itself, only what it holds. `pageOf` says which page a client rect is on.
-   * Judging is the `safe` layer's job: with it off nothing is looked at.
+   * Judge the ink under `root`: with `safe` on, every text node's glyph rects
+   * against the text box; with `art` on, images, media and any box that paints
+   * (a background or a border) against the art box. A container that paints
+   * nothing is never flagged itself, only what it holds. `pageOf` says which
+   * page a client rect is on. A rule whose layer is off is not looked at.
    */
   const inspect = (root: Node, pageOf: (r: DOMRect) => Painted | undefined, zoom: number): void => {
-    if (!layers.safe) return;
+    if (!layers.safe && !layers.art) return;
     const judge = (el: Element, rule: OverflowRule, rects: Iterable<DOMRect>): void => {
       for (const r of rects) {
         if (r.width <= 0 && r.height <= 0) continue;
@@ -807,23 +825,25 @@ export function paintOverlay(
     };
     const visit = (node: Node): void => {
       if (node.nodeType === Node.TEXT_NODE) {
-        if (!node.nodeValue?.trim()) return;
+        if (!layers.safe || !node.nodeValue?.trim()) return;
         range.selectNodeContents(node);
         judge(node.parentElement!, "text", range.getClientRects());
         return;
       }
       if (!(node instanceof Element) || SKIP.has(node.tagName) || node.classList.contains("gp-wrap-spacer")) return;
-      const cs = getComputedStyle(node);
-      if (
-        ART_TAGS.has(node.localName) ||
-        cs.backgroundImage !== "none" ||
-        !/^rgba\(.*, 0\)$/.test(cs.backgroundColor) ||
-        parseFloat(cs.borderTopWidth) > 0 ||
-        parseFloat(cs.borderRightWidth) > 0 ||
-        parseFloat(cs.borderBottomWidth) > 0 ||
-        parseFloat(cs.borderLeftWidth) > 0
-      ) {
-        judge(node, "art", node.getClientRects());
+      if (layers.art) {
+        const cs = getComputedStyle(node);
+        if (
+          ART_TAGS.has(node.localName) ||
+          cs.backgroundImage !== "none" ||
+          !/^rgba\(.*, 0\)$/.test(cs.backgroundColor) ||
+          parseFloat(cs.borderTopWidth) > 0 ||
+          parseFloat(cs.borderRightWidth) > 0 ||
+          parseFloat(cs.borderBottomWidth) > 0 ||
+          parseFloat(cs.borderLeftWidth) > 0
+        ) {
+          judge(node, "art", node.getClientRects());
+        }
       }
       for (const child of node.childNodes) visit(child);
     };

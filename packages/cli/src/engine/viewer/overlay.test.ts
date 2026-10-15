@@ -10,10 +10,11 @@
  *     art is flagged under which rule (page furniture included), what reads as
  *     intended, how the meta is read, that every box sits on its sheet whatever
  *     the book's margins, that the book's own CSS cannot hide, move or restyle
- *     it, that each of the three layers (bleed, safe, margins) is drawn alone
- *     and in its own colour, what the legend says, and that switching any of it
- *     on changes NOTHING about the book — plus `fixtures/mirrored-sheets.html`
- *     for the margins layer on a book whose recto and verso margins mirror.
+ *     it, that each of the four layers (bleed, safe = text, art, margins) is
+ *     drawn alone and in its own colour, that each safe layer judges only its
+ *     own rule, what the legend says, and that switching any of it on changes
+ *     NOTHING about the book — plus `fixtures/mirrored-sheets.html` for the
+ *     margins layer on a book whose recto and verso margins mirror.
  */
 import { serveDir } from "./test-support/serve-dir.ts";
 import { test, expect, afterAll, describe } from "bun:test";
@@ -166,15 +167,21 @@ describe("judging a piece of ink", () => {
 });
 
 describe("the layers and the look a host may set", () => {
-  test("a boolean sets all three layers; an object names the ones that are on", () => {
-    expect(layersFrom(true)).toEqual({ bleed: true, safe: true, margins: true });
-    expect(layersFrom(false)).toEqual({ bleed: false, safe: false, margins: false });
-    expect(layersFrom({ safe: true })).toEqual({ bleed: false, safe: true, margins: false });
-    expect(layersFrom({ bleed: true, margins: true })).toEqual({ bleed: true, safe: false, margins: true });
+  test("a boolean sets all four layers; an object names the ones that are on", () => {
+    expect(layersFrom(true)).toEqual({ bleed: true, safe: true, art: true, margins: true });
+    expect(layersFrom(false)).toEqual({ bleed: false, safe: false, art: false, margins: false });
+    expect(layersFrom({ safe: true })).toEqual({ bleed: false, safe: true, art: false, margins: false });
+    expect(layersFrom({ art: true })).toEqual({ bleed: false, safe: false, art: true, margins: false });
+    expect(layersFrom({ bleed: true, margins: true })).toEqual({ bleed: true, safe: false, art: false, margins: true });
     // only a real `true` is on: anything else a host sends is off
-    expect(layersFrom({ bleed: "yes", safe: 1, margins: true })).toEqual({ bleed: false, safe: false, margins: true });
-    expect(layersFrom(undefined)).toEqual({ bleed: false, safe: false, margins: false });
-    expect(layersFrom(null)).toEqual({ bleed: false, safe: false, margins: false });
+    expect(layersFrom({ bleed: "yes", safe: 1, art: "on", margins: true })).toEqual({
+      bleed: false,
+      safe: false,
+      art: false,
+      margins: true,
+    });
+    expect(layersFrom(undefined)).toEqual({ bleed: false, safe: false, art: false, margins: false });
+    expect(layersFrom(null)).toEqual({ bleed: false, safe: false, art: false, margins: false });
   });
 
   test("only a hex colour and a known strength get through; `color` is the safe layer's alias", () => {
@@ -183,17 +190,18 @@ describe("the layers and the look a host may set", () => {
       strength: "strong",
     });
     expect(sanitizeOverlayStyle({ color: "#0a5" })).toEqual({ colors: { safe: "#0a5" } });
-    expect(sanitizeOverlayStyle({ colors: { bleed: "#aa0000", safe: "#00aa55", margins: "#e91e63" } })).toEqual({
-      colors: { bleed: "#aa0000", safe: "#00aa55", margins: "#e91e63" },
+    expect(sanitizeOverlayStyle({ colors: { bleed: "#aa0000", safe: "#00aa55", art: "#00b4d8", margins: "#e91e63" } })).toEqual({
+      colors: { bleed: "#aa0000", safe: "#00aa55", art: "#00b4d8", margins: "#e91e63" },
     });
     // `colors.safe` wins over its alias; a bad one lets the alias through
     expect(sanitizeOverlayStyle({ color: "#111111", colors: { safe: "#222222" } })).toEqual({ colors: { safe: "#222222" } });
     expect(sanitizeOverlayStyle({ color: "#111111", colors: { safe: "blue" } })).toEqual({ colors: { safe: "#111111" } });
-    // the alias is the SAFE layer's only
+    // the alias is the SAFE (text) layer's only: the art layer has a colour of its own
     expect(sanitizeOverlayStyle({ color: "#111111" }).colors).toEqual({ safe: "#111111" });
+    expect(sanitizeOverlayStyle({ colors: { art: "#222222" } })).toEqual({ colors: { art: "#222222" } });
     expect(sanitizeOverlayStyle({ color: "red; x: y", strength: "loud" })).toEqual({});
     expect(sanitizeOverlayStyle({ color: "url(javascript:1)" })).toEqual({});
-    expect(sanitizeOverlayStyle({ colors: { bleed: "red; x: y", margins: 7, nope: "#fff" } })).toEqual({});
+    expect(sanitizeOverlayStyle({ colors: { bleed: "red; x: y", art: "url(x)", margins: 7, nope: "#fff" } })).toEqual({});
     expect(sanitizeOverlayStyle({ colors: "#fff" })).toEqual({});
     expect(sanitizeOverlayStyle(null)).toEqual({});
     expect(sanitizeOverlayStyle("strong")).toEqual({});
@@ -285,7 +293,7 @@ testIf(
         const summary = await page.evaluate(() => (window as any).Gutterpress.decoration.setOverlay(true));
         expect(summary).toEqual({
           on: true,
-          layers: { bleed: true, safe: true, margins: true },
+          layers: { bleed: true, safe: true, art: true, margins: true },
           issues: 11,
           intended: 1,
           bleedPt: 9,
@@ -427,11 +435,12 @@ testIf(
             };
           }, content);
 
-        // no artSafe: the art rule is the text rule, so there is one safe line, and art 0.19in from the outside edge now fails too
+        // no artSafe: the art rule is the text rule, so art 0.19in from the outside edge now fails too; the art layer
+        // still draws its line (on the text line: one distance), as it is a layer of its own
         const one = await withMeta('{"width":300,"height":375,"bleed":9,"safe":18}');
         expect(one.summary).toMatchObject({ safePt: 18, artSafePt: 18, issues: 13 });
         expect(one.summary.counts).toEqual({ text: 3, art: 6, bleed: 3, offPage: 1, intended: 1 });
-        expect(one.arts).toBe(0);
+        expect(one.arts).toBeGreaterThan(0);
         // no spec: the rule is just "the safe area"
         expect(one.nearTrim).toBe("text 0.15in from the trim; the safe area needs 0.25in");
 
@@ -464,19 +473,26 @@ testIf(
         await page.waitForFunction("window.Gutterpress?.totalPages > 0");
         await page.evaluate(() => (window as any).Gutterpress.decoration.setOverlay(true));
         // The fixture's stylesheet sets `gp-overlay { display: none; transform; opacity: 0 }`,
-        // `--gp-ov-color` / `--gp-ov-width` on :root and body, `display: none` on
-        // the overlay's class names, and red outlines/borders on every div.
+        // every layer's colour token and `--gp-ov-width` on :root and body, `display: none`
+        // on the overlay's class names (the legend's too), and red outlines/borders on every div.
         const seen = await page.evaluate(() => {
           const host = document.querySelector("gp-overlay") as HTMLElement;
           const hs = getComputedStyle(host);
-          const safe = host.shadowRoot!.querySelector(".gp-ov-safe")!;
-          const ss = getComputedStyle(safe);
+          const shadow = host.shadowRoot!;
+          const cs = (sel: string) => getComputedStyle(shadow.querySelector(sel)!);
+          const ss = cs(".gp-ov-safe");
           return {
             parent: host.parentElement!.tagName,
             display: hs.display,
             opacity: hs.opacity,
-            pageDisplay: getComputedStyle(host.shadowRoot!.querySelector(".gp-ov-page")!).display,
-            artDisplay: getComputedStyle(host.shadowRoot!.querySelector(".gp-ov-art")!).display,
+            pageDisplay: cs(".gp-ov-page").display,
+            artDisplay: cs(".gp-ov-art").display,
+            artColor: cs(".gp-ov-art").borderTopColor,
+            bleedDisplay: cs(".gp-ov-bleed").display,
+            marginsDisplay: cs(".gp-ov-margins").display,
+            marginsColor: cs(".gp-ov-margins").borderTopColor,
+            legendDisplay: cs(".gp-ov-legend").display,
+            swatches: Array.from(shadow.querySelectorAll<HTMLElement>(".gp-ov-swatch")).map((s) => getComputedStyle(s).backgroundColor),
             safeDisplay: ss.display,
             safeColor: ss.borderTopColor,
             safeWidth: parseFloat(ss.borderTopWidth),
@@ -487,8 +503,15 @@ testIf(
         expect(seen.opacity).toBe("1");
         expect(seen.pageDisplay).toBe("block");
         expect(seen.artDisplay).toBe("block");
+        expect(seen.bleedDisplay).toBe("block");
+        expect(seen.marginsDisplay).toBe("block");
+        expect(seen.legendDisplay).toBe("block");
         expect(seen.safeDisplay).toBe("block");
+        // every layer keeps its own colour, whatever the book's `:root` says
         expect(seen.safeColor).toBe("rgb(47, 128, 237)");
+        expect(seen.artColor).toBe("rgb(0, 180, 216)");
+        expect(seen.marginsColor).toBe("rgb(26, 156, 107)");
+        expect(seen.swatches).toEqual(["rgb(229, 72, 77)", "rgb(47, 128, 237)", "rgb(0, 180, 216)", "rgb(26, 156, 107)"]);
         expect(seen.safeWidth).toBeGreaterThanOrEqual(1.9);
         expect(seen.safeWidth).toBeLessThanOrEqual(2.1);
         // and it is where the sheets are, not where the book's transform tried to put it
@@ -516,7 +539,7 @@ testIf(
         // only the text that leaves the sheet is a problem (art that runs past it is bleeding); no safe area, no bleed
         expect(summary).toEqual({
           on: true,
-          layers: { bleed: true, safe: true, margins: true },
+          layers: { bleed: true, safe: true, art: true, margins: true },
           issues: 1,
           intended: 0,
           bleedPt: 0,
@@ -607,15 +630,18 @@ testIf(
             };
           });
 
-        // default: a 2px-on-screen text line (dashed) and art line (dotted) in one colour, a translucent unsafe band
+        // default: a 2px-on-screen text line (dashed, blue) and art line (dotted, cyan: its own colour, so the two
+        // can never be mistaken for each other), a translucent unsafe band
         const base = await look();
         expect(base.safeLine).toBeGreaterThanOrEqual(1.9);
         expect(base.safeLine).toBeLessThanOrEqual(2.1);
         expect(base.safeStyle).toBe("dashed");
+        expect(base.safeColor).toBe("rgb(47, 128, 237)");
         expect(base.artStyle).toBe("dotted");
+        expect(base.artColor).toBe("rgb(0, 180, 216)");
+        expect(base.artColor).not.toBe(base.safeColor);
         expect(base.artLine).toBeGreaterThanOrEqual(1.9);
         expect(base.artLine).toBeLessThanOrEqual(2.1);
-        expect(base.artColor).toBe(base.safeColor);
         expect(base.trimLine).toBeGreaterThanOrEqual(1.9);
         expect(base.tint).toMatch(/^color\(srgb|^rgba?\(/);
         expect(base.tint).not.toBe("rgba(0, 0, 0, 0)");
@@ -639,7 +665,8 @@ testIf(
         const strong = await look();
         expect(strong.safeLine).toBeGreaterThanOrEqual(2.9);
         expect(strong.safeColor).toBe("rgb(0, 170, 85)");
-        expect(strong.artColor).toBe("rgb(0, 170, 85)");
+        // `color` is the text safe line's alias: the art line keeps its own colour
+        expect(strong.artColor).toBe("rgb(0, 180, 216)");
         await page.evaluate(() => (window as any).Gutterpress.decoration.setOverlay(true, { strength: "subtle" }));
         expect((await look()).safeLine).toBeLessThanOrEqual(1.1);
 
@@ -663,7 +690,7 @@ const SPEC_LABEL = "DriveThruRPG — Quick Specifications for Print Books";
 const SPEC_URL = "https://help.drivethrupartners.com/hc/en-us/articles/12780800178583-Quick-Specifications-for-Print-Books";
 
 testIf(
-  "each layer is drawn alone: bleed is the band and the trim, safe the lines, the tint and every flag, margins the book's own content box",
+  "each layer is drawn alone: bleed the band and the trim, safe the text line, its tint and the text flags, art the art line and the art flags, margins the book's own content box",
   async () => {
     await withFixture(async (url) => {
       const page = await (await getBrowser()).newPage();
@@ -698,52 +725,99 @@ testIf(
               art: count(".gp-ov-art"),
               margins: count(".gp-ov-margins"),
               flags: count(".gp-ov-flag"),
+              // which rule each flag was raised under
+              rules: Array.from(new Set(Array.from(shadow?.querySelectorAll<HTMLElement>(".gp-ov-flag") ?? []).map((f) => f.dataset.rule))),
               legend: Array.from(shadow?.querySelectorAll(".gp-ov-row b") ?? []).map((b) => b.textContent),
               host: document.querySelectorAll("gp-overlay").length,
             };
           }, state);
 
         const none = { bleed: 0, trim: 0, tint: 0, safe: 0, art: 0, margins: 0, flags: 0 };
-        const found = { text: 3, art: 4, bleed: 3, offPage: 1, intended: 1 };
         const quiet = { text: 0, art: 0, bleed: 0, offPage: 0, intended: 0 };
+        // what the whole fixture holds, and its two halves: each safe layer judges only its own rule
+        const found = { text: 3, art: 4, bleed: 3, offPage: 1, intended: 1 };
+        const textFound = { text: 3, art: 0, bleed: 1, offPage: 1, intended: 0 }; // five flags: the folio and four lines of text
+        const artFound = { text: 0, art: 4, bleed: 2, offPage: 0, intended: 1 }; // seven flags, one of them placed on purpose
 
         // bleed: the band and the trim line, and nothing else — nothing is judged
         const bleed = await drawn({ bleed: true });
         expect(bleed).toMatchObject({ ...none, bleed: sheets, trim: sheets, legend: ["Bleed"], host: 1 });
-        expect(bleed.summary).toMatchObject({ on: true, layers: { bleed: true, safe: false, margins: false }, issues: 0, bleedPt: 9, safePt: 18, counts: quiet });
+        expect(bleed.summary).toMatchObject({
+          on: true,
+          layers: { bleed: true, safe: false, art: false, margins: false },
+          issues: 0,
+          bleedPt: 9,
+          safePt: 18,
+          counts: quiet,
+        });
         expect(await book()).toEqual(before);
 
-        // safe: both lines, the tint and every flag (the whole of what the overlay found)
+        // safe: the TEXT line, its tint and the text flags — no art line, no art flag
         const safe = await drawn({ safe: true });
-        expect(safe).toMatchObject({ ...none, tint: sheets, safe: sheets, art: sheets, flags: 12, legend: ["Safe area"] });
-        expect(safe.summary).toMatchObject({ on: true, layers: { bleed: false, safe: true, margins: false }, issues: 11, intended: 1, counts: found });
+        expect(safe).toMatchObject({ ...none, tint: sheets, safe: sheets, flags: 5, rules: ["text"], legend: ["Safe area: text"] });
+        expect(safe.summary).toMatchObject({
+          on: true,
+          layers: { bleed: false, safe: true, art: false, margins: false },
+          issues: 5,
+          intended: 0,
+          counts: textFound,
+        });
+        expect(await book()).toEqual(before);
+
+        // art: the ART line and the art flags — no tint, no text line, no text flag
+        const art = await drawn({ art: true });
+        expect(art).toMatchObject({ ...none, art: sheets, flags: 7, rules: ["art"], legend: ["Safe area: art"] });
+        expect(art.summary).toMatchObject({
+          on: true,
+          layers: { bleed: false, safe: false, art: true, margins: false },
+          issues: 6,
+          intended: 1,
+          counts: artFound,
+        });
         expect(await book()).toEqual(before);
 
         // margins: the page's own content box, and nothing else — nothing is judged
         const margins = await drawn({ margins: true });
         expect(margins).toMatchObject({ ...none, margins: sheets, legend: ["Page margins"] });
-        expect(margins.summary).toMatchObject({ on: true, layers: { bleed: false, safe: false, margins: true }, issues: 0, counts: quiet });
+        expect(margins.summary).toMatchObject({
+          on: true,
+          layers: { bleed: false, safe: false, art: false, margins: true },
+          issues: 0,
+          counts: quiet,
+        });
         expect(await book()).toEqual(before);
 
-        // two together, and all three
+        // the two safe layers together find what the two found apart; with the bleed and the margins, all four
+        const both = await drawn({ safe: true, art: true });
+        expect(both).toMatchObject({ ...none, tint: sheets, safe: sheets, art: sheets, flags: 12, legend: ["Safe area: text", "Safe area: art"] });
+        expect(both.summary).toMatchObject({ issues: 11, intended: 1, counts: found });
         expect(await drawn({ bleed: true, margins: true })).toMatchObject({ ...none, bleed: sheets, trim: sheets, margins: sheets, legend: ["Bleed", "Page margins"] });
         const all = await drawn(true);
-        expect(all).toMatchObject({ bleed: sheets, trim: sheets, tint: sheets, safe: sheets, art: sheets, margins: sheets, flags: 12, legend: ["Bleed", "Safe area", "Page margins"] });
-        expect(all.summary).toMatchObject({ on: true, layers: { bleed: true, safe: true, margins: true }, issues: 11, counts: found });
+        expect(all).toMatchObject({
+          bleed: sheets,
+          trim: sheets,
+          tint: sheets,
+          safe: sheets,
+          art: sheets,
+          margins: sheets,
+          flags: 12,
+          legend: ["Bleed", "Safe area: text", "Safe area: art", "Page margins"],
+        });
+        expect(all.summary).toMatchObject({ on: true, layers: { bleed: true, safe: true, art: true, margins: true }, issues: 11, counts: found });
         expect(await book()).toEqual(before);
 
         // the record a host carries across a reload names the layers that were showing, and outlives switching off
         const records = () => page.evaluate(() => ({ overlay: document.body.dataset.overlay, layers: document.body.dataset.overlayLayers }));
-        await drawn({ bleed: true, margins: true });
-        expect(await records()).toEqual({ overlay: "on", layers: "bleed,margins" });
+        await drawn({ bleed: true, art: true, margins: true });
+        expect(await records()).toEqual({ overlay: "on", layers: "bleed,art,margins" });
         // no layer at all is no overlay: gone, whichever way it is asked for
-        for (const off of [false, {}, { bleed: false, safe: false, margins: false }]) {
+        for (const off of [false, {}, { bleed: false, safe: false, art: false, margins: false }]) {
           await drawn(true);
           const gone = await drawn(off);
           expect(gone).toMatchObject({ ...none, host: 0, legend: [] });
           expect(gone.summary).toEqual({
             on: false,
-            layers: { bleed: false, safe: false, margins: false },
+            layers: { bleed: false, safe: false, art: false, margins: false },
             issues: 0,
             intended: 0,
             bleedPt: 0,
@@ -751,7 +825,7 @@ testIf(
             artSafePt: 0,
             counts: quiet,
           });
-          expect(await records()).toEqual({ overlay: "off", layers: "bleed,safe,margins" });
+          expect(await records()).toEqual({ overlay: "off", layers: "bleed,safe,art,margins" });
         }
         await drawn({ bleed: true, margins: true });
         await drawn(false);
@@ -759,8 +833,9 @@ testIf(
         expect(await book()).toEqual(before);
 
         // every change announced the layers it left drawn
-        expect(await page.evaluate(() => (window as any).__events)).toContainEqual({ bleed: true, safe: false, margins: false });
-        expect(await page.evaluate(() => (window as any).__events)).toContainEqual({ bleed: false, safe: false, margins: false });
+        expect(await page.evaluate(() => (window as any).__events)).toContainEqual({ bleed: true, safe: false, art: false, margins: false });
+        expect(await page.evaluate(() => (window as any).__events)).toContainEqual({ bleed: false, safe: false, art: true, margins: false });
+        expect(await page.evaluate(() => (window as any).__events)).toContainEqual({ bleed: false, safe: false, art: false, margins: false });
       } finally {
         await page.close();
       }
@@ -800,19 +875,27 @@ testIf(
         const restyled = await state({ safe: true }, { strength: "strong", colors: { safe: "#00aa55" } });
         expect(restyled.kept).toBe(true);
         expect(restyled.margins).toBe(0);
-        // another layer: drawn again, and the flags are still found
+        // another layer: drawn again, and the text flags are still found (the five lines of text and folio)
         const more = await state({ safe: true, margins: true }, { strength: "subtle" });
         expect(more.kept).toBe(false);
         expect(more.margins).toBeGreaterThan(0);
-        expect(more.flags).toBe(12);
+        expect(more.flags).toBe(5);
+        // the art layer brings the art flags with it, and takes nothing from the text ones
+        const withArt = await state({ safe: true, art: true, margins: true }, { strength: "subtle" });
+        expect(withArt.kept).toBe(false);
+        expect(withArt.flags).toBe(12);
         // the layer's own look can follow, again without a redraw
-        const same = await state({ safe: true, margins: true }, { colors: { margins: "#e91e63" } });
+        const same = await state({ safe: true, art: true, margins: true }, { colors: { art: "#e91e63", margins: "#e91e63" } });
         expect(same.kept).toBe(true);
-        // dropping the safe layer drops its flags with it
-        const less = await state({ margins: true }, { colors: { margins: "#e91e63" } });
-        expect(less.kept).toBe(false);
-        expect(less.flags).toBe(0);
-        expect(less.summary).toMatchObject({ issues: 0, layers: { bleed: false, safe: false, margins: true } });
+        // dropping the safe layer drops the text flags and no others; dropping the art layer, the rest
+        const noText = await state({ art: true, margins: true }, { colors: { art: "#e91e63" } });
+        expect(noText.kept).toBe(false);
+        expect(noText.flags).toBe(7);
+        expect(noText.summary).toMatchObject({ issues: 6, layers: { bleed: false, safe: false, art: true, margins: true } });
+        const noFlags = await state({ margins: true }, { colors: { margins: "#e91e63" } });
+        expect(noFlags.kept).toBe(false);
+        expect(noFlags.flags).toBe(0);
+        expect(noFlags.summary).toMatchObject({ issues: 0, layers: { bleed: false, safe: false, art: false, margins: true } });
       } finally {
         await page.close();
       }
@@ -842,6 +925,7 @@ testIf(
               swatch: {
                 bleed: cs('.gp-ov-swatch[data-layer="bleed"]').backgroundColor,
                 safe: cs('.gp-ov-swatch[data-layer="safe"]').backgroundColor,
+                art: cs('.gp-ov-swatch[data-layer="art"]').backgroundColor,
                 margins: cs('.gp-ov-swatch[data-layer="margins"]').backgroundColor,
               },
               marginsStyle: cs(".gp-ov-margins").borderTopStyle,
@@ -855,12 +939,19 @@ testIf(
           page.evaluate((s: unknown) => (window as any).Gutterpress.decoration.setOverlay(true, s), style);
         await page.evaluate(() => (window as any).Gutterpress.decoration.setOverlay(true));
 
-        // the defaults: blue safe lines, red bleed, green margins — the margins a thin solid line
+        // the defaults: red bleed, blue text line, cyan art line, green margins — four colours, no two alike;
+        // the margins a thin solid line
         const base = await look();
         expect(base.safe).toBe("rgb(47, 128, 237)");
-        expect(base.art).toBe("rgb(47, 128, 237)");
+        expect(base.art).toBe("rgb(0, 180, 216)");
         expect(base.margins).toBe("rgb(26, 156, 107)");
-        expect(base.swatch).toEqual({ bleed: "rgb(229, 72, 77)", safe: "rgb(47, 128, 237)", margins: "rgb(26, 156, 107)" });
+        expect(base.swatch).toEqual({
+          bleed: "rgb(229, 72, 77)",
+          safe: "rgb(47, 128, 237)",
+          art: "rgb(0, 180, 216)",
+          margins: "rgb(26, 156, 107)",
+        });
+        expect(new Set(Object.values(base.swatch)).size).toBe(4);
         expect(base.marginsStyle).toBe("solid");
         expect(base.marginsLine).toBeGreaterThanOrEqual(0.9);
         expect(base.marginsLine).toBeLessThanOrEqual(1.1);
@@ -872,28 +963,49 @@ testIf(
         expect(margins.margins).toBe("rgb(233, 30, 99)");
         expect(margins.swatch.margins).toBe("rgb(233, 30, 99)");
         expect(margins.safe).toBe(base.safe);
+        expect(margins.art).toBe(base.art);
         expect(margins.swatch.bleed).toBe(base.swatch.bleed);
         expect(margins.trim).toBe(base.trim);
 
-        // bleed's colour carries the trim line with it; safe's carries both of its lines
+        // the art line's colour is its own: it moves neither the text line nor its tint, and theirs does not move it
+        await set({ colors: { art: "#ff8800" } });
+        const art = await look();
+        expect(art.art).toBe("rgb(255, 136, 0)");
+        expect(art.swatch.art).toBe("rgb(255, 136, 0)");
+        expect(art.safe).toBe(base.safe);
+        expect(art.swatch.safe).toBe(base.swatch.safe);
+        await set({ colors: { art: "#00b4d8" } });
+
+        // bleed's colour carries the trim line with it; safe's carries the text line
         await set({ colors: { bleed: "#00aa55", safe: "#0000ff" } });
         const two = await look();
-        expect(two.swatch).toEqual({ bleed: "rgb(0, 170, 85)", safe: "rgb(0, 0, 255)", margins: "rgb(233, 30, 99)" });
+        expect(two.swatch).toEqual({
+          bleed: "rgb(0, 170, 85)",
+          safe: "rgb(0, 0, 255)",
+          art: "rgb(0, 180, 216)",
+          margins: "rgb(233, 30, 99)",
+        });
         expect(two.safe).toBe("rgb(0, 0, 255)");
-        expect(two.art).toBe("rgb(0, 0, 255)");
+        expect(two.art).toBe("rgb(0, 180, 216)");
         expect(two.margins).toBe("rgb(233, 30, 99)");
         expect(two.trim).not.toBe(base.trim);
 
-        // `color` is the safe layer's alias; a bad value is ignored, not applied
+        // `color` is the text safe line's alias; a bad value is ignored, not applied
         await set({ color: "#123456" });
         expect((await look()).safe).toBe("rgb(18, 52, 86)");
-        await set({ colors: { bleed: "red; x:y", margins: 7 as unknown as string }, color: "url(javascript:1)" });
+        await set({ colors: { bleed: "red; x:y", art: "url(x)", margins: 7 as unknown as string }, color: "url(javascript:1)" });
         const kept = await look();
-        expect(kept.swatch).toEqual({ bleed: "rgb(0, 170, 85)", safe: "rgb(18, 52, 86)", margins: "rgb(233, 30, 99)" });
+        expect(kept.swatch).toEqual({
+          bleed: "rgb(0, 170, 85)",
+          safe: "rgb(18, 52, 86)",
+          art: "rgb(0, 180, 216)",
+          margins: "rgb(233, 30, 99)",
+        });
 
         // the look is recorded for a host to carry across a reload, and survives switching the overlay off and on
         expect(kept.records).toMatchObject({
           overlayColor: "#123456",
+          overlayArtColor: "#00b4d8",
           overlayBleedColor: "#00aa55",
           overlayMarginsColor: "#e91e63",
         });
@@ -1070,14 +1182,15 @@ testIf(
             };
           }, state);
 
-        // all three layers (the fixture's meta is DriveThruRPG's rules, scaled: bleed 9pt, text 18pt, art 9pt)
+        // all four layers (the fixture's meta is DriveThruRPG's rules, scaled: bleed 9pt, text 18pt, art 9pt)
         const all = (await legend())!;
         expect(all.rows).toEqual([
           "Bleed 0.125in — top, bottom, outside; none at the binding",
-          "Safe area — text 0.25in; art 0.125in (0.25in at the binding)",
+          "Safe area: text — 0.25in, every edge",
+          "Safe area: art — 0.125in top, bottom, outside; 0.25in at the binding",
           "Page margins — your stylesheet's @page margins",
         ]);
-        expect(all.swatches).toEqual(["bleed", "safe", "margins"]);
+        expect(all.swatches).toEqual(["bleed", "safe", "art", "margins"]);
         // where the numbers come from: the printer's spec, as a link that opens elsewhere
         expect(all.link).toEqual({ text: SPEC_LABEL, href: SPEC_URL, target: "_blank", rel: "noopener" });
         expect(all.lines).toEqual([
@@ -1086,14 +1199,19 @@ testIf(
         ]);
         expect(all.inRoot).toBe(true);
 
-        // each row follows its layer; the source is shown only where the printer's numbers are; counts only with the safe layer
+        // each row follows its layer; the source is shown wherever the printer's numbers are; each count only with the
+        // safe layer whose rule it is (the bleed band and off-page counts hold what those layers looked at)
         expect((await legend({ bleed: true }))!).toMatchObject({
           rows: ["Bleed 0.125in — top, bottom, outside; none at the binding"],
           lines: [`from ${SPEC_LABEL}`],
         });
         expect((await legend({ safe: true }))!).toMatchObject({
-          rows: ["Safe area — text 0.25in; art 0.125in (0.25in at the binding)"],
-          lines: [`from ${SPEC_LABEL}`, expect.stringMatching(/^3 text outside the safe area · 4 art outside/)],
+          rows: ["Safe area: text — 0.25in, every edge"],
+          lines: [`from ${SPEC_LABEL}`, "3 text outside the safe area · 1 in the bleed band · 1 off the page"],
+        });
+        expect((await legend({ art: true }))!).toMatchObject({
+          rows: ["Safe area: art — 0.125in top, bottom, outside; 0.25in at the binding"],
+          lines: [`from ${SPEC_LABEL}`, "4 art outside the safe area · 2 in the bleed band · 1 placed on purpose"],
         });
         const onlyMargins = (await legend({ margins: true }))!;
         expect(onlyMargins.rows).toEqual(["Page margins — your stylesheet's @page margins"]);
@@ -1162,39 +1280,48 @@ testIf(
         await page.goto(url);
         await page.waitForFunction("window.Gutterpress?.totalPages > 0");
         // this book (a 400x500px sheet, every line inside it) has no <meta> of its own: add the project's geometry
-        const legendFor = (content: string) =>
-          page.evaluate((c: string) => {
-            document.querySelector('meta[name="gp-print-area"]')?.remove();
-            const meta = document.createElement("meta");
-            meta.name = "gp-print-area";
-            meta.content = c;
-            document.head.appendChild(meta);
-            (window as any).Gutterpress.decoration.setOverlay(true);
-            const el = document.querySelector("gp-overlay")!.shadowRoot!.querySelector(".gp-ov-legend")!;
-            const rows = Array.from(el.querySelectorAll(".gp-ov-row"));
-            return {
-              rows: rows.map((r) => r.textContent),
-              lines: Array.from(el.children).filter((x) => !rows.includes(x)).map((x) => x.textContent),
-              links: el.querySelectorAll("a").length,
-            };
-          }, content);
+        const legendFor = (content: string, state: unknown = true) =>
+          page.evaluate(
+            (c: string, s: unknown) => {
+              document.querySelector('meta[name="gp-print-area"]')?.remove();
+              const meta = document.createElement("meta");
+              meta.name = "gp-print-area";
+              meta.content = c;
+              document.head.appendChild(meta);
+              (window as any).Gutterpress.decoration.setOverlay(s);
+              const el = document.querySelector("gp-overlay")!.shadowRoot!.querySelector(".gp-ov-legend")!;
+              const rows = Array.from(el.querySelectorAll(".gp-ov-row"));
+              return {
+                rows: rows.map((r) => r.textContent),
+                lines: Array.from(el.children).filter((x) => !rows.includes(x)).map((x) => x.textContent),
+                links: el.querySelectorAll("a").length,
+              };
+            },
+            content,
+            state,
+          );
 
         // nothing set: say so, name the manifest key, and a book with nothing outside is told so
         expect(await legendFor('{"width":300,"height":375}')).toEqual({
           rows: [
             "Bleed — none set (page.bleed in manifest.yaml)",
-            "Safe area — none set (page.safe in manifest.yaml)",
+            "Safe area: text — none set (page.safe in manifest.yaml)",
+            "Safe area: art — none set (page.artSafe in manifest.yaml)",
             "Page margins — your stylesheet's @page margins",
           ],
           lines: ["from manifest.yaml", "everything inside the safe area"],
           links: 0,
         });
+        // a clean book is only "everything" when both safe layers looked: with one on, it says what was looked at
+        expect((await legendFor('{"width":300,"height":375}', { safe: true })).lines).toEqual(["from manifest.yaml", "all text inside the safe area"]);
+        expect((await legendFor('{"width":300,"height":375}', { art: true })).lines).toEqual(["from manifest.yaml", "all art inside the safe area"]);
 
-        // a preset without a spec of its own: the numbers are the manifest's; one rule for text and art reads as one distance
+        // a preset without a spec of its own: the numbers are the manifest's; one rule for text and art reads as one distance, twice
         expect(await legendFor('{"width":300,"height":375,"bleed":9,"safe":18,"preset":"book"}')).toMatchObject({
           rows: [
             "Bleed 0.125in — top, bottom, outside; none at the binding",
-            "Safe area — text and art 0.25in, every edge",
+            "Safe area: text — 0.25in, every edge",
+            "Safe area: art — 0.25in, every edge",
             "Page margins — your stylesheet's @page margins",
           ],
           lines: ["from manifest.yaml (preset book)", expect.any(String)],

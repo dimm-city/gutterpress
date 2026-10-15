@@ -37,40 +37,45 @@ This project follows [Semantic Versioning](https://semver.org/).
   trim, which is the page less the bleed on the top, bottom and outside edges
   only, and the outside edge is the right on odd pages and the left on even
   ones. Each finding names the page, the words, the edge and how far to move
-  them in. Only text is checked: art is judged by the print overlays' Safe area
-  layer. It is an error for `dtrpg` books and the `dtrpg` target and a warning
-  for `book`; the `itch` target skips it, and so does a book with no
+  them in. Only text is checked: art is judged by the print overlays' Safe
+  area: art layer. It is an error for `dtrpg` books and the `dtrpg` target and a
+  warning for `book`; the `itch` target skips it, and so does a book with no
   `page.safe`. Run it with `gutterpress validate --pdf <file> --target dtrpg`
   or `gutterpress preflight`; a `--format pdfx` build runs it as its last step.
   Soften or turn it off with `validate.checks` in `manifest.yaml` like any
   other check.
-- **Print overlays: the bleed, the safe area and your page margins, each its own
-  layer with its own colour, and a legend that says what the lines mean.** The
-  preview overlay is now three layers you can switch on one at a time. **Bleed**
-  draws the band outside the trim and the trim line. **Safe area** draws the
-  printer's two lines, dashed for text and dotted for art, tints the strip
-  between the text line and the trim, and outlines whatever strays. **Page
-  margins** draws each page's own `@page` content box as a thin solid line: it
-  is your book's choice, not the printer's, and when your margins mirror, a
-  left-hand page's box is the mirror of a right-hand page's. In the desktop app
-  the button beside the zoom menu is the switch for all of it, and the small
-  menu next to it ticks the layers, each with its colour. **Settings, App,
-  Preview** has a colour for each layer (the one colour from before becomes the
-  safe area's) and the strength. In the CLI's preview, Alt+M hides the overlay
-  and shows again the layers you had on. The layers and their colours stay on
-  while you edit and the preview reloads. Only the Safe area layer checks your
-  book, so with it off there is nothing to count. None of it touches your book:
-  your markup and your page breaks are the same with it on or off. A legend in
-  the corner of the preview has a row for each layer that is on, with its sizes
-  in inches and the edges they apply to, such as "Bleed 0.125in — top, bottom,
-  outside; none at the binding" and "Safe area — text 0.5in; art 0.25in (0.5in
-  at the binding)". It says where the numbers come from, a link to the printer's
-  specification for the `dtrpg` preset and `manifest.yaml` otherwise, and what
-  the Safe area layer found: "3 text outside the safe area · 1 art outside · 2
-  in the bleed band", or "everything inside the safe area". It stays in its
-  corner as you scroll and zoom, and it is never printed. It replaces the status
-  badge the CLI's preview showed, and the desktop button's tooltip is now a
-  one-line summary of the same count.
+- **Print overlays: the bleed, the safe areas for text and for art, and your
+  page margins, each its own layer with its own colour, and a legend that says
+  what the lines mean.** The preview overlay is now four layers you can switch
+  on one at a time, so every line on the page has its own colour and its own
+  row in the legend. **Bleed** (red) draws the band outside the trim and the
+  trim line. **Safe area: text** (blue) draws the printer's text line, dashed,
+  tints the strip between it and the trim, and outlines text that strays.
+  **Safe area: art** (cyan) draws the art line, dotted, and outlines art that
+  strays. Each safe area layer checks only its own rule, so with one off there
+  is nothing to outline or count for it, and where both rules are the same
+  distance their two lines lie on top of each other. **Page margins** (green)
+  draws each page's own `@page` content box as a thin solid line: it is your
+  book's choice, not the printer's, and when your margins mirror, a left-hand
+  page's box is the mirror of a right-hand page's. In the desktop app the
+  button beside the zoom menu is the switch for all of it, and the small menu
+  next to it ticks the layers, each with its colour. **Settings, App, Preview**
+  has a colour for each layer (the one colour from before becomes the text safe
+  area's) and the strength. In the CLI's preview, Alt+M hides the overlay and
+  shows again the layers you had on. The layers and their colours stay on while
+  you edit and the preview reloads. None of it touches your book: your markup
+  and your page breaks are the same with it on or off. A legend in the corner
+  of the preview has a row for each layer that is on, with its sizes in inches
+  and the edges they apply to, such as "Bleed 0.125in — top, bottom, outside;
+  none at the binding", "Safe area: text — 0.5in, every edge" and "Safe area:
+  art — 0.25in top, bottom, outside; 0.5in at the binding". It says where the
+  numbers come from, a link to the printer's specification for the `dtrpg`
+  preset and `manifest.yaml` otherwise, and what the safe area layers found:
+  "3 text outside the safe area · 1 art outside · 2 in the bleed band", or
+  "everything inside the safe area". It stays in its corner as you scroll and
+  zoom, and it is never printed. It replaces the status badge the CLI's preview
+  showed, and the desktop button's tooltip is now a one-line summary of the
+  same count.
 
 ### Changed
 

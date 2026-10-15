@@ -1103,34 +1103,36 @@
     // feature-detects on the version before offering the toggle.
     // (v9 is unreleased as of this writing, so setMarginOverlay's optional
     // second argument — the look, below — and its layer object are part of
-    // v9, not a bump: a plain boolean still works and means all three layers.)
+    // v9, not a bump: a plain boolean still works and means all four layers.)
     getProtocolVersion: function () { return 9; },
 
-    // Print overlays: three layers (bleed, safe, margins), each independent.
-    // Viewer chrome only — it adds no box to the book and no attribute to its
-    // elements, so pagination is identical on or off. `state` is a boolean
-    // (all three layers) or {bleed, safe, margins} naming the layers that are
-    // on (one it leaves out is off). Returns the summary {on, layers: {bleed,
-    // safe, margins}, issues, intended, bleedPt, safePt, artSafePt, counts:
-    // {text, art, bleed, offPage, intended}}, or null when the viewer predates
-    // it. `style` ({strength: 'subtle' | 'normal' | 'strong', colors: {bleed,
-    // safe, margins} as '#rrggbb', color: an alias of colors.safe}) is
-    // optional: it only sets the overlay's own tokens, and a call that carries
-    // it while the same layers are already on restyles without repainting.
+    // Print overlays: four layers (bleed, safe = the text safe area, art = the
+    // art safe area, margins), each independent. Viewer chrome only — it adds
+    // no box to the book and no attribute to its elements, so pagination is
+    // identical on or off. `state` is a boolean (all four layers) or {bleed,
+    // safe, art, margins} naming the layers that are on (one it leaves out is
+    // off). Returns the summary {on, layers: {bleed, safe, art, margins},
+    // issues, intended, bleedPt, safePt, artSafePt, counts: {text, art, bleed,
+    // offPage, intended}}, or null when the viewer predates it. `style`
+    // ({strength: 'subtle' | 'normal' | 'strong', colors: {bleed, safe, art,
+    // margins} as '#rrggbb', color: an alias of colors.safe}) is optional: it
+    // only sets the overlay's own tokens, and a call that carries it while the
+    // same layers are already on restyles without repainting.
     setMarginOverlay: function (state, style) {
       var d = window.Gutterpress && window.Gutterpress.decoration;
       return d && typeof d.setOverlay === 'function' ? d.setOverlay(state, style) : null;
     },
     // Hide the overlay, or bring back the layers it was last showing (the
-    // viewer's record on <body>; all three the first time).
+    // viewer's record on <body>; all four the first time).
     toggleMarginOverlay: function () {
       var d = window.Gutterpress && window.Gutterpress.decoration;
       if (!d || typeof d.setOverlay !== 'function') return null;
       if (document.body.dataset.overlay === 'on') return d.setOverlay(false);
-      var last = (document.body.dataset.overlayLayers || 'bleed,safe,margins').split(',');
+      var last = (document.body.dataset.overlayLayers || 'bleed,safe,art,margins').split(',');
       return d.setOverlay({
         bleed: last.indexOf('bleed') >= 0,
         safe: last.indexOf('safe') >= 0,
+        art: last.indexOf('art') >= 0,
         margins: last.indexOf('margins') >= 0
       });
     },

@@ -23,8 +23,8 @@ export interface PreviewEvent {
   detail: {
     /** overlayChanged: whether the overlay is showing. */
     on?: boolean;
-    /** overlayChanged: the layers that are drawn; counts are only judged while `safe` is one. */
-    layers?: { bleed?: boolean; safe?: boolean; margins?: boolean };
+    /** overlayChanged: the layers that are drawn; text is only judged while `safe` is one, art while `art` is. */
+    layers?: { bleed?: boolean; safe?: boolean; art?: boolean; margins?: boolean };
     /** overlayChanged: text and art that leave their safe area by accident, or the trim. */
     issues?: number;
     /** overlayChanged: placed-on-purpose art (`.gp-bleed`, `.gp-pin`, …) outside it — shown, not counted. */

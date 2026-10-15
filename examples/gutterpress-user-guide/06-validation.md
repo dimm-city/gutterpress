@@ -201,7 +201,7 @@ Page 14: "Chapter Three" is 0.12in too close to the outside edge.
 
 It measures each page against that page's own trim: the page less the bleed on the top, bottom and outside edges only. Page 1 is a right-hand page, so the outside edge is the right on odd pages and the left on even ones.
 
-It checks **text only**. Pictures, backgrounds, borders and rules are judged in the preview, by the **Safe area** layer of the print overlays ([Chapter 1](#print-overlays)), which also applies DriveThruRPG's separate rule for art.
+It checks **text only**. Pictures, backgrounds, borders and rules are judged in the preview, by the **Safe area: art** layer of the print overlays ([Chapter 1](#print-overlays)), which applies DriveThruRPG's separate rule for art. The **Safe area: text** layer draws the line this check reads.
 
 @section
 
@@ -220,7 +220,7 @@ Run it like any other PDF check:
 gutterpress validate --pdf dist/my-book/my-book-pdfx.pdf --target dtrpg
 ```
 
-`gutterpress preflight` runs it too, and so does the last step of a `--format pdfx` build. It reads the PDF itself and needs no extra tool, but the PDF/X lines in the same run need **qpdf** and **Ghostscript** installed ([Chapter 7](#ch-system)). To turn it off or change its severity, use `validate.checks` like any other check (see Manifest Configuration below). The desktop app's Publish step checks your source and images before any PDF exists, so it does not run this check; the Safe area layer draws the same text line while you write.
+`gutterpress preflight` runs it too, and so does the last step of a `--format pdfx` build. It reads the PDF itself and needs no extra tool, but the PDF/X lines in the same run need **qpdf** and **Ghostscript** installed ([Chapter 7](#ch-system)). To turn it off or change its severity, use `validate.checks` like any other check (see Manifest Configuration below). The desktop app's Publish step checks your source and images before any PDF exists, so it does not run this check; the **Safe area: text** layer draws the same line while you write.
 
 ### Asset checks (pre-build)
 
@@ -394,7 +394,7 @@ Before final print submission:
 - [ ] All fonts embed correctly in the PDF
 - [ ] Page size matches the printer's required trim size
 - [ ] Bleed extends 0.125in beyond the trim edge on full-bleed pages
-- [ ] Text stays at least 0.5in inside the trim, and art that does not bleed at least 0.25in from the outside edges (the Safe area layer of the print overlays shows both lines)
+- [ ] Text stays at least 0.5in inside the trim, and art that does not bleed at least 0.25in from the outside edges (the two Safe area layers of the print overlays show both lines)
 - [ ] No unexpected blank pages (the blank pages at the end of a `dtrpg` book are intentional)
 - [ ] Running headers are correct on all pages
 - [ ] Page numbers start at the right page and run correctly

@@ -166,28 +166,30 @@ export interface AppSettings {
     readLayout: ReadLayout;
     /**
      * Print overlays (Preview toolbar toggle) — the MASTER switch for the
-     * layers below: draws each page's bleed, safe area and margins on the
-     * preview and outlines content that leaves the safe area. A review aid for
+     * layers below: draws each page's bleed, safe areas and margins on the
+     * preview and outlines content that leaves a safe area. A review aid for
      * the author — never printed, never in an exported PDF — available in both
      * Read and Edit. Default off.
      */
     marginOverlay: boolean;
     /**
      * Legacy: the one colour the overlay had before it had layers. A settings
-     * file with no `overlayColors` yet reads it as the safe layer's colour
-     * (`electron/settings-store.ts`); after that it is ignored.
+     * file with no `overlayColors` yet reads it as the (text) safe layer's
+     * colour (`electron/settings-store.ts`); after that it is ignored.
      */
     marginOverlayColor: string;
     /** How prominent the overlay is: line width, tint and bleed band. Default "normal". */
     marginOverlayStrength: "subtle" | "normal" | "strong";
     /**
      * Which layers the overlay draws while the master switch is on: the bleed
-     * band and trim, the safe area (and its flags), and the book's own page
-     * margins. Default all three.
+     * band and trim, the safe area for text (its line, tint and text flags),
+     * the safe area for art (its line and art flags) and the book's own page
+     * margins. Default all four; a stored object without `art` (written before
+     * it was a layer of its own) reads it as on.
      */
-    overlayLayers: { bleed: boolean; safe: boolean; margins: boolean };
-    /** Each layer's colour, `#rrggbb`. */
-    overlayColors: { bleed: string; safe: string; margins: string };
+    overlayLayers: { bleed: boolean; safe: boolean; art: boolean; margins: boolean };
+    /** Each layer's colour, `#rrggbb`. A stored object without `art` reads its default. */
+    overlayColors: { bleed: string; safe: string; art: string; margins: string };
     /**
      * Durable editor/preview split fraction (0.25..0.75, editor share) for the
      * wide side-by-side layout (#103). The always-read default; the per-project
@@ -280,8 +282,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     marginOverlay: false,
     marginOverlayColor: "#2f80ed",
     marginOverlayStrength: "normal",
-    overlayLayers: { bleed: true, safe: true, margins: true },
-    overlayColors: { bleed: "#e5484d", safe: "#2f80ed", margins: "#1a9c6b" },
+    overlayLayers: { bleed: true, safe: true, art: true, margins: true },
+    overlayColors: { bleed: "#e5484d", safe: "#2f80ed", art: "#00b4d8", margins: "#1a9c6b" },
     // Matches DEFAULT_SPLIT_RATIO in src/lib/editor/preview-layout.ts so the
     // durable default and the double-click reset target agree (#103).
     splitRatio: 0.42,
