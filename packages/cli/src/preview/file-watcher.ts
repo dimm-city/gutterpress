@@ -25,7 +25,7 @@ import { restoreForCommand } from '../lib/extension-restore';
 import { BOOK_HTML_FILENAME } from '../lib/desktop';
 import { imageRefKey } from '../lib/static-serve';
 import type { ServerState } from './server-context';
-import type { ResolvedExtensionConfig } from '../schema/manifest.types';
+import type { PrintSpec, ResolvedExtensionConfig } from '../schema/manifest.types';
 import type { PrintPadding } from '../engine/shared/synthesis.ts';
 
 /**
@@ -130,16 +130,37 @@ async function renderPreviewBook(
  */
 export function injectPreviewScripts(
   html: string,
-  page?: { width: number; height: number; bleed?: number; safe?: number },
+  page?: {
+    width: number;
+    height: number;
+    bleed?: number;
+    safe?: number;
+    artSafe?: number;
+    preset?: string;
+    spec?: PrintSpec;
+  },
 ): string {
-  // The project's page geometry (`page.width`/`height`/`bleed`/`safe`, from the
-  // manifest and its preset) is the safe area & bleed overlay's ONLY input:
-  // no book CSS feeds it. It rides in the preview's book.html and nowhere
-  // else: the built PDF and published HTML never get it.
+  // The project's page geometry (`page.width`/`height`/`bleed`/`safe`/`artSafe`,
+  // from the manifest and its preset), plus the preset's id and the printer
+  // spec it follows (they only label what the overlay finds), is the safe area
+  // & bleed overlay's ONLY input: no book CSS feeds it. An absent `artSafe`
+  // stays absent (the overlay reads it as `safe`). It rides in the preview's
+  // book.html and nowhere else: the built PDF and published HTML never get it.
   const area = page
-    ? JSON.stringify({ width: page.width, height: page.height, bleed: page.bleed ?? 0, safe: page.safe ?? 0 })
+    ? JSON.stringify({
+        width: page.width,
+        height: page.height,
+        bleed: page.bleed ?? 0,
+        safe: page.safe ?? 0,
+        artSafe: page.artSafe,
+        preset: page.preset,
+        spec: page.spec,
+      })
     : "";
-  const meta = area ? `  <meta name="gp-print-area" content='${area}'>\n` : "";
+  // single-quoted attribute: escape what could end it or read as an entity
+  const meta = area
+    ? `  <meta name="gp-print-area" content='${area.replace(/&/g, "&amp;").replace(/'/g, "&#39;")}'>\n`
+    : "";
   const scripts =
     meta
     + '  <script src="/engine/gutterpress-viewer.js"></script>\n  '
@@ -173,7 +194,9 @@ export async function generateAndWriteHtml(
     source?: { files?: string[] | null };
     extensions?: ResolvedExtensionConfig[];
     print?: PrintPadding;
-    page?: { width: number; height: number; bleed?: number; safe?: number };
+    page?: { width: number; height: number; bleed?: number; safe?: number; artSafe?: number };
+    preset?: string;
+    spec?: PrintSpec;
   },
   cssAssets: Map<string, string>,
   imageRefs?: Set<string>
@@ -206,7 +229,7 @@ export async function generateAndWriteHtml(
   }
   await fsp.writeFile(
     path.join(tempDir, BOOK_HTML_FILENAME),
-    injectPreviewScripts(html, config.page),
+    injectPreviewScripts(html, config.page && { ...config.page, preset: config.preset, spec: config.spec }),
     "utf-8"
   );
 }

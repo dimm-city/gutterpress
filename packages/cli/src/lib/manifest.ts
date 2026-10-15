@@ -322,6 +322,7 @@ function resolveCustomPage(
     tolerance: c.page?.tolerance ?? m.page?.tolerance ?? 0.5,
     bleed: c.page?.bleed ?? m.page?.bleed,
     safe: c.page?.safe ?? m.page?.safe,
+    artSafe: c.page?.artSafe ?? m.page?.artSafe,
   };
 }
 
@@ -421,6 +422,8 @@ function resolveWithPreset(
   return {
     title: c.title ?? m.title ?? "Document",
     authors: c.authors ?? m.authors ?? [],
+    preset: preset.id,
+    spec: preset.spec,
     // No preset fallback here — resolveActiveStyles (style-resolver.ts)
     // is the single source of default-stylesheet truth (styles/book.css, else
     // the first discovered .css, else []). Baking a preset default in here

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   MANIFEST_FILENAMES,
   resolveConfig,
+  resolveConfigForTarget,
   loadManifestWithPath,
 } from "./manifest";
 import { UsageError } from "./cli-args";
@@ -221,6 +222,49 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
     // the PDF page-size bounds are unchanged by it
     expect(resolveConfig({}, {}).page.width).toBe(621);
     expect(resolveConfig({}, {}).page.height).toBe(810);
+  });
+
+  test("page.safe is the TEXT rule and page.artSafe the ART rule: dtrpg sets DriveThruRPG's 0.5in and 0.25in, book one 0.25in, custom none; a manifest overrides each leaf", () => {
+    expect(DTRPG_PRESET.page!.safe).toBe(36);
+    expect(DTRPG_PRESET.page!.artSafe).toBe(18);
+    expect(resolveConfig({}, {}).page).toMatchObject({ safe: 36, artSafe: 18 });
+    // book: one rule — an absent artSafe means the same as safe
+    expect(resolveConfig({}, { preset: "book" }).page.safe).toBe(18);
+    expect(resolveConfig({}, { preset: "book" }).page.artSafe).toBeUndefined();
+    const custom = resolveConfig({}, { preset: "custom", page: { width: 612, height: 792 } }).page;
+    expect(custom.safe).toBeUndefined();
+    expect(custom.artSafe).toBeUndefined();
+    // leaf by leaf: mergeShape carries each preset key, the author's value wins, the other rule is untouched
+    expect(resolveConfig({}, { page: { artSafe: 9 } }).page).toMatchObject({ safe: 36, artSafe: 9 });
+    expect(resolveConfig({}, { page: { safe: 24 } }).page).toMatchObject({ safe: 24, artSafe: 18 });
+    expect(resolveConfig({ page: { artSafe: 4 } }, { page: { artSafe: 9 } }).page.artSafe).toBe(4);
+    // an explicit 0 is a rule, not "unset"
+    expect(resolveConfig({}, { page: { artSafe: 0 } }).page.artSafe).toBe(0);
+    // …including on presets that declare none (book lists artSafe as undefined; custom is resolved by hand)
+    expect(resolveConfig({}, { preset: "book", page: { artSafe: 12 } }).page.artSafe).toBe(12);
+    expect(
+      resolveConfig({}, { preset: "custom", page: { width: 612, height: 792, safe: 36, artSafe: 18 } }).page,
+    ).toMatchObject({ safe: 36, artSafe: 18 });
+    // neither moves the PDF page-size bounds
+    expect(resolveConfig({}, { page: { safe: 48, artSafe: 24 } }).page).toMatchObject({ width: 621, height: 810 });
+  });
+
+  test("the resolved config says which preset it is and which printer spec that preset follows", () => {
+    const dtrpg = resolveConfig({}, {});
+    expect(dtrpg.preset).toBe("dtrpg");
+    expect(dtrpg.spec).toEqual({
+      label: "DriveThruRPG — Quick Specifications for Print Books",
+      url: "https://help.drivethrupartners.com/hc/en-us/articles/12780800178583-Quick-Specifications-for-Print-Books",
+    });
+    // presets that follow no printer's spec name none
+    expect(resolveConfig({}, { preset: "book" })).toMatchObject({ preset: "book", spec: undefined });
+    expect(resolveConfig({}, { preset: "custom", page: { width: 612, height: 792 } })).toMatchObject({
+      preset: "custom",
+      spec: undefined,
+    });
+    // a publish target's policy overlay does not change which preset the book follows
+    expect(resolveConfigForTarget({}, { preset: "book" }, "dtrpg")).toMatchObject({ preset: "book", spec: undefined });
+    expect(resolveConfigForTarget({}, {}, "dtrpg")).toMatchObject({ preset: "dtrpg", page: { safe: 36, artSafe: 18 } });
   });
 
   test("pdfx.blackText: dtrpg defaults to k-only, book to icc, manifest overrides", () => {

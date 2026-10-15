@@ -164,12 +164,21 @@ export interface GutterpressManifest {
      */
     bleed?: number;
     /**
-     * The safe area's inset (pt) from the trim on every edge: what the
-     * preview's overlay outlines as the area content must stay inside. Like
-     * `bleed`, overlay-only: it changes nothing in the PDF, and nothing in a
-     * book's CSS moves it.
+     * The TEXT rule (pt): glyphs stay at least this far inside the trim on
+     * EVERY edge — DriveThruRPG's "keep text 0.5in inside the trim" (`dtrpg`
+     * sets 36). The preview's overlay outlines it and flags text outside it.
+     * Like `bleed`, overlay-only: it changes nothing in the PDF, and nothing in
+     * a book's CSS moves it.
      */
     safe?: number;
+    /**
+     * The ART rule (pt): art that does not bleed — images, backgrounds,
+     * borders, rules — stays at least this far inside the trim on the top,
+     * bottom and OUTER edge; at the binding edge it uses `safe`. DriveThruRPG's
+     * "keep non-bleeding art 0.25in from the outside edges" (`dtrpg` sets 18).
+     * Absent = the same as `safe`.
+     */
+    artSafe?: number;
   };
   ink?: {
     maxTac?: number;
@@ -250,6 +259,12 @@ export interface ResolvedExtensionConfig {
   options: Record<string, unknown>;
 }
 
+/** The printer's published specification that a preset's numbers come from. */
+export interface PrintSpec {
+  label: string;
+  url: string;
+}
+
 /**
  * Fully-resolved config. Every field is a concrete default with one
  * deliberate exception: `styles`. There is no preset
@@ -261,6 +276,10 @@ export interface ResolvedExtensionConfig {
 export interface ResolvedConfig {
   title: string;
   authors: string[];
+  /** The id of the preset this book resolved against (`dtrpg`, `book`, `custom`). */
+  preset: string;
+  /** The printer spec that preset follows, when it follows one: how a host credits the numbers it draws. */
+  spec?: PrintSpec;
   /** Validated publish-target ids for this book (may be empty). */
   targets: string[];
   styles?: string[];
@@ -287,8 +306,10 @@ export interface ResolvedConfig {
     tolerance: number;
     /** In-sheet bleed in pt (top, bottom, outer edge; see the manifest field); absent = none. */
     bleed?: number;
-    /** Safe-area inset from the trim in pt (see the manifest field); absent = none. */
+    /** The text rule's inset from the trim in pt, every edge (see the manifest field); absent = none. */
     safe?: number;
+    /** The art rule's inset from the trim in pt, top/bottom/outer edge (see the manifest field); absent = same as `safe`. */
+    artSafe?: number;
   };
   ink: {
     maxTac: number;

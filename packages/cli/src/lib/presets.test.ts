@@ -136,6 +136,31 @@ test("resolveConfig with no preset set still resolves to dtrpg geometry (unchang
   expect(config.ink.maxTac).toBe(240);
 });
 
+// ── print rules: the numbers are DriveThruRPG's, and say whose ───────────────
+
+test("dtrpg: text 0.5in inside the trim, non-bleeding art 0.25in from the outside edges, bleed 0.125in, all from the quick specs", () => {
+  expect(DTRPG_PRESET.page).toMatchObject({ bleed: 9, safe: 36, artSafe: 18 });
+  expect(DTRPG_PRESET.spec).toEqual({
+    label: "DriveThruRPG — Quick Specifications for Print Books",
+    url: "https://help.drivethrupartners.com/hc/en-us/articles/12780800178583-Quick-Specifications-for-Print-Books",
+  });
+});
+
+test("book: one 0.25in safe rule and no printer spec; custom: neither", () => {
+  expect(BOOK_PRESET.page).toMatchObject({ safe: 18, artSafe: undefined });
+  expect(BOOK_PRESET.spec).toBeUndefined();
+  expect(PRESETS.custom.page).toBeNull();
+  expect(PRESETS.custom.spec).toBeUndefined();
+});
+
+test("every preset knows its own id, so a resolved config can say which preset it is", () => {
+  expect(Object.fromEntries(Object.entries(PRESETS).map(([key, preset]) => [key, preset.id]))).toEqual({
+    dtrpg: "dtrpg",
+    book: "book",
+    custom: "custom",
+  });
+});
+
 // ── book preset geometry ────────────────────────────────────────────────────
 
 test("book preset uses standard 6x9in trade geometry (432x648pt)", () => {

@@ -19,6 +19,8 @@ const SCHEMA_PATH = path.join(import.meta.dirname, "manifest.schema.json");
 
 interface JsonSchemaNode {
   type?: string;
+  description?: string;
+  minimum?: number;
   properties?: Record<string, JsonSchemaNode>;
   enum?: unknown[];
 }
@@ -37,6 +39,9 @@ function validate(node: JsonSchemaNode, value: unknown, at: string): string[] {
       if (!propSchema) continue; // additionalProperties not restricted on this object
       errors.push(...validate(propSchema, propValue, `${at}.${key}`));
     }
+  } else if (node.type === "number") {
+    if (typeof value !== "number") errors.push(`${at}: expected number`);
+    else if (node.minimum !== undefined && value < node.minimum) errors.push(`${at}: below ${node.minimum}`);
   } else if (node.type === "string") {
     if (typeof value !== "string") errors.push(`${at}: expected string`);
     else if (node.enum && !node.enum.includes(value)) {
@@ -89,4 +94,26 @@ test("an invalid publish.gdrive.format value fails the enum check (sanity check 
   const errors = validate(schema.properties.publish, { gdrive: { format: "epub" } }, "publish");
   expect(errors.length).toBeGreaterThan(0);
   expect(errors[0]).toContain("format");
+});
+
+test("page.safe is the text rule and page.artSafe the art rule, and each description says which DriveThruRPG rule it is", async () => {
+  const raw = await readFile(SCHEMA_PATH, "utf8");
+  const schema = JSON.parse(raw) as { properties: { page: JsonSchemaNode } };
+  const { safe, artSafe, bleed } = schema.properties.page.properties!;
+
+  expect(safe).toMatchObject({ type: "number", minimum: 0 });
+  expect(artSafe).toMatchObject({ type: "number", minimum: 0 });
+  expect(safe!.description).toContain("TEXT rule");
+  expect(safe!.description).toContain("0.5in");
+  expect(artSafe!.description).toContain("ART rule");
+  expect(artSafe!.description).toContain("0.25in");
+  expect(artSafe!.description).toContain("0.5in at the binding");
+  expect(artSafe!.description).toContain("Absent = the same as `safe`");
+  expect(bleed!.description).toContain("DriveThruRPG");
+
+  const errors = (page: unknown) => validate(schema.properties.page, page, "page");
+  expect(errors({ width: 621, height: 810, bleed: 9, safe: 36, artSafe: 18 })).toEqual([]);
+  expect(errors({ artSafe: 0 })).toEqual([]);
+  expect(errors({ artSafe: "wide" })).toEqual(["page.artSafe: expected number"]);
+  expect(errors({ artSafe: -1 })).toEqual(["page.artSafe: below 0"]);
 });

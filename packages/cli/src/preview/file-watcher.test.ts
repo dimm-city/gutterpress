@@ -181,6 +181,34 @@ describe('generateAndWriteHtml', () => {
     expect(content).not.toContain('First Version');
   }, 60000);
 
+  test('writes the project\'s print rules into book.html for the overlay: both safe distances, the preset and its spec', async () => {
+    await writeFile(join(testDir, 'chapter-01.md'), '# Chapter 1');
+
+    await generateAndWriteHtml(testDir, tempDir, resolveConfig({ title: 'Test' }, {}), new Map());
+    const meta = (await Bun.file(join(tempDir, 'book.html')).text()).match(
+      /<meta name="gp-print-area" content='([^']*)'>/,
+    );
+    expect(JSON.parse(meta![1]!.replace(/&#39;/g, "'").replace(/&amp;/g, '&'))).toEqual({
+      width: 621,
+      height: 810,
+      bleed: 9,
+      safe: 36,
+      artSafe: 18,
+      preset: 'dtrpg',
+      spec: {
+        label: 'DriveThruRPG — Quick Specifications for Print Books',
+        url: 'https://help.drivethrupartners.com/hc/en-us/articles/12780800178583-Quick-Specifications-for-Print-Books',
+      },
+    });
+
+    // a preset that follows no printer's spec says only which preset it is, and an unset art rule stays unset
+    await generateAndWriteHtml(testDir, tempDir, resolveConfig({ title: 'Test' }, { preset: 'book' }), new Map());
+    const book = (await Bun.file(join(tempDir, 'book.html')).text()).match(
+      /<meta name="gp-print-area" content='([^']*)'>/,
+    );
+    expect(JSON.parse(book![1]!)).toEqual({ width: 432, height: 648, bleed: 0, safe: 18, preset: 'book' });
+  }, 60000);
+
   test('handles multiple markdown files', async () => {
     await writeFile(join(testDir, 'chapter-01.md'), '# Chapter 1');
     await writeFile(join(testDir, 'chapter-02.md'), '# Chapter 2');
@@ -260,12 +288,20 @@ describe('injectPreviewScripts', () => {
 
   test('hands the project\'s page geometry to the overlay as a preview-only <meta>', () => {
     expect(injectPreviewScripts(html)).not.toContain('gp-print-area');
-    const out = injectPreviewScripts(html, { width: 621, height: 810, tolerance: 0.5, bleed: 9, safe: 18 } as never);
-    expect(out).toContain(`<meta name="gp-print-area" content='{"width":621,"height":810,"bleed":9,"safe":18}'>`);
+    const out = injectPreviewScripts(html, { width: 621, height: 810, tolerance: 0.5, bleed: 9, safe: 36, artSafe: 18 } as never);
+    expect(out).toContain(`<meta name="gp-print-area" content='{"width":621,"height":810,"bleed":9,"safe":36,"artSafe":18}'>`);
     expect(out.indexOf('gp-print-area')).toBeLessThan(out.indexOf('</head>'));
-    // unset bleed / safe are 0, never missing
+    // unset bleed / safe are 0, never missing; an unset artSafe stays out (the overlay reads it as `safe`)
     expect(injectPreviewScripts(html, { width: 432, height: 648 })).toContain(
       `content='{"width":432,"height":648,"bleed":0,"safe":0}'`,
+    );
+  });
+
+  test('the meta names the preset and its spec, and what is in the attribute cannot end it', () => {
+    const spec = { label: "Bob's <Print> & Co", url: 'https://example.test/a?b=1&c=2' };
+    const out = injectPreviewScripts(html, { width: 300, height: 400, preset: 'dtrpg', spec });
+    expect(out).toContain(
+      `content='{"width":300,"height":400,"bleed":0,"safe":0,"preset":"dtrpg","spec":{"label":"Bob&#39;s <Print> &amp; Co","url":"https://example.test/a?b=1&amp;c=2"}}'`,
     );
   });
 });

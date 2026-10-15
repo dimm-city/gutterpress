@@ -10,7 +10,9 @@ import { UsageError } from "./cli-args";
  * Every preset value is overridable from the manifest, leaf by leaf
  * (resolveConfig's mergeShape; precedence cli > manifest > target > preset).
  */
-export interface VendorPreset extends Omit<ResolvedConfig, "title" | "authors" | "targets" | "page"> {
+export interface VendorPreset extends Omit<ResolvedConfig, "title" | "authors" | "preset" | "targets" | "page"> {
+  /** This preset's id: what the manifest's `preset:` names and a resolved config reports. */
+  id: PresetId;
   /**
    * Base page geometry in points, or `null` for `custom` — the one preset
    * with no built-in trim, which therefore REQUIRES the manifest to supply
@@ -37,6 +39,13 @@ export type PresetId = (typeof PRESET_IDS)[number];
  *         requirement in its own right.
  */
 export const DTRPG_PRESET: VendorPreset = {
+  id: "dtrpg",
+  // The article the SPEC numbers below come from: hosts credit it where they
+  // draw them (the preview overlay's source line).
+  spec: {
+    label: "DriveThruRPG — Quick Specifications for Print Books",
+    url: "https://help.drivethrupartners.com/hc/en-us/articles/12780800178583-Quick-Specifications-for-Print-Books",
+  },
   // Books designed for DriveThruRPG validate against it by default.
   defaultTargets: ["dtrpg"],
   // No default `styles:` — `resolveActiveStyles`
@@ -85,10 +94,14 @@ export const DTRPG_PRESET: VendorPreset = {
     // symmetric and would grow the page and add binding-edge bleed, which the
     // SPEC rules out).
     bleed: 9,
-    // CONVENTION: 0.25in, a common print-on-demand safe zone; not checked
-    // against a DriveThru statement. The preview overlay's safe area only;
-    // the PDF is unchanged.
-    safe: 18,
+    // SPEC: 0.5in = 36pt, DriveThru's TEXT rule: text stays at least 0.5in
+    // inside the trim on every edge. The preview overlay judges text against
+    // it; the PDF is unchanged.
+    safe: 36,
+    // SPEC: 0.25in = 18pt, DriveThru's ART rule: art that does not bleed stays
+    // at least 0.25in from the three outside edges (the binding edge takes the
+    // text rule's 0.5in above). Overlay only; the PDF is unchanged.
+    artSafe: 18,
   },
   ink: {
     // SPEC: total ink coverage must not exceed 240%.
@@ -184,6 +197,7 @@ export const DTRPG_PRESET: VendorPreset = {
  *   distribution.
  */
 export const BOOK_PRESET: VendorPreset = {
+  id: "book",
   // A neutral trade book has no default publish target; add `targets:` when
   // a destination's requirements should be validated.
   defaultTargets: [],
@@ -211,6 +225,8 @@ export const BOOK_PRESET: VendorPreset = {
     bleed: undefined,
     // CONVENTION: 0.25in safe area inside the trim (preview overlay only).
     safe: 18,
+    // The art rule is the same as `safe`; listed so a manifest `page.artSafe` merges in.
+    artSafe: undefined,
   },
   ink: {
     maxTac: 400,
@@ -273,6 +289,7 @@ export const BOOK_PRESET: VendorPreset = {
  */
 export const CUSTOM_PRESET: VendorPreset = {
   ...BOOK_PRESET,
+  id: "custom",
   page: null,
   defaultTargets: [],
 };
