@@ -17,6 +17,17 @@ This project follows [Semantic Versioning](https://semver.org/).
   `pdfx: { rasterDpi: 300 }` to make those pictures smaller. Only the
   flattened pages change: vector text and shapes elsewhere, and the book's own
   images, are not resampled.
+- **`page.artSafe`, and the `dtrpg` preset now carries both of DriveThruRPG's
+  safe-area rules.** DriveThruRPG's quick specifications ask for text at least
+  0.5in inside the trim, and for art that does not bleed at least 0.25in from
+  the top, bottom and outside edges (0.5in at the binding). `page.safe` is the
+  text rule, and `dtrpg` sets it to 36pt (0.5in). The new `page.artSafe` is the
+  art rule for the top, bottom and outside edges, and `dtrpg` sets it to 18pt
+  (0.25in); leave it out and art follows `page.safe`.
+  The `book` preset keeps its single 0.25in rule. Both are points in
+  `manifest.yaml` and, like `page.bleed`, they only tell the preview overlay what
+  to check: the PDF is unchanged. The manifest schema's descriptions name the
+  DriveThruRPG rule each number is.
 
 ### Changed
 
@@ -25,13 +36,25 @@ This project follows [Semantic Versioning](https://semver.org/).
   from your `@page` margins, labelled as if it were a safe print area, and it moved
   whenever the margins did. It is now the **Safe area and bleed** overlay. Its page
   size, bleed and safe area come only from the project: `page.width`/`height`,
-  `page.bleed`, and a new `page.safe` (the safe area's inset from the trim, in
-  points; the `dtrpg` and `book` presets set 0.25in, a common print-on-demand
-  figure, so set your printer's own). Content outside the safe area is
+  `page.bleed`, and a new `page.safe` (the text rule's inset from the trim, in
+  points; the `dtrpg` preset sets DriveThruRPG's 0.5in and `book` a common
+  print-on-demand 0.25in, so set your printer's own). Content outside the safe area is
   outlined amber, content past the trim red. CSS `@page { bleed }` no longer feeds
   it. The overlay is drawn above the whole preview, outside the book's own CSS, so no
   stylesheet or plugin can hide, move or restyle it. Designer mode's
   green "safe" guide, which was the same margin box, is gone.
+- **The preview overlay checks what is printed, not boxes: text by the text
+  rule, art by the art rule.** It used to outline any element whose box left
+  the safe area, holding a paragraph, a padded wrapper and a picture to one
+  line. Now each line of text is checked against `page.safe`, and each image,
+  video, and any box with a background or a border against `page.artSafe`
+  (`page.safe` at the binding edge). A wrapper that paints nothing is never
+  outlined, only what it holds, and the folios and running heads in your page
+  margins are checked too. Art that runs out to the edge of the page is a bleed
+  done right and passes; art that stops short inside the bleed band is outlined
+  red. The page shows both lines, dashed for text and dotted for art, and the
+  desktop button's tooltip and the CLI's badge say what was found, for instance
+  "2 text, 1 art outside the safe area".
 
 ## [0.11.19] - 2026-10-15
 
