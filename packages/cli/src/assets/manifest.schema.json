@@ -203,9 +203,15 @@
         },
         "bleed": {
           "type": "number",
-          "description": "A bleed, in points, that the page width x height ALREADY CONTAINS on the top, bottom and OUTER edges (none on the binding edge) — how DriveThruRPG's interior file is cut (8.625 x 11.25in for an 8.5 x 11in book). Preview overlay only: it tells the margin & bleed overlay where the trim is and changes nothing in the PDF. CSS `@page { bleed }` wins when the stylesheet declares one. Preset default: dtrpg 9 (0.125in); book and custom none.",
+          "description": "A bleed, in points, that the page width x height ALREADY CONTAINS on the top, bottom and OUTER edges (none on the binding edge) — how DriveThruRPG's interior file is cut (8.625 x 11.25in for an 8.5 x 11in book). Preview overlay only: it tells the safe area & bleed overlay where the trim is and changes nothing in the PDF. Preset default: dtrpg 9 (0.125in); book and custom none.",
           "minimum": 0,
           "examples": [9]
+        },
+        "safe": {
+          "type": "number",
+          "description": "The safe area's inset, in points, from the trim on every edge: the preview's overlay outlines it and flags content outside it. Preview overlay only: it changes nothing in the PDF, and no book CSS moves it. Preset default: dtrpg and book 18 (0.25in); custom none.",
+          "minimum": 0,
+          "examples": [18, 36]
         }
       }
     },

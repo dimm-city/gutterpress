@@ -105,29 +105,26 @@ The preview shows your book's pages exactly as they will print, and updates as y
   last), with a flick of the mouse wheel over the preview, or with the keys below.
 - **Zoom** with the menu at the top right of the preview: **Fit to width** or 25%–200%. The
   starting zoom is set in Settings → App → Preview.
-- **Check margins and bleed** with the **Margins and bleed** button beside the zoom menu. Each page
-  gets a tinted margin area inside a dashed outline of the text block, and a red band for the
-  bleed with a solid red line at the trim. Anything that spills past the margins is outlined: amber
-  for the margin, red for across the trim. Art you placed on purpose (full-bleed images, pinned
-  art) is outlined softly and not counted. The number on the button is how many elements spill
-  over; hover for the details. It works in Read and Edit, the app remembers your choice, and it is
-  for your eyes only: it is never printed, never in an exported PDF, and it does not move
-  anything.
-  - **Left-hand and right-hand pages.** If your book mirrors its margins (`@page :left` and
-    `@page :right` with different left and right margins), every page shows its own margin box.
-    Left-hand pages sit where the PDF puts them: the preview slides each left-hand page sideways
-    by the difference between its margins and a right-hand page's, so the text, the running heads
-    and the folio land where they will in print. Page breaks do not change.
-  - **Where the bleed comes from.** A bleed set in your stylesheet (`@page { bleed }`) is drawn
-    as a band around the page. Without one, a DriveThruRPG (`dtrpg`) book uses its preset's bleed:
-    that file size already contains 0.125in of bleed on the top, bottom and outer edges (none on
-    the binding edge), so the band and a solid trim line appear inside the page on those edges.
-    With neither, you see the margins and no band, and the button's tooltip says "No bleed set";
-    add `bleed: 0.125in;` to your `@page` rule to see it.
-  - **Make it louder or quieter, or change its colour** in Settings → App → Preview: *Margin
-    overlay strength* (Subtle, Normal or Strong: line width, margin tint and bleed band) and
-    *Margin overlay colour* (the margin outline and tint). The lines stay the same thickness on
-    screen at every zoom. These are app settings, not book CSS.
+- **Check the safe area and bleed** with the **Safe area and bleed** button beside the zoom menu.
+  Each page gets a dashed outline of its safe area with the band between it and the trim tinted,
+  and a red band for the bleed with a solid red line at the trim. Anything that leaves the safe
+  area is outlined: amber while it stays on the page, red once it crosses the trim. Art you placed
+  on purpose (full-bleed images, pinned art) is outlined softly and not counted. The number on the
+  button is how many elements leave the safe area; hover for the details. It works in Read and
+  Edit, the app remembers your choice, and it is for your eyes only: it is never printed, never in
+  an exported PDF, and it does not move anything.
+  - **Where the lines come from.** Only your project's print settings: `page.width` and
+    `page.height`, `page.bleed` and `page.safe` in `manifest.yaml`, or your preset's values. Your
+    stylesheet's `@page` margins place your text and never move the lines, and no stylesheet or
+    plugin can hide or restyle the overlay. A DriveThruRPG (`dtrpg`) file already contains 0.125in
+    of bleed on the top, bottom and outer edges (none on the binding edge), so the band and the trim
+    line appear inside the page on those edges. The `dtrpg` and `book` presets set a 0.25in safe
+    area; set `page.safe` (in points) for your printer's. With no bleed or safe area set, that part
+    is not drawn and the button's tooltip says which setting to add.
+  - **Make it louder or quieter, or change its colour** in Settings → App → Preview: *Safe area
+    overlay strength* (Subtle, Normal or Strong: line width, tint and bleed band) and *Safe area
+    overlay colour* (the safe-area outline and tint). The lines stay the same thickness on screen
+    at every zoom. These are app settings, not book CSS.
 
 | Key | Does |
 | --- | --- |

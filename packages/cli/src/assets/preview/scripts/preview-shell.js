@@ -106,12 +106,12 @@
       else if (sourceBody.classList.contains('view-spread')) api.setViewMode('spread', true);
       else if (sourceBody.classList.contains('view-two-column')) api.setViewMode('two-column', true);
       if (sourceBody.classList.contains('debug')) api.toggleDebugMode();
-      // The margin & bleed overlay is a review aid the author switched on: a
-      // hot reload must not drop it.
+      // The safe area & bleed overlay is a review aid the author switched on:
+      // a hot reload must not drop it.
       // Its look (colour, strength) travels with it.
       if (sourceBody.dataset.overlay === 'on' && api.setMarginOverlay) {
         api.setMarginOverlay(true, {
-          color: sourceBody.style.getPropertyValue('--gp-ov-color').trim(),
+          color: sourceBody.dataset.overlayColor,
           strength: sourceBody.dataset.overlayStrength
         });
       }

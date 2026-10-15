@@ -1,56 +1,46 @@
 /**
- * Margin & bleed overlay (viewer chrome — PERMANENT tooling, not a shim).
+ * Safe area & bleed overlay (viewer chrome — PERMANENT tooling, not a shim).
  *
  * An author-facing review aid: while it is on, every page in the preview shows
- * the margin box (dashed) and the bleed band outside the trim (translucent),
- * and any element whose box leaves the content area is outlined — amber when it
- * reaches into the margin, red when it crosses the trim into the bleed or off
- * the page. Art the author placed on purpose (`.gp-bleed`, `.gp-pin`,
- * `.gp-flush`, `.gp-behind`) is outlined softly in violet and not counted.
+ * its safe area (dashed, with the band between it and the trim tinted), the
+ * trim, and the bleed band (translucent), and any element whose box leaves the
+ * safe area is outlined — amber when it stays on the trimmed page, red when it
+ * crosses the trim into the bleed or off the sheet. Art the author placed on
+ * purpose (`.gp-bleed`, `.gp-pin`, `.gp-flush`, `.gp-behind`) is outlined
+ * softly in violet and not counted.
  *
- * What it reads (never invents):
- *  - page size and margins: the run's own content frame — `StripInfo.geometry`
- *    from `runPageBox()`, i.e. the SAME resolved `@page` (incl. `:left`/`:right`
- *    mirroring and named pages) the columns are sized from, with `.gp-flush`
- *    edges freed exactly as `buildStrips()` frees them. The outline is drawn
- *    where the preview really lays the text, so what you see is what is
- *    classified. On a mirrored-margin book that is each page's OWN margin box:
- *    decorate.ts slides a verso's sheet so its text sits at the `:left`
- *    margins, and the frame passed in here is that page's (`pageFrameMargin`).
- *  - bleed: `pageGeometry()`, the compiler's own resolution — the document's
- *    base `@page { bleed }` (a named page's `bleed` is ignored by print too).
- *    When the stylesheet declares none, the project's `page.bleed` (a preset
- *    such as `dtrpg`, passed in by preview assembly as <meta name="gp-inset-bleed">)
- *    says the sheet already CONTAINS a bleed, on the top, bottom and OUTER edge
- *    only (outer = right on a recto, left on a verso; the binding edge has none —
- *    DriveThruRPG's interior file). CSS `bleed` cannot say that (it is symmetric
- *    and grows the page), so it is drawn here from the config and nowhere else:
- *    the PDF is untouched.
+ * WHERE THE GEOMETRY COMES FROM: the project's manifest and its preset, and
+ * nothing else — `page.width` x `page.height` (the sheet), `page.bleed` (a bleed
+ * the sheet already contains on the top, bottom and OUTER edge; the binding
+ * edge has none, as DriveThruRPG cuts it) and `page.safe` (the safe area's
+ * inset from the trim on every edge). Preview assembly hands them in as
+ * `<meta name="gp-print-area">`. No book or plugin CSS feeds it: not the
+ * `@page` margins (they are where the author put the TEXT, which is not the
+ * printer's safe area), not `@page { bleed }`. Each box is anchored on the top-
+ * left of the sheet the viewer drew for that page, so it sits on the paper
+ * wherever the paper is.
  *
- * How it looks is set in ONE place — the `--gp-ov-*` tokens at the top of the
- * overlay section of viewer.css. The app lets a user change the colour and a
- * three-step strength (see `OverlayStyle`); both only set a token on <body>,
- * so no author CSS is involved and nothing needs to repaint.
+ * WHERE IT IS DRAWN: one `<gp-overlay>` element on `<html>`, outside `<body>`
+ * (the stage the book's CSS styles), with every property that could place,
+ * hide or restyle it set inline and `!important`, and all of its content in a
+ * shadow root with its own stylesheet and its own tokens. No selector in a
+ * book or plugin stylesheet reaches inside, no custom property they set is
+ * inherited by it, and it stacks above the whole book. It mirrors the stage's
+ * zoom (a paint transform) and is re-synced when a host changes it.
+ *
+ * How it looks is set in ONE place — the tokens in `OVERLAY_CSS` below. The app
+ * lets a user change the colour and a three-step strength (`OverlayStyle`);
+ * both only set a token on the overlay's own root, so nothing repaints.
  *
  * What it never does: it adds no box to author content and no class or
- * attribute to author elements. Everything is absolutely-positioned,
- * pointer-transparent chrome in one sibling layer (`.gp-ov`) per run, outside
- * the multicol strip, so pagination is untouched (a test measures page counts
- * with the overlay off and on). The layer only exists while the overlay is on,
- * is hidden for `@media print`, and is never part of a built PDF or of a
- * published page that does not turn it on.
+ * attribute to author elements, so pagination is untouched (a test measures
+ * page counts with the overlay off and on). It only exists while the overlay is
+ * on, is hidden for `@media print`, and is never part of a built PDF.
  *
- * Removal: delete this file, the `.gp-ov*` section of viewer.css, and the
- * `setOverlay` hook in decorate.ts. Nothing else depends on it.
+ * Removal: delete this file and the `setOverlay` hook in decorate.ts. Nothing
+ * else depends on it.
  */
-import type { GcpmModel, PageGeometry } from "../shared/gcpm-extract.ts";
-import { pageGeometry } from "../compiler/tier2.ts";
-import {
-  PX_PER_PT,
-  cssZoomOf,
-  indexInStrip,
-  type StripInfo,
-} from "./fragment.ts";
+import { PX_PER_PT, cssZoomOf, indexInStrip, type StripInfo } from "./fragment.ts";
 
 export interface Rect {
   x: number;
@@ -59,90 +49,59 @@ export interface Rect {
   h: number;
 }
 
-/** The three nested boxes of one page, in one unit, origin at the trim's top-left. */
-export interface PageBoxes {
-  /** the whole sheet; the layer's origin, which every other rect is measured from */
-  host: Rect;
-  /** the cut page */
-  trim: Rect;
-  /** the area text is laid out in (trim minus margins) */
-  content: Rect;
-  /** trim grown by the bleed on every side; equals `trim` when there is none */
-  bleedBox: Rect;
+/** The project's page geometry, in pt — the manifest's `page` block. */
+export interface PrintArea {
+  width: number;
+  height: number;
+  /** in-sheet bleed on the top, bottom and outer edge; 0 = none */
   bleed: number;
-}
-
-/** The document's bleed in pt — what the print path will extend every page by. */
-export function documentBleedPt(model: GcpmModel): number {
-  return pageGeometry(model, { model }).bleed;
-}
-
-/**
- * Boxes for one page. `scale` converts pt to the caller's unit (PX_PER_PT for
- * CSS px). `margin` is the content frame — pass the run's (possibly flushed)
- * margins, not necessarily `g.margin`.
- */
-export function pageBoxes(
-  g: Pick<PageGeometry, "width" | "height">,
-  margin: PageGeometry["margin"],
-  bleed: number,
-  scale = 1,
-): PageBoxes {
-  const w = g.width * scale;
-  const h = g.height * scale;
-  const b = Math.max(0, bleed) * scale;
-  return {
-    host: { x: 0, y: 0, w, h },
-    trim: { x: 0, y: 0, w, h },
-    content: {
-      x: margin.left * scale,
-      y: margin.top * scale,
-      w: w - (margin.left + margin.right) * scale,
-      h: h - (margin.top + margin.bottom) * scale,
-    },
-    bleedBox: { x: -b, y: -b, w: w + 2 * b, h: h + 2 * b },
-    bleed: b,
-  };
+  /** safe-area inset from the trim on every edge; 0 = none */
+  safe: number;
 }
 
 export type PageSide = "recto" | "verso";
 
+/** The nested boxes of one page, in one unit, origin at the sheet's top-left. */
+export interface PageBoxes {
+  /** the whole sheet (the bleed box when the sheet contains a bleed) */
+  sheet: Rect;
+  /** the cut page */
+  trim: Rect;
+  /** where content is safe from the cut: the trim inset by `safe` */
+  safe: Rect;
+  bleed: number;
+}
+
 /**
- * Boxes for a sheet that already contains its bleed (`page.bleed`): the sheet
- * is the bleed box, and the trim is the sheet pulled in by `bleed` on the top,
- * bottom and OUTER edge — the right edge of a recto, the left edge of a verso.
- * The binding edge has no bleed. Margins are the sheet's own (the `@page`
- * margins are measured from the sheet edge), so `content` is not moved.
+ * Boxes for one page. The trim is the sheet pulled in by `bleed` on the top,
+ * bottom and OUTER edge — the right edge of a recto, the left edge of a verso;
+ * the binding edge has no bleed. The safe area is the trim pulled in by `safe`
+ * on every edge.
  */
-export function insetPageBoxes(
-  g: Pick<PageGeometry, "width" | "height">,
-  margin: PageGeometry["margin"],
-  bleed: number,
-  side: PageSide,
-  scale = 1,
-): PageBoxes {
-  const sheet = pageBoxes(g, margin, 0, scale);
-  const b = Math.max(0, bleed) * scale;
+export function pageBoxes(area: PrintArea, side: PageSide, scale = 1): PageBoxes {
+  const w = area.width * scale;
+  const h = area.height * scale;
+  const b = Math.max(0, area.bleed) * scale;
+  const s = Math.max(0, area.safe) * scale;
+  const trim = { x: side === "verso" ? b : 0, y: b, w: Math.max(0, w - b), h: Math.max(0, h - 2 * b) };
   return {
-    host: sheet.host,
-    trim: { x: side === "verso" ? b : 0, y: b, w: sheet.host.w - b, h: sheet.host.h - 2 * b },
-    content: sheet.content,
-    bleedBox: sheet.host,
+    sheet: { x: 0, y: 0, w, h },
+    trim,
+    safe: { x: trim.x + s, y: trim.y + s, w: Math.max(0, trim.w - 2 * s), h: Math.max(0, trim.h - 2 * s) },
     bleed: b,
   };
 }
 
 /**
  * Where an element's box sits relative to its page, worst first:
- *  - `inside`   within the content area
- *  - `margin`   leaves the content area but stays on the trimmed page
- *  - `bleed`    crosses the trim but stays inside the bleed band
- *  - `off-page` crosses the outer edge of the bleed band (with no bleed, the
- *               trim): that part is cut off in print
+ *  - `inside`   within the safe area
+ *  - `unsafe`   leaves the safe area but stays on the trimmed page
+ *  - `bleed`    crosses the trim but stays on the sheet (in the bleed band)
+ *  - `off-page` crosses the sheet's edge: that part is not printed at all
  */
-export type OverflowKind = "inside" | "margin" | "bleed" | "off-page";
+export type OverflowKind = "inside" | "unsafe" | "bleed" | "off-page";
 
-const SEVERITY: Record<OverflowKind, number> = { inside: 0, margin: 1, bleed: 2, "off-page": 3 };
+const SEVERITY: Record<OverflowKind, number> = { inside: 0, unsafe: 1, bleed: 2, "off-page": 3 };
 
 const within = (r: Rect, outer: Rect, tol: number) =>
   r.x >= outer.x - tol &&
@@ -152,9 +111,9 @@ const within = (r: Rect, outer: Rect, tol: number) =>
 
 /** `tol` absorbs sub-pixel layout (LayoutUnit is 1/64 px) so an exact fit is not flagged. */
 export function classifyRect(r: Rect, boxes: PageBoxes, tol = 0): OverflowKind {
-  if (within(r, boxes.content, tol)) return "inside";
-  if (within(r, boxes.trim, tol)) return "margin";
-  if (boxes.bleed > 0 && within(r, boxes.bleedBox, tol)) return "bleed";
+  if (within(r, boxes.safe, tol)) return "inside";
+  if (within(r, boxes.trim, tol)) return "unsafe";
+  if (boxes.bleed > 0 && within(r, boxes.sheet, tol)) return "bleed";
   return "off-page";
 }
 
@@ -167,7 +126,7 @@ export function worstKind(kinds: readonly OverflowKind[]): OverflowKind {
 }
 
 /**
- * Art the author placed on purpose — it is EXPECTED to leave the text block,
+ * Art the author placed on purpose — it is EXPECTED to leave the safe area,
  * so it is shown softly and never counted as a problem. Core's own vocabulary
  * (gutterpress-css.ts / markers.js): `.gp-bleed` (edge-to-edge plate),
  * `.gp-pin` (+ `.gp-flush`, pinned to the paper edge), `.gp-behind` (art
@@ -176,14 +135,14 @@ export function worstKind(kinds: readonly OverflowKind[]): OverflowKind {
 export const INTENT_SELECTOR = ".gp-bleed, .gp-pin, .gp-flush, .gp-behind, .gp-page-full-bleed";
 
 /**
- * The two knobs a host may turn. They carry no geometry: the viewer maps them
- * onto the `--gp-ov-*` tokens (viewer.css), so "more or less prominent" and
- * "which colour" are the whole vocabulary.
+ * The two knobs a host may turn. They carry no geometry: the overlay maps them
+ * onto its own tokens, so "more or less prominent" and "which colour" are the
+ * whole vocabulary.
  */
 export const OVERLAY_STRENGTHS = ["subtle", "normal", "strong"] as const;
 export type OverlayStrength = (typeof OVERLAY_STRENGTHS)[number];
 export interface OverlayStyle {
-  /** margin box + margin tint colour, `#rgb` / `#rrggbb` */
+  /** safe-area outline + tint colour, `#rgb` / `#rrggbb` */
   color?: string;
   strength?: OverlayStrength;
 }
@@ -201,34 +160,17 @@ export function sanitizeOverlayStyle(style: unknown): OverlayStyle {
 
 export interface OverlaySummary {
   on: boolean;
-  /** elements that leave their content area by accident (counted) */
+  /** elements that leave the safe area by accident (counted) */
   issues: number;
   /** intentional art that leaves it on purpose (shown, not counted) */
   intended: number;
-  /** the document's bleed in pt (0 = the book defines none) */
+  /** the project's in-sheet bleed in pt (0 = none set) */
   bleedPt: number;
-  /** present (true) when that bleed is the project's `page.bleed`, inside the sheet, not CSS */
-  bleedInSheet?: true;
+  /** the project's safe-area inset in pt (0 = none set) */
+  safePt: number;
 }
 
-export const OVERLAY_OFF: OverlaySummary = { on: false, issues: 0, intended: 0, bleedPt: 0 };
-
-/**
- * Where the text frame sits on a page's OWN sheet, from the margins the run's
- * column is laid out in (a recto's). A verso's sheet is slid `versoShift` pt
- * right (decorate.ts), so the same column lands that much closer to the sheet's
- * left edge: the left margin shrinks by it and the right one grows by it, the
- * width staying the column's. With no shift, or on a recto, it is the margins
- * unchanged.
- */
-export function pageFrameMargin(
-  margin: PageGeometry["margin"],
-  versoShift: number,
-  side: PageSide,
-): PageGeometry["margin"] {
-  if (side === "recto" || !versoShift) return margin;
-  return { ...margin, left: margin.left - versoShift, right: margin.right + versoShift };
-}
+export const OVERLAY_OFF: OverlaySummary = { on: false, issues: 0, intended: 0, bleedPt: 0, safePt: 0 };
 
 /** One drawn page, as `decorate()` knows it. */
 export interface OverlayPage {
@@ -236,27 +178,214 @@ export interface OverlayPage {
   index: number;
   sheet: HTMLElement;
   strip: StripInfo;
-  /** this sheet's own size */
-  geometry: PageGeometry;
-  /** the margins of the frame text is actually laid out in on THIS page's sheet */
-  margin: PageGeometry["margin"];
 }
 
 /**
- * The in-sheet bleed (pt) the project's config declares, from the preview
- * page's own `<meta name="gp-inset-bleed">` — present only in the live
- * preview's book.html, never in a built or published document. 0 = none.
+ * The project's page geometry from the preview page's own
+ * `<meta name="gp-print-area">` — present only in the live preview's
+ * book.html, never in a built or published document. `null` without it.
  */
-export function configInsetBleedPt(): number {
-  const v = parseFloat(
-    document.querySelector('meta[name="gp-inset-bleed"]')?.getAttribute("content") ?? "",
-  );
-  return Number.isFinite(v) && v > 0 ? v : 0;
+export function printAreaFromMeta(): PrintArea | null {
+  const raw = document.querySelector('meta[name="gp-print-area"]')?.getAttribute("content");
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw) as Partial<PrintArea>;
+    const n = (x: unknown) => (typeof x === "number" && Number.isFinite(x) && x > 0 ? x : 0);
+    if (!n(v.width) || !n(v.height)) return null;
+    return { width: n(v.width), height: n(v.height), bleed: n(v.bleed), safe: n(v.safe) };
+  } catch {
+    return null;
+  }
 }
 
-const SKIP = new Set(["SCRIPT", "STYLE", "LINK", "TEMPLATE", "BR", "WBR", "SOURCE", "TRACK", "META"]);
-/** Sub-pixel tolerance, in CSS px (unscaled). */
-const TOL_PX = 1;
+/**
+ * Without the project's geometry (a page the preview server did not build), a
+ * sheet's own size stands in and there is no bleed or safe area to draw.
+ */
+function sheetArea(sheet: HTMLElement): PrintArea {
+  const px = (name: string) => parseFloat(sheet.style.getPropertyValue(name)) || 0;
+  return { width: px("--gp-page-w") / PX_PER_PT, height: px("--gp-page-h") / PX_PER_PT, bleed: 0, safe: 0 };
+}
+
+/**
+ * The overlay's whole look. Lives in the shadow root, so it is the only CSS
+ * that applies there, and its tokens are declared on `.root` itself, so a
+ * value a book sets on `:root` or `body` can never be inherited in.
+ */
+export const OVERLAY_CSS = `
+.root {
+  --gp-ov-color: #2f80ed;       /* safe-area line + the tint outside it */
+  --gp-ov-width: 2px;           /* line width as seen on screen, at any zoom */
+  --gp-ov-style: dashed;        /* safe-area line style */
+  --gp-ov-tint: 0.1;            /* opacity of the tint between safe area and trim */
+  --gp-ov-bleed-color: #e5484d; /* bleed band */
+  --gp-ov-bleed-alpha: 0.45;    /* opacity of the bleed band */
+  --gp-ov-trim-color: #8a0b18;  /* the trim line: darker than the band so it reads as an edge */
+  --gp-ov-flag-width: 2px;      /* overflow flag outline */
+  --gp-ov-warn: #f59e0b;        /* leaves the safe area */
+  --gp-ov-error: #e5484d;       /* crosses the trim / leaves the sheet */
+  --gp-ov-intent: #8b5cf6;      /* placed on purpose */
+  /* The overlay is scaled with the stage, so a 2px line would shrink with the
+     zoom; dividing by it keeps lines the same width on screen at every zoom. */
+  --gp-ov-w: calc(var(--gp-ov-width) / var(--gp-ov-z, 1));
+  --gp-ov-flag-w: calc(var(--gp-ov-flag-width) / var(--gp-ov-z, 1));
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.root[data-strength="subtle"] {
+  --gp-ov-width: 1px;
+  --gp-ov-tint: 0.05;
+  --gp-ov-bleed-alpha: 0.3;
+}
+.root[data-strength="strong"] {
+  --gp-ov-width: 3px;
+  --gp-ov-tint: 0.2;
+  --gp-ov-bleed-alpha: 0.65;
+  --gp-ov-flag-width: 3px;
+}
+.gp-ov-page, .gp-ov-tint, .gp-ov-safe, .gp-ov-bleed, .gp-ov-trim, .gp-ov-flag {
+  position: absolute;
+  box-sizing: border-box;
+}
+/* the band between the safe area and the trim, as a REGION (clip-path, set in
+   overlay.ts), so it reads as an area, not a hairline */
+.gp-ov-tint {
+  background: color-mix(in srgb, var(--gp-ov-color) calc(var(--gp-ov-tint) * 100%), transparent);
+}
+.gp-ov-safe {
+  border: var(--gp-ov-w) var(--gp-ov-style) var(--gp-ov-color);
+}
+/* bleed: a translucent band between the trim and the sheet edge (its width is the border) */
+.gp-ov-bleed {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--gp-ov-bleed-color) calc(var(--gp-ov-bleed-alpha) * 100%), transparent);
+}
+/* trim: where the sheet will be cut, drawn only when there is bleed */
+.gp-ov-trim {
+  outline: var(--gp-ov-w) solid var(--gp-ov-trim-color);
+  outline-offset: calc(-1 * var(--gp-ov-w));
+}
+/* overflow flags: outline + faint tint, never a box change */
+.gp-ov-flag[data-kind="unsafe"] {
+  outline: var(--gp-ov-flag-w) solid var(--gp-ov-warn);
+  background: color-mix(in srgb, var(--gp-ov-warn) 16%, transparent);
+}
+.gp-ov-flag[data-kind="bleed"],
+.gp-ov-flag[data-kind="off-page"] {
+  outline: var(--gp-ov-flag-w) solid var(--gp-ov-error);
+  background: color-mix(in srgb, var(--gp-ov-error) 18%, transparent);
+}
+.gp-ov-flag[data-kind="intended"] {
+  outline: var(--gp-ov-flag-w) dotted var(--gp-ov-intent);
+}
+@media print {
+  .root { display: none; }
+}
+`;
+
+/**
+ * The host element's own declarations, all inline `!important`: an inline
+ * important declaration outranks any author rule, important or not, so no
+ * stylesheet can hide, move, clip or restyle the host. `all: initial` also
+ * stops every inherited property at the host.
+ */
+const HOST_STYLE = [
+  "all: initial",
+  "display: block",
+  "position: absolute",
+  "left: 0",
+  "top: 0",
+  "width: 0",
+  "height: 0",
+  "margin: 0",
+  "padding: 0",
+  "border: 0",
+  "overflow: visible",
+  "visibility: visible",
+  "opacity: 1",
+  "filter: none",
+  "clip-path: none",
+  "mask: none",
+  "z-index: 2147483647",
+  "pointer-events: none",
+  "transform-origin: 0 0",
+  "contain: style",
+]
+  .map((d) => `${d} !important`)
+  .join("; ");
+
+export const OVERLAY_TAG = "gp-overlay";
+
+let host: HTMLElement | null = null;
+let root: HTMLElement | null = null;
+let observer: MutationObserver | null = null;
+let currentStyle: OverlayStyle = {};
+
+function applyStyle(): void {
+  if (!root) return;
+  if (currentStyle.strength) root.dataset.strength = currentStyle.strength;
+  if (currentStyle.color) root.style.setProperty("--gp-ov-color", currentStyle.color);
+}
+
+/** Remember the look and apply it to a showing overlay; no repaint. */
+export function setOverlayStyle(style: OverlayStyle): void {
+  currentStyle = { ...currentStyle, ...style };
+  applyStyle();
+}
+
+/** The stage's (`<body>`) zoom and on-screen origin. */
+function stageFrame(): { left: number; top: number; zoom: number } {
+  const stage = document.body;
+  const r = stage.getBoundingClientRect();
+  const zoom = stage.offsetWidth > 0 ? r.width / stage.offsetWidth : 1;
+  return { left: r.left, top: r.top, zoom: zoom || 1 };
+}
+
+/** Line the overlay up with the stage: same origin, same zoom. */
+function syncToStage(): void {
+  if (!host || !root) return;
+  const { left, top, zoom } = stageFrame();
+  host.style.setProperty(
+    "transform",
+    `translate(${left + window.scrollX}px, ${top + window.scrollY}px) scale(${zoom})`,
+    "important",
+  );
+  root.style.setProperty("--gp-ov-z", String(zoom));
+}
+
+function ensureRoot(): HTMLElement {
+  if (host && root && host.isConnected) {
+    root.textContent = "";
+    return root;
+  }
+  host = document.createElement(OVERLAY_TAG);
+  host.setAttribute("style", HOST_STYLE);
+  host.setAttribute("aria-hidden", "true");
+  const shadow = host.attachShadow({ mode: "open" });
+  const sheet = document.createElement("style");
+  sheet.textContent = OVERLAY_CSS;
+  root = document.createElement("div");
+  root.className = "root";
+  shadow.append(sheet, root);
+  document.documentElement.appendChild(host);
+  applyStyle();
+  // A host zooms by setting a custom property on <html> or <body>; the stage
+  // is a paint transform, so nothing re-lays out and no redraw follows. Keep
+  // the overlay's transform in step with it.
+  observer = new MutationObserver(syncToStage);
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
+  observer.observe(document.body, { attributes: true, attributeFilter: ["style"] });
+  return root;
+}
+
+export function clearOverlay(): void {
+  observer?.disconnect();
+  observer = null;
+  host?.remove();
+  host = null;
+  root = null;
+}
 
 function div(cls: string, box?: Rect): HTMLDivElement {
   const el = document.createElement("div");
@@ -272,32 +401,22 @@ function place(el: HTMLElement, r: Rect): void {
   el.style.height = `${r.h}px`;
 }
 
-/** The margin as a REGION: the trim with the content box cut out (even-odd, so exact at any zoom). */
-function marginTint(b: PageBoxes): HTMLDivElement {
-  const el = div("gp-ov-tint");
+/** The band between the safe area and the trim, as a region (even-odd, so exact at any zoom). */
+function unsafeTint(b: PageBoxes): HTMLDivElement {
+  const el = div("gp-ov-tint", b.sheet);
   const t = b.trim;
-  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
-  const l = clamp(b.content.x, t.x, t.x + t.w);
-  const r = clamp(b.content.x + b.content.w, t.x, t.x + t.w);
-  const top = clamp(b.content.y, t.y, t.y + t.h);
-  const bot = clamp(b.content.y + b.content.h, t.y, t.y + t.h);
-  const x2 = t.x + t.w;
-  const y2 = t.y + t.h;
+  const s = b.safe;
   el.style.clipPath =
-    `polygon(evenodd, ${t.x}px ${t.y}px, ${x2}px ${t.y}px, ${x2}px ${y2}px, ${t.x}px ${y2}px, ${t.x}px ${t.y}px, ` +
-    `${l}px ${top}px, ${l}px ${bot}px, ${r}px ${bot}px, ${r}px ${top}px, ${l}px ${top}px)`;
+    `polygon(evenodd, ${t.x}px ${t.y}px, ${t.x + t.w}px ${t.y}px, ${t.x + t.w}px ${t.y + t.h}px, ${t.x}px ${t.y + t.h}px, ${t.x}px ${t.y}px, ` +
+    `${s.x}px ${s.y}px, ${s.x}px ${s.y + s.h}px, ${s.x + s.w}px ${s.y + s.h}px, ${s.x + s.w}px ${s.y}px, ${s.x}px ${s.y}px)`;
   return el;
-}
-
-export function clearOverlay(): void {
-  for (const layer of Array.from(document.querySelectorAll(".gp-ov"))) layer.remove();
 }
 
 interface Painted {
   host: HTMLElement;
   boxes: PageBoxes;
   sheet: HTMLElement;
-  /** client rect of the sheet, read once, after the layer is in the DOM */
+  /** client rect of the sheet, read once */
   rect?: DOMRect;
 }
 
@@ -307,60 +426,55 @@ interface Flag {
   box: Rect;
 }
 
+/** Sub-pixel tolerance, in CSS px (unscaled). */
+const TOL_PX = 1;
+const SKIP = new Set(["SCRIPT", "STYLE", "LINK", "TEMPLATE", "BR", "WBR", "SOURCE", "TRACK", "META"]);
+
 /**
- * Draw the overlay for `pages` and return what it found. Idempotent: any
- * earlier layer is removed first. Writes only to `.gp-ov` layers.
+ * Draw the overlay for `pages` and return what it found. Idempotent: the
+ * previous drawing is replaced. `area` is the project's geometry
+ * (`printAreaFromMeta()`); `null` falls back to each sheet's own size.
  */
 export function paintOverlay(
   pages: readonly OverlayPage[],
   strips: readonly StripInfo[],
-  bleedPt: number,
-  insetBleedPt = 0,
+  area: PrintArea | null,
 ): OverlaySummary {
-  // CSS `@page { bleed }` wins; the config's in-sheet bleed only fills in when
-  // the stylesheet declares none.
-  const inSheet = bleedPt <= 0 && insetBleedPt > 0;
-  clearOverlay();
-  const layers = new Map<Element, HTMLElement>();
+  const layer = ensureRoot();
+  syncToStage();
+  const stage = stageFrame();
   const painted = new Map<number, Painted>();
 
   for (const p of pages) {
-    const run = p.sheet.closest(".gp-run");
-    if (!run) continue;
-    let layer = layers.get(run);
-    if (!layer) {
-      layer = div("gp-ov");
-      run.appendChild(layer);
-      layers.set(run, layer);
-    }
-    const boxes = inSheet
-      ? insetPageBoxes(
-          p.geometry,
-          p.margin,
-          insetBleedPt,
-          p.sheet.dataset.side === "verso" ? "verso" : "recto",
-          PX_PER_PT,
-        )
-      : pageBoxes(p.geometry, p.margin, bleedPt, PX_PER_PT);
-    const host = div("gp-ov-page", boxes.host);
-    host.style.left = p.sheet.style.left;
-    host.style.top = p.sheet.style.top;
+    const side: PageSide = p.sheet.dataset.side === "verso" ? "verso" : "recto";
+    const boxes = pageBoxes(area ?? sheetArea(p.sheet), side, PX_PER_PT);
+    // The page's box sits on the paper: the sheet's top-left, in the stage's
+    // own (unzoomed) coordinates — the overlay root is scaled with the stage.
+    const rect = p.sheet.getBoundingClientRect();
+    const host = div("gp-ov-page", {
+      x: (rect.left - stage.left) / stage.zoom,
+      y: (rect.top - stage.top) / stage.zoom,
+      w: boxes.sheet.w,
+      h: boxes.sheet.h,
+    });
     host.dataset.page = String(p.index + 1);
     if (boxes.bleed > 0) {
-      // The band is the bleed box minus the trim: a border whose width on each
-      // side is how far the trim sits inside it (0 on a binding edge).
-      const bb = boxes.bleedBox;
+      // The band is the sheet minus the trim: a border whose width on each
+      // side is how far the trim sits inside it (0 on the binding edge).
+      const sh = boxes.sheet;
       const t = boxes.trim;
-      const band = div("gp-ov-bleed", bb);
+      const band = div("gp-ov-bleed", sh);
       band.style.borderWidth =
-        `${t.y - bb.y}px ${bb.x + bb.w - (t.x + t.w)}px ${bb.y + bb.h - (t.y + t.h)}px ${t.x - bb.x}px`;
+        `${t.y - sh.y}px ${sh.x + sh.w - (t.x + t.w)}px ${sh.y + sh.h - (t.y + t.h)}px ${t.x - sh.x}px`;
       host.appendChild(band);
       host.appendChild(div("gp-ov-trim", t));
     }
-    host.appendChild(marginTint(boxes));
-    host.appendChild(div("gp-ov-margin", boxes.content));
+    if (area && area.safe > 0) {
+      host.appendChild(unsafeTint(boxes));
+      host.appendChild(div("gp-ov-safe", boxes.safe));
+    }
     layer.appendChild(host);
-    painted.set(p.index, { host, boxes, sheet: p.sheet });
+    painted.set(p.index, { host, boxes, sheet: p.sheet, rect });
   }
 
   const flags: Flag[] = [];
@@ -411,11 +525,9 @@ export function paintOverlay(
   }
 
   for (const f of flags) {
-    const el = div(`gp-ov-flag`, f.box);
+    const el = div("gp-ov-flag", f.box);
     el.dataset.kind = f.kind;
     f.host.appendChild(el);
   }
-  return inSheet
-    ? { on: true, issues, intended, bleedPt: insetBleedPt, bleedInSheet: true }
-    : { on: true, issues, intended, bleedPt };
+  return { on: true, issues, intended, bleedPt: area?.bleed ?? 0, safePt: area?.safe ?? 0 };
 }

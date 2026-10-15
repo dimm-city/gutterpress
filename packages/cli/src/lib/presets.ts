@@ -84,6 +84,10 @@ export const DTRPG_PRESET: VendorPreset = {
     // symmetric and would grow the page and add binding-edge bleed, which the
     // SPEC rules out).
     bleed: 9,
+    // CONVENTION: 0.25in, a common print-on-demand safe zone; not checked
+    // against a DriveThru statement. The preview overlay's safe area only;
+    // the PDF is unchanged.
+    safe: 18,
   },
   ink: {
     // SPEC: total ink coverage must not exceed 240%.
@@ -203,6 +207,8 @@ export const BOOK_PRESET: VendorPreset = {
     tolerance: 0.5,
     // No bleed inside the sheet; listed so a manifest `page.bleed` merges in.
     bleed: undefined,
+    // CONVENTION: 0.25in safe area inside the trim (preview overlay only).
+    safe: 18,
   },
   ink: {
     maxTac: 400,

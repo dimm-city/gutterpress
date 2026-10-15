@@ -104,24 +104,24 @@ command produces a PDF in a `dist/` directory next to your project.
 
 Gutterpress supports Chrome, Edge, and other Chromium-based browsers — and nothing else. Firefox and Safari are not supported: the PDF always renders in Chromium, so a preview in another engine measures text differently and places page breaks the PDF will not reproduce. The desktop app previews in its own bundled Chromium, so it always matches; if you preview from the CLI, open the URL it prints in a Chromium-based browser. Either way, embed your fonts with `@font-face` instead of relying on system fonts, so the preview measures the same fonts the PDF prints.
 
-### Check Margins and Bleed
+### Check the Safe Area and Bleed
 
-The preview can draw each page's margins and bleed on top of your book, so you can see how content sits against them and spot anything that spills over. It is a review aid only: it never prints, never appears in an exported PDF or a published page, and never moves your content or changes a page break.
+The preview can draw each page's safe area and bleed on top of your book, so you can see what a printer might cut and spot anything that strays too close to the edge. It is a review aid only: it never prints, never appears in an exported PDF or a published page, and never moves your content or changes a page break.
 
-- **Desktop app:** the **Margins and bleed** button at the top right of the preview (next to the zoom menu) switches it on and off, in Read and in Edit. The app remembers your choice.
+- **Desktop app:** the **Safe area and bleed** button at the top right of the preview (next to the zoom menu) switches it on and off, in Read and in Edit. The app remembers your choice.
 - **`gutterpress preview`:** press **Alt+M** in the browser. A small badge in the corner shows what it found; press **Alt+M** again to hide it.
 
 With it on, every page shows:
 
-- a **dashed blue outline** — the margin box, where your text is laid out — with the margin area around it **tinted** so it reads as a region;
-- a **translucent red band** around the page edge, the **bleed** — the extra area a printer needs, with a solid red line at the trim where the page is cut (only when your stylesheet sets a bleed, see below);
-- an **amber outline** on anything that reaches past the margin box into the margin;
-- a **red outline** on anything that crosses the trim into the bleed band or beyond it (cut off in print);
-- a **dotted violet outline**, softly, on art you placed on purpose — `.gp-bleed` images, `.gp-pin` / `.gp-flush` pinned art, `.gp-behind` images and `@page full-bleed` pages. These are expected to leave the text area, so they are shown but not counted. The badge and the desktop button count the amber and red ones.
+- a **dashed blue outline** — the safe area, where content is safe from the cut — with the band between it and the trim **tinted** so it reads as a region;
+- a **translucent red band**, the **bleed**, with a solid red line at the trim where the page is cut;
+- an **amber outline** on anything that leaves the safe area but stays on the trimmed page;
+- a **red outline** on anything that crosses the trim into the bleed band or off the page;
+- a **dotted violet outline**, softly, on art you placed on purpose — `.gp-bleed` images, `.gp-pin` / `.gp-flush` pinned art, `.gp-behind` images and `@page full-bleed` pages. These are expected to reach the edge, so they are shown but not counted. The badge and the desktop button count the amber and red ones.
 
-Page size and margins (including `@page :left` / `:right`) come from your own `@page` rules. The bleed comes from one of two places. **If your stylesheet declares `@page { bleed }`, that is drawn** as a band around the page edge. **Otherwise, a `dtrpg` book uses its preset's bleed:** DriveThruRPG's 8.625×11.25in file already contains a 0.125in bleed on the top, bottom and outer edges (the right edge of a right-hand page, the left edge of a left-hand one) and none on the binding edge, so the band and the solid trim line are drawn *inside* the page on those three edges. (CSS `bleed` cannot say that — it adds the same bleed on every side outside the page — so the preset records it for the preview only; your PDF is unchanged. Set `page: { bleed: … }` in `manifest.yaml`, in points, to override it.) If neither declares a bleed, you see the margins but no band, and the desktop button's tooltip (or the CLI badge) says "No bleed set"; add `bleed: 0.125in;` to your `@page` rule to see it. On a book with mirrored margins, every page shows its own margin box: left-hand pages sit where the PDF puts them (the preview slides each left-hand page sideways by the difference between its margins and the right-hand page's), so the dashed outline on a left-hand page is its `:left` margin box and the text sits inside it just as it will in print.
+**All of it comes from your project's print settings, never from your book's styles.** The page size is `page.width` × `page.height`, the bleed is `page.bleed` and the safe area is `page.safe`, in points, in `manifest.yaml` — or your preset's values when you set none. The `dtrpg` preset's 8.625×11.25in file already contains a 0.125in bleed (9pt) on the top, bottom and outer edges (the right edge of a right-hand page, the left edge of a left-hand one) and none on the binding edge, so the band and the trim line sit *inside* the page on those three edges. The `dtrpg` and `book` presets set a 0.25in (18pt) safe area inside the trim; set `page: { safe: … }` to use your printer's figure. Your `@page` margins decide where your text goes, and moving them never moves these lines. The overlay is drawn above the whole preview, apart from the book: no stylesheet or plugin can hide, move or restyle it. If the project sets no bleed or no safe area, that part is not drawn, and the desktop button's tooltip (or the CLI badge) says which setting to add.
 
-To make the overlay more or less prominent, or to change its colour, use the desktop app's **Settings → App → Preview**: **Margin overlay strength** (Subtle, Normal, Strong) and **Margin overlay colour**. These are app settings; there is nothing to add to your book's CSS. `gutterpress preview` always uses the Normal look.
+To make the overlay more or less prominent, or to change its colour, use the desktop app's **Settings → App → Preview**: **Safe area overlay strength** (Subtle, Normal, Strong) and **Safe area overlay colour**. These are app settings; there is nothing to add to your book's CSS. `gutterpress preview` always uses the Normal look.
 
 ## Project Structure
 

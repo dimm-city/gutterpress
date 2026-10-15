@@ -70,7 +70,7 @@ export interface PreviewEventDeps {
   zoom: () => string;
   viewMode: () => "single" | "two-column";
   bgColor: () => string;
-  /** Margin & bleed overlay (Preview toolbar toggle): the durable on/off. */
+  /** Safe area & bleed overlay (Preview toolbar toggle): the durable on/off. */
   marginOverlay: () => boolean;
   /** …and its look (colour, strength), sent with the switch. */
   marginOverlayStyle: () => MarginOverlayStyle;

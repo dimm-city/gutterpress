@@ -16,21 +16,21 @@ export interface PreviewEvent {
     | "blockEditRequested"
     | "blockEditFinished"
     | "blockEditStateChanged"
-    /** Margin & bleed overlay turned on/off or repainted (protocol v9); detail is an OverlaySummary. */
+    /** Safe area & bleed overlay turned on/off or repainted (protocol v9); detail is an OverlaySummary. */
     | "overlayChanged"
     /** An Esc nothing in the book consumed (the app uses it to leave Focus). */
     | "escapePressed";
   detail: {
     /** overlayChanged: whether the overlay is showing. */
     on?: boolean;
-    /** overlayChanged: elements that leave their text area by accident. */
+    /** overlayChanged: elements that leave the safe area by accident. */
     issues?: number;
     /** overlayChanged: placed-on-purpose art (`.gp-bleed`, `.gp-pin`, …) outside it — shown, not counted. */
     intended?: number;
-    /** overlayChanged: the book's bleed in pt (0 = none defined by its `@page` CSS or preset). */
+    /** overlayChanged: the project's in-page bleed in pt (`page.bleed`; 0 = none set). */
     bleedPt?: number;
-    /** overlayChanged: true when that bleed is the project's in-sheet `page.bleed` (a preset's), not CSS. */
-    bleedInSheet?: boolean;
+    /** overlayChanged: the project's safe-area inset in pt (`page.safe`; 0 = none set). */
+    safePt?: number;
     currentPage?: number;
     totalPages?: number;
     /** sourceLineChanged / elementActivated: 1-based markdown source line. */

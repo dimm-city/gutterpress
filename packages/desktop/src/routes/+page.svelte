@@ -1100,7 +1100,7 @@
   // `viewModeFor` is the one rule, and Edit never changes the stored choice.
   let readLayout = $derived(settings.current.preview.readLayout);
   let viewMode = $derived(viewModeFor(mode, isNarrow, readLayout));
-  // Margin & bleed overlay: one durable switch for Read AND Edit; the viewer
+  // Safe area & bleed overlay: one durable switch for Read AND Edit; the viewer
   // draws it, and reports what it found (the toolbar count) as it repaints.
   let marginOverlay = $derived(settings.current.preview.marginOverlay);
   let overlayStyle = $derived(
@@ -1383,7 +1383,7 @@
   // Read layout (one page / spread): push the derived view mode into the
   // viewer when the toggle — or a settings load — changes it.
   const readLayoutSink = settingsChangeGuard<ReadLayout>(() => zoomView.applyViewMode(viewMode));
-  // Margin & bleed overlay: push the switch into the viewer when the toggle —
+  // Safe area & bleed overlay: push the switch into the viewer when the toggle —
   // or a settings load — changes it. An old viewer without the command just
   // rejects, which is the same as not having the feature.
   // The look (colour, strength) rides along with the switch, so one sink

@@ -5,6 +5,21 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The preview overlay shows the printer's safe area, from your print settings
+  only.** The dashed box the **Margins and bleed** button drew was the text block
+  from your `@page` margins, labelled as if it were a safe print area, and it moved
+  whenever the margins did. It is now the **Safe area and bleed** overlay. Its page
+  size, bleed and safe area come only from the project: `page.width`/`height`,
+  `page.bleed`, and a new `page.safe` (the safe area's inset from the trim, in
+  points; the `dtrpg` and `book` presets set 0.25in, a common print-on-demand
+  figure, so set your printer's own). Content outside the safe area is
+  outlined amber, content past the trim red. CSS `@page { bleed }` no longer feeds
+  it. The overlay is drawn above the whole preview, outside the book's own CSS, so no
+  stylesheet or plugin can hide, move or restyle it. Designer mode's
+  green "safe" guide, which was the same margin box, is gone.
+
 ## [0.11.19] - 2026-10-15
 
 ### Added

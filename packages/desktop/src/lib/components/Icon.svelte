@@ -76,7 +76,7 @@
     | "maximize"
     // Source-files list drag handle
     | "grip-vertical"
-    // Preview toolbar: margin & bleed overlay toggle
+    // Preview toolbar: safe area & bleed overlay toggle
     | "frame";
 
   const ICONS: Record<IconName, string> = {

@@ -258,11 +258,15 @@ describe('injectPreviewScripts', () => {
     expect(out).toContain('/preview/scripts/preview-bridge.js');
   });
 
-  test('hands the project\'s in-sheet bleed to the overlay as a preview-only <meta>', () => {
-    expect(injectPreviewScripts(html)).not.toContain('gp-inset-bleed');
-    const out = injectPreviewScripts(html, 9);
-    expect(out).toContain('<meta name="gp-inset-bleed" content="9">');
-    expect(out.indexOf('gp-inset-bleed')).toBeLessThan(out.indexOf('</head>'));
+  test('hands the project\'s page geometry to the overlay as a preview-only <meta>', () => {
+    expect(injectPreviewScripts(html)).not.toContain('gp-print-area');
+    const out = injectPreviewScripts(html, { width: 621, height: 810, tolerance: 0.5, bleed: 9, safe: 18 } as never);
+    expect(out).toContain(`<meta name="gp-print-area" content='{"width":621,"height":810,"bleed":9,"safe":18}'>`);
+    expect(out.indexOf('gp-print-area')).toBeLessThan(out.indexOf('</head>'));
+    // unset bleed / safe are 0, never missing
+    expect(injectPreviewScripts(html, { width: 432, height: 648 })).toContain(
+      `content='{"width":432,"height":648,"bleed":0,"safe":0}'`,
+    );
   });
 });
 

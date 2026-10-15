@@ -316,8 +316,8 @@
         </div>
         <div class="row">
           <div class="row-label">
-            <label for="set-overlay-strength">Margin overlay strength</label>
-            <span class="row-hint">How strongly the preview's margin &amp; bleed overlay (the toolbar button) is drawn. The bleed band shows only when your stylesheet sets a page bleed.</span>
+            <label for="set-overlay-strength">Safe area overlay strength</label>
+            <span class="row-hint">How strongly the preview's safe area &amp; bleed overlay (the toolbar button) is drawn. Its sizes come from your book's print settings (manifest.yaml), never from its styles.</span>
           </div>
           <select
             id="set-overlay-strength"
@@ -330,7 +330,7 @@
           </select>
         </div>
         <div class="row">
-          <label for="set-overlay-color">Margin overlay colour</label>
+          <label for="set-overlay-color">Safe area overlay colour</label>
           <input
             id="set-overlay-color"
             type="color"

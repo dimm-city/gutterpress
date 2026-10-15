@@ -4,17 +4,13 @@
  *
  * `mirrored-margins.test.ts` pins the column WIDTH (what pagination depends on).
  * That left a verso's text at the recto's margin on its sheet — `dx` too far
- * right (12px on the dc-op-manual field guide) — and the overlay compensated
- * with a second, dotted outline. The text cannot move per page (one multicol
+ * right (12px on the dc-op-manual field guide). The text cannot move per page (one multicol
  * per run), so the verso's PAPER does (decorate.ts, `versoShift`). These cases
  * measure the result in Chromium, on `fixtures/mirrored-sheets.html`:
  *
  *  - a verso's content box relative to its sheet is the `:left` margins, a
  *    recto's the `:right` ones, in single and in two-up view;
  *  - margin boxes (drawn per sheet) stay aligned with the text;
- *  - the overlay draws ONE outline per page — that page's real margin box —
- *    and classifies against it, so an element reaching past a verso's OUTER
- *    edge is judged against the true edge;
  *  - two-up still pairs (verso, recto) with the sheet gap between FACING
  *    sheets, and moves no page break;
  *  - a book without mirrored margins is placed exactly as before.
@@ -136,58 +132,6 @@ testIf(
 );
 
 testIf(
-  "the overlay draws one outline per page — its real margin box — and judges against the true outer edge",
-  async () => {
-    await withBook(MIRRORED, async (url) => {
-      const page = await open(url);
-      try {
-        const summary = await page.evaluate(() => (window as any).Gutterpress.decoration.setOverlay(true));
-        // one overflow, and it is the verso's: `out` reaches 10px past the OUTER
-        // edge of page 2 — into the 12px bleed. (Placed where a recto's text
-        // would sit it would have read as a mere margin intrusion.)
-        expect(summary).toMatchObject({ on: true, issues: 1, intended: 0 });
-
-        const drawn = await page.evaluate(() => ({
-          dotted: document.querySelectorAll(".gp-ov-print").length,
-          pages: Array.from(document.querySelectorAll<HTMLElement>(".gp-ov-page")).map((pg) => {
-            const margins = pg.querySelectorAll<HTMLElement>(".gp-ov-margin");
-            return {
-              page: pg.dataset.page,
-              outlines: margins.length,
-              box: [margins[0]!.style.left, margins[0]!.style.width],
-              flags: Array.from(pg.querySelectorAll<HTMLElement>(".gp-ov-flag")).map((f) => ({
-                kind: f.dataset.kind,
-                x: Math.round(parseFloat(f.style.left)),
-                w: Math.round(parseFloat(f.style.width)),
-              })),
-            };
-          }),
-        }));
-        expect(drawn.dotted).toBe(0);
-        expect(drawn.pages).toHaveLength(6);
-        for (const p of drawn.pages) {
-          const recto = Number(p.page) % 2 === 1;
-          expect(p.outlines).toBe(1);
-          expect(p.box).toEqual([recto ? "50px" : "30px", "320px"]);
-          if (p.page !== "2") expect(p.flags).toEqual([]);
-        }
-        expect(drawn.pages[1]!.flags).toEqual([{ kind: "bleed", x: -10, w: 100 }]);
-
-        // the same verdicts in two-up view, where the sheets are laid out afresh
-        await page.evaluate(() => (window as any).Gutterpress.setSpread(true));
-        expect(await page.evaluate(() => (window as any).Gutterpress.decoration.overlay())).toMatchObject({
-          issues: 1,
-        });
-        expect(await page.evaluate(() => document.querySelectorAll(".gp-ov-print").length)).toBe(0);
-      } finally {
-        await page.close();
-      }
-    });
-  },
-  RENDER_TEST_TIMEOUT_MS,
-);
-
-testIf(
   "two-up view still pairs (verso, recto), keeps the sheet gap between FACING sheets, and moves no page",
   async () => {
     await withBook(MIRRORED, async (url) => {
@@ -277,14 +221,13 @@ testIf(
 );
 
 testIf(
-  "edge-pinned art keeps the paper's edge, and the overlay's box on a flush page is the PDF's flushed frame",
+  "edge-pinned art keeps the paper's edge",
   async () => {
     const source = await fsp.readFile(path.join(FIXTURES_DIR, "mirrored-flush.html"), "utf8");
     const html = source.replace("</style>", `</style>\n<style>${MARKER_CSS}\n${GUTTERPRESS_CSS}</style>`);
     await withBook(html, async (url) => {
       const page = await open(url);
       try {
-        await page.evaluate(() => (window as any).Gutterpress.decoration.setOverlay(true));
         const m = await page.evaluate(() => {
           const round = (v: number) => Math.round(v * 10) / 10;
           const sheet = (n: number) => document.querySelector<HTMLElement>(`.gp-sheet[data-page="${n}"]`)!;
@@ -297,10 +240,6 @@ testIf(
               fromBottom: round(s.bottom - r.bottom),
             };
           };
-          const frame = (n: number) => {
-            const f = document.querySelector<HTMLElement>(`.gp-ov-page[data-page="${n}"] .gp-ov-margin`)!;
-            return [f.style.left, f.style.top, f.style.width, f.style.height];
-          };
           return {
             total: (window as any).Gutterpress.totalPages as number,
             a1: at("a1", 1),
@@ -308,9 +247,6 @@ testIf(
             a4: at("a4", 4),
             t2: at("t2", 2),
             t4: at("t4", 4),
-            frames: [1, 2, 3, 4].map(frame),
-            dotted: document.querySelectorAll(".gp-ov-print").length,
-            summary: (window as any).Gutterpress.decoration.overlay(),
           };
         });
         expect(m.total).toBe(4);
@@ -322,15 +258,6 @@ testIf(
         // a side flush stays on the paper's edge, text and all as before: no claim, no shift
         expect(m.a4.fromRight).toBeLessThan(2);
         expect(m.t4.left).toBe(50);
-        // the dashed box is the page's flushed frame: bottom freed on 1 and 2, nothing else
-        expect(m.frames[0]).toEqual(["50px", "40px", "320px", "460px"]);
-        expect(m.frames[1]).toEqual(["30px", "40px", "320px", "460px"]);
-        expect(m.frames[2]).toEqual(["50px", "40px", "320px", "420px"]);
-        // the side-flush verso has its right edge freed and no shift: the frame the text is in
-        expect(m.frames[3]).toEqual(["50px", "40px", "350px", "420px"]);
-        expect(m.dotted).toBe(0);
-        // pinned art is intended, never counted as a problem
-        expect(m.summary.issues).toBe(0);
       } finally {
         await page.close();
       }

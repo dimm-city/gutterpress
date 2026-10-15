@@ -1105,13 +1105,13 @@
     // second argument — the look, below — is part of v9, not a bump.)
     getProtocolVersion: function () { return 9; },
 
-    // Margin & bleed overlay. Viewer chrome only — it adds no box to the book
-    // and no attribute to its elements, so pagination is identical on or off.
-    // Returns the summary {on, issues, intended, bleedPt}, or null when the
-    // viewer predates it. `style` ({color: '#rrggbb', strength: 'subtle' |
-    // 'normal' | 'strong'}) is optional: it only sets the viewer's own
-    // `--gp-ov-*` tokens, and a call that carries it while the overlay is
-    // already on restyles without repainting.
+    // Safe area & bleed overlay. Viewer chrome only — it adds no box to the
+    // book and no attribute to its elements, so pagination is identical on or
+    // off. Returns the summary {on, issues, intended, bleedPt, safePt}, or null
+    // when the viewer predates it. `style` ({color: '#rrggbb', strength:
+    // 'subtle' | 'normal' | 'strong'}) is optional: it only sets the overlay's
+    // own tokens, and a call that carries it while the overlay is already on
+    // restyles without repainting.
     setMarginOverlay: function (on, style) {
       var d = window.Gutterpress && window.Gutterpress.decoration;
       return d && typeof d.setOverlay === 'function' ? d.setOverlay(!!on, style) : null;
@@ -1629,7 +1629,7 @@
   // completes (engine/viewer/index.ts's mount()).
   window.addEventListener('gp:layout', onRenderingComplete);
 
-  // Margin & bleed overlay: relay the viewer's result as 'overlayChanged' (the
+  // Safe area & bleed overlay: relay the viewer's result as 'overlayChanged' (the
   // bridge posts it to a host toolbar) and, where no host toolbar exists, give
   // the standalone CLI preview its own switch: Alt+M, plus a small status pill.
   // "Standalone" = the shell is top level (the CLI); under the desktop app the
@@ -1652,11 +1652,11 @@
         'padding:4px 10px;border-radius:999px;box-shadow:0 1px 6px rgba(0,0,0,.4)';
       document.documentElement.appendChild(badge);
     }
-    var parts = ['Margins & bleed'];
-    parts.push(summary.issues ? summary.issues + ' overflowing' : 'nothing overflows');
+    var parts = ['Safe area & bleed'];
+    parts.push(summary.issues ? summary.issues + ' outside the safe area' : 'everything inside the safe area');
     if (summary.intended) parts.push(summary.intended + ' placed on purpose');
-    if (summary.bleedInSheet) parts.push('bleed inside the page (print preset)');
-    if (!summary.bleedPt) parts.push('no bleed set \u2014 add @page { bleed: 0.125in } to see the bleed edge');
+    if (!summary.safePt) parts.push('no safe area set (page.safe in manifest.yaml)');
+    if (!summary.bleedPt) parts.push('no bleed set (page.bleed in manifest.yaml)');
     badge.textContent = parts.join(' \u00b7 ') + '  (Alt+M hides)';
   }
 

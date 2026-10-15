@@ -165,15 +165,16 @@ export interface AppSettings {
      */
     readLayout: ReadLayout;
     /**
-     * Margin & bleed overlay (Preview toolbar toggle): draws each page's margin
-     * box and bleed band on the preview and outlines content that leaves the
-     * text area. A review aid for the author — never printed, never in an
-     * exported PDF — available in both Read and Edit. Default off.
+     * Safe area & bleed overlay (Preview toolbar toggle): draws each page's
+     * safe area, trim and bleed band from the project's print settings on the
+     * preview and outlines content that leaves the safe area. A review aid for
+     * the author — never printed, never in an exported PDF — available in both
+     * Read and Edit. Default off.
      */
     marginOverlay: boolean;
-    /** The overlay's colour (margin outline and tint), `#rrggbb`. Default blue. */
+    /** The overlay's colour (safe-area outline and tint), `#rrggbb`. Default blue. */
     marginOverlayColor: string;
-    /** How prominent the overlay is: line width, margin tint and bleed band. Default "normal". */
+    /** How prominent the overlay is: line width, tint and bleed band. Default "normal". */
     marginOverlayStrength: "subtle" | "normal" | "strong";
     /**
      * Durable editor/preview split fraction (0.25..0.75, editor share) for the

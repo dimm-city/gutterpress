@@ -1,5 +1,5 @@
 /**
- * Margin & bleed overlay — the app side: a persisted setting, a toolbar toggle
+ * Safe area & bleed overlay — the app side: a persisted setting, a toolbar toggle
  * in BOTH Read and Edit, and the words for what the viewer found. (The overlay
  * itself is drawn and tested in the viewer: cli `engine/viewer/overlay.test.ts`.)
  */
@@ -77,13 +77,14 @@ describe("the viewer's finding", () => {
     expect(overlaySummaryFrom(undefined)).toBeNull();
     expect(overlaySummaryFrom({})).toBeNull();
     expect(overlaySummaryFrom({ on: false, issues: 4 })).toBeNull();
-    expect(overlaySummaryFrom({ on: true, issues: 2.7, intended: -1, bleedPt: 9 })).toEqual({
+    expect(overlaySummaryFrom({ on: true, issues: 2.7, intended: -1, bleedPt: 9, safePt: 18 })).toEqual({
       on: true,
       issues: 2,
       intended: 0,
       bleedPt: 9,
+      safePt: 18,
     });
-    expect(overlaySummaryFrom({ on: true })).toEqual({ on: true, issues: 0, intended: 0, bleedPt: 0 });
+    expect(overlaySummaryFrom({ on: true })).toEqual({ on: true, issues: 0, intended: 0, bleedPt: 0, safePt: 0 });
   });
 
   test("bleed reads in inches", () => {
@@ -96,42 +97,34 @@ describe("the viewer's finding", () => {
 describe("the toolbar tooltip", () => {
   test("off: says what turning it on does", () => {
     const t = overlayTooltip(false, null);
-    expect(t).toMatch(/^Show margins and bleed/);
-    expect(t).toMatch(/margins/);
-    expect(t).toMatch(/bleed/);
+    expect(t).toMatch(/^Show safe area and bleed/);
+    expect(t).toMatch(/print settings/);
   });
 
-  test("on: reports overflow, placed art and the bleed", () => {
-    const t = overlayTooltip(true, { on: true, issues: 2, intended: 1, bleedPt: 9 });
-    expect(t).toContain("Hide margins and bleed");
-    expect(t).toContain("2 elements extend past the margins");
+  test("on: reports what leaves the safe area, placed art, the safe area and the bleed", () => {
+    const t = overlayTooltip(true, { on: true, issues: 2, intended: 1, bleedPt: 9, safePt: 18 });
+    expect(t).toContain("Hide safe area and bleed");
+    expect(t).toContain("2 elements extend past the safe area");
     expect(t).toContain("1 piece of art placed on purpose (not counted)");
-    expect(t).toContain("Bleed: 0.125 in");
+    expect(t).toContain("Safe area: 0.25 in inside the trim");
+    expect(t).toContain("Bleed: 0.125 in, inside the page");
   });
 
-  test("on: singular, clean, and a book with no bleed", () => {
-    const t = overlayTooltip(true, { on: true, issues: 1, intended: 0, bleedPt: 0 });
-    expect(t).toContain("1 element extends past the margins");
+  test("on: singular, clean, and a project with neither set points at the manifest", () => {
+    const t = overlayTooltip(true, { on: true, issues: 1, intended: 0, bleedPt: 0, safePt: 0 });
+    expect(t).toContain("1 element extends past the safe area");
     expect(t).not.toContain("placed on purpose");
-    expect(t).toContain("No bleed set");
-    expect(t).toContain("@page { bleed: 0.125in }");
-    expect(overlayTooltip(true, { on: true, issues: 0, intended: 0, bleedPt: 9 })).toContain(
-      "Nothing extends past the margins",
+    expect(t).toContain("No safe area set \u2014 set page.safe in manifest.yaml");
+    expect(t).toContain("No bleed set \u2014 set page.bleed in manifest.yaml");
+    // never a CSS fix: the overlay does not read the book's stylesheet
+    expect(t).not.toContain("@page");
+    expect(overlayTooltip(true, { on: true, issues: 0, intended: 0, bleedPt: 9, safePt: 18 })).toContain(
+      "Everything is inside the safe area",
     );
   });
 
-  test("on: a bleed that comes from the print preset says it is already inside the page", () => {
-    const s = overlaySummaryFrom({ on: true, issues: 0, intended: 0, bleedPt: 9, bleedInSheet: true })!;
-    expect(s.bleedInSheet).toBe(true);
-    const t = overlayTooltip(true, s);
-    expect(t).toContain("Bleed: 0.125 in");
-    expect(t).toContain("inside the page");
-    expect(t).not.toContain("No bleed set");
-    expect(overlaySummaryFrom({ on: true, bleedPt: 9 })!.bleedInSheet).toBeUndefined();
-  });
-
   test("on, before the viewer has answered: just the action", () => {
-    expect(overlayTooltip(true, null)).toBe("Hide margins and bleed");
+    expect(overlayTooltip(true, null)).toBe("Hide safe area and bleed");
   });
 });
 

@@ -31,15 +31,13 @@ import {
   toFolioPage,
   type PageCounterReset,
 } from "../shared/synthesis.ts";
-import { flushMargins } from "../shared/flush.ts";
 import {
   OVERLAY_OFF,
   clearOverlay,
-  configInsetBleedPt,
-  documentBleedPt,
-  pageFrameMargin,
   paintOverlay,
+  printAreaFromMeta,
   sanitizeOverlayStyle,
+  setOverlayStyle,
   type OverlayPage,
   type OverlayStyle,
   type OverlaySummary,
@@ -82,9 +80,9 @@ export interface DecorationApi {
   /** the restarted `counter(page)` value for each 0-based book page, honoring `counter-reset: page N` */
   pageNumbers: number[];
   warnings: string[];
-  /** show/hide trim, safe, and crop guides on the stage */
+  /** show/hide trim and crop guides on the stage */
   setDesigner(on: boolean): void;
-  /** margin & bleed overlay (overlay.ts): draws it, and returns what it found.
+  /** safe area & bleed overlay (overlay.ts): draws it, and returns what it found.
    * Chrome only — pagination is identical with it on or off. */
   setOverlay(on: boolean, style?: OverlayStyle): OverlaySummary;
   overlay(): OverlaySummary;
@@ -145,13 +143,13 @@ export function decorate(
   let blankPages = new Set<number>();
   let paddedPages = new Set<number>();
   const warnings: string[] = [];
-  // Margin & bleed overlay (overlay.ts). The pages are collected by draw() —
+  // Safe area & bleed overlay (overlay.ts). The pages are collected by draw() —
   // which rebuilds every sheet — so the overlay is repainted after each one.
   let overlayOn = false;
   let overlayPages: OverlayPage[] = [];
   let overlaySummary: OverlaySummary = OVERLAY_OFF;
   const paintOverlayNow = () => {
-    overlaySummary = paintOverlay(overlayPages, layout.strips, documentBleedPt(model), configInsetBleedPt());
+    overlaySummary = paintOverlay(overlayPages, layout.strips, printAreaFromMeta());
     window.dispatchEvent(new CustomEvent("gp:overlay", { detail: overlaySummary }));
   };
   const api: DecorationApi = {
@@ -165,12 +163,15 @@ export function decorate(
       document.body.dataset.designer = on ? "on" : "off";
     },
     setOverlay(on, style) {
-      // The look is only tokens on <body> (viewer.css): a call that merely
+      // The look is only tokens on the overlay's own root: a call that merely
       // restyles an overlay that is already showing needs no repaint.
       if (style) {
-        const { color, strength } = sanitizeOverlayStyle(style);
-        if (strength) document.body.dataset.overlayStrength = strength;
-        if (color) document.body.style.setProperty("--gp-ov-color", color);
+        const clean = sanitizeOverlayStyle(style);
+        setOverlayStyle(clean);
+        // A record for hosts (the preview shell carries it across a hot-reload
+        // swap); nothing renders from these attributes.
+        if (clean.strength) document.body.dataset.overlayStrength = clean.strength;
+        if (clean.color) document.body.dataset.overlayColor = clean.color;
       }
       const wasOn = overlayOn;
       overlayOn = on;
@@ -470,19 +471,7 @@ export function decorate(
         drawMarginBoxes(sheet, ctx, layout.totalPages - paddedPages.size);
         drawGuides(sheet, ctx);
         drawCropMarks(sheet, ctx);
-        overlayPages.push({
-          index: bookIndex,
-          sheet,
-          strip,
-          geometry: ctx.geometry,
-          // Text sits in the strip's column, freed on `.gp-flush` edges, and
-          // on a verso's slid sheet (a blank or padding sheet has no text, so
-          // its own margins stand).
-          margin:
-            ctx.padded || blankPages.has(bookIndex)
-              ? ctx.geometry.margin
-              : pageFrameMargin(flushMargins(g.margin, strip.flushEdges ?? []), strip.versoShift, side),
-        });
+        overlayPages.push({ index: bookIndex, sheet, strip });
       }
 
       // Reserve the full row width even for a solo page in a wrapped run
@@ -629,15 +618,6 @@ export function decorate(
       });
       sheet.appendChild(trim);
     }
-    const safe = document.createElement("div");
-    safe.className = "gp-guide-safe";
-    Object.assign(safe.style, {
-      left: px(g.margin.left),
-      top: px(g.margin.top),
-      width: px(g.width - g.margin.left - g.margin.right),
-      height: px(g.height - g.margin.top - g.margin.bottom),
-    });
-    sheet.appendChild(safe);
   }
 
   /** Screen-mode limit (§7): elements taller than a page clip. Say so, loudly. */

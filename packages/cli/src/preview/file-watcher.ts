@@ -128,11 +128,18 @@ async function renderPreviewBook(
  * no per-source wrappers or forced breaks are added, so preview pagination
  * never diverges from the PDF where a source file begins mid-page.
  */
-export function injectPreviewScripts(html: string, insetBleedPt = 0): string {
-  // The project's in-sheet bleed (`page.bleed`, e.g. dtrpg's) is tooling data
-  // for the margin & bleed overlay only. It rides in the preview's book.html
-  // and nowhere else: the built PDF and published HTML never get it.
-  const meta = insetBleedPt > 0 ? `  <meta name="gp-inset-bleed" content="${insetBleedPt}">\n` : "";
+export function injectPreviewScripts(
+  html: string,
+  page?: { width: number; height: number; bleed?: number; safe?: number },
+): string {
+  // The project's page geometry (`page.width`/`height`/`bleed`/`safe`, from the
+  // manifest and its preset) is the safe area & bleed overlay's ONLY input:
+  // no book CSS feeds it. It rides in the preview's book.html and nowhere
+  // else: the built PDF and published HTML never get it.
+  const area = page
+    ? JSON.stringify({ width: page.width, height: page.height, bleed: page.bleed ?? 0, safe: page.safe ?? 0 })
+    : "";
+  const meta = area ? `  <meta name="gp-print-area" content='${area}'>\n` : "";
   const scripts =
     meta
     + '  <script src="/engine/gutterpress-viewer.js"></script>\n  '
@@ -166,7 +173,7 @@ export async function generateAndWriteHtml(
     source?: { files?: string[] | null };
     extensions?: ResolvedExtensionConfig[];
     print?: PrintPadding;
-    page?: { bleed?: number };
+    page?: { width: number; height: number; bleed?: number; safe?: number };
   },
   cssAssets: Map<string, string>,
   imageRefs?: Set<string>
@@ -199,7 +206,7 @@ export async function generateAndWriteHtml(
   }
   await fsp.writeFile(
     path.join(tempDir, BOOK_HTML_FILENAME),
-    injectPreviewScripts(html, config.page?.bleed),
+    injectPreviewScripts(html, config.page),
     "utf-8"
   );
 }

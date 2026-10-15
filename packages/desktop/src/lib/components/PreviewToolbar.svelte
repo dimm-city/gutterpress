@@ -49,7 +49,7 @@
     showLayoutToggle?: boolean;
     readLayout?: ReadLayout;
     onSetReadLayout?: (layout: ReadLayout) => void;
-    /** Margin & bleed overlay (Read AND Edit): on/off, and what the viewer last found. */
+    /** Safe area & bleed overlay (Read AND Edit): on/off, and what the viewer last found. */
     marginOverlay?: boolean;
     overlaySummary?: MarginOverlaySummary | null;
     onToggleMarginOverlay?: () => void;
@@ -144,22 +144,22 @@
   </nav>
 
   <div class="right-tools">
-  <!-- Margin & bleed overlay: a review aid, so it lives next to the zoom it
+  <!-- Safe area & bleed overlay: a review aid, so it lives next to the zoom it
        is read at, and shows in Read and Edit alike. The count is the number of
-       elements that spill past the margins (placed-on-purpose art is not
+       elements that leave the safe area (placed-on-purpose art is not
        counted); the tooltip spells the rest out. -->
   <button
     class="icon-btn overlay-btn"
     class:active={marginOverlay}
     onclick={() => onToggleMarginOverlay()}
     title={overlayLabel}
-    aria-label={marginOverlay ? "Hide margins and bleed" : "Show margins and bleed"}
+    aria-label={marginOverlay ? "Hide safe area and bleed" : "Show safe area and bleed"}
     aria-pressed={marginOverlay}
     data-overlay-issues={overlayIssues}
   >
     <Icon name="frame" size={16} />
     {#if overlayIssues > 0}
-      <span class="overlay-count" aria-label="{overlayIssues} overflowing">{overlayIssues}</span>
+      <span class="overlay-count" aria-label="{overlayIssues} outside the safe area">{overlayIssues}</span>
     {/if}
   </button>
 
