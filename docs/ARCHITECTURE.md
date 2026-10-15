@@ -176,13 +176,14 @@ Formatter (formatter.ts)
     └── JSON format (structured, for CI)
 ```
 
-**36 checks across 4 categories:**
-- **Source (10)**: markdownlint + htmlhint wrappers, print-safety CSS checks
+**40 checks across 4 categories:**
+- **Source (11)**: markdownlint + htmlhint wrappers, print-safety CSS checks
   (PostCSS), an optional CSS ownership contract check (PostCSS —
   [docs/css-ownership-contract.md](./css-ownership-contract.md)), local
   link/ref checks, layout-marker diagnostics, alt-text and heading-order
-  accessibility checks, and leftover sync-merge-marker detection
-- **PDF (15)**: Structure, page size, color spaces, fonts, ink coverage, transparency, bleed, bookmarks, etc.
+  accessibility checks, leftover sync-merge-marker detection, and unusual
+  characters pasted into the markdown
+- **PDF (18)**: Structure, page size, text safe margins, color spaces, fonts, ink coverage, transparency, bleed, bookmarks, etc.
 - **Asset (7)**: Image size/DPI/color space/alpha/TAC and font approval/license checks
 - **Heuristic (4)**: Text density, section density, layer count, placement variance
 

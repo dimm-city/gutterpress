@@ -105,26 +105,35 @@ The preview shows your book's pages exactly as they will print, and updates as y
   last), with a flick of the mouse wheel over the preview, or with the keys below.
 - **Zoom** with the menu at the top right of the preview: **Fit to width** or 25%–200%. The
   starting zoom is set in Settings → App → Preview.
-- **Check the safe area and bleed** with the **Safe area and bleed** button beside the zoom menu.
-  Each page gets a dashed outline of its safe area with the band between it and the trim tinted,
-  and a red band for the bleed with a solid red line at the trim. Anything that leaves the safe
-  area is outlined: amber while it stays on the page, red once it crosses the trim. Art you placed
-  on purpose (full-bleed images, pinned art) is outlined softly and not counted. The number on the
-  button is how many elements leave the safe area; hover for the details. It works in Read and
-  Edit, the app remembers your choice, and it is for your eyes only: it is never printed, never in
-  an exported PDF, and it does not move anything.
-  - **Where the lines come from.** Only your project's print settings: `page.width` and
-    `page.height`, `page.bleed` and `page.safe` in `manifest.yaml`, or your preset's values. Your
-    stylesheet's `@page` margins place your text and never move the lines, and no stylesheet or
-    plugin can hide or restyle the overlay. A DriveThruRPG (`dtrpg`) file already contains 0.125in
-    of bleed on the top, bottom and outer edges (none on the binding edge), so the band and the trim
-    line appear inside the page on those edges. The `dtrpg` and `book` presets set a 0.25in safe
-    area; set `page.safe` (in points) for your printer's. With no bleed or safe area set, that part
-    is not drawn and the button's tooltip says which setting to add.
-  - **Make it louder or quieter, or change its colour** in Settings → App → Preview: *Safe area
-    overlay strength* (Subtle, Normal or Strong: line width, tint and bleed band) and *Safe area
-    overlay colour* (the safe-area outline and tint). The lines stay the same thickness on screen
-    at every zoom. These are app settings, not book CSS.
+- **Check the print overlays** with the **print overlays** button beside the zoom menu. It draws
+  three layers on every page, each in its own colour: the **bleed** (a tinted band outside the
+  trim, with a solid line where the page is cut), the printer's **safe area** (a dashed line for
+  text and a dotted line for art, with the strip beside the trim tinted) and your own **page
+  margins** (a thin solid line). Text, pictures and boxes that leave their safe line are outlined
+  amber while they stay on the page and red once they cross the trim. Art you placed on purpose
+  (full-bleed images, pinned art) is outlined softly and not counted. A small legend in the corner
+  of the preview names each layer with its sizes in inches, says where they come from and counts
+  what was found. The number on the button is how many things leave the safe area; hover for a
+  one-line summary. It works in Read and Edit, the app remembers your choice, and it is for your
+  eyes only: it is never printed, never in an exported PDF, and it does not move anything.
+  - **Pick the layers.** The small arrow beside the button opens a menu with a tick box and a
+    colour swatch for each layer: **Bleed**, **Safe area** and **Page margins**. Ticking one while
+    the overlays are off turns them on.
+  - **Where the lines come from.** The bleed and the safe lines come only from your project's print
+    settings: `page.width` and `page.height`, `page.bleed`, `page.safe` and `page.artSafe` in
+    `manifest.yaml`, or your preset's values. Only the **Page margins** layer reads your
+    stylesheet: your `@page` margins place your text and never move the printer's lines, and no
+    stylesheet or plugin can hide or restyle the overlays. A DriveThruRPG (`dtrpg`) file already
+    contains 0.125in of bleed on the top, bottom and outer edges (none on the binding edge), so the
+    band and the trim line appear inside the page on those edges. The `dtrpg` preset asks for text
+    at least 0.5in inside the trim and art at least 0.25in from the outside edges (0.5in at the
+    binding edge); the `book` preset uses 0.25in for both. Set `page.safe` and `page.artSafe` (in
+    points) for your printer's. With no bleed or safe area set, that part is not drawn and the
+    legend says which setting to add.
+  - **Make it louder or quieter, or change the colours** in Settings → App → Preview: *Print overlay
+    strength* (Subtle, Normal or Strong: line width, tint and bleed band) and a colour for each
+    layer (*Bleed overlay colour*, *Safe area overlay colour*, *Page margins overlay colour*). The
+    lines stay the same thickness on screen at every zoom. These are app settings, not book CSS.
 
 | Key | Does |
 | --- | --- |

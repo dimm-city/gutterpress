@@ -17,18 +17,19 @@ This project follows [Semantic Versioning](https://semver.org/).
   `pdfx: { rasterDpi: 300 }` to make those pictures smaller. Only the
   flattened pages change: vector text and shapes elsewhere, and the book's own
   images, are not resampled.
-- **`page.artSafe`, and the `dtrpg` preset now carries both of DriveThruRPG's
-  safe-area rules.** DriveThruRPG's quick specifications ask for text at least
-  0.5in inside the trim, and for art that does not bleed at least 0.25in from
-  the top, bottom and outside edges (0.5in at the binding). `page.safe` is the
-  text rule, and `dtrpg` sets it to 36pt (0.5in). The new `page.artSafe` is the
-  art rule for the top, bottom and outside edges, and `dtrpg` sets it to 18pt
-  (0.25in); leave it out and art follows `page.safe`.
-  The `book` preset keeps its single 0.25in rule. Both are points in
-  `manifest.yaml` and, like `page.bleed`, they change nothing in the PDF: the
-  preview overlay checks against them, and the `pdf.print.safe-margins` check
-  below reads `page.safe`. The manifest schema's descriptions name the
-  DriveThruRPG rule each number is.
+- **`page.safe` and `page.artSafe` hold the printer's two safe-area rules, and
+  the `dtrpg` preset sets both.** DriveThruRPG's quick specifications ask for
+  text at least 0.5in inside the trim, and for art that does not bleed at least
+  0.25in from the top, bottom and outside edges (0.5in at the binding).
+  `page.safe` is the text rule: 36pt (0.5in) for `dtrpg`, 18pt (0.25in) for
+  `book`. `page.artSafe` is the art rule for the top, bottom and outside edges:
+  18pt (0.25in) for `dtrpg`; where none is set (`book` and `custom` set none),
+  art follows `page.safe`. Both are points in `manifest.yaml` and, like
+  `page.bleed`, they change nothing in the PDF: the print overlays read both,
+  and the `pdf.print.safe-margins` check reads `page.safe`. The `dtrpg` preset
+  also names the DriveThruRPG article its numbers come from, which the overlays'
+  legend links to, and the manifest schema's descriptions say which rule each
+  number is.
 - **Preflight checks that your text keeps clear of the trim.** The new
   `pdf.print.safe-margins` check reads the finished PDF and reports every line
   of text closer to the trim than `page.safe`: 0.5in on every edge for the
@@ -36,64 +37,61 @@ This project follows [Semantic Versioning](https://semver.org/).
   trim, which is the page less the bleed on the top, bottom and outside edges
   only, and the outside edge is the right on odd pages and the left on even
   ones. Each finding names the page, the words, the edge and how far to move
-  them in. Only text is checked: art is judged in the preview's safe-area
-  overlay. It is an error for `dtrpg` books and the `dtrpg` target and a
-  warning for `book`; the `itch` target skips it, and so does a book with no
-  `page.safe`. Run it with `gutterpress validate --target dtrpg` or the
-  desktop's publish preflight, and soften or turn it off with `validate.checks`
-  in `manifest.yaml` like any other check.
-- **Three print overlays you can switch on one at a time, each in its own
-  colour.** The preview overlay is now made of layers. **Bleed** draws the band
-  outside the trim and the trim line. **Safe area** draws the printer's two
-  lines (dashed for text, dotted for art) and the tint between the text line and
-  the trim, and outlines whatever strays. **Page margins** draws each page's own
-  `@page` content box as a thin solid line: it is your book's choice, not the
-  printer's, and when your margins mirror, a left-hand page's box is the mirror
-  of a right-hand page's. In the desktop app the button beside the zoom menu is
-  still the switch for all of it, and the small menu next to it ticks the layers,
-  each with its colour. **Settings, App, Preview** has a colour for each layer
-  (the one colour from before becomes the safe area's) and the strength. In the
-  CLI's preview, Alt+M hides the overlay and shows again the layers you had on.
-  The layers and their colours survive a hot reload. Only the safe area layer
-  checks your book, so with it off there is nothing to count. None of it touches
-  your book: your markup and your page breaks are the same with it on or off.
-- **A legend in the corner of the preview says what you are looking at.** It has
-  one row for each layer that is on, with its sizes in inches and the edges they
-  apply to, such as "Bleed 0.125in — top, bottom, outside; none at the binding"
-  and "Safe area — text 0.5in; art 0.25in (0.5in at the binding)". It says where
-  the numbers come from, a link to the printer's specification for the `dtrpg`
-  preset and `manifest.yaml` otherwise, and what the safe area layer found:
-  "3 text outside the safe area · 1 art outside · 2 in the bleed band", or
-  "everything inside the safe area". It stays in its corner as you scroll and
-  zoom, and it is never printed. It replaces the CLI's status badge, and the
-  desktop button's tooltip is now a one-line summary of the same count.
+  them in. Only text is checked: art is judged by the print overlays' Safe area
+  layer. It is an error for `dtrpg` books and the `dtrpg` target and a warning
+  for `book`; the `itch` target skips it, and so does a book with no
+  `page.safe`. Run it with `gutterpress validate --pdf <file> --target dtrpg`
+  or `gutterpress preflight`; a `--format pdfx` build runs it as its last step.
+  Soften or turn it off with `validate.checks` in `manifest.yaml` like any
+  other check.
+- **Print overlays: the bleed, the safe area and your page margins, each its own
+  layer with its own colour, and a legend that says what the lines mean.** The
+  preview overlay is now three layers you can switch on one at a time. **Bleed**
+  draws the band outside the trim and the trim line. **Safe area** draws the
+  printer's two lines, dashed for text and dotted for art, tints the strip
+  between the text line and the trim, and outlines whatever strays. **Page
+  margins** draws each page's own `@page` content box as a thin solid line: it
+  is your book's choice, not the printer's, and when your margins mirror, a
+  left-hand page's box is the mirror of a right-hand page's. In the desktop app
+  the button beside the zoom menu is the switch for all of it, and the small
+  menu next to it ticks the layers, each with its colour. **Settings, App,
+  Preview** has a colour for each layer (the one colour from before becomes the
+  safe area's) and the strength. In the CLI's preview, Alt+M hides the overlay
+  and shows again the layers you had on. The layers and their colours stay on
+  while you edit and the preview reloads. Only the Safe area layer checks your
+  book, so with it off there is nothing to count. None of it touches your book:
+  your markup and your page breaks are the same with it on or off. A legend in
+  the corner of the preview has a row for each layer that is on, with its sizes
+  in inches and the edges they apply to, such as "Bleed 0.125in — top, bottom,
+  outside; none at the binding" and "Safe area — text 0.5in; art 0.25in (0.5in
+  at the binding)". It says where the numbers come from, a link to the printer's
+  specification for the `dtrpg` preset and `manifest.yaml` otherwise, and what
+  the Safe area layer found: "3 text outside the safe area · 1 art outside · 2
+  in the bleed band", or "everything inside the safe area". It stays in its
+  corner as you scroll and zoom, and it is never printed. It replaces the status
+  badge the CLI's preview showed, and the desktop button's tooltip is now a
+  one-line summary of the same count.
 
 ### Changed
 
-- **The preview overlay shows the printer's safe area, from your print settings
-  only.** The dashed box the **Margins and bleed** button drew was the text block
-  from your `@page` margins, labelled as if it were a safe print area, and it moved
-  whenever the margins did. It is now the **Safe area and bleed** overlay. Its page
-  size, bleed and safe area come only from the project: `page.width`/`height`,
-  `page.bleed`, and a new `page.safe` (the text rule's inset from the trim, in
-  points; the `dtrpg` preset sets DriveThruRPG's 0.5in and `book` a common
-  print-on-demand 0.25in, so set your printer's own). Content outside the safe area is
-  outlined amber, content past the trim red. CSS `@page { bleed }` no longer feeds
-  it. The overlay is drawn above the whole preview, outside the book's own CSS, so no
-  stylesheet or plugin can hide, move or restyle it. Designer mode's
-  green "safe" guide, which was the same margin box, is gone.
-- **The preview overlay checks what is printed, not boxes: text by the text
-  rule, art by the art rule.** It used to outline any element whose box left
-  the safe area, holding a paragraph, a padded wrapper and a picture to one
-  line. Now each line of text is checked against `page.safe`, and each image,
-  video, and any box with a background or a border against `page.artSafe`
-  (`page.safe` at the binding edge). A wrapper that paints nothing is never
-  outlined, only what it holds, and the folios and running heads in your page
-  margins are checked too. Art that runs out to the edge of the page is a bleed
-  done right and passes; art that stops short inside the bleed band is outlined
-  red. The page shows both lines, dashed for text and dotted for art, and the
-  preview's legend and the desktop button's tooltip say what was found, for
-  instance "2 text, 1 art outside the safe area".
+- **The preview overlay takes its sizes from your print settings only, and
+  checks what is printed.** The 0.11.19 **Margins and bleed** button drew the
+  text block from your `@page` margins as if it were a safe print area, so it
+  moved whenever your margins did, and it outlined any element whose box left
+  that block. The print overlays take the page size, the bleed and the safe area
+  only from the project: `page.width`/`height`, `page.bleed`, `page.safe` and
+  `page.artSafe`. They check the ink itself, text by the text rule and art by
+  the art rule: each line of text against `page.safe`, and each image, video and
+  any box with a background or a border against `page.artSafe` (`page.safe` at
+  the binding edge). A wrapper that paints nothing is never outlined, only what
+  it holds, and the folios and running heads in your page margins are checked
+  too. Content outside its safe line is outlined amber and content past the trim
+  red; art that runs out to the edge of the page is a bleed done right and
+  passes, and art that stops short inside the bleed band is outlined red. CSS
+  `@page { bleed }` no longer feeds the overlay, and Designer mode's green
+  "safe" guide, which was the same margin box, is gone. The overlays are drawn
+  above the whole preview, outside the book's own CSS, so no stylesheet or
+  plugin can hide, move or restyle them.
 
 ## [0.11.19] - 2026-10-15
 
