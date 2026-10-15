@@ -98,6 +98,20 @@ This project follows [Semantic Versioning](https://semver.org/).
   above the whole preview, outside the book's own CSS, so no stylesheet or
   plugin can hide, move or restyle them.
 
+### Fixed
+
+- **The preview repeats a table header only where print does.** Print repeats
+  a `<thead>` on every page a table runs onto while it is
+  `display: table-header-group`, the default; a book that sets
+  `thead { display: table-row-group }` gets the header once, at the top. The
+  preview drew the repeated header for every table with a `<thead>`, whatever
+  its `display`, so a book had to hide the preview's own inserted row to match
+  its PDF. It now reads the same standard CSS (and `<tfoot>` with
+  `table-footer-group`). Where the header does repeat, the preview's copy now
+  keeps the header's colour, letter case, letter spacing and vertical
+  alignment; it kept only the font, alignment, padding, border and background,
+  so an uppercase header bar came back in the source text's case.
+
 ## [0.11.19] - 2026-10-15
 
 ### Added
