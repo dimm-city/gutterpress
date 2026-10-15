@@ -322,6 +322,9 @@ PDF/X conversion settings, used by `gutterpress build --format pdfx`.
 - `icc` (string) - Path to the ICC output-intent profile. Default `profiles/CGATS21_CRPC1.icc`.
 - `stripAnnotations` (boolean) - Strip links/comments, which PDF/X-1a forbids. Default `true`.
 - `blackText` (string) - `icc` converts near-black text through the ICC profile (rich four-colour black); `k-only` prints it on the black plate alone (100% K), as DriveThruRPG requires for small text: text at or below 24pt, and the underline or strike-through drawn with it. Text larger than 24pt stays rich black, as DriveThruRPG recommends; other black (rules, panels) is unaffected. With `k-only`, `pdf.print.black-text` warns when small text is still printed in a dark four-colour mix (black, or a dark colour such as a dark brown, which keeps its colour), and the choice is recorded in `build-fingerprint.json`. Preset defaults: `dtrpg` `k-only`, `book`/`custom` `icc`.
+- `transparency` (string) - `flatten-page` (default) leaves a page that uses transparency to Ghostscript, which flattens the whole page and loses its text; `preserve-text` flattens only the artwork to a picture (300 DPI, or `rasterDpi`) and keeps the text live on top, except on pages whose text is itself translucent or blended, uses a Type 3 font, or is pattern-filled or a clip, and pages with a repeating or conic gradient, which fall back to `flatten-page`. See `docs/publishing.md`.
+- `flattenPages` (integer[]) - with `preserve-text`, pages (as the build numbers them) flattened whole anyway, e.g. a page with a cover or tint over its text. Default: none.
+- `rasterDpi` (integer, 72-2400) - resolution of every picture made from a transparent page (whole-page flattening and `preserve-text` artwork). Unset: 720 for whole pages, 300 for `preserve-text` artwork.
 
 #### `print` (object)
 Page-count rules applied when the PDF is built.

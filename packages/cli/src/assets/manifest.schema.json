@@ -154,6 +154,25 @@
           "description": "How near-black text is separated. `icc` converts it through the ICC profile (rich, four-colour black). `k-only` prints it on the black plate alone (100% K), which print vendors such as DriveThruRPG require for small text. Non-text black (rules, panels) is unaffected. Preset defaults: dtrpg `k-only`, book `icc`.",
           "enum": ["icc", "k-only"],
           "default": "icc"
+        },
+        "transparency": {
+          "type": "string",
+          "description": "What a PDF/X build does with a page that uses transparency (an alpha-channel image, a soft `rgba()` shadow, CSS `opacity` or `mix-blend-mode`), which PDF/X (PDF 1.3) cannot represent. `flatten-page` leaves the page to Ghostscript, which rasterizes the WHOLE page: it looks right but loses the page's text and fonts. `preserve-text` flattens only the artwork to a picture (300 DPI, or `rasterDpi`) and draws the text live on top, so the page stays searchable. Text is then always the top layer (text another element covers shows through), and a page whose text is itself translucent, blended, inside a transparency group or set in a Type 3 font (e.g. synthetic bold) falls back to `flatten-page`. Set `validate.assets.allowAlpha: true` to use alpha-channel images. Same for every preset: `flatten-page`.",
+          "enum": ["flatten-page", "preserve-text"],
+          "default": "flatten-page"
+        },
+        "flattenPages": {
+          "type": "array",
+          "description": "With `transparency: preserve-text`: pages (1-based, the numbers the build reports) left to Ghostscript's whole-page flattening even if they could be split, e.g. a page whose look depends on a cover or tint painted over its text. Page numbers move when the book reflows. Default: none.",
+          "items": { "type": "integer", "minimum": 1 },
+          "examples": [[4, 13]]
+        },
+        "rasterDpi": {
+          "type": "integer",
+          "description": "Resolution (DPI) of every picture made from a page that uses transparency: the whole pages Ghostscript flattens and the `preserve-text` artwork. Vector content and the book's own images are not resampled. Unset: Ghostscript's default (720) for whole pages, 300 for `preserve-text` artwork.",
+          "minimum": 72,
+          "maximum": 2400,
+          "examples": [300]
         }
       }
     },

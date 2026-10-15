@@ -105,6 +105,134 @@ never passed on a child-process command line (butler and the SWA CLI receive
 them via environment variables; Google Drive's client makes its own `fetch`
 calls, no child process at all).
 
+## PDF/X and transparency {#pdfx-transparency}
+
+`--format pdfx` (PDF/X-1a, PDF/X-3) is built on PDF 1.3, which cannot represent
+transparency. Soft or `rgba()` box-shadows, alpha-channel PNGs, `opacity`, and
+blend modes all need it. Ghostscript's own answer is to flatten the whole page
+into one bitmap, text included, so the page loses its fonts and `pdftotext`
+finds nothing. The build warns when a book does this.
+
+`pdfx.transparency` in `manifest.yaml` chooses what happens (the same default in
+every preset):
+
+```yaml
+pdfx:
+  transparency: flatten-page   # default
+  # transparency: preserve-text
+  # flattenPages: [4, 13]      # preserve-text: pages to flatten whole anyway
+  # rasterDpi: 300             # resolution of pictures made from transparent pages
+```
+
+- **`flatten-page`** (default): the page is left to Ghostscript, which flattens
+  the whole page. What you see is what the page looked like, but its text is
+  gone. Occlusion is preserved: an element painted over text still hides it.
+- **`preserve-text`** (opt-in): Gutterpress flattens the artwork itself and keeps
+  the text live, on the pages where that is faithful.
+  1. Pages that use transparency are found. Every other page is left as it is,
+     vector text and shapes. A transparent page that shows no text has nothing
+     to keep, so Ghostscript flattens it whole, as in `flatten-page`.
+  2. On each such page the **artwork** (everything except the glyphs) is
+     composited into one opaque image (300 DPI, or `pdfx.rasterDpi`), and the
+     **text** is kept as live
+     vector text drawn on top of it. Page boxes (Trim, Bleed, Crop), links and
+     the document's metadata stay as they were.
+  3. The usual PDF/X steps run on the result, so `pdfx.blackText: k-only` still
+     reaches the text on these pages.
+
+  The build reports three groups: pages that kept their text live, pages that
+  show no text, and text pages that fell back (below), and it says so when no
+  page kept its text. Alpha-channel images are still flagged by
+  the `dtrpg` preset (`validate.assets.allowAlpha: false`); a book that opts in
+  and uses them sets `allowAlpha: true` itself.
+
+Under `preserve-text`, to check the result:
+
+```bash
+pdftotext -f 3 -l 3 dist/my-book/my-book-pdfx.pdf -   # the page's words
+pdffonts dist/my-book/my-book-pdfx.pdf                 # every font embedded
+```
+
+`examples/with-print-effects/` is a small book with one effect per page.
+
+**Fallback.** Four kinds of page cannot be split:
+
+- A page whose text is itself drawn with transparency: `opacity` or
+  `mix-blend-mode` on a text block, translucent glyph colour, a soft mask over
+  the text, or a translucent or knockout group around it. Drawing that text
+  opaque on top of a picture changes how it looks (faint text prints solid,
+  multiplied text changes colour).
+- A page whose text uses a Type 3 font. Chromium emits one for glyphs it can
+  only draw as paths: the synthetic bold of `font-weight: 700` on a webfont
+  that has only a regular face, and any text with `-webkit-text-stroke`, even
+  in a real bold face (`pdffonts` lists it as `Type 3`). The text layer keeps
+  no vector paths, so that text would print nothing. For a synthetic bold, use
+  a face with that weight or set the font's own weight; for a stroke, remove it
+  or accept the fallback.
+- A page whose text is painted with a pattern or used as a clip: SVG
+  `<text fill="url(#…)">`, a gradient text fill, `background-clip: text`. The
+  picture loses the glyphs and the text layer loses their paint, so that text
+  would vanish.
+- A page with a `repeating-linear-gradient()`, `repeating-radial-gradient()`,
+  `repeating-conic-gradient()` or `conic-gradient()`. Chromium prints these as
+  a PostScript-function shading, which the artwork picture renders with
+  irregular stripes (#386). The check is conservative: it also sends a page to
+  the fallback when Ghostscript would have painted that gradient correctly
+  (a `conic-gradient()` did on Ghostscript 10.06), so the page loses its live
+  text either way.
+
+Such pages are not split and go to Ghostscript exactly as in `flatten-page`;
+the build names them, each with the first cause it found. A page can have more
+than one, so fixing the named cause can reveal another.
+
+**Flattening chosen pages whole.** `pdfx.flattenPages` lists pages that
+`preserve-text` leaves to Ghostscript's whole-page flattening even though they
+could be split, using the page numbers the build reports (the PDF's own page
+order, not printed folios). Use it for a page whose look depends on something
+painted over its text, such as a cover or a tint (see the limits below), so the
+rest of the book can still keep its text. Page numbers move when the book
+reflows: check the build's report after editing. A listed page with no
+transparency is never flattened; the build warns about it.
+
+**Picture resolution.** `pdfx.rasterDpi` sets the resolution of every picture
+made from a transparent page: the whole pages Ghostscript flattens and the
+`preserve-text` artwork. Unset, Ghostscript flattens whole pages at its default
+of 720 DPI and the `preserve-text` artwork is 300 DPI. It changes nothing else:
+vector text and shapes, and the book's own images, are not resampled. Lower is
+smaller and softer; fine rules and textures show it first. These pictures are
+compressed losslessly.
+
+Known limits of the pages that are split:
+
+- Rules, backgrounds and shapes are part of the picture, not vectors, so fine
+  rules lose their vector sharpness.
+- File size depends on the book's content and on `pdfx.rasterDpi`: each split
+  page carries a full-page picture, and a whole-page fallback carries
+  Ghostscript's own page image. Measured on the 228-page Dimm City Field Guide
+  against `flatten-page`, the same source came out smaller with `preserve-text`
+  (one styling 1126 MB to 235 MB, another 140 MB to 45 MB), mostly because of
+  the picture resolution (300 against 720 DPI); `pdfx.rasterDpi` gets that
+  saving in either mode. Keeping the text live is `preserve-text`'s benefit,
+  not the size. Compare PDF/X against PDF/X: an RGB `--format pdf` build is not
+  a baseline for a CMYK PDF/X file. One blend mode
+  anywhere in a book can make Chromium wrap most of its pages in transparency
+  groups, so many more pages are split than the effect's own pages.
+- Text is always the top layer. If another element is painted over text, the
+  text still shows through, and a translucent tint over text no longer tints
+  it. List such pages in `pdfx.flattenPages`; do not use `preserve-text` for
+  a book whose look depends on shapes or tints painted over text throughout.
+- Keep CSS `filter` off text-bearing elements: Chromium rasterizes those into
+  the PDF itself, before this step.
+
+The build lists each fallback page with its cause and the change that fixes it.
+Check a `preserve-text` build visually as well as with `pdftotext`: text that
+extracts can still be painted wrong.
+
+**For plugin authors.** A plugin cannot choose this; the book's author opts in
+with `pdfx.transparency`. If your styles rely on it, say so in your docs, keep
+glyph colours opaque and `opacity`/`mix-blend-mode` off text blocks, and don't
+paint over text.
+
 ## Architecture
 
 Everything lives in the lib (`packages/cli/src/lib/publish/`) and is consumed

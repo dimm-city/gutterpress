@@ -69,6 +69,10 @@ export const DTRPG_PRESET: VendorPreset = {
     // CONVENTION (#331): near-black text on the black plate alone, so small
     // type is not registered across four plates. Not a DriveThru rule.
     blackText: "k-only",
+    // CONVENTION (#385): the safe default. Books opt in to `preserve-text`.
+    transparency: "flatten-page",
+    flattenPages: [],
+    rasterDpi: undefined,
   },
   page: {
     // GUIDE: 8.625 x 11.25in is the interior FILE size for an 8.5 x 11in book:
@@ -200,6 +204,9 @@ export const BOOK_PRESET: VendorPreset = {
     icc: "profiles/CGATS21_CRPC1.icc",
     stripAnnotations: true,
     blackText: "icc",
+    transparency: "flatten-page",
+    flattenPages: [],
+    rasterDpi: undefined,
   },
   page: {
     width: 432,

@@ -12,7 +12,8 @@ import { resolveOutputDir, artifactName, BOOK_HTML } from "./output-paths";
 import {
   convertToPdfxCmyk,
   findPostScriptShadingPages,
-  hasLiveTransparency,
+  flattenTransparentPages,
+  transparentPages,
   stampCreator,
   stripAnnotations,
 } from "./ghostscript";
@@ -831,6 +832,7 @@ class PdfOutput implements OutputStrategy {
         const icc = opts.iccPath ?? config.pdfx.icc;
         effectiveIccPath = await resolveIccProfile(icc, manifestDir, opts.iccPath);
 
+        const rawBytes = await fsp.readFile(rawPdf);
         // B.10: PDF/X-1a and PDF/X-3 are built at PDF 1.3 compatibility,
         // which cannot represent live transparency at all — an alpha-channel
         // image OR a CSS `opacity`/`mix-blend-mode` rule forces Ghostscript
@@ -839,8 +841,122 @@ class PdfOutput implements OutputStrategy {
         // changing PDF/X conformance (PDF/X-1a and PDF/X-3 are both
         // PDF-1.3-based by spec, not a Gutterpress default), so warn
         // precisely rather than let the author discover a fontless page
-        // after the fact.
-        if (await hasLiveTransparency(await fsp.readFile(rawPdf))) {
+        // after the fact. `pdfx.transparency: preserve-text` (#385) is the
+        // opt-in alternative: flatten the artwork ourselves and keep the text
+        // live, on the pages where that is faithful. Runs before annotation
+        // stripping and the black-text rewrite so both see the merged pages.
+        const transparent = await transparentPages(rawBytes);
+
+        // #386: Ghostscript 10.x cannot convert the PostScript-function
+        // shadings Chromium emits for repeating-*-gradient() and
+        // conic-gradient() as vectors; it logs "error in pattern" and paints
+        // nothing. A page Ghostscript flattens whole (it has transparency, and
+        // is never split below) keeps the gradient in its page image instead,
+        // at the cost of that page's live text. Checked on the raw PDF, before
+        // the flatten below redraws any page.
+        const blankGradientPages = await findPostScriptShadingPages(rawBytes);
+        const flattenedGradientPages = blankGradientPages.filter((n) => transparent.includes(n));
+        const vectorGradientPages = blankGradientPages.filter((n) => !transparent.includes(n));
+        const GRADIENT_FIX =
+          "Replace it with a plain linear-gradient() or radial-gradient(), or a small tiled image. " +
+          "For 0deg/90deg stripes, `linear-gradient(90deg, #b33 0 6px, #c8c5bf 6px 10px)` with " +
+          "`background-size: 10px 100%` converts correctly.";
+        const pageList = (pages: number[]) => `Page${pages.length === 1 ? "" : "s"} ${pages.join(", ")}`;
+        if (vectorGradientPages.length > 0) {
+          log.warn(
+            `${pageList(vectorGradientPages)}: a repeating-*-gradient() or conic-gradient() can print blank or distorted — ` +
+              `Ghostscript has been seen to paint nothing, or irregular stripes, for it when converting to PDF/X; ` +
+              `check the page visually. ${GRADIENT_FIX}`
+          );
+        }
+        if (flattenedGradientPages.length > 0) {
+          log.warn(
+            `${pageList(flattenedGradientPages)}: a repeating-*-gradient() or conic-gradient() is painted only as part of ` +
+              "the one raster image Ghostscript makes of the whole page, so the page loses its embedded fonts " +
+              `and searchable text. Check the page visually. ${GRADIENT_FIX}`
+          );
+        }
+
+        const flattenPages = config.pdfx.flattenPages;
+        if (transparent.length > 0 && config.pdfx.transparency === "preserve-text") {
+          const { unsplittableTextReasons } = await import("./pdf-inspect");
+          const reasons = await unsplittableTextReasons(rawBytes);
+          // A page that shows no text has nothing to keep: Ghostscript's
+          // whole-page flattening is as good, so it is not split.
+          const artOnly = transparent.filter((n) => reasons.get(n) === "no-text" && !flattenPages.includes(n));
+          const blocked = new Map<number, string>();
+          // The author's list wins: it is the reason they will look for.
+          for (const n of flattenPages) blocked.set(n, "listed");
+          for (const [n, reason] of reasons) if (reason !== "no-text" && !blocked.has(n)) blocked.set(n, reason);
+          // A repeating/conic gradient (#386) is a PostScript-function shading
+          // the artwork raster pass distorts, so its page is not split either.
+          for (const n of blankGradientPages) if (!blocked.has(n)) blocked.set(n, "gradient");
+          const split = transparent.filter((n) => !blocked.has(n) && !artOnly.includes(n));
+          const kept = transparent.filter((n) => blocked.has(n) && !artOnly.includes(n));
+          await flattenTransparentPages(rawPdf, split, stage, config.pdfx.rasterDpi);
+          const x = pdfxMode === "x1a" ? "X-1a" : "X-3";
+          const dpi = config.pdfx.rasterDpi ?? 300;
+          if (split.length > 0) {
+            log.warn(
+              `${pageList(split)} use${split.length === 1 ? "s" : ""} ` +
+                `transparency, which PDF/${x} (PDF 1.3) cannot represent. ` +
+                `Each was flattened to a ${dpi} DPI picture with its text kept live on top ` +
+                "(pdfx.transparency: preserve-text), so fonts and searchable text survive. " +
+                "On those pages, rules, backgrounds and shapes are raster, and text always " +
+                "sits above the artwork: text another element covers shows through. " +
+                "List a page in pdfx.flattenPages to flatten it whole instead."
+            );
+          }
+          if (artOnly.length > 0) {
+            log.info(
+              `${pageList(artOnly)} use${artOnly.length === 1 ? "s" : ""} transparency but show${artOnly.length === 1 ? "s" : ""} no text, ` +
+                "so there is no text to keep: Ghostscript flattens " +
+                `${artOnly.length === 1 ? "it" : "each"} whole (resolution: pdfx.rasterDpi).`
+            );
+          }
+          if (kept.length > 0) {
+            // One line per cause, each with its fix: the causes need different author changes.
+            const CAUSE: Record<string, string> = {
+              listed: "listed in pdfx.flattenPages",
+              "text-transparency":
+                "text drawn with transparency or blending (opacity, mix-blend-mode, a soft mask, a translucent text-shadow); keep that text opaque",
+              "type3-font":
+                "text in a Type 3 font: for a synthetic bold (a weight the font has no face for), use a face with that weight or set the font's own weight; for -webkit-text-stroke, remove the stroke or accept this fallback",
+              "text-pattern-or-clip":
+                "text filled with a pattern or used as a clip (SVG fill=\"url(#…)\", gradient text, background-clip: text)",
+              gradient:
+                "a repeating or conic gradient; use a linear or radial gradient, or a small tiled image",
+            };
+            const byCause = new Map<string, number[]>();
+            for (const n of kept) {
+              const cause = blocked.get(n)!;
+              byCause.set(cause, [...(byCause.get(cause) ?? []), n]);
+            }
+            log.warn(
+              `${pageList(kept)} could not keep ${kept.length === 1 ? "its" : "their"} text live; ` +
+                `Ghostscript will flatten ${kept.length === 1 ? "that page" : "each of those pages"} into one raster image, ` +
+                "losing its embedded fonts and searchable text. Each page lists the first cause found; " +
+                "fixing it can reveal another:\n" +
+                [...byCause].map(([cause, pages]) => `  - page${pages.length === 1 ? "" : "s"} ${pages.join(", ")}: ${CAUSE[cause]}`).join("\n")
+            );
+          }
+          if (split.length === 0 && kept.length > 0) {
+            log.warn(
+              "pdfx.transparency: preserve-text kept no page's text live in this book: " +
+                "every page with transparency and text falls back (see above)."
+            );
+          }
+        }
+        const unused = flattenPages.filter((n) => !transparent.includes(n));
+        if (flattenPages.length > 0 && config.pdfx.transparency !== "preserve-text") {
+          log.warn("pdfx.flattenPages has no effect without pdfx.transparency: preserve-text.");
+        } else if (unused.length > 0) {
+          log.warn(
+            `pdfx.flattenPages lists ${pageList(unused).toLowerCase()}, which ${unused.length === 1 ? "has" : "have"} no transparency ` +
+              "(or do not exist): nothing to flatten there."
+          );
+        }
+        if (transparent.length > 0 && config.pdfx.transparency !== "preserve-text") {
           log.warn(
             "This book uses transparency — an image with an alpha channel, or a CSS " +
               "rule like `opacity` or `mix-blend-mode`. " +
@@ -851,22 +967,9 @@ class PdfOutput implements OutputStrategy {
               "PDF/X output. To keep vector text, remove the `opacity`/blend rule and " +
               "flatten any alpha-channel image against its intended background before " +
               "including it (export it with no alpha channel), or build --format pdf " +
-              "instead of pdfx if this book doesn't need print-ready CMYK."
-          );
-        }
-
-        // #386: Ghostscript 10.x cannot convert the PostScript-function
-        // shadings Chromium emits for repeating-*-gradient() and
-        // conic-gradient(); it logs "error in pattern" and paints nothing.
-        const blankGradientPages = await findPostScriptShadingPages(await fsp.readFile(rawPdf));
-        if (blankGradientPages.length > 0) {
-          log.warn(
-            `Page${blankGradientPages.length === 1 ? "" : "s"} ${blankGradientPages.join(", ")}: ` +
-              "a repeating-*-gradient() or conic-gradient() will print blank — " +
-              "Ghostscript cannot convert it to PDF/X. Replace it with a plain linear-gradient() or " +
-              "radial-gradient(), or a small tiled image. For 0deg/90deg stripes, " +
-              "`linear-gradient(90deg, #b33 0 6px, #c8c5bf 6px 10px)` with " +
-              "`background-size: 10px 100%` converts correctly."
+              "instead of pdfx if this book doesn't need print-ready CMYK. " +
+              "Or set `pdfx.transparency: preserve-text` to keep the text live on the " +
+              "pages where that is possible."
           );
         }
 
@@ -889,6 +992,7 @@ class PdfOutput implements OutputStrategy {
           title: config.title,
           maxTac: config.ink.maxTac,
           stagingDir: stage,
+          rasterDpi: config.pdfx.rasterDpi,
         });
       }
 

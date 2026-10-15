@@ -3,12 +3,13 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PDFName as PdfName } from "pdf-lib";
 import * as execMod from "./exec";
 import * as toolProbe from "./tool-probe";
 import { log } from "../utils/logger";
 import {
   convertToPdfxCmyk,
-  hasLiveTransparency,
+  transparentPages,
   resolveGhostscript,
   stripAnnotations,
 } from "./ghostscript";
@@ -159,6 +160,35 @@ test("convertToPdfxCmyk uses resolved Ghostscript and stages its definition file
   }
 });
 
+test("convertToPdfxCmyk passes pdfx.rasterDpi to Ghostscript only when set", async () => {
+  const stagingDir = await mkdtemp(join(tmpdir(), "gutterpress-gs-dpi-"));
+  try {
+    const executable = join(stagingDir, "custom-gs");
+    await writeFile(executable, "");
+    process.env.GHOSTSCRIPT_PATH = executable;
+    const spawnSpy = spyOn(execMod, "spawnCapture").mockResolvedValue({
+      code: 0,
+      signal: null,
+      stdout: "",
+      stderr: "",
+    });
+    const convert = (rasterDpi?: number) =>
+      convertToPdfxCmyk(join(stagingDir, "raw.pdf"), join(stagingDir, "out.pdf"), {
+        iccPath: join(stagingDir, "profile.icc"),
+        pdfx: "x1a",
+        stagingDir,
+        rasterDpi,
+      });
+    await convert();
+    await convert(300);
+    const resolutions = spawnSpy.mock.calls.map((c) => (c[1] as string[]).filter((a) => a.startsWith("-r")));
+    expect(resolutions).toEqual([[], ["-r300"]]);
+    spawnSpy.mockRestore();
+  } finally {
+    await rm(stagingDir, { recursive: true, force: true });
+  }
+});
+
 test("convertToPdfxCmyk logs Ghostscript's warnings block instead of discarding it", async () => {
   const stagingDir = await mkdtemp(join(tmpdir(), "gutterpress-gs-warn-"));
   try {
@@ -220,47 +250,68 @@ test("convertToPdfxCmyk reports a Ghostscript crash with its version", async () 
   }
 });
 
-describe("hasLiveTransparency", () => {
+describe("transparentPages", () => {
   /**
-   * Build a real (pdf-lib-parseable) one-page PDF whose page dict carries the
-   * given extra entries, optionally alongside an extra indirect object. Real
-   * structure matters here: the predicate walks the parsed object graph, and
-   * the regression it exists to catch is precisely that a raw-byte scan
-   * cannot see dicts Chromium packs into compressed object streams.
+   * Build a real (pdf-lib-parseable) PDF whose pages carry the entries the
+   * callback adds. Real structure matters here: the predicate walks each
+   * page's parsed object graph, and the regression it exists to catch is
+   * precisely that a raw-byte scan cannot see dicts Chromium packs into
+   * compressed object streams.
    */
   async function pdfWith(
-    mutate: (ctx: import("pdf-lib").PDFContext, page: import("pdf-lib").PDFPage) => void,
-    useObjectStreams = false
+    mutate: (
+      ctx: import("pdf-lib").PDFContext,
+      pages: import("pdf-lib").PDFPage[]
+    ) => void,
+    useObjectStreams = false,
+    pageCount = 1
   ): Promise<Uint8Array> {
     const { PDFDocument } = await import("pdf-lib");
     const doc = await PDFDocument.create();
-    const page = doc.addPage([100, 100]);
-    mutate(doc.context, page);
+    const pages = Array.from({ length: pageCount }, () => doc.addPage([100, 100]));
+    mutate(doc.context, pages);
     return doc.save({ useObjectStreams });
   }
 
-  test("false on a plain opaque PDF", async () => {
-    expect(await hasLiveTransparency(await pdfWith(() => {}))).toBe(false);
+  /** Put `obj` in the page's `/Resources /<kind> /X`, the way Chromium does. */
+  function attach(
+    ctx: import("pdf-lib").PDFContext,
+    page: import("pdf-lib").PDFPage,
+    kind: string,
+    obj: import("pdf-lib").PDFObject
+  ) {
+    
+    page.node.set(PdfName.of("Resources"), ctx.obj({ [kind]: { X: ctx.register(obj) } }));
+  }
+
+  test("none on a plain opaque PDF", async () => {
+    expect(await transparentPages(await pdfWith(() => {}))).toEqual([]);
   });
 
   test("detects an alpha-channel image (/SMask on an image XObject)", async () => {
     const { PDFName, PDFRawStream } = await import("pdf-lib");
-    const pdf = await pdfWith((ctx) => {
+    const pdf = await pdfWith((ctx, [page]) => {
       const mask = ctx.register(PDFRawStream.of(ctx.obj({}), new Uint8Array([0])));
-      ctx.register(
+      attach(
+        ctx,
+        page!,
+        "XObject",
         PDFRawStream.of(
           ctx.obj({ Type: PDFName.of("XObject"), Subtype: PDFName.of("Image"), SMask: mask }),
           new Uint8Array([0])
         )
       );
     });
-    expect(await hasLiveTransparency(pdf)).toBe(true);
+    expect(await transparentPages(pdf)).toEqual([1]);
   });
 
   test("does not false-positive on an opaque image's /SMask /None", async () => {
     const { PDFName, PDFRawStream } = await import("pdf-lib");
-    const pdf = await pdfWith((ctx) => {
-      ctx.register(
+    const pdf = await pdfWith((ctx, [page]) => {
+      attach(
+        ctx,
+        page!,
+        "XObject",
         PDFRawStream.of(
           ctx.obj({
             Type: PDFName.of("XObject"),
@@ -271,39 +322,61 @@ describe("hasLiveTransparency", () => {
         )
       );
     });
-    expect(await hasLiveTransparency(pdf)).toBe(false);
+    expect(await transparentPages(pdf)).toEqual([]);
   });
 
   test("detects a CSS-opacity transparency group even inside an object stream", async () => {
     const { PDFName } = await import("pdf-lib");
     // useObjectStreams: true is the case the previous raw-regex scan missed —
     // a CSS `opacity` book rasterized to zero embedded fonts with no warning.
-    const pdf = await pdfWith((ctx, page) => {
-      page.node.set(
+    const pdf = await pdfWith((ctx, [page]) => {
+      page!.node.set(
         PDFName.of("Group"),
         ctx.obj({ S: PDFName.of("Transparency"), Type: PDFName.of("Group") })
       );
     }, true);
-    expect(await hasLiveTransparency(pdf)).toBe(true);
+    expect(await transparentPages(pdf)).toEqual([1]);
   });
 
-  test("detects graphics-state constant alpha (/ca < 1)", async () => {
+  test("detects graphics-state constant alpha (/ca < 1) and names only that page", async () => {
     const { PDFName } = await import("pdf-lib");
-    const pdf = await pdfWith((ctx) => {
-      ctx.register(ctx.obj({ Type: PDFName.of("ExtGState"), ca: 0.5 }));
-    }, true);
-    expect(await hasLiveTransparency(pdf)).toBe(true);
+    const pdf = await pdfWith(
+      (ctx, pages) => {
+        attach(ctx, pages[1]!, "ExtGState", ctx.obj({ Type: PDFName.of("ExtGState"), ca: 0.5 }));
+      },
+      true,
+      3
+    );
+    expect(await transparentPages(pdf)).toEqual([2]);
   });
 
-  test("does not false-positive on a fully opaque graphics state (/ca 1)", async () => {
+  test("detects a non-Normal blend mode", async () => {
     const { PDFName } = await import("pdf-lib");
-    const pdf = await pdfWith((ctx) => {
-      ctx.register(ctx.obj({ Type: PDFName.of("ExtGState"), ca: 1, CA: 1 }));
-    }, true);
-    expect(await hasLiveTransparency(pdf)).toBe(false);
+    const pdf = await pdfWith((ctx, [page]) => {
+      attach(
+        ctx,
+        page!,
+        "ExtGState",
+        ctx.obj({ Type: PDFName.of("ExtGState"), BM: PDFName.of("Multiply") })
+      );
+    });
+    expect(await transparentPages(pdf)).toEqual([1]);
   });
 
-  test("returns false rather than throwing on bytes that are not a PDF", async () => {
-    expect(await hasLiveTransparency(Buffer.from("not a pdf at all"))).toBe(false);
+  test("does not false-positive on a fully opaque graphics state or /BM /Normal", async () => {
+    const { PDFName } = await import("pdf-lib");
+    const pdf = await pdfWith((ctx, [page]) => {
+      attach(
+        ctx,
+        page!,
+        "ExtGState",
+        ctx.obj({ Type: PDFName.of("ExtGState"), ca: 1, CA: 1, BM: PDFName.of("Normal") })
+      );
+    }, true);
+    expect(await transparentPages(pdf)).toEqual([]);
+  });
+
+  test("returns none rather than throwing on bytes that are not a PDF", async () => {
+    expect(await transparentPages(Buffer.from("not a pdf at all"))).toEqual([]);
   });
 });
