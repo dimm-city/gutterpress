@@ -34,7 +34,7 @@
  *     the binding edge `page.safe` (no bleed there) — the manifest's print
  *     area (print-area.ts), so a book with none sets 0, the paper's edge.
  *  4. `.gp-flush` on the pin zeroes the four properties in plain CSS: the
- *     opt-in escape hatch to the paper's edge (the markdown pipeline warns).
+ *     opt-in escape hatch to the paper's edge (the markdown pipeline notes it).
  *     Nothing else here knows about it.
  *
  * Sides. Recto values are the defaults (`@page :right`'s margins, the

@@ -67,7 +67,7 @@ export interface LayoutWarning {
   type: string;
   message: string;
   marker?: unknown;
-  /** Set only by a component's `validate`; absent means `"warning"`. */
+  /** Set by a component's `validate` and by `flush_art`; absent means `"warning"`. */
   severity?: "error" | "warning" | "info";
 }
 

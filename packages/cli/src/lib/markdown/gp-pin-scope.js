@@ -22,10 +22,11 @@ import { GP_CLASSES } from "./gutterpress-css.ts";
 
 /** Local copy of `markers.js`'s private `warn`: env.layoutWarnings is the
  * shared diagnostic channel both write to, and `markers.js` does not export
- * the helper. */
-function warn(env, line, type, message, marker) {
+ * the helper. `severity` is left off unless given; its absence reads as
+ * `warning`. */
+function warn(env, line, type, message, severity) {
   if (!env.layoutWarnings) env.layoutWarnings = [];
-  env.layoutWarnings.push({ line, type, message, marker });
+  env.layoutWarnings.push(severity ? { line, type, message, severity } : { line, type, message });
 }
 
 /**
@@ -91,9 +92,9 @@ const FLUSH_ART_MSG =
  * sits ON that line without it — engine/shared/pin-edges.ts), so it is said
  * out loud, once per image, at the image's line: the same `env.layoutWarnings`
  * channel `gutterpress validate` and the desktop's Problems panel read
- * (`source.markdown.layout-markers`), at that channel's default severity,
- * `warning`. Without `.gp-pin` and an edge word the class does nothing, so
- * it says nothing either.
+ * (`source.markdown.layout-markers`), as an `info`: the author chose the
+ * class, so it is a note, not a warning. Without `.gp-pin` and an edge word
+ * the class does nothing, so it says nothing either.
  */
 function checkFlushArt(token, env, line) {
   if (token.type !== 'image') return;
@@ -102,7 +103,7 @@ function checkFlushArt(token, env, line) {
   const classes = cls.split(/\s+/);
   if (!classes.includes('gp-pin') || !classes.includes('gp-flush')) return;
   if (!classes.some((c) => PIN_EDGES.includes(c))) return;
-  warn(env, line, 'flush_art', FLUSH_ART_MSG);
+  warn(env, line, 'flush_art', FLUSH_ART_MSG, 'info');
 }
 
 /**

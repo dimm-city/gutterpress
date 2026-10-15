@@ -1451,7 +1451,7 @@ describe("pin_outside_page warning (gp_pin_scope_check)", () => {
 // flush_art: `.gp-flush` is the escape hatch past the printer's art-safe line
 // (a pin sits ON that line without it), so every image that takes it is said
 // out loud, once, on the channel validate and the Problems panel read.
-describe("flush_art warning (gp_pin_scope_check)", () => {
+describe("flush_art info (gp_pin_scope_check)", () => {
   function flushWarnings(src: string): LayoutWarning[] {
     const md = createMarkdownRenderer();
     const env: PagedEnv = {};
@@ -1459,11 +1459,11 @@ describe("flush_art warning (gp_pin_scope_check)", () => {
     return (env.layoutWarnings ?? []).filter((w) => w.type === "flush_art");
   }
 
-  test("an edge-pinned image with .gp-flush warns once, on its line, at the channel's warning severity", () => {
+  test("an edge-pinned image with .gp-flush is noted once, on its line, as an info", () => {
     const warnings = flushWarnings("@page\n\ntext\n\n![Wall](wall.png){.gp-pin .gp-bottom .gp-flush}\n");
     expect(warnings).toHaveLength(1);
     expect(warnings[0]!.line).toBe(5);
-    expect(warnings[0]!.severity).toBeUndefined(); // = "warning" (see LayoutWarning)
+    expect(warnings[0]!.severity).toBe("info");
     expect(warnings[0]!.message).toBe(
       "`.gp-flush` puts this image on the paper's edge, past the printer's safe area. Printers trim up to 0.125in there, so keep it for art that is meant to bleed off the page.",
     );

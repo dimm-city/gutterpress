@@ -129,9 +129,9 @@ smaller, more pages, different pagination) appears far from the cause.
   the page root the margin back as padding, and inset the pin by the
   printer's art-safe line (`page.artSafe`/`page.safe`, through
   `--gp-pin-<edge>` on the root); `.gp-flush` zeroes those insets for art
-  that runs to the paper, and the markdown check warns about it
-  (`flush_art`). Same caveat as Fix B: the pin anchors to the CONTAINER, so
-  keep pinned layouts to single-page `@page` blocks.
+  that runs to the paper, and the markdown check notes it (`flush_art`, an
+  info). Same caveat as Fix B: the pin anchors to the CONTAINER, so keep
+  pinned layouts to single-page `@page` blocks.
 - **Fix B (when you truly need a pin on something else): give it a local
   containing block.** `position: relative` on the element's own wrapper
   (scope with `:has()` if the wrapper has no class). Remember: a semantic

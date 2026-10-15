@@ -138,7 +138,7 @@ the page is simply where it appears in your markdown):
 | `.gp-full` | Fills the page's content width (`width: 100%`) |
 | `.gp-bleed` | Own page, edge-to-edge — see [Full-bleed artwork](#full-bleed-artwork) |
 | `.gp-pin` | Pins to a spot on the page instead of flowing — see [Pinned images](#pinned-images) |
-| `.gp-flush` | With `.gp-pin` + an edge: runs to the paper's edge, past the printer's safe area (Problems warns) |
+| `.gp-flush` | With `.gp-pin` + an edge: runs to the paper's edge, past the printer's safe area (Problems notes it) |
 
 **Sizes** (work with any position, including `.gp-pin`; an explicit size
 overrides the floats' 50% cap):
@@ -288,9 +288,10 @@ ignores the safe area and puts the image on the paper's edge instead.
 ```
 
 Printers trim up to 0.125in there, so anything that close to the edge can be
-cut off: `gutterpress validate` and the desktop app's Problems panel warn about
-every image that uses `.gp-flush`. Keep it for art that is meant to bleed off
-the page, and paint the art so that losing that strip does not matter.
+cut off: `gutterpress validate` and the desktop app's Problems panel add a note
+(not a warning: the class is your choice) for every image that uses
+`.gp-flush`. Keep it for art that is meant to bleed off the page, and paint the
+art so that losing that strip does not matter.
 
 `.gp-flush` works with any edge, including corners — `{.gp-pin .gp-bottom
 .gp-right .gp-flush}` puts the art in the bottom-right corner of the paper. A

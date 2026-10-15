@@ -391,7 +391,7 @@ export function setShapeClass(tokens: readonly string[], on: boolean): string[] 
  * The flush facet is a boolean too: `.gp-flush` is the escape hatch that runs
  * a PINNED image to the paper's edge, past the printer's safe area, where a
  * pin otherwise sits on the art-safe line (core zeroes the pin box's insets;
- * the desktop only toggles the class, and Problems warns about it).
+ * the desktop only toggles the class, and Problems notes it).
  *
  * It is one class rather than part of the pin-alignment token set, because it
  * is orthogonal to WHICH edge: every alignment except "center" composes with

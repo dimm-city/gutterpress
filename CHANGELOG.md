@@ -139,13 +139,14 @@ This project follows [Semantic Versioning](https://semver.org/).
   paints it into the freed margin, out to the paper, on the edges its pins
   use. A centred pin is unchanged.
 
-- **`.gp-flush` is the escape hatch to the paper's edge, and Problems warns
-  about it.** With `.gp-pin` and an edge, `.gp-flush` ignores the safe area
+- **`.gp-flush` is the escape hatch to the paper's edge, and Problems notes
+  it.** With `.gp-pin` and an edge, `.gp-flush` ignores the safe area
   and puts the image on the paper's edge, where printers trim up to 0.125in.
-  `gutterpress validate` and the desktop's Problems panel now warn once for
-  each image that uses it, on its line, so it is a choice for art meant to
-  bleed off the page. In the desktop's image properties the checkbox is now
-  "Run to the paper's edge (ignores the safe area)".
+  `gutterpress validate` and the desktop's Problems panel now note each image
+  that uses it, once and on its line, as information rather than a warning:
+  it is a choice for art meant to bleed off the page, so a book that makes it
+  on purpose still passes without warnings. In the desktop's image properties
+  the checkbox is now "Run to the paper's edge (ignores the safe area)".
 
 - **PDF/X builds save every picture losslessly.** Converting to CMYK
   re-encodes each colour image, and Ghostscript's default chose a low-quality

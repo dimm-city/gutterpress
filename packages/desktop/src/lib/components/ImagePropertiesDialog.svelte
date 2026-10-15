@@ -105,7 +105,7 @@
     </label>
     <label class="check">
       <input name="flush" type="checkbox" bind:checked={value.flush} disabled={!isEdgePin()} aria-describedby="image-flush-hint" />
-      <span>Run to the paper's edge (ignores the safe area)<small id="image-flush-hint" class="hint">Pinned to an edge only. Problems will warn: printers trim up to 0.125in there.</small></span>
+      <span>Run to the paper's edge (ignores the safe area)<small id="image-flush-hint" class="hint">Pinned to an edge only. Problems will note it: printers trim up to 0.125in there.</small></span>
     </label>
     <label>
       <span>Layer</span>

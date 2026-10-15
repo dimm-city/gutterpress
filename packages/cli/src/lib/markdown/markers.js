@@ -35,8 +35,9 @@
  *
  * Validation:
  *   Warnings are pushed into env.layoutWarnings: Array<{ line, type, message, marker?, severity? }>
- *   (`severity` is only ever set by a declared marker's `validate` result —
- *   see runComponentValidate; consumers treat its absence as "warning").
+ *   (`severity` is set by a declared marker's `validate` result — see
+ *   runComponentValidate — and by gp-pin-scope.js's `flush_art`; consumers
+ *   treat its absence as "warning").
  *
  * Source line threading (token.meta.line):
  *   Every layout_*_open token (chapter/spread/page/section, including the
