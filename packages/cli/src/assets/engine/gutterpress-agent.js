@@ -40,20 +40,20 @@
   // src/engine/compiler/agent.ts
   var exports_agent = {};
   __export(exports_agent, {
-    xrefSites: () => xrefSites,
-    targetTexts: () => targetTexts,
-    stringSources: () => stringSources,
-    setGenerated: () => setGenerated,
-    setFlushFurniture: () => setFlushFurniture,
-    instrument: () => instrument,
-    forcedBreakSites: () => forcedBreakSites,
-    flushRoots: () => flushRoots,
-    fillLeaders: () => fillLeaders,
-    counterResetSites: () => counterResetSites,
-    collectCss: () => collectCss,
-    auditContent: () => auditContent,
+    addCss: () => addCss,
     applyRectoSpacers: () => applyRectoSpacers,
-    addCss: () => addCss
+    auditContent: () => auditContent,
+    collectCss: () => collectCss,
+    counterResetSites: () => counterResetSites,
+    fillLeaders: () => fillLeaders,
+    flushRoots: () => flushRoots,
+    forcedBreakSites: () => forcedBreakSites,
+    instrument: () => instrument,
+    setFlushFurniture: () => setFlushFurniture,
+    setGenerated: () => setGenerated,
+    stringSources: () => stringSources,
+    targetTexts: () => targetTexts,
+    xrefSites: () => xrefSites
   });
 
   // src/engine/shared/synthesis.ts
