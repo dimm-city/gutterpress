@@ -706,8 +706,8 @@ function ensureRun(strip: StripInfo): HTMLElement {
 }
 
 /** Slot rect for one margin box, from the SHARED §5.3 geometry (the compiler's
- * `.gp-flush` furniture relocation uses the same function — one spot, both
- * painters). */
+ * relocation of a pinned edge's furniture uses the same function — one spot,
+ * both painters). */
 function rectFor(name: string, g: PageGeometry): Partial<CSSStyleDeclaration> {
   const r = marginBoxRectPt(name, g);
   return { left: px(r.x), top: px(r.y), width: px(r.w), height: px(r.h) };

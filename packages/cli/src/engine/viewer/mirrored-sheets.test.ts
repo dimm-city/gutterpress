@@ -221,7 +221,7 @@ testIf(
 );
 
 testIf(
-  "edge-pinned art keeps the paper's edge",
+  "edge-pinned art keeps the paper's edge, and the text its own margins",
   async () => {
     const source = await fsp.readFile(path.join(FIXTURES_DIR, "mirrored-flush.html"), "utf8");
     const html = source.replace("</style>", `</style>\n<style>${MARKER_CSS}\n${GUTTERPRESS_CSS}</style>`);
@@ -255,9 +255,10 @@ testIf(
         expect(m.a2.fromBottom).toBeLessThan(2);
         // …while the verso's text sits on its own left margin (30), the recto's on 50
         expect(m.t2.left).toBe(30);
-        // a side flush stays on the paper's edge, text and all as before: no claim, no shift
+        // a side flush reaches the paper too, and the verso's text still keeps
+        // its own margin: the pin root's padding gives it the author's box back
         expect(m.a4.fromRight).toBeLessThan(2);
-        expect(m.t4.left).toBe(50);
+        expect(m.t4.left).toBe(30);
       } finally {
         await page.close();
       }

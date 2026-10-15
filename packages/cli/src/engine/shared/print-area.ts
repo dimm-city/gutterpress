@@ -3,7 +3,8 @@
  * assembled book (preview, build, publish) as ONE
  * `<meta name="gp-print-area">` by the markdown assembly
  * (lib/markdown/assemble.ts) and read back here by everything that needs it:
- * the preview's print overlays (viewer/overlay.ts).
+ * the preview's print overlays (viewer/overlay.ts) and both engines' pinned
+ * art (pin-edges.ts — a pin sits on the printer's art-safe line).
  *
  * Only the manifest feeds it — `page.width` x `page.height` (the sheet),
  * `page.bleed` (a bleed the sheet already contains on the top, bottom and

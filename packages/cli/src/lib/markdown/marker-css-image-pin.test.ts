@@ -17,9 +17,11 @@ import { inspectPdf } from "../../engine/shared/pdf-inspect.ts";
  *
  * The three load-bearing pieces of the pin CSS, each with a failure mode
  * this test catches:
- *   - `inset: 0` — abspos self-alignment aligns within the inset-modified
- *     containing block; with auto insets that collapses to the
- *     static-position rectangle and alignment does nothing (case 1 fails).
+ *   - four non-auto insets (`var(--gp-pin-<edge>, 0px)`; no engine runs
+ *     here, so all are 0) — abspos self-alignment aligns within the
+ *     inset-modified containing block; with auto insets that collapses to
+ *     the static-position rectangle and alignment does nothing (case 1
+ *     fails).
  *   - explicit `align-self/justify-self: center` — `normal` behaves as
  *     `start` for abspos REPLACED elements, so removing either default
  *     top-lefts the "centered by default" promise (case 1 fails).

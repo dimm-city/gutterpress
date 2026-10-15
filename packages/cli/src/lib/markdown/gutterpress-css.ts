@@ -47,16 +47,14 @@
  *                   frame instead, BY DESIGN: that is how a pin is scoped to
  *                   a card rather than a sheet. Page-level furniture must
  *                   therefore be authored outside such a wrapper.
- *                   Centered on both axes unless combined with the edge
- *                   modifiers .gp-top/.gp-bottom/.gp-left/.gp-right.
- *   .gp-flush     — with .gp-pin + an edge, the art sits on the PAPER's
- *                   edge rather than on the text block's. No CSS rule here:
- *                   the class is a marker both ENGINES implement (see
- *                   engine/shared/flush.ts), because reaching the paper
- *                   requires freeing that page's margin — per page — and
- *                   relocating the furniture that lived in it, neither of
- *                   which a stylesheet can do. Inert without .gp-pin + an
- *                   edge word, and inert under plain markdown-it.
+ *                   Centered in the text block unless combined with the
+ *                   edge modifiers .gp-top/.gp-bottom/.gp-left/.gp-right;
+ *                   an edge pin sits on the printer's ART-SAFE line of that
+ *                   edge and never moves the text — see "the pin box" below.
+ *   .gp-flush     — with .gp-pin + an edge, the escape hatch: the art runs
+ *                   to the PAPER's edge, past the printer's safe area. It
+ *                   only zeroes the pin box's insets (the rule after the
+ *                   edge modifiers). Inert without .gp-pin + an edge word.
  *   .gp-bleed     — forces its own page (break-before) and spans it
  *                   edge-to-edge horizontally. This does NOT cancel the
  *                   top/bottom margins, extend past the trim into printer
@@ -102,12 +100,12 @@
  *                   paragraph with other inline content keeps its margin.
  *
  * Rule ORDER within the gp-* block is the contract: flow positions → sizes
- * → spacing → .gp-pin → pin-edge modifiers. Everything is flat 0-1-0
- * specificity, so combining classes resolves by source order: a later flow
- * position wins (left < right < center < full < bleed); an explicit size's
- * max-width:100% lifts the floats' 50% cap; .gp-pin's margin:0 /
- * max-width:100% beat the float declarations; the edge modifiers beat
- * .gp-pin's center defaults.
+ * → spacing → .gp-pin → pin-edge modifiers → .gp-flush. Everything else is
+ * flat 0-1-0 specificity, so combining classes resolves by source order: a
+ * later flow position wins (left < right < center < full < bleed); an
+ * explicit size's max-width:100% lifts the floats' 50% cap; .gp-pin's
+ * margin:0 / max-width:100% beat the float declarations; the edge modifiers
+ * beat .gp-pin's center defaults.
  *
  * .gp-pin semantics, stated honestly: it pins within its @page/@spread
  * CONTAINER, not "the sheet edge". A .page div that fragments across
@@ -120,12 +118,29 @@
  * compiler's engine.abspos.leak diagnostic catches the raw-HTML cases the
  * token walk can't see.
  *
+ * The PIN BOX — where a pin may sit, and why the text never moves. An edge
+ * pin has to be able to reach the paper, and Chromium's printable area IS
+ * the page area (engine/shared/pin-edges.ts has the measurements), so both
+ * engines free the page margin on each edge a pin names: print through a
+ * generated named page, the preview through the run's strip geometry. The
+ * page root gets that margin back as padding, on top of any of its own
+ * (`box-decoration-break: clone`), so its content box — the text — is the
+ * author's content box, same size, same place, same breaks, wherever the art
+ * is pinned. The pin's containing
+ * block is the root's padding box, and the engine sets `--gp-pin-<edge>` on
+ * the root to the art-safe line's distance from the sheet edge (the bleed
+ * plus page.artSafe on the top, bottom and outside edge; page.safe at the
+ * binding, from the manifest); `.gp-pin` reads them as its four insets.
+ * `.gp-flush` zeroes them on the pin: the paper's edge. Under plain
+ * markdown-it nothing sets them and every inset is 0.
+ *
  * Pin CSS mechanics (all three are load-bearing, verified by
- * paged-css-image-pin.test.ts): `inset: 0` is REQUIRED — abspos
- * self-alignment aligns within the inset-modified containing block, and
- * with auto insets that collapses to the static-position rectangle, where
- * alignment does nothing. The center defaults must be EXPLICIT — `normal`
- * alignment behaves as `start` for abspos replaced elements, not center.
+ * marker-css-image-pin.test.ts): four non-auto insets are REQUIRED — abspos
+ * self-alignment aligns within the inset-modified containing block (the pin
+ * box), and with auto insets that collapses to the static-position
+ * rectangle, where alignment does nothing. The center defaults must be
+ * EXPLICIT — `normal` alignment behaves as `start` for abspos replaced
+ * elements, not center.
  * And `justify-self` on .gp-left/.gp-right does double duty (flow float +
  * pin edge) because self-alignment does not apply to in-flow floats — it is
  * inert until .gp-pin makes the element abspos. If Chrome ever ships
@@ -238,10 +253,16 @@ img.gp-shape {
 }
 
 /* pin — within the nearest positioned ancestor (.page/.spread, rule above).
-   inset:0 and the explicit centers are load-bearing; see doctrine comment. */
+   The four insets are the pin box: 0 (the text block's edge) unless an
+   engine set --gp-pin-<edge> on the page root for an edge a pin uses (the
+   art-safe line). Non-auto insets and the explicit centers are
+   load-bearing; see doctrine comment. */
 .gp-pin {
   position: absolute;
-  inset: 0;
+  top: var(--gp-pin-top, 0px);
+  right: var(--gp-pin-right, 0px);
+  bottom: var(--gp-pin-bottom, 0px);
+  left: var(--gp-pin-left, 0px);
   align-self: center;
   justify-self: center;
   margin: 0;
@@ -255,6 +276,16 @@ img.gp-shape {
 .gp-bottom { align-self: end; }
 .gp-left { justify-self: start; }
 .gp-right { justify-self: end; }
+
+/* the escape hatch — the paper's edge, past the printer's safe area: the
+   pin box loses its art-safe insets. Set on the pin itself, so it beats the
+   values the page root hands down. */
+.gp-pin.gp-flush {
+  --gp-pin-top: 0px;
+  --gp-pin-right: 0px;
+  --gp-pin-bottom: 0px;
+  --gp-pin-left: 0px;
+}
 
 /* wrapper-margin neutralization (same pattern and rationale as the
    .gp-bleed paragraph-margin note in the doctrine comment; for pin, the
@@ -360,11 +391,9 @@ img.gp-shape {
  * GP_CLASSES — every class an author may legitimately write with a `gp-`
  * prefix: the `.gp-*` selectors in `GUTTERPRESS_CSS` above, the two
  * structural classes `markers.js`'s `MARKER_CSS` styles (`gp-page-break`,
- * `gp-column-break`), and two classes the marker plugin EMITS but that carry
- * no CSS rule of their own — `gp-continued` (a `@continue`d section's marker,
- * for author/theme styling — see markers.js's header) and `gp-flush` (a
- * `.gp-pin` edge modifier implemented in the engine's layout code, not CSS —
- * see the `.gp-flush` doctrine note above).
+ * `gp-column-break`), and one class the marker plugin EMITS but that carries
+ * no CSS rule of its own — `gp-continued` (a `@continue`d section's marker,
+ * for author/theme styling — see markers.js's header).
  *
  * This is the vocabulary `gp-pin-scope.js`'s `unknown_gp_class` diagnostic
  * (#226) checks every author-facing class against: any `gp-`-prefixed class
@@ -373,8 +402,8 @@ img.gp-shape {
  * classes are none of core's business.
  *
  * `gutterpress-css.test.ts` asserts this set and the `.gp-*` selectors
- * textually present in `GUTTERPRESS_CSS` + `MARKER_CSS` agree (modulo the two
- * marker-only exceptions above), so the two cannot silently drift apart —
+ * textually present in `GUTTERPRESS_CSS` + `MARKER_CSS` agree (modulo the
+ * marker-only exception above), so the two cannot silently drift apart —
  * whoever adds a class to one CSS block and forgets this list finds out from
  * a failing test, not from a future bug report.
  */
@@ -391,8 +420,8 @@ export const GP_CLASSES: ReadonlySet<string> = new Set([
   "gp-no-break", "gp-break-before",
   // shape wrap
   "gp-shape",
-  // pin + edge modifiers
-  "gp-pin", "gp-top", "gp-bottom",
+  // pin + edge modifiers + the paper's-edge escape hatch
+  "gp-pin", "gp-top", "gp-bottom", "gp-flush",
   // depth ladder
   "gp-behind", "gp-base", "gp-raised", "gp-front",
   // GFM alert boxes (#237, gfm-alerts.ts) — base + the five GitHub types + label
@@ -400,6 +429,6 @@ export const GP_CLASSES: ReadonlySet<string> = new Set([
   "gp-alert-note", "gp-alert-tip", "gp-alert-important", "gp-alert-warning", "gp-alert-caution",
   // MARKER_CSS (markers.js) — structural break classes
   "gp-page-break", "gp-column-break",
-  // marker-only, no CSS rule of their own (see the doc comment above)
-  "gp-continued", "gp-flush",
+  // marker-only, no CSS rule of its own (see the doc comment above)
+  "gp-continued",
 ]);

@@ -1289,13 +1289,17 @@ describe("GUTTERPRESS_CSS gp-* vocabulary", () => {
     expect(right).toContain("var(--gp-gap, 1em)");
   });
 
-  test(".gp-pin is abspos with inset:0 and EXPLICIT center defaults", () => {
+  test(".gp-pin is abspos with four non-auto insets from the pin box and EXPLICIT center defaults", () => {
     const pin = GUTTERPRESS_CSS.match(/\.gp-pin\s*\{[^}]*\}/)![0];
     expect(pin).toMatch(/position:\s*absolute/);
-    // inset:0 is load-bearing: abspos self-alignment aligns within the
-    // inset-modified containing block; with auto insets that collapses to
-    // the static-position rectangle and alignment does nothing.
-    expect(pin).toMatch(/inset:\s*0/);
+    // Non-auto insets are load-bearing: abspos self-alignment aligns within
+    // the inset-modified containing block; with auto insets that collapses
+    // to the static-position rectangle and alignment does nothing. Each is
+    // the engine's art-safe distance for that edge, 0 when none is set.
+    for (const edge of ["top", "right", "bottom", "left"]) {
+      expect(pin).toContain(`${edge}: var(--gp-pin-${edge}, 0px);`);
+    }
+    expect(pin).not.toMatch(/\binset:/);
     // `normal` behaves as `start` for abspos replaced elements — the
     // centered-by-default promise requires explicit centers.
     expect(pin).toMatch(/align-self:\s*center/);
@@ -1305,16 +1309,21 @@ describe("GUTTERPRESS_CSS gp-* vocabulary", () => {
     expect(GUTTERPRESS_CSS.indexOf(".gp-pin")).toBeGreaterThan(GUTTERPRESS_CSS.indexOf(".gp-right {"));
   });
 
-  test(".gp-flush ships no CSS — the engines implement it", () => {
-    // The class is a marker consumed by the compiler and the viewer
-    // (engine/shared/flush.ts): reaching the paper requires freeing that
-    // page's margins and relocating the furniture that lived in them,
-    // neither of which a static stylesheet can do. An earlier attempt DID
-    // ship it as CSS — `:has()` reassigning the root to a gp-flush-* named
-    // page — and stole the author's own `page:` assignment (every
-    // declaration on their named page, furniture included, vanished). No
-    // rule may come back here.
-    expect(GUTTERPRESS_CSS).not.toContain("gp-flush");
+  test(".gp-flush only zeroes the pin box's insets, after the edge modifiers", () => {
+    // Every edge pin's margin is freed by the ENGINES (engine/shared/
+    // pin-edges.ts): that takes page geometry, per page, and relocating the
+    // furniture that lived in the margin, neither of which a stylesheet can
+    // do. An earlier attempt DID ship the page change as CSS — `:has()`
+    // reassigning the root to a named page — and stole the author's own
+    // `page:` assignment (every declaration on their named page, furniture
+    // included, vanished). No such rule may come back here: `.gp-flush` is
+    // plain CSS on the pin, and only moves its art-safe insets to 0.
+    const flush = GUTTERPRESS_CSS.match(/\.gp-pin\.gp-flush\s*\{[^}]*\}/)![0];
+    for (const edge of ["top", "right", "bottom", "left"]) {
+      expect(flush).toContain(`--gp-pin-${edge}: 0px;`);
+    }
+    expect(flush).not.toMatch(/(^|[\s;{])(page|margin|inset|top|right|bottom|left):/);
+    expect(GUTTERPRESS_CSS.indexOf(".gp-pin.gp-flush")).toBeGreaterThan(GUTTERPRESS_CSS.lastIndexOf(".gp-right"));
     expect(GUTTERPRESS_CSS).not.toContain(":has(.gp-pin");
   });
 
@@ -1341,7 +1350,7 @@ describe("GUTTERPRESS_CSS gp-* vocabulary", () => {
   test("adds no new @page gp-* names (gp-full-bleed stays the only one)", () => {
     // build.ts's shrink-to-fit guard excludes the whole `gp-` named-page
     // namespace from its page-width Math.max; every name added here widens
-    // that exclusion and must be deliberate. (`gp--flush-*` pages exist too,
+    // that exclusion and must be deliberate. (`gp--pin-*` pages exist too,
     // but the COMPILER generates those per build — they are never in this
     // static stylesheet, and the width guard readmits them explicitly.)
     expect(GUTTERPRESS_CSS.match(/@page gp-/g)).toHaveLength(1);

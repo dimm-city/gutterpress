@@ -19,7 +19,10 @@ h2 {
   margin: 0 0 18pt;
 }
 
-/* The brick wall is opaque and tiles; the effects below sit on top of it. */
+/* The brick wall is opaque and tiles; the effects below sit on top of it.
+   It fills the page because Gutterpress stretches every page block to its
+   page: no height needed (a percentage height has nothing to resolve
+   against in print, and a definite one in the preview). */
 [data-name="soft-shadow"],
 [data-name="clipped-shape"],
 [data-name="cutout-art"],
@@ -27,7 +30,6 @@ h2 {
   background: #4a352c url("../assets/wall.png") repeat;
   padding: 36pt;
   box-sizing: border-box;
-  height: 100%;
 }
 
 [data-name="soft-shadow"] h2,

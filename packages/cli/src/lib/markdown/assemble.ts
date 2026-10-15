@@ -156,8 +156,9 @@ export interface AssembleBookHtmlOptions {
    * The project's print area — the resolved manifest's `page` block plus its
    * preset id and printer spec — written as `<meta name="gp-print-area">`
    * (engine/shared/print-area.ts) into EVERY assembled book, preview, build
-   * and publish alike: the preview's print overlays judge the ink against it.
-   * Metadata only: nothing renders from it but what reads it.
+   * and publish alike: the preview's print overlays judge the ink against it,
+   * and both engines place pinned art on its art-safe line. Metadata only:
+   * nothing renders from it but what reads it.
    */
   printArea?: PrintAreaSource;
   plugins?: LoadedPlugin[];
