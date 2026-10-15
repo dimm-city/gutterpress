@@ -161,7 +161,7 @@ test("convertToPdfxCmyk uses resolved Ghostscript and stages its definition file
   }
 });
 
-test("convertToPdfxCmyk passes pdfx.rasterDpi to Ghostscript only when set", async () => {
+test("convertToPdfxCmyk passes pdfx.rasterDpi only when set, and keeps pictures lossless", async () => {
   const stagingDir = await mkdtemp(join(tmpdir(), "gutterpress-gs-dpi-"));
   try {
     const executable = join(stagingDir, "custom-gs");
@@ -184,6 +184,12 @@ test("convertToPdfxCmyk passes pdfx.rasterDpi to Ghostscript only when set", asy
     await convert(300);
     const resolutions = spawnSpy.mock.calls.map((c) => (c[1] as string[]).filter((a) => a.startsWith("-r")));
     expect(resolutions).toEqual([[], ["-r300"]]);
+    // Pictures are re-encoded losslessly, never as pdfwrite's default JPEG.
+    for (const call of spawnSpy.mock.calls) {
+      expect(call[1]).toEqual(
+        expect.arrayContaining(["-dColorImageFilter=/FlateEncode", "-dGrayImageFilter=/FlateEncode"])
+      );
+    }
     spawnSpy.mockRestore();
   } finally {
     await rm(stagingDir, { recursive: true, force: true });

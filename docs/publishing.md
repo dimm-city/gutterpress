@@ -199,8 +199,13 @@ made from a transparent page: the whole pages Ghostscript flattens and the
 `preserve-text` artwork. Unset, Ghostscript flattens whole pages at its default
 of 720 DPI and the `preserve-text` artwork is 300 DPI. It changes nothing else:
 vector text and shapes, and the book's own images, are not resampled. Lower is
-smaller and softer; fine rules and textures show it first. These pictures are
-compressed losslessly.
+smaller and softer; fine rules and textures show it first. DriveThruRPG asks
+for 300 DPI colour images, which the `preserve-text` default already meets.
+
+Every picture in a PDF/X build is saved losslessly: the flattened pages, the
+`preserve-text` artwork, and the book's own images, which converting to CMYK
+re-encodes. Ghostscript's default JPEG left blotches and halos at edges that a
+printer reproduces, and a JPEG good enough for print came out larger.
 
 Known limits of the pages that are split:
 
@@ -208,12 +213,11 @@ Known limits of the pages that are split:
   rules lose their vector sharpness.
 - File size depends on the book's content and on `pdfx.rasterDpi`: each split
   page carries a full-page picture, and a whole-page fallback carries
-  Ghostscript's own page image. Measured on the 228-page Dimm City Field Guide
-  against `flatten-page`, the same source came out smaller with `preserve-text`
-  (one styling 1126 MB to 235 MB, another 140 MB to 45 MB), mostly because of
-  the picture resolution (300 against 720 DPI); `pdfx.rasterDpi` gets that
-  saving in either mode. Keeping the text live is `preserve-text`'s benefit,
-  not the size. Compare PDF/X against PDF/X: an RGB `--format pdf` build is not
+  Ghostscript's own page image. The 228-page Dimm City Field Guide, with
+  translucent shadows and tints on 179 pages, is 326 MB with `preserve-text`
+  at the default 300 DPI and 759 MB at 600 DPI. Resolution, not the mode,
+  drives the size; `pdfx.rasterDpi` sets it in either mode. Keeping the text
+  live is `preserve-text`'s benefit, not the size. Compare PDF/X against PDF/X: an RGB `--format pdf` build is not
   a baseline for a CMYK PDF/X file. One blend mode
   anywhere in a book can make Chromium wrap most of its pages in transparency
   groups, so many more pages are split than the effect's own pages.

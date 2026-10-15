@@ -580,6 +580,14 @@ export async function convertToPdfxCmyk(
     "-dDownsampleColorImages=false",
     "-dDownsampleGrayImages=false",
     "-dDownsampleMonoImages=false",
+    // Lossless pictures. Converting to CMYK re-encodes every colour image,
+    // and pdfwrite's default picks JPEG at a low quality: blotches and halos
+    // in a flattened page, which a printer reproduces. Flate is also smaller
+    // than a JPEG good enough for print.
+    "-dAutoFilterColorImages=false",
+    "-dColorImageFilter=/FlateEncode",
+    "-dAutoFilterGrayImages=false",
+    "-dGrayImageFilter=/FlateEncode",
     ...(config.rasterDpi ? [`-r${config.rasterDpi}`] : []),
     "-sProcessColorModel=DeviceCMYK",
     "-sColorConversionStrategy=CMYK",

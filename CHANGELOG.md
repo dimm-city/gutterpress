@@ -35,6 +35,16 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **`pdfx.rasterDpi` also sets the resolution of `preserve-text` artwork.**
   Unset, that artwork is 300 DPI; whole pages Ghostscript flattens keep 720.
 
+### Changed
+
+- **PDF/X builds save every picture losslessly.** Converting to CMYK
+  re-encodes each colour image, and Ghostscript's default chose a low-quality
+  JPEG: flattened pages got blotches and light halos along edges that a
+  printer reproduces. Pictures are now compressed losslessly. Files with
+  photos or flattened pages grow (a flattened text page by about 5%, a
+  full-page illustration about twice); a JPEG good enough for print came out
+  larger still.
+
 ## [0.11.20] - 2026-10-15
 
 ### Added
