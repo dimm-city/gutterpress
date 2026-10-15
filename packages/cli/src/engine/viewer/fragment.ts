@@ -42,6 +42,15 @@ export interface StripInfo {
    * The leading-spacer shift is NOT stored — it is fully determined by
    * `wrapCols` + `offset` parity; derive it with `wrapGeometry()`. */
   wrapCols?: number;
+  /**
+   * Single-page view of a book with mirrored margins (`versoShift` ≠ 0): a
+   * second, identical layout of this run, translated to the VERSO margins
+   * and clipped to the verso rows, while `el` is clipped to the recto rows
+   * (`decorate.ts`). One multicol flow puts every page's text at one x; the
+   * twin is how a left-hand page's text lands on its own margin with the
+   * paper held still. Absent in two-page view and on unmirrored books.
+   */
+  twin?: HTMLElement;
 }
 
 export interface LayoutResult {
@@ -1353,9 +1362,43 @@ export function indexInStrip(left: number, top: number, strip: StripInfo): numbe
  * position. In a fragmented context an element's client rect identifies its
  * fragmentainer — O(declared elements), not O(nodes).
  */
+/**
+ * The element in the real strip that a twin element is a copy of (itself when
+ * it is not in a twin): the same child-index path from the strip root. The
+ * twin is a verbatim clone, so the paths line up until the next relayout
+ * rebuilds both.
+ */
+export function realOf(el: Element, strip: StripInfo): Element {
+  if (!strip.twin || !strip.twin.contains(el)) return el;
+  const path: number[] = [];
+  for (let n: Element | null = el; n && n !== strip.twin; n = n.parentElement) {
+    path.push(Array.prototype.indexOf.call(n.parentElement!.children, n));
+  }
+  let real: Element = strip.el;
+  for (let i = path.length - 1; i >= 0; i--) real = real.children[path[i]!] ?? real;
+  return real;
+}
+
+/** The twin's copy of a real element (itself when the strip has no twin). */
+export function twinOf(el: Element, strip: StripInfo): Element {
+  if (!strip.twin || !strip.el.contains(el)) return el;
+  const path: number[] = [];
+  for (let n: Element | null = el; n && n !== strip.el; n = n.parentElement) {
+    path.push(Array.prototype.indexOf.call(n.parentElement!.children, n));
+  }
+  let copy: Element = strip.twin;
+  for (let i = path.length - 1; i >= 0; i--) copy = copy.children[path[i]!] ?? copy;
+  return copy;
+}
+
+function stripContaining(el: Element, strips: StripInfo[]): StripInfo | undefined {
+  return strips.find((s) => s.el.contains(el) || (s.twin?.contains(el) ?? false));
+}
+
 export function pageOf(el: Element, strips: StripInfo[]): number {
-  const strip = strips.find((s) => s.el.contains(el));
+  const strip = stripContaining(el, strips);
   if (!strip) return -1;
+  el = realOf(el, strip);
   const rects = el.getClientRects();
   const first = rects.length ? rects[0]! : (el as HTMLElement).getBoundingClientRect();
   return strip.offset + indexInStrip(first.left, first.top, strip);
@@ -1507,8 +1550,9 @@ function pagesAfter(contentPages: number, totalPages: number): number[] {
 
 /** Page range [firstPage, lastPage] an element spans (0-based, book-wide). */
 export function pageRangeOf(el: Element, strips: StripInfo[]): [number, number] {
-  const strip = strips.find((s) => s.el.contains(el));
+  const strip = stripContaining(el, strips);
   if (!strip) return [-1, -1];
+  el = realOf(el, strip);
   const rects = Array.from(el.getClientRects());
   if (!rects.length) return [pageOf(el, strips), pageOf(el, strips)];
   const idx = rects.map((r) => indexInStrip(r.left, r.top, strip));

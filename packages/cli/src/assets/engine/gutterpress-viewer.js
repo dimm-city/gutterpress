@@ -17,36 +17,38 @@
   // src/engine/viewer/fragment.ts
   var exports_fragment = {};
   __export(exports_fragment, {
-    wrapGeometry: () => wrapGeometry,
-    waitForLayoutReady: () => waitForLayoutReady,
-    versoShiftPt: () => versoShiftPt,
-    synthesizeColumnBreaks: () => synthesizeColumnBreaks,
-    stripMetrics: () => stripMetrics,
-    strideOf: () => strideOf,
-    stabilizeFullHeightPageRoots: () => stabilizeFullHeightPageRoots,
-    spreadModeSupported: () => spreadModeSupported,
-    runPageBox: () => runPageBox,
-    rowStrideOf: () => rowStrideOf,
-    pageRangeOf: () => pageRangeOf,
-    pageOf: () => pageOf,
-    padToSignature: () => padToSignature,
-    measure: () => measure,
-    makeOverflowFragmentable: () => makeOverflowFragmentable,
-    loadStyleSources: () => loadStyleSources,
-    injectViewerCss: () => injectViewerCss,
-    injectBreakMapping: () => injectBreakMapping,
-    indexInStrip: () => indexInStrip,
-    fragmentDocument: () => fragmentDocument,
-    cssZoomOf: () => cssZoomOf,
-    contentEdgeRect: () => contentEdgeRect,
-    compensateRepeatedHeaders: () => compensateRepeatedHeaders,
-    compensateRectoBreaks: () => compensateRectoBreaks,
-    columnReserve: () => columnReserve,
-    collectCssText: () => collectCssText,
-    buildStrips: () => buildStrips,
-    blankPageIndices: () => blankPageIndices,
+    PX_PER_PT: () => PX_PER_PT,
     applySpreadMode: () => applySpreadMode,
-    PX_PER_PT: () => PX_PER_PT
+    blankPageIndices: () => blankPageIndices,
+    buildStrips: () => buildStrips,
+    collectCssText: () => collectCssText,
+    columnReserve: () => columnReserve,
+    compensateRectoBreaks: () => compensateRectoBreaks,
+    compensateRepeatedHeaders: () => compensateRepeatedHeaders,
+    contentEdgeRect: () => contentEdgeRect,
+    cssZoomOf: () => cssZoomOf,
+    fragmentDocument: () => fragmentDocument,
+    indexInStrip: () => indexInStrip,
+    injectBreakMapping: () => injectBreakMapping,
+    injectViewerCss: () => injectViewerCss,
+    loadStyleSources: () => loadStyleSources,
+    makeOverflowFragmentable: () => makeOverflowFragmentable,
+    measure: () => measure,
+    padToSignature: () => padToSignature,
+    pageOf: () => pageOf,
+    pageRangeOf: () => pageRangeOf,
+    realOf: () => realOf,
+    rowStrideOf: () => rowStrideOf,
+    runPageBox: () => runPageBox,
+    spreadModeSupported: () => spreadModeSupported,
+    stabilizeFullHeightPageRoots: () => stabilizeFullHeightPageRoots,
+    strideOf: () => strideOf,
+    stripMetrics: () => stripMetrics,
+    synthesizeColumnBreaks: () => synthesizeColumnBreaks,
+    twinOf: () => twinOf,
+    versoShiftPt: () => versoShiftPt,
+    waitForLayoutReady: () => waitForLayoutReady,
+    wrapGeometry: () => wrapGeometry
   });
 
   // src/engine/viewer/viewer.css
@@ -125,8 +127,18 @@
   column-fill: auto;
   overflow: visible;
   margin: 0;
-  /* strip sits inside the first sheet's content box */
-  transform: translate(var(--gp-margin-left), var(--gp-margin-top));
+  /* The strip's column sits at the text's margin on its row's first sheet:
+     \`--gp-text-x\` (decorate.ts) — the recto's margin in single-page view,
+     the verso's in two-page view. The paper never moves to meet the text. */
+  transform: translate(var(--gp-text-x, var(--gp-margin-left)), var(--gp-margin-top));
+}
+
+/* Single-page view of a mirrored book (decorate.ts's placeTwin): the run's
+   second layout, at the verso margins, clipped to the left-hand sheets. */
+.gp-strip-twin {
+  position: absolute;
+  top: 0;
+  left: 0;
 }
 
 /* NOTE: there is deliberately no \`.gp-strip > * { break-inside: auto }\` here.
@@ -206,7 +218,10 @@
 
 .gp-run {
   position: relative;
-  margin: 0 0 var(--gp-sheet-gap);
+  /* Centered in the stage: the run box is exactly the sheets' extent (one
+     page wide in single-page view, two pages and the gap in two-page view),
+     so a page's center, or a spread's spine, is the preview's center line. */
+  margin: 0 auto var(--gp-sheet-gap);
   /* Hit-transparent, like \`.gp-layer\` below: in wrap mode a recto-starting
      run is pulled up over the previous run's last row (decorate.ts's
      cross-run negative margin-top — the spread-composition overlap), and
@@ -328,16 +343,16 @@
   // src/engine/shared/gcpm-extract.ts
   var exports_gcpm_extract = {};
   __export(exports_gcpm_extract, {
-    toPt: () => toPt,
-    splitTopLevel: () => splitTopLevel,
-    resolvePage: () => resolvePage,
-    parseSize: () => parseSize,
-    parseMargin: () => parseMargin,
-    parseDeclarations: () => parseDeclarations,
-    mediaPrintBodies: () => mediaPrintBodies,
-    extract: () => extract,
+    MARGIN_BOX_NAMES: () => MARGIN_BOX_NAMES,
     PAGE_SIZES: () => PAGE_SIZES,
-    MARGIN_BOX_NAMES: () => MARGIN_BOX_NAMES
+    extract: () => extract,
+    mediaPrintBodies: () => mediaPrintBodies,
+    parseDeclarations: () => parseDeclarations,
+    parseMargin: () => parseMargin,
+    parseSize: () => parseSize,
+    resolvePage: () => resolvePage,
+    splitTopLevel: () => splitTopLevel,
+    toPt: () => toPt
   });
   var MARGIN_BOX_NAMES = [
     "top-left-corner",
@@ -1679,10 +1694,38 @@
     const idx = row * perRow + colClamped - shift;
     return Math.max(0, Math.min(strip.pages - 1, idx));
   }
+  function realOf(el, strip) {
+    if (!strip.twin || !strip.twin.contains(el))
+      return el;
+    const path = [];
+    for (let n = el;n && n !== strip.twin; n = n.parentElement) {
+      path.push(Array.prototype.indexOf.call(n.parentElement.children, n));
+    }
+    let real = strip.el;
+    for (let i = path.length - 1;i >= 0; i--)
+      real = real.children[path[i]] ?? real;
+    return real;
+  }
+  function twinOf(el, strip) {
+    if (!strip.twin || !strip.el.contains(el))
+      return el;
+    const path = [];
+    for (let n = el;n && n !== strip.el; n = n.parentElement) {
+      path.push(Array.prototype.indexOf.call(n.parentElement.children, n));
+    }
+    let copy = strip.twin;
+    for (let i = path.length - 1;i >= 0; i--)
+      copy = copy.children[path[i]] ?? copy;
+    return copy;
+  }
+  function stripContaining(el, strips) {
+    return strips.find((s) => s.el.contains(el) || (s.twin?.contains(el) ?? false));
+  }
   function pageOf(el, strips) {
-    const strip = strips.find((s) => s.el.contains(el));
+    const strip = stripContaining(el, strips);
     if (!strip)
       return -1;
+    el = realOf(el, strip);
     const rects = el.getClientRects();
     const first = rects.length ? rects[0] : el.getBoundingClientRect();
     return strip.offset + indexInStrip(first.left, first.top, strip);
@@ -1746,9 +1789,10 @@
     return Array.from({ length: Math.max(0, totalPages - contentPages) }, (_, i) => contentPages + i);
   }
   function pageRangeOf(el, strips) {
-    const strip = strips.find((s) => s.el.contains(el));
+    const strip = stripContaining(el, strips);
     if (!strip)
       return [-1, -1];
+    el = realOf(el, strip);
     const rects = Array.from(el.getClientRects());
     if (!rects.length)
       return [pageOf(el, strips), pageOf(el, strips)];
@@ -1840,13 +1884,13 @@
   // src/engine/shared/content-value.ts
   var exports_content_value = {};
   __export(exports_content_value, {
-    unquote: () => unquote,
-    resolveUrlArg: () => resolveUrlArg,
-    parseContent: () => parseContent,
-    needsMeasurement: () => needsMeasurement,
-    formatCounter: () => formatCounter,
+    evaluate: () => evaluate,
     evaluateContent: () => evaluateContent,
-    evaluate: () => evaluate
+    formatCounter: () => formatCounter,
+    needsMeasurement: () => needsMeasurement,
+    parseContent: () => parseContent,
+    resolveUrlArg: () => resolveUrlArg,
+    unquote: () => unquote
   });
   var FUNC = /^([a-z-]+)\(/i;
   function parseContent(value) {
@@ -2252,6 +2296,7 @@
   var root = null;
   var observer = null;
   var currentStyle = {};
+  var anchored = [];
   function applyStyle() {
     if (!root)
       return;
@@ -2273,9 +2318,14 @@
   function syncToStage() {
     if (!host || !root)
       return;
-    const { left, top, zoom } = stageFrame();
-    host.style.setProperty("transform", `translate(${left + window.scrollX}px, ${top + window.scrollY}px) scale(${zoom})`, "important");
-    root.style.setProperty("--gp-ov-z", String(zoom));
+    const stage = stageFrame();
+    host.style.setProperty("transform", `translate(${stage.left + window.scrollX}px, ${stage.top + window.scrollY}px) scale(${stage.zoom})`, "important");
+    root.style.setProperty("--gp-ov-z", String(stage.zoom));
+    for (const { box, sheet } of anchored) {
+      const r = sheet.getBoundingClientRect();
+      box.style.left = `${(r.left - stage.left) / stage.zoom}px`;
+      box.style.top = `${(r.top - stage.top) / stage.zoom}px`;
+    }
   }
   function ensureRoot() {
     if (host && root && host.isConnected) {
@@ -2296,11 +2346,14 @@
     observer = new MutationObserver(syncToStage);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
     observer.observe(document.body, { attributes: true, attributeFilter: ["style"] });
+    window.addEventListener("resize", syncToStage);
     return root;
   }
   function clearOverlay() {
     observer?.disconnect();
     observer = null;
+    window.removeEventListener("resize", syncToStage);
+    anchored = [];
     host?.remove();
     host = null;
     root = null;
@@ -2329,6 +2382,7 @@
   var SKIP = new Set(["SCRIPT", "STYLE", "LINK", "TEMPLATE", "BR", "WBR", "SOURCE", "TRACK", "META"]);
   function paintOverlay(pages, strips, area) {
     const layer = ensureRoot();
+    anchored = [];
     syncToStage();
     const stage = stageFrame();
     const painted = new Map;
@@ -2336,32 +2390,41 @@
       const side = p.sheet.dataset.side === "verso" ? "verso" : "recto";
       const boxes = pageBoxes(area ?? sheetArea(p.sheet), side, PX_PER_PT);
       const rect = p.sheet.getBoundingClientRect();
-      const host2 = div("gp-ov-page", {
+      const host = div("gp-ov-page", {
         x: (rect.left - stage.left) / stage.zoom,
         y: (rect.top - stage.top) / stage.zoom,
         w: boxes.sheet.w,
         h: boxes.sheet.h
       });
-      host2.dataset.page = String(p.index + 1);
+      host.dataset.page = String(p.index + 1);
+      anchored.push({ box: host, sheet: p.sheet });
       if (boxes.bleed > 0) {
         const sh = boxes.sheet;
         const t = boxes.trim;
         const band = div("gp-ov-bleed", sh);
         band.style.borderWidth = `${t.y - sh.y}px ${sh.x + sh.w - (t.x + t.w)}px ${sh.y + sh.h - (t.y + t.h)}px ${t.x - sh.x}px`;
-        host2.appendChild(band);
-        host2.appendChild(div("gp-ov-trim", t));
+        host.appendChild(band);
+        host.appendChild(div("gp-ov-trim", t));
       }
       if (area && area.safe > 0) {
-        host2.appendChild(unsafeTint(boxes));
-        host2.appendChild(div("gp-ov-safe", boxes.safe));
+        host.appendChild(unsafeTint(boxes));
+        host.appendChild(div("gp-ov-safe", boxes.safe));
       }
-      layer.appendChild(host2);
-      painted.set(p.index, { host: host2, boxes, sheet: p.sheet, rect });
+      layer.appendChild(host);
+      painted.set(p.index, { host, boxes, sheet: p.sheet, rect });
     }
     const flags = [];
     let issues = 0;
     let intended = 0;
     for (const strip of strips) {
+      const roots = strip.twin ? [
+        [strip.el, "recto"],
+        [strip.twin, "verso"]
+      ] : [[strip.el, null]];
+      for (const [root, only] of roots)
+        visitRoot(strip, root, only);
+    }
+    function visitRoot(strip, root, only) {
       const zoom = cssZoomOf(strip.el);
       const colW = (parseFloat(strip.el.style.getPropertyValue("--gp-content-w")) || 0) * zoom;
       const colH = (parseFloat(strip.el.style.getPropertyValue("--gp-content-h")) || 0) * zoom;
@@ -2377,6 +2440,8 @@
           const ay = r.top + Math.min(r.height, colH || r.height) / 2;
           const target = painted.get(strip.offset + indexInStrip(ax, ay, strip));
           if (!target)
+            continue;
+          if (only && target.sheet.dataset.side !== only)
             continue;
           target.rect ??= target.sheet.getBoundingClientRect();
           const local = {
@@ -2404,7 +2469,7 @@
         for (const child of Array.from(el.children))
           visit(child);
       };
-      for (const child of Array.from(strip.el.children))
+      for (const child of Array.from(root.children))
         visit(child);
     }
     for (const f of flags) {
@@ -2488,20 +2553,20 @@
     document.body.classList.add("gp-stage");
     if (document.body.dataset.designer === undefined)
       api.setDesigner(!!opts.designer);
-    function pageContext(strip, indexInStrip2, bookIndex) {
+    function pageContext(strip, indexInStrip, bookIndex) {
       if (paddedPages.has(bookIndex)) {
-        const { geometry: geometry2 } = resolvePage(model, { pseudos: [] });
-        return { index: bookIndex, strip, pseudos: [], geometry: geometry2, marginBoxes: {}, decls: {}, padded: true };
+        const { geometry } = resolvePage(model, { pseudos: [] });
+        return { index: bookIndex, strip, pseudos: [], geometry, marginBoxes: {}, decls: {}, padded: true };
       }
       if (blankPages.has(bookIndex)) {
-        const pseudos2 = ["blank"];
-        const { geometry: geometry2, marginBoxes: marginBoxes2, decls: decls2 } = resolvePage(model, { pseudos: pseudos2 });
-        return { index: bookIndex, strip, pseudos: pseudos2, geometry: geometry2, marginBoxes: marginBoxes2, decls: decls2 };
+        const pseudos = ["blank"];
+        const { geometry, marginBoxes, decls } = resolvePage(model, { pseudos });
+        return { index: bookIndex, strip, pseudos, geometry, marginBoxes, decls };
       }
       const pseudos = [];
       if (bookIndex === 0)
         pseudos.push("first");
-      if (indexInStrip2 === 0)
+      if (indexInStrip === 0)
         pseudos.push("nth-first-of-run");
       pseudos.push(bookIndex % 2 === 0 ? "right" : "left");
       const { geometry, marginBoxes, decls } = resolvePage(model, {
@@ -2644,18 +2709,18 @@
       buildMaps();
       fillXrefs();
       let prevPageH = 0;
-      let prevVersoShift = 0;
-      let prevRunX = 0;
       let first = true;
       for (const strip of layout.strips) {
         const run = ensureRun(strip);
-        const { stride, rowStride } = stripMetrics(strip.el);
+        const { rowStride } = stripMetrics(strip.el);
         const sheetGap = parseFloat(getComputedStyle(strip.el).getPropertyValue("--gp-sheet-gap")) || 0;
         run.style.setProperty("--gp-sheet-gap", `${sheetGap}px`);
         const { perRow, shift } = wrapGeometry(strip);
         const layer = run.querySelector(".gp-layer");
         layer.textContent = "";
         const g = strip.geometry;
+        const slotPitch = PX_PER_PT * g.width + sheetGap;
+        strip.el.style.setProperty("--gp-text-x", perRow === 2 ? "calc(var(--gp-margin-left) - var(--gp-verso-shift, 0px))" : "var(--gp-margin-left)");
         for (let i = 0;i < strip.pages; i++) {
           const bookIndex = strip.offset + i;
           const ctx = pageContext(strip, i, bookIndex);
@@ -2663,7 +2728,7 @@
           const row = Math.floor(slot / perRow);
           const colVisual = slot % perRow;
           const side = bookIndex % 2 === 0 ? "recto" : "verso";
-          const sheetLeft = colVisual * stride + (side === "verso" ? strip.versoShift * PX_PER_PT : 0);
+          const sheetLeft = colVisual * slotPitch;
           const sheetTop = row * rowStride;
           const sheet = document.createElement("div");
           sheet.className = "gp-sheet";
@@ -2686,20 +2751,54 @@
         }
         const rows = Math.max(1, Math.ceil((strip.pages + shift) / perRow));
         run.style.height = `${rowStride * (rows - 1) + PX_PER_PT * g.height}px`;
-        run.style.width = `${stride * perRow}px`;
+        run.style.width = `${slotPitch * perRow - sheetGap}px`;
         const composed = !!strip.wrapCols && shift === 1 && !first;
         run.style.marginTop = composed ? `${-(prevPageH + sheetGap)}px` : "";
-        const runX = composed ? prevRunX + (prevVersoShift - strip.versoShift) * PX_PER_PT : 0;
-        run.style.marginLeft = runX ? `${runX}px` : "";
         prevPageH = PX_PER_PT * g.height;
-        prevVersoShift = strip.versoShift;
-        prevRunX = runX;
         first = false;
+        placeTwin(strip, run, perRow, rows, rowStride);
         if (opts.designer)
           checkOverflow(strip, warnings);
       }
       if (overlayOn)
         paintOverlayNow();
+    }
+    function placeTwin(strip, run, perRow, rows, rowStride) {
+      run.querySelector(":scope > .gp-strip-twin")?.remove();
+      strip.twin = undefined;
+      strip.el.style.clipPath = "";
+      if (perRow !== 1 || !strip.versoShift)
+        return;
+      const g = strip.geometry;
+      const px = (name) => parseFloat(strip.el.style.getPropertyValue(name)) || 0;
+      const ml = px("--gp-margin-left");
+      const mt = px("--gp-margin-top");
+      const vs = strip.versoShift * PX_PER_PT;
+      const w = PX_PER_PT * g.width;
+      const h = PX_PER_PT * g.height;
+      const clip = (textX, keep) => {
+        const x0 = -textX;
+        const x1 = x0 + w;
+        const pts = [];
+        for (let r = 0;r < rows; r++) {
+          if (!keep(strip.offset + r))
+            continue;
+          const y0 = r * rowStride - mt;
+          const y1 = y0 + h;
+          pts.push(`${x0}px ${y0}px`, `${x1}px ${y0}px`, `${x1}px ${y1}px`, `${x0}px ${y1}px`);
+        }
+        return pts.length ? `polygon(${pts.join(", ")})` : "polygon(0 0, 0 0, 0 0)";
+      };
+      const twin = strip.el.cloneNode(true);
+      twin.classList.add("gp-strip-twin");
+      twin.setAttribute("aria-hidden", "true");
+      for (const el of Array.from(twin.querySelectorAll("[id]")))
+        el.removeAttribute("id");
+      twin.style.setProperty("--gp-text-x", "calc(var(--gp-margin-left) - var(--gp-verso-shift, 0px))");
+      strip.el.style.clipPath = clip(ml, (p) => p % 2 === 0);
+      twin.style.clipPath = clip(ml - vs, (p) => p % 2 === 1);
+      strip.el.after(twin);
+      strip.twin = twin;
     }
     function drawMarginBoxes(sheet, ctx, totalPages) {
       const g = ctx.geometry;

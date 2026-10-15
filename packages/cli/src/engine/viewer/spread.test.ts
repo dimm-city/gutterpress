@@ -134,7 +134,9 @@ testIf(
           report = await page.evaluate(() => {
             const gp = (window as any).Gutterpress;
             const probeEls = Array.from(
-              document.querySelectorAll<HTMLElement>(".gp-strip p, .gp-strip h1")
+              document.querySelectorAll<HTMLElement>(
+                ".gp-strip:not(.gp-strip-twin) p, .gp-strip:not(.gp-strip-twin) h1",
+              )
             );
             const single = probeEls.map((el) => gp.pageOf(el));
 
@@ -148,7 +150,11 @@ testIf(
                 const sheet = document.querySelector<HTMLElement>(
                   `.gp-sheet[data-page="${single[i]! + 1}"]`,
                 )!;
-                const r = el.getClientRects()[0]!;
+                // what the reader sees there: on a verso in single view, the
+                // twin layout's copy (the real one is clipped to the rectos)
+                const strip = gp.strips.find((s: any) => s.el.contains(el));
+                const seen = sheet.dataset.side === "verso" ? gp.twinOf(el, strip) : el;
+                const r = seen.getClientRects()[0]!;
                 out[sheet.dataset.side as "recto" | "verso"].push(
                   Math.round((r.left - sheet.getBoundingClientRect().left) * 10) / 10,
                 );
@@ -355,20 +361,19 @@ testIf(
         );
         // MIRRORED MARGINS: every page's text sits at ITS OWN page's left
         // margin on its sheet, in both view modes — this fixture's `:right`
-        // is 0.25in (24px) and `:left` 0.75in (72px). Multicol has one text
-        // origin per run, so it is the verso's PAPER that moves: the sheets
-        // take exactly two horizontal positions, the verso ones (72 - 24 =)
-        // 48px apart from the recto ones. (The viewer used to leave sheets
-        // aligned and the verso's text at the recto's margin.)
+        // is 0.25in (24px) and `:left` 0.75in (72px) — and the paper never
+        // moves to meet it: in single view every sheet sits at ONE x, as in
+        // a PDF viewer, and the verso's text comes from the run's second
+        // layout (decorate.ts's `placeTwin`). (The viewer used to leave
+        // sheets aligned and the verso's text at the recto's margin, then
+        // for a while slid the verso's paper 48px right instead.)
         for (const offsets of [report.singleTextOffsets, report.spreadTextOffsets]) {
           expect(offsets.recto.length).toBeGreaterThan(2);
           expect(offsets.verso.length).toBeGreaterThan(2);
           for (const x of offsets.recto) expect(x).toBeCloseTo(24, 0);
           for (const x of offsets.verso) expect(x).toBeCloseTo(72, 0);
         }
-        expect(
-          Math.max(...report.singleSheetLefts) - Math.min(...report.singleSheetLefts),
-        ).toBeGreaterThanOrEqual(47);
+        expect(new Set(report.singleSheetLefts).size).toBe(1);
 
         // (2) a view mode may not move a page boundary.
         expect(report.pageOfMismatches).toEqual([]);

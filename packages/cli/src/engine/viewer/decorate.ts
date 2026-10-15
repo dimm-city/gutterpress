@@ -394,8 +394,6 @@ export function decorate(
     // placement arithmetic on boxes we already position; content and sheets
     // stay in the same box, and pagination is untouched.
     let prevPageH = 0;
-    let prevVersoShift = 0;
-    let prevRunX = 0;
     let first = true;
 
     for (const strip of layout.strips) {
@@ -403,7 +401,7 @@ export function decorate(
       // One computed-style read per strip, BEFORE the sheet-append loop
       // below mutates the DOM — reading after those writes forces a
       // synchronous style recalc per strip on every mount and hot reload.
-      const { stride, rowStride } = stripMetrics(strip.el);
+      const { rowStride } = stripMetrics(strip.el);
       const sheetGap =
         parseFloat(getComputedStyle(strip.el).getPropertyValue("--gp-sheet-gap")) || 0;
       // The gap originates on the strip because it also drives multicol's
@@ -418,6 +416,18 @@ export function decorate(
       const layer = run.querySelector<HTMLElement>(".gp-layer")!;
       layer.textContent = "";
       const g = strip.geometry;
+      // PAPER IS PLACED BY THE VIEW: one slot per page side, `page width +
+      // sheet gap` apart, and never moved by a margin. The TEXT is placed by
+      // the book: the strip's own column sits at the margin of the page side
+      // the flow is laid out for — the recto's in single-page view, where
+      // every row holds one page, the verso's in two-page view, where slot 0
+      // is a verso and slot 1 a recto (the column pitch already carries the
+      // difference, see `--gp-col-gap`).
+      const slotPitch = PX_PER_PT * g.width + sheetGap;
+      strip.el.style.setProperty(
+        "--gp-text-x",
+        perRow === 2 ? "calc(var(--gp-margin-left) - var(--gp-verso-shift, 0px))" : "var(--gp-margin-left)",
+      );
 
       for (let i = 0; i < strip.pages; i++) {
         const bookIndex = strip.offset + i;
@@ -450,7 +460,7 @@ export function decorate(
         // shift (`--gp-verso-shift`), so the gap between FACING sheets stays
         // the sheet gap and they can never overlap. Only paper moves; the
         // column width, so pagination, is untouched.
-        const sheetLeft = colVisual * stride + (side === "verso" ? strip.versoShift * PX_PER_PT : 0);
+        const sheetLeft = colVisual * slotPitch;
         const sheetTop = row * rowStride;
 
         const sheet = document.createElement("div");
@@ -494,7 +504,7 @@ export function decorate(
       // that same margin gap. Reserve `rowStride` pitch only BETWEEN rows,
       // and the sheet's real full height (`g.height`) for the last row.
       run.style.height = `${rowStride * (rows - 1) + PX_PER_PT * g.height}px`;
-      run.style.width = `${stride * perRow}px`;
+      run.style.width = `${slotPitch * perRow - sheetGap}px`;
 
       // A recto-starting wrapped run overlaps the previous run's last row
       // (see the parity proof above). The sibling margins collapse: prev's
@@ -510,23 +520,68 @@ export function decorate(
       // run keeps the solo-cover convention.
       const composed = !!strip.wrapCols && shift === 1 && !first;
       run.style.marginTop = composed ? `${-(prevPageH + sheetGap)}px` : "";
-      // The pair's verso (the previous run's) sits at its run's `versoShift`
-      // and its recto does not move, so when the two runs shift their versos
-      // differently the pair's gap would be off by the difference — an
-      // overlap if the previous run's is the larger. Slide the recto run by
-      // that difference, on top of wherever the previous run itself was slid
-      // (it may be composed with the one before it), and the pair keeps the
-      // sheet gap, as any pair inside one run does.
-      const runX = composed ? prevRunX + (prevVersoShift - strip.versoShift) * PX_PER_PT : 0;
-      run.style.marginLeft = runX ? `${runX}px` : "";
       prevPageH = PX_PER_PT * g.height;
-      prevVersoShift = strip.versoShift;
-      prevRunX = runX;
       first = false;
+
+      placeTwin(strip, run, perRow, rows, rowStride);
 
       if (opts.designer) checkOverflow(strip, warnings);
     }
     if (overlayOn) paintOverlayNow();
+  }
+
+  /**
+   * Single-page view of a mirrored book: one flow puts every page's text at
+   * the recto's margin, so a left-hand page's text would sit `versoShift`
+   * too far right on its (unmoved) paper. A second, identical layout of the
+   * run — a verbatim clone, same column width so the same breaks — is laid
+   * at the verso's margin instead. Each layout is clipped to the sheets of
+   * its own page side; `clip-path` clips hit-testing too, so a click lands
+   * on whichever layout is visible there. The twin carries no ids (anchors,
+   * `getElementById` and the string/xref maps keep resolving to the real
+   * elements) and is rebuilt with the sheets on every draw.
+   */
+  function placeTwin(
+    strip: StripInfo,
+    run: HTMLElement,
+    perRow: number,
+    rows: number,
+    rowStride: number,
+  ): void {
+    run.querySelector(":scope > .gp-strip-twin")?.remove();
+    strip.twin = undefined;
+    strip.el.style.clipPath = "";
+    if (perRow !== 1 || !strip.versoShift) return;
+    const g = strip.geometry;
+    const px = (name: string) => parseFloat(strip.el.style.getPropertyValue(name)) || 0;
+    const ml = px("--gp-margin-left");
+    const mt = px("--gp-margin-top");
+    const vs = strip.versoShift * PX_PER_PT;
+    const w = PX_PER_PT * g.width;
+    const h = PX_PER_PT * g.height;
+    // The sheets of one page side, as one polygon in the strip's own box
+    // (nonzero fill: disjoint rectangles joined along the left edge).
+    const clip = (textX: number, keep: (page: number) => boolean) => {
+      const x0 = -textX;
+      const x1 = x0 + w;
+      const pts: string[] = [];
+      for (let r = 0; r < rows; r++) {
+        if (!keep(strip.offset + r)) continue;
+        const y0 = r * rowStride - mt;
+        const y1 = y0 + h;
+        pts.push(`${x0}px ${y0}px`, `${x1}px ${y0}px`, `${x1}px ${y1}px`, `${x0}px ${y1}px`);
+      }
+      return pts.length ? `polygon(${pts.join(", ")})` : "polygon(0 0, 0 0, 0 0)";
+    };
+    const twin = strip.el.cloneNode(true) as HTMLElement;
+    twin.classList.add("gp-strip-twin");
+    twin.setAttribute("aria-hidden", "true");
+    for (const el of Array.from(twin.querySelectorAll("[id]"))) el.removeAttribute("id");
+    twin.style.setProperty("--gp-text-x", "calc(var(--gp-margin-left) - var(--gp-verso-shift, 0px))");
+    strip.el.style.clipPath = clip(ml, (p) => p % 2 === 0);
+    twin.style.clipPath = clip(ml - vs, (p) => p % 2 === 1);
+    strip.el.after(twin);
+    strip.twin = twin;
   }
 
   function drawMarginBoxes(sheet: HTMLElement, ctx: PageCtx, totalPages: number) {

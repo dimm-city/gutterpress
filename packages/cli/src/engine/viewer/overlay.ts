@@ -321,6 +321,8 @@ let host: HTMLElement | null = null;
 let root: HTMLElement | null = null;
 let observer: MutationObserver | null = null;
 let currentStyle: OverlayStyle = {};
+/** each drawn page box with the sheet it sits on, re-anchored by `syncToStage` */
+let anchored: Array<{ box: HTMLElement; sheet: HTMLElement }> = [];
 
 function applyStyle(): void {
   if (!root) return;
@@ -342,16 +344,26 @@ function stageFrame(): { left: number; top: number; zoom: number } {
   return { left: r.left, top: r.top, zoom: zoom || 1 };
 }
 
-/** Line the overlay up with the stage: same origin, same zoom. */
+/**
+ * Line the overlay up with the stage: same origin, same zoom, and each page
+ * box on its sheet. The sheets' runs are centered in the stage, so a zoom
+ * change or a window resize moves them sideways; the boxes follow by reading
+ * their sheets again, which is cheaper than a repaint.
+ */
 function syncToStage(): void {
   if (!host || !root) return;
-  const { left, top, zoom } = stageFrame();
+  const stage = stageFrame();
   host.style.setProperty(
     "transform",
-    `translate(${left + window.scrollX}px, ${top + window.scrollY}px) scale(${zoom})`,
+    `translate(${stage.left + window.scrollX}px, ${stage.top + window.scrollY}px) scale(${stage.zoom})`,
     "important",
   );
-  root.style.setProperty("--gp-ov-z", String(zoom));
+  root.style.setProperty("--gp-ov-z", String(stage.zoom));
+  for (const { box, sheet } of anchored) {
+    const r = sheet.getBoundingClientRect();
+    box.style.left = `${(r.left - stage.left) / stage.zoom}px`;
+    box.style.top = `${(r.top - stage.top) / stage.zoom}px`;
+  }
 }
 
 function ensureRoot(): HTMLElement {
@@ -376,12 +388,15 @@ function ensureRoot(): HTMLElement {
   observer = new MutationObserver(syncToStage);
   observer.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
   observer.observe(document.body, { attributes: true, attributeFilter: ["style"] });
+  window.addEventListener("resize", syncToStage);
   return root;
 }
 
 export function clearOverlay(): void {
   observer?.disconnect();
   observer = null;
+  window.removeEventListener("resize", syncToStage);
+  anchored = [];
   host?.remove();
   host = null;
   root = null;
@@ -441,6 +456,7 @@ export function paintOverlay(
   area: PrintArea | null,
 ): OverlaySummary {
   const layer = ensureRoot();
+  anchored = [];
   syncToStage();
   const stage = stageFrame();
   const painted = new Map<number, Painted>();
@@ -458,6 +474,7 @@ export function paintOverlay(
       h: boxes.sheet.h,
     });
     host.dataset.page = String(p.index + 1);
+    anchored.push({ box: host, sheet: p.sheet });
     if (boxes.bleed > 0) {
       // The band is the sheet minus the trim: a border whose width on each
       // side is how far the trim sits inside it (0 on the binding edge).
@@ -481,6 +498,20 @@ export function paintOverlay(
   let issues = 0;
   let intended = 0;
   for (const strip of strips) {
+    // A mirrored book's single-page view lays the run out twice (fragment.ts
+    // `StripInfo.twin`): the real strip shows the right-hand pages, the twin
+    // the left-hand ones. Each is read for the pages it shows, where its
+    // text really is on the sheet.
+    const roots: Array<[Element, PageSide | null]> = strip.twin
+      ? [
+          [strip.el, "recto"],
+          [strip.twin, "verso"],
+        ]
+      : [[strip.el, null]];
+    for (const [root, only] of roots) visitRoot(strip, root, only);
+  }
+
+  function visitRoot(strip: StripInfo, root: Element, only: PageSide | null): void {
     const zoom = cssZoomOf(strip.el);
     // The anchor of a fragment is the middle of its in-column part, so a box
     // that overhangs its column on either side is still attributed to the page
@@ -498,6 +529,7 @@ export function paintOverlay(
         const ay = r.top + Math.min(r.height, colH || r.height) / 2;
         const target = painted.get(strip.offset + indexInStrip(ax, ay, strip));
         if (!target) continue;
+        if (only && target.sheet.dataset.side !== only) continue;
         target.rect ??= target.sheet.getBoundingClientRect();
         const local: Rect = {
           x: (r.left - target.rect.left) / zoom,
@@ -521,7 +553,7 @@ export function paintOverlay(
       }
       for (const child of Array.from(el.children)) visit(child);
     };
-    for (const child of Array.from(strip.el.children)) visit(child);
+    for (const child of Array.from(root.children)) visit(child);
   }
 
   for (const f of flags) {

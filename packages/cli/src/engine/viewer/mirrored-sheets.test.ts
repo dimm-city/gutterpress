@@ -1,16 +1,21 @@
 /**
  * Mirrored margins in the REAL viewer: each page's text sits where its own
- * `@page :left` / `:right` margins put it on the sheet drawn for that page.
+ * `@page :left` / `:right` margins put it on the sheet drawn for that page,
+ * and the paper itself never moves to meet the text.
  *
  * `mirrored-margins.test.ts` pins the column WIDTH (what pagination depends on).
  * That left a verso's text at the recto's margin on its sheet — `dx` too far
- * right (12px on the dc-op-manual field guide). The text cannot move per page (one multicol
- * per run), so the verso's PAPER does (decorate.ts, `versoShift`). These cases
- * measure the result in Chromium, on `fixtures/mirrored-sheets.html`:
+ * right (12px on the dc-op-manual field guide). The text cannot move per page
+ * (one multicol per run), so in single-page view the run is laid out TWICE
+ * (decorate.ts's `placeTwin`): the real strip at the recto margin, clipped to
+ * the right-hand sheets, and an identical twin at the verso margin, clipped to
+ * the left-hand ones. These cases measure the VISIBLE layout in Chromium, on
+ * `fixtures/mirrored-sheets.html`:
  *
  *  - a verso's content box relative to its sheet is the `:left` margins, a
  *    recto's the `:right` ones, in single and in two-up view;
  *  - margin boxes (drawn per sheet) stay aligned with the text;
+ *  - every single-view sheet sits at one x, like the pages of a PDF viewer;
  *  - two-up still pairs (verso, recto) with the sheet gap between FACING
  *    sheets, and moves no page break;
  *  - a book without mirrored margins is placed exactly as before.
@@ -72,12 +77,19 @@ async function open(url: string) {
 
 /** In-page measurement, shared by every case: where each paragraph, margin box and sheet is. */
 function measureBook() {
+  const gp = (window as any).Gutterpress;
   const sheet = (n: number) => document.querySelector<HTMLElement>(`.gp-sheet[data-page="${n}"]`)!;
   const round = (v: number) => Math.round(v * 10) / 10;
+  // The copy of an element the reader actually sees: on a left-hand page in
+  // single view that is the twin's (the real one is clipped away there).
+  const visible = (el: Element) => {
+    const strip = gp.strips.find((s: any) => s.el.contains(el));
+    return strip && Number(sheet(gp.pageOf(el) + 1).dataset.page) % 2 === 0 ? gp.twinOf(el, strip) : el;
+  };
   const pages = [1, 2, 3, 4, 5, 6].map((n) => {
     const s = sheet(n);
     const sr = s.getBoundingClientRect();
-    const r = document.getElementById(`t${n}`)!.getBoundingClientRect();
+    const r = visible(document.getElementById(`t${n}`)!).getBoundingClientRect();
     const head = s.querySelector<HTMLElement>('.gp-marginbox[data-box="top-left"]');
     return {
       page: n,
@@ -113,10 +125,10 @@ testIf(
           // …and the margin box is painted on that same left edge, as in print
           expect(p.head).toEqual({ x: recto ? 50 : 30, text: recto ? "recto head" : "verso head" });
         }
-        // the paper moved, not the text: versos sit 20px (50 - 30) right of rectos
-        const lefts = m.pages.map((p) => p.sheetLeft);
-        expect(lefts.filter((_, i) => i % 2 === 0)).toEqual(Array(3).fill(lefts[0]));
-        expect(lefts.filter((_, i) => i % 2 === 1)).toEqual(Array(3).fill(lefts[0]! + 20));
+        // the text moved, not the paper: every sheet at one x, and the run's
+        // second layout is there for the versos
+        expect(new Set(m.pages.map((p) => p.sheetLeft)).size).toBe(1);
+        expect(await page.evaluate(() => document.querySelectorAll(".gp-strip-twin").length)).toBe(1);
         // the strip's pitch carries the shift so facing sheets keep their gap
         expect(
           await page.evaluate(() =>
@@ -195,7 +207,9 @@ testIf(
         const single = await page.evaluate(measureBook);
         // text on its page's own margins, in the shifted runs and the unshifted one
         expect(single.pages.map((p) => p.text.x)).toEqual([50, 30, 40, 40, 50, 30]);
-        expect(single.pages.map((p) => p.sheetLeft - single.pages[0]!.sheetLeft)).toEqual([0, 20, 0, 0, 0, 20]);
+        expect(single.pages.map((p) => p.sheetLeft - single.pages[0]!.sheetLeft)).toEqual([0, 0, 0, 0, 0, 0]);
+        // only the mirrored runs lay out twice
+        expect(await page.evaluate(() => document.querySelectorAll(".gp-strip-twin").length)).toBe(2);
 
         await page.evaluate(() => (window as any).Gutterpress.setSpread(true));
         const spread = await page.evaluate(measureBook);
@@ -231,9 +245,12 @@ testIf(
         const m = await page.evaluate(() => {
           const round = (v: number) => Math.round(v * 10) / 10;
           const sheet = (n: number) => document.querySelector<HTMLElement>(`.gp-sheet[data-page="${n}"]`)!;
+          const gp = (window as any).Gutterpress;
           const at = (id: string, n: number) => {
             const s = sheet(n).getBoundingClientRect();
-            const r = document.getElementById(id)!.getBoundingClientRect();
+            let el: Element = document.getElementById(id)!;
+            if (n % 2 === 0) el = gp.twinOf(el, gp.strips.find((st: any) => st.el.contains(el)));
+            const r = el.getBoundingClientRect();
             return {
               left: round(r.left - s.left),
               fromRight: round(s.right - r.right),
@@ -277,8 +294,9 @@ testIf(
           expect(p.text).toEqual({ x: 40, y: 40 });
           expect(p.head).toBeNull(); // the margin boxes lived in the dropped rules
         }
-        // every sheet at one left; nothing slid
+        // every sheet at one left, and one layout is enough
         expect(new Set(m.pages.map((p) => p.sheetLeft)).size).toBe(1);
+        expect(await page.evaluate(() => document.querySelectorAll(".gp-strip-twin").length)).toBe(0);
         const strip = await page.evaluate(() => {
           const el = document.querySelector<HTMLElement>(".gp-strip")!;
           return {

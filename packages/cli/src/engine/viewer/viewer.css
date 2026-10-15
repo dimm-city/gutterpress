@@ -73,8 +73,18 @@
   column-fill: auto;
   overflow: visible;
   margin: 0;
-  /* strip sits inside the first sheet's content box */
-  transform: translate(var(--gp-margin-left), var(--gp-margin-top));
+  /* The strip's column sits at the text's margin on its row's first sheet:
+     `--gp-text-x` (decorate.ts) — the recto's margin in single-page view,
+     the verso's in two-page view. The paper never moves to meet the text. */
+  transform: translate(var(--gp-text-x, var(--gp-margin-left)), var(--gp-margin-top));
+}
+
+/* Single-page view of a mirrored book (decorate.ts's placeTwin): the run's
+   second layout, at the verso margins, clipped to the left-hand sheets. */
+.gp-strip-twin {
+  position: absolute;
+  top: 0;
+  left: 0;
 }
 
 /* NOTE: there is deliberately no `.gp-strip > * { break-inside: auto }` here.
@@ -154,7 +164,10 @@
 
 .gp-run {
   position: relative;
-  margin: 0 0 var(--gp-sheet-gap);
+  /* Centered in the stage: the run box is exactly the sheets' extent (one
+     page wide in single-page view, two pages and the gap in two-page view),
+     so a page's center, or a spread's spine, is the preview's center line. */
+  margin: 0 auto var(--gp-sheet-gap);
   /* Hit-transparent, like `.gp-layer` below: in wrap mode a recto-starting
      run is pulled up over the previous run's last row (decorate.ts's
      cross-run negative margin-top — the spread-composition overlap), and
