@@ -43,7 +43,7 @@ function installBook(frame, markup = BOOK_NATIVE, layout = "vertical") {
       setOverlay(on, style) {
         frameWindow.__overlayCalls.push(on);
         if (style && style.strength) frameDocument.body.dataset.overlayStrength = style.strength;
-        if (style && style.color) frameDocument.body.style.setProperty("--gp-ov-color", style.color);
+        if (style && style.color) frameDocument.body.dataset.overlayColor = style.color;
         frameDocument.body.dataset.overlay = on ? "on" : "off";
         return { on, issues: 0, intended: 0, bleedPt: 0 };
       },
@@ -645,7 +645,7 @@ async function main() {
   );
   assert.equal(fresh.contentDocument.body.dataset.overlay, "on", "overlay state survives a hot reload");
   assert.equal(fresh.contentDocument.body.dataset.overlayStrength, "strong", "…and so does its strength");
-  assert.equal(fresh.contentDocument.body.style.getPropertyValue("--gp-ov-color"), "#00aa55", "…and its colour");
+  assert.equal(fresh.contentDocument.body.dataset.overlayColor, "#00aa55", "…and its colour");
   assert.equal(
     fresh.contentDocument.documentElement.style.getPropertyValue("--gutterpress-zoom"),
     "0.8",

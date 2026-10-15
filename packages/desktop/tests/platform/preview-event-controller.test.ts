@@ -506,7 +506,7 @@ test("overlayChanged hands the viewer's finding to the toolbar, and 'off' clears
     name: "overlayChanged",
     detail: { on: true, issues: 3.9, intended: 1, bleedPt: 9 },
   });
-  expect(h.overlaySummary).toEqual({ on: true, issues: 3, intended: 1, bleedPt: 9 });
+  expect(h.overlaySummary).toEqual({ on: true, issues: 3, intended: 1, bleedPt: 9, safePt: 0 });
   h.ctrl.handleEvent({ name: "overlayChanged", detail: { on: false, issues: 0, intended: 0, bleedPt: 0 } });
   expect(h.overlaySummary).toBeNull();
   // junk from a mismatched viewer is not a finding
