@@ -25,9 +25,23 @@ This project follows [Semantic Versioning](https://semver.org/).
   art rule for the top, bottom and outside edges, and `dtrpg` sets it to 18pt
   (0.25in); leave it out and art follows `page.safe`.
   The `book` preset keeps its single 0.25in rule. Both are points in
-  `manifest.yaml` and, like `page.bleed`, they only tell the preview overlay what
-  to check: the PDF is unchanged. The manifest schema's descriptions name the
+  `manifest.yaml` and, like `page.bleed`, they change nothing in the PDF: the
+  preview overlay checks against them, and the `pdf.print.safe-margins` check
+  below reads `page.safe`. The manifest schema's descriptions name the
   DriveThruRPG rule each number is.
+- **Preflight checks that your text keeps clear of the trim.** The new
+  `pdf.print.safe-margins` check reads the finished PDF and reports every line
+  of text closer to the trim than `page.safe`: 0.5in on every edge for the
+  `dtrpg` preset, DriveThruRPG's rule. It judges each page against its own
+  trim, which is the page less the bleed on the top, bottom and outside edges
+  only, and the outside edge is the right on odd pages and the left on even
+  ones. Each finding names the page, the words, the edge and how far to move
+  them in. Only text is checked: art is judged in the preview's safe-area
+  overlay. It is an error for `dtrpg` books and the `dtrpg` target and a
+  warning for `book`; the `itch` target skips it, and so does a book with no
+  `page.safe`. Run it with `gutterpress validate --target dtrpg` or the
+  desktop's publish preflight, and soften or turn it off with `validate.checks`
+  in `manifest.yaml` like any other check.
 
 ### Changed
 

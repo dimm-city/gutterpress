@@ -90,13 +90,13 @@ export const DTRPG_PRESET: VendorPreset = {
     tolerance: 0.5, // CONVENTION: slack for rounding in the PDF boxes
     // SPEC: 0.125in = 9pt, ALREADY INSIDE width/height above on the top,
     // bottom and outer edges only. Declared so the preview's margin & bleed
-    // overlay can show the trim; the PDF is unchanged (CSS `bleed` is
-    // symmetric and would grow the page and add binding-edge bleed, which the
-    // SPEC rules out).
+    // overlay and `pdf.print.safe-margins` can find the trim; the PDF is
+    // unchanged (CSS `bleed` is symmetric and would grow the page and add
+    // binding-edge bleed, which the SPEC rules out).
     bleed: 9,
     // SPEC: 0.5in = 36pt, DriveThru's TEXT rule: text stays at least 0.5in
-    // inside the trim on every edge. The preview overlay judges text against
-    // it; the PDF is unchanged.
+    // inside the trim on every edge. The preview overlay and
+    // `pdf.print.safe-margins` judge text against it; the PDF is unchanged.
     safe: 36,
     // SPEC: 0.25in = 18pt, DriveThru's ART rule: art that does not bleed stays
     // at least 0.25in from the three outside edges (the binding edge takes the
@@ -130,6 +130,11 @@ export const DTRPG_PRESET: VendorPreset = {
         severity: "error",
       },
       "pdf.print.embedded-fonts": {
+        enabled: true,
+        severity: "error",
+      },
+      // SPEC: text at least 0.5in inside the trim on every edge (`page.safe`).
+      "pdf.print.safe-margins": {
         enabled: true,
         severity: "error",
       },
@@ -223,7 +228,8 @@ export const BOOK_PRESET: VendorPreset = {
     tolerance: 0.5,
     // No bleed inside the sheet; listed so a manifest `page.bleed` merges in.
     bleed: undefined,
-    // CONVENTION: 0.25in safe area inside the trim (preview overlay only).
+    // CONVENTION: 0.25in safe area inside the trim (preview overlay and
+    // `pdf.print.safe-margins`).
     safe: 18,
     // The art rule is the same as `safe`; listed so a manifest `page.artSafe` merges in.
     artSafe: undefined,
@@ -247,6 +253,12 @@ export const BOOK_PRESET: VendorPreset = {
       "pdf.print.embedded-fonts": {
         enabled: true,
         severity: "error",
+      },
+      // CONVENTION: text stays `page.safe` inside the trim. A warning: no
+      // printer's rule stands behind this preset's number.
+      "pdf.print.safe-margins": {
+        enabled: true,
+        severity: "warning",
       },
       "pdf.print.pdfx-markers": false,
       "pdf.print.pdfx-metadata": false,

@@ -99,13 +99,18 @@ describe("preflight payload", () => {
         errors: [failure],
         warnings: [],
         infos: [],
-        passed: ["pdf.structure.qpdf", "pdf.print.embedded-fonts", "pdf.print.pdfx-metadata"],
-        summary: { total: 4, errors: 1, warnings: 0, infos: 0, passed: 3 },
+        passed: [
+          "pdf.structure.qpdf",
+          "pdf.print.embedded-fonts",
+          "pdf.print.pdfx-metadata",
+          "pdf.print.safe-margins",
+        ],
+        summary: { total: 5, errors: 1, warnings: 0, infos: 0, passed: 4 },
       },
     });
 
     const rows = buildPreflightPayload(execution).requiredChecks;
-    expect(rows.filter((r) => r.target === "dtrpg")).toHaveLength(4);
+    expect(rows.filter((r) => r.target === "dtrpg")).toHaveLength(5);
     expect(
       rows.find((r) => r.target === "dtrpg" && r.id === "pdf.print.pdfx-markers")?.status
     ).toBe("fail");

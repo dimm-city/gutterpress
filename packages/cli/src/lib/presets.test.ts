@@ -189,6 +189,11 @@ test("book preset still enables generic, vendor-agnostic PDF health checks", () 
   });
 });
 
+test("the safe-margins check is an error under dtrpg, whose spec it enforces, and a warning under book", () => {
+  expect(DTRPG_PRESET.validate.checks["pdf.print.safe-margins"]).toEqual({ enabled: true, severity: "error" });
+  expect(BOOK_PRESET.validate.checks["pdf.print.safe-margins"]).toEqual({ enabled: true, severity: "warning" });
+});
+
 test("resolveConfig with preset: book resolves the book preset's geometry", () => {
   const config = resolveConfig({}, { preset: "book" });
   expect(config.page.width).toBe(432);

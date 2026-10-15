@@ -160,15 +160,16 @@ export interface GutterpressManifest {
      * bottom and OUTER edges only (the binding edge has none) — how
      * DriveThruRPG's interior file is cut (8.625 x 11.25in for an 8.5 x 11in
      * book). It changes nothing in the PDF: it only tells the preview's safe
-     * area & bleed overlay where the trim is.
+     * area & bleed overlay and `pdf.print.safe-margins` where the trim is.
      */
     bleed?: number;
     /**
      * The TEXT rule (pt): glyphs stay at least this far inside the trim on
      * EVERY edge — DriveThruRPG's "keep text 0.5in inside the trim" (`dtrpg`
-     * sets 36). The preview's overlay outlines it and flags text outside it.
-     * Like `bleed`, overlay-only: it changes nothing in the PDF, and nothing in
-     * a book's CSS moves it.
+     * sets 36). The preview's overlay outlines it and flags text outside it,
+     * and `pdf.print.safe-margins` fails a built PDF whose text is closer. Like
+     * `bleed`, it changes nothing in the PDF, and nothing in a book's CSS moves
+     * it.
      */
     safe?: number;
     /**

@@ -50,6 +50,7 @@ describe("Check Registry", () => {
     const pdfIds = ids.filter((id) => id.startsWith("pdf."));
     expect(pdfIds).toContain("pdf.structure.qpdf");
     expect(pdfIds).toContain("pdf.print.page-size");
+    expect(pdfIds).toContain("pdf.print.safe-margins");
     expect(pdfIds).toContain("pdf.print.pdfx-markers");
     expect(pdfIds).toContain("pdf.print.color-spaces");
     expect(pdfIds).toContain("pdf.print.embedded-fonts");
@@ -197,7 +198,7 @@ describe("Check Registry", () => {
     // checks are namespaced by category (pdf/source/asset/heuristic) and never
     // start with `test.`, so excluding those makes the count deterministic.
     const all = getAllCheckIds().filter((id) => !id.startsWith("test."));
-    // 17 pdf + 11 source + 7 asset + 4 heuristic = 39
+    // 18 pdf + 11 source + 7 asset + 4 heuristic = 40
     // (source.sync.merge-markers added 0.10.1 — the converge merge's marker
     // blocks and kept-both `.online` siblings were invisible until print;
     // source.callout-validation removed with ::: container syntax, 2026-05-17;
@@ -213,8 +214,10 @@ describe("Check Registry", () => {
     // source.links.dangling added 0.10.9 (#263) — relative links a PDF cannot
     // open, whose href the print build drops;
     // pdf.print.black-text and pdf.print.signature added 0.11.17 (#336);
-    // source.characters added 0.11.19 (#382).)
-    expect(all.length).toBe(39);
+    // source.characters added 0.11.19 (#382);
+    // pdf.print.safe-margins added 0.11.20 — text kept `page.safe` inside the
+    // trim.)
+    expect(all.length).toBe(40);
   });
 });
 
@@ -1634,6 +1637,7 @@ describe("PDF checks skip when no pdfPath", () => {
   const pdfCheckIds = [
     "pdf.structure.qpdf",
     "pdf.print.page-size",
+    "pdf.print.safe-margins",
     "pdf.print.pdfx-markers",
     "pdf.print.color-spaces",
     "pdf.print.embedded-fonts",
@@ -1861,6 +1865,7 @@ describe("Tool Check", () => {
       "pdf.nav.page-labels",
       "pdf.structure.qpdf",
       "pdf.print.page-size",
+      "pdf.print.safe-margins",
       "pdf.print.bleed",
       "pdf.print.embedded-fonts",
       "pdf.print.image-resolution",

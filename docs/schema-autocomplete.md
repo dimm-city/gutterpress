@@ -304,8 +304,8 @@ Expected page geometry, in **points** (1in = 72pt).
 
 - `width` / `height` (number) - Expected size in points. Preset defaults: `dtrpg` 621x810, `book` 432x648 (6x9in).
 - `tolerance` (number) - Allowed deviation in points. Default `0.5`.
-- `bleed` (number) - A bleed in points that `width` x `height` **already contain**, on the top, bottom and outer edges only (the binding edge has none). This is how DriveThruRPG's interior file is cut (8.625x11.25in for an 8.5x11in book), so the `dtrpg` preset sets `9` (0.125in); `book` and `custom` set none. It only tells the preview's safe area and bleed overlay where the trim is; it changes nothing in the PDF.
-- `safe` (number) - The safe area's inset in points from the trim on every edge: the preview's overlay outlines it and flags content outside it. `dtrpg` and `book` set `18` (0.25in); `custom` sets none. Preview only; it changes nothing in the PDF, and no CSS moves it.
+- `bleed` (number) - A bleed in points that `width` x `height` **already contain**, on the top, bottom and outer edges only (the binding edge has none). This is how DriveThruRPG's interior file is cut (8.625x11.25in for an 8.5x11in book), so the `dtrpg` preset sets `9` (0.125in); `book` and `custom` set none. It tells the preview's safe area and bleed overlay, and `pdf.print.safe-margins`, where the trim is; it changes nothing in the PDF.
+- `safe` (number) - The text rule: how far inside the trim, in points, glyphs must stay on every edge. The preview's overlay outlines it and flags text outside it, and `pdf.print.safe-margins` fails a built PDF whose text is closer (text only: art is judged in the overlay). `dtrpg` sets `36` (0.5in, DriveThruRPG's rule), `book` `18` (0.25in); `custom` sets none, and the check is skipped. It changes nothing in the PDF, and no CSS moves it.
 
 ```yaml
 # US Letter trim: 8.5 x 11in

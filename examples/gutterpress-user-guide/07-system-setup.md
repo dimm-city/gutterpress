@@ -159,12 +159,13 @@ This is a warning, not an error — the build succeeds, but those PDF/X checks a
 
 ### PDF validation — built in (no Poppler)
 
-Page size, bleed boxes, embedded fonts, image resolution/DPI, bookmarks, TOC
-links, cross-references, page labels, rasterized-page detection, text density,
-layout variance, and structural parsing all run **in-process** via a bundled
-PDF.js engine (the `unpdf` package). **Poppler (`pdfinfo`, `pdffonts`,
-`pdfimages`, `pdftotext`) is no longer used or required.** These checks run
-everywhere, including from the standalone binary, with zero system tools.
+Page size, text safe margins, bleed boxes, embedded fonts, image
+resolution/DPI, bookmarks, TOC links, cross-references, page labels,
+rasterized-page detection, text density, layout variance, and structural
+parsing all run **in-process** via a bundled PDF.js engine (the `unpdf`
+package). **Poppler (`pdfinfo`, `pdffonts`, `pdfimages`, `pdftotext`) is no
+longer used or required.** These checks run everywhere, including from the
+standalone binary, with zero system tools.
 
 > Fidelity note: structural validation is a "does it parse cleanly" gate rather
 > than a deep `qpdf --check`, and image DPI is derived from the rendered placed
