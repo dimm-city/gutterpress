@@ -13,7 +13,15 @@ import {
   type PageGeometry,
 } from "../shared/gcpm-extract.ts";
 import { isRectoVersoBreak, planRectoBlanks, signaturePadding, wantsRecto, type LastPageMode } from "../shared/synthesis.ts";
-import { flushEdgesIn, flushMargins, type FlushEdge } from "../shared/flush.ts";
+import {
+  EDGE_PIN_SELECTOR,
+  flushMargins,
+  paddingOf,
+  pinEdgesIn,
+  pinRootStyle,
+  type PinEdge,
+} from "../shared/pin-edges.ts";
+import { printAreaFromMeta } from "../shared/print-area.ts";
 
 export const PX_PER_PT = 96 / 72;
 
@@ -22,11 +30,14 @@ export interface StripInfo {
   /** named page for this run, undefined = default page context */
   page?: string;
   /** the AUTHOR context's geometry — decoration (sheets, margin-box slots,
-   * guides) always uses this. A flush run's grown content box lives only in
-   * the strip's CSS custom properties (see stripify). */
+   * guides) always uses this. A pin run's grown page area lives only in the
+   * strip's CSS custom properties (see `buildStrips`). */
   geometry: PageGeometry;
-  /** edges freed by `.gp-flush` pins in this run (shared/flush.ts) */
-  flushEdges?: FlushEdge[];
+  /** edges freed by this run's edge pins (shared/pin-edges.ts) */
+  pinEdges?: PinEdge[];
+  /** the page roots those pins belong to, which get the freed margins back
+   * as padding and the pin box's insets */
+  pinRoots?: HTMLElement[];
   /** how far the strip's text sits to the right of a VERSO's own left margin,
    * in pt: `@page :right`'s left margin less `@page :left`'s (`versoShiftPt`).
    * The multicol lays every page's text at the recto's margin, so decoration
@@ -379,27 +390,51 @@ function hasDescendantPageAssignment(el: Element, model: GcpmModel): boolean {
   return false;
 }
 
+/** Page roots whose edge pins free margins, and those edges (shared/pin-edges.ts). */
+interface PinRun {
+  edges: PinEdge[];
+  roots: HTMLElement[];
+}
+
 interface Run {
   page?: string;
   nodes: ChildNode[];
-  /** `.gp-flush` edges of this run's root — part of the partition key, so a
-   * flush root always gets its own strip: its content box differs from its
-   * neighbours' even when they share a page name, exactly as in print, where
-   * the compiler gives the root its own generated page context. */
-  flushEdges?: FlushEdge[];
+  /** the run's pin roots and their edges — the edges are part of the
+   * partition key, so a pin root always gets its own strip: its page area
+   * differs from its neighbours' even when they share a page name, exactly as
+   * in print, where the compiler gives the root its own generated page
+   * context. */
+  pin?: PinRun;
 }
 
-function pushRun(
-  runs: Run[],
-  page: string | undefined,
-  nodes: ChildNode[],
-  flushEdges?: FlushEdge[],
-) {
-  const key = (r: { page?: string; flushEdges?: FlushEdge[] }) =>
-    `${r.page ?? ""}\u0000${(r.flushEdges ?? []).join(",")}`;
+function pushRun(runs: Run[], page: string | undefined, nodes: ChildNode[], pin?: PinRun) {
+  const key = (r: { page?: string; pin?: PinRun }) =>
+    `${r.page ?? ""}\u0000${(r.pin?.edges ?? []).join(",")}`;
   const last = runs[runs.length - 1];
-  if (last && key(last) === key({ page, flushEdges })) last.nodes.push(...nodes);
-  else runs.push({ page, nodes, flushEdges: flushEdges?.length ? flushEdges : undefined });
+  if (last && key(last) === key({ page, pin })) {
+    last.nodes.push(...nodes);
+    if (pin) last.pin!.roots.push(...pin.roots);
+  } else runs.push({ page, nodes, pin: pin && { edges: pin.edges, roots: [...pin.roots] } });
+}
+
+const PAGE_ROOT = ".page, .spread";
+
+/** Each pin root's own (authored) padding in px, read before the engine adds the freed margin to it. */
+const ownPadding = new WeakMap<HTMLElement, Record<PinEdge, number>>();
+
+/** `el`'s own pins, when it is a page root whose pins name edges. */
+function pinRunOf(el: HTMLElement): PinRun | undefined {
+  if (!el.matches(PAGE_ROOT)) return undefined;
+  const edges = pinEdgesIn(el);
+  return edges.length ? { edges, roots: [el] } : undefined;
+}
+
+/** Whether a page root inside `el` (not `el` itself) is the containing block of an edge pin. */
+function holdsPinRoot(el: Element): boolean {
+  return Array.from(el.querySelectorAll<HTMLElement>(EDGE_PIN_SELECTOR)).some((pin) => {
+    const root = pin.offsetParent;
+    return !!root && root !== el && el.contains(root) && root.matches(PAGE_ROOT);
+  });
 }
 
 /**
@@ -423,6 +458,11 @@ function pushRun(
  * matches) is never recursed into — the whole subtree keeps that name, same
  * as before this function existed.
  *
+ * A page root holding edge pins is a run of its own in the same way (print
+ * gives it a generated page context — shared/pin-edges.ts), so a wrapper
+ * around one (a `.chapter`) is exploded around it just like a wrapper around
+ * a page-assigned descendant.
+ *
  * Text and comment nodes ride along with the run of the element BEFORE them
  * (the run print would leave them in), or with the first run when nothing
  * precedes them. Iterating elements alone would leave every loose text node
@@ -445,10 +485,10 @@ function explodeChildren(container: Element, model: GcpmModel): Run[] {
     const last = runs[runs.length - 1];
     if (last) {
       // The FULL partition key, not just the page name: text riding behind a
-      // flush run must stay in that run, or the whitespace after a flush root
+      // pin run must stay in that run, or the whitespace after a pin root
       // opens a spurious same-name strip — measured as a 5pp preview of a
       // 4pp book.
-      pushRun(runs, last.page, held, last.flushEdges);
+      pushRun(runs, last.page, held, last.pin && { edges: last.pin.edges, roots: [] });
       return [];
     }
     // Nothing precedes it: text with real content opens its own default-page
@@ -468,30 +508,30 @@ function explodeChildren(container: Element, model: GcpmModel): Run[] {
     }
     const kid = node as HTMLElement;
     if (kid.classList.contains("gp-layer")) continue; // viewer chrome, not content
-    const flush = flushEdgesIn(kid);
+    const pin = pinRunOf(kid);
     const own = directPageName(kid, model);
     if (own !== undefined) {
-      pushRun(runs, own, [...carry(), kid], flush);
+      pushRun(runs, own, [...carry(), kid], pin);
       continue;
     }
-    if (!hasDescendantPageAssignment(kid, model)) {
-      pushRun(runs, undefined, [...carry(), kid], flush);
+    if (!hasDescendantPageAssignment(kid, model) && !holdsPinRoot(kid)) {
+      pushRun(runs, undefined, [...carry(), kid], pin);
       continue;
     }
     const inner = explodeChildren(kid, model);
     if (inner.length <= 1) {
-      pushRun(runs, inner[0]?.page, [...carry(), kid]);
+      pushRun(runs, inner[0]?.page, [...carry(), kid], pin ?? inner[0]?.pin);
       continue;
     }
     // kid's own page context changes partway through its children: split it
     // into one shell per inner run, inserted in kid's place, then drop the
-    // now-empty original.
+    // now-empty original. A pin root's shells are page roots themselves.
     let lead = carry();
     for (const r of inner) {
       const shell = kid.cloneNode(false) as HTMLElement;
       for (const n of r.nodes) shell.appendChild(n);
       kid.before(shell);
-      pushRun(runs, r.page, [...lead, shell], flushEdgesIn(shell));
+      pushRun(runs, r.page, [...lead, shell], pin ? pinRunOf(shell) : r.pin);
       lead = [];
     }
     kid.remove();
@@ -623,6 +663,55 @@ function restoreFullHeightPageRoots(doc: Document = document): void {
     delete el.dataset.gpLeadingPageRoot;
     delete el.dataset.gpLeadingPageRootDisplay;
     delete el.dataset.gpLeadingPageRootDisplayPriority;
+  }
+}
+
+/**
+ * Pinned art on a VERSO, once the strips are measured: a pin root whose first
+ * page is a verso gets that side's horizontal geometry, inline. Print gives a
+ * verso its own `@page :left` margins and its binding on the RIGHT; the run's
+ * one multicol was laid out with the recto's (`buildStrips`), and decoration
+ * slides the verso's paper by `versoShift` so its text lands on its own left
+ * margin. The pin box needs more than the slide: a freed side edge's page
+ * area is wider on one side than the other, so the root's border box is
+ * stretched (or narrowed) by the shift on that edge, its padding takes the
+ * verso's margin there — the content box, and so every line and page break,
+ * stays exactly where it was — and the binding and outside edges swap their
+ * art-safe insets. The vertical geometry stays the recto's: the run's columns
+ * are one height, as they always were.
+ */
+function fitVersoPinRoots(model: GcpmModel, strips: StripInfo[]): void {
+  const area = printAreaFromMeta(document);
+  // READ phase, then WRITE phase: a style write between two `pageOf` reads
+  // would force one synchronous layout of the whole book per root.
+  const versos: Array<{ root: HTMLElement; style: Record<string, string> }> = [];
+  for (const strip of strips) {
+    if (!strip.pinEdges || !strip.pinRoots?.length) continue;
+    const edges = strip.pinEdges;
+    const { left, agree } = pageSides(model, strip.page);
+    const verso = agree ? left.margin : strip.geometry.margin;
+    const margin = { ...strip.geometry.margin, left: verso.left, right: verso.right };
+    const shift = pt(strip.versoShift);
+    for (const root of strip.pinRoots) {
+      // a recto (page 1, 3, …) keeps the defaults `buildStrips` gave it
+      if (pageOf(root, strips) % 2 !== 1) continue;
+      const style = pinRootStyle(margin, area, "verso", edges, ownPadding.get(root));
+      if (shift && edges.includes("left")) style["margin-left"] = `${shift}px`;
+      if (shift && edges.includes("right")) style["margin-right"] = `${-shift}px`;
+      versos.push({ root, style });
+    }
+  }
+  for (const { root, style } of versos)
+    for (const [prop, value] of Object.entries(style)) root.style.setProperty(prop, value);
+}
+
+/** Restore each pin root's authored inline style before a refresh rebuild. */
+function restorePinRoots(doc: Document = document): void {
+  for (const el of Array.from(doc.querySelectorAll<HTMLElement>("[data-gp-pin-style]"))) {
+    const style = el.dataset.gpPinStyle;
+    if (style) el.setAttribute("style", style);
+    else el.removeAttribute("style");
+    delete el.dataset.gpPinStyle;
   }
 }
 
@@ -774,26 +863,16 @@ function pageSides(model: GcpmModel, name: string | undefined) {
  * on the verso's own left margin and leaves the column WIDTH — all that
  * pagination depends on — exactly as it was.
  *
- * Measured with the same freed margins the strip uses (`.gp-flush` edges), so
- * a flushed run's frame is the PDF's flushed frame. 0 for a book without
- * mirrored margins, and where the two sides disagree on the content size (no
- * one column matches both, so no placement can claim to) — which includes a
- * run that frees a LEFT or RIGHT edge: print then gives the two sides content
- * boxes of different widths, so a verso's text and its edge-pinned art cannot
- * both land where the PDF has them, and the art stays on the paper's edge as
- * it always was. A top/bottom flush leaves the widths alone and shifts as usual.
+ * The same for a run whose edge pins free a margin: the pin root's padding
+ * gives the text the author's content box back, so the text keeps these
+ * margins whatever is freed, and only the pin box needs a verso's own
+ * geometry (`fitVersoPinRoots`). 0 for a book without mirrored margins, and
+ * where the two sides disagree on the content size (no one column matches
+ * both, so no placement can claim to).
  */
-export function versoShiftPt(
-  model: GcpmModel,
-  name: string | undefined,
-  flushEdges: readonly FlushEdge[] = [],
-): number {
+export function versoShiftPt(model: GcpmModel, name: string | undefined): number {
   const { right, left, agree } = pageSides(model, name);
-  if (!agree) return 0;
-  const r = flushMargins(right.margin, flushEdges);
-  const l = flushMargins(left.margin, flushEdges);
-  if (Math.abs(r.left + r.right - (l.left + l.right)) >= 0.01) return 0;
-  return r.left - l.left;
+  return agree ? right.margin.left - left.margin.left : 0;
 }
 
 /**
@@ -812,6 +891,7 @@ export function buildStrips(
   const gap = opts.sheetGap ?? 24;
 
   const runs = explodeChildren(root, model);
+  const area = printAreaFromMeta(doc);
 
   const strips: StripInfo[] = [];
   for (const run of runs) {
@@ -819,18 +899,30 @@ export function buildStrips(
     const strip = doc.createElement("div");
     strip.className = "gp-strip";
     if (run.page) strip.dataset.page = run.page;
-    // `.gp-flush` frees the pinned edges' margins for this run only — the
-    // print twin is the compiler's generated page context. Every derived
-    // var below uses the freed margins, so the strip's content box grows to
-    // the sheet edge, its translate lands on the paper where flushed, and
-    // the sheet-pitch arithmetic (content + margins + gap) is unchanged by
+    // Edge pins free their edges' margins for this run only — the print twin
+    // is the compiler's generated page context. Every derived var below uses
+    // the freed margins, so the strip's content box (the page area) grows to
+    // the sheet edge, its translate lands on the paper where freed, and the
+    // sheet-pitch arithmetic (content + margins + gap) is unchanged by
     // construction. Decoration keeps the AUTHOR geometry via strip.geometry:
-    // sheet size and margin-box slots do not change — margin boxes on a flushed
+    // sheet size and margin-box slots do not change — margin boxes on a freed
     // edge keep painting at their original coordinates, exactly where the
     // compiler relocates them in print.
-    const margin = run.flushEdges?.length
-      ? flushMargins(geometry.margin, run.flushEdges)
-      : geometry.margin;
+    const margin = run.pin ? flushMargins(geometry.margin, run.pin.edges) : geometry.margin;
+    // ...and the pin roots get those margins back as padding, so their text
+    // keeps the author's content box, plus the pin box's art-safe insets: the
+    // RECTO values, which give every page of the run the author's content
+    // size; `fitVersoPinRoots` corrects a verso root once pages are known.
+    // Each root's authored inline style is kept for `restorePinRoots`.
+    if (run.pin) {
+      const { edges, roots } = run.pin;
+      for (const pinRoot of roots) ownPadding.set(pinRoot, paddingOf(getComputedStyle(pinRoot)));
+      for (const pinRoot of roots) {
+        pinRoot.dataset.gpPinStyle ??= pinRoot.getAttribute("style") ?? "";
+        const recto = pinRootStyle(geometry.margin, area, "recto", edges, ownPadding.get(pinRoot));
+        for (const [prop, value] of Object.entries(recto)) pinRoot.style.setProperty(prop, value);
+      }
+    }
     const w = pt(geometry.width - margin.left - margin.right);
     const h = pt(geometry.height - margin.top - margin.bottom);
     strip.style.setProperty("--gp-content-w", `${w}px`);
@@ -845,7 +937,7 @@ export function buildStrips(
     // A verso's sheet slides by this much (decorate.ts), which would close the
     // gap to the recto it faces by the same amount — so the pitch grows by it
     // and the facing gap stays the sheet gap. Unset (0px) without mirroring.
-    const rawShift = versoShiftPt(model, run.page, run.flushEdges);
+    const rawShift = versoShiftPt(model, run.page);
     const versoShift = Math.abs(rawShift) >= 0.01 ? rawShift : 0;
     if (versoShift) strip.style.setProperty("--gp-verso-shift", `${pt(versoShift)}px`);
     run.nodes[0]!.before(strip);
@@ -854,7 +946,8 @@ export function buildStrips(
       el: strip,
       page: run.page,
       geometry,
-      flushEdges: run.flushEdges,
+      pinEdges: run.pin?.edges,
+      pinRoots: run.pin?.roots,
       versoShift,
       pages: 0,
       offset: 0,
@@ -1622,6 +1715,7 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
       : compensateRepeatedHeaders(strips);
   const contentPages = measure(strips).totalPages;
   const totalPages = padToSignature(strips, contentPages);
+  fitVersoPinRoots(model, strips);
   const api: GutterpressViewerApi = {
     model,
     strips,
@@ -1644,6 +1738,7 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
     relayout: () => {
       restoreFullHeightPageRoots();
       restoreScrollContainers();
+      restorePinRoots();
       unwrapStrips(strips);
       for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer, .gp-pad-spacer")))
         spacer.remove();
@@ -1662,6 +1757,7 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
       const content = measure(strips).totalPages;
       padToSignature(strips, content);
       const r = measure(strips);
+      fitVersoPinRoots(model, strips);
       api.totalPages = r.totalPages;
       api.blankPageIndices = blankPageIndices(strips);
       api.paddedPageIndices = pagesAfter(content, r.totalPages);

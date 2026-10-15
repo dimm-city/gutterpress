@@ -236,6 +236,21 @@ describe("depth layer facet", () => {
   });
 });
 
+describe("size facet", () => {
+  test("runs 25 / 50 / 60 / 80 / 90%, smallest first, with no 100% step (that is .gp-full, a position)", () => {
+    expect(IMAGE_SIZE_OPTIONS.map((o) => [o.class, o.label])).toEqual([
+      ["gp-small", "Small (25%)"],
+      ["gp-medium", "Medium (50%)"],
+      ["gp-large", "Large (60%)"],
+      ["gp-xl", "XL (80%)"],
+      ["gp-xxl", "XXL (90%)"],
+    ]);
+    expect(normalizeClassInput(IMAGE_SIZE_OPTIONS, "xl")).toBe("gp-xl");
+    expect(normalizeClassInput(IMAGE_SIZE_OPTIONS, "XXL")).toBe("gp-xxl");
+    expect(serializeImageAttrs(setSizeClass(tokenizeImageAttrs("{.gp-pin .gp-large}"), "gp-xxl"))).toBe("{.gp-pin .gp-xxl}");
+  });
+});
+
 describe("normalizeClassInput", () => {
   test("accepts short names, canonical classes, and legacy aliases", () => {
     expect(normalizeClassInput(IMAGE_POSITION_OPTIONS, "right")).toBe("gp-right");
@@ -254,11 +269,11 @@ describe("normalizeClassInput", () => {
   });
 });
 
-// `.gp-flush` is what lets a pinned image sit on the paper instead of on the
-// text block (core drops that page's margin on the pinned edges). It is a
-// boolean facet rather than part of the alignment token set because it is
-// orthogonal to WHICH edge — and it has to be an image class at all because
-// this dialog can set image classes and nothing else.
+// `.gp-flush` is the escape hatch that runs a pinned image to the paper's
+// edge instead of the printer's art-safe line (core zeroes the pin box's
+// insets). It is a boolean facet rather than part of the alignment token set
+// because it is orthogonal to WHICH edge — and it has to be an image class at
+// all because this dialog can set image classes and nothing else.
 describe("flush facet (boolean)", () => {
   test("toggles .gp-flush on and off without touching anything else", () => {
     const tokens = tokenizeImageAttrs("{.gp-pin .gp-bottom .my-note}");

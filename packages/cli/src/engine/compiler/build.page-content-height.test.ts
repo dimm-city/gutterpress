@@ -8,6 +8,7 @@ import { getDocumentProxy } from "unpdf";
 import { MARKER_CSS } from "../../lib/markdown/markers.js";
 import { GUTTERPRESS_CSS } from "../../lib/markdown/gutterpress-css.ts";
 import { resolveChromiumExecutable } from "../../lib/chromium.ts";
+import { getTextPass, type TextRun } from "../../lib/pdf-inspect.ts";
 import { launchChromium } from "../shared/cdp.ts";
 import { build } from "./build.ts";
 
@@ -15,18 +16,21 @@ import { build } from "./build.ts";
  * The compiler must publish each page context's CONTENT height as
  * `--gp-content-h`, because MARKER_CSS's `:where(.page, .spread)` rule turns
  * that number into the page root's box — which is what makes a pinned
- * element resolve against the PAGE rather than against its own prose.
+ * element resolve against the PAGE rather than against its own prose. For a
+ * root with edge pins that context is the generated one whose pinned margins
+ * are freed (shared/pin-edges.ts), so the root fills the page area to the
+ * paper, gets the freed margins back as padding (its text keeps the author's
+ * content box), and pins inside it on the printer's art-safe line — or on the
+ * paper with `.gp-flush`.
  *
  * Measured in the shipped PDF, not in a fixture with a hand-written height:
  * a fixture height is exactly the assumption that would let this regress
  * silently, because a hand-written height hides the missing publication.
  *
- * Three page contexts, deliberately: the default page, a named page with
- * taller vertical margins, and a named page whose bottom margin is ZERO. A
- * publication that ignored `@page` names would put every foot at the same
- * height, and two of them would be wrong. The zero-margin page is also the
- * sanctioned recipe for art that must touch the paper's edge — see the
- * user guide's "Pinned images" section.
+ * The art-safe line comes from the book's print area, the
+ * `<meta name="gp-print-area">` the markdown assembly writes into every book;
+ * these fixtures carry one like the dtrpg preset's (a 9pt bleed, art 18pt in
+ * from the trim, 36pt at the binding).
  */
 
 const RENDER_TEST_TIMEOUT_MS = 90_000;
@@ -37,7 +41,12 @@ const SHEET_H = 480;
 const DEFAULT_MARGIN = 24;
 const ART_MARGIN = 60;
 
-const fixture = `<!doctype html><meta charset="utf-8"><style>
+// pt: a 288 x 360pt sheet (384 x 480px); the art-safe line 9 + 18 = 27pt in
+// from the sheet on the top, bottom and outside edge, 36pt at the binding
+const ART_LINE_PT = 27;
+const PRINT_AREA = `<meta name="gp-print-area" content='{"width":288,"height":360,"bleed":9,"safe":36,"artSafe":18}'>`;
+
+const fixture = `<!doctype html><meta charset="utf-8">${PRINT_AREA}<style>
 ${MARKER_CSS}
 ${GUTTERPRESS_CSS}
 @page { size: 384px ${SHEET_H}px; margin: ${DEFAULT_MARGIN}px; }
@@ -64,26 +73,26 @@ if (!chromium) {
 }
 
 /**
- * The other half of `.gp-flush`: it frees the pinned edges' margins, and a
- * margin box lives in the margin — so the engine must re-home that edge's
- * furniture into the page area, at its original coordinates, with the values
- * Chromium would have printed. Measured against the field guide's exact
- * shape: universal side-mirrored folios + chapter string in the bottom
- * corners, a NAMED page with its own top furniture and margins, and a
+ * The other half of pinning art to an edge: the engine frees that edge's
+ * margin, and a margin box lives in the margin — so the engine must re-home
+ * that edge's furniture into the page area, at its original coordinates,
+ * with the values Chromium would have printed. Measured against the field
+ * guide's exact shape: universal side-mirrored folios + chapter string in the
+ * bottom corners, a NAMED page with its own top furniture and margins, and a
  * bottom-flush pin on that named page.
  *
  * Every assertion here is a "nothing is lost" claim:
- *  - the named page's own furniture and margins survive on the flushed page
- *    (the alias copies), pixel-equal to the unflushed sibling page;
- *  - the flushed edge's folio + chapter string PRINT, at the same y as the
+ *  - the named page's own furniture and margins survive on the pinned page
+ *    (the alias copies), pixel-equal to the unpinned sibling page;
+ *  - the freed edge's folio + chapter string PRINT, at the same y as the
  *    native folios on ordinary pages, mirrored for the correct side;
  *  - the art reaches the trim, the page count is stable, and no diagnostics
  *    fire.
  */
 testIf(
-  "flushed-edge furniture is relocated into the page, not lost",
+  "a pinned edge's furniture is relocated into the page, not lost",
   async () => {
-    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "gp-flush-furniture-"));
+    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "gp-pin-furniture-"));
     const browser = await launchChromium();
     try {
       const withFurniture = `<!doctype html><meta charset="utf-8"><style>
@@ -124,8 +133,8 @@ p { margin: 0; font: 12px/1 monospace; }
       };
 
       const p1 = await itemsOn(1); // plain recto — native corners
-      const p2 = await itemsOn(2); // named verso, unflushed
-      const p3 = await itemsOn(3); // named recto, FLUSHED
+      const p2 = await itemsOn(2); // named verso, no pin
+      const p3 = await itemsOn(3); // named recto, PINNED
       const p4 = await itemsOn(4); // plain verso
 
       // Native furniture on ordinary pages, as a baseline.
@@ -133,11 +142,11 @@ p { margin: 0; font: 12px/1 monospace; }
       find(p1, "C.");
       find(p4, "P.4");
 
-      // The named page's own furniture and margins survive the flush: the
-      // flushed page's head sits exactly where the unflushed sibling's does.
+      // The named page's own furniture and margins survive the pin: the
+      // pinned page's head sits exactly where the unpinned sibling's does.
       expect(find(p3, "PROFILE").y).toBeCloseTo(find(p2, "PROFILE").y, 1);
 
-      // The flushed edge's furniture PRINTS, at the native folio's own y.
+      // The freed edge's furniture PRINTS, at the native folio's own y.
       // Page 3 is a recto, so the mirror puts the chapter string left and
       // the folio right — same rule the native pages follow.
       const reloFolio = find(p3, "P.3");
@@ -163,7 +172,7 @@ p { margin: 0; font: 12px/1 monospace; }
 );
 
 testIf(
-  "a pinned foot lands on the page's bottom margin edge, per page context",
+  "a pinned foot sits on the art-safe line whatever the page's margins, and on the paper with .gp-flush",
   async () => {
     const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "gp-page-content-h-"));
     const browser = await launchChromium();
@@ -179,10 +188,11 @@ testIf(
       expect(result.diagnostics.filter((d) => d.code === "engine.content.overheight")).toEqual([]);
 
       // PDF user space puts the origin at the bottom-left, so a text item's
-      // y IS its distance from the sheet's bottom edge. A foot pinned to the
-      // page content box sits just above the bottom margin; the regression
-      // shape (a shrink-wrapped page root) puts it up near the page head,
-      // ~300pt away, so the tolerance below has no chance of hiding it.
+      // y IS its distance from the sheet's bottom edge. A pinned foot's
+      // baseline sits within one line above its pin box's foot; the
+      // regression shape (a shrink-wrapped page root) puts it up near the
+      // page head, ~300pt away, so the tolerance below has no chance of
+      // hiding it.
       const doc = await getDocumentProxy(result.bytes);
       const footItem = async (
         pageNumber: number,
@@ -203,20 +213,22 @@ testIf(
       const flushFoot = await footY(3, "FOOTFLUSH");
       const lineHeightPt = 12 * PX_TO_PT;
 
-      // Baseline sits within one line above the content box's bottom edge.
-      expect(defaultFoot).toBeGreaterThanOrEqual(DEFAULT_MARGIN * PX_TO_PT);
-      expect(defaultFoot).toBeLessThan(DEFAULT_MARGIN * PX_TO_PT + lineHeightPt);
-      // The named page's deeper margin moves its foot up by exactly the
-      // margin difference — proof the publication is per page context.
-      expect(artFoot).toBeGreaterThanOrEqual(ART_MARGIN * PX_TO_PT);
-      expect(artFoot).toBeLessThan(ART_MARGIN * PX_TO_PT + lineHeightPt);
+      // The foot sits on the art-safe line, 27pt in from the paper, on the
+      // default page (18pt margins) and on the named page (45pt margins)
+      // alike: the pinned edge's margin is freed and the pin box inset by the
+      // printer's line, not by the book's margin. Both pages' roots fill
+      // their generated page areas, which proves the per-context publication.
+      expect(defaultFoot).toBeGreaterThanOrEqual(ART_LINE_PT);
+      expect(defaultFoot).toBeLessThan(ART_LINE_PT + lineHeightPt);
+      expect(artFoot).toBeGreaterThanOrEqual(ART_LINE_PT);
+      expect(artFoot).toBeLessThan(ART_LINE_PT + lineHeightPt);
 
-      // Art flush with the PAPER, driven by the image's own classes: `.gp-flush`
-      // has GUTTERPRESS_CSS assign this page a core-owned named page with the
-      // pinned edge's margin zeroed, which grows the page AREA, which this
-      // build publishes as a taller `--gp-content-h`, which stretches the page
-      // root to the sheet's edge. Nothing in the markdown but classes on the
-      // image — that is the whole point, since the desktop editor sets image
+      // Art on the PAPER, driven by the image's own classes: the engine frees
+      // the pinned edge's margin on a generated named page, which grows the
+      // page AREA, which this build publishes as a taller `--gp-content-h`,
+      // which stretches the page root to the sheet's edge; `.gp-flush` drops
+      // the art-safe inset. Nothing in the markdown but classes on the image
+      // — that is the whole point, since the desktop editor sets image
       // classes and cannot write `@page` rules.
       //
       // This is also the only mechanism Chromium allows, which is why it is
@@ -235,6 +247,112 @@ testIf(
       expect(corner.y).toBeLessThan(lineHeightPt);
       const sheetWidthPt = 384 * PX_TO_PT;
       expect(sheetWidthPt - (corner.x + corner.width)).toBeLessThan(2);
+    } finally {
+      await browser.close();
+      await fsp.rm(dir, { recursive: true, force: true });
+    }
+  },
+  RENDER_TEST_TIMEOUT_MS,
+);
+
+/**
+ * The print twin of the viewer's `pin-box.test.ts`, on the same book shape: a
+ * 400x500px page with mirrored margins (recto L50/R30, verso L30/R50, the same
+ * 320px content box) and page roots the book pads 10px 12px, eight one-page
+ * roots with the same paragraph, pinned nowhere, at the bottom, at the
+ * bottom-right, and the same with `.gp-flush`, each on a recto and on a
+ * verso. In pt the sheet is 300 x 375, the art-safe line 27pt in from the
+ * sheet on the top, bottom and outside edge and 36pt at the binding (the
+ * right of a verso).
+ *
+ * A right pin is the case that needs the side: print gives a verso a wider
+ * page area once its right margin is freed, so only the verso's own padding
+ * keeps its text on the author's lines — the compiler measures where the root
+ * landed and corrects it (`setPinGeometry`).
+ */
+const TWIN_PARAGRAPH =
+  "The text block never moves: art pinned to the page sits in a box of its own, so these words wrap at the same places on every page, whatever is pinned where.";
+const twinBook = (pins: boolean) => {
+  const art = (n: number, classes: string) =>
+    pins ? `<p class="art gp-pin ${classes}">ART${n}</p>` : "";
+  const pages = [
+    "",
+    "",
+    "gp-bottom",
+    "gp-bottom",
+    "gp-bottom gp-right",
+    "gp-bottom gp-right",
+    "gp-bottom gp-flush",
+    "gp-bottom gp-right gp-flush",
+  ]
+    .map((classes, i) => `<div class="page"><p>${TWIN_PARAGRAPH}</p>${classes ? art(i + 1, classes) : ""}</div>`)
+    .join("\n");
+  return `<!doctype html><meta charset="utf-8">
+<meta name="gp-print-area" content='{"width":300,"height":375,"bleed":9,"safe":36,"artSafe":18}'><style>
+${MARKER_CSS}
+${GUTTERPRESS_CSS}
+@page { size: 400px 500px; margin: 40px; }
+@page :left  { margin-left: 30px; margin-right: 50px; }
+@page :right { margin-left: 50px; margin-right: 30px; }
+.page { padding: 10px 12px; }
+p { margin: 0; font: 12px/1.25 monospace; }
+.art { font: 12px/1 monospace; }
+</style>
+${pages}`;
+};
+
+testIf(
+  "print: a pin never moves the text, sits on the art-safe line of its edges, and on the paper with .gp-flush — recto and verso",
+  async () => {
+    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "gp-pin-box-"));
+    const browser = await launchChromium();
+    try {
+      const runs = async (pins: boolean): Promise<{ pageCount: number; pages: TextRun[][] }> => {
+        const file = path.join(dir, `book-${pins}.html`);
+        await fsp.writeFile(file, twinBook(pins), "utf8");
+        const result = await build({ input: pathToFileURL(file).href, browser, dpiFloor: 0 });
+        expect(result.diagnostics).toEqual([]);
+        const { runsByPage } = await getTextPass(await getDocumentProxy(result.bytes));
+        return { pageCount: result.pageCount, pages: runsByPage };
+      };
+      const pinned = await runs(true);
+      const bare = await runs(false);
+      expect(pinned.pageCount).toBe(8);
+      expect(bare.pageCount).toBe(8);
+
+      const round = (v: number) => Math.round(v * 10) / 10;
+      const textOf = (page: TextRun[]) =>
+        page.filter((r) => !r.s.startsWith("ART")).map((r) => ({ s: r.s, x: round(r.x), y: round(r.y) }));
+      const artOf = (pages: TextRun[][], n: number) => pages[n - 1]!.find((r) => r.s.startsWith(`ART${n}`))!;
+
+      // The text: every line where the same book without a pin prints it, and
+      // the same on every recto and on every verso, at each side's own margin.
+      for (let n = 1; n <= 8; n++) expect(textOf(pinned.pages[n - 1]!)).toEqual(textOf(bare.pages[n - 1]!));
+      for (const n of [3, 5, 7]) expect(textOf(pinned.pages[n - 1]!)).toEqual(textOf(pinned.pages[0]!));
+      for (const n of [4, 6, 8]) expect(textOf(pinned.pages[n - 1]!)).toEqual(textOf(pinned.pages[1]!));
+      // each side's margin plus the root's own 12px padding
+      expect(textOf(pinned.pages[0]!)[0]!.x).toBeCloseTo((50 + 12) * PX_TO_PT, 0);
+      expect(textOf(pinned.pages[1]!)[0]!.x).toBeCloseTo((30 + 12) * PX_TO_PT, 0);
+      expect(textOf(pinned.pages[0]!).length).toBeGreaterThan(2); // several lines: a wider box would rewrap them
+
+      // The art: a baseline within one line above its pin box's foot, and a
+      // right edge on the line it was pinned to.
+      const lineHeightPt = 12 * PX_TO_PT;
+      const foot = (n: number, linePt: number) => {
+        const y = artOf(pinned.pages, n).y;
+        expect(y).toBeGreaterThanOrEqual(linePt);
+        expect(y).toBeLessThan(linePt + lineHeightPt);
+      };
+      const rightGap = (n: number) => {
+        const run = artOf(pinned.pages, n);
+        return 300 - (run.x + run.w);
+      };
+      for (const n of [3, 4, 5, 6]) foot(n, ART_LINE_PT);
+      expect(rightGap(5)).toBeCloseTo(27, 0); // a recto's outside edge
+      expect(rightGap(6)).toBeCloseTo(36, 0); // a verso's binding: no bleed there
+      foot(7, 0);
+      foot(8, 0);
+      expect(rightGap(8)).toBeCloseTo(0, 0);
     } finally {
       await browser.close();
       await fsp.rm(dir, { recursive: true, force: true });

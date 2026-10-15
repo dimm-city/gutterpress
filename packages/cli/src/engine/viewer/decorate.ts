@@ -37,7 +37,6 @@ import {
   clearOverlay,
   layersFrom,
   paintOverlay,
-  printAreaFromMeta,
   sanitizeOverlayStyle,
   setOverlayStyle,
   type OverlayLayers,
@@ -45,6 +44,7 @@ import {
   type OverlayStyle,
   type OverlaySummary,
 } from "./overlay.ts";
+import { printAreaFromMeta } from "../shared/print-area.ts";
 import {
   PX_PER_PT,
   pageRangeOf,
@@ -155,7 +155,7 @@ export function decorate(
   let overlayPages: OverlayPage[] = [];
   let overlaySummary: OverlaySummary = OVERLAY_OFF;
   const paintOverlayNow = () => {
-    overlaySummary = paintOverlay(overlayPages, layout.strips, printAreaFromMeta(), overlayLayers);
+    overlaySummary = paintOverlay(overlayPages, layout.strips, printAreaFromMeta(document), overlayLayers);
     window.dispatchEvent(new CustomEvent("gp:overlay", { detail: overlaySummary }));
   };
   const api: DecorationApi = {
@@ -706,8 +706,8 @@ function ensureRun(strip: StripInfo): HTMLElement {
 }
 
 /** Slot rect for one margin box, from the SHARED §5.3 geometry (the compiler's
- * `.gp-flush` furniture relocation uses the same function — one spot, both
- * painters). */
+ * relocation of a pinned edge's furniture uses the same function — one spot,
+ * both painters). */
 function rectFor(name: string, g: PageGeometry): Partial<CSSStyleDeclaration> {
   const r = marginBoxRectPt(name, g);
   return { left: px(r.x), top: px(r.y), width: px(r.w), height: px(r.h) };

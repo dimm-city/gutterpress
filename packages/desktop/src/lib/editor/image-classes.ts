@@ -55,7 +55,9 @@ export const IMAGE_POSITION_OPTIONS: readonly ImageClassOption[] = [
 export const IMAGE_SIZE_OPTIONS: readonly ImageClassOption[] = [
   { class: "gp-small", short: "small", label: "Small (25%)" },
   { class: "gp-medium", short: "medium", label: "Medium (50%)" },
-  { class: "gp-large", short: "large", label: "Large (75%)" },
+  { class: "gp-large", short: "large", label: "Large (60%)" },
+  { class: "gp-xl", short: "xl", label: "XL (80%)" },
+  { class: "gp-xxl", short: "xxl", label: "XXL (90%)" },
 ] as const;
 
 export const IMAGE_SPACING_OPTIONS: readonly ImageClassOption[] = [
@@ -386,10 +388,10 @@ export function setShapeClass(tokens: readonly string[], on: boolean): string[] 
 }
 
 /**
- * The flush facet is a boolean too: `.gp-flush` lets a PINNED image sit on
- * the paper instead of on the text block, by having core drop that page's
- * margin on the edges the pin uses (core's `flushPageCss`, a `:has()`-driven
- * named page — the desktop only toggles the class).
+ * The flush facet is a boolean too: `.gp-flush` is the escape hatch that runs
+ * a PINNED image to the paper's edge, past the printer's safe area, where a
+ * pin otherwise sits on the art-safe line (core zeroes the pin box's insets;
+ * the desktop only toggles the class, and Problems warns about it).
  *
  * It is one class rather than part of the pin-alignment token set, because it
  * is orthogonal to WHICH edge: every alignment except "center" composes with

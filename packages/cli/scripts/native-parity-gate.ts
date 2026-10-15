@@ -305,6 +305,7 @@ async function stage(
   const cssAssets: AssetCopy[] = [];
   const htmlPath = await renderChaptersToFile(renderDir, outDir, {
     title: config.title,
+    printArea: { ...config.page, preset: config.preset, spec: config.spec },
     styles: config.styles,
     files: config.source.files,
     plugins,

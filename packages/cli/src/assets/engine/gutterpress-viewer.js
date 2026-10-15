@@ -1038,10 +1038,12 @@
 `);
   }
 
-  // src/engine/shared/flush.ts
-  var FLUSH_EDGES = ["top", "right", "bottom", "left"];
-  function flushEdgesIn(root) {
-    return FLUSH_EDGES.filter((edge) => root.querySelector(`.gp-pin.gp-flush.gp-${edge}`));
+  // src/engine/shared/pin-edges.ts
+  var PIN_EDGES = ["top", "right", "bottom", "left"];
+  var EDGE_PIN_SELECTOR = PIN_EDGES.map((edge) => `.gp-pin.gp-${edge}`).join(", ");
+  function pinEdgesIn(root) {
+    const pins = Array.from(root.querySelectorAll(EDGE_PIN_SELECTOR)).filter((pin) => pin.offsetParent === root);
+    return PIN_EDGES.filter((edge) => pins.some((pin) => pin.classList.contains(`gp-${edge}`)));
   }
   function flushMargins(margin, edges) {
     return {
@@ -1050,6 +1052,57 @@
       bottom: edges.includes("bottom") ? 0 : margin.bottom,
       left: edges.includes("left") ? 0 : margin.left
     };
+  }
+  function pinInsets(area, side, edges) {
+    const binding = side === "recto" ? "left" : "right";
+    const inset = (edge) => !area || !edges.includes(edge) ? 0 : edge === binding ? area.safe : area.bleed + area.artSafe;
+    return { top: inset("top"), right: inset("right"), bottom: inset("bottom"), left: inset("left") };
+  }
+  var NO_PADDING = { top: 0, right: 0, bottom: 0, left: 0 };
+  function pinRootStyle(margin, area, side, edges, padding = NO_PADDING) {
+    const px = (pt) => pt * 96 / 72;
+    const inset = pinInsets(area, side, edges);
+    const style = { "box-decoration-break": "clone" };
+    for (const edge of PIN_EDGES)
+      if (edges.includes(edge))
+        style[`padding-${edge}`] = `${px(margin[edge]) + padding[edge]}px`;
+    for (const edge of PIN_EDGES)
+      style[`--gp-pin-${edge}`] = `${px(inset[edge])}px`;
+    return style;
+  }
+  function paddingOf(cs) {
+    return {
+      top: parseFloat(cs.paddingTop) || 0,
+      right: parseFloat(cs.paddingRight) || 0,
+      bottom: parseFloat(cs.paddingBottom) || 0,
+      left: parseFloat(cs.paddingLeft) || 0
+    };
+  }
+
+  // src/engine/shared/print-area.ts
+  function printAreaFromMeta(doc) {
+    const raw = doc.querySelector('meta[name="gp-print-area"]')?.getAttribute("content");
+    if (!raw)
+      return null;
+    try {
+      const v = JSON.parse(raw);
+      const n = (x) => typeof x === "number" && Number.isFinite(x) && x > 0 ? x : 0;
+      if (!n(v.width) || !n(v.height))
+        return null;
+      const safe = n(v.safe);
+      const spec = v.spec && typeof v.spec.label === "string" && typeof v.spec.url === "string" && /^https?:\/\//i.test(v.spec.url) ? v.spec : undefined;
+      return {
+        width: n(v.width),
+        height: n(v.height),
+        bleed: n(v.bleed),
+        safe,
+        artSafe: typeof v.artSafe === "number" ? n(v.artSafe) : safe,
+        preset: typeof v.preset === "string" ? v.preset : undefined,
+        spec
+      };
+    } catch {
+      return null;
+    }
   }
 
   // src/engine/viewer/fragment.ts
@@ -1210,13 +1263,29 @@
     }
     return false;
   }
-  function pushRun(runs, page, nodes, flushEdges) {
-    const key = (r) => `${r.page ?? ""}\x00${(r.flushEdges ?? []).join(",")}`;
+  function pushRun(runs, page, nodes, pin) {
+    const key = (r) => `${r.page ?? ""}\x00${(r.pin?.edges ?? []).join(",")}`;
     const last = runs[runs.length - 1];
-    if (last && key(last) === key({ page, flushEdges }))
+    if (last && key(last) === key({ page, pin })) {
       last.nodes.push(...nodes);
-    else
-      runs.push({ page, nodes, flushEdges: flushEdges?.length ? flushEdges : undefined });
+      if (pin)
+        last.pin.roots.push(...pin.roots);
+    } else
+      runs.push({ page, nodes, pin: pin && { edges: pin.edges, roots: [...pin.roots] } });
+  }
+  var PAGE_ROOT = ".page, .spread";
+  var ownPadding = new WeakMap;
+  function pinRunOf(el) {
+    if (!el.matches(PAGE_ROOT))
+      return;
+    const edges = pinEdgesIn(el);
+    return edges.length ? { edges, roots: [el] } : undefined;
+  }
+  function holdsPinRoot(el) {
+    return Array.from(el.querySelectorAll(EDGE_PIN_SELECTOR)).some((pin) => {
+      const root = pin.offsetParent;
+      return !!root && root !== el && el.contains(root) && root.matches(PAGE_ROOT);
+    });
   }
   function explodeChildren(container, model) {
     const runs = [];
@@ -1228,7 +1297,7 @@
       pending = [];
       const last = runs[runs.length - 1];
       if (last) {
-        pushRun(runs, last.page, held, last.flushEdges);
+        pushRun(runs, last.page, held, last.pin && { edges: last.pin.edges, roots: [] });
         return [];
       }
       if (held.some((n) => (n.textContent ?? "").trim() !== "")) {
@@ -1245,19 +1314,19 @@
       const kid = node;
       if (kid.classList.contains("gp-layer"))
         continue;
-      const flush = flushEdgesIn(kid);
+      const pin = pinRunOf(kid);
       const own = directPageName(kid, model);
       if (own !== undefined) {
-        pushRun(runs, own, [...carry(), kid], flush);
+        pushRun(runs, own, [...carry(), kid], pin);
         continue;
       }
-      if (!hasDescendantPageAssignment(kid, model)) {
-        pushRun(runs, undefined, [...carry(), kid], flush);
+      if (!hasDescendantPageAssignment(kid, model) && !holdsPinRoot(kid)) {
+        pushRun(runs, undefined, [...carry(), kid], pin);
         continue;
       }
       const inner = explodeChildren(kid, model);
       if (inner.length <= 1) {
-        pushRun(runs, inner[0]?.page, [...carry(), kid]);
+        pushRun(runs, inner[0]?.page, [...carry(), kid], pin ?? inner[0]?.pin);
         continue;
       }
       let lead = carry();
@@ -1266,7 +1335,7 @@
         for (const n of r.nodes)
           shell.appendChild(n);
         kid.before(shell);
-        pushRun(runs, r.page, [...lead, shell], flushEdgesIn(shell));
+        pushRun(runs, r.page, [...lead, shell], pin ? pinRunOf(shell) : r.pin);
         lead = [];
       }
       kid.remove();
@@ -1321,6 +1390,42 @@
       delete el.dataset.gpLeadingPageRoot;
       delete el.dataset.gpLeadingPageRootDisplay;
       delete el.dataset.gpLeadingPageRootDisplayPriority;
+    }
+  }
+  function fitVersoPinRoots(model, strips) {
+    const area = printAreaFromMeta(document);
+    const versos = [];
+    for (const strip of strips) {
+      if (!strip.pinEdges || !strip.pinRoots?.length)
+        continue;
+      const edges = strip.pinEdges;
+      const { left, agree } = pageSides(model, strip.page);
+      const verso = agree ? left.margin : strip.geometry.margin;
+      const margin = { ...strip.geometry.margin, left: verso.left, right: verso.right };
+      const shift = pt(strip.versoShift);
+      for (const root of strip.pinRoots) {
+        if (pageOf(root, strips) % 2 !== 1)
+          continue;
+        const style = pinRootStyle(margin, area, "verso", edges, ownPadding.get(root));
+        if (shift && edges.includes("left"))
+          style["margin-left"] = `${shift}px`;
+        if (shift && edges.includes("right"))
+          style["margin-right"] = `${-shift}px`;
+        versos.push({ root, style });
+      }
+    }
+    for (const { root, style } of versos)
+      for (const [prop, value] of Object.entries(style))
+        root.style.setProperty(prop, value);
+  }
+  function restorePinRoots(doc = document) {
+    for (const el of Array.from(doc.querySelectorAll("[data-gp-pin-style]"))) {
+      const style = el.dataset.gpPinStyle;
+      if (style)
+        el.setAttribute("style", style);
+      else
+        el.removeAttribute("style");
+      delete el.dataset.gpPinStyle;
     }
   }
   var SCROLLABLE = /^(auto|scroll|hidden)$/;
@@ -1388,21 +1493,16 @@
       agree: Math.abs(r.w - l.w) < 0.01 && Math.abs(r.h - l.h) < 0.01
     };
   }
-  function versoShiftPt(model, name, flushEdges = []) {
+  function versoShiftPt(model, name) {
     const { right, left, agree } = pageSides(model, name);
-    if (!agree)
-      return 0;
-    const r = flushMargins(right.margin, flushEdges);
-    const l = flushMargins(left.margin, flushEdges);
-    if (Math.abs(r.left + r.right - (l.left + l.right)) >= 0.01)
-      return 0;
-    return r.left - l.left;
+    return agree ? right.margin.left - left.margin.left : 0;
   }
   function buildStrips(model, opts = {}, warnings = []) {
     const doc = document;
     const root = opts.root ?? doc.querySelector("main") ?? doc.body;
     const gap = opts.sheetGap ?? 24;
     const runs = explodeChildren(root, model);
+    const area = printAreaFromMeta(doc);
     const strips = [];
     for (const run of runs) {
       const geometry = runPageBox(model, run.page, warnings);
@@ -1410,7 +1510,18 @@
       strip.className = "gp-strip";
       if (run.page)
         strip.dataset.page = run.page;
-      const margin = run.flushEdges?.length ? flushMargins(geometry.margin, run.flushEdges) : geometry.margin;
+      const margin = run.pin ? flushMargins(geometry.margin, run.pin.edges) : geometry.margin;
+      if (run.pin) {
+        const { edges, roots } = run.pin;
+        for (const pinRoot of roots)
+          ownPadding.set(pinRoot, paddingOf(getComputedStyle(pinRoot)));
+        for (const pinRoot of roots) {
+          pinRoot.dataset.gpPinStyle ??= pinRoot.getAttribute("style") ?? "";
+          const recto = pinRootStyle(geometry.margin, area, "recto", edges, ownPadding.get(pinRoot));
+          for (const [prop, value] of Object.entries(recto))
+            pinRoot.style.setProperty(prop, value);
+        }
+      }
       const w = pt(geometry.width - margin.left - margin.right);
       const h = pt(geometry.height - margin.top - margin.bottom);
       strip.style.setProperty("--gp-content-w", `${w}px`);
@@ -1422,7 +1533,7 @@
       strip.style.setProperty("--gp-margin-right", `${pt(margin.right)}px`);
       strip.style.setProperty("--gp-margin-bottom", `${pt(margin.bottom)}px`);
       strip.style.setProperty("--gp-margin-left", `${pt(margin.left)}px`);
-      const rawShift = versoShiftPt(model, run.page, run.flushEdges);
+      const rawShift = versoShiftPt(model, run.page);
       const versoShift = Math.abs(rawShift) >= 0.01 ? rawShift : 0;
       if (versoShift)
         strip.style.setProperty("--gp-verso-shift", `${pt(versoShift)}px`);
@@ -1433,7 +1544,8 @@
         el: strip,
         page: run.page,
         geometry,
-        flushEdges: run.flushEdges,
+        pinEdges: run.pin?.edges,
+        pinRoots: run.pin?.roots,
         versoShift,
         pages: 0,
         offset: 0
@@ -1805,6 +1917,7 @@
     const headers = opts.compensateHeaders === false ? { tables: 0, passes: 0, warnings: [] } : compensateRepeatedHeaders(strips);
     const contentPages = measure(strips).totalPages;
     const totalPages = padToSignature(strips, contentPages);
+    fitVersoPinRoots(model, strips);
     const api = {
       model,
       strips,
@@ -1818,6 +1931,7 @@
       relayout: () => {
         restoreFullHeightPageRoots();
         restoreScrollContainers();
+        restorePinRoots();
         unwrapStrips(strips);
         for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer, .gp-pad-spacer")))
           spacer.remove();
@@ -1836,6 +1950,7 @@
         const content = measure(strips).totalPages;
         padToSignature(strips, content);
         const r = measure(strips);
+        fitVersoPinRoots(model, strips);
         api.totalPages = r.totalPages;
         api.blankPageIndices = blankPageIndices(strips);
         api.paddedPageIndices = pagesAfter(content, r.totalPages);
@@ -2182,30 +2297,6 @@
     artSafePt: 0,
     counts: { text: 0, art: 0, bleed: 0, offPage: 0, intended: 0 }
   };
-  function printAreaFromMeta() {
-    const raw = document.querySelector('meta[name="gp-print-area"]')?.getAttribute("content");
-    if (!raw)
-      return null;
-    try {
-      const v = JSON.parse(raw);
-      const n = (x) => typeof x === "number" && Number.isFinite(x) && x > 0 ? x : 0;
-      if (!n(v.width) || !n(v.height))
-        return null;
-      const safe = n(v.safe);
-      const spec = v.spec && typeof v.spec.label === "string" && typeof v.spec.url === "string" && /^https?:\/\//i.test(v.spec.url) ? v.spec : undefined;
-      return {
-        width: n(v.width),
-        height: n(v.height),
-        bleed: n(v.bleed),
-        safe,
-        artSafe: typeof v.artSafe === "number" ? n(v.artSafe) : safe,
-        preset: typeof v.preset === "string" ? v.preset : undefined,
-        spec
-      };
-    } catch {
-      return null;
-    }
-  }
   function sheetArea(sheet) {
     const px = (name) => parseFloat(sheet.style.getPropertyValue(name)) || 0;
     return { width: px("--gp-page-w") / PX_PER_PT, height: px("--gp-page-h") / PX_PER_PT, bleed: 0, safe: 0, artSafe: 0 };
@@ -2689,7 +2780,7 @@
     let overlayPages = [];
     let overlaySummary = OVERLAY_OFF;
     const paintOverlayNow = () => {
-      overlaySummary = paintOverlay(overlayPages, layout.strips, printAreaFromMeta(), overlayLayers);
+      overlaySummary = paintOverlay(overlayPages, layout.strips, printAreaFromMeta(document), overlayLayers);
       window.dispatchEvent(new CustomEvent("gp:overlay", { detail: overlaySummary }));
     };
     const api = {

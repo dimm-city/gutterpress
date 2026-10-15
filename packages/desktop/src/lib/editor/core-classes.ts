@@ -41,7 +41,9 @@ export const CORE_CLASSES: readonly CoreClass[] = [
   // Sizes and spacing.
   { class: "gp-small", scope: "image", description: "25% of the column width" },
   { class: "gp-medium", scope: "image", description: "50% of the column width" },
-  { class: "gp-large", scope: "image", description: "75% of the column width" },
+  { class: "gp-large", scope: "image", description: "60% of the column width" },
+  { class: "gp-xl", scope: "image", description: "80% of the column width" },
+  { class: "gp-xxl", scope: "image", description: "90% of the column width" },
   { class: "gp-tight", scope: "image", description: "Float clearance of 0.5em" },
   { class: "gp-loose", scope: "image", description: "Float clearance of 2em" },
   { class: "gp-shape", scope: "image", description: "Wrap text to the shape of a floated image" },
@@ -49,7 +51,7 @@ export const CORE_CLASSES: readonly CoreClass[] = [
   { class: "gp-pin", scope: "image", description: "Pin to the page, centered; add an edge to move it" },
   { class: "gp-top", scope: "image", description: "With .gp-pin: pin to the top edge" },
   { class: "gp-bottom", scope: "image", description: "With .gp-pin: pin to the bottom edge" },
-  { class: "gp-flush", scope: "image", description: "With .gp-pin and an edge: sit on the paper's edge, not the text block's" },
+  { class: "gp-flush", scope: "image", description: "With .gp-pin and an edge: run to the paper's edge, past the printer's safe area (Problems warns)" },
   // Depth.
   { class: "gp-behind", scope: "image", description: "Pinned art behind the page's text" },
   { class: "gp-base", scope: "image", description: "Depth ladder: the base layer" },

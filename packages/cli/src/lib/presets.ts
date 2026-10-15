@@ -95,17 +95,19 @@ export const DTRPG_PRESET: VendorPreset = {
     tolerance: 0.5, // CONVENTION: slack for rounding in the PDF boxes
     // SPEC: 0.125in = 9pt, ALREADY INSIDE width/height above on the top,
     // bottom and outer edges only. Declared so the preview's margin & bleed
-    // overlay and `pdf.print.safe-margins` can find the trim; the PDF is
-    // unchanged (CSS `bleed` is symmetric and would grow the page and add
-    // binding-edge bleed, which the SPEC rules out).
+    // overlay, `pdf.print.safe-margins` and pinned art can find the trim; the
+    // page itself is unchanged (CSS `bleed` is symmetric and would grow the
+    // page and add binding-edge bleed, which the SPEC rules out).
     bleed: 9,
     // SPEC: 0.5in = 36pt, DriveThru's TEXT rule: text stays at least 0.5in
     // inside the trim on every edge. The preview overlay and
-    // `pdf.print.safe-margins` judge text against it; the PDF is unchanged.
+    // `pdf.print.safe-margins` judge text against it; art pinned to the
+    // binding edge sits on it.
     safe: 36,
     // SPEC: 0.25in = 18pt, DriveThru's ART rule: art that does not bleed stays
     // at least 0.25in from the three outside edges (the binding edge takes the
-    // text rule's 0.5in above). Overlay only; the PDF is unchanged.
+    // text rule's 0.5in above). The overlay judges art against it, and art
+    // pinned to an outside edge sits on it.
     artSafe: 18,
   },
   ink: {

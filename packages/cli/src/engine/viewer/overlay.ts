@@ -32,9 +32,10 @@
  * bottom and OUTER edge; the binding edge has none, as DriveThruRPG cuts it),
  * `page.safe` (the TEXT rule: its inset from the trim on every edge) and
  * `page.artSafe` (the ART rule: its inset on the top, bottom and outer edge,
- * while the binding edge takes `safe`; absent = `safe`). Preview assembly
- * hands them in as `<meta name="gp-print-area">`, with the preset's id and the
- * printer spec it follows, which only word what is found. No book or plugin
+ * while the binding edge takes `safe`; absent = `safe`). The markdown assembly
+ * hands them in as `<meta name="gp-print-area">` (shared/print-area.ts), with
+ * the preset's id and the printer spec it follows, which only word what is
+ * found. No book or plugin
  * CSS feeds them: not the `@page` margins (they are where the author put the
  * TEXT, which is not the printer's safe area), not `@page { bleed }`.
  * `margins` is the one layer that IS the book's own CSS, and only its `@page`
@@ -71,6 +72,7 @@
  * else depends on it.
  */
 import { PX_PER_PT, cssZoomOf, indexInStrip, type StripInfo } from "./fragment.ts";
+import type { PageSide, PrintArea } from "../shared/print-area.ts";
 
 export interface Rect {
   x: number;
@@ -78,23 +80,6 @@ export interface Rect {
   w: number;
   h: number;
 }
-
-/** The project's page geometry, in pt — the manifest's `page` block. */
-export interface PrintArea {
-  width: number;
-  height: number;
-  /** in-sheet bleed on the top, bottom and outer edge; 0 = none */
-  bleed: number;
-  /** the TEXT rule: inset from the trim on every edge; 0 = none */
-  safe: number;
-  /** the ART rule: inset on the top, bottom and outer edge (the binding edge takes `safe`) */
-  artSafe: number;
-  /** the manifest's preset id, and the printer spec it follows: they only word what is found */
-  preset?: string;
-  spec?: { label: string; url: string };
-}
-
-export type PageSide = "recto" | "verso";
 
 /** The nested boxes of one page, in one unit, origin at the sheet's top-left. */
 export interface PageBoxes {
@@ -285,39 +270,7 @@ export interface OverlayPage {
 }
 
 /**
- * The project's page geometry from the preview page's own
- * `<meta name="gp-print-area">` — present only in the live preview's
- * book.html, never in a built or published document. `null` without it.
- */
-export function printAreaFromMeta(): PrintArea | null {
-  const raw = document.querySelector('meta[name="gp-print-area"]')?.getAttribute("content");
-  if (!raw) return null;
-  try {
-    const v = JSON.parse(raw) as Partial<PrintArea>;
-    const n = (x: unknown) => (typeof x === "number" && Number.isFinite(x) && x > 0 ? x : 0);
-    if (!n(v.width) || !n(v.height)) return null;
-    const safe = n(v.safe);
-    // the spec becomes a link in the legend: only a web address is one
-    const spec =
-      v.spec && typeof v.spec.label === "string" && typeof v.spec.url === "string" && /^https?:\/\//i.test(v.spec.url)
-        ? v.spec
-        : undefined;
-    return {
-      width: n(v.width),
-      height: n(v.height),
-      bleed: n(v.bleed),
-      safe,
-      artSafe: typeof v.artSafe === "number" ? n(v.artSafe) : safe,
-      preset: typeof v.preset === "string" ? v.preset : undefined,
-      spec,
-    };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Without the project's geometry (a page the preview server did not build), a
+ * Without the project's geometry (a page the markdown assembly did not build), a
  * sheet's own size stands in and there is no bleed or safe area to draw.
  */
 function sheetArea(sheet: HTMLElement): PrintArea {
@@ -726,7 +679,8 @@ function legend(layers: OverlayLayers, area: PrintArea | null, summary: OverlayS
 /**
  * Draw the overlay's `layers` for `pages` and return what it found. Idempotent:
  * the previous drawing is replaced. `area` is the project's geometry
- * (`printAreaFromMeta()`); `null` falls back to each sheet's own size. Only
+ * (`printAreaFromMeta`, shared/print-area.ts); `null` falls back to each
+ * sheet's own size. Only
  * the two safe layers judge the book's ink, each its own rule (`safe` text,
  * `art` art): with a layer off there are no flags and no count for its rule.
  */

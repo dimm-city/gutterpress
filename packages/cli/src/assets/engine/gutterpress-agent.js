@@ -43,11 +43,13 @@
     xrefSites: () => xrefSites,
     targetTexts: () => targetTexts,
     stringSources: () => stringSources,
+    setPinGeometry: () => setPinGeometry,
+    setPinFurniture: () => setPinFurniture,
     setGenerated: () => setGenerated,
-    setFlushFurniture: () => setFlushFurniture,
+    printArea: () => printArea,
+    pinRoots: () => pinRoots,
     instrument: () => instrument,
     forcedBreakSites: () => forcedBreakSites,
-    flushRoots: () => flushRoots,
     fillLeaders: () => fillLeaders,
     counterResetSites: () => counterResetSites,
     collectCss: () => collectCss,
@@ -300,6 +302,51 @@
   }
   function evaluate(value, ctx) {
     return evaluateContent(parseContent(value), ctx);
+  }
+
+  // src/engine/shared/pin-edges.ts
+  var PIN_EDGES = ["top", "right", "bottom", "left"];
+  var EDGE_PIN_SELECTOR = PIN_EDGES.map((edge) => `.gp-pin.gp-${edge}`).join(", ");
+  function pinEdgesIn(root) {
+    const pins = Array.from(root.querySelectorAll(EDGE_PIN_SELECTOR)).filter((pin) => pin.offsetParent === root);
+    return PIN_EDGES.filter((edge) => pins.some((pin) => pin.classList.contains(`gp-${edge}`)));
+  }
+  function pinKey(edges) {
+    return PIN_EDGES.filter((e) => edges.includes(e)).map((e) => e[0]).join("");
+  }
+  function paddingOf(cs) {
+    return {
+      top: parseFloat(cs.paddingTop) || 0,
+      right: parseFloat(cs.paddingRight) || 0,
+      bottom: parseFloat(cs.paddingBottom) || 0,
+      left: parseFloat(cs.paddingLeft) || 0
+    };
+  }
+
+  // src/engine/shared/print-area.ts
+  function printAreaFromMeta(doc) {
+    const raw = doc.querySelector('meta[name="gp-print-area"]')?.getAttribute("content");
+    if (!raw)
+      return null;
+    try {
+      const v = JSON.parse(raw);
+      const n = (x) => typeof x === "number" && Number.isFinite(x) && x > 0 ? x : 0;
+      if (!n(v.width) || !n(v.height))
+        return null;
+      const safe = n(v.safe);
+      const spec = v.spec && typeof v.spec.label === "string" && typeof v.spec.url === "string" && /^https?:\/\//i.test(v.spec.url) ? v.spec : undefined;
+      return {
+        width: n(v.width),
+        height: n(v.height),
+        bleed: n(v.bleed),
+        safe,
+        artSafe: typeof v.artSafe === "number" ? n(v.artSafe) : safe,
+        preset: typeof v.preset === "string" ? v.preset : undefined,
+        spec
+      };
+    } catch {
+      return null;
+    }
   }
 
   // src/engine/compiler/agent.ts
@@ -559,29 +606,45 @@
     addCss("gp-generated-content", css);
     return entries.length;
   }
-  function flushRoots() {
+  function pinRoots() {
     const out = [];
     for (const root of Array.from(document.querySelectorAll(".page, .spread"))) {
-      const edges = ["top", "right", "bottom", "left"].filter((edge) => root.querySelector(`.gp-pin.gp-flush.gp-${edge}`));
+      const edges = pinEdgesIn(root);
       if (!edges.length)
         continue;
-      const page = getComputedStyle(root).page;
-      const key = `${page === "auto" ? "" : page}|${edges.map((e) => e[0]).join("")}`;
-      root.dataset.gpFlush = key;
-      out.push({ id: ensureAnchor(root), page, edges, key });
+      const cs = getComputedStyle(root);
+      const padding = paddingOf(cs);
+      const key = `${cs.page === "auto" ? "" : cs.page}|${pinKey(edges)}|${edges.map((e) => padding[e]).join(",")}`;
+      root.dataset.gpPin = key;
+      out.push({ id: ensureAnchor(root), page: cs.page, edges, padding, key });
     }
     return out;
   }
-  function setFlushFurniture(items) {
+  function printArea() {
+    return printAreaFromMeta(document);
+  }
+  function setPinGeometry(items) {
+    let set = 0;
+    for (const item of items) {
+      const host = anchorHost(item.id);
+      if (!host)
+        continue;
+      for (const [prop, value] of Object.entries(item.style))
+        host.style.setProperty(prop, value);
+      set++;
+    }
+    return set;
+  }
+  function setPinFurniture(items) {
     let painted = 0;
     for (const item of items) {
       const host = anchorHost(item.id);
       if (!host)
         continue;
-      let layer = host.querySelector(":scope > .gp-flush-furniture");
+      let layer = host.querySelector(":scope > .gp-pin-furniture");
       if (!layer) {
         layer = document.createElement("div");
-        layer.className = "gp-flush-furniture";
+        layer.className = "gp-pin-furniture";
         layer.setAttribute("aria-hidden", "true");
         layer.setAttribute("style", "position:absolute;inset:0;pointer-events:none;z-index:10;");
         host.appendChild(layer);
@@ -616,8 +679,10 @@
     instrument,
     addCss,
     setGenerated,
-    flushRoots,
-    setFlushFurniture
+    pinRoots,
+    printArea,
+    setPinGeometry,
+    setPinFurniture
   };
   if (typeof window !== "undefined")
     window.__gp = api;

@@ -48,6 +48,13 @@ describe("source.markdown.layout-markers", () => {
     expect(results.find((r) => r.code === "unknown_marker")!.line).toBe(9);
   });
 
+  test("a pinned image with .gp-flush is a warning on its line: the escape hatch, said out loud", async () => {
+    const results = await runOn("@page\n\ntext\n\n![Wall](wall.png){.gp-pin .gp-bottom .gp-flush}\n");
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({ code: "flush_art", severity: "warning", line: 5 });
+    expect(results[0]!.message).toContain("past the printer's safe area");
+  });
+
   test("a document with well-formed markers produces no findings", async () => {
     expect(await runOn("@page cover .gp-left #id\n\ntext\n\n@section {.gp-columns-2}\n\ntext\n")).toEqual([]);
   });

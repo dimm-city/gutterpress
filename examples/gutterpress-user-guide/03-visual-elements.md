@@ -138,7 +138,7 @@ the page is simply where it appears in your markdown):
 | `.gp-full` | Fills the page's content width (`width: 100%`) |
 | `.gp-bleed` | Own page, edge-to-edge — see [Full-bleed artwork](#full-bleed-artwork) |
 | `.gp-pin` | Pins to a spot on the page instead of flowing — see [Pinned images](#pinned-images) |
-| `.gp-flush` | With `.gp-pin` + an edge: sits on the paper's edge, not the margin |
+| `.gp-flush` | With `.gp-pin` + an edge: runs to the paper's edge, past the printer's safe area (Problems warns) |
 
 **Sizes** (work with any position, including `.gp-pin`; an explicit size
 overrides the floats' 50% cap):
@@ -147,7 +147,9 @@ overrides the floats' 50% cap):
 |-------|-------|
 | `.gp-small` | 25% of the column |
 | `.gp-medium` | 50% |
-| `.gp-large` | 75% |
+| `.gp-large` | 60% |
+| `.gp-xl` | 80% |
+| `.gp-xxl` | 90% |
 
 **Spacing** (how much room a float leaves for the text wrapping around it —
 no class means the normal 1em):
@@ -212,6 +214,19 @@ floats use):
 One horizontal word + one vertical word gives nine positions; sizes compose
 the same way they do in flow.
 
+**A pinned image never moves your text.** Your words keep the page's own
+margins, line for line and page for page, wherever the image is pinned — the
+page lays out exactly as it would without the image.
+
+**An edge pin sits on the printer's safe line for art.** `.gp-bottom` puts the
+image on the art-safe line of the bottom edge, not on the paper: the line
+`page.artSafe` in `manifest.yaml` sets on the top, bottom and outside edges,
+and `page.safe` at the binding (where `page.artSafe` is not set, `page.safe`
+applies everywhere). For the `dtrpg` preset that is 0.25in from the trim on
+the outside edges and 0.5in at the binding, usually between the paper and
+your text. A book with no safe area set pins to the paper's edge. A centred
+pin touches no edge and sits in the middle of the text block.
+
 Two rules keep pinning predictable:
 
 - **A pinned image must live inside an `@page` (or `@spread`) block.** The
@@ -220,11 +235,11 @@ Two rules keep pinning predictable:
   and can print on a completely different sheet, so the build and preview
   warn (`pin_outside_page`) when you do it.
 - **The pin anchors to the nearest enclosing frame.** Normally that is the
-  `@page` container: Gutterpress sizes it to the page's own content box —
-  the sheet less its margins — so `.gp-bottom` sits on the bottom margin
-  edge even when the page holds two lines of text. The two only part company
-  if one `@page` block runs long and fragments across several sheets: there
-  `.gp-bottom` means the bottom of that whole block, not of each sheet.
+  `@page` container: Gutterpress stretches it to the whole page, so
+  `.gp-bottom` sits at the foot of the page even when the page holds two
+  lines of text. The two only part company if one `@page` block runs long
+  and fragments across several sheets: there `.gp-bottom` means the bottom
+  of that whole block, not of each sheet.
 - **A styled block between the image and the page can become the frame
   instead — on purpose.** If your theme positions something closer than the
   page (a card, a callout, a component shell), the pin anchors to *that*,
@@ -245,11 +260,22 @@ Two rules keep pinning predictable:
   Only a pin with **no** enclosing frame at all is an error — that is the
   `pin_outside_page` warning above.
 
+Under the hood, Gutterpress frees that one page's margin on the edges a pin
+uses — the only way anything reaches past the margin — gives your text the
+margin back, and takes care of what freeing it would otherwise cost you:
+
+- **Your page numbers and running heads keep printing.** A margin box lives
+  *in* the margin, so freeing the margin would normally erase that edge's
+  folio; Gutterpress re-draws it inside the page at exactly its usual spot,
+  with the same values, on top of the art. Furniture on every other edge is
+  untouched.
+- **Your page's own setup is preserved.** A named page's margins, background,
+  and furniture all still apply on the page with the pin.
+
 #### Pinning art to the paper's edge {#pinned-images-flush}
 
-`.gp-bottom` stops at the bottom **margin**, because that margin is where the
-page's printable area ends. Add `.gp-flush` and the art sits on the paper
-instead:
+`.gp-flush` is the escape hatch for art that is meant to run off the page: it
+ignores the safe area and puts the image on the paper's edge instead.
 
 ```markdown
 @page
@@ -261,32 +287,22 @@ instead:
 ![Wall art](assets/wall.png){.gp-pin .gp-bottom .gp-flush .gp-behind}
 ```
 
+Printers trim up to 0.125in there, so anything that close to the edge can be
+cut off: `gutterpress validate` and the desktop app's Problems panel warn about
+every image that uses `.gp-flush`. Keep it for art that is meant to bleed off
+the page, and paint the art so that losing that strip does not matter.
+
 `.gp-flush` works with any edge, including corners — `{.gp-pin .gp-bottom
 .gp-right .gp-flush}` puts the art in the bottom-right corner of the paper. A
 centred pin touches no edge, so the class does nothing there. In the desktop
-app it is the **"Sit flush with the page edge"** checkbox in an image's
-properties; you never write the class by hand.
+app it is the **"Run to the paper's edge (ignores the safe area)"** checkbox
+in an image's properties; you never write the class by hand.
 
-Under the hood, Gutterpress frees that one page's margin on the edges the pin
-uses — the only way anything reaches the paper — and takes care of what that
-would otherwise cost you:
-
-- **Your page numbers and running heads keep printing.** A margin box lives
-  *in* the margin, so freeing the margin would normally erase that edge's
-  folio; Gutterpress re-draws it inside the page at exactly its usual spot,
-  with the same values, on top of the art. Furniture on every other edge is
-  untouched.
-- **Your page's own setup is preserved.** A named page's margins, background,
-  and furniture all still apply on the flushed page.
-
-One consequence remains yours to design for: the printable area really is
-bigger on that edge, so on a full page, text can flow into the freed strip —
-on a short page (the usual case for pinned art) nothing changes.
-
-This is trim-edge flush, not printer bleed: nothing in Gutterpress extends art
-*past* the trim. If your printer wants bleed overage, build it into the artwork
-and your PDF export settings, the same as for [full-bleed
-artwork](#full-bleed-artwork).
+The paper's edge is the edge of the page Gutterpress prints. When your page
+size already contains the bleed (`page.bleed`, as the `dtrpg` preset sets),
+that edge is the bleed line, past the trim; otherwise it is the trim itself,
+and any bleed your printer wants goes into the artwork and your PDF export
+settings, the same as for [full-bleed artwork](#full-bleed-artwork).
 
 ### Full-bleed artwork {#full-bleed-artwork}
 

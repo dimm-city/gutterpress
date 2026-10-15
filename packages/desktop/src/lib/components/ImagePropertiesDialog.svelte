@@ -38,8 +38,8 @@
   }
 
   const isFloat = () => value.position === "gp-left" || value.position === "gp-right";
-  // Flush drops the page's margin on the edges the pin uses, so it needs a pin
-  // that HAS an edge — a centred pin touches none and the class would be inert.
+  // Flush runs a pin to the paper's edge on the edges it uses, so it needs a
+  // pin that HAS an edge — a centred pin touches none and the class would be inert.
   const isEdgePin = () => value.position === IMAGE_PIN_CLASS && value.pinAlignment !== "center";
 </script>
 
@@ -104,8 +104,8 @@
       <span>Wrap text to image shape (floats only)</span>
     </label>
     <label class="check">
-      <input name="flush" type="checkbox" bind:checked={value.flush} disabled={!isEdgePin()} />
-      <span>Sit flush with the page edge (pinned to an edge only)</span>
+      <input name="flush" type="checkbox" bind:checked={value.flush} disabled={!isEdgePin()} aria-describedby="image-flush-hint" />
+      <span>Run to the paper's edge (ignores the safe area)<small id="image-flush-hint" class="hint">Pinned to an edge only. Problems will warn: printers trim up to 0.125in there.</small></span>
     </label>
     <label>
       <span>Layer</span>
@@ -133,6 +133,7 @@
   label.wide { grid-column: 1 / -1; }
   label.check { display: flex; align-items: center; gap: 8px; align-self: end; padding: 8px 0; }
   label.check input { width: auto; }
+  .hint { display: block; margin-top: 2px; color: var(--app-text-muted); font-size: 12px; }
   input, select { box-sizing: border-box; width: 100%; min-width: 0; padding: 8px 10px; color: var(--app-text); background: var(--app-control-bg); border: 1px solid var(--app-border); border-radius: 5px; font: inherit; }
   input:focus, select:focus { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
   select:disabled { opacity: 0.55; }

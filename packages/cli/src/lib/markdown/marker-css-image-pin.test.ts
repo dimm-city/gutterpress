@@ -17,9 +17,11 @@ import { inspectPdf } from "../../engine/shared/pdf-inspect.ts";
  *
  * The three load-bearing pieces of the pin CSS, each with a failure mode
  * this test catches:
- *   - `inset: 0` — abspos self-alignment aligns within the inset-modified
- *     containing block; with auto insets that collapses to the
- *     static-position rectangle and alignment does nothing (case 1 fails).
+ *   - four non-auto insets (`var(--gp-pin-<edge>, 0px)`; no engine runs
+ *     here, so all are 0) — abspos self-alignment aligns within the
+ *     inset-modified containing block; with auto insets that collapses to
+ *     the static-position rectangle and alignment does nothing (case 1
+ *     fails).
  *   - explicit `align-self/justify-self: center` — `normal` behaves as
  *     `start` for abspos REPLACED elements, so removing either default
  *     top-lefts the "centered by default" promise (case 1 fails).
@@ -51,9 +53,9 @@ const SVG = encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="${IMG_W}" height="${IMG_H}" viewBox="0 0 100 200"><rect width="100" height="200" fill="#36c"/></svg>`
 );
 const SRC = `data:image/svg+xml,${SVG}`;
-// Square art for the flow-compose case: gp-large makes it 75% of a 384px
-// page (288px); with the 1:2 portrait SVG the float would be 576px tall and
-// overflow its fixed-height .page onto extra sheets, breaking the
+// Square art for the flow-compose case: gp-large makes it 60% of a 384px
+// page (230.4px); with the 1:2 portrait SVG the float would be 461px tall
+// and overflow its fixed-height .page onto extra sheets, breaking the
 // page-count assertion for a reason that has nothing to do with the CSS
 // under test.
 const SQ_SVG = encodeURIComponent(
@@ -169,11 +171,11 @@ testIf(
         // Case 4: gp-pin gp-small — 25% of the .page padding box.
         expect(m.small.width).toBeCloseTo(PAGE_W * 0.25, 0);
 
-        // Case 5: flow compose — gp-right gp-large floats right at 75% of
+        // Case 5: flow compose — gp-right gp-large floats right at 60% of
         // the paragraph's containing block (the size rule's max-width:100%
         // lifts the floats' 50% cap purely by source order).
         expect(m.flow.float).toBe("right");
-        expect(m.flow.width).toBeCloseTo(PAGE_W * 0.75, 0);
+        expect(m.flow.width).toBeCloseTo(PAGE_W * 0.6, 0);
 
         // The <p> wrapping a lone gp-pin image contributes no phantom
         // margin gap to the flow (the :where(p:has(...)) neutralizer).
