@@ -154,6 +154,13 @@
           "description": "How near-black text is separated. `icc` converts it through the ICC profile (rich, four-colour black). `k-only` prints it on the black plate alone (100% K), which print vendors such as DriveThruRPG require for small text. Non-text black (rules, panels) is unaffected. Preset defaults: dtrpg `k-only`, book `icc`.",
           "enum": ["icc", "k-only"],
           "default": "icc"
+        },
+        "rasterDpi": {
+          "type": "integer",
+          "description": "Resolution (DPI) of the picture Ghostscript makes of a page it flattens in a PDF/X build because the page uses transparency (PDF/X-1a and X-3 cannot hold it). Lower is smaller and softer; vector content on other pages and the book's own images are not resampled. Unset: Ghostscript's default, 720.",
+          "minimum": 72,
+          "maximum": 1200,
+          "examples": [300]
         }
       }
     },

@@ -5,6 +5,17 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **`pdfx.rasterDpi` sets the resolution of the pages a PDF/X build flattens.**
+  PDF/X-1a and X-3 cannot hold transparency, so Ghostscript turns each page
+  with a soft `rgba()` shadow, an alpha PNG or `opacity` into one picture, at
+  720 DPI unless told otherwise. On the 228-page Dimm City Field Guide that
+  resolution, not the content, was most of a 1.1 GB print file. Set
+  `pdfx: { rasterDpi: 300 }` to make those pictures smaller. Only the
+  flattened pages change: vector text and shapes elsewhere, and the book's own
+  images, are not resampled.
+
 ### Changed
 
 - **The preview overlay shows the printer's safe area, from your print settings

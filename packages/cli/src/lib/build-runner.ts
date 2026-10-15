@@ -851,7 +851,8 @@ class PdfOutput implements OutputStrategy {
               "PDF/X output. To keep vector text, remove the `opacity`/blend rule and " +
               "flatten any alpha-channel image against its intended background before " +
               "including it (export it with no alpha channel), or build --format pdf " +
-              "instead of pdfx if this book doesn't need print-ready CMYK."
+              "instead of pdfx if this book doesn't need print-ready CMYK. " +
+              "`pdfx.rasterDpi` sets the resolution of those page images (default 720)."
           );
         }
 
@@ -889,6 +890,7 @@ class PdfOutput implements OutputStrategy {
           title: config.title,
           maxTac: config.ink.maxTac,
           stagingDir: stage,
+          rasterDpi: config.pdfx.rasterDpi,
         });
       }
 
