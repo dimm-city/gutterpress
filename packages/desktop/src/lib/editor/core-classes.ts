@@ -51,7 +51,7 @@ export const CORE_CLASSES: readonly CoreClass[] = [
   { class: "gp-pin", scope: "image", description: "Pin to the page, centered; add an edge to move it" },
   { class: "gp-top", scope: "image", description: "With .gp-pin: pin to the top edge" },
   { class: "gp-bottom", scope: "image", description: "With .gp-pin: pin to the bottom edge" },
-  { class: "gp-flush", scope: "image", description: "With .gp-pin and an edge: sit on the paper's edge, not the text block's" },
+  { class: "gp-flush", scope: "image", description: "With .gp-pin and an edge: run to the paper's edge, past the printer's safe area (Problems warns)" },
   // Depth.
   { class: "gp-behind", scope: "image", description: "Pinned art behind the page's text" },
   { class: "gp-base", scope: "image", description: "Depth ladder: the base layer" },
