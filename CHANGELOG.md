@@ -9,6 +9,13 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A plugin or look can require a Gutterpress version.** npm's own
+  `engines.gutterpress` in its `package.json` (e.g. `">=0.11.20"`) is checked
+  when it loads; a Gutterpress outside the range refuses to load it and names
+  the version it needs, instead of building the book without the feature it
+  relies on. Prereleases count as in range. Gutterpress versions before this
+  one ignore the field.
+
 - **`pdfx.rasterDpi` sets the resolution of the pages a PDF/X build flattens.**
   PDF/X-1a and X-3 cannot hold transparency, so Ghostscript turns each page
   with a soft `rgba()` shadow, an alpha PNG or `opacity` into one picture, at
