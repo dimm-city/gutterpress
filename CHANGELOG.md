@@ -5,7 +5,18 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.20] - 2026-10-15
+
 ### Added
+
+- **`pdfx.rasterDpi` sets the resolution of the pages a PDF/X build flattens.**
+  PDF/X-1a and X-3 cannot hold transparency, so Ghostscript turns each page
+  with a soft `rgba()` shadow, an alpha PNG or `opacity` into one picture, at
+  720 DPI unless told otherwise. On the 228-page Dimm City Field Guide that
+  resolution, not the content, was most of a 1.1 GB print file. Set
+  `pdfx: { rasterDpi: 300 }` to make those pictures smaller. Only the
+  flattened pages change: vector text and shapes elsewhere, and the book's own
+  images, are not resampled.
 
 - **`pdfx.transparency: preserve-text` (opt-in) keeps live text on PDF/X pages
   that use transparency.** PDF/X-1a and X-3 (PDF 1.3) cannot hold
@@ -32,31 +43,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   says so when no page kept its text. `pdfx.flattenPages: [4, 13]` flattens
   chosen pages whole anyway, for a page whose cover or tint over its text must
   stay as designed.
+
 - **`pdfx.rasterDpi` also sets the resolution of `preserve-text` artwork.**
   Unset, that artwork is 300 DPI; whole pages Ghostscript flattens keep 720.
 
-### Changed
-
-- **PDF/X builds save every picture losslessly.** Converting to CMYK
-  re-encodes each colour image, and Ghostscript's default chose a low-quality
-  JPEG: flattened pages got blotches and light halos along edges that a
-  printer reproduces. Pictures are now compressed losslessly. Files with
-  photos or flattened pages grow (a flattened text page by about 5%, a
-  full-page illustration about twice); a JPEG good enough for print came out
-  larger still.
-
-## [0.11.20] - 2026-10-15
-
-### Added
-
-- **`pdfx.rasterDpi` sets the resolution of the pages a PDF/X build flattens.**
-  PDF/X-1a and X-3 cannot hold transparency, so Ghostscript turns each page
-  with a soft `rgba()` shadow, an alpha PNG or `opacity` into one picture, at
-  720 DPI unless told otherwise. On the 228-page Dimm City Field Guide that
-  resolution, not the content, was most of a 1.1 GB print file. Set
-  `pdfx: { rasterDpi: 300 }` to make those pictures smaller. Only the
-  flattened pages change: vector text and shapes elsewhere, and the book's own
-  images, are not resampled.
 - **`page.safe` and `page.artSafe` hold the printer's two safe-area rules, and
   the `dtrpg` preset sets both.** DriveThruRPG's quick specifications ask for
   text at least 0.5in inside the trim, and for art that does not bleed at least
@@ -70,6 +60,7 @@ This project follows [Semantic Versioning](https://semver.org/).
   also names the DriveThruRPG article its numbers come from, which the overlays'
   legend links to, and the manifest schema's descriptions say which rule each
   number is.
+
 - **Preflight checks that your text keeps clear of the trim.** The new
   `pdf.print.safe-margins` check reads the finished PDF and reports every line
   of text closer to the trim than `page.safe`: 0.5in on every edge for the
@@ -84,6 +75,7 @@ This project follows [Semantic Versioning](https://semver.org/).
   or `gutterpress preflight`; a `--format pdfx` build runs it as its last step.
   Soften or turn it off with `validate.checks` in `manifest.yaml` like any
   other check.
+
 - **Print overlays: the bleed, the safe areas for text and for art, and your
   page margins, each its own layer with its own colour, and a legend that says
   what the lines mean.** The preview overlay is now four layers you can switch
@@ -119,6 +111,14 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **PDF/X builds save every picture losslessly.** Converting to CMYK
+  re-encodes each colour image, and Ghostscript's default chose a low-quality
+  JPEG: flattened pages got blotches and light halos along edges that a
+  printer reproduces. Pictures are now compressed losslessly. Files with
+  photos or flattened pages grow (a flattened text page by about 5%, a
+  full-page illustration about twice); a JPEG good enough for print came out
+  larger still.
+
 - **The preview overlay takes its sizes from your print settings only, and
   checks what is printed.** The 0.11.19 **Margins and bleed** button drew the
   text block from your `@page` margins as if it were a safe print area, so it
@@ -151,7 +151,6 @@ This project follows [Semantic Versioning](https://semver.org/).
   keeps the header's colour, letter case, letter spacing and vertical
   alignment; it kept only the font, alignment, padding, border and background,
   so an uppercase header bar came back in the source text's case.
-
 ## [0.11.19] - 2026-10-15
 
 ### Added
