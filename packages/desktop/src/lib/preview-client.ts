@@ -23,14 +23,18 @@ export interface PreviewEvent {
   detail: {
     /** overlayChanged: whether the overlay is showing. */
     on?: boolean;
-    /** overlayChanged: elements that leave the safe area by accident. */
+    /** overlayChanged: text and art that leave their safe area by accident, or the trim. */
     issues?: number;
     /** overlayChanged: placed-on-purpose art (`.gp-bleed`, `.gp-pin`, …) outside it — shown, not counted. */
     intended?: number;
     /** overlayChanged: the project's in-page bleed in pt (`page.bleed`; 0 = none set). */
     bleedPt?: number;
-    /** overlayChanged: the project's safe-area inset in pt (`page.safe`; 0 = none set). */
+    /** overlayChanged: the text rule's inset in pt (`page.safe`; 0 = none set). */
     safePt?: number;
+    /** overlayChanged: the art rule's inset in pt (`page.artSafe`, else `page.safe`). */
+    artSafePt?: number;
+    /** overlayChanged: what `issues` is made of, and the placed art. */
+    counts?: { text?: number; art?: number; bleed?: number; offPage?: number; intended?: number };
     currentPage?: number;
     totalPages?: number;
     /** sourceLineChanged / elementActivated: 1-based markdown source line. */

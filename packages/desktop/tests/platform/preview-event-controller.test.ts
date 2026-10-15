@@ -504,9 +504,17 @@ test("overlayChanged hands the viewer's finding to the toolbar, and 'off' clears
   const h = make();
   h.ctrl.handleEvent({
     name: "overlayChanged",
-    detail: { on: true, issues: 3.9, intended: 1, bleedPt: 9 },
+    detail: { on: true, issues: 3.9, intended: 1, bleedPt: 9, artSafePt: 18, counts: { text: 2, art: 1 } },
   });
-  expect(h.overlaySummary).toEqual({ on: true, issues: 3, intended: 1, bleedPt: 9, safePt: 0 });
+  expect(h.overlaySummary).toEqual({
+    on: true,
+    issues: 3,
+    intended: 1,
+    bleedPt: 9,
+    safePt: 0,
+    artSafePt: 18,
+    counts: { text: 2, art: 1, bleed: 0, offPage: 0, intended: 0 },
+  });
   h.ctrl.handleEvent({ name: "overlayChanged", detail: { on: false, issues: 0, intended: 0, bleedPt: 0 } });
   expect(h.overlaySummary).toBeNull();
   // junk from a mismatched viewer is not a finding

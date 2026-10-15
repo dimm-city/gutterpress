@@ -7,7 +7,13 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createSettingsStore, DEFAULT_SETTINGS, mergeSettings, type DeepPartialSettings } from "../../electron/settings-store";
-import { formatBleed, overlayStyleFrom, overlaySummaryFrom, overlayTooltip } from "../../src/lib/margin-overlay";
+import {
+  formatBleed,
+  overlayStyleFrom,
+  overlaySummaryFrom,
+  overlayTooltip,
+  type MarginOverlaySummary,
+} from "../../src/lib/margin-overlay";
 
 const read = (rel: string) => readFileSync(resolve(__dirname, "../..", rel), "utf8");
 
@@ -77,14 +83,34 @@ describe("the viewer's finding", () => {
     expect(overlaySummaryFrom(undefined)).toBeNull();
     expect(overlaySummaryFrom({})).toBeNull();
     expect(overlaySummaryFrom({ on: false, issues: 4 })).toBeNull();
-    expect(overlaySummaryFrom({ on: true, issues: 2.7, intended: -1, bleedPt: 9, safePt: 18 })).toEqual({
+    expect(
+      overlaySummaryFrom({
+        on: true,
+        issues: 2.7,
+        intended: -1,
+        bleedPt: 9,
+        safePt: 36,
+        artSafePt: 18,
+        counts: { text: 1.9, art: 1, bleed: -2, offPage: 0 },
+      }),
+    ).toEqual({
       on: true,
       issues: 2,
       intended: 0,
       bleedPt: 9,
-      safePt: 18,
+      safePt: 36,
+      artSafePt: 18,
+      counts: { text: 1, art: 1, bleed: 0, offPage: 0, intended: 0 },
     });
-    expect(overlaySummaryFrom({ on: true })).toEqual({ on: true, issues: 0, intended: 0, bleedPt: 0, safePt: 0 });
+    expect(overlaySummaryFrom({ on: true })).toEqual({
+      on: true,
+      issues: 0,
+      intended: 0,
+      bleedPt: 0,
+      safePt: 0,
+      artSafePt: 0,
+      counts: { text: 0, art: 0, bleed: 0, offPage: 0, intended: 0 },
+    });
   });
 
   test("bleed reads in inches", () => {
@@ -101,26 +127,50 @@ describe("the toolbar tooltip", () => {
     expect(t).toMatch(/print settings/);
   });
 
-  test("on: reports what leaves the safe area, placed art, the safe area and the bleed", () => {
-    const t = overlayTooltip(true, { on: true, issues: 2, intended: 1, bleedPt: 9, safePt: 18 });
+  const summary = (over: Partial<MarginOverlaySummary> = {}): MarginOverlaySummary => ({
+    on: true,
+    issues: 0,
+    intended: 0,
+    bleedPt: 9,
+    safePt: 18,
+    artSafePt: 18,
+    counts: { text: 0, art: 0, bleed: 0, offPage: 0, intended: 0 },
+    ...over,
+  });
+
+  test("on: reports the text and art outside the safe area, the bleed band, the page, placed art, the safe area and the bleed", () => {
+    const t = overlayTooltip(
+      true,
+      summary({
+        issues: 5,
+        intended: 1,
+        safePt: 36,
+        artSafePt: 18,
+        counts: { text: 2, art: 1, bleed: 1, offPage: 1, intended: 1 },
+      }),
+    );
     expect(t).toContain("Hide safe area and bleed");
-    expect(t).toContain("2 elements extend past the safe area");
+    expect(t).toContain("2 text, 1 art outside the safe area");
+    expect(t).toContain("1 in the bleed band");
+    expect(t).toContain("1 off the page");
+    expect(t).not.toContain("Everything is inside");
     expect(t).toContain("1 piece of art placed on purpose (not counted)");
-    expect(t).toContain("Safe area: 0.25 in inside the trim");
+    expect(t).toContain("Safe area: text 0.5 in, art 0.25 in (0.5 in at the binding), inside the trim");
     expect(t).toContain("Bleed: 0.125 in, inside the page");
   });
 
-  test("on: singular, clean, and a project with neither set points at the manifest", () => {
-    const t = overlayTooltip(true, { on: true, issues: 1, intended: 0, bleedPt: 0, safePt: 0 });
-    expect(t).toContain("1 element extends past the safe area");
+  test("on: one rule reads as one distance, a clean book says so, and a project with neither set points at the manifest", () => {
+    const t = overlayTooltip(true, summary({ issues: 1, counts: { text: 0, art: 1, bleed: 0, offPage: 0, intended: 0 }, bleedPt: 0 }));
+    expect(t).toContain("1 art outside the safe area");
+    expect(t).not.toContain("text outside");
     expect(t).not.toContain("placed on purpose");
-    expect(t).toContain("No safe area set \u2014 set page.safe in manifest.yaml");
+    expect(t).toContain("Safe area: 0.25 in inside the trim");
     expect(t).toContain("No bleed set \u2014 set page.bleed in manifest.yaml");
+    const none = overlayTooltip(true, summary({ safePt: 0, artSafePt: 0 }));
+    expect(none).toContain("No safe area set \u2014 set page.safe in manifest.yaml");
     // never a CSS fix: the overlay does not read the book's stylesheet
-    expect(t).not.toContain("@page");
-    expect(overlayTooltip(true, { on: true, issues: 0, intended: 0, bleedPt: 9, safePt: 18 })).toContain(
-      "Everything is inside the safe area",
-    );
+    expect(none).not.toContain("@page");
+    expect(overlayTooltip(true, summary())).toContain("Everything is inside the safe area");
   });
 
   test("on, before the viewer has answered: just the action", () => {

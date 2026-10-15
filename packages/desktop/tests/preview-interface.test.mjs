@@ -1140,7 +1140,15 @@ async function main() {
   // ── Safe area & bleed overlay (protocol v9) ──────────────────────────────────
   {
     const calls = [];
-    const summary = (on) => ({ on, issues: on ? 2 : 0, intended: on ? 1 : 0, bleedPt: 9, safePt: 18 });
+    const summary = (on) => ({
+      on,
+      issues: on ? 4 : 0,
+      intended: on ? 1 : 0,
+      bleedPt: 9,
+      safePt: 36,
+      artSafePt: 18,
+      counts: { text: on ? 2 : 0, art: on ? 1 : 0, bleed: on ? 1 : 0, offPage: 0, intended: on ? 1 : 0 },
+    });
     const stubViewer = (window, document) => {
       window.Gutterpress = {
         pageOf: () => -1,
@@ -1205,7 +1213,9 @@ async function main() {
     assert.deepEqual(calls, [true], "Alt+M switches the overlay on");
     const pill = document.getElementById("gp-ov-badge");
     assert.ok(pill, "standalone shows a status pill");
-    assert.match(pill.textContent, /2 outside the safe area/);
+    assert.match(pill.textContent, /2 text, 1 art outside the safe area/);
+    assert.match(pill.textContent, /1 in the bleed band/);
+    assert.doesNotMatch(pill.textContent, /off the page|everything inside/);
     assert.match(pill.textContent, /1 placed on purpose/);
     assert.match(pill.textContent, /Alt\+M hides/);
     press({ altKey: true });

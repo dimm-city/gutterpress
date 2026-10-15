@@ -1107,8 +1107,9 @@
 
     // Safe area & bleed overlay. Viewer chrome only — it adds no box to the
     // book and no attribute to its elements, so pagination is identical on or
-    // off. Returns the summary {on, issues, intended, bleedPt, safePt}, or null
-    // when the viewer predates it. `style` ({color: '#rrggbb', strength:
+    // off. Returns the summary {on, issues, intended, bleedPt, safePt, artSafePt,
+    // counts: {text, art, bleed, offPage, intended}}, or null when the viewer
+    // predates it. `style` ({color: '#rrggbb', strength:
     // 'subtle' | 'normal' | 'strong'}) is optional: it only sets the overlay's
     // own tokens, and a call that carries it while the overlay is already on
     // restyles without repainting.
@@ -1653,7 +1654,12 @@
       document.documentElement.appendChild(badge);
     }
     var parts = ['Safe area & bleed'];
-    parts.push(summary.issues ? summary.issues + ' outside the safe area' : 'everything inside the safe area');
+    var c = summary.counts || {};
+    var outside = [c.text && c.text + ' text', c.art && c.art + ' art'].filter(Boolean).join(', ');
+    if (outside) parts.push(outside + ' outside the safe area');
+    if (c.bleed) parts.push(c.bleed + ' in the bleed band');
+    if (c.offPage) parts.push(c.offPage + ' off the page');
+    if (!summary.issues) parts.push('everything inside the safe area');
     if (summary.intended) parts.push(summary.intended + ' placed on purpose');
     if (!summary.safePt) parts.push('no safe area set (page.safe in manifest.yaml)');
     if (!summary.bleedPt) parts.push('no bleed set (page.bleed in manifest.yaml)');

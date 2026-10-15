@@ -82,7 +82,8 @@
   window.addEventListener('contextMenuRequested', function (e) {
     post({ type: 'gutterpress:event', name: 'contextMenuRequested', detail: e.detail });
   });
-  // Margin & bleed overlay result (protocol v9): {on, issues, intended, bleedPt}.
+  // Margin & bleed overlay result (protocol v9): {on, issues, intended, bleedPt,
+  // safePt, artSafePt, counts}.
   window.addEventListener('overlayChanged', function (e) {
     post({ type: 'gutterpress:event', name: 'overlayChanged', detail: e.detail });
   });

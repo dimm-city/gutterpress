@@ -12,14 +12,18 @@
 /** What the viewer reports after drawing: the `overlayChanged` event's detail. */
 export interface MarginOverlaySummary {
   on: boolean;
-  /** elements that leave the safe area by accident (the count in the toolbar) */
+  /** text and art that leave their safe area by accident, or the trim (the count in the toolbar) */
   issues: number;
   /** art placed on purpose (.gp-bleed, .gp-pin, …) outside it — shown softly, never counted */
   intended: number;
   /** the project's bleed in pt (`page.bleed`, inside the page); 0 = none set */
   bleedPt: number;
-  /** the project's safe-area inset in pt (`page.safe`); 0 = none set */
+  /** the TEXT rule's inset from the trim in pt (`page.safe`); 0 = none set */
   safePt: number;
+  /** the ART rule's inset on the top, bottom and outer edge in pt (`page.artSafe`, else `page.safe`) */
+  artSafePt: number;
+  /** what `issues` is made of, plus the placed art: one per outlined rect */
+  counts: { text: number; art: number; bleed: number; offPage: number; intended: number };
 }
 
 /** A viewer result, or null for anything that is not one (older viewer, off). */
@@ -29,14 +33,25 @@ export function overlaySummaryFrom(detail: {
   intended?: number;
   bleedPt?: number;
   safePt?: number;
+  artSafePt?: number;
+  counts?: Partial<MarginOverlaySummary["counts"]>;
 } | null | undefined): MarginOverlaySummary | null {
   if (!detail || detail.on !== true) return null;
+  const count = (n: number | undefined) => Math.max(0, Math.floor(n ?? 0));
   return {
     on: true,
-    issues: Math.max(0, Math.floor(detail.issues ?? 0)),
-    intended: Math.max(0, Math.floor(detail.intended ?? 0)),
+    issues: count(detail.issues),
+    intended: count(detail.intended),
     bleedPt: Math.max(0, detail.bleedPt ?? 0),
     safePt: Math.max(0, detail.safePt ?? 0),
+    artSafePt: Math.max(0, detail.artSafePt ?? 0),
+    counts: {
+      text: count(detail.counts?.text),
+      art: count(detail.counts?.art),
+      bleed: count(detail.counts?.bleed),
+      offPage: count(detail.counts?.offPage),
+      intended: count(detail.counts?.intended),
+    },
   };
 }
 
@@ -75,18 +90,22 @@ export function overlayTooltip(on: boolean, summary: MarginOverlaySummary | null
   }
   const lines = ["Hide safe area and bleed"];
   if (summary) {
-    lines.push(
-      summary.issues > 0
-        ? `${plural(summary.issues, "element extends", "elements extend")} past the safe area`
-        : "Everything is inside the safe area",
-    );
+    const { text, art, bleed, offPage } = summary.counts;
+    const outside = [text > 0 && `${text} text`, art > 0 && `${art} art`].filter(Boolean).join(", ");
+    if (summary.issues === 0) lines.push("Everything is inside the safe area");
+    if (outside) lines.push(`${outside} outside the safe area`);
+    if (bleed > 0) lines.push(`${bleed} in the bleed band`);
+    if (offPage > 0) lines.push(`${offPage} off the page`);
     if (summary.intended > 0) {
       lines.push(`${plural(summary.intended, "piece", "pieces")} of art placed on purpose (not counted)`);
     }
+    const textIn = formatBleed(summary.safePt);
     lines.push(
-      summary.safePt > 0
-        ? `Safe area: ${formatBleed(summary.safePt)} inside the trim`
-        : "No safe area set \u2014 set page.safe in manifest.yaml",
+      summary.safePt <= 0 && summary.artSafePt <= 0
+        ? "No safe area set \u2014 set page.safe in manifest.yaml"
+        : summary.artSafePt === summary.safePt
+          ? `Safe area: ${textIn} inside the trim`
+          : `Safe area: text ${textIn}, art ${formatBleed(summary.artSafePt)} (${textIn} at the binding), inside the trim`,
     );
     lines.push(
       summary.bleedPt > 0

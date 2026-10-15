@@ -2101,27 +2101,45 @@
     const h = area.height * scale;
     const b = Math.max(0, area.bleed) * scale;
     const s = Math.max(0, area.safe) * scale;
+    const a = Math.max(0, area.artSafe) * scale;
+    const [left, right] = side === "verso" ? [a, s] : [s, a];
     const trim = { x: side === "verso" ? b : 0, y: b, w: Math.max(0, w - b), h: Math.max(0, h - 2 * b) };
     return {
       sheet: { x: 0, y: 0, w, h },
       trim,
       safe: { x: trim.x + s, y: trim.y + s, w: Math.max(0, trim.w - 2 * s), h: Math.max(0, trim.h - 2 * s) },
+      safeArt: {
+        x: trim.x + left,
+        y: trim.y + a,
+        w: Math.max(0, trim.w - left - right),
+        h: Math.max(0, trim.h - 2 * a)
+      },
       bleed: b
     };
   }
   var SEVERITY = { inside: 0, unsafe: 1, bleed: 2, "off-page": 3 };
-  var within = (r, outer, tol) => r.x >= outer.x - tol && r.y >= outer.y - tol && r.x + r.w <= outer.x + outer.w + tol && r.y + r.h <= outer.y + outer.h + tol;
-  function classifyRect(r, boxes, tol = 0) {
-    if (within(r, boxes.safe, tol))
-      return "inside";
-    if (within(r, boxes.trim, tol))
-      return "unsafe";
-    if (boxes.bleed > 0 && within(r, boxes.sheet, tol))
-      return "bleed";
-    return "off-page";
-  }
-  function worstKind(kinds) {
-    return kinds.reduce((worst, k) => SEVERITY[k] > SEVERITY[worst] ? k : worst, "inside");
+  function classifyRect(r, boxes, rule, tol = 0) {
+    const { sheet, trim } = boxes;
+    const safe = rule === "art" ? boxes.safeArt : boxes.safe;
+    const sides = [
+      [-r.x, -safe.x, -trim.x, -sheet.x],
+      [r.x + r.w, safe.x + safe.w, trim.x + trim.w, sheet.x + sheet.w],
+      [-r.y, -safe.y, -trim.y, -sheet.y],
+      [r.y + r.h, safe.y + safe.h, trim.y + trim.h, sheet.y + sheet.h]
+    ];
+    let worst = { kind: "inside", gap: 0, need: 0 };
+    let beyond = 0;
+    for (const [ink, limit, edge, sheetEdge] of sides) {
+      const past = ink - limit;
+      if (past <= tol || rule === "art" && ink >= sheetEdge - tol)
+        continue;
+      const kind = ink > sheetEdge + tol ? "off-page" : ink > edge + tol ? "bleed" : "unsafe";
+      if (SEVERITY[kind] > SEVERITY[worst.kind] || kind === worst.kind && past > beyond) {
+        worst = { kind, gap: edge - ink, need: edge - limit };
+        beyond = past;
+      }
+    }
+    return worst;
   }
   var INTENT_SELECTOR = ".gp-bleed, .gp-pin, .gp-flush, .gp-behind, .gp-page-full-bleed";
   var OVERLAY_STRENGTHS = ["subtle", "normal", "strong"];
@@ -2135,7 +2153,15 @@
       out.strength = s.strength;
     return out;
   }
-  var OVERLAY_OFF = { on: false, issues: 0, intended: 0, bleedPt: 0, safePt: 0 };
+  var OVERLAY_OFF = {
+    on: false,
+    issues: 0,
+    intended: 0,
+    bleedPt: 0,
+    safePt: 0,
+    artSafePt: 0,
+    counts: { text: 0, art: 0, bleed: 0, offPage: 0, intended: 0 }
+  };
   function printAreaFromMeta() {
     const raw = document.querySelector('meta[name="gp-print-area"]')?.getAttribute("content");
     if (!raw)
@@ -2145,21 +2171,32 @@
       const n = (x) => typeof x === "number" && Number.isFinite(x) && x > 0 ? x : 0;
       if (!n(v.width) || !n(v.height))
         return null;
-      return { width: n(v.width), height: n(v.height), bleed: n(v.bleed), safe: n(v.safe) };
+      const safe = n(v.safe);
+      const spec = v.spec && typeof v.spec.label === "string" && typeof v.spec.url === "string" ? v.spec : undefined;
+      return {
+        width: n(v.width),
+        height: n(v.height),
+        bleed: n(v.bleed),
+        safe,
+        artSafe: typeof v.artSafe === "number" ? n(v.artSafe) : safe,
+        preset: typeof v.preset === "string" ? v.preset : undefined,
+        spec
+      };
     } catch {
       return null;
     }
   }
   function sheetArea(sheet) {
     const px = (name) => parseFloat(sheet.style.getPropertyValue(name)) || 0;
-    return { width: px("--gp-page-w") / PX_PER_PT, height: px("--gp-page-h") / PX_PER_PT, bleed: 0, safe: 0 };
+    return { width: px("--gp-page-w") / PX_PER_PT, height: px("--gp-page-h") / PX_PER_PT, bleed: 0, safe: 0, artSafe: 0 };
   }
   var OVERLAY_CSS = `
 .root {
-  --gp-ov-color: #2f80ed;       /* safe-area line + the tint outside it */
+  --gp-ov-color: #2f80ed;       /* safe-area lines + the tint outside the text line */
   --gp-ov-width: 2px;           /* line width as seen on screen, at any zoom */
-  --gp-ov-style: dashed;        /* safe-area line style */
-  --gp-ov-tint: 0.1;            /* opacity of the tint between safe area and trim */
+  --gp-ov-style: dashed;        /* text safe line style */
+  --gp-ov-art-style: dotted;    /* art safe line style */
+  --gp-ov-tint: 0.1;            /* opacity of the tint between the text line and the trim */
   --gp-ov-bleed-color: #e5484d; /* bleed band */
   --gp-ov-bleed-alpha: 0.45;    /* opacity of the bleed band */
   --gp-ov-trim-color: #8a0b18;  /* the trim line: darker than the band so it reads as an edge */
@@ -2186,17 +2223,20 @@
   --gp-ov-bleed-alpha: 0.65;
   --gp-ov-flag-width: 3px;
 }
-.gp-ov-page, .gp-ov-tint, .gp-ov-safe, .gp-ov-bleed, .gp-ov-trim, .gp-ov-flag {
+.gp-ov-page, .gp-ov-tint, .gp-ov-safe, .gp-ov-art, .gp-ov-bleed, .gp-ov-trim, .gp-ov-flag {
   position: absolute;
   box-sizing: border-box;
 }
-/* the band between the safe area and the trim, as a REGION (clip-path, set in
+/* the band between the text line and the trim, as a REGION (clip-path, set in
    overlay.ts), so it reads as an area, not a hairline */
 .gp-ov-tint {
   background: color-mix(in srgb, var(--gp-ov-color) calc(var(--gp-ov-tint) * 100%), transparent);
 }
 .gp-ov-safe {
   border: var(--gp-ov-w) var(--gp-ov-style) var(--gp-ov-color);
+}
+.gp-ov-art {
+  border: var(--gp-ov-w) var(--gp-ov-art-style) var(--gp-ov-color);
 }
 /* bleed: a translucent band between the trim and the sheet edge (its width is the border) */
 .gp-ov-bleed {
@@ -2327,6 +2367,8 @@
   }
   var TOL_PX = 1;
   var SKIP = new Set(["SCRIPT", "STYLE", "LINK", "TEMPLATE", "BR", "WBR", "SOURCE", "TRACK", "META"]);
+  var ART_TAGS = new Set(["img", "svg", "video", "canvas"]);
+  var inches = (px) => +(Math.abs(px) / 96).toFixed(2);
   function paintOverlay(pages, strips, area) {
     const layer = ensureRoot();
     syncToStage();
@@ -2355,64 +2397,102 @@
         host2.appendChild(unsafeTint(boxes));
         host2.appendChild(div("gp-ov-safe", boxes.safe));
       }
+      if (area && area.artSafe > 0 && area.artSafe !== area.safe)
+        host2.appendChild(div("gp-ov-art", boxes.safeArt));
       layer.appendChild(host2);
       painted.set(p.index, { host: host2, boxes, sheet: p.sheet, rect });
     }
     const flags = [];
-    let issues = 0;
-    let intended = 0;
-    for (const strip of strips) {
-      const zoom = cssZoomOf(strip.el);
-      const colW = (parseFloat(strip.el.style.getPropertyValue("--gp-content-w")) || 0) * zoom;
-      const colH = (parseFloat(strip.el.style.getPropertyValue("--gp-content-h")) || 0) * zoom;
-      const visit = (el) => {
-        if (SKIP.has(el.tagName) || el.classList.contains("gp-wrap-spacer"))
-          return;
-        const kinds = [];
-        const found = [];
-        for (const r of Array.from(el.getClientRects())) {
+    const counts = { text: 0, art: 0, bleed: 0, offPage: 0, intended: 0 };
+    const seen = new Set;
+    const range = document.createRange();
+    const source = area?.spec?.label ?? "the safe area";
+    const inspect = (root2, pageOf2, zoom) => {
+      const judge = (el, rule, rects) => {
+        for (const r of rects) {
           if (r.width <= 0 && r.height <= 0)
             continue;
-          const ax = r.left + Math.min(r.width, colW || r.width) / 2;
-          const ay = r.top + Math.min(r.height, colH || r.height) / 2;
-          const target = painted.get(strip.offset + indexInStrip(ax, ay, strip));
+          const target = pageOf2(r);
           if (!target)
             continue;
           target.rect ??= target.sheet.getBoundingClientRect();
-          const local = {
+          const box = {
             x: (r.left - target.rect.left) / zoom,
             y: (r.top - target.rect.top) / zoom,
             w: r.width / zoom,
             h: r.height / zoom
           };
-          const kind = classifyRect(local, target.boxes, TOL_PX);
-          kinds.push(kind);
-          if (kind !== "inside")
-            found.push({ host: target.host, kind, box: local });
+          const { kind, gap, need } = classifyRect(box, target.boxes, rule, TOL_PX);
+          if (kind === "inside")
+            continue;
+          const key = `${target.host.dataset.page} ${box.x} ${box.y} ${box.w} ${box.h}`;
+          if (seen.has(key))
+            continue;
+          seen.add(key);
+          const placed = el.closest(INTENT_SELECTOR) !== null;
+          const bucket = placed ? "intended" : kind === "unsafe" ? rule : kind === "bleed" ? "bleed" : "offPage";
+          counts[bucket]++;
+          const title = `${rule} ${inches(gap)}in ${gap < 0 ? "past" : "from"} the trim; ${source} needs ${inches(need)}in`;
+          flags.push({
+            host: target.host,
+            kind: placed ? "intended" : kind,
+            rule,
+            box,
+            title: placed ? `${title} (placed on purpose)` : title
+          });
         }
-        const worst = worstKind(kinds);
-        if (worst !== "inside") {
-          const isIntended = el.closest(INTENT_SELECTOR) !== null;
-          if (isIntended)
-            intended++;
-          else
-            issues++;
-          for (const f of found)
-            flags.push(isIntended ? { ...f, kind: "intended" } : f);
+      };
+      const visit = (node) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          if (!node.nodeValue?.trim())
+            return;
+          range.selectNodeContents(node);
+          judge(node.parentElement, "text", range.getClientRects());
           return;
         }
-        for (const child of Array.from(el.children))
+        if (!(node instanceof Element) || SKIP.has(node.tagName) || node.classList.contains("gp-wrap-spacer"))
+          return;
+        const cs = getComputedStyle(node);
+        if (ART_TAGS.has(node.localName) || cs.backgroundImage !== "none" || !/^rgba\(.*, 0\)$/.test(cs.backgroundColor) || parseFloat(cs.borderTopWidth) > 0 || parseFloat(cs.borderRightWidth) > 0 || parseFloat(cs.borderBottomWidth) > 0 || parseFloat(cs.borderLeftWidth) > 0) {
+          judge(node, "art", node.getClientRects());
+        }
+        for (const child of node.childNodes)
           visit(child);
       };
-      for (const child of Array.from(strip.el.children))
-        visit(child);
+      visit(root2);
+    };
+    for (const strip of strips) {
+      const zoom = cssZoomOf(strip.el);
+      const colW = (parseFloat(strip.el.style.getPropertyValue("--gp-content-w")) || 0) * zoom;
+      const colH = (parseFloat(strip.el.style.getPropertyValue("--gp-content-h")) || 0) * zoom;
+      const pageOf2 = (r) => {
+        const ax = r.left + Math.min(r.width, colW || r.width) / 2;
+        const ay = r.top + Math.min(r.height, colH || r.height) / 2;
+        return painted.get(strip.offset + indexInStrip(ax, ay, strip));
+      };
+      for (const child of strip.el.childNodes)
+        inspect(child, pageOf2, zoom);
+    }
+    for (const target of painted.values()) {
+      for (const furniture of target.sheet.querySelectorAll(".gp-marginbox"))
+        inspect(furniture, () => target, stage.zoom);
     }
     for (const f of flags) {
       const el = div("gp-ov-flag", f.box);
       el.dataset.kind = f.kind;
+      el.dataset.rule = f.rule;
+      el.title = f.title;
       f.host.appendChild(el);
     }
-    return { on: true, issues, intended, bleedPt: area?.bleed ?? 0, safePt: area?.safe ?? 0 };
+    return {
+      on: true,
+      issues: counts.text + counts.art + counts.bleed + counts.offPage,
+      intended: counts.intended,
+      bleedPt: area?.bleed ?? 0,
+      safePt: area?.safe ?? 0,
+      artSafePt: area?.artSafe ?? 0,
+      counts
+    };
   }
 
   // src/engine/viewer/decorate.ts

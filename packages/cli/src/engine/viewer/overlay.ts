@@ -2,20 +2,29 @@
  * Safe area & bleed overlay (viewer chrome — PERMANENT tooling, not a shim).
  *
  * An author-facing review aid: while it is on, every page in the preview shows
- * its safe area (dashed, with the band between it and the trim tinted), the
- * trim, and the bleed band (translucent), and any element whose box leaves the
- * safe area is outlined — amber when it stays on the trimmed page, red when it
- * crosses the trim into the bleed or off the sheet. Art the author placed on
- * purpose (`.gp-bleed`, `.gp-pin`, `.gp-flush`, `.gp-behind`) is outlined
- * softly in violet and not counted.
+ * the printer's two safe lines — text (dashed, with the band between it and the
+ * trim tinted) and art (dotted) — the trim, and the bleed band (translucent).
+ * It judges the book's INK against the rule that applies to it, the way the
+ * printer does: each line of text (a text node's glyph rects) against the TEXT
+ * box; images, media and any box that paints (a background or a border) against
+ * the ART box, edge by edge — an edge that runs out to the sheet's edge is a
+ * bleed done right and passes. A container that paints nothing is never
+ * flagged, only what it holds, and page furniture (folios, running heads) is
+ * judged the same way. A flag is amber when the ink stays on the trimmed page,
+ * red when it crosses the trim into the bleed or off the sheet. Art the author
+ * placed on purpose (`.gp-bleed`, `.gp-pin`, `.gp-flush`, `.gp-behind`) is
+ * outlined softly in violet and not counted.
  *
  * WHERE THE GEOMETRY COMES FROM: the project's manifest and its preset, and
  * nothing else — `page.width` x `page.height` (the sheet), `page.bleed` (a bleed
  * the sheet already contains on the top, bottom and OUTER edge; the binding
- * edge has none, as DriveThruRPG cuts it) and `page.safe` (the safe area's
- * inset from the trim on every edge). Preview assembly hands them in as
- * `<meta name="gp-print-area">`. No book or plugin CSS feeds it: not the
- * `@page` margins (they are where the author put the TEXT, which is not the
+ * edge has none, as DriveThruRPG cuts it), `page.safe` (the TEXT rule: its
+ * inset from the trim on every edge) and `page.artSafe` (the ART rule: its
+ * inset on the top, bottom and outer edge, while the binding edge takes `safe`;
+ * absent = `safe`). Preview assembly hands them in as
+ * `<meta name="gp-print-area">`, with the preset's id and the printer spec it
+ * follows, which only word what is found. No book or plugin CSS feeds it: not
+ * the `@page` margins (they are where the author put the TEXT, which is not the
  * printer's safe area), not `@page { bleed }`. Each box is anchored on the top-
  * left of the sheet the viewer drew for that page, so it sits on the paper
  * wherever the paper is.
@@ -55,8 +64,13 @@ export interface PrintArea {
   height: number;
   /** in-sheet bleed on the top, bottom and outer edge; 0 = none */
   bleed: number;
-  /** safe-area inset from the trim on every edge; 0 = none */
+  /** the TEXT rule: inset from the trim on every edge; 0 = none */
   safe: number;
+  /** the ART rule: inset on the top, bottom and outer edge (the binding edge takes `safe`) */
+  artSafe: number;
+  /** the manifest's preset id, and the printer spec it follows: they only word what is found */
+  preset?: string;
+  spec?: { label: string; url: string };
 }
 
 export type PageSide = "recto" | "verso";
@@ -67,62 +81,91 @@ export interface PageBoxes {
   sheet: Rect;
   /** the cut page */
   trim: Rect;
-  /** where content is safe from the cut: the trim inset by `safe` */
+  /** where TEXT is safe from the cut: the trim inset by `safe` */
   safe: Rect;
+  /** where ART is safe from the cut: the trim inset by `artSafe`, and by `safe` at the binding */
+  safeArt: Rect;
   bleed: number;
 }
 
 /**
  * Boxes for one page. The trim is the sheet pulled in by `bleed` on the top,
  * bottom and OUTER edge — the right edge of a recto, the left edge of a verso;
- * the binding edge has no bleed. The safe area is the trim pulled in by `safe`
- * on every edge.
+ * the binding edge has no bleed. The text box is the trim pulled in by `safe`
+ * on every edge; the art box is pulled in by `artSafe` on the top, bottom and
+ * outer edge and by `safe` on the binding edge (left of a recto, right of a verso).
  */
 export function pageBoxes(area: PrintArea, side: PageSide, scale = 1): PageBoxes {
   const w = area.width * scale;
   const h = area.height * scale;
   const b = Math.max(0, area.bleed) * scale;
   const s = Math.max(0, area.safe) * scale;
+  const a = Math.max(0, area.artSafe) * scale;
+  const [left, right] = side === "verso" ? [a, s] : [s, a];
   const trim = { x: side === "verso" ? b : 0, y: b, w: Math.max(0, w - b), h: Math.max(0, h - 2 * b) };
   return {
     sheet: { x: 0, y: 0, w, h },
     trim,
     safe: { x: trim.x + s, y: trim.y + s, w: Math.max(0, trim.w - 2 * s), h: Math.max(0, trim.h - 2 * s) },
+    safeArt: {
+      x: trim.x + left,
+      y: trim.y + a,
+      w: Math.max(0, trim.w - left - right),
+      h: Math.max(0, trim.h - 2 * a),
+    },
     bleed: b,
   };
 }
 
 /**
- * Where an element's box sits relative to its page, worst first:
- *  - `inside`   within the safe area
- *  - `unsafe`   leaves the safe area but stays on the trimmed page
+ * Where a piece of ink sits relative to its page, worst first:
+ *  - `inside`   within the box its rule allows
+ *  - `unsafe`   leaves that box but stays on the trimmed page
  *  - `bleed`    crosses the trim but stays on the sheet (in the bleed band)
  *  - `off-page` crosses the sheet's edge: that part is not printed at all
  */
 export type OverflowKind = "inside" | "unsafe" | "bleed" | "off-page";
 
+/** The rule a piece of ink is judged by: text against `page.safe`, art against `page.artSafe`. */
+export type OverflowRule = "text" | "art";
+
 const SEVERITY: Record<OverflowKind, number> = { inside: 0, unsafe: 1, bleed: 2, "off-page": 3 };
 
-const within = (r: Rect, outer: Rect, tol: number) =>
-  r.x >= outer.x - tol &&
-  r.y >= outer.y - tol &&
-  r.x + r.w <= outer.x + outer.w + tol &&
-  r.y + r.h <= outer.y + outer.h + tol;
-
-/** `tol` absorbs sub-pixel layout (LayoutUnit is 1/64 px) so an exact fit is not flagged. */
-export function classifyRect(r: Rect, boxes: PageBoxes, tol = 0): OverflowKind {
-  if (within(r, boxes.safe, tol)) return "inside";
-  if (within(r, boxes.trim, tol)) return "unsafe";
-  if (boxes.bleed > 0 && within(r, boxes.sheet, tol)) return "bleed";
-  return "off-page";
-}
-
-/** The worst of several fragments' kinds (an element split across pages is one element). */
-export function worstKind(kinds: readonly OverflowKind[]): OverflowKind {
-  return kinds.reduce<OverflowKind>(
-    (worst, k) => (SEVERITY[k] > SEVERITY[worst] ? k : worst),
-    "inside",
-  );
+/**
+ * Judge one rect of ink, edge by edge, against the box its rule allows (text:
+ * `boxes.safe`; art: `boxes.safeArt`). `kind` is the worst edge's. `gap` is how
+ * far that edge sits inside the trim (negative = past it) and `need` how far
+ * inside the rule wants it, in the boxes' unit. Art that runs out to the
+ * sheet's edge is bleeding there, as it should, so that edge passes. `tol`
+ * absorbs sub-pixel layout (LayoutUnit is 1/64 px) so an exact fit is not flagged.
+ */
+export function classifyRect(
+  r: Rect,
+  boxes: PageBoxes,
+  rule: OverflowRule,
+  tol = 0,
+): { kind: OverflowKind; gap: number; need: number } {
+  const { sheet, trim } = boxes;
+  const safe = rule === "art" ? boxes.safeArt : boxes.safe;
+  // each side as [the ink's edge, the rule's, the trim's, the sheet's], read outward
+  const sides = [
+    [-r.x, -safe.x, -trim.x, -sheet.x],
+    [r.x + r.w, safe.x + safe.w, trim.x + trim.w, sheet.x + sheet.w],
+    [-r.y, -safe.y, -trim.y, -sheet.y],
+    [r.y + r.h, safe.y + safe.h, trim.y + trim.h, sheet.y + sheet.h],
+  ] as const;
+  let worst = { kind: "inside" as OverflowKind, gap: 0, need: 0 };
+  let beyond = 0;
+  for (const [ink, limit, edge, sheetEdge] of sides) {
+    const past = ink - limit;
+    if (past <= tol || (rule === "art" && ink >= sheetEdge - tol)) continue;
+    const kind: OverflowKind = ink > sheetEdge + tol ? "off-page" : ink > edge + tol ? "bleed" : "unsafe";
+    if (SEVERITY[kind] > SEVERITY[worst.kind] || (kind === worst.kind && past > beyond)) {
+      worst = { kind, gap: edge - ink, need: edge - limit };
+      beyond = past;
+    }
+  }
+  return worst;
 }
 
 /**
@@ -160,17 +203,29 @@ export function sanitizeOverlayStyle(style: unknown): OverlayStyle {
 
 export interface OverlaySummary {
   on: boolean;
-  /** elements that leave the safe area by accident (counted) */
+  /** ink that leaves its safe area by accident: `counts.text + art + bleed + offPage` */
   issues: number;
-  /** intentional art that leaves it on purpose (shown, not counted) */
+  /** intentional ink that leaves it on purpose (shown, not counted) */
   intended: number;
   /** the project's in-sheet bleed in pt (0 = none set) */
   bleedPt: number;
-  /** the project's safe-area inset in pt (0 = none set) */
+  /** the TEXT rule's inset from the trim in pt (0 = none set) */
   safePt: number;
+  /** the ART rule's inset on the top, bottom and outer edge in pt (`page.artSafe`, else `safePt`) */
+  artSafePt: number;
+  /** one per outlined rect: past a safe line on the trimmed page (text, art), in the bleed band, off the sheet, placed on purpose */
+  counts: { text: number; art: number; bleed: number; offPage: number; intended: number };
 }
 
-export const OVERLAY_OFF: OverlaySummary = { on: false, issues: 0, intended: 0, bleedPt: 0, safePt: 0 };
+export const OVERLAY_OFF: OverlaySummary = {
+  on: false,
+  issues: 0,
+  intended: 0,
+  bleedPt: 0,
+  safePt: 0,
+  artSafePt: 0,
+  counts: { text: 0, art: 0, bleed: 0, offPage: 0, intended: 0 },
+};
 
 /** One drawn page, as `decorate()` knows it. */
 export interface OverlayPage {
@@ -192,7 +247,17 @@ export function printAreaFromMeta(): PrintArea | null {
     const v = JSON.parse(raw) as Partial<PrintArea>;
     const n = (x: unknown) => (typeof x === "number" && Number.isFinite(x) && x > 0 ? x : 0);
     if (!n(v.width) || !n(v.height)) return null;
-    return { width: n(v.width), height: n(v.height), bleed: n(v.bleed), safe: n(v.safe) };
+    const safe = n(v.safe);
+    const spec = v.spec && typeof v.spec.label === "string" && typeof v.spec.url === "string" ? v.spec : undefined;
+    return {
+      width: n(v.width),
+      height: n(v.height),
+      bleed: n(v.bleed),
+      safe,
+      artSafe: typeof v.artSafe === "number" ? n(v.artSafe) : safe,
+      preset: typeof v.preset === "string" ? v.preset : undefined,
+      spec,
+    };
   } catch {
     return null;
   }
@@ -204,7 +269,7 @@ export function printAreaFromMeta(): PrintArea | null {
  */
 function sheetArea(sheet: HTMLElement): PrintArea {
   const px = (name: string) => parseFloat(sheet.style.getPropertyValue(name)) || 0;
-  return { width: px("--gp-page-w") / PX_PER_PT, height: px("--gp-page-h") / PX_PER_PT, bleed: 0, safe: 0 };
+  return { width: px("--gp-page-w") / PX_PER_PT, height: px("--gp-page-h") / PX_PER_PT, bleed: 0, safe: 0, artSafe: 0 };
 }
 
 /**
@@ -214,10 +279,11 @@ function sheetArea(sheet: HTMLElement): PrintArea {
  */
 export const OVERLAY_CSS = `
 .root {
-  --gp-ov-color: #2f80ed;       /* safe-area line + the tint outside it */
+  --gp-ov-color: #2f80ed;       /* safe-area lines + the tint outside the text line */
   --gp-ov-width: 2px;           /* line width as seen on screen, at any zoom */
-  --gp-ov-style: dashed;        /* safe-area line style */
-  --gp-ov-tint: 0.1;            /* opacity of the tint between safe area and trim */
+  --gp-ov-style: dashed;        /* text safe line style */
+  --gp-ov-art-style: dotted;    /* art safe line style */
+  --gp-ov-tint: 0.1;            /* opacity of the tint between the text line and the trim */
   --gp-ov-bleed-color: #e5484d; /* bleed band */
   --gp-ov-bleed-alpha: 0.45;    /* opacity of the bleed band */
   --gp-ov-trim-color: #8a0b18;  /* the trim line: darker than the band so it reads as an edge */
@@ -244,17 +310,20 @@ export const OVERLAY_CSS = `
   --gp-ov-bleed-alpha: 0.65;
   --gp-ov-flag-width: 3px;
 }
-.gp-ov-page, .gp-ov-tint, .gp-ov-safe, .gp-ov-bleed, .gp-ov-trim, .gp-ov-flag {
+.gp-ov-page, .gp-ov-tint, .gp-ov-safe, .gp-ov-art, .gp-ov-bleed, .gp-ov-trim, .gp-ov-flag {
   position: absolute;
   box-sizing: border-box;
 }
-/* the band between the safe area and the trim, as a REGION (clip-path, set in
+/* the band between the text line and the trim, as a REGION (clip-path, set in
    overlay.ts), so it reads as an area, not a hairline */
 .gp-ov-tint {
   background: color-mix(in srgb, var(--gp-ov-color) calc(var(--gp-ov-tint) * 100%), transparent);
 }
 .gp-ov-safe {
   border: var(--gp-ov-w) var(--gp-ov-style) var(--gp-ov-color);
+}
+.gp-ov-art {
+  border: var(--gp-ov-w) var(--gp-ov-art-style) var(--gp-ov-color);
 }
 /* bleed: a translucent band between the trim and the sheet edge (its width is the border) */
 .gp-ov-bleed {
@@ -401,7 +470,7 @@ function place(el: HTMLElement, r: Rect): void {
   el.style.height = `${r.h}px`;
 }
 
-/** The band between the safe area and the trim, as a region (even-odd, so exact at any zoom). */
+/** The band between the text line and the trim, as a region (even-odd, so exact at any zoom). */
 function unsafeTint(b: PageBoxes): HTMLDivElement {
   const el = div("gp-ov-tint", b.sheet);
   const t = b.trim;
@@ -423,12 +492,18 @@ interface Painted {
 interface Flag {
   host: HTMLElement;
   kind: OverflowKind | "intended";
+  rule: OverflowRule;
   box: Rect;
+  title: string;
 }
 
 /** Sub-pixel tolerance, in CSS px (unscaled). */
 const TOL_PX = 1;
 const SKIP = new Set(["SCRIPT", "STYLE", "LINK", "TEMPLATE", "BR", "WBR", "SOURCE", "TRACK", "META"]);
+/** Elements whose own pixels are art, whatever their style says. (Not `picture`: it paints nothing, its `img` does.) */
+const ART_TAGS = new Set(["img", "svg", "video", "canvas"]);
+/** CSS px to inches, as a number that reads without trailing zeros. */
+const inches = (px: number) => +(Math.abs(px) / 96).toFixed(2);
 
 /**
  * Draw the overlay for `pages` and return what it found. Idempotent: the
@@ -473,13 +548,82 @@ export function paintOverlay(
       host.appendChild(unsafeTint(boxes));
       host.appendChild(div("gp-ov-safe", boxes.safe));
     }
+    // the art line, unless it would only retrace the text line or the trim
+    if (area && area.artSafe > 0 && area.artSafe !== area.safe) host.appendChild(div("gp-ov-art", boxes.safeArt));
     layer.appendChild(host);
     painted.set(p.index, { host, boxes, sheet: p.sheet, rect });
   }
 
   const flags: Flag[] = [];
-  let issues = 0;
-  let intended = 0;
+  const counts = { text: 0, art: 0, bleed: 0, offPage: 0, intended: 0 };
+  const seen = new Set<string>();
+  const range = document.createRange();
+  const source = area?.spec?.label ?? "the safe area";
+
+  /**
+   * Judge the ink under `root`: every text node's glyph rects against the text
+   * box; images, media and any box that paints (a background or a border)
+   * against the art box. A container that paints nothing is never flagged
+   * itself, only what it holds. `pageOf` says which page a client rect is on.
+   */
+  const inspect = (root: Node, pageOf: (r: DOMRect) => Painted | undefined, zoom: number): void => {
+    const judge = (el: Element, rule: OverflowRule, rects: Iterable<DOMRect>): void => {
+      for (const r of rects) {
+        if (r.width <= 0 && r.height <= 0) continue;
+        const target = pageOf(r);
+        if (!target) continue;
+        target.rect ??= target.sheet.getBoundingClientRect();
+        const box: Rect = {
+          x: (r.left - target.rect.left) / zoom,
+          y: (r.top - target.rect.top) / zoom,
+          w: r.width / zoom,
+          h: r.height / zoom,
+        };
+        const { kind, gap, need } = classifyRect(box, target.boxes, rule, TOL_PX);
+        if (kind === "inside") continue;
+        // the same rect reached twice (a painted box around one image) is one flag
+        const key = `${target.host.dataset.page} ${box.x} ${box.y} ${box.w} ${box.h}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        // ink under placed art is expected to leave the safe area: shown, not counted
+        const placed = el.closest(INTENT_SELECTOR) !== null;
+        const bucket = placed ? "intended" : kind === "unsafe" ? rule : kind === "bleed" ? "bleed" : "offPage";
+        counts[bucket]++;
+        const title = `${rule} ${inches(gap)}in ${gap < 0 ? "past" : "from"} the trim; ${source} needs ${inches(need)}in`;
+        flags.push({
+          host: target.host,
+          kind: placed ? "intended" : kind,
+          rule,
+          box,
+          title: placed ? `${title} (placed on purpose)` : title,
+        });
+      }
+    };
+    const visit = (node: Node): void => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        if (!node.nodeValue?.trim()) return;
+        range.selectNodeContents(node);
+        judge(node.parentElement!, "text", range.getClientRects());
+        return;
+      }
+      if (!(node instanceof Element) || SKIP.has(node.tagName) || node.classList.contains("gp-wrap-spacer")) return;
+      const cs = getComputedStyle(node);
+      if (
+        ART_TAGS.has(node.localName) ||
+        cs.backgroundImage !== "none" ||
+        !/^rgba\(.*, 0\)$/.test(cs.backgroundColor) ||
+        parseFloat(cs.borderTopWidth) > 0 ||
+        parseFloat(cs.borderRightWidth) > 0 ||
+        parseFloat(cs.borderBottomWidth) > 0 ||
+        parseFloat(cs.borderLeftWidth) > 0
+      ) {
+        judge(node, "art", node.getClientRects());
+      }
+      for (const child of node.childNodes) visit(child);
+    };
+    visit(root);
+  };
+
   for (const strip of strips) {
     const zoom = cssZoomOf(strip.el);
     // The anchor of a fragment is the middle of its in-column part, so a box
@@ -487,47 +631,33 @@ export function paintOverlay(
     // it starts on (`indexInStrip` floors a coordinate to a column).
     const colW = (parseFloat(strip.el.style.getPropertyValue("--gp-content-w")) || 0) * zoom;
     const colH = (parseFloat(strip.el.style.getPropertyValue("--gp-content-h")) || 0) * zoom;
-
-    const visit = (el: Element): void => {
-      if (SKIP.has(el.tagName) || el.classList.contains("gp-wrap-spacer")) return;
-      const kinds: OverflowKind[] = [];
-      const found: Flag[] = [];
-      for (const r of Array.from(el.getClientRects())) {
-        if (r.width <= 0 && r.height <= 0) continue;
-        const ax = r.left + Math.min(r.width, colW || r.width) / 2;
-        const ay = r.top + Math.min(r.height, colH || r.height) / 2;
-        const target = painted.get(strip.offset + indexInStrip(ax, ay, strip));
-        if (!target) continue;
-        target.rect ??= target.sheet.getBoundingClientRect();
-        const local: Rect = {
-          x: (r.left - target.rect.left) / zoom,
-          y: (r.top - target.rect.top) / zoom,
-          w: r.width / zoom,
-          h: r.height / zoom,
-        };
-        const kind = classifyRect(local, target.boxes, TOL_PX);
-        kinds.push(kind);
-        if (kind !== "inside") found.push({ host: target.host, kind, box: local });
-      }
-      const worst = worstKind(kinds);
-      if (worst !== "inside") {
-        // The offender's own box is flagged; its descendants ride along with
-        // it, so counting them too would report one cause many times.
-        const isIntended = el.closest(INTENT_SELECTOR) !== null;
-        if (isIntended) intended++;
-        else issues++;
-        for (const f of found) flags.push(isIntended ? { ...f, kind: "intended" } : f);
-        return;
-      }
-      for (const child of Array.from(el.children)) visit(child);
+    const pageOf = (r: DOMRect) => {
+      const ax = r.left + Math.min(r.width, colW || r.width) / 2;
+      const ay = r.top + Math.min(r.height, colH || r.height) / 2;
+      return painted.get(strip.offset + indexInStrip(ax, ay, strip));
     };
-    for (const child of Array.from(strip.el.children)) visit(child);
+    for (const child of strip.el.childNodes) inspect(child, pageOf, zoom);
+  }
+  // Page furniture (folios, running heads, chips) is drawn on the sheets, not in
+  // the strips, so each sheet is walked for it.
+  for (const target of painted.values()) {
+    for (const furniture of target.sheet.querySelectorAll(".gp-marginbox")) inspect(furniture, () => target, stage.zoom);
   }
 
   for (const f of flags) {
     const el = div("gp-ov-flag", f.box);
     el.dataset.kind = f.kind;
+    el.dataset.rule = f.rule;
+    el.title = f.title;
     f.host.appendChild(el);
   }
-  return { on: true, issues, intended, bleedPt: area?.bleed ?? 0, safePt: area?.safe ?? 0 };
+  return {
+    on: true,
+    issues: counts.text + counts.art + counts.bleed + counts.offPage,
+    intended: counts.intended,
+    bleedPt: area?.bleed ?? 0,
+    safePt: area?.safe ?? 0,
+    artSafePt: area?.artSafe ?? 0,
+    counts,
+  };
 }
