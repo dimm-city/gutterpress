@@ -21,6 +21,7 @@ import { canonicalChapterId } from "./chapter-id";
 import { createMarkdownRenderer, type LoadedPlugin } from "./renderer";
 import { collectHtmlImageRefs, type ImageRefEnv } from "./images";
 import { lastPageMode, type PrintPadding } from "../../engine/shared/synthesis.ts";
+import { printAreaMeta, type PrintAreaSource } from "../../engine/shared/print-area.ts";
 
 /** Reader injected by the host: resolve a project-root-relative file → its text. */
 export type ReadText = (relPath: string) => Promise<string>;
@@ -151,6 +152,14 @@ export interface AssembleBookHtmlOptions {
    * engine/shared/synthesis.ts) and the two page counts agree.
    */
   print?: PrintPadding;
+  /**
+   * The project's print area — the resolved manifest's `page` block plus its
+   * preset id and printer spec — written as `<meta name="gp-print-area">`
+   * (engine/shared/print-area.ts) into EVERY assembled book, preview, build
+   * and publish alike: the preview's print overlays judge the ink against it.
+   * Metadata only: nothing renders from it but what reads it.
+   */
+  printArea?: PrintAreaSource;
   plugins?: LoadedPlugin[];
   pluginCss?: string;
   /** Add a layout-neutral source-file id to source-mapped preview blocks. */
@@ -285,7 +294,7 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
 <html lang="en"${printAttrs}>
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">${opts.printArea ? `\n  ${printAreaMeta(opts.printArea)}` : ""}
   <title>${title}</title>${preloadTags}
   <style data-project-css>\n${inlineCss}\n</style>
 </head>

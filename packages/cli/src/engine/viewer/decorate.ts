@@ -37,7 +37,6 @@ import {
   clearOverlay,
   layersFrom,
   paintOverlay,
-  printAreaFromMeta,
   sanitizeOverlayStyle,
   setOverlayStyle,
   type OverlayLayers,
@@ -45,6 +44,7 @@ import {
   type OverlayStyle,
   type OverlaySummary,
 } from "./overlay.ts";
+import { printAreaFromMeta } from "../shared/print-area.ts";
 import {
   PX_PER_PT,
   pageRangeOf,
@@ -155,7 +155,7 @@ export function decorate(
   let overlayPages: OverlayPage[] = [];
   let overlaySummary: OverlaySummary = OVERLAY_OFF;
   const paintOverlayNow = () => {
-    overlaySummary = paintOverlay(overlayPages, layout.strips, printAreaFromMeta(), overlayLayers);
+    overlaySummary = paintOverlay(overlayPages, layout.strips, printAreaFromMeta(document), overlayLayers);
     window.dispatchEvent(new CustomEvent("gp:overlay", { detail: overlaySummary }));
   };
   const api: DecorationApi = {

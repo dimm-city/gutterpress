@@ -2182,30 +2182,6 @@
     artSafePt: 0,
     counts: { text: 0, art: 0, bleed: 0, offPage: 0, intended: 0 }
   };
-  function printAreaFromMeta() {
-    const raw = document.querySelector('meta[name="gp-print-area"]')?.getAttribute("content");
-    if (!raw)
-      return null;
-    try {
-      const v = JSON.parse(raw);
-      const n = (x) => typeof x === "number" && Number.isFinite(x) && x > 0 ? x : 0;
-      if (!n(v.width) || !n(v.height))
-        return null;
-      const safe = n(v.safe);
-      const spec = v.spec && typeof v.spec.label === "string" && typeof v.spec.url === "string" && /^https?:\/\//i.test(v.spec.url) ? v.spec : undefined;
-      return {
-        width: n(v.width),
-        height: n(v.height),
-        bleed: n(v.bleed),
-        safe,
-        artSafe: typeof v.artSafe === "number" ? n(v.artSafe) : safe,
-        preset: typeof v.preset === "string" ? v.preset : undefined,
-        spec
-      };
-    } catch {
-      return null;
-    }
-  }
   function sheetArea(sheet) {
     const px = (name) => parseFloat(sheet.style.getPropertyValue(name)) || 0;
     return { width: px("--gp-page-w") / PX_PER_PT, height: px("--gp-page-h") / PX_PER_PT, bleed: 0, safe: 0, artSafe: 0 };
@@ -2656,6 +2632,32 @@
     return summary;
   }
 
+  // src/engine/shared/print-area.ts
+  function printAreaFromMeta(doc) {
+    const raw = doc.querySelector('meta[name="gp-print-area"]')?.getAttribute("content");
+    if (!raw)
+      return null;
+    try {
+      const v = JSON.parse(raw);
+      const n = (x) => typeof x === "number" && Number.isFinite(x) && x > 0 ? x : 0;
+      if (!n(v.width) || !n(v.height))
+        return null;
+      const safe = n(v.safe);
+      const spec = v.spec && typeof v.spec.label === "string" && typeof v.spec.url === "string" && /^https?:\/\//i.test(v.spec.url) ? v.spec : undefined;
+      return {
+        width: n(v.width),
+        height: n(v.height),
+        bleed: n(v.bleed),
+        safe,
+        artSafe: typeof v.artSafe === "number" ? n(v.artSafe) : safe,
+        preset: typeof v.preset === "string" ? v.preset : undefined,
+        spec
+      };
+    } catch {
+      return null;
+    }
+  }
+
   // src/engine/viewer/decorate.ts
   var px = (v) => `${v * PX_PER_PT}px`;
   function elementForHref(href) {
@@ -2689,7 +2691,7 @@
     let overlayPages = [];
     let overlaySummary = OVERLAY_OFF;
     const paintOverlayNow = () => {
-      overlaySummary = paintOverlay(overlayPages, layout.strips, printAreaFromMeta(), overlayLayers);
+      overlaySummary = paintOverlay(overlayPages, layout.strips, printAreaFromMeta(document), overlayLayers);
       window.dispatchEvent(new CustomEvent("gp:overlay", { detail: overlaySummary }));
     };
     const api = {
