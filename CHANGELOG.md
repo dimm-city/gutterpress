@@ -54,6 +54,12 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **`pdfx.rasterDpi` also sets the resolution of `preserve-text` artwork.**
   Unset, that artwork is 300 DPI; whole pages Ghostscript flattens keep 720.
 
+- **Two more image sizes, `.gp-xl` (80%) and `.gp-xxl` (90%), and
+  `.gp-large` is now 60%.** The sizes run `.gp-small` 25%, `.gp-medium` 50%,
+  `.gp-large` 60% (it was 75%), `.gp-xl` 80% and `.gp-xxl` 90% of the column,
+  in flow and on pinned art alike. There is no 100% size: `.gp-full` still
+  fills the column. In the desktop app the image size menus list all five.
+
 - **`page.safe` and `page.artSafe` hold the printer's two safe-area rules, and
   the `dtrpg` preset sets both.** DriveThruRPG's quick specifications ask for
   text at least 0.5in inside the trim, and for art that does not bleed at least
@@ -61,9 +67,9 @@ This project follows [Semantic Versioning](https://semver.org/).
   `page.safe` is the text rule: 36pt (0.5in) for `dtrpg`, 18pt (0.25in) for
   `book`. `page.artSafe` is the art rule for the top, bottom and outside edges:
   18pt (0.25in) for `dtrpg`; where none is set (`book` and `custom` set none),
-  art follows `page.safe`. Both are points in `manifest.yaml` and, like
-  `page.bleed`, they change nothing in the PDF: the print overlays read both,
-  and the `pdf.print.safe-margins` check reads `page.safe`. The `dtrpg` preset
+  art follows `page.safe`. Both are points in `manifest.yaml`: the print
+  overlays read both, the `pdf.print.safe-margins` check reads `page.safe`,
+  and an image pinned to an edge sits on the art line (see Changed). The `dtrpg` preset
   also names the DriveThruRPG article its numbers come from, which the overlays'
   legend links to, and the manifest schema's descriptions say which rule each
   number is.
@@ -117,6 +123,29 @@ This project follows [Semantic Versioning](https://semver.org/).
   same count.
 
 ### Changed
+
+- **Pinned art never moves your text, and sits on the printer's art-safe
+  line.** An image pinned to an edge (`.gp-pin` with `.gp-top`, `.gp-bottom`,
+  `.gp-left` or `.gp-right`) now sits on the art-safe line of each edge it
+  names instead of on the page margin: `page.artSafe` in from the trim on the
+  top, bottom and outside edges and `page.safe` at the binding, so 0.25in and
+  0.5in for the `dtrpg` preset (a book with neither set pins to the paper's
+  edge). The text on that page keeps the page's own margins, line for line and
+  page for page, wherever the image is pinned, in the preview and in the PDF.
+  Before, a `.gp-flush` image took the page's margin away with it and the text
+  could run into the freed strip, out to the paper's edge when the pin was on
+  a side. Page numbers and running heads on that edge keep printing where
+  they always do. A page block that paints its own background or border now
+  paints it into the freed margin, out to the paper, on the edges its pins
+  use. A centred pin is unchanged.
+
+- **`.gp-flush` is the escape hatch to the paper's edge, and Problems warns
+  about it.** With `.gp-pin` and an edge, `.gp-flush` ignores the safe area
+  and puts the image on the paper's edge, where printers trim up to 0.125in.
+  `gutterpress validate` and the desktop's Problems panel now warn once for
+  each image that uses it, on its line, so it is a choice for art meant to
+  bleed off the page. In the desktop's image properties the checkbox is now
+  "Run to the paper's edge (ignores the safe area)".
 
 - **PDF/X builds save every picture losslessly.** Converting to CMYK
   re-encodes each colour image, and Ghostscript's default chose a low-quality

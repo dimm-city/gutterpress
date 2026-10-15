@@ -117,16 +117,21 @@ smaller, more pages, different pagination) appears far from the cause.
   improving the page.
 - **Fix A½ (for images): core now ships a supported pin idiom.** A markdown
   image with `{.gp-pin}` (+ `.gp-top/.gp-bottom/.gp-left/.gp-right` edge
-  modifiers, `.gp-small/.gp-medium/.gp-large` sizes) is abspos done the safe
-  way: GUTTERPRESS_CSS supplies `inset: 0` + explicit self-alignment, the
-  containing block is the image's nearest positioned ancestor — the
-  `.page`/`.spread` it sits in unless the theme positions something closer
-  (a card or component shell, which then frames the pin by design) — and a
-  `pin_outside_page` parse-time warning fires when there is no such
-  container (the preview would otherwise mask exactly that mistake — its
-  strip wrapper is positioned and one page tall). Same caveat as Fix B: the
-  pin anchors to the CONTAINER, so keep pinned layouts to single-page
-  `@page` blocks.
+  modifiers, `.gp-small/.gp-medium/.gp-large/.gp-xl/.gp-xxl` sizes) is abspos
+  done the safe way: GUTTERPRESS_CSS supplies four insets + explicit
+  self-alignment, the containing block is the image's nearest positioned
+  ancestor — the `.page`/`.spread` it sits in unless the theme positions
+  something closer (a card or component shell, which then frames the pin by
+  design) — and a `pin_outside_page` parse-time warning fires when there is
+  no such container (the preview would otherwise mask exactly that mistake —
+  its strip wrapper is positioned and one page tall). An edge pin never moves
+  the text: both engines free that page's margin on the pinned edges, give
+  the page root the margin back as padding, and inset the pin by the
+  printer's art-safe line (`page.artSafe`/`page.safe`, through
+  `--gp-pin-<edge>` on the root); `.gp-flush` zeroes those insets for art
+  that runs to the paper, and the markdown check warns about it
+  (`flush_art`). Same caveat as Fix B: the pin anchors to the CONTAINER, so
+  keep pinned layouts to single-page `@page` blocks.
 - **Fix B (when you truly need a pin on something else): give it a local
   containing block.** `position: relative` on the element's own wrapper
   (scope with `:has()` if the wrapper has no class). Remember: a semantic
@@ -370,7 +375,7 @@ spell-check-style source findings; from the CLI they print as warnings.
 | Empty column | A balanced multi-column block that runs past one page, leaving dead columns (§5). |
 | Taller than the page | Content that print splits but the screen preview clips — the two will not agree there (§4). |
 | Image resolution | Below the DPI floor; may look soft in print. |
-| Margin box couldn't relocate | A `.gp-flush`-freed margin box's `content` isn't a value the build can re-home; it will not print on that page — simplify the content or drop `.gp-flush` there. |
+| Running head on a pinned edge | A margin box sits on an edge a pinned image frees, and its `content` isn't a value the build can re-home; it will not print on that page — simplify the content, or pin the image to another edge. |
 | Page background not preloaded | An `@page` background image the build can't stage and preload — remote, reached from CSS outside your project stylesheets, or also used as an `<img src>` — so Chromium prints the background colour alone (§1). |
 | Hyphenation not available | Text styled `hyphens: auto` is in a language the browser making this PDF has no hyphenation dictionary for (the desktop app's Electron has none on Linux), so nothing is hyphenated automatically and lines break differently than in a browser that has one. Silent wherever hyphenation works. |
 

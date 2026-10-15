@@ -222,19 +222,19 @@
         },
         "bleed": {
           "type": "number",
-          "description": "A bleed, in points, that the page width x height ALREADY CONTAINS on the top, bottom and OUTER edges (none on the binding edge) — how DriveThruRPG's interior file is cut (8.625 x 11.25in for an 8.5 x 11in book). It tells the preview's safe area & bleed overlay and the `pdf.print.safe-margins` check where the trim is, and changes nothing in the PDF. Preset default: dtrpg 9 (0.125in); book and custom none.",
+          "description": "A bleed, in points, that the page width x height ALREADY CONTAINS on the top, bottom and OUTER edges (none on the binding edge) — how DriveThruRPG's interior file is cut (8.625 x 11.25in for an 8.5 x 11in book). It tells the preview's safe area & bleed overlay, the `pdf.print.safe-margins` check and pinned art where the trim is, and by itself changes nothing in the PDF. Preset default: dtrpg 9 (0.125in); book and custom none.",
           "minimum": 0,
           "examples": [9]
         },
         "safe": {
           "type": "number",
-          "description": "The TEXT rule, in points: how far inside the trim glyphs must stay, on every edge. For DriveThruRPG it is the \"text at least 0.5in inside the trim\" rule. The preview's overlay outlines it (dashed) and flags text outside it, and the `pdf.print.safe-margins` check fails a PDF whose text is closer. It changes nothing in the PDF, and no book CSS moves it. Preset default: dtrpg 36 (0.5in), book 18 (0.25in); custom none.",
+          "description": "The TEXT rule, in points: how far inside the trim glyphs must stay, on every edge. For DriveThruRPG it is the \"text at least 0.5in inside the trim\" rule. The preview's overlay outlines it (dashed) and flags text outside it, and the `pdf.print.safe-margins` check fails a PDF whose text is closer. An image pinned to the binding edge (`.gp-pin`) sits on it, and to any edge where `artSafe` is not set; no book CSS moves it. Preset default: dtrpg 36 (0.5in), book 18 (0.25in); custom none.",
           "minimum": 0,
           "examples": [18, 36]
         },
         "artSafe": {
           "type": "number",
-          "description": "The ART rule, in points: how far inside the trim art that does not bleed (images, backgrounds, borders, rules) must stay on the top, bottom and OUTER edge; at the binding edge art uses `safe`. For DriveThruRPG it is the \"non-bleeding art at least 0.25in from the outside edges (0.5in at the binding)\" rule. Art that runs out to the page's edge is a bleed and is not judged on that edge. The preview's overlay outlines it (dotted) and flags art outside it. Preview overlay only: it changes nothing in the PDF. Absent = the same as `safe`. Preset default: dtrpg 18 (0.25in); book and custom none.",
+          "description": "The ART rule, in points: how far inside the trim art that does not bleed (images, backgrounds, borders, rules) must stay on the top, bottom and OUTER edge; at the binding edge art uses `safe`. For DriveThruRPG it is the \"non-bleeding art at least 0.25in from the outside edges (0.5in at the binding)\" rule. Art that runs out to the page's edge is a bleed and is not judged on that edge. The preview's overlay outlines it (dotted) and flags art outside it, and an image pinned to the top, bottom or outer edge (`.gp-pin`) sits on it unless it carries `.gp-flush`. Absent = the same as `safe`. Preset default: dtrpg 18 (0.25in); book and custom none.",
           "minimum": 0,
           "examples": [18]
         }
