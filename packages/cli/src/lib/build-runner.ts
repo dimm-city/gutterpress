@@ -924,7 +924,8 @@ class PdfOutput implements OutputStrategy {
               "including it (export it with no alpha channel), or build --format pdf " +
               "instead of pdfx if this book doesn't need print-ready CMYK. " +
               "Or set `pdfx.transparency: preserve-text` to keep the text live on the " +
-              "pages where that is possible."
+              "pages where that is possible. `pdfx.rasterDpi` sets the resolution of " +
+              "those page images (default 720)."
           );
         }
 

@@ -32,11 +32,21 @@ This project follows [Semantic Versioning](https://semver.org/).
   says so when no page kept its text. `pdfx.flattenPages: [4, 13]` flattens
   chosen pages whole anyway, for a page whose cover or tint over its text must
   stay as designed.
-- **`pdfx.rasterDpi`** sets the resolution of every picture made from a
-  transparent page in a PDF/X build: the whole pages Ghostscript flattens and
-  the `preserve-text` artwork. Unset keeps today's 720 DPI for whole pages and
-  300 for `preserve-text` artwork; vector content and the book's own images
-  are not resampled.
+- **`pdfx.rasterDpi` also sets the resolution of `preserve-text` artwork.**
+  Unset, that artwork is 300 DPI; whole pages Ghostscript flattens keep 720.
+
+## [0.11.20] - 2026-10-15
+
+### Added
+
+- **`pdfx.rasterDpi` sets the resolution of the pages a PDF/X build flattens.**
+  PDF/X-1a and X-3 cannot hold transparency, so Ghostscript turns each page
+  with a soft `rgba()` shadow, an alpha PNG or `opacity` into one picture, at
+  720 DPI unless told otherwise. On the 228-page Dimm City Field Guide that
+  resolution, not the content, was most of a 1.1 GB print file. Set
+  `pdfx: { rasterDpi: 300 }` to make those pictures smaller. Only the
+  flattened pages change: vector text and shapes elsewhere, and the book's own
+  images, are not resampled.
 
 ### Changed
 
