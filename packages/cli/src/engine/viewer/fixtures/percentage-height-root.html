@@ -1,0 +1,54 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <!-- Page roots with a PERCENTAGE height, in the shape examples/with-print-effects
+         wrote it: the author's rule targets each block by the data-name the
+         pipeline gives it, and the pipeline puts that same data-name on the
+         block's heading, so the heading gets the percentage too. Four roots,
+         the last one included — the run's last root is where an exact fit
+         costs a blank preview page. The test (percentage-height-page-root.test.ts)
+         injects MARKER_CSS ahead of this sheet and, for its second case,
+         `html, body { height: 100% }` after it. -->
+    <style>
+      @page {
+        size: 621pt 810pt;
+        margin: 72pt 54pt;
+      }
+      /* What the compiler publishes on :root for print (build.ts): the page
+         content height MARKER_CSS's min-height cushion reads. 810 - 2 * 72 =
+         666pt = 888px. The viewer publishes its own on each strip. */
+      :root { --gp-content-h: 888px; }
+      body {
+        font-family: serif;
+        font-size: 12pt;
+        line-height: 1.5;
+      }
+      h2 {
+        font-size: 22pt;
+        margin: 0 0 18pt;
+      }
+      [data-name="one"],
+      [data-name="two"],
+      [data-name="three"],
+      [data-name="four"] {
+        height: 100%;
+        padding: 36pt;
+        box-sizing: border-box;
+        background: #e8e2d8;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page" data-name="one"><h2 data-name="one">One</h2>
+<p>The first page block. Its height is a percentage of its containing block: the flow root in print, the viewer's strip on screen.</p>
+</div><div class="page" data-name="two"><h2 data-name="two">Two</h2>
+<p>The second page block, the same rule. Where the percentage resolves, the heading fills the block and this paragraph has nowhere to go but the next fragment.</p>
+</div><div class="page" data-name="three"><h2 data-name="three">Three</h2>
+<p>The third page block. Between blocks a spilled paragraph is absorbed by the next block's forced break, so only the last block of a run shows the cost.</p>
+</div><div class="page" data-name="four"><h2 data-name="four">Four</h2>
+<p>The last page block. If its percentage resolved here and not in print, the preview would end on a blank page the PDF does not have.</p>
+</div>
+    <script src="gutterpress-viewer.js"></script>
+  </body>
+</html>
