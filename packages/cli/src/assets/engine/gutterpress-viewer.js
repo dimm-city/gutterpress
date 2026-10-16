@@ -2354,7 +2354,7 @@
   --gp-ov-flag-width: 2px;      /* overflow flag outline */
   --gp-ov-warn: #f59e0b;        /* leaves the safe area */
   --gp-ov-error: #e5484d;       /* crosses the trim / leaves the sheet */
-  --gp-ov-intent: #8b5cf6;      /* placed on purpose */
+  --gp-ov-intent: #ec4899;      /* placed on purpose (pink: apart from the purple art line) */
   /* The overlay is scaled with the stage, so a 2px line would shrink with the
      zoom; dividing by it keeps lines the same width on screen at every zoom. */
   --gp-ov-w: calc(var(--gp-ov-width) / var(--gp-ov-z, 1));

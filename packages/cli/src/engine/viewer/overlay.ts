@@ -23,7 +23,7 @@
  * flag is amber when the ink stays on the trimmed page, red when it crosses
  * the trim into the bleed or off the sheet. Art the author placed on purpose
  * (`.gp-bleed`, `.gp-pin`, `.gp-flush`, `.gp-behind`) is outlined softly in
- * violet and not counted. With a layer off nothing of its rule is judged: no
+ * pink and not counted. With a layer off nothing of its rule is judged: no
  * flags, and no count.
  *
  * WHERE THE GEOMETRY COMES FROM. `bleed`, `safe` and `art`: the project's
@@ -308,7 +308,7 @@ export const OVERLAY_CSS = `
   --gp-ov-flag-width: 2px;      /* overflow flag outline */
   --gp-ov-warn: #f59e0b;        /* leaves the safe area */
   --gp-ov-error: #e5484d;       /* crosses the trim / leaves the sheet */
-  --gp-ov-intent: #8b5cf6;      /* placed on purpose */
+  --gp-ov-intent: #ec4899;      /* placed on purpose (pink: apart from the purple art line) */
   /* The overlay is scaled with the stage, so a 2px line would shrink with the
      zoom; dividing by it keeps lines the same width on screen at every zoom. */
   --gp-ov-w: calc(var(--gp-ov-width) / var(--gp-ov-z, 1));

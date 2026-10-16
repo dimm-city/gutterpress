@@ -127,7 +127,7 @@ With **Safe area: text** or **Safe area: art** on, anything that strays from its
 
 - an **amber outline** on a line of text, a picture or a box that leaves its safe line but stays on the trimmed page;
 - a **red outline** on anything that crosses the trim into the bleed band or off the page. Art that runs all the way to the edge of the page is a good bleed and is left alone; art that stops partway into the bleed band is outlined;
-- a **dotted violet outline**, softly, on art you placed on purpose: `.gp-bleed` images, `.gp-pin` / `.gp-flush` pinned art, `.gp-behind` images and `@page full-bleed` pages. These are expected to reach the edge, so they are shown but not counted.
+- a **dotted pink outline**, softly, on art you placed on purpose: `.gp-bleed` images, `.gp-pin` / `.gp-flush` pinned art, `.gp-behind` images and `@page full-bleed` pages. These are expected to reach the edge, so they are shown but not counted.
 
 **The legend.** A small legend in the bottom-right corner of the preview stays put as you scroll and zoom. It has a row for each layer that is on, with its colour and its sizes in inches, where the numbers come from, and what the safe area layers found:
 
@@ -272,7 +272,7 @@ Four `page:` settings in `manifest.yaml` tell the print overlays where the trim 
 
 The `custom` preset sets none of the four, so add your own to see the bleed and the safe lines.
 
-Only two things read these settings: the preview's print overlays (all four settings) and the safe-margins check (`page.bleed`, `page.safe` and `page.gutter`, to find the trim and the text line). Neither changes your PDF, and no stylesheet moves them. To hold a `book` to DriveThruRPG's text and art rules:
+Three things read these settings: the preview's print overlays (all four), pinned art (print and preview both place it on the art-safe line, `page.gutter` at the binding) and the safe-margins check (`page.bleed`, `page.safe` and `page.gutter`, to find the trim and the text line). The overlays and the check change nothing in your PDF, and no stylesheet moves any of these lines. To hold a `book` to DriveThruRPG's text and art rules:
 
 ```yaml
 preset: book
