@@ -181,6 +181,34 @@ describe('generateAndWriteHtml', () => {
     expect(content).not.toContain('First Version');
   }, 60000);
 
+  test('book.html carries the project\'s print rules, written by the assembly: both safe distances, the preset and its spec', async () => {
+    await writeFile(join(testDir, 'chapter-01.md'), '# Chapter 1');
+
+    await generateAndWriteHtml(testDir, tempDir, resolveConfig({ title: 'Test' }, {}), new Map());
+    const meta = (await Bun.file(join(tempDir, 'book.html')).text()).match(
+      /<meta name="gp-print-area" content='([^']*)'>/,
+    );
+    expect(JSON.parse(meta![1]!.replace(/&#39;/g, "'").replace(/&amp;/g, '&'))).toEqual({
+      width: 621,
+      height: 810,
+      bleed: 9,
+      safe: 36,
+      artSafe: 18,
+      preset: 'dtrpg',
+      spec: {
+        label: 'DriveThruRPG — Quick Specifications for Print Books',
+        url: 'https://help.drivethrupartners.com/hc/en-us/articles/12780800178583-Quick-Specifications-for-Print-Books',
+      },
+    });
+
+    // a preset that follows no printer's spec says only which preset it is, and an unset art rule stays unset
+    await generateAndWriteHtml(testDir, tempDir, resolveConfig({ title: 'Test' }, { preset: 'book' }), new Map());
+    const book = (await Bun.file(join(tempDir, 'book.html')).text()).match(
+      /<meta name="gp-print-area" content='([^']*)'>/,
+    );
+    expect(JSON.parse(book![1]!)).toEqual({ width: 432, height: 648, bleed: 0, safe: 18, preset: 'book' });
+  }, 60000);
+
   test('handles multiple markdown files', async () => {
     await writeFile(join(testDir, 'chapter-01.md'), '# Chapter 1');
     await writeFile(join(testDir, 'chapter-02.md'), '# Chapter 2');
@@ -258,11 +286,10 @@ describe('injectPreviewScripts', () => {
     expect(out).toContain('/preview/scripts/preview-bridge.js');
   });
 
-  test('hands the project\'s in-sheet bleed to the overlay as a preview-only <meta>', () => {
-    expect(injectPreviewScripts(html)).not.toContain('gp-inset-bleed');
-    const out = injectPreviewScripts(html, 9);
-    expect(out).toContain('<meta name="gp-inset-bleed" content="9">');
-    expect(out.indexOf('gp-inset-bleed')).toBeLessThan(out.indexOf('</head>'));
+  test('adds no print-area meta of its own: the assembly already wrote it into the book', () => {
+    // The meta's format is engine/shared/print-area.test.ts's business; that
+    // the preview's book.html carries it is the generateAndWriteHtml test's.
+    expect(injectPreviewScripts(html)).not.toContain('gp-print-area');
   });
 });
 

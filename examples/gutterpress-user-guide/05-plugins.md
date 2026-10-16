@@ -413,6 +413,11 @@ only `gutterpress.styles` is a look; one whose `main` is a markdown-it plugin
 is a plugin; the format is the same. This is what `gutterpress new --kind
 plugin` scaffolds.
 
+If the package needs a Gutterpress feature that older versions lack, say so
+with npm's own `engines` field, e.g. `"engines": { "gutterpress": ">=0.11.20" }`.
+A Gutterpress outside that range refuses to load the package and names the
+version it needs, instead of building the book without the feature.
+
 Older packages carried a separate `gutterpress.json` or `theme.json`. Neither
 is read any more: move their fields into `package.json` as above.
 

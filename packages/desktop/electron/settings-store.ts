@@ -35,6 +35,19 @@ export function mergeSettings(base: AppSettings, patch: DeepPartialSettings): Ap
   return deepMergeSettings(base, patch);
 }
 
+/**
+ * Before the print overlay had layers, one colour (`preview.marginOverlayColor`)
+ * styled it. A stored file that has that colour and no `overlayColors` yet
+ * gets it as the safe layer's; once `overlayColors` is saved the old key is
+ * ignored.
+ */
+function withLegacyOverlayColor(stored: DeepPartialSettings): DeepPartialSettings {
+  const { preview } = stored;
+  if (!preview || preview.overlayColors || typeof preview.marginOverlayColor !== "string") return stored;
+  const overlayColors = { ...DEFAULT_SETTINGS.preview.overlayColors, safe: preview.marginOverlayColor };
+  return { ...stored, preview: { ...preview, overlayColors } };
+}
+
 export interface SettingsStoreDeps {
   getUserDataDir(): string;
   fs: {
@@ -72,7 +85,7 @@ export function createSettingsStore(deps: SettingsStoreDeps): {
       throw err;
     }
     try {
-      return mergeSettings(DEFAULT_SETTINGS, JSON.parse(raw) as DeepPartialSettings);
+      return mergeSettings(DEFAULT_SETTINGS, withLegacyOverlayColor(JSON.parse(raw) as DeepPartialSettings));
     } catch (err) {
       // The file exists but isn't valid JSON. Preserve it instead of
       // silently falling back to defaults and losing whatever the author

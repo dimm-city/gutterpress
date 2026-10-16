@@ -45,9 +45,9 @@ describe("tokenizeImageAttrs / serializeImageAttrs", () => {
   });
 
   test("splits classes, ids, and key=val, preserving order", () => {
-    expect(tokenizeImageAttrs('{.gp-right .gp-small #fig width="300px"}')).toEqual([
+    expect(tokenizeImageAttrs('{.gp-right .gp-size-30 #fig width="300px"}')).toEqual([
       ".gp-right",
-      ".gp-small",
+      ".gp-size-30",
       "#fig",
       'width="300px"',
     ]);
@@ -58,7 +58,7 @@ describe("tokenizeImageAttrs / serializeImageAttrs", () => {
   });
 
   test("round-trips unknown tokens byte-for-byte", () => {
-    const raw = '{.gp-right .my-note #fig1 data-x="a b" .gp-small}';
+    const raw = '{.gp-right .my-note #fig1 data-x="a b" .gp-size-30}';
     expect(serializeImageAttrs(tokenizeImageAttrs(raw))).toBe(raw);
   });
 
@@ -81,41 +81,41 @@ describe("facet getters", () => {
   test("getPositionClass returns the class AS WRITTEN — canonical or legacy alias", () => {
     expect(getPositionClass(tokenizeImageAttrs("{.gp-right}"))).toBe("gp-right");
     expect(getPositionClass(tokenizeImageAttrs("{.float-right}"))).toBe("float-right");
-    expect(getPositionClass(tokenizeImageAttrs("{.gp-small}"))).toBeUndefined();
+    expect(getPositionClass(tokenizeImageAttrs("{.gp-size-30}"))).toBeUndefined();
   });
 
   test("getSizeClass finds sizes and ignores positions", () => {
-    expect(getSizeClass(tokenizeImageAttrs("{.gp-right .gp-small}"))).toBe("gp-small");
+    expect(getSizeClass(tokenizeImageAttrs("{.gp-right .gp-size-30}"))).toBe("gp-size-30");
     expect(getSizeClass(tokenizeImageAttrs("{.gp-right}"))).toBeUndefined();
   });
 });
 
 describe("facet setters preserve everything else", () => {
-  const raw = '{width="300px" .gp-right .gp-small .my-note #fig1}';
+  const raw = '{width="300px" .gp-right .gp-size-30 .my-note #fig1}';
 
   test("setWidth replaces in place, keeping token order", () => {
     const tokens = setWidth(tokenizeImageAttrs(raw), "50%");
-    expect(serializeImageAttrs(tokens)).toBe('{width="50%" .gp-right .gp-small .my-note #fig1}');
+    expect(serializeImageAttrs(tokens)).toBe('{width="50%" .gp-right .gp-size-30 .my-note #fig1}');
   });
 
   test("setWidth(null) removes only the width token", () => {
     const tokens = setWidth(tokenizeImageAttrs(raw), null);
-    expect(serializeImageAttrs(tokens)).toBe("{.gp-right .gp-small .my-note #fig1}");
+    expect(serializeImageAttrs(tokens)).toBe("{.gp-right .gp-size-30 .my-note #fig1}");
   });
 
   test("setPositionClass rewrites a legacy alias in place when asked", () => {
-    const tokens = setPositionClass(tokenizeImageAttrs("{.float-right .gp-small}"), "gp-left");
-    expect(serializeImageAttrs(tokens)).toBe("{.gp-left .gp-small}");
+    const tokens = setPositionClass(tokenizeImageAttrs("{.float-right .gp-size-30}"), "gp-left");
+    expect(serializeImageAttrs(tokens)).toBe("{.gp-left .gp-size-30}");
   });
 
   test("setPositionClass appends when the facet is absent", () => {
-    const tokens = setPositionClass(tokenizeImageAttrs("{.gp-small}"), "gp-center");
-    expect(serializeImageAttrs(tokens)).toBe("{.gp-small .gp-center}");
+    const tokens = setPositionClass(tokenizeImageAttrs("{.gp-size-30}"), "gp-center");
+    expect(serializeImageAttrs(tokens)).toBe("{.gp-size-30 .gp-center}");
   });
 
   test("setSizeClass never touches position, custom classes, or ids", () => {
-    const tokens = setSizeClass(tokenizeImageAttrs(raw), "gp-large");
-    expect(serializeImageAttrs(tokens)).toBe('{width="300px" .gp-right .gp-large .my-note #fig1}');
+    const tokens = setSizeClass(tokenizeImageAttrs(raw), "gp-size-60");
+    expect(serializeImageAttrs(tokens)).toBe('{width="300px" .gp-right .gp-size-60 .my-note #fig1}');
   });
 
   test("clearing the only facet of a single-token suffix yields no suffix", () => {
@@ -147,16 +147,16 @@ describe("pinned positions are edited as one composed set", () => {
   });
 
   test("non-position tokens survive clearing a pinned position", () => {
-    const tokens = tokenizeImageAttrs('{width="200px" .gp-pin .gp-bottom .gp-small .my-note}');
+    const tokens = tokenizeImageAttrs('{width="200px" .gp-pin .gp-bottom .gp-size-30 .my-note}');
     expect(serializeImageAttrs(setPositionClass(tokens, null))).toBe(
-      '{width="200px" .gp-small .my-note}',
+      '{width="200px" .gp-size-30 .my-note}',
     );
   });
 
   test("the new position takes the slot the old one occupied", () => {
-    const tokens = tokenizeImageAttrs("{.gp-pin .gp-bottom .gp-small}");
+    const tokens = tokenizeImageAttrs("{.gp-pin .gp-bottom .gp-size-30}");
     expect(serializeImageAttrs(setPositionClass(tokens, "gp-right"))).toBe(
-      "{.gp-right .gp-small}",
+      "{.gp-right .gp-size-30}",
     );
   });
 
@@ -170,25 +170,25 @@ describe("pinned positions are edited as one composed set", () => {
   });
 
   test("switching a flow float to pin leaves a centered pin, edges untouched", () => {
-    const tokens = tokenizeImageAttrs("{.gp-right .gp-small}");
-    expect(serializeImageAttrs(setPositionClass(tokens, "gp-pin"))).toBe("{.gp-pin .gp-small}");
+    const tokens = tokenizeImageAttrs("{.gp-right .gp-size-30}");
+    expect(serializeImageAttrs(setPositionClass(tokens, "gp-pin"))).toBe("{.gp-pin .gp-size-30}");
   });
 
   test("inert gp-top/gp-bottom on a NON-pinned image are left alone", () => {
     // They do nothing without .gp-pin; this module edits one facet rather
     // than tidying tokens the user did not ask about.
-    const tokens = tokenizeImageAttrs("{.gp-top .gp-right .gp-small}");
-    expect(serializeImageAttrs(setPositionClass(tokens, null))).toBe("{.gp-top .gp-small}");
+    const tokens = tokenizeImageAttrs("{.gp-top .gp-right .gp-size-30}");
+    expect(serializeImageAttrs(setPositionClass(tokens, null))).toBe("{.gp-top .gp-size-30}");
   });
 });
 
 describe("pin alignment is an explicit composed choice", () => {
   test("reads and replaces both pin edge classes without touching other facets", () => {
-    const tokens = tokenizeImageAttrs("{.gp-pin .gp-top .gp-left .gp-small .my-note}");
+    const tokens = tokenizeImageAttrs("{.gp-pin .gp-top .gp-left .gp-size-30 .my-note}");
     expect(getPinAlignment(tokens)).toBe("top-left");
     expect(
       serializeImageAttrs(setPinAlignment(tokens, "bottom-right")),
-    ).toBe("{.gp-pin .gp-bottom .gp-right .gp-small .my-note}");
+    ).toBe("{.gp-pin .gp-bottom .gp-right .gp-size-30 .my-note}");
   });
 
   test("center removes edge modifiers but keeps the pin itself", () => {
@@ -236,13 +236,39 @@ describe("depth layer facet", () => {
   });
 });
 
+describe("size facet", () => {
+  test("runs 10% to 90% in 10% steps, smallest first, with no 100% step (that is .gp-full, a position)", () => {
+    expect(IMAGE_SIZE_OPTIONS.map((o) => [o.class, o.label])).toEqual([
+      ["gp-size-10", "10%"],
+      ["gp-size-20", "20%"],
+      ["gp-size-30", "30%"],
+      ["gp-size-40", "40%"],
+      ["gp-size-50", "50%"],
+      ["gp-size-60", "60%"],
+      ["gp-size-70", "70%"],
+      ["gp-size-80", "80%"],
+      ["gp-size-90", "90%"],
+    ]);
+    expect(normalizeClassInput(IMAGE_SIZE_OPTIONS, "30")).toBe("gp-size-30");
+    expect(normalizeClassInput(IMAGE_SIZE_OPTIONS, ".gp-size-90")).toBe("gp-size-90");
+    expect(serializeImageAttrs(setSizeClass(tokenizeImageAttrs("{.gp-pin .gp-size-60}"), "gp-size-90"))).toBe("{.gp-pin .gp-size-90}");
+  });
+
+  test("the named sizes are gone: nothing reads them as a size, so none is rewritten or carried along", () => {
+    for (const named of ["gp-small", "gp-medium", "gp-large", "gp-xl", "gp-xxl"]) {
+      expect(getSizeClass(tokenizeImageAttrs(`{.${named}}`))).toBeUndefined();
+      expect(normalizeClassInput(IMAGE_SIZE_OPTIONS, named)).toBeUndefined();
+    }
+  });
+});
+
 describe("normalizeClassInput", () => {
   test("accepts short names, canonical classes, and legacy aliases", () => {
     expect(normalizeClassInput(IMAGE_POSITION_OPTIONS, "right")).toBe("gp-right");
     expect(normalizeClassInput(IMAGE_POSITION_OPTIONS, "gp-right")).toBe("gp-right");
     expect(normalizeClassInput(IMAGE_POSITION_OPTIONS, "float-right")).toBe("gp-right");
     expect(normalizeClassInput(IMAGE_POSITION_OPTIONS, ".Center ")).toBe("gp-center");
-    expect(normalizeClassInput(IMAGE_SIZE_OPTIONS, "medium")).toBe("gp-medium");
+    expect(normalizeClassInput(IMAGE_SIZE_OPTIONS, "50")).toBe("gp-size-50");
   });
 
   test("rejects unknown input rather than guessing", () => {
@@ -254,11 +280,11 @@ describe("normalizeClassInput", () => {
   });
 });
 
-// `.gp-flush` is what lets a pinned image sit on the paper instead of on the
-// text block (core drops that page's margin on the pinned edges). It is a
-// boolean facet rather than part of the alignment token set because it is
-// orthogonal to WHICH edge — and it has to be an image class at all because
-// this dialog can set image classes and nothing else.
+// `.gp-flush` is the escape hatch that runs a pinned image to the paper's
+// edge instead of the printer's art-safe line (core zeroes the pin box's
+// insets). It is a boolean facet rather than part of the alignment token set
+// because it is orthogonal to WHICH edge — and it has to be an image class at
+// all because this dialog can set image classes and nothing else.
 describe("flush facet (boolean)", () => {
   test("toggles .gp-flush on and off without touching anything else", () => {
     const tokens = tokenizeImageAttrs("{.gp-pin .gp-bottom .my-note}");

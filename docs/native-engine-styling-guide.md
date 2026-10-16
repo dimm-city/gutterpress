@@ -117,16 +117,21 @@ smaller, more pages, different pagination) appears far from the cause.
   improving the page.
 - **Fix A½ (for images): core now ships a supported pin idiom.** A markdown
   image with `{.gp-pin}` (+ `.gp-top/.gp-bottom/.gp-left/.gp-right` edge
-  modifiers, `.gp-small/.gp-medium/.gp-large` sizes) is abspos done the safe
-  way: GUTTERPRESS_CSS supplies `inset: 0` + explicit self-alignment, the
-  containing block is the image's nearest positioned ancestor — the
-  `.page`/`.spread` it sits in unless the theme positions something closer
-  (a card or component shell, which then frames the pin by design) — and a
-  `pin_outside_page` parse-time warning fires when there is no such
-  container (the preview would otherwise mask exactly that mistake — its
-  strip wrapper is positioned and one page tall). Same caveat as Fix B: the
-  pin anchors to the CONTAINER, so keep pinned layouts to single-page
-  `@page` blocks.
+  modifiers, `.gp-size-10` to `.gp-size-90` sizes) is abspos
+  done the safe way: GUTTERPRESS_CSS supplies four insets + explicit
+  self-alignment, the containing block is the image's nearest positioned
+  ancestor — the `.page`/`.spread` it sits in unless the theme positions
+  something closer (a card or component shell, which then frames the pin by
+  design) — and a `pin_outside_page` parse-time warning fires when there is
+  no such container (the preview would otherwise mask exactly that mistake —
+  its strip wrapper is positioned and one page tall). An edge pin never moves
+  the text: both engines free that page's margin on the pinned edges, give
+  the page root the margin back as padding, and inset the pin by the
+  printer's art-safe line (`page.artSafe`/`page.gutter`, through
+  `--gp-pin-<edge>` on the root); `.gp-flush` zeroes those insets for art
+  that runs to the paper, and the markdown check notes it (`flush_art`, an
+  info). Same caveat as Fix B: the pin anchors to the CONTAINER, so keep
+  pinned layouts to single-page `@page` blocks.
 - **Fix B (when you truly need a pin on something else): give it a local
   containing block.** `position: relative` on the element's own wrapper
   (scope with `:has()` if the wrapper has no class). Remember: a semantic
@@ -248,13 +253,28 @@ fixture — but only when the thing being kept-with can actually be placed:
   `inset()`, `circle()`, `ellipse()`, `path()`) is a vector clip and is NOT
   flagged; only `clip-path: url(...)` (an SVG mask) is.
 - **`repeating-linear-gradient()`, `repeating-radial-gradient()`,
-  `repeating-conic-gradient()` and `conic-gradient()` print blank in a `--format pdfx` build.** Chromium emits
-  them in a form Ghostscript's CMYK conversion cannot paint; plain PDF output is
+  `repeating-conic-gradient()` and `conic-gradient()` can print blank or distorted in a `--format pdfx` build.** Chromium emits
+  them in a form Ghostscript has been seen to paint as nothing, or as irregular
+  stripes, in the CMYK conversion (check such pages visually); plain PDF output is
   fine, and plain `linear-gradient()` / `radial-gradient()` convert correctly.
+  On a page that also uses transparency, Ghostscript flattens the whole page to
+  an image, which keeps the gradient but loses that page's live text.
   The CSS lint flags them and the build names the affected pages. For 0deg/90deg
   stripes write `linear-gradient(90deg, #b33 0 6px, #c8c5bf 6px 10px)` with
   `background-size: 10px 100%`; for diagonal stripes, radial rings or conic
   fills use a small tiled image.
+- **Transparency in a `--format pdfx` build.** PDF/X-1a and X-3 cannot hold
+  transparency (soft or `rgba()` shadows, alpha PNGs, `opacity`), so by default
+  Ghostscript flattens each page that uses it into one bitmap, text included.
+  Set `pdfx.transparency: preserve-text` to flatten only the artwork to a
+  picture (300 DPI, or `pdfx.rasterDpi`) and keep the text live on top (unlike
+  `filter`, above). The price: that page's rules, backgrounds and shapes become
+  raster, and text always sits above the artwork (text another element covers
+  shows through). A page whose text is translucent or blended, set in a Type 3
+  font (a synthetic bold, a text stroke), filled with a pattern or used as a
+  clip, or a page with a repeating or conic gradient, is flattened whole as by
+  default; the build names each one's cause. See
+  [PDF/X and transparency](publishing.md#pdfx-transparency).
 - To accept a warning you have decided is fine, switch the rule off for the
   book (`lint.rules` in `manifest.yaml`) or for one line
   (`/* gutterpress-disable-next-line <rule-id> -- reason */`).
@@ -355,7 +375,7 @@ spell-check-style source findings; from the CLI they print as warnings.
 | Empty column | A balanced multi-column block that runs past one page, leaving dead columns (§5). |
 | Taller than the page | Content that print splits but the screen preview clips — the two will not agree there (§4). |
 | Image resolution | Below the DPI floor; may look soft in print. |
-| Margin box couldn't relocate | A `.gp-flush`-freed margin box's `content` isn't a value the build can re-home; it will not print on that page — simplify the content or drop `.gp-flush` there. |
+| Running head on a pinned edge | A margin box sits on an edge a pinned image frees, and its `content` isn't a value the build can re-home; it will not print on that page — simplify the content, or pin the image to another edge. |
 | Page background not preloaded | An `@page` background image the build can't stage and preload — remote, reached from CSS outside your project stylesheets, or also used as an `<img src>` — so Chromium prints the background colour alone (§1). |
 | Hyphenation not available | Text styled `hyphens: auto` is in a language the browser making this PDF has no hyphenation dictionary for (the desktop app's Electron has none on Linux), so nothing is hyphenated automatically and lines break differently than in a browser that has one. Silent wherever hyphenation works. |
 

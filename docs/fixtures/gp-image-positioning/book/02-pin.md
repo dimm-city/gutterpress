@@ -14,18 +14,18 @@ this one. The pin never disturbs pagination: it is out of flow, and the
 parity gate holds this book to identical page maps in the preview and
 the print engine.
 
-![A heron pinned to the page foot](assets/heron.jpg){.gp-pin .gp-bottom .gp-small}
+![A heron pinned to the page foot](assets/heron.jpg){.gp-pin .gp-bottom .gp-size-30}
 
 @page
 
 # Pinned to a Corner
 
 The second pinned page sets the heron into the bottom-right corner with
-two edge modifiers, while a quarter-width copy floats in the running text
+two edge modifiers, while a 30%-width copy floats in the running text
 to prove flow and pin compose on the same page without touching each
 other.
 
-![A heron, floated left](assets/heron.jpg){.gp-left .gp-small}
+![A heron, floated left](assets/heron.jpg){.gp-left .gp-size-30}
 
 A pin is out of the flow, so it paints OVER whatever the flow puts under
 it — that is what makes a watermark work, and it is why art pinned to a
@@ -35,4 +35,4 @@ moon signs it twice a month, and the marsh files it away under mud and
 eelgrass until the next low water opens the book again to the same
 dog-eared page.
 
-![A heron pinned to the bottom right corner](assets/heron.jpg){.gp-pin .gp-bottom .gp-right .gp-small}
+![A heron pinned to the bottom right corner](assets/heron.jpg){.gp-pin .gp-bottom .gp-right .gp-size-30}

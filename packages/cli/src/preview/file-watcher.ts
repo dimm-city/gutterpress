@@ -25,8 +25,9 @@ import { restoreForCommand } from '../lib/extension-restore';
 import { BOOK_HTML_FILENAME } from '../lib/desktop';
 import { imageRefKey } from '../lib/static-serve';
 import type { ServerState } from './server-context';
-import type { ResolvedExtensionConfig } from '../schema/manifest.types';
+import type { PrintSpec, ResolvedExtensionConfig } from '../schema/manifest.types';
 import type { PrintPadding } from '../engine/shared/synthesis.ts';
+import type { PrintAreaSource } from '../engine/shared/print-area.ts';
 
 /**
  * Tiny placeholder book.html for no-input mode. The desktop's iframe needs a
@@ -69,6 +70,7 @@ async function renderPreviewBook(
     styles?: string[];
     extensions?: ResolvedExtensionConfig[];
     print?: PrintPadding;
+    printArea?: PrintAreaSource;
   },
   opts: {
     files: string[] | null;
@@ -96,6 +98,7 @@ async function renderPreviewBook(
   return renderChapters(inputPath, {
     title: config.title ?? "Document",
     print: config.print,
+    printArea: config.printArea,
     styles: config.styles,
     files: opts.files,
     plugins,
@@ -126,16 +129,13 @@ async function renderPreviewBook(
  *
  * The book always paginates as ONE document, exactly as the print path does:
  * no per-source wrappers or forced breaks are added, so preview pagination
- * never diverges from the PDF where a source file begins mid-page.
+ * never diverges from the PDF where a source file begins mid-page. The
+ * project's print area is not added here: the markdown assembly writes it
+ * into every book, the preview's included (`AssembleBookHtmlOptions.printArea`).
  */
-export function injectPreviewScripts(html: string, insetBleedPt = 0): string {
-  // The project's in-sheet bleed (`page.bleed`, e.g. dtrpg's) is tooling data
-  // for the margin & bleed overlay only. It rides in the preview's book.html
-  // and nowhere else: the built PDF and published HTML never get it.
-  const meta = insetBleedPt > 0 ? `  <meta name="gp-inset-bleed" content="${insetBleedPt}">\n` : "";
+export function injectPreviewScripts(html: string): string {
   const scripts =
-    meta
-    + '  <script src="/engine/gutterpress-viewer.js"></script>\n  '
+    '  <script src="/engine/gutterpress-viewer.js"></script>\n  '
     + '<script src="/preview/scripts/preview-interface.js"></script>\n  '
     + '<script src="/preview/scripts/preview-bridge.js"></script>\n';
   return /<\/head>/i.test(html)
@@ -166,7 +166,9 @@ export async function generateAndWriteHtml(
     source?: { files?: string[] | null };
     extensions?: ResolvedExtensionConfig[];
     print?: PrintPadding;
-    page?: { bleed?: number };
+    page?: { width: number; height: number; bleed?: number; safe?: number; artSafe?: number; gutter?: number };
+    preset?: string;
+    spec?: PrintSpec;
   },
   cssAssets: Map<string, string>,
   imageRefs?: Set<string>
@@ -182,7 +184,10 @@ export async function generateAndWriteHtml(
   // of half-clearing them.
   const nextAssets = new Map<string, string>();
   const nextImageRefs = new Set<string>();
-  const html = await renderPreviewBook(inputPath, config, {
+  const html = await renderPreviewBook(inputPath, {
+    ...config,
+    printArea: config.page && { ...config.page, preset: config.preset, spec: config.spec },
+  }, {
     files: config.source?.files ?? null,
     onCssAssets: (copies) => {
       for (const copy of copies) nextAssets.set(copy.to, copy.from);
@@ -199,7 +204,7 @@ export async function generateAndWriteHtml(
   }
   await fsp.writeFile(
     path.join(tempDir, BOOK_HTML_FILENAME),
-    injectPreviewScripts(html, config.page?.bleed),
+    injectPreviewScripts(html),
     "utf-8"
   );
 }

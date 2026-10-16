@@ -32,8 +32,10 @@ test("assembleBookHtml (pure, in-memory readText) === renderChapters (node, on d
     const files = ["01-intro.md", "02-body.md"];
 
     // Node path: reads off disk.
+    const printArea = { width: 432, height: 648, safe: 18 };
     const nodeHtml = await renderChapters(dir, {
       title: "My Book",
+      printArea,
       styles: ["css/print.css"],
       files,
     });
@@ -47,9 +49,11 @@ test("assembleBookHtml (pure, in-memory readText) === renderChapters (node, on d
       readText: (rel) => Promise.resolve(FILES[rel] ?? Promise.reject(new Error(`no ${rel}`))),
       projectCss,
       title: "My Book",
+      printArea,
     });
 
     expect(pureHtml).toBe(nodeHtml);
+    expect(pureHtml).toContain('<meta name="gp-print-area"');
     // Sanity: the assembled HTML carries the rendered markdown.
     expect(pureHtml).toContain(">Intro</h1>");
     expect(pureHtml).toContain("<strong>world</strong>");
@@ -103,4 +107,20 @@ test("assembleBookHtml writes the print padding on <html> for the viewer", async
   expect(short).toContain('<html lang="en" data-gp-signature="4" data-gp-last-page="short-by-one">');
   const plain = await assembleBookHtml({ files: ["a.md"], readText, print: { signature: 1, reserveLastPage: false } });
   expect(plain).toContain('<html lang="en">');
+});
+
+test("assembleBookHtml writes the project's print area into <head>, in every book it assembles", async () => {
+  const readText = () => Promise.resolve("# A\n");
+  const html = await assembleBookHtml({
+    files: ["a.md"],
+    readText,
+    printArea: { width: 621, height: 810, bleed: 9, safe: 36, artSafe: 18, preset: "dtrpg" },
+  });
+  const head = html.slice(0, html.indexOf("</head>"));
+  expect(head).toContain(
+    `<meta name="gp-print-area" content='{"width":621,"height":810,"bleed":9,"safe":36,"artSafe":18,"preset":"dtrpg"}'>`,
+  );
+  // one meta, and none at all without a print area
+  expect(html.match(/gp-print-area/g)).toHaveLength(1);
+  expect(await assembleBookHtml({ files: ["a.md"], readText })).not.toContain("gp-print-area");
 });

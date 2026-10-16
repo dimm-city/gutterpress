@@ -31,19 +31,20 @@ import {
   toFolioPage,
   type PageCounterReset,
 } from "../shared/synthesis.ts";
-import { flushMargins } from "../shared/flush.ts";
 import {
+  OVERLAY_LAYERS,
   OVERLAY_OFF,
   clearOverlay,
-  configInsetBleedPt,
-  documentBleedPt,
-  pageFrameMargin,
+  layersFrom,
   paintOverlay,
   sanitizeOverlayStyle,
+  setOverlayStyle,
+  type OverlayLayers,
   type OverlayPage,
   type OverlayStyle,
   type OverlaySummary,
 } from "./overlay.ts";
+import { printAreaFromMeta } from "../shared/print-area.ts";
 import {
   PX_PER_PT,
   pageRangeOf,
@@ -82,11 +83,13 @@ export interface DecorationApi {
   /** the restarted `counter(page)` value for each 0-based book page, honoring `counter-reset: page N` */
   pageNumbers: number[];
   warnings: string[];
-  /** show/hide trim, safe, and crop guides on the stage */
+  /** show/hide trim and crop guides on the stage */
   setDesigner(on: boolean): void;
-  /** margin & bleed overlay (overlay.ts): draws it, and returns what it found.
-   * Chrome only — pagination is identical with it on or off. */
-  setOverlay(on: boolean, style?: OverlayStyle): OverlaySummary;
+  /** print overlays (overlay.ts): draws the layers named by `state` — `true`/`false` for all four, or
+   * `{ bleed?, safe?, art?, margins? }` (a layer left out is off) — and returns what the safe layers found.
+   * Chrome only — pagination is identical with them on or off. */
+  setOverlay(state: boolean | Partial<OverlayLayers>, style?: OverlayStyle): OverlaySummary;
+  /** the last summary, with the `layers` that are drawn */
   overlay(): OverlaySummary;
 }
 
@@ -145,13 +148,14 @@ export function decorate(
   let blankPages = new Set<number>();
   let paddedPages = new Set<number>();
   const warnings: string[] = [];
-  // Margin & bleed overlay (overlay.ts). The pages are collected by draw() —
-  // which rebuilds every sheet — so the overlay is repainted after each one.
+  // Print overlays (overlay.ts). The pages are collected by draw() — which
+  // rebuilds every sheet — so the overlay is repainted after each one.
   let overlayOn = false;
+  let overlayLayers: OverlayLayers = OVERLAY_OFF.layers;
   let overlayPages: OverlayPage[] = [];
   let overlaySummary: OverlaySummary = OVERLAY_OFF;
   const paintOverlayNow = () => {
-    overlaySummary = paintOverlay(overlayPages, layout.strips, documentBleedPt(model), configInsetBleedPt());
+    overlaySummary = paintOverlay(overlayPages, layout.strips, printAreaFromMeta(document), overlayLayers);
     window.dispatchEvent(new CustomEvent("gp:overlay", { detail: overlaySummary }));
   };
   const api: DecorationApi = {
@@ -164,19 +168,32 @@ export function decorate(
     setDesigner(on) {
       document.body.dataset.designer = on ? "on" : "off";
     },
-    setOverlay(on, style) {
-      // The look is only tokens on <body> (viewer.css): a call that merely
+    setOverlay(state, style) {
+      // The look is only tokens on the overlay's own root: a call that merely
       // restyles an overlay that is already showing needs no repaint.
       if (style) {
-        const { color, strength } = sanitizeOverlayStyle(style);
+        const clean = sanitizeOverlayStyle(style);
+        setOverlayStyle(clean);
+        const { strength, colors } = clean;
+        // A record for hosts (the preview shell carries it across a hot-reload
+        // swap); nothing renders from these attributes.
         if (strength) document.body.dataset.overlayStrength = strength;
-        if (color) document.body.style.setProperty("--gp-ov-color", color);
+        if (colors?.safe) document.body.dataset.overlayColor = colors.safe;
+        if (colors?.art) document.body.dataset.overlayArtColor = colors.art;
+        if (colors?.bleed) document.body.dataset.overlayBleedColor = colors.bleed;
+        if (colors?.margins) document.body.dataset.overlayMarginsColor = colors.margins;
       }
       const wasOn = overlayOn;
-      overlayOn = on;
-      document.body.dataset.overlay = on ? "on" : "off";
-      if (on) {
-        if (!(wasOn && style)) paintOverlayNow();
+      const next = layersFrom(state);
+      const sameLayers = OVERLAY_LAYERS.every((layer) => next[layer] === overlayLayers[layer]);
+      overlayLayers = next;
+      overlayOn = OVERLAY_LAYERS.some((layer) => next[layer]);
+      document.body.dataset.overlay = overlayOn ? "on" : "off";
+      if (overlayOn) {
+        // The record of which layers are showing outlives the overlay being
+        // switched off, so a host can switch the same set back on.
+        document.body.dataset.overlayLayers = OVERLAY_LAYERS.filter((layer) => next[layer]).join(",");
+        if (!(wasOn && sameLayers && style)) paintOverlayNow();
       } else {
         clearOverlay();
         overlaySummary = OVERLAY_OFF;
@@ -470,19 +487,7 @@ export function decorate(
         drawMarginBoxes(sheet, ctx, layout.totalPages - paddedPages.size);
         drawGuides(sheet, ctx);
         drawCropMarks(sheet, ctx);
-        overlayPages.push({
-          index: bookIndex,
-          sheet,
-          strip,
-          geometry: ctx.geometry,
-          // Text sits in the strip's column, freed on `.gp-flush` edges, and
-          // on a verso's slid sheet (a blank or padding sheet has no text, so
-          // its own margins stand).
-          margin:
-            ctx.padded || blankPages.has(bookIndex)
-              ? ctx.geometry.margin
-              : pageFrameMargin(flushMargins(g.margin, strip.flushEdges ?? []), strip.versoShift, side),
-        });
+        overlayPages.push({ index: bookIndex, sheet, strip, padded: ctx.padded });
       }
 
       // Reserve the full row width even for a solo page in a wrapped run
@@ -504,7 +509,13 @@ export function decorate(
       // sheet visually ended: sheets stacked in document flow overlapped by
       // that same margin gap. Reserve `rowStride` pitch only BETWEEN rows,
       // and the sheet's real full height (`g.height`) for the last row.
-      run.style.height = `${rowStride * (rows - 1) + PX_PER_PT * g.height}px`;
+      // `min-height`, never `height`: the strip is `height: 100%` (see
+      // `.gp-strip` in viewer.css) so that a page root's percentage height
+      // resolves only where print's would. A definite wrapper would make it
+      // resolve HERE, after `measure()` fixed the page count — re-fragmenting
+      // the run under sheets drawn for the old count. The run's own content is
+      // the strip, one column tall, so the floor below is its used height.
+      run.style.minHeight = `${rowStride * (rows - 1) + PX_PER_PT * g.height}px`;
       run.style.width = `${stride * perRow}px`;
 
       // A recto-starting wrapped run overlaps the previous run's last row
@@ -629,20 +640,11 @@ export function decorate(
       });
       sheet.appendChild(trim);
     }
-    const safe = document.createElement("div");
-    safe.className = "gp-guide-safe";
-    Object.assign(safe.style, {
-      left: px(g.margin.left),
-      top: px(g.margin.top),
-      width: px(g.width - g.margin.left - g.margin.right),
-      height: px(g.height - g.margin.top - g.margin.bottom),
-    });
-    sheet.appendChild(safe);
   }
 
   /** Screen-mode limit (§7): elements taller than a page clip. Say so, loudly. */
   function checkOverflow(strip: StripInfo, out: string[]) {
-    const h = strip.el.clientHeight;
+    const { height: h } = stripMetrics(strip.el);
     for (const el of Array.from(strip.el.querySelectorAll<HTMLElement>("figure,table,img,pre"))) {
       const r = el.getBoundingClientRect();
       if (r.height > h + 1) {
@@ -710,8 +712,8 @@ function ensureRun(strip: StripInfo): HTMLElement {
 }
 
 /** Slot rect for one margin box, from the SHARED §5.3 geometry (the compiler's
- * `.gp-flush` furniture relocation uses the same function — one spot, both
- * painters). */
+ * relocation of a pinned edge's furniture uses the same function — one spot,
+ * both painters). */
 function rectFor(name: string, g: PageGeometry): Partial<CSSStyleDeclaration> {
   const r = marginBoxRectPt(name, g);
   return { left: px(r.x), top: px(r.y), width: px(r.w), height: px(r.h) };

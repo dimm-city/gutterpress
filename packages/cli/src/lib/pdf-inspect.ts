@@ -487,6 +487,128 @@ export function getOpPass(doc: PDFDocumentProxy): Promise<OpPass> {
   return p;
 }
 
+const opSet = (names: string[]) =>
+  new Set<number>(names.map((name) => OPS[name]).filter((op): op is number => op !== undefined));
+const FILL_COLOR_OPS = opSet(["setFillGray", "setFillRGBColor", "setFillCMYKColor", "setFillColor"]);
+const STROKE_COLOR_OPS = opSet(["setStrokeGray", "setStrokeRGBColor", "setStrokeCMYKColor", "setStrokeColor"]);
+
+const SHOW_TEXT_OPS = opSet(["showText", "showSpacedText", "nextLineShowText", "nextLineSetSpacingShowText"]);
+
+/**
+ * Why a page is not split from its artwork: its text cannot be (the first
+ * three), or it shows no text at all, so there is none to keep (`no-text`).
+ */
+export type UnsplittableReason = "text-transparency" | "type3-font" | "text-pattern-or-clip" | "no-text";
+
+/**
+ * For each 1-based page that `pdfx.transparency: preserve-text` must not split,
+ * the first reason found; pages absent from the map can be split. `pages`
+ * limits the scan to those pages (the build passes the transparent ones only,
+ * so the rest of the book is never decoded).
+ *
+ * A page's text cannot be split when text SHOWS while transparency is in effect: constant alpha
+ * (`ca`/`CA` < 1), a non-Normal blend mode, an active soft mask, or any
+ * enclosing transparency group that is composited translucent, blended or
+ * masked, or is a knockout group. (Chromium draws `opacity` and
+ * `mix-blend-mode` content as a group form XObject under such a state, and
+ * resets the state INSIDE the group, so the state at the point the group
+ * begins is what counts.) Such text cannot be lifted out of its page and drawn
+ * opaque on top of a flattened picture without changing how it looks, so
+ * `pdfx.transparency: preserve-text` leaves those pages alone.
+ *
+ * Also flagged: any page that sets a Type 3 font. Chromium (Skia) emits Type 3
+ * for glyphs it can only draw as paths, e.g. the synthetic bold of a
+ * single-weight webfont. Their glyph procedures are vector paths, which the
+ * text pass's `-dFILTERVECTOR` strips, so the text would print nothing.
+ *
+ * Also flagged: text painted with a pattern (`scn`/`SCN` to a tiling pattern
+ * or shading), as Chromium emits for SVG `<text fill="url(#…)">` and gradient
+ * text fills, and text used as a clip (render modes 4-7, `background-clip:
+ * text`). The artwork pass removes the glyphs and the text pass's
+ * `-dFILTERIMAGE`/`-dFILTERVECTOR` removes their paint, so they would vanish.
+ *
+ * A plain isolated group composited at alpha 1 / Normal / no mask is NOT
+ * counted: painting it is the same as painting its content inline, and
+ * Chromium wraps the content of EVERY page in one as soon as any element of
+ * the document uses a blend mode (measured on Chromium 141), which would
+ * otherwise rule out every page of such a book. The page's OWN `/Group` is
+ * likewise ignored.
+ *
+ * Walks PDF.js's operator list, which has already inlined form XObjects
+ * between `paintFormXObjectBegin/End` and reports their `/Group` as
+ * `beginGroup/endGroup`. Graphics state is tracked per save/restore (a form
+ * XObject is an implicit save/restore).
+ */
+export async function unsplittableTextReasons(
+  pdfBytes: Uint8Array,
+  pages?: number[]
+): Promise<Map<number, UnsplittableReason>> {
+  const GSTATE_BIT: Record<string, number> = { ca: 1, CA: 2, BM: 4, SMask: 8 };
+  const COMPOSITING = 15; // the GSTATE_BIT flags: what makes a group count
+  const FILL_PATTERN = 16;
+  const STROKE_PATTERN = 32;
+  const CLIP_TEXT = 64; // text render modes 4-7 add the glyphs to the clip
+  const doc = await getDocumentProxy(new Uint8Array(pdfBytes));
+  const reasons = new Map<number, UnsplittableReason>();
+  try {
+    const scan = pages ?? Array.from({ length: doc.numPages }, (_, i) => i + 1);
+    for (const i of scan) {
+      const page = await doc.getPage(i);
+      const ops = await page.getOperatorList();
+      let state = 0; // GSTATE_BIT flags currently in effect
+      const groups: boolean[] = []; // open groups: composited translucent, blended, masked or knockout?
+      const stack: number[] = [];
+      let showsText = false;
+      for (let j = 0; j < ops.fnArray.length; j++) {
+        const fn = ops.fnArray[j]!;
+        if (fn === OPS.save || fn === OPS.paintFormXObjectBegin) stack.push(state);
+        else if (fn === OPS.restore || fn === OPS.paintFormXObjectEnd) state = stack.pop() ?? 0;
+        else if (fn === OPS.beginGroup) {
+          const group = (ops.argsArray[j] as [{ smask?: unknown; knockout?: boolean }])[0];
+          groups.push((state & COMPOSITING) !== 0 || !!(group.smask || group.knockout));
+        } else if (fn === OPS.endGroup) groups.pop();
+        else if (fn === OPS.setFont) {
+          const ref = (ops.argsArray[j] as [unknown])[0];
+          const font = typeof ref === "string" && page.commonObjs.has(ref) ? page.commonObjs.get(ref) : undefined;
+          if ((font as { isType3Font?: boolean } | undefined)?.isType3Font) {
+            reasons.set(i, "type3-font");
+            break;
+          }
+        } else if (fn === OPS.setFillColorN || fn === OPS.setStrokeColorN) {
+          // PDF.js reports a pattern paint as ["TilingPattern" | "Shading", …];
+          // a plain colour comes through setFill/StrokeRGBColor etc. instead.
+          const bit = fn === OPS.setFillColorN ? FILL_PATTERN : STROKE_PATTERN;
+          const kind = (ops.argsArray[j] as unknown[])[0];
+          state = kind === "TilingPattern" || kind === "Shading" ? state | bit : state & ~bit;
+        } else if (FILL_COLOR_OPS.has(fn)) state &= ~FILL_PATTERN;
+        else if (STROKE_COLOR_OPS.has(fn)) state &= ~STROKE_PATTERN;
+        else if (fn === OPS.setTextRenderingMode) {
+          state = (ops.argsArray[j] as [number])[0] >= 4 ? state | CLIP_TEXT : state & ~CLIP_TEXT;
+        } else if (fn === OPS.setGState) {
+          for (const [key, value] of (ops.argsArray[j] as [[string, unknown][]])[0]) {
+            const bit = GSTATE_BIT[key];
+            if (!bit) continue;
+            const on =
+              key === "BM" ? value !== "source-over" : key === "SMask" ? !!value : (value as number) < 1;
+            state = on ? state | bit : state & ~bit;
+          }
+        } else if (SHOW_TEXT_OPS.has(fn)) {
+          showsText = true;
+          if (state || groups.includes(true)) {
+            const paint = state & (FILL_PATTERN | STROKE_PATTERN | CLIP_TEXT);
+            reasons.set(i, paint ? "text-pattern-or-clip" : "text-transparency");
+            break;
+          }
+        }
+      }
+      if (!showsText && !reasons.has(i)) reasons.set(i, "no-text");
+    }
+  } finally {
+    await doc.destroy();
+  }
+  return reasons;
+}
+
 /**
  * Await an image XObject's pixel dimensions (requires PDF.js to decode it).
  * Bounded by a timeout so a slow/broken image can't hang validation.

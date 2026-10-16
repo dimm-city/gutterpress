@@ -52,8 +52,8 @@ export function isIgnoredMarginBoxProperty(property: string): boolean {
  * Geometry of each of the 16 margin boxes, per CSS Paged Media §5.3, in pt
  * SHEET coordinates (origin at the sheet's top-left). One implementation for
  * both furniture painters: the viewer's `drawMarginBoxes` overlays and the
- * compiler's `.gp-flush` furniture relocation must place a box at the same
- * spot or preview and print disagree about where the folio sits.
+ * compiler's relocation of a pinned edge's furniture must place a box at the
+ * same spot or preview and print disagree about where the folio sits.
  */
 export function marginBoxRectPt(
   name: string,

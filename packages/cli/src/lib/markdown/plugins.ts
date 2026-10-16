@@ -25,6 +25,7 @@ import {
   type ExtensionMetadata,
   readExtensionMeta,
   assertExtensionContained,
+  assertSupportsThisGutterpress,
   resolveExtension,
 } from "../extension-manifest";
 
@@ -651,6 +652,7 @@ async function loadExtensionFromDir(
 ): Promise<LoadedPlugin> {
   const meta = await readExtensionMeta(extensionDir);
   assertExtensionContained(meta);
+  assertSupportsThisGutterpress(meta, pluginRef);
   const resolved = resolveExtension(extensionDir, meta, `Plugin "${pluginRef}"`);
   const extensionStyles = resolved.styles ?? [];
   const name = config.name ?? meta.name ?? pluginRef;
@@ -815,6 +817,7 @@ export async function loadPlugin(
       if (loaded.packageDir) {
         const meta = await readExtensionMeta(loaded.packageDir);
         assertExtensionContained(meta);
+        assertSupportsThisGutterpress(meta, pluginRef);
         const resolved = resolveExtension(
           loaded.packageDir,
           { ...meta, main: undefined },

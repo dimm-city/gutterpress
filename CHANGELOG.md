@@ -5,6 +5,232 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.20] - 2026-10-16
+
+### Added
+
+- **A plugin or look can require a Gutterpress version.** npm's own
+  `engines.gutterpress` in its `package.json` (e.g. `">=0.11.20"`) is checked
+  when it loads; a Gutterpress outside the range refuses to load it and names
+  the version it needs, instead of building the book without the feature it
+  relies on. Prereleases count as in range. Gutterpress versions before this
+  one ignore the field.
+
+- **`pdfx.rasterDpi` sets the resolution of the pages a PDF/X build flattens.**
+  PDF/X-1a and X-3 cannot hold transparency, so Ghostscript turns each page
+  with a soft `rgba()` shadow, an alpha PNG or `opacity` into one picture, at
+  720 DPI unless told otherwise. On the 228-page Dimm City Field Guide that
+  resolution, not the content, was most of a 1.1 GB print file. Set
+  `pdfx: { rasterDpi: 300 }` to make those pictures smaller. Only the
+  flattened pages change: vector text and shapes elsewhere, and the book's own
+  images, are not resampled.
+
+- **`pdfx.transparency: preserve-text` (opt-in) keeps live text on PDF/X pages
+  that use transparency.** PDF/X-1a and X-3 (PDF 1.3) cannot hold
+  transparency, and Ghostscript flattens every page with a soft `rgba()`
+  shadow, an alpha PNG or `opacity` into one bitmap, text and fonts included.
+  With `preserve-text`, an eligible page's artwork becomes a 300 DPI picture
+  and its text stays live vector text on top, so searchable, embedded-font text
+  and the `k-only` black-text rewrite survive. Pages without transparency are
+  untouched, and page boxes and metadata are kept. A page whose text is itself
+  translucent or blended (`opacity`, `mix-blend-mode`, a soft mask, a
+  translucent or knockout group, a Type 3 font such as a synthetic bold, or a
+  pattern fill or text clip such as SVG `fill="url(#…)"` or gradient text),
+  or a page with a repeating or conic gradient, is
+  not split: it falls back to Ghostscript's
+  whole-page flattening, so its appearance is unchanged, and the build names
+  each such page's cause and the change that fixes it. On split pages rules
+  and shapes are raster and text is always on top, so text another element
+  covers shows through. The default, `flatten-page`, keeps today's behaviour
+  and warning (which now mentions the option). The new
+  `examples/with-print-effects` book shows one effect per page; see "PDF/X and
+  transparency" in `docs/publishing.md`.
+  The build reports which pages kept live text, which show no text (those are
+  not split: there is nothing to keep), and which text pages fell back, and
+  says so when no page kept its text. `pdfx.flattenPages: [4, 13]` flattens
+  chosen pages whole anyway, for a page whose cover or tint over its text must
+  stay as designed.
+
+- **`pdfx.rasterDpi` also sets the resolution of `preserve-text` artwork.**
+  Unset, that artwork is 300 DPI; whole pages Ghostscript flattens keep 720.
+
+- **Image sizes are `.gp-size-10` to `.gp-size-90`, in 10% steps, and
+  `.gp-small`, `.gp-medium`, `.gp-large`, `.gp-xl` and `.gp-xxl` are gone.**
+  The number is the image's width as a percentage of the column, in flow and
+  on pinned art alike. There is no 100% size: `.gp-full` still fills the
+  column. A book that used `.gp-small` (25%) or `.gp-medium` (50%) writes
+  `.gp-size-30` or `.gp-size-50` instead, and one that used `.gp-large` (75%
+  in 0.11.19) writes `.gp-size-70` or `.gp-size-80`; `gutterpress validate`
+  and the Problems panel report an old name as an unknown `gp-` class. In the
+  desktop app the image size menus list the nine steps, 10% to 90%.
+
+- **`page.safe` and `page.artSafe` hold the printer's two safe-area rules, and
+  the `dtrpg` preset sets both.** DriveThruRPG's quick specifications ask for
+  text at least 0.5in inside the trim, and for art that does not bleed at least
+  0.25in from the top, bottom and outside edges (0.5in at the binding).
+  `page.safe` is the text rule: 36pt (0.5in) for `dtrpg`, 18pt (0.25in) for
+  `book`. `page.artSafe` is the art rule for the top, bottom and outside edges:
+  18pt (0.25in) for `dtrpg`; where none is set (`book` and `custom` set none),
+  art follows `page.safe`. Both are points in `manifest.yaml`: the print
+  overlays read both, the `pdf.print.safe-margins` check reads `page.safe`,
+  and an image pinned to an edge sits on the art line (see Changed). The `dtrpg` preset
+  also names the DriveThruRPG article its numbers come from, which the overlays'
+  legend links to, and the manifest schema's descriptions say which rule each
+  number is.
+
+- **`page.gutter` sets how far content stays from the spine.** The binding edge
+  (the left of a right-hand page, the right of a left-hand page) takes
+  `page.gutter` points from the trim instead of `page.safe`, for text and for
+  art alike; the other edges keep `page.safe` and `page.artSafe`. Where none is
+  set it is `page.safe`, and no preset sets one. A book that keeps its text
+  0.75in from the spine under a printer's 0.5in minimum says `gutter: 54` in
+  its manifest, and the overlay stops showing the 0.25in between the two as
+  usable space: the text and art lines and the tinted strip beside the trim
+  move out at the binding, the legend says "Safe area: text — 0.5in; 0.75in at
+  the binding" (and the same for art), an image pinned to the binding edge sits
+  on the new line, and `pdf.print.safe-margins` fails text closer to the spine
+  than `page.gutter`, saying so in its detail.
+
+- **Preflight checks that your text keeps clear of the trim.** The new
+  `pdf.print.safe-margins` check reads the finished PDF and reports every line
+  of text closer to the trim than `page.safe`: 0.5in on every edge for the
+  `dtrpg` preset, DriveThruRPG's rule. It judges each page against its own
+  trim, which is the page less the bleed on the top, bottom and outside edges
+  only, and the outside edge is the right on odd pages and the left on even
+  ones. Each finding names the page, the words, the edge and how far to move
+  them in. Only text is checked: art is judged by the print overlays' Safe
+  area: art layer. It is an error for `dtrpg` books and the `dtrpg` target and a
+  warning for `book`; the `itch` target skips it, and so does a book with no
+  `page.safe`. Run it with `gutterpress validate --pdf <file> --target dtrpg`
+  or `gutterpress preflight`; a `--format pdfx` build runs it as its last step.
+  Soften or turn it off with `validate.checks` in `manifest.yaml` like any
+  other check.
+
+- **Print overlays: the bleed, the safe areas for text and for art, and your
+  page margins, each its own layer with its own colour, and a legend that says
+  what the lines mean.** The preview overlay is now four layers you can switch
+  on one at a time, so every line on the page has its own colour and its own
+  row in the legend. **Bleed** (red) draws the band outside the trim and the
+  trim line. **Safe area: text** (blue) draws the printer's text line, dashed,
+  tints the strip between it and the trim, and outlines text that strays.
+  **Safe area: art** (purple) draws the art line, dotted, and outlines art that
+  strays. Each safe area layer checks only its own rule, so with one off there
+  is nothing to outline or count for it, and where both rules are the same
+  distance their two lines lie on top of each other. **Page margins** (green)
+  draws each page's own `@page` content box as a thin solid line: it is your
+  book's choice, not the printer's, and when your margins mirror, a left-hand
+  page's box is the mirror of a right-hand page's. In the desktop app the
+  button beside the zoom menu is the switch for all of it, and the small menu
+  next to it ticks the layers, each with its colour. **Settings, App, Preview**
+  has a colour for each layer (the one colour from before becomes the text safe
+  area's) and the strength. In the CLI's preview, Alt+M hides the overlay and
+  shows again the layers you had on. The layers and their colours stay on while
+  you edit and the preview reloads. None of it touches your book: your markup
+  and your page breaks are the same with it on or off. A legend in the corner
+  of the preview has a row for each layer that is on, with its sizes in inches
+  and the edges they apply to, such as "Bleed 0.125in — top, bottom, outside;
+  none at the binding", "Safe area: text — 0.5in, every edge" and "Safe area:
+  art — 0.25in top, bottom, outside; 0.5in at the binding". It says where the
+  numbers come from, a link to the printer's specification for the `dtrpg`
+  preset and `manifest.yaml` otherwise, and what the safe area layers found:
+  "3 text outside the safe area · 1 art outside · 2 in the bleed band", or
+  "everything inside the safe area". It stays in its corner as you scroll and
+  zoom, and it is never printed. It replaces the status badge the CLI's preview
+  showed, and the desktop button's tooltip is now a one-line summary of the
+  same count. A chevron in the legend's header folds it down to its title and
+  back, and it stays as you left it when the preview reloads.
+
+### Changed
+
+- **Pinned art never moves your text, and sits on the printer's art-safe
+  line.** An image pinned to an edge (`.gp-pin` with `.gp-top`, `.gp-bottom`,
+  `.gp-left` or `.gp-right`) now sits on the art-safe line of each edge it
+  names instead of on the page margin: `page.artSafe` in from the trim on the
+  top, bottom and outside edges and `page.safe` at the binding, so 0.25in and
+  0.5in for the `dtrpg` preset (a book with neither set pins to the paper's
+  edge). The text on that page keeps the page's own margins, line for line and
+  page for page, wherever the image is pinned, in the preview and in the PDF.
+  Before, a `.gp-flush` image took the page's margin away with it and the text
+  could run into the freed strip, out to the paper's edge when the pin was on
+  a side. Page numbers and running heads on that edge keep printing where
+  they always do. A page block that paints its own background or border now
+  paints it into the freed margin, out to the paper, on the edges its pins
+  use. A centred pin is unchanged.
+
+- **`.gp-flush` is the escape hatch to the paper's edge, and Problems notes
+  it.** With `.gp-pin` and an edge, `.gp-flush` ignores the safe area
+  and puts the image on the paper's edge, where printers trim up to 0.125in.
+  `gutterpress validate` and the desktop's Problems panel now note each image
+  that uses it, once and on its line, as information rather than a warning:
+  it is a choice for art meant to bleed off the page, so a book that makes it
+  on purpose still passes without warnings. In the desktop's image properties
+  the checkbox is now "Run to the paper's edge (ignores the safe area)".
+
+- **PDF/X builds save every picture losslessly.** Converting to CMYK
+  re-encodes each colour image, and Ghostscript's default chose a low-quality
+  JPEG: flattened pages got blotches and light halos along edges that a
+  printer reproduces. Pictures are now compressed losslessly. Files with
+  photos or flattened pages grow (a flattened text page by about 5%, a
+  full-page illustration about twice); a JPEG good enough for print came out
+  larger still.
+
+- **The preview overlay takes its sizes from your print settings only, and
+  checks what is printed.** The 0.11.19 **Margins and bleed** button drew the
+  text block from your `@page` margins as if it were a safe print area, so it
+  moved whenever your margins did, and it outlined any element whose box left
+  that block. The print overlays take the page size, the bleed and the safe area
+  only from the project: `page.width`/`height`, `page.bleed`, `page.safe` and
+  `page.artSafe`. They check the ink itself, text by the text rule and art by
+  the art rule: each line of text against `page.safe`, and each image, video and
+  any box with a background or a border against `page.artSafe` (`page.safe` at
+  the binding edge). A wrapper that paints nothing is never outlined, only what
+  it holds, and the folios and running heads in your page margins are checked
+  too. Content outside its safe line is outlined amber and content past the trim
+  red; art that runs out to the edge of the page is a bleed done right and
+  passes, and art that stops short inside the bleed band is outlined red. CSS
+  `@page { bleed }` no longer feeds the overlay, and Designer mode's green
+  "safe" guide, which was the same margin box, is gone. The overlays are drawn
+  above the whole preview, outside the book's own CSS, so no stylesheet or
+  plugin can hide, move or restyle them.
+
+### Fixed
+
+- **The preview repeats a table header only where print does.** Print repeats
+  a `<thead>` on every page a table runs onto while it is
+  `display: table-header-group`, the default; a book that sets
+  `thead { display: table-row-group }` gets the header once, at the top. The
+  preview drew the repeated header for every table with a `<thead>`, whatever
+  its `display`, so a book had to hide the preview's own inserted row to match
+  its PDF. It now reads the same standard CSS (and `<tfoot>` with
+  `table-footer-group`). Where the header does repeat, the preview's copy now
+  keeps the header's colour, letter case, letter spacing and vertical
+  alignment; it kept only the font, alignment, padding, border and background,
+  so an uppercase header bar came back in the source text's case.
+
+- **A page block with a percentage height no longer costs the preview a blank
+  page.** `.page { height: 100% }` (or any percentage) resolves against the
+  block's containing block. In print that is the flow root, whose height is
+  auto in an ordinary book, so the percentage computes to auto and Gutterpress's
+  own min-height sizes the block to its page. The preview's strip had a definite
+  height, so there the percentage resolved to the full page: the block ended
+  exactly on the page's edge, and the last block of a run left a blank preview
+  page the PDF does not have (`examples/with-print-effects` with such a rule:
+  print 5 pages, preview 8, now 5 and 5). The strip now takes its height from
+  the flow root the way the block does in print, so a book that sets
+  `html, body { height: 100% }` — where print's percentage does resolve to the
+  page area — keeps the page count it had, on both sides.
+
+- **Changing the page size no longer drops the manifest's print-area
+  settings.** The `page:` block carries two kinds of numbers: the validation
+  bounds (`width`, `height`, `tolerance`) and, since this release, the print
+  area (`bleed`, `safe`, `artSafe`, `gutter`). Book settings wrote the block
+  as bounds only, so a size change, or a switch to a preset and back, silently
+  threw the print area away: a book with `page: { gutter: 54 }` lost its
+  binding allowance and its safe lines fell back to 0.5in at the spine with
+  nothing to say why. The size code now writes only its three keys, and a
+  preset removes only those three, leaving the rest of the block as the author
+  wrote it (#405).
+
 ## [0.11.19] - 2026-10-15
 
 ### Added

@@ -8,6 +8,7 @@ import { resolveActiveStyles } from "../style-resolver";
 import { inlineStyles, type AssetCopy } from "../asset-inline";
 import type { LoadedPlugin, PluginStyleGroup } from "./renderer";
 import type { PrintPadding } from "../../engine/shared/synthesis.ts";
+import type { PrintAreaSource } from "../../engine/shared/print-area.ts";
 
 export type { LayoutWarning } from "./assemble";
 
@@ -57,6 +58,8 @@ export async function renderChapters(
     title?: string;
     /** See {@link AssembleBookHtmlOptions.print}. */
     print?: PrintPadding;
+    /** See {@link AssembleBookHtmlOptions.printArea}. */
+    printArea?: PrintAreaSource;
     styles?: string[];
     files?: string[] | null;
     plugins?: LoadedPlugin[];
@@ -150,6 +153,7 @@ export async function renderChapters(
     preloadImages: cssAssetCopies.map((c) => c.to),
     title: opts.title,
     print: opts.print,
+    printArea: opts.printArea,
     plugins: opts.plugins,
     pluginCss,
     annotateSourceChapters: opts.annotateSourceChapters,
@@ -171,6 +175,8 @@ export async function renderChaptersToFile(
     title?: string;
     /** See {@link AssembleBookHtmlOptions.print}. */
     print?: PrintPadding;
+    /** See {@link AssembleBookHtmlOptions.printArea}. */
+    printArea?: PrintAreaSource;
     styles?: string[];
     files?: string[] | null;
     plugins?: LoadedPlugin[];
@@ -188,6 +194,7 @@ export async function renderChaptersToFile(
   const html = await renderChapters(inputDir, {
     title: opts.title,
     print: opts.print,
+    printArea: opts.printArea,
     styles: opts.styles,
     files: opts.files,
     plugins: opts.plugins,

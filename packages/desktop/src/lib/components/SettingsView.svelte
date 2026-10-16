@@ -8,7 +8,7 @@
   import { getPlatform } from "$lib/platform";
   import { sanitizeSettingsTab, type SettingsTab } from "$lib/settings-tabs";
   import { api } from "$lib/api";
-  import { MARGIN_OVERLAY_STRENGTHS, overlayStyleFrom } from "$lib/margin-overlay";
+  import { MARGIN_OVERLAY_STRENGTHS, OVERLAY_LAYERS, overlayStyleFrom } from "$lib/margin-overlay";
   import { friendlyHostError } from "$lib/errors";
 
   let {
@@ -192,6 +192,7 @@
 
   // ── Typed setters (one line per control, per the "one-line setting" goal) ──
   const s = $derived(settings.current);
+  const overlayStyle = $derived(overlayStyleFrom(s.preview.overlayColors, s.preview.marginOverlayStrength));
 </script>
 
 <div class="settings-view" class:embedded>
@@ -316,12 +317,12 @@
         </div>
         <div class="row">
           <div class="row-label">
-            <label for="set-overlay-strength">Margin overlay strength</label>
-            <span class="row-hint">How strongly the preview's margin &amp; bleed overlay (the toolbar button) is drawn. The bleed band shows only when your stylesheet sets a page bleed.</span>
+            <label for="set-overlay-strength">Print overlay strength</label>
+            <span class="row-hint">How strongly the preview's print overlays (the toolbar button) are drawn. The bleed and safe area come from your book's print settings (manifest.yaml); the page margins are your stylesheet's own.</span>
           </div>
           <select
             id="set-overlay-strength"
-            value={overlayStyleFrom(s.preview.marginOverlayColor, s.preview.marginOverlayStrength).strength}
+            value={overlayStyle.strength}
             onchange={(e) => settings.set({ preview: { marginOverlayStrength: (e.currentTarget as HTMLSelectElement).value as "subtle" | "normal" | "strong" } })}
           >
             {#each MARGIN_OVERLAY_STRENGTHS as o (o.value)}
@@ -329,15 +330,17 @@
             {/each}
           </select>
         </div>
-        <div class="row">
-          <label for="set-overlay-color">Margin overlay colour</label>
-          <input
-            id="set-overlay-color"
-            type="color"
-            value={overlayStyleFrom(s.preview.marginOverlayColor, s.preview.marginOverlayStrength).color}
-            oninput={(e) => settings.set({ preview: { marginOverlayColor: (e.currentTarget as HTMLInputElement).value } })}
-          />
-        </div>
+        {#each OVERLAY_LAYERS as layer (layer.id)}
+          <div class="row">
+            <label for="set-overlay-color-{layer.id}">{layer.label} overlay colour</label>
+            <input
+              id="set-overlay-color-{layer.id}"
+              type="color"
+              value={overlayStyle.colors[layer.id]}
+              oninput={(e) => settings.set({ preview: { overlayColors: { ...overlayStyle.colors, [layer.id]: (e.currentTarget as HTMLInputElement).value } } })}
+            />
+          </div>
+        {/each}
       </section>
 
       {/if}

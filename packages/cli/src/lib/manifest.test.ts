@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   MANIFEST_FILENAMES,
   resolveConfig,
+  resolveConfigForTarget,
   loadManifestWithPath,
 } from "./manifest";
 import { UsageError } from "./cli-args";
@@ -223,10 +224,95 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
     expect(resolveConfig({}, {}).page.height).toBe(810);
   });
 
+  test("page.safe is the TEXT rule and page.artSafe the ART rule: dtrpg sets DriveThruRPG's 0.5in and 0.25in, book one 0.25in, custom none; a manifest overrides each leaf", () => {
+    expect(DTRPG_PRESET.page!.safe).toBe(36);
+    expect(DTRPG_PRESET.page!.artSafe).toBe(18);
+    expect(resolveConfig({}, {}).page).toMatchObject({ safe: 36, artSafe: 18 });
+    // book: one rule — an absent artSafe means the same as safe
+    expect(resolveConfig({}, { preset: "book" }).page.safe).toBe(18);
+    expect(resolveConfig({}, { preset: "book" }).page.artSafe).toBeUndefined();
+    const custom = resolveConfig({}, { preset: "custom", page: { width: 612, height: 792 } }).page;
+    expect(custom.safe).toBeUndefined();
+    expect(custom.artSafe).toBeUndefined();
+    // leaf by leaf: mergeShape carries each preset key, the author's value wins, the other rule is untouched
+    expect(resolveConfig({}, { page: { artSafe: 9 } }).page).toMatchObject({ safe: 36, artSafe: 9 });
+    expect(resolveConfig({}, { page: { safe: 24 } }).page).toMatchObject({ safe: 24, artSafe: 18 });
+    expect(resolveConfig({ page: { artSafe: 4 } }, { page: { artSafe: 9 } }).page.artSafe).toBe(4);
+    // an explicit 0 is a rule, not "unset"
+    expect(resolveConfig({}, { page: { artSafe: 0 } }).page.artSafe).toBe(0);
+    // …including on presets that declare none (book lists artSafe as undefined; custom is resolved by hand)
+    expect(resolveConfig({}, { preset: "book", page: { artSafe: 12 } }).page.artSafe).toBe(12);
+    expect(
+      resolveConfig({}, { preset: "custom", page: { width: 612, height: 792, safe: 36, artSafe: 18 } }).page,
+    ).toMatchObject({ safe: 36, artSafe: 18 });
+    // neither moves the PDF page-size bounds
+    expect(resolveConfig({}, { page: { safe: 48, artSafe: 24 } }).page).toMatchObject({ width: 621, height: 810 });
+  });
+
+  test("page.gutter is the binding allowance: no preset sets one, a manifest does, leaf by leaf, and an explicit 0 is a gutter of none", () => {
+    expect(DTRPG_PRESET.page!.gutter).toBeUndefined();
+    expect(resolveConfig({}, {}).page.gutter).toBeUndefined();
+    expect(resolveConfig({}, { preset: "book" }).page.gutter).toBeUndefined();
+    // the manifest's value merges in on every preset (dtrpg and book list the key; custom is resolved by hand), the CLI's wins
+    expect(resolveConfig({}, { page: { gutter: 54 } }).page).toMatchObject({ safe: 36, artSafe: 18, gutter: 54 });
+    expect(resolveConfig({}, { preset: "book", page: { gutter: 36 } }).page).toMatchObject({ safe: 18, gutter: 36 });
+    expect(
+      resolveConfig({}, { preset: "custom", page: { width: 612, height: 792, safe: 36, gutter: 54 } }).page,
+    ).toMatchObject({ safe: 36, gutter: 54 });
+    expect(resolveConfig({ page: { gutter: 40 } }, { page: { gutter: 54 } }).page.gutter).toBe(40);
+    expect(resolveConfig({}, { page: { gutter: 0 } }).page.gutter).toBe(0);
+    // it moves neither the other rules nor the PDF page-size bounds
+    expect(resolveConfig({}, { page: { gutter: 54 } }).page).toMatchObject({ width: 621, height: 810, safe: 36, artSafe: 18 });
+  });
+
+  test("the resolved config says which preset it is and which printer spec that preset follows", () => {
+    const dtrpg = resolveConfig({}, {});
+    expect(dtrpg.preset).toBe("dtrpg");
+    expect(dtrpg.spec).toEqual({
+      label: "DriveThruRPG — Quick Specifications for Print Books",
+      url: "https://help.drivethrupartners.com/hc/en-us/articles/12780800178583-Quick-Specifications-for-Print-Books",
+    });
+    // presets that follow no printer's spec name none
+    expect(resolveConfig({}, { preset: "book" })).toMatchObject({ preset: "book", spec: undefined });
+    expect(resolveConfig({}, { preset: "custom", page: { width: 612, height: 792 } })).toMatchObject({
+      preset: "custom",
+      spec: undefined,
+    });
+    // a publish target's policy overlay does not change which preset the book follows
+    expect(resolveConfigForTarget({}, { preset: "book" }, "dtrpg")).toMatchObject({ preset: "book", spec: undefined });
+    expect(resolveConfigForTarget({}, {}, "dtrpg")).toMatchObject({ preset: "dtrpg", page: { safe: 36, artSafe: 18 } });
+  });
+
   test("pdfx.blackText: dtrpg defaults to k-only, book to icc, manifest overrides", () => {
     expect(resolveConfig({}, {}).pdfx.blackText).toBe("k-only");
     expect(resolveConfig({}, { preset: "book" }).pdfx.blackText).toBe("icc");
     expect(resolveConfig({}, { pdfx: { blackText: "icc" } }).pdfx.blackText).toBe("icc");
+  });
+
+  test("pdfx.transparency: every preset defaults to flatten-page, manifest opts in, typos throw", () => {
+    expect(resolveConfig({}, {}).pdfx.transparency).toBe("flatten-page");
+    expect(resolveConfig({}, { preset: "book" }).pdfx.transparency).toBe("flatten-page");
+    expect(
+      resolveConfig({}, { pdfx: { transparency: "preserve-text" } }).pdfx.transparency
+    ).toBe("preserve-text");
+    expect(() =>
+      resolveConfig({}, { pdfx: { transparency: "preserve" as never } })
+    ).toThrow(/pdfx\.transparency/);
+    // the dtrpg preset keeps rejecting alpha-channel images unless a book opts in
+    expect(resolveConfig({}, {}).validate.assets.allowAlpha).toBe(false);
+  });
+
+  test("pdfx.flattenPages and pdfx.rasterDpi: unset by default, validated when set", () => {
+    expect(resolveConfig({}, {}).pdfx.flattenPages).toEqual([]);
+    expect(resolveConfig({}, {}).pdfx.rasterDpi).toBeUndefined();
+    const set = resolveConfig({}, { pdfx: { flattenPages: [4, 13], rasterDpi: 300 } }).pdfx;
+    expect(set.flattenPages).toEqual([4, 13]);
+    expect(set.rasterDpi).toBe(300);
+    expect(() => resolveConfig({}, { pdfx: { flattenPages: [0] } })).toThrow(/pdfx\.flattenPages/);
+    expect(() => resolveConfig({}, { pdfx: { flattenPages: 4 as never } })).toThrow(/pdfx\.flattenPages/);
+    expect(() => resolveConfig({}, { pdfx: { rasterDpi: 50 } })).toThrow(/pdfx\.rasterDpi/);
+    expect(() => resolveConfig({}, { pdfx: { rasterDpi: 300.5 } })).toThrow(/pdfx\.rasterDpi/);
+    expect(() => resolveConfig({}, { pdfx: { rasterDpi: 2400 } })).toThrow(/pdfx\.rasterDpi/);
   });
 
   test("one-level-deep object (pdfx): manifest overrides flavor only, icc/stripAnnotations keep preset defaults", () => {

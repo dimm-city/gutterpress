@@ -143,6 +143,55 @@ test("setPageSetup to a preset drops a custom page: block and uses the preset's 
   }
 });
 
+test("setPageSetup keeps the page: block's print-area keys across a size change and a preset round trip", async () => {
+  const dir = await book("@page { size: 5in 7in }\n", [
+    "preset: custom",
+    "page:",
+    "  width: 360",
+    "  height: 504",
+    "  bleed: 9",
+    "  safe: 36",
+    "  artSafe: 18",
+    "  gutter: 54",
+  ]);
+  const manifest = () => readFile(path.join(dir, "manifest.yaml"), "utf8");
+  try {
+    // A new custom size rewrites width and height in place and nothing else.
+    await setPageSetup(dir, { preset: "custom", page: LETTER });
+    expect(await manifest()).toMatch(
+      /page:\s+width: 612\s+height: 792\s+bleed: 9\s+safe: 36\s+artSafe: 18\s+gutter: 54\s/,
+    );
+    // A preset owns the bounds: those keys go, the print area stays.
+    await setPageSetup(dir, { preset: "dtrpg" });
+    const asPreset = await manifest();
+    expect(asPreset).toMatch(/page:\s+bleed: 9\s+safe: 36\s+artSafe: 18\s+gutter: 54\s/);
+    expect(asPreset).not.toMatch(/width:|height:|tolerance:/);
+    expect((await readPageSetup(dir)).bounds).toEqual({ width: 621, height: 810, tolerance: 0.5 });
+    // Back to custom: the bounds return beside the untouched print area.
+    await setPageSetup(dir, { preset: "custom", page: LETTER });
+    expect(await manifest()).toMatch(
+      /page:\s+bleed: 9\s+safe: 36\s+artSafe: 18\s+gutter: 54\s+width: 612\s+height: 792\s/,
+    );
+    expect(resolveConfig({}, await loadManifest(dir)).page.gutter).toBe(54);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("setPageSetup treats an empty page: key as no block", async () => {
+  const dir = await book("@page { size: 6in 9in }\n", ["preset: custom", "page:"]);
+  const manifest = path.join(dir, "manifest.yaml");
+  try {
+    await setPageSetup(dir, { preset: "custom", page: LETTER });
+    expect(await readFile(manifest, "utf8")).toMatch(/page:\s+width: 612\s+height: 792\s/);
+    await writeFile(manifest, "title: T\nstyles:\n  - styles/book.css\npreset: custom\npage:\n", "utf8");
+    await setPageSetup(dir, { preset: "book" });
+    expect(await readFile(manifest, "utf8")).not.toContain("page:");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("setPageSetup keeps a hand-set tolerance and the manifest's comments", async () => {
   const dir = await book("@page { size: 6in 9in }\n", [
     "# keep this comment",

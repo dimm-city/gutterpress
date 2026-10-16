@@ -106,13 +106,25 @@
       else if (sourceBody.classList.contains('view-spread')) api.setViewMode('spread', true);
       else if (sourceBody.classList.contains('view-two-column')) api.setViewMode('two-column', true);
       if (sourceBody.classList.contains('debug')) api.toggleDebugMode();
-      // The margin & bleed overlay is a review aid the author switched on: a
-      // hot reload must not drop it.
-      // Its look (colour, strength) travels with it.
+      // The print overlays are a review aid the author switched on: a hot
+      // reload must not drop them. The layers that were showing and their look
+      // (a colour per layer, strength) travel with them, as the viewer
+      // recorded them on <body>.
       if (sourceBody.dataset.overlay === 'on' && api.setMarginOverlay) {
-        api.setMarginOverlay(true, {
-          color: sourceBody.style.getPropertyValue('--gp-ov-color').trim(),
-          strength: sourceBody.dataset.overlayStrength
+        var shown = (sourceBody.dataset.overlayLayers || '').split(',');
+        api.setMarginOverlay({
+          bleed: shown.indexOf('bleed') >= 0,
+          safe: shown.indexOf('safe') >= 0,
+          art: shown.indexOf('art') >= 0,
+          margins: shown.indexOf('margins') >= 0
+        }, {
+          strength: sourceBody.dataset.overlayStrength,
+          colors: {
+            bleed: sourceBody.dataset.overlayBleedColor,
+            safe: sourceBody.dataset.overlayColor,
+            art: sourceBody.dataset.overlayArtColor,
+            margins: sourceBody.dataset.overlayMarginsColor
+          }
         });
       }
     }

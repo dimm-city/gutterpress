@@ -1,6 +1,6 @@
 /**
- * `gp_pin_scope_check` — the `.gp-pin` diagnostic AND #226's `unknown_gp_class`
- * check.
+ * `gp_pin_scope_check` — the `.gp-pin` diagnostics (`pin_outside_page`,
+ * `flush_art`) AND #226's `unknown_gp_class` check.
  *
  * The split from `markers.js` is by role: that module owns the structural DOM,
  * while `.gp-pin` and the rest of the `gp-*` vocabulary are author utility
@@ -22,10 +22,11 @@ import { GP_CLASSES } from "./gutterpress-css.ts";
 
 /** Local copy of `markers.js`'s private `warn`: env.layoutWarnings is the
  * shared diagnostic channel both write to, and `markers.js` does not export
- * the helper. */
-function warn(env, line, type, message, marker) {
+ * the helper. `severity` is left off unless given; its absence reads as
+ * `warning`. */
+function warn(env, line, type, message, severity) {
   if (!env.layoutWarnings) env.layoutWarnings = [];
-  env.layoutWarnings.push({ line, type, message, marker });
+  env.layoutWarnings.push(severity ? { line, type, message, severity } : { line, type, message });
 }
 
 /**
@@ -80,6 +81,29 @@ function nearestGpClass(cls) {
 function hasPinClass(token) {
   const cls = token.attrGet && token.attrGet('class');
   return typeof cls === 'string' && cls.split(/\s+/).includes('gp-pin');
+}
+
+const PIN_EDGES = ['gp-top', 'gp-right', 'gp-bottom', 'gp-left'];
+const FLUSH_ART_MSG =
+  "`.gp-flush` puts this image on the paper's edge, past the printer's safe area. Printers trim up to 0.125in there, so keep it for art that is meant to bleed off the page.";
+
+/**
+ * `.gp-flush` is the escape hatch past the printer's art-safe line (a pin
+ * sits ON that line without it — engine/shared/pin-edges.ts), so it is said
+ * out loud, once per image, at the image's line: the same `env.layoutWarnings`
+ * channel `gutterpress validate` and the desktop's Problems panel read
+ * (`source.markdown.layout-markers`), as an `info`: the author chose the
+ * class, so it is a note, not a warning. Without `.gp-pin` and an edge word
+ * the class does nothing, so it says nothing either.
+ */
+function checkFlushArt(token, env, line) {
+  if (token.type !== 'image') return;
+  const cls = token.attrGet && token.attrGet('class');
+  if (typeof cls !== 'string') return;
+  const classes = cls.split(/\s+/);
+  if (!classes.includes('gp-pin') || !classes.includes('gp-flush')) return;
+  if (!classes.some((c) => PIN_EDGES.includes(c))) return;
+  warn(env, line, 'flush_art', FLUSH_ART_MSG, 'info');
 }
 
 /**
@@ -180,16 +204,17 @@ export default function gpPinScope(md) {
         }
       }
 
-      // unknown_gp_class (#226) — deliberately OUTSIDE the depth===0 branch
-      // above: an unknown class is checked everywhere, not just outside a
-      // page. Reuses this same top-level walk (and, for inline content, the
-      // same per-token children loop) rather than a second pass over
-      // state.tokens.
+      // unknown_gp_class (#226) and flush_art — deliberately OUTSIDE the
+      // depth===0 branch above: both are checked everywhere, not just
+      // outside a page. Reuses this same top-level walk (and, for inline
+      // content, the same per-token children loop) rather than a second pass
+      // over state.tokens.
       const line = (token.map?.[0] ?? 0) + 1;
       checkUnknownGpClasses(token, state.env, line);
       if (token.type === 'inline' && token.children) {
         for (const child of token.children) {
           checkUnknownGpClasses(child, state.env, line);
+          checkFlushArt(child, state.env, line);
         }
       }
     }

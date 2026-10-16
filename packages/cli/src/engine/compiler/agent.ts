@@ -8,6 +8,8 @@
  */
 import { leaderFillCount, LEADER_RE } from "../shared/synthesis.ts";
 import { evaluate } from "../shared/content-value.ts";
+import { paddingOf, pinEdgesIn, pinKey, type PinEdge } from "../shared/pin-edges.ts";
+import { printAreaFromMeta, type PrintArea } from "../shared/print-area.ts";
 
 export interface StringSource {
   /** string name */
@@ -443,44 +445,73 @@ declare global {
 
 
 /**
- * `.gp-flush` support, part 1 — find every page root whose pins ask for a
- * flushed edge, stamp it so the compiler's generated stylesheet can address
- * it (`data-gp-flush`), and report its AUTHOR page context (computed BEFORE
- * the generated assignment exists — the caller invokes this exactly once,
- * before it injects any flush CSS). The anchor id doubles as the root's
- * measurement id when furniture relocation needs to know its physical page.
+ * Pinned art, part 1 — find every page root whose pins name an edge (the root
+ * being their containing block — shared/pin-edges.ts), stamp it so the
+ * compiler's generated stylesheet can address it (`data-gp-pin`), and report
+ * its AUTHOR page context and its own padding on the pinned edges (both read
+ * BEFORE any pin CSS exists — the caller invokes this exactly once, before it
+ * injects any). The key groups roots that take the same generated rule. The
+ * anchor id doubles as the root's measurement id when its side or its
+ * relocated furniture needs its physical page.
  */
-export function flushRoots(): Array<{ id: string; page: string; edges: string[]; key: string }> {
-  const out: Array<{ id: string; page: string; edges: string[]; key: string }> = [];
-  for (const root of Array.from(document.querySelectorAll(".page, .spread"))) {
-    const edges = ["top", "right", "bottom", "left"].filter((edge) =>
-      root.querySelector(`.gp-pin.gp-flush.gp-${edge}`),
-    );
+export function pinRoots(): Array<{
+  id: string;
+  page: string;
+  edges: PinEdge[];
+  padding: Record<PinEdge, number>;
+  key: string;
+}> {
+  const out: ReturnType<typeof pinRoots> = [];
+  for (const root of Array.from(document.querySelectorAll<HTMLElement>(".page, .spread"))) {
+    const edges = pinEdgesIn(root);
     if (!edges.length) continue;
-    const page = getComputedStyle(root).page;
-    const key = `${page === "auto" ? "" : page}|${edges.map((e) => e[0]).join("")}`;
-    (root as HTMLElement).dataset.gpFlush = key;
-    out.push({ id: ensureAnchor(root), page, edges, key });
+    const cs = getComputedStyle(root);
+    const padding = paddingOf(cs);
+    const key = `${cs.page === "auto" ? "" : cs.page}|${pinKey(edges)}|${edges.map((e) => padding[e]).join(",")}`;
+    root.dataset.gpPin = key;
+    out.push({ id: ensureAnchor(root), page: cs.page, edges, padding, key });
   }
   return out;
 }
 
+/** The book's print area (`<meta name="gp-print-area">`): where the art-safe line is. */
+export function printArea(): PrintArea | null {
+  return printAreaFromMeta(document);
+}
+
 /**
- * `.gp-flush` support, part 2 — paint the flushed edge's margin boxes as
- * page-area content, at the slot rectangles the compiler computed from the
- * page's ORIGINAL geometry. Chromium cannot render a margin box whose margin
- * is gone (measured; see shared/flush.ts), so on flushed pages the engine is
- * the furniture painter — exactly as the viewer already is on every page.
+ * Pinned art, part 2 — a pin root's own declarations for the side it landed
+ * on (`pinRootStyle`, computed by the compiler): the freed margins back as
+ * padding and the pin box's insets, inline on the root. The generated
+ * stylesheet already carries the recto values; this corrects a root once its
+ * page is measured. Idempotent: each call sets the same properties again.
+ */
+export function setPinGeometry(items: Array<{ id: string; style: Record<string, string> }>): number {
+  let set = 0;
+  for (const item of items) {
+    const host = anchorHost(item.id) as HTMLElement | null;
+    if (!host) continue;
+    for (const [prop, value] of Object.entries(item.style)) host.style.setProperty(prop, value);
+    set++;
+  }
+  return set;
+}
+
+/**
+ * Pinned art, part 3 — paint a freed edge's margin boxes as page-area
+ * content, at the slot rectangles the compiler computed from the page's
+ * ORIGINAL geometry. Chromium cannot render a margin box whose margin is gone
+ * (measured; see shared/pin-edges.ts), so on those pages the engine is the
+ * furniture painter — exactly as the viewer already is on every page.
  *
- * Coordinates are px relative to the page ROOT's border box, which the flush
- * machinery has already stretched to the (grown) page area — the same
- * root-is-the-page-area assumption `.gp-pin` itself rests on. Idempotent per
+ * Coordinates are px relative to the page ROOT's padding box, which fills the
+ * (grown) page area — the box the pin itself is positioned in. Idempotent per
  * root: each call replaces the previous furniture, so fixpoint passes
  * converge instead of stacking copies. Styling mirrors the viewer's
  * `.gp-marginbox` slot/content split; z-index puts furniture above content,
  * as CSS Paged Media §3.1 paints native margin boxes.
  */
-export function setFlushFurniture(
+export function setPinFurniture(
   items: Array<{
     id: string;
     boxes: Array<{
@@ -499,10 +530,10 @@ export function setFlushFurniture(
   for (const item of items) {
     const host = anchorHost(item.id) as HTMLElement | null;
     if (!host) continue;
-    let layer = host.querySelector(":scope > .gp-flush-furniture") as HTMLElement | null;
+    let layer = host.querySelector(":scope > .gp-pin-furniture") as HTMLElement | null;
     if (!layer) {
       layer = document.createElement("div");
-      layer.className = "gp-flush-furniture";
+      layer.className = "gp-pin-furniture";
       layer.setAttribute("aria-hidden", "true");
       layer.setAttribute(
         "style",
@@ -544,8 +575,10 @@ const api = {
   instrument,
   addCss,
   setGenerated,
-  flushRoots,
-  setFlushFurniture,
+  pinRoots,
+  printArea,
+  setPinGeometry,
+  setPinFurniture,
 };
 
 if (typeof window !== "undefined") window.__gp = api;

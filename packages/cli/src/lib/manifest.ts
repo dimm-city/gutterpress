@@ -321,6 +321,9 @@ function resolveCustomPage(
     height: height!,
     tolerance: c.page?.tolerance ?? m.page?.tolerance ?? 0.5,
     bleed: c.page?.bleed ?? m.page?.bleed,
+    safe: c.page?.safe ?? m.page?.safe,
+    artSafe: c.page?.artSafe ?? m.page?.artSafe,
+    gutter: c.page?.gutter ?? m.page?.gutter,
   };
 }
 
@@ -399,6 +402,28 @@ function resolveWithPreset(
       `Manifest field \`print.lastPage\` must be "blank" or "short-by-one", got ${JSON.stringify(lastPage)}.`
     );
   }
+  // A mistyped `pdfx.transparency` would otherwise silently keep the default.
+  const transparency = c.pdfx?.transparency ?? m.pdfx?.transparency;
+  if (transparency !== undefined && transparency !== "flatten-page" && transparency !== "preserve-text") {
+    throw new UsageError(
+      `Manifest field \`pdfx.transparency\` must be "flatten-page" or "preserve-text", got ${JSON.stringify(transparency)}.`
+    );
+  }
+  const flattenPages = c.pdfx?.flattenPages ?? m.pdfx?.flattenPages;
+  if (
+    flattenPages !== undefined &&
+    !(Array.isArray(flattenPages) && flattenPages.every((n) => Number.isInteger(n) && n >= 1))
+  ) {
+    throw new UsageError(
+      `Manifest field \`pdfx.flattenPages\` must be a list of page numbers (1, 2, …), got ${JSON.stringify(flattenPages)}.`
+    );
+  }
+  const rasterDpi = c.pdfx?.rasterDpi ?? m.pdfx?.rasterDpi;
+  if (rasterDpi !== undefined && !(Number.isInteger(rasterDpi) && rasterDpi >= 72 && rasterDpi <= 1200)) {
+    throw new UsageError(
+      `Manifest field \`pdfx.rasterDpi\` must be a whole number from 72 to 1200, got ${JSON.stringify(rasterDpi)}.`
+    );
+  }
   // Extensions, in manifest order — which IS the load order and the cascade
   // order; nothing re-sorts them. An entry with `enabled: false` (#30) stays
   // in the manifest but is skipped here so it is never loaded.
@@ -414,6 +439,8 @@ function resolveWithPreset(
   return {
     title: c.title ?? m.title ?? "Document",
     authors: c.authors ?? m.authors ?? [],
+    preset: preset.id,
+    spec: preset.spec,
     // No preset fallback here — resolveActiveStyles (style-resolver.ts)
     // is the single source of default-stylesheet truth (styles/book.css, else
     // the first discovered .css, else []). Baking a preset default in here

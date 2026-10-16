@@ -92,6 +92,10 @@ describe("overlayPreset", () => {
       enabled: true,
       severity: "error",
     });
+    expect(overlaid.validate.checks["pdf.print.safe-margins"]).toEqual({
+      enabled: true,
+      severity: "error",
+    });
     expect(overlaid.validate.assets.allowedColorSpaces).toEqual(
       DTRPG_PRESET.validate.assets.allowedColorSpaces
     );
@@ -106,6 +110,7 @@ describe("overlayPreset", () => {
     expect(overlaid.validate.checks["pdf.print.pdfx-markers"]).toBe(false);
     expect(overlaid.validate.checks["pdf.print.pdfx-metadata"]).toBe(false);
     expect(overlaid.validate.checks["pdf.print.ink-coverage"]).toBe(false);
+    expect(overlaid.validate.checks["pdf.print.safe-margins"]).toBe(false);
     expect(overlaid.validate.assets.allowedColorSpaces).toEqual([
       "RGB",
       "CMYK",

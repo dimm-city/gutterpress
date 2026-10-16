@@ -104,24 +104,52 @@ command produces a PDF in a `dist/` directory next to your project.
 
 Gutterpress supports Chrome, Edge, and other Chromium-based browsers — and nothing else. Firefox and Safari are not supported: the PDF always renders in Chromium, so a preview in another engine measures text differently and places page breaks the PDF will not reproduce. The desktop app previews in its own bundled Chromium, so it always matches; if you preview from the CLI, open the URL it prints in a Chromium-based browser. Either way, embed your fonts with `@font-face` instead of relying on system fonts, so the preview measures the same fonts the PDF prints.
 
-### Check Margins and Bleed
+### Print Overlays {#print-overlays}
 
-The preview can draw each page's margins and bleed on top of your book, so you can see how content sits against them and spot anything that spills over. It is a review aid only: it never prints, never appears in an exported PDF or a published page, and never moves your content or changes a page break.
+The preview can draw the printer's bleed and safe-area rules on top of every page, so you can see what will be cut and spot a line of text or a picture that sits too close to the edge. It is a review aid only: it never prints, never appears in an exported PDF or a published page, and never moves your content or changes a page break.
 
-- **Desktop app:** the **Margins and bleed** button at the top right of the preview (next to the zoom menu) switches it on and off, in Read and in Edit. The app remembers your choice.
-- **`gutterpress preview`:** press **Alt+M** in the browser. A small badge in the corner shows what it found; press **Alt+M** again to hide it.
+There are four layers. Each has its own colour (you can change them, below) and its own switch, so every line on the page has its own row in the legend:
 
-With it on, every page shows:
+@section
 
-- a **dashed blue outline** — the margin box, where your text is laid out — with the margin area around it **tinted** so it reads as a region;
-- a **translucent red band** around the page edge, the **bleed** — the extra area a printer needs, with a solid red line at the trim where the page is cut (only when your stylesheet sets a bleed, see below);
-- an **amber outline** on anything that reaches past the margin box into the margin;
-- a **red outline** on anything that crosses the trim into the bleed band or beyond it (cut off in print);
-- a **dotted violet outline**, softly, on art you placed on purpose — `.gp-bleed` images, `.gp-pin` / `.gp-flush` pinned art, `.gp-behind` images and `@page full-bleed` pages. These are expected to leave the text area, so they are shown but not counted. The badge and the desktop button count the amber and red ones.
+| Layer | What it draws | Colour |
+|-------|---------------|--------|
+| **Bleed** | A tinted band outside the trim, and a solid line where the page is cut | Red |
+| **Safe area: text** | The printer's safe line for text, **dashed**, with the strip between it and the trim tinted | Blue |
+| **Safe area: art** | The printer's safe line for art that does not bleed, **dotted** | Purple |
+| **Page margins** | The box your own `@page` margins leave for text, as a thin solid line. It is your book's choice, not the printer's | Green |
 
-Page size and margins (including `@page :left` / `:right`) come from your own `@page` rules. The bleed comes from one of two places. **If your stylesheet declares `@page { bleed }`, that is drawn** as a band around the page edge. **Otherwise, a `dtrpg` book uses its preset's bleed:** DriveThruRPG's 8.625×11.25in file already contains a 0.125in bleed on the top, bottom and outer edges (the right edge of a right-hand page, the left edge of a left-hand one) and none on the binding edge, so the band and the solid trim line are drawn *inside* the page on those three edges. (CSS `bleed` cannot say that — it adds the same bleed on every side outside the page — so the preset records it for the preview only; your PDF is unchanged. Set `page: { bleed: … }` in `manifest.yaml`, in points, to override it.) If neither declares a bleed, you see the margins but no band, and the desktop button's tooltip (or the CLI badge) says "No bleed set"; add `bleed: 0.125in;` to your `@page` rule to see it. On a book with mirrored margins, every page shows its own margin box: left-hand pages sit where the PDF puts them (the preview slides each left-hand page sideways by the difference between its margins and the right-hand page's), so the dashed outline on a left-hand page is its `:left` margin box and the text sits inside it just as it will in print.
+@end-section
 
-To make the overlay more or less prominent, or to change its colour, use the desktop app's **Settings → App → Preview**: **Margin overlay strength** (Subtle, Normal, Strong) and **Margin overlay colour**. These are app settings; there is nothing to add to your book's CSS. `gutterpress preview` always uses the Normal look.
+When the two safe areas are the same distance (the `book` preset sets one distance for both), the two lines lie on top of each other. Switch one layer off to see the other alone.
+
+With **Safe area: text** or **Safe area: art** on, anything that strays from its safe line is outlined. Each layer outlines only what its own rule covers: **Safe area: text** checks text line by line, and **Safe area: art** checks pictures, videos and any box with a background or a border. A box that paints nothing is never outlined, only what it holds, and the folios and running heads in your page margins are checked too. The outlines are:
+
+- an **amber outline** on a line of text, a picture or a box that leaves its safe line but stays on the trimmed page;
+- a **red outline** on anything that crosses the trim into the bleed band or off the page. Art that runs all the way to the edge of the page is a good bleed and is left alone; art that stops partway into the bleed band is outlined;
+- a **dotted pink outline**, softly, on art you placed on purpose: `.gp-bleed` images, `.gp-pin` / `.gp-flush` pinned art, `.gp-behind` images and `@page full-bleed` pages. These are expected to reach the edge, so they are shown but not counted.
+
+**The legend.** A small legend in the bottom-right corner of the preview stays put as you scroll and zoom. It has a row for each layer that is on, with its colour and its sizes in inches, where the numbers come from, and what the safe area layers found:
+
+```
+Bleed 0.125in — top, bottom, outside; none at the binding
+Safe area: text — 0.5in, every edge
+Safe area: art — 0.25in top, bottom, outside; 0.5in at the binding
+Page margins — your stylesheet's @page margins
+from DriveThruRPG — Quick Specifications for Print Books
+3 text outside the safe area · 1 art outside · 2 in the bleed band
+```
+
+*Outside* is the edge away from the spine and *binding* is the edge at the spine: on a right-hand (odd) page the binding edge is the left one, and page 1 is a right-hand page. The source line links to the printer's article when your preset has one; otherwise it names `manifest.yaml`. The last line counts only what the safe area layers that are on look at: text for **Safe area: text**, art for **Safe area: art**, and whatever either finds in the bleed band or off the page. A clean book says "everything inside the safe area", or "all text inside the safe area" or "all art inside the safe area" when only one of the two is on. When the legend is in your way, the chevron beside its **Print overlays** title folds it down to that title; click it again to open it. The preview keeps it as you left it.
+
+To switch the overlays on:
+
+- **Desktop app:** the **print overlays** button at the top right of the preview (next to the zoom menu) switches the overlays on and off, in Read and in Edit. The small arrow beside it opens a menu with a tick box and a colour swatch for each layer. A number on the button counts what the safe area layers found, and hovering shows a one-line summary. The app remembers your choices.
+- **`gutterpress preview`:** press **Alt+M** in the browser to show all four layers, and **Alt+M** again to hide them (the legend's last line says so). There is no layer menu in the browser: you get all four, in the default colours.
+
+To change the colours or how bold the lines are, use the desktop app's **Settings → App → Preview**: **Print overlay strength** (Subtle, Normal, Strong) and one colour each for **Bleed**, **Safe area: text**, **Safe area: art** and **Page margins**. These are app settings; there is nothing to add to your book's CSS. `gutterpress preview` always uses the default colours and the Normal strength.
+
+**The numbers come from your project's print settings, never from your book's styles.** They are `page.bleed`, `page.safe` and `page.artSafe` in `manifest.yaml`, or your preset's values when you set none ([DriveThruRPG Requirements](#dtrpg-requirements) and [Bleed and Safe Area Settings](#bleed-safe-settings) below list them). Only the Page margins layer reads your stylesheet, because it shows your `@page` margins; moving your margins never moves the printer's lines. No stylesheet or plugin can hide, move or restyle the overlays: they are drawn above the whole preview, apart from the book. If the project sets no bleed or no safe area, that part is not drawn and the legend says which setting to add.
 
 ## Project Structure
 
@@ -206,6 +234,59 @@ Common book trim sizes in points (72pt = 1 inch):
 | A5 | 420 | 595 | Pocket guides |
 
 @end-section
+
+### DriveThruRPG Requirements {#dtrpg-requirements}
+
+These are DriveThruRPG's print-on-demand rules for an 8.5×11in interior, from DriveThru Partners' help articles [Quick Specifications for Print Books](https://help.drivethrupartners.com/hc/en-us/articles/12780800178583-Quick-Specifications-for-Print-Books) and [Correcting Most Common Print Errors](https://help.drivethrupartners.com/hc/en-us/articles/12780799485335-Correcting-Most-Common-Print-Errors). The `dtrpg` preset is set up to meet them; the last column says where Gutterpress shows or checks each one.
+
+@section
+
+| Rule | DriveThruRPG asks for | In Gutterpress |
+|------|-----------------------|----------------|
+| File size | 8.625×11.25in (621×810pt): the trim plus the bleed | `dtrpg` preset; the page-size check |
+| Bleed | 0.125in (9pt) on the top, bottom and outside edges; none at the binding edge | **Bleed** layer |
+| Text | At least 0.5in (36pt) inside the trim, on every edge | **Safe area: text** layer; [the safe-margins check](#safe-margins-check) |
+| Art that does not bleed | At least 0.25in (18pt) from the top, bottom and outside edges; 0.5in (36pt) from the binding edge | **Safe area: art** layer |
+| PDF | PDF/X-1a:2001 or PDF/X-3:2002, every font embedded, CMYK or greyscale images, ICC profile CGATS21_CRPC1 | `--format pdfx` build; the PDF/X, font and colour checks |
+| Ink | Total area coverage of 240% or less | The ink-coverage check |
+| Page count | US Letter prints in 4-page signatures, and the file ends on a blank page | `dtrpg` preset pads the book; the signature check |
+
+@end-section
+
+The trim is the page after it is cut. The file is the trim plus the bleed on the top, bottom and outside edges only. The checks are covered in [Chapter 6](#ch-validation), and the tools they need in [Chapter 7](#ch-system).
+
+### Bleed and Safe Area Settings {#bleed-safe-settings}
+
+Four `page:` settings in `manifest.yaml` tell the print overlays where the trim and the printer's safe lines are. They are in points (72pt = 1 inch), and your preset fills them in when you set none:
+
+@section
+
+| Setting | What it is | `dtrpg` | `book` |
+|---------|------------|---------|--------|
+| `page.bleed` | The bleed your page size already contains, on the top, bottom and outside edges (none at the binding edge) | 9 (0.125in) | none |
+| `page.safe` | The text rule: how far inside the trim text must stay, on every edge (the binding edge too, unless you set `page.gutter`) | 36 (0.5in) | 18 (0.25in) |
+| `page.artSafe` | The art rule: how far inside the trim art that does not bleed must stay, on the top, bottom and outside edges; the binding edge uses `page.gutter`, and where none is set art follows `page.safe` on every edge | 18 (0.25in) | none |
+| `page.gutter` | The binding allowance: how far from the spine text and art stay, instead of `page.safe`, at the binding edge only. Set it when your book keeps its text further from the spine than the printer's minimum, so the lines show the distance your book commits to; where none is set it is `page.safe` | none | none |
+
+@end-section
+
+The `custom` preset sets none of the four, so add your own to see the bleed and the safe lines.
+
+Three things read these settings: the preview's print overlays (all four), pinned art (print and preview both place it on the art-safe line, `page.gutter` at the binding) and the safe-margins check (`page.bleed`, `page.safe` and `page.gutter`, to find the trim and the text line). The overlays and the check change nothing in your PDF, and no stylesheet moves any of these lines. To hold a `book` to DriveThruRPG's text and art rules:
+
+```yaml
+preset: book
+page:
+  safe: 36      # text at least 0.5in inside the trim
+  artSafe: 18   # art at least 0.25in from the outside edges
+```
+
+A book whose inner margin is wider than the printer's minimum says so with `page.gutter`, in the manifest and not in the stylesheet. With this, the binding lines sit 0.75in from the trim, and the legend says "Safe area: text — 0.5in; 0.75in at the binding":
+
+```yaml
+page:
+  gutter: 54    # text and art at least 0.75in from the spine
+```
 
 ## File Organization
 

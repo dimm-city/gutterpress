@@ -80,6 +80,7 @@ const DTRPG_TARGET: PublishTarget = {
         "pdf.print.pdfx-markers": { enabled: true, severity: "error" },
         "pdf.print.pdfx-metadata": { enabled: true, severity: "error" },
         "pdf.print.embedded-fonts": { enabled: true, severity: "error" },
+        "pdf.print.safe-margins": { enabled: true, severity: "error" },
       },
       assets: {
         allowedColorSpaces: [...DTRPG_PRESET.validate.assets.allowedColorSpaces],
@@ -95,6 +96,7 @@ const DTRPG_TARGET: PublishTarget = {
     "pdf.print.pdfx-markers",
     "pdf.print.pdfx-metadata",
     "pdf.print.embedded-fonts",
+    "pdf.print.safe-margins",
   ],
   // qpdf: PDF/X marker/metadata verification (and annotation stripping at
   // build time); gs: the PDF/X CMYK conversion itself plus ink-coverage.
@@ -118,6 +120,7 @@ const ITCH_TARGET: PublishTarget = {
         "pdf.print.pdfx-markers": false,
         "pdf.print.pdfx-metadata": false,
         "pdf.print.ink-coverage": false,
+        "pdf.print.safe-margins": false,
         "asset.image.tac-raster": false,
       },
       assets: {
