@@ -7,8 +7,8 @@ import {
   connectPublishProvider,
   connectGoogleDrive,
   disconnectPublishCredential,
-  listPublishProviders,
-  publishProviderFor,
+  listBookPublishProviders,
+  resolvePublishProvider,
   publishConnectionStatus,
   publishCredentialKey,
   listPublishAccounts,
@@ -19,6 +19,7 @@ import {
   type PublishDeps,
   type RunPublishResult,
 } from "../index.ts";
+import { BuildError } from "../lib/build-error.ts";
 import {
   EXIT_CODES,
   UsageError,
@@ -37,6 +38,8 @@ import {
  *                                                   #   browser instead — nothing to paste
  *   gutterpress publish --provider itch --disconnect   # forget the stored key
  *   gutterpress publish --provider itch [dir]          # publish (add --dry-run / --json)
+ *   gutterpress publish --provider <package> [dir]     # via a book's publishing plugin
+ *                                                   #   (experimental, #381)
  *
  * Credentials live in the 0600 user-config credential store (never in the
  * project); provider env vars (BUTLER_API_KEY, SWA_CLI_DEPLOYMENT_TOKEN,
@@ -110,7 +113,8 @@ const commandArgs = {
   },
   provider: {
     type: "string",
-    description: "Provider id: itch | drivethrurpg | kdp | azure-swa | shopify | gdrive",
+    description:
+      "Provider id: itch | drivethrurpg | kdp | azure-swa | shopify | gdrive, or a publishing plugin's package name (experimental)",
   },
   list: { type: "boolean", description: "List providers and connection status" },
   connect: {
@@ -191,7 +195,10 @@ export default defineCommand({
         // provider's static `format` below, exactly like before this fix.
       }
 
-      const providers = listPublishProviders();
+      const providers = await listBookPublishProviders({
+        projectDir,
+        ...(manifestArg !== undefined ? { manifestPath: manifestArg } : {}),
+      });
       const rows = await Promise.all(
         providers.map(async (p) => {
           const status = await publishConnectionStatus(p, deps);
@@ -206,6 +213,7 @@ export default defineCommand({
             format: resolvePublishFormat(p, providerConfig),
             connected: status.connected,
             accounts,
+            ...(p.experimental ? { experimental: true as const } : {}),
           };
         }),
       );
@@ -213,8 +221,13 @@ export default defineCommand({
         process.stdout.write(JSON.stringify(rows, null, 2) + "\n"); // not console.log: see checks/formatter.ts
       } else {
         for (const r of rows) {
-          const status =
-            r.kind === "guided" ? "no key needed" : r.connected ? "connected" : "not connected";
+          const status = r.experimental
+            ? "experimental"
+            : r.kind === "guided"
+              ? "no key needed"
+              : r.connected
+                ? "connected"
+                : "not connected";
           log.info(
             `${r.id.padEnd(13)} ${r.label.padEnd(22)} ${r.kind.padEnd(6)} ${r.format.padEnd(4)} ${status}`,
           );
@@ -230,18 +243,24 @@ export default defineCommand({
     const providerId = typeof args.provider === "string" ? args.provider : "";
     if (!providerId) {
       log.error(
-        "Specify a provider: gutterpress publish --provider <itch|drivethrurpg|kdp|azure-swa|shopify|gdrive> (or --list).",
+        "Specify a provider: gutterpress publish --provider <itch|drivethrurpg|kdp|azure-swa|shopify|gdrive> " +
+          "or a publishing plugin's package name (or --list).",
       );
       process.exit(EXIT_CODES.USAGE);
     }
+    const projectDir = path.resolve((args.project as string | undefined) ?? ".");
     let provider;
     try {
-      provider = publishProviderFor(providerId);
+      // A built-in resolves exactly as before; any other id is looked up
+      // among the book's publishing plugins, restored first if missing.
+      provider = await resolvePublishProvider(providerId, {
+        projectDir,
+        ...(typeof args.manifest === "string" ? { manifestPath: args.manifest } : {}),
+      });
     } catch (e) {
       log.error(e instanceof Error ? e.message : String(e));
-      process.exit(EXIT_CODES.USAGE);
+      process.exit(e instanceof BuildError ? e.exitCode : EXIT_CODES.USAGE);
     }
-    const projectDir = path.resolve((args.project as string | undefined) ?? ".");
 
     const account = typeof args.account === "string" ? args.account.trim() : "";
 
@@ -258,7 +277,9 @@ export default defineCommand({
     if (args.connect) {
       if (!provider.info.credential.required) {
         log.info(
-          `${provider.info.label} is a guided provider — no API key needed. Just run: gutterpress publish --provider ${provider.info.id}`,
+          provider.info.experimental
+            ? `${provider.info.label} is a publishing plugin — it manages its own credentials (see its documentation). Just run: gutterpress publish --provider ${provider.info.id}`
+            : `${provider.info.label} is a guided provider — no API key needed. Just run: gutterpress publish --provider ${provider.info.id}`,
         );
         return;
       }
