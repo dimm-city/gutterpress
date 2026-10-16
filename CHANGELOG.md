@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.21] - 2026-10-16
+
 ### Removed
 
 - **Three source-image checks and one PDF heuristic that warned about things
