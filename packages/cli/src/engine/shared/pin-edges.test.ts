@@ -54,14 +54,24 @@ describe("pin-edge policy", () => {
 
 describe("the art-safe line", () => {
   // dtrpg: a 9pt bleed inside the sheet, art 18pt in from the trim, 36pt at the binding
-  const dtrpg = { bleed: 9, safe: 36, artSafe: 18 };
+  // (a book that sets no gutter gets `safe`, 36, there)
+  const dtrpg = { bleed: 9, artSafe: 18, gutter: 36 };
 
-  test("bleed + artSafe on the top, bottom and outside edge; safe at the binding", () => {
+  test("bleed + artSafe on the top, bottom and outside edge; the gutter at the binding", () => {
     const all = ["top", "right", "bottom", "left"] as const;
     // a recto binds on its left
     expect(pinInsets(dtrpg, "recto", all)).toEqual({ top: 27, right: 27, bottom: 27, left: 36 });
     // a verso binds on its right
     expect(pinInsets(dtrpg, "verso", all)).toEqual({ top: 27, right: 36, bottom: 27, left: 27 });
+  });
+
+  test("a gutter moves the binding edge's line, the left of a recto and the right of a verso, and no other", () => {
+    const wide = { ...dtrpg, gutter: 54 };
+    const all = ["top", "right", "bottom", "left"] as const;
+    expect(pinInsets(wide, "recto", all)).toEqual({ top: 27, right: 27, bottom: 27, left: 54 });
+    expect(pinInsets(wide, "verso", all)).toEqual({ top: 27, right: 54, bottom: 27, left: 27 });
+    // no bleed at the binding: the gutter is the whole distance from the paper's edge there
+    expect(pinInsets({ ...wide, bleed: 0 }, "recto", ["left"])).toEqual({ top: 0, right: 0, bottom: 0, left: 54 });
   });
 
   test("an edge the pins do not use stays at 0: the text block's own edge", () => {
@@ -83,8 +93,10 @@ describe("the art-safe line", () => {
       "--gp-pin-bottom": "36px",
       "--gp-pin-left": "0px",
     });
-    // on a verso the right edge is the binding: safe, no bleed
+    // on a verso the right edge is the binding: the gutter, no bleed
     expect(pinRootStyle(margin, dtrpg, "verso", ["right"])["--gp-pin-right"]).toBe("48px");
+    // …and a gutter of 54pt is 72px there
+    expect(pinRootStyle(margin, { ...dtrpg, gutter: 54 }, "verso", ["right"])["--gp-pin-right"]).toBe("72px");
   });
 
   test("a root's own padding is kept: the freed margin is added to it, on the freed edges only", () => {

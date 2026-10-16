@@ -127,7 +127,7 @@ smaller, more pages, different pagination) appears far from the cause.
   its strip wrapper is positioned and one page tall). An edge pin never moves
   the text: both engines free that page's margin on the pinned edges, give
   the page root the margin back as padding, and inset the pin by the
-  printer's art-safe line (`page.artSafe`/`page.safe`, through
+  printer's art-safe line (`page.artSafe`/`page.gutter`, through
   `--gp-pin-<edge>` on the root); `.gp-flush` zeroes those insets for art
   that runs to the paper, and the markdown check notes it (`flush_art`, an
   info). Same caveat as Fix B: the pin anchors to the CONTAINER, so keep

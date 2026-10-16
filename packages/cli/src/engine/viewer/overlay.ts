@@ -30,9 +30,10 @@
  * manifest and its preset, and nothing else — `page.width` x `page.height`
  * (the sheet), `page.bleed` (a bleed the sheet already contains on the top,
  * bottom and OUTER edge; the binding edge has none, as DriveThruRPG cuts it),
- * `page.safe` (the TEXT rule: its inset from the trim on every edge) and
- * `page.artSafe` (the ART rule: its inset on the top, bottom and outer edge,
- * while the binding edge takes `safe`; absent = `safe`). The markdown assembly
+ * `page.safe` (the TEXT rule: its inset from the trim on every edge),
+ * `page.artSafe` (the ART rule: its inset on the top, bottom and outer edge;
+ * absent = `safe`) and `page.gutter` (the binding edge's inset, for text and
+ * art alike; absent = `safe`). The markdown assembly
  * hands them in as `<meta name="gp-print-area">` (shared/print-area.ts), with
  * the preset's id and the printer spec it follows, which only word what is
  * found. No book or plugin
@@ -88,9 +89,9 @@ export interface PageBoxes {
   sheet: Rect;
   /** the cut page */
   trim: Rect;
-  /** where TEXT is safe from the cut: the trim inset by `safe` */
+  /** where TEXT is safe from the cut: the trim inset by `safe`, and by `gutter` at the binding */
   safe: Rect;
-  /** where ART is safe from the cut: the trim inset by `artSafe`, and by `safe` at the binding */
+  /** where ART is safe from the cut: the trim inset by `artSafe`, and by `gutter` at the binding */
   safeArt: Rect;
   bleed: number;
 }
@@ -99,8 +100,9 @@ export interface PageBoxes {
  * Boxes for one page. The trim is the sheet pulled in by `bleed` on the top,
  * bottom and OUTER edge — the right edge of a recto, the left edge of a verso;
  * the binding edge has no bleed. The text box is the trim pulled in by `safe`
- * on every edge; the art box is pulled in by `artSafe` on the top, bottom and
- * outer edge and by `safe` on the binding edge (left of a recto, right of a verso).
+ * on the top, bottom and outer edge and by `gutter` on the binding edge (left
+ * of a recto, right of a verso); the art box is pulled in by `artSafe` on the
+ * top, bottom and outer edge and by `gutter` on the binding edge.
  */
 export function pageBoxes(area: PrintArea, side: PageSide, scale = 1): PageBoxes {
   const w = area.width * scale;
@@ -108,16 +110,23 @@ export function pageBoxes(area: PrintArea, side: PageSide, scale = 1): PageBoxes
   const b = Math.max(0, area.bleed) * scale;
   const s = Math.max(0, area.safe) * scale;
   const a = Math.max(0, area.artSafe) * scale;
-  const [left, right] = side === "verso" ? [a, s] : [s, a];
+  const g = Math.max(0, area.gutter) * scale;
+  const [textLeft, textRight] = side === "verso" ? [s, g] : [g, s];
+  const [artLeft, artRight] = side === "verso" ? [a, g] : [g, a];
   const trim = { x: side === "verso" ? b : 0, y: b, w: Math.max(0, w - b), h: Math.max(0, h - 2 * b) };
   return {
     sheet: { x: 0, y: 0, w, h },
     trim,
-    safe: { x: trim.x + s, y: trim.y + s, w: Math.max(0, trim.w - 2 * s), h: Math.max(0, trim.h - 2 * s) },
+    safe: {
+      x: trim.x + textLeft,
+      y: trim.y + s,
+      w: Math.max(0, trim.w - textLeft - textRight),
+      h: Math.max(0, trim.h - 2 * s),
+    },
     safeArt: {
-      x: trim.x + left,
+      x: trim.x + artLeft,
       y: trim.y + a,
-      w: Math.max(0, trim.w - left - right),
+      w: Math.max(0, trim.w - artLeft - artRight),
       h: Math.max(0, trim.h - 2 * a),
     },
     bleed: b,
@@ -276,7 +285,7 @@ export interface OverlayPage {
  */
 function sheetArea(sheet: HTMLElement): PrintArea {
   const px = (name: string) => parseFloat(sheet.style.getPropertyValue(name)) || 0;
-  return { width: px("--gp-page-w") / PX_PER_PT, height: px("--gp-page-h") / PX_PER_PT, bleed: 0, safe: 0, artSafe: 0 };
+  return { width: px("--gp-page-w") / PX_PER_PT, height: px("--gp-page-h") / PX_PER_PT, bleed: 0, safe: 0, artSafe: 0, gutter: 0 };
 }
 
 /**
@@ -663,6 +672,8 @@ function legend(layers: OverlayLayers, area: PrintArea | null, summary: OverlayS
     add("gp-ov-row", swatch, label);
   };
   const { bleedPt, safePt, artSafePt, counts } = summary;
+  // the binding edge's inset for text and art: `page.gutter`, which is `page.safe` unless the book sets it
+  const gutterPt = area?.gutter ?? safePt;
   if (layers.bleed) {
     row(
       "bleed",
@@ -676,7 +687,11 @@ function legend(layers: OverlayLayers, area: PrintArea | null, summary: OverlayS
     row(
       "safe",
       "Safe area: text",
-      safePt > 0 ? ` — ${ptIn(safePt)}, every edge` : " — none set (page.safe in manifest.yaml)",
+      safePt <= 0
+        ? " — none set (page.safe in manifest.yaml)"
+        : gutterPt === safePt
+          ? ` — ${ptIn(safePt)}, every edge`
+          : ` — ${ptIn(safePt)}; ${ptIn(gutterPt)} at the binding`,
     );
   }
   if (layers.art) {
@@ -685,9 +700,9 @@ function legend(layers: OverlayLayers, area: PrintArea | null, summary: OverlayS
       "Safe area: art",
       safePt <= 0 && artSafePt <= 0
         ? " — none set (page.artSafe in manifest.yaml)"
-        : artSafePt === safePt
+        : artSafePt === gutterPt
           ? ` — ${ptIn(artSafePt)}, every edge`
-          : ` — ${ptIn(artSafePt)} top, bottom, outside; ${ptIn(safePt)} at the binding`,
+          : ` — ${ptIn(artSafePt)} top, bottom, outside; ${ptIn(gutterPt)} at the binding`,
     );
   }
   if (layers.margins) row("margins", "Page margins", " — your stylesheet's @page margins");

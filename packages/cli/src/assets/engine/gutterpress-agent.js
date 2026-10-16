@@ -341,6 +341,7 @@
         bleed: n(v.bleed),
         safe,
         artSafe: typeof v.artSafe === "number" ? n(v.artSafe) : safe,
+        gutter: typeof v.gutter === "number" ? n(v.gutter) : safe,
         preset: typeof v.preset === "string" ? v.preset : undefined,
         spec
       };

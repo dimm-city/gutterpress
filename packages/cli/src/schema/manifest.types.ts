@@ -182,22 +182,34 @@ export interface GutterpressManifest {
     bleed?: number;
     /**
      * The TEXT rule (pt): glyphs stay at least this far inside the trim on
-     * EVERY edge — DriveThruRPG's "keep text 0.5in inside the trim" (`dtrpg`
-     * sets 36). The preview's overlay outlines it and flags text outside it,
-     * and `pdf.print.safe-margins` fails a built PDF whose text is closer. An
-     * image pinned to the binding edge sits on it (and to any edge, where
-     * `artSafe` is not set); nothing in a book's CSS moves it.
+     * EVERY edge, the binding edge too unless the book sets a `gutter` —
+     * DriveThruRPG's "keep text 0.5in inside the trim" (`dtrpg` sets 36). The
+     * preview's overlay outlines it and flags text outside it, and
+     * `pdf.print.safe-margins` fails a built PDF whose text is closer. An
+     * image pinned to an edge where `artSafe` is not set sits on it; nothing
+     * in a book's CSS moves it.
      */
     safe?: number;
     /**
      * The ART rule (pt): art that does not bleed — images, backgrounds,
      * borders, rules — stays at least this far inside the trim on the top,
-     * bottom and OUTER edge; at the binding edge it uses `safe`. DriveThruRPG's
+     * bottom and OUTER edge; at the binding edge it uses `gutter`. DriveThruRPG's
      * "keep non-bleeding art 0.25in from the outside edges" (`dtrpg` sets 18).
      * An image pinned to the top, bottom or outer edge (`.gp-pin`) sits on this
      * line unless it carries `.gp-flush`. Absent = the same as `safe`.
      */
     artSafe?: number;
+    /**
+     * The binding allowance (pt): how far content stays from the spine — the
+     * binding edge, the left of a right-hand page and the right of a left-hand
+     * one — measured from the trim. It stands in for `safe` at the binding
+     * edge, for text and for art alike, so a book that keeps its text further
+     * from the spine than the printer's minimum says so here, not in its CSS
+     * (the Field Guide keeps 0.75in = 54 where DriveThruRPG asks for 0.5in).
+     * An image pinned to the binding edge sits on it. The other edges keep
+     * `safe` and `artSafe`. Absent = the same as `safe`; presets leave it unset.
+     */
+    gutter?: number;
   };
   ink?: {
     maxTac?: number;
@@ -331,6 +343,8 @@ export interface ResolvedConfig {
     safe?: number;
     /** The art rule's inset from the trim in pt, top/bottom/outer edge (see the manifest field); absent = same as `safe`. */
     artSafe?: number;
+    /** The binding edge's inset from the trim in pt, text and art alike (see the manifest field); absent = same as `safe`. */
+    gutter?: number;
   };
   ink: {
     maxTac: number;

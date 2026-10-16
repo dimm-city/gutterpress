@@ -36,15 +36,30 @@ describe("the gp-print-area meta", () => {
     const spec = { label: "DriveThruRPG", url: "https://example.test/spec" };
     expect(
       printAreaFromMeta(docWith(printAreaMeta({ width: 621, height: 810, bleed: 9, safe: 36, artSafe: 18, preset: "dtrpg", spec }))),
-    ).toEqual({ width: 621, height: 810, bleed: 9, safe: 36, artSafe: 18, preset: "dtrpg", spec });
+    ).toEqual({ width: 621, height: 810, bleed: 9, safe: 36, artSafe: 18, gutter: 36, preset: "dtrpg", spec });
     expect(printAreaFromMeta(docWith(printAreaMeta({ width: 432, height: 648, safe: 18 })))).toEqual({
       width: 432,
       height: 648,
       bleed: 0,
       safe: 18,
       artSafe: 18,
+      gutter: 18,
       preset: undefined,
       spec: undefined,
+    });
+  });
+
+  test("a gutter travels in the meta and reads back; unset it stays out and reads as the text rule", () => {
+    const tag = printAreaMeta({ width: 621, height: 810, bleed: 9, safe: 36, artSafe: 18, gutter: 54 });
+    expect(tag).toBe(
+      `<meta name="gp-print-area" content='{"width":621,"height":810,"bleed":9,"safe":36,"artSafe":18,"gutter":54}'>`,
+    );
+    expect(printAreaFromMeta(docWith(tag))).toMatchObject({ safe: 36, artSafe: 18, gutter: 54 });
+    // an explicit 0 is a gutter of none, not "unset"; anything that is not a number is
+    expect(printAreaFromMeta(docWith(printAreaMeta({ width: 621, height: 810, safe: 36, gutter: 0 })))).toMatchObject({ safe: 36, gutter: 0 });
+    expect(printAreaFromMeta(docWith(`<meta content='{"width":621,"height":810,"safe":36,"gutter":"wide"}'>`))).toMatchObject({
+      safe: 36,
+      gutter: 36,
     });
   });
 

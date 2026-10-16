@@ -257,27 +257,35 @@ The trim is the page after it is cut. The file is the trim plus the bleed on the
 
 ### Bleed and Safe Area Settings {#bleed-safe-settings}
 
-Three `page:` settings in `manifest.yaml` tell the print overlays where the trim and the printer's safe lines are. They are in points (72pt = 1 inch), and your preset fills them in when you set none:
+Four `page:` settings in `manifest.yaml` tell the print overlays where the trim and the printer's safe lines are. They are in points (72pt = 1 inch), and your preset fills them in when you set none:
 
 @section
 
 | Setting | What it is | `dtrpg` | `book` |
 |---------|------------|---------|--------|
 | `page.bleed` | The bleed your page size already contains, on the top, bottom and outside edges (none at the binding edge) | 9 (0.125in) | none |
-| `page.safe` | The text rule: how far inside the trim text must stay, on every edge | 36 (0.5in) | 18 (0.25in) |
-| `page.artSafe` | The art rule: how far inside the trim art that does not bleed must stay, on the top, bottom and outside edges; the binding edge uses `page.safe`, and where none is set art follows `page.safe` on every edge | 18 (0.25in) | none |
+| `page.safe` | The text rule: how far inside the trim text must stay, on every edge (the binding edge too, unless you set `page.gutter`) | 36 (0.5in) | 18 (0.25in) |
+| `page.artSafe` | The art rule: how far inside the trim art that does not bleed must stay, on the top, bottom and outside edges; the binding edge uses `page.gutter`, and where none is set art follows `page.safe` on every edge | 18 (0.25in) | none |
+| `page.gutter` | The binding allowance: how far from the spine text and art stay, instead of `page.safe`, at the binding edge only. Set it when your book keeps its text further from the spine than the printer's minimum, so the lines show the distance your book commits to; where none is set it is `page.safe` | none | none |
 
 @end-section
 
-The `custom` preset sets none of the three, so add your own to see the bleed and the safe lines.
+The `custom` preset sets none of the four, so add your own to see the bleed and the safe lines.
 
-Only two things read these settings: the preview's print overlays (all three settings) and the safe-margins check (`page.bleed` and `page.safe`, to find the trim and the text line). Neither changes your PDF, and no stylesheet moves them. To hold a `book` to DriveThruRPG's text and art rules:
+Only two things read these settings: the preview's print overlays (all four settings) and the safe-margins check (`page.bleed`, `page.safe` and `page.gutter`, to find the trim and the text line). Neither changes your PDF, and no stylesheet moves them. To hold a `book` to DriveThruRPG's text and art rules:
 
 ```yaml
 preset: book
 page:
   safe: 36      # text at least 0.5in inside the trim
   artSafe: 18   # art at least 0.25in from the outside edges
+```
+
+A book whose inner margin is wider than the printer's minimum says so with `page.gutter`, in the manifest and not in the stylesheet. With this, the binding lines sit 0.75in from the trim, and the legend says "Safe area: text — 0.5in; 0.75in at the binding":
+
+```yaml
+page:
+  gutter: 54    # text and art at least 0.75in from the spine
 ```
 
 ## File Organization

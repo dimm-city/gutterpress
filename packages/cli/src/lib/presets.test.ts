@@ -153,6 +153,13 @@ test("book: one 0.25in safe rule and no printer spec; custom: neither", () => {
   expect(PRESETS.custom.spec).toBeUndefined();
 });
 
+test("no preset sets a gutter, but dtrpg and book list the key so a manifest's page.gutter merges in", () => {
+  expect(Object.keys(DTRPG_PRESET.page!)).toContain("gutter");
+  expect(Object.keys(BOOK_PRESET.page!)).toContain("gutter");
+  expect(DTRPG_PRESET.page!.gutter).toBeUndefined();
+  expect(BOOK_PRESET.page!.gutter).toBeUndefined();
+});
+
 test("every preset knows its own id, so a resolved config can say which preset it is", () => {
   expect(Object.fromEntries(Object.entries(PRESETS).map(([key, preset]) => [key, preset.id]))).toEqual({
     dtrpg: "dtrpg",

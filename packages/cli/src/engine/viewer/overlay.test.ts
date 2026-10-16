@@ -30,7 +30,7 @@ import { GUTTERPRESS_CSS } from "../../lib/markdown/gutterpress-css.ts";
 import { classifyRect, layersFrom, pageBoxes, sanitizeOverlayStyle, type Rect } from "./overlay.ts";
 
 // DriveThruRPG's file: 8.625 x 11.25in with a 0.125in bleed inside it, text 0.5in and art 0.25in inside the trim.
-const DTRPG = { width: 621, height: 810, bleed: 9, safe: 36, artSafe: 18 };
+const DTRPG = { width: 621, height: 810, bleed: 9, safe: 36, artSafe: 18, gutter: 36 };
 const at = (x: number, y: number, w: number, h: number): Rect => ({ x, y, w, h });
 
 describe("the boxes come from the project's page geometry", () => {
@@ -57,15 +57,27 @@ describe("the boxes come from the project's page geometry", () => {
     expect(pageBoxes(one, "verso").safeArt).toEqual(pageBoxes(one, "verso").safe);
   });
 
+  test("a gutter replaces `safe` and `artSafe` at the binding edge, for text and art alike: the left of a recto, the right of a verso", () => {
+    const wide = { ...DTRPG, gutter: 54 };
+    // recto: binding LEFT. text box 54 in on the left (gutter), 36 on the right (safe); art box 54 and 18 (artSafe)
+    expect(pageBoxes(wide, "recto").safe).toEqual({ x: 54, y: 45, w: 522, h: 720 });
+    expect(pageBoxes(wide, "recto").safeArt).toEqual({ x: 54, y: 27, w: 540, h: 756 });
+    // verso: trim x 9..621, binding RIGHT. text box 36 in on the left, 54 on the right; art box 18 and 54
+    expect(pageBoxes(wide, "verso").safe).toEqual({ x: 45, y: 45, w: 522, h: 720 });
+    expect(pageBoxes(wide, "verso").safeArt).toEqual({ x: 27, y: 27, w: 540, h: 756 });
+    // a gutter of none lets content reach the spine; the other edges keep their rules
+    expect(pageBoxes({ ...DTRPG, gutter: 0 }, "recto").safe).toEqual({ x: 0, y: 45, w: 576, h: 720 });
+  });
+
   test("no bleed: the trim is the sheet; no safe inset: both boxes are the trim", () => {
-    const b = pageBoxes({ width: 432, height: 648, bleed: 0, safe: 0, artSafe: 0 }, "verso");
+    const b = pageBoxes({ width: 432, height: 648, bleed: 0, safe: 0, artSafe: 0, gutter: 0 }, "verso");
     expect(b.trim).toEqual(b.sheet);
     expect(b.safe).toEqual(b.sheet);
     expect(b.safeArt).toEqual(b.sheet);
   });
 
   test("units scale together", () => {
-    const b = pageBoxes({ width: 100, height: 200, bleed: 5, safe: 10, artSafe: 4 }, "recto", 2);
+    const b = pageBoxes({ width: 100, height: 200, bleed: 5, safe: 10, artSafe: 4, gutter: 10 }, "recto", 2);
     expect(b.sheet.w).toBe(200);
     expect(b.trim).toEqual({ x: 0, y: 10, w: 190, h: 380 });
     expect(b.safe.x).toBe(20);
@@ -91,6 +103,15 @@ describe("judging a piece of ink", () => {
     expect(kind(at(36, 45, 542, 720), b, "text", 1)).toBe("unsafe");
   });
 
+  test("with a gutter, text between the printer's line and the book's falls short at the binding only, and says how far it should be", () => {
+    const wide = pageBoxes({ ...DTRPG, gutter: 54 }, "recto");
+    const nearSpine = at(43.2, 100, 50, 10); // 0.6in from the trim at the binding
+    expect(kind(nearSpine)).toBe("inside");
+    expect(classifyRect(nearSpine, wide, "text")).toEqual({ kind: "unsafe", gap: 43.2, need: 54 });
+    // the same distance from the outside edge is fine: the outside keeps `safe`
+    expect(kind(at(612 - 43.2 - 50, 100, 50, 10), wide)).toBe("inside");
+  });
+
   test("past the text box but on the trimmed page: unsafe, with how far from the trim and how far it should be", () => {
     expect(classifyRect(at(10, 100, 50, 10), b, "text")).toEqual({ kind: "unsafe", gap: 10, need: 36 });
     expect(classifyRect(at(100, 100, 510, 10), b, "text")).toEqual({ kind: "unsafe", gap: 2, need: 36 });
@@ -110,7 +131,7 @@ describe("judging a piece of ink", () => {
   });
 
   test("with no bleed, anything past the trim is off the page", () => {
-    const none = pageBoxes({ width: 400, height: 500, bleed: 0, safe: 24, artSafe: 24 }, "recto");
+    const none = pageBoxes({ width: 400, height: 500, bleed: 0, safe: 24, artSafe: 24, gutter: 24 }, "recto");
     expect(kind(at(0, 0, 400, 500), none)).toBe("unsafe");
     expect(kind(at(-1, 100, 100, 10), none)).toBe("off-page");
   });
@@ -159,7 +180,7 @@ describe("judging a piece of ink", () => {
   });
 
   test("with no bleed and no safe inset, a plate to the edge is inside, as art and as text", () => {
-    const none = pageBoxes({ width: 400, height: 500, bleed: 0, safe: 0, artSafe: 0 }, "recto");
+    const none = pageBoxes({ width: 400, height: 500, bleed: 0, safe: 0, artSafe: 0, gutter: 0 }, "recto");
     expect(kind(at(0, 0, 400, 500), none, "art")).toBe("inside");
     expect(kind(at(0, 0, 400, 500), none, "text")).toBe("inside");
     expect(kind(at(-1, 100, 100, 10), none, "text")).toBe("off-page");
@@ -461,6 +482,57 @@ testIf(
         );
         expect(junk.summary).toMatchObject({ safePt: 18, artSafePt: 18 });
         expect(junk.nearTrim).toBe("text 0.15in from the trim; the safe area needs 0.25in");
+      } finally {
+        await page.close();
+      }
+    });
+  },
+  RENDER_TEST_TIMEOUT_MS,
+);
+
+testIf(
+  "a gutter moves the binding edge's text and art lines, on a recto's left and a verso's right, and judges what is there against it",
+  async () => {
+    await withFixture(async (url) => {
+      const page = await (await getBrowser()).newPage();
+      try {
+        await page.goto(url);
+        await page.waitForFunction("window.Gutterpress?.totalPages > 0");
+        const withMeta = (content: string) =>
+          page.evaluate((c: string) => {
+            document.querySelector('meta[name="gp-print-area"]')!.setAttribute("content", c);
+            const summary = (window as any).Gutterpress.decoration.setOverlay(true);
+            const shadow = document.querySelector("gp-overlay")!.shadowRoot!;
+            // each line as [left, width] in the sheet's own px
+            const line = (pageNo: number, cls: string) => {
+              const el = shadow.querySelector<HTMLElement>(`.gp-ov-page[data-page="${pageNo}"] .${cls}`)!;
+              return [parseFloat(el.style.left), parseFloat(el.style.width)];
+            };
+            return {
+              issues: summary.issues as number,
+              recto: { text: line(1, "gp-ov-safe"), art: line(1, "gp-ov-art") },
+              verso: { text: line(2, "gp-ov-safe"), art: line(2, "gp-ov-art") },
+              titles: Array.from(shadow.querySelectorAll<HTMLElement>(".gp-ov-flag")).map((f) => f.title),
+            };
+          }, content);
+
+        // no gutter: the binding edge is `safe` (24px) for text and art alike, the outside edge each rule's own (24px, 12px)
+        const none = await withMeta('{"width":300,"height":375,"bleed":9,"safe":18,"artSafe":9}');
+        expect(none.recto).toEqual({ text: [24, 340], art: [24, 352] });
+        expect(none.verso).toEqual({ text: [36, 340], art: [24, 352] });
+        expect(none.titles.some((t) => t.includes("needs 0.75in"))).toBe(false);
+
+        // a 54pt (0.75in, 72px) gutter: the left of the recto and the right of the verso move in to 72px from the trim
+        const wide = await withMeta('{"width":300,"height":375,"bleed":9,"safe":18,"artSafe":9,"gutter":54}');
+        expect(wide.recto).toEqual({ text: [72, 292], art: [72, 304] });
+        expect(wide.verso).toEqual({ text: [36, 292], art: [24, 304] });
+        // text 60px (0.63in) from the spine is now too close, and says what the gutter needs; the outside edge still needs `safe`
+        expect(wide.titles).toContain("text 0.63in from the trim; the safe area needs 0.75in");
+        expect(wide.titles).toContain("text 0.13in from the trim; the safe area needs 0.25in");
+        expect(wide.issues).toBeGreaterThan(none.issues);
+
+        // a gutter equal to `safe` is no gutter at all
+        expect(await withMeta('{"width":300,"height":375,"bleed":9,"safe":18,"artSafe":9,"gutter":18}')).toEqual(none);
       } finally {
         await page.close();
       }
@@ -1450,6 +1522,22 @@ testIf(
         // a clean book is only "everything" when both safe layers looked: with one on, it says what was looked at
         expect((await legendFor('{"width":300,"height":375}', { safe: true })).lines).toEqual(["from manifest.yaml", "all text inside the safe area"]);
         expect((await legendFor('{"width":300,"height":375}', { art: true })).lines).toEqual(["from manifest.yaml", "all art inside the safe area"]);
+
+        // a gutter apart from `safe` is named at the binding, for text and for art; equal to `safe` it is not mentioned
+        expect(
+          await legendFor('{"width":300,"height":375,"bleed":9,"safe":18,"artSafe":9,"gutter":27,"preset":"dtrpg"}'),
+        ).toMatchObject({
+          rows: [
+            "Bleed 0.125in — top, bottom, outside; none at the binding",
+            "Safe area: text — 0.25in; 0.375in at the binding",
+            "Safe area: art — 0.125in top, bottom, outside; 0.375in at the binding",
+            "Page margins — your stylesheet's @page margins",
+          ],
+        });
+        expect((await legendFor('{"width":300,"height":375,"bleed":9,"safe":18,"gutter":18}')).rows.slice(1, 3)).toEqual([
+          "Safe area: text — 0.25in, every edge",
+          "Safe area: art — 0.25in, every edge",
+        ]);
 
         // a preset without a spec of its own: the numbers are the manifest's; one rule for text and art reads as one distance, twice
         expect(await legendFor('{"width":300,"height":375,"bleed":9,"safe":18,"preset":"book"}')).toMatchObject({

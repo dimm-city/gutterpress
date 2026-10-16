@@ -23,11 +23,11 @@ const check: Check = {
   id: "pdf.print.safe-margins",
   name: "Safe margins",
   description:
-    "Fails when text sits closer to the trim than `page.safe` (DriveThruRPG: 0.5in on every edge). Text only: art is judged in the preview's safe-area overlay, not here. Skipped when `page.safe` is not set",
+    "Fails when text sits closer to the trim than `page.safe` (DriveThruRPG: 0.5in on every edge), or than `page.gutter` at the binding edge where one is set. Text only: art is judged in the preview's safe-area overlay, not here. Skipped when `page.safe` is not set",
   category: "pdf",
   phase: "post-build",
   async run(ctx: CheckContext): Promise<CheckResult[]> {
-    const { width, height, bleed = 0, safe = 0 } = ctx.config.page;
+    const { width, height, bleed = 0, safe = 0, gutter = safe } = ctx.config.page;
     if (!ctx.pdfPath || !safe) return [];
 
     const doc = await loadPdf(ctx.pdfPath);
@@ -70,15 +70,17 @@ const check: Check = {
             }
           }
 
-          // How far each edge of the box sits inside the trim; the least is the worst.
+          // How far each edge of the box sits inside the trim; the binding edge
+          // needs `gutter`, the others `safe`, and the biggest shortfall is the worst.
           const gaps = [
             [recto ? "binding" : "outside", Math.min(...xs) - trim.left],
             [recto ? "outside" : "binding", trim.right - Math.max(...xs)],
             ["bottom", Math.min(...ys) - trim.bottom],
             ["top", trim.top - Math.max(...ys)],
           ] as const;
-          const [edge, gap] = gaps.reduce((worst, g) => (g[1] < worst[1] ? g : worst));
-          const shortfall = safe - gap;
+          const [edge, shortfall] = gaps
+            .map(([name, gap]) => [name, (name === "binding" ? gutter : safe) - gap] as const)
+            .reduce((worst, g) => (g[1] > worst[1] ? g : worst));
           if (shortfall <= TOLERANCE_PT) continue;
 
           const text = item.str.trim();
@@ -87,7 +89,10 @@ const check: Check = {
               severity: "error",
               message: `Page ${pageNum}: "${text.slice(0, 40)}${text.length > 40 ? "…" : ""}" is ${inches(shortfall)} too close to the ${edge} edge.`,
               file: ctx.pdfPath,
-              detail: `${rule}: text must stay at least ${inches(safe)} inside the trim on every edge.`,
+              detail:
+                gutter === safe
+                  ? `${rule}: text must stay at least ${inches(safe)} inside the trim on every edge.`
+                  : `${rule}: text must stay at least ${inches(safe)} inside the trim, ${inches(gutter)} at the binding.`,
               code: "text-outside-safe-margin",
               data: { page: pageNum, edge, shortfallPt: +shortfall.toFixed(2) },
             })

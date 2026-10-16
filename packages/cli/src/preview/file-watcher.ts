@@ -166,7 +166,7 @@ export async function generateAndWriteHtml(
     source?: { files?: string[] | null };
     extensions?: ResolvedExtensionConfig[];
     print?: PrintPadding;
-    page?: { width: number; height: number; bleed?: number; safe?: number; artSafe?: number };
+    page?: { width: number; height: number; bleed?: number; safe?: number; artSafe?: number; gutter?: number };
     preset?: string;
     spec?: PrintSpec;
   },

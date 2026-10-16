@@ -323,6 +323,7 @@ function resolveCustomPage(
     bleed: c.page?.bleed ?? m.page?.bleed,
     safe: c.page?.safe ?? m.page?.safe,
     artSafe: c.page?.artSafe ?? m.page?.artSafe,
+    gutter: c.page?.gutter ?? m.page?.gutter,
   };
 }
 

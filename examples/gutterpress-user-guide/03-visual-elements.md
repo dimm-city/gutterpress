@@ -225,11 +225,11 @@ page lays out exactly as it would without the image.
 **An edge pin sits on the printer's safe line for art.** `.gp-bottom` puts the
 image on the art-safe line of the bottom edge, not on the paper: the line
 `page.artSafe` in `manifest.yaml` sets on the top, bottom and outside edges,
-and `page.safe` at the binding (where `page.artSafe` is not set, `page.safe`
-applies everywhere). For the `dtrpg` preset that is 0.25in from the trim on
-the outside edges and 0.5in at the binding, usually between the paper and
-your text. A book with no safe area set pins to the paper's edge. A centred
-pin touches no edge and sits in the middle of the text block.
+and `page.gutter` at the binding (where `page.artSafe` or `page.gutter` is not
+set, `page.safe` stands in for it). For the `dtrpg` preset that is 0.25in from
+the trim on the outside edges and 0.5in at the binding, usually between the
+paper and your text. A book with no safe area set pins to the paper's edge. A
+centred pin touches no edge and sits in the middle of the text block.
 
 Two rules keep pinning predictable:
 

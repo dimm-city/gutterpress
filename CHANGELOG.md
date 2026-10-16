@@ -78,6 +78,19 @@ This project follows [Semantic Versioning](https://semver.org/).
   legend links to, and the manifest schema's descriptions say which rule each
   number is.
 
+- **`page.gutter` sets how far content stays from the spine.** The binding edge
+  (the left of a right-hand page, the right of a left-hand page) takes
+  `page.gutter` points from the trim instead of `page.safe`, for text and for
+  art alike; the other edges keep `page.safe` and `page.artSafe`. Where none is
+  set it is `page.safe`, and no preset sets one. A book that keeps its text
+  0.75in from the spine under a printer's 0.5in minimum says `gutter: 54` in
+  its manifest, and the overlay stops showing the 0.25in between the two as
+  usable space: the text and art lines and the tinted strip beside the trim
+  move out at the binding, the legend says "Safe area: text — 0.5in; 0.75in at
+  the binding" (and the same for art), an image pinned to the binding edge sits
+  on the new line, and `pdf.print.safe-margins` fails text closer to the spine
+  than `page.gutter`, saying so in its detail.
+
 - **Preflight checks that your text keeps clear of the trim.** The new
   `pdf.print.safe-margins` check reads the finished PDF and reports every line
   of text closer to the trim than `page.safe`: 0.5in on every edge for the

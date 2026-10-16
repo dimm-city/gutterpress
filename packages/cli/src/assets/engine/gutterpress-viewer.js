@@ -1055,7 +1055,7 @@
   }
   function pinInsets(area, side, edges) {
     const binding = side === "recto" ? "left" : "right";
-    const inset = (edge) => !area || !edges.includes(edge) ? 0 : edge === binding ? area.safe : area.bleed + area.artSafe;
+    const inset = (edge) => !area || !edges.includes(edge) ? 0 : edge === binding ? area.gutter : area.bleed + area.artSafe;
     return { top: inset("top"), right: inset("right"), bottom: inset("bottom"), left: inset("left") };
   }
   var NO_PADDING = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -1097,6 +1097,7 @@
         bleed: n(v.bleed),
         safe,
         artSafe: typeof v.artSafe === "number" ? n(v.artSafe) : safe,
+        gutter: typeof v.gutter === "number" ? n(v.gutter) : safe,
         preset: typeof v.preset === "string" ? v.preset : undefined,
         spec
       };
@@ -2225,16 +2226,23 @@
     const b = Math.max(0, area.bleed) * scale;
     const s = Math.max(0, area.safe) * scale;
     const a = Math.max(0, area.artSafe) * scale;
-    const [left, right] = side === "verso" ? [a, s] : [s, a];
+    const g = Math.max(0, area.gutter) * scale;
+    const [textLeft, textRight] = side === "verso" ? [s, g] : [g, s];
+    const [artLeft, artRight] = side === "verso" ? [a, g] : [g, a];
     const trim = { x: side === "verso" ? b : 0, y: b, w: Math.max(0, w - b), h: Math.max(0, h - 2 * b) };
     return {
       sheet: { x: 0, y: 0, w, h },
       trim,
-      safe: { x: trim.x + s, y: trim.y + s, w: Math.max(0, trim.w - 2 * s), h: Math.max(0, trim.h - 2 * s) },
+      safe: {
+        x: trim.x + textLeft,
+        y: trim.y + s,
+        w: Math.max(0, trim.w - textLeft - textRight),
+        h: Math.max(0, trim.h - 2 * s)
+      },
       safeArt: {
-        x: trim.x + left,
+        x: trim.x + artLeft,
         y: trim.y + a,
-        w: Math.max(0, trim.w - left - right),
+        w: Math.max(0, trim.w - artLeft - artRight),
         h: Math.max(0, trim.h - 2 * a)
       },
       bleed: b
@@ -2299,7 +2307,7 @@
   };
   function sheetArea(sheet) {
     const px = (name) => parseFloat(sheet.style.getPropertyValue(name)) || 0;
-    return { width: px("--gp-page-w") / PX_PER_PT, height: px("--gp-page-h") / PX_PER_PT, bleed: 0, safe: 0, artSafe: 0 };
+    return { width: px("--gp-page-w") / PX_PER_PT, height: px("--gp-page-h") / PX_PER_PT, bleed: 0, safe: 0, artSafe: 0, gutter: 0 };
   }
   var OVERLAY_CSS = `
 .root {
@@ -2599,14 +2607,15 @@
       add("gp-ov-row", swatch, label);
     };
     const { bleedPt, safePt, artSafePt, counts } = summary;
+    const gutterPt = area?.gutter ?? safePt;
     if (layers.bleed) {
       row("bleed", "Bleed", bleedPt > 0 ? ` ${ptIn(bleedPt)} — top, bottom, outside; none at the binding` : " — none set (page.bleed in manifest.yaml)");
     }
     if (layers.safe) {
-      row("safe", "Safe area: text", safePt > 0 ? ` — ${ptIn(safePt)}, every edge` : " — none set (page.safe in manifest.yaml)");
+      row("safe", "Safe area: text", safePt <= 0 ? " — none set (page.safe in manifest.yaml)" : gutterPt === safePt ? ` — ${ptIn(safePt)}, every edge` : ` — ${ptIn(safePt)}; ${ptIn(gutterPt)} at the binding`);
     }
     if (layers.art) {
-      row("art", "Safe area: art", safePt <= 0 && artSafePt <= 0 ? " — none set (page.artSafe in manifest.yaml)" : artSafePt === safePt ? ` — ${ptIn(artSafePt)}, every edge` : ` — ${ptIn(artSafePt)} top, bottom, outside; ${ptIn(safePt)} at the binding`);
+      row("art", "Safe area: art", safePt <= 0 && artSafePt <= 0 ? " — none set (page.artSafe in manifest.yaml)" : artSafePt === gutterPt ? ` — ${ptIn(artSafePt)}, every edge` : ` — ${ptIn(artSafePt)} top, bottom, outside; ${ptIn(gutterPt)} at the binding`);
     }
     if (layers.margins)
       row("margins", "Page margins", " — your stylesheet's @page margins");

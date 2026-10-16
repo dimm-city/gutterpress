@@ -199,7 +199,7 @@ Examples: page size matches manifest, fonts are embedded, metadata is present, P
 Page 14: "Chapter Three" is 0.12in too close to the outside edge.
 ```
 
-It measures each page against that page's own trim: the page less the bleed on the top, bottom and outside edges only. Page 1 is a right-hand page, so the outside edge is the right on odd pages and the left on even ones.
+It measures each page against that page's own trim: the page less the bleed on the top, bottom and outside edges only. Page 1 is a right-hand page, so the outside edge is the right on odd pages and the left on even ones. A book that sets `page.gutter` is held to that distance at the binding edge instead, and the finding says so.
 
 It checks **text only**. Pictures, backgrounds, borders and rules are judged in the preview, by the **Safe area: art** layer of the print overlays ([Chapter 1](#print-overlays)), which applies DriveThruRPG's separate rule for art. The **Safe area: text** layer draws the line this check reads.
 

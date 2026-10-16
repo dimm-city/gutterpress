@@ -249,6 +249,22 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
     expect(resolveConfig({}, { page: { safe: 48, artSafe: 24 } }).page).toMatchObject({ width: 621, height: 810 });
   });
 
+  test("page.gutter is the binding allowance: no preset sets one, a manifest does, leaf by leaf, and an explicit 0 is a gutter of none", () => {
+    expect(DTRPG_PRESET.page!.gutter).toBeUndefined();
+    expect(resolveConfig({}, {}).page.gutter).toBeUndefined();
+    expect(resolveConfig({}, { preset: "book" }).page.gutter).toBeUndefined();
+    // the manifest's value merges in on every preset (dtrpg and book list the key; custom is resolved by hand), the CLI's wins
+    expect(resolveConfig({}, { page: { gutter: 54 } }).page).toMatchObject({ safe: 36, artSafe: 18, gutter: 54 });
+    expect(resolveConfig({}, { preset: "book", page: { gutter: 36 } }).page).toMatchObject({ safe: 18, gutter: 36 });
+    expect(
+      resolveConfig({}, { preset: "custom", page: { width: 612, height: 792, safe: 36, gutter: 54 } }).page,
+    ).toMatchObject({ safe: 36, gutter: 54 });
+    expect(resolveConfig({ page: { gutter: 40 } }, { page: { gutter: 54 } }).page.gutter).toBe(40);
+    expect(resolveConfig({}, { page: { gutter: 0 } }).page.gutter).toBe(0);
+    // it moves neither the other rules nor the PDF page-size bounds
+    expect(resolveConfig({}, { page: { gutter: 54 } }).page).toMatchObject({ width: 621, height: 810, safe: 36, artSafe: 18 });
+  });
+
   test("the resolved config says which preset it is and which printer spec that preset follows", () => {
     const dtrpg = resolveConfig({}, {});
     expect(dtrpg.preset).toBe("dtrpg");

@@ -126,6 +126,39 @@ describe("what fails", () => {
     expect(await check.run(ctxFor(pdf, { preset: "dtrpg", page: { bleed: 0 } }))).toEqual([]);
   });
 
+  test("a gutter raises the binding edge's requirement: text 0.6in from the spine passes `safe` and fails `gutter: 54`", async () => {
+    const pdf = await pdfOf([
+      [{ x: 43.2, y: 400 }], //   recto, binding left: box left 43.2 inside the trim at 0
+      [{ x: 553.8, y: 400 }], //  verso, binding right: box right 577.8, 43.2 inside the trim at 621
+    ]);
+    // 0.6in clears DriveThruRPG's 0.5in on both pages
+    expect(await check.run(ctxFor(pdf))).toEqual([]);
+    // but not a 0.75in gutter: 0.15in short at the binding, on a recto and on a verso, and the detail says what each edge needs
+    const results = await check.run(ctxFor(pdf, { preset: "dtrpg", page: { gutter: 54 } }));
+    expect(results.map((r) => r.message)).toEqual([
+      'Page 1: "Text" is 0.15in too close to the binding edge.',
+      'Page 2: "Text" is 0.15in too close to the binding edge.',
+    ]);
+    expect(results[0]).toMatchObject({
+      detail:
+        "DriveThruRPG — Quick Specifications for Print Books: text must stay at least 0.5in inside the trim, 0.75in at the binding.",
+      data: { page: 1, edge: "binding", shortfallPt: 10.8 },
+    });
+    expect(results[1]!.data).toEqual({ page: 2, edge: "binding", shortfallPt: 10.8 });
+  });
+
+  test("the gutter is the binding edge's alone: the outside edges keep `safe`, and a smaller gutter lets text nearer the spine", async () => {
+    const outside = await pdfOf([
+      [{ x: 544.8, y: 400 }], // recto, outside right: box right 568.8, 43.2 inside the trim at 612
+      [{ x: 52.2, y: 400 }], //  verso, outside left: box left 52.2, 43.2 inside the trim at 9
+    ]);
+    expect(await check.run(ctxFor(outside, { preset: "dtrpg", page: { gutter: 54 } }))).toEqual([]);
+
+    const nearSpine = await pdfOf([[{ x: 20, y: 400 }]]); // recto, binding: box left 20 inside the trim at 0
+    expect((await check.run(ctxFor(nearSpine))).map((r) => r.data)).toEqual([{ page: 1, edge: "binding", shortfallPt: 16 }]);
+    expect(await check.run(ctxFor(nearSpine, { preset: "dtrpg", page: { gutter: 18 } }))).toEqual([]);
+  });
+
   test("rotated text by the box it covers", async () => {
     // Turned 90°, the text runs up the page and its glyph tops point left: the box is x 22..32.
     const pdf = await pdfOf([[{ x: 30, y: 400, rotate: 90 }]]);

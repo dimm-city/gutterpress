@@ -96,6 +96,26 @@ test("an invalid publish.gdrive.format value fails the enum check (sanity check 
   expect(errors[0]).toContain("format");
 });
 
+test("page.gutter is the binding allowance: points, 0 or more, said to stand in for `safe` at the binding edge", async () => {
+  const raw = await readFile(SCHEMA_PATH, "utf8");
+  const schema = JSON.parse(raw) as { properties: { page: JsonSchemaNode } };
+  const { gutter, safe, artSafe } = schema.properties.page.properties!;
+
+  expect(gutter).toMatchObject({ type: "number", minimum: 0, examples: [54] });
+  expect(gutter!.description).toContain("binding allowance");
+  expect(gutter!.description).toContain("Field Guide keeps 0.75in");
+  expect(gutter!.description).toContain("Absent = the same as `safe`");
+  // the two rules it refines point to it for the binding edge
+  expect(safe!.description).toContain("unless `gutter` is set");
+  expect(artSafe!.description).toContain("at the binding edge art uses `gutter`");
+
+  const errors = (page: unknown) => validate(schema.properties.page, page, "page");
+  expect(errors({ safe: 36, gutter: 54 })).toEqual([]);
+  expect(errors({ gutter: 0 })).toEqual([]);
+  expect(errors({ gutter: "wide" })).toEqual(["page.gutter: expected number"]);
+  expect(errors({ gutter: -1 })).toEqual(["page.gutter: below 0"]);
+});
+
 test("page.safe is the text rule and page.artSafe the art rule, and each description says which DriveThruRPG rule it is", async () => {
   const raw = await readFile(SCHEMA_PATH, "utf8");
   const schema = JSON.parse(raw) as { properties: { page: JsonSchemaNode } };

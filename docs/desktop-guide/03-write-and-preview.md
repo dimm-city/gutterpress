@@ -122,16 +122,17 @@ The preview shows your book's pages exactly as they will print, and updates as y
     colour swatch for each layer: **Bleed**, **Safe area: text**, **Safe area: art** and **Page
     margins**. Ticking one while the overlays are off turns them on.
   - **Where the lines come from.** The bleed and the safe lines come only from your project's print
-    settings: `page.width` and `page.height`, `page.bleed`, `page.safe` and `page.artSafe` in
-    `manifest.yaml`, or your preset's values. Only the **Page margins** layer reads your
-    stylesheet: your `@page` margins place your text and never move the printer's lines, and no
+    settings: `page.width` and `page.height`, `page.bleed`, `page.safe`, `page.artSafe` and
+    `page.gutter` in `manifest.yaml`, or your preset's values. Only the **Page margins** layer reads
+    your stylesheet: your `@page` margins place your text and never move the printer's lines, and no
     stylesheet or plugin can hide or restyle the overlays. A DriveThruRPG (`dtrpg`) file already
     contains 0.125in of bleed on the top, bottom and outer edges (none on the binding edge), so the
     band and the trim line appear inside the page on those edges. The `dtrpg` preset asks for text
     at least 0.5in inside the trim and art at least 0.25in from the outside edges (0.5in at the
     binding edge); the `book` preset uses 0.25in for both. Set `page.safe` and `page.artSafe` (in
-    points) for your printer's. With no bleed or safe area set, that part is not drawn and the
-    legend says which setting to add.
+    points) for your printer's, and `page.gutter` if your book keeps further from the spine than
+    that. With no bleed or safe area set, that part is not drawn and the legend says which setting
+    to add.
   - **Make it louder or quieter, or change the colours** in Settings → App → Preview: *Print overlay
     strength* (Subtle, Normal or Strong: line width, tint and bleed band) and a colour for each
     layer (*Bleed overlay colour*, *Safe area: text overlay colour*, *Safe area: art overlay

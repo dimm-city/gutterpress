@@ -9,10 +9,11 @@
  * Only the manifest feeds it — `page.width` x `page.height` (the sheet),
  * `page.bleed` (a bleed the sheet already contains on the top, bottom and
  * OUTER edge; the binding edge has none, as DriveThruRPG cuts it),
- * `page.safe` (the TEXT rule: its inset from the trim on every edge) and
- * `page.artSafe` (the ART rule: its inset on the top, bottom and outer edge,
- * while the binding edge takes `safe`; absent = `safe`) — plus the preset's
- * id and the printer spec it follows, which only word what the overlay finds.
+ * `page.safe` (the TEXT rule: its inset from the trim on every edge),
+ * `page.artSafe` (the ART rule: its inset on the top, bottom and outer edge;
+ * absent = `safe`) and `page.gutter` (the binding edge's inset, for text and
+ * art alike; absent = `safe`) — plus the preset's id and the printer spec it
+ * follows, which only word what the overlay finds.
  * No book or plugin CSS feeds it: not the `@page` margins (they are where the
  * author put the TEXT, which is not the printer's safe area), not
  * `@page { bleed }`.
@@ -27,10 +28,12 @@ export interface PrintArea {
   height: number;
   /** in-sheet bleed on the top, bottom and outer edge; 0 = none */
   bleed: number;
-  /** the TEXT rule: inset from the trim on every edge; 0 = none */
+  /** the TEXT rule: inset from the trim on every edge, the binding edge too unless `gutter` is set; 0 = none */
   safe: number;
-  /** the ART rule: inset on the top, bottom and outer edge (the binding edge takes `safe`) */
+  /** the ART rule: inset on the top, bottom and outer edge (the binding edge takes `gutter`) */
   artSafe: number;
+  /** the binding allowance: inset from the trim at the binding edge, for text and art alike; absent in the manifest = `safe` */
+  gutter: number;
   /** the manifest's preset id, and the printer spec it follows: they only word what is found */
   preset?: string;
   spec?: { label: string; url: string };
@@ -46,13 +49,15 @@ export interface PrintAreaSource {
   bleed?: number;
   safe?: number;
   artSafe?: number;
+  gutter?: number;
   preset?: string;
   spec?: { label: string; url: string };
 }
 
 /**
  * The `<meta>` tag for one book. An unset bleed or text rule is written as 0,
- * never left out; an unset art rule stays out (the reader takes it as `safe`).
+ * never left out; an unset art rule or gutter stays out (the reader takes each
+ * as `safe`).
  * Anything else the config's `page` block holds (`tolerance`) is not part of it.
  */
 export function printAreaMeta(page: PrintAreaSource): string {
@@ -62,6 +67,7 @@ export function printAreaMeta(page: PrintAreaSource): string {
     bleed: page.bleed ?? 0,
     safe: page.safe ?? 0,
     artSafe: page.artSafe,
+    gutter: page.gutter,
     preset: page.preset,
     spec: page.spec,
   });
@@ -94,6 +100,7 @@ export function printAreaFromMeta(doc: MetaDocument): PrintArea | null {
       bleed: n(v.bleed),
       safe,
       artSafe: typeof v.artSafe === "number" ? n(v.artSafe) : safe,
+      gutter: typeof v.gutter === "number" ? n(v.gutter) : safe,
       preset: typeof v.preset === "string" ? v.preset : undefined,
       spec,
     };

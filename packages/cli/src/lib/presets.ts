@@ -102,13 +102,16 @@ export const DTRPG_PRESET: VendorPreset = {
     // SPEC: 0.5in = 36pt, DriveThru's TEXT rule: text stays at least 0.5in
     // inside the trim on every edge. The preview overlay and
     // `pdf.print.safe-margins` judge text against it; art pinned to the
-    // binding edge sits on it.
+    // binding edge sits on it, unless the manifest sets a `page.gutter`.
     safe: 36,
     // SPEC: 0.25in = 18pt, DriveThru's ART rule: art that does not bleed stays
     // at least 0.25in from the three outside edges (the binding edge takes the
     // text rule's 0.5in above). The overlay judges art against it, and art
     // pinned to an outside edge sits on it.
     artSafe: 18,
+    // The binding allowance is the same as `safe`; listed so a manifest
+    // `page.gutter` merges in.
+    gutter: undefined,
   },
   ink: {
     // SPEC: total ink coverage must not exceed 240%.
@@ -242,6 +245,8 @@ export const BOOK_PRESET: VendorPreset = {
     safe: 18,
     // The art rule is the same as `safe`; listed so a manifest `page.artSafe` merges in.
     artSafe: undefined,
+    // The binding allowance is too; listed so a manifest `page.gutter` merges in.
+    gutter: undefined,
   },
   ink: {
     maxTac: 400,

@@ -31,7 +31,7 @@
  *     the pinned edges — inset by the printer's ART-SAFE line: `--gp-pin-<edge>`
  *     on the root, read by `.gp-pin`'s four insets (GUTTERPRESS_CSS). On the
  *     top, bottom and outside edge that is the bleed plus `page.artSafe`; at
- *     the binding edge `page.safe` (no bleed there) — the manifest's print
+ *     the binding edge `page.gutter` (no bleed there) — the manifest's print
  *     area (print-area.ts), so a book with none sets 0, the paper's edge.
  *  4. `.gp-flush` on the pin zeroes the four properties in plain CSS: the
  *     opt-in escape hatch to the paper's edge (the markdown pipeline notes it).
@@ -120,19 +120,19 @@ export function flushMargins(
 
 /**
  * The art-safe line's distance from the sheet edge on each pinned edge, in pt:
- * the bleed plus `artSafe` on the top, bottom and outside edge, `safe` on the
+ * the bleed plus `artSafe` on the top, bottom and outside edge, `gutter` on the
  * binding edge (the left of a recto, the right of a verso), 0 on an edge the
  * pins do not use (the pin box's edge is the text block's there). No print
  * area means 0 everywhere: the paper's edge.
  */
 export function pinInsets(
-  area: Pick<PrintArea, "bleed" | "safe" | "artSafe"> | null,
+  area: Pick<PrintArea, "bleed" | "artSafe" | "gutter"> | null,
   side: PageSide,
   edges: readonly PinEdge[],
 ): Record<PinEdge, number> {
   const binding: PinEdge = side === "recto" ? "left" : "right";
   const inset = (edge: PinEdge) =>
-    !area || !edges.includes(edge) ? 0 : edge === binding ? area.safe : area.bleed + area.artSafe;
+    !area || !edges.includes(edge) ? 0 : edge === binding ? area.gutter : area.bleed + area.artSafe;
   return { top: inset("top"), right: inset("right"), bottom: inset("bottom"), left: inset("left") };
 }
 
@@ -150,7 +150,7 @@ export const NO_PADDING: Readonly<Record<PinEdge, number>> = { top: 0, right: 0,
  */
 export function pinRootStyle(
   margin: PageGeometry["margin"],
-  area: Pick<PrintArea, "bleed" | "safe" | "artSafe"> | null,
+  area: Pick<PrintArea, "bleed" | "artSafe" | "gutter"> | null,
   side: PageSide,
   edges: readonly PinEdge[],
   padding: Readonly<Record<PinEdge, number>> = NO_PADDING,

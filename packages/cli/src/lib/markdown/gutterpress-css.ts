@@ -132,7 +132,7 @@
  * is pinned. The pin's containing
  * block is the root's padding box, and the engine sets `--gp-pin-<edge>` on
  * the root to the art-safe line's distance from the sheet edge (the bleed
- * plus page.artSafe on the top, bottom and outside edge; page.safe at the
+ * plus page.artSafe on the top, bottom and outside edge; page.gutter at the
  * binding, from the manifest); `.gp-pin` reads them as its four insets.
  * `.gp-flush` zeroes them on the pin: the paper's edge. Under plain
  * markdown-it nothing sets them and every inset is 0.
