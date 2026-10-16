@@ -219,6 +219,18 @@ This project follows [Semantic Versioning](https://semver.org/).
   the flow root the way the block does in print, so a book that sets
   `html, body { height: 100% }` — where print's percentage does resolve to the
   page area — keeps the page count it had, on both sides.
+
+- **Changing the page size no longer drops the manifest's print-area
+  settings.** The `page:` block carries two kinds of numbers: the validation
+  bounds (`width`, `height`, `tolerance`) and, since this release, the print
+  area (`bleed`, `safe`, `artSafe`, `gutter`). Book settings wrote the block
+  as bounds only, so a size change, or a switch to a preset and back, silently
+  threw the print area away: a book with `page: { gutter: 54 }` lost its
+  binding allowance and its safe lines fell back to 0.5in at the spine with
+  nothing to say why. The size code now writes only its three keys, and a
+  preset removes only those three, leaving the rest of the block as the author
+  wrote it (#405).
+
 ## [0.11.19] - 2026-10-15
 
 ### Added
