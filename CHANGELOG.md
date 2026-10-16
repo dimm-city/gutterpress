@@ -5,6 +5,40 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Removed
+
+- **Three source-image checks and one PDF heuristic that warned about things
+  that do not print.** `asset.image.color-space` compared the reader's
+  `srgb`/`gray` against the config's `RGB`/`Grayscale` and could never match;
+  a PDF/X build converts every image anyway, and `pdf.print.color-spaces`
+  checks the result. `asset.image.tac-raster` ran Ghostscript's `inkcov` on
+  PNG and TIFF files, which it cannot read; `pdf.print.ink-coverage` measures
+  the built pages. `asset.image.resolution` read DPI metadata, which says
+  nothing about the printed size; the build already warns about each image
+  placed below 300 DPI. `pdf.print.rasterized-pages` flagged `preserve-text`
+  pages with a short caption and missed real whole-page fallbacks, which have
+  no text at all; the build names every fallback page and its cause.
+  `validate.assets.minImageDpi` and `validate.assets.allowedColorSpaces` still
+  parse, with a warning, and do nothing.
+
+### Fixed
+
+- **Image checks look only at the images the book uses.** `asset.image.file-size`
+  and `asset.image.alpha-channel` read the book's markdown images and the
+  images its stylesheets reference, not every picture in the project folder,
+  so an `art-unplaced/` folder no longer fills the report.
+- **No alpha-channel warning under `pdfx.transparency: preserve-text`,** which
+  keeps a transparent page's text live.
+- **The low-DPI build warning names the image file** and skips SVG images,
+  which have no print resolution.
+- **The fragmenting-multicol warning skips grid and flex containers**, where
+  `column-count` lays out no columns.
+- **The itch.io target drops the print image limits** (10 MB per image, 300 DPI
+  in the built PDF), which do not apply to a screen PDF.
+- **`printsafe/page-containment` checks only the selector's subject.**
+  `.page pre { overflow-x: auto }` styles a `pre`, not the page, and is no
+  longer reported.
+
 ## [0.11.20] - 2026-10-16
 
 ### Added

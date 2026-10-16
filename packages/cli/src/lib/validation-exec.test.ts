@@ -37,7 +37,6 @@ import "../checks/pdf/index";
 import "../checks/source/index";
 import "../checks/asset/index";
 import "../checks/heuristic/index";
-import { collectImageFiles } from "./image-inspect";
 import { ASSET_SCAN_IGNORE_GLOBS, FONT_EXTS } from "../checks/asset/extensions";
 
 function emptyToolResult(overrides: Partial<ToolCheckResult> = {}): ToolCheckResult {
@@ -654,6 +653,38 @@ describe("executeValidation assetDirs covers the shared asset closure", () => {
   });
 });
 
+// ── imageFiles: the images the book ships, not every picture in the folder ──
+
+describe("executeValidation imageFiles", () => {
+  test("holds markdown and stylesheet images and skips unreferenced art", async () => {
+    const dir = await makeDir("gutterpress-vexec-images-");
+    try {
+      await mkdir(path.join(dir, "images"), { recursive: true });
+      await mkdir(path.join(dir, "art-unplaced"), { recursive: true });
+      await mkdir(path.join(dir, "styles"), { recursive: true });
+      await writeFile(path.join(dir, "images", "hero.png"), "fake", "utf-8");
+      await writeFile(path.join(dir, "images", "wall.jpg"), "fake", "utf-8");
+      await writeFile(path.join(dir, "art-unplaced", "draft.png"), "fake", "utf-8");
+      await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n\n![Hero](images/hero.png)\n", "utf-8");
+      await writeFile(
+        path.join(dir, "styles", "book.css"),
+        'body { background: url("../images/wall.jpg"); }\n',
+        "utf-8",
+      );
+      stubCheckExecution();
+
+      const execution = await executeValidation({ input: dir });
+
+      expect(execution.context.imageFiles).toEqual([
+        path.join(dir, "images", "hero.png"),
+        path.join(dir, "images", "wall.jpg"),
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 // ── assetDirs derivation (no more `source.assets` config list) ─────────────
 
 describe("executeValidation assetDirs derivation", () => {
@@ -772,59 +803,12 @@ describe("executeAndReport", () => {
  * whenever an ignored directory (`dist`, `node_modules`, `.git`) existed. That
  * silently dropped every file sitting AT the root, and for a project whose only
  * subdirectory was `dist` it produced an empty directory list — so asset
- * validation became a no-op the moment the author ran their first build. A
- * too-low-DPI cover would then sail through to the print shop unreported.
+ * validation became a no-op the moment the author ran their first build.
  *
  * Exclusion now happens at the glob level, so the directory list never shrinks.
+ * (Images are no longer scanned at all: they come from what the book ships.)
  */
 describe("asset scan coverage survives a build (root files + dist present)", () => {
-  test("a root-level image is still scanned when dist/ exists", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-assetscan-"));
-    try {
-      await mkdir(path.join(dir, "dist"), { recursive: true });
-      await writeFile(path.join(dir, "cover.png"), "x");
-      await writeFile(path.join(dir, "dist", "built.png"), "x");
-
-      const found = await collectImageFiles([dir], ["png", "jpg"]);
-
-      expect(found.some((f) => f.endsWith("cover.png"))).toBe(true);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("the build's own copies under dist/ are NOT reported as author assets", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-assetscan-dist-"));
-    try {
-      await mkdir(path.join(dir, "dist"), { recursive: true });
-      await writeFile(path.join(dir, "dist", "built.png"), "x");
-
-      const found = await collectImageFiles([dir], ["png", "jpg"]);
-
-      expect(found).toHaveLength(0);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("node_modules and .git are excluded but sibling project dirs are kept", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-assetscan-ig-"));
-    try {
-      await mkdir(path.join(dir, "node_modules", "pkg"), { recursive: true });
-      await mkdir(path.join(dir, ".git"), { recursive: true });
-      await mkdir(path.join(dir, "images"), { recursive: true });
-      await writeFile(path.join(dir, "node_modules", "pkg", "dep.png"), "x");
-      await writeFile(path.join(dir, ".git", "hook.png"), "x");
-      await writeFile(path.join(dir, "images", "real.png"), "x");
-
-      const found = await collectImageFiles([dir], ["png", "jpg"]);
-
-      expect(found.map((f) => f.split("/").pop())).toEqual(["real.png"]);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
-
   test("a root-level FONT is still scanned when dist/ exists", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-assetscan-font-"));
     try {

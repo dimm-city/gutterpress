@@ -316,7 +316,7 @@ Two narrowed runs replace the former `lint` and `audit` commands (removed in
 # (the check `gutterpress lint <dir>` used to run; findings list file and line:col)
 gutterpress validate my-book --only source.stylelint
 
-# Asset checks only — image DPI / format / color space, fonts
+# Asset checks only — image size / alpha, fonts
 # (what `gutterpress audit <dir>` used to run)
 gutterpress validate my-book --category asset --phase pre
 ```

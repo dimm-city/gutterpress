@@ -157,9 +157,6 @@ export const DTRPG_PRESET: VendorPreset = {
     },
     assets: {
       maxImageSize: 10_000_000,
-      minImageDpi: 300,
-      // SPEC: CMYK for colour interiors (Grayscale for black-and-white).
-      allowedColorSpaces: ["CMYK", "Grayscale"],
       // DERIVED: PDF/X-1a forbids transparency, which an alpha channel needs.
       allowAlpha: false,
       approvedFontFiles: [],
@@ -207,9 +204,6 @@ export const DTRPG_PRESET: VendorPreset = {
  *   structure, which only applies to a PDF/X build (`--format pdfx`).
  * - `validate.pdf.forbidTransparency: false` and `assets.allowAlpha: true` —
  *   PDF/X forbids both; a plain PDF/HTML book has no such restriction.
- * - `validate.assets.allowedColorSpaces` includes RGB (not just CMYK/Grayscale)
- *   since a generic book isn't assumed to be prepping for CMYK print-only
- *   distribution.
  */
 export const BOOK_PRESET: VendorPreset = {
   id: "book",
@@ -285,8 +279,6 @@ export const BOOK_PRESET: VendorPreset = {
     },
     assets: {
       maxImageSize: 10_000_000,
-      minImageDpi: 300,
-      allowedColorSpaces: ["RGB", "CMYK", "Grayscale"],
       allowAlpha: true,
       approvedFontFiles: [],
       requireFontLicense: false,

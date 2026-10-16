@@ -294,12 +294,17 @@ export function auditContent(
   for (const img of Array.from(document.querySelectorAll<HTMLImageElement>("img"))) {
     const rect = img.getBoundingClientRect();
     if (!rect.width || !img.naturalWidth) continue;
+    const src = img.currentSrc || img.src;
+    // A vector image has no print resolution: its naturalWidth is a CSS size.
+    if (/^data:image\/svg|\.svg(?:[?#]|$)/i.test(src)) continue;
     // CSS px are 1/96in; effective DPI = source pixels per printed inch
     const dpi = img.naturalWidth / (rect.width / 96);
     if (dpi < dpiFloor) {
+      // Name the file, which is what the author can fix.
+      const file = src.startsWith("data:") ? "" : decodeURIComponent(src.split(/[?#]/)[0]!.split("/").pop()!);
       out.push({
         kind: "low-dpi",
-        what: name(img),
+        what: file ? `${name(img)} (${file})` : name(img),
         detail: `${img.naturalWidth}px wide printed at ${(rect.width / 96).toFixed(2)}in = ${Math.round(dpi)} DPI`,
       });
     }

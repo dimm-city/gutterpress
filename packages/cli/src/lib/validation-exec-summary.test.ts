@@ -1,5 +1,5 @@
 /**
- * The CLI PDF summary lines (Max TAC / Fonts / Rasterized pages) must be derived
+ * The CLI PDF summary lines (Max TAC / Fonts) must be derived
  * from structured CheckResult `code` / `data` fields — NOT by string-matching
  * the human-readable `message`. Rewording a check message must not change the
  * summary numbers.
@@ -29,39 +29,13 @@ describe("buildPdfSummaryLines reads structured fields, not message text", () =>
       code: "ink-coverage-exceeded",
       data: { maxTac: 300 },
     };
-    const rasterBase = {
-      checkId: "pdf.print.rasterized-pages",
-      severity: "warning" as const,
-      code: "rasterized-pages-detected",
-      data: { pages: [3, 7] },
-    };
 
-    const a = buildPdfSummaryLines([
-      { ...base, message: "wording A" },
-      { ...rasterBase, message: "wording A" },
-    ]);
+    const a = buildPdfSummaryLines([{ ...base, message: "wording A" }]);
     const b = buildPdfSummaryLines([
       { ...base, message: "totally different wording B with 999%" },
-      { ...rasterBase, message: "reworded raster line" },
     ]);
     expect(a).toEqual(b);
     expect(a).toContain("Max TAC: 300.0% (high!)");
-    expect(a).toContain("Rasterized pages: 3, 7");
-  });
-
-  test("rasterized pages line reads data.pages", () => {
-    const results: CheckResult[] = [
-      {
-        checkId: "pdf.print.rasterized-pages",
-        severity: "warning",
-        message: "reworded",
-        code: "rasterized-pages-detected",
-        data: { pages: [2, 5, 8] },
-      },
-    ];
-    expect(buildPdfSummaryLines(results)).toContain(
-      "Rasterized pages: 2, 5, 8"
-    );
   });
 
   test("a font issue result suppresses the 'all embedded' line", () => {

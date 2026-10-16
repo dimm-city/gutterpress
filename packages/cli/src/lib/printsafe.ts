@@ -170,15 +170,34 @@ function isUnpairedFitContentWidth(decl: postcss.Declaration): boolean {
  * audit checks every live `.gp-behind` ancestor regardless of its class.
  *
  * Matches `.page`/`.spread` as whole class tokens — `.page-credits` and
- * `.spread-wide` are different classes and must not be flagged.
+ * `.spread-wide` are different classes and must not be flagged — and only in
+ * the selector's SUBJECT: `.page pre` styles a `pre`, not the page.
  */
 function targetsPageWrapper(selector: string): boolean {
-  if (!/\.(page|spread)(?![\w-])/.test(selector)) return false;
+  if (!/\.(page|spread)(?![\w-])/.test(subjectCompound(selector))) return false;
   // A selector that already names gp-bleed/gp-pin has been scoped
   // deliberately — either the exception this rule tells authors to write
   // (`.page:not(:has(.gp-bleed))`) or a rule aimed at those elements. Warning
   // on the documented fix is how a lint rule teaches people to ignore it.
   return !/\bgp-(bleed|pin)\b/.test(selector);
+}
+
+/**
+ * The last compound of one complex selector, with every `(...)` argument
+ * dropped: `.page.doc pre:not(.stage *)` → `pre:not`.
+ */
+function subjectCompound(selector: string): string {
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < selector.length; i++) {
+    const c = selector[i]!;
+    if (c === "(" || c === "[") depth++;
+    else if (c === ")" || c === "]") depth--;
+    else if (depth === 0 && /[\s>+~]/.test(c)) start = i + 1;
+  }
+  let subject = selector.slice(start);
+  while (/\([^()]*\)/.test(subject)) subject = subject.replace(/\([^()]*\)/g, "");
+  return subject;
 }
 
 // A property at its initial value — or at a CSS-wide reset keyword — does
@@ -512,7 +531,7 @@ function checkCssRaw(css: string, from?: string): PrintSafeWarning[] {
       const at = (rule.parent as postcss.AtRule).name.toLowerCase();
       if (at === "page" || marginBoxAtRuleNames.has(at)) return;
     }
-    if (!targetsPageWrapper(rule.selector)) return;
+    if (!rule.selectors.some(targetsPageWrapper)) return;
     rule.walkDecls((decl) => {
       if (clipsDescendants(decl)) {
         warnings.push({

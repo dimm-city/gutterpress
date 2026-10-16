@@ -173,7 +173,7 @@ standalone binary, with zero system tools.
 
 ### Image asset checks — built in (no ImageMagick)
 
-Image resolution (DPI), color space, and alpha-channel checks read PNG/JPEG/TIFF
+The alpha-channel check reads PNG/TIFF
 headers **in-process** — **ImageMagick (`identify`) is no longer used or
 required.** These run everywhere, including from the standalone binary.
 

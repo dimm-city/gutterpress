@@ -1,3 +1,5 @@
+import type { CheckContext } from "../types";
+
 /**
  * Canonical file-extension sets shared by every asset check.
  *
@@ -9,9 +11,8 @@
 
 /**
  * Raster formats the in-process header reader (`inspectImage`) can actually
- * parse. The header-reader checks (color-space, resolution, alpha) operate
- * ONLY over these — they read embedded metadata, which requires a supported
- * parser. This set is the source of truth for inspectImage's real capability;
+ * parse. The header-reader check (alpha) operates ONLY over these — it reads
+ * embedded metadata, which requires a supported parser. This set is the source of truth for inspectImage's real capability;
  * do not add a format here unless inspectImage can decode its header.
  */
 export const RASTER_INSPECTABLE_EXTS = [
@@ -37,14 +38,23 @@ export const ALL_IMAGE_EXTS = [
   "gif",
 ] as const;
 
+/**
+ * The images the book ships (`ctx.imageFiles`) with one of `exts`. Empty when
+ * the run has no book to resolve them from (a `--pdf`-only run).
+ */
+export function shippedImages(ctx: CheckContext, exts: readonly string[]): string[] {
+  return (ctx.imageFiles ?? []).filter((file) =>
+    exts.includes(file.slice(file.lastIndexOf(".") + 1).toLowerCase()),
+  );
+}
+
 /** Font file extensions shared by the approved-fonts and font-license checks. */
 export const FONT_EXTS = ["woff", "woff2", "otf", "ttf", "eot"] as const;
 
 /**
  * Directories no asset scan should ever descend into, as glob patterns.
  *
- * ONE list, applied at the GLOB level by every asset scan (images and fonts
- * alike). Doing the exclusion here rather than by choosing which directories
+ * ONE list, applied at the GLOB level by every scan of the project folder. Doing the exclusion here rather than by choosing which directories
  * to hand the scanner is what keeps root-level files covered: a previous
  * approach swapped the project root for its subdirectories whenever an ignored
  * directory existed, which silently dropped every file sitting at the root —

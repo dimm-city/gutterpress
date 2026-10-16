@@ -254,7 +254,17 @@ export interface GutterpressManifest {
     };
     assets?: {
       maxImageSize?: number;
+      /**
+       * @deprecated No-op. The source-image resolution check it configured
+       * read DPI metadata, which says nothing about the printed size; the
+       * build measures each placed image's printed DPI instead.
+       */
       minImageDpi?: number;
+      /**
+       * @deprecated No-op. The source-image colour-space check it configured
+       * was removed: a PDF/X build converts every image to the output intent,
+       * and `pdf.print.color-spaces` checks the result.
+       */
       allowedColorSpaces?: string[];
       allowAlpha?: boolean;
       approvedFontFiles?: string[];
@@ -370,8 +380,6 @@ export interface ResolvedConfig {
     };
     assets: {
       maxImageSize: number;
-      minImageDpi: number;
-      allowedColorSpaces: string[];
       allowAlpha: boolean;
       approvedFontFiles: string[];
       requireFontLicense: boolean;

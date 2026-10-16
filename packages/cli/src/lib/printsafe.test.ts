@@ -123,6 +123,14 @@ test("checkCss does not flag classes that merely start with page/spread", () => 
   expect(checkCss(css).filter((x) => x.rule === rulePageContainment)).toHaveLength(0);
 });
 
+// Only the subject is the page: `.page pre` styles a `pre`.
+test("checkCss flags .page only as the selector's subject", () => {
+  const css = `.page.dg-doc pre:not(.dg-stage *) { overflow-x: auto; } .page > .x { overflow: hidden; }`;
+  expect(checkCss(css).filter((x) => x.rule === rulePageContainment)).toHaveLength(0);
+  const flagged = `.book .page.dg-doc { overflow: hidden; } .x, .spread:first-child { z-index: 1; }`;
+  expect(checkCss(flagged).filter((x) => x.rule === rulePageContainment)).toHaveLength(2);
+});
+
 // A scoped exception is the documented fix, so it must not warn — a rule
 // that fires on its own recommended remedy teaches people to ignore it.
 test("checkCss accepts a :has()-scoped clip exception", () => {

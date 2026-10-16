@@ -248,7 +248,7 @@
     },
     "ink": {
       "type": "object",
-      "description": "Ink coverage limits used by the `pdf.print.ink-coverage` and `asset.image.tac-raster` checks.",
+      "description": "Ink coverage limits used by the `pdf.print.ink-coverage` check.",
       "properties": {
         "maxTac": {
           "type": "number",
@@ -297,7 +297,7 @@
         },
         "checks": {
           "type": "object",
-          "description": "Per-check overrides, keyed by check id. This is an OPEN dictionary — any registered check id may appear, including ids contributed by plugins. Built-in ids are namespaced source.*, asset.*, pdf.* and heuristic.* (e.g. pdf.structure.qpdf, pdf.print.embedded-fonts, pdf.print.pdfx-markers, pdf.print.page-size, asset.image.color-space, source.markdownlint, heuristic.whitespace.text-density). A boolean value is shorthand for enabled/disabled.",
+          "description": "Per-check overrides, keyed by check id. This is an OPEN dictionary — any registered check id may appear, including ids contributed by plugins. Built-in ids are namespaced source.*, asset.*, pdf.* and heuristic.* (e.g. pdf.structure.qpdf, pdf.print.embedded-fonts, pdf.print.pdfx-markers, pdf.print.page-size, asset.image.file-size, source.markdownlint, heuristic.whitespace.text-density). A boolean value is shorthand for enabled/disabled.",
           "propertyNames": {
             "description": "A registered check id, e.g. \"pdf.print.embedded-fonts\"."
           },
@@ -392,18 +392,15 @@
             },
             "minImageDpi": {
               "type": "integer",
-              "description": "Minimum effective image resolution in DPI (asset.image.resolution).",
-              "default": 300,
+              "deprecated": true,
+              "description": "DEPRECATED and IGNORED (no-op). The source-image check it configured read DPI metadata, which says nothing about the printed size. The build warns about each image placed below 300 DPI, and `validate.pdf.minImageResolution` checks the built PDF. Kept only so older manifests still parse.",
               "minimum": 0
             },
             "allowedColorSpaces": {
               "type": "array",
-              "description": "Color spaces images may use (asset.image.color-space). Preset defaults: dtrpg [\"CMYK\", \"Grayscale\"], book [\"RGB\", \"CMYK\", \"Grayscale\"].",
-              "items": { "type": "string" },
-              "examples": [
-                ["CMYK", "Grayscale"],
-                ["RGB", "CMYK", "Grayscale"]
-              ]
+              "deprecated": true,
+              "description": "DEPRECATED and IGNORED (no-op). The source-image colour-space check it configured was removed: a PDF/X build converts every image to the output intent, and `pdf.print.color-spaces` checks the result. Kept only so older manifests still parse.",
+              "items": { "type": "string" }
             },
             "allowAlpha": {
               "type": "boolean",

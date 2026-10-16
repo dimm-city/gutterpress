@@ -390,9 +390,22 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
     });
   });
 
-  test("array leaf (validate.assets.allowedColorSpaces): manifest array replaces the preset array wholesale (no element merge)", () => {
-    const config = resolveConfig({}, { validate: { assets: { allowedColorSpaces: ["RGB"] } } });
-    expect(config.validate.assets.allowedColorSpaces).toEqual(["RGB"]);
+  test("array leaf (validate.assets.approvedFontFiles): manifest array replaces the preset array wholesale (no element merge)", () => {
+    const config = resolveConfig(
+      {},
+      { preset: "book", validate: { assets: { approvedFontFiles: ["fonts/a.woff2"] } } },
+    );
+    expect(config.validate.assets.approvedFontFiles).toEqual(["fonts/a.woff2"]);
+  });
+
+  test("the retired `validate.assets.minImageDpi` / `allowedColorSpaces` still parse but are dropped", () => {
+    const config = resolveConfig(
+      {},
+      { preset: "book", validate: { assets: { minImageDpi: 150, allowedColorSpaces: ["RGB"] } } },
+    );
+    const assets = config.validate.assets as Record<string, unknown>;
+    expect(assets.minImageDpi).toBeUndefined();
+    expect(assets.allowedColorSpaces).toBeUndefined();
   });
 
   test("a manifest carrying the removed `source.assets` fails loudly instead of building wrong", () => {

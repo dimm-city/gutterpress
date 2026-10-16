@@ -40,10 +40,7 @@ const SOURCE_LABELS: Record<string, string> = {
   // the source checks so `friendlySource` stays the ONE plain-language label
   // authority — preflight must not maintain a second, drifting label map.
   "asset.image.file-size": "Image file size",
-  "asset.image.resolution": "Image resolution",
-  "asset.image.color-space": "Image color space",
   "asset.image.alpha-channel": "Image transparency",
-  "asset.image.tac-raster": "Image ink coverage",
   "asset.font.approved-files": "Font files",
   "asset.font.license": "Font license",
   // Print-quality findings from the render itself (native engine). These are

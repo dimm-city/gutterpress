@@ -22,7 +22,7 @@ gutterpress build . --format pdfx
 The validation system checks four categories:
 
 1. **Source checks** run markdownlint and htmlhint against your markdown and generated HTML.
-2. **Asset checks** verify image sizes, DPI, color spaces, and font references before the build.
+2. **Asset checks** verify the size and transparency of the images the book uses, and its fonts, before the build.
 3. **PDF checks** inspect the generated PDF for structural integrity, page dimensions, color compliance, and font embedding.
 4. **Heuristic checks** flag potential quality issues like sparse pages or excessive decoration.
 

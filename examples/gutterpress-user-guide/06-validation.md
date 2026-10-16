@@ -313,7 +313,7 @@ probe for a system tool and warn if it is missing:
 
 ```
 warn  Tool "qpdf" not found — skipping: pdf.print.pdfx-markers, pdf.print.pdfx-metadata
-warn  Tool "gs" not found — skipping: pdf.print.ink-coverage, asset.image.tac-raster
+warn  Tool "gs" not found — skipping: pdf.print.ink-coverage
 ```
 
 Everything else — page size, safe margins, fonts, images/DPI, bookmarks, links, page labels,

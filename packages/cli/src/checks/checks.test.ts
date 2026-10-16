@@ -55,7 +55,6 @@ describe("Check Registry", () => {
     expect(pdfIds).toContain("pdf.print.color-spaces");
     expect(pdfIds).toContain("pdf.print.embedded-fonts");
     expect(pdfIds).toContain("pdf.print.ink-coverage");
-    expect(pdfIds).toContain("pdf.print.rasterized-pages");
     expect(pdfIds).toContain("pdf.print.black-text");
     expect(pdfIds).toContain("pdf.print.signature");
     expect(pdfIds).toContain("pdf.nav.bookmarks");
@@ -86,10 +85,7 @@ describe("Check Registry", () => {
     const ids = getAllCheckIds();
     const assetIds = ids.filter((id) => id.startsWith("asset."));
     expect(assetIds).toContain("asset.image.file-size");
-    expect(assetIds).toContain("asset.image.resolution");
-    expect(assetIds).toContain("asset.image.color-space");
     expect(assetIds).toContain("asset.image.alpha-channel");
-    expect(assetIds).toContain("asset.image.tac-raster");
     expect(assetIds).toContain("asset.font.approved-files");
     expect(assetIds).toContain("asset.font.license");
   });
@@ -198,7 +194,7 @@ describe("Check Registry", () => {
     // checks are namespaced by category (pdf/source/asset/heuristic) and never
     // start with `test.`, so excluding those makes the count deterministic.
     const all = getAllCheckIds().filter((id) => !id.startsWith("test."));
-    // 18 pdf + 11 source + 7 asset + 4 heuristic = 40
+    // 17 pdf + 11 source + 4 asset + 4 heuristic = 36
     // (source.sync.merge-markers added 0.10.1 — the converge merge's marker
     // blocks and kept-both `.online` siblings were invisible until print;
     // source.callout-validation removed with ::: container syntax, 2026-05-17;
@@ -216,8 +212,10 @@ describe("Check Registry", () => {
     // pdf.print.black-text and pdf.print.signature added 0.11.17 (#336);
     // source.characters added 0.11.19 (#382);
     // pdf.print.safe-margins added 0.11.20 — text kept `page.safe` inside the
-    // trim.)
-    expect(all.length).toBe(40);
+    // trim; asset.image.color-space, asset.image.resolution,
+    // asset.image.tac-raster and pdf.print.rasterized-pages removed 0.11.21 —
+    // each guessed at print output the build and the PDF checks measure.)
+    expect(all.length).toBe(36);
   });
 });
 
@@ -687,7 +685,7 @@ describe("Manifest validate section", () => {
     // resolved — it no longer appears anywhere on ResolvedConfig.
     expect((config.validate.source as Record<string, unknown>).allowedCallouts).toBeUndefined();
     // Other defaults preserved
-    expect(config.validate.assets.minImageDpi).toBe(300);
+    expect(config.validate.assets.allowAlpha).toBe(false);
   });
 
   test("check-level overrides merge correctly", () => {
@@ -1642,7 +1640,6 @@ describe("PDF checks skip when no pdfPath", () => {
     "pdf.print.color-spaces",
     "pdf.print.embedded-fonts",
     "pdf.print.ink-coverage",
-    "pdf.print.rasterized-pages",
     "pdf.print.black-text",
     "pdf.print.signature",
     "pdf.nav.bookmarks",
@@ -1869,14 +1866,11 @@ describe("Tool Check", () => {
       "pdf.print.bleed",
       "pdf.print.embedded-fonts",
       "pdf.print.image-resolution",
-      "pdf.print.rasterized-pages",
-      "heuristic.whitespace.text-density",
+        "heuristic.whitespace.text-density",
       "heuristic.decoration.layer-count",
       "heuristic.layout.placement-variance",
       // Phase 3 — pure-JS image header reader (replaced ImageMagick identify)
       "asset.image.alpha-channel",
-      "asset.image.color-space",
-      "asset.image.resolution",
     ]);
 
     const allChecks = getChecks();
@@ -2186,7 +2180,7 @@ function pngChunk(type: string, data: Buffer): Buffer {
   len.writeUInt32BE(data.length);
   return Buffer.concat([len, Buffer.from(type, "latin1"), data, Buffer.alloc(4)]);
 }
-function buildPng(colorType: number, ppm?: number): Buffer {
+function buildPng(colorType: number): Buffer {
   const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(10, 0);
@@ -2194,13 +2188,6 @@ function buildPng(colorType: number, ppm?: number): Buffer {
   ihdr[8] = 8;
   ihdr[9] = colorType;
   const parts = [sig, pngChunk("IHDR", ihdr)];
-  if (ppm) {
-    const phys = Buffer.alloc(9);
-    phys.writeUInt32BE(ppm, 0);
-    phys.writeUInt32BE(ppm, 4);
-    phys[8] = 1;
-    parts.push(pngChunk("pHYs", phys));
-  }
   parts.push(pngChunk("IEND", Buffer.alloc(0)));
   return Buffer.concat(parts);
 }
@@ -2213,7 +2200,9 @@ describe("Asset image checks (in-process reader)", () => {
       const config = makeConfig();
       config.validate.assets.allowAlpha = false;
       const check = getCheckById("asset.image.alpha-channel")!;
-      const results = await check.run(makeCtx({ config, inputDir: dir, assetDirs: [dir] }));
+      const results = await check.run(
+        makeCtx({ config, inputDir: dir, imageFiles: [join(dir, "rgba.png")] }),
+      );
       expect(results).toHaveLength(1);
       expect(results[0]!.message).toContain("alpha channel");
       expect(results[0]!.file).toContain("rgba.png");
@@ -2229,39 +2218,40 @@ describe("Asset image checks (in-process reader)", () => {
       const config = makeConfig();
       config.validate.assets.allowAlpha = false;
       const check = getCheckById("asset.image.alpha-channel")!;
-      const results = await check.run(makeCtx({ config, inputDir: dir, assetDirs: [dir] }));
+      const results = await check.run(
+        makeCtx({ config, inputDir: dir, imageFiles: [join(dir, "rgb.png")] }),
+      );
       expect(results).toHaveLength(0);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   });
 
-  test("color-space flags an sRGB PNG when only CMYK/Gray allowed", async () => {
+  test("alpha-channel ignores a PNG the book does not ship", async () => {
     const dir = await mkdtemp(join(tmpdir(), "gutterpress-asset-"));
     try {
-      await writeFile(join(dir, "rgb.png"), buildPng(2)); // sRGB
+      await writeFile(join(dir, "unplaced.png"), buildPng(6));
       const config = makeConfig();
-      config.validate.assets.allowedColorSpaces = ["CMYK", "Gray"];
-      const check = getCheckById("asset.image.color-space")!;
-      const results = await check.run(makeCtx({ config, inputDir: dir, assetDirs: [dir] }));
-      expect(results).toHaveLength(1);
-      expect(results[0]!.message).toContain("sRGB");
+      config.validate.assets.allowAlpha = false;
+      const check = getCheckById("asset.image.alpha-channel")!;
+      const results = await check.run(makeCtx({ config, inputDir: dir, imageFiles: [] }));
+      expect(results).toHaveLength(0);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   });
 
-  test("resolution flags a low-DPI image and passes a 300-DPI one", async () => {
+  test("alpha-channel skips under pdfx.transparency: preserve-text", async () => {
     const dir = await mkdtemp(join(tmpdir(), "gutterpress-asset-"));
     try {
-      await writeFile(join(dir, "low.png"), buildPng(2)); // no pHYs → 72 DPI
-      await writeFile(join(dir, "hi.png"), buildPng(2, 11811)); // 300 DPI
+      const file = join(dir, "rgba.png");
+      await writeFile(file, buildPng(6));
       const config = makeConfig();
-      config.validate.assets.minImageDpi = 300;
-      const check = getCheckById("asset.image.resolution")!;
-      const results = await check.run(makeCtx({ config, inputDir: dir, assetDirs: [dir] }));
-      expect(results).toHaveLength(1);
-      expect(results[0]!.file).toContain("low.png");
+      config.validate.assets.allowAlpha = false;
+      config.pdfx.transparency = "preserve-text";
+      const check = getCheckById("asset.image.alpha-channel")!;
+      const results = await check.run(makeCtx({ config, inputDir: dir, imageFiles: [file] }));
+      expect(results).toHaveLength(0);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
