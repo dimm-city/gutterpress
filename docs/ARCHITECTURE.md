@@ -183,8 +183,8 @@ Formatter (formatter.ts)
   link/ref checks, layout-marker diagnostics, alt-text and heading-order
   accessibility checks, leftover sync-merge-marker detection, and unusual
   characters pasted into the markdown
-- **PDF (18)**: Structure, page size, text safe margins, color spaces, fonts, ink coverage, transparency, bleed, bookmarks, etc.
-- **Asset (7)**: Image size/DPI/color space/alpha/TAC and font approval/license checks
+- **PDF (17)**: Structure, page size, text safe margins, color spaces, fonts, ink coverage, transparency, bleed, bookmarks, etc.
+- **Asset (4)**: Size and alpha of the images the book ships, and font approval/license checks
 - **Heuristic (4)**: Text density, section density, layer count, placement variance
 
 ## Build Pipeline
@@ -534,7 +534,6 @@ validate:
     markdownlint: ".markdownlint.yaml"
   assets:
     maxImageSize: 10000000
-    minImageDpi: 300
   pdf:
     forbidTransparency: true
   heuristics:

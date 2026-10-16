@@ -368,6 +368,16 @@ function resolveWithPreset(
         "removed 2026-05-17. See docs/migrations/2026-05-removing-container-syntax.md."
     );
   }
+  for (const key of ["minImageDpi", "allowedColorSpaces"] as const) {
+    if (m.validate?.assets?.[key] !== undefined || c.validate?.assets?.[key] !== undefined) {
+      warnOnce(
+        `assets-${key}-deprecated`,
+        `[gutterpress] manifest field \`validate.assets.${key}\` is deprecated and ` +
+          "ignored. The source-image check it configured was removed; the build " +
+          "and the PDF checks measure what actually prints."
+      );
+    }
+  }
 
   // `engine:` and `engineStyles:` are gone (#266). The Gutterpress engine is
   // the only engine, so a switch had nothing to select; and `engineStyles.

@@ -98,7 +98,7 @@ export function isNonFilesystemRef(url: string): boolean {
 }
 
 /** `fonts/x.woff2?v=2#iefix` must resolve to `fonts/x.woff2`. */
-function stripUrlSuffix(url: string): string {
+export function stripUrlSuffix(url: string): string {
   return url.replace(/[?#].*$/, "");
 }
 

@@ -1,13 +1,12 @@
 /**
  * Guards the image/font extension-set contract shared by the asset checks.
  *
- * Background: collectImageFiles was copy-pasted across three files with
- * DIVERGENT glob lists, so webp/svg/gif were size-checked yet silently exempt
- * from the header-reader checks (color-space / resolution / alpha). This test
- * pins the *intended* coverage:
+ * Background: the image scan was copy-pasted across three files with
+ * DIVERGENT extension lists, so webp/svg/gif were size-checked yet silently
+ * exempt from the header-reader checks. This test pins the *intended* coverage:
  *
  *   - RASTER_INSPECTABLE_EXTS — the formats inspectImage can actually parse.
- *     The header-reader checks operate ONLY over these.
+ *     The header-reader check (alpha) operates ONLY over these.
  *   - ALL_IMAGE_EXTS — every image extension treated as an asset for byte-level
  *     checks (file size). Superset of RASTER_INSPECTABLE_EXTS.
  *   - The extras (webp/svg/gif) are size-checked but intentionally NOT
@@ -22,8 +21,9 @@ import {
   RASTER_INSPECTABLE_EXTS,
   ALL_IMAGE_EXTS,
   FONT_EXTS,
+  shippedImages,
 } from "./extensions";
-import { collectImageFiles, inspectImage } from "../../lib/image-inspect";
+import { inspectImage } from "../../lib/image-inspect";
 import { resolveConfig } from "../../lib/manifest";
 import { getCheckById } from "../registry";
 import type { CheckContext } from "../types";
@@ -31,12 +31,12 @@ import type { CheckContext } from "../types";
 // self-register all asset checks
 import "./index";
 
-function makeCtx(dir: string): CheckContext {
+function makeCtx(dir: string, imageFiles: string[] = []): CheckContext {
   return {
     config: resolveConfig({}, {} as any),
     inputDir: dir,
     outputDir: dir,
-    assetDirs: [dir],
+    imageFiles,
   };
 }
 
@@ -85,8 +85,11 @@ describe("image collection honours the shared sets", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  test("RASTER_INSPECTABLE_EXTS collects png but NOT webp/svg/gif", async () => {
-    const files = await collectImageFiles([dir], RASTER_INSPECTABLE_EXTS);
+  const shipped = () =>
+    ["photo.png", "cover.webp", "logo.svg", "anim.gif", "body.ttf"].map((f) => join(dir, f));
+
+  test("RASTER_INSPECTABLE_EXTS selects png but NOT webp/svg/gif", () => {
+    const files = shippedImages(makeCtx(dir, shipped()), RASTER_INSPECTABLE_EXTS);
     const names = files.map((f) => f.split("/").pop());
     expect(names).toContain("photo.png");
     expect(names).not.toContain("cover.webp");
@@ -94,8 +97,8 @@ describe("image collection honours the shared sets", () => {
     expect(names).not.toContain("anim.gif");
   });
 
-  test("ALL_IMAGE_EXTS collects every image asset including webp/svg/gif", async () => {
-    const files = await collectImageFiles([dir], ALL_IMAGE_EXTS);
+  test("ALL_IMAGE_EXTS selects every image asset including webp/svg/gif", () => {
+    const files = shippedImages(makeCtx(dir, shipped()), ALL_IMAGE_EXTS);
     const names = files.map((f) => f.split("/").pop());
     expect(names).toContain("photo.png");
     expect(names).toContain("cover.webp");
@@ -136,18 +139,17 @@ describe("asset checks apply the shared sets consistently", () => {
   });
 
   test("file-size check DOES flag an oversized webp", async () => {
-    const ctx = makeCtx(dir);
+    const ctx = makeCtx(dir, [join(dir, "huge.webp")]);
     ctx.config.validate.assets.maxImageSize = 1_000_000;
     const check = getCheckById("asset.image.file-size")!;
     const results = await check.run(ctx);
     expect(results.map((r) => r.file?.split("/").pop())).toContain("huge.webp");
   });
 
-  test("color-space check SKIPS webp (not header-inspectable)", async () => {
+  test("file-size check ignores an oversized image the book does not ship", async () => {
     const ctx = makeCtx(dir);
-    ctx.config.validate.assets.allowedColorSpaces = ["sRGB"];
-    const check = getCheckById("asset.image.color-space")!;
-    const results = await check.run(ctx);
-    expect(results).toHaveLength(0);
+    ctx.config.validate.assets.maxImageSize = 1_000_000;
+    const check = getCheckById("asset.image.file-size")!;
+    expect(await check.run(ctx)).toHaveLength(0);
   });
 });

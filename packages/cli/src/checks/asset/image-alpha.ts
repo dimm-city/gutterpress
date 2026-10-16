@@ -1,6 +1,7 @@
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
-import { inspectImage, collectImageFiles } from "../../lib/image-inspect";
+import { inspectImage } from "../../lib/image-inspect";
+import { shippedImages } from "./extensions";
 
 const check: Check = {
   id: "asset.image.alpha-channel",
@@ -10,11 +11,14 @@ const check: Check = {
   phase: "pre-build",
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (ctx.config.validate.assets.allowAlpha) return [];
+    // `preserve-text` flattens a transparent page's artwork and keeps its text
+    // live, so an alpha channel costs nothing in print; only `flatten-page`
+    // loses the page's text to it.
+    if (ctx.config.pdfx.transparency === "preserve-text") return [];
 
-    const dirs = ctx.assetDirs ?? [ctx.inputDir];
     // Deliberate subset of RASTER_INSPECTABLE_EXTS: JPEG cannot carry an alpha
     // channel, so only the alpha-capable inspectable formats are scanned here.
-    const files = await collectImageFiles(dirs, ["png", "tiff", "tif"]);
+    const files = shippedImages(ctx, ["png", "tiff", "tif"]);
     if (files.length === 0) return [];
 
     const results: CheckResult[] = [];

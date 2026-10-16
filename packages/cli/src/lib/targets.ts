@@ -82,9 +82,6 @@ const DTRPG_TARGET: PublishTarget = {
         "pdf.print.embedded-fonts": { enabled: true, severity: "error" },
         "pdf.print.safe-margins": { enabled: true, severity: "error" },
       },
-      assets: {
-        allowedColorSpaces: [...DTRPG_PRESET.validate.assets.allowedColorSpaces],
-      },
       pdf: {
         forbidTransparency: DTRPG_PRESET.validate.pdf.forbidTransparency,
         minImageResolution: DTRPG_PRESET.validate.pdf.minImageResolution,
@@ -121,15 +118,17 @@ const ITCH_TARGET: PublishTarget = {
         "pdf.print.pdfx-metadata": false,
         "pdf.print.ink-coverage": false,
         "pdf.print.safe-margins": false,
-        "asset.image.tac-raster": false,
       },
       assets: {
-        allowedColorSpaces: ["RGB", "CMYK", "Grayscale"],
         allowAlpha: true,
+        // 0 = no limit: a screen PDF has no print file-size cap.
+        maxImageSize: 0,
       },
       pdf: {
         forbidTransparency: false,
         requireBleed: false,
+        // 0 = no floor: 300 DPI is a print bar, not a screen one.
+        minImageResolution: 0,
       },
     },
   },

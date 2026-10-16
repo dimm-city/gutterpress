@@ -496,11 +496,15 @@
       const rect = img.getBoundingClientRect();
       if (!rect.width || !img.naturalWidth)
         continue;
+      const src = img.currentSrc || img.src;
+      if (/^data:image\/svg|\.svg(?:[?#]|$)/i.test(src))
+        continue;
       const dpi = img.naturalWidth / (rect.width / 96);
       if (dpi < dpiFloor) {
+        const file = src.startsWith("data:") ? "" : decodeURIComponent(src.split(/[?#]/)[0].split("/").pop());
         out.push({
           kind: "low-dpi",
-          what: name(img),
+          what: file ? `${name(img)} (${file})` : name(img),
           detail: `${img.naturalWidth}px wide printed at ${(rect.width / 96).toFixed(2)}in = ${Math.round(dpi)} DPI`
         });
       }

@@ -1181,7 +1181,8 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // across sheets leaves dead columns on every page before the last one.
     // Explicitly scoped to actual multicol containers (`column-count` OR
     // `column-width` set — `columns: 20em` resolves to `column-width` with
-    // `column-count: auto`, so checking `columnCount` alone misses it), not a
+    // `column-count: auto`, so checking `columnCount` alone misses it; and
+    // not a grid or flex container, where column properties do nothing), not a
     // relaxation of auditContent's leaf guard — that would make every wrapper
     // div in a 300-page book a candidate.
     //
@@ -1367,6 +1368,9 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
             if (
               multicol.length < 20 &&
               !(cs.columnCount === "auto" && cs.columnWidth === "auto") &&
+              // Column properties only make a BLOCK container multicol; a
+              // grid or flex container that carries them lays out no columns.
+              !/grid|flex/.test(cs.display) &&
               cs.columnFill === "balance" &&
               el.getBoundingClientRect().height > ${minContentHeightPx} + 1
             ) {

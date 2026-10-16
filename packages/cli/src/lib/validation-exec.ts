@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { readdir } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { loadManifestWithPath, resolveConfig, resolveConfigForTarget } from "./manifest";
 import { resolveOutputDir } from "./output-paths";
@@ -8,11 +8,20 @@ import { BOOK_HTML_FILENAME } from "./desktop";
 import { UsageError } from "./cli-args";
 import { resolveActiveStyles } from "./style-resolver";
 import { restoreForCommand } from "./extension-restore.ts";
-import { loadPluginsWithCss } from "./markdown/plugins";
-import { collectStyleDependencies, escapesProjectRoot } from "./asset-inline";
+import { loadPlugins, loadPluginsWithCss } from "./markdown/plugins";
+import {
+  collectStyleDependencies,
+  decodeRef,
+  escapesProjectRoot,
+  isNonFilesystemRef,
+  proseImageRefError,
+  stripUrlSuffix,
+} from "./asset-inline";
 import { resolveActiveMarkdownFiles } from "./markdown/index";
 import { applyMarkdownlintFixes } from "./markdownlint-fix";
 import { MARKDOWNLINT_CHECK_ID } from "../checks/source/markdownlint";
+import { createRenderedLocalRefCollector } from "../checks/source/local-ref-parser";
+import { ALL_IMAGE_EXTS } from "../checks/asset/extensions";
 import { canonicalChapterId } from "./markdown/chapter-id";
 import { formatReport, type OutputFormat } from "../checks/formatter";
 import { runChecks, type RunnerOptions, type RunnerReport } from "../checks/runner";
@@ -93,10 +102,52 @@ const SHIPPED_ASSET_EXTS = new Set([
 ]);
 
 /**
+ * The image files the book ships, as absolute paths: every markdown image,
+ * resolved the way the build's `planImageCopies` resolves it (against the
+ * manifest's directory), plus every image in the stylesheets' `url()` closure.
+ * Only files that exist — a missing image is `source.links.local-refs`'s
+ * finding. Unreferenced art in the project folder is not shipped, so it is not
+ * checked. Never throws: an unreadable chapter or stylesheet contributes
+ * nothing, and a plugin that will not load is reported by the link checks.
+ */
+async function shippedImageFiles(
+  manifestDir: string,
+  markdownFiles: string[],
+  stylePaths: string[],
+  extensions: ResolvedConfig["extensions"],
+): Promise<string[]> {
+  const isImage = (file: string) =>
+    (ALL_IMAGE_EXTS as readonly string[]).includes(file.slice(file.lastIndexOf(".") + 1).toLowerCase());
+  const files = new Set<string>();
+  try {
+    for (const file of await collectStyleDependencies(manifestDir, stylePaths)) {
+      if (isImage(file)) files.add(file);
+    }
+  } catch {
+    // Same as sharedAssetDirs: a broken stylesheet is the build's finding.
+  }
+  const collect = createRenderedLocalRefCollector(
+    await loadPlugins(extensions, manifestDir, () => {}),
+  );
+  for (const file of markdownFiles) {
+    let refs: ReturnType<typeof collect>;
+    try {
+      refs = collect(await readFile(file, "utf8"));
+    } catch {
+      continue;
+    }
+    for (const { ref, kind } of refs) {
+      if (kind !== "image" || isNonFilesystemRef(ref) || proseImageRefError(ref, manifestDir)) continue;
+      files.add(resolve(manifestDir, stripUrlSuffix(decodeRef(ref))));
+    }
+  }
+  return [...files].filter((file) => existsSync(file)).sort();
+}
+
+/**
  * Directories holding the active stylesheets' asset closure that lives OUTSIDE
- * the book — a shared repo-root theme's fonts and images, which the build
- * embeds into the PDF and which therefore have to pass the same asset checks as
- * in-book art.
+ * the book — a shared repo-root theme's fonts, which the build embeds into the
+ * PDF and which therefore have to pass the same font checks as in-book fonts.
  *
  * Only the asset files' own directories are returned: not the whole shared tree,
  * and not the stylesheets' directories (which may hold unrelated CSS and art
@@ -446,6 +497,7 @@ export async function executeValidation(
   let markdownFiles: string[] | undefined;
   let cssFiles: string[] | undefined;
   let assetDirs: string[] | undefined;
+  let imageFiles: string[] | undefined;
   let htmlPath: string | undefined;
 
   // Output location is the shared convention (./output-paths.ts), anchored on
@@ -502,21 +554,27 @@ export async function executeValidation(
       (f) => !f.endsWith(".min.css"),
     );
 
-    // The project root, wholesale. Excluding node_modules/.git/dist happens at
-    // the GLOB level (ASSET_SCAN_IGNORE_GLOBS, checks/asset/extensions.ts), not
-    // by choosing which directories to scan — picking directories silently
-    // dropped every file sitting at the project root, and scanned nothing at
-    // all for a project whose only subdirectory was `dist`.
+    // Fonts: the project root, wholesale. Excluding node_modules/.git/dist
+    // happens at the GLOB level (ASSET_SCAN_IGNORE_GLOBS,
+    // checks/asset/extensions.ts), not by choosing which directories to scan —
+    // picking directories silently dropped every file sitting at the project
+    // root, and scanned nothing at all for a project whose only subdirectory
+    // was `dist`.
     //
     // Plus the directories holding the ACTIVE stylesheets' out-of-book asset
-    // closure. A shared repo-root theme's own `url()`
-    // targets are embedded into the built PDF — fonts always, images under the
-    // inline cap — so a scan limited to the book folder never checked shipped
-    // shared fonts or art for resolution, colour space, TAC, file size, alpha,
-    // or font licence. Only the asset files' OWN directories are added, not the
-    // whole shared tree and not the stylesheets' directories, so the scan stays
-    // as tight as the closure itself.
+    // closure. A shared repo-root theme's fonts are embedded into the built
+    // PDF, so a scan limited to the book folder never checked them for font
+    // licence. Only the asset files' OWN directories are added, not the whole
+    // shared tree and not the stylesheets' directories, so the scan stays as
+    // tight as the closure itself.
     assetDirs = [inputDir, ...(await sharedAssetDirs(manifestDir, relStyles, inputDir))];
+    // Images: exactly the ones the book ships, not every picture in the folder.
+    imageFiles = await shippedImageFiles(
+      manifestDir,
+      markdownFiles,
+      [...relStyles, ...pluginStylePaths],
+      config.extensions,
+    );
 
     const possibleHtml = join(outDir, BOOK_HTML_FILENAME);
     if (existsSync(possibleHtml)) {
@@ -533,6 +591,7 @@ export async function executeValidation(
     markdownFiles,
     cssFiles,
     assetDirs,
+    imageFiles,
   };
 
   const runnerOptions: RunnerOptions = {
@@ -636,7 +695,7 @@ export async function executeAndReport(
 }
 
 /**
- * Derive the extra PDF summary lines (Max TAC / Fonts / Rasterized pages) shown
+ * Derive the extra PDF summary lines (Max TAC / Fonts) shown
  * after the standard report in text mode.
  *
  * These read the structured `code` / `data` fields on each CheckResult — NOT the
@@ -671,19 +730,6 @@ export function buildPdfSummaryLines(results: CheckResult[]): string[] {
     if (!hasFontIssue) {
       lines.push("Fonts: all embedded");
     }
-  }
-
-  const rasterResults = results.filter(
-    (r) => r.checkId === "pdf.print.rasterized-pages"
-  );
-  if (rasterResults.length > 0) {
-    const rasterFinding = rasterResults.find(
-      (r) => r.code === "rasterized-pages-detected"
-    );
-    const pages = rasterFinding?.data?.pages;
-    lines.push(
-      `Rasterized pages: ${Array.isArray(pages) ? pages.join(", ") : "none"}`
-    );
   }
 
   return lines;

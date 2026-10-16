@@ -80,7 +80,7 @@ const TOOLS_TO_PROBE: Array<{
     hintKey: "gs",
     usedBy: [
       { feature: "PDF/X CMYK conversion (build --format pdfx)", severity: "required" },
-      { feature: "validate: pdf.print.ink-coverage, asset.image-tac", severity: "optional" },
+      { feature: "validate: pdf.print.ink-coverage", severity: "optional" },
     ],
   },
   {
