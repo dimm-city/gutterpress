@@ -191,6 +191,17 @@ const DEFAULT_FIXTURES = [
   // Chromium the same book may read CLEAN instead: also a pass, never a
   // failure.
   join(REPO, "docs", "fixtures", "exact-fit-boundary", "book"),
+  // The percentage-height-root fixture (committed): `height: 100%` on every
+  // page block, by the data-name the pipeline gives it (which its heading
+  // shares). Print resolves the percentage against the flow root — auto, so
+  // the block takes core's min-height cushion — while the viewer's strip was
+  // a definite `height: var(--gp-content-h)`, so on screen the block ended
+  // exactly on its column's edge, its heading filled it, and the run's last
+  // block left a blank column: one preview page the PDF does not have
+  // (examples/with-print-effects with that rule: print 5pp, viewer 8pp, a
+  // pin root being a run of its own). `.gp-strip` now takes its height from
+  // the flow root the way the block does in print (viewer.css).
+  join(REPO, "docs", "fixtures", "percentage-height-root", "book"),
 ];
 
 type DivergenceKind = "pageCount" | "pageMap" | "targetCounter" | "headingPageMap";

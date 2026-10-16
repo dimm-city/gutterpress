@@ -119,7 +119,38 @@
   );
   position: relative;
   width: var(--gp-content-w);
-  height: var(--gp-content-h);
+  /* Exactly one column tall, but DEFINITE only where print's flow root is.
+     A page root's percentage height (\`.page { height: 100% }\`) resolves
+     against its containing block. In print that is the flow root (\`body\` or
+     \`main\`), whose height is auto in an ordinary book, so the percentage
+     computes to \`auto\` and MARKER_CSS's min-height cushion sizes the root.
+     Here the strip stands in as that containing block, and a plain
+     \`height: var(--gp-content-h)\` resolved the percentage to the full column:
+     the root ended exactly on the column's edge, and the same percentage
+     reached everything else the author's rule matched (\`[data-name="x"]\`
+     selects a block AND its heading, so the heading filled the root and the
+     paragraph after it spilled into the next column). Mid-run the next root's
+     forced break absorbed the spill; a run's LAST root left a blank column —
+     a preview page the PDF does not have. Measured on
+     examples/with-print-effects with \`height: 100%\` on its page blocks: print
+     5pp, viewer 8pp (a pin root is a run of its own, so three runs ended on
+     such a root).
+
+     \`height: 100%\` asks the strip's own containing block the question the
+     root asks print's: is the flow root's height definite? Auto there (the
+     ordinary book) is auto here, and the root's percentage is auto exactly
+     as in print. A definite flow root — \`html, body { height: 100% }\`, where
+     print's percentage DOES resolve to the page area — is definite here too
+     (measured, the same 5-root book: 6pp in both renderers). Either way the
+     min/max pair pins the used height, so the column height, to the content
+     height: \`clientHeight\` is still one column.
+
+     \`decorate.ts\`'s \`.gp-run\` wrapper sizes itself with \`min-height\` for the
+     same reason — a definite wrapper would resolve the percentage after the
+     run was measured and re-fragment it under its sheets. */
+  height: 100%;
+  min-height: var(--gp-content-h);
+  max-height: var(--gp-content-h);
   column-width: var(--gp-content-w);
   column-gap: var(--gp-col-gap);
   column-fill: auto;
@@ -1214,7 +1245,7 @@
         continue;
       const stripTop = strip.getBoundingClientRect().top;
       const edge = prop === "break-after" ? rect.bottom : rect.top;
-      if (columnReserve((edge - stripTop) / cssZoomOf(strip), strip.clientHeight) === null)
+      if (columnReserve((edge - stripTop) / cssZoomOf(strip), stripMetrics(strip).height) === null)
         continue;
       const spacer = document.createElement("div");
       spacer.className = "gp-column-break-spacer";
@@ -1598,12 +1629,11 @@
       let previous = "";
       for (let pass = 0;pass < maxPasses; pass++) {
         passes = Math.max(passes, pass + 1);
-        const stride = strideOf(strip.el);
+        const { stride, height: colBottom } = stripMetrics(strip.el);
         const stripLeft = strip.el.getBoundingClientRect().left - strip.el.scrollLeft;
         const zoom = cssZoomOf(strip.el);
         const colOf = (r) => Math.floor(((r.left - stripLeft) / zoom + 1) / stride);
         const stripTop = strip.el.getBoundingClientRect().top;
-        const colBottom = strip.el.clientHeight;
         const plans = [];
         for (const table of tables) {
           const head = repeatingHead(table);
@@ -1774,7 +1804,7 @@
     const colGap = parseFloat(cs.columnGap) || 0;
     const h = parseFloat(cs.getPropertyValue("--gp-content-h"));
     const rowGap = parseFloat(cs.rowGap) || 0;
-    return { stride: w + colGap, rowStride: h + rowGap };
+    return { stride: w + colGap, rowStride: h + rowGap, height: h };
   }
   function rowStrideOf(strip) {
     return stripMetrics(strip).rowStride;
@@ -3094,7 +3124,7 @@
           overlayPages.push({ index: bookIndex, sheet, strip, padded: ctx.padded });
         }
         const rows = Math.max(1, Math.ceil((strip.pages + shift) / perRow));
-        run.style.height = `${rowStride * (rows - 1) + PX_PER_PT * g.height}px`;
+        run.style.minHeight = `${rowStride * (rows - 1) + PX_PER_PT * g.height}px`;
         run.style.width = `${stride * perRow}px`;
         const composed = !!strip.wrapCols && shift === 1 && !first;
         run.style.marginTop = composed ? `${-(prevPageH + sheetGap)}px` : "";
@@ -3182,7 +3212,7 @@
       }
     }
     function checkOverflow(strip, out) {
-      const h = strip.el.clientHeight;
+      const { height: h } = stripMetrics(strip.el);
       for (const el of Array.from(strip.el.querySelectorAll("figure,table,img,pre"))) {
         const r = el.getBoundingClientRect();
         if (r.height > h + 1) {

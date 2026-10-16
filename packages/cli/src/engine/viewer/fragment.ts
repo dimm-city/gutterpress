@@ -290,10 +290,10 @@ export function synthesizeColumnBreaks(model: GcpmModel): void {
     if (!rect) continue;
     const stripTop = strip.getBoundingClientRect().top;
     const edge = prop === "break-after" ? rect.bottom : rect.top;
-    // Rects are zoom-scaled, clientHeight is not — see cssZoomOf.
+    // Rects are zoom-scaled, the column height is not — see cssZoomOf.
     // The number is not used to SIZE the spacer (see below); only its
     // null/non-null verdict matters — "is this forced break still unsatisfied".
-    if (columnReserve((edge - stripTop) / cssZoomOf(strip), strip.clientHeight) === null) continue;
+    if (columnReserve((edge - stripTop) / cssZoomOf(strip), stripMetrics(strip).height) === null) continue;
     const spacer = document.createElement("div");
     spacer.className = "gp-column-break-spacer";
     spacer.setAttribute("aria-hidden", "true");
@@ -1056,13 +1056,12 @@ export function compensateRepeatedHeaders(
       // READ phase — one layout for the whole strip, then pure reads. Reading
       // and writing per table instead costs a forced relayout of the entire
       // book per table (measured: ~5ms × table count).
-      const stride = strideOf(strip.el);
+      const { stride, height: colBottom } = stripMetrics(strip.el);
       const stripLeft = strip.el.getBoundingClientRect().left - strip.el.scrollLeft;
-      // Rects are zoom-scaled, stride/clientHeight are not — see cssZoomOf.
+      // Rects are zoom-scaled, stride/colBottom are not — see cssZoomOf.
       const zoom = cssZoomOf(strip.el);
       const colOf = (r: DOMRect) => Math.floor(((r.left - stripLeft) / zoom + 1) / stride);
       const stripTop = strip.el.getBoundingClientRect().top;
-      const colBottom = strip.el.clientHeight;
       const plans: Array<{
         table: HTMLTableElement;
         push: boolean;
@@ -1077,7 +1076,7 @@ export function compensateRepeatedHeaders(
       for (const table of tables) {
         const head = repeatingHead(table);
         const headRect = head?.getClientRects()[0];
-        // Rect-derived heights are zoom-scaled; colBottom (clientHeight) is not.
+        // Rect-derived heights are zoom-scaled; colBottom is not.
         const footHeight = (repeatingFoot(table)?.getBoundingClientRect().height ?? 0) / zoom;
         const rows = Array.from(
           table.querySelectorAll<HTMLTableRowElement>("tbody > tr"),
@@ -1374,19 +1373,29 @@ export function cssZoomOf(el: Element): number {
 }
 
 /**
- * Both pitches from ONE getComputedStyle read. `indexInStrip` runs once per
- * xref/string-set/probe element on every mount and refresh, and each
- * getComputedStyle call can force a style recalc — reading the horizontal
- * and vertical pitch together halves that cost without any caching to
- * invalidate.
+ * Both pitches and the column height from ONE getComputedStyle read.
+ * `indexInStrip` runs once per xref/string-set/probe element on every mount
+ * and refresh, and each getComputedStyle call can force a style recalc —
+ * reading the horizontal and vertical pitch together halves that cost without
+ * any caching to invalidate.
+ *
+ * `height` is the column height: the content height the strip publishes as
+ * `--gp-content-h`, which is what every reader of a column's extent compares
+ * against — not `strip.clientHeight`, the rendered box rounded to an integer.
+ * The box is pinned to this value (`.gp-strip`'s min/max pair in viewer.css),
+ * but the property is the contract and the box is its consequence.
  */
-export function stripMetrics(strip: HTMLElement): { stride: number; rowStride: number } {
+export function stripMetrics(strip: HTMLElement): {
+  stride: number;
+  rowStride: number;
+  height: number;
+} {
   const cs = getComputedStyle(strip);
   const w = parseFloat(cs.getPropertyValue("--gp-content-w"));
   const colGap = parseFloat(cs.columnGap) || 0;
   const h = parseFloat(cs.getPropertyValue("--gp-content-h"));
   const rowGap = parseFloat(cs.rowGap) || 0;
-  return { stride: w + colGap, rowStride: h + rowGap };
+  return { stride: w + colGap, rowStride: h + rowGap, height: h };
 }
 
 /**

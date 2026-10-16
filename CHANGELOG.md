@@ -206,6 +206,19 @@ This project follows [Semantic Versioning](https://semver.org/).
   keeps the header's colour, letter case, letter spacing and vertical
   alignment; it kept only the font, alignment, padding, border and background,
   so an uppercase header bar came back in the source text's case.
+
+- **A page block with a percentage height no longer costs the preview a blank
+  page.** `.page { height: 100% }` (or any percentage) resolves against the
+  block's containing block. In print that is the flow root, whose height is
+  auto in an ordinary book, so the percentage computes to auto and Gutterpress's
+  own min-height sizes the block to its page. The preview's strip had a definite
+  height, so there the percentage resolved to the full page: the block ended
+  exactly on the page's edge, and the last block of a run left a blank preview
+  page the PDF does not have (`examples/with-print-effects` with such a rule:
+  print 5 pages, preview 8, now 5 and 5). The strip now takes its height from
+  the flow root the way the block does in print, so a book that sets
+  `html, body { height: 100% }` — where print's percentage does resolve to the
+  page area — keeps the page count it had, on both sides.
 ## [0.11.19] - 2026-10-15
 
 ### Added
