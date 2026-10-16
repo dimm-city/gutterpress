@@ -4,6 +4,7 @@ import { isBuiltin } from "node:module";
 import { resolve, join, dirname, basename, extname, isAbsolute, relative, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { ResolvedExtensionConfig } from "../../schema/manifest.types";
+import type { PublishPluginFunction } from "../publish/types";
 import {
   isExactNpmVersion,
   isValidNpmPackageName,
@@ -888,6 +889,39 @@ export async function loadPlugin(
     markers,
     options: config.options,
   };
+}
+
+/**
+ * EXPERIMENTAL (#381): import a publishing plugin's entry and return its
+ * named `publish` export. Only the publish path calls this — never a build or
+ * preview (see the skip in {@link loadPlugin}). It reuses the loader's own
+ * import paths: a vendored npm copy through {@link loadNpmPackage} (which also
+ * arms the compiled-binary resolver) and a folder's `main` through the mtime
+ * cache, so the long-lived desktop host sees edits.
+ */
+export async function loadPublishFunction(
+  config: ResolvedExtensionConfig,
+  baseDir: string,
+): Promise<PublishPluginFunction> {
+  let mod: unknown;
+  if (config.path) {
+    const dir = resolve(baseDir, config.path);
+    const meta = await readExtensionMeta(dir);
+    assertExtensionContained(meta);
+    const [entry] =
+      resolveDeclaredStyles(meta.main ? [meta.main] : undefined, dir, `Publishing plugin "${config.use}"`) ?? [];
+    if (!entry) throw new Error(`Publishing plugin "${config.use}" declares no \`main\` in its package.json.`);
+    mod = await loadCachedPathPluginModule(entry);
+  } else {
+    mod = (await loadNpmPackage(config.name!, baseDir, config.version)).module;
+  }
+  const moduleExports = (mod ?? {}) as Record<string, unknown>;
+  const publish =
+    moduleExports.publish ?? (moduleExports.default as Record<string, unknown> | undefined)?.publish;
+  if (typeof publish !== "function") {
+    throw new Error(`"${config.use}" does not export a \`publish\` function.`);
+  }
+  return publish as PublishPluginFunction;
 }
 
 /**

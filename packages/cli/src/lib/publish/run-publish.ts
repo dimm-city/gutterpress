@@ -15,6 +15,7 @@ import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { loadManifestWithPath, resolveConfig } from "../manifest.ts";
 import { artifactName, BOOK_HTML, resolveOutputDir } from "../output-paths.ts";
+import { resolvePublishProvider } from "./plugin-provider.ts";
 import { publishProviderFor } from "./registry.ts";
 import type {
   PreflightIssue,
@@ -22,6 +23,7 @@ import type {
   PublishArtifactFormat,
   PublishDeps,
   PublishOutcome,
+  PublishProvider,
   PublishProviderInfo,
   PublishRequest,
 } from "./types.ts";
@@ -75,16 +77,26 @@ export function resolvePublishFormat(
   return info.format;
 }
 
+type RequestOptions = Pick<RunPublishOptions, "projectDir" | "providerId" | "manifestPath" | "artifactPath">;
+
 /**
- * Resolve the {@link PublishRequest} for a provider from the project's
- * manifest — shared by `runPublish` and by hosts that call individual
- * provider methods (authenticate, listProducts) outside a full publish.
+ * Resolve the {@link PublishRequest} for a BUILT-IN provider from the
+ * project's manifest — for hosts that call individual provider methods
+ * (authenticate, listProducts, destinations) outside a full publish.
  */
 export async function resolvePublishRequest(
-  options: Pick<RunPublishOptions, "projectDir" | "providerId" | "manifestPath" | "artifactPath">,
+  options: RequestOptions,
   deps: PublishDeps,
 ): Promise<PublishRequest> {
-  const provider = publishProviderFor(options.providerId);
+  return requestFor(publishProviderFor(options.providerId), options, deps);
+}
+
+/** The {@link PublishRequest} for an already-resolved provider. */
+async function requestFor(
+  provider: PublishProvider,
+  options: RequestOptions,
+  deps: PublishDeps,
+): Promise<PublishRequest> {
   const { manifest, manifestDir } = await loadManifestWithPath(
     options.manifestPath ?? options.projectDir,
     { explicit: options.manifestPath !== undefined },
@@ -258,8 +270,23 @@ export async function runPublish(
   options: RunPublishOptions,
   deps: PublishDeps,
 ): Promise<RunPublishResult> {
-  const provider = publishProviderFor(options.providerId);
-  const req = await resolvePublishRequest(options, deps);
+  // Built-in or publishing plugin (experimental, #381). A plugin that can't
+  // be found or restored is a result the author reads, not a thrown error.
+  let provider: PublishProvider;
+  try {
+    provider = await resolvePublishProvider(options.providerId, {
+      projectDir: options.projectDir,
+      ...(options.manifestPath !== undefined ? { manifestPath: options.manifestPath } : {}),
+    });
+  } catch (e) {
+    return {
+      ok: false,
+      providerId: options.providerId,
+      issues: [],
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+  const req = await requestFor(provider, options, deps);
 
   const issues = [
     ...(await artifactIssues(req.artifact)),

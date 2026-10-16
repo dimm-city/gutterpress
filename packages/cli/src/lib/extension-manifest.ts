@@ -284,6 +284,8 @@ export function assertExtensionContained(meta: ExtensionMetadata): void {
   const declared = [
     ...extensionStyleList(meta),
     ...(entry ? [entry] : []),
+    // A publishing plugin's `main` is no markdown entry, but it is imported.
+    ...(meta.publish && meta.main?.trim() ? [meta.main.trim()] : []),
     ...(meta.components ? [meta.components] : []),
     ...(meta.snippets ? [meta.snippets] : []),
     ...(meta.tokensFile ? [meta.tokensFile] : []),

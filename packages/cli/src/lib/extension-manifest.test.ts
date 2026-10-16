@@ -196,6 +196,15 @@ describe("extension-manifest", () => {
       ).not.toThrow();
     });
 
+    // #381 (experimental) — a publisher's `main` is no markdown entry, but
+    // the publish path imports it, so it must stay inside the folder too.
+    test("rejects a publishing plugin whose `main` escapes its folder (#381)", () => {
+      expect(() => assertExtensionContained({ publish: true, main: "../outside.js" })).toThrow(
+        /outside its own folder/,
+      );
+      expect(() => assertExtensionContained({ publish: true, main: "lib/index.js" })).not.toThrow();
+    });
+
     test("rejects a traversal or absolute path in EACH new field individually", () => {
       expect(() => assertExtensionContained({ markdown: "../outside.js" })).toThrow(
         /outside its own folder/,

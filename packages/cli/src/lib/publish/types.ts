@@ -57,7 +57,9 @@ export type PublishArtifactFormat = "pdf" | "html";
 
 /** Static, UI-facing description of a provider. */
 export interface PublishProviderInfo {
-  id: PublishProviderId;
+  /** A built-in {@link PublishProviderId}, or a publishing plugin's package
+   *  name (experimental, #381). */
+  id: string;
   /** Human name ("itch.io"). */
   label: string;
   kind: PublishProviderKind;
@@ -118,7 +120,40 @@ export interface PublishProviderInfo {
     label: string;
     canCreate: boolean;
   };
+  /** Set only on a publishing plugin (experimental, #381) — UIs mark it. */
+  experimental?: true;
 }
+
+// ── Publishing plugins (EXPERIMENTAL, #381; may change or be removed) ───────
+//
+// The contract a publishing plugin's entry implements: a named `publish`
+// export. `context` is plain Gutterpress-owned data plus a `log` callback —
+// never a token store, a fetch seam or credentials; the plugin owns its own.
+
+export interface PublishPluginContext {
+  project: { dir: string; title: string; authors: string[] };
+  /** Exactly ONE key: the artifact validated for this run. */
+  artifacts: { pdf?: string; html?: string };
+  /** The manifest's `publish.<package-name>` section, as written. */
+  settings: Record<string, unknown>;
+  /** Progress line sink. Use this, never `console.log`: stdout carries
+   *  `--json` output. */
+  log: (message: string) => void;
+}
+
+export interface PublishPluginResult {
+  /** Where the published work lives — kept only when it is an http(s) URL. */
+  url?: string;
+  /** One-line summary shown to the author. */
+  detail?: string;
+}
+
+/** `outputDir` is the folder holding the artifact: the website export
+ *  directory for html, the PDF's folder for pdf. */
+export type PublishPluginFunction = (
+  outputDir: string,
+  context: PublishPluginContext,
+) => Promise<PublishPluginResult | void>;
 
 /** The project being published (resolved from the manifest by the orchestrator). */
 export interface PublishProject {

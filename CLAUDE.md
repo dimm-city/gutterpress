@@ -324,6 +324,20 @@ not a hook API — it receives a plain Gutterpress-owned object (`attrs`,
 returns problem messages that core reports on the existing
 `env.layoutWarnings` channel (`markers.js`'s `runComponentValidate`).
 
+**Publishing plugins are the one exception (experimental, #381). Ratified by
+the product owner, 2026-10-14.** A package flagged
+`"gutterpress": { "publish": true }` is a publishing plugin: its normal entry
+exports a named `publish(outputDir, context)` function and no markdown-it
+plugin. The loader recognises it from package.json and skips it without
+importing it (`loadPlugin`); only the publish path loads it
+(`loadPublishFunction`, reached from `lib/publish/plugin-provider.ts`).
+`context` is a plain Gutterpress-owned object (`project`, `artifacts`,
+`settings`, a `log` callback), never markdown-it tokens, a token store or
+credentials; the plugin owns its credentials and returns `{ url?, detail? }`.
+It reuses the extension install/restore rail and adds no second one. The
+feature may change or be removed: `plugin-provider.ts`'s header lists
+everything it adds, so removing it stays one commit.
+
 Plugin loader (`packages/cli/src/lib/markdown/plugins.ts`) stays OFFLINE: it
 never installs and never touches the network. Downloading is a separate,
 explicit step. `addExtension` in `extension-manager.ts` (used by the desktop
@@ -378,7 +392,12 @@ version) and a restart into another book. It degrades rather than failing. The
 desktop's `PreviewOpenController` also restores when a book is opened, only so
 the open can show download progress and a toast (`restoredExtensions`); the
 Features tab's "Needs install" row + Install button stay the fallback.
-`publish` loads no plugins and does not restore.
+`publish` loads no plugins and does not restore — except for a publishing
+plugin (experimental, #381; ratified 2026-10-14): when the provider id is not
+a built-in and names an npm entry, `resolvePublishProvider`
+(`lib/publish/plugin-provider.ts`) restores the book's pins once (fail-fast)
+and loads only that extension. Built-in providers never load plugins or touch
+the network.
 
 **One pruning rule:** once a package's pinned version is installed — by `ext
 add`/`update` or a restore — every other `plugins/npm/<name>/<version>/`
