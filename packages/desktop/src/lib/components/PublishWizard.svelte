@@ -363,12 +363,12 @@
                   {#if card.id === LOCAL}
                     <span class="status ok">Always</span>
                   {:else}
-                  <span class="badge">{card.kind === "api" ? "direct upload" : "guided"}</span>
+                  <span class="badge">{card.experimental ? "Experimental" : card.kind === "api" ? "direct upload" : "guided"}</span>
                   {#if card.credentialRequired}
                     <span class={`status ${card.connected ? "ok" : "off"}`}>
                       {#if card.connected}<Icon name="circle-check" size={12} /> Connected{:else}Needs a key{/if}
                     </span>
-                  {:else}
+                  {:else if !card.experimental}
                     <span class="status ok">No account needed</span>
                   {/if}
                   {/if}
@@ -394,7 +394,11 @@
     {:else if stepKind === "setup" && currentCard}
       {@const card = currentCard}
       {@const busy = controller.publishBusyId === card.id}
-      <p class="lead">Set up <strong>{card.label}</strong>. Saved connections are reused automatically — you only enter a key once.</p>
+      {#if card.experimental}
+        <p class="lead">Set up <strong>{card.label}</strong>: {card.description}</p>
+      {:else}
+        <p class="lead">Set up <strong>{card.label}</strong>. Saved connections are reused automatically — you only enter a key once.</p>
+      {/if}
 
       {#if card.fields.length > 0}
         {#each card.fields as field (field.key)}
@@ -539,6 +543,11 @@
         {:else}
           <p class="warn"><Icon name="triangle-alert" size={13} /> This account {card.connectKind === "oauth" ? "isn't connected yet — connect it" : "'s key isn't saved yet — add it"}, or pick another account.</p>
         {/if}
+      {:else if card.experimental}
+        <p class="muted">
+          An experimental add-on from your book's extensions. It handles its own sign-in; its settings live in your
+          book's manifest, in the <code>{card.id.startsWith("@") ? `"${card.id}"` : card.id}</code> entry under <code>publish:</code>.
+        </p>
       {:else}
         <p class="muted">No account or key needed — we'll prepare an upload package with step-by-step instructions.</p>
       {/if}

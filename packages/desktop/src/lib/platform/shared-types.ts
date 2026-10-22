@@ -668,6 +668,8 @@ export interface PublishProviderCard {
   connected: boolean;
   /** The provider's non-secret manifest `publish.<id>` settings. */
   config: Record<string, string>;
+  /** A book's publishing plugin (experimental, #381); absent for built-ins. */
+  experimental?: boolean;
   /**
    * Saved credentials for this provider (redacted — never tokens), so the UI
    * can offer a picker: the default (unnamed, `account:""`) plus any named

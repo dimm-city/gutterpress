@@ -134,6 +134,9 @@
               {#if e.carries.styles}
                 <span class="badge" title="This extension also carries a look — see the Look tab.">+ look</span>
               {/if}
+              {#if e.carries.publish}
+                <span class="badge" title="This extension adds a place to publish to (experimental) — see Publish.">+ publish destination</span>
+              {/if}
               {#if controller.updateFor(e)}
                 <span class="badge update-badge" title={`npm has ${e.name}@${controller.updateFor(e)}; this book pins ${e.version}.`}>{controller.updateFor(e)} available</span>
               {/if}

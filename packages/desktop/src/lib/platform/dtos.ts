@@ -134,6 +134,8 @@ export interface ExtensionCarries {
   styles: boolean;
   snippets: boolean;
   components: boolean;
+  /** A publishing plugin (experimental, #381). */
+  publish?: boolean;
 }
 
 /** One configured extension, as listed for the desktop. */
