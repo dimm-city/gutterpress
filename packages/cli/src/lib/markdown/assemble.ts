@@ -16,6 +16,7 @@
  */
 import { MARKER_CSS } from "./markers.js";
 import { GUTTERPRESS_CSS } from "./gutterpress-css.ts";
+import { TWO_VERSIONS_CSS } from "./two-versions.ts";
 import { TABLE_ALIGN_CSS } from "./table-align";
 import { canonicalChapterId } from "./chapter-id";
 import { createMarkdownRenderer, type LoadedPlugin } from "./renderer";
@@ -272,7 +273,9 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   // that is at least as specific and later can override it.
   const inlineCss = [
     "@layer gp.marker, gp.vocab;",
-    `/* gutterpress markers */\n@layer gp.marker {\n${MARKER_CSS.trim()}\n}`,
+    // The two-versions box (two-versions.ts) rides in the marker layer: it
+    // styles DOM only core emits, exactly like the marker wrappers.
+    `/* gutterpress markers */\n@layer gp.marker {\n${MARKER_CSS.trim()}\n${TWO_VERSIONS_CSS.trim()}\n}`,
     `/* gutterpress */\n@layer gp.vocab {\n${GUTTERPRESS_CSS.trim()}\n}`,
     pluginCss ? `/* extension css */\n${pluginCss.trim()}` : null,
     // Unlayered, before the project CSS (equal specificity: the book's rule,

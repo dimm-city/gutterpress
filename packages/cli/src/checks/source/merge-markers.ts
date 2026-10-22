@@ -37,10 +37,11 @@ import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
 import { finding, inspectionFailed } from "../policy";
 import { ASSET_SCAN_IGNORE_GLOBS } from "../asset/extensions";
+import { TWO_VERSIONS_CLOSE, TWO_VERSIONS_OPEN } from "../../lib/two-versions-markers";
 
-/** The exact sentinel lines converge-merge writes. Byte-match — never loosen. */
-const OPEN_SENTINEL = "<<<<<<< your version";
-const CLOSE_SENTINEL = ">>>>>>> online version";
+/** The exact sentinel lines converge-merge writes (the shared leaf). Byte-match — never loosen. */
+const OPEN_SENTINEL = TWO_VERSIONS_OPEN;
+const CLOSE_SENTINEL = TWO_VERSIONS_CLOSE;
 
 /** `art/cover.online.png` → `art/cover.png`; `notes.online` → `notes`. */
 function withoutOnlineTag(relPath: string): string {
