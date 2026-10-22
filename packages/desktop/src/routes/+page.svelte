@@ -454,6 +454,13 @@
       if (lifecycle.currentDir !== dir) return;
       versionPreview = { id, url, label };
       versionSide = "then";
+      // A narrow window shows one pane at a time, and the Versions view
+      // occupies the editor pane: take the author to the preview, where the
+      // version now is — the mirror of openProblem's switch to the editor.
+      if (isNarrow) {
+        closePaneView();
+        setPaneMode("view");
+      }
     } catch (e) {
       toast?.error(`Couldn't show that version. ${friendlyHostError(e instanceof Error ? e.message : String(e))}`);
     }
