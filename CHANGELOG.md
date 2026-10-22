@@ -5,6 +5,20 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Settle a passage with two versions by comparing them and picking one
+  (#407).** When a sync combines a passage edited both here and online, the
+  desktop editor now shows a panel above the text listing each such passage
+  as two plain columns, *Your version* and *Online version*, with **Keep
+  yours**, **Keep online** and **Keep both**. A choice rewrites the file
+  without the marker lines as one ordinary, undoable edit, so saving, the
+  preview and the Problems entry follow as for any edit; a file with more
+  than one passage also offers the choice for all of them at once.
+  Stylesheets get the same panel. The "both versions are kept" message after a
+  sync carries a **Review** button that opens the Problems list, where each
+  passage opens its file under the panel.
+
 ## [0.11.21] - 2026-10-16
 
 ### Removed

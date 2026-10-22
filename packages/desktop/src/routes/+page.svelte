@@ -3,11 +3,20 @@
   import PreviewToolbar from "$lib/components/PreviewToolbar.svelte";
   import FindBar from "$lib/components/FindBar.svelte";
   import ExternalEditBanner from "$lib/components/ExternalEditBanner.svelte";
+  import TwoVersionsPanel from "$lib/components/TwoVersionsPanel.svelte";
   import CrashRecoveryDialog from "$lib/components/CrashRecoveryDialog.svelte";
   import type { TroubleshootingTab } from "$lib/troubleshooting-tabs";
   import { EditorBuffer } from "$lib/editor/buffer-state.svelte";
   import { EditorFileSession } from "$lib/editor/editor-file-session.svelte";
   import { chapterPath, isSafeChapterId } from "$lib/editor/chapter-path";
+  import {
+    findTwoVersions,
+    resolveAllTwoVersions,
+    resolveTwoVersions,
+    type RangeEdit,
+    type TwoVersionsBlock,
+    type TwoVersionsChoice,
+  } from "$lib/editor/two-versions";
   import { ExportController } from "$lib/export/export-controller.svelte";
   import Toast from "$lib/components/Toast.svelte";
   import type { ToastController } from "$lib/components/Toast.svelte";
@@ -475,6 +484,11 @@
       onSyncCompleted(mergedRemoteChanges, filesChanged),
     onFilesChanged: () => onSyncFilesChanged(),
     autoBackup: () => settings.current.versionHistory.autoSync,
+    // The combined-files toast's Review button: the Problems list names every
+    // passage with two versions, and each entry opens its file under the
+    // two-versions panel (combined paths come back repo-relative, so the
+    // list is the one place that already knows where each file is).
+    onReviewCombined: () => openProblemsList(),
   });
 
   // ── Project session capability state (#12) ───────────────────────────────────
@@ -1256,6 +1270,37 @@
   let externalChange = $derived(buffer?.externalChange ?? null);
   let externalFileName = $derived(editorFilePath ? basenameOf(editorFilePath) : "");
 
+  // ── Two versions after a sync (#407) ──────────────────────────────────────
+  // Passages the converge merge left with both versions, read from the live
+  // buffer so a choice removes its passage from the panel at once. A choice
+  // is an ordinary editor edit: it goes through the mounted CodeMirror view
+  // (one undoable transaction) and from there down the usual save → preview
+  // reload → Problems refresh path, so the check's entry clears on its own.
+  let twoVersionsBlocks = $derived(findTwoVersions(editorContent));
+
+  function applyTwoVersionsEdits(edits: RangeEdit[]): void {
+    const path = editorFilePath;
+    const target = buffer;
+    if (!path || !target || edits.length === 0) return;
+    if (editorRef?.hasFile(path)) {
+      for (const e of edits) editorRef.applyRangeEditIn(path, e.from, e.to, e.insert);
+      return;
+    }
+    // The editor module is still loading: write the buffer directly (same
+    // fallback the commit engine uses), losing only the undo step.
+    let text = target.content;
+    for (const e of edits) text = text.slice(0, e.from) + e.insert + text.slice(e.to);
+    target.edit(text);
+  }
+
+  function keepVersion(block: TwoVersionsBlock, choice: TwoVersionsChoice): void {
+    applyTwoVersionsEdits([resolveTwoVersions(block, choice)]);
+  }
+
+  function keepAllVersions(choice: TwoVersionsChoice): void {
+    applyTwoVersionsEdits(resolveAllTwoVersions(editorContent, choice));
+  }
+
   function showEditorContent(path: string, content: string): void {
     if (editorRef?.hasFile(path)) editorRef.updateContent(content);
     else editorRef?.switchFile(path, content);
@@ -1728,6 +1773,18 @@
     problemsToggleEl = trigger;
     problemsOpen = !problemsOpen;
     if (problemsOpen) void tick().then(() => problemsPanelRef?.focusList());
+  }
+  /** Open the Problems list from outside the toolbar (a toast's Review
+   *  button). The list lives in the editor pane, so show that first — the
+   *  same pane handling `openProblem` does. */
+  function openProblemsList(): void {
+    if (isNarrow) {
+      setPaneMode("edit");
+    } else if (!editorVisible) {
+      setMode("editor");
+    }
+    problemsOpen = true;
+    void tick().then(() => problemsPanelRef?.focusList());
   }
   // Lint findings for the open project, refreshed after every live-preview
   // rebuild (the renderingComplete event — which fires for the initial render
@@ -3088,6 +3145,18 @@
               {problemsOpen}
               onToggleProblems={toggleProblems}
             />
+            {/if}
+            {#if !inFocus && editorFilePath && twoVersionsBlocks.length > 0}
+              <!-- Passages with two versions after a sync (#407): compare and
+                   pick, right above the text they rewrite. -->
+              <TwoVersionsPanel
+                blocks={twoVersionsBlocks}
+                fileName={editorChapter ?? externalFileName}
+                isCss={openFileIsCss}
+                onChoose={keepVersion}
+                onChooseAll={keepAllVersions}
+                onReveal={(line) => editorRef?.revealLine(line, true)}
+              />
             {/if}
             {#if MarkdownEditor}
               <!-- No per-file `{#key}` remount: MarkdownEditor keeps ONE

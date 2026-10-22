@@ -247,6 +247,34 @@ test("applyConvergeReport with nothing to report is a no-op", () => {
   expect(h.toast.info.calls).toEqual([]);
 });
 
+test("combined files -> a sticky toast with a Review button that opens the Problems list (#407)", () => {
+  const show = spy<[string, string | undefined, number | undefined, { label: string; onClick: () => void } | undefined]>();
+  const toast = { ...makeToast(), show };
+  const onReviewCombined = spy<[]>();
+  const ctrl = new SyncController({
+    syncChanges: () => Promise.reject(new Error("not wired")),
+    getLatest: () => Promise.reject(new Error("not wired")),
+    checkUpdates: () => Promise.resolve({ available: false }),
+    repair: () => Promise.reject(new Error("not wired")),
+    diagnose: () => Promise.resolve(DIAG),
+    currentDir: () => "/proj",
+    toast: () => toast,
+    onSyncCompleted: () => {},
+    onFilesChanged: () => {},
+    onReviewCombined,
+  });
+  ctrl.applyConvergeReport(["chapters/chapter-02.md"], []);
+  expect(toast.info.calls).toEqual([]);
+  expect(show.calls).toHaveLength(1);
+  const [message, type, duration, action] = show.calls[0]!;
+  expect(message).toContain("chapter-02.md");
+  expect(type).toBe("info");
+  expect(duration).toBe(0);
+  expect(action?.label).toBe("Review");
+  action!.onClick();
+  expect(onReviewCombined.calls).toHaveLength(1);
+});
+
 test("keptBothMessage names the pair and never says 'conflict'", () => {
   const one = keptBothMessage([CLASH]);
   expect(one).toContain("cover.png");
