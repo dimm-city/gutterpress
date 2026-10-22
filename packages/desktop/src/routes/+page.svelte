@@ -443,7 +443,7 @@
   // closes it with the project; the renderer forgets it in the same resets.
   let versionPreview = $state<{ id: string; url: string; label: string } | null>(null);
   let versionClient = $state<PreviewClient | undefined>(undefined);
-  // Narrow windows have room for one frame: Then or Now.
+  // Narrow windows have room for one frame: that version, or the current book.
   let versionSide = $state<"then" | "now">("then");
 
   async function lookAtVersion(id: string, label: string): Promise<void> {
@@ -3333,9 +3333,9 @@
                 <span>Looking at <strong>{versionPreview.label}</strong> beside the current book</span>
               </span>
               {#if isNarrow}
-                <span class="version-toggle" role="group" aria-label="Which version to show">
-                  <button class:active={versionSide === "then"} aria-pressed={versionSide === "then"} onclick={() => (versionSide = "then")}>Then</button>
-                  <button class:active={versionSide === "now"} aria-pressed={versionSide === "now"} onclick={() => (versionSide = "now")}>Now</button>
+                <span class="version-toggle" role="group" aria-label="Which to show">
+                  <button class:active={versionSide === "then"} aria-pressed={versionSide === "then"} onclick={() => (versionSide = "then")}>That version</button>
+                  <button class:active={versionSide === "now"} aria-pressed={versionSide === "now"} onclick={() => (versionSide = "now")}>Current book</button>
                 </span>
               {/if}
               <button

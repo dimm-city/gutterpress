@@ -33,9 +33,11 @@ only**.
 - **Look at this version** shows that version beside the current book in the preview, on the
   same page, so you can compare them as they print. Nothing on disk changes. Click **Stop
   looking** (or the **×** in the preview's bar) to return to the live preview.
-- Click a changed file to see **That version** and **Now** side by side, with the lines that
+- Click a changed file to see **That version** and **Current** side by side, with the lines that
   differ marked. This view is for reading only; go back to the versions list with the
   **Versions** button at the top.
+- In a narrow window there is room for one page at a time: the bar above the preview offers
+  **That version** and **Current book**.
 - When new changes are online that this computer has not got, the list starts with **Online,
   not yet on this computer**, showing those versions and their changed files. Use **Get
   latest** to bring them in.

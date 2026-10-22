@@ -34,9 +34,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   **On this computer only**, and an automatic version with no changes says
   so. **Look at this version** renders that version read-only beside the
   live preview, following the page in view, without touching a file;
-  **Stop looking** returns to the live preview alone. Clicking a changed text
-  file opens it as two columns, *That version* and *Now*, with the lines
-  that differ marked. When the book has an online copy, the view's top
+  **Stop looking** returns to the live preview alone; a narrow window shows
+  one at a time, **That version** or **Current book**. Clicking a changed
+  text file opens it as two columns, *That version* and *Current*, with the
+  lines that differ marked. When the book has an online copy, the view's top
   section, **Online, not yet on this computer**, lists the versions online
   with the same cards before Get latest brings them in. All of it reads the
   book's own history through isomorphic-git: nothing is installed, nothing

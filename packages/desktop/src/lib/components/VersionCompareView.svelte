@@ -1,7 +1,9 @@
 <script lang="ts">
   /**
    * VersionCompareView — one file at an earlier version beside the file as
-   * it is now (#408), lines aligned and changed lines marked. Read-only:
+   * it is in the book now (#408), lines aligned and changed lines marked.
+   * The columns are "That version" and "Current": the words the Versions
+   * view and the preview bar use, never a bare Then/Now. Read-only:
    * nothing here edits, and nothing is merged. The rows arrive aligned from
    * the host (`api.vcs.compareFile`), so this is layout only.
    */
@@ -38,9 +40,9 @@
     <p class="muted">This file is a picture or another kind of file that has no text to show side by side.</p>
   {:else}
     <p class="muted">{changed === 0 ? "No lines differ." : `${changed} ${changed === 1 ? "line differs" : "lines differ"}.`}</p>
-    <div class="columns" class:mono={isCss} role="table" aria-label="That version beside now">
+    <div class="columns" class:mono={isCss} role="table" aria-label="That version beside the current file">
       <div class="col-head" role="columnheader">That version — {versionLabel}</div>
-      <div class="col-head" role="columnheader">Now</div>
+      <div class="col-head" role="columnheader">Current</div>
       {#each rows as row, i (i)}
         <div class="cell" class:changed={row.changed} class:gap={row.then === null} role="cell">{row.then ?? ""}</div>
         <div class="cell" class:changed={row.changed} class:gap={row.now === null} role="cell">{row.now ?? ""}</div>
