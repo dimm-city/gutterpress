@@ -2,7 +2,7 @@
 
 @section .lede
 
-Gutterpress's validation system checks your project for print compliance at two points in the pipeline — before the PDF build and after. This chapter covers the 36 built-in checks, CLI usage, and production workflow recommendations.
+Gutterpress's validation system checks your project for print compliance at two points in the pipeline — before the PDF build and after. This chapter covers the 40 built-in checks, CLI usage, and production workflow recommendations.
 
 @end-section
 
@@ -39,10 +39,12 @@ policy: what its platform demands of the finished PDF. Targets never change
 how the book renders — only what the validator checks.
 
 - `dtrpg` — DriveThruRPG print-on-demand: PDF/X markers and metadata,
-  CMYK/Grayscale art, the 240% ink limit, embedded fonts, and a page count
-  that fits the signature. It also warns when text at 24pt and under is
-  printed in a dark four-colour mix, black or a dark colour, since small
-  four-colour text can look fuzzy.
+  CMYK/Grayscale art, the 240% ink limit, embedded fonts, a page count
+  that fits the signature, and text kept at least 0.5in inside the trim
+  (the safe-margins check, from `page.safe`; it checks text only, so check
+  art with the preview's print overlays, [Chapter 1](#print-overlays)). It also
+  warns when text at 24pt and under is printed in a dark four-colour mix,
+  black or a dark colour, since small four-colour text can look fuzzy.
 - `itch` — itch.io digital release: a well-formed PDF with embedded fonts;
   print-only rules (PDF/X, ink limits, CMYK-only art) don't apply.
 
@@ -181,11 +183,44 @@ Examples: broken internal links, missing alt text, oversized source images, mark
 
 The CSS check also tells you when the live preview cannot follow a break in your stylesheet. The preview reads your forced breaks (`break-before`/`break-after: page`, `left`, `right`) and `page:` assignments from the CSS text, so one written with `var()`, inside a nested rule, right after a nested rule, or with the old `page-break-before: always` spelling is honoured by the PDF but missing from the preview, and the two page counts drift apart. Rule id `printsafe/preview-cannot-follow`; write the keyword in a flat rule, or silence it like any other rule below.
 
+The character check finds characters that usually arrive by pasting from a chat model, a word processor or a web page: em and en dashes, curly and look-alike quote marks, the ellipsis character, bullets, arrows, emoji, and invisible ones such as zero-width spaces, non-breaking spaces and control characters. Each finding has its line and column and says what to type instead. Dashes, curly quotes and the ellipsis character are info, since they print correctly; the rest are warnings, since they can change what prints. Plain typing already prints proper typography, so the fix does not change the page: `---` prints an em dash, `--` an en dash, `...` an ellipsis, and straight quotes print curly. A character you do want can be written as an HTML entity (`&nbsp;`, `&rarr;`), which the check leaves alone. In the desktop editor each one is outlined where it sits, and the invisible ones show as a placeholder symbol. The editor also marks every line the Problems list reports; the **Highlight problems in the editor** setting (Settings, Editor tab) turns those marks and the outlines off. Rule id `source.characters`; silence it like any other rule below.
+
 ### PDF checks (post-build)
 
 Run on the generated PDF. Verify structural correctness and print compliance.
 
-Examples: page size matches manifest, fonts are embedded, metadata is present, PDF/X compliance.
+Examples: page size matches manifest, fonts are embedded, metadata is present, PDF/X compliance, text kept clear of the trim.
+
+#### Safe margins {#safe-margins-check}
+
+`pdf.print.safe-margins` reads where each line of text sits on the finished pages and reports any that is closer to the trim than `page.safe`: 0.5in on every edge for the `dtrpg` preset, which is DriveThruRPG's rule for text. Each finding names the page, the first words of the line, the edge and how far to move it in:
+
+```
+Page 14: "Chapter Three" is 0.12in too close to the outside edge.
+```
+
+It measures each page against that page's own trim: the page less the bleed on the top, bottom and outside edges only. Page 1 is a right-hand page, so the outside edge is the right on odd pages and the left on even ones. A book that sets `page.gutter` is held to that distance at the binding edge instead, and the finding says so.
+
+It checks **text only**. Pictures, backgrounds, borders and rules are judged in the preview, by the **Safe area: art** layer of the print overlays ([Chapter 1](#print-overlays)), which applies DriveThruRPG's separate rule for art. The **Safe area: text** layer draws the line this check reads.
+
+@section
+
+| Where | Safe margins is |
+|-------|-----------------|
+| The `dtrpg` preset or target | An error |
+| The `book` preset | A warning |
+| The `itch` target | Off: a digital release has no trim |
+| No `page.safe` (the `custom` preset sets none) | Nothing to measure, so it passes |
+
+@end-section
+
+Run it like any other PDF check:
+
+```bash
+gutterpress validate --pdf dist/my-book/my-book-pdfx.pdf --target dtrpg
+```
+
+`gutterpress preflight` runs it too, and so does the last step of a `--format pdfx` build. It reads the PDF itself and needs no extra tool, but the PDF/X lines in the same run need **qpdf** and **Ghostscript** installed ([Chapter 7](#ch-system)). To turn it off or change its severity, use `validate.checks` like any other check (see Manifest Configuration below). The desktop app's Publish step checks your source and images before any PDF exists, so it does not run this check; the **Safe area: text** layer draws the same line while you write.
 
 ### Asset checks (pre-build)
 
@@ -278,10 +313,10 @@ probe for a system tool and warn if it is missing:
 
 ```
 warn  Tool "qpdf" not found — skipping: pdf.print.pdfx-markers, pdf.print.pdfx-metadata
-warn  Tool "gs" not found — skipping: pdf.print.ink-coverage, asset.image.tac-raster
+warn  Tool "gs" not found — skipping: pdf.print.ink-coverage
 ```
 
-Everything else — page size, fonts, images/DPI, bookmarks, links, page labels,
+Everything else — page size, safe margins, fonts, images/DPI, bookmarks, links, page labels,
 text density, color space, alpha, markdown/HTML linting — runs with no system
 dependency, so you can validate immediately on any machine.
 
@@ -359,6 +394,7 @@ Before final print submission:
 - [ ] All fonts embed correctly in the PDF
 - [ ] Page size matches the printer's required trim size
 - [ ] Bleed extends 0.125in beyond the trim edge on full-bleed pages
+- [ ] Text stays at least 0.5in inside the trim, and art that does not bleed at least 0.25in from the outside edges (the two Safe area layers of the print overlays show both lines)
 - [ ] No unexpected blank pages (the blank pages at the end of a `dtrpg` book are intentional)
 - [ ] Running headers are correct on all pages
 - [ ] Page numbers start at the right page and run correctly

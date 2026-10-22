@@ -85,7 +85,6 @@ afterAll(() => {
 });
 
 const inkCheck = (await import("./ink-coverage")).default;
-const rasterCheck = (await import("./rasterized-pages")).default;
 const fontCheck = (await import("./embedded-fonts")).default;
 
 function makeCtx(): CheckContext {
@@ -146,29 +145,6 @@ describe("ink-coverage emits one CheckResult per finding", () => {
     expect(r!.message).toBe("Ink coverage could not be measured");
     expect(r!.detail).toContain("spawn gs ENOENT");
     expect(r!.data?.error).toBe("spawn gs ENOENT");
-  });
-});
-
-describe("rasterized-pages emits one CheckResult per finding", () => {
-  test("3 rasterized pages produce a single structured result", async () => {
-    const img = { placedW: 100, placedH: 100 };
-    inspectState.imagesByPage = new Map([
-      [1, [img]],
-      [2, [img]],
-      [3, [img]],
-    ]);
-    inspectState.textByPage = ["x".repeat(50), "y".repeat(50), "z".repeat(50)];
-
-    const results = await rasterCheck.run(makeCtx());
-
-    expect(results).toHaveLength(1);
-    const [r] = results;
-    expect(r!.code).toBe("rasterized-pages-detected");
-    expect(r!.data?.pages).toEqual([1, 2, 3]);
-    expect(r!.detail).toBeDefined();
-    expect(r!.message.startsWith("Possible rasterized pages detected:")).toBe(
-      true
-    );
   });
 });
 

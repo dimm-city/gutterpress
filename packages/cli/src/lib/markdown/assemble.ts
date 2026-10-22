@@ -21,6 +21,7 @@ import { canonicalChapterId } from "./chapter-id";
 import { createMarkdownRenderer, type LoadedPlugin } from "./renderer";
 import { collectHtmlImageRefs, type ImageRefEnv } from "./images";
 import { lastPageMode, type PrintPadding } from "../../engine/shared/synthesis.ts";
+import { printAreaMeta, type PrintAreaSource } from "../../engine/shared/print-area.ts";
 
 /** Reader injected by the host: resolve a project-root-relative file → its text. */
 export type ReadText = (relPath: string) => Promise<string>;
@@ -32,8 +33,8 @@ export type ReadText = (relPath: string) => Promise<string>;
  * `type`s (`ambiguous_marker_token`, `unrecognized_marker_token`,
  * `extra_bare_marker_token`, `unknown_marker`, `nested_spread`,
  * `continue_without_section`, `spread_without_pages`, `spread_eof_close`,
- * `page_outside_spread`, `pin_outside_page`, `unknown_gp_class` — the last
- * emitted by `gp-pin-scope.js`'s `gp_pin_scope_check`, same as
+ * `page_outside_spread`, `pin_outside_page`, `unknown_gp_class`, `flush_art` —
+ * the last two emitted by `gp-pin-scope.js`'s `gp_pin_scope_check`, same as
  * `pin_outside_page`, see #226).
  *
  * #240 (declarative container components) adds three more, all emitted by
@@ -66,7 +67,7 @@ export interface LayoutWarning {
   type: string;
   message: string;
   marker?: unknown;
-  /** Set only by a component's `validate`; absent means `"warning"`. */
+  /** Set by a component's `validate` and by `flush_art`; absent means `"warning"`. */
   severity?: "error" | "warning" | "info";
 }
 
@@ -151,6 +152,15 @@ export interface AssembleBookHtmlOptions {
    * engine/shared/synthesis.ts) and the two page counts agree.
    */
   print?: PrintPadding;
+  /**
+   * The project's print area — the resolved manifest's `page` block plus its
+   * preset id and printer spec — written as `<meta name="gp-print-area">`
+   * (engine/shared/print-area.ts) into EVERY assembled book, preview, build
+   * and publish alike: the preview's print overlays judge the ink against it,
+   * and both engines place pinned art on its art-safe line. Metadata only:
+   * nothing renders from it but what reads it.
+   */
+  printArea?: PrintAreaSource;
   plugins?: LoadedPlugin[];
   pluginCss?: string;
   /** Add a layout-neutral source-file id to source-mapped preview blocks. */
@@ -285,7 +295,7 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
 <html lang="en"${printAttrs}>
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">${opts.printArea ? `\n  ${printAreaMeta(opts.printArea)}` : ""}
   <title>${title}</title>${preloadTags}
   <style data-project-css>\n${inlineCss}\n</style>
 </head>

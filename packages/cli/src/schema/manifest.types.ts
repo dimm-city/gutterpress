@@ -122,6 +122,27 @@ export interface GutterpressManifest {
     stripAnnotations?: boolean;
     /** `k-only` prints near-black text on the black plate alone (#331). */
     blackText?: "icc" | "k-only";
+    /**
+     * A page that uses transparency, which PDF/X cannot hold (#385).
+     * `flatten-page` (default): Ghostscript rasterizes the whole page, text
+     * included. `preserve-text`: flatten the artwork only and keep the text
+     * live on top; a page whose text cannot be split (translucent or blended,
+     * Type 3, pattern-filled or a clip) or that has a repeating or conic
+     * gradient falls back to the whole-page flattening.
+     */
+    transparency?: "flatten-page" | "preserve-text";
+    /**
+     * `preserve-text` only: pages (1-based, as the build reports them) left to
+     * Ghostscript's whole-page flattening, e.g. a page whose look depends on a
+     * cover or tint painted over its text.
+     */
+    flattenPages?: number[];
+    /**
+     * Resolution (DPI) of every picture made from a transparent page: the
+     * whole page Ghostscript flattens, and the `preserve-text` artwork.
+     * Unset: Ghostscript's default (720) and 300 for `preserve-text` artwork.
+     */
+    rasterDpi?: number;
   };
   /**
    * Native-engine print-production options with no other manifest home
@@ -154,11 +175,41 @@ export interface GutterpressManifest {
      * A bleed (pt) the page `width` x `height` ALREADY CONTAINS, on the top,
      * bottom and OUTER edges only (the binding edge has none) — how
      * DriveThruRPG's interior file is cut (8.625 x 11.25in for an 8.5 x 11in
-     * book). It changes nothing in the PDF: it only tells the preview's margin
-     * & bleed overlay where the trim is. CSS `@page { bleed }` (symmetric,
-     * grows the page) wins when the stylesheet declares one.
+     * book). By itself it changes nothing in the PDF: it tells the preview's
+     * safe area & bleed overlay, `pdf.print.safe-margins` and pinned art
+     * (`.gp-pin` on an edge sits on the art-safe line) where the trim is.
      */
     bleed?: number;
+    /**
+     * The TEXT rule (pt): glyphs stay at least this far inside the trim on
+     * EVERY edge, the binding edge too unless the book sets a `gutter` —
+     * DriveThruRPG's "keep text 0.5in inside the trim" (`dtrpg` sets 36). The
+     * preview's overlay outlines it and flags text outside it, and
+     * `pdf.print.safe-margins` fails a built PDF whose text is closer. An
+     * image pinned to an edge where `artSafe` is not set sits on it; nothing
+     * in a book's CSS moves it.
+     */
+    safe?: number;
+    /**
+     * The ART rule (pt): art that does not bleed — images, backgrounds,
+     * borders, rules — stays at least this far inside the trim on the top,
+     * bottom and OUTER edge; at the binding edge it uses `gutter`. DriveThruRPG's
+     * "keep non-bleeding art 0.25in from the outside edges" (`dtrpg` sets 18).
+     * An image pinned to the top, bottom or outer edge (`.gp-pin`) sits on this
+     * line unless it carries `.gp-flush`. Absent = the same as `safe`.
+     */
+    artSafe?: number;
+    /**
+     * The binding allowance (pt): how far content stays from the spine — the
+     * binding edge, the left of a right-hand page and the right of a left-hand
+     * one — measured from the trim. It stands in for `safe` at the binding
+     * edge, for text and for art alike, so a book that keeps its text further
+     * from the spine than the printer's minimum says so here, not in its CSS
+     * (the Field Guide keeps 0.75in = 54 where DriveThruRPG asks for 0.5in).
+     * An image pinned to the binding edge sits on it. The other edges keep
+     * `safe` and `artSafe`. Absent = the same as `safe`; presets leave it unset.
+     */
+    gutter?: number;
   };
   ink?: {
     maxTac?: number;
@@ -203,7 +254,17 @@ export interface GutterpressManifest {
     };
     assets?: {
       maxImageSize?: number;
+      /**
+       * @deprecated No-op. The source-image resolution check it configured
+       * read DPI metadata, which says nothing about the printed size; the
+       * build measures each placed image's printed DPI instead.
+       */
       minImageDpi?: number;
+      /**
+       * @deprecated No-op. The source-image colour-space check it configured
+       * was removed: a PDF/X build converts every image to the output intent,
+       * and `pdf.print.color-spaces` checks the result.
+       */
       allowedColorSpaces?: string[];
       allowAlpha?: boolean;
       approvedFontFiles?: string[];
@@ -239,6 +300,12 @@ export interface ResolvedExtensionConfig {
   options: Record<string, unknown>;
 }
 
+/** The printer's published specification that a preset's numbers come from. */
+export interface PrintSpec {
+  label: string;
+  url: string;
+}
+
 /**
  * Fully-resolved config. Every field is a concrete default with one
  * deliberate exception: `styles`. There is no preset
@@ -250,6 +317,10 @@ export interface ResolvedExtensionConfig {
 export interface ResolvedConfig {
   title: string;
   authors: string[];
+  /** The id of the preset this book resolved against (`dtrpg`, `book`, `custom`). */
+  preset: string;
+  /** The printer spec that preset follows, when it follows one: how a host credits the numbers it draws. */
+  spec?: PrintSpec;
   /** Validated publish-target ids for this book (may be empty). */
   targets: string[];
   styles?: string[];
@@ -263,6 +334,9 @@ export interface ResolvedConfig {
     icc: string;
     stripAnnotations: boolean;
     blackText: "icc" | "k-only";
+    transparency: "flatten-page" | "preserve-text";
+    flattenPages: number[];
+    rasterDpi?: number;
   };
   print: {
     signature: number;
@@ -275,6 +349,12 @@ export interface ResolvedConfig {
     tolerance: number;
     /** In-sheet bleed in pt (top, bottom, outer edge; see the manifest field); absent = none. */
     bleed?: number;
+    /** The text rule's inset from the trim in pt, every edge (see the manifest field); absent = none. */
+    safe?: number;
+    /** The art rule's inset from the trim in pt, top/bottom/outer edge (see the manifest field); absent = same as `safe`. */
+    artSafe?: number;
+    /** The binding edge's inset from the trim in pt, text and art alike (see the manifest field); absent = same as `safe`. */
+    gutter?: number;
   };
   ink: {
     maxTac: number;
@@ -300,8 +380,6 @@ export interface ResolvedConfig {
     };
     assets: {
       maxImageSize: number;
-      minImageDpi: number;
-      allowedColorSpaces: string[];
       allowAlpha: boolean;
       approvedFontFiles: string[];
       requireFontLicense: boolean;

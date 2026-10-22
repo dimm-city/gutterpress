@@ -75,7 +75,12 @@ export default defineCommand({
     // actually validates ./my-book instead of silently validating cwd.
     const positionalDir = typeof args.dir === "string" ? args.dir : undefined;
     const inputFlag = typeof args.input === "string" ? args.input : undefined;
-    const input = inputFlag ?? positionalDir;
+    // No directory at all means cwd, as the positional's help says, so a bare
+    // `gutterpress validate` checks the book it is run in. Without this the
+    // source checks ran over no files and reported a false PASS. `--pdf`
+    // alone stays a PDF-only (post-build) run.
+    const pdf = typeof args.pdf === "string" ? args.pdf : undefined;
+    const input = inputFlag ?? positionalDir ?? (pdf ? undefined : ".");
 
     let result;
     try {
@@ -85,7 +90,7 @@ export default defineCommand({
       result = await executeAndReport(
         {
           manifest: typeof args.manifest === "string" ? args.manifest : undefined,
-          pdf: typeof args.pdf === "string" ? args.pdf : undefined,
+          pdf,
           input,
           category: typeof args.category === "string" ? args.category : undefined,
           only: typeof args.only === "string" ? args.only : undefined,

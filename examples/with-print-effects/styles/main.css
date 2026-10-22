@@ -1,0 +1,84 @@
+/* Print-effects example: one transparency effect per page. Plain CSS only;
+   pages are targeted with the data-name Gutterpress gives every heading's
+   block (the slug of its first heading). */
+
+@page {
+  size: 621pt 810pt;
+  margin: 72pt 54pt;
+}
+
+body {
+  font-family: "Georgia", serif;
+  font-size: 12pt;
+  line-height: 1.5;
+  color: #000;
+}
+
+h2 {
+  font-size: 22pt;
+  margin: 0 0 18pt;
+}
+
+/* The brick wall is opaque and tiles; the effects below sit on top of it.
+   It fills the page because Gutterpress stretches every page block to its
+   page: no height needed (a percentage height has nothing to resolve
+   against in print, and a definite one in the preview). */
+[data-name="soft-shadow"],
+[data-name="clipped-shape"],
+[data-name="cutout-art"],
+[data-name="translucent-panel"] {
+  background: #4a352c url("../assets/wall.png") repeat;
+  padding: 36pt;
+  box-sizing: border-box;
+}
+
+[data-name="soft-shadow"] h2,
+[data-name="clipped-shape"] h2,
+[data-name="cutout-art"] h2,
+[data-name="translucent-panel"] h2,
+[data-name="cutout-art"] p {
+  color: #fff;
+}
+
+/* 1. Soft, blurred rgba shadow. */
+[data-name="soft-shadow"] .section {
+  background: #fffaf0;
+  padding: 24pt;
+  box-shadow: 0 14pt 28pt rgba(0, 0, 0, 0.55);
+}
+
+/* 2. clip-path card; the shadow is a clipped sibling layer with an rgba
+   fill, since box-shadow would be clipped away with the element. */
+[data-name="clipped-shape"] .section {
+  --cut: polygon(0 0, 88% 0, 100% 18%, 100% 100%, 12% 100%, 0 82%);
+  position: relative;
+  z-index: 0;
+  padding: 28pt;
+}
+[data-name="clipped-shape"] .section::before,
+[data-name="clipped-shape"] .section::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  clip-path: var(--cut);
+}
+[data-name="clipped-shape"] .section::before {
+  z-index: -2;
+  background: rgba(0, 0, 0, 0.5);
+  transform: translate(10pt, 12pt);
+}
+[data-name="clipped-shape"] .section::after {
+  z-index: -1;
+  background: #fffaf0;
+}
+
+/* 4. Translucent panel behind text. */
+[data-name="translucent-panel"] .section {
+  background: rgba(255, 255, 255, 0.72);
+  padding: 24pt;
+}
+
+/* 3. The cutout image is pinned by the markdown (.gp-pin); nothing to add. */
+[data-name="cutout-art"] p:not(:has(img)) {
+  max-width: 60%;
+}

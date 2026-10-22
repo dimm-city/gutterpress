@@ -40,7 +40,9 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+import { satisfies, validRange } from "semver";
 import { resolveDeclaredStyles } from "./style-declarations.ts";
+import { PACKAGE_VERSION } from "./version.ts";
 
 /** The one file an extension describes itself in — npm's own manifest. */
 export const EXTENSION_MANIFEST_FILENAME = "package.json";
@@ -128,6 +130,12 @@ export interface ExtensionMetadata {
    */
   publish?: boolean;
   /**
+   * npm `engines.gutterpress` — the Gutterpress versions the extension works
+   * with, as a semver range (e.g. `">=0.11.20-alpha.3"`). Checked when the
+   * extension loads ({@link assertSupportsThisGutterpress}).
+   */
+  gutterpressRange?: string;
+  /**
    * The removed `engineStyles` field (#266), carried through from the
    * `gutterpress` block ONLY so {@link assertExtensionContained} can reject it
    * by name at a write boundary. Never read as a declaration.
@@ -166,6 +174,9 @@ function metaFromPackageJson(raw: unknown): ExtensionMetadata {
     ...(str(pkg.description) ? { description: str(pkg.description) } : {}),
     ...(keywords ? { keywords } : {}),
     ...(str(pkg.main) ? { main: str(pkg.main) } : {}),
+    ...(str(object(pkg.engines)?.gutterpress)
+      ? { gutterpressRange: str(object(pkg.engines)?.gutterpress) }
+      : {}),
     ...("preview" in gp ? { preview: str(gp.preview) ?? null } : {}),
     ...(Array.isArray(gp.styles) ? { styles: declaredList(gp.styles) } : {}),
     ...(str(gp.tokensFile) ? { tokensFile: str(gp.tokensFile) } : {}),
@@ -256,6 +267,26 @@ export function extensionCarries(meta: ExtensionMetadata): ExtensionCarries {
  */
 export function pathEscapesFolder(rel: string): boolean {
   return path.isAbsolute(rel) || rel.split(/[\\/]/).includes("..");
+}
+
+/**
+ * Refuse to load an extension whose `engines.gutterpress` range excludes this
+ * Gutterpress, so a book built with too old a version fails with the fix
+ * instead of quietly printing differently. Prereleases count: 0.12.0-alpha.1
+ * satisfies `>=0.11.20`.
+ */
+export function assertSupportsThisGutterpress(meta: ExtensionMetadata, ref: string): void {
+  const range = meta.gutterpressRange;
+  if (range === undefined) return;
+  if (!validRange(range)) {
+    throw new Error(`Extension "${ref}" has an invalid engines.gutterpress range "${range}".`);
+  }
+  if (!satisfies(PACKAGE_VERSION, range, { includePrerelease: true })) {
+    throw new Error(
+      `Extension "${ref}" needs Gutterpress ${range} (its package.json engines.gutterpress); ` +
+        `this is Gutterpress ${PACKAGE_VERSION}. Update Gutterpress, or pin an older version of the extension.`,
+    );
+  }
 }
 
 /**

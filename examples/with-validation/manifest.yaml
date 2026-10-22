@@ -51,10 +51,6 @@ validate:
   # Asset validation
   assets:
     maxImageSize: 5000000          # 5 MB per image
-    minImageDpi: 300               # Print-quality minimum
-    allowedColorSpaces:
-      - CMYK
-      - Grayscale
     allowAlpha: false              # No transparency for print
     approvedFontFiles:
       - "fonts/**/*.{woff2,otf,ttf}"

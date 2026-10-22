@@ -18,10 +18,12 @@ import { launchChromium, type Browser, type Session } from "../shared/cdp.ts";
 import { extract, resolvePage, type Declarations, type GcpmModel } from "../shared/gcpm-extract.ts";
 import {
   flushMargins,
-  flushPageName,
   marginBoxesOnEdges,
-  type FlushEdge,
-} from "../shared/flush.ts";
+  pinPageName,
+  pinRootStyle,
+  type PinEdge,
+} from "../shared/pin-edges.ts";
+import type { PrintArea } from "../shared/print-area.ts";
 import {
   isIgnoredMarginBoxProperty,
   marginBoxAlign,
@@ -244,7 +246,7 @@ export type BuildDiagnosticCode =
   | "engine.multicol.dead-column"
   | "engine.content.overheight"
   | "engine.image.low-dpi"
-  | "engine.flush.margin-box"
+  | "engine.pin.margin-box"
   | "engine.page-background.unreferenced"
   | "engine.hyphenation.unsupported";
 
@@ -257,7 +259,7 @@ export const BUILD_DIAGNOSTIC_CODES: readonly BuildDiagnosticCode[] = [
   "engine.multicol.dead-column",
   "engine.content.overheight",
   "engine.image.low-dpi",
-  "engine.flush.margin-box",
+  "engine.pin.margin-box",
   "engine.page-background.unreferenced",
   "engine.hyphenation.unsupported",
 ];
@@ -413,51 +415,86 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     await page.send("Emulation.setEmulatedMedia", { media: "print" });
     log(`print media emulated for audits and measurement`);
 
-    // ---- .gp-flush: free the pinned edges' margins, per page -------------
+    // ---- pinned art: free the pinned edges' margins, pad the root --------
     // A pinned image reaches the paper only if the page area does (Chromium's
-    // printable area IS the page area — see shared/flush.ts for the
+    // printable area IS the page area — see shared/pin-edges.ts for the
     // measurements that closed every other route), and the only lever that
     // moves a page area is an `@page` context. Chromium implements no page
     // selector that can address one arbitrary page (`:nth()` measured as a
-    // no-op), so each flush root's own page context is ALIASED under a
+    // no-op), so each pin root's own page context is ALIASED under a
     // generated name — verbatim rule copies, never a resolved flatten, which
     // is the "re-implement the @page cascade" trap tier2's history records —
-    // with the flushed margins zeroed on top and the root assigned to it via
-    // the `data-gp-flush` attribute the agent stamps. The author's page
+    // with the pinned margins zeroed on top and the root assigned to it via
+    // the `data-gp-pin` attribute the agent stamps. The author's page
     // assignment, margins, and furniture on every OTHER edge keep working
     // because their rules were copied bytes-for-bytes; universal and
     // pseudo-only `@page` rules apply to the generated name on their own.
+    //
+    // The same rule gives the root its freed margins back as padding, so the
+    // TEXT keeps the author's content box whatever is pinned where, and hands
+    // the pin box its art-safe insets (`pinRootStyle`). Those are the RECTO
+    // values — the `:right` context, the binding on the left — and they are
+    // final for every root whose side changes nothing. A root whose padding
+    // or insets differ on a verso (mirrored margins on a freed side edge; the
+    // binding and outside edges swapping art-safe lines) or on a `:first`
+    // page takes the measurement path instead, and the synthesis step below
+    // gives it its own side's values: from the predicted page map before the
+    // first print, and again after every measured pass.
     //
     // The re-extract at the end makes the generated pages first-class model
     // citizens: the content-height publication, tier-2 bleed, tier-3 string
     // rewrites, and the audits all see them through the ordinary paths with
     // no special cases.
-    const flushRoots = await page.evaluate<
-      Array<{ id: string; page: string; edges: FlushEdge[]; key: string }>
-    >(`window.__gp.flushRoots()`);
-    interface FlushGroup {
+    const pinRoots = await page.evaluate<
+      Array<{ id: string; page: string; edges: PinEdge[]; padding: Record<PinEdge, number>; key: string }>
+    >(`window.__gp.pinRoots()`);
+    interface PinGroup {
       authorPage?: string;
-      edges: FlushEdge[];
+      edges: PinEdge[];
+      /** the roots' own padding, which the freed margins are added to */
+      padding: Record<PinEdge, number>;
       genName: string;
       key: string;
     }
-    const flushGroups = new Map<string, FlushGroup>();
-    for (const root of flushRoots) {
-      if (flushGroups.has(root.key)) continue;
+    const pinGroups = new Map<string, PinGroup>();
+    for (const root of pinRoots) {
+      if (pinGroups.has(root.key)) continue;
       const authorPage = root.page === "auto" ? undefined : root.page;
-      flushGroups.set(root.key, {
+      pinGroups.set(root.key, {
         authorPage,
         edges: root.edges,
-        genName: flushPageName(authorPage, root.edges),
+        padding: root.padding,
+        genName: pinPageName(authorPage, root.edges),
         key: root.key,
       });
     }
-    if (flushGroups.size) {
+    // The art-safe line comes from the manifest, through the book's print-area
+    // meta; none means 0 — the paper's edge.
+    const printArea = pinRoots.length
+      ? await page.evaluate<PrintArea | null>(`window.__gp.printArea()`)
+      : null;
+    // The root's declarations for one page context, against the AUTHOR's
+    // margins (the alias page is a different name, so resolving the author's
+    // still reads the original geometry).
+    const pinStyle = (group: PinGroup, pseudos: string[]) =>
+      pinRootStyle(
+        resolvePage(model, { name: group.authorPage, pseudos }).geometry.margin,
+        printArea,
+        pseudos.includes("left") ? "verso" : "recto",
+        group.edges,
+        group.padding,
+      );
+    if (pinGroups.size) {
       const lines: string[] = [];
-      for (const group of flushGroups.values()) {
+      const aliased = new Set<string>();
+      for (const group of pinGroups.values()) {
+        // one generated page per (author page, edge set), however many
+        // groups (roots padded differently) share it
+        const alias = !aliased.has(group.genName);
+        aliased.add(group.genName);
         const relocated = new Set(marginBoxesOnEdges(group.edges));
         const pseudoSets: string[][] = [[]];
-        if (group.authorPage) {
+        if (alias && group.authorPage) {
           for (const rule of model.pageRules) {
             if (rule.name !== group.authorPage) continue;
             const pseudo = rule.pseudos.length ? `:${rule.pseudos.join(":")}` : "";
@@ -473,8 +510,8 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
             for (const [prop, value] of Object.entries(rule.decls))
               body.push(`  ${prop}: ${value};`);
             for (const [box, decls] of Object.entries(rule.marginBoxes)) {
-              // Flushed-edge boxes are RELOCATED into the page area (below),
-              // never copied: under a bleed build the flushed margin becomes
+              // Pinned-edge boxes are RELOCATED into the page area (below),
+              // never copied: under a bleed build the freed margin becomes
               // slug-width, and a copied box would print a second folio there.
               if (relocated.has(box.slice(1))) continue;
               body.push(`  ${box} {`);
@@ -486,9 +523,9 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         }
         // The margin override per copied pseudo set: a copied `name:left`
         // margin (specificity f+h) would otherwise beat the bare generated
-        // override (f alone). Flushed-edge boxes are suppressed in the same
+        // override (f alone). Pinned-edge boxes are suppressed in the same
         // breath so nothing native ever paints where the relocation will.
-        for (const pseudos of pseudoSets) {
+        for (const pseudos of alias ? pseudoSets : []) {
           const pseudo = pseudos.length ? `:${pseudos.join(":")}` : "";
           const body: string[] = [];
           for (const edge of group.edges) body.push(`  margin-${edge}: 0;`);
@@ -498,16 +535,20 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         // 0-4-0 so the assignment outranks class-based author `page:` rules
         // at any realistic specificity; an id-based author assignment still
         // wins, which the post-injection check below turns into a warning
-        // instead of a silent nothing.
+        // instead of a silent nothing. The recto padding and insets ride on
+        // the same selector.
+        const recto = Object.entries(pinStyle(group, ["right"]))
+          .map(([prop, value]) => ` ${prop}: ${value};`)
+          .join("");
         lines.push(
-          `:where(.page, .spread)[data-gp-flush="${group.key}"][data-gp-flush][data-gp-flush][data-gp-flush] { page: ${group.genName}; }`,
+          `:where(.page, .spread)[data-gp-pin="${group.key}"][data-gp-pin][data-gp-pin][data-gp-pin] { page: ${group.genName};${recto} }`,
         );
       }
-      const flushCss = lines.join("\n");
-      await page.evaluate(`window.__gp.addCss("gp-flush-css", ${JSON.stringify(flushCss)})`);
-      model = extract(`${cssText}\n${flushCss}`);
+      const pinCss = lines.join("\n");
+      await page.evaluate(`window.__gp.addCss("gp-pin-css", ${JSON.stringify(pinCss)})`);
+      model = extract(`${cssText}\n${pinCss}`);
       log(
-        `.gp-flush: ${flushRoots.length} pinned root(s) -> ${flushGroups.size} generated page context(s)`,
+        `pinned art: ${pinRoots.length} page root(s) -> ${pinGroups.size} generated page context(s)`,
       );
     }
     const { tier3Reasons } = classify(model);
@@ -569,15 +610,15 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     await page.evaluate(`window.__gp.addCss("gp-page-vars", ${JSON.stringify(pageVarsCss)})`);
     log(`page geometry published (--gp-content-h: ${Math.round(contentHeightPx)}px)`);
 
-    // ---- .gp-flush furniture: what must be relocated ---------------------
-    // Margin boxes on a flushed edge cannot render natively (their margin is
+    // ---- pinned edges: what needs the root's physical page ---------------
+    // Margin boxes on a freed edge cannot render natively (their margin is
     // gone — measured, including every thin-margin/padding compensation
     // trick), so the engine re-homes them into the page area at their
     // original coordinates with resolved text. Knowing WHICH text needs the
     // physical page number (folio, per-side mirroring), so any book with
-    // furniture on a flushed edge takes the measurement path below.
+    // furniture on a freed edge takes the measurement path below.
     const relocationBoxes = (
-      group: { authorPage?: string; edges: FlushEdge[] },
+      group: { authorPage?: string; edges: PinEdge[] },
       pseudos: string[],
     ): Array<[string, Declarations]> => {
       const ctx = resolvePage(model, { name: group.authorPage, pseudos });
@@ -588,11 +629,21 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
           return !!c && c !== "none" && c !== "normal";
         });
     };
-    const furnitureRoots = flushRoots.filter((root) => {
-      const group = flushGroups.get(root.key)!;
+    const furnitureRoots = pinRoots.filter((root) => {
+      const group = pinGroups.get(root.key)!;
       return pseudoContexts.some((pseudos) => relocationBoxes(group, pseudos).length > 0);
     });
-    const flushDiagnosed = new Set<string>();
+    const relocationDiagnosed = new Set<string>();
+    // A root whose padding or insets differ on a verso (mirrored margins; the
+    // binding and outside edges swapping art-safe lines) or on a `:first`
+    // page from the recto defaults the stylesheet carries needs its page too.
+    const sideRoots = pinRoots.filter((root) => {
+      const group = pinGroups.get(root.key)!;
+      const recto = JSON.stringify(pinStyle(group, ["right"]));
+      return [["left"], ["right", "first"]].some(
+        (pseudos) => JSON.stringify(pinStyle(group, pseudos)) !== recto,
+      );
+    });
 
     // ---- Tier 2: geometry synthesis (bleed / marks) ---------------------
     const tier2 = synthesize({
@@ -700,7 +751,8 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       consumedStrings(model).size > 0 ||
       rectoDecls.length > 0 ||
       model.counterResets.length > 0 ||
-      furnitureRoots.length > 0;
+      furnitureRoots.length > 0 ||
+      sideRoots.length > 0;
     let tier: 1 | 2 | 3 =
       tier2.geometry.bleed > 0 || tier2.geometry.slug > 0 ? 2 : 1;
     let passes = 1;
@@ -758,7 +810,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       for (const s of sites) if (s.href.startsWith("#")) targets.add(s.href.slice(1));
       for (const s of rectoSites) targets.add(s.id);
       for (const s of resetSites) targets.add(s.id);
-      for (const r of furnitureRoots) targets.add(r.id);
+      for (const r of [...furnitureRoots, ...sideRoots]) targets.add(r.id);
       await page.evaluate(
         `window.__gp.instrument(${JSON.stringify([...targets])})`,
       );
@@ -895,22 +947,28 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
           genCss = genCss.split("\n/* Tier 3 */")[0] + `\n/* Tier 3 */\n${mapCss}`;
         }
 
-        // (c) flushed-edge furniture, re-homed into the page area (F1's
+        // Chromium's /Dests emission for injected gp-anchors is not fully
+        // reliable — measured on the furniture fixture, the string SOURCE's
+        // anchor got no destination while the pin root's did,
+        // pagination-dependent. The native margin boxes ride that out by
+        // accident (a stale-but-correct predicted `gp-gen-strings` sheet
+        // survives when mapCss returns empty); what (c) and (d) place must
+        // not be worse, so any id print did not measure falls back to the
+        // PREDICTED map — the viewer's opinion, which the parity gate holds
+        // to print's page map.
+        const pageAt = (id: string): number | undefined =>
+          map[id] ?? predictedForResult?.pageMap[id];
+        // Page 1 is a recto; recto pages are odd — decorate.ts's own rule.
+        const pseudosAt = (physical: number): string[] => [
+          physical % 2 === 1 ? "right" : "left",
+          ...(physical === 1 ? ["first"] : []),
+        ];
+
+        // (c) pinned-edge furniture, re-homed into the page area (F1's
         // discipline applies here too: same folio conversion, same
         // `stringValueAt` policy the counter-style map and the viewer use,
         // so a relocated folio can never disagree with a native one).
         if (furnitureRoots.length) {
-          // Chromium's /Dests emission for injected gp-anchors is not fully
-          // reliable — measured on this exact furniture fixture, the string
-          // SOURCE's anchor got no destination while the flush root's did,
-          // pagination-dependent. The native margin boxes ride that out by
-          // accident (a stale-but-correct predicted `gp-gen-strings` sheet
-          // survives when mapCss returns empty); relocated text must not be
-          // worse, so any id print did not measure falls back to the
-          // PREDICTED map — the viewer's opinion, which the parity gate
-          // holds to print's page map.
-          const pageAt = (id: string): number | undefined =>
-            map[id] ?? predictedForResult?.pageMap[id];
           const byName = new Map<string, StringEntry[]>();
           for (const s of sources) {
             const p = pageAt(s.id);
@@ -931,10 +989,8 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
           for (const root of furnitureRoots) {
             const physical = pageAt(root.id);
             if (!physical) continue;
-            const group = flushGroups.get(root.key)!;
-            // Page 1 is a recto; recto pages are odd — decorate.ts's own rule.
-            const pseudos: string[] = [physical % 2 === 1 ? "right" : "left"];
-            if (physical === 1) pseudos.push("first");
+            const group = pinGroups.get(root.key)!;
+            const pseudos = pseudosAt(physical);
             const ctx = resolvePage(model, { name: group.authorPage, pseudos });
             const g = ctx.geometry; // ORIGINAL margins — the slots' home
             const eff = flushMargins(g.margin, group.edges); // page-area origin
@@ -950,13 +1006,13 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
                 },
               });
               if (!text) {
-                if (!flushDiagnosed.has(name)) {
-                  flushDiagnosed.add(name);
+                if (!relocationDiagnosed.has(name)) {
+                  relocationDiagnosed.add(name);
                   diagnose(
-                    "engine.flush.margin-box",
-                    `@${name} sits on an edge a .gp-flush pin frees, and its content could not be ` +
+                    "engine.pin.margin-box",
+                    `@${name} sits on an edge a pinned image frees, and its content could not be ` +
                       `re-homed into the page (unsupported content value: ${decls.content}). It will ` +
-                      `not print on that page — simplify the box's content, or drop .gp-flush there.`,
+                      `not print on that page — simplify the box's content, or pin the image to another edge.`,
                   );
                 }
                 continue;
@@ -981,7 +1037,21 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
             items.push({ id: root.id, boxes });
           }
           if (items.length)
-            await page.evaluate(`window.__gp.setFlushFurniture(${JSON.stringify(items)})`);
+            await page.evaluate(`window.__gp.setPinFurniture(${JSON.stringify(items)})`);
+        }
+
+        // (d) pin roots whose side changes their padding or insets get the
+        // values for the page they landed on (the stylesheet holds the recto
+        // ones). Every such root is set on every pass, so a root that moves
+        // side between passes is put right again.
+        if (sideRoots.length) {
+          const items = sideRoots.flatMap((root) => {
+            const physical = pageAt(root.id);
+            if (!physical) return [];
+            return [{ id: root.id, style: pinStyle(pinGroups.get(root.key)!, pseudosAt(physical)) }];
+          });
+          if (items.length)
+            await page.evaluate(`window.__gp.setPinGeometry(${JSON.stringify(items)})`);
         }
       };
 
@@ -1111,7 +1181,8 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // across sheets leaves dead columns on every page before the last one.
     // Explicitly scoped to actual multicol containers (`column-count` OR
     // `column-width` set — `columns: 20em` resolves to `column-width` with
-    // `column-count: auto`, so checking `columnCount` alone misses it), not a
+    // `column-count: auto`, so checking `columnCount` alone misses it; and
+    // not a grid or flex container, where column properties do nothing), not a
     // relaxation of auditContent's leaf guard — that would make every wrapper
     // div in a 300-page book a candidate.
     //
@@ -1297,6 +1368,9 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
             if (
               multicol.length < 20 &&
               !(cs.columnCount === "auto" && cs.columnWidth === "auto") &&
+              // Column properties only make a BLOCK container multicol; a
+              // grid or flex container that carries them lays out no columns.
+              !/grid|flex/.test(cs.display) &&
               cs.columnFill === "balance" &&
               el.getBoundingClientRect().height > ${minContentHeightPx} + 1
             ) {
@@ -1605,12 +1679,12 @@ async function findWidthOffenders(
     // one literal name) keeps the guard intact when core adds another
     // injected page; `gp-` is core's documented namespace, so an
     // author-declared named page still (correctly) raises the limit.
-    // `gp--flush-*` is the exception inside the exception: those pages exist
-    // only in books that actually contain a flush pin, and a side-flushed
+    // `gp--pin-*` is the exception inside the exception: those pages exist
+    // only in books that actually contain an edge pin, and a side-pinned
     // page's content box legitimately reaches the sheet edge — excluding
     // them would hard-error every book that uses the feature.
     ...model.pageNames
-      .filter((n) => !n.startsWith("gp-") || n.startsWith("gp--flush-"))
+      .filter((n) => !n.startsWith("gp-") || n.startsWith("gp--pin-"))
       .map((n) => resolvePage(model, { name: n })),
   ];
   // Each page context gets its OWN limit, and elements are compared against
@@ -1632,7 +1706,7 @@ async function findWidthOffenders(
   // name -> limit, for the per-element resolution done in-page below.
   const namedLimits: Record<string, number> = {};
   model.pageNames
-    .filter((n) => !n.startsWith("gp-") || n.startsWith("gp--flush-"))
+    .filter((n) => !n.startsWith("gp-") || n.startsWith("gp--pin-"))
     .forEach((n) => {
       namedLimits[n] = contentPxOf(resolvePage(model, { name: n }));
     });
@@ -1899,13 +1973,13 @@ async function predictPageMap(
     await page.evaluate(viewerScript);
 
     // Same calls, same order as the print page (build()'s Tier 3 setup):
-    // flushRoots -> stringSources -> forcedBreakSites -> xrefSites ->
+    // pinRoots -> stringSources -> forcedBreakSites -> xrefSites ->
     // counterResetSites. The order IS the id contract: every call hands out
     // `gp-m-N` anchors from one counter, so a call the print page makes that
     // this page skips shifts every later id onto the wrong element — the
-    // flush pass measured exactly that as a predicted map pointing at the
-    // string source instead of the flush root.
-    await page.evaluate(`window.__gp.flushRoots()`);
+    // pin pass measured exactly that as a predicted map pointing at the
+    // string source instead of the pin root.
+    await page.evaluate(`window.__gp.pinRoots()`);
     await page.evaluate(`window.__gp.stringSources(${JSON.stringify(args.stringSets)})`);
     if (args.rectoDecls.length)
       await page.evaluate(

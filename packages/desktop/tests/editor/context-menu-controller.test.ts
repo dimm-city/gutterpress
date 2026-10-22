@@ -750,7 +750,7 @@ describe("image kind", () => {
   test("offers one Set properties action instead of separate image facet actions", async () => {
     const h = make();
     h.readFileMap["/proj/ch1.md"] =
-      '![Art](x.png "Caption"){width="40%" .gp-right .gp-small .gp-tight .gp-shape}\n';
+      '![Art](x.png "Caption"){width="40%" .gp-right .gp-size-30 .gp-tight .gp-shape}\n';
     h.client.emit({
       name: "contextMenuRequested",
       detail: detail({
@@ -808,14 +808,14 @@ describe("image kind", () => {
   test("Set properties seeds every supported option and applies multiple changes in one commit", async () => {
     const h = make();
     h.readFileMap["/proj/ch1.md"] =
-      '![Art](x.png "Caption"){width="40%" .gp-right .gp-small .gp-tight .gp-shape .custom #hero data-x="y"}\n';
+      '![Art](x.png "Caption"){width="40%" .gp-right .gp-size-30 .gp-tight .gp-shape .custom #hero data-x="y"}\n';
     h.imagePropertiesResult = {
       src: "new path.png",
       alt: "New ] alt",
       width: "",
       position: "gp-pin",
       pinAlignment: "bottom-right",
-      size: "gp-large",
+      size: "gp-size-60",
       spacing: "gp-loose",
       shape: true,
       flush: false,
@@ -838,7 +838,7 @@ describe("image kind", () => {
       width: "40%",
       position: "gp-right",
       pinAlignment: "center",
-      size: "gp-small",
+      size: "gp-size-30",
       spacing: "gp-tight",
       shape: true,
       flush: false,
@@ -847,9 +847,9 @@ describe("image kind", () => {
     expect(h.commitEngine.calls).toEqual([{
       chapter: "ch1.md",
       range: [0, 1],
-      expected: '![Art](x.png "Caption"){width="40%" .gp-right .gp-small .gp-tight .gp-shape .custom #hero data-x="y"}\n',
+      expected: '![Art](x.png "Caption"){width="40%" .gp-right .gp-size-30 .gp-tight .gp-shape .custom #hero data-x="y"}\n',
       replacement:
-        String.raw`![New \] alt](<new path.png> "Caption"){.gp-pin .gp-bottom .gp-right .gp-large .gp-loose .gp-shape .custom #hero data-x="y" .gp-front}` + "\n",
+        String.raw`![New \] alt](<new path.png> "Caption"){.gp-pin .gp-bottom .gp-right .gp-size-60 .gp-loose .gp-shape .custom #hero data-x="y" .gp-front}` + "\n",
       expectedGeneration: 0,
     }]);
   });
@@ -922,7 +922,7 @@ describe("image kind", () => {
 
   test("changing only size preserves the exact escaped destination, formatted alt, and title", async () => {
     const h = make();
-    const source = String.raw`![A *b*](media/a\(b\).png "Caption"){.gp-small .custom}` + "\n";
+    const source = String.raw`![A *b*](media/a\(b\).png "Caption"){.gp-size-30 .custom}` + "\n";
     h.readFileMap["/proj/ch1.md"] = source;
     h.imagePropertiesResult = {
       src: "media/a(b).png",
@@ -930,7 +930,7 @@ describe("image kind", () => {
       width: "",
       position: "",
       pinAlignment: "center",
-      size: "gp-large",
+      size: "gp-size-60",
       spacing: "",
       shape: false,
       flush: false,
@@ -952,7 +952,7 @@ describe("image kind", () => {
     await h.ctrl.runItem(h.ctrl.items.find((item) => item.id === "image-properties")!);
     expect(h.commitEngine.calls[0]).toMatchObject({
       expected: source,
-      replacement: String.raw`![A *b*](media/a\(b\).png "Caption"){.gp-large .custom}` + "\n",
+      replacement: String.raw`![A *b*](media/a\(b\).png "Caption"){.gp-size-60 .custom}` + "\n",
     });
   });
 

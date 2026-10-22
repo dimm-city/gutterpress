@@ -19,9 +19,10 @@ page:
 
 ## Color Compliance
 
-Print vendors typically require CMYK color spaces. The validation system checks:
+Print vendors typically require CMYK color spaces. A PDF/X build converts
+every image to the output intent, so source images can stay RGB. The
+validation system checks the result:
 
-- **Source images** via `asset.image.color-space` (pre-build)
 - **Rendered PDF** via `pdf.print.color-spaces` (post-build)
 
 ## Font Embedding

@@ -1266,18 +1266,19 @@ describe("GUTTERPRESS_CSS gp-* vocabulary", () => {
     }
   });
 
-  test("sizes declare width 25/50/75% with the float-cap lift", () => {
-    const small = GUTTERPRESS_CSS.match(/\.gp-small\s*\{[^}]*\}/);
-    const medium = GUTTERPRESS_CSS.match(/\.gp-medium\s*\{[^}]*\}/);
-    const large = GUTTERPRESS_CSS.match(/\.gp-large\s*\{[^}]*\}/);
-    expect(small![0]).toMatch(/width:\s*25%/);
-    expect(medium![0]).toMatch(/width:\s*50%/);
-    expect(large![0]).toMatch(/width:\s*75%/);
-    for (const rule of [small, medium, large]) {
-      expect(rule![0]).toMatch(/max-width:\s*100%/);
+  test("sizes declare width 10% to 90% in 10% steps, each with the float-cap lift", () => {
+    for (let percent = 10; percent <= 90; percent += 10) {
+      const rule = GUTTERPRESS_CSS.match(new RegExp(`\\.gp-size-${percent}\\s*\\{[^}]*\\}`))![0];
+      expect(rule).toMatch(new RegExp(`(^|[^-])width:\\s*${percent}%`));
+      expect(rule).toMatch(/max-width:\s*100%/);
+    }
+    // No 100% step (that is .gp-full, a position), and the named ladder is gone, not aliased.
+    expect(GUTTERPRESS_CSS).not.toContain(".gp-size-100");
+    for (const named of ["small", "medium", "large", "xl", "xxl"]) {
+      expect(GUTTERPRESS_CSS).not.toContain(`.gp-${named}`);
     }
     // After the float rules, so max-width:100% beats the 50% cap on order.
-    expect(GUTTERPRESS_CSS.indexOf(".gp-small")).toBeGreaterThan(GUTTERPRESS_CSS.indexOf(".gp-right {"));
+    expect(GUTTERPRESS_CSS.indexOf(".gp-size-10")).toBeGreaterThan(GUTTERPRESS_CSS.indexOf(".gp-right {"));
   });
 
   test("spacing presets set --gp-gap and the float rules consume it", () => {
@@ -1289,13 +1290,17 @@ describe("GUTTERPRESS_CSS gp-* vocabulary", () => {
     expect(right).toContain("var(--gp-gap, 1em)");
   });
 
-  test(".gp-pin is abspos with inset:0 and EXPLICIT center defaults", () => {
+  test(".gp-pin is abspos with four non-auto insets from the pin box and EXPLICIT center defaults", () => {
     const pin = GUTTERPRESS_CSS.match(/\.gp-pin\s*\{[^}]*\}/)![0];
     expect(pin).toMatch(/position:\s*absolute/);
-    // inset:0 is load-bearing: abspos self-alignment aligns within the
-    // inset-modified containing block; with auto insets that collapses to
-    // the static-position rectangle and alignment does nothing.
-    expect(pin).toMatch(/inset:\s*0/);
+    // Non-auto insets are load-bearing: abspos self-alignment aligns within
+    // the inset-modified containing block; with auto insets that collapses
+    // to the static-position rectangle and alignment does nothing. Each is
+    // the engine's art-safe distance for that edge, 0 when none is set.
+    for (const edge of ["top", "right", "bottom", "left"]) {
+      expect(pin).toContain(`${edge}: var(--gp-pin-${edge}, 0px);`);
+    }
+    expect(pin).not.toMatch(/\binset:/);
     // `normal` behaves as `start` for abspos replaced elements — the
     // centered-by-default promise requires explicit centers.
     expect(pin).toMatch(/align-self:\s*center/);
@@ -1305,16 +1310,21 @@ describe("GUTTERPRESS_CSS gp-* vocabulary", () => {
     expect(GUTTERPRESS_CSS.indexOf(".gp-pin")).toBeGreaterThan(GUTTERPRESS_CSS.indexOf(".gp-right {"));
   });
 
-  test(".gp-flush ships no CSS — the engines implement it", () => {
-    // The class is a marker consumed by the compiler and the viewer
-    // (engine/shared/flush.ts): reaching the paper requires freeing that
-    // page's margins and relocating the furniture that lived in them,
-    // neither of which a static stylesheet can do. An earlier attempt DID
-    // ship it as CSS — `:has()` reassigning the root to a gp-flush-* named
-    // page — and stole the author's own `page:` assignment (every
-    // declaration on their named page, furniture included, vanished). No
-    // rule may come back here.
-    expect(GUTTERPRESS_CSS).not.toContain("gp-flush");
+  test(".gp-flush only zeroes the pin box's insets, after the edge modifiers", () => {
+    // Every edge pin's margin is freed by the ENGINES (engine/shared/
+    // pin-edges.ts): that takes page geometry, per page, and relocating the
+    // furniture that lived in the margin, neither of which a stylesheet can
+    // do. An earlier attempt DID ship the page change as CSS — `:has()`
+    // reassigning the root to a named page — and stole the author's own
+    // `page:` assignment (every declaration on their named page, furniture
+    // included, vanished). No such rule may come back here: `.gp-flush` is
+    // plain CSS on the pin, and only moves its art-safe insets to 0.
+    const flush = GUTTERPRESS_CSS.match(/\.gp-pin\.gp-flush\s*\{[^}]*\}/)![0];
+    for (const edge of ["top", "right", "bottom", "left"]) {
+      expect(flush).toContain(`--gp-pin-${edge}: 0px;`);
+    }
+    expect(flush).not.toMatch(/(^|[\s;{])(page|margin|inset|top|right|bottom|left):/);
+    expect(GUTTERPRESS_CSS.indexOf(".gp-pin.gp-flush")).toBeGreaterThan(GUTTERPRESS_CSS.lastIndexOf(".gp-right"));
     expect(GUTTERPRESS_CSS).not.toContain(":has(.gp-pin");
   });
 
@@ -1341,7 +1351,7 @@ describe("GUTTERPRESS_CSS gp-* vocabulary", () => {
   test("adds no new @page gp-* names (gp-full-bleed stays the only one)", () => {
     // build.ts's shrink-to-fit guard excludes the whole `gp-` named-page
     // namespace from its page-width Math.max; every name added here widens
-    // that exclusion and must be deliberate. (`gp--flush-*` pages exist too,
+    // that exclusion and must be deliberate. (`gp--pin-*` pages exist too,
     // but the COMPILER generates those per build — they are never in this
     // static stylesheet, and the width guard readmits them explicitly.)
     expect(GUTTERPRESS_CSS.match(/@page gp-/g)).toHaveLength(1);
@@ -1351,9 +1361,9 @@ describe("GUTTERPRESS_CSS gp-* vocabulary", () => {
 describe("gp-* vocabulary — rendered output", () => {
   test("multi-class attrs compose on the rendered <img>", () => {
     const md = createMarkdownRenderer();
-    const html = md.render("![Art](x.png){.gp-right .gp-small}");
+    const html = md.render("![Art](x.png){.gp-right .gp-size-30}");
     expect(html).toContain('<img src="x.png" alt="Art"');
-    expect(html).toContain('class="gp-right gp-small"');
+    expect(html).toContain('class="gp-right gp-size-30"');
   });
 
   test("assembleBookHtml carries every gp-* selector into the injected <style> block", async () => {
@@ -1366,7 +1376,8 @@ describe("gp-* vocabulary — rendered output", () => {
     expect(html).toContain('class="gp-pin gp-bottom"');
     for (const selector of [
       ".gp-left", ".gp-right", ".gp-center", ".gp-full", ".gp-bleed",
-      ".gp-small", ".gp-medium", ".gp-large", ".gp-tight", ".gp-loose",
+      ".gp-size-10", ".gp-size-20", ".gp-size-30", ".gp-size-40", ".gp-size-50",
+      ".gp-size-60", ".gp-size-70", ".gp-size-80", ".gp-size-90", ".gp-tight", ".gp-loose",
       ".gp-pin", ".gp-top", ".gp-bottom",
     ]) {
       expect(html).toContain(selector);
@@ -1431,8 +1442,44 @@ describe("pin_outside_page warning (gp_pin_scope_check)", () => {
   });
 
   test("an image with other gp-* classes but no .gp-pin never warns", () => {
-    const { pin } = pinWarnings("![w](w.png){.gp-right .gp-small}\n");
+    const { pin } = pinWarnings("![w](w.png){.gp-right .gp-size-30}\n");
     expect(pin).toEqual([]);
+  });
+});
+
+// flush_art: `.gp-flush` is the escape hatch past the printer's art-safe line
+// (a pin sits ON that line without it), so every image that takes it is said
+// out loud, once, on the channel validate and the Problems panel read.
+describe("flush_art info (gp_pin_scope_check)", () => {
+  function flushWarnings(src: string): LayoutWarning[] {
+    const md = createMarkdownRenderer();
+    const env: PagedEnv = {};
+    md.render(src, env);
+    return (env.layoutWarnings ?? []).filter((w) => w.type === "flush_art");
+  }
+
+  test("an edge-pinned image with .gp-flush is noted once, on its line, as an info", () => {
+    const warnings = flushWarnings("@page\n\ntext\n\n![Wall](wall.png){.gp-pin .gp-bottom .gp-flush}\n");
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]!.line).toBe(5);
+    expect(warnings[0]!.severity).toBe("info");
+    expect(warnings[0]!.message).toBe(
+      "`.gp-flush` puts this image on the paper's edge, past the printer's safe area. Printers trim up to 0.125in there, so keep it for art that is meant to bleed off the page.",
+    );
+  });
+
+  test("one warning per image: a corner counts once, two images twice", () => {
+    expect(flushWarnings("@page\n\n![a](a.png){.gp-pin .gp-bottom .gp-right .gp-flush}\n")).toHaveLength(1);
+    const two = flushWarnings(
+      "@page\n\n![a](a.png){.gp-pin .gp-top .gp-flush}\n\n![b](b.png){.gp-pin .gp-left .gp-flush}\n",
+    );
+    expect(two.map((w) => w.line)).toEqual([3, 5]);
+  });
+
+  test("silent where .gp-flush does nothing: without .gp-pin, or on a pin with no edge word", () => {
+    expect(flushWarnings("@page\n\n![a](a.png){.gp-bleed .gp-flush}\n")).toEqual([]);
+    expect(flushWarnings("@page\n\n![a](a.png){.gp-pin .gp-flush}\n")).toEqual([]);
+    expect(flushWarnings("@page\n\n![a](a.png){.gp-pin .gp-bottom}\n")).toEqual([]);
   });
 });
 
@@ -1491,7 +1538,7 @@ describe("unknown_gp_class warning (gp_pin_scope_check)", () => {
       "",
       "@end-section",
       "",
-      "![a](a.png){.gp-left .gp-small .gp-tight .gp-shape}",
+      "![a](a.png){.gp-left .gp-size-30 .gp-tight .gp-shape}",
       "",
       "![b](b.png){.gp-pin .gp-top .gp-behind}",
       "",

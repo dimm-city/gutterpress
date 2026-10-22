@@ -191,6 +191,17 @@ const DEFAULT_FIXTURES = [
   // Chromium the same book may read CLEAN instead: also a pass, never a
   // failure.
   join(REPO, "docs", "fixtures", "exact-fit-boundary", "book"),
+  // The percentage-height-root fixture (committed): `height: 100%` on every
+  // page block, by the data-name the pipeline gives it (which its heading
+  // shares). Print resolves the percentage against the flow root — auto, so
+  // the block takes core's min-height cushion — while the viewer's strip was
+  // a definite `height: var(--gp-content-h)`, so on screen the block ended
+  // exactly on its column's edge, its heading filled it, and the run's last
+  // block left a blank column: one preview page the PDF does not have
+  // (examples/with-print-effects with that rule: print 5pp, viewer 8pp, a
+  // pin root being a run of its own). `.gp-strip` now takes its height from
+  // the flow root the way the block does in print (viewer.css).
+  join(REPO, "docs", "fixtures", "percentage-height-root", "book"),
 ];
 
 type DivergenceKind = "pageCount" | "pageMap" | "targetCounter" | "headingPageMap";
@@ -305,6 +316,7 @@ async function stage(
   const cssAssets: AssetCopy[] = [];
   const htmlPath = await renderChaptersToFile(renderDir, outDir, {
     title: config.title,
+    printArea: { ...config.page, preset: config.preset, spec: config.spec },
     styles: config.styles,
     files: config.source.files,
     plugins,
@@ -754,9 +766,30 @@ export const EXACT_FIT_BROWSER_JS = String.raw`window.__gpExactFit = function (a
       const el = document.getElementById(id);
       if (el) pagesBefore[id] = api.pageOf(el) + 1;
     }
+    // Headings agreeing does not mean lines agree: a boundary can push the
+    // viewer a few lines behind and the pages after it still put every
+    // heading on the same page, until one finally lands across a break (the
+    // user guide: an exact fit at p6, the first disagreeing heading at p9).
+    // So walk BACK from the agreeing page over pages whose last lines already
+    // disagree, and search forward from where that run begins. Any page that
+    // cannot be read stops the walk, leaving the start where it was.
+    let start = agreeingPage;
+    for (let q = agreeingPage - 1; q >= 1; q--) {
+      const printPage = printLines[q] || [];
+      const si = printPage.length ? stripFor(q) : null;
+      if (!si) break;
+      const lastPrint = printPage[printPage.length - 1];
+      const loc = locateLine(si, norm(lastPrint.text), q, q + 1);
+      if (!loc || loc.line.page < q) break;
+      if (loc.line.page === q) {
+        const lastViewer = edgeLineOnPage(si, q, "bottom");
+        if (!lastViewer || score(norm(lastViewer.line.text), norm(lastPrint.text)) > 0) break;
+      }
+      start = q;
+    }
     // The boundary page: the first page whose LAST line the two sides disagree on.
     let found = null;
-    for (let q = agreeingPage; q <= lo && !found; q++) {
+    for (let q = start; q <= lo && !found; q++) {
       const printPage = printLines[q] || [];
       if (!printPage.length) continue;
       const si = stripFor(q);
@@ -776,7 +809,7 @@ export const EXACT_FIT_BROWSER_JS = String.raw`window.__gpExactFit = function (a
         else return { error: "p" + q + " ends on different lines and the viewer's (" + JSON.stringify(lastViewer.line.text.slice(0, 40)) + ") is not on print's p" + (q + 1) };
       }
     }
-    if (!found) return { error: "no page between p" + agreeingPage + " and p" + lo + " ends on different lines" };
+    if (!found) return { error: "no page between p" + start + " and p" + lo + " ends on different lines" };
     const { q: b, keptBy, D } = found;
     const common = { page: b, keptBy, text: D.line.text.trim(), block: D.block.tagName.toLowerCase(),
                      lineIndex: D.k + 1, lineCount: D.lines.length, contentHPx: found.si.contentH };
@@ -876,8 +909,10 @@ export async function measureExactFitBoundary(
       })`,
     );
     const textPass = await getTextPass(doc);
+    // Every page up to the dispute: the browser side may walk back past the
+    // agreeing page to where the lines started to disagree.
     const printLines: Record<number, PrintLine[]> = {};
-    for (let q = first.agreeingPage; q <= lo + 1 && q <= doc.numPages; q++) {
+    for (let q = 1; q <= lo + 1 && q <= doc.numPages; q++) {
       const strip = strips.find((s) => q > s.offset && q <= s.offset + s.pages);
       if (!strip) continue;
       const { h } = getPageSize(await doc.getPage(q));

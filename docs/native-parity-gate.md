@@ -61,9 +61,14 @@ the boundary instead of listing its consequences:
 
 1. Take the **first disagreeing heading in document order** (both sides
    measured; a one-sided miss stays a plain divergence).
-2. Walk forward from the last heading both sides agreed on to the **first
-   page whose last line the two fragmenters disagree on**. The side that has
-   that line on the page *kept* it; the other *pushed* it.
+2. Find the **first page whose last line the two fragmenters disagree on**,
+   searching forward from the last heading both sides agreed on — after first
+   walking back from that heading's page over any pages whose last lines
+   already disagree. Headings agreeing does not mean the lines under them do:
+   a boundary can leave the preview a few lines behind for pages before a
+   heading finally lands across a break (the user guide: an exact fit at p6,
+   the first disagreeing heading at p9). The side that has the disputed line
+   on its page *kept* it; the other *pushed* it.
 3. Measure the disputed line's box bottom against the column height on both
    sides — its **slack** (positive = room to spare, negative = overflow).
 4. Classify as an exact-fit boundary only when the fit outcomes are opposite

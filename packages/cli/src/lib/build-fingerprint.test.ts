@@ -81,6 +81,28 @@ test("writeBuildFingerprint records pdfx.blackText (provenance), null when no PD
   }
 });
 
+test("writeBuildFingerprint records the PDF/X transparency settings (provenance), null when absent", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "gutterpress-fingerprint-"));
+  try {
+    const base = { requestedFlavor: "x1a", resolvedFlavor: "x1a", iccPath: null, stripAnnotations: true } as const;
+    const read = async (pdfx: Record<string, unknown>) =>
+      (
+        JSON.parse(
+          await readFile(
+            await writeBuildFingerprint({ command: "build", outputDir: dir, args: {}, pdfx: { ...base, ...pdfx } }),
+            "utf8",
+          ),
+        ) as { keyConfig: { pdfx: Record<string, unknown> } }
+      ).keyConfig.pdfx;
+    const set = await read({ transparency: "preserve-text", flattenPages: [4, 13], rasterDpi: 600 });
+    expect([set.transparency, set.flattenPages, set.rasterDpi]).toEqual(["preserve-text", [4, 13], 600]);
+    const unset = await read({});
+    expect([unset.transparency, unset.flattenPages, unset.rasterDpi]).toEqual([null, null, null]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("writeBuildFingerprint degrades to sourceRevision: null for a non-git directory (no system git spawn involved)", async () => {
   // getGitRevision tries [sourceDir, process.cwd()] as candidates, so a
   // naive in-process call here would find THIS repo via the process.cwd()

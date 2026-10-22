@@ -20,7 +20,7 @@ export interface CheckResult {
   detail?: string;
   /**
    * Stable machine-readable identifier for the KIND of finding (e.g.
-   * "ink-coverage-exceeded", "rasterized-pages-detected"). Lets the report /
+   * "ink-coverage-exceeded", "no-fonts"). Lets the report /
    * summary layer branch on the finding without parsing `message` prose.
    */
   code?: string;
@@ -39,7 +39,14 @@ export interface CheckContext {
   htmlPath?: string;
   markdownFiles?: string[];
   cssFiles?: string[];
+  /** Directories the font checks scan. */
   assetDirs?: string[];
+  /**
+   * The image files the book ships: its markdown images and the images its
+   * stylesheets reference, as absolute paths. Art in the project folder that
+   * nothing references is not checked.
+   */
+  imageFiles?: string[];
 }
 
 export interface Check {

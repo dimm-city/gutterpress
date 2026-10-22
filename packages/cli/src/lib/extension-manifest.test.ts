@@ -19,8 +19,10 @@ import {
   extensionEntry,
   extensionCarries,
   assertExtensionContained,
+  assertSupportsThisGutterpress,
   resolveExtension,
 } from "./extension-manifest";
+import { PACKAGE_VERSION } from "./version";
 
 const TMP_ROOT = join(process.cwd(), ".tmp", `extension-manifest-tests-${Date.now()}`);
 
@@ -292,6 +294,29 @@ describe("extension-manifest", () => {
       );
       expect(resolved.components).toBe(join(dir, "components.yaml"));
       expect(resolved.snippets).toBe(join(dir, "snippets"));
+    });
+  });
+
+  describe("engines.gutterpress", () => {
+    test("is read from npm's engines field", async () => {
+      const meta = await readExtensionMeta(pkgDir({ name: "x", engines: { gutterpress: ">=0.11.20-alpha.3" } }));
+      expect(meta.gutterpressRange).toBe(">=0.11.20-alpha.3");
+    });
+
+    test("loads when absent or satisfied, prereleases included", () => {
+      expect(() => assertSupportsThisGutterpress({}, "x")).not.toThrow();
+      expect(() => assertSupportsThisGutterpress({ gutterpressRange: `>=${PACKAGE_VERSION}` }, "x")).not.toThrow();
+      expect(() => assertSupportsThisGutterpress({ gutterpressRange: ">=0.0.1" }, "x")).not.toThrow();
+    });
+
+    test("refuses a Gutterpress outside the range, naming both versions", () => {
+      expect(() => assertSupportsThisGutterpress({ gutterpressRange: ">=999.0.0" }, "gp-x")).toThrow(
+        `Extension "gp-x" needs Gutterpress >=999.0.0 (its package.json engines.gutterpress); this is Gutterpress ${PACKAGE_VERSION}.`,
+      );
+    });
+
+    test("refuses an invalid range", () => {
+      expect(() => assertSupportsThisGutterpress({ gutterpressRange: "not a range" }, "gp-x")).toThrow(/invalid engines\.gutterpress/);
     });
   });
 });

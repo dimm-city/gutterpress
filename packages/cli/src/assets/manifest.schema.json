@@ -154,6 +154,25 @@
           "description": "How near-black text is separated. `icc` converts it through the ICC profile (rich, four-colour black). `k-only` prints it on the black plate alone (100% K), which print vendors such as DriveThruRPG require for small text. Non-text black (rules, panels) is unaffected. Preset defaults: dtrpg `k-only`, book `icc`.",
           "enum": ["icc", "k-only"],
           "default": "icc"
+        },
+        "transparency": {
+          "type": "string",
+          "description": "What a PDF/X build does with a page that uses transparency (an alpha-channel image, a soft `rgba()` shadow, CSS `opacity` or `mix-blend-mode`), which PDF/X (PDF 1.3) cannot represent. `flatten-page` leaves the page to Ghostscript, which rasterizes the WHOLE page: it looks right but loses the page's text and fonts. `preserve-text` flattens only the artwork to a picture (300 DPI, or `rasterDpi`) and draws the text live on top, so the page stays searchable. Text is then always the top layer (text another element covers shows through). A page whose text is translucent or blended, set in a Type 3 font (e.g. a synthetic bold or a text stroke), filled with a pattern or used as a clip, or that has a repeating or conic gradient, falls back to `flatten-page`, and so does any page listed in `flattenPages`. Set `validate.assets.allowAlpha: true` to use alpha-channel images. Same for every preset: `flatten-page`.",
+          "enum": ["flatten-page", "preserve-text"],
+          "default": "flatten-page"
+        },
+        "flattenPages": {
+          "type": "array",
+          "description": "With `transparency: preserve-text`: pages (1-based, the numbers the build reports) left to Ghostscript's whole-page flattening even if they could be split, e.g. a page whose look depends on a cover or tint painted over its text. Page numbers move when the book reflows. Default: none.",
+          "items": { "type": "integer", "minimum": 1 },
+          "examples": [[4, 13]]
+        },
+        "rasterDpi": {
+          "type": "integer",
+          "description": "Resolution (DPI) of every picture made from a page that uses transparency: the whole pages Ghostscript flattens and the `preserve-text` artwork. Vector content and the book's own images are not resampled. Unset: Ghostscript's default (720) for whole pages, 300 for `preserve-text` artwork.",
+          "minimum": 72,
+          "maximum": 1200,
+          "examples": [300]
         }
       }
     },
@@ -203,15 +222,33 @@
         },
         "bleed": {
           "type": "number",
-          "description": "A bleed, in points, that the page width x height ALREADY CONTAINS on the top, bottom and OUTER edges (none on the binding edge) — how DriveThruRPG's interior file is cut (8.625 x 11.25in for an 8.5 x 11in book). Preview overlay only: it tells the margin & bleed overlay where the trim is and changes nothing in the PDF. CSS `@page { bleed }` wins when the stylesheet declares one. Preset default: dtrpg 9 (0.125in); book and custom none.",
+          "description": "A bleed, in points, that the page width x height ALREADY CONTAINS on the top, bottom and OUTER edges (none on the binding edge) — how DriveThruRPG's interior file is cut (8.625 x 11.25in for an 8.5 x 11in book). It tells the preview's safe area & bleed overlay, the `pdf.print.safe-margins` check and pinned art where the trim is, and by itself changes nothing in the PDF. Preset default: dtrpg 9 (0.125in); book and custom none.",
           "minimum": 0,
           "examples": [9]
+        },
+        "safe": {
+          "type": "number",
+          "description": "The TEXT rule, in points: how far inside the trim glyphs must stay, on every edge (the binding edge too, unless `gutter` is set). For DriveThruRPG it is the \"text at least 0.5in inside the trim\" rule. The preview's overlay outlines it (dashed) and flags text outside it, and the `pdf.print.safe-margins` check fails a PDF whose text is closer. An image pinned to an edge (`.gp-pin`) where `artSafe` is not set sits on it; no book CSS moves it. Preset default: dtrpg 36 (0.5in), book 18 (0.25in); custom none.",
+          "minimum": 0,
+          "examples": [18, 36]
+        },
+        "artSafe": {
+          "type": "number",
+          "description": "The ART rule, in points: how far inside the trim art that does not bleed (images, backgrounds, borders, rules) must stay on the top, bottom and OUTER edge; at the binding edge art uses `gutter`. For DriveThruRPG it is the \"non-bleeding art at least 0.25in from the outside edges (0.5in at the binding)\" rule. Art that runs out to the page's edge is a bleed and is not judged on that edge. The preview's overlay outlines it (dotted) and flags art outside it, and an image pinned to the top, bottom or outer edge (`.gp-pin`) sits on it unless it carries `.gp-flush`. Absent = the same as `safe`. Preset default: dtrpg 18 (0.25in); book and custom none.",
+          "minimum": 0,
+          "examples": [18]
+        },
+        "gutter": {
+          "type": "number",
+          "description": "The binding allowance, in points: how far content stays from the spine, measured from the trim at the binding edge (the left edge of a right-hand page, the right edge of a left-hand one). It stands in for `safe` there, for text and for art alike: the preview's overlay draws and judges that edge against it, the `pdf.print.safe-margins` check fails text closer to the spine than it, and an image pinned to the binding edge (`.gp-pin`) sits on it. The other edges keep `safe` and `artSafe`. Use it when your book keeps its text further from the spine than the printer's minimum: the Field Guide keeps 0.75in (54) where DriveThruRPG asks for 0.5in. Absent = the same as `safe`. Presets leave it unset.",
+          "minimum": 0,
+          "examples": [54]
         }
       }
     },
     "ink": {
       "type": "object",
-      "description": "Ink coverage limits used by the `pdf.print.ink-coverage` and `asset.image.tac-raster` checks.",
+      "description": "Ink coverage limits used by the `pdf.print.ink-coverage` check.",
       "properties": {
         "maxTac": {
           "type": "number",
@@ -260,7 +297,7 @@
         },
         "checks": {
           "type": "object",
-          "description": "Per-check overrides, keyed by check id. This is an OPEN dictionary — any registered check id may appear, including ids contributed by plugins. Built-in ids are namespaced source.*, asset.*, pdf.* and heuristic.* (e.g. pdf.structure.qpdf, pdf.print.embedded-fonts, pdf.print.pdfx-markers, pdf.print.page-size, asset.image.color-space, source.markdownlint, heuristic.whitespace.text-density). A boolean value is shorthand for enabled/disabled.",
+          "description": "Per-check overrides, keyed by check id. This is an OPEN dictionary — any registered check id may appear, including ids contributed by plugins. Built-in ids are namespaced source.*, asset.*, pdf.* and heuristic.* (e.g. pdf.structure.qpdf, pdf.print.embedded-fonts, pdf.print.pdfx-markers, pdf.print.page-size, asset.image.file-size, source.markdownlint, heuristic.whitespace.text-density). A boolean value is shorthand for enabled/disabled.",
           "propertyNames": {
             "description": "A registered check id, e.g. \"pdf.print.embedded-fonts\"."
           },
@@ -355,18 +392,15 @@
             },
             "minImageDpi": {
               "type": "integer",
-              "description": "Minimum effective image resolution in DPI (asset.image.resolution).",
-              "default": 300,
+              "deprecated": true,
+              "description": "DEPRECATED and IGNORED (no-op). The source-image check it configured read DPI metadata, which says nothing about the printed size. The build warns about each image placed below 300 DPI, and `validate.pdf.minImageResolution` checks the built PDF. Kept only so older manifests still parse.",
               "minimum": 0
             },
             "allowedColorSpaces": {
               "type": "array",
-              "description": "Color spaces images may use (asset.image.color-space). Preset defaults: dtrpg [\"CMYK\", \"Grayscale\"], book [\"RGB\", \"CMYK\", \"Grayscale\"].",
-              "items": { "type": "string" },
-              "examples": [
-                ["CMYK", "Grayscale"],
-                ["RGB", "CMYK", "Grayscale"]
-              ]
+              "deprecated": true,
+              "description": "DEPRECATED and IGNORED (no-op). The source-image colour-space check it configured was removed: a PDF/X build converts every image to the output intent, and `pdf.print.color-spaces` checks the result. Kept only so older manifests still parse.",
+              "items": { "type": "string" }
             },
             "allowAlpha": {
               "type": "boolean",

@@ -1,0 +1,50 @@
+<!--
+  The pin box (shared/pin-edges.ts) on a book with mirrored margins: 400x500px
+  pages, recto L50/R30, verso L30/R50 (the same 320px content box), and a print
+  area like the dtrpg preset's, in pt: a 9pt bleed, art 18pt in from the trim
+  and 36pt at the binding. The art-safe line therefore sits 27pt (36px) in from
+  the sheet on the top, bottom and outside edge, and 36pt (48px) at the binding.
+
+  Every page root pads itself 10px 12px, as a book's own CSS may: the engine's
+  padding on a freed edge is added to it, never replaces it.
+
+  Eight page roots, one page each, and the SAME paragraph on every one:
+    1 recto, 2 verso - no pin
+    3 recto, 4 verso - a .gp-bottom pin
+    5 recto, 6 verso - a .gp-bottom .gp-right pin (the right is the outside
+                       edge of a recto and the binding of a verso)
+    7 recto, 8 verso - the same with .gp-flush: the paper's edge
+  Each side's margin rule is ONE line, so a test can drop the pair.
+-->
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="gp-print-area" content='{"width":300,"height":375,"bleed":9,"safe":36,"artSafe":18}' />
+    <style>
+      /* MARKER_CSS + GUTTERPRESS_CSS are injected by the test, exactly as
+         assemble.ts injects them into a real book — this fixture supplies
+         only what an author writes. */
+      @page { size: 400px 500px; margin: 40px; }
+      @page :left  { margin-left: 30px; margin-right: 50px; }
+      @page :right { margin-left: 50px; margin-right: 30px; }
+      body { margin: 0; }
+      .page { padding: 10px 12px; }
+      p { margin: 0; font: 12px/1.25 monospace; }
+      .art { display: block; width: 80px; height: 60px; background: #36c; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="page" id="r1"><p id="t1">The text block never moves: art pinned to the page sits in a box of its own, so these words wrap at the same places on every page, whatever is pinned where.</p></div>
+      <div class="page" id="r2"><p id="t2">The text block never moves: art pinned to the page sits in a box of its own, so these words wrap at the same places on every page, whatever is pinned where.</p></div>
+      <div class="page" id="r3"><p id="t3">The text block never moves: art pinned to the page sits in a box of its own, so these words wrap at the same places on every page, whatever is pinned where.</p><p><span class="art gp-pin gp-bottom" id="a3"></span></p></div>
+      <div class="page" id="r4"><p id="t4">The text block never moves: art pinned to the page sits in a box of its own, so these words wrap at the same places on every page, whatever is pinned where.</p><p><span class="art gp-pin gp-bottom" id="a4"></span></p></div>
+      <div class="page" id="r5"><p id="t5">The text block never moves: art pinned to the page sits in a box of its own, so these words wrap at the same places on every page, whatever is pinned where.</p><p><span class="art gp-pin gp-bottom gp-right" id="a5"></span></p></div>
+      <div class="page" id="r6"><p id="t6">The text block never moves: art pinned to the page sits in a box of its own, so these words wrap at the same places on every page, whatever is pinned where.</p><p><span class="art gp-pin gp-bottom gp-right" id="a6"></span></p></div>
+      <div class="page" id="r7"><p id="t7">The text block never moves: art pinned to the page sits in a box of its own, so these words wrap at the same places on every page, whatever is pinned where.</p><p><span class="art gp-pin gp-bottom gp-flush" id="a7"></span></p></div>
+      <div class="page" id="r8"><p id="t8">The text block never moves: art pinned to the page sits in a box of its own, so these words wrap at the same places on every page, whatever is pinned where.</p><p><span class="art gp-pin gp-bottom gp-right gp-flush" id="a8"></span></p></div>
+    </main>
+    <script src="gutterpress-viewer.js"></script>
+  </body>
+</html>

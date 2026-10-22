@@ -347,7 +347,7 @@ and these rules, in any of your `styles:`, reach exactly those three elements:
 img[data-name="founder-house"] { float: right; width: 40%; margin: 0 0 1em 1em; }
 ```
 
-This is an alternative to the markdown overrides, not a replacement. `.gp-no-break`, `@page-break`, `{.gp-right .gp-medium}`, `@columns`, a plugin's modifier classes and `{#id}` all keep working; use whichever you like, and mix them freely. Reach for `data-name` when you would rather keep the tuning in one stylesheet than scattered through the chapters.
+This is an alternative to the markdown overrides, not a replacement. `.gp-no-break`, `@page-break`, `{.gp-right .gp-size-50}`, `@columns`, a plugin's modifier classes and `{#id}` all keep working; use whichever you like, and mix them freely. Reach for `data-name` when you would rather keep the tuning in one stylesheet than scattered through the chapters.
 
 **Where a name comes from.** The first of these that exists:
 

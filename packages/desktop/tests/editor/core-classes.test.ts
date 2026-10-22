@@ -33,10 +33,9 @@ describe("core-classes against core's GP_CLASSES", () => {
     }
   });
 
-  test("every offered class has a rule in GUTTERPRESS_CSS or is an engine marker class (gp-flush)", async () => {
+  test("every offered class has a rule in GUTTERPRESS_CSS", async () => {
     const { GUTTERPRESS_CSS } = await core();
     for (const c of CORE_CLASSES) {
-      if (c.class === "gp-flush") continue; // no CSS rule: both engines implement it
       expect(GUTTERPRESS_CSS).toContain(`.${c.class}`);
     }
   });

@@ -577,6 +577,15 @@ describe("plugin loader", () => {
       expect((md as MarkdownIt & { __plain?: boolean }).__plain).toBe(true);
     });
 
+    test("a folder whose engines.gutterpress excludes this Gutterpress fails to load", async () => {
+      writeExtension(
+        "too-new",
+        { name: "too-new", type: "module", main: "index.js", engines: { gutterpress: ">=999.0.0" } },
+        { "index.js": "export default function () {}" },
+      );
+      await expect(loadPlugin(cfg({ path: "too-new" }), TMP_ROOT)).rejects.toThrow(/needs Gutterpress >=999\.0\.0/);
+    });
+
     test("a folder with `main` + `gutterpress.styles` loads both; the entry is `main` (#276)", async () => {
       const dir = writeExtension(
         "full-extension",

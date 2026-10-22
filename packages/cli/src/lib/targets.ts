@@ -80,9 +80,7 @@ const DTRPG_TARGET: PublishTarget = {
         "pdf.print.pdfx-markers": { enabled: true, severity: "error" },
         "pdf.print.pdfx-metadata": { enabled: true, severity: "error" },
         "pdf.print.embedded-fonts": { enabled: true, severity: "error" },
-      },
-      assets: {
-        allowedColorSpaces: [...DTRPG_PRESET.validate.assets.allowedColorSpaces],
+        "pdf.print.safe-margins": { enabled: true, severity: "error" },
       },
       pdf: {
         forbidTransparency: DTRPG_PRESET.validate.pdf.forbidTransparency,
@@ -95,6 +93,7 @@ const DTRPG_TARGET: PublishTarget = {
     "pdf.print.pdfx-markers",
     "pdf.print.pdfx-metadata",
     "pdf.print.embedded-fonts",
+    "pdf.print.safe-margins",
   ],
   // qpdf: PDF/X marker/metadata verification (and annotation stripping at
   // build time); gs: the PDF/X CMYK conversion itself plus ink-coverage.
@@ -118,15 +117,18 @@ const ITCH_TARGET: PublishTarget = {
         "pdf.print.pdfx-markers": false,
         "pdf.print.pdfx-metadata": false,
         "pdf.print.ink-coverage": false,
-        "asset.image.tac-raster": false,
+        "pdf.print.safe-margins": false,
       },
       assets: {
-        allowedColorSpaces: ["RGB", "CMYK", "Grayscale"],
         allowAlpha: true,
+        // 0 = no limit: a screen PDF has no print file-size cap.
+        maxImageSize: 0,
       },
       pdf: {
         forbidTransparency: false,
         requireBleed: false,
+        // 0 = no floor: 300 DPI is a print bar, not a screen one.
+        minImageResolution: 0,
       },
     },
   },

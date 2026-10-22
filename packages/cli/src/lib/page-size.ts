@@ -7,7 +7,10 @@
  *  - the manifest: `preset:` (dtrpg / book / custom — which also carries the
  *    print rules that go with the preset) and, for `custom` (or an explicit
  *    override), `page: { width, height, tolerance }` in points. These are the
- *    VALIDATION BOUNDS the built PDF is checked against; and
+ *    VALIDATION BOUNDS the built PDF is checked against. The same `page:`
+ *    block also carries the print area (`bleed`, `safe`, `artSafe`,
+ *    `gutter`); this module writes only its three keys and leaves the rest
+ *    as the author wrote them; and
  *  - the stylesheet: the plain `@page { size: … }` rule, which is what Chrome
  *    actually prints at.
  *
@@ -25,7 +28,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import postcss from "postcss";
-import { Scalar } from "yaml";
+import { isMap, Scalar } from "yaml";
 import type { Document } from "yaml";
 import { UsageError } from "./cli-args.ts";
 import { ensureSeq, loadManifestDoc, writeManifestDoc } from "./manifest-doc.ts";
@@ -73,13 +76,26 @@ export function isPositivePoints(value: unknown): value is number {
 /**
  * Write the manifest's `page:` bounds. `tolerance` defaults to whatever the
  * block already carries, so re-sizing a book never silently resets a
- * hand-tuned tolerance.
+ * hand-tuned tolerance. The block's other keys stay as written; a `page:`
+ * that is not a map is replaced.
  */
 export function writePageBounds(doc: Document, page: CustomPageOptions): void {
-  const out: Record<string, number> = { width: page.width, height: page.height };
   const tolerance = page.tolerance ?? numberAt(doc, ["page", "tolerance"]);
-  if (tolerance !== undefined) out.tolerance = tolerance;
-  doc.set("page", doc.createNode(out));
+  if (!isMap(doc.get("page", true))) doc.set("page", doc.createNode({}));
+  doc.setIn(["page", "width"], page.width);
+  doc.setIn(["page", "height"], page.height);
+  if (tolerance !== undefined) doc.setIn(["page", "tolerance"], tolerance);
+}
+
+/** Remove the bounds a preset owns and nothing else; a `page:` left empty goes too. */
+function deletePageBounds(doc: Document): void {
+  const block = doc.get("page", true);
+  if (!isMap(block)) {
+    doc.delete("page");
+    return;
+  }
+  for (const key of ["width", "height", "tolerance"]) block.delete(key);
+  if (block.items.length === 0) doc.delete("page");
 }
 
 function numberAt(doc: Document, keyPath: string[]): number | undefined {
@@ -241,8 +257,9 @@ export async function readPageSetup(projectDir: string): Promise<PageSetup> {
 /**
  * Change a book's page size: the manifest's `preset:` + `page:` bounds and the
  * stylesheet's `@page` size, together. Mirrors what the wizard records —
- * `dtrpg` / `book` carry their own bounds (any `page:` block is removed so it
- * cannot shadow them), `custom` records the typed trim. Nothing is written
+ * `dtrpg` / `book` carry their own bounds (the `page:` block's width, height
+ * and tolerance are removed so they cannot shadow them; its print-area keys
+ * stay), `custom` records the typed trim. Nothing is written
  * unless the whole choice validates and the stylesheet parses.
  */
 export async function setPageSetup(
@@ -271,7 +288,7 @@ export async function setPageSetup(
   const { doc, file } = await loadManifestDoc(projectDir);
   doc.set("preset", choice.preset);
   if (choice.preset === "custom") writePageBounds(doc, size);
-  else doc.delete("page");
+  else deletePageBounds(doc);
   if (target === newSheet && !sheets.includes(newSheet)) {
     ensureSeq(doc, "styles").add(new Scalar("styles/book.css"));
   }

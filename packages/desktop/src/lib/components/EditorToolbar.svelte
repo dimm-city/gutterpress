@@ -766,7 +766,7 @@
     </select>
     <p class="image-hint">
       These are the standard gp-* image classes documented in the user guide;
-      position and size compose (e.g. a small right float).
+      position and size compose (e.g. a right float at 30%).
     </p>
   </div>
 

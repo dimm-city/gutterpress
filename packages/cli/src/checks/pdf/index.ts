@@ -1,11 +1,11 @@
 // Self-registering PDF check modules — import to register
 import "./qpdf-structure";
 import "./page-size";
+import "./safe-margins";
 import "./pdfx-markers";
 import "./color-spaces";
 import "./embedded-fonts";
 import "./ink-coverage";
-import "./rasterized-pages";
 import "./black-text";
 import "./signature";
 import "./bookmarks";

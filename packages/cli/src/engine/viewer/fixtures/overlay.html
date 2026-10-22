@@ -1,38 +1,87 @@
 <!--
-  Margin & bleed overlay fixture (overlay.ts). A 400x500px page with 40px
-  margins and a 12px bleed, mirrored binding margins, and one element for each
-  verdict the overlay can reach. The test asserts what is flagged — and that
-  switching the overlay on changes nothing about pagination.
+  Safe area & bleed overlay fixture (overlay.ts). A 400x500px sheet whose
+  geometry comes ONLY from the project (the preview's <meta name="gp-print-area">:
+  300x375pt = 400x500px, a 9pt = 12px bleed inside the sheet on the top, bottom
+  and outer edge, an 18pt = 24px TEXT safe inset and a 9pt = 12px ART safe inset
+  from the trim, with the preset and the printer spec it follows), plus one
+  element for each verdict the overlay can reach.
 
-  Page 1 is a recto: content area x 50..370, y 40..460 (320x420). Trim:
-  0..400 x 0..500. Bleed box: -12..412 x -12..512. Page 2 is a verso: its
-  content area is x 30..350, and the viewer slides its sheet so its text sits
-  there (see decorate.ts).
+  Page 1 is a recto: trim x 0..388, y 12..488; text box x 24..364, y 36..464;
+  art box x 24..376 (24 at the binding on the left, 12 on the outside right),
+  y 24..476. Page 2 is a verso: trim x 12..400; text box x 36..376; art box
+  x 24..376 (12 on the outside left, 24 at the binding on the right). The
+  book's own mirrored @page margins put its text at x 60..360 on the recto and
+  x 40..340 on the verso: they decide where the TEXT goes and nothing about the
+  overlay. Page 1 also carries a folio in its bottom margin: page furniture,
+  judged like everything else.
+
+  The book's CSS also tries to hide, move and restyle the overlay (every layer
+  and its legend included); the test asserts none of it lands.
 -->
 <!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
+    <meta
+      name="gp-print-area"
+      content='{"width":300,"height":375,"bleed":9,"safe":18,"artSafe":9,"preset":"dtrpg","spec":{"label":"DriveThruRPG — Quick Specifications for Print Books","url":"https://help.drivethrupartners.com/hc/en-us/articles/12780800178583-Quick-Specifications-for-Print-Books"}}'
+    />
     <style>
       /* MARKER_CSS + GUTTERPRESS_CSS are injected by the test, exactly as
          assemble.ts injects them into a real book. */
-      @page { size: 400px 500px; margin: 40px; bleed: 12px; }
-      @page :left  { margin-left: 30px; margin-right: 50px; }
-      @page :right { margin-left: 50px; margin-right: 30px; }
+      @page { size: 400px 500px; margin: 40px; }
+      @page :left  { margin-left: 40px; margin-right: 60px; }
+      @page :right { margin-left: 60px; margin-right: 40px; }
+      @page :first { @bottom-center { content: counter(page); font: 12px monospace; } }
       body { margin: 0; }
       p { margin: 0 0 6px; font: 12px/1.2 monospace; }
       .bar { display: block; height: 14px; background: #36c; margin-bottom: 8px; }
+      .boxed { display: block; height: 10px; border: 2px solid #36c; margin-bottom: 8px; }
+      .art { display: block; width: 100px; height: 20px; margin-bottom: 8px; }
+      .plate { width: 100px; height: 20px; margin-bottom: 8px; background: #c63; }
+      .right { text-align: right; white-space: nowrap; }
+      /* the viewer reads forced breaks from stylesheets, not inline styles */
+      .next { break-before: page; }
+
+      /* A book (or a plugin) reaching for the overlay. None of this may land. */
+      gp-overlay { display: none !important; transform: translate(300px, 300px) !important; opacity: 0 !important; }
+      :root, body { --gp-ov-color: #ff0000; --gp-ov-art-color: #ff0000; --gp-ov-bleed-color: #ff0000; --gp-ov-margins-color: #ff0000; --gp-ov-width: 9px; }
+      .gp-ov-safe, .gp-ov-art, .gp-ov-page, .gp-ov-margins, .gp-ov-bleed, .gp-ov-legend { display: none !important; }
+      div { outline-color: #ff0000 !important; border-color: #ff0000 !important; }
     </style>
   </head>
   <body>
     <main>
-      <p id="intro">Ordinary text that fits the content area.</p>
-      <!-- content area is 320px wide (400 - 50 - 30) -->
-      <div class="bar" id="fits" style="width: 320px"></div>
-      <div class="bar" id="into-margin" style="width: 340px"></div>
-      <div class="bar" id="into-bleed" style="margin-left: -55px; width: 410px"></div>
-      <div class="bar" id="off-page" style="margin-left: -75px; width: 520px"></div>
-      <div class="bar gp-behind" id="placed" style="width: 350px"></div>
+      <p id="intro">Ordinary text that fits the safe area.</p>
+      <!-- the text column is 300px wide (400 - 60 - 40), x 60..360 on page 1 -->
+      <div class="bar" id="fits" style="width: 300px"></div>
+      <div class="bar" id="into-unsafe" style="width: 320px"></div>
+      <div class="bar" id="into-bleed" style="width: 335px"></div>
+      <!-- art that runs out past both sheet edges is bleeding there: not a problem -->
+      <div class="bar" id="runs-off" style="margin-left: -75px; width: 520px"></div>
+      <div class="bar gp-behind" id="placed" style="width: 335px"></div>
+      <!-- a border alone paints; x 60..380 -->
+      <div class="boxed" id="boxed" style="width: 316px"></div>
+
+      <!-- TEXT: judged by glyph, against the text box. A paragraph paints nothing, so only its text can be flagged. -->
+      <p id="text-near" style="margin-left: -45.6px">Text 0.15in from the trim.</p>
+      <p id="text-out" class="right" style="width: 316px">Text 0.125in from the outside.</p>
+      <p id="text-bleed" class="right" style="width: 334px">Text in the bleed.</p>
+      <p id="text-off" style="margin-left: -75px">Text off the sheet.</p>
+
+      <!-- ART: one 100x20 image, five places. Outside edge = right, binding = left.
+           #art-binding sits in a painted box of exactly its size (one rect, one flag);
+           #art-band sits in a <picture> (which paints nothing: its img is the art). -->
+      <img class="art" id="art-outside" style="margin-left: 210px" alt="" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='20'%3E%3Crect width='100' height='20' fill='%2336c'/%3E%3C/svg%3E" />
+      <div class="plate" style="margin-left: -42px"><img class="art" id="art-binding" alt="" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='20'%3E%3Crect width='100' height='20' fill='%2336c'/%3E%3C/svg%3E" /></div>
+      <img class="art" id="art-edge" style="margin-left: 240px" alt="" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='20'%3E%3Crect width='100' height='20' fill='%2336c'/%3E%3C/svg%3E" />
+      <div id="art-band"><picture><source srcset="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='20'%3E%3Crect width='100' height='20' fill='%2336c'/%3E%3C/svg%3E" /><img width="100" height="20" style="margin-left: 234px" alt="" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='20'%3E%3Crect width='100' height='20' fill='%2336c'/%3E%3C/svg%3E" /></picture></div>
+
+      <!-- page 2, a verso: the binding is the RIGHT edge. Text column x 40..340. -->
+      <div class="next"></div>
+      <img class="art" id="v-outside" style="margin-left: -10px" alt="" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='20'%3E%3Crect width='100' height='20' fill='%2336c'/%3E%3C/svg%3E" />
+      <img class="art" id="v-binding" style="margin-left: 242px" alt="" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='20'%3E%3Crect width='100' height='20' fill='%2336c'/%3E%3C/svg%3E" />
+
       <div id="filler"></div>
       <p id="last">The last paragraph.</p>
     </main>

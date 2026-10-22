@@ -1,0 +1,17 @@
+title: "Percentage-Height Page Root"
+authors:
+  - "Gutterpress Fixture"
+
+preset: book
+
+styles:
+  - styles/style.css
+
+source:
+  files:
+    - 01-pages.md
+
+page:
+  width: 621
+  height: 810
+  tolerance: 0.5

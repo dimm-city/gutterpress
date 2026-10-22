@@ -34,15 +34,13 @@ const SOURCE_LABELS: Record<string, string> = {
   "source.accessibility.heading-order": "Heading order",
   "source.markdown.layout-markers": "Layout marker",
   "source.sync.merge-markers": "Two versions",
+  "source.characters": "Unusual character",
   "desktop.preview": "Preview",
   // Asset-category checks (#105 publish preflight). Kept in the SAME table as
   // the source checks so `friendlySource` stays the ONE plain-language label
   // authority — preflight must not maintain a second, drifting label map.
   "asset.image.file-size": "Image file size",
-  "asset.image.resolution": "Image resolution",
-  "asset.image.color-space": "Image color space",
   "asset.image.alpha-channel": "Image transparency",
-  "asset.image.tac-raster": "Image ink coverage",
   "asset.font.approved-files": "Font files",
   "asset.font.license": "Font license",
   // Print-quality findings from the render itself (native engine). These are
@@ -57,7 +55,7 @@ const SOURCE_LABELS: Record<string, string> = {
   "engine.multicol.dead-column": "Empty column",
   "engine.content.overheight": "Taller than the page",
   "engine.image.low-dpi": "Image resolution",
-  "engine.flush.margin-box": "Running head on a flushed edge",
+  "engine.pin.margin-box": "Running head on a pinned edge",
   "engine.page-background.unreferenced": "Page background image not printed",
   "engine.hyphenation.unsupported": "Hyphenation not available",
 };

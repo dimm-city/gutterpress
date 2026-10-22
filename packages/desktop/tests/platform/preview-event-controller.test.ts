@@ -34,9 +34,12 @@ interface Harness {
   rendering: boolean;
   renderProgressPage: number;
   overlay: boolean;
-  /** the author's durable margin & bleed overlay choice */
-  marginOverlay: boolean;
-  marginOverlayStyle: { color: string; strength: "subtle" | "normal" | "strong" };
+  /** the author's durable print overlay choice: the layers to show, or false while the master switch is off */
+  marginOverlayState: false | { bleed: boolean; safe: boolean; art: boolean; margins: boolean };
+  marginOverlayStyle: {
+    strength: "subtle" | "normal" | "strong";
+    colors: { bleed: string; safe: string; art: string; margins: string };
+  };
   /** what the viewer last reported (the toolbar count) */
   overlaySummary: unknown;
   updating: boolean;
@@ -55,8 +58,8 @@ function make(): Harness {
     rendering: false,
     renderProgressPage: 0,
     overlay: false,
-    marginOverlay: false,
-    marginOverlayStyle: { color: "#2f80ed", strength: "normal" },
+    marginOverlayState: false as Harness["marginOverlayState"],
+    marginOverlayStyle: { strength: "normal", colors: { bleed: "#e5484d", safe: "#2f80ed", art: "#a855f7", margins: "#1a9c6b" } },
     overlaySummary: null as unknown,
     updating: false,
     pendingRestore: { page: null } as { page: number | null },
@@ -118,7 +121,7 @@ function make(): Harness {
     zoom: () => h.zoom,
     viewMode: () => h.viewMode,
     bgColor: () => "#123456",
-    marginOverlay: () => h.marginOverlay,
+    marginOverlayState: () => h.marginOverlayState,
     marginOverlayStyle: () => h.marginOverlayStyle,
     setOverlaySummary: (summary) => {
       h.overlaySummary = summary;
@@ -469,16 +472,25 @@ test("renderingComplete tolerates a missing client (no crash, still reveals)", a
   expect(h.log).toContain("reveal");
 });
 
-// ── margin & bleed overlay ───────────────────────────────────────────────────
+// ── print overlays ───────────────────────────────────────────────────────────
 
-test("a fresh frame is told to show the overlay when the author has it on", async () => {
+test("a fresh frame is told to show the overlay's layers when the author has it on", async () => {
   const h = make();
-  h.marginOverlay = true;
-  h.marginOverlayStyle = { color: "#00aa55", strength: "strong" };
+  h.marginOverlayState = { bleed: false, safe: true, art: true, margins: true };
+  h.marginOverlayStyle = {
+    strength: "strong",
+    colors: { bleed: "#00aa55", safe: "#2f80ed", art: "#ff8800", margins: "#e91e63" },
+  };
   h.zoom = "0.5";
   h.ctrl.handleEvent(rc(4));
   await flush();
-  expect(h.client.calls).toContainEqual({ cmd: "setMarginOverlay", args: [true, { color: "#00aa55", strength: "strong" }] });
+  expect(h.client.calls).toContainEqual({
+    cmd: "setMarginOverlay",
+    args: [
+      { bleed: false, safe: true, art: true, margins: true },
+      { strength: "strong", colors: { bleed: "#00aa55", safe: "#2f80ed", art: "#ff8800", margins: "#e91e63" } },
+    ],
+  });
   // pushed with the view mode, ahead of the zoom, and the reveal still comes last
   const order = h.client.calls.map((c) => c.cmd);
   expect(order.indexOf("setMarginOverlay")).toBeLessThan(order.indexOf("setZoom"));
@@ -494,7 +506,7 @@ test("with the overlay off a render asks for nothing", async () => {
 
 test("a hot reload does not re-send it: the shell carries the overlay into the replacement", async () => {
   const h = make();
-  h.marginOverlay = true;
+  h.marginOverlayState = { bleed: true, safe: true, art: true, margins: true };
   h.ctrl.handleEvent({ name: "renderingComplete", detail: { totalPages: 4, hotReload: true } });
   await flush();
   expect(h.client.calls.find((c) => c.cmd === "setMarginOverlay")).toBeUndefined();
@@ -504,9 +516,26 @@ test("overlayChanged hands the viewer's finding to the toolbar, and 'off' clears
   const h = make();
   h.ctrl.handleEvent({
     name: "overlayChanged",
-    detail: { on: true, issues: 3.9, intended: 1, bleedPt: 9 },
+    detail: {
+      on: true,
+      layers: { bleed: false, safe: true, art: false, margins: true },
+      issues: 3.9,
+      intended: 1,
+      bleedPt: 9,
+      artSafePt: 18,
+      counts: { text: 2, art: 1 },
+    },
   });
-  expect(h.overlaySummary).toEqual({ on: true, issues: 3, intended: 1, bleedPt: 9 });
+  expect(h.overlaySummary).toEqual({
+    on: true,
+    layers: { bleed: false, safe: true, art: false, margins: true },
+    issues: 3,
+    intended: 1,
+    bleedPt: 9,
+    safePt: 0,
+    artSafePt: 18,
+    counts: { text: 2, art: 1, bleed: 0, offPage: 0, intended: 0 },
+  });
   h.ctrl.handleEvent({ name: "overlayChanged", detail: { on: false, issues: 0, intended: 0, bleedPt: 0 } });
   expect(h.overlaySummary).toBeNull();
   // junk from a mismatched viewer is not a finding

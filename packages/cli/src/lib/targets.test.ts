@@ -92,9 +92,10 @@ describe("overlayPreset", () => {
       enabled: true,
       severity: "error",
     });
-    expect(overlaid.validate.assets.allowedColorSpaces).toEqual(
-      DTRPG_PRESET.validate.assets.allowedColorSpaces
-    );
+    expect(overlaid.validate.checks["pdf.print.safe-margins"]).toEqual({
+      enabled: true,
+      severity: "error",
+    });
     expect(overlaid.validate.pdf.forbidTransparency).toBe(true);
     // …but HOW the book is designed stays the preset's: same trim.
     expect(overlaid.page).toEqual(BOOK_PRESET.page);
@@ -106,12 +107,11 @@ describe("overlayPreset", () => {
     expect(overlaid.validate.checks["pdf.print.pdfx-markers"]).toBe(false);
     expect(overlaid.validate.checks["pdf.print.pdfx-metadata"]).toBe(false);
     expect(overlaid.validate.checks["pdf.print.ink-coverage"]).toBe(false);
-    expect(overlaid.validate.assets.allowedColorSpaces).toEqual([
-      "RGB",
-      "CMYK",
-      "Grayscale",
-    ]);
+    expect(overlaid.validate.checks["pdf.print.safe-margins"]).toBe(false);
     expect(overlaid.validate.assets.allowAlpha).toBe(true);
+    // Print image limits do not apply to a screen PDF.
+    expect(overlaid.validate.assets.maxImageSize).toBe(0);
+    expect(overlaid.validate.pdf.minImageResolution).toBe(0);
     expect(overlaid.validate.pdf.forbidTransparency).toBe(false);
     // Digital release still demands a structurally sound PDF with fonts.
     expect(overlaid.validate.checks["pdf.structure.qpdf"]).toEqual({

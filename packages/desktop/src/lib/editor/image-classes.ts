@@ -18,7 +18,7 @@
  *
  * The tokenizer/facet-setter pairs below exist for one reason: a
  * regex + rebuild-from-scratch write path silently DROPS every token it
- * doesn't recognize (`.gp-small`, `.my-note`, `#fig`, `key=val`) whenever
+ * doesn't recognize (`.gp-size-30`, `.my-note`, `#fig`, `key=val`) whenever
  * the user edits width or position. All editing is therefore
  * token-preserving: parse the `{…}` suffix into verbatim tokens,
  * replace only the facet being changed (in place, order kept), serialize
@@ -53,9 +53,15 @@ export const IMAGE_POSITION_OPTIONS: readonly ImageClassOption[] = [
 ] as const;
 
 export const IMAGE_SIZE_OPTIONS: readonly ImageClassOption[] = [
-  { class: "gp-small", short: "small", label: "Small (25%)" },
-  { class: "gp-medium", short: "medium", label: "Medium (50%)" },
-  { class: "gp-large", short: "large", label: "Large (75%)" },
+  { class: "gp-size-10", short: "10", label: "10%" },
+  { class: "gp-size-20", short: "20", label: "20%" },
+  { class: "gp-size-30", short: "30", label: "30%" },
+  { class: "gp-size-40", short: "40", label: "40%" },
+  { class: "gp-size-50", short: "50", label: "50%" },
+  { class: "gp-size-60", short: "60", label: "60%" },
+  { class: "gp-size-70", short: "70", label: "70%" },
+  { class: "gp-size-80", short: "80", label: "80%" },
+  { class: "gp-size-90", short: "90", label: "90%" },
 ] as const;
 
 export const IMAGE_SPACING_OPTIONS: readonly ImageClassOption[] = [
@@ -386,10 +392,10 @@ export function setShapeClass(tokens: readonly string[], on: boolean): string[] 
 }
 
 /**
- * The flush facet is a boolean too: `.gp-flush` lets a PINNED image sit on
- * the paper instead of on the text block, by having core drop that page's
- * margin on the edges the pin uses (core's `flushPageCss`, a `:has()`-driven
- * named page — the desktop only toggles the class).
+ * The flush facet is a boolean too: `.gp-flush` is the escape hatch that runs
+ * a PINNED image to the paper's edge, past the printer's safe area, where a
+ * pin otherwise sits on the art-safe line (core zeroes the pin box's insets;
+ * the desktop only toggles the class, and Problems notes it).
  *
  * It is one class rather than part of the pin-alignment token set, because it
  * is orthogonal to WHICH edge: every alignment except "center" composes with

@@ -1137,18 +1137,37 @@ async function main() {
   }
 
 
-  // ── Margin & bleed overlay (protocol v9) ──────────────────────────────────
+  // ── Print overlays (protocol v9) ─────────────────────────────────────────────
   {
     const calls = [];
-    const summary = (on) => ({ on, issues: on ? 2 : 0, intended: on ? 1 : 0, bleedPt: 9 });
+    const summary = (on, layers = { bleed: on, safe: on, art: on, margins: on }) => ({
+      on,
+      layers,
+      issues: on ? 4 : 0,
+      intended: on ? 1 : 0,
+      bleedPt: 9,
+      safePt: 36,
+      artSafePt: 18,
+      counts: { text: on ? 2 : 0, art: on ? 1 : 0, bleed: on ? 1 : 0, offPage: 0, intended: on ? 1 : 0 },
+    });
+    // What the viewer's setOverlay does with its first argument (a boolean is all
+    // four layers; an object names the ones that are on) and records on <body>.
     const stubViewer = (window, document) => {
       window.Gutterpress = {
         pageOf: () => -1,
         decoration: {
-          setOverlay(on, style) {
-            calls.push(style ? [on, style] : on);
+          setOverlay(state, style) {
+            calls.push(style ? [state, style] : state);
+            const layers = {
+              bleed: state === true || state?.bleed === true,
+              safe: state === true || state?.safe === true,
+              art: state === true || state?.art === true,
+              margins: state === true || state?.margins === true,
+            };
+            const on = layers.bleed || layers.safe || layers.art || layers.margins;
             document.body.dataset.overlay = on ? "on" : "off";
-            const s = summary(on);
+            if (on) document.body.dataset.overlayLayers = Object.keys(layers).filter((k) => layers[k]).join(",");
+            const s = summary(on, layers);
             window.dispatchEvent(new window.CustomEvent("gp:overlay", { detail: s }));
             return s;
           },
@@ -1157,21 +1176,23 @@ async function main() {
       };
     };
 
-    // standalone (the CLI preview: the shell is top level) gets Alt+M and a status pill
+    // standalone (the CLI preview: the shell is top level) gets Alt+M, and names it for the viewer's legend
     const { window, document, api } = loadInterfaceWithDom("<p>x</p>", { native: true });
     stubViewer(window, document);
     const events = [];
     window.addEventListener("overlayChanged", (e) => events.push(e.detail));
+    assert.equal(document.documentElement.dataset.overlayKey, "Alt+M", "the legend's \"Alt+M hides\" is only claimed where the key is bound");
 
     assert.deepEqual(api.setMarginOverlay(true), summary(true), "setMarginOverlay returns the viewer's summary");
     assert.deepEqual(api.getMarginOverlay(), summary(true));
     assert.deepEqual(events, [summary(true)], "gp:overlay is re-announced as overlayChanged for the bridge");
     assert.deepEqual(api.toggleMarginOverlay(), summary(false), "toggle flips the current state");
     assert.deepEqual(calls, [true, false]);
-    // the look (colour, strength) is passed straight through to the viewer
+    // the layers and the look (a colour per layer, strength) are passed straight through to the viewer
     calls.length = 0;
-    api.setMarginOverlay(true, { color: "#00aa55", strength: "strong" });
-    assert.deepEqual(calls, [[true, { color: "#00aa55", strength: "strong" }]]);
+    const style = { strength: "strong", colors: { bleed: "#00aa55", safe: "#2f80ed", art: "#a855f7", margins: "#e91e63" } };
+    api.setMarginOverlay({ bleed: false, safe: true, art: false, margins: true }, style);
+    assert.deepEqual(calls, [[{ bleed: false, safe: true, art: false, margins: true }, style]]);
     calls.length = 0;
     api.setMarginOverlay(false);
 
@@ -1179,6 +1200,7 @@ async function main() {
     {
       const bare = loadInterfaceWithDom("<p>x</p>").api;
       assert.equal(bare.setMarginOverlay(true), null);
+      assert.equal(bare.setMarginOverlay({ safe: true }), null);
       assert.equal(bare.toggleMarginOverlay(), null);
       assert.equal(bare.getMarginOverlay(), null);
     }
@@ -1194,25 +1216,27 @@ async function main() {
     api.refresh();
     assert.deepEqual(events, [], "…and says nothing when it is off");
 
-    // standalone: Alt+M toggles it and a pill reports the result; a plain M does nothing
+    // standalone: Alt+M hides the overlay and brings back the layers it was showing; a plain M does nothing
+    api.setMarginOverlay({ safe: true, art: true, margins: true });
     api.setMarginOverlay(false);
+    assert.equal(document.body.dataset.overlayLayers, "safe,art,margins", "the viewer's record outlives switching it off");
     calls.length = 0;
     const press = (init) =>
       document.dispatchEvent(new window.KeyboardEvent("keydown", { code: "KeyM", key: "m", bubbles: true, cancelable: true, ...init }));
     press({});
     assert.deepEqual(calls, [], "a bare M is just a letter");
     press({ altKey: true });
-    assert.deepEqual(calls, [true], "Alt+M switches the overlay on");
-    const pill = document.getElementById("gp-ov-badge");
-    assert.ok(pill, "standalone shows a status pill");
-    assert.match(pill.textContent, /2 overflowing/);
-    assert.match(pill.textContent, /1 placed on purpose/);
-    assert.match(pill.textContent, /Alt\+M hides/);
+    assert.deepEqual(calls, [{ bleed: false, safe: true, art: true, margins: true }], "Alt+M switches back on the layers it was last showing");
     press({ altKey: true });
-    assert.deepEqual(calls, [true, false], "Alt+M again switches it off");
-    assert.equal(document.getElementById("gp-ov-badge"), null, "the pill goes with it");
+    assert.deepEqual(calls, [{ bleed: false, safe: true, art: true, margins: true }, false], "Alt+M again switches it off");
+    assert.equal(document.getElementById("gp-ov-badge"), null, "the legend is the viewer's: the host adds no badge");
+    // the first time there is no record: all three layers
+    delete document.body.dataset.overlayLayers;
+    calls.length = 0;
+    press({ altKey: true });
+    assert.deepEqual(calls, [{ bleed: true, safe: true, art: true, margins: true }], "with nothing remembered, Alt+M shows all four");
 
-    // hosted by the desktop app (the shell's parent is the app): no key, no pill — the app owns both
+    // hosted by the desktop app (the shell's parent is the app): no key, no claim — the app owns the toggle
     {
       const hosted = new Window({ url: "http://localhost/" });
       const appWindow = {};
@@ -1227,16 +1251,17 @@ async function main() {
         hosted, hostedDoc, hosted.CustomEvent, hosted.MutationObserver, setTimeout, clearTimeout);
       const hostedCalls = [];
       hosted.Gutterpress = { pageOf: () => -1, decoration: {
-        setOverlay(on) { hostedCalls.push(on); hostedDoc.body.dataset.overlay = on ? "on" : "off"; const s = summary(on); hosted.dispatchEvent(new hosted.CustomEvent("gp:overlay", { detail: s })); return s; },
+        setOverlay(state) { hostedCalls.push(state); hostedDoc.body.dataset.overlay = state ? "on" : "off"; const s = summary(!!state); hosted.dispatchEvent(new hosted.CustomEvent("gp:overlay", { detail: s })); return s; },
         overlay: () => summary(false),
       } };
       hostedDoc.dispatchEvent(new hosted.KeyboardEvent("keydown", { code: "KeyM", key: "m", altKey: true, bubbles: true, cancelable: true }));
       assert.deepEqual(hostedCalls, [], "under the desktop app the toolbar owns the toggle");
+      assert.equal(hostedDoc.documentElement.dataset.overlayKey, undefined, "…so the legend does not claim a key");
       hosted.previewAPI.setMarginOverlay(true);
       assert.equal(hostedDoc.getElementById("gp-ov-badge"), null, "…and the count lives in the toolbar, not a pill");
     }
 
-    console.log("[desktop-test] PASS margin & bleed overlay API (protocol v9)");
+    console.log("[desktop-test] PASS print overlays API (protocol v9)");
   }
 
   // getProtocolVersion() is 9 (margin & bleed overlay on top of v8's in-flow

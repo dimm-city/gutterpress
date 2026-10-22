@@ -1,5 +1,8 @@
-import { describe, expect, test } from "bun:test";
-import { buildPreflightPayload, toPreflightMarkdown } from "./preflight";
+import { describe, expect, test, spyOn } from "bun:test";
+import { runCommand } from "citty";
+import * as validationExecMod from "../lib/validation-exec.ts";
+import type { ValidationExecutionArgs } from "../lib/validation-exec.ts";
+import preflightCommand, { buildPreflightPayload, toPreflightMarkdown } from "./preflight";
 import type { ValidationExecutionResult } from "../index.ts";
 
 function makeExecution(overrides: Partial<ValidationExecutionResult> = {}): ValidationExecutionResult {
@@ -96,13 +99,18 @@ describe("preflight payload", () => {
         errors: [failure],
         warnings: [],
         infos: [],
-        passed: ["pdf.structure.qpdf", "pdf.print.embedded-fonts", "pdf.print.pdfx-metadata"],
-        summary: { total: 4, errors: 1, warnings: 0, infos: 0, passed: 3 },
+        passed: [
+          "pdf.structure.qpdf",
+          "pdf.print.embedded-fonts",
+          "pdf.print.pdfx-metadata",
+          "pdf.print.safe-margins",
+        ],
+        summary: { total: 5, errors: 1, warnings: 0, infos: 0, passed: 4 },
       },
     });
 
     const rows = buildPreflightPayload(execution).requiredChecks;
-    expect(rows.filter((r) => r.target === "dtrpg")).toHaveLength(4);
+    expect(rows.filter((r) => r.target === "dtrpg")).toHaveLength(5);
     expect(
       rows.find((r) => r.target === "dtrpg" && r.id === "pdf.print.pdfx-markers")?.status
     ).toBe("fail");
@@ -122,5 +130,32 @@ describe("preflight payload", () => {
     expect(markdown).toContain("# gutterpress preflight");
     expect(markdown).toContain("Status: **GO**");
     expect(markdown).toContain("- Targets: none");
+  });
+});
+
+describe("preflight command — source directory", () => {
+  async function inputFor(rawArgs: string[]): Promise<string | undefined> {
+    let captured: ValidationExecutionArgs | undefined;
+    const spy = spyOn(validationExecMod, "executeValidation").mockImplementation((async (
+      args: ValidationExecutionArgs,
+    ) => {
+      captured = args;
+      return undefined;
+    }) as unknown as typeof validationExecMod.executeValidation);
+    try {
+      await runCommand(preflightCommand, { rawArgs });
+    } finally {
+      spy.mockRestore();
+    }
+    return captured?.input;
+  }
+
+  test("no dir and no --input means cwd, so a bare preflight reads the book it runs in", async () => {
+    expect(await inputFor(["--pdf", "./book.pdf"])).toBe(".");
+  });
+
+  test("the positional dir, then --input, still win", async () => {
+    expect(await inputFor(["./my-book", "--pdf", "./book.pdf"])).toBe("./my-book");
+    expect(await inputFor(["./my-book", "--pdf", "./book.pdf", "--input", "./flag"])).toBe("./flag");
   });
 });

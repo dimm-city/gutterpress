@@ -19,7 +19,6 @@
  */
 
 import { stat, readFile } from "node:fs/promises";
-import { ASSET_SCAN_IGNORE_GLOBS } from "../checks/asset/extensions";
 
 export type ColorSpace = "srgb" | "gray" | "cmyk" | "";
 
@@ -295,31 +294,4 @@ function parseTiff(b: Buffer): ImageInfo | null {
     hasAlpha: extraSamples > 0,
     colorSpace,
   };
-}
-
-// ---------------------------------------------------------------------------
-// Shared file collector for the asset checks.
-// ---------------------------------------------------------------------------
-
-export async function collectImageFiles(
-  dirs: string[],
-  exts: readonly string[],
-  ignore: readonly string[] = ASSET_SCAN_IGNORE_GLOBS
-): Promise<string[]> {
-  const { glob } = await import("glob");
-  // A single-element brace list (`**/*.{png}`) is not expanded by glob and
-  // matches NOTHING — a silent-zero-results trap for any caller narrowing to
-  // one extension. Emit a plain pattern in that case.
-  const pattern =
-    exts.length === 1 ? `**/*.${exts[0]}` : `**/*.{${exts.join(",")}}`;
-  const files: string[] = [];
-  for (const dir of dirs) {
-    const matches = await glob(pattern, {
-      cwd: dir,
-      absolute: true,
-      ignore: [...ignore],
-    });
-    files.push(...matches);
-  }
-  return files;
 }

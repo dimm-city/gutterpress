@@ -229,10 +229,12 @@ export default defineCommand({
   args: preflightArgs,
   async run({ args, rawArgs }) {
     // M46: `dir` (positional) sets the same source directory `--input` does —
-    // an explicit --input still wins.
+    // an explicit --input still wins. Neither means cwd, as the positional's
+    // help says; without it the asset and heuristic checks had no project to
+    // read and were skipped.
     const positionalDir = typeof args.dir === "string" ? args.dir : undefined;
     const inputFlag = typeof args.input === "string" ? args.input : undefined;
-    const input = inputFlag ?? positionalDir;
+    const input = inputFlag ?? positionalDir ?? ".";
 
     let execution;
     try {

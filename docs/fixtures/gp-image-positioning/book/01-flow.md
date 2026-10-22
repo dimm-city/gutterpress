@@ -5,7 +5,7 @@ alone: one word for the position, one for the size, one for the spacing.
 Text wraps around the floats exactly where the image sits in the source —
 vertical placement is the author's paragraph order, on purpose.
 
-![A heron, floated right at a quarter width](assets/heron.jpg){.gp-right .gp-small}
+![A heron, floated right at 30% width](assets/heron.jpg){.gp-right .gp-size-30}
 
 The marsh reveals itself twice a day. At low tide, mudflats stretch out
 toward the channel, pocked with the breathing holes of clams and the
@@ -15,7 +15,7 @@ different place entirely — one you travel by boat, not boot. Learning to
 read a tide table is the first skill any forager needs, and the second
 is learning to read the light on the water.
 
-![A heron, floated left at half width, loose spacing](assets/heron.jpg){.gp-left .gp-medium .gp-loose}
+![A heron, floated left at half width, loose spacing](assets/heron.jpg){.gp-left .gp-size-50 .gp-loose}
 
 Coastal almanacs list two high tides and two low tides a day, roughly
 twelve hours and twenty-five minutes apart, drifting later each day as
@@ -28,7 +28,7 @@ eelgrass meadows where bay scallops shelter in the shade.
 
 ## Centered and Full-Width Plates
 
-![A heron, centered at half width](assets/heron.jpg){.gp-center .gp-medium}
+![A heron, centered at half width](assets/heron.jpg){.gp-center .gp-size-50}
 
 A centered plate sits alone between paragraphs, no wrap on either side.
 Wind direction matters as much as the tide chart. A strong onshore wind
@@ -42,7 +42,7 @@ The full-width plate above spans the page's whole content box.
 
 ## Wrapping to a Silhouette
 
-![A headland silhouette, text wraps its slope](assets/headland.svg){.gp-left .gp-shape .gp-medium}
+![A headland silhouette, text wraps its slope](assets/headland.svg){.gp-left .gp-shape .gp-size-50}
 
 Stand at an edge and wait, and the marsh comes to you. Fish, birds, and
 foragers all work the seams where fast water meets slow, where mud meets

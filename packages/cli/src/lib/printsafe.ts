@@ -110,6 +110,19 @@ function isDroppedPageGradient(decl: postcss.Declaration): boolean {
   return isInPageBox(decl);
 }
 
+/**
+ * Chromium emits these as a PostScript-function shading (ShadingType 1 +
+ * FunctionType 4), which Ghostscript 10.x cannot convert: a `--format pdfx`
+ * build reports "error in pattern" and the gradient prints blank (#386). Plain
+ * `linear-gradient()` / `radial-gradient()` are ShadingType 2/3 and fine.
+ * Source-only, so it cannot know the book's output format; the build-time
+ * check (`findPostScriptShadingPages`) is the exact one. Delete both when
+ * Ghostscript paints these shadings.
+ */
+function isPostScriptShadingGradient(decl: postcss.Declaration): boolean {
+  return /(repeating-(linear|radial|conic)|conic)-gradient\(/i.test(decl.value);
+}
+
 function isInPageMarginBox(decl: postcss.Declaration): boolean {
   const box = decl.parent;
   if (!box || box.type !== "atrule") return false;
@@ -157,15 +170,34 @@ function isUnpairedFitContentWidth(decl: postcss.Declaration): boolean {
  * audit checks every live `.gp-behind` ancestor regardless of its class.
  *
  * Matches `.page`/`.spread` as whole class tokens — `.page-credits` and
- * `.spread-wide` are different classes and must not be flagged.
+ * `.spread-wide` are different classes and must not be flagged — and only in
+ * the selector's SUBJECT: `.page pre` styles a `pre`, not the page.
  */
 function targetsPageWrapper(selector: string): boolean {
-  if (!/\.(page|spread)(?![\w-])/.test(selector)) return false;
+  if (!/\.(page|spread)(?![\w-])/.test(subjectCompound(selector))) return false;
   // A selector that already names gp-bleed/gp-pin has been scoped
   // deliberately — either the exception this rule tells authors to write
   // (`.page:not(:has(.gp-bleed))`) or a rule aimed at those elements. Warning
   // on the documented fix is how a lint rule teaches people to ignore it.
   return !/\bgp-(bleed|pin)\b/.test(selector);
+}
+
+/**
+ * The last compound of one complex selector, with every `(...)` argument
+ * dropped: `.page.doc pre:not(.stage *)` → `pre:not`.
+ */
+function subjectCompound(selector: string): string {
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < selector.length; i++) {
+    const c = selector[i]!;
+    if (c === "(" || c === "[") depth++;
+    else if (c === ")" || c === "]") depth--;
+    else if (depth === 0 && /[\s>+~]/.test(c)) start = i + 1;
+  }
+  let subject = selector.slice(start);
+  while (/\([^()]*\)/.test(subject)) subject = subject.replace(/\([^()]*\)/g, "");
+  return subject;
 }
 
 // A property at its initial value — or at a CSS-wide reset keyword — does
@@ -466,6 +498,13 @@ function checkCssRaw(css: string, from?: string): PrintSafeWarning[] {
         message: `"${decl.prop}: ${decl.value}" on @page paints nothing in print — Chromium drops a gradient in the @page box's own background, with no error and a valid-looking PDF. A solid colour there paints the whole sheet; the same gradient also works on "html" (it covers the content area, not the sheet) or in a margin box.`,
         ...nodeLoc(decl),
       });
+    } else if (isPostScriptShadingGradient(decl)) {
+      warnings.push({
+        rule: ruleRiskyProps,
+        severity: "warning",
+        message: `"${decl.prop}: ${decl.value}" is at risk in PDF/X exports (--format pdfx): Chromium emits repeating-*-gradient() and conic-gradient() in a form Ghostscript has been seen to paint as nothing or as irregular stripes, so it can print blank or distorted, unless the page also uses transparency and Ghostscript flattens the whole page to an image, which keeps the gradient but loses that page's live text. Plain PDF output is unaffected. Use linear-gradient() or radial-gradient() instead; for 0deg/90deg stripes write "linear-gradient(90deg, #b33 0 6px, #c8c5bf 6px 10px)" with "background-size: 10px 100%", and for anything else a small tiled image.`,
+        ...nodeLoc(decl),
+      });
     } else if (isUnpairedFitContentWidth(decl)) {
       warnings.push({
         rule: ruleRiskyProps,
@@ -492,7 +531,7 @@ function checkCssRaw(css: string, from?: string): PrintSafeWarning[] {
       const at = (rule.parent as postcss.AtRule).name.toLowerCase();
       if (at === "page" || marginBoxAtRuleNames.has(at)) return;
     }
-    if (!targetsPageWrapper(rule.selector)) return;
+    if (!rule.selectors.some(targetsPageWrapper)) return;
     rule.walkDecls((decl) => {
       if (clipsDescendants(decl)) {
         warnings.push({

@@ -1,0 +1,43 @@
+/* style.css — one author declaration carries this fixture: a PERCENTAGE
+   height on every page block, written against the data-name Gutterpress
+   gives each block (the slug of its heading) — the shape
+   examples/with-print-effects used. The pipeline puts the same data-name on
+   the block's heading, so the rule reaches the heading too.
+
+   In print the percentage resolves against the flow root, whose height is
+   auto, so it computes to auto and core's min-height cushion sizes the
+   block: 4 pages. The viewer's strip used to be a definite
+   `height: var(--gp-content-h)`, so on screen the percentage resolved: each
+   block ended exactly on its column's edge, the heading filled the block, the
+   paragraph spilled into the next column, and the LAST block left a blank
+   column — a fifth preview page the PDF does not have (that example: print
+   5pp, viewer 8pp, a pin root being a run of its own). `.gp-strip` now takes
+   its height from the flow root the way the block does in print, so the gate
+   holds this book to 4 pages on both sides. */
+
+@page {
+  size: 621pt 810pt;
+  margin: 72pt 54pt;
+}
+
+body {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 12pt;
+  line-height: 1.5;
+  color: #1a1a1a;
+}
+
+h2 {
+  font-size: 22pt;
+  margin: 0 0 18pt;
+}
+
+[data-name="one"],
+[data-name="two"],
+[data-name="three"],
+[data-name="four"] {
+  height: 100%;
+  padding: 36pt;
+  box-sizing: border-box;
+  background: #e8e2d8;
+}

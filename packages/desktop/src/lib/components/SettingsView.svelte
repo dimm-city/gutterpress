@@ -8,7 +8,7 @@
   import { getPlatform } from "$lib/platform";
   import { sanitizeSettingsTab, type SettingsTab } from "$lib/settings-tabs";
   import { api } from "$lib/api";
-  import { MARGIN_OVERLAY_STRENGTHS, overlayStyleFrom } from "$lib/margin-overlay";
+  import { MARGIN_OVERLAY_STRENGTHS, OVERLAY_LAYERS, overlayStyleFrom } from "$lib/margin-overlay";
   import { friendlyHostError } from "$lib/errors";
 
   let {
@@ -192,6 +192,7 @@
 
   // ── Typed setters (one line per control, per the "one-line setting" goal) ──
   const s = $derived(settings.current);
+  const overlayStyle = $derived(overlayStyleFrom(s.preview.overlayColors, s.preview.marginOverlayStrength));
 </script>
 
 <div class="settings-view" class:embedded>
@@ -316,12 +317,12 @@
         </div>
         <div class="row">
           <div class="row-label">
-            <label for="set-overlay-strength">Margin overlay strength</label>
-            <span class="row-hint">How strongly the preview's margin &amp; bleed overlay (the toolbar button) is drawn. The bleed band shows only when your stylesheet sets a page bleed.</span>
+            <label for="set-overlay-strength">Print overlay strength</label>
+            <span class="row-hint">How strongly the preview's print overlays (the toolbar button) are drawn. The bleed and safe area come from your book's print settings (manifest.yaml); the page margins are your stylesheet's own.</span>
           </div>
           <select
             id="set-overlay-strength"
-            value={overlayStyleFrom(s.preview.marginOverlayColor, s.preview.marginOverlayStrength).strength}
+            value={overlayStyle.strength}
             onchange={(e) => settings.set({ preview: { marginOverlayStrength: (e.currentTarget as HTMLSelectElement).value as "subtle" | "normal" | "strong" } })}
           >
             {#each MARGIN_OVERLAY_STRENGTHS as o (o.value)}
@@ -329,15 +330,17 @@
             {/each}
           </select>
         </div>
-        <div class="row">
-          <label for="set-overlay-color">Margin overlay colour</label>
-          <input
-            id="set-overlay-color"
-            type="color"
-            value={overlayStyleFrom(s.preview.marginOverlayColor, s.preview.marginOverlayStrength).color}
-            oninput={(e) => settings.set({ preview: { marginOverlayColor: (e.currentTarget as HTMLInputElement).value } })}
-          />
-        </div>
+        {#each OVERLAY_LAYERS as layer (layer.id)}
+          <div class="row">
+            <label for="set-overlay-color-{layer.id}">{layer.label} overlay colour</label>
+            <input
+              id="set-overlay-color-{layer.id}"
+              type="color"
+              value={overlayStyle.colors[layer.id]}
+              oninput={(e) => settings.set({ preview: { overlayColors: { ...overlayStyle.colors, [layer.id]: (e.currentTarget as HTMLInputElement).value } } })}
+            />
+          </div>
+        {/each}
       </section>
 
       {/if}
@@ -350,44 +353,15 @@
           <button class="reset" onclick={() => settings.resetSection("editor")} title="Reset editor settings to defaults">Reset</button>
         </div>
         <div class="row">
-          <label for="set-font">Font family</label>
+          <div class="row-label">
+            <label for="set-highlight-problems">Highlight problems in the editor</label>
+            <span class="row-hint">Mark each line the Problems list reports, and outline unusual characters such as em dashes and curly quotes.</span>
+          </div>
           <input
-            id="set-font"
-            type="text"
-            value={s.editor.fontFamily}
-            onchange={(e) => settings.set({ editor: { fontFamily: (e.currentTarget as HTMLInputElement).value } })}
-          />
-        </div>
-        <div class="row">
-          <label for="set-fontsize">Font size</label>
-          <input
-            id="set-fontsize"
-            type="number"
-            min="8"
-            max="32"
-            value={s.editor.fontSize}
-            onchange={(e) => settings.set({ editor: { fontSize: Number((e.currentTarget as HTMLInputElement).value) } })}
-          />
-        </div>
-        <div class="row">
-          <label for="set-lineheight">Line spacing</label>
-          <input
-            id="set-lineheight"
-            type="number"
-            min="1"
-            max="3"
-            step="0.1"
-            value={s.editor.lineHeight}
-            onchange={(e) => settings.set({ editor: { lineHeight: Number((e.currentTarget as HTMLInputElement).value) } })}
-          />
-        </div>
-        <div class="row">
-          <label for="set-spell">Spell-check language</label>
-          <input
-            id="set-spell"
-            type="text"
-            value={s.editor.spellCheckLanguage}
-            onchange={(e) => settings.set({ editor: { spellCheckLanguage: (e.currentTarget as HTMLInputElement).value } })}
+            id="set-highlight-problems"
+            type="checkbox"
+            checked={s.editor.highlightProblems}
+            onchange={(e) => settings.set({ editor: { highlightProblems: (e.currentTarget as HTMLInputElement).checked } })}
           />
         </div>
       </section>
@@ -674,7 +648,6 @@
   .row-toggle { align-items: center; }
   .row-label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .row-hint { font-size: 11px; line-height: 1.3; color: var(--app-text-muted); }
-  .row input[type="text"],
   .row input[type="number"],
   .row select {
     background: var(--app-surface-sunken);

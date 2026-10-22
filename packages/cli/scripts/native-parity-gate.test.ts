@@ -295,6 +295,36 @@ testIf(
 );
 
 testIf(
+  "a boundary BEFORE the last agreeing heading is still the one measured",
+  async () => {
+    const page = await mount();
+    try {
+      // the same dispute as above ("line four" kept by print on page 1), but
+      // reported with page 2 as the last page a heading agreed on: headings can
+      // agree for pages after a boundary while the lines under them do not
+      const input = {
+        lo: 2,
+        agreeingPage: 2,
+        headingIds: ["after"],
+        printLines: {
+          1: [line("Intro line.", 10), line("line one", 31), line("line two", 52), line("line three", 73), line("line four", 94)],
+          2: [line("line five", 10), line("line six", 31)],
+        },
+      };
+      const m = await page.evaluate<any>(
+        `window.__gpExactFit(window.__gpParity).measure(${JSON.stringify(input)})`,
+      );
+      expect(m.error).toBeUndefined();
+      expect(m).toMatchObject({ page: 1, keptBy: "print", text: "line four", block: "pre", lineIndex: 4 });
+      expect(m.viewerBottomPx).toBeCloseTo(105, 1);
+    } finally {
+      await page.close();
+    }
+  },
+  TIMEOUT,
+);
+
+testIf(
   "the viewer keeps a line: print's position for it is projected from print's last kept line",
   async () => {
     const page = await mount();

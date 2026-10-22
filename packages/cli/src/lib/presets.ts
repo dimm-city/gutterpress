@@ -10,7 +10,9 @@ import { UsageError } from "./cli-args";
  * Every preset value is overridable from the manifest, leaf by leaf
  * (resolveConfig's mergeShape; precedence cli > manifest > target > preset).
  */
-export interface VendorPreset extends Omit<ResolvedConfig, "title" | "authors" | "targets" | "page"> {
+export interface VendorPreset extends Omit<ResolvedConfig, "title" | "authors" | "preset" | "targets" | "page"> {
+  /** This preset's id: what the manifest's `preset:` names and a resolved config reports. */
+  id: PresetId;
   /**
    * Base page geometry in points, or `null` for `custom` — the one preset
    * with no built-in trim, which therefore REQUIRES the manifest to supply
@@ -37,6 +39,13 @@ export type PresetId = (typeof PRESET_IDS)[number];
  *         requirement in its own right.
  */
 export const DTRPG_PRESET: VendorPreset = {
+  id: "dtrpg",
+  // The article the SPEC numbers below come from: hosts credit it where they
+  // draw them (the preview overlay's source line).
+  spec: {
+    label: "DriveThruRPG — Quick Specifications for Print Books",
+    url: "https://help.drivethrupartners.com/hc/en-us/articles/12780800178583-Quick-Specifications-for-Print-Books",
+  },
   // Books designed for DriveThruRPG validate against it by default.
   defaultTargets: ["dtrpg"],
   // No default `styles:` — `resolveActiveStyles`
@@ -69,6 +78,12 @@ export const DTRPG_PRESET: VendorPreset = {
     // CONVENTION (#331): near-black text on the black plate alone, so small
     // type is not registered across four plates. Not a DriveThru rule.
     blackText: "k-only",
+    // CONVENTION (#385): the safe default. Books opt in to `preserve-text`.
+    transparency: "flatten-page",
+    flattenPages: [],
+    // Unset: Ghostscript's 720 DPI for whole pages, 300 for preserve-text
+    // artwork. The key must exist: resolveConfig only merges keys a preset has.
+    rasterDpi: undefined,
   },
   page: {
     // GUIDE: 8.625 x 11.25in is the interior FILE size for an 8.5 x 11in book:
@@ -80,10 +95,23 @@ export const DTRPG_PRESET: VendorPreset = {
     tolerance: 0.5, // CONVENTION: slack for rounding in the PDF boxes
     // SPEC: 0.125in = 9pt, ALREADY INSIDE width/height above on the top,
     // bottom and outer edges only. Declared so the preview's margin & bleed
-    // overlay can show the trim; the PDF is unchanged (CSS `bleed` is
-    // symmetric and would grow the page and add binding-edge bleed, which the
-    // SPEC rules out).
+    // overlay, `pdf.print.safe-margins` and pinned art can find the trim; the
+    // page itself is unchanged (CSS `bleed` is symmetric and would grow the
+    // page and add binding-edge bleed, which the SPEC rules out).
     bleed: 9,
+    // SPEC: 0.5in = 36pt, DriveThru's TEXT rule: text stays at least 0.5in
+    // inside the trim on every edge. The preview overlay and
+    // `pdf.print.safe-margins` judge text against it; art pinned to the
+    // binding edge sits on it, unless the manifest sets a `page.gutter`.
+    safe: 36,
+    // SPEC: 0.25in = 18pt, DriveThru's ART rule: art that does not bleed stays
+    // at least 0.25in from the three outside edges (the binding edge takes the
+    // text rule's 0.5in above). The overlay judges art against it, and art
+    // pinned to an outside edge sits on it.
+    artSafe: 18,
+    // The binding allowance is the same as `safe`; listed so a manifest
+    // `page.gutter` merges in.
+    gutter: undefined,
   },
   ink: {
     // SPEC: total ink coverage must not exceed 240%.
@@ -115,6 +143,11 @@ export const DTRPG_PRESET: VendorPreset = {
         enabled: true,
         severity: "error",
       },
+      // SPEC: text at least 0.5in inside the trim on every edge (`page.safe`).
+      "pdf.print.safe-margins": {
+        enabled: true,
+        severity: "error",
+      },
     },
     source: {
       markdownlint: null,
@@ -124,9 +157,6 @@ export const DTRPG_PRESET: VendorPreset = {
     },
     assets: {
       maxImageSize: 10_000_000,
-      minImageDpi: 300,
-      // SPEC: CMYK for colour interiors (Grayscale for black-and-white).
-      allowedColorSpaces: ["CMYK", "Grayscale"],
       // DERIVED: PDF/X-1a forbids transparency, which an alpha channel needs.
       allowAlpha: false,
       approvedFontFiles: [],
@@ -174,11 +204,9 @@ export const DTRPG_PRESET: VendorPreset = {
  *   structure, which only applies to a PDF/X build (`--format pdfx`).
  * - `validate.pdf.forbidTransparency: false` and `assets.allowAlpha: true` —
  *   PDF/X forbids both; a plain PDF/HTML book has no such restriction.
- * - `validate.assets.allowedColorSpaces` includes RGB (not just CMYK/Grayscale)
- *   since a generic book isn't assumed to be prepping for CMYK print-only
- *   distribution.
  */
 export const BOOK_PRESET: VendorPreset = {
+  id: "book",
   // A neutral trade book has no default publish target; add `targets:` when
   // a destination's requirements should be validated.
   defaultTargets: [],
@@ -196,6 +224,9 @@ export const BOOK_PRESET: VendorPreset = {
     icc: "profiles/CGATS21_CRPC1.icc",
     stripAnnotations: true,
     blackText: "icc",
+    transparency: "flatten-page",
+    flattenPages: [],
+    rasterDpi: undefined,
   },
   page: {
     width: 432,
@@ -203,6 +234,13 @@ export const BOOK_PRESET: VendorPreset = {
     tolerance: 0.5,
     // No bleed inside the sheet; listed so a manifest `page.bleed` merges in.
     bleed: undefined,
+    // CONVENTION: 0.25in safe area inside the trim (preview overlay and
+    // `pdf.print.safe-margins`).
+    safe: 18,
+    // The art rule is the same as `safe`; listed so a manifest `page.artSafe` merges in.
+    artSafe: undefined,
+    // The binding allowance is too; listed so a manifest `page.gutter` merges in.
+    gutter: undefined,
   },
   ink: {
     maxTac: 400,
@@ -224,6 +262,12 @@ export const BOOK_PRESET: VendorPreset = {
         enabled: true,
         severity: "error",
       },
+      // CONVENTION: text stays `page.safe` inside the trim. A warning: no
+      // printer's rule stands behind this preset's number.
+      "pdf.print.safe-margins": {
+        enabled: true,
+        severity: "warning",
+      },
       "pdf.print.pdfx-markers": false,
       "pdf.print.pdfx-metadata": false,
     },
@@ -235,8 +279,6 @@ export const BOOK_PRESET: VendorPreset = {
     },
     assets: {
       maxImageSize: 10_000_000,
-      minImageDpi: 300,
-      allowedColorSpaces: ["RGB", "CMYK", "Grayscale"],
       allowAlpha: true,
       approvedFontFiles: [],
       requireFontLicense: false,
@@ -265,6 +307,7 @@ export const BOOK_PRESET: VendorPreset = {
  */
 export const CUSTOM_PRESET: VendorPreset = {
   ...BOOK_PRESET,
+  id: "custom",
   page: null,
   defaultTargets: [],
 };

@@ -134,10 +134,12 @@ export interface AppSettings {
     role: WorkspaceRole;
   };
   editor: {
-    fontFamily: string;
-    fontSize: number;
-    lineHeight: number;
-    spellCheckLanguage: string;
+    /**
+     * Mark every line with a Problems entry in the editor, plus the CSS lint
+     * gutter and the unusual-character boxes (Settings → Editor, "Highlight
+     * problems in the editor", #383). Default ON.
+     */
+    highlightProblems: boolean;
   };
   appearance: {
     theme: "light" | "dark" | "system";
@@ -163,16 +165,31 @@ export interface AppSettings {
      */
     readLayout: ReadLayout;
     /**
-     * Margin & bleed overlay (Preview toolbar toggle): draws each page's margin
-     * box and bleed band on the preview and outlines content that leaves the
-     * text area. A review aid for the author — never printed, never in an
-     * exported PDF — available in both Read and Edit. Default off.
+     * Print overlays (Preview toolbar toggle) — the MASTER switch for the
+     * layers below: draws each page's bleed, safe areas and margins on the
+     * preview and outlines content that leaves a safe area. A review aid for
+     * the author — never printed, never in an exported PDF — available in both
+     * Read and Edit. Default off.
      */
     marginOverlay: boolean;
-    /** The overlay's colour (margin outline and tint), `#rrggbb`. Default blue. */
+    /**
+     * Legacy: the one colour the overlay had before it had layers. A settings
+     * file with no `overlayColors` yet reads it as the (text) safe layer's
+     * colour (`electron/settings-store.ts`); after that it is ignored.
+     */
     marginOverlayColor: string;
-    /** How prominent the overlay is: line width, margin tint and bleed band. Default "normal". */
+    /** How prominent the overlay is: line width, tint and bleed band. Default "normal". */
     marginOverlayStrength: "subtle" | "normal" | "strong";
+    /**
+     * Which layers the overlay draws while the master switch is on: the bleed
+     * band and trim, the safe area for text (its line, tint and text flags),
+     * the safe area for art (its line and art flags) and the book's own page
+     * margins. Default all four; a stored object without `art` (written before
+     * it was a layer of its own) reads it as on.
+     */
+    overlayLayers: { bleed: boolean; safe: boolean; art: boolean; margins: boolean };
+    /** Each layer's colour, `#rrggbb`. A stored object without `art` reads its default. */
+    overlayColors: { bleed: string; safe: string; art: string; margins: string };
     /**
      * Durable editor/preview split fraction (0.25..0.75, editor share) for the
      * wide side-by-side layout (#103). The always-read default; the per-project
@@ -203,10 +220,9 @@ export interface AppSettings {
      * Write editor changes to disk on their own, 500ms after the last edit
      * (Settings → Saving, "Save edits automatically"). Off: edits wait for
      * Save / Ctrl+S (leaving the file asks Save / Don't Save / Cancel), so
-     * the Save button means something. Lives in this section, not `editor`,
-     * because this section is
-     * the Saving group's storage — its one Reset restores every switch there,
-     * and the Editor tab's Reset leaves it alone. Default ON.
+     * the Save button means something. Lives in this section because this
+     * section is the Saving group's storage — its one Reset restores every
+     * switch there. Default ON.
      */
     autoSave: boolean;
     /**
@@ -249,10 +265,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     role: "reader",
   },
   editor: {
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-    fontSize: 14,
-    lineHeight: 1.6,
-    spellCheckLanguage: "en-US",
+    highlightProblems: true,
   },
   appearance: {
     theme: "system",
@@ -269,6 +282,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     marginOverlay: false,
     marginOverlayColor: "#2f80ed",
     marginOverlayStrength: "normal",
+    overlayLayers: { bleed: true, safe: true, art: true, margins: true },
+    overlayColors: { bleed: "#e5484d", safe: "#2f80ed", art: "#a855f7", margins: "#1a9c6b" },
     // Matches DEFAULT_SPLIT_RATIO in src/lib/editor/preview-layout.ts so the
     // durable default and the double-click reset target agree (#103).
     splitRatio: 0.42,

@@ -74,7 +74,7 @@ const dpiProbe = `<!doctype html><meta charset="utf-8"><style>
 @page { size: 6in 9in; margin: 0 }
 html, body { margin: 0 }
 img { display: block; width: 100% }
-</style><img src="plate.png" alt=""> ${TALL}`;
+</style><img src="plate.png" alt=""><img src="mark.svg" alt=""> ${TALL}`;
 
 /**
  * The consequence fixture, sized to STRADDLE the gap: content box = the full
@@ -123,6 +123,11 @@ testIf(
         path.join(dir, "plate.png"),
         pngRgb(800, 100, () => [200, 40, 40]),
       );
+      // A 20px-wide vector printed 6in wide: vector, so never low-DPI.
+      await fsp.writeFile(
+        path.join(dir, "mark.svg"),
+        '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="20" height="20"/></svg>',
+      );
       const file = path.join(dir, "book.html");
       await fsp.writeFile(file, dpiProbe, "utf8");
 
@@ -136,6 +141,8 @@ testIf(
       // The control: if the audit did not fire, the assertion below would
       // vacuously pass on an empty list.
       expect(lowDpi).toHaveLength(1);
+      // It names the file the author has to replace.
+      expect(lowDpi[0]!.message).toContain("(plate.png)");
 
       const inches = Number(/printed at ([\d.]+)in/.exec(lowDpi[0]!.message)?.[1]);
       expect(inches).not.toBeNaN();
