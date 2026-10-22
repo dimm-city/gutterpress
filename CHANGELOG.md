@@ -18,6 +18,29 @@ This project follows [Semantic Versioning](https://semver.org/).
   Stylesheets get the same panel. The "both versions are kept" message after a
   sync carries a **Review** button that opens the Problems list, where each
   passage opens its file under the panel.
+- **The preview shows both versions of a combined passage.** The marker
+  lines a sync writes are valid markdown, so the preview used to render the
+  passage as a chapter-sized heading over a stack of quotes and list
+  `<<<<<<< your version` in the outline. The markdown renderer now turns the
+  family into two labelled boxes, *Your version* and *Online version*, each
+  rendered as ordinary markdown, so either version can be read as it would
+  print while choosing. Plain HTML and CSS (`.gp-two-versions`); the
+  Combined Versions check still blocks a build until the passage is settled.
+- **Versions view: what each version changed, a look at any version beside
+  the current book, and what is online before Get latest (#408).** Each
+  version card lists the files it touched with a plain hint
+  (`chapter-02.md · 3 paragraphs changed`, `styles/book.css · 1 rule
+  changed`, `art/cover.png · replaced`), says whether it is **Backed up** or
+  **On this computer only**, and an automatic version with no changes says
+  so. **Look at this version** renders that version read-only beside the
+  live preview, following the page in view, without touching a file;
+  **Stop looking** returns to the live preview alone. Clicking a changed text
+  file opens it as two columns, *That version* and *Now*, with the lines
+  that differ marked. When the book has an online copy, the view's top
+  section, **Online, not yet on this computer**, lists the versions online
+  with the same cards before Get latest brings them in. All of it reads the
+  book's own history through isomorphic-git: nothing is installed, nothing
+  shells out.
 
 ## [0.11.21] - 2026-10-16
 

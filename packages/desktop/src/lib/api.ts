@@ -59,6 +59,9 @@ export type {
   FileWriteResult,
   FileStat,
   SnapshotEntry,
+  VersionEntry,
+  VersionFileChange,
+  CompareRow,
   RemoteConnection,
   RemoteRepository,
   BackupTarget,
@@ -85,6 +88,9 @@ import type {
   FileWriteResult,
   FileStat,
   SnapshotEntry,
+  VersionEntry,
+  VersionFileChange,
+  CompareRow,
   RemoteConnection,
   RemoteRepository,
   BackupTarget,
@@ -742,7 +748,17 @@ export const api = {
     enableVersionHistory: (projectDir: string) =>
       post<ProjectClassification>('/api/vcs/enable-version-history', { projectDir }),
     listSnapshotsPage: (projectDir: string, options?: { limit?: number; before?: string }) =>
-      post<{ entries: SnapshotEntry[]; hasMore: boolean }>('/api/vcs/list-snapshots-page', { projectDir, ...options }),
+      post<{ entries: VersionEntry[]; hasMore: boolean }>('/api/vcs/list-snapshots-page', { projectDir, ...options }),
+    /** Versions online that this computer has not got, each with its changed files (#408). */
+    onlineVersions: (projectDir: string) =>
+      post<{ entries: VersionEntry[]; reason?: 'no-remote' | 'auth' | 'offline' }>('/api/vcs/online-versions', { projectDir }),
+    /** One text file at a version beside the file as it is now, as aligned rows (#408). */
+    compareFile: (projectDir: string, id: string, path: string) =>
+      post<{ binary: true } | { binary: false; rows: CompareRow[] }>('/api/vcs/compare-file', { projectDir, id, path }),
+    /** Render a version read-only beside the live preview; the URL for the second frame (#408). */
+    openVersionPreview: (projectDir: string, id: string) =>
+      post<{ url: string }>('/api/vcs/open-version-preview', { projectDir, id }),
+    closeVersionPreview: () => post<{ closed: true }>('/api/vcs/close-version-preview', {}),
     restoreSnapshot: (projectDir: string, id: string) =>
       post<{ restoredId: string; backupId?: string }>('/api/vcs/restore-snapshot', { projectDir, id }),
     /** Files changed since the last version (saved, but not in a version yet);

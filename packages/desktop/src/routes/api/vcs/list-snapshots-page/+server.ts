@@ -26,10 +26,14 @@ export const POST: RequestHandler = defineRoute<{
   call: async ({ body }) => {
     const lib = await loadLib();
     const source = await lib.detectProjectSource(body.projectDir);
-    return lib.providerFor(source).listHistoryPage(body.projectDir, {
+    const page = await lib.providerFor(source).listHistoryPage(body.projectDir, {
       ...(typeof body.limit === 'number' ? { limit: body.limit } : {}),
       ...(typeof body.before === 'string' ? { before: body.before } : {}),
     });
+    // Each version says what it changed and whether it is backed up (#408);
+    // a plain folder has no versions to describe.
+    if (source.type !== 'local-git-folder') return page;
+    return { ...page, entries: await lib.describeVersions(body.projectDir, page.entries) };
   },
   onError: (e) => friendlyVcsError(e, 'listSnapshotsPage', 'vcs/list-snapshots-page'),
 });

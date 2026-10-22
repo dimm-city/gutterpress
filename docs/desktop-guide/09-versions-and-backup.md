@@ -21,9 +21,28 @@ Next to the indicator, a status shows the online backup: for example **Backed up
 
 ![Where your work is kept: Saving, Versions and Online backup](images/where-your-work-is-kept.jpg)
 
+## See what each version changed
+
+Click the save indicator, then **See previous versions**, to open **Versions**. Each version
+shows when it was made and what it changed: a short list of files with a plain hint, such as
+`chapter-02.md · 3 paragraphs changed`, `styles/book.css · 1 rule changed` or
+`art/cover.png · replaced`. An automatic version that changed nothing says **No changes**.
+When the book has an online copy, each version also says **Backed up** or **On this computer
+only**.
+
+- **Look at this version** shows that version beside the current book in the preview, on the
+  same page, so you can compare them as they print. Nothing on disk changes. Click **Stop
+  looking** (or the **×** in the preview's bar) to return to the live preview.
+- Click a changed file to see **That version** and **Now** side by side, with the lines that
+  differ marked. This view is for reading only; go back to the versions list with the
+  **Versions** button at the top.
+- When new changes are online that this computer has not got, the list starts with **Online,
+  not yet on this computer**, showing those versions and their changed files. Use **Get
+  latest** to bring them in.
+
 ## Go back to an earlier version
 
-1. Click the save indicator, then **See previous versions**.
+1. Open **Versions** as above.
 2. Find the version you want and click **Restore this version**.
 3. Confirm with **Yes, restore**. Gutterpress saves your current work as a version first, so
    nothing is lost.
@@ -100,7 +119,8 @@ but the book will not export until you choose.
 1. Click **Review**, or open the Problems list from the editor toolbar. Each passage with two
    versions is listed as **Two versions**; click one to open its file.
 2. A panel above the text shows each passage as two columns, **Your version** and **Online
-   version**.
+   version**. The preview shows the same two versions in the page, each in a labelled box, so
+   you can read either one as it would print.
 3. Click **Keep yours**, **Keep online** or **Keep both** under the passage. The file is updated
    right away, and the passage leaves the panel. When a file has several passages, **For all**
    in the panel's top bar settles every one the same way.
