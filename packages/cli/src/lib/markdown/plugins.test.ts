@@ -470,6 +470,26 @@ describe("plugin loader", () => {
       expect((globalThis as Record<string, unknown>)[marker]).toBeUndefined();
     });
 
+    test("a vendored publishing plugin whose engines.gutterpress excludes this Gutterpress fails to load (#381)", async () => {
+      const name = "gp-publish-too-new";
+      const vendored = vendoredNpmPluginPackageDir(vendoredNpmPluginRoot(TMP_ROOT, name, "1.0.0"), name);
+      mkdirSync(vendored, { recursive: true });
+      writeFileSync(
+        join(vendored, "package.json"),
+        JSON.stringify({
+          name,
+          version: "1.0.0",
+          type: "module",
+          exports: "./index.js",
+          engines: { gutterpress: ">=999.0.0" },
+          gutterpress: { publish: true },
+        }),
+      );
+      writeFileSync(join(vendored, "index.js"), "export async function publish() {}\n");
+
+      await expect(loadPlugin(cfg({ name, version: "1.0.0" }), TMP_ROOT)).rejects.toThrow(/needs Gutterpress >=999\.0\.0/);
+    });
+
     test("does not fall back when a pinned vendored copy is present but broken", async () => {
       const name = "broken-vendored-plugin-fixture";
       const packageDir = join(TMP_ROOT, "node_modules", name);

@@ -230,6 +230,21 @@ test("a publisher without a publish export is a preflight error, also on a dry r
   }
 });
 
+test("a publisher whose engines.gutterpress excludes this Gutterpress is a preflight error", async () => {
+  await writePackage("pub", publisher("gp-demo", { engines: { gutterpress: ">=999.0.0" } }), RECORDING_PUBLISH);
+  await writeManifest("extensions:\n  - ./pub\n");
+  await withPdf();
+
+  const result = await runPublish({ projectDir: dir, providerId: "gp-demo", dryRun: true }, deps());
+
+  expect(result.ok).toBe(false);
+  expect(result.issues).toContainEqual({
+    severity: "error",
+    id: "plugin/load-failed",
+    message: expect.stringContaining("needs Gutterpress >=999.0.0"),
+  });
+});
+
 test("an unknown id is a failed result that names every destination the book has", async () => {
   await writePackage("pub", publisher("gp-demo"), RECORDING_PUBLISH);
   await writeManifest("extensions:\n  - ./pub\n");

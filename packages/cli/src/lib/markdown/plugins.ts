@@ -818,6 +818,7 @@ export async function loadPlugin(
       if (installRoot) {
         const meta = await readExtensionMeta(vendoredNpmPluginPackageDir(installRoot, config.name!));
         if (meta.publish) {
+          assertSupportsThisGutterpress(meta, pluginRef);
           return {
             name: config.name!,
             plugin: noopPlugin,
@@ -911,11 +912,19 @@ export async function loadPublishFunction(
     const dir = resolve(baseDir, config.path);
     const meta = await readExtensionMeta(dir);
     assertExtensionContained(meta);
+    assertSupportsThisGutterpress(meta, config.use);
     const [entry] =
       resolveDeclaredStyles(meta.main ? [meta.main] : undefined, dir, `Publishing plugin "${config.use}"`) ?? [];
     if (!entry) throw new Error(`Publishing plugin "${config.use}" declares no \`main\` in its package.json.`);
     mod = await loadCachedPathPluginModule(entry);
   } else {
+    const installRoot = await vendoredInstallRoot(config.name!, baseDir, config.version);
+    if (installRoot) {
+      assertSupportsThisGutterpress(
+        await readExtensionMeta(vendoredNpmPluginPackageDir(installRoot, config.name!)),
+        config.use,
+      );
+    }
     mod = (await loadNpmPackage(config.name!, baseDir, config.version)).module;
   }
   const moduleExports = (mod ?? {}) as Record<string, unknown>;
