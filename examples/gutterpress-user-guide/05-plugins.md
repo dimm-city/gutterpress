@@ -421,6 +421,87 @@ version it needs, instead of building the book without the feature.
 Older packages carried a separate `gutterpress.json` or `theme.json`. Neither
 is read any more: move their fields into `package.json` as above.
 
+### A publishing plugin (experimental)
+
+@section .callout-warning
+
+**Experimental:** the publishing-plugin contract is new and may change, or be
+removed, in a future release.
+
+@end-section
+
+A publishing plugin adds a destination to `gutterpress publish` and the
+desktop's Publish wizard ([Chapter 8](#publishing-plugins) is the author's
+side). It is the same kind of package as above, with one flag, and its entry
+exports a `publish` function instead of a markdown-it plugin:
+
+```json
+{
+  "name": "gutterpress-publish-example",
+  "description": "Publish the book to Example Host",
+  "type": "module",
+  "main": "index.js",
+  "keywords": ["gutterpress"],
+  "gutterpress": { "publish": true }
+}
+```
+
+```js
+// index.js
+export async function publish(outputDir, context) {
+  const site = context.settings.site;
+  if (!site) throw new Error("Set publish.gutterpress-publish-example.site in manifest.yaml.");
+  const token = process.env.EXAMPLE_HOST_TOKEN;
+  if (!token) throw new Error("Set the EXAMPLE_HOST_TOKEN environment variable.");
+
+  const file = context.artifacts.pdf ?? context.artifacts.html;
+  context.log(`Uploading ${file}`);
+  // ...upload with fetch()...
+  return { url: `https://example.host/${site}`, detail: `Published to ${site}` };
+}
+```
+
+`"gutterpress": { "publish": true }` is what makes it a publisher: Gutterpress
+reads it from package.json and never runs the entry while it builds or
+previews a book. Only a publish loads it. What `publish` receives:
+
+- `outputDir`: the folder holding the build. For a website it is the export
+  folder; for a PDF, the folder the PDF is in.
+- `context.artifacts`: exactly one path, `pdf` or `html`, the one checked
+  before publishing. The book picks it with `format: pdf` (the default) or
+  `format: html` in the plugin's settings.
+- `context.settings`: the book's `publish.<package-name>` section in
+  `manifest.yaml`, as written. `format` and `credential` in it are reserved.
+- `context.project`: the book's folder, title and authors.
+- `context.log(message)`: a progress line. Write progress here, never with
+  `console.log`: standard output carries `--json` results.
+
+Return `{ url, detail }` (both optional); Gutterpress keeps `url` only if it
+is an `http(s)` address. Throw to fail the publish: the author sees your
+message, prefixed with the plugin's name.
+
+The rules that keep this safe and portable:
+
+- **Credentials are yours to handle, and never belong in the book.**
+  `manifest.yaml` is committed to Git, so read keys from the environment or
+  your own config file. Your error messages and log lines can end up in a CI
+  log, so never include a key in them.
+- **The id is the package name.** A package named like a built-in
+  destination (`local`, `itch`, `kdp`, …) is skipped.
+- **A package is a publisher or a markdown plugin, not both.**
+- **There is no timeout.** Return or throw; a `publish` that never settles
+  holds the publish open.
+- `engines.gutterpress` works as for any extension.
+
+TypeScript authors can type the function with `import type {
+PublishPluginFunction } from "gutterpress"` (also `PublishPluginContext` and
+`PublishPluginResult`); like the markdown plugin types, these are types only.
+
+Try it on a book with `gutterpress ext add ./gutterpress-publish-example`,
+build the book, then run `gutterpress publish --provider
+gutterpress-publish-example --dry-run`: a dry run loads the plugin and checks
+that it exports `publish`, without calling it.
+
 ### Components: a marker, its snippet and its checks {#plugin-components}
 
 A **component** is a container your plugin declares in `export const markers`

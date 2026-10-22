@@ -5,6 +5,21 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Publishing plugins (experimental — may change or be removed).** An
+  extension can add a place to publish that Gutterpress doesn't offer itself:
+  a package that sets `"gutterpress": { "publish": true }` and exports a
+  `publish(outputDir, context)` function. It installs, pins and restores like
+  any extension, and never runs while a book builds or previews. A book's
+  publishing plugins appear in the desktop's Publish wizard with an
+  Experimental badge and as `gutterpress publish --provider <package-name>`.
+  The plugin gets the built file, the book's title and authors and its own
+  `publish.<package-name>` settings, and handles its own sign-in; keys never go
+  in `manifest.yaml`. Built-in destinations are unchanged and never load a
+  plugin. See the user guide's Publishing chapter (authors) and Plugins chapter
+  (the contract). (#381)
+
 ## [0.11.21] - 2026-10-16
 
 ### Removed
