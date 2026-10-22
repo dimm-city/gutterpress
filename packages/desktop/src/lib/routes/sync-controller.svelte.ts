@@ -82,7 +82,7 @@ export function combinedFilesMessage(files: string[]): string {
   const names = files.map(baseName);
   const shown = names.slice(0, 3).join(", ");
   const more = names.length > 3 ? ` and ${names.length - 3} more` : "";
-  return `Your changes and a teammate's overlapped in ${shown}${more} — both versions are kept there, marked for you to review.`;
+  return `Two versions of a passage were kept in ${shown}${more} — yours and the online version. Choose which to keep in the editor.`;
 }
 
 /**

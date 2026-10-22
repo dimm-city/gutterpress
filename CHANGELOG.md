@@ -9,15 +9,16 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 - **Settle a passage with two versions by comparing them and picking one
   (#407).** When a sync combines a passage edited both here and online, the
-  desktop editor now shows a panel above the text listing each such passage
-  as two plain columns, *Your version* and *Online version*, with **Keep
-  yours**, **Keep online** and **Keep both**. A choice rewrites the file
-  without the marker lines as one ordinary, undoable edit, so saving, the
-  preview and the Problems entry follow as for any edit; a file with more
-  than one passage also offers the choice for all of them at once.
-  Stylesheets get the same panel. The "both versions are kept" message after a
-  sync carries a **Review** button that opens the Problems list, where each
-  passage opens its file under the panel.
+  desktop editor now shows a card above the text that asks, one passage at
+  a time, which version to keep: **Keep yours**, **Keep online** or **Keep
+  both**, with the two texts behind **Compare the text** and a count with
+  arrows to move between passages. The editor scrolls to the passage in
+  question. A choice rewrites the file without the marker lines as one
+  ordinary, undoable edit, confirmed by a message with an **Undo** button,
+  so saving, the preview and the Problems entry follow as for any edit.
+  Stylesheets get the same card, rule by rule. The "two versions were kept"
+  message after a sync carries a **Review** button that opens the Problems
+  list, where each passage opens its file under the card.
 - **The preview shows both versions of a combined passage.** The marker
   lines a sync writes are valid markdown, so the preview used to render the
   passage as a chapter-sized heading over a stack of quotes and list

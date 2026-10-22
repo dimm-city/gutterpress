@@ -1,119 +1,149 @@
 <script lang="ts">
   /**
-   * TwoVersionsPanel — shown above the editor when the open file still holds
-   * passages with two versions after a sync (#407). Each passage is shown as
-   * two plain-text columns, *Your version* and *Online version*, with one
-   * button per choice. Nothing here touches a file: every choice is handed
-   * back to the page, which applies it as ONE undoable edit in the editor
-   * below, so the usual save, preview reload and Problems refresh follow.
+   * TwoVersionsPanel — one decision at a time (#407).
    *
-   * Entirely presentational, like ExternalEditBanner: the page owns the
-   * block list (derived from the live buffer, so a choice makes its passage
-   * disappear from here at once) and the write path. Renders nothing when
-   * `blocks` is empty — the page does not mount it then.
+   * After a sync kept two versions of a passage, the file holds both inside
+   * marker lines. This card sits above the editor and asks ONE question
+   * about ONE passage: which version to keep. Three buttons answer it; a
+   * count with arrows moves to the other passages; the editor (and, through
+   * it, the preview's two rendered boxes) scrolls to the passage in question
+   * as the card changes, so the comparison happens where the text already
+   * is. The two texts are available behind "Compare the text" for an author
+   * who wants them in the card, and nothing else is shown.
+   *
+   * Nothing here touches a file: a choice is handed to the page, which
+   * applies it as ONE undoable edit and confirms it with a toast that offers
+   * Undo. The page owns the block list (derived from the live buffer, so a
+   * settled passage leaves at once and the card moves on to the next).
    */
+  import { onMount, tick } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
   import type { TwoVersionsBlock, TwoVersionsChoice } from "$lib/editor/two-versions";
 
   let {
     blocks,
-    fileName,
     isCss = false,
     onChoose,
-    onChooseAll,
     onReveal,
+    onSettled,
   }: {
     blocks: TwoVersionsBlock[];
-    /** The open file's name as the author knows it (project-relative). */
-    fileName: string;
-    /** A stylesheet's two sides read better in the editor's monospace font. */
+    /** A stylesheet: "rule" instead of "passage", texts stacked and unwrapped. */
     isCss?: boolean;
     onChoose: (block: TwoVersionsBlock, choice: TwoVersionsChoice) => void;
-    onChooseAll: (choice: TwoVersionsChoice) => void;
-    /** Scroll the editor to the passage's first marker line (1-based). */
+    /** Scroll the editor to the passage's first marker line (1-based), without taking focus. */
     onReveal?: (line: number) => void;
+    /** The last passage was settled: the page puts focus back in the editor. */
+    onSettled?: () => void;
   } = $props();
 
-  // Expanded by default: the panel exists to be acted on. Collapsing only
-  // hides the list while the author edits around it; the header stays.
-  let open = $state(true);
+  let current = $state(0);
+  let compareOpen = $state(false);
+  let firstButton = $state<HTMLButtonElement | null>(null);
 
-  const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.userAgent);
-  const modKey = isMac ? "Cmd" : "Ctrl";
+  // The list shrinks as passages are settled; the card stays on the same
+  // position, which is now the next passage.
+  const index = $derived(Math.min(current, Math.max(0, blocks.length - 1)));
+  const block = $derived(blocks[index]);
+  const noun = $derived(isCss ? "rule" : "passage");
 
   /** Display text for one side: the merge's trailing line break is not content. */
   function sideText(s: string): string {
     return s.replace(/\r?\n$/, "");
   }
+
+  /**
+   * Button labels that say what will happen. When one side is empty (the
+   * passage was removed there), "Keep yours" would delete it — say so — and
+   * "Keep both" would be the same as keeping the other side.
+   */
+  function labelsFor(b: TwoVersionsBlock): { yours: string; online: string; both: boolean } {
+    const yoursEmpty = sideText(b.yours) === "";
+    const onlineEmpty = sideText(b.online) === "";
+    if (yoursEmpty && !onlineEmpty) return { yours: "Delete it", online: "Keep the online text", both: false };
+    if (onlineEmpty && !yoursEmpty) return { yours: "Keep your text", online: "Delete it", both: false };
+    return { yours: "Keep yours", online: "Keep online", both: true };
+  }
+
+  function reveal(): void {
+    const b = blocks[index];
+    if (b) onReveal?.(b.line);
+  }
+
+  function go(delta: number): void {
+    if (blocks.length < 2) return;
+    current = (index + delta + blocks.length) % blocks.length;
+    reveal();
+  }
+
+  async function choose(choice: TwoVersionsChoice): Promise<void> {
+    const b = block;
+    if (!b) return;
+    onChoose(b, choice);
+    await tick();
+    if (blocks.length === 0) {
+      onSettled?.();
+      return;
+    }
+    current = index;
+    reveal();
+    firstButton?.focus();
+  }
+
+  onMount(reveal);
 </script>
 
-<section class="tv-panel" aria-label="Two versions of this file">
-  <div class="tv-head">
-    <span class="tv-icon"><Icon name="columns-2" size={15} /></span>
-    <span class="tv-msg">
-      <strong>{fileName}</strong>
-      {#if blocks.length === 1}
-        has a passage with two versions — yours and the online copy. Keep the one you want.
-      {:else}
-        has {blocks.length} passages with two versions — yours and the online copy. Keep the one you want in each.
-      {/if}
-    </span>
-    {#if blocks.length > 1}
-      <span class="tv-all">
-        <span class="tv-all-label">For all {blocks.length}:</span>
-        <button class="tv-btn tv-btn-neutral" onclick={() => onChooseAll("yours")}>Keep yours</button>
-        <button class="tv-btn tv-btn-neutral" onclick={() => onChooseAll("online")}>Keep online</button>
+<section class="tv-panel" aria-label="Two versions of this {noun}">
+  {#if block}
+    {@const labels = labelsFor(block)}
+    <p class="tv-question" role="status" aria-live="polite">
+      <span class="tv-icon"><Icon name="columns-2" size={15} /></span>
+      <span class="tv-question-text">
+        This {noun} was changed both here and online. Which version do you want to keep?
       </span>
+      {#if blocks.length > 1}
+        <span class="tv-nav">
+          <span class="tv-count">{index + 1} of {blocks.length}</span>
+          <button class="tv-arrow" aria-label="Previous {noun}" title="Previous {noun}" onclick={() => go(-1)}>
+            <Icon name="chevron-left" size={14} />
+          </button>
+          <button class="tv-arrow" aria-label="Next {noun}" title="Next {noun}" onclick={() => go(1)}>
+            <Icon name="chevron-right" size={14} />
+          </button>
+        </span>
+      {/if}
+    </p>
+    <div class="tv-actions">
+      <button class="tv-btn" bind:this={firstButton} onclick={() => void choose("yours")}>{labels.yours}</button>
+      <button class="tv-btn" onclick={() => void choose("online")}>{labels.online}</button>
+      {#if labels.both}
+        <button class="tv-btn" onclick={() => void choose("both")} title="Keep both texts, yours first">Keep both</button>
+      {/if}
+      <button class="tv-link" aria-expanded={compareOpen} onclick={() => (compareOpen = !compareOpen)}>
+        {compareOpen ? "Hide the text" : "Compare the text"}
+        <Icon name={compareOpen ? "chevron-up" : "chevron-down"} size={13} />
+      </button>
+    </div>
+    {#if compareOpen}
+      <div class="tv-columns" class:stacked={isCss}>
+        <div class="tv-col">
+          <div class="tv-col-label" id="tv-yours">Your version</div>
+          {#if sideText(block.yours)}
+            <pre class="tv-text" class:mono={isCss} aria-labelledby="tv-yours">{sideText(block.yours)}</pre>
+          {:else}
+            <p class="tv-empty" aria-labelledby="tv-yours">Nothing — your version has no text here.</p>
+          {/if}
+        </div>
+        <div class="tv-col">
+          <div class="tv-col-label" id="tv-online">Online version</div>
+          {#if sideText(block.online)}
+            <pre class="tv-text" class:mono={isCss} aria-labelledby="tv-online">{sideText(block.online)}</pre>
+          {:else}
+            <p class="tv-empty" aria-labelledby="tv-online">Nothing — the online version has no text here.</p>
+          {/if}
+        </div>
+      </div>
     {/if}
-    <button
-      class="tv-toggle"
-      aria-expanded={open}
-      aria-controls="two-versions-list"
-      title={open ? "Hide the passages" : "Show the passages"}
-      onclick={() => (open = !open)}
-    >
-      <Icon name={open ? "chevron-up" : "chevron-down"} size={15} />
-    </button>
-  </div>
-  {#if open}
-    <ol id="two-versions-list" class="tv-list">
-      {#each blocks as block, i (block.from)}
-        <li class="tv-block">
-          <div class="tv-block-head">
-            <span class="tv-block-title">
-              {blocks.length > 1 ? `Passage ${i + 1} of ${blocks.length}` : "The passage"}
-            </span>
-            {#if onReveal}
-              <button class="tv-link" onclick={() => onReveal?.(block.line)}>Show in the text</button>
-            {/if}
-          </div>
-          <div class="tv-columns">
-            <div class="tv-col">
-              <div class="tv-col-label">Your version</div>
-              {#if sideText(block.yours)}
-                <pre class="tv-text" class:mono={isCss}>{sideText(block.yours)}</pre>
-              {:else}
-                <p class="tv-empty">Nothing — your copy has no text here.</p>
-              {/if}
-            </div>
-            <div class="tv-col">
-              <div class="tv-col-label">Online version</div>
-              {#if sideText(block.online)}
-                <pre class="tv-text" class:mono={isCss}>{sideText(block.online)}</pre>
-              {:else}
-                <p class="tv-empty">Nothing — the online copy has no text here.</p>
-              {/if}
-            </div>
-          </div>
-          <div class="tv-block-actions">
-            <button class="tv-btn tv-btn-neutral" onclick={() => onChoose(block, "yours")}>Keep yours</button>
-            <button class="tv-btn tv-btn-neutral" onclick={() => onChoose(block, "online")}>Keep online</button>
-            <button class="tv-btn tv-btn-neutral" onclick={() => onChoose(block, "both")}>Keep both</button>
-          </div>
-        </li>
-      {/each}
-    </ol>
-    <p class="tv-hint">Changed your mind? Undo ({modKey}+Z) in the text brings both versions back.</p>
   {/if}
 </section>
 
@@ -121,81 +151,94 @@
   .tv-panel {
     display: flex;
     flex-direction: column;
-    flex: 0 1 auto;
-    min-height: 0;
-    /* The list scrolls inside a bounded panel; the editor keeps the rest. */
-    max-height: 50%;
-    background: var(--app-surface);
+    gap: 10px;
+    flex: 0 0 auto;
+    max-height: 60%;
+    overflow: auto;
+    padding: 10px 12px 12px;
+    background: var(--app-surface-raised);
     border-bottom: 1px solid var(--app-border);
     font-size: 13px;
     color: var(--app-text);
   }
-  .tv-head {
+  .tv-question {
     display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px 10px;
-    padding: 8px 12px;
-    background: var(--app-warning-bg);
-    border-bottom: 1px solid var(--app-warning-border);
-    color: var(--app-warning-text);
-    flex: 0 0 auto;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 0;
+    line-height: 1.4;
   }
   .tv-icon {
     display: inline-flex;
     flex: 0 0 auto;
+    margin-top: 1px;
+    color: var(--app-accent);
   }
-  .tv-msg {
-    flex: 1 1 16rem;
+  .tv-question-text {
+    flex: 1 1 12rem;
     min-width: 0;
   }
-  .tv-all {
+  .tv-nav {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    flex: 0 0 auto;
+    gap: 2px;
+    margin-left: auto;
+    white-space: nowrap;
   }
-  .tv-all-label {
+  .tv-count {
+    margin-right: 4px;
     font-size: 12px;
+    color: var(--app-text-muted);
   }
-  .tv-toggle {
+  .tv-arrow {
     display: inline-flex;
     align-items: center;
-    padding: 4px;
-    border: 1px solid transparent;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--app-border);
     border-radius: 6px;
-    background: transparent;
-    color: inherit;
+    background: var(--app-control-bg);
+    color: var(--app-text-secondary);
     cursor: pointer;
-    flex: 0 0 auto;
   }
-  .tv-toggle:hover {
+  .tv-arrow:hover {
     background: var(--app-control-hover-bg);
   }
-  .tv-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    overflow: auto;
-    min-height: 0;
-  }
-  .tv-block {
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--app-border-subtle);
-  }
-  .tv-block-head {
+  .tv-actions {
     display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 10px;
-    margin-bottom: 6px;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
   }
-  .tv-block-title {
+  /* 32px pointer targets (UX contract) and a visible focus ring. */
+  .tv-btn {
+    min-height: 32px;
+    padding: 5px 14px;
+    border: 1px solid var(--app-border-strong);
+    border-radius: 6px;
+    background: var(--app-control-bg);
+    color: var(--app-text);
+    font-size: 13px;
     font-weight: 600;
-    color: var(--app-text-secondary);
-    font-size: 12px;
+    cursor: pointer;
+  }
+  .tv-btn:hover {
+    background: var(--app-control-hover-bg);
+  }
+  .tv-btn:focus-visible,
+  .tv-link:focus-visible,
+  .tv-arrow:focus-visible {
+    outline: 2px solid var(--app-focus-ring);
+    outline-offset: 2px;
   }
   .tv-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    min-height: 32px;
+    margin-left: auto;
     padding: 0;
     border: 0;
     background: none;
@@ -212,10 +255,14 @@
     flex-wrap: wrap;
     gap: 8px;
   }
+  .tv-columns.stacked {
+    flex-direction: column;
+  }
+  /* Stacked, each text takes its own height; the basis is for columns only. */
+  .tv-columns.stacked .tv-col {
+    flex: 0 0 auto;
+  }
   .tv-col {
-    /* Two columns side by side at the default editor-pane width (about
-       460px with the left panel open); one under the other when the pane
-       is narrower than two columns. */
     flex: 1 1 13rem;
     min-width: 0;
     display: flex;
@@ -232,53 +279,28 @@
   .tv-text,
   .tv-empty {
     margin: 0;
-    padding: 8px 10px;
+    padding: 6px 10px;
     border: 1px solid var(--app-border);
     border-radius: 6px;
     background: var(--app-surface-sunken);
-    /* Prose wraps like it does in the editor; nothing scrolls sideways. */
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
     font: inherit;
     line-height: 1.45;
+    /* About five lines, then the column scrolls: the whole text is in the
+       editor below and rendered in the preview. */
+    max-height: calc(1.45em * 5 + 12px);
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
+  /* Stylesheet rules keep their lines; the column scrolls sideways. */
   .tv-text.mono {
     font-family: var(--app-font-mono);
     font-size: 12px;
+    white-space: pre;
+    overflow-wrap: normal;
   }
   .tv-empty {
     color: var(--app-text-muted);
     font-style: italic;
-  }
-  .tv-block-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 8px;
-  }
-  /* Geometry only — colors come from .tv-btn-neutral (mirrors ExternalEditBanner). */
-  .tv-btn {
-    padding: 4px 10px;
-    border-width: 1px;
-    border-style: solid;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .tv-btn-neutral {
-    background: var(--app-control-bg);
-    border-color: var(--app-border);
-    color: var(--app-text);
-  }
-  .tv-btn-neutral:hover {
-    background: var(--app-control-hover-bg);
-  }
-  .tv-hint {
-    margin: 0;
-    padding: 6px 12px 8px;
-    font-size: 12px;
-    color: var(--app-text-muted);
-    flex: 0 0 auto;
   }
 </style>

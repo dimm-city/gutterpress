@@ -107,14 +107,3 @@ export function resolveTwoVersions(block: TwoVersionsBlock, choice: TwoVersionsC
     choice === "yours" ? block.yours : choice === "online" ? block.online : block.yours + block.online;
   return { from: block.from, to: block.to, insert };
 }
-
-/**
- * The edits that settle EVERY block in `text` the same way, last block
- * first, so applying them one after another never shifts an edit still to
- * come.
- */
-export function resolveAllTwoVersions(text: string, choice: TwoVersionsChoice): RangeEdit[] {
-  return findTwoVersions(text)
-    .map((block) => resolveTwoVersions(block, choice))
-    .reverse();
-}

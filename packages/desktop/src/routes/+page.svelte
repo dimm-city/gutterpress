@@ -11,7 +11,6 @@
   import { chapterPath, isSafeChapterId } from "$lib/editor/chapter-path";
   import {
     findTwoVersions,
-    resolveAllTwoVersions,
     resolveTwoVersions,
     type RangeEdit,
     type TwoVersionsBlock,
@@ -1063,6 +1062,7 @@
   let editorRef = $state<{
     focus: () => void;
     revealLine: (line: number, focusEditor?: boolean, column?: number) => void;
+    undo: () => boolean;
     runToolbarAction: (action: ToolbarAction, payload?: ToolbarPayload) => void;
     getSelectionText: () => string;
     insertSnippet: (text: string) => void;
@@ -1339,12 +1339,12 @@
     target.edit(text);
   }
 
+  /** Apply one choice and confirm it where the author is looking, with the way back. */
   function keepVersion(block: TwoVersionsBlock, choice: TwoVersionsChoice): void {
     applyTwoVersionsEdits([resolveTwoVersions(block, choice)]);
-  }
-
-  function keepAllVersions(choice: TwoVersionsChoice): void {
-    applyTwoVersionsEdits(resolveAllTwoVersions(editorContent, choice));
+    const kept =
+      choice === "yours" ? "Kept your version" : choice === "online" ? "Kept the online version" : "Kept both versions";
+    toast?.success(`${kept}.`, undefined, { label: "Undo", onClick: () => editorRef?.undo() });
   }
 
   function showEditorContent(path: string, content: string): void {
@@ -1944,6 +1944,10 @@
    */
   function openProblem(p: ProblemEntry) {
     if (!p.filePath || !lifecycle.currentDir) return;
+    // A Two versions entry opens its file under the two-versions panel,
+    // which is that file's own list of these problems: closing the Problems
+    // list keeps the editor from being squeezed between the two.
+    if (p.source === "source.sync.merge-markers") problemsOpen = false;
     // Make sure the editor pane is visible first (narrow = Edit mode pane;
     // wide = the editor split).
     if (isNarrow) {
@@ -3202,16 +3206,17 @@
               onToggleProblems={toggleProblems}
             />
             {/if}
-            {#if !inFocus && editorFilePath && twoVersionsBlocks.length > 0}
-              <!-- Passages with two versions after a sync (#407): compare and
-                   pick, right above the text they rewrite. -->
+            {#if editorFilePath && twoVersionsBlocks.length > 0}
+              <!-- Passages with two versions after a sync (#407): pick, right
+                   above the text they rewrite. Shown in Focus too — the
+                   markers are in the text either way, and this is the way
+                   to settle them. -->
               <TwoVersionsPanel
                 blocks={twoVersionsBlocks}
-                fileName={editorChapter ?? externalFileName}
                 isCss={openFileIsCss}
                 onChoose={keepVersion}
-                onChooseAll={keepAllVersions}
-                onReveal={(line) => editorRef?.revealLine(line, true)}
+                onReveal={(line) => whenEditorReady(() => editorRef?.revealLine(line, false))}
+                onSettled={() => editorRef?.focus()}
               />
             {/if}
             {#if MarkdownEditor}

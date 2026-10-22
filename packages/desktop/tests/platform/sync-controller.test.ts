@@ -126,7 +126,8 @@ test("synced with a converge report -> one toast per kind of kept-both file", as
   await h.ctrl.handleForceSync();
   expect(h.toast.info.calls).toHaveLength(2);
   expect(h.toast.info.calls[0]![0]).toContain("chapter-02.md");
-  expect(h.toast.info.calls[0]![0]).toContain("both versions are kept");
+  expect(h.toast.info.calls[0]![0]).toContain("Two versions of a passage were kept");
+  expect(h.toast.info.calls[0]![0]).toContain("the online version");
   expect(h.toast.info.calls[1]![0]).toContain("cover.png");
   expect(h.toast.info.calls[1]![0]).toContain("cover.online.png");
 });

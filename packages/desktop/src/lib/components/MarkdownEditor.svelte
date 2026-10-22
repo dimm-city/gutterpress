@@ -33,6 +33,7 @@
     defaultKeymap,
     history,
     historyKeymap,
+    undo as undoCommand,
     indentWithTab,
   } from "@codemirror/commands";
   import {
@@ -551,6 +552,11 @@
   /** Move keyboard focus into the editor (used when the pane is opened). */
   export function focus(): void {
     view?.focus();
+  }
+
+  /** Undo the last edit — the same step Ctrl+Z takes (a toast's Undo button). */
+  export function undo(): boolean {
+    return view ? undoCommand(view) : false;
   }
 
 

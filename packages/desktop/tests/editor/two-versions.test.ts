@@ -7,11 +7,7 @@
  * the merge writes without this failing.
  */
 import { describe, expect, test } from "bun:test";
-import {
-  findTwoVersions,
-  resolveAllTwoVersions,
-  resolveTwoVersions,
-} from "../../src/lib/editor/two-versions";
+import { findTwoVersions, resolveTwoVersions } from "../../src/lib/editor/two-versions";
 
 const BASE = "# One\n\nThe vault door opened.\n\nMika stepped through.\n";
 const OURS = "# One\n\nThe vault door groaned open after Mika picked the lock.\n\nMika stepped through.\n";
@@ -130,24 +126,5 @@ describe("resolveTwoVersions", () => {
       "h1 { color: black; }\n<<<<<<< your version\nh2 { color: red; }\n=======\nh2 { color: blue; }\n>>>>>>> online version\n";
     const [b] = findTwoVersions(css);
     expect(apply(css, resolveTwoVersions(b!, "online"))).toBe("h1 { color: black; }\nh2 { color: blue; }\n");
-  });
-});
-
-describe("resolveAllTwoVersions", () => {
-  test("settles every block the same way, ordered so applying one by one stays valid", () => {
-    const text =
-      "intro\n" +
-      "<<<<<<< your version\na1\n=======\nb1\n>>>>>>> online version\n" +
-      "middle\n" +
-      "<<<<<<< your version\na2\n=======\nb2\n>>>>>>> online version\n" +
-      "end\n";
-    const edits = resolveAllTwoVersions(text, "online");
-    expect(edits).toHaveLength(2);
-    // Last block first: the earlier block's offsets are untouched by it.
-    expect(edits[0]!.from).toBeGreaterThan(edits[1]!.from);
-    let out = text;
-    for (const e of edits) out = out.slice(0, e.from) + e.insert + out.slice(e.to);
-    expect(out).toBe("intro\nb1\nmiddle\nb2\nend\n");
-    expect(resolveAllTwoVersions("clean\n", "yours")).toEqual([]);
   });
 });

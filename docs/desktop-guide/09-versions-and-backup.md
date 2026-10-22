@@ -114,21 +114,22 @@ button.
 ### When your changes and the online copy overlap
 
 If you and someone else edited the same passage, getting the latest changes keeps both versions
-in the file and tells you so: **Your changes and a teammate's overlapped in chapter-02.md — both
-versions are kept there, marked for you to review**, with a **Review** button. Nothing is lost,
-but the book will not export until you choose.
+in the file and tells you so: **Two versions of a passage were kept in chapter-02.md — yours and
+the online version. Choose which to keep in the editor**, with a **Review** button. Nothing is
+lost, but the book will not export until you choose.
 
 1. Click **Review**, or open the Problems list from the editor toolbar. Each passage with two
    versions is listed as **Two versions**; click one to open its file.
-2. A panel above the text shows each passage as two columns, **Your version** and **Online
-   version**. The preview shows the same two versions in the page, each in a labelled box, so
-   you can read either one as it would print.
-3. Click **Keep yours**, **Keep online** or **Keep both** under the passage. The file is updated
-   right away, and the passage leaves the panel. When a file has several passages, **For all**
-   in the panel's top bar settles every one the same way.
+2. A card above the text asks, one passage at a time, which version you want to keep: **Keep
+   yours**, **Keep online** or **Keep both**. The editor scrolls to that passage, and the preview
+   shows both versions in the page, each in a labelled box, so you can read either one as it
+   would print. **Compare the text** shows the two texts in the card. With several passages, the
+   count and arrows in the card's corner move between them.
+3. Click your choice. The file is updated right away, the card moves on to the next passage, and
+   a message confirms it with an **Undo** button.
 
-A choice is an ordinary edit: Undo in the text (Ctrl+Z, or Cmd+Z on a Mac) brings both versions
-back. **Show in the text** scrolls the editor to the passage. Stylesheets work the same way.
+Undo in the text (Ctrl+Z, or Cmd+Z on a Mac) also brings both versions back. Stylesheets work
+the same way, rule by rule.
 
 A picture or other file that cannot hold two versions is kept as two files instead, the online
 one named `cover.online.png` beside your `cover.png`. Keep the one you want and delete the other

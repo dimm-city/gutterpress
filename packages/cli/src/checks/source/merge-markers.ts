@@ -52,7 +52,7 @@ const check: Check = {
   id: "source.sync.merge-markers",
   name: "Combined Versions",
   description:
-    "Finds passages and files still holding two versions (yours and the online copy) after a sync",
+    "Finds passages and files still holding two versions (yours and the online version) after a sync",
   category: "source",
   phase: "pre-build",
   async run(ctx: CheckContext): Promise<CheckResult[]> {
@@ -92,7 +92,7 @@ const check: Check = {
               severity: "error",
               code: "two-versions-passage",
               message:
-                "This passage has two versions (yours and the online copy) — keep what you want, then delete the marker lines.",
+                "This passage has two versions — yours and the online version. Choose one in the editor's Two versions panel, or keep the text you want and delete the marker lines.",
               file,
               line: i + 1,
             }),
