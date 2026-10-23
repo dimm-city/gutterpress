@@ -101,6 +101,20 @@ This project follows [Semantic Versioning](https://semver.org/).
   CGATS21_CRPC1 profile's citation now points at DriveThru's Affinity Publisher
   guide, where it is stated, rather than the Quick Specifications article.
 
+### Fixed
+
+- **A book whose stylesheet sets no `@page { size }` now prints at the
+  manifest's page size (#415).** What Chromium prints is the stylesheet's
+  plain `@page { size }` rule, and a book whose author wrote their own
+  stylesheet with only `@page { margin }`, or replaced the scaffolded one,
+  had none, so a `dtrpg` book printed at Letter (612×792pt) while the preview
+  overlays, the safe-margins check and the page-size check all judged it
+  against 621×810. The assembled page now carries `@page { size: <width>pt
+  <height>pt }` from the manifest whenever no stylesheet, the book's own or a
+  look's, sets a plain size; a stylesheet that does set one still wins. The
+  rule is found with the engine's own `@page` reader, so the preview, the
+  compiler and the print path read one answer.
+
 ## [0.11.21] - 2026-10-16
 
 ### Removed
