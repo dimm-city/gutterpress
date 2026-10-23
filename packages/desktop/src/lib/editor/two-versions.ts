@@ -23,7 +23,8 @@
  *
  * Matching is as EXACT as the check's: only the two fixed labels open and
  * close a block. A bare `=======` is setext-heading markdown and means
- * nothing on its own. CRLF files are read as the merge wrote them.
+ * nothing on its own. The text is the editor's, which breaks lines with
+ * "\n" whatever the file on disk uses (the page normalizes before calling).
  *
  * Pure: strings in, offsets out. A choice is ONE range replacement, so the
  * editor applies it as a single undoable transaction — undo puts both
@@ -75,9 +76,7 @@ export function findTwoVersions(text: string): TwoVersionsBlock[] {
     line++;
     const nl = text.indexOf("\n", pos);
     const next = nl === -1 ? text.length : nl + 1;
-    let end = nl === -1 ? text.length : nl;
-    if (end > pos && text[end - 1] === "\r") end--;
-    const body = text.slice(pos, end);
+    const body = text.slice(pos, nl === -1 ? text.length : nl);
     if (body === OPEN_SENTINEL) {
       open = { line, from: pos, yoursFrom: next };
       mid = null;
@@ -101,9 +100,90 @@ export function findTwoVersions(text: string): TwoVersionsBlock[] {
   return blocks;
 }
 
-/** The edit that replaces one block with the chosen text and no markers. */
+/**
+ * The edit that replaces one block with the chosen text and no markers.
+ * "Both" puts the two texts one after the other with a blank line between,
+ * so two versions of a paragraph stay two paragraphs rather than running
+ * together into one; a side that is empty adds nothing.
+ */
 export function resolveTwoVersions(block: TwoVersionsBlock, choice: TwoVersionsChoice): RangeEdit {
-  const insert =
-    choice === "yours" ? block.yours : choice === "online" ? block.online : block.yours + block.online;
+  let insert: string;
+  if (choice === "yours") insert = block.yours;
+  else if (choice === "online") insert = block.online;
+  else if (!block.yours.trim() || !block.online.trim()) insert = block.yours + block.online;
+  else {
+    const gap = block.yours.endsWith("\n\n") || block.online.startsWith("\n") ? "" : "\n";
+    insert = block.yours + gap + block.online;
+  }
   return { from: block.from, to: block.to, insert };
+}
+
+/** One run of a side's text in the compare view, marked where it differs from the other side. */
+export interface TextRun {
+  text: string;
+  changed: boolean;
+}
+
+/** Past this many words a side, the compare shows no word marks (the table would be too big). */
+const WORD_DIFF_LIMIT = 400;
+
+/**
+ * The two texts as runs, with the words only one side has marked. A
+ * near-identical pair — one word reworded in a long paragraph — is the
+ * common case, and without this the author cannot see what differs.
+ * Whitespace is never marked. Both sides come back unmarked when either is
+ * too long to compare, so the view degrades to plain text, never hangs.
+ */
+export function markDifferences(yours: string, online: string): { yours: TextRun[]; online: TextRun[] } {
+  const split = (s: string): string[] => s.split(/(\s+)/).filter((t) => t.length > 0);
+  const a = split(yours);
+  const b = split(online);
+  const words = (tokens: string[]): number[] => tokens.map((t, i) => i).filter((i) => !/^\s+$/.test(tokens[i]!));
+  const ai = words(a);
+  const bi = words(b);
+  const plain = { yours: [{ text: yours, changed: false }], online: [{ text: online, changed: false }] };
+  if (ai.length > WORD_DIFF_LIMIT || bi.length > WORD_DIFF_LIMIT) return plain;
+  // Longest common subsequence over the words (whitespace tokens ride along).
+  const n = ai.length;
+  const m = bi.length;
+  const table = new Uint16Array((n + 1) * (m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      table[i * (m + 1) + j] =
+        a[ai[i]!] === b[bi[j]!]
+          ? table[(i + 1) * (m + 1) + j + 1]! + 1
+          : Math.max(table[(i + 1) * (m + 1) + j]!, table[i * (m + 1) + j + 1]!);
+    }
+  }
+  const keepA = new Set<number>();
+  const keepB = new Set<number>();
+  for (let i = 0, j = 0; i < n && j < m; ) {
+    if (a[ai[i]!] === b[bi[j]!]) {
+      keepA.add(ai[i]!);
+      keepB.add(bi[j]!);
+      i++;
+      j++;
+    } else if (table[(i + 1) * (m + 1) + j]! >= table[i * (m + 1) + j + 1]!) i++;
+    else j++;
+  }
+  // Two texts that share little are simply different texts: marking most
+  // of every word says nothing, so the view shows them plain.
+  if (keepA.size < ai.length * 0.4 || keepB.size < bi.length * 0.4) return plain;
+  const runs = (tokens: string[], keep: Set<number>): TextRun[] => {
+    const out: TextRun[] = [];
+    tokens.forEach((t, i) => {
+      const changed = !/^\s+$/.test(t) && !keep.has(i);
+      const last = out[out.length - 1];
+      if (last && last.changed === changed) last.text += t;
+      else out.push({ text: t, changed });
+    });
+    return out;
+  };
+  return { yours: runs(a, keepA), online: runs(b, keepB) };
+}
+
+/** True when the two texts differ only in spacing or line breaks. */
+export function differOnlyInSpacing(yours: string, online: string): boolean {
+  const squash = (s: string): string => s.replace(/\s+/g, " ").trim();
+  return yours !== online && squash(yours) === squash(online);
 }

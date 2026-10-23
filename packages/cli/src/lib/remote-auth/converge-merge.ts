@@ -156,14 +156,21 @@ export function mergeWithMarkers(
     baseContent.match(LINEBREAKS) ?? [],
     theirContent.match(LINEBREAKS) ?? [],
   );
+  // A side that ends the file without a line break would run into the
+  // separator ("…last words=======") and leave a family nothing can read
+  // back; every marker line stands on its own line.
+  const onItsOwnLine = (lines: string[]): string => {
+    const text = lines.join("");
+    return text === "" || text.endsWith("\n") ? text : `${text}\n`;
+  };
   let merged = "";
   for (const item of result) {
     if (item.ok) merged += item.ok.join("");
     if (item.conflict) {
       merged += `<<<<<<< ${OUR_LABEL}\n`;
-      merged += item.conflict.a.join("");
+      merged += onItsOwnLine(item.conflict.a);
       merged += `=======\n`;
-      merged += item.conflict.b.join("");
+      merged += onItsOwnLine(item.conflict.b);
       merged += `>>>>>>> ${THEIR_LABEL}\n`;
     }
   }

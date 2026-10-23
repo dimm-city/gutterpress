@@ -123,13 +123,22 @@ lost, but the book will not export until you choose.
 2. A card above the text asks, one passage at a time, which version you want to keep: **Keep
    yours**, **Keep online** or **Keep both**. The editor scrolls to that passage, and the preview
    shows both versions in the page, each in a labelled box, so you can read either one as it
-   would print. **Compare the text** shows the two texts in the card. With several passages, the
+   would print. **Compare the text** shows the two texts in the card, with the words only one
+   side has marked (two texts that differ only in spacing say so). With several passages, the
    count and arrows in the card's corner move between them.
 3. Click your choice. The file is updated right away, the card moves on to the next passage, and
-   a message confirms it with an **Undo** button.
+   a message confirms it with an **Undo** button. **Keep both** puts your version first and the
+   online version after it, as two paragraphs.
 
+When the last passage in a file is settled, a message offers the **Next file** that has one.
 Undo in the text (Ctrl+Z, or Cmd+Z on a Mac) also brings both versions back. Stylesheets work
-the same way, rule by rule.
+the same way, rule by rule, and so does the book's settings file: while `manifest.yaml` holds
+two versions of a setting the preview shows **This book's settings have two versions** instead
+of a page, and comes back on its own once you choose.
+
+If a passage's two texts look nothing alike, someone online may have rewritten or removed
+paragraphs above it, so the two sides are offset by a paragraph from there on. Keep the same
+side all the way down the chapter, or keep both and tidy the text afterwards.
 
 A picture or other file that cannot hold two versions is kept as two files instead, the online
 one named `cover.online.png` beside your `cover.png`. Keep the one you want and delete the other

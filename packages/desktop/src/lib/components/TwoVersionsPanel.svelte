@@ -18,7 +18,12 @@
    */
   import { onMount, tick } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
-  import type { TwoVersionsBlock, TwoVersionsChoice } from "$lib/editor/two-versions";
+  import {
+    differOnlyInSpacing,
+    markDifferences,
+    type TwoVersionsBlock,
+    type TwoVersionsChoice,
+  } from "$lib/editor/two-versions";
 
   let {
     blocks,
@@ -51,6 +56,13 @@
   function sideText(s: string): string {
     return s.replace(/\r?\n$/, "");
   }
+
+  // Two texts that look the same are the hard case: say so when only
+  // spacing differs, and mark the words that differ when the compare is open.
+  const spacingOnly = $derived(!!block && differOnlyInSpacing(block.yours, block.online));
+  const runs = $derived.by(() =>
+    compareOpen && block ? markDifferences(sideText(block.yours), sideText(block.online)) : null,
+  );
 
   /**
    * Button labels that say what will happen. When one side is empty (the
@@ -113,6 +125,9 @@
         </span>
       {/if}
     </p>
+    {#if spacingOnly}
+      <p class="tv-note">The two versions differ only in spacing or line breaks — either one reads the same.</p>
+    {/if}
     <div class="tv-actions">
       <button class="tv-btn" bind:this={firstButton} onclick={() => void choose("yours")}>{labels.yours}</button>
       <button class="tv-btn" onclick={() => void choose("online")}>{labels.online}</button>
@@ -129,7 +144,8 @@
         <div class="tv-col">
           <div class="tv-col-label" id="tv-yours">Your version</div>
           {#if sideText(block.yours)}
-            <pre class="tv-text" class:mono={isCss} aria-labelledby="tv-yours">{sideText(block.yours)}</pre>
+            <!-- One line: inside <pre>, whitespace between runs would be text. -->
+            <pre class="tv-text" class:mono={isCss} aria-labelledby="tv-yours">{#each runs?.yours ?? [] as run}{#if run.changed}<mark>{run.text}</mark>{:else}{run.text}{/if}{/each}</pre>
           {:else}
             <p class="tv-empty" aria-labelledby="tv-yours">Nothing — your version has no text here.</p>
           {/if}
@@ -137,7 +153,7 @@
         <div class="tv-col">
           <div class="tv-col-label" id="tv-online">Online version</div>
           {#if sideText(block.online)}
-            <pre class="tv-text" class:mono={isCss} aria-labelledby="tv-online">{sideText(block.online)}</pre>
+            <pre class="tv-text" class:mono={isCss} aria-labelledby="tv-online">{#each runs?.online ?? [] as run}{#if run.changed}<mark>{run.text}</mark>{:else}{run.text}{/if}{/each}</pre>
           {:else}
             <p class="tv-empty" aria-labelledby="tv-online">Nothing — the online version has no text here.</p>
           {/if}
@@ -161,10 +177,13 @@
     font-size: 13px;
     color: var(--app-text);
   }
+  /* The count and arrows drop under the question when the pane is narrow,
+     rather than squeezing it into a four-line column. */
   .tv-question {
     display: flex;
+    flex-wrap: wrap;
     align-items: flex-start;
-    gap: 8px;
+    gap: 6px 8px;
     margin: 0;
     line-height: 1.4;
   }
@@ -175,7 +194,7 @@
     color: var(--app-accent);
   }
   .tv-question-text {
-    flex: 1 1 12rem;
+    flex: 1 1 14rem;
     min-width: 0;
   }
   .tv-nav {
@@ -285,12 +304,24 @@
     background: var(--app-surface-sunken);
     font: inherit;
     line-height: 1.45;
-    /* About five lines, then the column scrolls: the whole text is in the
+    /* About ten lines, then the column scrolls: the whole text is in the
        editor below and rendered in the preview. */
-    max-height: calc(1.45em * 5 + 12px);
+    max-height: calc(1.45em * 10 + 12px);
     overflow: auto;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+  /* The words only this side has. */
+  .tv-text mark {
+    background: var(--app-warning-bg);
+    color: inherit;
+    border-bottom: 2px solid var(--app-warning-border);
+    border-radius: 2px;
+  }
+  .tv-note {
+    margin: 0;
+    font-size: 12px;
+    color: var(--app-text-secondary);
   }
   /* Stylesheet rules keep their lines; the column scrolls sideways. */
   .tv-text.mono {

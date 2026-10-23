@@ -79,3 +79,21 @@ describe("two_versions block rule", () => {
     expect(TWO_VERSIONS_CSS).toContain("content: attr(data-label)");
   });
 });
+
+describe("a version that carries a marker line", () => {
+  test("is shown verbatim, so a section opened inside one version cannot swallow the other", () => {
+    const html = render(
+      "@section .lede\n\nBefore.\n\n<<<<<<< your version\n@end-section\n\n@section .aside\n\nMine inside.\n=======\nOnline text.\n>>>>>>> online version\n\nAfter.\n\n@end-section\n",
+    );
+    // The yours box holds the raw lines, markers included, escaped.
+    expect(html).toMatch(/gp-version-yours[^>]*>\s*<pre class="gp-version-text">@end-section\n\n@section \.aside\n\nMine inside\.<\/pre>/);
+    // The online box is a sibling of the yours box, not nested inside it.
+    const yours = html.indexOf("gp-version-yours");
+    const yoursClose = html.indexOf("</pre>\n</div>", yours);
+    const online = html.indexOf("gp-version-online");
+    expect(yoursClose).toBeGreaterThan(yours);
+    expect(online).toBeGreaterThan(yoursClose);
+    // Every div closes.
+    expect((html.match(/<div\b/g) ?? []).length).toBe((html.match(/<\/div>/g) ?? []).length);
+  });
+});

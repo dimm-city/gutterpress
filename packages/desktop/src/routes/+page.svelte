@@ -1322,7 +1322,11 @@
   // is an ordinary editor edit: it goes through the mounted CodeMirror view
   // (one undoable transaction) and from there down the usual save → preview
   // reload → Problems refresh path, so the check's entry clears on its own.
-  let twoVersionsBlocks = $derived(findTwoVersions(editorContent));
+  // CodeMirror holds every file with "\n" line breaks whatever the file on
+  // disk uses, and a choice is applied to THAT document, so the offsets are
+  // found in the same text: a CRLF file read as written put every offset a
+  // line break short and a choice ate the line after the passage.
+  let twoVersionsBlocks = $derived(findTwoVersions(editorContent.replace(/\r\n?/g, "\n")));
 
   function applyTwoVersionsEdits(edits: RangeEdit[]): void {
     const path = editorFilePath;
@@ -1334,17 +1338,54 @@
     }
     // The editor module is still loading: write the buffer directly (same
     // fallback the commit engine uses), losing only the undo step.
-    let text = target.content;
+    let text = target.content.replace(/\r\n?/g, "\n");
     for (const e of edits) text = text.slice(0, e.from) + e.insert + text.slice(e.to);
     target.edit(text);
   }
 
+  /**
+   * The last passage in this file is settled: hand focus back to the text;
+   * point at the next file that still holds two versions, if any (the
+   * Problems list knows them); and, for a stylesheet that had kept the
+   * preview from starting, try the preview again once the choice is saved.
+   */
+  async function onTwoVersionsSettled(): Promise<void> {
+    editorRef?.focus();
+    const here = editorFilePath;
+    const elsewhere = problems.filter(
+      (p) => p.source === "source.sync.merge-markers" && !!p.filePath && p.filePath !== here,
+    );
+    const files = new Set(elsewhere.map((p) => p.filePath));
+    if (files.size > 0) {
+      const next = elsewhere[0]!;
+      // Long enough to be read and taken; not so long that it is still
+      // claiming "this file" after the author has moved on by hand.
+      toast?.show(
+        `All settled in this file. ${files.size === 1 ? "One more file has" : `${files.size} more files have`} two versions.`,
+        "info",
+        10_000,
+        { label: "Next file", onClick: () => openProblem(next) },
+      );
+    }
+    // A stylesheet or the manifest with two versions takes the preview down;
+    // with the file settled, the preview comes back without a trip to the
+    // error card's button.
+    if (lifecycle.previewError) {
+      await buffer?.flush().catch(() => {});
+      void lifecycle.retryPreview();
+    }
+  }
+
   /** Apply one choice and confirm it where the author is looking, with the way back. */
+  let keptToast: number | null = null;
   function keepVersion(block: TwoVersionsBlock, choice: TwoVersionsChoice): void {
     applyTwoVersionsEdits([resolveTwoVersions(block, choice)]);
     const kept =
       choice === "yours" ? "Kept your version" : choice === "online" ? "Kept the online version" : "Kept both versions";
-    toast?.success(`${kept}.`, undefined, { label: "Undo", onClick: () => editorRef?.undo() });
+    // Undo reverses the LAST choice, so only the last choice's message
+    // offers it: a stack of two, each saying Undo, would undo the wrong one.
+    if (keptToast !== null) toast?.dismiss(keptToast);
+    keptToast = toast?.success(`${kept}.`, undefined, { label: "Undo", onClick: () => editorRef?.undo() }) ?? null;
   }
 
   function showEditorContent(path: string, content: string): void {
@@ -3210,14 +3251,24 @@
               <!-- Passages with two versions after a sync (#407): pick, right
                    above the text they rewrite. Shown in Focus too — the
                    markers are in the text either way, and this is the way
-                   to settle them. -->
+                   to settle them. Keyed on the file: another file's card
+                   starts at its first passage, with the text folded away. -->
+              {#key editorFilePath}
               <TwoVersionsPanel
                 blocks={twoVersionsBlocks}
                 isCss={openFileIsCss}
                 onChoose={keepVersion}
-                onReveal={(line) => whenEditorReady(() => editorRef?.revealLine(line, false))}
-                onSettled={() => editorRef?.focus()}
+                onReveal={(line) => {
+                  // The editor and the preview both go to the passage in
+                  // question. A programmatic reveal does not echo to the
+                  // preview on its own, so the preview is sent the same
+                  // top-anchored target the editor's scrolling would send.
+                  whenEditorReady(() => editorRef?.revealLine(line, false));
+                  editorSync.onEditorAnchorLine(line, "scroll", editorChapter);
+                }}
+                onSettled={() => void onTwoVersionsSettled()}
               />
+              {/key}
             {/if}
             {#if MarkdownEditor}
               <!-- No per-file `{#key}` remount: MarkdownEditor keeps ONE

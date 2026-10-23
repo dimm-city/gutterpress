@@ -18,7 +18,14 @@ This project follows [Semantic Versioning](https://semver.org/).
   so saving, the preview and the Problems entry follow as for any edit.
   Stylesheets get the same card, rule by rule. The "two versions were kept"
   message after a sync carries a **Review** button that opens the Problems
-  list, where each passage opens its file under the card.
+  list, where each passage opens its file under the card. Compare marks the
+  words only one side has, and says so when the two differ only in spacing;
+  two texts that share little are shown plain. **Keep both** leaves a blank
+  line between two paragraphs. Settling a file's last passage offers the
+  next file that has one, and brings back a preview a stylesheet or
+  manifest with two versions had taken down. A manifest with two versions
+  of a setting is reported as that, in the CLI and the preview, not as
+  "invalid YAML at line 1".
 - **The preview shows both versions of a combined passage.** The marker
   lines a sync writes are valid markdown, so the preview used to render the
   passage as a chapter-sized heading over a stack of quotes and list
@@ -27,6 +34,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   rendered as ordinary markdown, so either version can be read as it would
   print while choosing. Plain HTML and CSS (`.gp-two-versions`); the
   Combined Versions check still blocks a build until the passage is settled.
+  A version that carries a structural marker (`@section` and the like) is
+  shown as plain text, so a marker opened in one version cannot nest the
+  other box inside it. A passage on a file's last line, with no line break
+  after it, now gets its separator on its own line, so it can be read back.
 - **Versions view: what each version changed, a look at any version beside
   the current book, and what is online before Get latest (#408).** Each
   version card lists the files it touched with a plain hint

@@ -61,6 +61,21 @@ describe("source.sync.merge-markers", () => {
     expect(r.message).not.toMatch(/conflict|merge|git/i);
   });
 
+  test("a conflict on the file's last line with no trailing line break still forms a readable family", async () => {
+    // Without the merge ending each side with a line break, the last words
+    // ran into the separator ("…as I left it=======") and no reader — this
+    // check, the editor, the renderer — could find the block.
+    const combined = mergeWithMarkers(
+      "# One\n\nThe final sentence",
+      "# One\n\nThe final sentence, as I left it",
+      "# One\n\nThe final sentence, as it was online",
+    );
+    expect(combined).toContain("The final sentence, as I left it\n=======\n");
+    expect(combined).toContain("The final sentence, as it was online\n>>>>>>> online version\n");
+    const results = await runOn({ "chapter-01.md": combined });
+    expect(results.map((r) => r.code)).toEqual(["two-versions-passage"]);
+  });
+
   test("a bare ======= line is legitimate setext markdown and is NEVER flagged", async () => {
     const results = await runOn({
       "chapter-01.md":

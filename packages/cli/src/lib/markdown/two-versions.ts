@@ -43,6 +43,12 @@ export const TWO_VERSIONS_CSS = `
 .gp-two-versions > .gp-version + .gp-version {
   border-top: 2px dashed #b7791f;
 }
+.gp-two-versions > .gp-version > .gp-version-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.85em;
+}
 .gp-two-versions > .gp-version::before {
   content: attr(data-label);
   display: block;
@@ -60,6 +66,32 @@ function lineText(state: StateBlock, line: number): string {
   return state.src.slice(state.bMarks[line]! + state.tShift[line]!, state.eMarks[line]!);
 }
 
+/** A structural marker line (`@section`, `@end-section`, `@page`, `@chapter`, …). */
+const MARKER_LINE = /^@[a-z]/;
+
+/**
+ * A version that carries a marker line is shown as plain text, not parsed.
+ * The marker parser (markers.js) keeps one open-block stack for the whole
+ * document, so a `@section` opened inside a version and closed after the
+ * block, or the reverse, would close the wrong element and nest the online
+ * box inside the yours box. Verbatim text keeps the page well-formed and
+ * shows the author exactly what each version says.
+ */
+function hasMarkerLine(state: StateBlock, from: number, to: number): boolean {
+  for (let line = from; line < to; line++) {
+    if (MARKER_LINE.test(lineText(state, line))) return true;
+  }
+  return false;
+}
+
+function pushVerbatim(state: StateBlock, from: number, to: number): void {
+  const raw = state.getLines(from, to, 0, false);
+  const token = state.push("html_block", "", 0);
+  token.map = [from, to];
+  token.block = true;
+  token.content = `<pre class="gp-version-text">${state.md.utils.escapeHtml(raw)}</pre>\n`;
+}
+
 /** Parse one version's lines as block markdown inside its own labelled div. */
 function pushVersion(
   state: StateBlock,
@@ -73,11 +105,15 @@ function pushVersion(
   open.attrSet("data-label", label);
   open.map = [from, to];
   open.block = true;
-  // The same fence markdown-it-container puts around nested content: the
-  // inner rules may not read past this version's last line.
-  state.parentType = "container" as StateBlock["parentType"];
-  state.lineMax = to;
-  state.md.block.tokenize(state, from, to);
+  if (hasMarkerLine(state, from, to)) {
+    pushVerbatim(state, from, to);
+  } else {
+    // The same fence markdown-it-container puts around nested content: the
+    // inner rules may not read past this version's last line.
+    state.parentType = "container" as StateBlock["parentType"];
+    state.lineMax = to;
+    state.md.block.tokenize(state, from, to);
+  }
   const close = state.push("two_version_close", "div", -1);
   close.block = true;
 }
