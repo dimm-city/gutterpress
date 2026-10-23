@@ -1,12 +1,13 @@
 # Privacy Policy — Gutterpress
 
-**Effective date:** 2026-09-01
+**Effective date:** 2026-10-23
 
 Gutterpress is a desktop application and command-line tool that turns
-Markdown into print-ready PDFs. This policy covers the one feature that
-involves a third-party account: **publishing to Google Drive**. Every other
-part of Gutterpress works entirely on your own computer, on your own files,
-and sends nothing anywhere.
+Markdown into print-ready PDFs. This policy covers the one built-in feature
+that involves a third-party account, **publishing to Google Drive**, and the
+**publishing plugins** you may choose to install. Every other part of
+Gutterpress works entirely on your own computer, on your own files, and sends
+nothing anywhere.
 
 ## There is no Gutterpress server
 
@@ -86,6 +87,21 @@ You can disconnect Google Drive at any time:
 
 Either way, once revoked, any locally stored token stops working and
 Gutterpress can no longer access your Drive until you connect again.
+
+## Publishing plugins (experimental)
+
+A publishing plugin is an extension you install into a book to publish it
+somewhere Gutterpress doesn't offer itself. It is third-party code, written by
+its author and not by this project, and it runs on your own computer with the
+same access as any program you run. When you publish with one, Gutterpress
+hands it the finished file you chose (the PDF, or the website export), your
+book's title and authors, and the settings you wrote for it in
+`manifest.yaml` — and nothing else. It never receives your Google credential,
+any other stored credential, or access to the credential store; a plugin that
+needs an account of its own handles that sign-in itself, as its own
+instructions describe. What the plugin then sends, and where, is governed by
+its author's own policy, not this one, so install only plugins you trust.
+Removing the extension from your book stops it running.
 
 ## Other data
 

@@ -19,7 +19,8 @@ This project follows [Semantic Versioning](https://semver.org/).
   in `manifest.yaml`. Built-in destinations are unchanged and never load a
   plugin. See the user guide's Publishing chapter (authors) and Plugins chapter
   (the contract). For library callers, `runPublish` now reports an unknown
-  provider id as `{ ok: false, error }` instead of throwing. (#381)
+  provider id as `{ ok: false, error }` instead of throwing. `PRIVACY.md` says
+  what a plugin receives and what it never does. (#381)
 
 ## [0.11.21] - 2026-10-16
 
