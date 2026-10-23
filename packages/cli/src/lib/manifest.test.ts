@@ -545,6 +545,21 @@ describe("loadManifestWithPath explicit-path behavior (finding #12)", () => {
     );
   });
 
+  test("a manifest a sync left with two versions of a setting says so instead of reporting a YAML position", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-manifest-two-versions-"));
+    dirsToClean.push(dir);
+    const manifestPath = join(dir, "manifest.yaml");
+    await Bun.write(
+      manifestPath,
+      '<<<<<<< your version\ntitle: "Mine"\n=======\ntitle: "Online"\n>>>>>>> online version\nsource:\n  files: []\n'
+    );
+
+    await expect(loadManifestWithPath(dir)).rejects.toThrow(UsageError);
+    await expect(loadManifestWithPath(dir)).rejects.toThrow(
+      `"${manifestPath}" has two versions of a setting — yours and the online version — left by a sync.`
+    );
+  });
+
   test("automatic discovery uses only the canonical manifest filename", async () => {
     expect([...MANIFEST_FILENAMES]).toEqual(["manifest.yaml"]);
   });

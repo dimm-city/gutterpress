@@ -292,6 +292,16 @@ export type {
   SwitchBranchResult,
 } from "../lib/source-provider.ts";
 
+// ── Versions view (#408): what a version changed, what is online, a version's files ──
+export {
+  describeVersions,
+  listOnlineVersions,
+  compareVersionFile,
+  exportVersionTree,
+  VERSION_CHANGES_SHOWN,
+} from "../lib/version-changes.ts";
+export type { VersionEntry, VersionFileChange, CompareRow } from "../lib/version-changes.ts";
+
 // ── Host-timer cadence policy (auto-snapshot / auto-sync delays) ──────────────
 export {
   autoSnapshotDelayMs,

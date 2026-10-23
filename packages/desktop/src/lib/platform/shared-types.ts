@@ -765,9 +765,36 @@ export interface SnapshotEntry {
   author?: string;
 }
 
+/** One file a version changed, with a plain size hint (mirrors the lib's VersionFileChange). */
+export interface VersionFileChange {
+  /** Repo-relative path, forward slashes. */
+  path: string;
+  kind: "added" | "removed" | "changed";
+  /** "3 paragraphs changed", "1 rule changed", "replaced", "added", "removed". */
+  hint: string;
+  /** Both sides are text, so the compare view can show them. */
+  text: boolean;
+}
+
+/** A history entry with what it changed and where it is kept (#408). */
+export interface VersionEntry extends SnapshotEntry {
+  changes: VersionFileChange[];
+  /** Changed files beyond the ones listed. */
+  moreChanges: number;
+  /** True = online too; false = on this computer only; null = no online copy to compare with. */
+  backedUp: boolean | null;
+}
+
+/** One row of the side-by-side file compare: a line on each side, or a gap. */
+export interface CompareRow {
+  then: string | null;
+  now: string | null;
+  changed: boolean;
+}
+
 /** One bounded page of version history (mirrors the lib's HistoryPage). */
 export interface SnapshotPage {
-  entries: SnapshotEntry[];
+  entries: VersionEntry[];
   /** Older entries exist — pass the last entry's id as `before` to continue. */
   hasMore: boolean;
 }

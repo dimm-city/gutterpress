@@ -3,11 +3,19 @@
   import PreviewToolbar from "$lib/components/PreviewToolbar.svelte";
   import FindBar from "$lib/components/FindBar.svelte";
   import ExternalEditBanner from "$lib/components/ExternalEditBanner.svelte";
+  import TwoVersionsPanel from "$lib/components/TwoVersionsPanel.svelte";
   import CrashRecoveryDialog from "$lib/components/CrashRecoveryDialog.svelte";
   import type { TroubleshootingTab } from "$lib/troubleshooting-tabs";
   import { EditorBuffer } from "$lib/editor/buffer-state.svelte";
   import { EditorFileSession } from "$lib/editor/editor-file-session.svelte";
   import { chapterPath, isSafeChapterId } from "$lib/editor/chapter-path";
+  import {
+    findTwoVersions,
+    resolveTwoVersions,
+    type RangeEdit,
+    type TwoVersionsBlock,
+    type TwoVersionsChoice,
+  } from "$lib/editor/two-versions";
   import { ExportController } from "$lib/export/export-controller.svelte";
   import Toast from "$lib/components/Toast.svelte";
   import type { ToastController } from "$lib/components/Toast.svelte";
@@ -426,6 +434,50 @@
     void buffer?.reconcileExternalChange();
     refreshProblems();
   }
+
+  // ── Look at a version (#408) ───────────────────────────────────────────────
+  // The host renders a past version read-only from a scratch copy (a second
+  // preview server); the preview pane shows it in a frame beside the live
+  // one, following the live frame's page. Nothing on disk changes. The host
+  // closes it with the project; the renderer forgets it in the same resets.
+  let versionPreview = $state<{ id: string; url: string; label: string } | null>(null);
+  let versionClient = $state<PreviewClient | undefined>(undefined);
+  // Narrow windows have room for one frame: that version, or the current book.
+  let versionSide = $state<"then" | "now">("then");
+
+  async function lookAtVersion(id: string, label: string): Promise<void> {
+    const dir = lifecycle.currentDir;
+    if (!dir) return;
+    try {
+      const { url } = await api.vcs.openVersionPreview(dir, id);
+      if (lifecycle.currentDir !== dir) return;
+      versionPreview = { id, url, label };
+      versionSide = "then";
+      // A narrow window shows one pane at a time, and the Versions view
+      // occupies the editor pane: take the author to the preview, where the
+      // version now is — the mirror of openProblem's switch to the editor.
+      if (isNarrow) {
+        closePaneView();
+        setPaneMode("view");
+      }
+    } catch (e) {
+      toast?.error(`Couldn't show that version. ${friendlyHostError(e instanceof Error ? e.message : String(e))}`);
+    }
+  }
+
+  async function stopLookingAtVersion(): Promise<void> {
+    if (!versionPreview) return;
+    versionPreview = null;
+    await api.vcs.closeVersionPreview().catch(() => {});
+  }
+
+  /** The version frame: pinned to its own origin; once laid out, it opens on the live page. */
+  function onVersionClientReady(c: PreviewClient): void {
+    c.setExpectedOrigin(versionPreview?.url);
+    c.on((e) => {
+      if (e.name === "renderingComplete") void c.call("goToPage", [pageNav.currentPage]).catch(() => {});
+    });
+  }
   // A loose markdown folder opens fine (no manifest = defaults), but has no
   // editable styles or version history. When the OPENED folder has no manifest,
   // offer a non-blocking "set it up as a book" affordance. Default true (on the
@@ -475,6 +527,11 @@
       onSyncCompleted(mergedRemoteChanges, filesChanged),
     onFilesChanged: () => onSyncFilesChanged(),
     autoBackup: () => settings.current.versionHistory.autoSync,
+    // The combined-files toast's Review button: the Problems list names every
+    // passage with two versions, and each entry opens its file under the
+    // two-versions panel (combined paths come back repo-relative, so the
+    // list is the one place that already knows where each file is).
+    onReviewCombined: () => openProblemsList(),
   });
 
   // ── Project session capability state (#12) ───────────────────────────────────
@@ -540,6 +597,7 @@
     dismissLanding: (runPendingRecoveryScan) => dismissLanding(runPendingRecoveryScan),
     toast: () => toast,
     clearStaleProjectState: () => {
+      versionPreview = null;
       problems = [];
       projectComponents = [];
       projectVariants = [];
@@ -566,6 +624,7 @@
       // next project on that stale view.
       editorView = "editor";
       paneViewRestore = null;
+      versionPreview = null;
       resetEditorBuffer();
       crashRecovery.reset();
       pendingRecoveryScanDir = null;
@@ -1003,6 +1062,7 @@
   let editorRef = $state<{
     focus: () => void;
     revealLine: (line: number, focusEditor?: boolean, column?: number) => void;
+    undo: () => boolean;
     runToolbarAction: (action: ToolbarAction, payload?: ToolbarPayload) => void;
     getSelectionText: () => string;
     insertSnippet: (text: string) => void;
@@ -1255,6 +1315,78 @@
   let editorSavePhase = $derived(buffer?.phase ?? "clean");
   let externalChange = $derived(buffer?.externalChange ?? null);
   let externalFileName = $derived(editorFilePath ? basenameOf(editorFilePath) : "");
+
+  // ── Two versions after a sync (#407) ──────────────────────────────────────
+  // Passages the converge merge left with both versions, read from the live
+  // buffer so a choice removes its passage from the panel at once. A choice
+  // is an ordinary editor edit: it goes through the mounted CodeMirror view
+  // (one undoable transaction) and from there down the usual save → preview
+  // reload → Problems refresh path, so the check's entry clears on its own.
+  // CodeMirror holds every file with "\n" line breaks whatever the file on
+  // disk uses, and a choice is applied to THAT document, so the offsets are
+  // found in the same text: a CRLF file read as written put every offset a
+  // line break short and a choice ate the line after the passage.
+  let twoVersionsBlocks = $derived(findTwoVersions(editorContent.replace(/\r\n?/g, "\n")));
+
+  function applyTwoVersionsEdits(edits: RangeEdit[]): void {
+    const path = editorFilePath;
+    const target = buffer;
+    if (!path || !target || edits.length === 0) return;
+    if (editorRef?.hasFile(path)) {
+      for (const e of edits) editorRef.applyRangeEditIn(path, e.from, e.to, e.insert);
+      return;
+    }
+    // The editor module is still loading: write the buffer directly (same
+    // fallback the commit engine uses), losing only the undo step.
+    let text = target.content.replace(/\r\n?/g, "\n");
+    for (const e of edits) text = text.slice(0, e.from) + e.insert + text.slice(e.to);
+    target.edit(text);
+  }
+
+  /**
+   * The last passage in this file is settled: hand focus back to the text;
+   * point at the next file that still holds two versions, if any (the
+   * Problems list knows them); and, for a stylesheet that had kept the
+   * preview from starting, try the preview again once the choice is saved.
+   */
+  async function onTwoVersionsSettled(): Promise<void> {
+    editorRef?.focus();
+    const here = editorFilePath;
+    const elsewhere = problems.filter(
+      (p) => p.source === "source.sync.merge-markers" && !!p.filePath && p.filePath !== here,
+    );
+    const files = new Set(elsewhere.map((p) => p.filePath));
+    if (files.size > 0) {
+      const next = elsewhere[0]!;
+      // Long enough to be read and taken; not so long that it is still
+      // claiming "this file" after the author has moved on by hand.
+      toast?.show(
+        `All settled in this file. ${files.size === 1 ? "One more file has" : `${files.size} more files have`} two versions.`,
+        "info",
+        10_000,
+        { label: "Next file", onClick: () => openProblem(next) },
+      );
+    }
+    // A stylesheet or the manifest with two versions takes the preview down;
+    // with the file settled, the preview comes back without a trip to the
+    // error card's button.
+    if (lifecycle.previewError) {
+      await buffer?.flush().catch(() => {});
+      void lifecycle.retryPreview();
+    }
+  }
+
+  /** Apply one choice and confirm it where the author is looking, with the way back. */
+  let keptToast: number | null = null;
+  function keepVersion(block: TwoVersionsBlock, choice: TwoVersionsChoice): void {
+    applyTwoVersionsEdits([resolveTwoVersions(block, choice)]);
+    const kept =
+      choice === "yours" ? "Kept your version" : choice === "online" ? "Kept the online version" : "Kept both versions";
+    // Undo reverses the LAST choice, so only the last choice's message
+    // offers it: a stack of two, each saying Undo, would undo the wrong one.
+    if (keptToast !== null) toast?.dismiss(keptToast);
+    keptToast = toast?.success(`${kept}.`, undefined, { label: "Undo", onClick: () => editorRef?.undo() }) ?? null;
+  }
 
   function showEditorContent(path: string, content: string): void {
     if (editorRef?.hasFile(path)) editorRef.updateContent(content);
@@ -1729,6 +1861,18 @@
     problemsOpen = !problemsOpen;
     if (problemsOpen) void tick().then(() => problemsPanelRef?.focusList());
   }
+  /** Open the Problems list from outside the toolbar (a toast's Review
+   *  button). The list lives in the editor pane, so show that first — the
+   *  same pane handling `openProblem` does. */
+  function openProblemsList(): void {
+    if (isNarrow) {
+      setPaneMode("edit");
+    } else if (!editorVisible) {
+      setMode("editor");
+    }
+    problemsOpen = true;
+    void tick().then(() => problemsPanelRef?.focusList());
+  }
   // Lint findings for the open project, refreshed after every live-preview
   // rebuild (the renderingComplete event — which fires for the initial render
   // AND every watcher-triggered re-render). The toggle button lives in the
@@ -1841,6 +1985,10 @@
    */
   function openProblem(p: ProblemEntry) {
     if (!p.filePath || !lifecycle.currentDir) return;
+    // A Two versions entry opens its file under the two-versions panel,
+    // which is that file's own list of these problems: closing the Problems
+    // list keeps the editor from being squeezed between the two.
+    if (p.source === "source.sync.merge-markers") problemsOpen = false;
     // Make sure the editor pane is visible first (narrow = Edit mode pane;
     // wide = the editor split).
     if (isNarrow) {
@@ -2273,6 +2421,12 @@
     contextMenu.subscribe(c);
     inlineEdit.subscribe(c);
     c.on(onPreviewEscape);
+    // A version shown beside the book keeps the same page in view (#408).
+    c.on((e) => {
+      if (e.name === "pageChanged" && versionClient && typeof e.detail.currentPage === "number") {
+        void versionClient.call("goToPage", [e.detail.currentPage]).catch(() => {});
+      }
+    });
   }
 
   // ----------------------------------------------------------------
@@ -3054,8 +3208,12 @@
                 bind:this={activityViewRef}
                 projectDir={lifecycle.currentDir}
                 {logFilePath}
+                hasRemote={projectSession.projectHasRemote}
+                viewingId={versionPreview?.id ?? null}
                 onClose={closeActivityView}
                 onRestored={onSnapshotRestored}
+                onLookAt={(id, label) => void lookAtVersion(id, label)}
+                onStopLooking={() => void stopLookingAtVersion()}
               />
             {/key}
           {:else}
@@ -3088,6 +3246,29 @@
               {problemsOpen}
               onToggleProblems={toggleProblems}
             />
+            {/if}
+            {#if editorFilePath && twoVersionsBlocks.length > 0}
+              <!-- Passages with two versions after a sync (#407): pick, right
+                   above the text they rewrite. Shown in Focus too — the
+                   markers are in the text either way, and this is the way
+                   to settle them. Keyed on the file: another file's card
+                   starts at its first passage, with the text folded away. -->
+              {#key editorFilePath}
+              <TwoVersionsPanel
+                blocks={twoVersionsBlocks}
+                isCss={openFileIsCss}
+                onChoose={keepVersion}
+                onReveal={(line) => {
+                  // The editor and the preview both go to the passage in
+                  // question. A programmatic reveal does not echo to the
+                  // preview on its own, so the preview is sent the same
+                  // top-anchored target the editor's scrolling would send.
+                  whenEditorReady(() => editorRef?.revealLine(line, false));
+                  editorSync.onEditorAnchorLine(line, "scroll", editorChapter);
+                }}
+                onSettled={() => void onTwoVersionsSettled()}
+              />
+              {/key}
             {/if}
             {#if MarkdownEditor}
               <!-- No per-file `{#key}` remount: MarkdownEditor keeps ONE
@@ -3199,21 +3380,66 @@
         {/if}
         <FindBar bind:this={findBarRef} bind:open={findBarOpen} {client} />
         {#if lifecycle.previewUrl}
-          {#key lifecycle.previewUrl}
-            <PreviewFrame
-              bind:this={previewFrameRef}
-              url={lifecycle.previewUrl}
-              bind:client
-              onClientReady={onClientReady}
-              onError={(msg) => {
-                if (lifecycle.sourceMode === "url") {
-                  lifecycle.urlPreviewError = "This website could not be previewed inside Gutterpress.";
-                } else {
-                  toast?.error(msg);
-                }
-              }}
-            />
-          {/key}
+          {#if versionPreview}
+            <!-- Looking at a version (#408): a read-only frame of that version
+                 beside the live one, on the same page. -->
+            <div class="version-bar" role="status">
+              <span class="version-bar-label">
+                <Icon name="history" size={14} />
+                <span>Looking at <strong>{versionPreview.label}</strong> beside the current book</span>
+              </span>
+              {#if isNarrow}
+                <span class="version-toggle" role="group" aria-label="Which to show">
+                  <button class:active={versionSide === "then"} aria-pressed={versionSide === "then"} onclick={() => (versionSide = "then")}>That version</button>
+                  <button class:active={versionSide === "now"} aria-pressed={versionSide === "now"} onclick={() => (versionSide = "now")}>Current book</button>
+                </span>
+              {/if}
+              <button
+                class="version-bar-close"
+                onclick={() => void stopLookingAtVersion()}
+                aria-label="Stop looking at this version"
+                title="Back to the live preview"
+              >
+                <Icon name="x" size={14} />
+              </button>
+            </div>
+          {/if}
+          <div
+            class="preview-frames"
+            class:split={!!versionPreview}
+            class:show-then={!!versionPreview && isNarrow && versionSide === "then"}
+            class:show-now={!!versionPreview && isNarrow && versionSide === "now"}
+          >
+            {#if versionPreview}
+              {#key versionPreview.url}
+                <div class="frame-slot then-slot">
+                  <PreviewFrame
+                    url={versionPreview.url}
+                    bind:client={versionClient}
+                    onClientReady={onVersionClientReady}
+                    onError={(msg) => toast?.error(msg)}
+                  />
+                </div>
+              {/key}
+            {/if}
+            <div class="frame-slot now-slot">
+              {#key lifecycle.previewUrl}
+                <PreviewFrame
+                  bind:this={previewFrameRef}
+                  url={lifecycle.previewUrl}
+                  bind:client
+                  onClientReady={onClientReady}
+                  onError={(msg) => {
+                    if (lifecycle.sourceMode === "url") {
+                      lifecycle.urlPreviewError = "This website could not be previewed inside Gutterpress.";
+                    } else {
+                      toast?.error(msg);
+                    }
+                  }}
+                />
+              {/key}
+            </div>
+          </div>
         {:else if previewErrorDisplay}
           <div class="preview-error-view" role="alert">
             <div class="preview-error-card">
@@ -3610,6 +3836,78 @@
     /* Named container for PreviewToolbar's own collapse stages. */
     container-type: inline-size;
     container-name: preview-pane;
+  }
+  /* The live frame, or (looking at a version) that version's frame beside it. */
+  .preview-frames {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+  }
+  .frame-slot {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+  }
+  .preview-frames.split .then-slot {
+    border-right: 2px solid var(--app-accent);
+  }
+  /* Narrow: one frame at a time. The hidden one has already laid out, so
+     the cross-origin throttling PreviewFrame warns about does not bite. */
+  .preview-frames.show-then .now-slot,
+  .preview-frames.show-now .then-slot {
+    display: none;
+  }
+  .version-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 12px;
+    background: var(--app-accent-subtle);
+    border-bottom: 1px solid var(--app-accent-border);
+    color: var(--app-accent-text);
+    font-size: 12px;
+    flex: 0 0 auto;
+  }
+  .version-bar-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .version-toggle {
+    display: inline-flex;
+    border: 1px solid var(--app-accent-border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .version-toggle button {
+    padding: 2px 10px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .version-toggle button.active {
+    background: var(--app-accent);
+    color: var(--app-text-on-accent);
+  }
+  .version-bar-close {
+    display: inline-flex;
+    padding: 3px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+  }
+  .version-bar-close:hover {
+    background: var(--app-control-hover-bg);
   }
   .preview-error-view {
     flex: 1;
