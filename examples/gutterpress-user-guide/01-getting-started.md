@@ -247,7 +247,7 @@ These are DriveThruRPG's print-on-demand rules for an 8.5×11in interior, from D
 | Bleed | 0.125in (9pt) on the top, bottom and outside edges; none at the binding edge | **Bleed** layer |
 | Text | At least 0.5in (36pt) inside the trim, on every edge | **Safe area: text** layer; [the safe-margins check](#safe-margins-check) |
 | Art that does not bleed | At least 0.25in (18pt) from the top, bottom and outside edges; 0.5in (36pt) from the binding edge | **Safe area: art** layer; [the safe-margins check](#safe-margins-check), for images |
-| PDF | PDF/X-1a:2001 or PDF/X-3:2002, every font embedded, CMYK or greyscale images; the ICC profile CGATS21_CRPC1 (from the Affinity Publisher article, not the quick specifications) | `--format pdfx` build; the PDF/X, font and colour checks |
+| PDF | PDF/X-1a:2001 or PDF/X-3:2002, every font embedded, CMYK or greyscale images, ICC profile CGATS21_CRPC1 | `--format pdfx` build; the PDF/X, font and colour checks |
 | Ink | Total area coverage of 240% or less | The ink-coverage check |
 | Page count | US Letter prints in 4-page signatures, and the file ends on a blank page | `dtrpg` preset pads the book; the signature check |
 
