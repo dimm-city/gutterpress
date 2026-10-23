@@ -210,7 +210,9 @@ export interface GutterpressManifest {
      * from the spine than the printer's minimum says so here, not in its CSS
      * (the Field Guide keeps 0.75in = 54 where DriveThruRPG asks for 0.5in).
      * An image pinned to the binding edge sits on it. The other edges keep
-     * `safe` and `artSafe`. Absent = the same as `safe`; presets leave it unset.
+     * `safe` and `artSafe`. Absent = the same as `safe`; `dtrpg` sets 36
+     * (DriveThruRPG's 0.5in at the binding, the same as its `safe`), `book`
+     * and `custom` none.
      */
     gutter?: number;
   };

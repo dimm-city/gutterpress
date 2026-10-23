@@ -240,7 +240,7 @@
         },
         "gutter": {
           "type": "number",
-          "description": "The binding allowance, in points: how far content stays from the spine, measured from the trim at the binding edge (the left edge of a right-hand page, the right edge of a left-hand one). It stands in for `safe` there, for text and for art alike: the preview's overlay draws and judges that edge against it, the `pdf.print.safe-margins` check fails text or an image closer to the spine than it, and an image pinned to the binding edge (`.gp-pin`) sits on it. The other edges keep `safe` and `artSafe`. Use it when your book keeps its text further from the spine than the printer's minimum: the Field Guide keeps 0.75in (54) where DriveThruRPG asks for 0.5in. Absent = the same as `safe`. Presets leave it unset.",
+          "description": "The binding allowance, in points: how far content stays from the spine, measured from the trim at the binding edge (the left edge of a right-hand page, the right edge of a left-hand one). It stands in for `safe` there, for text and for art alike: the preview's overlay draws and judges that edge against it, the `pdf.print.safe-margins` check fails text or an image closer to the spine than it, and an image pinned to the binding edge (`.gp-pin`) sits on it. The other edges keep `safe` and `artSafe`. Use it when your book keeps its text further from the spine than the printer's minimum: the Field Guide keeps 0.75in (54) where DriveThruRPG asks for 0.5in. Absent = the same as `safe`. Preset default: dtrpg 36 (0.5in, DriveThruRPG's rule for text and non-bleeding art at the binding — the same as its `safe`, declared so a book inherits it visibly); book and custom none.",
           "minimum": 0,
           "examples": [54]
         }

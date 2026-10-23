@@ -237,7 +237,7 @@ Common book trim sizes in points (72pt = 1 inch):
 
 ### DriveThruRPG Requirements {#dtrpg-requirements}
 
-These are DriveThruRPG's print-on-demand rules for an 8.5×11in interior, from DriveThru Partners' help articles [Quick Specifications for Print Books](https://help.drivethrupartners.com/hc/en-us/articles/12780800178583-Quick-Specifications-for-Print-Books) and [Correcting Most Common Print Errors](https://help.drivethrupartners.com/hc/en-us/articles/12780799485335-Correcting-Most-Common-Print-Errors). The `dtrpg` preset is set up to meet them; the last column says where Gutterpress shows or checks each one.
+These are DriveThruRPG's print-on-demand rules for an 8.5×11in interior, from DriveThru Partners' help articles [Quick Specifications for Print Books](https://help.drivethrupartners.com/hc/en-us/articles/12780800178583-Quick-Specifications-for-Print-Books) and [Correcting Most Common Print Errors](https://help.drivethrupartners.com/hc/en-us/articles/12780799485335-Correcting-Most-Common-Print-Errors); the ICC profile is from their [Preparing A Book For Print with Affinity Publisher](https://help.drivethrupartners.com/hc/en-us/articles/12780801434647-Preparing-A-Book-For-Print-with-Affinity-Publisher). The `dtrpg` preset is set up to meet them; the last column says where Gutterpress shows or checks each one.
 
 @section
 
@@ -247,7 +247,7 @@ These are DriveThruRPG's print-on-demand rules for an 8.5×11in interior, from D
 | Bleed | 0.125in (9pt) on the top, bottom and outside edges; none at the binding edge | **Bleed** layer |
 | Text | At least 0.5in (36pt) inside the trim, on every edge | **Safe area: text** layer; [the safe-margins check](#safe-margins-check) |
 | Art that does not bleed | At least 0.25in (18pt) from the top, bottom and outside edges; 0.5in (36pt) from the binding edge | **Safe area: art** layer; [the safe-margins check](#safe-margins-check), for images |
-| PDF | PDF/X-1a:2001 or PDF/X-3:2002, every font embedded, CMYK or greyscale images, ICC profile CGATS21_CRPC1 | `--format pdfx` build; the PDF/X, font and colour checks |
+| PDF | PDF/X-1a:2001 or PDF/X-3:2002, every font embedded, CMYK or greyscale images; the ICC profile CGATS21_CRPC1 (from the Affinity Publisher article, not the quick specifications) | `--format pdfx` build; the PDF/X, font and colour checks |
 | Ink | Total area coverage of 240% or less | The ink-coverage check |
 | Page count | US Letter prints in 4-page signatures, and the file ends on a blank page | `dtrpg` preset pads the book; the signature check |
 
@@ -266,7 +266,7 @@ Four `page:` settings in `manifest.yaml` tell the print overlays where the trim 
 | `page.bleed` | The bleed your page size already contains, on the top, bottom and outside edges (none at the binding edge) | 9 (0.125in) | none |
 | `page.safe` | The text rule: how far inside the trim text must stay, on every edge (the binding edge too, unless you set `page.gutter`) | 36 (0.5in) | 18 (0.25in) |
 | `page.artSafe` | The art rule: how far inside the trim art that does not bleed must stay, on the top, bottom and outside edges; the binding edge uses `page.gutter`, and where none is set art follows `page.safe` on every edge | 18 (0.25in) | none |
-| `page.gutter` | The binding allowance: how far from the spine text and art stay, instead of `page.safe`, at the binding edge only. Set it when your book keeps its text further from the spine than the printer's minimum, so the lines show the distance your book commits to; where none is set it is `page.safe` | none | none |
+| `page.gutter` | The binding allowance: how far from the spine text and art stay, instead of `page.safe`, at the binding edge only. Set it when your book keeps its text further from the spine than the printer's minimum, so the lines show the distance your book commits to; where none is set it is `page.safe` | 36 (0.5in) | none |
 
 @end-section
 
