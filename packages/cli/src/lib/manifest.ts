@@ -7,6 +7,7 @@ import { isPathSpecifier, parseExtensionSpecifier } from "./extension-specifier"
 import { resolvePreset, warnOnce, type VendorPreset } from "./presets";
 import { overlayPreset, publishTargetFor, resolveTargets } from "./targets";
 import { UsageError } from "./cli-args";
+import { TWO_VERSIONS_OPEN } from "./two-versions-markers";
 
 /**
  * The manifest file name Gutterpress recognizes.
@@ -69,6 +70,14 @@ export async function loadManifestWithPath(
   for (const p of candidates) {
     if (existsSync(p) && statSync(p).isFile()) {
       const raw = await readFile(p, "utf8");
+      // A sync that found a setting edited both here and online leaves both
+      // versions in the file (`remote-auth/converge-merge.ts`). That is not
+      // "invalid YAML at line 1": say what happened and what to do.
+      if (raw.split(/\r?\n/).includes(TWO_VERSIONS_OPEN)) {
+        throw new UsageError(
+          `"${p}" has two versions of a setting — yours and the online version — left by a sync. Open it, keep the one you want and delete the marker lines.`
+        );
+      }
       try {
         const manifest = (parseYaml(raw) as GutterpressManifest) ?? {};
         return { manifest, manifestDir: dirname(p), manifestPath: p };

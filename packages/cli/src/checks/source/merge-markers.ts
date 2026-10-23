@@ -37,10 +37,11 @@ import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
 import { finding, inspectionFailed } from "../policy";
 import { ASSET_SCAN_IGNORE_GLOBS } from "../asset/extensions";
+import { TWO_VERSIONS_CLOSE, TWO_VERSIONS_OPEN } from "../../lib/two-versions-markers";
 
-/** The exact sentinel lines converge-merge writes. Byte-match — never loosen. */
-const OPEN_SENTINEL = "<<<<<<< your version";
-const CLOSE_SENTINEL = ">>>>>>> online version";
+/** The exact sentinel lines converge-merge writes (the shared leaf). Byte-match — never loosen. */
+const OPEN_SENTINEL = TWO_VERSIONS_OPEN;
+const CLOSE_SENTINEL = TWO_VERSIONS_CLOSE;
 
 /** `art/cover.online.png` → `art/cover.png`; `notes.online` → `notes`. */
 function withoutOnlineTag(relPath: string): string {
@@ -51,7 +52,7 @@ const check: Check = {
   id: "source.sync.merge-markers",
   name: "Combined Versions",
   description:
-    "Finds passages and files still holding two versions (yours and the online copy) after a sync",
+    "Finds passages and files still holding two versions (yours and the online version) after a sync",
   category: "source",
   phase: "pre-build",
   async run(ctx: CheckContext): Promise<CheckResult[]> {
@@ -91,7 +92,7 @@ const check: Check = {
               severity: "error",
               code: "two-versions-passage",
               message:
-                "This passage has two versions (yours and the online copy) — keep what you want, then delete the marker lines.",
+                "This passage has two versions — yours and the online version. Choose one in the editor's Two versions panel, or keep the text you want and delete the marker lines.",
               file,
               line: i + 1,
             }),

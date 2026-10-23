@@ -7,6 +7,53 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Settle a passage with two versions by comparing them and picking one
+  (#407).** When a sync combines a passage edited both here and online, the
+  desktop editor now shows a card above the text that asks, one passage at
+  a time, which version to keep: **Keep yours**, **Keep online** or **Keep
+  both**, with the two texts behind **Compare the text** and a count with
+  arrows to move between passages. The editor scrolls to the passage in
+  question. A choice rewrites the file without the marker lines as one
+  ordinary, undoable edit, confirmed by a message with an **Undo** button,
+  so saving, the preview and the Problems entry follow as for any edit.
+  Stylesheets get the same card, rule by rule. The "two versions were kept"
+  message after a sync carries a **Review** button that opens the Problems
+  list, where each passage opens its file under the card. Compare marks the
+  words only one side has, and says so when the two differ only in spacing;
+  two texts that share little are shown plain. **Keep both** leaves a blank
+  line between two paragraphs. Settling a file's last passage offers the
+  next file that has one, and brings back a preview a stylesheet or
+  manifest with two versions had taken down. A manifest with two versions
+  of a setting is reported as that, in the CLI and the preview, not as
+  "invalid YAML at line 1".
+- **The preview shows both versions of a combined passage.** The marker
+  lines a sync writes are valid markdown, so the preview used to render the
+  passage as a chapter-sized heading over a stack of quotes and list
+  `<<<<<<< your version` in the outline. The markdown renderer now turns the
+  family into two labelled boxes, *Your version* and *Online version*, each
+  rendered as ordinary markdown, so either version can be read as it would
+  print while choosing. Plain HTML and CSS (`.gp-two-versions`); the
+  Combined Versions check still blocks a build until the passage is settled.
+  A version that carries a structural marker (`@section` and the like) is
+  shown as plain text, so a marker opened in one version cannot nest the
+  other box inside it. A passage on a file's last line, with no line break
+  after it, now gets its separator on its own line, so it can be read back.
+- **Versions view: what each version changed, a look at any version beside
+  the current book, and what is online before Get latest (#408).** Each
+  version card lists the files it touched with a plain hint
+  (`chapter-02.md · 3 paragraphs changed`, `styles/book.css · 1 rule
+  changed`, `art/cover.png · replaced`), says whether it is **Backed up** or
+  **On this computer only**, and an automatic version with no changes says
+  so. **Look at this version** renders that version read-only beside the
+  live preview, following the page in view, without touching a file;
+  **Stop looking** returns to the live preview alone; a narrow window shows
+  one at a time, **That version** or **Current book**. Clicking a changed
+  text file opens it as two columns, *That version* and *Current*, with the
+  lines that differ marked. When the book has an online copy, the view's top
+  section, **Online, not yet on this computer**, lists the versions online
+  with the same cards before Get latest brings them in. All of it reads the
+  book's own history through isomorphic-git: nothing is installed, nothing
+  shells out.
 - **Publishing plugins (experimental — may change or be removed).** An
   extension can add a place to publish that Gutterpress doesn't offer itself:
   a package that sets `"gutterpress": { "publish": true }` and exports a

@@ -77,12 +77,12 @@ export function versionDescription(message: string): string | null {
   return message;
 }
 
-export interface VersionDay {
+export interface VersionDay<T extends SnapshotEntry = SnapshotEntry> {
   /** Stable local-day key (yyyy-m-d) for `{#each}` keying. */
   key: string;
   /** Human day heading: "Today", "Yesterday", or a written date. */
   label: string;
-  entries: SnapshotEntry[];
+  entries: T[];
 }
 
 function dayKey(ms: number): string {
@@ -110,8 +110,8 @@ function dayLabel(ms: number, now: number): string {
  * buckets, preserving order. `now` is injected so the "Today"/"Yesterday"
  * labelling is pure and testable.
  */
-export function groupVersionsByDay(entries: SnapshotEntry[], now: number): VersionDay[] {
-  const days: VersionDay[] = [];
+export function groupVersionsByDay<T extends SnapshotEntry>(entries: T[], now: number): VersionDay<T>[] {
+  const days: VersionDay<T>[] = [];
   for (const entry of entries) {
     const key = dayKey(entry.timestamp);
     const last = days[days.length - 1];
@@ -124,9 +124,9 @@ export function groupVersionsByDay(entries: SnapshotEntry[], now: number): Versi
 // ── Collapsed automatic runs ─────────────────────────────────────────────────
 
 /** One renderable timeline row: a single version, or a run of automatic backups. */
-export type TimelineRow =
-  | { kind: "entry"; key: string; entry: SnapshotEntry }
-  | { kind: "auto-run"; key: string; entries: SnapshotEntry[] };
+export type TimelineRow<T extends SnapshotEntry = SnapshotEntry> =
+  | { kind: "entry"; key: string; entry: T }
+  | { kind: "auto-run"; key: string; entries: T[] };
 
 /**
  * Fold 2+ consecutive automatic backups into one expandable row, so a
@@ -135,9 +135,9 @@ export type TimelineRow =
  * targets the individual entries inside the run. A run is keyed by its
  * OLDEST entry so its identity survives newer backups prepending.
  */
-export function collapseAutomaticRuns(entries: SnapshotEntry[]): TimelineRow[] {
-  const rows: TimelineRow[] = [];
-  let run: SnapshotEntry[] = [];
+export function collapseAutomaticRuns<T extends SnapshotEntry>(entries: T[]): TimelineRow<T>[] {
+  const rows: TimelineRow<T>[] = [];
+  let run: T[] = [];
   const flush = () => {
     if (run.length >= 2) {
       rows.push({ kind: "auto-run", key: `auto-${run[run.length - 1]!.id}`, entries: run });
