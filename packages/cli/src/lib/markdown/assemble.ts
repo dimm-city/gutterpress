@@ -13,6 +13,14 @@
  * The file-reading wrapper is the ONLY node-coupled part of `renderChapters`,
  * so the pure markdown→HTML→book.html work lives here and the wrapper just
  * supplies inputs.
+ *
+ * The page-size default (#415) reads the assembled CSS with the engine's own
+ * `@page` reader (`engine/shared/gcpm-extract.ts`: no imports, node-free) —
+ * NOT `lib/page-size.ts`'s postcss one, which is host-side (`node:fs`) and
+ * would drag Node into the `gutterpress/render` graph. The engine's reader is
+ * also the right one on its merits: what `defaultPageSizeCss` decides from is
+ * exactly what the viewer's and the compiler's `resolvePage` will read from
+ * this same `<style>`, so the three cannot disagree about whether a size is set.
  */
 import { MARKER_CSS } from "./markers.js";
 import { GUTTERPRESS_CSS } from "./gutterpress-css.ts";
@@ -23,6 +31,7 @@ import { createMarkdownRenderer, type LoadedPlugin } from "./renderer";
 import { collectHtmlImageRefs, type ImageRefEnv } from "./images";
 import { lastPageMode, type PrintPadding } from "../../engine/shared/synthesis.ts";
 import { printAreaMeta, type PrintAreaSource } from "../../engine/shared/print-area.ts";
+import { extract, resolvePage } from "../../engine/shared/gcpm-extract.ts";
 
 /** Reader injected by the host: resolve a project-root-relative file → its text. */
 export type ReadText = (relPath: string) => Promise<string>;
@@ -158,8 +167,9 @@ export interface AssembleBookHtmlOptions {
    * preset id and printer spec — written as `<meta name="gp-print-area">`
    * (engine/shared/print-area.ts) into EVERY assembled book, preview, build
    * and publish alike: the preview's print overlays judge the ink against it,
-   * and both engines place pinned art on its art-safe line. Metadata only:
-   * nothing renders from it but what reads it.
+   * and both engines place pinned art on its art-safe line. Metadata only,
+   * with one exception: its `width` x `height` is also the page size the book
+   * prints at when no stylesheet sets one — see {@link defaultPageSizeCss}.
    */
   printArea?: PrintAreaSource;
   plugins?: LoadedPlugin[];
@@ -184,6 +194,39 @@ export interface AssembleBookHtmlOptions {
    * list can drift from what the book actually uses.
    */
   onImageRefs?: (refs: string[]) => void;
+}
+
+/**
+ * The plain `@page { size }` a book prints at when none of its CSS sets one
+ * (#415), or `null` when one is set or there is no page geometry to supply.
+ *
+ * `page.width` x `page.height` in the manifest (or the preset's) is what every
+ * check and the preview's print overlays judge against, but what Chromium
+ * prints is the stylesheet's plain `@page { size }` — and a book whose author
+ * wrote `@page { margin }` alone, or replaced the scaffolded sheet, had none,
+ * so it printed at Letter while everything else assumed the manifest's size.
+ * Supplying that size as standard CSS, BEFORE the extensions' and the book's
+ * own sheets, makes the print path, the preview and the checks agree on one
+ * size; an author's own `size` still wins by the cascade, because this rule
+ * is only written when there is none to lose to.
+ *
+ * "Set" means what the engine means: a plain `@page` rule — no name, no
+ * `:first`/`:left`… — anywhere in `css` (inside `@media print` or an
+ * extension's `@layer` included) sets `size`, i.e. `resolvePage`'s base page
+ * has one; a named page's size is its own, not the book's geometry. `extract`
+ * throws only for a geometry `var()` it cannot resolve; the engine reports
+ * that, in its own words, when it reads this same CSS, so here it counts as
+ * set and nothing is added.
+ */
+function defaultPageSizeCss(css: string, page: PrintAreaSource | undefined): string | null {
+  const positive = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n > 0;
+  if (!page || !positive(page.width) || !positive(page.height)) return null;
+  try {
+    if (resolvePage(extract(css)).decls.size !== undefined) return null;
+  } catch {
+    return null;
+  }
+  return `@page { size: ${page.width}pt ${page.height}pt; }`;
 }
 
 /**
@@ -271,12 +314,18 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   // it replaces an inline style, which beat plugin CSS (layered) and a book's
   // generic `th { text-align }`, so it must still beat both, while a book rule
   // that is at least as specific and later can override it.
+  const pageSize = defaultPageSizeCss(`${pluginCss}\n${projectCss}`, opts.printArea);
   const inlineCss = [
     "@layer gp.marker, gp.vocab;",
     // The two-versions box (two-versions.ts) rides in the marker layer: it
     // styles DOM only core emits, exactly like the marker wrappers.
     `/* gutterpress markers */\n@layer gp.marker {\n${MARKER_CSS.trim()}\n${TWO_VERSIONS_CSS.trim()}\n}`,
     `/* gutterpress */\n@layer gp.vocab {\n${GUTTERPRESS_CSS.trim()}\n}`,
+    // The manifest's page size, only when no extension or book CSS sets one
+    // (defaultPageSizeCss). Unlayered — `@page` stays out of cascade layers —
+    // and ahead of every sheet that could have set it, so its place says what
+    // it is: the default.
+    pageSize ? `/* page size (manifest) */\n${pageSize}` : null,
     pluginCss ? `/* extension css */\n${pluginCss.trim()}` : null,
     // Unlayered, before the project CSS (equal specificity: the book's rule,
     // coming later, wins).

@@ -11,8 +11,12 @@
  *    block also carries the print area (`bleed`, `safe`, `artSafe`,
  *    `gutter`); this module writes only its three keys and leaves the rest
  *    as the author wrote them; and
- *  - the stylesheet: the plain `@page { size: … }` rule, which is what Chrome
- *    actually prints at.
+ *  - the stylesheet: a plain `@page { size: … }` rule, which is what Chrome
+ *    prints at when one is set. When none is, the markdown assembly writes
+ *    the manifest's size as that rule ahead of every stylesheet
+ *    (`defaultPageSizeCss`, lib/markdown/assemble.ts — #415), so a book with
+ *    no `size` in its CSS prints at the manifest's; a `size` an author does
+ *    write wins, which is why the two must still agree.
  *
  * Creating a book writes the manifest half (the starter stylesheet is empty,
  * the look supplies `@page`); changing the size later writes both halves
@@ -65,7 +69,7 @@ export interface PageSetup {
   preset: PresetId | null;
   /** The validation bounds the manifest resolves to, or null (custom with no `page:`). */
   bounds: (PageSizePoints & { tolerance: number }) | null;
-  /** What the book's stylesheets print at, or null when no plain `@page` sets a size. */
+  /** What the book's stylesheets print at, or null when no plain `@page` sets a size (the book then prints at `bounds`). */
   css: (PageSizePoints & { file: string }) | null;
 }
 

@@ -300,7 +300,7 @@ per-invocation override (CI staging, one-offs).
 #### `page` (object)
 Expected page geometry, in **points** (1in = 72pt).
 
-> **These are validation bounds only — they do not set the trim size.** The real PDF page size comes from the `@page` rule in your CSS. `page.width`/`page.height` are what the `pdf.print.page-size` check compares the produced PDF against, so set them to the trim size you expect and a CSS mistake gets caught. A bleed-inclusive `@page` size will legitimately differ from the trim size recorded here.
+> **This is the size the book prints at — unless a stylesheet sets its own.** When no stylesheet sets a plain `@page { size }` (one with no page name and no `:first`/`:left`), the build writes `@page { size: <width>pt <height>pt }` from these values ahead of every stylesheet, so the PDF, the preview and the checks share one size. A stylesheet's own plain `size` wins over it. Either way, `page.width`/`page.height` are what the `pdf.print.page-size` check compares the produced PDF against, so a stylesheet whose size differs from them gets caught.
 
 - `width` / `height` (number) - Expected size in points. Preset defaults: `dtrpg` 621x810, `book` 432x648 (6x9in).
 - `tolerance` (number) - Allowed deviation in points. Default `0.5`.

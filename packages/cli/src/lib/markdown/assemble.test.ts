@@ -7,6 +7,7 @@ import type MarkdownIt from "markdown-it";
 import { assembleBookHtml } from "./assemble";
 import { inlineStyles } from "../asset-inline";
 import { renderChapters } from "./index";
+import { extract, resolvePage } from "../../engine/shared/gcpm-extract.ts";
 
 /**
  * Parity test: the pure, node-free `assembleBookHtml`
@@ -123,4 +124,86 @@ test("assembleBookHtml writes the project's print area into <head>, in every boo
   // one meta, and none at all without a print area
   expect(html.match(/gp-print-area/g)).toHaveLength(1);
   expect(await assembleBookHtml({ files: ["a.md"], readText })).not.toContain("gp-print-area");
+});
+
+// ── #415: the manifest's page size is what prints unless a stylesheet sets its own ──
+//
+// `page.width` x `page.height` is what every check and the preview's overlays
+// judge against; Chromium prints the stylesheet's plain `@page { size }`. The
+// assembly supplies the manifest's as plain CSS when no extension or book CSS
+// sets one — before them, so an author's own `size` still wins by the cascade.
+
+const DTRPG = { width: 621, height: 810, bleed: 9, safe: 36, artSafe: 18, preset: "dtrpg" };
+const DEFAULT_RULE = "@page { size: 621pt 810pt; }";
+const readA = () => Promise.resolve("# A\n");
+
+/** The one `<style data-project-css>` block of an assembled book. */
+function projectStyle(html: string): string {
+  return html.slice(html.indexOf("<style data-project-css>"), html.indexOf("</style>"));
+}
+
+test("a stylesheet with @page margins and no size prints at the manifest's page size: the rule is written before the project CSS", async () => {
+  const html = await assembleBookHtml({
+    files: ["a.md"],
+    readText: readA,
+    projectCss: "@page { margin: 1in }",
+    printArea: DTRPG,
+  });
+  const css = projectStyle(html);
+  expect(css).toContain(DEFAULT_RULE);
+  expect(css.match(/@page \{ size: /g)).toHaveLength(1);
+  // Ahead of the author's sheet, so a `size` added there later wins the cascade.
+  expect(css.indexOf(DEFAULT_RULE)).toBeLessThan(css.indexOf("/* project css */"));
+  expect(css.indexOf(DEFAULT_RULE)).toBeLessThan(css.indexOf("@page { margin: 1in }"));
+  // Unlayered, not inside any `@layer` block.
+  expect(css).toContain(`}\n\n/* page size (manifest) */\n${DEFAULT_RULE}\n\n`);
+  // The viewer and the compiler read the base page with this same reader: it
+  // now sees the manifest's size, not Chromium's Letter fallback.
+  expect(resolvePage(extract(css)).geometry).toMatchObject({ width: 621, height: 810 });
+
+  // A book with no stylesheet at all prints at the manifest's size too.
+  expect(projectStyle(await assembleBookHtml({ files: ["a.md"], readText: readA, printArea: DTRPG }))).toContain(DEFAULT_RULE);
+});
+
+test("a stylesheet that sets its own plain @page size keeps it: nothing is added", async () => {
+  for (const projectCss of [
+    "@page { size: 6in 9in; margin: 1in }",
+    "@media print { @page { size: 6in 9in } }",
+    "@page { margin: 1in }\n@page { size: 6in 9in }",
+  ]) {
+    const css = projectStyle(await assembleBookHtml({ files: ["a.md"], readText: readA, projectCss, printArea: DTRPG }));
+    expect(css, projectCss).not.toContain("page size (manifest)");
+    expect(css, projectCss).not.toContain("621pt");
+    expect(resolvePage(extract(css)).geometry).toMatchObject({ width: 432, height: 648 });
+  }
+});
+
+test("a look's plain @page size, inside its extension layer, counts: nothing is added", async () => {
+  const pluginCss = "@layer ext.look;\n\n/* look */\n@layer ext.look {\n@page { size: 6in 9in; margin: 1in }\n}";
+  const css = projectStyle(
+    await assembleBookHtml({ files: ["a.md"], readText: readA, pluginCss, projectCss: "@page { margin: 0.75in }", printArea: DTRPG }),
+  );
+  expect(css).not.toContain("page size (manifest)");
+  expect(css).not.toContain("621pt");
+});
+
+test("a named or pseudo page's size is not the book's geometry: the default is still written", async () => {
+  const css = projectStyle(
+    await assembleBookHtml({
+      files: ["a.md"],
+      readText: readA,
+      projectCss: "@page cover { size: 7in 10in }\n@page :first { size: 7in 10in }\n@page { margin: 1in }",
+      printArea: DTRPG,
+    }),
+  );
+  expect(css).toContain(DEFAULT_RULE);
+  expect(css.indexOf(DEFAULT_RULE)).toBeLessThan(css.indexOf("@page cover"));
+  expect(resolvePage(extract(css)).geometry).toMatchObject({ width: 621, height: 810 });
+  expect(resolvePage(extract(css), { name: "cover" }).geometry).toMatchObject({ width: 504, height: 720 });
+});
+
+test("without a print area there is no size to supply: nothing is added", async () => {
+  const html = await assembleBookHtml({ files: ["a.md"], readText: readA, projectCss: "@page { margin: 1in }" });
+  expect(html).not.toContain("page size (manifest)");
+  expect(html).not.toContain("@page { size:");
 });

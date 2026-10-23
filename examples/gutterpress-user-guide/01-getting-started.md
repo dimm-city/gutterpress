@@ -192,10 +192,11 @@ authors:
 # explicitly below always wins over the preset.
 preset: book
 
-# Page validation bounds (values in points: 72pt = 1in). The actual trim
-# comes from your stylesheet's @page rule — these are the size the built
-# PDF is checked against, so keep the two matching. Required (width and
-# height) when `preset: custom`; optional overrides otherwise.
+# Page size (values in points: 72pt = 1in): the size your book prints at
+# and the size the built PDF is checked against. A stylesheet that sets
+# its own plain `@page { size }` wins over it, so keep the two matching.
+# Required (width and height) when `preset: custom`; optional overrides
+# otherwise.
 page:
   width: 432
   height: 648
@@ -234,6 +235,8 @@ Common book trim sizes in points (72pt = 1 inch):
 | A5 | 420 | 595 | Pocket guides |
 
 @end-section
+
+Your book prints at the manifest's `page.width` × `page.height` — your preset's size unless you set them — and that is also the size the finished PDF is checked against. A stylesheet that sets its own plain `@page { size }` (one with no page name and no `:first`/`:left`) wins over the manifest, so if you write one, keep the two matching.
 
 ### DriveThruRPG Requirements {#dtrpg-requirements}
 
