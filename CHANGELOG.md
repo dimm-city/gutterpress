@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.22] - 2026-10-23
+
 ### Added
 
 - **Settle a passage with two versions by comparing them and picking one
