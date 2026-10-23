@@ -195,8 +195,11 @@ export interface GutterpressManifest {
      * borders, rules — stays at least this far inside the trim on the top,
      * bottom and OUTER edge; at the binding edge it uses `gutter`. DriveThruRPG's
      * "keep non-bleeding art 0.25in from the outside edges" (`dtrpg` sets 18).
-     * An image pinned to the top, bottom or outer edge (`.gp-pin`) sits on this
-     * line unless it carries `.gp-flush`. Absent = the same as `safe`.
+     * The preview's overlay outlines it and flags art outside it, and
+     * `pdf.print.safe-margins` fails a built PDF with an image closer, or one
+     * that stops in the bleed band. An image pinned to the top, bottom or outer
+     * edge (`.gp-pin`) sits on this line unless it carries `.gp-flush`. Absent =
+     * the same as `safe`.
      */
     artSafe?: number;
     /**

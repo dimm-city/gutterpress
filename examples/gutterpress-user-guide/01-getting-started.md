@@ -246,7 +246,7 @@ These are DriveThruRPG's print-on-demand rules for an 8.5×11in interior, from D
 | File size | 8.625×11.25in (621×810pt): the trim plus the bleed | `dtrpg` preset; the page-size check |
 | Bleed | 0.125in (9pt) on the top, bottom and outside edges; none at the binding edge | **Bleed** layer |
 | Text | At least 0.5in (36pt) inside the trim, on every edge | **Safe area: text** layer; [the safe-margins check](#safe-margins-check) |
-| Art that does not bleed | At least 0.25in (18pt) from the top, bottom and outside edges; 0.5in (36pt) from the binding edge | **Safe area: art** layer |
+| Art that does not bleed | At least 0.25in (18pt) from the top, bottom and outside edges; 0.5in (36pt) from the binding edge | **Safe area: art** layer; [the safe-margins check](#safe-margins-check), for images |
 | PDF | PDF/X-1a:2001 or PDF/X-3:2002, every font embedded, CMYK or greyscale images, ICC profile CGATS21_CRPC1 | `--format pdfx` build; the PDF/X, font and colour checks |
 | Ink | Total area coverage of 240% or less | The ink-coverage check |
 | Page count | US Letter prints in 4-page signatures, and the file ends on a blank page | `dtrpg` preset pads the book; the signature check |
@@ -272,7 +272,7 @@ Four `page:` settings in `manifest.yaml` tell the print overlays where the trim 
 
 The `custom` preset sets none of the four, so add your own to see the bleed and the safe lines.
 
-Three things read these settings: the preview's print overlays (all four), pinned art (print and preview both place it on the art-safe line, `page.gutter` at the binding) and the safe-margins check (`page.bleed`, `page.safe` and `page.gutter`, to find the trim and the text line). The overlays and the check change nothing in your PDF, and no stylesheet moves any of these lines. To hold a `book` to DriveThruRPG's text and art rules:
+Three things read these settings: the preview's print overlays (all four), pinned art (print and preview both place it on the art-safe line, `page.gutter` at the binding) and the safe-margins check (all four, to find the trim and the text and art lines). The overlays and the check change nothing in your PDF, and no stylesheet moves any of these lines. To hold a `book` to DriveThruRPG's text and art rules:
 
 ```yaml
 preset: book
