@@ -16,10 +16,10 @@ import {
   openPath,
   loadManifestWithPath,
   resolvePublishFormat,
+  BuildError,
   type PublishDeps,
   type RunPublishResult,
 } from "../index.ts";
-import { BuildError } from "../lib/build-error.ts";
 import {
   EXIT_CODES,
   UsageError,
@@ -371,6 +371,7 @@ export default defineCommand({
         {
           projectDir,
           providerId: provider.info.id,
+          provider,
           manifestPath: typeof args.manifest === "string" ? args.manifest : undefined,
           artifactPath: typeof args.file === "string" ? args.file : undefined,
           dryRun: !!args["dry-run"],

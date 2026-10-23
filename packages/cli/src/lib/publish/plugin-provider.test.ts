@@ -17,7 +17,7 @@ import { setPublishProviderConfig } from "./manifest-publish";
 import { listBookPublishProviders, resolvePublishProvider } from "./plugin-provider";
 import { listPublishProviders } from "./registry";
 import { runPublish } from "./run-publish";
-import type { PublishDeps } from "./types";
+import type { PublishDeps, PublishProvider } from "./types";
 
 const BUILT_IN_IDS = listPublishProviders().map((p) => p.id);
 
@@ -29,7 +29,7 @@ export async function publish(outputDir, context) {
   context.log("uploading");
   await writeFile(
     path.join(context.project.dir, "received.json"),
-    JSON.stringify({ outputDir, project: context.project, artifacts: context.artifacts, settings: context.settings }),
+    JSON.stringify({ outputDir, project: context.project, artifact: context.artifact, settings: context.settings }),
   );
   return globalThis.__gpPublishResult ?? { url: "https://example.com/my book", detail: "Sent" };
 }
@@ -39,6 +39,8 @@ let dir: string;
 let fetchCalls = 0;
 let fetchSpy: ReturnType<typeof spyOn>;
 let errSpy: ReturnType<typeof spyOn>;
+let warnSpy: ReturnType<typeof spyOn>;
+let warned: string[];
 
 beforeEach(async () => {
   dir = await mkdtemp(path.join(tmpdir(), "gutterpress-publish-plugin-"));
@@ -47,12 +49,15 @@ beforeEach(async () => {
     fetchCalls++;
     throw new TypeError("fetch failed: ECONNREFUSED");
   }) as never);
-  errSpy = spyOn(console, "error").mockImplementation(() => {});
+  warned = [];
+  errSpy = spyOn(console, "error").mockImplementation((...a: unknown[]) => void warned.push(a.join(" ")));
+  warnSpy = spyOn(console, "warn").mockImplementation((...a: unknown[]) => void warned.push(a.join(" ")));
 });
 
 afterEach(async () => {
   fetchSpy.mockRestore();
   errSpy.mockRestore();
+  warnSpy.mockRestore();
   delete (globalThis as Record<string, unknown>).__gpPublishResult;
   await rm(dir, { recursive: true, force: true });
 });
@@ -108,7 +113,7 @@ test("lists built-ins first, then the book's enabled publishers, marked experime
     id: "gp-demo",
     label: "gp-demo",
     description: "gp-demo destination",
-    kind: "api",
+    kind: "plugin",
     formats: ["pdf", "html"],
     credential: { required: false },
     experimental: true,
@@ -124,6 +129,17 @@ test("a publisher named like a built-in is skipped, and the built-in is unchange
 
   expect(infos.map((p) => p.id)).toEqual(BUILT_IN_IDS);
   expect((await resolvePublishProvider("itch", { projectDir: dir })).info.label).toBe("itch.io");
+});
+
+test("two publishers with the same package name: the first is listed, the second skipped with a warning", async () => {
+  await writePackage("pub", publisher("gp-demo"), RECORDING_PUBLISH);
+  await writePackage("pub2", { ...publisher("gp-demo"), description: "the other one" }, RECORDING_PUBLISH);
+  await writeManifest("extensions:\n  - ./pub\n  - ./pub2\n");
+
+  const infos = await listBookPublishProviders({ projectDir: dir });
+
+  expect(infos.filter((p) => p.id === "gp-demo").map((p) => p.description)).toEqual(["gp-demo destination"]);
+  expect(warned.join("\n")).toContain('Publishing plugin "gp-demo" is skipped');
 });
 
 test("an unreadable manifest lists the built-ins", async () => {
@@ -149,11 +165,23 @@ test("publishes a pdf: outputDir is the PDF's folder, and the context carries th
   expect(await received()).toEqual({
     outputDir: path.dirname(pdf),
     project: { dir, title: "Test Book", authors: ["Tester"] },
-    artifacts: { pdf },
+    artifact: { format: "pdf", path: pdf },
     settings: { dest: "somewhere" },
   });
-  expect(progress).toEqual(["gp-demo is an experimental publishing plugin.", "uploading"]);
+  expect(result.issues).toEqual([
+    { severity: "info", id: "plugin/experimental", message: "gp-demo is an experimental publishing plugin." },
+  ]);
+  expect(progress).toEqual(["uploading"]);
   expect(fetchCalls).toBe(0);
+});
+
+test("settings omit the two keys core reads: format and credential", async () => {
+  await writePackage("pub", publisher("gp-demo"), RECORDING_PUBLISH);
+  await writeManifest("extensions:\n  - ./pub\npublish:\n  gp-demo:\n    format: pdf\n    credential: work\n    dest: somewhere\n");
+  await withPdf();
+
+  expect((await runPublish({ projectDir: dir, providerId: "gp-demo" }, deps())).ok).toBe(true);
+  expect((await received()).settings).toEqual({ dest: "somewhere" });
 });
 
 test("publish.<id>.format: html hands the plugin the website export directory", async () => {
@@ -166,7 +194,7 @@ test("publish.<id>.format: html hands the plugin the website export directory", 
   const result = await runPublish({ projectDir: dir, providerId: "gp-demo" }, deps());
 
   expect(result.ok).toBe(true);
-  expect(await received()).toMatchObject({ outputDir: site, artifacts: { html: site } });
+  expect(await received()).toMatchObject({ outputDir: site, artifact: { format: "html", path: site } });
 });
 
 test("a scoped package name works as its manifest key, written quoted by setPublishProviderConfig", async () => {
@@ -191,6 +219,11 @@ test("a returned url that is not http(s) is dropped, and a void return publishes
   expect((await runPublish({ projectDir: dir, providerId: "gp-demo" }, deps())).outcome).toEqual({
     kind: "published",
     detail: "x",
+  });
+
+  (globalThis as Record<string, unknown>).__gpPublishResult = "https://example.com/not-an-object";
+  expect((await runPublish({ projectDir: dir, providerId: "gp-demo" }, deps())).outcome).toEqual({
+    kind: "published",
   });
 
   (globalThis as Record<string, unknown>).__gpPublishResult = null;
@@ -228,6 +261,20 @@ test("a publisher without a publish export is a preflight error, also on a dry r
       message: expect.stringContaining('does not export a `publish` function'),
     });
   }
+});
+
+test("a publisher that also declares styles or a markdown entry is refused", async () => {
+  await writePackage("pub", publisher("gp-demo", { gutterpress: { publish: true, styles: ["theme.css"] } }), RECORDING_PUBLISH);
+  await writeFile(path.join(dir, "pub", "theme.css"), "");
+  await writeManifest("extensions:\n  - ./pub\n");
+  await withPdf();
+
+  const result = await runPublish({ projectDir: dir, providerId: "gp-demo", dryRun: true }, deps());
+
+  expect(result.ok).toBe(false);
+  expect(result.issues.find((i) => i.id === "plugin/load-failed")?.message).toContain(
+    "also declares styles — a package is a publisher or a markdown plugin, not both",
+  );
 });
 
 test("a folder publisher whose main is missing says so, naming main", async () => {
@@ -269,6 +316,30 @@ test("an unknown id is a failed result that names every destination the book has
     issues: [],
     error: `Unknown publish provider "nope". Available: ${[...BUILT_IN_IDS, "gp-demo"].join(", ")}.`,
   });
+});
+
+test("a provider the caller already resolved is used as is: no lookup, no restore", async () => {
+  await writeManifest("extensions:\n  - gp-not-downloaded@1.0.0\n");
+  await withPdf();
+  const provider: PublishProvider = {
+    info: {
+      id: "handed-in",
+      label: "Handed in",
+      kind: "plugin",
+      format: "pdf",
+      description: "",
+      configFields: [],
+      credential: { required: false, host: "" },
+    },
+    authenticate: async () => ({ ok: true }),
+    preflight: async () => [],
+    upload: async () => ({ kind: "published", detail: "ran" }),
+  };
+
+  const result = await runPublish({ projectDir: dir, providerId: "handed-in", provider }, deps());
+
+  expect(result).toMatchObject({ ok: true, providerId: "handed-in", outcome: { kind: "published", detail: "ran" } });
+  expect(fetchCalls).toBe(0);
 });
 
 // ── npm publishers and restore ──────────────────────────────────────────────

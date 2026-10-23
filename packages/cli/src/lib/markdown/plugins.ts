@@ -26,6 +26,7 @@ import {
   type ExtensionMetadata,
   readExtensionMeta,
   assertExtensionContained,
+  assertPublishOnly,
   assertSupportsThisGutterpress,
   resolveExtension,
 } from "../extension-manifest";
@@ -191,6 +192,34 @@ async function vendoredInstallRoot(
 }
 
 /**
+ * Import a vendored copy's entry, resolved with the same full `exports`/`main`
+ * semantics the installer used, after arming the compiled binary's resolver
+ * for that tree. A copy whose entry no longer resolves is an error pointing
+ * at reinstall, never a fall-through.
+ */
+async function importVendoredEntry(
+  installRoot: string,
+  packageDir: string,
+  spec: string,
+): Promise<{ module: unknown; entryPath: string }> {
+  let entry: string;
+  try {
+    entry = await resolvePackageEntry(packageDir);
+  } catch (cause) {
+    throw new Error(
+      `the downloaded copy of ${spec} under plugins/npm/ is incomplete ` +
+        `(${cause instanceof Error ? cause.message : String(cause)}). ` +
+        `Reinstall it with \`gutterpress ext add ${spec}\`.`,
+      { cause },
+    );
+  }
+  const entryPath = join(packageDir, ...entry.split("/"));
+  vendoredRootsOpened.add(installRoot);
+  installBunVendoredResolver();
+  return { module: await import(pathToFileURL(entryPath).href), entryPath };
+}
+
+/**
  * Resolve and import an npm plugin package.
  *
  * Resolution order:
@@ -224,26 +253,8 @@ async function loadNpmPackage(
   const installRoot = await vendoredInstallRoot(packageName, baseDir, version);
   if (installRoot) {
     const packageDir = vendoredNpmPluginPackageDir(installRoot, packageName);
-    let entry: string;
-    try {
-      entry = await resolvePackageEntry(packageDir);
-    } catch (cause) {
-      throw new Error(
-        `the downloaded copy of ${packageName}@${version} under plugins/npm/ is incomplete ` +
-          `(${cause instanceof Error ? cause.message : String(cause)}). ` +
-          `Reinstall it with \`gutterpress ext add ${packageName}@${version}\`.`,
-        { cause },
-      );
-    }
-    const entryPath = join(packageDir, ...entry.split("/"));
-    vendoredRootsOpened.add(installRoot);
-    installBunVendoredResolver();
-    return {
-      module: await import(pathToFileURL(entryPath).href),
-      moduleDir: dirname(entryPath),
-      packageDir,
-      entryPath,
-    };
+    const { module, entryPath } = await importVendoredEntry(installRoot, packageDir, `${packageName}@${version}`);
+    return { module, moduleDir: dirname(entryPath), packageDir, entryPath };
   }
 
   // Legacy unpinned entry: user's project (manifest dir).
@@ -662,6 +673,7 @@ async function loadExtensionFromDir(
 ): Promise<LoadedPlugin> {
   const meta = await readExtensionMeta(extensionDir);
   assertExtensionContained(meta);
+  assertPublishOnly(meta, pluginRef);
   assertSupportsThisGutterpress(meta, pluginRef);
   const resolved = resolveExtension(extensionDir, meta, `Plugin "${pluginRef}"`);
   const extensionStyles = resolved.styles ?? [];
@@ -818,6 +830,7 @@ export async function loadPlugin(
       if (installRoot) {
         const meta = await readExtensionMeta(vendoredNpmPluginPackageDir(installRoot, config.name!));
         if (meta.publish) {
+          assertPublishOnly(meta, pluginRef);
           assertSupportsThisGutterpress(meta, pluginRef);
           return {
             name: config.name!,
@@ -895,45 +908,46 @@ export async function loadPlugin(
   };
 }
 
+/** Where a publishing plugin's package sits, as discovery found it. */
+export interface PublishPluginLocation {
+  /** The package folder: a `path:` folder, or the vendored copy's package dir. */
+  dir: string;
+  /** The vendored install root of an npm entry; `null` for a folder. */
+  installRoot: string | null;
+  /** The manifest spelling, for messages. */
+  ref: string;
+}
+
 /**
  * EXPERIMENTAL (#381): import a publishing plugin's entry and return its
  * named `publish` export. Only the publish path calls this — never a build or
- * preview (see the skip in {@link loadPlugin}). It reuses the loader's own
- * import paths: a vendored npm copy through {@link loadNpmPackage} (which also
- * arms the compiled-binary resolver) and a folder's `main` through the mtime
- * cache, so the long-lived desktop host sees edits.
+ * preview (see the skip in {@link loadPlugin}). The package is the one
+ * discovery located, so there is no second lookup and no fall-through to a
+ * same-named package elsewhere: a vendored copy loads through
+ * {@link importVendoredEntry}, a folder's `main` through the mtime cache, so
+ * the long-lived desktop host sees edits.
  */
-export async function loadPublishFunction(
-  config: ResolvedExtensionConfig,
-  baseDir: string,
-): Promise<PublishPluginFunction> {
+export async function loadPublishFunction({ dir, installRoot, ref }: PublishPluginLocation): Promise<PublishPluginFunction> {
+  const meta = await readExtensionMeta(dir);
+  assertExtensionContained(meta);
+  assertPublishOnly(meta, ref);
+  assertSupportsThisGutterpress(meta, ref);
   let mod: unknown;
-  if (config.path) {
-    const dir = resolve(baseDir, config.path);
-    const meta = await readExtensionMeta(dir);
-    assertExtensionContained(meta);
-    assertSupportsThisGutterpress(meta, config.use);
-    if (!meta.main) throw new Error(`Publishing plugin "${config.use}" declares no \`main\` in its package.json.`);
+  if (installRoot) {
+    mod = (await importVendoredEntry(installRoot, dir, ref)).module;
+  } else {
+    if (!meta.main) throw new Error(`Publishing plugin "${ref}" declares no \`main\` in its package.json.`);
     const entry = resolve(dir, meta.main);
     if (!existsSync(entry)) {
-      throw new Error(`Publishing plugin "${config.use}" declares main "${meta.main}" but no file exists at ${entry}.`);
+      throw new Error(`Publishing plugin "${ref}" declares main "${meta.main}" but no file exists at ${entry}.`);
     }
     mod = await loadCachedPathPluginModule(entry);
-  } else {
-    const installRoot = await vendoredInstallRoot(config.name!, baseDir, config.version);
-    if (installRoot) {
-      assertSupportsThisGutterpress(
-        await readExtensionMeta(vendoredNpmPluginPackageDir(installRoot, config.name!)),
-        config.use,
-      );
-    }
-    mod = (await loadNpmPackage(config.name!, baseDir, config.version)).module;
   }
   const moduleExports = (mod ?? {}) as Record<string, unknown>;
   const publish =
     moduleExports.publish ?? (moduleExports.default as Record<string, unknown> | undefined)?.publish;
   if (typeof publish !== "function") {
-    throw new Error(`"${config.use}" does not export a \`publish\` function.`);
+    throw new Error(`"${ref}" does not export a \`publish\` function.`);
   }
   return publish as PublishPluginFunction;
 }

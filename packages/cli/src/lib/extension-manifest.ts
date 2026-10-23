@@ -251,6 +251,26 @@ export function extensionCarries(meta: ExtensionMetadata): ExtensionCarries {
 }
 
 /**
+ * A publishing plugin (experimental, #381) is a publisher and nothing else:
+ * its entry is never imported while a book renders, so a markdown entry,
+ * styles, components or snippets it also declared would either load (a
+ * folder) or be dropped without a word (a vendored copy). One rule, checked
+ * here, keeps both load paths and the publish path agreeing. Not a listing
+ * guard — `readExtensionMeta` stays tolerant.
+ */
+export function assertPublishOnly(meta: ExtensionMetadata, ref: string): void {
+  if (!meta.publish) return;
+  const carries = extensionCarries(meta);
+  const also = (["markdown", "styles", "components", "snippets"] as const).filter((k) => carries[k]);
+  if (also.length > 0) {
+    throw new Error(
+      `Publishing plugin "${ref}" also declares ${also.join(", ")} — a package is a ` +
+        "publisher or a markdown plugin, not both.",
+    );
+  }
+}
+
+/**
  * True when a declared relative path escapes its own folder (absolute, or a
  * `..` segment) — the traversal shape every containment check in this
  * package rejects.

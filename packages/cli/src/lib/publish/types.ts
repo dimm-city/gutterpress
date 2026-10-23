@@ -49,8 +49,10 @@ export type PublishProviderId =
  *   - "api"    — real programmatic upload (itch.io, Azure SWA, Shopify)
  *   - "guided" — no upload API exists; we validate + stage a package and open
  *                the platform's upload page with a checklist (DTRPG, KDP)
+ *   - "plugin" — a publishing plugin (experimental, #381): the book's own
+ *                extension runs the upload and handles its own sign-in
  */
-export type PublishProviderKind = "api" | "guided";
+export type PublishProviderKind = "api" | "guided" | "plugin";
 
 /** Which build output the provider consumes. */
 export type PublishArtifactFormat = "pdf" | "html";
@@ -120,7 +122,8 @@ export interface PublishProviderInfo {
     label: string;
     canCreate: boolean;
   };
-  /** Set only on a publishing plugin (experimental, #381) — UIs mark it. */
+  /** A badge, not a kind: the provider may change or go away. Set on every
+   *  publishing plugin today (#381). */
   experimental?: true;
 }
 
@@ -132,9 +135,11 @@ export interface PublishProviderInfo {
 
 export interface PublishPluginContext {
   project: { dir: string; title: string; authors: string[] };
-  /** Exactly ONE key: the artifact validated for this run. */
-  artifacts: { pdf?: string; html?: string };
-  /** The manifest's `publish.<package-name>` section, as written. */
+  /** The one build output validated for this run: a PDF file, or the
+   *  website export directory. */
+  artifact: PublishArtifact;
+  /** The manifest's `publish.<package-name>` section, minus the two keys core
+   *  reads from it: `format` (which build to publish) and `credential`. */
   settings: Record<string, unknown>;
   /** Progress line sink. Use this, never `console.log`: stdout carries
    *  `--json` output. */
@@ -148,8 +153,8 @@ export interface PublishPluginResult {
   detail?: string;
 }
 
-/** `outputDir` is the folder holding the artifact: the website export
- *  directory for html, the PDF's folder for pdf. */
+/** `outputDir` is the folder holding `context.artifact.path`: the website
+ *  export directory for html, the PDF's folder for pdf. */
 export type PublishPluginFunction = (
   outputDir: string,
   context: PublishPluginContext,

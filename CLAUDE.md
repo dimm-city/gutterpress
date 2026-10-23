@@ -331,9 +331,11 @@ exports a named `publish(outputDir, context)` function and no markdown-it
 plugin. The loader recognises it from package.json and skips it without
 importing it (`loadPlugin`); only the publish path loads it
 (`loadPublishFunction`, reached from `lib/publish/plugin-provider.ts`).
-`context` is a plain Gutterpress-owned object (`project`, `artifacts`,
+`context` is a plain Gutterpress-owned object (`project`, `artifact`,
 `settings`, a `log` callback), never markdown-it tokens, a token store or
 credentials; the plugin owns its credentials and returns `{ url?, detail? }`.
+A publisher declares nothing the renderer loads (`assertPublishOnly`, checked
+on both load paths and the publish path).
 It reuses the extension install/restore rail and adds no second one. The
 feature may change or be removed: `plugin-provider.ts`'s header lists
 everything it adds, so removing it stays one commit.

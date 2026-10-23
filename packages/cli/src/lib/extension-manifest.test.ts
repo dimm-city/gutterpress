@@ -19,6 +19,7 @@ import {
   extensionEntry,
   extensionCarries,
   assertExtensionContained,
+  assertPublishOnly,
   assertSupportsThisGutterpress,
   resolveExtension,
 } from "./extension-manifest";
@@ -205,6 +206,19 @@ describe("extension-manifest", () => {
         /outside its own folder/,
       );
       expect(() => assertExtensionContained({ publish: true, main: "lib/index.js" })).not.toThrow();
+    });
+
+    // #381 — one rule for both load paths: a publisher declares nothing the
+    // renderer would load. Its `main` is its publish module, so it's fine.
+    test("assertPublishOnly refuses a publisher that also declares renderer-side fields, and only then (#381)", () => {
+      expect(() => assertPublishOnly({ publish: true, main: "index.js" }, "x")).not.toThrow();
+      expect(() => assertPublishOnly({ main: "index.js", styles: ["a.css"] }, "x")).not.toThrow();
+      expect(() => assertPublishOnly({ publish: true, main: "index.js", styles: ["a.css"] }, "x")).toThrow(
+        /Publishing plugin "x" also declares styles — a package is a publisher or a markdown plugin, not both/,
+      );
+      expect(() =>
+        assertPublishOnly({ publish: true, markdown: "md.js", components: "components.yaml", snippets: "snippets" }, "x"),
+      ).toThrow(/also declares markdown, components, snippets/);
     });
 
     test("rejects a traversal or absolute path in EACH new field individually", () => {

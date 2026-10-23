@@ -454,8 +454,7 @@ export async function publish(outputDir, context) {
   const token = process.env.EXAMPLE_HOST_TOKEN;
   if (!token) throw new Error("Set the EXAMPLE_HOST_TOKEN environment variable.");
 
-  const file = context.artifacts.pdf ?? context.artifacts.html;
-  context.log(`Uploading ${file}`);
+  context.log(`Uploading ${context.artifact.path}`);
   // ...upload with fetch()...
   return { url: `https://example.host/${site}`, detail: `Published to ${site}` };
 }
@@ -467,11 +466,13 @@ previews a book. Only a publish loads it. What `publish` receives:
 
 - `outputDir`: the folder holding the build. For a website it is the export
   folder; for a PDF, the folder the PDF is in.
-- `context.artifacts`: exactly one path, `pdf` or `html`, the one checked
-  before publishing. The book picks it with `format: pdf` (the default) or
+- `context.artifact`: `{ format, path }`, the one build output checked before
+  publishing: the PDF file (`format: "pdf"`) or the website export folder
+  (`format: "html"`). The book picks it with `format: pdf` (the default) or
   `format: html` in the plugin's settings.
 - `context.settings`: the book's `publish.<package-name>` section in
-  `manifest.yaml`, as written. `format` and `credential` in it are reserved.
+  `manifest.yaml`, without the two keys Gutterpress reads itself, `format`
+  and `credential`.
 - `context.project`: the book's folder, title and authors.
 - `context.log(message)`: a progress line. Write progress here, never with
   `console.log`: standard output carries `--json` results.
@@ -488,7 +489,9 @@ The rules that keep this safe and portable:
   log, so never include a key in them.
 - **The id is the package name.** A package named like a built-in
   destination (`local`, `itch`, `kdp`, …) is skipped.
-- **A package is a publisher or a markdown plugin, not both.**
+- **A package is a publisher or a markdown plugin, not both.** A publisher
+  that also declares `gutterpress.markdown`, `styles`, `components` or
+  `snippets` is refused when it is added and when it publishes.
 - **There is no timeout.** Return or throw; a `publish` that never settles
   holds the publish open.
 - `engines.gutterpress` works as for any extension.

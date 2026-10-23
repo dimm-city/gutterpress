@@ -26,8 +26,10 @@ A book can add destinations of its own. A publishing plugin is an extension
 package flagged `"gutterpress": { "publish": true }` whose entry exports a
 named `publish(outputDir, context)` function; it installs, pins and restores
 like any extension. Its id is its package name, built-in ids always win, and
-it is listed after the built-ins (`--list`, the desktop's cards) marked
-`experimental`. The author's side is the user guide's
+it is listed after the built-ins (`--list`, the desktop's cards) as
+`kind: "plugin"`, marked `experimental` (a badge: the kind is what UIs
+branch on). It may declare nothing a build loads — no markdown entry, styles,
+components or snippets. The author's side is the user guide's
 [publishing plugins](../examples/gutterpress-user-guide/08-publishing.md)
 section; the contract is in
 [Chapter 5](../examples/gutterpress-user-guide/05-plugins.md). Experimental:
@@ -105,9 +107,10 @@ Sections are keyed by the provider id — the same spelling as
 settings form renders — adding a provider needs no UI changes.
 
 A publishing plugin's section is keyed by its package name (a scoped name is
-quoted: `"@scope/pkg":`) and handed to the plugin as written. `format`
-(`pdf` | `html`) and `credential` are reserved keys inside it. Plugins declare
-no `configFields`, so the desktop shows no settings form for them.
+quoted: `"@scope/pkg":`) and handed to the plugin as `context.settings`
+without the two keys core reads from it, `format` (`pdf` | `html`) and
+`credential`. Plugins declare no `configFields`, so the desktop shows no
+settings form for them.
 
 **Secrets never live in the project.** API keys (and Google Drive's refresh
 token — the same store, `kind: "google-oauth"`) are stored:

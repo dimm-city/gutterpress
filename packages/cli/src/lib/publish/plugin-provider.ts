@@ -9,8 +9,9 @@
  *     restore, no network — so listing destinations can never break;
  *   - lookup by id restores the book's pins (a fresh clone has none of the
  *     files) and then finds the plugin;
- *   - the adapter makes a plugin a {@link PublishProvider}, so run-publish,
- *     the CLI and the desktop routes treat it like any built-in.
+ *   - the adapter makes a plugin a {@link PublishProvider} of kind "plugin",
+ *     so run-publish, the CLI and the desktop routes treat it like any
+ *     built-in.
  *
  * Built-in ids always win, and a built-in id never reaches the plugin path:
  * publishing to `itch` still loads no plugins and touches no network.
@@ -26,6 +27,7 @@ import type { ResolvedExtensionConfig } from "../../schema/manifest.types.ts";
 import { log } from "../../utils/logger.ts";
 import { readExtensionMeta } from "../extension-manifest.ts";
 import { loadManifestWithPath, resolveConfig } from "../manifest.ts";
+import type { PublishPluginLocation } from "../markdown/plugins.ts";
 import { resolveVendoredPluginInstallRoot, vendoredNpmPluginPackageDir } from "../plugin-vendor.ts";
 import { listPublishProviders, publishProviderFor } from "./registry.ts";
 import type {
@@ -41,18 +43,19 @@ export interface PublishBook {
   manifestPath?: string;
 }
 
-interface Publisher {
+interface Publisher extends PublishPluginLocation {
   id: string;
   description?: string;
-  config: ResolvedExtensionConfig;
-  /** The manifest's directory — what path entries and vendored copies resolve against. */
-  baseDir: string;
 }
 
 interface BookExtensions {
   baseDir: string;
   extensions: ResolvedExtensionConfig[];
 }
+
+/** The two manifest keys core reads from a `publish.<id>` section; a plugin
+ *  gets the rest. */
+const RESERVED_SETTINGS = new Set(["format", "credential"]);
 
 const isBuiltIn = (id: string) => listPublishProviders().some((p) => p.id === id);
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -64,16 +67,19 @@ async function bookExtensions(book: PublishBook): Promise<BookExtensions> {
   return { baseDir: manifestDir, extensions: resolveConfig({}, manifest).extensions };
 }
 
-/** The entry's package folder when it is on disk; `null` otherwise. Never throws. */
-async function packageDirOf(config: ResolvedExtensionConfig, baseDir: string): Promise<string | null> {
+/** Where the entry's package sits when it is on disk; `null` otherwise.
+ *  Never throws. */
+async function locate(config: ResolvedExtensionConfig, baseDir: string): Promise<PublishPluginLocation | null> {
   try {
     if (config.path) {
       const dir = path.resolve(baseDir, config.path);
-      return (await stat(dir)).isDirectory() ? dir : null;
+      return (await stat(dir)).isDirectory() ? { dir, installRoot: null, ref: config.use } : null;
     }
     if (!config.name || !config.version) return null;
-    const root = await resolveVendoredPluginInstallRoot(baseDir, config.name, config.version);
-    return root ? vendoredNpmPluginPackageDir(root, config.name) : null;
+    const installRoot = await resolveVendoredPluginInstallRoot(baseDir, config.name, config.version);
+    return installRoot
+      ? { dir: vendoredNpmPluginPackageDir(installRoot, config.name), installRoot, ref: config.use }
+      : null;
   } catch {
     return null;
   }
@@ -84,17 +90,21 @@ async function packageDirOf(config: ResolvedExtensionConfig, baseDir: string): P
 async function discover({ baseDir, extensions }: BookExtensions): Promise<Publisher[]> {
   const found: Publisher[] = [];
   for (const config of extensions) {
-    const dir = await packageDirOf(config, baseDir);
-    if (!dir) continue;
-    const meta = await readExtensionMeta(dir);
+    const location = await locate(config, baseDir);
+    if (!location) continue;
+    const meta = await readExtensionMeta(location.dir);
+    if (!meta.publish) continue;
     const id = config.path ? meta.name?.trim() : config.name;
-    if (!meta.publish || !id) continue;
+    if (!id) {
+      log.warn(`Publishing plugin "${config.use}" is skipped: its package.json has no "name".`);
+      continue;
+    }
     if (isBuiltIn(id) || found.some((p) => p.id === id)) {
       log.warn(`Publishing plugin "${id}" is skipped: a publish destination already has that name.`);
       continue;
     }
     const description = meta.description?.trim();
-    found.push({ id, ...(description ? { description } : {}), config, baseDir });
+    found.push({ id, ...(description ? { description } : {}), ...location });
   }
   return found;
 }
@@ -103,7 +113,7 @@ async function discover({ baseDir, extensions }: BookExtensions): Promise<Publis
  *  package.json only; a book whose manifest can't be read lists the built-ins. */
 export async function listBookPublishProviders(book: PublishBook): Promise<PublishProviderInfo[]> {
   const plugins = await bookExtensions(book).then(discover, () => []);
-  return [...listPublishProviders(), ...plugins.map((p) => pluginProvider(p).info)];
+  return [...listPublishProviders(), ...plugins.map(infoFor)];
 }
 
 /**
@@ -117,6 +127,9 @@ export async function resolvePublishProvider(id: string, book: PublishBook): Pro
   const ext = await bookExtensions(book);
   const npmEntry = ext.extensions.some((c) => !c.path && c.name === id);
   if (npmEntry) {
+    // Imported here so `--list` and a built-in publish never load the
+    // installer graph. The restore's "Downloaded …" lines go to stderr, which
+    // the desktop host discards; its failure message reaches the author.
     const { restoreForCommand } = await import("../extension-restore.ts");
     await restoreForCommand(book.projectDir, { manifestPath: book.manifestPath, failFast: true });
   }
@@ -145,25 +158,29 @@ function httpUrl(value: unknown): string | undefined {
   }
 }
 
-function pluginProvider(p: Publisher): PublishProvider {
-  const info: PublishProviderInfo = {
+function infoFor(p: Publisher): PublishProviderInfo {
+  return {
     id: p.id,
     label: p.id,
-    kind: "api",
+    kind: "plugin",
     format: "pdf",
     formats: ["pdf", "html"],
     description: p.description ?? "Publishing plugin",
+    // No settings form yet: settings are edited in the manifest.
     configFields: [],
     // The plugin owns its credentials; core stores none for it.
     credential: { required: false, host: "" },
     experimental: true,
   };
+}
+
+function pluginProvider(p: Publisher): PublishProvider {
   let loading: Promise<PublishPluginFunction> | undefined;
-  const load = () =>
-    (loading ??= import("../markdown/plugins.ts").then((m) => m.loadPublishFunction(p.config, p.baseDir)));
+  // Imported here so a built-in publish never loads the markdown-it loader.
+  const load = () => (loading ??= import("../markdown/plugins.ts").then((m) => m.loadPublishFunction(p)));
 
   return {
-    info,
+    info: infoFor(p),
     async authenticate() {
       return { ok: true };
     },
@@ -172,7 +189,6 @@ function pluginProvider(p: Publisher): PublishProvider {
     async preflight() {
       try {
         await load();
-        return [];
       } catch (e) {
         return [
           {
@@ -182,18 +198,25 @@ function pluginProvider(p: Publisher): PublishProvider {
           },
         ];
       }
+      return [
+        {
+          severity: "info",
+          id: "plugin/experimental",
+          message: `${p.id} is an experimental publishing plugin.`,
+        },
+      ];
     },
     async upload(req) {
       const publish = await load();
       const onProgress = req.deps.onProgress ?? (() => {});
-      onProgress(`${p.id} is an experimental publishing plugin.`);
       const { format, path: artifactPath } = req.artifact;
+      const settings = Object.fromEntries(Object.entries(req.config).filter(([k]) => !RESERVED_SETTINGS.has(k)));
       let returned: PublishPluginResult | void;
       try {
         returned = await publish(format === "html" ? artifactPath : path.dirname(artifactPath), {
           project: { dir: req.project.projectDir, title: req.project.title, authors: [...req.project.authors] },
-          artifacts: { [format]: artifactPath },
-          settings: { ...req.config },
+          artifact: { format, path: artifactPath },
+          settings,
           log: (message) => onProgress(String(message)),
         });
       } catch (e) {

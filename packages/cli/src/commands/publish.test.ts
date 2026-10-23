@@ -328,9 +328,10 @@ export async function publish(outputDir, context) {
 
     await runCommand(publishCommand, { rawArgs: [dir, "--list", "--json"] });
 
-    const rows = lastJson(consoleLogSpy) as Array<{ id: string; experimental?: true }>;
+    const rows = lastJson(consoleLogSpy) as Array<{ id: string; kind: string; experimental?: true }>;
     expect(rows.map((r) => r.id)).toEqual([...listPublishProviders().map((p) => p.id), "pub-demo"]);
     expect(rows.filter((r) => r.experimental).map((r) => r.id)).toEqual(["pub-demo"]);
+    expect(rows.at(-1)?.kind).toBe("plugin");
   });
 
   test("--list (text) shows `experimental` in the status column", async () => {

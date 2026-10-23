@@ -39,6 +39,12 @@ export interface RunPublishOptions {
   artifactPath?: string;
   /** Stop after preflight — report issues without contacting the platform. */
   dryRun?: boolean;
+  /**
+   * The provider, when the caller has already resolved it (the CLI does, to
+   * map a failed restore to its own exit code): no second lookup or restore.
+   * Default: {@link resolvePublishProvider}(`providerId`).
+   */
+  provider?: PublishProvider;
 }
 
 export interface RunPublishResult {
@@ -274,10 +280,12 @@ export async function runPublish(
   // be found or restored is a result the author reads, not a thrown error.
   let provider: PublishProvider;
   try {
-    provider = await resolvePublishProvider(options.providerId, {
-      projectDir: options.projectDir,
-      ...(options.manifestPath !== undefined ? { manifestPath: options.manifestPath } : {}),
-    });
+    provider =
+      options.provider ??
+      (await resolvePublishProvider(options.providerId, {
+        projectDir: options.projectDir,
+        ...(options.manifestPath !== undefined ? { manifestPath: options.manifestPath } : {}),
+      }));
   } catch (e) {
     return {
       ok: false,

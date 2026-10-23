@@ -470,6 +470,30 @@ describe("plugin loader", () => {
       expect((globalThis as Record<string, unknown>)[marker]).toBeUndefined();
     });
 
+    test("a vendored publishing plugin that also declares a markdown entry is refused, not silently narrowed (#381)", async () => {
+      const name = "gp-publish-and-markdown";
+      const marker = "__gpPublishAndMarkdownImported";
+      const vendored = vendoredNpmPluginPackageDir(vendoredNpmPluginRoot(TMP_ROOT, name, "1.0.0"), name);
+      mkdirSync(vendored, { recursive: true });
+      writeFileSync(
+        join(vendored, "package.json"),
+        JSON.stringify({
+          name,
+          version: "1.0.0",
+          type: "module",
+          exports: "./index.js",
+          gutterpress: { publish: true, markdown: "./md.js" },
+        }),
+      );
+      writeFileSync(join(vendored, "index.js"), `globalThis.${marker} = true;\nexport async function publish() {}\n`);
+      writeFileSync(join(vendored, "md.js"), `globalThis.${marker} = true;\nexport default () => {};\n`);
+
+      await expect(loadPlugin(cfg({ name, version: "1.0.0" }), TMP_ROOT)).rejects.toThrow(
+        /also declares markdown — a package is a publisher or a markdown plugin, not both/,
+      );
+      expect((globalThis as Record<string, unknown>)[marker]).toBeUndefined();
+    });
+
     test("a vendored publishing plugin whose engines.gutterpress excludes this Gutterpress fails to load (#381)", async () => {
       const name = "gp-publish-too-new";
       const vendored = vendoredNpmPluginPackageDir(vendoredNpmPluginRoot(TMP_ROOT, name, "1.0.0"), name);
@@ -759,6 +783,20 @@ describe("plugin loader", () => {
       const md = new MarkdownIt();
       applyPlugins(md, [loaded]);
       expect(md.render("# Hi")).toBe("<h1>Hi</h1>\n");
+    });
+
+    // #381 — the same rule on the folder path, where the extra declaration
+    // would otherwise LOAD rather than be dropped.
+    test("a publishing-plugin folder that also declares styles is refused (#381)", async () => {
+      writeExtension(
+        "publish-and-styles",
+        { name: "gp-publish-styles", type: "module", main: "index.js", gutterpress: { publish: true, styles: ["theme.css"] } },
+        { "index.js": "export async function publish() {}\n", "theme.css": "" },
+      );
+
+      await expect(loadPlugin(cfg({ path: "publish-and-styles" }), TMP_ROOT)).rejects.toThrow(
+        /also declares styles — a package is a publisher or a markdown plugin, not both/,
+      );
     });
 
     // #276 — the migration a 0.10.9 project hits: a look folder still
