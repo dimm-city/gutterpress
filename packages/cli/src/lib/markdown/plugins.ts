@@ -913,9 +913,11 @@ export async function loadPublishFunction(
     const meta = await readExtensionMeta(dir);
     assertExtensionContained(meta);
     assertSupportsThisGutterpress(meta, config.use);
-    const [entry] =
-      resolveDeclaredStyles(meta.main ? [meta.main] : undefined, dir, `Publishing plugin "${config.use}"`) ?? [];
-    if (!entry) throw new Error(`Publishing plugin "${config.use}" declares no \`main\` in its package.json.`);
+    if (!meta.main) throw new Error(`Publishing plugin "${config.use}" declares no \`main\` in its package.json.`);
+    const entry = resolve(dir, meta.main);
+    if (!existsSync(entry)) {
+      throw new Error(`Publishing plugin "${config.use}" declares main "${meta.main}" but no file exists at ${entry}.`);
+    }
     mod = await loadCachedPathPluginModule(entry);
   } else {
     const installRoot = await vendoredInstallRoot(config.name!, baseDir, config.version);

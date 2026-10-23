@@ -230,6 +230,18 @@ test("a publisher without a publish export is a preflight error, also on a dry r
   }
 });
 
+test("a folder publisher whose main is missing says so, naming main", async () => {
+  await writePackage("pub", publisher("gp-demo", { main: "dist/missing.js" }), RECORDING_PUBLISH);
+  await writeManifest("extensions:\n  - ./pub\n");
+  await withPdf();
+
+  const result = await runPublish({ projectDir: dir, providerId: "gp-demo", dryRun: true }, deps());
+
+  const issue = result.issues.find((i) => i.id === "plugin/load-failed");
+  expect(issue?.message).toContain('declares main "dist/missing.js" but no file exists');
+  expect(issue?.message).not.toContain("stylesheet");
+});
+
 test("a publisher whose engines.gutterpress excludes this Gutterpress is a preflight error", async () => {
   await writePackage("pub", publisher("gp-demo", { engines: { gutterpress: ">=999.0.0" } }), RECORDING_PUBLISH);
   await writeManifest("extensions:\n  - ./pub\n");
