@@ -630,7 +630,7 @@
       {/if}
 
       <p class="muted small">
-        <Icon name="info" size={12} /> Print-quality PDF checks (page size, ink coverage, embedded fonts) run automatically when you export — no PDF is built here.
+        <Icon name="info" size={12} /> No PDF is built here. Your book's PDF checks — page size, safe margins, embedded fonts, and PDF/X when qpdf and Ghostscript are installed — run on the saved file and report to Problems.
       </p>
     {:else}
       <!-- Publish step -->

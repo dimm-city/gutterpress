@@ -32,6 +32,7 @@
 
 import { overWideExportMessage } from "../errors";
 import { basenameOf, isPathAtOrUnder, joinPath } from "../platform/paths";
+import { problemCounts } from "../problems";
 
 /** The export pill's FSM state. */
 export type ExportState =
@@ -52,7 +53,19 @@ export type ExportState =
  * import it from here.
  */
 export type { ExportProgressEvent } from "../platform/shared-types";
-import type { ExportProgressEvent } from "../platform/shared-types";
+import type { ExportFindingDto, ExportProgressEvent } from "../platform/shared-types";
+
+/**
+ * The toast line for what the post-build PDF checks found (#399): only the
+ * errors and warnings — the badge's own count — so an info-only run (a check
+ * skipped for a missing tool) does not read as a problem. Null when there is
+ * nothing to say.
+ */
+export function exportFindingsMessage(findings: ExportFindingDto[] | undefined): string | null {
+  const n = problemCounts(findings ?? []).badge;
+  if (n === 0) return null;
+  return `${n} ${n === 1 ? "problem" : "problems"} found in the PDF — see Problems.`;
+}
 
 /**
  * Timer seam so the elapsed-seconds ticker can be driven by a fake clock in
@@ -94,7 +107,7 @@ export interface ExportHostDeps {
     input: { key: string; displayName: string },
     outPath: string,
     opts?: { validate?: boolean; allowShrink?: boolean },
-  ) => Promise<{ exportId?: string; pdfPath?: string }>;
+  ) => Promise<{ exportId?: string; pdfPath?: string; findings?: ExportFindingDto[] }>;
   /** `out` is the destination FOLDER. */
   buildHtml: (
     input: { key: string; displayName: string },
@@ -117,6 +130,18 @@ export interface ExportHostDeps {
     durationMs?: number,
     action?: { label: string; onClick: () => void | Promise<void> },
   ) => void;
+  /**
+   * The PDF checks' findings toast (#399): sticky (`durationMs` 0) with a
+   * "Review" action, since the author decides when they have seen it — the
+   * PDF itself was saved, so this is neither the success toast nor an error.
+   */
+  toastWarning: (
+    message: string,
+    durationMs?: number,
+    action?: { label: string; onClick: () => void },
+  ) => void;
+  /** Open the Problems list (the findings toast's "Review" button). */
+  showProblems: () => void;
   friendlyPdfError: (e: unknown) => string;
   /** Injected so the post-save 2s pill-linger delay is fake-clock-able in tests. */
   wait: (ms: number) => Promise<void>;
@@ -421,6 +446,13 @@ export class ExportController {
           void h.showInFolder(savedPdfPath).catch(() => {});
         },
       });
+      // What the post-build PDF checks found (#399), beside the success toast
+      // rather than in it: the PDF is saved either way, and each toast keeps
+      // its one action (reveal the file / review the problems).
+      const findingsMessage = exportFindingsMessage(data.findings);
+      if (findingsMessage) {
+        h.toastWarning(findingsMessage, 0, { label: "Review", onClick: () => h.showProblems() });
+      }
       await h.wait(2000);
       return savedPdfPath;
     } catch (e) {

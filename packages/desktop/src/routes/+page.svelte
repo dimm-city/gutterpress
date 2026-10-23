@@ -21,7 +21,7 @@
   import type { ToastController } from "$lib/components/Toast.svelte";
   import type { MarkdownFileLaunchEvent } from "$lib/platform/contract";
   import type { ProblemEntry } from "$lib/platform/dtos";
-  import { buildProblems, problemCounts } from "$lib/problems";
+  import { buildProblems, exportProblems, problemCounts } from "$lib/problems";
   import StatusBar from "$lib/components/StatusBar.svelte";
   import ProblemsPanel from "$lib/components/ProblemsPanel.svelte";
   import ActivityIndicator from "$lib/components/ActivityIndicator.svelte";
@@ -190,10 +190,15 @@
         })
         // Print-quality findings are only knowable once the book paginates,
         // so they arrive from the export rather than the source lint that
-        // fills the panel. Held separately (see `buildProblems`) so the next
-        // lint refresh — any file save — does not wipe them.
+        // fills the panel — the render's own diagnostics and what the
+        // post-build PDF checks found on the saved file (#399). Held
+        // separately (see `buildProblems`) so the next lint refresh — any
+        // file save — does not wipe them.
         .then((result) => {
-          buildProblemEntries = buildProblems(result.diagnostics ?? []);
+          buildProblemEntries = [
+            ...buildProblems(result.diagnostics ?? []),
+            ...exportProblems(result.findings ?? []),
+          ];
           return result;
         }),
     buildHtml: (input, out) => getPlatform().build({ input, format: "html", ...(out ? { out } : {}) }),
@@ -204,6 +209,9 @@
     // needs a duration and an action button, which `error()` does not take.
     toastError: (message, durationMs, action) =>
       toast?.show(message, "error", durationMs, action),
+    toastWarning: (message, durationMs, action) =>
+      toast?.show(message, "warning", durationMs, action),
+    showProblems: () => openProblemsList(),
     friendlyPdfError: (e) => friendlyPdfError(e),
     wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   });

@@ -60,7 +60,8 @@ computer only. You can also add accounts under Settings → Accounts → **Publi
 
 Preflight checks the book before anything is sent. It reports **All clear — ready to publish.**,
 things to review, or problems to fix; **Go to** takes you to each one, and **Re-run** checks
-again. You can still **Publish anyway**.
+again. You can still **Publish anyway**. The PDF itself is checked once it is built — see
+[Save a PDF](07-export-pdf.md).
 
 ## 4. Publish
 
