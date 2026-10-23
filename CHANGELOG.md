@@ -9,6 +9,27 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **The safe-margins check judges art too (#400).** `pdf.print.safe-margins`
+  now reads every image drawn in the built PDF and applies DriveThruRPG's art
+  rule: art that does not bleed stays at least `page.artSafe` inside the trim
+  on the top, bottom and outside edges and `page.gutter` at the binding. An
+  image that runs out to the sheet's edge is a bleed there and passes; one that
+  crosses the trim without reaching the sheet ends in the bleed band and is
+  reported as such. Findings name the page, the image size, the edge and the
+  shortfall, like the text findings. The check and the preview's "Safe area:
+  art" overlay now judge through one shared function
+  (`engine/shared/print-area.ts`), so they cannot disagree. Filled backgrounds
+  and borders are still judged in the overlay only.
+- **The desktop runs the PDF checks when you export (#399).** After a PDF
+  export lands, the book's post-build checks run on that file through the
+  same validation path the CLI uses (`executeValidation` with the manifest's
+  targets), and their findings appear in the Problems list, with a message
+  that says how many were found and a **Review** button. A required check that
+  cannot run because `qpdf` or Ghostscript is missing is reported as an error,
+  and a check skipped for a missing tool says so, never a silent pass. The
+  export itself always completes. The Publish wizard's note now describes what
+  actually runs.
+
 - **Settle a passage with two versions by comparing them and picking one
   (#407).** When a sync combines a passage edited both here and online, the
   desktop editor now shows a card above the text that asks, one passage at
@@ -70,6 +91,15 @@ This project follows [Semantic Versioning](https://semver.org/).
   (the contract). For library callers, `runPublish` now reports an unknown
   provider id as `{ ok: false, error }` instead of throwing. `PRIVACY.md` says
   what a plugin receives and what it never does. (#381)
+
+### Changed
+
+- **dtrpg preset: `page.gutter` is now 36pt, stated (#401).** DriveThruRPG
+  asks for text and non-bleeding art at least 0.5in from the binding edge; the
+  preset now declares that binding allowance instead of leaving it to default
+  to `page.safe`. Nothing changes for a book that did not set `gutter`. The
+  CGATS21_CRPC1 profile's citation now points at DriveThru's Affinity Publisher
+  guide, where it is stated, rather than the Quick Specifications article.
 
 ## [0.11.21] - 2026-10-16
 

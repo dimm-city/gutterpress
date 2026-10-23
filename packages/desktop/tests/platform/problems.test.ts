@@ -3,6 +3,7 @@ import {
   canExpandProblems,
   closesPanelOnEscape,
   buildProblems,
+  exportProblems,
   friendlySource,
   groupProblems,
   problemCounts,
@@ -59,6 +60,9 @@ test("friendlySource maps known check ids to plain language, passes unknown thro
   expect(friendlySource("desktop.preview")).toBe("Preview");
   expect(friendlySource("asset.image.file-size")).toBe("Image file size");
   expect(friendlySource("asset.font.license")).toBe("Font license");
+  expect(friendlySource("pdf.print.safe-margins")).toBe("Safe margins");
+  expect(friendlySource("pdf.print.pdfx-markers")).toBe("PDF/X markers");
+  expect(friendlySource("desktop.export.checks")).toBe("PDF checks");
   expect(friendlySource("some.future.check")).toBe("some.future.check");
 });
 
@@ -137,6 +141,20 @@ test("SOURCE_LABELS covers every registered source-category CLI check", async ()
   }
 });
 
+// #399: the post-build PDF checks reach the panel from an export, so the same
+// registry-keyed discipline covers the `pdf` and `heuristic` categories — a
+// new PDF check cannot ship rendering "pdf.print.safe-margins" at an author.
+test("SOURCE_LABELS covers every registered pdf- and heuristic-category CLI check", async () => {
+  const { getChecks } = await import("gutterpress");
+  for (const category of ["pdf", "heuristic"] as const) {
+    const checks = getChecks({ category });
+    expect(checks.length).toBeGreaterThan(0);
+    for (const check of checks) {
+      expect(friendlySource(check.id)).not.toBe(check.id);
+    }
+  }
+});
+
 // The same discipline for the render's own print-quality findings: they reach
 // the panel from an export rather than the source lint, and their codes are a
 // closed set in the lib, so a new engine check cannot ship rendering its raw
@@ -163,4 +181,39 @@ test("buildProblems maps diagnostics to panel entries without inventing a source
   // A pagination finding names a rendered element, not a source line — the
   // panel's "jump to line" must not send the author somewhere arbitrary.
   expect(entries.every((e) => e.file === undefined && e.line === undefined)).toBe(true);
+});
+
+// #399: what the post-build PDF checks found, as panel entries. Like the
+// engine's diagnostics they are about the exported file, never a source line;
+// the message names the page itself, the check's rule follows it, and a
+// finding made for one publish target carries the CLI's `[target]` tag.
+test("exportProblems maps PDF-check findings to file-less entries, keeping errors and appending the rule", () => {
+  const entries = exportProblems([
+    {
+      source: "pdf.print.safe-margins",
+      severity: "error",
+      message: 'Page 3: "Too close" is 0.12in too close to the outside edge.',
+      detail: "page.safe: text must stay at least 0.5in inside the trim on every edge.",
+      target: "dtrpg",
+      page: 3,
+      edge: "outside",
+    },
+    { source: "pdf.print.page-size", severity: "error", message: "Page size mismatch: expected ~621x810 pts, got 612x792 pts." },
+    { source: "pdf.print.ink-coverage", severity: "info", message: "Skipped: gs is not installed on this computer." },
+  ]);
+  expect(entries).toEqual([
+    {
+      severity: "error",
+      message:
+        '[dtrpg] Page 3: "Too close" is 0.12in too close to the outside edge. page.safe: text must stay at least 0.5in inside the trim on every edge.',
+      source: "pdf.print.safe-margins",
+    },
+    { severity: "error", message: "Page size mismatch: expected ~621x810 pts, got 612x792 pts.", source: "pdf.print.page-size" },
+    { severity: "info", message: "Skipped: gs is not installed on this computer.", source: "pdf.print.ink-coverage" },
+  ]);
+  expect(entries.every((e) => e.file === undefined && e.filePath === undefined && e.line === undefined)).toBe(true);
+  // Errors count on the badge, the way a source error does.
+  expect(problemCounts(entries)).toEqual({ errors: 2, warnings: 0, infos: 1, badge: 2 });
+  // File-less, so the panel lists them under the book, after any file group.
+  expect(groupProblems(entries).map((g) => g.file)).toEqual(["Book"]);
 });

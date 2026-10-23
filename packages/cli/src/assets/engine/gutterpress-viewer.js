@@ -1136,6 +1136,62 @@
       return null;
     }
   }
+  function pageBoxes(area, side, scale = 1) {
+    const w = area.width * scale;
+    const h = area.height * scale;
+    const b = Math.max(0, area.bleed) * scale;
+    const s = Math.max(0, area.safe) * scale;
+    const a = Math.max(0, area.artSafe) * scale;
+    const g = Math.max(0, area.gutter) * scale;
+    const [textLeft, textRight] = side === "verso" ? [s, g] : [g, s];
+    const [artLeft, artRight] = side === "verso" ? [a, g] : [g, a];
+    const trim = { x: side === "verso" ? b : 0, y: b, w: Math.max(0, w - b), h: Math.max(0, h - 2 * b) };
+    return {
+      sheet: { x: 0, y: 0, w, h },
+      trim,
+      safe: {
+        x: trim.x + textLeft,
+        y: trim.y + s,
+        w: Math.max(0, trim.w - textLeft - textRight),
+        h: Math.max(0, trim.h - 2 * s)
+      },
+      safeArt: {
+        x: trim.x + artLeft,
+        y: trim.y + a,
+        w: Math.max(0, trim.w - artLeft - artRight),
+        h: Math.max(0, trim.h - 2 * a)
+      },
+      bleed: b
+    };
+  }
+  var SEVERITY = { inside: 0, unsafe: 1, bleed: 2, "off-page": 3 };
+  function judgeRect(r, boxes, rule, tol = 0) {
+    const { sheet, trim } = boxes;
+    const safe = rule === "art" ? boxes.safeArt : boxes.safe;
+    const sides = [
+      ["left", -r.x, -safe.x, -trim.x, -sheet.x],
+      ["right", r.x + r.w, safe.x + safe.w, trim.x + trim.w, sheet.x + sheet.w],
+      ["top", -r.y, -safe.y, -trim.y, -sheet.y],
+      ["bottom", r.y + r.h, safe.y + safe.h, trim.y + trim.h, sheet.y + sheet.h]
+    ];
+    let worst = { kind: "inside", gap: 0, need: 0, edge: null };
+    let beyond = 0;
+    for (const [edge, ink, limit, trimEdge, sheetEdge] of sides) {
+      const past = ink - limit;
+      if (past <= tol || rule === "art" && ink >= sheetEdge - tol)
+        continue;
+      const kind = ink > sheetEdge + tol ? "off-page" : ink > trimEdge + tol ? "bleed" : "unsafe";
+      if (SEVERITY[kind] > SEVERITY[worst.kind] || kind === worst.kind && past > beyond) {
+        worst = { kind, gap: trimEdge - ink, need: trimEdge - limit, edge };
+        beyond = past;
+      }
+    }
+    return worst;
+  }
+  function classifyRect(r, boxes, rule, tol = 0) {
+    const { kind, gap, need } = judgeRect(r, boxes, rule, tol);
+    return { kind, gap, need };
+  }
 
   // src/engine/viewer/fragment.ts
   var PX_PER_PT = 96 / 72;
@@ -2250,58 +2306,6 @@
   }
 
   // src/engine/viewer/overlay.ts
-  function pageBoxes(area, side, scale = 1) {
-    const w = area.width * scale;
-    const h = area.height * scale;
-    const b = Math.max(0, area.bleed) * scale;
-    const s = Math.max(0, area.safe) * scale;
-    const a = Math.max(0, area.artSafe) * scale;
-    const g = Math.max(0, area.gutter) * scale;
-    const [textLeft, textRight] = side === "verso" ? [s, g] : [g, s];
-    const [artLeft, artRight] = side === "verso" ? [a, g] : [g, a];
-    const trim = { x: side === "verso" ? b : 0, y: b, w: Math.max(0, w - b), h: Math.max(0, h - 2 * b) };
-    return {
-      sheet: { x: 0, y: 0, w, h },
-      trim,
-      safe: {
-        x: trim.x + textLeft,
-        y: trim.y + s,
-        w: Math.max(0, trim.w - textLeft - textRight),
-        h: Math.max(0, trim.h - 2 * s)
-      },
-      safeArt: {
-        x: trim.x + artLeft,
-        y: trim.y + a,
-        w: Math.max(0, trim.w - artLeft - artRight),
-        h: Math.max(0, trim.h - 2 * a)
-      },
-      bleed: b
-    };
-  }
-  var SEVERITY = { inside: 0, unsafe: 1, bleed: 2, "off-page": 3 };
-  function classifyRect(r, boxes, rule, tol = 0) {
-    const { sheet, trim } = boxes;
-    const safe = rule === "art" ? boxes.safeArt : boxes.safe;
-    const sides = [
-      [-r.x, -safe.x, -trim.x, -sheet.x],
-      [r.x + r.w, safe.x + safe.w, trim.x + trim.w, sheet.x + sheet.w],
-      [-r.y, -safe.y, -trim.y, -sheet.y],
-      [r.y + r.h, safe.y + safe.h, trim.y + trim.h, sheet.y + sheet.h]
-    ];
-    let worst = { kind: "inside", gap: 0, need: 0 };
-    let beyond = 0;
-    for (const [ink, limit, edge, sheetEdge] of sides) {
-      const past = ink - limit;
-      if (past <= tol || rule === "art" && ink >= sheetEdge - tol)
-        continue;
-      const kind = ink > sheetEdge + tol ? "off-page" : ink > edge + tol ? "bleed" : "unsafe";
-      if (SEVERITY[kind] > SEVERITY[worst.kind] || kind === worst.kind && past > beyond) {
-        worst = { kind, gap: edge - ink, need: edge - limit };
-        beyond = past;
-      }
-    }
-    return worst;
-  }
   var INTENT_SELECTOR = ".gp-bleed, .gp-pin, .gp-flush, .gp-behind, .gp-page-full-bleed";
   var OVERLAY_LAYERS = ["bleed", "safe", "art", "margins"];
   function layersFrom(state) {

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
-import { ExportController } from "../../src/lib/export/export-controller.svelte";
+import { ExportController, exportFindingsMessage } from "../../src/lib/export/export-controller.svelte";
 import type { ExportHostDeps, ExportProgressEvent } from "../../src/lib/export/export-controller.svelte";
+import type { ExportFindingDto } from "../../src/lib/platform/shared-types";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
 // these unit tests. The production compiler replaces $state; the class only
@@ -240,7 +241,7 @@ interface HostHarness {
         ({ validate?: boolean; allowShrink?: boolean } | undefined)?,
       ]
     > & {
-      impl: () => Promise<{ exportId?: string; pdfPath?: string }>;
+      impl: () => Promise<{ exportId?: string; pdfPath?: string; findings?: ExportFindingDto[] }>;
     };
     buildHtml: Spy<[{ key: string; displayName: string }, (string | undefined)?]> & {
       impl: () => Promise<{ outDir?: string }>;
@@ -255,6 +256,8 @@ interface HostHarness {
         ({ label: string; onClick: () => void | Promise<void> } | undefined)?,
       ]
     >;
+    toastWarning: Spy<[string, (number | undefined)?, ({ label: string; onClick: () => void } | undefined)?]>;
+    showProblems: Spy<[]>;
     wait: Spy<[number]>;
   };
 }
@@ -276,7 +279,7 @@ function makeHostController(): HostHarness {
         ({ validate?: boolean; allowShrink?: boolean } | undefined)?,
       ]
     >(),
-    { impl: async () => ({ exportId: "exp-1", pdfPath: "/out/book.pdf" }) },
+    { impl: async (): Promise<{ exportId?: string; pdfPath?: string; findings?: ExportFindingDto[] }> => ({ exportId: "exp-1", pdfPath: "/out/book.pdf" }) },
   );
   const buildHtml = Object.assign(hspy<[{ key: string; displayName: string }, (string | undefined)?]>(), {
     impl: async (): Promise<{ outDir?: string }> => ({ outDir: "/proj/dist" }),
@@ -291,6 +294,8 @@ function makeHostController(): HostHarness {
       ({ label: string; onClick: () => void | Promise<void> } | undefined)?,
     ]
   >();
+  const toastWarning = hspy<[string, (number | undefined)?, ({ label: string; onClick: () => void } | undefined)?]>();
+  const showProblems = hspy<[]>();
   const wait = hspy<[number]>();
 
   const host: ExportHostDeps = {
@@ -342,6 +347,8 @@ function makeHostController(): HostHarness {
     },
     toastSuccess: (m, d, a) => toastSuccess(m, d, a),
     toastError: (m, d, a) => toastError(m, d, a),
+    toastWarning: (m, d, a) => toastWarning(m, d, a),
+    showProblems: () => showProblems(),
     friendlyPdfError: (e) => `friendly: ${e instanceof Error ? e.message : String(e)}`,
     wait: (ms) => {
       wait(ms);
@@ -367,6 +374,8 @@ function makeHostController(): HostHarness {
       showInFolder,
       toastSuccess,
       toastError,
+      toastWarning,
+      showProblems,
       wait,
     },
   };
@@ -640,4 +649,66 @@ test("buildTo() honours the readiness warning and the one in-flight guard like s
   ctrl.start();
   expect(await ctrl.buildTo({ format: "pdf", dir: "/proj/dist" })).toBeNull();
   expect(deps.buildPdf.calls.length).toBe(0);
+});
+
+// ── the post-build PDF checks' findings (#399) ───────────────────────────────
+// The host runs the checks on the saved PDF and returns their findings with
+// the build result; the author is told how many problems there are and can
+// go straight to the Problems list. The PDF is saved either way, so this sits
+// beside the success toast and never replaces it.
+
+const finding = (over: Partial<ExportFindingDto>): ExportFindingDto => ({
+  source: "pdf.print.safe-margins",
+  severity: "error",
+  message: 'Page 3: "Too close" is 0.12in too close to the outside edge.',
+  ...over,
+});
+
+test("exportFindingsMessage counts errors and warnings only, singular and plural, null when none", () => {
+  expect(exportFindingsMessage(undefined)).toBeNull();
+  expect(exportFindingsMessage([])).toBeNull();
+  // An info row (a check skipped for a missing tool) is not a problem to announce.
+  expect(exportFindingsMessage([finding({ severity: "info" })])).toBeNull();
+  expect(exportFindingsMessage([finding({})])).toBe("1 problem found in the PDF — see Problems.");
+  expect(
+    exportFindingsMessage([finding({}), finding({ severity: "warning" }), finding({ severity: "info" })]),
+  ).toBe("2 problems found in the PDF — see Problems.");
+});
+
+test("savePdf() with findings: the success toast stays, and a sticky Review toast opens the Problems list", async () => {
+  const { ctrl, deps } = makeHostController();
+  deps.buildPdf.impl = async () => ({
+    exportId: "exp-1",
+    pdfPath: "/out/book.pdf",
+    findings: [finding({}), finding({ severity: "warning", source: "pdf.print.embedded-fonts" }), finding({ severity: "info" })],
+  });
+  await ctrl.savePdf();
+  expect(deps.toastSuccess.calls[0]![0]).toBe("PDF saved to /out/book.pdf");
+  expect(deps.toastWarning.calls.length).toBe(1);
+  const [message, duration, action] = deps.toastWarning.calls[0]!;
+  expect(message).toBe("2 problems found in the PDF — see Problems.");
+  // Sticky: the author decides when they have seen it.
+  expect(duration).toBe(0);
+  expect(action?.label).toBe("Review");
+  action!.onClick();
+  expect(deps.showProblems.calls.length).toBe(1);
+  // Still a successful export.
+  expect(ctrl.state).toBe("idle");
+  expect(deps.toastError.calls.length).toBe(0);
+});
+
+test("savePdf() with no findings (or info only) shows no findings toast", async () => {
+  const { ctrl, deps } = makeHostController();
+  await ctrl.savePdf();
+  expect(deps.toastWarning.calls.length).toBe(0);
+
+  const second = makeHostController();
+  second.deps.buildPdf.impl = async () => ({
+    exportId: "exp-2",
+    pdfPath: "/out/book.pdf",
+    findings: [finding({ severity: "info", message: "Skipped: qpdf is not installed on this computer." })],
+  });
+  await second.ctrl.savePdf();
+  expect(second.deps.toastWarning.calls.length).toBe(0);
+  expect(second.deps.toastSuccess.calls.length).toBe(1);
 });
