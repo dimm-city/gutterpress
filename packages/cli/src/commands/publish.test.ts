@@ -27,13 +27,15 @@
  */
 import { describe, test, expect, spyOn, afterEach, beforeEach } from "bun:test";
 import { runCommand } from "citty";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import * as connectGoogleMod from "../lib/publish/connect-google.ts";
 import type { ConnectGoogleDriveResult } from "../lib/publish/connect-google.ts";
 import publishCommand from "./publish.ts";
 import { EXIT_CODES } from "../lib/cli-args.ts";
+import { artifactName, resolveOutputDir } from "../lib/output-paths.ts";
+import { listPublishProviders } from "../lib/publish/registry.ts";
 import { ProcessExitSignal, stubProcessExit } from "../test-helpers/testkit.ts";
 
 let connectGoogleSpy: ReturnType<typeof spyOn> | undefined;
@@ -244,5 +246,123 @@ describe("publish --list — B2: effective format resolution", () => {
     } finally {
       await rm(dir, { recursive: true, force: true }).catch(() => {});
     }
+  });
+});
+
+// EXPERIMENTAL (#381): a book's publishing plugin is a `--provider` like any
+// built-in. The fixture is a local-folder publisher plus a built PDF at the
+// conventional output path.
+describe("publish via a publishing plugin (experimental, #381)", () => {
+  const RECORDING = `
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
+export async function publish(outputDir, context) {
+  await writeFile(path.join(context.project.dir, "received.json"), JSON.stringify({ outputDir, settings: context.settings }));
+  return { url: "https://example.com/pub", detail: "Sent to the demo" };
+}
+`;
+  const dirs: string[] = [];
+  afterEach(async () => {
+    for (const d of dirs.splice(0)) await rm(d, { recursive: true, force: true }).catch(() => {});
+  });
+
+  async function pluginBook(entry = RECORDING): Promise<string> {
+    const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-publish-plugin-cmd-"));
+    dirs.push(dir);
+    await mkdir(path.join(dir, "pub"), { recursive: true });
+    await writeFile(
+      path.join(dir, "pub", "package.json"),
+      JSON.stringify({ name: "pub-demo", description: "Demo destination", type: "module", main: "index.js", gutterpress: { publish: true } }),
+    );
+    await writeFile(path.join(dir, "pub", "index.js"), entry);
+    await writeFile(
+      path.join(dir, "manifest.yaml"),
+      "title: Test Book\nauthors: [Tester]\nextensions:\n  - ./pub\npublish:\n  pub-demo:\n    dest: somewhere\n",
+      "utf8",
+    );
+    const out = resolveOutputDir(dir, "Test Book");
+    await mkdir(out, { recursive: true });
+    await writeFile(path.join(out, artifactName("Test Book", "pdf")), "%PDF-1.4 fake");
+    return dir;
+  }
+
+  function lastJson(spy: ReturnType<typeof spyOn>): unknown {
+    const writes = (spy.mock.calls ?? [])
+      .map((c: unknown[]) => c[0])
+      .filter((s: unknown): s is string => typeof s === "string" && /^\s*[[{]/.test(s));
+    return JSON.parse(writes[writes.length - 1] as string);
+  }
+
+  test("--provider <package-name> publishes through the plugin", async () => {
+    const dir = await pluginBook();
+    consoleLogSpy = spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    await runCommand(publishCommand, { rawArgs: [dir, "--provider", "pub-demo", "--json"] });
+
+    expect(lastJson(consoleLogSpy)).toMatchObject({
+      ok: true,
+      providerId: "pub-demo",
+      outcome: { kind: "published", url: "https://example.com/pub", detail: "Sent to the demo" },
+    });
+    expect(JSON.parse(await readFile(path.join(dir, "received.json"), "utf8"))).toMatchObject({
+      settings: { dest: "somewhere" },
+    });
+  });
+
+  test("a plugin that throws exits with the findings code and names the plugin", async () => {
+    const dir = await pluginBook('export async function publish() { throw new Error("quota exceeded"); }\n');
+    stubExit();
+    const errors: string[] = [];
+    consoleErrorSpy = spyOn(console, "error").mockImplementation((...a) => void errors.push(a.join(" ")));
+    consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
+
+    await expect(runCommand(publishCommand, { rawArgs: [dir, "--provider", "pub-demo"] })).rejects.toThrow(
+      new ProcessExitSignal(EXIT_CODES.FINDINGS).message,
+    );
+    expect(errors.join("\n")).toContain('Publishing plugin "pub-demo": quota exceeded');
+  });
+
+  test("--list shows the plugin after the built-ins, marked experimental", async () => {
+    const dir = await pluginBook();
+    consoleLogSpy = spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    await runCommand(publishCommand, { rawArgs: [dir, "--list", "--json"] });
+
+    const rows = lastJson(consoleLogSpy) as Array<{ id: string; kind: string; experimental?: true }>;
+    expect(rows.map((r) => r.id)).toEqual([...listPublishProviders().map((p) => p.id), "pub-demo"]);
+    expect(rows.filter((r) => r.experimental).map((r) => r.id)).toEqual(["pub-demo"]);
+    expect(rows.at(-1)?.kind).toBe("plugin");
+  });
+
+  test("--list (text) shows `experimental` in the status column", async () => {
+    const dir = await pluginBook();
+    const lines: string[] = [];
+    consoleLogSpy = spyOn(console, "log").mockImplementation((...a) => void lines.push(a.join(" ")));
+
+    await runCommand(publishCommand, { rawArgs: [dir, "--list"] });
+
+    expect(lines.find((l) => l.includes("pub-demo"))).toMatch(/pub-demo\s.*\sexperimental$/);
+  });
+
+  test("an unknown id still exits with a usage error, naming the book's destinations", async () => {
+    const dir = await pluginBook();
+    stubExit();
+    const errors: string[] = [];
+    consoleErrorSpy = spyOn(console, "error").mockImplementation((...a) => void errors.push(a.join(" ")));
+
+    await expect(runCommand(publishCommand, { rawArgs: [dir, "--provider", "nope"] })).rejects.toThrow(
+      new ProcessExitSignal(EXIT_CODES.USAGE).message,
+    );
+    expect(errors.join("\n")).toMatch(/Unknown publish provider "nope"\. Available: .*gdrive, pub-demo\./);
+  });
+
+  test("--connect on a plugin explains that it manages its own credentials", async () => {
+    const dir = await pluginBook();
+    const lines: string[] = [];
+    consoleLogSpy = spyOn(console, "log").mockImplementation((...a) => void lines.push(a.join(" ")));
+
+    await runCommand(publishCommand, { rawArgs: [dir, "--provider", "pub-demo", "--connect"] });
+
+    expect(lines.join("\n")).toContain("pub-demo is a publishing plugin — it manages its own credentials");
   });
 });

@@ -490,6 +490,13 @@ export {
   publishProviderFor,
 } from "../lib/publish/registry.ts";
 
+// Publishing plugins (experimental, #381): built-ins plus a book's plugins.
+export {
+  listBookPublishProviders,
+  resolvePublishProvider,
+} from "../lib/publish/plugin-provider.ts";
+export type { PublishBook } from "../lib/publish/plugin-provider.ts";
+
 export { connectPublishProvider, disconnectPublishCredential } from "../lib/publish/connect.ts";
 export type {
   ConnectPublishProviderOptions,
@@ -529,6 +536,9 @@ export type {
   PreflightIssue,
   CommandRunner,
   CommandResult,
+  PublishPluginContext,
+  PublishPluginFunction,
+  PublishPluginResult,
 } from "../lib/publish/types.ts";
 
 

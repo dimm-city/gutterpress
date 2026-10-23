@@ -54,6 +54,20 @@ This project follows [Semantic Versioning](https://semver.org/).
   with the same cards before Get latest brings them in. All of it reads the
   book's own history through isomorphic-git: nothing is installed, nothing
   shells out.
+- **Publishing plugins (experimental — may change or be removed).** An
+  extension can add a place to publish that Gutterpress doesn't offer itself:
+  a package that sets `"gutterpress": { "publish": true }` and exports a
+  `publish(outputDir, context)` function. It installs, pins and restores like
+  any extension, and never runs while a book builds or previews. A book's
+  publishing plugins appear in the desktop's Publish wizard with an
+  Experimental badge and as `gutterpress publish --provider <package-name>`.
+  The plugin gets the built file, the book's title and authors and its own
+  `publish.<package-name>` settings, and handles its own sign-in; keys never go
+  in `manifest.yaml`. Built-in destinations are unchanged and never load a
+  plugin. See the user guide's Publishing chapter (authors) and Plugins chapter
+  (the contract). For library callers, `runPublish` now reports an unknown
+  provider id as `{ ok: false, error }` instead of throwing. `PRIVACY.md` says
+  what a plugin receives and what it never does. (#381)
 
 ## [0.11.21] - 2026-10-16
 

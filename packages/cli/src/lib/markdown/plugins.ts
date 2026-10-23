@@ -4,6 +4,7 @@ import { isBuiltin } from "node:module";
 import { resolve, join, dirname, basename, extname, isAbsolute, relative, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { ResolvedExtensionConfig } from "../../schema/manifest.types";
+import type { PublishPluginFunction } from "../publish/types";
 import {
   isExactNpmVersion,
   isValidNpmPackageName,
@@ -25,6 +26,7 @@ import {
   type ExtensionMetadata,
   readExtensionMeta,
   assertExtensionContained,
+  assertPublishOnly,
   assertSupportsThisGutterpress,
   resolveExtension,
 } from "../extension-manifest";
@@ -178,6 +180,45 @@ function installBunVendoredResolver(): void {
   });
 }
 
+/** The vendored install root of a pinned npm entry, or `null` when the entry
+ *  is unpinned or its copy is not on disk. */
+async function vendoredInstallRoot(
+  packageName: string,
+  baseDir: string,
+  version?: string,
+): Promise<string | null> {
+  if (!version || !isValidNpmPackageName(packageName) || !isExactNpmVersion(version)) return null;
+  return resolveVendoredPluginInstallRoot(baseDir, packageName, version);
+}
+
+/**
+ * Import a vendored copy's entry, resolved with the same full `exports`/`main`
+ * semantics the installer used, after arming the compiled binary's resolver
+ * for that tree. A copy whose entry no longer resolves is an error pointing
+ * at reinstall, never a fall-through.
+ */
+async function importVendoredEntry(
+  installRoot: string,
+  packageDir: string,
+  spec: string,
+): Promise<{ module: unknown; entryPath: string }> {
+  let entry: string;
+  try {
+    entry = await resolvePackageEntry(packageDir);
+  } catch (cause) {
+    throw new Error(
+      `the downloaded copy of ${spec} under plugins/npm/ is incomplete ` +
+        `(${cause instanceof Error ? cause.message : String(cause)}). ` +
+        `Reinstall it with \`gutterpress ext add ${spec}\`.`,
+      { cause },
+    );
+  }
+  const entryPath = join(packageDir, ...entry.split("/"));
+  vendoredRootsOpened.add(installRoot);
+  installBunVendoredResolver();
+  return { module: await import(pathToFileURL(entryPath).href), entryPath };
+}
+
 /**
  * Resolve and import an npm plugin package.
  *
@@ -209,31 +250,11 @@ async function loadNpmPackage(
   // folder falls through to the legacy lookups below and ends at the "not
   // found — install it" error, which is what the desktop's Features tab
   // surfaces as "Needs install".
-  if (version && isValidNpmPackageName(packageName) && isExactNpmVersion(version)) {
-    const installRoot = await resolveVendoredPluginInstallRoot(baseDir, packageName, version);
-    if (installRoot) {
-      const packageDir = vendoredNpmPluginPackageDir(installRoot, packageName);
-      let entry: string;
-      try {
-        entry = await resolvePackageEntry(packageDir);
-      } catch (cause) {
-        throw new Error(
-          `the downloaded copy of ${packageName}@${version} under plugins/npm/ is incomplete ` +
-            `(${cause instanceof Error ? cause.message : String(cause)}). ` +
-            `Reinstall it with \`gutterpress ext add ${packageName}@${version}\`.`,
-          { cause },
-        );
-      }
-      const entryPath = join(packageDir, ...entry.split("/"));
-      vendoredRootsOpened.add(installRoot);
-      installBunVendoredResolver();
-      return {
-        module: await import(pathToFileURL(entryPath).href),
-        moduleDir: dirname(entryPath),
-        packageDir,
-        entryPath,
-      };
-    }
+  const installRoot = await vendoredInstallRoot(packageName, baseDir, version);
+  if (installRoot) {
+    const packageDir = vendoredNpmPluginPackageDir(installRoot, packageName);
+    const { module, entryPath } = await importVendoredEntry(installRoot, packageDir, `${packageName}@${version}`);
+    return { module, moduleDir: dirname(entryPath), packageDir, entryPath };
   }
 
   // Legacy unpinned entry: user's project (manifest dir).
@@ -652,6 +673,7 @@ async function loadExtensionFromDir(
 ): Promise<LoadedPlugin> {
   const meta = await readExtensionMeta(extensionDir);
   assertExtensionContained(meta);
+  assertPublishOnly(meta, pluginRef);
   assertSupportsThisGutterpress(meta, pluginRef);
   const resolved = resolveExtension(extensionDir, meta, `Plugin "${pluginRef}"`);
   const extensionStyles = resolved.styles ?? [];
@@ -662,8 +684,10 @@ async function loadExtensionFromDir(
   // pointed at a folder instead; or a package with no package.json that was
   // never meant to be referenced this way). Fail loudly here rather than
   // silently succeeding as a no-op with no observable effect, matching this
-  // loader's fail-fast doctrine everywhere else (CLAUDE.md §5).
-  if (!resolved.markdown && extensionStyles.length === 0) {
+  // loader's fail-fast doctrine everywhere else (CLAUDE.md §5). A publishing
+  // plugin (experimental, #381) declares something — just nothing the
+  // renderer loads — so it takes the no-op return below.
+  if (!resolved.markdown && extensionStyles.length === 0 && !meta.publish) {
     throw new Error(
       `Extension folder "${pluginRef}" declares no markdown-it plugin (\`main\`) and no ` +
         "`gutterpress.styles` in its package.json — there is nothing to load. Point " +
@@ -797,6 +821,25 @@ export async function loadPlugin(
       // that lives (in-project, or a multi-book repo's shared `plugins/`).
       moduleDir = dirname(pluginPath);
     } else {
+      // EXPERIMENTAL (#381): a publishing plugin's entry is its publish
+      // module, not a markdown-it plugin. Recognise it from package.json
+      // alone and skip it BEFORE any import, so its code never runs during a
+      // build or preview and the book renders as if it were not listed.
+      // `ext add` always pins and vendors, so only the vendored copy is read.
+      const installRoot = await vendoredInstallRoot(config.name!, baseDir, config.version);
+      if (installRoot) {
+        const meta = await readExtensionMeta(vendoredNpmPluginPackageDir(installRoot, config.name!));
+        if (meta.publish) {
+          assertPublishOnly(meta, pluginRef);
+          assertSupportsThisGutterpress(meta, pluginRef);
+          return {
+            name: config.name!,
+            plugin: noopPlugin,
+            ...(extensionMetadata(meta) ? { metadata: extensionMetadata(meta) } : {}),
+            options: config.options,
+          };
+        }
+      }
       const loaded = await loadNpmPackage(config.name!, baseDir, config.version);
       pluginModule = loaded.module;
       moduleDir = loaded.moduleDir;
@@ -863,6 +906,50 @@ export async function loadPlugin(
     markers,
     options: config.options,
   };
+}
+
+/** Where a publishing plugin's package sits, as discovery found it. */
+export interface PublishPluginLocation {
+  /** The package folder: a `path:` folder, or the vendored copy's package dir. */
+  dir: string;
+  /** The vendored install root of an npm entry; `null` for a folder. */
+  installRoot: string | null;
+  /** The manifest spelling, for messages. */
+  ref: string;
+}
+
+/**
+ * EXPERIMENTAL (#381): import a publishing plugin's entry and return its
+ * named `publish` export. Only the publish path calls this — never a build or
+ * preview (see the skip in {@link loadPlugin}). The package is the one
+ * discovery located, so there is no second lookup and no fall-through to a
+ * same-named package elsewhere: a vendored copy loads through
+ * {@link importVendoredEntry}, a folder's `main` through the mtime cache, so
+ * the long-lived desktop host sees edits.
+ */
+export async function loadPublishFunction({ dir, installRoot, ref }: PublishPluginLocation): Promise<PublishPluginFunction> {
+  const meta = await readExtensionMeta(dir);
+  assertExtensionContained(meta);
+  assertPublishOnly(meta, ref);
+  assertSupportsThisGutterpress(meta, ref);
+  let mod: unknown;
+  if (installRoot) {
+    mod = (await importVendoredEntry(installRoot, dir, ref)).module;
+  } else {
+    if (!meta.main) throw new Error(`Publishing plugin "${ref}" declares no \`main\` in its package.json.`);
+    const entry = resolve(dir, meta.main);
+    if (!existsSync(entry)) {
+      throw new Error(`Publishing plugin "${ref}" declares main "${meta.main}" but no file exists at ${entry}.`);
+    }
+    mod = await loadCachedPathPluginModule(entry);
+  }
+  const moduleExports = (mod ?? {}) as Record<string, unknown>;
+  const publish =
+    moduleExports.publish ?? (moduleExports.default as Record<string, unknown> | undefined)?.publish;
+  if (typeof publish !== "function") {
+    throw new Error(`"${ref}" does not export a \`publish\` function.`);
+  }
+  return publish as PublishPluginFunction;
 }
 
 /**

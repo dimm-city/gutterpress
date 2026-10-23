@@ -636,8 +636,10 @@ export interface PublishConfigFieldInfo {
 export interface PublishProviderCard {
   id: string;
   label: string;
-  /** "api" = real upload; "guided" = staged package + checklist. */
-  kind: "api" | "guided";
+  /** "api" = real upload; "guided" = staged package + checklist; "plugin" =
+   *  one of the book's publishing plugins (experimental, #381), which runs
+   *  the upload and handles its own sign-in. */
+  kind: "api" | "guided" | "plugin";
   /** Which build output the provider publishes BY DEFAULT (and, absent
    *  `formats` below, the only one it ever publishes). */
   format: "pdf" | "html";
@@ -668,6 +670,9 @@ export interface PublishProviderCard {
   connected: boolean;
   /** The provider's non-secret manifest `publish.<id>` settings. */
   config: Record<string, string>;
+  /** A badge: the destination may change or go away. Set on every
+   *  `kind: "plugin"` card today (#381). */
+  experimental?: boolean;
   /**
    * Saved credentials for this provider (redacted — never tokens), so the UI
    * can offer a picker: the default (unnamed, `account:""`) plus any named
