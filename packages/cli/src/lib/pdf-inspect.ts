@@ -361,6 +361,13 @@ export interface ImageRef {
    */
   x: number;
   y: number;
+  /**
+   * The drawn rect in points, y up from the sheet's bottom: the unit square
+   * under the CTM as its axis-aligned bounds, so it holds for an image drawn
+   * flipped or rotated where `x`/`y`/`placedW`/`placedH` do not. The
+   * `pdf.print.safe-margins` check judges it against the art rule.
+   */
+  bounds: { x: number; y: number; w: number; h: number };
   /** 1-based page number. */
   page: number;
 }
@@ -375,6 +382,24 @@ export interface OpPass {
   fonts: FontRef[];
 }
 const opCache = new WeakMap<PDFDocumentProxy, Promise<OpPass>>();
+
+const opSet = (names: string[]) =>
+  new Set<number>(names.map((name) => OPS[name]).filter((op): op is number => op !== undefined));
+
+/**
+ * The operators that draw an image. Each paints the unit square under the
+ * CTM, so the CTM at that point is the image's placement. `getOperatorList`
+ * builds its list unoptimised, so every image is one of these where it is
+ * drawn; `paintJpegXObject` is gone from pdf.js but listed should a build
+ * still carry it (an unknown name is dropped).
+ */
+const IMAGE_OPS = opSet([
+  "paintImageXObject",
+  "paintImageXObjectRepeat",
+  "paintInlineImageXObject",
+  "paintImageMaskXObject",
+  "paintJpegXObject",
+]);
 
 function multiply(m1: number[], m2: number[]): number[] {
   return [
@@ -432,7 +457,7 @@ export function getOpPass(doc: PDFDocumentProxy): Promise<OpPass> {
         const pageImages: ImageRef[] = [];
 
         for (let j = 0; j < ops.fnArray.length; j++) {
-          const fn = ops.fnArray[j];
+          const fn = ops.fnArray[j]!;
           const args = ops.argsArray[j] as unknown[];
           if (fn === OPS.save) {
             stack.push(ctm.slice());
@@ -440,19 +465,29 @@ export function getOpPass(doc: PDFDocumentProxy): Promise<OpPass> {
             ctm = stack.pop() ?? ctm;
           } else if (fn === OPS.transform) {
             ctm = multiply(ctm, args as number[]);
-          } else if (
-            fn === OPS.paintImageXObject ||
-            fn === OPS.paintImageXObjectRepeat ||
-            fn === OPS.paintInlineImageXObject
-          ) {
+          } else if (fn === OPS.paintFormXObjectBegin) {
+            // a form is drawn under its own /Matrix, inside a save/restore of its own
+            stack.push(ctm.slice());
+            const matrix = args[0];
+            if (Array.isArray(matrix)) ctm = multiply(ctm, matrix as number[]);
+          } else if (fn === OPS.paintFormXObjectEnd) {
+            ctm = stack.pop() ?? ctm;
+          } else if (IMAGE_OPS.has(fn)) {
             const name =
               typeof args[0] === "string" ? (args[0] as string) : "(inline)";
+            // the image fills the unit square: its bounds are its four corners under the CTM
+            const [a, b, c, d, e, f] = ctm as [number, number, number, number, number, number];
+            const xs = [e, a + e, c + e, a + c + e];
+            const ys = [f, b + f, d + f, b + d + f];
+            const x0 = Math.min(...xs);
+            const y0 = Math.min(...ys);
             pageImages.push({
               name,
-              placedW: Math.hypot(ctm[0]!, ctm[1]!),
-              placedH: Math.hypot(ctm[2]!, ctm[3]!),
-              x: ctm[4]!,
-              y: ctm[5]!,
+              placedW: Math.hypot(a, b),
+              placedH: Math.hypot(c, d),
+              x: e,
+              y: f,
+              bounds: { x: x0, y: y0, w: Math.max(...xs) - x0, h: Math.max(...ys) - y0 },
               page: i,
             });
           } else if (fn === OPS.setFont) {
@@ -487,8 +522,6 @@ export function getOpPass(doc: PDFDocumentProxy): Promise<OpPass> {
   return p;
 }
 
-const opSet = (names: string[]) =>
-  new Set<number>(names.map((name) => OPS[name]).filter((op): op is number => op !== undefined));
 const FILL_COLOR_OPS = opSet(["setFillGray", "setFillRGBColor", "setFillCMYKColor", "setFillColor"]);
 const STROKE_COLOR_OPS = opSet(["setStrokeGray", "setStrokeRGBColor", "setStrokeCMYKColor", "setStrokeColor"]);
 
