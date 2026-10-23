@@ -4,7 +4,12 @@
  * `<meta name="gp-print-area">` by the markdown assembly
  * (lib/markdown/assemble.ts) and read back here by everything that needs it:
  * the preview's print overlays (viewer/overlay.ts) and both engines' pinned
- * art (pin-edges.ts — a pin sits on the printer's art-safe line).
+ * art (pin-edges.ts — a pin sits on the printer's art-safe line). The boxes
+ * those numbers draw on a page (`pageBoxes`) and the judge of a piece of ink
+ * against them (`judgeRect` / `classifyRect`) live here too, so the overlay
+ * and the `pdf.print.safe-margins` check (checks/pdf/safe-margins.ts) read
+ * one definition of "safe" — not in a module of their own, because the four
+ * numbers mean nothing but those boxes.
  *
  * Only the manifest feeds it — `page.width` x `page.height` (the sheet),
  * `page.bleed` (a bleed the sheet already contains on the top, bottom and
@@ -107,4 +112,130 @@ export function printAreaFromMeta(doc: MetaDocument): PrintArea | null {
   } catch {
     return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// The boxes a print area draws on one page, and where a piece of ink stands
+// against them. Pure geometry in whatever unit the caller scales to (pt for a
+// PDF, px for the viewer), origin at the sheet's top-left, y down.
+// ---------------------------------------------------------------------------
+
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** The nested boxes of one page, in one unit, origin at the sheet's top-left. */
+export interface PageBoxes {
+  /** the whole sheet (the bleed box when the sheet contains a bleed) */
+  sheet: Rect;
+  /** the cut page */
+  trim: Rect;
+  /** where TEXT is safe from the cut: the trim inset by `safe`, and by `gutter` at the binding */
+  safe: Rect;
+  /** where ART is safe from the cut: the trim inset by `artSafe`, and by `gutter` at the binding */
+  safeArt: Rect;
+  bleed: number;
+}
+
+/**
+ * Boxes for one page. The trim is the sheet pulled in by `bleed` on the top,
+ * bottom and OUTER edge — the right edge of a recto, the left edge of a verso;
+ * the binding edge has no bleed. The text box is the trim pulled in by `safe`
+ * on the top, bottom and outer edge and by `gutter` on the binding edge (left
+ * of a recto, right of a verso); the art box is pulled in by `artSafe` on the
+ * top, bottom and outer edge and by `gutter` on the binding edge.
+ */
+export function pageBoxes(area: PrintArea, side: PageSide, scale = 1): PageBoxes {
+  const w = area.width * scale;
+  const h = area.height * scale;
+  const b = Math.max(0, area.bleed) * scale;
+  const s = Math.max(0, area.safe) * scale;
+  const a = Math.max(0, area.artSafe) * scale;
+  const g = Math.max(0, area.gutter) * scale;
+  const [textLeft, textRight] = side === "verso" ? [s, g] : [g, s];
+  const [artLeft, artRight] = side === "verso" ? [a, g] : [g, a];
+  const trim = { x: side === "verso" ? b : 0, y: b, w: Math.max(0, w - b), h: Math.max(0, h - 2 * b) };
+  return {
+    sheet: { x: 0, y: 0, w, h },
+    trim,
+    safe: {
+      x: trim.x + textLeft,
+      y: trim.y + s,
+      w: Math.max(0, trim.w - textLeft - textRight),
+      h: Math.max(0, trim.h - 2 * s),
+    },
+    safeArt: {
+      x: trim.x + artLeft,
+      y: trim.y + a,
+      w: Math.max(0, trim.w - artLeft - artRight),
+      h: Math.max(0, trim.h - 2 * a),
+    },
+    bleed: b,
+  };
+}
+
+/**
+ * Where a piece of ink sits relative to its page, worst first:
+ *  - `inside`   within the box its rule allows
+ *  - `unsafe`   leaves that box but stays on the trimmed page
+ *  - `bleed`    crosses the trim but stays on the sheet (in the bleed band)
+ *  - `off-page` crosses the sheet's edge: that part is not printed at all
+ */
+export type OverflowKind = "inside" | "unsafe" | "bleed" | "off-page";
+
+/** The rule a piece of ink is judged by: text against `page.safe`, art against `page.artSafe`. */
+export type OverflowRule = "text" | "art";
+
+/** One edge of a page as drawn: `left` and `right` are the page's own, so the binding is a recto's left and a verso's right. */
+export type PageEdge = "left" | "right" | "top" | "bottom";
+
+/** The verdict on a piece of ink: see `judgeRect`. */
+export interface Overflow {
+  kind: OverflowKind;
+  gap: number;
+  need: number;
+}
+
+const SEVERITY: Record<OverflowKind, number> = { inside: 0, unsafe: 1, bleed: 2, "off-page": 3 };
+
+/**
+ * Judge one rect of ink, edge by edge, against the box its rule allows (text:
+ * `boxes.safe`; art: `boxes.safeArt`). `kind` is the worst edge's and `edge`
+ * names it (`null` when the ink is inside). `gap` is how far that edge sits
+ * inside the trim (negative = past it) and `need` how far inside the rule
+ * wants it, in the boxes' unit. Art that runs out to the sheet's edge is
+ * bleeding there, as it should, so that edge passes. `tol` absorbs sub-pixel
+ * layout (LayoutUnit is 1/64 px) and PDF rounding so an exact fit is not flagged.
+ */
+export function judgeRect(r: Rect, boxes: PageBoxes, rule: OverflowRule, tol = 0): Overflow & { edge: PageEdge | null } {
+  const { sheet, trim } = boxes;
+  const safe = rule === "art" ? boxes.safeArt : boxes.safe;
+  // each side as [its name, the ink's edge, the rule's, the trim's, the sheet's], read outward
+  const sides = [
+    ["left", -r.x, -safe.x, -trim.x, -sheet.x],
+    ["right", r.x + r.w, safe.x + safe.w, trim.x + trim.w, sheet.x + sheet.w],
+    ["top", -r.y, -safe.y, -trim.y, -sheet.y],
+    ["bottom", r.y + r.h, safe.y + safe.h, trim.y + trim.h, sheet.y + sheet.h],
+  ] as const;
+  let worst: Overflow & { edge: PageEdge | null } = { kind: "inside", gap: 0, need: 0, edge: null };
+  let beyond = 0;
+  for (const [edge, ink, limit, trimEdge, sheetEdge] of sides) {
+    const past = ink - limit;
+    if (past <= tol || (rule === "art" && ink >= sheetEdge - tol)) continue;
+    const kind: OverflowKind = ink > sheetEdge + tol ? "off-page" : ink > trimEdge + tol ? "bleed" : "unsafe";
+    if (SEVERITY[kind] > SEVERITY[worst.kind] || (kind === worst.kind && past > beyond)) {
+      worst = { kind, gap: trimEdge - ink, need: trimEdge - limit, edge };
+      beyond = past;
+    }
+  }
+  return worst;
+}
+
+/** `judgeRect` without the edge: the verdict the overlay paints. */
+export function classifyRect(r: Rect, boxes: PageBoxes, rule: OverflowRule, tol = 0): Overflow {
+  const { kind, gap, need } = judgeRect(r, boxes, rule, tol);
+  return { kind, gap, need };
 }

@@ -40,9 +40,11 @@ how the book renders — only what the validator checks.
 
 - `dtrpg` — DriveThruRPG print-on-demand: PDF/X markers and metadata,
   CMYK/Grayscale art, the 240% ink limit, embedded fonts, a page count
-  that fits the signature, and text kept at least 0.5in inside the trim
-  (the safe-margins check, from `page.safe`; it checks text only, so check
-  art with the preview's print overlays, [Chapter 1](#print-overlays)). It also
+  that fits the signature, text kept at least 0.5in inside the trim and
+  pictures 0.25in, or run to the page's edge (the safe-margins check, from
+  `page.safe` and `page.artSafe`; it reads text and images, so check
+  backgrounds and borders with the preview's print overlays,
+  [Chapter 1](#print-overlays)). It also
   warns when text at 24pt and under is printed in a dark four-colour mix,
   black or a dark colour, since small four-colour text can look fuzzy.
 - `itch` — itch.io digital release: a well-formed PDF with embedded fonts;
@@ -193,15 +195,18 @@ Examples: page size matches manifest, fonts are embedded, metadata is present, P
 
 #### Safe margins {#safe-margins-check}
 
-`pdf.print.safe-margins` reads where each line of text sits on the finished pages and reports any that is closer to the trim than `page.safe`: 0.5in on every edge for the `dtrpg` preset, which is DriveThruRPG's rule for text. Each finding names the page, the first words of the line, the edge and how far to move it in:
+`pdf.print.safe-margins` reads where each line of text and each picture sits on the finished pages and reports any that is closer to the trim than its rule. For the `dtrpg` preset that is text 0.5in on every edge (`page.safe`) and art 0.25in on the top, bottom and outside edges, 0.5in at the binding (`page.artSafe`), which are DriveThruRPG's rules. Each finding names the page, the first words of the line or the size of the picture, the edge and how far to move it in:
 
 ```
 Page 14: "Chapter Three" is 0.12in too close to the outside edge.
+Page 27: a 2.0 x 3.0in image is 0.2in too close to the binding edge.
 ```
 
 It measures each page against that page's own trim: the page less the bleed on the top, bottom and outside edges only. Page 1 is a right-hand page, so the outside edge is the right on odd pages and the left on even ones. A book that sets `page.gutter` is held to that distance at the binding edge instead, and the finding says so.
 
-It checks **text only**. Pictures, backgrounds, borders and rules are judged in the preview, by the **Safe area: art** layer of the print overlays ([Chapter 1](#print-overlays)), which applies DriveThruRPG's separate rule for art. The **Safe area: text** layer draws the line this check reads.
+A picture that runs out to the page's edge is a bleed, as it should be, and passes on that edge. One that crosses the trim but stops short of the page's edge is reported too: it ends in the bleed band, where the cut can leave a white sliver, so it should either bleed all the way or stay inside the art line.
+
+It checks **text and images**. Backgrounds, borders and rules are judged in the preview, by the **Safe area: art** layer of the print overlays ([Chapter 1](#print-overlays)), which applies the same rule for art. The **Safe area: text** and **Safe area: art** layers draw the lines this check reads.
 
 @section
 
