@@ -59,6 +59,30 @@ export interface PrintAreaSource {
   spec?: { label: string; url: string };
 }
 
+/** A usable point value: finite and positive (a page dimension, an inset). */
+export function isPositivePoints(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+/** Round to 3dp so 8.27in doesn't print as 8.270000000000001in. */
+const round3 = (n: number) => Math.round(n * 1000) / 1000;
+
+/** CSS length for a point value: inches when exact to 3dp (612 -> 8.5in), else points. */
+function cssLength(pt: number): string {
+  const inches = round3(pt / 72);
+  return Math.abs(inches * 72 - pt) < 1e-6 ? `${inches}in` : `${round3(pt)}pt`;
+}
+
+/**
+ * The `size` value written for a page — `8.5in 11in`, `595pt 842pt` — by
+ * everything that writes one: Book settings (lib/page-size.ts) into the
+ * book's stylesheet, and the assembly's manifest default
+ * (lib/markdown/assemble.ts), so one size has one spelling.
+ */
+export function formatPageSize(page: { width: number; height: number }): string {
+  return `${cssLength(page.width)} ${cssLength(page.height)}`;
+}
+
 /**
  * The `<meta>` tag for one book. An unset bleed or text rule is written as 0,
  * never left out; an unset art rule or gutter stays out (the reader takes each

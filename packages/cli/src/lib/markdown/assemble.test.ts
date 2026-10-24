@@ -134,7 +134,7 @@ test("assembleBookHtml writes the project's print area into <head>, in every boo
 // sets one — before them, so an author's own `size` still wins by the cascade.
 
 const DTRPG = { width: 621, height: 810, bleed: 9, safe: 36, artSafe: 18, preset: "dtrpg" };
-const DEFAULT_RULE = "@page { size: 621pt 810pt; }";
+const DEFAULT_RULE = "@page { size: 8.625in 11.25in; }";
 const readA = () => Promise.resolve("# A\n");
 
 /** The one `<style data-project-css>` block of an assembled book. */
@@ -155,8 +155,9 @@ test("a stylesheet with @page margins and no size prints at the manifest's page 
   // Ahead of the author's sheet, so a `size` added there later wins the cascade.
   expect(css.indexOf(DEFAULT_RULE)).toBeLessThan(css.indexOf("/* project css */"));
   expect(css.indexOf(DEFAULT_RULE)).toBeLessThan(css.indexOf("@page { margin: 1in }"));
-  // Unlayered, not inside any `@layer` block.
-  expect(css).toContain(`}\n\n/* page size (manifest) */\n${DEFAULT_RULE}\n\n`);
+  // Unlayered: after the core layers' blocks, not inside one.
+  expect(css.indexOf(DEFAULT_RULE)).toBeGreaterThan(css.indexOf("@layer gp.vocab {"));
+  expect(css).toContain(`/* page size (manifest) */\n${DEFAULT_RULE}`);
   // The viewer and the compiler read the base page with this same reader: it
   // now sees the manifest's size, not Chromium's Letter fallback.
   expect(resolvePage(extract(css)).geometry).toMatchObject({ width: 621, height: 810 });

@@ -240,7 +240,7 @@ Your book prints at the manifest's `page.width` × `page.height` — your preset
 
 ### DriveThruRPG Requirements {#dtrpg-requirements}
 
-These are DriveThruRPG's print-on-demand rules for an 8.5×11in interior, from DriveThru Partners' help articles [Quick Specifications for Print Books](https://help.drivethrupartners.com/hc/en-us/articles/12780800178583-Quick-Specifications-for-Print-Books) and [Correcting Most Common Print Errors](https://help.drivethrupartners.com/hc/en-us/articles/12780799485335-Correcting-Most-Common-Print-Errors); the ICC profile is from their [Preparing A Book For Print with Affinity Publisher](https://help.drivethrupartners.com/hc/en-us/articles/12780801434647-Preparing-A-Book-For-Print-with-Affinity-Publisher). The `dtrpg` preset is set up to meet them; the last column says where Gutterpress shows or checks each one.
+These are DriveThruRPG's print-on-demand rules for an 8.5×11in interior, from DriveThru Partners' help articles [Quick Specifications for Print Books](https://help.drivethrupartners.com/hc/en-us/articles/12780800178583-Quick-Specifications-for-Print-Books) and [Correcting Most Common Print Errors](https://help.drivethrupartners.com/hc/en-us/articles/12780799485335-Correcting-Most-Common-Print-Errors). The `dtrpg` preset is set up to meet them; the last column says where Gutterpress shows or checks each one.
 
 @section
 

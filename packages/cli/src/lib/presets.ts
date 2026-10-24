@@ -32,9 +32,6 @@ export type PresetId = (typeof PRESET_IDS)[number];
  *
  *  SPEC = DriveThru Partners, "Quick Specifications for Print Books"
  *         (help.drivethrupartners.com/hc/en-us/articles/12780800178583)
- *  AFFINITY = DriveThru Partners, "Preparing A Book For Print with Affinity
- *         Publisher" (help.drivethrupartners.com/hc/en-us/articles/12780801434647)
- *         — DriveThru's own article, but not the SPEC one
  *  GUIDE = third-party DriveThruRPG layout guides (consistent with SPEC's
  *         bleed rule; not stated by DriveThru itself)
  *  CONVENTION = Gutterpress's own choice or a value DERIVED from a spec
@@ -74,8 +71,7 @@ export const DTRPG_PRESET: VendorPreset = {
   pdfx: {
     // SPEC: PDF/X-1a:2001 or PDF/X-3:2002 (x1a is the default of the two).
     flavor: "x1a",
-    // AFFINITY: the CGATS21_CRPC1.icc profile. The SPEC article names no
-    // profile; this one is from DriveThru's Affinity Publisher walkthrough.
+    // SPEC: "Use the CGATS21_CRPC1.icc color profile."
     icc: "profiles/CGATS21_CRPC1.icc",
     // CONVENTION: interactive annotations have no place in a PDF/X print file.
     stripAnnotations: true,

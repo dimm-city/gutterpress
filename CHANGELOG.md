@@ -97,9 +97,7 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **dtrpg preset: `page.gutter` is now 36pt, stated (#401).** DriveThruRPG
   asks for text and non-bleeding art at least 0.5in from the binding edge; the
   preset now declares that binding allowance instead of leaving it to default
-  to `page.safe`. Nothing changes for a book that did not set `gutter`. The
-  CGATS21_CRPC1 profile's citation now points at DriveThru's Affinity Publisher
-  guide, where it is stated, rather than the Quick Specifications article.
+  to `page.safe`. Nothing changes for a book that did not set `gutter`.
 
 ### Fixed
 

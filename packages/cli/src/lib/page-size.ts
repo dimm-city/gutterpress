@@ -39,6 +39,12 @@ import { ensureSeq, loadManifestDoc, writeManifestDoc } from "./manifest-doc.ts"
 import { PRESET_IDS, PRESETS, type PresetId } from "./presets.ts";
 import { resolveActiveStyles } from "./style-resolver.ts";
 import { parseSize } from "../engine/shared/gcpm-extract.ts";
+import { formatPageSize, isPositivePoints } from "../engine/shared/print-area.ts";
+
+// The point check and the `size` spelling are shared with the assembly's
+// manifest default (engine/shared/print-area.ts), so there is one definition
+// of each; re-exported for this module's callers.
+export { formatPageSize, isPositivePoints };
 
 /** Page bounds written to the manifest's `page:` block (points; 72pt = 1in). */
 export interface CustomPageOptions {
@@ -71,10 +77,6 @@ export interface PageSetup {
   bounds: (PageSizePoints & { tolerance: number }) | null;
   /** What the book's stylesheets print at, or null when no plain `@page` sets a size (the book then prints at `bounds`). */
   css: (PageSizePoints & { file: string }) | null;
-}
-
-export function isPositivePoints(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
 /**
@@ -128,20 +130,6 @@ export function pageSizeForChoice(choice: PageSizeChoice): PageSizePoints {
 }
 
 // ── CSS ────────────────────────────────────────────────────────────────────
-
-/** Round to 3dp so 8.27in doesn't print as 8.270000000000001in. */
-const round3 = (n: number) => Math.round(n * 1000) / 1000;
-
-/** CSS length for a point value: inches when exact to 3dp (612 -> 8.5in), else points. */
-function cssLength(pt: number): string {
-  const inches = round3(pt / 72);
-  return Math.abs(inches * 72 - pt) < 1e-6 ? `${inches}in` : `${round3(pt)}pt`;
-}
-
-/** The `size` value written for a page: `8.5in 11in`, `595pt 842pt`. */
-export function formatPageSize(page: PageSizePoints): string {
-  return `${cssLength(page.width)} ${cssLength(page.height)}`;
-}
 
 /** Points two sizes may differ by and still count as the same page. */
 const SAME_SIZE_PT = 0.5;

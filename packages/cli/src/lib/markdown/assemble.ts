@@ -30,7 +30,12 @@ import { canonicalChapterId } from "./chapter-id";
 import { createMarkdownRenderer, type LoadedPlugin } from "./renderer";
 import { collectHtmlImageRefs, type ImageRefEnv } from "./images";
 import { lastPageMode, type PrintPadding } from "../../engine/shared/synthesis.ts";
-import { printAreaMeta, type PrintAreaSource } from "../../engine/shared/print-area.ts";
+import {
+  formatPageSize,
+  isPositivePoints,
+  printAreaMeta,
+  type PrintAreaSource,
+} from "../../engine/shared/print-area.ts";
 import { extract, resolvePage } from "../../engine/shared/gcpm-extract.ts";
 
 /** Reader injected by the host: resolve a project-root-relative file → its text. */
@@ -219,14 +224,14 @@ export interface AssembleBookHtmlOptions {
  * set and nothing is added.
  */
 function defaultPageSizeCss(css: string, page: PrintAreaSource | undefined): string | null {
-  const positive = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n > 0;
-  if (!page || !positive(page.width) || !positive(page.height)) return null;
+  if (!page || !isPositivePoints(page.width) || !isPositivePoints(page.height)) return null;
   try {
     if (resolvePage(extract(css)).decls.size !== undefined) return null;
   } catch {
     return null;
   }
-  return `@page { size: ${page.width}pt ${page.height}pt; }`;
+  // The same spelling Book settings writes into a stylesheet: one size, one form.
+  return `@page { size: ${formatPageSize(page)}; }`;
 }
 
 /**

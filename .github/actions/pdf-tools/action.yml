@@ -6,6 +6,14 @@ description: >-
 runs:
   using: composite
   steps:
+    # The runner image's version is a process environment variable, which the
+    # `env` context does not see, so a shell step reads it: the key must change
+    # when the image (and so the packages apt resolves) changes, or the cache
+    # would be saved once and never again.
+    - name: Read the runner image version
+      id: image
+      shell: bash
+      run: echo "version=${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
     # apt is told to keep its downloads in a directory the runner user owns, so
     # actions/cache can save and restore them; apt verifies every cached .deb
     # against the index, so a stale one is simply downloaded again.
@@ -13,7 +21,7 @@ runs:
       uses: actions/cache@v5
       with:
         path: ~/apt-archives/*.deb
-        key: pdf-tools-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageVersion }}
+        key: pdf-tools-${{ runner.os }}-${{ runner.arch }}-${{ steps.image.outputs.version }}
         restore-keys: |
           pdf-tools-${{ runner.os }}-${{ runner.arch }}-
     - name: Install Ghostscript and qpdf
