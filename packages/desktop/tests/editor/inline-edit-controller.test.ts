@@ -5,8 +5,8 @@ import {
   type InlineEditClient,
   type InlineEditDeps,
 } from "../../src/lib/routes/inline-edit-controller.svelte";
-import type { CommitEngine } from "$lib/editor/commit-engine";
-import type { PreviewEvent, SourceRange } from "$lib/preview-client";
+import type { CommitEngine } from "#lib/editor/commit-engine.ts";
+import type { PreviewEvent, SourceRange } from "#lib/preview-client.ts";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
 // these unit tests (same shim as context-menu-controller.test.ts / zoom-view-

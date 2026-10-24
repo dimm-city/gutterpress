@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { createLastFlushFailure } from '$lib/persistence-failures';
+import { createLastFlushFailure } from '#lib/persistence-failures.ts';
 import { defineRoute, getHostServices, requireAbsolute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 

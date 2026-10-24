@@ -17,13 +17,13 @@
  * glue) is injected so this stays testable with fakes and PWA-clean (§8):
  * ZERO direct DOM / `node:*` / lib value imports. Menu-item
  * parameter resolution (image/link token matching) is delegated to the pure
- * helpers in `$lib/editor/context-menu-actions`; the write path is entirely
+ * helpers in `#lib/editor/context-menu-actions.ts`; the write path is entirely
  * `commit-engine.ts` — this controller never touches a file directly.
  */
-import type { PreviewEvent, ContextTarget, SourceRange } from "$lib/preview-client";
-import type { CommitEngine } from "$lib/editor/commit-engine";
-import { chapterPath, isSafeChapterId } from "$lib/editor/chapter-path";
-import { buildLineStarts, charRange } from "$lib/editor/source-range";
+import type { PreviewEvent, ContextTarget, SourceRange } from "#lib/preview-client.ts";
+import type { CommitEngine } from "#lib/editor/commit-engine.ts";
+import { chapterPath, isSafeChapterId } from "#lib/editor/chapter-path.ts";
+import { buildLineStarts, charRange } from "#lib/editor/source-range.ts";
 import {
   findImageToken,
   findImageWrapper,
@@ -33,7 +33,7 @@ import {
   resolveLinkToken,
   spliceToken,
   type LinkResolution,
-} from "$lib/editor/context-menu-actions";
+} from "#lib/editor/context-menu-actions.ts";
 import {
   IMAGE_PIN_ALIGNMENT_OPTIONS,
   IMAGE_PIN_CLASS,
@@ -61,21 +61,21 @@ import {
   setWidth,
   tokenizeImageAttrs,
   type ImagePropertiesValue,
-} from "$lib/editor/image-classes";
-import { isBlockMarkerName, parseMarkerLine } from "$lib/editor/block-attrs";
+} from "#lib/editor/image-classes.ts";
+import { isBlockMarkerName, parseMarkerLine } from "#lib/editor/block-attrs.ts";
 import {
   editBlockProperties,
   type BlockPropertiesModel,
   type BlockPropertiesValue,
-} from "$lib/editor/block-properties";
-import type { ClassCatalogEntry } from "$lib/api";
+} from "#lib/editor/block-properties.ts";
+import type { ClassCatalogEntry } from "#lib/api.ts";
 import {
   locateSelectionInSource,
   touchesStructuralSyntax,
   hasSameDelimiter,
   wrapDelimiter,
   type FormatKind,
-} from "$lib/editor/selection-search";
+} from "#lib/editor/selection-search.ts";
 
 /** Minimal preview-client surface the controller drives. */
 export interface ContextMenuClient {
@@ -822,7 +822,7 @@ export class ContextMenuController {
    * A single-block selection's formatting row (plan §4.6). The preview gives
    * us `selection.text` — RENDERED text — which must be located inside the
    * block's raw markdown source before it can be wrapped; see
-   * `$lib/editor/selection-search.ts` for the whitespace/typographer/
+   * `#lib/editor/selection-search.ts` for the whitespace/typographer/
    * delimiter matching this delegates to. Every disabled path here (no
    * match, structural syntax, same-delimiter nesting) degrades to "Go to
    * source" only — never a guessed edit (plan §1 principle 3).

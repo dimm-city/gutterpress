@@ -141,7 +141,7 @@ test("friendlyPublishError maps a network-level failure to a friendly summary wi
 
 // ── HTTP JSON-envelope unwrapping ─────────────────────────────────────────
 //
-// `$lib/api.ts`'s post()/get() helpers read a non-OK response body with
+// `#lib/api.ts`'s post()/get() helpers read a non-OK response body with
 // `r.text()` and throw `new Error(text)` verbatim (see routes/api/_lib/
 // handler.ts's `jsonRoute`, which serializes a thrown route error as
 // `{"message": "…"}` JSON) — every publish `catch (e)` in ProjectConfigPanel

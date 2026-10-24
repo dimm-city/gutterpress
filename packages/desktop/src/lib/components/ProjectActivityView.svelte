@@ -22,17 +22,17 @@
    * other external change, per #44).
    */
   import { onMount } from "svelte";
-  import Icon from "$lib/components/Icon.svelte";
-  import VersionCompareView from "$lib/components/VersionCompareView.svelte";
-  import { api, type CompareRow, type VersionEntry, type VersionFileChange } from "$lib/api";
-  import { friendlyHostError } from "$lib/errors";
+  import Icon from "#lib/components/Icon.svelte";
+  import VersionCompareView from "#lib/components/VersionCompareView.svelte";
+  import { api, type CompareRow, type VersionEntry, type VersionFileChange } from "#lib/api.ts";
+  import { friendlyHostError } from "#lib/errors.ts";
   import {
     versionLabel,
     versionDescription,
     groupVersionsByDay,
     collapseAutomaticRuns,
     autoRunSummary,
-  } from "$lib/routes/version-timeline";
+  } from "#lib/routes/version-timeline.ts";
 
   let {
     projectDir,

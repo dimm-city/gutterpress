@@ -2,8 +2,8 @@
  * Problems panel helpers (#28). Pure functions over `ProblemEntry[]` so the
  * grouping/labeling logic is unit-testable outside Svelte.
  */
-import type { ProblemEntry } from "$lib/platform/dtos";
-import type { ExportFindingDto } from "$lib/platform/shared-types";
+import type { ProblemEntry } from "#lib/platform/dtos.ts";
+import type { ExportFindingDto } from "#lib/platform/shared-types.ts";
 
 /** One file's worth of problems, ready to render as a panel group. */
 export interface ProblemGroup {

@@ -12,7 +12,7 @@
  * `@name` position, this owns the one word after it.
  */
 import type { Completion, CompletionContext, CompletionResult } from "@codemirror/autocomplete";
-import type { LocationVariant } from "$lib/api";
+import type { LocationVariant } from "#lib/api.ts";
 
 // `@page ` / `@chapter ` / `@section `, then the (possibly empty) word being typed.
 const VARIANT_WORD = /^(\s*@(page|chapter|section))[ \t]+([\w-]*)$/;

@@ -4,11 +4,11 @@ import {
   type ContextMenuClient,
   type ContextMenuDeps,
 } from "../../src/lib/routes/context-menu-controller.svelte";
-import type { CommitEngine } from "$lib/editor/commit-engine";
-import type { PreviewEvent } from "$lib/preview-client";
-import type { ImagePropertiesValue } from "$lib/editor/image-classes";
-import type { BlockPropertiesModel, BlockPropertiesValue } from "$lib/editor/block-properties";
-import type { ClassCatalogEntry } from "$lib/api";
+import type { CommitEngine } from "#lib/editor/commit-engine.ts";
+import type { PreviewEvent } from "#lib/preview-client.ts";
+import type { ImagePropertiesValue } from "#lib/editor/image-classes.ts";
+import type { BlockPropertiesModel, BlockPropertiesValue } from "#lib/editor/block-properties.ts";
+import type { ClassCatalogEntry } from "#lib/api.ts";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
 // these unit tests. The production compiler replaces $state; the class only

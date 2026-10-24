@@ -13,7 +13,7 @@
 // uncached — they are cheap single-file reads and must reflect the open that
 // just happened.
 // ──────────────────────────────────────────────────────────────────────────
-import { api, type DiscoveredProject } from "$lib/api";
+import { api, type DiscoveredProject } from "#lib/api.ts";
 
 export type { DiscoveredProject };
 

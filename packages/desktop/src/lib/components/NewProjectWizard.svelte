@@ -1,18 +1,18 @@
 <script lang="ts">
   import { tick } from "svelte";
-  import Icon from "$lib/components/Icon.svelte";
-  import { api } from "$lib/api";
-  import type { TemplateInfo } from "$lib/api";
-  import { dialogBehavior, guardedClose, FOCUSABLE } from "$lib/dialog";
-  import { useSettings } from "$lib/settings.svelte";
-  import PageSizeFields from "$lib/components/PageSizeFields.svelte";
-  import { PRESET_CHOICES, trimPoints, type PresetChoice } from "$lib/page-size-choices";
+  import Icon from "#lib/components/Icon.svelte";
+  import { api } from "#lib/api.ts";
+  import type { TemplateInfo } from "#lib/api.ts";
+  import { dialogBehavior, guardedClose, FOCUSABLE } from "#lib/dialog.ts";
+  import { useSettings } from "#lib/settings.svelte.ts";
+  import PageSizeFields from "#lib/components/PageSizeFields.svelte";
+  import { PRESET_CHOICES, trimPoints, type PresetChoice } from "#lib/page-size-choices.ts";
   import {
     PUBLISH_TARGET_CHOICES,
     PRINT_TOOL_IDS,
     missingToolsForTargets,
     toolGapMessage,
-  } from "$lib/publish-targets";
+  } from "#lib/publish-targets.ts";
 
   // `open` is purely internal state, not a `$bindable` prop: the ONLY open
   // protocol is the imperative `show()` below (reset + template-load + focus
@@ -51,7 +51,7 @@
   // own manifest — the template is the first decision, and everything under
   // it starts from what that template is for. The writer can still change
   // any of it before creating.
-  // The choices + copy are shared with Book settings ($lib/page-size-choices).
+  // The choices + copy are shared with Book settings (#lib/page-size-choices).
   let selectedPreset = $state<PresetChoice | null>(null);
 
   // Page size for the `custom` preset. Authors think in INCHES, so that is
@@ -72,7 +72,7 @@
   // template/preset and freely uncheckable — a writer without qpdf/
   // Ghostscript can opt out of print checks knowingly instead of hitting
   // required-check errors later. Choices + copy are shared with project
-  // settings ($lib/publish-targets).
+  // settings (#lib/publish-targets).
   const TARGET_CHOICES = PUBLISH_TARGET_CHOICES;
   /** Mirrors the lib presets' defaultTargets (dtrpg → [dtrpg]; else []). */
   function defaultTargetsFor(preset: PresetChoice | null): string[] {
@@ -247,7 +247,7 @@
   /**
    * Parent directory of an absolute path — pure string op, no `node:path`
    * (§8 PWA-clean). Kept local to this component rather than added to
-   * `$lib/platform/paths.ts` (owned by a concurrent lane); hoist it there if
+   * `#lib/platform/paths.ts` (owned by a concurrent lane); hoist it there if
    * a second caller needs it.
    */
   function parentDirOf(p: string): string | null {
@@ -626,7 +626,7 @@
 {/if}
 
 <style>
-  @import "$lib/styles/dialog-shell.css";
+  @import "../styles/dialog-shell.css";
 
   .dlg-shell {
     width: min(520px, 94vw);

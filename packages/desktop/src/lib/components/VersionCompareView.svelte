@@ -7,8 +7,8 @@
    * nothing here edits, and nothing is merged. The rows arrive aligned from
    * the host (`api.vcs.compareFile`), so this is layout only.
    */
-  import Icon from "$lib/components/Icon.svelte";
-  import type { CompareRow } from "$lib/api";
+  import Icon from "#lib/components/Icon.svelte";
+  import type { CompareRow } from "#lib/api.ts";
 
   let {
     path,

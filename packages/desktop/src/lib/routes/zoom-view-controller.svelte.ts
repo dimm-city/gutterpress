@@ -33,7 +33,7 @@ import {
   nudgeSplitRatio,
   DEFAULT_SPLIT_RATIO,
   SPLIT_ARROW_STEP,
-} from "$lib/editor/preview-layout";
+} from "#lib/editor/preview-layout.ts";
 
 /** Minimal host-command client surface the controller drives. */
 interface ZoomViewClient {

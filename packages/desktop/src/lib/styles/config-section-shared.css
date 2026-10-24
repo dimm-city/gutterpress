@@ -10,7 +10,7 @@
  * pulled into each section with:
  *
  *   <style>
- *     @import "$lib/styles/config-section-shared.css";
+ *     @import "../../styles/config-section-shared.css";   (relative to the section)
  *     /* the section's own bespoke rules *\/
  *   </style>
  *

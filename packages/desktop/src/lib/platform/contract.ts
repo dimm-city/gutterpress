@@ -19,7 +19,7 @@
  * reference — the ~30 shapes server routes return (extension manager,
  * style resolver, media panel, problems panel, project
  * classification, …) — live in `./dtos.ts`. IPC payload types shared with the
- * Electron host process live in `./shared-types.ts`. This file re-exports both so existing `$lib/platform/
+ * Electron host process live in `./shared-types.ts`. This file re-exports both so existing `#lib/platform/
  * contract` importers keep resolving; new code should import DTOs from
  * `./dtos` directly.
  */

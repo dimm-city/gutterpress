@@ -11,15 +11,15 @@
    * Reuses SettingsView's sub-tab pattern (TABS, tablist keys, tabpanel with
    * `idPrefix`). Owns its api.doctor load for Diagnostics.
    */
-  import { api } from "$lib/api";
-  import { unwrapRouteError } from "$lib/errors";
-  import type { DoctorDiagnostics } from "$lib/api";
-  import LogsPanel from "$lib/components/LogsPanel.svelte";
-  import ReportProblemPanel from "$lib/components/ReportProblemPanel.svelte";
-  import SyncToolsPanel from "$lib/components/SyncToolsPanel.svelte";
-  import UpdatesIntegrationSection from "$lib/components/UpdatesIntegrationSection.svelte";
-  import type { UpdaterAvailableAction } from "$lib/platform";
-  import { sanitizeTroubleshootingTab, type TroubleshootingTab } from "$lib/troubleshooting-tabs";
+  import { api } from "#lib/api.ts";
+  import { unwrapRouteError } from "#lib/errors.ts";
+  import type { DoctorDiagnostics } from "#lib/api.ts";
+  import LogsPanel from "#lib/components/LogsPanel.svelte";
+  import ReportProblemPanel from "#lib/components/ReportProblemPanel.svelte";
+  import SyncToolsPanel from "#lib/components/SyncToolsPanel.svelte";
+  import UpdatesIntegrationSection from "#lib/components/UpdatesIntegrationSection.svelte";
+  import type { UpdaterAvailableAction } from "#lib/platform/index.ts";
+  import { sanitizeTroubleshootingTab, type TroubleshootingTab } from "#lib/troubleshooting-tabs.ts";
 
   let {
     initialTab = "logs",

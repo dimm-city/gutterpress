@@ -5,7 +5,7 @@ import {
   type PreflightRawResult,
   type PreflightRow,
   type PreflightSeverity,
-} from '$lib/preflight';
+} from '#lib/preflight.ts';
 import type { RequestHandler } from './$types';
 
 interface PreflightBody {
@@ -27,7 +27,7 @@ interface PreflightBody {
  *
  * Host Node code (§8): may import the lib + `node:*` and run the registry. The
  * pure result-shaping (registry result → author-facing DTO, incl. `fixable`
- * derivation from a location) lives in `$lib/preflight` and is unit-tested.
+ * derivation from a location) lives in `#lib/preflight.ts` and is unit-tested.
  */
 export const POST: RequestHandler = defineRoute<PreflightBody>({
   validate: async (raw) => {

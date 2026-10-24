@@ -6,7 +6,7 @@
  * itself stays focused on wiring.
  */
 
-import type { DoctorDiagnostics } from "$lib/api";
+import type { DoctorDiagnostics } from "#lib/api.ts";
 
 /** One diagnosed tool row, as returned by `api.doctor()`. */
 export type DiagnosticsTool = DoctorDiagnostics["tools"][number];

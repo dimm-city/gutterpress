@@ -23,15 +23,15 @@
    * PWA-clean (§8): api.* routes only.
    */
   import { onMount } from "svelte";
-  import { api } from "$lib/api";
-  import { friendlyHostError } from "$lib/errors";
-  import { suggestRepositoryName } from "$lib/backup-repo-name";
+  import { api } from "#lib/api.ts";
+  import { friendlyHostError } from "#lib/errors.ts";
+  import { suggestRepositoryName } from "#lib/backup-repo-name.ts";
   import type {
     ProjectRemoteDiagnosis,
     RemoteAccessResult,
     RemoteConnection,
     RemoteRepository,
-  } from "$lib/platform/contract";
+  } from "#lib/platform/contract.ts";
 
   let {
     projectDir,
@@ -402,7 +402,7 @@
 </section>
 
 <style>
-  @import "$lib/styles/config-section-shared.css";
+  @import "../styles/config-section-shared.css";
 
   .hint { font-size: 11px; line-height: 1.4; color: var(--app-text-muted); margin: 4px 0 8px; }
   .hint.muted { font-style: italic; }

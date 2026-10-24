@@ -9,7 +9,7 @@
    * your book kept online). A one-line summary answers "is my work safe?"; each
    * section leads with what is true right now, then says what the thing is,
    * then offers the one action that helps. The words come from the pure
-   * `saveStatusCopy` mapping (`$lib/save-status`) — this component only renders
+   * `saveStatusCopy` mapping (`#lib/save-status.ts`) — this component only renders
    * them, so it holds no state logic of its own.
    *
    * Mounted fresh per open ({#if} in StatusBar); AppView owns the frame,
@@ -19,9 +19,9 @@
    * its own.
    * PWA-clean (§8): props only.
    */
-  import Icon from "$lib/components/Icon.svelte";
-  import AppView from "$lib/components/AppView.svelte";
-  import type { SaveStatusActionId, SaveStatusCopy, SaveStatusTone } from "$lib/save-status";
+  import Icon from "#lib/components/Icon.svelte";
+  import AppView from "#lib/components/AppView.svelte";
+  import type { SaveStatusActionId, SaveStatusCopy, SaveStatusTone } from "#lib/save-status.ts";
 
   let {
     copy,

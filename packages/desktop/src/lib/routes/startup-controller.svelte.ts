@@ -22,7 +22,7 @@
 
 import { decideStartupScreen } from "./startup-landing";
 import type { LastFlushFailure } from "../platform/contract";
-import { basenameOf } from "$lib/platform/paths";
+import { basenameOf } from "#lib/platform/paths.ts";
 
 /** The subset of persisted `DesktopPrefs` this flow reads. */
 export interface StartupPrefs {

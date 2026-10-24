@@ -12,9 +12,9 @@
    * Purely presentational and PWA-clean (§8): props in, callbacks out.
    */
   import { onMount } from "svelte";
-  import Icon from "$lib/components/Icon.svelte";
-  import { createIdleReveal, type IdleReveal } from "$lib/routes/focus-mode";
-  import type { PageNavController } from "$lib/routes/page-nav-controller.svelte";
+  import Icon from "#lib/components/Icon.svelte";
+  import { createIdleReveal, type IdleReveal } from "#lib/routes/focus-mode.ts";
+  import type { PageNavController } from "#lib/routes/page-nav-controller.svelte.ts";
 
   let {
     view,

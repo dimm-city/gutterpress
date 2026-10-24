@@ -1,5 +1,5 @@
 /**
- * `$lib/publish-targets` mirrors the lib's target registry (ADR 0008) because
+ * `#lib/publish-targets` mirrors the lib's target registry (ADR 0008) because
  * the SPA may not value-import `gutterpress` (§8). A mirror can drift, so
  * this test reads the REAL registry source and pins the two together: every
  * id the UI offers exists, none is missing, and each one's declared tool

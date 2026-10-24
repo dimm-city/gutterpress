@@ -14,16 +14,16 @@
    * PWA-clean: all host work via api.* routes (CLAUDE.md §8).
    * No node: builtins or gutterpress value imports.
    */
-  import SyncStatusPill from "$lib/components/SyncStatusPill.svelte";
-  import BookSwitcher from "$lib/components/BookSwitcher.svelte";
-  import Icon from "$lib/components/Icon.svelte";
-  import { api } from "$lib/api";
-  import SaveStatusView from "$lib/components/SaveStatusView.svelte";
-  import { saveIndicator, saveStatusCopy, type SaveStatusActionId } from "$lib/save-status";
+  import SyncStatusPill from "#lib/components/SyncStatusPill.svelte";
+  import BookSwitcher from "#lib/components/BookSwitcher.svelte";
+  import Icon from "#lib/components/Icon.svelte";
+  import { api } from "#lib/api.ts";
+  import SaveStatusView from "#lib/components/SaveStatusView.svelte";
+  import { saveIndicator, saveStatusCopy, type SaveStatusActionId } from "#lib/save-status.ts";
   import { onDestroy, tick } from "svelte";
-  import type { SyncState } from "$lib/platform/contract";
-  import type { ManualBackup } from "$lib/routes/sync-controller.svelte";
-  import type { ProjectBookEntry } from "$lib/routes/project-session-controller.svelte";
+  import type { SyncState } from "#lib/platform/contract.ts";
+  import type { ManualBackup } from "#lib/routes/sync-controller.svelte.ts";
+  import type { ProjectBookEntry } from "#lib/routes/project-session-controller.svelte.ts";
 
   let {
     /** Currently-open project directory. Bar is shown when non-null. */
@@ -140,7 +140,7 @@
   // ── "Where your work is kept" view ──────────────────────────────────────────
   // The editor toolbar's save indicator opens a view that explains Saving / Versions /
   // Online backup separately and reconciles them ("saved, but not in a version
-  // yet"). The words come from the pure `saveStatusCopy` ($lib/save-status);
+  // yet"). The words come from the pure `saveStatusCopy` (#lib/save-status);
   // this block only gathers the facts: the bar's own props, the live sync state
   // from the pill, and two lazily fetched version facts (newest version time
   // and how many files changed since — the PWA-clean api.vcs routes). No

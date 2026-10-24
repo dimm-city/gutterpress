@@ -21,10 +21,10 @@
    * folder only) into a fixed sample through the same sandboxed-iframe
    * mechanism as before; hovering a row enlarges it to a two-page spread.
    */
-  import Icon from "$lib/components/Icon.svelte";
-  import type { ProjectExtensionEntry } from "$lib/platform/dtos";
+  import Icon from "#lib/components/Icon.svelte";
+  import type { ProjectExtensionEntry } from "#lib/platform/dtos.ts";
   import { extensionSourceLabel } from "./config-helpers";
-  import type { ExtensionsSectionController } from "$lib/routes/extensions-section-controller.svelte";
+  import type { ExtensionsSectionController } from "#lib/routes/extensions-section-controller.svelte.ts";
 
   let { controller }: { controller: ExtensionsSectionController } = $props();
 
@@ -178,7 +178,7 @@
 {/snippet}
 
 <style>
-  @import "$lib/styles/config-section-shared.css";
+  @import "../../styles/config-section-shared.css";
 
   /* Configured looks: one row per entry, top-to-bottom = cascade order. */
   .look-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
