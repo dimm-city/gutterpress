@@ -192,10 +192,11 @@ authors:
 # explicitly below always wins over the preset.
 preset: book
 
-# Page validation bounds (values in points: 72pt = 1in). The actual trim
-# comes from your stylesheet's @page rule — these are the size the built
-# PDF is checked against, so keep the two matching. Required (width and
-# height) when `preset: custom`; optional overrides otherwise.
+# Page size (values in points: 72pt = 1in): the size your book prints at
+# and the size the built PDF is checked against. A stylesheet that sets
+# its own plain `@page { size }` wins over it, so keep the two matching.
+# Required (width and height) when `preset: custom`; optional overrides
+# otherwise.
 page:
   width: 432
   height: 648
@@ -235,9 +236,11 @@ Common book trim sizes in points (72pt = 1 inch):
 
 @end-section
 
+Your book prints at the manifest's `page.width` × `page.height` — your preset's size unless you set them — and that is also the size the finished PDF is checked against. A stylesheet that sets its own plain `@page { size }` (one with no page name and no `:first`/`:left`) wins over the manifest, so if you write one, keep the two matching.
+
 ### DriveThruRPG Requirements {#dtrpg-requirements}
 
-These are DriveThruRPG's print-on-demand rules for an 8.5×11in interior, from DriveThru Partners' help articles [Quick Specifications for Print Books](https://help.drivethrupartners.com/hc/en-us/articles/12780800178583-Quick-Specifications-for-Print-Books) and [Correcting Most Common Print Errors](https://help.drivethrupartners.com/hc/en-us/articles/12780799485335-Correcting-Most-Common-Print-Errors); the ICC profile is from their [Preparing A Book For Print with Affinity Publisher](https://help.drivethrupartners.com/hc/en-us/articles/12780801434647-Preparing-A-Book-For-Print-with-Affinity-Publisher). The `dtrpg` preset is set up to meet them; the last column says where Gutterpress shows or checks each one.
+These are DriveThruRPG's print-on-demand rules for an 8.5×11in interior, from DriveThru Partners' help articles [Quick Specifications for Print Books](https://help.drivethrupartners.com/hc/en-us/articles/12780800178583-Quick-Specifications-for-Print-Books) and [Correcting Most Common Print Errors](https://help.drivethrupartners.com/hc/en-us/articles/12780799485335-Correcting-Most-Common-Print-Errors). The `dtrpg` preset is set up to meet them; the last column says where Gutterpress shows or checks each one.
 
 @section
 
