@@ -98,6 +98,11 @@ This project follows [Semantic Versioning](https://semver.org/).
   asks for text and non-bleeding art at least 0.5in from the binding edge; the
   preset now declares that binding allowance instead of leaving it to default
   to `page.safe`. Nothing changes for a book that did not set `gutter`.
+- **The desktop runs on SvelteKit 3 (#417).** The app's window and its
+  in-process host routes moved from SvelteKit 2 to 3 (with Svelte 5.57, and
+  TypeScript 6 for the desktop's own checks), which clears the two SvelteKit 2
+  advisories CI's dependency audit had been told to ignore. Nothing an author
+  sees or does should change.
 
 ### Fixed
 
