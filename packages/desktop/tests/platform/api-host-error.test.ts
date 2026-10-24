@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { api, hostErrorMessage } from "../../src/lib/api";
 
-// `$lib/api`'s post/get throw the response text for a non-OK reply. When that
+// `#lib/api`'s post/get throw the response text for a non-OK reply. When that
 // text is the app:// proxy's HTML error page (the loopback request itself
 // failed), a component must get a sentence, not a page of markup — the
 // GitHub "Open book" dialog displayed the raw <!doctype html> in 0.11.10-alpha.3.

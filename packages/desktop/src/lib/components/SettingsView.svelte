@@ -1,15 +1,15 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import Icon from "$lib/components/Icon.svelte";
-  import ConnectionsSettings from "$lib/components/ConnectionsSettings.svelte";
-  import GitIdentitySection from "$lib/components/GitIdentitySection.svelte";
-  import { useSettings } from "$lib/settings.svelte";
-  import { setThemeMode } from "$lib/theme.svelte";
-  import { getPlatform } from "$lib/platform";
-  import { sanitizeSettingsTab, type SettingsTab } from "$lib/settings-tabs";
-  import { api } from "$lib/api";
-  import { MARGIN_OVERLAY_STRENGTHS, OVERLAY_LAYERS, overlayStyleFrom } from "$lib/margin-overlay";
-  import { friendlyHostError } from "$lib/errors";
+  import Icon from "#lib/components/Icon.svelte";
+  import ConnectionsSettings from "#lib/components/ConnectionsSettings.svelte";
+  import GitIdentitySection from "#lib/components/GitIdentitySection.svelte";
+  import { useSettings } from "#lib/settings.svelte.ts";
+  import { setThemeMode } from "#lib/theme.svelte.ts";
+  import { getPlatform } from "#lib/platform/index.ts";
+  import { sanitizeSettingsTab, type SettingsTab } from "#lib/settings-tabs.ts";
+  import { api } from "#lib/api.ts";
+  import { MARGIN_OVERLAY_STRENGTHS, OVERLAY_LAYERS, overlayStyleFrom } from "#lib/margin-overlay.ts";
+  import { friendlyHostError } from "#lib/errors.ts";
 
   let {
     onClose,

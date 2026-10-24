@@ -6,7 +6,7 @@
  * stored `readLayout` is never touched by Edit, so returning to Read restores
  * the author's last choice.
  */
-import type { ReadLayout, WorkspaceMode } from "$lib/platform/shared-types";
+import type { ReadLayout, WorkspaceMode } from "#lib/platform/shared-types.ts";
 
 export type ViewerViewMode = "single" | "two-column";
 

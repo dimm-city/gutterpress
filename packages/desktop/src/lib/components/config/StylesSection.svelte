@@ -17,8 +17,8 @@
    * that one's checkbox is disabled with an explanatory hint instead of
    * allowing the last uncheck.
    */
-  import Icon from "$lib/components/Icon.svelte";
-  import type { StylesSectionController } from "$lib/routes/styles-section-controller.svelte";
+  import Icon from "#lib/components/Icon.svelte";
+  import type { StylesSectionController } from "#lib/routes/styles-section-controller.svelte.ts";
 
   let { controller }: { controller: StylesSectionController } = $props();
 
@@ -60,7 +60,7 @@
 </div>
 
 <style>
-  @import "$lib/styles/config-section-shared.css";
+  @import "../../styles/config-section-shared.css";
 
   .style-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
   .style-list li {

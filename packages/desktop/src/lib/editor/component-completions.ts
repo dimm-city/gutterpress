@@ -20,7 +20,7 @@ import {
   type CompletionContext,
   type CompletionResult,
 } from "@codemirror/autocomplete";
-import type { MarkerComponent } from "$lib/api";
+import type { MarkerComponent } from "#lib/api.ts";
 import { markerCompletionFrom, markerPairApply, type MarkerCompletion } from "./marker-completions";
 import { firstVariable } from "./snippet-vars";
 

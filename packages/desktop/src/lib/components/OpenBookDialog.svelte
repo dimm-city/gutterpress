@@ -3,8 +3,8 @@
    * "Open a book" source picker. Pure chooser: each card hands off to the
    * existing flow (native folder dialog, GitHub clone dialog); no logic here.
    */
-  import Icon from "$lib/components/Icon.svelte";
-  import { dialogBehavior } from "$lib/dialog";
+  import Icon from "#lib/components/Icon.svelte";
+  import { dialogBehavior } from "#lib/dialog.ts";
 
   let { onLocal, onGitHub, onClose }: {
     onLocal: () => void;
@@ -41,7 +41,7 @@
 </div>
 
 <style>
-  @import "$lib/styles/dialog-shell.css";
+  @import "../styles/dialog-shell.css";
   .open-book { width: min(420px, 92vw); }
   .choices { display: grid; gap: 10px; padding: 18px; }
   .choice {

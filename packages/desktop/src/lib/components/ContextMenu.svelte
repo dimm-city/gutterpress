@@ -11,7 +11,7 @@
    * the menu opened. App design tokens only — no hardcoded colors
    * (`npm run lint` enforces this via `tools/check-app-tokens.mjs`).
    */
-  import type { ContextMenuController, ContextMenuItem } from "$lib/routes/context-menu-controller.svelte";
+  import type { ContextMenuController, ContextMenuItem } from "#lib/routes/context-menu-controller.svelte.ts";
 
   let { controller }: { controller: ContextMenuController } = $props();
 

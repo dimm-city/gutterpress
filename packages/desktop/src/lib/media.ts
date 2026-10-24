@@ -5,7 +5,7 @@
  * string formatting over the `MediaImageDetails` payload the host returns, so
  * it is unit-testable with bun:test and PWA-clean by construction.
  */
-// Relative import (not $lib) so the module loads under bare `bun test` too.
+// Relative import (not #lib) so the module loads under bare `bun test` too.
 import type { MediaImageDetails } from "./platform/dtos";
 
 /**

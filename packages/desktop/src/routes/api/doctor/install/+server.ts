@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { spawn } from 'node:child_process';
-import { binOnPath, isToolId, planToolInstall, type ToolId } from '$lib/server/tool-install.js';
+import { binOnPath, isToolId, planToolInstall, type ToolId } from '#lib/server/tool-install.ts';
 import { defineRoute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 

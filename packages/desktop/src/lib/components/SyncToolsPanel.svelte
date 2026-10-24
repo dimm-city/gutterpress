@@ -17,11 +17,11 @@
    * ConnectionsSettings uses).
    */
   import { onMount } from "svelte";
-  import { api } from "$lib/api";
-  import { getPlatform } from "$lib/platform";
-  import { friendlyHostError, unwrapRouteError } from "$lib/errors";
-  import type { DeviceCodeInfo, RemoteConnection } from "$lib/platform/contract";
-  import { cancelInlineConfirm, requestInlineConfirm, type InlineConfirmState } from "$lib/dialog";
+  import { api } from "#lib/api.ts";
+  import { getPlatform } from "#lib/platform/index.ts";
+  import { friendlyHostError, unwrapRouteError } from "#lib/errors.ts";
+  import type { DeviceCodeInfo, RemoteConnection } from "#lib/platform/contract.ts";
+  import { cancelInlineConfirm, requestInlineConfirm, type InlineConfirmState } from "#lib/dialog.ts";
 
   let {
     projectDir = null,

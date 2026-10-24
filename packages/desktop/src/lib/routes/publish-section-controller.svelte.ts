@@ -26,8 +26,8 @@ import type {
   PublishDestination,
   GoogleConnectStartResult,
   GoogleConnectResult,
-} from "$lib/platform/contract";
-import type { PreflightRow } from "$lib/preflight";
+} from "#lib/platform/contract.ts";
+import type { PreflightRow } from "#lib/preflight.ts";
 
 export interface PublishSectionDeps {
   /** The open project directory (reactive prop), or null when none is open. */

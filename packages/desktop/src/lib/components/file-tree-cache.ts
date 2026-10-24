@@ -16,7 +16,7 @@
  * host `api.fs.*` calls.
  */
 
-import { isPathAtOrUnder } from "$lib/platform/paths";
+import { isPathAtOrUnder } from "#lib/platform/paths.ts";
 
 /** Drop exactly one directory's cached listing so its next expand refetches. */
 export function invalidateDir<T>(cache: Record<string, T>, dir: string): Record<string, T> {

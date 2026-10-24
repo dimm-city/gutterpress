@@ -25,11 +25,11 @@
    * controller; the parent mounts this fresh via {#if} so load runs in onMount;
    * step/selection are plain local state driven by event handlers.
    */
-  import Icon from "$lib/components/Icon.svelte";
-  import AppView from "$lib/components/AppView.svelte";
+  import Icon from "#lib/components/Icon.svelte";
+  import AppView from "#lib/components/AppView.svelte";
   import { onMount } from "svelte";
-  import { requestInlineConfirm, cancelInlineConfirm, type InlineConfirmState } from "$lib/dialog";
-  import { friendlyPublishError } from "$lib/errors";
+  import { requestInlineConfirm, cancelInlineConfirm, type InlineConfirmState } from "#lib/dialog.ts";
+  import { friendlyPublishError } from "#lib/errors.ts";
   import {
     groupPreflight,
     preflightHeaderLevel,
@@ -37,11 +37,11 @@
     categoryLabel,
     entersPreflightForward,
     type PreflightRow,
-  } from "$lib/preflight";
-  import type { ProblemEntry } from "$lib/platform/dtos";
-  import type { PublishProviderCard } from "$lib/platform/contract";
-  import type { PublishSectionController } from "$lib/routes/publish-section-controller.svelte";
-  import { joinPath } from "$lib/platform/paths";
+  } from "#lib/preflight.ts";
+  import type { ProblemEntry } from "#lib/platform/dtos.ts";
+  import type { PublishProviderCard } from "#lib/platform/contract.ts";
+  import type { PublishSectionController } from "#lib/routes/publish-section-controller.svelte.ts";
+  import { joinPath } from "#lib/platform/paths.ts";
 
   /** The lib's "A folder on this computer" provider id. */
   const LOCAL = "local";

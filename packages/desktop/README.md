@@ -10,9 +10,9 @@ and export a PDF — no terminal required, no runtime to install.
 
 ```
 Electron main process (out/main/main.js — ESM, built by electron-vite)
-  ├─ loadSvelteKitServer()   — constructs the SvelteKit Server from build/server/
+  ├─ loadSvelteKitServer()   — loads the SvelteKit server from build/server/
   ├─ protocol.handle("app", ...) — serves build/client/ files, and answers every
-  │                            other app:// request with Server.respond() in-process
+  │                            other app:// request with server.respond() in-process
   │                            (so +server.ts routes run; no HTTP server, no port)
   ├─ secureHandle("api:preview", ...)  — wraps lib.startPreviewServer
   ├─ secureHandle("api:build", ...)    — delegates to export/controller.ts
@@ -263,7 +263,7 @@ packages/desktop/
 ├── tests/                   # Bun unit/contract tests + Playwright integration tests
 ├── electron-builder.yml     # Packaging config (Linux AppImage, Windows installer/zip, macOS dmg)
 ├── adapter-electron.js      # the ~30-line SvelteKit adapter: unbundled server + client
-├── svelte.config.js         # adapter-electron (out: build), paths.relative
+├── vite.config.ts           # SvelteKit config: adapter-electron (out: build), paths.relative
 └── package.json
 ```
 
@@ -309,20 +309,20 @@ never touches electron-updater directly.
 
 ## Architecture notes
 
-- **adapter-electron + in-process server** — `svelte.config.js` uses the
-  package's own `adapter-electron.js`, which writes the SvelteKit server
-  UNBUNDLED to `build/server/` (`index.js` exports `Server`, `manifest.js` its
-  manifest) plus `build/client/` (browser assets). In production
-  `electron/sveltekit-host.ts` (`loadSvelteKitServer`) constructs that Server
-  once. `+layout.ts` sets `ssr=false`, so pages are client-rendered; the "API"
-  surface is the `+server.ts` routes the same Server answers. Nothing listens
-  on a port.
+- **adapter-electron + in-process server** — `vite.config.ts` passes the
+  package's own `adapter-electron.js` to the `sveltekit()` plugin; it writes
+  the SvelteKit server UNBUNDLED to `build/server/` (`server.js` exports the
+  `server` instance) plus `build/client/` (browser assets). In production
+  `electron/sveltekit-host.ts` (`loadSvelteKitServer`) initialises that
+  server once. `+layout.ts` sets `ssr=false`, so pages are client-rendered;
+  the "API" surface is the `+server.ts` routes the same server answers.
+  Nothing listens on a port.
 - **app:// protocol** — `electron/main.ts` calls
   `protocol.registerSchemesAsPrivileged([{ scheme: "app", privileges: { standard, secure, supportFetchAPI, stream } }])`
   at module load and `protocol.handle("app", ...)` inside `app.whenReady`. The
   handler serves a `build/client/` file when the path names one (never a path
   outside that dir), and hands every other `app://local/*` request — the SPA
-  shell and every `fetch("/api/…")` — to `Server.respond()`. In dev
+  shell and every `fetch("/api/…")` — to `server.respond()`. In dev
   (`VITE_DEV_SERVER_URL` set) the window loads the vite dev server directly and
   the built server is not loaded.
 - **fetch for routes, IPC for the rest** — most host calls are
@@ -333,7 +333,7 @@ never touches electron-updater directly.
   (externalizing electron + the lib); SvelteKit builds the renderer + host
   routes into `build/`. No CJS↔ESM interop trick: the ESM main just does
   `await import("gutterpress")`, cached so subsequent calls reuse the module.
-  Packaged with asar, nothing unpacked (`build/server/index.js` is imported
+  Packaged with asar, nothing unpacked (`build/server/server.js` is imported
   from inside the asar).
 - **Preview iframe** — `lib.startPreviewServer` returns an `http://127.0.0.1:N`
   URL that the renderer puts in `<iframe src={url}>`. Iframe is cross-origin

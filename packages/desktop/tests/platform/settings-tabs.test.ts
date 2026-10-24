@@ -6,7 +6,7 @@
  * `openSettings(tab)` as the tab id, matched nothing, and every
  * `{#if activeTab === …}` branch stayed false.
  *
- * The guard is `sanitizeSettingsTab` ($lib/settings-tabs): any value that is
+ * The guard is `sanitizeSettingsTab` (#lib/settings-tabs): any value that is
  * not a known tab id collapses to "app". Both ends use it — `openSettings`
  * in +page (so no caller can poison the stored tab) and SettingsView's
  * initial `activeTab` (so a bad prop can't blank the view). The two raw

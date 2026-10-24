@@ -1,6 +1,6 @@
-import { DEFAULT_SETTINGS } from "$lib/platform/contract";
-import type { AppSettings, DeepPartial } from "$lib/platform/contract";
-import { deepMergeSettings } from "$lib/settings-merge";
+import { DEFAULT_SETTINGS } from "#lib/platform/contract.ts";
+import type { AppSettings, DeepPartial } from "#lib/platform/contract.ts";
+import { deepMergeSettings } from "#lib/settings-merge.ts";
 import { getHostServices } from '../../../electron/server-bridge/host-services';
 import { gitIdentityFrom, type GitIdentityArgs } from '../../../electron/git-identity';
 

@@ -20,10 +20,10 @@
    * to restore or discard, and makes Discard two-step (an inline confirm swap
    * on the button).
    */
-  import Icon from "$lib/components/Icon.svelte";
-  import { api } from "$lib/api";
-  import { dialogBehavior } from "$lib/dialog";
-  import type { RecoveryItem } from "$lib/components/crash-recovery-types";
+  import Icon from "#lib/components/Icon.svelte";
+  import { api } from "#lib/api.ts";
+  import { dialogBehavior } from "#lib/dialog.ts";
+  import type { RecoveryItem } from "#lib/components/crash-recovery-types.ts";
 
   export type { RecoveryItem };
 

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
-  import type { ActivityStage } from "$lib/loading/activity-stage";
+  import type { ActivityStage } from "#lib/loading/activity-stage.ts";
   import Spinner from "./Spinner.svelte";
 
   /**

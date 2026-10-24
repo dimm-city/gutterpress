@@ -1,123 +1,123 @@
 <script lang="ts">
-  import PreviewFrame from "$lib/components/PreviewFrame.svelte";
-  import PreviewToolbar from "$lib/components/PreviewToolbar.svelte";
-  import FindBar from "$lib/components/FindBar.svelte";
-  import ExternalEditBanner from "$lib/components/ExternalEditBanner.svelte";
-  import TwoVersionsPanel from "$lib/components/TwoVersionsPanel.svelte";
-  import CrashRecoveryDialog from "$lib/components/CrashRecoveryDialog.svelte";
-  import type { TroubleshootingTab } from "$lib/troubleshooting-tabs";
-  import { EditorBuffer } from "$lib/editor/buffer-state.svelte";
-  import { EditorFileSession } from "$lib/editor/editor-file-session.svelte";
-  import { chapterPath, isSafeChapterId } from "$lib/editor/chapter-path";
+  import PreviewFrame from "#lib/components/PreviewFrame.svelte";
+  import PreviewToolbar from "#lib/components/PreviewToolbar.svelte";
+  import FindBar from "#lib/components/FindBar.svelte";
+  import ExternalEditBanner from "#lib/components/ExternalEditBanner.svelte";
+  import TwoVersionsPanel from "#lib/components/TwoVersionsPanel.svelte";
+  import CrashRecoveryDialog from "#lib/components/CrashRecoveryDialog.svelte";
+  import type { TroubleshootingTab } from "#lib/troubleshooting-tabs.ts";
+  import { EditorBuffer } from "#lib/editor/buffer-state.svelte.ts";
+  import { EditorFileSession } from "#lib/editor/editor-file-session.svelte.ts";
+  import { chapterPath, isSafeChapterId } from "#lib/editor/chapter-path.ts";
   import {
     findTwoVersions,
     resolveTwoVersions,
     type RangeEdit,
     type TwoVersionsBlock,
     type TwoVersionsChoice,
-  } from "$lib/editor/two-versions";
-  import { ExportController } from "$lib/export/export-controller.svelte";
-  import Toast from "$lib/components/Toast.svelte";
-  import type { ToastController } from "$lib/components/Toast.svelte";
-  import type { MarkdownFileLaunchEvent } from "$lib/platform/contract";
-  import type { ProblemEntry } from "$lib/platform/dtos";
-  import { buildProblems, exportProblems, problemCounts } from "$lib/problems";
-  import StatusBar from "$lib/components/StatusBar.svelte";
-  import ProblemsPanel from "$lib/components/ProblemsPanel.svelte";
-  import ActivityIndicator from "$lib/components/ActivityIndicator.svelte";
-  import { openFeaturesOn } from "$lib/routes/extensions-section-controller.svelte";
-  import Spinner from "$lib/components/Spinner.svelte";
-  import { ActivityGate } from "$lib/loading/activity-gate.svelte";
-  import { deriveOpenStage, exportStage, UPDATING_STAGE } from "$lib/loading/activity-stage";
-  import ProjectActivityView from "$lib/components/ProjectActivityView.svelte";
-  import NewProjectWizard from "$lib/components/NewProjectWizard.svelte";
-  import GitHubDialog from "$lib/components/GitHubDialog.svelte";
-  import OpenBookDialog from "$lib/components/OpenBookDialog.svelte";
-  import PublishWizard from "$lib/components/PublishWizard.svelte";
-  import Icon from "$lib/components/Icon.svelte";
-  import AppToolbar from "$lib/components/AppToolbar.svelte";
-  import FocusBar from "$lib/components/FocusBar.svelte";
-  import ProjectSettingsView from "$lib/components/ProjectSettingsView.svelte";
-  import EditorToolbar from "$lib/components/EditorToolbar.svelte";
-  import type { ToolbarAction, ToolbarPayload } from "$lib/components/EditorToolbar.svelte";
-  import SnippetPicker from "$lib/components/SnippetPicker.svelte";
-  import { PreviewClient, type OutlineEntry, type PreviewEvent, type PreviewTarget } from "$lib/preview-client";
-  import { activeOutlineIndexForLine } from "$lib/routes/outline";
-  import { PageNavController } from "$lib/routes/page-nav-controller.svelte";
-  import { ZoomViewController } from "$lib/routes/zoom-view-controller.svelte";
-  import { PreviewEventController } from "$lib/routes/preview-event-controller";
-  import { EditorPreviewSyncController } from "$lib/routes/editor-preview-sync-controller";
-  import { ContextMenuController } from "$lib/routes/context-menu-controller.svelte";
-  import ContextMenu from "$lib/components/ContextMenu.svelte";
-  import { InlineEditController } from "$lib/routes/inline-edit-controller.svelte";
-  import TextPromptDialog from "$lib/components/TextPromptDialog.svelte";
-  import ImagePropertiesDialog from "$lib/components/ImagePropertiesDialog.svelte";
-  import type { ImagePropertiesValue } from "$lib/editor/image-classes";
-  import BlockPropertiesDialog from "$lib/components/BlockPropertiesDialog.svelte";
+  } from "#lib/editor/two-versions.ts";
+  import { ExportController } from "#lib/export/export-controller.svelte.ts";
+  import Toast from "#lib/components/Toast.svelte";
+  import type { ToastController } from "#lib/components/Toast.svelte";
+  import type { MarkdownFileLaunchEvent } from "#lib/platform/contract.ts";
+  import type { ProblemEntry } from "#lib/platform/dtos.ts";
+  import { buildProblems, exportProblems, problemCounts } from "#lib/problems.ts";
+  import StatusBar from "#lib/components/StatusBar.svelte";
+  import ProblemsPanel from "#lib/components/ProblemsPanel.svelte";
+  import ActivityIndicator from "#lib/components/ActivityIndicator.svelte";
+  import { openFeaturesOn } from "#lib/routes/extensions-section-controller.svelte.ts";
+  import Spinner from "#lib/components/Spinner.svelte";
+  import { ActivityGate } from "#lib/loading/activity-gate.svelte.ts";
+  import { deriveOpenStage, exportStage, UPDATING_STAGE } from "#lib/loading/activity-stage.ts";
+  import ProjectActivityView from "#lib/components/ProjectActivityView.svelte";
+  import NewProjectWizard from "#lib/components/NewProjectWizard.svelte";
+  import GitHubDialog from "#lib/components/GitHubDialog.svelte";
+  import OpenBookDialog from "#lib/components/OpenBookDialog.svelte";
+  import PublishWizard from "#lib/components/PublishWizard.svelte";
+  import Icon from "#lib/components/Icon.svelte";
+  import AppToolbar from "#lib/components/AppToolbar.svelte";
+  import FocusBar from "#lib/components/FocusBar.svelte";
+  import ProjectSettingsView from "#lib/components/ProjectSettingsView.svelte";
+  import EditorToolbar from "#lib/components/EditorToolbar.svelte";
+  import type { ToolbarAction, ToolbarPayload } from "#lib/components/EditorToolbar.svelte";
+  import SnippetPicker from "#lib/components/SnippetPicker.svelte";
+  import { PreviewClient, type OutlineEntry, type PreviewEvent, type PreviewTarget } from "#lib/preview-client.ts";
+  import { activeOutlineIndexForLine } from "#lib/routes/outline.ts";
+  import { PageNavController } from "#lib/routes/page-nav-controller.svelte.ts";
+  import { ZoomViewController } from "#lib/routes/zoom-view-controller.svelte.ts";
+  import { PreviewEventController } from "#lib/routes/preview-event-controller.ts";
+  import { EditorPreviewSyncController } from "#lib/routes/editor-preview-sync-controller.ts";
+  import { ContextMenuController } from "#lib/routes/context-menu-controller.svelte.ts";
+  import ContextMenu from "#lib/components/ContextMenu.svelte";
+  import { InlineEditController } from "#lib/routes/inline-edit-controller.svelte.ts";
+  import TextPromptDialog from "#lib/components/TextPromptDialog.svelte";
+  import ImagePropertiesDialog from "#lib/components/ImagePropertiesDialog.svelte";
+  import type { ImagePropertiesValue } from "#lib/editor/image-classes.ts";
+  import BlockPropertiesDialog from "#lib/components/BlockPropertiesDialog.svelte";
   import {
     editBlockProperties,
     type BlockPropertiesModel,
     type BlockPropertiesValue,
-  } from "$lib/editor/block-properties";
-  import type { LinePatch } from "$lib/editor/block-attrs";
-  import { CommitEngine } from "$lib/editor/commit-engine";
-  import { SyncController } from "$lib/routes/sync-controller.svelte";
-  import { ProjectSessionController } from "$lib/routes/project-session-controller.svelte";
-  import { ProjectLifecycleController } from "$lib/routes/project-lifecycle-controller.svelte";
-  import { StartupController } from "$lib/routes/startup-controller.svelte";
-  import { CrashRecoveryController } from "$lib/routes/crash-recovery-controller.svelte";
-  import { PublishSectionController } from "$lib/routes/publish-section-controller.svelte";
-  import { buildCanvasBackgroundStyles } from "$lib/iframe-styles";
-  import { getPlatform } from "$lib/platform";
-  import type { ReadLayout, WorkspaceMode } from "$lib/platform";
-  import { api, type ClassCatalogEntry, type LocationVariant, type MarkerComponent } from "$lib/api";
-  import { buildSourceList } from "$lib/components/config/source-files";
-  import { isEditableTarget } from "$lib/a11y";
-  import { invalidateDiscoveredProjects } from "$lib/projects-discover-cache";
-  import { basenameOf, joinPath, isPathAtOrUnder } from "$lib/platform/paths";
-  import { shouldReconcileAfterSync } from "$lib/sync-status";
+  } from "#lib/editor/block-properties.ts";
+  import type { LinePatch } from "#lib/editor/block-attrs.ts";
+  import { CommitEngine } from "#lib/editor/commit-engine.ts";
+  import { SyncController } from "#lib/routes/sync-controller.svelte.ts";
+  import { ProjectSessionController } from "#lib/routes/project-session-controller.svelte.ts";
+  import { ProjectLifecycleController } from "#lib/routes/project-lifecycle-controller.svelte.ts";
+  import { StartupController } from "#lib/routes/startup-controller.svelte.ts";
+  import { CrashRecoveryController } from "#lib/routes/crash-recovery-controller.svelte.ts";
+  import { PublishSectionController } from "#lib/routes/publish-section-controller.svelte.ts";
+  import { buildCanvasBackgroundStyles } from "#lib/iframe-styles.ts";
+  import { getPlatform } from "#lib/platform/index.ts";
+  import type { ReadLayout, WorkspaceMode } from "#lib/platform/index.ts";
+  import { api, type ClassCatalogEntry, type LocationVariant, type MarkerComponent } from "#lib/api.ts";
+  import { buildSourceList } from "#lib/components/config/source-files.ts";
+  import { isEditableTarget } from "#lib/a11y.ts";
+  import { invalidateDiscoveredProjects } from "#lib/projects-discover-cache.ts";
+  import { basenameOf, joinPath, isPathAtOrUnder } from "#lib/platform/paths.ts";
+  import { shouldReconcileAfterSync } from "#lib/sync-status.ts";
   import { onMount, tick } from "svelte";
   import {
     NARROW_BREAKPOINT,
     type MobileTab,
     paneModeForTab,
     keyboardOffset,
-  } from "$lib/editor/mobile-layout";
-  import { commandForSaveShortcut } from "$lib/editor/save-shortcuts";
-  import { resolveGlobalShortcut, resolvePreviewNavCommand } from "$lib/routes/shortcuts";
-  import { escapeExitsFocus } from "$lib/routes/focus-mode";
-  import { splitTemplateColumns, shouldRefitPreview } from "$lib/editor/preview-layout";
-  import { useSettings, _loadSettings, settingsChangeGuard, onSettingsChange } from "$lib/settings.svelte";
-  import { sanitizeSettingsTab, type SettingsTab } from "$lib/settings-tabs";
-  import { clampPanelWidth, viewportWidth } from "$lib/left-panel-width";
-  import { showReadLayoutToggle, viewModeFor } from "$lib/read-layout";
+  } from "#lib/editor/mobile-layout.ts";
+  import { commandForSaveShortcut } from "#lib/editor/save-shortcuts.ts";
+  import { resolveGlobalShortcut, resolvePreviewNavCommand } from "#lib/routes/shortcuts.ts";
+  import { escapeExitsFocus } from "#lib/routes/focus-mode.ts";
+  import { splitTemplateColumns, shouldRefitPreview } from "#lib/editor/preview-layout.ts";
+  import { useSettings, _loadSettings, settingsChangeGuard, onSettingsChange } from "#lib/settings.svelte.ts";
+  import { sanitizeSettingsTab, type SettingsTab } from "#lib/settings-tabs.ts";
+  import { clampPanelWidth, viewportWidth } from "#lib/left-panel-width.ts";
+  import { showReadLayoutToggle, viewModeFor } from "#lib/read-layout.ts";
   import {
     overlayLayersFrom,
     overlayStyleFrom,
     type MarginOverlayLayers,
     type MarginOverlayStyle,
     type MarginOverlaySummary,
-  } from "$lib/margin-overlay";
-  import LeftPanel from "$lib/components/LeftPanel.svelte";
-  import type { PanelTab } from "$lib/components/LeftPanel.svelte";
-  import WelcomeLanding from "$lib/components/WelcomeLanding.svelte";
-  import { continueStatus, shouldReshowLanding } from "$lib/routes/startup-landing";
+  } from "#lib/margin-overlay.ts";
+  import LeftPanel from "#lib/components/LeftPanel.svelte";
+  import type { PanelTab } from "#lib/components/LeftPanel.svelte";
+  import WelcomeLanding from "#lib/components/WelcomeLanding.svelte";
+  import { continueStatus, shouldReshowLanding } from "#lib/routes/startup-landing.ts";
   import {
     friendlyFolderError,
     friendlyPdfError,
     friendlyHostError,
     friendlyPreviewError,
-  } from "$lib/errors";
+  } from "#lib/errors.ts";
   import {
     PersistenceFailureNotifier,
     formatLastFlushFailureNotice,
-  } from "$lib/persistence-failures";
-  import { UpdateController } from "$lib/update/update-controller.svelte";
+  } from "#lib/persistence-failures.ts";
+  import { UpdateController } from "#lib/update/update-controller.svelte.ts";
   import type {
     DiagnosticsTool,
     UrlPreviewBlockedEvent,
     PersistedProjectState,
-  } from "$lib/routes/page-types";
+  } from "#lib/routes/page-types.ts";
 
   const persistenceFailures = new PersistenceFailureNotifier();
 
@@ -1219,7 +1219,7 @@
   // app startup never pays for it. One-time import; the resolved component is
   // cached in MarkdownEditor for the lifetime of the app.
   let MarkdownEditor = $state<
-    typeof import("$lib/components/MarkdownEditor.svelte")["default"] | null
+    typeof import("#lib/components/MarkdownEditor.svelte")["default"] | null
   >(null);
   let editorModuleLoading = $state(false);
   // Set when the lazy import of the editor chunk fails, so the load logic does
@@ -1232,7 +1232,7 @@
   function loadEditorModule() {
     if (!editorVisible || !lifecycle.currentDir || MarkdownEditor || editorModuleLoading || editorModuleFailed) return;
     editorModuleLoading = true;
-    import("$lib/components/MarkdownEditor.svelte")
+    import("#lib/components/MarkdownEditor.svelte")
       .then((m) => {
         MarkdownEditor = m.default;
       })
@@ -2068,7 +2068,7 @@
       if (panelPrefs?.activeTab && (validTabs as string[]).includes(panelPrefs.activeTab)) {
         leftPanelTab = panelPrefs.activeTab as PanelTab;
       }
-      // Same clamp the panel itself applies ($lib/left-panel-width): a width
+      // Same clamp the panel itself applies (#lib/left-panel-width): a width
       // persisted under the older 200px floor is raised to the readable 300,
       // and a window too narrow for that gets the relaxed bounds instead. One
       // shared function, or the two clamps fight each other on restore.
@@ -2529,7 +2529,7 @@
       if (landingVisible) return;
       // Don't intercept when focus is in a form control or the CodeMirror
       // editor (#38) — preview-nav keys (arrows, Home/End, +/-/=, f) must
-      // never hijack editing. Shared guard: $lib/a11y isEditableTarget.
+      // never hijack editing. Shared guard: #lib/a11y isEditableTarget.
       if (isEditableTarget(e.target)) return;
 
       const command = resolvePreviewNavCommand({

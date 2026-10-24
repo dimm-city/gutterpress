@@ -22,7 +22,7 @@
 import { syntaxTree } from "@codemirror/language";
 import type { EditorState } from "@codemirror/state";
 import type { Completion, CompletionContext, CompletionResult } from "@codemirror/autocomplete";
-import type { ClassCatalogEntry } from "$lib/api";
+import type { ClassCatalogEntry } from "#lib/api.ts";
 import { CORE_CLASSES } from "./core-classes";
 import { isBlockMarkerName, parseMarkerLine } from "./block-attrs";
 

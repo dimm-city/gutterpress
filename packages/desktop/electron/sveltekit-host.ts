@@ -2,13 +2,13 @@
 // sveltekit-host.ts — serves the SvelteKit app (the SPA and its +server.ts
 // host routes) to the window over the app:// protocol, IN-PROCESS.
 //
-// adapter-electron.js (svelte.config.js) writes the SvelteKit server
-// unbundled to build/server/ — index.js exports `Server`, manifest.js its
-// manifest — and the browser assets to build/client/. loadSvelteKitServer()
-// constructs that Server once; registerAppProtocol() answers each
-// app://local/* request by serving the file under build/client/ when one
-// exists at that path, and otherwise handing the Request to Server.respond(),
-// the same call adapter-node's handler makes behind an HTTP server.
+// adapter-electron.js (vite.config.ts) writes the SvelteKit server
+// unbundled to build/server/ — server.js exports the `server` instance — and
+// the browser assets to build/client/. loadSvelteKitServer() initialises that
+// server once; registerAppProtocol() answers each app://local/* request by
+// serving the file under build/client/ when one exists at that path, and
+// otherwise handing the Request to server.respond(), the same call
+// adapter-node's handler makes behind an HTTP server.
 //
 // No HTTP server: nothing listens on a port, so there is no port for another
 // local process to discover and no proxy hop to time out a slow route (a
@@ -26,7 +26,7 @@ import { logAppError } from "./app-log";
 // import.meta.url resolves to out/main/ at runtime.
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
-/** The slice of SvelteKit's generated `Server` this host calls. */
+/** The slice of SvelteKit's generated `server` this host calls. */
 export interface SvelteKitServer {
   respond(request: Request, options: { getClientAddress: () => string }): Promise<Response>;
 }
@@ -41,7 +41,7 @@ let host: SvelteKitHost | null = null;
 
 /**
  * Test-only: lets unit tests exercise registerAppProtocol's "server is up,
- * host is local" path against a fake Server and a temp client dir, without
+ * host is local" path against a fake server and a temp client dir, without
  * a real SvelteKit build on disk. Never called from production code — main.ts
  * only ever sets the host by loading the real build.
  */
@@ -55,18 +55,14 @@ function getBuildDir(): string {
     : path.join(HERE, "..", "..", "build");
 }
 
-/** Construct the SvelteKit Server from build/server/ (once). */
+/** Initialise the SvelteKit server from build/server/ (once). */
 export async function loadSvelteKitServer(slog: (msg: string) => void): Promise<void> {
   if (host) return;
   const dir = getBuildDir();
   slog(`loading SvelteKit server from ${path.join(dir, "server")}`);
-  const { Server } = (await import(pathToFileURL(path.join(dir, "server", "index.js")).href)) as {
-    Server: new (manifest: unknown) => SvelteKitServer & { init(opts: { env: Record<string, string | undefined> }): Promise<void> };
+  const { server } = (await import(pathToFileURL(path.join(dir, "server", "server.js")).href)) as {
+    server: SvelteKitServer & { init(opts: { env: Record<string, string | undefined> }): Promise<void> };
   };
-  const { manifest } = (await import(pathToFileURL(path.join(dir, "server", "manifest.js")).href)) as {
-    manifest: unknown;
-  };
-  const server = new Server(manifest);
   await server.init({ env: process.env });
   host = { server, clientDir: path.join(dir, "client") };
   slog("SvelteKit server ready (in-process)");
@@ -98,7 +94,7 @@ export async function resolveClientFile(clientDir: string, pathname: string): Pr
 /**
  * A small, self-contained HTML error page shown in the `app://` window when
  * the SvelteKit server can't answer — it hasn't loaded yet (503, below) or
- * Server.respond() itself threw (500, below). No external assets/fonts/
+ * server.respond() itself threw (500, below). No external assets/fonts/
  * scripts — this must render standalone, since it exists precisely because
  * the app's own server is not up. Extracted as a pure function (no
  * `protocol`/`Response` dependency) so it's unit-testable without a running

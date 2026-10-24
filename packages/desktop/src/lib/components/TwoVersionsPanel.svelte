@@ -17,13 +17,13 @@
    * settled passage leaves at once and the card moves on to the next).
    */
   import { onMount, tick } from "svelte";
-  import Icon from "$lib/components/Icon.svelte";
+  import Icon from "#lib/components/Icon.svelte";
   import {
     differOnlyInSpacing,
     markDifferences,
     type TwoVersionsBlock,
     type TwoVersionsChoice,
-  } from "$lib/editor/two-versions";
+  } from "#lib/editor/two-versions.ts";
 
   let {
     blocks,

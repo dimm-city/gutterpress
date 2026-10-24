@@ -30,7 +30,7 @@ import type {
   SyncStatus,
   MarkdownFileLaunchEvent,
 } from "./contract";
-import { api } from "$lib/api";
+import { api } from "#lib/api.ts";
 
 function bridge(): ElectronBridge {
   const b = window.electron;

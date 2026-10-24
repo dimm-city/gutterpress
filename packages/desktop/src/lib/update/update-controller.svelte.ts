@@ -18,12 +18,12 @@
  * decoupled from the Toast component's late (bind:api) initialisation.
  */
 
-import { getPlatform } from "$lib/platform";
+import { getPlatform } from "#lib/platform/index.ts";
 import type {
   UpdaterAvailableAction,
   UpdaterEvent,
   UpdaterStatus,
-} from "$lib/platform";
+} from "#lib/platform/index.ts";
 
 /** Minimal toast surface used for update feedback; injected by the component. */
 export interface UpdateToastSink {

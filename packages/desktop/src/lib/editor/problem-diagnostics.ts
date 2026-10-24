@@ -14,8 +14,8 @@
  */
 import type { Diagnostic } from "@codemirror/lint";
 import type { Text } from "@codemirror/state";
-import type { ProblemEntry } from "$lib/platform/dtos";
-import { friendlySource } from "$lib/problems";
+import type { ProblemEntry } from "#lib/platform/dtos.ts";
+import { friendlySource } from "#lib/problems.ts";
 
 /**
  * Checks the CSS editor's live linter already runs (the same `checkCss`): a CSS

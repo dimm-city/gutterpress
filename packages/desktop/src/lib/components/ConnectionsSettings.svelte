@@ -31,17 +31,17 @@
    * PWA-clean (§8): api.* routes + getPlatform() only.
    */
   import { onMount } from "svelte";
-  import Icon from "$lib/components/Icon.svelte";
-  import { api, type PublishProviderStaticInfo } from "$lib/api";
-  import { getPlatform } from "$lib/platform";
-  import { friendlyHostError } from "$lib/errors";
+  import Icon from "#lib/components/Icon.svelte";
+  import { api, type PublishProviderStaticInfo } from "#lib/api.ts";
+  import { getPlatform } from "#lib/platform/index.ts";
+  import { friendlyHostError } from "#lib/errors.ts";
   import type {
     HostConnectionInfo,
     RemoteConnection,
     DeviceCodeInfo,
     ProjectRemoteDiagnosis,
-  } from "$lib/platform/contract";
-  import { requestInlineConfirm, cancelInlineConfirm, type InlineConfirmState } from "$lib/dialog";
+  } from "#lib/platform/contract.ts";
+  import { requestInlineConfirm, cancelInlineConfirm, type InlineConfirmState } from "#lib/dialog.ts";
 
   let { projectDir = null as string | null }: { projectDir?: string | null } = $props();
 

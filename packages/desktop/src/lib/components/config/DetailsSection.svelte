@@ -10,15 +10,15 @@
    * the Details-only layout (`.authors`, `.author-row`, `.add`) is scoped
    * here.
    */
-  import Icon from "$lib/components/Icon.svelte";
-  import PageSizeFields from "$lib/components/PageSizeFields.svelte";
-  import { PRESET_CHOICES, pointsToInches } from "$lib/page-size-choices";
-  import type { DetailsSectionController } from "$lib/routes/details-section-controller.svelte";
+  import Icon from "#lib/components/Icon.svelte";
+  import PageSizeFields from "#lib/components/PageSizeFields.svelte";
+  import { PRESET_CHOICES, pointsToInches } from "#lib/page-size-choices.ts";
+  import type { DetailsSectionController } from "#lib/routes/details-section-controller.svelte.ts";
   import {
     PUBLISH_TARGET_CHOICES,
     missingToolsForTargets,
     toolGapMessage,
-  } from "$lib/publish-targets";
+  } from "#lib/publish-targets.ts";
 
   let {
     controller,
@@ -174,7 +174,7 @@
     {/if}
   </div>
   <!-- Page size (#357): the wizard's "What are you designing it for?" choices
-       (shared $lib/page-size-choices), changeable after the book exists. Saved
+       (shared #lib/page-size-choices), changeable after the book exists. Saved
        with the rest of the details: the manifest's preset + bounds and the
        stylesheet's page size are written together. -->
   {#if controller.pageSetup}
@@ -217,7 +217,7 @@
   {/if}
   <!-- Publish targets (ADR 0008): WHERE this book is published — each one is
        a destination's validation policy. Same choices and wording as the
-       new-book wizard (shared $lib/publish-targets), so the two surfaces
+       new-book wizard (shared #lib/publish-targets), so the two surfaces
        never describe a destination differently. -->
   <div class="field">
     <span class="lbl">Publish targets</span>
@@ -263,7 +263,7 @@
 </section>
 
 <style>
-  @import "$lib/styles/config-section-shared.css";
+  @import "../../styles/config-section-shared.css";
 
   .target-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
   .target-row { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; }

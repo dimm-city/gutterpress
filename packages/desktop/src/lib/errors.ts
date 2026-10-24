@@ -220,7 +220,7 @@ export interface FriendlyPublishError {
 /**
  * SvelteKit's `error(status, message)` serializes a thrown route error as
  * `{"message": "…"}` JSON (see routes/api/_lib/handler.ts's `jsonRoute`).
- * `$lib/api.ts`'s `post`/`get` helpers read a non-OK response body with
+ * `#lib/api.ts`'s `post`/`get` helpers read a non-OK response body with
  * `r.text()` and throw `new Error(text)` verbatim — they never JSON.parse
  * it — so a `catch (e)` on any `api.*` call sees this raw `{"message": "…"}`
  * envelope as `e.message` instead of the message itself. Peel it back before
