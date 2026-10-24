@@ -34,7 +34,10 @@ async function failed(r: Response): Promise<Error> {
 async function post<T>(url: string, body?: unknown): Promise<T> {
   const r = await fetch(url, {
     method: 'POST',
-    headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
+    // JSON even with no body: SvelteKit rejects a POST with no Content-Type as
+    // a cross-site form submission unless its Origin is the app's own, and a
+    // request the window makes over app:// reaches the server with no Origin.
+    headers: { 'Content-Type': 'application/json' },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (!r.ok) throw await failed(r);
