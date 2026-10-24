@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import buildCommand from "./build.ts";
 import preflightCommand from "./preflight.ts";
+import publishCommand from "./publish.ts";
 import validateCommand from "./validate.ts";
 import { EXIT_CODES } from "../lib/cli-args.ts";
 import { stubProcessExit } from "../test-helpers/testkit.ts";
@@ -96,9 +97,23 @@ describe("a failed restore stops the command with the pipeline exit code", () =>
     ).rejects.toThrow(exitsWithPipeline);
     expectRestoreFailure();
   });
+
+  // EXPERIMENTAL (#381): publishing through a book's publishing plugin
+  // restores it first, like a build would.
+  test("publish through a publishing plugin", async () => {
+    await expect(
+      runCommand(publishCommand, { rawArgs: [book, "--provider", "gp-restore-missing"] }),
+    ).rejects.toThrow(exitsWithPipeline);
+    expectRestoreFailure();
+  });
 });
 
 describe("nothing is downloaded when there is nothing to restore", () => {
+  test("publish to a built-in never restores, even when the book's copies are missing", async () => {
+    await runCommand(publishCommand, { rawArgs: [book, "--provider", "itch", "--dry-run"] }).catch(() => {});
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   test("validate of a book with only local, bundled and unpinned extensions never touches the network", async () => {
     await writeFile(
       path.join(book, "manifest.yaml"),

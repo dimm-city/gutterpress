@@ -34,9 +34,7 @@ jobs:
       # Chromium is the runner image's, at /usr/bin/google-chrome-stable — see
       # the CHROMIUM_PATH step below.)
       - name: Install PDF tooling (Ghostscript, qpdf)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ghostscript qpdf
+        uses: ./.github/actions/pdf-tools
 
       - name: Setup Bun (cached)
         uses: ./.github/actions/bun
@@ -313,4 +311,10 @@ jobs:
         # GHSA-hp3w-g68c-fv3c (sprintf-js <=1.1.3, moderate DoS): no patched
         # release exists; it is reached only through electron / electron-builder
         # build tooling. Drop the ignore once sprintf-js ships a fix.
-        run: bun audit --ignore=GHSA-hp3w-g68c-fv3c
+        # GHSA-pfhg-q3qv-9q6r and GHSA-27mw-82g8-phjj (@sveltejs/kit <3.0.0,
+        # both low): the fix is SvelteKit 3, a major upgrade tracked in its own
+        # issue. Neither path is reachable in the desktop: its SvelteKit server
+        # answers the window's own app:// requests in-process, takes no form
+        # submission from an untrusted page and prerenders nothing. Drop both
+        # ignores with the SvelteKit 3 upgrade.
+        run: bun audit --ignore=GHSA-hp3w-g68c-fv3c --ignore=GHSA-pfhg-q3qv-9q6r --ignore=GHSA-27mw-82g8-phjj

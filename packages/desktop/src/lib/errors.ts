@@ -28,6 +28,9 @@ function isMissingManifestError(msg: string): boolean {
  * screen. Pure string classification — no host coupling.
  */
 export function friendlyFolderError(msg: string): string {
+  if (/has two versions of a setting/i.test(msg)) {
+    return "A sync left two versions of a setting in this book's manifest.yaml. Open the file, keep the one you want and delete the marker lines, then try again.";
+  }
   const yamlPosition = msg.match(
     /Invalid YAML in [^\n]+ at line (\d+), column (\d+)/i,
   );
@@ -57,6 +60,14 @@ export function friendlyPreviewError(raw: string): FriendlyPreviewError {
   const details = friendlyHostError(raw)
     .replace(/^Preview server failed to start:\s*/i, "")
     .trim();
+  if (/has two versions of a setting/i.test(details)) {
+    return {
+      title: "This book's settings have two versions.",
+      message:
+        "A sync found a setting changed both here and online, and kept both in manifest.yaml. Open the Files panel, open manifest.yaml, and choose which version to keep.",
+      details,
+    };
+  }
   const yamlPosition = details.match(/Invalid YAML in [^\n]+ at line (\d+), column (\d+)/i);
   if (yamlPosition) {
     return {

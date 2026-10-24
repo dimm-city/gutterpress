@@ -2157,3 +2157,60 @@ describe("the shared seams restore before they load plugins", () => {
 const noNetworkFetch = (() => {
   throw new Error("the network must not be touched");
 }) as unknown as typeof globalThis.fetch;
+
+// EXPERIMENTAL (#381): a publishing plugin is an ordinary extension package
+// whose entry exports `publish` and no markdown-it plugin. It installs, pins,
+// restores and sits in a book's `extensions:` like any extension, without
+// breaking the build — and its entry never runs while installing or rendering.
+describe("publishing plugins (experimental, #381)", () => {
+  const name = "gutterpress-publish-fixture";
+  const marker = "__gpPublishFixtureImported";
+  const publisher: GraphPackageFixture = {
+    name,
+    version: "1.0.0",
+    manifest: { gutterpress: { publish: true } },
+    files: {
+      "index.js": `globalThis.${marker} = true;\nexport async function publish() { return { detail: "ok" }; }\n`,
+    },
+  };
+  const imported = () => (globalThis as Record<string, unknown>)[marker];
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>)[marker];
+  });
+
+  test("installs and pins like any extension, without importing its entry", async () => {
+    const dir = await projectDir();
+    const fixture = registryGraphFixture([publisher]);
+
+    const result = await addNpmPlugin(dir, name, { fetch: fixture.fetch });
+
+    expect(result).toMatchObject({ use: `${name}@1.0.0`, kind: "npm", enabled: true });
+    expect((await validateProjectPlugins(dir))[0]?.ok).toBe(true);
+    const [entry] = await listProjectPlugins(dir);
+    expect(entry?.carries).toMatchObject({ markdown: false, publish: true });
+    expect(imported()).toBeUndefined();
+  });
+
+  test("restores on a fresh clone, and a build that lists it loads cleanly", async () => {
+    const dir = await projectDir();
+    const fixture = registryGraphFixture([publisher]);
+    await addNpmPlugin(dir, `${name}@1.0.0`, { fetch: fixture.fetch });
+    await rm(path.join(dir, "plugins"), { recursive: true });
+
+    expect(await restorePinnedExtensions(dir, { fetch: fixture.fetch })).toMatchObject({
+      installed: [`${name}@1.0.0`],
+      failed: [],
+    });
+    // The restored copy counts as complete: no re-download on the next run.
+    expect(await restorePinnedExtensions(dir, { fetch: noNetworkFetch })).toMatchObject({
+      installed: [],
+      failed: [],
+    });
+
+    await writeFile(path.join(dir, "chapter.md"), "# Hi\n", "utf8");
+    const ctx = await resolveBuildContext({ inputDir: dir, format: "html", rawArgs: {} });
+    const loaded = await loadBuildPlugins(ctx);
+    expect(loaded.plugins).toHaveLength(1);
+    expect(imported()).toBeUndefined();
+  });
+});

@@ -169,3 +169,58 @@ folder. Disconnecting a provider deletes the stored key.
 Google Drive is no different under the hood — there's no key to paste, but
 the connection is stored just as securely, and **Disconnect** removes it just
 as completely.
+
+## Publishing Plugins (Experimental) {#publishing-plugins}
+
+@section .callout-warning
+
+**Experimental:** publishing plugins are new and may change, or be removed,
+in a future release. For anything you rely on, keep using the destinations
+above.
+
+@end-section
+
+A **publishing plugin** adds a place to publish that Gutterpress doesn't
+offer itself: another website host, another print-on-demand service, or a
+workflow of your own. You add one exactly like any other extension (see
+[Chapter 5](#ch-plugins)), using the package name its author gives you:
+
+```bash
+gutterpress ext add <package-name>
+```
+
+In the desktop app, add it from **Book setup** &rarr; **Features**, where it shows
+**+ publish destination**. From then on it appears in the Publish wizard's
+list of destinations with an **Experimental** badge, and on the command line
+under its package name:
+
+```bash
+gutterpress publish --list                      # plugins show as "experimental"
+gutterpress publish --provider <package-name>   # sends the book you already built
+```
+
+**Its settings** live in `manifest.yaml`, under `publish:` and the plugin's
+package name. There is no settings form for plugins yet, so add them by hand,
+as the plugin's own instructions describe:
+
+```yaml
+publish:
+  gutterpress-publish-example:
+    site: my-book   # whatever the plugin asks for
+    format: html    # pdf (the default) or html: which build it receives
+```
+
+The wizard's **PDF**/**Website** choice sets `format` for you. A package name
+that starts with `@` must be in quotes: `"@studio/publish-site":`.
+
+**Keys and passwords never go in `manifest.yaml`** — it travels with your book
+and into Git. A publishing plugin handles its own sign-in, usually an
+environment variable or a login step of its own; its instructions say which.
+A plugin that reads its key from an environment variable may only work from
+the command line, because the desktop app doesn't see your terminal's
+environment.
+
+A plugin is code you choose to run, with the same access to your computer as
+any extension, so add only plugins you trust. If one fails, Gutterpress shows
+its message, prefixed with the plugin's name, and your built files stay where
+they are.

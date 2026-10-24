@@ -295,6 +295,7 @@ const NO_CARRIES: ExtensionCarries = {
   styles: false,
   snippets: false,
   components: false,
+  publish: false,
 };
 
 /**
@@ -413,11 +414,12 @@ async function describeEntry(projectDir: string, raw: RawEntry): Promise<Project
   }
   // An npm package's markdown-it entry is the one the installer resolved with
   // full `exports` semantics, not `main` — so `carries.markdown` is true for
-  // every npm entry regardless of what package.json's `main` says.
+  // every npm entry regardless of what package.json's `main` says, except a
+  // publishing plugin (experimental, #381), whose entry is its publish module.
   const described = await describeFolder(pkgDir, base, parsed.name, (name) => name);
   return withWarnings({
     ...described,
-    carries: { ...described.carries, markdown: true },
+    carries: { ...described.carries, markdown: !described.carries.publish },
   });
 }
 

@@ -1,7 +1,7 @@
 {
   "name": "@dimm-city/gutterpress-desktop",
   "private": true,
-  "version": "0.11.21",
+  "version": "0.11.22-alpha.2",
   "type": "module",
   "main": "out/main/main.js",
   "desktopName": "city.dimm.gutterpress.desktop",
@@ -54,7 +54,7 @@
     "electron-vite": "^5.0.0",
     "eslint": "^9.0.0",
     "eslint-plugin-svelte": "^2.46.0",
-    "happy-dom": "^20.0.11",
+    "happy-dom": "^21.0.4",
     "markdown-it": "^14.3.2",
     "playwright-core": "^1.60.0",
     "svelte-check": "^4.0.0",

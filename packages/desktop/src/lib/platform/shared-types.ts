@@ -636,8 +636,10 @@ export interface PublishConfigFieldInfo {
 export interface PublishProviderCard {
   id: string;
   label: string;
-  /** "api" = real upload; "guided" = staged package + checklist. */
-  kind: "api" | "guided";
+  /** "api" = real upload; "guided" = staged package + checklist; "plugin" =
+   *  one of the book's publishing plugins (experimental, #381), which runs
+   *  the upload and handles its own sign-in. */
+  kind: "api" | "guided" | "plugin";
   /** Which build output the provider publishes BY DEFAULT (and, absent
    *  `formats` below, the only one it ever publishes). */
   format: "pdf" | "html";
@@ -668,6 +670,9 @@ export interface PublishProviderCard {
   connected: boolean;
   /** The provider's non-secret manifest `publish.<id>` settings. */
   config: Record<string, string>;
+  /** A badge: the destination may change or go away. Set on every
+   *  `kind: "plugin"` card today (#381). */
+  experimental?: boolean;
   /**
    * Saved credentials for this provider (redacted — never tokens), so the UI
    * can offer a picker: the default (unnamed, `account:""`) plus any named
@@ -765,9 +770,36 @@ export interface SnapshotEntry {
   author?: string;
 }
 
+/** One file a version changed, with a plain size hint (mirrors the lib's VersionFileChange). */
+export interface VersionFileChange {
+  /** Repo-relative path, forward slashes. */
+  path: string;
+  kind: "added" | "removed" | "changed";
+  /** "3 paragraphs changed", "1 rule changed", "replaced", "added", "removed". */
+  hint: string;
+  /** Both sides are text, so the compare view can show them. */
+  text: boolean;
+}
+
+/** A history entry with what it changed and where it is kept (#408). */
+export interface VersionEntry extends SnapshotEntry {
+  changes: VersionFileChange[];
+  /** Changed files beyond the ones listed. */
+  moreChanges: number;
+  /** True = online too; false = on this computer only; null = no online copy to compare with. */
+  backedUp: boolean | null;
+}
+
+/** One row of the side-by-side file compare: a line on each side, or a gap. */
+export interface CompareRow {
+  then: string | null;
+  now: string | null;
+  changed: boolean;
+}
+
 /** One bounded page of version history (mirrors the lib's HistoryPage). */
 export interface SnapshotPage {
-  entries: SnapshotEntry[];
+  entries: VersionEntry[];
   /** Older entries exist — pass the last entry's id as `before` to continue. */
   hasMore: boolean;
 }
@@ -869,6 +901,15 @@ export interface BuildResult {
    * `gutterpress`. Maps into the Problems panel.
    */
   diagnostics?: BuildDiagnosticDto[];
+  /**
+   * What the post-build PDF checks found on the delivered PDF (#399): the
+   * same registry and policy as `gutterpress validate --pdf`, run by the host
+   * on the exported file, so the required checks of the book's publish
+   * targets (safe margins, page size, embedded fonts, PDF/X when qpdf and gs
+   * are installed) have a verdict in the desktop too. Absent for an html
+   * export. Maps into the Problems panel beside `diagnostics`.
+   */
+  findings?: ExportFindingDto[];
 }
 
 /** One print-quality finding, mirrored from the lib's `BuildDiagnostic`. */
@@ -877,6 +918,30 @@ export interface BuildDiagnosticDto {
   code: string;
   severity: "warning" | "info";
   message: string;
+}
+
+/**
+ * One finding of the post-build PDF checks, mirrored from the lib's
+ * `CheckResult` minus its `file`: every PDF check reports the PDF itself as
+ * its file, and a Problems entry with a file is a jump to a source line, which
+ * a finding about the finished PDF cannot offer. Defined locally (§8).
+ */
+export interface ExportFindingDto {
+  /**
+   * The check id, e.g. "pdf.print.safe-margins"; "desktop.export.checks" when
+   * the checks themselves could not run.
+   */
+  source: string;
+  severity: "error" | "warning" | "info";
+  message: string;
+  /** The check's longer explanation (the rule the finding breaks), when any. */
+  detail?: string;
+  /** The publish target the finding was produced for, on a targeted run. */
+  target?: string;
+  /** The PDF page the finding is about, when the check says. */
+  page?: number;
+  /** The page edge the finding is about ("top", "outside", …), when the check says. */
+  edge?: string;
 }
 
 export interface ExportProgressEvent {
