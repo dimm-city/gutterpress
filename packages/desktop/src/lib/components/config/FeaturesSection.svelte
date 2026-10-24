@@ -42,12 +42,12 @@
    * Install button for exactly the pinned version.
    */
   import { onMount } from "svelte";
-  import Icon from "$lib/components/Icon.svelte";
-  import Tabs from "$lib/components/Tabs.svelte";
-  import { api } from "$lib/api";
+  import Icon from "#lib/components/Icon.svelte";
+  import Tabs from "#lib/components/Tabs.svelte";
+  import { api } from "#lib/api.ts";
   import { extensionStatus, extensionSourceLabel, describeSegments } from "./config-helpers";
-  import type { ProjectExtensionEntry } from "$lib/platform/dtos";
-  import { FEATURES_TABS, type ExtensionsSectionController } from "$lib/routes/extensions-section-controller.svelte";
+  import type { ProjectExtensionEntry } from "#lib/platform/dtos.ts";
+  import { FEATURES_TABS, type ExtensionsSectionController } from "#lib/routes/extensions-section-controller.svelte.ts";
 
   let { controller }: { controller: ExtensionsSectionController } = $props();
 
@@ -267,7 +267,7 @@
 </section>
 
 <style>
-  @import "$lib/styles/config-section-shared.css";
+  @import "../../styles/config-section-shared.css";
 
   .plugin-list, .rec-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
   .plugin-list li, .rec-list li { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface-sunken); }

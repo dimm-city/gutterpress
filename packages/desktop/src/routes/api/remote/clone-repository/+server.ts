@@ -1,7 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { handleRemoteErrors } from '../../../../../electron/server-bridge/friendly-errors';
 import { defineRoute, getHostServices, requireAbsolute } from '../../_lib/route';
-import type { CloneRepositoryArgs } from '$lib/platform/shared-types';
+import type { CloneRepositoryArgs } from '#lib/platform/shared-types.ts';
 import type { RequestHandler } from './$types';
 
 // A route, not IPC: this is plain request/response (the only push involved —

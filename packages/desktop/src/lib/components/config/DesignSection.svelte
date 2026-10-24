@@ -21,10 +21,10 @@
    * control — needed once a `@group` can mix kinds (a "Colors" group could
    * hold a color token next to a plain text one).
    */
-  import Icon from "$lib/components/Icon.svelte";
-  import type { StyleToken } from "$lib/platform/dtos";
-  import { toHex, PRINT_SAFE_FONT_STACKS } from "$lib/style-tokens";
-  import type { DesignSectionController } from "$lib/routes/design-section-controller.svelte";
+  import Icon from "#lib/components/Icon.svelte";
+  import type { StyleToken } from "#lib/platform/dtos.ts";
+  import { toHex, PRINT_SAFE_FONT_STACKS } from "#lib/style-tokens.ts";
+  import type { DesignSectionController } from "#lib/routes/design-section-controller.svelte.ts";
 
   let { controller }: { controller: DesignSectionController } = $props();
 
@@ -146,7 +146,7 @@
 {/snippet}
 
 <style>
-  @import "$lib/styles/config-section-shared.css";
+  @import "../../styles/config-section-shared.css";
 
   /* This sub-section's own heading sits in a `.block-head` row beside the
      save-status/revert controls (see the template) — a dedicated local class

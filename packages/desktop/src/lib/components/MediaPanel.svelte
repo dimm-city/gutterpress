@@ -16,9 +16,9 @@
    * project can't balloon memory.
    */
   import { onMount } from "svelte";
-  import { getPlatform } from "$lib/platform";
-  import { api } from "$lib/api";
-  import type { MediaImageEntry, MediaImageDetails } from "$lib/platform/dtos";
+  import { getPlatform } from "#lib/platform/index.ts";
+  import { api } from "#lib/api.ts";
+  import type { MediaImageEntry, MediaImageDetails } from "#lib/platform/dtos.ts";
   import {
     buildPrintWarnings,
     defaultAltText,
@@ -26,8 +26,8 @@
     formatBytes,
     imageMarkdown,
     type MediaWarning,
-  } from "$lib/media";
-  import Icon from "$lib/components/Icon.svelte";
+  } from "#lib/media.ts";
+  import Icon from "#lib/components/Icon.svelte";
 
   let {
     projectDir,

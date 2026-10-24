@@ -1,8 +1,8 @@
 <script lang="ts">
-  import "$lib/theme.css";
+  import "#lib/theme.css";
   import { onMount } from "svelte";
-  import { _loadSettings } from "$lib/settings.svelte";
-  import { initTheme, syncThemeFromSettings } from "$lib/theme.svelte";
+  import { _loadSettings } from "#lib/settings.svelte.ts";
+  import { initTheme, syncThemeFromSettings } from "#lib/theme.svelte.ts";
 
   let { children } = $props();
 

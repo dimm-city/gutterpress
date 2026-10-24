@@ -1,15 +1,28 @@
 import { sveltekit } from "@sveltejs/kit/vite";
+import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig } from "vite";
+import adapter from "./adapter-electron.js";
 
-// adapter-electron (see svelte.config.js): the SvelteKit build emits the
-// unbundled server (build/server/) alongside the client assets
-// (build/client/); Electron main answers app:// requests with it in-process. The renderer reaches the host mainly via
-// fetch("/api/...") against src/routes/api/**/+server.ts routes; a narrow
-// ipcMain/preload bridge (window.electron.*) is reserved for push-event
-// streams and calls that must drive a live BrowserWindow — see CLAUDE.md §8.
+// The renderer reaches the host mainly via fetch("/api/...") against
+// src/routes/api/**/+server.ts routes; a narrow ipcMain/preload bridge
+// (window.electron.*) is reserved for push-event streams and calls that must
+// drive a live BrowserWindow — see CLAUDE.md §8.
 // (electron.vite.config.ts handles the main/preload build.)
 export default defineConfig({
-  plugins: [sveltekit()],
+  plugins: [
+    sveltekit({
+      preprocess: vitePreprocess(),
+      // adapter-electron.js writes the SvelteKit server unbundled to
+      // build/server/ and the browser assets to build/client/. In production
+      // the Electron main process loads that server and answers app://
+      // requests with its respond() in-process. In dev, VITE_DEV_SERVER_URL is
+      // used directly.
+      adapter: adapter({ out: "build" }),
+      // Emit relative asset URLs so app://-served pages don't request static
+      // assets from the protocol root.
+      paths: { relative: true },
+    }),
+  ],
   server: {
     fs: { allow: [".."] },
   },

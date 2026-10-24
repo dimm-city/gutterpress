@@ -16,9 +16,9 @@
    * seam) plus an api.sync.getStatus() seed fetch (CLAUDE.md §8).
    */
   import { onMount } from "svelte";
-  import { getPlatform } from "$lib/platform";
-  import { api } from "$lib/api";
-  import type { SyncStatus, SyncState } from "$lib/platform/contract";
+  import { getPlatform } from "#lib/platform/index.ts";
+  import { api } from "#lib/api.ts";
+  import type { SyncStatus, SyncState } from "#lib/platform/contract.ts";
 
   let {
     /** Currently-open project directory — pill is hidden when null. */

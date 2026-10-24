@@ -18,18 +18,18 @@
  * (§8): the live preview client, the composed page-nav / zoom-view
  * controllers, the render-phase state sinks, the editor-sync seams, and the
  * toast / outline / lint callbacks. ZERO direct DOM / `node:*` / lib
- * value imports — the one lib touch is the pure `$lib/iframe-styles` CSS
+ * value imports — the one lib touch is the pure `#lib/iframe-styles.ts` CSS
  * builders (browser-safe string templates).
  */
 
-import { buildCanvasBackgroundStyles } from "$lib/iframe-styles";
-import type { PreviewEvent } from "$lib/preview-client";
+import { buildCanvasBackgroundStyles } from "#lib/iframe-styles.ts";
+import type { PreviewEvent } from "#lib/preview-client.ts";
 import {
   overlaySummaryFrom,
   type MarginOverlayLayers,
   type MarginOverlayStyle,
   type MarginOverlaySummary,
-} from "$lib/margin-overlay";
+} from "#lib/margin-overlay.ts";
 
 /** Minimal host-command client surface the controller drives. */
 interface PreviewEventClient {

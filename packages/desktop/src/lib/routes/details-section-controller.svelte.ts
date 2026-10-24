@@ -23,20 +23,20 @@
  * imports.
  */
 
-import type { PageSetup, PageSizeChoice, ProjectConfigFields } from "$lib/api";
+import type { PageSetup, PageSizeChoice, ProjectConfigFields } from "#lib/api.ts";
 import {
   pointsToInches,
   sizeChoiceFor,
   trimPoints,
   type PresetChoice,
-} from "$lib/page-size-choices";
+} from "#lib/page-size-choices.ts";
 import {
   buildSourceList,
   moveEntry,
   setIncluded,
   toManifestFiles,
   type SourceFileEntry,
-} from "$lib/components/config/source-files";
+} from "#lib/components/config/source-files.ts";
 
 export interface DetailsSectionDeps {
   /** The open project directory (reactive prop), or null when none is open. */

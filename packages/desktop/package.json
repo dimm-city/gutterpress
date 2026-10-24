@@ -4,6 +4,9 @@
   "version": "0.11.22-alpha.2",
   "type": "module",
   "main": "out/main/main.js",
+  "imports": {
+    "#lib/*": "./src/lib/*"
+  },
   "desktopName": "city.dimm.gutterpress.desktop",
   "author": "itlackey",
   "description": "Gutterpress desktop authoring app (Electron + SvelteKit SPA served in-process over app://, host capabilities as fetch API routes).",
@@ -35,11 +38,11 @@
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.36.2",
     "@lezer/highlight": "^1.2.3",
-    "@sveltejs/kit": "^2.70.3",
+    "@sveltejs/kit": "^3.1.0",
     "electron-updater": "^6.6.2",
     "gutterpress": "workspace:*",
     "semver": "~7.7.3",
-    "svelte": "^5.55.8",
+    "svelte": "^5.57.2",
     "yaml": "^2.8.2"
   },
   "devDependencies": {
@@ -57,9 +60,9 @@
     "happy-dom": "^21.0.4",
     "markdown-it": "^14.3.2",
     "playwright-core": "^1.60.0",
-    "svelte-check": "^4.0.0",
+    "svelte-check": "^4.7.7",
     "svelte-eslint-parser": "^0.43.0",
-    "typescript": "^5.5.0",
+    "typescript": "^6.0.3",
     "vite": "^8.0.13",
     "wait-on": "^8.0.0"
   }

@@ -1,5 +1,5 @@
 /**
- * Read-mode page layout ($lib/read-layout): the one-page / two-page toggle
+ * Read-mode page layout (#lib/read-layout): the one-page / two-page toggle
  * exists only in Read, Edit is always single-page, and the choice persists in
  * app settings without Edit ever overwriting it.
  */

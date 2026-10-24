@@ -3,9 +3,9 @@
    * The custom page-size inputs — a size dropdown plus width/height in inches
    * for "My own size…". One component for the new-book wizard and Book settings
    * (#357), so the two never offer different sizes or word them differently.
-   * The choices + arithmetic live in `$lib/page-size-choices`.
+   * The choices + arithmetic live in `#lib/page-size-choices.ts`.
    */
-  import { COMMON_SIZES } from "$lib/page-size-choices";
+  import { COMMON_SIZES } from "#lib/page-size-choices.ts";
 
   let {
     idPrefix,

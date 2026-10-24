@@ -8,10 +8,10 @@
    * wiring.
    */
   import { onMount } from "svelte";
-  import { api, type AppImageIntegrationStatus } from "$lib/api";
-  import Icon from "$lib/components/Icon.svelte";
-  import { useSettings } from "$lib/settings.svelte";
-  import type { UpdaterAvailableAction } from "$lib/platform";
+  import { api, type AppImageIntegrationStatus } from "#lib/api.ts";
+  import Icon from "#lib/components/Icon.svelte";
+  import { useSettings } from "#lib/settings.svelte.ts";
+  import type { UpdaterAvailableAction } from "#lib/platform/index.ts";
 
   let {
     onCheckForUpdates,

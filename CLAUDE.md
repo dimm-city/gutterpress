@@ -600,7 +600,7 @@ the client bundle.
 the **default path** and the one most of the app uses: components call
 `src/lib/api.ts` directly, not through `getPlatform()`. The `Platform`/`HostServices` seam
 (`src/lib/platform/contract.ts` + `ElectronAdapter`, reached via
-`import { getPlatform } from "$lib/platform"`) is real and still owns three
+`import { getPlatform } from "#lib/platform/index.ts"`) is real and still owns three
 narrower capability classes a plain route can't cover:
 
 1. **Push streams** the renderer subscribes to (build progress, extension

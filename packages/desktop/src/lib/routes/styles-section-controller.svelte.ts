@@ -18,7 +18,7 @@
  * `ProjectStyle` is a type-only import — ZERO `node:*` / lib value imports.
  */
 
-import type { ProjectStyle } from "$lib/platform/dtos";
+import type { ProjectStyle } from "#lib/platform/dtos.ts";
 
 export interface StylesSectionDeps {
   /** The open project directory (reactive prop), or null when none is open. */

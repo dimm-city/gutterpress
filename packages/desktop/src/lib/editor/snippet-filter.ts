@@ -8,7 +8,7 @@
  * orders the list book first, then one run per extension, then core, and the
  * picker relies on that rather than re-sorting.
  */
-import type { SnippetEntry } from "$lib/api";
+import type { SnippetEntry } from "#lib/api.ts";
 
 export type LevelFilter = "all" | SnippetEntry["source"]["kind"];
 

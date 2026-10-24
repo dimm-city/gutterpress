@@ -9,8 +9,8 @@
  * read the derived getters (`isDirty`, `phase`, …) and call the intent methods
  * (`load`, `edit`, `flush`, `acceptExternal`, `keepMine`, `reset`).
  */
-import type { Platform } from "$lib/platform/contract";
-import { api } from "$lib/api";
+import type { Platform } from "#lib/platform/contract.ts";
+import { api } from "#lib/api.ts";
 
 export type EditorBufferPhase = "clean" | "dirty" | "saving" | "error";
 

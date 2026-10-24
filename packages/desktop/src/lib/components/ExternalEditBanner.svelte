@@ -7,7 +7,7 @@
    * on the next save; "yours", the word the two-versions panel uses, never
    * "mine"). Not a modal — editing stays available.
    */
-  import Icon from "$lib/components/Icon.svelte";
+  import Icon from "#lib/components/Icon.svelte";
 
   let {
     fileName,

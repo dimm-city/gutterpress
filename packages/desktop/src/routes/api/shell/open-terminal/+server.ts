@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { findOnPath, terminalLaunch } from '$lib/server/open-terminal.js';
+import { findOnPath, terminalLaunch } from '#lib/server/open-terminal.ts';
 import { defineRoute, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 

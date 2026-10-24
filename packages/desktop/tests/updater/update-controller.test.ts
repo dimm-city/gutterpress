@@ -1,5 +1,5 @@
 import { afterAll, expect, spyOn, test } from "bun:test";
-import * as platformModule from "$lib/platform";
+import * as platformModule from "#lib/platform/index.ts";
 
 (globalThis as unknown as { $state?: <T>(value: T) => T }).$state ??= (value) => value;
 
@@ -31,7 +31,7 @@ const platform = {
 
 // WHY spyOn + mockRestore, NOT mock.module: `mock.module()` replaces the
 // module in Bun's SHARED, process-wide resolution registry, keyed by the
-// RESOLVED file path — "$lib/platform" here and the relative
+// RESOLVED file path — "#lib/platform/index.ts" here and the relative
 // "../../src/lib/platform/index" that tests/platform/adapter.test.ts and
 // tests/recovery/platform-recovery-seam.test.ts import both resolve to the
 // same absolute src/lib/platform/index.ts. The previous `mock.module`
@@ -46,7 +46,7 @@ const platform = {
 // Wrapping the old `mock.module` in `afterAll(() => mock.restore())` was
 // tried first and does NOT fix this: verified by reproduction that the
 // pollution still reaches a second file even when that file imports the
-// exact same "$lib/platform" specifier this one mocked. `mock.restore()` is
+// exact same "#lib/platform" specifier this one mocked. `mock.restore()` is
 // documented for undoing `spyOn`; it is not a reliable way to reverse a
 // `mock.module` registry substitution for this module in this codebase.
 // `spyOn` avoids the whole class of problem: it patches the live export

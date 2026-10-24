@@ -1,5 +1,5 @@
 /**
- * Left-panel width bounds ($lib/left-panel-width) — the shared clamp used by
+ * Left-panel width bounds (#lib/left-panel-width) — the shared clamp used by
  * BOTH the panel and +page.svelte's persisted-width restore. It lives in one
  * pure module precisely so those two can't clamp against each other (they
  * did: the parent's floor kept overwriting the panel's narrow-window ceiling).

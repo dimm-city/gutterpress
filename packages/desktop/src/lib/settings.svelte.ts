@@ -30,10 +30,10 @@
  * the in-memory defaults, and `set()`'s `.catch(() => {})` silently drops the
  * write.
  */
-import { DEFAULT_SETTINGS } from "$lib/platform";
-import type { AppSettings, DeepPartial } from "$lib/platform";
-import { api } from "$lib/api";
-import { deepMergeSettings } from "$lib/settings-merge";
+import { DEFAULT_SETTINGS } from "#lib/platform/index.ts";
+import type { AppSettings, DeepPartial } from "#lib/platform/index.ts";
+import { api } from "#lib/api.ts";
+import { deepMergeSettings } from "#lib/settings-merge.ts";
 
 // The single reactive settings object. Seeded with defaults so reads are valid
 // before the async load resolves; `_loadSettings()` overwrites with persisted

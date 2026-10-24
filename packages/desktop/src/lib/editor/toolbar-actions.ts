@@ -303,7 +303,7 @@ export function applyTable(view: EditorView, cols: number): void {
 
 // ── Image ─────────────────────────────────────────────────────────────────────
 // The supported class vocabulary (positions, sizes, and their permanent
-// legacy aliases) lives in ONE place: `$lib/editor/image-classes` — the
+// legacy aliases) lives in ONE place: `#lib/editor/image-classes.ts` — the
 // option tables there drive the insert dialog, the context menu, and the
 // attrs round-trip helpers alike.
 

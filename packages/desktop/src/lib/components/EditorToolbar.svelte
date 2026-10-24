@@ -22,25 +22,25 @@
    *   that are hidden (see the tier comment in the style block) — never a repeat
    *   of what shows.
    */
-  import Icon from "$lib/components/Icon.svelte";
-  import type { ProblemEntry } from "$lib/platform/dtos";
-  import { canExpandProblems, problemCounts, problemsSummary } from "$lib/problems";
+  import Icon from "#lib/components/Icon.svelte";
+  import type { ProblemEntry } from "#lib/platform/dtos.ts";
+  import { canExpandProblems, problemCounts, problemsSummary } from "#lib/problems.ts";
   import type { ComponentProps } from "svelte";
-  import { basenameOf } from "$lib/platform/paths";
-  import { api } from "$lib/api";
-  import { dialogBehavior, FOCUSABLE } from "$lib/dialog";
+  import { basenameOf } from "#lib/platform/paths.ts";
+  import { api } from "#lib/api.ts";
+  import { dialogBehavior, FOCUSABLE } from "#lib/dialog.ts";
   import {
     IMAGE_POSITION_OPTIONS,
     IMAGE_SIZE_OPTIONS,
     type ImagePositionClass,
     type ImageSizeClass,
-  } from "$lib/editor/image-classes";
+  } from "#lib/editor/image-classes.ts";
   import {
     visibleToolbarItems,
     LAYOUT_BLOCK_ITEMS,
     type ToolbarItemDef,
     type LayoutBlockKind,
-  } from "$lib/editor/toolbar-actions";
+  } from "#lib/editor/toolbar-actions.ts";
 
   // toolbar-actions.ts declares item icons as plain strings (it stays
   // Svelte-import-free by design). Narrow to Icon's actual prop type here,
@@ -256,7 +256,7 @@
 
   // ── Image insert dialog ──────────────────────────────────────────────────────
   // Position/size options come from the shared class table
-  // ($lib/editor/image-classes) — the same table the context menu and the
+  // (#lib/editor/image-classes) — the same table the context menu and the
   // attrs round-trip helpers read, so the lists cannot drift apart.
   let imageOpen = $state(false);
   let imageAlt = $state("");

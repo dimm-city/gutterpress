@@ -10,7 +10,7 @@
  *
  * PWA-clean and Svelte-free (CLAUDE.md §8): data and pure functions.
  */
-import type { ClassCatalogEntry } from "$lib/api";
+import type { ClassCatalogEntry } from "#lib/api.ts";
 import { planBlockEdit, readBlock, type BlockChanges, type BlockInfo, type LinePatch } from "./block-attrs";
 import { CORE_CLASSES, KEEP_TOGETHER_CLASS } from "./core-classes";
 

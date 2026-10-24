@@ -11,7 +11,7 @@
 
 /**
  * The message to throw for a non-OK response. A route's own error is the
- * `{"message": …}` JSON body (see `$lib/errors`'s `unwrapRouteError`). An
+ * `{"message": …}` JSON body (see `#lib/errors`'s `unwrapRouteError`). An
  * HTML body is not from a route at all: it is the `app://` handler's error
  * page (electron/sveltekit-host.ts), sent when the server itself could not
  * answer — so say that in one sentence, with the page's `<code>` detail,
@@ -34,7 +34,10 @@ async function failed(r: Response): Promise<Error> {
 async function post<T>(url: string, body?: unknown): Promise<T> {
   const r = await fetch(url, {
     method: 'POST',
-    headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
+    // JSON even with no body: SvelteKit rejects a POST with no Content-Type as
+    // a cross-site form submission unless its Origin is the app's own, and a
+    // request the window makes over app:// reaches the server with no Origin.
+    headers: { 'Content-Type': 'application/json' },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (!r.ok) throw await failed(r);
@@ -53,7 +56,7 @@ async function get<T>(url: string): Promise<T> {
 // IPC-shared types) and `./platform/dtos` (the plain request/response DTOs),
 // never re-declared here, so the api client and the host/renderer contract
 // can't drift. `import type` is fully erased at build, so the SPA never
-// value-imports the lib (§8 renderer purity). Re-exported so existing `$lib/api` type consumers
+// value-imports the lib (§8 renderer purity). Re-exported so existing `#lib/api.ts` type consumers
 // keep resolving.
 export type {
   FileWriteResult,
@@ -170,7 +173,7 @@ import type {
   DoctorInstallResult,
 } from './platform/dtos';
 
-// Publish-preflight row DTO (#105). Pure `$lib` module — type-only here so the
+// Publish-preflight row DTO (#105). Pure `#lib` module — type-only here so the
 // client bundle still never value-imports it through the api client.
 export type { PreflightRow } from './preflight';
 import type { PreflightRow } from './preflight';

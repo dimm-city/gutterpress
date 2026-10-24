@@ -1,4 +1,4 @@
-import { binOnPath, isToolId, planToolInstall, TOOL_DOWNLOAD_URLS } from '$lib/server/tool-install.js';
+import { binOnPath, isToolId, planToolInstall, TOOL_DOWNLOAD_URLS } from '#lib/server/tool-install.ts';
 import { defineRoute, getHostServices, loadLib } from '../_lib/route';
 import type { RequestHandler } from './$types';
 
