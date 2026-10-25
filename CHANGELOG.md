@@ -117,6 +117,16 @@ This project follows [Semantic Versioning](https://semver.org/).
   look's, sets a plain size; a stylesheet that does set one still wins. The
   rule is found with the engine's own `@page` reader, so the preview, the
   compiler and the print path read one answer.
+- **The ink-coverage check measured nothing under Ghostscript 10 (#419).**
+  `pdf.print.ink-coverage` ran `gs -sDEVICE=inkcov` without an output
+  target. Ghostscript 10 refuses that ("Device 'inkcov' requires an output
+  file"), exits 0 and prints no data, so the check read zero pages and
+  passed every book, a 250% page included, on every machine with
+  Ghostscript 10, CI's runners among them. The report now goes to stdout,
+  and a run that yields no pages is reported as "could not be measured"
+  rather than passed. The check stays advisory: a page over DriveThruRPG's
+  240% limit, an unmeasured book and a machine without Ghostscript are all
+  warnings, so an author is told and never stopped.
 
 ## [0.11.21] - 2026-10-16
 

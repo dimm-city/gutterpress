@@ -208,7 +208,7 @@ export interface GutterpressManifest {
      * one — measured from the trim. It stands in for `safe` at the binding
      * edge, for text and for art alike, so a book that keeps its text further
      * from the spine than the printer's minimum says so here, not in its CSS
-     * (the Field Guide keeps 0.75in = 54 where DriveThruRPG asks for 0.5in).
+     * (for example 54 for 0.75in where DriveThruRPG asks for 0.5in).
      * An image pinned to the binding edge sits on it. The other edges keep
      * `safe` and `artSafe`. Absent = the same as `safe`; `dtrpg` sets 36
      * (DriveThruRPG's 0.5in at the binding, the same as its `safe`), `book`

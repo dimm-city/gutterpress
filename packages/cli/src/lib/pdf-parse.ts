@@ -80,14 +80,29 @@ export async function getPerPageInkCoverage(
         "Ghostscript executable not found. Install Ghostscript or set GHOSTSCRIPT_PATH."
       );
     }
-    const { stdout } = await execCapture(ghostscript, [
+    const { stdout, stderr } = await execCapture(ghostscript, [
       "-q",
       "-dBATCH",
       "-dNOPAUSE",
       "-sDEVICE=inkcov",
+      // Ghostscript 10 refuses to run the inkcov device without an output
+      // target ("Device 'inkcov' requires an output file but no file was
+      // specified"), exits 0 and prints nothing on stdout. Without this flag
+      // that parsed as "no pages" and the check passed books it never
+      // measured (#419).
+      "-sOutputFile=-",
       pdfPath,
     ]);
     const pages = parseInkCov(stdout);
+    if (pages.length === 0) {
+      // A PDF has at least one page, so no CMYK line means gs did not measure
+      // it: a device or drawing error it reported on stderr with exit 0. Same
+      // rule as a non-zero exit: never an empty success.
+      const reason = stderr.trim().split(/\r?\n/)[0];
+      throw new Error(
+        `Ghostscript inkcov produced no per-page data${reason ? `: ${reason}` : ""}`
+      );
+    }
     return {
       ok: true,
       pages: pages.map((p, i) => ({

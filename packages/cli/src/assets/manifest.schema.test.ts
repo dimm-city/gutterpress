@@ -103,7 +103,7 @@ test("page.gutter is the binding allowance: points, 0 or more, said to stand in 
 
   expect(gutter).toMatchObject({ type: "number", minimum: 0, examples: [54] });
   expect(gutter!.description).toContain("binding allowance");
-  expect(gutter!.description).toContain("Field Guide keeps 0.75in");
+  expect(gutter!.description).toContain("further from the spine than the printer's minimum");
   expect(gutter!.description).toContain("Absent = the same as `safe`");
   // the two rules it refines point to it for the binding edge
   expect(safe!.description).toContain("unless `gutter` is set");
