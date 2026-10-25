@@ -86,9 +86,11 @@ export const DTRPG_PRESET: VendorPreset = {
     rasterDpi: undefined,
   },
   page: {
-    // GUIDE: 8.625 x 11.25in is the interior FILE size for an 8.5 x 11in book:
-    // the trim plus 0.125in bleed on the three outside edges (SPEC: a .125in
-    // bleed on the top, bottom and outer edges, none on the binding edge).
+    // SPEC: 8.625 x 11.25in is the interior FILE size for an 8.5 x 11in book,
+    // stated in "Correcting Most Common Print Errors" ("an 8.5 X 11 book should
+    // have a final page size of 8.625 X 11.25"): the trim plus 0.125in bleed on
+    // the three outside edges (SPEC: a .125in bleed on the top, bottom and
+    // outer edges, none on the binding edge).
     // Other trim sizes set `page.width`/`height`/`bleed` in the manifest.
     width: 621,
     height: 810,
