@@ -81,7 +81,6 @@ const DTRPG_TARGET: PublishTarget = {
         "pdf.print.pdfx-metadata": { enabled: true, severity: "error" },
         "pdf.print.embedded-fonts": { enabled: true, severity: "error" },
         "pdf.print.safe-margins": { enabled: true, severity: "error" },
-        "pdf.print.ink-coverage": { enabled: true, severity: "error" },
       },
       pdf: {
         forbidTransparency: DTRPG_PRESET.validate.pdf.forbidTransparency,
@@ -95,7 +94,6 @@ const DTRPG_TARGET: PublishTarget = {
     "pdf.print.pdfx-metadata",
     "pdf.print.embedded-fonts",
     "pdf.print.safe-margins",
-    "pdf.print.ink-coverage",
   ],
   // qpdf: PDF/X marker/metadata verification (and annotation stripping at
   // build time); gs: the PDF/X CMYK conversion itself plus ink-coverage.

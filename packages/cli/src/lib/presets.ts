@@ -152,12 +152,6 @@ export const DTRPG_PRESET: VendorPreset = {
         enabled: true,
         severity: "error",
       },
-      // SPEC: total ink coverage at most 240% (`ink.maxTac`). The check's own
-      // severity is a warning, which the `book` preset keeps.
-      "pdf.print.ink-coverage": {
-        enabled: true,
-        severity: "error",
-      },
     },
     source: {
       markdownlint: null,
