@@ -48,6 +48,15 @@ describe("target registry", () => {
     expect(publishTargetFor("itch").requiredTools).toEqual([]);
   });
 
+  test("dtrpg requires the ink-coverage check: a missing Ghostscript is an error, not a silent skip (#419)", () => {
+    const dtrpg = publishTargetFor("dtrpg");
+    expect(dtrpg.requiredChecks).toContain("pdf.print.ink-coverage");
+    expect(dtrpg.overlay.validate?.checks?.["pdf.print.ink-coverage"]).toEqual({
+      enabled: true,
+      severity: "error",
+    });
+  });
+
   test("every registered target's requiredChecks are enabled as errors by its own overlay", () => {
     // A target that requires a check to RUN but doesn't enable it in its own
     // overlay could still false-green when the preset disables that check.

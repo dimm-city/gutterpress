@@ -202,6 +202,11 @@ test("the safe-margins check is an error under dtrpg, whose spec it enforces, an
   expect(BOOK_PRESET.validate.checks["pdf.print.safe-margins"]).toEqual({ enabled: true, severity: "warning" });
 });
 
+test("the ink-coverage check is an error under dtrpg (DriveThru's 240% TAC limit) and keeps its own warning under book", () => {
+  expect(DTRPG_PRESET.validate.checks["pdf.print.ink-coverage"]).toEqual({ enabled: true, severity: "error" });
+  expect(BOOK_PRESET.validate.checks["pdf.print.ink-coverage"]).toBeUndefined();
+});
+
 test("resolveConfig with preset: book resolves the book preset's geometry", () => {
   const config = resolveConfig({}, { preset: "book" });
   expect(config.page.width).toBe(432);

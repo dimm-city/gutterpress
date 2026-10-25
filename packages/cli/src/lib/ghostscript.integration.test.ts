@@ -9,12 +9,13 @@ import {
   PDFName,
   PDFNumber,
   PDFStream,
+  cmyk,
   rgb,
 } from "pdf-lib";
 import { execCapture } from "./exec";
 import { getAssetPath } from "./embedded-assets";
 import { convertToPdfxCmyk, resolveGhostscript } from "./ghostscript";
-import { parseInkCov } from "./pdf-parse";
+import { getPerPageInkCoverage, parseInkCov } from "./pdf-parse";
 
 const ghostscript = await resolveGhostscript();
 const testWithGhostscript = ghostscript ? test : test.skip;
@@ -97,6 +98,36 @@ testWithGhostscript(
       console.info(
         `[ghostscript.integration.test] Ghostscript ${version}; RGB red -> C=${red!.c.toFixed(5)} M=${red!.m.toFixed(5)} Y=${red!.y.toFixed(5)} K=${red!.k.toFixed(5)}`
       );
+    } finally {
+      await rm(stage, { recursive: true, force: true });
+    }
+  },
+  60_000
+);
+
+testWithGhostscript(
+  "real Ghostscript measures per-page ink coverage, so a 400% page is seen (#419)",
+  async () => {
+    const stage = await mkdtemp(join(tmpdir(), "gutterpress-gs-inkcov-integration-"));
+    try {
+      // Page 1 blank, page 2 solid 100/100/100/100 CMYK: 0% and 400% TAC.
+      // Under Ghostscript 10 the production call used to come back with no
+      // pages at all (the inkcov device refuses to run without an output
+      // target), so every book passed the ink-coverage check unmeasured.
+      const pdf = join(stage, "two-pages.pdf");
+      const source = await PDFDocument.create();
+      source.addPage([144, 144]);
+      source
+        .addPage([144, 144])
+        .drawRectangle({ x: 0, y: 0, width: 144, height: 144, color: cmyk(1, 1, 1, 1), borderWidth: 0 });
+      await writeFile(pdf, await source.save());
+
+      const result = await getPerPageInkCoverage(pdf);
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error(result.error);
+      expect(result.pages).toHaveLength(2);
+      expect(result.pages[0]!.tac).toBeLessThan(1);
+      expect(result.pages[1]!.tac).toBeGreaterThan(390);
     } finally {
       await rm(stage, { recursive: true, force: true });
     }
