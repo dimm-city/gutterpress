@@ -117,6 +117,16 @@ describe("normalizeForSearch — typography reverse map (every rule)", () => {
     }
   });
 
+  test("folds every mark of every language core prints, French no-break spaces included", async () => {
+    const { QUOTES } = await import("../../../cli/src/lib/markdown/typography.ts");
+    for (const [language, quotes] of Object.entries(QUOTES)) {
+      for (const mark of typeof quotes === "string" ? [...quotes] : quotes) {
+        const { normalized } = normalizeForSearch(`a${mark}b`, { stripDelimiters: false });
+        expect({ language, mark, normalized }).toEqual({ language, mark, normalized: 'a"b' });
+      }
+    }
+  });
+
   test("German and French selections are located in the source", () => {
     expect(locateSelectionInSource('sagte "Hallo" zu mir', "sagte „Hallo“ zu mir")).toEqual({
       start: 0,

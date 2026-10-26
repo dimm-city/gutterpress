@@ -52,9 +52,10 @@ function replaceInText(children: Token[]): void {
  * option: outer open, outer close, inner open, inner close — for the book's
  * language (manifest `language`, a BCP 47 tag). A language not listed gets
  * the English marks. Only the languages whose convention is settled are
- * here; add one with its source, not from memory.
+ * here; add one with its source, not from memory. The desktop's selection
+ * search must fold every mark here; its test reads this table.
  */
-const QUOTES: Record<string, string | string[]> = {
+export const QUOTES: Record<string, string | string[]> = {
   en: "“”‘’",
   de: "„“‚‘",
   "de-ch": "«»‹›",

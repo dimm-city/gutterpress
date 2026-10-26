@@ -48,7 +48,9 @@ const TYPOGRAPHER_REVERSE: ReadonlyArray<readonly [string, string]> = [
  *  typed `"` in French and a typed `'` in Polish) and the search must not
  *  need to know. French prints a no-break space just inside its guillemets
  *  (`«\u00a0mot\u00a0»`); that space is dropped with the mark. A no-break
- *  space anywhere else passes through unchanged. */
+ *  space anywhere else passes through unchanged. The set must hold every
+ *  mark of core's `QUOTES` (`typography.ts`);
+ *  `tests/editor/selection-search.test.ts` checks it does. */
 const QUOTES: ReadonlySet<string> = new Set(['"', "'", "“", "”", "„", "‘", "’", "‚", "«", "»", "‹", "›"]);
 const QUOTE = '"';
 const NBSP = "\u00a0";
