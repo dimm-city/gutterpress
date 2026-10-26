@@ -20,6 +20,7 @@ program printed in it (Listing 1) reproduces every result.
 - `paper.md`: the article, from the title block to the acknowledgments
 - `references.md`: the numbered bibliography
 - `figures/convergence.svg`: the figure, an SVG drawn with matplotlib
+- `figures/convergence.py`: the matplotlib script that draws it
 - `extensions/academic/`: the built-in look, copied in by
   `gutterpress ext add academic --look` so it is this paper's own file
 
@@ -45,8 +46,8 @@ marker where a block needs its own style.
 | Abstract, keywords | `@section .abstract` around a `**Abstract.**` paragraph |
 | Numbered sections | `## 2 The error expansion`; you number them yourself, as you would cite them |
 | Inline math | `$\tau_k h^{2k}$` |
-| Numbered equations | a `$$ … $$` block ending in `\tag{2}`; refer to it in the text as (2) |
-| Theorems and proofs | `**Theorem 1** (Euler--Maclaurin). *Statement…*` and `*Proof.* … $\square$` |
+| Numbered equations | a `$$ ... $$` block ending in `\tag{2}`; refer to it in the text as (2) |
+| Theorems and proofs | `**Theorem 1** (Euler--Maclaurin). *Statement...*` and `*Proof.* ... $\square$` |
 | Figures | `![alt text](figures/convergence.svg){.gp-full}` and a caption paragraph ending in `{.caption}`, inside `@section .figure` so they stay on one page |
 | Tables | a Markdown table with its caption above it, inside `@section .figure` |
 | Code listings | a fenced code block with its caption, inside `@section .figure` |
@@ -68,12 +69,12 @@ extensions:
   - gutterpress-math
 ```
 
-That is the bundled **Math** feature (in the desktop, Project settings →
-Features → Math): `$…$` in a line and `$$…$$` on lines of their own, typeset by
-MathJax, the engine arXiv and Wikipedia print with. It understands the LaTeX
-you already write: `aligned`, `cases` and matrix environments,
-`\operatorname`, `\mathbb`, `\tag`, `\newcommand` and the rest of MathJax's
-set.
+That is the bundled **Math** feature (in the desktop, open Setup, then
+Features, and turn on Math): `$...$` in a line and `$$...$$` on lines of their
+own, typeset by MathJax, the engine arXiv and Wikipedia print with. It
+understands the LaTeX you already write: `aligned`, `cases` and matrix
+environments, `\operatorname`, `\mathbb`, `\tag`, `\newcommand` and the rest
+of MathJax's set.
 
 It writes each formula as a drawing of its own glyphs, so the PDF needs no
 math font on the computer that builds it, no stylesheet and no font files in
@@ -104,10 +105,3 @@ every built-in look uses:
 The page size is set in `manifest.yaml` (`page.width` and `page.height`, in
 points). For A4, use `595` × `842`. The `language` there sets the quotation
 marks straight quotes print as and the hyphenation rules.
-
-## Tips
-
-- `--` prints as an en dash and `---` as an em dash, so write page ranges as
-  `pp. 307--357`, as in LaTeX.
-- A `|` inside a formula or a code span stays in its table cell; one in plain
-  cell text separates cells, so write it as `\|`.
