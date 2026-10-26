@@ -145,6 +145,12 @@ test("assembleBookHtml writes the print padding on <html> for the viewer", async
   expect(plain).toContain('<html lang="en">');
 });
 
+test("assembleBookHtml prints the book's language: <html lang> and its quotation marks", async () => {
+  const html = await assembleBookHtml({ files: ["a.md"], readText: () => Promise.resolve('Er sagt "ja".\n'), language: "de" });
+  expect(html).toContain('<html lang="de">');
+  expect(html).toContain("Er sagt „ja“.");
+});
+
 test("assembleBookHtml writes the project's print area into <head>, in every book it assembles", async () => {
   const readText = () => Promise.resolve("# A\n");
   const html = await assembleBookHtml({

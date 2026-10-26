@@ -164,6 +164,7 @@ export async function generateAndWriteHtml(
   tempDir: string,
   config: {
     title?: string;
+    language?: string;
     styles?: string[];
     source?: { files?: string[] | null };
     extensions?: ResolvedExtensionConfig[];

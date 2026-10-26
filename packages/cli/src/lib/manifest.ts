@@ -273,10 +273,6 @@ function mergeShape<T extends PlainObject>(
   return out as T;
 }
 
-/**
- * Merge CLI args > manifest > preset defaults into a fully-resolved config.
- * Any field explicitly set in `cliOverrides` wins, then manifest, then preset.
- */
 /** A BCP 47 tag: a 2–3 letter language, then optional subtags (`de-CH`, `zh-Hant-TW`). */
 const LANGUAGE_TAG = /^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$/;
 
@@ -290,6 +286,10 @@ function resolveLanguage(value: unknown): string {
   return value;
 }
 
+/**
+ * Merge CLI args > manifest > preset defaults into a fully-resolved config.
+ * Any field explicitly set in `cliOverrides` wins, then manifest, then preset.
+ */
 export function resolveConfig(
   cliOverrides: Partial<GutterpressManifest>,
   manifest: GutterpressManifest

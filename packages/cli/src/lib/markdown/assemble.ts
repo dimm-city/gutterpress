@@ -252,13 +252,14 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   const title = opts.title ?? "Document";
   const projectCss = opts.projectCss ?? "";
   const pluginCss = opts.pluginCss ?? "";
+  const language = opts.language ?? "en";
   const files = opts.files;
 
   if (files.length === 0) {
     throw new Error("No markdown files to render");
   }
 
-  const md = createMarkdownRenderer(opts.plugins, { language: opts.language });
+  const md = createMarkdownRenderer(opts.plugins, { language });
 
   // Build source files concatenate directly into the body. Incremental preview
   // adds one file-level wrapper so each source can be page-isolated. @chapter is
@@ -367,7 +368,7 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
     (lastPage ? ` data-gp-last-page="${lastPage}"` : "");
 
   return `<!DOCTYPE html>
-<html lang="${opts.language ?? "en"}"${printAttrs}>
+<html lang="${language}"${printAttrs}>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">${opts.printArea ? `\n  ${printAreaMeta(opts.printArea)}` : ""}
