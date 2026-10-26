@@ -115,7 +115,7 @@ Plain typing prints proper typography. No special syntax required:
 | `"quoted"` | "quoted" | Curly double quotes |
 | `'quoted'` | 'quoted' | Curly single quotes |
 
-Nothing else is rewritten: a symbol such as ©, ™, ® or ± is typed as itself, and a list label like `(c)` prints as typed. The quotation marks follow the book's `language` (set in `manifest.yaml`). Hyphens in words are left as-is. The `hyphens: auto` CSS property handles automatic hyphenation for justified body text --- this is separate from the typographer plugin.
+Nothing else is rewritten: a symbol such as ©, ™, ® or ± is typed as itself, and a list label like `(c)` prints as typed. The quotation marks follow the book's `language` (set in `manifest.yaml`). Hyphens in words are left as-is. The `hyphens: auto` CSS property handles automatic hyphenation for justified body text.
 
 ---
 

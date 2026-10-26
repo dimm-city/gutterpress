@@ -384,8 +384,8 @@ buttons.
   picking or continuing a book is the screen's job. A missing name/email is
   raised by the workspace's standing identity banner, never by sending the
   start screen to Settings → Accounts.
-  `NewProjectWizard`: template first (**3 built-in templates** — Book, Zine,
-  Technical document — plus custom templates, save-as-template,
+  `NewProjectWizard`: template first (**4 built-in templates** — Book, Zine,
+  Technical document, Academic paper — plus custom templates, save-as-template,
   import-from-folder), and the chosen template seeds the book's design
   preset and publish targets (ADR 0008), both of which stay editable.
 - Templates come from the **shared lib scaffolding** in

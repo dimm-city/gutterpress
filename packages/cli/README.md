@@ -396,8 +396,8 @@ Add an extension. What `SOURCE` is decides what happens:
   as `name@<exact version>`. This does not invoke npm, Bun, Node.js tooling,
   or package install scripts;
 - a **bundled feature** (`markdown-it-mark`, `markdown-it-sub`,
-  `markdown-it-sup`, `markdown-it-abbr`, `gutterpress-gfm-alerts`) is simply
-  listed — nothing to install, works offline;
+  `markdown-it-sup`, `markdown-it-abbr`, `gutterpress-gfm-alerts`,
+  `gutterpress-math`) is simply listed — nothing to install, works offline;
 - a **folder or plugin-file path** is load-tested and listed as a
   manifest-relative path, referenced in place — never copied;
 - a **`.zip` or `.css` file**, or an **http(s) URL**, is validated (every

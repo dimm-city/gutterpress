@@ -50,7 +50,7 @@ Everything in here stays together on one page.
 
 ## Why six files
 
-Gutterpress ships three built-in themes of about sixty lines each. They style
+Gutterpress's built-in themes are one short stylesheet each. They style
 bare elements and stop, which is the right size for a plain book and is not an
 architecture. The first book that needs components outgrows one in a week, and
 then re-derives this arrangement from scratch — badly, usually twice.

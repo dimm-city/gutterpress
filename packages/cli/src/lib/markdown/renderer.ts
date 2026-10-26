@@ -334,13 +334,14 @@ function unwrapPlugin<T>(plugin: T): T {
  * error. (attrs/footnote/deflist are NOT here — they are always-on defaults
  * applied unconditionally below.)
  *
- * `gutterpress-gfm-alerts` (#237) is keyed differently from its four
- * siblings: it is not a real npm package, it is Gutterpress's OWN code
- * (gfm-alerts.ts) registered under a name that reads like one, matching the
- * shape "keyed by npm name" is written for. There is nothing to install
- * either way — the lookup below always wins before any npm resolution is
- * attempted (`plugins.ts`'s `loadPlugin`) — so a real npm package never
- * existing under this exact name costs nothing.
+ * `gutterpress-gfm-alerts` (#237) and `gutterpress-math` are keyed
+ * differently from the four markdown-it-* entries: they are not real npm
+ * packages, they are Gutterpress's OWN code (gfm-alerts.ts, math.ts)
+ * registered under names that read like one, matching the shape "keyed by
+ * npm name" is written for. There is nothing to install either way — the
+ * lookup below always wins before any npm resolution is attempted
+ * (`plugins.ts`'s `loadPlugin`) — so a real npm package never existing
+ * under either name costs nothing.
  */
 export const BUILTIN_OPTIONAL_PLUGINS: Record<string, GutterpressPlugin> = {
   "markdown-it-mark": unwrapPlugin(markdownItMark) as GutterpressPlugin,

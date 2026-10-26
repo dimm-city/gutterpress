@@ -25,7 +25,7 @@ const read = (rel: string) => readFileSync(join(REPO_ROOT, rel), "utf8");
 function releaseCliArtifacts(): string[] {
   const yml = read(".github/workflows/release.yml");
   // One `bun-<target>:gutterpress-cli-<os>-<arch>` spec per binary, in the
-  // job's compile loop (the per-binary `artifact:` matrix it replaced is gone).
+  // job's compile loop.
   return [...yml.matchAll(/^\s*bun-[a-z0-9-]+:(gutterpress-cli-[\w.-]+)/gm)].map(
     (m) => m[1]!
   );

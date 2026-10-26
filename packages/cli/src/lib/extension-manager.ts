@@ -19,7 +19,7 @@
  *     `plugins/npm/` (`npm-plugin-installer.ts`) and written back pinned, as
  *     `name@version`.
  *
- * The three built-in looks are the one thing this module copies INTO a
+ * The built-in looks are the one thing this module copies INTO a
  * project (`extensions/<id>/`, then referenced by path): a book's look must
  * be the author's own editable files, never a hidden dependency on the CSS
  * embedded in whichever Gutterpress version happens to be installed.

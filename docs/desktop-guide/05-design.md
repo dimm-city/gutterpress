@@ -29,8 +29,8 @@ new books from.
 ## Choose a look
 
 A *look* is a complete design for a book. On the **Look** tab, under **Built-in looks**, click
-**Use** on **Clean book**, **Technical doc** or **Zine**. Looks you have added are listed under
-**Look**, where each can be turned off, moved up or down, or removed.
+**Use** on **Clean book**, **Technical doc**, **Zine** or **Academic**. Looks you have added are
+listed under **Look**, where each can be turned off, moved up or down, or removed.
 
 To use a look from elsewhere, choose **Import a look (.zip/.css)...**, **Add from folder...**, or
 paste a URL into the URL field and click **Import**. [Find plugins](https://gutterpress.dimm.city/plugins/)

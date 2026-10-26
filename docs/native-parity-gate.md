@@ -31,7 +31,7 @@ bun scripts/native-parity-gate.ts <dir>…   # explicit project dirs
 
 Staged books land under `/tmp/gutterpress-parity/<fixture>/` (override with
 `GUTTERPRESS_PARITY_DIR`; a `docs/fixtures/<name>/book` fixture is named
-`<name>`). The registered fixtures are the two example books, the three
+`<name>`). The registered fixtures are the three example books, the three
 `with-design-guide` manifests, and the minimal repro books under
 `docs/fixtures/`, each of which pins a divergence the gate once caught — or,
 for `exact-fit-boundary`, the outcome below. CI runs the whole list when the

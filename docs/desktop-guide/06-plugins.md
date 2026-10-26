@@ -11,7 +11,7 @@ and more. Open **Setup → Features**. Its tabs are **Installed & built-in**, **
 
 ## Turn on a formatting extra
 
-Five extras are built in, with nothing to download. Under **Formatting extras** on the
+Six extras are built in, with nothing to download. Under **Formatting extras** on the
 **Installed & built-in** tab, click **Turn on** next to one, and it works straight away:
 
 | Extra | Type |
@@ -21,6 +21,7 @@ Five extras are built in, with nothing to download. Under **Formatting extras** 
 | Superscript | `29^th^` |
 | Abbreviations | `*[GPS]: Global Positioning System` |
 | Callouts | `> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]` |
+| Math | `$E = mc^2$` in a line, or `$$` ... `$$` on lines of their own |
 
 ![Features, Installed & built-in: the formatting extras, each with Turn on](images/features-installed.jpg)
 

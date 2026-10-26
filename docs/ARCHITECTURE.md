@@ -680,7 +680,7 @@ writes no second manifest, so a plain markdown-it plugin package is a valid
 extension unchanged, and "look" and "plugin" are just what a package happens
 to declare. The removed `gutterpress.json`/`theme.json` are not read: a folder
 still carrying one fails to load with the package.json shape spelled out.
-The three built-in looks are the one thing the manager COPIES into a project
+The built-in looks are the one thing the manager COPIES into a project
 (`extensions/<id>/`, then referenced as `./extensions/<id>`): a book's look
 must be the author's own editable files, never a hidden dependency on the CSS
 embedded in whichever Gutterpress version is installed. `.zip` / `.css` / URL

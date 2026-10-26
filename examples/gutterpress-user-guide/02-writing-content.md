@@ -134,7 +134,7 @@ Alignment:
 | Text   | Text   |    42 |
 ```
 
-GFM tables render as standard `<table><thead>...</thead><tbody>...</tbody></table>` --- that's markdown-it's built-in table support, not a Gutterpress addition. Because the header row is real `<thead>` markup, Chromium can repeat it when a table is forced to break across a page --- standard CSS table fragmentation, independent of any stylesheet.
+GFM tables render as standard `<table><thead>...</thead><tbody>...</tbody></table>`. Tables are standard GFM, with one Gutterpress rule about `|` (below). Because the header row is real `<thead>` markup, Chromium can repeat it when a table is forced to break across a page --- standard CSS table fragmentation, independent of any stylesheet.
 
 Alternating row shading and keeping a whole table on one page (`table { break-inside: avoid; }`) are **this guide's `guide.css`**, not core. A bare Gutterpress project renders plain, unshaded tables that may break anywhere; add your own `break-inside: avoid` rule to a table or an explicitly classed `@section` when it must stay together.
 
@@ -142,8 +142,10 @@ The alignment row becomes a plain `data-align="left|center|right"` attribute on 
 
 A `|` separates cells, so a cell that needs one in plain text writes it as
 `\|`. Inside a code span or a formula a `|` is just that character --- the
-cell is not split. A row with more cells than the header is reported in
-Problems rather than having its extra cells silently dropped.
+cell is not split. So in a table, `\|` inside a code span prints as a
+backslash and a pipe; write a bare `|` there, where GitHub needs `\|`. A
+row with more cells than the header is reported in Problems rather than
+having its extra cells silently dropped.
 
 Keep tables simple --- 5 to 7 columns maximum. Align numbers right, text left.
 

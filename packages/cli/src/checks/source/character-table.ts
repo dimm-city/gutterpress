@@ -9,9 +9,10 @@
  * mark at the top of a file turns the first heading into a paragraph).
  *
  * Every spelling here is plain ASCII that the renderer turns back into the
- * same character: markdown-it's typographer (`typographer: true` in
- * `lib/markdown/renderer.ts`) makes `---` an em dash and straight quotes
- * curly, and HTML entities cover the rest. So an intentional use stays
+ * same character: `gp_typography` (`lib/markdown/typography.ts`) makes
+ * `---`, `--` and `...` the dash and ellipsis characters, markdown-it's
+ * `smartquotes` curls straight quotes in the book's `language`, and HTML
+ * entities cover the rest. So an intentional use stays
  * possible and visible in the source; only the raw pasted character is
  * reported. « » „ ‚ ‹ › are deliberately absent: they are the marks the
  * book's `language` prints for other languages, so an author who typed `"`
@@ -29,7 +30,7 @@
 
 /** Stable id for the kind of character, carried on each finding's `code`. */
 export type CharacterCode =
-  /** The typographer makes it from plain typing (`---`, `"`, `...`). */
+  /** The renderer makes it from plain typing (`---`, `"`, `...`). */
   | "typographer"
   /** Looks like a quote mark or hyphen but is not one. */
   | "lookalike"

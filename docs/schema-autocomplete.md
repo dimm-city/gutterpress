@@ -224,6 +224,13 @@ authors:
   - "John Doe"
 ```
 
+#### `language` (string)
+The book's language as a BCP 47 tag (`en`, `de`, `de-CH`, `pt-BR`). It is the `lang` of the built HTML, which hyphenation follows, and sets the quotation marks straight quotes print as. Defaults to `"en"`. See the user guide's [Getting Started](../examples/gutterpress-user-guide/01-getting-started.md#reference-manifest-configuration) chapter.
+
+```yaml
+language: de
+```
+
 #### `preset` (string)
 Vendor preset supplying the defaults for every other section — page geometry, ink limits, PDF/X settings, validation checks. One of `dtrpg`, `book`, or `custom` (you supply `page.width` and `page.height` yourself). Omitting it defaults to `dtrpg` and logs a warning, so set it explicitly.
 

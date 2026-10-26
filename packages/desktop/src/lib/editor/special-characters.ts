@@ -29,7 +29,7 @@ import type { Extension } from "@codemirror/state";
 
 /** Stable id for the kind of character, carried on each finding's `code`. */
 export type CharacterCode =
-  /** The typographer makes it from plain typing (`---`, `"`, `...`). */
+  /** The renderer makes it from plain typing (`---`, `"`, `...`). */
   | "typographer"
   /** Looks like a quote mark or hyphen but is not one. */
   | "lookalike"
