@@ -5,10 +5,12 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.23] - 2026-10-26
+
 ### Added
 
 - **Math is a bundled feature (#425).** `gutterpress-math`, listed under
-  `extensions:` or switched on under Project settings → Features → Math, typesets
+  `extensions:` or switched on under Setup → Features → Math, typesets
   `$…$` in a line and `$$…$$` on lines of their own with MathJax. Each formula is
   written as a drawing of its own glyphs, so a PDF needs no math font, no
   stylesheet and no font files in the project, and the preview paginates like
@@ -21,9 +23,9 @@ This project follows [Semantic Versioning](https://semver.org/).
   and hyphenated, ruled tables, notes and references set smaller), with the
   title block, abstract, figures, tables and references styled by the
   `@section` each sits in. `gutterpress new … --template paper` starts a paper
-  with the look, math and superscripts already listed. A template that lists a
-  built-in look as `./extensions/<id>` now has it copied in when the book is
-  created.
+  with the look, math and superscripts already listed; creating the paper adds
+  the look as `gutterpress ext add academic --look` would, so it is the
+  author's own editable file.
 - **A `language` manifest field** (a BCP 47 tag such as `en`, `de-CH` or
   `pt-BR`; default `en`). It is the `lang` of the built HTML, which is what
   hyphenation follows (every book hyphenated as English before), and the
