@@ -391,8 +391,9 @@ export async function scaffoldProject(
       await mkdir(path.join(projectDir, "assets"), { recursive: true });
       await copyFile(tplManifest, path.join(projectDir, MANIFEST_FILENAMES[0]));
       await copyFile(tplChapter, path.join(projectDir, "chapter-01.md"));
-      // styles/book.css is the project's OWN stylesheet. No look is applied:
-      // the author adds one (`gutterpress ext add … --look`, or from npm).
+      // styles/book.css is the project's OWN stylesheet. A look is separate:
+      // the one the template lists is copied in below, or the author adds
+      // one (`gutterpress ext add … --look`, or from npm).
       await mkdir(path.join(projectDir, "styles"), { recursive: true });
       await writeFile(path.join(projectDir, "styles", "book.css"), starterOverridesCss(), "utf8");
     }

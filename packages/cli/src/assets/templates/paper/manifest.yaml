@@ -14,5 +14,7 @@ page:
 extensions:
   - markdown-it-sup
   - gutterpress-math
+  # The built-in academic look. Creating the project copied it into
+  # extensions/academic, so it is this paper's own, editable file.
   - ./extensions/academic
 preset: book
