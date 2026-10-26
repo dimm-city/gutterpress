@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import Icon from "$lib/components/Icon.svelte";
+  import Icon from "#lib/components/Icon.svelte";
 
   export type ToastType = "success" | "error" | "warning" | "info";
 
@@ -27,8 +27,10 @@
   }
 
   export interface ToastController {
-    show(message: string, type?: ToastType, duration?: number, action?: ToastItem["action"]): void;
-    success(message: string, duration?: number, action?: ToastItem["action"]): void;
+    /** Returns the toast's id, for `dismiss` when a newer message supersedes it. */
+    show(message: string, type?: ToastType, duration?: number, action?: ToastItem["action"]): number;
+    success(message: string, duration?: number, action?: ToastItem["action"]): number;
+    dismiss(id: number): void;
     error(message: string, duration?: number): void;
     warning(message: string, duration?: number): void;
     info(message: string, duration?: number): void;
@@ -60,7 +62,7 @@
     }, 300);
   }
 
-  function show(message: string, type: ToastType = "info", duration?: number, action?: ToastItem["action"]): void {
+  function show(message: string, type: ToastType = "info", duration?: number, action?: ToastItem["action"]): number {
     const id = nextId++;
     if (!action && type === "error" && onReportProblem) {
       action = { label: "Report a problem", onClick: onReportProblem };
@@ -68,6 +70,7 @@
     toasts = [...toasts, { id, message, type, action }];
     const ms = duration ?? DURATIONS[type];
     if (ms > 0) setTimeout(() => dismiss(id), ms);
+    return id;
   }
 
   // Publish the API object through the bindable prop so the parent can call it
@@ -75,6 +78,7 @@
     api = {
       show,
       success: (m, d, a) => show(m, "success", d, a),
+      dismiss,
       error:   (m, d) => show(m, "error", d),
       warning: (m, d) => show(m, "warning", d),
       info:    (m, d) => show(m, "info", d),

@@ -1,4 +1,4 @@
-import type { SyncStatus } from "$lib/platform/contract";
+import type { SyncStatus } from "#lib/platform/contract.ts";
 
 /**
  * True when a sync status means the host changed files on disk and any open

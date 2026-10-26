@@ -34,6 +34,7 @@ import type { PrefsHooks } from "./server-bridge/prefs-hooks";
 import type { RecoveryHooks } from "./server-bridge/recovery-hooks";
 import type { AppImageHooks, DesktopHooks, DoctorHooks, UnsavedChoice } from "./server-bridge/host-hooks";
 import { AppImageIntegration } from "./appimage-integration";
+import { VersionPreviewHost } from "./version-preview";
 import type { MediaHooks } from "./server-bridge/media-hooks";
 import type { VcsHooks } from "./server-bridge/vcs-hooks";
 import type { RemoteHooks } from "./server-bridge/remote-hooks";
@@ -1218,10 +1219,39 @@ const appImageHooksImpl: AppImageHooks = {
 // from /api/app/classify-project. Paths MUST be absolute (trusted SPA, but a relative
 // path could resolve against the main-process CWD by accident).
 
+// "Look at this version" (#408): a past version rendered read-only from a
+// scratch copy under the app's temp folder, through a second preview server.
+// The live book's downloaded extensions are linked into the copy (a
+// directory junction on Windows, a symlink elsewhere) so it renders without
+// a download; a copy that cannot be linked simply renders without them.
+const versionPreview = new VersionPreviewHost({
+  loadLib,
+  makeExportDir: async (id) => {
+    const dir = path.join(app.getPath("temp"), "gutterpress-versions", id);
+    await rm(dir, { recursive: true, force: true });
+    await mkdir(dir, { recursive: true });
+    return dir;
+  },
+  removeDir: (dir) => rm(dir, { recursive: true, force: true }),
+  linkExtensions: async (projectDir, inputDir) => {
+    const src = path.join(projectDir, "plugins", "npm");
+    try {
+      if (!(await stat(src)).isDirectory()) return;
+    } catch {
+      return;
+    }
+    const dest = path.join(inputDir, "plugins", "npm");
+    await mkdir(path.dirname(dest), { recursive: true });
+    await fs.promises.symlink(src, dest, "junction").catch(() => {});
+  },
+});
+
 // operationLogPath + timers for the VCS SvelteKit server routes.
 const vcsHooksImpl: VcsHooks = {
   operationLogPath,
   repairBackupDir: (slug) => repairBackupDirImpl(app.getPath("userData"), slug),
+  openVersionPreview: (dir, id) => versionPreview.open(dir, id),
+  closeVersionPreview: () => versionPreview.close(),
   // #273: pause both host timers around a copy switch's checkout so neither
   // fires against the mid-switch working tree (an auto-snapshot would commit
   // a half-checked-out tree) or targets the wrong branch (auto-sync pushes
@@ -1563,6 +1593,7 @@ const previewOpen = new PreviewOpenController({
   mkdir: (dir, options) => mkdir(dir, options),
   appendFile: (filePath, data) => appendFile(filePath, data),
   setTimeout: (cb, ms) => setTimeout(cb, ms),
+  closeVersionPreview: () => versionPreview.close(),
 });
 
 secureHandle("api:preview", (_e, args: { input?: string }) => previewOpen.open(args));

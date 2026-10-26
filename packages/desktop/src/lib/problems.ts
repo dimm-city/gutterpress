@@ -2,7 +2,8 @@
  * Problems panel helpers (#28). Pure functions over `ProblemEntry[]` so the
  * grouping/labeling logic is unit-testable outside Svelte.
  */
-import type { ProblemEntry } from "$lib/platform/dtos";
+import type { ProblemEntry } from "#lib/platform/dtos.ts";
+import type { ExportFindingDto } from "#lib/platform/shared-types.ts";
 
 /** One file's worth of problems, ready to render as a panel group. */
 export interface ProblemGroup {
@@ -58,6 +59,31 @@ const SOURCE_LABELS: Record<string, string> = {
   "engine.pin.margin-box": "Running head on a pinned edge",
   "engine.page-background.unreferenced": "Page background image not printed",
   "engine.hyphenation.unsupported": "Hyphenation not available",
+  // The post-build PDF checks, run on the exported file (#399) — the lib's
+  // `pdf` and `heuristic` categories, covered by the same registry-keyed test.
+  "pdf.structure.qpdf": "PDF structure",
+  "pdf.print.page-size": "Page size",
+  "pdf.print.safe-margins": "Safe margins",
+  "pdf.print.pdfx-markers": "PDF/X markers",
+  "pdf.print.pdfx-metadata": "PDF/X metadata",
+  "pdf.print.color-spaces": "Color spaces",
+  "pdf.print.embedded-fonts": "Embedded fonts",
+  "pdf.print.ink-coverage": "Ink coverage",
+  "pdf.print.black-text": "Black text",
+  "pdf.print.signature": "Page count",
+  "pdf.print.image-resolution": "Image resolution",
+  "pdf.print.transparency": "Transparency",
+  "pdf.print.bleed": "Bleed",
+  "pdf.nav.bookmarks": "Bookmarks",
+  "pdf.nav.toc-links": "Contents links",
+  "pdf.nav.cross-refs": "Cross-references",
+  "pdf.nav.page-labels": "Page labels",
+  "heuristic.decoration.layer-count": "Decorative layers",
+  "heuristic.layout.placement-variance": "Image placement",
+  "heuristic.chunking.section-density": "Section length",
+  "heuristic.whitespace.text-density": "Text density",
+  // The checks themselves could not run (electron/export/controller.ts).
+  "desktop.export.checks": "PDF checks",
 };
 
 export function friendlySource(checkId: string): string {
@@ -78,6 +104,23 @@ export function buildProblems(
     severity: d.severity,
     message: d.message,
     source: d.code,
+  }));
+}
+
+/**
+ * The post-build PDF checks' findings (#399), held with `buildProblems`'s
+ * entries for the same reason: they come from an export, not the source lint.
+ * No file or line either — a finding is about the finished PDF, and its
+ * message already names the page where it has one ("Page 3: …"). The check's
+ * rule (`detail`) follows the message so the author reads what the limit is,
+ * and a finding produced for one publish target carries that target's tag the
+ * way the CLI prints it (`[dtrpg] …`).
+ */
+export function exportProblems(findings: ExportFindingDto[]): ProblemEntry[] {
+  return findings.map((f) => ({
+    severity: f.severity,
+    message: `${f.target ? `[${f.target}] ` : ""}${f.message}${f.detail ? ` ${f.detail}` : ""}`,
+    source: f.source,
   }));
 }
 

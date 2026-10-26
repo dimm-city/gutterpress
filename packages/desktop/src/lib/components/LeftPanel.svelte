@@ -15,7 +15,7 @@
    * - Responsive: at <=820px the panel overlays with a translucent scrim (doesn't
    *   crush the preview).
    */
-  import Icon from "$lib/components/Icon.svelte";
+  import Icon from "#lib/components/Icon.svelte";
   import type { ComponentProps } from "svelte";
   import { onMount } from "svelte";
   import {
@@ -24,21 +24,21 @@
     clampPanelWidth,
     panelWidthBounds,
     viewportWidth,
-  } from "$lib/left-panel-width";
+  } from "#lib/left-panel-width.ts";
   type IconName = ComponentProps<typeof Icon>["name"];
-  import FileTree from "$lib/components/FileTree.svelte";
-  import MediaPanel from "$lib/components/MediaPanel.svelte";
-  import ProjectsListBody from "$lib/components/ProjectsListBody.svelte";
+  import FileTree from "#lib/components/FileTree.svelte";
+  import MediaPanel from "#lib/components/MediaPanel.svelte";
+  import ProjectsListBody from "#lib/components/ProjectsListBody.svelte";
   import {
     buildTocTree,
     ancestorKeysForActive,
     tocPageLabel,
     type TocNode,
-  } from "$lib/routes/toc-tree";
-  import type { OutlineEntry } from "$lib/preview-client";
-  import type { ProjectCapabilities } from "$lib/platform/contract";
-  import type { ToastController } from "$lib/components/Toast.svelte";
-  import { HIDE_BOOKS_TAB, shownTabId, showTabStrip, visibleTabIds } from "$lib/left-panel-tabs";
+  } from "#lib/routes/toc-tree.ts";
+  import type { OutlineEntry } from "#lib/preview-client.ts";
+  import type { ProjectCapabilities } from "#lib/platform/contract.ts";
+  import type { ToastController } from "#lib/components/Toast.svelte";
+  import { HIDE_BOOKS_TAB, shownTabId, showTabStrip, visibleTabIds } from "#lib/left-panel-tabs.ts";
 
   export type PanelTab = "projects" | "toc" | "files" | "media";
 
@@ -114,7 +114,7 @@
 
   // ── TOC tree (collapsible, mirrors the Files panel) ───────────────────────
   // The outline is a FLAT list of headings carrying only a `level`; derive the
-  // nesting from those levels (see $lib/routes/toc-tree). The active item's
+  // nesting from those levels (see #lib/routes/toc-tree). The active item's
   // ancestors are always revealed so opening the panel shows where the cursor
   // is; the user's own expand/collapse choices layer on top and persist while
   // the panel stays mounted (it is never {#if}-unmounted, only CSS-hidden).
@@ -180,7 +180,7 @@
   }
 
   // ── Resizable width ──────────────────────────────────────────────────────
-  // Bounds live in $lib/left-panel-width (pure + unit-tested) because
+  // Bounds live in #lib/left-panel-width (pure + unit-tested) because
   // +page.svelte applies the SAME clamp when it restores the persisted width
   // — two copies of this math would clamp against each other.
   let resizing = $state(false);
@@ -232,7 +232,7 @@
 
   const visibleTabs = $derived(TABS.filter((t) => visibleTabIds(readerMode).includes(t.id)));
   /** The tab actually shown: the active one, unless reader mode or the
-   *  temporary Books-tab hiding ($lib/left-panel-tabs) hides it. */
+   *  temporary Books-tab hiding (#lib/left-panel-tabs) hides it. */
   const shownTab = $derived<PanelTab>(
     shownTabId(activeTab, visibleTabs.map((t) => t.id)),
   );
@@ -476,7 +476,7 @@
       {/if}
     </div>
 
-    <!-- Books tab — not mounted while HIDE_BOOKS_TAB is set ($lib/left-panel-tabs), so a hidden tab leaves no dangling tabpanel and no list fetch. -->
+    <!-- Books tab — not mounted while HIDE_BOOKS_TAB is set (#lib/left-panel-tabs), so a hidden tab leaves no dangling tabpanel and no list fetch. -->
     {#if !HIDE_BOOKS_TAB}
       <div
         id="panel-content-projects"

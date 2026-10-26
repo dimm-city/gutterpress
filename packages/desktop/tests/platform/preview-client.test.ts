@@ -25,6 +25,10 @@
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Window } from "happy-dom";
+// happy-dom 21 no longer gives an <iframe> a document unless iframe loading
+// is enabled (off by default against SSRF); these tests build the preview's
+// frames and read into them.
+const HAPPY_DOM = { enableIframePageLoading: true };
 import { PreviewClient } from "../../src/lib/preview-client";
 
 let win: InstanceType<typeof Window>;
@@ -32,7 +36,7 @@ let savedWindow: unknown;
 let savedMessageEvent: unknown;
 
 beforeEach(() => {
-  win = new Window({ url: "http://localhost/" });
+  win = new Window({ url: "http://localhost/", settings: HAPPY_DOM });
   savedWindow = (globalThis as Record<string, unknown>).window;
   savedMessageEvent = (globalThis as Record<string, unknown>).MessageEvent;
   (globalThis as Record<string, unknown>).window = win;

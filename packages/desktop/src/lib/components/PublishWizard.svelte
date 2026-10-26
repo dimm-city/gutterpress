@@ -25,11 +25,11 @@
    * controller; the parent mounts this fresh via {#if} so load runs in onMount;
    * step/selection are plain local state driven by event handlers.
    */
-  import Icon from "$lib/components/Icon.svelte";
-  import AppView from "$lib/components/AppView.svelte";
+  import Icon from "#lib/components/Icon.svelte";
+  import AppView from "#lib/components/AppView.svelte";
   import { onMount } from "svelte";
-  import { requestInlineConfirm, cancelInlineConfirm, type InlineConfirmState } from "$lib/dialog";
-  import { friendlyPublishError } from "$lib/errors";
+  import { requestInlineConfirm, cancelInlineConfirm, type InlineConfirmState } from "#lib/dialog.ts";
+  import { friendlyPublishError } from "#lib/errors.ts";
   import {
     groupPreflight,
     preflightHeaderLevel,
@@ -37,11 +37,11 @@
     categoryLabel,
     entersPreflightForward,
     type PreflightRow,
-  } from "$lib/preflight";
-  import type { ProblemEntry } from "$lib/platform/dtos";
-  import type { PublishProviderCard } from "$lib/platform/contract";
-  import type { PublishSectionController } from "$lib/routes/publish-section-controller.svelte";
-  import { joinPath } from "$lib/platform/paths";
+  } from "#lib/preflight.ts";
+  import type { ProblemEntry } from "#lib/platform/dtos.ts";
+  import type { PublishProviderCard } from "#lib/platform/contract.ts";
+  import type { PublishSectionController } from "#lib/routes/publish-section-controller.svelte.ts";
+  import { joinPath } from "#lib/platform/paths.ts";
 
   /** The lib's "A folder on this computer" provider id. */
   const LOCAL = "local";
@@ -363,12 +363,12 @@
                   {#if card.id === LOCAL}
                     <span class="status ok">Always</span>
                   {:else}
-                  <span class="badge">{card.kind === "api" ? "direct upload" : "guided"}</span>
+                  <span class="badge">{card.experimental ? "Experimental" : card.kind === "api" ? "direct upload" : "guided"}</span>
                   {#if card.credentialRequired}
                     <span class={`status ${card.connected ? "ok" : "off"}`}>
                       {#if card.connected}<Icon name="circle-check" size={12} /> Connected{:else}Needs a key{/if}
                     </span>
-                  {:else}
+                  {:else if card.kind !== "plugin"}
                     <span class="status ok">No account needed</span>
                   {/if}
                   {/if}
@@ -394,7 +394,11 @@
     {:else if stepKind === "setup" && currentCard}
       {@const card = currentCard}
       {@const busy = controller.publishBusyId === card.id}
-      <p class="lead">Set up <strong>{card.label}</strong>. Saved connections are reused automatically — you only enter a key once.</p>
+      {#if card.kind === "plugin"}
+        <p class="lead">Set up <strong>{card.label}</strong>: {card.description}</p>
+      {:else}
+        <p class="lead">Set up <strong>{card.label}</strong>. Saved connections are reused automatically — you only enter a key once.</p>
+      {/if}
 
       {#if card.fields.length > 0}
         {#each card.fields as field (field.key)}
@@ -539,6 +543,11 @@
         {:else}
           <p class="warn"><Icon name="triangle-alert" size={13} /> This account {card.connectKind === "oauth" ? "isn't connected yet — connect it" : "'s key isn't saved yet — add it"}, or pick another account.</p>
         {/if}
+      {:else if card.kind === "plugin"}
+        <p class="muted">
+          An experimental add-on from your book's extensions. It handles its own sign-in; its settings live in your
+          book's manifest, in the <code>{card.id.startsWith("@") ? `"${card.id}"` : card.id}</code> entry under <code>publish:</code>.
+        </p>
       {:else}
         <p class="muted">No account or key needed — we'll prepare an upload package with step-by-step instructions.</p>
       {/if}
@@ -621,7 +630,7 @@
       {/if}
 
       <p class="muted small">
-        <Icon name="info" size={12} /> Print-quality PDF checks (page size, ink coverage, embedded fonts) run automatically when you export — no PDF is built here.
+        <Icon name="info" size={12} /> No PDF is built here. Your book's PDF checks — page size, safe margins, embedded fonts, and PDF/X when qpdf and Ghostscript are installed — run on the saved file and report to Problems.
       </p>
     {:else}
       <!-- Publish step -->

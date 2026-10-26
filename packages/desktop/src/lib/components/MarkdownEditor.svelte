@@ -33,6 +33,7 @@
     defaultKeymap,
     history,
     historyKeymap,
+    undo as undoCommand,
     indentWithTab,
   } from "@codemirror/commands";
   import {
@@ -49,8 +50,8 @@
     applyTable,
     applyImage,
     applyLayoutBlock,
-  } from "$lib/editor/toolbar-actions";
-  import type { ToolbarAction, ToolbarPayload } from "$lib/components/EditorToolbar.svelte";
+  } from "#lib/editor/toolbar-actions.ts";
+  import type { ToolbarAction, ToolbarPayload } from "#lib/components/EditorToolbar.svelte";
   import { markdown } from "@codemirror/lang-markdown";
   import { css } from "@codemirror/lang-css";
   import { languages } from "@codemirror/language-data";
@@ -73,19 +74,19 @@
     cssDiagnosticsSource,
     pagedMediaCompletionSource,
     type EditorLanguage,
-  } from "$lib/editor/css-editor";
-  import { markerCompletionSource } from "$lib/editor/marker-completions";
-  import { componentCompletionSource } from "$lib/editor/component-completions";
-  import { variantCompletionSource } from "$lib/editor/variant-completions";
-  import { classCompletionSource } from "$lib/editor/class-completions";
-  import { completionTabBinding } from "$lib/editor/completion-keymap";
-  import { characterBoxes, characterPlaceholders } from "$lib/editor/special-characters";
-  import { LIVE_CSS_SOURCES, problemDiagnostics } from "$lib/editor/problem-diagnostics";
-  import { onSettingsChange, settingsChangeGuard, useSettings } from "$lib/settings.svelte";
-  import type { ProblemEntry } from "$lib/platform/dtos";
-  import type { LinePatch } from "$lib/editor/block-attrs";
-  import { buildLineStarts, charRange } from "$lib/editor/source-range";
-  import type { ClassCatalogEntry, LocationVariant, MarkerComponent } from "$lib/api";
+  } from "#lib/editor/css-editor.ts";
+  import { markerCompletionSource } from "#lib/editor/marker-completions.ts";
+  import { componentCompletionSource } from "#lib/editor/component-completions.ts";
+  import { variantCompletionSource } from "#lib/editor/variant-completions.ts";
+  import { classCompletionSource } from "#lib/editor/class-completions.ts";
+  import { completionTabBinding } from "#lib/editor/completion-keymap.ts";
+  import { characterBoxes, characterPlaceholders } from "#lib/editor/special-characters.ts";
+  import { LIVE_CSS_SOURCES, problemDiagnostics } from "#lib/editor/problem-diagnostics.ts";
+  import { onSettingsChange, settingsChangeGuard, useSettings } from "#lib/settings.svelte.ts";
+  import type { ProblemEntry } from "#lib/platform/dtos.ts";
+  import type { LinePatch } from "#lib/editor/block-attrs.ts";
+  import { buildLineStarts, charRange } from "#lib/editor/source-range.ts";
+  import type { ClassCatalogEntry, LocationVariant, MarkerComponent } from "#lib/api.ts";
   import { onMount } from "svelte";
 
   let {
@@ -551,6 +552,11 @@
   /** Move keyboard focus into the editor (used when the pane is opened). */
   export function focus(): void {
     view?.focus();
+  }
+
+  /** Undo the last edit — the same step Ctrl+Z takes (a toast's Undo button). */
+  export function undo(): boolean {
+    return view ? undoCommand(view) : false;
   }
 
 

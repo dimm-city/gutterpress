@@ -70,14 +70,14 @@ import type {
   ExtensionUpdateCheck,
   ExtensionUpdatesResult,
   ExtensionVersionsResult,
-} from "$lib/platform/dtos";
+} from "#lib/platform/dtos.ts";
 import {
   orderAfterMove,
   pickerVersions,
   sampleSrcdoc,
   hoverPreviewSrcdoc,
-} from "$lib/components/config/config-helpers";
-import { addedBuiltInIds } from "$lib/components/config/theme-grid";
+} from "#lib/components/config/config-helpers.ts";
+import { addedBuiltInIds } from "#lib/components/config/theme-grid.ts";
 
 export interface ExtensionsSectionDeps {
   /** The open project directory (reactive prop), or null when none is open. */

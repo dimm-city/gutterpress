@@ -71,7 +71,7 @@ export const DTRPG_PRESET: VendorPreset = {
   pdfx: {
     // SPEC: PDF/X-1a:2001 or PDF/X-3:2002 (x1a is the default of the two).
     flavor: "x1a",
-    // SPEC: the CGATS21_CRPC1.icc profile.
+    // SPEC: "Use the CGATS21_CRPC1.icc color profile."
     icc: "profiles/CGATS21_CRPC1.icc",
     // CONVENTION: interactive annotations have no place in a PDF/X print file.
     stripAnnotations: true,
@@ -86,9 +86,11 @@ export const DTRPG_PRESET: VendorPreset = {
     rasterDpi: undefined,
   },
   page: {
-    // GUIDE: 8.625 x 11.25in is the interior FILE size for an 8.5 x 11in book:
-    // the trim plus 0.125in bleed on the three outside edges (SPEC: a .125in
-    // bleed on the top, bottom and outer edges, none on the binding edge).
+    // SPEC: 8.625 x 11.25in is the interior FILE size for an 8.5 x 11in book,
+    // stated in "Correcting Most Common Print Errors" ("an 8.5 X 11 book should
+    // have a final page size of 8.625 X 11.25"): the trim plus 0.125in bleed on
+    // the three outside edges (SPEC: a .125in bleed on the top, bottom and
+    // outer edges, none on the binding edge).
     // Other trim sizes set `page.width`/`height`/`bleed` in the manifest.
     width: 621,
     height: 810,
@@ -101,17 +103,19 @@ export const DTRPG_PRESET: VendorPreset = {
     bleed: 9,
     // SPEC: 0.5in = 36pt, DriveThru's TEXT rule: text stays at least 0.5in
     // inside the trim on every edge. The preview overlay and
-    // `pdf.print.safe-margins` judge text against it; art pinned to the
-    // binding edge sits on it, unless the manifest sets a `page.gutter`.
+    // `pdf.print.safe-margins` judge text against it (`gutter` below at the
+    // binding edge).
     safe: 36,
     // SPEC: 0.25in = 18pt, DriveThru's ART rule: art that does not bleed stays
-    // at least 0.25in from the three outside edges (the binding edge takes the
-    // text rule's 0.5in above). The overlay judges art against it, and art
-    // pinned to an outside edge sits on it.
+    // at least 0.25in from the three outside edges (the binding edge takes
+    // `gutter` below). The overlay and `pdf.print.safe-margins` judge art
+    // against it, and art pinned to an outside edge sits on it.
     artSafe: 18,
-    // The binding allowance is the same as `safe`; listed so a manifest
-    // `page.gutter` merges in.
-    gutter: undefined,
+    // SPEC: 0.5in = 36pt, DriveThru's rule at the BINDING edge: text and
+    // non-bleeding art stay at least 0.5in from it. The same number as `safe`,
+    // declared so a book inherits its binding allowance visibly (#401); a
+    // manifest `page.gutter` still merges over it.
+    gutter: 36,
   },
   ink: {
     // SPEC: total ink coverage must not exceed 240%.

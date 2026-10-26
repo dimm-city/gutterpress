@@ -21,7 +21,8 @@ import fsp from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import type { GitIdentityArgs } from "../git-identity";
 import type { ExportProgressEvent, ExportSession } from "../pdf-export";
-import type { EngineBrowser, TokenStore } from "gutterpress";
+import type { EngineBrowser, TokenStore, ValidationExecutionResult } from "gutterpress";
+import type { ExportFindingDto } from "../../src/lib/platform/shared-types";
 
 type LibModule = typeof import("gutterpress");
 
@@ -67,6 +68,59 @@ export interface ExportBuildResult {
   pdfPath?: string;
   fingerprintPath?: string;
   diagnostics?: ExportBuildDiagnostic[];
+  /**
+   * What the post-build PDF checks found on the delivered PDF (#399) — see
+   * {@link findingsFromValidation}. Absent for `format: "html"`.
+   */
+  findings?: ExportFindingDto[];
+}
+
+/** The Problems entry for a check run that could not complete (not a check's own finding). */
+export const EXPORT_CHECKS_SOURCE = "desktop.export.checks";
+
+/**
+ * Shape a validation run's report into export findings (#399): every result
+ * as the panel shows it — its check id, severity, message, the rule it
+ * breaks, and the page/edge from its structured `data` — plus one info row
+ * per check that was skipped for a missing tool, so a plain-PDF book whose
+ * author lacks qpdf/gs learns what did NOT run (the CLI's `reportMissingTools`
+ * warning, in panel form). A targeted run's required-but-skipped check is
+ * already a synthetic error in `report.results` (validation-exec.ts's
+ * `withTargetRequiredCheckErrors`), so it gets no second row here.
+ *
+ * `file` is deliberately dropped: the checks report the PDF as their file,
+ * and a Problems entry with a file is a jump to a source line.
+ */
+export function findingsFromValidation(
+  execution: Pick<ValidationExecutionResult, "report" | "tools">,
+): ExportFindingDto[] {
+  const findings: ExportFindingDto[] = execution.report.results.map((r) => {
+    const page = r.data?.page;
+    const edge = r.data?.edge;
+    return {
+      source: r.checkId,
+      severity: r.severity,
+      message: r.message,
+      ...(r.detail ? { detail: r.detail } : {}),
+      ...(r.target ? { target: r.target } : {}),
+      ...(typeof page === "number" ? { page } : {}),
+      ...(typeof edge === "string" ? { edge } : {}),
+    };
+  });
+  const reported = new Set(findings.map((f) => f.source));
+  const skipped = new Set(execution.tools.skippedChecks);
+  for (const tool of execution.tools.missing) {
+    for (const checkId of execution.tools.toolToChecks.get(tool) ?? []) {
+      if (!skipped.has(checkId) || reported.has(checkId)) continue;
+      reported.add(checkId);
+      findings.push({
+        source: checkId,
+        severity: "info",
+        message: `Skipped: ${tool} is not installed on this computer.`,
+      });
+    }
+  }
+  return findings;
 }
 
 /** External touch-points injected into the controller (all faked in tests). */
@@ -141,9 +195,50 @@ export class ExportController {
   constructor(private readonly deps: ExportControllerDeps) {}
 
   /**
+   * Run the post-build PDF checks on the exported file (#399): the lib's own
+   * `executeValidation`, as `gutterpress validate --pdf` and the pdfx build's
+   * last step run it — the book's manifest targets decide the policy, so the
+   * `dtrpg` target's required checks run and a required check skipped for a
+   * missing tool comes back as the lib's synthetic error, never a silent pass.
+   * No finding fails the export: the file has already landed. A check run that
+   * cannot complete at all (an unreadable PDF, a manifest that will not load)
+   * is itself one error finding rather than a swallowed exception.
+   */
+  private async checkExportedPdf(
+    lib: LibModule,
+    args: ExportBuildArgs,
+    pdfPath: string,
+  ): Promise<ExportFindingDto[]> {
+    try {
+      const execution = await lib.executeValidation({
+        input: path.resolve(args.input),
+        pdf: pdfPath,
+        phase: "post-build",
+        manifest: args.manifest,
+        // The build that just wrote this PDF restored and loaded the book's
+        // extensions; the post-build checks read the PDF, not the stylesheets,
+        // so this run does not load them again (the same signal the build's
+        // own gate sends — see `ValidationExecutionArgs.pluginStylePaths`).
+        pluginStylePaths: [],
+      });
+      return findingsFromValidation(execution);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return [
+        {
+          source: EXPORT_CHECKS_SOURCE,
+          severity: "error",
+          message: `The PDF was saved, but its checks could not run: ${msg}`,
+        },
+      ];
+    }
+  }
+
+  /**
    * Run one PDF/HTML export: validate → single-export guard → pre-export sync
-   * safety gate → build → atomic rename → progress/error mapping. Throws typed
-   * errors (OUT_NOT_AUTHORIZED / BUILD_ERROR / TOOL_MISSING / EXPORT_CANCELED).
+   * safety gate → build → atomic rename → post-build PDF checks (PDF only) →
+   * progress/error mapping. Throws typed errors (OUT_NOT_AUTHORIZED /
+   * BUILD_ERROR / TOOL_MISSING / EXPORT_CANCELED).
    */
   async build(args: ExportBuildArgs): Promise<ExportBuildResult> {
     if (!args?.input) throw new Error("Missing 'input'");
@@ -325,6 +420,15 @@ export class ExportController {
         // revealing it (see `registerPickedPath`'s doc comment). After the
         // rename, so nothing is authorized unless a file was really written.
         this.deps.registerPickedPath(exportSession.outPath);
+        // The post-build PDF checks (#399), on the delivered file, before the
+        // export is reported done. The pill shows this phase the way it shows
+        // the sync gate: the "started" wire state with a message.
+        this.deps.sendProgress({
+          exportId: exportSession.id,
+          state: "started",
+          message: "Checking the PDF…",
+        });
+        const findings = await this.checkExportedPdf(lib, args, exportSession.outPath);
         this.deps.sendProgress({
           exportId: exportSession.id,
           state: "success",
@@ -341,6 +445,7 @@ export class ExportController {
           pdfPath: exportSession.outPath,
           fingerprintPath: result.fingerprintPath ?? undefined,
           diagnostics: result.diagnostics,
+          findings,
         };
       } catch (e: unknown) {
         if (exportSession.canceled || this.deps.isExportCanceledError(e)) {

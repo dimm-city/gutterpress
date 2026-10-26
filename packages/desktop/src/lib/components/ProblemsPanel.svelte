@@ -14,9 +14,9 @@
    * focus into the list on open (`focusList`), and Escape / Close hand focus
    * back to the toggle. No focus trap — it is a panel, not a modal.
    */
-  import Icon from "$lib/components/Icon.svelte";
-  import Spinner from "$lib/components/Spinner.svelte";
-  import type { ProblemEntry } from "$lib/platform/dtos";
+  import Icon from "#lib/components/Icon.svelte";
+  import Spinner from "#lib/components/Spinner.svelte";
+  import type { ProblemEntry } from "#lib/platform/dtos.ts";
   import {
     closesPanelOnEscape,
     friendlySource,
@@ -24,7 +24,7 @@
     problemCounts,
     problemsSummary,
     splitProblemMessage,
-  } from "$lib/problems";
+  } from "#lib/problems.ts";
 
   let {
     problems,

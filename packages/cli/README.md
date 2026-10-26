@@ -274,6 +274,17 @@ gutterpress publish --provider gdrive --connect
 gutterpress publish --provider gdrive ./my-book
 ```
 
+**Publishing plugins (experimental — may change or be removed).** `--provider`
+also takes the package name of a publishing plugin listed in the book's
+`extensions:`. `--list` shows those plugins after the built-ins with the status
+`experimental` (`experimental: true` in `--json`). A plugin whose downloaded
+copy is missing is downloaded first, as for `build` (a failed download exits 3
+with the reason); publishing to a built-in never loads plugins. See
+[User Guide: Chapter 8 — Publishing](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/08-publishing.md)
+for authors and
+[Chapter 5 — Plugins](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/05-plugins.md)
+for the plugin contract.
+
 ### `gutterpress validate`
 
 Run the validation pipeline (pre-build source checks and/or post-build PDF checks). Tools that aren't installed are skipped with a warning — they don't fail the run. See [User Guide: Chapter 6 — Validation](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/06-validation.md) for the full check list and [User Guide: Chapter 7 — System Setup](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/07-system-setup.md) for which external tools each check needs.

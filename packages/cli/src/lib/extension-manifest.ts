@@ -6,10 +6,11 @@
  * manifest: npm's own fields are read as-is (`name`, `description`, `author`,
  * `keywords`, and `main` — the markdown-it plugin module), and everything
  * Gutterpress-specific lives under one optional `"gutterpress"` key
- * (`styles`, `markdown`, `snippets`, `components`, `tokensFile`, `preview`).
- * A plain markdown-it plugin package therefore needs nothing at all to load
- * as an extension; a look needs `gutterpress.styles`; a component library
- * needs `main` + `gutterpress.styles`.
+ * (`styles`, `markdown`, `snippets`, `components`, `tokensFile`, `preview`,
+ * `publish`). A plain markdown-it plugin package therefore needs nothing at
+ * all to load as an extension; a look needs `gutterpress.styles`; a component
+ * library needs `main` + `gutterpress.styles`; a publishing plugin
+ * (experimental, #381) needs `main` + `gutterpress.publish: true`.
  *
  * This module is the "metadata file + resolver" half of that format: it
  * defines the shape (`ExtensionMetadata`), reads it off disk
@@ -120,6 +121,15 @@ export interface ExtensionMetadata {
    */
   snippets?: string;
   /**
+   * `gutterpress.publish: true` — EXPERIMENTAL (#381): the package is a
+   * publishing plugin. Its entry (npm `main`/`exports`, or a folder's `main`)
+   * exports a named `publish` function and contributes NO markdown-it plugin,
+   * so the markdown loader skips it without importing it. A boolean, not a
+   * path: it lets core recognise a publisher from package.json alone, without
+   * executing its code. Anything other than literal `true` reads as absent.
+   */
+  publish?: boolean;
+  /**
    * npm `engines.gutterpress` — the Gutterpress versions the extension works
    * with, as a semver range (e.g. `">=0.11.20-alpha.3"`). Checked when the
    * extension loads ({@link assertSupportsThisGutterpress}).
@@ -173,6 +183,7 @@ function metaFromPackageJson(raw: unknown): ExtensionMetadata {
     ...(str(gp.markdown) ? { markdown: str(gp.markdown) } : {}),
     ...(str(gp.components) ? { components: str(gp.components) } : {}),
     ...(str(gp.snippets) ? { snippets: str(gp.snippets) } : {}),
+    ...(gp.publish === true ? { publish: true } : {}),
     ...(gp.engineStyles !== undefined ? { engineStyles: gp.engineStyles } : {}),
   };
 }
@@ -212,10 +223,11 @@ export function extensionStyleList(meta: ExtensionMetadata): string[] {
  * The markdown-it entry of a FOLDER extension: an explicit
  * `gutterpress.markdown` when the package's `main` is not the plugin,
  * otherwise npm's own `main`. `undefined` for a folder that carries no
- * markdown behaviour at all (a look).
+ * markdown behaviour at all (a look, or a publishing plugin — whose `main` is
+ * its publish module, not a markdown-it plugin).
  */
 export function extensionEntry(meta: ExtensionMetadata): string | undefined {
-  return meta.markdown?.trim() || meta.main?.trim() || undefined;
+  return meta.markdown?.trim() || (meta.publish ? undefined : meta.main?.trim()) || undefined;
 }
 
 /** What an extension declares, by field — the desktop's one-list filter. */
@@ -224,6 +236,8 @@ export interface ExtensionCarries {
   styles: boolean;
   snippets: boolean;
   components: boolean;
+  /** A publishing plugin (experimental, #381). */
+  publish: boolean;
 }
 
 export function extensionCarries(meta: ExtensionMetadata): ExtensionCarries {
@@ -232,7 +246,28 @@ export function extensionCarries(meta: ExtensionMetadata): ExtensionCarries {
     styles: extensionStyleList(meta).length > 0,
     snippets: !!meta.snippets?.trim(),
     components: !!meta.components?.trim(),
+    publish: meta.publish === true,
   };
+}
+
+/**
+ * A publishing plugin (experimental, #381) is a publisher and nothing else:
+ * its entry is never imported while a book renders, so a markdown entry,
+ * styles, components or snippets it also declared would either load (a
+ * folder) or be dropped without a word (a vendored copy). One rule, checked
+ * here, keeps both load paths and the publish path agreeing. Not a listing
+ * guard — `readExtensionMeta` stays tolerant.
+ */
+export function assertPublishOnly(meta: ExtensionMetadata, ref: string): void {
+  if (!meta.publish) return;
+  const carries = extensionCarries(meta);
+  const also = (["markdown", "styles", "components", "snippets"] as const).filter((k) => carries[k]);
+  if (also.length > 0) {
+    throw new Error(
+      `Publishing plugin "${ref}" also declares ${also.join(", ")} — a package is a ` +
+        "publisher or a markdown plugin, not both.",
+    );
+  }
 }
 
 /**
@@ -300,6 +335,8 @@ export function assertExtensionContained(meta: ExtensionMetadata): void {
   const declared = [
     ...extensionStyleList(meta),
     ...(entry ? [entry] : []),
+    // A publishing plugin's `main` is no markdown entry, but it is imported.
+    ...(meta.publish && meta.main?.trim() ? [meta.main.trim()] : []),
     ...(meta.components ? [meta.components] : []),
     ...(meta.snippets ? [meta.snippets] : []),
     ...(meta.tokensFile ? [meta.tokensFile] : []),

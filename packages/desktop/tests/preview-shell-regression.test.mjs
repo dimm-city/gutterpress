@@ -4,6 +4,10 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Window } from "happy-dom";
+// happy-dom 21 no longer gives an <iframe> a document unless iframe loading
+// is enabled (off by default against SSRF); these tests build the preview's
+// frames and read into them.
+const HAPPY_DOM = { enableIframePageLoading: true };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const scriptDir = path.resolve(__dirname, "..", "..", "cli", "src", "assets", "preview", "scripts");
@@ -177,7 +181,7 @@ function installBridge(frame, outer) {
 // host's "Updating preview…" pill never clears and the chapter outline and
 // Problems panel stay stale. finish() reports completion itself.
 async function runPaginationBeforeLoadRegression() {
-  const outer = new Window({ url: "http://localhost/" });
+  const outer = new Window({ url: "http://localhost/", settings: HAPPY_DOM });
   const document = outer.document;
   const hostEvents = [];
   Object.defineProperty(outer, "parent", {
@@ -267,7 +271,7 @@ async function runPaginationBeforeLoadRegression() {
 }
 
 async function runHorizontalAnchorRegression() {
-  const outer = new Window({ url: "http://localhost/" });
+  const outer = new Window({ url: "http://localhost/", settings: HAPPY_DOM });
   const document = outer.document;
   Object.defineProperty(outer, "parent", { configurable: true, value: { postMessage() {} } });
   const active = document.createElement("iframe");
@@ -323,7 +327,7 @@ async function runHorizontalAnchorRegression() {
 }
 
 async function runReplacementTimeoutRegression() {
-  const outer = new Window({ url: "http://localhost/" });
+  const outer = new Window({ url: "http://localhost/", settings: HAPPY_DOM });
   const document = outer.document;
   const hostEvents = [];
   Object.defineProperty(outer, "parent", {
@@ -393,7 +397,7 @@ async function runReplacementTimeoutRegression() {
 }
 
 async function runPartialHorizontalAnchorRegression() {
-  const outer = new Window({ url: "http://localhost/" });
+  const outer = new Window({ url: "http://localhost/", settings: HAPPY_DOM });
   const document = outer.document;
   Object.defineProperty(outer, "parent", { configurable: true, value: { postMessage() {} } });
   const active = document.createElement("iframe");
@@ -446,7 +450,7 @@ async function runPartialHorizontalAnchorRegression() {
 }
 
 async function runTopLevelScrollIdleRegression() {
-  const outer = new Window({ url: "http://localhost/" });
+  const outer = new Window({ url: "http://localhost/", settings: HAPPY_DOM });
   const document = outer.document;
   Object.defineProperty(outer, "parent", { configurable: true, value: outer });
   const active = document.createElement("iframe");
@@ -528,7 +532,7 @@ async function runTopLevelScrollIdleRegression() {
 }
 
 async function main() {
-  const outer = new Window({ url: "http://localhost/" });
+  const outer = new Window({ url: "http://localhost/", settings: HAPPY_DOM });
   const document = outer.document;
   const hostEvents = [];
   Object.defineProperty(outer, "parent", {
@@ -887,7 +891,7 @@ async function main() {
 // this suite exists to guard), driven through a frame that carries the viewer
 // <script> tag so readiness goes through a real 'renderingComplete'.
 async function runNativeCoreRegression() {
-  const outer = new Window({ url: "http://localhost/" });
+  const outer = new Window({ url: "http://localhost/", settings: HAPPY_DOM });
   const document = outer.document;
   const hostEvents = [];
   Object.defineProperty(outer, "parent", {
@@ -1077,7 +1081,7 @@ async function runNativeCoreRegression() {
 // uncommitted typing with it (docs/inline-editing-plan.md §3.2). The shell
 // holds the swap until preview-interface.js reports the edit closed.
 async function runBlockEditHoldRegression() {
-  const outer = new Window({ url: "http://localhost/" });
+  const outer = new Window({ url: "http://localhost/", settings: HAPPY_DOM });
   const document = outer.document;
   Object.defineProperty(outer, "parent", { configurable: true, value: outer });
   const active = document.createElement("iframe");

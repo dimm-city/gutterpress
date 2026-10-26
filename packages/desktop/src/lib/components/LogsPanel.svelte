@@ -9,10 +9,10 @@
    * PWA-clean (§8): all host work through `api.log.*`.
    */
   import { onMount } from "svelte";
-  import Icon from "$lib/components/Icon.svelte";
-  import { api } from "$lib/api";
-  import { cancelInlineConfirm, requestInlineConfirm, type InlineConfirmState } from "$lib/dialog";
-  import type { LogFileEntry } from "$lib/platform/dtos";
+  import Icon from "#lib/components/Icon.svelte";
+  import { api } from "#lib/api.ts";
+  import { cancelInlineConfirm, requestInlineConfirm, type InlineConfirmState } from "#lib/dialog.ts";
+  import type { LogFileEntry } from "#lib/platform/dtos.ts";
 
   let files = $state<LogFileEntry[]>([]);
   let selectedPath = $state<string | null>(null);

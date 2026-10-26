@@ -14,8 +14,8 @@
    * PreviewClient postMessage bridge — no host code at all.
    */
   import { onMount } from "svelte";
-  import Icon from "$lib/components/Icon.svelte";
-  import type { PreviewClient } from "$lib/preview-client";
+  import Icon from "#lib/components/Icon.svelte";
+  import type { PreviewClient } from "#lib/preview-client.ts";
 
   let {
     open = $bindable(false),

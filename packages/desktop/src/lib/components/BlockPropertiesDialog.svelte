@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { dialogBehavior } from "$lib/dialog";
+  import { dialogBehavior } from "#lib/dialog.ts";
   import { untrack } from "svelte";
-  import { COLUMN_COUNTS } from "$lib/editor/block-attrs";
-  import type { BlockPropertiesModel, BlockPropertiesValue } from "$lib/editor/block-properties";
+  import { COLUMN_COUNTS } from "#lib/editor/block-attrs.ts";
+  import type { BlockPropertiesModel, BlockPropertiesValue } from "#lib/editor/block-properties.ts";
 
   let { model, initialValue, onDone }: {
     model: BlockPropertiesModel;
@@ -97,7 +97,7 @@
 </form>
 
 <style>
-  @import "$lib/styles/dialog-shell.css";
+  @import "../styles/dialog-shell.css";
   .block-properties { width: min(560px, 94vw); }
   .marker { margin-left: 6px; font-size: 13px; font-weight: 500; color: var(--app-text-secondary); }
   .fields { display: grid; gap: 14px; padding: 18px 18px 10px; overflow: auto; }

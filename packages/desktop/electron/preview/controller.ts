@@ -81,6 +81,12 @@ export interface PreviewOpenControllerDeps {
   appendFile: (filePath: string, data: string) => Promise<void>;
   /** Node's global setTimeout (injected so tests can control the delayed re-emit). */
   setTimeout: (cb: () => void, ms: number) => { unref?: () => void };
+  /**
+   * Close the read-only "Look at this version" preview (electron/version-preview.ts)
+   * whenever the project preview stops or another book opens: it belongs to
+   * the open book and must not outlive it. Optional for older callers/tests.
+   */
+  closeVersionPreview?: () => Promise<void>;
 }
 
 export class PreviewOpenController {
@@ -120,6 +126,7 @@ export class PreviewOpenController {
   }
 
   private async runStop(): Promise<{ stopped: true }> {
+    await this.deps.closeVersionPreview?.().catch(() => {});
     const active = this.deps.getActivePreview();
     if (active) await active.stop().catch(() => {});
     this.deps.setActivePreview(null);
@@ -153,6 +160,7 @@ export class PreviewOpenController {
 
     // Replace the old preview, then grant the new folder capability before
     // rendering. A render failure must not revoke access to the author's files.
+    await this.deps.closeVersionPreview?.().catch(() => {});
     const existing = this.deps.getActivePreview();
     if (existing) {
       await existing.stop().catch(() => {});

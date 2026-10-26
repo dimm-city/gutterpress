@@ -1,6 +1,6 @@
 /** Pure source-token helpers for preview context-menu edits. */
 
-import type { InlineSourceToken } from "$lib/preview-client";
+import type { InlineSourceToken } from "#lib/preview-client.ts";
 
 export interface ImageTokenMatch {
   start: number;

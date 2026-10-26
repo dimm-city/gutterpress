@@ -1,0 +1,47 @@
+<!--
+  Regression fixture for dimm-city/gutterpress#421: a `break-before: left`
+  site that is the FIRST CHILD of its wrapper, at the very start of the book
+  and again after a one-page chapter.
+
+  The shape a marker book produces: `@chapter` > `@section .opener`, with
+  core's `.page`/`.chapter` forced page break on the wrapper. Both openers
+  must land on LEFT-hand (even) pages, as the PDF puts them: page 1 is a
+  right-hand page, so a blank page 1 precedes the first opener (page 2);
+  chapter one ends on page 2, so a blank page 3 precedes the second (page 4).
+
+  Before the fix the viewer planned both blanks but built them from two
+  zero-height `break-before: column` spacers, which Chromium drops when the
+  spacer is the first box in its column, so the openers sat on pages 1 and 3.
+-->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Recto first child</title>
+<style>
+@page { size: 5in 5in; margin: 0.5in; }
+body { font: 11pt/1.35 Georgia, serif; margin: 0; }
+.chapter { break-before: page; }
+.opener { break-before: left; }
+h2 { margin: 0 0 9pt; }
+p { margin: 0 0 9pt; }
+</style>
+</head>
+<body>
+<div id="root">
+  <div class="chapter" id="one">
+    <div class="section opener" id="opener-one">
+      <h2>Chapter one</h2>
+      <p>Page 1 is a right-hand page, so a blank page 1 comes first and this opener lands on page 2.</p>
+    </div>
+  </div>
+  <div class="chapter" id="two">
+    <div class="section opener" id="opener-two">
+      <h2>Chapter two</h2>
+      <p>Chapter one ends on page 2, so the next page (3) is a right-hand page: a blank page 3 comes first and this opener lands on page 4.</p>
+    </div>
+  </div>
+</div>
+<script src="gutterpress-viewer.js"></script>
+</body>
+</html>

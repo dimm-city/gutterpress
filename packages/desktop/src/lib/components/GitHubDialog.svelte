@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from "$lib/components/Icon.svelte";
+  import Icon from "#lib/components/Icon.svelte";
   /**
    * "Open from GitHub" flow (#15): Connect (device-flow code) →
    * choose repository → choose branch + destination folder → download → the
@@ -8,18 +8,18 @@
    * sees a token: connection status is redacted by the host.
    */
   import { tick } from "svelte";
-  import { getPlatform } from "$lib/platform";
-  import { api } from "$lib/api";
-  import { basenameOf } from "$lib/platform/paths";
-  import { friendlyHostError } from "$lib/errors";
+  import { getPlatform } from "#lib/platform/index.ts";
+  import { api } from "#lib/api.ts";
+  import { basenameOf } from "#lib/platform/paths.ts";
+  import { friendlyHostError } from "#lib/errors.ts";
   import type {
     DeviceCodeInfo,
     RemoteRepository,
     RemoteBranch,
     RepoBook,
     CloneProgressEvent,
-  } from "$lib/platform/contract";
-  import { dialogBehavior } from "$lib/dialog";
+  } from "#lib/platform/contract.ts";
+  import { dialogBehavior } from "#lib/dialog.ts";
 
   let {
     open = $bindable(false),
@@ -527,7 +527,7 @@
 
 
 <style>
-  @import "$lib/styles/dialog-shell.css";
+  @import "../styles/dialog-shell.css";
 
   .dlg-shell {
     width: min(560px, 92vw);

@@ -14,7 +14,10 @@ destinations.
 3. On the **Folder** step, the PDF goes to the `dist` folder inside your book unless you choose
    another folder with **Choose…**.
 4. **Preflight** checks the book is ready (see [Publish your book](08-publish.md#preflight)).
-5. Click **Save**. When it finishes, **Show in folder** opens the folder with your PDF.
+5. Click **Save**. When it finishes, **Show in folder** opens the folder with your PDF. Your
+   book's PDF checks — page size, safe margins, embedded fonts, and PDF/X when qpdf and
+   Ghostscript are installed — run on the saved file; anything they find is listed in
+   **Problems**, and a **Review** button takes you there.
 
 ![Publish your book, Format step: PDF or Website](images/publish-format.jpg)
 

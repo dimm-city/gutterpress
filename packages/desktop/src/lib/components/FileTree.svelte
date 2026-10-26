@@ -62,10 +62,10 @@
    * explicitly out of scope regardless.
    */
   import { onMount } from "svelte";
-  import { api } from "$lib/api";
-  import { getPlatform } from "$lib/platform";
-  import Icon from "$lib/components/Icon.svelte";
-  import type { ToastController } from "$lib/components/Toast.svelte";
+  import { api } from "#lib/api.ts";
+  import { getPlatform } from "#lib/platform/index.ts";
+  import Icon from "#lib/components/Icon.svelte";
+  import type { ToastController } from "#lib/components/Toast.svelte";
   import {
     invalidateDir,
     invalidateSubtree,

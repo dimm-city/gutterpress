@@ -9,10 +9,10 @@
    * dialogBehavior owns ARIA/Escape/focus-trap/restore. PWA-clean (§8):
    * api.* only.
    */
-  import Icon from "$lib/components/Icon.svelte";
-  import { api } from "$lib/api";
-  import { dialogBehavior } from "$lib/dialog";
-  import type { ToastController } from "$lib/components/Toast.svelte";
+  import Icon from "#lib/components/Icon.svelte";
+  import { api } from "#lib/api.ts";
+  import { dialogBehavior } from "#lib/dialog.ts";
+  import type { ToastController } from "#lib/components/Toast.svelte";
 
   let {
     projectDir,
@@ -107,7 +107,7 @@
 </div>
 
 <style>
-  @import "$lib/styles/dialog-shell.css";
+  @import "../styles/dialog-shell.css";
 
   .template-dialog { width: min(460px, 94vw); }
   .dlg-body { display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; }

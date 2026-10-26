@@ -1,5 +1,5 @@
 /**
- * Left-panel tab visibility ($lib/left-panel-tabs): the temporary hiding of
+ * Left-panel tab visibility (#lib/left-panel-tabs): the temporary hiding of
  * the Books tab, reader mode, and the fallback for a remembered hidden tab.
  */
 import { describe, test, expect } from "bun:test";

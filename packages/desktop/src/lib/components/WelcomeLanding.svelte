@@ -25,19 +25,19 @@
    */
   import { fade } from "svelte/transition";
   import { tick } from "svelte";
-  import Icon from "$lib/components/Icon.svelte";
-  import ProjectsListBody from "$lib/components/ProjectsListBody.svelte";
-  import SettingsView from "$lib/components/SettingsView.svelte";
-  import Spinner from "$lib/components/Spinner.svelte";
-  import BrandMark from "$lib/components/BrandMark.svelte";
-  import Tabs from "$lib/components/Tabs.svelte";
-  import HelpContent from "$lib/components/HelpContent.svelte";
-  import TroubleshootingView from "$lib/components/TroubleshootingView.svelte";
-  import { sanitizeTroubleshootingTab, type TroubleshootingTab } from "$lib/troubleshooting-tabs";
-  import { isEditableTarget } from "$lib/a11y";
-  import type { ContinueStatus } from "$lib/routes/startup-landing";
-  import type { UpdaterAvailableAction } from "$lib/platform";
-  import type { SettingsTab } from "$lib/settings-tabs";
+  import Icon from "#lib/components/Icon.svelte";
+  import ProjectsListBody from "#lib/components/ProjectsListBody.svelte";
+  import SettingsView from "#lib/components/SettingsView.svelte";
+  import Spinner from "#lib/components/Spinner.svelte";
+  import BrandMark from "#lib/components/BrandMark.svelte";
+  import Tabs from "#lib/components/Tabs.svelte";
+  import HelpContent from "#lib/components/HelpContent.svelte";
+  import TroubleshootingView from "#lib/components/TroubleshootingView.svelte";
+  import { sanitizeTroubleshootingTab, type TroubleshootingTab } from "#lib/troubleshooting-tabs.ts";
+  import { isEditableTarget } from "#lib/a11y.ts";
+  import type { ContinueStatus } from "#lib/routes/startup-landing.ts";
+  import type { UpdaterAvailableAction } from "#lib/platform/index.ts";
+  import type { SettingsTab } from "#lib/settings-tabs.ts";
 
   let {
     visible = false,

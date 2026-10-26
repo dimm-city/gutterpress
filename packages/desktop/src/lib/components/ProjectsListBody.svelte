@@ -8,10 +8,10 @@
    * presentational with data-loading.
    */
   import { onMount } from "svelte";
-  import Icon from "$lib/components/Icon.svelte";
-  import { basenameOf } from "$lib/platform/paths";
-  import { api } from "$lib/api";
-  import { discoverProjectsCached, type DiscoveredProject } from "$lib/projects-discover-cache";
+  import Icon from "#lib/components/Icon.svelte";
+  import { basenameOf } from "#lib/platform/paths.ts";
+  import { api } from "#lib/api.ts";
+  import { discoverProjectsCached, type DiscoveredProject } from "#lib/projects-discover-cache.ts";
 
   // #49: recents/favorites are FolderRef-shaped (key + precomputed displayName)
   // in the app-facing contract. Discovered projects still come back path-keyed

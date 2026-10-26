@@ -48,6 +48,12 @@ export interface SyncControllerDeps {
   /** Settings → Saving "Keep this book backed up online". Decides whether a
    *  failure toast may promise an automatic retry. Defaults to on. */
   autoBackup?: () => boolean;
+  /**
+   * Where the combined-files toast's Review button goes (the Problems list,
+   * which names every passage with two versions). When absent the toast
+   * has no button and the message stands alone, as before.
+   */
+  onReviewCombined?: () => void;
 }
 
 /**
@@ -76,7 +82,7 @@ export function combinedFilesMessage(files: string[]): string {
   const names = files.map(baseName);
   const shown = names.slice(0, 3).join(", ");
   const more = names.length > 3 ? ` and ${names.length - 3} more` : "";
-  return `Your changes and a teammate's overlapped in ${shown}${more} — both versions are kept there, marked for you to review.`;
+  return `Two versions of a passage were kept in ${shown}${more} — yours and the online version. Choose which to keep in the editor.`;
 }
 
 /**
@@ -211,7 +217,13 @@ export class SyncController {
    */
   applyConvergeReport(combinedFiles?: string[], keptBothFiles?: KeptBothFile[]): void {
     if (combinedFiles && combinedFiles.length > 0) {
-      this.deps.toast()?.info?.(combinedFilesMessage(combinedFiles));
+      const t = this.deps.toast();
+      const message = combinedFilesMessage(combinedFiles);
+      const review = this.deps.onReviewCombined;
+      // Sticky (duration 0) when it carries the way in, like the "new changes
+      // online" prompt: the author decides when they have seen it.
+      if (review && t?.show) t.show(message, "info", 0, { label: "Review", onClick: review });
+      else t?.info?.(message);
     }
     if (keptBothFiles && keptBothFiles.length > 0) {
       this.deps.toast()?.info?.(keptBothMessage(keptBothFiles));
