@@ -19,7 +19,7 @@
  *     `plugins/npm/` (`npm-plugin-installer.ts`) and written back pinned, as
  *     `name@version`.
  *
- * The three built-in looks are the one thing this module copies INTO a
+ * The built-in looks are the one thing this module copies INTO a
  * project (`extensions/<id>/`, then referenced by path): a book's look must
  * be the author's own editable files, never a hidden dependency on the CSS
  * embedded in whichever Gutterpress version happens to be installed.
@@ -181,10 +181,16 @@ export const RECOMMENDED_EXTENSIONS: RecommendedExtension[] = [
     label: "Callouts",
     description: "Turn a quote into a boxed note: start it with `> [!NOTE]` (or `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`).",
   },
+  {
+    // Gutterpress's own code too (math.ts) — see BUILTIN_OPTIONAL_PLUGINS.
+    use: "gutterpress-math",
+    label: "Math",
+    description: "Write LaTeX math between dollar signs: `$E = mc^2$` in a line, or `$$` … `$$` on lines of their own.",
+  },
 ];
 
 /** The built-in looks shipped as embedded assets (ids are folder names). */
-export const BUILT_IN_STYLE_SET_IDS = ["clean-book", "zine", "technical-doc"] as const;
+export const BUILT_IN_STYLE_SET_IDS = ["clean-book", "zine", "technical-doc", "academic"] as const;
 export type BuiltInStyleSetId = (typeof BUILT_IN_STYLE_SET_IDS)[number];
 
 /** A built-in look, as listed for the desktop's Look view. */

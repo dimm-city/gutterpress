@@ -12,6 +12,10 @@ files:
   - build/**
   - package.json
   - build-resources/**
+  # mathjax-full (the bundled Math feature, gutterpress's math.ts) ships its
+  # TypeScript sources, browser bundles and component sources next to the
+  # compiled `js/` tree that is the only part imported. Leave the rest out.
+  - "!**/node_modules/mathjax-full/{ts,es5,components}/**"
 
 extraResources:
   - from: build-resources/icon.png
@@ -24,6 +28,8 @@ extraResources:
     to: samples/with-design-guide
   - from: ../../examples/with-validation
     to: samples/with-validation
+  - from: ../../examples/academic-paper
+    to: samples/academic-paper
 
 extraMetadata:
   main: out/main/main.js

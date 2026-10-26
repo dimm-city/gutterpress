@@ -6,31 +6,31 @@
 
 ## Type Scale
 
-<span class="spec-label">H1 — Chapter Title  ·  24pt  ·  --font-display  ·  700</span>
+<span class="spec-label">H1 --- Chapter Title  ·  24pt  ·  --font-display  ·  700</span>
 
 <div class="type-h1">This Is a Chapter Title</div>
 
-<span class="spec-label">H2 — Section Heading  ·  16pt  ·  --font-display  ·  600</span>
+<span class="spec-label">H2 --- Section Heading  ·  16pt  ·  --font-display  ·  600</span>
 
 ## This Is a Section Heading
 
-<span class="spec-label">H3 — Sub-section  ·  13pt  ·  --font-display  ·  600</span>
+<span class="spec-label">H3 --- Sub-section  ·  13pt  ·  --font-display  ·  600</span>
 
 ### This Is a Sub-section Heading
 
-<span class="spec-label">H4 — Item Heading  ·  11pt  ·  --font-display  ·  700  ·  uppercase</span>
+<span class="spec-label">H4 --- Item Heading  ·  11pt  ·  --font-display  ·  700  ·  uppercase</span>
 
 #### This Is an Item Heading
 
 <span class="spec-label">Body text  ·  11pt  ·  --font-body  ·  400  ·  1.45 leading  ·  justified</span>
 
-Body paragraphs are 11pt Georgia at 1.45 line-height, justified with automatic hyphenation. The text color uses `--color-ink` (#1a1a2e). Consecutive paragraphs share a 0.65em bottom margin — enough to separate them without breaking reading flow.
+Body paragraphs are 11pt Georgia at 1.45 line-height, justified with automatic hyphenation. The text color uses `--color-ink` (#1a1a2e). Consecutive paragraphs share a 0.65em bottom margin --- enough to separate them without breaking reading flow.
 
 A second paragraph demonstrates the spacing. The margin between paragraphs is intentionally modest; the reader's eye should track the column, not jump between visual islands.
 
 <span class="spec-label">Small / Caption  ·  9pt  ·  --font-display  ·  400</span>
 
-<span style="font-family: var(--font-display); font-size: var(--fs-small); color: var(--color-ink-muted);">Figure 1.1 — Small text for captions, table labels, and running copy.</span>
+<span style="font-family: var(--font-display); font-size: var(--fs-small); color: var(--color-ink-muted);">Figure 1.1 --- Small text for captions, table labels, and running copy.</span>
 
 <span class="spec-label">Micro / Folios  ·  8pt  ·  --font-display  ·  400</span>
 
@@ -56,7 +56,7 @@ A second paragraph demonstrates the spacing. The margin between paragraphs is in
 
 ## Paragraph Spacing in Context
 
-This section demonstrates a full column of body text at production length. A book paragraph typically runs four to eight lines. At the set measure (the page width minus margins), 11pt Georgia with 1.45 leading produces approximately 65–72 characters per line — the ergonomic ideal for sustained reading.
+This section demonstrates a full column of body text at production length. A book paragraph typically runs four to eight lines. At the set measure (the page width minus margins), 11pt Georgia with 1.45 leading produces approximately 65--72 characters per line --- the ergonomic ideal for sustained reading.
 
 Avoid one-sentence paragraphs in body prose. They disrupt the rhythm and inflate visual spacing. Two or three sentences is the minimum that reads as a coherent thought; four to six is the comfortable range for most genres.
 
@@ -68,7 +68,7 @@ Orphan and widow control is set globally at 3 lines. The layout engine will push
 
 Unordered lists:
 
-- First item — full sentence or phrase
+- First item --- full sentence or phrase
 - Second item, slightly longer to show wrapping behavior inside a single bullet point
 - Third item, with a sub-list:
   - Nested A
@@ -77,7 +77,7 @@ Unordered lists:
 Ordered lists:
 
 1. First step in a sequence
-2. Second step — numbers in the source don't need to be sequential
+2. Second step --- numbers in the source don't need to be sequential
 3. Third step
 
 ---
@@ -105,20 +105,17 @@ Ordered lists:
 
 ## Smart Typography
 
-The markdown renderer has `typographer: true` enabled, which automatically converts common ASCII shortcuts to proper typographic characters. No special syntax required.
+Plain typing prints proper typography. No special syntax required:
 
 | You type | Renders as | Character |
 |----------|------------|-----------|
-| `(c)` | (c) | Copyright © |
-| `(tm)` | (tm) | Trademark ™ |
-| `(R)` | (R) | Registered ® |
-| `--` | -- | En dash – |
-| `---` | --- | Em dash — |
-| `...` | ... | Ellipsis … |
+| `--` | -- | En dash -- |
+| `---` | --- | Em dash --- |
+| `...` | ... | Ellipsis ... |
 | `"quoted"` | "quoted" | Curly double quotes |
 | `'quoted'` | 'quoted' | Curly single quotes |
 
-Hyphens in words are left as-is. The `hyphens: auto` CSS property handles automatic hyphenation for justified body text — this is separate from the typographer plugin.
+Nothing else is rewritten: a symbol such as ©, ™, ® or ± is typed as itself, and a list label like `(c)` prints as typed. The quotation marks follow the book's `language` (set in `manifest.yaml`). Hyphens in words are left as-is. The `hyphens: auto` CSS property handles automatic hyphenation for justified body text.
 
 ---
 
@@ -131,14 +128,14 @@ The stylesheet's `§ 0 CUSTOM FONTS` section (at the top of `styles/guide.css`) 
 3. Update `--font-body` or `--font-display` in `§ 1 BRAND TOKENS` to reference your new family name.
 
 ```css
-/* In § 0 CUSTOM FONTS — uncomment and edit */
+/* In § 0 CUSTOM FONTS -- uncomment and edit */
 @font-face {
   font-family: "YourBodyFont";
   src: url("../fonts/your-body-font-regular.woff2") format("woff2");
   font-weight: 400; font-style: normal; font-display: swap;
 }
 
-/* In § 1 BRAND TOKENS — update the variable */
+/* In § 1 BRAND TOKENS -- update the variable */
 :root {
   --font-body: "YourBodyFont", Georgia, serif;
 }

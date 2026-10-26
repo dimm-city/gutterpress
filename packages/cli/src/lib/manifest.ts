@@ -273,6 +273,19 @@ function mergeShape<T extends PlainObject>(
   return out as T;
 }
 
+/** A BCP 47 tag: a 2–3 letter language, then optional subtags (`de-CH`, `zh-Hant-TW`). */
+const LANGUAGE_TAG = /^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$/;
+
+function resolveLanguage(value: unknown): string {
+  if (value === undefined) return "en";
+  if (typeof value !== "string" || !LANGUAGE_TAG.test(value)) {
+    throw new UsageError(
+      `Manifest field \`language\` must be a language tag such as "en", "de" or "pt-BR", got ${JSON.stringify(value)}.`
+    );
+  }
+  return value;
+}
+
 /**
  * Merge CLI args > manifest > preset defaults into a fully-resolved config.
  * Any field explicitly set in `cliOverrides` wins, then manifest, then preset.
@@ -458,6 +471,7 @@ function resolveWithPreset(
   return {
     title: c.title ?? m.title ?? "Document",
     authors: c.authors ?? m.authors ?? [],
+    language: resolveLanguage(c.language ?? m.language),
     preset: preset.id,
     spec: preset.spec,
     // No preset fallback here — resolveActiveStyles (style-resolver.ts)

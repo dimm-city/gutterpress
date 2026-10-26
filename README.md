@@ -83,6 +83,7 @@ Browse the [`examples/`](./examples/) directory for real projects you can copy:
 - **`gutterpress-user-guide`** — the comprehensive user guide, authored in Gutterpress itself.
 - **`with-validation`** — focused on the pre-/post-build validation pipeline.
 - **`with-print-effects`** — soft shadows, clipped shapes and alpha art in a PDF/X build, with live text kept (`pdfx.transparency: preserve-text`).
+- **`academic-paper`** — a journal-style research article written in Markdown with LaTeX math: numbered equations, theorems, figures, tables, footnotes and linked references.
 
 ## Project layout
 

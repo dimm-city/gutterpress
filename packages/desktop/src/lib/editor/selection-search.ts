@@ -12,8 +12,8 @@
  *   1. Whitespace — authors hard-wrap prose, so a selection spanning a
  *      source line break renders with a single space where the source has a
  *      `\n` (plus possible leading indentation on the continuation line).
- *   2. Typographer substitutions — `typographer: true` rewrites quotes,
- *      dashes, and a handful of ASCII sequences into Unicode glyphs.
+ *   2. Typography — the renderer turns straight quotes, `--`, `---` and
+ *      `...` into their Unicode glyphs.
  *   3. Inline formatting delimiters — `selection.toString()` never contains
  *      `**`/`_`/`` ` ``/link syntax, so a selection spanning an
  *      already-formatted span (e.g. "a **bold** word" rendering as
@@ -24,41 +24,36 @@
  * directly under `bun test` (CLAUDE.md §8).
  *
  * FAIL SAFE, NOT FAIL WRONG (plan §1 principle 3): every ambiguous case
- * (zero matches, multiple matches, un-reversible typographer collapses,
- * code/link syntax in the matched region, same-delimiter nesting) resolves
+ * (zero matches, multiple matches, code/link syntax in the matched region,
+ * same-delimiter nesting) resolves
  * to "couldn't locate this text — disable the item", never a guessed edit.
  */
 
-/** Reverse map of markdown-it's typographer substitutions, keyed one raw
- *  Unicode character at a time (each key below is exactly one character, so
- *  there is no overlap/ordering ambiguity between entries).
- *
- *  Sourced by reading `markdown-it@14.3.0`'s
- *  `lib/rules_core/replacements.mjs` and `lib/rules_core/smartquotes.mjs`
- *  directly (see the PR report for the full rule-by-rule derivation) against
- *  this project's renderer options (`html:true, linkify:true,
- *  typographer:true`, default `quotes: "“”‘’"` — no
- *  override in `renderer.ts`). There is NO NBSP rule in either file — do not
- *  add one.
- *
- *  Deliberately excluded (handled instead by {@link hasAmbiguousTypography}):
- *  the collapsed-punctuation rules (`\.{2,}` → `…`, `([?!]){4,}` → 3 copies,
- *  `,{2,}` → `,`) are one-to-many forward transforms — the *count* of the
- *  original run is unrecoverable from the rendered glyph, so reversing them
- *  would be a guess. Em/en dash and the scoped abbreviations, by contrast,
- *  are exactly one-to-one and safe to reverse deterministically. */
+/** Reverse map of the typography Gutterpress's own `gp_typography` rule
+ *  (`packages/cli/src/lib/markdown/typography.ts`) makes from plain typing,
+ *  keyed one raw Unicode character at a time. Every one is exactly
+ *  one-to-one, so reversing it is deterministic. Quotation marks are not
+ *  here: see {@link QUOTES}. */
 const TYPOGRAPHER_REVERSE: ReadonlyArray<readonly [string, string]> = [
-  ["©", "(c)"], // ©
-  ["™", "(tm)"], // ™
-  ["®", "(r)"], // ®
-  ["±", "+-"], // ±
   ["—", "---"], // — em dash
   ["–", "--"], // – en dash
-  ["“", '"'], // “
-  ["”", '"'], // ”
-  ["‘", "'"], // ‘
-  ["’", "'"], // ’ (also the mid-word apostrophe substitution)
+  ["…", "..."], // … ellipsis
 ];
+
+/** Every quotation mark the renderer can print — any language's outer or
+ *  inner pair (markdown-it's `smartquotes`, with the `quotes` the book's
+ *  `language` selects) — and the two straight quotes an author types. All
+ *  of them fold to ONE character on both sides of the search, because which
+ *  straight quote a printed one came from depends on the language (« is a
+ *  typed `"` in French and a typed `'` in Polish) and the search must not
+ *  need to know. French prints a no-break space just inside its guillemets
+ *  (`«\u00a0mot\u00a0»`); that space is dropped with the mark. A no-break
+ *  space anywhere else passes through unchanged. The set must hold every
+ *  mark of core's `QUOTES` (`typography.ts`);
+ *  `tests/editor/selection-search.test.ts` checks it does. */
+const QUOTES: ReadonlySet<string> = new Set(['"', "'", "“", "”", "„", "‘", "’", "‚", "«", "»", "‹", "›"]);
+const QUOTE = '"';
+const NBSP = "\u00a0";
 
 const TYPOGRAPHER_LOOKUP = new Map(TYPOGRAPHER_REVERSE);
 
@@ -108,6 +103,18 @@ export function normalizeForSearch(
 
   while (i < n) {
     const ch = raw[i]!;
+
+    if (QUOTES.has(ch)) {
+      normalized += QUOTE;
+      indexMap.push(i);
+      i += 1;
+      if (raw[i] === NBSP) i += 1;
+      continue;
+    }
+    if (ch === NBSP && QUOTES.has(raw[i + 1] ?? "")) {
+      i += 1;
+      continue;
+    }
 
     const typo = TYPOGRAPHER_LOOKUP.get(ch);
     if (typo !== undefined) {
@@ -179,26 +186,6 @@ export function findUniqueRange(
   const rawTo = indexMap[end];
   if (rawFrom === undefined || rawTo === undefined) return null;
   return [rawFrom, rawTo];
-}
-
-/**
- * True when `text` (the RENDERED selection text, before normalization)
- * contains a collapsed-punctuation artifact that cannot be safely reversed:
- * the forward transforms (`\.{2,}` → `…`, downgraded to literal `..` after
- * `?`/`!`; `([?!]){4,}` → 3 copies of one char; `,{2,}` → a single `,`) are
- * one-to-many, so the original run length is unrecoverable from the
- * rendered glyph alone. Any occurrence in the needle marks the whole search
- * ambiguous (plan §4.6) — callers must check this BEFORE searching, not
- * guess an expansion.
- */
-export function hasAmbiguousTypography(text: string): boolean {
-  return (
-    /…/.test(text) || // … ellipsis (2+ dots elsewhere in the run)
-    /[?!]\.\./.test(text) || // ellipsis downgraded to ".." after ? or !
-    /!!!/.test(text) || // 4+ "!" collapsed to exactly 3
-    /\?\?\?/.test(text) || // 4+ "?" collapsed to exactly 3
-    /,/.test(text) // 2+ "," collapsed to a single ","
-  );
 }
 
 /**
@@ -332,9 +319,7 @@ export interface SelectionMatch {
  * markdown source), applying whitespace collapse, typographer reversal, and
  * delimiter stripping on the source side (plan §4.6). Returns `null` when
  * the match is ambiguous for any reason: empty/whitespace-only selection,
- * an unreversible collapsed-punctuation artifact in the rendered text
- * ({@link hasAmbiguousTypography}), or zero/multiple matches
- * ({@link findUniqueRange}).
+ * or zero/multiple matches ({@link findUniqueRange}).
  *
  * Does NOT apply the backtick/link-syntax or same-delimiter guardrails —
  * those depend on which formatting action is being offered and are the
@@ -346,7 +331,6 @@ export function locateSelectionInSource(
   selectionText: string,
 ): SelectionMatch | null {
   if (!selectionText.trim()) return null;
-  if (hasAmbiguousTypography(selectionText)) return null;
 
   const haystack = normalizeForSearch(blockSlice, { stripDelimiters: true });
   const needle = normalizeForSearch(selectionText, { stripDelimiters: false }).normalized;

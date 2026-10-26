@@ -224,6 +224,13 @@ authors:
   - "John Doe"
 ```
 
+#### `language` (string)
+The book's language as a BCP 47 tag (`en`, `de`, `de-CH`, `pt-BR`). It is the `lang` of the built HTML, which hyphenation follows, and sets the quotation marks straight quotes print as. Defaults to `"en"`. See the user guide's [Getting Started](../examples/gutterpress-user-guide/01-getting-started.md#reference-manifest-configuration) chapter.
+
+```yaml
+language: de
+```
+
 #### `preset` (string)
 Vendor preset supplying the defaults for every other section — page geometry, ink limits, PDF/X settings, validation checks. One of `dtrpg`, `book`, or `custom` (you supply `page.width` and `page.height` yourself). Omitting it defaults to `dtrpg` and logs a warning, so set it explicitly.
 
@@ -251,7 +258,7 @@ styles:
 #### `extensions` (array)
 Extensions, in load order: markdown-it plugins, looks (stylesheets), component libraries — anything from npm or a folder. Each entry is a specifier string, and its form says what it is:
 
-- a **bundled feature name** — `markdown-it-mark`, `markdown-it-sub`, `markdown-it-sup`, `markdown-it-abbr`, `gutterpress-gfm-alerts` — resolves to the copy compiled into Gutterpress (nothing to install, works offline; a bundled name shadows npm and cannot be pinned);
+- a **bundled feature name** — `markdown-it-mark`, `markdown-it-sub`, `markdown-it-sup`, `markdown-it-abbr`, `gutterpress-gfm-alerts`, `gutterpress-math` — resolves to the copy compiled into Gutterpress (nothing to install, works offline; a bundled name shadows npm and cannot be pinned);
 - a **path** starting with `./` or `../` (or `/`, or a Windows drive letter), relative to this file — a folder holding a `package.json`, or a bare `.js` markdown-it plugin file — referenced in place, never copied;
 - anything else is an **npm package name**, optionally pinned as `name@version`. `gutterpress ext add <name>` installs it: it vendors the runtime dependency tree under `plugins/npm/` and writes the exact pin back; builds resolve pinned entries there without network access. The downloaded copy is gitignored, so a fresh clone has only the pin: `build`, `validate`, `preview` and the desktop's book-open download a missing pinned version first.
 

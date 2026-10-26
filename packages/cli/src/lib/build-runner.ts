@@ -221,7 +221,7 @@ export interface BuildContext {
    * The build's ONE plugin load (#262). `null` until {@link loadBuildPlugins}
    * runs; every stage that needs plugins (the preValidate gate in
    * {@link runQualityGates}, and {@link renderBook}) calls that function and
-   * gets the SAME resolved `{ plugins, pluginCss, pluginStylePaths }` back,
+   * gets the SAME resolved `{ plugins, pluginStyles, pluginStylePaths }` back,
    * whichever of them runs first.
    *
    * One load means one answer: the validation gate checks exactly the plugin
@@ -383,7 +383,7 @@ export async function loadBuildPlugins(ctx: BuildContext): Promise<LoadedPlugins
  * {@link loadBuildPlugins} and the resulting `pluginStylePaths` are handed to
  * `executeAndReport` (validation-exec.ts) so it does not load plugins itself
  * (#262) — `renderBook` then reuses the same memoized result for its own
- * render-time needs (`plugins`/`pluginCss`). Skipped entirely when the gate
+ * render-time needs (`plugins`/`pluginStyles`). Skipped entirely when the gate
  * is off (e.g. `--format html` or `--skip-pre-validate`): in that case
  * nothing here needs plugins, and `renderBook` remains the sole, first
  * loader — this function changes NOTHING about that case.
@@ -461,6 +461,7 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
 
   const htmlFile = await renderChaptersToFile(renderDir, workDir, {
     title: config.title,
+    language: config.language,
     print: config.print,
     printArea: { ...config.page, preset: config.preset, spec: config.spec },
     styles: config.styles,

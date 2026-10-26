@@ -127,7 +127,7 @@ These tints back specific callout types. They should remain clearly distinct fro
 
 **Use `--color-accent` for one dominant hierarchy signal per spread.** If headings, callout borders, and links all pull the eye with the same hue, the color works as navigation. Introducing a second accent on the same page dilutes both.
 
-**`--color-accent-alt` is for emphasis that competes with or warns against the main flow** — warning callouts, blockquote borders, the cover rule stripe, and CTA buttons. Use it sparingly; its value is contrast with `--color-accent`.
+**`--color-accent-alt` is for emphasis that competes with or warns against the main flow** --- warning callouts, blockquote borders, the cover rule stripe, and CTA buttons. Use it sparingly; its value is contrast with `--color-accent`.
 
 **Extend the palette only when the manuscript needs it.** Extra colors accumulate faster than they're removed, and a tight palette is most of what makes a book feel *designed*.
 
@@ -135,11 +135,11 @@ These tints back specific callout types. They should remain clearly distinct fro
 
 If the book is heading to offset print:
 
-- Define each color in CMYK alongside hex — the conversion is not one-to-one for saturated colors.
+- Define each color in CMYK alongside hex --- the conversion is not one-to-one for saturated colors.
 - Avoid pure RGB black (`#000`) for body text. A near-black with a slight cool or warm cast reproduces more richly on coated stock.
 - Test thin strokes (rules, callout borders) at press resolution. A 0.5pt rule can disappear at 300 dpi on uncoated paper.
 - Check `--color-tint` tints have ≥ 5% distinguishable difference from `--color-paper` on the intended paper stock.
-- Saturated accent colors (`--color-accent` #1b4f8a, `--color-accent-alt` #c0532a) should be converted to CMYK equivalents before offset print — RGB-to-CMYK conversion is not one-to-one for deep blues and warm oranges.
+- Saturated accent colors (`--color-accent` #1b4f8a, `--color-accent-alt` #c0532a) should be converted to CMYK equivalents before offset print --- RGB-to-CMYK conversion is not one-to-one for deep blues and warm oranges.
 - Request a physical proof before the full print run. Colors that look correct on screen and in the PDF preview can shift significantly on uncoated or cream-tinted paper stock.
 - On cream stock (approximately #f5f0e8), re-test `--color-tint` (#f0f4fa) to confirm it remains distinguishable from the background; the contrast may fall below the 5% threshold.
-- Verify `--color-ink` (#1a1a2e) total ink coverage does not exceed your print provider's TAC limit — near-black with full-color channels can exceed 280% on some offset workflows.
+- Verify `--color-ink` (#1a1a2e) total ink coverage does not exceed your print provider's TAC limit --- near-black with full-color channels can exceed 280% on some offset workflows.

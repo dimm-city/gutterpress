@@ -159,7 +159,7 @@ gutterpress new <name> [--kind <id>] [options]
   --author <name>          Author name to record in the project
   --dir <path>             Parent directory to create the project in (default: current directory)
   --folder <name>          Folder name to create (default: a slug of the project name)
-  --template <id>          Starter template: book, zine, technical (default: book)
+  --template <id>          Starter template: book, zine, technical, paper (default: book)
   --targets <ids>          Publish targets recorded in the manifest (comma-separated: dtrpg, itch; or "none") — default: the preset's
   --page-width <pt>        Trim width in points, 72pt = 1in (required with --preset custom; optional override otherwise)
   --page-height <pt>       Trim height in points, 72pt = 1in (required with --preset custom; optional override otherwise)
@@ -396,8 +396,8 @@ Add an extension. What `SOURCE` is decides what happens:
   as `name@<exact version>`. This does not invoke npm, Bun, Node.js tooling,
   or package install scripts;
 - a **bundled feature** (`markdown-it-mark`, `markdown-it-sub`,
-  `markdown-it-sup`, `markdown-it-abbr`, `gutterpress-gfm-alerts`) is simply
-  listed — nothing to install, works offline;
+  `markdown-it-sup`, `markdown-it-abbr`, `gutterpress-gfm-alerts`,
+  `gutterpress-math`) is simply listed — nothing to install, works offline;
 - a **folder or plugin-file path** is load-tested and listed as a
   manifest-relative path, referenced in place — never copied;
 - a **`.zip` or `.css` file**, or an **http(s) URL**, is validated (every
@@ -438,7 +438,7 @@ folders it created and nothing else.
 gutterpress ext add <source> [dir] [options]
 
   --export <name>    Named module export to use as the plugin function (npm and path extensions only)
-  --look             Treat SOURCE as a built-in look id (clean-book, zine, technical-doc): copy it into extensions/ and add it
+  --look             Treat SOURCE as a built-in look id (clean-book, zine, technical-doc, academic): copy it into extensions/ and add it
 ```
 
 ```sh
@@ -599,7 +599,7 @@ The binary is self-contained except for the system tools described in [User Guid
 
 - **`Ghostscript executable not found`** — Ghostscript is required only for PDF/X and ink-coverage checks. Standard Windows installs are auto-detected; for a non-standard install, set `GHOSTSCRIPT_PATH` to the full path of `gs`, `gswin64c.exe`, or `gswin32c.exe`. See [User Guide: Chapter 7 — System Setup](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/07-system-setup.md).
 - **`No Chrome or Chromium binary found`** — install a Chromium-based browser or set `CHROMIUM_PATH=/path/to/chrome`. The desktop app includes its own browser and needs no separate browser install.
-- **`Tool "X" not found — skipping`** during validate — that's the graceful path; the check requires `X` and isn't available. Install the tool or accept the skip.
+- **`Tool "X" not found; skipping`** during validate — that's the graceful path; the check requires `X` and isn't available. Install the tool or accept the skip.
 - **All validate checks skipped on Windows** — was a bug pre-0.1.7 (used `which`, which isn't on stock Windows); fixed to use `where.exe`.
 
 ## Links

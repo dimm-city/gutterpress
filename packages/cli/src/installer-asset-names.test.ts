@@ -21,11 +21,12 @@ import { join } from "node:path";
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..");
 const read = (rel: string) => readFileSync(join(REPO_ROOT, rel), "utf8");
 
-/** CLI binary asset names uploaded by the release workflow's build-cli matrix. */
+/** CLI binary asset names the release workflow's build-cli job compiles. */
 function releaseCliArtifacts(): string[] {
   const yml = read(".github/workflows/release.yml");
-  // Match the `artifact: gutterpress-cli-...` lines under the build-cli matrix.
-  return [...yml.matchAll(/^\s*artifact:\s*(gutterpress-cli-\S+)\s*$/gm)].map(
+  // One `bun-<target>:gutterpress-cli-<os>-<arch>` spec per binary, in the
+  // job's compile loop.
+  return [...yml.matchAll(/^\s*bun-[a-z0-9-]+:(gutterpress-cli-[\w.-]+)/gm)].map(
     (m) => m[1]!
   );
 }

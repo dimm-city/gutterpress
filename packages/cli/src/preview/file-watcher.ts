@@ -67,6 +67,7 @@ async function renderPreviewBook(
   inputPath: string,
   config: {
     title?: string;
+    language?: string;
     styles?: string[];
     extensions?: ResolvedExtensionConfig[];
     print?: PrintPadding;
@@ -97,6 +98,7 @@ async function renderPreviewBook(
   );
   return renderChapters(inputPath, {
     title: config.title ?? "Document",
+    language: config.language,
     print: config.print,
     printArea: config.printArea,
     styles: config.styles,
@@ -162,6 +164,7 @@ export async function generateAndWriteHtml(
   tempDir: string,
   config: {
     title?: string;
+    language?: string;
     styles?: string[];
     source?: { files?: string[] | null };
     extensions?: ResolvedExtensionConfig[];

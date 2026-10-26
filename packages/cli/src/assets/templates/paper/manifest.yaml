@@ -1,0 +1,17 @@
+title: "{{TITLE}}"
+authors:
+  - "{{AUTHOR}}"
+language: en
+source:
+  files:
+    - chapter-01.md
+styles:
+  - styles/book.css
+# A paper prints on US Letter; for A4 set width 595 and height 842.
+page:
+  width: 612
+  height: 792
+extensions:
+  - markdown-it-sup
+  - gutterpress-math
+preset: book

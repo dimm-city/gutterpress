@@ -1,0 +1,26 @@
+title: "When Does Romberg Integration Help?"
+authors:
+  - "Ada Quill"
+  - "Rowan Tate"
+language: en
+
+# A neutral preset with the trim set below: US Letter, 8.5 × 11 in.
+# For A4, set width 595 and height 842.
+preset: book
+page:
+  width: 612
+  height: 792
+
+source:
+  files:
+    - paper.md
+    - references.md
+
+extensions:
+  # Superscripts for author and affiliation marks: Quill^1^.
+  - markdown-it-sup
+  # LaTeX math, $…$ and $$…$$, typeset by MathJax. Bundled: nothing to install.
+  - gutterpress-math
+  # The built-in academic look, copied here by `gutterpress ext add academic --look`
+  # so it is this paper's own, editable file.
+  - ./extensions/academic

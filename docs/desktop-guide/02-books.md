@@ -16,7 +16,8 @@ Creating books is for authors: if you don't see it, [switch to Author](01-instal
 2. **Name & author:** type the book's name under "What's your book called?" and, if you like,
    your name.
 3. **Template:** pick a starting point — **Book** (a novel, memoir or any long-form book),
-   **Zine**, or **Technical document** — or one of your own saved templates.
+   **Zine**, **Technical document**, or **Academic paper** (a journal-style article with LaTeX
+   math) — or one of your own saved templates.
 4. **Print & save:**
    - Under **What are you designing it for?** choose **DriveThruRPG print**, **Trade book**
      (a neutral 6×9in book), or **Custom size** and then a page size (US Letter, Trade paperback,

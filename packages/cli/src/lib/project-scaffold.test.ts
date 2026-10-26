@@ -650,3 +650,27 @@ test("adoptFolder appends dist/ to an existing .gitignore without overwriting it
   expect(gitignore).toContain("dist/");
   await rm(dir, { recursive: true, force: true });
 });
+
+test("scaffoldProject adds the built-in look a template names (paper → academic)", async () => {
+  const parent = await tmpParent();
+  try {
+    const result = await scaffoldProject({
+      name: "A Paper",
+      parentDir: parent,
+      template: "paper",
+      preset: "book",
+      versionHistory: "none",
+    });
+    expect(existsSync(path.join(result.projectDir, EXTENSIONS_DIR, "academic", "theme.css"))).toBe(true);
+    const entries = await listProjectExtensions(result.projectDir);
+    expect(entries.map((e) => e.use)).toEqual(["markdown-it-sup", "gutterpress-math", "./extensions/academic"]);
+    expect(entries.every((e) => e.enabled)).toBe(true);
+    // Added through the comment-preserving manifest writer.
+    expect(await readFile(result.manifestPath, "utf8")).toContain("# A paper prints on US Letter");
+    const config = resolveConfig({}, await loadManifest(result.projectDir));
+    expect(config.language).toBe("en");
+    expect([config.page.width, config.page.height]).toEqual([612, 792]);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});

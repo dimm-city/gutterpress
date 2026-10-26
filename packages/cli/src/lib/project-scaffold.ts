@@ -35,6 +35,8 @@ import { PRESET_IDS, PRESETS, type PresetId } from "./presets.ts";
 import { isPositivePoints, writePageBounds, type CustomPageOptions } from "./page-size.ts";
 import { TARGETS, TARGET_IDS } from "./targets.ts";
 import { ensureProjectGitignore } from "./project-gitignore.ts";
+import { addBuiltInStyleSet } from "./extension-manager.ts";
+import { BUILT_IN_META } from "./project-templates.ts";
 import { slugify } from "./slug.ts";
 
 /**
@@ -43,14 +45,15 @@ import { slugify } from "./slug.ts";
  * into the binary via `embedded-assets.ts`. `"book"` is the default; the others
  * give non-technical authors a head start for common formats (#29).
  */
-export type ProjectTemplateId = "book" | "zine" | "technical";
+export type ProjectTemplateId = "book" | "zine" | "technical" | "paper";
 
 function starterOverridesCss(): string {
   return `/**
  * Your book's own styles.
  *
  * This file loads AFTER every extension, so any rule you add here overrides
- * a look's defaults. A new book has no look until you add one:
+ * a look's defaults. A new book has no look until you add one (the paper
+ * template adds the academic look for you):
  *   gutterpress ext add clean-book <book> --look   (a built-in look)
  *   gutterpress ext add <package> <book>           (a look from npm)
  * A book has one look at a time; adding another turns the current one off.
@@ -366,8 +369,10 @@ export async function scaffoldProject(
       await mkdir(path.join(projectDir, "assets"), { recursive: true });
       await copyFile(tplManifest, path.join(projectDir, MANIFEST_FILENAMES[0]));
       await copyFile(tplChapter, path.join(projectDir, "chapter-01.md"));
-      // styles/book.css is the project's OWN stylesheet. No look is applied:
-      // the author adds one (`gutterpress ext add … --look`, or from npm).
+      // styles/book.css is the project's OWN stylesheet. A look is separate:
+      // a template that names one in BUILT_IN_META gets it added below, as
+      // `gutterpress ext add … --look` adds one; otherwise the author does
+      // (that command, or a look from npm).
       await mkdir(path.join(projectDir, "styles"), { recursive: true });
       await writeFile(path.join(projectDir, "styles", "book.css"), starterOverridesCss(), "utf8");
     }
@@ -407,6 +412,8 @@ export async function scaffoldProject(
   let openFile = path.join(projectDir, "chapter-01.md");
   try {
     await fillTemplateFile(manifestPath, substitutions);
+    const look = customTemplateDir ? undefined : BUILT_IN_META[template].look;
+    if (look) await addBuiltInStyleSet(projectDir, look);
     if (preset) {
       // Overwrite the template's placeholder `preset:` with the author's
       // choice (and their trim, for `custom` or an explicit override) via the

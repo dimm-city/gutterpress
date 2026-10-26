@@ -55,6 +55,8 @@ import tplZineManifest from "../assets/templates/zine/manifest.yaml" with { type
 import tplZineChapter01 from "../assets/templates/zine/chapter-01.md" with { type: "file" };
 import tplTechnicalManifest from "../assets/templates/technical/manifest.yaml" with { type: "file" };
 import tplTechnicalChapter01 from "../assets/templates/technical/chapter-01.md" with { type: "file" };
+import tplPaperManifest from "../assets/templates/paper/manifest.yaml" with { type: "file" };
+import tplPaperChapter01 from "../assets/templates/paper/chapter-01.md" with { type: "file" };
 
 // Extension starter packages (#233 / #245) — `gutterpress new --kind plugin`
 // and `--kind theme`. Baked in the same way the book templates above are, so
@@ -96,6 +98,8 @@ import themeZineCss from "../assets/themes/zine/theme.css" with { type: "file" }
 import themeZineJson from "../assets/themes/zine/package.json" with { type: "file" };
 import themeTechnicalCss from "../assets/themes/technical-doc/theme.css" with { type: "file" };
 import themeTechnicalJson from "../assets/themes/technical-doc/package.json" with { type: "file" };
+import themeAcademicCss from "../assets/themes/academic/theme.css" with { type: "file" };
+import themeAcademicJson from "../assets/themes/academic/package.json" with { type: "file" };
 
 // Resolve paths relative to this module's location so that relative string
 // paths produced by bun build --target node work regardless of CWD.
@@ -121,6 +125,8 @@ const EMBEDDED_ASSETS: Record<string, string> = {
   "templates/zine/chapter-01.md":           abs(filePath(tplZineChapter01)),
   "templates/technical/manifest.yaml":      abs(filePath(tplTechnicalManifest)),
   "templates/technical/chapter-01.md":      abs(filePath(tplTechnicalChapter01)),
+  "templates/paper/manifest.yaml":          abs(filePath(tplPaperManifest)),
+  "templates/paper/chapter-01.md":          abs(filePath(tplPaperChapter01)),
   "extension-templates/plugin/package.json":            abs(filePath(tplPluginPackageJson)),
   "extension-templates/plugin/README.md":               abs(filePath(tplPluginReadme)),
   "extension-templates/plugin/plugin.js.tpl":           abs(filePath(tplPluginModule)),
@@ -145,6 +151,8 @@ const EMBEDDED_ASSETS: Record<string, string> = {
   "themes/zine/package.json":               abs(filePath(themeZineJson)),
   "themes/technical-doc/theme.css":         abs(filePath(themeTechnicalCss)),
   "themes/technical-doc/package.json":      abs(filePath(themeTechnicalJson)),
+  "themes/academic/theme.css":              abs(filePath(themeAcademicCss)),
+  "themes/academic/package.json":           abs(filePath(themeAcademicJson)),
 };
 
 let extractPromise: Promise<string> | null = null;

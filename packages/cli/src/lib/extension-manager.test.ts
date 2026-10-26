@@ -271,7 +271,7 @@ describe("extension-manager", () => {
   });
 
   describe("built-in looks", () => {
-    test("listBuiltInStyleSets names the three looks", async () => {
+    test("listBuiltInStyleSets names the built-in looks", async () => {
       const sets = await listBuiltInStyleSets();
       expect(sets.map((s) => s.id)).toEqual([...BUILT_IN_STYLE_SET_IDS]);
       for (const s of sets) expect(s.name.length).toBeGreaterThan(0);

@@ -2,7 +2,7 @@
 
 # Design Guide
 
-<div class="lede">This is the visual reference for <em>Your Book Title</em>. It documents the typography, color palette, components, and page templates — a single source of truth for authors, editors, and designers.</div>
+<div class="lede">This is the visual reference for <em>Your Book Title</em>. It documents the typography, color palette, components, and page templates &mdash; a single source of truth for authors, editors, and designers.</div>
 
 This guide renders with the same stylesheet and page geometry as the book itself. Every specimen you see here is exactly what the book ships.
 
@@ -28,7 +28,7 @@ cp -r examples/with-design-guide/design-guide  my-project/design-guide
 
 ### 2. Edit the brand tokens
 
-Open `styles/guide.css` and update **§ 1 BRAND TOKENS** at the top. Every rule inherits from these variables — a full rebrand is a single section edit.
+Open `styles/guide.css` and update **§ 1 BRAND TOKENS** at the top. Every rule inherits from these variables --- a full rebrand is a single section edit.
 
 ```css
 :root {
@@ -64,9 +64,9 @@ gutterpress build design-guide --format pdf --out ./_site/guide.pdf
 
 ```
 design-guide/
-├── manifest.yaml         ← file list, page geometry, stylesheet
-├── styles/guide.css      ← single stylesheet shared by book + guide
-├── 00-overview.md        ← this file
+├── manifest.yaml         <- file list, page geometry, stylesheet
+├── styles/guide.css      <- single stylesheet shared by book + guide
+├── 00-overview.md        <- this file
 ├── 01-typography.md
 ├── 02-palette.md
 ├── 03-components.md
@@ -85,7 +85,7 @@ PDF build and deployment steps.
 
 ## Keeping the guide in sync
 
-The design guide shares a single stylesheet with the book. When you update `§ 1 BRAND TOKENS` in `styles/guide.css`, both the guide and the book PDF update on the next build — there is no separate stylesheet to maintain.
+The design guide shares a single stylesheet with the book. When you update `§ 1 BRAND TOKENS` in `styles/guide.css`, both the guide and the book PDF update on the next build --- there is no separate stylesheet to maintain.
 
 Recommended workflow:
 

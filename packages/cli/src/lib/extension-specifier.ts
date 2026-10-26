@@ -3,7 +3,7 @@
  * manifest's `extensions:` list. Its FORM says what it is; there is no
  * `path:`/`name:` wrapper anywhere:
  *
- *   1. a BUNDLED name — one of the five markdown features compiled into
+ *   1. a BUNDLED name — one of the six markdown features compiled into
  *      Gutterpress — resolves to the bundled copy and never touches the
  *      network. Bundled names shadow npm;
  *   2. `./x`, `../x`, `/x` (or a Windows drive path) is a PATH, resolved
@@ -28,6 +28,7 @@ export const BUNDLED_EXTENSIONS = [
   "markdown-it-sup",
   "markdown-it-abbr",
   "gutterpress-gfm-alerts",
+  "gutterpress-math",
 ] as const;
 
 export type BundledExtensionName = (typeof BUNDLED_EXTENSIONS)[number];
@@ -67,7 +68,7 @@ export function parseExtensionSpecifier(use: string): ParsedExtensionSpecifier {
   // author almost certainly meant before the npm parser complains.
   if (/\.(m?js|cjs)$/i.test(spec) || (!spec.startsWith("@") && spec.includes("/"))) {
     throw new Error(
-      `"${spec}" looks like a path — write it as "./${spec}". A specifier that does not ` +
+      `"${spec}" looks like a path; write it as "./${spec}". A specifier that does not ` +
         "start with ./, ../ or / is an npm package name.",
     );
   }

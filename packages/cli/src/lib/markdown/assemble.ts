@@ -2,8 +2,8 @@
  * Pure (node-free) book-HTML assembly.
  *
  * §1/§8: imports ONLY the pure render core (`renderer.ts`,
- * Gutterpress's marker parser (`markers.js`), and `chapter-id.ts`) — NO
- * `node:*`, NO `fs`/`path`. The
+ * Gutterpress's marker parser (`markers.js`), `chapter-id.ts` and the string
+ * helper `slug.ts`) — NO `node:*`, NO `fs`/`path`. The
  * caller injects an async `readText(relPath)` so the SAME assembly runs:
  *   - on the CLI / preview server with a `node:fs/promises`-backed reader
  *     (see `renderChapters` in `./index.ts`); and
@@ -27,6 +27,7 @@ import { GUTTERPRESS_CSS } from "./gutterpress-css.ts";
 import { TWO_VERSIONS_CSS } from "./two-versions.ts";
 import { TABLE_ALIGN_CSS } from "./table-align";
 import { canonicalChapterId } from "./chapter-id";
+import { slugify } from "../slug";
 import { createMarkdownRenderer, type LoadedPlugin } from "./renderer";
 import { collectHtmlImageRefs, type ImageRefEnv } from "./images";
 import { lastPageMode, type PrintPadding } from "../../engine/shared/synthesis.ts";
@@ -42,7 +43,7 @@ import { extract, resolvePage } from "../../engine/shared/gcpm-extract.ts";
 export type ReadText = (relPath: string) => Promise<string>;
 
 /**
- * One author-mistake warning emitted by Gutterpress's marker parser.
+ * One author-mistake warning, most emitted by Gutterpress's marker parser.
  * Mirrors the shape `markers.js`'s `warn()` pushes onto
  * `env.layoutWarnings` — see that file's header comment for the warning
  * `type`s (`ambiguous_marker_token`, `unrecognized_marker_token`,
@@ -74,6 +75,10 @@ export type ReadText = (relPath: string) => Promise<string>;
  * for an `@page` / `@section` word that is a near-miss of a declared page /
  * section variant (any other word there is a free name and stays silent).
  *
+ * Two come from outside the marker parser: `table_extra_cells` (a table
+ * row with more cells than the header, `table.ts`) and `math_error` (a
+ * formula MathJax could not typeset, `math.ts`).
+ *
  * There is deliberately no `section_without_page`: a @section with no open
  * @page is valid authoring (17/17 false positives across two real books).
  */
@@ -100,6 +105,8 @@ export const PAGE_BACKGROUND_FIXED_MILESTONE = 152;
 export interface AssembleBookHtmlOptions {
   /** Ordered list of project-root-relative `.md` files to concatenate. */
   files: string[];
+  /** The book's BCP 47 language tag (manifest `language`); `en` when absent. */
+  language?: string;
   /** Async reader the assembler uses to fetch each file's contents. */
   readText: ReadText;
   /**
@@ -245,13 +252,14 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   const title = opts.title ?? "Document";
   const projectCss = opts.projectCss ?? "";
   const pluginCss = opts.pluginCss ?? "";
+  const language = opts.language ?? "en";
   const files = opts.files;
 
   if (files.length === 0) {
     throw new Error("No markdown files to render");
   }
 
-  const md = createMarkdownRenderer(opts.plugins);
+  const md = createMarkdownRenderer(opts.plugins, { language });
 
   // Build source files concatenate directly into the body. Incremental preview
   // adds one file-level wrapper so each source can be page-isolated. @chapter is
@@ -278,7 +286,18 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
     // internal env and discard it the instant this call returned. Passing our
     // own env is what makes the marker parser's author-mistake diagnostics
     // observable to a caller.
-    const env: { layoutWarnings?: LayoutWarning[]; sourceChapter?: string } & ImageRefEnv = {};
+    const env: ImageRefEnv & {
+      layoutWarnings?: LayoutWarning[];
+      sourceChapter?: string;
+      /**
+       * markdown-it-footnote numbers each render from 1 and names its ids
+       * after the number (`fn1`, `fnref1`), so two files with notes would
+       * share every id and a backlink could land in the other file. With a
+       * `docId` it prefixes them (`fn-<docId>-1`); the chapter id, slugified
+       * so it is legal in an HTML id and a URL fragment, keeps them apart.
+       */
+      docId: string;
+    } = { docId: slugify(chapterId) };
     if (opts.annotateSourceChapters) env.sourceChapter = chapterId;
     // Always use the public render path: standard markdown-it plugins may
     // legitimately wrap md.render(), and preview/build must both observe it.
@@ -349,7 +368,7 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
     (lastPage ? ` data-gp-last-page="${lastPage}"` : "");
 
   return `<!DOCTYPE html>
-<html lang="en"${printAttrs}>
+<html lang="${language}"${printAttrs}>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">${opts.printArea ? `\n  ${printAreaMeta(opts.printArea)}` : ""}

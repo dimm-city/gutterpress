@@ -5,6 +5,12 @@ authors:
 styles:
   - styles/main.css
 
+# Only the book itself; this folder's README.md is documentation, not a page.
+source:
+  files:
+    - chapter-01.md
+    - chapter-02.md
+
 # How the book is designed: the DriveThruRPG print-on-demand preset.
 preset: dtrpg
 

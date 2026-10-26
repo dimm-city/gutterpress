@@ -2,22 +2,23 @@
 
 @section .lede
 
-Gutterpress uses plain CSS for all styling. Control colors, fonts, and layout through CSS custom properties. A book's **look** is an extension — a folder of stylesheets listed in the manifest — and your own stylesheets always load on top of it.
+Gutterpress uses plain CSS for all styling. Control colors, fonts, and layout through CSS custom properties. A book's **look** is an extension --- a folder of stylesheets listed in the manifest --- and your own stylesheets always load on top of it.
 
 @end-section
 
 ## Built-in Looks
 
-Gutterpress ships three built-in looks, embedded in the CLI binary and library:
+Gutterpress ships four built-in looks, embedded in the CLI binary and library:
 
 | Look id | Description |
 |----------|-------------|
 | `clean-book` | A calm, classic book look: serif body, generous margins, restrained accents. |
 | `zine` | High-contrast, punchy sans-serif look for short photocopier-friendly zines. |
 | `technical-doc` | Clean sans-serif manual look with clear hierarchy, code styling, and tidy tables. |
+| `academic` | A journal-article look: serif text, justified and hyphenated, ruled tables, notes and references set smaller. The `paper` starter template uses it. |
 
 A look (a *theme*, in older docs and in `gutterpress new --kind theme`) is an
-**extension**: a folder holding a stylesheet — `theme.css` — plus a small
+**extension**: a folder holding a stylesheet --- `theme.css` --- plus a small
 metadata file, listed in the manifest's `extensions:` list alongside any
 plugins ([Chapter 5](#ch-plugins) covers that list in full).
 
@@ -45,7 +46,7 @@ styles:
 project's own layer: everything under `styles:` loads after every extension,
 so a rule you write there overrides the look at equal specificity. Edit
 `extensions/clean-book/theme.css` directly when you want to change the look
-itself — it is your copy.
+itself --- it is your copy.
 
 ### Adding and switching looks
 
@@ -53,10 +54,10 @@ Any of these adds a look to the list:
 
 ```sh
 gutterpress ext add zine ./my-book --look                     # another built-in (copied to extensions/zine/)
-gutterpress ext add ./house-style ./my-book                   # a folder you already have — referenced in place, never copied
-gutterpress ext add ./parchment.zip ./my-book                 # a packaged look → extensions/parchment/
-gutterpress ext add ./parchment.css ./my-book                 # a single stylesheet → extensions/parchment/
-gutterpress ext add https://example.com/looks/cool/ ./my-book # theme.css (+ optional package.json) fetched → extensions/cool/
+gutterpress ext add ./house-style ./my-book                   # a folder you already have -- referenced in place, never copied
+gutterpress ext add ./parchment.zip ./my-book                 # a packaged look -> extensions/parchment/
+gutterpress ext add ./parchment.css ./my-book                 # a single stylesheet -> extensions/parchment/
+gutterpress ext add https://example.com/looks/cool/ ./my-book # theme.css (+ optional package.json) fetched -> extensions/cool/
 ```
 
 Zip, CSS and URL imports are checked before they land: every declared sheet
@@ -64,7 +65,7 @@ must exist and parse, and print-safety findings (a remote `url()`, say) are
 reported as warnings. A look with fonts or images of its own travels as a
 folder or a `.zip`; a URL import fetches only the stylesheet and metadata.
 
-Two looks listed at once both load, and the later one wins ties — so
+Two looks listed at once both load, and the later one wins ties --- so
 switching is adding the new look, then disabling or removing the old one:
 
 ```sh
@@ -73,20 +74,20 @@ gutterpress ext disable ./extensions/clean-book ./my-book   # keep it around, st
 gutterpress ext remove ./extensions/clean-book ./my-book    # or drop the entry (the folder stays yours)
 ```
 
-The desktop app's **Project settings → Look** view is the same list: add a
+The desktop app's **Project settings &rarr; Look** view is the same list: add a
 look, drag entries into a new order, switch one off, or remove it. There is no
-separate apply or revert step — a look is just an entry, and the snapshot
+separate apply or revert step --- a look is just an entry, and the snapshot
 history versions the manifest change like any other edit.
 
 Bundled looks define the full token set (see below) so you only need to
 override the tokens you want to change. This guide's own project (the one
-you're reading) does not use a bundled look — it declares its own
+you're reading) does not use a bundled look --- it declares its own
 `styles/guide.css` directly under `styles:` in `manifest.yaml`.
 
 ## CSS Custom Properties
 
 Every built-in look is driven by CSS custom properties. Override any of them
-in your own stylesheet and the look follows — no need to restyle elements.
+in your own stylesheet and the look follows --- no need to restyle elements.
 
 These are the tokens **every** built-in look defines, so overriding them works
 whichever look you started from:
@@ -106,7 +107,7 @@ whichever look you started from:
   --font-mono:    "Menlo", monospace;
 
   /* Size */
-  --fs-body: 11pt;      /* body copy — everything else scales from here */
+  --fs-body: 11pt;      /* body copy -- everything else scales from here */
   --fs-h1:   2.1rem;
   --fs-h2:   1.5rem;
   --fs-h3:   1.2rem;
@@ -115,7 +116,7 @@ whichever look you started from:
 ```
 
 The values above are `clean-book`'s; each look ships its own. A look may add
-tokens of its own beyond this set — `technical-doc`, for example, adds
+tokens of its own beyond this set --- `technical-doc`, for example, adds
 `--color-tint` for its code and note fills. Open `extensions/<id>/theme.css`
 in your project to see everything a given look exposes; the `:root` block at
 the top is the whole vocabulary.
@@ -150,8 +151,8 @@ new "House Style" --kind theme` scaffolds a layered six-sheet one; either way
 
 ### Looks with more than one stylesheet
 
-A look folder is not limited to one `theme.css`. Its `package.json` — the same
-standard file npm already wants — declares an ordered list of sheets and which
+A look folder is not limited to one `theme.css`. Its `package.json` --- the same
+standard file npm already wants --- declares an ordered list of sheets and which
 sheet holds the tokens the Design panel edits, under one `"gutterpress"` key:
 
 ```json
@@ -168,8 +169,8 @@ sheet holds the tokens the Design panel edits, under one `"gutterpress"` key:
 ```
 
 Paths are relative to the look's folder and must stay inside it. The sheets
-load in that order at the look's position in `extensions:` — one entry,
-however many files — and a sheet that must win over the others simply goes
+load in that order at the look's position in `extensions:` --- one entry,
+however many files --- and a sheet that must win over the others simply goes
 last in the list. Disabling or removing the entry removes them all. A look
 declares its sheets: there is no implicit `theme.css`, so `gutterpress.styles`
 is the one field a look cannot leave out. `tokensFile` defaults to the first
@@ -178,8 +179,8 @@ URL import still needs one to find the package root, and an import writes the
 package.json for you when the package has none.
 
 The other fields are npm's own `name`, `description` and `author`, plus
-`gutterpress.preview` (an image, relative to the folder) and — for a look that
-is also a plugin or a component library — `main`, `gutterpress.snippets` and
+`gutterpress.preview` (an image, relative to the folder) and --- for a look that
+is also a plugin or a component library --- `main`, `gutterpress.snippets` and
 `gutterpress.components`. [Chapter 5](#ch-plugins) covers those.
 
 A look still carrying the removed `gutterpress.json` or `theme.json` fails to
@@ -187,16 +188,16 @@ load with a message showing the package.json that replaces it.
 
 ## Font Loading {#font-loading}
 
-Download the font into your project and load it with `@font-face` — this is
+Download the font into your project and load it with `@font-face` --- this is
 the only supported path. A remote `@import url("https://fonts.googleapis...")`
 or a remote `@font-face src: url(...)` is a **build error**, not a warning:
 Gutterpress's print-safety linter rejects any remote URL in CSS, because a font
 fetched from the network at print time is a dependency the build can't
 guarantee is still there (or unchanged) the next time someone builds this
-book — offline, in CI, or a year from now. A downloaded, embedded font is
+book --- offline, in CI, or a year from now. A downloaded, embedded font is
 guaranteed to be the one that ships.
 
-Put the font file anywhere in your project — there's no required location.
+Put the font file anywhere in your project --- there's no required location.
 `url(...)` in `@font-face` resolves relative to the **stylesheet that
 contains it**, not the manifest or project root, and Gutterpress embeds the font
 into `book.html` automatically:
@@ -214,7 +215,7 @@ into `book.html` automatically:
 ```
 
 If the path doesn't resolve, the build fails immediately with the missing
-file's name — instead of silently falling back to a system font that still
+file's name --- instead of silently falling back to a system font that still
 passes PDF validation, which is what used to happen.
 
 ## Custom Page Templates
@@ -229,7 +230,7 @@ Named pages let you apply different margins, backgrounds, or decorations to spec
 }
 ```
 
-Writing `@page gallery` in *markdown* only sets `data-page="gallery"` on the page wrapper (see [Chapter 2, @page — start a new page](#ch-writing)) — by itself it does **not** bind that wrapper to the `@page gallery` CSS rule above. You still need a CSS declaration that assigns the `page` property to something in your markup — the simplest option is to target the `data-page` attribute the marker already gives you:
+Writing `@page gallery` in *markdown* only sets `data-page="gallery"` on the page wrapper (see [Chapter 2, @page --- start a new page](#ch-writing)) --- by itself it does **not** bind that wrapper to the `@page gallery` CSS rule above. You still need a CSS declaration that assigns the `page` property to something in your markup --- the simplest option is to target the `data-page` attribute the marker already gives you:
 
 ```css
 [data-page="gallery"] { page: gallery; }
@@ -285,7 +286,7 @@ h1 { string-set: chapter-title content(); }
 
 ### Widow and orphan control
 
-`orphans`/`widows` control the minimum number of lines that must stay together at the top/bottom of a page break. Core Gutterpress sets **no default** — Chromium follows the CSS default of 2. This guide's own `guide.css` raises both to 3:
+`orphans`/`widows` control the minimum number of lines that must stay together at the top/bottom of a page break. Core Gutterpress sets **no default** --- Chromium follows the CSS default of 2. This guide's own `guide.css` raises both to 3:
 
 ```css
 body {
@@ -354,8 +355,8 @@ This is an alternative to the markdown overrides, not a replacement. `.gp-no-bre
 | Element | Name |
 |---------|------|
 | A marker block (`@chapter`, `@spread`, `@page`, `@section`, `@columns`, a plugin's markers, variants too) | the marker's own `name=`, else its `label=`, else its **own** first heading. A block with none of these has no name |
-| A heading | `{name=…}` if you wrote one, else its own text |
-| An image | `{name=…}` if you wrote one, else the file name without its folder or extension |
+| A heading | `{name=...}` if you wrote one, else its own text |
+| An image | `{name=...}` if you wrote one, else the file name without its folder or extension |
 
 A name is lower-case ASCII with apostrophes dropped and every run of other characters turned into one hyphen, so *The Founder's House* is `the-founders-house` and `images/chapter-00/Founder%20House.png` is `founder-house`. "Own" first heading means the first heading that sits directly in that block: a `@page` that holds a `@section` does not borrow the section's title, so each name picks out one block. When two blocks in a **file** would get the same name, the later ones become `-2`, `-3`, and so on, in reading order. Headings are numbered separately from blocks, so a section and its title can both be `sporos-hollow`; add the element (`h2[data-name="sporos-hollow"]`) or a class to say which. Two pictures from the same file share a name, which is usually what you want. Names are unique within one markdown file, not across the book: scope a rule by chapter (`#ch-06 [data-name="sporos-hollow"]`) or give the block an explicit `name=` when you need that.
 
@@ -379,10 +380,10 @@ styles:
 
 This order is enforced with CSS cascade layers, so it holds no matter how an
 extension writes its CSS. Gutterpress's own CSS sits underneath everything in
-two layers — the marker structural CSS in `@layer gp.marker`, the `gp-*`
+two layers --- the marker structural CSS in `@layer gp.marker`, the `gp-*`
 utility vocabulary in `@layer gp.vocab`. Each extension's stylesheets are
 then wrapped in a layer of their own, `@layer ext.<name>`, declared in list
-order — so a later extension beats an earlier one, and an extension that
+order --- so a later extension beats an earlier one, and an extension that
 leaves its CSS unlayered cannot jump ahead of one listed after it. Your own
 `styles:` are the only unlayered CSS in the book, and unlayered CSS beats
 every layer at any specificity: a bare element selector in `book.css`
@@ -403,12 +404,12 @@ list above:
 ```
 
 Every rule you place inside one of those layers then cascades by that fixed
-order, not by which file the manifest happens to load last — so splitting a
+order, not by which file the manifest happens to load last --- so splitting a
 file in two, or reordering `styles:`, can no longer silently flip who wins.
 
 ## Layout Marker CSS Classes
 
-Each layout marker emits a predictable CSS class that you can style. This mirrors [Chapter 2's Layout Directives](#layout-directives) — repeated here as a CSS-focused cheat sheet:
+Each layout marker emits a predictable CSS class that you can style. This mirrors [Chapter 2's Layout Directives](#layout-directives) --- repeated here as a CSS-focused cheat sheet:
 
 @section
 
@@ -454,7 +455,7 @@ Note: `@section` emits `.section`, never `.region`; `@page-break` emits `.gp-pag
 
 ### Scoping with chapter IDs
 
-A `<div class="chapter" id="ch-name">` wrapper comes from `@chapter #ch-name` — **not** from `@page`. `@page #id` produces `<div class="page" id="...">`, which is a different element with a different class; a `.chapter#ch-bestiary` selector will not match anything inside a `@page`-only wrapper. Use `@chapter` when you want the `.chapter` scoping hook:
+A `<div class="chapter" id="ch-name">` wrapper comes from `@chapter #ch-name` --- **not** from `@page`. `@page #id` produces `<div class="page" id="...">`, which is a different element with a different class; a `.chapter#ch-bestiary` selector will not match anything inside a `@page`-only wrapper. Use `@chapter` when you want the `.chapter` scoping hook:
 
 ```markdown
 @chapter #ch-bestiary
@@ -474,12 +475,12 @@ Run the preview and open browser DevTools:
 ```bash
 gutterpress preview ./my-book
 # Open http://localhost:3579 in Chrome
-# Right-click → Inspect to view computed styles
+# Right-click -> Inspect to view computed styles
 ```
 
 Common issues:
 
-- **Token not applying** — check spelling; `--color-accnt` vs `--color-accent`
-- **Override not winning** — check cascade order in `manifest.yaml`: extensions in list order, then `styles:`; later files win
-- **Font not loading** — check file path is relative to the CSS file, not the manifest
-- **Page break in wrong place** — inspect the generated `book.html` to see which `@page` wrapper the content is inside
+- **Token not applying** --- check spelling; `--color-accnt` vs `--color-accent`
+- **Override not winning** --- check cascade order in `manifest.yaml`: extensions in list order, then `styles:`; later files win
+- **Font not loading** --- check file path is relative to the CSS file, not the manifest
+- **Page break in wrong place** --- inspect the generated `book.html` to see which `@page` wrapper the content is inside

@@ -184,6 +184,11 @@ const DEFAULT_FIXTURES = [
   // the user guide. Registered so an everyday book cannot drift again.
   join(REPO, "examples", "with-validation"),
   join(REPO, "examples", "gutterpress-user-guide"),
+  // The paper (#425): display and inline math as SVG, ruled tables, and a
+  // look loaded as an extension — its `@page` and every rule inside
+  // `@layer ext.academic` — so the two renderers are held to the same pages
+  // for a book styled the way `gutterpress ext add … --look` styles one.
+  join(REPO, "examples", "academic-paper"),
   // The exact-fit boundary fixture (committed): the #268 boundary as a slice
   // of the user guide's styling chapter on the rules of its stylesheet that
   // bear on it, so check (e)'s EXACT-FIT outcome stays exercised — see
@@ -309,18 +314,22 @@ async function stage(
   const { manifest, manifestPath } = await loadManifestWithPath(projectDir);
   const config = resolveConfig({}, manifest);
   const renderDir = manifestPath ? dirname(manifestPath) : projectDir;
-  const { plugins, pluginCss } = await loadPluginsWithCss(config.extensions, renderDir);
+  const { plugins, pluginStyles } = await loadPluginsWithCss(config.extensions, renderDir);
   mkdirSync(outDir, { recursive: true });
 
   const imageRefs: string[] = [];
   const cssAssets: AssetCopy[] = [];
   const htmlPath = await renderChaptersToFile(renderDir, outDir, {
     title: config.title,
+    language: config.language,
     printArea: { ...config.page, preset: config.preset, spec: config.spec },
     styles: config.styles,
     files: config.source.files,
     plugins,
-    pluginCss,
+    // The extensions' own stylesheets (a look's `theme.css`), as the build and
+    // the preview pass them. Without this a book styled by a look was measured
+    // bare, and its look never reached the gate.
+    pluginStyles,
     onImageRefs: (refs) => imageRefs.push(...refs),
     onCssAssets: (copies) => cssAssets.push(...copies),
   });

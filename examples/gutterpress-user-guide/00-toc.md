@@ -8,14 +8,14 @@ Eight chapters take you from first install to published, production-ready print 
 
 @end-section
 
-1. [Getting Started](#ch-getting-started) — Install, basic workflow, project structure, manifest configuration
-2. [Writing Your Content](#ch-writing) — Typography, text formatting, lists, tables, layout directives
-3. [Visual Elements](#ch-visual) — Callouts, images, full-bleed artwork, positioning, print-safe formats
-4. [Styling & Theming](#ch-styling) — CSS variables, custom themes, fonts, page templates, cascade order
-5. [Plugins](#ch-plugins) — The `extensions:` list: adding, installing, ordering, and writing markdown-it plugins
-6. [Validation & Best Practices](#ch-validation) — 40 print checks, CLI usage, file organization, production workflow
-7. [System Setup](#ch-system) — Required external tools, per-platform install, troubleshooting
-8. [Publishing](#ch-publishing) — Sending your finished book to itch.io, DriveThruRPG, Amazon KDP, Azure, Shopify, or Google Drive
+1. [Getting Started](#ch-getting-started) --- Install, basic workflow, project structure, manifest configuration
+2. [Writing Your Content](#ch-writing) --- Typography, text formatting, lists, tables, layout directives
+3. [Visual Elements](#ch-visual) --- Callouts, images, full-bleed artwork, positioning, print-safe formats
+4. [Styling & Theming](#ch-styling) --- CSS variables, custom themes, fonts, page templates, cascade order
+5. [Plugins](#ch-plugins) --- The `extensions:` list: adding, installing, ordering, and writing markdown-it plugins
+6. [Validation & Best Practices](#ch-validation) --- 40 print checks, CLI usage, file organization, production workflow
+7. [System Setup](#ch-system) --- Required external tools, per-platform install, troubleshooting
+8. [Publishing](#ch-publishing) --- Sending your finished book to itch.io, DriveThruRPG, Amazon KDP, Azure, Shopify, or Google Drive
 
 ---
 

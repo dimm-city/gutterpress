@@ -56,6 +56,8 @@ export async function renderChapters(
   inputDir: string,
   opts: {
     title?: string;
+    /** See {@link AssembleBookHtmlOptions.language}. */
+    language?: string;
     /** See {@link AssembleBookHtmlOptions.print}. */
     print?: PrintPadding;
     /** See {@link AssembleBookHtmlOptions.printArea}. */
@@ -152,6 +154,7 @@ export async function renderChapters(
     // go through the same inliner.
     preloadImages: cssAssetCopies.map((c) => c.to),
     title: opts.title,
+    language: opts.language,
     print: opts.print,
     printArea: opts.printArea,
     plugins: opts.plugins,
@@ -173,6 +176,8 @@ export async function renderChaptersToFile(
   outDir: string,
   opts: {
     title?: string;
+    /** See {@link AssembleBookHtmlOptions.language}. */
+    language?: string;
     /** See {@link AssembleBookHtmlOptions.print}. */
     print?: PrintPadding;
     /** See {@link AssembleBookHtmlOptions.printArea}. */
@@ -193,6 +198,7 @@ export async function renderChaptersToFile(
   await mkdir(outDir, { recursive: true });
   const html = await renderChapters(inputDir, {
     title: opts.title,
+    language: opts.language,
     print: opts.print,
     printArea: opts.printArea,
     styles: opts.styles,
