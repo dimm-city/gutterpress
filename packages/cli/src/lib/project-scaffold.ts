@@ -52,7 +52,8 @@ function starterOverridesCss(): string {
  * Your book's own styles.
  *
  * This file loads AFTER every extension, so any rule you add here overrides
- * a look's defaults. A new book has no look until you add one:
+ * a look's defaults. A new book has no look until you add one (the paper
+ * template adds the academic look for you):
  *   gutterpress ext add clean-book <book> --look   (a built-in look)
  *   gutterpress ext add <package> <book>           (a look from npm)
  * A book has one look at a time; adding another turns the current one off.

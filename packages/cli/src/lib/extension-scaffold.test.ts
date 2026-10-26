@@ -323,8 +323,8 @@ describe("scaffoldExtension --kind theme", () => {
   test("declares an explicit @page size", async () => {
     // Measured, not assumed: with no `size:` anywhere in a book's CSS,
     // Chromium falls back to US Letter and prints the whole book at the wrong
-    // trim with no error. The three built-in themes all declare it; so does
-    // this one.
+    // trim with no error. The built-in looks that choose a trim declare it
+    // (academic leaves the trim to the manifest's `page`); so does this one.
     const parent = await tmpParent();
     const result = await scaffoldExtension({ name: "House Style", kind: "theme", parentDir: parent });
     const pageRules = await readFile(
