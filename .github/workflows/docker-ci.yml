@@ -9,20 +9,18 @@ name: Docker Build Check
 
 on:
   pull_request:
-    paths:
+    paths: &docker-paths
       - 'Dockerfile'
       - '.dockerignore'
       - 'packages/cli/**'
+      - '!packages/cli/*.md'
+      - '!packages/cli/docs/**'
       - 'package.json'
       - 'bun.lock'
+      - '.github/workflows/docker-ci.yml'
   push:
     branches: [main, develop]
-    paths:
-      - 'Dockerfile'
-      - '.dockerignore'
-      - 'packages/cli/**'
-      - 'package.json'
-      - 'bun.lock'
+    paths: *docker-paths
 
 jobs:
   docker-build:

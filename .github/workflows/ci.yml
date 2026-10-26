@@ -3,8 +3,19 @@ name: CI
 on:
   push:
     branches: [main, develop, "release/**"]
+    # Skip prose docs, but keep Markdown used as rendering input covered.
+    paths: &ci-paths
+      - "**"
+      - "!*.md"
+      - "!docs/**"
+      - "!packages/*/*.md"
+      - "!packages/*/docs/**"
+      - "!packaging/*.md"
+      - "!website/*.md"
+      - "docs/fixtures/**"
   pull_request:
     branches: [main, develop, "release/**"]
+    paths: *ci-paths
 
 jobs:
   test:
