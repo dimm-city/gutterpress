@@ -66,6 +66,14 @@ describe("gutterpress-math", () => {
     ]);
   });
 
+  test("a broken formula in a table cell is reported at its row's line", () => {
+    const env: Env = {};
+    withMath().render("Intro.\n\n| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | $\\frac{a}{b$ |\n", env);
+    expect(env.layoutWarnings).toEqual([
+      { line: 6, type: "math_error", message: expect.stringContaining("Missing close brace") },
+    ]);
+  });
+
   test("\\newcommand lasts for one renderer, not the next", () => {
     const first = withMath();
     const env1: Env = {};

@@ -10,6 +10,7 @@ import { RegisterHTMLHandler } from "mathjax-full/js/handlers/html.js";
 import { AssistiveMmlHandler } from "mathjax-full/js/a11y/assistive-mml.js";
 import { AllPackages } from "mathjax-full/js/input/tex/AllPackages.js";
 import { DEFAULT_SPANS, gpTable, type SpanScanner } from "./table";
+import type { LayoutWarning } from "./assemble";
 
 /**
  * LaTeX math — `$…$` in a line, `$$…$$` on its own lines — typeset by
@@ -144,10 +145,6 @@ function mathBlock(state: StateBlock, start: number, end: number, silent: boolea
   return true;
 }
 
-interface WarningEnv {
-  layoutWarnings?: Array<{ line: number; type: string; message: string }>;
-}
-
 /** One adaptor and handler for the process; the TeX state is per renderer. */
 let adaptor: ReturnType<typeof liteAdaptor> | null = null;
 function getAdaptor() {
@@ -172,7 +169,7 @@ export default function gpMath(md: MarkdownIt): void {
   });
   const document = mathjax.document("", { InputJax: tex, OutputJax: new SVG({ fontCache: "none" }) });
 
-  const typeset = (token: Token, display: boolean, env: WarningEnv): string => {
+  const typeset = (token: Token, display: boolean, env: { layoutWarnings?: LayoutWarning[] }): string => {
     errors = [];
     const out = html.outerHTML(document.convert(token.content, { display }));
     for (const message of errors) {
@@ -190,18 +187,21 @@ export default function gpMath(md: MarkdownIt): void {
   md.block.ruler.after("blockquote", "math_block", mathBlock, {
     alt: ["paragraph", "reference", "blockquote", "list"],
   });
-  // An inline token knows no line of its own; take the paragraph's, so a
-  // warning can say where the formula is.
+  // An inline token knows no line of its own; take the nearest map before
+  // it (its paragraph's, or a table cell's row's), so a warning can say where
+  // the formula is. Cells are given no map: see token.map in markers.js.
   md.core.ruler.after("inline", "math_lines", (state) => {
+    let line = 1;
     for (const token of state.tokens) {
-      if (token.type !== "inline" || !token.children || !token.map) continue;
+      if (token.map) line = token.map[0] + 1;
+      if (token.type !== "inline" || !token.children) continue;
       for (const child of token.children) {
-        if (child.type === "math_inline") child.meta = { line: token.map[0] + 1 };
+        if (child.type === "math_inline") child.meta = { line };
       }
     }
   });
-  md.renderer.rules.math_inline = (tokens, idx, _options, env) => typeset(tokens[idx]!, false, env as WarningEnv);
-  md.renderer.rules.math_block = (tokens, idx, _options, env) => typeset(tokens[idx]!, true, env as WarningEnv);
+  md.renderer.rules.math_inline = (tokens, idx, _options, env) => typeset(tokens[idx]!, false, env);
+  md.renderer.rules.math_block = (tokens, idx, _options, env) => typeset(tokens[idx]!, true, env);
   // A `|` inside a formula no longer splits a table cell.
   md.use(gpTable, { spans: { ...DEFAULT_SPANS, 0x24: scanInlineMath } });
 }

@@ -1,6 +1,7 @@
 import type MarkdownIt from "markdown-it";
 import type StateBlock from "markdown-it/lib/rules_block/state_block.mjs";
 import { isSpace } from "markdown-it/lib/common/utils.mjs";
+import type { LayoutWarning } from "./assemble";
 
 /**
  * GFM tables, with one change to how a row is split into cells.
@@ -107,11 +108,7 @@ function getLine(state: StateBlock, line: number): string {
 // (256x256 square is 1.8kB expanded into 650kB).
 const MAX_AUTOCOMPLETED_CELLS = 0x10000;
 
-interface WarningEnv {
-  layoutWarnings?: Array<{ line: number; type: string; message: string }>;
-}
-
-function warnExtraCells(env: WarningEnv, line: number, cells: number, columns: number): void {
+function warnExtraCells(env: { layoutWarnings?: LayoutWarning[] }, line: number, cells: number, columns: number): void {
   if (!env.layoutWarnings) env.layoutWarnings = [];
   const extra = cells - columns;
   env.layoutWarnings.push({
@@ -260,7 +257,7 @@ function tableRule(spans: SpanScanners) {
       if (columns.length && columns[columns.length - 1] === "") columns.pop();
 
       if (columns.length > columnCount) {
-        warnExtraCells(state.env as WarningEnv, nextLine, columns.length, columnCount);
+        warnExtraCells(state.env, nextLine, columns.length, columnCount);
       }
 
       // note: autocomplete count can be negative if user specifies more columns than header,
@@ -309,7 +306,9 @@ function tableRule(spans: SpanScanners) {
  * Replace markdown-it's table rule with the span-aware one. Core applies it
  * with code spans; a feature that adds an inline span (math) applies it
  * again with its own scanner added, and the later registration wins.
+ * `at` resets the rule's `alt` chains, so upstream's are given again: a
+ * table may interrupt a paragraph.
  */
 export function gpTable(md: MarkdownIt, options?: { spans?: SpanScanners }): void {
-  md.block.ruler.at("table", tableRule(options?.spans ?? DEFAULT_SPANS));
+  md.block.ruler.at("table", tableRule(options?.spans ?? DEFAULT_SPANS), { alt: ["paragraph", "reference"] });
 }

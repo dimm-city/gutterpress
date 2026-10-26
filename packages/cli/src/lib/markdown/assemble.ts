@@ -43,7 +43,7 @@ import { extract, resolvePage } from "../../engine/shared/gcpm-extract.ts";
 export type ReadText = (relPath: string) => Promise<string>;
 
 /**
- * One author-mistake warning emitted by Gutterpress's marker parser.
+ * One author-mistake warning, most emitted by Gutterpress's marker parser.
  * Mirrors the shape `markers.js`'s `warn()` pushes onto
  * `env.layoutWarnings` — see that file's header comment for the warning
  * `type`s (`ambiguous_marker_token`, `unrecognized_marker_token`,
@@ -74,6 +74,10 @@ export type ReadText = (relPath: string) => Promise<string>;
  * `section: true`) whose bare word is not one of its declared `variants`, and
  * for an `@page` / `@section` word that is a near-miss of a declared page /
  * section variant (any other word there is a free name and stays silent).
+ *
+ * Two come from outside the marker parser: `table_extra_cells` (a table
+ * row with more cells than the header, `table.ts`) and `math_error` (a
+ * formula MathJax could not typeset, `math.ts`).
  *
  * There is deliberately no `section_without_page`: a @section with no open
  * @page is valid authoring (17/17 false positives across two real books).

@@ -41,6 +41,12 @@ describe("table cells", () => {
     ]);
   });
 
+  test("a table may follow a line of text with no blank line between, as in GFM", () => {
+    const html = createMarkdownRenderer().render("Some text\n| a | b |\n|---|---|\n| 1 | 2 |\n", {});
+    expect(html).toMatch(/^<p[^>]*>Some text<\/p>\n<table/);
+    expect(cells(html)).toEqual(["1", "2"]);
+  });
+
   test("scanCodeSpan resumes after the span, or after an opening run that closes nothing", () => {
     expect(scanCodeSpan("`a|b` c", 0, 7)).toBe(5);
     expect(scanCodeSpan("``a`b`` c", 0, 9)).toBe(7);
