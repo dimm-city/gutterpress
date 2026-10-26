@@ -1,0 +1,52 @@
+/*
+ * A journal-article look in the spirit of LaTeX's `article` class.
+ * Restyle the paper by changing the tokens in :root. The rules below them
+ * only say where each part of the paper goes.
+ */
+
+:root {
+  --font-body: "Latin Modern Roman", "CMU Serif", "STIX Two Text", "Times New Roman", "Liberation Serif", serif;
+  --fs-body: 10.5pt;
+  --leading: 1.38;
+  --color-ink: #111111;
+}
+
+@page {
+  margin: 1in;
+  @bottom-center { content: counter(page); font-family: var(--font-body); font-size: 9pt; }
+}
+
+body {
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: var(--leading);
+  color: var(--color-ink);
+  text-align: justify;
+  hyphens: auto;
+}
+
+h1 { font-size: 1.65em; line-height: 1.2; margin: 0 0 0.7em; }
+h2 { font-size: 1.2em; margin: 1.4em 0 0.5em; }
+h3 { font-size: 1em; margin: 1.2em 0 0.4em; }
+a { color: inherit; text-decoration: none; }
+pre { font-size: 0.8em; line-height: 1.3; }
+
+/* @section .title: the title, authors, affiliations and date */
+.title { text-align: center; hyphens: manual; margin-bottom: 2em; }
+
+/* @section .abstract: the abstract, keywords and subject classes */
+.abstract { font-size: 0.9em; margin: 0 2.5em 2em; }
+
+/* @section .figure: a figure, table or listing kept on one page with its caption */
+.figure { break-inside: avoid; margin: 1.4em 0; }
+.caption { font-size: 0.9em; }
+
+/* Tables with rules above, below and under the header row */
+table { border-collapse: collapse; margin: 0.6em auto; border-top: 1pt solid; border-bottom: 1pt solid; }
+thead th { border-bottom: 0.5pt solid; }
+th, td { padding: 0.2em 0.8em; }
+
+/* Notes (from [^1] footnotes) and references, a size smaller than the text */
+.footnotes, .references { font-size: 0.85em; }
+.footnotes-sep { border: 0; border-top: 0.5pt solid; width: 30%; margin: 1.5em 0 0.5em; }
+.footnote-backref { display: none; }
