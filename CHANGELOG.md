@@ -127,6 +127,15 @@ This project follows [Semantic Versioning](https://semver.org/).
   rather than passed. The check stays advisory: a page over DriveThruRPG's
   240% limit, an unmeasured book and a machine without Ghostscript are all
   warnings, so an author is told and never stopped.
+- **The preview's blank pages for `break-before: left | right | recto | verso`
+  now exist (#421).** The viewer planned the right blanks but built each from
+  two zero-height forced column breaks, and Chromium drops a forced break that
+  would leave a column empty, so a site at the top of its strip or the first
+  child of its wrapper (`@chapter` > `@section .opener`) got no blank page. It
+  landed on the wrong side and every page after it was numbered one lower than
+  in the PDF. Each blank is now one spacer the height of the column, which
+  needs no forced break: the preview puts the openers where the PDF does and
+  counts the same pages. The PDF build was already right.
 
 ## [0.11.21] - 2026-10-16
 
