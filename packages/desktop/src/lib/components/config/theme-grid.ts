@@ -4,7 +4,7 @@
  * Kept separate so the "already added" rule is unit-testable without a
  * Svelte component test harness. `import type` only, so this stays PWA-clean (§8).
  */
-import type { ProjectExtensionEntry } from "$lib/platform/dtos";
+import type { ProjectExtensionEntry } from "#lib/platform/dtos.ts";
 
 /**
  * The ids of the built-in looks already in the project's list: a path entry

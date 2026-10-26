@@ -6,7 +6,7 @@
    * and the welcome screen's Accounts tab. Reads/writes the same persisted
    * `gitIdentity` settings section either way.
    */
-  import { useSettings } from "$lib/settings.svelte";
+  import { useSettings } from "#lib/settings.svelte.ts";
 
   const settings = useSettings();
   const s = $derived(settings.current);

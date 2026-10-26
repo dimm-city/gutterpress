@@ -4,7 +4,7 @@
  * each dialog with:
  *
  *   <style>
- *     @import "$lib/styles/dialog-shell.css";
+ *     @import "../styles/dialog-shell.css";   (a path relative to the component)
  *     /* the dialog's own bespoke rules (body layout, fields, …) *\/
  *   </style>
  *
@@ -38,7 +38,7 @@
  * only — do not re-add background/color/border-color rules for it here.
  *
  * Behavior — focus trap, Escape-to-close, ARIA wiring, focus restore — is a
- * SEPARATE concern owned by the `dialogBehavior` action (`$lib/dialog.ts`).
+ * SEPARATE concern owned by the `dialogBehavior` action (`#lib/dialog.ts`).
  * This file is visual only.
  *
  * `:global(...)` on the variant/state classes below (`.dlg-close`,

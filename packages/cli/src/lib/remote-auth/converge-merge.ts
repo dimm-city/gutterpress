@@ -61,6 +61,10 @@ import diff3Merge from "diff3";
 // markdown resolver and the merge-marker check can share it without
 // pulling isomorphic-git in.
 import { onlineSiblingPath } from "./sync-messages.ts";
+// The marker labels live in their own zero-import leaf for the same reason:
+// the merge-marker check and the markdown rule that renders a combined
+// passage read them back, and all three must agree byte for byte.
+import { ONLINE_VERSION_LABEL, YOUR_VERSION_LABEL } from "../two-versions-markers.ts";
 
 import {
   hasPendingChanges,
@@ -125,9 +129,9 @@ export const CONVERGE_MERGE_MESSAGE =
  */
 const MARKER_UNSAFE_EXT = /\.svg$/i;
 
-/** Marker labels — author language, never git jargon. */
-const OUR_LABEL = "your version";
-const THEIR_LABEL = "online version";
+/** Marker labels — author language, never git jargon (two-versions-markers.ts). */
+const OUR_LABEL = YOUR_VERSION_LABEL;
+const THEIR_LABEL = ONLINE_VERSION_LABEL;
 
 /** NUL in a decoded string ⇒ the underlying bytes are binary (git's test). */
 function stringLooksBinary(s: string): boolean {
@@ -152,14 +156,21 @@ export function mergeWithMarkers(
     baseContent.match(LINEBREAKS) ?? [],
     theirContent.match(LINEBREAKS) ?? [],
   );
+  // A side that ends the file without a line break would run into the
+  // separator ("…last words=======") and leave a family nothing can read
+  // back; every marker line stands on its own line.
+  const onItsOwnLine = (lines: string[]): string => {
+    const text = lines.join("");
+    return text === "" || text.endsWith("\n") ? text : `${text}\n`;
+  };
   let merged = "";
   for (const item of result) {
     if (item.ok) merged += item.ok.join("");
     if (item.conflict) {
       merged += `<<<<<<< ${OUR_LABEL}\n`;
-      merged += item.conflict.a.join("");
+      merged += onItsOwnLine(item.conflict.a);
       merged += `=======\n`;
-      merged += item.conflict.b.join("");
+      merged += onItsOwnLine(item.conflict.b);
       merged += `>>>>>>> ${THEIR_LABEL}\n`;
     }
   }

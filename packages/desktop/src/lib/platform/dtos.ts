@@ -5,7 +5,7 @@
  *
  * These are NOT part of the `HostServices`/`ElectronBridge`/`Platform` seam
  * (that lives in `./contract.ts`) — they are the request/response payload
- * shapes `$lib/api.ts` and its consumers use. Most mirror an equivalent type
+ * shapes `#lib/api.ts` and its consumers use. Most mirror an equivalent type
  * in `gutterpress` (the lib) and are defined locally here so the SPA
  * never value-imports the lib into the renderer bundle (§8).
  *
@@ -134,6 +134,8 @@ export interface ExtensionCarries {
   styles: boolean;
   snippets: boolean;
   components: boolean;
+  /** A publishing plugin (experimental, #381). */
+  publish?: boolean;
 }
 
 /** One configured extension, as listed for the desktop. */
@@ -275,7 +277,7 @@ export interface ProjectStyle {
   active: boolean;
 }
 
-// Produced by `$lib/style-tokens`' `parseStyleTokens`. One editable `:root`
+// Produced by `#lib/style-tokens`' `parseStyleTokens`. One editable `:root`
 // custom property surfaced to the guided Design panel.
 // `font` = a font-family stack (curated dropdown + free text); `number` = a
 // unitless number (e.g. `--leading: 1.55`) — same numeric control as `length`,
@@ -297,7 +299,7 @@ export interface StyleToken {
   /**
    * Theme-author-curated display group, from an `@group` annotation comment
    * above the declaration (issue #244) — see `parseStyleTokens` in
-   * `$lib/style-tokens` for the annotation grammar. Absent for every token in
+   * `#lib/style-tokens.ts` for the annotation grammar. Absent for every token in
    * a theme that carries no annotations at all, which is what keeps an
    * unannotated theme's panel identical to the pre-#244 heuristic grouping. A
    * token with `group` set is shown under that named heading instead of the
@@ -362,7 +364,7 @@ export type RemoteGuidanceId =
   | "ready-to-sync"
   | "ssh-use-own-tools";
 
-/** "Report a problem" bundle (`api.report.bundle`). Mirrors `$lib/server/problem-report.ts`. */
+/** "Report a problem" bundle (`api.report.bundle`). Mirrors `#lib/server/problem-report.ts`. */
 export interface ProblemReport {
   /** Full Markdown report (system + book summary + app-log tail) for the clipboard. */
   report: string;

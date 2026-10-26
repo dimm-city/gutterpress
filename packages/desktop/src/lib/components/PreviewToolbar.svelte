@@ -22,9 +22,9 @@
    *
    * PWA-clean (§8): type-only imports, zero host/Node code.
    */
-  import Icon from "$lib/components/Icon.svelte";
-  import type { ReadLayout } from "$lib/platform";
-  import type { PageNavController } from "$lib/routes/page-nav-controller.svelte";
+  import Icon from "#lib/components/Icon.svelte";
+  import type { ReadLayout } from "#lib/platform/index.ts";
+  import type { PageNavController } from "#lib/routes/page-nav-controller.svelte.ts";
   import {
     OVERLAY_LAYERS,
     overlayLayersFrom,
@@ -34,7 +34,7 @@
     type MarginOverlayLayer,
     type MarginOverlayLayers,
     type MarginOverlaySummary,
-  } from "$lib/margin-overlay";
+  } from "#lib/margin-overlay.ts";
 
   let {
     pageNav,

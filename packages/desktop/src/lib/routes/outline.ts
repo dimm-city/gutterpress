@@ -1,4 +1,4 @@
-import type { OutlineEntry } from "$lib/preview-client";
+import type { OutlineEntry } from "#lib/preview-client.ts";
 
 // Pure port of +page.svelte's updateActiveOutline loop: find the deepest
 // heading whose sourceLine is non-null and <= line, breaking at the first

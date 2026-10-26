@@ -1,8 +1,8 @@
 import { error } from '@sveltejs/kit';
 import { handleRemoteErrors } from '../../../../../electron/server-bridge/friendly-errors';
-import { gitIdentityArgs } from '$lib/server/settings';
+import { gitIdentityArgs } from '#lib/server/settings.ts';
 import { defineRoute, getHostServices, loadLib, requireProjectDir } from '../../_lib/route';
-import type { BackupTarget } from '$lib/platform/shared-types';
+import type { BackupTarget } from '#lib/platform/shared-types.ts';
 import type { RequestHandler } from './$types';
 
 // Online backup for a book that started on this computer (#358): create (or

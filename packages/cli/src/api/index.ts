@@ -292,6 +292,16 @@ export type {
   SwitchBranchResult,
 } from "../lib/source-provider.ts";
 
+// ── Versions view (#408): what a version changed, what is online, a version's files ──
+export {
+  describeVersions,
+  listOnlineVersions,
+  compareVersionFile,
+  exportVersionTree,
+  VERSION_CHANGES_SHOWN,
+} from "../lib/version-changes.ts";
+export type { VersionEntry, VersionFileChange, CompareRow } from "../lib/version-changes.ts";
+
 // ── Host-timer cadence policy (auto-snapshot / auto-sync delays) ──────────────
 export {
   autoSnapshotDelayMs,
@@ -480,6 +490,13 @@ export {
   publishProviderFor,
 } from "../lib/publish/registry.ts";
 
+// Publishing plugins (experimental, #381): built-ins plus a book's plugins.
+export {
+  listBookPublishProviders,
+  resolvePublishProvider,
+} from "../lib/publish/plugin-provider.ts";
+export type { PublishBook } from "../lib/publish/plugin-provider.ts";
+
 export { connectPublishProvider, disconnectPublishCredential } from "../lib/publish/connect.ts";
 export type {
   ConnectPublishProviderOptions,
@@ -519,6 +536,9 @@ export type {
   PreflightIssue,
   CommandRunner,
   CommandResult,
+  PublishPluginContext,
+  PublishPluginFunction,
+  PublishPluginResult,
 } from "../lib/publish/types.ts";
 
 

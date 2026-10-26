@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { gitIdentityArgs } from '$lib/server/settings';
+import { gitIdentityArgs } from '#lib/server/settings.ts';
 import { friendlyVcsError } from '../../../../../electron/server-bridge/friendly-errors';
 import { defineRoute, getHostServices, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';

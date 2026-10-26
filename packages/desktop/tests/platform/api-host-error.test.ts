@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { hostErrorMessage } from "../../src/lib/api";
+import { api, hostErrorMessage } from "../../src/lib/api";
 
-// `$lib/api`'s post/get throw the response text for a non-OK reply. When that
+// `#lib/api`'s post/get throw the response text for a non-OK reply. When that
 // text is the app:// proxy's HTML error page (the loopback request itself
 // failed), a component must get a sentence, not a page of markup — the
 // GitHub "Open book" dialog displayed the raw <!doctype html> in 0.11.10-alpha.3.
@@ -25,4 +25,22 @@ test("a route's own JSON error body passes through untouched", () => {
     '{"message":"path is outside the open book"}',
   );
   expect(hostErrorMessage(null, "plain")).toBe("plain");
+});
+
+test("a bodiless POST still says it is JSON, so SvelteKit does not take it for a cross-site form", async () => {
+  const origFetch = globalThis.fetch;
+  let sent: RequestInit | undefined;
+  // @ts-expect-error test stub
+  globalThis.fetch = async (_url: string, init?: RequestInit) => {
+    sent = init;
+    return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  try {
+    await api.remote.listHostConnections();
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+  expect(sent?.method).toBe("POST");
+  expect(sent?.body).toBeUndefined();
+  expect(new Headers(sent?.headers).get("content-type")).toBe("application/json");
 });

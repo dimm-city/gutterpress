@@ -43,7 +43,7 @@
  * unannotated theme's panel is unchanged (no regression for existing themes).
  */
 
-import type { StyleToken } from "$lib/platform/dtos";
+import type { StyleToken } from "#lib/platform/dtos.ts";
 
 // ── Color / font / numeric classification ───────────────────────────────────
 //

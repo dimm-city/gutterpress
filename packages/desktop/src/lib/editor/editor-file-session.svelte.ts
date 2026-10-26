@@ -1,4 +1,4 @@
-import { EditorBuffer } from "$lib/editor/buffer-state.svelte";
+import { EditorBuffer } from "#lib/editor/buffer-state.svelte.ts";
 
 export interface EditorFileSessionDeps {
   createBuffer: () => EditorBuffer;

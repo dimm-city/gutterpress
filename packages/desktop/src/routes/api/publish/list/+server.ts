@@ -5,7 +5,8 @@ import type { RequestHandler } from './$types';
 /**
  * Provider cards for the Publish panel: static info (incl. the provider's
  * declared settings fields) + redacted connection status + the project's
- * non-secret `publish.*` manifest settings.
+ * non-secret `publish.*` manifest settings. The built-ins first, then the
+ * book's publishing plugins (experimental, #381), each marked `experimental`.
  */
 export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
   // In `validate`, not `call` — see publish/run's note on handlePublishErrors.
@@ -17,7 +18,7 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
       const lib = await loadLib();
       const settings = await lib.readPublishSettings(body.projectDir);
       const cards = await Promise.all(
-        lib.listPublishProviders().map(async (info) => {
+        (await lib.listBookPublishProviders({ projectDir: body.projectDir })).map(async (info) => {
           const raw = settings[info.id] ?? {};
           // Book-level selected account (manifest `publish.<id>.credential`);
           // "" = the default credential. It's a selection reference, NOT a
@@ -65,6 +66,7 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
             // #221 — present only for providers with a folder/destination
             // picker (gdrive); the wizard renders the picker only when this is set.
             ...(info.destinations ? { destinations: info.destinations } : {}),
+            ...(info.experimental ? { experimental: true } : {}),
           };
         }),
       );

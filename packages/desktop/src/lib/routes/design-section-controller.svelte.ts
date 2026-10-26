@@ -21,11 +21,11 @@
  * `readFile` / `writeFile` host calls, the `onError` (toast) + `onEditRawCss`
  * hooks, and the debounce timer primitives. Only type-only lib-shaped imports
  * (`ProjectStyle` / `StyleToken` from the local contract) plus the pure
- * `$lib/style-tokens` string helpers — ZERO `node:*` / lib value imports.
+ * `#lib/style-tokens` string helpers — ZERO `node:*` / lib value imports.
  *
  * `tokens` (from `parseStyleTokens`) already excludes `@internal`-annotated
  * declarations and carries each token's optional `@group` annotation (issue
- * #244) — see that function's doc in `$lib/style-tokens` for the comment
+ * #244) — see that function's doc in `#lib/style-tokens.ts` for the comment
  * grammar. `customGroups` and the four kind-based getters below are what turn
  * that flat, annotated list into the sections `DesignSection.svelte` renders;
  * no host route or platform-adapter capability is needed for any of it since
@@ -33,12 +33,12 @@
  * and `parseStyleTokens` already parses, entirely client-side.
  */
 
-import type { ProjectExtensionEntry, ProjectStyle, StyleToken } from "$lib/platform/dtos";
+import type { ProjectExtensionEntry, ProjectStyle, StyleToken } from "#lib/platform/dtos.ts";
 import {
   parseStyleTokens,
   applyTokenUpdates,
   type TokenUpdate,
-} from "$lib/style-tokens";
+} from "#lib/style-tokens.ts";
 
 export interface DesignSectionDeps {
   /** The open project directory (reactive prop), or null when none is open. */
@@ -127,7 +127,7 @@ export class DesignSectionController {
   // ── Derivations (getters so bun unit tests need only the $state shim) ───────
   //
   // Grouping (issue #244): a token carrying an `@group` annotation
-  // (`parseStyleTokens` in `$lib/style-tokens`) is claimed by `customGroups`
+  // (`parseStyleTokens` in `#lib/style-tokens`) is claimed by `customGroups`
   // and excluded from every heuristic kind-based bucket below via `ungrouped`
   // — each token appears exactly once, either under its author-named heading
   // or under the Fonts/Colors/Sizes/Other one its `kind` picks. A theme with

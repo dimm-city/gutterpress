@@ -249,9 +249,9 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
     expect(resolveConfig({}, { page: { safe: 48, artSafe: 24 } }).page).toMatchObject({ width: 621, height: 810 });
   });
 
-  test("page.gutter is the binding allowance: no preset sets one, a manifest does, leaf by leaf, and an explicit 0 is a gutter of none", () => {
-    expect(DTRPG_PRESET.page!.gutter).toBeUndefined();
-    expect(resolveConfig({}, {}).page.gutter).toBeUndefined();
+  test("page.gutter is the binding allowance: dtrpg declares its text rule's 36, book none, a manifest merges over either, leaf by leaf, and an explicit 0 is a gutter of none", () => {
+    expect(DTRPG_PRESET.page!.gutter).toBe(36);
+    expect(resolveConfig({}, {}).page.gutter).toBe(36);
     expect(resolveConfig({}, { preset: "book" }).page.gutter).toBeUndefined();
     // the manifest's value merges in on every preset (dtrpg and book list the key; custom is resolved by hand), the CLI's wins
     expect(resolveConfig({}, { page: { gutter: 54 } }).page).toMatchObject({ safe: 36, artSafe: 18, gutter: 54 });
@@ -542,6 +542,21 @@ describe("loadManifestWithPath explicit-path behavior (finding #12)", () => {
     await expect(loadManifestWithPath(dir)).rejects.toThrow(UsageError);
     await expect(loadManifestWithPath(dir)).rejects.toThrow(
       `Invalid YAML in "${manifestPath}" at line 3, column 1: Tabs are not allowed as indentation`
+    );
+  });
+
+  test("a manifest a sync left with two versions of a setting says so instead of reporting a YAML position", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-manifest-two-versions-"));
+    dirsToClean.push(dir);
+    const manifestPath = join(dir, "manifest.yaml");
+    await Bun.write(
+      manifestPath,
+      '<<<<<<< your version\ntitle: "Mine"\n=======\ntitle: "Online"\n>>>>>>> online version\nsource:\n  files: []\n'
+    );
+
+    await expect(loadManifestWithPath(dir)).rejects.toThrow(UsageError);
+    await expect(loadManifestWithPath(dir)).rejects.toThrow(
+      `"${manifestPath}" has two versions of a setting — yours and the online version — left by a sync.`
     );
   });
 

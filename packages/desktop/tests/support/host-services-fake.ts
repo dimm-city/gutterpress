@@ -101,7 +101,12 @@ export function makeHostServices(overrides: HostServicesOverrides = {}): HostSer
       check: async () => idleUpdaterStatus(),
       download: async () => idleUpdaterStatus(),
     },
-    vcs: { operationLogPath: () => "/fake/log", repairBackupDir: () => "/fake/repair" },
+    vcs: {
+      operationLogPath: () => "/fake/log",
+      repairBackupDir: () => "/fake/repair",
+      openVersionPreview: unstubbed("vcs.openVersionPreview"),
+      closeVersionPreview: async () => {},
+    },
     write: {
       scheduleAutoSnapshot: noop,
       scheduleAutoSync: noop,

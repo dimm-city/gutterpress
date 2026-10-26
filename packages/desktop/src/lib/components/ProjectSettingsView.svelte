@@ -11,7 +11,7 @@
    * presentational sections under `./config/`, passing each ITS controller as a
    * single prop. The children carry no state and no `api` value import — all
    * `api.*` calls live in the controllers under
-   * `$lib/routes/*-section-controller.svelte.ts`.
+   * `#lib/routes/*-section-controller.svelte.ts`.
    *
    * Four tabs, backed by FOUR controllers (no `$effect`: data loads on mount +
    * after mutations, mirroring SettingsView/History):
@@ -39,29 +39,29 @@
    * is a section reloading its own state after its own mutation.
    *
    * The body carries the `.config-panel` class: the sections' shared chrome
-   * (`$lib/styles/config-section-shared.css`, @imported per section) scopes
+   * (`#lib/styles/config-section-shared.css`, @imported per section) scopes
    * every rule under that ancestor class.
    *
    * PWA-clean (§8): only `import type` from the lib; everything value-bearing
    * goes through `api.*` HTTP routes inside the controllers.
    */
   import { onMount } from "svelte";
-  import { api } from "$lib/api";
-  import { useSettings } from "$lib/settings.svelte";
-  import type { ToastController } from "$lib/components/Toast.svelte";
-  import { DetailsSectionController } from "$lib/routes/details-section-controller.svelte";
-  import { ExtensionsSectionController } from "$lib/routes/extensions-section-controller.svelte";
-  import { StylesSectionController } from "$lib/routes/styles-section-controller.svelte";
-  import { DesignSectionController } from "$lib/routes/design-section-controller.svelte";
-  import AppView from "$lib/components/AppView.svelte";
-  import DetailsSection from "$lib/components/config/DetailsSection.svelte";
-  import LookSection from "$lib/components/config/LookSection.svelte";
-  import StylesSection from "$lib/components/config/StylesSection.svelte";
-  import DesignSection from "$lib/components/config/DesignSection.svelte";
-  import FeaturesSection from "$lib/components/config/FeaturesSection.svelte";
-  import ProjectConnectionsSection from "$lib/components/ProjectConnectionsSection.svelte";
-  import SaveTemplateDialog from "$lib/components/SaveTemplateDialog.svelte";
-  import { PRINT_TOOL_IDS } from "$lib/publish-targets";
+  import { api } from "#lib/api.ts";
+  import { useSettings } from "#lib/settings.svelte.ts";
+  import type { ToastController } from "#lib/components/Toast.svelte";
+  import { DetailsSectionController } from "#lib/routes/details-section-controller.svelte.ts";
+  import { ExtensionsSectionController } from "#lib/routes/extensions-section-controller.svelte.ts";
+  import { StylesSectionController } from "#lib/routes/styles-section-controller.svelte.ts";
+  import { DesignSectionController } from "#lib/routes/design-section-controller.svelte.ts";
+  import AppView from "#lib/components/AppView.svelte";
+  import DetailsSection from "#lib/components/config/DetailsSection.svelte";
+  import LookSection from "#lib/components/config/LookSection.svelte";
+  import StylesSection from "#lib/components/config/StylesSection.svelte";
+  import DesignSection from "#lib/components/config/DesignSection.svelte";
+  import FeaturesSection from "#lib/components/config/FeaturesSection.svelte";
+  import ProjectConnectionsSection from "#lib/components/ProjectConnectionsSection.svelte";
+  import SaveTemplateDialog from "#lib/components/SaveTemplateDialog.svelte";
+  import { PRINT_TOOL_IDS } from "#lib/publish-targets.ts";
 
   let {
     projectDir,

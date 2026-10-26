@@ -116,9 +116,9 @@ export interface CreateProjectOptions {
   /**
    * Page geometry written into the generated manifest (points; 72pt = 1in).
    * REQUIRED when `preset` is `"custom"` (it has no built-in trim); allowed
-   * with any preset to override its trim. These are the validation bounds
-   * the built PDF is checked against — the actual trim comes from the
-   * stylesheet's `@page` rule, and the two should match.
+   * with any preset to override its trim. This is the size the book prints
+   * at, unless a stylesheet sets its own plain `@page { size }` (#415), and
+   * the size the built PDF is checked against — so the two should match.
    */
   customPage?: CustomPageOptions;
   /** Version-history mode for the new project. Defaults to `"local-git"`. */

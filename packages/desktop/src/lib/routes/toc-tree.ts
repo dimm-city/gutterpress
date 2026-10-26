@@ -1,4 +1,4 @@
-import type { OutlineEntry } from "$lib/preview-client";
+import type { OutlineEntry } from "#lib/preview-client.ts";
 
 /**
  * A node in the derived Table-of-contents tree. The outline the preview

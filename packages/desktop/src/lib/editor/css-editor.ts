@@ -20,8 +20,8 @@
  *  - No Git/GitHub surface is touched (CLAUDE.md §7 is N/A to this issue).
  */
 
-import type { PrintSafeWarning } from "$lib/platform";
-import { api } from "$lib/api";
+import type { PrintSafeWarning } from "#lib/platform/index.ts";
+import { api } from "#lib/api.ts";
 import type { Diagnostic } from "@codemirror/lint";
 import type { EditorState } from "@codemirror/state";
 import type {

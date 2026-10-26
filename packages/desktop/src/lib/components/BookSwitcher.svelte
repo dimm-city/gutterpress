@@ -12,8 +12,8 @@
    * A minimal disclosure: a toggle and an absolutely-positioned list, with no
    * outside-click handling.
    */
-  import Icon from "$lib/components/Icon.svelte";
-  import type { ProjectBookEntry } from "$lib/routes/project-session-controller.svelte";
+  import Icon from "#lib/components/Icon.svelte";
+  import type { ProjectBookEntry } from "#lib/routes/project-session-controller.svelte.ts";
 
   let {
     books,

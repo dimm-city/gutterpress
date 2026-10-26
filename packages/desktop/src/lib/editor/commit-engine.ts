@@ -21,7 +21,7 @@
  */
 import { chapterPath, isSafeChapterId } from "./chapter-path";
 import { buildLineStarts, charRange } from "./source-range";
-import { basenameOf } from "$lib/platform/paths";
+import { basenameOf } from "#lib/platform/paths.ts";
 
 /** Minimal EditorBuffer surface the engine drives (see buffer-state.svelte.ts). */
 export interface CommitEngineBuffer {

@@ -90,3 +90,35 @@ test("getPerPageInkCoverage returns ok:false (not an empty ok:true) when gs exit
   expect(result).not.toEqual({ ok: true, pages: [] });
   expect(result.ok).toBe(false);
 });
+
+test("getPerPageInkCoverage asks gs to write the inkcov report to stdout", async () => {
+  resolveWindowsGhostscript();
+  const exec = spyOn(execMod, "execCapture").mockImplementation(async () => ({
+    stdout: SAMPLE_INKCOV_OUTPUT,
+    stderr: "",
+  }));
+
+  await getPerPageInkCoverage("/fake/book.pdf");
+
+  // Ghostscript 10 refuses the inkcov device without an output target and
+  // exits 0 with nothing on stdout; the flag is what makes the check real.
+  expect(exec.mock.calls[0]?.[1]).toContain("-sOutputFile=-");
+});
+
+test("getPerPageInkCoverage returns ok:false when gs exits 0 but reports no pages", async () => {
+  resolveWindowsGhostscript();
+  spyOn(execMod, "execCapture").mockImplementation(async () => ({
+    stdout: "",
+    stderr:
+      "GPL Ghostscript 10.02.1: Device 'inkcov' requires an output file but no file was specified.\n",
+  }));
+
+  const result = await getPerPageInkCoverage("/fake/book.pdf");
+
+  // The shape Ghostscript 10 produced for every book before #419: exit 0,
+  // no data. It must read as "unmeasured", never as "0 pages, all fine".
+  expect(result).not.toEqual({ ok: true, pages: [] });
+  expect(result.ok).toBe(false);
+  if (result.ok) throw new Error("expected ok:false");
+  expect(result.error).toContain("requires an output file");
+});

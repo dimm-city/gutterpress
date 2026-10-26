@@ -3,10 +3,11 @@
    * ExternalEditBanner (#44) — a non-blocking banner shown above the editor when
    * the open file is modified on disk by another process while the buffer has
    * unsaved changes. Never silently overwrites: the author picks Reload (adopt
-   * the disk version, discarding in-memory edits) or Keep mine (overwrite disk
-   * on the next save). Not a modal — editing stays available.
+   * the disk version, discarding in-memory edits) or Keep yours (overwrite disk
+   * on the next save; "yours", the word the two-versions panel uses, never
+   * "mine"). Not a modal — editing stays available.
    */
-  import Icon from "$lib/components/Icon.svelte";
+  import Icon from "#lib/components/Icon.svelte";
 
   let {
     fileName,
@@ -26,7 +27,7 @@
   </span>
   <span class="ext-actions">
     <button class="ext-btn app-btn-primary" onclick={onReload}>Reload</button>
-    <button class="ext-btn ext-btn-neutral" onclick={onKeepMine}>Keep mine</button>
+    <button class="ext-btn ext-btn-neutral" onclick={onKeepMine}>Keep yours</button>
   </span>
 </div>
 

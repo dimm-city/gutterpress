@@ -20,6 +20,21 @@ upload package (`<output dir>/publish/<provider>/` with the PDF and a
 `LISTING.md` metadata sheet), and give the author the exact upload URL and
 steps. If a platform later ships an API the provider upgrades in place.
 
+### Publishing plugins (experimental, #381)
+
+A book can add destinations of its own. A publishing plugin is an extension
+package flagged `"gutterpress": { "publish": true }` whose entry exports a
+named `publish(outputDir, context)` function; it installs, pins and restores
+like any extension. Its id is its package name, built-in ids always win, and
+it is listed after the built-ins (`--list`, the desktop's cards) as
+`kind: "plugin"`, marked `experimental` (a badge: the kind is what UIs
+branch on). It may declare nothing a build loads — no markdown entry, styles,
+components or snippets. The author's side is the user guide's
+[publishing plugins](../examples/gutterpress-user-guide/08-publishing.md)
+section; the contract is in
+[Chapter 5](../examples/gutterpress-user-guide/05-plugins.md). Experimental:
+it may change or be removed.
+
 ## CLI
 
 ```bash
@@ -90,6 +105,12 @@ Sections are keyed by the provider id — the same spelling as
 `--provider <id>`. Each provider declares its editable fields
 (`PublishProviderInfo.configFields`), which is what the desktop app's
 settings form renders — adding a provider needs no UI changes.
+
+A publishing plugin's section is keyed by its package name (a scoped name is
+quoted: `"@scope/pkg":`) and handed to the plugin as `context.settings`
+without the two keys core reads from it, `format` (`pdf` | `html`) and
+`credential`. Plugins declare no `configFields`, so the desktop shows no
+settings form for them.
 
 **Secrets never live in the project.** API keys (and Google Drive's refresh
 token — the same store, `kind: "google-oauth"`) are stored:
@@ -255,6 +276,8 @@ lib/publish/
   google-drive.ts    plain-fetch Drive REST client: refresh, about.get, list/create folder, resumable upload
   connect-google.ts  connectGoogleDrive(): runs the OAuth flow, then stores the refresh token like any credential
   providers/         itch, drivethrurpg, kdp, azure-swa, shopify, gdrive
+  plugin-provider.ts publishing plugins (experimental, #381): discovery from
+                     package.json, lookup + restore, the PublishProvider adapter
 ```
 
 `PublishProvider` (issue #35's interface, adapted; `listDestinations`/
@@ -283,4 +306,7 @@ touches the OS keychain (docs/architecture-rules.md §7-style host injection).
 The desktop app reaches the same code through `/api/publish/*` SvelteKit server
 routes (`list`, `connect`, `disconnect`, `set-config`, `run`) that share the
 remote-hooks host bridge; the renderer stays PWA-clean (§8) and only ever sees
-redacted credential status.
+redacted credential status. `list` and `set-config` use the book's providers
+(`listBookPublishProviders`: the built-ins, then its publishing plugins);
+`run` resolves a plugin through `runPublish`, so plugin code runs in the
+Electron main process, never the renderer.

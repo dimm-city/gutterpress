@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { dialogBehavior } from "$lib/dialog";
+  import { dialogBehavior } from "#lib/dialog.ts";
   import { untrack } from "svelte";
   import {
     IMAGE_PIN_ALIGNMENT_OPTIONS,
@@ -9,7 +9,7 @@
     IMAGE_SIZE_OPTIONS,
     IMAGE_SPACING_OPTIONS,
     type ImagePropertiesValue,
-  } from "$lib/editor/image-classes";
+  } from "#lib/editor/image-classes.ts";
 
   let { initialValue, onDone }: {
     initialValue: ImagePropertiesValue;
@@ -126,7 +126,7 @@
 </form>
 
 <style>
-  @import "$lib/styles/dialog-shell.css";
+  @import "../styles/dialog-shell.css";
   .image-properties { width: min(680px, 94vw); }
   .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 18px 18px 10px; overflow: auto; }
   label { display: grid; gap: 6px; color: var(--app-text-secondary); font-size: 13px; min-width: 0; }

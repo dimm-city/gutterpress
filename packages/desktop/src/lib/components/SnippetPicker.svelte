@@ -16,7 +16,7 @@
    * the cursor) and a Cancel button appears alongside it; a second click on
    * the (now armed) trash button actually deletes. Mirrors
    * CrashRecoveryDialog's Discard button via the shared
-   * `requestInlineConfirm`/`cancelInlineConfirm` helpers (`$lib/dialog`).
+   * `requestInlineConfirm`/`cancelInlineConfirm` helpers (`#lib/dialog.ts`).
    *
    * Levels — `api.snip.list` returns every snippet from every level (the
    * book's own, each enabled extension's, and core's), bodies included, each
@@ -32,24 +32,24 @@
    * on-screen position (`onGridKeydown`); Tab/Enter/Space work natively since
    * every card is a real button.
    */
-  import Icon from "$lib/components/Icon.svelte";
-  import { api } from "$lib/api";
-  import type { SnippetEntry } from "$lib/api";
-  import { extractVariables, substituteVariables } from "$lib/editor/snippet-vars";
+  import Icon from "#lib/components/Icon.svelte";
+  import { api } from "#lib/api.ts";
+  import type { SnippetEntry } from "#lib/api.ts";
+  import { extractVariables, substituteVariables } from "#lib/editor/snippet-vars.ts";
   import {
     filterSnippets,
     firstMatch,
     groupSnippets,
     snippetPreview,
     type LevelFilter,
-  } from "$lib/editor/snippet-filter";
+  } from "#lib/editor/snippet-filter.ts";
   import { tick } from "svelte";
   import {
     dialogBehavior,
     requestInlineConfirm,
     cancelInlineConfirm,
     type InlineConfirmState,
-  } from "$lib/dialog";
+  } from "#lib/dialog.ts";
 
   let {
     open = $bindable(false),
@@ -480,7 +480,7 @@
 {/if}
 
 <style>
-  @import "$lib/styles/dialog-shell.css";
+  @import "../styles/dialog-shell.css";
 
   .dlg-shell {
     width: min(480px, 94vw);

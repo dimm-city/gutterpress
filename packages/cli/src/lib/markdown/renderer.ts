@@ -23,6 +23,7 @@ import gutterpressMarkers, { buildDeclaredMarkerRegistry } from "./markers.js";
 import gpPinScope from "./gp-pin-scope.js";
 import { gpBlockNames } from "./block-names";
 import { gpTableAlign } from "./table-align";
+import gpTwoVersions from "./two-versions.ts";
 import markdownItSourceMap from "markdown-it-source-map";
 import markdownItDeflist from "markdown-it-deflist";
 // Optional, opt-in markdown features. Bundled so they're available WITHOUT any
@@ -426,6 +427,9 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   md.use(gpBlockNames);
   // Column alignment as `data-align` (styled by MARKER_CSS), not an inline style.
   md.use(gpTableAlign);
+  // A passage a sync left with two versions renders as two labelled boxes
+  // (two-versions.ts), not as the setext heading its marker lines spell.
+  md.use(gpTwoVersions);
 
   // Image src normalization (token-level renderer rule).
   registerImageRule(md);

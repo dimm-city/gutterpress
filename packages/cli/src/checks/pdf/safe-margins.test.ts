@@ -1,5 +1,6 @@
 /**
- * `pdf.print.safe-margins`: text stays `page.safe` inside the trim, where the
+ * `pdf.print.safe-margins`: text stays `page.safe` inside the trim and an
+ * image `page.artSafe` (`page.gutter` at the binding, for both), where the
  * trim is the sheet less the bleed on the top, bottom and OUTSIDE edges, and
  * the outside edge is the right on a recto and the left on a verso. Real small
  * PDFs drawn at known positions, read by the production reader, no mocks.
@@ -7,9 +8,11 @@
  * A dtrpg sheet is 621 x 810pt with 9pt of bleed, so the trim is
  *   recto (odd pages):  x 0..612, y 9..801   binding left, outside right
  *   verso (even pages): x 9..621, y 9..801   outside left, binding right
- * and the 36pt text limit sits 36pt inside that. Text is Courier at 10pt, so
- * "Text" is exactly 24pt wide and its glyph box runs from 2pt below the
- * baseline to 8pt above it.
+ * and the 36pt text limit sits 36pt inside that; the 18pt art limit 18pt
+ * inside it on the top, bottom and outside edges and 36pt at the binding.
+ * Text is Courier at 10pt, so "Text" is exactly 24pt wide and its glyph box
+ * runs from 2pt below the baseline to 8pt above it. An image is a 1 x 1 PNG
+ * drawn at the size given.
  */
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -33,16 +36,37 @@ interface Text {
   text?: string;
   rotate?: number;
 }
+/** An image of w x h placed with its bottom-left corner at (x, y), in points from the sheet's bottom-left. */
+interface Image {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+type Ink = Text | Image;
+const isImage = (ink: Ink): ink is Image => "w" in ink;
+
+/** A 1 x 1 PNG: every image is this, stretched. */
+const PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+  "base64",
+);
 
 let n = 0;
 /** One page per entry; a page with no entries has no content. */
-async function pdfOf(pages: Text[][], size: [number, number] = [621, 810]): Promise<string> {
+async function pdfOf(pages: Ink[][], size: [number, number] = [621, 810]): Promise<string> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Courier);
-  for (const texts of pages) {
+  const png = await doc.embedPng(PNG);
+  for (const inks of pages) {
     const page = doc.addPage(size);
-    for (const { x, y, text = "Text", rotate = 0 } of texts) {
-      page.drawText(text, { x, y, size: 10, font, rotate: degrees(rotate) });
+    for (const ink of inks) {
+      if (isImage(ink)) {
+        page.drawImage(png, { x: ink.x, y: ink.y, width: ink.w, height: ink.h });
+      } else {
+        const { x, y, text = "Text", rotate = 0 } = ink;
+        page.drawText(text, { x, y, size: 10, font, rotate: degrees(rotate) });
+      }
     }
   }
   const file = join(dir, `t${n++}.pdf`);
@@ -57,9 +81,11 @@ const ctxFor = (pdfPath: string, manifest: Parameters<typeof resolveConfig>[1] =
   pdfPath,
 });
 
-test("is a post-build PDF check whose description says it judges text only", () => {
+test("is a post-build PDF check whose description says it judges text and images, not filled backgrounds", () => {
   expect(check).toMatchObject({ name: "Safe margins", category: "pdf", phase: "post-build" });
-  expect(check.description).toContain("Text only: art is judged in the preview's safe-area overlay");
+  expect(check.description).toContain(
+    "Text and images: filled backgrounds and borders are judged in the preview's safe-area overlay",
+  );
 });
 
 describe("what passes", () => {
@@ -183,6 +209,88 @@ describe("what fails", () => {
     const pdf = await pdfOf([[{ x: 10, y: 300 }]], [432, 648]);
     const [r] = await check.run(ctxFor(pdf, { preset: "book" }));
     expect(r!.detail).toBe("page.safe: text must stay at least 0.25in inside the trim on every edge.");
+  });
+});
+
+describe("images, by the art rule", () => {
+  // A 2 x 3in image is 144 x 216pt. The art line is 18pt inside the trim on the
+  // top, bottom and outside edges and 36pt (the text rule) at the binding.
+  const image = (x: number, y: number): Image => ({ x, y, w: 144, h: 216 });
+
+  test("0.3in from an outside edge passes, on a recto and on a verso, as does an image exactly on the art line", async () => {
+    const pdf = await pdfOf([
+      [image(612 - 21.6 - 144, 300)], // recto, outside right: right edge 21.6 inside the trim at 612
+      [image(9 + 21.6, 300)], //          verso, outside left: left edge 21.6 inside the trim at 9
+      [image(612 - 18 - 144, 801 - 18 - 216)], // recto: on the line at the right and the top
+    ]);
+    expect(await check.run(ctxFor(pdf))).toEqual([]);
+  });
+
+  test("the same 0.3in from the binding edge fails: art takes the text rule's 0.5in there", async () => {
+    const pdf = await pdfOf([
+      [image(21.6, 300)], //             recto, binding left: left edge 21.6 inside the trim at 0
+      [image(621 - 21.6 - 144, 300)], // verso, binding right: right edge 21.6 inside the trim at 621
+    ]);
+    const results = await check.run(ctxFor(pdf));
+    expect(results.map((r) => r.message)).toEqual([
+      "Page 1: a 2.0 x 3.0in image is 0.2in too close to the binding edge.",
+      "Page 2: a 2.0 x 3.0in image is 0.2in too close to the binding edge.",
+    ]);
+    expect(results[0]).toMatchObject({
+      severity: "error",
+      code: "art-outside-safe-margin",
+      file: pdf,
+      detail:
+        "DriveThruRPG — Quick Specifications for Print Books: art that does not bleed must stay at least 0.25in inside the trim, 0.5in at the binding.",
+      data: { page: 1, edge: "binding", shortfallPt: 14.4 },
+    });
+    expect(results[1]!.data).toEqual({ page: 2, edge: "binding", shortfallPt: 14.4 });
+  });
+
+  test("an image that stops in the bleed band fails: it crosses the trim without reaching the sheet's edge", async () => {
+    const pdf = await pdfOf([
+      [image(615 - 144, 300)], //        recto: right edge at 615, past the trim at 612, 6pt short of the sheet at 621
+      [image(300, 805 - 216)], //        verso: top edge at 805, past the trim at 801, 5pt short of the sheet at 810
+    ]);
+    const results = await check.run(ctxFor(pdf));
+    expect(results.map((r) => r.message)).toEqual([
+      "Page 1: a 2.0 x 3.0in image ends in the bleed band on the outside edge, 0.08in short of the sheet's edge.",
+      "Page 2: a 2.0 x 3.0in image ends in the bleed band on the top edge, 0.07in short of the sheet's edge.",
+    ]);
+    expect(results[0]).toMatchObject({
+      severity: "error",
+      code: "art-ends-in-bleed-band",
+      file: pdf,
+      detail:
+        "DriveThruRPG — Quick Specifications for Print Books: art either stays 0.25in inside the trim or bleeds, running past it to the sheet's edge; art that stops between the two can leave a white sliver when the page is cut.",
+      data: { page: 1, edge: "outside", shortfallPt: 6 },
+    });
+    expect(results[1]!.data).toEqual({ page: 2, edge: "top", shortfallPt: 5 });
+  });
+
+  test("an image that reaches the sheet's edge is a bleed and passes, as does a full-page plate and one flush to the binding", async () => {
+    const pdf = await pdfOf([
+      [image(621 - 144, 300)], //          recto: right edge on the sheet's edge, 9pt past the trim
+      [{ x: 0, y: 0, w: 621, h: 810 }], // verso: edge to edge
+      [image(0, 300)], //                  recto: on the binding edge, where nothing is cut
+    ]);
+    expect(await check.run(ctxFor(pdf))).toEqual([]);
+  });
+
+  test("an image inside every line passes", async () => {
+    const pdf = await pdfOf([[image(200, 300)], [image(200, 300)]]);
+    expect(await check.run(ctxFor(pdf))).toEqual([]);
+  });
+
+  test("where no page.artSafe is set, art follows page.safe on every edge, and the detail cites it", async () => {
+    // book: a 432 x 648 sheet with no bleed and a 0.25in rule; the image's right edge is 0.2in inside it
+    const pdf = await pdfOf([[image(432 - 14.4 - 144, 200)]], [432, 648]);
+    const [r] = await check.run(ctxFor(pdf, { preset: "book" }));
+    expect(r).toMatchObject({
+      message: "Page 1: a 2.0 x 3.0in image is 0.05in too close to the outside edge.",
+      detail: "page.safe: art that does not bleed must stay at least 0.25in inside the trim on every edge.",
+      data: { page: 1, edge: "outside", shortfallPt: 3.6 },
+    });
   });
 });
 

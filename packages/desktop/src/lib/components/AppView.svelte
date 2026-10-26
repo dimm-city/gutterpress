@@ -17,8 +17,8 @@
    */
   import { fade } from "svelte/transition";
   import type { ComponentProps, Snippet } from "svelte";
-  import Icon from "$lib/components/Icon.svelte";
-  import { dialogBehavior } from "$lib/dialog";
+  import Icon from "#lib/components/Icon.svelte";
+  import { dialogBehavior } from "#lib/dialog.ts";
 
   type IconName = ComponentProps<typeof Icon>["name"];
 

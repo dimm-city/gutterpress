@@ -41,6 +41,16 @@ test("friendlyFolderError gives repair guidance for malformed manifest.yaml", ()
   );
 });
 
+test("a manifest a sync left with two versions points at manifest.yaml, not a YAML position", () => {
+  const raw =
+    'Preview server failed to start: "/books/example/manifest.yaml" has two versions of a setting — yours and the online version — left by a sync. Open it, keep the one you want and delete the marker lines.';
+  expect(friendlyPreviewError(raw)).toMatchObject({
+    title: "This book's settings have two versions.",
+    message: expect.stringContaining("open manifest.yaml"),
+  });
+  expect(friendlyFolderError(raw)).toContain("two versions of a setting");
+});
+
 test("friendlyPreviewError explains obsolete manifest fields without closing the folder", () => {
   expect(
     friendlyPreviewError(

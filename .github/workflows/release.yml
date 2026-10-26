@@ -67,9 +67,7 @@ jobs:
       # without removing that guard's reason for existing.
       - if: steps.ci.outputs.passed != 'true'
         name: Install PDF tooling (Ghostscript, qpdf)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ghostscript qpdf
+        uses: ./.github/actions/pdf-tools
       - name: Setup Bun (cached)
         uses: ./.github/actions/bun
 

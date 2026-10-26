@@ -17,10 +17,10 @@
  * Host coupling is injected so this stays testable with fakes and PWA-clean
  * (CLAUDE.md §8): ZERO direct DOM / `node:*` / lib value imports.
  */
-import type { PreviewEvent, SourceRange } from "$lib/preview-client";
-import type { CommitEngine } from "$lib/editor/commit-engine";
-import { chapterPath } from "$lib/editor/chapter-path";
-import { buildLineStarts, charRange } from "$lib/editor/source-range";
+import type { PreviewEvent, SourceRange } from "#lib/preview-client.ts";
+import type { CommitEngine } from "#lib/editor/commit-engine.ts";
+import { chapterPath } from "#lib/editor/chapter-path.ts";
+import { buildLineStarts, charRange } from "#lib/editor/source-range.ts";
 
 /** Minimal preview-client surface the controller drives (protocol v8). */
 export interface InlineEditClient {

@@ -7,7 +7,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { formatProblemReport, summarizeManifest, tailLog, type ProblemReport } from '$lib/server/problem-report.js';
+import { formatProblemReport, summarizeManifest, tailLog, type ProblemReport } from '#lib/server/problem-report.ts';
 import { APP_LOG_FILENAME } from '../../../../../electron/recovery-paths';
 import { defineRoute, getHostServices, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';

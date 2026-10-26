@@ -3,7 +3,7 @@
  * Features views) and its controller.
  *
  * Browser-safe strings/derivations with no host coupling — only `import type`
- * from `$lib/platform/dtos`, so this module stays PWA-clean (§8). Kept out of
+ * from `#lib/platform/dtos.ts`, so this module stays PWA-clean (§8). Kept out of
  * the controller so bun can unit-test them without the `$state` shim, and out
  * of the components so both views share one implementation.
  */
@@ -11,7 +11,7 @@
 import type {
   ProjectExtensionEntry,
   ExtensionValidationResult,
-} from "$lib/platform/dtos";
+} from "#lib/platform/dtos.ts";
 
 /**
  * Build the srcdoc for a look thumbnail iframe.

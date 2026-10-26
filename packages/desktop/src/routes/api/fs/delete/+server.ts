@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import path from 'node:path';
-import { gitIdentityArgs } from '$lib/server/settings';
+import { gitIdentityArgs } from '#lib/server/settings.ts';
 import { scheduleAutoWriteEffects } from '../../../../../electron/server-bridge/write-hooks';
 import { holdDeleted } from '../_shared/recently-deleted';
 import { defineRoute, getHostServices, loadLib, requireAbsolute, requireWithinProjectRoot } from '../../_lib/route';

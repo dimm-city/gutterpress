@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import {
   ExportController,
+  EXPORT_CHECKS_SOURCE,
+  findingsFromValidation,
   type ExportControllerDeps,
 } from "../../electron/export/controller";
 import type { ExportProgressEvent, ExportSession } from "../../electron/pdf-export";
@@ -45,7 +47,15 @@ interface HarnessOpts {
   cancelDuringSync?: boolean;
   /** The author's configured commit identity the pre-export sync gate must pass on. */
   gitIdentity?: { authorName?: string; authorEmail?: string };
+  /** Return value (or thrown value) of the fake executeValidation (the post-build PDF checks, #399). */
+  executeValidation?: () => unknown;
 }
+
+/** An empty post-build validation: no findings, no tools missing. */
+const cleanValidation = () => ({
+  report: { results: [] },
+  tools: { available: [], missing: [], skippedChecks: [], toolToChecks: new Map<string, string[]>() },
+});
 
 interface Harness {
   controller: ExportController;
@@ -64,6 +74,10 @@ interface Harness {
   buildArgs: Array<{ outDir?: string; pdfFileOverride?: string | null; allowShrink?: boolean; format?: string }>;
   /** Paths handed to `registerPickedPath`, in order (the reveal capability). */
   registeredPicks: string[];
+  /** Args of every fake executeValidation() call, in order (the post-build PDF checks). */
+  validationArgs: Array<{ input?: string; pdf?: string; phase?: string; manifest?: string; pluginStylePaths?: string[] }>;
+  /** Every host touch-point in the order it happened, to assert the checks' place in the pipeline. */
+  timeline: string[];
 }
 
 function makeHarness(opts: HarnessOpts = {}): Harness {
@@ -75,6 +89,8 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
   const syncArgs: unknown[] = [];
   const buildArgs: Array<{ outDir?: string; pdfFileOverride?: string | null; allowShrink?: boolean; format?: string }> = [];
   const registeredPicks: string[] = [];
+  const validationArgs: Harness["validationArgs"] = [];
+  const timeline: string[] = [];
   const counters = { sync: 0, build: 0 };
   let session: ExportSession | null = opts.activeSession ?? null;
 
@@ -89,9 +105,15 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     },
     runBuild: async (buildOpts: { outDir?: string; pdfFileOverride?: string | null; allowShrink?: boolean; format?: string }) => {
       counters.build += 1;
+      timeline.push("build");
       buildArgs.push(buildOpts);
       const r = opts.runBuild ? opts.runBuild() : { outDir: "/out", htmlPath: "/out/x.html", fingerprintPath: "/out/fp.json" };
       return r;
+    },
+    executeValidation: async (args: Harness["validationArgs"][number]) => {
+      timeline.push("validate");
+      validationArgs.push(args);
+      return opts.executeValidation ? opts.executeValidation() : cleanValidation();
     },
     BuildError: FakeBuildError,
   } as unknown as LibModule;
@@ -107,13 +129,17 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     setActiveExportSession: (s) => {
       session = s;
     },
-    sendProgress: (e) => progress.push(e),
+    sendProgress: (e) => {
+      timeline.push(`progress:${e.state}${e.message ? `:${e.message}` : ""}`);
+      progress.push(e);
+    },
     throwIfCanceled: (s) => {
       if (s.canceled) throw new Error("canceled");
     },
     isExportCanceledError: (e) =>
       e instanceof Error && (e as Error & { code?: string }).code === "EXPORT_CANCELED",
     rename: async (from, to) => {
+      timeline.push("rename");
       renamed.push([from, to]);
     },
     rm: async (p) => {
@@ -122,6 +148,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     consumeSavePath: opts.consumeSavePath ?? (() => true),
     isWithinProject: opts.isWithinProject ?? (async () => false),
     registerPickedPath: (absPath: string) => {
+      timeline.push("register");
       registeredPicks.push(absPath);
     },
   };
@@ -143,6 +170,8 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     getSession: () => session,
     syncArgs,
     buildArgs,
+    validationArgs,
+    timeline,
   };
 }
 
@@ -445,4 +474,184 @@ test("Cancel during the pre-export sync gate aborts before runBuild (M28)", asyn
   expect(h.progress.some((p) => p.state === "canceled")).toBe(true);
   // Session cleaned up so a subsequent export isn't blocked.
   expect(h.getSession()).toBeNull();
+});
+
+// ── the post-build PDF checks on the delivered file (#399) ──────────────────
+// The desktop exports plain `pdf` and never ran the lib's post-build checks,
+// so a `dtrpg` book's required checks (safe margins, PDF/X, …) had no verdict
+// here. The controller now runs `executeValidation` — the same function the
+// CLI's `validate --pdf` and pdfx build use — on the final PDF, after the
+// rename and before the export is reported done.
+
+test("a PDF export runs the post-build checks on the FINAL path, after the rename and before success", async () => {
+  const h = makeHarness();
+  const res = await h.controller.build({
+    input: "/book",
+    format: "pdf",
+    out: "/out/book.pdf",
+    manifest: "/book/manifest.yaml",
+  });
+
+  expect(h.validationArgs.length).toBe(1);
+  const args = h.validationArgs[0]!;
+  // The delivered file, not the temp sibling the build wrote.
+  expect(args.pdf).toBe("/out/book.pdf");
+  expect(args.phase).toBe("post-build");
+  expect(args.input).toBe(path.resolve("/book"));
+  expect(args.manifest).toBe("/book/manifest.yaml");
+  // The build already restored/loaded the book's extensions; the checks read the PDF.
+  expect(args.pluginStylePaths).toEqual([]);
+  // Order: build → rename → register → "Checking the PDF…" → checks → success.
+  const at = (step: string) => h.timeline.indexOf(step);
+  expect(at("rename")).toBeGreaterThan(at("build"));
+  expect(at("progress:started:Checking the PDF…")).toBeGreaterThan(at("register"));
+  expect(at("validate")).toBeGreaterThan(at("progress:started:Checking the PDF…"));
+  expect(at("progress:success:/out/book.pdf")).toBeGreaterThan(at("validate"));
+  expect(res.findings).toEqual([]);
+  expect(res.pdfPath).toBe("/out/book.pdf");
+});
+
+test("the checks' findings ride back on the export result", async () => {
+  const h = makeHarness({
+    executeValidation: () => ({
+      report: {
+        results: [
+          {
+            checkId: "pdf.print.safe-margins",
+            target: "dtrpg",
+            severity: "error",
+            message: 'Page 3: "Too close" is 0.12in too close to the outside edge.',
+            file: "/out/book.pdf",
+            detail: "page.safe: text must stay at least 0.5in inside the trim on every edge.",
+            code: "text-outside-safe-margin",
+            data: { page: 3, edge: "outside", shortfallPt: 8.64 },
+          },
+        ],
+      },
+      tools: { available: [], missing: [], skippedChecks: [], toolToChecks: new Map() },
+    }),
+  });
+  const res = await h.controller.build({ input: "/book", format: "pdf", out: "/out/book.pdf" });
+  expect(res.findings).toEqual([
+    {
+      source: "pdf.print.safe-margins",
+      severity: "error",
+      message: 'Page 3: "Too close" is 0.12in too close to the outside edge.',
+      detail: "page.safe: text must stay at least 0.5in inside the trim on every edge.",
+      target: "dtrpg",
+      page: 3,
+      edge: "outside",
+    },
+  ]);
+  // A finding never fails the export: the file has already landed.
+  expect(res.pdfPath).toBe("/out/book.pdf");
+  expect(h.progress.some((p) => p.state === "success")).toBe(true);
+});
+
+test("a check run that cannot complete is one error finding, not a swallowed silence and not a failed export", async () => {
+  const h = makeHarness({
+    executeValidation: () => {
+      throw new Error("File not found: /out/book.pdf");
+    },
+  });
+  const res = await h.controller.build({ input: "/book", format: "pdf", out: "/out/book.pdf" });
+  expect(res.pdfPath).toBe("/out/book.pdf");
+  expect(h.progress.some((p) => p.state === "success")).toBe(true);
+  expect(h.progress.some((p) => p.state === "error")).toBe(false);
+  expect(res.findings).toEqual([
+    {
+      source: EXPORT_CHECKS_SOURCE,
+      severity: "error",
+      message: "The PDF was saved, but its checks could not run: File not found: /out/book.pdf",
+    },
+  ]);
+});
+
+test("an html export runs no PDF checks and carries no findings", async () => {
+  const h = makeHarness({
+    runBuild: () => ({ outDir: "/book/dist", htmlPath: "/book/dist/book.html", pdfPath: null, fingerprintPath: null }),
+  });
+  const res = await h.controller.build({ input: "/book", format: "html", out: "/book/dist" });
+  expect(h.validationArgs).toEqual([]);
+  expect(res.findings).toBeUndefined();
+});
+
+test("findingsFromValidation: drops the PDF's own file, keeps page/edge/detail/target, and reports skipped checks", () => {
+  const findings = findingsFromValidation({
+    report: {
+      results: [
+        {
+          checkId: "pdf.print.page-size",
+          severity: "error",
+          message: "Page size mismatch: expected ~621x810 pts, got 612x792 pts.",
+          file: "/out/book.pdf",
+        },
+        {
+          checkId: "pdf.print.safe-margins",
+          severity: "error",
+          target: "dtrpg",
+          message: 'Page 1: "Edge" is 0.3in too close to the top edge.',
+          file: "/out/book.pdf",
+          detail: "page.safe: text must stay at least 0.5in inside the trim on every edge.",
+          data: { page: 1, edge: "top", shortfallPt: 21.6 },
+        },
+        // The lib's own synthetic error for a required check skipped for a
+        // missing tool (validation-exec.ts) — passes through as is.
+        {
+          checkId: "pdf.print.pdfx-markers",
+          severity: "error",
+          target: "dtrpg",
+          message:
+            "Target dtrpg requires check pdf.print.pdfx-markers, but it was skipped because required tools are not available.",
+        },
+      ],
+    },
+    tools: {
+      available: [],
+      missing: ["qpdf", "gs"],
+      skippedChecks: ["pdf.print.pdfx-markers", "pdf.print.pdfx-metadata", "pdf.print.ink-coverage"],
+      toolToChecks: new Map([
+        ["qpdf", ["pdf.print.pdfx-markers", "pdf.print.pdfx-metadata"]],
+        ["gs", ["pdf.print.ink-coverage"]],
+      ]),
+    },
+  } as never);
+
+  expect(findings).toEqual([
+    {
+      source: "pdf.print.page-size",
+      severity: "error",
+      message: "Page size mismatch: expected ~621x810 pts, got 612x792 pts.",
+    },
+    {
+      source: "pdf.print.safe-margins",
+      severity: "error",
+      message: 'Page 1: "Edge" is 0.3in too close to the top edge.',
+      detail: "page.safe: text must stay at least 0.5in inside the trim on every edge.",
+      target: "dtrpg",
+      page: 1,
+      edge: "top",
+    },
+    {
+      source: "pdf.print.pdfx-markers",
+      severity: "error",
+      message:
+        "Target dtrpg requires check pdf.print.pdfx-markers, but it was skipped because required tools are not available.",
+      target: "dtrpg",
+    },
+    // Skipped checks nobody else reported: one info row each, naming the tool.
+    // pdfx-markers already has the synthetic error above, so no second row.
+    {
+      source: "pdf.print.pdfx-metadata",
+      severity: "info",
+      message: "Skipped: qpdf is not installed on this computer.",
+    },
+    {
+      source: "pdf.print.ink-coverage",
+      severity: "info",
+      message: "Skipped: gs is not installed on this computer.",
+    },
+  ]);
+  // No finding may point at a file: the panel would offer a source jump to the PDF.
+  expect(findings.every((f) => !("file" in f))).toBe(true);
 });

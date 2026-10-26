@@ -4,6 +4,10 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Window } from "happy-dom";
+// happy-dom 21 no longer gives an <iframe> a document unless iframe loading
+// is enabled (off by default against SSRF); these tests build the preview's
+// frames and read into them.
+const HAPPY_DOM = { enableIframePageLoading: true };
 
 // Resolve relative to THIS FILE, not process.cwd() — the test must pass no
 // matter where bun/node is invoked from (bare `bun test` from the repo root
@@ -152,7 +156,7 @@ function loadNativePreviewApi(sheets, runs = []) {
 // window.Gutterpress stub (pageOf + refresh) before the script runs, so the
 // page-resolution and re-fragmentation paths have something to call.
 function loadInterfaceWithDom(html, opts = {}) {
-  const window = new Window({ url: "http://localhost/" });
+  const window = new Window({ url: "http://localhost/", settings: HAPPY_DOM });
   const document = window.document;
   if (opts.native) {
     document.head.innerHTML = '<script src="/engine/gutterpress-viewer.js"></script>';
@@ -1238,7 +1242,7 @@ async function main() {
 
     // hosted by the desktop app (the shell's parent is the app): no key, no claim — the app owns the toggle
     {
-      const hosted = new Window({ url: "http://localhost/" });
+      const hosted = new Window({ url: "http://localhost/", settings: HAPPY_DOM });
       const appWindow = {};
       appWindow.parent = appWindow;
       const shellWindow = { parent: appWindow };

@@ -44,9 +44,9 @@
    *
    * PWA-clean (§8): type-only imports, zero host/Node code.
    */
-  import Icon from "$lib/components/Icon.svelte";
-  import { adjacentTab, type MobileTab } from "$lib/editor/mobile-layout";
-  import type { WorkspaceMode } from "$lib/platform";
+  import Icon from "#lib/components/Icon.svelte";
+  import { adjacentTab, type MobileTab } from "#lib/editor/mobile-layout.ts";
+  import type { WorkspaceMode } from "#lib/platform/index.ts";
 
   let {
     // ── Start cluster: panel toggle + document identity ──────────────────────

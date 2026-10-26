@@ -5,6 +5,138 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.22] - 2026-10-23
+
+### Added
+
+- **The safe-margins check judges art too (#400).** `pdf.print.safe-margins`
+  now reads every image drawn in the built PDF and applies DriveThruRPG's art
+  rule: art that does not bleed stays at least `page.artSafe` inside the trim
+  on the top, bottom and outside edges and `page.gutter` at the binding. An
+  image that runs out to the sheet's edge is a bleed there and passes; one that
+  crosses the trim without reaching the sheet ends in the bleed band and is
+  reported as such. Findings name the page, the image size, the edge and the
+  shortfall, like the text findings. The check and the preview's "Safe area:
+  art" overlay now judge through one shared function
+  (`engine/shared/print-area.ts`), so they cannot disagree. Filled backgrounds
+  and borders are still judged in the overlay only.
+- **The desktop runs the PDF checks when you export (#399).** After a PDF
+  export lands, the book's post-build checks run on that file through the
+  same validation path the CLI uses (`executeValidation` with the manifest's
+  targets), and their findings appear in the Problems list, with a message
+  that says how many were found and a **Review** button. A required check that
+  cannot run because `qpdf` or Ghostscript is missing is reported as an error,
+  and a check skipped for a missing tool says so, never a silent pass. The
+  export itself always completes. The Publish wizard's note now describes what
+  actually runs.
+
+- **Settle a passage with two versions by comparing them and picking one
+  (#407).** When a sync combines a passage edited both here and online, the
+  desktop editor now shows a card above the text that asks, one passage at
+  a time, which version to keep: **Keep yours**, **Keep online** or **Keep
+  both**, with the two texts behind **Compare the text** and a count with
+  arrows to move between passages. The editor scrolls to the passage in
+  question. A choice rewrites the file without the marker lines as one
+  ordinary, undoable edit, confirmed by a message with an **Undo** button,
+  so saving, the preview and the Problems entry follow as for any edit.
+  Stylesheets get the same card, rule by rule. The "two versions were kept"
+  message after a sync carries a **Review** button that opens the Problems
+  list, where each passage opens its file under the card. Compare marks the
+  words only one side has, and says so when the two differ only in spacing;
+  two texts that share little are shown plain. **Keep both** leaves a blank
+  line between two paragraphs. Settling a file's last passage offers the
+  next file that has one, and brings back a preview a stylesheet or
+  manifest with two versions had taken down. A manifest with two versions
+  of a setting is reported as that, in the CLI and the preview, not as
+  "invalid YAML at line 1".
+- **The preview shows both versions of a combined passage.** The marker
+  lines a sync writes are valid markdown, so the preview used to render the
+  passage as a chapter-sized heading over a stack of quotes and list
+  `<<<<<<< your version` in the outline. The markdown renderer now turns the
+  family into two labelled boxes, *Your version* and *Online version*, each
+  rendered as ordinary markdown, so either version can be read as it would
+  print while choosing. Plain HTML and CSS (`.gp-two-versions`); the
+  Combined Versions check still blocks a build until the passage is settled.
+  A version that carries a structural marker (`@section` and the like) is
+  shown as plain text, so a marker opened in one version cannot nest the
+  other box inside it. A passage on a file's last line, with no line break
+  after it, now gets its separator on its own line, so it can be read back.
+- **Versions view: what each version changed, a look at any version beside
+  the current book, and what is online before Get latest (#408).** Each
+  version card lists the files it touched with a plain hint
+  (`chapter-02.md · 3 paragraphs changed`, `styles/book.css · 1 rule
+  changed`, `art/cover.png · replaced`), says whether it is **Backed up** or
+  **On this computer only**, and an automatic version with no changes says
+  so. **Look at this version** renders that version read-only beside the
+  live preview, following the page in view, without touching a file;
+  **Stop looking** returns to the live preview alone; a narrow window shows
+  one at a time, **That version** or **Current book**. Clicking a changed
+  text file opens it as two columns, *That version* and *Current*, with the
+  lines that differ marked. When the book has an online copy, the view's top
+  section, **Online, not yet on this computer**, lists the versions online
+  with the same cards before Get latest brings them in. All of it reads the
+  book's own history through isomorphic-git: nothing is installed, nothing
+  shells out.
+- **Publishing plugins (experimental — may change or be removed).** An
+  extension can add a place to publish that Gutterpress doesn't offer itself:
+  a package that sets `"gutterpress": { "publish": true }` and exports a
+  `publish(outputDir, context)` function. It installs, pins and restores like
+  any extension, and never runs while a book builds or previews. A book's
+  publishing plugins appear in the desktop's Publish wizard with an
+  Experimental badge and as `gutterpress publish --provider <package-name>`.
+  The plugin gets the built file, the book's title and authors and its own
+  `publish.<package-name>` settings, and handles its own sign-in; keys never go
+  in `manifest.yaml`. Built-in destinations are unchanged and never load a
+  plugin. See the user guide's Publishing chapter (authors) and Plugins chapter
+  (the contract). For library callers, `runPublish` now reports an unknown
+  provider id as `{ ok: false, error }` instead of throwing. `PRIVACY.md` says
+  what a plugin receives and what it never does. (#381)
+
+### Changed
+
+- **dtrpg preset: `page.gutter` is now 36pt, stated (#401).** DriveThruRPG
+  asks for text and non-bleeding art at least 0.5in from the binding edge; the
+  preset now declares that binding allowance instead of leaving it to default
+  to `page.safe`. Nothing changes for a book that did not set `gutter`.
+- **The desktop runs on SvelteKit 3 (#417).** The app's window and its
+  in-process host routes moved from SvelteKit 2 to 3 (with Svelte 5.57, and
+  TypeScript 6 for the desktop's own checks), which clears the two SvelteKit 2
+  advisories CI's dependency audit had been told to ignore. Nothing an author
+  sees or does should change.
+
+### Fixed
+
+- **A book whose stylesheet sets no `@page { size }` now prints at the
+  manifest's page size (#415).** What Chromium prints is the stylesheet's
+  plain `@page { size }` rule, and a book whose author wrote their own
+  stylesheet with only `@page { margin }`, or replaced the scaffolded one,
+  had none, so a `dtrpg` book printed at Letter (612×792pt) while the preview
+  overlays, the safe-margins check and the page-size check all judged it
+  against 621×810. The assembled page now carries `@page { size: <width>pt
+  <height>pt }` from the manifest whenever no stylesheet, the book's own or a
+  look's, sets a plain size; a stylesheet that does set one still wins. The
+  rule is found with the engine's own `@page` reader, so the preview, the
+  compiler and the print path read one answer.
+- **The ink-coverage check measured nothing under Ghostscript 10 (#419).**
+  `pdf.print.ink-coverage` ran `gs -sDEVICE=inkcov` without an output
+  target. Ghostscript 10 refuses that ("Device 'inkcov' requires an output
+  file"), exits 0 and prints no data, so the check read zero pages and
+  passed every book, a 250% page included, on every machine with
+  Ghostscript 10, CI's runners among them. The report now goes to stdout,
+  and a run that yields no pages is reported as "could not be measured"
+  rather than passed. The check stays advisory: a page over DriveThruRPG's
+  240% limit, an unmeasured book and a machine without Ghostscript are all
+  warnings, so an author is told and never stopped.
+- **The preview's blank pages for `break-before: left | right | recto | verso`
+  now exist (#421).** The viewer planned the right blanks but built each from
+  two zero-height forced column breaks, and Chromium drops a forced break that
+  would leave a column empty, so a site at the top of its strip or the first
+  child of its wrapper (`@chapter` > `@section .opener`) got no blank page. It
+  landed on the wrong side and every page after it was numbered one lower than
+  in the PDF. Each blank is now one spacer the height of the column, which
+  needs no forced break: the preview puts the openers where the PDF does and
+  counts the same pages. The PDF build was already right.
+
 ## [0.11.21] - 2026-10-16
 
 ### Removed

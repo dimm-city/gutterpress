@@ -1261,29 +1261,28 @@ export function compensateRectoBreaks(
   let inserted = 0;
   for (const [i, site] of sites.entries()) {
     if (!plan[i]) continue;
-    // A blank page is TWO forced column breaks: one to open the blank column,
-    // one to close it. Both have to be `break-before` on a spacer — a
-    // `break-after` would sit at the break point the site's OWN
-    // `break-before: recto` also occupies, where the two values combine, the
-    // author's `recto` wins, and multicol (which has no pages) discards the
-    // lot: a `break-before + break-after` spacer produces one break instead
-    // of two and no blank page at all.
+    // The blank page is ONE spacer that IS the page: a full column tall and
+    // unsplittable. At the top of a column it fills that column and pushes the
+    // site to the next; mid-column it does not fit, so it moves whole to the
+    // next column and fills that one. Either way it adds exactly one page.
     //
-    // Chromium ignores a forced break that would leave a fragmentainer empty,
-    // so a spacer that is the FIRST box in its column breaks nothing. That is
-    // exactly what makes the pair work — and what makes the first of the pair
-    // unnecessary when `synthesizeColumnBreaks` already left a spacer there to
-    // occupy the column.
-    const leading = site.el.previousElementSibling;
-    const need = leading?.classList.contains("gp-column-break-spacer") ? 1 : 2;
-    for (let n = 0; n < need; n++) {
-      const spacer = document.createElement("div");
-      spacer.className = "gp-recto-spacer";
-      spacer.setAttribute("aria-hidden", "true");
-      spacer.style.cssText =
-        "break-before: column; height: 0; margin: 0; padding: 0; border: 0;";
-      site.el.before(spacer);
-    }
+    // It used to be two zero-height `break-before: column` spacers (one to
+    // open the blank column, one to close it). Chromium ignores a forced break
+    // that would leave a fragmentainer empty, so the second spacer's break,
+    // following only the zero-height first, was dropped, and a site at the top
+    // of its strip (`clearLeadingForcedBreaks` had set its own break to auto)
+    // got no blank at all. A site that is the first child of its wrapper
+    // (`.chapter > .section`) hit this on every page (#421). A box with real
+    // height needs no forced break for Chromium to drop.
+    //
+    // `--gp-content-h` is set on the strip (`measure()`), so the spacer
+    // inherits the column height of the named page it sits in.
+    const spacer = document.createElement("div");
+    spacer.className = "gp-recto-spacer";
+    spacer.setAttribute("aria-hidden", "true");
+    spacer.style.cssText =
+      "height: var(--gp-content-h); break-inside: avoid; margin: 0; padding: 0; border: 0;";
+    site.el.before(spacer);
     inserted++;
   }
   return inserted;

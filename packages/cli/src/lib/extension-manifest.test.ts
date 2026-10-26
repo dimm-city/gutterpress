@@ -19,6 +19,7 @@ import {
   extensionEntry,
   extensionCarries,
   assertExtensionContained,
+  assertPublishOnly,
   assertSupportsThisGutterpress,
   resolveExtension,
 } from "./extension-manifest";
@@ -113,7 +114,35 @@ describe("extension-manifest", () => {
         styles: false,
         snippets: false,
         components: false,
+        publish: false,
       });
+    });
+
+    // #381 (experimental) — a publishing plugin's `main` is its publish
+    // module, never a markdown-it entry.
+    test("`gutterpress.publish: true` marks a publishing plugin whose `main` is not a markdown entry (#381)", async () => {
+      const meta = await readExtensionMeta(
+        pkgDir({ name: "gp-publish-x", main: "index.js", gutterpress: { publish: true } }),
+      );
+      expect(meta.publish).toBe(true);
+      expect(extensionEntry(meta)).toBeUndefined();
+      expect(extensionCarries(meta)).toEqual({
+        markdown: false,
+        styles: false,
+        snippets: false,
+        components: false,
+        publish: true,
+      });
+    });
+
+    test("only a literal `true` is a publish flag (#381)", async () => {
+      for (const publish of ["true", 1, "./publish.js", {}]) {
+        const meta = await readExtensionMeta(
+          pkgDir({ name: "not-a-publisher", main: "index.js", gutterpress: { publish } }),
+        );
+        expect(meta.publish).toBeUndefined();
+        expect(extensionEntry(meta)).toBe("index.js");
+      }
     });
 
     test("returns {} for a folder with no package.json", async () => {
@@ -168,6 +197,28 @@ describe("extension-manifest", () => {
           tokensFile: "css/tokens.css",
         }),
       ).not.toThrow();
+    });
+
+    // #381 (experimental) — a publisher's `main` is no markdown entry, but
+    // the publish path imports it, so it must stay inside the folder too.
+    test("rejects a publishing plugin whose `main` escapes its folder (#381)", () => {
+      expect(() => assertExtensionContained({ publish: true, main: "../outside.js" })).toThrow(
+        /outside its own folder/,
+      );
+      expect(() => assertExtensionContained({ publish: true, main: "lib/index.js" })).not.toThrow();
+    });
+
+    // #381 — one rule for both load paths: a publisher declares nothing the
+    // renderer would load. Its `main` is its publish module, so it's fine.
+    test("assertPublishOnly refuses a publisher that also declares renderer-side fields, and only then (#381)", () => {
+      expect(() => assertPublishOnly({ publish: true, main: "index.js" }, "x")).not.toThrow();
+      expect(() => assertPublishOnly({ main: "index.js", styles: ["a.css"] }, "x")).not.toThrow();
+      expect(() => assertPublishOnly({ publish: true, main: "index.js", styles: ["a.css"] }, "x")).toThrow(
+        /Publishing plugin "x" also declares styles — a package is a publisher or a markdown plugin, not both/,
+      );
+      expect(() =>
+        assertPublishOnly({ publish: true, markdown: "md.js", components: "components.yaml", snippets: "snippets" }, "x"),
+      ).toThrow(/also declares markdown, components, snippets/);
     });
 
     test("rejects a traversal or absolute path in EACH new field individually", () => {

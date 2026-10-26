@@ -12,9 +12,9 @@
    * PWA-clean (§8): all host work through `api.report.bundle` / `api.shell`.
    */
   import { onMount } from "svelte";
-  import { api } from "$lib/api";
-  import { buildIssueUrl, reportText } from "$lib/issue-report";
-  import type { ProblemReport } from "$lib/platform/dtos";
+  import { api } from "#lib/api.ts";
+  import { buildIssueUrl, reportText } from "#lib/issue-report.ts";
+  import type { ProblemReport } from "#lib/platform/dtos.ts";
 
   let { projectDir = null }: { projectDir?: string | null } = $props();
 

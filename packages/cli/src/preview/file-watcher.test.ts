@@ -194,6 +194,7 @@ describe('generateAndWriteHtml', () => {
       bleed: 9,
       safe: 36,
       artSafe: 18,
+      gutter: 36,
       preset: 'dtrpg',
       spec: {
         label: 'DriveThruRPG — Quick Specifications for Print Books',

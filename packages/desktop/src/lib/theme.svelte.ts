@@ -14,10 +14,10 @@
  * `initTheme()` keeps that cache in sync on every resolve so the next launch
  * paints the correct theme synchronously.
  */
-import { getPlatform } from "$lib/platform";
-import { useSettings } from "$lib/settings.svelte";
-import type { NativeThemeState } from "$lib/platform";
-import { api } from "$lib/api";
+import { getPlatform } from "#lib/platform/index.ts";
+import { useSettings } from "#lib/settings.svelte.ts";
+import type { NativeThemeState } from "#lib/platform/index.ts";
+import { api } from "#lib/api.ts";
 
 export type ThemeMode = "light" | "dark" | "system";
 type ResolvedTheme = "light" | "dark";

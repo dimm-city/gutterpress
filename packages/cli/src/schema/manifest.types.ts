@@ -195,8 +195,11 @@ export interface GutterpressManifest {
      * borders, rules — stays at least this far inside the trim on the top,
      * bottom and OUTER edge; at the binding edge it uses `gutter`. DriveThruRPG's
      * "keep non-bleeding art 0.25in from the outside edges" (`dtrpg` sets 18).
-     * An image pinned to the top, bottom or outer edge (`.gp-pin`) sits on this
-     * line unless it carries `.gp-flush`. Absent = the same as `safe`.
+     * The preview's overlay outlines it and flags art outside it, and
+     * `pdf.print.safe-margins` fails a built PDF with an image closer, or one
+     * that stops in the bleed band. An image pinned to the top, bottom or outer
+     * edge (`.gp-pin`) sits on this line unless it carries `.gp-flush`. Absent =
+     * the same as `safe`.
      */
     artSafe?: number;
     /**
@@ -205,9 +208,11 @@ export interface GutterpressManifest {
      * one — measured from the trim. It stands in for `safe` at the binding
      * edge, for text and for art alike, so a book that keeps its text further
      * from the spine than the printer's minimum says so here, not in its CSS
-     * (the Field Guide keeps 0.75in = 54 where DriveThruRPG asks for 0.5in).
+     * (for example 54 for 0.75in where DriveThruRPG asks for 0.5in).
      * An image pinned to the binding edge sits on it. The other edges keep
-     * `safe` and `artSafe`. Absent = the same as `safe`; presets leave it unset.
+     * `safe` and `artSafe`. Absent = the same as `safe`; `dtrpg` sets 36
+     * (DriveThruRPG's 0.5in at the binding, the same as its `safe`), `book`
+     * and `custom` none.
      */
     gutter?: number;
   };
