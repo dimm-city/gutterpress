@@ -104,7 +104,7 @@ BOUNDARY" outcome) rather than treating it as a plain layout divergence.
 ## Why we are not treating this as ours to fix
 
 We are the CSS Paged Media polyfill's author, not Chromium's — see
-[`CLAUDE.md`](../../../CLAUDE.md), "The rendering engine and every
+[architecture rules](../../architecture-rules.md), "The rendering engine and every
 polyfill/shim are NOT the product... they are expected to be removed as
 Chrome's support improves." We tried to compensate for this in our own
 Multicol-based preview (giving its fragmentainer's rendered height a small

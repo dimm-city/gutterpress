@@ -357,7 +357,7 @@ double-buffers the complete regenerated book and swaps it in, so pagination
 never depends on per-source isolation wrappers. It does
 **not** use `Bun.serve`: the lib runtime must stay Node-compatible so the
 Electron desktop can run it in-process on Electron's bundled Node (see
-`CLAUDE.md`, Monorepo layout section, and §1). There is no toolbar, page
+`docs/architecture-rules.md`, Monorepo layout section, and §1). There is no toolbar, page
 navigation, or folder picker — those live in the Electron desktop
 (`packages/desktop`).
 
@@ -409,7 +409,7 @@ while this reads the real thing.
   extract under `bun build --compile`, **and** it runs unmodified under
   Electron's bundled Node (the reason it replaced an earlier `Bun.serve`
   implementation — `Bun.serve` is not available outside the Bun runtime).
-- See the "No bundlers at runtime" rule in `CLAUDE.md` §1 for the full rationale
+- See the "No bundlers at runtime" rule in `docs/architecture-rules.md` §1 for the full rationale
   and links to the upstream Bun issues that motivated the change.
 
 ### File Watching
@@ -775,7 +775,7 @@ See [User Guide: Chapter 5 — Plugins](../examples/gutterpress-user-guide/05-pl
   Vite's CSS pipeline and module graph, plus a compile-time regex plugin to
   rewrite `package.json` reads in `node_modules/vite`. Removing Vite
   removed both layers of workarounds.
-- See the "No bundlers at runtime" rule in `CLAUDE.md` §1.
+- See the "No bundlers at runtime" rule in `docs/architecture-rules.md` §1.
 
 ### 4. Why Electron + SvelteKit for the Desktop App?
 
@@ -790,7 +790,7 @@ See [User Guide: Chapter 5 — Plugins](../examples/gutterpress-user-guide/05-pl
   `Server.respond()` in-process — no HTTP server or proxy. Host capabilities are
   exposed as `src/routes/api/**/+server.ts` routes the renderer calls with
   `fetch("/api/…")`; a narrow `ipcMain`/preload bridge is reserved for push
-  streams and calls that must drive a live `BrowserWindow` (see `CLAUDE.md`
+  streams and calls that must drive a live `BrowserWindow` (see `docs/architecture-rules.md`
   §8).
 - The lib (`gutterpress`) is Node.js-compatible at runtime
   (`node:http` + `ws` instead of `Bun.serve`, `node:fs` instead of

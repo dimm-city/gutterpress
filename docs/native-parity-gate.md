@@ -4,7 +4,7 @@
 paginates a book the way Chromium prints it. The two use different
 fragmenters — the viewer lays the book out in a multicol strip
 (`src/engine/viewer/fragment.ts`), the PDF comes from Chromium's own print
-engine — and CLAUDE.md's rule for the viewer is that it may re-present the
+engine — and docs/architecture-rules.md's rule for the viewer is that it may re-present the
 author's pages but never re-decide them. This gate is the proof.
 
 It is a different tool from the [render-parity gate](./render-parity-gate.md),
@@ -45,7 +45,7 @@ Every fixture ends in exactly one of these, and the summary counts them:
 |---|---|---|
 | **CLEAN** | No check disagreed. | passes |
 | **EXACT-FIT BOUNDARY** | Check (d) disagreed, and check (e) measured the first disputed boundary as a sub-pixel exact fit (rule below). The measurements are printed; the downstream divergences — two-sided ones both fragmenters place on the boundary page or later — are listed for information but not counted. A one-sided miss or a divergence upstream of the boundary still counts, and fails the run as a divergence. | passes |
-| **DIVERGENCE** | Anything else. Every divergence must be an explicit `KNOWN_DIVERGENCES` entry with a reason; an unlisted one fails the run. The allowlist is empty and CLAUDE.md requires it to stay that way. | fails (1) |
+| **DIVERGENCE** | Anything else. Every divergence must be an explicit `KNOWN_DIVERGENCES` entry with a reason; an unlisted one fails the run. The allowlist is empty and docs/architecture-rules.md requires it to stay that way. | fails (1) |
 
 ### The exact-fit rule
 

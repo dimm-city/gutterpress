@@ -118,4 +118,4 @@ Three small updates, so the removal trigger becomes real:
    anything.
 
 Do not add a shim while waiting. See
-[`CLAUDE.md`](../CLAUDE.md) — *"Chrome wins once it ships."*
+[architecture rules](architecture-rules.md) — *"Chrome wins once it ships."*

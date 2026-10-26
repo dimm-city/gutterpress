@@ -12,7 +12,7 @@ canonical way to wrap a block of markdown in a styled `<div>`.
 - `@section` already gives every named container the same capability — an
   addressable `#id` and arbitrary `.class` names — with no separate plugin, no
   per-container registration step, and no Gutterpress-specific plugin API (see
-  rule 5 in `CLAUDE.md`). (Keeping a block off a page break is your CSS, not
+  rule 5 in `docs/architecture-rules.md`). (Keeping a block off a page break is your CSS, not
   the marker: core does not apply `break-inside: avoid` to `.section`. Give the
   section a class and write the rule, as the examples' `.no-break` does.)
 - Two competing block-wrapping syntaxes (`:::name` and `@section`) added

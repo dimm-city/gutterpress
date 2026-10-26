@@ -15,7 +15,7 @@ across three files, a book-prefixed rule inside the shared engine sheet).
 `source.css-ownership` (`packages/cli/src/checks/source/css-ownership.ts`)
 turns those header-comment contracts into a postcss-based lint check, run the
 same way `source.stylelint` (the print-safety checks) already are — no
-stylelint (see `CLAUDE.md` §3: stylelint can't be bundled into the compiled
+stylelint (see `docs/architecture-rules.md` §3: stylelint can't be bundled into the compiled
 binary). It reports through the same `gutterpress validate`/build-warning
 channel as every other check, all findings at `severity: warning`.
 
@@ -137,7 +137,7 @@ The original proposal for this feature also sketched a project-wide
 doesn't start with an approved brand prefix. That is not implemented. Core
 itself emits bare, unprefixed structural classes authors are meant to style
 directly (`.section`, `.page`, `.spread`, `.chapter` — see
-`CLAUDE.md` §6), and a project's own non-branded utility classes (this user
+`docs/architecture-rules.md` §6), and a project's own non-branded utility classes (this user
 guide's own `.lede`, for one) are completely legitimate CSS. A blanket sweep
 would flag both of those on every single run, in every project that turned it
 on — the kind of constant, undifferentiated noise that gets a lint rule

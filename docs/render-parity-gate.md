@@ -9,7 +9,7 @@ actually see move, at a configurable tolerance.
 Built directly over `packages/cli/src/lib/pdf-inspect.ts`'s existing PDF.js
 primitives. No new dependency. The optional `--raster` mode (below) also
 compares pages as pixels with poppler's `pdftoppm`, a dev-tool dependency of
-this script only — nothing in the published CLI rasterizes (CLAUDE.md §1/§3).
+this script only — nothing in the published CLI rasterizes (docs/architecture-rules.md §1/§3).
 
 - Pure logic: `packages/cli/src/lib/render-parity.ts` (`extractReport`,
   `compareReports`, `formatDiffs`, `serializeReport`).

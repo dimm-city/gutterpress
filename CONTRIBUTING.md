@@ -112,7 +112,7 @@ gutterpress/                     # Workspace root (private)
 ### Key architectural boundaries
 
 - **`packages/cli/src/`** — No bundlers at runtime (see the "No bundlers at
-  runtime" rule in `CLAUDE.md` §1). Use `node:http` + `ws` for any server
+  runtime" rule in `docs/architecture-rules.md` §1). Use `node:http` + `ws` for any server
   needs (see `packages/cli/src/preview/http-server.ts`), not Vite/Rollup/esbuild
   and not `Bun.serve` — the lib runtime must stay Node-compatible so Electron's
   bundled Node can run it in-process.

@@ -240,7 +240,7 @@ paint over text.
 ## Architecture
 
 Everything lives in the lib (`packages/cli/src/lib/publish/`) and is consumed
-by two thin front-ends, mirroring the remote-auth subsystem (CLAUDE.md §7):
+by two thin front-ends, mirroring the remote-auth subsystem (docs/architecture-rules.md §7):
 
 ```
 lib/publish/
@@ -278,7 +278,7 @@ Every side effect enters through `PublishDeps` — `tokenStore` (the host's
 credential store), `fetch`, `runCommand`, `env`, `configDir`, `onProgress` —
 which is what makes providers unit-testable (`publish.test.ts` runs the whole
 pipeline with fakes) and keeps the lib free of host concerns: the lib never
-touches the OS keychain (CLAUDE.md §7-style host injection).
+touches the OS keychain (docs/architecture-rules.md §7-style host injection).
 
 The desktop app reaches the same code through `/api/publish/*` SvelteKit server
 routes (`list`, `connect`, `disconnect`, `set-config`, `run`) that share the

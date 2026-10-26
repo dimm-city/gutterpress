@@ -253,4 +253,4 @@ If you find print output that contradicts the CSS Paged Media spec:
    The issue here stays open as the citable reference and the removal trigger.
 
 Do not fix it in a shim. See
-[`CLAUDE.md`](../CLAUDE.md) — "What Gutterpress is — and what the engine is not".
+[architecture rules](architecture-rules.md) — "What Gutterpress is — and what the engine is not".
