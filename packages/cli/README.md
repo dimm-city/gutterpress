@@ -599,7 +599,7 @@ The binary is self-contained except for the system tools described in [User Guid
 
 - **`Ghostscript executable not found`** — Ghostscript is required only for PDF/X and ink-coverage checks. Standard Windows installs are auto-detected; for a non-standard install, set `GHOSTSCRIPT_PATH` to the full path of `gs`, `gswin64c.exe`, or `gswin32c.exe`. See [User Guide: Chapter 7 — System Setup](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/07-system-setup.md).
 - **`No Chrome or Chromium binary found`** — install a Chromium-based browser or set `CHROMIUM_PATH=/path/to/chrome`. The desktop app includes its own browser and needs no separate browser install.
-- **`Tool "X" not found — skipping`** during validate — that's the graceful path; the check requires `X` and isn't available. Install the tool or accept the skip.
+- **`Tool "X" not found; skipping`** during validate — that's the graceful path; the check requires `X` and isn't available. Install the tool or accept the skip.
 - **All validate checks skipped on Windows** — was a bug pre-0.1.7 (used `which`, which isn't on stock Windows); fixed to use `where.exe`.
 
 ## Links

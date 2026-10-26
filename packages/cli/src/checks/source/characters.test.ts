@@ -82,6 +82,15 @@ describe("source.characters", () => {
     );
   });
 
+  test("lets a right single quote through only where it starts a word, which a typed ' cannot make", async () => {
+    // ’90s, ’tis and (’em) pass; don’t, x’ and a lone ’ are reported.
+    const results = await runOn("the \u201990s don\u2019t \u2019tis x\u2019 \u2019 (\u2019em)\n");
+    expect(results.map((r) => r.column)).toEqual([13, 22, 24]);
+    expect(results[0]!.message).toBe(
+      "Right curly single quote (apostrophe) (U+2019). Type ' instead; it prints the same.",
+    );
+  });
+
   test("counts the column in UTF-16 units, the editor's unit, after an astral character", async () => {
     // U+1F680 is two UTF-16 units: the em dash sits at index 4, column 5.
     const [, dash] = await runOn("\u{1F680} x\u2014y");

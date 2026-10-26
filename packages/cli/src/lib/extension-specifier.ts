@@ -68,7 +68,7 @@ export function parseExtensionSpecifier(use: string): ParsedExtensionSpecifier {
   // author almost certainly meant before the npm parser complains.
   if (/\.(m?js|cjs)$/i.test(spec) || (!spec.startsWith("@") && spec.includes("/"))) {
     throw new Error(
-      `"${spec}" looks like a path — write it as "./${spec}". A specifier that does not ` +
+      `"${spec}" looks like a path; write it as "./${spec}". A specifier that does not ` +
         "start with ./, ../ or / is an npm package name.",
     );
   }

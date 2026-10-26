@@ -50,6 +50,12 @@ This project follows [Semantic Versioning](https://semver.org/).
   itself. The desktop's selection-formatting menu, which had to reverse those
   conversions to find selected text in the source, no longer refuses any
   selection containing a comma or an ellipsis.
+- **The character check's advice fits every language, and lets ’90s through.**
+  The curly quotes are now named by their side (left, right) rather than
+  opening and closing, which was wrong for German, where “ closes; the
+  advice to type a straight quote was right all along. A right single quote
+  that starts a word (’90s, ’tis) is no longer reported: a typed ' there
+  prints straight, so there was nothing to type instead.
 - **A `|` inside a code span or a formula stays in its table cell.** GFM
   splits a row at every `|` before reading what is between them, so a pipe in
   code or math split the cell and the cells past the header's count vanished.

@@ -63,11 +63,14 @@ export interface CharacterInfo {
  */
 export const CHARACTER_PATTERN = new RegExp(
   "[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F-\\u00A0\\u00AD\\u00B4\\u02BC" +
-    "\\u061C\\u2000-\\u2015\\u2018\\u2019\\u201B-\\u201D\\u201F\\u2022\\u2026" +
+    "\\u061C\\u2000-\\u2015\\u2018\\u201B-\\u201D\\u201F\\u2022\\u2026" +
     "\\u2028-\\u202F\\u2032\\u2033\\u205F\\u2060\\u2066-\\u2069\\u2190\\u2192" +
     "\\u2194\\u21D2\\u2212\\u25AA\\u25E6\\u2605\\u2713\\u2714\\u2717\\u3000" +
     "\\uE000-\\uF8FF\\uFEFF\\uFF02\\uFF07\\uFFFD]" +
-    "|\\p{Emoji_Presentation}|\\p{Extended_Pictographic}(?=\\uFE0F)",
+    "|\\p{Emoji_Presentation}|\\p{Extended_Pictographic}(?=\\uFE0F)" +
+    // A right single quote, except one that starts a word (’90s, ’tis): a
+    // typed ' there stays straight, so there is nothing else to type.
+    "|(?<=[\\p{L}\\p{N}])\\u2019|\\u2019(?![\\p{L}\\p{N}])",
   "gu",
 );
 
@@ -77,10 +80,10 @@ type Entry = [name: string, code: CharacterCode, spelling?: string];
 const NAMED: Record<number, Entry> = {
   0x2014: ["Em dash", "typographer", "---"],
   0x2013: ["En dash", "typographer", "--"],
-  0x201c: ["Opening curly quote", "typographer", '"'],
-  0x201d: ["Closing curly quote", "typographer", '"'],
-  0x2018: ["Opening curly single quote", "typographer", "'"],
-  0x2019: ["Curly apostrophe", "typographer", "'"],
+  0x201c: ["Left curly quote", "typographer", '"'],
+  0x201d: ["Right curly quote", "typographer", '"'],
+  0x2018: ["Left curly single quote", "typographer", "'"],
+  0x2019: ["Right curly single quote (apostrophe)", "typographer", "'"],
   0x2026: ["Ellipsis character", "typographer", "..."],
 
   0x02bc: ["Modifier-letter apostrophe", "lookalike", "'"],
