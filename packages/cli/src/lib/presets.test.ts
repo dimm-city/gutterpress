@@ -285,6 +285,7 @@ describe("built-in template manifests declare an explicit preset (maintainer rev
     book: "book",
     technical: "book",
     zine: "book",
+    paper: "book",
   };
 
   test("every shipped template id has an expected preset pinned in this test (no silent additions)", () => {

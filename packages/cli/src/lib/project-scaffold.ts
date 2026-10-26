@@ -35,6 +35,13 @@ import { PRESET_IDS, PRESETS, type PresetId } from "./presets.ts";
 import { isPositivePoints, writePageBounds, type CustomPageOptions } from "./page-size.ts";
 import { TARGETS, TARGET_IDS } from "./targets.ts";
 import { ensureProjectGitignore } from "./project-gitignore.ts";
+import {
+  BUILT_IN_STYLE_SET_IDS,
+  copyBuiltInStyleSet,
+  entryUse,
+  type BuiltInStyleSetId,
+} from "./extension-manager.ts";
+import { isSeq } from "yaml";
 import { slugify } from "./slug.ts";
 
 /**
@@ -43,7 +50,25 @@ import { slugify } from "./slug.ts";
  * into the binary via `embedded-assets.ts`. `"book"` is the default; the others
  * give non-technical authors a head start for common formats (#29).
  */
-export type ProjectTemplateId = "book" | "zine" | "technical";
+export type ProjectTemplateId = "book" | "zine" | "technical" | "paper";
+
+/**
+ * A template's manifest may list a built-in look as `./extensions/<id>`
+ * (the paper template lists `academic`). Copy each one in, as
+ * `gutterpress ext add <id> --look` would, so the entry resolves.
+ */
+async function copyListedBuiltInLooks(projectDir: string): Promise<void> {
+  const { doc } = await loadManifestDoc(projectDir);
+  const list = doc.get("extensions", true);
+  if (!isSeq(list)) return;
+  for (const item of list.items) {
+    const match = /^\.\/extensions\/([a-z0-9-]+)$/.exec(entryUse(item) ?? "");
+    const id = match?.[1];
+    if (id && (BUILT_IN_STYLE_SET_IDS as readonly string[]).includes(id)) {
+      await copyBuiltInStyleSet(projectDir, id as BuiltInStyleSetId);
+    }
+  }
+}
 
 function starterOverridesCss(): string {
   return `/**
@@ -407,6 +432,7 @@ export async function scaffoldProject(
   let openFile = path.join(projectDir, "chapter-01.md");
   try {
     await fillTemplateFile(manifestPath, substitutions);
+    await copyListedBuiltInLooks(projectDir);
     if (preset) {
       // Overwrite the template's placeholder `preset:` with the author's
       // choice (and their trim, for `custom` or an explicit override) via the

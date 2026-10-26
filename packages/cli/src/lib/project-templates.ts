@@ -38,6 +38,7 @@ export const BUILT_IN_TEMPLATE_IDS = [
   "book",
   "zine",
   "technical",
+  "paper",
 ] as const satisfies readonly ProjectTemplateId[];
 
 /** Author-friendly metadata for one template (built-in or custom). */
@@ -104,6 +105,10 @@ const BUILT_IN_META: Record<
   technical: {
     label: "Technical document",
     description: "A manual or guide with steps, reference tables, and code examples.",
+  },
+  paper: {
+    label: "Academic paper",
+    description: "A journal-style article with LaTeX math, numbered equations, figures, tables, notes and references.",
   },
 };
 

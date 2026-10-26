@@ -1,0 +1,10 @@
+{
+  "name": "academic",
+  "description": "A journal-article look: serif text, justified and hyphenated, ruled tables, notes and references set smaller.",
+  "author": "gutterpress",
+  "keywords": ["gutterpress", "gutterpress-look"],
+  "gutterpress": {
+    "styles": ["theme.css"],
+    "preview": null
+  }
+}

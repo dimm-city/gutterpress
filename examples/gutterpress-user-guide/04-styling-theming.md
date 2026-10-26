@@ -8,13 +8,14 @@ Gutterpress uses plain CSS for all styling. Control colors, fonts, and layout th
 
 ## Built-in Looks
 
-Gutterpress ships three built-in looks, embedded in the CLI binary and library:
+Gutterpress ships four built-in looks, embedded in the CLI binary and library:
 
 | Look id | Description |
 |----------|-------------|
 | `clean-book` | A calm, classic book look: serif body, generous margins, restrained accents. |
 | `zine` | High-contrast, punchy sans-serif look for short photocopier-friendly zines. |
 | `technical-doc` | Clean sans-serif manual look with clear hierarchy, code styling, and tidy tables. |
+| `academic` | A journal-article look: serif text, justified and hyphenated, ruled tables, notes and references set smaller. The `paper` starter template uses it. |
 
 A look (a *theme*, in older docs and in `gutterpress new --kind theme`) is an
 **extension**: a folder holding a stylesheet — `theme.css` — plus a small

@@ -88,7 +88,7 @@ export const extAddArgs = {
   look: {
     type: "boolean",
     description:
-      "Treat SOURCE as a built-in look id (clean-book, zine, technical-doc): copy it into extensions/ and add it",
+      "Treat SOURCE as a built-in look id (clean-book, zine, technical-doc, academic): copy it into extensions/ and add it",
     required: false,
   },
 } as const;

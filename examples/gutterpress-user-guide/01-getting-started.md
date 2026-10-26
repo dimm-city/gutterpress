@@ -73,7 +73,7 @@ Useful flags:
 ```bash
 gutterpress new "My Book" --preset dtrpg --author "Jane Doe"   # record an author
 gutterpress new "My Book" --preset dtrpg --dir ~/Books         # choose a parent directory
-gutterpress new "My Book" --preset dtrpg --template zine       # book | zine | technical
+gutterpress new "My Book" --preset dtrpg --template zine       # book | zine | technical | paper
 gutterpress new "My Book" --preset dtrpg --no-git              # skip local version history
 gutterpress new "My Zine" --preset custom \
   --page-width 396 --page-height 612                            # your own trim size, in points
@@ -186,6 +186,11 @@ title: "My Awesome Book"
 authors:
   - "Jane Doe"
   - "John Smith"
+
+# The book's language (a BCP 47 tag: en, de-CH, pt-BR; default en). Sets the
+# HTML lang, which hyphenation follows, and the quotation marks straight
+# quotes print as.
+language: en
 
 # What the book is designed for: dtrpg | book | custom.
 # Fills in page geometry and print-rule defaults; anything you set

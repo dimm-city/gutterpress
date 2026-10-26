@@ -159,7 +159,7 @@ gutterpress new <name> [--kind <id>] [options]
   --author <name>          Author name to record in the project
   --dir <path>             Parent directory to create the project in (default: current directory)
   --folder <name>          Folder name to create (default: a slug of the project name)
-  --template <id>          Starter template: book, zine, technical (default: book)
+  --template <id>          Starter template: book, zine, technical, paper (default: book)
   --targets <ids>          Publish targets recorded in the manifest (comma-separated: dtrpg, itch; or "none") — default: the preset's
   --page-width <pt>        Trim width in points, 72pt = 1in (required with --preset custom; optional override otherwise)
   --page-height <pt>       Trim height in points, 72pt = 1in (required with --preset custom; optional override otherwise)
@@ -438,7 +438,7 @@ folders it created and nothing else.
 gutterpress ext add <source> [dir] [options]
 
   --export <name>    Named module export to use as the plugin function (npm and path extensions only)
-  --look             Treat SOURCE as a built-in look id (clean-book, zine, technical-doc): copy it into extensions/ and add it
+  --look             Treat SOURCE as a built-in look id (clean-book, zine, technical-doc, academic): copy it into extensions/ and add it
 ```
 
 ```sh
