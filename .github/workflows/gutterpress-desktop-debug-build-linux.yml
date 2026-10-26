@@ -20,8 +20,13 @@ on:
     branches:
       - "**"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
+    timeout-minutes: 10
     name: Build desktop Linux AppImage
     # A branch push builds only when it asks to. Evaluated before any runner
     # starts, so the cost of the `branches: **` trigger above is a skipped

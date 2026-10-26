@@ -9,25 +9,31 @@ name: Docker Build Check
 
 on:
   pull_request:
-    paths:
+    paths: &docker-paths
       - 'Dockerfile'
       - '.dockerignore'
-      - 'packages/cli/**'
+      - 'packages/cli/src/**'
+      - '!packages/cli/src/**/*.test.ts'
+      - '!packages/cli/src/test-helpers/**'
+      - 'packages/cli/scripts/**'
+      - 'packages/cli/tsconfig*.json'
+      - 'packages/*/package.json'
       - 'package.json'
       - 'bun.lock'
+      - '.github/workflows/docker-ci.yml'
   push:
     branches: [main, develop]
-    paths:
-      - 'Dockerfile'
-      - '.dockerignore'
-      - 'packages/cli/**'
-      - 'package.json'
-      - 'bun.lock'
+    paths: *docker-paths
+
+concurrency:
+  group: docker-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   docker-build:
     name: Docker image builds (no push)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
 

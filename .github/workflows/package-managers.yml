@@ -18,7 +18,8 @@ permissions:
 jobs:
   generate:
     name: Generate metadata from release checksums
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
         with:
@@ -76,6 +77,7 @@ jobs:
     name: Install with Homebrew
     needs: generate
     runs-on: macos-15
+    timeout-minutes: 10
     steps:
       - name: Download generated metadata
         uses: actions/download-artifact@v6
@@ -107,6 +109,7 @@ jobs:
     name: Install with Scoop
     needs: generate
     runs-on: windows-latest
+    timeout-minutes: 10
     steps:
       - name: Download generated metadata
         uses: actions/download-artifact@v6
@@ -146,7 +149,8 @@ jobs:
   commit:
     name: Commit validated metadata
     needs: [generate, validate-homebrew, validate-scoop]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
         with:

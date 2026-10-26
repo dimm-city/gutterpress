@@ -26,7 +26,8 @@
 # =============================================================================
 
 # ── Stage 1: build the Node CLI bundle ───────────────────────────────────────
-FROM oven/bun:1 AS builder
+# This stage emits JavaScript, so build once natively for both runtime arches.
+FROM --platform=$BUILDPLATFORM oven/bun:1 AS builder
 
 # The builder only needs the CLI + lib graph to bundle; skip heavy optionals.
 ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1

@@ -29,6 +29,11 @@ on:
       - "PRIVACY.md"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
+    inputs:
+      screenshots:
+        description: Retake desktop screenshots (builds and launches Electron)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -42,6 +47,7 @@ concurrency:
 
 jobs:
   build:
+    timeout-minutes: 8
     name: Build site
     runs-on: ubuntu-latest
     defaults:
@@ -59,22 +65,22 @@ jobs:
 
       # Fresh desktop screenshots for docs/desktop-guide/images/: built and
       # taken from the real app (website/scripts/desktop-screenshots.mjs).
-      # Only on manual runs and the run release.yml dispatches after a stable
-      # release, so pushes stay fast. Best effort: on failure the committed
-      # images are used and the deploy goes on.
+      # Explicitly requested only; release link refreshes use committed images.
+      # Best effort: on failure the committed images are used.
       - uses: ./.github/actions/bun
-        if: github.event_name == 'workflow_dispatch'
+        if: inputs.screenshots == true
         continue-on-error: true
 
       - name: Retake desktop screenshots
-        if: github.event_name == 'workflow_dispatch'
+        if: inputs.screenshots == true
         continue-on-error: true
         working-directory: .
         run: |
           set -euo pipefail
           bun install --frozen-lockfile
           (cd packages/desktop/node_modules/electron && node install.js)
-          (cd packages/desktop && bun run --cwd ../cli build:library && npx vite build && npx electron-vite build)
+          (cd packages/cli && bun run build:library)
+          (cd packages/desktop && npx vite build && npx electron-vite build)
           xvfb-run -a -s "-screen 0 1600x1000x24" node website/scripts/desktop-screenshots.mjs
 
       # --audit publishes nothing unless the composed site passes unify's
@@ -101,6 +107,7 @@ jobs:
           path: website/dist
 
   deploy:
+    timeout-minutes: 5
     name: Deploy to GitHub Pages
     needs: build
     runs-on: ubuntu-latest

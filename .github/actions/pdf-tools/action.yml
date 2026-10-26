@@ -1,33 +1,40 @@
-name: Install PDF tooling (cached)
-description: >-
-  Install Ghostscript and qpdf from apt, keeping the downloaded packages in the
-  Actions cache so a slow mirror is paid once per runner image, not on every run
-  (#414). apt also retries a fetch that fails part-way.
+name: Install PDF tooling (offline on cache hits)
+description: Cache the complete apt package set for this runner image and install it without network access on warm runs.
 runs:
   using: composite
   steps:
-    # The runner image's version is a process environment variable, which the
-    # `env` context does not see, so a shell step reads it: the key must change
-    # when the image (and so the packages apt resolves) changes, or the cache
-    # would be saved once and never again.
     - name: Read the runner image version
       id: image
       shell: bash
-      run: echo "version=${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
-    # apt is told to keep its downloads in a directory the runner user owns, so
-    # actions/cache can save and restore them; apt verifies every cached .deb
-    # against the index, so a stale one is simply downloaded again.
-    - name: Restore the apt package cache
-      uses: actions/cache@v5
+      run: echo "version=${ImageVersion:?GitHub runner image version is required}" >> "$GITHUB_OUTPUT"
+    - name: Restore PDF tool packages
+      id: cache
+      uses: actions/cache/restore@v5
       with:
         path: ~/apt-archives/*.deb
-        key: pdf-tools-${{ runner.os }}-${{ runner.arch }}-${{ steps.image.outputs.version }}
-        restore-keys: |
-          pdf-tools-${{ runner.os }}-${{ runner.arch }}-
-    - name: Install Ghostscript and qpdf
+        # Only an exact image match is safe for offline dependency installation.
+        key: pdf-tools-${{ runner.os }}-${{ runner.arch }}-${{ steps.image.outputs.version }}-${{ hashFiles('.github/actions/pdf-tools/action.yml') }}
+    - name: Install cached packages offline
+      if: steps.cache.outputs.cache-hit == 'true'
+      shell: bash
+      run: sudo dpkg -i "$HOME"/apt-archives/*.deb
+    - name: Download and install PDF tools
+      if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
       run: |
         mkdir -p "$HOME/apt-archives/partial"
-        sudo apt-get update
-        sudo apt-get install -y -o Acquire::Retries=3 -o "Dir::Cache::archives=$HOME/apt-archives" ghostscript qpdf
+        sudo timeout 180 apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o Acquire::Languages=none update
+        sudo timeout 180 apt-get install -y -o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o "Dir::Cache::archives=$HOME/apt-archives" ghostscript qpdf poppler-utils
         sudo chown -R "$(id -u):$(id -g)" "$HOME/apt-archives"
+    - name: Verify PDF tools
+      shell: bash
+      run: |
+        gs --version
+        qpdf --version
+        pdftoppm -v
+    # Save after setup, so a later test failure does not discard the download.
+    - uses: actions/cache/save@v5
+      if: steps.cache.outputs.cache-hit != 'true'
+      with:
+        path: ~/apt-archives/*.deb
+        key: ${{ steps.cache.outputs.cache-primary-key }}

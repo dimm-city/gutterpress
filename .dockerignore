@@ -10,6 +10,12 @@ packages/desktop/electron-dist
 
 # Big sample content + scratch output — the image takes projects via a mount.
 examples
+docs
+website
+AGENTS.md
+CLAUDE.md
+CONTRIBUTING.md
+CHANGELOG.md
 packages/cli/tests
 .reviews
 .tmp

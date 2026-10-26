@@ -1,11 +1,11 @@
 /**
  * "Bun.serve" doc-drift guard.
  *
- * CLAUDE.md, CONTRIBUTING.md and docs/ARCHITECTURE.md must never instruct
+ * docs/architecture-rules.md, CONTRIBUTING.md and docs/ARCHITECTURE.md must never instruct
  * `Bun.serve` for the preview dev server: that would contradict both the
  * actual implementation (`packages/cli/src/preview/http-server.ts` uses
  * `node:http` + `ws` so it can run under Electron's bundled Node in the
- * packaged desktop) and CLAUDE.md's own Node-compatibility requirement
+ * packaged desktop) and docs/architecture-rules.md's own Node-compatibility requirement
  * (Monorepo layout section: "no `Bun.serve`/`Bun.file`/runtime Bun APIs").
  * Any "Bun.serve" mention in them must be a CONTRASTIVE one, never an
  * instruction to use it.
@@ -29,7 +29,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, "..", "..", "..");
 
 const DOCS = [
-  path.join(REPO_ROOT, "CLAUDE.md"),
+  path.join(REPO_ROOT, "docs", "architecture-rules.md"),
   path.join(REPO_ROOT, "CONTRIBUTING.md"),
   path.join(REPO_ROOT, "docs", "ARCHITECTURE.md"),
 ];

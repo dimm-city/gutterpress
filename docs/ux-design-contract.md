@@ -22,7 +22,7 @@ Every feature area below is tagged with its implementation status:
 ## Scope
 
 This contract governs the **desktop application** (the Electron app). There
-is no browser/PWA target (CLAUDE.md §8).
+is no browser/PWA target (docs/architecture-rules.md §8).
 
 **Out of scope:** the CLI (`gutterpress new/build/preview/validate/publish`). The CLI
 is the power-user and CI surface (see the repo README: "a desktop application
@@ -37,13 +37,13 @@ contract and those documents conflict, the architecture documents win.**
 
 | Rule | Source | UX consequence |
 |---|---|---|
-| Renderer stays PWA-clean; host capabilities via server routes (default) or the Platform seam (push streams, BrowserWindow calls, host fs primitives) | `CLAUDE.md` §8 | Theme import file IO, AI/publish network calls, preflight fs checks → server routes. Publish/build **progress streams** → the adapter/IPC push seam. No `node:*` or lib value-imports in the SPA. |
+| Renderer stays PWA-clean; host capabilities via server routes (default) or the Platform seam (push streams, BrowserWindow calls, host fs primitives) | `docs/architecture-rules.md` §8 | Theme import file IO, AI/publish network calls, preflight fs checks → server routes. Publish/build **progress streams** → the adapter/IPC push seam. No `node:*` or lib value-imports in the SPA. |
 | Preview bridge protocol | `docs/inline-editing-plan.md` | Sync scroll, page navigation, outline, any preview overlay or overflow probe must go through the bridge. |
-| Plugins are plain markdown-it plugins; no plugin API; loader never auto-installs | `CLAUDE.md` §5 | Constrains §9 (Features) below. |
-| PDF rendering = Electron `printToPDF` (desktop) / a system Chromium driven over raw CDP (CLI); pure-JS tooling posture | `CLAUDE.md` §1/§3 | Preflight/export UX; "export" not "download". |
-| Git/GitHub operations are Node-native pure JS | `CLAUDE.md` §7 | Project source / sync / provider-auth UX. |
-| `$effect` is eslint-banned in the SPA; persisted preferences flow through the settings store's `onSettingsChange()` channel | `CLAUDE.md` §8 | Every persisted preference this contract specs (font size, pane layout, sync toggle, tooltip-seen state). |
-| All changes must REDUCE complexity unless properly justified | `CLAUDE.md` Primary Goals | Every PROPOSED item needs a scoped issue before implementation. |
+| Plugins are plain markdown-it plugins; no plugin API; loader never auto-installs | `docs/architecture-rules.md` §5 | Constrains §9 (Features) below. |
+| PDF rendering = Electron `printToPDF` (desktop) / a system Chromium driven over raw CDP (CLI); pure-JS tooling posture | `docs/architecture-rules.md` §1/§3 | Preflight/export UX; "export" not "download". |
+| Git/GitHub operations are Node-native pure JS | `docs/architecture-rules.md` §7 | Project source / sync / provider-auth UX. |
+| `$effect` is eslint-banned in the SPA; persisted preferences flow through the settings store's `onSettingsChange()` channel | `docs/architecture-rules.md` §8 | Every persisted preference this contract specs (font size, pane layout, sync toggle, tooltip-seen state). |
+| All changes must REDUCE complexity unless properly justified | [AGENTS.md Primary Goals](../AGENTS.md#gutterpress-primary-goals) | Every PROPOSED item needs a scoped issue before implementation. |
 
 ---
 
@@ -389,7 +389,7 @@ buttons.
   import-from-folder), and the chosen template seeds the book's design
   preset and publish targets (ADR 0008), both of which stay editable.
 - Templates come from the **shared lib scaffolding** in
-  `gutterpress` (same set behind `gutterpress new`; CLAUDE.md §7 "one
+  `gutterpress` (same set behind `gutterpress new`; docs/architecture-rules.md §7 "one
   implementation, two thin front-ends") — the picker is a front-end over the
   lib, never a desktop-only template store.
 - PROPOSED: additional curated templates (Novel, Resume, Chapbook,
@@ -462,7 +462,7 @@ coverage — per the printToPDF/pure-JS posture), exposed via a server route. It
    PDF/X, external qpdf/gs — they can never run per keystroke).
 
 **Master pages / page templates (PROPOSED):** a UI over the **existing
-`@page` / `@section` / `@chapter` markers** (`markers.js`, CLAUDE.md
+`@page` / `@section` / `@chapter` markers** (`markers.js`, docs/architecture-rules.md
 §5/§6). "Section" = a marker block; "picking a template" = the inspector
 writes/updates the marker's class argument (e.g. `@section chapter-opener`)
 in the markdown source. Templates are plain CSS classes; the markdown file
@@ -505,7 +505,7 @@ an account picker, Settings → **Accounts** tab.
 
 **Provider model (binding):** providers are **built into the lib's publish
 registry** (`packages/cli/src/lib/publish/`) — they are *not plugins* and there
-is no "publish plugin" category (CLAUDE.md §5). New providers are code
+is no "publish plugin" category (docs/architecture-rules.md §5). New providers are code
 contributions to the registry. Two provider classes (from the shipped matrix):
 
 | Class | Providers | Publish flow | Success state |
@@ -557,7 +557,7 @@ the header red.)
 - **Publish history — evaluated, not planned (2026-07-14):** a last-N publish
   log was considered and dropped; provider dashboards and the project's git
   snapshot history cover the need. If revisited, storage must be per project
-  and gitignored (CLAUDE.md §7 snapshot commits capture anything un-ignored).
+  and gitignored (docs/architecture-rules.md §7 snapshot commits capture anything un-ignored).
 
 ### 7. AI writing assistant
 
@@ -634,7 +634,7 @@ checker** (`checkCss`, the four `printsafe/*` rules) via the
 `gutterpress validate`. Completions are a curated paged-media table.
 
 > **stylelint is not used and must not be reintroduced** — it was removed
-> because it cannot survive `bun build --compile` (CLAUDE.md §3). New lint
+> because it cannot survive `bun build --compile` (docs/architecture-rules.md §3). New lint
 > rules go through `printsafe.ts`.
 
 Proposed refinements (file issues):
@@ -658,10 +658,10 @@ Proposed refinements (file issues):
 both views are filters over ONE manifest list, `extensions:` — see §11 for
 the Look view this section shares a controller with). This section is
 rewritten around the actual plugin model; the original "app store" concept is
-**rejected** as incompatible with CLAUDE.md §5 unless a future ADR changes
+**rejected** as incompatible with docs/architecture-rules.md §5 unless a future ADR changes
 that rule.
 
-The model (binding, from CLAUDE.md §5 and #265):
+The model (binding, from docs/architecture-rules.md §5 and #265):
 
 - Plugins are **plain markdown-it packages**, each one entry in the project
   manifest's `extensions:` list — the same list that holds looks and component
@@ -696,7 +696,7 @@ Refinements (PROPOSED): link each plugin to its npm page for
 author/version/last-published metadata; surface load errors inline.
 
 Explicitly **removed** from the earlier draft (each would require its own
-ADR-level proposal and a CLAUDE.md §5 amendment):
+ADR-level proposal and a docs/architecture-rules.md §5 amendment):
 
 - install counts / reviews (presumes a hosted registry that doesn't exist);
 - "permissions requested" (plugins run in-process with full privileges — a
@@ -1098,8 +1098,8 @@ explicit width/height (never scaled by `font-size`). Icon-only buttons:
 | Requiring save before preview | Breaks the live loop | Shipped: 500ms debounced save + live preview (default; turning auto-save off is the author's opt-in to preview-on-save) |
 | Raw engine / `@page` errors shown to authors | Opaque, frightening | Plain-language Problems entries (shipped, §10) |
 | Raw rule IDs / linter jargon as primary text | Writer-first product | Plain-language labels, codes demoted (shipped, §10) |
-| Reintroducing stylelint or any bundler-hostile dep for editor lint | Breaks `bun build --compile` (CLAUDE.md §3) | Extend `printsafe.ts` |
-| A Gutterpress-specific plugin API, hosted plugin marketplace, or fake granular permissions UI | Contradicts CLAUDE.md §5 and the unsandboxed runtime | §9's plain-package model and one honest full-privilege confirmation |
+| Reintroducing stylelint or any bundler-hostile dep for editor lint | Breaks `bun build --compile` (docs/architecture-rules.md §3) | Extend `printsafe.ts` |
+| A Gutterpress-specific plugin API, hosted plugin marketplace, or fake granular permissions UI | Contradicts docs/architecture-rules.md §5 and the unsandboxed runtime | §9's plain-package model and one honest full-privilege confirmation |
 | Settings with >30 items in a flat list | Overwhelming | Shipped tab structure (§4) |
 
 ---

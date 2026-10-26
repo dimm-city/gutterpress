@@ -191,7 +191,7 @@ that, not on the diff size.
 4. **No serializer, ever.** The editable surface holds markdown source. The moment
    it holds a rendered projection, ADR 0009 premise 3 applies and this design is
    void.
-5. **Renderer stays PWA-clean** (CLAUDE.md §8). The controller is
+5. **Renderer stays PWA-clean** (docs/architecture-rules.md §8). The controller is
    fetch/bridge-based with no `node:*` and no lib value imports.
 6. **No edit may open between a commit and the re-render**
    (`InlineEditController.pendingRender`). Found while building this, and not

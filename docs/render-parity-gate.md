@@ -9,7 +9,7 @@ actually see move, at a configurable tolerance.
 Built directly over `packages/cli/src/lib/pdf-inspect.ts`'s existing PDF.js
 primitives. No new dependency. The optional `--raster` mode (below) also
 compares pages as pixels with poppler's `pdftoppm`, a dev-tool dependency of
-this script only — nothing in the published CLI rasterizes (CLAUDE.md §1/§3).
+this script only — nothing in the published CLI rasterizes (docs/architecture-rules.md §1/§3).
 
 - Pure logic: `packages/cli/src/lib/render-parity.ts` (`extractReport`,
   `compareReports`, `formatDiffs`, `serializeReport`).
@@ -215,7 +215,8 @@ branch's CLI and the PR's CLI **in one job, against the same checked-out
 fixture sources**, then compares the two PDFs per fixture
 (`examples/gutterpress-user-guide`, `examples/with-design-guide/book-01`,
 `examples/with-design-guide/design-guide`). It runs on `pull_request` only —
-it needs a base commit to diff against.
+it needs a base commit to diff against. [CI policy](./ci.md) describes which
+changes select this gate.
 
 A report captured weeks earlier on a different Chromium build drifts by
 fractions of a point on font hinting/shaping alone and produces false diffs

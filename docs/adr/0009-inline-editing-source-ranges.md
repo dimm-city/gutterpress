@@ -24,7 +24,7 @@ Date: 2026-08-04 · Status: accepted · **Revised 2026-08-24** (native engine)
 > and the v5 half of decision 5. The replacement design is in
 > [`docs/inline-editing-plan.md`](../inline-editing-plan.md).
 
-> **Note on predecessors.** `CLAUDE.md` and `docs/ux-design-contract.md` reference
+> **Note on predecessors.** `docs/architecture-rules.md` and `docs/ux-design-contract.md` reference
 > ADRs 0002, 0004, 0005, 0006 and 0007, none of which are present in this
 > repository (`docs/adr/` holds 0008, 0009 and 0010). ADR 0005 in particular is
 > cited as the home of the preview bridge protocol. Rather than amend a missing
